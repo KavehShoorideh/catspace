@@ -1,0 +1,45 @@
+{
+  "_note": "Captured from the original code/ scripts (with the domain.py rook_attacks argument-order bugfix applied -- see git log) before the latentchess refactor. Deterministic numbers (state counts, DTM extremes) must match exactly; training-derived numbers (PI/curriculum results) are seeded but sensitive to minor RNG-call-order changes downstream, so treat them as within-noise targets unless a phase gate claims bit-exact reproduction.",
+  "krk_domain": {
+    "w_states": 7040,
+    "b_nodes": 10488,
+    "dtm_max": 19.0,
+    "forcible_mate_w_states": 7040,
+    "mate_b_nodes": 72,
+    "stalemate_b_nodes": 44
+  },
+  "krk_experiment": {
+    "rank64_reach_rel_err": 0.4059,
+    "distinct_concept_dims_rho_gt_0.5": 1,
+    "mate_rate_32000_games": 0.955,
+    "mate_rate_random_baseline": 0.037,
+    "mate_rate_dtm_ceiling_buggy": 0.417,
+    "gate_gm1": "FAIL (documented -- (a)/(b) mis-registered per RESULTS-v3, (c) passes at 26x)"
+  },
+  "krkn_domain": {
+    "n2_krkn_w_states": 158232,
+    "n1_krk_stratum": 7040,
+    "union_n": 165275,
+    "dtm_max": 43,
+    "won_fraction": 0.605
+  },
+  "krkn_curriculum_exp_krkn2": {
+    "final_round": 7,
+    "vs_optimal_mate_rate": 0.487,
+    "moves_over_optimal": 1.18,
+    "rook_lost": 0.277,
+    "via_krk": 0.91,
+    "win_draw_auc": 0.702
+  },
+  "krkn_search_sweep": {
+    "k0_1ply_conversion": 0.685,
+    "k1_3ply_conversion_oracle_free": 0.700,
+    "k1_3ply_moves_over_optimal": 1.108,
+    "k1_3ply_rook_lost": 0.003
+  },
+  "bug_fixed_during_refactor": {
+    "file": "code/domain.py (-> latentchess/domains/krk.py)",
+    "lines": [69, 145],
+    "description": "rook_attacks(rook, target, blockers) called as rook_attacks(wr, wk, t) instead of rook_attacks(wr, t, {wk}) -- argument order scrambled, likely fallout from the incomplete core.py extraction. Broke black_moves legality and box_area entirely (TypeError, domain.py could not even complete compute_dtm as committed). Fixed to restore the exact historical RESULTS-v3 numbers above."
+  }
+}

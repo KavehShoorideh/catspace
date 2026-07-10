@@ -1,0 +1,67 @@
+== setup ==
+setup 0.9s | W=7040
+near-mate region size: 1257
+
+== rank probe (exact dynamics) ==
+d=   8  frobenius=0.157  reach_rel_err=0.4854  reach_spearman=0.2634
+d=  16  frobenius=0.155  reach_rel_err=0.4638  reach_spearman=0.2959
+d=  32  frobenius=0.155  reach_rel_err=0.4405  reach_spearman=0.3343
+d=  64  frobenius=0.152  reach_rel_err=0.4059  reach_spearman=0.4351
+d= 128  frobenius=0.150  reach_rel_err=0.3713  reach_spearman=0.5638
+
+== learning from random play ==
+/Users/kav/code/remote/github/latent-chess-planner-toys/.venv/lib/python3.14/site-packages/scipy/sparse/_index.py:216: SparseEfficiencyWarning: Changing the sparsity structure of a csr_matrix is expensive. lil and dok are more efficient.
+  self._set_arrayXarray(i, j, x)
+games=   500  transitions=   7056  state-coverage=59.39%  reach_spearman(visited)=-0.0538
+games=  2000  transitions=  28637  state-coverage=95.67%  reach_spearman(visited)=0.1619
+games=  8000  transitions= 115088  state-coverage=99.94%  reach_spearman(visited)=0.3630
+games= 32000  transitions= 466763  state-coverage=100.00%  reach_spearman(visited)=0.4150
+
+== emergent concepts (spectral dims vs ground-truth features) ==
+concept          dtm: best dim  1  rho=+0.459
+concept      kk_dist: best dim  1  rho=+0.262
+concept      bk_edge: best dim  1  rho=+0.198
+concept     box_area: best dim  0  rho=-0.604
+concept rook_bk_dist: best dim  0  rho=-0.637
+distinct dims with |rho|>0.5: 1
+
+== VQ plan tokens (k-means on cone shapes F) ==
+K=32  codes used=32  usage perplexity=30.2
+code | size |  mean DTM | mean box_area
+  20 |  125 |     1.00 |    10.70
+  11 |   88 |     1.00 |    13.39
+   3 |   75 |     1.03 |     5.31
+  31 |   70 |     3.03 |    12.56
+  19 |  188 |     3.62 |    12.91
+  21 |  299 |     5.23 |    12.81
+  12 |  318 |     6.55 |    10.86
+  29 |  241 |     7.12 |    11.35
+  26 |  250 |     8.05 |    10.00
+  27 |  277 |     8.05 |    11.61
+
+== engine evaluation (vs uniform-random black, 100-ply cap) ==
+random white       : mate-rate=0.037  mean-plies=13.4
+DTM-guided ceiling : mate-rate=0.417  mean-plies=2.9
+learned (   500 games, cov 59%): mate-rate=0.509  mean-plies=10.2  (x13.8 vs random)
+learned (  2000 games, cov 96%): mate-rate=0.833  mean-plies=5.7  (x22.5 vs random)
+learned (  8000 games, cov 100%): mate-rate=0.925  mean-plies=5.1  (x25.0 vs random)
+learned ( 32000 games, cov 100%): mate-rate=0.955  mean-plies=5.1  (x25.8 vs random)
+exact-dynamics ref : mate-rate=0.941  mean-plies=4.9
+
+== filmstrip ==
+| ply | move | plan token | DTM | box area | reach score |
+|---|---|---|---|---|---|
+| 1 | Rd4 | #5 | 13 | 6 | 0.0636 |
+| 2 | Rd5 | #15 | 15 | 3 | 0.1061 |
+| 3 | Rd1 | #2 | 13 | 4 | 0.1122 |
+| 4 | Kb5 | #6 | 7 | 4 | 0.1316 |
+| 5 | Kc4 | #29 | 9 | 4 | 0.1239 |
+| 6 | Re1 | #20 | 1 | 4 | 0.3417 |
+| 7 | — | **MATE** | 0 | — | — |
+... full filmstrip in out/filmstrip.md
+
+== GATE G-M1 ==
+(a) rank-64 reach error < 5%   : FAIL (0.4059)
+(b) >=3 concept dims |rho|>0.5 : FAIL (1)
+(c) engine >= 5x random        : PASS (0.955 vs 0.037)
+G-M1: FAIL

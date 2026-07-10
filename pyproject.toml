@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "latent-chess-planner"
+version = "0.1.0"
+description = "Reachability quasimetric embeddings and plan-memory planning for chess, validated on exact toy domains before scaling to real data."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "matplotlib>=3.8",
+    "openTSNE>=1.0",
+    "python-chess>=1.10",
+    "zstandard>=0.22",
+]
+
+[project.optional-dependencies]
+umap = ["umap-learn>=0.5"]
+dev = ["pytest>=8", "pytest-timeout"]
+
+[tool.setuptools.packages.find]
+include = ["latentchess*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: exercises full KRkn-scale training/eval (opt in with -m slow)",
+]
+testpaths = ["tests"]

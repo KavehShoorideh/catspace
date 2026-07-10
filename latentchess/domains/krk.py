@@ -1,16 +1,19 @@
 """
-domain.py — 5x5 KRK (King+Rook vs King) toy chess domain.
+domains/krk.py — 5x5 KRK (King+Rook vs King) toy chess domain.
 
 White: king + rook (the planner). Black: king (the opponent).
 The planning chain is over WHITE-TO-MOVE states; a transition is
 (white move) -> black-to-move node -> classify -> (black reply) -> next W state.
 
-Everything is exact and enumerable (~14k legal W states), so every learned
+Everything is exact and enumerable (~7k legal W states), so every learned
 quantity in the experiment has ground truth.
 """
+from __future__ import annotations
+
 import numpy as np
-from dataclasses import dataclass
-from core import N, NSQ, KING_MOVES, rc, rook_moves, rook_attacks, chebyshev, sq
+
+from latentchess.board import N, NSQ, KING_MOVES, rc, rook_moves, rook_attacks, chebyshev, sq
+from latentchess.chain import build_csr, Terminals, TransitionChain, KIND_ONGOING, KIND_MATE, KIND_STALEMATE
 
 
 def black_in_check(wk, wr, bk):
@@ -20,7 +23,7 @@ def black_in_check(wk, wr, bk):
 # W state: (wk, wr, bk), white to move.  Legal iff pieces distinct,
 # kings not adjacent, and black NOT in check (side not to move can't be in check).
 # B node:  (wk, wr, bk), black to move.  Legal iff pieces distinct, kings not adjacent.
-#          (black MAY be in check here — must respond or be mated).
+#          (black MAY be in check here -- must respond or be mated).
 
 def w_legal(wk, wr, bk):
     if wk == wr or wk == bk or wr == bk: return False
@@ -90,7 +93,7 @@ def compute_dtm(W, B):
 
     b_replies = [black_moves(*s) for s in B]
     b_class = [classify_b(*s) for s in B]
-    w_children = [ [Bi[c] for c in white_moves(*s)] for s in W ]
+    w_children = [[Bi[c] for c in white_moves(*s)] for s in W]
 
     # black-to-move node -> list of successor W indices (rook capture => absorbing draw, excluded)
     b_children = []
@@ -163,6 +166,53 @@ def concept_features(W, dtm_w):
     feats['box_area'] = np.array([box_area(*s) for s in W], float)
     feats['rook_bk_dist'] = np.array([chebyshev(wr, bk) for (_, wr, bk) in W], float)
     return feats
+
+# ---------- CSR chain construction (replaces the old learn.Chain list idiom) ----------
+def _mv_name(s, b):
+    (wk, wr, bk), (wk2, wr2, _) = s, b
+    def nm(sq_):
+        r, c = rc(sq_)
+        return f"{'abcde'[c]}{r + 1}"
+    return f"K{nm(wk2)}" if wk2 != wk else f"R{nm(wr2)}"
+
+
+def build_chain(verbose: bool = False) -> TransitionChain:
+    W, B = enumerate_states()
+    Wi = {s: i for i, s in enumerate(W)}
+    nW = len(W)
+    MATE_S, DRAW_S = nW, nW + 1
+    terminals = Terminals(mate=MATE_S, draw=DRAW_S)
+
+    def per_state():
+        for s in W:
+            moves = []
+            for bnode in white_moves(*s):
+                cls = classify_b(*bnode)
+                name = _mv_name(s, bnode)
+                if cls == MATE:
+                    moves.append((KIND_MATE, np.array([MATE_S]), name))
+                elif cls == STALEMATE:
+                    moves.append((KIND_STALEMATE, np.array([DRAW_S]), name))
+                else:
+                    outs = []
+                    for nxt, captured in black_moves(*bnode):
+                        outs.append(DRAW_S if captured else Wi[nxt])
+                    moves.append((KIND_ONGOING, np.array(outs, dtype=np.int32), name))
+            yield moves
+
+    chain = build_csr(per_state(), n=nW + 2, n_live=nW, terminals=terminals,
+                       strata={"KRk": range(0, nW)})
+    chain.W = W
+    chain.B = B
+    if verbose:
+        print(f"KRk: W states {nW}")
+    return chain
+
+
+def describe_state(chain: TransitionChain, s: int) -> dict:
+    wk, wr, bk = chain.W[s]
+    return dict(wk=wk, wr=wr, bk=bk, stratum="KRk")
+
 
 if __name__ == "__main__":
     W, B = enumerate_states()

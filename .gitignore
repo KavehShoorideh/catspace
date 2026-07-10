@@ -13,6 +13,7 @@ data/
 
 # regenerated viz output; artifacts/ (curated historical results) stays committed
 artifacts/generated/
+code/out/
 
 .DS_Store
 .pytest_cache/
