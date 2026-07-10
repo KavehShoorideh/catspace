@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# generated data artifacts (npy/pkl/json), never committed
+data/
+*.npy
+*.pkl
+*.npz
+
+# regenerated viz output; artifacts/ (curated historical results) stays committed
+artifacts/generated/
+
+.DS_Store
+.pytest_cache/
+.mypy_cache/

@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thought Viewer — 5×5 KRK cone-steering engine</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#10151C; --panel:#171E27; --panel2:#1C2430; --line:#2A3542;
+  --ink:#E8E4D9; --muted:#8B94A3; --amber:#F0A83C; --amber-dim:#B97F2E;
+  --sq-light:#D8C9A3; --sq-dark:#7A6248; --good:#7FC97F;
+}
+*{box-sizing:border-box; margin:0; padding:0}
+html,body{background:var(--bg); color:var(--ink); font-family:'IBM Plex Sans',sans-serif; font-size:15px}
+.wrap{max-width:1100px; margin:0 auto; padding:28px 22px 60px}
+header{display:flex; align-items:baseline; justify-content:space-between; gap:18px; border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:22px; flex-wrap:wrap}
+h1{font-family:'Fraunces',serif; font-weight:650; font-size:27px; letter-spacing:.2px}
+h1 .sub{color:var(--muted); font-weight:500; font-size:15px; font-family:'IBM Plex Sans'; display:block; margin-top:3px}
+.gamesel{display:flex; gap:8px; flex-wrap:wrap}
+.gamesel button{background:var(--panel); border:1px solid var(--line); color:var(--muted); border-radius:6px; padding:7px 11px; font-family:'IBM Plex Mono',monospace; font-size:12.5px; cursor:pointer}
+.gamesel button.on{color:var(--ink); border-color:var(--amber-dim); background:var(--panel2)}
+.gamesel button:focus-visible{outline:2px solid var(--amber)}
+main{display:grid; grid-template-columns:minmax(320px,430px) 1fr; gap:26px}
+@media(max-width:840px){main{grid-template-columns:1fr}}
+/* board */
+.boardcol{display:flex; flex-direction:column; gap:14px}
+.boardbox{position:relative; width:100%; aspect-ratio:1/1; border:1px solid var(--line); border-radius:8px; overflow:hidden}
+.grid{position:absolute; inset:0; display:grid; grid-template-columns:repeat(5,1fr); grid-template-rows:repeat(5,1fr)}
+.sq{position:relative; display:flex; align-items:center; justify-content:center}
+.sq.l{background:var(--sq-light)} .sq.d{background:var(--sq-dark)}
+.sq .coord{position:absolute; font-family:'IBM Plex Mono'; font-size:10px; color:rgba(16,21,28,.55)}
+.sq .coord.f{right:4px; bottom:2px} .sq .coord.r{left:4px; top:2px}
+.pc{font-size:min(9.2vw,58px); line-height:1; user-select:none; z-index:3; position:relative}
+.pc.w{color:#F7F3E8; text-shadow:0 0 3px #2b2b2b,0 1px 2px #00000088}
+.pc.b{color:#191919; text-shadow:0 0 3px #ffffff66}
+.tint{position:absolute; inset:0; z-index:1}
+svg.overlay{position:absolute; inset:0; width:100%; height:100%; z-index:2; pointer-events:none}
+.controls{display:flex; align-items:center; gap:10px}
+.controls button{background:var(--panel); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:8px 14px; font-size:15px; cursor:pointer}
+.controls button:hover{background:var(--panel2)} .controls button:focus-visible{outline:2px solid var(--amber)}
+.plyinfo{font-family:'IBM Plex Mono'; color:var(--muted); font-size:13px; margin-left:auto}
+.result{font-family:'Fraunces',serif; font-size:19px; color:var(--amber); min-height:24px}
+.hint{color:var(--muted); font-size:12.5px}
+/* right panel */
+.side{display:flex; flex-direction:column; gap:16px}
+.card{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px}
+.card h2{font-size:12px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:12px}
+.tokrow{display:flex; align-items:center; gap:14px}
+.tokchip{width:52px; height:52px; border-radius:8px; flex:none; display:flex; align-items:center; justify-content:center; font-family:'IBM Plex Mono'; font-weight:500; color:#10151C; font-size:16px}
+.tokmeta{font-size:13.5px; color:var(--muted); line-height:1.5}
+.tokmeta b{color:var(--ink); font-weight:600}
+.cbar{display:grid; grid-template-columns:88px 1fr 46px; align-items:center; gap:10px; margin:7px 0}
+.cbar .lbl{font-size:13px; color:var(--muted)}
+.cbar .val{font-family:'IBM Plex Mono'; font-size:12.5px; text-align:right}
+.bar{height:7px; background:var(--panel2); border-radius:4px; overflow:hidden}
+.bar i{display:block; height:100%; background:var(--amber); border-radius:4px; transition:width .18s}
+.cand{display:grid; grid-template-columns:58px 1fr 64px; align-items:center; gap:10px; padding:5px 0; border-bottom:1px dashed var(--line); font-family:'IBM Plex Mono'; font-size:13px}
+.cand:last-child{border-bottom:0}
+.cand .nm{color:var(--ink)} .cand.chosen .nm{color:var(--amber)}
+.cand .sc{text-align:right; color:var(--muted); font-size:12px}
+.cand .bar i{background:#5B87A6}
+.cand.chosen .bar i{background:var(--amber)}
+.badge{font-size:10px; color:var(--good); border:1px solid var(--good); border-radius:4px; padding:0 4px; margin-left:6px}
+/* ribbon */
+.ribbonwrap{margin-top:30px}
+.ribbonwrap h2{font-size:12px; letter-spacing:.13em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:10px}
+.ribbon{position:relative; border:1px solid var(--line); border-radius:8px; background:var(--panel); padding:10px 10px 6px}
+.cells{display:flex; gap:3px; height:46px}
+.cell{flex:1; border-radius:4px; cursor:pointer; position:relative; border:2px solid transparent}
+.cell:focus-visible{outline:2px solid var(--amber)}
+.cell.on{border-color:var(--ink)}
+.cell span{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-family:'IBM Plex Mono'; font-size:10.5px; color:#10151C}
+svg.reach{display:block; width:100%; height:52px; margin-top:6px}
+.legend{display:flex; gap:16px; align-items:center; margin-top:8px; color:var(--muted); font-size:12px; flex-wrap:wrap}
+.swatchline{display:flex; align-items:center; gap:6px}
+.swatchline .grad{width:120px; height:8px; border-radius:4px; background:linear-gradient(90deg,hsl(210,45%,55%),hsl(35,95%,60%))}
+.keyd{border:1px solid var(--line); border-radius:4px; padding:0 5px; font-family:'IBM Plex Mono'; font-size:11px}
+footer{margin-top:22px; color:var(--muted); font-size:12.5px; line-height:1.6; border-top:1px solid var(--line); padding-top:14px}
+@media (prefers-reduced-motion:reduce){ .bar i{transition:none} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Thought viewer <span class="sub">5×5 KRK · engine learned from 32,000 random games · rank-64 cone, greedy steering toward “a mate somewhere in DTM ≤ 3”</span></h1>
+  <div class="gamesel" id="gamesel" role="tablist" aria-label="games"></div>
+</header>
+
+<main>
+  <div class="boardcol">
+    <div class="boardbox">
+      <div class="grid" id="grid"></div>
+      <svg class="overlay" id="arrows" viewBox="0 0 100 100" preserveAspectRatio="none"></svg>
+    </div>
+    <div class="controls">
+      <button id="prev" aria-label="previous ply">←</button>
+      <button id="play" aria-label="autoplay">▶</button>
+      <button id="next" aria-label="next ply">→</button>
+      <span class="plyinfo" id="plyinfo"></span>
+    </div>
+    <div class="result" id="result"></div>
+    <div class="hint">Keys: <span class="keyd">←</span> <span class="keyd">→</span> step · <span class="keyd">space</span> autoplay. Candidate destinations are tinted by the engine’s learned score; the amber arrow is the chosen move, the grey arrow is black’s reply that led here.</div>
+  </div>
+
+  <div class="side">
+    <div class="card">
+      <h2>Plan token · what it’s thinking</h2>
+      <div class="tokrow">
+        <div class="tokchip" id="tokchip">—</div>
+        <div class="tokmeta" id="tokmeta"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Concepts at this position <span style="text-transform:none;letter-spacing:0">(ground truth, evaluation only — never seen in training)</span></h2>
+      <div id="concepts"></div>
+    </div>
+    <div class="card">
+      <h2>Candidate moves · learned scores</h2>
+      <div id="cands"></div>
+    </div>
+  </div>
+</main>
+
+<div class="ribbonwrap">
+  <h2>Thought ribbon — the whole game as plan tokens, reach score overlaid</h2>
+  <div class="ribbon">
+    <div class="cells" id="cells"></div>
+    <svg class="reach" id="reachsvg" viewBox="0 0 100 30" preserveAspectRatio="none"></svg>
+    <div class="legend">
+      <span class="swatchline">token color = its cluster’s mean distance-to-mate:&nbsp; far <span class="grad"></span> near</span>
+      <span>amber curve = reach score into the mate region</span>
+    </div>
+  </div>
+</div>
+
+<footer id="foot"></footer>
+</div>
+
+<script>
+const DATA = {"N": 5, "gamma": 0.92, "K": 32, "tokens": [{"id": 0, "size": 241, "meanDtm": 7.655601659751038, "meanBox": 11.066390041493776}, {"id": 1, "size": 252, "meanDtm": 10.30952380952381, "meanBox": 8.968253968253968}, {"id": 2, "size": 282, "meanDtm": 9.425531914893616, "meanBox": 9.868794326241135}, {"id": 3, "size": 68, "meanDtm": 1.0, "meanBox": 10.073529411764707}, {"id": 4, "size": 171, "meanDtm": 10.871345029239766, "meanBox": 10.169590643274853}, {"id": 5, "size": 229, "meanDtm": 10.388646288209607, "meanBox": 9.637554585152838}, {"id": 6, "size": 272, "meanDtm": 8.720588235294118, "meanBox": 10.948529411764707}, {"id": 7, "size": 246, "meanDtm": 10.16260162601626, "meanBox": 9.504065040650406}, {"id": 8, "size": 231, "meanDtm": 9.658008658008658, "meanBox": 10.012987012987013}, {"id": 9, "size": 259, "meanDtm": 9.664092664092664, "meanBox": 9.069498069498069}, {"id": 10, "size": 215, "meanDtm": 10.320930232558139, "meanBox": 8.623255813953488}, {"id": 11, "size": 10, "meanDtm": 1.0, "meanBox": 13.4}, {"id": 12, "size": 310, "meanDtm": 6.864516129032258, "meanBox": 11.861290322580645}, {"id": 13, "size": 246, "meanDtm": 10.528455284552846, "meanBox": 8.66260162601626}, {"id": 14, "size": 186, "meanDtm": 10.043010752688172, "meanBox": 8.629032258064516}, {"id": 15, "size": 327, "meanDtm": 9.122324159021407, "meanBox": 9.700305810397554}, {"id": 16, "size": 291, "meanDtm": 9.288659793814434, "meanBox": 10.116838487972508}, {"id": 17, "size": 246, "meanDtm": 9.05691056910569, "meanBox": 10.94308943089431}, {"id": 18, "size": 200, "meanDtm": 10.55, "meanBox": 10.235}, {"id": 19, "size": 172, "meanDtm": 3.0697674418604652, "meanBox": 12.145348837209303}, {"id": 20, "size": 118, "meanDtm": 1.0, "meanBox": 10.754237288135593}, {"id": 21, "size": 313, "meanDtm": 4.501597444089457, "meanBox": 11.996805111821086}, {"id": 22, "size": 191, "meanDtm": 10.539267015706807, "meanBox": 9.460732984293193}, {"id": 23, "size": 96, "meanDtm": 10.979166666666666, "meanBox": 10.166666666666666}, {"id": 24, "size": 331, "meanDtm": 9.809667673716012, "meanBox": 8.141993957703928}, {"id": 25, "size": 224, "meanDtm": 10.169642857142858, "meanBox": 9.290178571428571}, {"id": 26, "size": 283, "meanDtm": 8.420494699646643, "meanBox": 9.97173144876325}, {"id": 27, "size": 200, "meanDtm": 8.85, "meanBox": 11.71}, {"id": 28, "size": 245, "meanDtm": 9.612244897959183, "meanBox": 9.43673469387755}, {"id": 29, "size": 259, "meanDtm": 6.714285714285714, "meanBox": 11.583011583011583}, {"id": 30, "size": 247, "meanDtm": 9.469635627530364, "meanBox": 10.299595141700404}, {"id": 31, "size": 79, "meanDtm": 1.5569620253164558, "meanBox": 9.886075949367088}], "games": [{"result": "draw", "plies": [{"wk": 20, "wr": 18, "bk": 12, "move": "Re4", "fromTo": [18, 19], "blackReply": [12, 8], "token": 6, "reach": 0.12231485546566603, "concepts": {"dtm": 17.0, "box": 9.0, "kk": 2.0, "rookbk": 1.0, "bkedge": 2.0}, "candidates": [{"name": "Re4", "score": 0.09833065616666081, "fromTo": [18, 19], "mates": false}, {"name": "Rd1", "score": 0.08855005851005537, "fromTo": [18, 3], "mates": false}, {"name": "Rb4", "score": 0.08421331973644637, "fromTo": [18, 16], "mates": false}, {"name": "Ra4", "score": 0.08149781131639286, "fromTo": [18, 15], "mates": false}, {"name": "Rd5", "score": 0.07380218554076402, "fromTo": [18, 23], "mates": false}, {"name": "Ka4", "score": 0.07273448865788566, "fromTo": [20, 15], "mates": false}]}, {"wk": 20, "wr": 19, "bk": 8, "move": "Rd4", "fromTo": [19, 18], "blackReply": [8, 9], "token": 26, "reach": 0.09641661110117944, "concepts": {"dtm": 15.0, "box": 12.0, "kk": 3.0, "rookbk": 2.0, "bkedge": 1.0}, "candidates": [{"name": "Rd4", "score": 0.09427260028617433, "fromTo": [19, 18], "mates": false}, {"name": "Ra4", "score": 0.09388513457350903, "fromTo": [19, 15], "mates": false}, {"name": "Rb4", "score": 0.09125069009713584, "fromTo": [19, 16], "mates": false}, {"name": "Kb4", "score": 0.08820920963654538, "fromTo": [20, 16], "mates": false}, {"name": "Re2", "score": 0.08251501728956818, "fromTo": [19, 9], "mates": false}, {"name": "Re1", "score": 0.0823659460368982, "fromTo": [19, 4], "mates": false}]}, {"wk": 20, "wr": 18, "bk": 9, "move": "Kb4", "fromTo": [20, 16], "blackReply": [9, 14], "token": 25, "reach": 0.0755563019358832, "concepts": {"dtm": 9.0, "box": 3.0, "kk": 4.0, "rookbk": 2.0, "bkedge": 0.0}, "candidates": [{"name": "Kb4", "score": 0.1026406413433355, "fromTo": [20, 16], "mates": false}, {"name": "Ra4", "score": 0.09618993955377611, "fromTo": [18, 15], "mates": false}, {"name": "Re4", "score": 0.09573620231290787, "fromTo": [18, 19], "mates": false}, {"name": "Ka4", "score": 0.09544934061177725, "fromTo": [20, 15], "mates": false}, {"name": "Rb4", "score": 0.09014077103739408, "fromTo": [18, 16], "mates": false}, {"name": "Rd5", "score": 0.074398713445704, "fromTo": [18, 23], "mates": false}]}, {"wk": 16, "wr": 18, "bk": 14, "move": "Kc4", "fromTo": [16, 17], "blackReply": [14, 9], "token": 15, "reach": 0.1272725445863331, "concepts": {"dtm": 7.0, "box": 3.0, "kk": 3.0, "rookbk": 1.0, "bkedge": 0.0}, "candidates": [{"name": "Kc4", "score": 0.14671771886698176, "fromTo": [16, 17], "mates": false}, {"name": "Kc3", "score": 0.13540029166366147, "fromTo": [16, 12], "mates": false}, {"name": "Rd1", "score": 0.11690875985328858, "fromTo": [18, 3], "mates": false}, {"name": "Rd5", "score": 0.0924558792354167, "fromTo": [18, 23], "mates": false}, {"name": "Rc4", "score": 0.07023346627299393, "fromTo": [18, 17], "mates": false}, {"name": "Rd3", "score": 0.0685962114296725, "fromTo": [18, 13], "mates": false}]}, {"wk": 17, "wr": 18, "bk": 9, "move": "Rd5", "fromTo": [18, 23], "blackReply": [9, 14], "token": 29, "reach": 0.14671771886698176, "concepts": {"dtm": 7.0, "box": 3.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 0.0}, "candidates": [{"name": "Rd5", "score": 0.12669241979190757, "fromTo": [18, 23], "mates": false}, {"name": "Rd2", "score": 0.1220530224693932, "fromTo": [18, 8], "mates": false}, {"name": "Kc3", "score": 0.11860203691176889, "fromTo": [17, 12], "mates": false}, {"name": "Kc5", "score": 0.11057391516283738, "fromTo": [17, 22], "mates": false}, {"name": "Kb3", "score": 0.10653693573942238, "fromTo": [17, 11], "mates": false}, {"name": "Kb4", "score": 0.1026406413433355, "fromTo": [17, 16], "mates": false}]}, {"wk": 17, "wr": 23, "bk": 14, "move": "Rd1", "fromTo": [23, 3], "blackReply": [14, 9], "token": 12, "reach": 0.15962972941419393, "concepts": {"dtm": 7.0, "box": 4.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 0.0}, "candidates": [{"name": "Rd1", "score": 0.20577628312440804, "fromTo": [23, 3], "mates": false}, {"name": "Rd3", "score": 0.17133652931890553, "fromTo": [23, 13], "mates": false}, {"name": "Rd4", "score": 0.14671771886698176, "fromTo": [23, 18], "mates": false}, {"name": "Kc5", "score": 0.14521823500741207, "fromTo": [17, 22], "mates": false}, {"name": "Rd2", "score": 0.12204394698206686, "fromTo": [23, 8], "mates": false}, {"name": "Rb5", "score": 0.12028607227429766, "fromTo": [23, 21], "mates": false}]}, {"wk": 17, "wr": 3, "bk": 9, "move": "Kc3", "fromTo": [17, 12], "blackReply": null, "token": 24, "reach": 0.09546271432160847, "concepts": {"dtm": 7.0, "box": 4.0, "kk": 2.0, "rookbk": 1.0, "bkedge": 0.0}, "candidates": [{"name": "Kc3", "score": 0.13869975293572587, "fromTo": [17, 12], "mates": false}, {"name": "Rd5", "score": 0.12669241979190757, "fromTo": [3, 23], "mates": false}, {"name": "Rd2", "score": 0.1220530224693932, "fromTo": [3, 8], "mates": false}, {"name": "Rd4", "score": 0.10929156713965656, "fromTo": [3, 18], "mates": false}, {"name": "Rc1", "score": 0.1080431914327485, "fromTo": [3, 2], "mates": false}, {"name": "Ra1", "score": 0.10460209241800253, "fromTo": [3, 0], "mates": false}]}], "startDtm": 17.0}, {"result": "mate", "plies": [{"wk": 24, "wr": 8, "bk": 12, "move": "Rd5", "fromTo": [8, 23], "blackReply": [12, 17], "token": 15, "reach": 0.0872208858992024, "concepts": {"dtm": 17.0, "box": 9.0, "kk": 2.0, "rookbk": 1.0, "bkedge": 2.0}, "candidates": [{"name": "Rd5", "score": 0.08446933869646586, "fromTo": [8, 23], "mates": false}, {"name": "Rd1", "score": 0.08440287543607257, "fromTo": [8, 3], "mates": false}, {"name": "Rd4", "score": 0.07825420078404344, "fromTo": [8, 18], "mates": false}, {"name": "Re2", "score": 0.07471748879668004, "fromTo": [8, 9], "mates": false}, {"name": "Kd5", "score": 0.07291700010778093, "fromTo": [24, 23], "mates": false}, {"name": "Ke4", "score": 0.06880587914748101, "fromTo": [24, 19], "mates": false}]}, {"wk": 24, "wr": 23, "bk": 17, "move": "Rd1", "fromTo": [23, 3], "blackReply": [17, 12], "token": 28, "reach": 0.08021167761778943, "concepts": {"dtm": 17.0, "box": 12.0, "kk": 2.0, "rookbk": 1.0, "bkedge": 1.0}, "candidates": [{"name": "Rd1", "score": 0.08035966102813034, "fromTo": [23, 3], "mates": false}, {"name": "Rc5", "score": 0.07635709760914502, "fromTo": [23, 22], "mates": false}, {"name": "Rd2", "score": 0.07560758254037372, "fromTo": [23, 8], "mates": false}, {"name": "Rd4", "score": 0.0687827386061533, "fromTo": [23, 18], "mates": false}, {"name": "Ke4", "score": 0.06676282969115943, "fromTo": [24, 19], "mates": false}, {"name": "Ra5", "score": 0.05919434102232079, "fromTo": [23, 20], "mates": false}]}, {"wk": 24, "wr": 3, "bk": 12, "move": "Ke4", "fromTo": [24, 19], "blackReply": [12, 6], "token": 23, "reach": 0.0263340472553414, "concepts": {"dtm": 17.0, "box": 12.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 2.0}, "candidates": [{"name": "Ke4", "score": 0.09564454872611598, "fromTo": [24, 19], "mates": false}, {"name": "Kd5", "score": 0.08813147148333247, "fromTo": [24, 23], "mates": false}, {"name": "Re1", "score": 0.08609223642970758, "fromTo": [3, 4], "mates": false}, {"name": "Rc1", "score": 0.08574454291496934, "fromTo": [3, 2], "mates": false}, {"name": "Rd5", "score": 0.08446933869646586, "fromTo": [3, 23], "mates": false}, {"name": "Rd4", "score": 0.07825420078404344, "fromTo": [3, 18], "mates": false}]}, {"wk": 19, "wr": 3, "bk": 6, "move": "Kd3", "fromTo": [19, 13], "blackReply": [6, 5], "token": 26, "reach": 0.09449713203405724, "concepts": {"dtm": 13.0, "box": 12.0, "kk": 3.0, "rookbk": 2.0, "bkedge": 1.0}, "candidates": [{"name": "Kd3", "score": 0.0940385953960901, "fromTo": [19, 13], "mates": false}, {"name": "Kd4", "score": 0.09108613896823832, "fromTo": [19, 18], "mates": false}, {"name": "Rb1", "score": 0.08887968366501338, "fromTo": [3, 1], "mates": false}, {"name": "Rd5", "score": 0.08753097956259087, "fromTo": [3, 23], "mates": false}, {"name": "Kd5", "score": 0.08673988641794456, "fromTo": [19, 23], "mates": false}, {"name": "Rd3", "score": 0.08393811192787219, "fromTo": [3, 13], "mates": false}]}, {"wk": 13, "wr": 3, "bk": 5, "move": "Kc3", "fromTo": [13, 12], "blackReply": [5, 10], "token": 9, "reach": 0.07429282664740987, "concepts": {"dtm": 3.0, "box": 19.0, "kk": 3.0, "rookbk": 3.0, "bkedge": 0.0}, "candidates": [{"name": "Kc3", "score": 0.3016720041889582, "fromTo": [13, 12], "mates": false}, {"name": "Kc2", "score": 0.137922284438737, "fromTo": [13, 7], "mates": false}, {"name": "Rd2", "score": 0.11473397740291613, "fromTo": [3, 8], "mates": false}, {"name": "Re1", "score": 0.10912634669345232, "fromTo": [3, 4], "mates": false}, {"name": "Kc4", "score": 0.09138831820547128, "fromTo": [13, 17], "mates": false}, {"name": "Kd4", "score": 0.08806793424028385, "fromTo": [13, 18], "mates": false}]}, {"wk": 12, "wr": 3, "bk": 10, "move": "Ra1", "fromTo": [3, 0], "blackReply": null, "token": 20, "reach": 0.3016720041889582, "concepts": {"dtm": 1.0, "box": 12.0, "kk": 2.0, "rookbk": 3.0, "bkedge": 0.0}, "candidates": [{"name": "Ra1", "score": 2.2129542229494357, "fromTo": [3, 0], "mates": true}, {"name": "Rd4", "score": 0.20386025213455855, "fromTo": [3, 18], "mates": false}, {"name": "Rd3", "score": 0.16007731574198225, "fromTo": [3, 13], "mates": false}, {"name": "Re1", "score": 0.15503515885651714, "fromTo": [3, 4], "mates": false}, {"name": "Rd2", "score": 0.14818195103207485, "fromTo": [3, 8], "mates": false}, {"name": "Rd5", "score": 0.13889207249557362, "fromTo": [3, 23], "mates": false}]}], "startDtm": 17.0}, {"result": "mate", "plies": [{"wk": 23, "wr": 0, "bk": 21, "move": "Ra3", "fromTo": [0, 10], "blackReply": [21, 16], "token": 4, "reach": 0.0355056296146474, "concepts": {"dtm": 11.0, "box": 16.0, "kk": 2.0, "rookbk": 4.0, "bkedge": 0.0}, "candidates": [{"name": "Ra3", "score": 0.11945884110892956, "fromTo": [0, 10], "mates": false}, {"name": "Kd4", "score": 0.10238940386881398, "fromTo": [23, 18], "mates": false}, {"name": "Rc1", "score": 0.09526545810433766, "fromTo": [0, 2], "mates": false}, {"name": "Ra2", "score": 0.08884102485915611, "fromTo": [0, 5], "mates": false}, {"name": "Re1", "score": 0.08031456374851159, "fromTo": [0, 4], "mates": false}, {"name": "Rd1", "score": 0.07643416472621771, "fromTo": [0, 3], "mates": false}]}, {"wk": 23, "wr": 10, "bk": 16, "move": "Ra2", "fromTo": [10, 5], "blackReply": [16, 21], "token": 30, "reach": 0.11945884110892956, "concepts": {"dtm": 9.0, "box": 8.0, "kk": 2.0, "rookbk": 1.0, "bkedge": 1.0}, "candidates": [{"name": "Ra2", "score": 0.1081834252589688, "fromTo": [10, 5], "mates": false}, {"name": "Rb3", "score": 0.10625469050379137, "fromTo": [10, 11], "mates": false}, {"name": "Rd3", "score": 0.09347330376639736, "fromTo": [10, 13], "mates": false}, {"name": "Re3", "score": 0.08816895801081015, "fromTo": [10, 14], "mates": false}, {"name": "Rc3", "score": 0.08080518164076728, "fromTo": [10, 12], "mates": false}, {"name": "Ra5", "score": 0.06665842239636009, "fromTo": [10, 20], "mates": false}]}, {"wk": 23, "wr": 5, "bk": 21, "move": "Rc2", "fromTo": [5, 7], "blackReply": [21, 15], "token": 24, "reach": 0.10552184395359203, "concepts": {"dtm": 7.0, "box": 12.0, "kk": 2.0, "rookbk": 3.0, "bkedge": 0.0}, "candidates": [{"name": "Rc2", "score": 0.12228751723160593, "fromTo": [5, 7], "mates": false}, {"name": "Ra3", "score": 0.11945884110892956, "fromTo": [5, 10], "mates": false}, {"name": "Rd2", "score": 0.11385388956093728, "fromTo": [5, 8], "mates": false}, {"name": "Rb2", "score": 0.09437039193853916, "fromTo": [5, 6], "mates": false}, {"name": "Re2", "score": 0.09306543060997029, "fromTo": [5, 9], "mates": false}, {"name": "Ke4", "score": 0.08414203338321137, "fromTo": [23, 19], "mates": false}]}, {"wk": 23, "wr": 7, "bk": 15, "move": "Kc5", "fromTo": [23, 22], "blackReply": [15, 10], "token": 21, "reach": 0.13412145385957677, "concepts": {"dtm": 5.0, "box": 6.0, "kk": 3.0, "rookbk": 2.0, "bkedge": 0.0}, "candidates": [{"name": "Kc5", "score": 0.2124208459558609, "fromTo": [23, 22], "mates": false}, {"name": "Kc4", "score": 0.19315319910007916, "fromTo": [23, 17], "mates": false}, {"name": "Rd2", "score": 0.1117197234085228, "fromTo": [7, 8], "mates": false}, {"name": "Rc3", "score": 0.11124389330892885, "fromTo": [7, 12], "mates": false}, {"name": "Rb2", "score": 0.10871858571822125, "fromTo": [7, 6], "mates": false}, {"name": "Kd4", "score": 0.1082829505242211, "fromTo": [23, 18], "mates": false}]}, {"wk": 22, "wr": 7, "bk": 10, "move": "Kc4", "fromTo": [22, 17], "blackReply": [10, 15], "token": 6, "reach": 0.11366783080555956, "concepts": {"dtm": 3.0, "box": 13.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 0.0}, "candidates": [{"name": "Kc4", "score": 0.34693658306410724, "fromTo": [22, 17], "mates": false}, {"name": "Re2", "score": 0.16676579191685376, "fromTo": [7, 9], "mates": false}, {"name": "Kb5", "score": 0.1485013441918577, "fromTo": [22, 21], "mates": false}, {"name": "Rc3", "score": 0.12622854179535326, "fromTo": [7, 12], "mates": false}, {"name": "Rd2", "score": 0.11172426468520352, "fromTo": [7, 8], "mates": false}, {"name": "Kd5", "score": 0.10060878832807547, "fromTo": [22, 23], "mates": false}]}, {"wk": 17, "wr": 7, "bk": 15, "move": "Ra2", "fromTo": [7, 5], "blackReply": null, "token": 20, "reach": 0.34693658306410724, "concepts": {"dtm": 1.0, "box": 14.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 0.0}, "candidates": [{"name": "Ra2", "score": 2.2129542229494357, "fromTo": [7, 5], "mates": true}, {"name": "Re2", "score": 0.3116364827093955, "fromTo": [7, 9], "mates": false}, {"name": "Rc1", "score": 0.25657580840688493, "fromTo": [7, 2], "mates": false}, {"name": "Rb2", "score": 0.23467263420192447, "fromTo": [7, 6], "mates": false}, {"name": "Rd2", "score": 0.22927857549200104, "fromTo": [7, 8], "mates": false}, {"name": "Kc5", "score": 0.2124208459558609, "fromTo": [17, 22], "mates": false}]}], "startDtm": 11.0}, {"result": "mate", "plies": [{"wk": 13, "wr": 18, "bk": 11, "move": "Re4", "fromTo": [18, 19], "blackReply": [11, 10], "token": 6, "reach": 0.09570000139636872, "concepts": {"dtm": 9.0, "box": 15.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 1.0}, "candidates": [{"name": "Re4", "score": 0.1406515642930627, "fromTo": [18, 19], "mates": false}, {"name": "Rc4", "score": 0.11481117240724059, "fromTo": [18, 17], "mates": false}, {"name": "Rd5", "score": 0.1125585175581949, "fromTo": [18, 23], "mates": false}, {"name": "Ke2", "score": 0.10289576991043634, "fromTo": [13, 9], "mates": false}, {"name": "Ke4", "score": 0.08964777359801837, "fromTo": [13, 19], "mates": false}, {"name": "Ke3", "score": 0.08330445430608424, "fromTo": [13, 14], "mates": false}]}, {"wk": 13, "wr": 19, "bk": 10, "move": "Kc2", "fromTo": [13, 7], "blackReply": [10, 5], "token": 19, "reach": 0.14886023269942353, "concepts": {"dtm": 3.0, "box": 12.0, "kk": 3.0, "rookbk": 4.0, "bkedge": 0.0}, "candidates": [{"name": "Kc2", "score": 0.2909959008373251, "fromTo": [13, 7], "mates": false}, {"name": "Kc3", "score": 0.15618741131387479, "fromTo": [13, 12], "mates": false}, {"name": "Re2", "score": 0.11737517048936412, "fromTo": [19, 9], "mates": false}, {"name": "Re5", "score": 0.1165382567556413, "fromTo": [19, 24], "mates": false}, {"name": "Rc4", "score": 0.11182882116775984, "fromTo": [19, 17], "mates": false}, {"name": "Re3", "score": 0.10956279942478982, "fromTo": [19, 14], "mates": false}]}, {"wk": 7, "wr": 19, "bk": 5, "move": "Ra4", "fromTo": [19, 15], "blackReply": null, "token": 20, "reach": 0.2909959008373251, "concepts": {"dtm": 1.0, "box": 12.0, "kk": 2.0, "rookbk": 4.0, "bkedge": 0.0}, "candidates": [{"name": "Ra4", "score": 2.2129542229494357, "fromTo": [19, 15], "mates": true}, {"name": "Re3", "score": 0.27489789460299097, "fromTo": [19, 14], "mates": false}, {"name": "Rd4", "score": 0.26213217118555093, "fromTo": [19, 18], "mates": false}, {"name": "Re5", "score": 0.2498384951366001, "fromTo": [19, 24], "mates": false}, {"name": "Rb4", "score": 0.21546047674076219, "fromTo": [19, 16], "mates": false}, {"name": "Rc4", "score": 0.19590490227343485, "fromTo": [19, 17], "mates": false}]}], "startDtm": 9.0}, {"result": "mate", "plies": [{"wk": 23, "wr": 18, "bk": 21, "move": "Rd2", "fromTo": [18, 8], "blackReply": [21, 20], "token": 2, "reach": 0.09966568304059209, "concepts": {"dtm": 7.0, "box": 5.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 0.0}, "candidates": [{"name": "Rd2", "score": 0.11385388956093728, "fromTo": [18, 8], "mates": false}, {"name": "Rc4", "score": 0.09240850132311704, "fromTo": [18, 17], "mates": false}, {"name": "Re4", "score": 0.09203641013097469, "fromTo": [18, 19], "mates": false}, {"name": "Rd1", "score": 0.07643416472621771, "fromTo": [18, 3], "mates": false}, {"name": "Rd3", "score": 0.07359910481287518, "fromTo": [18, 13], "mates": false}, {"name": "Ke4", "score": 0.0728638810645272, "fromTo": [23, 19], "mates": false}]}, {"wk": 23, "wr": 8, "bk": 20, "move": "Kc4", "fromTo": [23, 17], "blackReply": [20, 15], "token": 21, "reach": 0.13332939432892543, "concepts": {"dtm": 3.0, "box": 13.0, "kk": 3.0, "rookbk": 3.0, "bkedge": 0.0}, "candidates": [{"name": "Kc4", "score": 0.2528633029231102, "fromTo": [23, 17], "mates": false}, {"name": "Rb2", "score": 0.1275919156623769, "fromTo": [8, 6], "mates": false}, {"name": "Kc5", "score": 0.12712932914956948, "fromTo": [23, 22], "mates": false}, {"name": "Rd4", "score": 0.09966568304059209, "fromTo": [8, 18], "mates": false}, {"name": "Ke4", "score": 0.09915684753635808, "fromTo": [23, 19], "mates": false}, {"name": "Ra2", "score": 0.09718143440637407, "fromTo": [8, 5], "mates": false}]}, {"wk": 17, "wr": 8, "bk": 15, "move": "Ra2", "fromTo": [8, 5], "blackReply": null, "token": 20, "reach": 0.2528633029231102, "concepts": {"dtm": 1.0, "box": 9.0, "kk": 2.0, "rookbk": 3.0, "bkedge": 0.0}, "candidates": [{"name": "Ra2", "score": 2.2129542229494357, "fromTo": [8, 5], "mates": true}, {"name": "Rd3", "score": 0.3119556918953226, "fromTo": [8, 13], "mates": false}, {"name": "Re2", "score": 0.3116364827093955, "fromTo": [8, 9], "mates": false}, {"name": "Rb2", "score": 0.23467263420192447, "fromTo": [8, 6], "mates": false}, {"name": "Rd1", "score": 0.2249582569853263, "fromTo": [8, 3], "mates": false}, {"name": "Rc2", "score": 0.19315319910007916, "fromTo": [8, 7], "mates": false}]}], "startDtm": 7.0}, {"result": "mate", "plies": [{"wk": 24, "wr": 19, "bk": 13, "move": "Re1", "fromTo": [19, 4], "blackReply": [13, 8], "token": 15, "reach": 0.0732402904556753, "concepts": {"dtm": 17.0, "box": 12.0, "kk": 2.0, "rookbk": 1.0, "bkedge": 1.0}, "candidates": [{"name": "Re1", "score": 0.08758006281870336, "fromTo": [19, 4], "mates": false}, {"name": "Kd5", "score": 0.07470733968829066, "fromTo": [24, 23], "mates": false}, {"name": "Rd4", "score": 0.06973964488730838, "fromTo": [19, 18], "mates": false}, {"name": "Rb4", "score": 0.06876685363235016, "fromTo": [19, 16], "mates": false}, {"name": "Ra4", "score": 0.06523521594914783, "fromTo": [19, 15], "mates": false}, {"name": "Rc4", "score": 0.059448834582713675, "fromTo": [19, 17], "mates": false}]}, {"wk": 24, "wr": 4, "bk": 8, "move": "Rb1", "fromTo": [4, 1], "blackReply": [8, 12], "token": 15, "reach": 0.10989703905331838, "concepts": {"dtm": 19.0, "box": 17.0, "kk": 3.0, "rookbk": 1.0, "bkedge": 1.0}, "candidates": [{"name": "Rb1", "score": 0.08256406587549485, "fromTo": [4, 1], "mates": false}, {"name": "Ra1", "score": 0.07146022754188561, "fromTo": [4, 0], "mates": false}, {"name": "Re4", "score": 0.07093020994246478, "fromTo": [4, 19], "mates": false}, {"name": "Re2", "score": 0.06343828735236785, "fromTo": [4, 9], "mates": false}, {"name": "Kd5", "score": 0.06260982148085925, "fromTo": [24, 23], "mates": false}, {"name": "Ke4", "score": 0.0603637403625406, "fromTo": [24, 19], "mates": false}]}, {"wk": 24, "wr": 1, "bk": 12, "move": "Ke4", "fromTo": [24, 19], "blackReply": [12, 8], "token": 26, "reach": 0.11147977149044098, "concepts": {"dtm": 17.0, "box": 12.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 2.0}, "candidates": [{"name": "Ke4", "score": 0.10995369072785528, "fromTo": [24, 19], "mates": false}, {"name": "Re1", "score": 0.08609223642970758, "fromTo": [1, 4], "mates": false}, {"name": "Rc1", "score": 0.08574454291496934, "fromTo": [1, 2], "mates": false}, {"name": "Rd1", "score": 0.08440287543607257, "fromTo": [1, 3], "mates": false}, {"name": "Kd5", "score": 0.08073324582425069, "fromTo": [24, 23], "mates": false}, {"name": "Rb5", "score": 0.07177102705740224, "fromTo": [1, 21], "mates": false}]}, {"wk": 19, "wr": 1, "bk": 8, "move": "Kd4", "fromTo": [19, 18], "blackReply": [8, 7], "token": 24, "reach": 0.08473187119222439, "concepts": {"dtm": 11.0, "box": 12.0, "kk": 2.0, "rookbk": 2.0, "bkedge": 1.0}, "candidates": [{"name": "Kd4", "score": 0.12483845385103748, "fromTo": [19, 18], "mates": false}, {"name": "Rb5", "score": 0.10846715869691899, "fromTo": [1, 21], "mates": false}, {"name": "Rb2", "score": 0.10792551412743367, "fromTo": [1, 6], "mates": false}, {"name": "Rb3", "score": 0.10708073580867176, "fromTo": [1, 11], "mates": false}, {"name": "Rb4", "score": 0.09417006980137581, "fromTo": [1, 16], "mates": false}, {"name": "Ke5", "score": 0.08256406587549485, "fromTo": [19, 24], "mates": false}]}, {"wk": 18, "wr": 1, "bk": 7, "move": "Re1", "fromTo": [1, 4], "blackReply": [7, 11], "token": 2, "reach": 0.10609196317493721, "concepts": {"dtm": 9.0, "box": 12.0, "kk": 2.0, "rookbk": 1.0, "bkedge": 1.0}, "candidates": [{"name": "Re1", "score": 0.10524882463026188, "fromTo": [1, 4], "mates": false}, {"name": "Rb5", "score": 0.10351728047752108, "fromTo": [1, 21], "mates": false}, {"name": "Rb4", "score": 0.08637849697844578, "fromTo": [1, 16], "mates": false}, {"name": "Rb2", "score": 0.07288349445074284, "fromTo": [1, 6], "mates": false}, {"name": "Ra1", "score": 0.07080687585845698, "fromTo": [1, 0], "mates": false}, {"name": "Rc1", "score": 0.0683078814248525, "fromTo": [1, 2], "mates": false}]}, {"wk": 18, "wr": 4, "bk": 11, "move": "Re2", "fromTo": [4, 9], "blackReply": [11, 15], "token": 27, "reach": 0.08171961827260678, "concepts": {"dtm": 9.0, "box": 16.0, "kk": 2.0, "rookbk": 3.0, "bkedge": 1.0}, "candidates": [{"name": "Re2", "score": 0.11298178198125881, "fromTo": [4, 9], "mates": false}, {"name": "Kd3", "score": 0.10588130341722964, "fromTo": [18, 13], "mates": false}, {"name": "Re5", "score": 0.10517014139533655, "fromTo": [4, 24], "mates": false}, {"name": "Re3", "score": 0.09575598956105255, "fromTo": [4, 14], "mates": false}, {"name": "Rc1", "score": 0.09473538271287689, "fromTo": [4, 2], "mates": false}, {"name": "Rb1", "score": 0.09467650541874142, "fromTo": [4, 1], "mates": false}]}, {"wk": 18, "wr": 9, "bk": 15, "move": "Kc4", "fromTo": [18, 17], "blackReply": [15, 20], "token": 12, "reach": 0.12331615066510582, "concepts": {"dtm": 5.0, "box": 12.0, "kk": 3.0, "rookbk": 4.0, "bkedge": 0.0}, "candidates": [{"name": "Kc4", "score": 0.3116364827093955, "fromTo": [18, 17], "mates": false}, {"name": "Kc5", "score": 0.17577444742547596, "fromTo": [18, 22], "mates": false}, {"name": "Rb2", "score": 0.15853778171140182, "fromTo": [9, 6], "mates": false}, {"name": "Kc3", "score": 0.14074433961142482, "fromTo": [18, 12], "mates": false}, {"name": "Kd3", "score": 0.12643464335760152, "fromTo": [18, 13], "mates": false}, {"name": "Re5", "score": 0.11095441331953267, "fromTo": [9, 24], "mates": false}]}, {"wk": 17, "wr": 9, "bk": 20, "move": "Ra2", "fromTo": [9, 5], "blackReply": null, "token": 11, "reach": 0.473851997900712, "concepts": {"dtm": 1.0, "box": 12.0, "kk": 2.0, "rookbk": 4.0, "bkedge": 0.0}, "candidates": [{"name": "Ra2", "score": 2.2129542229494357, "fromTo": [9, 5], "mates": true}, {"name": "Rb2", "score": 0.3918526521114549, "fromTo": [9, 6], "mates": false}, {"name": "Rc2", "score": 0.34693658306410724, "fromTo": [9, 7], "mates": false}, {"name": "Re1", "score": 0.3198007364508566, "fromTo": [9, 4], "mates": false}, {"name": "Rd2", "score": 0.2528633029231102, "fromTo": [9, 8], "mates": false}, {"name": "Kc5", "score": 0.23178916051705956, "fromTo": [17, 22], "mates": false}]}], "startDtm": 17.0}], "meta": {"trainedGames": 32000, "rank": 64, "regionDef": "DTM<=3 \u222a {mate}", "engine": "greedy cone-steering, learned from random play"}};
+const N = DATA.N;
+const files = "abcde";
+let gi = 0, pi = 0, timer = null;
+
+const tokColor = t => {
+  const d = DATA.tokens[t].meanDtm ?? 12;
+  const u = Math.max(0, Math.min(1, 1 - d/12));       // 0 far … 1 near mate
+  const h = 210 + (35-210)*u, s = 45 + 50*u, l = 55 + 5*u;
+  return `hsl(${h},${s}%,${l}%)`;
+};
+const sqRC = s => [Math.floor(s/N), s%N];             // r=rank idx (0 bottom), c=file
+const cellXY = s => { const [r,c]=sqRC(s); return [(c+0.5)*20, (N-1-r+0.5)*20]; };
+
+function buildBoard(){
+  const g = document.getElementById("grid"); g.innerHTML = "";
+  for(let vr=N-1; vr>=0; vr--) for(let c=0; c<N; c++){
+    const s = vr*N + c;
+    const el = document.createElement("div");
+    el.className = "sq " + (((vr+c)%2===0) ? "d" : "l");
+    el.dataset.sq = s;
+    if(vr===0){ const f=document.createElement("span"); f.className="coord f"; f.textContent=files[c]; el.appendChild(f); }
+    if(c===0){ const r=document.createElement("span"); r.className="coord r"; r.textContent=vr+1; el.appendChild(r); }
+    g.appendChild(el);
+  }
+}
+
+function arrow(svg, from, to, color, w){
+  const [x1,y1]=cellXY(from), [x2,y2]=cellXY(to);
+  const dx=x2-x1, dy=y2-y1, L=Math.hypot(dx,dy);
+  const ux=dx/L, uy=dy/L, hx=x2-ux*4, hy=y2-uy*4;
+  const p = document.createElementNS("http://www.w3.org/2000/svg","path");
+  p.setAttribute("d",`M${x1},${y1} L${hx},${hy}`);
+  p.setAttribute("stroke",color); p.setAttribute("stroke-width",w);
+  p.setAttribute("stroke-linecap","round"); p.setAttribute("opacity","0.9");
+  svg.appendChild(p);
+  const tri = document.createElementNS("http://www.w3.org/2000/svg","path");
+  const px=-uy, py=ux;
+  tri.setAttribute("d",`M${x2},${y2} L${hx+px*2.4},${hy+py*2.4} L${hx-px*2.4},${hy-py*2.4} Z`);
+  tri.setAttribute("fill",color); tri.setAttribute("opacity","0.9");
+  svg.appendChild(tri);
+}
+
+function render(){
+  const G = DATA.games[gi], P = G.plies[Math.min(pi, G.plies.length-1)];
+  const atEnd = pi >= G.plies.length;
+  document.querySelectorAll(".sq").forEach(el=>{
+    el.querySelectorAll(".pc,.tint").forEach(n=>n.remove());
+  });
+  const put = (s, glyph, cls) => {
+    const el = document.querySelector(`.sq[data-sq="${s}"]`);
+    const d = document.createElement("div"); d.className = "pc "+cls; d.textContent = glyph;
+    el.appendChild(d);
+  };
+  // tint candidate destinations by score
+  const svg = document.getElementById("arrows"); svg.innerHTML = "";
+  if(!atEnd){
+    const scores = P.candidates.map(c=>c.score);
+    const mx = Math.max(...scores.map(Math.abs), 1e-9);
+    P.candidates.forEach((c,i)=>{
+      const el = document.querySelector(`.sq[data-sq="${c.fromTo[1]}"]`);
+      const t = document.createElement("div"); t.className="tint";
+      const a = 0.14 + 0.5*Math.max(0,c.score)/mx;
+      t.style.background = `rgba(240,168,60,${i===0?0:a.toFixed(2)})`;
+      el.appendChild(t);
+    });
+    arrow(svg, P.fromTo[0], P.fromTo[1], "var(--amber)", 2.6);
+    if(pi>0 && G.plies[pi-1].blackReply) arrow(svg, G.plies[pi-1].blackReply[0], G.plies[pi-1].blackReply[1], "#8B94A3", 1.8);
+  }
+  // pieces: position BEFORE white's move at this ply (or final position if atEnd)
+  let wk=P.wk, wr=P.wr, bk=P.bk;
+  if(atEnd){
+    const ft=P.fromTo;
+    if(ft[0]===P.wk) wk=ft[1]; else wr=ft[1];
+    if(P.blackReply) bk=P.blackReply[1];
+  }
+  put(wk,"♔","w"); put(wr,"♖","w"); put(bk,"♚","b");
+
+  // side panel
+  const tok = DATA.tokens[P.token];
+  const chip = document.getElementById("tokchip");
+  chip.style.background = tokColor(P.token); chip.textContent = "#"+P.token;
+  document.getElementById("tokmeta").innerHTML =
+    `cluster of <b>${tok.size}</b> positions · mean distance-to-mate <b>${tok.meanDtm.toFixed(1)}</b> plies · mean box <b>${tok.meanBox.toFixed(1)}</b> squares<br>reach score here: <b>${P.reach.toFixed(3)}</b>`;
+
+  const cdefs = [["plies to mate","dtm",20,"raw DTM (lower = closer)"],
+                 ["box area","box",25,""],["K–k distance","kk",4,""],
+                 ["rook–k distance","rookbk",4,""],["k edge dist","bkedge",2,""]];
+  document.getElementById("concepts").innerHTML = cdefs.map(([lbl,k,mx])=>{
+    const v = P.concepts[k];
+    return `<div class="cbar"><span class="lbl">${lbl}</span><span class="bar"><i style="width:${Math.min(100,100*v/mx)}%"></i></span><span class="val">${v.toFixed(0)}</span></div>`;
+  }).join("");
+
+  const mxs = Math.max(...P.candidates.map(c=>Math.abs(c.score)),1e-9);
+  document.getElementById("cands").innerHTML = P.candidates.map((c,i)=>
+    `<div class="cand ${i===0?"chosen":""}"><span class="nm">${c.name}${c.mates?'<span class="badge">mates</span>':''}</span><span class="bar"><i style="width:${Math.max(2,100*Math.max(0,c.score)/mxs)}%"></i></span><span class="sc">${c.score.toFixed(3)}</span></div>`
+  ).join("");
+
+  document.getElementById("plyinfo").textContent =
+    atEnd ? `end · ${G.plies.length} white plies` : `white ply ${pi+1} / ${G.plies.length} · move: ${P.move}`;
+  document.getElementById("result").textContent =
+    atEnd ? (G.result==="mate" ? "✓ CHECKMATE — the plan landed" : G.result==="draw" ? "½ draw — the plan failed here (worth inspecting)" : "…") : "";
+
+  document.querySelectorAll(".cell").forEach((c,i)=>c.classList.toggle("on", i===pi));
+}
+
+function buildRibbon(){
+  const G = DATA.games[gi];
+  const cells = document.getElementById("cells"); cells.innerHTML="";
+  G.plies.forEach((p,i)=>{
+    const c = document.createElement("button");
+    c.className="cell"; c.style.background = tokColor(p.token);
+    c.innerHTML = `<span>#${p.token}</span>`;
+    c.setAttribute("aria-label",`ply ${i+1}, token ${p.token}`);
+    c.onclick = ()=>{ pi=i; render(); };
+    cells.appendChild(c);
+  });
+  const svg = document.getElementById("reachsvg"); svg.innerHTML="";
+  const rs = G.plies.map(p=>p.reach);
+  const mx = Math.max(...rs, 1e-9);
+  const pts = rs.map((r,i)=>`${(i+0.5)*100/rs.length},${28-25*r/mx}`).join(" ");
+  const pl = document.createElementNS("http://www.w3.org/2000/svg","polyline");
+  pl.setAttribute("points",pts); pl.setAttribute("fill","none");
+  pl.setAttribute("stroke","var(--amber)"); pl.setAttribute("stroke-width","1.6");
+  svg.appendChild(pl);
+  rs.forEach((r,i)=>{
+    const c = document.createElementNS("http://www.w3.org/2000/svg","circle");
+    c.setAttribute("cx",(i+0.5)*100/rs.length); c.setAttribute("cy",28-25*r/mx);
+    c.setAttribute("r","1.6"); c.setAttribute("fill","var(--amber)");
+    svg.appendChild(c);
+  });
+}
+
+function selGame(i){
+  gi=i; pi=0; stop();
+  document.querySelectorAll("#gamesel button").forEach((b,j)=>b.classList.toggle("on", j===i));
+  buildRibbon(); render();
+}
+function step(d){ const G=DATA.games[gi]; pi=Math.max(0,Math.min(G.plies.length, pi+d)); render(); }
+function stop(){ if(timer){clearInterval(timer); timer=null; document.getElementById("play").textContent="▶";} }
+function toggle(){ if(timer){stop();} else { document.getElementById("play").textContent="⏸";
+  timer=setInterval(()=>{ if(pi>=DATA.games[gi].plies.length){stop();} else step(1); }, 900);} }
+
+document.getElementById("prev").onclick=()=>step(-1);
+document.getElementById("next").onclick=()=>step(1);
+document.getElementById("play").onclick=toggle;
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowLeft")step(-1); else if(e.key==="ArrowRight")step(1);
+  else if(e.key===" "){e.preventDefault(); toggle();}
+});
+
+const gs = document.getElementById("gamesel");
+DATA.games.forEach((g,i)=>{
+  const b=document.createElement("button");
+  b.textContent=`G${i+1} · DTM ${g.startDtm.toFixed(0)} · ${g.result}`;
+  b.onclick=()=>selGame(i); gs.appendChild(b);
+});
+document.getElementById("foot").innerHTML =
+  `What you are looking at: an engine that learned only from <b>random games</b> — no labels, no chess concepts, no optimal play. Its cone (a rank-${DATA.meta.rank} successor-measure factorization) is steered greedily toward the region “${DATA.meta.regionDef}”. Plan tokens are k-means codes over cone shapes; they were never told what DTM is, yet their colors (= their clusters’ mean distance-to-mate) order the ribbon. The concept panel shows exact ground-truth features computed for evaluation only.`;
+
+buildBoard(); selGame(0);
+</script>
+</body>
+</html>

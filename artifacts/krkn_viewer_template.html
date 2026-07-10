@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KRkn — linked trajectory viewer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+:root{--bg:#10151C;--panel:#171E27;--panel2:#1C2430;--line:#2A3542;--ink:#E8E4D9;--muted:#8B94A3;
+--amber:#F0A83C;--green:#7FC97F;--teal:#4EC9B0;--rust:#C97B4E;--gray:#6B7280;--red:#FF6B6B;
+--sq-l:#D8C9A3;--sq-d:#7A6248}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:'IBM Plex Sans',sans-serif;font-size:14.5px}
+.wrap{max-width:1240px;margin:0 auto;padding:22px 20px 50px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line);padding-bottom:13px;margin-bottom:18px;flex-wrap:wrap}
+h1{font-family:'Fraunces',serif;font-weight:650;font-size:23px}
+h1 .sub{display:block;color:var(--muted);font-size:13px;font-family:'IBM Plex Sans';font-weight:500;margin-top:3px}
+.gsel{display:flex;gap:7px;flex-wrap:wrap}
+.gsel button{background:var(--panel);border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px 10px;font-family:'IBM Plex Mono',monospace;font-size:12px;cursor:pointer}
+.gsel button.on{color:var(--ink);border-color:var(--amber)}
+main{display:grid;grid-template-columns:330px 1fr;gap:20px}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:13px}
+.card h2{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:9px}
+.boardbox{position:relative;width:100%;aspect-ratio:1/1;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr)}
+.sq{position:relative;display:flex;align-items:center;justify-content:center}
+.sq.l{background:var(--sq-l)}.sq.d{background:var(--sq-d)}
+.sq .coord{position:absolute;font-family:'IBM Plex Mono';font-size:9px;color:rgba(16,21,28,.55)}
+.sq .coord.f{right:3px;bottom:2px}.sq .coord.r{left:3px;top:2px}
+.pc{font-size:44px;line-height:1;user-select:none;z-index:3}
+.pc.w{color:#F7F3E8;text-shadow:0 0 3px #2b2b2b,0 1px 2px #00000088}
+.pc.b{color:#191919;text-shadow:0 0 3px #ffffff66}
+svg.ov{position:absolute;inset:0;width:100%;height:100%;z-index:2;pointer-events:none}
+.tabs{display:flex;gap:6px;margin:10px 0 8px}
+.tabs button{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:6px;padding:6px;cursor:pointer;font-size:13px}
+.tabs button.on{color:var(--ink);border-color:currentColor}
+.tabs button.pl.on{color:var(--green)}.tabs button.or.on{color:var(--ink)}
+.ctrl{display:flex;gap:8px;align-items:center;margin-top:8px}
+.ctrl button{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:6px 12px;cursor:pointer}
+.info{font-family:'IBM Plex Mono';font-size:12px;color:var(--muted);margin-left:auto}
+.stat{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}
+.chip{border:1px solid var(--line);border-radius:5px;padding:2px 7px;font-family:'IBM Plex Mono';font-size:11.5px;color:var(--muted)}
+.chip.warn{color:var(--red);border-color:var(--red)}
+.chip.strat{color:var(--rust);border-color:var(--rust)}
+.cand{display:grid;grid-template-columns:64px 1fr 58px;align-items:center;gap:8px;padding:4px 0;border-bottom:1px dashed var(--line);font-family:'IBM Plex Mono';font-size:12.5px}
+.cand:last-child{border-bottom:0}
+.cand.played .nm{color:var(--amber)}
+.bar{height:6px;background:var(--panel2);border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:#5B87A6;border-radius:3px}
+.cand.played .bar i{background:var(--amber)}
+.badge{font-size:9.5px;border:1px solid;border-radius:4px;padding:0 4px;margin-left:5px}
+.badge.mate{color:var(--green);border-color:var(--green)}
+.badge.play{color:var(--amber);border-color:var(--amber)}
+.mapbox{position:relative;width:100%;aspect-ratio:1.35/1;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#12181F}
+canvas,svg.map{position:absolute;inset:0;width:100%;height:100%}
+svg.map .node{cursor:pointer}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;color:var(--muted);font-size:11.5px;align-items:center}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+.hint{color:var(--muted);font-size:11.5px;margin-top:6px}
+footer{margin-top:16px;color:var(--muted);font-size:12px;line-height:1.55;border-top:1px solid var(--line);padding-top:11px}
+</style>
+</head>
+<body><div class="wrap">
+<header>
+  <h1>KRkn linked viewer <span class="sub">learned planner vs DTM-perfect oracle · same starts · optimal defense · click map nodes or step the board — they stay in sync</span></h1>
+  <div class="gsel" id="gsel"></div>
+</header>
+<main>
+  <div>
+    <div class="boardbox"><div class="grid" id="grid"></div><svg class="ov" id="arrows" viewBox="0 0 100 100" preserveAspectRatio="none"></svg></div>
+    <div class="tabs">
+      <button class="pl" id="tabP">planner</button>
+      <button class="or" id="tabO">oracle</button>
+      <button id="altToggle" style="flex:.9">alts: ON</button>
+    </div>
+    <div class="ctrl">
+      <button id="prev">←</button><button id="next">→</button>
+      <span class="info" id="info"></span>
+    </div>
+    <div class="stat" id="stat"></div>
+    <div class="card" style="margin-top:12px">
+      <h2>Move options · learned minimax scores</h2>
+      <div id="cands"></div>
+      <div class="hint" id="engnote"></div>
+    </div>
+  </div>
+  <div>
+    <div class="mapbox">
+      <canvas id="bgc"></canvas>
+      <svg class="map" id="msvg"></svg>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:#2E7D6B"></span>won</span>
+      <span><span class="dot" style="background:#5A6472"></span>drawn</span>
+      <span><span class="dot" style="background:#8A5A38"></span>KRk stratum</span>
+      <span><span class="dot" style="background:var(--green)"></span>planner</span>
+      <span><span class="dot" style="background:#E8E4D9"></span>oracle</span>
+      <span><span class="dot" style="background:#C86BD9"></span>cone of selected node</span>
+    </div>
+    <div class="legend">
+      <span style="font-family:'IBM Plex Mono'">◎ start (shared by both)</span>
+      <span style="font-family:'IBM Plex Mono'">★ mate</span>
+      <span style="font-family:'IBM Plex Mono'">✕ draw</span>
+      <span style="font-family:'IBM Plex Mono'">□ unfinished</span>
+      <span style="font-family:'IBM Plex Mono'">◇ opponent node (centroid of black's replies) · solid colored edge = white's move · solid gray edge = black's reply · dotted = untaken (score labeled) · + check · # mate</span>
+    </div>
+    <div class="hint">t-SNE map: neighborhoods faithful, inter-cluster distances not metric. Nodes are STATES, edges are MOVES: each edge = white's move + black's reply (gray mid-dot = the handoff). Each step is TWO edges: white's (colored) into the opponent diamond, black's (gray) out of it. The current step is auto-labeled; <b>tap any edge</b> to jump there. The <b>alts</b> toggle shows the selected step's untaken moves as dotted fans with learned scores (★ = missed mate, ✕ = leads to draw). Cone = MC futures under black ε=0.25. Click any node.</div>
+  </div>
+</main>
+<footer id="foot"></footer>
+</div>
+<script>
+const DATA = /*__DATA__*/;
+const files = "abcde";
+let gi = 0, side = "planner", pi = 0, half = 0;  // half: 0=white to move, 1=black to move (after played move)
+
+function nodes(){ return DATA.games[gi][side].nodes; }
+
+// ---------- board ----------
+function buildBoard(){
+  const g = document.getElementById("grid"); g.innerHTML = "";
+  for(let vr=4; vr>=0; vr--) for(let c=0; c<5; c++){
+    const s = vr*5+c;
+    const el = document.createElement("div");
+    el.className = "sq " + (((vr+c)%2===0)?"d":"l");
+    el.dataset.sq = s;
+    if(vr===0){const f=document.createElement("span");f.className="coord f";f.textContent=files[c];el.appendChild(f);}
+    if(c===0){const r=document.createElement("span");r.className="coord r";r.textContent=vr+1;el.appendChild(r);}
+    g.appendChild(el);
+  }
+}
+function cellXY(s){const r=Math.floor(s/5),c=s%5;return [(c+.5)*20,(4-r+.5)*20];}
+function arrow(svg,from,to,color,w){
+  const [x1,y1]=cellXY(from),[x2,y2]=cellXY(to);
+  const dx=x2-x1,dy=y2-y1,L=Math.hypot(dx,dy),ux=dx/L,uy=dy/L,hx=x2-ux*4,hy=y2-uy*4;
+  const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+  p.setAttribute("d",`M${x1},${y1} L${hx},${hy}`);p.setAttribute("stroke",color);
+  p.setAttribute("stroke-width",w);p.setAttribute("stroke-linecap","round");svg.appendChild(p);
+  const t=document.createElementNS("http://www.w3.org/2000/svg","path");
+  const px=-uy,py=ux;
+  t.setAttribute("d",`M${x2},${y2} L${hx+px*2.3},${hy+py*2.3} L${hx-px*2.3},${hy-py*2.3} Z`);
+  t.setAttribute("fill",color);svg.appendChild(t);
+}
+function renderBoard(){
+  const N = nodes(), P = N[pi];
+  const atBlack = (half===1 && P.bnodeXY);
+  document.querySelectorAll(".sq .pc").forEach(n=>n.remove());
+  const put=(s,g,cls)=>{if(s==null)return;const el=document.querySelector(`.sq[data-sq="${s}"]`);
+    const d=document.createElement("div");d.className="pc "+cls;d.textContent=g;el.appendChild(d);};
+  let wk=P.wk, wr=P.wr, bk=P.bk, bn=P.bn;
+  if(atBlack){                                 // apply white's played move
+    const [f,t]=P.fromTo;
+    if(f===P.wk) wk=t; else wr=t;
+    if(P.bn!=null && t===P.bn) bn=null;        // knight was captured
+  }
+  put(wk,"♔","w");put(wr,"♖","w");put(bk,"♚","b");put(bn,"♞","b");
+  const svg=document.getElementById("arrows");svg.innerHTML="";
+  if(atBlack){
+    arrow(svg,P.fromTo[0],P.fromTo[1],"#8B94A3",1.7);           // white's move just played
+    if(P.blackReply) arrow(svg,P.blackReply[0],P.blackReply[1],"#F0A83C",2.4);  // black's chosen reply
+  } else {
+    arrow(svg,P.fromTo[0],P.fromTo[1],"#F0A83C",2.4);
+    if(pi>0 && N[pi-1].blackReply) arrow(svg,N[pi-1].blackReply[0],N[pi-1].blackReply[1],"#8B94A3",1.7);
+  }
+  document.getElementById("info").textContent = atBlack
+    ? `${side} · after ${pi+1}. ${P.move} — BLACK to move`
+    : `${side} · move ${pi+1}/${N.length} · ${P.move}`;
+  const st=document.getElementById("stat");st.innerHTML="";
+  const chips=[];
+  chips.push(`<span class="chip">DTM ${P.dtm==null?"∞ (drawn)":P.dtm+" plies (≈"+Math.ceil(P.dtm/2)+" mv)"}</span>`);
+  chips.push(`<span class="chip ${P.stratum==="KRk"?"strat":""}">${P.stratum} stratum</span>`);
+  if(atBlack) chips.push(`<span class="chip" style="color:#9AA3B0;border-color:#9AA3B0">◇ black to move</span>`);
+  if(P.fork) chips.push(`<span class="chip warn">⚠ knight fork available to black</span>`);
+  st.innerHTML=chips.join("");
+  let CL = P.cands, hdr=null;
+  if(atBlack){
+    CL = P.blackAlts.map(a=>({name:"…"+a.name, score:a.score, mates:false,
+                              played:a.optimal, fromTo:null}));
+    CL.sort((a,b)=>(a.score==null?1:0)-(b.score==null?1:0) || (a.score??0)-(b.score??0)); // black wants LOW field score
+  }
+  const mx=Math.max(...CL.filter(c=>c.score!=null).map(c=>Math.abs(c.score)),1e-9);
+  document.getElementById("cands").innerHTML=CL.map(c=>{
+    const w=c.score==null?100:(Math.max(3,100*Math.max(0,c.score+mx)/(2*mx)));
+    return `<div class="cand ${c.played?"played":""}"><span class="nm">${c.name}${c.mates?'<span class="badge mate">mates</span>':''}${c.played?'<span class="badge play">played</span>':''}</span><span class="bar"><i style="width:${w}%"></i></span><span style="text-align:right;color:var(--muted);font-size:11px">${c.score==null?(c.mates?"+∞":"—"):c.score.toFixed(3)}</span></div>`;}).join("");
+  document.getElementById("engnote").textContent = atBlack
+    ? "BLACK to move (opponent: max-DTM defense). Scores are the learned field's value of the RESULTING position — lower is better for black; the played reply is black's optimal."
+    : (side==="oracle"
+      ? "oracle plays tablebase-perfect moves; scores shown are the learned field's opinion of each option"
+      : "planner plays the top learned minimax score");
+  drawSelection();
+}
+
+// ---------- map ----------
+let bounds;
+function computeBounds(){
+  let xs=DATA.bg.map(p=>p[0]), ys=DATA.bg.map(p=>p[1]);
+  for(const g of DATA.games) for(const s of ["planner","oracle"]) for(const n of g[s].nodes){
+    xs.push(n.xy[0]); ys.push(n.xy[1]);
+  }
+  const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const px=(x1-x0)*.05, py=(y1-y0)*.05;
+  bounds=[x0-px,x1+px,y0-py,y1+py];
+}
+function mapXY(x,y,w,h){
+  const [x0,x1,y0,y1]=bounds;
+  return [ (x-x0)/(x1-x0)*w, h-(y-y0)/(y1-y0)*h ];
+}
+function drawBG(){
+  const cv=document.getElementById("bgc");
+  const w=cv.width=cv.clientWidth*2, h=cv.height=cv.clientHeight*2;
+  const ctx=cv.getContext("2d");
+  ctx.clearRect(0,0,w,h);
+  const cols=["#2E7D6B","#5A6472","#8A5A38"];
+  for(const [x,y,c] of DATA.bg){
+    const [px,py]=mapXY(x,y,w,h);
+    ctx.fillStyle=cols[c]; ctx.globalAlpha=0.35;
+    ctx.fillRect(px,py,2.4,2.4);
+  }
+}
+let tappedEdge = null;   // {side, i} — persists until another tap
+let showAlts = true;      // toggle: untaken moves of the selected node
+function drawPaths(){
+  const svg=document.getElementById("msvg");
+  svg.setAttribute("viewBox","0 0 1000 741");
+  svg.innerHTML="";
+  const G=DATA.games[gi];
+  const mk=(x,y)=>mapXY(x,y,1000,741);
+  const NS="http://www.w3.org/2000/svg";
+  const endGlyph = res => res==="mate" ? "★" : (res.startsWith("draw") ? "✕" : "□");
+  const BLACKCOL="#9AA3B0";
+  const halo = t => { t.setAttribute("stroke","#10151C"); t.setAttribute("stroke-width","3.5");
+                      t.setAttribute("paint-order","stroke"); };
+  function txt(x,y,str,fill,size,weight){
+    const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",x);t.setAttribute("y",y);t.setAttribute("fill",fill);
+    t.setAttribute("font-size",size);t.setAttribute("font-family","IBM Plex Mono,monospace");
+    t.setAttribute("text-anchor","middle");if(weight)t.setAttribute("font-weight",weight);
+    halo(t);svg.appendChild(t);t.textContent=str;return t;
+  }
+  function line(x1,y1,x2,y2,col,w,dash,op){
+    const p=document.createElementNS(NS,"path");
+    p.setAttribute("d",`M${x1},${y1} L${x2},${y2}`);p.setAttribute("stroke",col);
+    p.setAttribute("stroke-width",w);p.setAttribute("fill","none");
+    if(dash)p.setAttribute("stroke-dasharray",dash);
+    p.setAttribute("opacity",op);svg.appendChild(p);return p;
+  }
+
+  function edgeLabel(s,i,col){
+    const ns=G[s].nodes;
+    if(i>=ns.length) return;
+    const n=ns[i];
+    const [x1,y1]=mk(...n.xy);
+    if(n.bnodeXY && i+1<ns.length){
+      const [bx,by]=mk(...n.bnodeXY);
+      txt((x1+bx)/2,(y1+by)/2-5,n.move,col,"12","600");
+      if(n.blackMove){
+        const [x2,y2]=mk(...ns[i+1].xy);
+        txt((bx+x2)/2,(by+y2)/2-5,"…"+n.blackMove,BLACKCOL,"11");
+      }
+    } else {
+      txt(x1+24,y1-16,n.move,col,"12","600");  // terminal move (mate)
+    }
+  }
+
+  function altFan(s,i,hf){
+    const ns=G[s].nodes, n=ns[i];
+    const col = s==="planner" ? "#7FC97F" : "#E8E4D9";
+    const [x1,y1]=mk(...n.xy);
+    (hf===1?[]:(n.whiteAlts||[])).forEach((a,j)=>{
+      let tx,ty;
+      if(a.xy){ [tx,ty]=mk(...a.xy); }
+      else { const ang=-0.7+j*0.55; tx=x1+48*Math.cos(ang); ty=y1+48*Math.sin(ang); }
+      line(x1,y1,tx,ty,col,1.2,"3,4",".55");
+      txt(tx,ty-7,a.name+(a.score!=null?" "+a.score.toFixed(2):""),col,"9.5");
+      if(a.term) txt(tx,ty+7,a.term==="mate"?"★":"✕",col,"11");
+      else { const c=document.createElementNS(NS,"circle");
+             c.setAttribute("cx",tx);c.setAttribute("cy",ty);c.setAttribute("r","2.6");
+             c.setAttribute("fill",col);c.setAttribute("opacity",".7");svg.appendChild(c);}
+    });
+    if(n.bnodeXY){
+      const [bx,by]=mk(...n.bnodeXY);
+      (n.blackAlts||[]).forEach((a,j)=>{
+        if(a.optimal) return;                     // taken reply = the solid gray edge
+        let tx,ty;
+        if(a.xy){ [tx,ty]=mk(...a.xy); }
+        else { const ang=2.2+j*0.55; tx=bx+44*Math.cos(ang); ty=by+44*Math.sin(ang); }
+        line(bx,by,tx,ty,BLACKCOL,1.1,"2,4",".5");
+        txt(tx,ty-6,"…"+a.name+(a.score!=null?" "+a.score.toFixed(2):""),BLACKCOL,"9");
+        if(a.term) txt(tx,ty+8,"✕",BLACKCOL,"10");
+      });
+    }
+  }
+
+  for(const [s,col,wd] of [["oracle","#E8E4D9",2.0],["planner","#7FC97F",2.4]]){
+    const ns=G[s].nodes, active=(s===side);
+    for(let i=0;i<ns.length;i++){
+      const n=ns[i], [x1,y1]=mk(...n.xy);
+      const isLast=(i===ns.length-1);
+      if(n.bnodeXY && !isLast){
+        const [bx,by]=mk(...n.bnodeXY), [x2,y2]=mk(...ns[i+1].xy);
+        line(x1,y1,bx,by,col,wd,null,active?".9":".4");         // WHITE half-move
+        line(bx,by,x2,y2,BLACKCOL,wd*0.8,null,active?".8":".3"); // BLACK half-move
+        const dm=document.createElementNS(NS,"path");            // opponent node
+        dm.setAttribute("d",`M${bx},${by-4.5} L${bx+4.5},${by} L${bx},${by+4.5} L${bx-4.5},${by} Z`);
+        dm.setAttribute("fill","#10151C");dm.setAttribute("stroke",BLACKCOL);
+        dm.setAttribute("stroke-width","1.4");dm.setAttribute("opacity",active?"1":".45");
+        dm.classList.add("node");dm.style.pointerEvents="all";
+        dm.addEventListener("click",(e)=>{e.stopPropagation();tappedEdge=null;side=s;pi=i;half=1;syncTabs();drawPaths();renderBoard();});
+        svg.appendChild(dm);
+        const hit=line(x1,y1,x2,y2,"rgba(0,0,0,0)",16,null,"1");
+        hit.style.cursor="pointer";hit.style.pointerEvents="stroke";
+        hit.addEventListener("click",()=>{tappedEdge={side:s,i:i};side=s;pi=i;half=0;syncTabs();drawPaths();renderBoard();});
+      } else if(isLast){
+        const prev = ns.length>1 ? mk(...ns[ns.length-2].xy) : [x1-30,y1];
+        const dx=x1-prev[0],dy=y1-prev[1],L=Math.hypot(dx,dy)||1;
+        const ex=x1+dx/L*26, ey=y1+dy/L*26;
+        line(x1,y1,ex,ey,col,wd,null,active?".9":".4");
+        const star=txt(ex,ey+4,endGlyph(G[s].result),col,"17");
+      }
+    }
+    ns.forEach((n,i)=>{
+      if(i===0) return;
+      const [x,y]=mk(...n.xy);
+      const c=document.createElementNS(NS,"circle");
+      c.setAttribute("cx",x);c.setAttribute("cy",y);c.setAttribute("r","5.5");
+      c.setAttribute("fill",col);c.setAttribute("stroke","#10151C");c.setAttribute("stroke-width","1.5");
+      c.classList.add("node");
+      c.addEventListener("click",()=>{tappedEdge=null;side=s;pi=i;half=0;syncTabs();drawPaths();renderBoard();});
+      svg.appendChild(c);
+    });
+  }
+
+  const [sx0,sy0]=mk(...G.planner.nodes[0].xy);
+  for(const [r,w] of [[10,2.6],[5,1.6]]){
+    const ring=document.createElementNS(NS,"circle");
+    ring.setAttribute("cx",sx0);ring.setAttribute("cy",sy0);ring.setAttribute("r",r);
+    ring.setAttribute("fill","none");ring.setAttribute("stroke","#F0A83C");ring.setAttribute("stroke-width",w);
+    ring.classList.add("node");
+    ring.addEventListener("click",()=>{tappedEdge=null;pi=0;half=0;drawPaths();renderBoard();});
+    svg.appendChild(ring);
+  }
+  txt(sx0,sy0+25,"start (shared)","#F0A83C","10.5");
+
+  edgeLabel(side, pi, side==="planner" ? "#7FC97F" : "#E8E4D9");
+  if(tappedEdge && !(tappedEdge.side===side && tappedEdge.i===pi))
+    edgeLabel(tappedEdge.side, tappedEdge.i, tappedEdge.side==="planner" ? "#7FC97F" : "#E8E4D9");
+  if(showAlts) altFan(side, pi, half);
+
+  drawSelection();
+}
+
+function drawSelection(){
+  const svg=document.getElementById("msvg");
+  svg.querySelectorAll(".sel,.cone").forEach(n=>n.remove());
+  const n=nodes()[pi];
+  const mk=(x,y)=>mapXY(x,y,1000,741);
+  const conesrc = (half===1) ? [] : n.cone;   // MC cones were computed for white-to-move states
+  const tmax=Math.max(...conesrc.map(c=>c[2]),1);
+  for(const [x,y,t] of conesrc){
+    const [px,py]=mk(x,y);
+    const c=document.createElementNS("http://www.w3.org/2000/svg","circle");
+    c.setAttribute("cx",px);c.setAttribute("cy",py);c.setAttribute("r","3.4");
+    const u=t/tmax;
+    c.setAttribute("fill",`hsl(${290-60*u},70%,${68-25*u}%)`);
+    c.setAttribute("opacity","0.45");c.classList.add("cone");
+    svg.appendChild(c);
+  }
+  const [sx,sy]=mk(...((half===1 && n.bnodeXY) ? n.bnodeXY : n.xy));
+  const ring=document.createElementNS("http://www.w3.org/2000/svg","circle");
+  ring.setAttribute("cx",sx);ring.setAttribute("cy",sy);ring.setAttribute("r","11");
+  ring.setAttribute("fill","none");ring.setAttribute("stroke","#F0A83C");
+  ring.setAttribute("stroke-width","2.5");ring.classList.add("sel");
+  svg.appendChild(ring);
+}
+
+// ---------- wiring ----------
+function syncTabs(){
+  document.getElementById("tabP").classList.toggle("on",side==="planner");
+  document.getElementById("tabO").classList.toggle("on",side==="oracle");
+}
+function selGame(i){
+  gi=i;side="planner";pi=0;
+  document.querySelectorAll("#gsel button").forEach((b,j)=>b.classList.toggle("on",j===i));
+  syncTabs();drawBG();drawPaths();renderBoard();
+}
+document.getElementById("tabP").onclick=()=>{side="planner";pi=Math.min(pi,nodes().length-1);syncTabs();drawPaths();renderBoard();};
+document.getElementById("altToggle").onclick=()=>{showAlts=!showAlts;document.getElementById("altToggle").textContent="alts: "+(showAlts?"ON":"OFF");drawPaths();};
+document.getElementById("tabO").onclick=()=>{side="oracle";pi=Math.min(pi,nodes().length-1);syncTabs();drawPaths();renderBoard();};
+function stepBack(){ if(half===1){half=0;} else if(pi>0){pi--; half = nodes()[pi].bnodeXY?1:0;} }
+function stepFwd(){ const N=nodes(); if(half===0 && N[pi].bnodeXY && pi<N.length-1){half=1;} else if(pi<N.length-1){pi++;half=0;} }
+document.getElementById("prev").onclick=()=>{stepBack();tappedEdge=null;drawPaths();renderBoard();};
+document.getElementById("next").onclick=()=>{stepFwd();tappedEdge=null;drawPaths();renderBoard();};
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowLeft"){stepBack();tappedEdge=null;drawPaths();renderBoard();}
+  else if(e.key==="ArrowRight"){stepFwd();tappedEdge=null;drawPaths();renderBoard();}
+  else if(e.key==="o"||e.key==="p"){side=side==="planner"?"oracle":"planner";pi=Math.min(pi,nodes().length-1);syncTabs();drawPaths();renderBoard();}
+});
+const gs=document.getElementById("gsel");
+DATA.games.forEach((g,i)=>{
+  const b=document.createElement("button");
+  const pn=g.planner, on=g.oracle;
+  b.textContent=`G${i+1} · DTM ${g.startDtm} · plan ${pn.result==="mate"?pn.nodes.length+"mv":"✕"} / orc ${on.nodes.length}mv`;
+  b.onclick=()=>selGame(i);gs.appendChild(b);
+});
+document.getElementById("foot").innerHTML =
+  `Domain: ${DATA.meta.domain} vs ${DATA.meta.opponent}. Planner: ${DATA.meta.planner}. Oracle: ${DATA.meta.oracle}. `+
+  `Cone: ${DATA.meta.cone}. Keys: ←/→ step · o swap trajectory. Move scores are the learned field's minimax values (min over replies), the same quantity the planner maximizes — on oracle nodes they show what the field thinks of perfect play.`;
+buildBoard();computeBounds();selGame(0);
+window.addEventListener("resize",()=>{drawBG();});
+</script>
+</body></html>
