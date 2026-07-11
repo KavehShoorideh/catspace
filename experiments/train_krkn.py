@@ -15,6 +15,8 @@ from latentchess.domains import krkn
 from latentchess.opponents import optimal_reply_table
 from latentchess.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
 from latentchess.planner.readout import ReplyAgg
+from latentchess.train.checkpoints import load_ckpt, ckpt_exists
+from latentchess.io.paths import save_array, derived_dir
 
 SCHEDULE = [  # (eps_white, eps_black, n_games, dtm_cap)
     Round(0.50, 1.00, 15000, 5),
@@ -34,7 +36,9 @@ def goal_region(chain, dtm):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default=None, help="path to a resumable .npz checkpoint")
+    ap.add_argument("--ckpt", default=str(derived_dir() / "krkn_ckpt"),
+                     help="path to a resumable .npz checkpoint (also the source of the "
+                          "final F/B/scores saved for downstream viz/search scripts)")
     args = ap.parse_args()
 
     chain = krkn.build_chain(verbose=True)
@@ -53,6 +57,14 @@ def main():
     final = results[-1]
     print(f"\nfinal round: conversion={final.conversion:.3f} tempo={final.tempo:.2f} "
           f"rook_loss={final.rook_loss:.3f} extra={final.extra}")
+
+    if args.ckpt is not None and ckpt_exists(args.ckpt):
+        state = load_ckpt(args.ckpt)
+        save_array("dtm_krkn", dtm)
+        save_array("krkn_scores", state.scores)
+        save_array("krkn_F", state.F)
+        save_array("krkn_B", state.B)
+        print("saved dtm_krkn/krkn_scores/krkn_F/krkn_B to data/derived/")
 
 
 if __name__ == "__main__":

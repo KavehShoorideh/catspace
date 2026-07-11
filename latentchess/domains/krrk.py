@@ -219,6 +219,8 @@ def describe_state(chain: TransitionChain, s: int) -> dict:
 
 
 if __name__ == "__main__":
+    from latentchess.io.paths import save_array
+
     t0 = time.time()
     uc = build_chain()
     dtm = compute_dtm(uc)
@@ -227,4 +229,4 @@ if __name__ == "__main__":
     print(f"KRRK forcible: {fin2.sum()}/{n2} "
           f"max={np.nanmax(np.where(fin2, dtm[:n2], np.nan)):.0f} plies "
           f"({time.time() - t0:.0f}s)")
-    np.save("dtm_union.npy", dtm)
+    save_array("dtm_union", dtm)

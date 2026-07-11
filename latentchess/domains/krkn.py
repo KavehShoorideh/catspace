@@ -294,6 +294,8 @@ def describe_state(chain: TransitionChain, s: int) -> dict:
 
 
 if __name__ == "__main__":
+    from latentchess.io.paths import save_array
+
     t0 = time.time()
     uc = build_chain()
     dtm = compute_dtm(uc)
@@ -302,4 +304,4 @@ if __name__ == "__main__":
     print(f"DTM sweeps done | WON: {fin.sum()}/{n2} ({fin.mean():.1%}) "
           f"DRAWN: {(~fin).sum()} | max DTM {np.nanmax(np.where(fin, dtm[:n2], np.nan)):.0f} plies "
           f"({time.time() - t0:.0f}s)")
-    np.save("dtm_krkn.npy", dtm)
+    save_array("dtm_krkn", dtm)
