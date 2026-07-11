@@ -1,6 +1,6 @@
 # Architecture
 
-Layered package (`latentchess/`) replacing the original pile of research
+Layered package (`catspace/`) replacing the original pile of research
 scripts (`code/`, deleted; git history preserves it). Layers, bottom to top:
 
 ```
@@ -66,7 +66,7 @@ experiment/report, ~30-100 lines each) -- see README.md section 5.
    Determinism per seed is a test requirement throughout.
 4. **Artifacts only under `data/` (gitignored) and `artifacts/generated/`
    (gitignored).** Committed `artifacts/*.png`/`*.html`/`*.md` are the
-   historical record, not regenerated in place. `latentchess/io/paths` is
+   historical record, not regenerated in place. `catspace/io/paths` is
    the only place that resolves these directories.
 
 ## What's deferred

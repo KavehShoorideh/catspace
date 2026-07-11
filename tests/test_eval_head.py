@@ -10,10 +10,10 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from latentchess.nn.eval_head import (EvalHead, descriptive_loss, load_heads,
+from catspace.nn.eval_head import (EvalHead, descriptive_loss, load_heads,
                                       normative_loss, save_heads)
-from latentchess.nn.features import winprob_cp
-from latentchess.util import auc
+from catspace.nn.features import winprob_cp
+from catspace.util import auc
 
 
 def _separable(n=600, d=16, seed=0):

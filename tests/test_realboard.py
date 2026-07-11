@@ -9,7 +9,7 @@ import chess
 import numpy as np
 import pytest
 
-from latentchess.realboard import (BoardGameRecord, RandomBoardPolicy, play_board_game,
+from catspace.realboard import (BoardGameRecord, RandomBoardPolicy, play_board_game,
                                    record_to_pgn)
 
 
@@ -46,8 +46,8 @@ def test_record_to_pgn_roundtrip():
 
 def test_fb_policy_legal_and_takes_mate():
     torch = pytest.importorskip("torch")
-    from latentchess.nn.fb import TorchFB
-    from latentchess.nn.policy_fb import FBBoardPolicy
+    from catspace.nn.fb import TorchFB
+    from catspace.nn.policy_fb import FBBoardPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     z = np.zeros(16, dtype=np.float32)
@@ -71,8 +71,8 @@ def test_fb_policy_legal_and_takes_mate():
 
 def test_fb_policy_avoids_being_mated_at_depth2():
     torch = pytest.importorskip("torch")
-    from latentchess.nn.fb import TorchFB
-    from latentchess.nn.policy_fb import FBBoardPolicy
+    from catspace.nn.fb import TorchFB
+    from catspace.nn.policy_fb import FBBoardPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     pol = FBBoardPolicy(fb, np.zeros(16, dtype=np.float32), depth=2)
@@ -92,7 +92,7 @@ def test_fb_policy_avoids_being_mated_at_depth2():
 
 @pytest.mark.skipif(shutil.which("stockfish") is None, reason="no stockfish binary")
 def test_uci_policy_smoke():
-    from latentchess.uci import UCIBoardPolicy
+    from catspace.uci import UCIBoardPolicy
     rng = np.random.default_rng(0)
     with UCIBoardPolicy(movetime=0.01, elo=1320) as sf:
         board = chess.Board()

@@ -6,7 +6,7 @@ build/
 dist/
 
 # generated data artifacts (npy/pkl/json), never committed -- anchored to
-# repo root so it doesn't also hide the latentchess/data/ package
+# repo root so it doesn't also hide the catspace/data/ package
 /data/
 *.npy
 *.pkl

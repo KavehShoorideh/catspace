@@ -6,10 +6,10 @@ import argparse
 
 import numpy as np
 
-from latentchess.domains import krrk
-from latentchess.opponents import optimal_reply_table
-from latentchess.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
-from latentchess.planner.readout import ReplyAgg
+from catspace.domains import krrk
+from catspace.opponents import optimal_reply_table
+from catspace.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
+from catspace.planner.readout import ReplyAgg
 
 
 SCHEDULE = [

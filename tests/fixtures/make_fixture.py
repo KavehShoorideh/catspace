@@ -36,7 +36,7 @@ import zstandard
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from latentchess.data.lichess import GameFilter
+from catspace.data.lichess import GameFilter
 
 HERE = Path(__file__).resolve().parent
 N_GAMES = 30

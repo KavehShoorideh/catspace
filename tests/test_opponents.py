@@ -1,9 +1,9 @@
 import numpy as np
 import pytest
 
-from latentchess.domains import krk
-from latentchess.opponents import optimal_reply_table, RandomOpponent, EpsOptimalDTM, TableOpponent
-from latentchess.chain import KIND_ONGOING
+from catspace.domains import krk
+from catspace.opponents import optimal_reply_table, RandomOpponent, EpsOptimalDTM, TableOpponent
+from catspace.chain import KIND_ONGOING
 
 
 @pytest.fixture(scope="module")
@@ -19,7 +19,7 @@ def test_optimal_black_maximizes_dtm(krk_setup):
     to mate (delay), never minimize it. For every ongoing move, the chosen
     reply's dtm_filled value must equal the max over all replies."""
     chain, dtm_w = krk_setup
-    from latentchess.scoring import dtm_filled
+    from catspace.scoring import dtm_filled
     table = optimal_reply_table(chain, dtm_w)
     dtm_full = dtm_filled(dtm_w, chain.n)
     rng = np.random.default_rng(0)

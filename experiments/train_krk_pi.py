@@ -3,7 +3,7 @@
 experiments/train_krk_pi.py — curriculum policy-iteration training on KRk.
 
 Reproduces exp_policy_iteration.py's schedule/evaluation on the new
-latentchess package.
+catspace package.
 """
 from __future__ import annotations
 
@@ -11,10 +11,10 @@ import argparse
 
 import numpy as np
 
-from latentchess.domains import krk
-from latentchess.opponents import optimal_reply_table
-from latentchess.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
-from latentchess.planner.readout import ReplyAgg
+from catspace.domains import krk
+from catspace.opponents import optimal_reply_table
+from catspace.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
+from catspace.planner.readout import ReplyAgg
 
 SCHEDULE = [  # (eps_white, eps_black, n_games)
     Round(1.00, 1.00, 20000, None),   # pure random vs random (the original data)

@@ -2,7 +2,7 @@
 """
 experiments/generalization.py — does a neural FB generalize to states it has
 NEVER seen in any training pair (familiar concept family, unfamiliar exact
-position)? Port of code/exp_generalization.py onto the latentchess stack:
+position)? Port of code/exp_generalization.py onto the catspace stack:
 ChainRolloutSource for the neural-FB training pool, rollout_transitions +
 empirical_P for the tabular-FB baseline, and greedy_policy/arena.evaluate for
 the E2/E3 engine comparisons (instead of hand-rolled scoring/play loops).
@@ -18,17 +18,17 @@ import time
 import numpy as np
 import scipy.stats as st
 
-from latentchess.arena import evaluate
-from latentchess.chain import exact_P, empirical_P
-from latentchess.cone.neural import NeuralFB, absorbing_vec, one_hot_state
-from latentchess.cone.tabular import fb_from_svd, randomized_svd_sm, sm_matvec
-from latentchess.data.sources import ChainRolloutSource
-from latentchess.domains import krk
-from latentchess.game import rollout_transitions
-from latentchess.opponents import EpsOptimalDTM, RandomOpponent, optimal_reply_table
-from latentchess.planner.policy import RandomPolicy, TablePolicy
-from latentchess.planner.readout import ReplyAgg, greedy_policy
-from latentchess.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.arena import evaluate
+from catspace.chain import exact_P, empirical_P
+from catspace.cone.neural import NeuralFB, absorbing_vec, one_hot_state
+from catspace.cone.tabular import fb_from_svd, randomized_svd_sm, sm_matvec
+from catspace.data.sources import ChainRolloutSource
+from catspace.domains import krk
+from catspace.game import rollout_transitions
+from catspace.opponents import EpsOptimalDTM, RandomOpponent, optimal_reply_table
+from catspace.planner.policy import RandomPolicy, TablePolicy
+from catspace.planner.readout import ReplyAgg, greedy_policy
+from catspace.scoring import TerminalScores, fill_terminal_state_scores
 
 
 def _policy_from_live_scores(live_scores: np.ndarray, mate_score: float, draw_score: float, chain):

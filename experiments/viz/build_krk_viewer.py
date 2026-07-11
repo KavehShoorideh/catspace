@@ -2,7 +2,7 @@
 """
 experiments/viz/build_krk_viewer.py — the rung-1 (KRk) interactive viewer:
 per-ply board position, learned candidate-move scores, plan token, and
-ground-truth concept values, rendered into latentchess/viz/templates/
+ground-truth concept values, rendered into catspace/viz/templates/
 krk_viewer.html via viz.build_html. Port of gen_ui_data.py + viewer_template
 .html (this is the piece that was previously assembled by an uncommitted,
 manual injection step).
@@ -15,20 +15,20 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from latentchess.chain import empirical_P
-from latentchess.concepts import KMeansVQ
-from latentchess.domains import krk
-from latentchess.domains.krk import white_moves
-from latentchess.game import rollout_transitions
-from latentchess.io.paths import REPO_ROOT, generated_dir
-from latentchess.opponents import RandomOpponent
-from latentchess.planner.policy import RandomPolicy
-from latentchess.cone.tabular import fb_from_svd, randomized_svd_sm
-from latentchess.viz.build_html import build_html
-from latentchess.viz.payload import json_default
+from catspace.chain import empirical_P
+from catspace.concepts import KMeansVQ
+from catspace.domains import krk
+from catspace.domains.krk import white_moves
+from catspace.game import rollout_transitions
+from catspace.io.paths import REPO_ROOT, generated_dir
+from catspace.opponents import RandomOpponent
+from catspace.planner.policy import RandomPolicy
+from catspace.cone.tabular import fb_from_svd, randomized_svd_sm
+from catspace.viz.build_html import build_html
+from catspace.viz.payload import json_default
 
 GAMMA = 0.92
-TEMPLATE = REPO_ROOT / "latentchess/viz/templates/krk_viewer.html"
+TEMPLATE = REPO_ROOT / "catspace/viz/templates/krk_viewer.html"
 
 
 @dataclass

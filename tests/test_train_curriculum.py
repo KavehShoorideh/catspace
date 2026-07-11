@@ -1,10 +1,10 @@
 import numpy as np
 import pytest
 
-from latentchess.domains import krk
-from latentchess.opponents import optimal_reply_table
-from latentchess.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
-from latentchess.train.checkpoints import ckpt_exists
+from catspace.domains import krk
+from catspace.opponents import optimal_reply_table
+from catspace.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
+from catspace.train.checkpoints import ckpt_exists
 
 
 def goal_region(chain, dtm):

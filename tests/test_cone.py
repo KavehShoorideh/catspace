@@ -2,10 +2,10 @@ import numpy as np
 import pytest
 import scipy.stats as st
 
-from latentchess.domains import krk
-from latentchess.chain import exact_P
-from latentchess.cone.tabular import sm_matvec, randomized_svd_sm, fb_from_svd, rank_error, TabularFB
-from latentchess.cone.embedding import GoalSpec, reach
+from catspace.domains import krk
+from catspace.chain import exact_P
+from catspace.cone.tabular import sm_matvec, randomized_svd_sm, fb_from_svd, rank_error, TabularFB
+from catspace.cone.embedding import GoalSpec, reach
 
 
 def test_sm_matvec_matches_dense_on_small_chain():

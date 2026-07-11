@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from latentchess.domains import krk
+from catspace.domains import krk
 
 
 def test_krk_state_counts():
@@ -34,7 +34,7 @@ def test_krk_build_chain_matches_enumeration():
 
 @pytest.mark.slow
 def test_krkn_state_counts():
-    from latentchess.domains import krkn
+    from catspace.domains import krkn
     chain = krkn.build_chain(verbose=False)
     n2 = chain.strata["KRkn"].stop
     assert n2 == 158232
@@ -43,7 +43,7 @@ def test_krkn_state_counts():
 
 @pytest.mark.slow
 def test_krkn_dtm_max():
-    from latentchess.domains import krkn
+    from catspace.domains import krkn
     chain = krkn.build_chain(verbose=False)
     dtm = krkn.compute_dtm(chain)
     n2 = chain.strata["KRkn"].stop

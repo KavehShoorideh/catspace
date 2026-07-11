@@ -1,4 +1,4 @@
-# Implementation Plan — Phases 5–8 (latentchess)
+# Implementation Plan — Phases 5–8 (catspace)
 
 This is a step-by-step build plan for the remaining refactor phases. It is
 written to be executed **task by task, in order**, by an implementer who
@@ -35,10 +35,10 @@ python -m pytest tests/ -m slow -q          # at phase ends only (~4 min)
 ### 0.2 Code conventions (match the existing package style)
 
 - `from __future__ import annotations` at the top of every new module.
-- Absolute imports only: `from latentchess.chain import TransitionChain`.
+- Absolute imports only: `from catspace.chain import TransitionChain`.
   NEVER import from the legacy `code/` directory (it still exists until
   task 8.6; it is reference material only).
-- numpy-only for everything except `latentchess/data/` (which may use
+- numpy-only for everything except `catspace/data/` (which may use
   `chess` (python-chess) and `zstandard`) and viz (matplotlib/openTSNE).
   No torch, no sklearn, no new dependencies beyond pyproject.toml.
 - RNG: always `np.random.default_rng(seed)` passed explicitly. Never seed
@@ -47,30 +47,30 @@ python -m pytest tests/ -m slow -q          # at phase ends only (~4 min)
   `reduceat(x, chain.mp0)` idiom (see `planner/readout.py` for the pattern,
   including the first-argmax tie-break — copy it, don't reinvent it).
 - Docstrings state constraints and semantics, not narration.
-- Terminal outcome scoring goes through `latentchess.scoring.TerminalScores`
+- Terminal outcome scoring goes through `catspace.scoring.TerminalScores`
   ONLY. Never write a literal like `1e9` for a mate/draw score in new code.
 
 ### 0.3 Key existing APIs you will build on (do not re-implement)
 
 | Thing | Where | Notes |
 |---|---|---|
-| `TransitionChain` | `latentchess/chain.py` | fields `n, n_live, move_ptr, move_kind, out_ptr, out_flat, terminals, move_names, strata`; derived `mp0, op0, move_counts, out_counts, n_moves, pos_idx`; methods `moves_of(s)`, `outs_of(mid)`. `move_kind`: 0=ongoing 1=mate 2=stalemate 3=white-terminal. |
-| `Terminals` | `latentchess/chain.py` | `.mate, .draw, .bwin (or None), .indices` |
-| domain builders | `latentchess/domains/{krk,krkn,krrk}.py` | `build_chain()`, `compute_dtm(...)`, `describe_state(chain, s)`. KRk: `compute_dtm(W, B)` takes lists from `enumerate_states()`; KRkn/KRRk: `compute_dtm(chain)`. Chains carry `chain.W` (and `chain.W1`/`chain.W2`) piece-tuple lists. |
-| `TerminalScores` | `latentchess/scoring.py` | `.big()`, `.from_reach_quantiles(reach_live)`, `dtm_filled(dtm, n)`, `fill_terminal_state_scores(scores, chain, ts)`, `override_move_values(V, chain, ts)` |
-| readout | `latentchess/planner/readout.py` | `ReplyAgg.MEAN/MIN`, `move_values(state_scores, chain, agg, ts)`, `policy_from_values(V, chain)`, `greedy_policy(...)`, `backup(state_scores, chain, agg, ts, k)`. `state_scores` is ALWAYS length `chain.n` with terminal entries pre-filled via `fill_terminal_state_scores`. |
-| policies | `latentchess/planner/policy.py` | `Policy` protocol (`move_id(chain, s, rng) -> global mid`), `TablePolicy(local_moves)`, `RandomPolicy`, `EpsGreedy(base, eps)`, `DTMOraclePolicy(chain, dtm)` |
-| opponents | `latentchess/opponents.py` | `Opponent` protocol (`reply_index(chain, mid, rng)`), `optimal_reply_table(chain, dtm)` (THE B_opt), `RandomOpponent`, `EpsOptimalDTM(table, eps)`, `TableOpponent(table)` |
-| game/arena | `latentchess/game.py`, `latentchess/arena.py` | `play_game(chain, white, black, start, cap, rng) -> GameRecord(start, states, move_ids, result, final_kind)`; `rollout_transitions(...)`; `evaluate(...) -> ArenaResult` |
-| embedding | `latentchess/cone/embedding.py` | `QuasimetricEmbedding` protocol (`d`, `reach(idx, goal)`), `GoalSpec(name, region, z)`, `make_goal(name, region, emb)`, `reach(emb, goal, idx)`, `EMBEDDING_METHODS` registry + `@register_embedding(name)` |
-| tabular FB | `latentchess/cone/tabular.py` | `TabularFB.fit(P, gamma, d, n_oversample, seed)`, `sm_matvec`, `randomized_svd_sm`, `fb_from_svd`, `rank_error`; has `F_of/B_of/reach` |
-| neural FB | `latentchess/cone/neural.py` | `MLP(din, dh, dout, seed)` (`.forward/.backward/.adam`), `NeuralFB(d, dh, seed, tau, din=77)` (`.train_step(Xs, Xg, lr)`, `.embed_F/.embed_B`), `one_hot_state`, `absorbing_vec`, `EncodedNeuralFB.from_encoded(net, X_all)` |
-| trainer | `latentchess/train/curriculum.py` | `Round`, `CurriculumConfig`, `CurriculumTrainer`, `curriculum_starts` |
-| checkpoints | `latentchess/train/checkpoints.py` | `TrainerState`, `save_ckpt`, `load_ckpt`, `ckpt_exists` (npz-based) |
-| concepts | `latentchess/concepts.py` | `ConceptQuantizer` protocol, `KMeansVQ(n_tokens, iters, seed)`, `usage_perplexity(tokens, n_tokens)`, `QUANTIZERS` registry |
-| viz | `latentchess/viz/` | `projection.py` (`Projection2D`, `PCAProjection`, `TSNEProjection`, `Normalizer`, `stratified_fit_index`, `FittedMap`, `fit_map`, `PROJECTIONS`), `payload.py` (KRkn viewer builder + `json_default`), `build_html.py`, `plots.py` (`style`, `kde_layer`) |
-| paths | `latentchess/io/paths.py` | `data_dir()`, `derived_dir()`, `generated_dir()`, `lichess_dir()`, `shards_dir()`, `save_array(name, arr)`, `load_array(name)` |
-| util | `latentchess/util.py` | `auc(pos, neg)` (tie-aware, NaN on empty class), `ridge_r2(X, y, folds, lam, seed)` |
+| `TransitionChain` | `catspace/chain.py` | fields `n, n_live, move_ptr, move_kind, out_ptr, out_flat, terminals, move_names, strata`; derived `mp0, op0, move_counts, out_counts, n_moves, pos_idx`; methods `moves_of(s)`, `outs_of(mid)`. `move_kind`: 0=ongoing 1=mate 2=stalemate 3=white-terminal. |
+| `Terminals` | `catspace/chain.py` | `.mate, .draw, .bwin (or None), .indices` |
+| domain builders | `catspace/domains/{krk,krkn,krrk}.py` | `build_chain()`, `compute_dtm(...)`, `describe_state(chain, s)`. KRk: `compute_dtm(W, B)` takes lists from `enumerate_states()`; KRkn/KRRk: `compute_dtm(chain)`. Chains carry `chain.W` (and `chain.W1`/`chain.W2`) piece-tuple lists. |
+| `TerminalScores` | `catspace/scoring.py` | `.big()`, `.from_reach_quantiles(reach_live)`, `dtm_filled(dtm, n)`, `fill_terminal_state_scores(scores, chain, ts)`, `override_move_values(V, chain, ts)` |
+| readout | `catspace/planner/readout.py` | `ReplyAgg.MEAN/MIN`, `move_values(state_scores, chain, agg, ts)`, `policy_from_values(V, chain)`, `greedy_policy(...)`, `backup(state_scores, chain, agg, ts, k)`. `state_scores` is ALWAYS length `chain.n` with terminal entries pre-filled via `fill_terminal_state_scores`. |
+| policies | `catspace/planner/policy.py` | `Policy` protocol (`move_id(chain, s, rng) -> global mid`), `TablePolicy(local_moves)`, `RandomPolicy`, `EpsGreedy(base, eps)`, `DTMOraclePolicy(chain, dtm)` |
+| opponents | `catspace/opponents.py` | `Opponent` protocol (`reply_index(chain, mid, rng)`), `optimal_reply_table(chain, dtm)` (THE B_opt), `RandomOpponent`, `EpsOptimalDTM(table, eps)`, `TableOpponent(table)` |
+| game/arena | `catspace/game.py`, `catspace/arena.py` | `play_game(chain, white, black, start, cap, rng) -> GameRecord(start, states, move_ids, result, final_kind)`; `rollout_transitions(...)`; `evaluate(...) -> ArenaResult` |
+| embedding | `catspace/cone/embedding.py` | `QuasimetricEmbedding` protocol (`d`, `reach(idx, goal)`), `GoalSpec(name, region, z)`, `make_goal(name, region, emb)`, `reach(emb, goal, idx)`, `EMBEDDING_METHODS` registry + `@register_embedding(name)` |
+| tabular FB | `catspace/cone/tabular.py` | `TabularFB.fit(P, gamma, d, n_oversample, seed)`, `sm_matvec`, `randomized_svd_sm`, `fb_from_svd`, `rank_error`; has `F_of/B_of/reach` |
+| neural FB | `catspace/cone/neural.py` | `MLP(din, dh, dout, seed)` (`.forward/.backward/.adam`), `NeuralFB(d, dh, seed, tau, din=77)` (`.train_step(Xs, Xg, lr)`, `.embed_F/.embed_B`), `one_hot_state`, `absorbing_vec`, `EncodedNeuralFB.from_encoded(net, X_all)` |
+| trainer | `catspace/train/curriculum.py` | `Round`, `CurriculumConfig`, `CurriculumTrainer`, `curriculum_starts` |
+| checkpoints | `catspace/train/checkpoints.py` | `TrainerState`, `save_ckpt`, `load_ckpt`, `ckpt_exists` (npz-based) |
+| concepts | `catspace/concepts.py` | `ConceptQuantizer` protocol, `KMeansVQ(n_tokens, iters, seed)`, `usage_perplexity(tokens, n_tokens)`, `QUANTIZERS` registry |
+| viz | `catspace/viz/` | `projection.py` (`Projection2D`, `PCAProjection`, `TSNEProjection`, `Normalizer`, `stratified_fit_index`, `FittedMap`, `fit_map`, `PROJECTIONS`), `payload.py` (KRkn viewer builder + `json_default`), `build_html.py`, `plots.py` (`style`, `kde_layer`) |
+| paths | `catspace/io/paths.py` | `data_dir()`, `derived_dir()`, `generated_dir()`, `lichess_dir()`, `shards_dir()`, `save_array(name, arr)`, `load_array(name)` |
+| util | `catspace/util.py` | `auc(pos, neg)` (tie-aware, NaN on empty class), `ridge_r2(X, y, folds, lam, seed)` |
 
 ### 0.4 Legacy scripts still in `code/` (reference until ported in Phase 8)
 
@@ -96,14 +96,14 @@ already-ported trainers (`exp_policy_iteration.py`, `exp_krkn.py`,
 
 ## PHASE 5 — Plan memory + hierarchical-planning structures
 
-New files: `latentchess/planner/move_identity.py`,
-`latentchess/planner/plans.py`, `latentchess/planner/selector.py`,
+New files: `catspace/planner/move_identity.py`,
+`catspace/planner/plans.py`, `catspace/planner/selector.py`,
 `experiments/plan_memory_demo.py`, tests. One modification to
-`latentchess/planner/policy.py` (add `PlanningPolicy`).
+`catspace/planner/policy.py` (add `PlanningPolicy`).
 
 ### Task 5.1 — MoveIdentity protocol + syntactic baseline
 
-**Create `latentchess/planner/move_identity.py`:**
+**Create `catspace/planner/move_identity.py`:**
 
 ```python
 class MoveIdentity(Protocol):
@@ -137,7 +137,7 @@ raise for any valid `(s, mid)` with `chain.mp0[s] <= mid < chain.move_ptr[s+1]`.
 
 ### Task 5.2 — Plan data model (dataclasses, JSON round-trip)
 
-**Create `latentchess/planner/plans.py`** (this file grows over tasks
+**Create `catspace/planner/plans.py`** (this file grows over tasks
 5.2–5.6; add pieces in order).
 
 ```python
@@ -178,7 +178,7 @@ class Plan:
 
 Rules:
 - `to_json` must produce something `json.dumps(..., default=json_default)`
-  can serialize (`json_default` from `latentchess.viz.payload`).
+  can serialize (`json_default` from `catspace.viz.payload`).
 - `PlanNode` subgoal trees: add a minimal recursive structure now
   (decomposition itself is M1.5, but the tree type must exist):
 
@@ -201,7 +201,7 @@ class PlanNode:
 
 ### Task 5.3 — PlanMemory core (availability, propose, update)
 
-Extend `latentchess/planner/plans.py`:
+Extend `catspace/planner/plans.py`:
 
 ```python
 def calibrate_tau(reach_live: np.ndarray, won_mask: np.ndarray) -> float:
@@ -281,7 +281,7 @@ def rollout_reaches(chain, policy, start: int, target: np.ndarray,
     (a bool mask of length chain.n_live OR an int array of live-state
     indices — accept both, normalize to a bool mask). Entering the target
     counts at any visited state INCLUDING the start. Terminal endings
-    without touching target count as failure. Reuse latentchess.game.play_game."""
+    without touching target count as failure. Reuse catspace.game.play_game."""
 
 def hop_executable(chain, policy, start, target, black,
                    horizon=12, n_rollouts=20, p_min=0.5, rng=None) -> tuple[bool, float]:
@@ -374,7 +374,7 @@ with delta; load back; field equality).
 
 ### Task 5.7 — PlanSelector protocol + GreedyReach baseline
 
-**Create `latentchess/planner/selector.py`:**
+**Create `catspace/planner/selector.py`:**
 
 ```python
 class PlanSelector(Protocol):
@@ -397,7 +397,7 @@ PLAN_SELECTORS = {"greedy_reach": GreedyReach}
 
 ### Task 5.8 — PlanningPolicy + parity gate + demo
 
-**Modify `latentchess/planner/policy.py`** — add:
+**Modify `catspace/planner/policy.py`** — add:
 
 ```python
 class PlanningPolicy:
@@ -466,12 +466,12 @@ Then: `git push`.
 ## PHASE 6 — Data layer: toy sources, Lichess streaming, shards, eval backfill, neural port
 
 New deps already in pyproject: `python-chess` (import name `chess`),
-`zstandard`. New files under `latentchess/data/` (+ `__init__.py`).
+`zstandard`. New files under `catspace/data/` (+ `__init__.py`).
 
 ### Task 6.1 — PairSource protocol + ChainRolloutSource (toy)
 
-**Create `latentchess/data/__init__.py`** (empty) and
-**`latentchess/data/sources.py`:**
+**Create `catspace/data/__init__.py`** (empty) and
+**`catspace/data/sources.py`:**
 
 ```python
 @dataclass
@@ -523,7 +523,7 @@ class ChainRolloutSource:
 
 ### Task 6.2 — Board encoding (packed bitboards)
 
-**Create `latentchess/data/encode.py`** (this is 8×8, python-chess):
+**Create `catspace/data/encode.py`** (this is 8×8, python-chess):
 
 ```python
 PIECE_PLANES = [(chess.PAWN, chess.WHITE), (chess.KNIGHT, chess.WHITE),
@@ -562,7 +562,7 @@ def board_from_planes(planes: np.ndarray) -> chess.Board:
 
 ### Task 6.3 — Shard writer/reader
 
-**Create `latentchess/data/shards.py`:**
+**Create `catspace/data/shards.py`:**
 
 ```python
 def write_shards(pair_iter, out_dir: Path, shard_size: int = 250_000,
@@ -628,7 +628,7 @@ fixtures are code.) Add `!tests/fixtures/*.pgn.zst` to `.gitignore` if the
 
 ### Task 6.5 — Lichess streaming source
 
-**Create `latentchess/data/lichess.py`:**
+**Create `catspace/data/lichess.py`:**
 
 ```python
 def open_pgn_stream(path: Path) -> io.TextIOWrapper:
@@ -720,7 +720,7 @@ class LichessPairSource:
 
 ### Task 6.6 — Eval backfill (UCI Stockfish labeler, injectable engine)
 
-**Create `latentchess/data/eval_backfill.py`:**
+**Create `catspace/data/eval_backfill.py`:**
 
 ```python
 CP_SCALE = 400.0
@@ -776,7 +776,7 @@ class FakeEvaluator:
 
 ### Task 6.7 — NeuralFB eval head (auxiliary loss + frozen probe)
 
-**Modify `latentchess/cone/neural.py`:**
+**Modify `catspace/cone/neural.py`:**
 
 1. `NeuralFB.__init__` gains `eval_dh: int = 64`; construct
    `self.E = MLP(d, eval_dh, 1, seed + 2)` — input is the F-EMBEDDING
@@ -841,7 +841,7 @@ def fit_eval_probe(F: np.ndarray, targets: np.ndarray, lam: float = 1.0)
 
 ```
 args: --pgn PATH (required; a .pgn.zst), --out DIR (default
-      latentchess.io.paths.shards_dir()/<pgn stem>),
+      catspace.io.paths.shards_dir()/<pgn stem>),
       --min-elo/--max-elo/--min-base-seconds (GameFilter fields),
       --gamma (default 0.98), --max-games (default 5000),
       --max-gb (default 2.0; abort writing when total shard bytes exceed),
@@ -897,7 +897,7 @@ with n_games=4000, steps=2000 → holdout spearman > 0.2 (weak but nonzero).
 
 ### Task 7.1 — E-process (anytime-valid paired test)
 
-**Create `latentchess/abtest.py`:**
+**Create `catspace/abtest.py`:**
 
 ```python
 LAMBDA_GRID = (0.25, 0.5, 1.0, 1.5)
@@ -972,7 +972,7 @@ def paired_compare(chain, dtm, spec_a, spec_b, black_builder,
 
 ### Task 7.3 — Deflated-SVD ablation registered
 
-**Modify `latentchess/cone/tabular.py`:** add
+**Modify `catspace/cone/tabular.py`:** add
 
 ```python
 @classmethod
@@ -1031,7 +1031,7 @@ n-starts 150; asserts a valid decision string is produced (any value).
 General porting rules for 8.1–8.5: each new script goes in `experiments/`
 (viz ones in `experiments/viz/`), uses `io.paths` for ALL outputs
 (`derived_dir()` for arrays, `generated_dir()` for png/json/html), absolute
-latentchess imports, argparse with sane defaults, ≤ ~150 lines each. After
+catspace imports, argparse with sane defaults, ≤ ~150 lines each. After
 each port, run the script, confirm output exists and prints sane numbers,
 then `git rm` the corresponding legacy file(s) in the same commit.
 
@@ -1099,13 +1099,13 @@ Port `gen_ui_data.py` / `gen_ui_data_pi.py` / `gen_ui_data_vs_optimal.py`
 `--engine {random-data,pi} --opponent {random,optimal}` covering the three
 legacy variants (they differ only in field construction + opponent). Build
 payloads matching the krk_viewer template schema (READ
-`latentchess/viz/templates/krk_viewer.html` lines ~140-160 for the DATA
+`catspace/viz/templates/krk_viewer.html` lines ~140-160 for the DATA
 fields; the legacy generators are the schema reference), then `build_html`
 into `generated_dir()`. Reuse `concepts.KMeansVQ` for tokens and
 `krk.concept_features` for the concept bars. Delete the three legacy
 generators and `code/gen_krkn_viewer.py` (superseded in Phase 4), and
 `code/krkn_viewer_template.html` + `code/viewer_template.html` (now living
-in `latentchess/viz/templates/`).
+in `catspace/viz/templates/`).
 **Gate:** the generated `thought-viewer-*.html` opens (check: file contains
 `const DATA = {` and no `__DATA__`), and `test_viewer.py` (NEW small test)
 asserts one `played=True` per node's cands in a generated payload.
@@ -1130,8 +1130,8 @@ asserts one `played=True` per node's cands in a generated payload.
 ### Task 8.7 — Docs + final push
 - Rewrite `README.md` §5 (file map & how to run) for the new layout:
   install (`pip install -e ".[dev]"`), test commands, the pipeline:
-  `python -m latentchess.domains.krk` → `experiments/krk_rung1.py` →
-  `python -m latentchess.domains.krkn` → `experiments/train_krkn.py` →
+  `python -m catspace.domains.krk` → `experiments/krk_rung1.py` →
+  `python -m catspace.domains.krkn` → `experiments/train_krkn.py` →
   `experiments/krkn_search_sweep.py` → `experiments/viz/maps_krkn.py` →
   `experiments/viz/build_krkn_viewer.py --projection tsne`; plus the
   Lichess fixture demo command. Keep §§1-4, 6, 7 intact (history/results).

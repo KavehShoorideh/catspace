@@ -8,19 +8,19 @@ greedy MIN readout (single MATE goal, tau=-inf => must choose identical moves).
 import numpy as np
 import pytest
 
-from latentchess.chain import exact_P
-from latentchess.cone.embedding import GoalSpec, make_goal, reach
-from latentchess.cone.tabular import TabularFB
-from latentchess.domains import krk
-from latentchess.game import play_game
-from latentchess.opponents import RandomOpponent
-from latentchess.planner.move_identity import RegionPairIdentity, SyntacticIdentity
-from latentchess.planner.plans import (
+from catspace.chain import exact_P
+from catspace.cone.embedding import GoalSpec, make_goal, reach
+from catspace.cone.tabular import TabularFB
+from catspace.domains import krk
+from catspace.game import play_game
+from catspace.opponents import RandomOpponent
+from catspace.planner.move_identity import RegionPairIdentity, SyntacticIdentity
+from catspace.planner.plans import (
     BlockReason, Plan, PlanEvent, PlanMemory, PlanStatus, PlanStore, PlanStep, calibrate_tau,
 )
-from latentchess.planner.policy import PlanningPolicy, TablePolicy
-from latentchess.planner.readout import ReplyAgg, greedy_policy
-from latentchess.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.planner.policy import PlanningPolicy, TablePolicy
+from catspace.planner.readout import ReplyAgg, greedy_policy
+from catspace.scoring import TerminalScores, fill_terminal_state_scores
 
 
 class StubEmb:

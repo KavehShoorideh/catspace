@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-experiments/krk_rung1.py — Milestone 1 rung-1 run on the latentchess stack:
+experiments/krk_rung1.py — Milestone 1 rung-1 run on the catspace stack:
 rank probe on exact dynamics, a random-play learning curve, the spectral
 concept audit, VQ plan tokens, and the cone-steering engine evaluation.
 Port of code/experiment.py -- see artifacts/RESULTS-v3.md for the original
@@ -21,15 +21,15 @@ import time
 import numpy as np
 import scipy.stats as st
 
-from latentchess.chain import exact_P, empirical_P
-from latentchess.concepts import KMeansVQ, usage_perplexity
-from latentchess.cone.tabular import fb_from_svd, randomized_svd_sm, rank_error, sm_matvec
-from latentchess.domains import krk
-from latentchess.game import rollout_transitions
-from latentchess.opponents import RandomOpponent
-from latentchess.planner.policy import RandomPolicy, TablePolicy
-from latentchess.planner.readout import ReplyAgg, greedy_policy
-from latentchess.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.chain import exact_P, empirical_P
+from catspace.concepts import KMeansVQ, usage_perplexity
+from catspace.cone.tabular import fb_from_svd, randomized_svd_sm, rank_error, sm_matvec
+from catspace.domains import krk
+from catspace.game import rollout_transitions
+from catspace.opponents import RandomOpponent
+from catspace.planner.policy import RandomPolicy, TablePolicy
+from catspace.planner.readout import ReplyAgg, greedy_policy
+from catspace.scoring import TerminalScores, fill_terminal_state_scores
 
 GAMMA = 0.92
 
