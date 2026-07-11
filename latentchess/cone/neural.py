@@ -1,10 +1,16 @@
 """
-cone/neural.py — neural Forward-Backward embedding (numpy MLP, manual
-backprop/Adam) trained by InfoNCE on geometric-horizon future pairs, the
+cone/neural.py — neural Forward-Backward embedding for the TOY domains:
+F-net/B-net MLPs trained by InfoNCE on geometric-horizon future pairs, the
 contrastive estimate of the discounted successor measure (the cone).
 Registered as the "fb_neural" quasimetric-construction method.
 
-F-net/B-net: one-hot board encoding -> 256 -> 256 -> d.
+Internals are PyTorch (import name `torch`; lazy-imported so the numpy-only
+core stays importable without it -- construct a NeuralFB and you need
+`pip install -e .[nn]`). The original hand-rolled numpy MLP with manual
+backprop/Adam lives in git history; project rule: import the framework,
+don't reimplement it. The full-board stack is latentchess/nn/ (TorchFB).
+
+F-net/B-net: one-hot board encoding -> dh -> dh -> d.
 """
 from __future__ import annotations
 
@@ -29,70 +35,50 @@ def absorbing_vec(kind: int, nsq: int = 25) -> np.ndarray:  # kind: 0=MATE, 1=DR
     return v
 
 
-class MLP:
-    def __init__(self, din: int, dh: int, dout: int, seed: int):
-        r = np.random.default_rng(seed)
-        s1, s2, s3 = (2 / din) ** .5, (2 / dh) ** .5, (2 / dh) ** .5
-        self.p = dict(
-            W1=r.standard_normal((din, dh)).astype(np.float32) * s1, b1=np.zeros(dh, np.float32),
-            W2=r.standard_normal((dh, dh)).astype(np.float32) * s2, b2=np.zeros(dh, np.float32),
-            W3=r.standard_normal((dh, dout)).astype(np.float32) * s3, b3=np.zeros(dout, np.float32))
-        self.m = {k: np.zeros_like(v) for k, v in self.p.items()}
-        self.v = {k: np.zeros_like(v) for k, v in self.p.items()}
-        self.t = 0
-
-    def forward(self, X):
-        p = self.p
-        z1 = X @ p['W1'] + p['b1']; a1 = np.maximum(z1, 0)
-        z2 = a1 @ p['W2'] + p['b2']; a2 = np.maximum(z2, 0)
-        out = a2 @ p['W3'] + p['b3']
-        self.cache = (X, z1, a1, z2, a2)
-        return out
-
-    def backward(self, dout):
-        X, z1, a1, z2, a2 = self.cache
-        p, g = self.p, {}
-        g['W3'] = a2.T @ dout; g['b3'] = dout.sum(0)
-        da2 = dout @ p['W3'].T; dz2 = da2 * (z2 > 0)
-        g['W2'] = a1.T @ dz2; g['b2'] = dz2.sum(0)
-        da1 = dz2 @ p['W2'].T; dz1 = da1 * (z1 > 0)
-        g['W1'] = X.T @ dz1; g['b1'] = dz1.sum(0)
-        return g
-
-    def adam(self, g, lr=1e-3, b1=0.9, b2=0.999, eps=1e-8):
-        self.t += 1
-        for k in self.p:
-            self.m[k] = b1 * self.m[k] + (1 - b1) * g[k]
-            self.v[k] = b2 * self.v[k] + (1 - b2) * g[k] ** 2
-            mh = self.m[k] / (1 - b1 ** self.t); vh = self.v[k] / (1 - b2 ** self.t)
-            self.p[k] -= lr * mh / (np.sqrt(vh) + eps)
-
-
 class NeuralFB:
+    """Same public API as the pre-PyTorch version: train_step(Xs, Xg, lr) ->
+    float loss (InfoNCE, in-batch negatives, logits = F @ B.T / tau);
+    embed_F/embed_B take and return numpy."""
+
     def __init__(self, d: int = 32, dh: int = 256, seed: int = 0, tau: float = 0.1, din: int = 77):
-        self.F = MLP(din, dh, d, seed)
-        self.B = MLP(din, dh, d, seed + 1)
+        import torch
+        from torch import nn
+        self._torch = torch
+        torch.manual_seed(seed)          # sequential construction: F then B draw distinct inits
+        def mlp():
+            return nn.Sequential(nn.Linear(din, dh), nn.ReLU(),
+                                 nn.Linear(dh, dh), nn.ReLU(),
+                                 nn.Linear(dh, d))
+        self.F = mlp()
+        self.B = mlp()
+        self.opt = torch.optim.Adam([*self.F.parameters(), *self.B.parameters()])
         self.tau = tau
         self.d = d
 
-    def train_step(self, Xs, Xg, lr):
+    def train_step(self, Xs: np.ndarray, Xg: np.ndarray, lr: float) -> float:
         """InfoNCE with in-batch negatives: rows = anchors F(s), cols = B(g)."""
-        f = self.F.forward(Xs)                       # (n, d)
-        b = self.B.forward(Xg)                       # (n, d)
-        logits = (f @ b.T) / self.tau                # (n, n)
-        logits -= logits.max(1, keepdims=True)
-        e = np.exp(logits); probs = e / e.sum(1, keepdims=True)
-        n = len(Xs)
-        loss = -np.log(probs[np.arange(n), np.arange(n)] + 1e-12).mean()
-        dlog = (probs - np.eye(n, dtype=np.float32)) / n / self.tau
-        df = dlog @ b                                # (n, d)
-        db = dlog.T @ f
-        self.F.adam(self.F.backward(df), lr)
-        self.B.adam(self.B.backward(db), lr)
-        return loss
+        torch = self._torch
+        for group in self.opt.param_groups:
+            group["lr"] = lr
+        f = self.F(torch.from_numpy(np.asarray(Xs, dtype=np.float32)))
+        b = self.B(torch.from_numpy(np.asarray(Xg, dtype=np.float32)))
+        logits = (f @ b.T) / self.tau
+        loss = torch.nn.functional.cross_entropy(logits, torch.arange(len(logits)))
+        self.opt.zero_grad()
+        loss.backward()
+        self.opt.step()
+        return float(loss)
 
-    def embed_F(self, X): return self.F.forward(X)
-    def embed_B(self, X): return self.B.forward(X)
+    def _apply(self, net, X: np.ndarray) -> np.ndarray:
+        torch = self._torch
+        with torch.no_grad():
+            return net(torch.from_numpy(np.asarray(X, dtype=np.float32))).numpy()
+
+    def embed_F(self, X: np.ndarray) -> np.ndarray:
+        return self._apply(self.F, X)
+
+    def embed_B(self, X: np.ndarray) -> np.ndarray:
+        return self._apply(self.B, X)
 
 
 @register_embedding("fb_neural")
