@@ -67,40 +67,67 @@ model never saw. Everything below runs on one CPU in minutes.
 
 ## 5. File map & how to run
 
-Core (in `code/`):
-- `domain.py` — 5×5 KRk: movegen, terminals, retrograde DTM, concept features
-- `krrk.py` / `krkn.py` — KRRk and KRkn union chains (flattened int32 transition
-  structure, stratified DTM). Run each directly to build + validate; they save
-  `dtm_*.npy` used by everything downstream
-- `learn.py` — chain sampling, empirical successor measure, randomized-SVD FB,
-  rank probes, reach scores
-- `neural.py` + `exp_generalization.py` — numpy MLP FB (InfoNCE) with strict
-  state-holdout protocol (the generalization result)
-- `exp_policy_iteration.py` (KRk), `exp_krkn2.py` (KRkn; vectorized reduceat
-  policy extraction; checkpointed/resumable) — curriculum training
-- `exp_search.py` — minimax-backup depth sweep + goal ablation
-- `experiment.py`, `diagnostics.py`, `sklearn_free.py` — rung-1 main run + probes
-- Visualization: `atlas.py` (PCA-era), `region_map.py`, `tsne_maps.py`,
-  `tsne_cones.py` (openTSNE; caches to `tsne_cache.pkl`), `krkn_map.py`,
-  `krrk_atlas.py`, `gen_krkn_viewer.py` + `krkn_viewer_template.html` (the linked
-  interactive viewer), `gen_ui_data*.py` + `viewer_template.html` (rung-1 viewers)
+As of the layered refactor, the research code lives in the installable
+`latentchess/` package (clean interfaces: chain/scoring/readout/opponents/
+game/arena/cone/concepts/planner/data/viz), with runnable drivers in
+`experiments/`. See `ARCHITECTURE.md` for the layer diagram and the
+project's invariants; this section is just the how-to-run.
+
+Package (`latentchess/`):
+- `board.py` — 5×5 geometry; `domains/{krk,krkn,krrk}.py` — movegen, terminals,
+  retrograde DTM, `build_chain()`/`compute_dtm()`
+- `chain.py` — the one `TransitionChain` (CSR) representation every domain
+  builds; `exact_P`/`empirical_P`
+- `scoring.py` — `TerminalScores`, the single tested source of terminal-outcome
+  conventions (README lesson 5, now a regression test, not a recurring bug)
+- `cone/{tabular,neural}.py` + `cone/embedding.py` — `QuasimetricEmbedding`
+  protocol (`TabularFB` via randomized SVD, `NeuralFB` via InfoNCE), `GoalSpec`,
+  pluggable by name through `EMBEDDING_METHODS`
+- `planner/{readout,policy,plans,selector,move_identity}.py` — MEAN/MIN
+  aggregation + k-ply backup (lesson 3/4), `Policy` implementations, plan
+  memory (`PlanMemory`/`PlanStore`: block reasons + event/drift wake triggers),
+  `PlanSelector`/`MoveIdentity` protocols
+- `opponents.py`, `game.py`, `arena.py` — `Opponent` protocol (`optimal_reply_table`
+  is THE vectorized B_opt), `play_game`/`rollout_transitions`, `evaluate()`
+- `train/{curriculum,checkpoints}.py` — `CurriculumTrainer` (replaces the ~6
+  near-identical PI-round copies), counts-based bounded checkpoints
+- `concepts.py` — `ConceptQuantizer` protocol, `KMeansVQ` (K exposed as a
+  hyperparameter, replaces 7 copies)
+- `data/{sources,shards,lichess,encode}.py` — `PairSource` protocol
+  (`ChainRolloutSource` for toy rollouts); a WORKING streaming Lichess pipeline
+  (zstandard, header-level prefilter, packed-bitboard shards)
+- `viz/{projection,payload,build_html,plots}.py` — `Projection2D` protocol
+  (`PCAProjection`/`TSNEProjection`[/`UMAPProjection`]), `FittedMap` (replaces
+  `tsne_cache.pkl`), the viewer JSON payload builders, and the HTML injection
+  step that was previously a manual/uncommitted step
+- `abtest.py` — paired matched-seed comparisons with anytime-valid e-value
+  tests (`EValueTest`, `compare()`), for comparing methods with statistical rigor
+
+Drivers (`experiments/`): `krk_rung1.py` (rank probe / learning curve / concept
+audit / VQ tokens / engine eval), `diagnostics.py` (post-hoc D1–D3), `train_{krk_pi,
+krkn,krrk}.py` (curriculum training), `krkn_search_sweep.py` (minimax-depth sweep
++ goal ablation), `generalization.py` (neural-FB holdout result), `plan_memory_demo.py`,
+`compare_methods.py`, `build_lichess_shards.py`, `viz/build_krk_viewer.py`,
+`viz/build_krkn_viewer.py`, `viz/static_maps.py`, `repro_check.py`.
 
 Artifacts (in `artifacts/`): RESULTS-v3.md (the full findings document, v3.0–v3.3
-addenda), roadmap-v2.md, all PNGs, and the self-contained HTML viewers (open in a
-browser; `krkn-linked-viewer.html` is the main one: linked map+board, split
-white/black edges, opponent diamonds selectable, tap-an-edge, alt fans, cones).
+addenda), roadmap-v2.md, and the historical PNGs/HTML viewers from the toy-phase
+push (kept as the record; regenerated output goes to `artifacts/generated/`,
+gitignored). `krkn-linked-viewer.html` is the main interactive viewer: linked
+map+board, split white/black edges, opponent diamonds selectable, tap-an-edge,
+alt fans, cones.
 
 Reproduce from scratch (one CPU, ~30 min total):
 ```
-pip install -r requirements.txt
-cd code
-python domain.py            # sanity: 7040 states, DTM max 19
-python experiment.py        # rung 1 end-to-end (~5 min)
-python krkn.py              # build KRkn + DTM (~2 min)
-python exp_krkn2.py         # curriculum training (resumable; ~7 min)
-python exp_search.py        # search sweep + goal ablation
-python tsne_maps.py         # t-SNE maps (openTSNE; ~2 min)
-python gen_krkn_viewer.py   # interactive viewer data
+pip install -e .                       # or: pip install -r requirements.txt
+python -m latentchess.domains.krk      # sanity: 7040 states, DTM max 19
+python experiments/krk_rung1.py        # rung 1 end-to-end (~15s)
+python experiments/train_krkn.py       # curriculum training (resumable; ~7 min)
+python experiments/krkn_search_sweep.py  # search sweep + goal ablation
+python experiments/viz/static_maps.py --which krkn --projection tsne
+python experiments/viz/build_krkn_viewer.py
+python experiments/repro_check.py      # diff against tests/baselines/expected.json
+pytest                                 # fast suite; `pytest -m slow` for the rest
 ```
 
 ## 6. Next phase: REAL DATA (the recommendation, and why)
