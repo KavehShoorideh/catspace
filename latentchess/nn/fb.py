@@ -4,9 +4,14 @@ BoardEncoders (F-side, B-side) + MLP heads; F is conditioned on omega
 (white/black Elo bins + clock bucket -- README lesson 1: the cone is
 opponent-conditioned), B is board-only (goals are positions, not regimes).
 
-The InfoNCE loss mirrors cone/neural.py EXACTLY (logits = F @ B.T / tau,
-one-directional cross-entropy over in-batch negatives, no normalization) --
-the toy-validated recipe, scaled.
+The InfoNCE loss follows cone/neural.py (logits = F @ B.T / tau,
+one-directional cross-entropy over in-batch negatives) with ONE deliberate
+deviation: embeddings are L2-NORMALIZED (cosine InfoNCE). The toy recipe's
+unnormalized dot was only safe because one-hot toy encodings have constant
+input norm; real boards lose material over a game, activation norms shrink
+with ply, and unnormalized F.B inherits that decline -- measured as a -0.92
+spearman(ply, reach-to-anything) on won AND lost games alike before
+normalization (2026-07-11 diagnostic).
 
 Real boards have no state indices, so TorchFB does NOT implement the chain
 QuasimetricEmbedding protocol; the seam here is embed_F / embed_B / reach_z
@@ -46,10 +51,10 @@ class TorchFB(nn.Module):
         h = self.encF(planes)
         o = torch.cat([self.emb_we(omega[:, 0]), self.emb_be(omega[:, 1]),
                        self.emb_clk(omega[:, 2])], dim=1)
-        return self.headF(torch.cat([h, o], dim=1))
+        return nn.functional.normalize(self.headF(torch.cat([h, o], dim=1)), dim=1)
 
     def embed_B(self, planes: torch.Tensor) -> torch.Tensor:
-        return self.headB(self.encB(planes))
+        return nn.functional.normalize(self.headB(self.encB(planes)), dim=1)
 
     def loss_fn(self, planes_s: torch.Tensor, omega_s: torch.Tensor,
                 planes_g: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:

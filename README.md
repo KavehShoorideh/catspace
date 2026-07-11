@@ -1,4 +1,7 @@
-# Latent Chess Planner — Toy-Domain Milestone Package
+# catspace — a latent chess planner
+
+(package `latentchess`; formerly "latent-chess-planner-toys" — the toy-domain
+milestone grew into the real-data phase, so the name did too)
 
 Planning as a trajectory of the **cone** (discounted successor measure) in a learned
 embedding, with self-discovered concepts — validated on exact small domains before

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>catspace — full-board cone viewer</title>
+<style>
+  body { background:#14161a; color:#cfd3da; font:13px/1.4 -apple-system, "Segoe UI", sans-serif; margin:14px; }
+  h1 { font-size:15px; margin:0 0 8px; color:#e8eaee; }
+  #games button { background:#22252c; color:#cfd3da; border:1px solid #3a3f49; border-radius:4px;
+                  margin:0 4px 4px 0; padding:3px 8px; cursor:pointer; }
+  #games button.active { background:#3d5afe22; border-color:#7aa2ff; color:#fff; }
+  #main { display:flex; gap:14px; flex-wrap:wrap; }
+  #mapwrap, #boardwrap { background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:8px; }
+  #map { width:520px; height:520px; }
+  #board { width:400px; }
+  #board svg { width:400px; height:400px; }
+  #curves { width:940px; height:150px; background:#1b1e24; border:1px solid #2a2e36; border-radius:6px;
+            margin-top:10px; padding:8px; }
+  #ctrl { margin:8px 0; }
+  #ctrl input[type=range] { width:520px; vertical-align:middle; }
+  .lg { font-size:11px; color:#8a90a0; }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin:0 3px 0 10px; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div id="games"></div>
+<div id="ctrl">
+  <button id="prev">&#8592;</button>
+  <input type="range" id="slider" min="0" max="0" value="0">
+  <button id="next">&#8594;</button>
+  <span id="plyinfo" class="lg"></span>
+  <span class="lg"><span class="swatch" style="background:#7aa2ff"></span>reach (W&minus;B mate direction)
+  <span class="swatch" style="background:#66d9a6"></span>E_desc
+  <span class="swatch" style="background:#ffb86b"></span>E_norm</span>
+</div>
+<div id="main">
+  <div id="mapwrap"><svg id="map" viewBox="0 0 520 520"></svg></div>
+  <div id="boardwrap"><div id="board"></div></div>
+</div>
+<svg id="curves" viewBox="0 0 940 150"></svg>
+
+<script>
+const DATA = /*__DATA__*/;
+
+let gi = 0, pi = 0;
+const mapEl = document.getElementById("map");
+const NS = "http://www.w3.org/2000/svg";
+
+function extent(pts) {
+  let xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const pad = 0.05;
+  let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const dx = (x1 - x0) || 1, dy = (y1 - y0) || 1;
+  return {x0: x0 - pad*dx, x1: x1 + pad*dx, y0: y0 - pad*dy, y1: y1 + pad*dy};
+}
+const EXT = extent(DATA.map.bg.concat(...DATA.games.map(g => g.plies.map(p => p.xy))));
+function sx(x) { return 520 * (x - EXT.x0) / (EXT.x1 - EXT.x0); }
+function sy(y) { return 520 * (1 - (y - EXT.y0) / (EXT.y1 - EXT.y0)); }
+
+function reachColor(v) {   // blue (losing) -> gray -> red (winning), v normalized [0,1]
+  const t = Math.max(0, Math.min(1, v));
+  const r = Math.round(70 + 160 * t), b = Math.round(230 - 160 * t);
+  return `rgb(${r},90,${b})`;
+}
+const RS = DATA.map.reach, RMIN = Math.min(...RS), RMAX = Math.max(...RS);
+function rnorm(v) { return (v - RMIN) / ((RMAX - RMIN) || 1); }
+
+function el(tag, attrs) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function drawMapBase() {
+  mapEl.innerHTML = "";
+  DATA.map.bg.forEach((p, i) => {
+    mapEl.appendChild(el("circle", {cx: sx(p[0]), cy: sy(p[1]), r: 1.6,
+      fill: reachColor(rnorm(DATA.map.reach[i])), opacity: 0.28}));
+  });
+  const g = DATA.games[gi];
+  const path = g.plies.map((p, i) => (i ? "L" : "M") + sx(p.xy[0]) + " " + sy(p.xy[1])).join(" ");
+  mapEl.appendChild(el("path", {d: path, fill: "none", stroke: "#dfe3ea", "stroke-width": 1.2, opacity: 0.85}));
+  g.plies.forEach((p, i) => {
+    mapEl.appendChild(el("circle", {cx: sx(p.xy[0]), cy: sy(p.xy[1]), r: 2.4,
+      fill: reachColor(rnorm(p.reach)), stroke: "#0008", "stroke-width": 0.4, "data-i": i}));
+  });
+  cursor = el("circle", {cx: 0, cy: 0, r: 6, fill: "none", stroke: "#fff", "stroke-width": 1.6});
+  mapEl.appendChild(cursor);
+  mapEl.onclick = ev => {
+    const pt = mapEl.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
+    const q = pt.matrixTransform(mapEl.getScreenCTM().inverse());
+    let best = 0, bd = 1e18;
+    g.plies.forEach((p, i) => {
+      const d = (sx(p.xy[0]) - q.x) ** 2 + (sy(p.xy[1]) - q.y) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    });
+    setPly(best);
+  };
+}
+let cursor = null;
+
+function drawCurves() {
+  const cv = document.getElementById("curves");
+  cv.innerHTML = "";
+  const g = DATA.games[gi], n = g.plies.length;
+  const X = i => 20 + 900 * i / Math.max(1, n - 1);
+  function series(key, color, lo, hi) {
+    const vals = g.plies.map(p => p[key]);
+    if (vals.some(v => v === null || v === undefined)) return;
+    const Y = v => 140 - 130 * (v - lo) / ((hi - lo) || 1);
+    cv.appendChild(el("path", {d: vals.map((v, i) => (i ? "L" : "M") + X(i) + " " + Y(v)).join(" "),
+      fill: "none", stroke: color, "stroke-width": 1.3}));
+  }
+  const rv = g.plies.map(p => p.reach);
+  series("reach", "#7aa2ff", Math.min(...rv), Math.max(...rv));
+  series("e_desc", "#66d9a6", 0, 1);
+  series("e_norm", "#ffb86b", 0, 1);
+  curveCursor = el("line", {x1: 20, x2: 20, y1: 8, y2: 142, stroke: "#fff", "stroke-width": 1, opacity: 0.7});
+  cv.appendChild(curveCursor);
+  cv.onclick = ev => {
+    const r = cv.getBoundingClientRect();
+    const frac = (ev.clientX - r.left - 20 * r.width / 940) / (900 * r.width / 940);
+    setPly(Math.round(frac * (n - 1)));
+  };
+}
+let curveCursor = null;
+
+function setGame(i) {
+  gi = i; pi = 0;
+  document.querySelectorAll("#games button").forEach((b, j) => b.classList.toggle("active", j === i));
+  const g = DATA.games[gi];
+  document.getElementById("slider").max = g.plies.length - 1;
+  drawMapBase(); drawCurves(); setPly(0);
+}
+
+function setPly(i) {
+  const g = DATA.games[gi];
+  pi = Math.max(0, Math.min(g.plies.length - 1, i));
+  const p = g.plies[pi];
+  document.getElementById("board").innerHTML = p.svg;
+  document.getElementById("slider").value = pi;
+  cursor.setAttribute("cx", sx(p.xy[0])); cursor.setAttribute("cy", sy(p.xy[1]));
+  const x = 20 + 900 * pi / Math.max(1, g.plies.length - 1);
+  curveCursor.setAttribute("x1", x); curveCursor.setAttribute("x2", x);
+  const parts = [`ply ${p.ply}`, p.san ? `move ${p.san}` : "", `reach ${p.reach.toFixed(3)}`];
+  if (p.e_desc !== null && p.e_desc !== undefined) parts.push(`E_desc ${p.e_desc.toFixed(2)}`);
+  if (p.e_norm !== null && p.e_norm !== undefined) parts.push(`E_norm ${p.e_norm.toFixed(2)}`);
+  document.getElementById("plyinfo").textContent = parts.filter(Boolean).join("  ·  ");
+}
+
+document.getElementById("title").textContent = DATA.meta.title;
+DATA.games.forEach((g, i) => {
+  const b = document.createElement("button");
+  b.textContent = `${g.name} (${g.result})`;
+  b.onclick = () => setGame(i);
+  document.getElementById("games").appendChild(b);
+});
+document.getElementById("slider").oninput = ev => setPly(+ev.target.value);
+document.getElementById("prev").onclick = () => setPly(pi - 1);
+document.getElementById("next").onclick = () => setPly(pi + 1);
+document.onkeydown = ev => {
+  if (ev.key === "ArrowLeft") setPly(pi - 1);
+  if (ev.key === "ArrowRight") setPly(pi + 1);
+};
+setGame(0);
+</script>
+</body>
+</html>

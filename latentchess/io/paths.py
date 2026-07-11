@@ -42,6 +42,15 @@ def shards_dir() -> Path:
     return p
 
 
+def newest_shard_dir() -> Path:
+    """Most recently modified shard directory under data/shards -- the default
+    dataset for training/eval drivers."""
+    dirs = [p for p in shards_dir().iterdir() if p.is_dir() and list(p.glob("shard_*.npz"))]
+    if not dirs:
+        raise SystemExit("no shard dirs under data/shards -- run experiments/build_lichess_shards.py first")
+    return max(dirs, key=lambda p: p.stat().st_mtime)
+
+
 def save_array(name: str, arr, sub: str = "derived") -> Path:
     import numpy as np
     base = derived_dir() if sub == "derived" else data_dir() / sub
