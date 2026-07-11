@@ -176,3 +176,50 @@ unknown post-fix; chance 0.002); DESC_AUC meaningfully above 0.58 with F > B
 emerging if the forward/omega story is right; DIFF_SLOPE won-lost separation
 widening past 0.16; decompose give-up rules starting to fire as the field
 sharpens (a sharper field should stop rating everything reachable).
+
+---
+
+## 2026-07-11 — 30k-step field: before/after (the budget hypothesis was right)
+
+Pipeline timings: train 46m35s (5.8 it/s MPS, resumed 2000->30000), heads
+3m41s / 3m45s / 6m52s (F/B/FB), decompose_demo 12s. Logs+times in
+artifacts/generated/logs/.
+
+    VERDICT VAL_TOP1=0.033 VAL_TOP8=0.179 (chance 0.0020)
+    VERDICT REACH_SLOPE_WON=0.671 (n=200) REACH_SLOPE_LOST=0.587 (n=200)
+    VERDICT DIFF_SLOPE_WON=0.174 DIFF_SLOPE_LOST=-0.080
+
+| metric | step 2000 | step 30000 |
+|---|---|---|
+| DESC_AUC   F / B / FB | 0.565 / 0.570 / 0.579 | 0.625 / 0.596 / 0.636 |
+| NORM_SPEAR F / B / FB | 0.236 / 0.254 / 0.248 | 0.482 / 0.376 / 0.516 |
+| zero-label BASE (AUC / spear) | 0.545 / 0.184 | 0.598 / 0.369 |
+| DIFF_SLOPE won / lost | -0.201 / -0.365 | +0.174 / -0.080 |
+| decompose FRAC_IMPROVED / MEAN_GAIN | 0.730 / 0.287 | 0.825 / 0.430 |
+
+Against the pre-registered expectations:
+1. **F > B emerged** (AUC 0.625 vs 0.596; spearman 0.482 vs 0.376) — the
+   ordering FLIPPED from step 2000. Outcome signal now lives in the
+   forward/omega structure, not static board features. The F-only eval-head
+   design is vindicated at this budget.
+2. **DIFF_SLOPE separated with correct signs**: winners' outcome-direction
+   reach rises (+0.174), losers' falls (-0.080); separation 0.254 vs 0.16
+   and both-negative before. The stm-artifact worry is downgraded (a shared
+   artifact wouldn't sign-split with more training).
+3. **The zero-label readout (0.598 AUC) now beats step-2000's TRAINED probes**
+   — the FB geometry itself is absorbing eval, exactly what the FB
+   factorization promises. FB > F persists (+0.011 AUC, +0.034 spear): B
+   still holds some complementary value info; worth re-checking at 100k.
+4. **Give-up rules still never fire** in decompose (FRAC_IMPROVED up to
+   0.825, MEAN_GAIN 0.43, one waypoint always suffices). Expectation 4 was
+   WRONG, or the thresholds are what's generous: tau_exec (near-win median)
+   dropped to 0.236 while best min-legs sit ~0.6+. The field did not stop
+   rating everything reachable — reach>=tau executability saturates. This is
+   now the clearest argument that the MC-ROLLOUT leaf verifier is the next
+   necessary layer, not a nice-to-have: estimated feasibility has stopped
+   being informative at the margin.
+
+VAL_TOP1 0.033 = 16.9x chance (top8 11.4x chance/8). Loss still descending
+at 30k — the curve says more budget helps; 100k+ is cheap (~2.6h) and the
+suite is push-button. But the marginal information per hour now favors
+building the rollout verifier first.
