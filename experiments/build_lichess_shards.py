@@ -8,6 +8,14 @@ Get monthly dumps from https://database.lichess.org/ (lichess_db_standard_
 rated_YYYY-MM.pgn.zst, ~28-33 GB compressed per 2024-2026 month -- this
 script streams it directly, never decompressing to disk).
 
+Laptop shortcut: you don't need the whole month. A range-downloaded PREFIX of
+the .zst streams fine with --tolerate-truncation (zstd decodes a partial
+frame up to the cut):
+    curl -L -r 0-268435455 -o data/lichess/2019-01.prefix256mb.pgn.zst \\
+        https://database.lichess.org/standard/lichess_db_standard_rated_2019-01.pgn.zst
+    python experiments/build_lichess_shards.py \\
+        --pgn data/lichess/2019-01.prefix256mb.pgn.zst --tolerate-truncation
+
 Try it on the committed fixture first:
     python experiments/build_lichess_shards.py \\
         --pgn tests/fixtures/lichess_mini.pgn.zst --max-games 100 --max-gb 0.1
@@ -36,6 +44,10 @@ def main():
     ap.add_argument("--shard-positions", type=int, default=1_000_000)
     ap.add_argument("--max-games", type=int, default=50_000)
     ap.add_argument("--max-gb", type=float, default=2.0)
+    ap.add_argument("--no-include-final", action="store_true",
+                    help="don't store each game's final position (the checkmate/goal states)")
+    ap.add_argument("--tolerate-truncation", action="store_true",
+                    help="treat a truncated .zst (partial/range download) as end of input")
     args = ap.parse_args()
 
     pgn_path = Path(args.pgn)
@@ -48,10 +60,13 @@ def main():
     )
     manifest = build_shards(pgn_path, gf, out_dir,
                              shard_positions=args.shard_positions,
-                             max_games=args.max_games, max_gb=args.max_gb)
+                             max_games=args.max_games, max_gb=args.max_gb,
+                             include_final=not args.no_include_final,
+                             tolerate_truncation=args.tolerate_truncation)
 
     print(f"scanned {manifest['games_scanned']} header-passing games, "
-          f"kept {manifest['games_kept']} contributing {manifest['positions']} positions "
+          f"kept {manifest['games_kept']} ({manifest['games_with_eval']} with server evals) "
+          f"contributing {manifest['positions']} positions "
           f"across {len(manifest['shards'])} shard(s) -> {out_dir}")
 
 
