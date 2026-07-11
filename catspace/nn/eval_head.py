@@ -15,6 +15,11 @@ lose games the eval says are fine (or vice versa).
 
 Frozen-probe by default: F is detached; joint fine-tuning is a research knob
 (--joint in the driver), deliberately off until the probe results are read.
+
+F-only is the headline; the driver's --repr {F,B,FB} trains the same probes
+on B or F++B as CONTROLS (B ~ F on results => outcome info is static board
+features; FB > F => F loses value info B keeps), and reports the zero-label
+F@(zMATE_W - zMATE_B) readout as the no-training floor.
 """
 from __future__ import annotations
 

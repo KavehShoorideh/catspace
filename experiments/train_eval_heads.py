@@ -11,8 +11,18 @@ Verdicts:
   DESC_ACC3    3-class holdout accuracy (majority baseline printed alongside)
   NORM_SPEAR   spearman(normative head, winprob(lichess eval)) on held-out
                ANNOTATED positions
+  BASE_AUC/BASE_SPEAR  the ZERO-LABEL readout F(s)@(zMATE_W - zMATE_B) from
+               the checkpoint's stored zgoals, scored on the same holdout --
+               if this matches the trained probes, the FB geometry already
+               carries the eval and the labels add little
   divergence   top FENs where descriptive and normative disagree most, and
                mean |divergence| per white-Elo bin
+
+--repr ablation (headline is F; B and FB are controls, see nn/eval_head.py):
+  F   omega-conditioned forward embedding (the hypothesis under test)
+  B   board-only goal embedding -- Elo-blind; if it matches F on DESC_AUC,
+      outcome info is static board features, not forward structure
+  FB  concat -- if it beats F, F is losing value-relevant info that B keeps
 """
 from __future__ import annotations
 
@@ -37,16 +47,24 @@ def shard_arrays(shard_dir: Path):
         yield {k: npz[k] for k in npz.files}     # bind once
 
 
+def embed_repr(fb, planes, om, repr_: str) -> torch.Tensor:
+    if repr_ == "F":
+        return fb.embed_F(planes, om)
+    if repr_ == "B":
+        return fb.embed_B(planes)
+    return torch.cat([fb.embed_F(planes, om), fb.embed_B(planes)], dim=1)
+
+
 @torch.no_grad()
-def embed_all(fb, data, rows, device, batch=2048):
-    """F embeddings for the given rows of one shard, batched."""
+def embed_all(fb, data, rows, device, repr_="F", batch=2048):
+    """Embeddings (per --repr) for the given rows of one shard, batched."""
     outs = []
     for i in range(0, len(rows), batch):
         r = rows[i:i + batch]
         planes = torch.from_numpy(feature_planes(data["packed"][r], data["meta"][r])).to(device)
         om = torch.from_numpy(omega_ids(data["white_elo"][r], data["black_elo"][r],
                                         data["clock"][r])).to(device)
-        outs.append(fb.embed_F(planes, om).cpu())
+        outs.append(embed_repr(fb, planes, om, repr_).cpu())
     return torch.cat(outs)
 
 
@@ -65,22 +83,27 @@ def main():
                     help="training-row cap per shard per epoch (probe heads saturate fast)")
     ap.add_argument("--joint", action="store_true",
                     help="ALSO fine-tune F (research knob; default frozen probe)")
+    ap.add_argument("--repr", choices=("F", "B", "FB"), default="F",
+                    help="which embedding the probes read (B/FB are ablation controls)")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
     shard_dir = Path(args.shards) if args.shards else newest_shard_dir()
     ckpt_path = Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt"
-    out_path = Path(args.out) if args.out else derived_dir() / "eval_heads.pt"
+    default_out = "eval_heads.pt" if args.repr == "F" else f"eval_heads_{args.repr}.pt"
+    out_path = Path(args.out) if args.out else derived_dir() / default_out
     device = pick_device(args.device)
 
-    fb, _ = load_ckpt(ckpt_path, device)
+    fb, payload = load_ckpt(ckpt_path, device)
     fb.eval()
     if args.joint:
         fb.train()
-    print(f"shards={shard_dir.name} ckpt={ckpt_path.name} device={device} joint={args.joint}")
+    print(f"shards={shard_dir.name} ckpt={ckpt_path.name} device={device} "
+          f"joint={args.joint} repr={args.repr}")
 
-    desc = EvalHead(fb.d, args.hidden, n_out=3, seed=args.seed).to(device)
-    norm = EvalHead(fb.d, args.hidden, n_out=1, seed=args.seed + 1).to(device)
+    d_in = fb.d * (2 if args.repr == "FB" else 1)
+    desc = EvalHead(d_in, args.hidden, n_out=3, seed=args.seed).to(device)
+    norm = EvalHead(d_in, args.hidden, n_out=1, seed=args.seed + 1).to(device)
     params = list(desc.parameters()) + list(norm.parameters())
     if args.joint:
         params += list(fb.parameters())
@@ -99,7 +122,7 @@ def main():
                                                 data["clock"][r])).to(device)
                 ctx = torch.enable_grad() if args.joint else torch.no_grad()
                 with ctx:
-                    f = fb.embed_F(planes, om)
+                    f = embed_repr(fb, planes, om, args.repr)
                 f = f if args.joint else f.detach()
                 loss = descriptive_loss(desc, f, torch.from_numpy(
                     data["result"][r].astype(np.int64)).to(device))
@@ -114,13 +137,20 @@ def main():
 
     # ------------------------------------------------------------- holdout report
     desc.eval(); norm.eval(); fb.eval()
-    e_desc_all, e_norm_all, res_all, wp_all, welo_all = [], [], [], [], []
+    zdiff = payload.get("zgoals", {}).get("MATE_DIFF")
+    if zdiff is not None:
+        zdiff = torch.as_tensor(zdiff, dtype=torch.float32).cpu()
+    e_desc_all, e_norm_all, res_all, wp_all, welo_all, base_all = [], [], [], [], [], []
     fens, divs = [], []
     for data in shard_arrays(shard_dir):
         held = np.flatnonzero(data["game_id"] % HOLDOUT_MOD == 0)
         if held.size == 0:
             continue
-        f = embed_all(fb, data, held, device).to(device)
+        f = embed_all(fb, data, held, device, args.repr).to(device)
+        if zdiff is not None:
+            fF = f[:, :fb.d].cpu() if args.repr in ("F", "FB") \
+                else embed_all(fb, data, held, device, "F")
+            base_all.append((fF @ zdiff).numpy())
         with torch.no_grad():
             e_d = desc.expected_score(f).cpu().numpy()
             e_n = norm.expected_score(f).cpu().numpy()
@@ -149,6 +179,12 @@ def main():
 
     print(f"holdout rows: {len(e_d)} ({int(fin.sum())} annotated)")
     print(f"VERDICT DESC_AUC={a:.3f} DESC_ACC3={acc3:.3f} (majority {base3:.3f}) NORM_SPEAR={sp:.3f}")
+    if base_all:
+        base = np.concatenate(base_all)
+        b_auc = auc(base[res == 1], base[res == -1])
+        b_sp = spearmanr(base[fin], wp[fin]).statistic
+        print(f"VERDICT BASE_AUC={b_auc:.3f} BASE_SPEAR={b_sp:.3f} "
+              f"(zero-label F@zMATE_DIFF readout on the same holdout)")
 
     print("\nmean |E_desc - E_norm| by white-Elo bin (annotated holdout):")
     bins = elo_bin(welo[fin])
@@ -163,7 +199,8 @@ def main():
     for i in order:
         print(f"  {divs[i]:+.3f}  {fens[i]}")
 
-    save_heads(out_path, desc, norm, fb.d, meta=dict(ckpt=str(ckpt_path), joint=args.joint))
+    save_heads(out_path, desc, norm, d_in,
+               meta=dict(ckpt=str(ckpt_path), joint=args.joint, repr=args.repr))
     print(f"\nsaved {out_path}")
 
 
