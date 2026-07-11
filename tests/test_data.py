@@ -3,12 +3,15 @@ Data-layer tests: ChainRolloutSource determinism/holdout, the packed-bitboard
 codec round-trip, and the streaming Lichess pipeline -- filtering, shard
 building, and the shard reader/pair source, against the committed fixture.
 """
+import io
 import json
 from pathlib import Path
 
 import chess
+import chess.pgn
 import numpy as np
 import pytest
+import zstandard
 
 from latentchess.data.encode import PLANES, board_from_packed, decode_planes, encode_meta, encode_packed
 from latentchess.data.lichess import GameFilter, build_shards, open_pgn_zst, positions_of, stream_filtered_games
@@ -240,6 +243,93 @@ def test_lichess_pair_source(tmp_path):
             goal_row = min(row + k, gend - 1)
             assert game_id[goal_row] == game_id[row]
             assert goal_row >= row
+
+
+def test_truncated_prefix_tolerated(tmp_path):
+    """A range-downloaded PREFIX of a .zst dump streams to the cut point with
+    tolerate_truncation (and raises without), and the tolerant reader is
+    lossless on intact files. zstd decodes block-at-a-time (<=128KB content
+    per block), so the cut must hit a MULTI-block file to be representative
+    -- the tiny fixture is a single block; repeat it to force several."""
+    gf = _fixture_filter()
+    full = list(stream_filtered_games(FIXTURE_PGN, gf, tolerate_truncation=True))
+    n_pass = len(FIXTURE_MANIFEST["expected_header_pass"])
+    assert len(full) == n_pass
+
+    # 20 copies of the fixture, each carrying a unique incompressible junk
+    # header, so the compressed bytes spread across many blocks (repeating the
+    # text verbatim would back-reference into block 1 and put ~all compressed
+    # bytes there, leaving nothing decodable after a mid-file cut).
+    with open_pgn_zst(FIXTURE_PGN) as stream:
+        text = stream.read()
+    rng = np.random.default_rng(0)
+    repeats = 20
+    big = "\n".join(f'[Junk "{rng.bytes(16384).hex()}"]\n' + text for _ in range(repeats))
+    blob = zstandard.ZstdCompressor().compress(big.encode())
+    cut = tmp_path / "cut.pgn.zst"
+    cut.write_bytes(blob[: int(len(blob) * 0.6)])
+
+    got = list(stream_filtered_games(cut, gf, tolerate_truncation=True))
+    assert 0 < len(got) < repeats * n_pass
+
+    # the plain path's truncation behavior is VERSION-DEPENDENT (0.22 raised;
+    # 0.25 silently yields the decodable prefix like the tolerant path) --
+    # the flag exists to pin the tolerant contract regardless of zstandard
+    # version, so only assert the plain path never yields MORE
+    try:
+        got_plain = list(stream_filtered_games(cut, gf))
+    except zstandard.ZstdError:
+        got_plain = []
+    assert len(got_plain) <= len(got)
+
+
+_EVAL_PGN = """[Event "t"]
+[Site "t"]
+[White "w"]
+[Black "b"]
+[Result "0-1"]
+
+1. f3 { [%eval 0.5] [%clk 0:05:00] } e5 { [%eval -0.6] [%clk 0:05:00] } 2. g4 { [%eval #-1] [%clk 0:04:57] } Qh4# { [%clk 0:04:55] } 0-1
+"""
+
+
+def test_eval_alignment_and_include_final():
+    """eval_cp belongs to the YIELDED position (the annotation of the move
+    that produced it), and include_final adds the post-last-move position --
+    the checkmate itself here."""
+    game = chess.pgn.read_game(io.StringIO(_EVAL_PGN))
+    gf = GameFilter(min_plies=0, skip_first_plies=0, min_clock_s=0.0)
+
+    pos = list(positions_of(game, gf, include_final=True))
+    assert [p["ply"] for p in pos] == [0, 1, 2, 3, 4]
+    evs = [p["eval_cp"] for p in pos]
+    assert np.isnan(evs[0]) and np.isnan(evs[4])      # start unannotated; no [%eval] after mate
+    assert evs[1:4] == [50.0, -60.0, -3199.0]          # white-POV cp; mate-in-1 for black
+
+    final = board_from_packed(pos[-1]["packed"], pos[-1]["meta"])
+    assert final.is_checkmate()
+    assert len(list(positions_of(game, gf))) == 4      # default: no final row
+
+
+def test_build_shards_eval_column_and_final_rows(tmp_path):
+    gf = _fixture_filter()
+    manifest = build_shards(FIXTURE_PGN, gf, tmp_path, shard_positions=10_000,
+                             max_games=None, max_gb=0.1)
+    data = np.load(tmp_path / "shard_00000.npz")
+
+    assert len(data["eval_cp"]) == manifest["positions"]
+    assert np.isnan(data["eval_cp"]).all()             # fixture games carry no server analysis
+    assert manifest["include_final"] and manifest["games_with_eval"] == 0
+
+    # each game's last stored row is its true terminal ply, exempt from the
+    # min-clock tail filter (it's a goal target, not a move decision)
+    gid, ply = data["game_id"], data["ply"]
+    last_rows = np.flatnonzero(np.r_[np.diff(gid) != 0, True])
+    games = {int(g.headers["White"][1:]): g for g in stream_filtered_games(FIXTURE_PGN, gf)}
+    kept = [games[i] for i in FIXTURE_MANIFEST["expected_kept"]]
+    assert len(last_rows) == len(kept)
+    for row, g in zip(last_rows, kept):
+        assert ply[row] == g.end().ply()
 
 
 # ---------------------------------------------------------------- slow: full generalization run

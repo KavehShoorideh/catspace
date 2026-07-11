@@ -31,11 +31,51 @@ import zstandard
 from latentchess.data.encode import encode_meta, encode_packed
 
 
-def open_pgn_zst(path) -> io.TextIOWrapper:
-    """A text stream over a .pgn.zst file that never decompresses to disk."""
+class _TruncationTolerantRaw(io.RawIOBase):
+    """Raw stream over a zstd stream_reader that reports a truncated final
+    frame as EOF instead of raising -- lets a range-downloaded PREFIX of a
+    multi-GB monthly dump stream as far as it goes. Whether truncation raises
+    at all is zstandard-version-dependent (0.22 raised, 0.25 clean-EOFs);
+    this shim pins the tolerant contract either way. NOTE decompressobj is
+    NOT usable here: Lichess dumps are zstd-SEEKABLE files (skippable
+    metadata frame + many independent content frames) and decompressobj is
+    single-frame by design."""
+
+    def __init__(self, reader):
+        self._reader = reader
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, b) -> int:
+        try:
+            chunk = self._reader.read(len(b))
+        except zstandard.ZstdError:
+            return 0
+        b[: len(chunk)] = chunk
+        return len(chunk)
+
+    def close(self) -> None:
+        try:
+            self._reader.close()
+        except zstandard.ZstdError:
+            pass
+        super().close()
+
+
+def open_pgn_zst(path, tolerate_truncation: bool = False) -> io.TextIOWrapper:
+    """A text stream over a .pgn.zst file that never decompresses to disk.
+    read_across_frames is pinned True: Lichess dumps are multi-frame (zstd
+    seekable format), and a version where the default is per-frame would
+    otherwise silently stop after the first frame. With tolerate_truncation,
+    a mid-frame end of input (partial/range download) reads as EOF after the
+    last decodable block."""
     dctx = zstandard.ZstdDecompressor(max_window_size=2 ** 31)
     fh = open(path, "rb")
-    reader = dctx.stream_reader(fh)
+    reader = dctx.stream_reader(fh, read_across_frames=True)
+    if tolerate_truncation:
+        return io.TextIOWrapper(io.BufferedReader(_TruncationTolerantRaw(reader)),
+                                encoding="utf-8", errors="replace")
     return io.TextIOWrapper(reader, encoding="utf-8", errors="replace")
 
 
@@ -96,11 +136,12 @@ class _FilteringBuilder(chess.pgn.GameBuilder):
         return None
 
 
-def stream_filtered_games(path, gf: GameFilter, max_games: int | None = None) -> Iterator["chess.pgn.Game"]:
+def stream_filtered_games(path, gf: GameFilter, max_games: int | None = None,
+                          tolerate_truncation: bool = False) -> Iterator["chess.pgn.Game"]:
     """Yield fully-parsed games whose headers pass `gf`, streaming the .pgn.zst
     without ever materializing it. Counts only YIELDED (header-passing) games
     against `max_games`."""
-    with open_pgn_zst(path) as stream:
+    with open_pgn_zst(path, tolerate_truncation=tolerate_truncation) as stream:
         kept = 0
         while max_games is None or kept < max_games:
             builder = _FilteringBuilder(gf)
@@ -113,21 +154,43 @@ def stream_filtered_games(path, gf: GameFilter, max_games: int | None = None) ->
             kept += 1
 
 
-def positions_of(game: "chess.pgn.Game", gf: GameFilter):
-    """Yield one dict per kept position: packed bitboards, meta, ply, clock.
-    Skips the whole game (no positions) if it's shorter than gf.min_plies."""
+def _eval_cp_white(node) -> float:
+    """[%eval] of the position AFTER node.move, white-POV centipawns (lichess
+    server analysis; mates mapped to +/-(3200 - plies)); nan if unannotated."""
+    score = node.eval()
+    if score is None:
+        return float("nan")
+    return float(score.white().score(mate_score=3200))
+
+
+def positions_of(game: "chess.pgn.Game", gf: GameFilter, include_final: bool = False):
+    """Yield one dict per kept position: packed bitboards, meta, ply, clock,
+    eval_cp. eval_cp is the eval OF THE YIELDED POSITION -- i.e. the [%eval]
+    annotation of the move that PRODUCED it (annotations describe the position
+    after the move), nan when the game has no server analysis.
+
+    include_final also yields the position after the last move, exempt from
+    the skip_first/min_clock move filters -- it's a goal target (checkmates
+    live there), not a move decision. Skips the whole game (no positions) if
+    it's shorter than gf.min_plies."""
     end = game.end()
     if end.ply() < gf.min_plies:
         return
     board = game.board()
     ply = 0
+    ev = float("nan")                    # eval of the current `board`
+    clock = None
     for node in game.mainline():
         clock = node.clock()
         if ply >= gf.skip_first_plies and not (clock is not None and clock < gf.min_clock_s):
             yield dict(packed=encode_packed(board), meta=encode_meta(board), ply=ply,
-                       clock=clock if clock is not None else float("nan"))
+                       clock=clock if clock is not None else float("nan"), eval_cp=ev)
+        ev = _eval_cp_white(node)
         board.push(node.move)
         ply += 1
+    if include_final and ply > 0:
+        yield dict(packed=encode_packed(board), meta=encode_meta(board), ply=ply,
+                   clock=clock if clock is not None else float("nan"), eval_cp=ev)
 
 
 _RESULT_MAP = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
@@ -136,17 +199,21 @@ _RESULT_MAP = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
 def build_shards(pgn_path, gf: GameFilter, out_dir,
                   shard_positions: int = 1_000_000,
                   max_games: int | None = 50_000,
-                  max_gb: float | None = 2.0) -> dict:
+                  max_gb: float | None = 2.0,
+                  include_final: bool = True,
+                  tolerate_truncation: bool = False) -> dict:
     """Stream-filter-encode-shard in one bounded pass. Guardrail: at least one
     of max_games/max_gb must bound the run, or a laptop SSD could fill up on
-    a full monthly dump."""
+    a full monthly dump. include_final (default on) stores each game's final
+    position too -- that's where checkmates live, i.e. the B-side goal states."""
     if max_games is None and max_gb is None:
         raise ValueError("max_games and max_gb may not both be None")
 
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    buf = {k: [] for k in ("packed", "meta", "ply", "clock", "result", "white_elo", "black_elo", "game_id")}
+    buf = {k: [] for k in ("packed", "meta", "ply", "clock", "eval_cp", "result",
+                            "white_elo", "black_elo", "game_id")}
     shards = []
     state = {"shard_idx": 0, "bytes_written": 0}
 
@@ -160,6 +227,7 @@ def build_shards(pgn_path, gf: GameFilter, out_dir,
             meta=np.array(buf["meta"], dtype=np.uint8),
             ply=np.array(buf["ply"], dtype=np.int32),
             clock=np.array(buf["clock"], dtype=np.float32),
+            eval_cp=np.array(buf["eval_cp"], dtype=np.float32),
             result=np.array(buf["result"], dtype=np.int8),
             white_elo=np.array(buf["white_elo"], dtype=np.uint16),
             black_elo=np.array(buf["black_elo"], dtype=np.uint16),
@@ -173,20 +241,25 @@ def build_shards(pgn_path, gf: GameFilter, out_dir,
 
     games_scanned = 0
     games_kept = 0
+    games_with_eval = 0
     positions = 0
 
-    for game in stream_filtered_games(pgn_path, gf, max_games=None):
+    for game in stream_filtered_games(pgn_path, gf, max_games=None,
+                                      tolerate_truncation=tolerate_truncation):
         games_scanned += 1
         res = _RESULT_MAP.get(game.headers.get("Result", ""), 0)
         we = int(game.headers.get("WhiteElo", 0) or 0)
         be = int(game.headers.get("BlackElo", 0) or 0)
         any_pos = False
-        for pos in positions_of(game, gf):
+        any_eval = False
+        for pos in positions_of(game, gf, include_final=include_final):
             any_pos = True
+            any_eval = any_eval or pos["eval_cp"] == pos["eval_cp"]
             buf["packed"].append(pos["packed"])
             buf["meta"].append(pos["meta"])
             buf["ply"].append(pos["ply"])
             buf["clock"].append(pos["clock"])
+            buf["eval_cp"].append(pos["eval_cp"])
             buf["result"].append(res)
             buf["white_elo"].append(we)
             buf["black_elo"].append(be)
@@ -196,6 +269,7 @@ def build_shards(pgn_path, gf: GameFilter, out_dir,
                 flush()
         if any_pos:
             games_kept += 1
+            games_with_eval += int(any_eval)
         if max_games is not None and games_kept >= max_games:
             break
         if max_gb is not None and state["bytes_written"] > max_gb * 2 ** 30:
@@ -203,6 +277,7 @@ def build_shards(pgn_path, gf: GameFilter, out_dir,
     flush()
 
     manifest = dict(source=str(pgn_path), filter=asdict(gf), games_scanned=games_scanned,
-                     games_kept=games_kept, positions=positions, shards=shards)
+                     games_kept=games_kept, games_with_eval=games_with_eval,
+                     positions=positions, include_final=include_final, shards=shards)
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     return manifest
