@@ -19,6 +19,7 @@ QuasimetricEmbedding protocol; the seam here is embed_F / embed_B / reach_z
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import torch
@@ -80,7 +81,10 @@ def save_ckpt(fb: TorchFB, path, step: int = 0, opt: torch.optim.Optimizer | Non
                    zgoals={k: torch.as_tensor(v).cpu() for k, v in (zgoals or {}).items()})
     if opt is not None:
         payload["opt_state"] = opt.state_dict()
-    torch.save(payload, Path(path))
+    path = Path(path)                      # atomic: an interrupted save must not
+    tmp = path.with_suffix(path.suffix + ".tmp")   # corrupt the previous checkpoint
+    torch.save(payload, tmp)
+    os.replace(tmp, path)
 
 
 def load_ckpt(path, device: str = "cpu") -> tuple[TorchFB, dict]:

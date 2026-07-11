@@ -140,7 +140,7 @@ winprob is an easier (less noisy) target than game results, as expected.
 
 ## M1.5 kickoff readings (decompose demo, continued)
 
-Readings: (1) the arc property shows up on real data — chosen waypoints sit
+Readings below. (1) the arc property shows up on real data — chosen waypoints sit
 ~34 plies later in games than the starts, i.e. the decomposer picks genuinely
 intermediate, endgame-shaped stepping stones (e.g. ply-22 middlegame routed
 via a ply-68 R+P endgame); (2) 73% of middlegame starts improve their
@@ -149,3 +149,30 @@ always sufficed and no give-up rule ever fired — the 2000-step field is
 generous (best min-leg through a 20k pool ~0.55 >> tau_exec). Executability
 here is still reach>=tau, ESTIMATED not verified; the MC-rollout leaf check
 ("a real path") is the next layer and is where this gets kept honest.
+
+---
+
+## 2026-07-11 — the next jump: 30k-step training run + automated re-eval
+
+Every finding today bottomed out at "the field has only 2000 steps," so the
+jump is a real training run with the eval suite chained behind it. Before
+launching unattended: made save_ckpt ATOMIC (tmp + os.replace) and attached
+freshly-embedded zgoals to EVERY periodic save (collect_mate_finals once,
+embed_zgoals per save) — the two halves of last night's interrupted-save bug.
+Train script now also prints DIFF_SLOPE verdicts itself.
+
+Smoke note (210-step fresh model, 256mb shards): DIFF_SLOPE_WON=-0.903,
+LOST=-0.917 — a barely-trained field is pure generic finality, no outcome
+separation. Step-2000 had separation 0.16; watch whether 30k widens it.
+
+Pipeline (background, logs+timings in artifacts/generated/logs/):
+train_lichess_fb --steps 30000 (resumes from 2000; 5.8 it/s on MPS => ~80
+min) -> eval-head ablation repr=F/B/FB (~4 min each) -> decompose_demo.
+Step-2000 checkpoint backed up as data/derived/lichess_fb_step2000.pt for
+before/after comparisons.
+
+Pre-registered expectations: VAL_TOP1 well above 0.024 (step-2000 value
+unknown post-fix; chance 0.002); DESC_AUC meaningfully above 0.58 with F > B
+emerging if the forward/omega story is right; DIFF_SLOPE won-lost separation
+widening past 0.16; decompose give-up rules starting to fire as the field
+sharpens (a sharper field should stop rating everything reachable).
