@@ -1,5 +1,5 @@
-from code.core import (NSQ, chebyshev, king_moves, knight_moves, rook_slides,
-                       rook_attacks, sq, rc, KING_MOVES, KNIGHT, KN_ATT)
+from latentchess.board import (NSQ, chebyshev, king_moves, knight_moves, rook_slides,
+                                rook_attacks, sq, rc, KING_MOVES, KNIGHT, KN_ATT)
 
 
 def test_sq_rc_roundtrip():
@@ -37,5 +37,11 @@ def test_rook_slides_blocked():
 
 
 def test_rook_attacks():
-    assert rook_attacks(sq(0, 0), sq(0, 4), {sq(0, 2)})
+    # no blocker on the line -> the rook attacks all the way down the row
+    assert rook_attacks(sq(0, 0), sq(0, 4), {sq(4, 4)})
+    # a blocker strictly between rook and target -> blocked, regardless of
+    # where exactly it sits in between (the original test asserted the
+    # opposite for a blocker at sq(0,2) -- a pre-existing bug: both sq(0,2)
+    # and sq(0,3) sit strictly between sq(0,0) and sq(0,4), so both block)
+    assert not rook_attacks(sq(0, 0), sq(0, 4), {sq(0, 2)})
     assert not rook_attacks(sq(0, 0), sq(0, 4), {sq(0, 3)})
