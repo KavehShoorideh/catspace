@@ -90,10 +90,11 @@ def val_metrics(fb, holdout, device):
     return float(np.mean(losses)), float(np.mean(top1s)), float(np.mean(top8s))
 
 
-def build_zgoals(shard_dir: Path, fb, device, cap: int = 2048):
-    """zMATE_W / zMATE_B = mean B over final CHECKMATE positions of decisive
-    games (include_final=True stored them). White-POV: MATE_W = white mated
-    black (result +1)."""
+def collect_mate_finals(shard_dir: Path, cap: int = 2048) -> dict:
+    """(packed, meta) of final CHECKMATE positions of decisive games
+    (include_final=True stored them), keyed by white-POV result (MATE_W =
+    result +1). The shard scan is the expensive half of zgoal building —
+    do it ONCE, re-embed at every save."""
     finals = {1: [], -1: []}
     for path in sorted(shard_dir.glob("shard_*.npz")):
         npz = np.load(path)
@@ -109,6 +110,18 @@ def build_zgoals(shard_dir: Path, fb, device, cap: int = 2048):
                 finals[res].append((packed[row], meta[row]))
         if all(len(v) >= cap for v in finals.values()):
             break
+    return finals
+
+
+def embed_zgoals(fb, finals: dict, device, verbose: bool = False) -> dict:
+    """zMATE_W / zMATE_B = mean B over the collected mate finals under the
+    CURRENT weights, plus MATE_DIFF (the outcome direction: cancels the
+    "generic finality" component the two mate goals share — diagnosed
+    2026-07-11, it made raw reach slopes identical for won and lost games).
+    Attached at every periodic save so an interrupted run still leaves a
+    planner-usable checkpoint (the 2026-07-11 zgoals-less checkpoint bug)."""
+    was_training = fb.training
+    fb.eval()
     zgoals = {}
     with torch.no_grad():
         for res, name in ((1, "MATE_W"), (-1, "MATE_B")):
@@ -116,8 +129,16 @@ def build_zgoals(shard_dir: Path, fb, device, cap: int = 2048):
             packed = np.stack([r[0] for r in rows]); meta = np.stack([r[1] for r in rows])
             planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
             zgoals[name] = fb.embed_B(planes).mean(dim=0).cpu()
-            print(f"zgoal {name}: {len(rows)} checkmate finals")
+            if verbose:
+                print(f"zgoal {name}: {len(rows)} checkmate finals")
+    zgoals["MATE_DIFF"] = zgoals["MATE_W"] - zgoals["MATE_B"]
+    if was_training:
+        fb.train()
     return zgoals
+
+
+def build_zgoals(shard_dir: Path, fb, device, cap: int = 2048) -> dict:
+    return embed_zgoals(fb, collect_mate_finals(shard_dir, cap), device, verbose=True)
 
 
 def reach_slope(shard_dir: Path, fb, z, device, want_result: int, n_games: int = 200):
@@ -189,6 +210,7 @@ def main():
     src = LichessPairSource(shard_dir, gamma=args.gamma)
     holdout = collect_holdout(src, n_batches=8, batch_size=args.batch, seed=999)
     print(f"holdout: {len(holdout)} batches of {args.batch}")
+    finals = collect_mate_finals(shard_dir)
 
     fb.train()
     epoch = 0
@@ -213,21 +235,22 @@ def main():
         if step % args.val_every == 0 or step == args.steps:
             vloss, vtop1, vtop8 = val_metrics(fb, holdout, device)
             print(f"  VAL step {step}  loss {vloss:.4f}  top1 {vtop1:.3f}  top8 {vtop8:.3f}", flush=True)
-            save_ckpt(fb, ckpt_path, step=step, opt=opt)
+            save_ckpt(fb, ckpt_path, step=step, opt=opt,
+                      zgoals=embed_zgoals(fb, finals, device))
 
-    zgoals = build_zgoals(shard_dir, fb, device)
-    # the outcome DIRECTION: cancels the "generic finality" component the two
-    # mate goals share (diagnosed 2026-07-11; the component that made raw
-    # reach slopes identical for won and lost games)
-    zgoals["MATE_DIFF"] = zgoals["MATE_W"] - zgoals["MATE_B"]
+    zgoals = embed_zgoals(fb, finals, device, verbose=True)
     save_ckpt(fb, ckpt_path, step=step, opt=opt, zgoals=zgoals)
     print(f"saved {ckpt_path}")
 
     vloss, vtop1, vtop8 = val_metrics(fb, holdout, device)
     slope_w, nw = reach_slope(shard_dir, fb, zgoals["MATE_W"], device, want_result=1)
     slope_l, nl = reach_slope(shard_dir, fb, zgoals["MATE_W"], device, want_result=-1)
+    dslope_w, _ = reach_slope(shard_dir, fb, zgoals["MATE_DIFF"], device, want_result=1)
+    dslope_l, _ = reach_slope(shard_dir, fb, zgoals["MATE_DIFF"], device, want_result=-1)
     print(f"VERDICT VAL_TOP1={vtop1:.3f} VAL_TOP8={vtop8:.3f} (chance {1/args.batch:.4f})")
     print(f"VERDICT REACH_SLOPE_WON={slope_w:.3f} (n={nw}) REACH_SLOPE_LOST={slope_l:.3f} (n={nl})")
+    print(f"VERDICT DIFF_SLOPE_WON={dslope_w:.3f} DIFF_SLOPE_LOST={dslope_l:.3f} "
+          f"(won-lost separation is the outcome signal; both were negative at step 2000)")
 
 
 if __name__ == "__main__":
