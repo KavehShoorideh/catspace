@@ -10,10 +10,10 @@ torch = pytest.importorskip("torch")
 
 import chess
 
-from latentchess.data.encode import encode_meta, encode_packed
-from latentchess.nn.features import (N_PLANES, clock_bucket, elo_bin, feature_planes,
+from catspace.data.encode import encode_meta, encode_packed
+from catspace.nn.features import (N_PLANES, clock_bucket, elo_bin, feature_planes,
                                      omega_ids, winprob_cp)
-from latentchess.nn.fb import TorchFB, load_ckpt, save_ckpt
+from catspace.nn.fb import TorchFB, load_ckpt, save_ckpt
 
 TINY = dict(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4)
 

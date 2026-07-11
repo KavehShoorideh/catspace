@@ -1,5 +1,5 @@
 {
-  "_note": "Captured from the original code/ scripts (with the domain.py rook_attacks argument-order bugfix applied -- see git log) before the latentchess refactor. Deterministic numbers (state counts, DTM extremes) must match exactly; training-derived numbers (PI/curriculum results) are seeded but sensitive to minor RNG-call-order changes downstream, so treat them as within-noise targets unless a phase gate claims bit-exact reproduction.",
+  "_note": "Captured from the original code/ scripts (with the domain.py rook_attacks argument-order bugfix applied -- see git log) before the catspace refactor. Deterministic numbers (state counts, DTM extremes) must match exactly; training-derived numbers (PI/curriculum results) are seeded but sensitive to minor RNG-call-order changes downstream, so treat them as within-noise targets unless a phase gate claims bit-exact reproduction.",
   "krk_domain": {
     "w_states": 7040,
     "b_nodes": 10488,
@@ -38,7 +38,7 @@
     "k1_3ply_rook_lost": 0.003
   },
   "bug_fixed_during_refactor": {
-    "file": "code/domain.py (-> latentchess/domains/krk.py)",
+    "file": "code/domain.py (-> catspace/domains/krk.py)",
     "lines": [69, 145],
     "description": "rook_attacks(rook, target, blockers) called as rook_attacks(wr, wk, t) instead of rook_attacks(wr, t, {wk}) -- argument order scrambled, likely fallout from the incomplete core.py extraction. Broke black_moves legality and box_area entirely (TypeError, domain.py could not even complete compute_dtm as committed). Fixed to restore the exact historical RESULTS-v3 numbers above."
   }

@@ -15,18 +15,18 @@ import sys
 
 import numpy as np
 
-from latentchess.cone.embedding import make_goal, reach
-from latentchess.concepts import KMeansVQ
-from latentchess.domains import krkn
-from latentchess.cone.tabular import TabularFB
-from latentchess.game import play_game
-from latentchess.io.paths import generated_dir, load_array
-from latentchess.opponents import EpsOptimalDTM, optimal_reply_table
-from latentchess.planner.move_identity import RegionPairIdentity, SyntacticIdentity
-from latentchess.planner.plans import PlanMemory, PlanStore, calibrate_tau
-from latentchess.planner.policy import PlanningPolicy
-from latentchess.planner.readout import ReplyAgg
-from latentchess.scoring import TerminalScores
+from catspace.cone.embedding import make_goal, reach
+from catspace.concepts import KMeansVQ
+from catspace.domains import krkn
+from catspace.cone.tabular import TabularFB
+from catspace.game import play_game
+from catspace.io.paths import generated_dir, load_array
+from catspace.opponents import EpsOptimalDTM, optimal_reply_table
+from catspace.planner.move_identity import RegionPairIdentity, SyntacticIdentity
+from catspace.planner.plans import PlanMemory, PlanStore, calibrate_tau
+from catspace.planner.policy import PlanningPolicy
+from catspace.planner.readout import ReplyAgg
+from catspace.scoring import TerminalScores
 
 
 def main():

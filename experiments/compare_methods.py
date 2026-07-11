@@ -15,16 +15,16 @@ import argparse
 
 import numpy as np
 
-from latentchess.abtest import MethodSpec, compare
-from latentchess.chain import exact_P
-from latentchess.cone.tabular import TabularFB
-from latentchess.domains import krk, krkn
-from latentchess.io.paths import load_array
-from latentchess.opponents import EpsOptimalDTM, optimal_reply_table
-from latentchess.planner.policy import DTMOraclePolicy, RandomPolicy, TablePolicy
-from latentchess.planner.readout import ReplyAgg, greedy_policy
-from latentchess.scoring import TerminalScores, fill_terminal_state_scores
-from latentchess.cone.embedding import make_goal, reach
+from catspace.abtest import MethodSpec, compare
+from catspace.chain import exact_P
+from catspace.cone.tabular import TabularFB
+from catspace.domains import krk, krkn
+from catspace.io.paths import load_array
+from catspace.opponents import EpsOptimalDTM, optimal_reply_table
+from catspace.planner.policy import DTMOraclePolicy, RandomPolicy, TablePolicy
+from catspace.planner.readout import ReplyAgg, greedy_policy
+from catspace.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.cone.embedding import make_goal, reach
 
 DOMAINS = {"krk": krk, "krkn": krkn}
 

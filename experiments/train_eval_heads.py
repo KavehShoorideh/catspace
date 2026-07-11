@@ -22,11 +22,11 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from latentchess.data.encode import board_from_packed
-from latentchess.io.paths import derived_dir, newest_shard_dir
-from latentchess.nn.eval_head import (EvalHead, descriptive_loss, normative_loss, save_heads)
-from latentchess.nn.fb import load_ckpt, pick_device
-from latentchess.nn.features import elo_bin, feature_planes, omega_ids, winprob_cp
+from catspace.data.encode import board_from_packed
+from catspace.io.paths import derived_dir, newest_shard_dir
+from catspace.nn.eval_head import (EvalHead, descriptive_loss, normative_loss, save_heads)
+from catspace.nn.fb import load_ckpt, pick_device
+from catspace.nn.features import elo_bin, feature_planes, omega_ids, winprob_cp
 
 HOLDOUT_MOD = 50
 
@@ -138,7 +138,7 @@ def main():
     res = np.concatenate(res_all); wp = np.concatenate(wp_all)
     welo = np.concatenate(welo_all)
 
-    from latentchess.util import auc
+    from catspace.util import auc
     from scipy.stats import spearmanr
     a = auc(e_d[res == 1], e_d[res == -1])
     cls_pred = np.select([e_d > 0.55, e_d < 0.45], [1, -1], default=0)

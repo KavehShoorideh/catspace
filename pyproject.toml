@@ -22,7 +22,7 @@ nn = ["torch>=2.6"]
 dev = ["pytest>=8", "pytest-timeout"]
 
 [tool.setuptools.packages.find]
-include = ["latentchess*"]
+include = ["catspace*"]
 
 [tool.pytest.ini_options]
 markers = [

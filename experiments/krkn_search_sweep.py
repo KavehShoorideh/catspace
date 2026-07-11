@@ -21,13 +21,13 @@ import time
 
 import numpy as np
 
-from latentchess.arena import evaluate as arena_evaluate
-from latentchess.domains import krkn
-from latentchess.io.paths import generated_dir, load_array
-from latentchess.opponents import TableOpponent, optimal_reply_table
-from latentchess.planner.policy import TablePolicy
-from latentchess.planner.readout import ReplyAgg, backup, greedy_policy
-from latentchess.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.arena import evaluate as arena_evaluate
+from catspace.domains import krkn
+from catspace.io.paths import generated_dir, load_array
+from catspace.opponents import TableOpponent, optimal_reply_table
+from catspace.planner.policy import TablePolicy
+from catspace.planner.readout import ReplyAgg, backup, greedy_policy
+from catspace.scoring import TerminalScores, fill_terminal_state_scores
 
 BIG = 1e15
 TS = TerminalScores(mate=BIG, draw=-BIG, bwin=-BIG)
@@ -81,7 +81,7 @@ def main():
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
-        from latentchess.viz.projection import PCAProjection
+        from catspace.viz.projection import PCAProjection
 
         n2 = chain.strata["KRkn"].stop
         Fw = F[:chain.n_live]

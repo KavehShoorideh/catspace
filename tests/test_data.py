@@ -13,13 +13,13 @@ import numpy as np
 import pytest
 import zstandard
 
-from latentchess.data.encode import PLANES, board_from_packed, decode_planes, encode_meta, encode_packed
-from latentchess.data.lichess import GameFilter, build_shards, open_pgn_zst, positions_of, stream_filtered_games
-from latentchess.data.shards import LichessPairSource, ShardReader, write_shards
-from latentchess.data.sources import ChainRolloutSource, PairBatch
-from latentchess.domains import krk
-from latentchess.opponents import RandomOpponent
-from latentchess.planner.policy import RandomPolicy
+from catspace.data.encode import PLANES, board_from_packed, decode_planes, encode_meta, encode_packed
+from catspace.data.lichess import GameFilter, build_shards, open_pgn_zst, positions_of, stream_filtered_games
+from catspace.data.shards import LichessPairSource, ShardReader, write_shards
+from catspace.data.sources import ChainRolloutSource, PairBatch
+from catspace.domains import krk
+from catspace.opponents import RandomOpponent
+from catspace.planner.policy import RandomPolicy
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE_PGN = FIXTURES / "lichess_mini.pgn.zst"

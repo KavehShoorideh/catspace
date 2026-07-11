@@ -24,11 +24,11 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from latentchess.data.encode import board_from_packed
-from latentchess.data.shards import LichessPairSource
-from latentchess.io.paths import derived_dir, newest_shard_dir
-from latentchess.nn.fb import TorchFB, load_ckpt, pick_device, save_ckpt
-from latentchess.nn.features import feature_planes, omega_ids
+from catspace.data.encode import board_from_packed
+from catspace.data.shards import LichessPairSource
+from catspace.io.paths import derived_dir, newest_shard_dir
+from catspace.nn.fb import TorchFB, load_ckpt, pick_device, save_ckpt
+from catspace.nn.features import feature_planes, omega_ids
 
 HOLDOUT_MOD = 50
 

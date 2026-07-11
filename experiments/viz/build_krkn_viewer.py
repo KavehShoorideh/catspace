@@ -5,7 +5,7 @@ viewer, with a pluggable 2D projection (--projection {tsne,pca,umap}).
 
 Requires krkn_F.npy/krkn_B.npy/krkn_scores.npy and dtm_krkn.npy in
 data/derived/ (produced by experiments/train_krkn.py and
-latentchess/domains/krkn.py's __main__).
+catspace/domains/krkn.py's __main__).
 """
 from __future__ import annotations
 
@@ -15,13 +15,13 @@ from pathlib import Path
 
 import numpy as np
 
-from latentchess.domains import krkn
-from latentchess.opponents import optimal_reply_table
-from latentchess.viz.projection import fit_map, FittedMap, PROJECTIONS
-from latentchess.viz.payload import (KrknViewerBuilder, build_games, attach_cones,
+from catspace.domains import krkn
+from catspace.opponents import optimal_reply_table
+from catspace.viz.projection import fit_map, FittedMap, PROJECTIONS
+from catspace.viz.payload import (KrknViewerBuilder, build_games, attach_cones,
                                       finalize_with_xy, build_background, json_default)
-from latentchess.viz.build_html import build_html
-from latentchess.io.paths import derived_dir, generated_dir, load_array
+from catspace.viz.build_html import build_html
+from catspace.io.paths import derived_dir, generated_dir, load_array
 
 
 def main():
@@ -57,7 +57,7 @@ def main():
                           projection=args.projection))
 
     out_name = args.out_name or f"krkn-linked-viewer-{args.projection}.html"
-    template = Path(__file__).resolve().parents[2] / "latentchess/viz/templates/krkn_viewer.html"
+    template = Path(__file__).resolve().parents[2] / "catspace/viz/templates/krkn_viewer.html"
     out = generated_dir() / out_name
     build_html(template, data, out)
     print(f"wrote {out} ({len(json.dumps(data, default=json_default)) // 1024} KB)")

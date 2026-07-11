@@ -1,6 +1,6 @@
 # catspace — a latent chess planner
 
-(package `latentchess`; formerly "latent-chess-planner-toys" — the toy-domain
+(package `catspace`; formerly "latent-chess-planner-toys" — the toy-domain
 milestone grew into the real-data phase, so the name did too)
 
 Planning as a trajectory of the **cone** (discounted successor measure) in a learned
@@ -71,12 +71,12 @@ model never saw. Everything below runs on one CPU in minutes.
 ## 5. File map & how to run
 
 As of the layered refactor, the research code lives in the installable
-`latentchess/` package (clean interfaces: chain/scoring/readout/opponents/
+`catspace/` package (clean interfaces: chain/scoring/readout/opponents/
 game/arena/cone/concepts/planner/data/viz), with runnable drivers in
 `experiments/`. See `ARCHITECTURE.md` for the layer diagram and the
 project's invariants; this section is just the how-to-run.
 
-Package (`latentchess/`):
+Package (`catspace/`):
 - `board.py` — 5×5 geometry; `domains/{krk,krkn,krrk}.py` — movegen, terminals,
   retrograde DTM, `build_chain()`/`compute_dtm()`
 - `chain.py` — the one `TransitionChain` (CSR) representation every domain
@@ -123,7 +123,7 @@ alt fans, cones.
 Reproduce from scratch (one CPU, ~30 min total):
 ```
 pip install -e .                       # or: pip install -r requirements.txt
-python -m latentchess.domains.krk      # sanity: 7040 states, DTM max 19
+python -m catspace.domains.krk      # sanity: 7040 states, DTM max 19
 python experiments/krk_rung1.py        # rung 1 end-to-end (~15s)
 python experiments/train_krkn.py       # curriculum training (resumable; ~7 min)
 python experiments/krkn_search_sweep.py  # search sweep + goal ablation

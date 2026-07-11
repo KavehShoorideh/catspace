@@ -21,9 +21,9 @@ import chess
 import chess.engine
 import numpy as np
 
-from latentchess.data.encode import board_from_packed
-from latentchess.data.shards import sample_shard_rows
-from latentchess.io.paths import derived_dir, newest_shard_dir
+from catspace.data.encode import board_from_packed
+from catspace.data.shards import sample_shard_rows
+from catspace.io.paths import derived_dir, newest_shard_dir
 
 
 def main():

@@ -6,15 +6,15 @@ determinism, and a smoke comparison on KRk (oracle strictly beats random).
 import numpy as np
 import pytest
 
-from latentchess.abtest import EValueTest, MethodSpec, compare, confidence_sequence, paired_eval
-from latentchess.chain import exact_P
-from latentchess.cone.tabular import TabularFB
-from latentchess.cone.embedding import make_goal, reach
-from latentchess.domains import krk
-from latentchess.opponents import EpsOptimalDTM, RandomOpponent, optimal_reply_table
-from latentchess.planner.policy import DTMOraclePolicy, RandomPolicy, TablePolicy
-from latentchess.planner.readout import ReplyAgg, greedy_policy
-from latentchess.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.abtest import EValueTest, MethodSpec, compare, confidence_sequence, paired_eval
+from catspace.chain import exact_P
+from catspace.cone.tabular import TabularFB
+from catspace.cone.embedding import make_goal, reach
+from catspace.domains import krk
+from catspace.opponents import EpsOptimalDTM, RandomOpponent, optimal_reply_table
+from catspace.planner.policy import DTMOraclePolicy, RandomPolicy, TablePolicy
+from catspace.planner.readout import ReplyAgg, greedy_policy
+from catspace.scoring import TerminalScores, fill_terminal_state_scores
 
 
 def test_evalue_null_control():

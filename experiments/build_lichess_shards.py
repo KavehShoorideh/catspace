@@ -25,8 +25,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from latentchess.data.lichess import GameFilter, build_shards
-from latentchess.io.paths import shards_dir
+from catspace.data.lichess import GameFilter, build_shards
+from catspace.io.paths import shards_dir
 
 
 def main():

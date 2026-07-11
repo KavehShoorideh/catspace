@@ -3,7 +3,7 @@
 experiments/train_krkn.py — curriculum policy-iteration training on KRkn.
 
 Reproduces exp_krkn2.py's schedule and evaluation on top of the new
-latentchess package (CurriculumTrainer, unified CSR chain, TerminalScores).
+catspace package (CurriculumTrainer, unified CSR chain, TerminalScores).
 """
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ import argparse
 
 import numpy as np
 
-from latentchess.domains import krkn
-from latentchess.opponents import optimal_reply_table
-from latentchess.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
-from latentchess.planner.readout import ReplyAgg
-from latentchess.train.checkpoints import load_ckpt, ckpt_exists
-from latentchess.io.paths import save_array, derived_dir
+from catspace.domains import krkn
+from catspace.opponents import optimal_reply_table
+from catspace.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
+from catspace.planner.readout import ReplyAgg
+from catspace.train.checkpoints import load_ckpt, ckpt_exists
+from catspace.io.paths import save_array, derived_dir
 
 SCHEDULE = [  # (eps_white, eps_black, n_games, dtm_cap)
     Round(0.50, 1.00, 15000, 5),
