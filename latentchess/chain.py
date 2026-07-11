@@ -112,12 +112,14 @@ def exact_P(chain: TransitionChain) -> sp.csr_matrix:
     return P
 
 
-def empirical_P(rows, cols, n: int, terminals: Terminals):
-    """THE single empirical-transition-matrix builder: row-stochastic, absorbing
-    rows forced to identity, unvisited rows self-loop (flagged by the visited mask).
-    Collapses ~4 near-identical copies previously scattered across trainer scripts."""
-    rows = np.asarray(rows); cols = np.asarray(cols)
-    counts = sp.coo_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, n)).tocsr()
+def P_from_counts(counts: sp.spmatrix, terminals: Terminals):
+    """Row-normalize an accumulated transition-COUNT matrix into a proper
+    stochastic matrix: absorbing rows forced to identity, unvisited rows
+    self-loop (flagged by the visited mask). This is the sufficient statistic
+    a resumable trainer should checkpoint -- bounded by the number of
+    distinct (state, outcome) pairs actually visited, unlike the raw
+    transition list the original exp_krkn2.py pickled every round."""
+    counts = counts.tocsr()
     rowsum = np.asarray(counts.sum(axis=1)).ravel()
     visited = rowsum > 0
     rowsum_safe = np.where(visited, rowsum, 1.0)
@@ -130,3 +132,17 @@ def empirical_P(rows, cols, n: int, terminals: Terminals):
     P = P.tocsr()
     P.eliminate_zeros()
     return P, visited
+
+
+def empirical_P(rows, cols, n: int, terminals: Terminals):
+    """THE single empirical-transition-matrix builder: row-stochastic, absorbing
+    rows forced to identity, unvisited rows self-loop (flagged by the visited mask).
+    Collapses ~4 near-identical copies previously scattered across trainer scripts."""
+    rows = np.asarray(rows); cols = np.asarray(cols)
+    counts = sp.coo_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, n)).tocsr()
+    return P_from_counts(counts, terminals)
+
+
+def counts_from_transitions(rows, cols, n: int) -> sp.csr_matrix:
+    rows = np.asarray(rows); cols = np.asarray(cols)
+    return sp.coo_matrix((np.ones(len(rows)), (rows, cols)), shape=(n, n)).tocsr()

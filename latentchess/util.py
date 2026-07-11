@@ -6,8 +6,12 @@ import numpy as np
 
 def auc(pos: np.ndarray, neg: np.ndarray) -> float:
     """Mann-Whitney AUC: P(random positive scores higher than random negative),
-    tie-aware via average ranks (scipy.stats.rankdata semantics)."""
+    tie-aware via average ranks (scipy.stats.rankdata semantics). Undefined
+    (NaN) when either class is empty -- e.g. KRk has no drawn states at all,
+    so a WIN/DRAW AUC is meaningless there, not a bug."""
     pos = np.asarray(pos); neg = np.asarray(neg)
+    if len(pos) == 0 or len(neg) == 0:
+        return float("nan")
     x = np.concatenate([pos, neg])
     order = np.argsort(x, kind="stable")
     ranks = np.empty(len(x), dtype=np.float64)

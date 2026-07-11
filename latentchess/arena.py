@@ -34,26 +34,31 @@ def evaluate(chain: TransitionChain, dtm: np.ndarray, white: Policy, black: Oppo
              auc_won_mask: np.ndarray | None = None) -> ArenaResult:
     rng = np.random.default_rng(seed)
     n = len(starts)
-    mates = exact = rook_lost = crossed = capped = 0
+    mates = exact = rook_lost = crossed_at_mate = crossed_any = capped = 0
     ratios: list[float] = []
     for s0 in starts:
         s0 = int(s0)
         rec = play_game(chain, white, black, s0, cap=cap, rng=rng)
         wm = len(rec.states)
+        crossed = (track_stratum_cross is not None
+                   and any(st in chain.strata[track_stratum_cross] for st in rec.states[1:]))
+        crossed_any += bool(crossed)
         if rec.result == "mate":
             mates += 1
             d0 = float(dtm[s0])
             ratios.append(tempo_ratio(wm, d0))
             exact += wm == int(np.ceil(d0 / 2))
-            if track_stratum_cross is not None:
-                crossed += any(st in chain.strata[track_stratum_cross] for st in rec.states[1:])
+            crossed_at_mate += bool(crossed)
         elif rec.result == "draw" and rec.final_kind == KIND_ONGOING:
             rook_lost += 1
         elif rec.result == "cap":
             capped += 1
     extra: dict = {}
     if track_stratum_cross is not None:
-        extra[f"via_{track_stratum_cross}"] = crossed / max(mates, 1)
+        # via_<stratum>: fraction of MATES that crossed (the KRkn convention);
+        # <stratum>_drop_rate: fraction of ALL games that ever crossed (the KRRk convention)
+        extra[f"via_{track_stratum_cross}"] = crossed_at_mate / max(mates, 1)
+        extra[f"{track_stratum_cross}_drop_rate"] = crossed_any / n
     if auc_scores is not None and auc_won_mask is not None:
         extra["win_draw_auc"] = _auc(auc_scores[auc_won_mask], auc_scores[~auc_won_mask])
     return ArenaResult(
