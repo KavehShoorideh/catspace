@@ -5,8 +5,9 @@ __pycache__/
 build/
 dist/
 
-# generated data artifacts (npy/pkl/json), never committed
-data/
+# generated data artifacts (npy/pkl/json), never committed -- anchored to
+# repo root so it doesn't also hide the latentchess/data/ package
+/data/
 *.npy
 *.pkl
 *.npz
