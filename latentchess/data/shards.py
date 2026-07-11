@@ -100,7 +100,11 @@ class LichessPairSource:
     def batches(self, batch_size: int, seed: int) -> Iterator[PairBatch]:
         rng = np.random.default_rng(seed)
         for path in self.paths:
-            data = np.load(path)
+            npz = np.load(path)
+            # bind every array ONCE: NpzFile re-reads (and re-allocates) the
+            # whole array on every __getitem__, so per-batch npz["packed"][sl]
+            # is quadratic io and churns 100MB allocations
+            data = {k: npz[k] for k in npz.files}
             game_id = data["game_id"]
             n = len(game_id)
             if n == 0:
@@ -117,11 +121,19 @@ class LichessPairSource:
             k = 1 + rng.geometric(1.0 - self.gamma, size=n)
             goal_rows = np.minimum(rows + k, last_row_of_game)
 
+            has_eval = "eval_cp" in data
             for i in range(0, n, batch_size):
                 sl = slice(i, min(i + batch_size, n))
                 meta = {
                     "result": data["result"][sl],
                     "white_elo": data["white_elo"][sl],
+                    "black_elo": data["black_elo"][sl],
                     "ply": data["ply"][sl],
+                    "clock": data["clock"][sl],
+                    "game_id": data["game_id"][sl],
+                    "board_meta": data["meta"][sl],                # anchor rows
+                    "board_meta_g": data["meta"][goal_rows[sl]],   # goal rows
                 }
+                if has_eval:
+                    meta["eval_cp"] = data["eval_cp"][sl]
                 yield PairBatch(anchors=data["packed"][sl], goals=data["packed"][goal_rows[sl]], meta=meta)
