@@ -6,8 +6,9 @@ from typing import Protocol
 import numpy as np
 
 from latentchess.chain import TransitionChain
+from latentchess.cone.embedding import QuasimetricEmbedding
 from latentchess.scoring import TerminalScores, dtm_filled, fill_terminal_state_scores
-from latentchess.planner.readout import ReplyAgg, greedy_policy
+from latentchess.planner.readout import ReplyAgg, backup, greedy_policy, move_values
 
 
 class Policy(Protocol):
@@ -61,3 +62,75 @@ class DTMOraclePolicy:
 
     def move_id(self, chain: TransitionChain, s: int, rng: np.random.Generator) -> int:
         return int(chain.move_ptr[s]) + int(self._table[s])
+
+
+def _stratum_of(chain: TransitionChain, s: int) -> str | None:
+    for name, rng_ in chain.strata.items():
+        if s in rng_:
+            return name
+    return None
+
+
+class PlanningPolicy:
+    """Consults PlanMemory each move: advances the wake clock (discrete events
+    from the last move played, under every registered MoveIdentity, plus
+    stratum-crossing), lets the selector pick a plan, greedily maximizes that
+    plan's goal reach, then records progress/replan/achieved back into memory.
+
+    Deterministic given (chain, emb, memory, selector) -- consumes no rng, so
+    swapping in a PlanningPolicy for a plain greedy_policy table with a single
+    MATE goal and tau=-inf must choose IDENTICAL moves (see
+    test_planning_policy_parity)."""
+
+    def __init__(self, chain: TransitionChain, emb: QuasimetricEmbedding,
+                 memory, ts: TerminalScores, agg: ReplyAgg = ReplyAgg.MIN,
+                 depth: int = 1, selector=None, identities: list | None = None):
+        self.chain = chain
+        self.emb = emb
+        self.memory = memory
+        self.ts = ts
+        self.agg = agg
+        self.depth = depth
+        self.selector = selector
+        self.identities = identities or []
+        self._V: dict = {}
+        self._prev_state: int | None = None
+        self._prev_mid: int | None = None
+
+    def _values(self, goal) -> np.ndarray:
+        if goal.name not in self._V:
+            from latentchess.cone.embedding import reach as reach_fn
+            scores = fill_terminal_state_scores(reach_fn(self.emb, goal, None), self.chain, self.ts)
+            if self.depth > 1:
+                scores = backup(scores, self.chain, self.agg, self.ts, self.depth - 1)
+            self._V[goal.name] = move_values(scores, self.chain, self.agg, self.ts)
+        return self._V[goal.name]
+
+    def move_id(self, chain: TransitionChain, s: int, rng: np.random.Generator) -> int:
+        from latentchess.planner.selector import GreedyReach
+
+        events = []
+        if self._prev_mid is not None:
+            for identity in self.identities:
+                events.append(identity.key(chain, self._prev_state, self._prev_mid))
+            prev_stratum = _stratum_of(chain, self._prev_state)
+            cur_stratum = _stratum_of(chain, s)
+            if prev_stratum != cur_stratum:
+                events.append(("stratum", cur_stratum))
+
+        F_now = self.emb.F_of(np.array([s]))[0] if hasattr(self.emb, "F_of") else None
+        self.memory.on_ply(s, events, F_now)
+
+        selector = self.selector or GreedyReach()
+        plan = selector.select(s, self.memory)
+        goal = plan.goal if plan is not None else self.memory.goals[0]
+
+        V = self._values(goal)
+        lo, hi = int(chain.move_ptr[s]), int(chain.move_ptr[s + 1])
+        mid = lo + int(np.argmax(V[lo:hi]))
+
+        if plan is not None:
+            self.memory.update(plan, s, mid)
+
+        self._prev_state, self._prev_mid = s, mid
+        return mid
