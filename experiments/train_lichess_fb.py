@@ -26,18 +26,11 @@ import torch
 
 from latentchess.data.encode import board_from_packed
 from latentchess.data.shards import LichessPairSource
-from latentchess.io.paths import derived_dir, shards_dir
+from latentchess.io.paths import derived_dir, newest_shard_dir
 from latentchess.nn.fb import TorchFB, load_ckpt, pick_device, save_ckpt
 from latentchess.nn.features import feature_planes, omega_ids
 
 HOLDOUT_MOD = 50
-
-
-def newest_shard_dir() -> Path:
-    dirs = [p for p in shards_dir().iterdir() if p.is_dir() and list(p.glob("shard_*.npz"))]
-    if not dirs:
-        raise SystemExit("no shard dirs under data/shards -- run experiments/build_lichess_shards.py first")
-    return max(dirs, key=lambda p: p.stat().st_mtime)
 
 
 def batch_tensors(batch, device):
@@ -162,7 +155,10 @@ def main():
     ap.add_argument("--steps", type=int, default=8000)
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--d", type=int, default=64)
-    ap.add_argument("--gamma", type=float, default=0.99)
+    ap.add_argument("--gamma", type=float, default=0.98,
+                    help="pairing horizon: mean k=1+1/(1-gamma)=51 plies, on par with "
+                         "typical stored game length (0.99's 101 snapped ~all goals to "
+                         "final positions)")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--val-every", type=int, default=500)
@@ -220,6 +216,10 @@ def main():
             save_ckpt(fb, ckpt_path, step=step, opt=opt)
 
     zgoals = build_zgoals(shard_dir, fb, device)
+    # the outcome DIRECTION: cancels the "generic finality" component the two
+    # mate goals share (diagnosed 2026-07-11; the component that made raw
+    # reach slopes identical for won and lost games)
+    zgoals["MATE_DIFF"] = zgoals["MATE_W"] - zgoals["MATE_B"]
     save_ckpt(fb, ckpt_path, step=step, opt=opt, zgoals=zgoals)
     print(f"saved {ckpt_path}")
 

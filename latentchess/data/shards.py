@@ -88,6 +88,29 @@ class ShardReader:
             buf_a, buf_g, path_idx = refill(buf_a, buf_g, path_idx)
 
 
+def sample_shard_rows(shard_dir, n: int, seed: int, holdout_only: bool = False,
+                       holdout_mod: int = 50) -> list:
+    """Seeded position-uniform sample of (shard_file, row) pairs across a
+    shard dir; holdout_only restricts to game_id % holdout_mod == 0 games
+    (the never-trained population used by eval/audit drivers)."""
+    shard_dir = Path(shard_dir)
+    per_shard = []
+    for path in sorted(shard_dir.glob("shard_*.npz")):
+        npz = np.load(path)
+        gid = npz["game_id"]
+        rows = np.flatnonzero(gid % holdout_mod == 0) if holdout_only else np.arange(len(gid))
+        per_shard.append((path.name, rows))
+    total = sum(len(r) for _, r in per_shard)
+    rng = np.random.default_rng(seed)
+    pick = np.sort(rng.choice(total, size=min(n, total), replace=False))
+    out, offset = [], 0
+    for name, rows in per_shard:
+        sel = pick[(pick >= offset) & (pick < offset + len(rows))] - offset
+        out.extend((name, int(rows[i])) for i in sel)
+        offset += len(rows)
+    return out
+
+
 class LichessPairSource:
     """Geometric-horizon (anchor, goal) PACKED-POSITION-ROW pairs sampled
     within each game from position shards written by data.lichess.build_shards."""
