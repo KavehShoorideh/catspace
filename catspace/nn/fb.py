@@ -55,14 +55,16 @@ class TorchFB(nn.Module):
     def __init__(self, d: int = 64, channels: int = 64, blocks: int = 6,
                  enc_out: int = 256, dh: int = 512, omega_dim: int = 16,
                  tau: float = 0.1, seed: int = 0, quasimetric: bool = False,
-                 two_horizon: bool = False):
+                 two_horizon: bool = False, distributional: bool = False,
+                 n_bins: int = 12):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
-        if two_horizon:
-            quasimetric = True           # the FAR head is the quasimetric one
+        if two_horizon or distributional:
+            quasimetric = True           # both keep the quasimetric d as distance
         self.config = dict(d=d, channels=channels, blocks=blocks, enc_out=enc_out,
                            dh=dh, omega_dim=omega_dim, tau=tau, seed=seed,
-                           quasimetric=quasimetric, two_horizon=two_horizon)
+                           quasimetric=quasimetric, two_horizon=two_horizon,
+                           distributional=distributional, n_bins=n_bins)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -90,6 +92,22 @@ class TorchFB(nn.Module):
                                             nn.ReLU(), nn.Linear(dh, d))
             self.headB_near = nn.Sequential(nn.Linear(enc_out, dh), nn.ReLU(),
                                             nn.Linear(dh, d))
+        # DISTRIBUTIONAL head (2026-07-13, UNCERTAINTY_DESIGN.md option B): a
+        # single head predicting distance-to-goal as a CATEGORICAL over ply-gap
+        # bins (chess distance is bounded + integer, so fixed bins have no
+        # edge-placement problem, and bimodality -- "3 ply or 30 ply depending
+        # on the line" -- IS representable, unlike a Gaussian). The quasimetric
+        # d stays the PLANNING distance (axioms preserved); the categorical's
+        # ENTROPY rides on top as the auxiliary uncertainty/sharpness signal.
+        # Constructed LAST -> distributional=False stays byte-identical.
+        self.distributional = distributional
+        if distributional:
+            self.n_bins = n_bins
+            # geometric ply-gap bin edges (ratio ~1.6): [2,3,5,8,13,20,33,52,84,134]
+            edges = torch.round(1.6 ** torch.arange(1, n_bins, dtype=torch.float32))
+            self.register_buffer("dist_bin_edges", edges)            # (n_bins-1,)
+            self.cat_head = nn.Sequential(nn.Linear(2 * d, dh), nn.ReLU(),
+                                          nn.Linear(dh, n_bins))
 
     def embed_F(self, planes: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         h = self.encF(planes)
@@ -115,6 +133,25 @@ class TorchFB(nn.Module):
         """(N,d) near-states against ONE near-goal (d,) -> (N,). Plain cosine
         (near is not quasimetric). Counterpart of `score` for the near head."""
         return f_near @ z_near
+
+    # ---- distributional head (option B) ---------------------------------
+    def dist_logits(self, f: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
+        """(N,d) states x goal (d,) or (N,d) -> (N, n_bins) categorical logits
+        over ply-gap distance bins. z broadcasts if it's a single goal."""
+        if z.dim() == 1:
+            z = z.expand(f.shape[0], -1)
+        return self.cat_head(torch.cat([f, z], dim=1))
+
+    def dist_entropy(self, f: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
+        """(N,) Shannon entropy of the predicted distance distribution -- the
+        auxiliary uncertainty/sharpness signal (wide = volatile/sharp, narrow =
+        smooth). Uses torch.distributions.Categorical (FOSS)."""
+        return torch.distributions.Categorical(logits=self.dist_logits(f, z)).entropy()
+
+    def dist_bin_index(self, ply_gap: torch.Tensor) -> torch.Tensor:
+        """observed ply-gap -> bin index in [0, n_bins-1] (the cross-entropy
+        target). bucketize is right-inclusive on the geometric edges."""
+        return torch.bucketize(ply_gap.to(self.dist_bin_edges.dtype), self.dist_bin_edges)
 
     def two_horizon_loss(self, planes_s: torch.Tensor, omega_s: torch.Tensor,
                          planes_g: torch.Tensor, ply_gap: torch.Tensor,
@@ -162,7 +199,7 @@ class TorchFB(nn.Module):
                 material_drop: torch.Tensor | None = None,
                 ply_gap_weight: float = 0.05, ply_gap_scale: float = 50.0,
                 asym_weight: float = 0.0, asym_margin: float = 0.2,
-                asym_cap: int = 128) -> tuple[torch.Tensor, torch.Tensor]:
+                asym_cap: int = 128, dist_weight: float = 0.5) -> tuple[torch.Tensor, torch.Tensor]:
         """InfoNCE with in-batch negatives; returns (loss, top1 retrieval acc).
 
         2026-07-12 ply-gap calibration (Kaveh: "if the future leads to a mate
@@ -192,6 +229,13 @@ class TorchFB(nn.Module):
             d_true = self.distance_matrix(f, b).diagonal()
             target_d = ply_gap.to(d_true.dtype) / ply_gap_scale
             loss = loss + ply_gap_weight * nn.functional.mse_loss(d_true, target_d)
+        if self.distributional and ply_gap is not None:
+            # categorical head: predict which ply-gap BIN the true goal falls in
+            # (cross-entropy). Trains the distribution whose entropy is the
+            # uncertainty signal; the quasimetric d above stays the distance.
+            logits_bin = self.dist_logits(f, b)                     # (N, n_bins)
+            target_bin = self.dist_bin_index(ply_gap)
+            loss = loss + dist_weight * nn.functional.cross_entropy(logits_bin, target_bin)
         if self.quasimetric and asym_weight > 0 and material_drop is not None \
                 and bool(material_drop.any()):
             # ASYMMETRY MARGIN (2026-07-13, JOURNAL.md): pairs whose material
