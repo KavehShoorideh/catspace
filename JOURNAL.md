@@ -1733,6 +1733,40 @@ bank path kept (it's still a useful instrument), krrkbp_arena --compare
 bank kept for re-testing on future checkpoints.
 
 **Original single-run entry follows (superseded by the arc above):**
+
+---
+
+## 2026-07-13 06:10 — round 15: asymmetry-margin lever — gate REJECTED as configured, with the cleanest trade-off curve yet
+
+`lichess_fb_4gb_qm_asym.pt` (quasimetric + ply-gap 0.05 + asym 0.05/margin
+0.2 + gen2-mix, 90k steps). Pre-registered 3-part gate:
+
+1. **frac(rev<=fwd) <= 0.10: PASS, dramatically.** 0.030 (was 0.27-0.35),
+   mean reverse-forward gap +0.325 (was +0.085). The hinge did exactly its
+   job: the metric now robustly encodes that captures are one-way doors.
+2. **nearest-exemplar KRvK rho >= +0.15: FAIL, borderline.** +0.123 --
+   below the incumbent's +0.165 and well below gen2's +0.252 on the SAME
+   positions/seed. The hinge degraded fine mate-distance geometry some.
+3. **ACPL not significantly worse: FAIL, clear.** 284.4 vs 253.4, paired
+   diff +30.9cp, CI [+4.7,+57.1], p=0.01.
+
+**Why, mechanistically** (the probes make this legible): retrieval k=1
+dropped 0.97 -> 0.79 while k=10/20/50 all IMPROVED (0.87->0.89,
+0.69->0.77, 0.23->0.30 -- the k=20-50 cliff moved outward, the first
+lever to touch it!). The asym term at weight 0.05 traded SHORT-horizon
+discrimination for long-horizon structure + asymmetry. ACPL lives
+entirely on short-horizon discrimination (ranking the 30-40 immediate
+moves), so it paid the bill. VERDICT lines agree: REACH_SLOPE went
+positive again (+0.292 won / +0.143 lost) with healthy DIFF separation
+(+0.144/-0.117).
+
+**Verdict: rejected AS CONFIGURED (weight 0.05), per pre-registration --
+but this is a tuning failure, not a mechanism failure.** All three gate
+quantities moved exactly the way an over-weighted auxiliary loss predicts.
+Round 16 (ONE lever: asym_weight 0.05 -> 0.015, same margin, everything
+else identical) launched -- hypothesis: keep most of the asymmetry gain
+(part 1 has enormous headroom: 0.030 vs the 0.10 gate) while restoring
+k=1 sharpness and ACPL. Same 3-part gate.
 `FBSearchPolicy(centroid)=0.433` vs `FBSearchPolicy+bank=0.308`, n=60,
 mean_diff=-0.125, e=65.07, REJECT -- the first statistically decisive
 readout difference this whole diagnostic has produced, and it's AGAINST
