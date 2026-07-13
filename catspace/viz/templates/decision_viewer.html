@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>catspace — decision viewer</title>
+<style>
+  body { background:#14161a; color:#cfd3da; font:13px/1.4 -apple-system, "Segoe UI", sans-serif; margin:14px; }
+  h1 { font-size:15px; margin:0 0 8px; color:#e8eaee; }
+  #games button { background:#22252c; color:#cfd3da; border:1px solid #3a3f49; border-radius:4px;
+                  margin:0 4px 4px 0; padding:3px 8px; cursor:pointer; }
+  #games button.active { background:#3d5afe22; border-color:#7aa2ff; color:#fff; }
+  #main { display:flex; gap:14px; flex-wrap:wrap; }
+  #boardwrap, #candwrap, #previewwrap { background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:8px; }
+  #board svg { width:380px; height:380px; }
+  #preview svg { width:200px; height:200px; }
+  #candwrap { width:340px; }
+  table { border-collapse:collapse; width:100%; font-size:12px; }
+  th, td { text-align:left; padding:3px 6px; border-bottom:1px solid #23262e; }
+  tr.chosen { background:#3d5afe22; }
+  tr:hover { background:#23262e; cursor:pointer; }
+  .kind-mate { color:#66d9a6; } .kind-reach { color:#7aa2ff; } .kind-draw { color:#8a90a0; } .kind-mated { color:#ff7a9c; }
+  #ctrl { margin:8px 0; }
+  #ctrl input[type=range] { width:520px; vertical-align:middle; }
+  .lg { font-size:11px; color:#8a90a0; }
+  #spark { width:940px; height:80px; background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; margin-top:10px; padding:8px; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div id="games"></div>
+<div id="ctrl">
+  <button id="prev">&#8592;</button>
+  <input type="range" id="slider" min="0" max="0" value="0">
+  <button id="next">&#8594;</button>
+  <span id="plyinfo" class="lg"></span>
+</div>
+<div id="main">
+  <div id="boardwrap"><div id="board"></div></div>
+  <div id="candwrap">
+    <div class="lg">candidates (fb plies only)</div>
+    <table id="candtable"><thead><tr><th>move</th><th>kind/score</th><th>feared reply</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div id="previewwrap"><div class="lg">feared reply</div><div id="preview"></div></div>
+</div>
+<svg id="spark" viewBox="0 0 940 80"></svg>
+
+<script>
+const DATA = /*__DATA__*/;
+let gi = 0, pi = 0;
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+// Boards are rendered on demand from a FEN string, not pre-baked server-side --
+// a FEN is ~70 bytes vs. ~31KB for a pre-rendered SVG, and only the currently
+// viewed position (plus a clicked candidate preview) is ever drawn.
+const PIECE_GLYPH = { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" };
+function boardSVG(fen, opts) {
+  opts = opts || {};
+  const size = opts.size || 360;
+  const sq = size / 8;
+  const rows = (fen || "8/8/8/8/8/8/8/8").split(" ")[0].split("/");
+  const LIGHT = "#e8d9b5", DARK = "#a5794f", HILITE = "#7aa2ff66";
+  const hi = new Set([opts.lastFrom, opts.lastTo].filter(Boolean));
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">`;
+  for (let r = 0; r < 8; r++) {
+    let file = 0;
+    for (const ch of rows[r]) {
+      const n = /[1-8]/.test(ch) ? +ch : 1;
+      for (let k = 0; k < n; k++) {
+        const x = file * sq, y = r * sq;
+        const sqName = "abcdefgh"[file] + (8 - r);
+        const color = ((file + r) % 2 === 0) ? LIGHT : DARK;
+        svg += `<rect x="${x}" y="${y}" width="${sq}" height="${sq}" fill="${color}"/>`;
+        if (hi.has(sqName)) svg += `<rect x="${x}" y="${y}" width="${sq}" height="${sq}" fill="${HILITE}"/>`;
+        if (!/[1-8]/.test(ch)) {
+          const isWhite = ch === ch.toUpperCase();
+          const glyph = PIECE_GLYPH[ch.toLowerCase()];
+          const fill = isWhite ? "#f5f5f5" : "#15171b";
+          svg += `<text x="${x + sq / 2}" y="${y + sq * 0.76}" font-size="${sq * 0.8}" text-anchor="middle" ` +
+                 `fill="${fill}" stroke="${isWhite ? "#15171b" : "none"}" stroke-width="${isWhite ? 1 : 0}">${glyph}</text>`;
+        }
+        file += 1;
+      }
+    }
+  }
+  svg += "</svg>";
+  return svg;
+}
+
+function setGame(i) {
+  gi = i; pi = 0;
+  document.querySelectorAll("#games button").forEach((b, j) => b.classList.toggle("active", j === i));
+  const g = DATA.games[gi];
+  document.getElementById("slider").max = g.plies.length - 1;
+  drawSpark();
+  setPly(0);
+}
+
+function drawSpark() {
+  const g = DATA.games[gi];
+  const svg = document.getElementById("spark");
+  svg.innerHTML = "";
+  const fbPlies = g.plies.map((p, i) => [i, p]).filter(([, p]) => p.mover === "fb" && p.reach_after !== null && p.reach_after !== undefined);
+  if (!fbPlies.length) return;
+  const vals = fbPlies.map(([, p]) => p.reach_after);
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const X = i => 20 + 900 * i / Math.max(1, g.plies.length - 1);
+  const Y = v => 70 - 55 * (v - lo) / ((hi - lo) || 1);
+  const d = fbPlies.map(([i, p], k) => (k ? "L" : "M") + X(i) + " " + Y(p.reach_after)).join(" ");
+  svg.appendChild(el("path", { d, fill: "none", stroke: "#7aa2ff", "stroke-width": 1.3 }));
+  fbPlies.forEach(([i, p]) => svg.appendChild(el("circle", { cx: X(i), cy: Y(p.reach_after), r: 2, fill: "#7aa2ff" })));
+  sparkCursor = el("line", { x1: 20, x2: 20, y1: 4, y2: 76, stroke: "#fff", "stroke-width": 1, opacity: 0.7 });
+  svg.appendChild(sparkCursor);
+  svg.onclick = ev => {
+    const r = svg.getBoundingClientRect();
+    const frac = (ev.clientX - r.left - 20 * r.width / 940) / (900 * r.width / 940);
+    setPly(Math.round(frac * (g.plies.length - 1)));
+  };
+}
+let sparkCursor = null;
+
+function kindClass(k) { return "kind-" + k; }
+function fmtScore(c) {
+  if (c.kind === "mate") return "MATE";
+  if (c.kind === "mated") return "MATED";
+  if (c.kind === "draw") return "draw";
+  return c.score.toFixed(3);
+}
+
+function setPly(i) {
+  const g = DATA.games[gi];
+  pi = Math.max(0, Math.min(g.plies.length - 1, i));
+  const p = g.plies[pi];
+  document.getElementById("board").innerHTML = boardSVG(p.fen, { size: 380, lastFrom: p.last_from, lastTo: p.last_to });
+  document.getElementById("slider").value = pi;
+  if (sparkCursor) {
+    const X = 20 + 900 * pi / Math.max(1, g.plies.length - 1);
+    sparkCursor.setAttribute("x1", X); sparkCursor.setAttribute("x2", X);
+  }
+  const parts = [`ply ${p.ply}`, `mover ${p.mover}`, p.san ? `move ${p.san}` : "",
+    (p.reach_after !== null && p.reach_after !== undefined) ? `reach ${p.reach_after.toFixed(3)}` : ""];
+  document.getElementById("plyinfo").textContent = parts.filter(Boolean).join("  ·  ");
+
+  const tbody = document.querySelector("#candtable tbody");
+  tbody.innerHTML = "";
+  document.getElementById("preview").innerHTML = "";
+  if (!p.cands) return;
+  for (const c of p.cands) {
+    const tr = document.createElement("tr");
+    if (c.chosen) tr.classList.add("chosen");
+    tr.innerHTML = `<td>${c.san}</td><td class="${kindClass(c.kind)}">${fmtScore(c)}</td>` +
+      `<td>${c.feared_san || ""}</td>`;
+    if (c.feared_fen) {
+      tr.onclick = () => {
+        document.getElementById("preview").innerHTML =
+          boardSVG(c.feared_fen, { size: 220, lastFrom: c.feared_from, lastTo: c.feared_to });
+      };
+    }
+    tbody.appendChild(tr);
+  }
+}
+
+document.getElementById("title").textContent = DATA.meta.title;
+DATA.games.forEach((g, i) => {
+  const b = document.createElement("button");
+  b.textContent = `${g.name} (${g.result})`;
+  b.onclick = () => setGame(i);
+  document.getElementById("games").appendChild(b);
+});
+document.getElementById("slider").oninput = ev => setPly(+ev.target.value);
+document.getElementById("prev").onclick = () => setPly(pi - 1);
+document.getElementById("next").onclick = () => setPly(pi + 1);
+document.onkeydown = ev => {
+  if (ev.key === "ArrowLeft") setPly(pi - 1);
+  if (ev.key === "ArrowRight") setPly(pi + 1);
+};
+setGame(0);
+</script>
+</body>
+</html>

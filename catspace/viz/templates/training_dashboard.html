@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>catspace — training dashboard</title>
+<style>
+  body { background:#14161a; color:#cfd3da; font:13px/1.4 -apple-system, "Segoe UI", sans-serif; margin:14px; }
+  h1 { font-size:15px; margin:0 0 10px; color:#e8eaee; }
+  #runs button { background:#22252c; color:#cfd3da; border:1px solid #3a3f49; border-radius:4px;
+                 margin:0 4px 4px 0; padding:3px 8px; cursor:pointer; }
+  #runs button.off { opacity:0.35; }
+  #ctrl { margin:6px 0 12px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  #ctrl label { font-size:11px; color:#8a90a0; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .panel { background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:8px; }
+  .panel h2 { font-size:12px; margin:0 0 4px; color:#8a90a0; font-weight:normal; }
+  svg.chart { width:100%; height:260px; }
+  #status { font-size:11px; color:#8a90a0; min-height:16px; margin-top:4px; }
+  #verdicts { margin-top:14px; font-size:11px; color:#8a90a0; white-space:pre-wrap; }
+  .swatch { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:4px; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div id="runs"></div>
+<div id="ctrl">
+  <label>EMA <input type="range" id="ema" min="0" max="0.98" step="0.02" value="0.9"></label>
+  <label><input type="checkbox" id="logy"> log-y (loss)</label>
+</div>
+<div class="grid">
+  <div class="panel"><h2>loss</h2><svg class="chart" id="c-loss" viewBox="0 0 480 260"></svg></div>
+  <div class="panel"><h2>top1 (train EMA + val, dashed = chance)</h2><svg class="chart" id="c-top1" viewBox="0 0 480 260"></svg></div>
+  <div class="panel"><h2>top8 (val, dashed = chance)</h2><svg class="chart" id="c-top8" viewBox="0 0 480 260"></svg></div>
+  <div class="panel"><h2>throughput (it/s)</h2><svg class="chart" id="c-rate" viewBox="0 0 480 260"></svg></div>
+</div>
+<div id="status"></div>
+<div id="verdicts"></div>
+
+<script>
+const DATA = /*__DATA__*/;
+const NS = "http://www.w3.org/2000/svg";
+const COLORS = ["#7aa2ff", "#66d9a6", "#ffb86b", "#ff7a9c", "#c792ea", "#f1fa8c"];
+const active = {};
+DATA.runs.forEach((r, i) => active[r.name] = true);
+
+function el(tag, attrs) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  return e;
+}
+
+function ema(vals, alpha) {
+  if (alpha <= 0) return vals.slice();
+  let out = [], m = null;
+  for (const v of vals) { m = m === null ? v : alpha * m + (1 - alpha) * v; out.push(m); }
+  return out;
+}
+
+const PAD = 34, W = 480, H = 260;
+function scales(xs, ys, logy) {
+  const x0 = Math.min(...xs), x1 = Math.max(...xs);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (logy) { y0 = Math.log(Math.max(y0, 1e-6)); y1 = Math.log(Math.max(y1, 1e-6)); }
+  const dx = (x1 - x0) || 1, dy = (y1 - y0) || 1;
+  const sx = x => PAD + (W - 2 * PAD) * (x - x0) / dx;
+  const sy = y => { const yy = logy ? Math.log(Math.max(y, 1e-6)) : y; return H - PAD - (H - 2 * PAD) * (yy - y0) / dy; };
+  return { sx, sy, x0, x1, y0, y1 };
+}
+
+function path(pts, sx, sy) {
+  return pts.map((p, i) => (i ? "L" : "M") + sx(p[0]).toFixed(1) + " " + sy(p[1]).toFixed(1)).join(" ");
+}
+
+function axisLabels(svg, S, logy) {
+  svg.appendChild(el("line", {x1: PAD, x2: W - PAD, y1: H - PAD, y2: H - PAD, stroke: "#2a3542"}));
+  svg.appendChild(el("line", {x1: PAD, x2: PAD, y1: 8, y2: H - PAD, stroke: "#2a3542"}));
+  const t = el("text", {x: PAD, y: 12, fill: "#5a6070", "font-size": 9});
+  t.textContent = (logy ? "log " : "") + S.y0.toFixed(3);
+  svg.appendChild(t);
+  const t2 = el("text", {x: PAD, y: H - PAD - 4, fill: "#5a6070", "font-size": 9});
+  t2.textContent = S.y1.toFixed(3);
+  svg.appendChild(t2);
+}
+
+function drawChart(id, series, logy) {
+  const svg = document.getElementById(id);
+  svg.innerHTML = "";
+  const shown = series.filter(s => active[s.name] && s.pts.length);
+  if (!shown.length) return;
+  const allX = shown.flatMap(s => s.pts.map(p => p[0]));
+  const allY = shown.flatMap(s => s.pts.map(p => p[1])).concat(shown.flatMap(s => s.refs || []));
+  const S = scales(allX, allY, logy);
+  axisLabels(svg, S, logy);
+  for (const s of shown) {
+    if (s.dashed) {
+      for (const ref of (s.refs || [])) {
+        const y = S.sy(ref);
+        svg.appendChild(el("line", {x1: PAD, x2: W - PAD, y1: y, y2: y, stroke: s.color,
+          "stroke-width": 1, "stroke-dasharray": "4,3", opacity: 0.6}));
+      }
+      continue;
+    }
+    svg.appendChild(el("path", {d: path(s.pts, S.sx, S.sy), fill: "none", stroke: s.color,
+      "stroke-width": s.bold ? 1.6 : 0.8, opacity: s.bold ? 0.95 : 0.35}));
+    if (s.dots) {
+      for (const p of s.pts) {
+        svg.appendChild(el("circle", {cx: S.sx(p[0]), cy: S.sy(p[1]), r: 1.8, fill: s.color}));
+      }
+    }
+  }
+  svg.onmousemove = ev => {
+    const r = svg.getBoundingClientRect();
+    const frac = (ev.clientX - r.left) / r.width;
+    const x = S.x0 + frac * (S.x1 - S.x0);
+    let best = null, bd = Infinity;
+    for (const s of shown) {
+      for (const p of s.pts) {
+        const d = Math.abs(p[0] - x);
+        if (d < bd) { bd = d; best = { run: s.name, step: p[0], val: p[1] }; }
+      }
+    }
+    if (best) document.getElementById("status").textContent =
+      `${best.run}  step ${Math.round(best.step)}  value ${best.val.toFixed(4)}`;
+  };
+}
+
+function redraw() {
+  const alpha = +document.getElementById("ema").value;
+  const logy = document.getElementById("logy").checked;
+
+  const lossSeries = [];
+  DATA.runs.forEach((r, i) => {
+    const c = COLORS[i % COLORS.length];
+    const steps = r.train.step;
+    lossSeries.push({ name: r.name, pts: steps.map((s, j) => [s, r.train.loss[j]]), color: c, bold: false });
+    lossSeries.push({ name: r.name, pts: steps.map((s, j) => [s, ema(r.train.loss, alpha)[j]]), color: c, bold: true });
+    if (r.val.step.length)
+      lossSeries.push({ name: r.name, pts: r.val.step.map((s, j) => [s, r.val.loss[j]]), color: c, bold: true, dots: true });
+  });
+  drawChart("c-loss", lossSeries, logy);
+
+  const top1Series = [];
+  DATA.runs.forEach((r, i) => {
+    const c = COLORS[i % COLORS.length];
+    const smoothed = ema(r.train.top1, alpha);
+    top1Series.push({ name: r.name, pts: r.train.step.map((s, j) => [s, smoothed[j]]), color: c, bold: true });
+    if (r.val.step.length)
+      top1Series.push({ name: r.name, pts: r.val.step.map((s, j) => [s, r.val.top1[j]]), color: c, bold: true, dots: true });
+    top1Series.push({ name: r.name, pts: [], color: c, dashed: true, refs: [r.chance.top1] });
+  });
+  drawChart("c-top1", top1Series, false);
+
+  const top8Series = [];
+  DATA.runs.forEach((r, i) => {
+    const c = COLORS[i % COLORS.length];
+    if (r.val.step.length)
+      top8Series.push({ name: r.name, pts: r.val.step.map((s, j) => [s, r.val.top8[j]]), color: c, bold: true, dots: true });
+    top8Series.push({ name: r.name, pts: [], color: c, dashed: true, refs: [r.chance.top8] });
+  });
+  drawChart("c-top8", top8Series, false);
+
+  const rateSeries = [];
+  DATA.runs.forEach((r, i) => {
+    const c = COLORS[i % COLORS.length];
+    rateSeries.push({ name: r.name, pts: r.train.step.map((s, j) => [s, r.train.rate[j]]), color: c, bold: false });
+    rateSeries.push({ name: r.name, pts: r.train.step.map((s, j) => [s, ema(r.train.rate, alpha)[j]]), color: c, bold: true });
+  });
+  drawChart("c-rate", rateSeries, false);
+}
+
+document.getElementById("title").textContent = DATA.meta.title;
+const runsDiv = document.getElementById("runs");
+DATA.runs.forEach((r, i) => {
+  const b = document.createElement("button");
+  b.innerHTML = `<span class="swatch" style="background:${COLORS[i % COLORS.length]}"></span>${r.name}`;
+  b.onclick = () => { active[r.name] = !active[r.name]; b.classList.toggle("off", !active[r.name]); redraw(); };
+  runsDiv.appendChild(b);
+});
+document.getElementById("ema").oninput = redraw;
+document.getElementById("logy").onchange = redraw;
+document.getElementById("verdicts").textContent =
+  DATA.runs.map(r => `[${r.name}]\n` + r.verdicts.join("\n")).join("\n\n");
+redraw();
+</script>
+</body>
+</html>

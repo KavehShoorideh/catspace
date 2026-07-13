@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>catspace — divergence explorer</title>
+<style>
+  body { background:#14161a; color:#cfd3da; font:13px/1.4 -apple-system, "Segoe UI", sans-serif; margin:14px; }
+  h1 { font-size:15px; margin:0 0 8px; color:#e8eaee; }
+  .lg { font-size:11px; color:#8a90a0; }
+  #main { display:flex; gap:14px; }
+  #mapwrap, #right, #filters { background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:10px; }
+  #map { width:560px; height:560px; }
+  #right { width:280px; }
+  #right svg { width:240px; height:240px; }
+  #filters { width:200px; }
+  #filters .group { margin-bottom:12px; }
+  #filters .elo-row { font-size:11px; }
+  table { width:100%; border-collapse:collapse; font-size:11px; margin-top:10px; }
+  th, td { text-align:left; padding:2px 6px; border-bottom:1px solid #23262e; cursor:pointer; }
+  th:hover { color:#7aa2ff; }
+  tr.datarow:hover { background:#23262e; }
+  tr.selected { background:#3d5afe22; }
+  #bottom { margin-top:14px; background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:10px; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div id="main">
+  <div id="filters">
+    <div class="group">
+      <div class="lg">ply range</div>
+      <input type="range" id="ply-min" min="0" max="200" value="0" style="width:100%">
+      <input type="range" id="ply-max" min="0" max="200" value="200" style="width:100%">
+      <div class="lg" id="ply-label"></div>
+    </div>
+    <div class="group">
+      <div class="lg">|divergence| &ge;</div>
+      <input type="range" id="div-min" min="0" max="0.5" step="0.01" value="0" style="width:100%">
+      <div class="lg" id="div-label"></div>
+    </div>
+    <div class="group">
+      <div class="lg">white Elo bin</div>
+      <div id="elo-checks"></div>
+    </div>
+  </div>
+  <div id="mapwrap"><svg id="map" viewBox="0 0 560 560"></svg></div>
+  <div id="right">
+    <div class="lg">click a point (or table row)</div>
+    <div id="board"></div>
+    <div class="lg" id="info"></div>
+    <div class="lg" id="fen" style="word-break:break-all;color:#6a7080;margin-top:4px"></div>
+  </div>
+</div>
+<div id="bottom">
+  <div class="lg">top divergent positions (E_desc &minus; E_norm; +: humans overperform eval). click a header to sort.</div>
+  <table id="tbl"><thead><tr>
+    <th data-k="ply">ply</th><th data-k="white_elo_bin">elo</th><th data-k="e_desc">E_desc</th>
+    <th data-k="e_norm">E_norm</th><th data-k="sf">sf</th><th data-k="div">div</th>
+  </tr></thead><tbody id="tbody"></tbody></table>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+const PIECE_GLYPH = { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" };
+function boardSVG(fen, opts) {
+  opts = opts || {};
+  const size = opts.size || 240;
+  const sq = size / 8;
+  const rows = (fen || "8/8/8/8/8/8/8/8").split(" ")[0].split("/");
+  const LIGHT = "#e8d9b5", DARK = "#a5794f";
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">`;
+  for (let r = 0; r < 8; r++) {
+    let file = 0;
+    for (const ch of rows[r]) {
+      const n = /[1-8]/.test(ch) ? +ch : 1;
+      for (let k = 0; k < n; k++) {
+        const x = file * sq, y = r * sq;
+        const color = ((file + r) % 2 === 0) ? LIGHT : DARK;
+        svg += `<rect x="${x}" y="${y}" width="${sq}" height="${sq}" fill="${color}"/>`;
+        if (!/[1-8]/.test(ch)) {
+          const isWhite = ch === ch.toUpperCase();
+          const glyph = PIECE_GLYPH[ch.toLowerCase()];
+          const fill = isWhite ? "#f5f5f5" : "#15171b";
+          svg += `<text x="${x + sq / 2}" y="${y + sq * 0.76}" font-size="${sq * 0.8}" text-anchor="middle" ` +
+                 `fill="${fill}" stroke="${isWhite ? "#15171b" : "none"}" stroke-width="${isWhite ? 1 : 0}">${glyph}</text>`;
+        }
+        file += 1;
+      }
+    }
+  }
+  svg += "</svg>";
+  return svg;
+}
+
+const P = DATA.points;
+const N = P.fen.length;
+const ELO_LABELS = Array.from({length: 11}, (_, b) => b < 10 ? `${800 + 200 * b}-${800 + 200 * b + 199}` : "unknown");
+const eloOn = new Set(Array.from({length: 11}, (_, i) => i));
+let selected = -1;
+let sortKey = "div", sortAbs = true, sortDesc = true;
+
+function maxPly() { return Math.max(...P.ply); }
+
+function passesFilter(i) {
+  const plyMin = +document.getElementById("ply-min").value, plyMax = +document.getElementById("ply-max").value;
+  const divMin = +document.getElementById("div-min").value;
+  if (P.ply[i] < plyMin || P.ply[i] > plyMax) return false;
+  if (Math.abs(P.div[i]) < divMin) return false;
+  if (!eloOn.has(P.white_elo_bin[i])) return false;
+  return true;
+}
+
+function showPoint(i) {
+  selected = i;
+  document.getElementById("board").innerHTML = boardSVG(P.fen[i], { size: 240 });
+  document.getElementById("info").textContent =
+    `ply ${P.ply[i]}  ·  elo ${ELO_LABELS[P.white_elo_bin[i]]}  ·  E_desc ${P.e_desc[i].toFixed(3)}  ·  ` +
+    `E_norm ${P.e_norm[i].toFixed(3)}  ·  sf ${P.sf[i].toFixed(3)}  ·  div ${P.div[i].toFixed(3)}`;
+  document.getElementById("fen").textContent = P.fen[i];
+  drawMap();
+  renderTable();
+}
+
+function eloColor(b) {
+  const SEQ = ["#3550c9", "#4f7fe0", "#66a0e8", "#7fc4c8", "#a6d98f", "#d9d96b", "#e0a34f", "#d9663f"];
+  const t = Math.max(0, Math.min(1, b / 9));
+  return SEQ[Math.min(SEQ.length - 1, Math.floor(t * SEQ.length))];
+}
+
+function drawMap() {
+  const svg = document.getElementById("map");
+  svg.innerHTML = "";
+  const W = 560, PAD = 34;
+  const sx = v => PAD + (W - 2 * PAD) * v;
+  const sy = v => W - PAD - (W - 2 * PAD) * v;
+  svg.appendChild(el("line", { x1: sx(0), y1: sy(0), x2: sx(1), y2: sy(1), stroke: "#3a3f49", "stroke-width": 1, "stroke-dasharray": "4,3" }));
+  svg.appendChild(el("line", { x1: PAD, x2: W - PAD, y1: W - PAD, y2: W - PAD, stroke: "#2a3542" }));
+  svg.appendChild(el("line", { x1: PAD, x2: PAD, y1: 8, y2: W - PAD, stroke: "#2a3542" }));
+  const pts = [];
+  for (let i = 0; i < N; i++) {
+    if (!passesFilter(i)) continue;
+    const cx = sx(P.e_norm[i]), cy = sy(P.e_desc[i]);
+    svg.appendChild(el("circle", { cx, cy, r: i === selected ? 4 : 2, fill: eloColor(P.white_elo_bin[i]),
+      opacity: i === selected ? 1 : 0.55, stroke: i === selected ? "#fff" : "none" }));
+    pts.push([cx, cy, i]);
+  }
+  svg.onclick = ev => {
+    const r = svg.getBoundingClientRect();
+    const mx = (ev.clientX - r.left) * 560 / r.width, my = (ev.clientY - r.top) * 560 / r.height;
+    let best = -1, bd = 1e18;
+    for (const [x, y, i] of pts) { const d = (x - mx) ** 2 + (y - my) ** 2; if (d < bd) { bd = d; best = i; } }
+    if (best >= 0) showPoint(best);
+  };
+}
+
+function renderTable() {
+  const idx = DATA.top_indices.slice().sort((a, b) => {
+    const va = sortAbs ? Math.abs(P[sortKey][a]) : P[sortKey][a];
+    const vb = sortAbs ? Math.abs(P[sortKey][b]) : P[sortKey][b];
+    return sortDesc ? vb - va : va - vb;
+  });
+  const tbody = document.getElementById("tbody");
+  tbody.innerHTML = "";
+  idx.forEach(i => {
+    const tr = document.createElement("tr");
+    tr.className = "datarow" + (i === selected ? " selected" : "");
+    tr.innerHTML = `<td>${P.ply[i]}</td><td>${ELO_LABELS[P.white_elo_bin[i]]}</td>` +
+      `<td>${P.e_desc[i].toFixed(3)}</td><td>${P.e_norm[i].toFixed(3)}</td>` +
+      `<td>${P.sf[i].toFixed(3)}</td><td>${P.div[i].toFixed(3)}</td>`;
+    tr.onclick = () => showPoint(i);
+    tbody.appendChild(tr);
+  });
+}
+
+document.getElementById("title").textContent = DATA.meta.title;
+document.getElementById("ply-max").value = maxPly();
+document.getElementById("ply-min").max = maxPly();
+document.getElementById("ply-max").max = maxPly();
+
+const eloDiv = document.getElementById("elo-checks");
+ELO_LABELS.forEach((label, b) => {
+  const row = document.createElement("div");
+  row.className = "elo-row";
+  row.innerHTML = `<label><input type="checkbox" checked data-b="${b}"> ${label}</label>`;
+  row.querySelector("input").onchange = ev => {
+    if (ev.target.checked) eloOn.add(b); else eloOn.delete(b);
+    drawMap(); renderTable();
+  };
+  eloDiv.appendChild(row);
+});
+
+function updateLabels() {
+  document.getElementById("ply-label").textContent = `${document.getElementById("ply-min").value} - ${document.getElementById("ply-max").value}`;
+  document.getElementById("div-label").textContent = (+document.getElementById("div-min").value).toFixed(2);
+}
+["ply-min", "ply-max", "div-min"].forEach(id => {
+  document.getElementById(id).oninput = () => { updateLabels(); drawMap(); renderTable(); };
+});
+updateLabels();
+
+document.querySelectorAll("#tbl th").forEach(th => {
+  th.onclick = () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortDesc = !sortDesc; else { sortKey = k; sortDesc = true; }
+    sortAbs = (k === "div");
+    renderTable();
+  };
+});
+
+drawMap();
+renderTable();
+if (DATA.top_indices.length) showPoint(DATA.top_indices[0]);
+</script>
+</body>
+</html>
