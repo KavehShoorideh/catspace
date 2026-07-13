@@ -1767,6 +1767,54 @@ Round 16 (ONE lever: asym_weight 0.05 -> 0.015, same margin, everything
 else identical) launched -- hypothesis: keep most of the asymmetry gain
 (part 1 has enormous headroom: 0.030 vs the 0.10 gate) while restoring
 k=1 sharpness and ACPL. Same 3-part gate.
+
+---
+
+## 2026-07-13 09:50 — round 16 (asym 0.015): NO PROMOTION; the asymmetry line closes at 2 attempts
+
+Gate results for `lichess_fb_4gb_qm_asym015.pt`:
+1. frac(rev<=fwd) = **0.045 PASS** (asymmetry gain is robust across
+   weights: 0.030 @ 0.05, 0.045 @ 0.015, vs 0.27 incumbent).
+2. nearest-exemplar rho = **+0.121 FAIL** -- essentially identical to the
+   0.05-weight run's +0.123. The mate-geometry cost comes from the hinge
+   EXISTING, not from its weight: a real mechanistic finding (reverse-pair
+   gradients reshape exactly the sparse endgame regions the nearest-
+   exemplar instrument measures).
+3. ACPL paired vs incumbent: 260.9 vs 253.4, +7.5cp, CI [-20.1,+35.8],
+   p=0.35 -- **PASS** (statistical wash; k=1 retrieval partially recovered
+   0.79 -> 0.85, k=20-50 still better than incumbent).
+
+**Tiebreaker (KRRvKBP n=60 single-policy scan, same set/seed as the
+incumbent's 0.558): 0.367 (3W/38D/19L) -- CLEAR FAIL.** 19 losses from
+tablebase-won positions. The same short-horizon discrimination the hinge
+trades away (k=1: 0.85 vs 0.97) barely dents full-board ACPL but is
+decisive in sparse endgames where every move is critical. **Incumbent
+`lichess_fb_4gb_qm_wpov.pt` stays. The asymmetry-margin line is CLOSED
+per the 2-attempt protocol** -- with its finding preserved: the mechanism
+teaches arrow-of-material essentially for free at low weight (a
+capability worth re-adding LAST, after the embedding's short-horizon
+sharpness has other support), it just can't pay its way yet.
+
+**Where this leaves the research (16-round state of the union):**
+- Confirmed real and kept: quasimetric architecture (structure verified,
+  zero violations), ply-gap calibration, self-play pipeline + endgame
+  curriculum (improved nearest-exemplar geometry +0.165 -> +0.252),
+  outcome-conditioning evidence, the full instrument suite (ACPL, KRRvKBP
+  arenas, 6-instrument fitness probe).
+- Confirmed and closed (negative results with mechanisms understood):
+  ply-depth/node-budget scaling, winner-pov filter, goal-as-region
+  READOUT (3 play rejections), asymmetry hinge (2 attempts).
+- The incumbent since round 12 is still `lichess_fb_4gb_qm_wpov.pt`:
+  every subsequent single lever either washed or regressed at play.
+  The honest pattern: STRUCTURAL instruments improve readily; PLAY
+  improvements are bottlenecked on short-horizon discrimination (k=1-10),
+  which every auxiliary objective so far has taxed rather than helped.
+- Next levers, in order: (a) gen3 endgame-curriculum at higher dose
+  (launched: 600 games, endgame_start_frac 0.7 -- pure data, taxes
+  nothing), (b) the k=20-50 pairing lever as a RETRIEVAL-preserving
+  change (stratified long-gap oversampling rather than a new loss term),
+  (c) revisit region goals + asymmetry only after (a)/(b) raise the
+  floor.
 `FBSearchPolicy(centroid)=0.433` vs `FBSearchPolicy+bank=0.308`, n=60,
 mean_diff=-0.125, e=65.07, REJECT -- the first statistically decisive
 readout difference this whole diagnostic has produced, and it's AGAINST
