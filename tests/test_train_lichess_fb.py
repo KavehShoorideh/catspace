@@ -41,15 +41,17 @@ def test_batch_tensors_drops_only_holdout_rows():
     # game_ids 50 and 100 are holdout (game_id % 50 == 0); the rest train
     batch = _fake_batch([1, 2, 50, 3, 100, 4, 5, 6])
     tensors = batch_tensors(batch, "cpu")
-    assert tensors is not None and len(tensors) == 4
+    assert tensors is not None and len(tensors) == 5
     assert all(t.shape[0] == N - 2 for t in tensors)
 
 
-def test_batch_tensors_ply_gap_is_goal_minus_anchor():
+def test_batch_tensors_ply_gap_and_material_drop():
     batch = _fake_batch([1, 2, 3, 4, 5, 6, 7, 8])   # none held out
-    *_, ply_gap = batch_tensors(batch, "cpu")
+    *_, ply_gap, material_drop = batch_tensors(batch, "cpu")
     assert ply_gap.shape == (N,)
     assert torch.equal(ply_gap, torch.full((N,), 7.0))
+    # anchors and goals are the same boards here -> no material drop anywhere
+    assert material_drop.dtype == torch.bool and not bool(material_drop.any())
 
 
 def test_batch_tensors_all_holdout_returns_none():

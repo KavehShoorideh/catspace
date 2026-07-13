@@ -1714,7 +1714,25 @@ rho wasn't strong enough to matter at play scale yet, and the next lever
 is strengthening the exemplar geometry (bigger banks, more endgame
 curriculum, or the pairing-horizon fix for the k=20-50 cliff).
 
-**Result (2026-07-13 02:20): bank-readout LOSES at play, significantly.**
+**Result (2026-07-13 03:20, full arc): the goal-as-region READOUT line is
+closed -- three decisive rejections.** Hard-max bank on gen2: 0.433 vs
+0.308 (e=65, REJECT). Hard-max on the incumbent: 0.558 vs 0.308
+(e=2.8e7, REJECT). Soft-min (normalized logsumexp, tau=0.1) on the
+incumbent: 0.550 vs 0.358 (e=21811, REJECT) -- soft-min recovered some of
+hard-max's loss (0.308 -> 0.358) but still loses decisively to the plain
+centroid. Honest close-out: the DIAGNOSIS stands (all centroids flat
+against true plies-to-mate; nearest-exemplar geometry real and improved
+by the endgame curriculum, rho +0.165 -> +0.252), but +0.25 positional
+calibration is not enough to beat the centroid's move-ranking STABILITY
+in actual play -- the centroid is the exact direction the whole InfoNCE
+geometry organized around (2048 mates x 90k steps), while bank exemplars
+are one-shot B-embeddings in sparsely-trained regions. A readout cannot
+fix representation sparsity; region goals go back on the shelf until the
+embedding itself is better calibrated in those regions. Unit test for the
+bank path kept (it's still a useful instrument), krrkbp_arena --compare
+bank kept for re-testing on future checkpoints.
+
+**Original single-run entry follows (superseded by the arc above):**
 `FBSearchPolicy(centroid)=0.433` vs `FBSearchPolicy+bank=0.308`, n=60,
 mean_diff=-0.125, e=65.07, REJECT -- the first statistically decisive
 readout difference this whole diagnostic has produced, and it's AGAINST

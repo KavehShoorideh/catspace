@@ -72,10 +72,16 @@ def batch_tensors(batch, device):
                    batch.meta["clock"][idx])
     ply_gap = (batch.meta["ply_g"][idx].astype(np.float32)
                - batch.meta["ply"][idx].astype(np.float32))
+    # material strictly decreased from anchor to goal: the pair crossed a
+    # capture, so the REVERSE hop (goal -> anchor) is impossible in real
+    # chess -- the asymmetry-margin term (loss_fn) trains on exactly these
+    material_drop = (np.bitwise_count(batch.anchors[idx]).sum(axis=1)
+                     > np.bitwise_count(batch.goals[idx]).sum(axis=1))
     return (torch.from_numpy(planes_s).to(device),
             torch.from_numpy(om).to(device),
             torch.from_numpy(planes_g).to(device),
-            torch.from_numpy(ply_gap).to(device))
+            torch.from_numpy(ply_gap).to(device),
+            torch.from_numpy(material_drop).to(device))
 
 
 def collect_holdout(src: LichessPairSource, n_batches: int, batch_size: int, seed: int):
@@ -218,6 +224,12 @@ def main():
     ap.add_argument("--ply-gap-scale", type=float, default=50.0,
                     help="normalizer for the ply-gap target (roughly the pairing horizon's "
                          "mean, so the regression target starts near O(1))")
+    ap.add_argument("--asym-weight", type=float, default=0.0,
+                    help="quasimetric-only: weight of the asymmetry-margin hinge -- pairs "
+                         "whose material dropped anchor->goal train d(reverse) > d(forward) "
+                         "+ margin (you can't un-capture; derived from trajectory direction "
+                         "only). 0 disables (default).")
+    ap.add_argument("--asym-margin", type=float, default=0.2)
     ap.add_argument("--selfplay-shards", default=None,
                     help="dir of experiments/selfplay_generate.py output shards to MIX into "
                          "training (holdout/val stay human-only for a stable reference)")
@@ -242,7 +254,8 @@ def main():
     ckpt_path = Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt"
     device = pick_device(args.device)
     print(f"shards={shard_dir.name} device={device} steps={args.steps} batch={args.batch} d={args.d} "
-          f"quasimetric={args.quasimetric} ply_gap_weight={args.ply_gap_weight}", flush=True)
+          f"quasimetric={args.quasimetric} ply_gap_weight={args.ply_gap_weight} "
+          f"asym_weight={args.asym_weight}", flush=True)
 
     step = 0
     if ckpt_path.exists() and not args.fresh:
@@ -298,7 +311,8 @@ def main():
         for g in opt.param_groups:
             g["lr"] = lr_now
         loss, top1 = fb.loss_fn(*tensors, ply_gap_weight=args.ply_gap_weight,
-                                ply_gap_scale=args.ply_gap_scale)
+                                ply_gap_scale=args.ply_gap_scale,
+                                asym_weight=args.asym_weight, asym_margin=args.asym_margin)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
