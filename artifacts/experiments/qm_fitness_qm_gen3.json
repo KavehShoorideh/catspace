@@ -1,0 +1,133 @@
+{
+  "ckpt": "data/derived/lichess_fb_4gb_qm_gen3.pt",
+  "quasimetric": true,
+  "seed": 0,
+  "syzygy_calibration": {
+    "n": 300,
+    "spearman_rho_d_vs_dtz": -0.07480019695016867,
+    "per_dtz_bins": {
+      "dtz_0_2": {
+        "n": 182,
+        "mean_d": 0.7059245705604553,
+        "std_d": 0.03963421285152435
+      },
+      "dtz_3_5": {
+        "n": 97,
+        "mean_d": 0.6965178847312927,
+        "std_d": 0.03557984158396721
+      },
+      "dtz_6_10": {
+        "n": 18,
+        "mean_d": 0.7133262753486633,
+        "std_d": 0.03308812901377678
+      },
+      "dtz_11_20": {
+        "n": 3,
+        "mean_d": 0.6692096590995789,
+        "std_d": 0.013931951485574245
+      }
+    },
+    "note": "rho > 0 wanted: farther-from-mate (higher DTZ) should read as larger d"
+  },
+  "syzygy_calibration_krvk": {
+    "n": 300,
+    "spearman_rho_d_vs_dtz": 0.04410094089170847,
+    "spearman_rho_nearest_exemplar": 0.15395302526199492,
+    "n_mate_exemplars": 216,
+    "per_dtz_bins": {
+      "dtz_1_4": {
+        "n": 12,
+        "mean_d": 0.7397892475128174,
+        "std_d": 0.0633218064904213
+      },
+      "dtz_5_8": {
+        "n": 7,
+        "mean_d": 0.679682195186615,
+        "std_d": 0.03856758773326874
+      },
+      "dtz_9_14": {
+        "n": 45,
+        "mean_d": 0.7444365620613098,
+        "std_d": 0.06183136627078056
+      },
+      "dtz_15_22": {
+        "n": 125,
+        "mean_d": 0.7347802519798279,
+        "std_d": 0.04882151260972023
+      },
+      "dtz_23_40": {
+        "n": 111,
+        "mean_d": 0.7392534613609314,
+        "std_d": 0.046001993119716644
+      }
+    },
+    "dtz_range": [
+      1,
+      31
+    ],
+    "note": "KRvK: DTZ == plies-to-mate (pawnless, no interposed zeroing moves). rho > 0 wanted; rho_nearest_exemplar is the number that tracks real embedding progress (centroids stay flat)."
+  },
+  "horizon_retrieval": {
+    "k=1": {
+      "acc": 0.9666666666666667,
+      "n": 150,
+      "chance": 0.015625
+    },
+    "k=2": {
+      "acc": 1.0,
+      "n": 150,
+      "chance": 0.015625
+    },
+    "k=5": {
+      "acc": 0.94,
+      "n": 150,
+      "chance": 0.015625
+    },
+    "k=10": {
+      "acc": 0.9,
+      "n": 150,
+      "chance": 0.015625
+    },
+    "k=20": {
+      "acc": 0.6666666666666666,
+      "n": 150,
+      "chance": 0.015625
+    },
+    "k=50": {
+      "acc": 0.2733333333333333,
+      "n": 150,
+      "chance": 0.015625
+    }
+  },
+  "asymmetry": {
+    "n": 200,
+    "mean_forward_d": 0.6321980018913745,
+    "mean_reverse_d": 0.706363250464201,
+    "frac_reverse_leq_forward": 0.215,
+    "mean_gap": 0.07416524857282639,
+    "note": "frac_reverse_leq_forward ~0 wanted: un-capturing is impossible, reverse must read farther; ~0.5 means the metric is blind to the arrow of material"
+  },
+  "triangle": {
+    "d_only": {
+      "max_vio": 0.806922435760498,
+      "frac_vio_gt_1": 0.0,
+      "note": "architectural guarantee: max_vio must be <= 1 + eps"
+    },
+    "full_score": {
+      "max_vio": 1.340585470199585,
+      "frac_vio_gt_1": 0.00023,
+      "mean_vio": 0.5086585879325867,
+      "shift_applied": 0.18807496292686463,
+      "note": "r - d readout: violations expected; tracks HOW non-metric the actual planning signal is"
+    }
+  },
+  "degeneracy": {
+    "mean_d_one_ply": 0.4399425981442134,
+    "mean_d_cross_game": 0.9972047209739685,
+    "spread_ratio": 2.2666700728241014,
+    "eff_rank_F": 25.961315155029297,
+    "eff_rank_B": 25.945226669311523,
+    "d_dim": 64,
+    "note": "spread_ratio ~1 = distance collapse; want cross-game >> one-ply"
+  }
+}
