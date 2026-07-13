@@ -2307,3 +2307,44 @@ current version); (b) do NOT chase gate hyperparameters on KRRvKBP (wrong regime
 to show gating value); (c) build the closed loop, where the sensor's value is
 realized; (d) the competence-head training run is still worthwhile -- it's the
 loop's native Method-2 signal. Kept the offline map only as the stand-in it was.
+
+---
+
+## 2026-07-13 (Opus) — KRRvKBP drill-down: WHAT the planner isn't seeing (concrete)
+
+Built `experiments/krrkbp_drilldown.py`: plays the incumbent (White) from a
+tablebase-won KRRvKBP position vs Stockfish and, at every White move, compares
+what it DID to the tablebase-optimal, dumping the model's reach ranking of all
+moves against the truth. Ran positions 0, 5, 12 (all tablebase wins, DTZ 3-5).
+All three DRAWN (insufficient material / threefold). The failure is now concrete:
+
+1. **The reach landscape is nearly FLAT across moves.** Pos 0, at the decisive
+   position, the top-8 moves' reach spanned -1.2609..-1.2699 -- a range of
+   **0.009**. The model literally cannot tell its moves apart; there is no
+   progress gradient where precise technique is required.
+2. **Move ranking is ~uncorrelated with the tablebase-optimal.** The winning move
+   was routinely ranked #10-#27 by the model's reach (pos 0 ply 6: best move Kf6
+   ranked **#20**; pos 5: best moves ranked #17/#20/#25/#27). It's not slightly
+   off -- its ordering is essentially unrelated to which move actually wins.
+3. **The three failure behaviors, explained by (1)+(2):**
+   - THREEFOLD REPETITION (pos 5, 12): with no progress gradient it shuffles.
+   - INSUFFICIENT-MATERIAL self-draw (pos 0): it trades rooks/pieces down
+     (K+R+R -> K+R vs K+P) because captures look no worse than anything else.
+   - **ROOK ONTO A BISHOP-ATTACKABLE SQUARE** (pos 12, plies 6/10/16, flagged
+     automatically): it does the EXACT OPPOSITE of the concept Kaveh hoped it
+     would learn ("keep the rooks where the bishop can't touch") -- because it
+     can't see the difference.
+
+**What it isn't seeing:** which king/rook moves make PROGRESS toward mate. In the
+KRRvKBP region -- which never occurs in the human Lichess training data -- the
+reachability embedding has essentially no structure, so reach-to-mate is flat and
+move-ordering is random. This is the OOD-coverage problem shown at the move level.
+
+**Why this matters for the plan:** it's a direct, mechanistic confirmation of the
+whole direction. These positions are exactly the HIGH-UNRELIABILITY regions the
+competence signal is meant to flag (and does: pos-0-family scored reliability
+~0.24 vs ~0.04 quiet). And the fix is exactly the closed loop: the ONLY way the
+embedding gets a progress gradient here is to generate data here (search/self-play
+in these positions) and distill it back. Gating search alone can't help (drill-
+down shows deeper search over a flat reach is still flat) -- consistent with the
+gating-alone null. The loop (Stage 2-3) is the fix this evidence points to.
