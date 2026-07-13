@@ -53,10 +53,18 @@
     "acpl_methodology_note": "acpl_probe.py had a bug (mate_score=100000 let rare forced-mate detections dominate the mean with near-lottery-sized outliers) -- fixed to mate_score=1000 (standard ACPL convention). Always use n>=400 for this probe; n=100 is underpowered to distinguish real deltas from noise (see round 11 history).",
     "opponent_ladder_note": "the original full-board-vs-graduated-Stockfish opponent_ladder below is SUPERSEDED by the KRRvKBP diagnostic phase (see phase_2_krrkbp_diagnostic) and the ACPL probe as the primary fast metrics; re-activate the ladder only if/when returning to full-board arena evaluation."
   },
+  "current_round_17": {
+    "index": 17,
+    "action": "gen3 endgame-curriculum self-play at higher dose (600 games, endgame_start_frac 0.7, incumbent ckpt) -> retrain -> probe + eval. Pure data lever, taxes no short-horizon discrimination.",
+    "status": "running (gen3 generation launched 2026-07-13 09:55)",
+    "round_16_verdict": "NO PROMOTION; asym line CLOSED at 2 attempts. asym015: asymmetry PASS 0.045, ACPL PASS (wash, +7.5cp p=0.35, k=1 partially recovered 0.85), nearest-exemplar FAIL +0.121 (weight-invariant hinge cost), KRRvKBP tiebreaker CLEAR FAIL 0.367 (3W/38D/19L) vs incumbent 0.558. Short-horizon discrimination is decisive in sparse endgames even when full-board ACPL barely notices. Asymmetry mechanism preserved as a re-add-LAST capability.",
+    "pattern_note": "16-round pattern: structural instruments improve readily; play is bottlenecked on short-horizon (k=1-10) discrimination, which every auxiliary loss so far taxed. Next: (a) gen3 data, (b) k=20-50 pairing lever as retrieval-PRESERVING change, (c) region goals + asymmetry revisited only after the floor rises.",
+    "incumbent": "data/derived/lichess_fb_4gb_qm_wpov.pt (unchanged since round 12)"
+  },
   "current_round_16": {
     "index": 16,
-    "action": "asym_weight 0.015 (ONE change from round 15's rejected 0.05): training lichess_fb_4gb_qm_asym015.pt, same 3-part gate.",
-    "status": "running (launched 2026-07-13 06:20)",
+    "action": "asym_weight 0.015 (ONE change from round 15's rejected 0.05): trained lichess_fb_4gb_qm_asym015.pt, same 3-part gate.",
+    "status": "closed -- no promotion, see current_round_17.round_16_verdict",
     "round_15_verdict": "REJECTED as configured (weight 0.05): gate 1 PASS dramatic (frac(rev<=fwd) 0.030 vs 0.27-0.35 before, gap +0.325), gate 2 borderline FAIL (nearest-exemplar rho +0.123 < +0.15), gate 3 clear FAIL (ACPL +30.9cp worse, CI [+4.7,+57.1], p=0.01). Mechanism understood: over-weighted auxiliary loss traded k=1 retrieval (0.97->0.79, ACPL's whole diet) for long-horizon structure -- k=20-50 cliff moved OUTWARD for the first time (0.69->0.77, 0.23->0.30). Tuning failure, not mechanism failure.",
     "artifacts": ["artifacts/experiments/qm_fitness_qm_asym.json"]
   },
