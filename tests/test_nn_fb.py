@@ -186,6 +186,22 @@ def test_quasimetric_ckpt_roundtrip_and_old_ckpt_unaffected(tmp_path):
         assert ka == kb and torch.equal(va, vb)
 
 
+def test_np_score_matrix_matches_torch_and_dot():
+    """np_score_matrix is the decompose.py score_pairs adapter: exactly the
+    dot product when quasimetric=False (safe to pass unconditionally), and
+    exactly score_matrix when quasimetric=True."""
+    F = np.random.default_rng(0).normal(size=(5, TINY["d"])).astype(np.float32)
+    B = np.random.default_rng(1).normal(size=(3, TINY["d"])).astype(np.float32)
+
+    fb_plain = TorchFB(seed=0, quasimetric=False, **TINY)
+    np.testing.assert_allclose(fb_plain.np_score_matrix(F, B), F @ B.T, atol=1e-5)
+
+    fb_q = TorchFB(seed=0, quasimetric=True, **TINY)
+    with torch.no_grad():
+        expected = fb_q.score_matrix(torch.from_numpy(F), torch.from_numpy(B)).numpy()
+    np.testing.assert_allclose(fb_q.np_score_matrix(F, B), expected, atol=1e-5)
+
+
 def test_ply_gap_calibration_term():
     """ply_gap adds an MSE(d, ply_gap/scale) penalty in quasimetric mode
     (2026-07-12, calibrates absolute distance to real move-count, see

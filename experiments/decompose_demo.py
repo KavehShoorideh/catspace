@@ -129,8 +129,11 @@ def main():
     nw_rows = rng.choice(nw_rows, size=min(2000, len(nw_rows)), replace=False)
     nw_data = {k: npz[k][np.sort(nw_rows)] for k in ("packed", "meta")}
     F_nw, _ = embed_rows(fb, nw_data, device)
-    tau_exec = float(np.median(F_nw @ z_goal))
-    reach_starts = F_all[start_idx] @ z_goal
+    # fb.np_score_matrix == plain dot on non-quasimetric checkpoints; the only
+    # correctly-calibrated score on quasimetric ones (2026-07-12)
+    sp = fb.np_score_matrix
+    tau_exec = float(np.median(sp(F_nw, z_goal[None, :])[:, 0]))
+    reach_starts = sp(F_all[start_idx], z_goal[None, :])[:, 0]
     tau_floor = float(np.quantile(reach_starts, 0.10))
     print(f"calibration: tau_exec={tau_exec:.4f} (n_near_win={len(nw_rows)}) "
           f"tau_floor={tau_floor:.4f}  [{time.time() - t0:.1f}s]")
@@ -141,12 +144,12 @@ def main():
     for si in start_idx:
         dec = decompose(F_all[si], z_goal, pool, tau_exec=tau_exec,
                         tau_floor=tau_floor, dry_gain=args.dry_gain,
-                        max_depth=args.max_depth)
+                        max_depth=args.max_depth, score_pairs=sp)
         results.append((si, dec))
     dt = time.time() - t0
     print(f"decompose {len(results)} starts: {dt:.1f}s ({1000 * dt / len(results):.1f} ms/start)")
 
-    direct = np.array([hop_reach(F_all[si], z_goal) for si, _ in results])
+    direct = np.array([hop_reach(F_all[si], z_goal, sp) for si, _ in results])
     bottle = np.array([dec.plan_bottleneck for _, dec in results])
     gain = bottle - direct
     execf = np.array([dec.executable for _, dec in results])

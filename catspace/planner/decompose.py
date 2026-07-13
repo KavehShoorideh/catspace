@@ -2,16 +2,19 @@
 planner/decompose.py — meet-in-the-middle recursive decomposition over the FB
 embedding (the M1.5 geodesic-midpoint generator, real-board flavor).
 
-A hop s -> g is scored from both ends: reach(s, g) = F(s) @ z_g. When a hop is
-not directly executable, candidate waypoints m from a WaypointPool are scored
-by the BOTTLENECK of the two legs,
+A hop s -> g is scored from both ends: reach(s, g) = score(F(s), z_g). When a
+hop is not directly executable, candidate waypoints m from a WaypointPool are
+scored by the BOTTLENECK of the two legs,
 
-    score(m) = min( F(s) @ B(m),  F(m) @ z_g )
+    score(m) = min( score(F(s), B(m)),  score(F(m), z_g) )
 
 and the hop splits at the argmax — good waypoints are reachable from here AND
-see the goal. Both legs are cosine reaches on the same scale (L2-normalized
-embeddings), which is what makes the min comparable; this is the second place
-the cosine-InfoNCE fix is load-bearing.
+see the goal. `score` is pluggable (the `score_pairs` param): it defaults to
+the raw dot product (cosine reach on L2-normalized embeddings — the original
+behavior, and the second place the cosine-InfoNCE fix is load-bearing), but
+quasimetric checkpoints MUST pass TorchFB.np_score_matrix instead, since a
+raw dot never sees metric_scale/W (2026-07-12 review). Either way both legs
+share one scale, which is what makes the min comparable.
 
 Recursion stops per the agreed M1.5 give-up rules (the same rule vocabulary
 plans.py::BlockReason reserves):
@@ -88,20 +91,38 @@ class Decomposition:
         return [self.pool.labels[i] for i in self.waypoints]
 
 
-def hop_reach(F_s: np.ndarray, z_g: np.ndarray) -> float:
-    return float(F_s @ z_g)
+def _dot_pairs(F: np.ndarray, B: np.ndarray) -> np.ndarray:
+    return F @ B.T
 
 
-def waypoint_scores(F_s: np.ndarray, z_g: np.ndarray, pool: WaypointPool) -> np.ndarray:
-    """(n,) bottleneck score of routing s -> m -> g through each pool row."""
-    return np.minimum(pool.B @ F_s, pool.F @ z_g)
+def hop_reach(F_s: np.ndarray, z_g: np.ndarray,
+              score_pairs: Callable[[np.ndarray, np.ndarray], np.ndarray] = _dot_pairs) -> float:
+    return float(score_pairs(F_s[None, :], z_g[None, :])[0, 0])
+
+
+def waypoint_scores(F_s: np.ndarray, z_g: np.ndarray, pool: WaypointPool,
+                    score_pairs: Callable[[np.ndarray, np.ndarray], np.ndarray] = _dot_pairs
+                    ) -> np.ndarray:
+    """(n,) bottleneck score of routing s -> m -> g through each pool row.
+
+    score_pairs(F: (n,d), B: (m,d)) -> (n,m) defaults to the raw dot
+    product (the original cosine-reach behavior). For quasimetric
+    checkpoints pass TorchFB.np_score_matrix instead -- the raw dot is
+    mis-calibrated there (it never sees metric_scale/W; 2026-07-12
+    review). Both legs stay on one shared scale either way, which is what
+    keeps the min() comparable."""
+    leg1 = score_pairs(F_s[None, :], pool.B)[0]     # reach of s toward each m
+    leg2 = score_pairs(pool.F, z_g[None, :])[:, 0]  # reach of each m toward g
+    return np.minimum(leg1, leg2)
 
 
 def decompose(F_s: np.ndarray, z_g: np.ndarray, pool: WaypointPool,
               tau_exec: float, tau_floor: float,
               min_gain: float = 0.0, dry_gain: float = 0.02,
               max_depth: int = 3,
-              executable_fn: Callable[[float], bool] | None = None) -> Decomposition:
+              executable_fn: Callable[[float], bool] | None = None,
+              score_pairs: Callable[[np.ndarray, np.ndarray], np.ndarray] = _dot_pairs
+              ) -> Decomposition:
     """Recursively split the hop F_s -> z_g at bottleneck-maximizing waypoints
     until every leaf is executable or a give-up rule fires. Anytime: the tree
     is returned whichever way it ends. Waypoints are consumed (a plan never
@@ -111,14 +132,14 @@ def decompose(F_s: np.ndarray, z_g: np.ndarray, pool: WaypointPool,
     dry_run = {"n": 0}               # consecutive low-gain splits, shared DFS state
 
     def _rec(F_a: np.ndarray, z_b: np.ndarray, depth: int) -> HopNode:
-        direct = hop_reach(F_a, z_b)
+        direct = hop_reach(F_a, z_b, score_pairs)
         if is_exec(direct):
             return HopNode(reach=direct, depth=depth, status="executable")
         if depth >= max_depth:
             return HopNode(reach=direct, depth=depth, status="budget",
                            detail=f"depth cap {max_depth}")
 
-        scores = waypoint_scores(F_a, z_b, pool)
+        scores = waypoint_scores(F_a, z_b, pool, score_pairs)
         scores[used] = -np.inf
         m = int(np.argmax(scores))
         bot = float(scores[m])

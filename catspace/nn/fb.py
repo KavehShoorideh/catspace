@@ -146,6 +146,17 @@ class TorchFB(nn.Module):
             return f @ z
         return self.score_matrix(f, z[None, :])[:, 0]
 
+    @torch.no_grad()
+    def np_score_matrix(self, F: "np.ndarray", B: "np.ndarray") -> "np.ndarray":
+        """numpy adapter for score_matrix, shaped for planner/decompose.py's
+        score_pairs hook: (n,d) x (m,d) float32 -> (n,m) float32. Exactly
+        the dot product when quasimetric=False, so callers can pass it
+        unconditionally."""
+        device = next(self.parameters()).device
+        f = torch.as_tensor(F, dtype=torch.float32, device=device)
+        b = torch.as_tensor(B, dtype=torch.float32, device=device)
+        return self.score_matrix(f, b).cpu().numpy()
+
     @staticmethod
     def reach_z(f: torch.Tensor, z: torch.Tensor) -> torch.Tensor:
         return f @ z
