@@ -2,6 +2,16 @@
 """
 experiments/sharpness_bench.py — GROUND-TRUTH SHARPNESS benchmark.
 
+RETIRED AS ARBITER (2026-07-13, Kaveh): "I don't think we need to label sharpness
+because it's not a real thing; it's a concept we've invented." Sharpness is a
+useful FICTION for allocating search effort, not an external quantity to match --
+so crit-correlation is no longer the validation target. Validation is now PLAY
+(does using a sharpness/reliability signal to allocate search improve results at
+matched compute). This file is kept for its reusable parts (tablebase position
+sampling, structural signals) and as a cheap ENDGAME-only sanity diagnostic, not
+as the gate. See UNCERTAINTY_DESIGN.md / JOURNAL.md for the self-referential
+reframe (sharpness = where the engine is unreliable) and the two-method system.
+
 2026-07-13 (Kaveh's reframe): the tactical/positional boundary is not temporal
 depth, it's LOCAL SHARPNESS of the value landscape. A sharp position is one where
 one tempo flips the result (you must not prune); a smooth one is where many

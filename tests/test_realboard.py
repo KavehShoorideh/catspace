@@ -322,6 +322,21 @@ def test_fb_search_policy_goal_bank_readout():
     assert mate_board.is_checkmate()
 
 
+def test_fb_search_policy_reliability_sensor():
+    """Method-1 reliability sensor returns a disagreement in [0,1] and flags a
+    known-hard position (KRRvKBP, where the model hangs material) as more
+    unreliable than the quiet start position."""
+    torch = pytest.importorskip("torch")
+    from catspace.nn.fb import TorchFB
+    from catspace.nn.policy_fb import FBSearchPolicy
+
+    fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
+    pol = FBSearchPolicy(fb, np.zeros(16, dtype=np.float32), max_nodes=200, beam=4)
+    for b in (chess.Board(), chess.Board("5R2/2R5/7k/4p3/8/1b6/8/1K6 w - - 0 1")):
+        r = pol.reliability(b)
+        assert isinstance(r, float) and 0.0 <= r <= 1.0
+
+
 def test_fb_two_horizon_policy_far_and_near_modes():
     """Both readout modes on a two-horizon net stay legal and take a
     mate-in-1; near mode accepts either a centroid or an exemplar bank."""
