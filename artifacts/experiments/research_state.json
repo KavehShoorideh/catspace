@@ -53,10 +53,17 @@
     "acpl_methodology_note": "acpl_probe.py had a bug (mate_score=100000 let rare forced-mate detections dominate the mean with near-lottery-sized outliers) -- fixed to mate_score=1000 (standard ACPL convention). Always use n>=400 for this probe; n=100 is underpowered to distinguish real deltas from noise (see round 11 history).",
     "opponent_ladder_note": "the original full-board-vs-graduated-Stockfish opponent_ladder below is SUPERSEDED by the KRRvKBP diagnostic phase (see phase_2_krrkbp_diagnostic) and the ACPL probe as the primary fast metrics; re-activate the ladder only if/when returning to full-board arena evaluation."
   },
+  "current_round_16": {
+    "index": 16,
+    "action": "asym_weight 0.015 (ONE change from round 15's rejected 0.05): training lichess_fb_4gb_qm_asym015.pt, same 3-part gate.",
+    "status": "running (launched 2026-07-13 06:20)",
+    "round_15_verdict": "REJECTED as configured (weight 0.05): gate 1 PASS dramatic (frac(rev<=fwd) 0.030 vs 0.27-0.35 before, gap +0.325), gate 2 borderline FAIL (nearest-exemplar rho +0.123 < +0.15), gate 3 clear FAIL (ACPL +30.9cp worse, CI [+4.7,+57.1], p=0.01). Mechanism understood: over-weighted auxiliary loss traded k=1 retrieval (0.97->0.79, ACPL's whole diet) for long-horizon structure -- k=20-50 cliff moved OUTWARD for the first time (0.69->0.77, 0.23->0.30). Tuning failure, not mechanism failure.",
+    "artifacts": ["artifacts/experiments/qm_fitness_qm_asym.json"]
+  },
   "current_round_15": {
     "index": 15,
-    "action": "asymmetry-margin lever (ONE lever): training lichess_fb_4gb_qm_asym.pt -- quasimetric + ply-gap 0.05 + asym-weight 0.05/margin 0.2 + gen2-mix 0.3, fresh 90k steps. Material-drop pairs (capture crossed) hinge d(reverse) > d(forward) + margin; derived from trajectory direction only.",
-    "status": "running (launched 2026-07-13 03:55)",
+    "action": "asymmetry-margin lever (ONE lever): trained lichess_fb_4gb_qm_asym.pt -- quasimetric + ply-gap 0.05 + asym-weight 0.05/margin 0.2 + gen2-mix 0.3, fresh 90k steps. Material-drop pairs (capture crossed) hinge d(reverse) > d(forward) + margin; derived from trajectory direction only.",
+    "status": "closed -- rejected as configured, see current_round_16.round_15_verdict",
     "pre_registered_gates": "on the fitness probe: asymmetry frac(rev<=fwd) must drop from ~0.27-0.35 toward <= 0.10 AND nearest-exemplar KRvK rho must not degrade below +0.15 AND ACPL n=400 paired vs incumbent must not significantly worsen. All three or the lever is rejected.",
     "round_14_closeout": "goal-as-region READOUT rejected at play in 3 decisive paired tests (hard-max on gen2: e=65; hard-max on incumbent: e=2.8e7; soft-min tau=0.1 on incumbent: e=21811 -- all REJECT, centroid wins). Diagnosis retained: centroids flat vs true plies-to-mate, nearest-exemplar rho real (+0.165 incumbent, +0.252 gen2 -- endgame curriculum DID improve the geometry). Readout can't fix representation sparsity; region goals shelved until embedding calibrates better in those regions. Instruments kept (goal_bank.py, krrkbp_arena --compare bank, bank-capable policies + tests).",
     "incumbent": "data/derived/lichess_fb_4gb_qm_wpov.pt (unchanged since round 12)"
