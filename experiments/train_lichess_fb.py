@@ -164,7 +164,12 @@ def embed_zgoals(fb, finals: dict, device, verbose: bool = False) -> dict:
             rows = finals[res]
             packed = np.stack([r[0] for r in rows]); meta = np.stack([r[1] for r in rows])
             planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
-            zgoals[name] = fb.embed_B(planes).mean(dim=0).cpu()
+            zgoals[name] = fb.embed_B(planes).mean(dim=0).cpu()   # FAR centroid
+            if getattr(fb, "two_horizon", False):
+                # NEAR centroid too -- the near readout's default goal (the
+                # policy may swap in a near exemplar BANK at eval time, since
+                # centroids are flat; centroid kept as a cheap baseline)
+                zgoals[name + "_NEAR"] = fb.embed_B_near(planes).mean(dim=0).cpu()
             if verbose:
                 print(f"zgoal {name}: {len(rows)} checkmate finals")
     zgoals["MATE_DIFF"] = zgoals["MATE_W"] - zgoals["MATE_B"]
@@ -230,6 +235,13 @@ def main():
                          "+ margin (you can't un-capture; derived from trajectory direction "
                          "only). 0 disables (default).")
     ap.add_argument("--asym-margin", type=float, default=0.2)
+    ap.add_argument("--two-horizon", action="store_true",
+                    help="two-horizon architecture (TWO_HORIZON_DESIGN.md): shared trunk + "
+                         "separate near/far heads; near trained on short-gap pairs (cosine), "
+                         "far on long-gap pairs (quasimetric + ply-gap). Forces quasimetric.")
+    ap.add_argument("--near-max", type=int, default=8, help="two-horizon: near head sees gap <= this")
+    ap.add_argument("--far-min", type=int, default=16, help="two-horizon: far head sees gap >= this")
+    ap.add_argument("--near-weight", type=float, default=1.0, help="two-horizon: weight on the near loss")
     ap.add_argument("--selfplay-shards", default=None,
                     help="dir of experiments/selfplay_generate.py output shards to MIX into "
                          "training (holdout/val stay human-only for a stable reference)")
@@ -255,7 +267,9 @@ def main():
     device = pick_device(args.device)
     print(f"shards={shard_dir.name} device={device} steps={args.steps} batch={args.batch} d={args.d} "
           f"quasimetric={args.quasimetric} ply_gap_weight={args.ply_gap_weight} "
-          f"asym_weight={args.asym_weight}", flush=True)
+          f"asym_weight={args.asym_weight} two_horizon={args.two_horizon}"
+          + (f" (near<={args.near_max}/far>={args.far_min})" if args.two_horizon else ""),
+          flush=True)
 
     step = 0
     if ckpt_path.exists() and not args.fresh:
@@ -263,7 +277,8 @@ def main():
         step = payload["step"]
         print(f"resumed {ckpt_path.name} at step {step}")
     else:
-        fb = TorchFB(d=args.d, seed=args.seed, quasimetric=args.quasimetric)
+        fb = TorchFB(d=args.d, seed=args.seed, quasimetric=args.quasimetric,
+                     two_horizon=args.two_horizon)
         fb.to(device)
     start_step = step                      # cosine decay spans [start_step, args.steps)
     lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
@@ -310,9 +325,16 @@ def main():
         lr_now = lr_min + 0.5 * (args.lr - lr_min) * (1 + math.cos(math.pi * frac))
         for g in opt.param_groups:
             g["lr"] = lr_now
-        loss, top1 = fb.loss_fn(*tensors, ply_gap_weight=args.ply_gap_weight,
-                                ply_gap_scale=args.ply_gap_scale,
-                                asym_weight=args.asym_weight, asym_margin=args.asym_margin)
+        if args.two_horizon:
+            ps, om, pg, gap, _mdrop = tensors
+            loss, top1 = fb.two_horizon_loss(ps, om, pg, gap, near_max=args.near_max,
+                                             far_min=args.far_min, near_weight=args.near_weight,
+                                             ply_gap_weight=args.ply_gap_weight,
+                                             ply_gap_scale=args.ply_gap_scale)
+        else:
+            loss, top1 = fb.loss_fn(*tensors, ply_gap_weight=args.ply_gap_weight,
+                                    ply_gap_scale=args.ply_gap_scale,
+                                    asym_weight=args.asym_weight, asym_margin=args.asym_margin)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:

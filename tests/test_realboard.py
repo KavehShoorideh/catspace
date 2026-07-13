@@ -322,6 +322,33 @@ def test_fb_search_policy_goal_bank_readout():
     assert mate_board.is_checkmate()
 
 
+def test_fb_two_horizon_policy_far_and_near_modes():
+    """Both readout modes on a two-horizon net stay legal and take a
+    mate-in-1; near mode accepts either a centroid or an exemplar bank."""
+    torch = pytest.importorskip("torch")
+    from catspace.nn.fb import TorchFB
+    from catspace.nn.policy_fb import FBTwoHorizonPolicy
+
+    fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0,
+                 two_horizon=True)
+    rng = np.random.default_rng(0)
+    z_far = np.random.default_rng(1).normal(size=16).astype(np.float32)
+    z_near = np.random.default_rng(2).normal(size=16).astype(np.float32)
+    near_bank = np.stack([z_near, -z_near, np.roll(z_near, 2)])
+
+    mate_board = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1")
+    for mode, zn in (("far", z_near), ("near", z_near), ("near", near_bank)):
+        pol = FBTwoHorizonPolicy(fb, z_far, zn, max_nodes=100, beam=3, mode=mode)
+        board = chess.Board()
+        for _ in range(4):
+            move = pol.move(board, rng)
+            assert move in board.legal_moves
+            board.push(move)
+        chosen = pol.move(mate_board.copy(), rng)
+        after = mate_board.copy(); after.push(chosen)
+        assert after.is_checkmate(), f"mode={mode} missed mate-in-1"
+
+
 @pytest.mark.skipif(shutil.which("stockfish") is None, reason="no stockfish binary")
 def test_uci_policy_smoke():
     from catspace.uci import UCIBoardPolicy

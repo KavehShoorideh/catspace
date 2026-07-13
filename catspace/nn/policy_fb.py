@@ -481,3 +481,49 @@ class FBPlanPolicy:
         self.last_replan_reason = None
         self._plies_since_plan += 1
         return self._executor.move(board, rng)
+
+
+class FBTwoHorizonPolicy(FBSearchPolicy):
+    """Two-horizon readout (TWO_HORIZON_DESIGN.md). Same beam search as
+    FBSearchPolicy, but scores positions with one of the two trained heads:
+
+      mode="far"  : the FAR head's calibrated distance-to-goal (long-range
+                    strategy). Identical machinery to FBSearchPolicy on the
+                    far head/goal -- this IS the strategist.
+      mode="near" : the NEAR head's cosine reach to a near goal (short-range
+                    endgame precision). z_near may be a single centroid (d,)
+                    or an exemplar BANK (m, d) scored by soft-max cosine
+                    (nearest-exemplar, since centroids are flat -- 2026-07-13).
+
+    Both modes drive the SAME search (beam + leaves), so each is a clean,
+    single-variable ablation the pre-registered gate compares against the
+    incumbent: does far fix ACPL (long-range calibration)? does near fix
+    KRRvKBP conversion (endgame precision)? Near and far scores live on
+    different scales, so a range-gated HANDOFF between them is deliberately
+    deferred until the pure modes show which head earns which failure mode."""
+
+    def __init__(self, fb, z_far, z_near, max_nodes: int, beam: int = 4,
+                 mode: str = "far", elo: int = 1800, clock: float = 300.0,
+                 device: str = "cpu"):
+        assert getattr(fb, "two_horizon", False), "needs a two_horizon checkpoint"
+        assert mode in ("far", "near")
+        super().__init__(fb, z_far, max_nodes, beam, elo=elo, clock=clock, device=device)
+        self.mode = mode
+        self.z_near = torch.as_tensor(z_near, dtype=torch.float32, device=device)
+        assert self.z_near.dim() in (1, 2)
+
+    @torch.no_grad()
+    def _reach_batch(self, boards: list[chess.Board]) -> np.ndarray:
+        if self.mode == "far":
+            return super()._reach_batch(boards)   # far head + z_far
+        if not boards:
+            return np.zeros(0, dtype=np.float32)
+        packed = np.stack([encode_packed(b) for b in boards])
+        meta = np.stack([encode_meta(b) for b in boards])
+        planes = torch.from_numpy(feature_planes(packed, meta)).to(self.device)
+        om = torch.from_numpy(np.tile(self._omega_row, (len(boards), 1))).to(self.device)
+        f = self.fb.embed_F_near(planes, om)
+        if self.z_near.dim() == 2:            # near exemplar bank -> soft-max cosine
+            S = f @ self.z_near.T             # (n, m) cosine sims; higher = closer
+            return (self.bank_tau * torch.logsumexp(S / self.bank_tau, dim=1)).cpu().numpy()
+        return (f @ self.z_near).cpu().numpy()

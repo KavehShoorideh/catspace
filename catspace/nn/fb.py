@@ -54,12 +54,15 @@ from catspace.nn.features import N_CLOCK_BINS, N_ELO_BINS, N_PLANES
 class TorchFB(nn.Module):
     def __init__(self, d: int = 64, channels: int = 64, blocks: int = 6,
                  enc_out: int = 256, dh: int = 512, omega_dim: int = 16,
-                 tau: float = 0.1, seed: int = 0, quasimetric: bool = False):
+                 tau: float = 0.1, seed: int = 0, quasimetric: bool = False,
+                 two_horizon: bool = False):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
+        if two_horizon:
+            quasimetric = True           # the FAR head is the quasimetric one
         self.config = dict(d=d, channels=channels, blocks=blocks, enc_out=enc_out,
                            dh=dh, omega_dim=omega_dim, tau=tau, seed=seed,
-                           quasimetric=quasimetric)
+                           quasimetric=quasimetric, two_horizon=two_horizon)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -74,6 +77,19 @@ class TorchFB(nn.Module):
         if quasimetric:
             self.metric_scale = nn.Parameter(torch.ones(d))
             self.W = nn.Parameter(torch.zeros(d, d))
+        # TWO-HORIZON (2026-07-13, TWO_HORIZON_DESIGN.md): the existing
+        # headF/headB (+ quasimetric) ARE the FAR head -- calibrated
+        # long-range distance-to-goal. The near head is purely additive:
+        # extra MLP heads off the SAME shared encoder trunk (encF/encB),
+        # cosine-scored, trained only on short-gap pairs for razor-sharp
+        # endgame/close-range discrimination. Constructed LAST so a
+        # two_horizon=False model's weights stay byte-identical.
+        self.two_horizon = two_horizon
+        if two_horizon:
+            self.headF_near = nn.Sequential(nn.Linear(enc_out + 3 * omega_dim, dh),
+                                            nn.ReLU(), nn.Linear(dh, d))
+            self.headB_near = nn.Sequential(nn.Linear(enc_out, dh), nn.ReLU(),
+                                            nn.Linear(dh, d))
 
     def embed_F(self, planes: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         h = self.encF(planes)
@@ -83,6 +99,63 @@ class TorchFB(nn.Module):
 
     def embed_B(self, planes: torch.Tensor) -> torch.Tensor:
         return nn.functional.normalize(self.headB(self.encB(planes)), dim=1)
+
+    def embed_F_near(self, planes: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
+        """FAR's shared trunk (encF), NEAR's head. Cosine-scored (near needs
+        sharp local ranking, not the quasimetric geometry)."""
+        h = self.encF(planes)
+        o = torch.cat([self.emb_we(omega[:, 0]), self.emb_be(omega[:, 1]),
+                       self.emb_clk(omega[:, 2])], dim=1)
+        return nn.functional.normalize(self.headF_near(torch.cat([h, o], dim=1)), dim=1)
+
+    def embed_B_near(self, planes: torch.Tensor) -> torch.Tensor:
+        return nn.functional.normalize(self.headB_near(self.encB(planes)), dim=1)
+
+    def near_score(self, f_near: torch.Tensor, z_near: torch.Tensor) -> torch.Tensor:
+        """(N,d) near-states against ONE near-goal (d,) -> (N,). Plain cosine
+        (near is not quasimetric). Counterpart of `score` for the near head."""
+        return f_near @ z_near
+
+    def two_horizon_loss(self, planes_s: torch.Tensor, omega_s: torch.Tensor,
+                         planes_g: torch.Tensor, ply_gap: torch.Tensor,
+                         near_max: int = 8, far_min: int = 16, near_weight: float = 1.0,
+                         ply_gap_weight: float = 0.05, ply_gap_scale: float = 50.0
+                         ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Stratified two-horizon objective (TWO_HORIZON_DESIGN.md). Routes
+        each (s, g) pair to a head by its real ply-gap:
+          near head (cosine InfoNCE)  <- short-gap pairs (gap <= near_max)
+          far head  (quasimetric + ply-gap calibration) <- long-gap pairs
+                                        (gap >= far_min)
+        Pairs in the dead zone (near_max < gap < far_min) are dropped so the
+        two heads specialize on cleanly-separated ranges. Losses summed;
+        each head's gradient flows only into its own params + the shared
+        trunk. Returns (loss, near_top1) -- near_top1 is the short-horizon
+        sharpness we must NOT lose (target ~0.97)."""
+        gap = ply_gap
+        loss = planes_s.new_zeros(())
+        near_top1 = planes_s.new_zeros(())
+        near_mask = gap <= near_max
+        if int(near_mask.sum()) >= 2:
+            idx = near_mask.nonzero(as_tuple=False).flatten()
+            fN = self.embed_F_near(planes_s[idx], omega_s[idx])
+            bN = self.embed_B_near(planes_g[idx])
+            logits = (fN @ bN.T) / self.tau
+            tgt = torch.arange(len(fN), device=logits.device)
+            loss = loss + near_weight * nn.functional.cross_entropy(logits, tgt)
+            near_top1 = (logits.argmax(dim=1) == tgt).float().mean()
+        far_mask = gap >= far_min
+        if int(far_mask.sum()) >= 2:
+            idx = far_mask.nonzero(as_tuple=False).flatten()
+            fF = self.embed_F(planes_s[idx], omega_s[idx])
+            bF = self.embed_B(planes_g[idx])
+            logits = self.score_matrix(fF, bF) / self.tau
+            tgt = torch.arange(len(fF), device=logits.device)
+            far_loss = nn.functional.cross_entropy(logits, tgt)
+            d_true = self.distance_matrix(fF, bF).diagonal()
+            far_loss = far_loss + ply_gap_weight * nn.functional.mse_loss(
+                d_true, gap[idx].to(d_true.dtype) / ply_gap_scale)
+            loss = loss + far_loss
+        return loss, near_top1
 
     def loss_fn(self, planes_s: torch.Tensor, omega_s: torch.Tensor,
                 planes_g: torch.Tensor, ply_gap: torch.Tensor | None = None,

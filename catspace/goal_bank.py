@@ -52,10 +52,11 @@ def harvest_mate_finals(shard_dirs: list, want_result: int = 1,
     return boards
 
 
-def embed_bank(fb, boards: list, device) -> np.ndarray:
+def embed_bank(fb, boards: list, device, near: bool = False) -> np.ndarray:
     """(m, d) B-embeddings of exemplar boards -- pass directly as the `z` of
     FBSearchPolicy/FBBoardPolicy (both accept a 2-D bank and score
-    best-over-exemplars)."""
+    best-over-exemplars). near=True uses the two-horizon NEAR head
+    (embed_B_near) instead of the default/far head."""
     import torch
 
     from catspace.data.encode import encode_meta, encode_packed
@@ -64,5 +65,6 @@ def embed_bank(fb, boards: list, device) -> np.ndarray:
     packed = np.stack([encode_packed(b) for b in boards])
     meta = np.stack([encode_meta(b) for b in boards])
     planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
+    embed = fb.embed_B_near if near else fb.embed_B
     with torch.no_grad():
-        return fb.embed_B(planes).cpu().numpy()
+        return embed(planes).cpu().numpy()
