@@ -158,6 +158,270 @@ Optional Stockfish evaluation in the PGN comment, parsed as eval_cp (centipawns)
 
 ---
 
+## Quasimetric & distance concepts
+
+*(Added rounds 11–18. The project moved from a plain cosine "reach" score to a
+genuine distance geometry.)*
+
+### Quasimetric embedding
+A learned **distance** `d(s, g)` — "how many moves of real play from position s
+to goal g" — that obeys the geometry of true travel distances. The key property
+is the **triangle inequality**: `d(s, g) ≤ d(s, m) + d(m, g)` for any middle
+position m. Going straight can never cost more than going via a detour. Plain
+cosine reach (the original FB score) has no reason to respect this, so multi-step
+plans ("pin the pawn, *then* win the knight") don't compose reliably. A
+quasimetric is built so they do. "Quasi" because chess distance is **asymmetric**
+— you can reach a won endgame from the middlegame, but never travel back (you
+can't un-capture a piece), so `d(s, g) ≠ d(g, s)`.
+
+Enabled by `TorchFB(quasimetric=True)`. Contrast with the default cosine dot
+product.
+
+### Score = r − d (residual minus distance)
+The quasimetric readout, MRN-style (Metric Residual Network, Liu et al. 2023):
+`score(s, g) = r(s, g) − d(s, g)`. Here `d` is a true, symmetric metric
+(triangle inequality guaranteed by construction), and `r` is a small
+unconstrained correction term that soaks up the leftover *asymmetric* structure.
+Higher score = closer to the goal. When `quasimetric=False`, score collapses back
+to the plain dot product, so old checkpoints behave identically.
+
+### Triangle inequality / triangle violation
+The property `d(s,g) ≤ d(s,m) + d(m,g)`. A **violation** is a triple where it
+fails. Reported as `violation ratio = d(s,g) / (d(s,m) + d(m,g))`; ≤ 1 means no
+violation. Used as a health check: our metric `d` has zero violations (guaranteed
+by its construction), confirming the distance geometry is structurally sound.
+
+### Ply-gap calibration
+A training term that pins the *absolute scale* of the distance to something real.
+The contrastive loss alone only cares about *ranking* (is the true future closer
+than the wrong ones?) — nothing forces `d = 5` to mean "5 moves away." Ply-gap
+calibration adds a penalty that regresses `d(s, g)` toward the **actual number of
+plies** between s and g in the real game (a "ply" is one half-move). Without it,
+"down a rook with no way back" and "down a rook but recoverable" can score
+identically; with it, the first reads as genuinely *far*. Flag:
+`--ply-gap-weight`.
+
+### Asymmetry margin / one-way door
+A training term teaching that captures are **one-way doors**. For any training
+pair where material *dropped* between s and g (a capture happened), the reverse
+trip is impossible in real chess. The margin loss pushes `d(reverse) > d(forward)
++ margin`. Derived purely from the direction of real games — no chess rules coded
+in. It successfully drove the "arrow of material" error from 27% down to 3%, but
+was **shelved** (rounds 15–16): it taxed short-term tactical sharpness, which
+endgame play can't spare. Flag: `--asym-weight`.
+
+---
+
+## Goal representation
+
+*(The "corner the king is a region, not a point" thread, round 14.)*
+
+### Goal centroid (and why it's flat)
+The default goal vector `z_MATE_W` is the **average** of many checkmate positions.
+Measured against exact tablebase distance-to-mate, distance to *any* single
+centroid is **flat** — it can't tell mate-in-1 from mate-in-30. Averaging many
+mate positions into one point destroys the geometry that distinguishes them.
+
+### Goal-as-region / goal bank
+The fix in principle: represent a goal like "checkmate" as a **set** of example
+positions (a *bank*), not one averaged point. A `goal bank` is a matrix of many
+individual mate-position embeddings (`catspace/goal_bank.py` harvests real
+checkmate positions from game data). Scoring a position against a bank uses the
+**nearest** exemplar, not the average.
+
+### Nearest-exemplar distance
+Distance to the *closest* position in a goal bank. Unlike the centroid, this
+**does** correlate with true distance-to-mate (Spearman ρ +0.17, rising to +0.25
+after endgame-curriculum training) — evidence that the region idea captures real
+structure. **But**: swapping it into actual play *lost* decisively (the readout
+keeps chasing whichever mate pattern happens to be nearest this move, which
+destabilizes move ranking). Conclusion: the region idea is right, but a readout
+can't rescue a representation that's under-trained in those regions.
+
+### Soft-min (logsumexp) aggregation
+A smoothed alternative to picking the single nearest exemplar: a temperature-
+controlled blend (`bank_tau`) that weights nearby exemplars together instead of
+hard-switching. Meant to cure the goal-switching instability above. It recovered
+some ground but still lost at play. Both hard-nearest and soft-min are kept as
+instruments for future checkpoints.
+
+---
+
+## Search & readout
+
+### Node budget (max_nodes)
+How the planner spends its "thinking." Instead of a fixed lookahead depth, the
+search is given a **budget of positions to examine** (`max_nodes`, e.g. 200) and
+derives its depth per-move from how many legal moves the position has. Modeled on
+Leela Chess Zero's node economy (~1500–2000 is "actually playing"; we
+deliberately run ~200, roughly 10× below that, so any win has to come from a
+*better plan*, not out-searching the opponent). Replaced the earlier fixed-ply
+depth setting.
+
+### FBSearchPolicy
+The main planner: beam-limited minimax (look-ahead search) that scores leaf
+positions with the FB embedding instead of a hand-written evaluation. "Beam"
+means it only keeps the top-few candidate moves at each ply to keep the tree
+small enough to score in one batched GPU pass. This is the readout that first
+lifted arena score from 0.10 to 0.25.
+
+### FBPlanPolicy (plan persistence)
+An experimental policy that **commits to a subgoal** for several moves instead of
+re-planning every move — the "if the pieces just shuffled around but the plan
+hasn't changed, don't re-think from scratch" idea. It picks a target position from
+its own search's principal variation, then plays cheaply toward it, only
+re-planning when progress stalls, the subgoal is reached, or reach drops sharply.
+Tested at n=80 games: no significant advantage over plain search yet (planning
+over a not-yet-calibrated value function just follows noise). Kept for re-testing.
+
+---
+
+## Self-play & data curriculum
+
+*(Rounds 13–18. How training data is generated beyond human Lichess games.)*
+
+### Self-play (PI-refinement)
+The model plays games against **itself** (and partly Stockfish); those fresh games
+become new training data. "PI" = policy iteration — improve, generate new games
+with the improved model, improve again. This is the mechanism the AlphaZero line
+credits for tactical concepts (forks, pins) emerging with *no* explicit
+supervision. Generated by `experiments/selfplay_generate.py`, written in the same
+shard format as human data so it plugs into training unchanged.
+
+### Self-play fraction (--selfplay-frac)
+The share of training that comes from self-play games vs human games. `0.3` = 30%
+self-play. Implemented by `MixedPairSource`, which draws each training batch
+wholesale from one pool or the other by a weighted coin flip. **Finding**: at
+0.3–0.4 this *hurt* play (see ε-noise) and was removed from the promoted
+checkpoint.
+
+### ε-noise (epsilon-greedy, StochasticPolicy)
+The planner is deterministic — same position, same move — so self-play against
+itself would produce identical, useless games. ε-noise injects a **random legal
+move with probability ε** (default 8%) to force game variety. The cost: those
+random moves are noise; too many noisy self-play games in the training mix dulled
+short-term tactical sharpness (more blunders). This is *why* the self-play mix was
+"the play drag."
+
+### Stockfish sparring fraction (--sf-opponent-frac)
+Fraction of self-play games (default 30%) where one side is Stockfish instead of
+the model — external grounding so the model doesn't just reinforce its own bad
+habits. Records only the **moves and the game result**, never Stockfish's
+evaluation numbers, so the no-leakage rule (see Leakage gate) is preserved.
+
+### Endgame-start curriculum (--endgame-start-frac)
+Fraction of self-play games that begin from a random **winnable endgame**
+(K+R vs K, K+Q vs K, K+R+R vs K, etc.) instead of the opening. Targets exactly
+the sparse regions human games skip. Measurably improved endgame distance
+calibration, though the improvement didn't (yet) translate to better play.
+
+### Winner-POV filtering
+An early, cheap proxy for outcome-conditioned training (round 11): keep only
+training pairs where the side to move eventually **won** the game — "learn what
+winning play looks like, not just what real play looks like." It measurably
+helped (+22 centipawns), confirming outcome signal matters, then was **retired**
+(Kaveh's call): it discards losing trajectories, which carry exactly the
+"bad-future" signal the ply-gap and asymmetry terms need. Evidence kept, mechanism
+replaced by real self-play.
+
+---
+
+## Diagnostic instruments
+
+*(The measurement suite built rounds 11–14. "You can't improve what you can't
+measure.")*
+
+### ACPL (Average Centipawn Loss) probe
+The standard chess-analysis blunder metric, applied to the policy. For each move,
+compare a strong Stockfish's evaluation *before* vs *after* the move (from the
+mover's side); the drop is the "loss" in centipawns (100 = one pawn). Averaged
+over many held-out positions. Human reference: a master loses <20 per move, a
+beginner 100+. Our policy runs ~250–330 — it blunders material on a majority of
+moves, confirming tactical blindness is broad, not endgame-specific. Also reports
+**blunder rate** (moves losing ≥300cp) and **mistake rate** (≥100cp). Stockfish
+here is only a *grader*, never a training signal.
+
+### KRRvKBP diagnostic
+A narrow, interpretable test position family: White **K+R+R** vs Black
+**K+B+P** (king, bishop, pawn). A materially winning endgame that never occurs in
+human games, chosen because failures are *diagnosable* ("did it keep the rooks
+where the bishop can't reach?") unlike full-board play. A fixed set of tablebase-
+verified winning positions (`krrkbp_fixed_set*.json`) is played out vs Stockfish;
+the score is win/draw/loss conversion. This is the project's primary planning
+benchmark.
+
+### Syzygy tablebases (DTZ, DTM, WDL)
+Precomputed **perfect-play databases** for positions with few pieces (≤7). Give
+exact ground truth:
+- **WDL**: Win / Draw / Loss under perfect play (+2 = winning).
+- **DTZ**: Distance To Zeroing move (a capture or pawn move) — used as a distance-
+  to-mate proxy.
+- **DTM**: Distance To Mate — exact number of moves to forced checkmate.
+
+The chess equivalent of a gridworld's known shortest paths. Used **observationally
+only** — to grade how well the learned distance tracks reality (calibration), and
+to overlay optimal play in viewers — never as a training label.
+
+### Fitness probe (quasimetric health check)
+`experiments/qm_fitness_probe.py` — six instruments measuring whether the learned
+distance is *good*, beyond win/loss:
+- **Nearest-exemplar Spearman ρ**: does learned distance-to-mate rank-correlate
+  with true tablebase distance? (The calibration number that tracks embedding
+  progress; centroids stay flat near 0, nearest-exemplar rises to +0.25.)
+- **Horizon-stratified retrieval**: can it pick the true future position out of
+  63 decoys, at gaps of 1, 2, 5, 10, 20, 50 plies? Reveals *how far ahead* the
+  embedding can see. Ours is sharp to ~10 plies (~90%) then falls off a cliff by
+  50 (~25%).
+- **Asymmetry audit**: fraction of capture-pairs where the (impossible) reverse
+  trip scores *closer* than forward — should be ~0.
+- **Triangle violation**: structural sanity of the metric (see above).
+- **Degeneracy panel**: spread ratio + effective rank (see below).
+
+### Spread ratio / effective rank (degeneracy checks)
+Two "is my embedding collapsing?" checks. **Spread ratio** = average distance over
+random position pairs ÷ average distance over adjacent (1-ply) pairs; ≈ 1 would
+mean all distances collapsed to the same value (degenerate). **Effective rank** =
+how many of the embedding's dimensions are actually being used (entropy of the
+singular-value spectrum); low rank means wasted capacity. Ours are healthy
+(spread ~1.8–2.4, rank ~24–26 of 64).
+
+---
+
+## Methodology terms
+
+### E-value / anytime-valid test (EValueTest)
+A statistically rigorous way to call a winner from a sequence of games **without**
+p-hacking by peeking. An e-value is a betting score against the "no difference"
+hypothesis; crossing `1/α` (e.g. 20 for α=0.05) lets you stop early and reject,
+with the false-positive rate provably controlled *at every point you might have
+looked*. Reported on every arena run (`catspace/abtest.py`).
+
+### Paired comparison (matched-seed)
+Comparing two policies by playing them from the **same positions with the same
+random seeds**, then testing the per-position *difference* (Wilcoxon signed-rank +
+bootstrap confidence interval). Cancels out position difficulty and luck,
+isolating the policy effect. Caveat found: Stockfish's own internal randomness
+isn't controlled by our seed, so the pairing is weaker than ideal.
+
+### Incumbent / promotion / pre-registered gate
+Research-loop discipline. The **incumbent** is the current best checkpoint; a new
+one is **promoted** only if it beats the incumbent on a **pre-registered gate** —
+success criteria written down *before* seeing results (e.g. "asymmetry error must
+drop below 0.10 AND ACPL must not worsen"). Prevents rationalizing a loss into a
+win after the fact. One **lever** (one variable) is changed per round so effects
+are attributable.
+
+### Short-horizon vs long-horizon discrimination
+The project's central measured tension. **Short-horizon** = ranking the ~30 legal
+moves right in front of you (tactics; what ACPL and endgame conversion need).
+**Long-horizon** = judging positions many moves out (strategy; the k=20–50
+retrieval, calibration, region structure). The finding across 18 rounds: these
+**compete** inside one small embedding — nearly every change that improved
+long-horizon structure taxed short-horizon sharpness, and play punished that.
+This is the identified next target (a two-horizon architecture).
+
+---
+
 ## Experiment & logging
 
 ### JOURNAL.md
@@ -185,11 +449,21 @@ At 30k: VAL_TOP1 = 0.033 (16.9× chance), VAL_TOP8 = 0.179 (11.4× chance). The 
 - **FB**: forward–backward (the embedding model).
 - **MPS**: Metal Performance Shaders (Apple GPU acceleration).
 - **Elo bin**: one of 10 strength buckets; used in omega.
-- **DTM**: distance-to-mate (used in toy endgame experiments, not real boards).
-- **Cosine reach**: L2-normalized dot product (the reach metric for real boards).
+- **DTM / DTZ / WDL**: distance-to-mate / distance-to-zeroing-move / win-draw-loss (Syzygy tablebase ground truth).
+- **Cosine reach**: L2-normalized dot product (the original reach metric for real boards).
 - **Descriptor vs normative**: game outcomes vs engine evals; two different eval heads.
 - **Frozen probe**: F is fixed; only the linear head trains.
 - **Waypoint**: an intermediate position in a decomposed plan.
+- **ACPL**: average centipawn loss (per-move blunder metric).
+- **Quasimetric**: a learned, triangle-inequality-respecting, asymmetric distance.
+- **MRN**: metric residual network — the `score = r − d` construction.
+- **Ply**: one half-move (one player's turn); "ply-gap" = plies between two positions.
+- **PI**: policy iteration (the self-play improve-generate-improve loop).
+- **ε-noise**: random-move injection (probability ε) for self-play game diversity.
+- **KRRvKBP**: the K+R+R vs K+B+P endgame diagnostic.
+- **Incumbent**: the current best checkpoint; a new one must beat it to be promoted.
+- **Lever**: one variable changed per experiment round, for clean attribution.
+- **Centipawn (cp)**: 1/100 of a pawn, the standard engine evaluation unit.
 
 ---
 
