@@ -298,6 +298,43 @@ def test_two_horizon_loss_uses_only_the_intended_stratum():
     assert fb.headF[0].weight.grad is not None
 
 
+def test_distributional_off_is_byte_identical():
+    a = TorchFB(seed=0, quasimetric=True, **TINY)
+    b = TorchFB(seed=0, quasimetric=True, distributional=False, **TINY)
+    for (ka, va), (kb, vb) in zip(a.state_dict().items(), b.state_dict().items()):
+        assert ka == kb and torch.equal(va, vb)
+    assert not hasattr(a, "cat_head")
+
+
+def test_distributional_head_and_loss():
+    fb = TorchFB(seed=0, distributional=True, n_bins=12, **TINY)
+    assert fb.config["distributional"] and fb.config["quasimetric"] and fb.n_bins == 12
+    boards = _boards(8, seed=6)
+    packed, meta = _packed_meta(boards)
+    planes = torch.from_numpy(feature_planes(packed, meta))
+    omega = torch.from_numpy(omega_ids(np.full(8, 1500), np.full(8, 1500), np.full(8, 60.0)))
+    gap = torch.tensor([1., 3., 7., 15., 30., 50., 80., 120.])
+
+    f, b = fb.embed_F(planes, omega), fb.embed_B(planes)
+    logits = fb.dist_logits(f, b)
+    assert logits.shape == (8, 12)
+    ent = fb.dist_entropy(f, b)
+    assert ent.shape == (8,) and torch.all(ent >= 0) and torch.all(ent <= np.log(12) + 1e-4)
+    # bin indices are valid and monotone in ply-gap
+    idx = fb.dist_bin_index(gap)
+    assert torch.all(idx >= 0) and torch.all(idx < 12)
+    assert torch.all(idx[1:] >= idx[:-1])
+    # z broadcasts as a single goal vector too
+    assert fb.dist_logits(f, b[0]).shape == (8, 12)
+
+    # the categorical term adds loss and trains the cat head + trunk
+    base, _ = fb.loss_fn(planes, omega, planes, ply_gap=gap, dist_weight=0.0)
+    with_d, _ = fb.loss_fn(planes, omega, planes, ply_gap=gap, dist_weight=0.5)
+    assert float(with_d) > float(base)
+    with_d.backward()
+    assert fb.cat_head[0].weight.grad is not None and fb.encF.stem[0].weight.grad is not None
+
+
 def test_ckpt_roundtrip(tmp_path):
     fb = TorchFB(seed=0, **TINY)
     z = np.ones(TINY["d"], dtype=np.float32)

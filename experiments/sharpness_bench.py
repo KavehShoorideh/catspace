@@ -163,6 +163,18 @@ def signals_for_position(fb, board, zgoals, device) -> dict:
         near = _reach(fb, succ, z_near, device, near=True)
         rho = spearmanr(far, near).statistic          # agreement of the two orderings
         out["head_disagreement"] = float(1.0 - (rho if np.isfinite(rho) else 0.0))
+    if getattr(fb, "distributional", False):
+        # dist_sigma (option B): entropy of THIS position's predicted
+        # distance-to-mate distribution -- aleatoric uncertainty. Wide/bimodal
+        # => volatile => should read as sharp. The signal the reframe wants.
+        packed = encode_packed(board)[None]
+        meta = encode_meta(board)[None]
+        planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
+        om = torch.from_numpy(omega_ids(np.array([1800]), np.array([1800]),
+                                        np.array([300.0]))).to(device)
+        with torch.no_grad():
+            f_s = fb.embed_F(planes, om)
+            out["dist_sigma"] = float(fb.dist_entropy(f_s, z_far)[0])
     return out
 
 

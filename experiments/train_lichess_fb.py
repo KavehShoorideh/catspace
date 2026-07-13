@@ -242,6 +242,13 @@ def main():
     ap.add_argument("--near-max", type=int, default=8, help="two-horizon: near head sees gap <= this")
     ap.add_argument("--far-min", type=int, default=16, help="two-horizon: far head sees gap >= this")
     ap.add_argument("--near-weight", type=float, default=1.0, help="two-horizon: weight on the near loss")
+    ap.add_argument("--distributional", action="store_true",
+                    help="option B (UNCERTAINTY_DESIGN.md): add a CATEGORICAL head predicting "
+                         "distance-to-goal over ply-gap bins (cross-entropy); quasimetric d stays "
+                         "the planning distance, categorical entropy = the uncertainty signal. "
+                         "Forces quasimetric.")
+    ap.add_argument("--n-bins", type=int, default=12, help="distributional: number of ply-gap bins")
+    ap.add_argument("--dist-weight", type=float, default=0.5, help="distributional: weight on the categorical loss")
     ap.add_argument("--selfplay-shards", default=None,
                     help="dir of experiments/selfplay_generate.py output shards to MIX into "
                          "training (holdout/val stay human-only for a stable reference)")
@@ -282,7 +289,8 @@ def main():
         print(f"resumed {ckpt_path.name} at step {step}")
     else:
         fb = TorchFB(d=args.d, seed=args.seed, quasimetric=args.quasimetric,
-                     two_horizon=args.two_horizon)
+                     two_horizon=args.two_horizon, distributional=args.distributional,
+                     n_bins=args.n_bins)
         fb.to(device)
     start_step = step                      # cosine decay spans [start_step, args.steps)
     lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
@@ -338,7 +346,8 @@ def main():
         else:
             loss, top1 = fb.loss_fn(*tensors, ply_gap_weight=args.ply_gap_weight,
                                     ply_gap_scale=args.ply_gap_scale,
-                                    asym_weight=args.asym_weight, asym_margin=args.asym_margin)
+                                    asym_weight=args.asym_weight, asym_margin=args.asym_margin,
+                                    dist_weight=args.dist_weight)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
