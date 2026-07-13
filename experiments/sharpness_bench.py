@@ -155,18 +155,38 @@ def _reach(fb, boards, z, device, near: bool):
         return fb.score(f, z).cpu().numpy()
 
 
+def structural_signals(board) -> dict:
+    """MODEL-FREE tactical-density signals (2026-07-13, Kaveh: "interactions
+    flying everywhere, lots of captures"). This is exactly the classical
+    quiescence trigger (extend on captures/checks). Free to compute, no
+    chicken-and-egg, no training -- tested directly against the crit ground
+    truth to see if raw interaction density predicts sharpness."""
+    moves = list(board.legal_moves)
+    n = len(moves)
+    caps = sum(board.is_capture(m) for m in moves)
+    checks = sum(board.gives_check(m) for m in moves)
+    forcing = sum(board.is_capture(m) or board.gives_check(m) for m in moves)
+    # my pieces currently attacked by the opponent (contested / en prise)
+    opp = not board.turn
+    enprise = sum(1 for sq, pc in board.piece_map().items()
+                  if pc.color == board.turn and board.is_attacked_by(opp, sq))
+    return {"cap_count": float(caps), "check_count": float(checks),
+            "forcing_frac": float(forcing / n), "enprise_count": float(enprise)}
+
+
 def signals_for_position(fb, board, zgoals, device) -> dict:
     """All candidate uncertainty signals available for this checkpoint."""
     import torch
     moves = list(board.legal_moves)
     if len(moves) < 2:
         return {}
+    out0 = structural_signals(board)
     succ = [board.copy(stack=False) for _ in moves]
     for b2, m in zip(succ, moves):
         b2.push(m)
     z_far = torch.as_tensor(zgoals["MATE_W"], dtype=torch.float32, device=device)
     far = _reach(fb, succ, z_far, device, near=False)
-    out = {"score_spread": float(np.std(far))}
+    out = dict(out0); out["score_spread"] = float(np.std(far))
     if getattr(fb, "two_horizon", False) and "MATE_W_NEAR" in zgoals:
         z_near = torch.as_tensor(zgoals["MATE_W_NEAR"], dtype=torch.float32, device=device)
         near = _reach(fb, succ, z_near, device, near=True)
@@ -229,7 +249,8 @@ def run(fb, zgoals, device, tb, n_per_kind: int, kinds: list, seed: int) -> dict
                   confound_rho_crit_vs_distance=float(spearmanr(crit, dist).statistic))
     signal_names = sorted({k for r in rows for k in r
                            if k in ("score_spread", "head_disagreement", "dist_sigma",
-                                    "dist_succ_meanspread", "dist_succ_entspread")})
+                                    "dist_succ_meanspread", "dist_succ_entspread",
+                                    "cap_count", "check_count", "forcing_frac", "enprise_count")})
     # crit (best-vs-2nd criticality) is the DISTANCE-INDEPENDENT sharpness metric
     # (2026-07-13; the sharpness field's relative margin is retained but the
     # decounfounded ruler is crit -- score signals against BOTH, headline crit).
