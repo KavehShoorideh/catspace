@@ -2110,3 +2110,42 @@ sharpness_incumbent.json`.
 (head-disagreement) on the benchmark — if it beats +0.14 meaningfully, the
 sharpness hypothesis is validated and we build B (categorical) then C (gated
 search), each scored on the benchmark then the play gate.
+
+---
+
+## 2026-07-13 (Opus) — A-validation: head-disagreement is NOT a sharpness detector; two-horizon specialized structurally; on to B
+
+Two-horizon baseline (`lichess_fb_4gb_twohorizon.pt`, ply-stratified) trained,
+then the two measurements that matter.
+
+**A-validation (sharpness_bench, n=446) — Option A REJECTED.**
+- head_disagreement rho vs true sharpness = **+0.079** (weak)
+- score_spread (point-head move-score spread) rho = **+0.202** (the baseline)
+
+Head-disagreement detects sharpness WORSE than a plain point estimate. Diagnostic:
+the heads DO disagree (mean 0.33, std 0.22, up to 1.27) — they are not redundant —
+but their disagreement is ORTHOGONAL to real value curvature: it tracks the
+ply-training-distribution difference, not sharpness. This is precisely what
+Kaveh's reframe predicts (the ply axis is not the sharpness axis), so it confirms
+the reframe rather than refuting it. Option A is dead. **The bar for B is now
+rho > +0.20** — the categorical entropy must beat the point head's own spread.
+
+**Two-horizon probe — the ply-split DID specialize at the representation level.**
+- NEAR retrieval k=1 = 0.98 (sharpest short-range of any checkpoint, by design),
+  collapsing to 0.03 at k=50 (the short-range specialist).
+- FAR nearest-exemplar calibration rho = +0.272 — the BEST long-range endgame
+  calibration of any checkpoint (incumbent +0.165, gen2 +0.252). FAR retrieval
+  holds the mid-range (k=20 0.66) like the incumbent.
+- Pre-registered probe gate: near k=1 >= 0.95 PASS (0.98); far nearest-exemplar
+  rho >= 0.30 borderline FAIL (0.272, just short). Spread 1.91, rank 24.3 (healthy).
+
+So the two heads genuinely became a short-range sharp specialist and a long-range
+calibrated specialist -- the architecture works structurally. But (a) their
+disagreement doesn't detect sharpness, and (b) the axis is ply not curvature, so
+this is the confirmed-suboptimal BASELINE. Play gate (KRRvKBP far-mode) queued as
+a cheap data point; not expected to promote (wrong axis).
+
+**Decision:** proceed to B. Keep the far head's calibration win in mind (long-gap
+training helped calibration, +0.272). Build the categorical distributional head;
+its entropy must beat score_spread's +0.20 on the sharpness benchmark to be worth
+consuming in C.
