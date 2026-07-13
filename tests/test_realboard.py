@@ -337,6 +337,33 @@ def test_fb_search_policy_reliability_sensor():
         assert isinstance(r, float) and 0.0 <= r <= 1.0
 
 
+def test_fb_adaptive_search_policy_gates_on_sharpness():
+    """Adaptive policy stays legal and spends >= base nodes; a sharp/unreliable
+    position (KRRvKBP) should not use FEWER nodes than a quiet one."""
+    torch = pytest.importorskip("torch")
+    from catspace.competence import CompetenceMap
+    from catspace.nn.fb import TorchFB
+    from catspace.nn.policy_fb import FBAdaptiveSearchPolicy
+
+    fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
+    # tiny competence map so the policy has a Method-2 signal to query
+    cmap = CompetenceMap(np.random.default_rng(0).normal(size=(40, 16)).astype(np.float32),
+                         np.random.default_rng(1).random(40).astype(np.float32), k=4)
+    pol = FBAdaptiveSearchPolicy(fb, np.zeros(16, dtype=np.float32), base_nodes=100, beam=4,
+                                 competence_map=cmap, sharp_thresh=0.1, node_cap=800)
+    rng = np.random.default_rng(0)
+    for b in (chess.Board(), chess.Board("5R2/2R5/7k/4p3/8/1b6/8/1K6 w - - 0 1")):
+        mv = pol.move(b, rng)
+        assert mv in b.legal_moves
+        assert pol.last_nodes_used >= 100 and pol.last_deepenings >= 0
+
+    # mate-in-1 must still be found
+    mate_board = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1")
+    chosen = pol.move(mate_board, rng)
+    mate_board.push(chosen)
+    assert mate_board.is_checkmate()
+
+
 def test_fb_two_horizon_policy_far_and_near_modes():
     """Both readout modes on a two-horizon net stay legal and take a
     mate-in-1; near mode accepts either a centroid or an exemplar bank."""

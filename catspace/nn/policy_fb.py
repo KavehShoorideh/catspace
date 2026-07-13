@@ -26,6 +26,23 @@ DRAW_SCORE = -1e9
 MATED_SCORE = -2e9
 
 
+def _rank_disagreement(shallow: np.ndarray, deep: np.ndarray,
+                       keep_frac: float = 0.5) -> float:
+    """Method-1 core: rank disagreement in [0,1] between a SHALLOW and a DEEP
+    scoring of the same moves, restricted to the top `keep_frac` shallow-
+    plausible moves (drops obvious 1-ply-bad-looking moves). 0 = deep agrees
+    with shallow (quiet), 1 = deep fully reorders them (sharp/unreliable)."""
+    if len(shallow) < 3:
+        return 0.0
+    k = max(3, int(round(len(shallow) * keep_frac)))
+    keep = np.argsort(-shallow)[:k]
+    sr = np.argsort(np.argsort(shallow[keep])).astype(float)
+    dr = np.argsort(np.argsort(deep[keep])).astype(float)
+    if sr.std() < 1e-9 or dr.std() < 1e-9:
+        return 0.0
+    return float((1.0 - float(np.corrcoef(sr, dr)[0, 1])) / 2.0)
+
+
 def soft_min_bank(fb, f: torch.Tensor, Z: torch.Tensor, tau: float) -> torch.Tensor:
     """(n,) soft-min-distance region score of states f against an (m, d)
     exemplar bank Z: tau * (logsumexp(score/tau) - log(m)). Normalized so a
@@ -387,19 +404,8 @@ class FBSearchPolicy:
         shallow ranking, extra search is wasted), 1 = maximally sharp (deep
         completely reorders the plausible moves)."""
         roots, deep = self._build_and_score(board)
-        if len(roots) < 3:
-            return 0.0
         shallow = self._reach_batch([r.board for r in roots])
-        deep = np.asarray(deep, dtype=float)
-        k = max(3, int(round(len(roots) * shallow_keep_frac)))
-        keep = np.argsort(-shallow)[:k]                      # shallow-plausible moves
-        sh, dp = shallow[keep], deep[keep]
-        sr = np.argsort(np.argsort(sh)).astype(float)        # spearman = pearson on ranks
-        dr = np.argsort(np.argsort(dp)).astype(float)
-        if sr.std() < 1e-9 or dr.std() < 1e-9:
-            return 0.0
-        rho = float(np.corrcoef(sr, dr)[0, 1])
-        return float((1.0 - rho) / 2.0)                      # [-1,1] rho -> [0,1] disagreement
+        return _rank_disagreement(shallow, np.asarray(deep, dtype=float), shallow_keep_frac)
 
     def plan(self, board: chess.Board, rng: np.random.Generator) -> tuple[chess.Move, chess.Board]:
         """Like move(), but also walks the PRINCIPAL VARIATION -- the
@@ -556,3 +562,82 @@ class FBTwoHorizonPolicy(FBSearchPolicy):
             S = f @ self.z_near.T             # (n, m) cosine sims; higher = closer
             return (self.bank_tau * torch.logsumexp(S / self.bank_tau, dim=1)).cpu().numpy()
         return (f @ self.z_near).cpu().numpy()
+
+
+class FBAdaptiveSearchPolicy(FBSearchPolicy):
+    """Reliability-gated search (2026-07-13, UNCERTAINTY_DESIGN.md). Two sharpness
+    methods gate how hard to think:
+      m1 = Method 1, exact: shallow-vs-deep reachability disagreement from THIS
+           position's base search (FBSearchPolicy.reliability core).
+      m2 = Method 2, cheap prediction: CompetenceMap.query(F(s)) -- "have I been
+           unreliable in this region of embedding space before" (no deep search).
+    Gating (Kaveh): EITHER method sharp -> spend extra search; BOTH sharp -> keep
+    deepening until CERTAINTY (the top move stabilizes across successive budgets)
+    or a node cap. Quiet position -> base budget, no waste. This is the fix for
+    the node-sweep negative: search more only where deeper search changes the
+    decision, not uniformly."""
+
+    def __init__(self, fb, z, base_nodes: int, beam: int = 4, competence_map=None,
+                 sharp_thresh: float = 0.15, node_cap: int = 2400,
+                 deepen_factor: float = 2.0, max_deepen: int = 4, stable_top_k: int = 1,
+                 elo: int = 1800, clock: float = 300.0, device: str = "cpu"):
+        super().__init__(fb, z, max_nodes=base_nodes, beam=beam, elo=elo, clock=clock,
+                         device=device)
+        self.base_nodes = base_nodes
+        self.cmap = competence_map
+        self.sharp_thresh = sharp_thresh
+        self.node_cap = node_cap
+        self.deepen_factor = deepen_factor
+        self.max_deepen = max_deepen
+        self.stable_top_k = stable_top_k
+        # introspection (set each move)
+        self.last_nodes_used = base_nodes
+        self.last_m1 = 0.0
+        self.last_m2 = 0.0
+        self.last_deepenings = 0
+
+    @torch.no_grad()
+    def _m2(self, board: chess.Board) -> float:
+        if self.cmap is None:
+            return 0.0
+        packed = encode_packed(board)[None]
+        meta = encode_meta(board)[None]
+        planes = torch.from_numpy(feature_planes(packed, meta)).to(self.device)
+        om = torch.from_numpy(np.tile(self._omega_row, (1, 1))).to(self.device)
+        f = self.fb.embed_F(planes, om)[0].cpu().numpy()
+        return float(self.cmap.query(f))
+
+    def _search_at(self, board: chess.Board, nodes: int):
+        self.max_nodes = nodes
+        roots, deep = self._build_and_score(board)
+        shallow = self._reach_batch([r.board for r in roots])
+        return roots, np.asarray(deep, dtype=float), shallow
+
+    def move(self, board: chess.Board, rng: np.random.Generator) -> chess.Move:
+        m2 = self._m2(board)
+        roots, deep, shallow = self._search_at(board, self.base_nodes)
+        m1 = _rank_disagreement(shallow, deep)
+        best = int(np.argmax(deep))
+        either = (m1 >= self.sharp_thresh) or (m2 >= self.sharp_thresh)
+        both = (m1 >= self.sharp_thresh) and (m2 >= self.sharp_thresh)
+        nodes, deepenings = self.base_nodes, 0
+        if either:
+            def top(rs, dp):
+                order = np.argsort(-dp)[: self.stable_top_k]
+                return tuple(rs[i].move.uci() for i in order)
+            prev = top(roots, deep)
+            while deepenings < self.max_deepen and nodes < self.node_cap:
+                nodes = min(int(nodes * self.deepen_factor), self.node_cap)
+                roots, deep, shallow = self._search_at(board, nodes)
+                best = int(np.argmax(deep))
+                deepenings += 1
+                cur = top(roots, deep)
+                if not both:                 # only one method sharp -> single bump
+                    break
+                if cur == prev:              # both sharp -> deepen to stability = "certainty"
+                    break
+                prev = cur
+        self.max_nodes = self.base_nodes     # restore
+        self.last_nodes_used, self.last_m1, self.last_m2 = nodes, m1, m2
+        self.last_deepenings = deepenings
+        return roots[best].move

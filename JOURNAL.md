@@ -2189,3 +2189,76 @@ the node); (c) it's blocked until the value function itself is better calibrated
 Epistemic caveat: crit is one operationalization; the "no signal" conclusion is
 as strong as crit is a good sharpness proxy (distance-clean, plausible, not
 proven canonical). Paused for Kaveh's steer before building (a) or (b).
+
+---
+
+## 2026-07-13 (Opus) — the sharpness REFRAME lands: self-referential reliability, two methods built
+
+A long, decisive design+build session with Kaveh. Findings and decisions, in order.
+
+**The reframe (Kaveh): sharpness is not a real thing to label -- it's an invented
+concept whose only job is to allocate search effort.** So define it
+SELF-REFERENTIALLY: sharpness = where the engine's own static estimate is
+UNRELIABLE / where it's weak. Consequences: (1) works for the WHOLE game (opening
+included -- any position embeds somewhere), (2) the middlegame-ground-truth
+problem vanishes (no external truth to match), (3) **validation shifts from
+label-correlation to PLAY** (does using the signal to allocate search improve
+results at matched compute). **`crit`/tablebase sharpness is RETIRED as arbiter.**
+
+Also confirmed (Kaveh's question): a WDL/outcome head would be a VALUE head like
+Leela -- it would embed value, not reachability, and leaning on it undercuts the
+reachability thesis. So we stay reachability-native: sharpness = instability of
+the REACHABILITY estimate, no value head.
+
+**Kaveh's definition of sharp, formalized:** a position where a normal-looking
+move suddenly takes you far from the goal, OR the only good paths are
+non-normal-looking moves. Both are the SAME phenomenon: the SHALLOW move-ranking
+disagrees with the DEEP move-ranking. "Normal" = the shallow (1-ply reach)
+expectation. Filter obvious 1-ply blunders (they agree shallow AND deep, so don't
+inflate disagreement). Second flavor Kaveh named: "interactions flying, lots of
+captures" = tactical-DENSITY sharpness (a MIDDLEGAME phenomenon), and "a position
+we've never seen" = epistemic/novelty. Tested the structural density signals on
+the endgame benchmark: they ANTI-correlate with endgame crit (-0.15..-0.24) --
+because endgame sharpness is quiet precision, not melee; the melee regime is
+middlegame, which tablebases can't ground-truth. This is exactly why we retire
+the label and validate by play.
+
+**Decision (Kaveh): build BOTH methods; EITHER sharp -> extra search; BOTH sharp
+-> keep searching to certainty.** Built:
+
+- **Method 1 -- `FBSearchPolicy.reliability()`**: shallow-vs-deep reachability-rank
+  disagreement among shallow-plausible moves (`_rank_disagreement`). Exact,
+  per-position, reachability-native, no label. Sanity: KRRvKBP (the known
+  rook-hang) = 0.243 vs startpos 0.042 -- correctly flags where the model is
+  unreliable.
+- **Method 2 -- `catspace/competence.py::CompetenceMap`**: a kNN reliability FIELD
+  over embedding space -- predicts unreliability from `F(s)` alone (cheap, no deep
+  search), "where I've been weak before." Built offline by
+  `build_competence_map.py`. **Held-out generalization at n=300: rho(predicted,
+  actual Method-1 reliability) = +0.23** -- the competence field genuinely
+  generalizes (not memorization).
+- **`FBAdaptiveSearchPolicy`**: combines them. Quiet -> base nodes. Sharp (either)
+  -> deepen. Both sharp -> iterative-deepen until the top move stabilizes
+  ("certainty") or a node cap. Smoke: startpos m1/m2=0.04/0.08 -> 200 nodes,
+  0 deepenings; KRRvKBP m1/m2=0.24/0.24 -> 400 nodes, 1 deepening (stopped when
+  the move stabilized). This is the fix for the node-sweep negative -- search more
+  only where deeper search CHANGES the decision, not uniformly.
+
+**Why this is the right shape (ties to a prior negative):** the earlier node-budget
+sweep showed UNIFORM more-search is a non-lever (non-monotonic). Reliability-gating
+searches more exactly where shallow and deep disagree -- by construction the only
+place extra search can pay.
+
+**Prior negatives that led here (same session):** B (categorical distributional
+head) failed the sharpness gate -- position entropy AND successor-spreads all
+NEGATIVE vs sharpness; caught by the 15k short run (no wasted 90k). Then the
+sharpness benchmark itself was found DISTANCE-CONFOUNDED (rho +0.39); `crit`
+(best-vs-2nd) decounfounds it (~0), and on the clean ruler NO static signal
+detected sharpness -- which is what motivated dropping the labeled-benchmark frame
+entirely for the self-referential + play frame above.
+
+**Still TODO (the closed loop -- Stages 2-3):** self-play that logs the SEARCH TREE
+(s -> explored children, visit freq, backed-up reach), then DISTILL those
+search-improved reach targets back into the embedding (deep->shallow), closing the
+loop: more search where weak -> more data there -> embedding improves there ->
+reliability map shrinks -> search redeploys. New COMPONENTS.md maps all the pieces.
