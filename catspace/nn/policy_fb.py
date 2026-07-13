@@ -26,6 +26,18 @@ DRAW_SCORE = -1e9
 MATED_SCORE = -2e9
 
 
+def soft_min_bank(fb, f: torch.Tensor, Z: torch.Tensor, tau: float) -> torch.Tensor:
+    """(n,) soft-min-distance region score of states f against an (m, d)
+    exemplar bank Z: tau * (logsumexp(score/tau) - log(m)). Normalized so a
+    bank of m identical exemplars scores exactly like that single goal.
+    See FBSearchPolicy.__init__ for the play-tested rationale (hard max
+    and plain centroid were both REJECTED at play, 2026-07-13)."""
+    S = fb.score_matrix(f, Z)
+    m = S.shape[1]
+    return tau * (torch.logsumexp(S / tau, dim=1)
+                  - torch.log(torch.tensor(float(m), device=S.device)))
+
+
 class FBBoardPolicy:
     def __init__(self, fb, z, depth: int = 2, elo: int = 1800, clock: float = 300.0,
                  device: str = "cpu"):
@@ -44,7 +56,7 @@ class FBBoardPolicy:
         om = torch.from_numpy(np.tile(self._omega_row, (len(boards), 1))).to(self.device)
         f = self.fb.embed_F(planes, om)
         if self.z.dim() == 2:            # goal bank (see FBSearchPolicy.__init__)
-            return self.fb.score_matrix(f, self.z).max(dim=1).values.cpu().numpy()
+            return soft_min_bank(self.fb, f, self.z, 0.1).cpu().numpy()
         return self.fb.score(f, self.z).cpu().numpy()
 
     def move(self, board: chess.Board, rng: np.random.Generator) -> chess.Move:
@@ -214,19 +226,28 @@ class FBSearchPolicy:
         assert max_nodes >= 1 and beam >= 1
         self.fb = fb.to(device).eval()
         # z may be a single goal embedding (d,) or a GOAL BANK (m, d): a set
-        # of exemplar B-embeddings scored by best-over-bank. 2026-07-13
-        # finding (JOURNAL.md): distance to any single mate CENTROID is flat
-        # against true plies-to-mate (averaging exemplars destroys the
-        # structure), while distance to the NEAREST mate exemplar correlates
-        # (rho +0.17 -> +0.25 after endgame-curriculum training) -- the goal
-        # must be a REGION (set), not a point (Kaveh's design requirement).
+        # of exemplar B-embeddings scored as a soft-min-distance REGION.
+        # 2026-07-13 findings (JOURNAL.md): distance to any single mate
+        # CENTROID is flat against true plies-to-mate (averaging exemplars
+        # destroys the structure); nearest-exemplar distance correlates
+        # (rho +0.17 -> +0.25) BUT a hard max-over-bank readout LOSES at
+        # play on both checkpoints (e=65 and e=2.8e7, REJECT) -- it chases
+        # whichever exemplar is closest each ply, destabilizing MOVE
+        # ranking. bank_tau soft-min (normalized logsumexp) keeps region
+        # structure while blending nearby exemplars: tau -> 0 recovers the
+        # (rejected) hard max, larger tau smooths toward the (rejected)
+        # centroid -- the play-tested middle is the point of the knob.
         self.z = torch.as_tensor(z, dtype=torch.float32, device=device)
         assert self.z.dim() in (1, 2)
         self.max_nodes = max_nodes
         self.beam = beam
+        self.bank_tau = 0.1
         self.device = device
         self.last_depth_used: int | None = None    # set by move(), for introspection/testing
         self._omega_row = omega_ids(np.array([elo]), np.array([elo]), np.array([clock]))[0]
+
+    def _bank_scores(self, f: "torch.Tensor") -> "torch.Tensor":
+        return soft_min_bank(self.fb, f, self.z, self.bank_tau)
 
     def _depth_for_budget(self, root_branching: int) -> int:
         """Largest D such that a uniform (root_branching, beam) tree --
@@ -253,8 +274,8 @@ class FBSearchPolicy:
         planes = torch.from_numpy(feature_planes(packed, meta)).to(self.device)
         om = torch.from_numpy(np.tile(self._omega_row, (len(boards), 1))).to(self.device)
         f = self.fb.embed_F(planes, om)
-        if self.z.dim() == 2:            # goal bank: best-over-exemplars readout
-            return self.fb.score_matrix(f, self.z).max(dim=1).values.cpu().numpy()
+        if self.z.dim() == 2:            # goal bank: soft-min region readout
+            return self._bank_scores(f).cpu().numpy()
         return self.fb.score(f, self.z).cpu().numpy()
 
     def _make_children(self, board: chess.Board) -> list["_SearchNode"]:

@@ -289,6 +289,39 @@ def test_fb_plan_policy_holds_plan_across_plies():
     assert pol.plans_made == 2, f"expected exactly 2 plans (initial + one stall-replan), got {pol.plans_made}"
 
 
+def test_fb_search_policy_goal_bank_readout():
+    """Bank (m,d) goals: identical-exemplar bank must reproduce the single-
+    goal scores exactly (soft-min normalizer), the policy must stay legal,
+    and terminal short-circuits (mate-in-1) must be unaffected by banks."""
+    torch = pytest.importorskip("torch")
+    from catspace.nn.fb import TorchFB
+    from catspace.nn.policy_fb import FBSearchPolicy, soft_min_bank
+
+    fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
+    rng = np.random.default_rng(0)
+    z = np.random.default_rng(1).normal(size=16).astype(np.float32)
+
+    f = torch.nn.functional.normalize(torch.randn(5, 16), dim=1)
+    zt = torch.from_numpy(z)
+    dup_bank = zt[None, :].repeat(7, 1)
+    single = fb.score(f, zt)
+    banked = soft_min_bank(fb, f, dup_bank, tau=0.1)
+    assert torch.allclose(single, banked, atol=1e-5)
+
+    bank = np.stack([z, -z, np.roll(z, 3)])
+    pol = FBSearchPolicy(fb, bank, max_nodes=100, beam=3)
+    board = chess.Board()
+    for _ in range(4):
+        move = pol.move(board, rng)
+        assert move in board.legal_moves
+        board.push(move)
+
+    mate_board = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1")
+    chosen = pol.move(mate_board, rng)
+    mate_board.push(chosen)
+    assert mate_board.is_checkmate()
+
+
 @pytest.mark.skipif(shutil.which("stockfish") is None, reason="no stockfish binary")
 def test_uci_policy_smoke():
     from catspace.uci import UCIBoardPolicy
