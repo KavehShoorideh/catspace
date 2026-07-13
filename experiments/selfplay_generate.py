@@ -138,7 +138,8 @@ def random_endgame_start(rng: np.random.Generator) -> chess.Board | None:
 def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, beam: int,
             epsilon: float, opening_plies: int, max_plies: int, elo: int, seed: int,
             shard_positions: int, sf_opponent_frac: float, sf_skill: int,
-            policy_cls, endgame_start_frac: float = 0.0, verbose: bool = True) -> dict:
+            policy_cls, endgame_start_frac: float = 0.0, start_fens: list | None = None,
+            verbose: bool = True) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     buf = {k: [] for k in ("packed", "meta", "ply", "clock", "eval_cp", "result",
                             "white_elo", "black_elo", "game_id")}
@@ -187,7 +188,12 @@ def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, be
                 else:
                     black = sf_opponent
             start = None
-            if rng.random() < endgame_start_frac:
+            if start_fens:
+                # toy-scenario mode: every game launches from a fixed start
+                # position (cycled), e.g. the KRRvKBP fixed set -- so self-play
+                # coverage is concentrated exactly on the region we're studying.
+                start = chess.Board(start_fens[i % len(start_fens)])
+            elif rng.random() < endgame_start_frac:
                 start = random_endgame_start(rng)
             rec = play_board_game(white, black, start=start,
                                   opening_plies=0 if start is not None else opening_plies,
@@ -255,6 +261,12 @@ def main():
                          "blind spots. Records only moves+result, never an eval score.")
     ap.add_argument("--sf-skill", type=int, default=3)
     ap.add_argument("--policy", choices=("search", "plan"), default="search")
+    ap.add_argument("--start-fens", default=None,
+                    help="path to a JSON {'fens': [...]} of start positions; every game "
+                         "launches from one (cycled) instead of the initial position -- "
+                         "TOY-scenario mode, concentrates self-play on a specific region "
+                         "(e.g. artifacts/experiments/krrkbp_fixed_set_n60.json). Overrides "
+                         "--endgame-start-frac and --opening-plies.")
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
 
@@ -268,6 +280,12 @@ def main():
         raise SystemExit("checkpoint has no zgoals -- finish a train_lichess_fb.py run first")
     zgoals = {k: v.cpu().numpy() for k, v in payload["zgoals"].items()}
     policy_cls = FBSearchPolicy if args.policy == "search" else FBPlanPolicy
+
+    start_fens = None
+    if args.start_fens:
+        import json
+        start_fens = json.loads(Path(args.start_fens).read_text())["fens"]
+        print(f"toy-scenario mode: {len(start_fens)} fixed start positions from {args.start_fens}")
 
     print(f"self-play: {args.games} games, policy={args.policy}, max_nodes={args.max_nodes}, "
          f"beam={args.beam}, epsilon={args.epsilon}, sf_opponent_frac={args.sf_opponent_frac}, "
@@ -283,7 +301,8 @@ def main():
     manifest = generate(fb, zgoals, device, args.games, out_dir, args.max_nodes,
                         args.beam, args.epsilon, args.opening_plies, args.max_plies, args.elo,
                         args.seed, args.shard_positions, args.sf_opponent_frac, args.sf_skill,
-                        policy_cls, endgame_start_frac=args.endgame_start_frac, verbose=True)
+                        policy_cls, endgame_start_frac=args.endgame_start_frac,
+                        start_fens=start_fens, verbose=True)
     print(f"wrote {manifest['n_shards']} shard(s), {manifest['n_games']} games, "
          f"{manifest['total_positions']} positions -> {args.out_dir}")
 
