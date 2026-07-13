@@ -335,6 +335,34 @@ def test_distributional_head_and_loss():
     assert fb.cat_head[0].weight.grad is not None and fb.encF.stem[0].weight.grad is not None
 
 
+def test_competence_head_off_byte_identical_and_on_trains_only_itself():
+    a = TorchFB(seed=0, quasimetric=True, **TINY)
+    b = TorchFB(seed=0, quasimetric=True, competence=False, **TINY)
+    for (ka, va), (kb, vb) in zip(a.state_dict().items(), b.state_dict().items()):
+        assert ka == kb and torch.equal(va, vb)
+    assert not hasattr(a, "competence_head")
+
+    fb = TorchFB(seed=0, competence=True, **TINY)
+    boards = _boards(8, seed=7)
+    packed, meta = _packed_meta(boards)
+    planes = torch.from_numpy(feature_planes(packed, meta))
+    omega = torch.from_numpy(omega_ids(np.full(8, 1500), np.full(8, 1500), np.full(8, 60.0)))
+
+    cs = fb.competence_score(fb.embed_F(planes, omega))
+    assert cs.shape == (8,) and torch.all(cs >= 0)     # softplus, non-negative
+
+    base, _ = fb.loss_fn(planes, omega, planes, competence_weight=0.0)
+    withc, _ = fb.loss_fn(planes, omega, planes, competence_weight=0.1)
+    assert float(withc) > float(base)
+    # the competence term feeds F.detach(), so it trains ONLY the head, never
+    # the encoder/embedding (which would let the net game its own error target)
+    withc_only, _ = fb.loss_fn(planes, omega, planes, competence_weight=0.0)
+    fb.zero_grad(); (0.1 * (fb.competence_score(fb.embed_F(planes, omega).detach())
+                            ).mean()).backward()
+    assert fb.competence_head[0].weight.grad is not None
+    assert fb.encF.stem[0].weight.grad is None          # embedding untouched by competence
+
+
 def test_ckpt_roundtrip(tmp_path):
     fb = TorchFB(seed=0, **TINY)
     z = np.ones(TINY["d"], dtype=np.float32)
