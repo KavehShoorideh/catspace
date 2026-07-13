@@ -71,20 +71,26 @@ def _move_cost(b2: chess.Board, tb, big: float) -> float | None:
         return None
 
 
-def ground_truth_sharpness(board: chess.Board, tb, margin: float = 2.0,
+def ground_truth_sharpness(board: chess.Board, tb, rel_margin: float = 0.30,
                            big: float = 1000.0) -> dict | None:
     """Sharpness of a position the SIDE-TO-MOVE wins (caller ensures WDL=+2),
     measured as value CURVATURE over the legal moves: how tightly does progress
     depend on the exact move? For each move, its progress cost (`_move_cost`):
     a SMOOTH position has many moves near the best cost (any reasonable move
-    keeps converting); a SHARP one has few (one tempo matters). Two scalars:
+    keeps converting); a SHARP one has few (one tempo matters).
 
-      dtz_sharpness  = 1 - (fraction of moves within `margin` of the best cost)
-                       -- the fine, conversion-relevant curvature (a rook hang
-                       that still wins by WDL shows up here as a big cost jump).
+    The margin is DISTANCE-RELATIVE (2026-07-13 fix): a move "holds" iff its
+    cost <= best*(1+rel_margin) + 1. An ABSOLUTE margin confounded sharpness
+    with distance-to-mate (rho +0.39) -- near mate, small costs made few moves
+    'hold' (looked sharp); far, large costs made many hold (looked quiet). The
+    relative margin scales tolerance with the position's own cost so sharpness
+    means "does move choice matter", independent of how close mate is. Scalars:
+
+      sharpness        = 1 - (fraction of moves within the relative margin)
+      crit             = (2nd-best - best) / (best + 1) -- best-vs-next
+                         criticality, a distance-normalized 'only-move' measure.
       result_sharpness = 1 - (fraction of moves that preserve the WDL win)
-                       -- the coarse, blunder-relevant version (flips only near
-                       the win/draw boundary).
+                         -- coarse, blunder-relevant (flips near the win/draw edge).
 
     None if too few moves or successors unprobeable."""
     moves = list(board.legal_moves)
@@ -102,10 +108,13 @@ def ground_truth_sharpness(board: chess.Board, tb, margin: float = 2.0,
             holds += 1
     if len(costs) < 2:
         return None
-    costs = np.array(costs)
-    best = costs.min()
-    near_best = int((costs <= best + margin).sum())
+    costs = np.sort(np.array(costs))
+    best = costs[0]
+    tol = best * (1.0 + rel_margin) + 1.0
+    near_best = int((costs <= tol).sum())
+    second = costs[1]
     return dict(sharpness=float(1.0 - near_best / len(costs)),
+                crit=float((second - best) / (best + 1.0)),
                 result_sharpness=float(1.0 - holds / len(costs)),
                 cost_spread=float(costs.std()), best_cost=float(best),
                 n_moves=len(costs), only_move=bool(near_best == 1))
@@ -164,17 +173,33 @@ def signals_for_position(fb, board, zgoals, device) -> dict:
         rho = spearmanr(far, near).statistic          # agreement of the two orderings
         out["head_disagreement"] = float(1.0 - (rho if np.isfinite(rho) else 0.0))
     if getattr(fb, "distributional", False):
-        # dist_sigma (option B): entropy of THIS position's predicted
-        # distance-to-mate distribution -- aleatoric uncertainty. Wide/bimodal
-        # => volatile => should read as sharp. The signal the reframe wants.
-        packed = encode_packed(board)[None]
-        meta = encode_meta(board)[None]
+        # Several readouts of the trained categorical head, scored against
+        # ground-truth sharpness (2026-07-13):
+        #   dist_sigma          entropy of THIS position's distance distribution
+        #                       (captures depth/epistemic uncertainty, NOT move
+        #                       volatility -- came out NEGATIVE; kept for record).
+        #   dist_succ_meanspread how much the SUCCESSORS' expected distances
+        #                       differ (does move choice change the outcome? =
+        #                       aleatoric volatility -- the reframe's signal).
+        #   dist_succ_entspread spread of successor entropies.
+        packed_s = encode_packed(board)[None]; meta_s = encode_meta(board)[None]
+        planes_s = torch.from_numpy(feature_planes(packed_s, meta_s)).to(device)
+        packed = np.stack([encode_packed(b) for b in succ])
+        meta = np.stack([encode_meta(b) for b in succ])
         planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
-        om = torch.from_numpy(omega_ids(np.array([1800]), np.array([1800]),
-                                        np.array([300.0]))).to(device)
+        om1 = torch.from_numpy(omega_ids(np.array([1800]), np.array([1800]),
+                                         np.array([300.0]))).to(device)
+        om = torch.from_numpy(np.tile(om1.cpu().numpy(), (len(succ), 1))).to(device)
         with torch.no_grad():
-            f_s = fb.embed_F(planes, om)
-            out["dist_sigma"] = float(fb.dist_entropy(f_s, z_far)[0])
+            out["dist_sigma"] = float(fb.dist_entropy(fb.embed_F(planes_s, om1), z_far)[0])
+            fsucc = fb.embed_F(planes, om)
+            logits = fb.dist_logits(fsucc, z_far)                  # (n_moves, n_bins)
+            p = torch.softmax(logits, dim=1)
+            bins = torch.arange(p.shape[1], dtype=p.dtype, device=p.device)
+            succ_mean = (p * bins).sum(1).cpu().numpy()            # expected distance bin
+            succ_ent = (-(p * torch.log(p.clamp_min(1e-9))).sum(1)).cpu().numpy()
+        out["dist_succ_meanspread"] = float(np.std(succ_mean))
+        out["dist_succ_entspread"] = float(np.std(succ_ent))
     return out
 
 
@@ -194,20 +219,32 @@ def run(fb, zgoals, device, tb, n_per_kind: int, kinds: list, seed: int) -> dict
         return dict(error="no scorable positions")
 
     sharp = np.array([r["sharpness"] for r in rows])
+    crit = np.array([r["crit"] for r in rows])
+    dist = np.array([r["best_cost"] for r in rows])
     result = dict(n=len(rows), mean_sharpness=float(sharp.mean()),
+                  mean_crit=float(crit.mean()),
                   frac_only_move=float(np.mean([r["only_move"] for r in rows])),
-                  by_kind={k: int(sum(r["kind"] == k for r in rows)) for k in kinds})
+                  by_kind={k: int(sum(r["kind"] == k for r in rows)) for k in kinds},
+                  confound_rho_sharpness_vs_distance=float(spearmanr(sharp, dist).statistic),
+                  confound_rho_crit_vs_distance=float(spearmanr(crit, dist).statistic))
     signal_names = sorted({k for r in rows for k in r
-                           if k in ("score_spread", "head_disagreement", "dist_sigma")})
+                           if k in ("score_spread", "head_disagreement", "dist_sigma",
+                                    "dist_succ_meanspread", "dist_succ_entspread")})
+    # crit (best-vs-2nd criticality) is the DISTANCE-INDEPENDENT sharpness metric
+    # (2026-07-13; the sharpness field's relative margin is retained but the
+    # decounfounded ruler is crit -- score signals against BOTH, headline crit).
+    result["signal_rho_vs_crit"] = {}
     result["signal_rho_vs_sharpness"] = {}
     for name in signal_names:
-        pairs = [(r[name], r["sharpness"]) for r in rows if name in r]
-        if len(pairs) >= 10:
-            xs, ys = zip(*pairs)
+        rows_n = [r for r in rows if name in r]
+        if len(rows_n) < 10:
+            continue
+        xs = [r[name] for r in rows_n]
+        for tgt, key in ((crit, "signal_rho_vs_crit"), (sharp, "signal_rho_vs_sharpness")):
+            ys = [tgt[i] for i, r in enumerate(rows) if name in r]
             rho = spearmanr(xs, ys).statistic
-            result["signal_rho_vs_sharpness"][name] = dict(
-                rho=float(rho) if np.isfinite(rho) else None, n=len(pairs),
-                note="rho>0 wanted: signal should rise with true sharpness")
+            result[key][name] = dict(rho=float(rho) if np.isfinite(rho) else None,
+                                     n=len(xs))
     return result
 
 
