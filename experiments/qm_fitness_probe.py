@@ -71,13 +71,15 @@ def embed_boards(fb, boards: list, device, elo: int = 1800, clock: float = 300.0
 
 
 def embed_rows(fb, packed: np.ndarray, meta: np.ndarray, device,
-               elo_w: np.ndarray, elo_b: np.ndarray, clock: np.ndarray):
+               elo_w: np.ndarray, elo_b: np.ndarray, clock: np.ndarray, near: bool = False):
     import torch
     planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
     om = torch.from_numpy(omega_ids(elo_w, elo_b, clock)).to(device)
+    embF = fb.embed_F_near if near else fb.embed_F
+    embB = fb.embed_B_near if near else fb.embed_B
     with torch.no_grad():
-        F = fb.embed_F(planes, om).cpu().numpy()
-        B = fb.embed_B(planes).cpu().numpy()
+        F = embF(planes, om).cpu().numpy()
+        B = embB(planes).cpu().numpy()
     return F, B
 
 
@@ -263,22 +265,28 @@ def syzygy_calibration(fb, zgoals, device, syzygy_dir: Path, n_positions: int,
                note="rho > 0 wanted: farther-from-mate (higher DTZ) should read as larger d")
 
 
-def horizon_retrieval(fb, games: list, device, n_queries: int, seed: int) -> dict:
+def horizon_retrieval(fb, games: list, device, n_queries: int, seed: int,
+                      near: bool = False) -> dict:
     """For each horizon k: does the true k-later position outscore 63
-    cross-game negatives under score(F(s), B(.))? Accuracy per k."""
+    cross-game negatives? Accuracy per k. near=True scores with the
+    two-horizon NEAR head (cosine) instead of the far head -- the near
+    head's short-k accuracy (k=1) is the sharpness the gate must preserve."""
     import torch
     rng = np.random.default_rng(seed)
-    # embed a bank of random negative B's from many games
-    neg_rows = []
+    Bneg = []
     for g in games[: min(len(games), 200)]:
         i = int(rng.integers(len(g["packed"])))
-        neg_rows.append((g, i))
-    Bneg = []
-    for g, i in neg_rows:
         _, B = embed_rows(fb, g["packed"][i:i + 1], g["meta"][i:i + 1], device,
-                          g["white_elo"][i:i + 1], g["black_elo"][i:i + 1], g["clock"][i:i + 1])
+                          g["white_elo"][i:i + 1], g["black_elo"][i:i + 1],
+                          g["clock"][i:i + 1], near=near)
         Bneg.append(B[0])
     Bneg = np.stack(Bneg)
+
+    def sim(F, cands):
+        if near:                                  # cosine (near head is not quasimetric)
+            return (F @ cands.T)[0]
+        with torch.no_grad():
+            return fb.score_matrix(torch.from_numpy(F), torch.from_numpy(cands)).numpy()[0]
 
     out = {}
     for k in HORIZONS:
@@ -289,16 +297,16 @@ def horizon_retrieval(fb, games: list, device, n_queries: int, seed: int) -> dic
                 continue
             i = int(rng.integers(0, n - k - 1))
             F, _ = embed_rows(fb, g["packed"][i:i + 1], g["meta"][i:i + 1], device,
-                              g["white_elo"][i:i + 1], g["black_elo"][i:i + 1], g["clock"][i:i + 1])
+                              g["white_elo"][i:i + 1], g["black_elo"][i:i + 1],
+                              g["clock"][i:i + 1], near=near)
             _, Bpos = embed_rows(fb, g["packed"][i + k:i + k + 1], g["meta"][i + k:i + k + 1],
                                  device, g["white_elo"][i + k:i + k + 1],
-                                 g["black_elo"][i + k:i + k + 1], g["clock"][i + k:i + k + 1])
+                                 g["black_elo"][i + k:i + k + 1], g["clock"][i + k:i + k + 1],
+                                 near=near)
             n_negs = min(63, len(Bneg) - 1)
             negs = Bneg[rng.choice(len(Bneg), size=n_negs, replace=False)]
             cands = np.concatenate([Bpos, negs])
-            with torch.no_grad():
-                s = fb.score_matrix(torch.from_numpy(F), torch.from_numpy(cands)).numpy()[0]
-            correct += int(np.argmax(s) == 0)
+            correct += int(np.argmax(sim(F, cands)) == 0)
             total += 1
             if total >= n_queries:
                 break
@@ -464,6 +472,12 @@ def main():
                                                                 args.n_syzygy, args.seed)
     print("syzygy done", flush=True)
     report["horizon_retrieval"] = horizon_retrieval(fb, games, device, args.n_queries, args.seed)
+    if getattr(fb, "two_horizon", False):
+        # the far metrics above use embed_F/embed_B (the far head); add the
+        # NEAR head's retrieval -- its k=1 is the short-horizon sharpness the
+        # two-horizon gate must keep at ~0.97 (TWO_HORIZON_DESIGN.md)
+        report["horizon_retrieval_near"] = horizon_retrieval(
+            fb, games, device, args.n_queries, args.seed, near=True)
     print("retrieval done", flush=True)
     report["asymmetry"] = asymmetry_audit(fb, games, device, args.n_pairs, args.seed)
     print("asymmetry done", flush=True)
