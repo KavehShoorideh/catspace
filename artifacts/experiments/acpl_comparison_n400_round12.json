@@ -1,0 +1,16 @@
+{
+  "n": 400,
+  "sf_depth": 8,
+  "seed": 5,
+  "mate_cp_cap": 1000,
+  "checkpoints": {
+    "baseline_step60000": {"ckpt": "data/derived/lichess_fb_4gb.pt", "acpl": 326.2, "blunder_rate_ge300cp": 0.502, "mistake_rate_ge100cp": 0.740},
+    "winner_pov_only_step90000": {"ckpt": "data/derived/lichess_fb_4gb_winnerpov.pt", "acpl": 284.5, "blunder_rate_ge300cp": 0.430, "mistake_rate_ge100cp": 0.647},
+    "combined_quasimetric_winnerpov_step60000_fresh": {"ckpt": "data/derived/lichess_fb_4gb_qm_wpov.pt", "acpl": 253.4, "blunder_rate_ge300cp": 0.362, "mistake_rate_ge100cp": 0.640}
+  },
+  "paired_comparison": {
+    "combined_vs_baseline": {"mean_diff_cp": -72.8, "ci95": [-99.3, -46.0], "wilcoxon_p": 5.523e-07, "n_improved": 229, "n_worse": 154, "n_tied": 17},
+    "combined_vs_winnerpov_only": {"mean_diff_cp": -31.1, "ci95": [-57.6, -5.0], "wilcoxon_p": 0.06645, "n_improved": 202, "n_worse": 179, "n_tied": 19}
+  },
+  "conclusion": "combined (quasimetric + winner-pov-only) checkpoint is the best-known by ACPL, decisively better than the original baseline (p=5.5e-7). Quasimetric's SPECIFIC incremental contribution over winner-pov-only alone is borderline (p=0.066, CI excludes 0 but misses conventional significance) -- ACPL may not be the right instrument to detect quasimetric's hypothesized benefit (multi-hop compositional planning, not single-move safety). See KRRvKBP results for a more direct test of that hypothesis."
+}

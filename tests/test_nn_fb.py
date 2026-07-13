@@ -111,6 +111,104 @@ def test_omega_changes_F_only():
         assert torch.equal(fb.embed_B(planes), fb.embed_B(planes))
 
 
+def test_quasimetric_reduces_to_dot_product_when_off():
+    fb = TorchFB(seed=0, quasimetric=False, **TINY)
+    f = torch.randn(5, TINY["d"])
+    b = torch.randn(3, TINY["d"])
+    assert torch.equal(fb.score_matrix(f, b), f @ b.T)
+    assert torch.equal(fb.score(f, b[0]), f @ b[0])
+
+
+def test_quasimetric_init_matches_negative_euclidean_distance():
+    """metric_scale inits to ones and W inits to zero, so score == -||f-g||
+    exactly at construction time (before any training moves either)."""
+    fb = TorchFB(seed=0, quasimetric=True, **TINY)
+    f = torch.nn.functional.normalize(torch.randn(6, TINY["d"]), dim=1)
+    b = torch.nn.functional.normalize(torch.randn(4, TINY["d"]), dim=1)
+    expected = -torch.cdist(f, b, p=2)
+    assert torch.allclose(fb.score_matrix(f, b), expected, atol=1e-4)
+    assert torch.allclose(fb.score(f, b[0]), expected[:, 0], atol=1e-4)
+
+
+def test_quasimetric_distance_matrix_is_a_real_metric():
+    """Non-negativity, symmetry, and the triangle inequality on `d` alone
+    (score_matrix's `r` residual is explicitly NOT required to satisfy
+    these -- only the distance component is)."""
+    torch.manual_seed(0)
+    fb = TorchFB(seed=0, quasimetric=True, **TINY)
+    # train briefly so metric_scale/W move off their initial values
+    boards = _boards(24, seed=9)
+    packed, meta = _packed_meta(boards)
+    planes = torch.from_numpy(feature_planes(packed, meta))
+    omega = torch.from_numpy(omega_ids(np.full(24, 1500), np.full(24, 1500), np.full(24, 60.0)))
+    opt = torch.optim.AdamW(fb.parameters(), lr=1e-3)
+    fb.train()
+    for _ in range(20):
+        loss, _ = fb.loss_fn(planes, omega, planes)
+        opt.zero_grad(); loss.backward(); opt.step()
+    fb.eval()
+
+    with torch.no_grad():
+        f = fb.embed_F(planes, omega)
+        g = fb.embed_B(planes)
+        x, y, z = f[:8], g[8:16], f[16:24]
+        dxy = fb.distance_matrix(x, y).diagonal()
+        dyz = fb.distance_matrix(y, z).diagonal()
+        dxz = fb.distance_matrix(x, z).diagonal()
+
+    assert torch.all(dxy >= -1e-4) and torch.all(dyz >= -1e-4) and torch.all(dxz >= -1e-4)
+    # symmetry: the SAME formula applied to swapped args must agree (it only
+    # depends on the codomain distance, not which encoder produced x vs y)
+    with torch.no_grad():
+        dyx = fb.distance_matrix(y, x).diagonal()
+    assert torch.allclose(dxy, dyx, atol=1e-4)
+    # triangle inequality: d(x,z) <= d(x,y) + d(y,z), for every triple
+    assert torch.all(dxz <= dxy + dyz + 1e-4)
+
+
+def test_quasimetric_ckpt_roundtrip_and_old_ckpt_unaffected(tmp_path):
+    """A quasimetric checkpoint round-trips its extra params; a NON-
+    quasimetric checkpoint is byte-for-byte unaffected by this feature
+    existing at all (config-gated, no new params created when off)."""
+    fb_q = TorchFB(seed=0, quasimetric=True, **TINY)
+    save_ckpt(fb_q, tmp_path / "q.pt", step=3)
+    fb_q2, payload = load_ckpt(tmp_path / "q.pt")
+    assert payload["config"]["quasimetric"] is True
+    assert torch.equal(fb_q.metric_scale, fb_q2.metric_scale)
+    assert torch.equal(fb_q.W, fb_q2.W)
+
+    fb_plain = TorchFB(seed=0, quasimetric=False, **TINY)
+    assert not hasattr(fb_plain, "metric_scale") and not hasattr(fb_plain, "W")
+    save_ckpt(fb_plain, tmp_path / "p.pt", step=3)
+    fb_plain2, payload2 = load_ckpt(tmp_path / "p.pt")
+    assert payload2["config"]["quasimetric"] is False
+    for (ka, va), (kb, vb) in zip(fb_plain.state_dict().items(), fb_plain2.state_dict().items()):
+        assert ka == kb and torch.equal(va, vb)
+
+
+def test_ply_gap_calibration_term():
+    """ply_gap adds an MSE(d, ply_gap/scale) penalty in quasimetric mode
+    (2026-07-12, calibrates absolute distance to real move-count, see
+    JOURNAL.md) and is silently ignored otherwise."""
+    boards = _boards(8, seed=1)
+    packed, meta = _packed_meta(boards)
+    planes = torch.from_numpy(feature_planes(packed, meta))
+    omega = torch.from_numpy(omega_ids(np.full(8, 1500), np.full(8, 1500), np.full(8, 60.0)))
+    ply_gap = torch.tensor([1., 5., 10., 20., 30., 40., 50., 60.])
+
+    fb = TorchFB(seed=0, quasimetric=True, **TINY)
+    loss_with, _ = fb.loss_fn(planes, omega, planes, ply_gap=ply_gap)
+    loss_without, _ = fb.loss_fn(planes, omega, planes)
+    assert float(loss_with) > float(loss_without)
+    loss_with.backward()
+    assert fb.metric_scale.grad is not None and fb.W.grad is not None
+
+    fb2 = TorchFB(seed=0, quasimetric=False, **TINY)
+    a, _ = fb2.loss_fn(planes, omega, planes, ply_gap=ply_gap)
+    b, _ = fb2.loss_fn(planes, omega, planes)
+    assert torch.equal(a, b), "non-quasimetric mode must ignore ply_gap entirely"
+
+
 def test_ckpt_roundtrip(tmp_path):
     fb = TorchFB(seed=0, **TINY)
     z = np.ones(TINY["d"], dtype=np.float32)

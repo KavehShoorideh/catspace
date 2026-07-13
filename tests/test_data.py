@@ -15,7 +15,7 @@ import zstandard
 
 from catspace.data.encode import PLANES, board_from_packed, decode_planes, encode_meta, encode_packed
 from catspace.data.lichess import GameFilter, build_shards, open_pgn_zst, positions_of, stream_filtered_games
-from catspace.data.shards import LichessPairSource, ShardReader, write_shards
+from catspace.data.shards import LichessPairSource, MixedPairSource, ShardReader, write_shards
 from catspace.data.sources import ChainRolloutSource, PairBatch
 from catspace.domains import krk
 from catspace.opponents import RandomOpponent
@@ -243,6 +243,36 @@ def test_lichess_pair_source(tmp_path):
             goal_row = min(row + k, gend - 1)
             assert game_id[goal_row] == game_id[row]
             assert goal_row >= row
+
+
+def test_mixed_pair_source():
+    """MixedPairSource: each YIELDED BATCH comes entirely from one source
+    (never mixed within a batch), and over many batches the fraction drawn
+    from `secondary` tracks `secondary_frac`."""
+    class FakeSource:
+        def __init__(self, tag):
+            self.tag = tag
+
+        def batches(self, batch_size, seed):
+            rng = np.random.default_rng(seed)
+            while True:
+                yield PairBatch(anchors=np.zeros((batch_size, 1)), goals=np.zeros((batch_size, 1)),
+                                meta={"tag": np.full(batch_size, self.tag)})
+
+    primary, secondary = FakeSource("primary"), FakeSource("secondary")
+    mixed = MixedPairSource(primary, secondary, secondary_frac=0.3)
+
+    n_secondary = n_total = 0
+    it = mixed.batches(batch_size=16, seed=0)
+    for _ in range(500):
+        batch = next(it)
+        tags = set(batch.meta["tag"].tolist())
+        assert len(tags) == 1, "a single batch must come from exactly one source"
+        if tags == {"secondary"}:
+            n_secondary += 1
+        n_total += 1
+    frac = n_secondary / n_total
+    assert 0.2 < frac < 0.4, f"expected ~0.3 secondary-batch fraction, got {frac}"
 
 
 def test_truncated_prefix_tolerated(tmp_path):

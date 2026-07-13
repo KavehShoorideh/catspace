@@ -1,0 +1,18 @@
+{
+  "n": 400,
+  "sf_depth": 8,
+  "seed": 5,
+  "mate_cp_cap": 1000,
+  "note_on_methodology_bug": "an earlier n=100 comparison used mate_score=100000 in acpl_probe.py, which let rare forced-mate-in-N detections dominate the MEAN with near-lottery-sized outliers (a single such position could add ~250cp to the average at n=400). Caught by re-running at larger n and seeing ACPL jump from ~300 to ~1000-1600 -- fixed by capping mate_score at 1000 (standard ACPL convention), matching common chess-analysis tooling.",
+  "checkpoints": {
+    "baseline_step60000": {"ckpt": "data/derived/lichess_fb_4gb.pt", "acpl": 326.2, "blunder_rate_ge300cp": 0.502, "mistake_rate_ge100cp": 0.740},
+    "plain_control_step90000": {"ckpt": "data/derived/lichess_fb_4gb_plaincontrol.pt", "acpl": 306.6, "blunder_rate_ge300cp": 0.487, "mistake_rate_ge100cp": 0.710},
+    "winner_pov_only_step90000": {"ckpt": "data/derived/lichess_fb_4gb_winnerpov.pt", "acpl": 284.5, "blunder_rate_ge300cp": 0.430, "mistake_rate_ge100cp": 0.647}
+  },
+  "paired_comparison": {
+    "winnerpov_vs_baseline": {"mean_diff_cp": -41.7, "ci95": [-61.8, -22.0], "wilcoxon_p": 0.0001535, "n_improved": 221, "n_worse": 165, "n_tied": 14},
+    "control_vs_baseline":   {"mean_diff_cp": -19.7, "ci95": [-36.8, -3.7],  "wilcoxon_p": 0.02404,   "n_improved": 206, "n_worse": 174, "n_tied": 20},
+    "winnerpov_vs_control":  {"mean_diff_cp": -22.1, "ci95": [-39.0, -5.8],  "wilcoxon_p": 0.004604,  "n_improved": 217, "n_worse": 168, "n_tied": 15}
+  },
+  "conclusion": "outcome-conditioned training (--winner-pov-only) produces a real, statistically significant improvement in tactical safety BEYOND what the same number of additional plain-continuation training steps produces. Effect size is modest (~22cp mean reduction vs the step-matched control) but the paired test is unambiguous (p=0.0046, 95% CI excludes 0). Adopting --winner-pov-only as the default going forward; combining it with the quasimetric embedding swap next."
+}
