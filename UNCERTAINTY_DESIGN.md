@@ -43,12 +43,15 @@ emits**, not on depth. Two kinds map onto the two desiderata:
 
 ## FOSS-first check (Kaveh's standing rule: don't rebuild what good FOSS provides)
 
-Before building B/C, the existing open-source homes for each piece:
+Before building B/C, the existing open-source homes for each piece. Kaveh's
+balancing clause (2026-07-13): FOSS-first UNLESS it's hard to incorporate or
+distracts from the research core AND the thing is simple to hand-roll.
 - **Quasimetric head** — `torchqmet` (Tongzhou Wang, the IQE/MRN/PQE reference
-  impl) is the FOSS home of our hand-rolled `score = r - d`. Evaluate adopting it
-  when B rebuilds the head; the catch is that swapping it changes numerics and
-  breaks comparability with our baselines, so adopt WITH a matched re-baseline at
-  the B rearchitecture point, not as a silent mid-stream swap.
+  impl) exists, but per the balancing clause we KEEP our hand-rolled
+  `score = r - d`: it's ~5 lines, it's core research, and adopting the lib adds a
+  dependency + changes numerics (forcing a re-baseline) for no clear win. (Moving
+  to IQE for its greater expressivity stays available as a deliberate RESEARCH
+  choice later — not a "don't reinvent" obligation.)
 - **Distributional head** — `torch.distributions.Categorical` + built-in
   `cross_entropy` (and pinball loss for the quantile fallback). No bespoke
   distributional-RL framework needed for a softmax-over-bins head.
