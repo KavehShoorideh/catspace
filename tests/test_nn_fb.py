@@ -248,6 +248,56 @@ def test_asymmetry_margin_term():
     assert torch.equal(off1, base) and torch.equal(off2, base)
 
 
+def test_two_horizon_off_is_byte_identical():
+    """two_horizon=False must leave a plain quasimetric model bit-for-bit
+    unchanged (near heads only exist when the flag is on)."""
+    a = TorchFB(seed=0, quasimetric=True, **TINY)
+    b = TorchFB(seed=0, quasimetric=True, two_horizon=False, **TINY)
+    for (ka, va), (kb, vb) in zip(a.state_dict().items(), b.state_dict().items()):
+        assert ka == kb and torch.equal(va, vb)
+    assert not hasattr(a, "headF_near")
+
+
+def test_two_horizon_builds_and_routes_by_ply_gap():
+    fb = TorchFB(seed=0, two_horizon=True, **TINY)
+    assert fb.config["two_horizon"] and fb.config["quasimetric"]   # far forces quasimetric
+    assert hasattr(fb, "headF_near") and hasattr(fb, "headB_near")
+
+    boards = _boards(8, seed=4)
+    packed, meta = _packed_meta(boards)
+    planes = torch.from_numpy(feature_planes(packed, meta))
+    omega = torch.from_numpy(omega_ids(np.full(8, 1500), np.full(8, 1500), np.full(8, 60.0)))
+
+    # near and far heads produce DIFFERENT (both L2-normalized) embeddings
+    fnear, ffar = fb.embed_F_near(planes, omega), fb.embed_F(planes, omega)
+    assert not torch.allclose(fnear, ffar)
+    assert torch.allclose(fnear.norm(dim=1), torch.ones(8), atol=1e-5)
+
+    # gaps spanning both strata -> gradient reaches near head, far head, trunk
+    gap = torch.tensor([1., 2., 5., 8., 20., 40., 60., 90.])
+    loss, near_top1 = fb.two_horizon_loss(planes, omega, planes, gap, near_max=8, far_min=16)
+    loss.backward()
+    assert fb.headF_near[0].weight.grad is not None      # near head trained
+    assert fb.headF[0].weight.grad is not None           # far head trained
+    assert fb.encF.stem[0].weight.grad is not None       # shared trunk trained
+
+
+def test_two_horizon_loss_uses_only_the_intended_stratum():
+    """A batch that is entirely far-gap must leave the near head with no
+    gradient (and vice versa) -- confirms the ply-gap routing, not a leak."""
+    fb = TorchFB(seed=0, two_horizon=True, **TINY)
+    boards = _boards(6, seed=5)
+    packed, meta = _packed_meta(boards)
+    planes = torch.from_numpy(feature_planes(packed, meta))
+    omega = torch.from_numpy(omega_ids(np.full(6, 1500), np.full(6, 1500), np.full(6, 60.0)))
+
+    far_only_gap = torch.full((6,), 40.0)                # all far
+    loss, _ = fb.two_horizon_loss(planes, omega, planes, far_only_gap, near_max=8, far_min=16)
+    loss.backward()
+    assert fb.headF_near[0].weight.grad is None          # near head untouched
+    assert fb.headF[0].weight.grad is not None
+
+
 def test_ckpt_roundtrip(tmp_path):
     fb = TorchFB(seed=0, **TINY)
     z = np.ones(TINY["d"], dtype=np.float32)
