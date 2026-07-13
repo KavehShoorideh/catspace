@@ -257,6 +257,10 @@ def main():
                          "(resume step -> --steps); default lr/10 (SimCLR/CLIP convention)")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--val-every", type=int, default=500)
+    ap.add_argument("--ckpt-every", type=int, default=0,
+                    help="also save a step-tagged LADDER checkpoint every N steps (kept, not "
+                         "overwritten) for early-stopping: eval the downstream metric across "
+                         "the ladder and pick/stop at the peak instead of a fixed --steps budget")
     ap.add_argument("--ckpt", default=None, help="default: data/derived/lichess_fb.pt")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--fresh", action="store_true", help="ignore an existing checkpoint")
@@ -346,6 +350,14 @@ def main():
             print(f"  VAL step {step}  loss {vloss:.4f}  top1 {vtop1:.3f}  top8 {vtop8:.3f}", flush=True)
             save_ckpt(fb, ckpt_path, step=step, opt=opt,
                       zgoals=embed_zgoals(fb, finals, device), provenance=provenance)
+        if args.ckpt_every and step % args.ckpt_every == 0 and step < args.steps:
+            # step-tagged LADDER checkpoint (kept, not overwritten) so early
+            # stopping can pick the peak of the real downstream metric across
+            # steps instead of trusting a fixed budget (2026-07-13, Kaveh)
+            ladder = ckpt_path.with_name(f"{ckpt_path.stem}_step{step}{ckpt_path.suffix}")
+            save_ckpt(fb, ladder, step=step, opt=opt,
+                      zgoals=embed_zgoals(fb, finals, device), provenance=provenance)
+            print(f"  ladder checkpoint -> {ladder.name}", flush=True)
 
     zgoals = embed_zgoals(fb, finals, device, verbose=True)
     save_ckpt(fb, ckpt_path, step=step, opt=opt, zgoals=zgoals, provenance=provenance)
