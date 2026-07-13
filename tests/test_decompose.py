@@ -102,3 +102,25 @@ def test_anytime_tree_is_reported_on_block():
     assert isinstance(dec, Decomposition)
     assert not dec.executable
     assert dec.plan_bottleneck > hop_reach(unit(S), unit(G))   # still improved
+
+
+def test_custom_score_pairs_is_used_throughout():
+    """A shifted scorer (dot - 0.5) must shift every reported reach/bottleneck
+    -- proving hop_reach, waypoint_scores, and decompose all route through
+    score_pairs rather than falling back to raw dots anywhere (the
+    2026-07-12 quasimetric-calibration fix)."""
+    def shifted(F, B):
+        return F @ B.T - 0.5
+
+    pool = arc_pool(np.linspace(0.1, 1.9, 19))
+    assert hop_reach(unit(S), unit(G), shifted) == pytest.approx(np.cos(2.0) - 0.5)
+    np.testing.assert_allclose(waypoint_scores(unit(S), unit(G), pool, shifted),
+                               waypoint_scores(unit(S), unit(G), pool) - 0.5, atol=1e-6)
+
+    # identical geometry, shifted thresholds -> identical tree shape
+    base = decompose(unit(S), unit(G), pool, tau_exec=np.cos(0.35), tau_floor=0.0)
+    shift = decompose(unit(S), unit(G), pool, tau_exec=np.cos(0.35) - 0.5,
+                      tau_floor=-0.5, score_pairs=shifted)
+    assert shift.executable == base.executable
+    assert shift.waypoints == base.waypoints
+    assert shift.plan_bottleneck == pytest.approx(base.plan_bottleneck - 0.5, abs=1e-6)

@@ -153,16 +153,20 @@ def compute_decompose_metrics(shard_dir: Path, fb, zgoals: dict, device, n_pool:
     nw_rows = rng.choice(nw_rows, size=min(2000, len(nw_rows)), replace=False)
     nw_data = {k: npz[k][np.sort(nw_rows)] for k in ("packed", "meta")}
     F_nw, _ = embed_rows(fb, nw_data, device)
-    tau_exec = float(np.median(F_nw @ z_goal))
-    tau_floor = float(np.quantile(F_all[start_idx] @ z_goal, 0.10))
+    # score through fb.np_score_matrix everywhere: exactly the dot product on
+    # non-quasimetric checkpoints (bit-identical to the old F @ z), and the
+    # only correctly-calibrated score on quasimetric ones (2026-07-12 review)
+    sp = fb.np_score_matrix
+    tau_exec = float(np.median(sp(F_nw, z_goal[None, :])[:, 0]))
+    tau_floor = float(np.quantile(sp(F_all[start_idx], z_goal[None, :])[:, 0], 0.10))
 
     results = []
     for si in start_idx:
         dec = decompose(F_all[si], z_goal, pool, tau_exec=tau_exec, tau_floor=tau_floor,
-                        dry_gain=dry_gain, max_depth=max_depth)
+                        dry_gain=dry_gain, max_depth=max_depth, score_pairs=sp)
         results.append((int(si), dec))
 
-    direct = np.array([hop_reach(F_all[si], z_goal) for si, _ in results])
+    direct = np.array([hop_reach(F_all[si], z_goal, sp) for si, _ in results])
     bottle = np.array([dec.plan_bottleneck for _, dec in results])
     gain = bottle - direct
     execf = np.array([dec.executable for _, dec in results])
