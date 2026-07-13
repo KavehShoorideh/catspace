@@ -38,6 +38,48 @@ def make_opponent(spec: str):
     raise SystemExit(f"unknown opponent spec {spec!r} (use random | sf:<elo> | sf:skill=<k>)")
 
 
+def run_arena(fb_white, fb_black, opponent, games: int, opening_plies: int, max_plies: int,
+             seed: int, alpha: float = 0.05, verbose: bool = True) -> dict:
+    """Alternating-color arena: FB vs `opponent`, matched-seed opening
+    diversification, anytime-valid e-value verdict (abtest.EValueTest) on
+    decisive games. `opponent` must already be inside its context manager if
+    it needs one (UCIBoardPolicy) -- this function doesn't own that lifetime,
+    so it composes with either a plain policy or a `with opponent:` block.
+
+    `opponent` is normally a single color-agnostic policy (random, Stockfish);
+    pass a (white_policy, black_policy) TUPLE instead when the opponent is
+    itself color-specific -- e.g. another FBBoardPolicy, which needs its own
+    zMATE_W/zMATE_B depending on which side it plays. This is what makes
+    candidate-vs-baseline-checkpoint head-to-head just another run_arena call.
+
+    Returns a JSON-safe summary dict; "records" holds the raw
+    (BoardGameRecord, fb_is_white) pairs for callers that want PGN export."""
+    opp_white, opp_black = opponent if isinstance(opponent, tuple) else (opponent, opponent)
+    records, fb_score = [], []
+    test = EValueTest()
+    for i in range(games):
+        rng = np.random.default_rng([seed, i])
+        fb_is_white = i % 2 == 0
+        white, black = (fb_white, opp_black) if fb_is_white else (opp_white, fb_black)
+        rec = play_board_game(white, black, opening_plies=opening_plies,
+                              max_plies=max_plies, rng=rng)
+        records.append((rec, fb_is_white))
+        s = {"1-0": 1.0, "0-1": 0.0, "1/2-1/2": 0.5, "*": 0.5}[rec.result]
+        s = s if fb_is_white else 1.0 - s
+        fb_score.append(s)
+        e = test.update(s - 0.5)                     # sign test on decisive games
+        if verbose:
+            print(f"  game {i:03d}  FB as {'W' if fb_is_white else 'B'}  {rec.result:>7} "
+                  f" plies={rec.n_plies:3d}  ({rec.termination})  e={e:.2f}", flush=True)
+
+    score = np.array(fb_score)
+    w, d, l = int((score == 1).sum()), int((score == 0.5).sum()), int((score == 0).sum())
+    return dict(records=records, games=games, opening_plies=opening_plies, max_plies=max_plies,
+               seed=seed, wins=w, draws=d, losses=l, score_mean=float(score.mean()),
+               e_value=test.e, n_decisive=test.n, k_fb_wins=test.k,
+               reject_at_alpha=test.reject_at(alpha), alpha=alpha)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -71,39 +113,24 @@ def main():
     print(f"FB(depth={args.depth}, elo_cond={args.elo_cond}) vs {opp_name}, "
           f"{args.games} games, opening_plies={args.opening_plies}, device={device}")
 
-    records, fb_score = [], []
-    test = EValueTest()
-
-    def run_games():
-        for i in range(args.games):
-            rng = np.random.default_rng([args.seed, i])
-            fb_is_white = i % 2 == 0
-            white, black = (fb_white, opponent) if fb_is_white else (opponent, fb_black)
-            rec = play_board_game(white, black, opening_plies=args.opening_plies,
-                                  max_plies=args.max_plies, rng=rng)
-            records.append((rec, fb_is_white))
-            s = {"1-0": 1.0, "0-1": 0.0, "1/2-1/2": 0.5, "*": 0.5}[rec.result]
-            s = s if fb_is_white else 1.0 - s
-            fb_score.append(s)
-            e = test.update(s - 0.5)                     # sign test on decisive games
-            print(f"  game {i:03d}  FB as {'W' if fb_is_white else 'B'}  {rec.result:>7} "
-                  f" plies={rec.n_plies:3d}  ({rec.termination})  e={e:.2f}", flush=True)
+    def run():
+        return run_arena(fb_white, fb_black, opponent, args.games, args.opening_plies,
+                         args.max_plies, args.seed, alpha=args.alpha, verbose=True)
 
     if isinstance(opponent, UCIBoardPolicy):
         with opponent:
-            run_games()
+            result = run()
     else:
-        run_games()
+        result = run()
 
-    score = np.array(fb_score)
-    w, d, l = int((score == 1).sum()), int((score == 0.5).sum()), int((score == 0).sum())
-    print(f"\nVERDICT FB vs {opp_name}: +{w} ={d} -{l}  score {score.mean():.3f}  "
-          f"e={test.e:.2f} {'REJECT-H0(FB<=opp)' if test.reject_at(args.alpha) else 'no rejection'}")
+    print(f"\nVERDICT FB vs {opp_name}: +{result['wins']} ={result['draws']} -{result['losses']}  "
+          f"score {result['score_mean']:.3f}  e={result['e_value']:.2f}  "
+          f"{'REJECT-H0(FB<=opp)' if result['reject_at_alpha'] else 'no rejection'}")
 
     if args.save_pgn:
         path = Path(args.save_pgn) if args.save_pgn != "auto" else generated_dir() / "arena_real.pgn"
         with open(path, "w") as fh:
-            for rec, fb_is_white in records:
+            for rec, fb_is_white in result["records"]:
                 names = ("latentFB", opp_name) if fb_is_white else (opp_name, "latentFB")
                 print(record_to_pgn(rec, *names), file=fh, end="\n\n")
         print(f"wrote {path}")

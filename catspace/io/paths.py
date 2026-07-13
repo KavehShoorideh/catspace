@@ -30,6 +30,15 @@ def generated_dir() -> Path:
     return p
 
 
+def experiments_dir() -> Path:
+    """Structured experiment_report.py JSON records -- small and valuable
+    (a research history, like JOURNAL.md), NOT in .gitignore unlike
+    artifacts/generated/'s regenerable viz output."""
+    p = REPO_ROOT / "artifacts" / "experiments"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def lichess_dir() -> Path:
     p = data_dir() / "lichess"
     p.mkdir(parents=True, exist_ok=True)
