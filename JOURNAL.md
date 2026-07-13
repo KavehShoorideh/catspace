@@ -1874,3 +1874,63 @@ separates "bank hurts inherently" from "gen2 is weak"); (2) if bank still
 loses, try soft-min (logsumexp temperature) instead of hard max, which
 smooths exemplar switching while keeping region structure -- ONE change,
 directly aimed at the failure mode this test exposed.
+
+---
+
+## 2026-07-13 — MODEL HANDOFF (Fable → Opus), round-18 promotion recap, and the two-horizon plan
+
+**Handoff note:** the overnight autonomous loop (rounds 13–18) ran on Claude
+Fable 5. The Fable usage limit was hit; the session switched to Claude Opus
+4.8 (1M context), which is authoring from here. All prior findings, the
+promoted incumbent, and the instrument suite carry over unchanged; this note
+just marks where the model changed hands so future readers know which entries
+came from which.
+
+**Round 18 close-out (was committed to research_state.json but not journaled
+until now).** The attribution ablation `qm + ply-gap + human-only` (drop the
+self-play mix, keep everything else from the round-13+ recipe) =
+`lichess_fb_4gb_qm_plygap_only.pt`. Results vs the prior incumbent
+(`qm_wpov`):
+- KRRvKBP n=60 conversion: **0.567 (12W/44D/4L)** vs 0.558 (~3W) — triple the
+  actual wins, and only 4 losses from 60 tablebase-won positions.
+- DIFF_SLOPE +0.255 / +0.003 — best won-lost separation of the project.
+- Full-board arena n=40 @ 200 nodes: 0.062 vs 0.050 — a tie, both collapsed at
+  the austere budget (see below).
+- ACPL n=400: 289 vs 253 — worse, and accepted: conversion + outcome-separation
+  sit closer to the project objective than the general-position ACPL proxy.
+
+**PROMOTED** to incumbent. This closes the round-13 attribution debt: the
+self-play MIX at 0.3–0.4 fraction was the 5-round play drag (its ε-noise games
+dulled short-horizon tactics); ply-gap is exonerated; removing winner-pov is
+exonerated. The endgame curriculum's calibration gains are real but were
+overdosed — to be re-added at low fraction later.
+
+**In flight now (Opus):**
+1. **Full-board node-budget sensitivity** on the new incumbent (200 → 400 →
+   800, extending to ~1600). Motive: the round-18 showdown scored ~0.05 vs the
+   weakest Stockfish at only 200 nodes, but the one full-board 0.25 result
+   (round 6) effectively used ~420 nodes (depth-3/beam-4). So "0.05" may be
+   search-starvation, not a strength ceiling — this disambiguates every recent
+   arena number. Ceiling reasoning (Kaveh): stay "10× less than Leela",
+   anchored on Leela's competitive ~15–16k nodes/move → ~1600-node cap, which
+   still leaves room to grow from 200 without turning the win into an
+   out-searching result.
+2. **Two-horizon architecture — being DESIGNED before building** (Kaveh: "plan
+   it first"). Rationale: the project's central measured finding is that
+   short-horizon tactical sharpness and long-horizon strategic structure
+   compete inside one d=64 embedding. Design: shared board-encoder trunk → two
+   heads, `near` (F_near/B_near) and `far` (F_far/B_far). **Roles:** near is
+   the search's steering wheel (beam selection + move ordering — prunes
+   tactical blunders before expansion), far is the leaf evaluator (calibrated
+   distance-to-goal — supplies the strategic gradient that converts won
+   positions instead of shuffling). **Training:** shared trunk, two heads,
+   ply-gap-stratified data — near on short-gap pairs (1–8 plies, contrastive
+   sharpness), far on long-gap + state→goal pairs (quasimetric + ply-gap
+   calibration + region/asymmetry structure). The competition is resolved by
+   moving it out of one shared function into two separate heads. **Pre-
+   registered success:** on the fitness probe, near k=1 retrieval stays ~0.97
+   AND far nearest-exemplar ρ clears the ~0.25 single-embedding ceiling,
+   simultaneously — the combination one embedding never achieved; at play,
+   KRRvKBP ≥ 0.567 AND ACPL ≤ 289 (both hold/improve). Open design choices out
+   to Kaveh: shared vs split trunk (start shared), near/far crossover ply
+   (~10–16), pure-far vs far+small-near leaves (start pure-far).
