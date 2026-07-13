@@ -1,0 +1,17 @@
+{
+  "n": 355,
+  "mean_sharpness": 0.5380763334615326,
+  "frac_only_move": 0.12394366197183099,
+  "by_kind": {
+    "krvk": 120,
+    "krrkbp": 120,
+    "endgame": 115
+  },
+  "signal_rho_vs_sharpness": {
+    "score_spread": {
+      "rho": 0.1360382736033872,
+      "n": 355,
+      "note": "rho>0 wanted: signal should rise with true sharpness"
+    }
+  }
+}
