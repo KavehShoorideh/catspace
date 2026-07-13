@@ -144,6 +144,28 @@ On synthetic unit-circle geometry, the geodesic-midpoint waypoint is exactly the
 
 ## Data & training concepts
 
+### Step / batch / epoch / pair (the training loop)
+The units the training logs count in, smallest to largest:
+- **Pair** — one data point: (position s, a position g that occurred later in the
+  same game). What the model actually learns from ("is g reachable from s?").
+- **Batch** — 512 pairs (our `--batch 512`) processed together in one GPU pass.
+- **Step** (= *iteration*) — one batch → compute the loss → **backpropagate** →
+  nudge every model weight ONCE. So **1 step = 1 batch = 1 weight update**. NOT a
+  single data point (that's a pair) and NOT a full data pass (that's an epoch).
+- **Epoch** — one full pass over the whole dataset. We sample pairs continuously
+  rather than in clean epochs; for scale, 90,000 steps × 512 ≈ 46M pair-draws ≈
+  0.8 of a pass over the 55.8M-position 4GB shard.
+- **it/s** — iterations (steps) per second; sets wall-clock (90k ÷ ~15/s ≈ 100 min).
+- **Learning rate (lr)** — how big each weight nudge is; starts ~3e-4 and cosine-
+  decays toward ~0 (coarse adjustments early, fine ones late).
+- **Training budget (--steps)** — total weight updates; more = more learning until
+  it plateaus/overfits. 90k is the standard for comparability across checkpoints.
+
+A log line `step 72000 loss 4.16 train_top1 0.44 lr 7.0e-05 (15 it/s)` = 72,000
+weight updates done; the batch's error was 4.16; on that batch the model ranked
+the true future #1 for 44% of pairs; each nudge is currently size 7e-5; running
+at 15 updates/second.
+
 ### Holdout (held-out test set)
 Positions from games where `game_id % 50 == 0`. Never seen during training. Used for validation and eval-head training. ~20% of the data; split deterministically by game ID.
 
