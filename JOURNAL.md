@@ -1590,3 +1590,65 @@ results land in `artifacts/experiments/qm_fitness_{qm_wpov,qm_gen1}.json`.
 These numbers become the steering instruments for the next embedding
 rounds: the k=20-50 retrieval cliff and the weak asymmetry gap are the
 first two concrete targets.
+
+---
+
+## 2026-07-12 23:45 — round 13 VERDICT: no promotion; probes localize the real problem; endgame-curriculum next
+
+**Full-size fitness probes, both checkpoints** (n=300 games, 200k triples,
+400 KRvK + 300 KRRvKBP tablebase positions;
+`artifacts/experiments/qm_fitness_{qm_wpov,qm_gen1}.json`):
+
+| instrument | qm_wpov (incumbent) | qm_gen1 (round 13) |
+|---|---|---|
+| KRvK Spearman rho, d vs true plies-to-mate | **+0.010 (flat)** | **-0.069 (flat)** |
+| retrieval acc k=1/5/10 | .97/.93/.87 | .96/.97/.89 |
+| retrieval acc k=20/50 | .69/.23 | .68/**.29** |
+| asymmetry frac(rev<=fwd) (0 wanted) | **0.270** | 0.345 |
+| triangle max_vio on d (<=1 required) | 0.824 OK | 0.851 OK |
+| spread ratio (collapse check) | 1.79 | **2.35** |
+| effective rank F/B (of 64) | 24.1/24.3 | 26.0/26.4 |
+
+The decisive row is the first: on KRvK -- where pawnless tablebase DTZ
+IS the true plies-to-mate, spread 1..31 -- the learned distance is
+statistically FLAT for both checkpoints (bin means constant from
+mate-in-1 to mate-in-31). The metric's *structure* is healthy (zero
+triangle violations on `d`, no collapse, strong short-horizon retrieval);
+what's missing is *coverage*: human games essentially never visit these
+positions, so neither InfoNCE nor the ply-gap term ever pushes gradient
+through that region. This is the measured, mechanical explanation for the
+KRRvKBP conversion failure -- the planner cannot rank "closer to mate"
+in a region its training distribution never reached. (Also fixed a probe
+design flaw en route: KRRvKBP's DTZ compresses toward 0 because captures
+are always near -- pawnless KRvK added as the clean calibration target.)
+
+**Round-13 play metrics (gen1 vs incumbent):**
+- ACPL n=400 paired: gen1 +13.9cp WORSE, 95% CI [-11.0, +40.3],
+  Wilcoxon p=0.15 -- not significant, statistically a wash.
+- KRRvKBP n=60: FBSearchPolicy 0.475 / FBPlanPolicy 0.450 (incumbent
+  measured 0.583/0.625 on the same set) -- direction unfavorable;
+  plan-vs-search remains null (e=0.15).
+- Node-sweep 2000-stage clean re-run (incumbent): ACPL=283.4 at
+  max_nodes=2000 vs 274.5@200 / 270.5@800 -- the earlier "flat in search
+  depth" conclusion now stands on clean data at all three points.
+
+**VERDICT: no promotion.** `lichess_fb_4gb_qm_wpov.pt` remains the
+incumbent for play strength. gen1's structural wins (spread 2.35, rank
++2, k=50 retrieval +0.06, best-ever DIFF_SLOPE separation) didn't convert
+into play improvement, and three levers changed at once (winner-pov
+removed, ply-gap added, self-play mixed) so per-lever attribution is
+impossible from this run -- noted as a methodology cost of the corrected
+relaunch, accepted deliberately to get the pipeline unblocked.
+
+**Next (the probes now steer): endgame-start curriculum.** Built
+`--endgame-start-frac` into `selfplay_generate.py`: a fraction of
+self-play games start from random winnable endgames (KRvK, KQvK, KRRvK,
+KRRvKBP-family, KQvKP; generator verified across all 5 material menus +
+replay round-trip). Real games, real outcomes, zero oracle labels --
+tablebases stay observational. Launching gen2 (500 games,
+endgame_start_frac=0.5) with the incumbent, then retraining with the gen2
+mix. **Success criterion, pre-registered: KRvK Spearman rho must move
+decisively off zero (target >= +0.3) on the next checkpoint's fitness
+probe** -- if it does, the curriculum mechanism works and we scale it; if
+it stays flat, the ply-gap term itself isn't reaching these pairs and the
+next lever is horizon/pairing changes, not more data.
