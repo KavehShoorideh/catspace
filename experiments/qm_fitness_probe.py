@@ -172,18 +172,51 @@ def syzygy_calibration_krvk(fb, zgoals, device, syzygy_dir: Path, n_positions: i
     d = dist_like(fb, F, Z)
     dtz_arr = np.array(dtzs, dtype=np.float64)
 
+    # nearest-exemplar variant (2026-07-13 finding: centroids are flat but
+    # min-distance over genuine same-material mates correlates -- this is
+    # the calibration number that actually tracks embedding progress)
+    edge = [s for s in range(64)
+            if chess.square_rank(s) in (0, 7) or chess.square_file(s) in (0, 7)]
+    mate_boards = []
+    for bk in edge:
+        for wk in range(64):
+            if chess.square_distance(bk, wk) < 2:
+                continue
+            for r_sq in range(64):
+                if r_sq in (bk, wk):
+                    continue
+                b = chess.Board(None)
+                b.set_piece_at(wk, chess.Piece(chess.KING, chess.WHITE))
+                b.set_piece_at(bk, chess.Piece(chess.KING, chess.BLACK))
+                b.set_piece_at(r_sq, chess.Piece(chess.ROOK, chess.WHITE))
+                b.turn = chess.BLACK
+                if b.is_valid() and b.is_checkmate():
+                    mate_boards.append(b)
+    _, Bm = embed_boards(fb, mate_boards, device)
+    import torch
+    if fb.quasimetric:
+        with torch.no_grad():
+            D = fb.distance_matrix(torch.from_numpy(F), torch.from_numpy(Bm)).numpy()
+        d_nearest = D.min(axis=1)
+    else:
+        d_nearest = (-(F @ Bm.T)).min(axis=1)
+
     from scipy.stats import spearmanr
     rho = spearmanr(d, dtz_arr).statistic
+    rho_nearest = spearmanr(d_nearest, dtz_arr).statistic
     bins = {}
     for lo, hi in ((1, 4), (5, 8), (9, 14), (15, 22), (23, 40)):
         m = (dtz_arr >= lo) & (dtz_arr <= hi)
         if m.sum() >= 5:
             bins[f"dtz_{lo}_{hi}"] = dict(n=int(m.sum()), mean_d=float(d[m].mean()),
                                           std_d=float(d[m].std()))
-    return dict(n=len(boards), spearman_rho_d_vs_dtz=float(rho), per_dtz_bins=bins,
+    return dict(n=len(boards), spearman_rho_d_vs_dtz=float(rho),
+               spearman_rho_nearest_exemplar=float(rho_nearest),
+               n_mate_exemplars=len(mate_boards), per_dtz_bins=bins,
                dtz_range=[int(dtz_arr.min()), int(dtz_arr.max())],
                note="KRvK: DTZ == plies-to-mate (pawnless, no interposed zeroing "
-                    "moves). rho > 0 wanted.")
+                    "moves). rho > 0 wanted; rho_nearest_exemplar is the number "
+                    "that tracks real embedding progress (centroids stay flat).")
 
 
 def syzygy_calibration(fb, zgoals, device, syzygy_dir: Path, n_positions: int,
