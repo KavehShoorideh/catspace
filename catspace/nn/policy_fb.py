@@ -598,14 +598,19 @@ class FBAdaptiveSearchPolicy(FBSearchPolicy):
 
     @torch.no_grad()
     def _m2(self, board: chess.Board) -> float:
-        if self.cmap is None:
+        """Method 2 = predicted epistemic unreliability from the embedding.
+        Prefers the checkpoint's NATIVE competence head (training-integrated,
+        always-current); falls back to an offline CompetenceMap kNN stand-in."""
+        if not getattr(self.fb, "competence", False) and self.cmap is None:
             return 0.0
         packed = encode_packed(board)[None]
         meta = encode_meta(board)[None]
         planes = torch.from_numpy(feature_planes(packed, meta)).to(self.device)
         om = torch.from_numpy(np.tile(self._omega_row, (1, 1))).to(self.device)
-        f = self.fb.embed_F(planes, om)[0].cpu().numpy()
-        return float(self.cmap.query(f))
+        f = self.fb.embed_F(planes, om)
+        if getattr(self.fb, "competence", False):
+            return float(self.fb.competence_score(f)[0].cpu().numpy())
+        return float(self.cmap.query(f[0].cpu().numpy()))
 
     def _search_at(self, board: chess.Board, nodes: int):
         self.max_nodes = nodes

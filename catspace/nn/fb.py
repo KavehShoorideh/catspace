@@ -56,7 +56,7 @@ class TorchFB(nn.Module):
                  enc_out: int = 256, dh: int = 512, omega_dim: int = 16,
                  tau: float = 0.1, seed: int = 0, quasimetric: bool = False,
                  two_horizon: bool = False, distributional: bool = False,
-                 n_bins: int = 12):
+                 n_bins: int = 12, competence: bool = False):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional:
@@ -64,7 +64,8 @@ class TorchFB(nn.Module):
         self.config = dict(d=d, channels=channels, blocks=blocks, enc_out=enc_out,
                            dh=dh, omega_dim=omega_dim, tau=tau, seed=seed,
                            quasimetric=quasimetric, two_horizon=two_horizon,
-                           distributional=distributional, n_bins=n_bins)
+                           distributional=distributional, n_bins=n_bins,
+                           competence=competence)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -108,6 +109,25 @@ class TorchFB(nn.Module):
             self.register_buffer("dist_bin_edges", edges)            # (n_bins-1,)
             self.cat_head = nn.Sequential(nn.Linear(2 * d, dh), nn.ReLU(),
                                           nn.Linear(dh, n_bins))
+        # COMPETENCE head (2026-07-13, Kaveh's Method 2, training-integrated): a
+        # small head predicting the model's OWN per-anchor retrieval error from
+        # F(s). Trained jointly against the detached per-example loss, so it
+        # learns "where do I fit poorly" for FREE, over the whole embedding
+        # space, ALWAYS CURRENT (retrains with the model -- no stale offline kNN
+        # map). This is the EPISTEMIC weakness signal (fit-error), complementing
+        # Method 1's aleatoric search-disagreement. Constructed LAST ->
+        # competence=False stays byte-identical; f is detached at its input so
+        # the head can't distort the embedding to make its error predictable.
+        self.competence = competence
+        if competence:
+            self.competence_head = nn.Sequential(nn.Linear(d, dh // 2), nn.ReLU(),
+                                                 nn.Linear(dh // 2, 1))
+
+    def competence_score(self, f: torch.Tensor) -> torch.Tensor:
+        """(N,d) F-embeddings -> (N,) predicted per-anchor error = the engine's
+        EPISTEMIC unreliability here (softplus, non-negative). Higher = the
+        model fits this region poorly = search more."""
+        return nn.functional.softplus(self.competence_head(f).squeeze(-1))
 
     def embed_F(self, planes: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         h = self.encF(planes)
@@ -199,7 +219,8 @@ class TorchFB(nn.Module):
                 material_drop: torch.Tensor | None = None,
                 ply_gap_weight: float = 0.05, ply_gap_scale: float = 50.0,
                 asym_weight: float = 0.0, asym_margin: float = 0.2,
-                asym_cap: int = 128, dist_weight: float = 0.5) -> tuple[torch.Tensor, torch.Tensor]:
+                asym_cap: int = 128, dist_weight: float = 0.5,
+                competence_weight: float = 0.1) -> tuple[torch.Tensor, torch.Tensor]:
         """InfoNCE with in-batch negatives; returns (loss, top1 retrieval acc).
 
         2026-07-12 ply-gap calibration (Kaveh: "if the future leads to a mate
@@ -223,8 +244,15 @@ class TorchFB(nn.Module):
         b = self.embed_B(planes_g)
         logits = self.score_matrix(f, b) / self.tau
         target = torch.arange(len(f), device=logits.device)
-        loss = nn.functional.cross_entropy(logits, target)
+        per_row = nn.functional.cross_entropy(logits, target, reduction="none")
+        loss = per_row.mean()
         top1 = (logits.argmax(dim=1) == target).float().mean()
+        if self.competence:
+            # predict each anchor's OWN retrieval error from F(s) (detached, so
+            # the head can't distort the embedding). At inference competence_score
+            # is the epistemic "where do I fit poorly" signal (Method 2, native).
+            pred_err = self.competence_score(f.detach())
+            loss = loss + competence_weight * nn.functional.mse_loss(pred_err, per_row.detach())
         if self.quasimetric and ply_gap is not None:
             d_true = self.distance_matrix(f, b).diagonal()
             target_d = ply_gap.to(d_true.dtype) / ply_gap_scale

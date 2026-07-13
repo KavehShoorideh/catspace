@@ -249,6 +249,11 @@ def main():
                          "Forces quasimetric.")
     ap.add_argument("--n-bins", type=int, default=12, help="distributional: number of ply-gap bins")
     ap.add_argument("--dist-weight", type=float, default=0.5, help="distributional: weight on the categorical loss")
+    ap.add_argument("--competence", action="store_true",
+                    help="Method 2 (training-integrated): add a head predicting the model's own "
+                         "per-anchor retrieval error (epistemic 'where I fit poorly'). Native, "
+                         "always-current competence signal for reliability-gated search.")
+    ap.add_argument("--competence-weight", type=float, default=0.1, help="weight on the competence head loss")
     ap.add_argument("--selfplay-shards", default=None,
                     help="dir of experiments/selfplay_generate.py output shards to MIX into "
                          "training (holdout/val stay human-only for a stable reference)")
@@ -290,7 +295,7 @@ def main():
     else:
         fb = TorchFB(d=args.d, seed=args.seed, quasimetric=args.quasimetric,
                      two_horizon=args.two_horizon, distributional=args.distributional,
-                     n_bins=args.n_bins)
+                     n_bins=args.n_bins, competence=args.competence)
         fb.to(device)
     start_step = step                      # cosine decay spans [start_step, args.steps)
     lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
@@ -347,7 +352,8 @@ def main():
             loss, top1 = fb.loss_fn(*tensors, ply_gap_weight=args.ply_gap_weight,
                                     ply_gap_scale=args.ply_gap_scale,
                                     asym_weight=args.asym_weight, asym_margin=args.asym_margin,
-                                    dist_weight=args.dist_weight)
+                                    dist_weight=args.dist_weight,
+                                    competence_weight=args.competence_weight)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
