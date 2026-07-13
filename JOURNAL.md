@@ -1934,3 +1934,33 @@ overdosed — to be re-added at low fraction later.
    KRRvKBP ≥ 0.567 AND ACPL ≤ 289 (both hold/improve). Open design choices out
    to Kaveh: shared vs split trunk (start shared), near/far crossover ply
    (~10–16), pure-far vs far+small-near leaves (start pure-far).
+
+---
+
+## 2026-07-13 (Opus) — node-budget sensitivity: no reliable lever; budget locked at 200
+
+Ran the incumbent `lichess_fb_4gb_qm_plygap_only.pt` on full-board arena vs
+sf:skill=0 (n=40) across the search budget, to disambiguate whether the
+round-18 showdown's ~0.05 was a strength ceiling or search starvation:
+
+| max_nodes | arena score |
+|---|---|
+| 200 | 0.062 |
+| 400 | 0.100 |
+| 800 | 0.062 |
+
+**Non-monotonic and noise-dominated** — 0.062 vs 0.100 is ~1.5 games out of 40,
+and 800 dropped back to 0.062. Node count is NOT a reliable lever: full-board
+play sits at ~0.06–0.10 (losing ~93%) regardless. This reinforces the project's
+running finding — the **value function, not search depth, is the bottleneck**;
+deeper search over a miscalibrated eval doesn't rescue it, and 800 < 400 is
+consistent with deeper search amplifying the long-range eval errors (the k=20–50
+retrieval cliff) that the two-horizon far head is built to fix.
+
+Per Kaveh's conditional ("if increasing helps, increase it… still 10× less than
+Leela"): it does not clearly help, so **operating budget stays at 200** — which
+also keeps every eval matched to the incumbent's existing references (KRRvKBP
+0.567, ACPL 289, all measured at 200 nodes). A clean forward-looking test falls
+out of this: a genuinely better-calibrated eval SHOULD start rewarding more
+search — so "does the two-horizon far head improve with nodes where the
+incumbent didn't?" becomes a real signal to check later.
