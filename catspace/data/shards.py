@@ -111,6 +111,50 @@ def sample_shard_rows(shard_dir, n: int, seed: int, holdout_only: bool = False,
     return out
 
 
+class MixedPairSource:
+    """Interleaves batches from two PairSource-like objects (e.g. human
+    LichessPairSource + self-play LichessPairSource pointed at a
+    selfplay_generate.py output dir) by a fixed mix ratio -- each YIELDED
+    BATCH comes entirely from one source or the other (a weighted coin flip
+    per batch), rather than mixing within a batch -- simpler, and just as
+    effective at typical batch sizes (512).
+
+    2026-07-12 (JOURNAL.md): lets train_lichess_fb.py train on human data
+    and self-play data in the same run without changing LichessPairSource
+    or the shard format at all -- self-play shards ARE Lichess shards,
+    just written by a different generator."""
+
+    def __init__(self, primary: "LichessPairSource", secondary: "LichessPairSource",
+                secondary_frac: float):
+        assert 0.0 <= secondary_frac <= 1.0
+        self.primary = primary
+        self.secondary = secondary
+        self.secondary_frac = secondary_frac
+
+    def batches(self, batch_size: int, seed: int) -> Iterator[PairBatch]:
+        rng = np.random.default_rng(seed)
+        it_p = iter(self.primary.batches(batch_size, seed))
+        it_s = iter(self.secondary.batches(batch_size, seed + 1))
+        epoch = 0
+        while True:
+            use_secondary = rng.random() < self.secondary_frac
+            it = it_s if use_secondary else it_p
+            try:
+                yield next(it)
+            except StopIteration:
+                # whichever source ran dry restarts its own epoch (fresh
+                # seed) independently -- the two sources are NOT required
+                # to be the same size, so they naturally cycle at different
+                # rates without desyncing the mix ratio.
+                epoch += 1
+                if use_secondary:
+                    it_s = iter(self.secondary.batches(batch_size, seed + 1 + epoch))
+                    yield next(it_s)
+                else:
+                    it_p = iter(self.primary.batches(batch_size, seed + epoch))
+                    yield next(it_p)
+
+
 class LichessPairSource:
     """Geometric-horizon (anchor, goal) PACKED-POSITION-ROW pairs sampled
     within each game from position shards written by data.lichess.build_shards."""
@@ -152,6 +196,7 @@ class LichessPairSource:
                     "white_elo": data["white_elo"][sl],
                     "black_elo": data["black_elo"][sl],
                     "ply": data["ply"][sl],
+                    "ply_g": data["ply"][goal_rows[sl]],           # goal ply -- for ply-gap calibration
                     "clock": data["clock"][sl],
                     "game_id": data["game_id"][sl],
                     "board_meta": data["meta"][sl],                # anchor rows

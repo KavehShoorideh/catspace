@@ -1,0 +1,19 @@
+{
+  "ckpt": "data/derived/lichess_fb_4gb_winnerpov.pt",
+  "step": 90000,
+  "fine_tuned_from_step": 60000,
+  "winner_pov_only": true,
+  "n": 100,
+  "sf_depth": 8,
+  "seed": 0,
+  "readout": "FBSearchPolicy(max_nodes=200, beam=4)",
+  "acpl": 268.7,
+  "blunder_rate_ge300cp": 0.40,
+  "mistake_rate_ge100cp": 0.68,
+  "compare_to_baseline_step60000": {
+    "acpl": 328.8,
+    "blunder_rate_ge300cp": 0.55,
+    "mistake_rate_ge100cp": 0.80
+  },
+  "note": "same n=100 held-out positions/seed as acpl_baseline_step60000.json for direct comparability. Improvement observed, but NOT yet attributed to winner-pov filtering specifically -- a same-step-budget plain-continuation control (no filter) is running to isolate the filtering effect from just-more-training-steps."
+}

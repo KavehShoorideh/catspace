@@ -14,18 +14,30 @@ Verdicts printed at the end:
 
 Resumable: if --ckpt exists it is loaded (model+optimizer+step) and training
 continues to --steps total.
+
+LR schedule: cosine decay from --lr down to --lr-min, spanning THIS
+invocation's remaining steps (resume step -> --steps), not the whole
+training history -- each `--steps` extension gets its own fresh decay.
+2026-07-11 finding: a 30k-step extension at a CONSTANT lr=3e-4 (no decay)
+measurably hurt downstream planner quality (decompose FRAC_IMPROVED 0.833
+-> 0.617, MEAN_GAIN 0.417 -> 0.310) even though raw retrieval loss looked
+fine -- consistent with the literature on InfoNCE-style contrastive training
+being prone to representation drift/dimensional collapse under a
+non-decaying LR (SimCLR/CLIP both decay to ~1/10 of peak). See JOURNAL.md.
 """
 from __future__ import annotations
 
 import argparse
+import math
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
 
+from catspace.audit import build_provenance, is_provenance_clean
 from catspace.data.encode import board_from_packed
-from catspace.data.shards import LichessPairSource
+from catspace.data.shards import LichessPairSource, MixedPairSource
 from catspace.io.paths import derived_dir, newest_shard_dir
 from catspace.nn.fb import TorchFB, load_ckpt, pick_device, save_ckpt
 from catspace.nn.features import feature_planes, omega_ids
@@ -34,7 +46,22 @@ HOLDOUT_MOD = 50
 
 
 def batch_tensors(batch, device):
-    """PairBatch -> (planes_s, omega_s, planes_g) on device, holdout rows dropped."""
+    """PairBatch -> (planes_s, omega_s, planes_g, ply_gap) on device, holdout
+    rows dropped.
+
+    2026-07-12: the --winner-pov-only filter (round 11) is REMOVED, per
+    Kaveh. Rationale: (a) the good/bad information is already IN the data
+    -- a goal position that is a mate for the mover is a good future, a
+    mate against them is a bad one; the loss should see both and learn the
+    geometry of each, not have losing trajectories censored out; (b) the
+    ply-gap calibration term specifically NEEDS unrecoverable losing
+    trajectories to learn what "no way back" looks like as a distance --
+    filtering them out deletes exactly that training signal; (c) the
+    filter interacted pathologically with the batch-size skip guard in
+    main() (keeping ~48% of a 512-row batch lands right under the
+    batch//2=256 skip threshold, so most batches were built then thrown
+    away -- the round-13 first launch spun for 35 min without completing
+    100 steps because of this)."""
     train_mask = (batch.meta["game_id"] % HOLDOUT_MOD) != 0
     if not train_mask.any():
         return None
@@ -43,9 +70,12 @@ def batch_tensors(batch, device):
     planes_g = feature_planes(batch.goals[idx], batch.meta["board_meta_g"][idx])
     om = omega_ids(batch.meta["white_elo"][idx], batch.meta["black_elo"][idx],
                    batch.meta["clock"][idx])
+    ply_gap = (batch.meta["ply_g"][idx].astype(np.float32)
+               - batch.meta["ply"][idx].astype(np.float32))
     return (torch.from_numpy(planes_s).to(device),
             torch.from_numpy(om).to(device),
-            torch.from_numpy(planes_g).to(device))
+            torch.from_numpy(planes_g).to(device),
+            torch.from_numpy(ply_gap).to(device))
 
 
 def collect_holdout(src: LichessPairSource, n_batches: int, batch_size: int, seed: int):
@@ -53,7 +83,7 @@ def collect_holdout(src: LichessPairSource, n_batches: int, batch_size: int, see
     out = []
     buf_a, buf_g, buf_ma, buf_mg, buf_om = [], [], [], [], []
     for batch in src.batches(batch_size, seed):
-        held = np.flatnonzero((batch.meta["game_id"] % HOLDOUT_MOD) == 0)
+        held = np.flatnonzero(batch.meta["game_id"] % HOLDOUT_MOD == 0)
         if held.size == 0:
             continue
         buf_a.append(batch.anchors[held]); buf_g.append(batch.goals[held])
@@ -80,7 +110,7 @@ def val_metrics(fb, holdout, device):
         pg = torch.from_numpy(feature_planes(g, mg)).to(device)
         o = torch.from_numpy(om).to(device)
         f = fb.embed_F(ps, o); b = fb.embed_B(pg)
-        logits = (f @ b.T) / fb.tau
+        logits = fb.score_matrix(f, b) / fb.tau
         target = torch.arange(len(f), device=device)
         losses.append(float(torch.nn.functional.cross_entropy(logits, target)))
         ranks = (logits >= logits.gather(1, target[:, None])).sum(1)
@@ -160,7 +190,7 @@ def reach_slope(shard_dir: Path, fb, z, device, want_result: int, n_games: int =
             om = torch.from_numpy(omega_ids(data["white_elo"][rows], data["black_elo"][rows],
                                             data["clock"][rows])).to(device)
             with torch.no_grad():
-                reach = (fb.embed_F(planes, om) @ z.to(device)).cpu().numpy()
+                reach = fb.score(fb.embed_F(planes, om), z.to(device)).cpu().numpy()
             rho = spearmanr(data["ply"][rows], reach).statistic
             if np.isfinite(rho):
                 rhos.append(rho)
@@ -176,11 +206,31 @@ def main():
     ap.add_argument("--steps", type=int, default=8000)
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--d", type=int, default=64)
+    ap.add_argument("--quasimetric", action="store_true",
+                    help="score(f,g) = -d(f,g)+r(f,g), d a real (triangle-inequality-"
+                         "respecting) metric, instead of a plain cosine dot product -- "
+                         "see nn/fb.py module docstring. Only meaningful with --fresh "
+                         "(resuming inherits quasimetric from the checkpoint's own config)")
+    ap.add_argument("--ply-gap-weight", type=float, default=0.05,
+                    help="quasimetric-only: weight of the MSE(d(f,g), ply_gap/scale) term "
+                         "that calibrates the metric's ABSOLUTE scale to real move-distance "
+                         "-- in-batch retrieval alone only enforces relative ranking. 0 disables.")
+    ap.add_argument("--ply-gap-scale", type=float, default=50.0,
+                    help="normalizer for the ply-gap target (roughly the pairing horizon's "
+                         "mean, so the regression target starts near O(1))")
+    ap.add_argument("--selfplay-shards", default=None,
+                    help="dir of experiments/selfplay_generate.py output shards to MIX into "
+                         "training (holdout/val stay human-only for a stable reference)")
+    ap.add_argument("--selfplay-frac", type=float, default=0.3,
+                    help="fraction of TRAINING batches drawn from --selfplay-shards vs human data")
     ap.add_argument("--gamma", type=float, default=0.98,
                     help="pairing horizon: mean k=1+1/(1-gamma)=51 plies, on par with "
                          "typical stored game length (0.99's 101 snapped ~all goals to "
                          "final positions)")
     ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--lr-min", type=float, default=None,
+                    help="cosine-decay floor for THIS invocation's remaining steps "
+                         "(resume step -> --steps); default lr/10 (SimCLR/CLIP convention)")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--val-every", type=int, default=500)
     ap.add_argument("--ckpt", default=None, help="default: data/derived/lichess_fb.pt")
@@ -191,7 +241,8 @@ def main():
     shard_dir = Path(args.shards) if args.shards else newest_shard_dir()
     ckpt_path = Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt"
     device = pick_device(args.device)
-    print(f"shards={shard_dir.name} device={device} steps={args.steps} batch={args.batch} d={args.d}")
+    print(f"shards={shard_dir.name} device={device} steps={args.steps} batch={args.batch} d={args.d} "
+          f"quasimetric={args.quasimetric} ply_gap_weight={args.ply_gap_weight}", flush=True)
 
     step = 0
     if ckpt_path.exists() and not args.fresh:
@@ -199,18 +250,34 @@ def main():
         step = payload["step"]
         print(f"resumed {ckpt_path.name} at step {step}")
     else:
-        fb = TorchFB(d=args.d, seed=args.seed)
+        fb = TorchFB(d=args.d, seed=args.seed, quasimetric=args.quasimetric)
         fb.to(device)
+    start_step = step                      # cosine decay spans [start_step, args.steps)
+    lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
     opt = torch.optim.AdamW(fb.parameters(), lr=args.lr)
     if ckpt_path.exists() and not args.fresh:
         payload = torch.load(ckpt_path, map_location=device, weights_only=False)
         if "opt_state" in payload:
             opt.load_state_dict(payload["opt_state"])
 
-    src = LichessPairSource(shard_dir, gamma=args.gamma)
-    holdout = collect_holdout(src, n_batches=8, batch_size=args.batch, seed=999)
-    print(f"holdout: {len(holdout)} batches of {args.batch}")
+    human_src = LichessPairSource(shard_dir, gamma=args.gamma)
+    src = human_src
+    if args.selfplay_shards:
+        selfplay_src = LichessPairSource(Path(args.selfplay_shards), gamma=args.gamma)
+        src = MixedPairSource(human_src, selfplay_src, args.selfplay_frac)
+        print(f"mixing self-play data from {args.selfplay_shards} at frac={args.selfplay_frac}",
+              flush=True)
+    holdout = collect_holdout(human_src, n_batches=8, batch_size=args.batch, seed=999)
+    print(f"holdout: {len(holdout)} batches of {args.batch}", flush=True)
     finals = collect_mate_finals(shard_dir)
+
+    provenance = build_provenance(
+        script="train_lichess_fb.py", args=vars(args),
+        data_columns_used=["packed", "meta", "game_id", "white_elo", "black_elo", "clock"],
+        train_batch_fn=batch_tensors, train_main_fn=main)
+    if not is_provenance_clean(provenance):
+        raise SystemExit(f"static_purity_check found forbidden references, refusing to train: "
+                         f"{provenance['static_check']['hits']}")
 
     fb.train()
     epoch = 0
@@ -226,20 +293,26 @@ def main():
         tensors = batch_tensors(batch, device)
         if tensors is None or len(tensors[0]) < args.batch // 2:
             continue
-        loss, top1 = fb.loss_fn(*tensors)
+        frac = min(1.0, (step - start_step) / max(1, args.steps - start_step))
+        lr_now = lr_min + 0.5 * (args.lr - lr_min) * (1 + math.cos(math.pi * frac))
+        for g in opt.param_groups:
+            g["lr"] = lr_now
+        loss, top1 = fb.loss_fn(*tensors, ply_gap_weight=args.ply_gap_weight,
+                                ply_gap_scale=args.ply_gap_scale)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
             rate = 100 / (time.time() - t0); t0 = time.time()
-            print(f"step {step}  loss {float(loss):.4f}  train_top1 {float(top1):.3f}  ({rate:.1f} it/s)", flush=True)
+            print(f"step {step}  loss {float(loss):.4f}  train_top1 {float(top1):.3f}  "
+                  f"lr {lr_now:.2e}  ({rate:.1f} it/s)", flush=True)
         if step % args.val_every == 0 or step == args.steps:
             vloss, vtop1, vtop8 = val_metrics(fb, holdout, device)
             print(f"  VAL step {step}  loss {vloss:.4f}  top1 {vtop1:.3f}  top8 {vtop8:.3f}", flush=True)
             save_ckpt(fb, ckpt_path, step=step, opt=opt,
-                      zgoals=embed_zgoals(fb, finals, device))
+                      zgoals=embed_zgoals(fb, finals, device), provenance=provenance)
 
     zgoals = embed_zgoals(fb, finals, device, verbose=True)
-    save_ckpt(fb, ckpt_path, step=step, opt=opt, zgoals=zgoals)
+    save_ckpt(fb, ckpt_path, step=step, opt=opt, zgoals=zgoals, provenance=provenance)
     print(f"saved {ckpt_path}")
 
     vloss, vtop1, vtop8 = val_metrics(fb, holdout, device)

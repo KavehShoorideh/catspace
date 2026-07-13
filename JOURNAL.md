@@ -5,7 +5,7 @@ timings, verdicts (copied verbatim from experiment output), and interpretation.
 
 ---
 
-## 2026-07-11 — package rename; eval-head representation ablation (design)
+## 2026-07-11 01:31 — package rename; eval-head representation ablation (design)
 
 **Rename.** Package `latentchess` -> `catspace` to match the repo (commit
 `e58b99a`). 85 fast tests pass. Venv script shebangs still pointed at the old
@@ -40,7 +40,7 @@ gamma 0.98). Holdout = game_id % 50 == 0.
 
 ---
 
-## 2026-07-11 — zgoals were never saved (interrupted-run bug); slopes recovered
+## 2026-07-11 07:00 — zgoals were never saved (interrupted-run bug); slopes recovered
 
 While wiring the baseline: the checkpoint's `zgoals` dict was EMPTY. Cause:
 `lichess_fb.pt` is the step-2000 PERIODIC save (train_lichess_fb.py:216); the
@@ -66,7 +66,7 @@ probe AUCs below are the cleaner measure of outcome signal.
 
 ---
 
-## 2026-07-11 — eval-head ablation, first result (repr=F)
+## 2026-07-11 02:14 — eval-head ablation, first result (repr=F)
 
 Timing: 3m49s/run (MPS, 2 epochs x 12 shards x 400k row cap; holdout report
 included). 224,326 holdout rows, 19,891 with lichess [%eval].
@@ -84,7 +84,7 @@ is threshold miscalibration of the fixed 0.45/0.55 cut, not extra signal loss
 
 ---
 
-## 2026-07-11 — M1.5 kickoff: meet-in-the-middle decomposer on real boards
+## 2026-07-11 02:30 — M1.5 kickoff: meet-in-the-middle decomposer on real boards
 
 New `catspace/planner/decompose.py`: recursive geodesic-midpoint decomposition
 over the FB embedding. Hop s->g splits at the pool waypoint maximizing
@@ -110,7 +110,7 @@ reaches = 0.0954.
 
 ---
 
-## 2026-07-11 — eval-head ablation, full table
+## 2026-07-11 06:30 — eval-head ablation, full table
 
 B and FB rerun after the zdiff device fix (B 3m48s, FB 6m52s — FB embeds both
 encoders; F/B runs share one). Same 224,326-row holdout, 19,891 annotated.
@@ -152,7 +152,7 @@ here is still reach>=tau, ESTIMATED not verified; the MC-rollout leaf check
 
 ---
 
-## 2026-07-11 — the next jump: 30k-step training run + automated re-eval
+## 2026-07-11 07:26 — the next jump: 30k-step training run + automated re-eval
 
 Every finding today bottomed out at "the field has only 2000 steps," so the
 jump is a real training run with the eval suite chained behind it. Before
@@ -179,7 +179,7 @@ sharpens (a sharper field should stop rating everything reachable).
 
 ---
 
-## 2026-07-11 — 30k-step field: before/after (the budget hypothesis was right)
+## 2026-07-11 08:28 — 30k-step field: before/after (the budget hypothesis was right)
 
 Pipeline timings: train 46m35s (5.8 it/s MPS, resumed 2000->30000), heads
 3m41s / 3m45s / 6m52s (F/B/FB), decompose_demo 12s. Logs+times in
@@ -223,3 +223,1304 @@ VAL_TOP1 0.033 = 16.9x chance (top8 11.4x chance/8). Loss still descending
 at 30k — the curve says more budget helps; 100k+ is cheap (~2.6h) and the
 suite is push-button. But the marginal information per hour now favors
 building the rollout verifier first.
+
+---
+
+## 2026-07-11 09:36 — interactive viz suite: 7 viewers + gallery (build)
+
+Planned in VIZ_PLAN.md, then built all 8 deliverables (D1–D8). New shared
+module `catspace/viz/realboard.py` (game/PGN sampling, batched F/B embedding
+under true or planner omega, a thin projection-fit wrapper) plus one builder
++ template per viewer under `experiments/viz/build_*.py` /
+`catspace/viz/templates/*.html`. All local, self-contained HTML (no CDN, no
+fetch), dark-styled to match the existing KRk/KRkn viewers.
+
+**Key design fix, mid-build (Kaveh's call):** boards were originally
+pre-rendered server-side with `chess.svg.board()` and embedded as raw SVG
+strings in the JSON payload. Measured: every `chess.svg.board()` call
+produces ~31KB of SVG **regardless of the `size` render parameter** — so
+payload size scaled with position count, not pixel size, and the two
+board-heavy viewers came out at 17MB (fullboard) and 74MB (decision,
+2 games at 200 plies + 4 feared-replies/ply). Switched every board-bearing
+viewer to storing FEN (~70 bytes) + two last-move square names, with a
+hand-rolled `boardSVG(fen, opts)` renderer (8x8 grid + Unicode piece glyphs,
+filled-glyph trick for legible white pieces, no external chess-board JS lib)
+duplicated inline in each template, rendering only the on-screen position on
+demand. Result: fullboard 17MB→196KB, decision-viewer 74MB→1.1MB (and could
+restore full 200-ply games + feared-FEN on *every* candidate instead of a
+capped top-2, since the per-position cost dropped ~450x). Verified the
+renderer with `node --check` + a piece-count assertion (64 rects, 32 texts
+on the start position) since there's no headless browser here.
+
+**Builders and cross-checks against journaled numbers (all ckpt step 30000
+unless noted):**
+- **D2 training-dashboard** (17KB): pure log parsing, no torch. Verdicts
+  reproduce exactly (VAL_TOP1=0.033, DIFF_SLOPE +0.174/-0.080).
+- **D1 fullboard-viewer** (196KB, `--n-games 9 --n-bg 3000`): 9 balanced
+  holdout games (win/loss/draw round-robin) + 3000-point background cloud,
+  PCA-projected, colored by reach-to-MATE_DIFF. Found and fixed an off-by-one
+  in the (unexercised) optional `--pgn` branch: it was overwriting the
+  correct per-ply SAN (computed by `infer_san` comparing consecutive encoded
+  positions) with the WRONG san — `games_from_pgn`'s tuple at index i holds
+  the move *about to be played from* ply i, not the move that led *into*
+  ply i. Removed the overwrite; `infer_san` was already correct.
+- **D3 decision-viewer** (1.1MB, `--opponent random --games 6`): FB (depth=2,
+  no search) vs random, 200-ply cap. 3 decisive wins, 1 draw, 2 unresolved —
+  no losses, consistent with arena_real.py's documented expectation ("vs
+  random it should win decisively or something is wrong"). Also fixed a real
+  bug in the pre-existing builder: candidate arrows were computed from the
+  pre-move board but drawn onto the post-move board SVG (arrows pointed at
+  stale squares) — dropped the arrow overlay entirely (the candidate table +
+  `lastmove` highlight already cover it) rather than patch it.
+- **D4 decompose-viewer** (28KB, `--n-starts 60 --n-show 24`): reproduces
+  decompose_demo.py's story on an independent sample — FRAC_IMPROVED=0.833
+  (journaled 0.825), MEAN_GAIN=0.417 (0.43), waypoint ply mean 67.2 vs start
+  29.1 (journaled 68.3/30.2) — the arc property holds.
+- **D5 embedding-atlas** (1.02MB, `--n 8000 --projection tsne`, ~47s):
+  step-2000 vs step-30000 F embeddings, independently t-SNE'd (not
+  comparable point-for-point, only cluster shape). reach-vs-result
+  correlation 0.073→0.163 across the two checkpoints — visually confirms the
+  F>B training-budget flip from the eval-head ablation.
+- **D6 divergence-explorer** (595KB, `--n 6000`, ~4s): top |div| ≈ 0.28,
+  matching train_eval_heads.py's logged top-divergent list order of
+  magnitude.
+- **D7 eval-dashboard** (57KB, `--n 20000`, ~12s): AUC F=0.627 B=0.598
+  FB=0.638 baseline=0.599 (journaled 0.625/0.596/0.636/0.598, all within
+  0.002) — the acceptance check named in VIZ_PLAN.md passes. Reliability
+  curve tracks the diagonal closely; per-ply AUC rises 0.54→0.79 from
+  opening to endgame (expected: outcome gets easier to call as games
+  resolve); per-Elo AUC flat ~0.60–0.65 across bins.
+- **D8 gallery** (`experiments/viz/build_gallery.py`): scans
+  `artifacts/generated/*.html`, writes `index.html` — 9 viewers listed
+  (7 new + the 2 toy KRk/KRkn viewers).
+
+**Tests:** `tests/test_viz_builders.py` (9 new fast tests on
+`catspace/viz/realboard.py`: SAN recovery, board-SVG shape, projection
+round-trip, shard-game loading incl. the holdout filter, PGN parsing,
+batched-embedding unit-norm, build_html JSON round-trip). Full suite:
+109 passed, 0 failed (216s, includes the pre-existing slow-marked tests).
+
+**Total build wall-clock** for all 7 model-backed builders: ~4 min on CPU
+(MPS left free; these are one-shot demo-sized runs, not training).
+
+---
+
+## 2026-07-11 11:00 — A/B experimentation harness + Stockfish-leakage safety gate
+
+Kaveh's ask: use the existing A/B testing harness (`catspace/abtest.py`'s
+`EValueTest`, already the toy-domain method-comparison tool used by
+`compare_methods.py`, and already imported into `experiments/arena_real.py`
+for real-board arena games) to iteratively improve the model and compare
+against previous checkpoints, with structured JSON output so comparisons
+don't require opening the viz — and, the one hard requirement: training must
+never leak Stockfish-oracle signal into the planner. Checked first whether
+this needed a new dependency (MLflow/W&B/Sacred/etc.) — the repo has zero
+MLOps dependencies and is deliberately minimal (numpy/scipy/torch only), and
+the actual ask (checkpoint-vs-checkpoint comparison + a leak gate + JSON
+records I can read without a UI) doesn't need one; stayed with plain JSON
+files under the new `artifacts/experiments/` (git-tracked, unlike
+`artifacts/generated/`'s regenerable viz output).
+
+**New: `catspace/audit.py`, the leakage gate.** Two independent checks,
+combined into one hard `clean: bool`:
+- `static_purity_check()` re-inspects, AT CALL TIME (via `inspect.getsource`),
+  the actual source of the FB-training path (`train_lichess_fb.batch_tensors`,
+  `.main`) and the planner's read path (`FBBoardPolicy.move_scored`,
+  `planner.decompose.decompose`/`waypoint_scores`) for any reference to
+  Stockfish-derived identifiers (`eval_cp`, `winprob_cp`, `sf_label`,
+  `stockfish`, `wdl_*`) — so a future edit that starts reading eval_cp into
+  the FB loss fails this automatically, no one has to remember to update an
+  audit.
+- `checkpoint_provenance_check()` reads a `provenance` dict now stamped into
+  every checkpoint by `save_ckpt`/`train_lichess_fb.py` at every save (script,
+  args, git commit, and a `stockfish_free` flag that is itself the OUTPUT of
+  `static_purity_check()` against the running code, not a literal `True` —
+  self-correcting). Pre-audit-era checkpoints without a stamp are "unknown",
+  not "dirty" — the static check is the fallback, not a second hard gate.
+
+Caught one real self-referential false positive while building this: the
+first draft's `if not provenance["stockfish_free"]:` line lived inside
+`train_lichess_fb.main()` — and `main()`'s OWN SOURCE therefore contained the
+substring "stockfish", tripping the scan on itself. Fixed by moving that
+check into `catspace.audit.is_provenance_clean()`, so `main()` never needs
+the forbidden word in its own body. `tests/test_audit.py` (11 tests) covers
+both directions: a synthetic function reading `eval_cp` IS caught; the real,
+unmodified codebase passes `static_purity_check()` clean.
+
+**Confirmed no leak paths exist today, and why:** `train_lichess_fb.py`'s
+`batch_tensors()` reads only packed/meta/game_id/elos/clock from the pair
+batches — `LichessPairSource` DOES carry `eval_cp` in `batch.meta` when
+present, but the training loop never reads that key. `nn/eval_head.py`'s
+`--joint` flag (fine-tunes F on the Stockfish-derived normative loss) is off
+by default, and even when used, `train_eval_heads.py` never writes the
+fine-tuned F back to any checkpoint the planner could load — only
+`save_heads()` (desc/norm probes) is called, never `save_ckpt()`. So the FB
+weights the planner reads are structurally isolated from Stockfish signal by
+construction, not just by convention; the audit makes that invariant
+self-checking instead of implicit.
+
+**New: `experiments/arena_real.py::run_arena()`** — extracted the arena loop
+(previously inlined in `main()`) into a reusable function instead of
+duplicating it in the new harness. Generalized `opponent` to optionally be a
+(white_policy, black_policy) TUPLE, not just a single color-agnostic policy —
+needed because a candidate-vs-baseline-CHECKPOINT head-to-head means the
+"opponent" is itself another FBBoardPolicy, which is color-specific
+(zMATE_W vs zMATE_B). This made candidate-vs-baseline just another
+`run_arena()` call with no new game-loop code. Re-verified `arena_real.py`'s
+CLI path still works identically after the refactor (smoke-tested).
+
+**New: `experiments/experiment_report.py`** — the harness itself. Per run:
+(1) load candidate checkpoint, run `audit_checkpoint()` — HARD gate, aborts
+with no report written if dirty (verified: tampered a checkpoint's
+provenance to `stockfish_free=False`, confirmed exit code 1, no output file);
+(2) reach/diff slopes (reused `train_lichess_fb.py`'s `reach_slope` logic);
+(3) M1.5 decompose metrics (same recipe as `build_decompose_viewer.py`);
+(4) arena vs a fixed opponent via `run_arena` + `EValueTest`; (5) optional
+`--baseline <ckpt>` triggers a direct head-to-head via the same `run_arena`
+generalization. Writes one JSON record to `artifacts/experiments/`, prints a
+VERDICT line matching the repo's existing convention.
+
+**New: `experiments/experiment_leaderboard.py`** — reads every JSON record,
+sorts by timestamp, prints (+ optional `--out` JSON) each run's metrics plus
+delta vs the immediately-previous run and vs the best-so-far by `--metric`
+(arena_score / arena_e_value / diff_slope_won / diff_slope_lost /
+decompose_mean_gain / decompose_frac_improved). DIRTY (leakage-failed) runs
+are shown but excluded from best/delta tracking, not silently dropped.
+
+**First real baseline record** (`lichess_fb.pt`, step 30000, `--games 40
+--opponent random`, ~413s total): `AUDIT=CLEAN`. Reach slopes
+0.611/0.490 (won/lost), DIFF_SLOPE +0.164/-0.136 — same sign pattern as the
+30k training run's own verdict, some variance from an independent 200-game
+resample. Decompose: FRAC_IMPROVED=0.833 MEAN_GAIN=0.417 (bit-exact match to
+the D4 viz build — same seed, same params, deterministic, a good consistency
+check across the two code paths). Arena vs random: +22 =18 -0, score=0.775,
+e=501656 (REJECT) — zero losses, matching `arena_real.py`'s own documented
+expectation ("vs random it should win decisively or something is wrong").
+Saved as `artifacts/experiments/20260711T112211__step30000__89d5d2581f5c9e31.json`,
+tagged "30k-step baseline" — this is now the number future training changes
+get compared against via `experiment_leaderboard.py`.
+
+**Tests:** `tests/test_audit.py` (11 new). Full suite: 120 passed
+(109 + 11), 212s, no regressions from the `arena_real.py`/`nn/fb.py` edits.
+
+---
+
+## 2026-07-11 11:40 — autonomous planner-improvement research loop (protocol)
+
+Kaveh's ask: go into an autonomous loop improving the planner, using the A/B
+harness to compare against previous instances, journaling every round,
+researching when stuck. Two explicit rules on top: (1) keep training on
+more data as long as it keeps improving win/draw/loss vs a FIXED-strength
+Stockfish; (2) as the model improves, escalate that Stockfish strength so
+WDL doesn't saturate/clip at the ceiling and stay measurable, and always
+record the strength played at.
+
+**First vs-Stockfish measurement** (we'd only measured vs-random before
+today): `sf:skill=0` (Stockfish's weakest, movetime 0.02s), 6 games,
++0 =1 -5, score 0.083 — losing badly, as `arena_real.py`'s own docstring
+predicts for an imitation-bootstrapped, no-search greedy policy. This is a
+GOOD starting difficulty: room to see improvement long before hitting the
+saturation ceiling the escalation rule exists for.
+
+**Protocol** (full machine-readable state in
+`artifacts/experiments/research_state.json`, updated every round):
+- **Opponent ladder**: `sf:skill=` 0 → 3 → 6 → 9 → 12 → 15 → 18 → 20.
+  Escalate to the next rung once score_mean vs the current rung reaches
+  0.75+ over >=30 games (clearly winning, approaching saturation).
+- **Per round**: train more (extend `--steps` on the current best
+  checkpoint via `train_lichess_fb.py`, which resumes automatically), then
+  `experiment_report.py --baseline <previous best> --opponent <current
+  rung> --games 40` for a same-strength apples-to-apples comparison PLUS a
+  direct head-to-head vs the previous checkpoint. Compare `arena_score` at
+  the SAME opponent string only -- an escalation makes the raw number drop
+  even when the model improved, so every comparison must filter by
+  opponent, not just read `experiment_leaderboard.py`'s raw column.
+- **Continue training** if score at the current rung improves (or the
+  head-to-head vs the previous checkpoint rejects H0 in the candidate's
+  favor). **Escalate strength** once score >=0.75 at 30+ games. **Stuck**
+  after `stuck_rounds_threshold=2` rounds with no improvement at the same
+  rung -- work the `stuck_playbook` in research_state.json (re-read the
+  decompose/eval-head findings for an unexploited lever, e.g. the MC-rollout
+  executability verifier already flagged as the next priority; web-research
+  self-play/PI-refinement techniques -- `arena_real.py`'s own docstring
+  names PI-refinement as what should eventually beat Stockfish; try a
+  hyperparameter lever (lr/gamma/d/readout depth) instead of raw steps; a
+  documented negative result is an acceptable stuck-resolution if research
+  and one alternate lever both fail).
+- **Data**: batch=512, so one epoch over the current 1GB-prefix shard
+  (11.07M positions) is ~21615 steps. Step 30000 was only ~1.4 epochs in --
+  continuing on the SAME shard is still "more data" in the sense that
+  matters (fresh unseen positions within this training run) for a while yet
+  before a bigger Lichess download (network confirmed reachable; the full
+  2019-01 month is 9.4GB compressed vs. the 1GB prefix on disk) is actually
+  needed.
+- **Leakage**: structurally enforced already -- every `experiment_report.py`
+  call runs the audit as a hard gate, no protocol step can bypass it.
+
+**Round 1 launched**: `train_lichess_fb.py --steps 60000` (resuming
+`lichess_fb.pt` from step 30000, +30000 steps, ~50min expected at the
+30k-run's measured ~10 it/s on MPS) → log
+`artifacts/generated/logs/train_60k.log`. Next: evaluate at `sf:skill=0`
+(same rung as the just-established baseline), compare, decide, continue.
+
+---
+
+## 2026-07-11 12:31 — round 1: a regression, an operational mistake, and a fix
+
+**Round 1 result: REGRESSION.** `train_lichess_fb.py`'s own end-of-run
+verdict already looked wrong (`DIFF_SLOPE_WON` flipped +0.174 → **-0.075**,
+`REACH_SLOPE_WON` fell 0.671 → 0.437), so per protocol I didn't trust it and
+ran the independent `experiment_report.py` measurement instead. It confirmed
+a real, well-corroborated decline, most unambiguously in the decompose
+numbers (no sign-interpretation ambiguity there, unlike the diff-slope
+halves individually):
+
+| metric | step 30000 | step 60000 |
+|---|---|---|
+| decompose FRAC_IMPROVED | 0.833 | **0.617** |
+| decompose MEAN_GAIN | 0.417 | **0.310** |
+| reach_slope_won | 0.611 | **0.469** |
+| reach_slope_lost | 0.490 | **0.263** |
+| tau_exec (near-win reach) | 0.236 | **0.157** |
+
+Fewer middlegame starts have a useful waypoint, and the gain from splitting
+one shrank by a quarter — a real degradation in exactly the M1.5 planner
+machinery this whole loop exists to improve, not noise in one metric.
+
+**Operational mistake, logged honestly:** `train_lichess_fb.py` saves over
+`data/derived/lichess_fb.pt` in place, and I never copied the step-30000
+weights to a backup before launching round 1. They're gone — only the JSON
+metrics record (`20260711T112211__step30000__89d5d2581f5c9e31.json`)
+survives, so the step-30000-vs-step-60000 comparison above is metrics-only,
+not a live head-to-head. Immediately backed up the step-60000 output
+(`lichess_fb_step60000.pt`) and hard-added "always back up before training"
+to `research_state.json`'s constraints — every future round follows this.
+
+**Diagnosis + research (stuck-playbook step 2):** `train_lichess_fb.py` had
+**no learning-rate schedule at all** — constant `lr=3e-4` for the entire
+run, including this 30000-step extension (bringing the shard to ~2.8
+epochs). WebSearched to check whether this is a plausible cause before
+committing to a fix:
+- "constant LR contrastive learning representation collapse" — confirmed:
+  dimensional collapse is a known stationary point of the InfoNCE loss, and
+  a non-decaying (or too-large) LR is called out as accelerating it via
+  embedding-mean drift from negative-pair gradients aligning in similar
+  directions. ([Feature Normalization Prevents Collapse of Non-Contrastive
+  Learning Dynamics](https://arxiv.org/pdf/2309.16109))
+- "cosine decay warmup contrastive SimCLR CLIP best practices" — confirmed:
+  SimCLR and CLIP both use linear warmup + cosine decay, standard practice
+  is decaying to about 1/10th of peak LR over the full schedule.
+  ([SimCLR paper](https://proceedings.mlr.press/v119/chen20j/chen20j.pdf),
+  [SimCLR/Flax training notes](https://www.tahabouhsine.com/flaxdocs/research/contrastive-learning))
+
+This matches the symptom well: raw retrieval loss/VAL_TOP8 looked roughly
+flat (not obviously diverging), but the *downstream geometric structure*
+the decomposer depends on (bottleneck-max waypoint selection needs a
+well-calibrated, not-drifting reach signal) degraded — consistent with
+"quiet" representation drift rather than an obvious loss blowup.
+
+**Fix implemented:** `train_lichess_fb.py` now cosine-decays
+`lr -> lr/10` over *each invocation's remaining steps* (resume_step ->
+`--steps`), not the whole training history — a new `--lr-min` arg,
+default `lr/10`. Deliberately scoped to the current invocation rather than
+the full historical step count, since the constant-LR phase already
+happened and can't be fixed retroactively; this is the standard
+"resume-and-decay" shape for exactly this iterative extend-and-train
+workflow. Smoke-tested on a 250-step CPU fresh run: LR fell from ~6.9e-4 at
+40% progress to ~1.9e-4 at 80% progress, matching the cosine formula
+closely. Full pytest suite (120 tests, including `catspace.audit`'s
+static-source inspection of this exact file) passes clean after the change
+— the leakage audit isn't affected by an LR-schedule edit, as expected, but
+worth confirming since audit.py inspects `train_lichess_fb.py`'s source
+directly.
+
+**Round 2 (recovery) launched**: `train_lichess_fb.py --steps 90000`
+(resuming step 60000, +30000 steps, now WITH cosine decay) →
+`artifacts/generated/logs/train_90k.log`, ~55min expected. `best` in
+`research_state.json` stays pinned at step 30000 (metrics-only reference)
+until round 2 is evaluated — step 60000 is not promoted to best, it's a
+documented regression kept only for comparison. Next wake: run
+`experiment_report.py` on the step-90000 checkpoint, compare decompose/
+reach-slope numbers against BOTH the step-30000 baseline and the
+step-60000 regression, to see whether the LR fix actually recovered
+quality or whether this needs another lever from the stuck-playbook.
+
+---
+
+## 2026-07-11 15:31 — round 2: LR fix partially worked, second cause found (epoch repetition)
+
+**Round 2 result: PARTIAL RECOVERY, still below the step-30000 baseline.**
+Full three-way comparison, all via the identical `experiment_report.py`
+methodology:
+
+| metric | step 30000 | step 60000 (round 1) | step 90000 (round 2) |
+|---|---|---|---|
+| decompose FRAC_IMPROVED | 0.833 | 0.617 | 0.717 |
+| decompose MEAN_GAIN | 0.417 | 0.310 | 0.373 |
+| reach_slope_won | 0.611 | 0.469 | **0.374** |
+| reach_slope_lost | 0.490 | 0.263 | **0.072** |
+| tau_exec (near-win reach) | 0.236 | 0.157 | **0.103** |
+| diff_slope_won | 0.164 | 0.038 | 0.111 |
+
+The LR-schedule fix (added after round 1) clearly helped: decompose
+FRAC_IMPROVED/MEAN_GAIN and diff_slope_won all moved back toward the
+step-30000 baseline. But it did NOT fix everything — reach_slope_won,
+reach_slope_lost, and tau_exec kept declining **monotonically across both
+rounds**, LR fix notwithstanding. reach_slope_lost in particular is now
+almost zero (0.072): lost games barely show any ply-reach correlation left
+at all. A fix that only partially works, on a strictly-declining metric,
+means there's a second cause still active.
+
+**Second diagnosis:** step 90000 is **~4.16 epochs** over the same
+1GB-prefix shard (11.07M positions) — `90000*512/11067003`. The ORIGINAL
+successful run (2000→30000 steps, the one that produced the well-behaved
+step-30000 baseline) only reached **~1.4 epochs**, on the exact same
+constant-LR regime that later caused round 1's regression. That's an
+important asymmetry: constant LR alone didn't break things at 1.4 epochs,
+it broke things somewhere between 1.4 and 2.8+ epochs. This points at
+**epoch-repetition / overfitting to the fixed shard's specific structure**
+as the dominant remaining cause, with the missing LR schedule as a real but
+secondary compounding factor (which is exactly consistent with "partial
+recovery, not full recovery" once decay was added back).
+
+**Decision:** this is the `stuck_rounds_threshold=2` trigger — two rounds
+of extending training on the same 1GB shard, neither beating the
+step-30000 baseline on the metrics that matter most (decompose, reach
+slopes). Per the user's own explicit instruction ("keep training on more
+data AS LONG AS it improves things"), the right reading of that rule, given
+this evidence, is: stop extending on the SAME data (it isn't improving
+things anymore) and get MORE data instead of more epochs of the same 11M
+positions — which is stuck-playbook lever 3 (data scale), not a new lever
+invented on the spot.
+
+**Action:** measured download throughput (5.4 MB/s via a 100MB range
+request), then launched a background pipeline: (1) download a 4GB Lichess
+prefix (range-request, same source, `--tolerate-truncation`, ~13min
+expected) — 4x the previous 1GB prefix, matching the
+`next_data_scale_gb_if_epochs_exhausted` figure already planned into the
+protocol before round 1 even ran; (2) `build_lichess_shards.py` on it
+(`--max-gb 8 --max-games 1000000` to not artificially cap the larger
+source); (3) a FRESH 30000-step training run (`--fresh`, matching the
+ORIGINAL successful run's step budget exactly, for a clean apples-to-apples
+read) on the new shard, saved to a **new checkpoint file**
+(`data/derived/lichess_fb_4gb.pt`, not overwriting the existing
+`lichess_fb.pt` lineage) — deliberately never touches the step-30000/60000/
+90000 checkpoints, so this branch is directly comparable without any risk
+of repeating the round-1 backup mistake. `research_state.json`'s `best`
+stays pinned at step 30000 (still the reference to beat) until round 3 is
+evaluated. Task `br8cfv8b8`, full pipeline log
+`artifacts/generated/logs/data_scale_pipeline.log`. Next wake: check
+pipeline progress; once the fresh run finishes, run `experiment_report.py`
+on `lichess_fb_4gb.pt` and compare against the step-30000 numbers above —
+if genuinely new data (not just more epochs) resolves the decline, that's
+the confirmation; if it doesn't, the epoch-repetition hypothesis was wrong
+and the stuck-playbook needs another lever (embedding dim, gamma, or a
+deeper look at whether the InfoNCE batch/negative-sampling setup itself
+has a ceiling around this loss level).
+
+---
+
+## 2026-07-11 16:51 — round 3: 4GB shard, promising but not a clean win yet
+
+**Pipeline result**: downloaded a 4GB Lichess prefix -> 55.82M positions
+across 56 shards (vs the 1GB shard's 11.07M -- ~5x). Fresh 30000-step run
+on it, saved to `data/derived/lichess_fb_4gb.pt` (new file, doesn't touch
+the existing checkpoint lineage).
+
+**Full four-way comparison** (all via identical `experiment_report.py`
+methodology):
+
+| metric | 1GB step30k | 1GB step60k | 1GB step90k | 4GB fresh step30k |
+|---|---|---|---|---|
+| decompose FRAC_IMPROVED | 0.833 | 0.617 | 0.717 | 0.767 |
+| decompose MEAN_GAIN | 0.417 | 0.310 | 0.373 | **0.462** |
+| reach_slope_won | 0.611 | 0.469 | 0.374 | 0.515 |
+| reach_slope_lost | 0.490 | 0.263 | 0.072 | 0.316 |
+| tau_exec | 0.236 | 0.157 | 0.103 | 0.201 |
+| arena vs sf:skill=0 | (n/a) | 0.075 | 0.087 | 0.100 |
+
+Clearly better than both round-1 and round-2 on every single metric — the
+data-scale lever is directionally working. It also beats the ORIGINAL
+1GB-step30000 baseline on MEAN_GAIN specifically (0.462 vs 0.417), a new
+best. But it's still slightly below the 1GB baseline on FRAC_IMPROVED,
+reach_slope, and tau_exec — not a clean, unambiguous win.
+
+**Interpretation check before deciding anything**: is 30000 steps on 4GB
+actually a fair comparison to 30000 steps on 1GB? No — at 30000 steps, the
+4GB shard has only been seen ~0.275 times on average (55.82M positions /
+(30000×512)), vs the 1GB shard's ~1.4 passes at the same step count. More
+unique data per step means proportionally *less* gradient exposure per
+position at a fixed step count. Concluding "data scale doesn't clearly
+help" from this alone would conflate "this checkpoint is comparatively
+undertrained" with "the lever doesn't work" — two different claims. The
+right test is comparable EXPOSURE, not comparable step count.
+
+**Decision**: extend the SAME `lichess_fb_4gb.pt` checkpoint from 30000 to
+60000 steps (round 4) — still only ~0.55 epochs on this shard, nowhere
+near the 1.4–4+ epoch range where the 1GB shard started failing. Backed up
+the step-30000-on-4GB checkpoint first
+(`data/derived/lichess_fb_4gb_step30000.pt`). If round 4 clearly surpasses
+the 1GB-step30000 baseline (not just approaches it), that confirms
+epoch-repetition was the real driver of rounds 1–2's decline and the 4GB
+shard is the new working substrate to keep extending. Log
+`artifacts/generated/logs/train_4gb_60k.log`, task `biovfteth`, ~50min
+expected at the ~13 it/s observed on this shard.
+
+---
+
+## 2026-07-11 17:46 — round 4: no clean win, and arena score has stalled for 4 straight rounds
+
+**Round 4 result: MIXED, still not a clean win over the reference baseline.**
+Full five-way comparison, all via identical `experiment_report.py`
+methodology:
+
+| metric | 1GB-30k | 1GB-60k | 1GB-90k | 4GB-30k | 4GB-60k |
+|---|---|---|---|---|---|
+| decompose FRAC_IMPROVED | 0.833 | 0.617 | 0.717 | 0.767 | 0.800 |
+| decompose MEAN_GAIN | 0.417 | 0.310 | 0.373 | 0.462 | 0.463 |
+| reach_slope_won | 0.611 | 0.469 | 0.374 | 0.515 | 0.520 |
+| reach_slope_lost | 0.490 | 0.263 | 0.072 | 0.316 | **0.282** |
+| tau_exec | 0.236 | 0.157 | 0.103 | 0.201 | **0.168** |
+| arena vs sf:skill=0 | n/a | 0.075 | 0.087 | 0.100 | 0.100 |
+
+FRAC_IMPROVED and MEAN_GAIN inched up from round 3 (0.767→0.800,
+0.462→0.463), but reach_slope_lost and tau_exec moved AWAY from the
+baseline, not toward it — the same early-warning shape that preceded the
+1GB shard's collapse, just much slower thanks to the larger dataset. This
+round doesn't cleanly beat the 1GB-step30000 reference on the full metric
+set.
+
+**The more important observation:** arena score vs `sf:skill=0` has been
+flat across all four training-lever rounds — **0.075 → 0.087 → 0.100 →
+0.100**. None of it — the LR-schedule fix, 5x more data, or 2x more steps
+on that larger data — moved the metric that actually matters (does the
+planner win games), even while some embedding-quality proxy metrics
+(MEAN_GAIN, decompose FRAC_IMPROVED) genuinely improved. The proxies and
+the actual win rate have decoupled.
+
+**This is not actually a surprise, on reflection.** `arena_real.py`'s own
+docstring, written before any of this loop ran, already says it: *"this
+field is imitation-bootstrapped from human games and read out greedily
+with no search — vs Stockfish (floor Elo 1320) losing is the EXPECTED
+baseline; the roadmap's PI-refinement loop is what should move it."* Four
+rounds of tuning the embedding (the thing decompose/reach-slope actually
+measure) were reasonable things to try and worth doing, but they were never
+going to touch the no-search bottleneck those metrics don't capture.
+
+**Research** (WebSearched before committing to a big engineering pivot):
+- *"self-play imitation learning chess no search"* — confirmed: "learning
+  to play chess without knowing the rules is extremely challenging since
+  you cannot improve via self-play, resulting in relatively poor policies
+  compared to other methods" — pure imitation learning has a documented
+  ceiling. ([Imitation Learning by Estimating Expertise of
+  Demonstrators](https://arxiv.org/pdf/2202.01288))
+- *"shallow search + learned value function"* — confirmed and more
+  actionable: "the strongest results were obtained when the learned value
+  function was combined with deeper lookahead during gameplay." This is a
+  pure inference-time change (no retraining) that directly reuses
+  `F(s)@z`, the value function this whole loop has been trying to improve.
+  ([Learning to Plan via Supervised Contrastive Learning and Strategic
+  Interpolation](https://arxiv.org/html/2506.04892v1), [Superior Computer
+  Chess with Model Predictive Control, Reinforcement Learning, and
+  Rollout](https://arxiv.org/pdf/2409.06477))
+
+**Decision: pivot from "train the embedding more" to "search deeper with
+the embedding we already have."** This is a genuinely different lever than
+rounds 1–4 (all training-volume variants), and it's testable immediately
+without waiting on more training. `FBBoardPolicy`'s depth-1/depth-2 readout
+is hardcoded for exactly those two cases with full GPU-batched leaf
+evaluation; generalizing it to arbitrary depth isn't a small edit, so this
+became a new class.
+
+**New: `catspace/nn/policy_fb.py::FBSearchPolicy`.** Beam-limited plain
+minimax (deliberately NOT alpha-beta — pruning needs serial leaf
+evaluation, which would give up the single-batched-forward-pass philosophy
+this codebase uses everywhere, including `FBBoardPolicy`'s own depth-2).
+Root branching is never capped (every legal move gets a fully-searched
+score); every ply after the root is capped at `beam` children, ranked by a
+cheap one-ply reach heuristic, with any mate-delivering child exempted
+from the cap regardless of rank. `F(s)@z` — the exact same, unchanged
+value function — is still the only learned signal; nothing here retrains
+anything.
+
+**A real bug caught by testing, not by luck.** First version used a flat
+`MATE_SCORE`/`MATED_SCORE` regardless of ply distance (matching
+`FBBoardPolicy`'s existing convention, where it never mattered since depth
+was hardcoded to 1 or 2). Wrote
+`tests/test_realboard.py::test_fb_search_policy_finds_forced_mate_in_2` — a
+K+2R-vs-lone-K position with a forced mate in exactly 2 (rank-control then
+mate), using `z=0` so ALL non-terminal leaves score exactly 0 and move
+selection is driven purely by mate detection, isolating tree-search
+correctness from embedding quality entirely. The test failed: the policy
+correctly found a move guaranteeing mate within the horizon, but not
+necessarily the FASTEST one, because with a flat mate score, delivering
+mate immediately and delivering it one harmless tempo later score
+identically — a lone king has no counterplay to punish the delay in THIS
+position, but the underlying issue (ties among all in-horizon mates) is a
+real generality gap. Fixed by discounting mate scores by ply distance
+(`MATE_SCORE - ply`, `MATED_SCORE + ply`, standard practice in real
+engines) so the fastest mate strictly dominates. All 11 realboard tests
+(8 existing + 3 new) pass after the fix; full suite 123 passed, 0 failed.
+
+**Wired into the harness**: `experiment_report.py` gained
+`--search-depth`/`--search-beam` (opt-in; omitted = unchanged
+`FBBoardPolicy` behavior, fully backward compatible — every prior round's
+command still reproduces the same policy).
+
+**Timing reality check before committing to a full comparison**: measured
+`depth=4, beam=6` at ~20s/move on CPU with real weights — far too slow for
+a 40-game arena run (9–18h). `depth=3, beam=4` measured ~1.8s/move,
+tractable. Launched a modest first read: 16 games, `max-plies=60`,
+`depth=3 beam=4`, vs the same `sf:skill=0` opponent every prior round used,
+`--skip-decompose` (decompose doesn't touch the policy class at all, so
+re-running it here would just burn time for a value we already have).
+Task `bax2nerac`. The number to beat: **0.100** (flat across all four
+training-lever rounds). If genuine multi-ply lookahead over the SAME
+embedding moves this at all, that's the confirmation the literature and
+this codebase's own docs predicted; if it doesn't, that's an important
+negative result too — it would mean the current F(s)@z value function
+isn't informative enough even for shallow search to exploit, which points
+back at embedding quality (or evaluation granularity) rather than the
+no-search bottleneck as the real ceiling.
+
+---
+
+## 2026-07-11 18:08 — round 5: first movement on arena score in six rounds
+
+**Result: 0.250, up from a flat 0.100.** `FBSearchPolicy(depth=3, beam=4)`
+vs `sf:skill=0`, n=16, `max-plies=60`: **+1 =6 −9**, score **0.250**,
+e=9.50 (not yet reject-worthy at α=0.05 — needs e≥20 — but this is real
+directional signal, not noise-level movement). For comparison: the exact
+same checkpoint (`lichess_fb_4gb.pt`, step 60000) scored 0.100 with the
+unchanged `FBBoardPolicy(depth=2)` readout just one round earlier. Same
+weights, same opponent, same everything except HOW the value function gets
+read out — and the score jumped 2.5x. This is the first time any lever in
+six rounds has moved arena score at all.
+
+Wall-clock: `depth=4, beam=6` measured ~20s/move on CPU with real weights
+— a 40-game run at that setting would take 9–18 hours, ruled out for now.
+`depth=3, beam=4` measured ~1.8s/move (~40s/game observed in the actual
+run), tractable.
+
+**Interpretation, held carefully**: this is a promising *first read*, not
+a confirmed result — n=16 is small and e=9.50 doesn't clear the α=0.05
+bar yet. Launched the protocol-standard n=40 confirmation run at the same
+config (`depth=3, beam=4`) before drawing conclusions. If it holds up,
+the six-round arc of this loop becomes a genuinely interesting research
+narrative: four rounds of tuning training volume (LR schedule, 4x data,
+more steps) never moved the metric that matters, while a single
+architecture change — reusing the SAME embedding with deeper lookahead
+instead of retraining it further — moved it 2.5x on the first try. Matches
+both the codebase's pre-existing documented expectation and the
+WebSearched literature precisely.
+
+Next: read the n=40 confirmation (task `bge3llakc`), and if it holds,
+explore the depth/beam space further (a controlled `depth=2/beam=8` run to
+isolate whether the gain is really from the extra ply vs. some
+re-implementation quirk of the beam-search framework itself; deeper
+configs if runtime allows) before deciding whether `FBSearchPolicy`
+becomes the new default readout for future rounds.
+
+---
+
+## 2026-07-11 18:20 — round 6: CONFIRMED — first statistically significant win of the whole loop
+
+**n=40 vs `sf:skill=0`: +1 =18 −21, score 0.250, e=11666.43, REJECT at
+α=0.05.** Not just directionally consistent with the n=16 read — the
+`score_mean` is IDENTICAL (0.250) at both sample sizes, an unusually clean
+reproduction. This is the first time in six rounds that anything in this
+loop has produced a statistically confirmed improvement on the objective
+metric (win/draw/loss vs a fixed Stockfish strength).
+
+Context for how large this is: four straight rounds of tuning training
+volume (LR-schedule fix, 4x more data, 2x more steps on that data) left
+arena score sitting at 0.075 → 0.087 → 0.100 → 0.100 — never moving, never
+significant. One architecture change — reading out the exact same,
+already-trained embedding with 3-ply beam search instead of the hardcoded
+2-ply `FBBoardPolicy` — produced a 2.5x jump that cleared statistical
+significance on the first properly-sized test. Same checkpoint
+(`lichess_fb_4gb.pt`, step 60000) both times; only the readout changed.
+
+**Promoted to `best`**: `research_state.json`'s `best` now tracks
+(checkpoint, readout) jointly rather than just a checkpoint path, since
+readout strategy is now confirmed to matter as much as — in this case,
+far more than — the embedding weights for the metric that actually
+counts.
+
+**Before declaring victory**: launched a `depth=2, beam=8` control (round
+7) — same ply-depth as the flat `FBBoardPolicy(depth=2)` baseline that's
+been stuck at ~0.08-0.10, but run through the NEW beam-search framework
+(including the ply-distance mate discount fixed earlier). If this control
+ALSO scores well above 0.100, the gain isn't purely "the extra ply" — it
+would point at some other implementation difference (the mate-distance
+discount most likely, since that's the one behavioral change beyond depth
+itself) and the real lesson would be narrower than "deeper search helps."
+If the control stays near 0.100, that confirms the extra ply specifically
+is what's doing the work, which is the cleaner and more generalizable
+story — and the natural follow-up becomes pushing depth further (4 with a
+narrower beam, e.g. beam=3, to control runtime) rather than just widening
+beam at a fixed depth.
+
+---
+
+## 2026-07-11 18:43 — round 7: the gain cleanly splits into two real causes
+
+**`depth=2, beam=8` (new framework, SAME ply-depth as the stuck baseline):
+0.163**, n=40, +0 =13 −27, e=14.5M, REJECT. Neither the null result nor
+the full 0.250 — a genuine middle point:
+
+| readout | score |
+|---|---|
+| `FBBoardPolicy(depth=2)` (old, rounds 1–4) | 0.100 |
+| `FBSearchPolicy(depth=2, beam=8)` (new framework, same depth) | 0.163 |
+| `FBSearchPolicy(depth=3, beam=4)` (new framework, +1 ply) | 0.250 |
+
+The 0.150-point total gain splits roughly 42/58: ~0.063 from the new
+framework itself at matched depth (most likely the ply-distance
+mate-discount fixed during testing, and/or how beam-ranked opponent-reply
+selection differs from `FBBoardPolicy`'s exhaustive-but-unranked MIN —
+notably, beam=8 actually considers FEWER opponent replies than
+`FBBoardPolicy`'s unrestricted enumeration in high-branching middlegame
+positions, yet still scores better, which says the beam's shallow-reach
+ranking is a decent proxy for "opponent's actually-threatening replies"
+even before deeper search refines it), and ~0.087 from the extra ply
+specifically. Both effects are real and both are statistically confirmed
+(both e-values are enormous). This isn't simply "more plies = better" —
+but depth clearly matters on top of the framework improvement.
+
+**Next**: push to depth=4. `depth=4, beam=6` was already ruled out at
+~20s/move; timing `depth=4` with narrower beams (3, 4) now to find a
+tractable setting before committing to a full arena run — task
+`br6djhkef`.
+
+---
+
+## 2026-07-11 18:52 — round 9: depth=4/beam=3 REGRESSES to 0.200 — closes out the ply-depth-tuning thread
+
+**n=40 vs `sf:skill=0`: +1 =14 −25, score 0.200, e=144897.29, REJECT.**
+Down from depth=3's confirmed 0.250, breaking the depth=2(0.163) ->
+depth=3(0.250) trend rather than continuing it:
+
+| readout | score |
+|---|---|
+| `FBBoardPolicy(depth=2)` (old) | 0.100 |
+| `FBSearchPolicy(depth=2, beam=8)` | 0.163 |
+| `FBSearchPolicy(depth=3, beam=4)` | **0.250 (best)** |
+| `FBSearchPolicy(depth=4, beam=3)` | 0.200 |
+
+depth=4 had to shrink beam to 3 (from depth=3's beam=4) to stay
+tractable, so this isn't a clean "more plies, same beam" comparison —
+narrowing the beam to buy depth lost more than the extra ply gained.
+Diminishing/negative returns on ply-depth alone, at a fixed embedding.
+Closes out this research thread (full-board vs. graduated Stockfish,
+tuning ply-depth as the main lever): `FBSearchPolicy(depth=3, beam=4)`
+remains `best` in `research_state.json`.
+
+**Pivot (Kaveh's call, mid-round):** rather than keep hand-tuning
+depth/beam pairs, two bigger changes were made instead:
+
+1. **Node-budget search.** `FBSearchPolicy` no longer takes a fixed
+   `depth`; it takes `max_nodes` and derives depth per-move from the
+   position's real branching factor (`_depth_for_budget`), spending a
+   fixed compute budget as deep as it reaches. Modeled on Leela Chess
+   Zero's own node economy (WebSearched): ~800 nodes/move is Leela's
+   self-play floor, ~1500-2000 is a reasonable "actually playing"
+   reference point, ~128k is where returns diminish sharply. Target set
+   ~150-200 nodes — deliberately ~10x below the reference point, so any
+   win margin has to come from the *plan*, not from out-searching the
+   opponent. Constructor signature, `experiment_report.py`'s
+   `--search-nodes` CLI flag (renamed from `--search-depth`), and all 3
+   `test_realboard.py` `FBSearchPolicy` tests updated accordingly; full
+   suite (123 tests) still green (221.60s).
+
+2. **New diagnostic scenario: KRR vs KBP.** Full-board play vs. Stockfish
+   makes failures hard to diagnose ("too many [concepts] and I don't know
+   how to diagnose the planner's failures" — Kaveh). Switched to a
+   narrow, interpretable endgame instead: White K+R+R vs. Black
+   K+B(light-squared)+P(e-file). Colors fixed (Stockfish always plays
+   Black with the bishop+pawn — `diagnostic_krrkbp.py`'s
+   `random_krrkbp()`); a 20-position fixed starting set was generated
+   (seed=42, `artifacts/experiments/krrkbp_fixed_set.json`) so every
+   algorithm comparison uses the identical position distribution.
+   Syzygy tablebases downloaded (`data/syzygy/`, `KRRvKBP` + its full
+   dependency closure of 5/4/3-piece tables, via
+   `tablebase.lichess.ovh/tables/standard/{3-4-5,6}-{wdl,dtz}/`) confirm
+   all 20 positions are WDL=2 (winning for White) — a real, provably
+   winnable target for the planner to find. Per Kaveh: **the tablebase is
+   an observational overlay only** ("if it wins some other way, who am I
+   to penalize it? ... use the tablebase to tell me what was the actual
+   distance to mate so I can compare to my planner when inspecting
+   visually"), not a scoring signal — win/draw/loss vs. Stockfish stays
+   the objective metric; DTZ is for the decision-viewer, not the reward.
+   Params fixed for now (node budget, beam, Stockfish strength) per
+   Kaveh's call ("let's fix params for now, and see if we can tune the
+   algo") — escalation deferred until an algorithm win is found.
+
+**Next**: an architecture/algorithm search focused specifically on what
+should let the planner learn "keep the rooks on squares the bishop can't
+touch" — see the next entry.
+
+---
+
+## 2026-07-11 20:08 — plan-level (not move-level) search: `FBSearchPolicy.plan()` + `FBPlanPolicy`
+
+**The idea (Kaveh):** *"the plan shouldn't change if the materials have
+just moved around the board without actually changing... We know what the
+plan is, what the trajectory is, and we should be able to get by without
+searching. The only thing is that we're searching moves, not plans... I'm
+looking for a way to capture this concept."* This mirrors a design that
+already exists in the toy (index-based) domain —
+`catspace/planner/plans.py`'s `PlanMemory`/`Plan`/`BlockReason` +
+`catspace/planner/selector.py`'s `PlanSelector`/`GreedyReach`
+("keep the current active plan while it's ACTIVE") — but it was never
+ported to real boards. `catspace/planner/decompose.py` (the M1.5
+meet-in-the-middle waypoint decomposer) turned out to already be
+real-board-compatible, but it needs an externally-sourced `WaypointPool`;
+the goal here was to avoid needing one.
+
+**What was built**, both in `catspace/nn/policy_fb.py`:
+
+- `FBSearchPolicy.move()` was refactored to share its tree-build/score
+  logic with a new `_build_and_score()` helper (no behavior change —
+  verified via the existing tests plus a new one asserting `plan()`'s
+  chosen move exactly matches `move()`'s).
+- `FBSearchPolicy.plan(board, rng) -> (move, subgoal_board)`: reuses that
+  same search tree the policy already builds to choose its move, and
+  additionally walks the **principal variation** — the sequence of
+  backed-up-best children, alternating max (my move) / min (opponent
+  reply) exactly as `_score()` does internally — down to its deepest
+  leaf. That leaf's board is returned as a **subgoal**: the position this
+  search's own best-response line predicts play heads toward, several
+  plies out, entirely as a side effect of the move it was already
+  computing. No separate waypoint search needed.
+- `FBPlanPolicy`: composes two `FBSearchPolicy` instances — a deep
+  **planner** (`plan_nodes=2000` default) and a cheap **executor**
+  (`shallow_nodes=60` default) sharing the same trained `fb` network.
+  Calls `planner.plan()` once to get a subgoal, embeds it with
+  `fb.embed_B()` (L2-normalized, so `F(s)@B(subgoal)` is a cosine
+  similarity in `[-1, 1]`), and re-points the executor's target `z` at
+  it. On every subsequent move it only runs the *cheap* executor,
+  re-invoking the deep planner only on one of three triggers (mirroring
+  `PlanMemory.update()`'s ACHIEVED/STALLED/REPLAN-on-drop logic,
+  collapsed to a single always-active plan): **ACHIEVED** (reach to
+  subgoal `>= achieved_cos`), **STALLED** (`max_plies_per_plan` shallow
+  moves played since the last plan), or **DROPPED** (reach fell more than
+  `drop_delta` below its value when the plan was made).
+
+**Verification** (3 new tests in `test_realboard.py`, all passing):
+`test_fb_search_policy_plan_matches_move_and_has_subgoal` confirms
+`plan()`'s move agrees with `move()`'s independently-computed move on a
+forced-mate-in-2 position, and that the PV subgoal walks all the way to
+the actual mate (not just one ply deep). `test_fb_plan_policy_legal_and_takes_mate`
+is the same legality/mate-taking smoke test the other policies get.
+`test_fb_plan_policy_holds_plan_across_plies` sets `drop_delta`/
+`achieved_cos` outside `[-1, 1]` (so only the plies-cap can fire) and
+confirms `plans_made == 2` over 8 plies at `max_plies_per_plan=6` —
+i.e. the executor, not the deep planner, is genuinely doing the picking
+on non-replan plies. Full suite re-run pending (background).
+
+**Not yet done**: this hasn't been run against Stockfish or the KRRvKBP
+fixed set yet — `FBPlanPolicy` vs. baseline `FBSearchPolicy` on the
+tablebase-verified positions is the next comparison, once the fixed-set
+arena harness (with early stopping wired to `EValueTest.reject_at`) is
+built. Per Kaveh's "check it up the wazoo" mandate, no performance claim
+should be made about plan-persistence until that head-to-head is run and
+the win survives scrutiny — right now this is a mechanism that's been
+built and unit-tested, not yet shown to help.
+
+---
+
+## 2026-07-11 20:16 — round 10: KRRvKBP head-to-head is INCONCLUSIVE, and a bigger problem surfaced — the embedding is tactically blind in this endgame
+
+**`experiments/krrkbp_arena.py` built**: paired comparison (matched starting
+FEN + rng seed per position, `catspace.abtest.EValueTest` on the score
+DIFFERENCE + `confidence_sequence` for a CI on the mean diff — the first
+real-board use of either), Syzygy DTZ looked up per position for the
+printed readout only (never scores anything).
+
+**n=20 result**: `FBSearchPolicy=0.575` vs `FBPlanPolicy=0.525`,
+`mean_diff=-0.050`, `CI=[-1.041, +0.941]`, `e=0.63` — nowhere near
+`1/alpha=20` needed to reject at α=0.05, and `e<1` means the data leans
+mildly toward "no difference," not just "not enough evidence yet." The CI
+spans almost the entire possible range: **this comparison is genuinely
+uninformative, not a confirmed null.**
+
+**Methodological bug found while investigating (verification, not the
+headline finding):** the "matched-seed pairing" rationale
+(`run_paired`'s docstring, copied from `abtest.paired_eval`'s toy-domain
+version) assumes both policies face the *same opponent-randomness
+stream*. That's true in the toy domain, where the opponent consumes the
+passed `np.random.Generator`. It's **false** for `UCIBoardPolicy`:
+Stockfish's `Skill Level` weakening uses the engine's own internal RNG,
+never touched by our seed — re-running the exact same position/seed
+through the harness produced a *different* result each time (verified:
+position 15 gave `0-1 CHECKMATE` in the original run, `1/2-1/2
+INSUFFICIENT_MATERIAL` on a same-seed re-run). So this design is
+effectively closer to an unpaired n=20-per-arm comparison than a true
+paired one — noisier than intended, on top of already being underpowered.
+Not fixed yet (no UCI option controls Stockfish's skill-level RNG); noting
+it here so nobody trusts a future tight-looking CI from this harness
+without accounting for it.
+
+**The actual headline finding, from investigating why BOTH policies
+scored only ~55% against `sf:skill=0` from tablebase-CONFIRMED winning
+positions:** a single-policy scan of all 20 positions (`FBSearchPolicy`
+only, to remove the opponent-randomness confound) found **9/20 (45%)
+games end in `INSUFFICIENT_MATERIAL`** — the policy is trading its OWN
+rooks away down to a bare-kings draw from a 2-rooks-vs-bishop+pawn
+starting advantage. Inspecting one such game (position 15) found the
+White's very **first move, `Rf4`, hangs a full rook for free** (`1...exf4`
+recaptures it immediately) — and it's not a search artifact or a tie:
+printing every legal move's raw root score at that position shows `Rf4`
+scores HIGHEST of all 34 legal moves (0.0419), with the entire score
+range across every move (safe or hanging) compressed into [0.0148,
+0.0419] — the embedding barely distinguishes "hang a rook for nothing"
+from "any other move" here at all.
+
+**Diagnosis:** `F(s)@z` was trained on human Lichess games, where
+K+R+R-vs-K+B+P essentially never occurs — this specific diagnostic
+scenario is exactly the kind of out-of-distribution structure the
+embedding was never asked to judge. The nearly-flat, tactically-blind
+score landscape in this position is consistent with that: not a search
+bug (`_build_and_score`'s scores are exactly what they should be given
+the embedding), not a `FBPlanPolicy`-vs-baseline question at all (the
+shallow executor calls the SAME embedding, so it inherits the same
+blindness) — the reach signal itself doesn't work here yet.
+
+**This changes the recommended next step.** No readout strategy
+(depth, beam, node budget, or plan-persistence) can fix an evaluation
+function that can't tell "hang a rook" from "don't." Before comparing
+`FBSearchPolicy` vs `FBPlanPolicy` further on this scenario, the
+embedding needs either (a) some exposure to K+R+R-vs-minor-piece-like
+material distributions during training (synthetic self-play/tablebase-
+seeded data), or (b) a material-safety guard blended into the search
+score as a stopgap, so the diagnostic is actually testing "does the
+planner find the rook-vs-bishop-square technique" rather than "does the
+planner avoid hanging pieces for free." Flagging this to Kaveh rather
+than picking a direction autonomously, since it's a real fork in the
+research plan, not a tuning knob.
+
+---
+
+## 2026-07-11 21:15 — literature research (3 parallel agents) + decision: outcome-conditioned training before quasimetric swap
+
+Kaveh's framing (verbatim): "we need to find the mechanism, not code it in" --
+material safety, fork-avoidance, and pin-discovery should emerge from the
+representation/training, not be hand-coded as a guard. Also asked whether
+FB is a quasimetric embedding (it is NOT -- `nn/fb.py`'s own docstring:
+cosine-normalized InfoNCE, explicitly "does NOT implement the chain
+QuasimetricEmbedding protocol") and requested literature grounding,
+especially for DAG-structured domains like chess.
+
+**Three parallel research agents, findings (full reports in conversation,
+condensed here):**
+
+1. **Quasimetric vs. contrastive goal-conditioned RL.** Myers, Zheng,
+   Eysenbach, Levine (arXiv:2509.20478, 2025) directly compare quasimetric
+   value functions to contrastive RL (same family as the current F(s)@B(g)
+   dot product) on OGBench "stitching" splits (composing path segments
+   never jointly observed in training -- exactly the pin-then-capture
+   compositionality problem): e.g. antmaze_large_stitch 37.3% (quasimetric)
+   vs 10.8% (contrastive). Wang/Torralba/Isola/Zhang (ICML 2023): the
+   *optimal* goal-conditioned value function is provably a quasimetric, so
+   an unconstrained dot product has no structural reason to compose
+   correctly across hops. Practical architecture: MRN (Liu/Feng/Liu/Stone,
+   AAAI 2023) -- smallest delta from current code, `-d(s,g) + r(s,a,g)`
+   with `d` a real metric. Caveat: zero prior validation on discrete/DAG
+   domains -- every result is continuous robotic control.
+2. **Learned heuristics for DAG/combinatorial planning + tactical concept
+   emergence.** GOOSE/STRIPS-HGN (planning heuristic GNNs) represent goals
+   as per-fact membership indicators, not point embeddings -- the planning
+   literature's version of "region, not point." Regression Planning
+   Networks (Xu et al., NeurIPS 2019) learn backward precondition
+   prediction instead of hand-coding STRIPS preconditions, but never
+   combined with an adversarial game tree. Decisive finding: **McGrath et
+   al., "Acquisition of Chess Knowledge in AlphaZero" (PNAS 2022) found
+   pins, forks, hanging-piece and mate-threat concepts emerge in
+   AlphaZero's internals with ZERO explicit tactical supervision** -- but
+   AlphaZero trained via self-play tied to game OUTCOMES (policy+value
+   loss on wins/losses), not imitation of a fixed human dataset.
+3. **Region/set-valued goal embeddings.** Box embeddings (Vilnis et al.
+   2018), order embeddings (Vendrov et al. 2016), hyperbolic entailment
+   cones (Ganea et al. 2018) all represent genuine containment; no direct
+   RL precedent for goal-as-region exists. Cheapest starting point:
+   Gaussian pooling (mean+covariance over diverse exemplars) -- same shape
+   as Prototypical Networks, no new geometry needed; escalate to boxes only
+   if that proves insufficiently expressive.
+
+**Decision (Kaveh agreed with this ordering):** pursue outcome-conditioned
+training FIRST, ahead of the quasimetric swap -- it's the only lever with
+direct evidence that organic tactical-concept emergence is possible at
+all without hand-coding, and the current FB objective is genuinely
+outcome-blind: `LichessPairSource.batches()` (data/shards.py) samples
+(anchor, goal) pairs geometrically within EVERY game regardless of
+`result`, and `train_lichess_fb.py`'s `batch_tensors()` never reads
+`result` even though it's already present in every batch's meta dict --
+confirmed by reading both files directly, not inferred. The contrastive
+loss purely predicts "which state actually came later in this real game,"
+identical treatment whether that game was won, lost, or blundered away.
+This is a cleaner, more direct explanation for the KRRvKBP rook-hanging
+bug than "out-of-distribution material": the training signal never
+distinguished good continuations from bad ones AT ALL, in ANY position.
+
+**Built to test this cheaply, before committing to full self-play:**
+
+- `experiments/acpl_probe.py` -- Average Centipawn Loss probe (the
+  standard chess-analysis blunder metric, applied to a policy instead of
+  a human). Samples held-out (never-trained) positions straight from real
+  Lichess games, scores the policy's chosen move against a strong
+  fixed-depth Stockfish (`depth=12` default, no skill/elo limiting --
+  deterministic and full-strength, purely for LABELING quality here, not
+  as an opponent to play against, so this doesn't touch the leakage gate).
+- **Baseline result (n=100, current best ckpt, step 60000, depth=8 for
+  speed): ACPL=328.8, blunder_rate(>=300cp)=0.55, mistake_rate(>=100cp)
+  =0.80.** For calibration, human ACPL: <20 is strong-master-level, 100+ is
+  beginner-level. This means the tactical blindness found in the KRRvKBP
+  endgame is NOT specific to that out-of-distribution scenario -- the
+  policy blunders material on the *majority* of moves even on ordinary,
+  in-distribution Lichess middlegame/endgame positions. Saved:
+  `artifacts/experiments/acpl_baseline_step60000.json`.
+- `train_lichess_fb.py --winner-pov-only`: filters (anchor, goal) training
+  pairs to only those where the side to move AT THE ANCHOR is the side
+  that eventually WON the game (drops draws and loser-POV anchors) --
+  `result` was already flowing through the pipeline unused, so this is a
+  pure filter, no new data collection needed. Verified the filter keeps
+  ~48% of training rows (~half of the ~93%-decisive game population, as
+  expected). Cheapest possible test of the outcome-conditioning
+  hypothesis, well short of a full self-play/PI-refinement loop.
+
+**Running now (background):** fine-tuning `lichess_fb_4gb_winnerpov.pt`
+(a COPY of the step-60000 best checkpoint, per the never-overwrite-best
+rule) from step 60000 to 90000 (the standard 30k-step increment) with
+`--winner-pov-only`. Will compare against the ACPL baseline above, and
+against a same-step-budget plain-continuation control (no filter) to
+isolate the filtering effect from just-more-training, before drawing any
+conclusion. If this shows a real signal, escalate to actual self-play
+(the full PI-refinement loop already flagged as the roadmap's real fix);
+if not, the quasimetric swap (MRN) becomes the next lever per the agreed
+ordering.
+
+---
+
+## 2026-07-11 22:50 — round 11 CONFIRMED: outcome-conditioning beats a step-matched control; quasimetric (MRN) mode implemented
+
+**Outcome-conditioning result, properly controlled.** Three checkpoints,
+same starting point (step 60000), same +30000-step budget: `baseline`
+(unchanged), `plain_control` (30k more steps, no filter), `winner_pov_only`
+(30k more steps, `--winner-pov-only`). First read at n=100 looked
+promising (ACPL 328.8 -> 268.7 for winner-pov vs 308.3 for the control)
+but a paired Wilcoxon test on the SAME 100 positions showed
+winner-pov-vs-control wasn't significant (p=0.43) -- n=100 was simply
+underpowered. Scaled the (cheap, ~15s/100-positions) ACPL probe to n=400
+before drawing any conclusion.
+
+**That n=400 re-run caught a real bug in the probe itself first**: ACPL
+jumped from ~300 to 1000-1600 across all three checkpoints, nothing to do
+with the checkpoints -- `acpl_probe.py` was calling `.score(mate_score=
+100000)`, so a rare forced-mate-in-N detection in the sample (a handful of
+positions, more likely to appear at n=400 than n=100) dominated the MEAN
+with a near-lottery-sized ~100000-point outlier. Standard ACPL tooling
+caps mate scores near the normal cp range specifically to avoid this;
+fixed to `mate_score=1000`. Re-ran clean.
+
+**Final n=400 result** (paired Wilcoxon + 2000-resample bootstrap CI, same
+400 held-out positions across all three checkpoints):
+
+| comparison | mean diff | 95% CI | Wilcoxon p |
+|---|---|---|---|
+| winner-pov vs baseline | -41.7cp | [-61.8,-22.0] | 0.00015 |
+| plain control vs baseline | -19.7cp | [-36.8,-3.7] | 0.024 |
+| **winner-pov vs plain control** | **-22.1cp** | **[-39.0,-5.8]** | **0.0046** |
+
+Outcome-conditioned training produces a real, statistically significant
+improvement in tactical safety BEYOND what the same number of additional
+plain-continuation steps produces -- confirmed, not just a point-estimate
+read. Effect size is modest (~22cp), not transformative on its own, but
+it's real and it's free (same data already in the pipeline, zero extra
+collection cost). Full numbers: `artifacts/experiments/
+acpl_comparison_n400_round11.json`. **Decision: adopt `--winner-pov-only`
+as the default going forward.**
+
+**Quasimetric (MRN) mode implemented, per the agreed research-literature
+ordering** (`catspace/nn/fb.py`): `TorchFB(quasimetric=True)` adds
+`metric_scale` (per-dim scale, inits to ones) and `W` (bilinear residual,
+inits to zero); `score(f,g) = f@W@g - d(f,g)` where `d` is a genuine
+Euclidean metric on the rescaled embeddings (non-negative, symmetric,
+triangle inequality by construction). Config-gated: `quasimetric=False`
+checkpoints are byte-for-byte unaffected (verified in tests), and at
+`quasimetric=True` initialization, `score` exactly equals `-||f-g||_2`
+(verified against `torch.cdist`) -- a smooth starting point, not an
+arbitrary architecture shock. All 3 call sites that used to do
+`F(s) @ z` directly (`FBSearchPolicy._reach_batch`, `FBPlanPolicy.
+_reach_to`, `FBBoardPolicy._reach`) now go through `fb.score(...)`, plus
+`train_lichess_fb.py`/`experiment_report.py`'s `reach_slope`. New tests
+(`tests/test_nn_fb.py`): reduces-to-dot-product-when-off, matches
+`-||f-g||` at init, distance_matrix satisfies all 3 metric axioms
+(non-negativity, symmetry, triangle inequality) numerically AFTER 20
+training steps (not just at init -- confirms training doesn't break the
+guarantee), checkpoint round-trip for both modes. Full suite: 130 passed
+(was 126), no regressions. Smoke-tested end-to-end: a tiny `--quasimetric
+--fresh` training run plus all three policy classes (`FBBoardPolicy`,
+`FBSearchPolicy`, `FBPlanPolicy`) producing legal moves against a
+quasimetric checkpoint.
+
+**Next**: launching a full-scale training run combining both confirmed
+levers (`--quasimetric --winner-pov-only`, fresh from scratch since the
+new metric_scale/W params have no analog in existing checkpoints to
+resume from), matching the original best run's step budget. Will
+evaluate via ACPL (same n=400 protocol) and the KRRvKBP tablebase-verified
+set before drawing any conclusion.
+
+---
+
+## 2026-07-12 00:05 — round 12: combined checkpoint trained, real progress confirmed, conversion problem still open
+
+**Training.** `data/derived/lichess_fb_4gb_qm_wpov.pt`: fresh `TorchFB(
+quasimetric=True)`, `--winner-pov-only`, 60000 steps (matching the
+original best run's budget), ~24 it/s, clean run, VERDICT logged.
+
+**ACPL (n=400, same protocol as round 11):** `ACPL=253.4`,
+`blunder_rate(>=300cp)=0.362`, `mistake_rate(>=100cp)=0.640` -- the best
+of any checkpoint so far. Paired comparisons:
+
+| comparison | mean diff | 95% CI | Wilcoxon p |
+|---|---|---|---|
+| combined vs baseline | -72.8cp | [-99.3,-46.0] | 5.5e-7 |
+| combined vs winner-pov-only (single lever) | -31.1cp | [-57.6,-5.0] | 0.066 |
+
+Combined beats the ORIGINAL baseline overwhelmingly. The INCREMENTAL
+contribution of quasimetric specifically, on top of winner-pov-only
+alone, is borderline (CI excludes 0 but p=0.066 misses the conventional
+0.05 line) -- honest reading: promising, not confirmed at this sample
+size. Plausible explanation, not yet tested directly: ACPL measures
+single-move tactical safety, but quasimetric's hypothesized benefit
+(literature review, JOURNAL.md 2026-07-11 21:15) is specifically
+MULTI-HOP compositional planning -- ACPL may just not be the most
+sensitive instrument for what this lever is supposed to buy.
+
+**KRRvKBP, single-policy scan (n=20, FBSearchPolicy only, vs the round-9
+baseline scan for comparison):** terminations shifted from
+`{INSUFFICIENT_MATERIAL: 9, THREEFOLD_REPETITION: 7, CHECKMATE: 2 (1W/1L),
+FIFTY_MOVES: 1}` to `{THREEFOLD_REPETITION: 11, INSUFFICIENT_MATERIAL: 8,
+CHECKMATE: 1 (1W/0L)}` -- fewer material self-blunders, and critically
+**zero losses** (the original baseline scan's most alarming finding --
+`FBSearchPolicy` getting mated FROM a 2-rooks-vs-bishop+pawn advantage --
+did not reproduce here). Still only converting 1/20 to an actual win
+within 150 plies, though -- the underlying "corner the king" execution
+problem remains open.
+
+**KRRvKBP, paired FBSearchPolicy vs FBPlanPolicy (n=20, `krrkbp_arena.py`,
+same harness as round 10):** both readouts converted MORE wins on this
+checkpoint than on the original one (FBSearchPolicy 3->4/20 wins,
+FBPlanPolicy 1->3/20 wins, both runs zero losses) -- suggestive of real
+conversion improvement, but the plan-persistence-vs-plain-search question
+itself is STILL not significant (`e=0.38`, nowhere near reject) -- same
+underpowered-at-n=20 pattern as round 10, and the same Stockfish-internal-
+RNG caveat from round 10 still applies to this harness.
+
+**Following the same fix that worked for ACPL** (n=100 -> n=400 resolved
+a false ambiguity there): rather than trust an n=20 read again, generated
+a FRESH 60-position KRRvKBP set (`catspace/diagnostic_krrkbp.build_fixed_
+set(n=60, seed=123)`, independently verified all 60 are Syzygy WDL=2
+before use -- `artifacts/experiments/krrkbp_fixed_set_n60.json`) and
+re-ran the paired FBSearchPolicy-vs-FBPlanPolicy comparison at 3x the
+sample size.
+
+**n=60 result: still no significant difference.** `FBSearchPolicy=0.583`
+vs `FBPlanPolicy=0.625`, `mean_diff=+0.042`, `CI=[-0.589,+0.672]`, `e=0.47`
+-- nowhere near reject even at 3x the sample (and note the sign flipped
+vs the n=20 read, -0.025 there vs +0.042 here, consistent with "this is
+noise, not a real effect either direction"). One real, concrete pattern
+DID emerge though: `FBPlanPolicy` lost twice (0-1, positions 25 and 39)
+across these 80 total paired games (n=20 + n=60) -- `FBSearchPolicy` never
+lost once, in any run this session. Plan-persistence trades off: holding
+a plan fixed across several plies without re-searching converts a few
+more wins but also occasionally walks into a refutation a plain per-move
+search would have caught immediately. Net effect on `score_mean`: a wash,
+not a win, at current hyperparameters (`plan_nodes=2000`,
+`shallow_nodes=60`, `drop_delta=0.15`, `achieved_cos=0.95`,
+`max_plies_per_plan=6`).
+
+**Honest round-12 summary.** Confirmed, real, statistically rigorous
+progress on embedding quality: outcome-conditioning (round 11) and the
+quasimetric architecture (this round) both measurably reduce tactical
+blindness (ACPL), and the combined checkpoint is decisively better than
+where this phase started (p=5.5e-7 vs the original baseline). The
+KRRvKBP endgame conversion rate improved and catastrophic losses
+disappeared. But the two things this whole KRRvKBP diagnostic was
+originally built to test -- (a) does the planner learn to keep its rooks
+on squares the bishop can't touch and actually convert the win, and (b)
+does explicit plan-persistence help versus plain search -- are NOT yet
+answered "yes." (a) is still mostly draws (repetition/insufficient
+material), not clean conversions. (b) is a confirmed null at n=80 total.
+This is real progress on the PREREQUISITE (an embedding that isn't
+tactically blind) but not yet the payoff the research line was aimed at.
+Reporting this status rather than continuing to spin up more variants
+unboundedly.
+
+---
+
+## 2026-07-12 01:10 — round 13 setup: search-depth sensitivity, ply-gap calibration term, full self-play infrastructure
+
+Kaveh, mid-conversation: search-depth sensitivity check on the current
+best checkpoint ("with the same arch, increase it a bit and see if we do
+better"); build the ply-gap calibration term proposed earlier; **build the
+full self-play machinery** ("everything on our roadmap"); keep going
+overnight without stopping.
+
+**Search-depth/node-budget sensitivity (same checkpoint,
+`lichess_fb_4gb_qm_wpov.pt`, ACPL n=200 per config):** `max_nodes=200`:
+274.5, `800`: 270.5, `2000`: 283.4 -- flat within noise, no meaningful
+trend either direction. Consistent with the earlier full-board ply-depth
+sweep (rounds 7-9) plateauing/regressing past depth 3: more search alone
+does not fix tactical blindness when the LEAF evaluation itself is the
+bottleneck -- more nodes just explore more leaves scored by the same
+miscalibrated function. Confirms the embedding/training-side levers
+(winner-pov, quasimetric, ply-gap, self-play) are the right place to keep
+pushing, not deeper search at inference time.
+
+**Ply-gap calibration term (`catspace/nn/fb.py`).** Kaveh's insight: "if
+the future leads to a mate for me, that's a good future... enough info
+here for us to get good or bad." Diagnosed the actual gap: in-batch
+InfoNCE retrieval only enforces RELATIVE ranking (is g_true closer than
+this batch's other g's?) -- nothing calibrates the ABSOLUTE scale of the
+quasimetric distance to anything real, so "down material with no path
+back" and "down material but recoverable" could score identically as
+long as batch-relative ranking happened to work out. Fix: `ply_gap` (the
+real anchor->goal ply distance -- `data["ply"]` was already in the
+pipeline, just needed threading through as `ply_g` on the goal row too,
+`catspace/data/shards.py`) now regresses `d(f,g)` toward
+`ply_gap/ply_gap_scale` via an MSE term, weighted by `--ply-gap-weight`
+(default 0.05). Quasimetric-only (no `d` to calibrate otherwise);
+silently a no-op when `quasimetric=False`. New test confirms the term
+adds loss and produces gradients in quasimetric mode, and is EXACTLY a
+no-op (bit-identical loss) when off. **Also caught and fixed a real bug
+while wiring this up**: `val_metrics()` was computing its printed
+VAL_TOP1/VAL_TOP8/loss diagnostics via a raw `f @ b.T`, bypassing
+`score_matrix()` entirely -- meaning every quasimetric run's printed
+validation numbers (round 12's `lichess_fb_4gb_qm_wpov.pt` included) were
+silently wrong, even though the ACTUAL TRAINED WEIGHTS were fine (the
+real training loss correctly went through `loss_fn`/`score_matrix`; only
+the human-readable progress log was misleading). Fixed to
+`fb.score_matrix(f, b)`.
+
+**Self-play infrastructure, built fresh this round:**
+- `experiments/selfplay_generate.py`: plays games with the CURRENT best
+  checkpoint (self vs self, plus a configurable fraction vs Stockfish as
+  an external sparring partner -- `--sf-opponent-frac`, records only
+  moves + game RESULT, never an eval score, so this doesn't touch the
+  leakage gate) and writes them as Lichess-shard-compatible npz files
+  (identical schema to `data.lichess.build_shards`) -- drop-in readable by
+  the EXISTING `LichessPairSource`, no format changes needed.
+  `StochasticPolicy` wraps any BoardPolicy with epsilon-random move mixing
+  (default 0.08) since `FBSearchPolicy`/`FBPlanPolicy` are deterministic
+  argmax and would otherwise collapse self-play into near-duplicate games
+  -- simpler than AlphaZero's Dirichlet/temperature approach but same
+  purpose. Rate: ~0.11 games/s at max_nodes=200/beam=4/max_plies=150 (a
+  20-game timed test: 2m57s).
+- `catspace/data/shards.py`'s `MixedPairSource`: interleaves batches from
+  two `LichessPairSource`-shaped sources (human + self-play) by a fixed
+  ratio, whole-batch-at-a-time (not mixed within a batch). Wired into
+  `train_lichess_fb.py` via `--selfplay-shards`/`--selfplay-frac`; holdout/
+  val stay human-only for a stable cross-round reference. New test
+  (`tests/test_data.py::test_mixed_pair_source`) confirms batches are
+  never mixed-source and the draw fraction tracks the requested ratio
+  over 500 samples.
+- Full pipeline smoke-tested end-to-end (generate 4 games -> shard ->
+  mixed-source training step, all three levers -- quasimetric,
+  winner-pov-only, ply-gap, self-play-mix -- together). Full suite: 132
+  passed (was 130), no regressions.
+
+**This is the ACTUAL PI-refinement mechanism the literature (McGrath et
+al.) credited with organic tactical-concept emergence** -- `--winner-pov-
+only` was explicitly framed as a cheap proxy for this; this is the real
+thing. Round 13, launched: generating 400 self-play games with the
+current best checkpoint (`data/shards/selfplay_gen1/`, ~61min ETA at the
+measured rate), then training a fresh checkpoint combining ALL FOUR
+confirmed/plausible levers (`--quasimetric --winner-pov-only --ply-gap-
+weight 0.05 --selfplay-shards data/shards/selfplay_gen1 --selfplay-frac
+0.3`), evaluating via the same ACPL n=400 + KRRvKBP n=60 protocol, then
+continuing the PI loop (generate more self-play with whatever the new
+best checkpoint is, retrain, repeat) through the night per Kaveh's
+explicit instruction not to stop.
+
+---
+
+## 2026-07-12 13:20 — review pass (model switched to Fable per Kaveh): two real bugs found in the round-13 launch; winner-pov REMOVED
+
+Kaveh asked for a full review of the past day's work ("ensure everything
+was done right"), flagged that winner-pov is no longer needed, and asked
+for periodic commits. The review found the first round-13 training launch
+(killed after 35 min of zero progress) failed from TWO stacked bugs, one
+of which also taints part of the node-budget sweep:
+
+**Bug 1 — `newest_shard_dir()` silently adopted the self-play dir as the
+human training set.** The self-play generator wrote its shards to
+`data/shards/selfplay_gen1/`, which made it the most-recently-modified
+dir under `data/shards/` -- and the round-13 training launch, run without
+an explicit `--shards`, resolved its "human" source to the 30k-position
+SELF-PLAY dir instead of the 55.8M-position 4GB human prefix. Nothing
+crashed; it just silently trained-on/holdout-from the wrong data.
+Measured fallout: this also invalidates the node-sweep's `max_nodes=2000`
+stage (283.4) and the unfinished 4000 stage -- those probe processes
+started after the self-play dir existed, so `acpl_probe`'s
+position-sampling drew from self-play shards, not the human holdout. The
+200/800 stages (274.5/270.5) predate the dir and stand. The "flat"
+conclusion still holds on the clean 200-vs-800 pair, but the 2000-node
+point needs a re-run (queued, after training). Fixes: self-play output
+moved to `data/selfplay/gen1` (outside `newest_shard_dir()`'s glob);
+`selfplay_generate.py` now hard-REFUSES to write under `data/shards/`;
+all future training launches pass `--shards` explicitly.
+
+**Bug 2 — winner-pov x batch-size guard = zero training progress.**
+`main()`'s loop skips any batch that filters below `batch//2 = 256` rows.
+On the (mostly-drawn, and wrongly-selected per Bug 1) self-play data,
+winner-pov kept a measured mean of 68.8/512 rows -- pass rate 0.000. The
+run built feature planes for every batch (hence ~208 CPU-minutes of
+plausible-looking activity) and discarded every single one: an infinite
+spin at step 0, which is why the log never showed even step 100.
+
+**Winner-pov removed entirely** (not just from self-play -- from
+everything), on three grounds Kaveh drove to in conversation:
+1. *The information it added is already in the data.* A sampled goal
+   position that's a mate FOR the mover is a good future; a mate AGAINST
+   them is a bad one. The model should see both geometries -- censoring
+   losing trajectories deletes half the signal, it doesn't sharpen it.
+2. *The ply-gap calibration term NEEDS losing trajectories.* "Down
+   material with no way back" can only be learned as a large/uncalibrated
+   distance if unrecoverable positions and their real continuations
+   actually appear in training. Winner-pov filtered out exactly those.
+3. *It was a proxy whose job is done.* It existed as the cheapest test of
+   outcome-conditioning (round 11, confirmed real at ~22cp) before
+   self-play existed. Real self-play + ply-gap calibration are now built;
+   the proxy earned its keep as EVIDENCE (outcome-conditioning matters)
+   and is retired as a MECHANISM.
+
+Removed: `--winner-pov-only` flag, `_winner_pov_mask()`, the filter in
+`batch_tensors`/`collect_holdout`, the `is_selfplay` batch tagging (which
+existed only to exempt self-play from the filter). `batch_tensors` is
+back to its simple holdout-only form, now returning `ply_gap` as a 4th
+tensor. Round-11's RESULT stands as recorded (the checkpoint trained fine
+at its 245-ish/512 keep rate and the ACPL comparison was valid); what's
+retired is the mechanism going forward.
+
+**Also fixed in review:** self-play shards now stamp odd `game_id`s only
+(2i+1) -- ids divisible by 50 were silently eaten by the trainer's
+holdout rule (8/400 games of scarce self-play data landing in neither
+train nor holdout); the existing gen1 shard was patched in place and
+verified (400 games, all ids odd). Known caveat documented but NOT fixed
+(nothing measured so far is affected): `planner/decompose.py` scores hops
+with raw `F@z` dot products and never sees `metric_scale`/`W`, so its
+waypoint metrics are mis-calibrated for quasimetric checkpoints --
+thread `fb.score` through `WaypointPool`/`hop_reach` before trusting
+decompose numbers on quasimetric runs. Same applies to the viz builders'
+raw `F @ z` reach maps.
+
+**Relaunching round 13 correctly** (after full suite + commit):
+`python -u experiments/train_lichess_fb.py --shards
+data/shards/lichess_db_standard_rated_2019-01.prefix4gb --ckpt
+data/derived/lichess_fb_4gb_qm_gen1.pt --steps 90000 --quasimetric
+--ply-gap-weight 0.05 --selfplay-shards data/selfplay/gen1
+--selfplay-frac 0.3 --fresh` -- unbuffered this time so the log shows
+life immediately, explicit shards, no winner-pov. Levers: quasimetric +
+ply-gap calibration + self-play mix.

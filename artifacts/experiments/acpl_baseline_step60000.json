@@ -1,0 +1,13 @@
+{
+  "ckpt": "data/derived/lichess_fb_4gb.pt",
+  "step": 60000,
+  "winner_pov_only": false,
+  "n": 100,
+  "sf_depth": 8,
+  "seed": 0,
+  "readout": "FBSearchPolicy(max_nodes=200, beam=4)",
+  "acpl": 328.8,
+  "blunder_rate_ge300cp": 0.55,
+  "mistake_rate_ge100cp": 0.80,
+  "note": "baseline, held-out in-distribution Lichess positions (NOT the KRRvKBP endgame) -- confirms the tactical blindness generalizes broadly, not just to the OOD material scenario"
+}
