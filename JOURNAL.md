@@ -1713,3 +1713,21 @@ calibration instrument switches to nearest-exemplar); if not, the +0.25
 rho wasn't strong enough to matter at play scale yet, and the next lever
 is strengthening the exemplar geometry (bigger banks, more endgame
 curriculum, or the pairing-horizon fix for the k=20-50 cliff).
+
+**Result (2026-07-13 02:20): bank-readout LOSES at play, significantly.**
+`FBSearchPolicy(centroid)=0.433` vs `FBSearchPolicy+bank=0.308`, n=60,
+mean_diff=-0.125, e=65.07, REJECT -- the first statistically decisive
+readout difference this whole diagnostic has produced, and it's AGAINST
+the naive bank. Honest interpretation: nearest-exemplar distance orders
+*static positions* better (the +0.25 rho is real), but `max` over 71
+heterogeneous exemplars (KRRvK/KQvK/KRvK mates mixed) changes which
+exemplar wins from move to move -- the readout chases whichever mate
+pattern happens to be closest this ply, injecting goal-switching noise
+into MOVE ranking that outweighs the calibration gain. Positional
+calibration and move-ranking stability are different fitness axes; the
+probe measured one, play depends on both. Follow-ups queued, one at a
+time: (1) same test on the stronger incumbent checkpoint (running --
+separates "bank hurts inherently" from "gen2 is weak"); (2) if bank still
+loses, try soft-min (logsumexp temperature) instead of hard max, which
+smooths exemplar switching while keeping region structure -- ONE change,
+directly aimed at the failure mode this test exposed.
