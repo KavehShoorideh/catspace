@@ -1,0 +1,1 @@
+{"round": "R0_baseline_incumbent", "ckpt": "data/derived/lichess_fb_4gb_qm_plygap_only.pt", "n_positions": 221, "move_spread": 0.006246278684014781, "dtz_rho": 0.02004913670843492, "best_rank": 0.4565276407788485, "top1_win": 0.8959276018099548}
