@@ -1815,6 +1815,49 @@ sharpness has other support), it just can't pay its way yet.
   change (stratified long-gap oversampling rather than a new loss term),
   (c) revisit region goals + asymmetry only after (a)/(b) raise the
   floor.
+
+---
+
+## 2026-07-13 12:40 — round 17: no promotion, and the cross-checkpoint table exposes the real question
+
+gen3 (higher dose: 70% endgame starts, selfplay-frac 0.4, no aux losses):
+nearest-exemplar rho **+0.154** (below gen2's +0.252 -- dose-response is
+NOT monotonic in curriculum fraction), k=1 retrieval intact at 0.97,
+KRRvKBP n=60 scan **0.342 (1W/39D/20L)** vs incumbent 0.558. No
+promotion.
+
+**The table that matters now** (nearest-exemplar rho vs KRRvKBP play,
+all on the same n=60 set):
+
+| checkpoint | recipe | rho | KRRvKBP |
+|---|---|---|---|
+| qm_wpov (INCUMBENT, r12) | qm + winner-pov, human-only | +0.165 | 0.550-0.583 (3 runs) |
+| qm_gen1 (r13) | qm + ply-gap + selfplay, no wpov | -- | 0.475 |
+| qm_gen2 (r14) | same, gen2 data | +0.252 | 0.433 |
+| qm_asym015 (r16) | same + asym 0.015 | +0.121 | 0.367 |
+| qm_gen3 (r17) | same, gen3 data, frac 0.4 | +0.154 | 0.342 |
+
+Two hard conclusions: (1) **nearest-exemplar rho does not predict play**
+-- best rho (gen2) plays 0.12 below the incumbent; the instrument
+measures something real about endgame geometry but not the thing that
+converts wins. (2) **Every checkpoint since round 12 shares THREE
+simultaneous recipe changes vs the unbeaten incumbent** (winner-pov
+removed, ply-gap added, self-play mixed in) -- the attribution debt taken
+on knowingly at the round-13 corrected relaunch is now the single most
+important open question: one or more of those three is likely what has
+kept play below 0.558 for five straight rounds, and no single-lever round
+since has touched them.
+
+**Round 18 = the ablation, not another lever**: `qm + ply-gap +
+human-only` (drop the self-play mix, keep everything else from the
+round-13+ recipe). This isolates the self-play mix's play cost while
+leaving Kaveh's winner-pov retirement untouched. If it recovers toward
+0.55: the self-play MIX (as currently dosed) is the drag despite its
+calibration benefits. If it doesn't: ply-gap itself (or winner-pov's
+absence) is implicated, and the winner-pov question goes to Kaveh with
+this table -- his call retired it on principled grounds (losing
+trajectories carry needed signal), but the only checkpoint that has ever
+played 0.55+ had it on, and the evidence deserves to be in front of him.
 `FBSearchPolicy(centroid)=0.433` vs `FBSearchPolicy+bank=0.308`, n=60,
 mean_diff=-0.125, e=65.07, REJECT -- the first statistically decisive
 readout difference this whole diagnostic has produced, and it's AGAINST
