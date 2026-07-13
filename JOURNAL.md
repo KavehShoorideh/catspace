@@ -1964,3 +1964,104 @@ also keeps every eval matched to the incumbent's existing references (KRRvKBP
 out of this: a genuinely better-calibrated eval SHOULD start rewarding more
 search — so "does the two-horizon far head improve with nodes where the
 incumbent didn't?" becomes a real signal to check later.
+
+---
+
+## 2026-07-13 (Opus) — REFERENCE: how the fitness probe works + what every statistic means
+
+*(A permanent legend, added at Kaveh's request. Whenever a stat below appears in
+an entry, this is what it means. Plain-language; a chess enthusiast should follow
+it.)*
+
+### The fitness probe (`experiments/qm_fitness_probe.py`)
+
+Winning/losing games is a slow, noisy, blunt signal — it tells you the model is
+bad but not WHY. The probe is a set of fast, ground-truth-anchored *diagnostics*
+that say which specific part of the learned geometry is healthy or broken, so we
+can steer training instead of guessing. It runs six instruments:
+
+1. **Syzygy calibration.** Chess tablebases give the EXACT truth for small-piece
+   endgames ("this is mate in 7"). We ask the model for its learned distance from
+   each such position to the mate goal, then check whether the model's ordering
+   agrees with the true ordering (Spearman rho, below). A good embedding says
+   mate-in-3 is closer than mate-in-20. Two variants: KRvK (pawnless, where the
+   tablebase number = exact plies-to-mate) and "nearest-exemplar" (distance to
+   the nearest example mate in a bank — this correlates where a single averaged
+   goal is flat). This is the rare case where we have PERFECT ground-truth
+   distances to grade against.
+
+2. **Horizon-stratified retrieval.** A recognition test. Take a position s and its
+   TRUE future g that actually occurred k plies later in the game; hide g among 63
+   random decoy positions from other games; ask the model to pick the real future
+   out of the 64. Accuracy is measured separately at k = 1, 2, 5, 10, 20, 50 plies.
+   This shows HOW FAR AHEAD the model can "see." Ours is sharp to ~10 plies then
+   falls off a cliff by 50. For two-horizon we run it on BOTH heads: near should
+   ace k=1, far should hold up at k=20–50.
+
+3. **Asymmetry audit.** Captures are one-way doors — you can't un-capture a rook.
+   For position pairs where a capture happened between s and g, we check whether
+   the model scores the impossible REVERSE trip (g back to s) as FARTHER than the
+   forward trip. Reports the fraction that get it backwards (want ~0).
+
+4. **Triangle violation.** Structural sanity: for random position triples, is
+   d(A,C) ≤ d(A,B) + d(B,C)? (Direct is never longer than a detour.) A real
+   distance never violates this; reports the violation rate (ours ~0, guaranteed
+   by construction).
+
+5. **Degeneracy panel.** "Is the embedding collapsing or wasting capacity?" —
+   spread ratio and effective rank (below).
+
+### What each statistic means
+
+- **Spearman rho (ρ), aka rank correlation.** A number from −1 to +1 measuring
+  whether two *orderings* agree. We rank positions by the model's learned distance
+  and by the true distance, and ρ asks "do these two rankings match?" ρ=+1 perfect
+  agreement, ρ=0 no relationship (the model's distances are unrelated to truth —
+  "flat"), ρ=−1 exactly reversed. We use rank correlation (not exact-value error)
+  because for planning we care about ORDER — is mate-in-3 ranked nearer than
+  mate-in-20 — not the literal number. So "nearest-exemplar ρ +0.25" means a weak
+  but real positive agreement; "centroid ρ ≈ 0" means flat/useless.
+
+- **p-value.** The probability of seeing a result at least this strong if there
+  were truly NO effect (pure luck). Small p (< 0.05) = unlikely to be a fluke, so
+  we believe the effect is real. p=0.35 = very plausibly luck (a "wash").
+
+- **Confidence interval (CI), e.g. [−11, +40] cp.** The plausible range for the
+  true value. If the whole interval is on one side of 0, the effect has that sign
+  with confidence; if it straddles 0, we can't rule out "no difference."
+
+- **e-value.** An "anytime-valid" evidence score against the no-difference
+  hypothesis — think of it as accumulated betting winnings. Crossing 1/α (=20 for
+  the 5% level) lets us declare a real difference, and unlike a p-value you're
+  allowed to peek as games stream in without cheating. Bigger = stronger evidence.
+  "e=65, REJECT" = strong evidence the two policies really differ.
+
+- **Wilcoxon signed-rank test.** The paired significance test we run on
+  per-position score *differences* (rank-based, so a few blowout games don't
+  dominate). Produces the p-value for "policy A ≠ policy B on matched positions."
+
+- **Bootstrap CI.** A confidence interval built by re-sampling the data thousands
+  of times — no assumption about the data's shape, just "how much does the average
+  wobble if I'd drawn a slightly different sample."
+
+- **ACPL / centipawn (cp).** 1 cp = 1/100 of a pawn (standard engine unit). ACPL =
+  average centipawns lost per move vs a strong Stockfish's judgment; lower is
+  better (master <20, beginner 100+, our policy ~250–290).
+
+- **Retrieval accuracy vs chance.** Fraction of the 64-way recognition test the
+  model gets right; "chance" (≈1/64 ≈ 0.016) is the random-guess baseline.
+
+- **k / horizon / ply.** A ply is one half-move (one player's turn). k = how many
+  plies into the future the retrieval test reaches.
+
+- **Spread ratio.** Average distance over random position pairs ÷ average distance
+  over adjacent (1-ply) pairs. ≈1 would mean all distances collapsed to one value
+  (degenerate); we want distant positions to actually read as far (ours ~1.8–2.4).
+
+- **Effective rank.** How many of the 64 embedding dimensions are actually carrying
+  information (entropy of the singular-value spectrum). Low = wasted capacity
+  (ours ~24–26 of 64).
+
+- **DTZ / DTM / WDL.** Tablebase ground truth: Distance-To-Zeroing-move /
+  Distance-To-Mate / Win-Draw-Loss under perfect play. Used only to grade the
+  model, never to train it.
