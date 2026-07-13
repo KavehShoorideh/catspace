@@ -53,6 +53,14 @@
     "acpl_methodology_note": "acpl_probe.py had a bug (mate_score=100000 let rare forced-mate detections dominate the mean with near-lottery-sized outliers) -- fixed to mate_score=1000 (standard ACPL convention). Always use n>=400 for this probe; n=100 is underpowered to distinguish real deltas from noise (see round 11 history).",
     "opponent_ladder_note": "the original full-board-vs-graduated-Stockfish opponent_ladder below is SUPERSEDED by the KRRvKBP diagnostic phase (see phase_2_krrkbp_diagnostic) and the ACPL probe as the primary fast metrics; re-activate the ladder only if/when returning to full-board arena evaluation."
   },
+  "current_round_14": {
+    "index": 14,
+    "action": "endgame-start curriculum: gen2 self-play (500 games, endgame_start_frac=0.5, incumbent ckpt) -> retrain quasimetric+ply-gap+gen2-mix -> qm_fitness_probe. PRE-REGISTERED SUCCESS CRITERION: KRvK Spearman rho(d, plies-to-mate) >= +0.3 (currently ~0.0 flat on BOTH checkpoints).",
+    "status": "running (gen2 generation, ~65min ETA)",
+    "round_13_verdict": "NO PROMOTION. gen1 (quasimetric+ply-gap+selfplay, no winner-pov): ACPL +13.9cp worse than incumbent (CI [-11.0,+40.3], p=0.15, statistical wash); KRRvKBP 0.475/0.450 vs incumbent's 0.583/0.625; but structurally better (spread 2.35 vs 1.79, eff rank +2, k=50 retrieval 0.29 vs 0.23, best DIFF_SLOPE separation +0.208/-0.050). Three levers changed at once -- per-lever attribution impossible, accepted to unblock pipeline.",
+    "steering_finding": "qm_fitness_probe (built this round from lit survey: PQE vio, Syzygy calibration, asymmetry audit, horizon retrieval, degeneracy panel): metric STRUCTURE is healthy on both ckpts (zero triangle violations on d, no collapse) but distance-to-mate calibration is FLAT (KRvK rho ~0 from mate-in-1 to mate-in-31 -- pawnless KRvK DTZ == true plies-to-mate, the clean ground truth; KRRvKBP DTZ compresses via captures, probe fixed accordingly). Root cause: OOD coverage -- human games never visit these regions. Retrieval cliff at k=20-50 plies and weak asymmetry gap (frac_rev<=fwd 0.27-0.35, want ~0) are targets 2 and 3.",
+    "artifacts": ["artifacts/experiments/qm_fitness_qm_wpov.json", "artifacts/experiments/qm_fitness_qm_gen1.json"]
+  },
   "current_round_13": {
     "index": 13,
     "action": "CORRECTED RELAUNCH after Fable review (see JOURNAL.md 2026-07-12 13:20): training data/derived/lichess_fb_4gb_qm_gen1.pt -- quasimetric + ply-gap 0.05 + selfplay-mix 0.3 (data/selfplay/gen1, 400 games by lichess_fb_4gb_qm_wpov.pt), explicit --shards prefix4gb, NO winner-pov (removed from the codebase entirely), 90000 steps fresh, python -u.",
