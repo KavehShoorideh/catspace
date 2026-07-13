@@ -2262,3 +2262,48 @@ entirely for the self-referential + play frame above.
 search-improved reach targets back into the embedding (deep->shallow), closing the
 loop: more search where weak -> more data there -> embedding improves there ->
 reliability map shrinks -> search redeploys. New COMPONENTS.md maps all the pieces.
+
+---
+
+## 2026-07-13 (Opus) — reliability-gated search ALONE is a null; the value is in the loop, not the gate
+
+Competence map (n=2000) held-out generalization: rho(predicted, actual Method-1
+reliability) = **+0.310** (up from +0.23 at n=300) -- the competence FIELD is real
+and learnable. Method 1 flags known-hard positions (KRRvKBP 0.24 vs quiet 0.04).
+Both signals work. But the play test is what matters:
+
+**PLAY VALIDATION (KRRvKBP n=60, matched compute):** adaptive (reliability-gated,
+avg 455 nodes/move) = **0.583** vs uniform FBSearchPolicy @ 455 nodes = **0.600**.
+delta = -0.017 (~1 game, noise). **Gating does NOT beat uniform at equal compute.**
+
+Aside worth noting: uniform @455 (0.600) > uniform @200 (0.567 incumbent) -- so in
+the KRRvKBP ENDGAME, more search DOES help (unlike the full-board node sweep). But
+TARGETING that search by reliability doesn't beat spreading it uniformly.
+
+**Interpretation (two reinforcing reasons, both honest):**
+1. *Homogeneous difficulty defeats targeting.* Gating pays only when difficulty is
+   HETEROGENEOUS (some positions need lots of search, others none). KRRvKBP is
+   uniformly hard precise conversion -- nearly every position wants more search --
+   so uniform allocation is already near-optimal and targeting adds nothing. The
+   gate's value proposition needs a full-game mix (quiet openings, sharp
+   middlegames, precise endgames), which we can't tablebase-ground-truth.
+2. *More search over a FIXED embedding has a ceiling.* Searching harder where the
+   model is unreliable only helps if the deeper search finds better moves -- but
+   if the embedding is weak THERE, deeper lookahead over it is still weak.
+   Concentrating (inert) extra search doesn't fix a weak value function.
+
+**This reframes the plan -- and it matches Kaveh's own loop vision.** The
+reliability signal's payoff is NOT in gating search on a frozen embedding; it's in
+the CLOSED LOOP: allocate search where unreliable -> that search PRODUCES DATA
+(what reaches what) exactly in the weak regions -> DISTILL it back -> the embedding
+improves there -> reliability shrinks -> repeat. Gating alone is one inert half of
+a cycle whose other half (distillation) is what makes it pay. So the priority is
+Stage 2 (capture the search TREE as reachability data) + Stage 3 (distill into the
+embedding), not tuning the gate.
+
+**Decisions:** (a) keep the gate + both sensors (they're the loop's allocator and
+its epistemic signal; the competence HEAD, training-integrated, is the always-
+current version); (b) do NOT chase gate hyperparameters on KRRvKBP (wrong regime
+to show gating value); (c) build the closed loop, where the sensor's value is
+realized; (d) the competence-head training run is still worthwhile -- it's the
+loop's native Method-2 signal. Kept the offline map only as the stand-in it was.
