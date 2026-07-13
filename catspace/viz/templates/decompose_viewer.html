@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>catspace — decomposition explorer</title>
+<style>
+  body { background:#14161a; color:#cfd3da; font:13px/1.4 -apple-system, "Segoe UI", sans-serif; margin:14px; }
+  h1 { font-size:15px; margin:0 0 8px; color:#e8eaee; }
+  #stats { font-size:11px; color:#8a90a0; margin-bottom:10px; }
+  #stats b { color:#cfd3da; }
+  #main { display:flex; gap:14px; align-items:flex-start; }
+  #starts { width:230px; max-height:640px; overflow-y:auto; background:#1b1e24;
+            border:1px solid #2a2e36; border-radius:6px; }
+  #starts .row { padding:5px 8px; border-bottom:1px solid #23262e; cursor:pointer; font-size:11px; }
+  #starts .row:hover { background:#23262e; }
+  #starts .row.active { background:#3d5afe22; }
+  .chip { display:inline-block; padding:1px 5px; border-radius:3px; font-size:10px; margin-left:4px; }
+  .chip-executable { background:#66d9a633; color:#66d9a6; }
+  .chip-no_midpoint, .chip-unlikely_territory, .chip-dry_out, .chip-budget { background:#ff7a9c33; color:#ff7a9c; }
+  #tree { flex:1; background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:10px; min-height:200px; }
+  #right { width:280px; background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:10px; }
+  #right svg { width:240px; height:240px; }
+  .node { border:1px solid #2a3542; border-radius:5px; padding:6px; margin:4px 0; }
+  .node-executable { border-color:#2f5a48; }
+  .node-decomposed { border-color:#3a3f49; }
+  .node-blocked { border-color:#5a2f3a; }
+  .node-head { font-size:11px; cursor:pointer; display:flex; justify-content:space-between; }
+  .node-children { display:flex; gap:8px; margin-top:6px; }
+  .node-children > div { flex:1; }
+  .lg { font-size:11px; color:#8a90a0; }
+  #chain { margin-top:8px; display:flex; flex-wrap:wrap; gap:4px; }
+  #chain img, #chain .thumb { width:56px; height:56px; border:1px solid #2a3542; border-radius:3px; cursor:pointer; }
+  #hists { display:flex; gap:14px; margin-top:14px; }
+  #hists svg { width:460px; height:180px; background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div id="stats"></div>
+<div id="main">
+  <div id="starts"></div>
+  <div id="tree"></div>
+  <div id="right">
+    <div class="lg" id="rightlabel">start</div>
+    <div id="rightboard"></div>
+    <div class="lg" style="margin-top:8px">waypoint chain (play order)</div>
+    <div id="chain"></div>
+  </div>
+</div>
+<div id="hists">
+  <svg id="h-gain" viewBox="0 0 460 180"></svg>
+  <svg id="h-ply" viewBox="0 0 460 180"></svg>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+// Boards render on demand from a FEN string (not pre-baked server-side) --
+// ~70 bytes vs. ~31KB for a pre-rendered SVG, and only the on-screen board is drawn.
+const PIECE_GLYPH = { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" };
+function boardSVG(fen, opts) {
+  opts = opts || {};
+  const size = opts.size || 240;
+  const sq = size / 8;
+  const rows = (fen || "8/8/8/8/8/8/8/8").split(" ")[0].split("/");
+  const LIGHT = "#e8d9b5", DARK = "#a5794f";
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">`;
+  for (let r = 0; r < 8; r++) {
+    let file = 0;
+    for (const ch of rows[r]) {
+      const n = /[1-8]/.test(ch) ? +ch : 1;
+      for (let k = 0; k < n; k++) {
+        const x = file * sq, y = r * sq;
+        const color = ((file + r) % 2 === 0) ? LIGHT : DARK;
+        svg += `<rect x="${x}" y="${y}" width="${sq}" height="${sq}" fill="${color}"/>`;
+        if (!/[1-8]/.test(ch)) {
+          const isWhite = ch === ch.toUpperCase();
+          const glyph = PIECE_GLYPH[ch.toLowerCase()];
+          const fill = isWhite ? "#f5f5f5" : "#15171b";
+          svg += `<text x="${x + sq / 2}" y="${y + sq * 0.76}" font-size="${sq * 0.8}" text-anchor="middle" ` +
+                 `fill="${fill}" stroke="${isWhite ? "#15171b" : "none"}" stroke-width="${isWhite ? 1 : 0}">${glyph}</text>`;
+        }
+        file += 1;
+      }
+    }
+  }
+  svg += "</svg>";
+  return svg;
+}
+
+let si = 0;
+
+function showBoard(node) {
+  document.getElementById("rightboard").innerHTML = boardSVG(node.fen, { size: 240 });
+  document.getElementById("rightlabel").textContent =
+    node.ply !== null && node.ply !== undefined ? `ply ${node.ply}  ·  ${node.fen}` : "start";
+}
+
+function renderNode(node, container, label) {
+  const box = document.createElement("div");
+  const status = node.status === "executable" ? "executable" :
+                 (node.status === "decomposed" ? "decomposed" : "blocked");
+  box.className = "node node-" + status;
+  const head = document.createElement("div");
+  head.className = "node-head";
+  const chip = node.status === "executable" ? "" :
+    `<span class="chip chip-${node.status}">${node.status}</span>`;
+  head.innerHTML = `<span>${label} reach ${node.reach.toFixed(3)}${
+    node.bottleneck !== null && node.bottleneck !== undefined ? ` &rarr; min ${node.bottleneck.toFixed(3)}` : ""}${chip}</span>`;
+  box.appendChild(head);
+  if (node.wp) {
+    head.onclick = () => showBoard(node.wp);
+  }
+  if (node.detail) {
+    const d = document.createElement("div");
+    d.className = "lg"; d.textContent = node.detail;
+    box.appendChild(d);
+  }
+  if (node.left) {
+    const kids = document.createElement("div");
+    kids.className = "node-children";
+    const l = document.createElement("div"), r = document.createElement("div");
+    kids.appendChild(l); kids.appendChild(r);
+    box.appendChild(kids);
+    renderNode(node.left, l, "start&rarr;wp");
+    renderNode(node.right, r, "wp&rarr;goal");
+  }
+  container.appendChild(box);
+}
+
+function renderChain(start) {
+  const chain = document.getElementById("chain");
+  chain.innerHTML = "";
+  const s = document.createElement("div");
+  s.innerHTML = boardSVG(start.start.fen, { size: 56 });
+  s.className = "thumb";
+  s.title = "start";
+  s.onclick = () => showBoard(start.start);
+  chain.appendChild(s);
+  (start.waypoints || []).forEach((w, i) => {
+    const d = document.createElement("div");
+    d.innerHTML = boardSVG(w.fen, { size: 56 });
+    d.className = "thumb";
+    d.title = `waypoint ${i} (ply ${w.ply})`;
+    d.onclick = () => showBoard(w);
+    chain.appendChild(d);
+  });
+}
+
+function setStart(i) {
+  si = i;
+  document.querySelectorAll("#starts .row").forEach((r, j) => r.classList.toggle("active", j === i));
+  const s = DATA.starts[si];
+  const tree = document.getElementById("tree");
+  tree.innerHTML = "";
+  renderNode(s.tree, tree, "root");
+  showBoard(s.start);
+  renderChain(s);
+}
+
+function drawHist(id, bins, series, xlabel) {
+  const svg = document.getElementById(id);
+  svg.innerHTML = "";
+  const W = 460, H = 180, PAD = 30;
+  const maxc = Math.max(...series.flatMap(s => s.counts), 1);
+  const nbins = bins.length - 1;
+  const bw = (W - 2 * PAD) / nbins;
+  series.forEach(s => {
+    s.counts.forEach((c, i) => {
+      const h = (H - 2 * PAD) * c / maxc;
+      svg.appendChild(el("rect", { x: PAD + i * bw, y: H - PAD - h, width: bw * 0.85, height: h,
+        fill: s.color, opacity: series.length > 1 ? 0.55 : 1 }));
+    });
+  });
+  svg.appendChild(el("line", { x1: PAD, x2: W - PAD, y1: H - PAD, y2: H - PAD, stroke: "#2a3542" }));
+  const t0 = el("text", { x: PAD, y: H - 8, fill: "#5a6070", "font-size": 9 });
+  t0.textContent = bins[0].toFixed(2);
+  svg.appendChild(t0);
+  const t1 = el("text", { x: W - PAD - 30, y: H - 8, fill: "#5a6070", "font-size": 9 });
+  t1.textContent = bins[bins.length - 1].toFixed(2);
+  svg.appendChild(t1);
+  const lab = el("text", { x: PAD, y: 14, fill: "#8a90a0", "font-size": 10 });
+  lab.textContent = xlabel + (series.length > 1 ? "  (" + series.map(s => s.name).join(" vs ") + ")" : "");
+  svg.appendChild(lab);
+}
+
+document.getElementById("title").textContent = DATA.meta.title;
+const v = DATA.verdict;
+document.getElementById("stats").innerHTML =
+  `<b>FRAC_IMPROVED</b>=${v.frac_improved.toFixed(3)}  ` +
+  `<b>MEAN_GAIN</b>=${v.mean_gain.toFixed(4)}  ` +
+  `<b>FRAC_EXECUTABLE</b>=${v.frac_executable.toFixed(3)}  ` +
+  `<b>MEAN_WAYPOINTS</b>=${v.mean_waypoints.toFixed(2)}  ` +
+  `<b>tau_exec</b>=${v.tau_exec.toFixed(4)}  <b>tau_floor</b>=${v.tau_floor.toFixed(4)}  ` +
+  `block rules: ${JSON.stringify(v.block_rules)}`;
+
+const startsDiv = document.getElementById("starts");
+DATA.starts.forEach((s, i) => {
+  const row = document.createElement("div");
+  row.className = "row";
+  const chip = s.executable ? '<span class="chip chip-executable">exec</span>' :
+    `<span class="chip chip-${s.block_rule}">${s.block_rule}</span>`;
+  row.innerHTML = `#${i}  ${s.direct.toFixed(3)} &rarr; ${s.bottleneck.toFixed(3)}  (+${s.gain.toFixed(3)})${chip}`;
+  row.onclick = () => setStart(i);
+  startsDiv.appendChild(row);
+});
+
+drawHist("h-gain", DATA.hist_gain.bins,
+  [{ name: "gain", counts: DATA.hist_gain.counts, color: "#7aa2ff" }], "gain (bottleneck - direct)");
+drawHist("h-ply", DATA.hist_ply.bins,
+  [{ name: "waypoint ply", counts: DATA.hist_ply.waypoint_counts, color: "#66d9a6" },
+   { name: "start ply", counts: DATA.hist_ply.start_counts, color: "#ffb86b" }], "ply");
+
+setStart(0);
+</script>
+</body>
+</html>

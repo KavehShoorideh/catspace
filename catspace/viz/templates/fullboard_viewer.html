@@ -47,6 +47,42 @@ let gi = 0, pi = 0;
 const mapEl = document.getElementById("map");
 const NS = "http://www.w3.org/2000/svg";
 
+// Boards render on demand from a FEN string (not pre-baked server-side) --
+// ~70 bytes vs. ~31KB for a pre-rendered SVG, and only the on-screen ply is drawn.
+const PIECE_GLYPH = { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" };
+function boardSVG(fen, opts) {
+  opts = opts || {};
+  const size = opts.size || 380;
+  const sq = size / 8;
+  const rows = (fen || "8/8/8/8/8/8/8/8").split(" ")[0].split("/");
+  const LIGHT = "#e8d9b5", DARK = "#a5794f", HILITE = "#7aa2ff66";
+  const hi = new Set([opts.lastFrom, opts.lastTo].filter(Boolean));
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">`;
+  for (let r = 0; r < 8; r++) {
+    let file = 0;
+    for (const ch of rows[r]) {
+      const n = /[1-8]/.test(ch) ? +ch : 1;
+      for (let k = 0; k < n; k++) {
+        const x = file * sq, y = r * sq;
+        const sqName = "abcdefgh"[file] + (8 - r);
+        const color = ((file + r) % 2 === 0) ? LIGHT : DARK;
+        svg += `<rect x="${x}" y="${y}" width="${sq}" height="${sq}" fill="${color}"/>`;
+        if (hi.has(sqName)) svg += `<rect x="${x}" y="${y}" width="${sq}" height="${sq}" fill="${HILITE}"/>`;
+        if (!/[1-8]/.test(ch)) {
+          const isWhite = ch === ch.toUpperCase();
+          const glyph = PIECE_GLYPH[ch.toLowerCase()];
+          const fill = isWhite ? "#f5f5f5" : "#15171b";
+          svg += `<text x="${x + sq / 2}" y="${y + sq * 0.76}" font-size="${sq * 0.8}" text-anchor="middle" ` +
+                 `fill="${fill}" stroke="${isWhite ? "#15171b" : "none"}" stroke-width="${isWhite ? 1 : 0}">${glyph}</text>`;
+        }
+        file += 1;
+      }
+    }
+  }
+  svg += "</svg>";
+  return svg;
+}
+
 function extent(pts) {
   let xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
   const pad = 0.05;
@@ -138,7 +174,7 @@ function setPly(i) {
   const g = DATA.games[gi];
   pi = Math.max(0, Math.min(g.plies.length - 1, i));
   const p = g.plies[pi];
-  document.getElementById("board").innerHTML = p.svg;
+  document.getElementById("board").innerHTML = boardSVG(p.fen, {size: 380, lastFrom: p.last_from, lastTo: p.last_to});
   document.getElementById("slider").value = pi;
   cursor.setAttribute("cx", sx(p.xy[0])); cursor.setAttribute("cy", sy(p.xy[1]));
   const x = 20 + 900 * pi / Math.max(1, g.plies.length - 1);

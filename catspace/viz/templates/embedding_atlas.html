@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>catspace — embedding atlas</title>
+<style>
+  body { background:#14161a; color:#cfd3da; font:13px/1.4 -apple-system, "Segoe UI", sans-serif; margin:14px; }
+  h1 { font-size:15px; margin:0 0 8px; color:#e8eaee; }
+  .lg { font-size:11px; color:#8a90a0; }
+  #ctrl { display:flex; gap:16px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+  #ctrl button { background:#22252c; color:#cfd3da; border:1px solid #3a3f49; border-radius:4px;
+                 padding:3px 10px; cursor:pointer; }
+  #ctrl button.active { background:#3d5afe22; border-color:#7aa2ff; color:#fff; }
+  #ctrl label { font-size:11px; color:#8a90a0; margin-right:6px; }
+  #main { display:flex; gap:14px; }
+  #mapwrap { background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:8px; }
+  #map { width:720px; height:720px; }
+  #right { width:280px; }
+  #legend, #tooltip { background:#1b1e24; border:1px solid #2a2e36; border-radius:6px; padding:10px; margin-bottom:10px; }
+  #legend .lg { font-size:11px; color:#8a90a0; margin-bottom:4px; }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; vertical-align:middle; }
+  .legend-row { font-size:11px; margin:2px 0; }
+  #tooltip .lg { color:#8a90a0; font-size:11px; }
+  #tooltip svg { width:240px; height:240px; }
+  #tooltip .fen { font-size:10px; color:#6a7080; word-break:break-all; margin-top:4px; }
+</style>
+</head>
+<body>
+<h1 id="title"></h1>
+<div class="lg" style="margin-bottom:8px">each checkpoint is projected independently -- axes and absolute positions are NOT comparable across checkpoints, only the cluster shapes are</div>
+<div id="ctrl">
+  <div id="ckptbtns"></div>
+  <div>
+    <label>color</label>
+    <select id="colormode">
+      <option value="result">result</option>
+      <option value="ply">ply bucket</option>
+      <option value="reach">reach (per-ckpt)</option>
+      <option value="winprob">stockfish winprob</option>
+      <option value="elo">white elo bin</option>
+    </select>
+  </div>
+</div>
+<div id="main">
+  <div id="mapwrap"><svg id="map" viewBox="0 0 720 720"></svg></div>
+  <div id="right">
+    <div id="legend"></div>
+    <div id="tooltip"><div class="lg">hover a point</div></div>
+  </div>
+</div>
+
+<script>
+const DATA = /*__DATA__*/;
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs) { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); return e; }
+
+const PIECE_GLYPH = { p: "♟", n: "♞", b: "♝", r: "♜", q: "♛", k: "♚" };
+function boardSVG(fen, opts) {
+  opts = opts || {};
+  const size = opts.size || 240;
+  const sq = size / 8;
+  const rows = (fen || "8/8/8/8/8/8/8/8").split(" ")[0].split("/");
+  const LIGHT = "#e8d9b5", DARK = "#a5794f";
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}">`;
+  for (let r = 0; r < 8; r++) {
+    let file = 0;
+    for (const ch of rows[r]) {
+      const n = /[1-8]/.test(ch) ? +ch : 1;
+      for (let k = 0; k < n; k++) {
+        const x = file * sq, y = r * sq;
+        const color = ((file + r) % 2 === 0) ? LIGHT : DARK;
+        svg += `<rect x="${x}" y="${y}" width="${sq}" height="${sq}" fill="${color}"/>`;
+        if (!/[1-8]/.test(ch)) {
+          const isWhite = ch === ch.toUpperCase();
+          const glyph = PIECE_GLYPH[ch.toLowerCase()];
+          const fill = isWhite ? "#f5f5f5" : "#15171b";
+          svg += `<text x="${x + sq / 2}" y="${y + sq * 0.76}" font-size="${sq * 0.8}" text-anchor="middle" ` +
+                 `fill="${fill}" stroke="${isWhite ? "#15171b" : "none"}" stroke-width="${isWhite ? 1 : 0}">${glyph}</text>`;
+        }
+        file += 1;
+      }
+    }
+  }
+  svg += "</svg>";
+  return svg;
+}
+
+let ci = DATA.ckpts.length - 1;   // default to the LAST (most-trained) checkpoint
+let mode = "result";
+
+const SEQ = ["#3550c9", "#4f7fe0", "#66a0e8", "#7fc4c8", "#a6d98f", "#d9d96b", "#e0a34f", "#d9663f"];
+function seqColor(t) {
+  t = Math.max(0, Math.min(1, t));
+  const i = Math.min(SEQ.length - 1, Math.floor(t * SEQ.length));
+  return SEQ[i];
+}
+function resultColor(r) { return r > 0 ? "#66d9a6" : (r < 0 ? "#ff7a9c" : "#8a90a0"); }
+function plyBucket(p) { return p < 20 ? 0 : (p < 40 ? 1 : (p < 70 ? 2 : 3)); }
+const PLY_COLORS = ["#7aa2ff", "#66d9a6", "#ffb86b", "#ff7a9c"];
+
+function colorFor(i, ck) {
+  const P = DATA.points;
+  if (mode === "result") return resultColor(P.result[i]);
+  if (mode === "ply") return PLY_COLORS[plyBucket(P.ply[i])];
+  if (mode === "elo") return seqColor(P.white_elo_bin[i] / 10);
+  if (mode === "winprob") return (P.winprob[i] === null) ? "#3a3f49" : seqColor(P.winprob[i]);
+  if (mode === "reach") {
+    const rs = ck.reach;
+    return seqColor((rs[i] - ck._rmin) / ((ck._rmax - ck._rmin) || 1));
+  }
+  return "#7aa2ff";
+}
+
+function extent(pts) {
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const pad = 0.06;
+  let x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const dx = (x1 - x0) || 1, dy = (y1 - y0) || 1;
+  return { x0: x0 - pad * dx, x1: x1 + pad * dx, y0: y0 - pad * dy, y1: y1 + pad * dy };
+}
+
+DATA.ckpts.forEach(ck => { ck._rmin = Math.min(...ck.reach); ck._rmax = Math.max(...ck.reach); });
+
+function drawMap() {
+  const ck = DATA.ckpts[ci];
+  const svg = document.getElementById("map");
+  svg.innerHTML = "";
+  const EXT = extent(ck.xy);
+  const sx = x => 720 * (x - EXT.x0) / (EXT.x1 - EXT.x0);
+  const sy = y => 720 * (1 - (y - EXT.y0) / (EXT.y1 - EXT.y0));
+  const circles = [];
+  ck.xy.forEach((p, i) => {
+    const c = el("circle", { cx: sx(p[0]), cy: sy(p[1]), r: 2, fill: colorFor(i, ck), opacity: 0.72 });
+    svg.appendChild(c);
+    circles.push([sx(p[0]), sy(p[1]), i]);
+  });
+  svg.onmousemove = ev => {
+    const r = svg.getBoundingClientRect();
+    const mx = (ev.clientX - r.left) * 720 / r.width, my = (ev.clientY - r.top) * 720 / r.height;
+    let best = -1, bd = 1e18;
+    for (const [x, y, i] of circles) {
+      const d = (x - mx) ** 2 + (y - my) ** 2;
+      if (d < bd) { bd = d; best = i; }
+    }
+    if (best >= 0 && bd < 400) showTooltip(best, ck);
+  };
+  drawLegend();
+}
+
+function showTooltip(i, ck) {
+  const P = DATA.points;
+  const wp = P.winprob[i];
+  document.getElementById("tooltip").innerHTML =
+    boardSVG(P.fen[i], { size: 240 }) +
+    `<div class="lg">ply ${P.ply[i]}  ·  result ${P.result[i]}  ·  elo ${800 + 200 * P.white_elo_bin[i]}` +
+    (wp !== null ? `  ·  winprob ${wp.toFixed(2)}` : "") + `  ·  reach ${ck.reach[i].toFixed(3)}</div>` +
+    `<div class="fen">${P.fen[i]}</div>`;
+}
+
+function drawLegend() {
+  const leg = document.getElementById("legend");
+  let rows = [];
+  if (mode === "result") rows = [["win (white)", "#66d9a6"], ["draw", "#8a90a0"], ["loss (white)", "#ff7a9c"]];
+  else if (mode === "ply") rows = [["0-19", PLY_COLORS[0]], ["20-39", PLY_COLORS[1]], ["40-69", PLY_COLORS[2]], ["70+", PLY_COLORS[3]]];
+  else if (mode === "elo") rows = [["800 (low)", seqColor(0)], ["1800 (mid)", seqColor(0.5)], ["2800+ (high)", seqColor(1)]];
+  else if (mode === "winprob") rows = [["white losing", seqColor(0)], ["even", seqColor(0.5)], ["white winning", seqColor(1)], ["unannotated", "#3a3f49"]];
+  else if (mode === "reach") rows = [["low reach", seqColor(0)], ["mid", seqColor(0.5)], ["high reach", seqColor(1)]];
+  leg.innerHTML = `<div class="lg">${mode}</div>` +
+    rows.map(([label, color]) => `<div class="legend-row"><span class="swatch" style="background:${color}"></span>${label}</div>`).join("");
+}
+
+document.getElementById("title").textContent = DATA.meta.title;
+const btns = document.getElementById("ckptbtns");
+DATA.ckpts.forEach((ck, i) => {
+  const b = document.createElement("button");
+  b.textContent = ck.name;
+  b.className = i === ci ? "active" : "";
+  b.onclick = () => { ci = i; document.querySelectorAll("#ckptbtns button").forEach((x, j) => x.classList.toggle("active", j === i)); drawMap(); };
+  btns.appendChild(b);
+});
+document.getElementById("colormode").onchange = ev => { mode = ev.target.value; drawMap(); };
+document.getElementById("colormode").value = mode;
+drawMap();
+</script>
+</body>
+</html>
