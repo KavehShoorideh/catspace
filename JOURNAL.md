@@ -2149,3 +2149,43 @@ a cheap data point; not expected to promote (wrong axis).
 training helped calibration, +0.272). Build the categorical distributional head;
 its entropy must beat score_spread's +0.20 on the sharpness benchmark to be worth
 consuming in C.
+
+---
+
+## 2026-07-13 (Opus) — B fails the sharpness gate; and the benchmark was distance-confounded (both caught by fail-fast)
+
+Short-run-first + rigorous instrumentation paid off twice in one loop.
+
+**B (categorical distributional head) short run (15k steps):** dist_sigma
+(position entropy) rho vs sharpness = -0.21 -- NEGATIVE. Tried three readouts
+of the SAME checkpoint (no retraining): position entropy, successor-mean-spread,
+successor-entropy-spread -- all negative (-0.16 to -0.23), while the plain
+score_spread was weakly positive (+0.13). Per the pre-registered gate: no full
+run. The short run saved a wasted 90k.
+
+**Then the deeper catch: the benchmark's sharpness ruler was DISTANCE-CONFOUNDED.**
+rho(sharpness, distance-to-mate) = +0.387 with the absolute cost margin -- "sharp"
+disproportionately meant "near mate", because an absolute margin flags few
+holding-moves when costs are small (near mate) and many when large (far). So
+every apparent signal was partly a distance artifact: score_spread's raw +0.13
+-> partial +0.06 controlling for distance. The "+0.20 baseline" the whole B plan
+was pinned to was largely measuring distance, not sharpness.
+
+**Fix:** added `crit = (2nd_best - best)/(best + 1)`, a best-vs-second-best
+criticality ("does the best move matter?") that is distance-INDEPENDENT
+(rho(crit, distance) ~= 0.00-0.10). On this clean ruler, EVERY current signal is
+~0: score_spread +0.05, dist_sigma -0.07, successor-spreads ~0. Honest headline:
+**no static signal our models emit -- point head OR distributional head -- detects
+true (distance-controlled) tactical sharpness.**
+
+**Interpretation / fork (to Kaveh):** the reframe (sharpness = value curvature)
+may be right, but a distance/ply-gap-trained representation doesn't encode it.
+Three paths: (a) train the categorical on OUTCOME (WDL win/draw/loss from game
+`result`) -- its entropy is result-volatility, closer to tactical sharpness, and
+aligns with the WDL viz; (b) treat sharpness as SEARCH-INTRINSIC -- classical
+quiescence: gate expansion on the search's own value INSTABILITY across
+depth/siblings, no learned head (curvature is a property of the tree, maybe not
+the node); (c) it's blocked until the value function itself is better calibrated.
+Epistemic caveat: crit is one operationalization; the "no signal" conclusion is
+as strong as crit is a good sharpness proxy (distance-clean, plausible, not
+proven canonical). Paused for Kaveh's steer before building (a) or (b).
