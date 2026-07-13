@@ -41,6 +41,22 @@ emits**, not on depth. Two kinds map onto the two desiderata:
 
 **Chosen path: B produces, C consumes.** A is the cheap validator run first.
 
+## FOSS-first check (Kaveh's standing rule: don't rebuild what good FOSS provides)
+
+Before building B/C, the existing open-source homes for each piece:
+- **Quasimetric head** — `torchqmet` (Tongzhou Wang, the IQE/MRN/PQE reference
+  impl) is the FOSS home of our hand-rolled `score = r - d`. Evaluate adopting it
+  when B rebuilds the head; the catch is that swapping it changes numerics and
+  breaks comparability with our baselines, so adopt WITH a matched re-baseline at
+  the B rearchitecture point, not as a silent mid-stream swap.
+- **Distributional head** — `torch.distributions.Categorical` + built-in
+  `cross_entropy` (and pinball loss for the quantile fallback). No bespoke
+  distributional-RL framework needed for a softmax-over-bins head.
+- **Already FOSS, kept**: python-chess (board/legal moves — the search's substrate),
+  `chess.syzygy` (tablebase probing for the sharpness/calibration ground truth),
+  scipy.stats (Spearman/Wilcoxon), torch. What we genuinely build is only the
+  research composition: the FB/quasimetric loss, the chess readout, the gated search.
+
 ## B — distribution choice: CATEGORICAL (Kaveh, 2026-07-13)
 
 - **Categorical, not Gaussian.** Chess distance-to-goal is *bounded and
