@@ -372,6 +372,35 @@ class FBSearchPolicy:
         best = int(np.argmax(scores))
         return roots[best].move
 
+    def reliability(self, board: chess.Board, shallow_keep_frac: float = 0.5) -> float:
+        """METHOD 1 sharpness sensor (2026-07-13, UNCERTAINTY_DESIGN.md): how
+        much does DEEP search reorder the root moves versus a SHALLOW (1-ply
+        reach) look? Among the shallow-PLAUSIBLE moves (top `shallow_keep_frac`
+        by 1-ply reach -- this filters the obvious 1-ply blunders, which look
+        bad shallowly AND deeply so they don't create disagreement anyway),
+        low rank-agreement between shallow and deep = "thinking harder changed
+        my mind here" = the model is UNRELIABLE / the position is SHARP. This is
+        self-referential (no external label): it measures the engine's own
+        instability, and it's reachability-native (both looks are F(.)@z).
+
+        Returns a disagreement score in [0, 1]: 0 = quiet (deep agrees with the
+        shallow ranking, extra search is wasted), 1 = maximally sharp (deep
+        completely reorders the plausible moves)."""
+        roots, deep = self._build_and_score(board)
+        if len(roots) < 3:
+            return 0.0
+        shallow = self._reach_batch([r.board for r in roots])
+        deep = np.asarray(deep, dtype=float)
+        k = max(3, int(round(len(roots) * shallow_keep_frac)))
+        keep = np.argsort(-shallow)[:k]                      # shallow-plausible moves
+        sh, dp = shallow[keep], deep[keep]
+        sr = np.argsort(np.argsort(sh)).astype(float)        # spearman = pearson on ranks
+        dr = np.argsort(np.argsort(dp)).astype(float)
+        if sr.std() < 1e-9 or dr.std() < 1e-9:
+            return 0.0
+        rho = float(np.corrcoef(sr, dr)[0, 1])
+        return float((1.0 - rho) / 2.0)                      # [-1,1] rho -> [0,1] disagreement
+
     def plan(self, board: chess.Board, rng: np.random.Generator) -> tuple[chess.Move, chess.Board]:
         """Like move(), but also walks the PRINCIPAL VARIATION -- the
         sequence of backed-up-best children from the chosen root move down
