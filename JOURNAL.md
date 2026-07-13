@@ -2065,3 +2065,48 @@ can steer training instead of guessing. It runs six instruments:
 - **DTZ / DTM / WDL.** Tablebase ground truth: Distance-To-Zeroing-move /
   Distance-To-Mate / Win-Draw-Loss under perfect play. Used only to grade the
   model, never to train it.
+
+---
+
+## 2026-07-13 (Opus) — the sharpness reframe: depth is the wrong axis; uncertainty is; benchmark built
+
+Kaveh's reframe (his words, condensed): the tactical/positional boundary isn't
+temporal depth, it's **local sharpness of the value landscape** — a sharp
+position is high-curvature (one tempo flips the result, can't prune), a smooth
+one is low-curvature (move-orders converge, a coarse estimate suffices). A
+forcing line runs 20 ply deep; a position is quiet at ply 2. So a ply-keyed
+handover is mis-specified, and THAT is why the two heads fight — at a fixed
+horizon one scalar is forced to be sharp and smooth at once. Our node-budget
+sweep (non-monotonic) already agreed depth isn't the lever.
+
+The fix: drive the handover on **uncertainty the model emits**, not depth.
+Aleatoric (irreducible branch volatility = genuine sharpness → don't prune) vs
+epistemic (unmapped region → grows with depth as a consequence). Four options
+(full spec in UNCERTAINTY_DESIGN.md): A head-disagreement gate (near-free
+validator), B distributional reachability head (signal producer), C
+uncertainty-gated quiescence expansion (consumer), D γ-ensemble (optional).
+Chosen: **B produces, C consumes; A validates first.**
+
+**B distribution = CATEGORICAL, not Gaussian** (Kaveh): chess distance-to-goal is
+bounded + integer (tablebase DTM/DTZ caps), so fixed distance bins have no
+edge-placement problem; Gaussian is rejected because bimodality ("3 ply or 30 ply
+depending on the line") IS the tactical signal and a Gaussian can't represent it;
+quantile regression is the fallback. Axiom load-bearer: the point-estimate used as
+the PLANNING DISTANCE must keep the IQE quasimetric axioms; the spread rides on
+top as an auxiliary regime signal and need not. v1 keeps the existing quasimetric
+d as the distance and uses the categorical only for spread.
+
+**Built: `experiments/sharpness_bench.py`** — the measurement backbone Kaveh asked
+for. Exact tablebase ground-truth sharpness of a winning position = value
+curvature over its legal moves (DTZ progress-cost spread: a rook hang that still
+wins by WDL shows up as a big cost jump, where the coarse WDL-preservation metric
+was flat). Any uncertainty signal is then ranked by rho vs that truth. Ground
+truth has real dynamic range (mean sharpness 0.53, 13% only-move-sharp).
+**Baseline: incumbent point-head move-score-spread ρ=+0.14** (weak) — the number A
+(head-disagreement) and B (categorical spread) must beat. `artifacts/experiments/
+sharpness_incumbent.json`.
+
+**Next:** when the ply-stratified two-horizon run finishes (baseline), run A
+(head-disagreement) on the benchmark — if it beats +0.14 meaningfully, the
+sharpness hypothesis is validated and we build B (categorical) then C (gated
+search), each scored on the benchmark then the play gate.
