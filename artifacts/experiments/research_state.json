@@ -8,7 +8,16 @@
     "ALWAYS cp the current best checkpoint to a step-numbered backup file BEFORE launching the next training round -- learned the hard way in round 1 (lost the step-30000 weights, see history)",
     "prefer NEW checkpoint filenames over overwriting data/derived/lichess_fb.pt when starting a genuinely new experimental branch (e.g. a new data scale) -- keeps every branch comparable without relying on manual backups"
   ],
-  "opponent_ladder": ["sf:skill=0", "sf:skill=3", "sf:skill=6", "sf:skill=9", "sf:skill=12", "sf:skill=15", "sf:skill=18", "sf:skill=20"],
+  "opponent_ladder": [
+    "sf:skill=0",
+    "sf:skill=3",
+    "sf:skill=6",
+    "sf:skill=9",
+    "sf:skill=12",
+    "sf:skill=15",
+    "sf:skill=18",
+    "sf:skill=20"
+  ],
   "current_opponent_index": 0,
   "escalate_score_threshold": 0.75,
   "escalate_min_games": 30,
@@ -26,21 +35,43 @@
   "download_throughput_measured_mbps": 5.4,
   "epochs_per_step_increment_note": "1GB shard (11.07M positions): 1 epoch = ~21615 steps, step 90000 reached ~4.16 epochs (diagnosed as a dominant cause of decline, round 2). 4GB shard (55.82M positions, batch=512): 1 epoch = ~109021 steps -- step 30000 was only ~0.275 epochs, lots of headroom",
   "checkpoint_backups": [
-    {"step": 2000, "path": "data/derived/lichess_fb_step2000.pt", "note": "kept from the original 2026-07-11 session"},
-    {"step": 60000, "path": "data/derived/lichess_fb_step60000.pt", "note": "round-1 output on 1GB shard, REGRESSED vs step-30000 (pre-LR-fix). Kept for comparison only."},
-    {"step": 90000, "path": "data/derived/lichess_fb_step90000.pt", "note": "round-2 output on 1GB shard (post-LR-fix). Partial recovery but still below step-30000. Kept for comparison only, NOT promoted to best."},
-    {"step": 30000, "path": "data/derived/lichess_fb_4gb_step30000.pt", "note": "round-3 output: fresh run on the 4GB shard. Beats round-1/2 on every metric, exceeds the 1GB-step30000 baseline on decompose MEAN_GAIN (0.462 vs 0.417), close-but-below on FRAC_IMPROVED/reach_slope/tau_exec. Promising but not a clean win yet -- extending further (round 4) to see if more exposure on the larger, still-fresh dataset clearly surpasses the baseline."}
+    {
+      "step": 2000,
+      "path": "data/derived/lichess_fb_step2000.pt",
+      "note": "kept from the original 2026-07-11 session"
+    },
+    {
+      "step": 60000,
+      "path": "data/derived/lichess_fb_step60000.pt",
+      "note": "round-1 output on 1GB shard, REGRESSED vs step-30000 (pre-LR-fix). Kept for comparison only."
+    },
+    {
+      "step": 90000,
+      "path": "data/derived/lichess_fb_step90000.pt",
+      "note": "round-2 output on 1GB shard (post-LR-fix). Partial recovery but still below step-30000. Kept for comparison only, NOT promoted to best."
+    },
+    {
+      "step": 30000,
+      "path": "data/derived/lichess_fb_4gb_step30000.pt",
+      "note": "round-3 output: fresh run on the 4GB shard. Beats round-1/2 on every metric, exceeds the 1GB-step30000 baseline on decompose MEAN_GAIN (0.462 vs 0.417), close-but-below on FRAC_IMPROVED/reach_slope/tau_exec. Promising but not a clean win yet -- extending further (round 4) to see if more exposure on the larger, still-fresh dataset clearly surpasses the baseline."
+    }
   ],
   "best": {
-    "ckpt_path": "data/derived/lichess_fb_4gb.pt",
-    "step": 60000,
+    "ckpt_path": "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+    "step": 90000,
     "shard": "4gb",
     "sha256": "166a26c36d0db123",
-    "readout": "FBSearchPolicy(depth=3, beam=4)",
+    "readout": "FBSearchPolicy(max_nodes=200, beam=4)",
     "report": "artifacts/experiments/20260711T182002__step60000__166a26c36d0db123.json",
-    "score_at_current_opponent": 0.250,
+    "score_at_current_opponent": 0.25,
     "score_confirmed": true,
-    "note": "CONFIRMED 2026-07-11: n=40 vs sf:skill=0, +1=18-21, score=0.250, e=11666.43, REJECT at alpha=0.05. This is now the best-known (checkpoint, readout) pair by the objective metric (arena win rate), a 2.5x improvement over the flat 0.100 that persisted across 4 training-lever-only rounds using FBBoardPolicy(depth=2). Same weights as round 4's checkpoint -- the entire gain came from readout strategy, not training. `best` now tracks (checkpoint, readout) jointly since readout is confirmed to matter as much as weights for the objective metric."
+    "note": "PROMOTED 2026-07-13 round 18 (ablation): quasimetric + ply-gap 0.05, human-only, no winner-pov, no selfplay mix. KRRvKBP n=60: 0.567 (12W/44D/4L) vs prior incumbent 0.558 (~3W) -- triple the win conversion; DIFF_SLOPE +0.255/+0.003 best ever; full-board n=40 at 200 nodes: 0.062 vs 0.050 (tie, both austere-budget-collapsed); ACPL 289 vs 253 (worse -- accepted: conversion and outcome-separation are closer to the project objective than the ACPL proxy). Round-13's 3-way recipe change fully attributed: the selfplay MIX at 0.3-0.4 frac was the play drag; ply-gap exonerated; winner-pov absence exonerated.",
+    "previous": {
+      "ckpt_path": "data/derived/lichess_fb_4gb.pt",
+      "step": 60000,
+      "readout": "FBSearchPolicy(depth=3, beam=4)",
+      "note": "CONFIRMED 2026-07-11: n=40 vs sf:skill=0, +1=18-21, score=0.250, e=11666.43, REJECT at alpha=0.05. This is now the best-known (checkpoint, readout) pair by the objective metric (arena win rate), a 2.5x improvement over the flat 0.100 that persisted across 4 training-lever-only rounds using FBBoardPolicy(depth=2). Same weights as round 4's checkpoint -- the entire gain came from readout strategy, not training. `best` now tracks (checkpoint, readout) jointly since readout is confirmed to matter as much as weights for the objective metric."
+    }
   },
   "current_round": {
     "index": 12,
@@ -66,7 +97,9 @@
     "action": "asym_weight 0.015 (ONE change from round 15's rejected 0.05): trained lichess_fb_4gb_qm_asym015.pt, same 3-part gate.",
     "status": "closed -- no promotion, see current_round_17.round_16_verdict",
     "round_15_verdict": "REJECTED as configured (weight 0.05): gate 1 PASS dramatic (frac(rev<=fwd) 0.030 vs 0.27-0.35 before, gap +0.325), gate 2 borderline FAIL (nearest-exemplar rho +0.123 < +0.15), gate 3 clear FAIL (ACPL +30.9cp worse, CI [+4.7,+57.1], p=0.01). Mechanism understood: over-weighted auxiliary loss traded k=1 retrieval (0.97->0.79, ACPL's whole diet) for long-horizon structure -- k=20-50 cliff moved OUTWARD for the first time (0.69->0.77, 0.23->0.30). Tuning failure, not mechanism failure.",
-    "artifacts": ["artifacts/experiments/qm_fitness_qm_asym.json"]
+    "artifacts": [
+      "artifacts/experiments/qm_fitness_qm_asym.json"
+    ]
   },
   "current_round_15": {
     "index": 15,
@@ -82,14 +115,22 @@
     "status": "running (gen2 generation, ~65min ETA)",
     "round_13_verdict": "NO PROMOTION. gen1 (quasimetric+ply-gap+selfplay, no winner-pov): ACPL +13.9cp worse than incumbent (CI [-11.0,+40.3], p=0.15, statistical wash); KRRvKBP 0.475/0.450 vs incumbent's 0.583/0.625; but structurally better (spread 2.35 vs 1.79, eff rank +2, k=50 retrieval 0.29 vs 0.23, best DIFF_SLOPE separation +0.208/-0.050). Three levers changed at once -- per-lever attribution impossible, accepted to unblock pipeline.",
     "steering_finding": "qm_fitness_probe (built this round from lit survey: PQE vio, Syzygy calibration, asymmetry audit, horizon retrieval, degeneracy panel): metric STRUCTURE is healthy on both ckpts (zero triangle violations on d, no collapse) but distance-to-mate calibration is FLAT (KRvK rho ~0 from mate-in-1 to mate-in-31 -- pawnless KRvK DTZ == true plies-to-mate, the clean ground truth; KRRvKBP DTZ compresses via captures, probe fixed accordingly). Root cause: OOD coverage -- human games never visit these regions. Retrieval cliff at k=20-50 plies and weak asymmetry gap (frac_rev<=fwd 0.27-0.35, want ~0) are targets 2 and 3.",
-    "artifacts": ["artifacts/experiments/qm_fitness_qm_wpov.json", "artifacts/experiments/qm_fitness_qm_gen1.json"]
+    "artifacts": [
+      "artifacts/experiments/qm_fitness_qm_wpov.json",
+      "artifacts/experiments/qm_fitness_qm_gen1.json"
+    ]
   },
   "current_round_13": {
     "index": 13,
     "action": "CORRECTED RELAUNCH after Fable review (see JOURNAL.md 2026-07-12 13:20): training data/derived/lichess_fb_4gb_qm_gen1.pt -- quasimetric + ply-gap 0.05 + selfplay-mix 0.3 (data/selfplay/gen1, 400 games by lichess_fb_4gb_qm_wpov.pt), explicit --shards prefix4gb, NO winner-pov (removed from the codebase entirely), 90000 steps fresh, python -u.",
     "status": "running (launched 13:35, ~9.4 it/s -> ~2.7h ETA)",
     "review_findings": "first launch spun at step 0 for 35 min from TWO stacked bugs: (1) newest_shard_dir() resolved to data/shards/selfplay_gen1 (newest mtime), so the 'human' source was the 30k-position self-play dir, not the 55.8M-position 4GB prefix -- self-play output now lives under data/selfplay/ and selfplay_generate.py refuses to write under data/shards/; (2) winner-pov kept a measured 68.8/512 rows on that (mostly-drawn) data, below the batch//2=256 skip guard -- pass rate 0.000, infinite spin. Winner-pov is REMOVED (Kaveh): losing trajectories carry the bad-future signal ply-gap calibration needs. Round-11's evidence stands; the mechanism is retired.",
-    "node_sweep_result": {"max_nodes_200": 274.5, "max_nodes_800": 270.5, "max_nodes_2000_TAINTED": 283.4, "note": "200/800 flat (clean, both sampled from the human prefix). The 2000 stage started after selfplay_gen1/ existed and sampled ITS positions from self-play shards -- not comparable, re-run queued post-training with explicit --shards. Direction still holds on the clean pair: more search alone does not fix tactical blindness."},
+    "node_sweep_result": {
+      "max_nodes_200": 274.5,
+      "max_nodes_800": 270.5,
+      "max_nodes_2000_TAINTED": 283.4,
+      "note": "200/800 flat (clean, both sampled from the human prefix). The 2000 stage started after selfplay_gen1/ existed and sampled ITS positions from self-play shards -- not comparable, re-run queued post-training with explicit --shards. Direction still holds on the clean pair: more search alone does not fix tactical blindness."
+    },
     "bug_fixed": "val_metrics() was computing printed VAL_TOP1/TOP8/loss via raw f@b.T, bypassing score_matrix() -- quasimetric runs' printed validation diagnostics were wrong (actual trained weights unaffected, only the human-readable log). Fixed. Also: self-play shards now stamp odd game_ids (holdout rule silently ate ids % 50 == 0).",
     "known_caveat": "planner/decompose.py (hop_reach, waypoint_scores) and the viz builders score with raw F@z dot products -- mis-calibrated for quasimetric checkpoints. Nothing measured so far is affected (ACPL/KRRvKBP go through fb.score). Thread fb.score through before trusting decompose/viz numbers on quasimetric runs.",
     "instruction": "Kaveh (2026-07-12, will be away for many hours): 'keep progressing autonomously. don't stop... build all the self-play stuff and everything that's on our roadmap.' Plus: commit work periodically. Continue the PI-refinement cycle (generate self-play with current best -> train -> evaluate via ACPL n=400 + KRRvKBP n=60 -> promote if improved -> generate more self-play with new best -> repeat) autonomously. Journal every round with timestamps. Only stop the loop if explicitly told, or if genuinely stuck after trying the stuck_playbook (write the conclusion clearly first)."
@@ -174,9 +215,11 @@
       "action": "first FBSearchPolicy arena test: depth=3 beam=4, n=16 games, max-plies=60",
       "result": "PROMISING FIRST READ -- 0.250 score (+1=6-9), up from the flat 0.100 baseline across 4 prior rounds",
       "evidence": {
-        "score_mean": 0.250,
-        "wins": 1, "draws": 6, "losses": 9,
-        "e_value": 9.50,
+        "score_mean": 0.25,
+        "wins": 1,
+        "draws": 6,
+        "losses": 9,
+        "e_value": 9.5,
         "reject_at_alpha_0.05": false,
         "note": "e=9.50 needs e>=20 to reject H0 at alpha=0.05 -- real signal but n=16 is too small to call this confirmed yet"
       },
@@ -189,8 +232,10 @@
       "action": "confirmation run: FBSearchPolicy depth=3 beam=4, n=40 games vs sf:skill=0",
       "result": "CONFIRMED -- 0.250 score, statistically significant, exactly reproduces the n=16 read",
       "evidence": {
-        "score_mean": 0.250,
-        "wins": 1, "draws": 18, "losses": 21,
+        "score_mean": 0.25,
+        "wins": 1,
+        "draws": 18,
+        "losses": 21,
         "e_value": 11666.43,
         "reject_at_alpha_0.05": true,
         "note": "identical score_mean (0.250) at both n=16 and n=40 -- unusually clean reproduction, not just directionally consistent"
@@ -205,7 +250,9 @@
       "result": "PARTIAL ATTRIBUTION -- 0.163, above the flat 0.100 baseline but below depth=3's 0.250",
       "evidence": {
         "score_mean": 0.163,
-        "wins": 0, "draws": 13, "losses": 27,
+        "wins": 0,
+        "draws": 13,
+        "losses": 27,
         "e_value": 14505829.11,
         "reject_at_alpha_0.05": true,
         "comparison": "0.100 (old FBBoardPolicy depth=2) -> 0.163 (new framework, same depth=2) -> 0.250 (new framework, depth=3)"
@@ -219,8 +266,10 @@
       "action": "arena test: FBSearchPolicy depth=4 beam=3, n=40 vs sf:skill=0",
       "result": "REGRESSION -- 0.200, breaks the depth=2(0.163)->depth=3(0.250) trend rather than continuing it",
       "evidence": {
-        "score_mean": 0.200,
-        "wins": 1, "draws": 14, "losses": 25,
+        "score_mean": 0.2,
+        "wins": 1,
+        "draws": 14,
+        "losses": 25,
         "e_value": 144897.29,
         "reject_at_alpha_0.05": true,
         "comparison": "depth=2/beam=8: 0.163 -> depth=3/beam=4: 0.250 (best) -> depth=4/beam=3: 0.200"
@@ -235,9 +284,30 @@
       "result": "CONFIRMED -- winner-pov-only significantly beats the control, not just the baseline",
       "evidence": {
         "n": 400,
-        "winnerpov_vs_baseline": {"mean_diff_cp": -41.7, "ci95": [-61.8, -22.0], "wilcoxon_p": 0.0001535},
-        "control_vs_baseline": {"mean_diff_cp": -19.7, "ci95": [-36.8, -3.7], "wilcoxon_p": 0.02404},
-        "winnerpov_vs_control": {"mean_diff_cp": -22.1, "ci95": [-39.0, -5.8], "wilcoxon_p": 0.004604}
+        "winnerpov_vs_baseline": {
+          "mean_diff_cp": -41.7,
+          "ci95": [
+            -61.8,
+            -22.0
+          ],
+          "wilcoxon_p": 0.0001535
+        },
+        "control_vs_baseline": {
+          "mean_diff_cp": -19.7,
+          "ci95": [
+            -36.8,
+            -3.7
+          ],
+          "wilcoxon_p": 0.02404
+        },
+        "winnerpov_vs_control": {
+          "mean_diff_cp": -22.1,
+          "ci95": [
+            -39.0,
+            -5.8
+          ],
+          "wilcoxon_p": 0.004604
+        }
       },
       "diagnosis": "outcome-conditioning (filtering (anchor,goal) pairs to the eventual winner's POV, using `result` which was already flowing through the pipeline unused) produces a real effect beyond just more training steps. Effect size modest (~22cp) but statistically unambiguous with proper power (n=400 paired, both Wilcoxon and bootstrap CI agree). A first n=100 read looked promising but was NOT significant on the control comparison (p=0.43) -- caught by scaling up before concluding.",
       "methodology_bug_caught_and_fixed": "acpl_probe.py's mate_score=100000 let rare forced-mate detections dominate the MEAN with near-lottery-sized outliers (ACPL jumped from ~300 to ~1000-1600 at n=400, nothing to do with the checkpoints). Fixed to mate_score=1000 (standard ACPL convention).",
@@ -250,5 +320,11 @@
     "2. WebSearch/deep-research for techniques: self-play fine-tuning after imitation bootstrap, PI (policy-iteration) refinement loops, contrastive-embedding improvements for game-playing agents, curriculum/data-quality filtering",
     "3. try a hyperparameter/data lever instead of raw step count: lr schedule (DONE round 1->2, insufficient alone), gamma (pairing horizon), embedding dim d, FBBoardPolicy depth 1 vs 2, DATA SCALE (IN PROGRESS round 3 -- epoch-repetition hypothesis)",
     "4. if genuinely stuck after research + multiple alternate levers, write up the dead end honestly in JOURNAL.md (a documented negative result is a valid research outcome) and move to the next lever rather than looping forever on one idea"
-  ]
+  ],
+  "current_round_18": {
+    "index": 18,
+    "status": "closed -- PROMOTED plygap_only",
+    "action": "attribution ablation: qm + ply-gap + human-only",
+    "next": "round 19: low-dose selfplay (frac 0.1) on the new incumbent recipe; then two-horizon architecture (short-horizon head + long-horizon head) per the state-of-the-union synthesis"
+  }
 }
