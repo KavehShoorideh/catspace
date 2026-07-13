@@ -80,12 +80,13 @@ def make_selfplay_pair(fb, zgoals, device, max_nodes: int, beam: int, epsilon: f
     return StochasticPolicy(white, epsilon), StochasticPolicy(black, epsilon)
 
 
-def positions_of_game(rec) -> list[dict]:
+def positions_of_game(rec, start: chess.Board | None = None) -> list[dict]:
     """Mirrors data.lichess.positions_of's dict shape (packed/meta/ply/
     clock/eval_cp), replaying rec.moves to get one row per ply INCLUDING
     the final position (checkmate finals live there -- needed for zgoal
-    rebuilding on self-play-inclusive checkpoints)."""
-    board = chess.Board()
+    rebuilding on self-play-inclusive checkpoints). `start` must be the
+    same board the game was played from (endgame-curriculum starts)."""
+    board = start.copy(stack=False) if start is not None else chess.Board()
     out = [dict(packed=encode_packed(board), meta=encode_meta(board), ply=0,
                clock=float("nan"), eval_cp=float("nan"))]
     for uci in rec.moves:
@@ -95,10 +96,49 @@ def positions_of_game(rec) -> list[dict]:
     return out
 
 
+def random_endgame_start(rng: np.random.Generator) -> chess.Board | None:
+    """Random legal winnable-material endgame start for curriculum self-play
+    (2026-07-12: the qm_fitness_probe found the learned distance completely
+    FLAT against true distance-to-mate in endgame regions -- Spearman ~0 on
+    KRvK where tablebase DTZ == plies-to-mate -- because human games rarely
+    reach them. Games STARTED here produce real trajectories with real
+    outcomes through exactly that blind region: outcome-grounded coverage,
+    no oracle labels). Material mixes: KRvK, KQvK, KRRvK, KRRvKBP-family."""
+    menus = (
+        [(chess.ROOK, chess.WHITE)],
+        [(chess.QUEEN, chess.WHITE)],
+        [(chess.ROOK, chess.WHITE), (chess.ROOK, chess.WHITE)],
+        [(chess.ROOK, chess.WHITE), (chess.ROOK, chess.WHITE),
+         (chess.BISHOP, chess.BLACK), (chess.PAWN, chess.BLACK)],
+        [(chess.QUEEN, chess.WHITE), (chess.PAWN, chess.BLACK)],
+    )
+    pieces = list(menus[int(rng.integers(len(menus)))])
+    for _ in range(200):
+        n = 2 + len(pieces)
+        squares = rng.choice(64, size=n, replace=False)
+        board = chess.Board(None)
+        board.set_piece_at(int(squares[0]), chess.Piece(chess.KING, chess.WHITE))
+        board.set_piece_at(int(squares[1]), chess.Piece(chess.KING, chess.BLACK))
+        ok = True
+        for sq, (pt, color) in zip(squares[2:], pieces):
+            if pt == chess.PAWN and chess.square_rank(int(sq)) in (0, 7):
+                ok = False
+                break
+            board.set_piece_at(int(sq), chess.Piece(pt, color))
+        if not ok:
+            continue
+        board.turn = chess.WHITE if rng.random() < 0.5 else chess.BLACK
+        # is_valid() rejects kings-adjacent / side-not-to-move-in-check etc.
+        if not board.is_valid() or board.is_game_over(claim_draw=True):
+            continue
+        return board
+    return None
+
+
 def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, beam: int,
             epsilon: float, opening_plies: int, max_plies: int, elo: int, seed: int,
             shard_positions: int, sf_opponent_frac: float, sf_skill: int,
-            policy_cls, verbose: bool = True) -> dict:
+            policy_cls, endgame_start_frac: float = 0.0, verbose: bool = True) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     buf = {k: [] for k in ("packed", "meta", "ply", "clock", "eval_cp", "result",
                             "white_elo", "black_elo", "game_id")}
@@ -146,10 +186,14 @@ def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, be
                     white = sf_opponent
                 else:
                     black = sf_opponent
-            rec = play_board_game(white, black, opening_plies=opening_plies,
+            start = None
+            if rng.random() < endgame_start_frac:
+                start = random_endgame_start(rng)
+            rec = play_board_game(white, black, start=start,
+                                  opening_plies=0 if start is not None else opening_plies,
                                   max_plies=max_plies, rng=rng)
             result = _RESULT_MAP[rec.result]
-            rows = positions_of_game(rec)
+            rows = positions_of_game(rec, start=start)
             for r in rows:
                 buf["packed"].append(r["packed"]); buf["meta"].append(r["meta"])
                 buf["ply"].append(r["ply"]); buf["clock"].append(r["clock"])
@@ -176,7 +220,8 @@ def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, be
     manifest = dict(n_shards=len(shards), n_games=game_id, total_positions=total,
                     max_nodes=max_nodes, beam=beam, epsilon=epsilon,
                     opening_plies=opening_plies, sf_opponent_frac=sf_opponent_frac,
-                    sf_skill=sf_skill, elo=elo, seed=seed)
+                    sf_skill=sf_skill, elo=elo, seed=seed,
+                    endgame_start_frac=endgame_start_frac)
     import json
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     return manifest
@@ -199,6 +244,11 @@ def main():
     ap.add_argument("--elo", type=int, default=1800, help="omega Elo bin stamped on self-play rows")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--shard-positions", type=int, default=200_000)
+    ap.add_argument("--endgame-start-frac", type=float, default=0.0,
+                    help="fraction of games started from random winnable-material endgame "
+                         "positions (KRvK/KQvK/KRRvK/KRRvKBP-family) instead of the initial "
+                         "position -- curriculum coverage for the endgame regions where the "
+                         "qm_fitness_probe found distance-to-mate calibration completely flat")
     ap.add_argument("--sf-opponent-frac", type=float, default=0.3,
                     help="fraction of games where one side is Stockfish instead of self-play "
                          "-- external grounding so the field doesn't only reinforce its own "
@@ -233,7 +283,7 @@ def main():
     manifest = generate(fb, zgoals, device, args.games, out_dir, args.max_nodes,
                         args.beam, args.epsilon, args.opening_plies, args.max_plies, args.elo,
                         args.seed, args.shard_positions, args.sf_opponent_frac, args.sf_skill,
-                        policy_cls, verbose=True)
+                        policy_cls, endgame_start_frac=args.endgame_start_frac, verbose=True)
     print(f"wrote {manifest['n_shards']} shard(s), {manifest['n_games']} games, "
          f"{manifest['total_positions']} positions -> {args.out_dir}")
 

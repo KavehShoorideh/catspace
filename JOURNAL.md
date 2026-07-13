@@ -1524,3 +1524,69 @@ data/derived/lichess_fb_4gb_qm_gen1.pt --steps 90000 --quasimetric
 --selfplay-frac 0.3 --fresh` -- unbuffered this time so the log shows
 life immediately, explicit shards, no winner-pov. Levers: quasimetric +
 ply-gap calibration + self-play mix.
+
+---
+
+## 2026-07-12 22:10 — round-13 training done; quasimetric FITNESS instruments built (lit survey -> experiments/qm_fitness_probe.py)
+
+**Training** (`lichess_fb_4gb_qm_gen1.pt`, 90k steps, ~2h at ~12 it/s):
+clean finish. Notable verdict line: `DIFF_SLOPE_WON=+0.208 /
+DIFF_SLOPE_LOST=-0.050` -- the strongest won-lost separation of any
+checkpoint to date (qm_wpov was -0.106/-0.256; the sign structure here is
+the first one that matches the design intent: reach-toward-MY-mate rises
+in games I win, doesn't in games I lose). Raw REACH_SLOPE went negative
+for both (-0.129/-0.288) -- under `score = r - d` the raw slope mixes the
+generic-finality component differently than cosine did; MATE_DIFF is the
+outcome-signal diagnostic, and it improved. Full evaluation
+(`round13_eval.sh`: clean node-2000 rerun + ACPL n=400 new-vs-incumbent +
+KRRvKBP n=60) running now.
+
+**Quasimetric fitness instruments** (Kaveh: find how people evaluate the
+fitness of quasimetrics, build those to steer embedding improvement; the
+prior conversation wasn't recoverable from transcripts, so a fresh
+literature survey was run). Survey highlights (agent report, full
+citations in conversation): PQE (Wang & Isola 2022) defines the two
+canonical structural quantities -- multiplicative DISTORTION (Defn 4.1)
+and quasimetric VIOLATION ratio `vio = d(x,z)/(d(x,y)+d(y,z))` (Defn
+4.2), with a theorem that they lower-bound generalization error; IQE's
+infinite-distance column (predicted d where true d = infinity) is the
+standard unreachability probe; QRL demonstrates ground-truth-vs-learned
+distance heatmaps where true distances exist; OGBench's stitch splits are
+the compositional-generalization protocol; nobody reports a quantitative
+asymmetry-recovery score (gap we can fill cheaply -- chess's capture
+boundary gives free ground-truth one-way doors); and notably the survey
+flagged that the ORIGINAL MRN violates non-negativity (IQE's fix) -- our
+`d` is a genuine Euclidean norm on rescaled embeddings, non-negative by
+construction, and the existing metric-axiom tests already cover that bug
+class.
+
+**Built: `experiments/qm_fitness_probe.py`** -- five instruments, ranked
+by the survey's value-per-effort ordering:
+1. *Syzygy calibration*: d(F(s), zMATE) vs tablebase DTZ on
+   KRRvKBP-family winning positions (Spearman rho + per-DTZ-bin means).
+   Real ground-truth distances -- better than any gridworld oracle in the
+   literature this borrows from.
+2. *Horizon-stratified retrieval*: true-future-vs-63-negatives ranking
+   accuracy at ply gaps {1,2,5,10,20,50}.
+3. *Asymmetry audit*: capture-boundary pairs (forward feasible, reverse =
+   un-capturing = impossible); frac(reverse <= forward) should be ~0.
+4. *Triangle violation*: PQE vio on `d` alone (architectural guarantee,
+   regression test) AND on the full `r-d` readout (not guaranteed; tracks
+   how non-metric the actual planning signal is).
+5. *Degeneracy panel*: spread ratio (cross-game vs 1-ply distances),
+   effective rank of F/B, norms.
+
+**Smoke run on the incumbent (qm_wpov, small n) already tells a story**:
+retrieval acc 0.70-0.85 at k<=10 plies vs chance 0.025, then a cliff --
+0.40 at k=20, 0.10 at k=50: the embedding discriminates real futures
+about 10-20 plies out and is nearly blind past that. Asymmetry
+frac(reverse<=forward)=0.27 with a small mean gap (0.09 on d~1.0): it
+half-knows material can't come back. Triangle on d: max_vio 0.76 (<= 1,
+guarantee holds); full-score violations negligible (0.045% of 20k
+triples). No distance collapse (spread ratio 1.78); effective rank ~19.5
+of 64 dims. Full-size probes on BOTH checkpoints (n=300 games, 200k
+triples, 300 syzygy positions) running on CPU alongside the MPS eval;
+results land in `artifacts/experiments/qm_fitness_{qm_wpov,qm_gen1}.json`.
+These numbers become the steering instruments for the next embedding
+rounds: the k=20-50 retrieval cliff and the weak asymmetry gap are the
+first two concrete targets.
