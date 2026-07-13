@@ -100,6 +100,14 @@ def main():
     ap.add_argument("--device", default="auto")
     ap.add_argument("--syzygy-dir", default="data/syzygy")
     ap.add_argument("--no-early-stop", action="store_true")
+    ap.add_argument("--compare", choices=("plan", "bank"), default="plan",
+                    help="plan: FBSearchPolicy vs FBPlanPolicy (original). "
+                         "bank: centroid-readout FBSearchPolicy vs goal-BANK-readout "
+                         "FBSearchPolicy (same nodes/beam; 2026-07-13 goal-as-region test)")
+    ap.add_argument("--bank-shards", nargs="+", default=["data/selfplay/gen2", "data/selfplay/gen1"],
+                    help="shard dirs to harvest white-mate finals from for --compare bank")
+    ap.add_argument("--bank-max-pieces", type=int, default=8,
+                    help="material cap for bank exemplars (endgame mates only)")
     ap.add_argument("--baseline-nodes", type=int, default=200)
     ap.add_argument("--baseline-beam", type=int, default=4)
     ap.add_argument("--plan-nodes", type=int, default=2000)
@@ -130,6 +138,23 @@ def main():
                             shallow_nodes=args.shallow_nodes, shallow_beam=args.shallow_beam,
                             device=device)
 
+    if args.compare == "bank":
+        from catspace.goal_bank import embed_bank, harvest_mate_finals
+        mates = harvest_mate_finals(args.bank_shards, want_result=1,
+                                    max_pieces=args.bank_max_pieces)
+        if len(mates) < 10:
+            raise SystemExit(f"only {len(mates)} white-mate finals harvested from "
+                             f"{args.bank_shards} at <= {args.bank_max_pieces} pieces")
+        bank = embed_bank(fb, mates, device)
+        print(f"goal bank: {len(mates)} white-mate exemplars (<= {args.bank_max_pieces} pieces)")
+
+        def make_bank():
+            return FBSearchPolicy(fb, bank, max_nodes=args.baseline_nodes,
+                                  beam=args.baseline_beam, device=device)
+        make_candidate, name_b = make_bank, "FBSearchPolicy+bank"
+    else:
+        make_candidate, name_b = make_plan, "FBPlanPolicy"
+
     tablebase = None
     if args.syzygy_dir and Path(args.syzygy_dir).exists():
         tablebase = chess.syzygy.open_tablebase(args.syzygy_dir)
@@ -142,12 +167,10 @@ def main():
           else UCIBoardPolicy(elo=int(arg), movetime=0.05))
 
     print(f"FBSearchPolicy(max_nodes={args.baseline_nodes}, beam={args.baseline_beam}) vs "
-          f"FBPlanPolicy(plan_nodes={args.plan_nodes}/beam={args.plan_beam}, "
-          f"shallow_nodes={args.shallow_nodes}/beam={args.shallow_beam}) "
-          f"as White, vs {args.opponent} as Black, device={device}")
+          f"{name_b} as White, vs {args.opponent} as Black, device={device}")
 
     with opp:
-        result = run_paired(make_baseline, make_plan, "FBSearchPolicy", "FBPlanPolicy",
+        result = run_paired(make_baseline, make_candidate, "FBSearchPolicy", name_b,
                             positions, opp, args.max_plies, args.seed, args.alpha,
                             tablebase=tablebase, early_stop=not args.no_early_stop, verbose=True)
 
@@ -155,8 +178,8 @@ def main():
         tablebase.close()
 
     lo, hi = result["diff_ci"]
-    print(f"\nVERDICT FBSearchPolicy={result['a_score_mean']:.3f} vs "
-          f"FBPlanPolicy={result['b_score_mean']:.3f}  (n={result['n_positions']} positions, "
+    print(f"\nVERDICT {result['name_a']}={result['a_score_mean']:.3f} vs "
+          f"{result['name_b']}={result['b_score_mean']:.3f}  (n={result['n_positions']} positions, "
           f"mean_diff={result['mean_diff']:+.3f} CI=[{lo:+.3f},{hi:+.3f}], "
           f"e={result['e_value']:.2f}, "
           f"{'REJECT(diff!=0)' if result['reject_at_alpha'] else 'no rejection'} at alpha={args.alpha})")

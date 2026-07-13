@@ -42,7 +42,10 @@ class FBBoardPolicy:
         meta = np.stack([encode_meta(b) for b in boards])
         planes = torch.from_numpy(feature_planes(packed, meta)).to(self.device)
         om = torch.from_numpy(np.tile(self._omega_row, (len(boards), 1))).to(self.device)
-        return self.fb.score(self.fb.embed_F(planes, om), self.z).cpu().numpy()
+        f = self.fb.embed_F(planes, om)
+        if self.z.dim() == 2:            # goal bank (see FBSearchPolicy.__init__)
+            return self.fb.score_matrix(f, self.z).max(dim=1).values.cpu().numpy()
+        return self.fb.score(f, self.z).cpu().numpy()
 
     def move(self, board: chess.Board, rng: np.random.Generator) -> chess.Move:
         return self.move_scored(board, rng)[0]
@@ -210,7 +213,15 @@ class FBSearchPolicy:
                  clock: float = 300.0, device: str = "cpu"):
         assert max_nodes >= 1 and beam >= 1
         self.fb = fb.to(device).eval()
+        # z may be a single goal embedding (d,) or a GOAL BANK (m, d): a set
+        # of exemplar B-embeddings scored by best-over-bank. 2026-07-13
+        # finding (JOURNAL.md): distance to any single mate CENTROID is flat
+        # against true plies-to-mate (averaging exemplars destroys the
+        # structure), while distance to the NEAREST mate exemplar correlates
+        # (rho +0.17 -> +0.25 after endgame-curriculum training) -- the goal
+        # must be a REGION (set), not a point (Kaveh's design requirement).
         self.z = torch.as_tensor(z, dtype=torch.float32, device=device)
+        assert self.z.dim() in (1, 2)
         self.max_nodes = max_nodes
         self.beam = beam
         self.device = device
@@ -241,7 +252,10 @@ class FBSearchPolicy:
         meta = np.stack([encode_meta(b) for b in boards])
         planes = torch.from_numpy(feature_planes(packed, meta)).to(self.device)
         om = torch.from_numpy(np.tile(self._omega_row, (len(boards), 1))).to(self.device)
-        return self.fb.score(self.fb.embed_F(planes, om), self.z).cpu().numpy()
+        f = self.fb.embed_F(planes, om)
+        if self.z.dim() == 2:            # goal bank: best-over-exemplars readout
+            return self.fb.score_matrix(f, self.z).max(dim=1).values.cpu().numpy()
+        return self.fb.score(f, self.z).cpu().numpy()
 
     def _make_children(self, board: chess.Board) -> list["_SearchNode"]:
         nodes = []

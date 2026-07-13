@@ -1652,3 +1652,64 @@ decisively off zero (target >= +0.3) on the next checkpoint's fitness
 probe** -- if it does, the curriculum mechanism works and we scale it; if
 it stays flat, the ply-gap term itself isn't reaching these pairs and the
 next lever is horizon/pairing changes, not more data.
+
+---
+
+## 2026-07-13 01:40 — round 14: the gate FAILED as registered, and failing it found the real bottleneck — the goal must be a REGION, not a point
+
+**gen2 data + training**: 500 games, 53% endgame starts (verified in the
+shard: short decisive endgame games, 32 KRRvK / 20 KQvK / 12 KRvK genuine
+white-mate finals among them), trained
+`lichess_fb_4gb_qm_gen2.pt` (90k steps, quasimetric + ply-gap +
+gen2-mix). **Pre-registered gate: KRvK Spearman rho(d, plies-to-mate) >=
++0.3. Result: -0.043 — FAILED, flat, unchanged from both prior
+checkpoints.** All other probe instruments essentially unchanged.
+
+**But the failure decomposes.** Follow-up experiment (all on CPU, minutes,
+no retraining): enumerated all 216 essentially-distinct genuine KRvK
+checkmate positions, then measured the SAME 300 tablebase-scored KRvK
+positions against three different goal representations:
+
+| goal representation | incumbent rho | gen2 rho |
+|---|---|---|
+| human-mate centroid (what planner+probe use today) | +0.003 | -0.077 |
+| KRvK-mate centroid (same-material mean) | +0.002 | -0.133 |
+| NEAREST KRvK-mate exemplar (min over 216) | **+0.165** | **+0.252** |
+
+Two conclusions, both load-bearing:
+1. **Averaging mate exemplars into ANY centroid destroys the distance
+   structure** — even a centroid built purely from same-material KRvK
+   mates is flat. The information is in the per-exemplar geometry; the
+   mean throws it away.
+2. **The endgame curriculum DID improve the underlying metric** (+0.165 ->
+   +0.252 nearest-exemplar rho) — the round's data lever worked, but the
+   improvement was invisible through the centroid readout the gate was
+   (wrongly) defined against. The pre-registered criterion measured the
+   goal representation's failure, not the data's.
+
+This is Kaveh's goal-as-region design requirement ("I want corner-the-king
+to be a region in space, broader than...") landing as a MEASURED result
+rather than a design intuition: the mate goal must be represented as a
+SET/region of exemplars, never collapsed to one vector.
+
+**Built (readout-only, no retraining needed):**
+- `catspace/goal_bank.py`: harvest genuine checkmate finals from any shard
+  dirs (result-filtered, material-capped) + embed as a (m, d) exemplar
+  bank.
+- `FBSearchPolicy`/`FBBoardPolicy` now accept `z` as either a single (d,)
+  goal or an (m, d) BANK, scored best-over-exemplars (for the quasimetric
+  that is exactly nearest-exemplar distance readout).
+- `krrkbp_arena.py --compare bank`: paired centroid-readout vs
+  bank-readout, SAME checkpoint, SAME search budget — isolates the goal
+  representation as the only variable. Bank for the KRRvKBP test: 71
+  white-mate endgame exemplars (<= 8 pieces) harvested from gen1+gen2
+  self-play — the model's own mates, zero oracle involvement.
+
+**Running:** the decisive n=60 KRRvKBP paired test (gen2 checkpoint).
+If bank-readout converts more tablebase-won positions than
+centroid-readout, the goal-as-region mechanism is validated end-to-end
+and gets wired into the main readout everywhere (and the fitness probe's
+calibration instrument switches to nearest-exemplar); if not, the +0.25
+rho wasn't strong enough to matter at play scale yet, and the next lever
+is strengthening the exemplar geometry (bigger banks, more endgame
+curriculum, or the pairing-horizon fix for the k=20-50 cliff).
