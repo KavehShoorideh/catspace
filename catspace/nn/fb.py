@@ -86,8 +86,10 @@ class TorchFB(nn.Module):
 
     def loss_fn(self, planes_s: torch.Tensor, omega_s: torch.Tensor,
                 planes_g: torch.Tensor, ply_gap: torch.Tensor | None = None,
-                ply_gap_weight: float = 0.05, ply_gap_scale: float = 50.0
-                ) -> tuple[torch.Tensor, torch.Tensor]:
+                material_drop: torch.Tensor | None = None,
+                ply_gap_weight: float = 0.05, ply_gap_scale: float = 50.0,
+                asym_weight: float = 0.0, asym_margin: float = 0.2,
+                asym_cap: int = 128) -> tuple[torch.Tensor, torch.Tensor]:
         """InfoNCE with in-batch negatives; returns (loss, top1 retrieval acc).
 
         2026-07-12 ply-gap calibration (Kaveh: "if the future leads to a mate
@@ -117,6 +119,25 @@ class TorchFB(nn.Module):
             d_true = self.distance_matrix(f, b).diagonal()
             target_d = ply_gap.to(d_true.dtype) / ply_gap_scale
             loss = loss + ply_gap_weight * nn.functional.mse_loss(d_true, target_d)
+        if self.quasimetric and asym_weight > 0 and material_drop is not None \
+                and bool(material_drop.any()):
+            # ASYMMETRY MARGIN (2026-07-13, JOURNAL.md): pairs whose material
+            # strictly DECREASED anchor->goal crossed a capture, so the
+            # reverse hop is impossible in real chess ("you can't un-capture
+            # the rook"). Hinge the reverse distance d(F(g), B(s)) to exceed
+            # the forward d(F(s), B(g)) by a margin -- derived purely from
+            # trajectory direction in the data, no chess rules coded in.
+            # (The fitness probe measured frac(reverse <= forward) at
+            # 0.27-0.35 with the arrow of material barely learned -- want ~0.)
+            # Capped subset: the reverse side needs its OWN extra F/B
+            # forwards, so this term costs a second pass on <= asym_cap rows.
+            rows = torch.nonzero(material_drop, as_tuple=False).flatten()[:asym_cap]
+            f_rev = self.embed_F(planes_g[rows], omega_s[rows])   # goal as state
+            b_rev = self.embed_B(planes_s[rows])                  # anchor as goal
+            d_fwd = self.distance_matrix(f[rows], b[rows]).diagonal()
+            d_rev = self.distance_matrix(f_rev, b_rev).diagonal()
+            loss = loss + asym_weight * nn.functional.relu(
+                asym_margin + d_fwd - d_rev).mean()
         return loss, top1
 
     def distance_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:

@@ -225,6 +225,29 @@ def test_ply_gap_calibration_term():
     assert torch.equal(a, b), "non-quasimetric mode must ignore ply_gap entirely"
 
 
+def test_asymmetry_margin_term():
+    """asym hinge adds loss only in quasimetric mode with material_drop rows,
+    produces gradients, and is a no-op at asym_weight=0 or with no drops."""
+    boards = _boards(8, seed=2)
+    packed, meta = _packed_meta(boards)
+    planes = torch.from_numpy(feature_planes(packed, meta))
+    omega = torch.from_numpy(omega_ids(np.full(8, 1500), np.full(8, 1500), np.full(8, 60.0)))
+    drop = torch.tensor([True, False, True, False, True, False, True, False])
+
+    fb = TorchFB(seed=0, quasimetric=True, **TINY)
+    base, _ = fb.loss_fn(planes, omega, planes)
+    with_asym, _ = fb.loss_fn(planes, omega, planes, material_drop=drop, asym_weight=0.1)
+    # identity pairs: d_fwd == d_rev, so hinge = relu(margin) > 0 -- term active
+    assert float(with_asym) > float(base)
+    with_asym.backward()
+    assert fb.metric_scale.grad is not None
+
+    off1, _ = fb.loss_fn(planes, omega, planes, material_drop=drop, asym_weight=0.0)
+    off2, _ = fb.loss_fn(planes, omega, planes, material_drop=torch.zeros(8, dtype=torch.bool),
+                         asym_weight=0.1)
+    assert torch.equal(off1, base) and torch.equal(off2, base)
+
+
 def test_ckpt_roundtrip(tmp_path):
     fb = TorchFB(seed=0, **TINY)
     z = np.ones(TINY["d"], dtype=np.float32)
