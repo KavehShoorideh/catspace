@@ -2981,3 +2981,17 @@ SHORT DISTILL (1200 steps): held-out Spearman(d, plies+8(-lnP)) went
   Sign flipped with disjoint CIs after 1200 steps. Weak (+0.17): full run next.
 Next: full distill (6000 steps), then MONEY TEST = paired 200-node playout vs
 incumbent on held-out test_n200 (CI-excluding-zero; confirmatory run after).
+
+### MONEY TEST: null. Certainty geometry improved the FIELD, not shallow play.
+Full distill: held-out Spearman -0.099 -> +0.142 (disjoint CIs) BUT paired 200n
+playout vs incumbent: 0.175 vs 0.150, diff -0.025 CI[-0.100,+0.050] ns. The gate
+held: full-data run NOT launched. Same dissociation as every toy intervention:
+field metrics move, play doesn't. Candidate reasons to diagnose BEFORE building on:
+(a) +0.14 Spearman is weak -- 2.7k train states may recalibrate too locally to
+change move ORDERING at decision points; (b) lambda=8 single exploratory value;
+(c) tb+eps rollout states != the model's own argmax trajectory (distribution
+mismatch); (d) the recurring possibility that at 200n the SEARCH, not the field,
+still binds. Next: drill-down on distilled-vs-incumbent move choices at decision
+points; consider certainty in the LOSS at scale rather than post-hoc distill.
+Stages 3-5 (two-field runtime, measured fallibility prior, opponent recovery) all
+built + unit/smoke-tested this round and committed -- ready when the field is.
