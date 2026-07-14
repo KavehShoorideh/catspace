@@ -2348,3 +2348,46 @@ embedding gets a progress gradient here is to generate data here (search/self-pl
 in these positions) and distill it back. Gating search alone can't help (drill-
 down shows deeper search over a flat reach is still flat) -- consistent with the
 gating-alone null. The loop (Stage 2-3) is the fix this evidence points to.
+
+---
+
+## 2026-07-13 (Opus) — Toy closed loop on KRRvKBP: curvature APPEARS from self-play
+
+Kaveh: "do self-play of this toy scenario, and see if the model improves ... I
+want to see how much curvature starts to appear in the reachability space where
+we want it as we proceed in self-play -- the sensitivity."
+
+Built the scoped closed loop: `selfplay_generate.py --start-fens` (every game
+launched from the 60-position KRRvKBP fixed set), `reach_curvature.py` (turns
+"curvature/sensitivity" into scalars on that fixed set), and
+`toy_selfplay_loop.py` (iterate self-play -> fine-tune on cumulative replay ->
+measure curvature). 3 rounds x 250 games x +5000 finetune steps, selfplay-frac
+0.7 (mixed with human to avoid forgetting), gen at 100 nodes.
+
+Trajectory (artifacts/experiments/reach_curvature.jsonl):
+  round  move_spread  dtz_rho  best_rank  top1_win
+  R0     0.0062       +0.020   0.457      0.896     <- flat baseline (drill-down)
+  R1     0.0685       +0.026   0.554      0.710
+  R2     0.0474       +0.091   0.505      0.751
+  R3     0.0378       +0.078   0.439      0.860
+
+Reading:
+- move_spread (raw field sensitivity): 0.006 -> 0.04-0.07, a **7-11x** jump. The
+  reach field is no longer flat/equidistant in the KRRvKBP region -- self-play
+  of ONE scenario measurably carves curvature into exactly that region. This is
+  the core positive result: the flat blind spot is fixable, and we can watch it.
+- dtz_rho (curvature WHERE WE WANT IT -- reach tracking true -|DTZ|): +0.020 ->
+  +0.091 at R2, ~4x. Direction is right, but absolute value is still weak (~0.09)
+  and it PEAKED at R2 then dipped R3 -- diminishing/noisy returns at this data
+  scale (250 games/round, ~5k finetune steps).
+- Spread-vs-alignment tension: R1 has the most spread but the WORST alignment and
+  win-preservation (top1_win 0.71) -- the field first gets bumpy, then R2/R3
+  trade spread for better orientation as it reorganizes (top1_win recovers 0.86).
+
+Conclusion: self-play distillation into a blind region WORKS as a curvature
+mechanism -- it converts a flat reach field into a sensitive one and nudges it
+toward truth. Open questions the trajectory raises: (1) does dtz_rho keep
+climbing with more rounds/games or plateau at ~0.09? (2) does the added curvature
+translate to actual KRRvKBP CONVERSION gains (play is the real test; curvature is
+the proxy)? Next: measure conversion on the fixed set with the R3 ckpt vs
+incumbent, and if promising, extend the loop to see if dtz_rho converges.
