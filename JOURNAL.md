@@ -2967,3 +2967,17 @@ EVALUATION DISCIPLINE (no point estimates -- the phantom-V6 lesson):
   CI-excluding-zero only; lambda/eps sweeps are exploratory by declaration, winner
   gets ONE pre-registered confirmatory run on untouched starts.
 Concept-axes (outcome axis slot 0) committed earlier today; parked pending this.
+
+### certainty distillation: all three gates passed (CIs disjoint)
+
+Table: 3455 states >=4 visits, P-hat mean 0.52, real spread (9% P=1, 7% P=0).
+RETRIEVAL-BEFORE-TRUST: holdout MAE 0.119 CI[0.109,0.129] vs predict-mean 0.276
+  -- fast-field kNN is ~2.3x better than ignorance; slow geometry locally honest
+  (support 0.94, p_var 0.03). Circularity fear benign IN-REGION; gate passed.
+SHORT DISTILL (1200 steps): held-out Spearman(d, plies+8(-lnP)) went
+  baseline -0.099 CI[-0.175,-0.027]  ->  tuned +0.170 CI[+0.095,+0.240].
+  The NEGATIVE baseline is a finding in itself: the incumbent's distance is
+  significantly ANTI-correlated with certainty -- min-semantics optimism measured.
+  Sign flipped with disjoint CIs after 1200 steps. Weak (+0.17): full run next.
+Next: full distill (6000 steps), then MONEY TEST = paired 200-node playout vs
+incumbent on held-out test_n200 (CI-excluding-zero; confirmatory run after).
