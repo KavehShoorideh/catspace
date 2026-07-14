@@ -2629,3 +2629,27 @@ hop-gradient; repel-only-with-centroid loses (0.36-0.43). Gentler pull = better
 (preserves within-region hops). CAVEAT: n=60 + SF nondeterminism -> incumbent
 estimate wobbles 0.52-0.60 across runs, so V6's +0.058 needs confirmation.
 Next: sweep gentler around V6, add more games for significance, region-bank goal.
+
+### 2026-07-14 (Opus) — proper A/B: V6 "win" was NOISE; conversion too high-variance
+
+Kaveh: "use the A/B harness with confidence intervals." eval_variant had been
+dropping the CI/e-value (recording only point estimates) -- fixed to capture the
+paired matched-seed diff + CI + anytime-valid e-value on a NEW n=200 held-out set
+(disjoint from train + fixed-60). Definitive V6 vs incumbent:
+  conversion A(incumbent)=0.537 vs B(V6)=0.532  mean_diff=-0.005
+  CI=[-0.383,+0.383]  e=0.09   -> DEAD TIE (e<<1: data favours the null).
+The overnight "V6 0.575 vs 0.517" was n=60 noise. Lesson banked: never promote on
+n=60 conversion point estimates.
+
+Two consequences:
+1. NO pole variant beats the incumbent on play -- they TIE. The outcome-pole
+   restructuring changes geometry (separation, dtz_rho +0.09 vs +0.02) but does
+   NOT improve moves; on the lower-variance top1_win the incumbent (0.896) is
+   actually AHEAD of the pole variants (0.81-0.85). Restructuring != better play.
+2. Game-conversion is too high-variance (CI +-0.38 at n=200) to rank variants at
+   all -- most KRRvKBP positions draw-or-win for BOTH, so the paired per-game diff
+   is mostly 0/+-1. Need a LOWER-VARIANCE, per-MOVE A/B metric for power.
+Next: paired move-level A/B (fraction of the model's hop-search top move that
+preserves the win, per position, over the test set + optimal lines) -- thousands
+of move samples -> tight CI -> can actually distinguish variants. That becomes the
+primary A/B; conversion stays as the (noisy) ground-truth check.
