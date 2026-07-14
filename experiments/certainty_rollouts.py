@@ -47,6 +47,8 @@ def main():
                          "(with epsilon slips) -- certainty then reflects how FORGIVING the "
                          "position itself is under competent-but-fallible play")
     ap.add_argument("--nodes", type=int, default=100)
+    ap.add_argument("--search", choices=("beam", "mcts"), default="beam",
+                    help="White's readout when --white model: beam minimax or PUCT MCTS")
     ap.add_argument("--max-plies", type=int, default=100)
     ap.add_argument("--min-visits", type=int, default=4, help="keep states with >= this many visits")
     ap.add_argument("--seed", type=int, default=0)
@@ -56,11 +58,12 @@ def main():
 
     import torch  # noqa: F401
     from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.nn.policy_fb import make_search_policy
 
     dev = pick_device(args.device)
     fb, pay = load_ckpt(Path(args.ckpt), dev)
-    pol = FBSearchPolicy(fb, pay["zgoals"]["MATE_W"], max_nodes=args.nodes, beam=4, device=dev)
+    pol = make_search_policy(args.search, fb, pay["zgoals"]["MATE_W"],
+                             max_nodes=args.nodes, beam=4, device=dev)
     tb = TB("data/syzygy")
     starts = json.loads(Path(args.starts).read_text())["fens"][:args.n_starts]
 

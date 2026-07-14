@@ -40,7 +40,7 @@ from catspace.data.shards import sample_shard_rows
 from catspace.io.paths import derived_dir, experiments_dir, newest_shard_dir
 from catspace.nn.fb import load_ckpt, pick_device
 from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.policy_fb import FBBoardPolicy, FBSearchPolicy
+from catspace.nn.policy_fb import FBBoardPolicy, make_search_policy
 from catspace.planner.decompose import WaypointPool, decompose, hop_reach
 from catspace.viz.payload import json_default as _numpy_json_default  # reuse the same numpy-JSON fix
 
@@ -210,6 +210,10 @@ def main():
                          "catspace.nn.policy_fb.FBSearchPolicy)")
     ap.add_argument("--search-beam", type=int, default=4,
                     help="branching cap per ply beyond the root, only used with --search-nodes")
+    ap.add_argument("--search", choices=("beam", "mcts"), default="beam",
+                    help="readout used with --search-nodes: beam minimax (default) or PUCT "
+                         "MCTS at the same node budget (catspace/nn/mcts.py)")
+    ap.add_argument("--c-puct", type=float, default=1.5)
     ap.add_argument("--opening-plies", type=int, default=6)
     ap.add_argument("--max-plies", type=int, default=200)
     ap.add_argument("--elo-cond", type=int, default=1800)
@@ -253,13 +257,14 @@ def main():
 
     def make_candidate_policy(fb_, z):
         if args.search_nodes is not None:
-            return FBSearchPolicy(fb_, z, max_nodes=args.search_nodes, beam=args.search_beam,
-                                  elo=args.elo_cond, device=device)
+            return make_search_policy(args.search, fb_, z, max_nodes=args.search_nodes,
+                                      beam=args.search_beam, c_puct=args.c_puct,
+                                      elo=args.elo_cond, device=device)
         return FBBoardPolicy(fb_, z, depth=args.depth, elo=args.elo_cond, device=device)
 
     fb_white = make_candidate_policy(fb, payload["zgoals"]["MATE_W"])
     fb_black = make_candidate_policy(fb, payload["zgoals"]["MATE_B"])
-    readout = (f"FBSearchPolicy(max_nodes={args.search_nodes}, beam={args.search_beam})"
+    readout = (f"{args.search}(max_nodes={args.search_nodes}, beam={args.search_beam})"
               if args.search_nodes is not None else f"FBBoardPolicy(depth={args.depth})")
     print(f"readout: {readout}")
 
