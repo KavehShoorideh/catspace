@@ -2837,3 +2837,27 @@ playout + regime awareness) that turned noisy point-estimates into trustworthy
 conclusions, and the precise localisation of the bottleneck (search <800n, embedding
 ceiling ~0.35). Winding the autonomous cheap-experiment loop down here -- remaining
 work needs a deliberate training-bet decision.
+
+### 2026-07-14 — near-mate region viz: outcome signal WEAK, not cleanly separated
+
+Kaveh: visualize near-mate positions (4-ply before end: near mate_W / near mate_B /
+near draw) in embedding space, hoping for clearly separated regions.
+Built near_mate_regions.py (harvest from human 1gb shards by GAME RESULT; embed F;
+UMAP + LDA + REACH-space (reachW vs reachB); separability). 600/class. Result --
+regions are NOT clearly separated even at these EXTREMES:
+  F-space:     kNN 0.57 · linear 0.59 · silhouette +0.02  (chance 0.33)
+  reach-space: kNN 0.54 · linear 0.56 · silhouette +0.01
+  corr(reach->mate_W, reach->mate_B) = +0.53   (partial shared "finality" component)
+  VALUE axis (reachW - reachB = MATE_DIFF): kNN 0.49 · linear 0.49
+Reading: there IS a real-but-WEAK outcome signal (~0.57 balanced acc vs 0.33 chance,
+linear 0.59) -- the embedding is NOT value-blind -- but the three classes heavily
+OVERLAP (silhouette ~0); no distinct regions. Reach-space (how the embedding is
+actually USED) is if anything slightly WORSE than raw F. The +0.53 reach-reach
+correlation shows a shared "near-a-mate" finality component partly diluting the
+who-is-winning direction; the MATE_DIFF value axis alone separates only weakly (0.49).
+This is the representational root of the ~0.35 play ceiling: even 4 plies from a
+forced mate, the embedding only weakly distinguishes "I am about to win" from "I am
+about to lose". Explains why restructuring at the margins didn't help -- the base
+representation's value/outcome direction is faint. A real fix would need the value
+direction trained in strongly (from-scratch objective that forces near-mate_W and
+near-mate_B far apart), not a gentle fine-tune. (Consistent with the whole night.)
