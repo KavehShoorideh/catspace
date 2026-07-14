@@ -16,6 +16,10 @@
   "n": 783
  },
  "confirmatory": {
-  "role": "FROZEN \u2014 generate fresh tablebase-verified starts w/ seed 777 ONLY at confirmatory time; never reuse"
+  "role": "FROZEN -- generate fresh tablebase-verified starts w/ a NEWLY pre-registered seed ONLY at confirmatory time; never reuse (seed 777 consumed 2026-07-14)"
+ },
+ "confirmatory_krrkbp_seed777_n120.json": {
+  "role": "CONSUMED confirmatory (2026-07-14, MCTS-vs-beam readout promotion). Single-use: never reuse for selection or eval.",
+  "n": 120
  }
 }
