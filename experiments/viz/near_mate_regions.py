@@ -68,6 +68,7 @@ def main():
     ap.add_argument("--back", type=int, default=4, help="plies before the final position")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--label", default="near_mate")
+    ap.add_argument("--record", default=None, help="append separation metrics to this jsonl")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -124,6 +125,15 @@ def main():
           f"finality component partly dilutes the who-is-winning signal)")
     print(f"  VALUE axis (reachW - reachB = MATE_DIFF) separability: kNN {dsep['knn']:.2f} "
           f"· linear {dsep['linear']:.2f}")
+
+    if args.record:
+        import json
+        rec = dict(label=args.label, ckpt=args.ckpt, F_knn=full["knn"], F_sil=full["silhouette"],
+                   reach_knn=rsep["knn"], reach_sil=rsep["silhouette"], value_knn=dsep["knn"],
+                   corr_WB=corr)
+        rp = Path(args.record); rp.parent.mkdir(parents=True, exist_ok=True)
+        with rp.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
 
     _plot(args, F, y, names, full, reachW, reachB)
 
