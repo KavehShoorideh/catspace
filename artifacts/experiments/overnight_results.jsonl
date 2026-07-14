@@ -1,0 +1,1 @@
+{"label": "V1_soft_pole", "ckpt": "data/derived/sfsf/krrkbp_poles_soft.pt", "note": "soft CE pull to 3 poles, outcome-weight 0.5, pole-tau 1.0, pole-as-goal", "move_spread": 0.1515, "dtz_rho": 0.085, "best_rank": 0.468, "top1_win": 0.814, "conv_incumbent": 0.54, "conv_variant": "pending"}
