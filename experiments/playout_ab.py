@@ -51,19 +51,16 @@ def playout(pol, start, tb, rng, max_plies):
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
                 search="beam", c_puct=1.5):
     from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
     fb, pay = load_ckpt(Path(ckpt), dev)
     if bank_boards is not None:                          # region goal: soft-min over exemplars
         from catspace.goal_bank import embed_bank
-        z = embed_bank(fb, bank_boards, dev)             # (m, d) -> FBSearchPolicy uses soft_min_bank
+        z = embed_bank(fb, bank_boards, dev)             # (m, d) -> soft_min_bank readout
     else:
         z = pay["zgoals"]["MATE_W"]                      # centroid goal
-    if search == "mcts":
-        from catspace.nn.mcts import FBMCTSPolicy
-        pol = FBMCTSPolicy(fb, z, max_nodes=nodes, c_puct=c_puct, device=dev)
-    else:
-        pol = FBSearchPolicy(fb, z, max_nodes=nodes, beam=beam, device=dev)
+    pol = make_search_policy(search, fb, z, max_nodes=nodes, beam=beam,
+                             c_puct=c_puct, device=dev)
     mated, plies = [], []
     for i, fen in enumerate(starts):
         rng = np.random.default_rng([seed, i])
