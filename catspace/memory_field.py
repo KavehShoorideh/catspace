@@ -41,9 +41,12 @@ class MemoryField:
 
     def query(self, emb: np.ndarray, k: int = 8) -> dict | None:
         """Visit-count-weighted local evidence around `emb`: returns
-        {p_hat, plies, n_total, support} over the k nearest rows, or None if empty.
-        support = mean cosine of the neighbours (how local the evidence is --
-        callers can gate the blend on it)."""
+        {p_hat, p_var, plies, n_total, support} over the k nearest rows, or None
+        if empty. support = mean cosine of the neighbours (how local the evidence
+        is). p_var = weighted VARIANCE of the neighbours' p_hat -- the SHARPNESS
+        signal (Kaveh 2026-07-14): low variance -> geometry honest here, trust the
+        blend; high variance -> co-located states disagree (bad geometry or a
+        genuinely sharp region) -> don't trust, SEARCH more carefully instead."""
         if len(self.rows) == 0:
             return None
         e = np.asarray(emb, dtype=np.float32)
@@ -52,11 +55,13 @@ class MemoryField:
         idx = np.argsort(-sims)[:k]
         w = np.array([self.rows[i]["n"] for i in idx], dtype=np.float64)
         w = w / max(w.sum(), 1e-9)
-        p = float(sum(w[j] * self.rows[i]["p_hat"] for j, i in enumerate(idx)))
+        ps = np.array([self.rows[i]["p_hat"] for i in idx])
+        p = float((w * ps).sum())
+        p_var = float((w * (ps - p) ** 2).sum())
         pl = [(w[j], self.rows[i]["plies"]) for j, i in enumerate(idx)
               if self.rows[i]["plies"] is not None]
         plies = float(sum(wj * x for wj, x in pl) / max(sum(wj for wj, _ in pl), 1e-9)) if pl else None
-        return dict(p_hat=p, plies=plies,
+        return dict(p_hat=p, p_var=p_var, plies=plies,
                     n_total=int(sum(self.rows[i]["n"] for i in idx)),
                     support=float(sims[idx].mean()))
 

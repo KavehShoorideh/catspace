@@ -548,3 +548,23 @@ At 30k: VAL_TOP1 = 0.033 (16.9× chance), VAL_TOP8 = 0.179 (11.4× chance). The 
 - **Tactic-potential (planned).** A memory-field row whose key is a PRECONDITION
   region ("if opponent plays X the state lands here") and whose payload is a
   plan/tactic + payoff -- conditional knowledge stored in the same store.
+
+## Symbols (one place, mapped to concepts)
+
+| symbol | meaning |
+|---|---|
+| **P** | true probability that a state reaches a goal (e.g. mate_W) under the plausible-play distribution (our side fallible, opponent resisting) |
+| **P̂ ("P-hat")** | the *estimate* of P from data -- the hat always means "estimated from samples". Here: wins/visits over N stochastic rollouts through that state (certainty_rollouts.py). P̂=1 -> every rollout converted (forced-feeling); P̂≈0.5 -> coin-flip messy |
+| **F(s)** | forward embedding of a *state* s ("where I am"; conditioned on ω) |
+| **B(g)** | backward embedding of a *goal/future position* g ("where I want to be") |
+| **d(f, b)** | the quasimetric distance between embeddings -- calibrated to mean "plies of real play"; certainty-weighted target: plies + λ·(−ln P) |
+| **z, zgoal** | a fixed goal vector the planner navigates toward (e.g. MATE_W = mean B over checkmate finals; or a learned pole) |
+| **λ (lambda)** | exchange rate between certainty and distance: how many plies one nat of −ln P is worth (λ=8: a coin-flip position costs ~5.5 extra plies) |
+| **ε (epsilon)** | per-move slip probability in rollouts/self-play -- the "fallibility temperature" of the plausible-play distribution |
+| **γ (gamma)** | geometric horizon for sampling goal pairs in training (how far ahead goals are drawn) |
+| **ω (omega)** | conditioning context for F: Elo bins of both players + clock bucket (whose dynamics generate the futures) |
+| **ρ (rho)** | Spearman rank correlation (our standard "does X track Y" statistic) |
+| **k / mate-in-k** | moves (not plies) until forced mate, from Stockfish's mate score |
+| **V\*, V^π** | optimal value vs on-policy value: V* assumes best play (tablebase truth); V^π averages over a policy π's actual (fallible) play. The gap V*−V^π is the competence signal |
+| **u** | a concept axis: learnable unit direction in embedding space; F(s)·u = the state's value for that concept |
+| **τ (tau)** | softmax temperature (InfoNCE tau; pole-tau for the soft pole pull) |

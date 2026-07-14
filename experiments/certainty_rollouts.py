@@ -48,7 +48,7 @@ def main():
                          "position itself is under competent-but-fallible play")
     ap.add_argument("--nodes", type=int, default=100)
     ap.add_argument("--max-plies", type=int, default=100)
-    ap.add_argument("--min-visits", type=int, default=2, help="keep states with >= this many visits")
+    ap.add_argument("--min-visits", type=int, default=4, help="keep states with >= this many visits")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--out", default="artifacts/experiments/certainty_table.json")
