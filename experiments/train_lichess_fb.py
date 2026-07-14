@@ -177,6 +177,18 @@ def embed_zgoals(fb, finals: dict, device, verbose: bool = False) -> dict:
             if verbose:
                 print(f"zgoal {name}: {len(rows)} checkmate finals")
     zgoals["MATE_DIFF"] = zgoals["MATE_W"] - zgoals["MATE_B"]
+    if getattr(fb, "outcome_poles", False):
+        # unify the goal: the planner should navigate toward the LEARNED win pole
+        # (the vector F was organised around), not the checkmate-centroid
+        # side-channel. Keep the centroids under *_CENTROID for reference.
+        with torch.no_grad():
+            p = torch.nn.functional.normalize(fb.poles.detach(), dim=1).cpu()
+        zgoals["MATE_W_CENTROID"], zgoals["MATE_B_CENTROID"] = zgoals["MATE_W"], zgoals["MATE_B"]
+        zgoals["POLE_B"], zgoals["POLE_D"], zgoals["POLE_W"] = p[0], p[1], p[2]
+        zgoals["MATE_W"], zgoals["MATE_B"] = p[2], p[0]           # win / loss pole
+        zgoals["MATE_DIFF"] = p[2] - p[0]
+        if verbose:
+            print("zgoals: MATE_W/B overridden with learned win/loss POLES")
     if was_training:
         fb.train()
     return zgoals
@@ -264,8 +276,9 @@ def main():
                          "closer than the others -- outcome-conditioned region separation. Forces "
                          "quasimetric.")
     ap.add_argument("--outcome-weight", type=float, default=0.3, help="weight on the outcome-poles loss")
-    ap.add_argument("--outcome-margin", type=float, default=0.5,
-                    help="hops margin: own-outcome pole must be this much closer than the others")
+    ap.add_argument("--pole-tau", type=float, default=1.0,
+                    help="softmax temperature for the soft outcome-pole cross-entropy (higher = "
+                         "softer/gentler pull, less region compression)")
     ap.add_argument("--pole-margin", type=float, default=3.0,
                     help="minimum (scaled) distance kept between the three poles")
     ap.add_argument("--selfplay-shards", default=None,
@@ -383,8 +396,7 @@ def main():
                                     dist_weight=args.dist_weight,
                                     competence_weight=args.competence_weight,
                                     result=result_t, outcome_weight=args.outcome_weight,
-                                    outcome_margin=args.outcome_margin,
-                                    pole_margin=args.pole_margin)
+                                    pole_tau=args.pole_tau, pole_margin=args.pole_margin)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
