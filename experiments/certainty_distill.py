@@ -60,6 +60,9 @@ def main():
     ap.add_argument("--cert-weight", type=float, default=1.0)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--holdout-frac", type=float, default=0.2)
+    ap.add_argument("--eval-every", type=int, default=500)
+    ap.add_argument("--patience", type=int, default=3,
+                    help="held-out evals without improvement before early stop")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
@@ -118,6 +121,10 @@ def main():
     opt = torch.optim.AdamW(fb.parameters(), lr=args.lr)
     fb.train()
     ntr = len(train)
+    # early stopping on held-out Spearman (JOURNAL 2026-07-14 fix list):
+    # eval every --eval-every steps, keep the best weights, stop after
+    # --patience evals without improvement
+    best_r, best_state, stale = -np.inf, None, 0
     for step in range(1, args.steps + 1):
         idx = torch.from_numpy(rng.integers(0, ntr, size=args.batch)).to(dev)
         f = fb.embed_F(pl_tr[idx], om_tr[idx])
@@ -133,8 +140,21 @@ def main():
         nce, _ = fb.loss_fn(*tens[:5], ply_gap_weight=0.05)
         loss = args.cert_weight * cert + nce
         opt.zero_grad(); loss.backward(); opt.step()
-        if step % 200 == 0:
-            print(f"step {step}  cert {float(cert):.4f}  nce {float(nce):.3f}", flush=True)
+        if step % args.eval_every == 0:
+            r, lo, hi = heldout_spearman(fb)
+            print(f"step {step}  cert {float(cert):.4f}  nce {float(nce):.3f}  "
+                  f"held-out rho {r:+.3f}", flush=True)
+            if r > best_r:
+                best_r, stale = r, 0
+                best_state = {k: v.detach().cpu().clone()
+                              for k, v in fb.state_dict().items()}
+            else:
+                stale += 1
+                if stale >= args.patience:
+                    print(f"early stop at step {step} (best rho {best_r:+.3f})")
+                    break
+    if best_state is not None:
+        fb.load_state_dict(best_state)
 
     r1, lo1, hi1 = heldout_spearman(fb)
     print(f"TUNED    held-out Spearman(d, target) = {r1:+.3f} CI[{lo1:+.3f},{hi1:+.3f}]")
