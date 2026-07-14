@@ -2748,3 +2748,18 @@ Two readings:
   conversion-at-fixed-small-budget, and improvement = closing the 200->800 gap.
 Next: does it keep scaling (800 vs 2000)? and re-examine variants at MATCHED deeper
 search (maybe a restructuring helps MORE at depth, or helps shallow catch up).
+
+### 2026-07-14 — TWO REGIMES + methodological correction
+
+800 vs 2000 nodes: 0.325 vs 0.312, ns (CI[-0.06,+0.04]) -- search saturates ~800n.
+Full scaling on the incumbent: 200n=0.175, 800n=0.325, 2000n=0.312. So:
+  - 200->800: SEARCH-limited (deeper doubles).
+  - 800+: EMBEDDING-limited (~0.32 ceiling; ~68% of winning KRRvKBP still unconverted
+    vs optimal defense even with unlimited search).
+METHODOLOGICAL CORRECTION: I A/B'd EVERY variant at 200 nodes -- the search-limited
+regime, where the embedding CAN'T matter because search is the bottleneck, so
+everything ties by construction. The regime where embedding quality shows is
+SATURATION (~800n). So the overnight variant ties are UNINFORMATIVE about whether
+the restructurings improve the embedding's ceiling. The correct test (never run):
+variants at 800 nodes. If a restructuring RAISES the 0.32 saturated ceiling, the
+whole embedding-structure line is revived. Running V6@800 vs incumbent@800 now.
