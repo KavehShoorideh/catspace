@@ -2552,3 +2552,38 @@ side-to-move labels disagree with the loss's game-result labels on Black-to-move
 rows; the nearest-pole metric above is the clean evaluation.
 Next: verify conversion + reach-curvature (hops) didn't regress; a pole-distance
 (ternary) viz to SEE the three corners; then decide push-harder vs move on.
+
+---
+
+## 2026-07-13/14 (Opus) — OVERNIGHT LOOP: embedding structure for hop-search play
+
+Kaveh (going to bed): "find that embedding structure that will allow us to play
+reasonably well with a search in the embedding space, going over hops. Implement
+both [pole-pull and repulsion], try them, promote the winner. Keep iterating,
+journaling, glossary, committing till morning."
+
+North star metric: KRRvKBP conversion vs the incumbent (0.54 baseline) with
+200-node HOP search, WITHOUT wrecking top1_win / the hop gradient. Secondary:
+reach-curvature (dtz_rho, top1_win), outcome-region separation.
+
+Design line so far (why we're here):
+- Data doesn't fix it (self-play, SF-vs-SF, W/D/L mix all failed to separate
+  outcomes or improve play). Bottleneck = objective+representation.
+- HARD outcome-pole pull (weight 1.0): separated outcomes (bal acc 0.84 in hops)
+  but CRUSHED play (conv 0.54->0.30) -- a global pull-to-one-point collapsed the
+  win region's internal hop gradient.
+- Kaveh's reframe (correct): we want t-SNE's shape -- ATTRACTION only between near
+  neighbours (preserve within-region hops) + BOUNDED REPULSION between regions
+  (spread mutually-exclusive outcomes), heavy-tail/hinge so nothing collapses.
+  And the goal is a REGION (arrive anywhere in the mate set = soft-min over mate
+  exemplars), not a single centroid/pole point.
+
+Variant queue (each: fine-tune incumbent +8000 steps on the W/D/L mix, frac 0.7;
+eval = experiments/eval_variant.py -> overnight_results.jsonl):
+- V1 soft-pole: temperature-CE pull to 3 learned poles + pole-as-goal (softer than
+  the hard hinge). [running]
+- V2 repel: t-SNE-style cross-outcome hop repulsion, NO pull-to-point, goal stays
+  centroid. [built]
+- V3+: region-bank goal (soft-min over mate exemplars) + repulsion; weight/temp/
+  margin sweeps of the winner; combinations.
+Promote whichever beats incumbent conversion while keeping top1_win >~0.85.
