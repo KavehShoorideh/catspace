@@ -4,3 +4,7 @@ V8_pole_strong	--outcome-poles --outcome-weight 0.5 --repel-weight 0.5 --repel-m
 V9_pole_w07	--outcome-poles --outcome-weight 0.7 --pole-tau 1.0
 V3_repel_strong	--repel-weight 1.0 --repel-margin 1.5
 V7_repel_light	--repel-weight 0.25 --repel-margin 1.5
+V10_pole_vgentle	--outcome-poles --outcome-weight 0.15 --pole-tau 2.0
+V11_pole_g_long	--outcome-poles --outcome-weight 0.25 --pole-tau 1.5 --steps 106000
+V12_pole_g_repel	--outcome-poles --outcome-weight 0.25 --pole-tau 1.5 --repel-weight 0.3 --repel-margin 1.5
+V13_pole_w035	--outcome-poles --outcome-weight 0.35 --pole-tau 1.5

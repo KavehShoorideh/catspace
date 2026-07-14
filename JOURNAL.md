@@ -2615,3 +2615,17 @@ region/soft-min-BANK goal. It's a PLANNING-goal change (planner already supports
 can be tested on the incumbent directly. Next: implement a --goal bank option in
 the eval and check if soft-min-over-mate-exemplars beats the centroid on the
 incumbent; if yes, apply to the best variant. Then inject as a variant.
+
+### overnight batch 1 complete (V5-V9, V3, V7) — pole-gentle wins, ideation stalled
+
+Orchestrator ran all 6 queued by 01:29 then idled (I failed to keep injecting new
+variants overnight -- the trainer stayed alive but starved). Results:
+  V6 pole-gentle (w0.25, tau1.5): conv 0.575 vs incumbent 0.517 (+0.058), top1_win
+    0.828, dtz_rho +0.097  <- BEST; gentlest pole pull.
+  V8 pole-strong 0.55 / V5 pole+repel 0.55 / V9 pole-w0.7 0.50 (top1_win 0.851, best)
+  V3 repel-strong 0.433 / V7 repel-light 0.358  <- repel-only+centroid loses again.
+Pattern rock-solid: pole-AS-GOAL ties-or-beats incumbent (0.50-0.575) w/ positive
+hop-gradient; repel-only-with-centroid loses (0.36-0.43). Gentler pull = better
+(preserves within-region hops). CAVEAT: n=60 + SF nondeterminism -> incumbent
+estimate wobbles 0.52-0.60 across runs, so V6's +0.058 needs confirmation.
+Next: sweep gentler around V6, add more games for significance, region-bank goal.
