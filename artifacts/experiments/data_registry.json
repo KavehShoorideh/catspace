@@ -1,14 +1,14 @@
 {
  "krrkbp_win_starts.json": {
-  "role": "TRAIN (rollout starts, certainty tables)",
+  "role": "LEGACY (random piece placements, retired 2026-07-14 -- Kaveh: no random starts) -- TRAIN (rollout starts, certainty tables)",
   "n": 700
  },
  "krrkbp_test_n200.json": {
-  "role": "EVAL (playout money tests; disjoint from train)",
+  "role": "LEGACY (random piece placements, retired 2026-07-14 -- Kaveh: no random starts) -- EVAL (playout money tests; disjoint from train)",
   "n": 200
  },
  "krrkbp_fixed_set_n60.json": {
-  "role": "LEGACY EVAL (conversion_compare; disjoint)",
+  "role": "LEGACY (random piece placements, retired 2026-07-14 -- Kaveh: no random starts) -- LEGACY EVAL (conversion_compare; disjoint)",
   "n": 60
  },
  "forced_mate_set_valid.json": {
@@ -21,5 +21,17 @@
  "confirmatory_krrkbp_seed777_n120.json": {
   "role": "CONSUMED confirmatory (2026-07-14, MCTS-vs-beam readout promotion). Single-use: never reuse for selection or eval.",
   "n": 120
+ },
+ "krrkbp_fixed_train_n700.json": {
+  "role": "TRAIN (rollout/table starts; play-reachable openings from the canonical fixed start, syzygy wdl=2)",
+  "n": 700
+ },
+ "krrkbp_fixed_test_n200.json": {
+  "role": "EVAL (playout money tests; disjoint from train, same fixed-start distribution)",
+  "n": 200
+ },
+ "canonical_start": {
+  "role": "THE toy start (Kaveh 2026-07-14): all data must be play-reachable from it",
+  "fen": "2b1k3/3p4/8/8/8/8/8/R3K2R w - - 0 1"
  }
 }

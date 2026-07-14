@@ -17,12 +17,12 @@ import json
 import sys
 from pathlib import Path
 
-import chess
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from experiments.selfplay_generate import random_endgame_start
+from experiments.selfplay_generate import (KRRKBP_FIXED_START,
+                                           openings_from_fixed_start)
 from experiments.value_fixed_point import TB
 
 
@@ -30,11 +30,15 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--seed", type=int, default=777)
     ap.add_argument("--n", type=int, default=120)
-    ap.add_argument("--material", default="krrkbp")
+    ap.add_argument("--start-fen", default=KRRKBP_FIXED_START,
+                    help="canonical start the confirmatory openings derive from "
+                         "(2026-07-14: no random placements; must match the "
+                         "distribution the candidate was trained/evaluated on)")
+    ap.add_argument("--min-plies", type=int, default=2)
+    ap.add_argument("--max-plies", type=int, default=10)
     ap.add_argument("--exclude", nargs="+",
-                    default=["artifacts/experiments/krrkbp_win_starts.json",
-                             "artifacts/experiments/krrkbp_test_n200.json",
-                             "artifacts/experiments/krrkbp_fixed_set_n60.json"])
+                    default=["artifacts/experiments/krrkbp_fixed_train_n700.json",
+                             "artifacts/experiments/krrkbp_fixed_test_n200.json"])
     ap.add_argument("--syzygy-dir", default="data/syzygy")
     ap.add_argument("--out",
                     default="artifacts/experiments/confirmatory_krrkbp_seed777_n120.json")
@@ -51,25 +55,17 @@ def main():
             taken.update(json.loads(Path(p).read_text())["fens"])
     rng = np.random.default_rng(args.seed)
     tb = TB(args.syzygy_dir)
-    fens: list[str] = []
-    tried = 0
-    while len(fens) < args.n and tried < 200_000:
-        tried += 1
-        b = random_endgame_start(rng, args.material)
-        if b is None or b.turn != chess.WHITE:
-            continue
-        fen = b.fen()
-        if fen in taken or fen in fens:
-            continue
-        w, _ = tb.wdl_dtz(b)
-        if w == 2:                       # clean tablebase win for the mover (White)
-            fens.append(fen)
+    # oversample, then drop anything colliding with train/eval sets
+    pool = openings_from_fixed_start(rng, args.n + len(taken) + 200, tb,
+                                     start_fen=args.start_fen,
+                                     min_plies=args.min_plies, max_plies=args.max_plies)
     tb.close()
+    fens = [f for f in pool if f not in taken][:args.n]
     if len(fens) < args.n:
-        sys.exit(f"only found {len(fens)}/{args.n} verified wins after {tried} tries")
+        sys.exit(f"only found {len(fens)}/{args.n} fresh verified openings")
     out.write_text(json.dumps({"fens": fens, "seed": args.seed,
-                               "material": args.material,
-                               "verified": "syzygy wdl=2, White to move",
+                               "start": args.start_fen,
+                               "verified": "syzygy wdl=2, White to move, play-reachable",
                                "excluded_sets": args.exclude}))
     print(f"-> {out}  ({len(fens)} fresh tb-verified wins, seed {args.seed}, "
           f"{tried} candidates tried)")
