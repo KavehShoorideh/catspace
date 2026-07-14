@@ -21,8 +21,9 @@ POV of the label matters:
 To defuse the STM confound we ALSO report separability on the White-to-move-only
 subset (there, stm is constant, so any W/D/L separation is genuine value).
 
-Projections: PCA (unsupervised -- does outcome fall out of the dominant
-variance?) and LDA (supervised -- is there ANY linear separation at all?).
+Projections: a nonlinear manifold embedding (UMAP if installed, else t-SNE) that
+folds ALL dims into 2 preserving neighbourhoods -- unlike PCA, which keeps only
+the top-2 linear axes -- plus LDA (supervised: is there ANY linear separation?).
 Metrics: 5-fold kNN accuracy, linear (logistic) accuracy, silhouette. Output is
 a PNG + a small HTML wrapper in artifacts/generated/.
 """
@@ -56,42 +57,59 @@ def wdl_label(board, tb, pov):
 
 
 def separability(F, y):
-    """5-fold kNN acc, linear (logreg) acc, silhouette of the label classes."""
+    """BALANCED 5-fold kNN + linear accuracy (draws are a minority, so plain
+    accuracy just rewards guessing the majority) + silhouette. Balanced-accuracy
+    chance = 1/n_classes, so any lift over that is genuine class structure."""
     from sklearn.model_selection import cross_val_score
     from sklearn.neighbors import KNeighborsClassifier
     from sklearn.linear_model import LogisticRegression
     from sklearn.metrics import silhouette_score
-    out = {}
-    if len(np.unique(y)) < 2 or len(y) < 50:
+    nclass = len(np.unique(y))
+    if nclass < 2 or len(y) < 50:
         return dict(knn=float("nan"), linear=float("nan"), silhouette=float("nan"),
-                    majority=float(np.max(np.bincount(y - y.min())) / len(y)))
-    out["knn"] = float(cross_val_score(KNeighborsClassifier(15), F, y, cv=5).mean())
+                    chance=float("nan"), nclass=nclass)
+    ba = "balanced_accuracy"
+    out = dict(nclass=nclass, chance=1.0 / nclass)
+    out["knn"] = float(cross_val_score(KNeighborsClassifier(15), F, y, cv=5, scoring=ba).mean())
     out["linear"] = float(cross_val_score(
-        LogisticRegression(max_iter=1000, C=1.0), F, y, cv=5).mean())
+        LogisticRegression(max_iter=1000, C=1.0, class_weight="balanced"), F, y, cv=5,
+        scoring=ba).mean())
     try:
         out["silhouette"] = float(silhouette_score(F, y))
     except Exception:
         out["silhouette"] = float("nan")
-    out["majority"] = float(np.max(np.bincount(y - y.min())) / len(y))
     return out
+
+
+def _manifold_2d(F, seed=0):
+    """Nonlinear 2D embedding that folds all dims in (UMAP if available, else
+    t-SNE) -- unlike PCA it doesn't just keep the top-2 linear axes."""
+    try:
+        import umap
+        return umap.UMAP(n_components=2, n_neighbors=30, min_dist=0.1,
+                         random_state=seed).fit_transform(F), "UMAP"
+    except Exception:
+        from sklearn.manifold import TSNE
+        perp = min(30, max(5, len(F) // 100))
+        return (TSNE(n_components=2, perplexity=perp, init="pca",
+                     random_state=seed).fit_transform(F), "t-SNE")
 
 
 def scatter_png(F, y, wm_mask, meta_full, meta_wm, title):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from sklearn.decomposition import PCA
     from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 
     colors = {1: "#33aa55", 0: "#8b93a3", -1: "#d24b4b"}
     names = {1: "win", 0: "draw", -1: "loss"}
-    pca = PCA(2).fit_transform(F)
+    manifold, mname = _manifold_2d(F)
     try:
         lda = LDA(n_components=2).fit(F, y).transform(F)
     except Exception:
-        lda = pca
+        lda = manifold
     fig, axes = plt.subplots(1, 2, figsize=(13, 6), facecolor="#0f1115")
-    for ax, proj, name in ((axes[0], pca, "PCA (unsupervised)"),
+    for ax, proj, name in ((axes[0], manifold, f"{mname} (unsupervised, nonlinear)"),
                            (axes[1], lda, "LDA (supervised)")):
         ax.set_facecolor("#0f1115")
         for cls in (1, 0, -1):
@@ -160,12 +178,14 @@ def main():
     from catspace.data.encode import board_from_packed as _bfp  # noqa
     ywm = y[wm]
     sub = separability(F[wm], ywm) if wm.sum() >= 50 else {}
-    meta_full = (f"all positions: kNN {full['knn']:.2f} · linear {full['linear']:.2f} · "
-                 f"silhouette {full['silhouette']:+.2f} (majority baseline {full['majority']:.2f})")
-    meta_wm = (f"White-to-move only (no STM confound): kNN {sub.get('knn', float('nan')):.2f} · "
+    meta_full = (f"all positions ({full['nclass']}-class, balanced-acc chance {full['chance']:.2f}): "
+                 f"kNN {full['knn']:.2f} · linear {full['linear']:.2f} · "
+                 f"silhouette {full['silhouette']:+.2f}")
+    meta_wm = (f"White-to-move only (no STM confound; {sub.get('nclass', 0)}-class, chance "
+               f"{sub.get('chance', float('nan')):.2f}): kNN {sub.get('knn', float('nan')):.2f} · "
                f"linear {sub.get('linear', float('nan')):.2f} · "
                f"silhouette {sub.get('silhouette', float('nan')):+.2f} "
-               f"(n={int(wm.sum())}, majority {sub.get('majority', float('nan')):.2f})") if sub else ""
+               f"(n={int(wm.sum())})") if sub else ""
     print(" ", meta_full); print(" ", meta_wm)
 
     label = args.label or Path(args.ckpt).stem
