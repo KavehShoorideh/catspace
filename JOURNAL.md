@@ -2516,3 +2516,39 @@ outcome/move-count info to F (Kaveh's earlier point); (2) an explicit
 outcome-separating term / value-contrastive loss so W and L can't share a
 neighbourhood; (3) reconsider the goal representation (MATE_W centroid) toward a
 region/quasimetric that pushes losing states far from the goal.
+
+---
+
+## 2026-07-13 (Opus) — Outcome-poles loss WORKS: outcomes separate in hops
+
+Kaveh: "add a loss that pushes the poles apart; everything else pushed/pulled by
+the final side who won -- I need HOPS, not euclidean." Implemented `--outcome-poles`
+(catspace/nn/fb.py): 3 learnable terminal poles (loss/draw/win), a repulsion term
+(min scaled distance `pole_margin` between poles) + a per-state HINGE on the
+QUASIMETRIC distance (hops) so each state's own-outcome pole is `outcome_margin`
+fewer hops than the others. result threaded from shard meta; rides on the ply-gap
+term so the within-region hop gradient survives. Off-path byte-identical (19 tests).
+
+Fine-tuned the incumbent +8000 steps on the W/D/L mix (SF-vs-SF wins +
+planner-vs-SF draws/losses), selfplay-frac 0.7, outcome-weight 1.0.
+
+Result -- the FIRST separation of outcomes all session. Nearest-pole assignment
+on White-to-move positions (confound-free; hops = quasimetric d to each pole):
+  true WIN  (3990): hops[loss,draw,win]=[2.29,2.15,1.58] -> 87% to WIN pole
+  true DRAW ( 203): hops=[2.17,1.82,2.00]                -> 68% to DRAW pole
+  true LOSS (  93): hops=[1.55,2.35,2.09]                -> 98% to LOSS pole
+  balanced accuracy ~= 0.84 (chance 0.33).
+Each class is fewest hops from its OWN pole. wdl_regions separability also lifted:
+White-to-move balanced kNN 0.62 (incumbent) / 0.68 (mix) -> 0.79; draws now form
+distinct UMAP clusters (they were smeared before). Won-lost DIFF_SLOPE cleanest
+yet (+0.14 vs -0.18).
+
+Caveats / open: (1) absolute hop gaps are modest (~0.5-0.7) -- could push harder
+(outcome-weight/margin/steps). (2) win-vs-loss still overlap in raw UMAP of F (the
+pole DIRECTIONS aren't UMAP axes; pole-distance space is where it separates). (3)
+NOT yet checked: did conversion (play) and the DTM/hop gradient survive? -- the
+whole point is separation WITHOUT killing move-selection. (4) the region viz's
+side-to-move labels disagree with the loss's game-result labels on Black-to-move
+rows; the nearest-pole metric above is the clean evaluation.
+Next: verify conversion + reach-curvature (hops) didn't regress; a pole-distance
+(ternary) viz to SEE the three corners; then decide push-harder vs move on.
