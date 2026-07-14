@@ -2726,3 +2726,25 @@ centroid 0.175 vs bank 0.062, diff -0.112, CI=[-0.200,-0.025] SIGNIFICANT. The
 deterministic playout has the power to detect it. Averaging (centroid) > soft-min
 over specific mate exemplars for hop-search planning. Region-goal idea, as
 implemented, rejected.
+
+### 2026-07-14 — PIVOTAL: SEARCH-LIMITED, not embedding-limited
+
+Deterministic playout, INCUMBENT @200 vs @800 nodes (same weights, same 80 starts):
+  mate-rate 200n=0.175 vs 800n=0.325  diff=+0.150  CI=[+0.050,+0.250]  SIGNIFICANT
+  (plies-to-mate 14 -> 10). Deeper hop search NEARLY DOUBLES conversion on the SAME
+embedding. This flips the whole night's conclusion: the ceiling was SEARCH DEPTH,
+not the embedding's geometry. The reach field already CONTAINS the information to
+convert -- shallow 200-node search just couldn't extract it, which is exactly why
+every embedding-restructuring variant (poles/repulsion/region-goal) TIED at 200
+nodes: they were all fighting the wrong bottleneck.
+
+Two readings:
+- Practical: search deeper -> much better play (cheap, immediate win).
+- Thesis (small-budget "the plan does the work, don't out-search"): the real target
+  is to shape the reach field so SHALLOW search suffices -- the info is present
+  (deep search proves it) but shallow extraction is poor, and none of the tested
+  restructurings improved shallow extraction. So "make 200-node search play like
+  800-node search does" is the sharpened research goal; the METRIC should be
+  conversion-at-fixed-small-budget, and improvement = closing the 200->800 gap.
+Next: does it keep scaling (800 vs 2000)? and re-examine variants at MATCHED deeper
+search (maybe a restructuring helps MORE at depth, or helps shallow catch up).
