@@ -2786,3 +2786,47 @@ What's left to raise the ceiling (all require training bets, not cheap):
 Recommend (a) two-horizon as the next real experiment; it's the targeted lever for
 exactly this endgame-precision ceiling. Confirming with V9@800 that the whole pole
 family ties at saturation.
+
+### 2026-07-14 — FINAL SUMMARY of the overnight embedding-structure investigation
+
+V9_pole_w07 vs incumbent @800n (n=100): 0.360 vs 0.390, diff +0.030, CI[-0.09,+0.15] ns.
+Pole family confirmed: no SIGNIFICANT gain in conversion RATE at either regime.
+
+HONEST NUANCE: at saturation (800n) both best pole variants lean slightly positive
+(V6 +0.01, V9 +0.03) AND convert FASTER (plies-to-mate 9 vs 11, consistent). So the
+restructuring may improve conversion SPEED (crisper hop-gradient) without improving
+the RATE ceiling -- a real-but-modest quality signal within rate-noise. Would need
+n~500 playouts to resolve the ~0.03 rate lean; the plies-to-mate signal is the more
+promising place to look (continuous, more power) if pursuing.
+
+=== THE OVERNIGHT INVESTIGATION, START TO FINISH ===
+Question: an embedding structure that plays KRRvKBP well with small-budget hop search.
+Method arc: outcome-pole loss (hard->soft), cross-outcome repulsion (t-SNE analogy),
+region-bank goal, on data (self-play, SF-vs-SF, planner-vs-SF mix). Evaluated with a
+PROPER A/B harness (paired matched-seed diff + CI + anytime-valid e-value) after the
+overnight n=60 point-estimates produced a phantom "win" (V6 0.575) that vanished at
+n=200 (mean_diff -0.005, e=0.09).
+KEY RESULTS:
+  1. SEARCH vs EMBEDDING regimes: incumbent converts 0.175@200n, 0.35@800n, 0.31@2000n
+     vs a tablebase-OPTIMAL defender. Search-limited <800n (deeper ~doubles), then
+     embedding-limited (~0.35 ceiling).
+  2. Methodological fix: all variant A/Bs must be at SATURATION (800n) -- at 200n
+     search is the bottleneck so the embedding can't show. Corrected tests (V6, V9 @800n)
+     still TIE the incumbent on rate.
+  3. No embedding-structure intervention (pole-separation, repulsion, region-goal)
+     SIGNIFICANTLY beats the incumbent's ~0.35 rate ceiling. Region-bank goal is
+     significantly WORSE. Modest, non-significant speed lean for pole variants.
+  4. Reusable tooling built: eval_variant (CI+e-value), n=200 held-out set,
+     conversion_compare, move_ab (+ its own null-result caveat), playout_ab
+     (deterministic-defender, the metric with real power), reach_curvature, wdl_regions.
+NEXT LEVERS (all training bets -> need Kaveh's direction, NOT launched autonomously):
+  (a) two-horizon NEAR head (targets endgame precision -- the natural lever for the
+      saturated ceiling; evaluate at 800n).
+  (b) plies-to-mate as the primary metric (more power than rate) to chase the speed lean.
+  (c) from-scratch / different objective; or a different planning method (FB-reach +
+      beam hop search may simply cap ~0.35 here).
+The overnight loop's real deliverable = the METHODOLOGY (proper A/B + deterministic
+playout + regime awareness) that turned noisy point-estimates into trustworthy
+conclusions, and the precise localisation of the bottleneck (search <800n, embedding
+ceiling ~0.35). Winding the autonomous cheap-experiment loop down here -- remaining
+work needs a deliberate training-bet decision.
