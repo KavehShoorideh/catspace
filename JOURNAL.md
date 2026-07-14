@@ -2470,3 +2470,49 @@ Candidate next steps (decision pending):
 Note: same-material frac isn't comparable across banks (SF-vs-SF bank is mostly
 post-capture <=5-piece positions, so a 6-piece query has few same-material nbrs);
 DTM-alignment rho is the comparable metric.
+
+---
+
+## 2026-07-13 (Opus) — Do W/D/L regions exist? No. (mix: SF-vs-SF + planner-vs-SF)
+
+Kaveh: "mix in planner-vs-Stockfish so we see how Stockfish kills and might even
+win. I want to see if the representation finds three distinct win/draw/loss
+regions." Built `wdl_regions.py`: label a bank by tablebase outcome, embed F,
+project (UMAP unsupervised + LDA supervised -- PCA dropped, Kaveh wanted a method
+that folds ALL dims in), score BALANCED-accuracy separability, with a
+White-to-move-only readout to kill the STM confound (in KRRvKBP stm alone
+predicts win/loss). Data: 700 SF-vs-SF games (wins) + 400 planner-vs-SF
+(203W/105D/92L -> draws & losses). Bank ~8.5k positions, W/D/L = 4116/434/3959.
+
+Finding -- the embedding does NOT organize by outcome, and training on balanced
+outcomes doesn't fix it:
+  incumbent:  UMAP win/loss fully INTERMIXED (salt-and-pepper); silhouette -0.02;
+              White-to-move-only balanced kNN 0.62 / linear 0.86 (soft axis only)
+  mix fine-tune (+6000, frac 0.7 on the W/D/L mix):
+              UMAP win/loss STILL intermixed; draws pulled into a faint tail;
+              silhouette -0.03; White-to-move kNN 0.68 / linear 0.84
+  -> no three regions before OR after. What training changed: it traded a soft
+     win<->loss axis (incumbent LDA) for a soft draw-vs-decisive axis (mix LDA);
+     win and loss stayed on top of each other. Silhouette ~0 throughout = no
+     clustered regions, only weak linear-direction information.
+
+Why this is the deep diagnostic: a reachability planner NEEDS winning positions
+(goal reachable) to sit apart from losing ones (goal not reachable). They don't.
+This is the SAME intermixing the neighbour viz (near-in-embedding != near-in-DTM)
+and the flat reach field showed -- now proven at the outcome level. It directly
+explains every play null: if W and L are intermixed in F, reach can't separate
+good from bad moves and search has no value gradient to descend.
+
+Likely cause: the contrastive/ply-gap objective pulls SAME-GAME temporal
+neighbours together regardless of the win/loss boundary (a losing position 3
+plies before a drawn ending gets pulled toward the draw), so temporal structure
+overwrites outcome structure. Data quantity/quality can't fix an objective that
+doesn't encode the outcome boundary.
+
+Implication for direction: the lever is the OBJECTIVE/representation, not data
+(now shown three ways: self-play, SF-vs-SF, and balanced W/D/L mix all fail to
+separate outcomes in play or in embedding geometry). Candidates: (1) feed
+outcome/move-count info to F (Kaveh's earlier point); (2) an explicit
+outcome-separating term / value-contrastive loss so W and L can't share a
+neighbourhood; (3) reconsider the goal representation (MATE_W centroid) toward a
+region/quasimetric that pushes losing states far from the goal.
