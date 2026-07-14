@@ -3039,3 +3039,23 @@ Revised fix list (replaces yesterday's): (a) goal-vector fix (done), (b) fit the
 target harder -- more steps / higher cert-weight with early-stop on held-out
 Spearman, (c) 10-100x rollout states, (d) certainty in the base objective at scale.
 1600n money test still running (n=80, deterministic defender).
+
+### Production MCTS readout built (Kaveh: replace beam-minimax as the search layer)
+catspace/nn/mcts.py: AlphaZero-style PUCT adapted for a policy-net-less engine --
+value-only expansion (one batched reach call per expansion = len(children) budget
+units, directly comparable to FBSearchPolicy leaf counts), priors = softmax over
+child reach from the mover's perspective, 1-ply minimax bootstrap as the expansion
+backup, self-calibrating tanh value squash (per-move center/scale from root
+children -- reach scale differs per ckpt), terminals mate +1-ply_discount /
+mated -1 / draw -0.999 (draw~failure ordering kept from DRAW_SCORE but bounded so
+Q-averaging works). Deterministic (no rollouts, no root noise) as playout_ab's
+exact-paired methodology requires. Core takes a plain reach_fn -> 9 model-free
+unit tests (mate-in-1 both colors, stalemate-trap avoidance, budget accounting,
+determinism, visit concentration on high-reach lines, terminal discounts) ALL PASS.
+playout_ab.py grew --search-a/--search-b {beam,mcts} + --c-puct: matched-node
+readout A/Bs on the same checkpoint. Smoke (n=10, 200n, incumbent): runs
+end-to-end, ~1s/playout, converts. 1600n distill money test KILLED (Kaveh: no
+value -- code changing under it). RUNNING: beam-vs-MCTS on the incumbent at 200n
+n=120 then 800n n=80 (/tmp/mcts_ab.log) -- if MCTS wins at matched budget, the
+readout was leaving conversion on the table; if tied, embedding-limited confirmed
+and the lever is lichess-scale training with certainty in the base objective.

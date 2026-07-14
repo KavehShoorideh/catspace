@@ -48,7 +48,8 @@ def playout(pol, start, tb, rng, max_plies):
     return mated, (b.ply() if mated else None)
 
 
-def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None):
+def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
+                search="beam", c_puct=1.5):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import FBSearchPolicy
     dev = pick_device(device)
@@ -58,7 +59,11 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
         z = embed_bank(fb, bank_boards, dev)             # (m, d) -> FBSearchPolicy uses soft_min_bank
     else:
         z = pay["zgoals"]["MATE_W"]                      # centroid goal
-    pol = FBSearchPolicy(fb, z, max_nodes=nodes, beam=beam, device=dev)
+    if search == "mcts":
+        from catspace.nn.mcts import FBMCTSPolicy
+        pol = FBMCTSPolicy(fb, z, max_nodes=nodes, c_puct=c_puct, device=dev)
+    else:
+        pol = FBSearchPolicy(fb, z, max_nodes=nodes, beam=beam, device=dev)
     mated, plies = [], []
     for i, fen in enumerate(starts):
         rng = np.random.default_rng([seed, i])
@@ -92,6 +97,11 @@ def main():
     ap.add_argument("--bank-shards", nargs="+", default=["data/selfplay/krrkbp_sfsf"])
     ap.add_argument("--bank-max-pieces", type=int, default=6)
     ap.add_argument("--bank-size", type=int, default=128)
+    ap.add_argument("--search-a", choices=("beam", "mcts"), default="beam")
+    ap.add_argument("--search-b", choices=("beam", "mcts"), default="beam",
+                    help="readout for each side: beam = FBSearchPolicy minimax, mcts = PUCT "
+                         "(catspace/nn/mcts.py). Same node budget = matched compute.")
+    ap.add_argument("--c-puct", type=float, default=1.5)
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -104,9 +114,10 @@ def main():
                                           max_pieces=args.bank_max_pieces, cap=args.bank_size)
         print(f"goal bank: {len(bank_boards)} white-mate exemplars (<= {args.bank_max_pieces} pieces)")
     a, pa = mate_vector(args.ckpt_a, starts, tb, args.nodes, args.beam, args.max_plies,
-                        args.seed, args.device)
+                        args.seed, args.device, search=args.search_a, c_puct=args.c_puct)
     b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes_b or args.nodes, args.beam,
-                        args.max_plies, args.seed, args.device, bank_boards=bank_boards)
+                        args.max_plies, args.seed, args.device, bank_boards=bank_boards,
+                        search=args.search_b, c_puct=args.c_puct)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
