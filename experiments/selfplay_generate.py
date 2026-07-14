@@ -96,23 +96,30 @@ def positions_of_game(rec, start: chess.Board | None = None) -> list[dict]:
     return out
 
 
-def random_endgame_start(rng: np.random.Generator) -> chess.Board | None:
-    """Random legal winnable-material endgame start for curriculum self-play
+_ENDGAME_MENUS = {
+    "krvk": [(chess.ROOK, chess.WHITE)],
+    "kqvk": [(chess.QUEEN, chess.WHITE)],
+    "krrvk": [(chess.ROOK, chess.WHITE), (chess.ROOK, chess.WHITE)],
+    "krrkbp": [(chess.ROOK, chess.WHITE), (chess.ROOK, chess.WHITE),
+               (chess.BISHOP, chess.BLACK), (chess.PAWN, chess.BLACK)],
+    "kqvkp": [(chess.QUEEN, chess.WHITE), (chess.PAWN, chess.BLACK)],
+}
+
+
+def random_endgame_start(rng: np.random.Generator, material: str | None = None) -> chess.Board | None:
+    """Random legal winnable-material endgame start for curriculum generation
     (2026-07-12: the qm_fitness_probe found the learned distance completely
     FLAT against true distance-to-mate in endgame regions -- Spearman ~0 on
     KRvK where tablebase DTZ == plies-to-mate -- because human games rarely
     reach them. Games STARTED here produce real trajectories with real
     outcomes through exactly that blind region: outcome-grounded coverage,
-    no oracle labels). Material mixes: KRvK, KQvK, KRRvK, KRRvKBP-family."""
-    menus = (
-        [(chess.ROOK, chess.WHITE)],
-        [(chess.QUEEN, chess.WHITE)],
-        [(chess.ROOK, chess.WHITE), (chess.ROOK, chess.WHITE)],
-        [(chess.ROOK, chess.WHITE), (chess.ROOK, chess.WHITE),
-         (chess.BISHOP, chess.BLACK), (chess.PAWN, chess.BLACK)],
-        [(chess.QUEEN, chess.WHITE), (chess.PAWN, chess.BLACK)],
-    )
-    pieces = list(menus[int(rng.integers(len(menus)))])
+    no oracle labels). `material` (e.g. 'krrkbp') restricts to one menu;
+    None mixes all. Material mixes: KRvK, KQvK, KRRvK, KRRvKBP-family."""
+    if material is not None:
+        pieces = list(_ENDGAME_MENUS[material])
+    else:
+        menus = list(_ENDGAME_MENUS.values())
+        pieces = list(menus[int(rng.integers(len(menus)))])
     for _ in range(200):
         n = 2 + len(pieces)
         squares = rng.choice(64, size=n, replace=False)
@@ -139,7 +146,8 @@ def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, be
             epsilon: float, opening_plies: int, max_plies: int, elo: int, seed: int,
             shard_positions: int, sf_opponent_frac: float, sf_skill: int,
             policy_cls, endgame_start_frac: float = 0.0, start_fens: list | None = None,
-            verbose: bool = True) -> dict:
+            sf_vs_sf: bool = False, endgame_material: str | None = None,
+            sf_movetime: float = 0.02, verbose: bool = True) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     buf = {k: [] for k in ("packed", "meta", "ply", "clock", "eval_cp", "result",
                             "white_elo", "black_elo", "game_id")}
@@ -149,9 +157,9 @@ def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, be
     t0 = time.time()
 
     sf_opponent = None
-    if sf_opponent_frac > 0:
+    if sf_opponent_frac > 0 or sf_vs_sf:
         from catspace.uci import UCIBoardPolicy
-        sf_opponent = UCIBoardPolicy(skill=sf_skill, movetime=0.02)
+        sf_opponent = UCIBoardPolicy(skill=sf_skill, movetime=sf_movetime)
         sf_opponent.__enter__()
 
     def flush():
@@ -179,22 +187,31 @@ def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, be
     try:
         for i in range(n_games):
             rng = np.random.default_rng([seed, i])
-            white, black = make_selfplay_pair(fb, zgoals, device, max_nodes, beam, epsilon,
-                                              policy_cls)
-            use_sf = sf_opponent is not None and rng.random() < sf_opponent_frac
-            if use_sf:
-                if rng.random() < 0.5:
-                    white = sf_opponent
-                else:
-                    black = sf_opponent
+            if sf_vs_sf:
+                # BOTH sides Stockfish -- strong, CORRECT conversions through the
+                # endgame region (dense mate signal the FB self-play was too weak
+                # to produce). One engine serves both sides (moves are sequential).
+                # Records only moves + result, never an eval score: leakage-clean,
+                # same status as a human game vs a strong opponent.
+                white = black = sf_opponent
+                use_sf = True
+            else:
+                white, black = make_selfplay_pair(fb, zgoals, device, max_nodes, beam, epsilon,
+                                                  policy_cls)
+                use_sf = sf_opponent is not None and rng.random() < sf_opponent_frac
+                if use_sf:
+                    if rng.random() < 0.5:
+                        white = sf_opponent
+                    else:
+                        black = sf_opponent
             start = None
             if start_fens:
                 # toy-scenario mode: every game launches from a fixed start
-                # position (cycled), e.g. the KRRvKBP fixed set -- so self-play
-                # coverage is concentrated exactly on the region we're studying.
+                # position (cycled), e.g. the KRRvKBP fixed set -- so coverage
+                # is concentrated exactly on the region we're studying.
                 start = chess.Board(start_fens[i % len(start_fens)])
             elif rng.random() < endgame_start_frac:
-                start = random_endgame_start(rng)
+                start = random_endgame_start(rng, material=endgame_material)
             rec = play_board_game(white, black, start=start,
                                   opening_plies=0 if start is not None else opening_plies,
                                   max_plies=max_plies, rng=rng)
@@ -260,6 +277,17 @@ def main():
                          "-- external grounding so the field doesn't only reinforce its own "
                          "blind spots. Records only moves+result, never an eval score.")
     ap.add_argument("--sf-skill", type=int, default=3)
+    ap.add_argument("--sf-movetime", type=float, default=0.02,
+                    help="Stockfish seconds/move (raise for correct endgame conversion; "
+                         "0.1 is plenty for KRRvKBP)")
+    ap.add_argument("--sf-vs-sf", action="store_true",
+                    help="BOTH sides Stockfish (no FB policy) -- strong, correct endgame "
+                         "conversions for dense mate signal. Records only moves+result, never "
+                         "an eval score (leakage-clean). Pair with --endgame-start-frac 1.0 "
+                         "--endgame-material krrkbp for the KRRvKBP toy.")
+    ap.add_argument("--endgame-material", choices=list(_ENDGAME_MENUS), default=None,
+                    help="restrict --endgame-start-frac starts to one material (e.g. krrkbp); "
+                         "default mixes all menus.")
     ap.add_argument("--policy", choices=("search", "plan"), default="search")
     ap.add_argument("--start-fens", default=None,
                     help="path to a JSON {'fens': [...]} of start positions; every game "
@@ -275,11 +303,15 @@ def main():
     from catspace.nn.policy_fb import FBPlanPolicy, FBSearchPolicy
 
     device = pick_device(args.device)
-    fb, payload = load_ckpt(Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt", device)
-    if "MATE_W" not in payload.get("zgoals", {}):
-        raise SystemExit("checkpoint has no zgoals -- finish a train_lichess_fb.py run first")
-    zgoals = {k: v.cpu().numpy() for k, v in payload["zgoals"].items()}
-    policy_cls = FBSearchPolicy if args.policy == "search" else FBPlanPolicy
+    if args.sf_vs_sf:
+        # no FB policy needed -- both sides Stockfish
+        fb, zgoals, policy_cls = None, None, None
+    else:
+        fb, payload = load_ckpt(Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt", device)
+        if "MATE_W" not in payload.get("zgoals", {}):
+            raise SystemExit("checkpoint has no zgoals -- finish a train_lichess_fb.py run first")
+        zgoals = {k: v.cpu().numpy() for k, v in payload["zgoals"].items()}
+        policy_cls = FBSearchPolicy if args.policy == "search" else FBPlanPolicy
 
     start_fens = None
     if args.start_fens:
@@ -302,7 +334,9 @@ def main():
                         args.beam, args.epsilon, args.opening_plies, args.max_plies, args.elo,
                         args.seed, args.shard_positions, args.sf_opponent_frac, args.sf_skill,
                         policy_cls, endgame_start_frac=args.endgame_start_frac,
-                        start_fens=start_fens, verbose=True)
+                        start_fens=start_fens, sf_vs_sf=args.sf_vs_sf,
+                        endgame_material=args.endgame_material, sf_movetime=args.sf_movetime,
+                        verbose=True)
     print(f"wrote {manifest['n_shards']} shard(s), {manifest['n_games']} games, "
          f"{manifest['total_positions']} positions -> {args.out_dir}")
 
