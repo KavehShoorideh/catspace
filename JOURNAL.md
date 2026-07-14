@@ -2916,3 +2916,54 @@ LEVERS for Fable to try (since gentle-on-human barely moved F):
   (c) direct F-space cross-outcome repulsion at higher --repel-weight.
   Rebuild of the forced_mate_set with the insufficient-material draw class is running
   (/tmp/fm_rebuild.log). Then: near_mate_regions --forced-set to baseline, then iterate.
+
+---
+
+## 2026-07-14 (Fable) — certainty geometry + two-timescale field (design session)
+
+Kaveh's redefinition of the metric: **closeness = certainty of transition**. "The
+closest path is the one where we're more certain" -- a messy position with one
+winning line is NOT closer to mate than a clearly-forced one slightly farther.
+Formalised: d(s,g) = plies + lambda*(-ln P(reach g)). -ln P chains multiplicatively
+-> subadditive -> IS a quasimetric; forced (P=1) reduces to pure plies. This names
+the measured bug: current d has min/shortest-path semantics ("one winning line =
+close") = exactly the optimism behind the 0.35 ceiling and the 200n->800n gap
+(deep search was computing certainty by brute force).
+
+Estimator: certainty_rollouts.py -- stochastic rollouts on the toy, per-state
+P-hat by FEN aggregation. Empirical fork found: White=incumbent+eps gives P-hat
+mean 0.05 (our policy's incompetence, no gradient); White=tb-optimal+eps gives
+mean 0.45 w/ spread (position's intrinsic forgivingness). Toy uses tb+eps as
+scaffold; real system uses own-MCTS (no oracles). Kaveh accepted NON-STATIONARITY
+of the field long-term ("the landscape has shifted" is real; also 50-move/3-fold
+depend on counters/history).
+
+Architecture settled (Kaveh + discussion): TWO TIMESCALES.
+  - SLOW field: trained embedding, stationary over an AUGMENTED state (halfmove
+    clock already plane 18; repetition-count + fullmove planes TODO).
+  - FAST field: catspace/memory_field.py (built, smoke-tested) -- in-memory
+    evidence store keyed by embedding location, updated every move, visit-count-
+    weighted kNN query (start simple; competence-blend later). Schema reserves
+    `payload` for TACTIC-POTENTIALS: precondition-region -> plan + payoff ("if
+    opponent plays X, this tactic fires"), cf. 2026-07-10 conditional
+    capture-vector design. Distill fast->slow between games = the closed loop.
+  - Readouts (three strategies, Kaveh): (1) navigate embedding directly; (2)
+    Leela-style eval head off frozen embedding, KL-distilled (fallback; harness =
+    existing --repr ablation); (3) indexed positions w/ known evals + eval-change-
+    per-direction (local field gradient) -- the memory field enables this.
+
+ONCE-OVER before building further (Kaveh asked; flags to fix first):
+  1. P-hat=0 -> -ln0 = inf: clip with Laplace floor P >= 1/(n+2).
+  2. min-visits=2 too coarse (P in {0,.5,1}): raise threshold / weight by n.
+  3. CIRCULARITY: fast field retrieves by kNN in the slow embedding, but we PROVED
+     near-in-embedding != near-in-truth in weak regions -> test retrieval directly
+     (20% held-out rows: retrieved vs actual P-hat, MAE+calibration+CI) BEFORE
+     trusting the memory anywhere.
+EVALUATION DISCIPLINE (no point estimates -- the phantom-V6 lesson):
+  field quality = Spearman(learned d, plies+lambda*(-lnP)) on held-out states w/
+  bootstrap CI; retrieval = holdout P-hat MAE w/ CI; money test = paired
+  deterministic playout at 200 NODES (shallow-search rescue is the falsifiable
+  claim) on held-out test_n200 (disjoint from rollout starts), bootstrap CI,
+  CI-excluding-zero only; lambda/eps sweeps are exploratory by declaration, winner
+  gets ONE pre-registered confirmatory run on untouched starts.
+Concept-axes (outcome axis slot 0) committed earlier today; parked pending this.

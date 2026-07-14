@@ -533,3 +533,18 @@ At 30k: VAL_TOP1 = 0.033 (16.9× chance), VAL_TOP8 = 0.179 (11.4× chance). The 
   tablebase-OPTIMAL, deterministic opponent -> no engine variance -> a paired diff with
   real statistical power, and it captures self-driven play divergence that fixed-position
   move-eval cannot (see playout_ab.py).
+
+## Certainty geometry & the two-timescale field (2026-07-14)
+- **Certainty-weighted distance.** d(s,g) = plies + lambda*(-ln P(reach g)): a messy
+  position (one winning line among chaos) is FARTHER from mate than a slightly
+  longer forced win. -ln P chains multiplicatively, so it satisfies the triangle
+  inequality -- certainty and hops unify in one quasimetric. Fixes min-semantics
+  optimism ("one winning line = close").
+- **Slow field / fast field.** Slow = the trained embedding (stationary geometry,
+  updated only by retraining). Fast = an in-memory evidence store (memory_field.py)
+  keyed by embedding location, updated every move with search/rollout statistics,
+  queried by visit-weighted kNN. Fast evidence is periodically distilled into the
+  slow field (the closed loop). "The landscape has shifted" = a fast-field write.
+- **Tactic-potential (planned).** A memory-field row whose key is a PRECONDITION
+  region ("if opponent plays X the state lands here") and whose payload is a
+  plan/tactic + payoff -- conditional knowledge stored in the same store.
