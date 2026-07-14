@@ -281,6 +281,12 @@ def main():
                          "softer/gentler pull, less region compression)")
     ap.add_argument("--pole-margin", type=float, default=3.0,
                     help="minimum (scaled) distance kept between the three poles")
+    ap.add_argument("--repel-weight", type=float, default=0.0,
+                    help="cross-outcome repulsion (t-SNE-style, no attractor): push DIFFERENT-"
+                         "outcome anchor pairs apart in hops up to --repel-margin. Needs quasimetric; "
+                         "no new params (uses embed_B on anchors).")
+    ap.add_argument("--repel-margin", type=float, default=1.5,
+                    help="hops margin cross-outcome pairs are repelled up to (then force saturates)")
     ap.add_argument("--selfplay-shards", default=None,
                     help="dir of experiments/selfplay_generate.py output shards to MIX into "
                          "training (holdout/val stay human-only for a stable reference)")
@@ -396,7 +402,8 @@ def main():
                                     dist_weight=args.dist_weight,
                                     competence_weight=args.competence_weight,
                                     result=result_t, outcome_weight=args.outcome_weight,
-                                    pole_tau=args.pole_tau, pole_margin=args.pole_margin)
+                                    pole_tau=args.pole_tau, pole_margin=args.pole_margin,
+                                    repel_weight=args.repel_weight, repel_margin=args.repel_margin)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:

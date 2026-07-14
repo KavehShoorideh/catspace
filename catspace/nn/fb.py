@@ -236,7 +236,8 @@ class TorchFB(nn.Module):
                 asym_cap: int = 128, dist_weight: float = 0.5,
                 competence_weight: float = 0.1, result: torch.Tensor | None = None,
                 outcome_weight: float = 0.0, pole_tau: float = 1.0,
-                pole_margin: float = 3.0) -> tuple[torch.Tensor, torch.Tensor]:
+                pole_margin: float = 3.0, repel_weight: float = 0.0,
+                repel_margin: float = 1.0) -> tuple[torch.Tensor, torch.Tensor]:
         """InfoNCE with in-batch negatives; returns (loss, top1 retrieval acc).
 
         2026-07-12 ply-gap calibration (Kaveh: "if the future leads to a mate
@@ -316,6 +317,19 @@ class TorchFB(nn.Module):
                      + nn.functional.relu(pole_margin - pp[0, 2])
                      + nn.functional.relu(pole_margin - pp[1, 2])) / 3.0
             loss = loss + outcome_weight * (pull + repel)
+        if repel_weight > 0 and result is not None and self.quasimetric:
+            # CROSS-OUTCOME REPULSION (t-SNE-style, no attractor point): repel
+            # anchor pairs with DIFFERENT final outcomes in HOPS up to a margin,
+            # then stop (relu = the bounded/saturating role t-SNE's Student-t tail
+            # plays). Within-outcome pairs are left to the reach/ply-gap attraction
+            # -- so regions survive as extended blobs (their internal hop gradient
+            # intact) while mutually-exclusive regions push apart. d(F(s_i),B(s_j))
+            # = directed hops from anchor i to anchor j (B on anchors = extra pass).
+            ab = self.embed_B(planes_s)
+            dss = self.distance_matrix(f, ab)                    # (N,N) directed hops
+            diff = (result[:, None] != result[None, :]).float()  # cross-outcome pairs
+            denom = diff.sum().clamp_min(1.0)
+            loss = loss + repel_weight * (nn.functional.relu(repel_margin - dss) * diff).sum() / denom
         return loss, top1
 
     def distance_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
