@@ -2682,3 +2682,14 @@ Consequences for the whole search:
 Honest standing: after proper A/B, NO variant beats the incumbent on play; the
 overnight sweep measured mostly noise. The bottleneck now is EVALUATION POWER
 (build the deterministic playout) and TRAINING STRENGTH (fine-tune may be too gentle).
+
+### 2026-07-14 — powered playout confirms: V6 = incumbent (no play gain)
+
+Deterministic playout (model vs tablebase-optimal defender), incumbent vs V6, n=120:
+  mate-rate A=0.175 vs B=0.158  diff=-0.017  CI=[-0.092,+0.058]  ns
+Tight CI (+-0.075, vs conversion's +-0.38) rules out any real V6 improvement -- the
+pole fine-tune restructures geometry but does NOT help hop-search play (slightly
+worse). Also: the planner converts only ~17% of winning KRRvKBP vs OPTIMAL defense.
+Conclusion stands: no fine-tune variant beats the incumbent. Fine-tuning +8000 from
+the incumbent is too gentle to change play beneficially.
+Next (highest value, NO retrain): region-bank soft-min GOAL on the incumbent.
