@@ -1,0 +1,21 @@
+{
+ "krrkbp_win_starts.json": {
+  "role": "TRAIN (rollout starts, certainty tables)",
+  "n": 700
+ },
+ "krrkbp_test_n200.json": {
+  "role": "EVAL (playout money tests; disjoint from train)",
+  "n": 200
+ },
+ "krrkbp_fixed_set_n60.json": {
+  "role": "LEGACY EVAL (conversion_compare; disjoint)",
+  "n": 60
+ },
+ "forced_mate_set_valid.json": {
+  "role": "EVAL (region separation; never train)",
+  "n": 783
+ },
+ "confirmatory": {
+  "role": "FROZEN \u2014 generate fresh tablebase-verified starts w/ seed 777 ONLY at confirmatory time; never reuse"
+ }
+}
