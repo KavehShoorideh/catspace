@@ -2391,3 +2391,31 @@ climbing with more rounds/games or plateau at ~0.09? (2) does the added curvatur
 translate to actual KRRvKBP CONVERSION gains (play is the real test; curvature is
 the proxy)? Next: measure conversion on the fixed set with the R3 ckpt vs
 incumbent, and if promising, extend the loop to see if dtz_rho converges.
+
+### conversion (play-truth) check — curvature appeared, but play did NOT improve
+
+Paired KRRvKBP conversion, incumbent (A) vs self-play R3 (B), same FBSearchPolicy
+@200 nodes vs Stockfish skill 0, matched seeds over the 60 fixed positions
+(`conversion_compare.py`):
+
+  VERDICT conversion A=0.558 vs B=0.450  mean_diff=-0.108 CI=[-0.739,+0.522] e=0.89
+
+A noisy null-to-NEGATIVE (not significant, huge CI). So the toy loop DISSOCIATES:
+curvature appeared (move_spread 7-11x, dtz_rho 4x) but conversion did not improve
+and if anything dipped. Why -- and it's the useful lesson:
+- dtz_rho only reached +0.09: the field got BUMPIER (spread up) without getting
+  correctly ORIENTED (alignment still weak). For a greedy search a confidently-
+  wrong gradient is worse than a flat one -- which is exactly why the incumbent's
+  top1_win (0.896) beat every self-play round (R1 0.71 ... R3 0.86).
+- ROOT of the weak alignment: the self-play games are mostly DRAWS (the blind
+  policy rarely converts), so the positive mate signal distilled each round is
+  SPARSE and noisy. Curvature is inducible; accurate curvature needs a denser
+  mate signal.
+
+Mechanism validated, dose/quality not there yet. Clean next levers to densify the
+mate signal (all outcome-legitimate, no oracle labels): (1) CURRICULUM -- start
+self-play from won-in-1/2/3 positions the blind policy CAN mate, then expand
+outward; (2) more search nodes in self-play so it converts more often; (3) more
+rounds/games to see whether dtz_rho keeps climbing past +0.09 or plateaus.
+Recommend (1): a mate-distance curriculum is the highest-leverage fix for signal
+sparsity and directly tests whether accurate curvature -> better conversion.
