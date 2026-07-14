@@ -56,16 +56,17 @@ class TorchFB(nn.Module):
                  enc_out: int = 256, dh: int = 512, omega_dim: int = 16,
                  tau: float = 0.1, seed: int = 0, quasimetric: bool = False,
                  two_horizon: bool = False, distributional: bool = False,
-                 n_bins: int = 12, competence: bool = False):
+                 n_bins: int = 12, competence: bool = False,
+                 outcome_poles: bool = False):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
-        if two_horizon or distributional:
-            quasimetric = True           # both keep the quasimetric d as distance
+        if two_horizon or distributional or outcome_poles:
+            quasimetric = True           # all keep the quasimetric d as distance
         self.config = dict(d=d, channels=channels, blocks=blocks, enc_out=enc_out,
                            dh=dh, omega_dim=omega_dim, tau=tau, seed=seed,
                            quasimetric=quasimetric, two_horizon=two_horizon,
                            distributional=distributional, n_bins=n_bins,
-                           competence=competence)
+                           competence=competence, outcome_poles=outcome_poles)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -122,6 +123,19 @@ class TorchFB(nn.Module):
         if competence:
             self.competence_head = nn.Sequential(nn.Linear(d, dh // 2), nn.ReLU(),
                                                  nn.Linear(dh // 2, 1))
+        # OUTCOME POLES (2026-07-13, Kaveh: "add a loss that pushes the poles
+        # apart; everything else pushed/pulled by the final side who won -- I
+        # need HOPS, not euclidean distance"). Three learnable GOAL-space anchors
+        # (loss / draw / win, indexed by result+1). The loss below repels the
+        # three poles and, per state, hinges its QUASIMETRIC distance (= hops) so
+        # its own outcome-pole is fewer hops away than the others by a margin.
+        # This is the outcome-conditioned, self-consistent-by-result separation:
+        # mutually-exclusive terminals become far-apart basins, and because it
+        # rides on the ply-gap-calibrated d, the within-basin hop gradient
+        # survives. Constructed LAST -> outcome_poles=False stays byte-identical.
+        self.outcome_poles = outcome_poles
+        if outcome_poles:
+            self.poles = nn.Parameter(nn.functional.normalize(torch.randn(3, d), dim=1))
 
     def competence_score(self, f: torch.Tensor) -> torch.Tensor:
         """(N,d) F-embeddings -> (N,) predicted per-anchor error = the engine's
@@ -220,7 +234,9 @@ class TorchFB(nn.Module):
                 ply_gap_weight: float = 0.05, ply_gap_scale: float = 50.0,
                 asym_weight: float = 0.0, asym_margin: float = 0.2,
                 asym_cap: int = 128, dist_weight: float = 0.5,
-                competence_weight: float = 0.1) -> tuple[torch.Tensor, torch.Tensor]:
+                competence_weight: float = 0.1, result: torch.Tensor | None = None,
+                outcome_weight: float = 0.0, outcome_margin: float = 0.5,
+                pole_margin: float = 3.0) -> tuple[torch.Tensor, torch.Tensor]:
         """InfoNCE with in-batch negatives; returns (loss, top1 retrieval acc).
 
         2026-07-12 ply-gap calibration (Kaveh: "if the future leads to a mate
@@ -283,6 +299,21 @@ class TorchFB(nn.Module):
             d_rev = self.distance_matrix(f_rev, b_rev).diagonal()
             loss = loss + asym_weight * nn.functional.relu(
                 asym_margin + d_fwd - d_rev).mean()
+        if self.outcome_poles and outcome_weight > 0 and result is not None:
+            # (a) push the three terminal poles apart; (b) hinge each state's HOPS
+            # (quasimetric d) so its own-outcome pole is closer than the others by
+            # a margin. result in {-1 loss, 0 draw, +1 win} -> pole index {0,1,2}.
+            poles = nn.functional.normalize(self.poles, dim=1)        # (3, d) goal-space
+            d_sp = self.distance_matrix(f, poles)                     # (N,3) state->pole hops
+            idx = (result + 1).long().clamp(0, 2)
+            d_own = d_sp.gather(1, idx[:, None])                      # (N,1)
+            other = torch.ones_like(d_sp).scatter_(1, idx[:, None], 0.0)
+            pull = (nn.functional.relu(outcome_margin + d_own - d_sp) * other).sum(1) / 2.0
+            pp = torch.cdist(poles * self.metric_scale, poles * self.metric_scale)  # (3,3)
+            repel = (nn.functional.relu(pole_margin - pp[0, 1])
+                     + nn.functional.relu(pole_margin - pp[0, 2])
+                     + nn.functional.relu(pole_margin - pp[1, 2])) / 3.0
+            loss = loss + outcome_weight * (pull.mean() + repel)
         return loss, top1
 
     def distance_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
