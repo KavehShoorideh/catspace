@@ -48,12 +48,17 @@ def playout(pol, start, tb, rng, max_plies):
     return mated, (b.ply() if mated else None)
 
 
-def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device):
+def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import FBSearchPolicy
     dev = pick_device(device)
     fb, pay = load_ckpt(Path(ckpt), dev)
-    pol = FBSearchPolicy(fb, pay["zgoals"]["MATE_W"], max_nodes=nodes, beam=beam, device=dev)
+    if bank_boards is not None:                          # region goal: soft-min over exemplars
+        from catspace.goal_bank import embed_bank
+        z = embed_bank(fb, bank_boards, dev)             # (m, d) -> FBSearchPolicy uses soft_min_bank
+    else:
+        z = pay["zgoals"]["MATE_W"]                      # centroid goal
+    pol = FBSearchPolicy(fb, z, max_nodes=nodes, beam=beam, device=dev)
     mated, plies = [], []
     for i, fen in enumerate(starts):
         rng = np.random.default_rng([seed, i])
@@ -78,15 +83,27 @@ def main():
     ap.add_argument("--device", default="auto")
     ap.add_argument("--syzygy-dir", default="data/syzygy")
     ap.add_argument("--label", default="")
+    ap.add_argument("--ckpt-b-goal", choices=("centroid", "bank"), default="centroid",
+                    help="goal used by ckpt-b's planner: centroid (zgoals MATE_W) or a soft-min "
+                         "BANK of mate exemplars (Kaveh's 'arrive anywhere in the mate region')")
+    ap.add_argument("--bank-shards", nargs="+", default=["data/selfplay/krrkbp_sfsf"])
+    ap.add_argument("--bank-max-pieces", type=int, default=6)
+    ap.add_argument("--bank-size", type=int, default=128)
     args = ap.parse_args()
 
     import torch  # noqa: F401
     tb = TB(args.syzygy_dir)
     starts = json.loads(Path(args.fixed_set).read_text())["fens"][:args.n]
+    bank_boards = None
+    if args.ckpt_b_goal == "bank":
+        from catspace.goal_bank import harvest_mate_finals
+        bank_boards = harvest_mate_finals(args.bank_shards, want_result=1,
+                                          max_pieces=args.bank_max_pieces, cap=args.bank_size)
+        print(f"goal bank: {len(bank_boards)} white-mate exemplars (<= {args.bank_max_pieces} pieces)")
     a, pa = mate_vector(args.ckpt_a, starts, tb, args.nodes, args.beam, args.max_plies,
                         args.seed, args.device)
     b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes, args.beam, args.max_plies,
-                        args.seed, args.device)
+                        args.seed, args.device, bank_boards=bank_boards)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
