@@ -3008,3 +3008,34 @@ lobe). FIXES: (1) 10-100x rollout states (the full-data run, now JUSTIFIED with 
 mechanism), (2) early-stop on held-out Spearman, (3) certainty in the base
 objective at scale, not post-hoc micro-finetune. 1600n money test running (regime
 hypothesis, Kaveh).
+
+### CORRECTION: "memorization" diagnosis retracted -- actual story: UNDERFIT + goal-vector mismatch
+Rebuilding the structure viz as a real script (experiments/viz/certainty_structure.py,
+per-panel captions, reproducible; the old figure was a throwaway heredoc that filtered
+rows to n>=6[:2500]) exposed that yesterday's claim "train fit ~+0.86 vs held-out
++0.14 = memorization" does NOT reproduce from any artifact. No computation in the
+transcript ever produced +0.86 -- the number was asserted in prose only. Lesson
+enforced going forward: no number enters the journal unless it comes from a printed
+VERDICT/script output.
+Reproducible numbers (full table, eval mode; held-out = the distill's own seed-0 split):
+  incumbent   all rows                       rho -0.055
+  distilled   vs zW it TRAINED against       train +0.205 / held-out +0.142
+  distilled   vs ckpt's REBUILT zgoal        train +0.164 / held-out +0.094
+Corrected findings:
+  (1) UNDERFIT, not memorization: train barely beats held-out. The 6k-step distill
+      (cert MSE + NCE mixing) never fit the certainty target even on train rows.
+  (2) GOAL-VECTOR MISMATCH (real bug, now fixed): certainty_distill optimized
+      d(F(s), zW_incumbent) but save_ckpt stored a build_zgoals-REBUILT MATE_W
+      (cosine 0.967 to the trained-on one) -> playout navigated to a goal the
+      distances were never calibrated to (~0.05 rho lost; the money test saw a
+      weaker field than the Spearman verdict measured). certainty_distill.py now
+      saves the zW it trained against.
+  (3) visit-count split: n<6 rows fit BETTER (rho +0.29/+0.33) than n>=6
+      (+0.15/+0.20) -- the sqrt(n) confidence weighting did not buy the intended
+      dense-evidence advantage.
+  (4) UMAP: certainty is locally coherent (single-color patches) but there is no
+      global certain-win lobe -- large-scale geometry unmoved.
+Revised fix list (replaces yesterday's): (a) goal-vector fix (done), (b) fit the
+target harder -- more steps / higher cert-weight with early-stop on held-out
+Spearman, (c) 10-100x rollout states, (d) certainty in the base objective at scale.
+1600n money test still running (n=80, deterministic defender).

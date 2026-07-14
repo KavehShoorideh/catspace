@@ -141,6 +141,10 @@ def main():
     print(f"VERDICT CERT_SPEARMAN baseline {r0:+.3f}[{lo0:+.3f},{hi0:+.3f}] -> "
           f"tuned {r1:+.3f}[{lo1:+.3f},{hi1:+.3f}]")
     zg = build_zgoals(Path(args.shards), fb, dev)
+    # the cert loss calibrated d(F(s), zW_in) -- saving a rebuilt MATE_W would
+    # point playout at a goal the distances were never fit to (measured: ~0.05
+    # of held-out rho lost, JOURNAL 2026-07-14 correction)
+    zg["MATE_W"] = zW_t.detach().cpu()
     save_ckpt(fb, Path(args.ckpt_out), step=pay.get("step", 0), zgoals=zg)
     print(f"saved {args.ckpt_out}")
 
