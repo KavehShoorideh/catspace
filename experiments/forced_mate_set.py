@@ -71,6 +71,30 @@ def mate_class(board: chess.Board, K: int) -> tuple[int, int] | None:
     return None
 
 
+def gen_forced_draws(n, rng):
+    """FORCED-draw positions: insufficient material -> mate impossible either way
+    (KvK, K+B vs K, K+N vs K, same-colour KB vs KB). A tight 'no mate possible'
+    region (Kaveh). Verified by python-chess is_insufficient_material()."""
+    menus = ([], [(chess.BISHOP, chess.WHITE)], [(chess.BISHOP, chess.BLACK)],
+             [(chess.KNIGHT, chess.WHITE)], [(chess.KNIGHT, chess.BLACK)],
+             [(chess.BISHOP, chess.WHITE), (chess.BISHOP, chess.BLACK)],
+             [(chess.KNIGHT, chess.WHITE), (chess.KNIGHT, chess.BLACK)])
+    out, tries = [], 0
+    while len(out) < n and tries < n * 200:
+        tries += 1
+        pieces = list(menus[int(rng.integers(len(menus)))])
+        sq = rng.choice(64, size=2 + len(pieces), replace=False)
+        b = chess.Board(None)
+        b.set_piece_at(int(sq[0]), chess.Piece(chess.KING, chess.WHITE))
+        b.set_piece_at(int(sq[1]), chess.Piece(chess.KING, chess.BLACK))
+        for s, (pt, col) in zip(sq[2:], pieces):
+            b.set_piece_at(int(s), chess.Piece(pt, col))
+        b.turn = chess.WHITE if rng.random() < 0.5 else chess.BLACK
+        if b.is_valid() and b.is_insufficient_material():
+            out.append(b)
+    return out
+
+
 def candidate_positions(shard_dirs, cap):
     """Positions near the end of games (a spread of offsets) -- mates cluster near
     decisive endings, and drawn-game endings feed the draw class. WHITE-POV via
@@ -147,7 +171,12 @@ def main():
         with UCIBoardPolicy(threads=args.threads) as sf:                 # SF loaded ONCE
             for cls, items in data["classes"].items():
                 for it in items:
-                    lab = sf_label(sf.engine, chess.Board(it["fen"]), vlim)
+                    b = chess.Board(it["fen"])
+                    if cls == "draw":                                    # forced draw = insufficient material
+                        if b.is_insufficient_material():
+                            kept[cls].append(it)
+                        continue
+                    lab = sf_label(sf.engine, b, vlim)
                     if lab is not None and lab["cls"] == cls:
                         kept[cls].append(it | dict(k=lab["k"], cp=lab["cp"], mate=lab["mate"]))
         nk = sum(len(v) for v in kept.values())
@@ -158,16 +187,25 @@ def main():
             print(f"-> wrote {nk} deterministically-valid samples to {args.filter_out}")
         raise SystemExit(0 if nk == n else 1)
 
+    # FORCED DRAWS = insufficient-material (mate impossible either way); their OWN
+    # distinct region that must NOT overlap the mating regions (Kaveh). Generated,
+    # not SF-scanned.
+    rng = np.random.default_rng(0)
+    draws = gen_forced_draws(args.per_class, rng)
+    buckets = {"mate_W": [], "mate_B": [],
+               "draw": [dict(fen=b.fen(), k=None, cp=0, mate=None) for b in draws]}
+    print(f"forced-draw (insufficient material): {len(buckets['draw'])} generated", flush=True)
+
     cands = candidate_positions(args.shards, args.candidate_cap)
     print(f"{len(cands)} candidates; Stockfish {limdesc}, {args.threads} threads (loaded once), "
-          f"target {args.per_class}/class ...", flush=True)
-    buckets = {"mate_W": [], "mate_B": [], "draw": []}
+          f"target {args.per_class}/class (mate_W/mate_B via SF) ...", flush=True)
     with UCIBoardPolicy(threads=args.threads) as sf:                     # SF loaded ONCE, reused
         for i, b in enumerate(cands):
-            if all(len(v) >= args.per_class for v in buckets.values()):
+            if len(buckets["mate_W"]) >= args.per_class and len(buckets["mate_B"]) >= args.per_class:
                 break
             lab = sf_label(sf.engine, b, lim)
-            if lab is not None and len(buckets[lab["cls"]]) < args.per_class:
+            if lab is not None and lab["cls"] in ("mate_W", "mate_B") \
+                    and len(buckets[lab["cls"]]) < args.per_class:
                 buckets[lab["cls"]].append(dict(fen=b.fen(), k=lab["k"], cp=lab["cp"], mate=lab["mate"]))
             if (i + 1) % 200 == 0:
                 print(f"  scanned {i+1}/{len(cands)}: "

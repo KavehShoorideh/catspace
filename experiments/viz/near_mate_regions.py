@@ -126,11 +126,21 @@ def main():
     print(f"  VALUE axis (reachW - reachB = MATE_DIFF) separability: kNN {dsep['knn']:.2f} "
           f"· linear {dsep['linear']:.2f}")
 
+    # ** THE TARGET (Kaveh): mate_W and mate_B must NOT overlap; draw MAY overlap. **
+    # So the metric that matters is the BINARY mate_W vs mate_B separation (draw dropped).
+    wb = y != 0
+    Fwb = separability(F[wb], y[wb]); rwb = separability(reach[wb], y[wb]); vwb = separability(diff[wb], y[wb])
+    print(f"  ** mate_W vs mate_B ONLY (chance 0.50, draw excluded): "
+          f"F kNN {Fwb['knn']:.2f} sil {Fwb['silhouette']:+.2f} | reach kNN {rwb['knn']:.2f} "
+          f"sil {rwb['silhouette']:+.2f} | value kNN {vwb['knn']:.2f} **")
+
     if args.record:
         import json
         rec = dict(label=args.label, ckpt=args.ckpt, F_knn=full["knn"], F_sil=full["silhouette"],
                    reach_knn=rsep["knn"], reach_sil=rsep["silhouette"], value_knn=dsep["knn"],
-                   corr_WB=corr)
+                   corr_WB=corr,
+                   WB_F_knn=Fwb["knn"], WB_F_sil=Fwb["silhouette"], WB_reach_knn=rwb["knn"],
+                   WB_reach_sil=rwb["silhouette"], WB_value_knn=vwb["knn"])
         rp = Path(args.record); rp.parent.mkdir(parents=True, exist_ok=True)
         with rp.open("a") as f:
             f.write(json.dumps(rec) + "\n")
