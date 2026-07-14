@@ -2587,3 +2587,31 @@ eval = experiments/eval_variant.py -> overnight_results.jsonl):
 - V3+: region-bank goal (soft-min over mate exemplars) + repulsion; weight/temp/
   margin sweeps of the winner; combinations.
 Promote whichever beats incumbent conversion while keeping top1_win >~0.85.
+
+### overnight results so far + orchestrator
+
+  variant        conv    top1_win  dtz_rho  note
+  V0 incumbent   0.558   0.896     +0.02    baseline (target)
+  V1 soft-pole   0.542   0.814     +0.085   TIE (ns); pole-AS-GOAL, separation held
+  V1 hard-pole   0.300   0.719     -0.05    crushed play (global pull-to-point)
+  V2 repel-only  0.400   0.792     +0.002   WORSE; centroid goal, repel didn't help
+
+KEY INSIGHT from V1 vs V2: the GOAL matters more than the separation mechanism.
+V1 (learned pole AS the planning goal) tied the incumbent; V2 (same-ish training but
+kept the blurry MATE_W *centroid* as goal) regressed to 0.40 with a flat hop field
+(dtz_rho ~0). So repel-only-with-centroid is a dead end -- the lever is the GOAL
+(pole / region), not the cross-outcome push by itself.
+
+Self-sustaining setup: experiments/overnight_orch.sh runs artifacts/experiments/
+overnight_queue.tsv serially (idempotent: skips already-evaluated labels; picks up
+appended lines), fine-tuning the incumbent +8000 on the W/D/L mix per variant, then
+eval_variant.py -> overnight_results.jsonl. Queue (pole-as-goal first, since that's
+the lever): V5 pole+repel, V6 pole-gentle, V8 pole+strong-repel, V9 pole-w0.7,
+V3 repel-strong, V7 repel-light.
+
+Biggest UNTESTED idea (Kaveh's "arrive anywhere in the mate region"): the
+region/soft-min-BANK goal. It's a PLANNING-goal change (planner already supports a
+2D goal bank via soft_min_bank), applicable at eval time with NO retrain -- so it
+can be tested on the incumbent directly. Next: implement a --goal bank option in
+the eval and check if soft-min-over-mate-exemplars beats the centroid on the
+incumbent; if yes, apply to the best variant. Then inject as a variant.
