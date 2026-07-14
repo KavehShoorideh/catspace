@@ -3059,3 +3059,13 @@ value -- code changing under it). RUNNING: beam-vs-MCTS on the incumbent at 200n
 n=120 then 800n n=80 (/tmp/mcts_ab.log) -- if MCTS wins at matched budget, the
 readout was leaving conversion on the table; if tied, embedding-limited confirmed
 and the lever is lichess-scale training with certainty in the base objective.
+
+### FIRST CI-REAL PLAY WIN: MCTS readout beats beam at matched compute
+PLAYOUT_AB MCTS_vs_beam_200n mate-rate A=0.175 vs B=0.292 diff=+0.117
+CI=[+0.042,+0.192] (n=120 starts, deterministic defender) [SIGNIFICANT].
+Same checkpoint, same 200-eval budget, only the search shape changed: every prior
+"embedding ceiling" number (0.175@200n, ~0.35@800n saturation) was a BEAM-READOUT
+ceiling, not a field ceiling. All prior null money tests must be reinterpreted:
+interventions were evaluated through a readout that wastes budget. 800n leg
+running. make_search_policy factory committed: beam/mcts plug-and-playable in
+playout_ab, experiment_report, certainty_rollouts (beam stays default).
