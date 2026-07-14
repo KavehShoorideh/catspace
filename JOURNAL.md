@@ -3101,3 +3101,13 @@ gen_confirmatory_starts.py now mints from the same distribution (--start-fen).
 CONSEQUENCE: certainty_table.json + all prior toy baselines are off-distribution;
 the scaling-curve experiment (next) re-derives tables and baselines from the fixed
 start with the promoted MCTS readout.
+
+### Fixed-start baselines (the scaling curve's zero-point)
+PLAYOUT_AB BASELINE_fixedstart_200n mate-rate A(beam)=0.083 vs B(mcts)=0.333
+diff=+0.250 CI=[+0.175,+0.325] (n=120, fixed-start test set) [SIGNIFICANT].
+On play-reachable openings the readout gap WIDENS (beam collapses to 0.083; the
+random-placement sets flattered it at 0.175). Incumbent+MCTS@200n = 0.333 is the
+number every scaling-curve distill must beat. playout_ab verdicts now also carry
+the abtest e-value (Kaveh: use the e-value framework -- sequential looks along the
+curve compose); certainty_distill early-stops on held-out Spearman. Own-play P-hat
+probe (model+eps, MCTS 100n readout, 60x8 rollouts) running.
