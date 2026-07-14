@@ -2816,9 +2816,16 @@ KEY RESULTS:
   3. No embedding-structure intervention (pole-separation, repulsion, region-goal)
      SIGNIFICANTLY beats the incumbent's ~0.35 rate ceiling. Region-bank goal is
      significantly WORSE. Modest, non-significant speed lean for pole variants.
-  4. Reusable tooling built: eval_variant (CI+e-value), n=200 held-out set,
-     conversion_compare, move_ab (+ its own null-result caveat), playout_ab
-     (deterministic-defender, the metric with real power), reach_curvature, wdl_regions.
+  4. Tooling -- ATTRIBUTION CORRECTED (Kaveh caught me overstating this): the
+     paired A/B harness with CI + anytime-valid e-value ALREADY EXISTED before this
+     session -- catspace/abtest.py (EValueTest, confidence_sequence) +
+     krrkbp_arena.run_paired (diff_ci, e_value), committed 2026-07-12. conversion_compare
+     and eval_variant are thin WRAPPERS on it; worse, eval_variant initially DROPPED
+     the CI/e-value (recording only point estimates) -- the regression that produced
+     the phantom n=60 "win" and forced Kaveh to say "use the harness with CIs". The
+     only genuinely NEW tool this session is playout_ab (deterministic-defender
+     playout -- the existing harness used stochastic Stockfish). reach_curvature,
+     wdl_regions are new diagnostics; move_ab was a dead end.
 NEXT LEVERS (all training bets -> need Kaveh's direction, NOT launched autonomously):
   (a) two-horizon NEAR head (targets endgame precision -- the natural lever for the
       saturated ceiling; evaluate at 800n).
