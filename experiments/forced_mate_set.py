@@ -117,59 +117,52 @@ def main():
     ap.add_argument("--shards", nargs="+",
                     default=["data/shards/lichess_db_standard_rated_2019-01.prefix1gb"])
     ap.add_argument("--per-class", type=int, default=400)
-    ap.add_argument("--gen-depth", type=int, default=16, help="Stockfish depth for generation")
-    ap.add_argument("--val-depth", type=int, default=24, help="deeper Stockfish depth to VALIDATE")
-    ap.add_argument("--candidate-cap", type=int, default=60000)
+    ap.add_argument("--movetime", type=float, default=0.12, help="Stockfish seconds/position "
+                    "(bounded -> fast + finds the short mates that dominate near game-ends)")
+    ap.add_argument("--depth", type=int, default=0, help="if >0, use fixed depth instead of movetime")
+    ap.add_argument("--threads", type=int, default=4, help="Stockfish threads")
+    ap.add_argument("--candidate-cap", type=int, default=120000)
     ap.add_argument("--out", default="artifacts/experiments/forced_mate_set.json")
     ap.add_argument("--validate-only", default=None,
-                    help="path to a set JSON -- re-check every sample with deep Stockfish, report pass/fail")
+                    help="path to a set JSON -- re-check every sample with Stockfish, report pass/fail")
     args = ap.parse_args()
 
     import chess.engine
     from catspace.uci import UCIBoardPolicy
 
-    def revalidate(classes, depth):
-        bad = 0
-        with UCIBoardPolicy() as sf:
-            lim = chess.engine.Limit(depth=depth)
-            for cls, items in classes.items():
-                for it in items:
-                    lab = sf_label(sf.engine, chess.Board(it["fen"]), lim)
-                    bad += (lab is None or lab["cls"] != cls)   # class must still hold
-        return bad
+    lim = chess.engine.Limit(depth=args.depth) if args.depth > 0 else chess.engine.Limit(time=args.movetime)
+    limdesc = f"depth {args.depth}" if args.depth > 0 else f"movetime {args.movetime}s"
 
     if args.validate_only:
         data = json.loads(Path(args.validate_only).read_text())
-        n = sum(len(v) for v in data["classes"].values())
-        bad = revalidate(data["classes"], args.val_depth)
-        print(f"deep re-validation (depth {args.val_depth}) of {n} samples: {n - bad} pass, {bad} FAIL")
+        n = sum(len(v) for v in data["classes"].values()); bad = 0
+        with UCIBoardPolicy(threads=args.threads) as sf:                 # SF loaded ONCE
+            for cls, items in data["classes"].items():
+                for it in items:
+                    lab = sf_label(sf.engine, chess.Board(it["fen"]), lim)
+                    bad += (lab is None or lab["cls"] != cls)
+        print(f"re-validation ({limdesc}) of {n} samples: {n - bad} pass, {bad} FAIL")
         raise SystemExit(1 if bad else 0)
 
     cands = candidate_positions(args.shards, args.candidate_cap)
-    print(f"{len(cands)} candidate positions; Stockfish gen depth {args.gen_depth} "
-          f"-> validate depth {args.val_depth}...", flush=True)
+    print(f"{len(cands)} candidates; Stockfish {limdesc}, {args.threads} threads (loaded once), "
+          f"target {args.per_class}/class ...", flush=True)
     buckets = {"mate_W": [], "mate_B": [], "draw": []}
-    with UCIBoardPolicy() as sf:
-        gen = chess.engine.Limit(depth=args.gen_depth)
-        val = chess.engine.Limit(depth=args.val_depth)
-        for b in cands:
+    with UCIBoardPolicy(threads=args.threads) as sf:                     # SF loaded ONCE, reused
+        for i, b in enumerate(cands):
             if all(len(v) >= args.per_class for v in buckets.values()):
                 break
-            lab = sf_label(sf.engine, b, gen)
-            if lab is None or len(buckets[lab["cls"]]) >= args.per_class:
-                continue
-            deep = sf_label(sf.engine, b, val)          # confirm at deeper depth
-            if deep is None or deep["cls"] != lab["cls"]:
-                continue
-            buckets[lab["cls"]].append(dict(fen=b.fen(), k=deep["k"], cp=deep["cp"],
-                                            mate=deep["mate"], val_depth=args.val_depth))
+            lab = sf_label(sf.engine, b, lim)
+            if lab is not None and len(buckets[lab["cls"]]) < args.per_class:
+                buckets[lab["cls"]].append(dict(fen=b.fen(), k=lab["k"], cp=lab["cp"], mate=lab["mate"]))
+            if (i + 1) % 200 == 0:
+                print(f"  scanned {i+1}/{len(cands)}: "
+                      + " ".join(f"{c}={len(v)}" for c, v in buckets.items()), flush=True)
 
-    print("built (each confirmed at depth {}): ".format(args.val_depth)
-          + ", ".join(f"{c}={len(v)}" for c, v in buckets.items()), flush=True)
+    print(f"built ({limdesc}): " + ", ".join(f"{c}={len(v)}" for c, v in buckets.items()), flush=True)
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(dict(val_depth=args.val_depth, classes=buckets), indent=1))
-    print(f"-> {out}  (PERSISTED, reuse this set). Re-check any time: "
-          f"forced_mate_set.py --validate-only {out}")
+    out.write_text(json.dumps(dict(limit=limdesc, classes=buckets), indent=1))
+    print(f"-> {out}  (PERSISTED, reuse). Re-check: forced_mate_set.py --validate-only {out}")
 
 
 if __name__ == "__main__":
