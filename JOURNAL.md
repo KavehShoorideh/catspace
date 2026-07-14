@@ -2763,3 +2763,26 @@ SATURATION (~800n). So the overnight variant ties are UNINFORMATIVE about whethe
 the restructurings improve the embedding's ceiling. The correct test (never run):
 variants at 800 nodes. If a restructuring RAISES the 0.32 saturated ceiling, the
 whole embedding-structure line is revived. Running V6@800 vs incumbent@800 now.
+
+### 2026-07-14 — CONCLUSIVE: restructuring doesn't help even at saturation
+
+V6_pole_gentle vs incumbent AT 800 nodes (saturation regime, n=100):
+  incumbent 0.360 vs V6 0.370  diff=+0.010  CI=[-0.100,+0.120]  ns
+So even at the CORRECT (embedding-limited) regime, the pole restructuring = incumbent.
+The ~0.35 conversion ceiling vs optimal defense is INTRINSIC to the FB-reach
+representation -- not raised by pole-separation, repulsion, or region-goal, and not
+by more search beyond 800n. (V6 converts a touch faster when it does: plies 9 vs 11.)
+
+FINAL PICTURE of the whole line:
+  - Deeper search 200->800n ~doubles conversion (0.175->0.35); saturates at 800n.
+  - NO embedding-structure intervention beats the incumbent at EITHER regime.
+  - The embedding's intrinsic ceiling vs optimal defense is ~0.35.
+What's left to raise the ceiling (all require training bets, not cheap):
+  (a) two-horizon NEAR head -- the one untested architecture, designed for
+      close-range/endgame precision; could sharpen the saturated ceiling.
+  (b) from-scratch training of a different objective.
+  (c) a genuinely different planning method (the FB-reach + beam hop search may
+      just cap here).
+Recommend (a) two-horizon as the next real experiment; it's the targeted lever for
+exactly this endgame-precision ceiling. Confirming with V9@800 that the whole pole
+family ties at saturation.
