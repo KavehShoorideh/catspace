@@ -3069,3 +3069,17 @@ ceiling, not a field ceiling. All prior null money tests must be reinterpreted:
 interventions were evaluated through a readout that wastes budget. 800n leg
 running. make_search_policy factory committed: beam/mcts plug-and-playable in
 playout_ab, experiment_report, certainty_rollouts (beam stays default).
+
+### MCTS readout CONFIRMED (pre-registered, frozen fresh starts) -- promoted
+Confirmatory protocol executed per FIELD_PLAN/data_registry: fresh seed-777
+tablebase-verified KRRvKBP wins (n=120, wdl=2, disjoint from all train/eval sets;
+generator experiments/gen_confirmatory_starts.py refuses reuse -- set now CONSUMED).
+PLAYOUT_AB CONFIRMATORY_mcts_200n_seed777 mate-rate A=0.108 vs B=0.325
+diff=+0.217 CI=[+0.133,+0.308] [SIGNIFICANT] -- stronger than exploratory (+0.117).
+800n leg (exploratory, n=80): A=0.325 vs B=0.388 diff=+0.062 CI=[-0.038,+0.175] ns
+-- positive, underpowered; MCTS@200n (~0.29-0.33) roughly equals beam@800n: ~4x
+compute efficiency, and MCTS still climbing at 800n (0.388). VERDICT: readout
+promotion is real; all prior beam-based ceilings/money-nulls need MCTS re-reads.
+Next (Kaveh's data-limitation question): scaling curve on MCTS-rolled toy tables
+(3k/10k/30k/100k states, distill per size, held-out Spearman + MCTS money test per
+point) -- the curve's slope decides full-lichess run vs objective work.
