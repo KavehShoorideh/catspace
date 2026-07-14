@@ -2653,3 +2653,32 @@ Next: paired move-level A/B (fraction of the model's hop-search top move that
 preserves the win, per position, over the test set + optimal lines) -- thousands
 of move samples -> tight CI -> can actually distinguish variants. That becomes the
 primary A/B; conversion stays as the (noisy) ground-truth check.
+
+### 2026-07-14 — methodological: why the variants can't be distinguished
+
+Tried a move-level A/B (move_ab.py: fraction of hop-search top move that is
+DTZ-optimal, paired, bootstrap CI) to get power the noisy conversion lacks.
+Surprise: incumbent vs V6 (gentle) AND incumbent vs V1-HARD-pole BOTH show 100%
+move agreement on 300 tablebase-optimal-line positions -- identical top move
+everywhere. But hard-pole's conversion is 0.30 (vs 0.54, e=28228) -- it demonstrably
+plays very differently. Resolution: models agree on the OPTIMAL-LINE positions (the
+best move there is obvious); play divergence happens OFF the line, on each model's
+OWN trajectory. => FIXED-POSITION move-eval cannot distinguish endgame play; only
+self-driven playouts can. move_ab is therefore not a valid power metric as built
+(kept, with this caveat).
+
+Consequences for the whole search:
+- The only faithful play metric is a PLAYOUT (model drives its own trajectory), and
+  the SF-conversion version is too high-variance (CI +-0.38 at n=200).
+- Better power metric to build: DETERMINISTIC playout -- model (hop search) as White
+  vs a TABLEBASE-OPTIMAL defender (tb_best_move, deterministic -> no SF noise),
+  from the 200 winning starts, score = mated-within-budget (binary) or plies-to-mate
+  (continuous). Deterministic defender kills the SF variance; per-start paired diff
+  vs incumbent gives a real CI. THIS is the next tool.
+- Also unresolved: is a +8000-step fine-tune from the incumbent even enough to move
+  play beneficially? hard-pole moved it (badly); gentle ones move it little. A real
+  test of an objective may need much longer / from-scratch training.
+
+Honest standing: after proper A/B, NO variant beats the incumbent on play; the
+overnight sweep measured mostly noise. The bottleneck now is EVALUATION POWER
+(build the deterministic playout) and TRAINING STRENGTH (fine-tune may be too gentle).
