@@ -105,6 +105,49 @@ _ENDGAME_MENUS = {
     "kqvkp": [(chess.QUEEN, chess.WHITE), (chess.PAWN, chess.BLACK)],
 }
 
+# THE canonical toy start (Kaveh, 2026-07-14: no random placements -- Leela
+# trains from one fixed start; state diversity must come from PLAY, so the
+# data distribution is the reachable set, not scattered legal positions).
+# Home-square-like placement; no castling rights (syzygy can't probe them).
+# Verified: syzygy wdl=+2 (clean White win), White to move.
+KRRKBP_FIXED_START = "2b1k3/3p4/8/8/8/8/8/R3K2R w - - 0 1"
+
+
+def openings_from_fixed_start(rng: np.random.Generator, n: int, tb,
+                              start_fen: str = KRRKBP_FIXED_START,
+                              min_plies: int = 2, max_plies: int = 10,
+                              require_wdl: int = 2) -> list[str]:
+    """Sample n distinct White-to-move opening positions REACHED from the
+    fixed start by uniform-random legal play (an even number of plies in
+    [min_plies, max_plies]), keeping only positions the tablebase still
+    scores wdl=`require_wdl` for the mover -- evals then measure conversion
+    of a still-won game, and every position is play-reachable by
+    construction. Returns FENs (dedup'd)."""
+    out: list[str] = []
+    seen = set()
+    tries = 0
+    while len(out) < n and tries < 200_000:
+        tries += 1
+        b = chess.Board(start_fen)
+        plies = 2 * int(rng.integers(min_plies // 2, max_plies // 2 + 1))
+        ok = True
+        for _ in range(plies):
+            moves = list(b.legal_moves)
+            if not moves or b.is_game_over(claim_draw=True):
+                ok = False
+                break
+            b.push(moves[int(rng.integers(len(moves)))])
+        if not ok or b.is_game_over(claim_draw=True) or b.turn != chess.WHITE:
+            continue
+        fen = b.fen()
+        if fen in seen:
+            continue
+        w, _ = tb.wdl_dtz(b)
+        if w == require_wdl:
+            seen.add(fen)
+            out.append(fen)
+    return out
+
 
 def random_endgame_start(rng: np.random.Generator, material: str | None = None) -> chess.Board | None:
     """Random legal winnable-material endgame start for curriculum generation

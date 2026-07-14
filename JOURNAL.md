@@ -3083,3 +3083,21 @@ promotion is real; all prior beam-based ceilings/money-nulls need MCTS re-reads.
 Next (Kaveh's data-limitation question): scaling curve on MCTS-rolled toy tables
 (3k/10k/30k/100k states, distill per size, held-out Spearman + MCTS money test per
 point) -- the curve's slope decides full-lichess run vs objective work.
+
+### Toy re-grounded on ONE canonical start (Kaveh: no random start positions)
+Leela-style: state diversity must come from PLAY, not from scattering pieces --
+the data distribution is now the REACHABLE SET of a single fixed start.
+Canonical start: 2b1k3/3p4/8/8/8/8/8/R3K2R w - - (home-square-like KRRvKBP, no
+castling rights since syzygy can't probe them; verified wdl=+2, dtz=3; image at
+artifacts/generated/krrkbp_fixed_start.png). The start is an interface parameter
+everywhere (--start-fen), NOT hardcoded; KRRKBP_FIXED_START is only the default.
+openings_from_fixed_start(): White-to-move, still-wdl=2 positions sampled by
+uniform-random legal play (2-10 plies) from the start -- every train/eval position
+is play-reachable by construction (captures included: the reachable set legitimately
+contains sub-material descendants). Minted (gen_toy_sets.py, ~1s):
+krrkbp_fixed_train_n700 + krrkbp_fixed_test_n200 (disjoint). Registry: old
+random-placement sets marked LEGACY; canonical_start recorded.
+gen_confirmatory_starts.py now mints from the same distribution (--start-fen).
+CONSEQUENCE: certainty_table.json + all prior toy baselines are off-distribution;
+the scaling-curve experiment (next) re-derives tables and baselines from the fixed
+start with the promoted MCTS readout.
