@@ -2995,3 +2995,16 @@ still binds. Next: drill-down on distilled-vs-incumbent move choices at decision
 points; consider certainty in the LOSS at scale rather than post-hoc distill.
 Stages 3-5 (two-field runtime, measured fallibility prior, opponent recovery) all
 built + unit/smoke-tested this round and committed -- ready when the field is.
+
+### Structure viz: distillation MEMORIZED, didn't generalize -- explains the null
+certainty_structure.png: incumbent panel = shapeless cloud, d range only 0.63-0.90
+(flat field; certain wins scattered everywhere). Distilled panel = tight monotone
+band, d range 0.2-1.7 -- but plotted states are ~80% TRAIN rows: train fit ~+0.86
+vs HELD-OUT +0.142 = massive generalization gap. The distill memorized the 2.7k
+table states; the model's own play visits OFF-table states where the field is
+barely recalibrated -> move ordering unchanged -> money-test null explained.
+UMAP: certainty well-organized in F on trained states (red loss arm -> green win
+lobe). FIXES: (1) 10-100x rollout states (the full-data run, now JUSTIFIED with a
+mechanism), (2) early-stop on held-out Spearman, (3) certainty in the base
+objective at scale, not post-hoc micro-finetune. 1600n money test running (regime
+hypothesis, Kaveh).
