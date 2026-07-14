@@ -61,6 +61,9 @@ def main():
     ap.add_argument("--ckpt", default="data/derived/lichess_fb_4gb_qm_plygap_only.pt")
     ap.add_argument("--shards", nargs="+",
                     default=["data/shards/lichess_db_standard_rated_2019-01.prefix1gb"])
+    ap.add_argument("--forced-set", default=None,
+                    help="use a VALIDATED forced-mate set JSON (mate_W/mate_B/draw) instead of "
+                         "harvesting by game-result -- these are proven forced mates (Kaveh)")
     ap.add_argument("--per-class", type=int, default=600)
     ap.add_argument("--back", type=int, default=4, help="plies before the final position")
     ap.add_argument("--device", default="auto")
@@ -78,14 +81,26 @@ def main():
     zW, zB = _z(pay["zgoals"]["MATE_W"]), _z(pay["zgoals"]["MATE_B"])
     omega = omega_ids(np.array([1800]), np.array([1800]), np.array([float("nan")]))[0]
 
-    buckets = harvest_near_mate(args.shards, args.per_class, args.back)
-    names = {1: "near mate_W", 0: "near draw", -1: "near mate_B"}
-    print("harvested: " + ", ".join(f"{names[k]}={len(buckets[k])}" for k in (1, 0, -1)))
-
+    names = {1: "mate_W", 0: "draw", -1: "mate_B"}
+    from catspace.data.encode import encode_packed, encode_meta
+    import chess as _chess
     packed, meta, y = [], [], []
-    for k in (1, 0, -1):
-        for p, m in buckets[k]:
-            packed.append(p); meta.append(m); y.append(k)
+    if args.forced_set:
+        import json
+        data = json.loads(Path(args.forced_set).read_text())["classes"]
+        cls2y = {"mate_W": 1, "draw": 0, "mate_B": -1}
+        for cls, items in data.items():
+            for it in items:
+                b = _chess.Board(it["fen"])
+                packed.append(encode_packed(b)); meta.append(encode_meta(b)); y.append(cls2y[cls])
+        print("forced-mate set: " + ", ".join(
+            f"{c}={sum(1 for yy in y if yy==cls2y[c])}" for c in ("mate_W", "draw", "mate_B")))
+    else:
+        buckets = harvest_near_mate(args.shards, args.per_class, args.back)
+        print("harvested: " + ", ".join(f"near {names[k]}={len(buckets[k])}" for k in (1, 0, -1)))
+        for k in (1, 0, -1):
+            for p, m in buckets[k]:
+                packed.append(p); meta.append(m); y.append(k)
     packed = np.stack(packed); meta = np.stack(meta); y = np.array(y)
     with torch.no_grad():
         pl = torch.from_numpy(feature_planes(packed, meta)).to(dev)
