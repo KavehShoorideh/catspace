@@ -94,8 +94,8 @@ def main():
     ap.add_argument("--bank-shards", nargs="+", default=["data/selfplay/krrkbp_sfsf"])
     ap.add_argument("--bank-max-pieces", type=int, default=6)
     ap.add_argument("--bank-size", type=int, default=128)
-    ap.add_argument("--search-a", choices=("beam", "mcts"), default="beam")
-    ap.add_argument("--search-b", choices=("beam", "mcts"), default="beam",
+    ap.add_argument("--search-a", choices=("beam", "mcts", "anytime"), default="beam")
+    ap.add_argument("--search-b", choices=("beam", "mcts", "anytime"), default="beam",
                     help="readout for each side: beam = FBSearchPolicy minimax, mcts = PUCT "
                          "(catspace/nn/mcts.py). Same node budget = matched compute.")
     ap.add_argument("--c-puct", type=float, default=1.5)
