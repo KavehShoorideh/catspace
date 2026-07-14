@@ -1,0 +1,2 @@
+{"label": "base_incumbent", "ckpt": "data/derived/lichess_fb_4gb_qm_plygap_only.pt", "F_knn": 0.7032750759878421, "F_sil": 0.04177583381533623, "reach_knn": 0.6384806269380736, "reach_sil": 0.03245063126087189, "value_knn": 0.6029092597709618, "corr_WB": 0.4547849906128127}
+{"label": "base_V6", "ckpt": "data/derived/sfsf/V6_pole_gentle.pt", "F_knn": 0.7290888366952196, "F_sil": 0.05297478660941124, "reach_knn": 0.6466573025083664, "reach_sil": 0.04395914450287819, "value_knn": 0.5324732123668294, "corr_WB": -0.8241894338267074}

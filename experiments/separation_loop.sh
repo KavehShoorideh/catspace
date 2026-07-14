@@ -8,7 +8,7 @@
 cd /Users/kav/code/remote/github/catspace
 INC=data/derived/lichess_fb_4gb_qm_plygap_only.pt
 HUMAN=data/shards/lichess_db_standard_rated_2019-01.prefix4gb
-SET=artifacts/experiments/forced_mate_set.json
+SET=artifacts/experiments/forced_mate_set_valid.json
 REC=artifacts/experiments/separation_track.jsonl
 WORK=data/derived/sep
 mkdir -p "$WORK"
