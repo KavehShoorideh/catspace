@@ -2693,3 +2693,30 @@ worse). Also: the planner converts only ~17% of winning KRRvKBP vs OPTIMAL defen
 Conclusion stands: no fine-tune variant beats the incumbent. Fine-tuning +8000 from
 the incumbent is too gentle to change play beneficially.
 Next (highest value, NO retrain): region-bank soft-min GOAL on the incumbent.
+
+### 2026-07-14 — region-bank goal is WORSE; comprehensive negative on embedding-structure
+
+Region/soft-min-BANK goal (Kaveh's "arrive anywhere in the mate region"), tested on
+the incumbent with NO retrain (playout_ab --ckpt-b-goal bank, 128 white-mate
+exemplars <=6 pieces): centroid 0.200 vs BANK 0.040 (n=25, plies-to-mate 3) -- the
+bank is much WORSE. Why: soft-min over specific mate patterns is peaked/noisy
+mid-game (a KRRvKBP midgame is far from EVERY single mate exemplar), whereas the
+centroid averages them into a smooth "mate-ness" gradient the hop search can
+actually descend. The averaging that made the centroid look "blurry" is exactly
+what makes it a usable planning signal. (n=80 confirmation running.)
+
+COMPREHENSIVE STANDING after rigorous (paired, CI, deterministic-defender) A/B --
+NOTHING beats the incumbent on hop-search play:
+  - hard outcome-pole pull: separated regions, CRUSHED play (0.30).
+  - soft pole + pole-as-goal: separation + better dtz_rho, but play = incumbent (tie,
+    powered CI [-0.09,+0.06]).
+  - cross-outcome repulsion (centroid goal): worse.
+  - region-bank soft-min goal: worse.
+  - every gentle fine-tune: plays ~identically to incumbent on-rail; ties on play.
+The incumbent (plain quasimetric + ply-gap) converts only ~17% of winning KRRvKBP
+vs OPTIMAL defense, and NO embedding-structure intervention moved that. Tentative
+read: the ceiling here is the METHOD (FB reach + shallow ~200-node hop search) more
+than the embedding's outcome-organisation -- restructuring geometry (separation,
+hop-gradient) did not translate to better moves. Open levers not yet tried:
+from-scratch/long training of the objective (low-evidence bet), deeper search,
+two-horizon NEAR head for endgame precision, or rethinking the search itself.
