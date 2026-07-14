@@ -77,11 +77,15 @@ def batch_tensors(batch, device):
     # chess -- the asymmetry-margin term (loss_fn) trains on exactly these
     material_drop = (np.bitwise_count(batch.anchors[idx]).sum(axis=1)
                      > np.bitwise_count(batch.goals[idx]).sum(axis=1))
+    # game result per anchor (+1 White win / 0 draw / -1 Black win) for the
+    # outcome-poles loss. Already used for zgoals -- not an eval-leak signal.
+    result = batch.meta["result"][idx].astype(np.float32)
     return (torch.from_numpy(planes_s).to(device),
             torch.from_numpy(om).to(device),
             torch.from_numpy(planes_g).to(device),
             torch.from_numpy(ply_gap).to(device),
-            torch.from_numpy(material_drop).to(device))
+            torch.from_numpy(material_drop).to(device),
+            torch.from_numpy(result).to(device))
 
 
 def collect_holdout(src: LichessPairSource, n_batches: int, batch_size: int, seed: int):
@@ -254,6 +258,16 @@ def main():
                          "per-anchor retrieval error (epistemic 'where I fit poorly'). Native, "
                          "always-current competence signal for reliability-gated search.")
     ap.add_argument("--competence-weight", type=float, default=0.1, help="weight on the competence head loss")
+    ap.add_argument("--outcome-poles", action="store_true",
+                    help="add 3 learnable terminal poles (loss/draw/win) and a loss that repels "
+                         "them and hinges each state's quasimetric HOPS so its own-outcome pole is "
+                         "closer than the others -- outcome-conditioned region separation. Forces "
+                         "quasimetric.")
+    ap.add_argument("--outcome-weight", type=float, default=0.3, help="weight on the outcome-poles loss")
+    ap.add_argument("--outcome-margin", type=float, default=0.5,
+                    help="hops margin: own-outcome pole must be this much closer than the others")
+    ap.add_argument("--pole-margin", type=float, default=3.0,
+                    help="minimum (scaled) distance kept between the three poles")
     ap.add_argument("--selfplay-shards", default=None,
                     help="dir of experiments/selfplay_generate.py output shards to MIX into "
                          "training (holdout/val stay human-only for a stable reference)")
@@ -295,7 +309,8 @@ def main():
     else:
         fb = TorchFB(d=args.d, seed=args.seed, quasimetric=args.quasimetric,
                      two_horizon=args.two_horizon, distributional=args.distributional,
-                     n_bins=args.n_bins, competence=args.competence)
+                     n_bins=args.n_bins, competence=args.competence,
+                     outcome_poles=args.outcome_poles)
         fb.to(device)
     start_step = step                      # cosine decay spans [start_step, args.steps)
     lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
@@ -304,6 +319,18 @@ def main():
         payload = torch.load(ckpt_path, map_location=device, weights_only=False)
         if "opt_state" in payload:
             opt.load_state_dict(payload["opt_state"])
+    # resuming a checkpoint that predates outcome-poles: bolt the 3 poles onto
+    # the loaded model AFTER opt_state restore, as a fresh param group (so the
+    # restored optimizer state for the existing params still lines up).
+    if args.outcome_poles and not getattr(fb, "outcome_poles", False):
+        assert fb.quasimetric, "--outcome-poles needs a quasimetric checkpoint"
+        import torch.nn as nn
+        fb.poles = nn.Parameter(nn.functional.normalize(
+            torch.randn(3, fb.d), dim=1).to(device))
+        fb.outcome_poles = True
+        fb.config["outcome_poles"] = True
+        opt.add_param_group({"params": [fb.poles]})
+        print("added outcome poles to resumed model", flush=True)
 
     human_src = LichessPairSource(shard_dir, gamma=args.gamma)
     src = human_src
@@ -342,18 +369,22 @@ def main():
         lr_now = lr_min + 0.5 * (args.lr - lr_min) * (1 + math.cos(math.pi * frac))
         for g in opt.param_groups:
             g["lr"] = lr_now
+        core, result_t = tensors[:5], tensors[5]
         if args.two_horizon:
-            ps, om, pg, gap, _mdrop = tensors
+            ps, om, pg, gap, _mdrop = core
             loss, top1 = fb.two_horizon_loss(ps, om, pg, gap, near_max=args.near_max,
                                              far_min=args.far_min, near_weight=args.near_weight,
                                              ply_gap_weight=args.ply_gap_weight,
                                              ply_gap_scale=args.ply_gap_scale)
         else:
-            loss, top1 = fb.loss_fn(*tensors, ply_gap_weight=args.ply_gap_weight,
+            loss, top1 = fb.loss_fn(*core, ply_gap_weight=args.ply_gap_weight,
                                     ply_gap_scale=args.ply_gap_scale,
                                     asym_weight=args.asym_weight, asym_margin=args.asym_margin,
                                     dist_weight=args.dist_weight,
-                                    competence_weight=args.competence_weight)
+                                    competence_weight=args.competence_weight,
+                                    result=result_t, outcome_weight=args.outcome_weight,
+                                    outcome_margin=args.outcome_margin,
+                                    pole_margin=args.pole_margin)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
