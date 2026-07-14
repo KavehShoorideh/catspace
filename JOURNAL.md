@@ -2861,3 +2861,58 @@ about to lose". Explains why restructuring at the margins didn't help -- the bas
 representation's value/outcome direction is faint. A real fix would need the value
 direction trained in strongly (from-scratch objective that forces near-mate_W and
 near-mate_B far apart), not a gentle fine-tune. (Consistent with the whole night.)
+
+---
+
+## 2026-07-14 (switched to FABLE) — forced-mate region separation: goal + handoff
+
+Model switched from Opus to **Fable** now (per Kaveh; mirrors the earlier
+Fable->Opus switch). Handoff state below.
+
+GOAL (clarified over several messages): iterate the embedding + cost function until
+the three FORCED-outcome regions clearly separate in embedding space:
+  - mate_W  : side-to-move (White-POV) has a FORCED mate  (Stockfish-verified, any depth)
+  - mate_B  : Black has a forced mate
+  - draw    : FORCED draw = INSUFFICIENT MATERIAL (KvK, K+B vs K, K+N vs K, same-colour
+              KB vs KB) -- mate impossible either way; its OWN tight region
+Requirement: these three FORCED regions must NOT overlap each other. Positions that
+are NOT forced (fightable middlegames) MAY overlap -- they're not in the set.
+Cost function Kaveh specified: PULL a near-mate toward its pole + PUSH from the
+opposite pole, GENTLY more each round (t-SNE-style iterative repulsion, but WITH a
+pull -- t-SNE has none). Accumulate over rounds; don't hard-hit (that collapses).
+
+TOOLS (all committed):
+  - experiments/forced_mate_set.py : build + VALIDATE the set. Stockfish loaded ONCE
+    (warm), movetime-bounded gen; DETERMINISTIC depth re-validation via --validate-only
+    --filter-out (movetime is non-reproducible: 90/900 flipped). Draws = generated
+    insufficient-material, validated by is_insufficient_material(). Records SF eval +
+    moves-to-mate per sample. PERSISTED: artifacts/experiments/forced_mate_set_valid.json.
+  - experiments/viz/near_mate_regions.py --forced-set : the SEPARATION METRIC. Embeds F,
+    computes reach->MATE_W/MATE_B, reports 3-class AND **binary mate_W-vs-mate_B**
+    separability (F/reach/value-axis kNN + silhouette) + corr(reachW,reachB). --record
+    appends to a jsonl trajectory. This is the yardstick to optimise.
+  - experiments/separation_loop.sh : cumulative gentle pole push on HUMAN 4gb (full-game)
+    data each round (Kaveh: KRRvKBP-only can't know diverse mates), re-measuring separation.
+
+STATUS / what we learned:
+  - Baselines on the diverse validated set: incumbent + V6 both WEAK (reach-space
+    silhouette ~0.04). V6 poles are antipodal (corr -0.82) but don't ORGANISE diverse
+    positions into class regions (V6 only learned KRRvKBP).
+  - Separation loop round 1 (gentle pole push, human data): did NOT separate --
+    reach silhouette flat (+0.036), value-axis kNN dropped 0.60->0.48, and F-space kNN
+    unchanged (0.70->0.69) => the GENTLE fine-tune barely moved F (same wall as the
+    play investigation). Loop then CRASHED at round 2 (opt param-group mismatch -- now
+    FIXED: tolerant opt_state load).
+  - Monitoring lesson: a watcher armed only on the SUCCESS line ("round 3") hangs
+    forever when the job dies at round 2 -> looks like "wakeups not working". Always
+    watch for failure/exit too.
+
+LEVERS for Fable to try (since gentle-on-human barely moved F):
+  (a) STRONGER push -- goal is now SEPARATION not play, so the hard push that
+      "crushed play" is exactly what reorganises F by outcome; lean in, accept play cost.
+  (b) PROXIMITY-WEIGHTED pull -- pull positions NEAR their terminal mate hard, far ones
+      little, so the loss concentrates on near-mate regions instead of diluting across
+      all won-game positions (needs anchor->terminal distance in the batch).
+  (c) direct F-space cross-outcome repulsion at higher --repel-weight.
+  Rebuild of the forced_mate_set with the insufficient-material draw class is running
+  (/tmp/fm_rebuild.log). Then: near_mate_regions --forced-set to baseline, then iterate.
