@@ -76,6 +76,9 @@ def main():
     ap.add_argument("--fixed-set", default="artifacts/experiments/krrkbp_test_n200.json")
     ap.add_argument("--n", type=int, default=100, help="number of starts to play")
     ap.add_argument("--nodes", type=int, default=200)
+    ap.add_argument("--nodes-b", type=int, default=None,
+                    help="hop-search node budget for ckpt-b (default = --nodes). Set higher to "
+                         "A/B search DEPTH on the same checkpoint: is the ceiling search or embedding?")
     ap.add_argument("--beam", type=int, default=4)
     ap.add_argument("--max-plies", type=int, default=120)
     ap.add_argument("--boot", type=int, default=2000)
@@ -102,8 +105,8 @@ def main():
         print(f"goal bank: {len(bank_boards)} white-mate exemplars (<= {args.bank_max_pieces} pieces)")
     a, pa = mate_vector(args.ckpt_a, starts, tb, args.nodes, args.beam, args.max_plies,
                         args.seed, args.device)
-    b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes, args.beam, args.max_plies,
-                        args.seed, args.device, bank_boards=bank_boards)
+    b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes_b or args.nodes, args.beam,
+                        args.max_plies, args.seed, args.device, bank_boards=bank_boards)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
