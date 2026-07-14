@@ -57,7 +57,7 @@ class TorchFB(nn.Module):
                  tau: float = 0.1, seed: int = 0, quasimetric: bool = False,
                  two_horizon: bool = False, distributional: bool = False,
                  n_bins: int = 12, competence: bool = False,
-                 outcome_poles: bool = False):
+                 outcome_poles: bool = False, concept_axes: int = 0):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional or outcome_poles:
@@ -66,7 +66,8 @@ class TorchFB(nn.Module):
                            dh=dh, omega_dim=omega_dim, tau=tau, seed=seed,
                            quasimetric=quasimetric, two_horizon=two_horizon,
                            distributional=distributional, n_bins=n_bins,
-                           competence=competence, outcome_poles=outcome_poles)
+                           competence=competence, outcome_poles=outcome_poles,
+                           concept_axes=concept_axes)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -136,6 +137,20 @@ class TorchFB(nn.Module):
         self.outcome_poles = outcome_poles
         if outcome_poles:
             self.poles = nn.Parameter(nn.functional.normalize(torch.randn(3, d), dim=1))
+        # CONCEPT AXES (2026-07-14, Kaveh's multi-concept architecture): each concept
+        # is a learnable unit DIRECTION in the shared space; a state's concept value
+        # is the projection F(s)@u. Concept + opposite = the +- ends of ONE axis
+        # (exclusive by construction, separated by a margin along it); DIFFERENT
+        # concepts live on different axes so their regions overlap freely (a state
+        # is a superposition of concepts). Slot 0 = the OUTCOME axis (near-White-mate
+        # vs near-Black-mate), trained with a proximity-to-terminal-gated hinge that
+        # constrains ONLY this projection -- the other d-1 dims stay free (the
+        # pull-to-point pole collapse constrained ALL dims; that was the mistake).
+        # Constructed LAST -> concept_axes=0 stays byte-identical.
+        self.n_concept_axes = concept_axes
+        if concept_axes > 0:
+            self.concept_axes = nn.Parameter(
+                nn.functional.normalize(torch.randn(concept_axes, d), dim=1))
 
     def competence_score(self, f: torch.Tensor) -> torch.Tensor:
         """(N,d) F-embeddings -> (N,) predicted per-anchor error = the engine's
@@ -237,7 +252,9 @@ class TorchFB(nn.Module):
                 competence_weight: float = 0.1, result: torch.Tensor | None = None,
                 outcome_weight: float = 0.0, pole_tau: float = 1.0,
                 pole_margin: float = 3.0, repel_weight: float = 0.0,
-                repel_margin: float = 1.0) -> tuple[torch.Tensor, torch.Tensor]:
+                repel_margin: float = 1.0, plies_to_end: torch.Tensor | None = None,
+                axis_weight: float = 0.0, axis_margin: float = 1.0,
+                axis_gate_plies: float = 8.0) -> tuple[torch.Tensor, torch.Tensor]:
         """InfoNCE with in-batch negatives; returns (loss, top1 retrieval acc).
 
         2026-07-12 ply-gap calibration (Kaveh: "if the future leads to a mate
@@ -330,6 +347,20 @@ class TorchFB(nn.Module):
             diff = (result[:, None] != result[None, :]).float()  # cross-outcome pairs
             denom = diff.sum().clamp_min(1.0)
             loss = loss + repel_weight * (nn.functional.relu(repel_margin - dss) * diff).sum() / denom
+        if self.n_concept_axes > 0 and axis_weight > 0 and result is not None \
+                and plies_to_end is not None:
+            # OUTCOME CONCEPT AXIS (slot 0): hinge the projection F(s)@u to be
+            # > +margin for states NEAR a White-win terminal and < -margin near a
+            # Black-win one, gated by exp(-plies_to_end/gate) so only near-terminal
+            # (~forced-region) states are pulled and the pull fades smoothly with
+            # distance. Constrains ONE direction of d; everything orthogonal stays
+            # free for other concepts (Kaveh: concept+opposite exclusive along the
+            # axis, regions of different concepts may overlap).
+            u = nn.functional.normalize(self.concept_axes[0], dim=0)
+            proj = f @ u
+            gate = torch.exp(-plies_to_end / axis_gate_plies) * (result != 0).float()
+            loss = loss + axis_weight * (
+                gate * nn.functional.relu(axis_margin - result * proj)).mean()
         return loss, top1
 
     def distance_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
