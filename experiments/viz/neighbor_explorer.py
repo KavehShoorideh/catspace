@@ -41,59 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 from catspace.nn.features import feature_planes, omega_ids
 from experiments.viz.build_embedding_neighbors import (
-    Bank, load_bank_positions, material_sig, svg_board)
-
-
-def dtm_line(board, tb, cap=250):
-    """Plies to mate along a tablebase-optimal line: the winning side plays the
-    fastest DTZ-progress move (preferring a zeroing move and avoiding repeats,
-    so it can't cycle into a fivefold draw), the losing side resists (max |DTZ|).
-    Returns ply count to mate, or None if the position is drawn/unresolved. A
-    position-property distance-to-mate proxy -- Syzygy stores DTZ/WDL, not true
-    DTM, at 6 pieces, and greedy DTZ play isn't game-theoretically exact, so this
-    is a faithful upper-boundish distance, not the exact DTM."""
-    b = board.copy(stack=False)
-    try:
-        wdl0 = tb.probe_wdl(b)
-    except (KeyError, chess.syzygy.MissingTableError, ValueError, IndexError):
-        return None
-    if wdl0 == 0:
-        return None
-    winner = b.turn if wdl0 > 0 else (not b.turn)
-    seen = set()
-    for n in range(cap):
-        if b.is_checkmate():
-            return n
-        if b.is_stalemate() or b.is_insufficient_material():
-            return None
-        cand = []                                            # (move, child, mover_wdl, dtz)
-        for m in b.legal_moves:
-            c = b.copy(stack=False); c.push(m)
-            if c.is_checkmate():
-                if b.turn == winner:
-                    return n + 1
-                continue
-            try:
-                wdl = tb.probe_wdl(c); dtz = tb.probe_dtz(c)
-            except (KeyError, chess.syzygy.MissingTableError, ValueError, IndexError):
-                continue
-            cand.append((m, c, -wdl, dtz))
-        if not cand:
-            return None
-        if b.turn == winner:
-            wins = [x for x in cand if x[2] > 0] or cand
-            def wkey(x):
-                m, c, mw, dtz = x
-                zeroing = 0 if (b.is_capture(m) or
-                                b.piece_type_at(m.from_square) == chess.PAWN) else 1
-                repeat = 1 if c.board_fen() in seen else 0
-                return (repeat, abs(dtz), zeroing)           # avoid repeats, fastest, then zero
-            m, c, _, _ = min(wins, key=wkey)
-        else:
-            m, c, _, _ = max(cand, key=lambda x: abs(x[3]))  # resist: max |dtz|
-        seen.add(b.board_fen())
-        b = c
-    return None
+    Bank, dtm_line, load_bank_positions, material_sig, svg_board)
 
 
 class Explorer:

@@ -124,6 +124,57 @@ def dtz_wdl(board, tb):
         return None, None
 
 
+def dtm_line(board, tb, cap=250):
+    """Plies to mate along a tablebase-optimal line: the winning side plays the
+    fastest DTZ-progress move (preferring a zeroing move and avoiding repeats, so
+    it can't cycle into a fivefold draw), the losing side resists (max |DTZ|).
+    Returns ply count to mate, or None if drawn/unresolved. A position-property
+    distance-to-mate proxy (Syzygy has DTZ/WDL, not true DTM, at 6 pieces; Kaveh
+    2026-07-13: compare neighbours against DTM, not distance-to-zeroing)."""
+    b = board.copy(stack=False)
+    try:
+        wdl0 = tb.probe_wdl(b)
+    except (KeyError, chess.syzygy.MissingTableError, ValueError, IndexError):
+        return None
+    if wdl0 == 0:
+        return None
+    winner = b.turn if wdl0 > 0 else (not b.turn)
+    seen = set()
+    for n in range(cap):
+        if b.is_checkmate():
+            return n
+        if b.is_stalemate() or b.is_insufficient_material():
+            return None
+        cand = []
+        for m in b.legal_moves:
+            c = b.copy(stack=False); c.push(m)
+            if c.is_checkmate():
+                if b.turn == winner:
+                    return n + 1
+                continue
+            try:
+                wdl = tb.probe_wdl(c); dtz = tb.probe_dtz(c)
+            except (KeyError, chess.syzygy.MissingTableError, ValueError, IndexError):
+                continue
+            cand.append((m, c, -wdl, dtz))
+        if not cand:
+            return None
+        if b.turn == winner:
+            wins = [x for x in cand if x[2] > 0] or cand
+            def wkey(x):
+                m, c, mw, dtz = x
+                zeroing = 0 if (b.is_capture(m) or
+                                b.piece_type_at(m.from_square) == chess.PAWN) else 1
+                repeat = 1 if c.board_fen() in seen else 0
+                return (repeat, abs(dtz), zeroing)
+            m, c, _, _ = min(wins, key=wkey)
+        else:
+            m, c, _, _ = max(cand, key=lambda x: abs(x[3]))
+        seen.add(b.board_fen())
+        b = c
+    return None
+
+
 def svg_board(board, lastmove=None, size=200):
     return chess.svg.board(board, lastmove=lastmove, size=size, coordinates=False)
 
@@ -189,33 +240,34 @@ def main():
     with opp:
         p = 0
         while p < args.max_plies and not board.is_game_over(claim_draw=True):
-            if board.turn == chess.WHITE:
-                f_q, reach_q = embed_and_reach(board)
-                move = pol.move(board, rng_move)
-                san = board.san(move)
-                qdtz, qwdl = dtz_wdl(board, tb)
-                key = board_packed(board).tobytes() + board_meta(board).tobytes()
-                nbrs = []
-                for i, cos in bank.neighbours(f_q, args.k, exclude_key=key):
-                    nb = bank.board(i)
-                    ndtz, nwdl = dtz_wdl(nb, tb)
-                    nreach = float(bank.reach[i])   # precomputed, same omega
-                    nbrs.append(dict(svg=svg_board(nb, size=150), cos=cos,
-                                     reach=nreach, dtz=ndtz, wdl=nwdl,
-                                     stm="W" if nb.turn else "B",
-                                     same_mat=material_sig(nb) == material_sig(board)))
-                # sanity numbers
-                gaps = [abs((n["dtz"] or 0) - (qdtz or 0)) for n in nbrs if n["dtz"] is not None]
-                coss = [n["cos"] for n in nbrs if n["dtz"] is not None]
-                rho = _spearman(coss, [-g for g in gaps]) if len(gaps) >= 3 else float("nan")
-                frac_mat = float(np.mean([n["same_mat"] for n in nbrs])) if nbrs else 0.0
-                plies.append(dict(ply=p, fen=board.fen(), san=san,
-                                  svg=svg_board(board, lastmove=move, size=240),
-                                  reach=reach_q, dtz=qdtz, wdl=qwdl,
-                                  nbrs=nbrs, rho=rho, frac_mat=frac_mat))
-                board.push(move)
-            else:
-                board.push(opp.move(board, rng_move))
+            # record EVERY ply (both sides), not just White's -- step per ply
+            f_q, reach_q = embed_and_reach(board)
+            move = pol.move(board, rng_move) if board.turn == chess.WHITE else opp.move(board, rng_move)
+            san = board.san(move)
+            qdtm = dtm_line(board, tb)
+            _, qwdl = dtz_wdl(board, tb)
+            key = board_packed(board).tobytes() + board_meta(board).tobytes()
+            nbrs = []
+            for i, cos in bank.neighbours(f_q, args.k, exclude_key=key):
+                nb = bank.board(i)
+                ndtm = dtm_line(nb, tb)
+                _, nwdl = dtz_wdl(nb, tb)
+                nreach = float(bank.reach[i])   # precomputed, same omega
+                nbrs.append(dict(svg=svg_board(nb, size=150), cos=cos,
+                                 reach=nreach, dtm=ndtm, wdl=nwdl,
+                                 stm="W" if nb.turn else "B",
+                                 same_mat=material_sig(nb) == material_sig(board)))
+            # sanity: does embedding proximity track distance-to-mate proximity?
+            gaps = [abs(n["dtm"] - qdtm) for n in nbrs if n["dtm"] is not None and qdtm is not None]
+            coss = [n["cos"] for n in nbrs if n["dtm"] is not None and qdtm is not None]
+            rho = _spearman(coss, [-g for g in gaps]) if len(gaps) >= 3 else float("nan")
+            frac_mat = float(np.mean([n["same_mat"] for n in nbrs])) if nbrs else 0.0
+            plies.append(dict(ply=p, fen=board.fen(), san=san,
+                              stm="W" if board.turn == chess.WHITE else "B",
+                              svg=svg_board(board, lastmove=move, size=240),
+                              reach=reach_q, dtm=qdtm, wdl=qwdl,
+                              nbrs=nbrs, rho=rho, frac_mat=frac_mat))
+            board.push(move)
             p += 1
     outcome = board.outcome(claim_draw=True)
     result = outcome.result() if outcome else "*"
@@ -226,26 +278,28 @@ def main():
     out = Path(args.out) if args.out else Path("artifacts/generated") / f"embed_neighbors_{label}.html"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render_html(label, args, start, result, term, plies))
-    print(f"\ngame: {result} ({term}) after {len(plies)} White moves")
-    print(f"mean neighbour-DTZ-alignment rho = "
+    print(f"\ngame: {result} ({term}) after {len(plies)} plies")
+    print(f"mean neighbour-DTM-alignment rho = "
           f"{np.nanmean([p['rho'] for p in plies]):+.3f}, "
           f"mean same-material frac = {np.nanmean([p['frac_mat'] for p in plies]):.2f}")
     print(f"-> {out}")
 
 
 def render_html(label, args, start, result, term, plies):
-    def fmt_dtz(d, w):
+    def fmt_dtm(d, w):
+        if (w or 0) == 0:
+            return "dtm — (draw)" if w == 0 else "dtm —"
         if d is None:
-            return "dtz —"
-        tag = "win" if (w or 0) < 0 else ("loss" if (w or 0) > 0 else "draw")
-        return f"dtz {d:+d} ({tag})"
+            return "dtm —"
+        tag = "win" if (w or 0) > 0 else "loss"
+        return f"mate in {(d + 1) // 2} ({tag})"
     data = json.dumps([{
         "ply": p["ply"], "san": p["san"], "svg": p["svg"],
-        "hdr": f"move {p['ply']//2+1}. {html.escape(p['san'])} &nbsp; reach {p['reach']:+.3f} &nbsp; {fmt_dtz(p['dtz'], p['wdl'])}",
-        "sanity": f"neighbour DTZ-alignment ρ = {p['rho']:+.2f} &nbsp;·&nbsp; same-material neighbours: {p['frac_mat']*100:.0f}%",
+        "hdr": f"ply {p['ply']} ({p['stm']} to move) &nbsp; {html.escape(p['san'])} &nbsp; reach {p['reach']:+.3f} &nbsp; {fmt_dtm(p['dtm'], p['wdl'])}",
+        "sanity": f"neighbour DTM-alignment ρ = {p['rho']:+.2f} &nbsp;·&nbsp; same-material neighbours: {p['frac_mat']*100:.0f}%",
         "nbrs": [{
             "svg": n["svg"],
-            "cap": f"cos {n['cos']:.3f} · reach {n['reach']:+.2f} · {fmt_dtz(n['dtz'], n['wdl'])} · {n['stm']}"
+            "cap": f"cos {n['cos']:.3f} · reach {n['reach']:+.2f} · {fmt_dtm(n['dtm'], n['wdl'])} · {n['stm']}"
                    + (" · ✓mat" if n["same_mat"] else " · ✗mat"),
         } for n in p["nbrs"]],
     } for p in plies])
