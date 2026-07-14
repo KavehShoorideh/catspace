@@ -519,3 +519,17 @@ At 30k: VAL_TOP1 = 0.033 (16.9× chance), VAL_TOP8 = 0.179 (11.4× chance). The 
   quasimetric (triangle inequality = shortest path = min = optimal) intrinsically
   targets V*, so its distances are the OPTIMAL hops-to-goal; the gap V*-V^pi is
   the competence/difficulty signal.
+
+## Search vs embedding limits (2026-07-14)
+- **Search-limited vs embedding-limited.** Two regimes of a planner's play. Below a
+  node budget (~800 here) conversion rises with more hop search (SEARCH-limited); above
+  it, more search doesn't help and play is capped by the reach field's quality
+  (EMBEDDING-limited). Consequence: to A/B whether an embedding CHANGE helps, you must
+  evaluate at SATURATION (embedding-limited regime) -- at a search-limited budget every
+  embedding ties because search, not the embedding, is the bottleneck.
+- **Intrinsic ceiling.** The saturated conversion rate (~0.35 for FB-reach on KRRvKBP vs
+  optimal defense) -- the best the representation can guide, independent of search depth.
+- **Deterministic-defender playout.** Play metric where the model (hop search) faces a
+  tablebase-OPTIMAL, deterministic opponent -> no engine variance -> a paired diff with
+  real statistical power, and it captures self-driven play divergence that fixed-position
+  move-eval cannot (see playout_ab.py).
