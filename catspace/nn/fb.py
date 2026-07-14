@@ -235,7 +235,7 @@ class TorchFB(nn.Module):
                 asym_weight: float = 0.0, asym_margin: float = 0.2,
                 asym_cap: int = 128, dist_weight: float = 0.5,
                 competence_weight: float = 0.1, result: torch.Tensor | None = None,
-                outcome_weight: float = 0.0, outcome_margin: float = 0.5,
+                outcome_weight: float = 0.0, pole_tau: float = 1.0,
                 pole_margin: float = 3.0) -> tuple[torch.Tensor, torch.Tensor]:
         """InfoNCE with in-batch negatives; returns (loss, top1 retrieval acc).
 
@@ -300,20 +300,22 @@ class TorchFB(nn.Module):
             loss = loss + asym_weight * nn.functional.relu(
                 asym_margin + d_fwd - d_rev).mean()
         if self.outcome_poles and outcome_weight > 0 and result is not None:
-            # (a) push the three terminal poles apart; (b) hinge each state's HOPS
-            # (quasimetric d) so its own-outcome pole is closer than the others by
-            # a margin. result in {-1 loss, 0 draw, +1 win} -> pole index {0,1,2}.
+            # (a) push the three terminal poles apart; (b) SOFTLY sort each state
+            # toward its own-outcome pole in HOPS (quasimetric d). result in
+            # {-1 loss, 0 draw, +1 win} -> pole index {0,1,2}. The pull is a
+            # temperature cross-entropy over -hops (a soft classifier), NOT a hard
+            # margin: its gradient vanishes once the right pole is comfortably
+            # nearest, so well-placed wins keep their internal DTM/hop gradient
+            # instead of being crushed onto the pole (the hard-hinge failure mode).
             poles = nn.functional.normalize(self.poles, dim=1)        # (3, d) goal-space
             d_sp = self.distance_matrix(f, poles)                     # (N,3) state->pole hops
             idx = (result + 1).long().clamp(0, 2)
-            d_own = d_sp.gather(1, idx[:, None])                      # (N,1)
-            other = torch.ones_like(d_sp).scatter_(1, idx[:, None], 0.0)
-            pull = (nn.functional.relu(outcome_margin + d_own - d_sp) * other).sum(1) / 2.0
+            pull = nn.functional.cross_entropy(-d_sp / pole_tau, idx)
             pp = torch.cdist(poles * self.metric_scale, poles * self.metric_scale)  # (3,3)
             repel = (nn.functional.relu(pole_margin - pp[0, 1])
                      + nn.functional.relu(pole_margin - pp[0, 2])
                      + nn.functional.relu(pole_margin - pp[1, 2])) / 3.0
-            loss = loss + outcome_weight * (pull.mean() + repel)
+            loss = loss + outcome_weight * (pull + repel)
         return loss, top1
 
     def distance_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
