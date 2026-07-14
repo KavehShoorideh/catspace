@@ -2419,3 +2419,54 @@ outward; (2) more search nodes in self-play so it converts more often; (3) more
 rounds/games to see whether dtz_rho keeps climbing past +0.09 or plateaus.
 Recommend (1): a mate-distance curriculum is the highest-leverage fix for signal
 sparsity and directly tests whether accurate curvature -> better conversion.
+
+---
+
+## 2026-07-13 (Opus) — SF-vs-SF fine-tune (toy KRRvKBP): representation up, play flat
+
+Kaveh: "instead of self-play, create a bunch of Stockfish-vs-Stockfish games and
+fine-tune on them (in the toy example)." Rationale: SF-vs-SF actually CONVERTS the
+endgame, so the mate signal is dense and correct -- fixing the self-play weakness
+(blind policy mostly drew -> sparse signal).
+
+Built `--sf-vs-sf` (both sides Stockfish; records only moves+result, leakage-clean)
++ 700 tablebase-verified WINNING KRRvKBP starts, disjoint from the fixed-60 test.
+Generated 700 games / 12419 positions, **97% clean conversions**. Fine-tuned the
+incumbent +6000 steps, selfplay-frac 0.7 (+0.3 human).
+
+Result -- a clean DISSOCIATION, and it matches the self-play toy exactly:
+
+  REPRESENTATION improved (best of any run):
+    reach curvature: move_spread 0.006->0.028, dtz_rho +0.020->+0.067,
+      best_rank 0.457->0.393 (fastest-mate move ranks higher than ever)
+    neighbour DTM-alignment rho: +0.021 (incumbent) -> +0.102 (best yet)
+    train DIFF_SLOPE won-lost separation flipped POSITIVE (+0.289 vs +0.056)
+  PLAY did NOT improve:
+    conversion (fixed-60, paired): incumbent 0.575 vs SF-ft 0.458
+      mean_diff -0.117, CI=[-0.75,+0.51], e=1.04  (null-to-negative, same as self-play)
+    top1_win (frac the #1-reach move preserves the win): 0.896 -> 0.796  <-- DROPPED
+
+**The crux: top1_win drops in EVERY fine-tune (self-play and SF-vs-SF alike),
+0.90 -> 0.71-0.80, even as average ranking (best_rank, dtz_rho, DTM-alignment)
+improves.** Fine-tuning makes the reach field more opinionated (higher spread) and
+better-ordered ON AVERAGE, but LESS reliable at the very top -- and play is
+argmax+shallow-search, governed by top-1 correctness. So we keep improving the
+wrong statistic: geometry/average-rank up, argmax-precision down, net play flat.
+
+Key implication: the bottleneck is NOT data quality. Dense, correct SF-vs-SF
+conversions helped the representation MORE than sparse self-play, but helped play
+no more (both null). So more/better data in this region has a play ceiling. The
+limiter is the objective+representation: the contrastive reach + ply-gap loss
+optimizes distributional ordering, not top-1; and (Kaveh's earlier point) F never
+sees move-count, so it may lack the information to pin the single best move.
+
+Candidate next steps (decision pending):
+  (a) GENTLER fine-tune (lower frac/steps/LR) -- cheap test of whether top1 can be
+      preserved while adding structure (rules out "distribution shift too aggressive").
+  (b) FEED distance info to F (fullmove/plies-to-goal), so it CAN represent DTM --
+      Kaveh's hypothesis; architectural, needs retrain.
+  (c) DTM-AWARE objective: a ranking/top-1 loss or a DTM-regression head, instead of
+      only contrastive+ply-gap.
+Note: same-material frac isn't comparable across banks (SF-vs-SF bank is mostly
+post-capture <=5-piece positions, so a 6-piece query has few same-material nbrs);
+DTM-alignment rho is the comparable metric.
