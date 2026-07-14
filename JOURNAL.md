@@ -2720,3 +2720,9 @@ than the embedding's outcome-organisation -- restructuring geometry (separation,
 hop-gradient) did not translate to better moves. Open levers not yet tried:
 from-scratch/long training of the objective (low-evidence bet), deeper search,
 two-horizon NEAR head for endgame precision, or rethinking the search itself.
+
+### region-bank goal CONFIRMED worse (n=80, SIGNIFICANT)
+centroid 0.175 vs bank 0.062, diff -0.112, CI=[-0.200,-0.025] SIGNIFICANT. The
+deterministic playout has the power to detect it. Averaging (centroid) > soft-min
+over specific mate exemplars for hop-search planning. Region-goal idea, as
+implemented, rejected.
