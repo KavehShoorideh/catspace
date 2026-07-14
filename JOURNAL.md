@@ -3111,3 +3111,17 @@ number every scaling-curve distill must beat. playout_ab verdicts now also carry
 the abtest e-value (Kaveh: use the e-value framework -- sequential looks along the
 curve compose); certainty_distill early-stops on held-out Spearman. Own-play P-hat
 probe (model+eps, MCTS 100n readout, 60x8 rollouts) running.
+
+### Search tournament on the ORACLE field (Kaveh: e-value the searches, well-trained space)
+search_tournament.py: paired e-process duels w/ early stopping (bandit-style),
+field=oracle (tablebase reach = perfect field, EVAL-ONLY; isolates search quality
+at the field-quality ceiling).
+DUEL mcts vs anytime @200n: 0.660 vs 0.383 diff=-0.277 CI=[-0.447,-0.106] e=23.66
+  -- early-stopped at n=47/120 (the e-process saved 60% of the run). MCTS WINS.
+DUEL mcts vs anytime @1600n: 0.767 vs 0.717 diff=-0.050 CI=[-0.150,+0.050] e=0.19 ns.
+VERDICT: even with PERFECT direction, anytime-v1's single-predicted-reply line
+search is budget-fragile (one reply misprediction burns the line; tree search
+amortizes). MCTS remains the promoted readout at both rungs. Anytime stays as an
+arm (its exact incumbent-bound pruning is graftable INTO mcts later -- mate-bound
+pruning -- but only if a signal justifies it). Early-stop harness behaved exactly
+as designed on its first real use.
