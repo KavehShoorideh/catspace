@@ -337,7 +337,13 @@ def main():
     if ckpt_path.exists() and not args.fresh:
         payload = torch.load(ckpt_path, map_location=device, weights_only=False)
         if "opt_state" in payload:
-            opt.load_state_dict(payload["opt_state"])
+            try:
+                opt.load_state_dict(payload["opt_state"])
+            except ValueError as e:
+                # e.g. a prior round added the pole param group (2 groups) but this
+                # resume constructs poles as part of the model (1 group). Momentum
+                # is disposable for a fine-tune -> continue with a fresh optimizer.
+                print(f"opt_state not restored ({e}); fresh optimizer", flush=True)
     # resuming a checkpoint that predates outcome-poles: bolt the 3 poles onto
     # the loaded model AFTER opt_state restore, as a fresh param group (so the
     # restored optimizer state for the existing params still lines up).
