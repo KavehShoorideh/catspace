@@ -494,3 +494,28 @@ At 30k: VAL_TOP1 = 0.033 (16.9× chance), VAL_TOP8 = 0.179 (11.4× chance). The 
 - **ARCHITECTURE.md**: high-level system design and invariants.
 - **README.md**: project overview and lessons learned.
 - **JOURNAL.md**: timestamped results, timings, and interpretation.
+
+## Outcome-structured embedding (2026-07-13/14)
+
+- **Outcome poles.** Three learnable goal-space anchors (win / draw / loss) the
+  training can push apart, so mutually-exclusive terminals become far-apart
+  basins. A *single* pole is one point -- pulling every winning state to it
+  collapses the region (kills the within-region hop gradient), which is why the
+  hard-pull version tanked play.
+- **Pull-to-point vs repulsion (t-SNE analogy).** t-SNE keeps clusters as extended
+  blobs by using ATTRACTION only between near neighbours + BOUNDED REPULSION
+  between everything (Student-t heavy tail). Our reach/ply-gap term is the
+  attraction; **cross-outcome repulsion** (`--repel-weight`) is the bounded
+  push between different-outcome states (relu hinge = the saturating tail). No
+  attractor point => regions survive while exclusive regions separate.
+- **Goal-as-region / soft-min bank.** The planner's goal is the SET of winning
+  terminals ("arrive anywhere in the mate region"), scored by soft-min hops to a
+  bank of real mate exemplars -- not the blurry average (centroid) of them. The
+  `MATE_W` **centroid** was `mean(B(checkmate finals))`: a passive prototype the
+  planner steered toward; weak because mates are structurally diverse.
+- **On-policy value vs optimal (V^pi vs V*).** The result-label of a state is a
+  single Monte-Carlo sample of its ON-POLICY hitting value (blunders count); the
+  self-consistent "spring"/Bellman fixed point is the low-variance version. The
+  quasimetric (triangle inequality = shortest path = min = optimal) intrinsically
+  targets V*, so its distances are the OPTIMAL hops-to-goal; the gap V*-V^pi is
+  the competence/difficulty signal.
