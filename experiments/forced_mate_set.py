@@ -125,6 +125,12 @@ def main():
     ap.add_argument("--out", default="artifacts/experiments/forced_mate_set.json")
     ap.add_argument("--validate-only", default=None,
                     help="path to a set JSON -- re-check every sample with Stockfish, report pass/fail")
+    ap.add_argument("--val-depth", type=int, default=22,
+                    help="validate-only: DETERMINISTIC depth to re-check (time-limited is not "
+                         "reproducible; depth is)")
+    ap.add_argument("--filter-out", default=None,
+                    help="validate-only: write ONLY the samples that pass the depth re-check here "
+                         "(guarantees every saved sample is deterministically valid)")
     args = ap.parse_args()
 
     import chess.engine
@@ -135,14 +141,22 @@ def main():
 
     if args.validate_only:
         data = json.loads(Path(args.validate_only).read_text())
-        n = sum(len(v) for v in data["classes"].values()); bad = 0
+        n = sum(len(v) for v in data["classes"].values())
+        vlim = chess.engine.Limit(depth=args.val_depth)                 # DETERMINISTIC
+        kept = {c: [] for c in data["classes"]}
         with UCIBoardPolicy(threads=args.threads) as sf:                 # SF loaded ONCE
             for cls, items in data["classes"].items():
                 for it in items:
-                    lab = sf_label(sf.engine, chess.Board(it["fen"]), lim)
-                    bad += (lab is None or lab["cls"] != cls)
-        print(f"re-validation ({limdesc}) of {n} samples: {n - bad} pass, {bad} FAIL")
-        raise SystemExit(1 if bad else 0)
+                    lab = sf_label(sf.engine, chess.Board(it["fen"]), vlim)
+                    if lab is not None and lab["cls"] == cls:
+                        kept[cls].append(it | dict(k=lab["k"], cp=lab["cp"], mate=lab["mate"]))
+        nk = sum(len(v) for v in kept.values())
+        print(f"deterministic re-validation (depth {args.val_depth}) of {n}: {nk} pass, {n-nk} FAIL "
+              f"({', '.join(f'{c}={len(v)}' for c,v in kept.items())})")
+        if args.filter_out:
+            Path(args.filter_out).write_text(json.dumps(dict(val_depth=args.val_depth, classes=kept), indent=1))
+            print(f"-> wrote {nk} deterministically-valid samples to {args.filter_out}")
+        raise SystemExit(0 if nk == n else 1)
 
     cands = candidate_positions(args.shards, args.candidate_cap)
     print(f"{len(cands)} candidates; Stockfish {limdesc}, {args.threads} threads (loaded once), "
