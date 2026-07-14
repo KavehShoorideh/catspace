@@ -210,7 +210,7 @@ def main():
                          "catspace.nn.policy_fb.FBSearchPolicy)")
     ap.add_argument("--search-beam", type=int, default=4,
                     help="branching cap per ply beyond the root, only used with --search-nodes")
-    ap.add_argument("--search", choices=("beam", "mcts"), default="beam",
+    ap.add_argument("--search", choices=("beam", "mcts", "anytime"), default="beam",
                     help="readout used with --search-nodes: beam minimax (default) or PUCT "
                          "MCTS at the same node budget (catspace/nn/mcts.py)")
     ap.add_argument("--c-puct", type=float, default=1.5)

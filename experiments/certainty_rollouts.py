@@ -47,13 +47,15 @@ def main():
                          "(with epsilon slips) -- certainty then reflects how FORGIVING the "
                          "position itself is under competent-but-fallible play")
     ap.add_argument("--nodes", type=int, default=100)
-    ap.add_argument("--search", choices=("beam", "mcts"), default="beam",
+    ap.add_argument("--search", choices=("beam", "mcts", "anytime"), default="beam",
                     help="White's readout when --white model: beam minimax or PUCT MCTS")
     ap.add_argument("--max-plies", type=int, default=100)
     ap.add_argument("--min-visits", type=int, default=4, help="keep states with >= this many visits")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--out", default="artifacts/experiments/certainty_table.json")
+    ap.add_argument("--dump-rollouts", default=None,
+                    help="append raw per-rollout trajectories (jsonl) for nested-table builds")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -66,6 +68,9 @@ def main():
                              max_nodes=args.nodes, beam=4, device=dev)
     tb = TB("data/syzygy")
     starts = json.loads(Path(args.starts).read_text())["fens"][:args.n_starts]
+    # raw per-rollout dump: lets table_from_dump.py build NESTED tables of any
+    # size from one generation run (the data-scaling curve's x-axis)
+    dump = open(args.dump_rollouts, "a") if args.dump_rollouts else None
 
     stats = defaultdict(lambda: [0, 0, []])          # fen -> [visits, wins, plies_to_mate list]
     for si, fen in enumerate(starts):
@@ -93,6 +98,9 @@ def main():
             out = b.outcome(claim_draw=True)
             won = bool(out and out.winner == chess.WHITE)
             end_ply = b.ply()
+            if dump is not None:
+                dump.write(json.dumps(dict(si=si, r=r, won=won, end_ply=end_ply,
+                                           traj=[[f, p] for f, p in traj])) + "\n")
             for f, p in traj:
                 s = stats[f]
                 s[0] += 1
@@ -102,6 +110,8 @@ def main():
         if (si + 1) % 20 == 0:
             print(f"  start {si+1}/{len(starts)}: {len(stats)} states tracked", flush=True)
     tb.close()
+    if dump is not None:
+        dump.close()
 
     rows = [dict(fen=f, n=v[0], p_hat=v[1] / v[0],
                  plies=(float(np.mean(v[2])) if v[2] else None))

@@ -652,17 +652,25 @@ def make_search_policy(kind: str, fb, z, max_nodes: int, beam: int = 4,
                        c_puct: float = 1.5, elo: int = 1800,
                        clock: float = 300.0, device: str = "cpu"):
     """The plug-and-play search readout (Kaveh, 2026-07-14): every harness
-    that searches the reach field goes through here, so MCTS and beam-minimax
-    are interchangeable per-side without touching call sites. kind = "beam"
-    (FBSearchPolicy, the default everywhere) or "mcts" (catspace/nn/mcts.py,
-    PUCT at the same node budget -- one budget unit = one network eval in
-    both, so matched-`max_nodes` comparisons are matched compute). `beam` is
-    ignored by mcts, `c_puct` by beam."""
+    that searches the reach field goes through here, so the readouts are
+    interchangeable per-side without touching call sites. kind = "beam"
+    (FBSearchPolicy, the default everywhere), "mcts" (catspace/nn/mcts.py,
+    PUCT), or "anytime" (catspace/nn/anytime.py, find-a-mate-then-improve
+    branch-and-bound). One budget unit = one network eval in ALL of them, so
+    matched-`max_nodes` comparisons are matched compute. `beam` is used by
+    beam and anytime (candidates per node), `c_puct` only by mcts."""
     if kind == "mcts":
         from catspace.nn.mcts import FBMCTSPolicy
         return FBMCTSPolicy(fb, z, max_nodes=max_nodes, c_puct=c_puct,
                             elo=elo, clock=clock, device=device)
+    if kind == "anytime":
+        from catspace.nn.anytime import FBAnytimePolicy
+        pol = FBAnytimePolicy(fb, z, max_nodes=max_nodes, elo=elo,
+                              clock=clock, device=device)
+        pol.search.beam = beam
+        return pol
     if kind == "beam":
         return FBSearchPolicy(fb, z, max_nodes=max_nodes, beam=beam,
                               elo=elo, clock=clock, device=device)
-    raise ValueError(f"unknown search kind: {kind!r} (want 'beam' or 'mcts')")
+    raise ValueError(f"unknown search kind: {kind!r} "
+                     f"(want 'beam', 'mcts', or 'anytime')")
