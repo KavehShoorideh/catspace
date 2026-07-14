@@ -123,9 +123,17 @@ def main():
     boot = b[idx].mean(1) - a[idx].mean(1)
     lo, hi = np.percentile(boot, [2.5, 97.5])
     sig = (lo > 0 or hi < 0)
+    # anytime-valid sign-test e-process over the paired per-start diffs
+    # (catspace.abtest): e-values compose across sequential looks (e.g. the
+    # data-scaling curve's repeated money tests), unlike bootstrap CIs
+    from catspace.abtest import EValueTest
+    ev = EValueTest()
+    for d in (b - a):
+        ev.update(float(d))
     print(f"PLAYOUT_AB {args.label} mate-rate A={a.mean():.3f} vs B={b.mean():.3f}  "
-          f"diff={diff:+.3f} CI=[{lo:+.3f},{hi:+.3f}]  "
-          f"(n={n} starts, deterministic defender; plies-to-mate A={pa:.0f} B={pb:.0f}) "
+          f"diff={diff:+.3f} CI=[{lo:+.3f},{hi:+.3f}]  e={ev.e:.2f} "
+          f"(n={n} starts, {ev.n} decisive, deterministic defender; "
+          f"plies-to-mate A={pa:.0f} B={pb:.0f}) "
           f"[{'SIGNIFICANT' if sig else 'ns'}]")
 
 
