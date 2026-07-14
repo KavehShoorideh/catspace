@@ -197,6 +197,9 @@ class LichessPairSource:
                     "black_elo": data["black_elo"][sl],
                     "ply": data["ply"][sl],
                     "ply_g": data["ply"][goal_rows[sl]],           # goal ply -- for ply-gap calibration
+                    # plies from anchor to its game's END: gates the outcome-AXIS pull
+                    # (near-terminal rows of decisive games ~ the forced regions)
+                    "plies_to_end": data["ply"][last_row_of_game[sl]] - data["ply"][sl],
                     "clock": data["clock"][sl],
                     "game_id": data["game_id"][sl],
                     "board_meta": data["meta"][sl],                # anchor rows

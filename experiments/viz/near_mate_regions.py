@@ -133,6 +133,14 @@ def main():
     print(f"  ** mate_W vs mate_B ONLY (chance 0.50, draw excluded): "
           f"F kNN {Fwb['knn']:.2f} sil {Fwb['silhouette']:+.2f} | reach kNN {rwb['knn']:.2f} "
           f"sil {rwb['silhouette']:+.2f} | value kNN {vwb['knn']:.2f} **")
+    awb = None
+    if getattr(fb, "n_concept_axes", 0) > 0:
+        with torch.no_grad():
+            u = torch.nn.functional.normalize(fb.concept_axes[0], dim=0)
+            proj = (fF @ u).cpu().numpy()[:, None]
+        awb = separability(proj[wb], y[wb])
+        print(f"  ** OUTCOME AXIS projection (F@u, the trained concept direction): "
+              f"W-vs-B kNN {awb['knn']:.2f} · linear {awb['linear']:.2f} **")
 
     if args.record:
         import json
@@ -140,7 +148,9 @@ def main():
                    reach_knn=rsep["knn"], reach_sil=rsep["silhouette"], value_knn=dsep["knn"],
                    corr_WB=corr,
                    WB_F_knn=Fwb["knn"], WB_F_sil=Fwb["silhouette"], WB_reach_knn=rwb["knn"],
-                   WB_reach_sil=rwb["silhouette"], WB_value_knn=vwb["knn"])
+                   WB_reach_sil=rwb["silhouette"], WB_value_knn=vwb["knn"],
+                   WB_axis_knn=(awb["knn"] if awb else None),
+                   WB_axis_linear=(awb["linear"] if awb else None))
         rp = Path(args.record); rp.parent.mkdir(parents=True, exist_ok=True)
         with rp.open("a") as f:
             f.write(json.dumps(rec) + "\n")

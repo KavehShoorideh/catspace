@@ -78,14 +78,18 @@ def batch_tensors(batch, device):
     material_drop = (np.bitwise_count(batch.anchors[idx]).sum(axis=1)
                      > np.bitwise_count(batch.goals[idx]).sum(axis=1))
     # game result per anchor (+1 White win / 0 draw / -1 Black win) for the
-    # outcome-poles loss. Already used for zgoals -- not an eval-leak signal.
+    # outcome-poles/axis losses. Already used for zgoals -- not an eval-leak signal.
     result = batch.meta["result"][idx].astype(np.float32)
+    pte = batch.meta.get("plies_to_end")
+    plies_to_end = (pte[idx].astype(np.float32) if pte is not None
+                    else np.full(len(idx), 1e6, dtype=np.float32))
     return (torch.from_numpy(planes_s).to(device),
             torch.from_numpy(om).to(device),
             torch.from_numpy(planes_g).to(device),
             torch.from_numpy(ply_gap).to(device),
             torch.from_numpy(material_drop).to(device),
-            torch.from_numpy(result).to(device))
+            torch.from_numpy(result).to(device),
+            torch.from_numpy(plies_to_end).to(device))
 
 
 def collect_holdout(src: LichessPairSource, n_batches: int, batch_size: int, seed: int):
@@ -287,6 +291,14 @@ def main():
                          "no new params (uses embed_B on anchors).")
     ap.add_argument("--repel-margin", type=float, default=1.5,
                     help="hops margin cross-outcome pairs are repelled up to (then force saturates)")
+    ap.add_argument("--concept-axes", type=int, default=0,
+                    help="number of learnable concept DIRECTIONS (slot 0 = outcome axis). Each "
+                         "concept separates from its opposite along its own axis; other dims stay "
+                         "free so different concepts' regions can overlap (multi-concept superposition).")
+    ap.add_argument("--axis-weight", type=float, default=0.5, help="outcome-axis hinge weight")
+    ap.add_argument("--axis-margin", type=float, default=1.0)
+    ap.add_argument("--axis-gate-plies", type=float, default=8.0,
+                    help="proximity gate: pull strength ~ exp(-plies_to_end/this)")
     ap.add_argument("--selfplay-shards", default=None,
                     help="dir of experiments/selfplay_generate.py output shards to MIX into "
                          "training (holdout/val stay human-only for a stable reference)")
@@ -329,7 +341,7 @@ def main():
         fb = TorchFB(d=args.d, seed=args.seed, quasimetric=args.quasimetric,
                      two_horizon=args.two_horizon, distributional=args.distributional,
                      n_bins=args.n_bins, competence=args.competence,
-                     outcome_poles=args.outcome_poles)
+                     outcome_poles=args.outcome_poles, concept_axes=args.concept_axes)
         fb.to(device)
     start_step = step                      # cosine decay spans [start_step, args.steps)
     lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
@@ -356,6 +368,15 @@ def main():
         fb.config["outcome_poles"] = True
         opt.add_param_group({"params": [fb.poles]})
         print("added outcome poles to resumed model", flush=True)
+    # same bolt-on for concept axes on a pre-axis checkpoint
+    if args.concept_axes > 0 and getattr(fb, "n_concept_axes", 0) == 0:
+        import torch.nn as nn
+        fb.concept_axes = nn.Parameter(nn.functional.normalize(
+            torch.randn(args.concept_axes, fb.d), dim=1).to(device))
+        fb.n_concept_axes = args.concept_axes
+        fb.config["concept_axes"] = args.concept_axes
+        opt.add_param_group({"params": [fb.concept_axes]})
+        print(f"added {args.concept_axes} concept axes to resumed model", flush=True)
 
     human_src = LichessPairSource(shard_dir, gamma=args.gamma)
     src = human_src
@@ -394,7 +415,7 @@ def main():
         lr_now = lr_min + 0.5 * (args.lr - lr_min) * (1 + math.cos(math.pi * frac))
         for g in opt.param_groups:
             g["lr"] = lr_now
-        core, result_t = tensors[:5], tensors[5]
+        core, result_t, pte_t = tensors[:5], tensors[5], tensors[6]
         if args.two_horizon:
             ps, om, pg, gap, _mdrop = core
             loss, top1 = fb.two_horizon_loss(ps, om, pg, gap, near_max=args.near_max,
@@ -409,7 +430,10 @@ def main():
                                     competence_weight=args.competence_weight,
                                     result=result_t, outcome_weight=args.outcome_weight,
                                     pole_tau=args.pole_tau, pole_margin=args.pole_margin,
-                                    repel_weight=args.repel_weight, repel_margin=args.repel_margin)
+                                    repel_weight=args.repel_weight, repel_margin=args.repel_margin,
+                                    plies_to_end=pte_t, axis_weight=args.axis_weight,
+                                    axis_margin=args.axis_margin,
+                                    axis_gate_plies=args.axis_gate_plies)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
