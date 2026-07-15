@@ -3149,3 +3149,16 @@ LAUNCHING overnight: scaling curve -- nested tables K=4/8/16/32 rollouts/start
 (~2.6k/5k/10k/21k states), per size: early-stopped distill + money test (MCTS 200n
 both sides, fixed-start test set, e-values). The curve's slope = Kaveh's
 data-limitation verdict.
+
+### SCALING CURVE CROSSED: first CI-real field->play win (K=16, 10k states)
+MONEY_K4  (3.1k states): rho +0.470, play -0.092 ns
+MONEY_K8  (5.2k states): rho +0.395, play -0.017 ns
+MONEY_K16 (10k states):  rho +0.369, play +0.167 CI=[+0.050,+0.275] e=6.87 SIGNIFICANT
+  -- distilled 0.500 vs incumbent 0.333, both MCTS 200n, fixed-start test set.
+Kaveh's data-limitation hypothesis CONFIRMED at this rung: play follows the field
+once on-distribution own-play certainty data crosses ~10k states; the deficit
+shrank monotonically with data (-0.092 -> -0.017 -> +0.167). Every prior money
+null (2.7k random-start states, beam readout) is now explained as dose + readout.
+NOT yet promoted: this is one of 4 pre-planned sequential looks (e=6.9 alone <
+1/alpha) -- selection happens after K=32, then ONE pre-registered confirmatory on
+a fresh frozen set (new seed; 777 consumed) per protocol. K=32 running.
