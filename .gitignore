@@ -19,3 +19,4 @@ code/out/
 .DS_Store
 .pytest_cache/
 .mypy_cache/
+artifacts/experiments/rollout_dump_*.jsonl
