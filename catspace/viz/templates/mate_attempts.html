@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>mate attempts in embedding space</title>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #0f1115; color: #e6e6e6; margin: 16px; }
+  h2 { font-size: 15px; margin: 6px 0; }
+  .game { display: flex; gap: 18px; margin-bottom: 34px; border-top: 1px solid #2a2f3a; padding-top: 14px; flex-wrap: wrap; }
+  .col { display: flex; flex-direction: column; gap: 6px; }
+  canvas { background: #161a22; border-radius: 6px; }
+  input[type=range] { width: 360px; }
+  .san { color: #9ec7ff; font-size: 13px; min-height: 16px; }
+  .won { color: #7dd87d; } .lost { color: #ff8484; }
+  .charts { font-size: 11px; color: #8b93a5; }
+</style>
+</head>
+<body>
+<h1 style="font-size:17px">Mate attempts — board vs. where the game went in F-space</h1>
+<div id="games"></div>
+<script>
+const DATA = /*__DATA__*/;
+function pcolor(p) { const r = Math.round(220*(1-p)), g = Math.round(200*p)+30; return `rgb(${r},${g},70)`; }
+const xs = DATA.bg.x, ys = DATA.bg.y;
+const xmin = Math.min(...xs), xmax = Math.max(...xs), ymin = Math.min(...ys), ymax = Math.max(...ys);
+function sx(x, W) { return 20 + (x - xmin) / (xmax - xmin) * (W - 40); }
+function sy(y, H) { return H - 20 - (y - ymin) / (ymax - ymin) * (H - 40); }
+DATA.games.forEach((g, gi) => {
+  const div = document.createElement('div'); div.className = 'game';
+  div.innerHTML = `
+    <div class="col">
+      <h2 class="${g.won ? 'won' : 'lost'}">${g.label}</h2>
+      <div id="board${gi}"></div>
+      <input type="range" id="sl${gi}" min="0" max="${g.moves.length-1}" value="0">
+      <div class="san" id="san${gi}"></div>
+    </div>
+    <div class="col">
+      <h2>path in F-space (bg = certainty field, red=lost, green=won)</h2>
+      <canvas id="map${gi}" width="440" height="420"></canvas>
+    </div>
+    <div class="col charts">
+      <h2>field's own story</h2>
+      <canvas id="ch${gi}" width="380" height="420"></canvas>
+      <div>top: learned d(F, mate-goal) — should FALL toward mate<br>
+           bottom: win-prob head P̂(win) — should RISE (or collapse on the losing move)</div>
+    </div>`;
+  document.getElementById('games').appendChild(div);
+  const W = 440, H = 420, cw = 380, chH = 420;
+  function draw(k) {
+    document.getElementById(`board${gi}`).innerHTML = g.moves[k].svg;
+    document.getElementById(`san${gi}`).textContent =
+      k === 0 ? '(start)' : `ply ${k}: ${g.moves[k].san} ${k % 2 ? '(White)' : '(Black)'}`;
+    const ctx = document.getElementById(`map${gi}`).getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    for (let i = 0; i < xs.length; i++) {
+      ctx.fillStyle = pcolor(DATA.bg.p[i]); ctx.globalAlpha = 0.35;
+      ctx.fillRect(sx(xs[i], W), sy(ys[i], H), 2.2, 2.2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#9ec7ff'; ctx.lineWidth = 1.6; ctx.beginPath();
+    g.moves.slice(0, k + 1).forEach((m, i) => {
+      const px = sx(m.x, W), py = sy(m.y, H);
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    const cur = g.moves[k];
+    ctx.fillStyle = '#fff'; ctx.beginPath();
+    ctx.arc(sx(cur.x, W), sy(cur.y, H), 5, 0, 7); ctx.fill();
+    ctx.fillStyle = '#ffd34d'; ctx.beginPath();
+    ctx.arc(sx(g.moves[0].x, W), sy(g.moves[0].y, H), 4, 0, 7); ctx.fill();
+    // strip charts
+    const c2 = document.getElementById(`ch${gi}`).getContext('2d');
+    c2.clearRect(0, 0, cw, chH);
+    const ds = g.moves.map(m => m.d), ps = g.moves.map(m => m.p);
+    [[ds, 10, 190, '#9ec7ff'], [ps, 230, 410, '#7dd87d']].forEach(([arr, top, bot, col]) => {
+      const lo = Math.min(...arr), hi = Math.max(...arr), rng = (hi - lo) || 1;
+      c2.strokeStyle = col; c2.lineWidth = 1.5; c2.beginPath();
+      arr.forEach((v, i) => {
+        const px = 10 + i / (arr.length - 1) * (cw - 20);
+        const py = bot - (v - lo) / rng * (bot - top);
+        i === 0 ? c2.moveTo(px, py) : c2.lineTo(px, py);
+      });
+      c2.stroke();
+      const kx = 10 + k / (arr.length - 1) * (cw - 20);
+      c2.strokeStyle = '#ffd34d'; c2.beginPath(); c2.moveTo(kx, top); c2.lineTo(kx, bot); c2.stroke();
+      c2.fillStyle = '#8b93a5';
+      c2.fillText(hi.toFixed(2), cw - 44, top + 10); c2.fillText(lo.toFixed(2), cw - 44, bot - 2);
+    });
+  }
+  document.getElementById(`sl${gi}`).addEventListener('input', e => draw(+e.target.value));
+  draw(0);
+});
+</script>
+</body>
+</html>

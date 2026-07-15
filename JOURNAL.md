@@ -3308,3 +3308,18 @@ but play leg ns at round 2 (GATE 2 not passed; thrice-repeated ~+0.08 lean at
 one direction: the binding constraint is now the DATA the base objective eats,
 not steps, not dims, not toy rounds -- next lever is full-board self-play
 certainty data into the base objective. Kaveh decision on waking.
+
+### Mate-attempt trajectories visualized (Kaveh): failures = ORBIT AT THE RIM
+build_mate_attempt_viewer.py -> artifacts/generated/mate_attempts.html (board
+scrubber + F-space path over certainty-field UMAP + d/P-hat strips). 2 mates,
+2 failures (both THREEFOLD_REPETITION) from the fixed-start test set, incumbent
+@800n. The signature: ALL games drive d from ~0.55 to ~0.30-0.32, then -- wins
+keep MOVING in F-space (last-10-ply net displacement 1.9, 16.0) while failures
+ORBIT (net displacement 0.5, 0.7; d pinned at the 0.30 floor; P-head still 0.85+
+while the game bleeds to repetition). Diagnosis: the field's distance saturates
+at the mate-region rim -- near-goal states are indistinguishable at d~0.3, so
+search shuffles equal-d moves into repetition. Residual unconverted mass is
+largely rim-orbiting, not wrong direction. Mechanism candidates (not guards, per
+Kaveh's rule): near-horizon head for fine rim resolution (FBTwoHorizonPolicy
+exists), or fast-field evidence ("been here, no progress" -> re-price), or
+repetition-state features reaching the certainty targets. Decision for Kaveh.
