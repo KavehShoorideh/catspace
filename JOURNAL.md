@@ -3378,3 +3378,18 @@ the incumbent's fused metric carried; S-head (+0.26) too weak to restore it at
 readout. Regime rungs (800/1600n, n=120, g=0 and .01) running to complete the
 approved test before any conclusion -- if negative there too, the discussion is
 S-target quality (more eps levels -> tighter S) vs joint (non-frozen) S channel.
+
+### Two-channel v1 FALSIFIED at play: readout-side risk cannot replace in-geometry certainty
+800n: g0 -0.242 CI=[-0.342,-0.142] e=1747; g.01 -0.183 e=75. 1600n: g0 -0.150
+e=5.3; g.01 -0.183 e=21. All SIGNIFICANT against, all rungs. The dissection is
+valuable: the incumbent's FUSED d carries certainty in the geometry at full
+strength; stripping d to pure plies and re-adding risk via a weak frozen
+S-probe (+0.26) costs ~0.2 conversion. The identification finding stands
+(S real, ~orthogonal to plies) -- what died is THIS implementation (frozen
+probe + readout-only risk). Candidate syntheses for discussion: (a) S as a
+JOINTLY-TRAINED second geometric channel (both quasimetric, fused at readout
+with full-strength heads), (b) keep fused d, add S as auxiliary signal only
+for search allocation (its p_var-like role), (c) better S targets first (more
+eps levels/rollouts) before re-judging any architecture. cert_base_full
+remains incumbent; two_channel.pt shelved as reference. NO further builds
+pending discussion (discuss-first rule).
