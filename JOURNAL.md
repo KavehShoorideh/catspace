@@ -3361,3 +3361,12 @@ dependent later), geometry stays risk-free per the identification finding
 Distill running; ladder + Kaveh's named-stage checkers (eval-only: pins,
 double attacks, captures, edge/corner vs mid-board king traps, mate-with-king-
 location) next.
+
+### Two-channel distill verdicts: plies channel strong, S-head modest
+PLIES_CHANNEL held-out Spearman +0.281 -> +0.508 (early stop 2500; purified
+geometry fits conversion length far better than any fused metric round).
+S_HEAD held-out Spearman +0.262 (RMSE 3.08 vs S sd 3.26) -- real rank signal,
+modest; S targets are noisy 3-point fits, improvable with more eps levels.
+RUNNING: g_sharp scale sweep {0, .002, .01, .05} at 200n n=60 (S in nats vs
+reach deltas ~0.01-0.1 -- scale must be found before the ladder), then full
+ladder vs cert_base_full. Stage checkers (eval-only) still queued.
