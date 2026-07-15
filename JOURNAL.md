@@ -3125,3 +3125,14 @@ amortizes). MCTS remains the promoted readout at both rungs. Anytime stays as an
 arm (its exact incumbent-bound pruning is graftable INTO mcts later -- mate-bound
 pruning -- but only if a signal justifies it). Early-stop harness behaved exactly
 as designed on its first real use.
+
+### Generation hang: MCTS all-terminal-children infinite loop (found, fixed, relaunched)
+The 700x32 generation stalled at start 20 (~16:41): 80 min of pegged CPU, zero
+rollouts completing. Root cause: MCTS budget counts NETWORK EVALS, and a
+simulation ending on a terminal consumes none -- in a subtree where EVERY child
+is terminal (all moves end the game; happens deep in endgames) the run loop
+spins forever. Unit tests had only mixed terminal/fresh roots. Fix: cap total
+simulations at 32x the eval budget alongside the eval check; regression test
+(all-terminal root, worst-case zero evals) added -- 17/17 pass. Dump truncated
+(10 min of data), generation relaunched clean. Pace before the hang was on
+estimate (~0.94 s/rollout -> ~6h for 22.4k rollouts).
