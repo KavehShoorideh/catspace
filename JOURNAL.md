@@ -3136,3 +3136,16 @@ simulations at 32x the eval budget alongside the eval check; regression test
 (all-terminal root, worst-case zero evals) added -- 17/17 pass. Dump truncated
 (10 min of data), generation relaunched clean. Pace before the hang was on
 estimate (~0.94 s/rollout -> ~6h for 22.4k rollouts).
+
+### Own-play generation COMPLETE (parallel): 20,877-state fixed-start certainty table
+700 starts x 32 rollouts = 22,455 rollouts (serial head + 5 parallel workers,
+--start-offset sharding, global seeds; ~5h wall total vs ~11h serial projection).
+Merged quality (table_from_dump over 6 dumps): 388,612 unique states, 20,877 kept
+(>=4 visits, ~6x the old random-start table), P-hat mean 0.14, fracMID 0.31 [gate
+PASS], visits median 11/p90 28, within-won certainty gradient Spearman(P-hat,-|dtz|)
+= +0.534 CI[+0.490,+0.608] [HEALTHY]. All own-play (model+eps, MCTS 200n readout):
+Stage-1 de-scaffold achieved -- zero oracle involvement in the table itself.
+LAUNCHING overnight: scaling curve -- nested tables K=4/8/16/32 rollouts/start
+(~2.6k/5k/10k/21k states), per size: early-stopped distill + money test (MCTS 200n
+both sides, fixed-start test set, e-values). The curve's slope = Kaveh's
+data-limitation verdict.
