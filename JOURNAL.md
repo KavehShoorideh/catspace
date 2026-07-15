@@ -3241,3 +3241,17 @@ at 1600n (both still climbing with budget); specialist converts faster (18 vs
 21 plies). Cache-effect visible vs history: specialist 0.500@200n cached vs
 0.333 uncached. NEXT: cert-base's real test is FULL-BOARD play vs the
 pre-certainty incumbent (the toy specialist never trained there).
+
+### PROMOTED: cert_base_full.pt is the new incumbent (full-board, confirmed)
+H2H vs pre-certainty incumbent (MCTS 400n, cached): run 1 score 0.688 (+18=19-3)
+e=65.07; independent seed-777 confirmation 0.650 (+16=20-4) e=8.28; composed
+e=539 -- 34-7 decisive across runs. AUDIT=CLEAN. Toy: parity with the 10k-state
+specialist at all rungs (no toy regression). SF skill-0 still crushes us (0.050)
+-- the long game. cert_base_full.pt (155k steps, certainty-in-base-objective:
+outcome-conditioned P-head + d->plies+lam(-lnP) on won games, oracle-free) is
+the incumbent for ALL future work; lichess_fb_4gb_qm_plygap_only retired to
+reference; cert_scale_K16 retired to toy-specialist reference.
+The day's arc, end to end: certainty reframe -> MCTS readout (confirmed) ->
+fixed-start discipline -> own-play tables (de-scaffolded) -> scaling curve ->
+800n toy confirmation -> certainty in base objective -> full-board win, every
+step CI/e-gated with pre-registered confirmatories.
