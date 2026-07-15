@@ -3208,3 +3208,15 @@ Next lever (to discuss): certainty in the BASE objective at full-board scale --
 the distill validated the signal end-to-end; training it in from the start
 should beat post-hoc fine-tuning, and the whole harness (fixed-start discipline,
 own-play tables, e-values, confirmatory protocol, regime ladder) transfers.
+
+### Short cert-base run (5k): gates green-with-one-yellow; full run launched
+VAL stable (top1 .027->.029, top8 .178->.186), phead CE 1.14->0.76 (outcome signal
+flowing into F), slopes healthy (won .428 > lost .276). YELLOW: toy held-out
+Spearman +0.369 -> +0.316 (CIs barely touch) -- full-board objective trades a
+little toy calibration; toy is canary, ladder is judge. Search-duplication
+measurement (Kaveh's Q): within-search dup 1.1%/10.8%/14.0% at 200/800/1600n,
+whole-game dup 20/32/34% -- game-scoped exact eval cache planned before the
+ladder (free ~1.5x at 1600n; key must include field-version once fast field
+lands). Kaveh's conditional-tactic reminder journaled: NOT implemented; nearest
+live proxy is +gamma*pvar_theirs; MemoryField.payload is the reserved slot;
+precondition-vector design in planner memory. FULL RUN: 95k->155k steps cert-base.
