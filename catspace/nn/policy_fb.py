@@ -651,7 +651,7 @@ class FBAdaptiveSearchPolicy(FBSearchPolicy):
 def make_search_policy(kind: str, fb, z, max_nodes: int, beam: int = 4,
                        c_puct: float = 1.5, elo: int = 1800,
                        clock: float = 300.0, device: str = "cpu",
-                       s_head=None, g_sharp: float = 0.0):
+                       s_head=None, g_sharp: float = 0.0, **mcts_kw):
     """The plug-and-play search readout (Kaveh, 2026-07-14): every harness
     that searches the reach field goes through here, so the readouts are
     interchangeable per-side without touching call sites. kind = "beam"
@@ -664,7 +664,7 @@ def make_search_policy(kind: str, fb, z, max_nodes: int, beam: int = 4,
         from catspace.nn.mcts import FBMCTSPolicy
         return FBMCTSPolicy(fb, z, max_nodes=max_nodes, c_puct=c_puct,
                             elo=elo, clock=clock, device=device,
-                            s_head=s_head, g_sharp=g_sharp)
+                            s_head=s_head, g_sharp=g_sharp, **mcts_kw)
     if kind == "anytime":
         from catspace.nn.anytime import FBAnytimePolicy
         pol = FBAnytimePolicy(fb, z, max_nodes=max_nodes, elo=elo,

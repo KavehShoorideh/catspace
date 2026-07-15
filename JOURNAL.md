@@ -3406,3 +3406,14 @@ by positive control (fires on constructed mate). Fix queued: dumps/recorders
 must include the terminal board. (3) midboard_trap 0% on expert games --
 consistent with tb play (edge mates), positive-control construction still
 needed for full verification. Checkers otherwise ready for planning-proof use.
+
+### ALL THREE rescue mechanisms built (Kaveh: "do them all. now.")
+mcts.py: (1) EVIDENCE BLEND -- precision-weighted d_eff=(n*d_ev+k*d_field)/(n+k)
+in the reach closure; evidence = demo_tb+eps05+r2_K16 tables (27.5k states,
+visit-weighted merge) + live game-path revisits as stall evidence (revisit =
+objectively no progress; d_ev->2.0, n=8/revisit). (2) FLAT/LOW-CONF ROLLOUTS --
+uniform-random playout (0 NN evals) backs up real terminals when child values
+are flat (std<0.05) OR field unvouched (no evidence near state -- Kaveh's
+low-confidence trigger; competence-head hook ready, incumbent has none).
+(3) TREE REUSE -- carry the played child's subtree (visit stats) across moves.
+playout_ab --rescue-b. Smoke (n=12): runs clean. Ladder 800/1600n n=120 running.

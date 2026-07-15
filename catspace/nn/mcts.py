@@ -66,7 +66,9 @@ class MCTS:
     Pure python-chess + numpy: unit-testable with a synthetic reach_fn."""
 
     def __init__(self, reach_fn, max_nodes: int, c_puct: float = 1.5,
-                 prior_tau: float = 0.5, cache: dict | None = None):
+                 prior_tau: float = 0.5, cache: dict | None = None,
+                 rollout_on_flat: bool = False, flat_std: float = 0.05,
+                 rollout_cap: int = 32):
         assert max_nodes >= 1
         self.reach_fn = reach_fn
         self.max_nodes = max_nodes
@@ -82,6 +84,11 @@ class MCTS:
         # field version -- pure-slow-field readouts only, for now.
         self.cache = cache
         self.cache_hits = 0
+        self.rollout_on_flat = rollout_on_flat   # classic-MCTS fallback: when
+        self.flat_std = flat_std                 # the field is FLAT here (no
+        self.rollout_cap = rollout_cap           # gradient) OR low-confidence
+        self.rollouts_run = 0                    # (Kaveh), touch reality with a
+        self.low_conf_fn = None                  # free random playout
         self._center = 0.0
         self._scale = 1.0
 
@@ -146,10 +153,26 @@ class MCTS:
         for c, p in zip(children, pri):
             c.P = float(p)
         node.children = children
-        # back up the best child from the mover's perspective (a 1-ply
-        # minimax bootstrap -- strictly better-informed than the parent's
-        # own reach, and free: the children are already evaluated)
-        return float(vals[int(np.argmax(persp))])
+        boot = float(vals[int(np.argmax(persp))])
+        if (self.rollout_on_flat and fresh
+                and (float(np.std([c.v_init for c in fresh])) < self.flat_std
+                     or (self.low_conf_fn is not None and self.low_conf_fn(node.board)))):
+            # field flat here: one uniform-random playout to a terminal
+            # (0 NN evals -- CPU only) restores game-truth to the backup
+            self.rollouts_run += 1
+            rb = fresh[int(np.argmax([c.v_init for c in fresh]))].board.copy(stack=False)
+            rv = None
+            for _ in range(self.rollout_cap):
+                if rb.is_game_over(claim_draw=True):
+                    out = rb.outcome(claim_draw=True)
+                    rv = (MATE_V if out and out.winner == chess.WHITE
+                          else MATED_V if out and out.winner == chess.BLACK else DRAW_V)
+                    break
+                ms = list(rb.legal_moves)
+                rb.push(ms[np.random.default_rng(rb.ply()).integers(len(ms))])
+            if rv is not None:
+                return 0.5 * boot + 0.5 * rv
+        return boot
 
     # -- selection ---------------------------------------------------------
     def _select_child(self, node: _Node) -> _Node:
@@ -164,12 +187,24 @@ class MCTS:
         return best
 
     # -- main loop ---------------------------------------------------------
-    def run(self, board: chess.Board) -> _Node:
-        """Search until the eval budget is spent; return the root node."""
+    def run(self, board: chess.Board, reuse_root: "_Node | None" = None) -> _Node:
+        """Search until the eval budget is spent; return the root node.
+        reuse_root: a subtree from a previous search whose board matches --
+        its visit statistics carry over (tree reuse across moves)."""
         self.evals_used = 0
-        root = _Node(board.copy(stack=False), None)
-        root.N = 1
-        root.W = self._expand(root, at_root=True)
+        if reuse_root is not None and reuse_root.board.fen() == board.fen():
+            root = reuse_root
+            if not root.children:
+                root.N = max(root.N, 1)
+                root.W += self._expand(root, at_root=True)
+            else:
+                with_v = [c.v_init for c in root.children if c.v_init is not None]
+                if with_v:
+                    self._calibrate(np.array(with_v))
+        else:
+            root = _Node(board.copy(stack=False), None)
+            root.N = 1
+            root.W = self._expand(root, at_root=True)
         # sims bound: budget is counted in NETWORK EVALS, and a simulation
         # that ends on a terminal consumes none -- when every reachable leaf
         # is terminal the eval budget alone would never be spent and the
@@ -220,11 +255,14 @@ class FBMCTSPolicy:
     def __init__(self, fb, z, max_nodes: int, c_puct: float = 1.5,
                  prior_tau: float = 0.5, elo: int = 1800, clock: float = 300.0,
                  device: str = "cpu", cache: bool = True, s_head=None,
-                 g_sharp: float = 0.0):
+                 g_sharp: float = 0.0, evidence: dict | None = None,
+                 evidence_k: float = 4.0, rollout_on_flat: bool = False,
+                 tree_reuse: bool = False):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
         from catspace.nn.policy_fb import soft_min_bank
+        omega_row = omega_ids(np.array([elo]), np.array([elo]), np.array([clock]))[0]
         self.fb = fb.to(device).eval()
         self.z = torch.as_tensor(z, dtype=torch.float32, device=device)
         assert self.z.dim() in (1, 2)
@@ -249,7 +287,71 @@ class FBMCTSPolicy:
             return r.cpu().numpy()
 
         self.mcts = MCTS(reach, max_nodes=max_nodes, c_puct=c_puct,
-                         prior_tau=prior_tau, cache={} if cache else None)
+                         prior_tau=prior_tau, cache={} if cache else None,
+                         rollout_on_flat=rollout_on_flat)
+        self.evidence = evidence or {}
+        self.evidence_k = evidence_k
+        self.path_counts: dict = {}
+        self.tree_reuse = tree_reuse
+        self._carry: "object | None" = None
+
+        if evidence is not None:
+            base_reach = self.mcts.reach_fn
+
+            @torch.no_grad()
+            def blended(boards):
+                r = np.asarray(base_reach(boards), dtype=float)
+                # precision-weighted evidence blend: d_eff = (n*d_ev + k*d_field)
+                # / (n + k); reach shifts by (d_field - d_eff). Live game-path
+                # revisits are stall evidence (revisit = objectively no progress
+                # in a must-progress conversion): d_ev -> horizon.
+                packed = np.stack([encode_packed(b) for b in boards])
+                meta = np.stack([encode_meta(b) for b in boards])
+                pl = torch.from_numpy(feature_planes(packed, meta)).to(device)
+                om = torch.from_numpy(np.tile(omega_row, (len(boards), 1))).to(device)
+                f = self.fb.embed_F(pl, om)
+                d_field = self.fb.distance_matrix(f, self.z[None, :])[:, 0].cpu().numpy()                     if self.z.dim() == 1 else None
+                if d_field is None:
+                    return r
+                for i, b in enumerate(boards):
+                    fen = b.fen()
+                    n_ev, d_ev = self.evidence.get(fen, (0.0, 0.0))
+                    rep = self.path_counts.get(b.board_fen(), 0)
+                    if rep >= 1:
+                        n_rep = 8.0 * rep
+                        d_ev = (n_ev * d_ev + n_rep * 2.0) / (n_ev + n_rep)
+                        n_ev = n_ev + n_rep
+                    if n_ev > 0:
+                        d_eff = (n_ev * d_ev + self.evidence_k * d_field[i]) / (n_ev + self.evidence_k)
+                        r[i] += d_field[i] - d_eff
+                return r
+            self.mcts.reach_fn = blended
+            # low-confidence proxy until a competence head ships: the field is
+            # unvouched where no evidence exists near this state
+            self.mcts.low_conf_fn = lambda b: self.evidence.get(b.fen(), (0.0, 0.0))[0] == 0
 
     def move(self, board: chess.Board, rng: np.random.Generator) -> chess.Move:
-        return self.mcts.best_move(board)
+        self.path_counts[board.board_fen()] = self.path_counts.get(board.board_fen(), 0) + 1
+        if not self.tree_reuse:
+            return self.mcts.best_move(board)
+        carry = None
+        if self._carry is not None:
+            for c in getattr(self._carry, "children", []):
+                if c.board.fen() == board.fen():
+                    carry = c
+                    break
+        root = self.mcts.run(board, reuse_root=carry)
+        if not root.children:
+            raise ValueError("no legal moves")
+        white = board.turn == chess.WHITE
+        best = None
+        for c in root.children:
+            if c.terminal_v is not None and (c.terminal_v > 0.5) == white:
+                best = c
+                break
+        if best is None:
+            best = max(root.children,
+                       key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None else c.Q)
+                                      * (1 if white else -1)))
+        self._carry = best
+        return best.move
