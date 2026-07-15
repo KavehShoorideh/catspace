@@ -3349,3 +3349,15 @@ LINEARITY median residual 0.082 (signal span ~0.26), p90 0.326 -- constant-S mod
   holds for the bulk, fat tail of nonlinearity (likely the sharpest states).
 sharpness_table.json persisted (4,373 states with per-state existence + S).
 No builds launched -- results to discussion per the discuss-first rule.
+
+### Two-channel field wired (Kaveh GO): plies channel + S-head, risk at readout
+experiments/two_channel_distill.py: phase 1 re-distills quasimetric d to PURE
+plies (tb-White eps=0.05 table, early-stopped, NCE-mixed, trained-zW saved);
+phase 2 trains a separate S-head (frozen F -> 128 -> softplus) on the 4,373
+identified per-state sharpness values. Readout: FBMCTSPolicy(s_head, g_sharp)
+computes reach - g_sharp*S(F(s)) -- risk enters ONLY at readout (g omega-
+dependent later), geometry stays risk-free per the identification finding
+(S ~ orthogonal to plies). playout_ab: --s-head-b/--g-sharp. mcts tests pass.
+Distill running; ladder + Kaveh's named-stage checkers (eval-only: pins,
+double attacks, captures, edge/corner vs mid-board king traps, mate-with-king-
+location) next.

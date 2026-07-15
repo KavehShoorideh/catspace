@@ -219,7 +219,8 @@ class FBMCTSPolicy:
 
     def __init__(self, fb, z, max_nodes: int, c_puct: float = 1.5,
                  prior_tau: float = 0.5, elo: int = 1800, clock: float = 300.0,
-                 device: str = "cpu", cache: bool = True):
+                 device: str = "cpu", cache: bool = True, s_head=None,
+                 g_sharp: float = 0.0):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -237,8 +238,15 @@ class FBMCTSPolicy:
             om = torch.from_numpy(np.tile(omega_row, (len(boards), 1))).to(device)
             f = self.fb.embed_F(planes, om)
             if self.z.dim() == 2:
-                return soft_min_bank(self.fb, f, self.z, 0.1).cpu().numpy()
-            return self.fb.score(f, self.z).cpu().numpy()
+                r = soft_min_bank(self.fb, f, self.z, 0.1)
+            else:
+                r = self.fb.score(f, self.z)
+            if s_head is not None and g_sharp != 0.0:
+                # two-channel readout (2026-07-15): risk enters HERE, not in
+                # the geometry -- reach discounted by the state's sharpness
+                # times the fallibility weight (omega-dependent later)
+                r = r - g_sharp * s_head(f).squeeze(-1)
+            return r.cpu().numpy()
 
         self.mcts = MCTS(reach, max_nodes=max_nodes, c_puct=c_puct,
                          prior_tau=prior_tau, cache={} if cache else None)
