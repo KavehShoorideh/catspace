@@ -3280,3 +3280,16 @@ anti-correlated on-policy!) -> +0.491 (best any round). Ladder vs cert_base_full
 from CI-real at the deep rung, faster mates (18 vs 21). Extending the 1600n look
 to the full n=200 test set (anytime-valid: e-process permits optional
 continuation, no peeking penalty). Round C (extend base training) queued after.
+
+### GATE 2 verdict: NOT passed -- loop round 2 is real-but-small, below confirmation
+R2_1600n_n200: +0.095 CI=[+0.015,+0.175] SIG (selection look).
+CONFIRMATORY seed-780 (fresh, single-use): +0.075 CI=[-0.025,+0.167] ns.
+Three consecutive positive 1600n results (+0.092/+0.095/+0.075, all faster
+mates) say the round-2 effect is likely real ~+0.08 but under the n=120
+confirmatory's resolution. cert_r2 NOT promoted; cert_base_full remains
+incumbent. Interpretation: certainty-in-base-objective already banked most of
+the toy-distillable signal -- the loop compounds DATA quality strongly
+(P-hat .34, gradient +.650) but play returns per toy round are shrinking.
+Morning recommendation forming: the loop's next round belongs at FULL BOARD
+(self-play data into the base objective), not another toy lap.
+Round C launching: extend cert-base training 155k -> 215k, h2h after.
