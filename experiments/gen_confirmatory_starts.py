@@ -68,7 +68,7 @@ def main():
                                "verified": "syzygy wdl=2, White to move, play-reachable",
                                "excluded_sets": args.exclude}))
     print(f"-> {out}  ({len(fens)} fresh tb-verified wins, seed {args.seed}, "
-          f"{tried} candidates tried)")
+          f"pool {len(pool)})")
 
 
 if __name__ == "__main__":
