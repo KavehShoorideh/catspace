@@ -3393,3 +3393,16 @@ for search allocation (its p_var-like role), (c) better S targets first (more
 eps levels/rollouts) before re-judging any architecture. cert_base_full
 remains incumbent; two_channel.pt shelved as reference. NO further builds
 pending discussion (discuss-first rule).
+
+### Stage checkers built + VALIDATED on expert games (Kaveh's protocol)
+stage_checkers.py (eval-only) validated on 500 tb-optimal WON games:
+pins 20-27%, double_attack 52%, capture bishop 85% (median ply 7), pawn 44%,
+king_corner 84% (ply 10) -- sane rates, sensible ordering (capture->corner).
+Validation CAUGHT: (1) king_edge fires 100% at ply 0 -- canonical start has
+the black king ON the edge; needs a confinement metric (king-box area), not a
+location bit. (2) mate stages 0% on dumps -- rollout dumps store PRE-move
+states only, terminal mated board never recorded; mate checker itself verified
+by positive control (fires on constructed mate). Fix queued: dumps/recorders
+must include the terminal board. (3) midboard_trap 0% on expert games --
+consistent with tb play (edge mates), positive-control construction still
+needed for full verification. Checkers otherwise ready for planning-proof use.
