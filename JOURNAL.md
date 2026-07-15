@@ -3162,3 +3162,21 @@ null (2.7k random-start states, beam readout) is now explained as dose + readout
 NOT yet promoted: this is one of 4 pre-planned sequential looks (e=6.9 alone <
 1/alpha) -- selection happens after K=32, then ONE pre-registered confirmatory on
 a fresh frozen set (new seed; 777 consumed) per protocol. K=32 running.
+
+### Confirmatory: K=16's +0.167 did NOT confirm -- winner's curse caught by protocol
+Full curve (held-out rho / money diff at 200n, both MCTS, n=120):
+  K=4  3.1k states: +0.470 / -0.092 ns
+  K=8  5.2k states: +0.395 / -0.017 ns
+  K=16 10k states:  +0.369 / +0.167 SIG e=6.87   <- selected
+  K=32 21k states:  +0.370 / +0.050 ns e=0.17
+CONFIRMATORY (fresh seed-778 frozen set, single-use, pre-registered):
+  0.450 vs 0.400, diff +0.050 CI=[-0.050,+0.150] e=0.20 [ns]. NOT PROMOTED.
+The K=16 significance was one of 4 sequential looks; the confirmatory protocol
+did its job. HONEST residue across all high-data evals: play effect ~+0.05
+(consistent sign, never CI-real at 200n), and the distilled ckpts mate FASTER
+when they convert (17 vs 20-22 plies, every high-K eval). Data scaling closed
+the deficit (-0.09 -> +0.05) but did not buy a confirmable 200n win at this dose.
+Note also incumbent varies by start set (0.333 test set vs 0.400 confirmatory) --
+set variance is real, another reason point looks mislead.
+Running: 800n regime look (field should matter more at saturation; FIELD_PLAN
+mandates both budgets; labeled exploratory).
