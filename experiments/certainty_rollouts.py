@@ -40,6 +40,10 @@ def main():
     ap.add_argument("--ckpt", default="data/derived/lichess_fb_4gb_qm_plygap_only.pt")
     ap.add_argument("--starts", default="artifacts/experiments/krrkbp_win_starts.json")
     ap.add_argument("--n-starts", type=int, default=120)
+    ap.add_argument("--start-offset", type=int, default=0,
+                    help="shard the start list for parallel workers: uses starts "
+                         "[offset, offset+n); si in the dump stays GLOBAL so seeds "
+                         "and aggregation match a serial run exactly")
     ap.add_argument("--rollouts", type=int, default=30, help="rollouts per start")
     ap.add_argument("--epsilon", type=float, default=0.15)
     ap.add_argument("--white", choices=("model", "tb"), default="model",
@@ -67,13 +71,14 @@ def main():
     pol = make_search_policy(args.search, fb, pay["zgoals"]["MATE_W"],
                              max_nodes=args.nodes, beam=4, device=dev)
     tb = TB("data/syzygy")
-    starts = json.loads(Path(args.starts).read_text())["fens"][:args.n_starts]
+    all_starts = json.loads(Path(args.starts).read_text())["fens"]
+    starts = all_starts[args.start_offset:args.start_offset + args.n_starts]
     # raw per-rollout dump: lets table_from_dump.py build NESTED tables of any
     # size from one generation run (the data-scaling curve's x-axis)
     dump = open(args.dump_rollouts, "a") if args.dump_rollouts else None
 
     stats = defaultdict(lambda: [0, 0, []])          # fen -> [visits, wins, plies_to_mate list]
-    for si, fen in enumerate(starts):
+    for si, fen in enumerate(starts, start=args.start_offset):
         for r in range(args.rollouts):
             rng = np.random.default_rng([args.seed, si, r])
             b = chess.Board(fen)
@@ -108,7 +113,8 @@ def main():
                     s[1] += 1
                     s[2].append(end_ply - p)
         if (si + 1) % 5 == 0:
-            print(f"  start {si+1}/{len(starts)}: {len(stats)} states tracked", flush=True)
+            print(f"  start {si+1} (shard {args.start_offset}+{len(starts)}): "
+                  f"{len(stats)} states tracked", flush=True)
     tb.close()
     if dump is not None:
         dump.close()

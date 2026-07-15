@@ -31,25 +31,31 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
-def build(dump_path, max_rollouts=None, min_visits=4):
+def build(dump_paths, max_rollouts=None, min_visits=4):
+    """Aggregate one or more dump files (parallel workers write separate
+    dumps; si is global, so merging is exact)."""
+    if isinstance(dump_paths, (str, Path)):
+        dump_paths = [dump_paths]
     stats = defaultdict(lambda: [0, 0, []])
-    starts, rollouts = set(), 0
-    with open(dump_path) as f:
-        for line in f:
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue                       # mid-write tail line: skip
-            if max_rollouts is not None and rec["r"] >= max_rollouts:
-                continue
-            starts.add(rec["si"])
-            rollouts += 1
-            for fen, ply in rec["traj"]:
-                s = stats[fen]
-                s[0] += 1
-                if rec["won"]:
-                    s[1] += 1
-                    s[2].append(rec["end_ply"] - ply)
+    starts = set()
+    rollouts = 0
+    for dump_path in dump_paths:
+        with open(dump_path) as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue                   # mid-write tail line: skip
+                if max_rollouts is not None and rec["r"] >= max_rollouts:
+                    continue
+                starts.add(rec["si"])
+                rollouts += 1
+                for fen, ply in rec["traj"]:
+                    s = stats[fen]
+                    s[0] += 1
+                    if rec["won"]:
+                        s[1] += 1
+                        s[2].append(rec["end_ply"] - ply)
     rows = [dict(fen=f, n=v[0], p_hat=v[1] / v[0],
                  plies=(float(np.mean(v[2])) if v[2] else None))
             for f, v in stats.items() if v[0] >= min_visits]
@@ -58,7 +64,10 @@ def build(dump_path, max_rollouts=None, min_visits=4):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dump", default="artifacts/experiments/rollout_dump_fixedstart.jsonl")
+    ap.add_argument("--dump", nargs="+",
+                    default=["artifacts/experiments/rollout_dump_fixedstart.jsonl"],
+                    help="one or more dump files (parallel workers write separate dumps; "
+                         "si is global so they merge exactly)")
     ap.add_argument("--max-rollouts", type=int, default=None,
                     help="nested-table size knob: first K rollouts per start")
     ap.add_argument("--min-visits", type=int, default=4)
