@@ -94,3 +94,26 @@ def test_no_legal_moves_raises():
     assert b.is_stalemate()
     with pytest.raises(ValueError):
         make().best_move(b)
+
+
+def test_all_terminal_children_terminates():
+    # regression (2026-07-14): budget counts NETWORK evals, terminal backups
+    # consume none -- a subtree where every child is terminal must not spin
+    # the run loop forever (hung a 700-start generation run)
+    b = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+    t = make(nodes=500)
+    root = t.run(b)
+    for c in root.children:
+        c.terminal_v = -0.999 if c.terminal_v is None else c.terminal_v
+    t.evals_used = 0                    # pretend budget untouched: worst case
+    import catspace.nn.mcts as M
+
+    class Reroot(M.MCTS):
+        def _expand(self, node, at_root):
+            if at_root:
+                node.children = root.children
+                return 0.0
+            return super()._expand(node, at_root)
+    t2 = Reroot(flat_reach, max_nodes=500)
+    t2.run(b)                           # must return, not hang
+    assert t2.evals_used < 500
