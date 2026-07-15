@@ -3220,3 +3220,13 @@ ladder (free ~1.5x at 1600n; key must include field-version once fast field
 lands). Kaveh's conditional-tactic reminder journaled: NOT implemented; nearest
 live proxy is +gamma*pvar_theirs; MemoryField.payload is the reserved slot;
 precondition-vector design in planner memory. FULL RUN: 95k->155k steps cert-base.
+
+### Exact eval cache in MCTS (Kaveh's duplication question, measured then fixed)
+MCTS budget now counts FRESH network evals only; a fen-keyed cache (policy-lifetime,
+shared across moves/games) makes repeats free. Measured repeats: 20/32/34% of a
+game's evals at 200/800/1600n. Effect: same NN budget explores a BIGGER tree
+(hits are free budget, not savings) -- play changes (for the better, in
+expectation), so historical mate-rates are NOT directly comparable to cached
+runs; paired A/Bs stay matched (both arms cached). Cache key = full FEN; must
+grow a field-version component once the fast MemoryField re-prices mid-game.
+18/18 search tests pass (new: hits>0, bigger tree, same-config determinism).

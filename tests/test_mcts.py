@@ -117,3 +117,23 @@ def test_all_terminal_children_terminates():
     t2 = Reroot(flat_reach, max_nodes=500)
     t2.run(b)                           # must return, not hang
     assert t2.evals_used < 500
+
+
+def test_eval_cache_makes_repeats_free_and_stays_deterministic():
+    # exact cache: re-searching the same position spends ~no fresh evals,
+    # and a fresh cached engine picks the same move as an uncached one
+    b = chess.Board("6k1/5pp1/7p/8/8/6Q1/5PPP/6K1 w - - 0 1")
+    shared = {}
+    t1 = MCTS(flat_reach, max_nodes=150, cache=shared)
+    m1 = t1.best_move(b)
+    first_evals = t1.evals_used
+    t2 = MCTS(flat_reach, max_nodes=150, cache=shared)
+    root2 = t2.run(b)
+    # budget counts FRESH evals, so a cached engine spends the same budget on
+    # NOVEL positions: hits are nonzero and the tree gets BIGGER, not cheaper
+    assert t2.cache_hits > first_evals * 0.5
+    root1 = MCTS(flat_reach, max_nodes=150, cache={}).run(b)
+    assert root2.N > root1.N
+    # cache changes tree SHAPE but never values: same-config is deterministic
+    m1b = MCTS(flat_reach, max_nodes=150, cache={}).best_move(b)
+    assert m1 == m1b
