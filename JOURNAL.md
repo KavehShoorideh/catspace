@@ -3255,3 +3255,13 @@ The day's arc, end to end: certainty reframe -> MCTS readout (confirmed) ->
 fixed-start discipline -> own-play tables (de-scaffolded) -> scaling curve ->
 800n toy confirmation -> certainty in base objective -> full-board win, every
 step CI/e-gated with pre-registered confirmatories.
+
+### Overnight Round A: embedding diagnostics (Kaveh's dimension question answered)
+Effective rank of F = 11.0/64 (old incumbent) and 9.5/64 (cert_base_full); trunk
+itself ~10/256. 64 dims is ~6x oversized for what the objective extracts -- do
+NOT widen; the binding constraint is objective information demand. Sparse-concept
+implication: overlap is un-demanded separation, not crowding. Outcome probe AUC
+on F: 0.610 -> 0.687 (cert-base), and the trunk-vs-F gap FLIPPED (+0.038 ->
+-0.018): the old bottleneck discarded outcome info, cert-base's F now carries
+more than its trunk. Round B next: closed-loop round 2 (tables from the NEW
+incumbent, distill, ladder -- FIELD_PLAN GATE 2 'does the loop compound?').
