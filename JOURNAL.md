@@ -3450,3 +3450,24 @@ vs 21). The rescue trio as wired does not rescue at 800n. 1600n rung running;
 diagnosis discussion after it lands (candidates: evidence tables mostly
 off-trajectory at 800n depth; 0.5/0.5 rollout blend diluting a good boot
 value; reuse+evidence interaction). No further builds pending discussion.
+
+### Rescue ladder COMPLETE: the trio fails at both rungs -- no rescue, no promotion
+PLAYOUT_AB RESCUE_800n  mate-rate A=0.700 vs B=0.625  diff=-0.075 CI=[-0.175,+0.025] e=0.34 [ns]
+PLAYOUT_AB RESCUE_1600n mate-rate A=0.667 vs B=0.617  diff=-0.050 CI=[-0.142,+0.050] e=0.21 [ns]
+(n=120 each, deterministic defender; B mates SLOWER both rungs: 28/24 vs 21 plies.)
+Against the pre-registered bar (800n conversion >=0.85 from 0.70; repetition
+failures halved; no regression on won starts): FAILED. Consistent negative
+lean at both rungs, e<<1 (data favor the null-to-harmful), slower mates.
+The three mechanisms TOGETHER (evidence blend + flat/low-conf rollouts +
+tree reuse) do not fix rim-orbiting and likely add noise where the incumbent
+was already converting. Diagnosis candidates for discussion (NOT built):
+(a) evidence coverage is off-trajectory at deep-search play (27.5k states,
+but B's own games leave the table's support fast -- low_conf rollouts then
+fire OFTEN, and a 0.5/0.5 uniform-rollout blend DILUTES a good minimax boot
+in exactly the won positions the incumbent converts); (b) live revisit-stall
+evidence re-prices d upward mid-game and may destabilize lines the incumbent
+holds; (c) tree reuse carries stale evidence-blended values across moves,
+compounding (a)+(b); (d) mechanisms were tested as a bundle -- per-mechanism
+attribution needs single-lever runs IF Kaveh wants to salvage any piece.
+Honest read: rim-orbiting remains open; the rescue-by-runtime-evidence line
+as bundled is rejected at both regimes. cert_base_full remains incumbent.
