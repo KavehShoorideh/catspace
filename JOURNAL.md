@@ -3197,3 +3197,14 @@ vindicated: certainty=closeness reframe, more nodes (1600-instinct), more data,
 fixed-start distribution, e-value discipline.
 Remaining gate before cert_scale_K16.pt becomes the toy incumbent: field-health
 panel (global regression guard) + leakage audit. Running.
+
+### Field-health panel: CLEAN -- cert_scale_K16.pt PROMOTED to toy incumbent
+AUDIT=CLEAN (leakage gate). Reach slopes healthy and correctly ordered
+(won +0.445 > lost +0.303; diff slopes +0.591/+0.413 -- no global regression
+signature; the every-step NCE mixing protected the global field as designed).
+Arena vs random 0.850 (e=2449). cert_scale_K16.pt is now the toy incumbent:
+all future toy A/Bs baseline against it, at BOTH 200n and 800n, MCTS readout.
+Next lever (to discuss): certainty in the BASE objective at full-board scale --
+the distill validated the signal end-to-end; training it in from the start
+should beat post-hoc fine-tuning, and the whole harness (fixed-start discipline,
+own-play tables, e-values, confirmatory protocol, regime ladder) transfers.
