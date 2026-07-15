@@ -107,7 +107,7 @@ def main():
                 if won:
                     s[1] += 1
                     s[2].append(end_ply - p)
-        if (si + 1) % 20 == 0:
+        if (si + 1) % 5 == 0:
             print(f"  start {si+1}/{len(starts)}: {len(stats)} states tracked", flush=True)
     tb.close()
     if dump is not None:
