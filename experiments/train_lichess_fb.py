@@ -235,6 +235,18 @@ def main():
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--shards", default=None, help="shard dir (default: newest under data/shards)")
     ap.add_argument("--steps", type=int, default=8000)
+    ap.add_argument("--cert-base", action="store_true",
+                    help="certainty in the BASE objective (2026-07-15, toy-validated): "
+                         "win-prob head on F trained on game results (outcome-conditioned, "
+                         "no oracle), and for won games regress d(F(s), zgoal) to "
+                         "(plies_to_end + lam*(-ln P_head))/scale -- the promoted toy "
+                         "target with the head standing in for rollout counts")
+    ap.add_argument("--cert-base-weight", type=float, default=1.0)
+    ap.add_argument("--phead-weight", type=float, default=0.3)
+    ap.add_argument("--cert-lam", type=float, default=8.0)
+    ap.add_argument("--cert-scale", type=float, default=50.0)
+    ap.add_argument("--zgoal-refresh", type=int, default=2000,
+                    help="re-embed MATE_W/B goal centroids every N steps (they drift as F/B train)")
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--d", type=int, default=64)
     ap.add_argument("--quasimetric", action="store_true",
@@ -397,6 +409,13 @@ def main():
         raise SystemExit(f"static_purity_check found forbidden references, refusing to train: "
                          f"{provenance['static_check']['hits']}")
 
+    phead, zW, zB = None, None, None
+    if args.cert_base:
+        from catspace.nn.eval_head import EvalHead, descriptive_loss
+        phead = EvalHead(d_in=args.d, seed=args.seed).to(device)
+        opt.add_param_group({"params": phead.parameters()})
+        print(f"cert-base ON: phead {sum(q.numel() for q in phead.parameters())} params, "
+              f"lam={args.cert_lam} scale={args.cert_scale} refresh={args.zgoal_refresh}")
     fb.train()
     epoch = 0
     it = iter(src.batches(args.batch, seed=args.seed))
@@ -434,6 +453,27 @@ def main():
                                     plies_to_end=pte_t, axis_weight=args.axis_weight,
                                     axis_margin=args.axis_margin,
                                     axis_gate_plies=args.axis_gate_plies)
+        if args.cert_base:
+            if zW is None or step % args.zgoal_refresh == 0:
+                zg = embed_zgoals(fb, finals, device)
+                zW = zg["MATE_W"].to(device).float().detach()
+                zB = zg["MATE_B"].to(device).float().detach()
+            ps_c, om_c = core[0], core[1]
+            f_s = fb.embed_F(ps_c, om_c)
+            p_loss = descriptive_loss(phead, f_s, result_t.long())
+            probs = torch.softmax(phead(f_s), dim=1).detach()
+            cert = torch.zeros((), device=device)
+            ok = torch.isfinite(pte_t)
+            for res_val, z, cls in ((1, zW, 0), (-1, zB, 2)):
+                m = (result_t == res_val) & ok
+                if int(m.sum()) >= 8:
+                    d = fb.distance_matrix(f_s[m], z[None, :])[:, 0]
+                    ph = probs[m, cls].clamp_min(1e-3)
+                    tgt = (pte_t[m] + args.cert_lam * (-torch.log(ph))) / args.cert_scale
+                    cert = cert + ((d - tgt) ** 2).mean()
+            loss = loss + args.phead_weight * p_loss + args.cert_base_weight * cert
+            if step % 100 == 0:
+                print(f"    cert {float(cert):.4f}  phead {float(p_loss):.4f}", flush=True)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
@@ -457,6 +497,10 @@ def main():
     zgoals = embed_zgoals(fb, finals, device, verbose=True)
     save_ckpt(fb, ckpt_path, step=step, opt=opt, zgoals=zgoals, provenance=provenance)
     print(f"saved {ckpt_path}")
+    if phead is not None:
+        hp = ckpt_path.with_name(ckpt_path.stem + "_phead.pt")
+        torch.save({"state": phead.state_dict(), "d_in": args.d}, hp)
+        print(f"saved {hp}")
 
     vloss, vtop1, vtop8 = val_metrics(fb, holdout, device)
     slope_w, nw = reach_slope(shard_dir, fb, zgoals["MATE_W"], device, want_result=1)
