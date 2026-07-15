@@ -37,5 +37,9 @@
  "confirmatory_krrkbp_seed778_n120.json": {
   "role": "CONSUMED confirmatory (2026-07-15, K=16 certainty distill -- result ns, not promoted). Single-use.",
   "n": 120
+ },
+ "confirmatory_krrkbp_seed779_n120.json": {
+  "role": "CONSUMED confirmatory (2026-07-15, K=16 @800n -- CONFIRMED +0.208 CI-real, e=185). Single-use.",
+  "n": 120
  }
 }
