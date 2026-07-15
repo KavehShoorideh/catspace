@@ -66,13 +66,22 @@ class MCTS:
     Pure python-chess + numpy: unit-testable with a synthetic reach_fn."""
 
     def __init__(self, reach_fn, max_nodes: int, c_puct: float = 1.5,
-                 prior_tau: float = 0.5):
+                 prior_tau: float = 0.5, cache: dict | None = None):
         assert max_nodes >= 1
         self.reach_fn = reach_fn
         self.max_nodes = max_nodes
         self.c_puct = c_puct
         self.prior_tau = prior_tau
-        self.evals_used = 0              # introspection: budget accounting
+        self.evals_used = 0              # budget = FRESH network evals only
+        # exact eval cache (fen -> raw reach). Reach is a pure function of
+        # position for a fixed field+goal, so cache hits are free budget --
+        # measured 2026-07-15: 20/32/34% of a game's evals at 200/800/1600n
+        # were repeats (transpositions + per-move tree rebuild). Pass a dict
+        # that OUTLIVES the search to share across moves/games. NOTE: once a
+        # fast MemoryField re-prices reach mid-game, key must include the
+        # field version -- pure-slow-field readouts only, for now.
+        self.cache = cache
+        self.cache_hits = 0
         self._center = 0.0
         self._scale = 1.0
 
@@ -108,8 +117,21 @@ class MCTS:
 
         fresh = [c for c in children if c.terminal_v is None]
         if fresh:
-            reach = np.asarray(self.reach_fn([c.board for c in fresh]), dtype=float)
-            self.evals_used += len(fresh)
+            if self.cache is None:
+                reach = np.asarray(self.reach_fn([c.board for c in fresh]), dtype=float)
+                self.evals_used += len(fresh)
+            else:
+                keys = [c.board.fen() for c in fresh]
+                need = [i for i, k in enumerate(keys) if k not in self.cache]
+                self.cache_hits += len(keys) - len(need)
+                if need:
+                    r = np.asarray(self.reach_fn([fresh[i].board for i in need]), dtype=float)
+                    self.evals_used += len(need)
+                    for i, v in zip(need, r):
+                        self.cache[keys[i]] = float(v)
+                reach = np.array([self.cache[k] for k in keys])
+                if len(self.cache) > 2_000_000:      # crude memory bound
+                    self.cache.clear()
             if at_root:
                 self._calibrate(reach)
             sq = self._squash(reach)
@@ -197,7 +219,7 @@ class FBMCTSPolicy:
 
     def __init__(self, fb, z, max_nodes: int, c_puct: float = 1.5,
                  prior_tau: float = 0.5, elo: int = 1800, clock: float = 300.0,
-                 device: str = "cpu"):
+                 device: str = "cpu", cache: bool = True):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -219,7 +241,7 @@ class FBMCTSPolicy:
             return self.fb.score(f, self.z).cpu().numpy()
 
         self.mcts = MCTS(reach, max_nodes=max_nodes, c_puct=c_puct,
-                         prior_tau=prior_tau)
+                         prior_tau=prior_tau, cache={} if cache else None)
 
     def move(self, board: chess.Board, rng: np.random.Generator) -> chess.Move:
         return self.mcts.best_move(board)
