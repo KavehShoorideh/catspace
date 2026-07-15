@@ -49,7 +49,7 @@ def playout(pol, start, tb, rng, max_plies):
 
 
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
-                search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0):
+                search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -66,8 +66,23 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
         s_head = torch.nn.Sequential(torch.nn.Linear(hp["d_in"], 128), torch.nn.ReLU(),
                                      torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
         s_head.load_state_dict(hp["state"]); s_head.eval()
+    kw = {}
+    if rescue:
+        import numpy as _np
+        ev = {}
+        for t in ("certainty_table_demo_tb", "certainty_table_eps05", "certainty_table_r2_K16"):
+            path = Path(f"artifacts/experiments/{t}.json")
+            if not path.exists():
+                continue
+            for r in json.loads(path.read_text())["rows"]:
+                d_ev = ((r["plies"] if r["plies"] is not None else 100.0)
+                        + 8.0 * (-_np.log(max(r["p_hat"], 1.0 / (r["n"] + 2))))) / 50.0
+                n0, d0 = ev.get(r["fen"], (0.0, 0.0))
+                ev[r["fen"]] = (n0 + r["n"], (n0 * d0 + r["n"] * d_ev) / (n0 + r["n"]))
+        kw = dict(evidence=ev, rollout_on_flat=True, tree_reuse=True)
+        print(f"rescue: {len(ev)} evidence states, rollouts+reuse ON")
     pol = make_search_policy(search, fb, z, max_nodes=nodes, beam=beam,
-                             c_puct=c_puct, device=dev, s_head=s_head, g_sharp=g_sharp)
+                             c_puct=c_puct, device=dev, s_head=s_head, g_sharp=g_sharp, **kw)
     mated, plies = [], []
     for i, fen in enumerate(starts):
         rng = np.random.default_rng([seed, i])
@@ -108,6 +123,8 @@ def main():
     ap.add_argument("--c-puct", type=float, default=1.5)
     ap.add_argument("--s-head-b", default=None, help="sharpness head for side B (two-channel readout)")
     ap.add_argument("--g-sharp", type=float, default=1.0, help="risk weight for side B's S penalty")
+    ap.add_argument("--rescue-b", action="store_true",
+                    help="side B: evidence blend + flat/low-conf rollouts + tree reuse")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -124,7 +141,7 @@ def main():
     b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes_b or args.nodes, args.beam,
                         args.max_plies, args.seed, args.device, bank_boards=bank_boards,
                         search=args.search_b, c_puct=args.c_puct,
-                        s_head_path=args.s_head_b, g_sharp=args.g_sharp)
+                        s_head_path=args.s_head_b, g_sharp=args.g_sharp, rescue=args.rescue_b)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
