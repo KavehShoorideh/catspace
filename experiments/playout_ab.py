@@ -49,7 +49,7 @@ def playout(pol, start, tb, rng, max_plies):
 
 
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
-                search="beam", c_puct=1.5):
+                search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -59,8 +59,15 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
         z = embed_bank(fb, bank_boards, dev)             # (m, d) -> soft_min_bank readout
     else:
         z = pay["zgoals"]["MATE_W"]                      # centroid goal
+    s_head = None
+    if s_head_path:
+        import torch
+        hp = torch.load(s_head_path, map_location=dev, weights_only=False)
+        s_head = torch.nn.Sequential(torch.nn.Linear(hp["d_in"], 128), torch.nn.ReLU(),
+                                     torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
+        s_head.load_state_dict(hp["state"]); s_head.eval()
     pol = make_search_policy(search, fb, z, max_nodes=nodes, beam=beam,
-                             c_puct=c_puct, device=dev)
+                             c_puct=c_puct, device=dev, s_head=s_head, g_sharp=g_sharp)
     mated, plies = [], []
     for i, fen in enumerate(starts):
         rng = np.random.default_rng([seed, i])
@@ -99,6 +106,8 @@ def main():
                     help="readout for each side: beam = FBSearchPolicy minimax, mcts = PUCT "
                          "(catspace/nn/mcts.py). Same node budget = matched compute.")
     ap.add_argument("--c-puct", type=float, default=1.5)
+    ap.add_argument("--s-head-b", default=None, help="sharpness head for side B (two-channel readout)")
+    ap.add_argument("--g-sharp", type=float, default=1.0, help="risk weight for side B's S penalty")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -114,7 +123,8 @@ def main():
                         args.seed, args.device, search=args.search_a, c_puct=args.c_puct)
     b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes_b or args.nodes, args.beam,
                         args.max_plies, args.seed, args.device, bank_boards=bank_boards,
-                        search=args.search_b, c_puct=args.c_puct)
+                        search=args.search_b, c_puct=args.c_puct,
+                        s_head_path=args.s_head_b, g_sharp=args.g_sharp)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
