@@ -3230,3 +3230,14 @@ expectation), so historical mate-rates are NOT directly comparable to cached
 runs; paired A/Bs stay matched (both arms cached). Cache key = full FEN; must
 grow a field-version component once the fast MemoryField re-prices mid-game.
 18/18 search tests pass (new: hits>0, bigger tree, same-config determinism).
+
+### Cert-base ladder vs toy specialist: PARITY at all rungs (cached MCTS, n=120)
+200n: 0.500 vs 0.475 ns | 800n: 0.692 vs 0.700 ns | 1600n: 0.733 vs 0.667 ns.
+No promotion on the toy (nothing significant to confirm), but the meaningful
+read: cert-base matched a 10k-state toy-distilled SPECIALIST on its home turf
+with ZERO toy data -- the certainty-in-base-objective signal carries at
+full-board scale without buying the toy region back. Neither model saturated
+at 1600n (both still climbing with budget); specialist converts faster (18 vs
+21 plies). Cache-effect visible vs history: specialist 0.500@200n cached vs
+0.333 uncached. NEXT: cert-base's real test is FULL-BOARD play vs the
+pre-certainty incumbent (the toy specialist never trained there).
