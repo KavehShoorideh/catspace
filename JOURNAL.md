@@ -3370,3 +3370,11 @@ modest; S targets are noisy 3-point fits, improvable with more eps levels.
 RUNNING: g_sharp scale sweep {0, .002, .01, .05} at 200n n=60 (S in nats vs
 reach deltas ~0.01-0.1 -- scale must be found before the ladder), then full
 ladder vs cert_base_full. Stage checkers (eval-only) still queued.
+
+### Two-channel g-sweep at 200n: g INERT, field leans slightly negative
+All arms (g=0/.002/.01/.05, n=60) within noise of each other and -0.07..-0.10
+vs cert_base_full [ns]. Read: purifying d to plies REMOVED the certainty info
+the incumbent's fused metric carried; S-head (+0.26) too weak to restore it at
+readout. Regime rungs (800/1600n, n=120, g=0 and .01) running to complete the
+approved test before any conclusion -- if negative there too, the discussion is
+S-target quality (more eps levels -> tighter S) vs joint (non-frozen) S channel.
