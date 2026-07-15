@@ -3272,3 +3272,11 @@ Tables regenerated from cert_base_full (5 workers, 698 starts x 16-of-32 rollout
 0.31 -> 0.55, within-won gradient +0.534 -> +0.650. Stronger policy => richer
 certainty signal, as the closed-loop design predicts. Distill + ladder next
 (GATE 2: does play compound too?).
+
+### Round B ladder: field best-ever, play positive-lean at 1600n (extending n)
+R2 distill: held-out Spearman -0.135 (cert_base vs own-play targets: still
+anti-correlated on-policy!) -> +0.491 (best any round). Ladder vs cert_base_full:
+200n +0.033 ns | 800n -0.025 ns | 1600n +0.092 CI=[-0.008,+0.200] -- one start
+from CI-real at the deep rung, faster mates (18 vs 21). Extending the 1600n look
+to the full n=200 test set (anytime-valid: e-process permits optional
+continuation, no peeking penalty). Round C (extend base training) queued after.
