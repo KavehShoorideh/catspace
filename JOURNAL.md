@@ -3323,3 +3323,13 @@ largely rim-orbiting, not wrong direction. Mechanism candidates (not guards, per
 Kaveh's rule): near-horizon head for fine rim resolution (FBTwoHorizonPolicy
 exists), or fast-field evidence ("been here, no progress" -> re-price), or
 repetition-state features reaching the certainty targets. Decision for Kaveh.
+
+### Design contract: named concepts are EVAL-ONLY instruments (Kaveh, 2026-07-15)
+While developing/troubleshooting we may CHECK whether the engine hit named
+concepts (won bishop, cornered king, mate) -- but only in OUR offline
+verification of games/subgoals. The engine's play and search never consume
+hand-named concept detectors; plans and subgoals live purely in embedding
+space. Later milestone: concepts LEARNED (discovered structure -- e.g.
+clusters over subgoal embeddings / sparse concept head), with names attached
+only post-hoc by us during verification. Extends the "find mechanisms, don't
+hand-code guards" rule from readouts to concepts.
