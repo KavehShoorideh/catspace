@@ -148,7 +148,16 @@ class MCTS:
         root = _Node(board.copy(stack=False), None)
         root.N = 1
         root.W = self._expand(root, at_root=True)
-        while self.evals_used < self.max_nodes and root.children:
+        # sims bound: budget is counted in NETWORK EVALS, and a simulation
+        # that ends on a terminal consumes none -- when every reachable leaf
+        # is terminal the eval budget alone would never be spent and the
+        # loop would spin forever (2026-07-14: hung a 700-start generation
+        # run 20 starts in). Terminal-only backups are also useless past a
+        # point; cap total simulations at a generous multiple of the budget.
+        sims, max_sims = 0, 32 * self.max_nodes
+        while (self.evals_used < self.max_nodes and root.children
+               and sims < max_sims):
+            sims += 1
             node, path = root, [root]
             while node.children:
                 node = self._select_child(node)
