@@ -3333,3 +3333,19 @@ space. Later milestone: concepts LEARNED (discovered structure -- e.g.
 clusters over subgoal embeddings / sparse concept head), with names attached
 only post-hoc by us during verification. Extends the "find mechanisms, don't
 hand-code guards" rule from readouts to concepts.
+
+### Multi-eps identification (approved): sharpness is REAL and plies-independent
+tb-White tables at eps=0.05/0.10/0.20 (700 starts; 18k/10k/8k states), per-state
+WLS of -ln P-hat on eps over 4,373 states at all levels:
+EXISTENCE intercept median +0.112 (truth 0), 43% within +-0.15 -- identifiable,
+  biased up (3 points, P-hat resolution, linear-link convexity). Rankable, not
+  yet calibrated -- matters for full board where there's no syzygy.
+SHARPNESS S median 1.77 IQR[0.00,4.46]; S-vs-|dtz| Spearman +0.036 CI[+0.001,+0.060]
+  -- ~ZERO: risk is NOT exposure-accumulated; it concentrates in sharp
+  bottlenecks (Kaveh's simple-15-vs-complex-5 intuition, measured). S is nearly
+  orthogonal to plies => sharpness deserves its OWN channel; any constant-lambda
+  fusion of plies and risk is structurally wrong.
+LINEARITY median residual 0.082 (signal span ~0.26), p90 0.326 -- constant-S model
+  holds for the bulk, fat tail of nonlinearity (likely the sharpest states).
+sharpness_table.json persisted (4,373 states with per-state existence + S).
+No builds launched -- results to discussion per the discuss-first rule.
