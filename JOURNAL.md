@@ -3180,3 +3180,20 @@ Note also incumbent varies by start set (0.333 test set vs 0.400 confirmatory) -
 set variance is real, another reason point looks mislead.
 Running: 800n regime look (field should matter more at saturation; FIELD_PLAN
 mandates both budgets; labeled exploratory).
+
+### CONFIRMED at 800n: certainty field promotion -- the program's first real field win
+Regime look (exploratory, test set): incumbent 0.433 vs K16-distilled 0.658,
+diff +0.225 CI=[+0.117,+0.333] e=296.
+CONFIRMATORY (pre-registered, fresh seed-779 frozen set, single-use):
+  0.400 vs 0.608, diff +0.208 CI=[+0.108,+0.317] e=184.66 [SIGNIFICANT]. CONFIRMED.
+Faster mates too (17 vs 24 plies). The full story, in one paragraph:
+the toy was BOTH data-limited AND regime-masked. Fixing either alone showed
+nothing (old 2.7k table @200n: null; big table @200n: ~+0.05 ns). Fixing both --
+10k on-distribution own-play certainty states (fixed-start, MCTS rollouts,
+de-scaffolded) read out at saturation (800n MCTS) -- lifts conversion 0.40->0.61
+CI-real on never-touched starts. The old "~0.35 intrinsic ceiling" was the
+INCUMBENT FIELD's ceiling (and before that, the beam readout's). Kaveh's calls
+vindicated: certainty=closeness reframe, more nodes (1600-instinct), more data,
+fixed-start distribution, e-value discipline.
+Remaining gate before cert_scale_K16.pt becomes the toy incumbent: field-health
+panel (global regression guard) + leakage audit. Running.
