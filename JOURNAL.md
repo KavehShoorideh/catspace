@@ -3265,3 +3265,10 @@ on F: 0.610 -> 0.687 (cert-base), and the trunk-vs-F gap FLIPPED (+0.038 ->
 -0.018): the old bottleneck discarded outcome info, cert-base's F now carries
 more than its trunk. Round B next: closed-loop round 2 (tables from the NEW
 incumbent, distill, ladder -- FIELD_PLAN GATE 2 'does the loop compound?').
+
+### Overnight Round B: R2 generation complete -- the loop's data leg compounds
+Tables regenerated from cert_base_full (5 workers, 698 starts x 16-of-32 rollouts,
+~1.5h): 10,224 kept states. Quality vs round 1: P-hat mean 0.14 -> 0.34, fracMID
+0.31 -> 0.55, within-won gradient +0.534 -> +0.650. Stronger policy => richer
+certainty signal, as the closed-loop design predicts. Distill + ladder next
+(GATE 2: does play compound too?).
