@@ -3417,3 +3417,36 @@ are flat (std<0.05) OR field unvouched (no evidence near state -- Kaveh's
 low-confidence trigger; competence-head hook ready, incumbent has none).
 (3) TREE REUSE -- carry the played child's subtree (visit stats) across moves.
 playout_ab --rescue-b. Smoke (n=12): runs clean. Ladder 800/1600n n=120 running.
+
+### Publication drafts: writing/ (state-of-the-research + journey + 5 posts) — and rescue rung 1
+Kaveh (project context, saved to memory): the goal is learning HUMAN-LIKE
+PLANNING in chess as the verifiable toy domain, ported later to agentic
+planning/robotics; findings will be published (biweekly digest + hopefully
+peer-reviewed articles). First drafts built from ALL documentation (HEAD +
+git history mined era-by-era): writing/state_of_the_research.md (hypotheses
+H1 FB-captures-field / H2 certainty-priced-loss -> verdict-backed claims,
+methods-in-prose: paired deterministic playouts, bootstrap CIs, e-process
+usage incl. composition e=539 and optional stopping, confirmatory protocol,
+regime ladder, leakage audit; data+reproduction pointers -> new README
+section "Reproducing the journaled results"), writing/research_journey.md
+(disproven/inconclusive hypotheses only, bugs excluded, eras 0-6 + 6
+cross-cutting lessons), 5 single-topic posts (e-values how-to; regimes;
+instrument!=objective; certainty-weighted distance; oracle discipline).
+Figures: experiments/viz/article_figures.py -> writing/figures/*.png (6
+figures; every number either read live from artifacts/experiments/ or carried
+with its JOURNAL verdict provenance inline; legibility checked by rendering).
+NOTE: fig_proxy_vs_play deliberately reports the r17 DISSOCIATION (gen2 best
+rho of its era plays 0.12 below incumbent) rather than an n=5 correlation --
+adding round-18's plygap point (high rho AND high play) would make a naive
+correlation read positive; the honest claim is "insufficient/doesn't rank",
+not "anti-correlated".
+
+RESCUE ladder rung 1 (pre-registered bar: 800n conversion >=0.85 from 0.70,
+repetition failures halved, no regression on won starts):
+PLAYOUT_AB RESCUE_800n mate-rate A=0.700 vs B=0.625  diff=-0.075
+CI=[-0.175,+0.025]  e=0.34 (n=120, deterministic defender; plies-to-mate
+A=21 B=28) [ns] -- FAILS the bar: no gain, negative lean, SLOWER mates (28
+vs 21). The rescue trio as wired does not rescue at 800n. 1600n rung running;
+diagnosis discussion after it lands (candidates: evidence tables mostly
+off-trajectory at 800n depth; 0.5/0.5 rollout blend diluting a good boot
+value; reuse+evidence interaction). No further builds pending discussion.

@@ -75,6 +75,41 @@ python experiments/build_competence_map.py --ckpt data/derived/run.pt --out data
 python experiments/adaptive_vs_uniform.py  --ckpt data/derived/run.pt --competence data/derived/competence_map.npz
 ```
 
+## Reproducing the journaled results
+
+Every number in JOURNAL.md and in `writing/` comes from a printed `VERDICT`
+line of a script in `experiments/`; this section maps result → data → command.
+
+**Fixed test sets and the confirmatory registry.** All toy-endgame evaluations
+run on git-tracked position sets in `artifacts/experiments/`:
+`krrkbp_fixed_train_n700.json` / `krrkbp_fixed_test_n200.json` (minted by
+`gen_toy_sets.py` from the canonical start, seed-pinned) and the single-use
+confirmatory sets `confirmatory_krrkbp_seed77*_n120.json` (minted by
+`gen_confirmatory_starts.py`, which refuses to reuse a consumed seed;
+`data_registry.json` records which sets are consumed and by which result).
+
+**Certainty tables** (the own-play / tb-White rollout statistics the certainty
+work distills from) are the `certainty_table_*.json` files, rebuilt by
+`certainty_rollouts.py` (generation, `--dump-rollouts`) +
+`table_from_dump.py` (aggregation + quality gates). Sharpness identification:
+`sharpness_identification.py` → `sharpness_table.json`.
+
+**Play comparisons** (paired, deterministic defender, CI + e-value):
+`playout_ab.py --ckpt-a … --ckpt-b … --search-a mcts --search-b mcts
+--nodes {200,800,1600} --fixed-set <set.json>`. Full-board head-to-heads and
+the leakage-audit-gated arena: `experiment_report.py`. Field-health probes:
+`qm_fitness_probe.py` → `qm_fitness_*.json`.
+
+**Checkpoints** live in `data/derived/` (git-ignored; retrain via the commands
+above — every checkpoint's provenance dict records the exact script, args, and
+git commit that produced it). The current incumbent is
+`data/derived/sep/cert_base_full.pt` (155k steps, certainty-in-base-objective;
+see JOURNAL 2026-07-15 "PROMOTED").
+
+**Article figures**: `python experiments/viz/article_figures.py` regenerates
+`writing/figures/*.png` from the artifacts above; verdict-sourced numbers in
+that script carry their JOURNAL provenance inline.
+
 ## Inspecting results
 
 - **Numbers:** read the JSON in `artifacts/experiments/`, or diff runs with
