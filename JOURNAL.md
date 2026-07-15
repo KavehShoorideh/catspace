@@ -3293,3 +3293,18 @@ the toy-distillable signal -- the loop compounds DATA quality strongly
 Morning recommendation forming: the loop's next round belongs at FULL BOARD
 (self-play data into the base objective), not another toy lap.
 Round C launching: extend cert-base training 155k -> 215k, h2h after.
+
+### Round C: REGRESSION -- 215k loses to 155k h2h; incumbent restored
+Two-seed h2h (MCTS 400n): 0.325 (+6=14-20, e=8.24) and 0.325 (+7=12-21, e=5.81)
+-- composed e~48 AGAINST the extension. VAL/slopes improved while play regressed:
+the 2026-07-11 lesson again (retrieval != planner quality; extended schedules
+overcook). cert_base_full.pt RESTORED from the 155k snapshot (taken minutes
+before the in-place overwrite -- the check-early/snapshot discipline paid);
+215k kept as cert_base_215k_regressed.pt for autopsy. 155k stays incumbent.
+OVERNIGHT WRAP: A) rank ~10/64, don't widen; outcome AUC .61->.69, bottleneck
+flip. B) loop data-leg compounds hard (P-hat .34, gradient +.650, field +.491)
+but play leg ns at round 2 (GATE 2 not passed; thrice-repeated ~+0.08 lean at
+1600n). C) more steps = worse play, CI-real. The three results TOGETHER point
+one direction: the binding constraint is now the DATA the base objective eats,
+not steps, not dims, not toy rounds -- next lever is full-board self-play
+certainty data into the base objective. Kaveh decision on waking.
