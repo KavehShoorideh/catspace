@@ -45,5 +45,17 @@
  "confirmatory_krrkbp_seed780_n120.json": {
   "role": "CONSUMED confirmatory (2026-07-15 overnight, cert_r2 @1600n -- ns +0.075, GATE 2 not passed). Single-use.",
   "n": 120
+ },
+ "mate_in_1_n500.json": {
+  "role": "EVAL-ONLY mate-in-N benchmark (lichess puzzles, solution-line verified; full-board -- NEVER train, it is the training distribution)",
+  "n": 500
+ },
+ "mate_in_2_n500.json": {
+  "role": "EVAL-ONLY mate-in-N benchmark (lichess puzzles, solution-line verified; full-board -- NEVER train, it is the training distribution)",
+  "n": 500
+ },
+ "mate_in_3_n500.json": {
+  "role": "EVAL-ONLY mate-in-N benchmark (lichess puzzles, solution-line verified; full-board -- NEVER train, it is the training distribution)",
+  "n": 500
  }
 }
