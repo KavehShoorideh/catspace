@@ -3612,3 +3612,26 @@ to the r2-committor range (~0.70 tie), the joint d_D head is the drag ->
 separate/gentler d_D arrangement; if still negative, the cross-policy table
 is the drag -> distill committor-generated tables only into the committor
 lineage (on-policy loop discipline).
+
+### Full joint training (toy) + mate viewer: watch it mate -- and watch the rim hold the failures
+FULL JOINT (Kaveh: "see how it mates after a full joint training"): 12k-step
+budget, early stop 3500, d_W+d_D joint, committor lineage (r3 own-play table
+into committor.pt -- on-policy discipline):
+VERDICT COMMITTOR_SPEARMAN pole -0.194 -> head +0.662[+0.637,+0.685]  (best ever)
+VERDICT DRAW_COMMITTOR_SPEARMAN head +0.681[+0.657,+0.701]            (best ever)
+VERDICT RIM_RESOLUTION pole +0.081 -> head +0.097[-0.034,+0.171]      (WEAK; trend
+  r2 +0.330 -> r3-multi +0.128 -> joint +0.097 is the open worry)
+VERDICT RECALIBRATION isotonic ECE 0.227 -> 0.067, span [0.12,0.75].
+Mate-attempt viewer rebuilt for the committor arch (committor readout,
+calibrated P_W strip, EVAL-ONLY stage timelines in labels) ->
+artifacts/generated/mate_attempts_committor.html. Games @800n:
+  MATE in 13 [xbishop@1 mate_edge@9] | MATE in 11 [xbishop@0 mate_edge@7]
+  MATE in 13 [xbishop@1 mate_edge@9] | FAIL 3fold [xpawn@25 corner@38] | FAIL 3fold
+The mating PLAN is legible in the stage timelines: win the bishop
+immediately, drive to the edge, mate -- exactly the concept sequence hoped
+for, never named to the engine. The failures are the rim signature again:
+one game CAPTURES the pawn and CORNERS the king (ply 38) and still bleeds to
+threefold -- conversion's last mile is precisely the weak-rim region the
+RIM_RESOLUTION trend flags. Next lever candidates (discussion): rim-weighted
+distill targets (upweight plies<=8 rows), or per-visit (fen,rep)-keyed
+targets now that dumps carry rep counts.
