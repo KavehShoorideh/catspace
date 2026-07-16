@@ -31,12 +31,31 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
+def outcome_class(rec):
+    """Boundary the rollout hit (committor targets). Old dumps (no `reason`)
+    degrade to WIN / OTHER -- per-draw-surface targets need a v2 dump."""
+    if rec.get("won"):
+        return "WIN"
+    reason = rec.get("reason")
+    if reason is None:
+        return "OTHER"
+    return {"CHECKMATE": "LOSS",             # not won + checkmate = White got mated
+            "STALEMATE": "DRAW_STALE",
+            "INSUFFICIENT_MATERIAL": "DRAW_INSUF",
+            "THREEFOLD_REPETITION": "DRAW_3FOLD",
+            "FIVEFOLD_REPETITION": "DRAW_3FOLD",
+            "FIFTY_MOVES": "DRAW_50",
+            "SEVENTYFIVE_MOVES": "DRAW_50",
+            "MAX_PLIES": "CAP"}.get(reason, "OTHER")
+
+
 def build(dump_paths, max_rollouts=None, min_visits=4):
     """Aggregate one or more dump files (parallel workers write separate
-    dumps; si is global, so merging is exact)."""
+    dumps; si is global, so merging is exact). Traj entries are [fen, ply]
+    (old dumps) or [fen, ply, rep] (v2, repetition count at visit time)."""
     if isinstance(dump_paths, (str, Path)):
         dump_paths = [dump_paths]
-    stats = defaultdict(lambda: [0, 0, []])
+    stats = defaultdict(lambda: [0, 0, [], defaultdict(int), 0])
     starts = set()
     rollouts = 0
     for dump_path in dump_paths:
@@ -50,14 +69,19 @@ def build(dump_paths, max_rollouts=None, min_visits=4):
                     continue
                 starts.add(rec["si"])
                 rollouts += 1
-                for fen, ply in rec["traj"]:
+                oc = outcome_class(rec)
+                for entry in rec["traj"]:
+                    fen, ply, rep = (entry if len(entry) == 3 else (*entry, 0))
                     s = stats[fen]
                     s[0] += 1
                     if rec["won"]:
                         s[1] += 1
                         s[2].append(rec["end_ply"] - ply)
+                    s[3][oc] += 1
+                    s[4] = max(s[4], rep)
     rows = [dict(fen=f, n=v[0], p_hat=v[1] / v[0],
-                 plies=(float(np.mean(v[2])) if v[2] else None))
+                 plies=(float(np.mean(v[2])) if v[2] else None),
+                 outcomes=dict(v[3]), rep_max=v[4])
             for f, v in stats.items() if v[0] >= min_visits]
     return rows, len(starts), rollouts, len(stats)
 
@@ -90,6 +114,14 @@ def main():
               f"frac1 {(p == 1).mean():.2f}  fracMID {mid:.2f} "
               f"[gate >= 0.30: {'PASS' if mid >= 0.30 else 'FAIL'}]")
         print(f"depth:    visits median {np.median(n):.0f}  p90 {np.percentile(n, 90):.0f}")
+        oc = defaultdict(int)
+        for r in rows:
+            for k, v in r.get("outcomes", {}).items():
+                oc[k] += v
+        tot = sum(oc.values())
+        if tot:
+            print("boundaries: " + "  ".join(f"{k} {v/tot:.2f}" for k, v in
+                                             sorted(oc.items(), key=lambda kv: -kv[1])))
     if args.tb_sample and len(rows):
         # kept (>=min-visits) states are ~all tb-WON by construction: Black is
         # tb-optimal (won stays won unless White throws it) and each thrown
