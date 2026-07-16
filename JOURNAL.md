@@ -3580,3 +3580,18 @@ can't fully undo compression; isotonic is the escalation if the
 goal-selection layer needs true [0,1]). Affine stored in the whead payload;
 rank-only consumers ignore it.
 RUNNING: multi-head distill (d_W + d_D, MSE) on the r3 on-policy table.
+
+### R3 distill + isotonic recalibration: first honest probabilities from the field
+R3 multi-head distill (MSE, on the fresh committor-on-policy table):
+VERDICT COMMITTOR_SPEARMAN pole +0.089 -> head +0.610[+0.588,+0.638] (n=1876)
+VERDICT DRAW_COMMITTOR_SPEARMAN head +0.675[+0.651,+0.695] -- FIRST learned
+  draw-surface field (out-of-bounds committor), and it calibrates better in
+  rank than d_W on the same rows.
+VERDICT RIM_RESOLUTION pole -0.016 -> head +0.128[+0.021,+0.218] (weaker than
+  r2's +0.330 -- different table composition, noted not hidden).
+Isotonic recalibration (Kaveh: "monotone doesn't have to mean linear"):
+VERDICT RECALIBRATION method=isotonic ECE 0.228 -> 0.059, span [0.23,0.37] ->
+[0.14,0.87], NLL 0.785 -> 0.616, rank EXACT (eps-affine strictness blend).
+The goal-selection layer's precondition (comparable absolute P across
+fields) is now approximately met on-distribution. R3 ladder (800/1600n,
+n=120 vs cert_base_full) running.
