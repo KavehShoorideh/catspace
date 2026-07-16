@@ -3595,3 +3595,20 @@ VERDICT RECALIBRATION method=isotonic ECE 0.228 -> 0.059, span [0.23,0.37] ->
 The goal-selection layer's precondition (comparable absolute P across
 fields) is now approximately met on-distribution. R3 ladder (800/1600n,
 n=120 vs cert_base_full) running.
+
+### R3 ladder: REGRESSION -- best-ever field metrics, CI-real play loss; attribution run launched
+PLAYOUT_AB COMMITTOR_R3_800n  A=0.700 vs B=0.558 diff=-0.142 CI=[-0.242,-0.042] e=5.86 [SIGNIFICANT against]
+PLAYOUT_AB COMMITTOR_R3_1600n A=0.667 vs B=0.558 diff=-0.108 CI=[-0.225,+0.008] e=0.65 [ns, negative lean]
+(B mates FASTER when it converts: 17 vs 21 plies, both rungs -- narrower but
+crisper win corridors.) committor_r3 REJECTED. The structure-play
+dissociation with a negative sign: d_W +0.610 / d_D +0.675 / best table
+gradient +0.686, and play regressed. TWO levers changed at once (my
+attribution debt, noted at launch time in the code but not resisted):
+(a) joint d_D draw-head training reshaping F (rim resolution fell r2 +0.330
+-> r3 +0.128 -- consistent); (b) the r3 table = committor-POLICY statistics
+distilled into the cert_base_full checkpoint (policy mismatch). Attribution
+run: same r3 table, --no-dhead (single head), 800n rung only. If it recovers
+to the r2-committor range (~0.70 tie), the joint d_D head is the drag ->
+separate/gentler d_D arrangement; if still negative, the cross-policy table
+is the drag -> distill committor-generated tables only into the committor
+lineage (on-policy loop discipline).
