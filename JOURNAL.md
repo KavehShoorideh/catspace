@@ -3471,3 +3471,37 @@ compounding (a)+(b); (d) mechanisms were tested as a bundle -- per-mechanism
 attribution needs single-lever runs IF Kaveh wants to salvage any piece.
 Honest read: rim-orbiting remains open; the rescue-by-runtime-evidence line
 as bundled is rejected at both regimes. cert_base_full remains incumbent.
+
+### COMMITTOR REFORMULATION, short run: every gate green -- best calibration of the project
+Architecture session with Kaveh (design settled in conversation, journal-level
+summary): probability is first-class. d = -ln P, NO lambda, NO plies term
+(order by P; plies dissolve -- no constant per-move hazard exists, per the
+S-vs-|dtz| ~0 finding; length costs only what it actually costs: constraint
+dynamics via augmented state + epistemic hazard ~1/n_eff, the Laplace floor
+named for what it is). Terminal outcomes are SURFACES with touchdown
+semantics (hit anywhere counts), not poles: no goal vector at all -- a
+committor head d_W(s) = -ln P(hit mate-W boundary first) on F, boundary
+conditions from the rules engine. Opponent enters as softmin over reply
+surprisal (probabilistic minimax; hard minimax = infinite-sharpness limit)
+-- Stage 2, not built. Draw boundaries (3fold/stalemate/50-move/insufficient)
+= "out of bounds" surfaces a losing player navigates TOWARD; goal selection
+= thin decision layer over per-boundary P's with the game's scoring rule
+(win 1, draw 0.5) -- NOT a learned value head. Rescue-trio salvage and
+two-channel synthesis lines CLOSED as superseded by this formalism.
+
+Stage 1 short run (committor_distill.py, cert_base_full + joint W-head,
+target -ln max(p_hat, 1/(n+2)) on certainty_table_r2_K16, NCE-mixed,
+early stop step 1500, ~3 min):
+VERDICT COMMITTOR_SPEARMAN pole-baseline -0.112[-0.153,-0.067] -> head +0.603[+0.575,+0.629] (n=2044)
+VERDICT RIM_RESOLUTION (plies<=8, n=241) pole +0.076[-0.029,+0.211] -> head +0.330[+0.250,+0.467]
+The pole distance is ANTI-correlated with pure conversion probability on
+on-policy states (min-semantics optimism, third independent measurement);
+the committor head is the best field calibration of the project (prior best
++0.491 on the easier fused target) and resolves the rim where the pole is
+flat -- the exact mechanism behind the orbit failure. Readout wired:
+FBMCTSPolicy(committor_head=...), playout_ab --committor-b. 11 mcts tests
+pass. Smoke n=12 @800n: 0.917 vs 0.750, plies 18 vs 23 [ns, smoke only].
+LAUNCHING exploratory ladder n=120 @800/1600n vs cert_base_full; if CI-real,
+ONE pre-registered confirmatory on a fresh seed (781+; 777-780 consumed).
+Queued: dumps record termination reason + terminal board -> per-boundary
+d_D/d_B heads; repetition-count input plane (threefold surface visibility).

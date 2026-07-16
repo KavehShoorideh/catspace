@@ -257,7 +257,7 @@ class FBMCTSPolicy:
                  device: str = "cpu", cache: bool = True, s_head=None,
                  g_sharp: float = 0.0, evidence: dict | None = None,
                  evidence_k: float = 4.0, rollout_on_flat: bool = False,
-                 tree_reuse: bool = False):
+                 tree_reuse: bool = False, committor_head=None):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -275,6 +275,11 @@ class FBMCTSPolicy:
             planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
             om = torch.from_numpy(np.tile(omega_row, (len(boards), 1))).to(device)
             f = self.fb.embed_F(planes, om)
+            if committor_head is not None:
+                # committor readout (Kaveh 2026-07-15): the goal is a SURFACE,
+                # not a pole -- reach = -d_W(s) = ln P(hit the mate boundary
+                # first), a learned hitting probability with no goal vector.
+                return -committor_head(f).squeeze(-1).cpu().numpy()
             if self.z.dim() == 2:
                 r = soft_min_bank(self.fb, f, self.z, 0.1)
             else:
