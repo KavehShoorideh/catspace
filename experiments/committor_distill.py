@@ -59,6 +59,11 @@ def main():
     ap.add_argument("--patience", type=int, default=4)
     ap.add_argument("--rim-plies", type=float, default=8.0,
                     help="near-mate subset: rows with observed plies <= this")
+    ap.add_argument("--head-init", default=None,
+                    help="warm-start the W head (and _dhead sibling if present) "
+                         "from an existing *_whead.pt -- continual training of "
+                         "the champion's heads instead of fresh random init "
+                         "each loop round")
     ap.add_argument("--weight-cap", type=float, default=8.0,
                     help="cap on the sqrt(n) evidence weight. On cumulative "
                          "single-root tables, near-root states reach n in the "
@@ -126,6 +131,15 @@ def main():
 
     head = make_head()
     dhead = make_head() if has_outcomes else None
+    if args.head_init:
+        wp = torch.load(args.head_init, map_location=dev, weights_only=False)
+        head.load_state_dict(wp["state"])
+        print(f"W head warm-started from {args.head_init}")
+        dinit = Path(args.head_init.replace("_whead", "_dhead"))
+        if dhead is not None and dinit.exists():
+            dp = torch.load(dinit, map_location=dev, weights_only=False)
+            dhead.load_state_dict(dp["state"])
+            print(f"D head warm-started from {dinit}")
     if dhead is not None:
         td_tr = torch.tensor([target_draw(r) for r in train], dtype=torch.float32, device=dev)
         td_ho = np.array([target_draw(r) for r in hold])
