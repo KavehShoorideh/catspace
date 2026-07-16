@@ -3551,3 +3551,32 @@ the head extracts a direction clustering can't see). LAUNCHING round-2
 generation with the committor policy (v2 dumps: boundary labels + terminal
 boards + rep counts), 5 workers -- then multi-head distill (d_W + d_D) and
 the ladder.
+
+### Committor design v2: end-to-end NLL FALSIFIED; monotone recalibration adopted; round-3 data leg complete
+Kaveh: no formalism duel vs cert_r2 needed -- improve the committor design.
+ROUND-3 GENERATION (committor policy, v2 dumps, 5 workers, ~25 min -- ~4x
+faster than R2): 699 starts, 11,184 rollouts, 224,578 unique states, 9,380
+kept. Quality: P-hat mean 0.41 (R2 0.34, R1 0.14), fracMID 0.53 [PASS],
+within-won gradient Spearman(P-hat, -|dtz|) = +0.686 CI[+0.621,+0.728] --
+BEST of any round; loop data-leg keeps compounding. Boundary mix: WIN_MATE
+0.45 / DRAW_3FOLD 0.46 / DRAW_INSUF 0.07 / LOSS_MATE 0.01 / CAP 0.01.
+Terminal boards + rep counts now exist at scale (surface-atlas unblocked).
+
+DESIGN ATTRIBUTION (loss change isolated on the OLD r2 table):
+End-to-end smoothed-binomial NLL (proper score; principled hope: calibration
++ natural n-weighting + Laplace floor as pseudo-counts):
+VERDICT COMMITTOR_SPEARMAN pole -0.112 -> head +0.051[+0.009,+0.095]  FALSIFIED
+  (vs MSE's +0.603 on identical data); span [0.29,0.34] -- the head collapsed
+  to the base rate: with a shared fine-tuned trunk, the fastest NLL descent is
+  predicting the marginal, not using features. --loss nll kept for reference,
+  default reverted to mse.
+RESOLUTION -- decouple rank from scale: committor_recalibrate.py fits a
+2-param MONOTONE affine in d-space (d' = a*d + b <=> P' = e^-b * P^a, Platt
+in log space) by NLL on train rows; rank preserved EXACTLY, play unchanged
+(MCTS squash is per-node shift/scale invariant):
+VERDICT RECALIBRATION a=1.396 b=-0.985  held-out ECE 0.174 -> 0.126,
+NLL 0.7054 -> 0.6425, span [0.18,0.35] -> [0.25,0.62]. Partial fix (affine
+can't fully undo compression; isotonic is the escalation if the
+goal-selection layer needs true [0,1]). Affine stored in the whead payload;
+rank-only consumers ignore it.
+RUNNING: multi-head distill (d_W + d_D, MSE) on the r3 on-policy table.
