@@ -3787,3 +3787,18 @@ DECISION: no promotion now (strict rule kept); composed evidence recorded
 as a strong prior. The question is about to be superseded: the
 committor-base full training (60k/155k, healthy) evaluates with this
 readout natively -- the purpose-built head settles it.
+
+### Mate-in-N benchmarks built + incumbent baseline: the flatness staircase, powered, full-board
+Permanent EVAL-ONLY sets mined from the Lichess puzzle DB (mine_mate_puzzles.py:
+theme filter + solution-line replay verification; 500 positions each, registered):
+mate_in_{1,2,3}_n500.json. Runner: mate_bench.py (field-only top-move-mates +
+search vs full-strength depth-12 SF defender).
+INCUMBENT BASELINE (cert_base_full + its phead readout, n=120/set, 800n):
+VERDICT MATE_BENCH_INCUMBENT mateIn1 FIELD-ONLY top-move-mates 15/120 = 0.125
+VERDICT MATE_BENCH_INCUMBENT mateIn1 SEARCH@800n 120/120 = 1.000
+VERDICT MATE_BENCH_INCUMBENT mateIn2 SEARCH@800n  51/120 = 0.425
+VERDICT MATE_BENCH_INCUMBENT mateIn3 SEARCH@800n  17/120 = 0.142
+The rim flatness measured at full board: the field alone finds the mating
+move 1-in-8; search fully compensates at depth 1, half at depth 2, barely at
+depth 3. This is the BEFORE axis for the committor-base checkpoint (124k/155k,
+phead CE 0.635 and descending).
