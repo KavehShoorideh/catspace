@@ -3727,3 +3727,33 @@ pole readout vs phead-committor readout -- the zero-training promotion
 candidate. Kaveh's rules journaled to memory: conditional rejections (keep
 flag-gated mechanisms, re-test after field promotions); self-contained
 weekly-report style.
+
+### Zero-training readout ladder + staircase mechanism + committor-base launched
+PHEAD-COMMITTOR ladder (same incumbent both sides, only the readout differs;
+B = reach from the full-board outcome head, -ln P_win, no goal vector):
+PLAYOUT_AB PHEAD_COMMITTOR_800n  A=0.700 vs B=0.758 diff=+0.058 CI=[-0.025,+0.150] [ns] plies 18v21
+PLAYOUT_AB PHEAD_COMMITTOR_1600n A=0.667 vs B=0.750 diff=+0.083 CI=[-0.008,+0.183] [ns] plies 18v21
+Positive lean both rungs, faster mates, one game from CI-real at 1600n;
+n=200 continuation running (anytime-valid). A readout costing ZERO training
+matches everything the toy campaign produced.
+STAIRCASE DIAGNOSTIC (rim_staircase.py, committed) -- Kaveh's flatness
+question answered with data, his wall argument CONFIRMED, my saturation
+story corrected: (1) at the failing mate-in-4 position the best PROGRESS
+move ranks #7/18 and the field PREFERS tempo-wasters (gap -0.044); (2) the
+learned d_W is FLAT vs true DTZ on random KRRvk wins (Spearman -0.011,
+n=379); (3) but the TARGET is NOT flat: empirical P-hat falls 0.87->0.73
+across dtz 1->8 (Spearman +0.291 CI[+0.163,+0.507]) -- the gradient exists
+and is WALL-GENERATED (rollouts die at threefold/cap on shuffle lines),
+exactly Kaveh's point that in a guaranteed win only the draw walls make
+waste costly. The field misses it because we erase the wall 3x: (a) tables
+aggregate P-hat by fen, blurring repetition history; (b) rep plane trained
+on rep-blind targets = inert; (c) in-search boards carry no history -- the
+search cannot see a threefold forming in its own lines. Fix stack for the
+iterate-until-mechanism directive: (fen,rep)-keyed targets, live rep plane,
+path-aware in-search threefold detection, d_D clearance as the wall-sensor.
+LAUNCHED: --committor-base training mode (3-class outcome head = multinomial
+W/D/L committor in the base objective, no pole term, no goal vectors) --
+short run 5k steps first per protocol, then the full run. Kaveh's plan:
+full-board train (human/sf/self-play) -> iterate mate-in-N isolation until
+the flatness has a mechanism; mine Lichess puzzle DB (mateIn1/2/3 themes)
+for permanent benchmark sets.
