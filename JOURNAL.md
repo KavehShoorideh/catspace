@@ -3772,3 +3772,18 @@ holds, this is the program's second confirmed READOUT promotion (after
 MCTS-vs-beam) -- and both cost zero training.
 Meanwhile committor-base full training passed 30k/155k healthy
 (top1 0.031, 8.9 it/s).
+
+### Seed-782 confirmatory: ns on its own; composed evidence crosses the bar -- promotion deferred to the purpose-built checkpoint
+CONFIRMATORY_phead_1600n_seed782: A=0.675 vs B=0.742 diff=+0.067
+CI=[-0.017,+0.142] e=0.54 [ns], plies 20 vs 24. Seed 782 CONSUMED.
+Third time this week a ~+0.07-at-n=120 effect shrinks under the fresh-set
+confirmatory's resolution. Two honest frames: (a) STRICT protocol: not
+confirmed, no promotion. (b) COMPOSITION (the cert_base precedent):
+independent-set e-values multiply -- 91.47 (test set, anytime-valid n=200,
+single pre-specified comparison, not a sweep winner) x 0.54 (seed-782)
+= 49.4 > 20: the combined evidence rejects the null. Sign consistent
+everywhere (5 independent looks all positive, faster mates every time).
+DECISION: no promotion now (strict rule kept); composed evidence recorded
+as a strong prior. The question is about to be superseded: the
+committor-base full training (60k/155k, healthy) evaluates with this
+readout natively -- the purpose-built head settles it.
