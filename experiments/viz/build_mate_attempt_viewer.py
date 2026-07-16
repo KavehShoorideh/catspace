@@ -62,13 +62,21 @@ def main():
     zW = pay["zgoals"]["MATE_W"]
     zW = zW.to(dev).float() if torch.is_tensor(zW) else torch.as_tensor(
         np.asarray(zW), dtype=torch.float32, device=dev)
-    whead, iso = None, None
+    whead, iso, dhead = None, None, None
     if args.whead:
         wp = torch.load(args.whead, map_location=dev, weights_only=False)
         whead = torch.nn.Sequential(torch.nn.Linear(wp["d_in"], 128), torch.nn.ReLU(),
                                     torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
         whead.load_state_dict(wp["state"]); whead.eval()
         iso = wp.get("iso")
+        # draw committor rides along when its head exists next to the W head
+        dpath = Path(args.whead.replace("_whead", "_dhead"))
+        if dpath.exists():
+            dp = torch.load(dpath, map_location=dev, weights_only=False)
+            dhead = torch.nn.Sequential(torch.nn.Linear(dp["d_in"], 128), torch.nn.ReLU(),
+                                        torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
+            dhead.load_state_dict(dp["state"]); dhead.eval()
+            print(f"draw-committor strip on: {dpath} (raw exp(-d_D), uncalibrated)")
     else:
         hp = torch.load(args.phead, map_location=dev, weights_only=False)
         phead = EvalHead(d_in=hp["d_in"]).to(dev)
@@ -83,20 +91,23 @@ def main():
             pl = torch.from_numpy(feature_planes(packed, meta)).to(dev)
             om = torch.from_numpy(np.tile(om_row, (len(boards), 1))).to(dev)
             f = fb.embed_F(pl, om)
+            pd = None
             if whead is not None:
                 d = whead(f).squeeze(-1).cpu().numpy()
                 pw = (np.interp(d, iso["x"], iso["y"]) if iso
                       else np.exp(-np.maximum(d, 1e-4)))
+                if dhead is not None:
+                    pd = np.exp(-np.maximum(dhead(f).squeeze(-1).cpu().numpy(), 1e-4))
             else:
                 d = fb.distance_matrix(f, zW[None, :])[:, 0].cpu().numpy()
                 pw = torch.softmax(phead(f), dim=1)[:, 0].cpu().numpy()
-        return f.cpu().numpy(), d, pw
+        return f.cpu().numpy(), d, pw, pd
 
     rows = json.loads(Path(args.table).read_text())["rows"]
     rng = np.random.default_rng(0)
     bg_rows = [rows[i] for i in rng.choice(len(rows), size=min(args.bg_sample, len(rows)),
                                            replace=False)]
-    F_bg, _, _ = embed([chess.Board(r["fen"]) for r in bg_rows])
+    F_bg, _, _, _ = embed([chess.Board(r["fen"]) for r in bg_rows])
     print(f"fitting UMAP on {len(bg_rows)} table states...")
     um = UMAP(n_neighbors=30, min_dist=0.3, random_state=0).fit(F_bg)
     bg_xy = um.embedding_
@@ -129,7 +140,7 @@ def main():
         if not won and fails >= args.n_fails:
             continue
         wins, fails = wins + int(won), fails + int(not won)
-        F, d, pw = embed(boards)
+        F, d, pw, pd = embed(boards)
         xy = um.transform(F)
         # named-stage timeline (EVAL-ONLY instruments, per the design contract):
         # first ply each concept fires, appended to the game label
@@ -146,8 +157,11 @@ def main():
                    + (f"  [{stages}]" if stages else "")),
             won=won,
             moves=[dict(san=s, svg=board_svg(bd, lastmove=bd.peek() if bd.move_stack else None, size=360),
-                        d=float(dd), p=float(pp), x=float(x), y=float(y))
-                   for s, bd, dd, pp, (x, y) in zip(sans, boards, d, pw, xy)]))
+                        d=float(dd), p=float(pp), x=float(x), y=float(y),
+                        **({"pd": float(pdd)} if pdd is not None else {}))
+                   for s, bd, dd, pp, pdd, (x, y)
+                   in zip(sans, boards, d, pw,
+                          pd if pd is not None else [None] * len(d), xy)]))
         print(f"  game {len(games)}: {games[-1]['label']} ({len(boards)} positions)")
     tb.close()
 
