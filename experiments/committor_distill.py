@@ -10,8 +10,15 @@ crossed the surface SOMEWHERE, that's all the target encodes), and no
 plies/lambda fusion (pure nats; length enters only through what it actually
 costs, which the rollout outcomes already contain).
 
-Target per table row: t(s) = -ln max(p_hat, 1/(n+2)) -- the Laplace floor is
-the epistemic hazard (finite evidence can never certify P=1 or P=0).
+Loss (v2, default --loss nll): Beta(1,1)-smoothed binomial NLL per state --
+each row is k wins of n rollouts, so
+    loss = -[(k+1) ln P + (n-k+1) ln(1-P)],  P = exp(-d_head)
+A proper scoring rule: its optimum IS the true probability, so calibration
+comes with rank (the v1 MSE-on--lnP head ranked well but compressed to
+[0.19,0.37]); n carries the evidence weight naturally (no sqrt(n) hack);
+the pseudo-counts are the epistemic floor on BOTH ends (finite evidence
+never certifies P=0 or P=1). --loss mse keeps the v1 objective for
+reference. Early stop on held-out NLL (rewards rank AND scale).
 
 Gates printed as VERDICTs:
   1. held-out Spearman(head, t) vs the incumbent POLE-distance baseline
@@ -52,6 +59,12 @@ def main():
     ap.add_argument("--patience", type=int, default=4)
     ap.add_argument("--rim-plies", type=float, default=8.0,
                     help="near-mate subset: rows with observed plies <= this")
+    ap.add_argument("--loss", choices=("mse", "nll"), default="mse",
+                    help="mse = regression on -lnP targets (DEFAULT -- rank +0.603); "
+                         "nll = end-to-end smoothed binomial likelihood, FALSIFIED "
+                         "2026-07-15 (head collapsed to base rate, rank +0.05; kept "
+                         "for reference). Calibrate scale post-hoc with "
+                         "committor_recalibrate.py instead (monotone, rank-exact).")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
@@ -111,6 +124,29 @@ def main():
     t_tr = torch.tensor([target(r) for r in train], dtype=torch.float32, device=dev)
     w_tr = torch.tensor([np.sqrt(r["n"]) for r in train], dtype=torch.float32, device=dev)
     w_tr = w_tr / w_tr.mean()
+    # binomial evidence (v2 NLL loss): k wins of n rollouts per state
+    n_tr = torch.tensor([r["n"] for r in train], dtype=torch.float32, device=dev)
+    k_tr = torch.tensor([r["p_hat"] * r["n"] for r in train], dtype=torch.float32, device=dev)
+    if dhead is not None:
+        kd_tr = torch.tensor([sum(v for c, v in r["outcomes"].items() if c.startswith("DRAW"))
+                              for r in train], dtype=torch.float32, device=dev)
+    k_ho = np.array([r["p_hat"] * r["n"] for r in hold])
+    n_ho = np.array([r["n"] for r in hold])
+
+    def nll(d, k, n):
+        """Beta(1,1)-smoothed binomial NLL of P = exp(-d), normalized per unit
+        of evidence (sum/sum keeps between-state n-weighting while holding the
+        overall scale ~E[d], so the NCE mixing term keeps its protective
+        weight). ln(1-P) = log1p(-exp(-d)); d floored for numerics."""
+        d = d.clamp(min=1e-4)
+        per = (k + 1) * d - (n - k + 1) * torch.log1p(-torch.exp(-d))
+        return per.sum() / (n + 2).sum()
+
+    def nll_np(d, k, n):
+        d = np.maximum(d, 1e-4)
+        per = (k + 1) * d - (n - k + 1) * np.log1p(-np.exp(-d))
+        return float(per.sum() / (n + 2).sum())
+
     pl_tr, om_tr = encode(train)
     pl_ho, om_ho = encode(hold)
     t_ho = np.array([target(r) for r in hold])
@@ -145,10 +181,15 @@ def main():
         idx = torch.from_numpy(rng.integers(0, ntr, size=args.batch)).to(dev)
         f = fb.embed_F(pl_tr[idx], om_tr[idx])
         pred = head(f).squeeze(-1)
-        cert = (w_tr[idx] * (pred - t_tr[idx]) ** 2).mean()
-        if dhead is not None:
-            pred_d = dhead(f).squeeze(-1)
-            cert = cert + (w_tr[idx] * (pred_d - td_tr[idx]) ** 2).mean()
+        if args.loss == "nll":
+            cert = nll(pred, k_tr[idx], n_tr[idx])
+            if dhead is not None:
+                cert = cert + nll(dhead(f).squeeze(-1), kd_tr[idx], n_tr[idx])
+        else:
+            cert = (w_tr[idx] * (pred - t_tr[idx]) ** 2).mean()
+            if dhead is not None:
+                pred_d = dhead(f).squeeze(-1)
+                cert = cert + (w_tr[idx] * (pred_d - td_tr[idx]) ** 2).mean()
         try:
             batch = next(it)
         except StopIteration:
@@ -161,9 +202,15 @@ def main():
         opt.zero_grad(); loss.backward(); opt.step()
         if step % args.eval_every == 0:
             d_head, _ = readouts()
-            r, lo, hi = spearman_ci(d_head, t_ho)
-            print(f"step {step}  cert {float(cert):.4f}  nce {float(nce):.3f}  "
-                  f"held-out rho {r:+.3f}", flush=True)
+            rho_now, _, _ = spearman_ci(d_head, t_ho)
+            if args.loss == "nll":
+                r = -nll_np(d_head, k_ho, n_ho)      # maximize -NLL (proper score)
+                print(f"step {step}  cert {float(cert):.4f}  nce {float(nce):.3f}  "
+                      f"held-out NLL {-r:.4f}  rho {rho_now:+.3f}", flush=True)
+            else:
+                r = rho_now
+                print(f"step {step}  cert {float(cert):.4f}  nce {float(nce):.3f}  "
+                      f"held-out rho {rho_now:+.3f}", flush=True)
             if r > best_r:
                 best_r, stale = r, 0
                 best_state = ({k: v.detach().cpu().clone() for k, v in fb.state_dict().items()},
@@ -184,6 +231,14 @@ def main():
     h1 = spearman_ci(d_head, t_ho)
     print(f"VERDICT COMMITTOR_SPEARMAN pole-baseline {b0[0]:+.3f}[{b0[1]:+.3f},{b0[2]:+.3f}] "
           f"-> head {h1[0]:+.3f}[{h1[1]:+.3f},{h1[2]:+.3f}] (n={len(hold)})")
+    # calibration verdict (the v1 failure mode: rank without scale)
+    P_pred = np.exp(-np.maximum(d_head, 1e-4))
+    p_emp_ho = k_ho / n_ho
+    order = np.argsort(P_pred)
+    bins = np.array_split(order, 10)
+    ece = float(np.mean([abs(P_pred[b].mean() - p_emp_ho[b].mean()) for b in bins if len(b)]))
+    print(f"VERDICT COMMITTOR_CALIBRATION span [{P_pred.min():.2f},{P_pred.max():.2f}] "
+          f"(empirical [0,1])  ECE(10 bins) {ece:.3f}  held-out NLL {nll_np(d_head, k_ho, n_ho):.4f}")
     if rim_ho.sum() >= 30:
         rb = spearman_ci(d_pole[rim_ho], t_ho[rim_ho])
         rh = spearman_ci(d_head[rim_ho], t_ho[rim_ho])
