@@ -103,6 +103,13 @@ def main():
     ap.add_argument("--probe-games", type=int, default=32)
     ap.add_argument("--probe-nodes", type=int, default=200)
     ap.add_argument("--gate-slack", type=float, default=0.02)
+    ap.add_argument("--rim-slack", type=float, default=0.12,
+                    help="separate (wider) slack for the rim gate: its held-out "
+                         "subset is tens of rows, so round-to-round swings of "
+                         "~0.1 are sampling noise (measured r1-r3: +.26/-.12/+.01)")
+    ap.add_argument("--resume", action="store_true",
+                    help="glob this tag's existing round dumps so a restarted "
+                         "loop keeps the cumulative table")
     ap.add_argument("--root-fen", default=KRRKBP_FIXED_START)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="auto")
@@ -114,6 +121,9 @@ def main():
     champ_whead = args.ckpt_in.replace(".pt", "_whead.pt")
     best_rho, best_rim = -np.inf, -np.inf
     dumps = []
+    if args.resume:
+        dumps = sorted(str(p) for p in EXP.glob(f"rollout_dump_{args.tag}_r*_w*.jsonl"))
+        print(f"resume: {len(dumps)} existing dumps for tag {args.tag}")
 
     for r in range(1, args.rounds + 1):
         print(f"===== ROUND {r} (champion: {champ}) =====", flush=True)
@@ -160,7 +170,7 @@ def main():
 
         # 4. gates + probe
         advanced = (rho >= best_rho - args.gate_slack
-                    and (np.isnan(rim) or rim >= best_rim - args.gate_slack))
+                    and (np.isnan(rim) or rim >= best_rim - args.rim_slack))
         cand_whead = cand.replace(".pt", "_whead.pt")
         conv = root_probe(cand if advanced else champ,
                           cand_whead if advanced else champ_whead,
