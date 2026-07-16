@@ -217,7 +217,7 @@ def main():
         cand = f"data/derived/sep/{args.tag}_r{r}.pt"
         out = run([PY, "-u", "experiments/committor_distill.py", "--loss", "mse",
                    "--table", str(table), "--ckpt-in", champ, "--ckpt-out", cand,
-                   "--head-init", champ_whead,
+                   "--head-init", champ_whead, "--train-min-n", "12",
                    "--steps", str(args.distill_steps), "--eval-every", "500",
                    "--patience", "4", "--device", args.device],
                   Path(f"/tmp/{args.tag}_distill_r{r}.log"))
