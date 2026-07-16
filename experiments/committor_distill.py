@@ -59,6 +59,13 @@ def main():
     ap.add_argument("--patience", type=int, default=4)
     ap.add_argument("--rim-plies", type=float, default=8.0,
                     help="near-mate subset: rows with observed plies <= this")
+    ap.add_argument("--weight-cap", type=float, default=8.0,
+                    help="cap on the sqrt(n) evidence weight. On cumulative "
+                         "single-root tables, near-root states reach n in the "
+                         "thousands -- uncapped sqrt(n) concentrates the loss "
+                         "~100x on the opening shell and warps F exactly where "
+                         "every game passes (root-loop r7/r8: field-better "
+                         "candidates with play crashed to 0.61/0.125)")
     ap.add_argument("--no-dhead", action="store_true",
                     help="skip the d_D draw head even on v2 tables (attribution: "
                          "isolate table change from joint-head change)")
@@ -125,7 +132,8 @@ def main():
         print("v2 table (per-boundary outcomes): training d_D draw-committor head too")
 
     t_tr = torch.tensor([target(r) for r in train], dtype=torch.float32, device=dev)
-    w_tr = torch.tensor([np.sqrt(r["n"]) for r in train], dtype=torch.float32, device=dev)
+    w_tr = torch.tensor([min(np.sqrt(r["n"]), args.weight_cap) for r in train],
+                        dtype=torch.float32, device=dev)
     w_tr = w_tr / w_tr.mean()
     # binomial evidence (v2 NLL loss): k wins of n rollouts per state
     n_tr = torch.tensor([r["n"] for r in train], dtype=torch.float32, device=dev)
