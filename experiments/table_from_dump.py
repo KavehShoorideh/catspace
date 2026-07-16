@@ -32,14 +32,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def outcome_class(rec):
-    """Boundary the rollout hit (committor targets). Old dumps (no `reason`)
-    degrade to WIN / OTHER -- per-draw-surface targets need a v2 dump."""
-    if rec.get("won"):
-        return "WIN"
+    """Boundary the rollout hit (committor targets). The WIN boundary is a
+    UNION of surfaces -- mate and opponent flag-fall (Kaveh 2026-07-15: "win
+    outcomes should include mate and timeout"); they're recorded as distinct
+    sub-classes because they're reached by different plans (mate by
+    conversion, timeout by survive-under-clock), while the d_W committor
+    target is P(any WIN_*) -- touchdown semantics over the union. Untimed
+    generators never emit TIMEOUT; timed harnesses must record
+    reason="TIMEOUT" with `won` set from who flagged. Old dumps (no
+    `reason`) degrade to WIN_MATE / OTHER."""
     reason = rec.get("reason")
+    if rec.get("won"):
+        return "WIN_TIMEOUT" if reason == "TIMEOUT" else "WIN_MATE"
     if reason is None:
         return "OTHER"
-    return {"CHECKMATE": "LOSS",             # not won + checkmate = White got mated
+    return {"CHECKMATE": "LOSS_MATE",        # not won + checkmate = White got mated
+            "TIMEOUT": "LOSS_TIMEOUT",       # White's own flag fell
             "STALEMATE": "DRAW_STALE",
             "INSUFFICIENT_MATERIAL": "DRAW_INSUF",
             "THREEFOLD_REPETITION": "DRAW_3FOLD",
