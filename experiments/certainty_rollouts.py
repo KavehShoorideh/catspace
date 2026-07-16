@@ -84,10 +84,13 @@ def main():
             b = chess.Board(fen)
             traj = []
             seen = set()
+            occ: dict = {}                            # board_fen -> occurrences so far (rep count)
             for _ in range(args.max_plies):
                 if b.is_game_over(claim_draw=True):
                     break
-                traj.append((b.fen(), b.ply()))
+                rep = occ.get(b.board_fen(), 0)
+                occ[b.board_fen()] = rep + 1
+                traj.append((b.fen(), b.ply(), rep))
                 if b.turn == chess.WHITE:
                     if rng.random() < args.epsilon:
                         moves = list(b.legal_moves)
@@ -102,11 +105,15 @@ def main():
                 b.push(m)
             out = b.outcome(claim_draw=True)
             won = bool(out and out.winner == chess.WHITE)
+            # boundary hit: which terminal SURFACE this rollout crossed
+            # (committor targets, 2026-07-15) -- MAX_PLIES = no boundary reached
+            reason = out.termination.name if out else "MAX_PLIES"
             end_ply = b.ply()
             if dump is not None:
                 dump.write(json.dumps(dict(si=si, r=r, won=won, end_ply=end_ply,
-                                           traj=[[f, p] for f, p in traj])) + "\n")
-            for f, p in traj:
+                                           reason=reason, end_fen=b.fen(),
+                                           traj=[[f, p, rp] for f, p, rp in traj])) + "\n")
+            for f, p, _rp in traj:
                 s = stats[f]
                 s[0] += 1
                 if won:

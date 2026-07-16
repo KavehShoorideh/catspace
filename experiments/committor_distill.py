@@ -77,6 +77,15 @@ def main():
     def target(r):
         return -np.log(max(r["p_hat"], 1.0 / (r["n"] + 2)))
 
+    # per-boundary DRAW committor (v2 tables with `outcomes` only): the draw
+    # surfaces are "out of bounds" a losing player steers TOWARD and a winning
+    # player needs clearance from (Kaveh 2026-07-15)
+    has_outcomes = all("outcomes" in r for r in rows[:20])
+
+    def target_draw(r):
+        n_draw = sum(v for k, v in r["outcomes"].items() if k.startswith("DRAW"))
+        return -np.log(max(n_draw / r["n"], 1.0 / (r["n"] + 2)))
+
     def encode(rs):
         boards = [chess.Board(r["fen"]) for r in rs]
         packed = np.stack([encode_packed(b) for b in boards])
@@ -87,8 +96,17 @@ def main():
                 torch.from_numpy(om).to(dev))
 
     d_in = zW_t.shape[-1]
-    head = torch.nn.Sequential(torch.nn.Linear(d_in, 128), torch.nn.ReLU(),
-                               torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
+
+    def make_head():
+        return torch.nn.Sequential(torch.nn.Linear(d_in, 128), torch.nn.ReLU(),
+                                   torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
+
+    head = make_head()
+    dhead = make_head() if has_outcomes else None
+    if dhead is not None:
+        td_tr = torch.tensor([target_draw(r) for r in train], dtype=torch.float32, device=dev)
+        td_ho = np.array([target_draw(r) for r in hold])
+        print("v2 table (per-boundary outcomes): training d_D draw-committor head too")
 
     t_tr = torch.tensor([target(r) for r in train], dtype=torch.float32, device=dev)
     w_tr = torch.tensor([np.sqrt(r["n"]) for r in train], dtype=torch.float32, device=dev)
@@ -116,7 +134,10 @@ def main():
 
     src = LichessPairSource(Path(args.shards), gamma=0.95)
     it = iter(src.batches(args.batch, seed=args.seed))
-    opt = torch.optim.AdamW(list(fb.parameters()) + list(head.parameters()), lr=args.lr)
+    params = list(fb.parameters()) + list(head.parameters())
+    if dhead is not None:
+        params += list(dhead.parameters())
+    opt = torch.optim.AdamW(params, lr=args.lr)
     fb.train(); head.train()
     ntr = len(train)
     best_r, best_state, stale = -np.inf, None, 0
@@ -125,6 +146,9 @@ def main():
         f = fb.embed_F(pl_tr[idx], om_tr[idx])
         pred = head(f).squeeze(-1)
         cert = (w_tr[idx] * (pred - t_tr[idx]) ** 2).mean()
+        if dhead is not None:
+            pred_d = dhead(f).squeeze(-1)
+            cert = cert + (w_tr[idx] * (pred_d - td_tr[idx]) ** 2).mean()
         try:
             batch = next(it)
         except StopIteration:
@@ -143,7 +167,9 @@ def main():
             if r > best_r:
                 best_r, stale = r, 0
                 best_state = ({k: v.detach().cpu().clone() for k, v in fb.state_dict().items()},
-                              {k: v.detach().cpu().clone() for k, v in head.state_dict().items()})
+                              {k: v.detach().cpu().clone() for k, v in head.state_dict().items()},
+                              ({k: v.detach().cpu().clone() for k, v in dhead.state_dict().items()}
+                               if dhead is not None else None))
             else:
                 stale += 1
                 if stale >= args.patience:
@@ -151,6 +177,8 @@ def main():
                     break
     if best_state is not None:
         fb.load_state_dict(best_state[0]); head.load_state_dict(best_state[1])
+        if dhead is not None and best_state[2] is not None:
+            dhead.load_state_dict(best_state[2])
 
     d_head, d_pole = readouts()
     h1 = spearman_ci(d_head, t_ho)
@@ -165,12 +193,25 @@ def main():
     else:
         print(f"RIM_RESOLUTION skipped (only {int(rim_ho.sum())} rim rows held out)")
 
+    if dhead is not None:
+        with torch.no_grad():
+            fb.eval()
+            f_ho = fb.embed_F(pl_ho, om_ho)
+            dd = dhead(f_ho).squeeze(-1).cpu().numpy()
+        rd = spearman_ci(dd, td_ho)
+        print(f"VERDICT DRAW_COMMITTOR_SPEARMAN head {rd[0]:+.3f}[{rd[1]:+.3f},{rd[2]:+.3f}] "
+              f"(n={len(hold)})")
+
     zg = build_zgoals(Path(args.shards), fb, dev)
     zg["MATE_W"] = zW_t.detach().cpu()   # pole kept for reference readouts only
     save_ckpt(fb, Path(args.ckpt_out), step=pay.get("step", 0), zgoals=zg)
     hp = Path(args.ckpt_out).with_name(Path(args.ckpt_out).stem + "_whead.pt")
     torch.save({"state": head.state_dict(), "d_in": d_in}, hp)
     print(f"saved {args.ckpt_out} + {hp}")
+    if dhead is not None:
+        dp = Path(args.ckpt_out).with_name(Path(args.ckpt_out).stem + "_dhead.pt")
+        torch.save({"state": dhead.state_dict(), "d_in": d_in}, dp)
+        print(f"saved {dp}")
 
 
 if __name__ == "__main__":
