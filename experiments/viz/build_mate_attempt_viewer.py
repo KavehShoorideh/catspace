@@ -41,6 +41,10 @@ def main():
     ap.add_argument("--max-plies", type=int, default=120)
     ap.add_argument("--bg-sample", type=int, default=3000)
     ap.add_argument("--device", default="auto")
+    ap.add_argument("--whead", default=None,
+                    help="committor W-head (*_whead.pt): policy uses the committor "
+                         "readout; strips show d_W and calibrated P_W (iso) instead "
+                         "of pole distance + P-head")
     ap.add_argument("--out", default="artifacts/generated/mate_attempts.html")
     args = ap.parse_args()
 
@@ -58,10 +62,18 @@ def main():
     zW = pay["zgoals"]["MATE_W"]
     zW = zW.to(dev).float() if torch.is_tensor(zW) else torch.as_tensor(
         np.asarray(zW), dtype=torch.float32, device=dev)
-    hp = torch.load(args.phead, map_location=dev, weights_only=False)
-    phead = EvalHead(d_in=hp["d_in"]).to(dev)
-    phead.load_state_dict(hp["state"])
-    phead.eval()
+    whead, iso = None, None
+    if args.whead:
+        wp = torch.load(args.whead, map_location=dev, weights_only=False)
+        whead = torch.nn.Sequential(torch.nn.Linear(wp["d_in"], 128), torch.nn.ReLU(),
+                                    torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
+        whead.load_state_dict(wp["state"]); whead.eval()
+        iso = wp.get("iso")
+    else:
+        hp = torch.load(args.phead, map_location=dev, weights_only=False)
+        phead = EvalHead(d_in=hp["d_in"]).to(dev)
+        phead.load_state_dict(hp["state"])
+        phead.eval()
     om_row = omega_ids(np.array([1800]), np.array([1800]), np.array([np.nan]))[0]
 
     def embed(boards):
@@ -71,8 +83,13 @@ def main():
             pl = torch.from_numpy(feature_planes(packed, meta)).to(dev)
             om = torch.from_numpy(np.tile(om_row, (len(boards), 1))).to(dev)
             f = fb.embed_F(pl, om)
-            d = fb.distance_matrix(f, zW[None, :])[:, 0].cpu().numpy()
-            pw = torch.softmax(phead(f), dim=1)[:, 0].cpu().numpy()
+            if whead is not None:
+                d = whead(f).squeeze(-1).cpu().numpy()
+                pw = (np.interp(d, iso["x"], iso["y"]) if iso
+                      else np.exp(-np.maximum(d, 1e-4)))
+            else:
+                d = fb.distance_matrix(f, zW[None, :])[:, 0].cpu().numpy()
+                pw = torch.softmax(phead(f), dim=1)[:, 0].cpu().numpy()
         return f.cpu().numpy(), d, pw
 
     rows = json.loads(Path(args.table).read_text())["rows"]
@@ -85,7 +102,7 @@ def main():
     bg_xy = um.embedding_
 
     tb = TB("data/syzygy")
-    pol = FBMCTSPolicy(fb, zW, max_nodes=args.nodes, device=dev)
+    pol = FBMCTSPolicy(fb, zW, max_nodes=args.nodes, device=dev, committor_head=whead)
     starts = json.loads(Path(args.fixed_set).read_text())["fens"]
     games, wins, fails = [], 0, 0
     for si, fen in enumerate(starts):
@@ -114,8 +131,19 @@ def main():
         wins, fails = wins + int(won), fails + int(not won)
         F, d, pw = embed(boards)
         xy = um.transform(F)
+        # named-stage timeline (EVAL-ONLY instruments, per the design contract):
+        # first ply each concept fires, appended to the game label
+        from experiments.stage_checkers import annotate_game
+        ann = annotate_game([bd.fen() for bd in boards])
+        stages = "  ".join(f"{k.replace('capture_','x').replace('king_','')}@{v}"
+                           for k, v in ann.items()
+                           if v is not None and k in ("capture_pawn", "capture_bishop",
+                                                      "king_corner", "mate_edge",
+                                                      "mate_midboard"))
         games.append(dict(
-            label=f"start {si}: {'MATE in ' + str(b.ply()) + ' plies' if won else 'FAILED (' + (out.termination.name if out else 'cutoff') + ')'}",
+            label=(f"start {si}: "
+                   f"{'MATE in ' + str(b.ply()) + ' plies' if won else 'FAILED (' + (out.termination.name if out else 'cutoff') + ')'}"
+                   + (f"  [{stages}]" if stages else "")),
             won=won,
             moves=[dict(san=s, svg=board_svg(bd, lastmove=bd.peek() if bd.move_stack else None, size=360),
                         d=float(dd), p=float(pp), x=float(x), y=float(y))
