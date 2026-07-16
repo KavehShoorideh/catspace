@@ -9,19 +9,19 @@ import numpy as np
 
 from catspace.data.encode import decode_planes
 
-N_PLANES = 19          # 12 pieces + stm + 4 castling + ep + halfmove
+N_PLANES = 20          # 12 pieces + stm + 4 castling + ep + halfmove + repetition
 N_ELO_BINS = 11        # 10 bins of 200 over [800, 2800) + 1 unknown
 N_CLOCK_BINS = 8       # 7 log-ish buckets + 1 unknown
 _CLOCK_EDGES = np.array([15.0, 30.0, 60.0, 120.0, 300.0, 600.0])
 
 
 def feature_planes(packed: np.ndarray, meta: np.ndarray) -> np.ndarray:
-    """(N,12) packed bitboards + (N,8) meta -> (N,19,8,8) float32 planes."""
+    """(N,12) packed bitboards + (N,8) meta -> (N,20,8,8) float32 planes."""
     packed = np.atleast_2d(packed)
     meta = np.atleast_2d(meta)
     n = packed.shape[0]
     planes = decode_planes(packed).astype(np.float32)          # (N,12,8,8)
-    extra = np.zeros((n, 7, 8, 8), dtype=np.float32)
+    extra = np.zeros((n, 8, 8, 8), dtype=np.float32)
     extra[:, 0] = meta[:, 0].astype(np.float32)[:, None, None]           # stm (0=W,1=B)
     for i in range(4):                                                    # K,Q,k,q rights
         extra[:, 1 + i] = meta[:, 1 + i].astype(np.float32)[:, None, None]
@@ -32,6 +32,9 @@ def feature_planes(packed: np.ndarray, meta: np.ndarray) -> np.ndarray:
         ranks = np.where(meta[has, 0] == 0, 5, 2)              # W to move -> ep on rank 6
         extra[has, 5, ranks, files] = 1.0
     extra[:, 6] = (np.minimum(meta[:, 6], 100).astype(np.float32) / 100.0)[:, None, None]
+    # repetition count (augmented-state coordinate: the threefold surface
+    # lives in board x rep space) -- 0/1/2+ occurrences, saturating at 3
+    extra[:, 7] = (np.minimum(meta[:, 7], 3).astype(np.float32) / 3.0)[:, None, None]
     return np.concatenate([planes, extra], axis=1)
 
 

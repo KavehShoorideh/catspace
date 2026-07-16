@@ -271,7 +271,11 @@ class FBMCTSPolicy:
         @torch.no_grad()
         def reach(boards):
             packed = np.stack([encode_packed(b) for b in boards])
-            meta = np.stack([encode_meta(b) for b in boards])
+            # augmented-state coordinate: repetition count from the GAME path
+            # (search children are off-path -> 0; the game's own revisits mark
+            # proximity to the threefold surface)
+            meta = np.stack([encode_meta(b, rep=self.path_counts.get(b.board_fen(), 0))
+                             for b in boards])
             planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
             om = torch.from_numpy(np.tile(omega_row, (len(boards), 1))).to(device)
             f = self.fb.embed_F(planes, om)
