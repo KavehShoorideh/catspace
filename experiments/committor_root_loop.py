@@ -51,6 +51,51 @@ def run(cmd, log):
     return r.stdout
 
 
+def paired_rho(ckpt_a, whead_a, ckpt_b, whead_b, table_path, rim_plies=8.0, seed=0,
+               device="auto"):
+    """Champion (a) and candidate (b) scored on the SAME holdout rows of the
+    CURRENT table -- the gate must be a paired difference, never a comparison
+    of rhos measured on different tables (holdout target noise attenuates rho
+    as the cumulative table grows; measured rounds 5-6)."""
+    import torch
+    from catspace.nn.fb import load_ckpt, pick_device
+    from catspace.data.encode import encode_meta, encode_packed
+    from catspace.nn.features import feature_planes, omega_ids
+    from experiments.certainty_distill import spearman_ci
+    dev = pick_device(device)
+    rows = json.loads(Path(table_path).read_text())["rows"]
+    rng = np.random.default_rng(seed)
+    hold = [rows[i] for i in rng.permutation(len(rows))[:max(500, len(rows) // 5)]]
+    t = np.array([-np.log(max(r["p_hat"], 1.0 / (r["n"] + 2))) for r in hold])
+    rim = np.array([r["plies"] is not None and r["plies"] <= rim_plies for r in hold])
+
+    def head_d(ckpt, whead_path):
+        fb, _ = load_ckpt(Path(ckpt), dev)
+        hp = torch.load(whead_path, map_location=dev, weights_only=False)
+        head = torch.nn.Sequential(torch.nn.Linear(hp["d_in"], 128), torch.nn.ReLU(),
+                                   torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
+        head.load_state_dict(hp["state"]); head.eval(); fb.eval()
+        out = []
+        with torch.no_grad():
+            for i in range(0, len(hold), 512):
+                ch = hold[i:i + 512]
+                boards = [chess.Board(r["fen"]) for r in ch]
+                packed = np.stack([encode_packed(b) for b in boards])
+                meta = np.stack([encode_meta(b) for b in boards])
+                om = omega_ids(np.full(len(ch), 1800), np.full(len(ch), 1800),
+                               np.full(len(ch), np.nan))
+                f = fb.embed_F(torch.from_numpy(feature_planes(packed, meta)).to(dev),
+                               torch.from_numpy(om).to(dev))
+                out.append(head(f).squeeze(-1).cpu().numpy())
+        return np.concatenate(out)
+
+    da, db = head_d(ckpt_a, whead_a), head_d(ckpt_b, whead_b)
+    ra = spearman_ci(da, t)[0]; rb = spearman_ci(db, t)[0]
+    rim_a = spearman_ci(da[rim], t[rim])[0] if rim.sum() >= 30 else float("nan")
+    rim_b = spearman_ci(db[rim], t[rim])[0] if rim.sum() >= 30 else float("nan")
+    return ra, rb, rim_a, rim_b
+
+
 def root_probe(ckpt, whead_path, root_fen, n_games, nodes, eps, seed, device):
     """Conversion from THE root under eps-play (the root's own P-hat)."""
     import torch
@@ -171,24 +216,27 @@ def main():
                    "--patience", "4", "--device", args.device],
                   Path(f"/tmp/{args.tag}_distill_r{r}.log"))
         rho = float(re.search(r"-> head ([+-]\d+\.\d+)", out).group(1))
-        rim_m = re.search(r"RIM_RESOLUTION.*-> head ([+-]\d+\.\d+)", out)
-        rim = float(rim_m.group(1)) if rim_m else float("nan")
 
-        # 4. gates + probe
-        advanced = (rho >= best_rho - args.gate_slack
-                    and (np.isnan(rim) or rim >= best_rim - args.rim_slack))
+        # 4. PAIRED gate (same holdout rows, same round) + probe
         cand_whead = cand.replace(".pt", "_whead.pt")
+        champ_rho, cand_rho, champ_rim, cand_rim = paired_rho(
+            champ, champ_whead, cand, cand_whead, table,
+            seed=args.seed + 10_000 + r, device=args.device)
+        rim = cand_rim
+        advanced = (cand_rho >= champ_rho - args.gate_slack
+                    and (np.isnan(cand_rim) or np.isnan(champ_rim)
+                         or cand_rim >= champ_rim - args.rim_slack))
         conv = root_probe(cand if advanced else champ,
                           cand_whead if advanced else champ_whead,
                           args.root_fen, args.probe_games, args.probe_nodes,
                           args.epsilon, args.seed + r, args.device)
         if advanced:
             champ, champ_whead = cand, cand_whead
-            best_rho, best_rim = max(best_rho, rho), (max(best_rim, rim)
-                                                      if not np.isnan(rim) else best_rim)
         rec = dict(round=r, kept_states=kept,
                    table_gradient=(float(grad.group(1)) if grad else None),
-                   rho=rho, rim=(None if np.isnan(rim) else rim),
+                   rho=rho, champ_rho=champ_rho, cand_rho=cand_rho,
+                   champ_rim=(None if np.isnan(champ_rim) else champ_rim),
+                   cand_rim=(None if np.isnan(cand_rim) else cand_rim),
                    advanced=bool(advanced), root_conv=conv, champion=champ)
         with open(loop_log, "a") as f:
             f.write(json.dumps(rec) + "\n")
