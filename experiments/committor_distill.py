@@ -59,6 +59,9 @@ def main():
     ap.add_argument("--patience", type=int, default=4)
     ap.add_argument("--rim-plies", type=float, default=8.0,
                     help="near-mate subset: rows with observed plies <= this")
+    ap.add_argument("--no-dhead", action="store_true",
+                    help="skip the d_D draw head even on v2 tables (attribution: "
+                         "isolate table change from joint-head change)")
     ap.add_argument("--loss", choices=("mse", "nll"), default="mse",
                     help="mse = regression on -lnP targets (DEFAULT -- rank +0.603); "
                          "nll = end-to-end smoothed binomial likelihood, FALSIFIED "
@@ -93,7 +96,7 @@ def main():
     # per-boundary DRAW committor (v2 tables with `outcomes` only): the draw
     # surfaces are "out of bounds" a losing player steers TOWARD and a winning
     # player needs clearance from (Kaveh 2026-07-15)
-    has_outcomes = all("outcomes" in r for r in rows[:20])
+    has_outcomes = all("outcomes" in r for r in rows[:20]) and not args.no_dhead
 
     def target_draw(r):
         n_draw = sum(v for k, v in r["outcomes"].items() if k.startswith("DRAW"))
