@@ -3652,3 +3652,21 @@ eps-rollouts from THE canonical root (5 seed-split workers) -> cumulative
 per-boundary table -> distill into the champion lineage -> ratchet gates
 (held-out rho + rim within 0.02 of best) + conversion-from-root probe
 (eps-play, the root's own P-hat trajectory). ~25-30 min/round, 12 rounds.
+
+### Root loop rounds 1-7: three gate corrections, each forced by a measurement
+The single-root eps closed loop (Kaveh GO) surfaced three methodology bugs in
+its first seven rounds, each fixed and committed:
+(1) RIM-NOISE THRASH (r2-r4): rim holdout is tens of rows; swings +-0.1-0.4
+    are sampling noise -- separate rim slack 0.12.
+(2) CROSS-TABLE RHO (r5-r6): champion's benchmark rho was measured on the
+    r1-era table; candidates on progressively noisier cumulative holdouts --
+    attenuation penalized genuine improvements. Gate is now PAIRED: both
+    scored on the same rows, same round (r7 revealed champion's true score
+    on today's holdout: 0.406, not 0.685).
+(3) PLAY MISSING FROM THE GATE (r7): the paired-field gate advanced a
+    field-better candidate whose root-conversion CRASHED. n=64 same-seed
+    verdict: ROOT_CONV r1=0.734 vs r7=0.609. Play gate added (paired probe
+    both arms every round, slack 0.125); r1 reinstated as champion; loop
+    restarted at round 8 with all 40 dumps.
+The dissociation lesson now lives INSIDE the loop's own gate. Trajectory so
+far: root-conv (champion) ~0.73-0.82; table 6k states, gradient ~0.7.
