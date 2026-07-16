@@ -3505,3 +3505,27 @@ LAUNCHING exploratory ladder n=120 @800/1600n vs cert_base_full; if CI-real,
 ONE pre-registered confirmatory on a fresh seed (781+; 777-780 consumed).
 Queued: dumps record termination reason + terminal board -> per-boundary
 d_D/d_B heads; repetition-count input plane (threefold surface visibility).
+
+### New-arch representation fixes: v2 dumps + per-boundary tables + repetition plane
+(1) certainty_rollouts dumps now record the BOUNDARY each rollout hit
+(termination reason), the terminal fen (mate boards finally captured -- fixes
+the stage-checker gap), and per-visit repetition counts; traj = [fen, ply,
+rep]. (2) table_from_dump aggregates per-boundary outcome counts per state
+(WIN / DRAW_3FOLD / DRAW_50 / DRAW_STALE / DRAW_INSUF / LOSS / CAP) + rep_max;
+old dumps degrade to WIN/OTHER; quality report prints the boundary mix.
+Smoke (2 starts x 4 rollouts): DRAW_3FOLD 0.68 of visits -- the orbit failure
+is now VISIBLE in the data. (3) committor_distill trains a d_D draw-committor
+head alongside d_W when a v2 table is present (out-of-bounds surfaces:
+navigate toward when losing, keep clearance from when winning). (4) REPETITION
+PLANE: N_PLANES 19->20, meta[7] = rep count (augmented-state coordinate --
+the threefold surface only exists in board x rep space); load_ckpt zero-pads
+old stem convs (VERIFIED bit-identical embeddings on rep=0: |df|=0.0);
+FBMCTSPolicy feeds game-path rep counts at eval. Full suite green (2 failures
+were PRE-EXISTING stale batch_tensors tests from the cert-base 7-tuple;
+fixed). Noted for later: MCTS search boards use copy(stack=False), so
+in-search threefold detection is structurally blind -- the rep plane + game-
+path counts partially compensate; a real fix needs path-aware terminal checks.
+Committor ladder rung 1 (exploratory, n=120): COMMITTOR_800n A=0.700 vs
+B=0.725 diff=+0.025 CI=[-0.058,+0.108] e=0.16 [ns], plies 19 vs 21 -- tie
+with positive lean + faster mates; 1600n running. NEXT: round-2 generation
+with the committor policy (v2 dumps) -> multi-head distill -> ladder.
