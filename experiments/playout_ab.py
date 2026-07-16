@@ -49,7 +49,8 @@ def playout(pol, start, tb, rng, max_plies):
 
 
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
-                search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False):
+                search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False,
+                committor_path=None):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -67,6 +68,13 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
                                      torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
         s_head.load_state_dict(hp["state"]); s_head.eval()
     kw = {}
+    if committor_path:
+        import torch
+        hp = torch.load(committor_path, map_location=dev, weights_only=False)
+        whead = torch.nn.Sequential(torch.nn.Linear(hp["d_in"], 128), torch.nn.ReLU(),
+                                    torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
+        whead.load_state_dict(hp["state"]); whead.eval()
+        kw["committor_head"] = whead
     if rescue:
         import numpy as _np
         ev = {}
@@ -125,6 +133,9 @@ def main():
     ap.add_argument("--g-sharp", type=float, default=1.0, help="risk weight for side B's S penalty")
     ap.add_argument("--rescue-b", action="store_true",
                     help="side B: evidence blend + flat/low-conf rollouts + tree reuse")
+    ap.add_argument("--committor-b", default=None,
+                    help="committor head (*_whead.pt) for side B: reach = -d_W(s), "
+                         "no goal vector (mcts only)")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -141,7 +152,8 @@ def main():
     b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes_b or args.nodes, args.beam,
                         args.max_plies, args.seed, args.device, bank_boards=bank_boards,
                         search=args.search_b, c_puct=args.c_puct,
-                        s_head_path=args.s_head_b, g_sharp=args.g_sharp, rescue=args.rescue_b)
+                        s_head_path=args.s_head_b, g_sharp=args.g_sharp, rescue=args.rescue_b,
+                        committor_path=args.committor_b)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
