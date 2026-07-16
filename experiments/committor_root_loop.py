@@ -110,6 +110,11 @@ def main():
     ap.add_argument("--resume", action="store_true",
                     help="glob this tag's existing round dumps so a restarted "
                          "loop keeps the cumulative table")
+    ap.add_argument("--init-best-rho", type=float, default=None,
+                    help="seed the ratchet with the pre-restart champion's rho")
+    ap.add_argument("--init-best-rim", type=float, default=None)
+    ap.add_argument("--start-round", type=int, default=1,
+                    help="first round number (restart bookkeeping)")
     ap.add_argument("--root-fen", default=KRRKBP_FIXED_START)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="auto")
@@ -119,13 +124,14 @@ def main():
     loop_log = EXP / f"committor_loop_log_{args.tag}.jsonl"
     champ = args.ckpt_in                     # reigning lineage checkpoint
     champ_whead = args.ckpt_in.replace(".pt", "_whead.pt")
-    best_rho, best_rim = -np.inf, -np.inf
+    best_rho = args.init_best_rho if args.init_best_rho is not None else -np.inf
+    best_rim = args.init_best_rim if args.init_best_rim is not None else -np.inf
     dumps = []
     if args.resume:
         dumps = sorted(str(p) for p in EXP.glob(f"rollout_dump_{args.tag}_r*_w*.jsonl"))
         print(f"resume: {len(dumps)} existing dumps for tag {args.tag}")
 
-    for r in range(1, args.rounds + 1):
+    for r in range(args.start_round, args.start_round + args.rounds):
         print(f"===== ROUND {r} (champion: {champ}) =====", flush=True)
         # 1. generate from THE root, seed-split workers
         procs = []
