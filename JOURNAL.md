@@ -3802,3 +3802,20 @@ The rim flatness measured at full board: the field alone finds the mating
 move 1-in-8; search fully compensates at depth 1, half at depth 2, barely at
 depth 3. This is the BEFORE axis for the committor-base checkpoint (124k/155k,
 phead CE 0.635 and descending).
+
+### Committor-base full run: first verdicts -- mixed, with an overcooking signature
+Training completed clean (155k steps, VAL_TOP1 0.036, DIFF_SLOPE +0.251/-0.092
+-- the cleanest won-lost separation of any full-board run). Verdicts so far:
+  FIELD-ONLY mateIn1 (n=120): incumbent 0.125 -> committor-base 0.183 (+0.058)
+  SEARCH mateIn1@800n: 1.000 both | mateIn2: 0.425 both | mateIn3: 0.142 both
+  OVERLAP forensics (mateIn2): identical 51/120 counts are a SUM coincidence
+  -- both-win 33, each-exclusively-wins 18: the fields disagree on 30% of
+  positions with exactly balanced competence. Dead heat, not a broken bench.
+  ROOK PROBE regression: the 5k-step snapshot MATES the DTZ-7 failure
+  position @800n; the 155k final THREEFOLDS it at every budget -- the
+  overcooking signature (round-C precedent) again. Ladder snapshots saved
+  without pheads (now fixed: pheads save with every snapshot), so step-wise
+  localization needs the next run. mate_bench gained --dump-results
+  (per-position vectors) for overlap forensics.
+RUNNING: full bench on the 5k snapshot -- if it matches 155k on-distribution
+too, "stop by play, not by budget" becomes the committor-base recipe.
