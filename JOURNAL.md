@@ -3529,3 +3529,25 @@ Committor ladder rung 1 (exploratory, n=120): COMMITTOR_800n A=0.700 vs
 B=0.725 diff=+0.025 CI=[-0.058,+0.108] e=0.16 [ns], plies 19 vs 21 -- tie
 with positive lean + faster mates; 1600n running. NEXT: round-2 generation
 with the committor policy (v2 dumps) -> multi-head distill -> ladder.
+
+### Committor ladder + confirmatory: exploratory CI-real at 1600n, confirmatory ns -- NOT promoted
+COMMITTOR_800n  A=0.700 vs B=0.725 diff=+0.025 CI=[-0.058,+0.108] e=0.16 [ns]
+COMMITTOR_1600n A=0.667 vs B=0.783 diff=+0.117 CI=[+0.025,+0.200] e=3.32 [selection look]
+CONFIRMATORY_committor_1600n_seed781: A=0.717 vs B=0.783 diff=+0.067
+CI=[-0.025,+0.158] e=0.32 [ns]. Seed 781 CONSUMED (registry updated).
+NOT promoted; cert_base_full remains incumbent. Same shape as GATE 2: a
+repeated positive lean (+0.117 exploratory, +0.067 confirmatory; B=0.783 on
+BOTH sets -- the incumbent moved 0.667->0.717 across sets, set-variance
+again) below n=120 resolution. Reading: the committor readout is
+tie-to-slightly-better at play off the SAME 10k v1 table dose -- the field/
+rim gains (rho +0.603, rim +0.330) buy play only through the loop's data
+leg, exactly the scaling-curve lesson. Surface viz (committor_surfaces.py,
+committed): rank good / ABSOLUTE SCALE COMPRESSED (learned P_W spans
+[0.19,0.37] vs empirical [0,1]) -- ordering learned, probability not yet
+calibrated; matters for the goal-selection layer, isotonic/scale fix queued.
+High-dim basin separation cross/within = 1.34 (weak); UMAP clusters =
+material stages, not outcome basins (consistent with W/D/L-region history;
+the head extracts a direction clustering can't see). LAUNCHING round-2
+generation with the committor policy (v2 dumps: boundary labels + terminal
+boards + rep counts), 5 workers -- then multi-head distill (d_W + d_D) and
+the ladder.
