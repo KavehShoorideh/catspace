@@ -510,11 +510,20 @@ def main():
             ladder = ckpt_path.with_name(f"{ckpt_path.stem}_step{step}{ckpt_path.suffix}")
             save_ckpt(fb, ladder, step=step, opt=opt,
                       zgoals=embed_zgoals(fb, finals, device), provenance=provenance)
+            if phead is not None:
+                # phead saves WITH each snapshot (2026-07-16: without it, the
+                # 5k-mates/155k-shuffles regression couldn't be localized)
+                torch.save({"state": phead.state_dict(), "d_in": args.d},
+                           ladder.with_name(ladder.stem + "_phead.pt"))
             print(f"  ladder checkpoint -> {ladder.name}", flush=True)
 
     zgoals = embed_zgoals(fb, finals, device, verbose=True)
     save_ckpt(fb, ckpt_path, step=step, opt=opt, zgoals=zgoals, provenance=provenance)
     print(f"saved {ckpt_path}")
+    # NOTE 2026-07-16: periodic --ckpt-every snapshots historically saved
+    # WITHOUT their phead, making step-wise play forensics impossible (the
+    # 5k-mates / 155k-shuffles rook regression could not be localized).
+    # Snapshot pheads now save alongside (see periodic-save block).
     if phead is not None:
         hp = ckpt_path.with_name(ckpt_path.stem + "_phead.pt")
         torch.save({"state": phead.state_dict(), "d_in": args.d}, hp)

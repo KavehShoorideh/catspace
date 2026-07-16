@@ -43,6 +43,9 @@ def main():
     ap.add_argument("--sf-depth", type=int, default=12, help="defender depth (full strength)")
     ap.add_argument("--stockfish", default="stockfish")
     ap.add_argument("--label", default="")
+    ap.add_argument("--dump-results", default=None,
+                    help="write per-position win/loss vectors (json) for overlap "
+                         "comparison across checkpoints")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
@@ -107,6 +110,7 @@ def main():
 
         # search vs SF defender
         wins = 0
+        winvec = []
         budget = 2 * n_mate + args.slack_plies
         for i, fen in enumerate(fens):
             pol = FBMCTSPolicy(fb, pay["zgoals"]["MATE_W"], max_nodes=args.nodes,
@@ -123,10 +127,17 @@ def main():
                     r = eng.play(b, chess.engine.Limit(depth=args.sf_depth))
                     b.push(r.move)
             out = b.outcome(claim_draw=True)
-            wins += int(bool(out and out.winner == us))
+            won = bool(out and out.winner == us)
+            wins += int(won)
+            winvec.append(int(won))
         print(f"VERDICT MATE_BENCH{('_' + args.label) if args.label else ''} "
               f"mateIn{n_mate} SEARCH@{args.nodes}n mates {wins}/{len(fens)} "
               f"= {wins/len(fens):.3f} (within {budget} plies, SF depth-{args.sf_depth} defender)")
+        if args.dump_results:
+            p = Path(args.dump_results)
+            d = json.loads(p.read_text()) if p.exists() else {}
+            d[f"{args.label}_mateIn{n_mate}"] = winvec
+            p.write_text(json.dumps(d))
     eng.quit()
 
 
