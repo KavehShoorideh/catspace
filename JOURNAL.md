@@ -3819,3 +3819,31 @@ Training completed clean (155k steps, VAL_TOP1 0.036, DIFF_SLOPE +0.251/-0.092
   (per-position vectors) for overlap forensics.
 RUNNING: full bench on the 5k snapshot -- if it matches 155k on-distribution
 too, "stop by play, not by budget" becomes the committor-base recipe.
+
+### Bug check on the 51s (clean) + CAPACITY FORENSICS: Kaveh's flexibility hypothesis lands
+51/120 x3 bug check: dump vectors genuinely differ (hamming 36-52 pairwise;
+three-way: all-win 18, none-win 33, contested 69) -- equal SUMS on different
+win-sets, ~0.5% coincidence on a shared machinery-limited rate. Inspected
+failed "mate-in-2" games past the budget window: genuine mate-MISSES (engine
+plays quiet moves, game wanders 20+ plies), not slack artifacts -- value-only
+MCTS without check-first ordering often never expands the forcing line.
+CAPACITY FORENSICS (capacity_forensics.py, committed; committor-base
+snapshots 30k..150k vs final):
+  EFFECTIVE RANK: 5.7 -> 6.9 of 64 across the whole run -- the objective
+    lives in a ~7-dim subspace from start to finish (~10% utilization).
+  ROTATION: the top-10 subspace churns to the very end (150k->final, 5k
+    steps: mean 3.2deg, max 10.6deg) -- late training keeps rewriting the
+    same few dims.
+  REGIME-SPLIT DRIFT (the smoking gun): rare/common drift ratio climbs
+    0.97 -> 1.17 -> 1.11 -> 1.13 -> 1.71 (final stretch): late gradients --
+    which carry ZERO rook-endgame information -- move rare-regime features
+    1.7x MORE than common ones. The rare regime is UNDEFENDED COLLATERAL:
+    nothing in the data anchors it, so shared-parameter updates drag it.
+    This is why 5k mates the rook position and 155k threefolds it.
+Kaveh's diagnosis confirmed in effective terms: the representation has
+almost no working flexibility (~7 dims), and continued training reallocates
+it toward the frequent regime by dragging undefended features. His proposed
+fix -- much wider embedding + L1-style sparsity tax so dims are allocated
+per-pattern and regimes decouple -- is now directly evidence-backed.
+Complementary cheap lever: a small replay anchor (toy/endgame data at low
+fraction) to DEFEND rare features. Widened-sparse run spec ready; awaiting GO.
