@@ -72,19 +72,31 @@ DATA.games.forEach((g, gi) => {
     const c2 = document.getElementById(`ch${gi}`).getContext('2d');
     c2.clearRect(0, 0, cw, chH);
     const ds = g.moves.map(m => m.d), ps = g.moves.map(m => m.p);
-    [[ds, 10, 190, '#9ec7ff'], [ps, 230, 410, '#7dd87d']].forEach(([arr, top, bot, col]) => {
-      const lo = Math.min(...arr), hi = Math.max(...arr), rng = (hi - lo) || 1;
-      c2.strokeStyle = col; c2.lineWidth = 1.5; c2.beginPath();
-      arr.forEach((v, i) => {
-        const px = 10 + i / (arr.length - 1) * (cw - 20);
-        const py = bot - (v - lo) / rng * (bot - top);
-        i === 0 ? c2.moveTo(px, py) : c2.lineTo(px, py);
+    const pds = (g.moves[0].pd !== undefined) ? g.moves.map(m => m.pd) : null;
+    // strip 1: raw d (auto-scaled). strip 2: probabilities on a FIXED [0,1]
+    // scale -- P_W (green) and, when present, the draw committor P_D (violet):
+    // watching P_D rise as a failure approaches the threefold wall is the point
+    const bands = [[[['#9ec7ff', ds]], 10, 190, false],
+                   [[['#7dd87d', ps]].concat(pds ? [['#c77dff', pds]] : []), 230, 410, true]];
+    bands.forEach(([series, top, bot, fixed01]) => {
+      const all = series.flatMap(([, a]) => a);
+      const lo = fixed01 ? 0 : Math.min(...all), hi = fixed01 ? 1 : Math.max(...all);
+      const rng = (hi - lo) || 1;
+      series.forEach(([col, arr]) => {
+        c2.strokeStyle = col; c2.lineWidth = 1.5; c2.beginPath();
+        arr.forEach((v, i) => {
+          const px = 10 + i / (arr.length - 1) * (cw - 20);
+          const py = bot - (v - lo) / rng * (bot - top);
+          i === 0 ? c2.moveTo(px, py) : c2.lineTo(px, py);
+        });
+        c2.stroke();
       });
-      c2.stroke();
-      const kx = 10 + k / (arr.length - 1) * (cw - 20);
+      const kx = 10 + k / (ds.length - 1) * (cw - 20);
       c2.strokeStyle = '#ffd34d'; c2.beginPath(); c2.moveTo(kx, top); c2.lineTo(kx, bot); c2.stroke();
       c2.fillStyle = '#8b93a5';
       c2.fillText(hi.toFixed(2), cw - 44, top + 10); c2.fillText(lo.toFixed(2), cw - 44, bot - 2);
+      if (fixed01 && pds) { c2.fillStyle = '#7dd87d'; c2.fillText('P_W', 12, top + 10);
+                            c2.fillStyle = '#c77dff'; c2.fillText('P_D', 44, top + 10); }
     });
   }
   document.getElementById(`sl${gi}`).addEventListener('input', e => draw(+e.target.value));

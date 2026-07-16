@@ -3635,3 +3635,20 @@ threefold -- conversion's last mile is precisely the weak-rim region the
 RIM_RESOLUTION trend flags. Next lever candidates (discussion): rim-weighted
 distill targets (upweight plies<=8 rows), or per-visit (fen,rep)-keyed
 targets now that dumps carry rep counts.
+
+### Lineage attribution COMPLETE + root loop launching (Kaveh GO)
+Attribution triplet (same r3 table, 800n, n=120 vs cert_base_full):
+  W-only into cert_base:  0.392  diff -0.308 CI=[-0.408,-0.208] [SIG against]
+  W+D    into cert_base:  0.558  diff -0.142 CI=[-0.242,-0.042] [SIG against]
+  W+D    into OWN lineage (committor_joint): 0.658 diff -0.042 CI=[-0.150,+0.067] [ns]
+CONCLUSION: cross-policy distillation is the drag (committor-policy tables
+poison the base checkpoint's play); d_D is PROTECTIVE not harmful; own-lineage
+training restores parity. On-policy loop discipline is now a RULE: tables
+distill only into the lineage that generated them. Viewer rebuilt with the
+P_D strip (draw committor, violet, fixed [0,1] scale next to calibrated P_W).
+LAUNCHING committor_root_loop.py (Kaveh: "start from the root position, use
+some epsilon..., as we get data, train the field" -- GO): rounds of 2000
+eps-rollouts from THE canonical root (5 seed-split workers) -> cumulative
+per-boundary table -> distill into the champion lineage -> ratchet gates
+(held-out rho + rim within 0.02 of best) + conversion-from-root probe
+(eps-play, the root's own P-hat trajectory). ~25-30 min/round, 12 rounds.
