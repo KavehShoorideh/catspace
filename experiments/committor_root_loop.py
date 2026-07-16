@@ -109,7 +109,7 @@ def main():
     ap.add_argument("--tag", default="rootloop")
     args = ap.parse_args()
 
-    loop_log = EXP / "committor_loop_log.jsonl"
+    loop_log = EXP / f"committor_loop_log_{args.tag}.jsonl"
     champ = args.ckpt_in                     # reigning lineage checkpoint
     champ_whead = args.ckpt_in.replace(".pt", "_whead.pt")
     best_rho, best_rim = -np.inf, -np.inf
@@ -172,8 +172,8 @@ def main():
                                                       if not np.isnan(rim) else best_rim)
         rec = dict(round=r, kept_states=kept,
                    table_gradient=(float(grad.group(1)) if grad else None),
-                   rho=rho, rim=rim, advanced=bool(advanced), root_conv=conv,
-                   champion=champ)
+                   rho=rho, rim=(None if np.isnan(rim) else rim),
+                   advanced=bool(advanced), root_conv=conv, champion=champ)
         with open(loop_log, "a") as f:
             f.write(json.dumps(rec) + "\n")
         print(f"VERDICT LOOP_ROUND {json.dumps(rec)}", flush=True)
