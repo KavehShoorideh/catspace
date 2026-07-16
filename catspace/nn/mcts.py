@@ -257,7 +257,8 @@ class FBMCTSPolicy:
                  device: str = "cpu", cache: bool = True, s_head=None,
                  g_sharp: float = 0.0, evidence: dict | None = None,
                  evidence_k: float = 4.0, rollout_on_flat: bool = False,
-                 tree_reuse: bool = False, committor_head=None):
+                 tree_reuse: bool = False, committor_head=None,
+                 committor_dhead=None, clearance_beta: float = 0.0):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -283,7 +284,13 @@ class FBMCTSPolicy:
                 # committor readout (Kaveh 2026-07-15): the goal is a SURFACE,
                 # not a pole -- reach = -d_W(s) = ln P(hit the mate boundary
                 # first), a learned hitting probability with no goal vector.
-                return -committor_head(f).squeeze(-1).cpu().numpy()
+                r = -committor_head(f).squeeze(-1)
+                if committor_dhead is not None and clearance_beta != 0.0:
+                    # draw-surface CLEARANCE (Kaveh 2026-07-16): where the win
+                    # field is flat (the rim), distance from the draw basin
+                    # breaks the tie -- progress reads better than shuffling
+                    r = r + clearance_beta * committor_dhead(f).squeeze(-1)
+                return r.cpu().numpy()
             if self.z.dim() == 2:
                 r = soft_min_bank(self.fb, f, self.z, 0.1)
             else:

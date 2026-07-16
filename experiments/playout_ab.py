@@ -50,7 +50,7 @@ def playout(pol, start, tb, rng, max_plies):
 
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
                 search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False,
-                committor_path=None):
+                committor_path=None, clearance_beta=0.0, phead_path=None):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -68,13 +68,34 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
                                      torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
         s_head.load_state_dict(hp["state"]); s_head.eval()
     kw = {}
-    if committor_path:
+    if phead_path:
         import torch
-        hp = torch.load(committor_path, map_location=dev, weights_only=False)
-        whead = torch.nn.Sequential(torch.nn.Linear(hp["d_in"], 128), torch.nn.ReLU(),
+        from catspace.nn.eval_head import EvalHead
+        hp = torch.load(phead_path, map_location=dev, weights_only=False)
+        ph = EvalHead(d_in=hp["d_in"]).to(dev)
+        ph.load_state_dict(hp["state"]); ph.eval()
+
+        class PheadCommittor(torch.nn.Module):
+            def forward(self, f):
+                pw = torch.softmax(ph(f), dim=1)[:, 0].clamp_min(1e-6)
+                return -torch.log(pw).unsqueeze(-1)
+        kw["committor_head"] = PheadCommittor()
+        print(f"side readout: full-board outcome head as committor ({phead_path})")
+    elif committor_path:
+        import torch
+
+        def load_head(p):
+            hp = torch.load(p, map_location=dev, weights_only=False)
+            h = torch.nn.Sequential(torch.nn.Linear(hp["d_in"], 128), torch.nn.ReLU(),
                                     torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
-        whead.load_state_dict(hp["state"]); whead.eval()
-        kw["committor_head"] = whead
+            h.load_state_dict(hp["state"]); h.eval()
+            return h
+        kw["committor_head"] = load_head(committor_path)
+        if clearance_beta:
+            dpath = committor_path.replace("_whead", "_dhead")
+            kw["committor_dhead"] = load_head(dpath)
+            kw["clearance_beta"] = clearance_beta
+            print(f"clearance readout: beta={clearance_beta} dhead={dpath}")
     if rescue:
         import numpy as _np
         ev = {}
@@ -136,6 +157,16 @@ def main():
     ap.add_argument("--committor-b", default=None,
                     help="committor head (*_whead.pt) for side B: reach = -d_W(s), "
                          "no goal vector (mcts only)")
+    ap.add_argument("--committor-a", default=None,
+                    help="committor head for side A (paired readout A/Bs on the "
+                         "same checkpoint)")
+    ap.add_argument("--clearance-beta", type=float, default=0.0,
+                    help="side B: draw-surface clearance weight (reach = -d_W + "
+                         "beta*d_D; needs the _dhead sibling of --committor-b)")
+    ap.add_argument("--phead-b", default=None,
+                    help="side B: full-board outcome head (*_phead.pt) as the "
+                         "W-committor readout (d_W = -ln P_win from the 3-class "
+                         "head; zero-training full-board->toy transfer)")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -148,12 +179,14 @@ def main():
                                           max_pieces=args.bank_max_pieces, cap=args.bank_size)
         print(f"goal bank: {len(bank_boards)} white-mate exemplars (<= {args.bank_max_pieces} pieces)")
     a, pa = mate_vector(args.ckpt_a, starts, tb, args.nodes, args.beam, args.max_plies,
-                        args.seed, args.device, search=args.search_a, c_puct=args.c_puct)
+                        args.seed, args.device, search=args.search_a, c_puct=args.c_puct,
+                        committor_path=args.committor_a)
     b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes_b or args.nodes, args.beam,
                         args.max_plies, args.seed, args.device, bank_boards=bank_boards,
                         search=args.search_b, c_puct=args.c_puct,
                         s_head_path=args.s_head_b, g_sharp=args.g_sharp, rescue=args.rescue_b,
-                        committor_path=args.committor_b)
+                        committor_path=args.committor_b, clearance_beta=args.clearance_beta,
+                        phead_path=args.phead_b)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
