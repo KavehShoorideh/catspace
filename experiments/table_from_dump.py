@@ -43,11 +43,24 @@ def outcome_class(rec):
     `reason`) degrade to WIN_MATE / OTHER."""
     reason = rec.get("reason")
     if rec.get("won"):
-        return "WIN_TIMEOUT" if reason == "TIMEOUT" else "WIN_MATE"
+        return {"TIMEOUT": "WIN_TIMEOUT",    # opponent's flag fell
+                "RESIGNATION": "WIN_RESIGN", # opponent resigned
+                "ABANDONED": "WIN_ABANDON",
+                }.get(reason, "WIN_MATE")
     if reason is None:
         return "OTHER"
+    # Human-game boundaries (RESIGNATION / DRAW_AGREE / ABANDONED) are
+    # BELIEF-ACTIONS, not rule surfaces: a resignation is the human's own
+    # committor reading P(win)~0, an agreed draw is both players co-signing
+    # P~draw -- weak human labels of the field, biased by the humans' own
+    # fallibility. Untimed toy generators never emit them; the Lichess
+    # shard-side classifier does (Termination tag + final-board inspection:
+    # decisive-without-mate = resignation or flag).
     return {"CHECKMATE": "LOSS_MATE",        # not won + checkmate = White got mated
             "TIMEOUT": "LOSS_TIMEOUT",       # White's own flag fell
+            "RESIGNATION": "LOSS_RESIGN",
+            "ABANDONED": "LOSS_ABANDON",
+            "AGREEMENT": "DRAW_AGREE",
             "STALEMATE": "DRAW_STALE",
             "INSUFFICIENT_MATERIAL": "DRAW_INSUF",
             "THREEFOLD_REPETITION": "DRAW_3FOLD",
