@@ -3757,3 +3757,18 @@ short run 5k steps first per protocol, then the full run. Kaveh's plan:
 full-board train (human/sf/self-play) -> iterate mate-in-N isolation until
 the flatness has a mechanism; mine Lichess puzzle DB (mateIn1/2/3 themes)
 for permanent benchmark sets.
+
+### CI-REAL at n=200: the zero-training committor readout beats the pole readout
+PLAYOUT_AB PHEAD_COMMITTOR_1600n_n200 mate-rate A=0.640 vs B=0.780
+diff=+0.140 CI=[+0.070,+0.215] e=91.47 (n=200, deterministic defender;
+plies-to-mate A=21 B=18) [SIGNIFICANT]
+Anytime-valid continuation of the n=120 look (e-process permits). Same
+incumbent checkpoint both sides; only the readout differs: A navigates to
+the mate-pole vector, B reads reach = -ln P_win from the incumbent's own
+full-board-trained outcome head (no goal vector). e=91 >> 20. Faster mates
+too (18 vs 21). CONFIRMATORY launched per protocol: fresh single-use
+seed-782 set (minted, registry to update on verdict), 1600n, n=120. If it
+holds, this is the program's second confirmed READOUT promotion (after
+MCTS-vs-beam) -- and both cost zero training.
+Meanwhile committor-base full training passed 30k/155k healthy
+(top1 0.031, 8.9 it/s).
