@@ -5,14 +5,19 @@ experiments/committor_recalibrate.py — monotone calibration of a committor hea
 The MSE-distilled head RANKS conversion probability well (rho +0.6) but its
 absolute scale is compressed (learned P_W spanned [0.19,0.37] vs empirical
 [0,1]); end-to-end NLL training collapsed rank to the base rate (measured,
-2026-07-15). Resolution: keep the MSE geometry, fit a 2-parameter MONOTONE
-affine in d-space by smoothed binomial NLL:
-    d' = a*d + b   (a > 0)   i.e.   P' = e^{-b} * P^a  (Platt in log space)
-Rank is preserved EXACTLY (monotone), so play through the self-calibrating
-MCTS squash is unchanged; the calibrated probabilities are for consumers that
-need absolute P (goal-selection layer, surface atlas, viz). The affine is
-stored IN the *_whead.pt payload ("affine": [a, b]); loaders that only rank
-may ignore it.
+2026-07-15). Resolution: keep the MSE geometry, fix scale with a MONOTONE
+recalibration -- rank preserved, so play through the self-calibrating MCTS
+squash is unchanged; the calibrated probabilities are for consumers that
+need absolute P (goal-selection layer, surface atlas, viz).
+
+Methods (Kaveh: "monotone doesn't have to mean linear"):
+  isotonic (default): PAVA fit of P' vs the head's d, evidence-weighted on
+    smoothed frequencies (k+1)/(n+2) -- any nondecreasing shape. Flat
+    segments would create ties, so the stored curve blends in eps of the
+    affine (strictly monotone => rank EXACT, not just weak).
+  affine: d' = a*d + b (P' = e^{-b} P^a, Platt in log space) by NLL.
+Stored in the *_whead.pt payload ("affine": [a,b] and/or "iso": {x,y} to be
+applied as P' = interp(d, x, y)); rank-only consumers ignore both.
 """
 from __future__ import annotations
 
@@ -42,6 +47,9 @@ def main():
     ap.add_argument("--whead", default="data/derived/sep/committor_whead.pt")
     ap.add_argument("--table", default="artifacts/experiments/certainty_table_r2_K16.json")
     ap.add_argument("--holdout-frac", type=float, default=0.2)
+    ap.add_argument("--method", choices=("isotonic", "affine"), default="isotonic")
+    ap.add_argument("--eps-blend", type=float, default=0.02,
+                    help="strictness blend: P' = (1-eps)*iso + eps*affine")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -86,26 +94,45 @@ def main():
 
     res = minimize(obj, x0=[0.0, 0.0], method="Nelder-Mead")
     a, b = float(np.exp(res.x[0])), float(np.exp(res.x[1]) - 1.0)
+    P_aff_tr = np.exp(-np.maximum(a * d_tr + b, 1e-4))
+    P_aff_ho = np.exp(-np.maximum(a * d_ho + b, 1e-4))
 
-    def report(d, tag):
-        P = np.exp(-np.maximum(d, 1e-4))
+    def report_P(P, tag):
         pe = k_ho / n_ho
         o = np.argsort(P)
         ece = float(np.mean([abs(P[bb].mean() - pe[bb].mean())
                              for bb in np.array_split(o, 10) if len(bb)]))
+        d_eq = -np.log(np.clip(P, 1e-6, 1 - 1e-9))
         print(f"{tag}: span [{P.min():.2f},{P.max():.2f}]  ECE {ece:.3f}  "
-              f"NLL {smoothed_nll(np.maximum(d,1e-4), k_ho, n_ho):.4f}")
+              f"NLL {smoothed_nll(d_eq, k_ho, n_ho):.4f}")
         return ece
 
-    print(f"fitted affine: d' = {a:.3f}*d + {b:+.3f}")
-    e0 = report(d_ho, "BEFORE (held-out)")
-    e1 = report(a * d_ho + b, "AFTER  (held-out)")
-    print(f"VERDICT RECALIBRATION a={a:.3f} b={b:+.3f}  ECE {e0:.3f} -> {e1:.3f}  "
-          f"(rank preserved exactly: monotone)")
-    hp["affine"] = [a, b]
+    e0 = report_P(np.exp(-np.maximum(d_ho, 1e-4)), "BEFORE (held-out)")
+    if args.method == "affine":
+        e1 = report_P(P_aff_ho, "AFTER affine (held-out)")
+        print(f"VERDICT RECALIBRATION method=affine a={a:.3f} b={b:+.3f}  "
+              f"ECE {e0:.3f} -> {e1:.3f}  (rank preserved exactly: monotone)")
+        hp["affine"] = [a, b]
+    else:
+        from sklearn.isotonic import IsotonicRegression
+        pe_smooth = (k_tr + 1) / (n_tr + 2)
+        iso = IsotonicRegression(increasing=False, y_min=1e-4, y_max=1 - 1e-4,
+                                 out_of_bounds="clip")
+        iso.fit(d_tr, pe_smooth, sample_weight=n_tr + 2)
+        # strictness blend: isotonic is weakly monotone (flat segments = ties);
+        # eps of the strictly-decreasing affine restores exact rank
+        def apply(d):
+            return ((1 - args.eps_blend) * iso.predict(d)
+                    + args.eps_blend * np.exp(-np.maximum(a * d + b, 1e-4)))
+        e1 = report_P(apply(d_ho), "AFTER isotonic (held-out)")
+        print(f"VERDICT RECALIBRATION method=isotonic(+{args.eps_blend:g} affine) "
+              f"ECE {e0:.3f} -> {e1:.3f}  (strictly monotone: rank exact)")
+        xs = np.linspace(float(d_tr.min()), float(d_tr.max()), 201)
+        hp["affine"] = [a, b]
+        hp["iso"] = {"x": xs.tolist(), "y": apply(xs).tolist()}
     import torch as _t
     _t.save(hp, args.whead)
-    print(f"affine stored in {args.whead}")
+    print(f"recalibration stored in {args.whead}")
 
 
 if __name__ == "__main__":
