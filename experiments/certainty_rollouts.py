@@ -60,6 +60,9 @@ def main():
     ap.add_argument("--out", default="artifacts/experiments/certainty_table.json")
     ap.add_argument("--dump-rollouts", default=None,
                     help="append raw per-rollout trajectories (jsonl) for nested-table builds")
+    ap.add_argument("--committor-head", default=None,
+                    help="*_whead.pt: White uses the committor readout (reach = -d_W(s), "
+                         "no goal vector; mcts only) -- the loop's round-2 generator")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -68,8 +71,15 @@ def main():
 
     dev = pick_device(args.device)
     fb, pay = load_ckpt(Path(args.ckpt), dev)
+    kw = {}
+    if args.committor_head:
+        hp = torch.load(args.committor_head, map_location=dev, weights_only=False)
+        whead = torch.nn.Sequential(torch.nn.Linear(hp["d_in"], 128), torch.nn.ReLU(),
+                                    torch.nn.Linear(128, 1), torch.nn.Softplus()).to(dev)
+        whead.load_state_dict(hp["state"]); whead.eval()
+        kw["committor_head"] = whead
     pol = make_search_policy(args.search, fb, pay["zgoals"]["MATE_W"],
-                             max_nodes=args.nodes, beam=4, device=dev)
+                             max_nodes=args.nodes, beam=4, device=dev, **kw)
     tb = TB("data/syzygy")
     all_starts = json.loads(Path(args.starts).read_text())["fens"]
     starts = all_starts[args.start_offset:args.start_offset + args.n_starts]
