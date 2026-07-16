@@ -243,6 +243,14 @@ def main():
                          "target with the head standing in for rollout counts")
     ap.add_argument("--cert-base-weight", type=float, default=1.0)
     ap.add_argument("--phead-weight", type=float, default=0.3)
+    ap.add_argument("--committor-base", action="store_true",
+                    help="committor-in-base-objective (2026-07-16): train the 3-class "
+                         "outcome head (= multinomial committor over the W/D/L "
+                         "boundary surfaces) at --phead-weight alongside NCE+ply-gap; "
+                         "NO pole-distance cert term, no goal vectors -- play reads "
+                         "out via playout_ab --phead-b. The zero-training transfer "
+                         "result (cert_base's by-product phead beating toy-trained "
+                         "fields at depth) is this mode's floor.")
     ap.add_argument("--cert-lam", type=float, default=8.0)
     ap.add_argument("--cert-scale", type=float, default=50.0)
     ap.add_argument("--zgoal-refresh", type=int, default=2000,
@@ -410,12 +418,15 @@ def main():
                          f"{provenance['static_check']['hits']}")
 
     phead, zW, zB = None, None, None
-    if args.cert_base:
+    if args.cert_base or args.committor_base:
         from catspace.nn.eval_head import EvalHead, descriptive_loss
         phead = EvalHead(d_in=args.d, seed=args.seed).to(device)
         opt.add_param_group({"params": phead.parameters()})
-        print(f"cert-base ON: phead {sum(q.numel() for q in phead.parameters())} params, "
-              f"lam={args.cert_lam} scale={args.cert_scale} refresh={args.zgoal_refresh}")
+        mode = "cert-base" if args.cert_base else "committor-base"
+        print(f"{mode} ON: phead {sum(q.numel() for q in phead.parameters())} params, "
+              f"phead-weight={args.phead_weight}"
+              + (f" lam={args.cert_lam} scale={args.cert_scale}" if args.cert_base else
+                 " (no pole term, no goal vectors)"))
     fb.train()
     epoch = 0
     it = iter(src.batches(args.batch, seed=args.seed))
@@ -453,6 +464,13 @@ def main():
                                     plies_to_end=pte_t, axis_weight=args.axis_weight,
                                     axis_margin=args.axis_margin,
                                     axis_gate_plies=args.axis_gate_plies)
+        if args.committor_base:
+            ps_c, om_c = core[0], core[1]
+            f_s = fb.embed_F(ps_c, om_c)
+            p_loss = descriptive_loss(phead, f_s, result_t.long())
+            loss = loss + args.phead_weight * p_loss
+            if step % 100 == 0:
+                print(f"    phead {float(p_loss):.4f}", flush=True)
         if args.cert_base:
             if zW is None or step % args.zgoal_refresh == 0:
                 zg = embed_zgoals(fb, finals, device)
