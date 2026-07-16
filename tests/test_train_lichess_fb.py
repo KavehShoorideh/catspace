@@ -41,17 +41,22 @@ def test_batch_tensors_drops_only_holdout_rows():
     # game_ids 50 and 100 are holdout (game_id % 50 == 0); the rest train
     batch = _fake_batch([1, 2, 50, 3, 100, 4, 5, 6])
     tensors = batch_tensors(batch, "cpu")
-    assert tensors is not None and len(tensors) == 5
+    # 7-tuple since cert-base: planes_s, om, planes_g, ply_gap, material_drop,
+    # result, plies_to_end
+    assert tensors is not None and len(tensors) == 7
     assert all(t.shape[0] == N - 2 for t in tensors)
 
 
 def test_batch_tensors_ply_gap_and_material_drop():
     batch = _fake_batch([1, 2, 3, 4, 5, 6, 7, 8])   # none held out
-    *_, ply_gap, material_drop = batch_tensors(batch, "cpu")
+    _, _, _, ply_gap, material_drop, result, plies_to_end = batch_tensors(batch, "cpu")
     assert ply_gap.shape == (N,)
     assert torch.equal(ply_gap, torch.full((N,), 7.0))
     # anchors and goals are the same boards here -> no material drop anywhere
     assert material_drop.dtype == torch.bool and not bool(material_drop.any())
+    assert result.tolist() == [1, -1, 1, -1, 1, -1, 1, 0]
+    # no plies_to_end in this fake batch -> sentinel 1e6 (cert term inert)
+    assert bool((plies_to_end == 1e6).all())
 
 
 def test_batch_tensors_all_holdout_returns_none():

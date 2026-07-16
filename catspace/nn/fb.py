@@ -425,10 +425,23 @@ def save_ckpt(fb: TorchFB, path, step: int = 0, opt: torch.optim.Optimizer | Non
 
 
 def load_ckpt(path, device: str = "cpu") -> tuple[TorchFB, dict]:
-    """Returns (model, payload). payload keeps step/opt_state/zgoals."""
+    """Returns (model, payload). payload keeps step/opt_state/zgoals.
+
+    Input-plane growth compatibility: checkpoints trained before the
+    repetition plane (N_PLANES 19 -> 20, 2026-07-15) have stem convs with 19
+    in-channels; the new plane's weights are zero-padded, so the loaded model
+    is bit-identical to the old one on rep=0 inputs (and inert on the new
+    plane until trained)."""
     payload = torch.load(Path(path), map_location=device, weights_only=False)
     fb = TorchFB(**payload["config"])
-    fb.load_state_dict(payload["state_dict"])
+    state = payload["state_dict"]
+    for k, ref in fb.state_dict().items():
+        if (k in state and state[k].dim() == 4 and state[k].shape[1] < ref.shape[1]
+                and state[k].shape[0] == ref.shape[0] and state[k].shape[2:] == ref.shape[2:]):
+            pad = torch.zeros(ref.shape[0], ref.shape[1] - state[k].shape[1],
+                              *ref.shape[2:], dtype=state[k].dtype, device=state[k].device)
+            state[k] = torch.cat([state[k], pad], dim=1)
+    fb.load_state_dict(state)
     fb.to(device)
     return fb, payload
 

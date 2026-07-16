@@ -24,8 +24,14 @@ def encode_packed(board: chess.Board) -> np.ndarray:
     return np.array([board.pieces_mask(pt, color) for pt, color in PLANES], dtype=np.uint64)
 
 
-def encode_meta(board: chess.Board) -> np.ndarray:
-    """(8,) uint8 side/castling/en-passant/halfmove-clock summary."""
+def encode_meta(board: chess.Board, rep: int = 0) -> np.ndarray:
+    """(8,) uint8 side/castling/en-passant/halfmove-clock/repetition summary.
+
+    `rep` = times this position has already occurred in the game (the
+    threefold surface only exists in board x repetition-count space --
+    augmented state, 2026-07-15). A bare board can't know its history, so
+    callers with game context pass it; the 0 default keeps every historical
+    shard byte-identical."""
     ep_file = (chess.square_file(board.ep_square) + 1) if board.ep_square is not None else 0
     return np.array([
         int(board.turn == chess.BLACK),
@@ -35,7 +41,7 @@ def encode_meta(board: chess.Board) -> np.ndarray:
         int(board.has_queenside_castling_rights(chess.BLACK)),
         ep_file,
         min(board.halfmove_clock, 255),
-        0,
+        min(rep, 255),
     ], dtype=np.uint8)
 
 

@@ -24,11 +24,11 @@ class _ResBlock(nn.Module):
 
 
 class BoardEncoder(nn.Module):
-    """(N,19,8,8) -> (N,out_dim). Spatial info is kept through a 1x1-conv +
-    flatten head (AZ-style) rather than global pooling -- chess is not
-    translation-invariant."""
+    """(N,in_planes,8,8) -> (N,out_dim). Spatial info is kept through a
+    1x1-conv + flatten head (AZ-style) rather than global pooling -- chess is
+    not translation-invariant."""
 
-    def __init__(self, in_planes: int = 19, channels: int = 64, blocks: int = 6,
+    def __init__(self, in_planes: int = 20, channels: int = 64, blocks: int = 6,
                  out_dim: int = 256, seed: int | None = None):
         if seed is not None:
             torch.manual_seed(seed)
