@@ -59,6 +59,12 @@ def main():
     ap.add_argument("--patience", type=int, default=4)
     ap.add_argument("--rim-plies", type=float, default=8.0,
                     help="near-mate subset: rows with observed plies <= this")
+    ap.add_argument("--train-min-n", type=int, default=None,
+                    help="train only on rows with >= this many visits (holdout "
+                         "keeps everything). Cumulative single-root tables grow "
+                         "a long noisy tail of n~4-6 deep states whose P-hat is "
+                         "mostly sampling noise; distilling on it corrupts "
+                         "late-game F regions (root-loop r10 diagnosis)")
     ap.add_argument("--head-init", default=None,
                     help="warm-start the W head (and _dhead sibling if present) "
                          "from an existing *_whead.pt -- continual training of "
@@ -100,6 +106,10 @@ def main():
     order = rng.permutation(len(rows))
     n_hold = int(len(rows) * args.holdout_frac)
     hold, train = [rows[i] for i in order[:n_hold]], [rows[i] for i in order[n_hold:]]
+    if args.train_min_n:
+        before = len(train)
+        train = [r for r in train if r["n"] >= args.train_min_n]
+        print(f"train-min-n {args.train_min_n}: {before} -> {len(train)} train rows")
     print(f"{len(train)} train / {len(hold)} held-out states ({args.table})")
 
     def target(r):
