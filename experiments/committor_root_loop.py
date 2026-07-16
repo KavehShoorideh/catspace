@@ -147,6 +147,11 @@ def main():
     ap.add_argument("--distill-steps", type=int, default=4000)
     ap.add_argument("--probe-games", type=int, default=32)
     ap.add_argument("--probe-nodes", type=int, default=200)
+    ap.add_argument("--play-slack", type=float, default=0.125,
+                    help="play gate: candidate root-conv may trail the champion's "
+                         "(same seed set, same round) by at most this (4/32 games). "
+                         "PLAY IS THE ARBITER -- round 7 advanced a field-better/"
+                         "play-worse candidate before this gate existed")
     ap.add_argument("--gate-slack", type=float, default=0.02)
     ap.add_argument("--rim-slack", type=float, default=0.12,
                     help="separate (wider) slack for the rim gate: its held-out "
@@ -223,13 +228,16 @@ def main():
             champ, champ_whead, cand, cand_whead, table,
             seed=args.seed + 10_000 + r, device=args.device)
         rim = cand_rim
-        advanced = (cand_rho >= champ_rho - args.gate_slack
+        field_ok = (cand_rho >= champ_rho - args.gate_slack
                     and (np.isnan(cand_rim) or np.isnan(champ_rim)
                          or cand_rim >= champ_rim - args.rim_slack))
-        conv = root_probe(cand if advanced else champ,
-                          cand_whead if advanced else champ_whead,
-                          args.root_fen, args.probe_games, args.probe_nodes,
-                          args.epsilon, args.seed + r, args.device)
+        # PLAY GATE: both arms probed on the same seed set, every round
+        champ_conv = root_probe(champ, champ_whead, args.root_fen, args.probe_games,
+                                args.probe_nodes, args.epsilon, args.seed + r, args.device)
+        cand_conv = root_probe(cand, cand_whead, args.root_fen, args.probe_games,
+                               args.probe_nodes, args.epsilon, args.seed + r, args.device)
+        advanced = field_ok and (cand_conv >= champ_conv - args.play_slack)
+        conv = cand_conv if advanced else champ_conv
         if advanced:
             champ, champ_whead = cand, cand_whead
         rec = dict(round=r, kept_states=kept,
@@ -237,6 +245,7 @@ def main():
                    rho=rho, champ_rho=champ_rho, cand_rho=cand_rho,
                    champ_rim=(None if np.isnan(champ_rim) else champ_rim),
                    cand_rim=(None if np.isnan(cand_rim) else cand_rim),
+                   champ_conv=champ_conv, cand_conv=cand_conv,
                    advanced=bool(advanced), root_conv=conv, champion=champ)
         with open(loop_log, "a") as f:
             f.write(json.dumps(rec) + "\n")
