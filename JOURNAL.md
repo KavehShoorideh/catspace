@@ -3696,3 +3696,34 @@ fresh-pulse rounds (distill only on each round's new data, r1-style);
 committor targets in the base objective on the loop's cumulative data
 (the mechanism that actually worked at full board = cert_base). Toy lineage
 champion: rootloop_r12 (~= r1); overall incumbent remains cert_base_full.
+
+### Mate-probe escalation finds the failure boundary -- and a zero-training full-board->toy win
+mate_probe.py (committed): single-position diagnostic, field ranking + search
+playouts. KRRvk, wK a3 Ra1 Ra2:
+  bK h8 (DTZ 3): MATE at ALL budgets (200/800/1600n), optimal line 1.Rg1 Kh7
+    2.Rh2#; field root-spread 0.21, boxing move ranked #2/18. Black-to-move
+    variant: MATE at all budgets, one tempo off optimal. The engine is NOT
+    blind at the mate surface -- the rim problem is the APPROACH, not the net.
+  bK e5 (DTZ 7 -- mate in 4!): toy-trained committor readout: 200n MATE-in-23,
+    800n CUTOFF, 1600n THREEFOLD. More search = worse. Failure boundary is
+    between DTZ 3 and DTZ 7.
+CLEARANCE readout (reach = -d_W + beta*d_D, Kaveh's approach 2, wired):
+  beta sweep on the failure position: helps 800n consistently (cutoff ->
+  MATE-in-15 at every beta), 200n mixed, 1600n UNCHANGED -- the 1600n line is
+  bit-identical at every beta incl. 0: at deep budgets the per-node squash
+  absorbs near-constant readout shifts; choices are search-dynamics-dominated.
+  Toy-level readout fix INSUFFICIENT per Kaveh's decision tree -> full build.
+ZERO-TRAINING TRANSFER (Kaveh: "train on full board, test in toy"): the
+incumbent's own outcome head (cert_base_full_phead, 3-class CE on game
+results, 155k full-board steps) read as a W-committor (d_W = -ln P_win):
+  failure position: 200n threefold, 800n MATE-in-25, 1600n MATE-in-15 --
+  MONOTONE in budget, converts exactly where every toy-trained field fails.
+  Mirror-image budget profiles: toy-distilled = sharp-narrow (deep search
+  hurts); full-board head = broad-calibrated (deep search pays). The
+  better-field-rewards-search prediction, realized. Its softmax also carries
+  P_draw: a full-board d_D for free.
+RUNNING: fixed-set ladder (n=120, 800/1600n), same incumbent both sides,
+pole readout vs phead-committor readout -- the zero-training promotion
+candidate. Kaveh's rules journaled to memory: conditional rejections (keep
+flag-gated mechanisms, re-test after field promotions); self-contained
+weekly-report style.
