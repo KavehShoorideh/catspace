@@ -3670,3 +3670,29 @@ its first seven rounds, each fixed and committed:
     restarted at round 8 with all 40 dumps.
 The dissociation lesson now lives INSIDE the loop's own gate. Trajectory so
 far: root-conv (champion) ~0.73-0.82; table 6k states, gradient ~0.7.
+
+### ROOT LOOP COMPLETE (12 rounds): data leg compounds, distill-into-F train leg does NOT
+Final powered close-out (n=64 per arm, identical seed sets, eps=0.15, 200n):
+FINAL_ROOT_CONV preloop_joint = 0.719 | r1 = 0.719 | r12 = 0.672
+VERDICT: twelve rounds of generate->distill bought ZERO root-conversion --
+pre-loop, round-1, and round-12 champions are statistically indistinguishable
+(r12's two advances were slack-riding ties). What the loop DID produce:
+(a) DATA: 9,714-state boundary-labeled table of root-grounded eps-play,
+    within-won gradient ~0.6-0.75 throughout, terminal boards + rep counts --
+    the best training substrate the project has, generated in one night.
+(b) MECHANISMS, each measured then fixed in the harness: rim-gate noise;
+    cross-table rho attenuation (paired gate); field-better/play-worse
+    advancement (play gate -- the dissociation now lives IN the loop);
+    sqrt(n) opening-shell concentration (weight cap); noisy-tail training
+    rows (train-min-n). After ALL fixes, candidates still trail champion
+    play by ~0.1-0.2 per round: distill-into-F on a growing cumulative
+    table is structurally lossy for play at this scale.
+(c) The r1 anomaly localizes the recipe that DOES work: small dense fresh
+    on-policy table, one distill, champion lineage -- i.e., the train leg
+    wants FRESH-data pulses, not cumulative-table repetition.
+MORNING DISCUSSION (no builds pending): train-leg alternatives -- (i)
+fresh-pulse rounds (distill only on each round's new data, r1-style);
+(ii) head-only continual updates on frozen F; (iii) full retrain with
+committor targets in the base objective on the loop's cumulative data
+(the mechanism that actually worked at full board = cert_base). Toy lineage
+champion: rootloop_r12 (~= r1); overall incumbent remains cert_base_full.
