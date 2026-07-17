@@ -83,3 +83,50 @@ def repel_loss(d_neg, margin):
     slow to separate)."""
     import torch
     return torch.relu(margin - d_neg).mean()
+
+
+def irreversible_sibling_pairs(boards, rng, cap: int = 48):
+    """PROVABLY mutually-unreachable sibling pairs from irreversibility
+    (Kaveh 2026-07-17): from one parent, two distinct irreversible moves whose
+    signatures diverge -- (a) two different PAWNS moved (neither pawn can
+    retreat, so each sibling lacks the other's advancement forever), or (b) two
+    captures of DIFFERENT SQUARES (each sibling keeps alive a piece the other
+    killed; the dead don't revive), or (c) a pawn push vs any capture. Excluded:
+    same pawn pushing along one file (e3 vs e4 transposes one tempo later).
+    These are the HARDEST push negatives: boards differ by 1-2 squares (feature-
+    close) yet d = infinity BOTH ways -- they teach the metric the directional
+    topology (the irreversibility partial order) rather than feature similarity.
+
+    boards: list[chess.Board]. Returns (packed_a, meta_a, packed_b, meta_b)
+    stacked arrays for <=cap pairs, or None if no parent yields a pair."""
+    import chess as _c
+    from catspace.data.encode import encode_meta, encode_packed
+    pa, ma, pb, mb = [], [], [], []
+    order = rng.permutation(len(boards))
+    for i in order:
+        if len(pa) >= cap:
+            break
+        b = boards[i]
+        pawn_moves, caps = {}, {}          # keyed by signature
+        for m in b.legal_moves:
+            if b.is_capture(m):
+                caps.setdefault(m.to_square, m)          # different target square
+            elif b.piece_type_at(m.from_square) == _c.PAWN:
+                pawn_moves.setdefault(m.from_square, m)  # different pawn
+        m1 = m2 = None
+        if len(caps) >= 2:
+            (m1, m2) = list(caps.values())[:2]
+        elif len(pawn_moves) >= 2:
+            (m1, m2) = list(pawn_moves.values())[:2]
+        elif caps and pawn_moves:
+            m1, m2 = next(iter(caps.values())), next(iter(pawn_moves.values()))
+        if m1 is None:
+            continue
+        for m, ps, ms in ((m1, pa, ma), (m2, pb, mb)):
+            b2 = b.copy(stack=False)
+            b2.push(m)
+            ps.append(encode_packed(b2))
+            ms.append(encode_meta(b2))
+    if not pa:
+        return None
+    return (np.stack(pa), np.stack(ma), np.stack(pb), np.stack(mb))

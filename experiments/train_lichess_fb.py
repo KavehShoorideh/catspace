@@ -39,6 +39,7 @@ import torch
 from catspace.audit import build_provenance, is_provenance_clean
 from catspace.data.encode import board_from_packed
 from catspace.data.shards import LichessPairSource, MixedPairSource
+from catspace.nn.hard_negatives import irreversible_sibling_pairs
 from catspace.io.paths import derived_dir, newest_shard_dir
 from catspace.nn.fb import TorchFB, load_ckpt, pick_device, save_ckpt
 from catspace.nn.features import feature_planes, omega_ids
@@ -303,6 +304,19 @@ def main():
                     help="rolling cross-batch goal-pool size for the push (dataset-wide "
                          "p_goal -> genuinely far pairs so the metric spreads). 0 = in-batch "
                          "shuffle only (leaves d_rand flat on low-diversity batches).")
+    ap.add_argument("--qrl-sib-weight", type=float, default=1.0,
+                    help="weight on irreversibility-sibling repulsion: pairs one ply "
+                         "apart through DIVERGENT irreversible moves (different pawn / "
+                         "different capture square) are PROVABLY mutually unreachable -- "
+                         "hinge BOTH directed distances above --qrl-sib-floor. The "
+                         "hardest negatives: feature-close, d=inf both ways. 0 disables.")
+    ap.add_argument("--qrl-sib-floor", type=float, default=30.0,
+                    help="unreachability floor for sibling pairs (a one-sided hinge -- a "
+                         "FLOOR, not a target: no force pulls d back down). Set ~2x the "
+                         "push offset so provably-impossible pairs sit strictly above "
+                         "merely-far reachable ones.")
+    ap.add_argument("--qrl-sib-cap", type=int, default=48,
+                    help="max sibling pairs per step (throughput guard)")
     ap.add_argument("--qrl-halt-on-collapse", action="store_true",
                     help="stop the run (SystemExit) when the collapse detector fires "
                          "(d_step->0 or d_rand not spreading), instead of just warning. "
@@ -616,13 +630,37 @@ def main():
                                        two_sided=args.qrl_two_sided,
                                        var_weight=args.qrl_var_weight,
                                        var_target=args.qrl_var_target)
+            sib = 0.0
+            if args.qrl_sib_weight > 0:
+                # irreversibility-sibling repulsion (train rows only, holdout-safe)
+                _ridx = np.flatnonzero((batch.meta["game_id"] % HOLDOUT_MOD) != 0)
+                _js = pool_rng.permutation(len(_ridx))[:args.qrl_sib_cap]
+                _boards = [board_from_packed(batch.anchors[_ridx[j]],
+                                             batch.meta["board_meta"][_ridx[j]])
+                           for j in _js]
+                pair = irreversible_sibling_pairs(_boards, pool_rng, cap=args.qrl_sib_cap)
+                if pair is not None:
+                    _pa, _ma, _pb, _mb = pair
+                    n_s = len(_pa)
+                    om_s = core[1][torch.as_tensor(_js[:n_s], device=device)]
+                    pl_a = torch.from_numpy(feature_planes(_pa, _ma)).to(device)
+                    pl_b = torch.from_numpy(feature_planes(_pb, _mb)).to(device)
+                    f_a, f_b = fb.embed_F(pl_a, om_s), fb.embed_F(pl_b, om_s)
+                    b_a, b_b = fb.embed_B(pl_a), fb.embed_B(pl_b)
+                    d_ab = fb.directed_distance(f_a, b_b)
+                    d_ba = fb.directed_distance(f_b, b_a)
+                    sib_t = (torch.relu(args.qrl_sib_floor - d_ab)
+                             + torch.relu(args.qrl_sib_floor - d_ba)).mean()
+                    loss = loss + args.qrl_sib_weight * sib_t
+                    sib = float(sib_t)
             top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
             qrl_dstep_hist.append(qstats["d_step"])
             qrl_drand_hist.append(qstats["d_rand"])
             if step % 100 == 0:
                 print(f"    qrl push {qstats['push']:.3f} sq_dev {qstats['sq_dev']:.4f} "
                       f"lam {qstats['lam']:.3f} d_step {qstats['d_step']:.3f} "
-                      f"d_rand {qstats['d_rand']:.3f} var {qstats.get('var', 0.0):.3f}", flush=True)
+                      f"d_rand {qstats['d_rand']:.3f} var {qstats.get('var', 0.0):.3f} "
+                      f"sib {sib:.3f}", flush=True)
             # collapse gate: after warmup, on rolling means over the window
             if step >= 2000 and step % 1000 == 0 and len(qrl_dstep_hist) >= 500:
                 ms = float(np.mean(qrl_dstep_hist))
