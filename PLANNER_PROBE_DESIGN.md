@@ -116,14 +116,23 @@ whose policy *learns* those meta-decisions. This is the meta-game / plan-
 optimization layer (the `PlanSelector` from the hierarchical-planning notes),
 sitting ABOVE the game's own RL.
 
-- **Meta-action space** `A_meta`: `probe_region(r)` (run a bounded MCTS probe of
-  region r), `set_plan(subgoal)` (commit to a region and hand off to the
-  executor), `offer_draw`, `resign`.
+- **Two action sets** (Kaveh 2026-07-17 reframe — this is exactly Russell &
+  Wefald's rational-metareasoning split between computations and external
+  actions):
+  - **INTERNAL actions** (computations; cost tokens, change only the planner's
+    knowledge): `probe_region(r)` — run a bounded MCTS probe of region r;
+    `set_plan(subgoal)` — adopt/revise the active plan in plan memory.
+  - **GAME actions** (external; end the decision episode): `make_move(m)`,
+    `offer_draw`, `resign`.
+  The planner is the SINGLE agent owning both sets: MCTS is a *computation*
+  whose result informs `make_move` — the planner plays the move the probe/search
+  surfaced; the search never acts on its own. A decision step is a sequence of
+  internal actions terminated by exactly one game action.
 - **Meta-state**: the position embedding + the accumulated `ProbeResult`s so far
   this decision + plan memory (what's been tried/blocked). I.e. what the planner
   currently *knows*.
 - **Meta-reward**: the eventual game outcome (win +1 / draw 0 / loss −1) **minus a
-  probe cost** per `probe_region` action. The cost term is what makes it a
+  cost per INTERNAL action** (probes priced by their node budget). The cost term is what makes it a
   genuine **value-of-information** problem: the policy learns to probe *only* when
   the expected decision improvement outweighs the compute — not to probe
   exhaustively. Resigning a lost position / drawing a dead one avoids wasted

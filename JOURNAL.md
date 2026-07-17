@@ -4268,3 +4268,43 @@ readout but stop it dominating). If d_rand still spreads with the phead back at
 train pure-QRL metric first then fit phead on the FROZEN embedding (TMD-style
 post-hoc extraction). IQE is NOT the problem -- our co-training weight + offset
 scale were. Kaveh's structural intuition (IQE right for this) stands.
+
+
+## 2026-07-17 (Fable) — full architecture review + literature soundness sweep
+
+Wrote ARCHITECTURE_REVIEW.md: top-to-bottom review of the arrangement (geometry
+/ value / trust / compose / decide / deferred) + six targeted literature
+searches. VERDICT: sound, organizing principle = ONE SCALAR FIELD PER QUESTION
+-- every bug this week was a layer doing another layer's job (phead@1.0,
+DRAW_V=-0.999, entropy-coherence, horizon-cap), every fix restored separation.
+
+Literature anchors found: (1) QRL's known stochastic-setting limitation (TMD,
+arXiv 2509.20478) is exactly why we never read d as value -- our layering is
+the demanded response, and TMD is the shelf-ready alternative trainer if
+QRL-IQE conversion disappoints. (2) Our two-sided constraint deviation is
+PROVABLY right for unit-cost game graphs (d*(s,s')=1 exactly; one-sided is for
+MDPs with dominated transitions). (3) The phead is an empirical COMMITTOR under
+the human-play measure (active TPT literature; DASTR adaptive sampling = our
+probe-sharpens-committor plan). (4) Coherence discount = e^{-k Sum(1-P)} ~
+P(line realized)^k -- the same path-integral as d_certainty; AdaGamma's
+TD-collapse pitfall doesn't apply (search-backup only, no bootstrap). (5)
+Kaveh's internal/game action split for the planner IS Russell & Wefald rational
+metareasoning; Hay & Russell prove bandits are the wrong frame for computation
+selection -> learn the meta-policy. (6) "Forceable region" = ATTRACTOR of a
+two-player reachability game (min-max fixpoint, not shortest path) -- the
+theorem-shaped reason probes are necessary. (7) SoRB's distance-overestimation
+fragility is cured by our probe-before-commit. (8) AlphaGo's resign mechanism
+(FP<5%, 10% no-resign games) adopted for post-MVP phase D.
+
+TOP NEW ACTION ITEM: phead CALIBRATION (reliability/ECE) as a standing health
+gate -- P feeds coherence + soft-terminal + resign; overconfidence poisons all
+three silently. Also: offset sweep {15,30,60} under the final recipe once
+stability is proven.
+
+Also clarified (Kaveh Q): value vs coherence = P at a point (how good is the
+destination) vs P's decay along a path (how far is the map trustworthy);
+independent axes (forced perpetual = low value, max coherence); the 2x2
+quadrant IS the planner's decision logic. Planner reframe folded into
+PLANNER_PROBE_DESIGN.md: INTERNAL actions {probe_region, set_plan} vs GAME
+actions {make_move, offer_draw, resign}; MCTS is a computation, the planner
+makes the move.
