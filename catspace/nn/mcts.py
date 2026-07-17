@@ -72,9 +72,10 @@ class MCTS:
     def __init__(self, reach_fn, max_nodes: int, c_puct: float = 1.5,
                  prior_tau: float = 0.5, cache: dict | None = None,
                  rollout_on_flat: bool = False, flat_std: float = 0.05,
-                 rollout_cap: int = 32):
+                 rollout_cap: int = 32, detect_threefold: bool = True):
         assert max_nodes >= 1
         self.reach_fn = reach_fn
+        self.detect_threefold = detect_threefold
         self.max_nodes = max_nodes
         self.c_puct = c_puct
         self.prior_tau = prior_tau
@@ -134,7 +135,7 @@ class MCTS:
                 c.terminal_v = mate
             elif b2.is_insufficient_material() or (b2.halfmove_clock >= 100):
                 c.terminal_v = DRAW_V                # rules-exact, history-free draws
-            elif self._threefold(c):
+            elif self.detect_threefold and self._threefold(c):
                 # path-aware threefold: the search's OWN lines can now see a
                 # repetition forming (copy(stack=False) drops history, so
                 # is_game_over could not -- this was the measured cause of the
@@ -296,7 +297,8 @@ class FBMCTSPolicy:
                  g_sharp: float = 0.0, evidence: dict | None = None,
                  evidence_k: float = 4.0, rollout_on_flat: bool = False,
                  tree_reuse: bool = False, committor_head=None,
-                 committor_dhead=None, clearance_beta: float = 0.0):
+                 committor_dhead=None, clearance_beta: float = 0.0,
+                 detect_threefold: bool = True):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -342,7 +344,8 @@ class FBMCTSPolicy:
 
         self.mcts = MCTS(reach, max_nodes=max_nodes, c_puct=c_puct,
                          prior_tau=prior_tau, cache={} if cache else None,
-                         rollout_on_flat=rollout_on_flat)
+                         rollout_on_flat=rollout_on_flat,
+                         detect_threefold=detect_threefold)
         self.evidence = evidence or {}
         self.evidence_k = evidence_k
         self.path_counts: dict = {}

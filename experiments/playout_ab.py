@@ -50,7 +50,8 @@ def playout(pol, start, tb, rng, max_plies):
 
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
                 search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False,
-                committor_path=None, clearance_beta=0.0, phead_path=None):
+                committor_path=None, clearance_beta=0.0, phead_path=None,
+                detect_threefold=True):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -110,6 +111,8 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
                 ev[r["fen"]] = (n0 + r["n"], (n0 * d0 + r["n"] * d_ev) / (n0 + r["n"]))
         kw = dict(evidence=ev, rollout_on_flat=True, tree_reuse=True)
         print(f"rescue: {len(ev)} evidence states, rollouts+reuse ON")
+    if search == "mcts" and not detect_threefold:
+        kw["detect_threefold"] = False
     pol = make_search_policy(search, fb, z, max_nodes=nodes, beam=beam,
                              c_puct=c_puct, device=dev, s_head=s_head, g_sharp=g_sharp, **kw)
     mated, plies = [], []
@@ -154,6 +157,9 @@ def main():
     ap.add_argument("--g-sharp", type=float, default=1.0, help="risk weight for side B's S penalty")
     ap.add_argument("--rescue-b", action="store_true",
                     help="side B: evidence blend + flat/low-conf rollouts + tree reuse")
+    ap.add_argument("--no-threefold-a", action="store_true",
+                    help="disable path-aware threefold detection on side A "
+                         "(baseline for A/B: does seeing repetitions help?)")
     ap.add_argument("--committor-b", default=None,
                     help="committor head (*_whead.pt) for side B: reach = -d_W(s), "
                          "no goal vector (mcts only)")
@@ -180,7 +186,8 @@ def main():
         print(f"goal bank: {len(bank_boards)} white-mate exemplars (<= {args.bank_max_pieces} pieces)")
     a, pa = mate_vector(args.ckpt_a, starts, tb, args.nodes, args.beam, args.max_plies,
                         args.seed, args.device, search=args.search_a, c_puct=args.c_puct,
-                        committor_path=args.committor_a)
+                        committor_path=args.committor_a,
+                        detect_threefold=not args.no_threefold_a)
     b, pb = mate_vector(args.ckpt_b, starts, tb, args.nodes_b or args.nodes, args.beam,
                         args.max_plies, args.seed, args.device, bank_boards=bank_boards,
                         search=args.search_b, c_puct=args.c_puct,
