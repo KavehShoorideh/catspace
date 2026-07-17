@@ -195,3 +195,32 @@ def test_coherence_gamma_forced_vs_divergent():
     # smaller (more-discounting) coherence gamma than the constrained one
     assert rd.coh_gamma < rf.coh_gamma
     assert 0.0 < rd.coh_gamma <= 1.0 and 0.0 < rf.coh_gamma <= 1.0
+
+
+# ---- obvious-region soft-terminal (2026-07-17) --------------------------
+
+def test_certainty_stop_resolves_confident_region():
+    # a certainty_fn that flags EVERY position resolved (conf=1.0, value=+1)
+    # must make the search treat first-level children as terminals: no node
+    # below them is expanded, so eval budget collapses to ~one expansion.
+    def all_resolved(boards):
+        n = len(boards)
+        return np.ones(n), np.ones(n)          # value=+1 (White win), conf=1.0
+    b = chess.Board("8/8/8/3k4/8/3K4/7R/8 w - - 0 1")   # KRvK, White to move
+    root = MCTS(_det_reach, max_nodes=200, certainty_fn=all_resolved,
+                certainty_stop=0.9).run(b.copy())
+    # every child of the root is soft-resolved -> terminal -> never expanded
+    assert all(c.terminal_v is not None for c in root.children)
+    # and the resolved value (+1) backs up as White-POV win
+    assert root.Q > 0.5
+
+
+def test_certainty_stop_off_by_default_expands():
+    # certainty_stop=0 (default) must NOT short-circuit: normal expansion.
+    def all_resolved(boards):
+        return np.ones(len(boards)), np.ones(len(boards))
+    b = chess.Board("8/8/8/3k4/8/3K4/7R/8 w - - 0 1")
+    root = MCTS(_det_reach, max_nodes=120, certainty_fn=all_resolved,
+                certainty_stop=0.0).run(b.copy())
+    # with the stop off, non-terminal children keep v_init (not forced terminal)
+    assert any(c.terminal_v is None for c in root.children)

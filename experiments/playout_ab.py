@@ -51,7 +51,7 @@ def playout(pol, start, tb, rng, max_plies):
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
                 search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False,
                 committor_path=None, clearance_beta=0.0, phead_path=None,
-                detect_threefold=True, coherence_k=0.0):
+                detect_threefold=True, coherence_k=0.0, certainty_stop=0.0):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -93,6 +93,11 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
                     dW = dW - pcb * (-torch.log(pd))
                 return dW.unsqueeze(-1)
         kw["committor_head"] = PheadCommittor()
+        if certainty_stop > 0.0 and search == "mcts":
+            # obvious-region recognizer uses the RAW phead softmax (W/D/L)
+            kw["certainty_head"] = ph
+            kw["certainty_stop"] = certainty_stop
+            print(f"obvious-region soft-terminal: certainty_stop={certainty_stop}")
         if clearance_beta:
             print(f"phead committor + draw clearance beta={clearance_beta}")
     elif committor_path:
@@ -185,6 +190,11 @@ def main():
     ap.add_argument("--clearance-beta", type=float, default=0.0,
                     help="side B: draw-surface clearance weight (reach = -d_W + "
                          "beta*d_D; needs the _dhead sibling of --committor-b)")
+    ap.add_argument("--certainty-stop", type=float, default=0.0,
+                    help="B-side only (MCTS+phead): obvious-region soft-terminal. A node "
+                         "whose phead confidence (peak W/D/L prob) >= this is treated as a "
+                         "RESOLVED region -- its committor value backs up and the search "
+                         "stops there instead of recursing to mate. 0=off. Try 0.9.")
     ap.add_argument("--coherence-k", type=float, default=0.0,
                     help="B-side only: coherence-length backup discount strength "
                          "(MCTS). 0=off (flat backup); >0 trusts the best-case field "
@@ -218,7 +228,8 @@ def main():
                         search=args.search_b, c_puct=args.c_puct,
                         s_head_path=args.s_head_b, g_sharp=args.g_sharp, rescue=args.rescue_b,
                         committor_path=args.committor_b, clearance_beta=args.clearance_beta,
-                        phead_path=args.phead_b, coherence_k=args.coherence_k)
+                        phead_path=args.phead_b, coherence_k=args.coherence_k,
+                        certainty_stop=args.certainty_stop)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
