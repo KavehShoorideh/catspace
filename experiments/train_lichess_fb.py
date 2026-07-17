@@ -257,6 +257,13 @@ def main():
                     help="re-embed MATE_W/B goal centroids every N steps (they drift as F/B train)")
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--d", type=int, default=64)
+    ap.add_argument("--iqe", action="store_true",
+                    help="Interval Quasimetric Embedding distance head (merged paper): "
+                         "valid+universal quasimetric BY CONSTRUCTION, replaces the "
+                         "MRN metric_scale/W score. Right geometry for the field.")
+    ap.add_argument("--iqe-components", type=int, default=32,
+                    help="IQE component count (d must divide it); k=d/components "
+                         "is the per-component interval-union dim")
     ap.add_argument("--channels", type=int, default=64, help="trunk conv width")
     ap.add_argument("--blocks", type=int, default=6, help="trunk residual blocks")
     ap.add_argument("--enc-out", type=int, default=256, help="encoder output dim")
@@ -394,7 +401,8 @@ def main():
                      seed=args.seed, quasimetric=args.quasimetric,
                      two_horizon=args.two_horizon, distributional=args.distributional,
                      n_bins=args.n_bins, competence=args.competence,
-                     outcome_poles=args.outcome_poles, concept_axes=args.concept_axes)
+                     outcome_poles=args.outcome_poles, concept_axes=args.concept_axes,
+                     iqe=args.iqe, iqe_components=args.iqe_components)
         print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
               f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
