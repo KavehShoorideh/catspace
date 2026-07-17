@@ -257,6 +257,21 @@ def main():
                     help="re-embed MATE_W/B goal centroids every N steps (they drift as F/B train)")
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--d", type=int, default=64)
+    ap.add_argument("--channels", type=int, default=64, help="trunk conv width")
+    ap.add_argument("--blocks", type=int, default=6, help="trunk residual blocks")
+    ap.add_argument("--enc-out", type=int, default=256, help="encoder output dim")
+    ap.add_argument("--dh", type=int, default=512, help="head hidden dim")
+    ap.add_argument("--l1-metric-scale", type=float, default=0.0,
+                    help="L1 tax on the per-dimension quasimetric metric_scale "
+                         "(2026-07-16): prices DISTANCE dimensions so a wide "
+                         "embedding allocates them sparsely/per-pattern, letting "
+                         "rare regimes decouple from the frequent one instead of "
+                         "being dragged as undefended collateral (effective rank "
+                         "was ~7/64 regardless of width; drift ratio 1.71). The "
+                         "representation stays free; only the metric is taxed.")
+    ap.add_argument("--l1-warmup", type=int, default=10000,
+                    help="steps of 0 L1 before the tax ramps in (explore wide "
+                         "first, then sparsify)")
     ap.add_argument("--quasimetric", action="store_true",
                     help="score(f,g) = -d(f,g)+r(f,g), d a real (triangle-inequality-"
                          "respecting) metric, instead of a plain cosine dot product -- "
@@ -358,10 +373,14 @@ def main():
         step = payload["step"]
         print(f"resumed {ckpt_path.name} at step {step}")
     else:
-        fb = TorchFB(d=args.d, seed=args.seed, quasimetric=args.quasimetric,
+        fb = TorchFB(d=args.d, channels=args.channels, blocks=args.blocks,
+                     enc_out=args.enc_out, dh=args.dh,
+                     seed=args.seed, quasimetric=args.quasimetric,
                      two_horizon=args.two_horizon, distributional=args.distributional,
                      n_bins=args.n_bins, competence=args.competence,
                      outcome_poles=args.outcome_poles, concept_axes=args.concept_axes)
+        print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
+              f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
     start_step = step                      # cosine decay spans [start_step, args.steps)
     lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
@@ -492,6 +511,15 @@ def main():
             loss = loss + args.phead_weight * p_loss + args.cert_base_weight * cert
             if step % 100 == 0:
                 print(f"    cert {float(cert):.4f}  phead {float(p_loss):.4f}", flush=True)
+        if args.l1_metric_scale > 0 and getattr(fb, "quasimetric", False):
+            # tax on the DISTANCE dimensions (metric_scale), ramped after warmup:
+            # a wide embedding is free; using many dims in the METRIC costs.
+            ramp = min(1.0, max(0.0, (step - args.l1_warmup) / max(1, args.l1_warmup)))
+            l1 = args.l1_metric_scale * ramp * fb.metric_scale.abs().sum()
+            loss = loss + l1
+            if step % 100 == 0 and ramp > 0:
+                nz = int((fb.metric_scale.abs() > 1e-3).sum())
+                print(f"    l1 {float(l1):.4f}  active_dims {nz}/{fb.d}", flush=True)
         opt.zero_grad(); loss.backward(); opt.step()
         step += 1
         if step % 100 == 0:
