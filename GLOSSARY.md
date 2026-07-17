@@ -213,6 +213,54 @@ fails. Reported as `violation ratio = d(s,g) / (d(s,m) + d(m,g))`; ≤ 1 means n
 violation. Used as a health check: our metric `d` has zero violations (guaranteed
 by its construction), confirming the distance geometry is structurally sound.
 
+### QRL objective (how the quasimetric is trained)
+The **Quasimetric-RL** objective (Wang, Torralba, Isola, Zhang, ICML 2023) — the
+loss the IQE distance head is *designed* for, replacing InfoNCE (which only ranks
+and leaves the interval geometry collapsed). Enabled by `--qrl-objective`. It is a
+constrained optimization with **no contrastive softmax**: *maximize* the distance
+between random state→goal pairs, *subject to* every real 1-ply step costing ≤ 1.
+Long distances are never supervised — they self-assemble by chaining unit steps
+through the triangle inequality. The per-step logged quantities:
+
+- **`d_step`** — mean directed distance `d(F(s) → B(s'))` over the batch's real
+  1-ply transitions (s → its actual next position). Should sit near **1** (one ply
+  = one unit). `d_step → 0` = **collapse** (adjacent positions squashed onto each
+  other, a degenerate way to satisfy the one-sided ≤1 constraint); healthy training
+  holds it ~1. This is the primary health signal.
+- **`d_rand`** — mean distance for the *pushed* pairs (random/far goals). The global
+  push drives this *up* toward the offset, establishing the "far" end of the scale.
+  Low/stuck `d_rand` = the metric isn't spreading.
+- **`push`** — the global-push loss term `softplus(offset − d)`; *decreases* as
+  `d_rand` climbs toward the offset (the push saturates once pairs are far enough).
+- **`sq_dev`** — the local-constraint penalty `mean(relu(d_step − 1)²)`: how much the
+  1-ply steps *exceed* the unit cost. 0 when all steps are ≤ 1.
+- **`lam` (QRL λ)** — the **Lagrange multiplier** on the local constraint: how hard
+  the constraint pulls `d_step` down to satisfy ≤ 1. Rises when the constraint is
+  violated (dual ascent), or is a PID control signal (see below). **Distinct from the
+  certainty-exchange λ** in the certainty-distance table below — same letter, unrelated
+  role. This one is a control gain; that one is a plies-per-nat conversion.
+- **`var`** — the VICReg variance-regularization term (`--qrl-var-weight`): hinges each
+  embedding dimension's std up to `--qrl-var-target`, an anti-collapse safeguard. 0
+  once every dimension carries enough variance.
+
+Key **hyperparameters** (not logged each step):
+- **`--qrl-push-offset`** — the finite stand-in for "infinity": how far the push drives
+  *unreachable* pairs. Must exceed the longest reachable distance we care about so
+  reachable-but-long lines stay *closer* than unreachable ones (our data: games reach
+  ~150 plies at the 99th percentile). Too large ⇒ the strong push can tip `d_step` into
+  collapse.
+- **`step_cost` = 1, `epsilon` = 0.25** — the unit step cost and the constraint tolerance.
+- **`--qrl-push-mix`** — blend of *real* (anchor→its own future, **coupled** to the
+  constraint via shared positions ⇒ its chain forces `d_step`~1, killing collapse) vs
+  *shuffled* (cross-batch, establishes the far-scale) push pairs. 0 = shuffle only,
+  1 = real only, 0.5 = mix.
+- **`--qrl-use-pid` + `--qrl-pid-kp/ki/kd`** — **PID-Lagrangian** (Stooke et al. 2020):
+  drive `lam` by proportional+integral+derivative control on the constraint violation
+  instead of plain dual ascent. The **derivative** gain (`kd`) damps the oscillation
+  that made `d_step` swing/collapse. `ki` alone = classic dual ascent.
+- **`--qrl-lambda-lr`** — dedicated LR for the (non-PID) dual-ascent multiplier, off the
+  cosine schedule.
+
 ### Ply-gap calibration
 A training term that pins the *absolute scale* of the distance to something real.
 The contrastive loss alone only cares about *ranking* (is the true future closer

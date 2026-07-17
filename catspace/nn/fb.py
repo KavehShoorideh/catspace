@@ -129,6 +129,13 @@ class TorchFB(nn.Module):
             # softplus (whose gradient is throttled by sigmoid(raw)~0.01) can
             # rein in. lambda gets its own higher LR in the trainer too.
             self.qrl_raw_lambda = nn.Parameter(torch.tensor(_softplus_inv(1.0)))
+            # PID-Lagrangian state (Stooke et al. 2020): the multiplier is a PID
+            # control signal on the constraint violation, not a dual-ascended
+            # param. Integral term = classic dual ascent; the DERIVATIVE term
+            # damps the oscillation that made d_step swing/collapse. Buffers, not
+            # params (updated in-place under no_grad, no autograd through them).
+            self.register_buffer("qrl_pid_I", torch.tensor(1.0))
+            self.register_buffer("qrl_pid_prev", torch.tensor(0.0))
         # TWO-HORIZON (2026-07-13, TWO_HORIZON_DESIGN.md): the existing
         # headF/headB (+ quasimetric) ARE the FAR head -- calibrated
         # long-range distance-to-goal. The near head is purely additive:
@@ -459,7 +466,9 @@ class TorchFB(nn.Module):
                  valid: torch.Tensor, *, push_offset: float = 40.0,
                  softplus_beta: float = 0.1, step_cost: float = 1.0,
                  epsilon: float = 0.25, push_real: bool = False,
-                 var_weight: float = 0.0, var_target: float = 1.0):
+                 var_weight: float = 0.0, var_target: float = 1.0,
+                 push_mix: float = 0.0, use_pid: bool = False,
+                 pid_kp: float = 0.5, pid_ki: float = 0.01, pid_kd: float = 2.0):
         """Quasimetric-RL objective (Wang, Torralba, Isola, Zhang, ICML 2023),
         the loss IQE was DESIGNED for -- InfoNCE only enforces relative ranking
         and leaves the interval geometry collapsed ("d could remain arbitrarily
@@ -488,8 +497,22 @@ class TorchFB(nn.Module):
         else:
             d_step_v = d_step
         sq_dev = (d_step_v - step_cost).clamp_min(0.0).square().mean()
-        lam = F.softplus(self.qrl_raw_lambda)
-        constraint = (sq_dev - epsilon ** 2) * grad_reverse(lam)
+        if use_pid:
+            # PID-Lagrangian: lambda is a control signal on the violation, with
+            # a DERIVATIVE term to damp the dual-ascent oscillation that made
+            # d_step swing/collapse (Stooke et al. 2020). Buffers updated
+            # in-place, no autograd; theta then minimizes lambda*sq_dev.
+            with torch.no_grad():
+                cost = (sq_dev - epsilon ** 2).detach()
+                new_I = torch.clamp(self.qrl_pid_I + pid_ki * cost, min=0.0)
+                deriv = cost - self.qrl_pid_prev
+                lam = torch.clamp(pid_kp * cost + new_I + pid_kd * deriv, min=0.0)
+                self.qrl_pid_I.copy_(new_I)
+                self.qrl_pid_prev.copy_(cost)
+            constraint = lam * sq_dev
+        else:
+            lam = F.softplus(self.qrl_raw_lambda)
+            constraint = (sq_dev - epsilon ** 2) * grad_reverse(lam)
         # global push -> spread pairs toward push_offset. push_real=True uses the
         # REAL (anchor -> its geometric-future goal) pairs, which are COUPLED to
         # the 1-ply constraint through shared positions: pushing d(s,g) up to its
@@ -499,12 +522,20 @@ class TorchFB(nn.Module):
         # DISCONNECTED from the constraint, which let d_step collapse at
         # offset=128 (2026-07-17). g is reachable so its push saturates at the
         # chain length (< offset); only genuinely-far pairs reach the offset.
-        if push_real:
-            d_rand = self.directed_distance(f_s, b_g)
-        else:
-            perm = torch.randperm(f_s.shape[0], device=f_s.device)
-            d_rand = self.directed_distance(f_s, b_g[perm])
-        push = F.softplus(push_offset - d_rand, beta=softplus_beta).mean()
+        # MIXED push: shuffled goals establish the far-scale (unreachable pairs
+        # -> offset); real anchor->future goals are COUPLED to the constraint
+        # (their chain forces d_step~1, killing the collapse that let the strong
+        # offset=128 push squash local structure). push_mix in [0,1] blends them;
+        # 0 = shuffle only (far-scale, but collapse-prone at big offset), 1 = real
+        # only (coupled, but no far-scale). push_real=True forces mix=1 (legacy).
+        mix = 1.0 if push_real else push_mix
+        perm = torch.randperm(f_s.shape[0], device=f_s.device)
+        d_shuf = self.directed_distance(f_s, b_g[perm])
+        push = (1.0 - mix) * F.softplus(push_offset - d_shuf, beta=softplus_beta).mean()
+        if mix > 0.0:
+            d_real = self.directed_distance(f_s, b_g)
+            push = push + mix * F.softplus(push_offset - d_real, beta=softplus_beta).mean()
+        d_rand = d_shuf if mix < 1.0 else self.directed_distance(f_s, b_g)
         loss = push + constraint
         # VARIANCE REGULARIZATION (VICReg, Bardes et al. 2022) -- the standard
         # anti-collapse cure (Kaveh's rule: collapse is a first-class failure,

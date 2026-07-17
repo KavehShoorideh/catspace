@@ -294,6 +294,17 @@ def main():
                          "collapse/oscillation directly.")
     ap.add_argument("--qrl-var-target", type=float, default=1.0,
                     help="target per-dimension std for the variance regularizer")
+    ap.add_argument("--qrl-push-mix", type=float, default=0.0,
+                    help="blend of real (coupled, anti-collapse) vs shuffled (far-scale) "
+                         "push pairs, in [0,1]. 0=shuffle only, 1=real only, 0.5=mix. "
+                         "The mix lets a big offset spread without collapsing d_step.")
+    ap.add_argument("--qrl-use-pid", action="store_true",
+                    help="PID-Lagrangian multiplier (Stooke 2020) instead of plain dual "
+                         "ascent: the derivative term damps the oscillation that made "
+                         "d_step swing/collapse. Enables a stable big offset.")
+    ap.add_argument("--qrl-pid-kp", type=float, default=0.5, help="PID proportional gain")
+    ap.add_argument("--qrl-pid-ki", type=float, default=0.01, help="PID integral gain (= dual-ascent lr)")
+    ap.add_argument("--qrl-pid-kd", type=float, default=2.0, help="PID derivative gain (the damping term)")
     ap.add_argument("--qrl-push-real", action="store_true",
                     help="push over REAL anchor->future pairs (coupled to the 1-ply "
                          "constraint via shared positions -> prevents the d_step->0 "
@@ -549,6 +560,10 @@ def main():
             loss, qstats = fb.qrl_loss(core[0], core[1], planes_succ, core[2], valid,
                                        push_offset=args.qrl_push_offset,
                                        push_real=args.qrl_push_real,
+                                       push_mix=args.qrl_push_mix,
+                                       use_pid=args.qrl_use_pid,
+                                       pid_kp=args.qrl_pid_kp, pid_ki=args.qrl_pid_ki,
+                                       pid_kd=args.qrl_pid_kd,
                                        var_weight=args.qrl_var_weight,
                                        var_target=args.qrl_var_target)
             top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
