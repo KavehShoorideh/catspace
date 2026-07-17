@@ -283,6 +283,11 @@ def main():
     ap.add_argument("--unreach-margin-q", type=float, default=0.9,
                     help="margin = this quantile of the batch's positive-pair "
                          "distances + 0.25 (push negatives beyond reachable mass)")
+    ap.add_argument("--horizon-k", type=float, default=0.0,
+                    help="bound the quasimetric at k plies: calibrate distance to "
+                         "min(k, ply_gap)/scale (Kaveh 2026-07-16). k~=10 makes the "
+                         "measured ~10-ply retrieval horizon explicit; beyond-k "
+                         "positions become the natural contrast class.")
     ap.add_argument("--quasimetric", action="store_true",
                     help="score(f,g) = -d(f,g)+r(f,g), d a real (triangle-inequality-"
                          "respecting) metric, instead of a plain cosine dot product -- "
@@ -493,7 +498,8 @@ def main():
                                     repel_weight=args.repel_weight, repel_margin=args.repel_margin,
                                     plies_to_end=pte_t, axis_weight=args.axis_weight,
                                     axis_margin=args.axis_margin,
-                                    axis_gate_plies=args.axis_gate_plies)
+                                    axis_gate_plies=args.axis_gate_plies,
+                                    horizon_k=args.horizon_k)
         if args.committor_base:
             ps_c, om_c = core[0], core[1]
             f_s = fb.embed_F(ps_c, om_c)

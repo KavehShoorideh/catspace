@@ -254,8 +254,19 @@ class TorchFB(nn.Module):
                 pole_margin: float = 3.0, repel_weight: float = 0.0,
                 repel_margin: float = 1.0, plies_to_end: torch.Tensor | None = None,
                 axis_weight: float = 0.0, axis_margin: float = 1.0,
-                axis_gate_plies: float = 8.0) -> tuple[torch.Tensor, torch.Tensor]:
+                axis_gate_plies: float = 8.0,
+                horizon_k: float = 0.0) -> tuple[torch.Tensor, torch.Tensor]:
         """InfoNCE with in-batch negatives; returns (loss, top1 retrieval acc).
+
+        horizon_k (>0, in plies; Kaveh 2026-07-16): bound the quasimetric at k
+        plies -- calibrate the distance to min(k, ply_gap)/scale instead of
+        ply_gap/scale. This is a valid capped quasimetric (min(k, a+b) <=
+        min(k,a)+min(k,b), subadditivity preserved) and focuses capacity on the
+        near-horizon structure planning actually descends (our retrieval is
+        sharp to ~10 plies then cliffs -- so k~=10 makes the measured horizon
+        explicit). Positions beyond k become the natural contrast class (they
+        all sit at the horizon margin), which is where the hard-negative
+        repulsion (nn/hard_negatives) plugs in.
 
         2026-07-12 ply-gap calibration (Kaveh: "if the future leads to a mate
         for me, that's a good future... maybe we have to search deeper"):
@@ -289,7 +300,10 @@ class TorchFB(nn.Module):
             loss = loss + competence_weight * nn.functional.mse_loss(pred_err, per_row.detach())
         if self.quasimetric and ply_gap is not None:
             d_true = self.distance_matrix(f, b).diagonal()
-            target_d = ply_gap.to(d_true.dtype) / ply_gap_scale
+            gap = ply_gap.to(d_true.dtype)
+            if horizon_k > 0:
+                gap = gap.clamp(max=horizon_k)          # capped (horizoned) quasimetric
+            target_d = gap / ply_gap_scale
             loss = loss + ply_gap_weight * nn.functional.mse_loss(d_true, target_d)
         if self.distributional and ply_gap is not None:
             # categorical head: predict which ply-gap BIN the true goal falls in
