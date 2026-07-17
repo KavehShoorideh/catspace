@@ -404,7 +404,13 @@ class TorchFB(nn.Module):
             d_sp = self.distance_matrix(f, poles)                     # (N,3) state->pole hops
             idx = (result + 1).long().clamp(0, 2)
             pull = nn.functional.cross_entropy(-d_sp / pole_tau, idx)
-            pp = torch.cdist(poles * self.metric_scale, poles * self.metric_scale)  # (3,3)
+            # pole-pole separation. IQE has no metric_scale (only the MRN branch
+            # sets it), so fall back to the mode-native distance there instead of
+            # crashing on the missing attribute (adversarial-review finding).
+            if getattr(self, "iqe", False):
+                pp = self.distance_matrix(poles, poles)                # (3,3) IQE quasimetric
+            else:
+                pp = torch.cdist(poles * self.metric_scale, poles * self.metric_scale)  # (3,3)
             repel = (nn.functional.relu(pole_margin - pp[0, 1])
                      + nn.functional.relu(pole_margin - pp[0, 2])
                      + nn.functional.relu(pole_margin - pp[1, 2])) / 3.0
@@ -493,19 +499,22 @@ class TorchFB(nn.Module):
         b_g = self.embed_B(planes_g)
         # local: d(s -> s') <= step_cost on observed transitions
         d_step = self.directed_distance(f_s, b_succ)
-        if valid.any():
-            d_step_v = d_step[valid]
-        else:
-            d_step_v = d_step
         # two_sided pins d(s,s') to EXACTLY step_cost (penalizes below AND above),
         # forbidding the collapse attractor where all F sit above all B in the IQE
         # coords so every d(F->B)=0 (which trivially satisfies the one-sided <=1
         # and drags d_rand to 0 too). Correct for chess: every 1-ply move IS one
         # step, unlike the redundant actions QRL's one-sided constraint was for.
-        if two_sided:
-            sq_dev = (d_step_v - step_cost).square().mean()
+        if valid.any():
+            d_step_v = d_step[valid]
+            if two_sided:
+                sq_dev = (d_step_v - step_cost).square().mean()
+            else:
+                sq_dev = (d_step_v - step_cost).clamp_min(0.0).square().mean()
         else:
-            sq_dev = (d_step_v - step_cost).clamp_min(0.0).square().mean()
+            # no real 1-ply transitions this batch: skip the local constraint
+            # rather than pin d(F(s)->B(padding)) to step_cost (review finding).
+            d_step_v = d_step
+            sq_dev = torch.zeros((), device=f_s.device)
         if use_pid:
             # PID-Lagrangian: lambda is a control signal on the violation, with
             # a DERIVATIVE term to damp the dual-ascent oscillation that made
@@ -554,11 +563,12 @@ class TorchFB(nn.Module):
             push = push + mix * F.softplus(push_offset - d_real, beta=softplus_beta).mean()
         d_rand = d_far
         loss = push + constraint
-        # VARIANCE REGULARIZATION (VICReg, Bardes et al. 2022) -- the standard
-        # anti-collapse cure (Kaveh's rule: collapse is a first-class failure,
-        # cure is repulsion not width). Hinge each embedding dimension's std up
-        # to var_target: forbids the degenerate solution where adjacent positions
-        # squash onto each other (d_step->0) to satisfy the one-sided constraint.
+        # VARIANCE REGULARIZATION (VICReg, Bardes et al. 2022): hinge each
+        # embedding dim's marginal std up to var_target. NOTE (review 2026-07-17):
+        # this guards DIMENSIONAL collapse only -- it is largely INERT against the
+        # IQE ORDERING collapse (all F above all B -> d(F->B)=0), where per-dim
+        # variance stays full. --qrl-two-sided is the real cure for that mode;
+        # keep var-reg as a cheap secondary safeguard, not the primary one.
         var = torch.zeros((), device=f_s.device)
         if var_weight > 0.0:
             for e in (f_s, b_succ, b_g):
@@ -639,11 +649,14 @@ def load_ckpt(path, device: str = "cpu") -> tuple[TorchFB, dict]:
             pad = torch.zeros(ref.shape[0], ref.shape[1] - state[k].shape[1],
                               *ref.shape[2:], dtype=state[k].dtype, device=state[k].device)
             state[k] = torch.cat([state[k], pad], dim=1)
-    # new params absent from older checkpoints: seed them from the freshly
-    # constructed model's init so pre-QRL quasimetric checkpoints still load
-    # (qrl_raw_lambda is inert unless the QRL objective is active).
+    # KNOWN-new params absent from older checkpoints: seed from fresh init so
+    # pre-QRL quasimetric checkpoints still load. Restricted to an ALLOWLIST so
+    # load_state_dict still hard-fails on any OTHER missing key (a truncated save
+    # or config/state skew) instead of silently random-initing it (adversarial-
+    # review finding, 2026-07-17).
+    _NEW_PARAM_ALLOWLIST = {"qrl_raw_lambda", "qrl_pid_I", "qrl_pid_prev"}
     for k, ref in fb.state_dict().items():
-        if k not in state:
+        if k not in state and k in _NEW_PARAM_ALLOWLIST:
             state[k] = ref.clone()
     fb.load_state_dict(state)
     fb.to(device)

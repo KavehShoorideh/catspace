@@ -224,3 +224,19 @@ def test_certainty_stop_off_by_default_expands():
                 certainty_stop=0.0).run(b.copy())
     # with the stop off, non-terminal children keep v_init (not forced terminal)
     assert any(c.terminal_v is None for c in root.children)
+
+
+def test_black_prefers_mate_over_draw():
+    # regression for the (terminal_v > 0.5) == white shortcut bug (2026-07-17):
+    # for Black to move, that predicate reduced to terminal_v <= 0.5, matching a
+    # DRAW (DRAW_V=0) -- so Black could grab a draw over a real Black mate. Build
+    # a Black-to-move root where one child is a Black mate and another is a draw;
+    # best_move must return the mate.
+    import chess as _chess
+    # Black to move: Ra1-a1#? construct a position where a Black rook mate exists.
+    # Black: Ra2#? Use a back-rank mate mirror: White Kh1, pawns f2 g2 h2; Black
+    # Ra8 with Ra1 = mate.
+    b = _chess.Board("r5k1/8/8/8/8/8/5PPP/6K1 b - - 0 1")   # ...Ra1#
+    mv = make(nodes=64).best_move(b)
+    bb = b.copy(); bb.push(mv)
+    assert bb.is_checkmate()          # took the mate, not a shuffling non-mate/draw

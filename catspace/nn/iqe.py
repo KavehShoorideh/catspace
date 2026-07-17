@@ -3,19 +3,23 @@ nn/iqe.py — Interval Quasimetric Embedding (Wang & Isola 2022), the
 valid-and-universal quasimetric head the merged paper (adversarial_reachability)
 adopts in place of the MRN score.
 
-Construction (union-of-intervals form, provably a quasimetric):
+Construction (union-of-intervals form, provably a quasimetric) -- paper
+convention (Wang & Isola 2022), verified by the direction test:
   reshape each latent to (C components, K per component). For an ordered pair
-  (u, v) and component c, form the directed intervals {[v_ck, u_ck] : u_ck >
-  v_ck} and take the Lebesgue measure of their UNION as the per-component
-  distance d_c(u->v). Combine components by a learned mix of max and mean
-  (both preserve the quasimetric axioms):
+  (u, v) and component c, form the directed intervals {[u_ck, v_ck] : v_ck >
+  u_ck} and take the Lebesgue measure of their UNION as the per-component
+  distance d_c(u->v) -- i.e. length accumulates where v EXCEEDS u, so d(u->v)
+  is ~0 when u dominates v ("already reached") and LARGE when v exceeds u
+  ("must climb"). Combine components by a learned mix of max and mean (both
+  preserve the quasimetric axioms):
       d(u->v) = alpha * max_c d_c  +  (1-alpha) * mean_c d_c,   alpha in [0,1].
 
 Why this is a quasimetric BY CONSTRUCTION (axiom-tested below, not assumed):
-  * d(u,u) = 0     -- u_ck > u_ck is never true, so every interval is empty.
-  * asymmetric     -- the intervals for u->v (where u exceeds v) differ from
-                      v->u (where v exceeds u).
-  * triangle ineq. -- per coordinate k, the u->w interval [w_k,u_k] is COVERED
+  * d(u,u) = 0     -- v_ck > u_ck is never true when v==u, so every interval
+                      is empty.
+  * asymmetric     -- the intervals for u->v (where v exceeds u) differ from
+                      v->u (where u exceeds v).
+  * triangle ineq. -- per coordinate k, the u->w interval [u_k,w_k] is COVERED
                       by the union of the u->v and v->w intervals (case check
                       over the orderings of u_k,v_k,w_k), and the union measure
                       is subadditive; max and mean of quasimetrics are
@@ -67,11 +71,10 @@ class IQE(nn.Module):
         pairwise()."""
         U = u.reshape(*u.shape[:-1], self.components, self.k)
         V = v.reshape(*v.shape[:-1], self.components, self.k)
-        # directed intervals [V, U] where U > V; empty ones set l==r so they
-        # contribute nothing to the union
         # paper convention (Wang-Isola 2022): interval [U, max(U,V)], nonempty
-        # where V exceeds U -> d(u->v). (Was flipped: [V,U] = d(v->u), the
-        # reverse direction, which made InfoNCE fight time's arrow.)
+        # (length V-U) exactly where V exceeds U -> d(u->v). (Was flipped once to
+        # [V,U] = d(v->u), the reverse direction, which made InfoNCE fight time's
+        # arrow -- guarded now by test_invariants.test_iqe_direction_semantics.)
         lo = U
         hi = torch.maximum(U, V)
         dc = _union_length(lo, hi)                          # (N, components)
