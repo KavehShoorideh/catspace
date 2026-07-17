@@ -57,6 +57,10 @@ class IQE(nn.Module):
         self.components = components
         self.k = d // components
         self.alpha_logit = nn.Parameter(torch.zeros(()))   # sigmoid -> mix in [0,1]
+        # learnable output scale: lets absolute calibration (ply-gap) adjust the
+        # distance SCALE without shrinking the embeddings back into the
+        # degenerate small-coordinate regime (diagnosed 2026-07-17)
+        self.log_scale = nn.Parameter(torch.zeros(()))
 
     def forward(self, u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """(N,d) x (N,d) -> (N,) directed distance d(u->v). For all-pairs use
@@ -71,7 +75,8 @@ class IQE(nn.Module):
         lo = torch.where(empty, hi, lo)                    # collapse empties to points
         dc = _union_length(lo, hi)                          # (N, components)
         alpha = torch.sigmoid(self.alpha_logit)
-        return alpha * dc.amax(dim=-1) + (1 - alpha) * dc.mean(dim=-1)
+        d = alpha * dc.amax(dim=-1) + (1 - alpha) * dc.mean(dim=-1)
+        return torch.exp(self.log_scale) * d
 
     def pairwise(self, u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """(N,d) x (M,d) -> (N,M) directed distances d(u_i -> v_j)."""
@@ -84,4 +89,5 @@ class IQE(nn.Module):
         lo = torch.where(empty, hi, lo)
         dc = _union_length(lo, hi)                          # (N, M, components)
         alpha = torch.sigmoid(self.alpha_logit)
-        return alpha * dc.amax(dim=-1) + (1 - alpha) * dc.mean(dim=-1)
+        d = alpha * dc.amax(dim=-1) + (1 - alpha) * dc.mean(dim=-1)
+        return torch.exp(self.log_scale) * d
