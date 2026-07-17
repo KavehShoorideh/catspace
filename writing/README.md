@@ -8,7 +8,8 @@ repo [README](../README.md).
 
 | piece | what it is |
 |---|---|
-| [committor_planner.md](committor_planner.md) | **the technical paper**: the committor-field planning architecture — math (score/loss/committors), design choices, and our four contribution claims. The "best architecture we have" spec. |
+| [adversarial_reachability.md](adversarial_reachability.md) | **the merged paper (lead)**: adversarial committor geometry, with figures. Merges the formal derivation thread (region-necessity theorem, two-ply stitch, IQE, search/memory proofs, plan-space meta-game) with the experimental thread (measured wall-generated gradient, capacity forensics, e-value harness). Includes a §11 ledger of which thread was ahead where. |
+| [committor_planner.md](committor_planner.md) | the earlier single-thread technical paper: committor-field architecture, math, four contribution claims (superseded as lead by the merged paper). |
 | [state_of_the_research.md](state_of_the_research.md) | the main article: hypotheses, confirmed claims, current frontier, methods, data pointers |
 | [research_journey.md](research_journey.md) | the companion: every disproven/inconclusive hypothesis, era by era, and the cross-cutting lessons |
 | [posts/anytime_valid_ab_for_game_evals.md](posts/anytime_valid_ab_for_game_evals.md) | how-to: e-values, paired playouts, single-use confirmatory sets |
