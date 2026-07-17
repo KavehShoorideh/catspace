@@ -4158,3 +4158,43 @@ gated) -- running now, independent of QRL, validates Kaveh's coherence-length
 mechanism through conversion. (2) QRL offset/push-source sweep to find the
 config with stable d_step~1 + spreading d_rand; launch the real run. (3) eval
 the healthy QRL field (conversion + coherence on it). Commit + JOURNAL each step.
+
+
+## 2026-07-17 (Opus) — QRL collapse investigated; field training, conversion is arbiter
+
+Coherence-length A/B on the INCUMBENT MRN field (cert_base_full + phead
+committor, MCTS@800n, k=1.0 vs off, n=100): A(off)=0.610 vs B(k=1.0)=0.510,
+diff -0.100 CI[-0.20,0.00] e=1.11 -- NOT significant, only 26/100 decisive
+(underpowered). When B did mate it was FASTER (15 vs 21 plies): k=1.0 converts
+a touch less but finishes quicker, consistent with OVER-discounting (too much
+field trust pulled). Not a verdict; retry a gentler k (0.3-0.5) on a healthy
+field + more decisive starts.
+
+QRL d_step (mean d(F(s)->B(s')) on 1-ply transitions) investigation:
+  * offset=128: d_step STUCK at 0 (systematic local collapse) -- the strong
+    push, acting on shuffled cross-batch pairs DISCONNECTED from the 1-ply
+    constraint, made squashing neighbors (free under the one-sided d<=1
+    constraint) the path of least resistance. Killed.
+  * offset=40 shuffle: d_step ~0.8 mean but SWINGS (dips to 0.006 on some
+    batches). Not collapsed, just noisy.
+  * offset=40 + push_real (push over real anchor->future pairs, coupled): d_step
+    still swings AND d_rand stays low (~1-9, reachable pairs cap at chain length
+    -> no far-scale). Worse. Shuffle keeps the far-scale (d_rand ~6-16).
+  * offset=40 + VICReg var-reg (weight 1.0): var term satisfied instantly
+    (dims DO have variance) but d_step STILL dips to 0.006 -- variance reg cures
+    GLOBAL dimensional collapse, not the LOCAL-pair swing.
+
+SEARCH (Kaveh's rule) for the problem: it's the known dual-ascent Lagrangian
+OSCILLATION (Stooke et al. PID-Lagrangian arXiv 2007.03964; ALaM augmented-
+Lagrangian arXiv 2605.00667: "standard dual gradient ascent induces severe
+oscillations, overshoot propagates to adjacent states"). Targeted fix = PID or
+augmented Lagrangian to damp the lambda oscillation. VICReg variance reg is the
+collapse cure (matches Kaveh's standing rule) but addresses a different mode.
+
+DECISION: stop diagnosing d_step (it's ~0.8 non-collapsed, and PLAY is the
+arbiter, not the metric-internal number). Launched the full 40k QRL-IQE field
+at offset=40 + var-reg(1.0, cheap dimensional-collapse safeguard). Judge by
+CONVERSION at the 10k/20k/40k checkpoints vs the MRN incumbent (0.80 @800n via
+phead). If conversion is poor AND d_step instability is implicated, implement
+PID-Lagrangian as the targeted fix. New flags: --qrl-push-real, --qrl-var-weight
+/-target (all committed). load_ckpt now backfills new params for old ckpts.
