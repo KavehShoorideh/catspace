@@ -10,12 +10,21 @@ fix restored the separation.
 ## 0. The arrangement (one screen)
 
 ```
-GEOMETRY   d_optimal(s,g)   IQE quasimetric, QRL-trained        min-sum, cooperative
-VALUE      P(outcome|s)     committor phead (W/D/L surfaces)    measure-dependent, adversarial via minimax
-TRUST      γ = e^{-k(1-P)}  coherence: how deep to believe d    derived from P, not from move-count
-COMPOSE    minimax MCTS     turns cooperative d into forced v   the adversarial step no metric can do
-DECIDE     planner (post-MVP)  internal {probe_region, set_plan} + game {make_move, offer_draw, resign}
-DEFERRED   ω-conditioning   fallibility = complexity × skill    enters through P, nowhere else
+PRIMITIVES (independent information -- only these two)
+  GEOMETRY      the game graph; d_optimal(s,g) its metric summary (IQE, QRL-trained; min-sum)
+  PLAY MEASURE  mu(move|s): what actually gets played, us and opponent (perfect play = argmax;
+                fallibility = spread; omega-conditioning lives HERE and nowhere else)
+
+DERIVED (computed from the two primitives)
+  VALUE      P(outcome|s) = the boundary-value solution of mu on the geometry (committor:
+             P=1 on W, 0 on L, harmonic in between). NOT primitive -- Kaveh 2026-07-17.
+             Two EVALUATORS of this one integral: search (on-demand, exact-ish) and the
+             phead (amortized cache). They must agree (martingale check, section 2).
+  COHERENCE  gamma = e^{-k(1-P)}: the integrand's local decay -- one corridor's survival.
+             Value = the OR over ALL corridors; coherence = one AND-term inside it.
+  COMPOSE    minimax MCTS: numerical integration of mu-worst-case over the geometry.
+  DECIDE     planner (post-MVP): internal {probe_region, set_plan} + game {make_move,
+             offer_draw, resign} -- functionals of the derived quantities.
 ```
 
 Layer-separation is the thesis. The week's bugs, reread as violations of it:
@@ -87,9 +96,23 @@ precisely in the undersampled regions.
 
 **NEW REQUIRED CHECK — calibration (HIGH).** P now feeds three consumers:
 coherence γ, the obvious-region soft-terminal, and (post-MVP) resign/draw. An
-overconfident phead poisons all three *silently*. Calibration (reliability
-curves on held-out outcomes; ECE) must become a standing health gate next to
-effective rank. Until measured, treat `certainty_stop` conservatively.
+overconfident phead poisons all three *silently*. Two instruments, both on
+held-out games:
+  1. **Reliability/ECE** — terminal calibration: among positions with predicted
+     P(win)=0.8, do ~80% end won?
+  2. **Martingale residual** — per-ply harmonicity: since the committor is the
+     harmonic function of the play measure, it must be a martingale along real
+     play: E[P(s_{t+1}) | s_t] ≈ P(s_t). Systematic drift = the phead is NOT
+     the integral of μ over the geometry (the identity that defines it). This
+     checks calibration per-ply, without waiting for outcomes, and directly
+     tests the value-is-derived identity (Kaveh 2026-07-17).
+Standing health gate next to effective rank. Until measured, treat
+`certainty_stop` conservatively.
+
+**Fallibility is two-sided.** μ is the measure over *whoever is to move*: on
+our plies P(we find the move), on theirs P(they find the refutation). A
+corridor dies by their escape OR our slip; per-ply survival multiplies both.
+ω-conditioning therefore carries two knobs (our skill, theirs) on one measure.
 
 ## 3. Trust: coherence — SOUND, with a pleasing identity
 
