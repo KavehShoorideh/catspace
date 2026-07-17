@@ -272,6 +272,17 @@ def main():
     ap.add_argument("--l1-warmup", type=int, default=10000,
                     help="steps of 0 L1 before the tax ramps in (explore wide "
                          "first, then sparsify)")
+    ap.add_argument("--unreach-weight", type=float, default=0.0,
+                    help="monotonicity hard-negative repulsion (2026-07-16): "
+                         "each step, add one piece to every anchor -> a provably "
+                         "unreachable goal (count strictly up), and push its "
+                         "d(F(s),B(neg)) above a batch-relative margin. Exact, "
+                         "free, directional hard negatives to speed separation; "
+                         "quasimetric-safe (inf is allowed). GATE on not taxing "
+                         "short-horizon sharpness (asymmetry-hinge precedent).")
+    ap.add_argument("--unreach-margin-q", type=float, default=0.9,
+                    help="margin = this quantile of the batch's positive-pair "
+                         "distances + 0.25 (push negatives beyond reachable mass)")
     ap.add_argument("--quasimetric", action="store_true",
                     help="score(f,g) = -d(f,g)+r(f,g), d a real (triangle-inequality-"
                          "respecting) metric, instead of a plain cosine dot product -- "
@@ -511,6 +522,20 @@ def main():
             loss = loss + args.phead_weight * p_loss + args.cert_base_weight * cert
             if step % 100 == 0:
                 print(f"    cert {float(cert):.4f}  phead {float(p_loss):.4f}", flush=True)
+        if args.unreach_weight > 0 and getattr(fb, "quasimetric", False):
+            from catspace.nn.hard_negatives import repel_loss, unreachable_goals
+            neg_packed = unreachable_goals(batch.anchors[np.flatnonzero(
+                (batch.meta["game_id"] % HOLDOUT_MOD) != 0)], seed=step)
+            om_neg = omega_ids(np.zeros(len(neg_packed)), np.zeros(len(neg_packed)),
+                               np.full(len(neg_packed), np.nan))  # goal side: omega unused
+            neg_planes = feature_planes(neg_packed, batch.meta["board_meta"][np.flatnonzero(
+                (batch.meta["game_id"] % HOLDOUT_MOD) != 0)])
+            b_neg = fb.embed_B(torch.from_numpy(neg_planes).to(device))
+            f_s = fb.embed_F(core[0], core[1])
+            d_neg = fb.distance_matrix(f_s, b_neg).diagonal()
+            d_pos = fb.distance_matrix(f_s, fb.embed_B(core[2])).diagonal().detach()
+            margin = torch.quantile(d_pos, args.unreach_margin_q) + 0.25
+            loss = loss + args.unreach_weight * repel_loss(d_neg, margin)
         if args.l1_metric_scale > 0 and getattr(fb, "quasimetric", False):
             # tax on the DISTANCE dimensions (metric_scale), ramped after warmup:
             # a wide embedding is free; using many dims in the METRIC costs.
