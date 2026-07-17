@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import math
 import time
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -302,6 +303,10 @@ def main():
                     help="rolling cross-batch goal-pool size for the push (dataset-wide "
                          "p_goal -> genuinely far pairs so the metric spreads). 0 = in-batch "
                          "shuffle only (leaves d_rand flat on low-diversity batches).")
+    ap.add_argument("--qrl-halt-on-collapse", action="store_true",
+                    help="stop the run (SystemExit) when the collapse detector fires "
+                         "(d_step->0 or d_rand not spreading), instead of just warning. "
+                         "Use on long unattended runs so a collapse doesn't waste hours.")
     ap.add_argument("--qrl-two-sided", action="store_true",
                     help="pin d(s,s') to EXACTLY 1 (penalize below and above), forbidding "
                          "the d_step->0 collapse. Correct for chess (every 1-ply move is "
@@ -548,6 +553,14 @@ def main():
     pool_rng = np.random.default_rng(args.seed + 12345)
     goal_pool_packed = None
     goal_pool_meta = None
+    # QRL COLLAPSE AUTO-DETECTOR (2026-07-17): the metric can silently degenerate
+    # mid-training -- d_step->0 (local collapse, all F above all B) or d_rand
+    # staying ~d_step (small-world, no spread). We LOG these every step; here we
+    # gate on rolling means so a collapse screams at ~2k instead of being found
+    # by hand at 19k. Warn by default; --qrl-halt-on-collapse stops the run.
+    qrl_dstep_hist: deque = deque(maxlen=2000)
+    qrl_drand_hist: deque = deque(maxlen=2000)
+    qrl_collapse_flagged = False
     t0 = time.time()
     while step < args.steps:
         try:
@@ -598,10 +611,33 @@ def main():
                                        var_weight=args.qrl_var_weight,
                                        var_target=args.qrl_var_target)
             top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
+            qrl_dstep_hist.append(qstats["d_step"])
+            qrl_drand_hist.append(qstats["d_rand"])
             if step % 100 == 0:
                 print(f"    qrl push {qstats['push']:.3f} sq_dev {qstats['sq_dev']:.4f} "
                       f"lam {qstats['lam']:.3f} d_step {qstats['d_step']:.3f} "
                       f"d_rand {qstats['d_rand']:.3f} var {qstats.get('var', 0.0):.3f}", flush=True)
+            # collapse gate: after warmup, on rolling means over the window
+            if step >= 2000 and step % 1000 == 0 and len(qrl_dstep_hist) >= 500:
+                ms = float(np.mean(qrl_dstep_hist))
+                mr = float(np.mean(qrl_drand_hist))
+                reason = None
+                if ms < 0.2:
+                    reason = (f"LOCAL COLLAPSE: d_step={ms:.3f}~0 over last "
+                              f"{len(qrl_dstep_hist)} steps (all-F-above-all-B; the "
+                              f"one-sided constraint decayed -- use --qrl-two-sided).")
+                elif mr < 1.5 * ms:
+                    reason = (f"SMALL-WORLD: d_rand={mr:.3f} ~ d_step={ms:.3f} (metric "
+                              f"not spreading -- check phead-weight <=0.1, offset ~15, "
+                              f"and the diverse goal pool).")
+                if reason and not qrl_collapse_flagged:
+                    qrl_collapse_flagged = True
+                    print(f"\n{'='*70}\n  QRL COLLAPSE DETECTED @ step {step}\n  {reason}\n"
+                          f"{'='*70}\n", flush=True)
+                    if args.qrl_halt_on_collapse:
+                        raise SystemExit(f"halting on QRL collapse @ step {step}: {reason}")
+                elif reason is None:
+                    qrl_collapse_flagged = False   # re-arm if it recovers
         elif args.two_horizon:
             ps, om, pg, gap, _mdrop = core
             loss, top1 = fb.two_horizon_loss(ps, om, pg, gap, near_max=args.near_max,
