@@ -57,17 +57,19 @@ class TorchFB(nn.Module):
                  tau: float = 0.1, seed: int = 0, quasimetric: bool = False,
                  two_horizon: bool = False, distributional: bool = False,
                  n_bins: int = 12, competence: bool = False,
-                 outcome_poles: bool = False, concept_axes: int = 0):
+                 outcome_poles: bool = False, concept_axes: int = 0,
+                 iqe: bool = False, iqe_components: int = 8):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
-        if two_horizon or distributional or outcome_poles:
+        if two_horizon or distributional or outcome_poles or iqe:
             quasimetric = True           # all keep the quasimetric d as distance
         self.config = dict(d=d, channels=channels, blocks=blocks, enc_out=enc_out,
                            dh=dh, omega_dim=omega_dim, tau=tau, seed=seed,
                            quasimetric=quasimetric, two_horizon=two_horizon,
                            distributional=distributional, n_bins=n_bins,
                            competence=competence, outcome_poles=outcome_poles,
-                           concept_axes=concept_axes)
+                           concept_axes=concept_axes, iqe=iqe,
+                           iqe_components=iqe_components)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -79,7 +81,14 @@ class TorchFB(nn.Module):
         self.tau = tau
         self.d = d
         self.quasimetric = quasimetric
-        if quasimetric:
+        self.iqe = iqe
+        if iqe:
+            # Interval Quasimetric Embedding: valid+universal quasimetric BY
+            # CONSTRUCTION (merged paper). Replaces the MRN metric_scale/W --
+            # IQE is already asymmetric, so score = -d_iqe (no bilinear residual).
+            from catspace.nn.iqe import IQE
+            self.iqe_head = IQE(d, components=iqe_components)
+        elif quasimetric:
             self.metric_scale = nn.Parameter(torch.ones(d))
             self.W = nn.Parameter(torch.zeros(d, d))
         # TWO-HORIZON (2026-07-13, TWO_HORIZON_DESIGN.md): the existing
@@ -384,6 +393,8 @@ class TorchFB(nn.Module):
         tested directly on `d` alone -- `r` in score_matrix is an
         unconstrained residual that is NOT expected to respect it."""
         assert self.quasimetric, "distance_matrix requires quasimetric=True"
+        if self.iqe:
+            return self.iqe_head.pairwise(f, b)
         fs, bs = f * self.metric_scale, b * self.metric_scale
         d2 = ((fs * fs).sum(1, keepdim=True) + (bs * bs).sum(1)[None, :]
               - 2.0 * (fs @ bs.T))
@@ -394,6 +405,8 @@ class TorchFB(nn.Module):
         quasimetric=True, in which case -d(f,b)+r(f,b) (see module docstring)."""
         if not self.quasimetric:
             return f @ b.T
+        if self.iqe:
+            return -self.distance_matrix(f, b)          # IQE is already asymmetric
         return f @ self.W @ b.T - self.distance_matrix(f, b)
 
     def score(self, f: torch.Tensor, z: torch.Tensor) -> torch.Tensor:

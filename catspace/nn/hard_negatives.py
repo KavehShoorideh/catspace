@@ -52,14 +52,14 @@ def unreachable_goals(packed: np.ndarray, seed: int = 0) -> np.ndarray:
     occ = np.zeros(n, dtype=np.uint64)
     for p in range(12):
         occ |= packed[:, p]
-    for i in range(n):
-        empty_mask = int(_FULL64) & ~int(occ[i]) & int(_FULL64)
-        empties = [s for s in range(64) if (empty_mask >> s) & 1]
-        if not empties:
-            continue                                   # full board (never in chess)
-        sq = empties[int(rng.integers(len(empties)))]
-        plane = _ADDABLE_PLANES[int(rng.integers(len(_ADDABLE_PLANES)))]
-        out[i, plane] = np.uint64(int(out[i, plane]) | (1 << sq))
+    # vectorized random-empty-square pick: give each square a random priority,
+    # veto occupied squares, argmax -> one uniform empty square per row
+    sq_bits = (occ[:, None] >> np.arange(64, dtype=np.uint64)[None, :]) & np.uint64(1)
+    pri = rng.random((n, 64))
+    pri[sq_bits.astype(bool)] = -1.0
+    sq = pri.argmax(axis=1)                            # (n,) empty square per row
+    plane = np.array(_ADDABLE_PLANES)[rng.integers(len(_ADDABLE_PLANES), size=n)]
+    out[np.arange(n), plane] |= (np.uint64(1) << sq.astype(np.uint64))
     return out
 
 
