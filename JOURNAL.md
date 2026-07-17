@@ -3847,3 +3847,25 @@ fix -- much wider embedding + L1-style sparsity tax so dims are allocated
 per-pattern and regimes decouple -- is now directly evidence-backed.
 Complementary cheap lever: a small replay anchor (toy/endgame data at low
 fraction) to DEFEND rare features. Widened-sparse run spec ready; awaiting GO.
+
+### Widen + sparsify launched (Kaveh: "make it even bigger... penalize use of more dimensions")
+Diagnosis-driven architecture change: effective rank ~7/64 regardless of
+width + rare-regime drift 1.71 => the metric has ~no working flexibility and
+frequent-regime gradients drag undefended rare features. Fix = decouple
+representational capacity from GEOMETRIC capacity: wide embedding, L1 tax on
+the per-dim metric_scale (prices DISTANCE dims; representation stays free).
+Trainer knobs added: --channels/--blocks/--enc-out/--dh + --l1-metric-scale
+(warmup ramp). Snapshots now save pheads (localization gap fixed).
+Size reality (single Mac GPU): full Leela-classic trunk (256ch/12blk, 32M)
+runs 0.4 it/s = 17h+, infeasible; and its bulk is trunk DEPTH, not metric
+width. The L1 hypothesis lives on EMBEDDING WIDTH d (where metric_scale and
+the rank collapse are), so kept d=512 (8x the current 64 -> 512 distance
+dims to sparsify) with a lighter 128ch/10blk trunk: 9.4M params, 1.8 it/s.
+LAUNCHED committor_wide.pt: fresh, quasimetric + committor-base (phead in
+base objective) + ply-gap, d=512, l1-metric-scale 3e-4 warmup 8k, 40k steps
+(early-peak-informed: 5k>155k last run), snapshots+pheads every 5k, ~6h.
+Pre-registered gates on snapshots: effective rank RISES and scales with
+width; rare/common drift ratio flattens toward 1; rook competence survives
+to late steps; field-only mateIn1 beats 0.183. Paper written
+(writing/committor_planner.md): full architecture, math (score/loss/
+committors), 4 contribution claims.
