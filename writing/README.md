@@ -8,6 +8,7 @@ repo [README](../README.md).
 
 | piece | what it is |
 |---|---|
+| [committor_planner.md](committor_planner.md) | **the technical paper**: the committor-field planning architecture — math (score/loss/committors), design choices, and our four contribution claims. The "best architecture we have" spec. |
 | [state_of_the_research.md](state_of_the_research.md) | the main article: hypotheses, confirmed claims, current frontier, methods, data pointers |
 | [research_journey.md](research_journey.md) | the companion: every disproven/inconclusive hypothesis, era by era, and the cross-cutting lessons |
 | [posts/anytime_valid_ab_for_game_evals.md](posts/anytime_valid_ab_for_game_evals.md) | how-to: e-values, paired playouts, single-use confirmatory sets |
