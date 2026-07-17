@@ -31,21 +31,21 @@ import torch.nn as nn
 
 def _union_length(l: torch.Tensor, r: torch.Tensor) -> torch.Tensor:
     """Lebesgue measure of the union of intervals [l_k, r_k] along the last
-    dim. Empty intervals must have l_k == r_k. (..., K) -> (...). Exact via a
-    sort + sequential sweep (K is the small per-component dim)."""
+    dim. Empty intervals must have l_k == r_k. (..., K) -> (...).
+
+    Vectorized (no per-k loop): sort by left endpoint; the running max-right
+    BEFORE interval i is cummax(r_sorted) shifted by one, so each interval's
+    fresh coverage is clamp(r_i - max(l_i, prev_max_r), 0) and the union
+    length is their sum. One sort + one cummax + elementwise -- fast enough
+    for the (N,M,components,K) tensors InfoNCE builds every step."""
     order = torch.argsort(l, dim=-1)
     ls = torch.gather(l, -1, order)
     rs = torch.gather(r, -1, order)
-    K = ls.shape[-1]
-    total = torch.zeros(ls.shape[:-1], dtype=ls.dtype, device=ls.device)
-    cur_r = torch.full(ls.shape[:-1], float("-inf"), dtype=ls.dtype, device=ls.device)
-    for k in range(K):
-        lk, rk = ls[..., k], rs[..., k]
-        # new coverage beyond what's already covered up to cur_r
-        start = torch.maximum(lk, cur_r)
-        total = total + torch.clamp(rk - start, min=0.0)
-        cur_r = torch.maximum(cur_r, rk)
-    return total
+    cummax_r = torch.cummax(rs, dim=-1).values
+    prev_max_r = torch.cat([torch.full_like(cummax_r[..., :1], float("-inf")),
+                            cummax_r[..., :-1]], dim=-1)
+    start = torch.maximum(ls, prev_max_r)
+    return torch.clamp(rs - start, min=0.0).sum(dim=-1)
 
 
 class IQE(nn.Module):
