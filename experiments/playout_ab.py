@@ -93,9 +93,11 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
                     dW = dW - pcb * (-torch.log(pd))
                 return dW.unsqueeze(-1)
         kw["committor_head"] = PheadCommittor()
-        if certainty_stop > 0.0 and search == "mcts":
-            # obvious-region recognizer uses the RAW phead softmax (W/D/L)
+        # the raw phead softmax (W/D/L) feeds BOTH the obvious-region soft-terminal
+        # AND coherence's P(realize) signal, so pass it if either is enabled.
+        if search == "mcts" and (certainty_stop > 0.0 or coherence_k > 0.0):
             kw["certainty_head"] = ph
+        if certainty_stop > 0.0 and search == "mcts":
             kw["certainty_stop"] = certainty_stop
             print(f"obvious-region soft-terminal: certainty_stop={certainty_stop}")
         if clearance_beta:

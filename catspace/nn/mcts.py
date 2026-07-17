@@ -218,16 +218,23 @@ class MCTS:
         for c, p in zip(children, pri):
             c.P = float(p)
         node.children = children
-        # coherence length: divergence = normalized entropy of the child-value
-        # distribution (the prior softmax). Forced (one dominant move) -> ~0;
-        # divergent (many comparable moves) -> ~1. gamma = exp(-k*divergence)
-        # is this node's backup trust factor (see _Node.coh_gamma / run()).
-        if self.coherence_k > 0.0 and len(children) > 1:
-            pp = pri[pri > 0.0]
-            H = float(-(pp * np.log(pp)).sum())
-            Hmax = math.log(len(children))
-            div = H / Hmax if Hmax > 0.0 else 0.0
-            node.coh_gamma = math.exp(-self.coherence_k * div)
+        # COHERENCE = P(we realize the outcome from here) (Kaveh 2026-07-17). The
+        # backup trust factor gamma = exp(-k*(1 - P)): P~1 (a forced/won region,
+        # committor confident) => gamma~1, value passes up INTACT -- a proven
+        # mate with many legal moves is NOT discounted; P uncertain => discount.
+        # Grounded in PROBABILITY-of-mate (the committor confidence), NOT move
+        # count. Falls back to child-value entropy (a complexity proxy) only when
+        # no committor is available. Proven-mate LINES have committor P~1 all the
+        # way up, so their value reaches the root undiscounted.
+        if self.coherence_k > 0.0:
+            if self.certainty_fn is not None:
+                _, conf = self.certainty_fn([node.board])
+                node.coh_gamma = math.exp(-self.coherence_k * (1.0 - float(conf[0])))
+            elif len(children) > 1:
+                pp = pri[pri > 0.0]
+                H = float(-(pp * np.log(pp)).sum())
+                div = H / math.log(len(children))          # normalized entropy
+                node.coh_gamma = math.exp(-self.coherence_k * div)
         boot = float(vals[int(np.argmax(persp))])
         if (self.rollout_on_flat and fresh
                 and (float(np.std([c.v_init for c in fresh])) < self.flat_std
@@ -405,8 +412,10 @@ class FBMCTSPolicy:
         # per-position resolved value (expected White-POV outcome) and a
         # confidence (peak class prob). certainty_stop turns high-confidence
         # regions into search-terminals (see MCTS.certainty_fn).
+        # build whenever the head is present (not only for the soft-terminal):
+        # coherence_k also consumes this confidence as its P(realize) signal.
         certainty = None
-        if certainty_head is not None and certainty_stop > 0.0:
+        if certainty_head is not None:
             @torch.no_grad()
             def certainty(boards):
                 packed = np.stack([encode_packed(b) for b in boards])
