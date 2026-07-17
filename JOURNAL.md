@@ -4128,3 +4128,33 @@ NEXT: full QRL-IQE run (does d_optimal reach usable retrieval as a side effect;
 does the phead readout convert the toy, e-value-gated). If QRL-IQE works ->
 merged arch + coherence-length planner. Fallback stays MRN committor field
 (cert_base_full converts 0.80 via phead @800n -- the safe MVP baseline).
+
+
+## 2026-07-16 (Opus) — overnight: QRL offset=128 LOCAL COLLAPSE; coherence A/B running
+
+QRL-IQE full run at offset=128 (Kaveh's data-driven call: max game 407 plies,
+99th 146, mean sampled gap 51 -> 40 is below the mean reachable distance)
+developed a LOCAL COLLAPSE by ~step 1000: d_step (mean d(F(s)->B(s')) on real
+1-ply transitions) fell to 0.000 and stayed, lam ratcheted to 6.5, d_rand
+bounced 2-30 without stably climbing to the 128 offset. The offset=40 smoke was
+HEALTHY (d_step ~1.2-1.7, lam ~2.1) -- so the stronger push at 128 tipped it
+into the degenerate solution (d(s,s')=0 trivially satisfies the one-sided
+d<=1 constraint; adjacent positions map to identical embeddings). Killed it
+rather than burn ~2h.
+
+HYPOTHESIS for the collapse: the global push uses SHUFFLED cross-batch goals,
+which are largely DISCONNECTED from the 1-ply constraint transitions in the
+embedding graph -> nothing forces consecutive positions ~1 apart, so the model
+spreads the (disconnected) random pairs while collapsing the (constrained)
+local steps. Real QRL's push over the state x state marginal keeps near-future
+pairs in the mix, whose triangle-inequality chains pin d(s,s')~1. FIX CANDIDATES
+to sweep tonight: (a) lower offset (40/64 -- did 40 hold past 400 steps?);
+(b) push over the REAL (anchor, geometric-future goal) pairs, which ARE coupled
+to the constraint via shared positions; (c) two-sided step constraint.
+
+OVERNIGHT PLAN: (1) coherence-length A/B on the INCUMBENT MRN field
+(cert_base_full + phead committor, MCTS@800n, k=1.0 vs off, n=100, e-value
+gated) -- running now, independent of QRL, validates Kaveh's coherence-length
+mechanism through conversion. (2) QRL offset/push-source sweep to find the
+config with stable d_step~1 + spreading d_rand; launch the real run. (3) eval
+the healthy QRL field (conversion + coherence on it). Commit + JOURNAL each step.
