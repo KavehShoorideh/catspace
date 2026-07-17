@@ -4031,3 +4031,16 @@ pass. RUNNING: clean 3k IQE-fixed run -- does VAL_TOP1 now climb off chance?
 Also banked: clearance A/B +0.025 ns (13 decisive) -- correct/marginal like
 threefold; but phead readout itself converts 0.80@800n (vs pole ~0.70) -- the
 real readout win. Good-field MVP baseline = 0.80.
+
+### Autonomous: IQE CAN train with the fix (ply-gap was the culprit) -> heavy run launched
+Pure-InfoNCE IQE (fix: un-norm + embed_scale 50) at 1k steps: VAL top1 0.014
+top8 0.074 -- CLIMBING off chance (7x/5x chance). So IQE DOES train retrieval
+with the fix; it's slow (sparse gradient) and the ply-gap term (target 0.3 vs
+IQE natural ~11) shrinks the scale and re-collapses it -> that's why the
+committor+ply-gap IQE run stayed flat. Kaveh vindicated: IQE works, it was a
+normalization/scale setup bug. HEAVY RUN (token-gap): fresh IQE + committor-
+base + NO ply-gap (drop the scale-fighting calibration) + embed_scale 50,
+d=512 comp=32, 40k steps, ckpt-every 10k (~4h). Eval when tokens return: did
+IQE reach usable retrieval + does the phead readout convert the toy? If yes,
+IQE is back for the merged arch; if it plateaus low, MRN stays the field
+(cert_base_full converts 0.80 via phead -- the safe MVP baseline).
