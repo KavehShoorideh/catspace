@@ -4308,3 +4308,22 @@ quadrant IS the planner's decision logic. Planner reframe folded into
 PLANNER_PROBE_DESIGN.md: INTERNAL actions {probe_region, set_plan} vs GAME
 actions {make_move, offer_draw, resign}; MCTS is a computation, the planner
 makes the move.
+
+
+## 2026-07-17 (Fable) — collapse detector EARNED ITS KEEP; dead-zone diagnosis
+
+First 40k launch of the final recipe collapsed at ~step 2.5k (d_step=d_rand=0,
+push=softplus(15) exactly => constant embeddings). The collapse detector FIRED
+at step 4000 and HALTED the run (--qrl-halt-on-collapse) -- caught at 4k, not
+19k-by-hand: the bug net's first live catch. WHY the 8k diagnostic survived but
+the 40k run didn't: the stretched cosine keeps LR ~3e-4 through the danger zone
+(diagnostic was half-decayed by 4k). MECHANISM of the trap: IQE dead-gradient
+zone -- once all F sit above all B with margin, max(U,V)=U everywhere, d==0 with
+ZERO gradient; two-sided wants d=1 but the inactive max supplies no path back;
+lam climbed 27 uselessly (x0=0). FIX: relaunched with --qrl-var-weight 1.0 --
+VICReg variance hinge acts on embeddings DIRECTLY (per-dim std ~0 at the
+constant fixed point => full gradient), re-spreading dims until max() reactivates.
+This is the reviewer's point inverted: var-reg can't prevent the ORDERING
+collapse, but it's exactly live at the CONSTANT-embedding fixed point the
+ordering collapse lands in at high LR. Detector armed; if it halts again, next
+single lever = peak LR 2e-4. Fail-fast chain, each step ~15min to verdict.
