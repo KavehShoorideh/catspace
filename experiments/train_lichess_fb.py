@@ -83,13 +83,23 @@ def batch_tensors(batch, device):
     pte = batch.meta.get("plies_to_end")
     plies_to_end = (pte[idx].astype(np.float32) if pte is not None
                     else np.full(len(idx), 1e6, dtype=np.float32))
-    return (torch.from_numpy(planes_s).to(device),
-            torch.from_numpy(om).to(device),
-            torch.from_numpy(planes_g).to(device),
-            torch.from_numpy(ply_gap).to(device),
-            torch.from_numpy(material_drop).to(device),
-            torch.from_numpy(result).to(device),
-            torch.from_numpy(plies_to_end).to(device))
+    out = [torch.from_numpy(planes_s).to(device),
+           torch.from_numpy(om).to(device),
+           torch.from_numpy(planes_g).to(device),
+           torch.from_numpy(ply_gap).to(device),
+           torch.from_numpy(material_drop).to(device),
+           torch.from_numpy(result).to(device),
+           torch.from_numpy(plies_to_end).to(device)]
+    # QRL successor (1-ply transition s->s') + valid mask, when the source
+    # provides it. valid = successor is a real distinct position (not a game's
+    # last row, where succ==self would give a trivial d(s,s)=0 constraint).
+    if "packed_succ" in batch.meta:
+        planes_succ = feature_planes(batch.meta["packed_succ"][idx],
+                                     batch.meta["board_meta_succ"][idx])
+        valid = ~batch.meta["succ_is_last"][idx]
+        out.append(torch.from_numpy(planes_succ).to(device))
+        out.append(torch.from_numpy(valid).to(device))
+    return tuple(out)
 
 
 def collect_holdout(src: LichessPairSource, n_batches: int, batch_size: int, seed: int):
@@ -264,6 +274,24 @@ def main():
     ap.add_argument("--iqe-components", type=int, default=32,
                     help="IQE component count (d must divide it); k=d/components "
                          "is the per-component interval-union dim")
+    ap.add_argument("--iqe-embed-scale", type=float, default=50.0,
+                    help="fixed scale on IQE embeddings (un-normalized). 50 bootstraps "
+                         "InfoNCE; use ~1 with --qrl-objective (QRL sets its own scale "
+                         "via the push offset + unit-step constraint).")
+    ap.add_argument("--qrl-objective", action="store_true",
+                    help="train the IQE/quasimetric with the QRL objective (Wang et al. "
+                         "2023) it was DESIGNED for -- global push softplus(offset-d) on "
+                         "random pairs + local d(s,s')<=1 constraint (dual-ascent lambda), "
+                         "NO InfoNCE. Fixes the interval collapse InfoNCE leaves.")
+    ap.add_argument("--qrl-lambda-lr", type=float, default=0.01,
+                    help="dedicated LR for the QRL Lagrange multiplier (dual ascent), "
+                         "excluded from the cosine schedule. Higher = constraint tracks "
+                         "faster so the global push can't inflate the unit-step distance.")
+    ap.add_argument("--qrl-push-offset", type=float, default=40.0,
+                    help="QRL global-push target distance (plies). Set WELL beyond the "
+                         "longest forcing line so reachable long lines (chained to their "
+                         "true ply length) stay closer than unreachable random pairs -- "
+                         "it is a saturating prior, NOT a horizon cap.")
     ap.add_argument("--channels", type=int, default=64, help="trunk conv width")
     ap.add_argument("--blocks", type=int, default=6, help="trunk residual blocks")
     ap.add_argument("--enc-out", type=int, default=256, help="encoder output dim")
@@ -402,13 +430,23 @@ def main():
                      two_horizon=args.two_horizon, distributional=args.distributional,
                      n_bins=args.n_bins, competence=args.competence,
                      outcome_poles=args.outcome_poles, concept_axes=args.concept_axes,
-                     iqe=args.iqe, iqe_components=args.iqe_components)
+                     iqe=args.iqe, iqe_components=args.iqe_components,
+                     iqe_embed_scale=args.iqe_embed_scale)
         print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
               f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
     start_step = step                      # cosine decay spans [start_step, args.steps)
     lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
-    opt = torch.optim.AdamW(fb.parameters(), lr=args.lr)
+    if args.qrl_objective and getattr(fb, "quasimetric", False):
+        # the Lagrange multiplier gets its OWN, higher LR and is excluded from
+        # the cosine schedule: dual ascent must track the constraint fast enough
+        # to keep the global push from inflating the 1-ply step distance.
+        main_params = [p for n, p in fb.named_parameters() if n != "qrl_raw_lambda"]
+        opt = torch.optim.AdamW(main_params, lr=args.lr)
+        opt.add_param_group({"params": [fb.qrl_raw_lambda], "lr": args.qrl_lambda_lr,
+                             "is_lambda": True})
+    else:
+        opt = torch.optim.AdamW(fb.parameters(), lr=args.lr)
     if ckpt_path.exists() and not args.fresh:
         payload = torch.load(ckpt_path, map_location=device, weights_only=False)
         if "opt_state" in payload:
@@ -487,9 +525,24 @@ def main():
         frac = min(1.0, (step - start_step) / max(1, args.steps - start_step))
         lr_now = lr_min + 0.5 * (args.lr - lr_min) * (1 + math.cos(math.pi * frac))
         for g in opt.param_groups:
+            if g.get("is_lambda"):
+                continue                      # QRL multiplier keeps its fixed LR
             g["lr"] = lr_now
         core, result_t, pte_t = tensors[:5], tensors[5], tensors[6]
-        if args.two_horizon:
+        if args.qrl_objective:
+            if len(tensors) < 9:
+                raise SystemExit("--qrl-objective needs the 1-ply successor from the "
+                                 "shard source (packed_succ); re-run on shards built by "
+                                 "the updated LichessPairSource.")
+            planes_succ, valid = tensors[7], tensors[8]
+            loss, qstats = fb.qrl_loss(core[0], core[1], planes_succ, core[2], valid,
+                                       push_offset=args.qrl_push_offset)
+            top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
+            if step % 100 == 0:
+                print(f"    qrl push {qstats['push']:.3f} sq_dev {qstats['sq_dev']:.4f} "
+                      f"lam {qstats['lam']:.3f} d_step {qstats['d_step']:.3f} "
+                      f"d_rand {qstats['d_rand']:.3f}", flush=True)
+        elif args.two_horizon:
             ps, om, pg, gap, _mdrop = core
             loss, top1 = fb.two_horizon_loss(ps, om, pg, gap, near_max=args.near_max,
                                              far_min=args.far_min, near_weight=args.near_weight,

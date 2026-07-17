@@ -46,9 +46,34 @@ from pathlib import Path
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from catspace.nn.encoder import BoardEncoder
 from catspace.nn.features import N_CLOCK_BINS, N_ELO_BINS, N_PLANES
+
+
+def _softplus_inv(y: float) -> float:
+    """x such that softplus(x)=y -- to init a softplus-parametrized positive."""
+    import math
+    return math.log(math.expm1(y))
+
+
+class _GradReverse(torch.autograd.Function):
+    """Identity forward, sign-flipped gradient backward. Turns a min-loss step
+    on the Lagrange multiplier into dual ASCENT (QRL, Wang et al. 2023): the
+    multiplier grows exactly when the transition constraint is violated."""
+
+    @staticmethod
+    def forward(ctx, x):
+        return x
+
+    @staticmethod
+    def backward(ctx, g):
+        return -g
+
+
+def grad_reverse(x: torch.Tensor) -> torch.Tensor:
+    return _GradReverse.apply(x)
 
 
 class TorchFB(nn.Module):
@@ -94,6 +119,16 @@ class TorchFB(nn.Module):
         elif quasimetric:
             self.metric_scale = nn.Parameter(torch.ones(d))
             self.W = nn.Parameter(torch.zeros(d, d))
+        if quasimetric:
+            # QRL Lagrange multiplier (Wang et al. 2023): softplus-parametrized,
+            # dual-ascended via grad_reverse. Only exercised by qrl_loss; inert
+            # (unused param) under the InfoNCE objective. Init 1.0 (responsive
+            # from step 0) rather than the paper's 0.01: our unbounded encoder
+            # lets the global push inflate the embedding -- and with it the
+            # 1-ply-step distance -- faster than a 0.01-init multiplier on a
+            # softplus (whose gradient is throttled by sigmoid(raw)~0.01) can
+            # rein in. lambda gets its own higher LR in the trainer too.
+            self.qrl_raw_lambda = nn.Parameter(torch.tensor(_softplus_inv(1.0)))
         # TWO-HORIZON (2026-07-13, TWO_HORIZON_DESIGN.md): the existing
         # headF/headB (+ quasimetric) ARE the FAR head -- calibrated
         # long-range distance-to-goal. The near head is purely additive:
@@ -409,6 +444,59 @@ class TorchFB(nn.Module):
         d2 = ((fs * fs).sum(1, keepdim=True) + (bs * bs).sum(1)[None, :]
               - 2.0 * (fs @ bs.T))
         return torch.sqrt(d2.clamp_min(1e-9))
+
+    def directed_distance(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        """Row-wise directed distance d(f_i -> b_i), (N,d)x(N,d) -> (N,). The
+        per-pair counterpart of distance_matrix's diagonal (IQE computes it
+        directly; MRN falls back to the matrix diagonal)."""
+        assert self.quasimetric, "directed_distance requires quasimetric=True"
+        if self.iqe:
+            return self.iqe_head(f, b)
+        return self.distance_matrix(f, b).diagonal()
+
+    def qrl_loss(self, planes_s: torch.Tensor, omega_s: torch.Tensor,
+                 planes_succ: torch.Tensor, planes_g: torch.Tensor,
+                 valid: torch.Tensor, *, push_offset: float = 40.0,
+                 softplus_beta: float = 0.1, step_cost: float = 1.0,
+                 epsilon: float = 0.25):
+        """Quasimetric-RL objective (Wang, Torralba, Isola, Zhang, ICML 2023),
+        the loss IQE was DESIGNED for -- InfoNCE only enforces relative ranking
+        and leaves the interval geometry collapsed ("d could remain arbitrarily
+        small everywhere", their words; our exact plateau symptom).
+
+        Two terms, no contrastive softmax:
+          * LOCAL CONSTRAINT -- on real 1-ply transitions s->s', pin the
+            best-case distance to the unit step: penalize d(s->s') > step_cost
+            with a squared-hinge, dual-ascended by lambda toward tolerance eps.
+            Multi-step (incl. long FORCED lines) distances then self-assemble by
+            chaining unit steps through the triangle inequality -- NEVER capped.
+          * GLOBAL PUSH -- on RANDOM (independent) state/goal pairs, spread
+            distances toward push_offset via softplus(offset - d). offset is set
+            WELL beyond the longest forcing line we care about (default 40 plies
+            ~ 20 moves) so a genuinely-reachable long line (built by chaining to
+            ~its true ply length) stays CLOSER than the unreachable random pairs
+            -- the push is a saturating prior, not a horizon (Kaveh's constraint:
+            never let a reachable long forced line look far)."""
+        f_s = self.embed_F(planes_s, omega_s)
+        b_succ = self.embed_B(planes_succ)
+        b_g = self.embed_B(planes_g)
+        # local: d(s -> s') <= step_cost on observed transitions
+        d_step = self.directed_distance(f_s, b_succ)
+        if valid.any():
+            d_step_v = d_step[valid]
+        else:
+            d_step_v = d_step
+        sq_dev = (d_step_v - step_cost).clamp_min(0.0).square().mean()
+        lam = F.softplus(self.qrl_raw_lambda)
+        constraint = (sq_dev - epsilon ** 2) * grad_reverse(lam)
+        # global push: independent random state/goal pairs -> spread apart
+        perm = torch.randperm(f_s.shape[0], device=f_s.device)
+        d_rand = self.directed_distance(f_s, b_g[perm])
+        push = F.softplus(push_offset - d_rand, beta=softplus_beta).mean()
+        loss = push + constraint
+        stats = {"push": float(push), "sq_dev": float(sq_dev), "lam": float(lam),
+                 "d_step": float(d_step_v.mean()), "d_rand": float(d_rand.mean())}
+        return loss, stats
 
     def score_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
         """All-pairs score, (N,d) x (M,d) -> (N,M). Plain dot product unless

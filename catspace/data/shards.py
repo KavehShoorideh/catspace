@@ -187,6 +187,11 @@ class LichessPairSource:
             rows = np.arange(n)
             k = 1 + rng.geometric(1.0 - self.gamma, size=n)
             goal_rows = np.minimum(rows + k, last_row_of_game)
+            # immediate 1-ply successor (QRL local-constraint transition s->s').
+            # rows already at their game's last position have succ==self; flag
+            # them so the trainer masks the trivial d(s,s)=0 constraint.
+            succ_rows = np.minimum(rows + 1, last_row_of_game)
+            is_last = rows == last_row_of_game
 
             has_eval = "eval_cp" in data
             for i in range(0, n, batch_size):
@@ -204,6 +209,9 @@ class LichessPairSource:
                     "game_id": data["game_id"][sl],
                     "board_meta": data["meta"][sl],                # anchor rows
                     "board_meta_g": data["meta"][goal_rows[sl]],   # goal rows
+                    "board_meta_succ": data["meta"][succ_rows[sl]],  # 1-ply successor
+                    "succ_is_last": is_last[sl],                   # succ==self, mask
+                    "packed_succ": data["packed"][succ_rows[sl]],  # successor rows
                 }
                 if has_eval:
                     meta["eval_cp"] = data["eval_cp"][sl]

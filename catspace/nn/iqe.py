@@ -69,10 +69,11 @@ class IQE(nn.Module):
         V = v.reshape(*v.shape[:-1], self.components, self.k)
         # directed intervals [V, U] where U > V; empty ones set l==r so they
         # contribute nothing to the union
-        lo = torch.minimum(U, V)
-        hi = U
-        empty = U <= V
-        lo = torch.where(empty, hi, lo)                    # collapse empties to points
+        # paper convention (Wang-Isola 2022): interval [U, max(U,V)], nonempty
+        # where V exceeds U -> d(u->v). (Was flipped: [V,U] = d(v->u), the
+        # reverse direction, which made InfoNCE fight time's arrow.)
+        lo = U
+        hi = torch.maximum(U, V)
         dc = _union_length(lo, hi)                          # (N, components)
         alpha = torch.sigmoid(self.alpha_logit)
         d = alpha * dc.amax(dim=-1) + (1 - alpha) * dc.mean(dim=-1)
@@ -83,10 +84,8 @@ class IQE(nn.Module):
         n, m = u.shape[0], v.shape[0]
         U = u.reshape(n, 1, self.components, self.k).expand(n, m, self.components, self.k)
         V = v.reshape(1, m, self.components, self.k).expand(n, m, self.components, self.k)
-        lo = torch.minimum(U, V)
-        hi = U
-        empty = U <= V
-        lo = torch.where(empty, hi, lo)
+        lo = U
+        hi = torch.maximum(U, V)                            # [U, max(U,V)]: d(u->v)
         dc = _union_length(lo, hi)                          # (N, M, components)
         alpha = torch.sigmoid(self.alpha_logit)
         d = alpha * dc.amax(dim=-1) + (1 - alpha) * dc.mean(dim=-1)
