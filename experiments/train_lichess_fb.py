@@ -287,6 +287,13 @@ def main():
                     help="dedicated LR for the QRL Lagrange multiplier (dual ascent), "
                          "excluded from the cosine schedule. Higher = constraint tracks "
                          "faster so the global push can't inflate the unit-step distance.")
+    ap.add_argument("--qrl-var-weight", type=float, default=0.0,
+                    help="VICReg variance-regularization weight (anti-collapse): hinges "
+                         "each embedding dim's std up to --qrl-var-target so adjacent "
+                         "positions can't squash together (d_step->0). Cures the QRL "
+                         "collapse/oscillation directly.")
+    ap.add_argument("--qrl-var-target", type=float, default=1.0,
+                    help="target per-dimension std for the variance regularizer")
     ap.add_argument("--qrl-push-real", action="store_true",
                     help="push over REAL anchor->future pairs (coupled to the 1-ply "
                          "constraint via shared positions -> prevents the d_step->0 "
@@ -541,12 +548,14 @@ def main():
             planes_succ, valid = tensors[7], tensors[8]
             loss, qstats = fb.qrl_loss(core[0], core[1], planes_succ, core[2], valid,
                                        push_offset=args.qrl_push_offset,
-                                       push_real=args.qrl_push_real)
+                                       push_real=args.qrl_push_real,
+                                       var_weight=args.qrl_var_weight,
+                                       var_target=args.qrl_var_target)
             top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
             if step % 100 == 0:
                 print(f"    qrl push {qstats['push']:.3f} sq_dev {qstats['sq_dev']:.4f} "
                       f"lam {qstats['lam']:.3f} d_step {qstats['d_step']:.3f} "
-                      f"d_rand {qstats['d_rand']:.3f}", flush=True)
+                      f"d_rand {qstats['d_rand']:.3f} var {qstats.get('var', 0.0):.3f}", flush=True)
         elif args.two_horizon:
             ps, om, pg, gap, _mdrop = core
             loss, top1 = fb.two_horizon_loss(ps, om, pg, gap, near_max=args.near_max,

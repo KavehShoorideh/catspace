@@ -458,7 +458,8 @@ class TorchFB(nn.Module):
                  planes_succ: torch.Tensor, planes_g: torch.Tensor,
                  valid: torch.Tensor, *, push_offset: float = 40.0,
                  softplus_beta: float = 0.1, step_cost: float = 1.0,
-                 epsilon: float = 0.25, push_real: bool = False):
+                 epsilon: float = 0.25, push_real: bool = False,
+                 var_weight: float = 0.0, var_target: float = 1.0):
         """Quasimetric-RL objective (Wang, Torralba, Isola, Zhang, ICML 2023),
         the loss IQE was DESIGNED for -- InfoNCE only enforces relative ranking
         and leaves the interval geometry collapsed ("d could remain arbitrarily
@@ -505,8 +506,21 @@ class TorchFB(nn.Module):
             d_rand = self.directed_distance(f_s, b_g[perm])
         push = F.softplus(push_offset - d_rand, beta=softplus_beta).mean()
         loss = push + constraint
+        # VARIANCE REGULARIZATION (VICReg, Bardes et al. 2022) -- the standard
+        # anti-collapse cure (Kaveh's rule: collapse is a first-class failure,
+        # cure is repulsion not width). Hinge each embedding dimension's std up
+        # to var_target: forbids the degenerate solution where adjacent positions
+        # squash onto each other (d_step->0) to satisfy the one-sided constraint.
+        var = torch.zeros((), device=f_s.device)
+        if var_weight > 0.0:
+            for e in (f_s, b_succ, b_g):
+                std = torch.sqrt(e.var(dim=0) + 1e-4)
+                var = var + torch.relu(var_target - std).mean()
+            var = var / 3.0
+            loss = loss + var_weight * var
         stats = {"push": float(push), "sq_dev": float(sq_dev), "lam": float(lam),
-                 "d_step": float(d_step_v.mean()), "d_rand": float(d_rand.mean())}
+                 "d_step": float(d_step_v.mean()), "d_rand": float(d_rand.mean()),
+                 "var": float(var)}
         return loss, stats
 
     def score_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
