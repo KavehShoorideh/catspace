@@ -137,3 +137,29 @@ def test_eval_cache_makes_repeats_free_and_stays_deterministic():
     # cache changes tree SHAPE but never values: same-config is deterministic
     m1b = MCTS(flat_reach, max_nodes=150, cache={}).best_move(b)
     assert m1 == m1b
+
+
+def test_path_aware_threefold_detection():
+    """The search must see a threefold forming in its own lines (copy(stack=
+    False) drops history, so is_game_over could not) -- the measured cause of
+    the toy shuffling into an unseen draw."""
+    import chess
+    import numpy as np
+    from catspace.nn.mcts import MCTS, _Node
+
+    m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=10)
+    b = chess.Board("7k/8/8/8/8/8/8/R6K w - - 0 1")
+    m.rep_history = {b._transposition_key(): 2}     # this position already twice
+    root = _Node(b, None)
+    # a child returning to the SAME position (3rd occurrence) is a threefold
+    same = _Node(b.copy(stack=False), None, parent=root)
+    assert m._threefold(same) is True
+    # a different position (first occurrence) is not
+    b2 = b.copy(stack=False); b2.push_san("Ra2")
+    other = _Node(b2, None, parent=root)
+    assert m._threefold(other) is False
+    # repetition built up WITHIN the search path also counts
+    m.rep_history = {b._transposition_key(): 1}
+    mid = _Node(b.copy(stack=False), None, parent=root)   # 2nd (search)
+    deep = _Node(b.copy(stack=False), None, parent=mid)   # 3rd (search)
+    assert m._threefold(deep) is True

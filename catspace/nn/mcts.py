@@ -42,11 +42,15 @@ PLY_DISCOUNT = 1e-4          # mate at depth k backs up MATE_V - k*PLY_DISCOUNT
 
 
 class _Node:
-    __slots__ = ("board", "move", "children", "P", "N", "W", "v_init", "terminal_v")
+    __slots__ = ("board", "move", "children", "P", "N", "W", "v_init",
+                 "terminal_v", "parent", "rep_key")
 
-    def __init__(self, board: chess.Board, move: chess.Move | None):
+    def __init__(self, board: chess.Board, move: chess.Move | None,
+                 parent: "_Node | None" = None):
         self.board = board
         self.move = move
+        self.parent = parent             # for path-aware threefold detection
+        self.rep_key = board._transposition_key()   # repetition key (counter-free)
         self.children: list["_Node"] = []
         self.P = 0.0                     # prior (set by parent expansion)
         self.N = 0
@@ -75,6 +79,7 @@ class MCTS:
         self.c_puct = c_puct
         self.prior_tau = prior_tau
         self.evals_used = 0              # budget = FRESH network evals only
+        self.rep_history: dict = {}      # position-key counts of the game so far
         # exact eval cache (fen -> raw reach). Reach is a pure function of
         # position for a fixed field+goal, so cache hits are free budget --
         # measured 2026-07-15: 20/32/34% of a game's evals at 200/800/1600n
@@ -101,6 +106,19 @@ class MCTS:
         self._scale = float(2.0 * reach.std() + 1e-3)
 
     # -- expansion ---------------------------------------------------------
+    def _threefold(self, c: _Node) -> bool:
+        """Total occurrences of c's position from the GAME root down the search
+        path >= 3 (claimable/forced draw). rep_history counts the actual game
+        so far (incl. the search root); ancestors strictly between root and c
+        add the search's own repetitions; +1 for c itself."""
+        total = self.rep_history.get(c.rep_key, 0) + 1
+        anc = c.parent
+        while anc is not None and anc.parent is not None:   # exclude root (in rep_history)
+            if anc.rep_key == c.rep_key:
+                total += 1
+            anc = anc.parent
+        return total >= 3
+
     def _expand(self, node: _Node, at_root: bool) -> float:
         """Create children, batch-eval their reach, set priors. Returns the
         White-POV value to back up for this simulation."""
@@ -108,13 +126,19 @@ class MCTS:
         for m in node.board.legal_moves:
             b2 = node.board.copy(stack=False)
             b2.push(m)
-            c = _Node(b2, m)
+            c = _Node(b2, m, parent=node)
             if b2.is_checkmate():
                 # the MOVER of m delivered mate; White-POV sign from who moved
                 mate = MATE_V - PLY_DISCOUNT if node.board.turn == chess.WHITE \
                     else MATED_V + PLY_DISCOUNT
                 c.terminal_v = mate
-            elif b2.is_game_over(claim_draw=True):
+            elif b2.is_insufficient_material() or (b2.halfmove_clock >= 100):
+                c.terminal_v = DRAW_V                # rules-exact, history-free draws
+            elif self._threefold(c):
+                # path-aware threefold: the search's OWN lines can now see a
+                # repetition forming (copy(stack=False) drops history, so
+                # is_game_over could not -- this was the measured cause of the
+                # toy shuffling into a draw the search never saw, 2026-07-16)
                 c.terminal_v = DRAW_V
             children.append(c)
         if not children:                                  # stale/checkmated node
@@ -192,6 +216,20 @@ class MCTS:
         reuse_root: a subtree from a previous search whose board matches --
         its visit statistics carry over (tree reuse across moves)."""
         self.evals_used = 0
+        # seed repetition history from the actual game so far (the board carries
+        # its move stack), so the search can detect threefolds that COMPLETE
+        # using positions already played before the search root
+        self.rep_history = {}
+        if board.move_stack:
+            b = board.copy(stack=True)
+            keys = [b._transposition_key()]
+            while b.move_stack:
+                b.pop()
+                keys.append(b._transposition_key())
+            for k in keys:
+                self.rep_history[k] = self.rep_history.get(k, 0) + 1
+        else:
+            self.rep_history[board._transposition_key()] = 1
         if reuse_root is not None and reuse_root.board.fen() == board.fen():
             root = reuse_root
             if not root.children:
