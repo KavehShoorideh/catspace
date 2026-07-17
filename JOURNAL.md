@@ -4044,3 +4044,87 @@ d=512 comp=32, 40k steps, ckpt-every 10k (~4h). Eval when tokens return: did
 IQE reach usable retrieval + does the phead readout convert the toy? If yes,
 IQE is back for the merged arch; if it plateaus low, MRN stays the field
 (cert_base_full converts 0.80 via phead -- the safe MVP baseline).
+
+
+## 2026-07-16 (Opus) — IQE root cause: wrong OBJECTIVE (InfoNCE, not QRL); QRL built
+
+Two literature searches (Kaveh's rule: stuck >15min on something that should
+work -> stop tuning, read the source) cracked the IQE plateau. Two findings,
+one small and one structural.
+
+**(1) Direction bug.** The IQE per-component interval was built REVERSED:
+ours `[V,U]` where U>V (= d(v->u)) vs the paper's `[U, max(U,V)]` where V>U
+(= d(u->v), arXiv 2211.15120). So d(F(s),B(g)) scored reach BACKWARD in time,
+and InfoNCE was asked to make true future-pairs cheap to traverse in reverse
+(irreversible -> fights time's arrow). The 7 axiom tests missed it (a
+quasimetric's transpose is still a valid quasimetric). Fixed in iqe.py
+(forward + pairwise). VERDICT: 7/7 axiom tests pass; direction sanity
+`d(big->small)=0.000  d(small->big)=3.000` (was inverted). Fixed-direction
+InfoNCE run nudged VAL top8 to ~0.10 (best) vs the flipped run's flat ~0.073,
+but stayed noisy and far below MRN's ~0.17 -- the fix was real but not the
+unlock.
+
+**(2) The real cause: wrong objective.** IQE was designed to be trained with
+the QRL constrained-max objective (Wang/Torralba/Isola/Zhang, ICML 2023),
+NOT InfoNCE. QRL's own words: without the distance-maximization term "the
+quasimetric could remain arbitrarily small everywhere" -- our exact symptom.
+InfoNCE only enforces relative ranking (in-batch softmax); it never PUSHES
+absolute distances apart, so IQE's union-of-interval lengths never stretch and
+the max-mean gradient stays sparse. MRN survives InfoNCE (its bilinear f.W.g
+doesn't need large absolute distances); IQE does not. Structural mismatch, not
+a tuning issue.
+
+**Built the QRL objective** (`--qrl-objective`), mirroring the official
+quasimetric-rl loss:
+  * GLOBAL PUSH: `softplus(offset - d, beta=0.1)` on RANDOM (independent,
+    shuffled) state/goal pairs -> spreads distances toward `offset`.
+  * LOCAL CONSTRAINT: on real 1-ply transitions s->s', squared-hinge
+    `relu(d(s,s') - 1)^2` toward the unit step, dual-ascended by a
+    softplus Lagrange multiplier lambda (grad-reversal trick, fb.py
+    `grad_reverse` + `qrl_raw_lambda`).
+  * No InfoNCE. Multi-step (incl. long FORCED lines) distances self-assemble
+    by chaining unit steps through the triangle inequality -- never supervised
+    directly, never capped.
+Data: the 1-ply successor s' is derived at batch time from consecutive shard
+rows (LichessPairSource `packed_succ` + `succ_is_last` mask; batch_tensors
+appends succ planes + valid mask). No re-sharding.
+
+**Kaveh's design constraints, baked in:**
+  * NO horizon cap. Treating pairs beyond ~10 plies as "far" would train a
+    reachable 12-ply forced mate to look unreachable -- blinding us to long
+    forcing lines. So `--qrl-push-offset 40` (~20 moves), set WELL beyond the
+    longest forcing line: a reachable long line chains to ~its true ply length
+    and stays CLOSER than unreachable random pairs. The push is a saturating
+    prior, not a horizon.
+  * Divergence-vs-forcing -> COHERENCE LENGTH (physics framing). The QRL
+    metric is BEST-CASE d_optimal (plies, "if I steer every move"); the
+    committor/eval head owns d_certainty = -ln P(reach). The bridge is
+    coherence length xi(s) ~ 1/(local branching entropy): d_certainty is the
+    path-integral of local surprisal -- ~0 per forced ply (opponent has no
+    choice, xi long, trust deep), large per divergent ply (xi short, trust
+    shallow). Decided LAYERING: QRL learns d_optimal pure (don't corrupt the
+    metric with branching or the triangle inequality breaks); xi becomes the
+    MCTS search-depth gate (deep where forced, search where divergent). xi is
+    measurable -- an experiment for once the metric trains. Forcedness signal
+    (legal-move count / policy entropy) to be added as a logged feature; the
+    coherence-depth control in the planner is the NEXT build, with sign-off.
+
+**Lambda catch-up fix.** First smoke: the global push ran away before lambda
+(init 0.01) could respond -- d_step inflated to 7.9 (target 1), sq_dev 48,
+lambda stuck at 0.010. The QRL authors flag exactly this ("lambda needs to
+constantly catch up"). Fix: lambda init 1.0 (responsive) + its OWN LR (0.01,
+excluded from the cosine schedule). VERDICT (300-step smoke, healthy QRL
+dynamics): `lam 1.00->1.41->1.85->2.12`, `d_step 0.44->1.46->1.25->1.67`
+(pinned near the unit step), `d_rand 0.42->3.77->11.5->16.7` (spreading toward
+offset 40). Runaway gone. 26/26 nn tests pass.
+
+Reference package: Tongzhou Wang's `torch-quasimetric` (the authoritative IQE
+impl) is git-only, not on PyPI. Our hand-rolled IQE now passes axioms +
+direction + healthy QRL dynamics; a numerical cross-check against the reference
+(git install, needs Kaveh's approval) is cheap insurance given we already found
+one bug in it -- offered, not yet done.
+
+NEXT: full QRL-IQE run (does d_optimal reach usable retrieval as a side effect;
+does the phead readout convert the toy, e-value-gated). If QRL-IQE works ->
+merged arch + coherence-length planner. Fallback stays MRN committor field
+(cert_base_full converts 0.80 via phead @800n -- the safe MVP baseline).
