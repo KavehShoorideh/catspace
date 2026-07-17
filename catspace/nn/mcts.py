@@ -43,7 +43,7 @@ PLY_DISCOUNT = 1e-4          # mate at depth k backs up MATE_V - k*PLY_DISCOUNT
 
 class _Node:
     __slots__ = ("board", "move", "children", "P", "N", "W", "v_init",
-                 "terminal_v", "parent", "rep_key")
+                 "terminal_v", "parent", "rep_key", "coh_gamma")
 
     def __init__(self, board: chess.Board, move: chess.Move | None,
                  parent: "_Node | None" = None):
@@ -57,6 +57,12 @@ class _Node:
         self.W = 0.0                     # sum of backed-up White-POV values
         self.v_init: float | None = None # squashed reach from parent's batch eval
         self.terminal_v: float | None = None
+        # COHERENCE LENGTH (2026-07-16): per-node state-dependent backup discount
+        # gamma=exp(-k*divergence), divergence = entropy of the child-value
+        # distribution. 1.0 = fully forced (value flows up intact); <1 =
+        # divergent (the best-case field value is trusted less the farther it
+        # backs up through branchy territory). 1.0 until set in _expand.
+        self.coh_gamma = 1.0
 
     @property
     def Q(self) -> float:
@@ -72,13 +78,19 @@ class MCTS:
     def __init__(self, reach_fn, max_nodes: int, c_puct: float = 1.5,
                  prior_tau: float = 0.5, cache: dict | None = None,
                  rollout_on_flat: bool = False, flat_std: float = 0.05,
-                 rollout_cap: int = 32, detect_threefold: bool = True):
+                 rollout_cap: int = 32, detect_threefold: bool = True,
+                 coherence_k: float = 0.0):
         assert max_nodes >= 1
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
         self.max_nodes = max_nodes
         self.c_puct = c_puct
         self.prior_tau = prior_tau
+        # COHERENCE-LENGTH backup discount strength. 0 disables (exact prior
+        # behavior). >0: a node's optimistic best-case field value is discounted
+        # toward neutral as it backs up through DIVERGENT (high child-value
+        # entropy) nodes, so the field is trusted deep only along FORCED lines.
+        self.coherence_k = coherence_k
         self.evals_used = 0              # budget = FRESH network evals only
         self.rep_history: dict = {}      # position-key counts of the game so far
         # exact eval cache (fen -> raw reach). Reach is a pure function of
@@ -178,6 +190,16 @@ class MCTS:
         for c, p in zip(children, pri):
             c.P = float(p)
         node.children = children
+        # coherence length: divergence = normalized entropy of the child-value
+        # distribution (the prior softmax). Forced (one dominant move) -> ~0;
+        # divergent (many comparable moves) -> ~1. gamma = exp(-k*divergence)
+        # is this node's backup trust factor (see _Node.coh_gamma / run()).
+        if self.coherence_k > 0.0 and len(children) > 1:
+            pp = pri[pri > 0.0]
+            H = float(-(pp * np.log(pp)).sum())
+            Hmax = math.log(len(children))
+            div = H / Hmax if Hmax > 0.0 else 0.0
+            node.coh_gamma = math.exp(-self.coherence_k * div)
         boot = float(vals[int(np.argmax(persp))])
         if (self.rollout_on_flat and fresh
                 and (float(np.std([c.v_init for c in fresh])) < self.flat_std
@@ -264,9 +286,17 @@ class MCTS:
                 v = node.terminal_v
             else:
                 v = self._expand(node, at_root=False)
-            for n in path:
+            # backup: leaf value flows to every ancestor. With coherence_k>0 it
+            # is discounted toward neutral (0) by the compounding product of
+            # coh_gamma over the nodes BELOW each ancestor -- a value earned
+            # deep down a divergent line reaches the root attenuated, one earned
+            # down a forced line reaches it intact (coh_gamma=1 => exact old
+            # backup). Leaf-first so the product accumulates on the way up.
+            v_run = v
+            for n in reversed(path):
                 n.N += 1
-                n.W += v
+                n.W += v_run
+                v_run = v_run * n.coh_gamma
         return root
 
     def best_move(self, board: chess.Board) -> chess.Move:
@@ -298,7 +328,7 @@ class FBMCTSPolicy:
                  evidence_k: float = 4.0, rollout_on_flat: bool = False,
                  tree_reuse: bool = False, committor_head=None,
                  committor_dhead=None, clearance_beta: float = 0.0,
-                 detect_threefold: bool = True):
+                 detect_threefold: bool = True, coherence_k: float = 0.0):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -345,7 +375,8 @@ class FBMCTSPolicy:
         self.mcts = MCTS(reach, max_nodes=max_nodes, c_puct=c_puct,
                          prior_tau=prior_tau, cache={} if cache else None,
                          rollout_on_flat=rollout_on_flat,
-                         detect_threefold=detect_threefold)
+                         detect_threefold=detect_threefold,
+                         coherence_k=coherence_k)
         self.evidence = evidence or {}
         self.evidence_k = evidence_k
         self.path_counts: dict = {}

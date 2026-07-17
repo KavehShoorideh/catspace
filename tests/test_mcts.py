@@ -163,3 +163,35 @@ def test_path_aware_threefold_detection():
     mid = _Node(b.copy(stack=False), None, parent=root)   # 2nd (search)
     deep = _Node(b.copy(stack=False), None, parent=mid)   # 3rd (search)
     assert m._threefold(deep) is True
+
+
+# ---- coherence-length backup discount (2026-07-16) ----------------------
+
+def _det_reach(boards):
+    # deterministic pseudo-reach so on/off comparisons are exact: hash the FEN
+    return np.array([(hash(b.board_fen()) % 1000) / 1000.0 - 0.5 for b in boards])
+
+
+def test_coherence_off_is_exact_old_backup():
+    # coherence_k=0 must reproduce the undiscounted backup bit-for-bit
+    b = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+    r_off = MCTS(_det_reach, max_nodes=48, coherence_k=0.0).run(b.copy())
+    r_base = MCTS(_det_reach, max_nodes=48).run(b.copy())
+    assert r_off.N == r_base.N
+    for a, c in zip(r_off.children, r_base.children):
+        assert a.N == c.N and abs(a.W - c.W) < 1e-12
+
+
+def test_coherence_gamma_forced_vs_divergent():
+    # a FORCED node (one legal move -> no child entropy) keeps gamma=1; a
+    # DIVERGENT node (many comparable moves) gets gamma<1 under coherence_k>0.
+    forced = chess.Board("7k/8/8/8/8/8/8/R6K b - - 0 1")   # Kh8, only Kg8/Kh7-ish few
+    divergent = chess.Board("8/8/8/3k4/8/3K4/8/8 w - - 0 1")  # open board, many K moves
+    m = MCTS(_det_reach, max_nodes=80, coherence_k=1.0)
+    rf = m.run(forced.copy())
+    md = MCTS(_det_reach, max_nodes=80, coherence_k=1.0)
+    rd = md.run(divergent.copy())
+    # root divergence: the more-branchy open position should have a strictly
+    # smaller (more-discounting) coherence gamma than the constrained one
+    assert rd.coh_gamma < rf.coh_gamma
+    assert 0.0 < rd.coh_gamma <= 1.0 and 0.0 < rf.coh_gamma <= 1.0
