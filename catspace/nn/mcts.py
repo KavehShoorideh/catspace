@@ -16,10 +16,11 @@ the two adaptations a policy-net-less engine needs:
     scale differs per checkpoint), but PUCT's Q/U balance and terminal
     sentinels need a bounded scale. Each move() calibrates center/scale
     from the root children's reach and squashes with tanh into (-1, 1);
-    terminals sit just outside the squash range: mate +1 (minus a per-ply
-    discount so FASTER mates strictly dominate), mated -1, draw -0.999
-    (this toy plays WINNING starts: a draw is a failure, matching
-    DRAW_SCORE's ordering in policy_fb, but bounded so averaging works).
+    terminals sit at/just outside the squash range: mate +1 (minus a per-ply
+    discount so FASTER mates strictly dominate), mated -1, draw 0 -- neutral,
+    which the White/Black sign-flip REQUIRES (a non-zero draw would read as a
+    win for one side; 2026-07-17). Avoiding draws when winning is the draw-
+    clearance term's job, not a distorted value.
 
 Search values are ALWAYS White-POV (reach already conditions on side to
 move); selection flips sign at Black-to-move nodes instead of negamaxing.
@@ -332,7 +333,7 @@ class MCTS:
             raise ValueError("no legal moves")
         white = board.turn == chess.WHITE
         for c in root.children:                          # immediate mate: take it
-            if c.terminal_v is not None and (c.terminal_v > 0.5) == white:
+            if c.terminal_v is not None and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
                 return c.move
         best, key = None, None
         for c in root.children:
@@ -482,7 +483,7 @@ class FBMCTSPolicy:
         white = board.turn == chess.WHITE
         best = None
         for c in root.children:
-            if c.terminal_v is not None and (c.terminal_v > 0.5) == white:
+            if c.terminal_v is not None and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
                 best = c
                 break
         if best is None:

@@ -479,7 +479,9 @@ def main():
         main_params = [p for n, p in fb.named_parameters() if n != "qrl_raw_lambda"]
         opt = torch.optim.AdamW(main_params, lr=args.lr)
         opt.add_param_group({"params": [fb.qrl_raw_lambda], "lr": args.qrl_lambda_lr,
-                             "is_lambda": True})
+                             "is_lambda": True, "weight_decay": 0.0})
+        # ^ no weight decay: AdamW's default 0.01 would pull raw_lambda -> 0 every
+        # step, fighting the grad_reverse dual ascent (adversarial-review finding).
     else:
         opt = torch.optim.AdamW(fb.parameters(), lr=args.lr)
     if ckpt_path.exists() and not args.fresh:
@@ -589,7 +591,11 @@ def main():
             # diverse cross-batch goal sample for the push (dataset-wide p_goal)
             push_goal_planes = None
             if args.qrl_goal_pool > 0:
-                gp_new, gm_new = batch.goals, batch.meta["board_meta_g"]
+                # mask to TRAIN rows before pooling -- else holdout goals get
+                # pushed through embed_B (with grad) and contaminate the holdout
+                # VAL/REACH verdicts (adversarial-review finding, 2026-07-17).
+                _tm = (batch.meta["game_id"] % HOLDOUT_MOD) != 0
+                gp_new, gm_new = batch.goals[_tm], batch.meta["board_meta_g"][_tm]
                 if goal_pool_packed is None:
                     goal_pool_packed, goal_pool_meta = gp_new, gm_new
                 else:
