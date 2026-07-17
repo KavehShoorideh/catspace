@@ -3970,3 +3970,15 @@ repetitions help conversion; (b) merged field-foundation run (IQE+committor+
 hardneg+horizon, 6k) ~24min left. Both e-value/CI gated. Next: eval merged
 (rank CI diagnostic + field cal + toy conversion e-value), then two-ply stitch
 + region planner + search-to-certainty, testing conversion each iteration.
+
+### Autonomous: merged IQE field 5k rank diagnostic = 1.96 (LOWER than MRN 4.5) -- noted, not gated
+committor_merged (IQE+hardneg+horizon) step5000: eff.rank(F) 1.96 of 512
+CI[1.87,2.04], vs narrow-MRN 4.51 and wide-MRN 4.49 (same 400 states). IQE +
+hard-negatives collapses F HARDER than MRN at 5k, not less -- the repulsion
+is not opening capacity in this setup. DIAGNOSTIC ONLY (Kaveh: rank not a
+gate); caveats: early (5k, IQE retrieval still near-chance train_top1), and
+rank-of-F may mis-measure IQE (the geometry reshapes F into interval
+components, doesn't use F's linear rank directly). ARBITER = toy conversion,
+read at 6k. If conversion is bad AND rank low -> IQE+hardneg is collapsing
+(diagnose weight/components); if conversion OK despite low rank -> rank-of-F
+is the wrong measure for IQE (chess may need few dims, as Kaveh anticipated).
