@@ -298,6 +298,14 @@ def main():
                     help="blend of real (coupled, anti-collapse) vs shuffled (far-scale) "
                          "push pairs, in [0,1]. 0=shuffle only, 1=real only, 0.5=mix. "
                          "The mix lets a big offset spread without collapsing d_step.")
+    ap.add_argument("--qrl-goal-pool", type=int, default=8192,
+                    help="rolling cross-batch goal-pool size for the push (dataset-wide "
+                         "p_goal -> genuinely far pairs so the metric spreads). 0 = in-batch "
+                         "shuffle only (leaves d_rand flat on low-diversity batches).")
+    ap.add_argument("--qrl-two-sided", action="store_true",
+                    help="pin d(s,s') to EXACTLY 1 (penalize below and above), forbidding "
+                         "the d_step->0 collapse. Correct for chess (every 1-ply move is "
+                         "one step); the fix that lets a big offset train stably.")
     ap.add_argument("--qrl-use-pid", action="store_true",
                     help="PID-Lagrangian multiplier (Stooke 2020) instead of plain dual "
                          "ascent: the derivative term damps the oscillation that made "
@@ -533,6 +541,13 @@ def main():
     fb.train()
     epoch = 0
     it = iter(src.batches(args.batch, seed=args.seed))
+    # rolling cross-batch GOAL POOL for the QRL push: approximates the
+    # dataset-wide p_goal so the maximize-distance term sees genuinely FAR
+    # (diverse-game / unreachable) pairs -- an in-batch shuffle only spans the
+    # batch's ~2-3 games and leaves d_rand flat (metric doesn't spread).
+    pool_rng = np.random.default_rng(args.seed + 12345)
+    goal_pool_packed = None
+    goal_pool_meta = None
     t0 = time.time()
     while step < args.steps:
         try:
@@ -557,13 +572,29 @@ def main():
                                  "shard source (packed_succ); re-run on shards built by "
                                  "the updated LichessPairSource.")
             planes_succ, valid = tensors[7], tensors[8]
+            # accumulate this batch's goals into the rolling pool, then draw a
+            # diverse cross-batch goal sample for the push (dataset-wide p_goal)
+            push_goal_planes = None
+            if args.qrl_goal_pool > 0:
+                gp_new, gm_new = batch.goals, batch.meta["board_meta_g"]
+                if goal_pool_packed is None:
+                    goal_pool_packed, goal_pool_meta = gp_new, gm_new
+                else:
+                    goal_pool_packed = np.concatenate([goal_pool_packed, gp_new])[-args.qrl_goal_pool:]
+                    goal_pool_meta = np.concatenate([goal_pool_meta, gm_new])[-args.qrl_goal_pool:]
+                if len(goal_pool_packed) >= len(core[0]):
+                    sel = pool_rng.integers(0, len(goal_pool_packed), size=len(core[0]))
+                    push_goal_planes = torch.from_numpy(
+                        feature_planes(goal_pool_packed[sel], goal_pool_meta[sel])).to(device)
             loss, qstats = fb.qrl_loss(core[0], core[1], planes_succ, core[2], valid,
                                        push_offset=args.qrl_push_offset,
                                        push_real=args.qrl_push_real,
                                        push_mix=args.qrl_push_mix,
+                                       push_goal_planes=push_goal_planes,
                                        use_pid=args.qrl_use_pid,
                                        pid_kp=args.qrl_pid_kp, pid_ki=args.qrl_pid_ki,
                                        pid_kd=args.qrl_pid_kd,
+                                       two_sided=args.qrl_two_sided,
                                        var_weight=args.qrl_var_weight,
                                        var_target=args.qrl_var_target)
             top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
