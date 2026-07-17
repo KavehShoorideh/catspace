@@ -3994,3 +3994,16 @@ not the search seeing the draw. Next draw-side lever to test: phead clearance
 (ln P_win - beta*ln P_draw), which steers AWAY from the basin proactively
 rather than detecting it at the leaf. Waiting on merged IQE 6k for its
 conversion (the bigger signal: is the IQE field even convertible).
+
+### Autonomous: IQE merged field FALSIFIED at 6k -- worse than MRN committor (play arbiter)
+committor_merged (IQE+hardneg+horizon, 6k): VAL_TOP1 0.019 (vs MRN committor
+~0.036), DIFF_SLOPE_WON -0.397 (NEGATIVE/wrong sign; cert_base +0.25), rank
+1.96. Mate-in-4 rook probe: spread 0.0097 (FLAT), THREEFOLDS (shuffles). So
+IQE+hardneg+horizon at 6k trained a WORSE field -- flat, weak retrieval,
+collapsed, shuffles. Clear negative; probe suffices (no 120-game A/B needed).
+DECISION: (1) MVP path = the KNOWN-GOOD MRN committor field (cert_base_full,
+converts ~0.70) + wall-fixes (threefold[done]/clearance[built]/rep-keyed
+targets), NOT the IQE geometry that trains worse. (2) Diagnose IQE cause:
+launching IQE-ALONE run (no hardneg/horizon) -- is IQE itself bad, or did the
+repulsion/horizon break it? (3) Test the draw-clearance lever on the good
+field now. IQE deferred pending the diagnostic; play says it's not ready.
