@@ -3919,3 +3919,26 @@ not a verdict. PLAN: let the run pass L1 engagement to 10-15k (snapshots
 every 5k) and watch whether rank moves at all; if it stays flat, the
 hard-negatives (repulsion) lever likely becomes the PRIMARY capacity
 experiment, not just a speed lever -- a reorder for Kaveh's call.
+
+### Wide run 10k read: L1-on-metric-scale is INERT; capacity fix is repulsion (contrastive), not metric-pricing
+Same 400 states:
+  step 5000  (pre-L1):  F eff.rank 3.40/512 | metric_scale participation 511/512 (uniform, ~all-ones)
+  step 10000 (L1 on 2k): F eff.rank 4.49/512 | metric_scale participation 509/512, scales [0.67,1.12]
+Two findings: (1) effective rank RISES with TRAINING (3.4->4.5), now MATCHING
+the fully-trained narrow d=64 field (4.51) -- so width alone does not open
+capacity; the ~4-5 dim subspace is a property of the objective/representation,
+consistent with contrastive collapse. (2) The L1 tax (weight 3e-4) is INERT:
+metric scales barely moved from all-ones (participation 509/512, nothing near
+zero) because 3e-4 is ~1e4x weaker than NCE~5. So we are NOT running the
+"priced metric" experiment -- effectively a plain wide committor-base run.
+DEEPER READ: even if L1 bit, it prices the METRIC scales, which cannot create
+embedding capacity the ENCODER isn't producing (eff rank 4.5 is the
+embedding's, not the metric's) -- so L1-on-metric-scale is likely the WRONG
+LAYER. The collapse is representational, and its textbook cure is stronger
+REPULSION = hard negatives (the contrastive lever Kaveh directed). This
+CONFIRMS the mechanistic basis for "do the contrastive thing": it is the
+capacity fix, not a speed add-on. PLAN: let the wide run finish (get the full
+rank trajectory + a play read on a wide committor-base -- does width alone
+help play?), then the NEXT run is the hard-negatives/horizon repulsion run
+(--unreach-weight + --horizon-k, built today), promoted to PRIMARY. L1-on-
+metric-scale deprioritized (wrong layer; and inert at any safe weight).
