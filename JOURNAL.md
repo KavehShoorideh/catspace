@@ -4007,3 +4007,27 @@ targets), NOT the IQE geometry that trains worse. (2) Diagnose IQE cause:
 launching IQE-ALONE run (no hardneg/horizon) -- is IQE itself bad, or did the
 repulsion/horizon break it? (3) Test the draw-clearance lever on the good
 field now. IQE deferred pending the diagnostic; play says it's not ready.
+
+### Autonomous: IQE FAILURE DIAGNOSED (Kaveh asked) -- L2-normalization + tiny-init crushed it
+Root cause, empirically pinned: the IQE-trained field had ALL pairwise
+distances ~0.34 (true-pair diag 0.340 = off-diag 0.340: true futures NOT
+closer than random -> near-chance retrieval -> flat field). InfoNCE
+logit-spread/row 0.05 (uniform softmax, no gradient) vs 0.43 for good MRN.
+WHY: (1) embed_F/embed_B L2-NORMALIZE to the unit sphere -- correct for
+cosine/MRN, CATASTROPHIC for IQE whose interval-union geometry needs free
+coordinate ranges; on the sphere all interval-unions collapse to tiny/uniform.
+(2) The encoder's small-norm init (coord std 0.08) leaves IQE distances flat
+(logit-spread 0.01) with no bootstrap gradient -- and IQE's exceedance-interval
+gradient is SPARSE at small coordinates. MRN escapes this because Euclidean is
+scale-linear and lives on the sphere at a natural scale; IQE does not.
+(3) ply-gap/horizon targets (~0.2-0.3) pulled IQE toward small distances =
+its degenerate regime (Kaveh's 'k-window' intuition -- the horizon-cap at
+10/50=0.2 compounded it). Kaveh right: IQE should have worked; it was a
+normalization/scale setup bug, not IQE.
+FIX (committed): for IQE -- (a) NO L2-normalization, (b) fixed embed_scale=50
+-> coord O(1), (c) learnable output log_scale so calibration adjusts SCALE not
+embeddings. IQE-init logit-spread 0.01 -> 0.32 (matches trained-MRN). 26 tests
+pass. RUNNING: clean 3k IQE-fixed run -- does VAL_TOP1 now climb off chance?
+Also banked: clearance A/B +0.025 ns (13 decisive) -- correct/marginal like
+threefold; but phead readout itself converts 0.80@800n (vs pole ~0.70) -- the
+real readout win. Good-field MVP baseline = 0.80.
