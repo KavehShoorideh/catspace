@@ -287,6 +287,10 @@ def main():
                     help="dedicated LR for the QRL Lagrange multiplier (dual ascent), "
                          "excluded from the cosine schedule. Higher = constraint tracks "
                          "faster so the global push can't inflate the unit-step distance.")
+    ap.add_argument("--qrl-push-real", action="store_true",
+                    help="push over REAL anchor->future pairs (coupled to the 1-ply "
+                         "constraint via shared positions -> prevents the d_step->0 "
+                         "collapse) instead of shuffled cross-batch pairs.")
     ap.add_argument("--qrl-push-offset", type=float, default=40.0,
                     help="QRL global-push target distance (plies). Set WELL beyond the "
                          "longest forcing line so reachable long lines (chained to their "
@@ -536,7 +540,8 @@ def main():
                                  "the updated LichessPairSource.")
             planes_succ, valid = tensors[7], tensors[8]
             loss, qstats = fb.qrl_loss(core[0], core[1], planes_succ, core[2], valid,
-                                       push_offset=args.qrl_push_offset)
+                                       push_offset=args.qrl_push_offset,
+                                       push_real=args.qrl_push_real)
             top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
             if step % 100 == 0:
                 print(f"    qrl push {qstats['push']:.3f} sq_dev {qstats['sq_dev']:.4f} "

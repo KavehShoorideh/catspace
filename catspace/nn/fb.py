@@ -458,7 +458,7 @@ class TorchFB(nn.Module):
                  planes_succ: torch.Tensor, planes_g: torch.Tensor,
                  valid: torch.Tensor, *, push_offset: float = 40.0,
                  softplus_beta: float = 0.1, step_cost: float = 1.0,
-                 epsilon: float = 0.25):
+                 epsilon: float = 0.25, push_real: bool = False):
         """Quasimetric-RL objective (Wang, Torralba, Isola, Zhang, ICML 2023),
         the loss IQE was DESIGNED for -- InfoNCE only enforces relative ranking
         and leaves the interval geometry collapsed ("d could remain arbitrarily
@@ -489,9 +489,20 @@ class TorchFB(nn.Module):
         sq_dev = (d_step_v - step_cost).clamp_min(0.0).square().mean()
         lam = F.softplus(self.qrl_raw_lambda)
         constraint = (sq_dev - epsilon ** 2) * grad_reverse(lam)
-        # global push: independent random state/goal pairs -> spread apart
-        perm = torch.randperm(f_s.shape[0], device=f_s.device)
-        d_rand = self.directed_distance(f_s, b_g[perm])
+        # global push -> spread pairs toward push_offset. push_real=True uses the
+        # REAL (anchor -> its geometric-future goal) pairs, which are COUPLED to
+        # the 1-ply constraint through shared positions: pushing d(s,g) up to its
+        # chain ceiling forces the intermediate unit steps to ~1 via the triangle
+        # inequality, so d_step can't collapse to 0. push_real=False uses shuffled
+        # cross-batch goals (independent pairs) -- theoretically cleaner but
+        # DISCONNECTED from the constraint, which let d_step collapse at
+        # offset=128 (2026-07-17). g is reachable so its push saturates at the
+        # chain length (< offset); only genuinely-far pairs reach the offset.
+        if push_real:
+            d_rand = self.directed_distance(f_s, b_g)
+        else:
+            perm = torch.randperm(f_s.shape[0], device=f_s.device)
+            d_rand = self.directed_distance(f_s, b_g[perm])
         push = F.softplus(push_offset - d_rand, beta=softplus_beta).mean()
         loss = push + constraint
         stats = {"push": float(push), "sq_dev": float(sq_dev), "lam": float(lam),
@@ -566,6 +577,12 @@ def load_ckpt(path, device: str = "cpu") -> tuple[TorchFB, dict]:
             pad = torch.zeros(ref.shape[0], ref.shape[1] - state[k].shape[1],
                               *ref.shape[2:], dtype=state[k].dtype, device=state[k].device)
             state[k] = torch.cat([state[k], pad], dim=1)
+    # new params absent from older checkpoints: seed them from the freshly
+    # constructed model's init so pre-QRL quasimetric checkpoints still load
+    # (qrl_raw_lambda is inert unless the QRL objective is active).
+    for k, ref in fb.state_dict().items():
+        if k not in state:
+            state[k] = ref.clone()
     fb.load_state_dict(state)
     fb.to(device)
     return fb, payload
