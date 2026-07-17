@@ -240,3 +240,21 @@ def test_black_prefers_mate_over_draw():
     mv = make(nodes=64).best_move(b)
     bb = b.copy(); bb.push(mv)
     assert bb.is_checkmate()          # took the mate, not a shuffling non-mate/draw
+
+
+def test_coherence_from_committor_confidence():
+    # coherence grounded in P(realize) (Kaveh 2026-07-17): with a certainty_fn,
+    # a CONFIDENT node (P~1, e.g. a forced/won region) must get coh_gamma ~1 (no
+    # discount) EVEN IF it has many children -- move-count must not discount a
+    # certain outcome. A low-confidence node gets coh_gamma < 1.
+    b = chess.Board("8/8/8/3k4/8/3K4/8/8 w - - 0 1")   # open board, many K moves
+    def conf_high(boards):
+        n = len(boards); return np.zeros(n), np.full(n, 0.99)   # value, confidence
+    def conf_low(boards):
+        n = len(boards); return np.zeros(n), np.full(n, 0.20)
+    rh = MCTS(_det_reach, max_nodes=40, coherence_k=2.0,
+              certainty_fn=conf_high, certainty_stop=0.0).run(b.copy())
+    rl = MCTS(_det_reach, max_nodes=40, coherence_k=2.0,
+              certainty_fn=conf_low, certainty_stop=0.0).run(b.copy())
+    assert rh.coh_gamma > 0.95            # confident => ~no discount despite many moves
+    assert rl.coh_gamma < rh.coh_gamma    # uncertain => discounted more
