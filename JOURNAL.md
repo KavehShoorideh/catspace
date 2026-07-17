@@ -3942,3 +3942,31 @@ rank trajectory + a play read on a wide committor-base -- does width alone
 help play?), then the NEXT run is the hard-negatives/horizon repulsion run
 (--unreach-weight + --horizon-k, built today), promoted to PRIMARY. L1-on-
 metric-scale deprioritized (wrong layer; and inert at any safe weight).
+
+### AUTONOMOUS (overnight, Kaveh asleep): MVP = e-value-gated toy conversion vs optimal defender
+Scope locked: build ONLY what pertains to converting the winning toy vs the
+tablebase-optimal defender. IN: field (IQE + committor + hard-neg + horizon +
+two-ply stitch + augmented-state wall-fix) + executor (MCTS + search-to-
+certainty + draw-clearance) + region hierarchical planner. OUT (deferred):
+player strength/q_opp/softmin/recognition/belief (defender is optimal+fixed ->
+hard minimax correct), meta-game, offline distill loop. Discipline: NO
+tablebase in play loop (toy <=6 pieces = fully tablebased; in-tree mate only),
+rank=diagnostic-not-gate, no point estimates (bootstrap CI), e-value-gate all
+play, check runs early, commit continuously.
+FOUNDATION built earlier: IQE distance head (axiom-tested, wired), hard
+negatives (vectorized, monotonicity, ep/diagonal-immune), horizon-cap.
+THIS STRETCH (2 wall-fix pieces, the MEASURED toy failure = drift into a
+threefold the search couldn't see):
+1. PATH-AWARE THREEFOLD DETECTION in MCTS: nodes carry parent+rep_key, run()
+   seeds rep_history from the game's move stack, _threefold counts history +
+   search-path occurrences -> the search now SEES repetitions forming in its
+   own lines (copy(stack=False) was blind). +rules-exact insufficient-material
+   /50-move draws. 12 mcts tests pass. Toggle --no-threefold-a for A/B.
+2. PHEAD DRAW-CLEARANCE: reach = ln P_win - beta*ln P_draw from the 3-class
+   outcome head (no separate d_D head) -> steer away from the draw basin at
+   the flat rim.
+RUNNING: (a) threefold A/B on incumbent (off vs on, 800n n=120) -- does seeing
+repetitions help conversion; (b) merged field-foundation run (IQE+committor+
+hardneg+horizon, 6k) ~24min left. Both e-value/CI gated. Next: eval merged
+(rank CI diagnostic + field cal + toy conversion e-value), then two-ply stitch
++ region planner + search-to-certainty, testing conversion each iteration.
