@@ -76,12 +76,25 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
         ph = EvalHead(d_in=hp["d_in"]).to(dev)
         ph.load_state_dict(hp["state"]); ph.eval()
 
+        pcb = clearance_beta                         # phead-native draw clearance
+
         class PheadCommittor(torch.nn.Module):
             def forward(self, f):
-                pw = torch.softmax(ph(f), dim=1)[:, 0].clamp_min(1e-6)
-                return -torch.log(pw).unsqueeze(-1)
+                p = torch.softmax(ph(f), dim=1)
+                pw = p[:, 0].clamp_min(1e-6)
+                dW = -torch.log(pw)                  # committor to the win surface
+                if pcb:
+                    # reach = -d_W + beta*d_D = ln P_win - beta*ln P_draw: steer
+                    # toward the win AND away from the draw basin (the drift the
+                    # toy dies to). d_W head returns the DISTANCE the readout
+                    # negates, so add -beta*d_D here = +beta*ln P_draw... encode
+                    # by RETURNING d_W - beta*d_D (readout negates -> reach).
+                    pd = p[:, 1].clamp_min(1e-6)
+                    dW = dW - pcb * (-torch.log(pd))
+                return dW.unsqueeze(-1)
         kw["committor_head"] = PheadCommittor()
-        print(f"side readout: full-board outcome head as committor ({phead_path})")
+        if clearance_beta:
+            print(f"phead committor + draw clearance beta={clearance_beta}")
     elif committor_path:
         import torch
 
