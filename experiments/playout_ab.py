@@ -51,7 +51,7 @@ def playout(pol, start, tb, rng, max_plies):
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
                 search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False,
                 committor_path=None, clearance_beta=0.0, phead_path=None,
-                detect_threefold=True):
+                detect_threefold=True, coherence_k=0.0):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -126,6 +126,9 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
         print(f"rescue: {len(ev)} evidence states, rollouts+reuse ON")
     if search == "mcts" and not detect_threefold:
         kw["detect_threefold"] = False
+    if search == "mcts" and coherence_k:
+        kw["coherence_k"] = coherence_k
+        print(f"coherence-length backup discount k={coherence_k}")
     pol = make_search_policy(search, fb, z, max_nodes=nodes, beam=beam,
                              c_puct=c_puct, device=dev, s_head=s_head, g_sharp=g_sharp, **kw)
     mated, plies = [], []
@@ -182,6 +185,10 @@ def main():
     ap.add_argument("--clearance-beta", type=float, default=0.0,
                     help="side B: draw-surface clearance weight (reach = -d_W + "
                          "beta*d_D; needs the _dhead sibling of --committor-b)")
+    ap.add_argument("--coherence-k", type=float, default=0.0,
+                    help="B-side only: coherence-length backup discount strength "
+                         "(MCTS). 0=off (flat backup); >0 trusts the best-case field "
+                         "deep on FORCED lines, discounts it through DIVERGENT nodes.")
     ap.add_argument("--phead-b", default=None,
                     help="side B: full-board outcome head (*_phead.pt) as the "
                          "W-committor readout (d_W = -ln P_win from the 3-class "
@@ -211,7 +218,7 @@ def main():
                         search=args.search_b, c_puct=args.c_puct,
                         s_head_path=args.s_head_b, g_sharp=args.g_sharp, rescue=args.rescue_b,
                         committor_path=args.committor_b, clearance_beta=args.clearance_beta,
-                        phead_path=args.phead_b)
+                        phead_path=args.phead_b, coherence_k=args.coherence_k)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
