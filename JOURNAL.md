@@ -3899,3 +3899,23 @@ Dirac-only categorical + multi-eps sharpness + neighbor-disagreement
 uncertainty; their proofs + meta-game as the untested frontier. Indexed as
 the lead paper; committor_planner.md demoted to earlier single-thread draft.
 Meanwhile committor_wide training healthy (pre-5k).
+
+### Wide run early read (5k, pre-L1): width alone does NOT open capacity -- looks like contrastive collapse
+Same 400 states, apples-to-apples effective rank:
+  narrow d=64 (cert_base_full, 155k, trained): 4.51 of 64
+  wide   d=512 (committor_wide, 5k, PRE-L1):    3.40 of 512
+Widening 8x shows NO early sign of opening the metric's working subspace
+(3.4 vs 4.5; wide is early+pre-L1 so may grow, but the pre-registered gate
+"rank RISES and scales with width" is already leaning against). MECHANISTIC
+REFRAME: this is the signature of dimensional/representational COLLAPSE, a
+known contrastive-learning pathology -- and its textbook cure is stronger
+REPULSION (hard negatives), which is exactly Kaveh's contrastive lever built
+today (monotonicity + horizon negatives). So the capacity thread and the
+contrastive thread may be ONE problem: the field collapses for lack of
+repulsion pressure; L1-on-metric-scale prices dims of an already-low-rank
+representation (possibly the wrong layer), while hard negatives attack the
+collapse directly. CAVEATS: 5k, pre-L1 (warmup 8k), single 400-state set --
+not a verdict. PLAN: let the run pass L1 engagement to 10-15k (snapshots
+every 5k) and watch whether rank moves at all; if it stays flat, the
+hard-negatives (repulsion) lever likely becomes the PRIMARY capacity
+experiment, not just a speed lever -- a reorder for Kaveh's call.
