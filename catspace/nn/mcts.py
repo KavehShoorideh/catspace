@@ -35,9 +35,16 @@ import math
 import chess
 import numpy as np
 
+# White-POV terminal values on a symmetric [-1, +1] scale (== the "win 2 / draw 1
+# / loss 0" convention, centered). DRAW MUST be 0: the search flips sign for the
+# side to move (_select_child: `q if white else -q`), so a non-zero draw is
+# inconsistent -- at DRAW_V=-0.999 a draw read as +0.999 for Black (≈ a Black
+# win) while reading ≈ a loss for White. 0 = neutral for BOTH, as a draw is.
+# (2026-07-17, Kaveh: the old -0.999 collapsed draw onto loss and broke the
+# White/Black symmetry; it also made steering-to-a-draw-when-losing impossible.)
 MATE_V = 1.0
 MATED_V = -1.0
-DRAW_V = -0.999
+DRAW_V = 0.0
 PLY_DISCOUNT = 1e-4          # mate at depth k backs up MATE_V - k*PLY_DISCOUNT
 
 
