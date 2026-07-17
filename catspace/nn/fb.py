@@ -468,7 +468,8 @@ class TorchFB(nn.Module):
                  epsilon: float = 0.25, push_real: bool = False,
                  var_weight: float = 0.0, var_target: float = 1.0,
                  push_mix: float = 0.0, use_pid: bool = False,
-                 pid_kp: float = 0.5, pid_ki: float = 0.01, pid_kd: float = 2.0):
+                 pid_kp: float = 0.5, pid_ki: float = 0.01, pid_kd: float = 2.0,
+                 two_sided: bool = False, push_goal_planes: torch.Tensor | None = None):
         """Quasimetric-RL objective (Wang, Torralba, Isola, Zhang, ICML 2023),
         the loss IQE was DESIGNED for -- InfoNCE only enforces relative ranking
         and leaves the interval geometry collapsed ("d could remain arbitrarily
@@ -496,7 +497,15 @@ class TorchFB(nn.Module):
             d_step_v = d_step[valid]
         else:
             d_step_v = d_step
-        sq_dev = (d_step_v - step_cost).clamp_min(0.0).square().mean()
+        # two_sided pins d(s,s') to EXACTLY step_cost (penalizes below AND above),
+        # forbidding the collapse attractor where all F sit above all B in the IQE
+        # coords so every d(F->B)=0 (which trivially satisfies the one-sided <=1
+        # and drags d_rand to 0 too). Correct for chess: every 1-ply move IS one
+        # step, unlike the redundant actions QRL's one-sided constraint was for.
+        if two_sided:
+            sq_dev = (d_step_v - step_cost).square().mean()
+        else:
+            sq_dev = (d_step_v - step_cost).clamp_min(0.0).square().mean()
         if use_pid:
             # PID-Lagrangian: lambda is a control signal on the violation, with
             # a DERIVATIVE term to damp the dual-ascent oscillation that made
@@ -529,13 +538,21 @@ class TorchFB(nn.Module):
         # 0 = shuffle only (far-scale, but collapse-prone at big offset), 1 = real
         # only (coupled, but no far-scale). push_real=True forces mix=1 (legacy).
         mix = 1.0 if push_real else push_mix
-        perm = torch.randperm(f_s.shape[0], device=f_s.device)
-        d_shuf = self.directed_distance(f_s, b_g[perm])
-        push = (1.0 - mix) * F.softplus(push_offset - d_shuf, beta=softplus_beta).mean()
+        # far/spread source: a DIVERSE cross-batch goal pool (approximating the
+        # dataset-wide p_goal) if provided -- in-batch shuffle only spans the
+        # batch's ~2-3 games, so its pairs are mostly same-game and close, and
+        # the d_step=1 chain correctly pins them small -> no spread (d_rand flat).
+        # QRL needs g ~ p_goal over the whole dataset for the distance to spread.
+        if push_goal_planes is not None:
+            d_far = self.directed_distance(f_s, self.embed_B(push_goal_planes))
+        else:
+            perm = torch.randperm(f_s.shape[0], device=f_s.device)
+            d_far = self.directed_distance(f_s, b_g[perm])
+        push = (1.0 - mix) * F.softplus(push_offset - d_far, beta=softplus_beta).mean()
         if mix > 0.0:
             d_real = self.directed_distance(f_s, b_g)
             push = push + mix * F.softplus(push_offset - d_real, beta=softplus_beta).mean()
-        d_rand = d_shuf if mix < 1.0 else self.directed_distance(f_s, b_g)
+        d_rand = d_far
         loss = push + constraint
         # VARIANCE REGULARIZATION (VICReg, Bardes et al. 2022) -- the standard
         # anti-collapse cure (Kaveh's rule: collapse is a first-class failure,
