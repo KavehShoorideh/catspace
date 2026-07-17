@@ -79,7 +79,8 @@ class MCTS:
                  prior_tau: float = 0.5, cache: dict | None = None,
                  rollout_on_flat: bool = False, flat_std: float = 0.05,
                  rollout_cap: int = 32, detect_threefold: bool = True,
-                 coherence_k: float = 0.0):
+                 coherence_k: float = 0.0,
+                 certainty_fn=None, certainty_stop: float = 0.0):
         assert max_nodes >= 1
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
@@ -91,6 +92,14 @@ class MCTS:
         # toward neutral as it backs up through DIVERGENT (high child-value
         # entropy) nodes, so the field is trusted deep only along FORCED lines.
         self.coherence_k = coherence_k
+        # OBVIOUS-REGION soft-terminal: certainty_fn(boards) -> (white_pov_value,
+        # confidence) from the committor/recognizer. A node whose confidence >=
+        # certainty_stop is treated as RESOLVED (a low-complexity, high-P region
+        # like "rook up") -- its value backs up and the search does NOT expand
+        # below it, so it stops at obvious regions instead of searching to mate
+        # (Kaveh 2026-07-17: phead-as-recognizer, the leaf-termination role).
+        self.certainty_fn = certainty_fn
+        self.certainty_stop = certainty_stop
         self.evals_used = 0              # budget = FRESH network evals only
         self.rep_history: dict = {}      # position-key counts of the game so far
         # exact eval cache (fen -> raw reach). Reach is a pure function of
@@ -158,6 +167,17 @@ class MCTS:
             node.terminal_v = DRAW_V if not node.board.is_checkmate() else (
                 MATED_V if node.board.turn == chess.WHITE else MATE_V)
             return node.terminal_v
+
+        # obvious-region soft-terminal: a confidently-resolved child (recognizer
+        # certainty >= certainty_stop) is treated as terminal with its committor-
+        # implied value -- the search stops there instead of recursing to mate.
+        if self.certainty_fn is not None and self.certainty_stop > 0.0:
+            cand = [c for c in children if c.terminal_v is None]
+            if cand:
+                cvals, cconf = self.certainty_fn([c.board for c in cand])
+                for c, v, cf in zip(cand, cvals, cconf):
+                    if cf >= self.certainty_stop:
+                        c.terminal_v = float(v)
 
         fresh = [c for c in children if c.terminal_v is None]
         if fresh:
@@ -328,7 +348,8 @@ class FBMCTSPolicy:
                  evidence_k: float = 4.0, rollout_on_flat: bool = False,
                  tree_reuse: bool = False, committor_head=None,
                  committor_dhead=None, clearance_beta: float = 0.0,
-                 detect_threefold: bool = True, coherence_k: float = 0.0):
+                 detect_threefold: bool = True, coherence_k: float = 0.0,
+                 certainty_head=None, certainty_stop: float = 0.0):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -372,11 +393,31 @@ class FBMCTSPolicy:
                 r = r - g_sharp * s_head(f).squeeze(-1)
             return r.cpu().numpy()
 
+        # obvious-region recognizer: the phead's 3-way W/D/L softmax gives a
+        # per-position resolved value (expected White-POV outcome) and a
+        # confidence (peak class prob). certainty_stop turns high-confidence
+        # regions into search-terminals (see MCTS.certainty_fn).
+        certainty = None
+        if certainty_head is not None and certainty_stop > 0.0:
+            @torch.no_grad()
+            def certainty(boards):
+                packed = np.stack([encode_packed(b) for b in boards])
+                meta = np.stack([encode_meta(b, rep=self.path_counts.get(b.board_fen(), 0))
+                                 for b in boards])
+                planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
+                om = torch.from_numpy(np.tile(omega_row, (len(boards), 1))).to(device)
+                f = self.fb.embed_F(planes, om)
+                p = torch.softmax(certainty_head(f), dim=1)          # (n, 3) = W,D,L
+                val = p[:, 0] * MATE_V + p[:, 1] * DRAW_V + p[:, 2] * MATED_V
+                conf = p.max(dim=1).values
+                return val.cpu().numpy(), conf.cpu().numpy()
+
         self.mcts = MCTS(reach, max_nodes=max_nodes, c_puct=c_puct,
                          prior_tau=prior_tau, cache={} if cache else None,
                          rollout_on_flat=rollout_on_flat,
                          detect_threefold=detect_threefold,
-                         coherence_k=coherence_k)
+                         coherence_k=coherence_k,
+                         certainty_fn=certainty, certainty_stop=certainty_stop)
         self.evidence = evidence or {}
         self.evidence_k = evidence_k
         self.path_counts: dict = {}
