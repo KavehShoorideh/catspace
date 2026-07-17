@@ -4198,3 +4198,43 @@ CONVERSION at the 10k/20k/40k checkpoints vs the MRN incumbent (0.80 @800n via
 phead). If conversion is poor AND d_step instability is implicated, implement
 PID-Lagrangian as the targeted fix. New flags: --qrl-push-real, --qrl-var-weight
 /-target (all committed). load_ckpt now backfills new params for old ckpts.
+
+
+## 2026-07-17 (Opus) — QRL-IQE hits a SMALL-WORLD COLLAPSE; conversion is the arbiter
+
+Extended QRL debugging (Kaveh: search the problem, then fine-tune). Two failure
+modes, one solved, one not:
+
+FIXED -- the d_step->0 HARD collapse. Root cause: the degenerate attractor puts
+all F embeddings above all B in the IQE coords, so every directed d(F->B)=0,
+which trivially satisfies the one-sided d(s,s')<=1 constraint AND drags d_rand
+to 0. Searched (Stooke PID-Lagrangian arXiv 2007.03964; VICReg; QRL p_goal).
+Implemented: PID-Lagrangian multiplier (--qrl-use-pid, derivative gain damps the
+dual-ascent oscillation), VICReg variance reg (--qrl-var-weight), and the
+decisive one -- TWO-SIDED constraint (--qrl-two-sided, pin d(s,s')=1 both ways;
+correct for chess since every 1-ply move IS one step). Two-sided forbids the
+attractor: d_step now holds ~1.1, no collapse.
+
+NOT FIXED -- the SMALL-WORLD collapse. d_rand (distance for random/far pairs)
+stays ~2 in EVERY config: one-sided, two-sided, in-batch shuffle, and even with
+a diverse cross-batch goal pool (--qrl-goal-pool, dataset-wide p_goal, the
+searched fix for spreading). The metric treats ANY two positions as ~2 plies
+apart -- geometrically false for chess (reasonable positions are ~10-40 shortest-
+path plies apart). The scale is pinned by the local constraint (adjacent=1) and
+the embedding finds a clustered manifold the push can't pull apart. So the IQE
+quasimetric is nearly TRIVIAL -- it adds little reachability geometry over the
+raw encoder.
+
+SUSPECT (untested): the committor phead (phead-weight 1.0, co-trained) pulls the
+embedding toward 3 OUTCOME clusters (win/draw/loss) -- a low-dim structure that
+fights the metric spread. Pure QRL (no phead) might spread but then has no
+readout to convert.
+
+DECISION: stop tuning the d_rand diagnostic; PLAY is the arbiter. Full 40k
+QRL-IQE @128 (two-sided + pool + PID + var, the most stable config) training,
+ckpt every 10k. Eval phead conversion at 10k (fail-fast) vs the MRN incumbent
+(cert_base_full 0.80 @800n). If it converts despite the flat metric, d_rand was
+a red herring; if not, we have strong evidence QRL-IQE is wrong for this data ->
+fall back to MRN (works) or test the pure-QRL-then-phead hypothesis. All fixes
+committed + flag-gated + GLOSSARY'd. Coherence-length A/B (k=1.0) was NS/over-
+discounting on the MRN field -- retry gentler k once a field is chosen.
