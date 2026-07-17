@@ -3982,3 +3982,15 @@ components, doesn't use F's linear rank directly). ARBITER = toy conversion,
 read at 6k. If conversion is bad AND rank low -> IQE+hardneg is collapsing
 (diagnose weight/components); if conversion OK despite low rank -> rank-of-F
 is the wrong measure for IQE (chess may need few dims, as Kaveh anticipated).
+
+### Autonomous: threefold A/B = +0.017 ns (e=0.63), 4/120 decisive -- correct fix, marginal lever
+PLAYOUT_AB THREEFOLD_800n A(off)=0.683 vs B(on)=0.700 diff=+0.017
+CI=[-0.017,+0.050] e=0.63 [ns]. Only 4/120 games decisive -> path-aware
+threefold detection changes the outcome rarely: most incumbent non-conversions
+don't drift into a SEEABLE threefold (they draw via insufficient-material/
+50-move/no-gradient). LEARNING: the fix is correct (kept, conditional-
+rejections rule) but the DOMINANT conversion lever is the FIELD (flat rim),
+not the search seeing the draw. Next draw-side lever to test: phead clearance
+(ln P_win - beta*ln P_draw), which steers AWAY from the basin proactively
+rather than detecting it at the leaf. Waiting on merged IQE 6k for its
+conversion (the bigger signal: is the IQE field even convertible).
