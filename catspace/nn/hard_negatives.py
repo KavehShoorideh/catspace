@@ -86,47 +86,68 @@ def repel_loss(d_neg, margin):
 
 
 def irreversible_sibling_pairs(boards, rng, cap: int = 48):
-    """PROVABLY mutually-unreachable sibling pairs from irreversibility
-    (Kaveh 2026-07-17): from one parent, two distinct irreversible moves whose
-    signatures diverge -- (a) two different PAWNS moved (neither pawn can
-    retreat, so each sibling lacks the other's advancement forever), or (b) two
-    captures of DIFFERENT SQUARES (each sibling keeps alive a piece the other
-    killed; the dead don't revive), or (c) a pawn push vs any capture. Excluded:
-    same pawn pushing along one file (e3 vs e4 transposes one tempo later).
-    These are the HARDEST push negatives: boards differ by 1-2 squares (feature-
-    close) yet d = infinity BOTH ways -- they teach the metric the directional
-    topology (the irreversibility partial order) rather than feature similarity.
+    """PROVABLY mutually-unreachable sibling pairs, admitted by CERTIFICATE
+    INCOMPARABILITY (Kaveh 2026-07-17, fungibility fix): naive rules like
+    "different capture square" are UNSOUND -- capturing knight-e6 vs knight-c6
+    leaves identical material multisets and the survivors transpose (same for
+    rooks; pawns via doubled-pawn substitution). Positions are SETS; piece
+    identity is not conserved.
 
-    boards: list[chess.Board]. Returns (packed_a, meta_a, packed_b, meta_b)
-    stacked arrays for <=cap pairs, or None if no parent yields a pair."""
+    Criterion (per the define-identifications rule): monotone certificates
+    C(s) = (white pawn count, black pawn count, white total, black total,
+    white pawn budget, black pawn budget) -- each provably NONINCREASING under
+    every legal move, promotion-safe (type counts are NOT: promotion mints
+    pieces). A move pair (m1, m2) is admitted iff the child certificates are
+    INCOMPARABLE: each child strictly below the other on >=1 coordinate. Then
+    neither can ever descend to the other => mutually unreachable, with no
+    identity/fungibility assumptions. Surviving pairs are mostly pawn-push vs
+    capture (mover budget drops vs victim count drops -- orthogonal coords).
+
+    boards: list[chess.Board]. Returns stacked (packed_a, meta_a, packed_b,
+    meta_b) for <=cap pairs, or None."""
     import chess as _c
     from catspace.data.encode import encode_meta, encode_packed
+
+    def cert(b):
+        wp = len(b.pieces(_c.PAWN, _c.WHITE)); bp = len(b.pieces(_c.PAWN, _c.BLACK))
+        wt = _popcount(b.occupied_co[_c.WHITE]); bt = _popcount(b.occupied_co[_c.BLACK])
+        wb = sum(7 - _c.square_rank(sq) for sq in b.pieces(_c.PAWN, _c.WHITE))
+        bb = sum(_c.square_rank(sq) for sq in b.pieces(_c.PAWN, _c.BLACK))
+        return (wp, bp, wt, bt, wb, bb)
+
+    def _popcount(x):
+        return bin(x).count("1")
+
+    def incomparable(c1, c2):
+        a_less = any(x < y for x, y in zip(c1, c2))
+        b_less = any(y < x for x, y in zip(c1, c2))
+        return a_less and b_less
+
     pa, ma, pb, mb = [], [], [], []
     order = rng.permutation(len(boards))
     for i in order:
         if len(pa) >= cap:
             break
         b = boards[i]
-        pawn_moves, caps = {}, {}          # keyed by signature
+        # irreversible candidates only (captures + pawn moves); cap the scan
+        cands = []
         for m in b.legal_moves:
-            if b.is_capture(m):
-                caps.setdefault(m.to_square, m)          # different target square
-            elif b.piece_type_at(m.from_square) == _c.PAWN:
-                pawn_moves.setdefault(m.from_square, m)  # different pawn
-        m1 = m2 = None
-        if len(caps) >= 2:
-            (m1, m2) = list(caps.values())[:2]
-        elif len(pawn_moves) >= 2:
-            (m1, m2) = list(pawn_moves.values())[:2]
-        elif caps and pawn_moves:
-            m1, m2 = next(iter(caps.values())), next(iter(pawn_moves.values()))
-        if m1 is None:
+            if b.is_capture(m) or b.piece_type_at(m.from_square) == _c.PAWN:
+                b2 = b.copy(stack=False); b2.push(m)
+                cands.append((b2, cert(b2)))
+                if len(cands) >= 6:
+                    break
+        found = None
+        for j in range(len(cands)):
+            for k in range(j + 1, len(cands)):
+                if incomparable(cands[j][1], cands[k][1]):
+                    found = (cands[j][0], cands[k][0]); break
+            if found:
+                break
+        if not found:
             continue
-        for m, ps, ms in ((m1, pa, ma), (m2, pb, mb)):
-            b2 = b.copy(stack=False)
-            b2.push(m)
-            ps.append(encode_packed(b2))
-            ms.append(encode_meta(b2))
+        for bb2, ps, ms in ((found[0], pa, ma), (found[1], pb, mb)):
+            ps.append(encode_packed(bb2)); ms.append(encode_meta(bb2))
     if not pa:
         return None
     return (np.stack(pa), np.stack(ma), np.stack(pb), np.stack(mb))
