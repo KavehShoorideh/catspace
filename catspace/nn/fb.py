@@ -58,7 +58,8 @@ class TorchFB(nn.Module):
                  two_horizon: bool = False, distributional: bool = False,
                  n_bins: int = 12, competence: bool = False,
                  outcome_poles: bool = False, concept_axes: int = 0,
-                 iqe: bool = False, iqe_components: int = 8):
+                 iqe: bool = False, iqe_components: int = 8,
+                 iqe_embed_scale: float = 50.0):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional or outcome_poles or iqe:
@@ -69,7 +70,8 @@ class TorchFB(nn.Module):
                            distributional=distributional, n_bins=n_bins,
                            competence=competence, outcome_poles=outcome_poles,
                            concept_axes=concept_axes, iqe=iqe,
-                           iqe_components=iqe_components)
+                           iqe_components=iqe_components,
+                           iqe_embed_scale=iqe_embed_scale)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -82,6 +84,7 @@ class TorchFB(nn.Module):
         self.d = d
         self.quasimetric = quasimetric
         self.iqe = iqe
+        self.iqe_embed_scale = iqe_embed_scale
         if iqe:
             # Interval Quasimetric Embedding: valid+universal quasimetric BY
             # CONSTRUCTION (merged paper). Replaces the MRN metric_scale/W --
@@ -171,10 +174,17 @@ class TorchFB(nn.Module):
         h = self.encF(planes)
         o = torch.cat([self.emb_we(omega[:, 0]), self.emb_be(omega[:, 1]),
                        self.emb_clk(omega[:, 2])], dim=1)
-        return nn.functional.normalize(self.headF(torch.cat([h, o], dim=1)), dim=1)
+        e = self.headF(torch.cat([h, o], dim=1))
+        # IQE needs FREE coordinate ranges at O(1): L2-normalizing to the unit
+        # sphere crushes its interval-union geometry to near-uniform, and the
+        # encoder's small-norm init (coord std ~0.08) leaves IQE distances too
+        # flat to give InfoNCE a bootstrap gradient (diagnosed 2026-07-17). So
+        # for IQE: no normalization, and a fixed scale to coord std ~O(1).
+        return self.iqe_embed_scale * e if self.iqe else nn.functional.normalize(e, dim=1)
 
     def embed_B(self, planes: torch.Tensor) -> torch.Tensor:
-        return nn.functional.normalize(self.headB(self.encB(planes)), dim=1)
+        e = self.headB(self.encB(planes))
+        return self.iqe_embed_scale * e if self.iqe else nn.functional.normalize(e, dim=1)
 
     def embed_F_near(self, planes: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         """FAR's shared trunk (encF), NEAR's head. Cosine-scored (near needs
