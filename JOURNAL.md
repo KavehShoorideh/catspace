@@ -4382,3 +4382,21 @@ lam 7.7). omega-fix + one-sided PID insufficient; force balance (sib weight 1
 vs lam~8 on a smooth encoder) is the standing hypothesis -> next single lever
 sib-weight 8. GPU now EXCLUSIVE per Kaveh (no sharing): chained clearance eval
 -> training.
+
+
+## 2026-07-18 (Fable) — certified unreachability oracle replaces sibling hinge
+
+Kaveh's design: instead of generating sibling pairs, certify the push pairs we
+ALREADY embed. nn/unreachable.py tests s->g per direction: count monotonicity
+(promotion-safe), castling rights, and pawn forward-cone injective matching
+(relaxed capture-victims => infeasibility still proves unreachability; flag =
+theorem, no-flag = unknown). VERDICT: 90.6% of cross-game pool pairs flagged,
+0.6ms/128, 0.0% false flags on 210 real-game forward pairs; 7 oracle tests.
+Wired as --qrl-unreach-weight 8 hinge (floor 30) on d_far -- 9x the sibling
+hinge's coverage at zero extra embedding cost, directional, and the d_unr /
+d_oth split makes d_rand's mixture noise diagnosable. Sibling hinge deprecated
+(default 0). sib8 run killed at ~10k (its ckpt kept for comparison); full
+unreach run launched, same recipe otherwise. Also: d_rand explained +
+force-balance model documented in chat; sib8 had confirmed the force story
+(d_rand 1.5->5.5-12.9, lam 7->77 counter-escalation as predicted, first run
+past 10k).
