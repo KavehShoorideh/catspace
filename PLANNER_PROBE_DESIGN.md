@@ -35,6 +35,21 @@ before committing. The quasimetric proposes; the probe disposes.
   (c) **fallback** regions (the D surface) when W looks blocked. A `Region` is a
   target descriptor the MCTS leaf can score against — a goal-embedding set
   (goal_bank), a committor head, or a surface.
+  **DENSITY PRIOR (Kaveh 2026-07-18): candidate subgoals are ranked with a
+  point-density factor — prefer regions where the embedding holds a large
+  density of known positions.** Those are known clusters: the field is
+  well-estimated there (epistemic error shrinks with sample density), plans
+  through them are trustworthy, and maneuvering inside them is easy (many
+  known neighbors/transpositions to route through). Score shape:
+  `S(region) = forceability x reachability x density(region)^gamma`, with
+  density measured over the B-embeddings of the training/experience sample
+  (cheap: k-NN radius or kernel estimate on the goal pool; later: density of
+  CERTIFIED labels in the label store — the epistemically meaningful count,
+  since certified points are where we've actually verified the field).
+  Ties into the competence map (density ~ where the field has been reliable)
+  and milestoning (dense clusters are natural milestone sites: labels there
+  compose most often). Implementation post-spread, with decompose.py's
+  `score_pairs` as the plug point.
 - **Probe** (API v2, Kaveh 2026-07-18)
   `probe(s, region, opponent, terminate, budget, reuse_tree=None) -> ProbeResult`.
   A bounded minimax MCTS from `s` toward the region, with:
