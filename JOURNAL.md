@@ -4353,3 +4353,32 @@ are the failure mode), the committor-is-measure-dependent point of
 ARCHITECTURE_REVIEW made concrete. Fix direction (Kaveh's call): draw-rich
 training mass for the toy committor (self-play from the toy region /
 draw-upweighted loss) before D-surface planning can work.
+
+
+## 2026-07-18 (Fable) — audit fixes landed; re-baseline 0.60; soft-terminal harmful; mate shown
+
+All MATH_AUDIT fixes committed (194 tests): per-ply mate discount, raw-reach
+recalibration, sibling omega, one-sided PID, rep-aware cache key, counted+cached
+certainty evals, monotone counts, calibration instruments. show_mate.py: the toy
+mate is now visible -- start 2, fixed incumbent @800n vs optimal defender:
+1.Rxb6+ Ke7 2.Rb7+ Kf8 3.Rc8# (5 plies).
+
+VERDICT (playout_ab, n=100 @800n, deterministic defender):
+  A (incumbent, FIXED search, no clearance) = 0.600   <- NEW baseline
+  B (A + certainty_stop 0.9 soft-terminal) = 0.200
+  diff -0.400 CI[-0.52,-0.28] e=4.1e6 SIGNIFICANT.
+(1) The old 0.80 is NOT comparable: DRAW_V=-0.999 was doing accidental
+draw-avoidance for the winning side; with DRAW_V=0 that work belongs to the
+CLEARANCE term, which A didn't enable -- failure modes are draw-acceptances
+(threefold, insufficient-material), matching show_mate starts 0-1. Next: re-run
+with clearance.
+(2) Soft-terminal at 0.9 is DECISIVELY harmful on an uncalibrated phead
+(overconfident: pred 0.849 -> realized 0.717): search stops exactly where
+conversion still needs work. NO soft-terminal until calibration passes -- the
+calibration-gate warning, confirmed in play.
+
+QRL: halted again @3k (small-world; d_rand 1.75 vs d_step 1.3, sib stuck ~57,
+lam 7.7). omega-fix + one-sided PID insufficient; force balance (sib weight 1
+vs lam~8 on a smooth encoder) is the standing hypothesis -> next single lever
+sib-weight 8. GPU now EXCLUSIVE per Kaveh (no sharing): chained clearance eval
+-> training.
