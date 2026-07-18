@@ -614,6 +614,7 @@ def main():
             # diverse cross-batch goal sample for the push (dataset-wide p_goal)
             push_goal_planes = None
             push_unreach_mask = None
+            anchor_perm = anchor_fwd = anchor_rev = None
             if args.qrl_goal_pool > 0:
                 # mask to TRAIN rows before pooling -- else holdout goals get
                 # pushed through embed_B (with grad) and contaminate the holdout
@@ -636,6 +637,14 @@ def main():
                             batch.anchors[_aidx], batch.meta["board_meta"][_aidx],
                             goal_pool_packed[sel], goal_pool_meta[sel])
                         push_unreach_mask = torch.from_numpy(_uflag).to(device)
+                        # anchor-anchor pairing, BOTH directions certified
+                        _ap = batch.anchors[_aidx]; _am = batch.meta["board_meta"][_aidx]
+                        _perm = pool_rng.permutation(len(_aidx))
+                        _ffwd = provably_unreachable(_ap, _am, _ap[_perm], _am[_perm])
+                        _frev = provably_unreachable(_ap[_perm], _am[_perm], _ap, _am)
+                        anchor_perm = torch.from_numpy(_perm).to(device)
+                        anchor_fwd = torch.from_numpy(_ffwd).to(device)
+                        anchor_rev = torch.from_numpy(_frev).to(device)
             loss, qstats = fb.qrl_loss(core[0], core[1], planes_succ, core[2], valid,
                                        push_offset=args.qrl_push_offset,
                                        push_real=args.qrl_push_real,
@@ -644,6 +653,9 @@ def main():
                                        push_unreach_mask=push_unreach_mask,
                                        unreach_weight=args.qrl_unreach_weight,
                                        unreach_floor=args.qrl_unreach_floor,
+                                       anchor_perm=anchor_perm,
+                                       anchor_unreach_fwd=anchor_fwd,
+                                       anchor_unreach_rev=anchor_rev,
                                        use_pid=args.qrl_use_pid,
                                        pid_kp=args.qrl_pid_kp, pid_ki=args.qrl_pid_ki,
                                        pid_kd=args.qrl_pid_kd,
@@ -682,7 +694,7 @@ def main():
                 print(f"    qrl push {qstats['push']:.3f} sq_dev {qstats['sq_dev']:.4f} "
                       f"lam {qstats['lam']:.3f} d_step {qstats['d_step']:.3f} "
                       f"d_rand {qstats['d_rand']:.3f} var {qstats.get('var', 0.0):.3f} "
-                      f"sib {sib:.3f} unr {qstats.get('unr',0.0):.3f} "
+                      f"sib {sib:.3f} unr {qstats.get('unr',0.0):.3f} unrb {qstats.get('unrb',0.0):.3f} "
                       f"d_unr {qstats.get('d_unr',float('nan')):.2f} d_oth {qstats.get('d_oth',float('nan')):.2f}", flush=True)
             # collapse gate: after warmup, on rolling means over the window
             if step >= 2000 and step % 1000 == 0 and len(qrl_dstep_hist) >= 500:
