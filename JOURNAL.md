@@ -4596,3 +4596,33 @@ FBMCTSPolicy instances shared across starts accumulate board_fen counts
 across GAMES (repetition feature + cache keys see other games' visits).
 Pre-existing in every historical PLAYOUT_AB number, so fixing it silently
 would break comparability; needs a coordinated re-baseline.
+
+
+## 2026-07-18 (Fable) — plan persistence SHELVED on its second substrate: dominated by plain mcts@200
+
+FBPlanMCTSPolicy (two-budget committor-MCTS persistence: deep 800n on
+surprise/dropped/stalled triggers, 100n carried-tree top-up otherwise;
+mate-stop on) measured at n=100, paired, deterministic defender:
+
+  PLAYOUT_AB MCTSPLAN_800_100: A(mcts@800)=0.600 vs B=0.440, diff -0.160
+  CI[-0.260,-0.060] e=12.93, 30 decisive pairs. SIGNIFICANT loss.
+  VERDICT ENERGY mctsplan@800n: conv 0.440, rows/move 223 (p50=111 p90=806).
+
+The energy shape delivered (3.6x cut, tier-0 works mechanically) but the
+strength did not — and the sharp verdict is DOMINATION, not tradeoff:
+plain mcts@200 = 0.490 conv at 210 rows/move beats mctsplan (0.440 @ 223)
+on BOTH axes. Persistence as-built spends its savings playing STALE moves:
+exec top-ups (100 evals) rarely overturn the carried tree's old visit mass,
+so changed positions get old answers (plies-to-mate 24 vs 20 = drift).
+Consistent with the beam-era FBPlanPolicy shelf (ns strength, walked into
+refutations) — the failure is the PERSISTENCE PRINCIPLE at this field
+quality, not the substrate. Shelved (both substrates now priced); retest
+condition: a field whose plans survive >6 plies (post-spread).
+
+What the data says instead: allocation must be gated on UNCERTAINTY, not
+plan bookkeeping — spend 800n exactly where a 200n search is CONTESTED
+(small top-2 visit gap), i.e. the DecisionCascade's coarse->deepen rule as
+a move policy. mcts@200 already holds 0.490 @ 210; the bet is that the
+~0.11 conversion the 800n ladder step buys comes from a MINORITY of moves.
+Next gate: escalate-on-uncertainty policy vs mcts@800 (strength) and vs
+mcts@200/800 Pareto line (energy).
