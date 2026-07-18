@@ -51,7 +51,8 @@ def playout(pol, start, tb, rng, max_plies):
 def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boards=None,
                 search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False,
                 committor_path=None, clearance_beta=0.0, phead_path=None,
-                detect_threefold=True, coherence_k=0.0, certainty_stop=0.0):
+                detect_threefold=True, coherence_k=0.0, certainty_stop=0.0,
+                decision_stop=False):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -138,6 +139,9 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
     if search == "mcts" and coherence_k:
         kw["coherence_k"] = coherence_k
         print(f"coherence-length backup discount k={coherence_k}")
+    if search == "mcts" and decision_stop:
+        kw["decision_stop"] = True
+        print("decision-stability early stop ON (certified mate-stop + visit-gap heuristic)")
     pol = make_search_policy(search, fb, z, max_nodes=nodes, beam=beam,
                              c_puct=c_puct, device=dev, s_head=s_head, g_sharp=g_sharp, **kw)
     mated, plies = [], []
@@ -211,6 +215,9 @@ def main():
                     "clearance A/B: phead both sides, clearance differs)")
     ap.add_argument("--clearance-a", type=float, default=0.0,
                     help="side A draw-clearance beta (phead readout)")
+    ap.add_argument("--decision-stop-b", action="store_true",
+                    help="side B (mcts): decision-stability early stop -- the "
+                         "planner energy lever. Gate: strength wash + energy drop.")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -233,7 +240,8 @@ def main():
                         s_head_path=args.s_head_b, g_sharp=args.g_sharp, rescue=args.rescue_b,
                         committor_path=args.committor_b, clearance_beta=args.clearance_beta,
                         phead_path=args.phead_b, coherence_k=args.coherence_k,
-                        certainty_stop=args.certainty_stop)
+                        certainty_stop=args.certainty_stop,
+                        decision_stop=args.decision_stop_b)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())
