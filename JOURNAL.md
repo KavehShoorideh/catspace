@@ -4626,3 +4626,40 @@ a move policy. mcts@200 already holds 0.490 @ 210; the bet is that the
 ~0.11 conversion the 800n ladder step buys comes from a MINORITY of moves.
 Next gate: escalate-on-uncertainty policy vs mcts@800 (strength) and vs
 mcts@200/800 Pareto line (energy).
+
+
+## 2026-07-18 (Fable) — escalation NO-BUILD: flip-rate 0.51 says difficulty is homogeneous; in-search allocation program CLOSED at this field quality
+
+decision_flip_probe.py (new instrument; probe() as diagnostic): along
+incumbent mcts@800 reference games vs the tb defender, a fresh 200n search
+picks a DIFFERENT move on 51.0% of 478 decisions (n=30 starts). The coarse
+top-2 visit-gap gate has real but insufficient signal: flip rate 0.649 /
+0.585 / 0.278 by gap tercile; the lowest-gap third captures only 44.7% of
+flips. Escalation arithmetic at these numbers: catching ~90% of flips means
+escalating ~2/3 of moves => ~600 rows/move for residual strength loss —
+dominated territory again. Corroborates the 2026-07-13 beam-era null
+("homogeneous difficulty defeats targeting") with a direct decision-level
+measurement on the current committor-MCTS substrate. NO-BUILD; the
+diagnostic cost 147s instead of a 40-min gate run.
+
+COROLLARY (field, not search): half the moves flipping between 200n and
+800n while conversion moves only 0.490->0.600 means the field's move
+ranking is SOFT nearly everywhere — search is doing the heavy lifting over
+a weakly-discriminating reach signal. Consistent with the small-world
+diagnosis. The binding constraint on BOTH strength and energy is the field
+(the spread program awaiting Kaveh's collapse-remedy call), not the search
+layer.
+
+ENERGY PROGRAM STATE after day 1 (all numbers = printed verdicts, n=100
+paired unless noted):
+  KEEPER   mate-stop: -4% energy, diff exactly 0.000 (proven + verified)
+  CLOSED   stability stop (-0.040 conv for 6%); plan persistence on BOTH
+           substrates (beam: 0.150@870; mcts: 0.440@223, dominated by
+           mcts@200 0.490@210); escalation (no-build by flip probe)
+  FRONTIER mcts@200 (0.490@210) / mcts@800+mate-stop (0.600@776) /
+           mcts@1600 (0.620@1608) — the honest Pareto, all in-search
+           levers priced
+  NEXT (needs Kaveh): field spread (collapse remedies a-d), THEN retest
+  the shelf per conditional-rejections; label store (phase C amortization)
+  is the remaining unbuilt energy idea and pairs naturally with a spread
+  field's certified surfaces; path_counts protocol re-baseline decision.
