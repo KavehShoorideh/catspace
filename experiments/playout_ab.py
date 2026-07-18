@@ -129,7 +129,9 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
                         + 8.0 * (-_np.log(max(r["p_hat"], 1.0 / (r["n"] + 2))))) / 50.0
                 n0, d0 = ev.get(r["fen"], (0.0, 0.0))
                 ev[r["fen"]] = (n0 + r["n"], (n0 * d0 + r["n"] * d_ev) / (n0 + r["n"]))
-        kw = dict(evidence=ev, rollout_on_flat=True, tree_reuse=True)
+        kw.update(evidence=ev, rollout_on_flat=True, tree_reuse=True)  # ADDITIVE
+        # (was kw = dict(...), silently discarding committor/phead/certainty
+        # config when combined -- MATH_AUDIT)
         print(f"rescue: {len(ev)} evidence states, rollouts+reuse ON")
     if search == "mcts" and not detect_threefold:
         kw["detect_threefold"] = False

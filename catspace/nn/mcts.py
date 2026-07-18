@@ -51,7 +51,7 @@ PLY_DISCOUNT = 1e-4          # mate at depth k backs up MATE_V - k*PLY_DISCOUNT
 
 class _Node:
     __slots__ = ("board", "move", "children", "P", "N", "W", "v_init",
-                 "terminal_v", "parent", "rep_key", "coh_gamma")
+                 "terminal_v", "parent", "rep_key", "coh_gamma", "raw_v", "cert")
 
     def __init__(self, board: chess.Board, move: chess.Move | None,
                  parent: "_Node | None" = None):
@@ -65,6 +65,11 @@ class _Node:
         self.W = 0.0                     # sum of backed-up White-POV values
         self.v_init: float | None = None # squashed reach from parent's batch eval
         self.terminal_v: float | None = None
+        self.raw_v: float | None = None  # UNsquashed reach (tree-reuse recalibration
+                                         # must use raw units -- MATH_AUDIT A2)
+        self.cert: tuple | None = None   # (white_pov_value, confidence) recognizer
+                                         # output, cached so the coherence pass
+                                         # doesn't re-run the network (MATH_AUDIT)
         # COHERENCE LENGTH (2026-07-16): per-node state-dependent backup discount
         # gamma=exp(-k*divergence), divergence = entropy of the child-value
         # distribution. 1.0 = fully forced (value flows up intact); <1 =
@@ -88,7 +93,8 @@ class MCTS:
                  rollout_on_flat: bool = False, flat_std: float = 0.05,
                  rollout_cap: int = 32, detect_threefold: bool = True,
                  coherence_k: float = 0.0,
-                 certainty_fn=None, certainty_stop: float = 0.0):
+                 certainty_fn=None, certainty_stop: float = 0.0,
+                 cache_key_fn=None):
         assert max_nodes >= 1
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
@@ -118,6 +124,10 @@ class MCTS:
         # fast MemoryField re-prices reach mid-game, key must include the
         # field version -- pure-slow-field readouts only, for now.
         self.cache = cache
+        # cache key MUST include everything reach depends on: the augmented-state
+        # rep count is injected by the policy's reach_fn, so a bare FEN key served
+        # stale values across rep-counts (MATH_AUDIT: cache vs augmentation).
+        self.cache_key_fn = cache_key_fn or (lambda b: b.fen())
         self.cache_hits = 0
         self.rollout_on_flat = rollout_on_flat   # classic-MCTS fallback: when
         self.flat_std = flat_std                 # the field is FLAT here (no
@@ -153,14 +163,24 @@ class MCTS:
         """Create children, batch-eval their reach, set priors. Returns the
         White-POV value to back up for this simulation."""
         children = []
+        # depth of `node` below the search root (root = 0): the per-ply mate
+        # discount needs it -- a mate child at tree depth k+1 backs up
+        # MATE_V - (k+1)*PLY_DISCOUNT so FASTER mates strictly dominate.
+        # (MATH_AUDIT A1: the discount was previously a constant, making the
+        # search indifferent among mate depths -- a conversion-shuffling cause.)
+        depth = 0
+        anc = node.parent
+        while anc is not None:
+            depth += 1
+            anc = anc.parent
         for m in node.board.legal_moves:
             b2 = node.board.copy(stack=False)
             b2.push(m)
             c = _Node(b2, m, parent=node)
             if b2.is_checkmate():
                 # the MOVER of m delivered mate; White-POV sign from who moved
-                mate = MATE_V - PLY_DISCOUNT if node.board.turn == chess.WHITE \
-                    else MATED_V + PLY_DISCOUNT
+                mate = MATE_V - (depth + 1) * PLY_DISCOUNT if node.board.turn == chess.WHITE \
+                    else MATED_V + (depth + 1) * PLY_DISCOUNT
                 c.terminal_v = mate
             elif b2.is_insufficient_material() or (b2.halfmove_clock >= 100):
                 c.terminal_v = DRAW_V                # rules-exact, history-free draws
@@ -180,10 +200,12 @@ class MCTS:
         # certainty >= certainty_stop) is treated as terminal with its committor-
         # implied value -- the search stops there instead of recursing to mate.
         if self.certainty_fn is not None and self.certainty_stop > 0.0:
-            cand = [c for c in children if c.terminal_v is None]
+            cand = [c for c in children if c.terminal_v is None and c.cert is None]
             if cand:
                 cvals, cconf = self.certainty_fn([c.board for c in cand])
+                self.evals_used += len(cand)      # recognizer passes are real evals
                 for c, v, cf in zip(cand, cvals, cconf):
+                    c.cert = (float(v), float(cf))
                     if cf >= self.certainty_stop:
                         c.terminal_v = float(v)
 
@@ -193,7 +215,7 @@ class MCTS:
                 reach = np.asarray(self.reach_fn([c.board for c in fresh]), dtype=float)
                 self.evals_used += len(fresh)
             else:
-                keys = [c.board.fen() for c in fresh]
+                keys = [self.cache_key_fn(c.board) for c in fresh]
                 need = [i for i, k in enumerate(keys) if k not in self.cache]
                 self.cache_hits += len(keys) - len(need)
                 if need:
@@ -207,8 +229,9 @@ class MCTS:
             if at_root:
                 self._calibrate(reach)
             sq = self._squash(reach)
-            for c, v in zip(fresh, sq):
+            for c, v, rv in zip(fresh, sq, reach):
                 c.v_init = float(v)
+                c.raw_v = float(rv)
         vals = np.array([c.terminal_v if c.terminal_v is not None else c.v_init
                          for c in children])
         # priors: softmax over child values from the MOVER's perspective
@@ -228,8 +251,11 @@ class MCTS:
         # way up, so their value reaches the root undiscounted.
         if self.coherence_k > 0.0:
             if self.certainty_fn is not None:
-                _, conf = self.certainty_fn([node.board])
-                node.coh_gamma = math.exp(-self.coherence_k * (1.0 - float(conf[0])))
+                if node.cert is None:
+                    _, conf = self.certainty_fn([node.board])
+                    self.evals_used += 1
+                    node.cert = (0.0, float(conf[0]))
+                node.coh_gamma = math.exp(-self.coherence_k * (1.0 - node.cert[1]))
             elif len(children) > 1:
                 pp = pri[pri > 0.0]
                 H = float(-(pp * np.log(pp)).sum())
@@ -294,9 +320,15 @@ class MCTS:
                 root.N = max(root.N, 1)
                 root.W += self._expand(root, at_root=True)
             else:
-                with_v = [c.v_init for c in root.children if c.v_init is not None]
+                # recalibrate on RAW reach (v_init is already-squashed output of
+                # the PREVIOUS move's calibration; feeding it back mixed units --
+                # MATH_AUDIT A2). Nodes lacking raw_v (old ckpts/terminals) skip.
+                with_v = [c.raw_v for c in root.children if c.raw_v is not None]
                 if with_v:
                     self._calibrate(np.array(with_v))
+                    for c in root.children:
+                        if c.raw_v is not None:
+                            c.v_init = float(self._squash(np.array([c.raw_v]))[0])
         else:
             root = _Node(board.copy(stack=False), None)
             root.N = 1
@@ -434,7 +466,8 @@ class FBMCTSPolicy:
                          rollout_on_flat=rollout_on_flat,
                          detect_threefold=detect_threefold,
                          coherence_k=coherence_k,
-                         certainty_fn=certainty, certainty_stop=certainty_stop)
+                         certainty_fn=certainty, certainty_stop=certainty_stop,
+                         cache_key_fn=lambda b: f"{b.fen()}|{self.path_counts.get(b.board_fen(), 0)}")
         self.evidence = evidence or {}
         self.evidence_k = evidence_k
         self.path_counts: dict = {}

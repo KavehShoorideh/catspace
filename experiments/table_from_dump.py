@@ -51,11 +51,17 @@ def outcome_class(rec):
         return "OTHER"
     # Human-game boundaries (RESIGNATION / DRAW_AGREE / ABANDONED) are
     # BELIEF-ACTIONS, not rule surfaces: a resignation is the human's own
-    # committor reading P(win)~0, an agreed draw is both players co-signing
-    # P~draw -- weak human labels of the field, biased by the humans' own
-    # fallibility. Untimed toy generators never emit them; the Lichess
-    # shard-side classifier does (Termination tag + final-board inspection:
-    # decisive-without-mate = resignation or flag).
+    # committor reading P(win)~0 -- but only CONDITIONALLY (Kaveh
+    # 2026-07-15): observed resignations MIX positional ("I'm lost") with
+    # exogenous exits (leaving, tilt, "wanted a London, got an Italian").
+    # Kaveh: exogenous exits are OTHER, not a loss boundary -- the shard
+    # classifier must route only position-driven resignations to
+    # LOSS_RESIGN (discriminate by termination ply, material balance at
+    # the final board, Elo, clock state; exogenous rate fitted from
+    # early/balanced resignations) and send the rest to OTHER. Untimed
+    # toy generators never emit these; the Lichess shard-side classifier
+    # does (Termination tag + final-board inspection: decisive-without-mate
+    # = resignation or flag).
     return {"CHECKMATE": "LOSS_MATE",        # not won + checkmate = White got mated
             "TIMEOUT": "LOSS_TIMEOUT",       # White's own flag fell
             "RESIGNATION": "LOSS_RESIGN",

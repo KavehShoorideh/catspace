@@ -24,14 +24,19 @@ from __future__ import annotations
 import numpy as np
 
 # packed layout: 12 uint64 bitboards (see data/encode.py) -- P N B R Q K per color
-_PIECE_VALS = np.array([1, 3, 3, 5, 9, 0, 1, 3, 3, 5, 9, 0], dtype=np.float32)
+# COUNTS, not point values: promotion converts a pawn into a piece, so the
+# VALUE total can INCREASE (a8=Q: +8 -- MATH_AUDIT A5); the piece COUNT is
+# invariant under promotion and strictly decreases under captures. Kings 0
+# (never captured; constant 2 adds nothing).
+_PIECE_VALS = np.array([1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0], dtype=np.float32)
 
 
 def monotone_coords(packed: np.ndarray, meta: np.ndarray) -> np.ndarray:
     """(n, 12 uint64) packed bitboards + meta -> (n, 3) monotone-DECREASING
-    resource coordinates: [material_total, pawn_advancement_budget,
-    castling_rights_count]. Every legal move leaves each coordinate <= its
-    previous value; captures/pushes/rights-losses strictly decrease one.
+    resource coordinates: [piece_count_total, pawn_advancement_budget,
+    castling_rights_count]. Every legal move (incl. promotion, ep, castling)
+    leaves each coordinate <= its previous value; captures/pushes/rights-
+    losses strictly decrease one.
 
     pawn budget = total ranks-to-promotion remaining over both sides' pawns
     (a pawn push strictly decreases it; a pawn capture-move also decreases it;
@@ -39,7 +44,7 @@ def monotone_coords(packed: np.ndarray, meta: np.ndarray) -> np.ndarray:
     n = len(packed)
     out = np.empty((n, 3), dtype=np.float32)
     counts = np.stack([np.bitwise_count(packed[:, i]) for i in range(12)], axis=1)
-    out[:, 0] = counts.astype(np.float32) @ _PIECE_VALS          # material
+    out[:, 0] = counts.astype(np.float32) @ _PIECE_VALS          # piece count
     # pawn advancement budget: white pawns need rank 7-r more steps, black r-...
     wp, bp = packed[:, 0], packed[:, 6]
     budget = np.zeros(n, dtype=np.float32)

@@ -103,8 +103,9 @@ def irreversible_sibling_pairs(boards, rng, cap: int = 48):
     identity/fungibility assumptions. Surviving pairs are mostly pawn-push vs
     capture (mover budget drops vs victim count drops -- orthogonal coords).
 
-    boards: list[chess.Board]. Returns stacked (packed_a, meta_a, packed_b,
-    meta_b) for <=cap pairs, or None."""
+    boards: list[chess.Board]. Returns (packed_a, meta_a, packed_b, meta_b,
+    src) for <=cap pairs -- src[t] = index into `boards` of pair t's parent, so
+    callers can align per-board context (omega rows; MATH_AUDIT A4) -- or None."""
     import chess as _c
     from catspace.data.encode import encode_meta, encode_packed
 
@@ -123,7 +124,7 @@ def irreversible_sibling_pairs(boards, rng, cap: int = 48):
         b_less = any(y < x for x, y in zip(c1, c2))
         return a_less and b_less
 
-    pa, ma, pb, mb = [], [], [], []
+    pa, ma, pb, mb, src = [], [], [], [], []
     order = rng.permutation(len(boards))
     for i in order:
         if len(pa) >= cap:
@@ -146,8 +147,10 @@ def irreversible_sibling_pairs(boards, rng, cap: int = 48):
                 break
         if not found:
             continue
+        src.append(int(i))
         for bb2, ps, ms in ((found[0], pa, ma), (found[1], pb, mb)):
             ps.append(encode_packed(bb2)); ms.append(encode_meta(bb2))
     if not pa:
         return None
-    return (np.stack(pa), np.stack(ma), np.stack(pb), np.stack(mb))
+    return (np.stack(pa), np.stack(ma), np.stack(pb), np.stack(mb),
+            np.array(src, dtype=np.int64))

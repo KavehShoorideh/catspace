@@ -640,9 +640,11 @@ def main():
                            for j in _js]
                 pair = irreversible_sibling_pairs(_boards, pool_rng, cap=args.qrl_sib_cap)
                 if pair is not None:
-                    _pa, _ma, _pb, _mb = pair
-                    n_s = len(_pa)
-                    om_s = core[1][torch.as_tensor(_js[:n_s], device=device)]
+                    _pa, _ma, _pb, _mb, _src = pair
+                    # align omega to each pair's ACTUAL parent board: generator
+                    # permutes/skips internally (MATH_AUDIT A4), so map its src
+                    # (index into _boards) back through _js (position in core rows)
+                    om_s = core[1][torch.as_tensor(_js[_src], device=device)]
                     pl_a = torch.from_numpy(feature_planes(_pa, _ma)).to(device)
                     pl_b = torch.from_numpy(feature_planes(_pb, _mb)).to(device)
                     f_a, f_b = fb.embed_F(pl_a, om_s), fb.embed_F(pl_b, om_s)

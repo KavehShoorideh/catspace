@@ -82,3 +82,24 @@ def test_iqe_triangle_inequality():
     d_ac = q(a, c)
     d_abc = q(a, b) + q(b, c)
     assert (d_ac <= d_abc + 1e-4).all()
+
+
+# ---- monotone certificates (MATH_AUDIT A5 guard) ------------------------
+
+def test_monotone_coords_nonincreasing_incl_promotion():
+    import chess
+    from catspace.data.encode import encode_meta, encode_packed
+    from catspace.nn.monotone_coords import monotone_coords
+    seqs = [
+        (chess.Board(), ["e4", "d5", "exd5", "Qxd5"]),                 # captures
+        (chess.Board("8/P6k/8/8/8/8/8/7K w - - 0 1"), ["a8=Q"]),      # promotion
+        (chess.Board("4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1"), ["exd6"]), # en passant
+        (chess.Board("4k3/8/8/8/8/8/8/4K2R w K - 0 1"), ["O-O"]),     # castling
+    ]
+    for b, moves in seqs:
+        prev = monotone_coords(encode_packed(b)[None], encode_meta(b)[None])[0]
+        for mv in moves:
+            b.push_san(mv)
+            cur = monotone_coords(encode_packed(b)[None], encode_meta(b)[None])[0]
+            assert (cur <= prev + 1e-6).all(), (mv, prev, cur)
+            prev = cur
