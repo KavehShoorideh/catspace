@@ -137,8 +137,14 @@ class DecisionCascade:
         leader = max(results, key=lambda n: (_mover_lo(results[n], white),
                                              _mover_value(results[n], white)))
         lo = _mover_lo(results[leader], white)
+        rivals = [n for n in results if n != leader]
+        if not rivals:
+            # single candidate: all() over an empty rival set is vacuously
+            # True (review 2026-07-18 MED) -- certified must mean the
+            # INTERVAL is decided, not that nobody contested it
+            return leader, results[leader].decided
         certified = all(lo >= _mover_hi(results[n], white) - self.eps
-                        for n in results if n != leader)
+                        for n in rivals)
         if not certified:
             # fall back to point-estimate leader for reporting/deepening
             leader = max(results, key=lambda n: _mover_value(results[n], white))

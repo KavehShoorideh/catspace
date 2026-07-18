@@ -139,7 +139,7 @@ def test_mate_stop_saves_budget():
     b = chess.Board(MATE_IN_1)
     m_off = make_mcts(budget=200)
     r_off = probe(m_off, b)
-    m_on = MCTS(flat_reach, max_nodes=200, cache={}, decision_stop=True)
+    m_on = MCTS(flat_reach, max_nodes=200, cache={}, mate_stop=True)
     r_on = probe(m_on, b)
     assert r_on.best_move == r_off.best_move          # same (mating) move
     n_moves = len(list(b.legal_moves))
@@ -156,7 +156,7 @@ def test_cert_planted_value_does_not_trigger_mate_stop():
     fen = "8/8/8/3k4/8/3K4/3R4/8 w - - 0 1"           # KRvK, no mate-in-1
     b = chess.Board(fen)
     m = MCTS(flat_reach, max_nodes=64, cache={},
-             certainty_fn=confident, certainty_stop=0.95, decision_stop=True)
+             certainty_fn=confident, certainty_stop=0.95, mate_stop=True)
     r = probe(m, b)
     # every child cert-resolves to terminal => sims are eval-free; the search
     # must NOT have quit after the recognizer pass alone with a "mate" readout
@@ -164,15 +164,65 @@ def test_cert_planted_value_does_not_trigger_mate_stop():
 
 
 def test_stability_stop_ends_early_on_lopsided_field():
-    """A reach field that overwhelmingly prefers one child concentrates
-    visits; once the gap exceeds the remaining budget the search stops."""
-    def lopsided(boards):
-        return np.array([100.0 if b.piece_at(chess.D8) else 0.0 for b in boards])
+    """A reach field that overwhelmingly prefers ONE child concentrates
+    visits; once the gap exceeds the remaining budget (in sim units) the
+    search stops. Mate-free board: pre-split this test leaned on the mate-
+    stop firing instead (decision_stop bundled both flags)."""
+    rook = chess.Piece(chess.ROOK, chess.WHITE)
 
-    b = chess.Board(MATE_IN_1)                        # queen can reach d8
-    m_on = MCTS(lopsided, max_nodes=400, cache={}, decision_stop=True)
+    def lopsided(boards):
+        # exactly one root child (Rg1-d1) puts the ROOK on d1 (the king also
+        # reaches d1 -- a piece_at check tied Kd1 with Rd1), and the signal is
+        # SUBTREE-EXCLUSIVE: rival subtrees stay -100 at Black's min nodes
+        return np.array([100.0 if b.piece_at(chess.D1) == rook else -100.0
+                         for b in boards])
+
+    b = chess.Board("2k5/8/8/8/8/8/R6P/2K3R1 w - - 0 1")
+    for mv in b.legal_moves:                          # premise: no mate-in-1
+        b2 = b.copy()
+        b2.push(mv)
+        assert not b2.is_checkmate()
+    # prior_tau=0.1: root priors ~exclusively on the favored child, so the
+    # visit gap tracks sims directly (mean-backup Q pollution from rival
+    # subtrees otherwise keeps the top-2 tied and the gap flat)
+    m_on = MCTS(lopsided, max_nodes=400, cache={}, prior_tau=0.1, decision_stop=True)
     m_on.run(b)
     used_on = m_on.evals_used
-    m_off = MCTS(lopsided, max_nodes=400, cache={})
+    m_off = MCTS(lopsided, max_nodes=400, cache={}, prior_tau=0.1)
     m_off.run(b)
     assert used_on < m_off.evals_used                 # stopped before the budget
+
+
+def test_best_move_never_plays_cert_planted_fake_mate():
+    """Review 2026-07-18 HIGH regression: a confident recognizer plants
+    terminal_v=0.9 on non-mate children that PRECEDE the real mate in move
+    order; best_move's mate short-circuit must skip them (game_truth gate)
+    and still play the proven mate-in-1 — including when the certified
+    mate-stop ended the search at root expansion."""
+    def confident(boards):
+        return (np.full(len(boards), 0.9), np.full(len(boards), 0.99))
+
+    b = chess.Board(MATE_IN_1)
+    m = MCTS(flat_reach, max_nodes=64, cache={},
+             certainty_fn=confident, certainty_stop=0.95, mate_stop=True)
+    mv = m.best_move(b)
+    b2 = b.copy()
+    b2.push(mv)
+    assert b2.is_checkmate()
+
+
+def test_probe_suspends_stability_stop_and_restores():
+    m = MCTS(flat_reach, max_nodes=64, cache={}, decision_stop=True)
+    r = probe(m, chess.Board("2k5/8/8/8/8/8/R6P/2K3R1 w - - 0 1"), budget=32)
+    assert m.decision_stop is True                    # restored after the call
+    assert r.evals_spent > 0
+
+
+def test_cache_hits_reported_per_call():
+    m = make_mcts()
+    b = chess.Board("2k5/8/8/8/8/8/R6P/2K3R1 w - - 0 1")
+    r1 = probe(m, b, budget=30)
+    r2 = probe(m, b, budget=30)                       # same cache, repeat probe
+    assert r2.cache_hits >= 0
+    assert r2.cache_hits <= r2.evals_spent + r2.cache_hits  # sane per-call split
+    assert r1.cache_hits < r1.evals_spent + 100       # r1 mostly fresh

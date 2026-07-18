@@ -51,16 +51,19 @@ PLY_DISCOUNT = 1e-4          # mate at depth k backs up MATE_V - k*PLY_DISCOUNT
 
 def game_truth(node: "_Node") -> bool:
     """terminal_v present AND not planted by the certainty recognizer.
-    Network confidence is never game truth (the 0.60->0.20 rule): a cert-
-    resolved soft-terminal stores its committor value in terminal_v, so
-    provenance is checked by comparing against the cached cert tuple."""
-    return node.terminal_v is not None and not (
-        node.cert is not None and node.terminal_v == node.cert[0])
+    Network confidence is never game truth (the 0.60->0.20 rule). Provenance
+    is an explicit flag set at the planting site -- the earlier float-equality
+    check (terminal_v == cert[0]) could misclassify a genuine rules terminal
+    that also carried a coincidentally-equal cert (e.g. a stalemate child,
+    cert-scanned before expansion, whose cert value was exactly DRAW_V):
+    sound-but-loose, review 2026-07-18."""
+    return node.terminal_v is not None and not node.cert_planted
 
 
 class _Node:
     __slots__ = ("board", "move", "children", "P", "N", "W", "v_init",
-                 "terminal_v", "parent", "rep_key", "coh_gamma", "raw_v", "cert")
+                 "terminal_v", "parent", "rep_key", "coh_gamma", "raw_v", "cert",
+                 "cert_planted")
 
     def __init__(self, board: chess.Board, move: chess.Move | None,
                  parent: "_Node | None" = None):
@@ -79,6 +82,8 @@ class _Node:
         self.cert: tuple | None = None   # (white_pov_value, confidence) recognizer
                                          # output, cached so the coherence pass
                                          # doesn't re-run the network (MATH_AUDIT)
+        self.cert_planted = False        # terminal_v came from the recognizer,
+                                         # NOT the rules -- never game truth
         # COHERENCE LENGTH (2026-07-16): per-node state-dependent backup discount
         # gamma=exp(-k*divergence), divergence = entropy of the child-value
         # distribution. 1.0 = fully forced (value flows up intact); <1 =
@@ -104,21 +109,25 @@ class MCTS:
                  coherence_k: float = 0.0,
                  certainty_fn=None, certainty_stop: float = 0.0,
                  cache_key_fn=None, decision_stop: bool = False,
-                 decision_check_every: int = 16):
+                 decision_check_every: int = 16, mate_stop: bool = False):
         assert max_nodes >= 1
-        # DECISION-STABILITY EARLY STOP (2026-07-18, the planner energy
-        # objective E[score] - c*compute): spend budget only while it can
-        # still change the MOVE. Two triggers: (a) a game-truth immediate
-        # mate at the root -- a certified stop, best_move's readout is
-        # already provably optimal (faster mates dominate via PLY_DISCOUNT);
-        # (b) the root visit gap exceeds the remaining budget expressed in
-        # SIM units (remaining evals / measured evals-per-sim, x2 safety,
-        # capped by max_sims). (b) is a HEURISTIC, not a certified-dominance
-        # rule: simulations ending on terminals consume zero evals yet still
-        # add visits, so the leader could in principle still flip -- graded
-        # by paired A/B (strength unchanged, evals saved), not a theorem.
+        # EARLY-STOP LEVERS (2026-07-18, the planner energy objective
+        # E[score] - c*compute): spend budget only while it can still change
+        # the MOVE. Two independent flags (split after the v2 A/B):
+        # - mate_stop: a game-truth immediate mate at the root ends the
+        #   search after root expansion. CERTIFIED: with the game_truth gate
+        #   in best_move, the readout is provably identical to the full-
+        #   budget search (the mate short-circuit precedes visit-argmax).
+        # - decision_stop: stop when the root visit gap exceeds the
+        #   remaining budget in SIM units (remaining evals / measured
+        #   evals-per-sim, x2 safety, capped by max_sims). HEURISTIC, not a
+        #   theorem (terminal sims add visits at zero evals) -- and MEASURED
+        #   HARMFUL at 800n: -0.040 conversion (e=4.38) for 6% energy;
+        #   sims are too few (~36/move) for gap dominance. Kept for
+        #   larger-sim regimes / tree-reuse retests only.
         self.decision_stop = decision_stop
         self.decision_check_every = decision_check_every
+        self.mate_stop = mate_stop
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
         self.max_nodes = max_nodes
@@ -231,6 +240,7 @@ class MCTS:
                     c.cert = (float(v), float(cf))
                     if cf >= self.certainty_stop:
                         c.terminal_v = float(v)
+                        c.cert_planted = True
 
         fresh = [c for c in children if c.terminal_v is None]
         if fresh:
@@ -363,7 +373,7 @@ class MCTS:
         # run 20 starts in). Terminal-only backups are also useless past a
         # point; cap total simulations at a generous multiple of the budget.
         white = board.turn == chess.WHITE
-        if self.decision_stop:
+        if self.mate_stop:
             for c in root.children:
                 if game_truth(c) and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
                     return root          # certified stop: immediate mate in hand
@@ -415,7 +425,11 @@ class MCTS:
             raise ValueError("no legal moves")
         white = board.turn == chess.WHITE
         for c in root.children:                          # immediate mate: take it
-            if c.terminal_v is not None and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
+            # game_truth gate REQUIRED (review 2026-07-18 HIGH): a cert-planted
+            # terminal_v > 0.5 earlier in move order would otherwise be played
+            # INSTEAD of a genuine mate-in-1 -- network confidence choosing the
+            # move under a certified label
+            if game_truth(c) and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
                 return c.move
         best, key = None, None
         for c in root.children:
@@ -440,7 +454,7 @@ class FBMCTSPolicy:
                  committor_dhead=None, clearance_beta: float = 0.0,
                  detect_threefold: bool = True, coherence_k: float = 0.0,
                  certainty_head=None, certainty_stop: float = 0.0,
-                 decision_stop: bool = False):
+                 decision_stop: bool = False, mate_stop: bool = False):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -511,7 +525,7 @@ class FBMCTSPolicy:
                          detect_threefold=detect_threefold,
                          coherence_k=coherence_k,
                          certainty_fn=certainty, certainty_stop=certainty_stop,
-                         decision_stop=decision_stop,
+                         decision_stop=decision_stop, mate_stop=mate_stop,
                          cache_key_fn=lambda b: f"{b.fen()}|{self.path_counts.get(b.board_fen(), 0)}")
         self.evidence = evidence or {}
         self.evidence_k = evidence_k
@@ -570,7 +584,8 @@ class FBMCTSPolicy:
         white = board.turn == chess.WHITE
         best = None
         for c in root.children:
-            if c.terminal_v is not None and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
+            # game_truth gate: same HIGH as MCTS.best_move (review 2026-07-18)
+            if game_truth(c) and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
                 best = c
                 break
         if best is None:

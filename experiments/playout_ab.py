@@ -52,7 +52,7 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
                 search="beam", c_puct=1.5, s_head_path=None, g_sharp=0.0, rescue=False,
                 committor_path=None, clearance_beta=0.0, phead_path=None,
                 detect_threefold=True, coherence_k=0.0, certainty_stop=0.0,
-                decision_stop=False):
+                decision_stop=False, mate_stop=False):
     from catspace.nn.fb import load_ckpt, pick_device
     from catspace.nn.policy_fb import make_search_policy
     dev = pick_device(device)
@@ -139,9 +139,18 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
     if search == "mcts" and coherence_k:
         kw["coherence_k"] = coherence_k
         print(f"coherence-length backup discount k={coherence_k}")
+    if decision_stop or mate_stop:
+        # silent-no-op guard (review 2026-07-18): these flags only exist on
+        # the mcts search -- with the default beam search they'd measure
+        # NOTHING and print a fake wash
+        assert search == "mcts", "--decision-stop-b/--mate-stop-b require --search-b mcts"
     if search == "mcts" and decision_stop:
         kw["decision_stop"] = True
-        print("decision-stability early stop ON (certified mate-stop + visit-gap heuristic)")
+        kw["mate_stop"] = True         # the v1/v2 measured bundle
+        print("decision-stability early stop ON (stability heuristic + certified mate-stop)")
+    elif search == "mcts" and mate_stop:
+        kw["mate_stop"] = True
+        print("certified mate-stop ON (stability heuristic OFF)")
     pol = make_search_policy(search, fb, z, max_nodes=nodes, beam=beam,
                              c_puct=c_puct, device=dev, s_head=s_head, g_sharp=g_sharp, **kw)
     mated, plies = [], []
@@ -216,8 +225,11 @@ def main():
     ap.add_argument("--clearance-a", type=float, default=0.0,
                     help="side A draw-clearance beta (phead readout)")
     ap.add_argument("--decision-stop-b", action="store_true",
-                    help="side B (mcts): decision-stability early stop -- the "
-                         "planner energy lever. Gate: strength wash + energy drop.")
+                    help="side B (mcts): BOTH early stops (stability heuristic + "
+                         "certified mate-stop). Measured -0.040 conv @800n; see JOURNAL.")
+    ap.add_argument("--mate-stop-b", action="store_true",
+                    help="side B (mcts): certified mate-stop ONLY -- provably "
+                         "move-identical, so the paired diff must be 0.000 exactly.")
     args = ap.parse_args()
 
     import torch  # noqa: F401
@@ -241,7 +253,8 @@ def main():
                         committor_path=args.committor_b, clearance_beta=args.clearance_beta,
                         phead_path=args.phead_b, coherence_k=args.coherence_k,
                         certainty_stop=args.certainty_stop,
-                        decision_stop=args.decision_stop_b)
+                        decision_stop=args.decision_stop_b,
+                        mate_stop=args.mate_stop_b)
     tb.close()
     n = len(starts)
     diff = float(b.mean() - a.mean())

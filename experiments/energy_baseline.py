@@ -101,7 +101,7 @@ def playout_profiled(pol, start, tb, rng, max_plies, meter, mcts=None):
 
 
 def build_policy(kind, fb, pay, phead, nodes, dev, plan_nodes, shallow_nodes,
-                 early_stop=False):
+                 early_stop=False, mate_stop=False):
     z = pay["zgoals"]["MATE_W"]
     if kind == "mcts":
         import torch
@@ -114,16 +114,24 @@ def build_policy(kind, fb, pay, phead, nodes, dev, plan_nodes, shallow_nodes,
 
         pol = make_search_policy("mcts", fb, z, max_nodes=nodes, device=dev,
                                  committor_head=Committor(),
-                                 decision_stop=early_stop)
+                                 decision_stop=early_stop,
+                                 mate_stop=early_stop or mate_stop)
         return pol, pol.mcts
     if kind == "beam":
         from catspace.nn.policy_fb import make_search_policy
         return make_search_policy("beam", fb, z, max_nodes=nodes, beam=4,
                                   device=dev), None
     if kind == "plan":
+        # factory, not instance: FBPlanPolicy carries game state (active
+        # subgoal, plies-since-plan, reach-at-plan) that must NOT leak
+        # across starts (review 2026-07-18 MED) -- a fresh policy per game,
+        # exactly one plan lifecycle per playout
         from catspace.nn.policy_fb import FBPlanPolicy
-        return FBPlanPolicy(fb, z, plan_nodes=plan_nodes,
-                            shallow_nodes=shallow_nodes, device=dev), None
+
+        def fresh():
+            return FBPlanPolicy(fb, z, plan_nodes=plan_nodes,
+                                shallow_nodes=shallow_nodes, device=dev)
+        return fresh, None
     raise ValueError(kind)
 
 
@@ -142,9 +150,12 @@ def main():
     ap.add_argument("--shallow-nodes", type=int, default=60)
     ap.add_argument("--max-plies", type=int, default=120)
     ap.add_argument("--early-stop", action="store_true",
-                    help="mcts only: decision-stability early stop (certified "
-                         "mate-stop + visit-gap-vs-remaining-budget heuristic). "
-                         "The tier-3 energy lever; A/B against the flagless run.")
+                    help="mcts only: BOTH stops (stability heuristic + certified "
+                         "mate-stop) -- the v1/v2 measured configuration. "
+                         "Stability measured harmful at 800n; see JOURNAL.")
+    ap.add_argument("--mate-stop", action="store_true",
+                    help="mcts only: certified mate-stop ALONE (provably "
+                         "move-identical readout; pure energy saving).")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--syzygy-dir", default="data/syzygy")
@@ -171,12 +182,14 @@ def main():
     for kind, nodes in configs:
         pol, mcts = build_policy(kind, fb, pay, phead, nodes, dev,
                                  args.plan_nodes, args.shallow_nodes,
-                                 early_stop=args.early_stop)
+                                 early_stop=args.early_stop,
+                                 mate_stop=args.mate_stop)
         mated, plies, rows_m, evals_m, ms_m, moves = [], [], [], [], [], 0
         t0 = time.perf_counter()
         for i, fen in enumerate(starts):
             rng = np.random.default_rng([args.seed, i])
-            m, p, per_move = playout_profiled(pol, chess.Board(fen), tb, rng,
+            game_pol = pol() if callable(pol) else pol
+            m, p, per_move = playout_profiled(game_pol, chess.Board(fen), tb, rng,
                                               args.max_plies, meter, mcts)
             mated.append(m)
             if p is not None:
@@ -189,9 +202,12 @@ def main():
         conv = float(np.mean(mated))
         rows_arr, ms_arr = np.array(rows_m), np.array(ms_m)
         nominal = nodes if nodes else args.plan_nodes
-        label = (f"{kind}{'+stop' if args.early_stop and kind == 'mcts' else ''}"
+        suffix = ("+stop" if args.early_stop else "+mstop" if args.mate_stop else "") \
+            if kind == "mcts" else ""
+        label = (f"{kind}{suffix}"
                  + (f"@{nodes}n" if nodes else f"@{args.plan_nodes}/{args.shallow_nodes}n"))
         rec = dict(policy=kind, early_stop=bool(args.early_stop and kind == "mcts"),
+                   mate_stop=bool((args.mate_stop or args.early_stop) and kind == "mcts"),
                    nodes=nodes, plan_nodes=args.plan_nodes if kind == "plan" else None,
                    conversion=conv, n_starts=len(starts), moves=moves,
                    rows_per_move=float(rows_arr.mean()),
