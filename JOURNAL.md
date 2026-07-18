@@ -4327,3 +4327,29 @@ This is the reviewer's point inverted: var-reg can't prevent the ORDERING
 collapse, but it's exactly live at the CONSTANT-embedding fixed point the
 ordering collapse lands in at high LR. Detector armed; if it halts again, next
 single lever = peak LR 2e-4. Fail-fast chain, each step ~15min to verdict.
+
+
+## 2026-07-18 (Fable) — committor atlas replaces PCA; draw-confidence ceiling found
+
+Kaveh rejected the PCA surface viz (correctly -- linear axes are meaningless
+under a quasimetric). Built experiments/viz/committor_atlas.py: (1) outcome
+SIMPLEX with game trajectories (surfaces = corners), (2) certainty plane
+(-ln P_win vs -ln P_loss -- the planner's coordinates), (3) committor level
+sets over material x ply (contours = the surfaces). Run on the incumbent:
+artifacts/experiments/committor_atlas_cert_base_full.png. Panel 3 sanity: 0.50
+contour hugs material 0..+1, material dominates ply. VERDICT (n=22,283 holdout
+positions, 400 games): PC1 variance share on the simplex 0.900, P_draw
+mean=0.092 std=0.071 MAX=0.49, R^2(P_draw ~ quad(P_win))=0.065, holdout game
+results W/D/L = 0.46/0.05/0.48.
+
+FINDING (initial "effectively 1-D" read RETRACTED after quantification --
+P_draw is a genuine independent dof, R^2=0.065): the phead has a DRAW-
+CONFIDENCE CEILING -- max P_draw 0.49 over 22k positions, tracking the 5%
+draw base rate of the human-game training measure. Consequence: "confidently
+drawn" can never fire (certainty_stop), the D-surface cannot be independently
+recognized, resign/draw-offer would be draw-blind. Mechanism = MEASURE
+MISMATCH (mu_train 5%-draw middlegames vs mu_deploy toy endgame where draws
+are the failure mode), the committor-is-measure-dependent point of
+ARCHITECTURE_REVIEW made concrete. Fix direction (Kaveh's call): draw-rich
+training mass for the toy committor (self-play from the toy region /
+draw-upweighted loss) before D-surface planning can work.
