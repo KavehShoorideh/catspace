@@ -4420,3 +4420,87 @@ gradient. Smoke: unr 29.6 + unrb 29.6 both active. THE single all-additions
 run relaunched. Probe API v2 (opponent param + certified-surface termination
 + label store) committed to PLANNER_PROBE_DESIGN.md; move-quality Q(s,m) =
 (class-preservation vs perfect play, P_mu growth) lexicographic.
+
+
+## 2026-07-18 (Fable) — THE run: bidirectional hinge SPREAD the space, then a λ spike imploded it (halt @8000)
+
+qrl_iqe_unreach (all-additions: bidirectional anchor-anchor certified repulsion
+w=8 floor=30, two-sided pin, one-sided PID, var floor, offset 15, lr 2e-4)
+died differently from every predecessor — three acts, from the run log
+(artifacts/experiments/qrl_iqe_unreach.log):
+
+1. IT WORKED FIRST. The certified repulsion produced the first genuine spread
+   of the entire program: d_rand 25 -> 70.5, d_unr 26 -> 67.9, d_oth up to
+   86.7, unr hinge relaxing 15 -> 7.5 (floor being satisfied), d_step held
+   ~1.0-1.7. Previous best-ever d_rand was ~13 (sib8).
+2. THE SNAP (observed, mechanism graded HYPOTHESIS). Spreading dragged some
+   adjacent pairs apart too: sq_dev spiked to 45.5 and the PID multiplier
+   spiked lam 24 -> 134 within one print interval. The next prints show total
+   implosion, not drift: d_rand 63.3 -> 1.43, d_unr 60.0 -> 1.46, d_oth
+   86.7 -> 1.30, unr back to ~28.5. Hypothesis: lam x two-sided-pin is a
+   global contraction force; at lam~134 it overwhelmed push+hinge in one burst
+   and overshot straight through the ordering-collapse surface.
+3. THE ONE-WAY DOOR (observed). From ~5-6k to the halt: d_step=0.000,
+   d_rand=0.000, var=0.000, unr=unrb=30.000 EXACTLY (maximal hinge violation,
+   d_unr=0.00) while lam climbed 81 -> 87 with zero effect, loss rising
+   linearly. Inside the IQE dead zone (all F above all B) the gradient of
+   EVERY loss routed through d — push, pin, and BOTH hinge directions — is
+   identically zero. Bidirectionality made the collapse hinge-VISIBLE, as
+   intended, but visibility is not gradient: the hinge dies with everything
+   else at d=0. Detector halted @8000 (d_step=0.078 over 2000 steps). ckpt
+   kept: data/derived/sep/qrl_iqe_unreach.pt (halt-save 12:54).
+
+Conclusion: the spread mechanism is no longer the blocker — the multiplier
+dynamics are. The dead zone is ABSORBING, so the cure must prevent entry, not
+punish residence. Options for Kaveh (all flag-gated, none launched — pause per
+standing instruction): (a) cap lam / cool the PID gains / clip the constraint
+gradient norm so no single violation event can contract the space globally;
+(b) schedule the floor (ramp 30 up from ~5) so the step-pin never faces a 30:1
+dynamic-range shock; (c) enforce the quasimetric AXIOM d(F(x),B(x))=0 on the
+diagonal — the two-tower factorization never sees it, and it structurally
+forbids the wholesale all-F-above-all-B ordering (the QRL paper is immune
+exactly because its shared encoder pins the diagonal by construction);
+(d) full shared-tower (F=B=phi) as in the paper, omega entering elsewhere.
+NOTE var=0.000 while the VICReg floor (weight 1.0, gradient NOT routed
+through d) failed to reinflate — unexplained; check what `var` actually
+measures before trusting (b)-style fixes.
+
+
+## 2026-07-18 (Fable) — planner-energy program started (Kaveh: E[score] − c·compute, "least energy possible")
+
+Direction set in discussion: the planner is a rational-metareasoning agent —
+maximize E_mu[score 2/1/0] minus an explicit compute price c; probing is
+best-ACTION identification (LUCB/dominance over certified intervals), not
+value estimation; resign/draw-offer are ENERGY decisions (play on only while
+expected swindle value exceeds compute cost); decision cascade tier 0-3
+(plan-memory hit -> geometry-only -> coarse probes -> deepen; cheapest
+sufficient tier). Kaveh: "start doing it autonomously."
+
+Built and tested today (all committed, suite 222 green):
+- experiments/energy_baseline.py — the compute-strength Pareto instrument.
+  Energy = rows through embed_F/embed_B (policy-agnostic, cache-aware) +
+  evals_used cross-check + wall-clock; VERDICT per (policy, budget); the
+  playout_ab protocol exactly (tb-optimal defender, fixed test set), so
+  conversion lands on the 0.600 baseline scale. Validated short (n=4 @200n:
+  rows/move 209 = evals/move 209, util 1.04). Full CPU sweep (n=100,
+  mcts/beam/plan x 200/800/1600n) running (GPU stays off it).
+  KEY STRUCTURAL FACT it documents: MCTS spends its whole budget every move
+  by construction (no stopping rule) — the energy profile is FLAT.
+- catspace/planner/probe.py — phase-A probe() primitive: bounded MCTS ->
+  ProbeResult(value, best_move, CERTIFIED [lo,hi], visit-weighted hit census,
+  coherence, evals_spent, tree) + deepen() (tree-continuing re-probe).
+  Certification discipline hard-coded: [lo,hi] from rules-terminal children
+  only; recognizer-planted terminal_v can NEVER tighten it (unit-tested).
+- catspace/nn/mcts.py — flag-gated decision_stop: (a) certified mate-stop
+  (game-truth mate at root ends search after root expansion; flagless code
+  burned the full 800 evals on mate-in-1s); (b) visit-gap-vs-remaining-budget
+  stability stop (HEURISTIC, labeled as such — terminal sims add visits
+  without evals, so not a dominance theorem; graded by paired A/B).
+- tests/test_probe.py — 12 tests (FENs self-verified in-test; certification
+  hygiene; budget honesty; deepen reuse; early-stop behavior).
+
+Next (GPU now free, sequential): phead_calibration on the incumbent (fixed
+instruments) -> paired early-stop A/B @800n n=100 (playout_ab, e-gated:
+strength must be a wash, energy must drop) -> MPS energy re-measure.
+FBPlanPolicy re-priced on the compute axis by the CPU sweep (its strength
+wash e=0.47 was never priced; tier-0 skip-the-search is the biggest lever).

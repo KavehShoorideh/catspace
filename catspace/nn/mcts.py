@@ -49,6 +49,15 @@ DRAW_V = 0.0
 PLY_DISCOUNT = 1e-4          # mate at depth k backs up MATE_V - k*PLY_DISCOUNT
 
 
+def game_truth(node: "_Node") -> bool:
+    """terminal_v present AND not planted by the certainty recognizer.
+    Network confidence is never game truth (the 0.60->0.20 rule): a cert-
+    resolved soft-terminal stores its committor value in terminal_v, so
+    provenance is checked by comparing against the cached cert tuple."""
+    return node.terminal_v is not None and not (
+        node.cert is not None and node.terminal_v == node.cert[0])
+
+
 class _Node:
     __slots__ = ("board", "move", "children", "P", "N", "W", "v_init",
                  "terminal_v", "parent", "rep_key", "coh_gamma", "raw_v", "cert")
@@ -94,8 +103,21 @@ class MCTS:
                  rollout_cap: int = 32, detect_threefold: bool = True,
                  coherence_k: float = 0.0,
                  certainty_fn=None, certainty_stop: float = 0.0,
-                 cache_key_fn=None):
+                 cache_key_fn=None, decision_stop: bool = False,
+                 decision_check_every: int = 16):
         assert max_nodes >= 1
+        # DECISION-STABILITY EARLY STOP (2026-07-18, the planner energy
+        # objective E[score] - c*compute): spend budget only while it can
+        # still change the MOVE. Two triggers: (a) a game-truth immediate
+        # mate at the root -- a certified stop, best_move's readout is
+        # already provably optimal (faster mates dominate via PLY_DISCOUNT);
+        # (b) the root visit gap exceeds the remaining eval budget. (b) is a
+        # HEURISTIC, not a certified-dominance rule: simulations ending on
+        # terminals consume zero evals yet still add visits, so the leader
+        # could in principle still flip -- graded by paired A/B (strength
+        # unchanged, evals saved), not claimed as a theorem.
+        self.decision_stop = decision_stop
+        self.decision_check_every = decision_check_every
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
         self.max_nodes = max_nodes
@@ -339,6 +361,11 @@ class MCTS:
         # loop would spin forever (2026-07-14: hung a 700-start generation
         # run 20 starts in). Terminal-only backups are also useless past a
         # point; cap total simulations at a generous multiple of the budget.
+        white = board.turn == chess.WHITE
+        if self.decision_stop:
+            for c in root.children:
+                if game_truth(c) and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
+                    return root          # certified stop: immediate mate in hand
         sims, max_sims = 0, 32 * self.max_nodes
         while (self.evals_used < self.max_nodes and root.children
                and sims < max_sims):
@@ -364,6 +391,11 @@ class MCTS:
                 n.N += 1
                 n.W += v_run
                 v_run = v_run * n.coh_gamma
+            if (self.decision_stop and sims % self.decision_check_every == 0
+                    and len(root.children) > 1):
+                vis = sorted((c.N for c in root.children), reverse=True)
+                if vis[0] - vis[1] > self.max_nodes - self.evals_used:
+                    break                # stability stop (heuristic, see __init__)
         return root
 
     def best_move(self, board: chess.Board) -> chess.Move:
@@ -396,7 +428,8 @@ class FBMCTSPolicy:
                  tree_reuse: bool = False, committor_head=None,
                  committor_dhead=None, clearance_beta: float = 0.0,
                  detect_threefold: bool = True, coherence_k: float = 0.0,
-                 certainty_head=None, certainty_stop: float = 0.0):
+                 certainty_head=None, certainty_stop: float = 0.0,
+                 decision_stop: bool = False):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -467,6 +500,7 @@ class FBMCTSPolicy:
                          detect_threefold=detect_threefold,
                          coherence_k=coherence_k,
                          certainty_fn=certainty, certainty_stop=certainty_stop,
+                         decision_stop=decision_stop,
                          cache_key_fn=lambda b: f"{b.fen()}|{self.path_counts.get(b.board_fen(), 0)}")
         self.evidence = evidence or {}
         self.evidence_k = evidence_k
