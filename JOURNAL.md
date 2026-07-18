@@ -4663,3 +4663,38 @@ paired unless noted):
   the shelf per conditional-rejections; label store (phase C amortization)
   is the remaining unbuilt energy idea and pairs naturally with a spread
   field's certified surfaces; path_counts protocol re-baseline decision.
+
+
+## 2026-07-18 (Fable) — leaky IQE + PID guards pass the smoke THROUGH the death zone; THE run v2 (40k) launched
+
+Kaveh's two ideas (offered as ideas, graded accordingly) + the spike guards:
+- LEAKY IQE (his relaxed-relu): interval hard max -> softplus(beta=10); the
+  collapse surface becomes repulsive (boundary grad ~8e-4 at gap 0.5) while
+  deep-zone escape is explicitly NOT claimed (e^{-beta*gap}, float32-absorbed
+  forward). Measured d(x,x) bias 0.54 < step_cost 1.0 -- and the two-sided
+  pin over that floor is implicit spread pressure (encoder must widen coords
+  to satisfy it). COST: eps-quasimetric (triangle inequality approximate);
+  watch REACH_SLOPE/DIFF_SLOPE for calibration distortion.
+- PID GUARDS: eclip 3.0 (spike arithmetic of the implosion: kp*45.5=23 +
+  kd*45.5=91 -> lam 134; the controller now answers SUSTAINED violation
+  only), kd 2.0 -> 0.25 (Kaveh's instinct: the derivative term was 2/3 of
+  the spike), lam cap 20 + anti-windup.
+- RETRACTED: the diagonal-axiom remedy (d(F(x),B(x))=0) -- it is CONSISTENT
+  with the dead zone (B <= F includes the diagonal); shared-tower immunity
+  does not transfer to a two-tower diagonal loss.
+
+SMOKE (2k steps, full recipe + fixes): PASSED THROUGH the previous death
+zone. step 1000: d_rand 68.0 d_unr 61.3 d_oth 89.1 (the old run snapped at
+d_rand ~63) with d_step 1.16, lam 16 < cap. Final step 2000: d_rand 76.4,
+d_unr 73.2, d_oth 98.6, d_step 1.28, lam AT the cap (20.000, sq_dev 2.66),
+var 0.002, zero collapse flags, clean atomic save. WATCH ITEM for 40k:
+lam-at-cap = bounded pin enforcement; d_step equilibrium ~1.1-1.3 instead
+of exactly 1.0 (stability bought at some calibration cost -- graded by the
+run's slope verdicts). ATTRIBUTION CAVEAT: this tests the PACKAGE (leak +
+3 guards); leak-off ablation is one flag if wanted after a success.
+
+THE run v2: qrl_iqe_leak.pt, 40k steps, same recipe + --iqe-leak-beta 10
+--qrl-pid-kd 0.25 --qrl-pid-eclip 3.0 --qrl-lambda-max 20, detector armed,
+~3.4h at 3.3 it/s. Also: Kaveh's density-prior subgoal idea recorded as
+UNVALIDATED design note with the draw-mass confound + kill-test attached
+(density ~ draw regions in human data could steer INTO the draw basin).
