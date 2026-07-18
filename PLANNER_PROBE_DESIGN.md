@@ -35,13 +35,45 @@ before committing. The quasimetric proposes; the probe disposes.
   (c) **fallback** regions (the D surface) when W looks blocked. A `Region` is a
   target descriptor the MCTS leaf can score against — a goal-embedding set
   (goal_bank), a committor head, or a surface.
-- **Probe** `probe(s, region, budget, reuse_tree=None) -> ProbeResult`. A bounded
-  minimax MCTS from `s` with the region as the leaf-value target
-  (`reach = -d(s, region)`), returning:
-  - `value`   — backed-up root value (the forced-value estimate for this region)
-  - `confidence` — committor P(outcome) at the root (is it resolved?)
-  - `coherence` — how trustworthy the value is at the depth searched
-  - `tree`    — the search tree, cached for reuse / deepening
+- **Probe** (API v2, Kaveh 2026-07-18)
+  `probe(s, region, opponent, terminate, budget, reuse_tree=None) -> ProbeResult`.
+  A bounded minimax MCTS from `s` toward the region, with:
+  - `opponent ∈ {perfect*, self, μ_ω}` — the policy plugged into min nodes.
+    perfect* = best-response under our deepest search (exact only where
+    tablebases are LEGAL, i.e. evaluation contexts; fidelity measurable on the
+    toy). μ_ω = the conditioned opponent model (deferred layer; slot exists
+    from day one). Labels certified under perfect* are one-sided BOUNDS valid
+    against any weaker μ; weak-μ labels never bound perfect play — every
+    stored label carries its μ.
+  - `terminate` — a tunable termination SPEC over certified surfaces:
+    (quantity ∈ {P_W, P_D, P_L}, direction, threshold, max CI width), e.g.
+    "stop where lower-bound(P_loss) ≥ 0.95" (the resign surface) or
+    "lower-bound(P_win) ≥ 0.99, CI ≤ ±0.02" (a conversion milestone). The
+    probe terminates at rules-terminals OR at any region in the LABEL STORE
+    meeting the spec. Chess is Markov, so this is exact composition
+    (milestoning): labeled regions act as additional absorbing surfaces with
+    boundary value P̂(R); P(W|s) = P(hit W) + Σ_R P(hit R first)·P̂(W|R).
+    DISCIPLINE (paid for at 0.60→0.20): only CERTIFIED labels terminate —
+    empirical CIs from real probe outcomes, tablebase anchors where legal,
+    deep-search bounds. Raw network confidence may PROPOSE surfaces, never
+    CLOSE them.
+  - returns `ProbeResult`:
+    - `value interval [P_lo, P_hi]` — backup propagates intervals (min-max
+      over frontier CIs), so output uncertainty is honest about the labels
+      it stood on
+    - `hit surface` — which terminal/labeled region ended each line
+    - `coherence` — trust depth at the searched horizon
+    - `tree` — cached for reuse / deepening
+  Every completed probe DEPOSITS a labeled region (value interval, μ used,
+  budget, provenance) into the store: probes compound across time — search
+  results become boundary conditions (the three-timescale memory made
+  concrete), milestone spacing ≈ the coherence length ξ, and the store's
+  certified "P_loss ≥ θ" frontier is an incremental, on-demand attractor
+  computation under the chosen μ. Move-quality layering (Kaveh 2026-07-18):
+  good(m) ⟺ probe-vs-perfect* preserves the game-theoretic class Δ*(m)=0
+  (against perfect play advantage can only be kept or conceded, never
+  grown); ranking among good moves = P_μ growth under the modeled opponent
+  — Q(s,m) = (Δ*(m), P_μ(W|s·m)), lexicographic.
 - **Aggregator / decision** `decide({region: ProbeResult}) -> Action`. Picks the
   best-valued region to commit to; if the best is only ≤ draw, deepens probes or
   generates new candidates; **all ≤ draw → offer draw; all ≤ loss → resign.**
