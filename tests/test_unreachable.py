@@ -71,3 +71,66 @@ def test_no_false_positive_on_real_game_forward_pairs():
     for i in range(len(boards)):
         for j in range(i + 1, len(boards)):
             assert not flag(boards[i], boards[j]), (i, j)
+
+
+# ---- edge cases: soundness under the rules' corners ----------------------
+
+def test_en_passant_capture_forward_ok():
+    # ep changes the capturing pawn's file; the cone (|df|<=dr) must admit it
+    a = chess.Board("4k3/8/8/8/4p3/8/3P4/4K3 w - - 0 1")
+    a.push_san("d4")               # double push, creates ep right
+    b = a.copy(); b.push_san("exd3")   # black captures en passant
+    assert not flag(a, b)
+    assert flag(b, a)              # captured pawn cannot revive
+
+def test_double_push_cone():
+    a = chess.Board()
+    b = chess.Board(); b.push_san("e4")   # |df|=0 <= dr=2
+    assert not flag(a, b) and flag(b, a)
+
+def test_promotion_then_piece_wanders():
+    # after a8=Q the queen may stand anywhere; counts+cones must not flag forward
+    a = chess.Board("8/P6k/8/8/8/8/8/7K w - - 0 1")
+    b = chess.Board("8/7k/8/8/3Q4/8/8/7K w - - 4 3")   # promoted queen wandered
+    assert not flag(a, b)
+    assert flag(b, a)              # pawn cannot be re-created
+
+def test_underpromotion_counts():
+    a = chess.Board("8/P6k/8/8/8/8/8/7K w - - 0 1")
+    b = a.copy(); b.push_san("a8=N")
+    assert not flag(a, b) and flag(b, a)
+
+def test_doubled_pawns_injective_matching():
+    # two same-file pawns must map to two DISTINCT sources
+    a = chess.Board("4k3/8/8/8/8/4P3/4P3/4K3 w - - 0 1")   # e2,e3
+    g = chess.Board("4k3/8/8/4P3/4P3/8/8/4K3 w - - 0 1")   # e4,e5
+    assert not flag(a, g)          # e4<-e2/e3, e5<-e3/e2: feasible
+    assert flag(g, a)              # both reverse cones empty
+
+def test_matching_needs_augmenting_paths():
+    # unique feasible assignment (a2->b3 impossible from h2; g3 only from h2)
+    a = chess.Board("4k3/8/8/8/8/8/P6P/4K3 w - - 0 1")     # a2,h2
+    g = chess.Board("4k3/8/8/8/8/1P4P1/8/4K3 w - - 0 1")   # b3,g3
+    assert not flag(a, g)
+    assert flag(g, a)
+
+def test_black_cone_mirrored():
+    a = chess.Board("4k3/3p4/8/8/8/8/8/4K3 b - - 0 1")     # black d7
+    g = chess.Board("4k3/8/8/8/3p4/8/8/4K3 w - - 0 1")     # black d4 (advanced)
+    assert not flag(a, g) and flag(g, a)
+
+def test_identity_and_empty_pawn_sets():
+    a = chess.Board()
+    assert not flag(a, a)                                   # s->s trivially fine
+    no_pawns = chess.Board("4k3/8/8/8/8/8/8/4K3 w - - 0 1")
+    full = chess.Board()
+    assert not flag(full, no_pawns)   # all pawns captured/promoted: allowed
+    assert flag(no_pawns, full)       # pawns cannot appear
+
+def test_pawn_captures_toward_then_no_return():
+    # white e2 captures to d3 then to c4: |df| accumulates within dr
+    a = chess.Board("4k3/8/8/8/8/8/4P3/4K3 w - - 0 1")
+    g = chess.Board("4k3/8/8/8/2P5/8/8/4K3 w - - 0 1")     # c4: |df|=2 <= dr=2
+    assert not flag(a, g)
+    g2 = chess.Board("4k3/8/8/8/1P6/8/8/4K3 w - - 0 1")    # b4: |df|=3 > dr=2
+    assert flag(a, g2) and flag(g2, a)
