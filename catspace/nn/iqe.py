@@ -55,7 +55,7 @@ def _union_length(l: torch.Tensor, r: torch.Tensor) -> torch.Tensor:
 class IQE(nn.Module):
     """Interval quasimetric on (N,d) latents. d = components * dim_per_comp."""
 
-    def __init__(self, d: int, components: int = 8):
+    def __init__(self, d: int, components: int = 8, leak_beta: float = 0.0):
         super().__init__()
         assert d % components == 0, "d must divide into equal components"
         self.components = components
@@ -65,6 +65,25 @@ class IQE(nn.Module):
         # distance SCALE without shrinking the embeddings back into the
         # degenerate small-coordinate regime (diagnosed 2026-07-17)
         self.log_scale = nn.Parameter(torch.zeros(()))
+        # LEAKY IQE (Kaveh 2026-07-18): the ordering-collapse dead zone (all F
+        # above all B => every interval empty => d==0 with ZERO gradient
+        # through torch.maximum) is ABSORBING (observed: qrl_iqe_unreach halt
+        # @8000, hinges pinned at full violation with no effect). leak_beta>0
+        # replaces the interval's hard max with a softplus at inverse
+        # temperature beta: where V < U the interval keeps an exponentially
+        # small length e^{beta(V-U)}/beta with gradient sigma(beta(V-U)) —
+        # never exactly flat, so every d-routed loss keeps a live escape
+        # gradient. COST (stated, not hidden): d(x,x) picks up a small
+        # positive bias (~log2/beta per covering interval) and the triangle
+        # inequality holds only up to the same softening scale — an
+        # epsilon-quasimetric, exact in the beta->inf limit. leak_beta=0
+        # keeps the exact paper object (default; the axiom tests pin it).
+        self.leak_beta = leak_beta
+
+    def _hi(self, U: torch.Tensor, V: torch.Tensor) -> torch.Tensor:
+        if self.leak_beta > 0:
+            return U + nn.functional.softplus(V - U, beta=self.leak_beta)
+        return torch.maximum(U, V)
 
     def forward(self, u: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """(N,d) x (N,d) -> (N,) directed distance d(u->v). For all-pairs use
@@ -76,7 +95,7 @@ class IQE(nn.Module):
         # [V,U] = d(v->u), the reverse direction, which made InfoNCE fight time's
         # arrow -- guarded now by test_invariants.test_iqe_direction_semantics.)
         lo = U
-        hi = torch.maximum(U, V)
+        hi = self._hi(U, V)
         dc = _union_length(lo, hi)                          # (N, components)
         alpha = torch.sigmoid(self.alpha_logit)
         d = alpha * dc.amax(dim=-1) + (1 - alpha) * dc.mean(dim=-1)
@@ -88,7 +107,7 @@ class IQE(nn.Module):
         U = u.reshape(n, 1, self.components, self.k).expand(n, m, self.components, self.k)
         V = v.reshape(1, m, self.components, self.k).expand(n, m, self.components, self.k)
         lo = U
-        hi = torch.maximum(U, V)                            # [U, max(U,V)]: d(u->v)
+        hi = self._hi(U, V)                                 # [U, max(U,V)]: d(u->v)
         dc = _union_length(lo, hi)                          # (N, M, components)
         alpha = torch.sigmoid(self.alpha_logit)
         d = alpha * dc.amax(dim=-1) + (1 - alpha) * dc.mean(dim=-1)

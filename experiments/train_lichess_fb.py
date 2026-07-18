@@ -341,6 +341,20 @@ def main():
     ap.add_argument("--qrl-pid-kp", type=float, default=0.5, help="PID proportional gain")
     ap.add_argument("--qrl-pid-ki", type=float, default=0.01, help="PID integral gain (= dual-ascent lr)")
     ap.add_argument("--qrl-pid-kd", type=float, default=2.0, help="PID derivative gain (the damping term)")
+    ap.add_argument("--qrl-pid-eclip", type=float, default=0.0,
+                    help="clip the violation fed to the PID (0=off). The lam-spike "
+                         "implosion: a transient sq_dev 45.5 through kp+kd made lam "
+                         "134 in one interval; clip so the controller answers "
+                         "SUSTAINED violation, not spikes. Try 3.0.")
+    ap.add_argument("--qrl-lambda-max", type=float, default=0.0,
+                    help="hard cap on the PID multiplier + anti-windup on I (0=off). "
+                         "Set at the force-balance scale (push+hinge ~8-16): try 20.")
+    ap.add_argument("--iqe-leak-beta", type=float, default=0.0,
+                    help="LEAKY IQE (Kaveh): replace the interval hard max with "
+                         "softplus at this inverse temperature so d is never exactly "
+                         "flat at 0 -- the ordering-collapse dead zone keeps an "
+                         "exponentially small escape gradient. 0=exact paper IQE. "
+                         "Try 10 (bias ~log2/beta per interval; eps-quasimetric).")
     ap.add_argument("--qrl-push-real", action="store_true",
                     help="push over REAL anchor->future pairs (coupled to the 1-ply "
                          "constraint via shared positions -> prevents the d_step->0 "
@@ -489,7 +503,8 @@ def main():
                      n_bins=args.n_bins, competence=args.competence,
                      outcome_poles=args.outcome_poles, concept_axes=args.concept_axes,
                      iqe=args.iqe, iqe_components=args.iqe_components,
-                     iqe_embed_scale=args.iqe_embed_scale)
+                     iqe_embed_scale=args.iqe_embed_scale,
+                     iqe_leak_beta=args.iqe_leak_beta)
         print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
               f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
@@ -659,6 +674,8 @@ def main():
                                        use_pid=args.qrl_use_pid,
                                        pid_kp=args.qrl_pid_kp, pid_ki=args.qrl_pid_ki,
                                        pid_kd=args.qrl_pid_kd,
+                                       pid_eclip=args.qrl_pid_eclip,
+                                       lam_max=args.qrl_lambda_max,
                                        two_sided=args.qrl_two_sided,
                                        var_weight=args.qrl_var_weight,
                                        var_target=args.qrl_var_target)
