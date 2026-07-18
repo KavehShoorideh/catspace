@@ -84,7 +84,7 @@ class TorchFB(nn.Module):
                  n_bins: int = 12, competence: bool = False,
                  outcome_poles: bool = False, concept_axes: int = 0,
                  iqe: bool = False, iqe_components: int = 8,
-                 iqe_embed_scale: float = 50.0):
+                 iqe_embed_scale: float = 50.0, iqe_leak_beta: float = 0.0):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional or outcome_poles or iqe:
@@ -96,7 +96,8 @@ class TorchFB(nn.Module):
                            competence=competence, outcome_poles=outcome_poles,
                            concept_axes=concept_axes, iqe=iqe,
                            iqe_components=iqe_components,
-                           iqe_embed_scale=iqe_embed_scale)
+                           iqe_embed_scale=iqe_embed_scale,
+                           iqe_leak_beta=iqe_leak_beta)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -115,7 +116,8 @@ class TorchFB(nn.Module):
             # CONSTRUCTION (merged paper). Replaces the MRN metric_scale/W --
             # IQE is already asymmetric, so score = -d_iqe (no bilinear residual).
             from catspace.nn.iqe import IQE
-            self.iqe_head = IQE(d, components=iqe_components)
+            self.iqe_head = IQE(d, components=iqe_components,
+                                leak_beta=iqe_leak_beta)
         elif quasimetric:
             self.metric_scale = nn.Parameter(torch.ones(d))
             self.W = nn.Parameter(torch.zeros(d, d))
@@ -475,6 +477,7 @@ class TorchFB(nn.Module):
                  var_weight: float = 0.0, var_target: float = 1.0,
                  push_mix: float = 0.0, use_pid: bool = False,
                  pid_kp: float = 0.5, pid_ki: float = 0.01, pid_kd: float = 2.0,
+                 pid_eclip: float = 0.0, lam_max: float = 0.0,
                  two_sided: bool = False, push_goal_planes: torch.Tensor | None = None,
                  push_unreach_mask: torch.Tensor | None = None,
                  unreach_weight: float = 0.0, unreach_floor: float = 30.0,
@@ -532,12 +535,27 @@ class TorchFB(nn.Module):
             # in-place, no autograd; theta then minimizes lambda*sq_dev.
             with torch.no_grad():
                 cost = (sq_dev - epsilon ** 2).detach()
+                # INPUT CLIPPING (2026-07-18, the lam-spike implosion): the
+                # spread run died when a TRANSIENT sq_dev spike (45.5, typical
+                # ~0.1-2.7) hit the P and D terms raw -- lam 24 -> 134 in one
+                # interval (kp*45=23 + kd*45=91), and lam*pin then imploded
+                # the whole embedding through the ordering-collapse surface.
+                # The controller should respond to SUSTAINED violation (the I
+                # term integrates the clipped signal), never amplify a spike.
+                if pid_eclip > 0.0:
+                    cost = torch.clamp(cost, max=pid_eclip)
                 new_I = torch.clamp(self.qrl_pid_I + pid_ki * cost, min=0.0)
                 # ONE-SIDED derivative (Stooke Alg.2 uses (dJ)_+): D-control
                 # opposes RISING cost only; a symmetric D let one good step slam
                 # lam to 0 -> violation rebound cycling (MATH_AUDIT B/PID).
                 deriv = torch.clamp(cost - self.qrl_pid_prev, min=0.0)
                 lam = torch.clamp(pid_kp * cost + new_I + pid_kd * deriv, min=0.0)
+                if lam_max > 0.0:
+                    # hard cap at the force-balance scale: no admissible lam
+                    # may turn the step-pin into a global contraction that
+                    # overwhelms push+hinge (weight ~8) in a single burst
+                    lam = torch.clamp(lam, max=lam_max)
+                    new_I = torch.clamp(new_I, max=lam_max)   # anti-windup
                 self.qrl_pid_I.copy_(new_I)
                 self.qrl_pid_prev.copy_(cost)
             constraint = lam * sq_dev
