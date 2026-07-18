@@ -475,7 +475,9 @@ class TorchFB(nn.Module):
                  var_weight: float = 0.0, var_target: float = 1.0,
                  push_mix: float = 0.0, use_pid: bool = False,
                  pid_kp: float = 0.5, pid_ki: float = 0.01, pid_kd: float = 2.0,
-                 two_sided: bool = False, push_goal_planes: torch.Tensor | None = None):
+                 two_sided: bool = False, push_goal_planes: torch.Tensor | None = None,
+                 push_unreach_mask: torch.Tensor | None = None,
+                 unreach_weight: float = 0.0, unreach_floor: float = 30.0):
         """Quasimetric-RL objective (Wang, Torralba, Isola, Zhang, ICML 2023),
         the loss IQE was DESIGNED for -- InfoNCE only enforces relative ranking
         and leaves the interval geometry collapsed ("d could remain arbitrarily
@@ -570,7 +572,23 @@ class TorchFB(nn.Module):
             d_real = self.directed_distance(f_s, b_g)
             push = push + mix * F.softplus(push_offset - d_real, beta=softplus_beta).mean()
         d_rand = d_far
-        loss = push + constraint
+        # CERTIFIED DIRECTIONAL REPULSION (Kaveh 2026-07-18, replaces the
+        # sibling hinge): push pairs whose s->g direction is PROVABLY illegal
+        # to traverse (nn/unreachable.py: count monotonicity, castling rights,
+        # pawn forward-cone matching -- flag = theorem) get a one-sided hinge
+        # floor on the distance ALREADY computed for the push. ~90% of
+        # cross-game pairs qualify; zero extra embedding cost. Reachable /
+        # unknown pairs are never repelled beyond the soft push.
+        unr = torch.zeros((), device=f_s.device)
+        d_unr = d_oth = float("nan")
+        if unreach_weight > 0.0 and push_unreach_mask is not None and push_unreach_mask.any():
+            m = push_unreach_mask
+            unr = torch.relu(unreach_floor - d_far[m]).mean()
+            d_unr = float(d_far[m].mean())
+            if (~m).any():
+                d_oth = float(d_far[~m].mean())
+        loss_unr = unreach_weight * unr
+        loss = push + constraint + loss_unr
         # VARIANCE REGULARIZATION (VICReg, Bardes et al. 2022): hinge each
         # embedding dim's marginal std up to var_target. NOTE (review 2026-07-17):
         # this guards DIMENSIONAL collapse only -- it is largely INERT against the
@@ -586,7 +604,7 @@ class TorchFB(nn.Module):
             loss = loss + var_weight * var
         stats = {"push": float(push), "sq_dev": float(sq_dev), "lam": float(lam),
                  "d_step": float(d_step_v.mean()), "d_rand": float(d_rand.mean()),
-                 "var": float(var)}
+                 "var": float(var), "unr": float(unr), "d_unr": d_unr, "d_oth": d_oth}
         return loss, stats
 
     def score_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
