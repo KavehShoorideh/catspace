@@ -4532,3 +4532,67 @@ Measured (all printed verdicts):
   is measured (cheap next candidate, committor_recalibrate.py exists).
 v2 A/B of the corrected stability rule launched (same protocol, label
 EARLYSTOP_v2_800n).
+
+
+## 2026-07-18 (Fable) — the compute–strength Pareto; mate-stop proven free; beam's budget accounting was wrong 2-4x; review HIGH fixed
+
+The energy program's first full measurement round (energy_baseline.py, n=100
+fixed toy starts, tb-optimal defender — the exact 0.600-baseline protocol;
+rows = fresh forwards through embed_F/embed_B, policy-agnostic):
+
+  config                conv   rows/move  (p50/p90)     notes
+  mcts@200n             0.490     210     (209/222)
+  mcts@800n             0.600     811     (809/822)     incumbent config
+  mcts@800n+mate-stop   0.600     776     (809/822)     PROVEN identical (below)
+  mcts@800n+both-stops  0.560     752                   stability: SHELVED
+  mcts@1600n            0.620    1608     (1609/1621)
+  beam@200n             0.250     339     util 1.69
+  beam@800n             0.400    3119     util 3.90
+  beam@1600n            0.400    3603     util 2.25
+  plan@2000/60 (fixed)  0.150     870     (p50=30! p90=4107)
+
+Findings, in order of importance:
+1. BEAM'S BUDGET ACCOUNTING WAS WRONG 2-4x. util = actual embed rows /
+   nominal budget: beam configs embed 1.7-3.9x their claimed budget (mcts
+   ~1.0). make_search_policy's "one budget unit = one network eval in ALL of
+   them" is FALSE for beam — every historical matched-nodes beam-vs-mcts
+   comparison was unmatched (the A3 audit concern, now measured). MCTS
+   STRICTLY DOMINATES beam on the real Pareto: beam@800 = 15x the energy of
+   mcts@200 for LESS conversion (0.400 vs 0.490).
+2. MATE-STOP: PROVEN AND PRICED. PLAYOUT_AB MATESTOP_800n: diff +0.000,
+   CI [+0.000,+0.000], 0 decisive pairs of 100 — move-for-move identical, as
+   the game_truth-gated proof requires. Energy 776 vs 811 rows/move: ~4%
+   free. Keeper (flag-gated, zero risk).
+3. STABILITY STOP: SHELVED. v2 (sim-units rule): -0.040 conversion
+   (CI [-0.080,-0.010], e=4.38) for ~6% energy. Cause is structural: ~36
+   sims/move at 800 evals (batch expansion) — visit gaps cannot become
+   decisive. Retest shelf-conditions: high-sim regimes or tree reuse.
+4. BUDGET LADDER KNEE AT ~800: +0.110 conversion for 200->800, +0.020 for
+   800->1600. Adaptive per-position allocation (the cascade's job) is the
+   remaining big in-search lever: hold ~0.60 strength at well under 800
+   rows/move average by spending 200n on easy moves.
+5. PLAN PERSISTENCE: RIGHT SHAPE, WRONG SUBSTRATE. Re-run with the state-leak
+   fix (fresh policy per start): conv 0.150, mean 870 rows/move but p50=30 —
+   tier-0 works (a held plan makes most moves nearly free); the mean and the
+   strength die on the 2000n BEAM replans (~3400 actual rows each) and the
+   z-goal beam readout. Next build: plan persistence on the mcts+committor
+   substrate (probe() as the planner, cheap mcts executor, certified wake
+   triggers). The tainted pre-fix row (0.120/779) is superseded.
+
+Adversarial review of the session's commits (3-dimension workflow, 15 agents,
+every finding adversarially verified): 1 HIGH — best_move/FBMCTSPolicy.move
+mate short-circuits lacked the game_truth gate, so a cert-planted
+terminal_v>0.5 earlier in move order was PLAYED over a proven mate-in-1
+(reproduced; also falsified the mate-stop's move-identity claim under
+--certainty-stop configs). Fixed + regression-tested; the MATESTOP proof-check
+above ran on the fixed code. Also fixed: explicit cert_planted provenance
+(float-equality could drop certifiable stalemate draws), vacuous single-
+candidate certified in the cascade, FBPlanPolicy state leak in the sweep,
+--decision-stop-b silent no-op, per-call cache_hits, probes suspending the
+stability stop. 2 findings refuted. 22 planner tests; suite green (232).
+
+OPEN PROTOCOL ISSUE (Kaveh decision): cross-game path_counts pollution —
+FBMCTSPolicy instances shared across starts accumulate board_fen counts
+across GAMES (repetition feature + cache keys see other games' visits).
+Pre-existing in every historical PLAYOUT_AB number, so fixing it silently
+would break comparability; needs a coordinated re-baseline.
