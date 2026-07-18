@@ -504,6 +504,7 @@ class TorchFB(nn.Module):
         # coords so every d(F->B)=0 (which trivially satisfies the one-sided <=1
         # and drags d_rand to 0 too). Correct for chess: every 1-ply move IS one
         # step, unlike the redundant actions QRL's one-sided constraint was for.
+        no_valid = False
         if valid.any():
             d_step_v = d_step[valid]
             if two_sided:
@@ -515,7 +516,11 @@ class TorchFB(nn.Module):
             # rather than pin d(F(s)->B(padding)) to step_cost (review finding).
             d_step_v = d_step
             sq_dev = torch.zeros((), device=f_s.device)
-        if use_pid:
+            no_valid = True
+        if no_valid:
+            lam = F.softplus(self.qrl_raw_lambda).detach()   # report only; no update
+            constraint = torch.zeros((), device=f_s.device)
+        elif use_pid:
             # PID-Lagrangian: lambda is a control signal on the violation, with
             # a DERIVATIVE term to damp the dual-ascent oscillation that made
             # d_step swing/collapse (Stooke et al. 2020). Buffers updated
@@ -523,7 +528,10 @@ class TorchFB(nn.Module):
             with torch.no_grad():
                 cost = (sq_dev - epsilon ** 2).detach()
                 new_I = torch.clamp(self.qrl_pid_I + pid_ki * cost, min=0.0)
-                deriv = cost - self.qrl_pid_prev
+                # ONE-SIDED derivative (Stooke Alg.2 uses (dJ)_+): D-control
+                # opposes RISING cost only; a symmetric D let one good step slam
+                # lam to 0 -> violation rebound cycling (MATH_AUDIT B/PID).
+                deriv = torch.clamp(cost - self.qrl_pid_prev, min=0.0)
                 lam = torch.clamp(pid_kp * cost + new_I + pid_kd * deriv, min=0.0)
                 self.qrl_pid_I.copy_(new_I)
                 self.qrl_pid_prev.copy_(cost)

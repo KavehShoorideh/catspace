@@ -77,8 +77,9 @@ def test_terminal_values_and_discount():
     mate_child = next(c for c in root.children
                       if c.move == chess.Move.from_uci("a1a8"))
     assert mate_child.terminal_v == pytest.approx(MATE_V - PLY_DISCOUNT)
-    draws = [c for c in root.children if c.terminal_v == DRAW_V]
-    assert all(c.terminal_v < 0 for c in draws)
+    # (the old draws assertion here was vacuous -- filter==DRAW_V then assert <0
+    # never fired, MATH_AUDIT. Draw-terminal pinning now lives in
+    # test_black_prefers_mate_over_draw, which constructs real draw children.)
 
 
 def test_single_legal_move():
@@ -236,10 +237,20 @@ def test_black_prefers_mate_over_draw():
     # Black to move: Ra1-a1#? construct a position where a Black rook mate exists.
     # Black: Ra2#? Use a back-rank mate mirror: White Kh1, pawns f2 g2 h2; Black
     # Ra8 with Ra1 = mate.
-    b = _chess.Board("r5k1/8/8/8/8/8/5PPP/6K1 b - - 0 1")   # ...Ra1#
-    mv = make(nodes=64).best_move(b)
+    # halfmove clock 99: every quiet Black move hits the 100-clock -> a REAL
+    # DRAW_V child exists alongside Ra1# (the old test had no draw child, so it
+    # passed under the buggy predicate too -- MATH_AUDIT).
+    b = _chess.Board("r5k1/8/8/8/8/8/5PPP/6K1 b - - 99 60")   # ...Ra1# vs clock-draws
+    t = make(nodes=64)
+    root = t.run(b.copy())
+    from catspace.nn.mcts import DRAW_V as _DV
+    draw_children = [c for c in root.children if c.terminal_v == _DV]
+    mate_children = [c for c in root.children
+                     if c.terminal_v is not None and c.terminal_v < -0.5]
+    assert draw_children and mate_children       # the premise the old test lacked
+    mv = make(nodes=64).best_move(b.copy())
     bb = b.copy(); bb.push(mv)
-    assert bb.is_checkmate()          # took the mate, not a shuffling non-mate/draw
+    assert bb.is_checkmate()          # takes the mate, not a clock draw
 
 
 def test_coherence_from_committor_confidence():
