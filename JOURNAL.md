@@ -4504,3 +4504,31 @@ instruments) -> paired early-stop A/B @800n n=100 (playout_ab, e-gated:
 strength must be a wash, energy must drop) -> MPS energy re-measure.
 FBPlanPolicy re-priced on the compute axis by the CPU sweep (its strength
 wash e=0.47 was never priced; tier-0 skip-the-search is the biggest lever).
+
+
+## 2026-07-18 (Fable) — early-stop v1: strength wash, but only 4% energy (units bug found+fixed); calibration quantified
+
+Measured (all printed verdicts):
+- PLAYOUT_AB EARLYSTOP_800n: A(incumbent)=0.600 B(+decision_stop)=0.590,
+  diff -0.010 CI[-0.030,+0.000] e=1.00, n=100, 1 decisive pair. Strength: a
+  wash (one start flipped). A=0.600 also reproduces the re-baseline on MPS.
+- VERDICT ENERGY mcts+stop@800n: rows/move=768 (p50=807), util 0.96 — the v1
+  stability rule saved only ~4%. DIAGNOSIS: units bug — it compared the root
+  VISIT gap to remaining EVALS, but each sim costs ~one expansion batch
+  (~20+ evals), so visits accrue ~20x slower and the rule could only fire in
+  the last few percent of the budget. Fixed: remaining budget converted to
+  SIM units (remaining evals / measured evals-per-sim, 2x safety, max_sims
+  cap). The certified mate-stop half is PROVABLY move-identical (best_move's
+  game-truth-mate short-circuit precedes visit-argmax), so the flipped start
+  belongs to the stability heuristic alone.
+- PHEAD calibration (fixed instruments, holdout n=400 games / 22283 pos):
+  ECE=0.0518 CI[0.0321,0.0843], sharpness 0.205; MARTINGALE endpoint drift
+  -0.00029/ply CI[-0.00095,+0.00035] and all three phase bins 0-in-CI — the
+  committor IS consistent with a conditional expectation under mu.
+  Overconfidence is LOCALIZED: bin [0.8,0.9) conf 0.849 -> realized 0.717
+  (the 13-pt gap that made certainty_stop 0.9 harmful); closed top bin
+  [0.9,1.0] 0.935 -> 0.883. Coherence's P(realize) use: acceptable. Hard
+  soft-terminal: still gated until a temperature recalibration of the phead
+  is measured (cheap next candidate, committor_recalibrate.py exists).
+v2 A/B of the corrected stability rule launched (same protocol, label
+EARLYSTOP_v2_800n).
