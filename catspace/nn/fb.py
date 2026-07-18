@@ -477,7 +477,10 @@ class TorchFB(nn.Module):
                  pid_kp: float = 0.5, pid_ki: float = 0.01, pid_kd: float = 2.0,
                  two_sided: bool = False, push_goal_planes: torch.Tensor | None = None,
                  push_unreach_mask: torch.Tensor | None = None,
-                 unreach_weight: float = 0.0, unreach_floor: float = 30.0):
+                 unreach_weight: float = 0.0, unreach_floor: float = 30.0,
+                 anchor_perm: torch.Tensor | None = None,
+                 anchor_unreach_fwd: torch.Tensor | None = None,
+                 anchor_unreach_rev: torch.Tensor | None = None):
         """Quasimetric-RL objective (Wang, Torralba, Isola, Zhang, ICML 2023),
         the loss IQE was DESIGNED for -- InfoNCE only enforces relative ranking
         and leaves the interval geometry collapsed ("d could remain arbitrarily
@@ -587,7 +590,28 @@ class TorchFB(nn.Module):
             d_unr = float(d_far[m].mean())
             if (~m).any():
                 d_oth = float(d_far[~m].mean())
-        loss_unr = unreach_weight * unr
+        # BIDIRECTIONAL anchor-anchor certified repulsion (Kaveh's spec: "one
+        # directional OR two directional"): pair anchors within the batch
+        # (perm), certify EACH direction with the oracle, hinge both
+        # d(F(s_i)->B(s_perm[i])) and d(F(s_perm[i])->B(s_i)). Both sides have
+        # omega, so both directions carry gradient -- which also makes the
+        # global F-above-B ordering collapse hinge-visible (the same board's F
+        # and B must interleave), the structural immunization the one-
+        # directional hinge lacked (dead-zone dive @2k, 2026-07-18).
+        unrb = torch.zeros((), device=f_s.device)
+        if (unreach_weight > 0.0 and anchor_perm is not None
+                and (anchor_unreach_fwd is not None and anchor_unreach_fwd.any()
+                     or anchor_unreach_rev is not None and anchor_unreach_rev.any())):
+            b_anch = self.embed_B(planes_s)                    # one extra forward
+            d_fwd = self.directed_distance(f_s, b_anch[anchor_perm])
+            d_rev = self.directed_distance(f_s[anchor_perm], b_anch)
+            terms = []
+            if anchor_unreach_fwd is not None and anchor_unreach_fwd.any():
+                terms.append(torch.relu(unreach_floor - d_fwd[anchor_unreach_fwd]).mean())
+            if anchor_unreach_rev is not None and anchor_unreach_rev.any():
+                terms.append(torch.relu(unreach_floor - d_rev[anchor_unreach_rev]).mean())
+            unrb = sum(terms) / len(terms)
+        loss_unr = unreach_weight * (unr + unrb)
         loss = push + constraint + loss_unr
         # VARIANCE REGULARIZATION (VICReg, Bardes et al. 2022): hinge each
         # embedding dim's marginal std up to var_target. NOTE (review 2026-07-17):
@@ -604,7 +628,8 @@ class TorchFB(nn.Module):
             loss = loss + var_weight * var
         stats = {"push": float(push), "sq_dev": float(sq_dev), "lam": float(lam),
                  "d_step": float(d_step_v.mean()), "d_rand": float(d_rand.mean()),
-                 "var": float(var), "unr": float(unr), "d_unr": d_unr, "d_oth": d_oth}
+                 "var": float(var), "unr": float(unr), "unrb": float(unrb),
+                 "d_unr": d_unr, "d_oth": d_oth}
         return loss, stats
 
     def score_matrix(self, f: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
