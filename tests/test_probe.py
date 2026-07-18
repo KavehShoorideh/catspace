@@ -226,3 +226,52 @@ def test_cache_hits_reported_per_call():
     assert r2.cache_hits >= 0
     assert r2.cache_hits <= r2.evals_spent + r2.cache_hits  # sane per-call split
     assert r1.cache_hits < r1.evals_spent + 100       # r1 mostly fresh
+
+
+# ------------------------------------------------- two-budget plan persistence
+def _plan_policy(plan_nodes=120, exec_nodes=24):
+    """FBPlanMCTSPolicy needs a real fb; fake the minimum surface instead:
+    drive the underlying MCTS directly through the class's budget logic."""
+    import types
+    from catspace.nn.mcts import FBPlanMCTSPolicy
+    pol = FBPlanMCTSPolicy.__new__(FBPlanMCTSPolicy)
+    pol.mcts = MCTS(flat_reach, max_nodes=plan_nodes, cache={}, mate_stop=True)
+    pol.tree_reuse = True
+    pol.path_counts = {}
+    pol._carry = None
+    pol.plan_nodes = plan_nodes
+    pol.exec_nodes = exec_nodes
+    pol.max_plies_per_plan = 3
+    pol.drop_delta = 0.5
+    pol._plies_since_plan = 0
+    pol._r_at_plan = None
+    pol.replans = 0
+    pol.last_trigger = None
+    return pol
+
+
+def test_plan_mcts_budget_schedule_and_triggers():
+    import chess as _c
+    rng = np.random.default_rng(0)
+    pol = _plan_policy()
+    b = chess.Board("2k5/8/8/8/8/8/R6P/2K3R1 w - - 0 1")
+    m1 = pol.move(b, rng)                              # game start: surprise
+    assert pol.last_trigger == "surprise" and pol.replans == 1
+    ev_plan = pol.mcts.evals_used
+    # follow the search's own expectation: our move, then Black's most-visited
+    b.push(m1)
+    kids = list(pol._carry.children)                    # expected = tree membership
+    reply = max(kids, key=lambda c: c.N).move if kids else None
+    if reply is not None:
+        b.push(reply)
+        m2 = pol.move(b, rng)                          # expected -> exec budget
+        assert pol.last_trigger is None
+        assert pol.mcts.evals_used <= pol.exec_nodes + 40   # cheap top-up
+        assert pol.replans == 1
+    # an off-tree jump is a surprise -> plan budget again
+    off = chess.Board("2k5/8/8/8/8/8/R6P/2K3R1 b - - 10 40")
+    pol._carry = None if reply is None else pol._carry
+    m3 = pol.move(off, rng)
+    assert pol.last_trigger == "surprise"
+    assert pol.replans >= 2
+    assert ev_plan > pol.exec_nodes                    # plan moves cost more

@@ -117,6 +117,18 @@ def build_policy(kind, fb, pay, phead, nodes, dev, plan_nodes, shallow_nodes,
                                  decision_stop=early_stop,
                                  mate_stop=early_stop or mate_stop)
         return pol, pol.mcts
+    if kind == "mctsplan":
+        import torch
+        from catspace.nn.policy_fb import make_search_policy
+
+        class Committor(torch.nn.Module):
+            def forward(self, f):
+                p = torch.softmax(phead(f), dim=1)
+                return -torch.log(p[:, 0].clamp_min(1e-6)).unsqueeze(-1)
+
+        pol = make_search_policy("mctsplan", fb, z, max_nodes=nodes, device=dev,
+                                 committor_head=Committor())
+        return pol, pol.mcts
     if kind == "beam":
         from catspace.nn.policy_fb import make_search_policy
         return make_search_policy("beam", fb, z, max_nodes=nodes, beam=4,
@@ -142,7 +154,7 @@ def main():
     ap.add_argument("--fixed-set", default="artifacts/experiments/krrkbp_test_n200.json")
     ap.add_argument("--n", type=int, default=100)
     ap.add_argument("--policies", nargs="+", default=["mcts"],
-                    choices=["mcts", "beam", "plan"])
+                    choices=["mcts", "beam", "plan", "mctsplan"])
     ap.add_argument("--budgets", nargs="+", type=int, default=[200, 800, 1600],
                     help="node budgets (mcts/beam; 'plan' ignores these and "
                          "uses --plan-nodes/--shallow-nodes once)")

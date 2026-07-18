@@ -594,3 +594,76 @@ class FBMCTSPolicy:
                                       * (1 if white else -1)))
         self._carry = best
         return best.move
+
+
+class FBPlanMCTSPolicy(FBMCTSPolicy):
+    """Plan persistence on the WINNING substrate (2026-07-18 Pareto round):
+    the beam-based FBPlanPolicy proved the tier-0 shape (p50=30 rows/move —
+    a held plan makes most moves nearly free) but died on its substrate
+    (0.150 conversion; beam replans cost ~3400 actual rows). This is the
+    same persistence idea as a per-move BUDGET schedule on one committor
+    MCTS with tree reuse:
+
+      PLAN move (deep, plan_nodes):  a replan trigger fired — search fresh.
+      EXEC move (cheap, exec_nodes): the game is following the plan — top up
+        the CARRIED deep tree (tree_reuse) with a small budget.
+
+    Triggers (FBPlanPolicy's set, re-grounded on this substrate; a first cut
+    with N>=1 tree membership as "expected" replanned nearly every move —
+    p50=802 at n=6 — because ~36 sims/move leave the defender's exact reply
+    unvisited):
+      surprise — the position is not even a NODE of the carried tree (the
+                 carried parent was never expanded there; also fires on the
+                 first move of a game)
+      dropped  — the committor readout fell more than drop_delta below its
+                 value when the plan was made (ln P(win) units; refutation
+                 shows up in the VALUE, not in tree membership). Costs one
+                 reach call per move, cache-absorbed.
+      stalled  — plies_since_plan >= max_plies_per_plan (plans go stale)
+
+    The mate-stop composes (proven move-identical); the stability stop stays
+    off (measured harmful). Energy gate: hold mcts@plan_nodes strength at a
+    fraction of its rows/move; graded by paired A/B + energy_baseline."""
+
+    def __init__(self, fb, z, plan_nodes: int = 800, exec_nodes: int = 100,
+                 max_plies_per_plan: int = 6, drop_delta: float = 0.5, **kw):
+        kw.setdefault("mate_stop", True)
+        super().__init__(fb, z, max_nodes=plan_nodes, tree_reuse=True, **kw)
+        self.plan_nodes = plan_nodes
+        self.exec_nodes = exec_nodes
+        self.max_plies_per_plan = max_plies_per_plan
+        self.drop_delta = drop_delta
+        self._plies_since_plan = 0
+        self._r_at_plan: float | None = None
+        self.replans = 0
+        self.last_trigger: str | None = None     # introspection/testing
+
+    def _expected(self, board: chess.Board) -> bool:
+        """Is this position a node of the carried tree at all? (Membership,
+        not visits: children exist whenever their parent was expanded.)"""
+        if self._carry is None:
+            return False
+        for c in getattr(self._carry, "children", []):
+            if c.board.fen() == board.fen():
+                return True
+        return False
+
+    def move(self, board: chess.Board, rng: np.random.Generator) -> chess.Move:
+        r_now = float(np.asarray(self.mcts.reach_fn([board]))[0])
+        trigger = None
+        if not self._expected(board):
+            trigger = "surprise"
+        elif self._r_at_plan is not None and r_now < self._r_at_plan - self.drop_delta:
+            trigger = "dropped"
+        elif self._plies_since_plan >= self.max_plies_per_plan:
+            trigger = "stalled"
+        self.last_trigger = trigger
+        if trigger is not None:
+            self.mcts.max_nodes = self.plan_nodes
+            self._plies_since_plan = 0
+            self._r_at_plan = r_now
+            self.replans += 1
+        else:
+            self.mcts.max_nodes = self.exec_nodes
+            self._plies_since_plan += 1
+        return super().move(board, rng)

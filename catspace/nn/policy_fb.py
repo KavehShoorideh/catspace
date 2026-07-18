@@ -665,6 +665,14 @@ def make_search_policy(kind: str, fb, z, max_nodes: int, beam: int = 4,
         return FBMCTSPolicy(fb, z, max_nodes=max_nodes, c_puct=c_puct,
                             elo=elo, clock=clock, device=device,
                             s_head=s_head, g_sharp=g_sharp, **mcts_kw)
+    if kind == "mctsplan":
+        # plan persistence as a two-budget committor MCTS (deep max_nodes on
+        # replan triggers, cheap exec top-ups on the carried tree otherwise);
+        # exec_nodes/max_plies_per_plan via mcts_kw
+        from catspace.nn.mcts import FBPlanMCTSPolicy
+        return FBPlanMCTSPolicy(fb, z, plan_nodes=max_nodes, c_puct=c_puct,
+                                elo=elo, clock=clock, device=device,
+                                s_head=s_head, g_sharp=g_sharp, **mcts_kw)
     if kind == "anytime":
         from catspace.nn.anytime import FBAnytimePolicy
         pol = FBAnytimePolicy(fb, z, max_nodes=max_nodes, elo=elo,
