@@ -4400,3 +4400,23 @@ unreach run launched, same recipe otherwise. Also: d_rand explained +
 force-balance model documented in chat; sib8 had confirmed the force story
 (d_rand 1.5->5.5-12.9, lam 7->77 counter-escalation as predicted, first run
 past 10k).
+
+
+## 2026-07-18 (Fable) — one-directional hinge died in the dead zone; completed to Kaveh's two-directional spec
+
+The first oracle-hinge run collapsed at ~step 2000 (cliff, not drift: d_step
+1.2 -> 0.000 between steps ~1700-2100; detector halted @4000). Mechanism: the
+IQE ordering-collapse fixed point (all F above all B => every distance exactly
+0 => push, constraint, AND the one-directional hinge all have zero gradient;
+var-reg blind, dims still varied). Hypothesis for why sib8 survived 10k+ where
+this died: the sibling hinge was accidentally BIDIRECTIONAL (same boards'
+F and B on both sides), punishing the global ordering directly. Kaveh's
+original oracle spec explicitly asked for "one directional OR two directional"
+-- the one-directional wiring was the shortcut, not the design. Completed to
+spec: anchor-anchor pairs (both have omega => both directions trainable),
+oracle-certified per direction, hinges on d(F(s_i)->B(s_j)) AND
+d(F(s_j)->B(s_i)) -- the ordering collapse is now hinge-visible with live
+gradient. Smoke: unr 29.6 + unrb 29.6 both active. THE single all-additions
+run relaunched. Probe API v2 (opponent param + certified-surface termination
++ label store) committed to PLANNER_PROBE_DESIGN.md; move-quality Q(s,m) =
+(class-preservation vs perfect play, P_mu growth) lexicographic.
