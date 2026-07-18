@@ -40,6 +40,7 @@ from catspace.audit import build_provenance, is_provenance_clean
 from catspace.data.encode import board_from_packed
 from catspace.data.shards import LichessPairSource, MixedPairSource
 from catspace.nn.hard_negatives import irreversible_sibling_pairs
+from catspace.nn.unreachable import provably_unreachable
 from catspace.io.paths import derived_dir, newest_shard_dir
 from catspace.nn.fb import TorchFB, load_ckpt, pick_device, save_ckpt
 from catspace.nn.features import feature_planes, omega_ids
@@ -304,12 +305,20 @@ def main():
                     help="rolling cross-batch goal-pool size for the push (dataset-wide "
                          "p_goal -> genuinely far pairs so the metric spreads). 0 = in-batch "
                          "shuffle only (leaves d_rand flat on low-diversity batches).")
-    ap.add_argument("--qrl-sib-weight", type=float, default=1.0,
+    ap.add_argument("--qrl-unreach-weight", type=float, default=8.0,
+                    help="weight on the CERTIFIED directional repulsion: push pairs whose "
+                         "s->g direction is provably illegal (count monotonicity, castling, "
+                         "pawn forward-cone matching -- nn/unreachable.py) are hinged above "
+                         "--qrl-unreach-floor. ~90%% of cross-game pairs; zero extra embeds. "
+                         "Replaces the sibling hinge. 0 disables.")
+    ap.add_argument("--qrl-unreach-floor", type=float, default=30.0,
+                    help="floor for certified-unreachable pairs (one-sided hinge; ~2x offset)")
+    ap.add_argument("--qrl-sib-weight", type=float, default=0.0,
                     help="weight on irreversibility-sibling repulsion: pairs one ply "
                          "apart through DIVERGENT irreversible moves (different pawn / "
                          "different capture square) are PROVABLY mutually unreachable -- "
-                         "hinge BOTH directed distances above --qrl-sib-floor. The "
-                         "hardest negatives: feature-close, d=inf both ways. 0 disables.")
+                         "hinge BOTH directed distances above --qrl-sib-floor. DEPRECATED "
+                         "in favor of --qrl-unreach-weight (default 0).")
     ap.add_argument("--qrl-sib-floor", type=float, default=30.0,
                     help="unreachability floor for sibling pairs (a one-sided hinge -- a "
                          "FLOOR, not a target: no force pulls d back down). Set ~2x the "
@@ -604,6 +613,7 @@ def main():
             # accumulate this batch's goals into the rolling pool, then draw a
             # diverse cross-batch goal sample for the push (dataset-wide p_goal)
             push_goal_planes = None
+            push_unreach_mask = None
             if args.qrl_goal_pool > 0:
                 # mask to TRAIN rows before pooling -- else holdout goals get
                 # pushed through embed_B (with grad) and contaminate the holdout
@@ -619,11 +629,21 @@ def main():
                     sel = pool_rng.integers(0, len(goal_pool_packed), size=len(core[0]))
                     push_goal_planes = torch.from_numpy(
                         feature_planes(goal_pool_packed[sel], goal_pool_meta[sel])).to(device)
+                    if args.qrl_unreach_weight > 0:
+                        # certified s->g unreachability flags for the SAME pairs
+                        _aidx = np.flatnonzero((batch.meta["game_id"] % HOLDOUT_MOD) != 0)
+                        _uflag = provably_unreachable(
+                            batch.anchors[_aidx], batch.meta["board_meta"][_aidx],
+                            goal_pool_packed[sel], goal_pool_meta[sel])
+                        push_unreach_mask = torch.from_numpy(_uflag).to(device)
             loss, qstats = fb.qrl_loss(core[0], core[1], planes_succ, core[2], valid,
                                        push_offset=args.qrl_push_offset,
                                        push_real=args.qrl_push_real,
                                        push_mix=args.qrl_push_mix,
                                        push_goal_planes=push_goal_planes,
+                                       push_unreach_mask=push_unreach_mask,
+                                       unreach_weight=args.qrl_unreach_weight,
+                                       unreach_floor=args.qrl_unreach_floor,
                                        use_pid=args.qrl_use_pid,
                                        pid_kp=args.qrl_pid_kp, pid_ki=args.qrl_pid_ki,
                                        pid_kd=args.qrl_pid_kd,
@@ -662,7 +682,8 @@ def main():
                 print(f"    qrl push {qstats['push']:.3f} sq_dev {qstats['sq_dev']:.4f} "
                       f"lam {qstats['lam']:.3f} d_step {qstats['d_step']:.3f} "
                       f"d_rand {qstats['d_rand']:.3f} var {qstats.get('var', 0.0):.3f} "
-                      f"sib {sib:.3f}", flush=True)
+                      f"sib {sib:.3f} unr {qstats.get('unr',0.0):.3f} "
+                      f"d_unr {qstats.get('d_unr',float('nan')):.2f} d_oth {qstats.get('d_oth',float('nan')):.2f}", flush=True)
             # collapse gate: after warmup, on rolling means over the window
             if step >= 2000 and step % 1000 == 0 and len(qrl_dstep_hist) >= 500:
                 ms = float(np.mean(qrl_dstep_hist))
