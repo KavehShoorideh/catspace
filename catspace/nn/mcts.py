@@ -111,11 +111,12 @@ class MCTS:
         # still change the MOVE. Two triggers: (a) a game-truth immediate
         # mate at the root -- a certified stop, best_move's readout is
         # already provably optimal (faster mates dominate via PLY_DISCOUNT);
-        # (b) the root visit gap exceeds the remaining eval budget. (b) is a
-        # HEURISTIC, not a certified-dominance rule: simulations ending on
-        # terminals consume zero evals yet still add visits, so the leader
-        # could in principle still flip -- graded by paired A/B (strength
-        # unchanged, evals saved), not claimed as a theorem.
+        # (b) the root visit gap exceeds the remaining budget expressed in
+        # SIM units (remaining evals / measured evals-per-sim, x2 safety,
+        # capped by max_sims). (b) is a HEURISTIC, not a certified-dominance
+        # rule: simulations ending on terminals consume zero evals yet still
+        # add visits, so the leader could in principle still flip -- graded
+        # by paired A/B (strength unchanged, evals saved), not a theorem.
         self.decision_stop = decision_stop
         self.decision_check_every = decision_check_every
         self.reach_fn = reach_fn
@@ -394,7 +395,17 @@ class MCTS:
             if (self.decision_stop and sims % self.decision_check_every == 0
                     and len(root.children) > 1):
                 vis = sorted((c.N for c in root.children), reverse=True)
-                if vis[0] - vis[1] > self.max_nodes - self.evals_used:
+                # gap must beat the remaining budget in SIM units, not eval
+                # units: each sim adds ONE root visit but costs ~one expansion
+                # batch of evals. v1 compared gap to remaining EVALS -- visits
+                # accrue ~20x slower, so it fired only in the last few percent
+                # (measured util 0.96 @800n, 2026-07-18). Terminal-path sims
+                # cost 0 evals, so scale by 2x and cap with max_sims to stay
+                # conservative (err toward stopping late).
+                cost = self.evals_used / max(sims, 1)
+                rem = min(max_sims - sims,
+                          int(2.0 * (self.max_nodes - self.evals_used) / max(cost, 1e-9)))
+                if vis[0] - vis[1] > rem:
                     break                # stability stop (heuristic, see __init__)
         return root
 
