@@ -84,3 +84,13 @@ def test_leader_selection_certified_dominance():
     res = {"A": _pr(0.1, 0.3, 1.0), "B": _pr(0.9, -1.0, 0.2)}
     leader, certified = casc._leader(res, white=True)
     assert leader == "A" and certified
+
+
+def test_single_candidate_not_vacuously_certified():
+    """Review 2026-07-18 MED regression: with no rivals, certified must mean
+    the interval is decided, not that nobody contested it."""
+    b = chess.Board(ROOMY)
+    d = DecisionCascade([cand("only")], coarse_budget=16).decide(b)
+    assert not d.certified                            # interval is vacuous here
+    d2 = DecisionCascade([cand("only")], coarse_budget=8).decide(chess.Board(MATED))
+    assert d2.certified                               # pinned interval stays certified

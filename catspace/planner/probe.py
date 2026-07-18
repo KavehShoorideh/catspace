@@ -105,7 +105,7 @@ def _best_child(root: _Node) -> _Node | None:
                               * (1 if white else -1)))
 
 
-def _summarize(mcts: MCTS, root: _Node) -> ProbeResult:
+def _summarize(mcts: MCTS, root: _Node, cache_hits0: int) -> ProbeResult:
     best = _best_child(root)
     lo, hi = _certified(root)
     visits = sorted((c.N for c in root.children), reverse=True)
@@ -115,8 +115,10 @@ def _summarize(mcts: MCTS, root: _Node) -> ProbeResult:
                        best_move=best.move if best is not None else None,
                        lo=float(lo), hi=float(hi),
                        hits=_leaf_hits(root), coherence=float(root.coh_gamma),
-                       evals_spent=mcts.evals_used, cache_hits=mcts.cache_hits,
-                       visit_top2=top2, tree=root, board_fen=root.board.fen())
+                       evals_spent=mcts.evals_used,
+                       cache_hits=mcts.cache_hits - cache_hits0,   # per-call, like
+                       visit_top2=top2, tree=root,                 # evals_spent
+                       board_fen=root.board.fen())
 
 
 def probe(mcts: MCTS, board: chess.Board, budget: int | None = None,
@@ -124,15 +126,23 @@ def probe(mcts: MCTS, board: chess.Board, budget: int | None = None,
     """Run a bounded search from `board` and package the outcome. `budget`
     overrides mcts.max_nodes for this call only (fresh evals, cache hits
     free). `reuse` continues a previous probe's tree when its root matches —
-    the deepening path (visit statistics and calibration carry over)."""
-    old = mcts.max_nodes
+    the deepening path (visit statistics and calibration carry over).
+
+    The stability stop (mcts.decision_stop) is suspended for the duration: it
+    is keyed to move-argmax stability, and a probe wants the VALUE refined —
+    stopping when the move is settled would silently truncate exactly the
+    estimate the planner is paying for. The certified mate-stop stays active
+    (it pins the value too)."""
+    old, old_stab = mcts.max_nodes, mcts.decision_stop
     if budget is not None:
         mcts.max_nodes = budget
+    mcts.decision_stop = False
+    hits0 = mcts.cache_hits
     try:
         root = mcts.run(board, reuse_root=reuse.tree if reuse is not None else None)
     finally:
-        mcts.max_nodes = old
-    return _summarize(mcts, root)
+        mcts.max_nodes, mcts.decision_stop = old, old_stab
+    return _summarize(mcts, root, hits0)
 
 
 def deepen(mcts: MCTS, board: chess.Board, result: ProbeResult,
