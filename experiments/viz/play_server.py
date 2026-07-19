@@ -77,6 +77,11 @@ class Engine:
         self.rng = np.random.default_rng(0)
         self._atlas = None
         self._proj = None
+        # stateful Analyze: keep the last-analyzed tree so repeated Analyze on
+        # the SAME position EXTENDS the search (+budget) instead of restarting
+        self._an_root = None
+        self._an_fen = None
+        self._an_total = 0
 
     # -- lazy atlas + projection ------------------------------------------
     @property
@@ -152,24 +157,35 @@ class Engine:
                     reach=round(reach, 4), winp=round(self.winp(board), 4),
                     cluster=int(near["id"]))
 
-    def analyze(self, board: chess.Board, topk: int = 3, nodes: int | None = None) -> dict:
+    def analyze(self, board: chess.Board, topk: int = 3, nodes: int | None = None,
+                extend: bool = False) -> dict:
         """Top-k candidate moves for the side to move, each with the PROJECTED
         (x,y) of the resulting position AND its principal-variation LINE (SAN).
-        `nodes` temporarily raises the search budget for an on-demand deep probe
-        of this exact position (the 'analyze from here' button)."""
+        `nodes` sets this call's budget. `extend`=True CONTINUES the previous
+        Analyze tree for the SAME position (adds `nodes` more evals on top —
+        the tree, visit counts and lines accumulate) instead of restarting;
+        a different position (or extend=False) starts fresh. Returns `nodes` =
+        the CUMULATIVE budget spent on this position."""
         over, res = self._outcome(board)
         if over:
+            self._an_root = self._an_fen = None
+            self._an_total = 0
             px, py = self._xy(board)
             return dict(game_over=True, result=res, winp=round(self.winp(board), 4),
                         x=px, y=py, candidates=[], pv=[], nodes=0)
+        fen = board.fen()
         with self.lock:
+            reuse = (self._an_root if extend and self._an_fen == fen
+                     and self._an_root is not None else None)
             old = self.pol.mcts.max_nodes
-            if nodes:
-                self.pol.mcts.max_nodes = int(nodes)
+            self.pol.mcts.max_nodes = int(nodes or old)
             try:
-                root = self.pol.mcts.run(board)
+                root = self.pol.mcts.run(board, reuse_root=reuse)
             finally:
                 self.pol.mcts.max_nodes = old
+            self._an_root, self._an_fen = root, fen
+            self._an_total = (self._an_total if reuse is not None else 0) + int(nodes or old)
+            total = self._an_total
         cand = sorted(root.children, key=lambda c: c.N, reverse=True)[:topk]
         px, py = self._xy(board)
         out = []
@@ -183,8 +199,7 @@ class Engine:
                             hops=self._hops(board, c)))
         pv = [h["san"] for h in out[0]["hops"]] if out else []
         return dict(game_over=False, result=None, winp=round(self.winp(board), 4),
-                    x=px, y=py, candidates=out, pv=pv,
-                    nodes=int(nodes or old))
+                    x=px, y=py, candidates=out, pv=pv, nodes=total)
 
     # -- play --------------------------------------------------------------
     @staticmethod
@@ -323,7 +338,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(ENGINE.engine_move(self._board(body["fen"])))
             elif u.path == "/analyze":
                 self._json({"ok": True, **ENGINE.analyze(self._board(body["fen"]),
-                            int(body.get("topk", 3)), body.get("nodes"))})
+                            int(body.get("topk", 3)), body.get("nodes"),
+                            bool(body.get("extend", False)))})
             elif u.path == "/project":
                 self._json({"ok": True, **ENGINE.project(self._board(body["fen"]))})
             elif u.path == "/set_board":
