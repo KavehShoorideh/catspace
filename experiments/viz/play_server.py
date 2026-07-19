@@ -120,21 +120,26 @@ class Engine:
         xy = self.proj.transform(self._embed_F(board)[None])[0]
         return round(float(xy[0]), 3), round(float(xy[1]), 3)
 
-    @staticmethod
-    def _san_line(board: chess.Board, node, maxlen: int = 8) -> list:
-        """The principal variation under `node` as SAN — descend max-visit
-        children (this is the line MCTS already built; we just read it out).
-        node.move is the first move relative to `board`."""
+    def _hops(self, board: chess.Board, node, maxlen: int = 6) -> list:
+        """The principal variation under `node` as a sequence of HOPS — one per
+        ply, alternating White/Black — each carrying its SAN, resulting FEN,
+        and PROJECTED (x,y). Descends max-visit children (the line MCTS already
+        built). The frontend draws these as a path through the embedding map
+        and previews each position on hover. node.move is the first move
+        relative to `board`."""
         b = board.copy(stack=False)
-        out, cur = [], node
-        while cur is not None and cur.move is not None and len(out) < maxlen:
+        hops, cur = [], node
+        while cur is not None and cur.move is not None and len(hops) < maxlen:
             try:
-                out.append(b.san(cur.move))
+                san = b.san(cur.move)
             except (ValueError, AssertionError):
                 break
+            white = b.turn == chess.WHITE            # side making THIS move
             b.push(cur.move)
+            x, y = self._xy(b)
+            hops.append(dict(san=san, fen=b.fen(), x=x, y=y, white=white))
             cur = max(cur.children, key=lambda c: c.N, default=None) if cur.children else None
-        return out
+        return hops
 
     def project(self, board: chess.Board) -> dict:
         f = self._embed_F(board)
@@ -175,8 +180,8 @@ class Engine:
             out.append(dict(uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
                             value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
                             winp=round(self.winp(child), 3), x=cx, y=cy,
-                            line=self._san_line(board, c)))
-        pv = out[0]["line"] if out else []
+                            hops=self._hops(board, c)))
+        pv = [h["san"] for h in out[0]["hops"]] if out else []
         return dict(game_over=False, result=None, winp=round(self.winp(board), 4),
                     x=px, y=py, candidates=out, pv=pv,
                     nodes=int(nodes or old))
@@ -222,9 +227,9 @@ class Engine:
                 uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
                 value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
                 winp=round(self.winp(child), 3), x=cx, y=cy,
-                line=self._san_line(board, c)))
-        # PV: the best move's line, as SAN (the line MCTS already built)
-        pv = self._san_line(board, best)
+                hops=self._hops(board, c)))
+        # PV: the best move's hop-line, as SAN (the line MCTS already built)
+        pv = [h["san"] for h in self._hops(board, best)]
         after = board.copy(stack=False)
         san = board.san(best.move)
         after.push(best.move)
