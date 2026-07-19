@@ -292,6 +292,13 @@ def main():
                          "recipe (QRL gives sharpness, this gives direction).")
     ap.add_argument("--dtm-weight", type=float, default=1.0)
     ap.add_argument("--dtm-batch", type=int, default=256)
+    ap.add_argument("--dtm-bank", type=int, default=384,
+                    help="SURFACE bank size for the composed hinge (Kaveh 2026-07-19: "
+                         "mate is a SURFACE not a pole). Instead of regressing d(F(s), "
+                         "MATE_W centroid) -- which can't order diverse endgames -- "
+                         "regress the COMPOSED distance min_g[d(F(s),B(g))+dtm(g)] over "
+                         "a bank of DTM waypoints g toward the true dtm(s). The min picks "
+                         "the nearest useful waypoint (surface, not mean). 0 = old centroid.")
     ap.add_argument("--dtm-scale", type=float, default=1.0,
                     help="divide dtm plies by this to match the field's distance units. "
                          "QRL unit-step => distances ARE in plies => 1.0. An InfoNCE "
@@ -613,10 +620,20 @@ def main():
         _dz = np.load(args.dtm_hinge)
         dtm_data = dict(packed=_dz["packed"], meta=_dz["meta"],
                         dtm=_dz["dtm"].astype(np.float32))
+        # SURFACE bank for the composed hinge: a fixed set of waypoints g (disjoint
+        # from the batch pool) with known dtm(g). The lowest-dtm positions are
+        # FORCED in so the composition always has near-mate anchors to reach.
+        _perm = np.random.default_rng(args.seed + 4242).permutation(len(dtm_data["dtm"]))
+        if args.dtm_bank > 0 and len(_perm) > args.dtm_bank + args.dtm_batch:
+            _low = np.argsort(dtm_data["dtm"])[:args.dtm_bank // 4]     # near-mate anchors
+            _rest = _perm[~np.isin(_perm, _low)][:args.dtm_bank - len(_low)]
+            dtm_data["bank_idx"] = np.concatenate([_low, _rest])
+            dtm_data["pool_idx"] = np.setdiff1d(_perm, dtm_data["bank_idx"])
         print(f"DTM hinge ON: {len(dtm_data['dtm'])} tablebase positions "
               f"(dtm min={dtm_data['dtm'].min():.0f} med={np.median(dtm_data['dtm']):.0f} "
-              f"max={dtm_data['dtm'].max():.0f}); weight={args.dtm_weight} "
-              f"scale={args.dtm_scale} batch={args.dtm_batch}", flush=True)
+              f"max={dtm_data['dtm'].max():.0f}); mode="
+              f"{'COMPOSED bank=' + str(args.dtm_bank) if 'bank_idx' in dtm_data else 'centroid'} "
+              f"weight={args.dtm_weight} scale={args.dtm_scale} batch={args.dtm_batch}", flush=True)
     cert_games = None
     if args.committor_certified_only:
         if not (args.committor_base or args.cert_base):
@@ -638,7 +655,9 @@ def main():
                          f"{provenance['static_check']['hits']}")
 
     phead, zW, zB = None, None, None
-    zW_d = None                         # DTM-hinge's own MATE_W (refreshed like cert-base)
+    zW_d = None                         # DTM-hinge centroid MATE_W (refreshed like cert-base)
+    dtm_bankB = None                    # DTM-hinge SURFACE bank B-embeddings (detached, refreshed)
+    dtm_bank_dtm = None                 # bank waypoint DTMs (constant)
     dtm_rng = np.random.default_rng(args.seed + 777)
     if args.cert_base or args.committor_base:
         from catspace.nn.eval_head import EvalHead, descriptive_loss
@@ -866,25 +885,44 @@ def main():
             if step % 100 == 0:
                 print(f"    cert {float(cert):.4f}  phead {float(p_loss):.4f}", flush=True)
         if dtm_data is not None:
-            # ALIGNMENT: on tablebase-won positions, pull d(F(s), MATE_W) toward
-            # the true distance-to-mate (plies). QRL's unit-step => distances are
-            # already in ply units, so the target is dtm/scale directly. Refresh
-            # the mate centroid on the same cadence as the goals (it drifts).
-            if zW_d is None or step % args.zgoal_refresh == 0:
-                zW_d = embed_zgoals(fb, finals, device)["MATE_W"].to(device).float().detach()
-            nD = min(args.dtm_batch, len(dtm_data["dtm"]))
-            idx = dtm_rng.integers(0, len(dtm_data["dtm"]), size=nD)
+            # ALIGNMENT via the COMPOSED surface distance (Kaveh 2026-07-19: mate is
+            # a SURFACE not a pole). For each won position s, the estimate of its
+            # distance-to-mate is min_g[ d(F(s), B(g)) + dtm(g) ] over a bank of DTM
+            # waypoints g (known dtm(g)): the field is trusted only for the short hop
+            # to a nearby waypoint, g's dtm is grounded truth, and the min picks the
+            # nearest useful waypoint. We regress THAT toward the true dtm(s). The
+            # bank B-embeddings drift, so refresh (detached) on the goal cadence.
+            composed_mode = "bank_idx" in dtm_data
+            if composed_mode:
+                if dtm_bankB is None or step % args.zgoal_refresh == 0:
+                    bidx = dtm_data["bank_idx"]
+                    bpl = torch.from_numpy(feature_planes(dtm_data["packed"][bidx],
+                                                          dtm_data["meta"][bidx])).to(device)
+                    with torch.no_grad():
+                        dtm_bankB = fb.embed_B(bpl).detach()               # (K, d)
+                    dtm_bank_dtm = torch.from_numpy(
+                        dtm_data["dtm"][bidx]).to(device) / args.dtm_scale  # (K,)
+                nD = min(args.dtm_batch, len(dtm_data["pool_idx"]))
+                idx = dtm_data["pool_idx"][dtm_rng.integers(0, len(dtm_data["pool_idx"]), size=nD)]
+            else:                                                          # legacy centroid
+                if zW_d is None or step % args.zgoal_refresh == 0:
+                    zW_d = embed_zgoals(fb, finals, device)["MATE_W"].to(device).float().detach()
+                nD = min(args.dtm_batch, len(dtm_data["dtm"]))
+                idx = dtm_rng.integers(0, len(dtm_data["dtm"]), size=nD)
             pl_d = torch.from_numpy(feature_planes(dtm_data["packed"][idx],
                                                    dtm_data["meta"][idx])).to(device)
             om_d = torch.from_numpy(omega_ids(np.full(nD, 1800), np.full(nD, 1800),
                                               np.full(nD, 300.0))).to(device)   # neutral omega (atlas convention)
             f_d = fb.embed_F(pl_d, om_d)
-            d_d = fb.distance_matrix(f_d, zW_d[None, :])[:, 0]
+            if composed_mode:
+                D = fb.distance_matrix(f_d, dtm_bankB)                      # (nD, K)
+                d_d = (D + dtm_bank_dtm[None, :]).min(dim=1).values         # composed min
+            else:
+                d_d = fb.distance_matrix(f_d, zW_d[None, :])[:, 0]
             tgt_d = torch.from_numpy(dtm_data["dtm"][idx]).to(device) / args.dtm_scale
             dtm_loss = torch.nn.functional.smooth_l1_loss(d_d, tgt_d)
             loss = loss + args.dtm_weight * dtm_loss
             if step % 100 == 0:
-                # rank correlation of the metric with true DTM = the alignment we want
                 _dn = d_d.detach().cpu().numpy(); _tn = tgt_d.detach().cpu().numpy()
                 _sp = float(np.corrcoef(np.argsort(np.argsort(_dn)),
                                         np.argsort(np.argsort(_tn)))[0, 1])
