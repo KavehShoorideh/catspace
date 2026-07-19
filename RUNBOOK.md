@@ -149,17 +149,24 @@ Verdict: 51% flip rate 200n-vs-800n, low-gap tercile captures 44.7% of flips
 
 ---
 
-## 5. Interactive play-atlas interface (PARTIAL — build interrupted by session limit)
-Intended: local server (CPU model, no GPU) + t-SNE region map + play/edit/toy.
-Frozen contract: `<scratchpad>/play_atlas_contract.md`.
-- DONE: `experiments/viz/build_play_atlas.py` (precompute: embed holdout, t-SNE,
-  cluster, write `artifacts/generated/play_atlas/atlas.json` + tsne_map).
-- TODO: `experiments/viz/play_server.py` (stdlib http, endpoints in the contract)
-  and `catspace/viz/templates/play_atlas.html` (frontend). Once built:
-  ```
-  .venv/bin/python experiments/viz/build_play_atlas.py --n 4000 --clusters 14
-  .venv/bin/python experiments/viz/play_server.py --port 8000   # open http://localhost:8000
-  ```
+## 5. Interactive play-atlas interface (DONE — play against the engine + t-SNE map)
+Local server (incumbent model on CPU, GPU untouched) + t-SNE region map with
+hover-sample/resample + board editor + Toy button. Two steps:
+```
+# 1. build the atlas (once; CPU, ~12s at n=4000). Re-run to change the field/sample.
+.venv/bin/python experiments/viz/build_play_atlas.py --n 4000 --clusters 14
+# 2. start the server, then open http://localhost:8000
+.venv/bin/python experiments/viz/play_server.py --port 8000 --nodes 400
+```
+Files: `experiments/viz/build_play_atlas.py` (precompute), `experiments/viz/play_server.py`
+(stdlib http API), `catspace/viz/templates/play_atlas.html` (frontend). In the
+UI: Play mode (click a piece then a square — the engine replies as White and the
+reasoning panel shows its candidate moves/visits/values/P(win) + PV), Edit mode
+(piece palette + side-to-move + Commit), Toy button (loads the KRRvKBP start),
+and the map on the right shows a ★ at your current board's projection; hover a
+region for a sampled board with Resample; click a point/sample to load it.
+To visualize a DIFFERENT field, rebuild the atlas with `--ckpt <field>.pt --phead
+<field>_phead.pt` and start the server with the same `--ckpt/--phead`.
 
 ---
 

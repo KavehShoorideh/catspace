@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>catspace · play-atlas</title>
+<style>
+  :root{--bg:#14161a;--panel:#1b1e24;--bd:#2a2e36;--tx:#cfd3da;--mut:#6a7080;
+        --blue:#7aa2ff;--grn:#66d9a6;--org:#ffb86b;--pink:#ff7a9c;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.4 system-ui,sans-serif}
+  h1{font-size:15px;margin:0;padding:10px 14px;border-bottom:1px solid var(--bd);color:var(--blue)}
+  h1 small{color:var(--mut);font-weight:400}
+  .wrap{display:flex;gap:14px;padding:14px;align-items:flex-start;flex-wrap:wrap}
+  .col{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:12px}
+  .left{width:470px} .right{flex:1;min-width:520px}
+  button{background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;
+         padding:5px 9px;cursor:pointer;font-size:12px}
+  button:hover{border-color:var(--blue)} button.on{background:var(--blue);color:#0b0d10;border-color:var(--blue)}
+  .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
+  #board{display:grid;grid-template-columns:repeat(8,54px);grid-template-rows:repeat(8,54px);
+         width:432px;border:2px solid var(--bd);user-select:none}
+  .sq{display:flex;align-items:center;justify-content:center;font-size:36px;cursor:pointer;line-height:1}
+  .sq.l{background:#b9c2d0} .sq.d{background:#6b7688}
+  .sq.sel{outline:3px solid var(--org);outline-offset:-3px}
+  .sq.tgt::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;
+                 background:rgba(122,162,255,.55)}
+  .sq{position:relative}
+  .wp{color:#fff;text-shadow:0 0 2px #000,0 1px 1px #000} .bp{color:#111;text-shadow:0 0 2px #888}
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  th,td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--bd)}
+  th{color:var(--mut);font-weight:600}
+  .bar{height:8px;background:#2a2e36;border-radius:3px;overflow:hidden}
+  .bar>i{display:block;height:100%;background:var(--blue)}
+  .moves{max-height:110px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut)}
+  .moves b{color:var(--tx)}
+  #mapwrap{position:relative}
+  #map{width:100%;height:auto;background:#101216;border-radius:6px}
+  #tip{position:absolute;pointer-events:none;background:#0d0f13;border:1px solid var(--bd);
+       border-radius:6px;padding:6px;display:none;z-index:5;width:200px}
+  #tip .lbl{font-size:11px;color:var(--org);margin-bottom:3px}
+  #tip button{pointer-events:auto;margin-top:5px;width:100%}
+  .palette{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+  .palette .sq{width:40px;height:40px;border:1px solid var(--bd);border-radius:4px;font-size:26px}
+  .palette .sq.on{outline:2px solid var(--org)}
+  .pill{font-size:11px;color:var(--mut)} .k{color:var(--tx)}
+  #toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#3a1d24;
+         border:1px solid var(--pink);color:#ffd7df;padding:8px 12px;border-radius:6px;display:none}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:3px;vertical-align:middle}
+</style>
+</head>
+<body>
+<h1>catspace · play-atlas &nbsp;<small id="sub">the engine plays White by default · edit a board, hit Toy, or just play</small></h1>
+<div class="wrap">
+  <!-- LEFT: board + controls -->
+  <div class="col left">
+    <div class="row">
+      <button id="mPlay" class="on">Play</button>
+      <button id="mEdit">Edit</button>
+      <span style="flex:1"></span>
+      <button id="bToy">Toy</button>
+      <button id="bNew">New game</button>
+      <button id="bFlip">Flip</button>
+    </div>
+    <div id="board"></div>
+    <div id="editbar" class="row" style="display:none">
+      <div class="palette" id="palette"></div>
+      <div class="row" style="margin:6px 0 0">
+        <span class="pill">to move:</span>
+        <button id="stmW" class="on">White</button><button id="stmB">Black</button>
+        <button id="bCommit">Commit &amp; project</button>
+      </div>
+    </div>
+    <div class="row"><span class="pill" id="status">—</span></div>
+    <div class="moves" id="moves"></div>
+    <div style="margin-top:10px">
+      <div class="pill" style="margin-bottom:4px">engine reasoning
+        &nbsp;<span class="k" id="winp">P(win) —</span></div>
+      <table id="cand"><thead><tr><th>move</th><th>visits</th><th>value</th><th>P(win)</th></tr></thead>
+        <tbody></tbody></table>
+      <div class="pill" style="margin-top:5px">PV: <span class="k" id="pv">—</span></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: t-SNE map -->
+  <div class="col right">
+    <div class="row">
+      <span class="pill">color:</span>
+      <button data-ck="result" class="on">result</button>
+      <button data-ck="reach">reach</button>
+      <button data-ck="winp">P(win)</button>
+      <span style="flex:1"></span>
+      <span class="pill" id="legend"></span>
+    </div>
+    <div id="mapwrap">
+      <svg id="map" viewBox="0 0 720 720"></svg>
+      <div id="tip"><div class="lbl"></div><div class="brd"></div><button id="bResample">Resample ▸</button></div>
+    </div>
+    <div class="pill" style="margin-top:6px">★ = current board · hover a cluster to sample a position · click a point/sample to load it</div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+const GLY={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
+const S={fen:"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        mode:"play",flip:false,sel:null,legal:[],atlas:null,proj:null,
+        ck:"result",editPiece:"P",stm:"w",resamp:{},hoverCluster:null};
+
+async function api(path,body){
+  const opt=body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{};
+  const r=await fetch(path,opt); if(!r.ok) throw new Error((await r.json()).error||r.status);
+  return r.json();
+}
+function toast(m){const t=document.getElementById("toast");t.textContent=m;t.style.display="block";
+  clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",3000);}
+
+/* ---- board render ---- */
+function fenGrid(fen){const rows=fen.split(" ")[0].split("/");const g=[];
+  for(const r of rows){const line=[];for(const ch of r){if(/\d/.test(ch))for(let i=0;i<+ch;i++)line.push("");
+    else line.push(ch);}g.push(line);}return g;}
+function sqName(row,col){return "abcdefgh"[col]+(8-row);}
+function renderBoard(){
+  const b=document.getElementById("board");b.innerHTML="";
+  const g=fenGrid(S.fen);
+  const order=[...Array(8).keys()];const rr=S.flip?order.reverse():order;
+  const cc=S.flip?[...Array(8).keys()].reverse():[...Array(8).keys()];
+  for(const row of rr){for(const col of cc){
+    const d=document.createElement("div");
+    const dark=(row+col)%2===1;d.className="sq "+(dark?"d":"l");
+    const p=g[row][col];
+    if(p){d.textContent=GLY[p];d.classList.add(p===p.toUpperCase()?"wp":"bp");}
+    const name=sqName(row,col);d.dataset.sq=name;
+    if(S.sel===name)d.classList.add("sel");
+    if(S.mode==="play"&&S.sel&&S.legal.some(m=>m.slice(0,2)===S.sel&&m.slice(2,4)===name))d.classList.add("tgt");
+    d.onclick=()=>onSquare(name);
+    b.appendChild(d);}}
+}
+
+/* ---- interaction ---- */
+async function onSquare(name){
+  if(S.mode==="edit"){editSquare(name);return;}
+  if(!S.sel){ if(S.legal.some(m=>m.slice(0,2)===name)){S.sel=name;renderBoard();} return; }
+  if(S.sel===name){S.sel=null;renderBoard();return;}
+  let uci=S.sel+name;
+  const promo=S.legal.filter(m=>m.slice(0,4)===uci);
+  if(promo.length&&promo[0].length===5)uci+="q"; // auto-queen
+  if(!S.legal.includes(uci)){ // reselect if clicking own piece
+    if(S.legal.some(m=>m.slice(0,2)===name)){S.sel=name;renderBoard();}
+    else{S.sel=null;renderBoard();} return; }
+  S.sel=null;
+  try{
+    const r=await api("/apply_move",{fen:S.fen,uci});
+    if(!r.ok){toast("illegal");return;}
+    S.fen=r.fen;addMove(r.san,true);await afterBoard();
+    if(r.game_over){setStatus("game over · "+r.result);return;}
+    await engineReply();
+  }catch(e){toast(e.message);}
+}
+async function engineReply(){
+  setStatus("engine thinking…");
+  try{
+    const r=await api("/engine_move",{fen:S.fen});
+    if(r.move){S.fen=r.fen;addMove(r.san,false);}
+    renderReason(r);await afterBoard();
+    setStatus(r.game_over?("game over · "+r.result):"your move");
+  }catch(e){toast(e.message);setStatus("engine error");}
+}
+
+/* ---- edit mode ---- */
+function editSquare(name){
+  const g=fenGrid(S.fen);const col="abcdefgh".indexOf(name[0]);const row=8-(+name[1]);
+  g[row][col]=S.editPiece==="."?"":S.editPiece;
+  S.fen=gridToFen(g);renderBoard();
+}
+function gridToFen(g){
+  const rows=g.map(line=>{let s="",e=0;for(const p of line){if(!p)e++;else{if(e){s+=e;e=0;}s+=p;}}if(e)s+=e;return s;});
+  return rows.join("/")+" "+S.stm+" - - 0 1";
+}
+function buildPalette(){
+  const pal=document.getElementById("palette");pal.innerHTML="";
+  for(const p of ["K","Q","R","B","N","P","k","q","r","b","n","p","."]){
+    const d=document.createElement("div");d.className="sq "+(p===S.editPiece?"on":"");
+    d.textContent=p==="."?"⌫":GLY[p];if(p!=="."&&p===p.toUpperCase())d.classList.add("wp");
+    else if(p!==".")d.classList.add("bp");
+    d.onclick=()=>{S.editPiece=p;buildPalette();};pal.appendChild(d);}
+}
+
+/* ---- moves + reasoning ---- */
+let plyN=0;
+function addMove(san,white){const m=document.getElementById("moves");
+  if(white){plyN++;m.innerHTML+=`<span>${plyN}. <b>${san}</b> </span>`;}
+  else m.innerHTML+=`<b>${san}</b> `;m.scrollTop=m.scrollHeight;}
+function renderReason(r){
+  document.getElementById("winp").textContent="P(win) "+(r.winp!=null?r.winp.toFixed(3):"—");
+  const tb=document.querySelector("#cand tbody");tb.innerHTML="";
+  const mx=Math.max(1,...(r.candidates||[]).map(c=>c.visits));
+  for(const c of (r.candidates||[])){
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${c.san}</td><td><div class="bar"><i style="width:${100*c.visits/mx}%"></i></div>${c.visits}</td>`+
+      `<td>${c.value.toFixed(2)}</td><td>${c.winp.toFixed(2)}</td>`;tb.appendChild(tr);}
+  document.getElementById("pv").textContent=(r.pv||[]).join(" ")||"—";
+}
+function setStatus(t){document.getElementById("status").textContent=t;}
+
+/* ---- projection + map ---- */
+async function afterBoard(){renderBoard();
+  try{const p=await api("/project",{fen:S.fen});S.proj=p;drawMap();}catch(e){/*edit invalid*/}}
+function ex(vals){const a=Math.min(...vals),b=Math.max(...vals);return[a,b-a||1];}
+function colorFor(pt){
+  if(S.ck==="result")return pt.result>0?"#66d9a6":pt.result<0?"#ff7a9c":"#8a90a0";
+  const v=S.ck==="reach"?pt._rn:pt.winp;const h=(1-v)*220;return `hsl(${h},70%,60%)`;
+}
+function drawMap(){
+  const A=S.atlas;if(!A){return;}const svg=document.getElementById("map");svg.innerHTML="";
+  const P=A.points;const[bx,wx]=ex(P.map(p=>p.x));const[by,wy]=ex(P.map(p=>p.y));
+  const pad=30,W=720-2*pad;
+  const rmin=Math.min(...P.map(p=>p.reach)),rmax=Math.max(...P.map(p=>p.reach));
+  const X=x=>pad+(x-bx)/wx*W, Y=y=>720-pad-(y-by)/wy*W;
+  P.forEach((p,i)=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);
+    const c=document.createElementNS(NS,"circle");
+    c.setAttribute("cx",X(p.x));c.setAttribute("cy",Y(p.y));c.setAttribute("r",3);
+    c.setAttribute("fill",colorFor(p));c.setAttribute("opacity",.72);
+    c.addEventListener("mousemove",ev=>showPoint(ev,p));
+    c.addEventListener("mouseleave",hideTip);
+    c.addEventListener("click",()=>loadFen(p.fen));svg.appendChild(c);});
+  // cluster centroids (faint labels) + hover catch
+  A.clusters.forEach(cl=>{const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",X(cl.cx));t.setAttribute("y",Y(cl.cy));t.setAttribute("fill","#5a6070");
+    t.setAttribute("font-size","10");t.setAttribute("text-anchor","middle");t.textContent=cl.label;
+    svg.appendChild(t);});
+  // background rect for empty-space hover -> nearest cluster
+  const bg=document.createElementNS(NS,"rect");bg.setAttribute("x",0);bg.setAttribute("y",0);
+  bg.setAttribute("width",720);bg.setAttribute("height",720);bg.setAttribute("fill","transparent");
+  bg.addEventListener("mousemove",ev=>{const pt=svgXY(ev,svg);
+    const cl=nearestCluster(invX(pt.x),invY(pt.y));showCluster(ev,cl);});
+  bg.addEventListener("mouseleave",hideTip);
+  svg.insertBefore(bg,svg.firstChild);
+  function invX(px){return (px-pad)/W*wx+bx;} function invY(py){return (720-pad-py)/W*wy+by;}
+  // star at current board
+  if(S.proj){const s=document.createElementNS(NS,"text");
+    s.setAttribute("x",X(S.proj.x));s.setAttribute("y",Y(S.proj.y)+7);
+    s.setAttribute("font-size","26");s.setAttribute("text-anchor","middle");
+    s.setAttribute("fill","#ffe08a");s.setAttribute("stroke","#000");s.setAttribute("stroke-width",".6");
+    s.textContent="★";svg.appendChild(s);}
+  drawLegend();
+}
+function svgXY(ev,svg){const r=svg.getBoundingClientRect();
+  return {x:(ev.clientX-r.left)/r.width*720,y:(ev.clientY-r.top)/r.height*720};}
+function nearestCluster(x,y){let best=null,bd=1e18;
+  for(const c of S.atlas.clusters){const d=(c.cx-x)**2+(c.cy-y)**2;if(d<bd){bd=d;best=c;}}return best;}
+function miniBoard(fen){const g=fenGrid(fen);let s='<svg viewBox="0 0 160 160" width="184" height="184">';
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){const x=c*20,y=r*20,dark=(r+c)%2;
+    s+=`<rect x="${x}" y="${y}" width="20" height="20" fill="${dark?"#6b7688":"#b9c2d0"}"/>`;
+    const p=g[r][c];if(p)s+=`<text x="${x+10}" y="${y+15}" font-size="16" text-anchor="middle" `+
+      `fill="${p===p.toUpperCase()?"#fff":"#111"}">${GLY[p]}</text>`;}
+  return s+"</svg>";}
+function showPoint(ev,p){const tip=document.getElementById("tip");
+  tip.querySelector(".lbl").textContent=`${p.result>0?"White won":p.result<0?"Black won":"draw"} · ply ${p.ply} · P(win) ${p.winp}`;
+  tip.querySelector(".brd").innerHTML=miniBoard(p.fen);S.hoverCluster=null;S._hoverFen=p.fen;
+  document.getElementById("bResample").style.display="none";placeTip(ev);}
+function showCluster(ev,cl){const tip=document.getElementById("tip");S.hoverCluster=cl.id;
+  const i=S.resamp[cl.id]||0;
+  tip.querySelector(".lbl").textContent=`${cl.label} · ${cl.n} positions · sample ${i+1}`;
+  const fen=cl.fens[i%cl.fens.length]||"";S._hoverFen=fen;
+  tip.querySelector(".brd").innerHTML=miniBoard(fen);
+  document.getElementById("bResample").style.display="block";placeTip(ev);}
+function placeTip(ev){const tip=document.getElementById("tip");const wrap=document.getElementById("mapwrap");
+  const r=wrap.getBoundingClientRect();tip.style.display="block";
+  tip.style.left=Math.min(ev.clientX-r.left+12,r.width-210)+"px";
+  tip.style.top=Math.min(ev.clientY-r.top+12,r.height-240)+"px";}
+function hideTip(){document.getElementById("tip").style.display="none";}
+document.getElementById("bResample").onclick=()=>{if(S.hoverCluster==null)return;
+  const cl=S.atlas.clusters.find(c=>c.id===S.hoverCluster);
+  S.resamp[cl.id]=((S.resamp[cl.id]||0)+1)%cl.fens.length;
+  const i=S.resamp[cl.id];S._hoverFen=cl.fens[i];
+  document.getElementById("tip").querySelector(".brd").innerHTML=miniBoard(cl.fens[i]);
+  document.getElementById("tip").querySelector(".lbl").textContent=`${cl.label} · sample ${i+1}`;};
+document.getElementById("tip").addEventListener("dblclick",()=>{if(S._hoverFen)loadFen(S._hoverFen);});
+function drawLegend(){const l=document.getElementById("legend");
+  if(S.ck==="result")l.innerHTML='<span class="swatch" style="background:#66d9a6"></span>W '+
+    '<span class="swatch" style="background:#ff7a9c"></span>B <span class="swatch" style="background:#8a90a0"></span>draw';
+  else l.textContent=S.ck+": blue=low → red=high";}
+
+/* ---- load a fen from map ---- */
+async function loadFen(fen){
+  try{const r=await api("/set_board",{fen});if(!r.valid){toast("invalid position");return;}
+    S.fen=fen;S.sel=null;S.legal=r.legal_moves||[];S.proj=r;
+    document.getElementById("moves").innerHTML="";plyN=0;
+    renderBoard();drawMap();setStatus(r.game_over?("terminal · "+r.result):"loaded — your move / engine plays White");
+  }catch(e){toast(e.message);}
+}
+
+/* ---- controls ---- */
+function setMode(m){S.mode=m;S.sel=null;
+  document.getElementById("mPlay").classList.toggle("on",m==="play");
+  document.getElementById("mEdit").classList.toggle("on",m==="edit");
+  document.getElementById("editbar").style.display=m==="edit"?"block":"none";
+  if(m==="play")commitBoard();renderBoard();}
+async function commitBoard(){try{const r=await api("/set_board",{fen:S.fen});
+  if(r.valid){S.legal=r.legal_moves||[];S.proj=r;drawMap();}else toast("invalid — fix the position");}catch(e){toast(e.message);}}
+document.getElementById("mPlay").onclick=()=>setMode("play");
+document.getElementById("mEdit").onclick=()=>{setMode("edit");buildPalette();};
+document.getElementById("bCommit").onclick=commitBoard;
+document.getElementById("stmW").onclick=()=>{S.stm="w";S.fen=gridToFen(fenGrid(S.fen));
+  document.getElementById("stmW").classList.add("on");document.getElementById("stmB").classList.remove("on");};
+document.getElementById("stmB").onclick=()=>{S.stm="b";S.fen=gridToFen(fenGrid(S.fen));
+  document.getElementById("stmB").classList.add("on");document.getElementById("stmW").classList.remove("on");};
+document.getElementById("bFlip").onclick=()=>{S.flip=!S.flip;renderBoard();};
+document.getElementById("bNew").onclick=()=>loadFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+document.getElementById("bToy").onclick=async()=>{const t=await api("/toy");await loadFen(t.fen);};
+document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=()=>{
+  S.ck=b.dataset.ck;document.querySelectorAll("[data-ck]").forEach(x=>x.classList.toggle("on",x===b));drawMap();});
+
+/* ---- boot ---- */
+(async function(){
+  try{S.atlas=await api("/atlas");}catch(e){toast("atlas not built — run build_play_atlas.py");}
+  await loadFen(S.fen);
+})();
+</script>
+</body>
+</html>
