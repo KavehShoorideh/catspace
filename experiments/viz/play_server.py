@@ -51,7 +51,8 @@ class Engine:
 
     def __init__(self, ckpt: str, phead: str, nodes: int, c_puct: float = 1.5,
                  prior_tau: float = 0.5, pw_c: float = 0.0, memory_dir: str | None = None,
-                 tactical_prior: float = 0.0, root_min_visits: int = 0):
+                 tactical_prior: float = 0.0, root_min_visits: int = 0,
+                 policy_path: str | None = None):
         import torch
         from catspace.nn.eval_head import EvalHead
         from catspace.nn.fb import load_ckpt
@@ -75,11 +76,36 @@ class Engine:
                 p = torch.softmax(ph(f), dim=1)
                 return -torch.log(p[:, 0].clamp_min(1e-6)).unsqueeze(-1)
 
+        # AZ-style cheap expansion when a policy head is present (F-only): child
+        # priors from policy(F(node)) + node value from committor(F(node)) in ~1
+        # eval, so a simulation costs ~1 eval instead of branching-many.
+        pol_fn = val_fn = None
+        if policy_path and Path(policy_path).exists():
+            from catspace.nn.policy_head import PolicyHead, legal_priors
+            pp = torch.load(policy_path, map_location=self.dev, weights_only=False)
+            self._policy_head = PolicyHead(d_in=pp["d_in"], hidden=pp.get("hidden", 256)).to(self.dev)
+            self._policy_head.load_state_dict(pp["state"]); self._policy_head.eval()
+
+            def pol_fn(board):
+                f = self._embed_F(board)
+                with self.torch.no_grad():
+                    lg = self._policy_head(self.torch.from_numpy(f[None]).to(self.dev)).cpu().numpy()[0]
+                return legal_priors(lg, board)
+
+            def val_fn(boards):
+                F = self._embed_F_batch(boards)
+                with self.torch.no_grad():
+                    p = self.torch.softmax(ph(self.torch.from_numpy(F).to(self.dev)), dim=1).cpu().numpy()
+                return p[:, 0] - p[:, 2]                 # white-POV W - L in [-1, 1]
+
+            print(f"AZ cheap-expansion ON: policy head {Path(policy_path).name}", flush=True)
+
         self.pol = make_search_policy("mcts", fb, pay["zgoals"]["MATE_W"],
                                       max_nodes=nodes, device=self.dev, c_puct=c_puct,
                                       prior_tau=prior_tau, pw_c=pw_c,
                                       tactical_prior=tactical_prior,
                                       root_min_visits=root_min_visits,
+                                      policy_fn=pol_fn, value_fn=val_fn,
                                       committor_head=Committor(), mate_stop=True)
         self.rng = np.random.default_rng(0)
         self._atlas = None
@@ -592,6 +618,10 @@ def main():
                          "(checks/captures/promotions/material threats): P=(1-w)*field "
                          "+ w*uniform(tactical), and tactical moves always stay in the "
                          "widening window. Ordering only -- values untouched. 0 disables.")
+    ap.add_argument("--policy", default=None,
+                    help="policy-head checkpoint (F-only move priors) enabling AZ-style "
+                         "cheap expansion (~1 eval/sim). Default: auto-load <ckpt>_policy.pt "
+                         "if it exists. '' disables.")
     ap.add_argument("--root-min-visits", type=int, default=10,
                     help="CI-driven root exploration: every non-terminal root move gets "
                          ">= this many visits, then budget goes by UCB/LCB best-arm ID "
@@ -604,10 +634,14 @@ def main():
 
     global ENGINE
     print(f"loading incumbent on CPU ({args.ckpt}) ...", flush=True)
+    policy_path = args.policy
+    if policy_path is None:                              # auto-load <ckpt>_policy.pt
+        cand = Path(args.ckpt).with_name(Path(args.ckpt).stem + "_policy.pt")
+        policy_path = str(cand) if cand.exists() else None
     ENGINE = Engine(args.ckpt, args.phead, args.nodes, c_puct=args.c_puct,
                     prior_tau=args.prior_tau, pw_c=args.pw_c,
                     memory_dir=args.memory or None, tactical_prior=args.tactical_prior,
-                    root_min_visits=args.root_min_visits)
+                    root_min_visits=args.root_min_visits, policy_path=policy_path or None)
     if not (ATLAS_DIR / "atlas.json").exists():
         print("WARNING: atlas.json missing — run experiments/viz/build_play_atlas.py "
               "(the map will 500 until then)", flush=True)

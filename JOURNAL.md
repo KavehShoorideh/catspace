@@ -5075,3 +5075,29 @@ a usable estimate + interval instead of a single-sample point. 28/28 tests
 expansion pays ~branching evals/sim), else it distributes budget EVENLY rather
 than reaching the floor -- still strictly better than PUCT leaving moves at 1.
 Ties to planner cascade.py LUCB (certified-dominance stop).
+
+## 2026-07-19 (cont.): AZ cheap expansion + policy-surprise (methodology fix)
+
+**AZ-style cheap expansion** (policy head, F-only): expanding a node costs ONE
+eval -- child priors from policy(F(node)), node value from committor(F(node)) =
+P(Wwin)-P(Bwin); children created UNEVALUATED (FPU Q until visited). So the node
+budget counts SIMULATIONS not branching*sims. VERDICT (toy, 500n): visit
+concentration [270,92,51,40,12,11,10,10] vs value-only's [2,2,2,...] -- the
+"all moves same visit count" symptom (3 separate reports) is GONE; 500 nodes now
+does ~500 sims. Flag-gated (policy_fn=None -> exact old behavior); 31/31 tests
+(3 new: cheap-expansion sim-count, mate-finding, off-by-default). Server
+auto-loads <ckpt>_policy.pt.
+
+**Policy head** (catspace/nn/policy_head.py, F-only, 4096 from-to). BC bootstrap
+on frozen incumbent: VERDICT POLICY_HEAD top1_legal=0.108 (chance 0.031, n=120k)
+-- field mildly move-informative but weak.
+
+**Policy SURPRISE** (Kaveh: "keep MCTS results, check surprise" -- the right
+metric, not human-move accuracy). Value-only search as the unbiased reference,
+150 holdout positions @800n: VERDICT POLICY_SURPRISE KL(search||policy)=1.370
+vs UNIFORM baseline 0.442, top1_agree=0.040, CE_bestmove=4.143. The BC policy is
+WORSE than uniform as a search prior -- human-cloned moves point away from what
+the committor-search prefers. Confirms BC is the wrong target; the AZ target is
+distilling pi_search into the policy. Caveat: pi_search rides a weak value
+(committor converts 0.15), so distillation buys cheap+self-consistent search,
+not strength -- value/field stays the bottleneck.
