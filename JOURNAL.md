@@ -5289,3 +5289,39 @@ the known centroid-beats-nearest problem). The real test runs on qrl_dtm_surf
 ladder checkpoints (does the move-2 material delta lift, and does propagation
 reach the opening). GRADE: instrument built + committed; verdict pending the
 sharp field.
+
+## 2026-07-19 (cont.): DTM training hinge DISPROVEN — negative result + reframe
+
+Thorough test of "align the field's distance to DTM by a training hinge". It does
+NOT work, in every form tried. Stable held-out Spearman(d, DTM) via
+experiments/eval_dtm_alignment.py (overall is a cross-MATERIAL scale artifact;
+WITHIN-material is the meaningful signal):
+
+| field | overall | within krvk | note |
+|---|---|---|---|
+| composed-hinge run @10k (qrl_dtm_surf) | -0.212 | **-0.126** | hinge HURT |
+| centroid-hinge run @15k (qrl_dtm_full) | ~0 | ~0 | plateaued/eroded |
+| **pure QRL, no hinge** (qrl_iqe_sn_full) | -0.139 | **+0.140** | weak-BEST |
+| pure QRL + DENSE composed retrieval (bank 4000,k16) | **+0.116** | +0.097 | best overall |
+| fine-tune (dominant hinge w2, reduced QRL) | — | — | rank_corr stuck ~0.1, d collapsed to ~3 |
+
+**Diagnoses.** (a) CENTROID target: a single mate pole can't order diverse
+endgames (KRvK/KRRvK/KRRvKBP) -- surfaces-not-poles. (b) COMPOSED-MIN target:
+DEGENERATE minimum -- the min gives gradient to one anchor, so the field maps
+every position near one low-dtm anchor, composed d -> ~constant (~3), no ordering.
+(c) Both HURT: joint QRL+hinge gives WORSE within-material ordering than pure QRL
+(krvk +0.14 -> -0.13). The QRL spread scrambles the hinge, and the hinge can't
+impose ordering without collapsing.
+
+**Reframe (the positive finding).** The pure QRL field already has the natural
+(weak, +0.14) reachability ordering, and the composed RETRIEVAL readout with a
+DENSE DTM bank recovers a positive overall signal (+0.116) WITHOUT any hinge --
+the field only needs good short hops (QRL), the DTM comes from the bank at
+READOUT time. So the path is NOT a training hinge; it is the retrieval readout at
+inference. AND: rank_corr is weak for ALL fields, but weak ordering already gave
+the toy conversion 0.50 vs 0.425 committor -- so the ACTUAL test is conversion,
+not rank_corr. Next (needs Kaveh's steer): (1) integrate the composed retrieval
+readout as the engine value + run conversion A/B (no new training); (2) if a
+trained alignment is still wanted, a MONOTONICITY/ranking hinge along optimal-DTM
+successor pairs (avoids the degenerate min) is the untried option. Stopped all
+training; incumbent serves the UI. cert_base_full remains the incumbent.
