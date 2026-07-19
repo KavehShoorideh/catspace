@@ -120,6 +120,22 @@ class Engine:
         xy = self.proj.transform(self._embed_F(board)[None])[0]
         return round(float(xy[0]), 3), round(float(xy[1]), 3)
 
+    @staticmethod
+    def _san_line(board: chess.Board, node, maxlen: int = 8) -> list:
+        """The principal variation under `node` as SAN — descend max-visit
+        children (this is the line MCTS already built; we just read it out).
+        node.move is the first move relative to `board`."""
+        b = board.copy(stack=False)
+        out, cur = [], node
+        while cur is not None and cur.move is not None and len(out) < maxlen:
+            try:
+                out.append(b.san(cur.move))
+            except (ValueError, AssertionError):
+                break
+            b.push(cur.move)
+            cur = max(cur.children, key=lambda c: c.N, default=None) if cur.children else None
+        return out
+
     def project(self, board: chess.Board) -> dict:
         f = self._embed_F(board)
         xy = self.proj.transform(f[None])[0]
@@ -131,17 +147,24 @@ class Engine:
                     reach=round(reach, 4), winp=round(self.winp(board), 4),
                     cluster=int(near["id"]))
 
-    def analyze(self, board: chess.Board, topk: int = 3) -> dict:
+    def analyze(self, board: chess.Board, topk: int = 3, nodes: int | None = None) -> dict:
         """Top-k candidate moves for the side to move, each with the PROJECTED
-        (x,y) of the resulting position — the board arrows + map vectors both
-        read from this. Includes the current board's own projection (the ★)."""
+        (x,y) of the resulting position AND its principal-variation LINE (SAN).
+        `nodes` temporarily raises the search budget for an on-demand deep probe
+        of this exact position (the 'analyze from here' button)."""
         over, res = self._outcome(board)
         if over:
             px, py = self._xy(board)
             return dict(game_over=True, result=res, winp=round(self.winp(board), 4),
-                        x=px, y=py, candidates=[])
+                        x=px, y=py, candidates=[], pv=[], nodes=0)
         with self.lock:
-            root = self.pol.mcts.run(board)
+            old = self.pol.mcts.max_nodes
+            if nodes:
+                self.pol.mcts.max_nodes = int(nodes)
+            try:
+                root = self.pol.mcts.run(board)
+            finally:
+                self.pol.mcts.max_nodes = old
         cand = sorted(root.children, key=lambda c: c.N, reverse=True)[:topk]
         px, py = self._xy(board)
         out = []
@@ -151,9 +174,12 @@ class Engine:
             cx, cy = self._xy(child)
             out.append(dict(uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
                             value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
-                            winp=round(self.winp(child), 3), x=cx, y=cy))
+                            winp=round(self.winp(child), 3), x=cx, y=cy,
+                            line=self._san_line(board, c)))
+        pv = out[0]["line"] if out else []
         return dict(game_over=False, result=None, winp=round(self.winp(board), 4),
-                    x=px, y=py, candidates=out)
+                    x=px, y=py, candidates=out, pv=pv,
+                    nodes=int(nodes or old))
 
     # -- play --------------------------------------------------------------
     @staticmethod
@@ -195,14 +221,10 @@ class Engine:
             candidates.append(dict(
                 uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
                 value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
-                winp=round(self.winp(child), 3), x=cx, y=cy))
-        # PV: descend max-visit children
-        pv, node = [], best
-        for _ in range(8):
-            if node is None:
-                break
-            pv.append(node.move.uci())
-            node = max(node.children, key=lambda c: c.N, default=None) if node.children else None
+                winp=round(self.winp(child), 3), x=cx, y=cy,
+                line=self._san_line(board, c)))
+        # PV: the best move's line, as SAN (the line MCTS already built)
+        pv = self._san_line(board, best)
         after = board.copy(stack=False)
         san = board.san(best.move)
         after.push(best.move)
@@ -296,7 +318,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(ENGINE.engine_move(self._board(body["fen"])))
             elif u.path == "/analyze":
                 self._json({"ok": True, **ENGINE.analyze(self._board(body["fen"]),
-                            int(body.get("topk", 3)))})
+                            int(body.get("topk", 3)), body.get("nodes"))})
             elif u.path == "/project":
                 self._json({"ok": True, **ENGINE.project(self._board(body["fen"]))})
             elif u.path == "/set_board":
