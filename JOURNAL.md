@@ -5215,3 +5215,40 @@ server proj loader reads the manifest (legacy embedding.pkl still supported).
 UI: algo selector with dynamic per-algo param fields; end-to-end tested
 (umap rebuild -> hot-reload -> /project uses umap OOS transform). Dist dropdown
 relabeled White/Black WIN (not mate) + Draw.
+
+## 2026-07-19 (cont.): DTM hinge built + validated; FULL sharp+aligned run launched
+
+**The DTM hinge (ALIGNMENT lever).** QRL gives a sharp unit-step metric but its
+gradient is unaligned to mate (the spread field's backwards gradient). New
+`--dtm-hinge`: on tablebase-WON endgame positions, regress d(F(s), MATE_W) onto
+the true Syzygy-optimal rollout DTM (plies). QRL's unit-step => distances are in
+ply units => target is dtm directly (scale 1.0), smooth_l1, mate centroid
+refreshed on the zgoal cadence. Data: experiments/gen_dtm_data.py rolls the
+Syzygy-optimal line and counts plies (Syzygy = DTZ+WDL not DTM, so we play +
+count; monotone, covers the whole <=6-piece toy tree, no Gaviota download).
+Acceptance 36-42% (krrkbp/krrvk/krvk), ~3-9/s.
+
+**Smoke (sn_full recipe + hinge, weight 0.3, 300 positions, 1500 steps).**
+The metric ALIGNS to true DTM while QRL stays sharp:
+
+| step | dtm loss | d_mean (tgt~17) | rank_corr(d, DTM) | QRL d_step | d_rand |
+|---|---|---|---|---|---|
+| 100 | 15.9 | 0.67 | +0.016 | 0.82 | 0.79 |
+| 500 | 8.0 | 9.9 | +0.687 | 0.95 | 14.6 |
+| 1000 | 4.5 | 16.3 | +0.683 | ~1.1 | ~16 |
+| ~1300 | 3.5 | 17.8 | **+0.806** | 1.0-1.3 | ~16 |
+
+rank_corr 0.02 -> 0.81; d_mean 0.67 -> ~19 (matches DTM ~17); QRL unit-step held
+(d_step ~1.0-1.3, d_rand spreading to 16, no COLLAPSE). Sharp AND aligned at
+once -- the property neither prior field had (incumbent committor: material-blind
+plateau; qrl_iqe_sn_full: sharp but backwards gradient). GRADE: proven on 300
+positions; the full run tests it at scale.
+
+**FULL run launched (Kaveh: "do a full training run instead of fine tuning").**
+experiments/run_dtm_full.sh = the proven qrl_iqe_sn_full recipe (d=512, IQE
+unit-step, QRL spread with PID/var/unreach anti-collapse, committor-base phead)
++ --dtm-hinge (weight 0.3, batch 128) on the 24k-position dataset. From scratch,
+40k steps, ckpt-every 10000, halt-on-collapse. Durable wrapper waits for the DTM
+data (gen ETA ~60-90 min) then trains (~4 h at ~2.7 it/s). Output:
+qrl_dtm_full.pt. This is the sharp+aligned field candidate; conversion A/B vs the
+incumbent is the acceptance test once it lands.
