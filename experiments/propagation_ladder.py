@@ -90,6 +90,9 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", default="data/derived/sep/cert_base_full.pt")
     ap.add_argument("--dtm-npz", default="data/derived/dtm_endgame.npz")
+    ap.add_argument("--forced-mate", default="data/derived/forced_mate.npz",
+                    help="full-board forced-mate anchors (gen_forced_mate_data.py) added "
+                         "to the W/L surfaces so openings can compose through a nearby mate")
     ap.add_argument("--dtm-scale", type=float, default=1.0,
                     help="divide d(g->mate) plies by this to match the field's distance "
                          "units (1.0 for a DTM-aligned field; larger for a raw field)")
@@ -129,7 +132,20 @@ def main():
             return None, None
         return np.stack([r[0] for r in rows]), np.stack([r[1] for r in rows])
 
-    # W: DTM tablebase white-wins (d=dtm) + white-mate finals (d=0)
+    # forced-mate full-board anchors (gen_forced_mate_data.py): result +/-1, dtm plies.
+    fm = np.load(args.forced_mate) if Path(args.forced_mate).exists() else None
+
+    def _fm(res):
+        if fm is None:
+            return None
+        m = fm["result"] == res
+        p, mt, dm = fm["packed"][m], fm["meta"][m], fm["dtm"][m].astype(np.float32)
+        if len(p) > args.n_waypoints:
+            j = rng.choice(len(p), args.n_waypoints, replace=False)
+            p, mt, dm = p[j], mt[j], dm[j]
+        return p, mt, dm
+
+    # W: DTM tablebase white-wins (d=dtm) + white-mate finals (d=0) + forced white-mates
     w_pk, w_mt, w_dm = [], [], []
     if Path(args.dtm_npz).exists():
         dz = np.load(args.dtm_npz)
@@ -140,14 +156,22 @@ def main():
     if fpk is not None:
         pk, mt = _sample(fpk, fmt, args.n_waypoints)
         w_pk.append(pk); w_mt.append(mt); w_dm.append(np.zeros(len(pk), np.float32))
+    if _fm(1) is not None:
+        p, mt, dm = _fm(1); w_pk.append(p); w_mt.append(mt); w_dm.append(dm)
     if w_pk:
         banks["W(white-win)"] = (embedB(np.concatenate(w_pk), np.concatenate(w_mt)),
                                  np.concatenate(w_dm))
-    # L: black-mate finals (d=0)
+    # L: black-mate finals (d=0) + forced black-mates (d=dtm)
+    l_pk, l_mt, l_dm = [], [], []
     lpk, lmt = _finals_arr(-1)
     if lpk is not None:
         pk, mt = _sample(lpk, lmt, args.n_waypoints)
-        banks["L(black-win)"] = (embedB(pk, mt), np.zeros(len(pk), np.float32))
+        l_pk.append(pk); l_mt.append(mt); l_dm.append(np.zeros(len(pk), np.float32))
+    if _fm(-1) is not None:
+        p, mt, dm = _fm(-1); l_pk.append(p); l_mt.append(mt); l_dm.append(dm)
+    if l_pk:
+        banks["L(black-win)"] = (embedB(np.concatenate(l_pk), np.concatenate(l_mt)),
+                                 np.concatenate(l_dm))
     # D: draw finals (d=0)
     dfin = _draw_finals(shard_dir, args.n_waypoints)
     if dfin:
