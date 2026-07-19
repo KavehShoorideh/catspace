@@ -154,7 +154,8 @@ class MCTS:
                  decision_check_every: int = 16, mate_stop: bool = False,
                  pw_c: float = 0.0, pw_alpha: float = 0.5, pw_min: int = 4,
                  tactical_prior: float = 0.0,
-                 root_min_visits: int = 0, ci_z: float = 1.96):
+                 root_min_visits: int = 0, ci_z: float = 1.96,
+                 policy_fn=None, value_fn=None, fpu_reduction: float = 0.25):
         assert max_nodes >= 1
         # EARLY-STOP LEVERS (2026-07-18, the planner energy objective
         # E[score] - c*compute): spend budget only while it can still change
@@ -209,6 +210,17 @@ class MCTS:
         # left alone. Deeper nodes keep PUCT (+ widening + tactical). 0 disables.
         self.root_min_visits = root_min_visits
         self.ci_z = ci_z
+        # AZ-STYLE CHEAP EXPANSION (Kaveh 2026-07-19: policy head "only using the
+        # field"). When policy_fn is given, expanding a node costs ONE eval: the
+        # child priors come from policy_fn(node) and the node value from
+        # value_fn(node); children are created UNEVALUATED (their Q comes from
+        # backups, with first-play-urgency until visited). So the node budget
+        # counts simulations, not branching*sims -- the fix for value-only
+        # expansion flattening visits at low node counts. policy_fn(board) ->
+        # {move: prior}; value_fn(boards) -> white-POV values in [-1, 1].
+        self.policy_fn = policy_fn
+        self.value_fn = value_fn
+        self.fpu_reduction = fpu_reduction
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
         self.max_nodes = max_nodes
@@ -310,6 +322,17 @@ class MCTS:
             node.terminal_v = DRAW_V if not node.board.is_checkmate() else (
                 MATED_V if node.board.turn == chess.WHITE else MATE_V)
             return node.terminal_v
+
+        if self.policy_fn is not None:
+            # AZ-style: ONE policy eval -> all child priors; ONE value eval ->
+            # the node's backup value. Children stay UNEVALUATED (FPU Q until
+            # visited). ~1 eval/expansion instead of len(children).
+            pri = self.policy_fn(node.board)
+            for c in children:
+                c.P = float(pri.get(c.move, 1e-6))
+            node.children = children
+            self.evals_used += 1
+            return float(self.value_fn([node.board])[0])
 
         # obvious-region soft-terminal: a confidently-resolved child (recognizer
         # certainty >= certainty_stop) is treated as terminal with its committor-
@@ -455,10 +478,20 @@ class MCTS:
                     inside = set(node.pw_order[:k])
                     cand += [c for i, c in enumerate(node.children)
                              if c.tactical and i not in inside]
+        # first-play-urgency: in AZ mode unvisited children have no v_init, so
+        # estimate their (mover-frame) Q as the parent's value minus a reduction
+        # -- discourages fanning out to every unvisited move (lc0 FPU).
+        az = self.policy_fn is not None
+        fpu = (node.Q if white else -node.Q) - self.fpu_reduction
         best, best_s = None, -np.inf
         for c in cand:
-            q = c.terminal_v if c.terminal_v is not None else c.Q
-            s = (q if white else -q) + self.c_puct * c.P * sqrt_n / (1 + c.N)
+            if c.terminal_v is not None:
+                qm = c.terminal_v if white else -c.terminal_v
+            elif az and c.N == 0:
+                qm = fpu
+            else:
+                qm = c.Q if white else -c.Q
+            s = qm + self.c_puct * c.P * sqrt_n / (1 + c.N)
             if s > best_s:
                 best_s, best = s, c
         return best
@@ -593,7 +626,8 @@ class FBMCTSPolicy:
                  certainty_head=None, certainty_stop: float = 0.0,
                  decision_stop: bool = False, mate_stop: bool = False,
                  pw_c: float = 0.0, pw_alpha: float = 0.5, pw_min: int = 4,
-                 tactical_prior: float = 0.0, root_min_visits: int = 0, ci_z: float = 1.96):
+                 tactical_prior: float = 0.0, root_min_visits: int = 0, ci_z: float = 1.96,
+                 policy_fn=None, value_fn=None, fpu_reduction: float = 0.25):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -668,6 +702,7 @@ class FBMCTSPolicy:
                          pw_c=pw_c, pw_alpha=pw_alpha, pw_min=pw_min,
                          tactical_prior=tactical_prior,
                          root_min_visits=root_min_visits, ci_z=ci_z,
+                         policy_fn=policy_fn, value_fn=value_fn, fpu_reduction=fpu_reduction,
                          cache_key_fn=lambda b: f"{b.fen()}|{self.path_counts.get(b.board_fen(), 0)}")
         self.evidence = evidence or {}
         self.evidence_k = evidence_k

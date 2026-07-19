@@ -387,3 +387,32 @@ def test_root_ci_still_takes_mate():
     m = make(nodes=200, root_min_visits=8)
     mv = m.best_move(b); b.push(mv)
     assert b.is_checkmate()
+
+
+# -- AZ-style cheap expansion (2026-07-19: policy head -> ~1 eval/expansion) --
+
+def _uniform_policy(board):
+    ms = list(board.legal_moves)
+    return {m: 1.0 / len(ms) for m in ms} if ms else {}
+
+def _flat_value(boards):
+    return np.zeros(len(boards))
+
+def test_az_expansion_counts_sims_not_branching():
+    # value-only would spend ~branching evals/sim (~10 sims at 200 nodes);
+    # AZ expansion spends ~1 eval/sim -> the root should see ~200 visits.
+    b = chess.Board()
+    m = MCTS(flat_reach, max_nodes=200, policy_fn=_uniform_policy, value_fn=_flat_value)
+    root = m.run(b)
+    assert root.N >= 120, root.N               # cheap expansion => many sims
+    assert m.evals_used <= 205                  # ~1 eval per expansion
+
+def test_az_still_finds_mate_in_one():
+    b = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+    m = MCTS(flat_reach, max_nodes=64, policy_fn=_uniform_policy, value_fn=_flat_value)
+    mv = m.best_move(b); b.push(mv)
+    assert b.is_checkmate()
+
+def test_az_off_is_default():
+    m = MCTS(flat_reach, max_nodes=64)
+    assert m.policy_fn is None
