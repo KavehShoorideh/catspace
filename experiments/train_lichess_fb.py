@@ -349,6 +349,10 @@ def main():
     ap.add_argument("--qrl-lambda-max", type=float, default=0.0,
                     help="hard cap on the PID multiplier + anti-windup on I (0=off). "
                          "Set at the force-balance scale (push+hinge ~8-16): try 20.")
+    ap.add_argument("--freeze-iqe-scale", action="store_true",
+                    help="freeze the IQE global log_scale at 1x (we compare distances, "
+                         "not need absolute ply counts) -> removes the scalar escape "
+                         "valve; iqe-embed-scale becomes the sole fixed scale knob.")
     ap.add_argument("--spectral-norm", action="store_true",
                     help="spectral-normalize the encoder/head Conv+Linear layers "
                          "(bound the Lipschitz constant so the QRL push/hinge can't "
@@ -510,7 +514,8 @@ def main():
                      iqe=args.iqe, iqe_components=args.iqe_components,
                      iqe_embed_scale=args.iqe_embed_scale,
                      iqe_leak_beta=args.iqe_leak_beta,
-                     spectral_norm=args.spectral_norm)
+                     spectral_norm=args.spectral_norm,
+                     freeze_iqe_scale=args.freeze_iqe_scale)
         print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
               f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
