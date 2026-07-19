@@ -64,24 +64,12 @@ def load_rows(shard_dir: Path, picks: list) -> dict:
     return {k: np.concatenate(v) for k, v in out.items()}
 
 
-def cluster_label(results: np.ndarray, plies: np.ndarray) -> str:
-    """Short auto label 'W-heavy | mid' == dominant result + median-ply band."""
-    counts = {r: int((results == r).sum()) for r in (1, 0, -1)}
-    dom = max(counts, key=counts.get)
-    word = {1: "W-heavy", -1: "B-heavy", 0: "Draw"}[dom]
-    med = float(np.median(plies)) if len(plies) else 0.0
-    band = "open" if med < 30 else ("mid" if med < 70 else "late")
-    return f"{word} · {band}"
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", default="data/derived/sep/cert_base_full.pt")
     ap.add_argument("--phead", default="data/derived/sep/cert_base_full_phead.pt")
     ap.add_argument("--n", type=int, default=4000, help="holdout positions to sample")
-    ap.add_argument("--clusters", type=int, default=14, help="k-means clusters on 2-D t-SNE")
-    ap.add_argument("--pool", type=int, default=40, help="max sampled FENs per cluster")
     ap.add_argument("--perplexity", type=float, default=40.0)
     ap.add_argument("--exaggeration", type=float, default=1.6,
                     help=">1 pulls clusters apart (more separation)")
@@ -148,16 +136,9 @@ def main():
     print(f"[stage] fit t-SNE ({n}x{F.shape[1]} -> 2D, perp={args.perplexity} "
           f"exag={args.exaggeration} iter={args.tsne_iter}): {time.time() - t0:.1f}s")
 
-    # -------------------------------------------------- k-means on 2-D coords
-    t0 = time.time()
-    from sklearn.cluster import KMeans
-    k = min(args.clusters, n)
-    km = KMeans(n_clusters=k, random_state=args.seed, n_init=10).fit(xy)
-    labels = km.labels_.astype(int)
-    centers = km.cluster_centers_
-    print(f"[stage] k-means ({k} clusters): {time.time() - t0:.1f}s")
-
     # -------------------------------------------------- assemble atlas.json
+    # (no k-means: the field is a continuum, so imposed cluster boundaries were
+    # just illegible clutter -- the viz shows the raw points + colorings.)
     t0 = time.time()
     fens = [board_from_row(rows["packed"][i], rows["meta"][i]).fen() for i in range(n)]
     results = rows["result"].astype(int)
@@ -166,22 +147,11 @@ def main():
     points = [dict(x=round(float(xy[i, 0]), 3), y=round(float(xy[i, 1]), 3),
                    result=int(results[i]), reach=round(float(reach[i]), 4),
                    winp=round(float(winp[i]), 4), ply=int(plies[i]),
-                   cluster=int(labels[i]), fen=fens[i]) for i in range(n)]
-
-    clusters = []
-    for cid in range(k):
-        member = np.flatnonzero(labels == cid)
-        pool = member if len(member) <= args.pool else \
-            rng.choice(member, size=args.pool, replace=False)
-        clusters.append(dict(
-            id=int(cid), cx=round(float(centers[cid, 0]), 3),
-            cy=round(float(centers[cid, 1]), 3), n=int(len(member)),
-            label=cluster_label(results[member], plies[member]),
-            fens=[fens[int(i)] for i in pool]))
+                   fen=fens[i]) for i in range(n)]
 
     bounds = dict(xmin=round(float(xy[:, 0].min()), 3), xmax=round(float(xy[:, 0].max()), 3),
                   ymin=round(float(xy[:, 1].min()), 3), ymax=round(float(xy[:, 1].max()), 3))
-    atlas = dict(ckpt=args.ckpt, bounds=bounds, points=points, clusters=clusters)
+    atlas = dict(ckpt=args.ckpt, bounds=bounds, points=points)
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -192,8 +162,7 @@ def main():
     np.savez(tsne_dir / "normalizer.npz", mu=proj.normalizer.mu, sd=proj.normalizer.sd)
     with open(tsne_dir / "embedding.pkl", "wb") as f:
         pickle.dump(proj.projection._embedding, f)
-    print(f"[stage] build+write atlas.json ({len(points)} pts, {len(clusters)} clusters) "
-          f"+ tsne_map: {time.time() - t0:.1f}s")
+    print(f"[stage] build+write atlas.json ({len(points)} pts) + tsne_map: {time.time() - t0:.1f}s")
     print(f"wrote {out_dir / 'atlas.json'}")
     print(f"wrote {tsne_dir / 'normalizer.npz'}")
     print(f"wrote {tsne_dir / 'embedding.pkl'}")
