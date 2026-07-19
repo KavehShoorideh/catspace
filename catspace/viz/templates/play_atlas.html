@@ -67,7 +67,7 @@
       <button id="navLast" title="latest">⏭</button>
       <button id="bTakeback" title="undo last full move">⟲ Takeback</button>
       <span style="flex:1"></span>
-      <button id="bAnalyze" title="extend the MCTS by 2000 nodes (accumulates on repeat)">⚙ Analyze +2000</button>
+      <button id="bAnalyze" title="run MCTS from here (accumulates); click again to stop &amp; checkpoint">⚙ Analyze</button>
     </div>
     <div id="editbar" class="row" style="display:none;flex-direction:column;align-items:flex-start">
       <div class="palette" id="palette"></div>
@@ -127,7 +127,7 @@ const NS="http://www.w3.org/2000/svg";
 const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const S={fen:START,mode:"play",flip:false,legal:[],atlas:null,proj:null,ck:"result",
         editPiece:"P",stm:"w",region:null,regionIdx:{},
-        engineColor:"white",analysis:null,busy:false,hist:[],ptr:0,
+        engineColor:"white",analysis:null,busy:false,analyzing:false,hist:[],ptr:0,
         samplePool:[],sampleIdx:0,pinnedLine:null};
 const BRUSH=["green","blue","yellow"];         // top-1/2/3 board arrows
 const VCOL={green:"#66d9a6",blue:"#7aa2ff",yellow:"#ffb86b"};
@@ -142,6 +142,12 @@ async function api(path,body){
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.style.display="block";
   clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",3000);}
 function setStatus(t){document.getElementById("status").textContent=t;}
+/* gray out every control (optionally keep one enabled, e.g. the Stop button)
+   while the engine is thinking or an analysis is running -- prevents Analyze
+   from racing the engine's move (the turn-desync bug) and stops double-fires */
+function setBusy(on,keepId){document.querySelectorAll("button").forEach(b=>{
+  if(keepId&&b.id===keepId){b.disabled=false;b.style.opacity=1;return;}
+  b.disabled=on;b.style.opacity=on?0.4:1;});}
 
 /* ---------- chessground board ---------- */
 function sideToMove(fen){return fen.split(" ")[1]==="w"?"white":"black";}
@@ -179,7 +185,7 @@ function onCgSelect(key){
 
 /* the driver: sync the board, then either the engine moves or the human does */
 async function settle(lastMove){
-  if(S.busy)return; S.busy=true;
+  if(S.busy)return; S.busy=true; setBusy(true);       // engine thinking: gray all
   try{
     let g=await place(S.fen,lastMove);               // sets pieces, S.legal, S.proj
     if(g){drawMap();setStatus("game over · "+g);return;}
@@ -196,7 +202,7 @@ async function settle(lastMove){
     }else{
       await showHint();
     }
-  }catch(e){toast(e.message);}finally{S.busy=false;}
+  }catch(e){toast(e.message);}finally{S.busy=false;setBusy(false);}
 }
 async function showHint(){                            // top-3 for the side to move
   try{const a=await api("/analyze",{fen:S.fen});S.analysis=a;
@@ -300,11 +306,30 @@ async function takeback(){if(S.hist.length<=1)return;
   let t=S.hist.length-2;                                     // drop the last ply…
   while(t>0 && sideToMove(S.hist[t].fen)!==humanColor())t--; // …land on human-to-move
   S.hist=S.hist.slice(0,t+1);S.ptr=t;await goto(t);}
-async function analyzeHere(){setStatus("analyzing…");
-  try{const a=await api("/analyze",{fen:S.fen,topk:3,nodes:2000,extend:true});S.analysis=a;
-    renderReason(a);drawArrows(a.candidates);drawMap();
-    setStatus(`analysis @${a.nodes}n · ⚙ again to +2000${a.game_over?" · game over":""}`);
-  }catch(e){toast(e.message);}}
+/* Analyze is a START/STOP toggle: pressing it runs a CHUNKED extend loop
+   (+800 nodes/chunk, accumulating on the server's cached tree) and turns into
+   a Stop button; every other control grays out. Stop halts the loop -- the
+   server tree is the checkpoint, so pressing Analyze again on the same
+   position RESUMES (extends) from where it left off. */
+async function analyzeHere(){
+  const btn=document.getElementById("bAnalyze");
+  if(S.analyzing){S.analyzing=false;return;}          // Stop clicked: loop will exit
+  if(S.busy){toast("wait for the engine");return;}    // never race the engine's move
+  S.analyzing=true; S.busy=true; setBusy(true,"bAnalyze"); btn.textContent="⏹ Stop";
+  const fen=S.fen;                                     // pin the analysed position
+  try{
+    while(S.analyzing){
+      const a=await api("/analyze",{fen,topk:3,nodes:800,extend:true});
+      if(!S.analyzing)break;                            // stopped during the fetch
+      S.analysis=a; renderReason(a); drawArrows(a.candidates); drawMap();
+      setStatus(`analyzing… ${a.nodes}n  (⏹ to stop)`);
+      if(a.game_over)break;
+      await sleep(0);                                   // let a Stop click register
+    }
+    setStatus(`analysis paused @${S.analysis?S.analysis.nodes:0}n · ⚙ to resume`);
+  }catch(e){toast(e.message);}
+  finally{S.analyzing=false; S.busy=false; btn.textContent="⚙ Analyze"; setBusy(false);}
+}
 
 /* ---------- t-SNE map ---------- */
 function ex(v){const a=Math.min(...v),b=Math.max(...v);return[a,b-a||1];}
