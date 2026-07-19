@@ -17,6 +17,28 @@ Checkpoints referenced:
 
 ---
 
+## 0. Durable launch (survive terminal / VSCode / Claude Code close)
+
+Long runs must NOT depend on the launching terminal staying open. Use the
+wrapper — it detaches the job so it reparents to `launchd` (fully independent of
+the terminal AND of Claude Code), blocks idle sleep only for the job's lifetime,
+and writes a timestamped log + stable symlink + pidfile:
+```
+experiments/launch.sh <name> -- <command...>
+# e.g. the full field run:
+experiments/launch.sh qrl_iqe_sn_full -- \
+  .venv/bin/python -u experiments/train_lichess_fb.py \
+  --ckpt data/derived/sep/qrl_iqe_sn_full.pt --steps 40000 ...   # (full flags in 1b)
+```
+- Monitor: `tail -f artifacts/experiments/<name>.log` (symlink -> newest run)
+- Stop:    `kill "$(cat artifacts/experiments/<name>.pid)"`
+- Mechanism: `nohup` (ignore SIGHUP) + `disown` (drop from job table ->
+  reparents to PID 1) + `caffeinate -i -w <pid>` (no-sleep, auto-exits with the
+  job). Verify detachment with `ps -o ppid= -p <pid>` == `1`, TTY `??`.
+- Do NOT rely on a plain background job (`&`) from an interactive shell, nor on
+  Claude Code's own background-run mode, for multi-hour jobs: those stay tied to
+  the session and can be reaped when it ends. The wrapper is session-independent.
+
 ## 1. Field training (the spread runs)
 
 The objective: an IQE quasimetric F/B field that SPREADS (unreachable pairs far
@@ -149,24 +171,31 @@ Verdict: 51% flip rate 200n-vs-800n, low-gap tercile captures 44.7% of flips
 
 ---
 
-## 5. Interactive play-atlas interface (DONE — play against the engine + t-SNE map)
-Local server (incumbent model on CPU, GPU untouched) + t-SNE region map with
-hover-sample/resample + board editor + Toy button. Two steps:
+## 5. Interactive play-atlas interface (play + analyze + t-SNE map + memory)
+Local server (incumbent model on CPU, GPU untouched). Three steps:
 ```
-# 1. build the atlas (once; CPU, ~12s at n=4000). Re-run to change the field/sample.
-.venv/bin/python experiments/viz/build_play_atlas.py --n 4000 --clusters 14
-# 2. start the server, then open http://localhost:8000
-.venv/bin/python experiments/viz/play_server.py --port 8000 --nodes 400
+# 1. build the atlas (CPU, ~40s at n=4000). Default = CERTIFIED games only
+#    (mate|draw|winner up >=3 pts; --all-outcomes to disable).
+.venv/bin/python experiments/viz/build_play_atlas.py --n 4000
+# 2. seed the position memory (CPU, ~2.5 min at n=200k; once per field)
+.venv/bin/python experiments/build_position_memory.py --n 200000
+# 3. start the server (durable), then open http://localhost:8000
+experiments/launch.sh play_server -- .venv/bin/python experiments/viz/play_server.py \
+  --port 8000 --c-puct 1.0 --pw-c 1.5 --nodes 400
 ```
-Files: `experiments/viz/build_play_atlas.py` (precompute), `experiments/viz/play_server.py`
-(stdlib http API), `catspace/viz/templates/play_atlas.html` (frontend). In the
-UI: Play mode (click a piece then a square — the engine replies as White and the
-reasoning panel shows its candidate moves/visits/values/P(win) + PV), Edit mode
-(piece palette + side-to-move + Commit), Toy button (loads the KRRvKBP start),
-and the map on the right shows a ★ at your current board's projection; hover a
-region for a sampled board with Resample; click a point/sample to load it.
-To visualize a DIFFERENT field, rebuild the atlas with `--ckpt <field>.pt --phead
-<field>_phead.pt` and start the server with the same `--ckpt/--phead`.
+Server flags: `--c-puct` (exploration; 1.0 interactive, 1.5 = training default),
+`--pw-c` (progressive widening; 0 = full-width), `--prior-tau`, `--memory <dir>`
+(position-memory dir; '' disables), `--nodes` (engine-move budget).
+UI: Engine toggle cycles Black → White → **Manual (both sides)** (analysis-board
+mode); depth dropdown (100..2000) sets the Analyze budget; Analyze is start/stop
+with checkpoint (a move or nav interrupts it and nav auto-resumes); **⟳ Rebuild
+map** re-fits the t-SNE (iter/perp/exag/n) live; **🧠 Memory** lists the nearest
+SEEN positions with outcomes/provenance (click → mini-board). Completed UI games
+and every search line reaching a rules-certified terminal are appended to the
+memory automatically (sources play_ui / mcts_sim).
+To view a DIFFERENT field: rebuild atlas + memory with `--ckpt <field>.pt
+[--phead <field>_phead.pt]` and start the server with the same ckpt (the memory
+carries a ckpt tag and warns on mismatch).
 
 ---
 

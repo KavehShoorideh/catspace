@@ -37,6 +37,7 @@ import numpy as np
 import torch
 
 from catspace.audit import build_provenance, is_provenance_clean
+from catspace.data.certified import collect_certified_games
 from catspace.data.encode import board_from_packed
 from catspace.data.shards import LichessPairSource, MixedPairSource
 from catspace.nn.hard_negatives import irreversible_sibling_pairs
@@ -264,6 +265,19 @@ def main():
                          "out via playout_ab --phead-b. The zero-training transfer "
                          "result (cert_base's by-product phead beating toy-trained "
                          "fields at depth) is this mode's floor.")
+    ap.add_argument("--committor-certified-only", action="store_true",
+                    help="train the committor/phead ONLY on board-certified outcomes -- "
+                         "CHECKMATE (proven win), DRAW, or a decisive win where the winner "
+                         "leads by >= --resign-material-gap points. Balanced-position resign/"
+                         "timeout wins are masked OUT of the outcome cross-entropy so a flag-"
+                         "fall/concession can't create a false win surface (Kaveh 2026-07-19). "
+                         "The field GEOMETRY still trains on ALL positions -- masked games "
+                         "apply to the geometry, just not the phead.")
+    ap.add_argument("--resign-material-gap", type=float, default=3.0,
+                    help="with --committor-certified-only, also certify a decisive non-mate "
+                         "win (resignation/timeout) when the winner leads by >= this many "
+                         "nominal points at the final position (Kaveh 2026-07-19: '3+ points'). "
+                         "Lower => more decisive games certified; very high => mates+draws only.")
     ap.add_argument("--cert-lam", type=float, default=8.0)
     ap.add_argument("--cert-scale", type=float, default=50.0)
     ap.add_argument("--zgoal-refresh", type=int, default=2000,
@@ -580,6 +594,17 @@ def main():
     holdout = collect_holdout(human_src, n_batches=8, batch_size=args.batch, seed=999)
     print(f"holdout: {len(holdout)} batches of {args.batch}", flush=True)
     finals = collect_mate_finals(shard_dir)
+    cert_games = None
+    if args.committor_certified_only:
+        if not (args.committor_base or args.cert_base):
+            print("WARNING: --committor-certified-only has no effect without "
+                  "--committor-base/--cert-base", flush=True)
+        else:
+            cert_games = collect_certified_games(shard_dir, args.resign_material_gap)
+            print(f"committor-certified-only ON (mate|draw|resign@>={args.resign_material_gap:g}pts): "
+                  f"{int(cert_games.sum())}/{len(cert_games)} games ({100*cert_games.mean():.1f}%) "
+                  f"carry outcome labels to the phead; ALL games still train the geometry",
+                  flush=True)
 
     provenance = build_provenance(
         script="train_lichess_fb.py", args=vars(args),
@@ -635,6 +660,13 @@ def main():
                 continue                      # QRL multiplier keeps its fixed LR
             g["lr"] = lr_now
         core, result_t, pte_t = tensors[:5], tensors[5], tensors[6]
+        # per-position "outcome certified" (mate|draw) mask, aligned to the same
+        # train rows batch_tensors kept (holdout dropped). Gates ONLY the phead
+        # outcome label -- the geometry below sees every row regardless.
+        cert_mask = None
+        if cert_games is not None:
+            _cidx = np.flatnonzero((batch.meta["game_id"] % HOLDOUT_MOD) != 0)
+            cert_mask = torch.from_numpy(cert_games[batch.meta["game_id"][_cidx]]).to(device)
         if args.qrl_objective:
             if len(tensors) < 9:
                 raise SystemExit("--qrl-objective needs the 1-ply successor from the "
@@ -771,11 +803,16 @@ def main():
                                     horizon_k=args.horizon_k)
         if args.committor_base:
             ps_c, om_c = core[0], core[1]
-            f_s = fb.embed_F(ps_c, om_c)
-            p_loss = descriptive_loss(phead, f_s, result_t.long())
+            f_s = fb.embed_F(ps_c, om_c)   # geometry uses ALL rows; phead label may be masked
+            if cert_mask is not None:      # mates+draws only: drop resign/timeout labels
+                p_loss = (descriptive_loss(phead, f_s[cert_mask], result_t[cert_mask].long())
+                          if bool(cert_mask.any()) else torch.zeros((), device=device))
+            else:
+                p_loss = descriptive_loss(phead, f_s, result_t.long())
             loss = loss + args.phead_weight * p_loss
             if step % 100 == 0:
-                print(f"    phead {float(p_loss):.4f}", flush=True)
+                _cf = f"  cert {float(cert_mask.float().mean()):.2f}" if cert_mask is not None else ""
+                print(f"    phead {float(p_loss):.4f}{_cf}", flush=True)
         if args.cert_base:
             if zW is None or step % args.zgoal_refresh == 0:
                 zg = embed_zgoals(fb, finals, device)
@@ -783,10 +820,16 @@ def main():
                 zB = zg["MATE_B"].to(device).float().detach()
             ps_c, om_c = core[0], core[1]
             f_s = fb.embed_F(ps_c, om_c)
-            p_loss = descriptive_loss(phead, f_s, result_t.long())
+            if cert_mask is not None:      # mates+draws only (see --committor-certified-only)
+                p_loss = (descriptive_loss(phead, f_s[cert_mask], result_t[cert_mask].long())
+                          if bool(cert_mask.any()) else torch.zeros((), device=device))
+            else:
+                p_loss = descriptive_loss(phead, f_s, result_t.long())
             probs = torch.softmax(phead(f_s), dim=1).detach()
             cert = torch.zeros((), device=device)
             ok = torch.isfinite(pte_t)
+            if cert_mask is not None:      # certified won games only regress distance-to-pole
+                ok = ok & cert_mask
             for res_val, z, cls in ((1, zW, 0), (-1, zB, 2)):
                 m = (result_t == res_val) & ok
                 if int(m.sum()) >= 8:

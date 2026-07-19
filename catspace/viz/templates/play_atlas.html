@@ -69,7 +69,10 @@
       <button id="navLast" title="latest">⏭</button>
       <button id="bTakeback" title="undo last full move">⟲ Takeback</button>
       <span style="flex:1"></span>
-      <button id="bAnalyze" title="run MCTS from here (accumulates); click again to stop &amp; checkpoint">⚙ Analyze</button>
+      <span class="k">depth <select id="depthNodes" title="MCTS nodes to search to">
+        <option>100</option><option>200</option><option selected>500</option><option>1000</option><option>2000</option>
+      </select></span>
+      <button id="bAnalyze" title="search to the selected depth; click again to stop &amp; checkpoint">⚙ Analyze</button>
     </div>
     <div id="editbar" class="row" style="display:none;flex-direction:column;align-items:flex-start">
       <div class="palette" id="palette"></div>
@@ -101,6 +104,14 @@
       <span style="flex:1"></span>
       <span class="pill" id="legend"></span>
     </div>
+    <div class="row" style="margin-top:4px" title="re-fit the t-SNE map (CPU; ~15–60s, competes with training)">
+      <span class="pill">map fit:</span>
+      <span class="k">iter <input id="tsIter" type="number" value="1500" min="250" step="250" style="width:62px"></span>
+      <span class="k">perp <input id="tsPerp" type="number" value="40" min="5" step="5" style="width:50px"></span>
+      <span class="k">exag <input id="tsExag" type="number" value="1.6" min="1" step="0.2" style="width:50px"></span>
+      <span class="k">n <input id="tsN" type="number" value="4000" min="500" step="500" style="width:62px"></span>
+      <button id="bRebuild" title="re-run the t-SNE build with these settings and hot-reload">⟳ Rebuild map</button>
+    </div>
     <div id="mapwrap">
       <div id="mapbox"><svg id="map" viewBox="0 0 720 720" preserveAspectRatio="none"></svg></div>
       <div id="tip"></div>
@@ -112,8 +123,10 @@
         <div class="k" id="regionLabel" style="margin:4px 0">click a map point to inspect</div>
         <div class="row">
           <button id="bLoadRegion">Load →</button>
+          <button id="bMemory" title="nearest SEEN positions (vector memory) for the current board">🧠 Memory</button>
         </div>
         <div class="pill" style="margin-top:4px">★ on the map = your current board</div>
+        <div id="memList" class="moves" style="max-height:150px;margin-top:6px"></div>
       </div>
     </div>
   </div>
@@ -130,7 +143,7 @@ const NS="http://www.w3.org/2000/svg";
 const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const S={fen:START,mode:"play",flip:false,legal:[],atlas:null,proj:null,ck:"result",
         editPiece:"P",stm:"w",region:null,regionIdx:{},
-        engineColor:"black",analysis:null,busy:false,analyzing:false,hist:[],ptr:0,
+        engineColor:"black",analysis:null,busy:false,analyzing:false,analyzeAbort:null,hist:[],ptr:0,
         samplePool:[],sampleIdx:0,pinnedLine:null};
 const BRUSH=["green","blue","yellow"];         // top-1/2/3 board arrows
 const VCOL={green:"#66d9a6",blue:"#7aa2ff",yellow:"#ffb86b"};
@@ -138,8 +151,9 @@ let cg, cgMini;                                 // cgMini = the region-inspector
 const humanColor=()=>S.engineColor==="white"?"black":"white";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
-async function api(path,body){
+async function api(path,body,signal){
   const opt=body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{};
+  if(signal)opt.signal=signal;                 // abortable (Analyze chunks are cancelled on move/nav)
   const r=await fetch(path,opt); if(!r.ok) throw new Error((await r.json()).error||r.status); return r.json();
 }
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.style.display="block";
@@ -148,9 +162,29 @@ function setStatus(t){document.getElementById("status").textContent=t;}
 /* gray out every control (optionally keep one enabled, e.g. the Stop button)
    while the engine is thinking or an analysis is running -- prevents Analyze
    from racing the engine's move (the turn-desync bug) and stops double-fires */
-function setBusy(on,keepId){document.querySelectorAll("button").forEach(b=>{
-  if(keepId&&b.id===keepId){b.disabled=false;b.style.opacity=1;return;}
-  b.disabled=on;b.style.opacity=on?0.4:1;});}
+function setBusy(on,keep){const K=Array.isArray(keep)?new Set(keep):(keep?new Set([keep]):new Set());
+  document.querySelectorAll("button").forEach(b=>{
+    if(K.has(b.id)){b.disabled=false;b.style.opacity=1;return;}
+    b.disabled=on;b.style.opacity=on?0.4:1;});}
+/* throttle the heavy (~4000-point) map rebuild: during a streaming Analyze we
+   redraw at most ~1/s (and once at the end) instead of every chunk -- rebuilding
+   the whole SVG every chunk is what locked the tab up. */
+let _lastMapDraw=0;
+function maybeDrawMap(force){const t=Date.now();
+  if(force||t-_lastMapDraw>1000){_lastMapDraw=t;drawMap();}}
+/* Checkpoint + stop a running Analyze: halt the loop and abort the in-flight
+   chunk so a move/navigation can use the engine immediately. The server keeps
+   the accumulated MCTS tree (the checkpoint), so a later Analyze on the same
+   position resumes. Returns true if it actually stopped something. */
+function stopAnalysis(){
+  if(!S.analyzing&&!S.analyzeAbort)return false;
+  S.analyzing=false;
+  if(S.analyzeAbort){try{S.analyzeAbort.abort();}catch(e){}S.analyzeAbort=null;}
+  const btn=document.getElementById("bAnalyze");if(btn)btn.textContent="⚙ Analyze";
+  if(!S.busy)setBusy(false);
+  return true;}
+function maybeResumeAnalysis(was){          // navigation restarts analysis from the new position
+  if(was&&!S.busy&&!S.analyzing&&!game.isGameOver())analyzeHere();}
 
 /* ---------- game core (chess.js: local rules, no per-move server round-trip) ---------- */
 function sideToMove(fen){return fen.split(" ")[1]==="w"?"white":"black";}   // for browsing hist fens
@@ -162,11 +196,11 @@ function legalDests(){const m=new Map();
 function outcomeStr(){if(game.isCheckmate())return (game.turn()==="w"?"Black":"White")+" mates";
   if(game.isInsufficientMaterial())return "insufficient material";
   if(game.isStalemate())return "stalemate"; if(game.isDraw())return "draw"; return "over";}
-function cgConfig(extra){const humanTurn=S.mode==="play"&&turnColor()===humanColor();
+function cgConfig(extra){const humanTurn=S.mode==="play"&&turnColor()!==S.engineColor;  // manual (engine "none") => always
   return Object.assign({
   fen:boardFen(), orientation:S.flip?"black":"white", turnColor:turnColor(),
   coordinates:true, movable:{free:S.mode==="edit",
-    color:S.mode==="edit"?"both":(humanTurn?humanColor():undefined),
+    color:S.mode==="edit"?"both":(humanTurn?turnColor():undefined),   // the side to move is the movable one
     dests:humanTurn?legalDests():new Map(),showDests:true},
   draggable:{showGhost:true}, animation:{enabled:true,duration:120},
   events:{move:onCgMove, select:onCgSelect}, highlight:{lastMove:true,check:true},
@@ -189,8 +223,9 @@ function onCgMove(orig,dest){
   if(S.mode==="edit"){S.fen=piecesToFen(cg.state.pieces);return;}
   const cand=game.moves({verbose:true}).find(m=>m.from===orig&&m.to===dest);
   if(!cand){cg.set(cgConfig());return;}
-  game.move({from:orig,to:dest,promotion:cand.promotion});
-  S.fen=game.fen(); pushHist(S.fen,[orig,dest],cand.san,humanColor()==="white");
+  stopAnalysis();                          // a move checkpoints+stops analysis so the engine is free to reply
+  const mv=game.move({from:orig,to:dest,promotion:cand.promotion});
+  S.fen=game.fen(); pushHist(S.fen,[orig,dest],cand.san,mv.color==="w");   // mover's color (works for manual/both sides)
   syncBoard([orig,dest]);
 }
 function onCgSelect(key){
@@ -209,9 +244,11 @@ async function syncBoard(lastMove){
   S.fen=game.fen();
   cg.set(cgConfig({fen:boardFen(),lastMove:lastMove||undefined,turnColor:turnColor()}));
   projectStar();
-  if(game.isGameOver()){setStatus("game over · "+outcomeStr());return;}
+  if(game.isGameOver()){setStatus("game over · "+outcomeStr());postGameToMemory();return;}
   if(S.mode==="play"&&turnColor()===S.engineColor)await engineMove();
-  else setStatus(`your move (${humanColor()}) · ⚙ Analyze for the engine's read`);
+  else setStatus(S.engineColor==="none"
+     ? `manual — ${turnColor()} to move · ⚙ Analyze for the read`
+     : `your move (${humanColor()}) · ⚙ Analyze for the engine's read`);
 }
 async function projectStar(){          // just the ★ on the map (server projection)
   try{const p=await api("/project",{fen:game.fen()});S.proj=p;}catch(e){}
@@ -226,11 +263,17 @@ async function engineMove(){
       game.move({from,to,promotion:promo}); S.fen=game.fen();
       pushHist(S.fen,[from,to],r.san,S.engineColor==="white");
       cg.set(cgConfig({fen:boardFen(),lastMove:[from,to],turnColor:turnColor()}));}
-    if(cg)cg.setShapes([]); projectStar();
-    setStatus(game.isGameOver()?("game over · "+outcomeStr()):`your move (${humanColor()})`);
+    if(cg)cg.setShapes([]);
+    S.analysis=null; clearReason();      // the read was for the engine's move; clear it for your turn
+    projectStar();
+    if(game.isGameOver()){setStatus("game over · "+outcomeStr());postGameToMemory();}
+    else setStatus(`your move (${humanColor()}) · ⚙ Analyze for your read`);
   }catch(e){toast(e.message);setStatus("engine error");}
   finally{S.busy=false;setBusy(false);}
 }
+function clearReason(){document.querySelector("#cand tbody").innerHTML="";
+  document.getElementById("lines").innerHTML="";
+  document.getElementById("winp").textContent="P(win) —";}
 
 /* top-3 move arrows on the board (chessground shapes) */
 function drawArrows(cands){if(!cg)return;
@@ -290,6 +333,7 @@ function renderReason(r){
    B dark dots), drawn on hover over a best-line */
 function drawHops(cand,ci){const svg=document.getElementById("map");
   if(!svg||!cand.hops||!cand.hops.length||!S.proj||!S.mapX)return;
+  if(cand.x==null||cand.hops.some(h=>h.x==null))return;   // unprojected streaming frame
   const X=S.mapX,Y=S.mapY,col=VCOL[BRUSH[ci]]||"#7aa2ff";
   const pts=[[S.proj.x,S.proj.y]].concat(cand.hops.map(h=>[h.x,h.y]));
   const pl=document.createElementNS(NS,"polyline");
@@ -306,7 +350,9 @@ function drawHops(cand,ci){const svg=document.getElementById("map");
     t.textContent=`${j+1}.${h.san}`;svg.appendChild(t);});}
 function previewHop(h){miniShow(h.fen);
   document.getElementById("regionLabel").textContent=`${h.white?"White":"Black"} plays ${h.san}`;}
-async function goto(i){if(i<0||i>=S.hist.length||S.busy)return;S.ptr=i;const h=S.hist[i];
+async function goto(i){if(i<0||i>=S.hist.length||S.busy)return;
+  const was=stopAnalysis();                           // navigating checkpoints+stops analysis
+  S.ptr=i;const h=S.hist[i];
   S.analysis=null;if(cg)cg.setShapes([]);rebuildMoves();
   try{game.load(h.fen);}catch(e){}
   const tip=(i===S.hist.length-1);
@@ -315,10 +361,12 @@ async function goto(i){if(i<0||i>=S.hist.length||S.busy)return;S.ptr=i;const h=S
     cg.set(cgConfig({fen:h.fen.split(" ")[0],lastMove:h.lastMove||undefined,
       turnColor:sideToMove(h.fen),movable:{color:undefined,dests:new Map()}}));
     projectStar();
-    setStatus(`browsing ${i}/${S.hist.length-1} — ⏭ to resume, Takeback to branch`);}}
+    setStatus(`browsing ${i}/${S.hist.length-1} — ⏭ to resume, Takeback to branch`);}
+  maybeResumeAnalysis(was);}                            // start analysis again from the new position, if it was running
 async function takeback(){if(S.hist.length<=1||S.busy)return;
   let t=S.hist.length-2;                                     // drop the last ply…
-  while(t>0 && sideToMove(S.hist[t].fen)!==humanColor())t--; // …land on human-to-move
+  if(S.engineColor!=="none")                                 // engine mode: land on human-to-move
+    while(t>0 && sideToMove(S.hist[t].fen)!==humanColor())t--;
   S.hist=S.hist.slice(0,t+1);S.ptr=t;await goto(t);}
 /* Analyze is a START/STOP toggle: pressing it runs a CHUNKED extend loop
    (+800 nodes/chunk, accumulating on the server's cached tree) and turns into
@@ -327,22 +375,61 @@ async function takeback(){if(S.hist.length<=1||S.busy)return;
    position RESUMES (extends) from where it left off. */
 async function analyzeHere(){
   const btn=document.getElementById("bAnalyze");
-  if(S.analyzing){S.analyzing=false;return;}          // Stop clicked: loop will exit
-  if(S.busy){toast("wait for the engine");return;}    // never race the engine's move
-  S.analyzing=true; S.busy=true; setBusy(true,"bAnalyze"); btn.textContent="⏹ Stop";
-  const fen=S.fen;                                     // pin the analysed position
+  if(S.analyzing){stopAnalysis();                       // Stop clicked
+    if(S.analysis)setStatus(`analysis paused @${S.analysis.nodes}n · ⚙ to resume`);return;}
+  if(S.busy){toast("wait for the engine");return;}      // never race the engine's move
+  if(game.isGameOver()){toast("game over");return;}
+  const target=Math.max(100, parseInt(gv("depthNodes"))||500);   // user-selected search depth (nodes)
+  const fen=S.fen;                                       // pin the analysed position
+  const ac=new AbortController(); S.analyzeAbort=ac;
+  S.analyzing=true;                                       // NOTE: does NOT set S.busy -> a move/nav can interrupt
+  // keep NAV + Stop live so you can move/browse mid-analysis (those interrupt it);
+  // gray only the board-mutating controls.
+  setBusy(true,["bAnalyze","navFirst","navPrev","navNext","navLast","bTakeback"]);
+  btn.textContent="⏹ Stop"; let first=true;
   try{
     while(S.analyzing){
-      const a=await api("/analyze",{fen,topk:3,nodes:800,extend:true});
-      if(!S.analyzing)break;                            // stopped during the fetch
-      S.analysis=a; renderReason(a); drawArrows(a.candidates); drawMap();
-      setStatus(`analyzing… ${a.nodes}n  (⏹ to stop)`);
-      if(a.game_over)break;
-      await sleep(0);                                   // let a Stop click register
+      // streaming chunks skip the ~0.7s t-SNE transform (project:false);
+      // one projected frame is fetched after the loop
+      const a=await api("/analyze",{fen,topk:3,nodes:Math.min(500,target),extend:true,project:false},ac.signal);
+      if(!S.analyzing)break;                              // stopped during the fetch
+      S.analysis=a; renderReason(a); drawArrows(a.candidates);
+      setStatus(`analyzing… ${a.nodes}n  (move/nav to interrupt · ⏹ to stop)`);
+      if(a.game_over){S.analyzing=false;break;}
+      if(a.nodes>=target){S.analyzing=false;setStatus(`search reached ${a.nodes}n (depth ${target})`);break;}
+      await sleep(120);                                   // give the server room to serve moves/UI between chunks
     }
-    setStatus(`analysis paused @${S.analysis?S.analysis.nodes:0}n · ⚙ to resume`);
-  }catch(e){toast(e.message);}
-  finally{S.analyzing=false; S.busy=false; btn.textContent="⚙ Analyze"; setBusy(false);}
+    if(S.analysis&&!S.analysis.game_over){                // final PROJECTED frame (nodes:0 = readout only)
+      const a=await api("/analyze",{fen,topk:3,nodes:0,extend:true,project:true});
+      S.analysis=a; renderReason(a); drawArrows(a.candidates);
+    }
+    maybeDrawMap(true);                                   // full map redraw with projected overlay
+  }catch(e){ if(e.name!=="AbortError") toast(e.message); }
+  finally{
+    S.analyzing=false; S.analyzeAbort=null; btn.textContent="⚙ Analyze";
+    if(!S.busy){ setBusy(false);
+      if(S.analysis && !game.isGameOver())
+        setStatus(`analysis paused @${S.analysis.nodes}n · ⚙ to resume`); }
+  }
+}
+
+/* ---------- t-SNE map rebuild (deeper fit on demand) ---------- */
+const gv=id=>document.getElementById(id).value;
+async function rebuildAtlas(){
+  stopAnalysis();
+  const body={n:parseInt(gv("tsN"))||4000, perplexity:parseFloat(gv("tsPerp"))||40,
+              exaggeration:parseFloat(gv("tsExag"))||1.6, tsne_iter:parseInt(gv("tsIter"))||1500};
+  S.busy=true; setBusy(true);
+  if(cg)cg.set(cgConfig({movable:{color:undefined,dests:new Map()}}));   // freeze the board during the rebuild
+  setStatus(`rebuilding map (iter ${body.tsne_iter}, n ${body.n})… CPU, ~15–60s`);
+  try{
+    await api("/rebuild_atlas",body);
+    S.atlas=await api("/atlas"); _lastMapDraw=0;         // reload the freshly-fitted points
+    await projectStar();                                  // re-project ★ + full drawMap on the new map
+    toast(`map rebuilt · ${body.tsne_iter} iters, perp ${body.perplexity}, n ${body.n}`);
+    setStatus("map rebuilt");
+  }catch(e){ toast("rebuild failed: "+e.message); setStatus("rebuild failed"); }
+  finally{ S.busy=false; setBusy(false); if(cg)cg.set(cgConfig()); }
 }
 
 /* ---------- t-SNE map ---------- */
@@ -420,6 +507,30 @@ function showInspect(fen,label){S._regionFen=fen;
   document.getElementById("regionLabel").textContent=label||"";miniShow(fen);}
 document.getElementById("bLoadRegion").onclick=()=>{if(S._regionFen)loadFen(S._regionFen);};
 
+/* ---------- position memory (nearest seen positions + outcomes) ---------- */
+async function memShow(){
+  const L=document.getElementById("memList");L.innerHTML="<span class='k'>querying…</span>";
+  try{
+    const r=await api("/neighbors",{fen:game.fen(),k:8});
+    if(!r.neighbors.length){L.innerHTML="<span class='k'>memory empty / not built</span>";return;}
+    L.innerHTML="";
+    r.neighbors.forEach(nb=>{
+      const g=nb.result>0?"1-0":nb.result<0?"0-1":nb.result===0?"½-½":"?";
+      const d=document.createElement("div");d.className="lrow";d.style.cursor="pointer";
+      d.innerHTML=`<b>${g}</b>${nb.certified?"":" <span class='k'>(uncert.)</span>"} `+
+        `<span class='k'>${nb.source} · d=${nb.dist.toFixed(3)}</span>`;
+      d.onclick=()=>showInspect(nb.fen,`memory: ${g} (${nb.source}, d=${nb.dist.toFixed(3)})`);
+      L.appendChild(d);});
+  }catch(e){L.innerHTML="";toast(e.message);}
+}
+const _postedGames=new Set();
+async function postGameToMemory(){        // a COMPLETED ui game feeds the memory
+  const key=game.fen(); if(_postedGames.has(key))return; _postedGames.add(key);
+  const result=game.isCheckmate()?(game.turn()==="w"?"black":"white"):"draw";
+  try{const r=await api("/memory_add_game",{fens:S.hist.map(h=>h.fen),result});
+    if(r.added)toast(`memory +${r.added} positions (${result})`);}catch(e){}
+}
+
 /* ---------- load a fen ---------- */
 async function loadFen(fen){
   try{game.load(fen);}catch(e){toast("invalid position");return;}
@@ -450,8 +561,10 @@ function setMode(m){S.mode=m;
 document.getElementById("mPlay").onclick=()=>setMode("play");
 document.getElementById("mEdit").onclick=()=>setMode("edit");
 document.getElementById("bCommit").onclick=()=>setMode("play");
-document.getElementById("bSide").onclick=()=>{S.engineColor=S.engineColor==="white"?"black":"white";
-  document.getElementById("bSide").textContent="Engine: "+(S.engineColor==="white"?"White":"Black");
+document.getElementById("bSide").onclick=()=>{S.engineColor=          // cycle Black -> White -> Manual
+    S.engineColor==="black"?"white":S.engineColor==="white"?"none":"black";
+  document.getElementById("bSide").textContent=
+    S.engineColor==="none"?"Manual (both sides)":"Engine: "+(S.engineColor==="white"?"White":"Black");
   if(S.mode==="play")syncBoard(null);};
 document.getElementById("bClear").onclick=()=>{cg.set({fen:"8/8/8/8/8/8/8/8"});S.fen="8/8/8/8/8/8/8/8 "+S.stm+" - - 0 1";};
 document.getElementById("stmW").onclick=()=>{S.stm="w";S.fen=piecesToFen(cg.state.pieces);
@@ -471,6 +584,8 @@ document.getElementById("bNew").onclick=()=>loadFen(START);
 document.getElementById("bToy").onclick=async()=>{const t=await api("/toy");loadFen(t.fen);};
 document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=()=>{S.ck=b.dataset.ck;
   document.querySelectorAll("[data-ck]").forEach(x=>x.classList.toggle("on",x===b));drawMap();});
+document.getElementById("bRebuild").onclick=rebuildAtlas;
+document.getElementById("bMemory").onclick=memShow;
 
 /* ---------- boot ---------- */
 (async function(){

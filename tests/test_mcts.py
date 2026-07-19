@@ -269,3 +269,81 @@ def test_coherence_from_committor_confidence():
               certainty_fn=conf_low, certainty_stop=0.0).run(b.copy())
     assert rh.coh_gamma > 0.95            # confident => ~no discount despite many moves
     assert rl.coh_gamma < rh.coh_gamma    # uncertain => discounted more
+
+
+# -- progressive widening (2026-07-19, interim until the plan-alignment prior) --
+
+def test_pw_restricts_descent_to_top_k():
+    # flat field, 20+ legal moves: with pw on and few visits, descent must stay
+    # inside the top-K window instead of touching every child
+    b = chess.Board()  # start position, 20 legal moves
+    m = make(nodes=120, pw_c=1.0, pw_alpha=0.5, pw_min=4)
+    root = m.run(b)
+    visited = sum(1 for c in root.children if c.N > 0)
+    k_final = max(4, int(np.ceil(1.0 * root.N ** 0.5)))
+    assert visited <= k_final, (visited, k_final, root.N)
+
+
+def test_pw_off_is_default_and_full_width():
+    b = chess.Board()
+    m = make(nodes=120)
+    assert m.pw_c == 0.0          # default off: pre-widening behavior preserved
+    root = m.run(b)
+    assert root.pw_order is None  # no order computed when disabled
+
+
+def test_pw_still_finds_mate_in_one():
+    # a mate child has maximal mover value -> always index 0 of pw_order,
+    # so widening can never hide it
+    b = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+    m = make(nodes=64, pw_c=1.0, pw_min=2)
+    mv = m.best_move(b)
+    b.push(mv)
+    assert b.is_checkmate()
+
+
+# -- tactical prior (2026-07-19: "spend nodes on checks, captures, threats") --
+
+from catspace.nn.mcts import is_tactical_move
+
+
+def _tac(fen, uci):
+    b = chess.Board(fen)
+    m = chess.Move.from_uci(uci)
+    assert m in b.legal_moves, (fen, uci)
+    b2 = b.copy(stack=False); b2.push(m)
+    return is_tactical_move(b, m, b2)
+
+
+def test_tactical_detector():
+    start = chess.Board().fen()
+    assert not _tac(start, "e2e4")                       # quiet opening move
+    assert _tac("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2",
+                "e4d5")                                  # capture
+    assert _tac("4k3/8/8/8/8/8/8/R3K3 w - - 0 1", "a1a8")  # check
+    assert _tac("4k3/P7/8/8/8/8/8/4K3 w - - 0 1", "a7a8q")  # promotion
+    # material threat, no check/capture: Nc4-b6 attacks the a8 queen (9 > 3)
+    assert _tac("q3k3/8/8/8/2N5/8/8/4K3 w - - 0 1", "c4b6")
+    # same knight retreating to e3 threatens nothing
+    assert not _tac("q3k3/8/8/8/2N5/8/8/4K3 w - - 0 1", "c4e3")
+
+
+def test_tactical_prior_boosts_and_stays_in_window():
+    # flat field: without the tactical prior all P equal; with it, the capture
+    # move must carry MORE prior than a quiet move and stay in the PW window
+    fen = "rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2"
+    b = chess.Board(fen)
+    m = make(nodes=8, pw_c=1.0, pw_min=2, tactical_prior=0.5)
+    root = m.run(b)
+    P = {c.move.uci(): c.P for c in root.children}
+    assert P["e4d5"] > P["a2a3"]          # capture out-priors a quiet pawn push
+    tac = [c for c in root.children if c.tactical]
+    assert any(c.move.uci() == "e4d5" for c in tac)
+
+
+def test_tactical_prior_off_is_default():
+    m = make(nodes=8)
+    assert m.tactical_prior == 0.0
+    b = chess.Board()
+    root = m.run(b)
+    assert not any(c.tactical for c in root.children)   # flag not even computed
