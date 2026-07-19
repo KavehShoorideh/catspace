@@ -146,6 +146,7 @@
         <div class="k" id="regionLabel" style="margin:4px 0">click a map point to inspect</div>
         <div class="row">
           <button id="bLoadRegion">Load →</button>
+          <button id="bNavigate" title="adversarial approach lines from your current board to this position: you steer toward it, the opponent resists (field-native, no policy head)">🧭 Navigate here</button>
           <button id="bMemory" title="nearest SEEN positions (vector memory) for the current board">🧠 Memory</button>
         </div>
         <div class="pill" style="margin-top:4px">★ on the map = your current board</div>
@@ -167,7 +168,7 @@ const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const S={fen:START,mode:"play",flip:false,legal:[],atlas:null,proj:null,ck:"result",
         editPiece:"P",stm:"w",region:null,regionIdx:{},
         engineColor:"black",analysis:null,busy:false,analyzing:false,analyzeAbort:null,hist:[],ptr:0,
-        samplePool:[],sampleIdx:0,pinnedLine:null,topk:3,autoGen:0,rebuilding:false,rebuildAbort:null};
+        samplePool:[],sampleIdx:0,pinnedLine:null,topk:3,autoGen:0,rebuilding:false,rebuildAbort:null,navigate:null};
 const BRUSH=["green","blue","yellow"];         // top-1/2/3 board arrows
 const VCOL={green:"#66d9a6",blue:"#7aa2ff",yellow:"#ffb86b"};
 let cg, cgMini;                                 // cgMini = the region-inspector board
@@ -390,7 +391,7 @@ function previewHop(h){miniShow(h.fen);
 async function goto(i){if(i<0||i>=S.hist.length||S.busy)return;
   const was=stopAnalysis();                           // navigating checkpoints+stops analysis
   S.ptr=i;const h=S.hist[i];
-  S.analysis=null;if(cg)cg.setShapes([]);rebuildMoves();
+  S.analysis=null;S.navigate=null;if(cg)cg.setShapes([]);rebuildMoves();
   try{game.load(h.fen);}catch(e){}
   const tip=(i===S.hist.length-1);
   if(tip){await syncBoard(h.lastMove);}               // resume live play from the tip
@@ -576,6 +577,14 @@ function drawMap(){
       const tx=document.createElementNS(NS,"text");tx.setAttribute("x",X(c.x));tx.setAttribute("y",Y(c.y)-8*zf);
       tx.setAttribute("fill",col);tx.setAttribute("font-size",11*zf);tx.setAttribute("text-anchor","middle");
       tx.setAttribute("pointer-events","none");tx.textContent=c.san;svg.appendChild(tx);});}
+  if(S.navigate&&S.proj&&S.mapX){                       // adversarial approach lines + target ◆
+    (S.navigate.candidates||[]).slice(0,3).forEach((c,i)=>drawHops(c,i));
+    const t=S.navigate.target;
+    if(t&&t.x!=null){const d=document.createElementNS(NS,"text");
+      d.setAttribute("x",X(t.x));d.setAttribute("y",Y(t.y)+8*zf);d.setAttribute("font-size",24*zf);
+      d.setAttribute("text-anchor","middle");d.setAttribute("fill","#ff7ac6");d.setAttribute("stroke","#000");
+      d.setAttribute("stroke-width",.7*zf);d.setAttribute("pointer-events","none");d.textContent="◆";svg.appendChild(d);}
+  }
   if(S.proj){const s=document.createElementNS(NS,"text");s.setAttribute("x",X(S.proj.x));
     s.setAttribute("y",Y(S.proj.y)+8*zf);s.setAttribute("font-size",28*zf);s.setAttribute("text-anchor","middle");
     s.setAttribute("fill","#ffe08a");s.setAttribute("stroke","#000");s.setAttribute("stroke-width",.7*zf);
@@ -605,6 +614,26 @@ function drawLegend(){const l=document.getElementById("legend");
 function showInspect(fen,label){S._regionFen=fen;
   document.getElementById("regionLabel").textContent=label||"";miniShow(fen);}
 document.getElementById("bLoadRegion").onclick=()=>{if(S._regionFen)loadFen(S._regionFen);};
+
+/* adversarial navigate: approach lines from the current board to the clicked
+   target (you steer toward it, opponent resists). Field-native, no policy head. */
+async function navigateTo(targetFen){
+  if(!targetFen){toast("click a map point to inspect, then Navigate");return;}
+  if(S.busy||S.analyzing){toast("wait for the current search");return;}
+  const nodes=parseInt(gv("depthNodes"))||600;
+  stopAnalysis(); S.analysis=null;                       // navigate is its own overlay
+  S.busy=true; setBusy(true,["bNavigate"]);
+  setStatus(`navigating to target (${nodes}n, adversarial: you approach, opponent resists)…`);
+  try{
+    const r=await api("/navigate",{fen:game.fen(),target_fen:targetFen,nodes});
+    S.navigate=r; _lastMapDraw=0; drawMap(); drawArrows(r.candidates||[]);
+    const lines=(r.candidates||[]).map((c,i)=>`${"①②③"[i]||(i+1)} ${(c.hops||[]).map(h=>h.san).join(" ")}`).join("   ");
+    toast(`approach lines — ${lines||"(none found)"}`);
+    setStatus("navigate: top-3 approach lines on the map (◆ = target)");
+  }catch(e){toast("navigate: "+e.message);setStatus("navigate failed");}
+  finally{S.busy=false;setBusy(false);}
+}
+document.getElementById("bNavigate").onclick=()=>navigateTo(S._regionFen);
 
 /* show MORE of the moves MCTS tried: re-serve the SAME tree (nodes:0, no new
    search) with a larger topk. Toggles top-3 <-> all tried. */
@@ -646,7 +675,7 @@ async function postGameToMemory(){        // a COMPLETED ui game feeds the memor
 /* ---------- load a fen ---------- */
 async function loadFen(fen){
   try{game.load(fen);}catch(e){toast("invalid position");return;}
-  S.fen=game.fen();S.analysis=null;
+  S.fen=game.fen();S.analysis=null;S.navigate=null;
   S.hist=[{fen:S.fen,lastMove:null,san:null,white:null}];S.ptr=0;rebuildMoves();
   document.querySelector("#cand tbody").innerHTML="";document.getElementById("lines").innerHTML="";
   if(cg)cg.setShapes([]);
