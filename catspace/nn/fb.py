@@ -96,7 +96,7 @@ class TorchFB(nn.Module):
                  outcome_poles: bool = False, concept_axes: int = 0,
                  iqe: bool = False, iqe_components: int = 8,
                  iqe_embed_scale: float = 50.0, iqe_leak_beta: float = 0.0,
-                 spectral_norm: bool = False):
+                 spectral_norm: bool = False, freeze_iqe_scale: bool = False):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional or outcome_poles or iqe:
@@ -110,7 +110,8 @@ class TorchFB(nn.Module):
                            iqe_components=iqe_components,
                            iqe_embed_scale=iqe_embed_scale,
                            iqe_leak_beta=iqe_leak_beta,
-                           spectral_norm=spectral_norm)
+                           spectral_norm=spectral_norm,
+                           freeze_iqe_scale=freeze_iqe_scale)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -141,6 +142,14 @@ class TorchFB(nn.Module):
             from catspace.nn.iqe import IQE
             self.iqe_head = IQE(d, components=iqe_components,
                                 leak_beta=iqe_leak_beta)
+            if freeze_iqe_scale:
+                # FREEZE the global distance scale (Kaveh 2026-07-18): log_scale
+                # exists only to calibrate distances to absolute ply-gaps, which
+                # we DON'T need -- the metric is used for COMPARISON (ordering /
+                # reachability), invariant under a global factor. Freezing it at
+                # 1x removes the scalar escape valve spectral norm doesn't cover,
+                # so the fixed iqe_embed_scale is the sole (non-learnable) scale.
+                self.iqe_head.log_scale.requires_grad_(False)
         elif quasimetric:
             self.metric_scale = nn.Parameter(torch.ones(d))
             self.W = nn.Parameter(torch.zeros(d, d))
