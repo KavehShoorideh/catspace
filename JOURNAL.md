@@ -4873,3 +4873,24 @@ ply-meaning. Alt: lower floor->~15, offset->~8 into the current ceiling
 run. Separate worthwhile lever (Kaveh): strip omega from F for the quasimetric
 field (geometry should be player-independent; omega belongs on the committor/
 measure side only) -- --omega-free-field.
+
+
+## 2026-07-18 (Fable) — BUNDLED FIX STABLE: SN + freeze-log_scale + embed_scale2 + omega-free -> launching the full run
+
+qrl_iqe_sn3_smoke (2500 steps, all four levers bundled per Kaveh "get rid of
+the one-lever rule"): STABLE, 0 collapse.
+  final: lam=21.9 (bounded), d_step=1.20 (pinned), d_rand=27.1, d_unr=27.7.
+  log_scale=0.000 EXACTLY (freeze confirmed -> scalar escape valve removed).
+  omega_free=True (F is player-independent geometry now).
+Spread 27 vs step 1.2 = a 22:1 reachable/far ratio, bounded and stable. The
+d_unr~d_oth intermingling is expected (both cross-game pairs are genuinely far;
+the important separation is d_step<<d_rand, which is clean). The scale-runaway
+saga is closed: spectral norm bounds the coordinate scale, frozen log_scale
+removes the scalar gauge, embed_scale=2 sets a fixed working scale with room
+for the floor, omega-free keeps the geometry a property of the rules. Bundle
+recorded here for bisection if the full run regresses.
+
+Launched the FULL run: qrl_iqe_sn_full.pt, 40k steps, this exact recipe,
+ckpt-every 10000, detector armed. This is the first field recipe that survived
+the full 2500-step validation with lambda bounded and the pin held -- the
+candidate for a genuinely-spread, conversion-testable field.
