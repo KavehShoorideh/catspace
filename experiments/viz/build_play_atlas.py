@@ -9,8 +9,7 @@ serves and the frontend (C) draws:
      ALWAYS -- the training GPU/MPS is busy),
   3. fit a persisted openTSNE map on the normalized F (out-of-sample
      transformable so B can project NEW boards),
-  4. k-means the 2-D t-SNE coords into ~14 clusters (clustering, not
-     absolute distance, is the meaningful structure),
+  4. (no clustering -- the field is a continuum; the viz shows raw points),
 
 then write artifacts/generated/play_atlas/atlas.json plus the persisted map
 (tsne_map/normalizer.npz + tsne_map/embedding.pkl) EXACTLY as the DATA
@@ -21,9 +20,10 @@ Per-point:
                             F rows are unit, so reach is a cosine similarity)
   winp  = softmax(phead(F(s)))[...,0]   (P(win), White-POV; class 0 == W)
 
-Usage (small smoke run, then the real run the orchestrator launches):
-  .venv/bin/python experiments/viz/build_play_atlas.py --n 200 --clusters 6
-  .venv/bin/python experiments/viz/build_play_atlas.py            # n=4000, 14 clusters
+Usage:
+  .venv/bin/python experiments/viz/build_play_atlas.py            # incumbent, n=4000
+  .venv/bin/python experiments/viz/build_play_atlas.py --ckpt <field>.pt --phead <field>_phead.pt \
+      --n 4000 --exaggeration 4 --tsne-iter 2000    # view any field's geometry
 """
 from __future__ import annotations
 
