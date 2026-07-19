@@ -163,8 +163,8 @@ function cgConfig(extra){const humanTurn=S.mode==="play"&&sideToMove(S.fen)===hu
   events:{move:onCgMove, select:onCgSelect}, highlight:{lastMove:true,check:true},
 },extra||{});}
 function initBoard(){cg=Chessground(document.getElementById("board"),cgConfig());
-  cgMini=Chessground(document.getElementById("regionBoard"),
-    {viewOnly:true,coordinates:false,fen:"8/8/8/8/8/8/8/8"});
+  try{cgMini=Chessground(document.getElementById("regionBoard"),
+    {viewOnly:true,coordinates:false,fen:"8/8/8/8/8/8/8/8"});}catch(e){cgMini=null;}
   // redraw both boards when their (resizable) containers change size
   const ro=new ResizeObserver(()=>{try{cg.redrawAll();cgMini.redrawAll();}catch(e){}});
   ro.observe(document.getElementById("board"));
