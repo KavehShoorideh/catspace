@@ -49,7 +49,37 @@ def rollout_dtm(board, tb, cap=200):
     return None
 
 
+def gen_chunk(task):
+    """One worker: generate `n` WON positions of `material` with its OWN
+    tablebase handle + seed (position generation is embarrassingly parallel --
+    each rollout is independent). Returns (packed, meta, dtm, material_index)."""
+    material, mi, n, seed, syzygy_dir = task
+    tb = TB(syzygy_dir)
+    rng = np.random.default_rng(seed)
+    packs, metas, dtms = [], [], []
+    got = tries = 0
+    while got < n and tries < n * 300:
+        tries += 1
+        b = random_endgame_start(rng, material)
+        if b is None or b.turn != chess.WHITE:
+            continue
+        if white_pov_value(b, tb) != 1.0:              # WON only (DTM defined)
+            continue
+        dtm = rollout_dtm(b, tb)
+        if dtm is None or dtm < 1:
+            continue
+        packs.append(encode_packed(b)); metas.append(encode_meta(b)); dtms.append(dtm)
+        got += 1
+    tb.close()
+    packed = np.stack(packs) if packs else np.zeros((0,), dtype=np.uint8)
+    meta = np.stack(metas) if metas else np.zeros((0,), dtype=np.uint8)
+    return packed, meta, np.array(dtms, dtype=np.float32), mi
+
+
 def main():
+    import os
+    from concurrent.futures import ProcessPoolExecutor, as_completed
+
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--per", type=int, default=12000, help="WON positions per material class")
@@ -57,37 +87,53 @@ def main():
     ap.add_argument("--out", default="data/derived/dtm_endgame.npz")
     ap.add_argument("--syzygy-dir", default="data/syzygy")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 4) - 2),
+                    help="parallel worker processes (each rollout is independent; "
+                         "default = cpu_count-2). 1 = the old single-process path.")
     args = ap.parse_args()
 
-    tb = TB(args.syzygy_dir)
-    rng = np.random.default_rng(args.seed)
-    packs, metas, dtms, mats = [], [], [], []
+    materials = args.materials.split(",")
+    W = max(1, args.workers)
+    # split each material's target across W chunks, each with a distinct seed so
+    # workers don't regenerate identical positions. materials(M) x W = M*W tasks.
+    tasks = []
+    for mi, material in enumerate(materials):
+        base, rem = divmod(args.per, W)
+        for w in range(W):
+            n = base + (1 if w < rem else 0)
+            if n > 0:
+                tasks.append((material, mi, n, args.seed + 1000 * mi + w, args.syzygy_dir))
     t0 = time.time()
-    for mi, material in enumerate(args.materials.split(",")):
-        got = tries = 0
-        while got < args.per and tries < args.per * 200:
-            tries += 1
-            b = random_endgame_start(rng, material)
-            if b is None or b.turn != chess.WHITE:
-                continue
-            if white_pov_value(b, tb) != 1.0:          # WON only (DTM defined)
-                continue
-            dtm = rollout_dtm(b, tb)
-            if dtm is None or dtm < 1:
-                continue
-            packs.append(encode_packed(b)); metas.append(encode_meta(b))
-            dtms.append(dtm); mats.append(mi)
-            got += 1
-            if got % 2000 == 0:
-                print(f"  {material}: {got}/{args.per}  ({got/(time.time()-t0):.0f}/s)", flush=True)
-    tb.close()
-    packed = np.stack(packs); meta = np.stack(metas)
-    dtm = np.array(dtms, dtype=np.float32)
+    print(f"[stage] DTM gen: {len(materials)} materials x {args.per} = {len(materials)*args.per} "
+          f"target across {W} workers ({len(tasks)} chunks)", flush=True)
+
+    packs, metas, dtms, mats = [], [], [], []
+    done_by_mat = {mi: 0 for mi in range(len(materials))}
+    if W == 1:                                          # single-process (debug / fallback)
+        for t in tasks:
+            p, m, d, mi = gen_chunk(t)
+            if len(d):
+                packs.append(p); metas.append(m); dtms.append(d); mats.append(np.full(len(d), mi))
+    else:
+        with ProcessPoolExecutor(max_workers=W) as ex:
+            futs = {ex.submit(gen_chunk, t): t for t in tasks}
+            for fut in as_completed(futs):
+                p, m, d, mi = fut.result()
+                if len(d):
+                    packs.append(p); metas.append(m); dtms.append(d); mats.append(np.full(len(d), mi))
+                done_by_mat[mi] += len(d)
+                tot = sum(done_by_mat.values())
+                print(f"  chunk done: {materials[mi]} +{len(d)}  "
+                      f"total {tot}/{len(materials)*args.per}  ({tot/(time.time()-t0):.0f}/s)", flush=True)
+
+    packed = np.concatenate(packs, axis=0); meta = np.concatenate(metas, axis=0)
+    dtm = np.concatenate(dtms, axis=0); material = np.concatenate(mats, axis=0).astype(np.int8)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    np.savez(args.out, packed=packed, meta=meta, dtm=dtm, material=np.array(mats, dtype=np.int8))
-    print(f"[stage] {len(dtm)} positions: {time.time()-t0:.1f}s")
+    np.savez(args.out, packed=packed, meta=meta, dtm=dtm, material=material)
+    per_mat = {materials[mi]: int((material == mi).sum()) for mi in range(len(materials))}
+    print(f"[stage] {len(dtm)} positions: {time.time()-t0:.1f}s  per-material {per_mat}")
     print(f"VERDICT DTM_DATA n={len(dtm)} dtm[min={dtm.min():.0f} med={np.median(dtm):.0f} "
-          f"max={dtm.max():.0f}] -> {args.out}")
+          f"max={dtm.max():.0f}] workers={W} -> {args.out}")
 
 
 if __name__ == "__main__":
