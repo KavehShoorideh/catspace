@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>catspace · play-atlas</title>
+<link rel="stylesheet" href="/assets/chessground/chessground.base.css">
+<link rel="stylesheet" href="/assets/chessground/chessground.brown.css">
+<link rel="stylesheet" href="/assets/chessground/chessground.cburnett.css">
 <style>
   :root{--bg:#14161a;--panel:#1b1e24;--bd:#2a2e36;--tx:#cfd3da;--mut:#6a7080;
         --blue:#7aa2ff;--grn:#66d9a6;--org:#ffb86b;--pink:#ff7a9c;}
@@ -13,62 +16,57 @@
   h1 small{color:var(--mut);font-weight:400}
   .wrap{display:flex;gap:14px;padding:14px;align-items:flex-start;flex-wrap:wrap}
   .col{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:12px}
-  .left{width:470px} .right{flex:1;min-width:520px}
+  .left{width:470px} .right{flex:1;min-width:540px}
   button{background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;
          padding:5px 9px;cursor:pointer;font-size:12px}
   button:hover{border-color:var(--blue)} button.on{background:var(--blue);color:#0b0d10;border-color:var(--blue)}
   .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
-  #board{display:grid;grid-template-columns:repeat(8,54px);grid-template-rows:repeat(8,54px);
-         width:432px;border:2px solid var(--bd);user-select:none}
-  .sq{display:flex;align-items:center;justify-content:center;font-size:36px;cursor:pointer;line-height:1}
-  .sq.l{background:#b9c2d0} .sq.d{background:#6b7688}
-  .sq.sel{outline:3px solid var(--org);outline-offset:-3px}
-  .sq.tgt::after{content:"";position:absolute;width:16px;height:16px;border-radius:50%;
-                 background:rgba(122,162,255,.55)}
-  .sq{position:relative}
-  .wp{color:#fff;text-shadow:0 0 2px #000,0 1px 1px #000} .bp{color:#111;text-shadow:0 0 2px #888}
+  #board{width:432px;height:432px}
   table{border-collapse:collapse;width:100%;font-size:12px}
   th,td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--bd)}
   th{color:var(--mut);font-weight:600}
-  .bar{height:8px;background:#2a2e36;border-radius:3px;overflow:hidden}
+  .bar{height:8px;background:#2a2e36;border-radius:3px;overflow:hidden;min-width:40px;display:inline-block;vertical-align:middle}
   .bar>i{display:block;height:100%;background:var(--blue)}
-  .moves{max-height:110px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut)}
+  .moves{max-height:96px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut)}
   .moves b{color:var(--tx)}
   #mapwrap{position:relative}
   #map{width:100%;height:auto;background:#101216;border-radius:6px}
   #tip{position:absolute;pointer-events:none;background:#0d0f13;border:1px solid var(--bd);
-       border-radius:6px;padding:6px;display:none;z-index:5;width:200px}
-  #tip .lbl{font-size:11px;color:var(--org);margin-bottom:3px}
-  #tip button{pointer-events:auto;margin-top:5px;width:100%}
-  .palette{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-  .palette .sq{width:40px;height:40px;border:1px solid var(--bd);border-radius:4px;font-size:26px}
-  .palette .sq.on{outline:2px solid var(--org)}
+       border-radius:6px;padding:4px;display:none;z-index:5}
+  .palette{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:300px}
+  .pc{width:38px;height:38px;border:1px solid var(--bd);border-radius:4px;cursor:pointer;
+      background-size:contain;background-repeat:no-repeat;background-position:center}
+  .pc.on{outline:2px solid var(--org)} .pc.era{display:flex;align-items:center;justify-content:center;font-size:20px}
   .pill{font-size:11px;color:var(--mut)} .k{color:var(--tx)}
+  .inspect{display:flex;gap:10px;align-items:flex-start;margin-top:10px}
+  .inspect .brd{width:168px;height:168px;flex:none}
   #toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#3a1d24;
          border:1px solid var(--pink);color:#ffd7df;padding:8px 12px;border-radius:6px;display:none}
   .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:3px;vertical-align:middle}
+  kbd{background:#242832;border:1px solid var(--bd);border-radius:3px;padding:0 4px;font-size:11px}
 </style>
 </head>
 <body>
-<h1>catspace · play-atlas &nbsp;<small id="sub">the engine plays White by default · edit a board, hit Toy, or just play</small></h1>
+<h1>catspace · play-atlas &nbsp;<small>engine plays White · click-drag to move · hover the map, press <kbd>r</kbd> to resample a region</small></h1>
 <div class="wrap">
-  <!-- LEFT: board + controls -->
   <div class="col left">
     <div class="row">
       <button id="mPlay" class="on">Play</button>
       <button id="mEdit">Edit</button>
       <span style="flex:1"></span>
       <button id="bToy">Toy</button>
-      <button id="bNew">New game</button>
+      <button id="bNew">New</button>
       <button id="bFlip">Flip</button>
+      <button id="bSide">Engine: White</button>
     </div>
     <div id="board"></div>
-    <div id="editbar" class="row" style="display:none">
+    <div id="editbar" class="row" style="display:none;flex-direction:column;align-items:flex-start">
       <div class="palette" id="palette"></div>
       <div class="row" style="margin:6px 0 0">
         <span class="pill">to move:</span>
         <button id="stmW" class="on">White</button><button id="stmB">Black</button>
-        <button id="bCommit">Commit &amp; project</button>
+        <button id="bClear">Clear</button>
+        <button id="bCommit">Commit &amp; play</button>
       </div>
     </div>
     <div class="row"><span class="pill" id="status">—</span></div>
@@ -82,7 +80,6 @@
     </div>
   </div>
 
-  <!-- RIGHT: t-SNE map -->
   <div class="col right">
     <div class="row">
       <span class="pill">color:</span>
@@ -94,227 +91,271 @@
     </div>
     <div id="mapwrap">
       <svg id="map" viewBox="0 0 720 720"></svg>
-      <div id="tip"><div class="lbl"></div><div class="brd"></div><button id="bResample">Resample ▸</button></div>
+      <div id="tip"></div>
     </div>
-    <div class="pill" style="margin-top:6px">★ = current board · hover a cluster to sample a position · click a point/sample to load it</div>
+    <div class="inspect">
+      <div class="brd" id="regionBoard"></div>
+      <div>
+        <div class="pill">region inspector</div>
+        <div class="k" id="regionLabel" style="margin:4px 0">hover the map</div>
+        <div class="row">
+          <button id="bResample">Resample (<kbd>r</kbd>)</button>
+          <button id="bLoadRegion">Load →</button>
+        </div>
+        <div class="pill" style="margin-top:4px">★ on the map = your current board</div>
+      </div>
+    </div>
   </div>
 </div>
 <div id="toast"></div>
 
-<script>
-const NS="http://www.w3.org/2000/svg";
+<script type="module">
+import { Chessground } from '/assets/chessground/chessground.js';
+
 const GLY={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
-const S={fen:"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-        mode:"play",flip:false,sel:null,legal:[],atlas:null,proj:null,
-        ck:"result",editPiece:"P",stm:"w",resamp:{},hoverCluster:null};
+const NS="http://www.w3.org/2000/svg";
+const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const S={fen:START,mode:"play",flip:false,legal:[],atlas:null,proj:null,ck:"result",
+        editPiece:"P",stm:"w",region:null,regionIdx:{},
+        engineColor:"white",analysis:null,busy:false};
+const BRUSH=["green","blue","yellow"];         // top-1/2/3 board arrows
+const VCOL={green:"#66d9a6",blue:"#7aa2ff",yellow:"#ffb86b"};
+let cg, plyN=0;
+const humanColor=()=>S.engineColor==="white"?"black":"white";
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
 async function api(path,body){
   const opt=body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{};
-  const r=await fetch(path,opt); if(!r.ok) throw new Error((await r.json()).error||r.status);
-  return r.json();
+  const r=await fetch(path,opt); if(!r.ok) throw new Error((await r.json()).error||r.status); return r.json();
 }
 function toast(m){const t=document.getElementById("toast");t.textContent=m;t.style.display="block";
   clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",3000);}
+function setStatus(t){document.getElementById("status").textContent=t;}
 
-/* ---- board render ---- */
-function fenGrid(fen){const rows=fen.split(" ")[0].split("/");const g=[];
-  for(const r of rows){const line=[];for(const ch of r){if(/\d/.test(ch))for(let i=0;i<+ch;i++)line.push("");
-    else line.push(ch);}g.push(line);}return g;}
-function sqName(row,col){return "abcdefgh"[col]+(8-row);}
-function renderBoard(){
-  const b=document.getElementById("board");b.innerHTML="";
-  const g=fenGrid(S.fen);
-  const order=[...Array(8).keys()];const rr=S.flip?order.reverse():order;
-  const cc=S.flip?[...Array(8).keys()].reverse():[...Array(8).keys()];
-  for(const row of rr){for(const col of cc){
-    const d=document.createElement("div");
-    const dark=(row+col)%2===1;d.className="sq "+(dark?"d":"l");
-    const p=g[row][col];
-    if(p){d.textContent=GLY[p];d.classList.add(p===p.toUpperCase()?"wp":"bp");}
-    const name=sqName(row,col);d.dataset.sq=name;
-    if(S.sel===name)d.classList.add("sel");
-    if(S.mode==="play"&&S.sel&&S.legal.some(m=>m.slice(0,2)===S.sel&&m.slice(2,4)===name))d.classList.add("tgt");
-    d.onclick=()=>onSquare(name);
-    b.appendChild(d);}}
-}
+/* ---------- chessground board ---------- */
+function sideToMove(fen){return fen.split(" ")[1]==="w"?"white":"black";}
+function destsMap(){const m=new Map();for(const u of S.legal){const f=u.slice(0,2),t=u.slice(2,4);
+  if(!m.has(f))m.set(f,[]);m.get(f).push(t);}return m;}
+function cgConfig(extra){const humanTurn=S.mode==="play"&&sideToMove(S.fen)===humanColor();
+  return Object.assign({
+  fen:S.fen.split(" ")[0], orientation:S.flip?"black":"white", turnColor:sideToMove(S.fen),
+  coordinates:true, movable:{free:S.mode==="edit",
+    color:S.mode==="edit"?"both":(humanTurn?humanColor():undefined),
+    dests:humanTurn?destsMap():new Map(),showDests:true},
+  draggable:{showGhost:true}, animation:{enabled:true,duration:120},
+  events:{move:onCgMove, select:onCgSelect}, highlight:{lastMove:true,check:true},
+},extra||{});}
+function initBoard(){cg=Chessground(document.getElementById("board"),cgConfig());}
 
-/* ---- interaction ---- */
-async function onSquare(name){
-  if(S.mode==="edit"){editSquare(name);return;}
-  if(!S.sel){ if(S.legal.some(m=>m.slice(0,2)===name)){S.sel=name;renderBoard();} return; }
-  if(S.sel===name){S.sel=null;renderBoard();return;}
-  let uci=S.sel+name;
-  const promo=S.legal.filter(m=>m.slice(0,4)===uci);
-  if(promo.length&&promo[0].length===5)uci+="q"; // auto-queen
-  if(!S.legal.includes(uci)){ // reselect if clicking own piece
-    if(S.legal.some(m=>m.slice(0,2)===name)){S.sel=name;renderBoard();}
-    else{S.sel=null;renderBoard();} return; }
-  S.sel=null;
+async function onCgMove(orig,dest){
+  if(S.mode==="edit"){S.fen=piecesToFen(cg.state.pieces);return;}
+  let uci=S.legal.find(u=>u.slice(0,4)===orig+dest)||(orig+dest);
   try{
     const r=await api("/apply_move",{fen:S.fen,uci});
-    if(!r.ok){toast("illegal");return;}
-    S.fen=r.fen;addMove(r.san,true);await afterBoard();
-    if(r.game_over){setStatus("game over · "+r.result);return;}
-    await engineReply();
-  }catch(e){toast(e.message);}
+    if(!r.ok){toast("illegal");cg.set(cgConfig());return;}
+    S.fen=r.fen; addMove(r.san,sideToMove(r.fen)==="black"); // white just moved
+    await settle([orig,dest]);
+  }catch(e){toast(e.message);cg.set(cgConfig());}
 }
-async function engineReply(){
-  setStatus("engine thinking…");
-  try{
-    const r=await api("/engine_move",{fen:S.fen});
-    if(r.move){S.fen=r.fen;addMove(r.san,false);}
-    renderReason(r);await afterBoard();
-    setStatus(r.game_over?("game over · "+r.result):"your move");
-  }catch(e){toast(e.message);setStatus("engine error");}
+function onCgSelect(key){
+  if(S.mode!=="edit")return;
+  const p=S.editPiece, pieces=cg.state.pieces;
+  if(p===".")pieces.delete(key);
+  else pieces.set(key,{role:{K:"king",Q:"queen",R:"rook",B:"bishop",N:"knight",P:"pawn"}[p.toUpperCase()],
+                        color:p===p.toUpperCase()?"white":"black"});
+  cg.setPieces(pieces); S.fen=piecesToFen(pieces);
 }
 
-/* ---- edit mode ---- */
-function editSquare(name){
-  const g=fenGrid(S.fen);const col="abcdefgh".indexOf(name[0]);const row=8-(+name[1]);
-  g[row][col]=S.editPiece==="."?"":S.editPiece;
-  S.fen=gridToFen(g);renderBoard();
+/* the driver: sync the board, then either the engine moves or the human does */
+async function settle(lastMove){
+  if(S.busy)return; S.busy=true;
+  try{
+    let g=await place(S.fen,lastMove);               // sets pieces, S.legal, S.proj
+    if(g){drawMap();setStatus("game over · "+g);return;}
+    if(sideToMove(S.fen)===S.engineColor){
+      setStatus(`engine (${S.engineColor}) thinking…`);
+      await sleep(120);
+      const r=await api("/engine_move",{fen:S.fen});
+      S.analysis=r; renderReason(r); drawArrows(r.candidates); drawMap();
+      if(r.move){S.fen=r.fen; addMove(r.san,sideToMove(r.fen)==="black");}
+      g=await place(S.fen,r.move?[r.move.slice(0,2),r.move.slice(2,4)]:null);
+      if(g){drawMap();setStatus("game over · "+g);return;}
+      await showHint();                              // engine read of the human's options
+    }else{
+      await showHint();
+    }
+  }catch(e){toast(e.message);}finally{S.busy=false;}
 }
-function gridToFen(g){
+async function showHint(){                            // top-3 for the side to move
+  try{const a=await api("/analyze",{fen:S.fen});S.analysis=a;
+    renderReason({winp:a.winp,candidates:a.candidates,pv:[]});
+    drawArrows(a.candidates);drawMap();
+    setStatus(a.game_over?("game over · "+a.result):`your move (${humanColor()})`);
+  }catch(e){/* ignore */}
+}
+
+/* place pieces + set turn/dests; returns "white"/"black"/"draw" if terminal else null */
+async function place(fen,lastMove){S.fen=fen;let over=null;
+  try{const r=await api("/set_board",{fen});S.legal=r.legal_moves||[];S.proj=r;
+    if(r.game_over)over=r.result||"draw";}catch(e){}
+  cg.set(cgConfig({fen:fen.split(" ")[0],lastMove:lastMove||undefined,turnColor:sideToMove(fen)}));
+  return over;
+}
+
+/* top-3 move arrows on the board (chessground shapes) */
+function drawArrows(cands){if(!cg)return;
+  const sh=(cands||[]).slice(0,3).map((c,i)=>({orig:c.uci.slice(0,2),dest:c.uci.slice(2,4),brush:BRUSH[i]}));
+  cg.setShapes(sh);}
+
+/* ---------- fen <-> chessground pieces ---------- */
+const FILE="abcdefgh";
+function piecesToFen(pieces){
+  const g=Array.from({length:8},()=>Array(8).fill(""));
+  const L={king:"k",queen:"q",rook:"r",bishop:"b",knight:"n",pawn:"p"};
+  for(const [sq,pc] of pieces){const c=FILE.indexOf(sq[0]),r=8-(+sq[1]);
+    let ch=L[pc.role]; if(pc.color==="white")ch=ch.toUpperCase(); g[r][c]=ch;}
   const rows=g.map(line=>{let s="",e=0;for(const p of line){if(!p)e++;else{if(e){s+=e;e=0;}s+=p;}}if(e)s+=e;return s;});
   return rows.join("/")+" "+S.stm+" - - 0 1";
 }
-function buildPalette(){
-  const pal=document.getElementById("palette");pal.innerHTML="";
-  for(const p of ["K","Q","R","B","N","P","k","q","r","b","n","p","."]){
-    const d=document.createElement("div");d.className="sq "+(p===S.editPiece?"on":"");
-    d.textContent=p==="."?"⌫":GLY[p];if(p!=="."&&p===p.toUpperCase())d.classList.add("wp");
-    else if(p!==".")d.classList.add("bp");
-    d.onclick=()=>{S.editPiece=p;buildPalette();};pal.appendChild(d);}
-}
+function fenGrid(fen){const rows=fen.split(" ")[0].split("/");return rows.map(r=>{
+  const line=[];for(const ch of r){if(/\d/.test(ch))for(let i=0;i<+ch;i++)line.push("");else line.push(ch);}return line;});}
 
-/* ---- moves + reasoning ---- */
-let plyN=0;
+/* ---------- moves + reasoning ---------- */
 function addMove(san,white){const m=document.getElementById("moves");
-  if(white){plyN++;m.innerHTML+=`<span>${plyN}. <b>${san}</b> </span>`;}
-  else m.innerHTML+=`<b>${san}</b> `;m.scrollTop=m.scrollHeight;}
+  if(white){plyN++;m.innerHTML+=`<span>${plyN}. <b>${san}</b> </span>`;}else m.innerHTML+=`<b>${san}</b> `;
+  m.scrollTop=m.scrollHeight;}
 function renderReason(r){
   document.getElementById("winp").textContent="P(win) "+(r.winp!=null?r.winp.toFixed(3):"—");
   const tb=document.querySelector("#cand tbody");tb.innerHTML="";
   const mx=Math.max(1,...(r.candidates||[]).map(c=>c.visits));
-  for(const c of (r.candidates||[])){
-    const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${c.san}</td><td><div class="bar"><i style="width:${100*c.visits/mx}%"></i></div>${c.visits}</td>`+
+  for(const c of (r.candidates||[])){const tr=document.createElement("tr");
+    tr.innerHTML=`<td>${c.san}</td><td><span class="bar"><i style="width:${100*c.visits/mx}%"></i></span> ${c.visits}</td>`+
       `<td>${c.value.toFixed(2)}</td><td>${c.winp.toFixed(2)}</td>`;tb.appendChild(tr);}
   document.getElementById("pv").textContent=(r.pv||[]).join(" ")||"—";
 }
-function setStatus(t){document.getElementById("status").textContent=t;}
 
-/* ---- projection + map ---- */
-async function afterBoard(){renderBoard();
-  try{const p=await api("/project",{fen:S.fen});S.proj=p;drawMap();}catch(e){/*edit invalid*/}}
-function ex(vals){const a=Math.min(...vals),b=Math.max(...vals);return[a,b-a||1];}
-function colorFor(pt){
-  if(S.ck==="result")return pt.result>0?"#66d9a6":pt.result<0?"#ff7a9c":"#8a90a0";
-  const v=S.ck==="reach"?pt._rn:pt.winp;const h=(1-v)*220;return `hsl(${h},70%,60%)`;
-}
-function drawMap(){
-  const A=S.atlas;if(!A){return;}const svg=document.getElementById("map");svg.innerHTML="";
-  const P=A.points;const[bx,wx]=ex(P.map(p=>p.x));const[by,wy]=ex(P.map(p=>p.y));
-  const pad=30,W=720-2*pad;
-  const rmin=Math.min(...P.map(p=>p.reach)),rmax=Math.max(...P.map(p=>p.reach));
-  const X=x=>pad+(x-bx)/wx*W, Y=y=>720-pad-(y-by)/wy*W;
-  P.forEach((p,i)=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);
-    const c=document.createElementNS(NS,"circle");
-    c.setAttribute("cx",X(p.x));c.setAttribute("cy",Y(p.y));c.setAttribute("r",3);
-    c.setAttribute("fill",colorFor(p));c.setAttribute("opacity",.72);
-    c.addEventListener("mousemove",ev=>showPoint(ev,p));
-    c.addEventListener("mouseleave",hideTip);
-    c.addEventListener("click",()=>loadFen(p.fen));svg.appendChild(c);});
-  // cluster centroids (faint labels) + hover catch
-  A.clusters.forEach(cl=>{const t=document.createElementNS(NS,"text");
-    t.setAttribute("x",X(cl.cx));t.setAttribute("y",Y(cl.cy));t.setAttribute("fill","#5a6070");
-    t.setAttribute("font-size","10");t.setAttribute("text-anchor","middle");t.textContent=cl.label;
-    svg.appendChild(t);});
-  // background rect for empty-space hover -> nearest cluster
-  const bg=document.createElementNS(NS,"rect");bg.setAttribute("x",0);bg.setAttribute("y",0);
-  bg.setAttribute("width",720);bg.setAttribute("height",720);bg.setAttribute("fill","transparent");
-  bg.addEventListener("mousemove",ev=>{const pt=svgXY(ev,svg);
-    const cl=nearestCluster(invX(pt.x),invY(pt.y));showCluster(ev,cl);});
-  bg.addEventListener("mouseleave",hideTip);
-  svg.insertBefore(bg,svg.firstChild);
-  function invX(px){return (px-pad)/W*wx+bx;} function invY(py){return (720-pad-py)/W*wy+by;}
-  // star at current board
-  if(S.proj){const s=document.createElementNS(NS,"text");
-    s.setAttribute("x",X(S.proj.x));s.setAttribute("y",Y(S.proj.y)+7);
-    s.setAttribute("font-size","26");s.setAttribute("text-anchor","middle");
-    s.setAttribute("fill","#ffe08a");s.setAttribute("stroke","#000");s.setAttribute("stroke-width",".6");
-    s.textContent="★";svg.appendChild(s);}
-  drawLegend();
-}
-function svgXY(ev,svg){const r=svg.getBoundingClientRect();
-  return {x:(ev.clientX-r.left)/r.width*720,y:(ev.clientY-r.top)/r.height*720};}
-function nearestCluster(x,y){let best=null,bd=1e18;
-  for(const c of S.atlas.clusters){const d=(c.cx-x)**2+(c.cy-y)**2;if(d<bd){bd=d;best=c;}}return best;}
-function miniBoard(fen){const g=fenGrid(fen);let s='<svg viewBox="0 0 160 160" width="184" height="184">';
-  for(let r=0;r<8;r++)for(let c=0;c<8;c++){const x=c*20,y=r*20,dark=(r+c)%2;
-    s+=`<rect x="${x}" y="${y}" width="20" height="20" fill="${dark?"#6b7688":"#b9c2d0"}"/>`;
-    const p=g[r][c];if(p)s+=`<text x="${x+10}" y="${y+15}" font-size="16" text-anchor="middle" `+
+/* ---------- t-SNE map ---------- */
+function ex(v){const a=Math.min(...v),b=Math.max(...v);return[a,b-a||1];}
+function colorFor(pt){if(S.ck==="result")return pt.result>0?"#66d9a6":pt.result<0?"#ff7a9c":"#8a90a0";
+  const v=S.ck==="reach"?pt._rn:pt.winp;return `hsl(${(1-v)*220},70%,60%)`;}
+function miniBoard(fen,px){const g=fenGrid(fen);const S2=px||160,q=S2/8;
+  let s=`<svg viewBox="0 0 ${S2} ${S2}" width="${S2}" height="${S2}">`;
+  for(let r=0;r<8;r++)for(let c=0;c<8;c++){const x=c*q,y=r*q,d=(r+c)%2;
+    s+=`<rect x="${x}" y="${y}" width="${q}" height="${q}" fill="${d?"#6b7688":"#b9c2d0"}"/>`;
+    const p=g[r][c];if(p)s+=`<text x="${x+q/2}" y="${y+q*0.72}" font-size="${q*0.8}" text-anchor="middle" `+
       `fill="${p===p.toUpperCase()?"#fff":"#111"}">${GLY[p]}</text>`;}
   return s+"</svg>";}
-function showPoint(ev,p){const tip=document.getElementById("tip");
-  tip.querySelector(".lbl").textContent=`${p.result>0?"White won":p.result<0?"Black won":"draw"} · ply ${p.ply} · P(win) ${p.winp}`;
-  tip.querySelector(".brd").innerHTML=miniBoard(p.fen);S.hoverCluster=null;S._hoverFen=p.fen;
-  document.getElementById("bResample").style.display="none";placeTip(ev);}
-function showCluster(ev,cl){const tip=document.getElementById("tip");S.hoverCluster=cl.id;
-  const i=S.resamp[cl.id]||0;
-  tip.querySelector(".lbl").textContent=`${cl.label} · ${cl.n} positions · sample ${i+1}`;
-  const fen=cl.fens[i%cl.fens.length]||"";S._hoverFen=fen;
-  tip.querySelector(".brd").innerHTML=miniBoard(fen);
-  document.getElementById("bResample").style.display="block";placeTip(ev);}
-function placeTip(ev){const tip=document.getElementById("tip");const wrap=document.getElementById("mapwrap");
-  const r=wrap.getBoundingClientRect();tip.style.display="block";
-  tip.style.left=Math.min(ev.clientX-r.left+12,r.width-210)+"px";
-  tip.style.top=Math.min(ev.clientY-r.top+12,r.height-240)+"px";}
+function drawMap(){
+  const A=S.atlas;if(!A)return;const svg=document.getElementById("map");svg.innerHTML="";
+  const P=A.points;const[bx,wx]=ex(P.map(p=>p.x)),[by,wy]=ex(P.map(p=>p.y));
+  const pad=30,W=720-2*pad;const rmin=Math.min(...P.map(p=>p.reach)),rmax=Math.max(...P.map(p=>p.reach));
+  const X=x=>pad+(x-bx)/wx*W,Y=y=>720-pad-(y-by)/wy*W;
+  const bg=document.createElementNS(NS,"rect");bg.setAttribute("width",720);bg.setAttribute("height",720);
+  bg.setAttribute("fill","transparent");
+  bg.addEventListener("mousemove",ev=>{const r=svg.getBoundingClientRect();
+    const mx=(ev.clientX-r.left)/r.width*720,my=(ev.clientY-r.top)/r.height*720;
+    setRegion(nearestCluster((mx-pad)/W*wx+bx,(720-pad-my)/W*wy+by));hideTip();});
+  svg.appendChild(bg);
+  P.forEach(p=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);const c=document.createElementNS(NS,"circle");
+    c.setAttribute("cx",X(p.x));c.setAttribute("cy",Y(p.y));c.setAttribute("r",3.2);
+    c.setAttribute("fill",colorFor(p));c.setAttribute("opacity",.72);
+    c.addEventListener("mousemove",ev=>showTip(ev,p));c.addEventListener("mouseleave",hideTip);
+    c.addEventListener("click",()=>loadFen(p.fen));svg.appendChild(c);});
+  A.clusters.forEach(cl=>{const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",X(cl.cx));t.setAttribute("y",Y(cl.cy));t.setAttribute("fill","#7c8494");
+    t.setAttribute("font-size","10");t.setAttribute("text-anchor","middle");
+    t.setAttribute("pointer-events","none");t.textContent=cl.label;svg.appendChild(t);});
+  // vectors: current position -> each top-3 resulting state
+  if(S.proj&&S.analysis&&S.analysis.candidates){
+    (S.analysis.candidates).slice(0,3).forEach((c,i)=>{
+      if(c.x==null)return;const col=VCOL[BRUSH[i]];
+      const ln=document.createElementNS(NS,"line");ln.setAttribute("x1",X(S.proj.x));
+      ln.setAttribute("y1",Y(S.proj.y));ln.setAttribute("x2",X(c.x));ln.setAttribute("y2",Y(c.y));
+      ln.setAttribute("stroke",col);ln.setAttribute("stroke-width",2.2);ln.setAttribute("opacity",.9);
+      ln.setAttribute("pointer-events","none");svg.appendChild(ln);
+      const dot=document.createElementNS(NS,"circle");dot.setAttribute("cx",X(c.x));
+      dot.setAttribute("cy",Y(c.y));dot.setAttribute("r",5);dot.setAttribute("fill",col);
+      dot.setAttribute("stroke","#0b0d10");dot.setAttribute("pointer-events","none");svg.appendChild(dot);
+      const tx=document.createElementNS(NS,"text");tx.setAttribute("x",X(c.x));tx.setAttribute("y",Y(c.y)-8);
+      tx.setAttribute("fill",col);tx.setAttribute("font-size","11");tx.setAttribute("text-anchor","middle");
+      tx.setAttribute("pointer-events","none");tx.textContent=c.san;svg.appendChild(tx);});}
+  if(S.proj){const s=document.createElementNS(NS,"text");s.setAttribute("x",X(S.proj.x));
+    s.setAttribute("y",Y(S.proj.y)+8);s.setAttribute("font-size","28");s.setAttribute("text-anchor","middle");
+    s.setAttribute("fill","#ffe08a");s.setAttribute("stroke","#000");s.setAttribute("stroke-width",".7");
+    s.setAttribute("pointer-events","none");s.textContent="★";svg.appendChild(s);}
+  drawLegend();
+}
+function nearestCluster(x,y){let best=null,bd=1e18;for(const c of S.atlas.clusters){
+  const d=(c.cx-x)**2+(c.cy-y)**2;if(d<bd){bd=d;best=c;}}return best;}
+function showTip(ev,p){const tip=document.getElementById("tip");
+  tip.innerHTML=miniBoard(p.fen,150)+`<div class="pill" style="text-align:center">${p.result>0?"White won":p.result<0?"Black won":"draw"} · ply ${p.ply}</div>`;
+  const wrap=document.getElementById("mapwrap"),r=wrap.getBoundingClientRect();
+  tip.style.display="block";tip.style.left=Math.min(ev.clientX-r.left+12,r.width-166)+"px";
+  tip.style.top=Math.min(ev.clientY-r.top+12,r.height-180)+"px";}
 function hideTip(){document.getElementById("tip").style.display="none";}
-document.getElementById("bResample").onclick=()=>{if(S.hoverCluster==null)return;
-  const cl=S.atlas.clusters.find(c=>c.id===S.hoverCluster);
-  S.resamp[cl.id]=((S.resamp[cl.id]||0)+1)%cl.fens.length;
-  const i=S.resamp[cl.id];S._hoverFen=cl.fens[i];
-  document.getElementById("tip").querySelector(".brd").innerHTML=miniBoard(cl.fens[i]);
-  document.getElementById("tip").querySelector(".lbl").textContent=`${cl.label} · sample ${i+1}`;};
-document.getElementById("tip").addEventListener("dblclick",()=>{if(S._hoverFen)loadFen(S._hoverFen);});
 function drawLegend(){const l=document.getElementById("legend");
   if(S.ck==="result")l.innerHTML='<span class="swatch" style="background:#66d9a6"></span>W '+
     '<span class="swatch" style="background:#ff7a9c"></span>B <span class="swatch" style="background:#8a90a0"></span>draw';
-  else l.textContent=S.ck+": blue=low → red=high";}
+  else l.textContent=S.ck+": blue low → red high";}
 
-/* ---- load a fen from map ---- */
-async function loadFen(fen){
-  try{const r=await api("/set_board",{fen});if(!r.valid){toast("invalid position");return;}
-    S.fen=fen;S.sel=null;S.legal=r.legal_moves||[];S.proj=r;
-    document.getElementById("moves").innerHTML="";plyN=0;
-    renderBoard();drawMap();setStatus(r.game_over?("terminal · "+r.result):"loaded — your move / engine plays White");
-  }catch(e){toast(e.message);}
-}
+/* ---------- region inspector (fixed panel; r = resample) ---------- */
+function setRegion(cl){if(!cl||(S.region&&S.region.id===cl.id))return;S.region=cl;renderRegion();}
+function renderRegion(){const cl=S.region;if(!cl)return;const i=S.regionIdx[cl.id]||0;
+  const fen=cl.fens[i%cl.fens.length]||"";S._regionFen=fen;
+  document.getElementById("regionLabel").textContent=`${cl.label} · ${cl.n} positions · sample ${i%cl.fens.length+1}/${cl.fens.length}`;
+  document.getElementById("regionBoard").innerHTML=miniBoard(fen,168);}
+function resample(){if(!S.region)return;const cl=S.region;
+  S.regionIdx[cl.id]=((S.regionIdx[cl.id]||0)+1);renderRegion();}
+document.getElementById("bResample").onclick=resample;
+document.getElementById("bLoadRegion").onclick=()=>{if(S._regionFen)loadFen(S._regionFen);};
+window.addEventListener("keydown",e=>{if(e.key==="r"&&!/input|textarea/i.test(e.target.tagName)){resample();}});
 
-/* ---- controls ---- */
-function setMode(m){S.mode=m;S.sel=null;
+/* ---------- load a fen ---------- */
+async function loadFen(fen){try{const r=await api("/set_board",{fen});if(!r.valid){toast("invalid position");return;}
+  S.fen=fen;S.legal=r.legal_moves||[];S.proj=r;S.analysis=null;
+  document.getElementById("moves").innerHTML="";plyN=0;
+  document.querySelector("#cand tbody").innerHTML="";document.getElementById("pv").textContent="—";
+  if(cg)cg.setShapes([]);
+  await settle(null);                                // engine moves if it's its turn
+}catch(e){toast(e.message);}}
+
+/* ---------- edit palette ---------- */
+function pieceBg(p){const role={K:"king",Q:"queen",R:"rook",B:"bishop",N:"knight",P:"pawn"}[p.toUpperCase()];
+  const col=p===p.toUpperCase()?"white":"black";return `background-image:var(--cg-${col}-${role},none)`;}
+function buildPalette(){const pal=document.getElementById("palette");pal.innerHTML="";
+  for(const p of ["K","Q","R","B","N","P","k","q","r","b","n","p","."]){
+    const d=document.createElement("div");d.className="pc"+(p===S.editPiece?" on":"")+(p==="."?" era":"");
+    if(p===".")d.textContent="⌫"; else d.innerHTML=`<span style="display:block;width:100%;height:100%">${miniPiece(p)}</span>`;
+    d.onclick=()=>{S.editPiece=p;buildPalette();};pal.appendChild(d);}}
+function miniPiece(p){return `<svg viewBox="0 0 40 40" width="38" height="38"><text x="20" y="30" font-size="30" text-anchor="middle" fill="${p===p.toUpperCase()?'#eee':'#111'}" stroke="${p===p.toUpperCase()?'#000':'#888'}" stroke-width=".5">${GLY[p]}</text></svg>`;}
+
+/* ---------- controls ---------- */
+function setMode(m){S.mode=m;
   document.getElementById("mPlay").classList.toggle("on",m==="play");
   document.getElementById("mEdit").classList.toggle("on",m==="edit");
-  document.getElementById("editbar").style.display=m==="edit"?"block":"none";
-  if(m==="play")commitBoard();renderBoard();}
-async function commitBoard(){try{const r=await api("/set_board",{fen:S.fen});
-  if(r.valid){S.legal=r.legal_moves||[];S.proj=r;drawMap();}else toast("invalid — fix the position");}catch(e){toast(e.message);}}
+  document.getElementById("editbar").style.display=m==="edit"?"flex":"none";
+  if(m==="edit"){buildPalette();cg.setShapes([]);cg.set(cgConfig());}
+  else settle(null);}
 document.getElementById("mPlay").onclick=()=>setMode("play");
-document.getElementById("mEdit").onclick=()=>{setMode("edit");buildPalette();};
-document.getElementById("bCommit").onclick=commitBoard;
-document.getElementById("stmW").onclick=()=>{S.stm="w";S.fen=gridToFen(fenGrid(S.fen));
+document.getElementById("mEdit").onclick=()=>setMode("edit");
+document.getElementById("bCommit").onclick=()=>setMode("play");
+document.getElementById("bSide").onclick=()=>{S.engineColor=S.engineColor==="white"?"black":"white";
+  document.getElementById("bSide").textContent="Engine: "+(S.engineColor==="white"?"White":"Black");
+  if(S.mode==="play")settle(null);};
+document.getElementById("bClear").onclick=()=>{cg.set({fen:"8/8/8/8/8/8/8/8"});S.fen="8/8/8/8/8/8/8/8 "+S.stm+" - - 0 1";};
+document.getElementById("stmW").onclick=()=>{S.stm="w";S.fen=piecesToFen(cg.state.pieces);
   document.getElementById("stmW").classList.add("on");document.getElementById("stmB").classList.remove("on");};
-document.getElementById("stmB").onclick=()=>{S.stm="b";S.fen=gridToFen(fenGrid(S.fen));
+document.getElementById("stmB").onclick=()=>{S.stm="b";S.fen=piecesToFen(cg.state.pieces);
   document.getElementById("stmB").classList.add("on");document.getElementById("stmW").classList.remove("on");};
-document.getElementById("bFlip").onclick=()=>{S.flip=!S.flip;renderBoard();};
-document.getElementById("bNew").onclick=()=>loadFen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-document.getElementById("bToy").onclick=async()=>{const t=await api("/toy");await loadFen(t.fen);};
-document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=()=>{
-  S.ck=b.dataset.ck;document.querySelectorAll("[data-ck]").forEach(x=>x.classList.toggle("on",x===b));drawMap();});
+document.getElementById("bFlip").onclick=()=>{S.flip=!S.flip;cg.set({orientation:S.flip?"black":"white"});};
+document.getElementById("bNew").onclick=()=>loadFen(START);
+document.getElementById("bToy").onclick=async()=>{const t=await api("/toy");loadFen(t.fen);};
+document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=()=>{S.ck=b.dataset.ck;
+  document.querySelectorAll("[data-ck]").forEach(x=>x.classList.toggle("on",x===b));drawMap();});
 
-/* ---- boot ---- */
+/* ---------- boot ---------- */
 (async function(){
+  initBoard();
   try{S.atlas=await api("/atlas");}catch(e){toast("atlas not built — run build_play_atlas.py");}
   await loadFen(S.fen);
 })();
