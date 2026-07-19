@@ -175,20 +175,21 @@ function initBoard(){cg=Chessground(document.getElementById("board"),cgConfig())
   ro.observe(document.getElementById("regionBoard"));}
 function miniShow(fen){if(cgMini)cgMini.set({fen:fen.split(" ")[0]});}
 
+let moving=false;   // reentrancy guard: block a 2nd drag mid-apply (the turn-loss
+                    // race) WITHOUT calling cg.set() in the move handler (that was
+                    // snapping legal moves back to origin)
 async function onCgMove(orig,dest){
   if(S.mode==="edit"){S.fen=piecesToFen(cg.state.pieces);return;}
-  // ignore stray moves while the engine is thinking / analysing (the turn-loss
-  // race: chessground stays movable during the network round-trip, so a 2nd
-  // drag lands on a stale position). Revert the board to truth and bail.
-  if(S.busy){cg.set(cgConfig());return;}
-  cg.set({movable:{color:undefined,dests:new Map()}});  // LOCK the board immediately
-  let uci=S.legal.find(u=>u.slice(0,4)===orig+dest)||(orig+dest);
+  if(moving||S.busy)return;             // engine thinking / already applying: ignore
+  moving=true;
+  const uci=S.legal.find(u=>u.slice(0,4)===orig+dest)||(orig+dest);
   try{
     const r=await api("/apply_move",{fen:S.fen,uci});
-    if(!r.ok){toast("illegal");cg.set(cgConfig());return;}
+    if(!r.ok){cg.set(cgConfig());return;}          // only truly-illegal reverts
     S.fen=r.fen; pushHist(r.fen,[orig,dest],r.san,humanColor()==="white");
     await settle([orig,dest]);
   }catch(e){toast(e.message);cg.set(cgConfig());}
+  finally{moving=false;}
 }
 function onCgSelect(key){
   if(S.mode!=="edit")return;
