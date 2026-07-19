@@ -70,16 +70,19 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", default="data/derived/sep/cert_base_full.pt")
     ap.add_argument("--phead", default="data/derived/sep/cert_base_full_phead.pt")
-    ap.add_argument("--n", type=int, default=10000, help="holdout positions to sample (capped by availability)")
-    ap.add_argument("--perplexity", type=float, default=500.0,
-                    help="clamped to <= n/3 at fit time (higher = more global structure)")
+    ap.add_argument("--n", type=int, default=6000, help="holdout positions to sample (capped by availability)")
+    ap.add_argument("--perplexity", type=float, default=40.0,
+                    help="clamped to <= n/3 at fit time. NOTE high perplexity (>=500) "
+                         "COLLAPSES on the low-contrast incumbent field (mushy neighbours) "
+                         "-- 40 gives a proper 2D map; raise it once the field has contrast.")
     ap.add_argument("--exaggeration", type=float, default=1.6,
                     help=">1 pulls clusters apart (more separation)")
     ap.add_argument("--tsne-iter", type=int, default=1500,
                     help="gradient iterations (more = more separation, slower)")
-    ap.add_argument("--no-multiscale", dest="multiscale", action="store_false",
-                    help="single perplexity instead of multiscale (local+global) affinities")
-    ap.set_defaults(multiscale=True)
+    ap.add_argument("--multiscale", action="store_true",
+                    help="multiscale (local+global) affinities -- UNSTABLE on the low-contrast "
+                         "incumbent (collapsed to a line at n=6000); off by default")
+    ap.set_defaults(multiscale=False)
     ap.add_argument("--out", default="artifacts/generated/play_atlas")
     ap.add_argument("--shards", default=None, help="shard dir (default: newest)")
     ap.add_argument("--seed", type=int, default=0)
