@@ -5164,3 +5164,54 @@ current field has.
 (White mate / Black mate / draw). Colors each map point by the quasimetric
 d(F(pos), pole) -- near=green, far=red. Precomputed dW/dB/dD per point in
 build_play_atlas (draw pole = mean embed_B of draw finals).
+
+## 2026-07-19 (cont.): all-black map bug, committor material-blindness, multi-algo views
+
+**All-black t-SNE map = late exaggeration collapse.** The map went degenerate
+(atlas all-zeros). Isolated the cause: openTSNE's late `exaggeration` is an
+ATTRACTION multiplier, not a separation knob (the docstring had it backwards).
+On the low-contrast field it collapses everything to the centre:
+  build cfg (exag=1.6): xstd=2.936
+  no exaggeration     : xstd=26.938
+Fixed default exaggeration 1.6 -> 1.0. Atlas rebuilt healthy:
+  VERDICT ATLAS algo=tsne n=6000 xstd=53.03 ystd=29.97 xrange=[-98.5,104.8]
+
+**Why the engine (Black) sacrifices a bishop (1.d4 e6 2.Nc3 Ba3??).** NOT a
+negamax sign bug (MCTS backs up white-POV, flips sign at Black nodes -- verified).
+The committor VALUE is material-blind. Measured white-POV committor (W-L):
+
+| position | committor |
+|---|---|
+| KQ vs k, mate imminent | +0.870 |
+| White up a whole QUEEN (full board) | +0.052 |
+| Black up a whole queen | -0.065 |
+| startpos | +0.022 |
+
+Up a queen barely registers (+0.05) while imminent mate reads +0.87 -- the head
+is a mate-PROXIMITY detector, not a material evaluator. At the Ba3 position the
+whole legal-move value spread is 0.14; 2...Ba3 reads -0.038 and 2...Ba3 3.bxa3
+(Black down a bishop) reads -0.062 -- noise inside a flat zero-signal band, not a
+belief that losing material helps. NOT representational collapse: F separates the
+positions (||F(Nf6)-F(Ba3bxa3)||=0.356 on unit-norm F). The POLICY head is fine
+(Ba3 prior 0.001, Nf6 0.217) -- the AZ value backup overrides it. "Humans don't
+lose material" is a POLICY fact (which moves they play), learned; it is NOT an
+OUTCOME fact, so the outcome-trained committor never encoded it. GRADE: this is
+the same flat-value disease, but far outside tablebase range -- the DTM hinge
+sharpens the ENDGAME and will NOT fix a move-2 opening blunder. Honest limitation
+of a pure reachability+committor field; full-board material awareness is a
+separate ask.
+
+**Multi-algo map views (selectable t-SNE / UMAP / VAE).** New
+`catspace/viz/manifold.py`: uniform projector (fit / out-of-sample transform /
+save / load + manifest.json). UMAP via umap-learn; VAE is a 64->2 PyTorch
+compression VAE (the CompressionVAE idea; the TF package is unmaintained). VAE
+posterior-collapses at beta>=1 (a 64->2 bottleneck can't reconstruct, KL wins,
+xstd 0.00); fixed with KL annealing + default beta 0.02 (PCA top-2 = 21.9% var;
+beta 0.02 -> mu_std ~1.1). Build verdicts:
+  VERDICT ATLAS algo=umap n=2000 xstd=1.95
+  VERDICT ATLAS algo=vae  n=2000 xstd=1.18 (beta 0.02) / 0.80 (beta 0.2)
+build_play_atlas --algo + per-algo params; /rebuild_atlas passes algo+params;
+server proj loader reads the manifest (legacy embedding.pkl still supported).
+UI: algo selector with dynamic per-algo param fields; end-to-end tested
+(umap rebuild -> hot-reload -> /project uses umap OOS transform). Dist dropdown
+relabeled White/Black WIN (not mate) + Draw.

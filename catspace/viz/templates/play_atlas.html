@@ -103,20 +103,37 @@
       <button data-ck="result" class="on">result</button>
       <button data-ck="dist">distance→</button>
       <select id="distTarget" title="quasimetric distance d(pos -> goal)">
-        <option value="dW">White mate</option><option value="dB">Black mate</option>
-        <option value="dD">draw</option>
+        <option value="dW">White win</option><option value="dB">Black win</option>
+        <option value="dD">Draw</option>
       </select>
       <button data-ck="winp">P(win)</button>
       <span style="flex:1"></span>
       <span class="pill" id="legend"></span>
     </div>
-    <div class="row" style="margin-top:4px" title="re-fit the t-SNE map (CPU; ~15–60s, competes with training)">
-      <span class="pill">map fit:</span>
-      <span class="k">iter <input id="tsIter" type="number" value="1500" min="250" step="250" style="width:62px"></span>
-      <span class="k">perp <input id="tsPerp" type="number" value="40" min="5" step="25" style="width:56px"></span>
-      <span class="k">exag <input id="tsExag" type="number" value="1.6" min="1" step="0.2" style="width:50px"></span>
-      <span class="k">n <input id="tsN" type="number" value="10000" min="500" step="1000" style="width:66px"></span>
-      <button id="bRebuild" title="re-run the t-SNE build with these settings and hot-reload">⟳ Rebuild map</button>
+    <div class="row" style="margin-top:4px" title="re-fit the map (CPU; ~15–60s, competes with training)">
+      <span class="pill">map:</span>
+      <select id="mapAlgo" title="manifold algorithm">
+        <option value="tsne">t-SNE</option><option value="umap">UMAP</option><option value="vae">VAE</option>
+      </select>
+      <span class="algop" data-algo="tsne">
+        <span class="k">perp <input id="p_perplexity" type="number" value="40" min="5" step="5" style="width:54px"></span>
+        <span class="k">exag <input id="p_exaggeration" type="number" value="1.0" min="0.5" step="0.1" style="width:48px"
+              title="late attraction; >1 COMPRESSES (1.6 was the all-black bug), keep 1.0"></span>
+        <span class="k">iter <input id="p_n_iter" type="number" value="1500" min="250" step="250" style="width:60px"></span>
+      </span>
+      <span class="algop" data-algo="umap" style="display:none">
+        <span class="k">nbrs <input id="p_n_neighbors" type="number" value="30" min="2" step="5" style="width:50px"></span>
+        <span class="k">min_d <input id="p_min_dist" type="number" value="0.1" min="0" step="0.05" style="width:50px"></span>
+        <span class="k">ep <input id="p_n_epochs" type="number" value="500" min="50" step="100" style="width:56px"></span>
+      </span>
+      <span class="algop" data-algo="vae" style="display:none">
+        <span class="k">ep <input id="p_epochs" type="number" value="200" min="20" step="20" style="width:52px"></span>
+        <span class="k">hid <input id="p_hidden" type="number" value="256" min="32" step="32" style="width:52px"></span>
+        <span class="k">beta <input id="p_beta" type="number" value="0.02" min="0" step="0.01" style="width:54px"
+              title="KL weight; >=1 collapses the 64->2 latent to a point, keep small"></span>
+      </span>
+      <span class="k">n <input id="tsN" type="number" value="6000" min="500" step="1000" style="width:64px"></span>
+      <button id="bRebuild" title="re-run the build with these settings and hot-reload">⟳ Rebuild map</button>
     </div>
     <div id="mapwrap">
       <div id="mapbox"><svg id="map" viewBox="0 0 720 720" preserveAspectRatio="none"></svg></div>
@@ -434,8 +451,16 @@ async function analyzeHere(){
   }
 }
 
-/* ---------- t-SNE map rebuild (deeper fit on demand) ---------- */
+/* ---------- map rebuild (t-SNE / UMAP / VAE on demand) ---------- */
 const gv=id=>document.getElementById(id).value;
+// per-algo param keys -> the input ids are "p_"+key (match manifold.PARAM_SPEC)
+const ALGO_PARAMS={tsne:["perplexity","exaggeration","n_iter"],
+                   umap:["n_neighbors","min_dist","n_epochs"],
+                   vae:["epochs","hidden","beta"]};
+function syncAlgoParams(){                                // show only the selected algo's inputs
+  const a=gv("mapAlgo");
+  document.querySelectorAll(".algop").forEach(el=>{el.style.display=el.dataset.algo===a?"":"none";});
+}
 async function rebuildAtlas(){
   const btn=document.getElementById("bRebuild");
   if(S.rebuilding){                                       // Stop clicked: kill the fit subprocess + abort
@@ -444,17 +469,21 @@ async function rebuildAtlas(){
     return;
   }
   stopAnalysis();
-  const body={n:parseInt(gv("tsN"))||10000, perplexity:parseFloat(gv("tsPerp"))||40,
-              exaggeration:parseFloat(gv("tsExag"))||1.6, tsne_iter:parseInt(gv("tsIter"))||1500};
+  const algo=gv("mapAlgo");
+  const params={}; ALGO_PARAMS[algo].forEach(k=>{params[k]=parseFloat(gv("p_"+k));});
+  const body={n:parseInt(gv("tsN"))||6000, algo, params};
+  const pstr=ALGO_PARAMS[algo].map(k=>`${k}=${params[k]}`).join(" ");
   const ac=new AbortController(); S.rebuildAbort=ac; S.rebuilding=true;
   S.busy=true; setBusy(true,["bRebuild"]); btn.textContent="⏹ Stop fit";
   if(cg)cg.set(cgConfig({movable:{color:undefined,dests:new Map()}}));   // freeze the board during the rebuild
-  setStatus(`rebuilding map (perp ${body.perplexity}, n ${body.n})… ⏹ to stop`);
+  setStatus(`rebuilding map (${algo}, n ${body.n})… ⏹ to stop`);
   try{
     await api("/rebuild_atlas",body,ac.signal);
-    S.atlas=await api("/atlas"); _lastMapDraw=0; await projectStar();
-    toast(`map rebuilt · perp ${body.perplexity}, n ${body.n}, ${body.tsne_iter} iters`);
-    setStatus("map rebuilt");
+    S.atlas=await api("/atlas"); _lastMapDraw=0;
+    mapView.x=0;mapView.y=0;mapView.w=720;mapView.h=720;applyMapView();   // recenter zoom/pan
+    await projectStar();
+    toast(`map rebuilt · ${algo} · n ${body.n} · ${pstr}`);
+    setStatus(`map rebuilt (${algo})`);
   }catch(e){ if(e.name==="AbortError")setStatus("rebuild stopped"); else{toast("rebuild: "+e.message);setStatus("rebuild failed");} }
   finally{ S.rebuilding=false; S.rebuildAbort=null; btn.textContent="⟳ Rebuild map";
            S.busy=false; setBusy(false); if(cg)cg.set(cgConfig()); }
@@ -567,7 +596,7 @@ function hideTip(){document.getElementById("tip").style.display="none";}
 function drawLegend(){const l=document.getElementById("legend");
   if(S.ck==="result")l.innerHTML='<span class="swatch" style="background:#66d9a6"></span>W '+
     '<span class="swatch" style="background:#ff7a9c"></span>B <span class="swatch" style="background:#8a90a0"></span>draw';
-  else if(S.ck==="dist"){const t={dW:"White mate",dB:"Black mate",dD:"draw"}[(document.getElementById("distTarget")||{}).value||"dW"];
+  else if(S.ck==="dist"){const t={dW:"White win",dB:"Black win",dD:"Draw"}[(document.getElementById("distTarget")||{}).value||"dW"];
     l.innerHTML=`d→${t}: <span class="swatch" style="background:hsl(130,72%,55%)"></span>near `+
       `<span class="swatch" style="background:hsl(0,72%,55%)"></span>far`;}
   else l.textContent=S.ck+": blue low → red high";}
@@ -673,6 +702,7 @@ document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=()=>{S.ck=b.dataset.
 document.getElementById("distTarget").onchange=()=>{S.ck="dist";
   document.querySelectorAll("[data-ck]").forEach(x=>x.classList.toggle("on",x.dataset.ck==="dist"));drawMap();};
 document.getElementById("bRebuild").onclick=rebuildAtlas;
+document.getElementById("mapAlgo").onchange=syncAlgoParams; syncAlgoParams();
 document.getElementById("bMemory").onclick=memShow;
 document.getElementById("bMore").onclick=expandMoves;
 
