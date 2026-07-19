@@ -4698,3 +4698,50 @@ THE run v2: qrl_iqe_leak.pt, 40k steps, same recipe + --iqe-leak-beta 10
 ~3.4h at 3.3 it/s. Also: Kaveh's density-prior subgoal idea recorded as
 UNVALIDATED design note with the draw-mass confound + kill-test attached
 (density ~ draw regions in human data could steer INTO the draw basin).
+
+
+## 2026-07-18 (Fable) — leak+guards run: NOT the old collapse — spread PERSISTED (d_rand 169), d_step decayed because my lambda cap was too low to defend the pin
+
+qrl_iqe_leak (40k, leaky IQE beta=10 + PID eclip/kd0.25/cap20) halted @18000.
+The detector's message ("all-F-above-all-B") is a CANNED string and is WRONG
+here — the trajectory (qrl push lines) tells a different, better story:
+
+  step   d_step   d_rand   d_unr   lam   var
+  ~200   0.49     0.49     0.49    1.2   0.94   start
+  ~3k    1.16     55.3     52.6    20    0.00   spread engaging
+  ~6k    1.08    129.4    128.1    20    0.00   PEAK HEALTH (pin ok, huge spread)
+  ~10k   0.85     71.3     73.5    20    0.00   d_step starting to slip
+  ~13k   0.16    105.8    110.7    20    0.00   pin broken, spread INTACT
+  ~16k   0.19    136.7    140.4    20    0.00   spread still growing
+  ~18k   0.009   168.9    174.0    20    0.00   halt
+
+This is NOT the ordering-collapse dead zone (there d_rand -> 0 too). Here the
+SPREAD SURVIVED and kept growing to 169 — the hard problem, solved and stable.
+What decayed is the LOCAL unit-step pin (d_step 1.1 -> 0), and the cause is
+diagnosable: lam pinned at the cap 20 the entire time. Mechanism: as the
+encoder scaled up (d_rand ~100+ => large coordinate scale), a unit-step
+deviation needs a PROPORTIONALLY larger multiplier to matter; capped at 20,
+lam could not rise to defend d_step, so the field slowly walked the adjacent-
+transition distance to zero while keeping random pairs far. My spike guard
+(lam_max=20) traded the spike-implosion failure for a capped-enforcement
+failure. eclip alone stops the spike; the CAP was the mistake.
+
+HEALTHY CHECKPOINT PRESERVED: qrl_iqe_leak_step10000.pt (+_phead) saved @16:58,
+d_rand ~129/d_step ~1.0 region — the largest-spread field yet, from BEFORE the
+decay. This is the candidate to evaluate (conversion vs the 0.600 incumbent)
+and, if the field is finally good, to re-open the shelved planner shelf on.
+
+REMEDIES for Kaveh (his call; NOT relaunched):
+  (a) raise or remove lam_max, keep eclip (eclip stops the spike without
+      capping steady-state pin enforcement) — smallest change, most likely fix;
+  (b) SCALE-NORMALIZE the constraint: pin/penalty relative to the embedding
+      scale so a large d_rand can't dwarf a unit-step deviation (addresses the
+      root cause — proportionality — not just the cap value);
+  (c) anneal the offset/floor down as scale grows (keep dynamic range bounded).
+var=0.00 throughout again (VICReg not reinflating) — still unexplained, worth a
+look before (b).
+
+Also: RUNBOOK.md added (all train/eval/analyze commands, per Kaveh — replicate
+when tokens run out). Play-atlas interface build was interrupted by the session
+limit: only experiments/viz/build_play_atlas.py (precompute) landed; server +
+frontend still TODO (frozen contract in scratchpad).
