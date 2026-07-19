@@ -5,3 +5,4 @@ openTSNE>=1.0
 python-chess>=1.10
 zstandard>=0.22
 torch>=2.6
+hnswlib>=0.8      # position memory: incremental cosine ANN index

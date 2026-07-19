@@ -38,6 +38,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from catspace.data.certified import collect_certified_games
 from catspace.data.shards import sample_shard_rows
 from catspace.io.paths import newest_shard_dir
 from catspace.nn.eval_head import EvalHead
@@ -78,6 +79,12 @@ def main():
     ap.add_argument("--out", default="artifacts/generated/play_atlas")
     ap.add_argument("--shards", default=None, help="shard dir (default: newest)")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--all-outcomes", action="store_true",
+                    help="skip the certified-outcome filter (default: only positions from "
+                         "games whose outcome is board-certified -- mate|draw|winner up "
+                         ">=3 pts -- so the result coloring is board-honest; Kaveh "
+                         "2026-07-19, exclusion rules apply to the t-SNE too)")
+    ap.add_argument("--resign-material-gap", type=float, default=3.0)
     args = ap.parse_args()
 
     device = "cpu"  # contract: CPU ALWAYS (training GPU/MPS is busy)
@@ -100,9 +107,21 @@ def main():
           f"ckpt={Path(args.ckpt).name} step={step} shards={shard_dir.name} device={device}")
 
     # -------------------------------------------------- sample holdout rows
+    # certified filter (default): oversample, keep only rows from games whose
+    # outcome is board-certified (mate|draw|material-backed win), trim to n --
+    # so the atlas's result coloring never shows a balanced-position flag-fall
+    # as a "win region". ~75% of games certify, hence the 1.6x oversample.
     t0 = time.time()
-    picks = sample_shard_rows(shard_dir, args.n, seed=args.seed, holdout_only=True)
+    want = args.n if args.all_outcomes else int(args.n * 1.6)
+    picks = sample_shard_rows(shard_dir, want, seed=args.seed, holdout_only=True)
     rows = load_rows(shard_dir, picks)
+    if not args.all_outcomes:
+        cert = collect_certified_games(shard_dir, args.resign_material_gap)
+        keep = cert[rows["game_id"]]
+        n_raw = len(keep)
+        rows = {k: v[keep][:args.n] for k, v in rows.items()}
+        print(f"[stage] certified filter: {int(keep.sum())}/{n_raw} sampled rows "
+              f"certified -> using {len(rows['packed'])}")
     n = len(rows["packed"])
     print(f"[stage] sample+load {n} holdout rows: {time.time() - t0:.1f}s")
 
@@ -155,7 +174,9 @@ def main():
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "atlas.json").write_text(json.dumps(atlas))
+    _tmp = out_dir / "atlas.json.tmp"          # atomic write: the play server may be
+    _tmp.write_text(json.dumps(atlas))         # serving /atlas while we rebuild in place
+    _tmp.replace(out_dir / "atlas.json")
 
     tsne_dir = out_dir / "tsne_map"
     tsne_dir.mkdir(parents=True, exist_ok=True)

@@ -49,7 +49,9 @@ _MIME = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
 class Engine:
     """Model + committor-MCTS + fitted t-SNE projection + atlas, all on CPU."""
 
-    def __init__(self, ckpt: str, phead: str, nodes: int):
+    def __init__(self, ckpt: str, phead: str, nodes: int, c_puct: float = 1.5,
+                 prior_tau: float = 0.5, pw_c: float = 0.0, memory_dir: str | None = None,
+                 tactical_prior: float = 0.0):
         import torch
         from catspace.nn.eval_head import EvalHead
         from catspace.nn.fb import load_ckpt
@@ -57,6 +59,7 @@ class Engine:
         self.torch = torch
         self.lock = threading.Lock()
         self.dev = "cpu"
+        self._ckpt, self._phead = ckpt, phead   # kept so /rebuild_atlas can re-run the builder
         fb, pay = load_ckpt(Path(ckpt), self.dev)
         fb.eval()
         hp = torch.load(phead, map_location=self.dev, weights_only=False)
@@ -73,11 +76,22 @@ class Engine:
                 return -torch.log(p[:, 0].clamp_min(1e-6)).unsqueeze(-1)
 
         self.pol = make_search_policy("mcts", fb, pay["zgoals"]["MATE_W"],
-                                      max_nodes=nodes, device=self.dev,
+                                      max_nodes=nodes, device=self.dev, c_puct=c_puct,
+                                      prior_tau=prior_tau, pw_c=pw_c,
+                                      tactical_prior=tactical_prior,
                                       committor_head=Committor(), mate_stop=True)
         self.rng = np.random.default_rng(0)
         self._atlas = None
         self._proj = None
+        # position MEMORY (vector DB of seen positions + outcomes). Lazy-loaded;
+        # append hooks: finished UI games (add_game) + proven MCTS terminals
+        # (_harvest_tree). NOTE queries/appends embed with the server's fixed
+        # omega (1800/300) while the shard build used each row's true omega --
+        # a ~0.006-cosine wobble on the omega-conditioned incumbent, gone once
+        # the field is omega-free.
+        self._memory_dir = memory_dir
+        self._memory = None
+        self._ckpt_tag = f"{Path(ckpt).name}@{pay.get('step', '?')}"
         # stateful Analyze: keep the last-analyzed tree so repeated Analyze on
         # the SAME position EXTENDS the search (+budget) instead of restarting
         self._an_root = None
@@ -108,6 +122,91 @@ class Engine:
             self._proj = _FittedProjection(Normalizer(mu=nz["mu"], sd=nz["sd"]), tp)
         return self._proj
 
+    # -- position memory ---------------------------------------------------
+    @property
+    def memory(self):
+        if self._memory is None and self._memory_dir is not None:
+            from catspace.memory.store import PositionMemory
+            p = Path(self._memory_dir)
+            if (p / "meta.json").exists():
+                self._memory = PositionMemory.load(p, expect_ckpt_tag=self._ckpt_tag)
+                self._mem_seen: set = set()
+                print(f"position memory loaded: {len(self._memory)} entries", flush=True)
+        return self._memory
+
+    def _embed_F_batch(self, boards: list) -> np.ndarray:
+        packed = np.stack([encode_packed(b) for b in boards])
+        meta = np.stack([encode_meta(b) for b in boards])
+        planes = self.torch.from_numpy(feature_planes(packed, meta)).to(self.dev)
+        om = self.torch.from_numpy(np.tile(self.omega_row, (len(boards), 1))).to(self.dev)
+        with self.torch.no_grad():
+            return self.fb.embed_F(planes, om).cpu().numpy()
+
+    def neighbors(self, board: chess.Board, k: int = 8) -> dict:
+        mem = self.memory
+        if mem is None:
+            return dict(neighbors=[], n=0)
+        nb = mem.query(self._embed_F(board), k=int(k))
+        return dict(neighbors=nb, n=len(mem))
+
+    def _mem_append(self, boards: list, results: list, certified: list, source: str):
+        """Embed + append boards the server has SEEN (dedup by fen; autosave)."""
+        mem = self.memory
+        if mem is None or not boards:
+            return 0
+        fresh = [(b, r, c) for b, r, c in zip(boards, results, certified)
+                 if b.fen() not in self._mem_seen]
+        if not fresh:
+            return 0
+        boards, results, certified = map(list, zip(*fresh))
+        fens = [b.fen() for b in boards]
+        self._mem_seen.update(fens)
+        if len(self._mem_seen) > 200_000:
+            self._mem_seen.clear()                       # crude bound
+        mem.add(self._embed_F_batch(boards), fens, results, certified, source,
+                plies=[b.ply() for b in boards])
+        if mem._dirty >= 1000:
+            mem.save(Path(self._memory_dir))
+        return len(fens)
+
+    def add_game(self, fens: list, result: str) -> dict:
+        """A game COMPLETED in the UI: every position gets the final outcome.
+        chess.js enforced the rules client-side, so the outcome is certified."""
+        res = {"white": 1, "black": -1, "draw": 0}.get(result)
+        if res is None:
+            return dict(added=0)
+        boards = []
+        for f in fens:
+            try:
+                boards.append(chess.Board(f))
+            except ValueError:
+                pass
+        n = self._mem_append(boards, [res] * len(boards), [True] * len(boards),
+                             source="play_ui")
+        return dict(added=n)
+
+    def _harvest_tree(self, root) -> int:
+        """Append search lines that reached a RULES-certified terminal ("every
+        monte carlo simulation we carry to completion"): each node on the path
+        root->terminal gets the terminal's outcome as its MC outcome sample.
+        Recognizer-planted terminals (cert_planted) are NOT game truth -> skipped."""
+        if self.memory is None:
+            return 0
+        from catspace.nn.mcts import game_truth
+        boards, results = [], []
+        stack = [(root, [root.board])]
+        while stack and len(boards) < 200:               # cap per search
+            node, path = stack.pop()
+            if game_truth(node):
+                out = 1 if node.terminal_v > 0.5 else (-1 if node.terminal_v < -0.5 else 0)
+                for b in path:
+                    boards.append(b)
+                    results.append(out)
+            for c in node.children:
+                if c.N > 0 or c.terminal_v is not None:
+                    stack.append((c, path + [c.board]))
+        return self._mem_append(boards, results, [True] * len(boards), source="mcts_sim")
+
     # -- embedding helpers -------------------------------------------------
     def _embed_F(self, board: chess.Board) -> np.ndarray:
         packed = encode_packed(board)[None]
@@ -126,26 +225,74 @@ class Engine:
         xy = self.proj.transform(self._embed_F(board)[None])[0]
         return round(float(xy[0]), 3), round(float(xy[1]), 3)
 
-    def _hops(self, board: chess.Board, node, maxlen: int = 6) -> list:
-        """The principal variation under `node` as a sequence of HOPS — one per
-        ply, alternating White/Black — each carrying its SAN, resulting FEN,
-        and PROJECTED (x,y). Descends max-visit children (the line MCTS already
-        built). The frontend draws these as a path through the embedding map
-        and previews each position on hover. node.move is the first move
-        relative to `board`."""
+    def _pv(self, board: chess.Board, node, maxlen: int = 6) -> list:
+        """Principal variation under `node` as [(san, fen, white, board)], with
+        NO projection (batched later). Descends max-visit children."""
         b = board.copy(stack=False)
-        hops, cur = [], node
-        while cur is not None and cur.move is not None and len(hops) < maxlen:
+        out, cur = [], node
+        while cur is not None and cur.move is not None and len(out) < maxlen:
             try:
                 san = b.san(cur.move)
             except (ValueError, AssertionError):
                 break
             white = b.turn == chess.WHITE            # side making THIS move
             b.push(cur.move)
-            x, y = self._xy(b)
-            hops.append(dict(san=san, fen=b.fen(), x=x, y=y, white=white))
+            out.append((san, b.fen(), white, b.copy(stack=False)))
             cur = max(cur.children, key=lambda c: c.N, default=None) if cur.children else None
-        return hops
+        return out
+
+    def _project_boards(self, boards: list, project: bool = True):
+        """Embed F, read winp, and (when `project`) t-SNE-project to (x,y) for
+        a LIST of boards in ONE batched pass each. openTSNE .transform() and the
+        model forwards amortize over the batch, so this is ~O(1) transform-setup
+        for the whole analyze -- replacing the per-hop single-point transforms
+        that dominated latency (dozens per Analyze/engine move -> one).
+        project=False skips the transform entirely (~0.7s) -- used by STREAMING
+        analyze chunks, where only visits/values/winp change frame-to-frame."""
+        packed = np.stack([encode_packed(b) for b in boards])
+        meta = np.stack([encode_meta(b) for b in boards])
+        planes = self.torch.from_numpy(feature_planes(packed, meta)).to(self.dev)
+        om = self.torch.from_numpy(np.tile(self.omega_row, (len(boards), 1))).to(self.dev)
+        with self.torch.no_grad():
+            f = self.fb.embed_F(planes, om)
+            winp = self.torch.softmax(self.phead(f), dim=1)[:, 0].cpu().numpy()
+        xy = self.proj.transform(f.cpu().numpy()) if project else None
+        return xy, winp
+
+    def _candidates(self, board: chess.Board, nodes, maxlen: int = 6,
+                    project: bool = True):
+        """Build candidate dicts (uci/san/visits/value/winp/x,y/hops) for the
+        given child nodes, projecting root + every endpoint + every PV hop in a
+        SINGLE batched transform (x/y are None when project=False). Returns
+        ((root_x, root_y), root_winp, cands)."""
+        pvs = []
+        for c in nodes:
+            child = board.copy(stack=False); child.push(c.move)
+            pvs.append((c, child, self._pv(board, c, maxlen)))
+        boards = [board]
+        for _c, child, pv in pvs:
+            boards.append(child)
+            boards.extend(h[3] for h in pv)
+        xy, winp = self._project_boards(boards, project=project)
+
+        def _xy_i(i):
+            if xy is None:
+                return None, None
+            return round(float(xy[i][0]), 3), round(float(xy[i][1]), 3)
+
+        cands, i = [], 1
+        for c, child, pv in pvs:
+            (cx, cy), cwin = _xy_i(i), round(float(winp[i]), 3)
+            i += 1
+            hops = []
+            for h in pv:
+                hx, hy = _xy_i(i)
+                hops.append(dict(san=h[0], fen=h[1], white=h[2], x=hx, y=hy))
+                i += 1
+            cands.append(dict(uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
+                              value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
+                              winp=cwin, x=cx, y=cy, hops=hops))
+        return _xy_i(0), round(float(winp[0]), 3), cands
 
     def project(self, board: chess.Board) -> dict:
         f = self._embed_F(board)
@@ -156,7 +303,7 @@ class Engine:
                     reach=round(reach, 4), winp=round(self.winp(board), 4))
 
     def analyze(self, board: chess.Board, topk: int = 3, nodes: int | None = None,
-                extend: bool = False) -> dict:
+                extend: bool = False, project: bool = True) -> dict:
         """Top-k candidate moves for the side to move, each with the PROJECTED
         (x,y) of the resulting position AND its principal-variation LINE (SAN).
         `nodes` sets this call's budget. `extend`=True CONTINUES the previous
@@ -175,28 +322,26 @@ class Engine:
         with self.lock:
             reuse = (self._an_root if extend and self._an_fen == fen
                      and self._an_root is not None else None)
-            old = self.pol.mcts.max_nodes
-            self.pol.mcts.max_nodes = int(nodes or old)
-            try:
-                root = self.pol.mcts.run(board, reuse_root=reuse)
-            finally:
-                self.pol.mcts.max_nodes = old
-            self._an_root, self._an_fen = root, fen
-            self._an_total = (self._an_total if reuse is not None else 0) + int(nodes or old)
-            total = self._an_total
+            if nodes == 0 and reuse is not None:
+                # PROJECTION-ONLY readout: no search, just re-serve the cached
+                # tree with x/y filled in (the streaming loop's final frame)
+                root, total = reuse, self._an_total
+            else:
+                old = self.pol.mcts.max_nodes
+                self.pol.mcts.max_nodes = int(nodes or old)
+                try:
+                    root = self.pol.mcts.run(board, reuse_root=reuse)
+                finally:
+                    self.pol.mcts.max_nodes = old
+                self._an_root, self._an_fen = root, fen
+                self._an_total = (self._an_total if reuse is not None else 0) + int(nodes or old)
+                total = self._an_total
+        if nodes != 0:
+            self._harvest_tree(root)          # memory: completed-simulation lines
         cand = sorted(root.children, key=lambda c: c.N, reverse=True)[:topk]
-        px, py = self._xy(board)
-        out = []
-        for c in cand:
-            child = board.copy(stack=False)
-            child.push(c.move)
-            cx, cy = self._xy(child)
-            out.append(dict(uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
-                            value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
-                            winp=round(self.winp(child), 3), x=cx, y=cy,
-                            hops=self._hops(board, c)))
+        (px, py), root_winp, out = self._candidates(board, cand, project=project)
         pv = [h["san"] for h in out[0]["hops"]] if out else []
-        return dict(game_over=False, result=None, winp=round(self.winp(board), 4),
+        return dict(game_over=False, result=None, winp=root_winp,
                     x=px, y=py, candidates=out, pv=pv, nodes=total)
 
     # -- play --------------------------------------------------------------
@@ -218,6 +363,7 @@ class Engine:
                         pv=[], candidates=[])
         with self.lock:
             root = self.pol.mcts.run(board)
+        self._harvest_tree(root)          # memory: completed-simulation lines
         white = board.turn == chess.WHITE
         kids = list(root.children)
         best = None
@@ -228,21 +374,14 @@ class Engine:
         if best is None:
             best = max(kids, key=lambda c: (c.N, (c.terminal_v if c.terminal_v
                        is not None else c.Q) * (1 if white else -1)))
-        # candidates: top 6 by visits, each with the resulting state's (x,y)
+        # candidates: top 6 by visits + the chosen best, projected in ONE batch
         cand = sorted(kids, key=lambda c: c.N, reverse=True)[:6]
-        px, py = self._xy(board)
-        candidates = []
-        for c in cand:
-            child = board.copy(stack=False)
-            child.push(c.move)
-            cx, cy = self._xy(child)
-            candidates.append(dict(
-                uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
-                value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
-                winp=round(self.winp(child), 3), x=cx, y=cy,
-                hops=self._hops(board, c)))
-        # PV: the best move's hop-line, as SAN (the line MCTS already built)
-        pv = [h["san"] for h in self._hops(board, best)]
+        nodes = cand if best in cand else [best] + cand
+        _root, _rw, projected = self._candidates(board, nodes)
+        by_uci = {d["uci"]: d for d in projected}
+        px, py = _root
+        candidates = [by_uci[c.move.uci()] for c in cand]
+        pv = [h["san"] for h in by_uci[best.move.uci()]["hops"]]   # best move's hop-line
         after = board.copy(stack=False)
         san = board.san(best.move)
         after.push(best.move)
@@ -250,6 +389,31 @@ class Engine:
         return dict(move=best.move.uci(), san=san, fen=after.fen(),
                     game_over=over2, result=res2, x=px, y=py,
                     winp=round(self.winp(after), 4), pv=pv, candidates=candidates)
+
+    def rebuild_atlas(self, n=4000, perplexity=40.0, exaggeration=1.6, tsne_iter=1500):
+        """Re-run build_play_atlas.py (CPU) with deeper t-SNE settings and
+        hot-reload the map: null the cached atlas/projection so the next /atlas
+        and /project pick up the freshly-written artifacts. Runs as a SUBPROCESS
+        (own model load) so a build failure can't corrupt the live server;
+        build_play_atlas writes atlas.json atomically, so a concurrent /atlas
+        read never sees a half-written file. n/iter are bounded because this
+        competes with any training job for CPU."""
+        import subprocess
+        import sys as _sys
+        n = max(500, min(int(n), 12000))
+        tsne_iter = max(250, min(int(tsne_iter), 5000))
+        perplexity = max(5.0, min(float(perplexity), 200.0))
+        exaggeration = max(1.0, min(float(exaggeration), 12.0))
+        cmd = [_sys.executable, str(ROOT / "experiments/viz/build_play_atlas.py"),
+               "--ckpt", self._ckpt, "--phead", self._phead,
+               "--n", str(n), "--perplexity", str(perplexity),
+               "--exaggeration", str(exaggeration), "--tsne-iter", str(tsne_iter)]
+        r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=1800)
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or r.stdout or "atlas build failed").strip()[-400:])
+        self._atlas = None                      # force lazy reload of the new artifacts
+        self._proj = None
+        return dict(n=n, perplexity=perplexity, exaggeration=exaggeration, tsne_iter=tsne_iter)
 
 
 ENGINE: Engine | None = None
@@ -337,9 +501,21 @@ class Handler(BaseHTTPRequestHandler):
             elif u.path == "/analyze":
                 self._json({"ok": True, **ENGINE.analyze(self._board(body["fen"]),
                             int(body.get("topk", 3)), body.get("nodes"),
-                            bool(body.get("extend", False)))})
+                            bool(body.get("extend", False)),
+                            bool(body.get("project", True)))})
             elif u.path == "/project":
                 self._json({"ok": True, **ENGINE.project(self._board(body["fen"]))})
+            elif u.path == "/neighbors":
+                self._json({"ok": True, **ENGINE.neighbors(self._board(body["fen"]),
+                                                           int(body.get("k", 8)))})
+            elif u.path == "/memory_add_game":
+                self._json({"ok": True, **ENGINE.add_game(body.get("fens", []),
+                                                          body.get("result", ""))})
+            elif u.path == "/rebuild_atlas":
+                self._json({"ok": True, **ENGINE.rebuild_atlas(
+                    n=body.get("n", 4000), perplexity=body.get("perplexity", 40.0),
+                    exaggeration=body.get("exaggeration", 1.6),
+                    tsne_iter=body.get("tsne_iter", 1500))})
             elif u.path == "/set_board":
                 fen = body["fen"]
                 try:
@@ -364,13 +540,38 @@ def main():
     ap.add_argument("--ckpt", default="data/derived/sep/cert_base_full.pt")
     ap.add_argument("--phead", default="data/derived/sep/cert_base_full_phead.pt")
     ap.add_argument("--nodes", type=int, default=400)
+    ap.add_argument("--c-puct", type=float, default=1.0,
+                    help="MCTS exploration constant. LOWER => visits concentrate on the "
+                         "best moves instead of spreading across all legal ones (the "
+                         "'too wide / low visits' lever). 1.5 is the training default; "
+                         "0.75-1.0 reads better interactively.")
+    ap.add_argument("--prior-tau", type=float, default=0.5,
+                    help="softmax temperature on the field-value move priors; lower => "
+                         "sharper priors (more concentrated expansion).")
+    ap.add_argument("--memory", default="data/derived/position_memory",
+                    help="position-memory dir (vector DB of seen positions + outcomes; "
+                         "build with experiments/build_position_memory.py). Serves "
+                         "/neighbors and accumulates play_ui/mcts_sim entries online. "
+                         "'' disables.")
+    ap.add_argument("--pw-c", type=float, default=1.5,
+                    help="progressive-widening constant: PUCT descends only into the "
+                         "top-K(N)=max(4, ceil(pw_c*N^0.5)) children by field value, so "
+                         "the budget deepens instead of spreading over every legal move. "
+                         "0 disables (the pre-2026-07-19 full-width behavior).")
+    ap.add_argument("--tactical-prior", type=float, default=0.25,
+                    help="blend weight w for the rule-derived tactical move prior "
+                         "(checks/captures/promotions/material threats): P=(1-w)*field "
+                         "+ w*uniform(tactical), and tactical moves always stay in the "
+                         "widening window. Ordering only -- values untouched. 0 disables.")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
 
     global ENGINE
     print(f"loading incumbent on CPU ({args.ckpt}) ...", flush=True)
-    ENGINE = Engine(args.ckpt, args.phead, args.nodes)
+    ENGINE = Engine(args.ckpt, args.phead, args.nodes, c_puct=args.c_puct,
+                    prior_tau=args.prior_tau, pw_c=args.pw_c,
+                    memory_dir=args.memory or None, tactical_prior=args.tactical_prior)
     if not (ATLAS_DIR / "atlas.json").exists():
         print("WARNING: atlas.json missing — run experiments/viz/build_play_atlas.py "
               "(the map will 500 until then)", flush=True)

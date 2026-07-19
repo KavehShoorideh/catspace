@@ -49,6 +49,33 @@ DRAW_V = 0.0
 PLY_DISCOUNT = 1e-4          # mate at depth k backs up MATE_V - k*PLY_DISCOUNT
 
 
+_PVAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5,
+         chess.QUEEN: 9, chess.KING: 0}
+
+
+def is_tactical_move(parent: chess.Board, move: chess.Move, child: chess.Board) -> bool:
+    """RULE-DERIVED (no learned heuristic): the move gives check, captures,
+    promotes, or the moved piece now attacks a strictly-higher-value or
+    undefended enemy piece (a material threat). `child` is the board AFTER the
+    move (expansion already built it). Used by the tactical prior (Kaveh
+    2026-07-19: "MCTS should spend nodes on checks, captures, threats") --
+    board truth injected into move ORDERING only, never into values."""
+    if child.is_check() or move.promotion is not None or parent.is_capture(move):
+        return True
+    to = move.to_square
+    mv = child.piece_at(to)
+    if mv is None:                       # cannot happen for a legal move; guard
+        return False
+    mv_val = _PVAL[mv.piece_type]
+    opp = child.turn                     # side to move after our move = the attacked side
+    for sq in child.attacks(to):
+        p = child.piece_at(sq)
+        if p is not None and p.color == opp and p.piece_type != chess.KING:
+            if _PVAL[p.piece_type] > mv_val or not child.is_attacked_by(opp, sq):
+                return True              # attacks bigger piece, or an undefended one
+    return False
+
+
 def game_truth(node: "_Node") -> bool:
     """terminal_v present AND not planted by the certainty recognizer.
     Network confidence is never game truth (the 0.60->0.20 rule). Provenance
@@ -63,7 +90,7 @@ def game_truth(node: "_Node") -> bool:
 class _Node:
     __slots__ = ("board", "move", "children", "P", "N", "W", "v_init",
                  "terminal_v", "parent", "rep_key", "coh_gamma", "raw_v", "cert",
-                 "cert_planted")
+                 "cert_planted", "pw_order", "tactical")
 
     def __init__(self, board: chess.Board, move: chess.Move | None,
                  parent: "_Node | None" = None):
@@ -84,6 +111,10 @@ class _Node:
                                          # doesn't re-run the network (MATH_AUDIT)
         self.cert_planted = False        # terminal_v came from the recognizer,
                                          # NOT the rules -- never game truth
+        self.pw_order: list | None = None  # children indices, mover-best first
+                                         # (progressive-widening candidate order)
+        self.tactical = False            # check/capture/promotion/material threat
+                                         # (rule-derived; set by parent expansion)
         # COHERENCE LENGTH (2026-07-16): per-node state-dependent backup discount
         # gamma=exp(-k*divergence), divergence = entropy of the child-value
         # distribution. 1.0 = fully forced (value flows up intact); <1 =
@@ -109,7 +140,9 @@ class MCTS:
                  coherence_k: float = 0.0,
                  certainty_fn=None, certainty_stop: float = 0.0,
                  cache_key_fn=None, decision_stop: bool = False,
-                 decision_check_every: int = 16, mate_stop: bool = False):
+                 decision_check_every: int = 16, mate_stop: bool = False,
+                 pw_c: float = 0.0, pw_alpha: float = 0.5, pw_min: int = 4,
+                 tactical_prior: float = 0.0):
         assert max_nodes >= 1
         # EARLY-STOP LEVERS (2026-07-18, the planner energy objective
         # E[score] - c*compute): spend budget only while it can still change
@@ -128,6 +161,32 @@ class MCTS:
         self.decision_stop = decision_stop
         self.decision_check_every = decision_check_every
         self.mate_stop = mate_stop
+        # PROGRESSIVE WIDENING (Kaveh 2026-07-19, interim until the plan-
+        # alignment move prior orders moves): selection considers only the
+        # top-K(N) children by mover-perspective value, K = max(pw_min,
+        # ceil(pw_c * N^pw_alpha)) -- the canonical schedule (Coulom 2007 /
+        # progressive unpruning). Value-only expansion pays branching-many
+        # evals per node, so an unrestricted PUCT spreads the budget across
+        # every legal reply before deepening ("7 visits at the root at 4000
+        # nodes"); widening concentrates descent so depth scales with budget.
+        # All children are still CREATED (rule-based mate/draw detection stays
+        # exact -- a mate child has maximal mover value, so it is always inside
+        # the window) and batch-evaluated once; only DESCENT is restricted.
+        # pw_c=0 disables (exact prior behavior; training/eval default).
+        self.pw_c = pw_c
+        self.pw_alpha = pw_alpha
+        self.pw_min = pw_min
+        # TACTICAL PRIOR (Kaveh 2026-07-19: "spend nodes on checks, captures,
+        # threats"): the FIELD is tactically blind (outcome-agnostic training),
+        # so value-ordered priors can starve exactly the moves whose
+        # consequences it misprices. Rule-derived tactical children (see
+        # is_tactical_move) get (a) guaranteed membership in the progressive-
+        # widening window and (b) a prior blend P = (1-w)*P_field + w*uniform
+        # (tactical) -- progressive-bias style: ordering only, values untouched,
+        # so a refuted tactic still loses on Q. 0 disables (exact prior
+        # behavior). Interim until the plan-alignment prior; re-test on field
+        # promotions (conditional-rejections rule).
+        self.tactical_prior = tactical_prior
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
         self.max_nodes = max_nodes
@@ -209,6 +268,8 @@ class MCTS:
             b2 = node.board.copy(stack=False)
             b2.push(m)
             c = _Node(b2, m, parent=node)
+            if self.tactical_prior > 0.0:
+                c.tactical = is_tactical_move(node.board, m, b2)
             if b2.is_checkmate():
                 # the MOVER of m delivered mate; White-POV sign from who moved
                 mate = MATE_V - (depth + 1) * PLY_DISCOUNT if node.board.turn == chess.WHITE \
@@ -271,9 +332,20 @@ class MCTS:
         persp = vals if node.board.turn == chess.WHITE else -vals
         e = np.exp((persp - persp.max()) / self.prior_tau)
         pri = e / e.sum()
+        if self.tactical_prior > 0.0:
+            tac = np.array([c.tactical for c in children], dtype=bool)
+            if tac.any():
+                w = self.tactical_prior
+                pri = (1.0 - w) * pri + w * (tac / tac.sum())
         for c, p in zip(children, pri):
             c.P = float(p)
         node.children = children
+        if self.pw_c > 0.0:
+            # candidate order for progressive widening: mover-best first. A
+            # mate-for-the-mover child has maximal persp, so it is index 0.
+            # Value recalibration (tree reuse) is monotone, so this order
+            # stays valid without recomputation.
+            node.pw_order = [int(i) for i in np.argsort(-persp)]
         # COHERENCE = P(we realize the outcome from here) (Kaveh 2026-07-17). The
         # backup trust factor gamma = exp(-k*(1 - P)): P~1 (a forced/won region,
         # committor confident) => gamma~1, value passes up INTACT -- a proven
@@ -319,8 +391,20 @@ class MCTS:
     def _select_child(self, node: _Node) -> _Node:
         white = node.board.turn == chess.WHITE
         sqrt_n = math.sqrt(node.N)
+        cand = node.children
+        if self.pw_c > 0.0 and node.pw_order is not None:
+            # progressive widening: descend only into the top-K(N) children --
+            # plus every TACTICAL child (checks/captures/threats are never
+            # excluded from the window; the field misprices exactly those)
+            k = max(self.pw_min, math.ceil(self.pw_c * node.N ** self.pw_alpha))
+            if k < len(cand):
+                cand = [node.children[i] for i in node.pw_order[:k]]
+                if self.tactical_prior > 0.0:
+                    inside = set(node.pw_order[:k])
+                    cand += [c for i, c in enumerate(node.children)
+                             if c.tactical and i not in inside]
         best, best_s = None, -np.inf
-        for c in node.children:
+        for c in cand:
             q = c.terminal_v if c.terminal_v is not None else c.Q
             s = (q if white else -q) + self.c_puct * c.P * sqrt_n / (1 + c.N)
             if s > best_s:
@@ -454,7 +538,9 @@ class FBMCTSPolicy:
                  committor_dhead=None, clearance_beta: float = 0.0,
                  detect_threefold: bool = True, coherence_k: float = 0.0,
                  certainty_head=None, certainty_stop: float = 0.0,
-                 decision_stop: bool = False, mate_stop: bool = False):
+                 decision_stop: bool = False, mate_stop: bool = False,
+                 pw_c: float = 0.0, pw_alpha: float = 0.5, pw_min: int = 4,
+                 tactical_prior: float = 0.0):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -526,6 +612,8 @@ class FBMCTSPolicy:
                          coherence_k=coherence_k,
                          certainty_fn=certainty, certainty_stop=certainty_stop,
                          decision_stop=decision_stop, mate_stop=mate_stop,
+                         pw_c=pw_c, pw_alpha=pw_alpha, pw_min=pw_min,
+                         tactical_prior=tactical_prior,
                          cache_key_fn=lambda b: f"{b.fen()}|{self.path_counts.get(b.board_fen(), 0)}")
         self.evidence = evidence or {}
         self.evidence_k = evidence_k

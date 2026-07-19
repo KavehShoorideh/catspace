@@ -4918,3 +4918,143 @@ field-native cleanliness. GATED on a SPREAD field: on the small-world incumbent,
 d(s->g)-d(s·a->g) is noise; only on a spread quasimetric is it signal -- so this
 is a post-field capability, which is why we wait for qrl_iqe_sn_full. Deferred
 until that run's verdict.
+
+## 2026-07-19 (late night): certified outcomes, progressive widening, position memory, UI overhaul
+
+**Certified-outcome labels** (Kaveh: timeouts must not shape the win surface; then
+"include resignations at 3+ points"). New `catspace/data/certified.py::
+collect_certified_games`: a game's outcome label is trusted iff DRAW, win by
+CHECKMATE (board-proven), or decisive non-mate win with the winner up >=3
+nominal points at the final position. Measured on 3 shards (54,286 games):
+draw 4.1% + mate 27.2% + material-backed 43.4% = **74.8% certified**; the
+masked 25.2% are balanced-position resignations/flag-falls (script printout,
+cert_check2). Wired as `--committor-certified-only --resign-material-gap 3.0`
+in train_lichess_fb: gates ONLY the phead CE (+ cert-base distance targets);
+geometry still trains on ALL positions (Kaveh: "apply to the geometry, just
+not the phead"). zgoal poles were already clean (collect_mate_finals gates on
+is_checkmate). Full-shard scan: 77.1% certified over 1M games (MEMORY_BUILT
+verdict). Also applied to the ATLAS: build_play_atlas now filters samples to
+certified games by default (--all-outcomes to disable); rebuilt atlas = 4000
+pts, result counts W1878/B1783/D339.
+
+**Progressive widening in MCTS** (Kaveh: "add it now until planning works
+later"). Selection-level, canonical K(N)=max(4, ceil(pw_c*N^0.5)) (Coulom
+2007): descent restricted to top-K children by mover-perspective value; all
+children still created (rule terminals exact; a mate child is always in the
+window) and batch-evaled once. Flag-gated OFF by default (pw_c=0 = bit-identical
+prior behavior; 21/21 tests pass incl. 3 new). A/B at matched budget
+(incumbent committor-MCTS, printed verdicts):
+  start  2000n: sims 119->124, depth 5->6, top1 visits 50->62
+  midgame 2000n: sims 43->53 (+23%), depth 3->5
+  toy    400n: no change (priors already sharp; window never binds)
+HONEST READ: helps depth modestly; the dominant width cost is STRUCTURAL
+(value-only expansion evals every legal child: 44-move midgame = 9 expansions
+per 400n). Only an expansion-level ordering (the plan-alignment prior) removes
+that -- this is the interim lever, not the fix.
+
+**Position memory** (Kaveh: "embeddings into a vector DB -- nearest seen
+positions and outcomes; also every position we see and every MC sim carried to
+completion; tag human vs self-play"). New `catspace/memory/store.py`
+(PositionMemory: hnswlib cosine ANN + provenance metadata human/selfplay/
+play_ui/mcts_sim, certified flags, ckpt-tag guard against cross-field queries)
++ `experiments/build_position_memory.py` (seeds from TRAIN rows, holdout
+excluded). VERDICT MEMORY_BUILT n=200000 dim=64 ckpt=cert_base_full.pt@155000
+certified_frac=0.771 (embed 1421 rows/s CPU, ~2.5 min). Play server: /neighbors
++ /memory_add_game endpoints; _harvest_tree appends every search line reaching
+a RULES-certified terminal (cert_planted excluded) with the terminal outcome as
+the MC sample; UI game-over posts the full game. Live test: engine_move on
+back-rank mate played Ra8#, memory 200000->200002, re-query returns the mate
+line at dist 0 tagged mcts_sim. Toy-position neighbors: certified White-won
+R+material endgames at cosine 0.037-0.047 (sane retrieval).
+
+**Play UI/server** (Kaveh's bug reports + asks): analyze no longer blocks the
+game -- a move/nav checkpoints+stops the chunked search (AbortController; server
+tree = the checkpoint), nav auto-resumes from the new position; stale "engine's
+last move" analysis cleared on your turn; search depth is a dropdown
+(100..2000, default 500); Manual (both sides) mode added (Engine cycle
+Black->White->Manual, lichess-analysis-board style); t-SNE rebuild from the UI
+(/rebuild_atlas endpoint, hot-reload, atomic atlas write); map redraw throttled
+~1/s. PERF: /analyze was calling the openTSNE transform PER CANDIDATE PER HOP
+(~18-36 single-point transforms/call -> multi-second lockups); now ONE batched
+transform per call: warm analyze 0.75s@100n / 1.11s@500n (curl timings).
+c_puct exposed (--c-puct, server default 1.0; training default unchanged 1.5),
+prior_tau exposed; server runs --pw-c 1.5.
+
+**Durable launcher**: experiments/launch.sh (nohup+disown -> reparents to
+launchd; caffeinate -i -w <pid>; timestamped log + stable symlink + pidfile) --
+long runs now survive terminal/VSCode/Claude close. Smoke-verified (PPID 1,
+clean kill, caffeinate auto-exit). RUNBOOK §0.
+
+**Field run** (qrl_iqe_sn_full, the bundled stability recipe): clean through
+step 33900/40000 -- lam ~57 (slow creep, decelerating), d_step pinned 1.015,
+d_rand ~46, var 0.42, ZERO collapse -- the 6k-18k death window that killed
+every prior recipe is far behind. Verdict + conversion A/B vs the 0.600
+incumbent when it lands. Overnight (Kaveh-approved, lowest priority, GPU-idle):
+smoke then full retrain of the SAME recipe + certified-only committor labels.
+
+**Tactical move prior** (Kaveh: "MCTS should spend nodes on checks, captures,
+threats"). Rule-derived flag per child (is_tactical_move: gives check | capture
+| promotion | moved piece attacks a strictly-higher-value or undefended enemy
+piece -- board truth, no learned heuristic), consumed two ways: (a) tactical
+children are ALWAYS in the progressive-widening window; (b) prior blend
+P=(1-w)*P_field + w*uniform(tactical). Ordering only -- values untouched, so a
+refuted tactic still loses on Q. Flag-gated OFF (training/eval unchanged);
+server runs --tactical-prior 0.25. Tests 24/24 (detector fixtures incl. a
+no-check no-capture knight threat; boost + window membership; default-off).
+A/B on a hanging-queen position (VERDICT TACTICAL): no-op -- the incumbent
+already priced Nxd5 top-1 (P 0.112->0.119, best_move unchanged), i.e. this
+lever pays only where the field MISPRICES the tactic (the toy rook-hangs);
+mechanically guaranteed there (window + P >= w/|tactical|). Interim like PW;
+both fold into the plan-alignment prior later; re-test on field promotions.
+
+**CONVERSION A/B: the stable spread field does NOT play** (the night's headline).
+PLAYOUT_AB SN_FULL_VS_INCUMBENT mate-rate A=0.600 vs B=0.150 diff=-0.450
+CI=[-0.560,-0.350] e=1.5e10 (n=100, 49 decisive; plies-to-mate A=20 B=7)
+[SIGNIFICANT]. Crucial control vs the leaky field's 0.160 (e=7.8e9): THAT
+result was confounded by its step-13k collapse -- this run had NO collapse,
+cleared all 40k steps, spread d_rand 60.7 with d_step pinned 1.09, and still
+plays the same 0.15. So "spread is not sufficient for play" is now
+UNCONFOUNDED: a geometrically healthy QRL spread field converts only
+near-mate starts (B's mates average 7 plies vs the incumbent's 20 -- no long
+navigation). With VAL_TOP8 0.111 and won-lost slope separation 0.014, the
+bottleneck is the outcome-navigation signal in the geometry/committor, NOT
+training stability and NOT phead label noise. Implication for the overnight
+run: retraining the SN recipe with certified labels would test labels on a
+geometry that cannot play -- retarget the certified-label retrain to the
+INCUMBENT recipe (cert_base, the 0.600 player, provenance args recovered from
+the ckpt), where cleaner committor labels can actually move the primary
+metric. Spread stays a planner-side research line (plan-alignment needs it),
+not a player.
+
+**Overnight run launched: cert_base_certified** (Kaveh-approved overnight slot,
+retargeted post-A/B; lowest priority via nice -n 10). FAITHFUL incumbent
+reproduction: provenance args + model CONFIG from the ckpt (the args said
+quasimetric=False but the MODEL is quasimetric=True -- inherited through its
+resume chain; the first smoke crashed on exactly this and was relaunched with
+--quasimetric; short-run gate passed: mask ON 753191/1e6=75.3%, VAL_TOP8 0.162,
+reach slopes 0.92/0.91 at 2k). Full: 155k steps, d=64 ch=64 blocks=6 enc_out=256
+dh=512, batch 256, lr 2e-4, cert-base(lam 8, scale 50), phead 0.3 + NEW
+--committor-certified-only --resign-material-gap 3.0. ~3h at ~14.5 it/s.
+CAVEAT recorded now, not after: cert_base_full (0.600) was COMPOSED over
+resumed rounds; a single fresh 155k of the final recipe is not guaranteed to
+reproduce 0.600, so the morning A/B (cert_base_certified vs cert_base_full)
+reads as "certified labels + fresh single-run vs the composed incumbent" -- if
+it lands lower, attribution is ambiguous (composition vs labels) and a
+composed-style certified rerun is the follow-up; if it lands at/above 0.600,
+certified labels are at worst free and the win surface is board-honest.
+
+**CERTIFIED-LABEL A/B (morning):** PLAYOUT_AB CERTIFIED_VS_INCUMBENT
+A(cert_base_full, composed, raw labels)=0.600 vs B(cert_base_certified, fresh
+155k, certified labels)=0.420 diff=-0.180 CI=[-0.300,-0.060] e=8.34 (40
+decisive; plies-to-mate A=20 B=17) [SIGNIFICANT]. GRADING (the flagged
+confound): B is a REAL player (0.420, navigates -- 17-ply mates), 2.8x the
+spread field's 0.150, and won-lost DIFF_SLOPE separation 0.149 (vs 0.014). But
+-0.180 CONFLATES two changes we made at once (breaking single-lever on purpose,
+overnight): (i) composed-incumbent -> fresh-single-run, (ii) raw -> certified
+labels, AND masking drops 25% of games' phead labels (less data). So we CANNOT
+attribute the gap to certified labels. REQUIRED CONTROL: a fresh single 155k of
+the identical recipe with RAW labels (no --committor-certified-only). If ~0.420
+-> the gap is composition/fresh-run, certified is neutral (keep it: board-honest
+for free). If ~0.600 -> certified/label-masking costs strength -> investigate
+(masked-data volume vs label content). Not auto-run: overnight window over,
+Kaveh back, directional 3h GPU call is his.
