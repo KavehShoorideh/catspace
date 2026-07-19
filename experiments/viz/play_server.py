@@ -36,8 +36,13 @@ from catspace.data.encode import encode_meta, encode_packed  # noqa: E402
 
 TEMPLATE = ROOT / "catspace/viz/templates/play_atlas.html"
 ATLAS_DIR = ROOT / "artifacts/generated/play_atlas"
-TOY_SET = ROOT / "artifacts/experiments/krrkbp_test_n200.json"
-TOY_FALLBACK = "8/8/8/8/8/2k5/1r6/K1R1R3 w - - 0 1"
+ASSETS_DIR = ROOT / "catspace/viz/assets"      # vendored chessground (JS+CSS)
+# A CLEAN, tablebase-won KRRvKBP toy from the real test set (Ka7 Rc7 Rb3 vs
+# Kd4 Ba3 pf3) — no rook hanging, kings apart. fens[0] of krrkbp_test_n200
+# is a genuine win too but reads as a rook blunder, so it made a bad demo.
+TOY_FALLBACK = "8/K1R5/8/8/3k4/bR3p2/8/8 w - - 0 1"
+_MIME = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
+         ".json": "application/json", ".html": "text/html; charset=utf-8"}
 
 
 class Engine:
@@ -111,6 +116,10 @@ class Engine:
         with self.torch.no_grad():
             return float(self.torch.softmax(self.phead(f), dim=1)[0, 0])
 
+    def _xy(self, board: chess.Board) -> tuple:
+        xy = self.proj.transform(self._embed_F(board)[None])[0]
+        return round(float(xy[0]), 3), round(float(xy[1]), 3)
+
     def project(self, board: chess.Board) -> dict:
         f = self._embed_F(board)
         xy = self.proj.transform(f[None])[0]
@@ -121,6 +130,30 @@ class Engine:
         return dict(x=round(float(xy[0]), 3), y=round(float(xy[1]), 3),
                     reach=round(reach, 4), winp=round(self.winp(board), 4),
                     cluster=int(near["id"]))
+
+    def analyze(self, board: chess.Board, topk: int = 3) -> dict:
+        """Top-k candidate moves for the side to move, each with the PROJECTED
+        (x,y) of the resulting position — the board arrows + map vectors both
+        read from this. Includes the current board's own projection (the ★)."""
+        over, res = self._outcome(board)
+        if over:
+            px, py = self._xy(board)
+            return dict(game_over=True, result=res, winp=round(self.winp(board), 4),
+                        x=px, y=py, candidates=[])
+        with self.lock:
+            root = self.pol.mcts.run(board)
+        cand = sorted(root.children, key=lambda c: c.N, reverse=True)[:topk]
+        px, py = self._xy(board)
+        out = []
+        for c in cand:
+            child = board.copy(stack=False)
+            child.push(c.move)
+            cx, cy = self._xy(child)
+            out.append(dict(uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
+                            value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
+                            winp=round(self.winp(child), 3), x=cx, y=cy))
+        return dict(game_over=False, result=None, winp=round(self.winp(board), 4),
+                    x=px, y=py, candidates=out)
 
     # -- play --------------------------------------------------------------
     @staticmethod
@@ -151,16 +184,18 @@ class Engine:
         if best is None:
             best = max(kids, key=lambda c: (c.N, (c.terminal_v if c.terminal_v
                        is not None else c.Q) * (1 if white else -1)))
-        # candidates: top 6 by visits
+        # candidates: top 6 by visits, each with the resulting state's (x,y)
         cand = sorted(kids, key=lambda c: c.N, reverse=True)[:6]
+        px, py = self._xy(board)
         candidates = []
         for c in cand:
             child = board.copy(stack=False)
             child.push(c.move)
+            cx, cy = self._xy(child)
             candidates.append(dict(
                 uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
                 value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
-                winp=round(self.winp(child), 3)))
+                winp=round(self.winp(child), 3), x=cx, y=cy))
         # PV: descend max-visit children
         pv, node = [], best
         for _ in range(8):
@@ -173,7 +208,7 @@ class Engine:
         after.push(best.move)
         over2, res2 = self._outcome(after)
         return dict(move=best.move.uci(), san=san, fen=after.fen(),
-                    game_over=over2, result=res2,
+                    game_over=over2, result=res2, x=px, y=py,
                     winp=round(self.winp(after), 4), pv=pv, candidates=candidates)
 
 
@@ -181,13 +216,6 @@ ENGINE: Engine | None = None
 
 
 def toy_fen() -> str:
-    if TOY_SET.exists():
-        try:
-            fens = json.loads(TOY_SET.read_text()).get("fens", [])
-            if fens:
-                return fens[0]
-        except Exception:
-            pass
     return TOY_FALLBACK
 
 
@@ -220,6 +248,15 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if u.path == "/":
                 self._send(200, TEMPLATE.read_text(), "text/html; charset=utf-8")
+            elif u.path.startswith("/assets/"):
+                # serve vendored chessground JS/CSS (same-origin static files);
+                # resolve() + prefix guard prevents path traversal
+                rel = u.path[len("/assets/"):]
+                fp = (ASSETS_DIR / rel).resolve()
+                if not str(fp).startswith(str(ASSETS_DIR.resolve())) or not fp.is_file():
+                    self._json({"error": "not found"}, 404)
+                    return
+                self._send(200, fp.read_bytes(), _MIME.get(fp.suffix, "application/octet-stream"))
             elif u.path == "/atlas":
                 self._send(200, (ATLAS_DIR / "atlas.json").read_bytes())
             elif u.path == "/toy":
@@ -257,6 +294,9 @@ class Handler(BaseHTTPRequestHandler):
                             "game_over": over, "result": res})
             elif u.path == "/engine_move":
                 self._json(ENGINE.engine_move(self._board(body["fen"])))
+            elif u.path == "/analyze":
+                self._json({"ok": True, **ENGINE.analyze(self._board(body["fen"]),
+                            int(body.get("topk", 3)))})
             elif u.path == "/project":
                 self._json({"ok": True, **ENGINE.project(self._board(body["fen"]))})
             elif u.path == "/set_board":

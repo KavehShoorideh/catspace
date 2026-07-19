@@ -82,6 +82,11 @@ def main():
     ap.add_argument("--n", type=int, default=4000, help="holdout positions to sample")
     ap.add_argument("--clusters", type=int, default=14, help="k-means clusters on 2-D t-SNE")
     ap.add_argument("--pool", type=int, default=40, help="max sampled FENs per cluster")
+    ap.add_argument("--perplexity", type=float, default=40.0)
+    ap.add_argument("--exaggeration", type=float, default=1.6,
+                    help=">1 pulls clusters apart (more separation)")
+    ap.add_argument("--tsne-iter", type=int, default=1500,
+                    help="gradient iterations (more = more separation, slower)")
     ap.add_argument("--out", default="artifacts/generated/play_atlas")
     ap.add_argument("--shards", default=None, help="shard dir (default: newest)")
     ap.add_argument("--seed", type=int, default=0)
@@ -123,10 +128,25 @@ def main():
     print(f"[stage] embed F + reach/winp ({n} rows): {time.time() - t0:.1f}s")
 
     # -------------------------------------------------- fit persisted t-SNE
+    # Tuned for SEPARATION (Kaveh 2026-07-18: "run a bit more"): more gradient
+    # iterations + a >1 late exaggeration pulls clusters apart (openTSNE's
+    # separation knob). Built directly (not via fit_projection) for the extra
+    # params, then wrapped so the server can still out-of-sample transform.
     t0 = time.time()
-    proj = fit_projection(F, kind="tsne", seed=args.seed)
-    xy = np.asarray(proj.fit_points(), dtype=np.float32)  # in-sample 2-D coords
-    print(f"[stage] fit t-SNE ({n}x{F.shape[1]} -> 2D): {time.time() - t0:.1f}s")
+    from openTSNE import TSNE
+    from catspace.viz.projection import Normalizer, TSNEProjection
+    from catspace.viz.realboard import _FittedProjection
+    normalizer = Normalizer.fit(F)
+    Fn = normalizer.apply(F)
+    emb = TSNE(perplexity=args.perplexity, initialization="pca", metric="cosine",
+               exaggeration=args.exaggeration, n_iter=args.tsne_iter,
+               random_state=args.seed, n_jobs=-1).fit(Fn)
+    tp = TSNEProjection(perplexity=args.perplexity, seed=args.seed)
+    tp._embedding = emb
+    proj = _FittedProjection(normalizer, tp)
+    xy = np.asarray(emb, dtype=np.float32)  # in-sample 2-D coords
+    print(f"[stage] fit t-SNE ({n}x{F.shape[1]} -> 2D, perp={args.perplexity} "
+          f"exag={args.exaggeration} iter={args.tsne_iter}): {time.time() - t0:.1f}s")
 
     # -------------------------------------------------- k-means on 2-D coords
     t0 = time.time()
