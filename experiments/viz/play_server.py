@@ -41,7 +41,7 @@ ASSETS_DIR = ROOT / "catspace/viz/assets"      # vendored chessground (JS+CSS)
 # syzygy wdl=2): Ra1 Ke1 Rh1 vs Bc8 Ke8 pd7. Every train/eval position derives
 # from THIS by 2-10 random legal moves — so the test-set FENs look "scattered";
 # the Toy button must be the start itself, not a random-derived position (Kaveh).
-TOY_FALLBACK = "2b1k3/3p4/8/8/8/8/8/R3K2R w - - 0 1"
+TOY_FALLBACK = "4kb2/4p3/8/8/8/8/8/R3K2R w - - 0 1"
 _MIME = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
          ".json": "application/json", ".html": "text/html; charset=utf-8"}
 
