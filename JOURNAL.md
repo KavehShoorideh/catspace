@@ -4842,3 +4842,34 @@ if Kaveh prefers: #3 Stooke gradient-norm-ratio scale-invariance on the
 constraint; or QRL's own convex-φ down-weighting (verify our saturating push
 isn't being outrun). Run stopped to not burn GPU on an under-pinned field;
 NOT relaunched pending the remedy choice.
+
+
+## 2026-07-18 (Fable) — SPECTRAL NORM WORKS: first stable full-recipe run; scale runaway solved, λ bounded
+
+qrl_iqe_sn_smoke (2500 steps, no-cap recipe + --spectral-norm, single lever
+vs the diverging no-cap run). VERDICT: the scale runaway is SOLVED.
+  step 2.5k: λ=22 (STABLE — barely moved from ~18 @1200), d_step=1.36 (pinned
+             near 1), d_rand=20.4, d_unr=21.0, d_oth=19.4, no COLLAPSE, saved.
+  cf. no-cap run @ same step: λ already diverging past 40 -> 95, d_step
+      thrashing 0.3. cf. capped run: d_step decayed to 0.009.
+This is the FIRST time the full recipe held λ bounded AND d_step pinned through
+2500 steps. Spectral norm (encoder+heads, 50 layers) bounds the Lipschitz
+constant so push/hinge can't inflate the embedding scale -> λ has nothing to
+chase. log_scale (the scalar escape valve I flagged) barely crept: +0.21 =>
+1.24x, NOT exploited -> no need to freeze it. VICReg fine (var floor satisfied,
+not dead). Diagnosis chain that got here: vicreg (healthy) -> #3 (scale
+unpinned, push saturates correctly) -> #1 spectral norm (this).
+
+ONE EXPECTED CAVEAT (units, not failure): with the scale now bounded the
+achievable distance ceiling is ~22, BELOW the floor of 30 -> d_unr (21) ~
+d_rand (20): certified-unreachable pairs end up NO FARTHER than generic far
+pairs, washing out the oracle signal. The floor/offset (30/15) were chosen as
+absolute ply-distances against an UNbounded scale; they must be reconciled with
+the bounded range. FIX (single lever, recommended): raise iqe_embed_scale
+1->~2 (a FIXED, non-learnable magnitude knob SN doesn't touch) to lift the
+ceiling to ~44 so floor=30 is achievable with separation, keeping the numbers'
+ply-meaning. Alt: lower floor->~15, offset->~8 into the current ceiling
+(changes ply-calibration). Next: validate the rescale short, then the full 40k
+run. Separate worthwhile lever (Kaveh): strip omega from F for the quasimetric
+field (geometry should be player-independent; omega belongs on the committor/
+measure side only) -- --omega-free-field.
