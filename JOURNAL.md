@@ -4894,3 +4894,27 @@ Launched the FULL run: qrl_iqe_sn_full.pt, 40k steps, this exact recipe,
 ckpt-every 10000, detector armed. This is the first field recipe that survived
 the full 2500-step validation with lambda bounded and the pin held -- the
 candidate for a genuinely-spread, conversion-testable field.
+
+
+## 2026-07-18 (Fable) — move ordering = plan-alignment, NOT a learned policy head (Kaveh)
+
+Kaveh's call on the MCTS move-ordering / thin-visits problem (value-only
+expansion => ~7 root visits at 4000n, moves not field-ordered): do NOT add a
+learned policy head. Instead the MCTS PRIOR = geometric progress toward the
+PLANNER's active subgoal g:
+    pi(a) ∝ exp( beta * [ d(s->g) - d(s·a->g) ] )
+moves that advance the plan (reduce quasimetric distance to the subgoal) get a
+higher prior -> PUCT + progressive widening concentrate visits on plan-aligned
+lines. "how to weigh options" = beta (plan-alignment weight / temperature),
+a tunable MCTS parameter, mixed with c_puct (exploration). The FIELD is the
+policy (via reachability to the subgoal); no separate learned head, no new
+training target -- it reuses the quasimetric we're already training and ties
+the search directly to the planner (the planner-as-prober design: plan sets g,
+search drives to g). Honest tradeoff recorded: this ORDERS moves by the field
+(fixes "not field-ordered") and lets widening go DEEP on the plan instead of
+shallow-wide, but still embeds all children to RANK them, so it doesn't cut the
+per-node eval cost the way a learned policy would amortize -- accepted, for the
+field-native cleanliness. GATED on a SPREAD field: on the small-world incumbent,
+d(s->g)-d(s·a->g) is noise; only on a spread quasimetric is it signal -- so this
+is a post-field capability, which is why we wait for qrl_iqe_sn_full. Deferred
+until that run's verdict.
