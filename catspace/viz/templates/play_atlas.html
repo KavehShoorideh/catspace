@@ -48,7 +48,7 @@
 </style>
 </head>
 <body>
-<h1>catspace · play-atlas &nbsp;<small>engine plays White · click-drag to move · click a map point to inspect it; hover = stats</small></h1>
+<h1>catspace · play-atlas &nbsp;<small>you play White · engine plays Black · click-drag to move · click a map point to inspect it; hover = stats</small></h1>
 <div class="wrap">
   <div class="col left">
     <div class="row">
@@ -58,7 +58,7 @@
       <button id="bToy">Toy</button>
       <button id="bNew">New</button>
       <button id="bFlip">Flip</button>
-      <button id="bSide">Engine: White</button>
+      <button id="bSide">Engine: Black</button>
     </div>
     <div id="board"></div>
     <div class="row" style="margin-top:6px">
@@ -127,7 +127,7 @@ const NS="http://www.w3.org/2000/svg";
 const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const S={fen:START,mode:"play",flip:false,legal:[],atlas:null,proj:null,ck:"result",
         editPiece:"P",stm:"w",region:null,regionIdx:{},
-        engineColor:"white",analysis:null,busy:false,analyzing:false,hist:[],ptr:0,
+        engineColor:"black",analysis:null,busy:false,analyzing:false,hist:[],ptr:0,
         samplePool:[],sampleIdx:0,pinnedLine:null};
 const BRUSH=["green","blue","yellow"];         // top-1/2/3 board arrows
 const VCOL={green:"#66d9a6",blue:"#7aa2ff",yellow:"#ffb86b"};
@@ -204,10 +204,10 @@ async function settle(lastMove){
       if(r.move){S.fen=r.fen;
         pushHist(r.fen,[r.move.slice(0,2),r.move.slice(2,4)],r.san,S.engineColor==="white");}
       g=await place(S.fen,r.move?[r.move.slice(0,2),r.move.slice(2,4)]:null);
-      if(g){drawMap();setStatus("game over · "+g);return;}
-      await showHint();                              // engine read of the human's options
-    }else{
-      await showHint();
+      if(cg)cg.setShapes([]); drawMap();             // clear the engine's pre-move arrows
+      setStatus(g?("game over · "+g):`your move (${humanColor()})`);
+    }else{                                            // human to move: STATIC, no auto-analysis
+      setStatus(`your move (${humanColor()}) · ⚙ Analyze for the engine's read`);
     }
   }catch(e){toast(e.message);}finally{S.busy=false;setBusy(false);}
 }
