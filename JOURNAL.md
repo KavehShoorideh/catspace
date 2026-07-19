@@ -5101,3 +5101,37 @@ the committor-search prefers. Confirms BC is the wrong target; the AZ target is
 distilling pi_search into the policy. Caveat: pi_search rides a weak value
 (committor converts 0.15), so distillation buys cheap+self-consistent search,
 not strength -- value/field stays the bottleneck.
+
+## 2026-07-19 (cont.): the value IS the bottleneck -- committor flat, quasimetric d works
+
+**WHY the field "can't play" -- pinned with numbers.**
+- Committor calibration: on 200 TABLEBASE-WON toy positions (truth=1.0) the
+  committor P(win) reads mean 0.818, max 0.927, only 4% >0.9. It learned the
+  HUMAN conversion rate (~0.82 at 1800 Elo), not chess truth. Master/classical/
+  no-blitz filtering would fix CALIBRATION (->1.0) but NOT the next problem:
+- No GRADIENT: along tablebase-optimal forced-mate lines, committor P(win) is
+  FLAT (0.79 @27+ plies -> 0.77 @1-6 plies, non-monotone) and cosine reach(F.zW)
+  dead flat 0.65. A position 3 plies from mate reads the same as 30 plies away.
+  KEY INSIGHT: win/draw/loss is CONSTANT over a won region, so NO outcome-trained
+  value (however clean) can slope. The gradient is a DISTANCE (moves-to-mate),
+  not an outcome.
+- BUT the quasimetric DISTANCE has the gradient (Kaveh's point): d(F(s),MATE_W)
+  DECREASES toward mate along the lines -- 0.411 @27+ -> 0.373 @1-6, per-line
+  spearman +0.63 (shallow but correct). reach(F.zW) is a cosine dot (similarity),
+  NOT the metric distance -- that's why it looked flat.
+- DIRECT PLAY TEST: VERDICT VALUE_AB committor 0.425 vs quasimetric d(s->mate)
+  0.525 (toy n=40 @800n). Navigating DOWN the metric gradient converts BETTER
+  than the flat committor. The geometry had the answer; the engine was reading
+  the wrong dial. Wired as play_server --value distance (value-only; reach=-d).
+- REGION (goal-as-region, Kaveh: "mate is many points, min over exemplars"):
+  d to NEAREST mate exemplar goes BACKWARDS (spearman -0.77 human mates, -0.79
+  even with toy-specific KRRvKBP mates) -- the field's per-exemplar d is too
+  noisy; the centroid's averaging is what smooths it into a usable signal. Right
+  idea, needs a cleaner metric. soft_min_bank exists (make_search_policy bank z).
+
+**t-SNE map degeneracy = same low-contrast field.** perp-500 single collapses
+(corr(x,y) -0.33, xstd 2.7) and multiscale is unstable (a perfect corr=-1.000
+LINE at n=6000) BECAUSE the field is mushy (cos>0.9, effective rank 15 / PC1
+28%): 500-neighbourhoods average to ~uniform affinities, no local contrast to
+preserve. perp-40 gives a proper map (corr -0.07, spread 5.5). Reverted default
+to 40; high perplexity is a symptom, not a knob. Atlas rebuilt.

@@ -109,7 +109,7 @@
     <div class="row" style="margin-top:4px" title="re-fit the t-SNE map (CPU; ~15–60s, competes with training)">
       <span class="pill">map fit:</span>
       <span class="k">iter <input id="tsIter" type="number" value="1500" min="250" step="250" style="width:62px"></span>
-      <span class="k">perp <input id="tsPerp" type="number" value="500" min="5" step="25" style="width:56px"></span>
+      <span class="k">perp <input id="tsPerp" type="number" value="40" min="5" step="25" style="width:56px"></span>
       <span class="k">exag <input id="tsExag" type="number" value="1.6" min="1" step="0.2" style="width:50px"></span>
       <span class="k">n <input id="tsN" type="number" value="10000" min="500" step="1000" style="width:66px"></span>
       <button id="bRebuild" title="re-run the t-SNE build with these settings and hot-reload">⟳ Rebuild map</button>
@@ -440,7 +440,7 @@ async function rebuildAtlas(){
     return;
   }
   stopAnalysis();
-  const body={n:parseInt(gv("tsN"))||10000, perplexity:parseFloat(gv("tsPerp"))||500,
+  const body={n:parseInt(gv("tsN"))||10000, perplexity:parseFloat(gv("tsPerp"))||40,
               exaggeration:parseFloat(gv("tsExag"))||1.6, tsne_iter:parseInt(gv("tsIter"))||1500};
   const ac=new AbortController(); S.rebuildAbort=ac; S.rebuilding=true;
   S.busy=true; setBusy(true,["bRebuild"]); btn.textContent="⏹ Stop fit";
