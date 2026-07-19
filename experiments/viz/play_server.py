@@ -153,14 +153,17 @@ class Engine:
     @property
     def proj(self):
         if self._proj is None:
-            from catspace.viz.projection import Normalizer, TSNEProjection
-            from catspace.viz.realboard import _FittedProjection
+            from catspace.viz.projection import Normalizer
+            from catspace.viz.manifold import load_projector
             d = ATLAS_DIR / "tsne_map"
             nz = np.load(d / "normalizer.npz")
-            emb = pickle.load(open(d / "embedding.pkl", "rb"))
-            tp = TSNEProjection()
-            tp._embedding = emb
-            self._proj = _FittedProjection(Normalizer(mu=nz["mu"], sd=nz["sd"]), tp)
+            projector = load_projector(d)           # tsne / umap / vae (per manifest)
+            norm = Normalizer(mu=nz["mu"], sd=nz["sd"])
+
+            class _MapProj:                         # normalize -> out-of-sample transform
+                def transform(self, F):
+                    return projector.transform(norm.apply(F))
+            self._proj = _MapProj()
         return self._proj
 
     # -- position memory ---------------------------------------------------
@@ -443,24 +446,33 @@ class Engine:
                     game_over=over2, result=res2, x=px, y=py,
                     winp=round(self.winp(after), 4), pv=pv, candidates=candidates)
 
-    def rebuild_atlas(self, n=4000, perplexity=40.0, exaggeration=1.6, tsne_iter=1500):
-        """Re-run build_play_atlas.py (CPU) with deeper t-SNE settings and
-        hot-reload the map: null the cached atlas/projection so the next /atlas
-        and /project pick up the freshly-written artifacts. Runs as a SUBPROCESS
-        (own model load) so a build failure can't corrupt the live server;
-        build_play_atlas writes atlas.json atomically, so a concurrent /atlas
-        read never sees a half-written file. n/iter are bounded because this
+    def rebuild_atlas(self, n=6000, algo="tsne", params=None):
+        """Re-run build_play_atlas.py (CPU) with the selected ALGO (t-SNE / UMAP /
+        VAE) + its params, and hot-reload the map: null the cached atlas/projection
+        so the next /atlas and /project pick up the freshly-written artifacts. Runs
+        as a SUBPROCESS (own model load) so a build failure can't corrupt the live
+        server; build_play_atlas writes atlas.json atomically, so a concurrent
+        /atlas read never sees a half-written file. n is bounded because this
         competes with any training job for CPU."""
         import subprocess
         import sys as _sys
+        from catspace.viz.manifold import clean_params
+        params = params or {}
+        algo = algo if algo in ("tsne", "umap", "vae") else "tsne"
         n = max(500, min(int(n), 40000))
-        tsne_iter = max(250, min(int(tsne_iter), 5000))
-        perplexity = max(5.0, min(float(perplexity), 2000.0))
-        exaggeration = max(1.0, min(float(exaggeration), 12.0))
+        p = clean_params(algo, params)          # only valid keys for this algo, cast+defaulted
         cmd = [_sys.executable, str(ROOT / "experiments/viz/build_play_atlas.py"),
                "--ckpt", self._ckpt, "--phead", self._phead,
-               "--n", str(n), "--perplexity", str(perplexity),
-               "--exaggeration", str(exaggeration), "--tsne-iter", str(tsne_iter)]
+               "--n", str(n), "--algo", algo]
+        flag = {  # param-name -> CLI flag, per algo
+            "tsne": {"perplexity": "--perplexity", "exaggeration": "--exaggeration",
+                     "n_iter": "--tsne-iter"},
+            "umap": {"n_neighbors": "--umap-neighbors", "min_dist": "--umap-min-dist",
+                     "n_epochs": "--umap-epochs"},
+            "vae":  {"epochs": "--vae-epochs", "hidden": "--vae-hidden", "beta": "--vae-beta"},
+        }[algo]
+        for k, f in flag.items():
+            cmd += [f, str(p[k])]
         # Popen (not run) so /rebuild_atlas_stop can kill it mid-fit. atlas.json
         # is written atomically, so a kill never leaves a half-written map.
         proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=subprocess.PIPE,
@@ -472,7 +484,7 @@ class Engine:
             raise RuntimeError((out or "atlas build stopped/failed").strip()[-400:])
         self._atlas = None                      # force lazy reload of the new artifacts
         self._proj = None
-        return dict(n=n, perplexity=perplexity, exaggeration=exaggeration, tsne_iter=tsne_iter)
+        return dict(n=n, algo=algo, params=p)
 
     def rebuild_atlas_stop(self) -> dict:
         p = getattr(self, "_rebuild_proc", None)
@@ -579,9 +591,8 @@ class Handler(BaseHTTPRequestHandler):
                                                           body.get("result", ""))})
             elif u.path == "/rebuild_atlas":
                 self._json({"ok": True, **ENGINE.rebuild_atlas(
-                    n=body.get("n", 10000), perplexity=body.get("perplexity", 500.0),
-                    exaggeration=body.get("exaggeration", 1.6),
-                    tsne_iter=body.get("tsne_iter", 1500))})
+                    n=body.get("n", 6000), algo=body.get("algo", "tsne"),
+                    params=body.get("params", {}))})
             elif u.path == "/rebuild_atlas_stop":
                 self._json({"ok": True, **ENGINE.rebuild_atlas_stop()})
             elif u.path == "/set_board":

@@ -99,14 +99,30 @@ def main():
                     help="clamped to <= n/3 at fit time. NOTE high perplexity (>=500) "
                          "COLLAPSES on the low-contrast incumbent field (mushy neighbours) "
                          "-- 40 gives a proper 2D map; raise it once the field has contrast.")
-    ap.add_argument("--exaggeration", type=float, default=1.6,
-                    help=">1 pulls clusters apart (more separation)")
+    ap.add_argument("--exaggeration", type=float, default=1.0,
+                    help="late-phase attractive-force multiplier. >1 COMPRESSES "
+                         "(measured: 1.6 -> xstd 2.9 vs 1.0 -> xstd 27 on the "
+                         "low-contrast incumbent -- it collapsed the map to a "
+                         "blob, the 'all-black' bug). Keep 1.0 until the field "
+                         "has real clusters to hold apart.")
     ap.add_argument("--tsne-iter", type=int, default=1500,
                     help="gradient iterations (more = more separation, slower)")
-    ap.add_argument("--multiscale", action="store_true",
-                    help="multiscale (local+global) affinities -- UNSTABLE on the low-contrast "
-                         "incumbent (collapsed to a line at n=6000); off by default")
-    ap.set_defaults(multiscale=False)
+    # -- projection ALGO (Kaveh 2026-07-19) + per-algo params ------------------
+    ap.add_argument("--algo", choices=["tsne", "umap", "vae"], default="tsne",
+                    help="manifold algorithm. tsne=neighbour-embedding (perplexity/"
+                         "exaggeration/tsne-iter); umap=(umap-neighbors/min-dist/epochs); "
+                         "vae=compression VAE (vae-epochs/hidden/beta)")
+    ap.add_argument("--umap-neighbors", type=int, default=30,
+                    help="[umap] local vs global tradeoff (small=local structure)")
+    ap.add_argument("--umap-min-dist", type=float, default=0.1,
+                    help="[umap] min packing distance (small=tighter clumps)")
+    ap.add_argument("--umap-epochs", type=int, default=500, help="[umap] optimization epochs")
+    ap.add_argument("--vae-epochs", type=int, default=200, help="[vae] training epochs")
+    ap.add_argument("--vae-hidden", type=int, default=256, help="[vae] encoder/decoder width")
+    ap.add_argument("--vae-beta", type=float, default=0.02,
+                    help="[vae] KL weight. beta>=1 posterior-collapses a 64->2 "
+                         "bottleneck to a point (xstd 0); 0.02 keeps mu_std~1.1 "
+                         "(measured). Smaller=more spread/less regularized latent.")
     ap.add_argument("--out", default="artifacts/generated/play_atlas")
     ap.add_argument("--shards", default=None, help="shard dir (default: newest)")
     ap.add_argument("--seed", type=int, default=0)
@@ -179,48 +195,23 @@ def main():
         print(f"[stage] pole distances W/B{'/draw' if dD is not None else ''} computed")
     print(f"[stage] embed F + reach/winp ({n} rows): {time.time() - t0:.1f}s")
 
-    # -------------------------------------------------- fit persisted t-SNE
-    # Tuned for SEPARATION (Kaveh 2026-07-18: "run a bit more"): more gradient
-    # iterations + a >1 late exaggeration pulls clusters apart (openTSNE's
-    # separation knob). Built directly (not via fit_projection) for the extra
-    # params, then wrapped so the server can still out-of-sample transform.
+    # -------------------------------------------------- fit persisted manifold
+    # Selectable algo (Kaveh 2026-07-19): t-SNE / UMAP / VAE, each with its own
+    # params. The projector fits the 2-D atlas AND persists an out-of-sample
+    # transform so the server can map the live board's F into the same map.
     t0 = time.time()
-    from openTSNE import TSNE, TSNEEmbedding, affinity
-    from openTSNE import initialization as tsne_init
-    from catspace.viz.projection import Normalizer, TSNEProjection
-    from catspace.viz.realboard import _FittedProjection
+    from catspace.viz.projection import Normalizer
+    from catspace.viz.manifold import make_projector, save_projector, clean_params
     normalizer = Normalizer.fit(F)
     Fn = normalizer.apply(F)
-    cap = max(5.0, len(Fn) / 3.0)                          # perplexity must be << n
-    perp = min(args.perplexity, cap)
-    # openTSNE defaults already do the right thing for large data: learning_rate
-    # "auto" (=N/exaggeration), PCA init (global structure + reproducible),
-    # negative_gradient_method/neighbors "auto" (FFT + approximate NN at this N).
-    # For COMPLEX data (chess), openTSNE + Kobak/Berens recommend a HIGH
-    # perplexity (500) and, better, MULTISCALE affinities: a small perplexity
-    # keeps local neighbourhoods while the large one carries global layout.
-    if args.multiscale and len(Fn) >= 60:
-        perps = sorted({int(min(cap, max(5, perp / 10))), int(perp)})
-        aff = affinity.Multiscale(Fn, perplexities=perps, metric="cosine",
-                                  n_jobs=-1, random_state=args.seed)
-        emb = TSNEEmbedding(tsne_init.pca(Fn, random_state=args.seed), aff,
-                            negative_gradient_method="auto", learning_rate="auto",
-                            random_state=args.seed, n_jobs=-1)
-        emb.optimize(n_iter=250, exaggeration=12, momentum=0.5, inplace=True)   # early
-        emb.optimize(n_iter=args.tsne_iter, exaggeration=args.exaggeration,
-                     momentum=0.8, inplace=True)                                # main
-        perp_note = f"multiscale{perps}"
-    else:
-        emb = TSNE(perplexity=perp, initialization="pca", metric="cosine",
-                   exaggeration=args.exaggeration, n_iter=args.tsne_iter,
-                   learning_rate="auto", random_state=args.seed, n_jobs=-1).fit(Fn)
-        perp_note = f"perp={perp:g}"
-    tp = TSNEProjection(perplexity=perp, seed=args.seed)
-    tp._embedding = emb
-    proj = _FittedProjection(normalizer, tp)
-    xy = np.asarray(emb, dtype=np.float32)  # in-sample 2-D coords
-    print(f"[stage] fit t-SNE ({n}x{F.shape[1]} -> 2D, perp={perp:g} "
-          f"exag={args.exaggeration} iter={args.tsne_iter}): {time.time() - t0:.1f}s")
+    mparams = clean_params(args.algo, dict(
+        perplexity=args.perplexity, exaggeration=args.exaggeration, n_iter=args.tsne_iter,
+        n_neighbors=args.umap_neighbors, min_dist=args.umap_min_dist, n_epochs=args.umap_epochs,
+        epochs=args.vae_epochs, hidden=args.vae_hidden, beta=args.vae_beta))
+    projector = make_projector(args.algo, mparams, seed=args.seed)
+    xy = projector.fit(Fn)                          # in-sample 2-D coords
+    print(f"[stage] fit {args.algo.upper()} ({n}x{F.shape[1]} -> 2D, "
+          f"{projector.note()}): {time.time() - t0:.1f}s")
 
     # -------------------------------------------------- assemble atlas.json
     # (no k-means: the field is a continuum, so imposed cluster boundaries were
@@ -248,15 +239,21 @@ def main():
     _tmp.write_text(json.dumps(atlas))         # serving /atlas while we rebuild in place
     _tmp.replace(out_dir / "atlas.json")
 
-    tsne_dir = out_dir / "tsne_map"
-    tsne_dir.mkdir(parents=True, exist_ok=True)
-    np.savez(tsne_dir / "normalizer.npz", mu=proj.normalizer.mu, sd=proj.normalizer.sd)
-    with open(tsne_dir / "embedding.pkl", "wb") as f:
-        pickle.dump(proj.projection._embedding, f)
-    print(f"[stage] build+write atlas.json ({len(points)} pts) + tsne_map: {time.time() - t0:.1f}s")
+    map_dir = out_dir / "tsne_map"          # dir name kept for backward-compat
+    map_dir.mkdir(parents=True, exist_ok=True)
+    np.savez(map_dir / "normalizer.npz", mu=normalizer.mu, sd=normalizer.sd)
+    save_projector(projector, map_dir, mparams)   # projector.{pkl,pt} + manifest.json
+    # drop any stale legacy embedding.pkl from a pre-manifest build so the server
+    # loads via the manifest (the selected algo), not the old t-SNE fallback.
+    legacy = map_dir / "embedding.pkl"
+    if projector.kind != "tsne" and legacy.exists():
+        legacy.unlink()
+    print(f"[stage] build+write atlas.json ({len(points)} pts) + {args.algo}_map: {time.time() - t0:.1f}s")
     print(f"wrote {out_dir / 'atlas.json'}")
-    print(f"wrote {tsne_dir / 'normalizer.npz'}")
-    print(f"wrote {tsne_dir / 'embedding.pkl'}")
+    print(f"wrote {map_dir / 'normalizer.npz'} + projector ({args.algo}) + manifest.json")
+    print(f"VERDICT ATLAS algo={args.algo} n={len(points)} "
+          f"xstd={float(xy[:, 0].std()):.2f} ystd={float(xy[:, 1].std()):.2f} "
+          f"xrange=[{bounds['xmin']:.1f},{bounds['xmax']:.1f}]")
 
 
 if __name__ == "__main__":
