@@ -348,7 +348,7 @@ async function analyzeHere(){
 /* ---------- t-SNE map ---------- */
 function ex(v){const a=Math.min(...v),b=Math.max(...v);return[a,b-a||1];}
 function colorFor(pt){if(S.ck==="result")return pt.result>0?"#66d9a6":pt.result<0?"#ff7a9c":"#8a90a0";
-  const v=S.ck==="reach"?pt._rn:pt.winp;return `hsl(${(1-v)*220},70%,60%)`;}
+  const v=S.ck==="reach"?pt._rn:pt._wn;return `hsl(${(1-v)*220},70%,60%)`;}
 function miniBoard(fen,px){const g=fenGrid(fen);const S2=px||160,q=S2/8;
   let s=`<svg viewBox="0 0 ${S2} ${S2}" width="${S2}" height="${S2}">`;
   for(let r=0;r<8;r++)for(let c=0;c<8;c++){const x=c*q,y=r*q,d=(r+c)%2;
@@ -360,6 +360,7 @@ function drawMap(){
   const A=S.atlas;if(!A)return;const svg=document.getElementById("map");svg.innerHTML="";
   const P=A.points;const[bx,wx]=ex(P.map(p=>p.x)),[by,wy]=ex(P.map(p=>p.y));
   const pad=30,W=720-2*pad;const rmin=Math.min(...P.map(p=>p.reach)),rmax=Math.max(...P.map(p=>p.reach));
+  const wmin=Math.min(...P.map(p=>p.winp)),wmax=Math.max(...P.map(p=>p.winp));
   const X=x=>pad+(x-bx)/wx*W,Y=y=>720-pad-(y-by)/wy*W;
   S.mapX=X;S.mapY=Y;S._inv=(px,py)=>[(px-pad)/W*wx+bx,(720-pad-py)/W*wy+by];
   const bg=document.createElementNS(NS,"rect");bg.setAttribute("width",720);bg.setAttribute("height",720);
@@ -368,7 +369,7 @@ function drawMap(){
   bg.addEventListener("mouseleave",hideTip);
   bg.addEventListener("click",hideTip);
   svg.appendChild(bg);
-  P.forEach(p=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);const c=document.createElementNS(NS,"circle");
+  P.forEach(p=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);p._wn=(p.winp-wmin)/((wmax-wmin)||1);const c=document.createElementNS(NS,"circle");
     c.setAttribute("cx",X(p.x));c.setAttribute("cy",Y(p.y));c.setAttribute("r",3.4);
     c.setAttribute("fill",colorFor(p));c.setAttribute("opacity",.72);c.style.cursor="pointer";
     c.addEventListener("mousemove",ev=>{ev.stopPropagation();showPointTip(ev,p);});
