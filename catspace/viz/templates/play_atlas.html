@@ -122,6 +122,8 @@
 
 <script type="module">
 import { Chessground } from '/assets/chessground/chessground.js';
+import { Chess } from '/assets/chessjs.js';   // lichess-grade rules, client-side
+const game = new Chess();                     // the single source of game truth
 
 const GLY={K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
 const NS="http://www.w3.org/2000/svg";
@@ -150,16 +152,22 @@ function setBusy(on,keepId){document.querySelectorAll("button").forEach(b=>{
   if(keepId&&b.id===keepId){b.disabled=false;b.style.opacity=1;return;}
   b.disabled=on;b.style.opacity=on?0.4:1;});}
 
-/* ---------- chessground board ---------- */
-function sideToMove(fen){return fen.split(" ")[1]==="w"?"white":"black";}
-function destsMap(){const m=new Map();for(const u of S.legal){const f=u.slice(0,2),t=u.slice(2,4);
-  if(!m.has(f))m.set(f,[]);m.get(f).push(t);}return m;}
-function cgConfig(extra){const humanTurn=S.mode==="play"&&sideToMove(S.fen)===humanColor();
+/* ---------- game core (chess.js: local rules, no per-move server round-trip) ---------- */
+function sideToMove(fen){return fen.split(" ")[1]==="w"?"white":"black";}   // for browsing hist fens
+function turnColor(){return game.turn()==="w"?"white":"black";}
+function boardFen(){return game.fen().split(" ")[0];}
+function legalDests(){const m=new Map();
+  for(const mv of game.moves({verbose:true})){if(!m.has(mv.from))m.set(mv.from,[]);m.get(mv.from).push(mv.to);}
+  return m;}
+function outcomeStr(){if(game.isCheckmate())return (game.turn()==="w"?"Black":"White")+" mates";
+  if(game.isInsufficientMaterial())return "insufficient material";
+  if(game.isStalemate())return "stalemate"; if(game.isDraw())return "draw"; return "over";}
+function cgConfig(extra){const humanTurn=S.mode==="play"&&turnColor()===humanColor();
   return Object.assign({
-  fen:S.fen.split(" ")[0], orientation:S.flip?"black":"white", turnColor:sideToMove(S.fen),
+  fen:boardFen(), orientation:S.flip?"black":"white", turnColor:turnColor(),
   coordinates:true, movable:{free:S.mode==="edit",
     color:S.mode==="edit"?"both":(humanTurn?humanColor():undefined),
-    dests:humanTurn?destsMap():new Map(),showDests:true},
+    dests:humanTurn?legalDests():new Map(),showDests:true},
   draggable:{showGhost:true}, animation:{enabled:true,duration:120},
   events:{move:onCgMove, select:onCgSelect}, highlight:{lastMove:true,check:true},
 },extra||{});}
@@ -175,21 +183,15 @@ function initBoard(){cg=Chessground(document.getElementById("board"),cgConfig())
   ro.observe(document.getElementById("regionBoard"));}
 function miniShow(fen){if(cgMini)cgMini.set({fen:fen.split(" ")[0]});}
 
-let moving=false;   // reentrancy guard: block a 2nd drag mid-apply (the turn-loss
-                    // race) WITHOUT calling cg.set() in the move handler (that was
-                    // snapping legal moves back to origin)
-async function onCgMove(orig,dest){
+/* human move: applied LOCALLY and synchronously via chess.js (no server, no
+   race). Illegal drops can't happen (dests were legal) but we snap back if so. */
+function onCgMove(orig,dest){
   if(S.mode==="edit"){S.fen=piecesToFen(cg.state.pieces);return;}
-  if(moving||S.busy)return;             // engine thinking / already applying: ignore
-  moving=true;
-  const uci=S.legal.find(u=>u.slice(0,4)===orig+dest)||(orig+dest);
-  try{
-    const r=await api("/apply_move",{fen:S.fen,uci});
-    if(!r.ok){cg.set(cgConfig());return;}          // only truly-illegal reverts
-    S.fen=r.fen; pushHist(r.fen,[orig,dest],r.san,humanColor()==="white");
-    await settle([orig,dest]);
-  }catch(e){toast(e.message);cg.set(cgConfig());}
-  finally{moving=false;}
+  const cand=game.moves({verbose:true}).find(m=>m.from===orig&&m.to===dest);
+  if(!cand){cg.set(cgConfig());return;}
+  game.move({from:orig,to:dest,promotion:cand.promotion});
+  S.fen=game.fen(); pushHist(S.fen,[orig,dest],cand.san,humanColor()==="white");
+  syncBoard([orig,dest]);
 }
 function onCgSelect(key){
   if(S.mode!=="edit")return;
@@ -200,41 +202,34 @@ function onCgSelect(key){
   cg.setPieces(pieces); S.fen=piecesToFen(pieces);
 }
 
-/* the driver: sync the board, then either the engine moves or the human does */
-async function settle(lastMove){
-  if(S.busy)return; S.busy=true; setBusy(true);       // engine thinking: gray all
+/* reflect the local game on the board; if it's the engine's turn, it moves.
+   All rules are chess.js; the server is only asked for the engine move + the
+   map projection -- so the turn can never desync. */
+async function syncBoard(lastMove){
+  S.fen=game.fen();
+  cg.set(cgConfig({fen:boardFen(),lastMove:lastMove||undefined,turnColor:turnColor()}));
+  projectStar();
+  if(game.isGameOver()){setStatus("game over · "+outcomeStr());return;}
+  if(S.mode==="play"&&turnColor()===S.engineColor)await engineMove();
+  else setStatus(`your move (${humanColor()}) · ⚙ Analyze for the engine's read`);
+}
+async function projectStar(){          // just the ★ on the map (server projection)
+  try{const p=await api("/project",{fen:game.fen()});S.proj=p;}catch(e){}
+  drawMap();
+}
+async function engineMove(){
+  if(S.busy)return; S.busy=true; setBusy(true); setStatus(`engine (${S.engineColor}) thinking…`);
   try{
-    let g=await place(S.fen,lastMove);               // sets pieces, S.legal, S.proj
-    if(g){drawMap();setStatus("game over · "+g);return;}
-    if(sideToMove(S.fen)===S.engineColor){
-      setStatus(`engine (${S.engineColor}) thinking…`);
-      await sleep(120);
-      const r=await api("/engine_move",{fen:S.fen});
-      S.analysis=r; renderReason(r); drawArrows(r.candidates); drawMap();
-      if(r.move){S.fen=r.fen;
-        pushHist(r.fen,[r.move.slice(0,2),r.move.slice(2,4)],r.san,S.engineColor==="white");}
-      g=await place(S.fen,r.move?[r.move.slice(0,2),r.move.slice(2,4)]:null);
-      if(cg)cg.setShapes([]); drawMap();             // clear the engine's pre-move arrows
-      setStatus(g?("game over · "+g):`your move (${humanColor()})`);
-    }else{                                            // human to move: STATIC, no auto-analysis
-      setStatus(`your move (${humanColor()}) · ⚙ Analyze for the engine's read`);
-    }
-  }catch(e){toast(e.message);}finally{S.busy=false;setBusy(false);}
-}
-async function showHint(){                            // top-3 for the side to move
-  try{const a=await api("/analyze",{fen:S.fen});S.analysis=a;
-    renderReason({winp:a.winp,candidates:a.candidates,pv:[]});
-    drawArrows(a.candidates);drawMap();
-    setStatus(a.game_over?("game over · "+a.result):`your move (${humanColor()})`);
-  }catch(e){/* ignore */}
-}
-
-/* place pieces + set turn/dests; returns "white"/"black"/"draw" if terminal else null */
-async function place(fen,lastMove){S.fen=fen;let over=null;
-  try{const r=await api("/set_board",{fen});S.legal=r.legal_moves||[];S.proj=r;
-    if(r.game_over)over=r.result||"draw";}catch(e){}
-  cg.set(cgConfig({fen:fen.split(" ")[0],lastMove:lastMove||undefined,turnColor:sideToMove(fen)}));
-  return over;
+    const r=await api("/engine_move",{fen:game.fen()});
+    S.analysis=r; renderReason(r); drawArrows(r.candidates);
+    if(r.move){const from=r.move.slice(0,2),to=r.move.slice(2,4),promo=r.move.slice(4)||undefined;
+      game.move({from,to,promotion:promo}); S.fen=game.fen();
+      pushHist(S.fen,[from,to],r.san,S.engineColor==="white");
+      cg.set(cgConfig({fen:boardFen(),lastMove:[from,to],turnColor:turnColor()}));}
+    if(cg)cg.setShapes([]); projectStar();
+    setStatus(game.isGameOver()?("game over · "+outcomeStr()):`your move (${humanColor()})`);
+  }catch(e){toast(e.message);setStatus("engine error");}
+  finally{S.busy=false;setBusy(false);}
 }
 
 /* top-3 move arrows on the board (chessground shapes) */
@@ -311,15 +306,17 @@ function drawHops(cand,ci){const svg=document.getElementById("map");
     t.textContent=`${j+1}.${h.san}`;svg.appendChild(t);});}
 function previewHop(h){miniShow(h.fen);
   document.getElementById("regionLabel").textContent=`${h.white?"White":"Black"} plays ${h.san}`;}
-async function goto(i){if(i<0||i>=S.hist.length)return;S.ptr=i;const h=S.hist[i];
-  S.fen=h.fen;S.analysis=null;if(cg)cg.setShapes([]);rebuildMoves();
+async function goto(i){if(i<0||i>=S.hist.length||S.busy)return;S.ptr=i;const h=S.hist[i];
+  S.analysis=null;if(cg)cg.setShapes([]);rebuildMoves();
+  try{game.load(h.fen);}catch(e){}
   const tip=(i===S.hist.length-1);
-  await place(S.fen,h.lastMove);
-  if(!tip){cg.set({movable:{color:undefined,dests:new Map()}});
-    setStatus(`browsing ${i}/${S.hist.length-1} — ⏭ to resume, Takeback to branch`);}
-  else if(S.mode==="play"){await showHint();}
-  drawMap();}
-async function takeback(){if(S.hist.length<=1)return;
+  if(tip){await syncBoard(h.lastMove);}               // resume live play from the tip
+  else{S.fen=h.fen;                                    // browsing a past position: view-only
+    cg.set(cgConfig({fen:h.fen.split(" ")[0],lastMove:h.lastMove||undefined,
+      turnColor:sideToMove(h.fen),movable:{color:undefined,dests:new Map()}}));
+    projectStar();
+    setStatus(`browsing ${i}/${S.hist.length-1} — ⏭ to resume, Takeback to branch`);}}
+async function takeback(){if(S.hist.length<=1||S.busy)return;
   let t=S.hist.length-2;                                     // drop the last ply…
   while(t>0 && sideToMove(S.hist[t].fen)!==humanColor())t--; // …land on human-to-move
   S.hist=S.hist.slice(0,t+1);S.ptr=t;await goto(t);}
@@ -423,13 +420,14 @@ function showInspect(fen,label){S._regionFen=fen;
 document.getElementById("bLoadRegion").onclick=()=>{if(S._regionFen)loadFen(S._regionFen);};
 
 /* ---------- load a fen ---------- */
-async function loadFen(fen){try{const r=await api("/set_board",{fen});if(!r.valid){toast("invalid position");return;}
-  S.fen=fen;S.legal=r.legal_moves||[];S.proj=r;S.analysis=null;
-  S.hist=[{fen,lastMove:null,san:null,white:null}];S.ptr=0;rebuildMoves();
+async function loadFen(fen){
+  try{game.load(fen);}catch(e){toast("invalid position");return;}
+  S.fen=game.fen();S.analysis=null;
+  S.hist=[{fen:S.fen,lastMove:null,san:null,white:null}];S.ptr=0;rebuildMoves();
   document.querySelector("#cand tbody").innerHTML="";document.getElementById("lines").innerHTML="";
   if(cg)cg.setShapes([]);
-  await settle(null);                                // engine moves if it's its turn
-}catch(e){toast(e.message);}}
+  await syncBoard(null);                             // engine moves if it's its turn
+}
 
 /* ---------- edit palette ---------- */
 function pieceBg(p){const role={K:"king",Q:"queen",R:"rook",B:"bishop",N:"knight",P:"pawn"}[p.toUpperCase()];
@@ -447,13 +445,13 @@ function setMode(m){S.mode=m;
   document.getElementById("mEdit").classList.toggle("on",m==="edit");
   document.getElementById("editbar").style.display=m==="edit"?"flex":"none";
   if(m==="edit"){buildPalette();cg.setShapes([]);cg.set(cgConfig());}
-  else settle(null);}
+  else{try{game.load(S.fen);}catch(e){toast("invalid position — fix it");return;}syncBoard(null);}}
 document.getElementById("mPlay").onclick=()=>setMode("play");
 document.getElementById("mEdit").onclick=()=>setMode("edit");
 document.getElementById("bCommit").onclick=()=>setMode("play");
 document.getElementById("bSide").onclick=()=>{S.engineColor=S.engineColor==="white"?"black":"white";
   document.getElementById("bSide").textContent="Engine: "+(S.engineColor==="white"?"White":"Black");
-  if(S.mode==="play")settle(null);};
+  if(S.mode==="play")syncBoard(null);};
 document.getElementById("bClear").onclick=()=>{cg.set({fen:"8/8/8/8/8/8/8/8"});S.fen="8/8/8/8/8/8/8/8 "+S.stm+" - - 0 1";};
 document.getElementById("stmW").onclick=()=>{S.stm="w";S.fen=piecesToFen(cg.state.pieces);
   document.getElementById("stmW").classList.add("on");document.getElementById("stmB").classList.remove("on");};

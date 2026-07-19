@@ -152,11 +152,8 @@ class Engine:
         xy = self.proj.transform(f[None])[0]
         zw = self.pol.z.cpu().numpy() if hasattr(self.pol, "z") else None
         reach = float(f @ (zw / (np.linalg.norm(zw) + 1e-12))) if zw is not None else 0.0
-        cl = self.atlas["clusters"]
-        near = min(cl, key=lambda c: (c["cx"] - xy[0]) ** 2 + (c["cy"] - xy[1]) ** 2)
         return dict(x=round(float(xy[0]), 3), y=round(float(xy[1]), 3),
-                    reach=round(reach, 4), winp=round(self.winp(board), 4),
-                    cluster=int(near["id"]))
+                    reach=round(reach, 4), winp=round(self.winp(board), 4))
 
     def analyze(self, board: chess.Board, topk: int = 3, nodes: int | None = None,
                 extend: bool = False) -> dict:
