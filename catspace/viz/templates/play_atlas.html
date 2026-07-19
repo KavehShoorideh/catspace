@@ -69,10 +69,11 @@
       <button id="navLast" title="latest">⏭</button>
       <button id="bTakeback" title="undo last full move">⟲ Takeback</button>
       <span style="flex:1"></span>
-      <span class="k">depth <select id="depthNodes" title="MCTS nodes to search to">
-        <option>100</option><option>200</option><option selected>500</option><option>1000</option><option>2000</option>
+      <span class="k">+nodes <select id="depthNodes" title="nodes ADDED to the tree per Analyze press (top = Leela analysis scale)">
+        <option>100</option><option>200</option><option>500</option><option>1000</option>
+        <option selected>2000</option><option>5000</option><option>10000</option><option>50000</option><option>100000</option>
       </select></span>
-      <button id="bAnalyze" title="search to the selected depth; click again to stop &amp; checkpoint">⚙ Analyze</button>
+      <button id="bAnalyze" title="search the selected number of MORE nodes on top of the current tree; click again to stop">⚙ Analyze</button>
     </div>
     <div id="editbar" class="row" style="display:none;flex-direction:column;align-items:flex-start">
       <div class="palette" id="palette"></div>
@@ -87,9 +88,10 @@
     <div class="moves" id="moves"></div>
     <div style="margin-top:10px">
       <div class="pill" style="margin-bottom:4px">engine reasoning
-        &nbsp;<span class="k" id="winp">P(win) —</span></div>
-      <table id="cand"><thead><tr><th>move</th><th>visits</th><th>value</th><th>P(win)</th></tr></thead>
-        <tbody></tbody></table>
+        &nbsp;<span class="k" id="winp">P(win) —</span>
+        <button id="bMore" title="show more of the moves MCTS tried (beyond the top 3)" style="float:right;font-size:11px">＋ more</button></div>
+      <div id="candwrap" style="max-height:220px;overflow:auto"><table id="cand"><thead><tr><th>move</th><th>visits</th><th>value</th><th>P(win)</th></tr></thead>
+        <tbody></tbody></table></div>
       <div class="pill" style="margin-top:6px">best lines</div>
       <div id="lines" class="moves" style="max-height:120px"></div>
     </div>
@@ -107,9 +109,9 @@
     <div class="row" style="margin-top:4px" title="re-fit the t-SNE map (CPU; ~15–60s, competes with training)">
       <span class="pill">map fit:</span>
       <span class="k">iter <input id="tsIter" type="number" value="1500" min="250" step="250" style="width:62px"></span>
-      <span class="k">perp <input id="tsPerp" type="number" value="40" min="5" step="5" style="width:50px"></span>
+      <span class="k">perp <input id="tsPerp" type="number" value="500" min="5" step="25" style="width:56px"></span>
       <span class="k">exag <input id="tsExag" type="number" value="1.6" min="1" step="0.2" style="width:50px"></span>
-      <span class="k">n <input id="tsN" type="number" value="4000" min="500" step="500" style="width:62px"></span>
+      <span class="k">n <input id="tsN" type="number" value="10000" min="500" step="1000" style="width:66px"></span>
       <button id="bRebuild" title="re-run the t-SNE build with these settings and hot-reload">⟳ Rebuild map</button>
     </div>
     <div id="mapwrap">
@@ -144,7 +146,7 @@ const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const S={fen:START,mode:"play",flip:false,legal:[],atlas:null,proj:null,ck:"result",
         editPiece:"P",stm:"w",region:null,regionIdx:{},
         engineColor:"black",analysis:null,busy:false,analyzing:false,analyzeAbort:null,hist:[],ptr:0,
-        samplePool:[],sampleIdx:0,pinnedLine:null};
+        samplePool:[],sampleIdx:0,pinnedLine:null,topk:3,autoGen:0,rebuilding:false,rebuildAbort:null};
 const BRUSH=["green","blue","yellow"];         // top-1/2/3 board arrows
 const VCOL={green:"#66d9a6",blue:"#7aa2ff",yellow:"#ffb86b"};
 let cg, cgMini;                                 // cgMini = the region-inspector board
@@ -196,7 +198,17 @@ function legalDests(){const m=new Map();
 function outcomeStr(){if(game.isCheckmate())return (game.turn()==="w"?"Black":"White")+" mates";
   if(game.isInsufficientMaterial())return "insufficient material";
   if(game.isStalemate())return "stalemate"; if(game.isDraw())return "draw"; return "over";}
-function cgConfig(extra){const humanTurn=S.mode==="play"&&turnColor()!==S.engineColor;  // manual (engine "none") => always
+function isEngineTurn(){return S.mode==="play"&&!game.isGameOver()
+  &&(S.engineColor==="both"||turnColor()===S.engineColor);}
+async function autoPlayLoop(){                          // engine=both: play both sides until game over / mode change
+  const gen=++S.autoGen;
+  while(S.engineColor==="both"&&S.mode==="play"&&!game.isGameOver()&&gen===S.autoGen){
+    await engineMove();
+    if(gen!==S.autoGen)break;                           // superseded (mode/position changed)
+    await sleep(150);
+  }
+}
+function cgConfig(extra){const humanTurn=S.mode==="play"&&S.engineColor!=="both"&&turnColor()!==S.engineColor;  // "both"/engine-side => board locked
   return Object.assign({
   fen:boardFen(), orientation:S.flip?"black":"white", turnColor:turnColor(),
   coordinates:true, movable:{free:S.mode==="edit",
@@ -245,7 +257,7 @@ async function syncBoard(lastMove){
   cg.set(cgConfig({fen:boardFen(),lastMove:lastMove||undefined,turnColor:turnColor()}));
   projectStar();
   if(game.isGameOver()){setStatus("game over · "+outcomeStr());postGameToMemory();return;}
-  if(S.mode==="play"&&turnColor()===S.engineColor)await engineMove();
+  if(isEngineTurn()){ if(S.engineColor==="both") autoPlayLoop(); else await engineMove(); }
   else setStatus(S.engineColor==="none"
      ? `manual — ${turnColor()} to move · ⚙ Analyze for the read`
      : `your move (${humanColor()}) · ⚙ Analyze for the engine's read`);
@@ -255,18 +267,22 @@ async function projectStar(){          // just the ★ on the map (server projec
   drawMap();
 }
 async function engineMove(){
-  if(S.busy)return; S.busy=true; setBusy(true); setStatus(`engine (${S.engineColor}) thinking…`);
+  if(S.busy)return; S.busy=true;
+  const both=S.engineColor==="both", mover=turnColor();
+  setBusy(true, both?["bSide"]:[]);      // in both-sides, keep the toggle live so it can be stopped
+  setStatus(`engine thinking… (${mover}, ${gv("depthNodes")}n)`);
   try{
-    const r=await api("/engine_move",{fen:game.fen()});
+    const r=await api("/engine_move",{fen:game.fen(),nodes:parseInt(gv("depthNodes"))||2000});
     S.analysis=r; renderReason(r); drawArrows(r.candidates);
     if(r.move){const from=r.move.slice(0,2),to=r.move.slice(2,4),promo=r.move.slice(4)||undefined;
       game.move({from,to,promotion:promo}); S.fen=game.fen();
-      pushHist(S.fen,[from,to],r.san,S.engineColor==="white");
+      pushHist(S.fen,[from,to],r.san,mover==="white");    // mover's color (correct for both-sides)
       cg.set(cgConfig({fen:boardFen(),lastMove:[from,to],turnColor:turnColor()}));}
     if(cg)cg.setShapes([]);
-    S.analysis=null; clearReason();      // the read was for the engine's move; clear it for your turn
+    if(!both){S.analysis=null; clearReason();}             // keep the read up while watching engine-vs-engine
     projectStar();
     if(game.isGameOver()){setStatus("game over · "+outcomeStr());postGameToMemory();}
+    else if(both)setStatus(`engine (both) — ${turnColor()} to move (toggle to stop)`);
     else setStatus(`your move (${humanColor()}) · ⚙ Analyze for your read`);
   }catch(e){toast(e.message);setStatus("engine error");}
   finally{S.busy=false;setBusy(false);}
@@ -314,7 +330,7 @@ function renderReason(r){
   (r.candidates||[]).forEach((c,i)=>{const tr=document.createElement("tr");
     tr.innerHTML=`<td><span style="color:${VCOL[BRUSH[i]]||'#cfd3da'}">●</span> ${c.san}</td>`+
       `<td><span class="bar"><i style="width:${100*c.visits/mx}%"></i></span> ${c.visits}</td>`+
-      `<td>${c.value.toFixed(2)}</td><td>${c.winp.toFixed(2)}</td>`;tb.appendChild(tr);});
+      `<td>${c.value.toFixed(2)}${c.ci?" ±"+c.ci.toFixed(2):""}</td><td>${c.winp.toFixed(2)}</td>`;tb.appendChild(tr);});
   const L=document.getElementById("lines");L.innerHTML="";
   (r.candidates||[]).slice(0,3).forEach((c,i)=>{const col=VCOL[BRUSH[i]]||"#cfd3da";
     const plies=(c.hops||[]).map((h,j)=>`<span class="ply" data-ci="${i}" data-hop="${j}">${h.san}</span>`).join(" ")||(c.san||"");
@@ -334,19 +350,19 @@ function renderReason(r){
 function drawHops(cand,ci){const svg=document.getElementById("map");
   if(!svg||!cand.hops||!cand.hops.length||!S.proj||!S.mapX)return;
   if(cand.x==null||cand.hops.some(h=>h.x==null))return;   // unprojected streaming frame
-  const X=S.mapX,Y=S.mapY,col=VCOL[BRUSH[ci]]||"#7aa2ff";
+  const X=S.mapX,Y=S.mapY,col=VCOL[BRUSH[ci]]||"#7aa2ff",zf=mapZ();
   const pts=[[S.proj.x,S.proj.y]].concat(cand.hops.map(h=>[h.x,h.y]));
   const pl=document.createElementNS(NS,"polyline");
   pl.setAttribute("points",pts.map(p=>`${X(p[0])},${Y(p[1])}`).join(" "));
-  pl.setAttribute("fill","none");pl.setAttribute("stroke",col);pl.setAttribute("stroke-width",2.6);
+  pl.setAttribute("fill","none");pl.setAttribute("stroke",col);pl.setAttribute("stroke-width",2.6*zf);
   pl.setAttribute("opacity",.95);pl.setAttribute("pointer-events","none");svg.appendChild(pl);
   cand.hops.forEach((h,j)=>{const c=document.createElementNS(NS,"circle");
-    c.setAttribute("cx",X(h.x));c.setAttribute("cy",Y(h.y));c.setAttribute("r",6);
+    c.setAttribute("cx",X(h.x));c.setAttribute("cy",Y(h.y));c.setAttribute("r",6*zf);
     c.setAttribute("fill",h.white?"#eef1f7":"#20242c");c.setAttribute("stroke",col);
-    c.setAttribute("stroke-width",2);c.setAttribute("pointer-events","none");svg.appendChild(c);
-    const t=document.createElementNS(NS,"text");t.setAttribute("x",X(h.x)+8);t.setAttribute("y",Y(h.y)-5);
-    t.setAttribute("fill",col);t.setAttribute("font-size","11");t.setAttribute("stroke","#0b0d10");
-    t.setAttribute("stroke-width",".4");t.setAttribute("pointer-events","none");
+    c.setAttribute("stroke-width",2*zf);c.setAttribute("pointer-events","none");svg.appendChild(c);
+    const t=document.createElementNS(NS,"text");t.setAttribute("x",X(h.x)+8*zf);t.setAttribute("y",Y(h.y)-5*zf);
+    t.setAttribute("fill",col);t.setAttribute("font-size",11*zf);t.setAttribute("stroke","#0b0d10");
+    t.setAttribute("stroke-width",.4*zf);t.setAttribute("pointer-events","none");
     t.textContent=`${j+1}.${h.san}`;svg.appendChild(t);});}
 function previewHop(h){miniShow(h.fen);
   document.getElementById("regionLabel").textContent=`${h.white?"White":"Black"} plays ${h.san}`;}
@@ -376,31 +392,32 @@ async function takeback(){if(S.hist.length<=1||S.busy)return;
 async function analyzeHere(){
   const btn=document.getElementById("bAnalyze");
   if(S.analyzing){stopAnalysis();                       // Stop clicked
-    if(S.analysis)setStatus(`analysis paused @${S.analysis.nodes}n · ⚙ to resume`);return;}
+    if(S.analysis)setStatus(`analysis @${S.analysis.nodes}n · ⚙ to add more`);return;}
   if(S.busy){toast("wait for the engine");return;}      // never race the engine's move
   if(game.isGameOver()){toast("game over");return;}
-  const target=Math.max(100, parseInt(gv("depthNodes"))||500);   // user-selected search depth (nodes)
+  const step=Math.max(100, parseInt(gv("depthNodes"))||2000);   // nodes to ADD on this press
   const fen=S.fen;                                       // pin the analysed position
   const ac=new AbortController(); S.analyzeAbort=ac;
   S.analyzing=true;                                       // NOTE: does NOT set S.busy -> a move/nav can interrupt
   // keep NAV + Stop live so you can move/browse mid-analysis (those interrupt it);
   // gray only the board-mutating controls.
   setBusy(true,["bAnalyze","navFirst","navPrev","navNext","navLast","bTakeback"]);
-  btn.textContent="⏹ Stop"; let first=true;
+  btn.textContent="⏹ Stop"; let added=0;
   try{
-    while(S.analyzing){
-      // streaming chunks skip the ~0.7s t-SNE transform (project:false);
-      // one projected frame is fetched after the loop
-      const a=await api("/analyze",{fen,topk:3,nodes:Math.min(500,target),extend:true,project:false},ac.signal);
+    // extend the SERVER's tree by `step` MORE nodes, streamed in chunks that
+    // skip the ~0.7s t-SNE transform (project:false); one projected frame after.
+    while(S.analyzing && added<step){
+      const chunk=Math.min(500, step-added);
+      const a=await api("/analyze",{fen,topk:S.topk,nodes:chunk,extend:true,project:false},ac.signal);
       if(!S.analyzing)break;                              // stopped during the fetch
+      added+=chunk;
       S.analysis=a; renderReason(a); drawArrows(a.candidates);
-      setStatus(`analyzing… ${a.nodes}n  (move/nav to interrupt · ⏹ to stop)`);
+      setStatus(`analyzing… ${a.nodes}n  (+${added}/${step} · move/nav or ⏹ to stop)`);
       if(a.game_over){S.analyzing=false;break;}
-      if(a.nodes>=target){S.analyzing=false;setStatus(`search reached ${a.nodes}n (depth ${target})`);break;}
-      await sleep(120);                                   // give the server room to serve moves/UI between chunks
+      await sleep(60);                                   // let the server serve moves/UI between chunks
     }
     if(S.analysis&&!S.analysis.game_over){                // final PROJECTED frame (nodes:0 = readout only)
-      const a=await api("/analyze",{fen,topk:3,nodes:0,extend:true,project:true});
+      const a=await api("/analyze",{fen,topk:S.topk,nodes:0,extend:true,project:true});
       S.analysis=a; renderReason(a); drawArrows(a.candidates);
     }
     maybeDrawMap(true);                                   // full map redraw with projected overlay
@@ -409,27 +426,34 @@ async function analyzeHere(){
     S.analyzing=false; S.analyzeAbort=null; btn.textContent="⚙ Analyze";
     if(!S.busy){ setBusy(false);
       if(S.analysis && !game.isGameOver())
-        setStatus(`analysis paused @${S.analysis.nodes}n · ⚙ to resume`); }
+        setStatus(`analysis @${S.analysis.nodes}n · ⚙ +${step} more`); }
   }
 }
 
 /* ---------- t-SNE map rebuild (deeper fit on demand) ---------- */
 const gv=id=>document.getElementById(id).value;
 async function rebuildAtlas(){
+  const btn=document.getElementById("bRebuild");
+  if(S.rebuilding){                                       // Stop clicked: kill the fit subprocess + abort
+    try{await api("/rebuild_atlas_stop",{});}catch(e){}
+    if(S.rebuildAbort)S.rebuildAbort.abort();
+    return;
+  }
   stopAnalysis();
-  const body={n:parseInt(gv("tsN"))||4000, perplexity:parseFloat(gv("tsPerp"))||40,
+  const body={n:parseInt(gv("tsN"))||10000, perplexity:parseFloat(gv("tsPerp"))||500,
               exaggeration:parseFloat(gv("tsExag"))||1.6, tsne_iter:parseInt(gv("tsIter"))||1500};
-  S.busy=true; setBusy(true);
+  const ac=new AbortController(); S.rebuildAbort=ac; S.rebuilding=true;
+  S.busy=true; setBusy(true,["bRebuild"]); btn.textContent="⏹ Stop fit";
   if(cg)cg.set(cgConfig({movable:{color:undefined,dests:new Map()}}));   // freeze the board during the rebuild
-  setStatus(`rebuilding map (iter ${body.tsne_iter}, n ${body.n})… CPU, ~15–60s`);
+  setStatus(`rebuilding map (perp ${body.perplexity}, n ${body.n})… ⏹ to stop`);
   try{
-    await api("/rebuild_atlas",body);
-    S.atlas=await api("/atlas"); _lastMapDraw=0;         // reload the freshly-fitted points
-    await projectStar();                                  // re-project ★ + full drawMap on the new map
-    toast(`map rebuilt · ${body.tsne_iter} iters, perp ${body.perplexity}, n ${body.n}`);
+    await api("/rebuild_atlas",body,ac.signal);
+    S.atlas=await api("/atlas"); _lastMapDraw=0; await projectStar();
+    toast(`map rebuilt · perp ${body.perplexity}, n ${body.n}, ${body.tsne_iter} iters`);
     setStatus("map rebuilt");
-  }catch(e){ toast("rebuild failed: "+e.message); setStatus("rebuild failed"); }
-  finally{ S.busy=false; setBusy(false); if(cg)cg.set(cgConfig()); }
+  }catch(e){ if(e.name==="AbortError")setStatus("rebuild stopped"); else{toast("rebuild: "+e.message);setStatus("rebuild failed");} }
+  finally{ S.rebuilding=false; S.rebuildAbort=null; btn.textContent="⟳ Rebuild map";
+           S.busy=false; setBusy(false); if(cg)cg.set(cgConfig()); }
 }
 
 /* ---------- t-SNE map ---------- */
@@ -443,8 +467,41 @@ function miniBoard(fen,px){const g=fenGrid(fen);const S2=px||160,q=S2/8;
     const p=g[r][c];if(p)s+=`<text x="${x+q/2}" y="${y+q*0.72}" font-size="${q*0.8}" text-anchor="middle" `+
       `fill="${p===p.toUpperCase()?"#fff":"#111"}">${GLY[p]}</text>`;}
   return s+"</svg>";}
+/* ---------- map zoom/pan (viewBox on the SVG; survives redraws) ---------- */
+const mapView={x:0,y:0,w:720,h:720};
+let _mapPanned=false, _mapRedrawT=null;
+const mapZ=()=>mapView.w/720;                          // <1 when zoomed in
+function scheduleMapRedraw(){clearTimeout(_mapRedrawT); // re-size marks to constant screen size
+  _mapRedrawT=setTimeout(()=>drawMap(),140);}
+function applyMapView(){const s=document.getElementById("map");
+  s.setAttribute("viewBox",`${mapView.x} ${mapView.y} ${mapView.w} ${mapView.h}`);}
+function clampMapView(){mapView.w=Math.min(720,mapView.w);mapView.h=mapView.w;   // keep square
+  mapView.x=Math.max(0,Math.min(720-mapView.w,mapView.x));
+  mapView.y=Math.max(0,Math.min(720-mapView.h,mapView.y));}
+function mapPt(ev){const s=document.getElementById("map"),r=s.getBoundingClientRect();
+  return {x:mapView.x+(ev.clientX-r.left)/r.width*mapView.w,
+          y:mapView.y+(ev.clientY-r.top)/r.height*mapView.h};}
+function initMapZoom(){const s=document.getElementById("map");s.style.cursor="grab";
+  s.addEventListener("wheel",ev=>{ev.preventDefault();
+    const p=mapPt(ev), f=ev.deltaY<0?0.85:1/0.85;
+    const nw=Math.min(720,Math.max(720/40,mapView.w*f));   // zoom 1x..40x
+    mapView.x=p.x-(p.x-mapView.x)*(nw/mapView.w);
+    mapView.y=p.y-(p.y-mapView.y)*(nw/mapView.h);
+    mapView.w=nw;mapView.h=nw;clampMapView();applyMapView();scheduleMapRedraw();},{passive:false});
+  let drag=null;
+  s.addEventListener("mousedown",ev=>{if(ev.button!==0)return;
+    drag={cx:ev.clientX,cy:ev.clientY,vx:mapView.x,vy:mapView.y,moved:false};s.style.cursor="grabbing";});
+  window.addEventListener("mousemove",ev=>{if(!drag)return;
+    const r=s.getBoundingClientRect();
+    if(Math.abs(ev.clientX-drag.cx)+Math.abs(ev.clientY-drag.cy)>3)drag.moved=true;
+    mapView.x=drag.vx-(ev.clientX-drag.cx)/r.width*mapView.w;
+    mapView.y=drag.vy-(ev.clientY-drag.cy)/r.height*mapView.h;
+    clampMapView();applyMapView();});
+  window.addEventListener("mouseup",()=>{if(drag&&drag.moved)_mapPanned=true;drag=null;s.style.cursor="grab";});
+  s.addEventListener("dblclick",()=>{mapView.x=0;mapView.y=0;mapView.w=720;mapView.h=720;applyMapView();scheduleMapRedraw();});}
 function drawMap(){
   const A=S.atlas;if(!A)return;const svg=document.getElementById("map");svg.innerHTML="";
+  const zf=mapZ();                                     // counter-scale marks so zoom SEPARATES, not enlarges
   const P=A.points;const[bx,wx]=ex(P.map(p=>p.x)),[by,wy]=ex(P.map(p=>p.y));
   const pad=30,W=720-2*pad;const rmin=Math.min(...P.map(p=>p.reach)),rmax=Math.max(...P.map(p=>p.reach));
   const wmin=Math.min(...P.map(p=>p.winp)),wmax=Math.max(...P.map(p=>p.winp));
@@ -457,11 +514,12 @@ function drawMap(){
   bg.addEventListener("click",hideTip);
   svg.appendChild(bg);
   P.forEach(p=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);p._wn=(p.winp-wmin)/((wmax-wmin)||1);const c=document.createElementNS(NS,"circle");
-    c.setAttribute("cx",X(p.x));c.setAttribute("cy",Y(p.y));c.setAttribute("r",3.4);
+    c.setAttribute("cx",X(p.x));c.setAttribute("cy",Y(p.y));c.setAttribute("r",Math.max(0.5,3.4*zf));
     c.setAttribute("fill",colorFor(p));c.setAttribute("opacity",.72);c.style.cursor="pointer";
     c.addEventListener("mousemove",ev=>{ev.stopPropagation();showPointTip(ev,p);});
     c.addEventListener("mouseleave",hideTip);
     c.addEventListener("click",ev=>{ev.stopPropagation();
+      if(_mapPanned){_mapPanned=false;return;}          // ignore the click that ends a pan
       showInspect(p.fen,`${p.result>0?"White won":p.result<0?"Black won":"draw"} · ply ${p.ply} · P(win) ${p.winp}`);});
     svg.appendChild(c);});
   // overlay: a PINNED best-line's hop-path, else the top-3 move vectors
@@ -472,17 +530,17 @@ function drawMap(){
       if(c.x==null)return;const col=VCOL[BRUSH[i]];
       const ln=document.createElementNS(NS,"line");ln.setAttribute("x1",X(S.proj.x));
       ln.setAttribute("y1",Y(S.proj.y));ln.setAttribute("x2",X(c.x));ln.setAttribute("y2",Y(c.y));
-      ln.setAttribute("stroke",col);ln.setAttribute("stroke-width",2.2);ln.setAttribute("opacity",.9);
+      ln.setAttribute("stroke",col);ln.setAttribute("stroke-width",2.2*zf);ln.setAttribute("opacity",.9);
       ln.setAttribute("pointer-events","none");svg.appendChild(ln);
       const dot=document.createElementNS(NS,"circle");dot.setAttribute("cx",X(c.x));
-      dot.setAttribute("cy",Y(c.y));dot.setAttribute("r",5);dot.setAttribute("fill",col);
+      dot.setAttribute("cy",Y(c.y));dot.setAttribute("r",5*zf);dot.setAttribute("fill",col);
       dot.setAttribute("stroke","#0b0d10");dot.setAttribute("pointer-events","none");svg.appendChild(dot);
-      const tx=document.createElementNS(NS,"text");tx.setAttribute("x",X(c.x));tx.setAttribute("y",Y(c.y)-8);
-      tx.setAttribute("fill",col);tx.setAttribute("font-size","11");tx.setAttribute("text-anchor","middle");
+      const tx=document.createElementNS(NS,"text");tx.setAttribute("x",X(c.x));tx.setAttribute("y",Y(c.y)-8*zf);
+      tx.setAttribute("fill",col);tx.setAttribute("font-size",11*zf);tx.setAttribute("text-anchor","middle");
       tx.setAttribute("pointer-events","none");tx.textContent=c.san;svg.appendChild(tx);});}
   if(S.proj){const s=document.createElementNS(NS,"text");s.setAttribute("x",X(S.proj.x));
-    s.setAttribute("y",Y(S.proj.y)+8);s.setAttribute("font-size","28");s.setAttribute("text-anchor","middle");
-    s.setAttribute("fill","#ffe08a");s.setAttribute("stroke","#000");s.setAttribute("stroke-width",".7");
+    s.setAttribute("y",Y(S.proj.y)+8*zf);s.setAttribute("font-size",28*zf);s.setAttribute("text-anchor","middle");
+    s.setAttribute("fill","#ffe08a");s.setAttribute("stroke","#000");s.setAttribute("stroke-width",.7*zf);
     s.setAttribute("pointer-events","none");s.textContent="★";svg.appendChild(s);}
   drawLegend();
 }
@@ -506,6 +564,19 @@ function drawLegend(){const l=document.getElementById("legend");
 function showInspect(fen,label){S._regionFen=fen;
   document.getElementById("regionLabel").textContent=label||"";miniShow(fen);}
 document.getElementById("bLoadRegion").onclick=()=>{if(S._regionFen)loadFen(S._regionFen);};
+
+/* show MORE of the moves MCTS tried: re-serve the SAME tree (nodes:0, no new
+   search) with a larger topk. Toggles top-3 <-> all tried. */
+async function expandMoves(){
+  if(!S.analysis){toast("analyze first");return;}
+  if(S.busy||S.analyzing){toast("wait for the search");return;}
+  S.topk=(S.topk>3)?3:40;
+  document.getElementById("bMore").textContent=(S.topk>3)?"－ top 3":"＋ more";
+  try{
+    const a=await api("/analyze",{fen:game.fen(),topk:S.topk,nodes:0,extend:true,project:false});
+    S.analysis=a; renderReason(a); drawArrows(a.candidates);
+  }catch(e){toast(e.message);}
+}
 
 /* ---------- position memory (nearest seen positions + outcomes) ---------- */
 async function memShow(){
@@ -561,9 +632,12 @@ function setMode(m){S.mode=m;
 document.getElementById("mPlay").onclick=()=>setMode("play");
 document.getElementById("mEdit").onclick=()=>setMode("edit");
 document.getElementById("bCommit").onclick=()=>setMode("play");
-document.getElementById("bSide").onclick=()=>{S.engineColor=          // cycle Black -> White -> Manual
-    S.engineColor==="black"?"white":S.engineColor==="white"?"none":"black";
+document.getElementById("bSide").onclick=()=>{                        // cycle Black -> White -> Both -> Manual
+  S.engineColor=S.engineColor==="black"?"white":S.engineColor==="white"?"both":
+                S.engineColor==="both"?"none":"black";
+  S.autoGen++;                                                        // cancel any running auto-play loop
   document.getElementById("bSide").textContent=
+    S.engineColor==="both"?"Engine: Both sides":
     S.engineColor==="none"?"Manual (both sides)":"Engine: "+(S.engineColor==="white"?"White":"Black");
   if(S.mode==="play")syncBoard(null);};
 document.getElementById("bClear").onclick=()=>{cg.set({fen:"8/8/8/8/8/8/8/8"});S.fen="8/8/8/8/8/8/8/8 "+S.stm+" - - 0 1";};
@@ -586,10 +660,11 @@ document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=()=>{S.ck=b.dataset.
   document.querySelectorAll("[data-ck]").forEach(x=>x.classList.toggle("on",x===b));drawMap();});
 document.getElementById("bRebuild").onclick=rebuildAtlas;
 document.getElementById("bMemory").onclick=memShow;
+document.getElementById("bMore").onclick=expandMoves;
 
 /* ---------- boot ---------- */
 (async function(){
-  initBoard();
+  initBoard(); initMapZoom();          // scroll = zoom, drag = pan, double-click = reset
   try{S.atlas=await api("/atlas");}catch(e){toast("atlas not built — run build_play_atlas.py");}
   await loadFen(S.fen);
 })();

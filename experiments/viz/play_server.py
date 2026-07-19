@@ -51,7 +51,7 @@ class Engine:
 
     def __init__(self, ckpt: str, phead: str, nodes: int, c_puct: float = 1.5,
                  prior_tau: float = 0.5, pw_c: float = 0.0, memory_dir: str | None = None,
-                 tactical_prior: float = 0.0):
+                 tactical_prior: float = 0.0, root_min_visits: int = 0):
         import torch
         from catspace.nn.eval_head import EvalHead
         from catspace.nn.fb import load_ckpt
@@ -79,6 +79,7 @@ class Engine:
                                       max_nodes=nodes, device=self.dev, c_puct=c_puct,
                                       prior_tau=prior_tau, pw_c=pw_c,
                                       tactical_prior=tactical_prior,
+                                      root_min_visits=root_min_visits,
                                       committor_head=Committor(), mate_stop=True)
         self.rng = np.random.default_rng(0)
         self._atlas = None
@@ -91,6 +92,7 @@ class Engine:
         # the field is omega-free.
         self._memory_dir = memory_dir
         self._memory = None
+        self._rebuild_proc = None               # running t-SNE rebuild subprocess (stoppable)
         self._ckpt_tag = f"{Path(ckpt).name}@{pay.get('step', '?')}"
         # stateful Analyze: keep the last-analyzed tree so repeated Analyze on
         # the SAME position EXTENDS the search (+budget) instead of restarting
@@ -291,6 +293,7 @@ class Engine:
                 i += 1
             cands.append(dict(uci=c.move.uci(), san=board.san(c.move), visits=int(c.N),
                               value=round(float(c.terminal_v if c.terminal_v is not None else c.Q), 3),
+                              ci=round(float(0.0 if c.terminal_v is not None else c.value_ci()[1]), 3),
                               winp=cwin, x=cx, y=cy, hops=hops))
         return _xy_i(0), round(float(winp[0]), 3), cands
 
@@ -322,10 +325,11 @@ class Engine:
         with self.lock:
             reuse = (self._an_root if extend and self._an_fen == fen
                      and self._an_root is not None else None)
-            if nodes == 0 and reuse is not None:
-                # PROJECTION-ONLY readout: no search, just re-serve the cached
-                # tree with x/y filled in (the streaming loop's final frame)
-                root, total = reuse, self._an_total
+            if nodes == 0:
+                # READOUT ONLY: no new search. Re-serve the cached tree (project
+                # the final streaming frame, or expand topk to show more tried
+                # moves). None if this position was never searched.
+                root, total = reuse, (self._an_total if reuse is not None else 0)
             else:
                 old = self.pol.mcts.max_nodes
                 self.pol.mcts.max_nodes = int(nodes or old)
@@ -336,6 +340,10 @@ class Engine:
                 self._an_root, self._an_fen = root, fen
                 self._an_total = (self._an_total if reuse is not None else 0) + int(nodes or old)
                 total = self._an_total
+        if root is None:                      # nodes==0 on an un-searched position
+            rx, ry = self._xy(board) if project else (None, None)
+            return dict(game_over=False, result=None, winp=round(self.winp(board), 4),
+                        x=rx, y=ry, candidates=[], pv=[], nodes=0)
         if nodes != 0:
             self._harvest_tree(root)          # memory: completed-simulation lines
         cand = sorted(root.children, key=lambda c: c.N, reverse=True)[:topk]
@@ -354,7 +362,7 @@ class Engine:
                "black" if out.winner is False else "draw")
         return True, res
 
-    def engine_move(self, board: chess.Board) -> dict:
+    def engine_move(self, board: chess.Board, nodes: int | None = None) -> dict:
         from catspace.nn.mcts import game_truth
         over, res = self._outcome(board)
         if over:
@@ -362,7 +370,13 @@ class Engine:
                         result=res, winp=round(self.winp(board), 4),
                         pv=[], candidates=[])
         with self.lock:
-            root = self.pol.mcts.run(board)
+            old = self.pol.mcts.max_nodes
+            if nodes:                         # match the move budget to the UI depth
+                self.pol.mcts.max_nodes = int(nodes)
+            try:
+                root = self.pol.mcts.run(board)
+            finally:
+                self.pol.mcts.max_nodes = old
         self._harvest_tree(root)          # memory: completed-simulation lines
         white = board.turn == chess.WHITE
         kids = list(root.children)
@@ -400,20 +414,33 @@ class Engine:
         competes with any training job for CPU."""
         import subprocess
         import sys as _sys
-        n = max(500, min(int(n), 12000))
+        n = max(500, min(int(n), 40000))
         tsne_iter = max(250, min(int(tsne_iter), 5000))
-        perplexity = max(5.0, min(float(perplexity), 200.0))
+        perplexity = max(5.0, min(float(perplexity), 2000.0))
         exaggeration = max(1.0, min(float(exaggeration), 12.0))
         cmd = [_sys.executable, str(ROOT / "experiments/viz/build_play_atlas.py"),
                "--ckpt", self._ckpt, "--phead", self._phead,
                "--n", str(n), "--perplexity", str(perplexity),
                "--exaggeration", str(exaggeration), "--tsne-iter", str(tsne_iter)]
-        r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=1800)
-        if r.returncode != 0:
-            raise RuntimeError((r.stderr or r.stdout or "atlas build failed").strip()[-400:])
+        # Popen (not run) so /rebuild_atlas_stop can kill it mid-fit. atlas.json
+        # is written atomically, so a kill never leaves a half-written map.
+        proc = subprocess.Popen(cmd, cwd=str(ROOT), stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT, text=True)
+        self._rebuild_proc = proc
+        out, _ = proc.communicate()
+        self._rebuild_proc = None
+        if proc.returncode != 0:
+            raise RuntimeError((out or "atlas build stopped/failed").strip()[-400:])
         self._atlas = None                      # force lazy reload of the new artifacts
         self._proj = None
         return dict(n=n, perplexity=perplexity, exaggeration=exaggeration, tsne_iter=tsne_iter)
+
+    def rebuild_atlas_stop(self) -> dict:
+        p = getattr(self, "_rebuild_proc", None)
+        if p is not None and p.poll() is None:
+            p.terminate()
+            return dict(stopped=True)
+        return dict(stopped=False)
 
 
 ENGINE: Engine | None = None
@@ -497,7 +524,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "fen": b.fen(), "san": san,
                             "game_over": over, "result": res})
             elif u.path == "/engine_move":
-                self._json(ENGINE.engine_move(self._board(body["fen"])))
+                self._json(ENGINE.engine_move(self._board(body["fen"]), body.get("nodes")))
             elif u.path == "/analyze":
                 self._json({"ok": True, **ENGINE.analyze(self._board(body["fen"]),
                             int(body.get("topk", 3)), body.get("nodes"),
@@ -513,9 +540,11 @@ class Handler(BaseHTTPRequestHandler):
                                                           body.get("result", ""))})
             elif u.path == "/rebuild_atlas":
                 self._json({"ok": True, **ENGINE.rebuild_atlas(
-                    n=body.get("n", 4000), perplexity=body.get("perplexity", 40.0),
+                    n=body.get("n", 10000), perplexity=body.get("perplexity", 500.0),
                     exaggeration=body.get("exaggeration", 1.6),
                     tsne_iter=body.get("tsne_iter", 1500))})
+            elif u.path == "/rebuild_atlas_stop":
+                self._json({"ok": True, **ENGINE.rebuild_atlas_stop()})
             elif u.path == "/set_board":
                 fen = body["fen"]
                 try:
@@ -563,6 +592,12 @@ def main():
                          "(checks/captures/promotions/material threats): P=(1-w)*field "
                          "+ w*uniform(tactical), and tactical moves always stay in the "
                          "widening window. Ordering only -- values untouched. 0 disables.")
+    ap.add_argument("--root-min-visits", type=int, default=10,
+                    help="CI-driven root exploration: every non-terminal root move gets "
+                         ">= this many visits, then budget goes by UCB/LCB best-arm ID "
+                         "(keep sampling moves that could still be best; stop once ~95%% "
+                         "confidently worse). Per-move CIs are shown in the panel. 0 = "
+                         "plain PUCT root.")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
@@ -571,7 +606,8 @@ def main():
     print(f"loading incumbent on CPU ({args.ckpt}) ...", flush=True)
     ENGINE = Engine(args.ckpt, args.phead, args.nodes, c_puct=args.c_puct,
                     prior_tau=args.prior_tau, pw_c=args.pw_c,
-                    memory_dir=args.memory or None, tactical_prior=args.tactical_prior)
+                    memory_dir=args.memory or None, tactical_prior=args.tactical_prior,
+                    root_min_visits=args.root_min_visits)
     if not (ATLAS_DIR / "atlas.json").exists():
         print("WARNING: atlas.json missing — run experiments/viz/build_play_atlas.py "
               "(the map will 500 until then)", flush=True)
