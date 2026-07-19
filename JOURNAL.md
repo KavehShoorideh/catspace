@@ -5252,3 +5252,40 @@ unit-step, QRL spread with PID/var/unreach anti-collapse, committor-base phead)
 data (gen ETA ~60-90 min) then trains (~4 h at ~2.7 it/s). Output:
 qrl_dtm_full.pt. This is the sharp+aligned field candidate; conversion A/B vs the
 incumbent is the acceptance test once it lands.
+
+## 2026-07-19 (cont.): mate is a SURFACE — centroid hinge → composed retrieval
+
+**The centroid DTM hinge plateaued.** The first full run (qrl_dtm_full, centroid
+target d(F(s),MATE_W)->dtm) climbed to rank_corr ~0.3 early then ERODED to
+~0.05-0.1 by step 14k; a large-sample check at step 15000 gave overall spearman
+~0 (and per-material ~0 too: krvk +0.005). Root cause = Kaveh's surfaces-not-
+poles point applied to the hinge: a single mate CENTROID cannot order diverse
+endgames (KRvK / KRRvK / KRRvKBP) by DTM. Stopped at step 19400.
+
+**Composed retrieval hinge (Kaveh's spec).** Regress the COMPOSED distance
+  d_hat(s->mate) = min_g[ d(F(s), B(g)) + dtm(g) ]
+over a bank of DTM waypoints g toward the true dtm(s): the field is trusted only
+for the short hop to a nearby waypoint, g's dtm is grounded truth, the min picks
+the nearest useful waypoint (SURFACE, not mean). Factored into a reusable
+primitive `catspace/memory/retrieval.py::composed_distance` (top-k neighbours ->
+distance to and through them -> min) for the hinge, readout, engine and
+diagnostics. Smoke on the full 24k pool: composed ~0.25-0.3 vs centroid ~0.15.
+Full run (qrl_dtm_surf): bank 256, weight 0.5, halt-on-collapse; early rank_corr
+~0.2-0.45 (noisy, ~2x the centroid). ~1.8 it/s.
+
+**Forced-mate curation (full-board anchors).** gen_forced_mate_data.py pulls
+40000 mate-in-N positions from the Lichess puzzle DB (VERDICT FORCED_MATE
+n=40000 white=21171 black=18829 dtm[1..9 plies]). The tablebase surface is
+endgames only; these are FULL-BOARD near-mate anchors, the missing piece for
+composing a middlegame/opening through a nearby mate.
+
+**Propagation test of Kaveh's opening argument.** A piece-down opening should
+read as losing because it funnels to a piece-down endgame that clearly is (the
+quasimetric triangle inequality). experiments/propagation_ladder.py measures it
+via the composed estimator (paired equal-vs-down per stage; W/L/D surfaces from
+DTM + forced-mate + finals). Incumbent baseline is per-exemplar-noisy and can't
+validate it (even a won KRvK reads farther from white-win than a KRvKR draw --
+the known centroid-beats-nearest problem). The real test runs on qrl_dtm_surf
+ladder checkpoints (does the move-2 material delta lift, and does propagation
+reach the opening). GRADE: instrument built + committed; verdict pending the
+sharp field.
