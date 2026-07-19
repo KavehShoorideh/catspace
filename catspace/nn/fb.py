@@ -76,6 +76,17 @@ def grad_reverse(x: torch.Tensor) -> torch.Tensor:
     return _GradReverse.apply(x)
 
 
+def _apply_spectral_norm(module: nn.Module) -> None:
+    """Wrap every Conv2d/Linear weight in `module` with spectral normalization
+    (torch parametrization, so state_dict round-trips). Idempotent-safe: skips
+    modules already parametrized."""
+    from torch.nn.utils.parametrizations import spectral_norm as _sn
+    from torch.nn.utils.parametrize import is_parametrized
+    for m in module.modules():
+        if isinstance(m, (nn.Conv2d, nn.Linear)) and not is_parametrized(m, "weight"):
+            _sn(m)
+
+
 class TorchFB(nn.Module):
     def __init__(self, d: int = 64, channels: int = 64, blocks: int = 6,
                  enc_out: int = 256, dh: int = 512, omega_dim: int = 16,
@@ -84,7 +95,8 @@ class TorchFB(nn.Module):
                  n_bins: int = 12, competence: bool = False,
                  outcome_poles: bool = False, concept_axes: int = 0,
                  iqe: bool = False, iqe_components: int = 8,
-                 iqe_embed_scale: float = 50.0, iqe_leak_beta: float = 0.0):
+                 iqe_embed_scale: float = 50.0, iqe_leak_beta: float = 0.0,
+                 spectral_norm: bool = False):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional or outcome_poles or iqe:
@@ -97,7 +109,8 @@ class TorchFB(nn.Module):
                            concept_axes=concept_axes, iqe=iqe,
                            iqe_components=iqe_components,
                            iqe_embed_scale=iqe_embed_scale,
-                           iqe_leak_beta=iqe_leak_beta)
+                           iqe_leak_beta=iqe_leak_beta,
+                           spectral_norm=spectral_norm)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -106,6 +119,16 @@ class TorchFB(nn.Module):
         self.headF = nn.Sequential(nn.Linear(enc_out + 3 * omega_dim, dh), nn.ReLU(),
                                    nn.Linear(dh, d))
         self.headB = nn.Sequential(nn.Linear(enc_out, dh), nn.ReLU(), nn.Linear(dh, d))
+        # SPECTRAL NORMALIZATION (Miyato 2018; SimbaV2 for RL): bound the
+        # Lipschitz constant of the board->F/B maps so the QRL push/hinge cannot
+        # inflate the embedding scale without bound (the runaway that made the
+        # Lagrange multiplier diverge chasing an unheld unit-step pin,
+        # 2026-07-18). Applied to every Conv2d/Linear in both encoders and both
+        # heads. Config-stored so load_ckpt re-applies it before loading state.
+        self.spectral_norm = spectral_norm
+        if spectral_norm:
+            for m in (self.encF, self.encB, self.headF, self.headB):
+                _apply_spectral_norm(m)
         self.tau = tau
         self.d = d
         self.quasimetric = quasimetric

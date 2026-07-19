@@ -349,6 +349,11 @@ def main():
     ap.add_argument("--qrl-lambda-max", type=float, default=0.0,
                     help="hard cap on the PID multiplier + anti-windup on I (0=off). "
                          "Set at the force-balance scale (push+hinge ~8-16): try 20.")
+    ap.add_argument("--spectral-norm", action="store_true",
+                    help="spectral-normalize the encoder/head Conv+Linear layers "
+                         "(bound the Lipschitz constant so the QRL push/hinge can't "
+                         "inflate the embedding scale without bound -> lambda stops "
+                         "diverging; the scale-growth fix, 2026-07-18).")
     ap.add_argument("--iqe-leak-beta", type=float, default=0.0,
                     help="LEAKY IQE (Kaveh): replace the interval hard max with "
                          "softplus at this inverse temperature so d is never exactly "
@@ -504,7 +509,8 @@ def main():
                      outcome_poles=args.outcome_poles, concept_axes=args.concept_axes,
                      iqe=args.iqe, iqe_components=args.iqe_components,
                      iqe_embed_scale=args.iqe_embed_scale,
-                     iqe_leak_beta=args.iqe_leak_beta)
+                     iqe_leak_beta=args.iqe_leak_beta,
+                     spectral_norm=args.spectral_norm)
         print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
               f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
