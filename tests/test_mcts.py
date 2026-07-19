@@ -347,3 +347,43 @@ def test_tactical_prior_off_is_default():
     b = chess.Board()
     root = m.run(b)
     assert not any(c.tactical for c in root.children)   # flag not even computed
+
+
+# -- CI-driven root exploration (2026-07-19: min-visits + confidence elimination) --
+
+def test_root_min_visits_floor():
+    # every non-terminal root move must reach the floor before concentration.
+    # value-only expansion costs ~branching evals/sim, so the budget must cover
+    # moves*min*branching (20*5*~20) for the floor to complete.
+    b = chess.Board()  # 20 legal moves
+    m = make(nodes=3000, root_min_visits=5)
+    root = m.run(b)
+    live = [c for c in root.children if c.terminal_v is None]
+    assert live and min(c.N for c in live) >= 5, [c.N for c in live]
+
+
+def test_value_ci_shrinks_with_visits():
+    from catspace.nn.mcts import _Node
+    n = _Node(chess.Board(), None)
+    rng = np.random.default_rng(0)
+    hw_prev = 1.0
+    for k in (10, 100, 1000):
+        n.N = n.W = n.W2 = 0
+        for _ in range(k):
+            v = float(rng.normal(0.2, 0.3))
+            n.N += 1; n.W += v; n.W2 += v * v
+        _, hw = n.value_ci()
+        assert hw < hw_prev            # tighter CI with more samples
+        hw_prev = hw
+
+
+def test_root_ci_off_by_default():
+    m = make(nodes=64)
+    assert m.root_min_visits == 0
+
+
+def test_root_ci_still_takes_mate():
+    b = chess.Board("6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1")
+    m = make(nodes=200, root_min_visits=8)
+    mv = m.best_move(b); b.push(mv)
+    assert b.is_checkmate()

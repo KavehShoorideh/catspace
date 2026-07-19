@@ -5058,3 +5058,20 @@ the identical recipe with RAW labels (no --committor-certified-only). If ~0.420
 for free). If ~0.600 -> certified/label-masking costs strength -> investigate
 (masked-data volume vs label content). Not auto-run: overnight window over,
 Kaveh back, directional 3h GPU call is his.
+
+**CI-driven root exploration** (Kaveh 2026-07-19: "some moves are only tried
+once; every move needs a minimum (~10) tries + CIs; keep trying until confidence
+in a move's badness > ~95%"). = UCB/LCB best-arm ID at the root. Track W2 per
+node -> value CI (normal-approx, values in [-1,1]); root (a) floors every
+non-terminal move at root_min_visits, then (b) samples only moves whose UPPER
+value bound still reaches the best move's LOWER bound (still-could-be-best),
+leaving ~ci_z-confidently-worse moves alone. Flag-gated (root_min_visits=0 =
+plain PUCT); server default 10. Deeper nodes keep PUCT+widening+tactical.
+VERDICT (toy, 4000n, root-min-visits 10): all 24 legal moves visited, MIN
+visits=10 (was 1), max 52 on the best move; per-move CIs surfaced -- Rh7
++0.76±0.09 (52 visits) vs floor moves ±0.19-0.20 (10 visits). Every move now has
+a usable estimate + interval instead of a single-sample point. 28/28 tests
+(4 new). Note the floor needs budget >= moves*min*branching (value-only
+expansion pays ~branching evals/sim), else it distributes budget EVENLY rather
+than reaching the floor -- still strictly better than PUCT leaving moves at 1.
+Ties to planner cascade.py LUCB (certified-dominance stop).

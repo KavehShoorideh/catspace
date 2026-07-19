@@ -88,7 +88,7 @@ def game_truth(node: "_Node") -> bool:
 
 
 class _Node:
-    __slots__ = ("board", "move", "children", "P", "N", "W", "v_init",
+    __slots__ = ("board", "move", "children", "P", "N", "W", "W2", "v_init",
                  "terminal_v", "parent", "rep_key", "coh_gamma", "raw_v", "cert",
                  "cert_planted", "pw_order", "tactical")
 
@@ -102,6 +102,7 @@ class _Node:
         self.P = 0.0                     # prior (set by parent expansion)
         self.N = 0
         self.W = 0.0                     # sum of backed-up White-POV values
+        self.W2 = 0.0                    # sum of squares (for the value CI)
         self.v_init: float | None = None # squashed reach from parent's batch eval
         self.terminal_v: float | None = None
         self.raw_v: float | None = None  # UNsquashed reach (tree-reuse recalibration
@@ -128,6 +129,16 @@ class _Node:
             return self.W / self.N
         return self.v_init if self.v_init is not None else 0.0
 
+    def value_ci(self, z: float = 1.96) -> tuple:
+        """(mean, half-width) of the backed-up value (White-POV). Normal-approx
+        CI on a bounded-[-1,1] mean; maximally uncertain (hw=1) below 2 samples.
+        Terminal nodes carry no uncertainty -- callers use terminal_v (hw=0)."""
+        if self.N < 2:
+            return (self.Q, 1.0)
+        mean = self.W / self.N
+        var = max(0.0, self.W2 / self.N - mean * mean)
+        return (mean, min(1.0, z * math.sqrt(var / self.N)))
+
 
 class MCTS:
     """Core tree search over a `reach_fn(boards) -> np.ndarray` oracle.
@@ -142,7 +153,8 @@ class MCTS:
                  cache_key_fn=None, decision_stop: bool = False,
                  decision_check_every: int = 16, mate_stop: bool = False,
                  pw_c: float = 0.0, pw_alpha: float = 0.5, pw_min: int = 4,
-                 tactical_prior: float = 0.0):
+                 tactical_prior: float = 0.0,
+                 root_min_visits: int = 0, ci_z: float = 1.96):
         assert max_nodes >= 1
         # EARLY-STOP LEVERS (2026-07-18, the planner energy objective
         # E[score] - c*compute): spend budget only while it can still change
@@ -187,6 +199,16 @@ class MCTS:
         # behavior). Interim until the plan-alignment prior; re-test on field
         # promotions (conditional-rejections rule).
         self.tactical_prior = tactical_prior
+        # CI-DRIVEN ROOT EXPLORATION (Kaveh 2026-07-19: "every move needs a
+        # minimum number of tries; keep trying until confidence in the badness
+        # of a move > ~95%"). When root_min_visits>0, the ROOT (a) guarantees
+        # every non-terminal move >= root_min_visits samples, then (b) allocates
+        # by UCB/LCB best-arm identification: sample only moves whose UPPER value
+        # bound still reaches the best move's LOWER bound (could-still-be-best);
+        # a move whose whole CI sits below is ~(ci_z)-confidently worse and is
+        # left alone. Deeper nodes keep PUCT (+ widening + tactical). 0 disables.
+        self.root_min_visits = root_min_visits
+        self.ci_z = ci_z
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
         self.max_nodes = max_nodes
@@ -390,6 +412,36 @@ class MCTS:
     # -- selection ---------------------------------------------------------
     def _select_child(self, node: _Node) -> _Node:
         white = node.board.turn == chess.WHITE
+        if self.root_min_visits > 0 and node.parent is None:
+            live = [c for c in node.children if c.terminal_v is None]
+            if live:
+                # (a) floor: round-robin every non-terminal move up to the min --
+                # but CAP the floor so it can't consume the whole budget at low
+                # node counts (value-only expansion is ~nm evals/sim, so only
+                # ~max_nodes/nm sims exist; flooring nm moves to f costs f*nm
+                # sims). Keep the floor to ~70% of the budget so the UCB phase
+                # still gets to concentrate -- else every move ends up ~equal.
+                nm = len(live)
+                eff = min(self.root_min_visits, max(1, int(0.7 * self.max_nodes / (nm * nm))))
+                under = [c for c in live if c.N < eff]
+                if under:
+                    return min(under, key=lambda c: c.N)
+            # (b) UCB/LCB best-arm: keep sampling the most optimistic move whose
+            # upper bound still reaches the best lower bound; the rest are ~ci_z
+            # confidently worse and get no more budget.
+            bounds, best_lo = [], -np.inf
+            for c in node.children:
+                if c.terminal_v is not None:
+                    persp = c.terminal_v if white else -c.terminal_v
+                    lo = hi = persp
+                else:
+                    m, hw = c.value_ci(self.ci_z)
+                    persp = m if white else -m
+                    lo, hi = persp - hw, persp + hw
+                bounds.append((c, lo, hi))
+                best_lo = max(best_lo, lo)
+            return max((c_hi for c_hi in ((c, hi) for c, lo, hi in bounds if hi >= best_lo)),
+                       key=lambda t: t[1])[0]
         sqrt_n = math.sqrt(node.N)
         cand = node.children
         if self.pw_c > 0.0 and node.pw_order is not None:
@@ -485,6 +537,7 @@ class MCTS:
             for n in reversed(path):
                 n.N += 1
                 n.W += v_run
+                n.W2 += v_run * v_run          # for the per-move value CI
                 v_run = v_run * n.coh_gamma
             if (self.decision_stop and sims % self.decision_check_every == 0
                     and len(root.children) > 1):
@@ -540,7 +593,7 @@ class FBMCTSPolicy:
                  certainty_head=None, certainty_stop: float = 0.0,
                  decision_stop: bool = False, mate_stop: bool = False,
                  pw_c: float = 0.0, pw_alpha: float = 0.5, pw_min: int = 4,
-                 tactical_prior: float = 0.0):
+                 tactical_prior: float = 0.0, root_min_visits: int = 0, ci_z: float = 1.96):
         import torch
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes, omega_ids
@@ -614,6 +667,7 @@ class FBMCTSPolicy:
                          decision_stop=decision_stop, mate_stop=mate_stop,
                          pw_c=pw_c, pw_alpha=pw_alpha, pw_min=pw_min,
                          tactical_prior=tactical_prior,
+                         root_min_visits=root_min_visits, ci_z=ci_z,
                          cache_key_fn=lambda b: f"{b.fen()}|{self.path_counts.get(b.board_fen(), 0)}")
         self.evidence = evidence or {}
         self.evidence_k = evidence_k

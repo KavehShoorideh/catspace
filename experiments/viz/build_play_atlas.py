@@ -70,12 +70,16 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", default="data/derived/sep/cert_base_full.pt")
     ap.add_argument("--phead", default="data/derived/sep/cert_base_full_phead.pt")
-    ap.add_argument("--n", type=int, default=4000, help="holdout positions to sample")
-    ap.add_argument("--perplexity", type=float, default=40.0)
+    ap.add_argument("--n", type=int, default=10000, help="holdout positions to sample (capped by availability)")
+    ap.add_argument("--perplexity", type=float, default=500.0,
+                    help="clamped to <= n/3 at fit time (higher = more global structure)")
     ap.add_argument("--exaggeration", type=float, default=1.6,
                     help=">1 pulls clusters apart (more separation)")
     ap.add_argument("--tsne-iter", type=int, default=1500,
                     help="gradient iterations (more = more separation, slower)")
+    ap.add_argument("--no-multiscale", dest="multiscale", action="store_false",
+                    help="single perplexity instead of multiscale (local+global) affinities")
+    ap.set_defaults(multiscale=True)
     ap.add_argument("--out", default="artifacts/generated/play_atlas")
     ap.add_argument("--shards", default=None, help="shard dir (default: newest)")
     ap.add_argument("--seed", type=int, default=0)
@@ -140,19 +144,41 @@ def main():
     # separation knob). Built directly (not via fit_projection) for the extra
     # params, then wrapped so the server can still out-of-sample transform.
     t0 = time.time()
-    from openTSNE import TSNE
+    from openTSNE import TSNE, TSNEEmbedding, affinity
+    from openTSNE import initialization as tsne_init
     from catspace.viz.projection import Normalizer, TSNEProjection
     from catspace.viz.realboard import _FittedProjection
     normalizer = Normalizer.fit(F)
     Fn = normalizer.apply(F)
-    emb = TSNE(perplexity=args.perplexity, initialization="pca", metric="cosine",
-               exaggeration=args.exaggeration, n_iter=args.tsne_iter,
-               random_state=args.seed, n_jobs=-1).fit(Fn)
-    tp = TSNEProjection(perplexity=args.perplexity, seed=args.seed)
+    cap = max(5.0, len(Fn) / 3.0)                          # perplexity must be << n
+    perp = min(args.perplexity, cap)
+    # openTSNE defaults already do the right thing for large data: learning_rate
+    # "auto" (=N/exaggeration), PCA init (global structure + reproducible),
+    # negative_gradient_method/neighbors "auto" (FFT + approximate NN at this N).
+    # For COMPLEX data (chess), openTSNE + Kobak/Berens recommend a HIGH
+    # perplexity (500) and, better, MULTISCALE affinities: a small perplexity
+    # keeps local neighbourhoods while the large one carries global layout.
+    if args.multiscale and len(Fn) >= 60:
+        perps = sorted({int(min(cap, max(5, perp / 10))), int(perp)})
+        aff = affinity.Multiscale(Fn, perplexities=perps, metric="cosine",
+                                  n_jobs=-1, random_state=args.seed)
+        emb = TSNEEmbedding(tsne_init.pca(Fn, random_state=args.seed), aff,
+                            negative_gradient_method="auto", learning_rate="auto",
+                            random_state=args.seed, n_jobs=-1)
+        emb.optimize(n_iter=250, exaggeration=12, momentum=0.5, inplace=True)   # early
+        emb.optimize(n_iter=args.tsne_iter, exaggeration=args.exaggeration,
+                     momentum=0.8, inplace=True)                                # main
+        perp_note = f"multiscale{perps}"
+    else:
+        emb = TSNE(perplexity=perp, initialization="pca", metric="cosine",
+                   exaggeration=args.exaggeration, n_iter=args.tsne_iter,
+                   learning_rate="auto", random_state=args.seed, n_jobs=-1).fit(Fn)
+        perp_note = f"perp={perp:g}"
+    tp = TSNEProjection(perplexity=perp, seed=args.seed)
     tp._embedding = emb
     proj = _FittedProjection(normalizer, tp)
     xy = np.asarray(emb, dtype=np.float32)  # in-sample 2-D coords
-    print(f"[stage] fit t-SNE ({n}x{F.shape[1]} -> 2D, perp={args.perplexity} "
+    print(f"[stage] fit t-SNE ({n}x{F.shape[1]} -> 2D, perp={perp:g} "
           f"exag={args.exaggeration} iter={args.tsne_iter}): {time.time() - t0:.1f}s")
 
     # -------------------------------------------------- assemble atlas.json
