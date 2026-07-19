@@ -173,6 +173,11 @@ function miniShow(fen){if(cgMini)cgMini.set({fen:fen.split(" ")[0]});}
 
 async function onCgMove(orig,dest){
   if(S.mode==="edit"){S.fen=piecesToFen(cg.state.pieces);return;}
+  // ignore stray moves while the engine is thinking / analysing (the turn-loss
+  // race: chessground stays movable during the network round-trip, so a 2nd
+  // drag lands on a stale position). Revert the board to truth and bail.
+  if(S.busy){cg.set(cgConfig());return;}
+  cg.set({movable:{color:undefined,dests:new Map()}});  // LOCK the board immediately
   let uci=S.legal.find(u=>u.slice(0,4)===orig+dest)||(orig+dest);
   try{
     const r=await api("/apply_move",{fen:S.fen,uci});
