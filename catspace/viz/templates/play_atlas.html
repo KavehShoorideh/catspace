@@ -67,7 +67,7 @@
       <button id="navLast" title="latest">⏭</button>
       <button id="bTakeback" title="undo last full move">⟲ Takeback</button>
       <span style="flex:1"></span>
-      <button id="bAnalyze" title="run a deeper MCTS from this position">⚙ Analyze</button>
+      <button id="bAnalyze" title="extend the MCTS by 2000 nodes (accumulates on repeat)">⚙ Analyze +2000</button>
     </div>
     <div id="editbar" class="row" style="display:none;flex-direction:column;align-items:flex-start">
       <div class="palette" id="palette"></div>
@@ -300,10 +300,10 @@ async function takeback(){if(S.hist.length<=1)return;
   let t=S.hist.length-2;                                     // drop the last ply…
   while(t>0 && sideToMove(S.hist[t].fen)!==humanColor())t--; // …land on human-to-move
   S.hist=S.hist.slice(0,t+1);S.ptr=t;await goto(t);}
-async function analyzeHere(nodes){setStatus("analyzing…");
-  try{const a=await api("/analyze",{fen:S.fen,topk:3,nodes:nodes||1200});S.analysis=a;
+async function analyzeHere(){setStatus("analyzing…");
+  try{const a=await api("/analyze",{fen:S.fen,topk:3,nodes:2000,extend:true});S.analysis=a;
     renderReason(a);drawArrows(a.candidates);drawMap();
-    setStatus(`analysis @${a.nodes}n${a.game_over?" · game over":""}`);
+    setStatus(`analysis @${a.nodes}n · ⚙ again to +2000${a.game_over?" · game over":""}`);
   }catch(e){toast(e.message);}}
 
 /* ---------- t-SNE map ---------- */
@@ -440,7 +440,7 @@ document.getElementById("navPrev").onclick=()=>goto(S.ptr-1);
 document.getElementById("navNext").onclick=()=>goto(S.ptr+1);
 document.getElementById("navLast").onclick=()=>goto(S.hist.length-1);
 document.getElementById("bTakeback").onclick=takeback;
-document.getElementById("bAnalyze").onclick=()=>analyzeHere(1200);
+document.getElementById("bAnalyze").onclick=()=>analyzeHere();
 window.addEventListener("keydown",e=>{if(/input|textarea/i.test(e.target.tagName))return;
   if(e.key==="ArrowLeft")goto(S.ptr-1);else if(e.key==="ArrowRight")goto(S.ptr+1);});
 document.getElementById("bNew").onclick=()=>loadFen(START);
