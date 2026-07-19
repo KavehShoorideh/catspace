@@ -34,9 +34,13 @@ done
 
 # 4) launch the full run (foreground here; the caller's launch.sh detaches us)
 echo "[run_dtm_full] starting full training @ $(date)"
+# COMPOSED mate-SURFACE hinge (Kaveh 2026-07-19): --dtm-bank enables the
+# min_g[d(F(s),B(g))+dtm(g)] surface estimate instead of the centroid (which
+# plateaued at rank_corr ~0.15). Stronger --dtm-weight 0.5 so the alignment
+# dominates the QRL spread; --qrl-halt-on-collapse guards the higher pull.
 exec .venv/bin/python -u experiments/train_lichess_fb.py \
   --shards data/shards/lichess_db_standard_rated_2019-01.prefix4gb \
-  --ckpt data/derived/sep/qrl_dtm_full.pt --steps 40000 --ckpt-every 10000 --fresh \
+  --ckpt data/derived/sep/qrl_dtm_surf.pt --steps 40000 --ckpt-every 10000 --fresh \
   --quasimetric --iqe --iqe-components 32 --iqe-embed-scale 2.0 --iqe-leak-beta 10.0 \
   --freeze-iqe-scale --spectral-norm --omega-free-field \
   --qrl-objective --qrl-push-offset 15 --qrl-goal-pool 8192 --qrl-two-sided \
@@ -46,4 +50,4 @@ exec .venv/bin/python -u experiments/train_lichess_fb.py \
   --committor-base --phead-weight 0.1 --selfplay-frac 0.3 \
   --lr 2e-4 --batch 128 --seed 0 \
   --d 512 --dh 512 --channels 128 --blocks 10 --enc-out 512 \
-  --dtm-hinge "$DTM" --dtm-weight 0.3 --dtm-batch 128
+  --dtm-hinge "$DTM" --dtm-weight 0.5 --dtm-batch 128 --dtm-bank 256
