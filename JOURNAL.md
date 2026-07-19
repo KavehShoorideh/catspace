@@ -4745,3 +4745,33 @@ Also: RUNBOOK.md added (all train/eval/analyze commands, per Kaveh — replicate
 when tokens run out). Play-atlas interface build was interrupted by the session
 limit: only experiments/viz/build_play_atlas.py (precompute) landed; server +
 frontend still TODO (frozen contract in scratchpad).
+
+
+## 2026-07-18 (Fable) — the spread field does NOT play: 0.160 vs incumbent 0.600. Spread is not sufficient for conversion.
+
+PLAYOUT_AB LEAK_STEP10000_vs_incumbent (n=100 paired, tb-optimal defender,
+mcts@800, committor readout both sides):
+  A (incumbent cert_base_full) = 0.600
+  B (qrl_iqe_leak_step10000, the biggest-spread field ever, d_rand~129) = 0.160
+  diff -0.440 CI[-0.540,-0.340] e=7.8e9 SIGNIFICANT. 48 decisive pairs.
+  (plies-to-mate A=20 B=8 — the few B converts are fast, but it converts 16%.)
+
+THE headline, stated plainly: a hugely-spread quasimetric geometry plays MUCH
+WORSE than the unspread incumbent. **Spread is not sufficient for play.** Two
+honest caveats on B's disadvantage: (1) it trained with --phead-weight 0.1
+(committor readout undertrained — the spread objective dominated), so this
+measures the field AS SHIPPED, not spread's ceiling; (2) the whole point of
+spread was to enable SUBGOAL PLANNING (waypoints need a metric that separates
+regions), NOT to improve direct committor conversion — so a spread field that
+reads out worse could still be the better planning substrate. But that is now
+a HYPOTHESIS to prove, not a result. As a playing engine today, the incumbent
+remains far ahead, and the week's spread program has NOT produced a better
+player. Recorded against [[rigor_over_flattery]] — do not oversell the d_rand
+breakthrough; it bought geometry, not wins, and may have cost the readout.
+
+Strategic implication: the spread program's value is now gated on the planner
+actually using the geometry (decompose waypoints + probe), which is unbuilt on
+a real field. Before more field-spread work, the cheaper question is whether
+ANY planner on this spread field beats direct committor readout — else spread
+is a dead end for play. Field-remedy relaunch (lambda-cap fix) is on hold
+pending that call.
