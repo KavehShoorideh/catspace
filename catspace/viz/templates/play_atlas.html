@@ -367,7 +367,7 @@ function drawMap(){
   S.mapX=X;S.mapY=Y;S._inv=(px,py)=>[(px-pad)/W*wx+bx,(720-pad-py)/W*wy+by];
   const bg=document.createElementNS(NS,"rect");bg.setAttribute("width",720);bg.setAttribute("height",720);
   bg.setAttribute("fill","transparent");
-  bg.addEventListener("mousemove",ev=>{const[x,y]=svgInv(ev,svg);showClusterTip(ev,nearestCluster(x,y));});
+  bg.addEventListener("mousemove",hideTip);
   bg.addEventListener("mouseleave",hideTip);
   bg.addEventListener("click",hideTip);
   svg.appendChild(bg);
@@ -403,8 +403,6 @@ function drawMap(){
 }
 function svgInv(ev,svg){const r=svg.getBoundingClientRect();
   return S._inv((ev.clientX-r.left)/r.width*720,(ev.clientY-r.top)/r.height*720);}
-function nearestCluster(x,y){let best=null,bd=1e18;for(const c of S.atlas.clusters){
-  const d=(c.cx-x)**2+(c.cy-y)**2;if(d<bd){bd=d;best=c;}}return best;}
 /* HOVER = statistics only (light tooltip); CLICK pins the board in the fixed
    inspector so you can hover away and it stays (Kaveh) */
 function tipHTML(ev,html){const tip=document.getElementById("tip");
@@ -413,7 +411,6 @@ function tipHTML(ev,html){const tip=document.getElementById("tip");
   tip.style.display="block";tip.style.left=Math.min(ev.clientX-r.left+12,r.width-180)+"px";
   tip.style.top=Math.min(ev.clientY-r.top+12,r.height-34)+"px";}
 function showPointTip(ev,p){tipHTML(ev,`${p.result>0?"White won":p.result<0?"Black won":"draw"} · ply ${p.ply} · P(win) ${p.winp} · reach ${p.reach}`);}
-function showClusterTip(ev,cl){if(cl)tipHTML(ev,`${cl.label} · ${cl.n} positions — click to sample here`);}
 function hideTip(){document.getElementById("tip").style.display="none";}
 function drawLegend(){const l=document.getElementById("legend");
   if(S.ck==="result")l.innerHTML='<span class="swatch" style="background:#66d9a6"></span>W '+
