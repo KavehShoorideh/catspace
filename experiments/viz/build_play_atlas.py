@@ -39,6 +39,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from catspace.data.certified import collect_certified_games
+from catspace.data.encode import board_from_packed
 from catspace.data.shards import sample_shard_rows
 from catspace.io.paths import newest_shard_dir
 from catspace.nn.eval_head import EvalHead
@@ -48,6 +49,29 @@ from catspace.viz.realboard import board_from_row, embed_positions, fit_projecti
 # columns pulled from each shard for the sampled rows (contract: packed/meta/
 # elo/clock/result/ply; game_id kept for provenance/debug).
 COLS = ("packed", "meta", "ply", "clock", "result", "white_elo", "black_elo", "game_id")
+
+
+def draw_pole(fb, shard_dir: Path, device, cap: int = 512):
+    """Mean B-embedding of DRAW final positions -> a draw goal pole, for the
+    'distance to draw' map coloring (the white/black poles are zgoals MATE_W/B).
+    None if the field is not quasimetric or no draws are found."""
+    import torch
+    from catspace.nn.features import feature_planes
+    picks = []
+    for path in sorted(shard_dir.glob("shard_*.npz")):
+        npz = np.load(path)
+        gid, result, packed, meta = npz["game_id"], npz["result"], npz["packed"], npz["meta"]
+        last = np.flatnonzero(np.r_[np.diff(gid) != 0, True])   # final row per game
+        for row in last:
+            if int(result[row]) == 0:
+                picks.append((packed[row], meta[row]))
+        if len(picks) >= cap:
+            break
+    if not picks:
+        return None
+    p = np.stack([r[0] for r in picks[:cap]]); m = np.stack([r[1] for r in picks[:cap]])
+    with torch.no_grad():
+        return fb.embed_B(torch.from_numpy(feature_planes(p, m)).to(device)).mean(dim=0)
 
 
 def load_rows(shard_dir: Path, picks: list) -> dict:
@@ -139,6 +163,20 @@ def main():
     reach = (F @ zw_unit).astype(np.float32)
     with torch.no_grad():
         winp = torch.softmax(phead(torch.from_numpy(F).to(device)), dim=1)[:, 0].cpu().numpy()
+    # quasimetric DISTANCES to the outcome poles (the "distance to {white mate /
+    # black mate / draw}" map coloring; replaces cosine reach). Kaveh 2026-07-19.
+    dW = dB = dD = None
+    if getattr(fb, "quasimetric", False):
+        Ft = torch.from_numpy(F).to(device)
+        zWt = payload["zgoals"]["MATE_W"].to(device).float()
+        zBt = payload["zgoals"]["MATE_B"].to(device).float()
+        zDt = draw_pole(fb, shard_dir, device)
+        with torch.no_grad():
+            dW = fb.distance_matrix(Ft, zWt[None, :])[:, 0].cpu().numpy()
+            dB = fb.distance_matrix(Ft, zBt[None, :])[:, 0].cpu().numpy()
+            dD = (fb.distance_matrix(Ft, zDt[None, :])[:, 0].cpu().numpy()
+                  if zDt is not None else None)
+        print(f"[stage] pole distances W/B{'/draw' if dD is not None else ''} computed")
     print(f"[stage] embed F + reach/winp ({n} rows): {time.time() - t0:.1f}s")
 
     # -------------------------------------------------- fit persisted t-SNE
@@ -194,8 +232,11 @@ def main():
 
     points = [dict(x=round(float(xy[i, 0]), 3), y=round(float(xy[i, 1]), 3),
                    result=int(results[i]), reach=round(float(reach[i]), 4),
-                   winp=round(float(winp[i]), 4), ply=int(plies[i]),
-                   fen=fens[i]) for i in range(n)]
+                   winp=round(float(winp[i]), 4), ply=int(plies[i]), fen=fens[i],
+                   dW=round(float(dW[i]), 3) if dW is not None else None,
+                   dB=round(float(dB[i]), 3) if dB is not None else None,
+                   dD=round(float(dD[i]), 3) if dD is not None else None)
+              for i in range(n)]
 
     bounds = dict(xmin=round(float(xy[:, 0].min()), 3), xmax=round(float(xy[:, 0].max()), 3),
                   ymin=round(float(xy[:, 1].min()), 3), ymax=round(float(xy[:, 1].max()), 3))

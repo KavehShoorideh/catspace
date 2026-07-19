@@ -101,7 +101,11 @@
     <div class="row">
       <span class="pill">color:</span>
       <button data-ck="result" class="on">result</button>
-      <button data-ck="reach">reach</button>
+      <button data-ck="dist">distance→</button>
+      <select id="distTarget" title="quasimetric distance d(pos -> goal)">
+        <option value="dW">White mate</option><option value="dB">Black mate</option>
+        <option value="dD">draw</option>
+      </select>
       <button data-ck="winp">P(win)</button>
       <span style="flex:1"></span>
       <span class="pill" id="legend"></span>
@@ -459,7 +463,8 @@ async function rebuildAtlas(){
 /* ---------- t-SNE map ---------- */
 function ex(v){const a=Math.min(...v),b=Math.max(...v);return[a,b-a||1];}
 function colorFor(pt){if(S.ck==="result")return pt.result>0?"#66d9a6":pt.result<0?"#ff7a9c":"#8a90a0";
-  const v=S.ck==="reach"?pt._rn:pt._wn;return `hsl(${(1-v)*220},70%,60%)`;}
+  if(S.ck==="dist")return pt._dn==null?"#3a3f4a":`hsl(${(1-pt._dn)*130},72%,55%)`; // near goal=green, far=red
+  const v=pt._wn;return `hsl(${(1-v)*220},70%,60%)`;}
 function miniBoard(fen,px){const g=fenGrid(fen);const S2=px||160,q=S2/8;
   let s=`<svg viewBox="0 0 ${S2} ${S2}" width="${S2}" height="${S2}">`;
   for(let r=0;r<8;r++)for(let c=0;c<8;c++){const x=c*q,y=r*q,d=(r+c)%2;
@@ -505,6 +510,9 @@ function drawMap(){
   const P=A.points;const[bx,wx]=ex(P.map(p=>p.x)),[by,wy]=ex(P.map(p=>p.y));
   const pad=30,W=720-2*pad;const rmin=Math.min(...P.map(p=>p.reach)),rmax=Math.max(...P.map(p=>p.reach));
   const wmin=Math.min(...P.map(p=>p.winp)),wmax=Math.max(...P.map(p=>p.winp));
+  const dt=(document.getElementById("distTarget")||{}).value||"dW";   // distance pole
+  const dvals=P.map(p=>p[dt]).filter(v=>v!=null);
+  const dmin=dvals.length?Math.min(...dvals):0,dmax=dvals.length?Math.max(...dvals):1;
   const X=x=>pad+(x-bx)/wx*W,Y=y=>720-pad-(y-by)/wy*W;
   S.mapX=X;S.mapY=Y;S._inv=(px,py)=>[(px-pad)/W*wx+bx,(720-pad-py)/W*wy+by];
   const bg=document.createElementNS(NS,"rect");bg.setAttribute("width",720);bg.setAttribute("height",720);
@@ -513,7 +521,8 @@ function drawMap(){
   bg.addEventListener("mouseleave",hideTip);
   bg.addEventListener("click",hideTip);
   svg.appendChild(bg);
-  P.forEach(p=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);p._wn=(p.winp-wmin)/((wmax-wmin)||1);const c=document.createElementNS(NS,"circle");
+  P.forEach(p=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);p._wn=(p.winp-wmin)/((wmax-wmin)||1);
+    p._dn=(p[dt]==null)?null:(p[dt]-dmin)/((dmax-dmin)||1);const c=document.createElementNS(NS,"circle");
     c.setAttribute("cx",X(p.x));c.setAttribute("cy",Y(p.y));c.setAttribute("r",Math.max(0.5,3.4*zf));
     c.setAttribute("fill",colorFor(p));c.setAttribute("opacity",.72);c.style.cursor="pointer";
     c.addEventListener("mousemove",ev=>{ev.stopPropagation();showPointTip(ev,p);});
@@ -558,6 +567,9 @@ function hideTip(){document.getElementById("tip").style.display="none";}
 function drawLegend(){const l=document.getElementById("legend");
   if(S.ck==="result")l.innerHTML='<span class="swatch" style="background:#66d9a6"></span>W '+
     '<span class="swatch" style="background:#ff7a9c"></span>B <span class="swatch" style="background:#8a90a0"></span>draw';
+  else if(S.ck==="dist"){const t={dW:"White mate",dB:"Black mate",dD:"draw"}[(document.getElementById("distTarget")||{}).value||"dW"];
+    l.innerHTML=`d→${t}: <span class="swatch" style="background:hsl(130,72%,55%)"></span>near `+
+      `<span class="swatch" style="background:hsl(0,72%,55%)"></span>far`;}
   else l.textContent=S.ck+": blue low → red high";}
 
 /* ---------- region inspector: a pinned sample pool over ALL points ---------- */
@@ -658,6 +670,8 @@ document.getElementById("bNew").onclick=()=>loadFen(START);
 document.getElementById("bToy").onclick=async()=>{const t=await api("/toy");loadFen(t.fen);};
 document.querySelectorAll("[data-ck]").forEach(b=>b.onclick=()=>{S.ck=b.dataset.ck;
   document.querySelectorAll("[data-ck]").forEach(x=>x.classList.toggle("on",x===b));drawMap();});
+document.getElementById("distTarget").onchange=()=>{S.ck="dist";
+  document.querySelectorAll("[data-ck]").forEach(x=>x.classList.toggle("on",x.dataset.ck==="dist"));drawMap();};
 document.getElementById("bRebuild").onclick=rebuildAtlas;
 document.getElementById("bMemory").onclick=memShow;
 document.getElementById("bMore").onclick=expandMoves;

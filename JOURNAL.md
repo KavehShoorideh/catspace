@@ -5135,3 +5135,32 @@ LINE at n=6000) BECAUSE the field is mushy (cos>0.9, effective rank 15 / PC1
 28%): 500-neighbourhoods average to ~uniform affinities, no local contrast to
 preserve. perp-40 gives a proper map (corr -0.07, spread 5.5). Reverted default
 to 40; high perplexity is a symptom, not a knob. Atlas rebuilt.
+
+## 2026-07-19 (cont.): distance-map UI + nearest-mate verdict + DTM-hinge plan
+
+**Geometry DOES encode reachability** (Kaveh: "geometry alone should say which
+mates are unreachable, no tablebase"): on toy positions, d(nearest ROOK mate)
+0.333 < d(nearest QUEEN mate) 0.351 in 98% of positions -- reachable nearer than
+unreachable, confirmed. BUT the margin is 0.018 (mushy) -- structure present,
+contrast absent.
+
+**Nearest-reachable-mate A/B (the direct play test)**: VERDICT committor 0.425,
+centroid d(s->MATE_W) 0.500, nearest-reachable-rook-mate (soft_min_bank) 0.100.
+Nearest-mate navigation FAILS (0.10) on the mushy field -- per-exemplar d too
+noisy (backwards gradient). The CENTROID wins (0.50) because averaging over
+exemplars denoises. So nearest-mate is the right target but needs a SHARP
+per-exemplar metric.
+
+**Plan (Kaveh's design, confirmed by the above):** sharpness comes from MCTS
+using distance-to-mate as the PRIOR (plan-alignment); alignment comes from a
+TRAINING HINGE constraining d(F(s), mate) ~ tablebase DTM in tablebase range.
+DTM source: Syzygy gives DTZ+WDL not DTM; Gaviota gives DTM but only <=5 pieces
++ no local tables. Use Syzygy-OPTIMAL ROLLOUT DTM (plies-to-mate under optimal
+play; monotone; all <=6 of the toy tree; no download). Recommended field: QRL
+spread (contrast) + DTM hinge (alignment) = the sharp+aligned metric neither
+current field has.
+
+**UI**: replaced cosine "reach" coloring with "distance->" + a pole selector
+(White mate / Black mate / draw). Colors each map point by the quasimetric
+d(F(pos), pole) -- near=green, far=red. Precomputed dW/dB/dD per point in
+build_play_atlas (draw pole = mean embed_B of draw finals).
