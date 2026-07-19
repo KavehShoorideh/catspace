@@ -15,13 +15,14 @@
   h1{font-size:15px;margin:0;padding:10px 14px;border-bottom:1px solid var(--bd);color:var(--blue)}
   h1 small{color:var(--mut);font-weight:400}
   .wrap{display:flex;gap:14px;padding:14px;align-items:flex-start;flex-wrap:wrap}
-  .col{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:12px}
+  .col{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:12px;resize:both;overflow:auto}
   .left{width:470px} .right{flex:1;min-width:540px}
   button{background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;
          padding:5px 9px;cursor:pointer;font-size:12px}
   button:hover{border-color:var(--blue)} button.on{background:var(--blue);color:#0b0d10;border-color:var(--blue)}
   .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
-  #board{width:432px;height:432px}
+  #board{width:432px;height:432px;resize:both;overflow:hidden;max-width:100%}
+  .inspect .brd{resize:both;overflow:hidden}
   table{border-collapse:collapse;width:100%;font-size:12px}
   th,td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--bd)}
   th{color:var(--mut);font-weight:600}
@@ -29,8 +30,8 @@
   .bar>i{display:block;height:100%;background:var(--blue)}
   .moves{max-height:96px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut)}
   .moves b{color:var(--tx)}
-  #mapwrap{position:relative}
-  #map{width:100%;height:auto;background:#101216;border-radius:6px}
+  #mapwrap{position:relative;resize:both;overflow:hidden;min-height:340px;height:720px;max-width:100%}
+  #map{width:100%;height:100%;background:#101216;border-radius:6px}
   #tip{position:absolute;pointer-events:none;background:#0d0f13;border:1px solid var(--bd);
        border-radius:6px;padding:4px;display:none;z-index:5}
   .palette{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;max-width:300px}
@@ -47,7 +48,7 @@
 </style>
 </head>
 <body>
-<h1>catspace · play-atlas &nbsp;<small>engine plays White · click-drag to move · click the map to sample a region (<kbd>r</kbd> cycles); hover = stats</small></h1>
+<h1>catspace · play-atlas &nbsp;<small>engine plays White · click-drag to move · click a map point to inspect it; hover = stats</small></h1>
 <div class="wrap">
   <div class="col left">
     <div class="row">
@@ -107,9 +108,8 @@
       <div class="brd" id="regionBoard"></div>
       <div>
         <div class="pill">region inspector</div>
-        <div class="k" id="regionLabel" style="margin:4px 0">click the map to sample</div>
+        <div class="k" id="regionLabel" style="margin:4px 0">click a map point to inspect</div>
         <div class="row">
-          <button id="bResample">Resample (<kbd>r</kbd>)</button>
           <button id="bLoadRegion">Load →</button>
         </div>
         <div class="pill" style="margin-top:4px">★ on the map = your current board</div>
@@ -131,7 +131,7 @@ const S={fen:START,mode:"play",flip:false,legal:[],atlas:null,proj:null,ck:"resu
         samplePool:[],sampleIdx:0,pinnedLine:null};
 const BRUSH=["green","blue","yellow"];         // top-1/2/3 board arrows
 const VCOL={green:"#66d9a6",blue:"#7aa2ff",yellow:"#ffb86b"};
-let cg;
+let cg, cgMini;                                 // cgMini = the region-inspector board
 const humanColor=()=>S.engineColor==="white"?"black":"white";
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
@@ -162,7 +162,14 @@ function cgConfig(extra){const humanTurn=S.mode==="play"&&sideToMove(S.fen)===hu
   draggable:{showGhost:true}, animation:{enabled:true,duration:120},
   events:{move:onCgMove, select:onCgSelect}, highlight:{lastMove:true,check:true},
 },extra||{});}
-function initBoard(){cg=Chessground(document.getElementById("board"),cgConfig());}
+function initBoard(){cg=Chessground(document.getElementById("board"),cgConfig());
+  cgMini=Chessground(document.getElementById("regionBoard"),
+    {viewOnly:true,coordinates:false,fen:"8/8/8/8/8/8/8/8"});
+  // redraw both boards when their (resizable) containers change size
+  const ro=new ResizeObserver(()=>{try{cg.redrawAll();cgMini.redrawAll();}catch(e){}});
+  ro.observe(document.getElementById("board"));
+  ro.observe(document.getElementById("regionBoard"));}
+function miniShow(fen){if(cgMini)cgMini.set({fen:fen.split(" ")[0]});}
 
 async function onCgMove(orig,dest){
   if(S.mode==="edit"){S.fen=piecesToFen(cg.state.pieces);return;}
@@ -251,7 +258,7 @@ function rebuildMoves(){const m=document.getElementById("moves");m.innerHTML="";
   m.querySelectorAll("[data-i]").forEach(s=>{s.style.cursor="pointer";s.onclick=()=>goto(+s.dataset.i);});
   m.scrollTop=m.scrollHeight;}
 function renderReason(r){
-  S.pinnedLine=null;                                   // new analysis clears the pin
+  if(S.pinnedLine!=null && S.pinnedLine>=(r.candidates||[]).length) S.pinnedLine=null; // keep a valid pin across re-renders
   document.getElementById("winp").textContent="P(win) "+(r.winp!=null?r.winp.toFixed(3):"—")
     +(r.nodes?` · ${r.nodes}n`:"");
   const tb=document.querySelector("#cand tbody");tb.innerHTML="";
@@ -272,7 +279,7 @@ function renderReason(r){
     s.onclick=(ev)=>{ev.stopPropagation();
       const c=(S.analysis&&S.analysis.candidates||[])[+s.dataset.ci];
       const h=c&&c.hops&&c.hops[+s.dataset.hop];
-      if(h)pinSample([h.fen],`${h.white?"White":"Black"} plays ${h.san}`);};});
+      if(h)showInspect(h.fen,`${h.white?"White":"Black"} plays ${h.san}`);};});
 }
 /* the PV as a path of sequential HOPS through the embedding map (W light /
    B dark dots), drawn on hover over a best-line */
@@ -292,7 +299,7 @@ function drawHops(cand,ci){const svg=document.getElementById("map");
     t.setAttribute("fill",col);t.setAttribute("font-size","11");t.setAttribute("stroke","#0b0d10");
     t.setAttribute("stroke-width",".4");t.setAttribute("pointer-events","none");
     t.textContent=`${j+1}.${h.san}`;svg.appendChild(t);});}
-function previewHop(h){document.getElementById("regionBoard").innerHTML=miniBoard(h.fen,168);
+function previewHop(h){miniShow(h.fen);
   document.getElementById("regionLabel").textContent=`${h.white?"White":"Black"} plays ${h.san}`;}
 async function goto(i){if(i<0||i>=S.hist.length)return;S.ptr=i;const h=S.hist[i];
   S.fen=h.fen;S.analysis=null;if(cg)cg.setShapes([]);rebuildMoves();
@@ -352,7 +359,7 @@ function drawMap(){
   bg.setAttribute("fill","transparent");
   bg.addEventListener("mousemove",ev=>{const[x,y]=svgInv(ev,svg);showClusterTip(ev,nearestCluster(x,y));});
   bg.addEventListener("mouseleave",hideTip);
-  bg.addEventListener("click",ev=>{const[x,y]=svgInv(ev,svg);sampleAt(x,y);});
+  bg.addEventListener("click",hideTip);
   svg.appendChild(bg);
   P.forEach(p=>{p._rn=(p.reach-rmin)/((rmax-rmin)||1);const c=document.createElementNS(NS,"circle");
     c.setAttribute("cx",X(p.x));c.setAttribute("cy",Y(p.y));c.setAttribute("r",3.4);
@@ -360,7 +367,7 @@ function drawMap(){
     c.addEventListener("mousemove",ev=>{ev.stopPropagation();showPointTip(ev,p);});
     c.addEventListener("mouseleave",hideTip);
     c.addEventListener("click",ev=>{ev.stopPropagation();
-      pinSample([p.fen],`${p.result>0?"White won":p.result<0?"Black won":"draw"} · ply ${p.ply} · P(win) ${p.winp}`);});
+      showInspect(p.fen,`${p.result>0?"White won":p.result<0?"Black won":"draw"} · ply ${p.ply} · P(win) ${p.winp}`);});
     svg.appendChild(c);});
   A.clusters.forEach(cl=>{const t=document.createElementNS(NS,"text");
     t.setAttribute("x",X(cl.cx));t.setAttribute("y",Y(cl.cy));t.setAttribute("fill","#7c8494");
@@ -392,8 +399,6 @@ function svgInv(ev,svg){const r=svg.getBoundingClientRect();
   return S._inv((ev.clientX-r.left)/r.width*720,(ev.clientY-r.top)/r.height*720);}
 function nearestCluster(x,y){let best=null,bd=1e18;for(const c of S.atlas.clusters){
   const d=(c.cx-x)**2+(c.cy-y)**2;if(d<bd){bd=d;best=c;}}return best;}
-function nearestPoints(x,y,k){return S.atlas.points
-  .map(p=>[(p.x-x)**2+(p.y-y)**2,p]).sort((a,b)=>a[0]-b[0]).slice(0,k).map(e=>e[1]);}
 /* HOVER = statistics only (light tooltip); CLICK pins the board in the fixed
    inspector so you can hover away and it stays (Kaveh) */
 function tipHTML(ev,html){const tip=document.getElementById("tip");
@@ -410,17 +415,9 @@ function drawLegend(){const l=document.getElementById("legend");
   else l.textContent=S.ck+": blue low → red high";}
 
 /* ---------- region inspector: a pinned sample pool over ALL points ---------- */
-function sampleAt(x,y){const near=nearestPoints(x,y,80);const cl=nearestCluster(x,y);
-  S.pinnedLine=null;pinSample(near.map(p=>p.fen),cl?`${cl.label} · nearest ${near.length}`:`nearest ${near.length}`);drawMap();}
-function pinSample(fens,label){S.samplePool=fens;S.sampleIdx=0;S._sampleLabel=label;renderSample();}
-function renderSample(){const pool=S.samplePool||[];if(!pool.length)return;
-  const i=((S.sampleIdx%pool.length)+pool.length)%pool.length;S._regionFen=pool[i];
-  document.getElementById("regionLabel").textContent=`${S._sampleLabel||""} · sample ${i+1}/${pool.length}`;
-  document.getElementById("regionBoard").innerHTML=miniBoard(pool[i],168);}
-function resample(){if(!S.samplePool||!S.samplePool.length)return;S.sampleIdx++;renderSample();}
-document.getElementById("bResample").onclick=resample;
+function showInspect(fen,label){S._regionFen=fen;
+  document.getElementById("regionLabel").textContent=label||"";miniShow(fen);}
 document.getElementById("bLoadRegion").onclick=()=>{if(S._regionFen)loadFen(S._regionFen);};
-window.addEventListener("keydown",e=>{if(e.key==="r"&&!/input|textarea/i.test(e.target.tagName))resample();});
 
 /* ---------- load a fen ---------- */
 async function loadFen(fen){try{const r=await api("/set_board",{fen});if(!r.valid){toast("invalid position");return;}
