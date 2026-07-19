@@ -96,7 +96,8 @@ class TorchFB(nn.Module):
                  outcome_poles: bool = False, concept_axes: int = 0,
                  iqe: bool = False, iqe_components: int = 8,
                  iqe_embed_scale: float = 50.0, iqe_leak_beta: float = 0.0,
-                 spectral_norm: bool = False, freeze_iqe_scale: bool = False):
+                 spectral_norm: bool = False, freeze_iqe_scale: bool = False,
+                 omega_free_field: bool = False):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional or outcome_poles or iqe:
@@ -111,13 +112,23 @@ class TorchFB(nn.Module):
                            iqe_embed_scale=iqe_embed_scale,
                            iqe_leak_beta=iqe_leak_beta,
                            spectral_norm=spectral_norm,
-                           freeze_iqe_scale=freeze_iqe_scale)
+                           freeze_iqe_scale=freeze_iqe_scale,
+                           omega_free_field=omega_free_field)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
         self.emb_be = nn.Embedding(N_ELO_BINS, omega_dim)
         self.emb_clk = nn.Embedding(N_CLOCK_BINS, omega_dim)
-        self.headF = nn.Sequential(nn.Linear(enc_out + 3 * omega_dim, dh), nn.ReLU(),
+        # OMEGA-FREE FIELD (Kaveh 2026-07-18): the QUASIMETRIC geometry is
+        # best-case reachability -- a property of the RULES, player-independent.
+        # Feeding omega (Elo/clock) into F lets the geometry absorb play-measure
+        # info (a high-Elo omega could shrink d because such players DO reach g),
+        # the exact geometry<->measure conflation the two-primitive doctrine
+        # forbids. So drop omega from F for the field; it stays on the committor/
+        # measure side only. headF then mirrors headB (enc_out in, no omega).
+        self.omega_free_field = omega_free_field
+        _f_in = enc_out if omega_free_field else enc_out + 3 * omega_dim
+        self.headF = nn.Sequential(nn.Linear(_f_in, dh), nn.ReLU(),
                                    nn.Linear(dh, d))
         self.headB = nn.Sequential(nn.Linear(enc_out, dh), nn.ReLU(), nn.Linear(dh, d))
         # SPECTRAL NORMALIZATION (Miyato 2018; SimbaV2 for RL): bound the
@@ -248,9 +259,12 @@ class TorchFB(nn.Module):
 
     def embed_F(self, planes: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         h = self.encF(planes)
-        o = torch.cat([self.emb_we(omega[:, 0]), self.emb_be(omega[:, 1]),
-                       self.emb_clk(omega[:, 2])], dim=1)
-        e = self.headF(torch.cat([h, o], dim=1))
+        if self.omega_free_field:                    # player-independent geometry
+            e = self.headF(h)                        # omega accepted for API, ignored
+        else:
+            o = torch.cat([self.emb_we(omega[:, 0]), self.emb_be(omega[:, 1]),
+                           self.emb_clk(omega[:, 2])], dim=1)
+            e = self.headF(torch.cat([h, o], dim=1))
         # IQE needs FREE coordinate ranges at O(1): L2-normalizing to the unit
         # sphere crushes its interval-union geometry to near-uniform, and the
         # encoder's small-norm init (coord std ~0.08) leaves IQE distances too

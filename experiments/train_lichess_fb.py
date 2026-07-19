@@ -349,6 +349,10 @@ def main():
     ap.add_argument("--qrl-lambda-max", type=float, default=0.0,
                     help="hard cap on the PID multiplier + anti-windup on I (0=off). "
                          "Set at the force-balance scale (push+hinge ~8-16): try 20.")
+    ap.add_argument("--omega-free-field", action="store_true",
+                    help="drop omega (Elo/clock) from F: the quasimetric geometry is "
+                         "player-INDEPENDENT best-case reachability; omega belongs on "
+                         "the committor/measure side only (two-primitive doctrine).")
     ap.add_argument("--freeze-iqe-scale", action="store_true",
                     help="freeze the IQE global log_scale at 1x (we compare distances, "
                          "not need absolute ply counts) -> removes the scalar escape "
@@ -515,7 +519,8 @@ def main():
                      iqe_embed_scale=args.iqe_embed_scale,
                      iqe_leak_beta=args.iqe_leak_beta,
                      spectral_norm=args.spectral_norm,
-                     freeze_iqe_scale=args.freeze_iqe_scale)
+                     freeze_iqe_scale=args.freeze_iqe_scale,
+                     omega_free_field=args.omega_free_field)
         print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
               f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
