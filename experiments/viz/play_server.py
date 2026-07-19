@@ -37,10 +37,11 @@ from catspace.data.encode import encode_meta, encode_packed  # noqa: E402
 TEMPLATE = ROOT / "catspace/viz/templates/play_atlas.html"
 ATLAS_DIR = ROOT / "artifacts/generated/play_atlas"
 ASSETS_DIR = ROOT / "catspace/viz/assets"      # vendored chessground (JS+CSS)
-# A CLEAN, tablebase-won KRRvKBP toy from the real test set (Ka7 Rc7 Rb3 vs
-# Kd4 Ba3 pf3) — no rook hanging, kings apart. fens[0] of krrkbp_test_n200
-# is a genuine win too but reads as a rook blunder, so it made a bad demo.
-TOY_FALLBACK = "8/K1R5/8/8/3k4/bR3p2/8/8 w - - 0 1"
+# THE canonical KRRvKBP toy START (experiments/selfplay_generate.KRRKBP_FIXED_START,
+# syzygy wdl=2): Ra1 Ke1 Rh1 vs Bc8 Ke8 pd7. Every train/eval position derives
+# from THIS by 2-10 random legal moves — so the test-set FENs look "scattered";
+# the Toy button must be the start itself, not a random-derived position (Kaveh).
+TOY_FALLBACK = "2b1k3/3p4/8/8/8/8/8/R3K2R w - - 0 1"
 _MIME = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
          ".json": "application/json", ".html": "text/html; charset=utf-8"}
 
