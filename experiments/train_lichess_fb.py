@@ -282,6 +282,20 @@ def main():
     ap.add_argument("--cert-scale", type=float, default=50.0)
     ap.add_argument("--zgoal-refresh", type=int, default=2000,
                     help="re-embed MATE_W/B goal centroids every N steps (they drift as F/B train)")
+    # -- DTM hinge (Kaveh 2026-07-19): ALIGNMENT term ------------------------
+    ap.add_argument("--dtm-hinge", default=None,
+                    help="tablebase distance-to-mate NPZ (experiments/gen_dtm_data.py). "
+                         "Auxiliary loss regressing d(F(s), MATE_W) -> dtm (plies) on "
+                         "WON endgame positions. This is the ALIGNMENT lever: it gives "
+                         "the metric a mate-POINTING gradient in tablebase range (where "
+                         "human data is empty), the missing half of the sharp+aligned "
+                         "recipe (QRL gives sharpness, this gives direction).")
+    ap.add_argument("--dtm-weight", type=float, default=1.0)
+    ap.add_argument("--dtm-batch", type=int, default=256)
+    ap.add_argument("--dtm-scale", type=float, default=1.0,
+                    help="divide dtm plies by this to match the field's distance units. "
+                         "QRL unit-step => distances ARE in plies => 1.0. An InfoNCE "
+                         "embed-scale field needs ~cert-scale here.")
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--d", type=int, default=64)
     ap.add_argument("--iqe", action="store_true",
@@ -594,6 +608,15 @@ def main():
     holdout = collect_holdout(human_src, n_batches=8, batch_size=args.batch, seed=999)
     print(f"holdout: {len(holdout)} batches of {args.batch}", flush=True)
     finals = collect_mate_finals(shard_dir)
+    dtm_data = None
+    if args.dtm_hinge:
+        _dz = np.load(args.dtm_hinge)
+        dtm_data = dict(packed=_dz["packed"], meta=_dz["meta"],
+                        dtm=_dz["dtm"].astype(np.float32))
+        print(f"DTM hinge ON: {len(dtm_data['dtm'])} tablebase positions "
+              f"(dtm min={dtm_data['dtm'].min():.0f} med={np.median(dtm_data['dtm']):.0f} "
+              f"max={dtm_data['dtm'].max():.0f}); weight={args.dtm_weight} "
+              f"scale={args.dtm_scale} batch={args.dtm_batch}", flush=True)
     cert_games = None
     if args.committor_certified_only:
         if not (args.committor_base or args.cert_base):
@@ -615,6 +638,8 @@ def main():
                          f"{provenance['static_check']['hits']}")
 
     phead, zW, zB = None, None, None
+    zW_d = None                         # DTM-hinge's own MATE_W (refreshed like cert-base)
+    dtm_rng = np.random.default_rng(args.seed + 777)
     if args.cert_base or args.committor_base:
         from catspace.nn.eval_head import EvalHead, descriptive_loss
         phead = EvalHead(d_in=args.d, seed=args.seed).to(device)
@@ -840,6 +865,31 @@ def main():
             loss = loss + args.phead_weight * p_loss + args.cert_base_weight * cert
             if step % 100 == 0:
                 print(f"    cert {float(cert):.4f}  phead {float(p_loss):.4f}", flush=True)
+        if dtm_data is not None:
+            # ALIGNMENT: on tablebase-won positions, pull d(F(s), MATE_W) toward
+            # the true distance-to-mate (plies). QRL's unit-step => distances are
+            # already in ply units, so the target is dtm/scale directly. Refresh
+            # the mate centroid on the same cadence as the goals (it drifts).
+            if zW_d is None or step % args.zgoal_refresh == 0:
+                zW_d = embed_zgoals(fb, finals, device)["MATE_W"].to(device).float().detach()
+            nD = min(args.dtm_batch, len(dtm_data["dtm"]))
+            idx = dtm_rng.integers(0, len(dtm_data["dtm"]), size=nD)
+            pl_d = torch.from_numpy(feature_planes(dtm_data["packed"][idx],
+                                                   dtm_data["meta"][idx])).to(device)
+            om_d = torch.from_numpy(omega_ids(np.full(nD, 1800), np.full(nD, 1800),
+                                              np.full(nD, 300.0))).to(device)   # neutral omega (atlas convention)
+            f_d = fb.embed_F(pl_d, om_d)
+            d_d = fb.distance_matrix(f_d, zW_d[None, :])[:, 0]
+            tgt_d = torch.from_numpy(dtm_data["dtm"][idx]).to(device) / args.dtm_scale
+            dtm_loss = torch.nn.functional.smooth_l1_loss(d_d, tgt_d)
+            loss = loss + args.dtm_weight * dtm_loss
+            if step % 100 == 0:
+                # rank correlation of the metric with true DTM = the alignment we want
+                _dn = d_d.detach().cpu().numpy(); _tn = tgt_d.detach().cpu().numpy()
+                _sp = float(np.corrcoef(np.argsort(np.argsort(_dn)),
+                                        np.argsort(np.argsort(_tn)))[0, 1])
+                print(f"    dtm {float(dtm_loss):.4f}  d_mean {float(d_d.mean()):.2f} "
+                      f"tgt_mean {float(tgt_d.mean()):.2f}  rank_corr {_sp:+.3f}", flush=True)
         if args.unreach_weight > 0 and getattr(fb, "quasimetric", False):
             from catspace.nn.hard_negatives import repel_loss, unreachable_goals
             neg_packed = unreachable_goals(batch.anchors[np.flatnonzero(
