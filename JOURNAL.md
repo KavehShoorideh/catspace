@@ -4775,3 +4775,44 @@ a real field. Before more field-spread work, the cheaper question is whether
 ANY planner on this spread field beats direct committor readout — else spread
 is a dead end for play. Field-remedy relaunch (lambda-cap fix) is on hold
 pending that call.
+
+
+## 2026-07-18 (Fable) — literature check on the Lagrange-multiplier tuning: our hard λ-cap was NOT paper-supported and IS the bug
+
+Searched QRL (Wang et al ICML 2023, arXiv 2304.01203) and PID-Lagrangian
+(Stooke/Achiam/Abbeel 2020, arXiv 2007.03964). Findings, graded:
+
+- PROVEN (both papers): λ is only ever PROJECTED to ≥0 (QRL max_{λ≥0};
+  Stooke Alg.2 line 9 λ←(KpΔ+Ki·I+Kd·∂)_+). NEITHER caps λ from above. Our
+  --qrl-lambda-max 20 is not from the literature; it is what starved the pin
+  (λ stuck at 20 while d_step decayed to 0 — the step10000->18000 failure).
+  => REMOVE the cap; keep only the ≥0 projection + the ≥0 anti-windup on I
+  (Stooke Alg.2 line 8 I←(I+Δ)_+), which we already have.
+- PROVEN (QRL Eq.12): the constraint is exactly our shape —
+  min_θ max_{λ≥0} −E[φ(d(s,g))] + λ(E[relu(d(s,s')+cost)²] − ε²). QRL
+  DOCUMENTS OUR EXACT PATHOLOGY: "maximizing E[d(s,g)] increases late-layer
+  weight norms, so λ needs to constantly catch up." Their fix is NOT a cap
+  and NOT spectral norm — it is a convex/saturating φ that DOWN-WEIGHTS
+  already-large distances (discount-like), removing the incentive that
+  inflates the norms. Our push softplus(offset−d) already saturates past
+  offset=15, so the push term is aligned; the unbounded growth to d_rand=169
+  therefore comes from elsewhere (encoder weight-norm drift / unreach hinge
+  interaction), which the cap can't fix.
+- PROVEN (Stooke): gains are tuned per-env, ranges Kp∈[0.1,1], Ki∈[1e-4,1e-1];
+  Kp damps oscillation, Kd prevents overshoot, Ki gives steady-state (alone =
+  90° phase-lag oscillation). Our Kp=0.5/Ki=0.01/Kd=0.25 are IN range — gains
+  are fine, the cap was the fault. Scale-invariance in Stooke = gradient-norm
+  ratio β=||∇J||/||∇J_C|| (makes λ*→1 scale-invariant), NOT cost mean/std.
+- PLAUSIBLE (broad lit: spectral-norm 1802.05957; SimbaV2 hyperspherical
+  2502.15280): bound the encoder Lipschitz/weight-norm growth directly so
+  distances can't blow up — the structural root-cause fix. Compatible with IQE
+  if applied to WEIGHTS (we must NOT L2-normalize the IQE features).
+
+CORRECTED REMEDY (ranked, literature-grounded; awaiting Kaveh, NOT relaunched):
+  1. Remove --qrl-lambda-max (revert to ≥0 projection only). Keep eclip as a
+     rate-limit only. Smallest change; directly undoes the starvation.
+  2. Control the scale growth at the source: spectral-norm the encoder layers
+     (bounds distance growth so λ never has to chase) — the SimbaV2/spectral
+     literature's answer to exactly QRL's documented weight-norm problem.
+  3. If still oscillating, adopt Stooke's gradient-norm-ratio scale-invariance
+     on the constraint rather than tuning gains.
