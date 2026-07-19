@@ -394,6 +394,52 @@ class Engine:
         return dict(game_over=False, result=None, winp=root_winp,
                     x=px, y=py, candidates=out, pv=pv, nodes=total)
 
+    def navigate(self, board: chess.Board, target_fen: str, nodes: int = 400,
+                 topk: int = 3) -> dict:
+        """Adversarial goal-conditioned search: the side to move at the ROOT
+        steers toward the clicked TARGET position; the opponent RESISTS
+        (Kaveh 2026-07-19: "adversarial of course"). Reach = score(F(s), B(target)),
+        so the search maximizes CLOSENESS to the target region. FIELD-NATIVE
+        directional prior only -- NO policy head (Kaveh: "i don't need the policy
+        head if i have the directions properly"): the distance gradient IS the
+        move ordering. Returns the top-k approach lines (with projected hops) and
+        the target's own map position. Only as good as the field's directions --
+        sharp on an aligned field, mushy on the incumbent."""
+        from catspace.nn.mcts import MCTS
+        over, res = self._outcome(board)
+        if over:
+            px, py = self._xy(board)
+            return dict(game_over=True, result=res, x=px, y=py, candidates=[], target=None)
+        tgt = chess.Board(target_fen)
+        with self.lock:
+            tp = self.torch.from_numpy(feature_planes(
+                encode_packed(tgt)[None], encode_meta(tgt)[None])).to(self.dev)
+            with self.torch.no_grad():
+                zt = self.fb.embed_B(tp)[0]                 # target goal embedding (no omega)
+            # sign makes the ROOT MOVER the approach-MAXIMIZER: the MCTS backs up
+            # White-POV and flips at Black nodes, so for a Black root we negate
+            # reach (White-POV maximizer then flees the target => Black approaches).
+            sign = 1.0 if board.turn == chess.WHITE else -1.0
+
+            def reach_fn(boards):
+                F = self.torch.from_numpy(self._embed_F_batch(boards)).to(self.dev)
+                with self.torch.no_grad():
+                    s = self.fb.score(F, zt).cpu().numpy()   # reach toward target (higher=closer)
+                return sign * np.asarray(s, dtype=float)
+
+            m = self.pol.mcts
+            nav = MCTS(reach_fn, max_nodes=int(nodes),
+                       c_puct=getattr(m, "c_puct", 1.0), prior_tau=getattr(m, "prior_tau", 0.5),
+                       pw_c=getattr(m, "pw_c", 1.5), root_min_visits=getattr(m, "root_min_visits", 10),
+                       tactical_prior=0.0, mate_stop=False, detect_threefold=True)
+            root = nav.run(board)
+        cand = sorted(root.children, key=lambda c: c.N, reverse=True)[:topk]
+        (px, py), _rw, out = self._candidates(board, cand, project=True)
+        txy = self.proj.transform(self._embed_F(tgt)[None])[0]
+        return dict(game_over=False, x=px, y=py, candidates=out,
+                    target=dict(x=round(float(txy[0]), 3), y=round(float(txy[1]), 3),
+                                fen=target_fen))
+
     # -- play --------------------------------------------------------------
     @staticmethod
     def _outcome(board: chess.Board):
@@ -586,6 +632,10 @@ class Handler(BaseHTTPRequestHandler):
             elif u.path == "/neighbors":
                 self._json({"ok": True, **ENGINE.neighbors(self._board(body["fen"]),
                                                            int(body.get("k", 8)))})
+            elif u.path == "/navigate":
+                self._json({"ok": True, **ENGINE.navigate(
+                    self._board(body["fen"]), body["target_fen"],
+                    nodes=int(body.get("nodes", 400)))})
             elif u.path == "/memory_add_game":
                 self._json({"ok": True, **ENGINE.add_game(body.get("fens", []),
                                                           body.get("result", ""))})
