@@ -4816,3 +4816,29 @@ CORRECTED REMEDY (ranked, literature-grounded; awaiting Kaveh, NOT relaunched):
      literature's answer to exactly QRL's documented weight-norm problem.
   3. If still oscillating, adopt Stooke's gradient-norm-ratio scale-invariance
      on the constraint rather than tuning gains.
+
+
+## 2026-07-18 (Fable) — no-cap fix HELPED but is INSUFFICIENT: λ diverges (→95+) chasing a pin it can't hold; remedy #2 (spectral norm) needed
+
+Full no-cap run (cap removed, eclip 3.0, kd 0.25 — researched remedy #1) stopped
+at step 10000 on a clear verdict. Trajectory (λ / d_step, target d_step=1.0):
+  2.5k: λ 24, d_step 1.11   (healthy — matched the smoke)
+  6k:   λ 62, d_step 0.4-0.8
+  10k:  λ 94-98 (still climbing), d_step thrashing 0.03-0.79 mean ~0.3
+Cf. the CAPPED run (died d_step 0.009 @18k): removing the cap DID help — λ is
+free to rise (95 vs stuck 20) and d_step does NOT fully collapse (bounces
+0.3-0.8, not 0.009). But it never settles at 1.0: λ diverges while the pin
+thrashes. This is precisely QRL's documented pathology (maximizing E[d] grows
+weight norms so λ must "constantly catch up") — and it confirms remedy #1
+(free λ) alone can't win the race; the SCALE GROWTH must be bounded at the
+source. var=0.000 throughout again (VICReg not reinflating — recurring
+unexplained, may be contributing).
+
+Verdict: escalate to researched remedy #2 — SPECTRAL NORMALIZATION on the
+encoder (bound the Lipschitz constant so distances can't inflate, so λ never
+has to chase). Well-supported (Miyato 1802.05957; SimbaV2 2502.15280 for RL)
+and it's exactly the answer to the weight-norm-growth QRL flags. Alternatives
+if Kaveh prefers: #3 Stooke gradient-norm-ratio scale-invariance on the
+constraint; or QRL's own convex-φ down-weighting (verify our saturating push
+isn't being outrun). Run stopped to not burn GPU on an under-pinned field;
+NOT relaunched pending the remedy choice.
