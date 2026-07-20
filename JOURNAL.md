@@ -5340,3 +5340,26 @@ fine-tune) NOR the inference readout beats the incumbent committor (0.567) for
 endgame conversion. The incumbent remains the best converter. Decision pending
 (Kaveh): option 2 (monotonicity/ranking hinge -- the one principled untried
 lever) vs accept the incumbent for conversion and pivot the research.
+
+## 2026-07-19 (cont.): autonomous hunt to beat committor 0.567 -- diagnosis
+
+Literature (NN tablebase-DTM approx; QRL/TMD use Bellman-consistency, not
+regression). Tried, KRRvKBP conversion n=30 nodes=400 vs committor 0.567:
+  board-DTM navigation      0.533  (ties; krrkbp DTM only 0.29 spearman, hard)
+  F-DTM head navigation     0.167  (F is DTM-poor, head plateaus 0.227)
+  composed retrieval readout 0.300
+  subgoal planner (field-dist nav) 0.100  (wanders to phantom subgoals)
+  QRL field committor       0.133  (QRL is a WORSE conversion substrate)
+NOTHING beats the incumbent committor. FIELD-DISTANCE navigation (composed,
+subgoal) fails badly -- the field's distance is not a usable navigation signal.
+
+FAILURE DIAGNOSIS (experiments/conversion_failure_diag.py, committor 0.600):
+the 40% failures split ~50/50:
+  (1) MATERIAL BLUNDER: 5/10 fail having LOST rook(s) (KR v BK x4, K v BK x1) --
+      the committor is material-blind, throws rooks away.
+  (2) FAILED TO MATE a won position: 5/10 (KRR v BK x2, KRR v BKP x2, KRR v K x1)
+      -- poor mating technique; it can't even mate KRR-vs-lone-king in budget.
+Each approach fixes at most ONE mode (DTM gives a mate gradient but not
+blunder-avoidance; and KRRvKBP DTM is too hard to learn). The grounded path:
+a MATERIAL-AWARE value (kill mode 1) + subgoal "reach KRRvK safely" then the
+board-DTM net (krrvk 0.68 / krvk 0.93) mates the simplified endgame (kill mode 2).
