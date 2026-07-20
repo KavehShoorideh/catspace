@@ -5483,3 +5483,18 @@ learns w/ batch stats, used w/ running stats), (2) per-batch memorization not
 generalization. Fix: resolve BN (LayerNorm or long BN warmup), much more training on
 all 19k pairs, and pin forward across ALL pairs not just the batch. The MECHANISM
 (IQE ∞ + forward-pin) is right; the training doesn't generalize yet.
+
+## 2026-07-20: strata/infinite CONFIRMED to work -- blocked only by BatchNorm (the fix)
+Disambiguation (Kaveh's measure-independently rule): pawn-capture one-way asymmetry
+d(child->parent)/d(parent->child) on HELD-OUT pairs:
+  train mode (batch BN stats): 58.8x  (GENERALIZES -- the field learns the rule)
+  eval mode (running BN stats): 1.0x
+  eval after BN running-stat RECALIBRATION (200 passes): 1.0x  (NOT stale stats)
+  reversible-king control: 1.01x (correct)
+=> The infinite one-way mechanism (IQE ∞ representation + forward-pin ~1) WORKS and
+GENERALIZES, but BatchNorm2d in BoardEncoder makes the model EXPLOIT batch stats;
+the structure lives in per-batch-normalized space and vanishes under any fixed
+normalization. Recalibration can't fix it. FIX IS ARCHITECTURAL: replace BN with
+LayerNorm/GroupNorm in catspace/nn/encoder.py (no train/eval gap) -> retrain the
+nucleus foundation + infinite fine-tune -> the 58x asymmetry holds at inference ->
+usable one-way field -> planner. This is the concrete unblock.
