@@ -39,6 +39,40 @@ def planes_of(boards):
     return feature_planes(pk, mt)
 
 
+def irrev_child(board):
+    """First child via an IRREVERSIBLE move (capture/pawn/promo) -- no way back."""
+    for m in board.legal_moves:
+        if board.is_irreversible(m):
+            c = board.copy(stack=False); c.push(m)
+            if not c.is_game_over():
+                return c
+    return None
+
+
+def strata_ratio(fb, boards, om, dev):
+    """median (irreversible d_bwd/d_fwd) / (reversible d_bwd/d_fwd); >>1 = strata."""
+    rev_r, irr_r, fwds = [], [], []
+    for b in boards[:200]:
+        for m in b.legal_moves:
+            c = b.copy(stack=False); c.push(m)
+            if c.is_game_over():
+                continue
+            with torch.no_grad():
+                o = torch.from_numpy(np.tile(om, (1, 1))).to(dev)
+                Fp = fb.embed_F(torch.from_numpy(planes_of([b])).to(dev), o)
+                Bp = fb.embed_B(torch.from_numpy(planes_of([b])).to(dev))
+                Fc = fb.embed_F(torch.from_numpy(planes_of([c])).to(dev), o)
+                Bc = fb.embed_B(torch.from_numpy(planes_of([c])).to(dev))
+                fwd = float(fb.distance_matrix(Fp, Bc)[0, 0])
+                bwd = float(fb.distance_matrix(Fc, Bp)[0, 0])
+            fwds.append(fwd)
+            (irr_r if b.is_irreversible(m) else rev_r).append(bwd / max(fwd, 1e-6))
+            break
+    r = np.median(rev_r) if rev_r else 1.0
+    i = np.median(irr_r) if irr_r else 1.0
+    return i / max(r, 1e-6), np.median(fwds)
+
+
 def cluster_metrics(fb, boards, dtm, om, dev):
     """symmetry-invariance ratio + DTM within/between ratio (higher=more clustered)."""
     with torch.no_grad():
@@ -75,6 +109,12 @@ def main():
     ap.add_argument("--w-sym", type=float, default=1.0)
     ap.add_argument("--w-clust", type=float, default=1.0)
     ap.add_argument("--w-anchor", type=float, default=1.0)
+    ap.add_argument("--w-strata", type=float, default=0.0,
+                    help="LOCAL strata hinge: for an irreversible move (parent->child), "
+                         "push d(child->parent) above --strata-floor (no way back)")
+    ap.add_argument("--strata-floor", type=float, default=None,
+                    help="floor for the irreversible backward distance (default 8x the "
+                         "field's median forward step)")
     ap.add_argument("--margin", type=float, default=0.6)
     ap.add_argument("--device", default="auto")
     ap.add_argument("--seed", type=int, default=0)
@@ -94,8 +134,13 @@ def main():
     ev = np.flatnonzero(mat_all == 2)[:400]
     ev_boards = [board_from_packed(dz["packed"][i], dz["meta"][i]) for i in ev]
     sym0, clu0 = cluster_metrics(fb_frozen, ev_boards, dtm_all[ev], om, dev)
+    str0, med_fwd = strata_ratio(fb_frozen, ev_boards, om, dev)
     print(f"[before] symmetry_ratio={sym0:.2f} (mirror vs random; >1 better)  "
-          f"dtm_clustering={clu0:.2f} (between/within; >1 better)", flush=True)
+          f"dtm_clustering={clu0:.2f} (between/within; >1 better)  "
+          f"strata_ratio={str0:.2f} (irrev/rev asym; >>1 better)", flush=True)
+    floor = args.strata_floor if args.strata_floor is not None else 8.0 * med_fwd
+    if args.w_strata > 0:
+        print(f"[strata] floor = {floor:.2f} (irreversible backward >> this)", flush=True)
 
     opt = torch.optim.Adam(fb.parameters(), lr=args.lr)
     t0 = time.time()
@@ -123,19 +168,35 @@ def main():
         diff.fill_diagonal_(False)
         L_clust = (D[same] ** 2).mean() if same.any() else torch.zeros((), device=dev)
         L_clust = L_clust + torch.relu(args.margin - D[diff]).pow(2).mean()
-        loss = args.w_sym * L_sym + args.w_clust * L_clust + args.w_anchor * L_anchor
+        # STRATA: irreversible move (parent->child) => d(child->parent) must be HUGE
+        L_strata = torch.zeros((), device=dev)
+        if args.w_strata > 0:
+            children = [irrev_child(b) for b in boards]
+            ki = [j for j, c in enumerate(children) if c is not None]
+            if ki:
+                par = [boards[j] for j in ki]; chi = [children[j] for j in ki]
+                op = torch.from_numpy(np.tile(om, (len(par), 1))).to(dev)
+                Fc = fb.embed_F(torch.from_numpy(planes_of(chi)).to(dev), op)
+                Bp = fb.embed_B(torch.from_numpy(planes_of(par)).to(dev))
+                d_bwd = fb.distance_matrix(Fc, Bp).diagonal()      # child -> parent
+                L_strata = torch.relu(floor - d_bwd).pow(2).mean()
+        loss = (args.w_sym * L_sym + args.w_clust * L_clust + args.w_anchor * L_anchor
+                + args.w_strata * L_strata)
         opt.zero_grad(); loss.backward(); opt.step()
         if step % 250 == 0 or step == args.steps - 1:
             print(f"  step {step:4d}  L_sym {float(L_sym):.4f} L_clust {float(L_clust):.4f} "
-                  f"L_anchor {float(L_anchor):.4f}  ({time.time()-t0:.0f}s)", flush=True)
+                  f"L_anchor {float(L_anchor):.4f} L_strata {float(L_strata):.4f}  "
+                  f"({time.time()-t0:.0f}s)", flush=True)
 
     fb.eval()
     sym1, clu1 = cluster_metrics(fb, ev_boards, dtm_all[ev], om, dev)
+    str1, _ = strata_ratio(fb, ev_boards, om, dev)
     save_ckpt(fb, Path(args.out), step=pay.get("step", 0), zgoals=pay.get("zgoals"),
               provenance=pay.get("provenance"))
     print(f"saved {args.out}")
     print(f"VERDICT CLUSTER symmetry_ratio {sym0:.2f}->{sym1:.2f}  "
-          f"dtm_clustering {clu0:.2f}->{clu1:.2f}  (both >1 and rising => clusters formed)")
+          f"dtm_clustering {clu0:.2f}->{clu1:.2f}  strata_ratio {str0:.2f}->{str1:.2f} "
+          f"(all >1 and rising => structure formed)")
 
 
 if __name__ == "__main__":

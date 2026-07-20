@@ -5413,3 +5413,18 @@ incumbent's distances are compressed (~0.4 range, no room for asymmetry) vs QRL
 ~18. Fix: a LOCAL strata hinge -- for each irreversible move (parent->child), push
 d(child->parent) >> d(parent->child). That is the directed structure the planner
 needs (which one-way transitions lead toward mate).
+
+## 2026-07-19 (cont.): strata hinge fails (inflation); nucleation reframe
+Cluster+strata fine-tune: symmetry 0.91->2.78, dtm_clustering 1.02->1.47 (clusters
+strengthen), but strata_ratio 1.02 (robust) -- NO asymmetry. The one-sided strata
+hinge (push irreversible-backward above floor) was satisfied by INFLATING all
+distances (fwd 0.44->2.2), not by asymmetry. A proper strata objective needs the
+quasimetric ARCHITECTURE (IQE) pinning fwd~unit + reversible symmetric, not a
+scalar floor on the MRN incumbent. Literature: ProQ (2506.18847) = asymmetric
+distance + proximal subgoals (our vision); IQE (2211.15120) = the arch; Laplacian/
+symmetric can't do one-way reachability. We're not alone -- quasimetric RL is
+active. NUCLEATION (Kaveh): anchor only the near-mate NUCLEUS (small DTM + clusters,
+tablebase) rigidly, let far positions PROPAGATE their distance to it via local
+reachability (no tablebase for the far field). Explains the DTM-hinge failure
+(anchored everything at once). Checking if clustering already improved
+distance-to-nucleus.
