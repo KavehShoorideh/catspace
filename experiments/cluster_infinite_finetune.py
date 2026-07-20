@@ -102,9 +102,10 @@ def main():
         mask = same & (dtm_b[:, None] < dtm_b[None, :])
         diff = dm[None, :] - dm[:, None]
         L_rank = torch.relu(1.0 - diff)[mask].mean() if mask.any() else torch.zeros((), device=dev)
-        mir = [board_from_packed(nmp[i], nmm[i]).transform(chess.flip_horizontal) for i in ni]
+        nsym = ni[:32]                                                # symmetry on a sub-batch (speed)
+        mir = [board_from_packed(nmp[i], nmm[i]).transform(chess.flip_horizontal) for i in nsym]
         fm = eF(np.stack([encode_packed(b) for b in mir]), np.stack([encode_meta(b) for b in mir]))
-        L_sym = ((f - fm) ** 2).sum(1).mean()
+        L_sym = ((f[:32] - fm) ** 2).sum(1).mean()
         L_sep = torch.relu(args.sep_margin - torch.cdist(f, f)[~same]).pow(2).mean() if (~same).any() else torch.zeros((), device=dev)
         # -- pawn-capture INFINITE one-way --
         pi = rng.integers(0, len(pz["p_packed"]), size=args.batch)
