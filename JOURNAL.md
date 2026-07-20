@@ -5467,3 +5467,19 @@ d(s,s')~1 + irreversibility d(s'->s) huge for captures. Next foundation iteratio
 add successor pairs (tb_best_move) + the QRL unreach term to the nucleus training.
 Also DTM order plateaued at 0.25 -- the successor unit-step (chaining DTM via
 d(s,s')~1) should sharpen it beyond position-level ranking.
+
+## 2026-07-20: pawn-capture INFINITE one-way -- forms in train mode, NOT eval (discipline catch)
+Search: IQE represents infinite distance (high output for unreachable pairs, 2211.15120);
+hyperbolic disk / entailment cones / order embeddings = partial-order alternatives.
+Built: lichess_nearmate.npz (nucleus), gen_pawn_capture_pairs (19k pairs; <=5-piece
+endgames are pawnless so mined from full shards), cluster_infinite_finetune (forward
+pinned ~1, backward -> inf-floor 60 via IQE, + clustering).
+RESULT (Kaveh's rule -- measure independently, eval mode): in-loop asymmetry hit 62x
+(d_fwd 1.03 d_bwd 64) BUT independent eval-mode check on held-out pairs = 1.2x
+(fwd 6.4 bwd 7.5); reversible-king control 1.01x (correct). So the one-way structure
+forms in TRAIN mode but does NOT hold in the usable EVAL field, and scale inflated
+(fwd 4->6.4). Causes: (1) BatchNorm train/eval mismatch (BoardEncoder has BN --
+learns w/ batch stats, used w/ running stats), (2) per-batch memorization not
+generalization. Fix: resolve BN (LayerNorm or long BN warmup), much more training on
+all 19k pairs, and pin forward across ALL pairs not just the batch. The MECHANISM
+(IQE ∞ + forward-pin) is right; the training doesn't generalize yet.
