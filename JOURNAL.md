@@ -5396,3 +5396,20 @@ symmetry_ratio 0.91->2.37  dtm_clustering 1.02->1.35 -- CLUSTERS FORMED, anchor 
 F near original (L_anchor 0.036). First structural win. Testing whether the
 clustered field makes the subgoal planner work (failed 0.10 on the structureless
 incumbent).
+
+## 2026-07-19 (cont.): clusters form but STRATA don't; planner still needs directed structure
+Cluster viz (field_clusters.png): incumbent MIXES KRRvKBP+KRvK; clustered field =
+3 clean material clusters (the natural conversion chain). BUT subgoal planner on
+the clustered field = 0.133 (vs committor 0.600) -- static clusters don't help
+navigation.
+
+STRATA diagnosis (experiments/strata_diag.py): for irreversible moves (captures/
+pawn/promo -- literally no way back), backward/forward directed distance should be
+HUGE; measured only 1.1-1.3x. Strata ratio (irrev_asym/rev_asym): incumbent 1.17,
+QRL(unreach-8) 1.69, clustered 1.42 -- barely any. WHY: incumbent has no
+irreversibility signal (InfoNCE); QRL's --qrl-unreach-weight is too COARSE (pushes
+provably-unreachable cross-game pairs, not THIS capture's backward step); and the
+incumbent's distances are compressed (~0.4 range, no room for asymmetry) vs QRL
+~18. Fix: a LOCAL strata hinge -- for each irreversible move (parent->child), push
+d(child->parent) >> d(parent->child). That is the directed structure the planner
+needs (which one-way transitions lead toward mate).
