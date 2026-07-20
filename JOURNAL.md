@@ -5428,3 +5428,28 @@ tablebase) rigidly, let far positions PROPAGATE their distance to it via local
 reachability (no tablebase for the far field). Explains the DTM-hinge failure
 (anchored everything at once). Checking if clustering already improved
 distance-to-nucleus.
+
+## 2026-07-19 (cont.): NUCLEATION architecture (roadmap from the design session)
+Nucleation signal: clustered field centroid spearman(d,DTM) +0.330 (first POSITIVE
+alignment all session; incumbent was ~-0.13). Structuring the near-mate core makes
+distance-to-mate track DTM.
+
+ROADMAP (Kaveh's design):
+1. NUCLEUS DATA = real Lichess <=5-piece positions + exact tablebase DTM
+   (gen_lichess_nearmate.py; "all sorts of combinations", richer than synthetic).
+2. TABLEBASE FOUNDATION: train a field on the nucleus (near-mate, DTM + clusters),
+   checkpoint SEPARATELY. Then FINE-TUNE different hinges on top (modular, isolates
+   each hinge -- vs the everything-at-once runs that failed).
+3. HINGE STACK (each proven/diagnosed this session):
+   - clustering: WORKS (symmetry 0.91->2.37, DTM 1.02->1.35, +0.33 alignment).
+   - strata: a scalar floor FAILS (inflates all distances, ratio 1.02); must come
+     from the IQE quasimetric ARCHITECTURE (ProQ 2506.18847 / IQE 2211.15120), not
+     a hand hinge on the MRN incumbent.
+   - propagation/nucleation: far positions learn d(s->nucleus) via LOCAL
+     reachability (successor unit-step), no tablebase for the far field.
+4. PLANNER: cluster/nucleus subgoal navigation on the structured field. Note the
+   headline: conversion is SEARCH-LIMITED (0.567@400 -> 0.767@1600); the planner's
+   job is EFFICIENCY (shorter horizon via the structure), and it needs the DIRECTED
+   structure (strata) to work -- static clusters alone gave 0.13.
+OPEN (Kaveh unsure): nucleus-first curriculum vs simultaneous; foundation on IQE
+(for strata) vs MRN.
