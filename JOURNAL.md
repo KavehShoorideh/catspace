@@ -5370,3 +5370,12 @@ A_committor=0.567 B_ensemble=0.567 diff=+0.000 -- EXACT tie, DTM term changed no
 decisions. 0.567 is a robust local optimum for value/policy/planner methods at
 400 nodes. Open question: search-limited vs value-limited (committor @1600 nodes
 running). If more search jumps it, the planner's real value is EFFICIENCY.
+
+## 2026-07-19 (cont.): CONVERSION IS SEARCH-LIMITED (the key reframe)
+committor @400 nodes = 0.567; @1600 nodes = 0.767 (experiments/conversion_dtmhead_ab.py
+--nodes 1600, side A). +0.20 from 4x search => conversion is SEARCH-limited, NOT
+value-limited. This is why every value/policy/planner VALUE tied ~0.567 -- the
+value is fine; search DEPTH is the bottleneck. Kaveh's "planner is key" is right,
+but the planner's job is EFFICIENCY (reach the deeper result at fewer nodes by
+shortening the horizon), and the standard lever is POLICY PRIORS focusing the
+search (AlphaZero). Re-running the policy-AZ conversion to completion.
