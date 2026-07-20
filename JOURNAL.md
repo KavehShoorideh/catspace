@@ -5453,3 +5453,17 @@ ROADMAP (Kaveh's design):
    structure (strata) to work -- static clusters alone gave 0.13.
 OPEN (Kaveh unsure): nucleus-first curriculum vs simultaneous; foundation on IQE
 (for strata) vs MRN.
+
+## 2026-07-19 (cont.): IQE nucleus foundation -- structure yes, strata no
+train_iqe_nucleus (6000 steps, 19846 won Lichess <=5-piece, 198 material classes):
+VERDICT IQE_NUCLEUS overall_spearman(d,DTM)=+0.255 (plateau ~0.25; incumbent ~0/neg).
+Symmetry + material separation formed cleanly. BUT strata irrev/rev asym = 1.00
+(REV 1.11 IRREV 1.12) -- NO strata. KEY FINDING: the IQE architecture is NECESSARY
+but NOT SUFFICIENT for strata. IQE *can* express asymmetry, but nothing in the
+objective (position-level DTM ranking + symmetry + separation) TRAINS it. The only
+field with strata (qrl_iqe_sn_full 1.69) had the QRL successor/irreversibility
+objective. => strata come from training the TRANSITIONS: optimal-successor unit-step
+d(s,s')~1 + irreversibility d(s'->s) huge for captures. Next foundation iteration:
+add successor pairs (tb_best_move) + the QRL unreach term to the nucleus training.
+Also DTM order plateaued at 0.25 -- the successor unit-step (chaining DTM via
+d(s,s')~1) should sharpen it beyond position-level ranking.
