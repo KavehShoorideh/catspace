@@ -5379,3 +5379,20 @@ value is fine; search DEPTH is the bottleneck. Kaveh's "planner is key" is right
 but the planner's job is EFFICIENCY (reach the deeper result at fewer nodes by
 shortening the horizon), and the standard lever is POLICY PRIORS focusing the
 search (AlphaZero). Re-running the policy-AZ conversion to completion.
+
+## 2026-07-19 (cont.): CLUSTER FORMATION works (Kaveh's direction)
+Bug-check: ensemble tie was real coincidence (DTM term DOES change move rankings:
+committor Rxf2+ vs ensemble Rxd3), not a bug. Policy-AZ (weak board-policy priors,
+top1 0.13): 0.100 vs 0.567 -- weak priors HURT.
+
+Field structure diagnosis (incumbent): NO symmetry-invariance (||F(pos)-F(mirror)||
+0.192 vs random 0.176 -- mirror NOT closer!) and NO DTM-clustering (within=between,
+ratio 1.00). The embeddings are isotropic/structureless -- likely WHY every
+navigation approach failed.
+
+cluster_finetune.py: fine-tune F with L_sym (F(pos)=F(mirror)) + L_clust (same-DTM
+close, diff-DTM apart, margin) + L_anchor (stay near F0). VERDICT CLUSTER
+symmetry_ratio 0.91->2.37  dtm_clustering 1.02->1.35 -- CLUSTERS FORMED, anchor kept
+F near original (L_anchor 0.036). First structural win. Testing whether the
+clustered field makes the subgoal planner work (failed 0.10 on the structureless
+incumbent).
