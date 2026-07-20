@@ -5363,3 +5363,10 @@ Each approach fixes at most ONE mode (DTM gives a mate gradient but not
 blunder-avoidance; and KRRvKBP DTM is too hard to learn). The grounded path:
 a MATERIAL-AWARE value (kill mode 1) + subgoal "reach KRRvK safely" then the
 board-DTM net (krrvk 0.68 / krvk 0.93) mates the simplified endgame (kill mode 2).
+
+## 2026-07-19 (cont.): ensemble ties; testing search-ceiling
+committor + board-DTM ensemble (w=0.15): VERDICT ENSEMBLE_CONVERSION
+A_committor=0.567 B_ensemble=0.567 diff=+0.000 -- EXACT tie, DTM term changed no
+decisions. 0.567 is a robust local optimum for value/policy/planner methods at
+400 nodes. Open question: search-limited vs value-limited (committor @1600 nodes
+running). If more search jumps it, the planner's real value is EFFICIENCY.
