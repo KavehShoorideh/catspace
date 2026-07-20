@@ -5325,3 +5325,18 @@ readout as the engine value + run conversion A/B (no new training); (2) if a
 trained alignment is still wanted, a MONOTONICITY/ranking hinge along optimal-DTM
 successor pairs (avoids the degenerate min) is the untried option. Stopped all
 training; incumbent serves the UI. cert_base_full remains the incumbent.
+
+## 2026-07-19 (cont.): direction 1 (composed retrieval readout) — disproven for conversion
+
+experiments/conversion_composed_ab.py: composed retrieval readout as the engine
+value on the pure QRL field vs the incumbent committor, KRRvKBP winning starts,
+tablebase defender.
+  VERDICT COMPOSED_CONVERSION n=30 nodes=400 A_incumbent=0.567 B_qrl_composed=0.300 diff=-0.267
+Composed retrieval converts 0.300 vs the incumbent's 0.567 -- WORSE by 0.27, and
+~12x slower. (n=8/200n smoke was 0.0 vs 0.125, small-sample.) Caveat: A/B changed
+field AND readout together; but the gap is too large for field-difference alone.
+NET across the whole DTM thread: neither the training hinge (centroid/composed/
+fine-tune) NOR the inference readout beats the incumbent committor (0.567) for
+endgame conversion. The incumbent remains the best converter. Decision pending
+(Kaveh): option 2 (monotonicity/ranking hinge -- the one principled untried
+lever) vs accept the incumbent for conversion and pivot the research.
