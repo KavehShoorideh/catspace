@@ -51,6 +51,11 @@ def main():
     ap.add_argument("--sep-margin", type=float, default=10.0)
     ap.add_argument("--w-sym", type=float, default=1.0)
     ap.add_argument("--w-sep", type=float, default=0.3)
+    ap.add_argument("--w-step", type=float, default=1.0,
+                    help="unit-step: d(F(s), B(child)) ~ 1 for a 1-ply move (chains DTM, gives metric)")
+    ap.add_argument("--w-strata", type=float, default=1.0,
+                    help="irreversibility: d(F(irrev-child), B(s)) >> floor (no way back)")
+    ap.add_argument("--strata-floor", type=float, default=15.0)
     ap.add_argument("--d", type=int, default=512)
     ap.add_argument("--channels", type=int, default=128)
     ap.add_argument("--blocks", type=int, default=10)
@@ -116,13 +121,44 @@ def main():
         # material separation (push different-material F apart)
         Dff = torch.cdist(f, f)
         L_sep = torch.relu(args.sep_margin - Dff[~same]).pow(2).mean() if (~same).any() else torch.zeros((), device=dev)
-        loss = L_rank + args.w_sym * L_sym + args.w_sep * L_sep
+        # TRANSITIONS: unit-step (forward~1 -- pins the scale so strata can't inflate)
+        # + strata (irreversible backward >> floor -- one-way boundaries).
+        L_step = torch.zeros((), device=dev); L_strata = torch.zeros((), device=dev)
+        if args.w_step > 0 or args.w_strata > 0:
+            sp, sc, ip, ic = [], [], [], []
+            for i in idx:
+                b = board_from_packed(packed[i], meta[i]); mv = list(b.legal_moves)
+                if not mv:
+                    continue
+                c = b.copy(stack=False); c.push(mv[int(rng.integers(len(mv)))])   # any 1-ply child
+                sp.append(i); sc.append((encode_packed(c), encode_meta(c)))
+                for m in mv:
+                    if b.is_irreversible(m):
+                        cc = b.copy(stack=False); cc.push(m)
+                        if not cc.is_game_over():
+                            ip.append(i); ic.append((encode_packed(cc), encode_meta(cc)))
+                        break
+            if sp and args.w_step > 0:
+                Fp = embF(np.array(sp))
+                Bc = fb.embed_B(torch.from_numpy(feature_planes(
+                    np.stack([x[0] for x in sc]), np.stack([x[1] for x in sc]))).to(dev))
+                L_step = ((fb.distance_matrix(Fp, Bc).diagonal() - 1.0) ** 2).mean()
+            if ip and args.w_strata > 0:
+                Fc = fb.embed_F(torch.from_numpy(feature_planes(
+                    np.stack([x[0] for x in ic]), np.stack([x[1] for x in ic]))).to(dev),
+                    torch.from_numpy(np.tile(om, (len(ic), 1))).to(dev))
+                Bp = embB(np.array(ip))
+                d_bwd = fb.distance_matrix(Fc, Bp).diagonal()
+                L_strata = torch.relu(args.strata_floor - d_bwd).pow(2).mean()
+        loss = (L_rank + args.w_sym * L_sym + args.w_sep * L_sep
+                + args.w_step * L_step + args.w_strata * L_strata)
         opt.zero_grad(); loss.backward(); opt.step()
         if step % 500 == 0 or step == args.steps - 1:
             with torch.no_grad():
                 sp = spearmanr(dm.detach().cpu().numpy(), dtm[idx]).correlation
-            print(f"  step {step:4d}  L_rank {float(L_rank):.4f} L_sym {float(L_sym):.4f} "
-                  f"L_sep {float(L_sep):.4f}  spearman(d,DTM) {sp:+.3f}  ({time.time()-t0:.0f}s)", flush=True)
+            print(f"  step {step:4d}  L_rank {float(L_rank):.3f} L_sym {float(L_sym):.3f} "
+                  f"L_sep {float(L_sep):.3f} L_step {float(L_step):.3f} L_strata {float(L_strata):.3f}  "
+                  f"spearman(d,DTM) {sp:+.3f}  ({time.time()-t0:.0f}s)", flush=True)
 
     fb.eval()
     # held-out spearman, per material
