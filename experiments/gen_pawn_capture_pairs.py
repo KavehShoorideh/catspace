@@ -33,9 +33,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.data.encode import board_from_packed, encode_meta, encode_packed
 
 
-def _is_pawn_capture(board, m):
-    p = board.piece_at(m.from_square)
-    return p is not None and p.piece_type == chess.PAWN and board.is_capture(m)
+def _kills_a_pawn(board, m):
+    """A move is ONE-WAY (d(child->parent) = infinite) iff it removes a pawn from the
+    board. Total pawn count is monotonically non-increasing -- pawns are never created,
+    only captured or promoted away -- so a dead pawn's material is NEVER reachable
+    again (Kaveh 2026-07-20). A captured PIECE (Q/R/B/N) is NOT one-way: a pawn can
+    promote to restore it. So the irreversible set = {any capture of a pawn (incl. en
+    passant), any promotion}, NOT "a pawn makes a capture" (which wrongly kept
+    pawn-takes-queen and dropped rook-takes-pawn)."""
+    if m.promotion is not None:
+        return True                                        # a pawn leaves the board by promoting
+    if board.is_en_passant(m):
+        return True                                        # en passant captures a pawn
+    if board.is_capture(m):
+        victim = board.piece_at(m.to_square)
+        return victim is not None and victim.piece_type == chess.PAWN
+    return False
 
 
 def _chunk(task):
@@ -47,16 +60,20 @@ def _chunk(task):
         if b.is_game_over():
             continue
         mv = list(b.legal_moves)
-        pcaps = [m for m in mv if _is_pawn_capture(b, m)]
-        if not pcaps:
-            continue                                       # only keep positions WITH a pawn capture
-        m = pcaps[int(rng.integers(len(pcaps)))]
+        pdeaths = [m for m in mv if _kills_a_pawn(b, m)]    # one-way moves: a pawn leaves the board
+        if not pdeaths:
+            continue                                       # only keep positions WITH a pawn-death move
+        m = pdeaths[int(rng.integers(len(pdeaths)))]
         child = b.copy(stack=False); child.push(m)
         if child.is_game_over():
             continue
-        # a unit-step (non-capture) child for scale-pinning
+        # a REVERSIBLE unit-step child (non-capture, non-pawn, non-promo -> a piece move
+        # that can be undone) for scale-pinning; fall back to any non-capture, then any move.
+        rev = [x for x in mv if not b.is_capture(x) and x.promotion is None
+               and b.piece_at(x.from_square).piece_type != chess.PAWN]
         noncap = [x for x in mv if not b.is_capture(x)]
-        step = noncap[int(rng.integers(len(noncap)))] if noncap else mv[int(rng.integers(len(mv)))]
+        pool = rev or noncap or mv
+        step = pool[int(rng.integers(len(pool)))]
         sb = b.copy(stack=False); sb.push(step)
         pp.append(packed[i]); pm.append(meta[i])
         cp.append(encode_packed(child)); cm.append(encode_meta(child))
@@ -76,7 +93,7 @@ def main():
                          "instead of the near-mate npz -- pawn captures are common in "
                          "full games but rare in <=5-piece endgames")
     ap.add_argument("--cap", type=int, default=40000)
-    ap.add_argument("--out", default="data/derived/pawncap_pairs.npz")
+    ap.add_argument("--out", default="data/derived/pawndeath_pairs.npz")
     ap.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 4) - 2))
     args = ap.parse_args()
     W = max(1, args.workers)

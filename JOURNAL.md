@@ -5498,3 +5498,245 @@ normalization. Recalibration can't fix it. FIX IS ARCHITECTURAL: replace BN with
 LayerNorm/GroupNorm in catspace/nn/encoder.py (no train/eval gap) -> retrain the
 nucleus foundation + infinite fine-tune -> the 58x asymmetry holds at inference ->
 usable one-way field -> planner. This is the concrete unblock.
+
+## 2026-07-20: PROOF that BatchNorm is the sole cause (census + isolation + visual)
+Kaveh: "prove it's the issue... this is an important finding I want captured." Done
+rigorously in experiments/prove_batchnorm.py -- ONE trained field (iqe_infinite.pt),
+the SAME held-out pawn-capture pairs, IDENTICAL weights; the ONLY thing changed is
+the normalization mode. Metric = one-way asymmetry d(child->parent)/d(parent->child)
+(1 = reversible, >>1 = the learned "no way back").
+
+WHAT BATCHNORM DOES. BatchNorm2d normalizes each channel by the mean/variance of the
+CURRENT batch during training, but by fixed RUNNING averages at inference (eval).
+Those are two different functions of the same weights. A net can therefore encode
+structure in a way that only survives batch-statistic normalization -- present while
+training, absent when used. That is exactly the failure here.
+
+CENSUS (makes the proof airtight by construction). The only train/eval-sensitive
+modules in the field are BatchNorm: BatchNorm=44, Dropout=0, other(InstanceNorm...)=none.
+So the ENTIRE train<->eval behavioral gap IS BatchNorm -- there is nothing else it
+could be.
+
+ISOLATION EXPERIMENT (the decisive step). Same weights, same pairs, three modes:
+  (A) full EVAL   (BN = running stats, how the field is USED):   asym = 1.1x
+  (B) full TRAIN  (BN = batch stats):                            asym = 67.8x
+  (C) EVAL EXCEPT BatchNorm->train (only BN flipped, all else eval): asym = 67.8x
+  reversible-king control (full eval):                           asym = 0.96x  (correct)
+(C) == (B) >> (A): flipping ONLY the 44 BatchNorm layers to batch stats -- with every
+other module held in eval -- recovers the FULL 67.8x. Nothing else moves the needle.
+BatchNorm is not a contributor; it is the entire effect. VERDICT BN_PROOF
+eval=1.1x train=67.8x bn_only=67.8x.
+
+VISUAL (artifacts/experiments/batchnorm_proof.png, experiments/visualize_batchnorm.py).
+Histogram of the per-pair asymmetry ratio, SAME weights/positions, only BN stats
+differ: reversible moves (blue) sit at 0.9x in every mode; pawn captures under running
+stats / eval (red) collapse onto 1.0x; pawn captures under batch stats (dark red) form
+a cleanly separated peak at 62x. Two identical-weight red distributions, an order of
+magnitude apart, with BatchNorm the only difference -- the picture of the field
+learning a one-way rule that inference erases.
+
+CONCLUSION. The one-way (irreversibility/strata) mechanism -- IQE's infinite-distance
+representation + forward-pin ~1 -- WORKS and GENERALIZES to held-out pawn captures.
+It is destroyed at inference solely by BatchNorm's train/eval statistic mismatch, and
+running-stat recalibration cannot recover it (the structure lives in per-batch space,
+not stale averages). FIX IS ARCHITECTURAL, not a tuning knob: replace BatchNorm2d with
+a normalization that is identical in train and eval (GroupNorm/LayerNorm) in
+catspace/nn/encoder.py, then retrain the nucleus + infinite fine-tune. Existing BN
+checkpoints cannot load into a GroupNorm model -- the fix requires fresh training.
+
+## 2026-07-20: BatchNorm FIX verified -- one-way structure now holds at inference (GroupNorm)
+Fix applied: catspace/nn/encoder.py -- all 44 BatchNorm2d -> GroupNorm (helper _norm(),
+largest group count <=32 keeping >=4 ch/group) in _ResBlock (b1,b2), stem, and head.
+GroupNorm normalizes WITHIN each sample (no batch dimension, no running stats), so it
+computes the IDENTICAL function in train and eval -- the train/eval gap is removed by
+construction. Smoke: fresh field has 0 BatchNorm / 44 GroupNorm and train==eval to
+0.00 (max|dF|). BN checkpoints can't load into a GN model -> retrained from scratch.
+
+Pipeline (GroupNorm): iqe_nucleus_gn (5000 steps, overall spearman(d,DTM)=+0.393 --
+BETTER than the old BN nucleus +0.255) -> cluster_infinite_finetune (1500 steps,
+batch 128). Then prove_batchnorm.py re-run on the resulting field.
+
+DECISIVE RESULT (prove_batchnorm.py on iqe_infinite_gn.pt) -- SAME experiment that
+gave eval 1.1x / train 67.8x on the BatchNorm field:
+  train/eval-sensitive modules: BatchNorm=0  Dropout=0  other=none
+  (A) full EVAL  (as USED at inference):        fwd=1.35 bwd=67.66 asym=47.7x
+  (B) full TRAIN:                               fwd=1.36 bwd=67.28 asym=47.2x
+  (C) EVAL except BN->train (isolate BN):       fwd=1.37 bwd=67.28 asym=47.0x
+  reversible-king control (full eval):          asym=0.99x  (correct)
+  VERDICT BN_PROOF eval=47.7x train=47.2x bn_only=47.0x
+A == B == C: the 60x train/eval gap is GONE. The pawn-capture one-way asymmetry that
+BatchNorm erased at inference (68x train -> 1.1x eval) now HOLDS in eval at 47.7x -- a
+capture's way-back is 47x the move itself, at inference. VERDICT INFINITE (fine-tune,
+eval mode): pawncap_asym 0.99->47.86 (fwd 11.66->1.36, bwd 11.62->68.31). The 47x is
+lower than BN's fake 62-68x but is REAL (survives eval) rather than a batch-stat
+artifact. Reversible stays 0.99x. This is the concrete unblock: a usable one-way /
+strata field. BONUS: DTM cluster order survived the fine-tune this run, sp(d,DTM)
+ended +0.24 (peaked +0.44) vs the batch-256 attempt's -0.16 -- smaller batch was
+gentler on the clusters.
+
+Speed notes (Kaveh's "parallelize? remove-unnecessary-compute?" rule): the fine-tune
+is GPU compute-bound on one MPS device -- fusing 5 encoder passes into 2 (same FLOPs)
+gave ~0 speedup (834s vs 818s to step 500), while HALVING FLOPs (batch 256->128) gave
+a real ~2.8x (1.66 -> 0.58 s/step). CPU sat at 3.1% (GPU-bound fingerprint) => NOT
+multiprocess-parallelizable (one GPU; more procs just time-slice it). Lesson logged:
+stage-2 fine-tune has no mid-run checkpoint, so each kill/relaunch restarts it from
+the nucleus -- add periodic checkpointing before the next long training job.
+
+## 2026-07-20: geometry field redesign -- reachability + targeted irreversibility (iqe_geom.pt)
+Redesign (Kaveh): the quasimetric field = LEGAL reachability ("what COULD be played"),
+NOT the played/usual policy (that is the separate occupancy/successor-representation
+model). Simplified objective replacing the L_inf/pawn-death approach:
+  L_pos   successor pin d(s->s')~1 for legal plies (positives = edges from the graph)
+  L_hard  TARGETED hard negative: d(child->parent) >= d(parent->child)+margin for
+          rule-defined IRREVERSIBLE edges only (chess.Board.is_irreversible = pawn
+          moves, captures, castling, AND castling-rights loss = the clock-resetting set)
+  L_neg   in-batch triplet negatives   L_rank within-material DTM   L_grank cross-mat
+  L_sym   mirror invariance            L_sep pawnless-only separation
+Board-only geometry: halfmove clock (plane 18) + repetition (plane 19) ZEROED into the
+distance tower -> shuffle-equivalent positions cluster; clock/rep are separate monotone
+potentials for the planner (a bishop shuffle: flat board-DTM, burned clock budget).
+
+KEY FINDINGS (fail-fast smokes, Kaveh's rules):
+1. PURE EMERGENCE DOES NOT WORK. "irreversible reverse isn't a legal edge so negatives
+   push it large" is false: random in-batch negatives never touch that specific pair.
+   300-step smoke gave reversible 0.91x AND irreversible 1.07x -- both symmetric, no
+   asymmetry. The reverse-of-irreversible is a HARD negative that random sampling
+   misses. => the one-way must be a TARGETED term on is_irreversible edges.
+2. The EMA loss-scale normalizer SABOTAGES the hard negative: normalizing a loss by its
+   own magnitude divides its GRADIENT by that magnitude, so a term that must push d_bwd
+   far gets ~0 gradient (d_bwd collapsed to 1). Dropped it; used a RELATIVE margin
+   (d_bwd >= d_fwd+margin) with fixed weights -> asymmetry forms.
+3. CLUSTERING vs GLOBAL-DTM-VIA-SINGLE-POLE ARE INCOMPATIBLE. L_sep pushes materials
+   into separate clusters, so a single mate pole sits at cluster-determined distances
+   regardless of DTM -> overall spearman cannot be positive. This is the real "centroid
+   can't order across materials" wall. => the planner metric is per-material (within-
+   cluster) order + cluster-level tablebase DTM, NOT overall spearman.
+
+RESULT (eval_geom.py, held out, EVAL mode, on iqe_geom.pt @1500 steps):
+  per-material spearman(d,DTM) MEAN=+0.454 (median +0.481, all 10 classes positive:
+    KRk +0.52 Kkr +0.63 KRkr +0.39 KPk +0.68 KPkq +0.61 Kkq +0.52 KQk +0.45 ...)
+  reversible one-way asym = 1.09x ; IRREVERSIBLE = 8.27x (d_fwd 1.00, d_bwd 8.96)
+  one-way SEPARATION = 7.59x ; overall spearman = +0.025 (flat, not inverted)
+  VERDICT GEOM_EVAL permat=+0.454 overall=+0.025 oneway_separation=7.59x
+vs the prior iqe_infinite_gn.pt: per-material ~0.00 (useless within-cluster), and its
+one-way was a BatchNorm/L_inf artifact. iqe_geom.pt has BOTH the within-cluster descent
+signal (+0.454, up from ~0) AND correctly-targeted strata (rev symmetric, irrev 8.3x)
+that hold at inference (GroupNorm). This is the field the planner descends. Files:
+gen_successor_edges.py (edges + is_irreversible flag), train_field_geometry.py, eval_geom.py.
+
+## 2026-07-20: 3-layer architecture -- reachability geometry (L1) / categorical outcome (L2) / strength (L3)
+Kaveh's chain of realizations resolved the accumulated tension:
+- Fitting the geometry's quasimetric to tablebase DTM is WRONG: DTM is ADVERSARIAL
+  (min-max under optimal defense), the successor-pin geometry is COOPERATIVE reachability
+  (every legal ply = unit step, both sides). A cooperative metric can't equal an
+  adversarial distance -> the mismatch that capped per-material order and flattened global.
+- The circularity ("need the adversary's policy to compute DTM, but policy is a layer on
+  top of geometry") DISSOLVES: optimal-adversarial DTM is policy-INDEPENDENT and the
+  tablebase already computed it offline (retrograde = adversarial search done once). So no
+  policy is needed at train time; DTM is a precomputed LABEL for a head, not a target for
+  the geometry. Strength-realized cost is the only policy-dependent part -> L3.
+=> ARCHITECTURE. L1 geometry: policy-independent reachability, trained ONLY on legal
+   successor edges + huge random pushes; NEVER fit to DTM. L2 categorical value head: reads
+   the frozen L1 embedding, predicts the outcome DISTRIBUTION (win-distance bins + DRAW),
+   supervised on EXACT tablebase labels (retrograde values). L3 strength/policy: omega-
+   conditioned realized cost -- deferred.
+
+L1 MINIMAL OBJECTIVE (Kaveh: "only nearest-neighbor one-directional hinge at d=1 and huge
+random pushes; strata emerge naturally"). Two terms:
+  L_pos   d(F(s)->B(s')) ~ 1        legal 1-ply successors (one-directional per edge; a
+                                    reversible move's reverse is ITS OWN edge -> pinned ->
+                                    symmetric; an irreversible reverse is not an edge).
+  L_push  d(anchor->random) >= d(anchor->succ)+margin   INDEPENDENT random negatives,
+                                    RELATIVE-margin triplet anchored at the edge parent,
+                                    EXCLUDING true successors (Kaveh) via precomputed
+                                    board-only successor key-sets.
+Strata / material clusters / multi-step distances all EMERGE via the IQE triangle
+inequality (it caps reachable pairs at their composed path, so the huge push only inflates
+genuinely-unreachable pairs). NO DTM ranking / mate pole / separation / irreversibility
+term. train_geometry_min.py.
+
+BUGS found + fixed getting here (all real, all caught by probes):
+1. The old L_neg only ever evaluated FORWARD (parent-F/child-B) pairs -> the irreversible
+   reverse was never in the loss -> strata never emerged. Fix: sample a,b INDEPENDENTLY.
+2. npz is LAZY: `ez["p_packed"][i]` in a loop reloads the whole 351k-row array each
+   iteration = O(n^2) hang. Fix: materialize arrays once.
+3. Full-BxB-mean push diluted each pair's gradient ~batch-fold -> push did nothing. Fix:
+   paired negatives.
+4. Absolute floor-60 push fights the global scale -> everything collapsed to ~30 (edges
+   too). Fix: RELATIVE-margin triplet (anchored, no global tug-of-war).
+
+DTM DATA reality (lichess_nearmate, 59976 pos): 19846 white-wins (dtm 1-197), 40130 draws
+(dtm=0 SENTINEL, ambiguous with mate-in-0), ZERO black-wins (result=-1 empty; dtm never
+negative). `result` (game outcome) != `dtm` (tablebase): 15869 tablebase-wins were drawn
+in the actual game. So L2 here = win-distance bins + DRAW (losses absent). All 59976 nodes
+carry EXACT ground-truth labels; L2 is exact ONLY on these nodes (off-nucleus it
+extrapolates; entropy flags it).
+
+L2 = train_l2_head.py (categorical W-bins + DRAW on frozen L1). ACCEPTANCE TEST (Kaveh):
+"within 5 moves of mate L2 must guide exactly to mate" -> eval_l2_mate_guidance.py: White
+plays L2-greedy (child minimizing expected distance), Black plays Syzygy-optimal defense,
+from DTM<=10 starts; success = mate within the ply cap, vs a random-move baseline.
+STATUS: L1 (iqe_geom_min) training @ lr 3e-4 w_pos 2 margin 15, 2500 steps, d_pos 10.7->4.76
+by step 100 (converging; strata appear once d_pos->1). L2 + guidance scripts ready to run
+on the finished L1.
+
+## 2026-07-20: stratified adversarial quasimetric -- architecture crystallized, pipeline + adversarial validation
+Canonical design written to ARCHITECTURE_STRATIFIED.md (supersedes ARCHITECTURE_SYNTHESIS.md
+for the field/grounding/inference design); phased build in IMPLEMENTATION_PLAN.md; prior-art map
+in relevant_sources.md (deep reads: IQE, QRL, ProQ, Reverse Curriculum, SoRB, GOAT, McGrath,
+maze-extrapolation, Tropical Attention).
+
+THE ARCHITECTURE. L1 cooperative reachability IQE geometry (edges d~1, count-drop captures
+one-way, material-reachability repel; NO DTM) _|_ L2 adversarial outcome heads (remoteness/
+DTM-to-region + committor -ln P(win), on frozen L1, exact TB labels) _|_ L3 human playability
+(deferred). Strata boundary = PIECE COUNT (only captures change it); frontier = the tablebase
+(retrograde analysis IS the exact adversarial forcing-distance for <=frontier); bottom-up
+curriculum with per-stratum _le* checkpoints. Inference = uncertainty-gated recursive minimax
+descent to the solved frontier, retrieval-gated leaves.
+
+NOVELTY (positioned, honest): the field+planner machinery is NOT novel (ProQ, Kobanda et al.
+2025, Inria/Ubisoft, independently arrived at nearly our IQE+QRL+repulsion+directional-cost+
+OOD-gate planner). Novelty lives in (1) exact-oracle grounding + extrapolation PAST the training
+support -- precisely ProQ's stated open limitation ("coverage limited to the dataset convex
+hull"); (2) domain-structural boundaries as curriculum + subgoal + error-reset (bounded
+compounding error); (3) THE ADVERSARIAL AXIS -- a learned composable quasimetric embedding of
+the game-theoretic REMOTENESS / attractor-rank (Smith 1966; Conway/Berlekamp/Guy; parity/
+reachability-game attractors). The whole quasimetric-RL line is single-agent; no one has learned
+remoteness as a generalizing embedding or extrapolated it off a partial frontier. DTM = the
+adversarial forcing-distance to the mate REGION (NOT a pole -- mate is a scattered absorbing set;
+the "pull-to-point pole" is the collapse trap). The committor is its dense, harmonic form.
+
+DATA (gen_stratified_perfect.py, PER-CHUNK checkpointed/resumable): 40000 positions across
+strata [3,4,5,6] + edges (222054, 10670 captures) + optimal-line ply-gap pairs (41982), exact
+perfect-play WDL/signed-DTM (<=6 via TB; negamax-into-TB for 7p). Genuine failing data: 3p
+n=8000 W3785/D3587/L628. Fixed a data bug: KRvKBP was a 146-byte 404 STUB (only missing
+descendant table); real file is KBPvKR (larger side first; python-chess maps its KRvKBP key to
+it), pulled from lichess 3-4-5-wdl/dtz -> KR-vs-KBP coverage 12%->99%. Per-chunk shards let us
+regenerate ONLY krkbp with the real table (289W/3636D/75L, not all-draw) and re-merge.
+
+L1 FIELD (train_stratified_field.py, live dashboard experiments/viz/live_curves.py). Two false
+starts diagnosed + fixed (the documented failure modes): (a) ABSOLUTE strata margin inflated the
+embedding when captures entered (d_pos 2.7->5.6) -> switched to RELATIVE margin anchored to the
+forward capture distance; (b) on the raw base the strata term still dominated the loss ->
+warm-started from iqe_geom.pt (scale already settled, d_pos=1.0 from step 0). RESULT (VERDICT
+STRAT_UMAP): material kNN purity 0.44 (vs ~0.09 random), one-way captures cap6=3.6x, outcome
+coherence (krrk = all-win green blob; draws/Black-wins clustered = the failing data). Honest
+partial: piece-count silhouette -0.09 (NOT clean bands -- material clustering dominates; strata
+are an ORDERING via captures, not a partition), permat +0.02 (weak mate order -- BY DESIGN it is
+L2's job; DTM is kept out of L1).
+
+ADVERSARIAL-DISTANCE VALIDATION (adversarial_distance_validation.py, tablebase ground truth, no
+training). VERDICT ADV_DIST: (1) DTM COMPOSES via the min-plus remoteness recursion DTM(s)==1+
+min_child DTM(child): near-mate (DTM<=10) exact 0.913, overall 0.545 -- the far degradation
+(0.435) and the 22% negative-slack "violations" are entirely the DTZ!=DTM MEASUREMENT ARTIFACT
+(Syzygy is DTZ-optimal, detours far from mate), not a failure of the quasimetric property; this
+also quantifies the DTZ/DTM gap that affects the whole DTM-labeling pipeline. (2) SPARSITY: DTM
+finite on only 0.511 of positions (draws 0.465, losses 0.025 -> +inf) -- the empirical
+justification for factoring L1 (dense) from L2 (adversarial). (3) COMMITTOR DENSE: P(win) under
+an eps=0.15 defender is graded 0.950 (strictly in (0,1)) vs perfect-play's degenerate {0,0.5,1}
+-- the dense region-quasimetric exists as the theory predicts. Figure: artifacts/experiments/
+adversarial_distance.png.
+
+TESTS: tests/test_stratified.py 8/8 (label correctness vs python-chess, strata invariants
+[captures reduce piece count + can't be undone in one ply], material-reachability mask, IQE
+quasimetric axioms [identity/non-negativity/triangle inequality]).

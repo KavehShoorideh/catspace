@@ -37,7 +37,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", default="data/derived/sep/iqe_nucleus.pt")
     ap.add_argument("--nearmate", default="data/derived/lichess_nearmate.npz")
-    ap.add_argument("--pawncap", default="data/derived/pawncap_pairs.npz")
+    ap.add_argument("--pawncap", default="data/derived/pawndeath_pairs.npz")
     ap.add_argument("--out", default="data/derived/sep/iqe_infinite.pt")
     ap.add_argument("--steps", type=int, default=3000)
     ap.add_argument("--batch", type=int, default=256)
@@ -62,12 +62,20 @@ def main():
     nz = np.load(args.nearmate)
     won = nz["dtm"] > 0
     nmp, nmm, nmd = nz["packed"][won], nz["meta"][won], nz["dtm"][won].astype(np.float32)
-    matkey = np.array([" ".join(sorted(p.symbol() for p in board_from_packed(nmp[i], nmm[i]).piece_map().values()))
-                       for i in range(len(nmd))])
+    # material key + pawnless flag in one pass. Material class is a STABLE invariant only
+    # when the board is pawnless -- with pawns, promotion bridges material classes
+    # (KP->KQ is one move away), so L_sep must NOT separate pawn positions (Kaveh 2026-07-20).
+    matkey = np.empty(len(nmd), dtype=object)
+    haspawn = np.zeros(len(nmd), dtype=bool)
+    for i in range(len(nmd)):
+        ps = list(board_from_packed(nmp[i], nmm[i]).piece_map().values())
+        matkey[i] = " ".join(sorted(p.symbol() for p in ps))
+        haspawn[i] = any(p.piece_type == chess.PAWN for p in ps)
+    matkey = matkey.astype(str)
     uniq = {m: k for k, m in enumerate(sorted(set(matkey)))}
     mat = np.array([uniq[m] for m in matkey], dtype=np.int64)
     low = np.argsort(nmd)[:512]
-    # pawn-capture pairs (infinity)
+    # pawn-death pairs (one-way / infinity)
     pz = np.load(args.pawncap)
 
     def eF(pk, mt):
@@ -106,12 +114,19 @@ def main():
         mir = [board_from_packed(nmp[i], nmm[i]).transform(chess.flip_horizontal) for i in nsym]
         fm = eF(np.stack([encode_packed(b) for b in mir]), np.stack([encode_meta(b) for b in mir]))
         L_sym = ((f[:32] - fm) ** 2).sum(1).mean()
-        L_sep = torch.relu(args.sep_margin - torch.cdist(f, f)[~same]).pow(2).mean() if (~same).any() else torch.zeros((), device=dev)
-        # -- pawn-capture INFINITE one-way --
+        pl = torch.from_numpy(~haspawn[ni]).to(dev)                  # pawnless: material is a hard invariant
+        sepm = (~same) & pl[:, None] & pl[None, :]                   # separate ONLY pawnless different-material
+        L_sep = torch.relu(args.sep_margin - torch.cdist(f, f)[sepm]).pow(2).mean() if sepm.any() else torch.zeros((), device=dev)
+        # -- pawn-capture INFINITE one-way (fused encoder passes: 1 eF over [p;c] and
+        #    1 eB over [c;p;s] instead of 2 eF + 3 eB -- ~2x fewer GPU forward passes) --
         pi = rng.integers(0, len(pz["p_packed"]), size=args.batch)
-        Fp = eF(pz["p_packed"][pi], pz["p_meta"][pi]); Bc = eB(pz["c_packed"][pi], pz["c_meta"][pi])
-        Fc = eF(pz["c_packed"][pi], pz["c_meta"][pi]); Bp = eB(pz["p_packed"][pi], pz["p_meta"][pi])
-        Bs = eB(pz["s_packed"][pi], pz["s_meta"][pi])
+        n = len(pi)
+        Fpc = eF(np.concatenate([pz["p_packed"][pi], pz["c_packed"][pi]]),
+                 np.concatenate([pz["p_meta"][pi], pz["c_meta"][pi]]))
+        Fp, Fc = Fpc[:n], Fpc[n:]
+        Bcps = eB(np.concatenate([pz["c_packed"][pi], pz["p_packed"][pi], pz["s_packed"][pi]]),
+                  np.concatenate([pz["c_meta"][pi], pz["p_meta"][pi], pz["s_meta"][pi]]))
+        Bc, Bp, Bs = Bcps[:n], Bcps[n:2 * n], Bcps[2 * n:]
         d_fwd = fb.distance_matrix(Fp, Bc).diagonal()                 # capture forward ~ 1 ply
         d_step = fb.distance_matrix(Fp, Bs).diagonal()                # unit-step child ~ 1 ply
         d_bwd = fb.distance_matrix(Fc, Bp).diagonal()                 # child -> parent = INFINITE
@@ -120,7 +135,7 @@ def main():
         loss = (L_rank + args.w_sym * L_sym + args.w_sep * L_sep
                 + args.w_step * L_step + args.w_inf * L_inf)
         opt.zero_grad(); loss.backward(); opt.step()
-        if step % 500 == 0 or step == args.steps - 1:
+        if step % 50 == 0 or step == args.steps - 1:
             with torch.no_grad():
                 sp = spearmanr(dm.detach().cpu().numpy(), nmd[ni]).correlation
             print(f"  step {step:4d}  L_rank {float(L_rank):.3f} L_sym {float(L_sym):.3f} "
