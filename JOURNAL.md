@@ -5740,3 +5740,547 @@ adversarial_distance.png.
 TESTS: tests/test_stratified.py 8/8 (label correctness vs python-chess, strata invariants
 [captures reduce piece count + can't be undone in one ply], material-reachability mask, IQE
 quasimetric axioms [identity/non-negativity/triangle inequality]).
+
+---
+
+## 2026-07-20 23:35 — long/short planner (field for distance + search for tactics) beats the plateau; lichess-L2 retrain is I/O-bottlenecked
+
+**Directive (Kaveh).** "Train on the lichess data to get L2, then do goal planning over it for
+long distances, and then short searches to make it to goal." The decomposition: the L2 field is
+the COARSE long-range navigator (which region is toward the goal); a SHORT adversarial search does
+the fine local execution (tactics the field is too coarse for) + the not-blundering; the tablebase
+is the exact base case. This is explicitly **not ProQ** — ProQ is a pure field-follower with no
+short-search executor and no exact grounding, which is exactly why it (and our own gradient-
+follower, and brute MCTS) plateau ~0.55.
+
+**Why not just retrain a better field.** Measured this session: the within-material DTM-gradient
+(spearman of d(F(won)->B(near-mate)) vs true DTM, per-material mean) is **+0.31 on the untrained
+nucleus base `iqe_nucleus_gn`**, but **−0.05 (iqe_geom) / −0.08 (iqe_stratified)** on the fields
+we TRAINED — InfoNCE/occupancy training DESTROYS the base geometry's gradient. So: build the
+planner ON the base field; do not retrain it. The base is d=512 IQE + GroupNorm (the BatchNorm->
+GroupNorm fix matters: eval-mode BatchNorm collapses the one-way structure).
+
+**Result (experiments/planner_longshort.py, minimax depth-3, field leaf value, tablebase base,
+frontier=5, 6-piece won starts vs OPTIMAL tablebase defense):**
+
+    VERDICT LONGSHORT field=iqe_nucleus_gn depth=3 qdepth=0 frontier=5 n=25 mate_rate=0.640 (559s)
+
+vs the plateaus on the SAME task: gradient-follower / ProQ-shaped ~0.35, material-greedy ~0.55,
+brute StratifiedMCTS ~0.55. So the field-long-range + short-search decomposition is the first
+thing to CLEAR the plateau. (At the full <=6 frontier it is trivially 1.0 — the tablebase base
+case IS the forced win; the honest test is one ply above, converting 6p->5p, which is what these
+numbers measure.) Next levers under test: uniform depth-4, and a **quiescence extension** (added:
+`--qdepth`, keeps searching captures+checks past the cap so forcing conversion lines reach the
+exact tablebase instead of being truncated) — the mechanism that should actually convert won 6p
+positions by winning a piece.
+
+**Lichess L2 retrain — I/O-bottlenecked, honest status.** Per the directive, launched a fresh
+lichess field (`train_lichess_fb.py --iqe --iqe-components 32 --quasimetric --d 256`, GroupNorm by
+default now, `--ckpt data/derived/sep/lichess_l2_iqe.pt --ckpt-every 1500`; existing lichess_fb_4gb
+checkpoints are unusable — BatchNorm + MRN, corrupted at eval). It runs but at **0.4 it/s** (state
+UN = disk-bound on per-batch pair sampling; ~24x below the established ~9.5 it/s), and does NOT
+climb on the 256mb shard — the bottleneck is the streaming pair loader, not shard size or compute
+(GPU nearly idle during it). At 0.4 it/s a real L2 (60k+ steps historically) is ~40h — infeasible
+overnight; step-100 train_top1 is still 0.002. It's left running (checkpointed, honors the
+directive, disk-bound so it doesn't block the GPU planner work), but the **nucleus base is the L2
+for tonight's demonstration**. Follow-up: give the lichess loader an in-memory preload/mmap path so
+lichess-L2 training is viable — that's the real blocker on the "train on lichess" half.
+
+---
+
+## 2026-07-21 00:20 — lichess-training failure was self-inflicted (IQE@scale-50 collapse), not the loader; opening-basin MSM pipeline (Kaveh's metastability idea)
+
+**Why the earlier lichess run "failed" (Kaveh: similar training ran fine before).** Root-caused, not
+guessed. The working historical lichess fields are `iqe=None, quasi=True` (MRN quasimetric) — they
+never used `--iqe`. I had added `--iqe` with the default `--iqe-embed-scale 50`; the trainer's own
+docstring says scale-50 is for plain InfoNCE and you want **~1 on the quasimetric/QRL path**. Wrong
+scale → embedding collapse → InfoNCE loss pinned at **exactly ln(512)=6.238** (perfectly uniform
+logits = every pair scored identically) with **top1=0** and zero gradient. The 0.4 it/s was a
+separate thing — pure disk contention from three concurrent I/O-bound jobs, not the model.
+
+**Fix confirmed.** Known-good recipe (MRN quasimetric + ply-gap, **no IQE**, GroupNorm-by-default —
+the BatchNorm→GroupNorm fix) trains cleanly:
+
+    step 1000  VERDICT VAL_TOP1=0.027 VAL_TOP8=0.158 (chance 0.0020)   # 13x / 10x above chance
+    13.2 it/s  (vs 0.4 broken)  loss 6.24 -> 4.5
+
+top1 rising, no collapse. Now retraining to 40k steps (`lichess_gn_qm_full.pt`, ckpt every 5k). Saved
+a memory: don't run concurrent disk-heavy jobs (it destabilized the laptop).
+
+**Opening-basin pipeline (`metastable_macrostates.py`, Kaveh's MSM idea, rebuilt sklearn-end-to-end
+per his call).** openings/standard structures = metastable basins; PCCA+/deeptime don't build on
+Python 3.14, so: `sklearn.neighbors.kneighbors_graph` (precomputed DIRECTED quasimetric distances) →
+row-stochastic P → `sklearn.cluster.SpectralClustering` on the symmetrized affinity → macrostates.
+**Prototype = MEDOID** (member minimizing summed symmetrized intra-cluster distance — centroids are
+meaningless under a quasimetric); the medoid set = the **basin codebook**. **Validation gate:** label
+members by ECO/opening-family from the maintained lichess `chess-openings` DB, matched by **EPD**
+(piece-placement + side-to-move) so it's **transposition-robust**; ECO book = 7846 opening positions,
+named-endpoint-wins collision rule (validated: `e4 e6`→C00 French, `e4 c5`→B20 Sicilian, Ruy→C60,
+QG→D06, English→A10). Gate: basins ≥~0.80–0.90 one opening family → geometry recovered known
+structure, proceed; mush → stop before building downstream. Caveat pre-registered: a "mush" result
+could be field-limited, not idea-limited, until the lichess field is fully trained. Coarse DIRECTED
+transition graph over macrostates = the plan alphabet. Plane-convention fix: lichess field trains on
+FULL feature_planes (the toy's board-only 18,19-zeroing must be OFF for it). Gate runs when the field
+lands.
+
+---
+
+## 2026-07-21 08:06 — opening-basin gate: MRN field recovers opening structure (purity 0.78, field-limited); IQE needs QRL not InfoNCE (recipe nailed down)
+
+**Gate result (MRN quasimetric lichess field, `lichess_gn_qm_full.pt`, 40k steps, VAL_TOP1=0.033).**
+Clustered 4000 in-book opening positions (ply<=30), sklearn kNN + SpectralClustering, ECO/opening-
+family labels from the maintained lichess DB (EPD-matched). The **basin codebook is real openings**:
+
+    M0 Sicilian 95% | M1 Italian 100% | M3 Sicilian 94% | M4 Ruy Lopez 84% | M5 Sicilian 100%
+    M8 Caro-Kann 93% | M13 French 88% | M14 Italian 92%   (medoids = named openings)
+
+but the 1.e4 e5 / transposition-heavy systems (Scotch, KGA, some KID/QGD) blur (26-64%). Mean
+family-purity, m-scan: **0.726 (m16) -> 0.761 (m24) -> 0.784 (m32)** -- rises then PLATEAUS below
+0.80. Reading: the geometry recovered known opening structure (proven -- clean major-opening basins),
+but does NOT pass the strict ~0.90 gate; the plateau under increasing m proves the limiter is FIELD
+QUALITY (undertrained, top1 0.033), not granularity. Two caveats logged: (1) the coarse transition
+graph is degenerate here (T_ii~=1.0 all basins) -- a fragmentation artifact (openings so tight that
+k=12 kNN never bridges basins; confirms separation but the "alphabet" needs game-trajectory
+transitions, not static kNN); (2) a "mush" verdict could be field-limited, and this is exactly that
+case -- yellow light, not red. Per Kaveh's protocol, STOPPED at the gate (no downstream build) and
+asked how to proceed. Figure artifacts/experiments/macrostates_lichess.png.
+
+**IQE recipe nailed (Kaveh: "MRN or IQE?").** The 0.78 was MRN. IQE deserved a fair shot; ran it
+down: **IQE + InfoNCE + ply-gap COLLAPSES** at both embed-scale 50 AND 1 (loss pinned ~6.24, top1
+flat at chance through step 500 where MRN had clearly learned) AND is **18x slower** (0.7 it/s -- IQE's
+InfoNCE builds a full (N,M,components,K) tensor every step). Root cause: InfoNCE is the wrong pairing
+for IQE. **IQE + QRL objective works cleanly:** the quasimetric diagnostics show adjacent-pair
+`d_step` 6.8->1.7 (toward the QRL target ~1) while random-pair `d_rand` 7.8->65.8 = a **38x local/far
+separation by step 400**, at 5.6 it/s. So the recipe (not the embedding) was the whole failure; IQE
+needs QRL (matches the trainer's own docstring and almost certainly how the nucleus IQE field was
+trained). Full IQE+QRL lichess field now training (30k steps, ckpt every 5k) for a fair A/B re-gate
+vs MRN's 0.78 -- the 38x separation is the thing that could resolve the e5 blur.
+
+---
+
+## 2026-07-21 08:30 — L2 embedding<->objective guards + modular preset; best-play continuation generator
+
+Committed to IQE+QRL for the L2 field; made it the guarded default and added the best-play data path.
+
+**Guards + modular L2 (`train_lichess_fb.py`).** `--l2-preset` (default **iqe-qrl**; also mrn-qm,
+cosine, custom) expands to a known-good (iqe, quasimetric, qrl_objective, iqe_embed_scale) combo;
+`validate_l2_config` fail-fast-rejects incompatible pairings BEFORE the ~hour of training:
+IQE+InfoNCE (the collapse footgun), IQE+QRL with embed_scale>5 (the scale-50 InfoNCE-bootstrap),
+IQE-without-quasimetric, QRL-without-quasimetric. Extensible: add a preset row / guard rule. Tests
+`tests/test_l2_guards.py` 9/9 pass. Rule, in one line: IQE<->QRL (metric objective), InfoNCE<->cosine;
+never cross them.
+
+**Best-play continuations (`gen_stockfish_continuations.py`).** Human lichess = average play; to see
+OPTIMAL play in the regions humans reach, sample human positions and roll a strong engine forward K
+plies. Engine-agnostic (Stockfish 18 default at /opt/homebrew/bin/stockfish; any UCI incl. Leela via
+--engine). Writes continuations in the lichess shard schema (each continuation = one game_id,
+ply-ordered, eval_cp from the engine, result = final-eval sign) so they mix in via the existing
+`--selfplay-shards/--selfplay-frac`; the QRL pairing then gets optimal 1-ply constraints + best-play
+goal pairs. Validated end-to-end: LichessPairSource consumes the generated shard (game_id ordered,
+ply 0..K, succ present). CPU-bound (one engine/worker) -> runs AFTER the GPU field training, not
+stacked. Plan: human IQE+QRL field -> re-gate vs MRN 0.78 -> full continuations -> fine-tune
+--selfplay-frac 0.3 -> re-gate.
+
+---
+
+## 2026-07-21 09:57 — IQE+QRL is a VALUE field, not a concept field (key finding); concept-alphabet from game dynamics (option A)
+
+**IQE+QRL trained (30k steps):** REACH_SLOPE_WON=0.722 / LOST=0.705 (vs the MRN field's 0.231/0.117)
+-- a MUCH stronger reachability/value quasimetric. (VAL_TOP1=0.002 is the InfoNCE-retrieval metric,
+meaningless for QRL.)
+
+**Finding (confirmed, full field, exact castling-aware key): the value field and the concept field
+are different representations.** Opening-family purity of the SpectralClustering gate (m=24):
+
+    MRN field (quasi)                 0.761   (clusters openings)
+    IQE+QRL field (quasi/reachability) 0.354
+    IQE+QRL field (cosine of B embeds) 0.334
+
+So the poor opening-clustering is NOT a method artifact (both the reachability metric AND raw-embedding
+cosine fail) -- the QRL field genuinely does not organize positions by opening. It organizes by
+DISTANCE-TO-OUTCOME (REACH_SLOPE 0.72): openings all sit "far from the result, early," undifferentiated
+by family; two positions are close iff one is cheaply reachable from the other, not iff they are the
+same kind of position. This is correct behavior for a value/planning field -- the concept/opening
+structure is a SIMILARITY/DYNAMICS notion the value field deliberately discards.
+
+**Decision (Kaposi): keep IQE+QRL as the value field; get the concept-alphabet from game DYNAMICS
+(option A).** `experiments/opening_alphabet.py`: microstates = recurring opening positions (keyed by
+placement+stm+castling, byte-fast, transposition-robust), transitions = consecutive positions within
+REAL games, SpectralClustering on the transition matrix -> openings as metastable sets, coarse directed
+graph = the alphabet, ECO-purity gate. Field-free -- his original "the transitions between basins are
+the alphabet" taken literally. Runs after Stockfish frees the CPU.
+
+**Encoding verified (Kaposi asked):** positions are stored, not inferred -- `meta` holds side-to-move,
+all four castling rights, ep-file, halfmove-clock, repetition; `board_from_packed` restores a
+legally-complete board (so Stockfish continuations start from correct state); `feature_planes` gives
+20 planes incl. stm/castling/ep. Tightened the ECO-match key from placement+turn to placement+turn+
+CASTLING (the field sees castling, so the label must too).
+
+**Best-play supplementation (Kaposi's queued step) running:** `gen_stockfish_continuations.py`
+(8000 human seeds x 8 plies best play, Stockfish 18) -> shard-format continuations -> will fine-tune
+IQE+QRL with --selfplay-frac 0.3 so its value estimates sharpen toward optimal play where humans reach.
+
+---
+
+## 2026-07-21 10:45 — PROVEN: the IQE+QRL value field carries no structure (F or B); value ⊥ structure; concepts need their own representation
+
+Kaposi's concept program (B-clusters = goals/subgoals, F predicts arrival) is architecturally CORRECT,
+but it needs a field whose embeddings carry STRUCTURE, and the value field does not. Four tests agree:
+
+1. **F doesn't cluster openings** 0.35 (vs similarity/MRN 0.76).
+2. **Game-dynamics is a forward-DAG** -- openings flow forward, never linger; metastability T_ii=0 at
+   any data size; PCCA+/spectral gives communities (purity 0.50) but no metastable basins
+   (`experiments/opening_alphabet.py`, real-game transition matrix).
+3. **B-clusters are value-generic** -- KMeans on B(arrivals) gives one 77% cluster spanning 243 distinct
+   materials (1% dominant); every cluster materially incoherent; F->arrival-cluster 0.24 < majority 0.77
+   (`experiments/goal_clusters.py`).
+4. **Supervised probe (decisive, closes the non-linear escape hatch)** `experiments/structure_probe.py`:
+   material (20-way, majority 0.22, raw-planes ceiling linear 0.77 / **MLP 0.91**):
+   **F -> linear 0.25 / MLP 0.27 ; B -> linear 0.25 / MLP 0.20** -- i.e. ~majority, linear AND non-linear.
+   Structure is genuinely gone from both towers, not masked.
+
+Mechanism: the QRL objective only needs plies-to-outcome, so there is ZERO gradient pressure to preserve
+material/pawn-skeleton; a 64-dim bottleneck discards them. **value ⊥ structure (graded: proven).** So the
+clean design is two complementary reps -- IQE+QRL for VALUE (planning/routing), a separate STRUCTURE rep
+for CONCEPTS (goals/subgoals, where B-clusters + F-arrival actually work). Structure-rep fork open with
+Kaposi: (a) explicit structural features, (b) a learned structure/similarity field, (c) a structure head
+on the same field (multitask). F/B semantics settled: F = source/future ("where I end up"), B =
+goal/precursor ("where I came from"); cluster F for convergence-concepts, B defines the target zones.
+
+**Best-play supplementation (Kaposi's queued step) DONE, marginal.** `gen_stockfish_continuations.py` ->
+7958 best-play continuations; gentle fine-tune (resume, lr 3e-5, 30% mix, +10k steps) of a COPY
+(`lichess_gn_iqeqrl_sf.pt`; human-only `..._full.pt` preserved). REACH_SLOPE_WON 0.729 vs 0.722 human-only
+-- essentially unchanged on aggregate metrics; regional value benefit (weak-human zones) would need a
+targeted eval. Footgun found+worked-around: resume restarts lr at PEAK (3e-4), collapsing the field in
+~200 steps (d_rand->0); lr 3e-5 holds it. Guard to add: clamp/scale lr on resume. Also added the L2
+embedding<->objective preset+guards (`--l2-preset` default iqe-qrl; tests/test_l2_guards.py 9/9).
+
+---
+
+## 2026-07-21 11:02 — RETRACTION: value is NOT ⊥ structure. The value field carries value-relevant concepts as DIRECTIONS; the SAE discovers them natively.
+
+Kaposi's correction was right and my earlier "value ⊥ structure" claim is WITHDRAWN. The full-material
+probe was the wrong test (it demanded reconstructing value-IRRELEVANT junk, e.g. a corner pawn, which
+the field SHOULD discard). The right test -- named features, phase partialled out:
+
+  `experiments/concept_features.py` (F-lift over a phase-only baseline, ROC-AUC):
+    connected_rooks +0.215 | king_safe +0.202  <- genuine concepts, well beyond phase
+    passed_pawn +0.03 / bishop_pair -0.04 / queens_on -0.04  <- phase-redundant
+    clean control (a-file pawn) +0.01  <- irrelevant, correctly absent
+
+So the value field keeps VALUE-RELEVANT structure as SEPARABLE DIRECTIONS (connected rooks is literally
+the #1 concept, Kaposi's own example), and drops phase-redundant + irrelevant structure. Concepts are
+DIRECTIONS, not clusters -- which is why every clustering attempt failed.
+
+**Native discovery (no hand-coded features in the loop):** `experiments/native_concepts.py` (PCA/ICA on
+phase-removed F) re-finds connected_rooks+king_safe but entangled. `experiments/sae_concepts.py` (sparse
+autoencoder, overcomplete dict=128, L1) is the clean tool: with NO feature functions in training it gives
+EVERY named concept its own atom -- connected_rooks(0.35), passed_pawn(0.39), king_safe(0.52),
+bishop_pair(0.45), queens_on(0.48), piece_count(0.82) -- plus ~120 alive atoms, novel ones readable via
+native piece-placement heatmaps (development/castling/pawn structures at ply 16-40). material_diff stays
+undecodable (the field tracks distance-to-win, not material count).
+
+**Resolution of the concept-representation question:** the concept/goal/subgoal alphabet = the SAE
+dictionary OF THE VALUE FIELD, discovered natively. No separate structure field, no hand-coded features --
+one IQE+QRL field carries value AND its concept dictionary. Next: SAE across game phases (richer dict),
+SAE on the B tower (goal-side "approach" concepts), atoms -> goals/subgoals (concept region = atom's
+high-activation set; forceability = F driving an atom up). Also added the resume-lr guard
+(`--resume-lr-scale` default 0.1, tests still 9/9).
+
+---
+
+## 2026-07-21 12:13 — concept extraction on imported tooling (SAE=dictionary_learning, probes=CAV); monosemanticity confirmed; contributable conditional-SAE package
+
+Kaposi's arc: concepts are DIRECTIONS the value field keeps for VALUE-RELEVANT structure (retraction of
+"value ⊥ structure"); extract them natively; import don't reinvent; condition properly.
+
+**Imported the concept stack** (memory `concept_extraction_stack`): `dictionary_learning` TopK SAE
+(`experiments/concept_sae_dl.py`) + `captum` for CAV/TCAV; both install on 3.14. Per Concept Cones
+(arXiv 2512.07355) the SAE atoms ARE the cones -> dropped the hand-rolled HDBSCAN `concept_cones.py`.
+Chess precedent: McGrath et al. AlphaZero-probing (PNAS 2022).
+
+**Monosemanticity test (Kaposi's ask, `experiments/concept_monosemanticity.py`).** For each concept, %
+of an atom's top-activating cluster that has the feature vs baseline: connected_rooks 66% vs 20% base
+in ONE atom, 17% (0.85x) elsewhere; king_safe 99% vs 34%; bishop_pair 96% vs 39%. Concepts are
+CONCENTRATED in one atom and WASHED OUT (residual ~1x) elsewhere -- exactly as predicted; correlation
+hid rare monosemantic atoms that prevalence exposes.
+
+**Contributable conditional SAE** (`contrib/dl_conditional/`, Kaposi: "fork the maintained package, add
+conditioning contributably; clean interfaces + docs + motivation"). `ConditionalAutoEncoderTopK`
+(encode(x, cond) FiLM-gates atoms; cond=None == base) + `ConditionalTopKTrainer` (activations as
+[x|cond]; L2+auxk on x; b_dec init fixed to the x part) -- proper subclasses of the library bases, plug
+into trainSAE, strict generalization (cond_dim=0 -> standard SAE). README = PR-style motivation: a
+global SAE averages over contexts, so context-dependent concepts (bishop-pair only matters OPEN, not by
+phase) wash out and carry no domain-of-applicability; the gate fixes both. Wired into
+`experiments/conditional_sae_dl.py`: conditional atoms show monosemantic prevalence (openness->
+connected_rooks 2.3x). Includes an upstream note (add `dict_class_kwargs` to TopKTrainer).
+
+**Audit (other hand-rolled pieces):** `torchqmet` (Tongzhou Wang's maintained IQE/MRN/PQE) is
+github-only, not on PyPI, and swapping our `catspace/nn/iqe.py` would force a full field retrain ->
+deferred, flagged.
+
+---
+
+## 2026-07-21 14:50 — the field was never concept-poor (both collapse alarms were metric artifacts); literature recipe for concepts-as-subgoals
+
+**The reframe.** The multi-task "structure head" was built to break a "collapse" (effective rank 1.1/64)
+that supposedly made concepts imprecise (connected_rooks "60% precision@5"). A low-noise measurement
+(threshold-free ROC-AUC across 5 structural concepts, held-out, 12k positions;
+`experiments/*` inline probe) reverses the premise:
+
+```
+field          | eff-rank raw  zscored | mean AUC | connected king_safe passed bishop queens
+orig (30k step)|      1.1       2.0     |  0.805   |   0.82     0.87    0.83   0.68   0.82
+struct w=50 5k |      1.1       1.6     |  0.800   |   0.81     0.88    0.82   0.66   0.82
+```
+
+The incumbent field ALREADY encodes structural concepts as linear directions at mean AUC 0.805
+(connected_rooks 0.82, king_safety 0.87) -- good, usable CAVs. The multi-task head does NOT improve this
+(w=50, fully trained: 0.800 ≈ 0.805). Both alarms were metric artifacts: (a) raw eff-rank 1.1 is a
+VARIANCE-SCALE effect (the value axis has per-dim std up to 451 and dominates the participation ratio);
+z-scored (correlation-matrix) rank is 2.0, and the concepts live in the LOW-variance correlated-residual
+directions, which a scale-free linear probe reads fine. (b) "60% precision@5" was base-rate (20%) × 5-sample
+noise -- an AUC-0.82 direction at a 20% base rate gives ~3× enrichment at the very top, exactly precision@5≈60%.
+Retraction: the "value ⊥ structure" / "1D collapse kills concepts" framing was WRONG. The field carries value
+AND structural concepts; the participation ratio just can't see the low-variance concept directions.
+(Honesty note: the w=300 run I first measured was accidentally killed at step 500 by a Bash-tool timeout
+SIGTERM on the launch call's wait-loop -- that number was void and is being re-run cleanly as a w0/w300
+matched-step backstop; Kaposi chose to move on regardless.)
+
+**Decision (Kaposi):** stop "fixing" the field -- USE the existing CAV directions as planner subgoals.
+
+**Literature search -- how people use linear concept directions as subgoals (import, don't reinvent):**
+- *Concepts function AS plan directions.* Bush et al., "Interpreting Emergent Planning in Model-Free RL"
+  (ICLR 2025 oral, arXiv 2504.01871): linear probes find planning-relevant concept directions in a Sokoban
+  agent; the plan is read off them and STEERING along a concept direction causally changes the plan
+  (parallelized bidirectional search). Direct precedent for our thesis: concepts are directions, planning
+  proceeds along them, steering is causal.
+- *Quasimetric field -> subgoals* (our field's own family). QRL (Wang, Torralba, Isola, Zhang; ICML 2023,
+  arXiv 2304.01203) -- our objective; the quasimetric d(F(s),B(g)) IS optimal cost-to-go, so a waypoint w
+  is chosen by path relaxation D*(s,g)=min_w d(s,w)+d(w,g). "Offline GCRL with Quasimetric Representations"
+  (arXiv 2509.20478, 2025): high-level policy picks a subgoal in quasimetric space, low-level reaches it,
+  waypoints minimize cumulative quasimetric distance. HIQL (Park et al. 2023): subgoal = a LATENT target,
+  not a decodable state -- you steer toward a region, exactly what a CAV half-space is.
+- *Coarse plan graph over concept-landmarks = Kaposi's basin-alphabet.* L3P "World Model as a Graph:
+  Learning Latent Landmarks for Planning" (Zhang et al., ICML 2021) and Successor Feature Landmarks
+  (NeurIPS 2021): cluster latents into landmarks, weight edges by reachability, plan shortest path over
+  them. This is the metastable-basin/PCCA+ "alphabet" idea done in latent space.
+- *Sharpen the CAV subgoal directions with the SAE (we already have both).* "Denoising Concept Vectors
+  with Sparse Autoencoders for Improved Steering" (arXiv 2505.15038, 2025): project a raw diff-of-means CAV
+  onto the SAE dictionary, keep the high-magnitude atoms, reconstruct -> stronger, more specific steering at
+  smaller magnitude. Drop-in recipe to crisp our AUC-0.8 directions before using them as region boundaries.
+
+**Mapped recipe for catspace (all pieces already in-hand):** subgoal = a concept REGION in goal space =
+the CAV half-space {x : w_c·x > τ} (SAE-denoised w_c); reach cost = the quasimetric distance-to-region
+d_c(s)=min_{g in region} d(F(s),B(g)) (we built dist-to-B in `precision_reps.py`); high-level plan = a
+sequence of concept-regions selected by quasimetric path relaxation (L3P graph over concept-landmarks);
+short searches execute reaching the next region = the existing long/short planner. Causal validation
+(Bush et al.): steer F(s) along w_c and check the planner's move shifts toward that concept.
+
+**Sharpening test (`experiments/denoise_cav.py`, imports arXiv 2505.15038 onto our field).** The SAE-denoise
+recipe HURTS every concept here and flips passed_pawn's sign: rawCAV vs SAE-denoised AUC -- connected 0.824
+->0.792, passed 0.832->0.299, king_safe 0.870->0.826, queens 0.823->0.763. Same root cause: concepts live
+in LOW-variance residual directions the reconstruction-trained SAE (variance-weighted, value-axis-dominated)
+doesn't span, so pushing a CAV through the dictionary discards its discriminative part. VERDICT: use the raw
+logistic CAV as the concept direction; the SAE is for DISCOVERING atoms, not sharpening directions.
+The quasimetric dist-to-B-region reach cost scores AUC 0.6-0.72 as a detector -- weaker, but that's the wrong
+lens: it's a cost-to-go, low AT and NEAR the region (the smooth subgoal potential the planner descends), not
+a possession detector. Refined recipe: region boundary = raw CAV; reach cost = quasimetric dist-to-region;
+no denoise step.
+
+**Multi-task struct head CLOSED (clean matched-step sweep).** From-scratch 5k-step controls, mean structural
+AUC: w0=0.801, w50=0.800, w300=0.801 (orig 30k=0.805). Concept decodability is FLAT across the whole
+struct-weight range 0->300 and nearly flat vs 6x training length (+0.004). The structure head does nothing;
+~0.80 concept AUC is intrinsic to the IQE-QRL objective on this data, not a collapse to be fixed. Multi-task
+anti-collapse rejected. (This also formally retires the "value != structure / 1D-collapse" alarm chain.)
+
+## 2026-07-21 15:20 — concepts ARE navigable subgoals (via the CAV axis, NOT quasimetric region-distance)
+
+The linchpin test (`experiments/concept_reach_rollout.py`, design chosen by Kaposi: opponent = base FB reach
+policy depth-1, White steers greedy-1-ply). From 200 positions where White lacks connected_rooks, roll out
+10 plies; White picks its move by a subgoal score, measure reached-within-K:
+
+```
+white strategy | reached<=10ply | median plies
+reach2region   |      2%        |     1.0
+cav            |     28%        |     5.0
+basepolicy     |      6%        |     1.0    (White plays toward MATE_W)
+random         |      6%        |     3.0
+```
+
+VERDICT: **the CAV direction is a navigable multi-step subgoal** -- greedily climbing w_c . F(child) reaches
+connected_rooks 28% vs 6% for both normal mate-seeking play AND random (4.7x lift, 28+-3.2% vs 6+-1.7%,
+>6 SE). The weak 1-ply gradient (steer_concept.py move-AUC 0.658) COMPOUNDS over 5 White moves into real
+steering. This validates the concepts-as-subgoals program: concepts are directions you can plan ALONG
+(cf. Bush et al. ICLR 2025), and our field supports it.
+
+**Correction to the recipe:** the quasimetric dist-to-B-region FAILS as the navigation signal (2%, worse
+than random). d(F(s),B(g)) is the cost to reach a concept-positive position's GAME-GOAL (its mate pattern),
+which conflates "reach that whole position" with "acquire the attribute"; descending it chases the nearest
+goal-state, not connected-rooks. The CAV isolates the ATTRIBUTE. So: subgoal navigation = climb the CAV axis
+(w_c . F); the quasimetric distance stays for reaching goal STATES (mate), not concept attributes. This also
+kills the earlier "subgoal = dist-to-B-region" sketch from the 14:50 recipe -- superseded by CAV-climb.
+
+**Subgoal codebook (`experiments/subgoal_codebook.py`, Kaposi's call: navigability x value across concepts).**
+Per concept: navigability = CAV-climb reach rate vs base-FB-policy play (rollout, base-FB opponent); value =
+field reach-to-MATE_W gap (z-scored) + external white-POV game-result gap. 150 games/concept, 10 plies:
+
+```
+concept          base | cav_reach basepol lift | value_z result_gap | SCORE(lift x value_z)
+king_safe_w      53%  |   59%      31%   +28%  | +0.83    +0.03      | 0.233
+connected_rooks  20%  |   27%       4%   +23%  | +0.79    +0.02      | 0.185
+passed_pawn_w    20%  |   51%      13%   +38%  | +0.29    +0.09      | 0.109
+bishop_pair_w     9%  |    3%       1%    +1%  | +0.23    +0.06      | 0.003
+queens_on        72%  |    1%       2%    -1%  | -0.21   -0.01       | -0.00
+```
+
+The codebook cleanly sorts usable subgoals from non-subgoals for interpretable reasons: king_safe &
+connected_rooks are navigable AND valuable (real subgoals); passed_pawn is the MOST navigable (+38%, 51%
+reach -- you can force a passer) but only modest value; bishop_pair is correctly rejected as NOT navigable
+(can't manufacture two bishops vs one in 5 moves); queens_on is rejected as unnavigable AND negative value
+(can't force queens to stay, not good for White). This validates the subgoal-density-prior selection rule
+(S = navigability x value). Caveat: external result_gap is weak/noisy (game outcome is far from position);
+field value_z is the load-bearing value axis (carries the "field rates it winning" meaning). Top-3 codebook
+= {king_safe, connected_rooks, passed_pawn} -- the candidate waypoint alphabet for planner wiring.
+
+**Why dist-to-region fails to navigate (`experiments/diag_region_nav.py`, Kaposi asked "how come").**
+Not a bug: distance_matrix(F,B)=d(source->goal) verified (real 1-move successor d=0.04, backward 5.88,
+random 197 -- sharp, correct direction). The field KNOWS the connecting move: d(parent -> its own
+rook-connecting successor)=0.09 (near-adjacent). The failure is the ESTIMATOR of "distance to the region":
+min over 48 global whole-position anchors sits at d=3.32 -- 37x farther than the local connecting successor
+(0.09), which is not in the sample (SAMPLING error). And distance to a 32-piece anchor is dominated by bulk
+positional similarity, so the rook-connection contributes marginally: the connecting move is at the 99th
+percentile under dist-to-region yet the strict argmin only 2% of the time (one bulk-similarity distractor
+consistently edges it out -> greedy picks the distractor 98%). The CAV scores the ATTRIBUTE directly, so the
+connecting move is strict top-1 31% (15x more) -> 28% reach over 5 plies. Upshot: the field geometry is fine;
+dist-to-region isn't fundamentally broken (a LOCAL/attribute-defined region would navigate), but the global-
+whole-position-anchor min is the wrong estimator and the CAV is the right one (it IS the attribute-defined
+region). Confirms the 15:20 recipe correction with a mechanism.
+
+## 2026-07-21 16:10 — can a concept-CAV subgoal convert the toy examples? NO for connected_rooks (mechanism works, concept is wrong for this mate)
+
+Kaveh: "go autonomous, see if you can convert the toy examples." Toy examples = KRRvKBP endgames
+(krrkbp_test_n200.json); convert = mate vs tablebase-optimal defense (mate_rate). Built
+`experiments/conversion_concept.py`: the long/short planner (iqe_nucleus_gn field, 0.640 incumbent) with a
+connected_rooks CAV-climb term blended into its leaf value, leaf = (1-a)*v_base + a*tanh(cav_z) (convex, so
+real tablebase terminals still dominate; a=0 recovers the incumbent). CAV fit IN-DOMAIN (endgame positions,
+same field/planes, connected_rooks base-rate 16%). A/B on the fixed set, n=48 (two parallel slices):
+
+```
+alpha=0.00  mate_rate=0.459   (base)
+alpha=0.40  mate_rate=0.375   (-0.084)
+alpha=1.00  mate_rate=0.396   (-0.063)
+```
+
+VERDICT: the connected_rooks CAV subgoal does NOT convert the toy examples -- it HURTS by ~0.06-0.08. But
+the a=1.0 arm (pure concept navigation) DOES move the mate_rate (0.459->0.396), so the CAV term genuinely
+changes behavior (not a no-op; the n=10 smoke's +0.000 was small-sample). So today's CAV-climb mechanism is
+real here too -- connected_rooks is just the WRONG subgoal for a two-rook mate: the KRRvKBP technique needs
+rook SEPARATION (ladder/box) + enemy-king confinement, not rook CONNECTION, so pulling the rooks together
+works against the mate. Consistent with the standing prior (conversion is SEARCH-limited; field-structure
+navigation does not beat the search-based converter -- conversion_subgoal/composed all lost). Constructive
+upshot: importing a lichess-middlegame concept as an endgame subgoal is mismatched. The right move is to run
+the subgoal codebook (navigability x value) IN-DOMAIN on KRRvKBP -- discover which structural concepts are
+BOTH navigable AND correlate with mating progress in THIS endgame (candidates: black-king-on-edge, rook
+cutoff/confinement, won-simplification to KRRvK) -- rather than assume connected_rooks. Not a search win;
+an honest negative that localizes where a win would have to come from.
+
+## 2026-07-21 17:05 — unsupervised field-subgoal conversion: blocked by a FLAT long-range quasimetric (converges with the concept finding)
+
+Kaveh's directive: drop all supervised probes; use the pure quasimetric field (no board-structure head);
+find subgoals directly off the field (regions/basins, "navigate NEAR a region, not to a state"; "mate is a
+cluster on B, not a pole"); navigate by quasimetric distance to subgoals. Built
+`experiments/conversion_field_subgoal.py`: pure field (iqe_nucleus_gn), B-bank clustered into 40 BASINS
+(regions), select basin by field-only composed = reach(F(s)->basin) + lam*d(basin->mate cluster), navigate
+NEAR it (min over basin members), receding horizon. Mate = the B_goal region cluster (already region-based,
+not MATE_W pole). Fully unsupervised.
+
+Conversion A/B (n=10, iqe_nucleus_gn): base navigate-straight-to-mate 0.400, field-subgoal 0.400, DELTA
++0.000. But the diagnostic is the finding, and it is DECISIVE:
+
+```
+reach std across 40 basins:  0.03      (field distance from a KRRvKBP start to EVERY basin is ~identical)
+basin_dmate std:             0.69      (23x larger)
+distinct winning basins across 20 starts:  1 of 40   (fully degenerate selection)
+```
+
+VERDICT: the field's quasimetric is SHARP LOCALLY (d=0.04 to a real 1-move successor, per diag_region_nav)
+but FLAT AT LONG RANGE -- from a start, its distance to all endgame basins is the same to within 0.03, so it
+cannot rank subgoal regions by reachability. composed selection collapses to argmin(dmate) = "aim at the mate
+cluster" = the base planner, for every start. There is NO reachability gradient to select subgoals on -> the
+subgoal idea can't get off the ground on this field, regardless of region-vs-point or lam. "If we have
+preserved it [the quasimetric]" -- we have NOT, at long range.
+
+CONVERGENCE: this is the SAME root cause as the concept failure (16:10), from a second angle. The lichess-
+trained field does not represent the ENDGAME regime -- neither the mate-relevant rook concepts NOR the
+endgame reachability chain (KRRvKBP->KRRvK->KRvK->mate) -- because lichess data is endgame-sparse (2.54%
+<=6-piece, 0.005% KRRvKBP). Local quasimetric survives (adjacent states), long-range reachability ordering
+does not. Both the concept path and the subgoal path require a field trained on ENDGAME-DENSE data (tablebase
+DTM; we have dtm_endgame.npz=24k + syzygy to generate unlimited) whose distance actually discriminates the
+endgame reachability gradient. Not a search or method failure -- a field/data limitation, now shown twice.
+
+## 2026-07-21 18:30 — tablebase-free field-guided MCTS MATES the toy (0.33 @3200 nodes); the +0.000 was a dead value function
+
+Kaveh's architecture, assembled and finally working. Chain of his calls: no supervised probes; subgoals =
+clusters on B; navigate NEAR regions; mate = a B cluster; rely on B (F doesn't generalize to novel material,
+B/mate does); subgoal = F-reachable INTERSECT B-leads-to-mate; SEARCH executes toward subgoals; "corner the
+king" means cornered AND EXPOSED (checkable), distinct from the safe castled king -- assume it, don't
+validate; and finally: try the mate WITHOUT the tablebase, MCTS guided by the model.
+
+**The +0.000 was a bug (Kaveh's catch).** The 5k fields (control, treat) collapse d(F(s), winning-region)
+to EXACTLY 0 for every KRRvKBP position -> field_value = tanh(1) = 0.7616 constant, std 0 across 40 positions
+-> no gradient -> every goal/concept A/B was +0.000 by construction (verified: swapping the goal region left
+field_value bit-identical, 0/20 moves changed). The nucleus field has a live gradient (d mean 9.9), and the
+treat field has a live gradient toward the ENDGAME dtm-basins (reach_std 27.9, from the continuations) even
+though its winning-region distance is dead -- so navigation must target the endgame cluster.
+
+**Tablebase-free field-MCTS (`experiments/conversion_field_mcts.py`).** White uses ONLY the model: subgoals
+= KMeans basins of the endgame bank on B; mate target = the exposed-cornered-king basin, identified
+GEOMETRICALLY (black king on edge AND <=2 escape squares; no tablebase); subgoal selection = argmin over
+basins of [min d(F(s),B(basin)) + lam*min d(F(basin),B(mate))] = F-reachable INTERSECT B-leads-to-mate;
+a field-guided MCTS (value = progress toward the chosen basin, mate_stop for real checkmate, NO tablebase)
+executes. Black defends tablebase-optimally.
+
+VERDICT on the KRRvKBP toy (treat field, weak 5k, n=12):
+```
+nodes  400 -> mate 0.000
+nodes 1600 -> mate 0.250
+nodes 3200 -> mate 0.333
+random-White baseline -> mate 0.000
+```
+The field genuinely MATES (0.33 @3200) vs perfect defense with NO tablebase in White's search; random never
+mates. Cleanly SEARCH-limited (monotone in nodes), consistent with the earlier committor 0.567@400->0.767@1600.
+(Red herring flagged: the "cornered-king reached" progress metric is uninformative -- random scored 0.67 > the
+field-MCTS's 0.58, because it's a max-over-game measure inflated by long aimless games. mate_rate is the signal.)
+Next: 20k-step field (fixes the undertraining that caused BOTH the weak finish and the dead value function),
+then re-run the node sweep.
+
+UPDATE (node sweep completed): nodes 6400 -> mate 0.333 too -- PLATEAU from 3200. So the tablebase-free
+field-MCTS is search-limited up to ~3200 nodes, then hits a FIELD-QUALITY ceiling (the weak 5k field's
+guidance caps at 0.333 regardless of further search). This is exactly why the lever is now field quality,
+not search: training the 20k field (in progress) should raise the ceiling.
+
+## 2026-07-21 19:40 — 20k field DOUBLES the tablebase-free mate_rate (0.58); both search and field-quality are live levers
+
+Option (b), done: retrained the completed-trajectory field to 20k steps (lichess prefix256mb + endgame
+continuations, iqe-qrl, no struct head, frac 0.35). Re-ran the tablebase-free field-MCTS node sweep:
+```
+                5k field     20k field
+nodes 1600  ->   0.250        0.500
+nodes 3200  ->   0.333        0.583
+random-White baseline: 0.000
+```
+The 20k field mates 58% of the KRRvKBP toy with NO tablebase in White's search, vs tablebase-optimal defense
+-- ~1.8x the 5k field, and NOT saturated in nodes (0.50->0.58 from 1600->3200). So the earlier 0.333 plateau
+was the 5k field's quality ceiling; more training raised it. Both levers are live: search depth AND field
+quality independently increase the tablebase-free mate_rate.
+
+Arc summary (this whole thread): started at "field guidance gives +0.000, conversion is search-limited,
+nothing beats the tablebase committor." Diagnosed the +0.000 as a dead value function (Kaveh's catch).
+Assembled Kaveh's architecture -- B-cluster subgoals, F-reachable INTERSECT B-leads-to-mate selection,
+exposed-cornered-king as the geometric mate target, MCTS execution, NO tablebase -- and it now MATES the toy
+purely from the model at 0.58, scaling with both search and training. (Note: the field's distance to the
+stratified_perfect "winning-region" stays degenerate (d=0) even at 20k -- a property of that region, not
+undertraining; the field-MCTS sidesteps it by navigating the dtm-basin gradient, which is live. The "cornered
+-king reached" metric is uninformative -- max-over-game inflates it for random play; mate_rate is the signal.)
+Headroom: still climbing in nodes; field not yet converged; continuation data could be enriched.

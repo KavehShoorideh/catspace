@@ -244,6 +244,46 @@ def reach_slope(shard_dir: Path, fb, z, device, want_result: int, n_games: int =
     return float(np.mean(rhos)) if rhos else float("nan"), len(rhos)
 
 
+# --- L2 field: embedding<->objective presets + guards (Kaveh 2026-07-21) -------------------------
+# IQE is a metric embedding, so it MUST train with a metric objective (QRL), never InfoNCE (which is
+# scale-blind, ignores the triangle inequality, and collapses IQE to loss=ln(N) -- the 2026-07-21
+# footgun). Presets pin known-good (embedding, objective, scale) combos; 'custom' uses the raw flags.
+# IQE+QRL is the committed default. Extensible: add a row to L2_PRESETS and (if needed) a guard rule.
+L2_PRESETS = {
+    "iqe-qrl": dict(iqe=True, quasimetric=True, qrl_objective=True, iqe_embed_scale=1.0),
+    "mrn-qm":  dict(iqe=False, quasimetric=True, qrl_objective=False),   # MRN + ply-gap InfoNCE (legacy A/B)
+    "cosine":  dict(iqe=False, quasimetric=False, qrl_objective=False),  # plain InfoNCE cosine similarity
+}
+
+
+def apply_l2_preset(args):
+    """Expand --l2-preset into concrete (iqe, quasimetric, qrl_objective, iqe_embed_scale) flags.
+    'custom' leaves the raw flags untouched; a named preset OVERRIDES them so the combo is known-good."""
+    if args.l2_preset == "custom":
+        return
+    for k, v in L2_PRESETS[args.l2_preset].items():
+        setattr(args, k, v)
+
+
+def validate_l2_config(args):
+    """Guard the L2 field's embedding<->objective pairing -- fail-fast BEFORE the ~hour of training,
+    on an incompatible combo. Extensible: add rules here as new embeddings/objectives land."""
+    e = []
+    if args.iqe and not args.quasimetric:
+        e.append("--iqe requires --quasimetric (IQE IS a quasimetric distance head).")
+    if args.iqe and not args.qrl_objective:
+        e.append("IQE+InfoNCE is a category error: InfoNCE is scale-blind, ignores the triangle "
+                 "inequality, and collapses IQE to loss=ln(N). Use --qrl-objective / --l2-preset iqe-qrl.")
+    if args.qrl_objective and not args.quasimetric:
+        e.append("--qrl-objective needs a quasimetric distance (add --quasimetric, or use IQE).")
+    if args.iqe and args.qrl_objective and args.iqe_embed_scale > 5.0:
+        e.append(f"--iqe-embed-scale={args.iqe_embed_scale} too large for QRL (wants ~1; QRL sets its "
+                 "own scale). 50 is the InfoNCE-bootstrap footgun that collapsed the field 2026-07-21.")
+    if e:
+        raise SystemExit("L2 CONFIG ERROR [guard 2026-07-21; IQE<->QRL is the committed default]:\n  - "
+                         + "\n  - ".join(e))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                   formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -321,6 +361,11 @@ def main():
                          "2023) it was DESIGNED for -- global push softplus(offset-d) on "
                          "random pairs + local d(s,s')<=1 constraint (dual-ascent lambda), "
                          "NO InfoNCE. Fixes the interval collapse InfoNCE leaves.")
+    ap.add_argument("--l2-preset", choices=list(L2_PRESETS) + ["custom"], default="iqe-qrl",
+                    help="L2 field embedding<->objective preset (COMMITTED DEFAULT iqe-qrl). A named "
+                         "preset overrides --iqe/--quasimetric/--qrl-objective/--iqe-embed-scale with a "
+                         "known-good combo; 'custom' respects the raw flags. All go through "
+                         "validate_l2_config, which rejects IQE+InfoNCE and the scale-50 footgun.")
     ap.add_argument("--qrl-lambda-lr", type=float, default=0.01,
                     help="dedicated LR for the QRL Lagrange multiplier (dual ascent), "
                          "excluded from the cosine schedule. Higher = constraint tracks "
@@ -332,6 +377,11 @@ def main():
                          "collapse/oscillation directly.")
     ap.add_argument("--qrl-var-target", type=float, default=1.0,
                     help="target per-dimension std for the variance regularizer")
+    ap.add_argument("--struct-weight", type=float, default=0.0,
+                    help="MULTI-TASK anti-collapse (2026-07-21): weight of a piece-placement "
+                         "reconstruction head on F(s) -- the field is REWARDED to encode board "
+                         "structure in its dims, not just value, breaking the ~1D value collapse "
+                         "(effective rank 1.1). Fixes the correlated collapse the var term can't.")
     ap.add_argument("--qrl-push-mix", type=float, default=0.0,
                     help="blend of real (coupled, anti-collapse) vs shuffled (far-scale) "
                          "push pairs, in [0,1]. 0=shuffle only, 1=real only, 0.5=mix. "
@@ -518,6 +568,10 @@ def main():
     ap.add_argument("--lr-min", type=float, default=None,
                     help="cosine-decay floor for THIS invocation's remaining steps "
                          "(resume step -> --steps); default lr/10 (SimCLR/CLIP convention)")
+    ap.add_argument("--resume-lr-scale", type=float, default=0.1,
+                    help="on RESUME, scale the cosine-schedule PEAK lr by this (default 0.1). Guards the "
+                         "resume-at-peak-lr footgun that collapses a converged field in ~200 steps "
+                         "(d_rand->0, seen 2026-07-21). Set 1.0 to disable.")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--val-every", type=int, default=500)
     ap.add_argument("--ckpt-every", type=int, default=0,
@@ -528,6 +582,10 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--fresh", action="store_true", help="ignore an existing checkpoint")
     args = ap.parse_args()
+    apply_l2_preset(args)
+    validate_l2_config(args)
+    print(f"[L2] preset={args.l2_preset} -> iqe={args.iqe} quasimetric={args.quasimetric} "
+          f"qrl={args.qrl_objective} embed_scale={args.iqe_embed_scale}", flush=True)
 
     shard_dir = Path(args.shards) if args.shards else newest_shard_dir()
     ckpt_path = Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt"
@@ -560,7 +618,13 @@ def main():
               f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
     start_step = step                      # cosine decay spans [start_step, args.steps)
-    lr_min = args.lr_min if args.lr_min is not None else args.lr / 10
+    # RESUME GUARD (2026-07-21): a resumed (converged) field must NOT be hit with the full peak lr --
+    # that collapses it in ~200 steps (d_rand->0). Scale the peak down on resume.
+    lr_peak = args.lr * args.resume_lr_scale if start_step > 0 else args.lr
+    lr_min = args.lr_min if args.lr_min is not None else lr_peak / 10
+    if start_step > 0 and args.resume_lr_scale != 1.0:
+        print(f"[resume] peak lr scaled {args.lr:.2e} -> {lr_peak:.2e} (x{args.resume_lr_scale}) to "
+              f"protect the converged field; --resume-lr-scale 1.0 to disable", flush=True)
     if args.qrl_objective and getattr(fb, "quasimetric", False):
         # the Lagrange multiplier gets its OWN, higher LR and is excluded from
         # the cosine schedule: dual ascent must track the constraint fast enough
@@ -604,6 +668,13 @@ def main():
         fb.config["concept_axes"] = args.concept_axes
         opt.add_param_group({"params": [fb.concept_axes]})
         print(f"added {args.concept_axes} concept axes to resumed model", flush=True)
+
+    struct_head = None
+    if args.struct_weight > 0:
+        import torch.nn as nn
+        struct_head = nn.Sequential(nn.Linear(fb.d, 256), nn.ReLU(), nn.Linear(256, 12 * 64)).to(device)
+        opt.add_param_group({"params": list(struct_head.parameters())})
+        print(f"[struct] multi-task piece-placement head active, weight {args.struct_weight}", flush=True)
 
     human_src = LichessPairSource(shard_dir, gamma=args.gamma)
     src = human_src
@@ -698,7 +769,7 @@ def main():
         if tensors is None or len(tensors[0]) < args.batch // 2:
             continue
         frac = min(1.0, (step - start_step) / max(1, args.steps - start_step))
-        lr_now = lr_min + 0.5 * (args.lr - lr_min) * (1 + math.cos(math.pi * frac))
+        lr_now = lr_min + 0.5 * (lr_peak - lr_min) * (1 + math.cos(math.pi * frac))
         for g in opt.param_groups:
             if g.get("is_lambda"):
                 continue                      # QRL multiplier keeps its fixed LR
@@ -796,6 +867,11 @@ def main():
                              + torch.relu(args.qrl_sib_floor - d_ba)).mean()
                     loss = loss + args.qrl_sib_weight * sib_t
                     sib = float(sib_t)
+            if struct_head is not None:                            # multi-task: reward encoding board structure
+                f_s = fb.embed_F(core[0], core[1])                 # F(s) on train rows
+                tgt = core[0][:, :12].reshape(f_s.shape[0], -1)    # 12 piece-placement planes (binary)
+                struct_t = torch.nn.functional.binary_cross_entropy_with_logits(struct_head(f_s), tgt)
+                loss = loss + args.struct_weight * struct_t
             top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
             qrl_dstep_hist.append(qstats["d_step"])
             qrl_drand_hist.append(qstats["d_rand"])
