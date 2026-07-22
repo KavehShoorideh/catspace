@@ -1,0 +1,5 @@
+outs:
+- md5: fb0dfee728789ed1178c19ca9e5bb7d4
+  size: 38580828
+  hash: md5
+  path: geom_pool.npz

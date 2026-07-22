@@ -6284,3 +6284,420 @@ stratified_perfect "winning-region" stays degenerate (d=0) even at 20k -- a prop
 undertraining; the field-MCTS sidesteps it by navigating the dtm-basin gradient, which is live. The "cornered
 -king reached" metric is uninformative -- max-over-game inflates it for random play; mate_rate is the signal.)
 Headroom: still climbing in nodes; field not yet converged; continuation data could be enriched.
+
+## 2026-07-21 20:30 — RETRACTION: the "field-guided MCTS mates the toy" milestone was PURE SEARCH; field guidance HURTS
+
+Caught by the viz (viz_fb) + a value-liveness check (dbg): the field-MCTS leaf value on treat_20k is a DEAD
+constant (std 0.0000 across a position's children), so its 0.58 mate_rate came from MCTS+mate_stop (pure
+search), NOT the field. treat_5k has a live gradient (std 3.6); nucleus std 0.27. Clean A/B on the SAME
+treat_5k field (`--pure-search` = constant leaf value), n=16:
+```
+                FIELD-GUIDED    PURE-SEARCH
+nodes 1600:     0.250           0.438
+nodes 3200:     0.375           0.562        runtime: 148-242s vs 4-6s
+```
+Pure search BEATS field-guided at every node count and is ~40x faster. So:
+- RETRACT the 18:30 ("field-MCTS mates 0.33") and 19:40 ("20k doubles to 0.58, field-quality lever") entries.
+  Both were pure MCTS+mate_stop search. 18:30's 0.33 was a live-but-HARMFUL field dragging search down;
+  19:40's 0.58 was the field collapsing to constant -> pure search unmasked. "Field quality raised the
+  ceiling" was actually "training 20k COLLAPSED the quasimetric (value->constant)" -- a representational-
+  collapse failure (cf. check_representational_collapse), NOT an improvement.
+- What actually mates KRRvKBP: MCTS + mate_stop search alone (no field, no tablebase), 0.44@1600 -> 0.56@3200,
+  search-limited. The field's mushy distance MISDIRECTS it (0.25/0.38) and costs 40x compute.
+- This is the SAME standing finding, now airtight: on KRRvKBP conversion, field navigation does not beat
+  search; here it is strictly worse. KRRvKBP + mate_stop is SEARCH-SOLVABLE, so it does NOT test whether the
+  field adds planning value -- the search shortcut hides it. The field's value (if any) must be tested where
+  search alone fails: deeper mates / no mate_stop / longer-horizon or larger domains (the real transfer target).
+Process note: I over-claimed the milestone across several turns; the value-liveness check should have been the
+FIRST thing run on any "field-guided" result. Added to the checklist mentally.
+
+## 2026-07-21 22:30 — DISTILLATION WORKS: the field CAN learn an unseen regime from targets (6-piece DTM 0.19->0.53)
+
+The extrapolation question (Kaveh): can a field extend to data it never saw? Empirically NO for target-FREE
+extrapolation (nucleus DTM alignment by piece count: 3p 0.70, 4p 0.52 trained -> 6p 0.21 extrapolation; and
+proximity to the seen manifold does NOT predict 6-piece accuracy -- corr(NN-dist, error)=+0.016, flat 0.18
+across all embedding-distance quartiles -> the failure is SYSTEMATIC/regime-level, not graded interpolation,
+so an embedding-kNN reliability gate can't work). BUT with TARGETS (Kaveh: "distillation is the way"),
+`experiments/distill_finetune.py` regresses d(F(s),MATE_W)->DTM on the endgame set; spearman by piece count
+before->after:
+```
+  3-piece: +0.70 -> +0.88   4-piece: +0.50 -> +0.71   6-piece: +0.19 -> +0.53  (extrapolation -> learned)
+```
+So the architecture CAN hold 6-piece reachability; extrapolation failed only for lack of targets. Distillation
+is the mechanism to grow support outward (validated within tablebase range with exact DTM; the search-backed
+teacher MCTS+field=0.27 vs raw 0.19, `distill_validate.py`, is the vehicle to go PAST the tablebase). Caveat:
+6-piece plateaus 0.53 << 3-piece 0.88 -- the 193-ply horizon is intrinsically lossier (compounding error).
+Literature (search 2026-07-21): consensus is quasimetric "stitching" = composition WITHIN transition support,
+not true extrapolation; offline-RL answer to OOD is CONSERVATISM/OOD-detection (validates the gate) + FACTORED
+/goal-disentangled reps for unseen-goal generalization (the invariant) + stitch/expert-iteration to grow
+support (the distillation). No method truly extrapolates a reachability metric to an unobserved regime.
+Next: does the distilled field (0.53) now beat uniform as an MCTS move-prior?
+
+## 2026-07-21 23:30 — FIRST POSITIVE: the field is an efficient COARSE NAVIGATOR at low compute (not a move-prior)
+
+Reframe (Kaveh): near mate, pure MCTS dominates; the field's real job is COARSE long-range navigation -- from
+far away where pure search is BLIND (mate_stop can't see the goal), does the field reach the near-mate region
+faster/fewer evals? `experiments/reach_efficiency.py`, 6-piece KRRvKBP starts (DTM>=30), White=MCTS,
+Black=tablebase-optimal, reach target <=5 pieces (where search+tablebase take over), field=distilled nucleus
+value -d(F,MATE_W) vs pure-search (constant value), n=20:
+```
+budget | FIELD reach/plies/evals | PURE reach/plies/evals
+  100  |  85% 4.5p  453 ev       | 75% 5.1p 513 ev
+  400  | 100% 4.6p 1840 ev       | 70% 5.0p 2000 ev
+ 1600  |  80% 5.6p 9000 ev       | 80% 4.8p 7700 ev
+```
+At LOW/MODERATE budget the field reaches near-mate more reliably AND with fewer node-evals (400n: 100% vs 70%);
+at high budget pure search catches up (both 80%) and the edge vanishes. This is the FIRST clean win for the
+field, and it resolves the whole night: the field is NOT a fine move-prior (at-chance, needs +-1-ply resolution
+it can't give even after distillation raised position-DTM to 0.53) -- it is a COARSE NAVIGATOR whose value is
+getting to the endgame efficiently when compute is limited. Division of labor confirmed: field = coarse long-
+range gradient (compute-efficient), search = fine near-mate execution. Caveat: n=20 (reach +-10%); firming with
+n=40 finer low-budget sweep. Note this is ALSO where distillation matters (the field must be non-collapsed to
+give the gradient) and where the interpretability/efficiency story lives.
+
+## 2026-07-21 24:00 — HEALTH CHECK: nucleus is NOT a healthy quasimetric -- it's a collapsed ~1-D distance-to-mate predictor
+
+Kaveh asked to verify nucleus didn't collapse. Verdict (tmp/health.py, <=5-piece positions):
+```
+nucleus:           params mean|w| 0.016, 0.38% near-zero, max 2.93  -> weights NOT vanished
+                   d_step(1-ply successor) 8.52  vs  d_rand 8.49  -> ratio 1.0x  (BROKEN quasimetric)
+                   F eff-rank 6.0/512, F std 1.09
+nucleus_distilled: d_step 0.96 vs d_rand 0.93 -> 1.0x  |  eff-rank 5.7/512, F std 0.27
+```
+Params fine, but (1) d_step ~= d_rand: the distance to the ACTUAL 1-ply successor equals the distance to a
+RANDOM board -- the field does not encode local reachability; (2) eff-rank ~6/512 -- the embedding is squished
+into ~6 dims (substantial collapse, not rank-1 dead). The squeeze is why d_step~=d_rand (all pairs ~equidistant).
+Only the ONE direction the DTM-anchoring/distillation forced survives = distance-to-mate (spearman 0.44->0.53).
+So nucleus is a low-D distance-to-mate PREDICTOR, not a reachability quasimetric. Implications: (a) the coarse-
+nav win STANDS (it uses only the surviving mate-gradient); (b) this collapse is why it fails as a fine move-prior
+(no local structure to resolve +-1-ply); (c) it RAISES the stakes on the fair test -- if the field is ~1-D DTM,
+a plain CNN DTM-regressor should match its coarse-nav, meaning the quasimetric adds nothing over "a DTM value".
+B-viz (viz_b.py): near-mate-cluster spread/overall = 1.02 (>1) -- mate is NOT a tighter cluster on B, consistent.
+
+## 2026-07-22 — decoupled field validated (DTM term was the rank-crusher); ladder mate: the constraint concept nearly matches the oracle
+
+**Decoupled architecture (Kaveh: "Separate DTM head, don't overload d").** Retrained the geometry
+field CLEAN (`train_geometry_l1.py --w-dtm 0`, otherwise the settled recipe: w-pos 2, w-hard 1,
+hard-margin 15, w-repel 4, floors 30/12, best-play edges; 2500 steps, 47 min MPS) ->
+`iqe_geom_field.pt`. New acceptance script `experiments/validate_decoupled.py` (A: quasimetric
+health; B: d-DTM decoupling; C: DTM-head bake-off on the frozen trunk). Verdicts (n=4000):
+
+    VERDICT DECOUPLE.A field=iqe_geom_field d=512  d_step 1.76  d_rand 58.14 (unreach 58.25)  ratio 33.0x  asym irr 5.56 / rev 9.13 (sep 0.61x)  eff-rank F 15.1 B 17.5 /512
+    VERDICT DECOUPLE.B  spearman(d(F,MATE_W), DTM) by piece -- LOW = decoupled: 3p -0.100  4p -0.082  6p -0.041
+    VERDICT DECOUPLE.C  DTM-head-on-trunk spearman: 3p +0.721  4p +0.520  6p +0.272  (CNN 0.89/0.61/0.355 - distilled .88/.71/.53)
+
+Findings: (1) **the DTM term was the rank-crusher** — same repulsion/steps, dropping L_dtm alone
+took eff-rank 1.3-5.5 -> 15.1 and ratio 8.2x -> 33.0x (the scalar regression was compressing the
+representation onto one axis; "cure is repulsion" needs this amendment). (2) Decoupling holds
+(B ~ -0.1). (3) The frozen geometry trunk is the WORST DTM feature source (0.27@6p) — the
+**distilled field stays the DTM/value head**. (4) REGRESSION: asym inverted (0.61x, was 2.03x on
+full2) — repel-floor-all inflates reversible reverses (turn parity: never 1-ply edges, so they
+look like random pairs), L_hard unconverged at 2500 steps. Fix candidates: exempt known reverse
+pairs from the all-pairs floor; longer training. Not applied yet. Validator bug fixed en route:
+full n x n IQE distance_matrix at n=4000 OOM-killed silently; chunked row-aligned d_pairs().
+
+**Two-rook ladder mate (Kaveh: "if you can get the ladder mate working... it should be trivial").**
+New `experiments/ladder_mate.py` (KRRvK, central black king, tablebase-optimal defense) +
+`experiments/engine_search_cost.py` (UCI engines, real node counts). The trivial answer: KRRvK is
+solved, tablebase play converts 100% with ZERO search. The interesting ladder (all n=20, seed 2):
+
+    VERDICT LADDER_MATE value=none nodes= 1600  mate_rate=0.19  (pure search shuffles into draws)
+    VERDICT LADDER_MATE value=dtm  nodes=  400  mate_rate=0.31  (learned DTM CNN too coarse)
+    VERDICT LADDER_MATE value=constraint nodes=400  mate_rate=0.75  search_nodes_to_mate median=1,518
+    VERDICT LADDER_MATE value=tb   nodes=  400  mate_rate=0.85  search_nodes_to_mate median=1,201
+    VERDICT ENGINE_SEARCH engine=Stockfish set=ladder depth=18  mate_rate=1.00  nodes_to_mate median=54,430
+
+**The cornering concept (black king escape-volume, exact flood-fill) as the search value recovers
+most of the perfect oracle's guidance** (0.75 vs 0.85 @400 nodes; ~1.5k total nodes to mate) — a
+dense signal (every move changes it) where DTM is flat/unlearnable far from mate. Kaveh's framing
+confirmed: constraining the king IS approaching mate, and it is the eval that buys cheap search
+(Stockfish needs ~54k alpha-beta nodes; units differ, qualitative only). Residual 0.20-0.25 draw
+mass: the constraint gradient vanishes once the box is minimal (waiting moves tie) — exactly the
+execute-phase handoff seam. Also caught: `tb_best_move` minimizes DTZ, not DTM, so it HANGS A ROOK
+(zeroing looks cheap) — mates in 23-25 plies vs Stockfish's clean 9-11. A perfect oracle with the
+wrong metric plays badly: the concepts (constraint, material safety) are what make "knows the
+result" into "plays it well" — the project thesis in one bug.
+
+Open fork (Kaveh's "how do I find goal-ward positions and get there"): probe whether the B-field
+already encodes the constrained-king region (field-native recognition) vs wire constraint+safety
+into the execute phase first. Asked; awaiting his call.
+
+## 2026-07-22 (later) — concept rules sharpened; B mate-cluster viz: patterns are NOT in the field yet
+
+**Rule (Kaveh):** exact concept computations (king escape-volume flood-fill) are DIAGNOSTIC ONLY —
+never a play-time value. Recorded in DECISIONS.md sec 4. The "wire the concept into the execute
+phase" option is dead; the concept must be learned or it doesn't exist.
+
+**"I wanna see if king rook mates cluster together" -> `experiments/viz_b_mate_clusters.py`**
+(1,074 real mates from dtm_endgame mate-in-1s across 5 materials, labeled by mate GEOMETRY:
+ladder = second rook holds the inner line, 731; ksupport = white king in near-opposition, 282;
+plus 37 tb-optimal approach trajectories; B-embedded, t-SNE, PNG delivered):
+
+    VERDICT B_MATE_CLUSTERS field=iqe_geom_field  cohesion: ladder 1.06 ksupport 1.00  sil pattern +0.01 vs material -0.07
+      [what-B-encodes] B-dist vs: black-king dist +0.18  white-king dist +0.02  diff-material +0.14  diff-pattern +0.14
+    VERDICT B_MATE_CLUSTERS field=nucleus_distilled  cohesion: ladder 1.02 ksupport 0.99  sil pattern -0.00 vs material -0.04
+      [what-B-encodes] black-king dist +0.07  white-king dist -0.02  diff-material +0.11  diff-pattern +0.01
+
+**Findings:** (1) mate PATTERNS do not cluster — same-pattern cross-material pairs are no closer
+than random mate pairs (cohesion ~1), silhouettes ~0, in BOTH fields. (2) B's micro-structure =
+coarse black-king location + material; WHITE-king position carries ~nothing (+0.02), though king
+support is definitional for the KRvK pattern. (3) Approach paths are chaotic long jumps in B, not
+a funnel (t-SNE illustrative; consistent with cohesion). (4) **The stored MATE_W goal vector sits
+OFF the mate cloud in the clean geometry field** — it is inherited stale from pre-decoupling and
+nothing in the recipe trains it; the longshort planner navigates toward it. Fix: goal = B-bank of
+actual mate exemplars, not zW. Converges with the day's other results: the field encodes
+material-reachability + coarse king location, and NO concepts (not in d, not in B). Concepts must
+enter via training signal; next round = make B pattern/outcome-aware and re-run this figure as the
+acceptance test (cohesion < 1, arrows funnel).
+
+## 2026-07-22 (later still) — human-mate catalog: lichess-B DOES cluster rook-pattern mates; direction level needs a sharper field
+
+**Kaveh's redirect:** tb (DTZ) play isn't clean, Stockfish is cleaner, humans are the natural mate
+source ("they get mated easily") -> catalog mate directions from the LICHESS-trained B field.
+`experiments/catalog_mate_directions.py`: 1,500 real human mates (Black mated, median elo 1510)
+from the 256mb shard prefix, pattern-classified by rules (qkiss 575, ladder 323, rook-other 173,
+queen-other 138, ksupport 89, backrank 62, ...), embedded with lichess_gn_iqeqrl_sf (d=64).
+
+    VERDICT MATE_CLUSTERS_LICHESS  silhouette(pattern)=-0.32  cohesion: ksupport 0.31  backrank 0.66  ladder 0.70  rook-other 0.72  queen-other 1.02  qkiss 1.07 ...
+    VERDICT MATE_DIRECTIONS_LICHESS.MASTER  median cos(DeltaB, master)= +0.99
+    VERDICT MATE_DIRECTIONS_LICHESS.RESIDUAL  cosine within-pattern +0.08 vs across +0.36
+
+**Findings:** (1) **rook-family mate patterns CLUSTER in the human-data field** — ksupport 0.31,
+backrank 0.66, ladder 0.70 (first sub-1 cohesions anywhere; the toy-trained fields gave ~1.0).
+Kaveh's "king rook mates cluster together": YES in lichess-B, NO in toy fields — human data
+taught the pattern. Queen mates stay diffuse (they happen everywhere; face-valid). (2) One
+MASTER "toward mate" direction carries ~everything (cos +0.99); after projecting it out the
+residuals are noise -> per-pattern APPROACH DIRECTIONS are not resolvable at d=64. The
+direction-catalog k-means is qkiss-base-rate everywhere = degenerate at level 2.
+
+**Decision (Kaveh): "get more data and sharpen the field."** Bundle (one run, recorded):
+d 64->512, arch 64ch/6bl -> 128ch/10bl + spectral-norm + omega-free (the DECISIONS sec 1 spec),
+data prefix1gb -> prefix4gb, selfplay shards -> sf_cont_endgame_v1 (tb-completed), dtm-hinge
+STAYS OFF (sec 7: DTM in d crushes rank). QRL repulsion 8/30 unchanged. Smoke 500 steps launched
+(lichess_sharp_smoke) to measure it/s + collapse gates before sizing the full run. Acceptance
+test for the full field = re-run catalog_mate_directions.py: want cohesions < today's, and
+RESIDUAL within >> across (pattern-specific directions resolvable).
+
+## 2026-07-22 (night) — RETRACTION: lichess mate "pattern clusters" were phase shells; B-dist = piece count
+
+Kaveh asked why NON-similar mates clump together in the t-SNE. `experiments/explain_mate_clusters.py`
+decomposed the lichess-B pairwise distance over the same 1,500 mates:
+
+    VERDICT EXPLAIN_B_DIST  spearman(B-dist, factor): piece-count |diff| +0.72  pawn-count |diff| +0.56  black-king +0.05  white-king +0.10  diff-material +0.03  diff-pattern +0.01  elo +0.00
+    VERDICT EXPLAIN_COHESION  ksupport raw 0.30 -> in-stratum 0.86 | backrank 0.64 -> 0.80 | ladder 0.70 -> 1.00 | rook-other 0.71 -> 0.94
+
+**RETRACTED:** the earlier "rook-family mate patterns cluster in lichess-B" (ksupport 0.31 etc.).
+Controlled for piece count, ladder/rook-other vanish entirely; ksupport 0.86 and backrank 0.80 are
+weak traces only. The clumps in the figure are PIECE-COUNT SHELLS (phase), not mate patterns —
+mixed colors inside clumps are exactly what phase-clustering predicts. Unified picture: every
+field to date (toy geometry, distilled, lichess d=64) is a material/phase detector; concepts and
+mate patterns are in NONE of them.
+
+**Acceptance test for lichess_sharp (30k, running) is now the IN-STRATUM cohesion** (this script),
+not raw cohesion. Expectation: the sharpen bundle adds capacity+data, not a pattern-aware
+objective — if in-stratum cohesion does not move, the QRL objective is the binding constraint and
+the next lever is concept/outcome-aware training, not scale.
+
+## 2026-07-23 — matched-anchor contrast data built; the adversarial veto measured: points denied 87%, regions forceable 99%
+
+**Contrast tuples (Kaveh: random-vs-directed play from the same anchor separates mate-distance
+from piece count).** `experiments/gen_contrast_mate_tuples.py`: anchor (won, DTM>=8) -> POS =
+Stockfish j=6 plies (verified DTM decreased via tb rollout) + its own mate exemplar; NEG = random
+legal play from the SAME anchor, kept only if it neither mated, nor won material, nor got closer
+(rules+tb only). Same anchor -> material/phase/kings matched by construction; only structure can
+separate the branches. VERDICT: made=2000 tried=4083 states=28000. Trainer term added to
+train_geometry_l1.py (--contrast-npz, hinge d(F(pos_t),B(M)) + t*margin < d(F(neg_t),B(M)),
+depth-matched pairs). Toy run queued behind lichess_sharp (MPS).
+
+**Adversarial veto (Kaveh: cooperative vs human/adversarial reachability; the gap = bad-or-denied
+positions; blunders = veto lapses).** Identification: HJ-reachability's best/worst-case
+disturbance distinction, tablebase-exact. `experiments/measure_adversarial_veto.py`, 20 won
+anchors, j=4, 1200 dedup'd random-walk targets, exact forceability = DFS over White's choices
+with Black fixed tb-optimal:
+
+    VERDICT ADVERSARIAL_VETO j=4 anchors=20 targets=1200  coop-reachable: won 100%  |  of WON targets: EXACT-forceable 13% DENIED 87% NEIGHBORHOOD-forceable 99%  |  of NON-won: forceable 0%
+
+**The veto lives at the POINT level and dissolves at the REGION level** (region = same material,
+bk within 1, wk within 2). Consequences, now measured rather than intuited: (1) point-goals are
+un-plannable against an adversary (13% ceiling) -- goal-as-region is REQUIRED, and Kaveh's
+index-with-tolerance proposal is exactly right; (2) S = forceability x reachability x density
+must use REGION-forceability; (3) the 87% denied-won mass is reachable only via veto lapses =
+why blunder data is sparse and precious. The neighborhood_of predicate (material + king zones)
+is the working region granularity for the retrieval planner's subgoals.
+
+## 2026-07-23 — TRAINING_STANDARDS.md established (Kaveh's 4 rules + the earned scars); MLflow wired
+
+Kaveh set the standing do's/don'ts for all trainings: (1) checkpoint ladders, (2) one RICHEST
+input format everywhere, (3) no overwrites + metadata-in-checkpoint, (4) existing tooling
+(MLflow) not hand-rolled. Canonical: TRAINING_STANDARDS.md (rules 5-13 fold in the standing
+scar-rules). Implemented + verified same session: step-suffixed ladders in train_geometry_l1
+(was overwriting!) and train_dtm_cnn; full args+resume-source embedded in every ckpt payload;
+catspace/tracking.py (MLflow sqlite backend, no-fail wrapper) wired into all three trainers,
+end-to-end verified (params+metrics+tags in mlflow.db).
+
+**Deliberate reversal:** the BOARD_ONLY (18,19) zeroing convention is DROPPED going forward —
+all 20 planes (halfmove clock + repetition are real state) in every flavor, per the
+richest-input rule. Scoped exception: the queued toy CONTRAST run keeps its base field's zeroed
+convention (attributability of the contrast term); the next full geometry retrain adopts full
+planes. Checkpoints self-describe their convention via stored args.
+
+## 2026-07-23 — refactor: layered engine package, canonical utility homes, MLflow registry
+
+Per Kaveh ("modular with nice interfaces... engine layered... try different models in each layer;
+homeless code -> dedicated folder; port model/data info into the framework"): built
+`catspace/engine/` (Protocols + FieldModel/values/priors/MCTSSearch/LayeredEngine -- subgoal enters
+the PRIOR, value stays GLOBAL, per DECISIONS sec 8), moved tablebase utils to `catspace/tb.py` and
+concept/instrument diagnostics to `catspace/diagnostics.py` (old experiment import paths re-export
+-- nothing broke: 268/268 tests pass, ladder_mate smoke runs through the shims), created
+`catspace/incubator/`, and registered 13 incumbent models/datasets into the MLflow "registry"
+experiment. FieldModel resolves each checkpoint's input-plane convention from its stored args
+(the TRAINING_STANDARDS rule-2 bridge for legacy zeroed-plane checkpoints). Next fold-ins:
+compute_layer/catspace_engine + catspace/planner into the engine package.
+
+## 2026-07-23 — new inquiry opened: TACTICS (INQUIRY_TACTICS.md)
+
+Kaveh's definition ("a tactic is an opportunity outside of our plan afforded by a mistake by our
+opponent") formalized against the literature and our own measurements. Field definitions converge
+on smooth-vs-forced DISAGREEMENT (quiescence, depth instability, only-move gap, Leela WDL
+sharpness, lichess puzzle mining = mistake-created + only-move). Map-native form: **tactic = a
+veto lapse cashed by force** (the 2026-07-23 veto measurement: mistakes flip regions from denied
+to forceable), sharpness = |field reading - forced-search reading|, predicted B-signature =
+winning approaches FUNNEL into tactical regions while general approaches stay diffuse. Three-set
+contrast design (general / human / winning predecessors of a strike's B-neighborhood) with the
+opportunity-ratio / approach-concentration / conversion-gap / temporal-jump readouts; taxonomy
+sound-converted / sound-missed / pseudo. Experiment ladder E1-E5; E1 (exact veto-lapse tactic
+events on toy trajectories) runnable with existing code (forceable() + rollout_dtm); E2 imports
+the lichess puzzle DB (HuggingFace Lichess/chess-puzzles) -- import don't re-mine. Engine-derived
+puzzle labels = evaluation/probe use, not field-training signal (audit stance noted).
+
+## 2026-07-23 — inquiry opened: MULTICHANNEL QUASIMETRIC (INQUIRY_MULTICHANNEL_FIELD.md)
+
+Kaveh: index human positions, branch each anchor under multiple PLAY REGIMES (random / optimal
+/ graded-strength / human), tag states with the generating regime, learn a quasimetric whose
+steps carry distance AND per-regime probability. Formal answer: YES — regime tags are new OMEGA
+values (the conditioning seam was built for "who generates the dynamics"; Elo bins already do
+this for human channels); -log p adds like plies so w = lambda*1 + (1-lambda)*(-log p) closes
+into a true quasimetric with exp(-d) = discounted reach probability (C-learning equivalence);
+my-style channels combine via union-graph min, opponent channels stay vector-valued (GPI-style
+per-query combination). Payoff: forceability, the veto gap, the tactic alarm, human familiarity,
+and blunder-affordance-by-strength all become CHANNEL-DIFFERENCE QUERIES on one object. Data
+generation = the unification of this week's bespoke datasets (contrast tuples, veto sets,
+coop-vs-human fields) into one anchors-x-regimes tagged generator; machinery exists (index,
+uci.py graded engines, tb, branch generator). v1: 4 channels on the d=512 field; first
+instrument = does d_optimal-defense - d_random track tb-exact deniedness. Awaiting go.
+
+## 2026-07-23 — flavored-energy opponent model framed (INQUIRY_MULTICHANNEL_FIELD.md sec 6)
+
+Kaveh extended the energy formulation with Boltzmann/barrier physics: move difficulty = potential
+barrier, Elo = inverse temperature, flavors = multidimensional energy (SF crosses tactical
+barriers, Leela strategic). Training framed as multidimensional IRT: pi_omega(m|x) =
+softmax(-<beta(omega), E(m,x)>), E = K move-map channels off a policy-style head, beta = cohort
+embeddings (Elo bins + engines); masked CE on (position, move, Elo) triples (12M+ rows on hand);
+nonneg+scale constraints for identifiability; K=1 (Regan-like, eval-free) baseline -> K=2,3 by
+held-out LL; Maia-style per-bin ceiling; EXTERNAL acceptance = monotone map onto lichess puzzle
+ratings (empirical difficulty, no training contact). Eval-free by construction (audit-clean).
+Feeds: multichannel rho_c edges, the watchlist's "will they see it", tilt as online beta update.
+
+## 2026-07-23 — opponent-model architecture DECIDED: candidate-set self-attention (option A)
+
+Kaveh's question ("likelihood of seeing a move depends on what else is going on") exposed that
+independent per-move scores + shared softmax only give competition-through-the-normalizer, not
+score-level interaction. Options discussed: (A) self-attention over the legal-move token set
+(set-contextual scores; distraction/threat-load/Einstellung learnable), (B) seeing x choosing
+two-stage factorization (identifiable ONLY via the engine channels -- engines see everything,
+pinning the value component), (C) history/plan-state conditioning. DECIDED: A for v1,
+simplicity first, iterate later; B and C deferred with their identification story recorded.
+
+## 2026-07-23 — BUILD: everything coded; multichannel relaunch from the 20k checkpoint
+
+Kaveh: "code up what we talked about, all of it; once the current run passes 20k and checkpoints,
+kill it, and run anew with the modifications." Done:
+
+1. **Multichannel field (INQUIRY_MULTICHANNEL_FIELD):** TorchFB `regime_channels` — regime id in
+   omega column 3 conditions F ADDITIVELY on the trunk; zero-init embedding => regime 0 (human/
+   base) is byte-identical to unconditioned (omega-free doctrine preserved for the base channel;
+   verified in eval mode — the initial "mismatch" was spectral-norm power-iteration drift in
+   train mode, not the regime path). load_ckpt allowlists emb_regime.weight; trainer has
+   --regime-channels + --regime-shards DIR:ID:FRAC with MultiMixSource (N-way); LichessPairSource
+   carries per-source/per-row regime tags. Resume-upgrade rebuilds the 20k model with the new
+   embedding, everything else carried (verified identical outputs).
+2. **Regime-1 data:** gen_regime_random.py — 8,000 random walks / 103,820 rows from 1gb-prefix
+   anchors (14s). Regime 2 = sf_cont_endgame_v1 re-tagged at source level. Regime 3 (sf-vs-weak)
+   reserved for the next generation pass.
+3. **Opponent model (option A, decided):** catspace/nn/opponent.py (move tokens: from/to/piece/
+   captured embs + board context; 2-layer self-attn; cross-attn to per-cohort skill tokens;
+   masked softmax) + build_move_selection.py (played-move recovery by child-matching; ~300k rows
+   building now) + train_opponent_model.py (masked CE; per-Elo-bin held-out NLL/top1 VERDICTs;
+   MLflow + ladder).
+4. **Tactics:** catspace/engine/watchlist.py (LatentTactic + TacticWatchlist: shell monitoring,
+   alarm on crossing, hysteresis re-arm) + experiments/tactic_events.py (E1: exact veto-lapse
+   events, flip-rate after LAPSE vs OPTIMAL defender moves — the definition, measured).
+5. **Asym fix:** train_geometry_l1 --w-rev/--rev-cap — reversible reverses pulled into the cheap
+   band (<=4) so the all-pairs floor stops inflating them. Bundled into the pending contrast run.
+
+**Kill + relaunch:** lichess_sharp killed at step 20,000 (ckpt secured; d_step 0.79 / d_rand 54.0
+at kill). RELAUNCH BUNDLE (recorded per no-one-lever): resume lichess_sharp_step20000 ->
+lichess_mc, regime_channels=4, mix human 0.70 / random(r1) 0.15 / sf-optimal(r2) 0.15, steps
+20k->50k, resume-lr-scale 0.1 guard, ckpt ladder every 5k. 500-step smoke launched first
+(standards); full run on smoke pass. Deferred behind the big run: toy contrast run (now bundled
+with --w-rev), opponent-model training, E1 run.
+
+## 2026-07-23 — publication plan armed: "The Opponent's Veto, Learned" (PUBLICATION_VETO_NOTE.md)
+
+Kaveh: if the multichannel veto works, ship a self-contained note (LinkedIn + repo) and an
+interactive GitHub demo (play + analyze with our engine, veto overlay; reuse lichess code where
+licensed). GATE (hard): measure_veto_channels.py — learned gap d(F;sf-optimal)-d(F;random) vs
+EXACT region-deniedness on sf_cont-region anchors; PASS = AUC>=0.65 & anchor spearman>=+0.4.
+Early read at the 25k rung, full at 50k. Demo plan: veto overlay on the existing chess.js play
+UI; static precomputed GitHub Pages tier + full local-server tier; licensing checked (chessground
+GPL-3.0, chess.js BSD-2, puzzle DB CC0, cburnett pieces CC-BY-SA). Nothing goes public before
+Kaveh reviews.
+
+## 2026-07-23 — veto gate @25k: FAIL, support-confounded (diagnosed); fix queued
+
+    VERDICT VETO_CHANNELS field=lichess_mc_step25000  targets=750 denied-rate=0.13  AUC(gap->denied)=0.367  spearman anchor-level -0.320
+    [regime emb] norms r0 0.177 r1 0.452 r2 0.619; cos(r1,r2)=0.574
+
+Channels ARE diverging mechanically, but the learned gap runs BACKWARDS on endgame probes:
+regime 2's data (sf_cont) is endgame-dense while regime 1's walks came from MIDDLEGAME anchors,
+so the gap measures per-channel SUPPORT, not the veto (the inquiry's caveat (a), realized).
+Also: regime-0 embedding drifted (0.177) — zero-INIT but not frozen; the "r0 == base" identity
+held only at init. Fixes queued for the follow-on run: (1) regime_random_endgame_v1 walks from
+sf_cont anchors (shared support; generating), (2) freeze-or-subtract row 0 in embed_F. 50k
+re-read still on; publication gate unresolved, not failed-forever.
+
+## 2026-07-23 — post-mortem: why the smoke missed the gate failure; balance audit; probe cache
+
+Kaveh: "why didn't the smoke test catch this?" Because the smoke tested the MACHINERY (train/
+save/load/collapse gates) and the machinery was fine; the failure was in the DATA DESIGN, and
+the acceptance instrument that exposes it was written AFTER launch. Two standards added (#14
+pre-registered acceptance miniature in every smoke, #15 balance audit before contrastive
+objectives) + #16 (materialize labels, cache probes).
+
+    VERDICT CHANNEL_BALANCE: regime1-mid vs regime2 phase OVERLAP = 0.13 (the launch config's
+    fatal number, computable in 8s with no training); regime1b-endgame vs regime2 = 0.95 (the
+    follow-on run's data, balanced). Human r0: median 24 pieces; r2: median 8.
+    VERDICT COHORT_BALANCE: move-selection Elo bins max/min 172x (bins 3-4 dominate; bin8 440
+    rows; engine cohorts 0 — planned). Report per-bin metrics always.
+
+Saved-vs-on-the-fly answer: raw positions/shards/tuples/verdicts are saved; QRL pair sampling is
+per-batch by design (fine); the GAP was expensive derived labels (forceable DFS, deniedness,
+rollout DTM) recomputed and discarded per script, and tb probes re-read per process. Fixed:
+persistent sqlite probe cache in catspace/tb.py (WAL, silent-degrade; 9.4k rows after one small
+run; warm speedup grows with reuse). Label materialization = standard #16 going forward.
+
+## 2026-07-23 — shared-anchor regime rollouts + DVC dataset tracking
+
+Kaveh: "positions sampled from human lichess data, followed by sf-vs-sf rollout or random-vs-sf
+rollout; save and track the datasets using open source tools." Built gen_regime_rollouts.py:
+SHARED anchors (fixes the balance confound at the ROOT — both regimes continue the SAME human
+positions, twin-design; overlap by construction vs the 0.13 disaster). Regime vocabulary
+re-designated: 2 = sf_sf (purposeful both sides), 3 = rand_vs_sf (anchor's mover drifts, SF
+resists). Smoke: shared-anchor invariant TRUE, 2s/40 anchors; full 4k anchors generating.
+Anchors.json carries per-anchor provenance (source shard/row/fen/elos).
+
+**Dataset tracking = DVC** (open-source standard; MLflow registry keeps the catalog role):
+dvc init + 10 generated datasets tracked as content-addressed .dvc pointers (gitignore
+restructured /data/ -> /data/** with .dvc negations — DVC refuses pointers inside blanket-
+ignored dirs). Source lichess prefixes deferred (multi-GB hash; note). Pointer files staged,
+NOT committed (commit-on-request rule); no DVC remote yet (local cache; remote = future).

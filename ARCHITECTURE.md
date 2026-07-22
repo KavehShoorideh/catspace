@@ -1,5 +1,8 @@
 # catspace — Architecture
 
+> **➡ See [DECISIONS.md](DECISIONS.md) for the canonical catalogue of SETTLED decisions, data inventory,
+> full-training flags, and the embedding dim (d=512). Read that first so we don't re-derive what's decided.**
+
 2026-07-18. The working architecture document: motivation, approach, the
 settled method stack (each component: description, mathematics, and the
 reason it was chosen over alternatives), implementation and health machinery,

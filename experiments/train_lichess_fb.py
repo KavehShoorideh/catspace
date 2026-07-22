@@ -74,6 +74,8 @@ def batch_tensors(batch, device):
     planes_g = feature_planes(batch.goals[idx], batch.meta["board_meta_g"][idx])
     om = omega_ids(batch.meta["white_elo"][idx], batch.meta["black_elo"][idx],
                    batch.meta["clock"][idx])
+    if "regime" in batch.meta:                      # multichannel column 3 (0 = human/base)
+        om = np.concatenate([om, batch.meta["regime"][idx][:, None].astype(np.int64)], axis=1)
     ply_gap = (batch.meta["ply_g"][idx].astype(np.float32)
                - batch.meta["ply"][idx].astype(np.float32))
     # material strictly decreased from anchor to goal: the pair crossed a
@@ -555,6 +557,14 @@ def main():
     ap.add_argument("--axis-margin", type=float, default=1.0)
     ap.add_argument("--axis-gate-plies", type=float, default=8.0,
                     help="proximity gate: pull strength ~ exp(-plies_to_end/this)")
+    ap.add_argument("--regime-channels", type=int, default=0,
+                    help="MULTICHANNEL field (INQUIRY_MULTICHANNEL_FIELD.md): number of regime ids. "
+                         "0 = off. Regime 0 = human/base geometry (zero-anchored embedding, no-op); "
+                         ">=1 = generated play regimes conditioning F additively.")
+    ap.add_argument("--regime-shards", action="append", default=[],
+                    help="DIR:REGIME_ID:FRAC (repeatable) -- lichess-format shard dirs mixed in "
+                         "with the given regime tag and batch fraction, e.g. "
+                         "data/shards/regime_random_v1:1:0.15")
     ap.add_argument("--selfplay-shards", default=None,
                     help="dir of experiments/selfplay_generate.py output shards to MIX into "
                          "training (holdout/val stay human-only for a stable reference)")
@@ -584,6 +594,11 @@ def main():
     args = ap.parse_args()
     apply_l2_preset(args)
     validate_l2_config(args)
+    from contextlib import ExitStack
+    from catspace.tracking import track_run
+    _trk_stack = ExitStack()
+    trk = _trk_stack.enter_context(track_run("lichess_fb", args,
+                                             run_name=Path(args.ckpt).stem if args.ckpt else None))
     print(f"[L2] preset={args.l2_preset} -> iqe={args.iqe} quasimetric={args.quasimetric} "
           f"qrl={args.qrl_objective} embed_scale={args.iqe_embed_scale}", flush=True)
 
@@ -601,6 +616,18 @@ def main():
         fb, payload = load_ckpt(ckpt_path, device)
         step = payload["step"]
         print(f"resumed {ckpt_path.name} at step {step}")
+        # RESUME-UPGRADE to multichannel: rebuild with regime_channels and carry every
+        # trained weight over; the ONLY new parameter is the zero-initialized regime
+        # embedding (regime 0 stays a no-op), so behavior is identical at step one.
+        if args.regime_channels > fb.config.get("regime_channels", 0):
+            cfg = dict(fb.config); cfg["regime_channels"] = args.regime_channels
+            fb2 = TorchFB(**cfg)
+            missing = set(fb2.state_dict()) - set(fb.state_dict())
+            assert missing == {"emb_regime.weight"}, f"unexpected new params: {missing}"
+            fb2.load_state_dict(fb.state_dict(), strict=False)
+            fb = fb2.to(device)
+            print(f"resume-upgraded to regime_channels={args.regime_channels} "
+                  f"(zero-init embedding; regime 0 == base)", flush=True)
     else:
         fb = TorchFB(d=args.d, channels=args.channels, blocks=args.blocks,
                      enc_out=args.enc_out, dh=args.dh,
@@ -613,7 +640,8 @@ def main():
                      iqe_leak_beta=args.iqe_leak_beta,
                      spectral_norm=args.spectral_norm,
                      freeze_iqe_scale=args.freeze_iqe_scale,
-                     omega_free_field=args.omega_free_field)
+                     omega_free_field=args.omega_free_field,
+                     regime_channels=args.regime_channels)
         print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
               f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
         fb.to(device)
@@ -678,7 +706,20 @@ def main():
 
     human_src = LichessPairSource(shard_dir, gamma=args.gamma)
     src = human_src
-    if args.selfplay_shards:
+    if args.regime_shards:
+        # MULTICHANNEL mixing: human stream = regime 0 at the residual fraction;
+        # each DIR:REGIME_ID:FRAC entry is its own tagged source.
+        from catspace.data.shards import MultiMixSource
+        entries = []
+        for spec in args.regime_shards:
+            d_, rid, frac = spec.rsplit(":", 2)
+            entries.append((LichessPairSource(Path(d_), gamma=args.gamma, regime=int(rid)),
+                            float(frac)))
+        human_frac = max(0.0, 1.0 - sum(w for _, w in entries))
+        src = MultiMixSource([(human_src, human_frac)] + entries)
+        print(f"multichannel mix: human(r0)={human_frac:.2f} + "
+              + " ".join(f"{Path(s).name}" for s in args.regime_shards), flush=True)
+    elif args.selfplay_shards:
         selfplay_src = LichessPairSource(Path(args.selfplay_shards), gamma=args.gamma)
         src = MixedPairSource(human_src, selfplay_src, args.selfplay_frac)
         print(f"mixing self-play data from {args.selfplay_shards} at frac={args.selfplay_frac}",
@@ -881,6 +922,8 @@ def main():
                       f"d_rand {qstats['d_rand']:.3f} var {qstats.get('var', 0.0):.3f} "
                       f"sib {sib:.3f} unr {qstats.get('unr',0.0):.3f} unrb {qstats.get('unrb',0.0):.3f} "
                       f"d_unr {qstats.get('d_unr',float('nan')):.2f} d_oth {qstats.get('d_oth',float('nan')):.2f}", flush=True)
+                trk.metrics(dict(push=qstats["push"], sq_dev=qstats["sq_dev"], lam=qstats["lam"],
+                                 d_step=qstats["d_step"], d_rand=qstats["d_rand"]), step=step)
             # collapse gate: after warmup, on rolling means over the window
             if step >= 2000 and step % 1000 == 0 and len(qrl_dstep_hist) >= 500:
                 ms = float(np.mean(qrl_dstep_hist))
@@ -1036,6 +1079,7 @@ def main():
         if step % args.val_every == 0 or step == args.steps:
             vloss, vtop1, vtop8 = val_metrics(fb, holdout, device)
             print(f"  VAL step {step}  loss {vloss:.4f}  top1 {vtop1:.3f}  top8 {vtop8:.3f}", flush=True)
+            trk.metrics(dict(val_loss=vloss, val_top1=vtop1, val_top8=vtop8), step=step)
             save_ckpt(fb, ckpt_path, step=step, opt=opt,
                       zgoals=embed_zgoals(fb, finals, device), provenance=provenance)
         if args.ckpt_every and step % args.ckpt_every == 0 and step < args.steps:

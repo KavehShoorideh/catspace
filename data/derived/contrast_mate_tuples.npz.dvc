@@ -1,0 +1,5 @@
+outs:
+- md5: 8c1157bece3da1ec00e2adeb409bacf2
+  size: 138492
+  hash: md5
+  path: contrast_mate_tuples.npz

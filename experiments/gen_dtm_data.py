@@ -28,25 +28,8 @@ from experiments.selfplay_generate import random_endgame_start
 from experiments.value_fixed_point import TB, tb_best_move, white_pov_value
 
 
-def rollout_dtm(board, tb, cap=200):
-    """Plies to mate under tablebase-optimal play (both sides), or None if it
-    doesn't reach mate within cap (drawn / coverage gap)."""
-    b = board.copy(stack=False)
-    seen = set()
-    plies = 0
-    for _ in range(cap):
-        if b.is_checkmate():
-            return plies
-        if b.is_game_over(claim_draw=True):
-            return None
-        m = tb_best_move(b, tb, seen)
-        if m is None:
-            return None
-        if b.turn == chess.BLACK:
-            seen.add(b.board_fen())
-        b.push(m)
-        plies += 1
-    return None
+# MOVED to catspace/tb.py -- re-export for existing importers.
+from catspace.tb import rollout_dtm  # noqa: F401
 
 
 def gen_chunk(task):

@@ -7,7 +7,9 @@ dist/
 
 # generated data artifacts (npy/pkl/json), never committed -- anchored to
 # repo root so it doesn't also hide the catspace/data/ package
-/data/
+/data/**
+!/data/**/
+!/data/**/*.dvc
 *.npy
 *.pkl
 *.npz
@@ -20,3 +22,9 @@ code/out/
 .pytest_cache/
 .mypy_cache/
 artifacts/experiments/rollout_dump_*.jsonl
+# session build outputs & local tracking stores (2026-07-23)
+mlflow.db
+mlruns/
+artifacts/vendor/node_modules/
+artifacts/vendor/package*.json
+artifacts/viz_options_hub.html

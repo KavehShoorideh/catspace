@@ -1,0 +1,521 @@
+<title>The Opponent's Veto — Visualization Options</title>
+<style>
+/*CG_CSS*/
+  :root {
+    --ground:#FAF7F2; --panel:#F1EBE0; --ink:#242118; --muted:#847C6D;
+    --denied:#B5432E; --forceable:#2E7D4F; --brass:#C99B3F; --line:#DCD3C2; --card:#FFFDF8;
+  }
+  @media (prefers-color-scheme: dark) { :root {
+    --ground:#191713; --panel:#211E19; --ink:#EAE4D6; --muted:#9A917F;
+    --denied:#D96B52; --forceable:#54B380; --brass:#D9B45F; --line:#3A352C; --card:#232019;
+  }}
+  :root[data-theme="dark"] {
+    --ground:#191713; --panel:#211E19; --ink:#EAE4D6; --muted:#9A917F;
+    --denied:#D96B52; --forceable:#54B380; --brass:#D9B45F; --line:#3A352C; --card:#232019;
+  }
+  :root[data-theme="light"] {
+    --ground:#FAF7F2; --panel:#F1EBE0; --ink:#242118; --muted:#847C6D;
+    --denied:#B5432E; --forceable:#2E7D4F; --brass:#C99B3F; --line:#DCD3C2; --card:#FFFDF8;
+  }
+  * { box-sizing:border-box; }
+  body { background:var(--ground); color:var(--ink); margin:0;
+         font:16px/1.55 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width:1080px; margin:0 auto; padding:28px 20px 80px; }
+  h1,h2,h3 { font-family:"Iowan Old Style", Palatino, Georgia, serif; text-wrap:balance; }
+  h1 { font-size:1.9rem; margin:0 0 4px; } h2 { font-size:1.35rem; margin:0 0 10px; }
+  h3 { font-size:1.02rem; margin:18px 0 8px; }
+  .sub { color:var(--muted); margin:0 0 18px; max-width:64ch; }
+  .tabs { display:flex; flex-wrap:wrap; gap:8px; border-bottom:2px solid var(--line);
+          padding-bottom:10px; margin-bottom:26px; }
+  .tab { border:1px solid var(--line); background:var(--panel); color:var(--ink);
+         padding:8px 14px; cursor:pointer; font:600 .85rem/1 -apple-system,"Segoe UI",sans-serif;
+         border-radius:3px; }
+  .tab[aria-selected="true"] { background:var(--brass); color:#221B0C; border-color:var(--brass); }
+  .tab:focus-visible, button.ctl:focus-visible { outline:2px solid var(--brass); outline-offset:2px; }
+  section[hidden] { display:none; }
+  .chip { display:inline-block; font:600 .68rem/1 "SF Mono", Menlo, monospace; letter-spacing:.06em;
+          padding:4px 8px; border-radius:3px; margin-left:8px; vertical-align:middle; }
+  .chip.exact { background:var(--forceable); color:#fff; }
+  .chip.mock { background:var(--muted); color:var(--ground); }
+  .chip.pending { background:var(--brass); color:#221B0C; }
+  .grid2 { display:grid; grid-template-columns:minmax(300px,400px) 1fr; gap:28px; align-items:start; }
+  @media (max-width:780px){ .grid2 { grid-template-columns:1fr; } }
+  .board-cg { width:100%; max-width:400px; aspect-ratio:1; }
+  .board-cg .cg-wrap { width:100%; height:100%; }
+  .howto { background:var(--panel); border:1px solid var(--line); border-radius:4px;
+           padding:14px 16px; font-size:.9rem; margin:0 0 16px; max-width:70ch; }
+  .howto b { color:var(--brass); }
+  .howto ul { margin:6px 0 0 18px; padding:0; }
+  .narrate { min-height:3.2em; border-left:4px solid var(--brass); background:var(--panel);
+             padding:9px 13px; font-size:.92rem; margin:12px 0; max-width:60ch; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:4px; padding:16px 18px; }
+  table { border-collapse:collapse; width:100%; font-size:.88rem; }
+  th,td { text-align:left; padding:6px 10px; border-bottom:1px solid var(--line); }
+  th { font:600 .72rem/1.3 -apple-system,"Segoe UI",sans-serif; letter-spacing:.07em;
+       text-transform:uppercase; color:var(--muted); }
+  td.num, th.num { text-align:right; font-family:"SF Mono", Menlo, monospace;
+                   font-variant-numeric:tabular-nums; font-size:.84rem; }
+  .tablewrap { overflow-x:auto; }
+  button.ctl { border:1px solid var(--line); background:var(--panel); color:var(--ink);
+               padding:7px 13px; border-radius:3px; cursor:pointer; font:600 .82rem/1 inherit; }
+  button.ctl[aria-pressed="true"] { background:var(--ink); color:var(--ground); }
+  button.demo { border:1px solid var(--brass); background:var(--brass); color:#221B0C;
+                padding:8px 15px; border-radius:3px; cursor:pointer; font:700 .84rem/1 inherit; }
+  .feed { display:flex; flex-direction:column; gap:10px; max-width:520px; }
+  .ev { border-left:4px solid var(--forceable); background:var(--card); border:1px solid var(--line);
+        border-left-width:4px; padding:10px 14px; font-size:.9rem; cursor:pointer; }
+  .ev.close { border-left-color:var(--denied); }
+  .ev.sel { outline:2px solid var(--brass); }
+  .ev b { font-family:"SF Mono", Menlo, monospace; font-size:.84rem; }
+  .caveat { border-left:4px solid var(--brass); padding:10px 14px; background:var(--panel);
+            font-size:.88rem; max-width:66ch; }
+  .san { font-family:"SF Mono", Menlo, monospace; font-size:.85rem; }
+  svg.chart text { fill:var(--muted); font:11px "SF Mono", Menlo, monospace; }
+  .bignum { font-family:"Iowan Old Style", Palatino, Georgia, serif; font-size:2.4rem; line-height:1; }
+  .statrow { display:flex; gap:34px; flex-wrap:wrap; margin:18px 0; }
+  .credits { margin-top:44px; padding-top:14px; border-top:1px solid var(--line);
+             font-size:.78rem; color:var(--muted); max-width:70ch; }
+</style>
+
+<div class="wrap">
+<h1>The Opponent's Veto — visualization options</h1>
+<p class="sub">Seven ways to show one claim, each with a <b>▶ demo</b> that drives itself.
+Boards are lichess's own renderer (chessground). <span class="chip exact">EXACT-TB</span> =
+real tablebase ground truth; <span class="chip mock">MOCK</span> = interaction prototype;
+<span class="chip pending">LEARNED-PENDING</span> = upgrades when the trained field passes its gate.</p>
+
+<div class="tabs" role="tablist" id="tabs"></div>
+
+<!-- ============ 1 CLAIM ============ -->
+<section id="t-claim">
+  <h2>The claim <span class="chip exact">EXACT-TB</span></h2>
+  <div class="statrow">
+    <div><div class="bignum" style="color:var(--denied)">87%</div><div class="sub">of exact winning positions,<br>a good opponent never allows</div></div>
+    <div><div class="bignum" style="color:var(--forceable)">99%</div><div class="sub">of their <em>neighborhoods</em><br>can be forced anyway</div></div>
+    <div><div class="bignum" style="color:var(--brass)">13%</div><div class="sub">exact positions forceable —<br>the point-planning ceiling</div></div>
+  </div>
+  <p style="max-width:66ch">Two reachabilities live on the same board: what <em>could</em> happen,
+  and what your opponent <em>will allow</em>. The gap between them is the opponent, as geometry.
+  A mistake shrinks the gap — and a tactic is the forcing line that cashes the lapse before it
+  closes. Each tab is one way to see this. Every tab has a <b>▶ demo</b> button: press it and the
+  page will work the controls itself while narrating what to notice.</p>
+  <p class="sub">Measured on the K+2R vs K+B+P endgame laboratory: n=1200 targets from 20 won
+  positions, 4-ply horizon, tablebase-exact (VERDICT ADVERSARIAL_VETO, 2026-07-23).</p>
+</section>
+
+<!-- ============ 2 TWO CONES ============ -->
+<section id="t-cone" hidden>
+  <h2>A — the two cones <span class="chip exact">EXACT-TB</span></h2>
+  <div class="howto"><b>What you're looking at:</b> your next 4 plies as a cone of 300 winning
+  futures fanning out from “now” (the black dot). <b>How to read it:</b> every dot is a position
+  you could reach if the opponent cooperated; green dots you can <em>force</em>; rust dots he
+  simply steers away from. The proportions are the measured 13% / 87%.
+  <ul><li><b>Try:</b> press ▶ demo — the cone re-deals and the denied mass fades out, leaving
+  the thread you can actually plan along.</li></ul></div>
+  <button class="demo" id="conedemo">▶ demo</button>
+  <div class="narrate" id="conenar">Press ▶ demo.</div>
+  <canvas id="cone" width="900" height="420" style="width:100%;max-width:760px"></canvas>
+</section>
+
+<!-- ============ 3 SEISMOGRAPH ============ -->
+<section id="t-seismo" hidden>
+  <h2>B — the opportunity seismograph <span class="chip exact">EXACT-TB</span></h2>
+  <div class="howto"><b>What you're looking at:</b> a real game — engine attacker vs
+  tablebase-optimal defender, with two random (blunder) moves injected. Before White's every
+  move we ask, for a fixed panel of 30 winning regions: <em>how many can be forced right now?</em>
+  That fraction is the amber line. <b>How to read it:</b> dashed red verticals = the injected
+  blunders; the line moving after them = opportunity appearing/consumed. The board replays the
+  game — the last move is highlighted, lichess-style.
+  <ul><li><b>Try:</b> ◀ ▶ arrows (keyboard works), click any point on the line, or press ▶ demo
+  to watch the game play itself with narration.</li></ul></div>
+  <div class="grid2">
+    <div>
+      <div class="board-cg" id="sboard"></div>
+      <div style="margin-top:12px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="ctl" id="sprev">◀</button>
+        <button class="ctl" id="snext">▶</button>
+        <button class="demo" id="sdemo">▶ demo</button>
+        <span class="san" id="smove"></span>
+      </div>
+    </div>
+    <div>
+      <svg id="seismo" class="chart" viewBox="0 0 560 300" style="width:100%"></svg>
+      <div class="narrate" id="snar">Press ▶ demo, or step through the game.</div>
+      <p class="sub" style="font-size:.8rem">Prototype caveat: the exact-DFS panel is
+      material-bound, so conversion also closes regions; the learned field will track a chosen
+      basin at any distance. <span class="chip pending">LEARNED-PENDING</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 HEATMAP ============ -->
+<section id="t-heat" hidden>
+  <h2>C — the confinement heatmap <span class="chip exact">EXACT-TB</span></h2>
+  <div class="howto"><b>What you're looking at:</b> the moment right before a real blunder.
+  Circles mark where the defender's king could end up in the sampled winning futures:
+  <b style="color:var(--forceable)">green</b> = you can force his king there within 4 plies,
+  <b style="color:var(--denied)">red</b> = only reachable if he helps you.
+  <b>How to read it:</b> toggle before/after his blunder — squares flip green. That flip IS a
+  tactical opportunity appearing.
+  <ul><li><b>Try:</b> the before/after buttons, or ▶ demo to watch the flip with a count.</li></ul></div>
+  <div class="grid2">
+    <div>
+      <div class="board-cg" id="hboard"></div>
+      <div style="margin-top:12px; display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="ctl" id="hbefore" aria-pressed="true">before the blunder</button>
+        <button class="ctl" id="hafter" aria-pressed="false">after</button>
+        <button class="demo" id="hdemo">▶ demo</button>
+      </div>
+    </div>
+    <div>
+      <div class="narrate" id="hnar"></div>
+      <div class="card"><b id="hcount"></b><p class="sub" style="margin-top:8px; margin-bottom:0">
+        The blunder opens <b id="hdelta"></b> new forceable king-destinations — Kaveh's
+        “opportunity suddenly made itself available,” painted on the squares where every chess
+        player already looks.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 WATCHLIST ============ -->
+<section id="t-watch" hidden>
+  <h2>D — the watchlist feed <span class="chip exact">EXACT-TB</span></h2>
+  <div class="howto"><b>What you're looking at:</b> the engine's “spidey sense” as a notification
+  stream. Between White's moves, the same 30-region panel is re-checked; every event says which
+  opportunities opened or closed and after whose move. <b>How to read it:</b> green-edged =
+  opportunities opened; rust-edged = closed (consumed or escaped).
+  <ul><li><b>Try:</b> click any event — the board shows that moment with the opened
+  king-destinations circled. ▶ demo walks the feed top to bottom.</li></ul></div>
+  <button class="demo" id="wdemo" style="margin-bottom:12px">▶ demo</button>
+  <div class="grid2">
+    <div><div class="board-cg" id="wboard"></div>
+      <div class="narrate" id="wnar" style="margin-top:12px">Click an event or press ▶ demo.</div></div>
+    <div class="feed" id="feed"></div>
+  </div>
+</section>
+
+<!-- ============ 6 OPPONENT DIAL ============ -->
+<section id="t-elo" hidden>
+  <h2>E — the opponent dial <span class="chip mock">MOCK</span></h2>
+  <div class="howto"><b>What you're looking at:</b> the same position, evaluated against
+  opponents of different strengths. <b>How to read it:</b> as the slider drops, denied regions
+  open (weaker defense = weaker veto), and <b style="color:var(--brass)">trap</b> regions appear:
+  objectively defensible, but <em>this</em> opponent won't find the defense.
+  <ul><li><b>Try:</b> drag the slider, or ▶ demo sweeps it for you. Interaction is mocked; the
+  real version reads the graded-defender channel + the opponent model's seeing-probability.</li></ul></div>
+  <button class="demo" id="edemo" style="margin-bottom:12px">▶ demo</button>
+  <div style="max-width:520px">
+    <input type="range" id="elo" min="1200" max="2400" step="200" value="2400" style="width:100%">
+    <div style="display:flex; justify-content:space-between" class="sub">
+      <span>1200</span><span id="elov" style="color:var(--ink);font-weight:600"></span><span>2400</span>
+    </div>
+    <div class="card" id="elocard"></div>
+  </div>
+</section>
+
+<!-- ============ 7 MODEL CARD ============ -->
+<section id="t-card" hidden>
+  <h2>Descriptive stats — the model card <span class="chip exact">EXACT-TB</span></h2>
+  <p class="sub" style="max-width:66ch">Standard reporting (model-card convention: details, data,
+  metrics, subgroups, caveats). Every number is from a printed experiment verdict.</p>
+  <h3>Models</h3>
+  <div class="tablewrap"><table>
+    <tr><th>model</th><th>role</th><th class="num">params</th><th>key verdict</th></tr>
+    <tr><td>Cooperative field</td><td>could-reach geometry (d=512 quasimetric)</td><td class="num">9.11M</td>
+        <td>near/far ratio <b>33.0×</b>, eff-rank 15.1/512; DTM-decoupled (ρ≈−0.1); open defect: asym 0.61×</td></tr>
+    <tr><td>Human field (multichannel)</td><td>as-played reach + regime channels</td><td class="num">9.11M</td>
+        <td>training 20k→50k; regime embeddings differentiating; veto gate pending <span class="chip pending">LEARNED-PENDING</span></td></tr>
+    <tr><td>Mate-distance head</td><td>separate value CNN</td><td class="num">0.69M</td>
+        <td>spearman vs true DTM: .89 / .61 / .36 (3/4/6-piece)</td></tr>
+    <tr><td>Opponent model v1</td><td>move-set self-attention × skill tokens</td><td class="num">1.38M</td>
+        <td>smoke: held-out top-1 0.25 vs 0.03 chance; full run queued</td></tr>
+  </table></div>
+  <h3>The strength-per-node frontier (KRRvK ladder, n=20)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>search value signal</th><th class="num">mate rate</th><th class="num">search to convert</th></tr>
+    <tr><td>none (pure search)</td><td class="num">0.12</td><td class="num">— (drifts to draws)</td></tr>
+    <tr><td>learned mate-distance CNN</td><td class="num">0.31</td><td class="num">—</td></tr>
+    <tr><td>one human concept (king escape-volume)</td><td class="num">0.75</td><td class="num">~1.5k nodes</td></tr>
+    <tr><td>oracle (tablebase)</td><td class="num">0.85–1.00</td><td class="num">~1.2k</td></tr>
+    <tr><td>Stockfish 18 (own eval; node units differ)</td><td class="num">1.00</td><td class="num">~54k</td></tr>
+  </table></div>
+  <h3>Representation checks (mate patterns, in-stratum controls)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>pattern cohesion (&lt;1 = clusters)</th><th class="num">d=64 field</th><th class="num">d=512 @5k</th><th class="num">d=512 @10k</th></tr>
+    <tr><td>back-rank</td><td class="num">0.80</td><td class="num">0.50</td><td class="num">0.55</td></tr>
+    <tr><td>ladder</td><td class="num">1.00</td><td class="num">0.89</td><td class="num">0.89</td></tr>
+    <tr><td>king-support</td><td class="num">0.86</td><td class="num">1.06</td><td class="num">1.02</td></tr>
+  </table></div>
+  <p class="sub">B-distance decomposition: piece-count correlation fell 0.72 → 0.31 with scale; a
+  white-king axis emerged (+0.59). Raw cohesions were retracted 2026-07-22 (phase shells, not patterns).</p>
+  <h3>Training data</h3>
+  <div class="tablewrap"><table>
+    <tr><th>set</th><th class="num">size</th><th>role</th></tr>
+    <tr><td>toy positions + exact DTM</td><td class="num">357k + 24k</td><td>geometry, labels, eval</td></tr>
+    <tr><td>legal 1-ply edges</td><td class="num">2.17M</td><td>geometry</td></tr>
+    <tr><td>expert continuations (tb-completed)</td><td class="num">148.7k pos</td><td>best-play edges / regime 2</td></tr>
+    <tr><td>human games (lichess 2019-01)</td><td class="num">~48M pos</td><td>human field / mate harvest</td></tr>
+    <tr><td>random-walk branches (regime 1)</td><td class="num">103.8k</td><td>drift channel</td></tr>
+    <tr><td>matched-anchor contrast tuples</td><td class="num">28k states</td><td>structure-of-progress</td></tr>
+    <tr><td>move-selection triples</td><td class="num">300k</td><td>opponent model</td></tr>
+  </table></div>
+  <div class="caveat" style="margin-top:18px"><b>Caveats:</b> toy-domain ground truth only
+  (K+2R family); single seed per run; opponent-model numbers are smoke-level; learned-veto gate
+  unresolved; fields do not extrapolate beyond training support (measured); engine-derived labels
+  used for evaluation only, never field training.</div>
+</section>
+
+<p class="credits">Board UI: <b>chessground</b> © lichess.org contributors, GPL-3.0 (vendored,
+unmodified). Piece set: cburnett, CC-BY-SA 3.0. Rules data: tablebase-exact analyses generated by
+this project; engine attacker: Stockfish 18. This page is a self-contained prototype for choosing
+the final demo's visualizations.</p>
+</div>
+
+<script>
+/*CG_JS*/
+</script>
+<script>
+const DATA = /*DATA*/;
+const REDUCED = (typeof matchMedia === "function") ? matchMedia("(prefers-reduced-motion: reduce)").matches : false;
+const ANIM = REDUCED ? 0 : 220;
+
+/* ---------- tabs ---------- */
+const TABS = [
+  ["t-claim","1 · Claim"], ["t-cone","2 · Two cones"], ["t-seismo","3 · Seismograph"],
+  ["t-heat","4 · Heatmap"], ["t-watch","5 · Watchlist"], ["t-elo","6 · Opponent dial"],
+  ["t-card","7 · Model card"]];
+const tabbar = document.getElementById("tabs");
+TABS.forEach(([id, label], i) => {
+  const b = document.createElement("button");
+  b.className = "tab"; b.textContent = label; b.setAttribute("role","tab");
+  b.setAttribute("aria-selected", i === 0);
+  b.onclick = () => {
+    TABS.forEach(([tid]) => document.getElementById(tid).hidden = tid !== id);
+    [...tabbar.children].forEach(c => c.setAttribute("aria-selected", c === b));
+  };
+  tabbar.appendChild(b);
+});
+
+/* ---------- chessground helpers ---------- */
+function mkBoard(elId, fen, shapes, lastMove) {
+  const cg = Chessground(document.getElementById(elId), {
+    fen: fen.split(" ")[0], viewOnly: true, coordinates: true,
+    animation: { enabled: !REDUCED, duration: ANIM },
+    lastMove: lastMove || undefined,
+    drawable: { enabled: false, visible: true },
+  });
+  if (shapes) cg.setAutoShapes(shapes);
+  return cg;
+}
+const sqName = i => "abcdefgh"[i % 8] + (Math.floor(i / 8) + 1);
+function heatShapes(forced, denied) {
+  const out = [];
+  for (let i = 0; i < 64; i++) {
+    if (forced[i]) out.push({ orig: sqName(i), brush: "green" });
+    else if (denied && denied[i]) out.push({ orig: sqName(i), brush: "red" });
+  }
+  return out;
+}
+
+/* ---------- demo runner (one at a time, cancellable) ---------- */
+let demoTimer = null;
+function runDemo(steps, interval) {
+  if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+  let i = 0;
+  const tick = () => {
+    if (i >= steps.length) { clearInterval(demoTimer); demoTimer = null; return; }
+    steps[i++]();
+  };
+  tick();
+  demoTimer = setInterval(tick, REDUCED ? Math.max(interval, 2200) : interval);
+}
+
+/* ---------- two cones ---------- */
+(function () {
+  const cv = document.getElementById("cone"), ctx = cv.getContext("2d");
+  const css = () => getComputedStyle(document.documentElement);
+  let fade = 0;   // 0 = all dots, 1 = denied faded out
+  function draw() {
+    const C = css();
+    const DEN = C.getPropertyValue("--denied").trim(), FOR = C.getPropertyValue("--forceable").trim();
+    ctx.clearRect(0, 0, 900, 420);
+    ctx.font = "13px Menlo"; ctx.fillStyle = C.getPropertyValue("--muted").trim();
+    ctx.fillText("now", 30, 214);
+    ctx.fillText("4 plies ahead: 300 winning futures", 560, 30);
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 300; i++) {
+      const t = 0.25 + 0.72 * rnd();
+      const spread = 185 * t, x = 70 + 730 * t, y = 210 + (rnd() * 2 - 1) * spread;
+      const forceableDot = i % 100 < 13;
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, 7);
+      ctx.fillStyle = forceableDot ? FOR : DEN;
+      ctx.globalAlpha = forceableDot ? 0.9 : 0.8 * (1 - fade);
+      ctx.fill(); ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = C.getPropertyValue("--ink").trim();
+    ctx.beginPath(); ctx.arc(70, 210, 7, 0, 7); ctx.fill();
+    ctx.fillStyle = DEN; ctx.globalAlpha = 1 - fade * .6;
+    ctx.fillText("87% denied — he steers away", 620, 390); ctx.globalAlpha = 1;
+    ctx.fillStyle = FOR; ctx.fillText("13% forceable exactly · 99% as regions", 620, 408);
+  }
+  draw();
+  new MutationObserver(draw).observe(document.documentElement, { attributes: true });
+  const nar = document.getElementById("conenar");
+  document.getElementById("conedemo").onclick = () => runDemo([
+    () => { fade = 0; draw(); nar.textContent = "300 winning futures, 4 plies out. All look equally real…"; },
+    () => { nar.textContent = "…but rust dots need his cooperation. Watch them fade."; },
+    () => { fade = .45; draw(); nar.textContent = "Against best defense, the rust mass is unreachable — he simply steers away."; },
+    () => { fade = .9; draw(); nar.textContent = "What's left is what you can actually plan along: the 13% thread — or 99% if you aim at regions instead of exact positions."; },
+  ], 1900);
+})();
+
+/* ---------- seismograph ---------- */
+(function () {
+  const tr = DATA.seismograph.trace, wt = tr.filter(e => e.turn === "w");
+  const svg = document.getElementById("seismo");
+  const W = 560, H = 300, L = 46, Bm = 40;
+  let cur = 0;
+  const x = i => L + i * (W - L - 16) / Math.max(wt.length - 1, 1);
+  const y = v => (H - Bm) - v * (H - Bm - 24);
+  let els = "";
+  [0, .5, 1].forEach(v => { els += `<text x="6" y="${y(v)+4}">${v.toFixed(1)}</text>
+    <line x1="${L}" y1="${y(v)}" x2="${W-10}" y2="${y(v)}" stroke="var(--line)" stroke-dasharray="2 5"/>`; });
+  tr.forEach(e => { if (e.lapse) {
+    const wi = wt.filter(w => w.ply < e.ply).length - 0.5;
+    els += `<line x1="${x(wi)+8}" y1="16" x2="${x(wi)+8}" y2="${H-Bm}" stroke="var(--denied)"
+            stroke-width="2" stroke-dasharray="5 4"/>
+            <text x="${x(wi)-14}" y="12" style="fill:var(--denied)">blunder ${e.san}</text>`; }});
+  els += `<polyline fill="none" stroke="var(--brass)" stroke-width="2.5"
+     points="${wt.map((e,i)=>`${x(i)},${y(e.forceable_frac)}`).join(" ")}"/>`;
+  wt.forEach((e,i)=>{ els += `<circle cx="${x(i)}" cy="${y(e.forceable_frac)}" r="5"
+     fill="var(--brass)" data-i="${i}" style="cursor:pointer"/>`; });
+  els += `<circle id="scur" r="8" fill="none" stroke="var(--ink)" stroke-width="2"/>
+          <text x="${L}" y="${H-8}">White's moves → fraction of 30 watched regions forceable now</text>`;
+  svg.innerHTML = els;
+  const cg = mkBoard("sboard", wt[0].fen);
+  const mv = document.getElementById("smove"), nar = document.getElementById("snar");
+  function show(i, narr) {
+    cur = Math.max(0, Math.min(wt.length - 1, i));
+    const e = wt[cur];
+    cg.set({ fen: e.fen.split(" ")[0], lastMove: e.uci_prev ? [e.uci_prev.slice(0,2), e.uci_prev.slice(2,4)] : undefined });
+    mv.textContent = `ply ${e.ply} · White plays ${e.san} · forceable ${Math.round(e.forceable_frac*100)}%`;
+    const c = document.getElementById("scur");
+    c.setAttribute("cx", x(cur)); c.setAttribute("cy", y(e.forceable_frac));
+    if (narr) nar.textContent = narr;
+  }
+  document.getElementById("sprev").onclick = () => show(cur - 1);
+  document.getElementById("snext").onclick = () => show(cur + 1);
+  document.addEventListener("keydown", ev => {
+    if (document.getElementById("t-seismo").hidden) return;
+    if (ev.key === "ArrowLeft") show(cur - 1);
+    if (ev.key === "ArrowRight") show(cur + 1);
+  });
+  svg.addEventListener("click", ev => { const t = ev.target.closest("circle[data-i]");
+    if (t) show(+t.dataset.i); });
+  const lapseIdx = [];
+  tr.forEach(e => { if (e.lapse) lapseIdx.push(wt.filter(w => w.ply < e.ply).length); });
+  document.getElementById("sdemo").onclick = () => runDemo(
+    wt.map((e, i) => () => show(i,
+      i === 0 ? "The game begins. 63% of the watched regions are already forceable — this is a won position." :
+      lapseIdx.includes(i) ? "He just blundered (dashed red line). Watch what the panel says now —" :
+      i === wt.length - 1 ? "Mate follows. The seismograph told the story move by move: opportunity is a time series." :
+      e.forceable_frac < 0.2 ? "The fraction drops as regions get consumed — conversion closes doors behind you." :
+      "Optimal defense holds the line roughly flat: no free opportunities.")),
+    2000);
+  show(0);
+})();
+
+/* ---------- heatmap ---------- */
+(function () {
+  const hm = DATA.heatmap;
+  const den = hm.coop.map((c, i) => c && !hm.forced[i] ? 1 : 0);
+  const denA = hm.coop.map((c, i) => c && !hm.forced_after[i] ? 1 : 0);
+  const nb = hm.forced.reduce((a,b)=>a+b,0), na = hm.forced_after.reduce((a,b)=>a+b,0);
+  document.getElementById("hcount").textContent =
+    `${nb} forceable king-destinations before · ${na} after the blunder ${hm.lapse_san}`;
+  document.getElementById("hdelta").textContent = `+${na - nb}`;
+  const cg = mkBoard("hboard", hm.fen, heatShapes(hm.forced, den));
+  const bb = document.getElementById("hbefore"), ba = document.getElementById("hafter");
+  const nar = document.getElementById("hnar");
+  function show(after, narr) {
+    cg.set({ fen: (after ? hm.fen_after : hm.fen).split(" ")[0] });
+    cg.setAutoShapes(heatShapes(after ? hm.forced_after : hm.forced, after ? denA : den));
+    bb.setAttribute("aria-pressed", !after); ba.setAttribute("aria-pressed", after);
+    nar.textContent = narr || (after
+      ? `After ${hm.lapse_san}: ${na} green destinations (+${na-nb}).`
+      : `Before: ${nb} green destinations; red ones need his help.`);
+  }
+  bb.onclick = () => show(false); ba.onclick = () => show(true);
+  document.getElementById("hdemo").onclick = () => runDemo([
+    () => show(false, `Best defense: only ${nb} of the marked king-destinations can be forced. The red ones are vetoed.`),
+    () => show(false, `Now he plays ${hm.lapse_san} — a blunder. Keep your eye on the red circles…`),
+    () => show(true, `…and ${na-nb} of them just turned green. Those exact opportunities did not exist one move ago.`),
+    () => show(true, "That flip is what a tactic is: the veto lapsed, and the map saw it instantly."),
+  ], 2400);
+  show(false);
+})();
+
+/* ---------- watchlist ---------- */
+(function () {
+  const tr = DATA.seismograph.trace, wt = tr.filter(e => e.turn === "w");
+  const feed = document.getElementById("feed");
+  const cg = mkBoard("wboard", wt[0].fen);
+  const nar = document.getElementById("wnar");
+  const events = [];
+  for (let i = 1; i < wt.length; i++) {
+    const prev = wt[i-1].open_regions, curr = wt[i].open_regions;
+    const opened = [], closed = [];
+    curr.forEach((v, k) => { if (v && !prev[k]) opened.push(DATA.seismograph.panel_bk[k]);
+                             if (!v && prev[k]) closed.push(DATA.seismograph.panel_bk[k]); });
+    const between = tr.filter(e => e.turn === "b" && e.ply > wt[i-1].ply && e.ply < wt[i].ply)[0];
+    const who = between ? `after …${between.san}${between.lapse ? " (blunder)" : ""}` : "";
+    if (opened.length) events.push({ i, kind:"open", sq:opened, who });
+    if (closed.length) events.push({ i, kind:"close", sq:closed, who });
+  }
+  events.forEach((ev, k) => {
+    const d = document.createElement("div");
+    d.className = "ev" + (ev.kind === "close" ? " close" : "");
+    d.innerHTML = `<b>${ev.kind === "open" ? "+" : "−"}${ev.sq.length}
+      ${ev.kind === "open" ? "opened" : "closed"}</b> ${ev.who} — king-destinations ${ev.sq.join(", ")}`;
+    d.onclick = () => showEv(k);
+    feed.appendChild(d);
+  });
+  function showEv(k, narr) {
+    const ev = events[k];
+    [...feed.children].forEach((c, j) => c.classList.toggle("sel", j === k));
+    cg.set({ fen: wt[ev.i].fen.split(" ")[0] });
+    cg.setAutoShapes(ev.sq.map(s => ({ orig: s, brush: ev.kind === "open" ? "green" : "red" })));
+    nar.textContent = narr || `${ev.who}: ${ev.sq.join(", ")} ${ev.kind === "open" ? "became forceable" : "slipped away"}.`;
+  }
+  document.getElementById("wdemo").onclick = () => runDemo(
+    events.map((ev, k) => () => showEv(k,
+      ev.who.includes("blunder")
+        ? "A blunder event: this is the alarm the engine's watchlist exists to catch — one cheap check per watched region per move."
+        : (ev.kind === "open" ? "Opportunities also open through normal play — the monitor never sleeps."
+                              : "And they close: consumed by conversion or defended away."))),
+    2600);
+  if (events.length) showEv(0);
+})();
+
+/* ---------- opponent dial ---------- */
+(function () {
+  const el = document.getElementById("elo"), out = document.getElementById("elov"),
+        card = document.getElementById("elocard");
+  const story = {
+    2400: ["vs 2400 (optimal-ish)", "9 forceable destinations. No traps — he sees every defense."],
+    2200: ["vs 2200", "10 forceable. 1 <b style='color:var(--brass)'>trap</b>: the h-file defense exists but is one move deep."],
+    2000: ["vs 2000", "12 forceable. 2 traps — back-rank counting errors appear."],
+    1800: ["vs 1800", "14 forceable. 3 traps; his drawing resource needs a quiet move he rarely finds."],
+    1600: ["vs 1600", "17 forceable. 5 traps — most denied regions open through typical errors."],
+    1400: ["vs 1400", "21 forceable. Denial nearly gone: the veto needs skill he doesn't have."],
+    1200: ["vs 1200", "24 of 25 forceable. Planning ≈ cooperative reachability."]};
+  function upd() { const [t, d] = story[el.value];
+    out.textContent = t; card.innerHTML = d + "<p class='sub' style='margin:8px 0 0'>Mocked " +
+    "interaction; the real dial reads the graded-defender channel + the opponent model's " +
+    "seeing-probability.</p>"; }
+  el.oninput = upd; upd();
+  document.getElementById("edemo").onclick = () => runDemo(
+    ["2400","2000","1600","1200","2400"].map(v => () => { el.value = v; upd(); }), 1800);
+})();
+</script>

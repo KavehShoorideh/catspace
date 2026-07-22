@@ -1,0 +1,6 @@
+outs:
+- md5: 9baf25577319dc58098dca14e37f805d.dir
+  size: 763338
+  nfiles: 1
+  hash: md5
+  path: regime_random_v1

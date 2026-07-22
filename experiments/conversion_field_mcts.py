@@ -94,6 +94,8 @@ class FieldMCTS:
         self.since = 0
 
     def _reach(self, boards):
+        if getattr(self, "pure_search", False):
+            return np.zeros(len(boards), dtype=np.float32)               # constant value -> MCTS+mate_stop only
         f = self._embF(np.stack([encode_packed(b) for b in boards]),
                        np.stack([encode_meta(b) for b in boards]))
         with torch.no_grad():
@@ -141,6 +143,7 @@ def main():
     ap.add_argument("--replan", type=int, default=4)
     ap.add_argument("--ply-cap", type=int, default=100)
     ap.add_argument("--white-random", action="store_true", help="baseline: White plays random (is cornering incidental?)")
+    ap.add_argument("--pure-search", action="store_true", help="baseline: constant leaf value -> MCTS+mate_stop only (no field guidance)")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -151,6 +154,7 @@ def main():
     starts = [chess.Board(f) for f in fens[args.offset:args.offset + args.n]]
     dz = np.load(args.dtm_npz); idx = rng.permutation(len(dz["packed"]))[:args.bank]
     pl = FieldMCTS(fb, dev, dz["packed"][idx], dz["meta"][idx], args.nodes, args.n_basins, args.lam, args.replan)
+    pl.pure_search = args.pure_search
     print(f"VERDICT FIELD_MCTS field={Path(args.field).stem} n={len(starts)} nodes={args.nodes} "
           f"basins={len(pl.basins)} mate_basin_corner={pl.mate_corner:.2f} (NO tablebase in White's search)", flush=True)
     start_corner = float(np.mean([cornered_exposed(s) for s in starts]))

@@ -63,11 +63,18 @@ class Engine:
         self._ckpt, self._phead = ckpt, phead   # kept so /rebuild_atlas can re-run the builder
         fb, pay = load_ckpt(Path(ckpt), self.dev)
         fb.eval()
-        hp = torch.load(phead, map_location=self.dev, weights_only=False)
-        ph = EvalHead(d_in=hp["d_in"]).to(self.dev)
-        ph.load_state_dict(hp["state"])
-        ph.eval()
-        self.fb, self.phead = fb, ph
+        self.fb = fb
+        self.phead = None                               # optional: a GroupNorm field may have no phead
+        if phead and Path(phead).exists():
+            try:
+                hp = torch.load(phead, map_location=self.dev, weights_only=False)
+                ph = EvalHead(d_in=hp["d_in"]).to(self.dev)
+                ph.load_state_dict(hp["state"]); ph.eval()
+                self.phead = ph
+            except Exception as e:  # noqa: BLE001
+                print(f"phead skipped ({e}); committor/winp fall back to the distance value", flush=True)
+        if self.phead is None:
+            value_mode = "distance"                     # no committor without a phead
         self.omega_row = omega_ids(np.array([1800]), np.array([1800]),
                                    np.array([300.0]))[0]
 
@@ -138,6 +145,7 @@ class Engine:
         self._an_root = None
         self._an_fen = None
         self._an_total = 0
+        self.planner = None                     # optional long/short planner engine (set in main if --planner)
 
     # -- lazy atlas + projection ------------------------------------------
     @property
@@ -261,6 +269,8 @@ class Engine:
             return self.fb.embed_F(planes, om).cpu().numpy()[0]
 
     def winp(self, board: chess.Board) -> float:
+        if self.phead is None:
+            return 0.5                                   # no committor head on this field
         f = self.torch.from_numpy(self._embed_F(board)[None]).to(self.dev)
         with self.torch.no_grad():
             return float(self.torch.softmax(self.phead(f), dim=1)[0, 0])
@@ -450,6 +460,43 @@ class Engine:
                "black" if out.winner is False else "draw")
         return True, res
 
+    def engine_move_planner(self, board: chess.Board, nodes: int | None = None) -> dict:
+        """Long/short PLANNER engine (Kaveh's spec): field selects a subgoal, uniform-MCTS navigates to it,
+        handoff to pure mate-search near the goal. Returns move + the PLAN (phase, subgoal_dmate, projected
+        hops) so the UI can draw the plan. (The subgoal selector is the RL-swappable seam.)"""
+        over, res = self._outcome(board)
+        if over:
+            return dict(move=None, san=None, fen=board.fen(), game_over=True, result=res,
+                        winp=round(self.winp(board), 4), pv=[], candidates=[], phase=None, plan_hops=[])
+        with self.lock:
+            if board.fullmove_number <= 1:
+                self.planner.reset()                       # new game -> reset plan/stall state
+            mv = self.planner.move(board)
+        move = chess.Move.from_uci(mv["uci"])
+        san = board.san(move)
+        after = board.copy(stack=False); after.push(move)
+        over2, res2 = self._outcome(after)
+
+        def _xy_safe(bd):                                  # atlas may be dim-mismatched until B-atlas rebuild
+            try:
+                return self._xy(bd)
+            except Exception:
+                return None, None
+        px, py = _xy_safe(board)
+        hops = []                                          # replay plan SANs -> positions -> project each hop
+        b = board.copy(stack=False)
+        for s in mv["plan"]:
+            try:
+                m2 = b.parse_san(s)
+            except Exception:
+                break
+            wht = b.turn == chess.WHITE; b.push(m2)
+            hx, hy = _xy_safe(b)
+            hops.append(dict(san=s, fen=b.fen(), white=wht, x=hx, y=hy))
+        return dict(move=mv["uci"], san=san, fen=after.fen(), game_over=over2, result=res2,
+                    x=px, y=py, winp=round(self.winp(after), 4), phase=mv["phase"], dmate=mv["dmate"],
+                    subgoal_dmate=mv.get("subgoal_dmate"), pv=mv["plan"], plan_hops=hops, candidates=[])
+
     def engine_move(self, board: chess.Board, nodes: int | None = None) -> dict:
         from catspace.nn.mcts import game_truth
         over, res = self._outcome(board)
@@ -621,7 +668,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "fen": b.fen(), "san": san,
                             "game_over": over, "result": res})
             elif u.path == "/engine_move":
-                self._json(ENGINE.engine_move(self._board(body["fen"]), body.get("nodes")))
+                _fn = ENGINE.engine_move_planner if ENGINE.planner is not None else ENGINE.engine_move
+                self._json(_fn(self._board(body["fen"]), body.get("nodes")))
             elif u.path == "/analyze":
                 self._json({"ok": True, **ENGINE.analyze(self._board(body["fen"]),
                             int(body.get("topk", 3)), body.get("nodes"),
@@ -706,6 +754,13 @@ def main():
                          "(keep sampling moves that could still be best; stop once ~95%% "
                          "confidently worse). Per-move CIs are shown in the panel. 0 = "
                          "plain PUCT root.")
+    ap.add_argument("--planner-field", default="data/derived/sep/nucleus_distilled.pt",
+                    help="quasimetric field for the LONG/SHORT planner engine (field picks a subgoal, "
+                         "uniform-MCTS navigates to it, handoff to pure mate-search near the goal). "
+                         "The subgoal selector is the RL-swappable seam (Kaveh: 'eventually the planner is RL').")
+    ap.add_argument("--planner", action="store_true",
+                    help="route /engine_move through the long/short planner engine instead of the incumbent MCTS.")
+    ap.add_argument("--planner-bank", type=int, default=1500)
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
@@ -721,6 +776,13 @@ def main():
                     memory_dir=args.memory or None, tactical_prior=args.tactical_prior,
                     root_min_visits=args.root_min_visits, policy_path=policy_path or None,
                     value_mode=args.value)
+    if args.planner:
+        from experiments.longshort_engine import LongShortEngine
+        print(f"long/short PLANNER engine ON: field {Path(args.planner_field).name}", flush=True)
+        _dz = np.load("data/derived/dtm_endgame.npz")
+        _bi = np.random.default_rng(0).permutation(len(_dz["packed"]))[:args.planner_bank]
+        ENGINE.planner = LongShortEngine(args.planner_field, _dz["packed"][_bi], _dz["meta"][_bi],
+                                         "cpu", nodes=args.nodes)
     if not (ATLAS_DIR / "atlas.json").exists():
         print("WARNING: atlas.json missing — run experiments/viz/build_play_atlas.py "
               "(the map will 500 until then)", flush=True)
