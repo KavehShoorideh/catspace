@@ -97,7 +97,7 @@ class TorchFB(nn.Module):
                  iqe: bool = False, iqe_components: int = 8,
                  iqe_embed_scale: float = 50.0, iqe_leak_beta: float = 0.0,
                  spectral_norm: bool = False, freeze_iqe_scale: bool = False,
-                 omega_free_field: bool = False):
+                 omega_free_field: bool = False, regime_channels: int = 0):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional or outcome_poles or iqe:
@@ -113,7 +113,8 @@ class TorchFB(nn.Module):
                            iqe_leak_beta=iqe_leak_beta,
                            spectral_norm=spectral_norm,
                            freeze_iqe_scale=freeze_iqe_scale,
-                           omega_free_field=omega_free_field)
+                           omega_free_field=omega_free_field,
+                           regime_channels=regime_channels)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -127,6 +128,16 @@ class TorchFB(nn.Module):
         # forbids. So drop omega from F for the field; it stays on the committor/
         # measure side only. headF then mirrors headB (enc_out in, no omega).
         self.omega_free_field = omega_free_field
+        # MULTICHANNEL REGIMES (Kaveh 2026-07-23, INQUIRY_MULTICHANNEL_FIELD.md): regime id
+        # (omega column 3) conditions F additively on the trunk. Regime 0 = the base
+        # rule-geometry: ZERO-initialized embedding -> regime-0 behavior is byte-identical
+        # to an unconditioned model, preserving the omega-free doctrine for the base
+        # channel; regimes >= 1 (random / sf-optimal / sf-weak / ...) are DELIBERATE
+        # measure-flavored reachabilities that differentiate during training.
+        self.regime_channels = regime_channels
+        if regime_channels > 0:
+            self.emb_regime = nn.Embedding(regime_channels, enc_out)
+            self.emb_regime.weight.data.zero_()
         _f_in = enc_out if omega_free_field else enc_out + 3 * omega_dim
         self.headF = nn.Sequential(nn.Linear(_f_in, dh), nn.ReLU(),
                                    nn.Linear(dh, d))
@@ -259,6 +270,8 @@ class TorchFB(nn.Module):
 
     def embed_F(self, planes: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         h = self.encF(planes)
+        if self.regime_channels > 0 and omega is not None and omega.shape[1] >= 4:
+            h = h + self.emb_regime(omega[:, 3])     # regime channel (col 3); regime 0 = no-op at init
         if self.omega_free_field:                    # player-independent geometry
             e = self.headF(h)                        # omega accepted for API, ignored
         else:
@@ -769,7 +782,7 @@ def load_ckpt(path, device: str = "cpu") -> tuple[TorchFB, dict]:
     # load_state_dict still hard-fails on any OTHER missing key (a truncated save
     # or config/state skew) instead of silently random-initing it (adversarial-
     # review finding, 2026-07-17).
-    _NEW_PARAM_ALLOWLIST = {"qrl_raw_lambda", "qrl_pid_I", "qrl_pid_prev"}
+    _NEW_PARAM_ALLOWLIST = {"qrl_raw_lambda", "qrl_pid_I", "qrl_pid_prev", "emb_regime.weight"}
     for k, ref in fb.state_dict().items():
         if k not in state and k in _NEW_PARAM_ALLOWLIST:
             state[k] = ref.clone()

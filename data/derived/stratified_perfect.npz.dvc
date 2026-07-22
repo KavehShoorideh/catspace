@@ -1,0 +1,5 @@
+outs:
+- md5: 77f44db5397a18086e49280d7df19038
+  size: 2765956
+  hash: md5
+  path: stratified_perfect.npz

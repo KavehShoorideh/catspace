@@ -1,0 +1,5 @@
+outs:
+- md5: 36f4662309125aa0a1dedaf2f90626fc
+  size: 2616992
+  hash: md5
+  path: dtm_endgame.npz

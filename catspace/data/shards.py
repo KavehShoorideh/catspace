@@ -111,6 +111,30 @@ def sample_shard_rows(shard_dir, n: int, seed: int, holdout_only: bool = False,
     return out
 
 
+class MultiMixSource:
+    """N-way generalization of MixedPairSource: [(source, weight), ...]; each yielded
+    batch comes wholly from one source, chosen by normalized weight. Sources that run
+    dry restart their own epoch independently (same semantics as MixedPairSource)."""
+
+    def __init__(self, weighted_sources):
+        self.entries = [(s, float(w)) for s, w in weighted_sources]
+        z = sum(w for _, w in self.entries) or 1.0
+        self.weights = [w / z for _, w in self.entries]
+
+    def batches(self, batch_size: int, seed: int) -> Iterator[PairBatch]:
+        rng = np.random.default_rng(seed)
+        iters = [iter(s.batches(batch_size, seed + 101 * i)) for i, (s, _) in enumerate(self.entries)]
+        epochs = [0] * len(iters)
+        while True:
+            i = int(rng.choice(len(iters), p=self.weights))
+            try:
+                yield next(iters[i])
+            except StopIteration:
+                epochs[i] += 1
+                iters[i] = iter(self.entries[i][0].batches(batch_size, seed + 101 * i + epochs[i]))
+                yield next(iters[i])
+
+
 class MixedPairSource:
     """Interleaves batches from two PairSource-like objects (e.g. human
     LichessPairSource + self-play LichessPairSource pointed at a
@@ -157,11 +181,17 @@ class MixedPairSource:
 
 class LichessPairSource:
     """Geometric-horizon (anchor, goal) PACKED-POSITION-ROW pairs sampled
-    within each game from position shards written by data.lichess.build_shards."""
+    within each game from position shards written by data.lichess.build_shards.
 
-    def __init__(self, shard_dir, gamma: float):
+    regime: the MULTICHANNEL tag (INQUIRY_MULTICHANNEL_FIELD.md) for every row this
+    source yields -- 0 = human/base geometry, >=1 = generated play regimes (random,
+    sf-optimal, sf-weak, ...). A shard file may carry its own per-row "regime" array
+    (takes precedence); otherwise this source-level default applies."""
+
+    def __init__(self, shard_dir, gamma: float, regime: int = 0):
         self.shard_dir = Path(shard_dir)
         self.gamma = gamma
+        self.regime = int(regime)
         self.paths = sorted(self.shard_dir.glob("shard_*.npz"))
 
     def batches(self, batch_size: int, seed: int) -> Iterator[PairBatch]:
@@ -212,6 +242,8 @@ class LichessPairSource:
                     "board_meta_succ": data["meta"][succ_rows[sl]],  # 1-ply successor
                     "succ_is_last": is_last[sl],                   # succ==self, mask
                     "packed_succ": data["packed"][succ_rows[sl]],  # successor rows
+                    "regime": (data["regime"][sl].astype(np.int64) if "regime" in data
+                               else np.full(sl.stop - sl.start, self.regime, dtype=np.int64)),
                 }
                 if has_eval:
                     meta["eval_cp"] = data["eval_cp"][sl]
