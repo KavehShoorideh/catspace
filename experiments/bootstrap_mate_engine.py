@@ -308,7 +308,9 @@ def worker(args):
     if res_path.exists():
         import json
         done = {json.loads(ln)["g"] for ln in res_path.read_text().splitlines() if ln.strip()}
-    my_games = [g for g in range(args.worker, len(starts), args.j) if g not in done]
+    base = ([int(x) for x in args.games.split(",")] if args.games
+            else list(range(len(starts))))
+    my_games = [g for g in base[args.worker::args.j] if g not in done]
     if done:
         print(f"[worker {args.worker}] resume: skipping {len(done)} recorded games", flush=True)
     results = []
@@ -396,6 +398,8 @@ def main():
     ap.add_argument("--results-file", default=None)
     ap.add_argument("--fresh", action="store_true",
                     help="wipe bank/milestones/results; DEFAULT resumes (checkpointed runs)")
+    ap.add_argument("--games", default=None,
+                    help="comma list of game indices to (re)play (default: all 0..n-1)")
     ap.add_argument("--max-plies", type=int, default=80)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
