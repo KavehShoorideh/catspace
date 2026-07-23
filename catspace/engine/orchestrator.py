@@ -1,113 +1,164 @@
-"""catspace/engine/orchestrator.py -- PROBE ORCHESTRATION (Kaveh 2026-07-25: 'shoot off
-multiple probe requests and they stream in results in parallel as they pass certain
-milestones... yet they don't double calculate anything: global memoization, waiting system
-on pending results and notifications of result completions, indexed by position').
+"""catspace/engine/orchestrator.py -- PROBE ORCHESTRATION on RAY (Kaveh 2026-07-25:
+'maybe ray is the right framework... don't hand roll').
 
-Single-flight async execution, keyed by (kind, position-epd):
-  - submit() with a key already DONE      -> handle resolves instantly from the memo
-  - submit() with a key already IN FLIGHT -> the request COALESCES onto the running job
-    (never double-calculate); its callbacks attach to the same stream
-  - long jobs call report(stage, payload) as they pass milestones -> every subscriber
-    gets (key, stage, payload) events as they happen; 'done' is the final event
-  - wait()/result() block on a condition; as_completed() streams finished handles
+Single-flight, position-indexed async probe execution with milestone streaming:
+  - submit(kind, epd, fn): identical in-flight keys COALESCE onto one running task
+    (never double-calculate); finished keys resolve from the memo instantly
+  - fn(report) runs as a Ray task; report(stage, payload) streams milestones through the
+    coordinator actor; subscribers poll events(key) or pass on_event to submit
+  - wait / as_completed / invalidate(kind) as before
 
-Threads (torch forwards release the GIL; probe workloads are net/geometry-bound). This is
-the IN-PROCESS primitive; cross-process sharing stays on the file/sqlite layer (banks,
-experience store) by design."""
+The coordinator (a Ray actor) owns {key -> state, stages, ObjectRef}; because it is an
+actor, MULTIPLE PROCESSES (game workers) sharing one Ray instance also share the memo and
+the in-flight table -- the cross-process layer the hand-rolled version could not offer.
+ray.init is lazy (ignore_reinit_error) and local by default."""
 from __future__ import annotations
 
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass
 from typing import Any, Callable
+
+import ray
+
+
+def _ensure_ray():
+    if not ray.is_initialized():
+        ray.init(ignore_reinit_error=True, include_dashboard=False,
+                 logging_level="ERROR", num_cpus=4)
+
+
+@ray.remote
+class _Coordinator:
+    def __init__(self):
+        self.jobs: dict = {}       # key -> {"status", "stages": [..], "result", "error"}
+
+    def try_claim(self, key) -> str:
+        """returns 'claimed' (caller runs it) | 'inflight' | 'done'."""
+        j = self.jobs.get(key)
+        if j is None:
+            self.jobs[key] = {"status": "running", "stages": [], "result": None, "error": None}
+            return "claimed"
+        return "done" if j["status"] in ("done", "error") else "inflight"
+
+    def report(self, key, stage, payload):
+        self.jobs[key]["stages"].append((stage, payload))
+
+    def finish(self, key, result=None, error=None):
+        j = self.jobs[key]
+        j["result"] = result; j["error"] = error
+        j["status"] = "error" if error else "done"
+
+    def state(self, key):
+        return self.jobs.get(key)
+
+    def invalidate(self, kind=None):
+        self.jobs = {k: j for k, j in self.jobs.items()
+                     if j["status"] == "running" or (kind is not None and k[0] != kind)}
+
+    def stats(self):
+        from collections import Counter
+        return dict(Counter(j["status"] for j in self.jobs.values()))
+
+
+@ray.remote
+def _run_job(coord, key, fn):
+    def report(stage, payload):
+        coord.report.remote(key, stage, payload)
+    try:
+        res = fn(report)
+        ray.get(coord.finish.remote(key, result=res))
+        return res
+    except Exception as e:                                  # noqa: BLE001
+        ray.get(coord.finish.remote(key, error=f"{type(e).__name__}: {e}"[:200]))
+        raise
 
 
 @dataclass
 class Job:
     key: tuple
-    status: str = "pending"                    # pending -> running -> done | error
-    result: Any = None
-    error: str | None = None
-    stages: list = field(default_factory=list)
-    done_evt: threading.Event = field(default_factory=threading.Event)
-    callbacks: list = field(default_factory=list)
+    orch: "ProbeOrchestrator"
+
+    def done(self) -> bool:
+        s = self.orch._state(self.key)
+        return s is not None and s["status"] in ("done", "error")
+
+    def stages(self) -> list:
+        s = self.orch._state(self.key)
+        return list(s["stages"]) if s else []
+
+    def result(self, timeout: float | None = None) -> Any:
+        deadline = None if timeout is None else time.time() + timeout
+        while True:
+            s = self.orch._state(self.key)
+            if s and s["status"] == "done":
+                return s["result"]
+            if s and s["status"] == "error":
+                raise RuntimeError(s["error"])
+            if deadline and time.time() > deadline:
+                raise TimeoutError(str(self.key))
+            time.sleep(0.02)
 
 
 class ProbeOrchestrator:
     def __init__(self, max_workers: int = 4):
-        self._pool = ThreadPoolExecutor(max_workers=max_workers)
-        self._lock = threading.Lock()
-        self._jobs: dict[tuple, Job] = {}      # pending + running + done (memo)
-        self.stats = {"submitted": 0, "coalesced": 0, "memo_hits": 0, "computed": 0}
+        _ensure_ray()
+        self.coord = _Coordinator.options(max_concurrency=8).remote()
+        self.stats_local = {"submitted": 0, "coalesced": 0, "memo_hits": 0, "computed": 0}
 
-    def submit(self, kind: str, epd: str, fn: Callable[[Callable], Any],
-               on_event: Callable | None = None) -> Job:
-        """fn(report) -> result; call report(stage, payload) at milestones.
-        Identical (kind, epd) submissions coalesce; finished ones hit the memo."""
+    def _state(self, key):
+        return ray.get(self.coord.state.remote(key))
+
+    def submit(self, kind: str, epd: str, fn: Callable, on_event=None) -> Job:
         key = (kind, epd)
-        with self._lock:
-            self.stats["submitted"] += 1
-            job = self._jobs.get(key)
-            if job is not None:
-                if job.status == "done":
-                    self.stats["memo_hits"] += 1
-                    if on_event:
-                        on_event(key, "done", job.result)
-                else:
-                    self.stats["coalesced"] += 1
-                    if on_event:
-                        job.callbacks.append(on_event)
-                        for stage, payload in job.stages:   # replay milestones already passed
-                            on_event(key, stage, payload)
-                return job
-            job = Job(key)
-            if on_event:
-                job.callbacks.append(on_event)
-            self._jobs[key] = job
+        self.stats_local["submitted"] += 1
+        claim = ray.get(self.coord.try_claim.remote(key))
+        if claim == "claimed":
+            self.stats_local["computed"] += 1
+            _run_job.remote(self.coord, key, fn)
+        elif claim == "inflight":
+            self.stats_local["coalesced"] += 1
+        else:
+            self.stats_local["memo_hits"] += 1
+        job = Job(key, self)
+        if on_event is not None:                            # poll-based event pump
+            import threading
 
-        def _run():
-            def report(stage, payload):
-                with self._lock:
-                    job.stages.append((stage, payload))
-                    cbs = list(job.callbacks)
-                for cb in cbs:
-                    cb(key, stage, payload)
-            job.status = "running"
-            try:
-                job.result = fn(report)
-                job.status = "done"
-                self.stats["computed"] += 1
-            except Exception as e:                          # noqa: BLE001
-                job.error = f"{type(e).__name__}: {e}"[:200]
-                job.status = "error"
-            with self._lock:
-                cbs = list(job.callbacks)
-            for cb in cbs:
-                cb(key, "done" if job.status == "done" else "error",
-                   job.result if job.status == "done" else job.error)
-            job.done_evt.set()
-        self._pool.submit(_run)
+            def _pump():
+                seen = 0
+                while True:
+                    s = self._state(key)
+                    if s is None:
+                        return
+                    for stage, payload in s["stages"][seen:]:
+                        on_event(key, stage, payload)
+                    seen = len(s["stages"])
+                    if s["status"] in ("done", "error"):
+                        on_event(key, s["status"],
+                                 s["result"] if s["status"] == "done" else s["error"])
+                        return
+                    time.sleep(0.03)
+            threading.Thread(target=_pump, daemon=True).start()
         return job
 
     def wait(self, job: Job, timeout: float | None = None) -> Any:
-        job.done_evt.wait(timeout)
-        if job.status == "error":
-            raise RuntimeError(job.error)
-        return job.result
+        return job.result(timeout)
 
     def as_completed(self, jobs: list[Job], timeout: float | None = None):
         pending = list(jobs)
         while pending:
             for j in list(pending):
-                if j.done_evt.wait(0.01):
+                if j.done():
                     pending.remove(j)
                     yield j
+            time.sleep(0.02)
 
     def invalidate(self, kind: str | None = None):
-        """drop memoized results (e.g., after a bank/field change made them stale)."""
-        with self._lock:
-            self._jobs = {k: j for k, j in self._jobs.items()
-                          if j.status != "done" or (kind is not None and k[0] != kind)}
+        ray.get(self.coord.invalidate.remote(kind))
+
+    def stats(self):
+        d = dict(self.stats_local)
+        d["coordinator"] = ray.get(self.coord.stats.remote())
+        return d
 
     def shutdown(self):
-        self._pool.shutdown(wait=False)
+        pass                                                # ray lifecycle owned by caller
