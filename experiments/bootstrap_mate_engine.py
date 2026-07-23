@@ -682,6 +682,10 @@ def worker(args):
     pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times,
                                           game_ctx=game_ctx, plan_alpha=args.plan_alpha)
     planner = make_planner(fm, bank)
+    from catspace.engine.introspection import ProbeKit
+    probes = ProbeKit(fm, bank, loss_bank, draw_bank,
+                      exp_db=(exp.db if exp is not None else None),
+                      game_ctx=game_ctx, prior_fn=pfn)
     ms = MilestoneCache(fm, Path(args.milestone_file))
     exp = ExperienceStore(args.experience_db) if args.experience_db else None
     try:
@@ -720,7 +724,7 @@ def worker(args):
         plan_counts = _Counter()
         noharvest = 0     # WITHIN-GAME progress gating (Kaveh: no cross-game self-stats):
                           # consecutive searches touching zero new mates = value failing NOW
-        prev_v = None; tactic_events: list = []
+        prev_v = None; tactic_events: list = []; probe_snaps: list = []
         # TACTICS TRACKER (Kaveh; INQUIRY_TACTICS: 'a tactic is an opportunity outside our
         # plan afforded by a mistake by our opponent'): an upward DISCONTINUITY in our own
         # root value across the opponent's reply = a detected opportunity-from-mistake.
@@ -787,6 +791,9 @@ def worker(args):
                          policy_batch_fn=pfnb, batch_leaves=32)
                 roots.append(b.epd())
                 ps = planner(b, plies)
+                if ps["plan"] != game_ctx.get("plan"):     # plan switch: log the planner's
+                    snap = probes.summary(b)               # observation (RL seam dataset)
+                    probe_snaps.append(dict(ply=plies, plan=ps["plan"], **snap))
                 game_ctx["plan"] = ps["plan"]; game_ctx["target_pt"] = ps.get("target_pt")
                 plan_counts[ps["plan"] + (f"->{ps['goal']}" if ps.get("goal") else "")] += 1
                 if hasattr(vfn, "set_anchor"):
@@ -904,7 +911,8 @@ def worker(args):
         import json
         rec = dict(g=gi, mate=mated, term=term, plies=plies, nodes=nodes_spent,
                    t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank),
-                   tb_consults=tb_consults, plans=dict(plan_counts), tactics=tactic_events)
+                   tb_consults=tb_consults, plans=dict(plan_counts), tactics=tactic_events,
+                   probes=probe_snaps)
         if not mated:           # FAILs carry the full trajectory for field diagnostics
             rec["start_epd"] = start_epd; rec["ucis"] = ucis
         with open(res_path, "a") as f:
