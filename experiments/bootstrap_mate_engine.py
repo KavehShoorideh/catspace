@@ -711,6 +711,11 @@ def worker(args):
         plan_counts = _Counter()
         noharvest = 0     # WITHIN-GAME progress gating (Kaveh: no cross-game self-stats):
                           # consecutive searches touching zero new mates = value failing NOW
+        prev_v = None; tactic_events: list = []
+        # TACTICS TRACKER (Kaveh; INQUIRY_TACTICS: 'a tactic is an opportunity outside our
+        # plan afforded by a mistake by our opponent'): an upward DISCONTINUITY in our own
+        # root value across the opponent's reply = a detected opportunity-from-mistake.
+        # Within-game, own-values-only, no concepts; logged for the pounce mechanism later.
         reuse = None            # subtree carried across moves (tree reuse; general lever)
         # WARM-UP (Kaveh 2026-07-25 'run until bank is full on first move'): before the
         # first timed move, keep searching+harvesting until the bank reaches the target
@@ -782,6 +787,10 @@ def worker(args):
                                             # discount and double-count _threefold's walk
                 root = m.run(b, reuse_root=reuse)
                 t_search = time.time() - tm
+                v_root = root.W / max(root.N, 1)
+                if prev_v is not None and (v_root - prev_v) > 0.15:
+                    tactic_events.append((plies, round(float(v_root - prev_v), 3)))
+                prev_v = v_root
                 th = time.perf_counter()
                 win_mates, loss_mates, stales = harvest(root)
                 mseen.append(len(win_mates) > 0); nmoves.append(m.evals_used)
@@ -883,14 +892,15 @@ def worker(args):
         import json
         rec = dict(g=gi, mate=mated, term=term, plies=plies, nodes=nodes_spent,
                    t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank),
-                   tb_consults=tb_consults, plans=dict(plan_counts))
+                   tb_consults=tb_consults, plans=dict(plan_counts), tactics=tactic_events)
         if not mated:           # FAILs carry the full trajectory for field diagnostics
             rec["start_epd"] = start_epd; rec["ucis"] = ucis
         with open(res_path, "a") as f:
             f.write(json.dumps(rec) + "\n")
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
         print(f"  g{gi:03d}[w{args.worker}] {'mate' if mated else 'FAIL:' + term} plies={plies} "
-              f"tb={len(tb_consults)} plan={','.join(f'{k}:{v}' for k, v in plan_counts.items())} "
+              f"tb={len(tb_consults)} tac={len(tactic_events)} "
+              f"plan={','.join(f'{k}:{v}' for k, v in plan_counts.items())} "
               f"bank={len(bank)}(+{found_this_game}) "
               f"loss={len(loss_bank)} draws={len(draw_bank)} ms={len(ms.stats)} "
               f"t/move={np.median(tmoves):.1f}s t/game={sum(tmoves):.0f}s "
