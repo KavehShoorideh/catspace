@@ -7024,3 +7024,20 @@ last-mile value inside the <=5p nucleus is dtm_cnn_v2, and dtm_endgame_v2.npz co
 confidently wrong. Explains KRRvKB's persistent lag (0.75) across every engine generation.
 FIX (outcome-structure data, no hand-coding): dtm_endgame_v3 regen over all five classes +
 dtm_cnn_v3 retrain, chained (probe cache makes repeats cheap). Future runs get v3.
+
+## 2026-07-25 -- infrastructure round: sensorium, Ray orchestration, immortal banks,
+## always-latest policy, self-retrain loop
+
+Built at Kaveh's direction, all committed+smoked: (1) EXPERIENCE STORE (sqlite WAL) + shard
+export in the regime-rollouts schema (regime=11 self-play) + SELF-RETRAIN LOOP driver
+(play N -> export -> fine-tune quasimetric -> pointer swap; banks re-embed per field).
+(2) IMMORTAL BANKS: --import-banks merge; selfloop keeps ONE growing bank (banks = facts).
+(3) ALWAYS-RUN-LATEST policy (memory saved): stale runs killed on every engine update,
+resume makes it cheap. (4) PLANNER SENSORIUM (ProbeKit): memory/familiarity/sharpness/
+surfaces probes + summary(); snapshots logged at plan decisions = the RL PlanSelector's
+observation dataset accumulating from day one. (5) PROBE ORCHESTRATION ON RAY (per Kaveh:
+don't hand-roll): single-flight keyed by (kind, epd), coordinator actor = cross-process
+memo + in-flight dedup + milestone streaming; invalidate(kind) on bank/field changes.
+Also: tri-carry probe -> anchor-every-move/C=128 (measured optimum); DTM v3-ALL gen over
+every tablebase class ON DISK (the KRRvKB hole was a hand-list, proving the point);
+full 3-4-5 syzygy download started (the general nucleus next).
