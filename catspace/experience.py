@@ -12,6 +12,7 @@ per field version (facts survive engine change; embeddings are per-field)."""
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -25,7 +26,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS games(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   scenario TEXT, start_epd TEXT, result TEXT, term TEXT, plies INTEGER,
-  ucis TEXT, engine_commit TEXT, field_ckpt TEXT, ts REAL);
+  ucis TEXT, engine_commit TEXT, field_ckpt TEXT, ts REAL, opponent TEXT);
 CREATE TABLE IF NOT EXISTS positions(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   game_id INTEGER, ply INTEGER, epd TEXT, kind TEXT, ts REAL);
@@ -42,17 +43,21 @@ class ExperienceStore:
         self.db = sqlite3.connect(str(path), timeout=10.0)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.executescript(_SCHEMA)
+        try:                                        # migrate pre-opponent DBs in place
+            self.db.execute("ALTER TABLE games ADD COLUMN opponent TEXT")
+        except sqlite3.OperationalError:
+            pass
         self.db.commit()
 
     def record_game(self, scenario: str, start_epd: str, result: str, term: str,
                     ucis: list[str], searched_epds: list[str],
-                    engine_commit: str = "", field_ckpt: str = "") -> int:
+                    engine_commit: str = "", field_ckpt: str = "", opponent: str = "") -> int:
         now = time.time()
         cur = self.db.execute(
-            "INSERT INTO games(scenario,start_epd,result,term,plies,ucis,engine_commit,field_ckpt,ts) "
-            "VALUES(?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO games(scenario,start_epd,result,term,plies,ucis,engine_commit,field_ckpt,ts,opponent) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?)",
             (scenario, start_epd, result, term, len(ucis), json.dumps(ucis),
-             engine_commit, field_ckpt, now))
+             engine_commit, field_ckpt, now, opponent))
         gid = cur.lastrowid
         self.db.executemany(
             "INSERT INTO positions(game_id,ply,epd,kind,ts) VALUES(?,?,?,?,?)",
@@ -71,18 +76,25 @@ class ExperienceStore:
         from catspace.data.encode import encode_meta, encode_packed
         last = self.db.execute("SELECT COALESCE(MAX(last_game_id),0) FROM exports").fetchone()[0]
         rows = self.db.execute(
-            "SELECT id,start_epd,ucis,result FROM games WHERE id>? ORDER BY id", (last,)).fetchall()
+            "SELECT id,start_epd,ucis,result,opponent FROM games WHERE id>? ORDER BY id",
+            (last,)).fetchall()
         if len(rows) < min_games:
             return 0
-        cols = {k: [] for k in ("pk", "mt", "ply", "gid", "res")}
-        for gid, start_epd, ucis, result in rows:
+        cols = {k: [] for k in ("pk", "mt", "ply", "gid", "res", "we", "be")}
+        for gid, start_epd, ucis, result, opponent in rows:
             b = chess.Board(start_epd)
             res = 1 if result == "mate" else 0
+            # cohort truth for the opponent model: we play White (stamped 2800 -> top
+            # elo bin = strong engine); Black is the actual opponent rung when known,
+            # else it's us too (toy scenarios: we defend both sides).
+            m = re.search(r"(\d{3,4})", opponent or "")
+            belo = int(m.group(1)) if m else 2800
             for t, u in enumerate([None] + json.loads(ucis)):
                 if u is not None:
                     b.push(chess.Move.from_uci(u))
                 cols["pk"].append(encode_packed(b)); cols["mt"].append(encode_meta(b))
                 cols["ply"].append(t); cols["gid"].append(gid); cols["res"].append(res)
+                cols["we"].append(2800); cols["be"].append(belo)
         out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
         n_existing = len(list(out.glob("shard_*.npz")))
         sp = out / f"shard_{n_existing:03d}.npz"
@@ -91,7 +103,7 @@ class ExperienceStore:
             sp, packed=np.stack(cols["pk"]), meta=np.stack(cols["mt"]),
             ply=np.array(cols["ply"], np.int32), clock=np.full(n, 300.0, np.float32),
             result=np.array(cols["res"], np.int8),
-            white_elo=np.full(n, 1800, np.int16), black_elo=np.full(n, 1800, np.int16),
+            white_elo=np.array(cols["we"], np.int16), black_elo=np.array(cols["be"], np.int16),
             game_id=np.array(cols["gid"], np.uint32),
             regime=np.full(n, SELF_REGIME, np.int8),
             anchor_idx=np.zeros(n, np.int32))
