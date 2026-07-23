@@ -1138,7 +1138,12 @@ def main():
                     help="tb-trained DTM regression as the value's distance source INSIDE "
                          "the nucleus (resignation gap: the field has no trajectory support "
                          "there); '' = off")
-    ap.add_argument("--nucleus-max-pieces", type=int, default=5)
+    ap.add_argument("--nucleus-max-pieces", type=int, default=6,
+                    help="DTM-net value inside <=N pieces. Boundary follows the net's "
+                         "training support: was 5 (CNN era, 5p-only data); dtm_tok trains "
+                         "on ALL tb classes incl 6-man, so 6 (KRRvKBP autopsy: all FAILs "
+                         "threw the tb win in the first 4 moves -- 6p starts sat OUTSIDE "
+                         "the nucleus on an empty bank in resignation-gap field regions)")
     ap.add_argument("--plan-alpha", type=float, default=1.0,
                     help="planner's prior-bias strength (alpha-dial; 0 = planner off)")
     ap.add_argument("--experience-db", default="data/derived/experience.sqlite",
