@@ -465,7 +465,8 @@ def worker(args):
         ucis: list[str] = []    # full trajectory (start_epd + ucis reproduces the game)
         tb_consults: list[int] = []   # plies where the tb fallback fired (attribution log)
         from collections import Counter as _Counter
-        hist = _Counter()       # White-to-move position visits (stuckness trigger)
+        hist = _Counter({b.epd(): 1})   # ALL position visits, both colors (stuckness +
+                                        # repetition-creation triggers); counted at arrival
         reuse = None            # subtree carried across moves (tree reuse; general lever)
         # WARM-UP (Kaveh 2026-07-25 'run until bank is full on first move'): before the
         # first timed move, keep searching+harvesting until the bank reaches the target
@@ -494,7 +495,6 @@ def worker(args):
                 # STUCKNESS trigger (Kaveh 'do the fix'): second visit to a position =
                 # the field has no EFFECTIVE gradient in play (confidently-wrong loops
                 # never trip the flatness trigger) -> consult tb directly, LOGGED.
-                hist[b.epd()] += 1
                 if (args.tb_fallback_eps > 0 and hist[b.epd()] >= 2
                         and len(b.piece_map()) <= 6):
                     mv_tb = tb_white_move(b, tb)
@@ -506,6 +506,7 @@ def worker(args):
                                 and hasattr(vfn, "invalidate_anchor"):
                             vfn.invalidate_anchor()
                         b.push(mv_tb)
+                        hist[b.epd()] += 1
                         reuse = None
                         plies += 1
                         continue
@@ -542,6 +543,15 @@ def worker(args):
                         if mv_tb is not None:
                             best = next((c for c in root.children if c.move == mv_tb), best)
                             tb_consults.append(plies)
+                # repetition-CREATION veto: if the chosen move pushes into a position
+                # already seen twice (threefold = instant draw claim), consult tb instead
+                if args.tb_fallback_eps > 0 and len(b.piece_map()) <= 6:
+                    nb2 = b.copy(stack=False); nb2.push(best.move)
+                    if hist[nb2.epd()] >= 2:
+                        mv_tb = tb_white_move(b, tb)
+                        if mv_tb is not None and mv_tb != best.move:
+                            best = next((c for c in root.children if c.move == mv_tb), best)
+                            tb_consults.append(plies)
                 d = {k: times.get(k, 0) - snap.get(k, 0) for k in
                      ("prior_s", "prior_n", "embedF_s", "embedF_n", "dbank_s", "dbank_n")}
                 tree = t_search - d["prior_s"] - d["embedF_s"] - d["dbank_s"]
@@ -554,7 +564,8 @@ def worker(args):
                         and hasattr(vfn, "invalidate_anchor"):
                     vfn.invalidate_anchor()      # irreversible: candidate set is void
                 b.push(best.move)
-                reuse = best
+                hist[b.epd()] += 1               # count BOTH colors (route-independent
+                reuse = best                     # repetitions live on Black-side keys too)
             else:
                 mvb = tb_best_move(b, tb)
                 if reuse is not None:
@@ -564,6 +575,7 @@ def worker(args):
                     vfn.invalidate_anchor()
                 ucis.append(mvb.uci())
                 b.push(mvb)
+                hist[b.epd()] += 1
             plies += 1
         out = b.outcome(claim_draw=True)
         mated = bool(out and out.winner == chess.WHITE)
