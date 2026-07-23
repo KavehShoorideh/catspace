@@ -63,7 +63,16 @@ class Session:
                 self.opp.quit()
             except Exception:
                 pass
-        self.opp = chess.engine.SimpleEngine.popen_uci(["lc0", f"--weights={weights}"])
+        self.opp = None
+        try:
+            self.opp = chess.engine.SimpleEngine.popen_uci(["lc0", f"--weights={weights}"])
+        except Exception:
+            try:                                    # container fallback: weak stockfish
+                self.opp = chess.engine.SimpleEngine.popen_uci(["stockfish"])
+                self.opp.configure({"Skill Level": 1})
+                print("[assistant] lc0/maia unavailable -> stockfish skill 1", flush=True)
+            except Exception:
+                print("[assistant] no opponent engine -> analysis-only mode", flush=True)
         self.board = chess.Board()
         from collections import Counter
         self.ctx["hist"] = Counter({self.board.epd(): 1})
@@ -135,9 +144,20 @@ SES: Session | None = None
 PAGE = (ROOT / "catspace/viz/templates/assistant.html")
 
 
+USAGE = ROOT / "artifacts/experiments/usage.jsonl"
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
+
+    def _usage(self, path, code, ms):
+        try:
+            with open(USAGE, "a") as f:
+                f.write(json.dumps({"ts": time.time(), "path": path, "code": code,
+                                    "ms": round(ms, 1)}) + "\n")
+        except Exception:
+            pass
 
     def _send(self, code, body, ctype="application/json"):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
@@ -148,7 +168,18 @@ class H(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        if self.path == "/" or self.path.startswith("/index"):
+        t = time.time()
+        try:
+            self._get()
+        finally:
+            self._usage(self.path, 200, (time.time() - t) * 1000)
+
+    def _get(self):
+        if self.path == "/health":
+            self._send(200, {"ok": True, "banks": {"win": len(SES.bank),
+                                                   "loss": len(SES.loss),
+                                                   "draw": len(SES.draw)}})
+        elif self.path == "/" or self.path.startswith("/index"):
             self._send(200, PAGE.read_bytes(), "text/html")
         elif self.path.startswith("/assets/"):
             f = ASSETS / self.path[len("/assets/"):]
@@ -170,6 +201,13 @@ class H(BaseHTTPRequestHandler):
             self._send(404, {"err": "?"})
 
     def do_POST(self):
+        t = time.time()
+        try:
+            self._post()
+        finally:
+            self._usage(self.path, 200, (time.time() - t) * 1000)
+
+    def _post(self):
         n = int(self.headers.get("Content-Length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
         if self.path == "/new":
@@ -184,7 +222,7 @@ class H(BaseHTTPRequestHandler):
                 SES.board.push(mv)
                 SES.ctx["hist"][SES.board.epd()] += 1
                 reply = None
-                if not SES.board.is_game_over(claim_draw=True):
+                if not SES.board.is_game_over(claim_draw=True) and SES.opp is not None:
                     r = SES.opp.play(SES.board, chess.engine.Limit(nodes=1))
                     reply = SES.board.san(r.move)
                     SES.board.push(r.move)
@@ -209,6 +247,7 @@ def main():
     global SES
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, default=8777)
+    ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--field", default="data/derived/sep/lichess_mc2.pt")
     ap.add_argument("--energy", default="data/derived/sep/opponent_energy_v1.pt")
     ap.add_argument("--last-mile", default="data/derived/sep/dtm_cnn_v2.pt")
@@ -218,7 +257,7 @@ def main():
     args = ap.parse_args()
     SES = Session(args)
     print(f"assistant on http://localhost:{args.port}  opponent={args.opponent}", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", args.port), H).serve_forever()
+    ThreadingHTTPServer((args.host, args.port), H).serve_forever()
 
 
 if __name__ == "__main__":
