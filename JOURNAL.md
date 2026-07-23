@@ -6904,3 +6904,22 @@ reversibility bound -> full re-anchor; estimate error is one-sided pessimistic +
 g025 drew AGAIN (bank 1688) = stable FIELD-WRONG-with-support workbench; g038 (+0 harvest,
 bank 3.5k) = second specimen. v3 (fix+warmup+guard) chained; if rate still <100%, queued
 proposal = softmin/multiplicity value over candidates (Kaveh's call).
+
+## 2026-07-25 -- v3 verdict: 0.83, rate PINNED across mechanisms; residue = value inversion
+
+    VERDICT (v3) KRRvK-central 5000n: 40/48 (0.83) med_plies=9 med_t/solve=70s bank 4980
+    Ladder of engines: baseline 0.79 (med 13 plies) -> v2 +reuse 0.81 -> v3 +threefold-fix
+    +warm-up +irreversibility-guard 0.83 (med 9 plies, 10s/move)
+
+Every search mechanism improved speed/ply-efficiency; NONE moved the rate out of 0.79-0.83.
+Stable offender set (~8/48 starts; g025 drew 4 consecutive runs). PROBE verdict on fresh fails:
+FIELD-WRONG at every cycle position -- tb-optimal move ranked LAST (19/19 x2) by the value
+while the PRIOR ranks it 3rd (g014/g016 class; g006 = double handicap, prior 33/33). The
+field's local ordering INVERTS near these cycles (greedy distance-to-known-mates punishes the
+transit step of the correct plan). Support kNN: SUPPORTED (not a coverage hole).
+Ops notes: v2-launcher early death let v3 overlap v2 -> MPS pressure crashed 3 workers; rogue
+replays never corrupted the checkpoint (41-then-48 unique rows, dedup verified); resume
+completed the run exactly. Harness hardening queued: chain-wait on workers, worker-id prints,
+child supervision, dedup-by-g in VERDICT.
+NEXT (awaiting Kaveh): experience-gated value trust (milestone 0-for-N regions -> devalue the
+field, let prior+search carry) + root exploration floor for double-handicap positions.
