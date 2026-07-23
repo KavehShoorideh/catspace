@@ -43,7 +43,8 @@ def gen_chunk(task):
     got = tries = 0
     while got < n and tries < n * 300:
         tries += 1
-        b = random_endgame_start(rng, material)
+        b = (random_class_start(rng, material) if "v" in material
+             else random_endgame_start(rng, material))
         if b is None or b.turn != chess.WHITE:
             continue
         if white_pov_value(b, tb) != 1.0:              # WON only (DTM defined)
@@ -57,6 +58,35 @@ def gen_chunk(task):
     packed = np.stack(packs) if packs else np.zeros((0,), dtype=np.uint8)
     meta = np.stack(metas) if metas else np.zeros((0,), dtype=np.uint8)
     return packed, meta, np.array(dtms, dtype=np.float32), mi
+
+
+_PT = {"Q": 5, "R": 4, "B": 3, "N": 2, "P": 1}
+
+
+def random_class_start(rng, name: str):
+    """Sample a legal White-to-move position of tablebase class `name` ('KRRvKB').
+    Kaveh 2026-07-25: 'why not sample everything in the tablebase, irrespective of
+    material class' -- classes come from the TABLE FILES, no hand lists to miss."""
+    import chess as _c
+    w, bl = name.split("v")
+    pieces = ([( _PT[c], _c.WHITE) for c in w[1:]] + [(_PT[c], _c.BLACK) for c in bl[1:]])
+    for _ in range(60):
+        n = 2 + len(pieces)
+        sqs = rng.choice(64, size=n, replace=False)
+        b = _c.Board(None)
+        b.set_piece_at(int(sqs[0]), _c.Piece(_c.KING, _c.WHITE))
+        b.set_piece_at(int(sqs[1]), _c.Piece(_c.KING, _c.BLACK))
+        ok = True
+        for sq, (pt, col) in zip(sqs[2:], pieces):
+            if pt == _c.PAWN and _c.square_rank(int(sq)) in (0, 7):
+                ok = False; break
+            b.set_piece_at(int(sq), _c.Piece(pt, col))
+        if not ok:
+            continue
+        b.turn = _c.WHITE
+        if b.is_valid() and not b.is_game_over(claim_draw=True):
+            return b
+    return None
 
 
 def main():
@@ -75,7 +105,11 @@ def main():
                          "default = cpu_count-2). 1 = the old single-process path.")
     args = ap.parse_args()
 
-    materials = args.materials.split(",")
+    if args.materials == "all":
+        materials = sorted({f.stem for f in Path(args.syzygy_dir).glob("*.rtbw")})
+        print(f"[gen] ALL tablebase classes on disk: {materials}", flush=True)
+    else:
+        materials = args.materials.split(",")
     W = max(1, args.workers)
     # split each material's target across W chunks, each with a distinct seed so
     # workers don't regenerate identical positions. materials(M) x W = M*W tasks.
@@ -108,6 +142,11 @@ def main():
                 tot = sum(done_by_mat.values())
                 print(f"  chunk done: {materials[mi]} +{len(d)}  "
                       f"total {tot}/{len(materials)*args.per}  ({tot/(time.time()-t0):.0f}/s)", flush=True)
+                if len(packs) % 15 == 0 and packs:      # incremental checkpoint: a long
+                    np.savez(str(args.out) + ".partial.npz",   # gen must not be losable
+                             packed=np.concatenate(packs), meta=np.concatenate(metas),
+                             dtm=np.concatenate(dtms),
+                             material=np.concatenate(mats).astype(np.int8))
 
     packed = np.concatenate(packs, axis=0); meta = np.concatenate(metas, axis=0)
     dtm = np.concatenate(dtms, axis=0); material = np.concatenate(mats, axis=0).astype(np.int8)
