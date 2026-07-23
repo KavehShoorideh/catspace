@@ -99,10 +99,22 @@ class Session:
         b = self.board
         ps = self.planner(b, len(b.move_stack))
         self.ctx["plan"] = ps["plan"]; self.ctx["target_pt"] = ps.get("target_pt")
+        snap = dict(self.times); t_run = time.time()
         m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=nodes, mate_stop=True,
                  pw_c=1.5, root_min_visits=10, value_fn=self.vfn, policy_fn=self.pfn,
                  policy_batch_fn=self.pfnb, batch_leaves=32)
         root = m.run(b.copy(stack=True))
+        try:
+            from catspace.metrics import observe
+            tot = time.time() - t_run
+            acc = 0.0
+            for st, key in (("prior", "prior_s"), ("embF", "embedF_s"),
+                            ("dbank", "dbank_s"), ("dtm", "dtm_s")):
+                v = self.times.get(key, 0) - snap.get(key, 0)
+                observe(st, v); acc += v
+            observe("tree", max(tot - acc, 0)); observe("move_total", tot)
+        except Exception:
+            pass
         wins, losses, stales = harvest(root)
         self.bank.add(wins); self.loss.add(losses); self.draw.add(stales)
         kids = sorted(root.children, key=lambda c: -c.N)[:5]
@@ -156,6 +168,8 @@ class H(BaseHTTPRequestHandler):
             with open(USAGE, "a") as f:
                 f.write(json.dumps({"ts": time.time(), "path": path, "code": code,
                                     "ms": round(ms, 1)}) + "\n")
+            from catspace.metrics import count, observe
+            count(path); observe("http", ms / 1000.0)
         except Exception:
             pass
 
@@ -175,7 +189,10 @@ class H(BaseHTTPRequestHandler):
             self._usage(self.path, 200, (time.time() - t) * 1000)
 
     def _get(self):
-        if self.path == "/health":
+        if self.path == "/metrics":
+            from catspace.metrics import latest
+            self._send(200, latest(), "text/plain; version=0.0.4")
+        elif self.path == "/health":
             self._send(200, {"ok": True, "banks": {"win": len(SES.bank),
                                                    "loss": len(SES.loss),
                                                    "draw": len(SES.draw)}})
