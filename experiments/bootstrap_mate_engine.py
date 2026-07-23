@@ -32,6 +32,14 @@ from catspace.tb import TB, tb_best_move
 from experiments.mate_ladder_eval import sample_scenarios
 
 
+def mat_sig(b: chess.Board) -> str:
+    """material signature, e.g. 'KRRvbkn' (white upper, black lower, sorted) --
+    the planner's goal-region vocabulary (rules-structure, no concepts)."""
+    w = sorted(p.symbol() for p in b.piece_map().values() if p.color)
+    bl = sorted(p.symbol().lower() for p in b.piece_map().values() if not p.color)
+    return "".join(w) + "v" + "".join(bl)
+
+
 class OnlineMateBank:
     """Episodic memory of mates the ENGINE found (rules-certified terminal states). Shared
     across workers via an append-only FEN file; embeddings computed locally, deduped by EPD."""
@@ -39,10 +47,15 @@ class OnlineMateBank:
     def __init__(self, fm: FieldModel, bank_file: Path):
         self.fm = fm; self.bank_file = bank_file
         self.keys: set[str] = set(); self.embs: np.ndarray | None = None
+        self.sigs: list[str] = []      # material class per exemplar (planner's density index)
 
     def _embed_add(self, boards):
         E = self.fm.embed_B_boards(boards)
         self.embs = E if self.embs is None else np.concatenate([self.embs, E])
+        self.sigs.extend(mat_sig(b) for b in boards)
+
+    def class_idx(self, sig: str) -> np.ndarray:
+        return np.flatnonzero(np.array(self.sigs) == sig) if self.sigs else np.array([], int)
 
     def sync(self):
         """pick up other workers' discoveries (eventually-consistent shared memory)."""
@@ -437,21 +450,63 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     return value_fn                                              # the +-1-ply bound is void
 
 
-def select_plan(b: chess.Board, nucleus_max: int = 5) -> str:
-    """THE PLANNER SEAM (v1; Kaveh 'let's build that planner'): discrete plan selection
-    over RULES-state, acting on the search ONLY through a prior bias (the alpha-dial --
-    subgoals never contaminate the value). v1 is a deterministic rules-threshold selector;
-    the PlanSelector protocol (catspace/engine/interfaces.py) is the RL-swappable seam.
-      direct    -- default: chase the mate region, no bias
-      reset     -- the fifty-move deadline is absorbing the win (clock >= 30): the path to
-                   victory lies through a zeroing move; bias the prior toward them
-      tradedown -- beyond the tb nucleus (> 6 pieces): steer toward simplification into
-                   the region the engine already converts (the conversion-tree strategy)"""
-    if b.halfmove_clock >= 30:
-        return "reset"
-    if len(b.piece_map()) > 6:
-        return "tradedown"
-    return "direct"
+def make_planner(fm: FieldModel, bank: OnlineMateBank, give_up_plies: int = 20):
+    """THE HIERARCHICAL PLANNER (v2; Kaveh: 'from a seven piece, find the path to a
+    winning five piece'). Discrete GOAL-REGION selection + execution via the prior
+    alpha-dial (subgoals never contaminate the value). RULES + own-experience only:
+      - goal vocabulary = material classes REACHABLE by an available trade (rules)
+      - goal score = bank DENSITY in the class (mates we have actually achieved there --
+        'winning 5-piece' is defined by where our own mates live, Kaveh's
+        forceability x reachability x density prior) x field REACHABILITY
+        exp(-d(F(x), class exemplars))
+      - execution = bias captures transitioning toward the goal class (target piece =
+        the class difference); handoff to direct once <= 6 pieces; give-up + reselect
+        after give_up_plies without a class transition.
+    Deterministic v1 selector; the PlanSelector protocol is the RL-swappable seam."""
+    state = {"plan": "direct", "goal": None, "since": -999, "target_pt": None}
+
+    def plan(b: chess.Board, plies: int) -> dict:
+        n = len(b.piece_map())
+        if n <= 6:
+            if b.halfmove_clock >= 30:
+                state.update(plan="reset", goal=None, target_pt=None)
+            else:
+                state.update(plan="direct", goal=None, target_pt=None)
+            return state
+        cur = mat_sig(b)
+        if state["goal"] is None or cur == state["goal"] or plies - state["since"] >= give_up_plies:
+            cands: dict[str, int] = {}
+            for m in b.legal_moves:
+                if b.is_capture(m):
+                    c = b.copy(stack=False); c.push(m)
+                    cands[mat_sig(c)] = c.piece_type_at(m.to_square) or 0  # mover's pt, unused
+            if not cands:
+                state.update(plan="direct", goal=None, target_pt=None)
+                return state
+            F = fm.embed_F_boards([b])
+            best_sig, best_s = None, -1.0
+            for sig in cands:
+                idx = bank.class_idx(sig)
+                density = float(len(idx))
+                if len(idx) > 0:
+                    reach = float(np.exp(-fm.d_to_bank(F, bank.embs[idx[:256]]).min() / 20.0))
+                else:
+                    reach = 0.5                      # unexplored class: neutral reachability
+                s = (density + 1.0) * reach          # +1 smoothing: unexplored != impossible
+                if s > best_s:
+                    best_sig, best_s = sig, s
+            state.update(plan="tradedown", goal=best_sig, since=plies)
+            # the class difference names the piece TYPE whose capture makes the transition
+            state["target_pt"] = None
+            for m in b.legal_moves:
+                if b.is_capture(m):
+                    c = b.copy(stack=False); c.push(m)
+                    if mat_sig(c) == best_sig:
+                        state["target_pt"] = (chess.PAWN if b.is_en_passant(m)
+                                              else b.piece_type_at(m.to_square))
+                        break
+        return state
+    return plan
 
 
 def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
@@ -503,14 +558,23 @@ def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
         return out
 
     def _bias(b, pri):
-        """plan alpha-dial: multiplicative prior reweighting toward plan-aligned moves
-        (zeroing moves for reset/tradedown). Cache stays BASE priors; bias at retrieval."""
+        """plan alpha-dial: multiplicative prior reweighting toward plan-aligned moves.
+        reset -> zeroing moves; tradedown -> captures of the GOAL-class target piece
+        (goal-directed, not 'all captures'). Cache stays BASE priors; bias at retrieval."""
         plan = game_ctx.get("plan") if game_ctx is not None else None
         if plan not in ("reset", "tradedown") or plan_alpha <= 0:
             return pri
         boost = float(np.exp(plan_alpha))
-        out = {m: (p * boost if (b.is_capture(m) or b.piece_type_at(m.from_square) == chess.PAWN)
-                   else p) for m, p in pri.items()}
+        tpt = game_ctx.get("target_pt")
+
+        def aligned(m):
+            if plan == "reset":
+                return b.is_capture(m) or b.piece_type_at(m.from_square) == chess.PAWN
+            if tpt is None:
+                return b.is_capture(m)
+            cap_pt = chess.PAWN if b.is_en_passant(m) else b.piece_type_at(m.to_square)
+            return b.is_capture(m) and cap_pt == tpt
+        out = {m: (p * boost if aligned(m) else p) for m, p in pri.items()}
         z = sum(out.values())
         return {m: p / z for m, p in out.items()} if z > 0 else pri
 
@@ -568,9 +632,40 @@ def tb_white_move(b, tb):
     return min(all_, key=lambda x: x[0])[1] if all_ else None
 
 
+def gen_7p_starts(rng, n, sf, min_cp=600):
+    """KRRvKBNP (7 pieces, BEYOND the tablebase): random legal White-to-move positions
+    certified decisively winning by deep SF eval (referee role, offline -- like tb
+    certification, never consulted at play). The exam: navigate 7 -> trade-down -> <=6
+    (tb defense resumes) -> nucleus -> mate."""
+    out = []
+    while len(out) < n:
+        sqs = rng.choice(64, size=7, replace=False)
+        b = chess.Board(None)
+        for sq, (pt, col) in zip(sqs, [(chess.KING, True), (chess.ROOK, True), (chess.ROOK, True),
+                                       (chess.KING, False), (chess.BISHOP, False),
+                                       (chess.KNIGHT, False), (chess.PAWN, False)]):
+            if pt == chess.PAWN and chess.square_rank(int(sq)) in (0, 7):
+                break
+            b.set_piece_at(int(sq), chess.Piece(pt, col))
+        else:
+            b.turn = chess.WHITE
+            if b.is_valid() and not b.is_game_over():
+                info = sf.analyse(b, chess.engine.Limit(depth=12))
+                sc = info["score"].white().score(mate_score=10000)
+                if sc is not None and sc >= min_cp:
+                    out.append(b)
+    return out
+
+
 def worker(args):
     t0 = time.time(); tb = TB()
-    starts = dict(sample_scenarios(np.random.default_rng(args.seed), args.n))[args.scenario]
+    sf_def = None
+    if args.scenario == "KRRvKBNP-7p":
+        import chess.engine
+        sf_def = chess.engine.SimpleEngine.popen_uci(["stockfish"])
+        starts = gen_7p_starts(np.random.default_rng(args.seed), args.n, sf_def)
+    else:
+        starts = dict(sample_scenarios(np.random.default_rng(args.seed), args.n))[args.scenario]
     fm = FieldModel(args.field, device=args.device)
     bank = OnlineMateBank(fm, Path(args.bank_file))
     loss_bank = OnlineMateBank(fm, Path(args.loss_bank_file))
@@ -583,6 +678,7 @@ def worker(args):
                           draw_bank=draw_bank, game_ctx=game_ctx)
     pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times,
                                           game_ctx=game_ctx, plan_alpha=args.plan_alpha)
+    planner = make_planner(fm, bank)
     ms = MilestoneCache(fm, Path(args.milestone_file))
 
     res_path = Path(args.results_file)
@@ -676,8 +772,9 @@ def worker(args):
                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
                          policy_batch_fn=pfnb, batch_leaves=32)
                 roots.append(b.epd())
-                game_ctx["plan"] = select_plan(b, args.nucleus_max_pieces)
-                plan_counts[game_ctx["plan"]] += 1
+                ps = planner(b, plies)
+                game_ctx["plan"] = ps["plan"]; game_ctx["target_pt"] = ps.get("target_pt")
+                plan_counts[ps["plan"] + (f"->{ps['goal']}" if ps.get("goal") else "")] += 1
                 if hasattr(vfn, "set_anchor"):
                     vfn.set_anchor(b)
                 if reuse is not None:
@@ -763,7 +860,11 @@ def worker(args):
                     tb_mode = True               # g043: BLACK completes threefolds -- any
                 reuse = best if best.move == mv_final else None   # 2nd occurrence => tb
             else:
-                mvb = tb_best_move(b, tb)
+                if len(b.piece_map()) > 6 and sf_def is not None:
+                    # beyond tb: STOCKFISH defends until the trade-down re-enters tb range
+                    mvb = sf_def.play(b, chess.engine.Limit(nodes=20000)).move
+                else:
+                    mvb = tb_best_move(b, tb)
                 if reuse is not None:
                     reuse = next((c for c in reuse.children if c.move == mvb), None)
                 if (b.is_capture(mvb) or b.piece_type_at(mvb.from_square) == chess.PAWN) \
@@ -798,6 +899,8 @@ def worker(args):
     m_ = [r for r in results if r[1]]
     print(f"[worker {args.worker}] {len(m_)}/{len(results)} mate  "
           f"med t/move={np.median([t/max(k,1) for _, _, _, _, t, k in results]):.1f}s", flush=True)
+    if sf_def is not None:
+        sf_def.quit()
 
 
 def main():
