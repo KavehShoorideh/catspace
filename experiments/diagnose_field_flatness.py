@@ -42,9 +42,37 @@ def main():
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--flat-eps", type=float, default=0.01,
                     help="value spread below this = PLATEAU")
+    ap.add_argument("--support-shards", default=None,
+                    help="rollout shard dir(s), comma-separated: kNN support query (Kaveh: "
+                         "'search to see if we have data points with embeddings near this "
+                         "region') -- separates PLATEAU into coverage-hole vs geometry-flat")
+    ap.add_argument("--support-n", type=int, default=100_000)
     args = ap.parse_args()
     fm = FieldModel(args.field, device=args.device)
     tb = TB()
+
+    sup_B = sup_ref = None
+    if args.support_shards:
+        import glob
+        rng = np.random.default_rng(0)
+        P_, M_ = [], []
+        for d in args.support_shards.split(","):
+            files = sorted(glob.glob(str(Path(d) / "shard_*.npz")))
+            rng.shuffle(files)
+            for fpath in files:
+                z = np.load(fpath)
+                P_.append(z["packed"]); M_.append(z["meta"])
+                if sum(len(p) for p in P_) >= args.support_n:
+                    break
+        P = np.concatenate(P_)[:args.support_n]; M = np.concatenate(M_)[:args.support_n]
+        sup_B = fm.embed_B(P, M)
+        # self-calibration: NN distance distribution WITHIN the data (Euclidean, B-space)
+        idx = rng.choice(len(sup_B), 1000, replace=False)
+        q = sup_B[idx]
+        d2 = ((q[:, None, :] - sup_B[None, ::37, :]) ** 2).sum(-1) ** 0.5   # strided ref pool
+        d2.sort(1)
+        sup_ref = np.median(d2[:, 1])          # typical NN distance among the data itself
+        print(f"[support] {len(sup_B)} states embedded; self-NN median {sup_ref:.3f}", flush=True)
 
     bank = fm.embed_B_boards([chess.Board(e) for e in
                               Path(args.bank_file).read_text().splitlines() if e.strip()])
@@ -90,10 +118,23 @@ def main():
             progress = bool((d_kids < d_here).any())
             kind = ("PLATEAU" if spread < args.flat_eps
                     else ("SEARCH-MISS" if 0 < rank_tb <= 3 else "FIELD-WRONG"))
-            diags.append(dict(g=f["g"], term=f["term"], spread=spread, rank_tb=rank_tb,
-                              n_moves=len(moves), progress=progress, kind=kind))
+            sup_txt = ""
+            if sup_B is not None:
+                pb_B = fm.embed_B_boards([pb])[0]
+                d_eu = np.sort(((sup_B - pb_B) ** 2).sum(-1) ** 0.5)[:10]
+                d_iqe = np.sort(fm.d_to_bank(fm.embed_F_boards([pb]), sup_B))  # scalar: min
+                ratio = d_eu[0] / max(sup_ref, 1e-9)
+                support = "SUPPORTED" if ratio < 3.0 else "COVERAGE-HOLE"
+                sup_txt = (f" | knn: eu-NN {d_eu[0]:.3f} ({ratio:.1f}x self-NN) "
+                           f"nn10-med {np.median(d_eu):.3f} iqe-min {float(d_iqe[0]):.2f} -> {support}")
+                diags.append(dict(g=f["g"], term=f["term"], spread=spread, rank_tb=rank_tb,
+                                  n_moves=len(moves), progress=progress, kind=kind,
+                                  support=support))
+            else:
+                diags.append(dict(g=f["g"], term=f["term"], spread=spread, rank_tb=rank_tb,
+                                  n_moves=len(moves), progress=progress, kind=kind))
             print(f"  g{f['g']:03d} {f['term'][:10]:10s} cycle-pos spread={spread:.4f} "
-                  f"tb-move rank {rank_tb}/{len(moves)} field-progress={progress} -> {kind}",
+                  f"tb-move rank {rank_tb}/{len(moves)} field-progress={progress} -> {kind}{sup_txt}",
                   flush=True)
 
     if diags:
