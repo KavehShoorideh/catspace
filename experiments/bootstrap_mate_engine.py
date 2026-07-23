@@ -83,7 +83,7 @@ def harvest(root) -> list:
     return out
 
 
-def make_boot_value(fm: FieldModel, bank: OnlineMateBank):
+def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = None):
     """value = tanh((M - dmin)/M), M = running median of observed dmin (self-calibrating:
     no field-scale constant; ordering is what MCTS needs). Bank empty -> 0 (prior-only).
 
@@ -101,16 +101,24 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank):
         keys = [b.epd() for b in boards]
         miss = [b for b, k in zip(boards, keys) if k not in emb_cache]
         if miss:
+            tt = time.perf_counter()
             E = fm.embed_F_boards(miss)
             for b, e in zip(miss, E):
                 emb_cache[b.epd()] = e
+            if times is not None:
+                times["embedF_s"] = times.get("embedF_s", 0.0) + time.perf_counter() - tt
+                times["embedF_n"] = times.get("embedF_n", 0) + len(miss)
         stale = [i for i, k in enumerate(keys) if dmin_cache.get(k, (0, np.inf))[0] < nb]
         if stale:
+            tt = time.perf_counter()
             ver0 = min(dmin_cache.get(keys[i], (0, np.inf))[0] for i in stale)
             F = np.stack([emb_cache[keys[i]] for i in stale])
             d_tail = fm.d_to_bank(F, bank.embs[ver0:])
             for i, dt in zip(stale, d_tail):
                 dmin_cache[keys[i]] = (nb, min(dmin_cache.get(keys[i], (0, np.inf))[1], float(dt)))
+            if times is not None:
+                times["dbank_s"] = times.get("dbank_s", 0.0) + time.perf_counter() - tt
+                times["dbank_n"] = times.get("dbank_n", 0) + len(stale)
         d = np.array([dmin_cache[k][1] for k in keys])
         recent.extend(d.tolist())
         M = max(float(np.median(recent)), 1e-6)
@@ -118,13 +126,17 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank):
     return value_fn
 
 
-def cached_prior(pfn):
+def cached_prior(pfn, times: dict | None = None):
     cache: dict[str, dict] = {}
 
     def policy_fn(b):
         k = b.epd()
         if k not in cache:
+            tt = time.perf_counter()
             cache[k] = pfn(b)
+            if times is not None:
+                times["prior_s"] = times.get("prior_s", 0.0) + time.perf_counter() - tt
+                times["prior_n"] = times.get("prior_n", 0) + 1
         return cache[k]
     return policy_fn
 
@@ -134,8 +146,9 @@ def worker(args):
     starts = dict(sample_scenarios(np.random.default_rng(args.seed), args.n))[args.scenario]
     fm = FieldModel(args.field, device=args.device)
     bank = OnlineMateBank(fm, Path(args.bank_file))
-    vfn = make_boot_value(fm, bank)
-    pfn = cached_prior(make_energy_prior(ckpt=args.energy_ckpt, device="cpu"))
+    times: dict = {}
+    vfn = make_boot_value(fm, bank, times)
+    pfn = cached_prior(make_energy_prior(ckpt=args.energy_ckpt, device="cpu"), times)
 
     my_games = list(range(args.worker, len(starts), args.j))
     results = []
@@ -145,15 +158,25 @@ def worker(args):
         plies = 0; nodes_spent = 0; tmoves = []; found_this_game = 0
         while plies < args.max_plies and not b.is_game_over(claim_draw=True):
             if b.turn == chess.WHITE:
-                tm = time.time()
+                tm = time.time(); snap = dict(times)
                 m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=args.nodes, mate_stop=True,
                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
                          batch_leaves=32)
                 root = m.run(b)
+                t_search = time.time() - tm
+                th = time.perf_counter()
                 found_this_game += bank.add(harvest(root))
+                t_harv = time.perf_counter() - th
                 best = max(root.children,
                            key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None else c.Q)))
                 nodes_spent += m.evals_used; tmoves.append(time.time() - tm)
+                d = {k: times.get(k, 0) - snap.get(k, 0) for k in
+                     ("prior_s", "prior_n", "embedF_s", "embedF_n", "dbank_s", "dbank_n")}
+                tree = t_search - d["prior_s"] - d["embedF_s"] - d["dbank_s"]
+                print(f"    mv{len(tmoves):02d} {tmoves[-1]:6.1f}s = prior {d['prior_s']:5.1f} "
+                      f"({d['prior_n']:4d}) + embF {d['embedF_s']:5.1f} ({d['embedF_n']:4d}) "
+                      f"+ dbank {d['dbank_s']:5.1f} ({d['dbank_n']:5d}) + tree {tree:5.1f} "
+                      f"+ harvest {t_harv:4.1f}  nodes={m.evals_used}", flush=True)
                 b.push(best.move)
             else:
                 b.push(tb_best_move(b, tb))
