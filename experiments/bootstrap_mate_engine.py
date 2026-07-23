@@ -716,6 +716,24 @@ def worker(args):
         except Exception:
             return False
 
+    # WORKER CHECKPOINTS (Kaveh: 'enforcement absolutely must come with worker checkpoints
+    # so we can restart mistaken stops'): a WIP file per worker, written EVERY ply; a
+    # relaunched worker resumes its in-flight game mid-play (board rebuilt from ucis,
+    # counters restored). Deleted on game completion. Covers stale-exits, crashes, kills.
+    import json as _json
+    wip_path = Path(f"{args.results_file}.wip.w{args.worker}.json")
+    resume_state = None
+    if wip_path.exists():
+        try:
+            cand_state = _json.loads(wip_path.read_text())
+            if cand_state.get("g") not in done and cand_state.get("g") in base:
+                resume_state = cand_state
+                my_games = [resume_state["g"]] + [g for g in my_games if g != resume_state["g"]]
+                print(f"[worker {args.worker}] WIP checkpoint: resuming g{resume_state['g']} "
+                      f"at ply {len(resume_state['ucis'])}", flush=True)
+        except Exception:
+            pass
+
     results = []
     for gi in my_games:
         if _stale():
@@ -732,6 +750,9 @@ def worker(args):
         roots: list[str] = []; mseen: list[bool] = []; nmoves: list[int] = []
         ucis: list[str] = []    # full trajectory (start_epd + ucis reproduces the game)
         tb_consults: list[int] = []   # plies where the tb fallback fired (attribution log)
+        _rs = None
+        if resume_state is not None and resume_state.get("g") == gi:
+            _rs, resume_state = resume_state, None
         from collections import Counter as _Counter
         hist = _Counter({b.epd(): 1})   # ALL position visits, both colors (stuckness +
                                         # repetition-creation triggers); counted at arrival
@@ -744,6 +765,30 @@ def worker(args):
         noharvest = 0     # WITHIN-GAME progress gating (Kaveh: no cross-game self-stats):
                           # consecutive searches touching zero new mates = value failing NOW
         prev_v = None; tactic_events: list = []; probe_snaps: list = []
+        if _rs is not None:                     # WIP restore: replay trajectory, rebuild
+            for u in _rs["ucis"]:               # hist at each arrival, restore counters
+                b.push(chess.Move.from_uci(u))
+                hist[b.epd()] += 1
+            ucis = list(_rs["ucis"]); plies = len(ucis)
+            nodes_spent = _rs.get("nodes_spent", 0); tmoves = list(_rs.get("tmoves", []))
+            roots = list(_rs.get("roots", [])); mseen = list(_rs.get("mseen", []))
+            nmoves = list(_rs.get("nmoves", [])); tb_consults = list(_rs.get("tb_consults", []))
+            found_this_game = _rs.get("found", 0); tb_mode = _rs.get("tb_mode", False)
+            noharvest = _rs.get("noharvest", 0); prev_v = _rs.get("prev_v")
+            tactic_events = [tuple(t) for t in _rs.get("tactics", [])]
+            probe_snaps = list(_rs.get("probes", []))
+            plan_counts.update(_rs.get("plans", {}))
+
+        def _save_wip():
+            try:
+                wip_path.write_text(_json.dumps(dict(
+                    g=gi, start_epd=start_epd, ucis=ucis, nodes_spent=nodes_spent,
+                    tmoves=tmoves, roots=roots, mseen=mseen, nmoves=nmoves,
+                    tb_consults=tb_consults, found=found_this_game, tb_mode=tb_mode,
+                    noharvest=noharvest, prev_v=prev_v, tactics=tactic_events,
+                    probes=probe_snaps, plans=dict(plan_counts))))
+            except Exception:
+                pass
         # TACTICS TRACKER (Kaveh; INQUIRY_TACTICS: 'a tactic is an opportunity outside our
         # plan afforded by a mistake by our opponent'): an upward DISCONTINUITY in our own
         # root value across the opponent's reply = a detected opportunity-from-mistake.
@@ -782,6 +827,7 @@ def worker(args):
             return b.turn == chess.BLACK and (b.can_claim_threefold_repetition()
                                               or b.can_claim_fifty_moves())
         while plies < args.max_plies and not _game_over():
+            _save_wip()
             if b.turn == chess.WHITE:
                 # STUCKNESS trigger (Kaveh 'do the fix'): second visit to a position =
                 # the field has no EFFECTIVE gradient in play (confidently-wrong loops
@@ -923,6 +969,7 @@ def worker(args):
         out = b.outcome(claim_draw=True)
         mated = bool(out and out.winner == chess.WHITE)
         term = out.termination.name.lower() if out else "timeout"
+        wip_path.unlink(missing_ok=True)
         ms.record_game(roots, mated, mseen, nmoves)
         if exp is not None:
             exp.record_game(args.scenario, start_epd, "mate" if mated else "fail", term,
