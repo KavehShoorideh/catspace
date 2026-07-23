@@ -284,7 +284,7 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         if bk is None or len(bk) < 256:
             c["idx"] = None; return
         d_all = _bank_row(F, bk.embs)
-        c["idx"] = np.argsort(d_all)[:256]; c["ver"] = len(bk); c["audit"] += 1
+        c["idx"] = np.argsort(d_all)[:128]; c["ver"] = len(bk); c["audit"] += 1
 
     def _dmin_pruned(name, bk, tracker, keys):
         """min-distance via the root candidate annulus; falls back to the exact tracker
@@ -347,8 +347,10 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         F = fm.embed_F_boards([board])
         # Kaveh 2026-07-25: triangle-inequality estimates BETWEEN refreshes, full
         # recalculation every 5 moves, error(est vs exact) reported at each refresh
-        if cand["idx"] is not None and cand["moves"] % 5 != 1:
-            return                               # carry candidates; leaves use idx + tail
+        # probe_tri_carry verdict (2026-07-25): the bound is good for ~3 plies then falls
+        # off a cliff (spearman 0.72@k5 -> 0.85@k1), while a full root row costs ~nothing
+        # next to per-leaf subset work -- so anchor EVERY move and shrink C: k=1/C=128
+        # beats k=5/C=256 on fidelity at half the leaf cost. No carry between moves.
         est = None
         if cand["idx"] is not None:
             sub = bank.embs[cand["idx"]]
@@ -357,15 +359,15 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             est = float(fm.d_to_bank(F, sub)[0])
         d_all = _bank_row(F, bank.embs)
         exact = float(d_all.min())
-        if est is not None:
+        if est is not None and (cand["audit"] % 10 == 1 or est - exact > 0.05):
             print(f"    [tri-refresh] dmin est {est:.3f} exact {exact:.3f} "
                   f"err {est - exact:+.3f}", flush=True)
         thr = exact + slack
         idx = np.flatnonzero(d_all <= thr)
-        if len(idx) < 128 or len(idx) > 256:
-            # dense-bank regime: the annulus doesn't bite (mates cluster within ~slack of
-            # any won position) -- cap at nearest-256 and let the printed audit police it
-            idx = np.argsort(d_all)[:256]
+        if len(idx) > 128 or len(idx) < 64:
+            # dense-bank regime + measured carry curve: nearest-128 at every-move anchoring
+            # (k=1/C=128: spearman 0.85, p95 0.03 plies) -- audits police it
+            idx = np.argsort(d_all)[:128]
         cand["idx"] = idx; cand["ver"] = len(bank); cand["audit"] += 1
         _anchor_bank("loss", loss_bank, F)      # pruning symmetry: loss + draw banks get
         _anchor_bank("draw", draw_bank, F)      # the same root-anchored candidate scheme
