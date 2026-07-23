@@ -6846,3 +6846,29 @@ semantics on shared towers. (2) Cross-regime soft gaps are TINY: the same channe
 weakness the veto gate measures on the hard side (AUC 0.535). Both sides of the energy algebra
 now independently indict the regime conditioning, not the heads -- strengthens the case for the
 parked levers (FiLM conditioning; dedicated endgame-rollout fraction) over more same-recipe steps.
+
+## 2026-07-24/25 -- n=100 confirmation (partial), failure taxonomy (partial), MISSION PIVOT
+## to the bootstrap engine
+
+n=100 exam, scenario 1 (before Kaveh's redirect killed the rest):
+
+    VERDICT MATE_LADDER cfg=fieldenergy KRRvK-central mate=0.79 (79/100) med_plies=19 search/mate=5,764
+
+CONFIRMS the n=20 headline (0.75) -- not a small-sample fluke. Scenarios 2-5 killed per redirect.
+Failure diagnostic (tb-refereed rerun of the same starts; killed at 26 games): 20 mate,
+3 BLUNDER:rook-hang (WDL flip on a specific white move, e.g. Rb3 hung at ply 2), 3
+NO-CLOSE:threefold (never lost the tb-win, shuffled into repetition). Failures split ~evenly:
+outright rook hangs vs near-mate plateau. Both logs preserved (exam_n100.log, fieldenergy_diag.log).
+
+PIVOT (Kaveh): no external mate bank at all. The BOOTSTRAP engine (bootstrap_mate_engine.py):
+empty bank -> MCTS (energy prior + mate_stop) probes the field -> every checkmate leaf TOUCHED
+is harvested into an online episodic bank (own experience; rules-certified) -> value = distance
+to discovered mates (self-calibrating scale). One knob: --nodes. Goal: 100% KRRvK-central, then
+progressively harder scenarios. Harness engineering (we'll run this a lot): position-level
+prior+embedding caches, dmin tail-cache (bank append-only => exact), batched prior via mcts
+policy_batch_fn, per-move component profiling (prior/embF/dbank/tree/harvest), milestone cache
+(searched positions + own-experience p_win; recording only, wiring parked), checkpoint-resume
+(per-game results jsonl, --fresh to wipe). Speed: 26-44 nodes/s (pre-cache) -> 350-450 (cached)
+-> ~25-30x with batched prior expected; games 8-18 min -> 1-2 min. Pre-cache partial: 21/23
+mate (0.91). Cached rerun running; ladder chain (KRRvKB/KRRvKP/KRRvKBP/KRvK-technique, fresh
+per-scenario banks) queued behind it. Incumbent baselines to beat: 0.30/0.75/0.30/0.05.
