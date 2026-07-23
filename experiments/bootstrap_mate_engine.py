@@ -464,6 +464,8 @@ def worker(args):
         roots: list[str] = []; mseen: list[bool] = []; nmoves: list[int] = []
         ucis: list[str] = []    # full trajectory (start_epd + ucis reproduces the game)
         tb_consults: list[int] = []   # plies where the tb fallback fired (attribution log)
+        from collections import Counter as _Counter
+        hist = _Counter()       # White-to-move position visits (stuckness trigger)
         reuse = None            # subtree carried across moves (tree reuse; general lever)
         # WARM-UP (Kaveh 2026-07-25 'run until bank is full on first move'): before the
         # first timed move, keep searching+harvesting until the bank reaches the target
@@ -489,6 +491,24 @@ def worker(args):
                   f"[{time.time()-tw:.0f}s]", flush=True)
         while plies < args.max_plies and not b.is_game_over(claim_draw=True):
             if b.turn == chess.WHITE:
+                # STUCKNESS trigger (Kaveh 'do the fix'): second visit to a position =
+                # the field has no EFFECTIVE gradient in play (confidently-wrong loops
+                # never trip the flatness trigger) -> consult tb directly, LOGGED.
+                hist[b.epd()] += 1
+                if (args.tb_fallback_eps > 0 and hist[b.epd()] >= 2
+                        and len(b.piece_map()) <= 6):
+                    mv_tb = tb_white_move(b, tb)
+                    if mv_tb is not None:
+                        tb_consults.append(plies)
+                        roots.append(b.epd()); mseen.append(False); nmoves.append(0)
+                        tmoves.append(0.0); ucis.append(mv_tb.uci())
+                        if (b.is_capture(mv_tb) or b.piece_type_at(mv_tb.from_square) == chess.PAWN) \
+                                and hasattr(vfn, "invalidate_anchor"):
+                            vfn.invalidate_anchor()
+                        b.push(mv_tb)
+                        reuse = None
+                        plies += 1
+                        continue
                 tm = time.time(); snap = dict(times)
                 m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=args.nodes, mate_stop=True,
                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
