@@ -465,7 +465,9 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     return value_fn                                              # the +-1-ply bound is void
 
 
-def make_planner(fm: FieldModel, bank: OnlineMateBank, give_up_plies: int = 20):
+def make_planner(fm: FieldModel, bank: OnlineMateBank, give_up_plies: int = 20,
+                 loss_bank=None, draw_bank=None, game_ctx=None, prior_fn=None,
+                 rl_epsilon: float = 0.1):
     """THE HIERARCHICAL PLANNER (v2; Kaveh: 'from a seven piece, find the path to a
     winning five piece'). Discrete GOAL-REGION selection + execution via the prior
     alpha-dial (subgoals never contaminate the value). RULES + own-experience only:
@@ -480,10 +482,71 @@ def make_planner(fm: FieldModel, bank: OnlineMateBank, give_up_plies: int = 20):
     Deterministic v1 selector; the PlanSelector protocol is the RL-swappable seam."""
     state = {"plan": "direct", "goal": None, "since": -999, "target_pt": None}
 
+    # RL PLANSELECTOR hook (Kaveh: planner RL in the loop): when a trained ckpt exists,
+    # plan TYPE is chosen by expected outcome over a cheap observation (epsilon-greedy);
+    # the deterministic rules stay as fallback and the goal machinery is unchanged.
+    rl = {"net": None, "path": None, "rng": np.random.default_rng(0)}
+
+    def _rl_load():
+        import glob as _g, re as _re
+        cands = _g.glob("data/derived/sep/planner_rl_r*.pt")
+        if not cands:
+            return
+        best = max(cands, key=lambda p: int(_re.search(r"r(\d+)\.pt", p).group(1)))
+        if best != rl["path"]:
+            import torch
+            from experiments.train_planner_rl import PlanNet, PLANS, OBS_KEYS, featurize
+            st = torch.load(best, map_location="cpu", weights_only=False)
+            net = PlanNet(); net.load_state_dict(st["state"]); net.eval()
+            rl.update(net=net, path=best, mu=st["mu"], sd=st["sd"],
+                      plans=st["plans"], featurize=featurize)
+            print(f"[planner] RL selector loaded: {best}", flush=True)
+
+    def _cheap_obs(b: chess.Board) -> dict:
+        o = {"clock": b.halfmove_clock, "clock_headroom": 100 - b.halfmove_clock,
+             "n_pieces": len(b.piece_map()),
+             "rep_max_nearby": (game_ctx or {}).get("hist", {}).get(b.epd(), 0),
+             "seen_in_game": (game_ctx or {}).get("hist", {}).get(b.epd(), 0),
+             "n_win": len(bank), "n_loss": len(loss_bank) if loss_bank else 0,
+             "n_draw": len(draw_bank) if draw_bank else 0}
+        try:
+            F = fm.embed_F_boards([b])
+            if len(bank):
+                o["d_win"] = float(fm.d_to_bank(F, bank.embs)[0])
+                o["class_density"] = int(len(bank.class_idx(mat_sig(b))))
+            if loss_bank is not None and len(loss_bank):
+                o["d_loss"] = float(fm.d_to_bank(F, loss_bank.embs)[0])
+            if draw_bank is not None and len(draw_bank):
+                o["d_draw"] = float(fm.d_to_bank(F, draw_bank.embs)[0])
+            if prior_fn is not None:
+                pri = np.array(list(prior_fn(b).values()))
+                pri = pri[pri > 0]
+                o["prior_entropy"] = float(-(pri * np.log(pri)).sum())
+                o["prior_top1"] = float(pri.max())
+        except Exception:
+            pass
+        return o
+
+    def _rl_pick(b: chess.Board) -> str | None:
+        _rl_load()
+        if rl["net"] is None or rl["rng"].random() < rl_epsilon:
+            return None                              # explore / no model: rules decide
+        import torch
+        x = (rl["featurize"](_cheap_obs(b)) - rl["mu"]) / rl["sd"]
+        oh = np.eye(len(rl["plans"]), dtype=np.float32)
+        with torch.no_grad():
+            scores = rl["net"](torch.from_numpy(np.tile(x, (len(rl["plans"]), 1)).astype(np.float32)),
+                               torch.from_numpy(oh)).numpy()
+        return rl["plans"][int(np.argmax(scores))]
+
     def plan(b: chess.Board, plies: int) -> dict:
         n = len(b.piece_map())
+        choice = _rl_pick(b)
+        if choice == "reset" or (choice is None and b.halfmove_clock >= 30 and n <= 6):
+            state.update(plan="reset", goal=None, target_pt=None)
+            return state
         if n <= 6:
-            if b.halfmove_clock >= 30:
+            if choice is None and b.halfmove_clock >= 30:
                 state.update(plan="reset", goal=None, target_pt=None)
             else:
                 state.update(plan="direct", goal=None, target_pt=None)
@@ -702,7 +765,8 @@ def worker(args):
                           draw_bank=draw_bank, game_ctx=game_ctx)
     pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times,
                                           game_ctx=game_ctx, plan_alpha=args.plan_alpha)
-    planner = make_planner(fm, bank)
+    planner = make_planner(fm, bank, loss_bank=loss_bank, draw_bank=draw_bank,
+                           game_ctx=game_ctx, prior_fn=pfn)
     ms = MilestoneCache(fm, Path(args.milestone_file))
     exp = ExperienceStore(args.experience_db) if args.experience_db else None
     try:
