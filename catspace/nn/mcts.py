@@ -155,7 +155,9 @@ class MCTS:
                  pw_c: float = 0.0, pw_alpha: float = 0.5, pw_min: int = 4,
                  tactical_prior: float = 0.0,
                  root_min_visits: int = 0, ci_z: float = 1.96,
-                 policy_fn=None, value_fn=None, fpu_reduction: float = 0.25):
+                 policy_fn=None, value_fn=None, fpu_reduction: float = 0.25,
+                 eval_cache: dict | None = None, batch_leaves: int = 1,
+                 policy_batch_fn=None):
         assert max_nodes >= 1
         # EARLY-STOP LEVERS (2026-07-18, the planner energy objective
         # E[score] - c*compute): spend budget only while it can still change
@@ -220,6 +222,14 @@ class MCTS:
         # {move: prior}; value_fn(boards) -> white-POV values in [-1, 1].
         self.policy_fn = policy_fn
         self.value_fn = value_fn
+        # AZ-path acceleration (Kaveh 2026-07-23: "we won't get rid of MCTS"):
+        # eval_cache: {transposition_key: (value, {uci: prior})} SHARED across MCTS
+        # instances/moves/games (caller owns it; net evals on transpositions become free).
+        # batch_leaves > 1: collect K leaves under virtual visits, evaluate values in ONE
+        # value_fn batch (the dominant cost -- e.g. the 9.1M-param field at batch-1 CPU).
+        self.eval_cache = eval_cache
+        self.batch_leaves = max(1, int(batch_leaves))
+        self.policy_batch_fn = policy_batch_fn
         self.fpu_reduction = fpu_reduction
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
@@ -327,12 +337,22 @@ class MCTS:
             # AZ-style: ONE policy eval -> all child priors; ONE value eval ->
             # the node's backup value. Children stay UNEVALUATED (FPU Q until
             # visited). ~1 eval/expansion instead of len(children).
+            tkey = node.board._transposition_key() if self.eval_cache is not None else None
+            if tkey is not None and tkey in self.eval_cache:      # transposition: FREE
+                v, pri_uci = self.eval_cache[tkey]
+                for c in children:
+                    c.P = float(pri_uci.get(c.move.uci(), 1e-6))
+                node.children = children
+                return float(v)
             pri = self.policy_fn(node.board)
             for c in children:
                 c.P = float(pri.get(c.move, 1e-6))
             node.children = children
             self.evals_used += 1
-            return float(self.value_fn([node.board])[0])
+            v = float(self.value_fn([node.board])[0])
+            if tkey is not None:
+                self.eval_cache[tkey] = (v, {m.uci(): p for m, p in pri.items()})
+            return v
 
         # obvious-region soft-terminal: a confidently-resolved child (recognizer
         # certainty >= certainty_stop) is treated as terminal with its committor-
@@ -518,6 +538,18 @@ class MCTS:
             self.rep_history[board._transposition_key()] = 1
         if reuse_root is not None and reuse_root.board.fen() == board.fen():
             root = reuse_root
+            # reuse + threefold correctness (2026-07-25): _threefold flags are planted at
+            # EXPANSION under the game history of that moment; the history has since grown
+            # (it only grows, so stale flags stay valid) -- ADD flags for carried nodes
+            # that are repetitions under the CURRENT history, else reuse blinds the search
+            # to draws forming across moves (measured: threefold FAILs at mature banks).
+            if self.detect_threefold:
+                stack = list(root.children)
+                while stack:
+                    n = stack.pop()
+                    if n.terminal_v is None and self._threefold(n):
+                        n.terminal_v = DRAW_V
+                    stack.extend(n.children)
             if not root.children:
                 root.N = max(root.N, 1)
                 root.W += self._expand(root, at_root=True)
@@ -547,6 +579,8 @@ class MCTS:
                 if game_truth(c) and (c.terminal_v > 0.5 if white else c.terminal_v < -0.5):
                     return root          # certified stop: immediate mate in hand
         sims, max_sims = 0, 32 * self.max_nodes
+        if self.policy_fn is not None and self.value_fn is not None and self.batch_leaves > 1:
+            return self._run_batched(root, max_sims)
         while (self.evals_used < self.max_nodes and root.children
                and sims < max_sims):
             sims += 1
@@ -588,6 +622,106 @@ class MCTS:
                 if vis[0] - vis[1] > rem:
                     break                # stability stop (heuristic, see __init__)
         return root
+
+    def _backup(self, path, v):
+        v_run = v
+        for n in reversed(path):
+            n.N += 1
+            n.W += v_run
+            n.W2 += v_run * v_run
+            v_run = v_run * n.coh_gamma
+
+    def _run_batched(self, root, max_sims):
+        """AZ path with BATCHED leaf evaluation: collect up to batch_leaves distinct
+        leaves under virtual visits (N inflation diversifies selection), evaluate all
+        their values in ONE value_fn call (+ batched priors when policy_batch_fn is
+        given), then backup and revert the virtual visits. Cache-aware: transposition
+        hits skip the queue entirely. Same budget semantics (evals_used = net calls)."""
+        sims = 0
+        while (self.evals_used < self.max_nodes and root.children and sims < max_sims):
+            pending = []                        # (node, path) needing net eval
+            touched = []                        # paths holding virtual visits
+            queued_ids = set()
+            for _ in range(min(self.batch_leaves, self.max_nodes - self.evals_used)):
+                if sims >= max_sims:
+                    break
+                node, path = root, [root]
+                while node.children:
+                    node = self._select_child(node)
+                    path.append(node)
+                    if node.terminal_v is not None:
+                        break
+                if node.terminal_v is not None:
+                    sims += 1
+                    self._backup(path, node.terminal_v)
+                    continue
+                if id(node) in queued_ids:      # selection converged on a queued leaf
+                    break
+                # cache probe before queueing: hits are free and backup immediately
+                tkey = node.board._transposition_key() if self.eval_cache is not None else None
+                if tkey is not None and tkey in self.eval_cache:
+                    sims += 1
+                    v = self._expand(node, at_root=False)   # applies cached priors, 0 evals
+                    self._backup(path, v)
+                    continue
+                sims += 1
+                queued_ids.add(id(node))
+                for n in path:                  # virtual visit: diversify the next selection
+                    n.N += 1
+                touched.append(path)
+                pending.append((node, path, tkey))
+            if pending:
+                boards = [n.board for n, _p, _k in pending]
+                values = self.value_fn(boards)
+                self.evals_used += len(boards)
+                if self.policy_batch_fn is not None:
+                    pris = self.policy_batch_fn(boards)
+                else:
+                    pris = [self.policy_fn(b) for b in boards]
+                for (node, path, tkey), v, pri in zip(pending, values, pris):
+                    self._attach_children_az(node, pri)
+                    if tkey is not None:
+                        self.eval_cache[tkey] = (float(v), {m.uci(): p for m, p in pri.items()})
+                for path in touched:            # revert virtual visits (real backup re-adds)
+                    for n in path:
+                        n.N -= 1
+                for (node, path, _k), v in zip(pending, values):
+                    self._backup(path, float(v))
+            elif not touched:
+                # no evals and no terminals progressed? all-terminal tree -- bail via sims cap
+                if all(c.terminal_v is not None for c in root.children):
+                    break
+        return root
+
+    def _attach_children_az(self, node, pri):
+        """Create node's children with priors from an already-computed policy dict
+        (the batched path's replacement for _expand's AZ branch)."""
+        depth, anc = 0, node
+        while anc.parent is not None:
+            depth += 1
+            anc = anc.parent
+        children = []
+        for m in node.board.legal_moves:
+            b2 = node.board.copy(stack=False)
+            b2.push(m)
+            c = _Node(b2, m, parent=node)
+            if self.tactical_prior > 0.0:
+                c.tactical = is_tactical_move(node.board, m, b2)
+            if b2.is_checkmate():
+                mate = MATE_V - (depth + 1) * PLY_DISCOUNT if node.board.turn == chess.WHITE \
+                    else MATED_V + (depth + 1) * PLY_DISCOUNT
+                c.terminal_v = mate
+            elif b2.is_insufficient_material() or (b2.halfmove_clock >= 100):
+                c.terminal_v = DRAW_V
+            elif self.detect_threefold and self._threefold(c):
+                c.terminal_v = DRAW_V
+            c.P = float(pri.get(c.move, 1e-6))
+            children.append(c)
+        if children:
+            node.children = children
+        else:
+            node.terminal_v = DRAW_V if not node.board.is_checkmate() else (
+                MATED_V if node.board.turn == chess.WHITE else MATE_V)
 
     def best_move(self, board: chess.Board) -> chess.Move:
         root = self.run(board)
