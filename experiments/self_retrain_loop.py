@@ -57,15 +57,19 @@ def main():
     for rnd in range(args.rounds):
         field = current_field()
         print(f"=== SELFLOOP round {rnd} field={field} [{time.time()-t0:.0f}s] ===", flush=True)
+        # ONE growing bank across all rounds (Kaveh: 'build one bank and keep reusing it
+        # without resetting') -- banks are facts, immortal across field swaps (FENs
+        # re-embed at load); results file stays per-round for per-round verdicts.
+        bpfx = f"artifacts/experiments/{args.tag}_persistent"
         pfx = f"artifacts/experiments/{args.tag}_r{rnd}"
         subprocess.run([sys.executable, "experiments/bootstrap_mate_engine.py",
                         "--scenario", args.scenario, "--nodes", str(args.nodes),
                         "--n", str(args.games_per_round), "--j", str(args.j),
-                        "--fresh", "--max-plies", "120", "--field", field,
-                        "--bank-file", f"{pfx}_bank.fens",
-                        "--loss-bank-file", f"{pfx}_lossbank.fens",
-                        "--draw-bank-file", f"{pfx}_drawbank.fens",
-                        "--milestone-file", f"{pfx}_ms.jsonl",
+                        "--max-plies", "120", "--field", field,
+                        "--bank-file", f"{bpfx}_bank.fens",
+                        "--loss-bank-file", f"{bpfx}_lossbank.fens",
+                        "--draw-bank-file", f"{bpfx}_drawbank.fens",
+                        "--milestone-file", f"{bpfx}_ms.jsonl",
                         "--results-file", f"{pfx}_results.jsonl"],
                        check=True)
         n = store.export_shards(args.self_shards, min_games=1)

@@ -956,6 +956,11 @@ def main():
     ap.add_argument("--experience-db", default="data/derived/experience.sqlite",
                     help="persistence layer: every game + searched roots + provenance; "
                          "'' disables")
+    ap.add_argument("--import-banks", default=None,
+                    help="path prefix of another run's banks (<prefix>_bank.fens / "
+                         "_lossbank / _drawbank) to seed this run's banks (merged, "
+                         "deduped). Banks are FACTS: they survive engine and field "
+                         "changes and re-embed at load (Kaveh: build one bank, reuse)")
     ap.add_argument("--tb-fallback-eps", type=float, default=0.02,
                     help="if the searched root's child-value spread < eps (no field "
                          "gradient) and <=6 pieces: consult tb, LOG the consult (win "
@@ -983,6 +988,17 @@ def main():
         for p in (args.bank_file, args.loss_bank_file, args.draw_bank_file,
                   args.milestone_file, args.results_file):
             Path(p).unlink(missing_ok=True)
+    if args.import_banks:
+        for src_sfx, dst in (("_bank.fens", args.bank_file),
+                             ("_lossbank.fens", args.loss_bank_file),
+                             ("_drawbank.fens", args.draw_bank_file)):
+            src = Path(args.import_banks + src_sfx)
+            if src.exists():
+                have = set(Path(dst).read_text().splitlines()) if Path(dst).exists() else set()
+                new = [l for l in src.read_text().splitlines() if l.strip() and l not in have]
+                with open(dst, "a") as f:
+                    f.writelines(l + "\n" for l in new)
+                print(f"[import] {src} -> {dst}: +{len(new)}", flush=True)
     t0 = time.time()
     procs = [subprocess.Popen([sys.executable, __file__, *sys.argv[1:], "--worker", str(w)])
              for w in range(args.j)]
