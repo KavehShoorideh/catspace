@@ -7084,3 +7084,38 @@ Consequence: rho demoted from routine post-step to SHELVED COMPARATOR. First res
 energy model for policy-weighted directional guidance. rho v1 stays frozen; it re-earns a
 pipeline step only by winning a three-way comparison (rho vs carried hardmin vs probability
 product, same positions) on the day long-range guidance visibly underperforms.
+
+## 2026-07-23 -- FULL-GAME ERA: pivot, unified loop, assistant, observability (consolidated)
+
+**Pivot (Kaveh).** The toy material classes (KRRvK 1.00, KRRvKB, KRRvKP, KRRvKBP) are now
+INTEGRATION TESTS (tests/integration_positions.json, 51 cases incl. clock-pressure); research
+focus moves to the end-to-end full game: RL action optimization over the planner seam,
+long-term planning (region-goal chains), tactics tracking. Fullgame baseline to beat:
+mated by maia-1500 in 36 plies @300 nodes (one game seeded the loss bank +182 entries).
+
+**Unified improvement loop** (experiments/improvement_loop.py): per round -- 10 fullgames vs
+rotating maia rungs (1100/1200/1400) -> ExperienceStore (SQLite WAL; games+positions+
+provenance) -> regime-11 shard export -> (a) field fine-tune 2k steps, self-frac 0.35,
+pointer swap; (b) planner-RL refit on all accumulated (obs, plan, outcome) tuples;
+(c) NEW 96c76f0: energy/opponent-model fine-tune -- exports now stamp TRUE cohorts (us=2800
+both sides in toys; real maia rung as Black in fullgames -- the old flat-1800 placeholder
+would have poisoned flavor conditioning), trainer gained warm-start + weighted multi-source
+sampling (lichess 0.65 / self 0.35), engine resolves opponent_energy_current.txt. Smoke:
+59 stored games -> 1842 move-selection rows; self held-out NLL 2.298 (n=189) vs lichess
+2.3815 after 60 warm-start steps. This closes the 4th information stream of the 94f56c4
+factorization: all four pipelines (field / nucleus / energy / planner-RL) now exist.
+
+**Nucleus pipeline round 0 DELIVERED**: dtm_tok_r0 (token transformer, all 149 tb classes
+at 300 positions/class = 2.5% of 12k/class target): spearman +0.507, MAE 15.15 plies
+(n=4123). Default flipped + committed; round 1 (700/class, 104.3k positions) generating.
+
+**Assistant** (experiments/viz/assistant_server.py, native MPS :8777): play vs chosen maia
+while the planner co-analyzes -- probe-triggered "let's calculate here" prompts with reasons,
+top moves + most-likely leaves under the plan, pencil-editable concept tags persisted to
+concept_tags.jsonl (human labels for field regions). Auto-swap reloader picked up dtm_tok_r0
+live (MODEL SWAPPED, version + data-%% shown in UI) -- checkpoint-to-playable with zero restarts.
+
+**Observability**: Prometheus stage histograms (catspace_stage_seconds: prior/embF/dbank/
+dtm/tree/harvest/move_total/http) + usage.jsonl per request; MLflow UI native :5001.
+Docker stack (qdrant/engine/web/mlflow/prometheus/grafana, deploy/) PARKED per Kaveh --
+publish path only, no slow local inference.
