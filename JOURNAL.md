@@ -6872,3 +6872,18 @@ policy_batch_fn, per-move component profiling (prior/embF/dbank/tree/harvest), m
 -> ~25-30x with batched prior expected; games 8-18 min -> 1-2 min. Pre-cache partial: 21/23
 mate (0.91). Cached rerun running; ladder chain (KRRvKB/KRRvKP/KRRvKBP/KRvK-technique, fresh
 per-scenario banks) queued behind it. Incumbent baselines to beat: 0.30/0.75/0.30/0.05.
+
+## 2026-07-25 -- BOOTSTRAP first clean verdict: KRRvK-central 0.83 at 5000 nodes, from zero
+
+    VERDICT BOOTSTRAP_MATE scenario=KRRvK-central nodes=5000 mate=40/48 (0.83) med_plies=13
+      bank_final=4006  med_t/move=28.7s  med_t/solve=185s  [52 min, 4 workers, fixed harness]
+
+The engine started knowing NOTHING (empty bank) and discovered 4,006 mates by its own search;
+0.83 EDGES OUT the external-400-bank incumbent (0.79, n=100 exam) and mates much faster
+(med 13 vs 19 plies). NOT the 100% target -> 10000-node rung queued after the ladder.
+By-game-index quartiles (n=12 each, parallel workers, noisy): mate 1.00/0.67/0.83/0.83 -- no
+clean rate curve; but med_plies 14/15/11/10 = lines SHORTEN as the bank matures (the episodic-
+memory signal, visible: late-game mates land in 7-9 plies vs 15-21 early).
+Grading: 0.83>0.79 is suggestive, not significant at n=48 vs n=100 (overlapping CIs); the
+honest claims are (a) zero-knowledge bootstrap REACHES external-bank level, (b) plies shorten
+with bank growth. Ladder continues: KRRvKB started 02:01.
