@@ -393,6 +393,28 @@ def worker(args):
         roots: list[str] = []; mseen: list[bool] = []; nmoves: list[int] = []
         ucis: list[str] = []    # full trajectory (start_epd + ucis reproduces the game)
         reuse = None            # subtree carried across moves (tree reuse; general lever)
+        # WARM-UP (Kaveh 2026-07-25 'run until bank is full on first move'): before the
+        # first timed move, keep searching+harvesting until the bank reaches the target
+        # (cap: 20x one move's budget). Warm trees feed the real move via reuse.
+        if args.warm_bank > 0 and len(bank) < args.warm_bank and b.turn == chess.WHITE:
+            tw = time.time(); warm_nodes = 0; warm0 = len(bank)
+            while len(bank) < args.warm_bank and warm_nodes < 20 * args.nodes:
+                if hasattr(vfn, "set_anchor"):
+                    vfn.set_anchor(b)
+                mw = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=args.nodes, mate_stop=True,
+                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
+                          policy_batch_fn=pfnb, batch_leaves=32)
+                wroot = mw.run(b, reuse_root=reuse)
+                w_w, w_l = harvest(wroot)
+                bank.add(w_w)
+                if w_l:
+                    loss_bank.add(w_l)
+                warm_nodes += mw.evals_used
+                reuse = wroot
+                if mw.evals_used <= 1:          # mate at root: no more warming needed
+                    break
+            print(f"    [warm-up] bank {warm0}->{len(bank)} nodes={warm_nodes} "
+                  f"[{time.time()-tw:.0f}s]", flush=True)
         while plies < args.max_plies and not b.is_game_over(claim_draw=True):
             if b.turn == chess.WHITE:
                 tm = time.time(); snap = dict(times)
@@ -473,6 +495,9 @@ def main():
                     help="wipe bank/milestones/results; DEFAULT resumes (checkpointed runs)")
     ap.add_argument("--games", default=None,
                     help="comma list of game indices to (re)play (default: all 0..n-1)")
+    ap.add_argument("--warm-bank", type=int, default=1000,
+                    help="first-move warm-up: search+harvest until the bank has this many "
+                         "mates (cap 20x --nodes); 0 = off")
     ap.add_argument("--max-plies", type=int, default=80)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
