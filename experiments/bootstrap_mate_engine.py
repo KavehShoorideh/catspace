@@ -152,7 +152,8 @@ def harvest(root) -> tuple[list, list]:
 
 
 def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = None,
-                    loss_bank: OnlineMateBank | None = None):
+                    loss_bank: OnlineMateBank | None = None,
+                    dtm_ckpt: str | None = None, nucleus_max_pieces: int = 5):
     """WDL leaf value (Kaveh 2026-07-25 'I want it'): three-outcome Boltzmann from the
     field's energies to the two DISCOVERED absorbing regions plus a draw mass --
         p_w ~ exp(-d_win/M)   p_l ~ exp(-d_loss/M)   p_d ~ kappa = e^-1
@@ -173,6 +174,41 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     emb_cache: dict[str, np.ndarray] = {}
     recent = deque(maxlen=512)
     KAPPA = float(np.exp(-1.0))
+
+    # LAST MILE (Kaveh 2026-07-25): humans RESIGN trivially-won endings, so the field's
+    # behavior-geometry has no trajectory support in the nucleus -- its distances there
+    # are extrapolations (measured: value INVERSIONS at cycle positions). Inside the
+    # tb nucleus (<= nucleus_max_pieces) the distance source becomes the DTM regression
+    # trained OFFLINE on tablebase-optimal plies (outcome-structure facts; the engine
+    # still never probes tb at play). Same WDL Boltzmann, real ply units, M=scale.
+    dtm_net = None
+    if dtm_ckpt:
+        import torch
+        from experiments.train_dtm_cnn import DTMNet
+        from catspace.data.encode import encode_meta, encode_packed
+        from catspace.nn.features import feature_planes
+        st = torch.load(dtm_ckpt, map_location="cpu", weights_only=False)
+        dtm_net = DTMNet(c=st["c"]).to(fm.device)
+        dtm_net.load_state_dict(st["state"]); dtm_net.eval()
+        dtm_scale = float(st.get("scale", 20.0))
+        dtm_cache: dict[str, float] = {}
+
+        def _dtm_hat(boards, keys):
+            import torch as _t
+            miss = [i for i, k in enumerate(keys) if k not in dtm_cache]
+            if miss:
+                tt = time.perf_counter()
+                pk = np.stack([encode_packed(boards[i]) for i in miss])
+                mt = np.stack([encode_meta(boards[i]) for i in miss])
+                with _t.no_grad():
+                    pred = dtm_net(_t.from_numpy(feature_planes(pk, mt)).to(fm.device)) \
+                        .cpu().numpy() * dtm_scale
+                for i, p in zip(miss, pred):
+                    dtm_cache[keys[i]] = float(p)
+                if times is not None:
+                    times["dtm_s"] = times.get("dtm_s", 0.0) + time.perf_counter() - tt
+                    times["dtm_n"] = times.get("dtm_n", 0) + len(miss)
+            return np.array([dtm_cache[k] for k in keys])
 
     def _embed(boards, keys):
         miss = [b for b, k in zip(boards, keys) if k not in emb_cache]
@@ -264,6 +300,17 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         if nw == 0 and nl == 0:
             return np.zeros(len(boards))
         keys = [b.epd() for b in boards]
+        nuc = ([i for i, b in enumerate(boards) if len(b.piece_map()) <= nucleus_max_pieces]
+               if dtm_net is not None else [])
+        if len(nuc) == len(boards):
+            # whole batch in the nucleus: DTM path only, no field/bank work at all
+            d_w = _dtm_hat(boards, keys)
+            p_w = np.exp(-d_w / dtm_scale)
+            p_l = 0.0
+            if nl:
+                _embed(boards, keys)
+                p_l = np.exp(-dmin_loss(keys) / dtm_scale)
+            return (p_w - p_l) / (p_w + p_l + KAPPA)
         _embed(boards, keys)
         if nw and cand["idx"] is not None:
             # pruned path: candidates from the root annulus + any mates banked since the
@@ -294,7 +341,14 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         M = max(float(np.median(recent)), 1e-6)
         p_w = np.exp(-d_w / M) if d_w is not None else 0.0
         p_l = np.exp(-d_l / M) if d_l is not None else 0.0
-        return (p_w - p_l) / (p_w + p_l + KAPPA)
+        v = (p_w - p_l) / (p_w + p_l + KAPPA)
+        if nuc:                                     # mixed batch: nucleus rows -> DTM value
+            db = [boards[i] for i in nuc]; dk = [keys[i] for i in nuc]
+            pw_n = np.exp(-_dtm_hat(db, dk) / dtm_scale)
+            pl_n = (np.exp(-np.asarray(d_l)[nuc] / dtm_scale) if d_l is not None
+                    else np.zeros(len(nuc)))
+            v[nuc] = (pw_n - pl_n) / (pw_n + pl_n + KAPPA)
+        return v
     value_fn.set_anchor = set_anchor
     value_fn.invalidate_anchor = lambda: cand.update(idx=None)   # irreversible move played:
     return value_fn                                              # the +-1-ply bound is void
@@ -371,7 +425,9 @@ def worker(args):
     bank = OnlineMateBank(fm, Path(args.bank_file))
     loss_bank = OnlineMateBank(fm, Path(args.loss_bank_file))
     times: dict = {}
-    vfn = make_boot_value(fm, bank, times, loss_bank)
+    vfn = make_boot_value(fm, bank, times, loss_bank,
+                          dtm_ckpt=args.last_mile_dtm or None,
+                          nucleus_max_pieces=args.nucleus_max_pieces)
     pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times)
     ms = MilestoneCache(fm, Path(args.milestone_file))
 
@@ -505,6 +561,11 @@ def main():
     ap.add_argument("--warm-bank", type=int, default=1000,
                     help="first-move warm-up: search+harvest until the bank has this many "
                          "mates (cap 20x --nodes); 0 = off")
+    ap.add_argument("--last-mile-dtm", default="data/derived/sep/dtm_cnn_v2.pt",
+                    help="tb-trained DTM regression as the value's distance source INSIDE "
+                         "the nucleus (resignation gap: the field has no trajectory support "
+                         "there); '' = off")
+    ap.add_argument("--nucleus-max-pieces", type=int, default=5)
     ap.add_argument("--max-plies", type=int, default=80)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
