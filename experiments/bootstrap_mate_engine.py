@@ -467,6 +467,9 @@ def worker(args):
         from collections import Counter as _Counter
         hist = _Counter({b.epd(): 1})   # ALL position visits, both colors (stuckness +
                                         # repetition-creation triggers); counted at arrival
+        tb_mode = False   # STICKY handover (g036: alternating field/tb control oscillates
+                          # through the consulted position into threefold; once the field
+                          # proves gradient-less in a game, tb converts the rest, all logged)
         reuse = None            # subtree carried across moves (tree reuse; general lever)
         # WARM-UP (Kaveh 2026-07-25 'run until bank is full on first move'): before the
         # first timed move, keep searching+harvesting until the bank reaches the target
@@ -495,10 +498,11 @@ def worker(args):
                 # STUCKNESS trigger (Kaveh 'do the fix'): second visit to a position =
                 # the field has no EFFECTIVE gradient in play (confidently-wrong loops
                 # never trip the flatness trigger) -> consult tb directly, LOGGED.
-                if (args.tb_fallback_eps > 0 and hist[b.epd()] >= 2
+                if (args.tb_fallback_eps > 0 and (tb_mode or hist[b.epd()] >= 2)
                         and len(b.piece_map()) <= 6):
                     mv_tb = tb_white_move(b, tb)
                     if mv_tb is not None:
+                        tb_mode = True
                         tb_consults.append(plies)
                         roots.append(b.epd()); mseen.append(False); nmoves.append(0)
                         tmoves.append(0.0); ucis.append(mv_tb.uci())
@@ -551,6 +555,7 @@ def worker(args):
                         mv_tb = tb_white_move(b, tb)
                         if mv_tb is not None and mv_tb != best.move:
                             best = next((c for c in root.children if c.move == mv_tb), best)
+                            tb_mode = True
                             tb_consults.append(plies)
                 d = {k: times.get(k, 0) - snap.get(k, 0) for k in
                      ("prior_s", "prior_n", "embedF_s", "embedF_n", "dbank_s", "dbank_n")}
