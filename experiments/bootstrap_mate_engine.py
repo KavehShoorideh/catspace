@@ -511,7 +511,8 @@ def worker(args):
                 # STUCKNESS trigger (Kaveh 'do the fix'): second visit to a position =
                 # the field has no EFFECTIVE gradient in play (confidently-wrong loops
                 # never trip the flatness trigger) -> consult tb directly, LOGGED.
-                if (args.tb_fallback_eps > 0 and (tb_mode or hist[b.epd()] >= 2)
+                if (args.tb_fallback_eps > 0
+                        and (tb_mode or hist[b.epd()] >= 2 or b.halfmove_clock >= 60)
                         and len(b.piece_map()) <= 6):
                     mv_tb = tb_white_move(b, tb)
                     if mv_tb is not None:
