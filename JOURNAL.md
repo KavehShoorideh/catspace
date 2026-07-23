@@ -6941,3 +6941,15 @@ positions, label via cached tb, distill the complete table (pairwise ranking los
 top-up from engine trajectories) -- no sampling gap, nothing for the defense to find.
 Precedent check (Kaveh asked): Leela had the same symptom (won-endgame shuffling) and fixed
 it with tb-RESCORED training + moves-left head == our distillation + DTM value, validating.
+
+## 2026-07-25 -- reference engines on the SAME 48 starts (bench_engines_krrvk.py)
+
+    VERDICT BENCH sf5000        48/48 (1.00) med_plies=11 med_nodes/move=5,001
+    VERDICT BENCH sf100ms       48/48 (1.00) med_plies=7  med_nodes/move=206,804
+    VERDICT BENCH maia1900_5000 48/48 (1.00) med_plies=9  med_nodes/move=187 (lc0 early-stop)
+    (ours: bootstrap v4 0.96, med 9 plies, 5,000 evals/move; no tb at play for anyone)
+
+Readings: SF converts on EXACT mate-score propagation (value precision irrelevant); lc0+maia
+(a HUMAN-data net) converts at med 187 nodes/move -- terminal exactness + decent policy carry
+the last mile in standard MCTS. We sit 2 games under the engine floor with a known fix
+(enumeration distillation of the 4-piece table) queued.
