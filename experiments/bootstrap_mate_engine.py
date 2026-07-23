@@ -28,6 +28,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from catspace.engine.fields import FieldModel
+from catspace.experience import ExperienceStore
 from catspace.nn.mcts import MCTS
 from catspace.tb import TB, tb_best_move
 from experiments.mate_ladder_eval import sample_scenarios
@@ -680,6 +681,12 @@ def worker(args):
                                           game_ctx=game_ctx, plan_alpha=args.plan_alpha)
     planner = make_planner(fm, bank)
     ms = MilestoneCache(fm, Path(args.milestone_file))
+    exp = ExperienceStore(args.experience_db) if args.experience_db else None
+    try:
+        eng_commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                    capture_output=True, text=True).stdout.strip()
+    except Exception:
+        eng_commit = ""
 
     res_path = Path(args.results_file)
     done = set()
@@ -889,6 +896,9 @@ def worker(args):
         mated = bool(out and out.winner == chess.WHITE)
         term = out.termination.name.lower() if out else "timeout"
         ms.record_game(roots, mated, mseen, nmoves)
+        if exp is not None:
+            exp.record_game(args.scenario, start_epd, "mate" if mated else "fail", term,
+                            ucis, roots, engine_commit=eng_commit, field_ckpt=args.field)
         import json
         rec = dict(g=gi, mate=mated, term=term, plies=plies, nodes=nodes_spent,
                    t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank),
@@ -941,6 +951,9 @@ def main():
     ap.add_argument("--nucleus-max-pieces", type=int, default=5)
     ap.add_argument("--plan-alpha", type=float, default=1.0,
                     help="planner's prior-bias strength (alpha-dial; 0 = planner off)")
+    ap.add_argument("--experience-db", default="data/derived/experience.sqlite",
+                    help="persistence layer: every game + searched roots + provenance; "
+                         "'' disables")
     ap.add_argument("--tb-fallback-eps", type=float, default=0.02,
                     help="if the searched root's child-value spread < eps (no field "
                          "gradient) and <=6 pieces: consult tb, LOG the consult (win "
