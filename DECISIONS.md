@@ -40,12 +40,22 @@ field.
 
 ## 3. Planner / engine architecture (long/short)
 
+> **AMENDED 2026-07-24 (conditional-rejections rule paid out).** Three struck-through claims below were
+> measured on the COLLAPSED pre-decoupling field and are RETRACTED: on the healthy decoupled field
+> (33x contrast, rank 15), field-distance-to-mate-bank VALUE + flavored-energy PRIOR + MCTS(800, mate_stop)
+> = **fieldenergy 0.75 KRRvK-central** (n=20; tb-oracle 0.85, pure 0.30 full-toy vs its 0.06) — the field
+> value HELPS near mate and the learned prior BEATS uniform. Every field-quality verdict is conditional on
+> the field version that produced it. Current engine of record = fieldenergy (JOURNAL 2026-07-24).
+
 - **Field = COARSE long-range navigator, NOT a fine move-prior.** Evidence: field-guided search reaches the
   near-mate region ~97% vs pure-search 77% at low budgets, but its per-move ranking is at chance.
-- **Uniform prior beats the field prior** for local search; the field is a bad move-orderer.
+  *(Ranking-at-chance was the collapsed field; the healthy field's value ordering carries fieldenergy.)*
+- ~~**Uniform prior beats the field prior** for local search; the field is a bad move-orderer.~~
+  RETRACTED — superseded by the flavored-energy learned prior (and the healthy field's value).
 - **Long/short with handoff:** field plans a SUBGOAL → **uniform-prior MCTS** navigates to it → **handoff to
   pure MCTS + mate_stop** when within ~5–6 plies of the goal (≤5 pieces) OR the planner stalls (coarse
-  distance-to-mate stops improving). **EXECUTE phase uses PURE search — the field value HURTS near mate.**
+  distance-to-mate stops improving). ~~**EXECUTE phase uses PURE search — the field value HURTS near mate.**~~
+  RETRACTED — execute phase is now field-value + energy-prior MCTS (fieldenergy), no tablebase.
 - **The subgoal selector is the RL-swappable seam** (Kaveh: "eventually the planner is RL" → PlanSelector).
   The current composed-distance heuristic is a placeholder; keep it behind a clean `select_subgoal()`.
 - Engine lives in `experiments/longshort_engine.py`; wired into `experiments/viz/play_server.py`
@@ -206,3 +216,15 @@ the full list with scars.
   `experiments/register_incumbents.py`). DECISIONS sec 5 stays the prose source of truth.
 - Predating layers to FOLD IN next: experiments/compute_layer.py (uncertainty-carrying tool layer) +
   experiments/catspace_engine.py (coded policy) + catspace/planner/ + goal_bank.py.
+
+## 4b. RULE TIGHTENED (Kaveh 2026-07-23): no hand-coded concepts EVEN FOR TRAINING
+
+Supersedes the "data-generation labels" allowance in sec 4: hand-coded concept computations
+(escape volume, threat flags, pattern classifiers, material counts) may not be TRAINING TARGETS
+either -- a net distilling a hand-coded label is the hand-code laundered. They remain legal as
+DIAGNOSTIC INSTRUMENTS only (probing whether learned models rediscover them). Legitimate training
+signals are FACTS OF THE GAME'S OUTCOME STRUCTURE: results, mates, plies-to-termination,
+tablebase distances (exhaustive game truth, not a designed feature), and the model's own
+search/play experience (expert iteration, TD, contrast between outcome-anchored branches).
+The escape_net_v1 artifacts are RETIRED from the play/training path; kept solely as the
+diagnostic ceiling (what a legitimately-learned value should approach if the concept emerges).
