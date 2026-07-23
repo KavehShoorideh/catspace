@@ -173,7 +173,9 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     bank TAIL added since its last query, not the full bank."""
     emb_cache: dict[str, np.ndarray] = {}
     recent = deque(maxlen=512)
-    KAPPA = float(np.exp(-1.0))
+    recent_l = deque(maxlen=512)     # loss-channel temperature is SELF-calibrated too:
+    KAPPA = float(np.exp(-1.0))      # field-scale d_loss (~50) over dtm_scale (20) made
+                                     # every threat read as ~nothing (the units bug)
 
     # LAST MILE (Kaveh 2026-07-25): humans RESIGN trivially-won endings, so the field's
     # behavior-geometry has no trajectory support in the nucleus -- its distances there
@@ -309,7 +311,10 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             p_l = 0.0
             if nl:
                 _embed(boards, keys)
-                p_l = np.exp(-dmin_loss(keys) / dtm_scale)
+                d_l = dmin_loss(keys)
+                recent_l.extend(d_l.tolist())
+                M_l = max(float(np.median(recent_l)), 1e-6)
+                p_l = np.exp(-d_l / M_l)
             return (p_w - p_l) / (p_w + p_l + KAPPA)
         _embed(boards, keys)
         if nw and cand["idx"] is not None:
@@ -340,13 +345,17 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         recent.extend((d_w if d_w is not None else d_l).tolist())
         M = max(float(np.median(recent)), 1e-6)
         p_w = np.exp(-d_w / M) if d_w is not None else 0.0
-        p_l = np.exp(-d_l / M) if d_l is not None else 0.0
+        if d_l is not None:
+            recent_l.extend(np.asarray(d_l).tolist())
+            M_l = max(float(np.median(recent_l)), 1e-6)
+            p_l = np.exp(-np.asarray(d_l) / M_l)
+        else:
+            p_l = 0.0
         v = (p_w - p_l) / (p_w + p_l + KAPPA)
         if nuc:                                     # mixed batch: nucleus rows -> DTM value
             db = [boards[i] for i in nuc]; dk = [keys[i] for i in nuc]
             pw_n = np.exp(-_dtm_hat(db, dk) / dtm_scale)
-            pl_n = (np.exp(-np.asarray(d_l)[nuc] / dtm_scale) if d_l is not None
-                    else np.zeros(len(nuc)))
+            pl_n = (p_l[nuc] if isinstance(p_l, np.ndarray) else np.zeros(len(nuc)))
             v[nuc] = (pw_n - pl_n) / (pw_n + pl_n + KAPPA)
         return v
     value_fn.set_anchor = set_anchor
