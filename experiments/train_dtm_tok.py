@@ -88,8 +88,12 @@ def main():
     t0 = time.time(); dev = pick_device(args.device)
     torch.manual_seed(args.seed); rng = np.random.default_rng(args.seed)
 
-    z = np.load(args.dtm_npz)
-    P, M, dtm = np.asarray(z["packed"]), np.asarray(z["meta"]), np.asarray(z["dtm"]).astype(np.float32)
+    Ps, Ms, Ds = [], [], []
+    for path in args.dtm_npz.split(","):
+        z = np.load(path.strip())
+        Ps.append(np.asarray(z["packed"])); Ms.append(np.asarray(z["meta"]))
+        Ds.append(np.asarray(z["dtm"]).astype(np.float32))
+    P, M, dtm = np.concatenate(Ps), np.concatenate(Ms), np.concatenate(Ds)
     print(f"[data] {len(P)} positions  [{time.time()-t0:.0f}s]", flush=True)
     pid, sqi, pad = tokenize(P, M)
     print(f"[tok] done  [{time.time()-t0:.0f}s]", flush=True)
