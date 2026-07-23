@@ -72,6 +72,72 @@ class OnlineMateBank:
         return len(self.keys)
 
 
+class MilestoneCache:
+    """Positions the engine has actually SEARCHED, with how well that went (own experience,
+    Kaveh 2026-07-24 'milestone cache'): per position -- games through it, wins, searches
+    that saw mate in-tree, nodes spent. Observation lines shared append-only across workers
+    (aggregate rebuilt on sync; idempotent). B-embeddings local, computed once per epd.
+    p_win = (wins+1)/(tries+2) (Beta-smoothed). Recording only changes MEMORY, not play;
+    wiring into value/budget is a separate, flag-gated decision."""
+
+    def __init__(self, fm: FieldModel, path: Path):
+        self.fm = fm; self.path = path
+        self.stats: dict[str, list] = {}          # epd -> [tries, wins, mate_seen, nodes]
+        self.embs: np.ndarray | None = None; self._order: list[str] = []
+        self.sync()
+
+    def _ensure_emb(self, epds):
+        new = [e for e in epds if e not in self._order]
+        if new:
+            E = self.fm.embed_B_boards([chess.Board(e) for e in new])
+            self.embs = E if self.embs is None else np.concatenate([self.embs, E])
+            self._order.extend(new)
+
+    def sync(self):
+        if not self.path.exists():
+            return
+        agg: dict[str, list] = {}
+        for ln in self.path.read_text().splitlines():
+            try:
+                epd, mated, mseen, nodes = ln.rsplit(",", 3)
+                s = agg.setdefault(epd, [0, 0, 0, 0])
+                s[0] += 1; s[1] += int(mated); s[2] += int(mseen); s[3] += int(nodes)
+            except ValueError:
+                continue
+        self.stats = agg
+        self._ensure_emb(list(agg))
+
+    def record_game(self, epds, mated, mate_seen_flags, nodes_per_move):
+        with open(self.path, "a") as f:
+            for e, ms, nd in zip(epds, mate_seen_flags, nodes_per_move):
+                f.write(f"{e},{int(mated)},{int(ms)},{nd}\n")
+                s = self.stats.setdefault(e, [0, 0, 0, 0])
+                s[0] += 1; s[1] += int(mated); s[2] += int(ms); s[3] += nd
+        self._ensure_emb(epds)
+
+    def p_win(self, epd) -> float:
+        s = self.stats.get(epd)
+        return 0.5 if s is None else (s[1] + 1) / (s[0] + 2)
+
+    def query(self, boards):
+        """per board: (distance to nearest milestone, that milestone's p_win) -- the
+        primitive both future wirings (value steering / budget allocation) need."""
+        import torch
+        if not self._order:
+            return np.full(len(boards), np.inf), np.full(len(boards), 0.5)
+        F = self.fm.embed_F_boards(boards)
+        bt = torch.from_numpy(self.embs).to(self.fm.device)
+        best_d = np.full(len(F), np.inf); best_i = np.zeros(len(F), np.int64)
+        for s in range(0, len(F), self.fm.chunk):
+            with torch.no_grad():
+                D = self.fm.fb.distance_matrix(
+                    torch.from_numpy(F[s:s + self.fm.chunk]).to(self.fm.device), bt)
+                m, a = D.min(1)
+            best_d[s:s + len(m)] = m.cpu().numpy(); best_i[s:s + len(m)] = a.cpu().numpy()
+        p = np.array([self.p_win(self._order[i]) for i in best_i])
+        return best_d, p
+
+
 def harvest(root) -> list:
     """all checkmate leaves the search TOUCHED (Black to move & mated = White wins)."""
     out, stack = [], [root]
@@ -149,23 +215,28 @@ def worker(args):
     times: dict = {}
     vfn = make_boot_value(fm, bank, times)
     pfn = cached_prior(make_energy_prior(ckpt=args.energy_ckpt, device="cpu"), times)
+    ms = MilestoneCache(fm, Path(args.milestone_file))
 
     my_games = list(range(args.worker, len(starts), args.j))
     results = []
     for gi in my_games:
-        bank.sync()
+        bank.sync(); ms.sync()
         b = starts[gi].copy(stack=False)
         plies = 0; nodes_spent = 0; tmoves = []; found_this_game = 0
+        roots: list[str] = []; mseen: list[bool] = []; nmoves: list[int] = []
         while plies < args.max_plies and not b.is_game_over(claim_draw=True):
             if b.turn == chess.WHITE:
                 tm = time.time(); snap = dict(times)
                 m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=args.nodes, mate_stop=True,
                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
                          batch_leaves=32)
+                roots.append(b.epd())
                 root = m.run(b)
                 t_search = time.time() - tm
                 th = time.perf_counter()
-                found_this_game += bank.add(harvest(root))
+                mates_in_tree = harvest(root)
+                mseen.append(len(mates_in_tree) > 0); nmoves.append(m.evals_used)
+                found_this_game += bank.add(mates_in_tree)
                 t_harv = time.perf_counter() - th
                 best = max(root.children,
                            key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None else c.Q)))
@@ -183,8 +254,10 @@ def worker(args):
             plies += 1
         out = b.outcome(claim_draw=True)
         mated = bool(out and out.winner == chess.WHITE)
+        ms.record_game(roots, mated, mseen, nmoves)
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
         print(f"  g{gi:03d} {'mate' if mated else 'FAIL'} plies={plies} bank={len(bank)}(+{found_this_game}) "
+              f"ms={len(ms.stats)} "
               f"t/move={np.median(tmoves):.1f}s t/game={sum(tmoves):.0f}s "
               f"nodes/s={nodes_spent/max(sum(tmoves),1e-9):.0f} [{time.time()-t0:.0f}s]", flush=True)
     tb.close()
@@ -203,17 +276,21 @@ def main():
     ap.add_argument("--field", default="data/derived/sep/lichess_mc2.pt")
     ap.add_argument("--energy-ckpt", default="data/derived/sep/opponent_energy_v1.pt")
     ap.add_argument("--bank-file", default=None)
+    ap.add_argument("--milestone-file", default=None)
     ap.add_argument("--max-plies", type=int, default=80)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     if args.bank_file is None:
         args.bank_file = f"artifacts/experiments/boot_bank_n{args.nodes}.fens"
+    if args.milestone_file is None:
+        args.milestone_file = f"artifacts/experiments/boot_milestones_n{args.nodes}.jsonl"
 
     if args.worker is not None:
         worker(args); return
 
     Path(args.bank_file).unlink(missing_ok=True)
+    Path(args.milestone_file).unlink(missing_ok=True)
     t0 = time.time()
     procs = [subprocess.Popen([sys.executable, __file__, *sys.argv[1:], "--worker", str(w)])
              for w in range(args.j)]
