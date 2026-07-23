@@ -678,6 +678,13 @@ def worker(args):
     if args.fen_file:
         starts = [chess.Board(f) for f in Path(args.fen_file).read_text().splitlines()
                   if f.strip()][:args.n]
+    elif args.scenario == "fullgame":
+        # THE RESEARCH FRONTIER (Kaveh 2026-07-25: 'end-to-end full game'): standard
+        # starts, human-proxy opponent (maia, sampled), planner + tactics + probes live,
+        # tb only as the <=6p logged fallback. Toy scenarios are integration tests now.
+        starts = [chess.Board() for _ in range(args.n)]
+        sf_def = chess.engine.SimpleEngine.popen_uci(
+            ["lc0", f"--weights={args.opponent_weights}"])
     elif args.scenario == "KRRvKBNP-7p":
         sf_def = chess.engine.SimpleEngine.popen_uci(["stockfish"])
         starts = gen_7p_starts(np.random.default_rng(args.seed), args.n, sf_def)
@@ -964,7 +971,10 @@ def worker(args):
                     tb_mode = True               # g043: BLACK completes threefolds -- any
                 reuse = best if best.move == mv_final else None   # 2nd occurrence => tb
             else:
-                if len(b.piece_map()) > 6 and sf_def is not None:
+                if args.scenario == "fullgame" and sf_def is not None:
+                    # maia opponent for the WHOLE game (nodes=1 = the human-move protocol)
+                    mvb = sf_def.play(b, chess.engine.Limit(nodes=1)).move
+                elif len(b.piece_map()) > 6 and sf_def is not None:
                     # beyond tb: STOCKFISH defends until the trade-down re-enters tb range
                     mvb = sf_def.play(b, chess.engine.Limit(nodes=20000)).move
                 else:
@@ -1033,6 +1043,8 @@ def main():
                     help="comma list of game indices to (re)play (default: all 0..n-1)")
     ap.add_argument("--fen-file", default=None,
                     help="explicit start positions, one FEN per line (integration tests)")
+    ap.add_argument("--opponent-weights", default="data/engines/maia/maia-1500.pb.gz",
+                    help="fullgame opponent net (maia elo ladder / real lc0)")
     ap.add_argument("--warm-bank", type=int, default=1000,
                     help="first-move warm-up: search+harvest until the bank has this many "
                          "mates (cap 20x --nodes); 0 = off")
