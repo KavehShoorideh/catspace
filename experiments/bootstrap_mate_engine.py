@@ -419,22 +419,40 @@ def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
 
 
 def tb_white_move(b, tb):
-    """win-preserving min-|dtz| move that leaves Black NO immediate draw claim (announce
-    rule); falls back to best dtz if every winning move is claimable. Consulted only when
-    the field has no gradient; every use is LOGGED (wins must stay attributable)."""
-    alts = []
+    """Standard DTZ-conversion move (g017 autopsy: min-|dtz-after| has NO gradient when a
+    zeroing move is reachable from everywhere -- every rook shuffle scored dtz=2 and the
+    engine waltzed 50 moves without progress; tb.py's documented DTZ!=DTM trap):
+      1. winning ZEROING move (capture/pawn push) if one exists -- immediate progress, and
+         inherently claim-safe (new material voids all repetition history);
+      2. else winning move with STRICTLY decreasing |dtz|, claim-safe first;
+      3. else any claim-safe winning move; else best-dtz winning move.
+    Consulted only on fallback triggers; every use is LOGGED (attribution)."""
+    _, dz_now = tb.wdl_dtz(b)
+    dz_now = abs(dz_now) if dz_now is not None else 999
+    zeroing, progress, others = [], [], []
     for m in b.legal_moves:
         c = b.copy(stack=False); c.push(m)
         w, dz = tb.wdl_dtz(c)
-        if w is not None and -w == 2:
-            alts.append((abs(dz) if dz is not None else 999, m))
-    for _, m in sorted(alts, key=lambda x: x[0]):
-        b.push(m)
-        ok = not b.can_claim_threefold_repetition()
-        b.pop()
-        if ok:
-            return m
-    return sorted(alts, key=lambda x: x[0])[0][1] if alts else None
+        if w is None or -w != 2:
+            continue
+        dza = abs(dz) if dz is not None else 999
+        if b.is_capture(m) or b.piece_type_at(m.from_square) == chess.PAWN:
+            zeroing.append((dza, m))
+        elif dza < dz_now:
+            progress.append((dza, m))
+        else:
+            others.append((dza, m))
+    if zeroing:
+        return min(zeroing, key=lambda x: x[0])[1]
+    for pool in (progress, others):
+        for _, m in sorted(pool, key=lambda x: x[0]):
+            b.push(m)
+            ok = not b.can_claim_threefold_repetition()
+            b.pop()
+            if ok:
+                return m
+    all_ = progress + others
+    return min(all_, key=lambda x: x[0])[1] if all_ else None
 
 
 def worker(args):
