@@ -15,6 +15,7 @@ Single worker (internal):        --nodes 5000 --n 48 --j 4 --worker 0
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -791,9 +792,11 @@ def worker(args):
         print(f"[worker {args.worker}] resume: skipping {len(done)} recorded games", flush=True)
 
     def _stale() -> bool:
-        """ALWAYS-RUN-LATEST enforcement (Kaveh: 'stale tests shouldn't run'): if HEAD
-        moved since this process launched, yield with exit 75 -- chains relaunch, resume
-        skips recorded games, the fleet self-heals onto the new code within one game."""
+        """ALWAYS-RUN-LATEST enforcement (Kaveh: 'stale tests shouldn't run'; 2026-07-23:
+        'don't kill the workers on a commit -- have them reload the newest and work on
+        that'): if HEAD moved since this process launched, the worker re-execs ITSELF
+        (same argv, new code image) at the next game boundary -- resume skips recorded
+        games, the WIP checkpoint carries any in-flight game, no launcher needed."""
         try:
             now = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                                  capture_output=True, text=True).stdout.strip()
@@ -822,12 +825,12 @@ def worker(args):
     results = []
     for gi in my_games:
         if _stale():
-            print(f"[worker {args.worker}] STALE (code moved past {eng_commit}); "
-                  f"exiting 75 for relaunch", flush=True)
+            print(f"[worker {args.worker}] code moved past {eng_commit}; "
+                  f"re-exec onto newest", flush=True)
             tb.close()
             if sf_def is not None:
                 sf_def.quit()
-            sys.exit(75)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
         bank.sync(); loss_bank.sync(); draw_bank.sync(); ms.sync()
         b = starts[gi].copy(stack=False)
         start_epd = b.epd()
