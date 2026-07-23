@@ -138,33 +138,43 @@ class MilestoneCache:
         return best_d, p
 
 
-def harvest(root) -> list:
-    """all checkmate leaves the search TOUCHED (Black to move & mated = White wins)."""
-    out, stack = [], [root]
+def harvest(root) -> tuple[list, list]:
+    """(win_mates, loss_mates) among checkmate leaves the search TOUCHED:
+    Black to move & mated = White wins; White to move & mated = White LOSES
+    (possible once promotions exist, e.g. KRRvKP lines -- feeds the loss bank)."""
+    wins, losses, stack = [], [], [root]
     while stack:
         n = stack.pop()
-        if n.board is not None and n.board.turn == chess.BLACK and n.board.is_checkmate():
-            out.append(n.board)
+        if n.board is not None and n.board.is_checkmate():
+            (wins if n.board.turn == chess.BLACK else losses).append(n.board)
         stack.extend(n.children)
-    return out
+    return wins, losses
 
 
-def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = None):
-    """value = tanh((M - dmin)/M), M = running median of observed dmin (self-calibrating:
-    no field-scale constant; ordering is what MCTS needs). Bank empty -> 0 (prior-only).
+def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = None,
+                    loss_bank: OnlineMateBank | None = None):
+    """WDL leaf value (Kaveh 2026-07-25 'I want it'): three-outcome Boltzmann from the
+    field's energies to the two DISCOVERED absorbing regions plus a draw mass --
+        p_w ~ exp(-d_win/M)   p_l ~ exp(-d_loss/M)   p_d ~ kappa = e^-1
+        v = (p_w - p_l) / (p_w + p_l + p_d)   in (-1, 1)
+    M = running median of d_win (temperature, NOT a center -- the old tanh((M-d)/M) was
+    secretly this formula with a PHANTOM loss target planted at distance M, which is why
+    draws outranked median-distance winning positions). One-hot terminals under w-l:
+    mate=+1, draw=0, mated=-1 -- and w+d/2 is affine in w-l, so the default
+    expected-points objective needs no MCTS change. Non-default functionals (must-win w,
+    draw-ok w+d) need node-level triples: documented follow-on.
+    Empty loss bank (no discovered threats) reduces to v = p_w/(p_w+kappa) in (0,1):
+    every live position outranks a draw. Loss threats push v below 0 -> the rules-exact
+    draw terminals dominate -> the engine SEEKS stalemate/repetition when lost.
 
-    dmin caching (Kaveh 2026-07-24): the bank only GROWS, so min-distance decomposes
+    dmin caching (Kaveh 2026-07-24): banks only GROW, so min-distance decomposes
     exactly -- dmin_new = min(dmin_cached, d(x, bank[ver:])). Each position pays for the
     bank TAIL added since its last query, not the full bank."""
     emb_cache: dict[str, np.ndarray] = {}
-    dmin_cache: dict[str, tuple[int, float]] = {}     # epd -> (bank_version, dmin)
     recent = deque(maxlen=512)
+    KAPPA = float(np.exp(-1.0))
 
-    def value_fn(boards):
-        nb = len(bank)
-        if nb == 0:
-            return np.zeros(len(boards))
-        keys = [b.epd() for b in boards]
+    def _embed(boards, keys):
         miss = [b for b, k in zip(boards, keys) if k not in emb_cache]
         if miss:
             tt = time.perf_counter()
@@ -174,26 +184,47 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             if times is not None:
                 times["embedF_s"] = times.get("embedF_s", 0.0) + time.perf_counter() - tt
                 times["embedF_n"] = times.get("embedF_n", 0) + len(miss)
-        stale = [i for i, k in enumerate(keys) if dmin_cache.get(k, (0, np.inf))[0] < nb]
-        if stale:
-            tt = time.perf_counter()
-            # group by EXACT cached version: one ancient position must not drag the whole
-            # batch into a near-full-bank rescan (the 1430s-dbank pathology)
-            by_ver: dict[int, list] = {}
-            for i in stale:
-                by_ver.setdefault(dmin_cache.get(keys[i], (0, np.inf))[0], []).append(i)
-            for ver, idxs in by_ver.items():
-                F = np.stack([emb_cache[keys[i]] for i in idxs])
-                d_tail = fm.d_to_bank(F, bank.embs[ver:])
-                for i, dt in zip(idxs, d_tail):
-                    dmin_cache[keys[i]] = (nb, min(dmin_cache.get(keys[i], (0, np.inf))[1], float(dt)))
-            if times is not None:
-                times["dbank_s"] = times.get("dbank_s", 0.0) + time.perf_counter() - tt
-                times["dbank_n"] = times.get("dbank_n", 0) + len(stale)
-        d = np.array([dmin_cache[k][1] for k in keys])
-        recent.extend(d.tolist())
+
+    def _dmin_tracker(bk: OnlineMateBank):
+        dmin_cache: dict[str, tuple[int, float]] = {}   # epd -> (bank_version, dmin)
+
+        def dmin(keys):
+            nb = len(bk)
+            stale = [i for i, k in enumerate(keys) if dmin_cache.get(k, (0, np.inf))[0] < nb]
+            if stale:
+                tt = time.perf_counter()
+                # group by EXACT cached version: one ancient position must not drag the
+                # whole batch into a near-full-bank rescan (the 1430s-dbank pathology)
+                by_ver: dict[int, list] = {}
+                for i in stale:
+                    by_ver.setdefault(dmin_cache.get(keys[i], (0, np.inf))[0], []).append(i)
+                for ver, idxs in by_ver.items():
+                    F = np.stack([emb_cache[keys[i]] for i in idxs])
+                    d_tail = fm.d_to_bank(F, bk.embs[ver:])
+                    for i, dt in zip(idxs, d_tail):
+                        dmin_cache[keys[i]] = (nb, min(dmin_cache.get(keys[i], (0, np.inf))[1], float(dt)))
+                if times is not None:
+                    times["dbank_s"] = times.get("dbank_s", 0.0) + time.perf_counter() - tt
+                    times["dbank_n"] = times.get("dbank_n", 0) + len(stale)
+            return np.array([dmin_cache[k][1] for k in keys])
+        return dmin
+
+    dmin_win = _dmin_tracker(bank)
+    dmin_loss = _dmin_tracker(loss_bank) if loss_bank is not None else None
+
+    def value_fn(boards):
+        nw = len(bank); nl = len(loss_bank) if loss_bank is not None else 0
+        if nw == 0 and nl == 0:
+            return np.zeros(len(boards))
+        keys = [b.epd() for b in boards]
+        _embed(boards, keys)
+        d_w = dmin_win(keys) if nw else None
+        d_l = dmin_loss(keys) if nl else None
+        recent.extend((d_w if d_w is not None else d_l).tolist())
         M = max(float(np.median(recent)), 1e-6)
-        return np.tanh((M - d) / M)
+        p_w = np.exp(-d_w / M) if d_w is not None else 0.0
+        p_l = np.exp(-d_l / M) if d_l is not None else 0.0
+        return (p_w - p_l) / (p_w + p_l + KAPPA)
     return value_fn
 
 
@@ -266,8 +297,9 @@ def worker(args):
     starts = dict(sample_scenarios(np.random.default_rng(args.seed), args.n))[args.scenario]
     fm = FieldModel(args.field, device=args.device)
     bank = OnlineMateBank(fm, Path(args.bank_file))
+    loss_bank = OnlineMateBank(fm, Path(args.loss_bank_file))
     times: dict = {}
-    vfn = make_boot_value(fm, bank, times)
+    vfn = make_boot_value(fm, bank, times, loss_bank)
     pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times)
     ms = MilestoneCache(fm, Path(args.milestone_file))
 
@@ -281,7 +313,7 @@ def worker(args):
         print(f"[worker {args.worker}] resume: skipping {len(done)} recorded games", flush=True)
     results = []
     for gi in my_games:
-        bank.sync(); ms.sync()
+        bank.sync(); loss_bank.sync(); ms.sync()
         b = starts[gi].copy(stack=False)
         plies = 0; nodes_spent = 0; tmoves = []; found_this_game = 0
         roots: list[str] = []; mseen: list[bool] = []; nmoves: list[int] = []
@@ -295,9 +327,11 @@ def worker(args):
                 root = m.run(b)
                 t_search = time.time() - tm
                 th = time.perf_counter()
-                mates_in_tree = harvest(root)
-                mseen.append(len(mates_in_tree) > 0); nmoves.append(m.evals_used)
-                found_this_game += bank.add(mates_in_tree)
+                win_mates, loss_mates = harvest(root)
+                mseen.append(len(win_mates) > 0); nmoves.append(m.evals_used)
+                found_this_game += bank.add(win_mates)
+                if loss_mates:
+                    loss_bank.add(loss_mates)
                 t_harv = time.perf_counter() - th
                 best = max(root.children,
                            key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None else c.Q)))
@@ -323,7 +357,7 @@ def worker(args):
                                     bank=len(bank))) + "\n")
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
         print(f"  g{gi:03d} {'mate' if mated else 'FAIL'} plies={plies} bank={len(bank)}(+{found_this_game}) "
-              f"ms={len(ms.stats)} "
+              f"loss={len(loss_bank)} ms={len(ms.stats)} "
               f"t/move={np.median(tmoves):.1f}s t/game={sum(tmoves):.0f}s "
               f"nodes/s={nodes_spent/max(sum(tmoves),1e-9):.0f} [{time.time()-t0:.0f}s]", flush=True)
     tb.close()
@@ -342,6 +376,7 @@ def main():
     ap.add_argument("--field", default="data/derived/sep/lichess_mc2.pt")
     ap.add_argument("--energy-ckpt", default="data/derived/sep/opponent_energy_v1.pt")
     ap.add_argument("--bank-file", default=None)
+    ap.add_argument("--loss-bank-file", default=None)
     ap.add_argument("--milestone-file", default=None)
     ap.add_argument("--results-file", default=None)
     ap.add_argument("--fresh", action="store_true",
@@ -353,6 +388,8 @@ def main():
     tag = f"n{args.nodes}_{args.scenario}"
     if args.bank_file is None:
         args.bank_file = f"artifacts/experiments/boot_bank_{tag}.fens"
+    if args.loss_bank_file is None:
+        args.loss_bank_file = f"artifacts/experiments/boot_lossbank_{tag}.fens"
     if args.milestone_file is None:
         args.milestone_file = f"artifacts/experiments/boot_milestones_{tag}.jsonl"
     if args.results_file is None:
@@ -362,7 +399,7 @@ def main():
         worker(args); return
 
     if args.fresh:
-        for p in (args.bank_file, args.milestone_file, args.results_file):
+        for p in (args.bank_file, args.loss_bank_file, args.milestone_file, args.results_file):
             Path(p).unlink(missing_ok=True)
     t0 = time.time()
     procs = [subprocess.Popen([sys.executable, __file__, *sys.argv[1:], "--worker", str(w)])
