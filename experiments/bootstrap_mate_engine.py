@@ -211,6 +211,38 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
 
     dmin_win = _dmin_tracker(bank)
     dmin_loss = _dmin_tracker(loss_bank) if loss_bank is not None else None
+    cand = {"idx": None, "ver": -1, "audit": 0}   # per-move candidate annulus (set_anchor)
+
+    def set_anchor(board, slack=16.0):
+        """Kaveh 2026-07-25 ('if moves are reversible, can we construct distance without
+        recalculating?'): step-consistency (d_step~1/ply) + triangle inequality => a leaf
+        d plies under the root can only reach bank points within dmin_root + ~d + margin.
+        One full-bank query at the root per move; all leaves evaluate against the annulus
+        d(root,g) <= dmin_root + slack only. Periodic exact-vs-pruned audit keeps it honest."""
+        cand["cache"] = {}                       # approx dmins live within ONE move only
+        if len(bank) < 256:
+            cand["idx"] = None; return
+        F = fm.embed_F_boards([board])
+        d_all = _bank_row(F, bank.embs)
+        thr = float(d_all.min()) + slack
+        idx = np.flatnonzero(d_all <= thr)
+        if len(idx) < 128 or len(idx) > 256:
+            # dense-bank regime: the annulus doesn't bite (mates cluster within ~slack of
+            # any won position) -- cap at nearest-256 and let the printed audit police it
+            idx = np.argsort(d_all)[:256]
+        cand["idx"] = idx; cand["ver"] = len(bank); cand["audit"] += 1
+
+    def _bank_row(F, embs):
+        import torch
+        out = None
+        for bs in range(0, len(embs), 512):
+            bt = torch.from_numpy(embs[bs:bs + 512]).to(fm.device)
+            with torch.no_grad():
+                m = fm.fb.distance_matrix(
+                    torch.from_numpy(F).to(fm.device), bt)
+            m = m.cpu().numpy()
+            out = m if out is None else np.concatenate([out, m], axis=1)
+        return out[0]
 
     def value_fn(boards):
         nw = len(bank); nl = len(loss_bank) if loss_bank is not None else 0
@@ -218,13 +250,37 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             return np.zeros(len(boards))
         keys = [b.epd() for b in boards]
         _embed(boards, keys)
-        d_w = dmin_win(keys) if nw else None
+        if nw and cand["idx"] is not None:
+            # pruned path: candidates from the root annulus + any mates banked since the
+            # anchor; move-local cache only (approx values never persist across moves)
+            cc = cand.setdefault("cache", {})
+            miss = [i for i, k in enumerate(keys) if k not in cc]
+            if miss:
+                tt = time.perf_counter()
+                F = np.stack([emb_cache[keys[i]] for i in miss])
+                sub = bank.embs[cand["idx"]]
+                if len(bank) > cand["ver"]:
+                    sub = np.concatenate([sub, bank.embs[cand["ver"]:]])
+                d_sub = fm.d_to_bank(F, sub)
+                if cand["audit"] % 25 == 1 and not cc:      # honesty audit, rare
+                    d_ex = fm.d_to_bank(F, bank.embs)
+                    print(f"    [prune-audit] max|err| {np.abs(d_sub - d_ex).max():.3f} "
+                          f"cands {len(sub)}/{len(bank)}", flush=True)
+                for i, dv in zip(miss, d_sub):
+                    cc[keys[i]] = float(dv)
+                if times is not None:
+                    times["dbank_s"] = times.get("dbank_s", 0.0) + time.perf_counter() - tt
+                    times["dbank_n"] = times.get("dbank_n", 0) + len(miss)
+            d_w = np.array([cc[k] for k in keys])
+        else:
+            d_w = dmin_win(keys) if nw else None
         d_l = dmin_loss(keys) if nl else None
         recent.extend((d_w if d_w is not None else d_l).tolist())
         M = max(float(np.median(recent)), 1e-6)
         p_w = np.exp(-d_w / M) if d_w is not None else 0.0
         p_l = np.exp(-d_l / M) if d_l is not None else 0.0
         return (p_w - p_l) / (p_w + p_l + KAPPA)
+    value_fn.set_anchor = set_anchor
     return value_fn
 
 
@@ -329,6 +385,8 @@ def worker(args):
                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
                          policy_batch_fn=pfnb, batch_leaves=32)
                 roots.append(b.epd())
+                if hasattr(vfn, "set_anchor"):
+                    vfn.set_anchor(b)
                 if reuse is not None:
                     reuse.parent = None     # detach: stale ancestors skew the mate-depth
                                             # discount and double-count _threefold's walk
