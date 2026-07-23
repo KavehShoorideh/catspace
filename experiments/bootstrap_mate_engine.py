@@ -704,8 +704,27 @@ def worker(args):
     my_games = [g for g in base[args.worker::args.j] if g not in done]
     if done:
         print(f"[worker {args.worker}] resume: skipping {len(done)} recorded games", flush=True)
+
+    def _stale() -> bool:
+        """ALWAYS-RUN-LATEST enforcement (Kaveh: 'stale tests shouldn't run'): if HEAD
+        moved since this process launched, yield with exit 75 -- chains relaunch, resume
+        skips recorded games, the fleet self-heals onto the new code within one game."""
+        try:
+            now = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                 capture_output=True, text=True).stdout.strip()
+            return bool(eng_commit) and bool(now) and now != eng_commit
+        except Exception:
+            return False
+
     results = []
     for gi in my_games:
+        if _stale():
+            print(f"[worker {args.worker}] STALE (code moved past {eng_commit}); "
+                  f"exiting 75 for relaunch", flush=True)
+            tb.close()
+            if sf_def is not None:
+                sf_def.quit()
+            sys.exit(75)
         bank.sync(); loss_bank.sync(); draw_bank.sync(); ms.sync()
         b = starts[gi].copy(stack=False)
         start_epd = b.epd()
@@ -1010,8 +1029,10 @@ def main():
     t0 = time.time()
     procs = [subprocess.Popen([sys.executable, __file__, *sys.argv[1:], "--worker", str(w)])
              for w in range(args.j)]
-    for p in procs:
-        p.wait()
+    rcs = [p.wait() for p in procs]
+    if any(rc == 75 for rc in rcs):
+        print("[launcher] workers went STALE (code updated); exiting 75 for relaunch", flush=True)
+        sys.exit(75)
     import json
     raw = [json.loads(ln) for ln in Path(args.results_file).read_text().splitlines() if ln.strip()] \
         if Path(args.results_file).exists() else []
