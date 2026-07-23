@@ -6923,3 +6923,21 @@ completed the run exactly. Harness hardening queued: chain-wait on workers, work
 child supervision, dedup-by-g in VERDICT.
 NEXT (awaiting Kaveh): experience-gated value trust (milestone 0-for-N regions -> devalue the
 field, let prior+search carry) + root exploration floor for double-handicap positions.
+
+## 2026-07-25 -- v4 LAST MILE: 0.96 on KRRvK-central. The resignation gap was the wall.
+
+    VERDICT (v4) KRRvK-central 5000n: 46/48 (0.96) med_plies=9 med_t/solve=22s [13 min total]
+    Engine ladder: 0.79 baseline -> 0.81 +reuse -> 0.83 +fixes -> 0.96 +LAST MILE
+
+Kaveh's diagnosis held end to end: humans resign trivially-won endings -> the lichess-trained
+field has no trajectory support in the nucleus -> its extrapolated distances INVERT at cycle
+positions -> no search mechanism can outrun a value that fights the correct plan. Fix: inside
+the tb nucleus (<=5 pieces) the WDL value's distance source = dtm_cnn_v2 (offline tb-optimal-
+plies regression; NO tb probes at play). All historic offenders converted (g025: drew 4
+straight runs, now mate in 7). Residue: g038/g047 = dtm_cnn_v2 error pockets (4p fidelity
+0.704; deployment distribution = defense-steered lines != random-won training sample).
+NEXT (proposed): (1) dtm error audit on the 2 trajectories; (2) ENUMERATE all KRRvK won
+positions, label via cached tb, distill the complete table (pairwise ranking loss + DAgger
+top-up from engine trajectories) -- no sampling gap, nothing for the defense to find.
+Precedent check (Kaveh asked): Leela had the same symptom (won-endgame shuffling) and fixed
+it with tb-RESCORED training + moves-left head == our distillation + DTM value, validating.
