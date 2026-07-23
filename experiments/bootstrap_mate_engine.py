@@ -682,10 +682,6 @@ def worker(args):
     pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times,
                                           game_ctx=game_ctx, plan_alpha=args.plan_alpha)
     planner = make_planner(fm, bank)
-    from catspace.engine.introspection import ProbeKit
-    probes = ProbeKit(fm, bank, loss_bank, draw_bank,
-                      exp_db=(exp.db if exp is not None else None),
-                      game_ctx=game_ctx, prior_fn=pfn)
     ms = MilestoneCache(fm, Path(args.milestone_file))
     exp = ExperienceStore(args.experience_db) if args.experience_db else None
     try:
@@ -693,6 +689,10 @@ def worker(args):
                                     capture_output=True, text=True).stdout.strip()
     except Exception:
         eng_commit = ""
+    from catspace.engine.introspection import ProbeKit
+    probes = ProbeKit(fm, bank, loss_bank, draw_bank,
+                      exp_db=(exp.db if exp is not None else None),
+                      game_ctx=game_ctx, prior_fn=pfn)
 
     res_path = Path(args.results_file)
     done = set()
