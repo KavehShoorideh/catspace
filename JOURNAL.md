@@ -7004,3 +7004,13 @@ Parked-list triage (Kaveh): enumeration-distillation, root floor, softmin value,
 milestone wiring all SUPERSEDED by the fallback ledger; research mainline = region-goal
 planner (built v1 today) + opponent-model v2. LADDER7 = the definitive uniform 5-scenario
 rebuild, running (wdlr6_ files).
+
+## 2026-07-25 -- KRRvK-central: 1.00 (48/48) on the definitive engine
+
+    VERDICT (LADDER7) KRRvK-central 5000n: 48/48 (1.00) [clean=46 tb-assisted=2]
+      med_plies=9  med_t/solve=50s  bank 6404  [31 min]
+
+Kaveh's target ('win rate to 100% without losing generality') REACHED. The two rescues are
+logged consults (attribution ledger), not hidden oracle calls; 46/48 = pure field+banks+
+search. Engine journey on this scenario: pure 0.30 -> incumbent 0.79 -> bootstrap 0.83 ->
++last-mile 0.96 -> complete engine 1.00. Remaining ladder7 scenarios running.
