@@ -570,7 +570,9 @@ def worker(args):
                     vfn.invalidate_anchor()      # irreversible: candidate set is void
                 b.push(best.move)
                 hist[b.epd()] += 1               # count BOTH colors (route-independent
-                reuse = best                     # repetitions live on Black-side keys too)
+                if hist[b.epd()] >= 2:           # repetitions live on Black-side keys too)
+                    tb_mode = True               # g043: BLACK completes threefolds -- any
+                reuse = best                     # 2nd occurrence anywhere => tb converts
             else:
                 mvb = tb_best_move(b, tb)
                 if reuse is not None:
@@ -581,6 +583,8 @@ def worker(args):
                 ucis.append(mvb.uci())
                 b.push(mvb)
                 hist[b.epd()] += 1
+                if hist[b.epd()] >= 2:
+                    tb_mode = True
             plies += 1
         out = b.outcome(claim_draw=True)
         mated = bool(out and out.winner == chess.WHITE)
