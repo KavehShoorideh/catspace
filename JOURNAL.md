@@ -6969,3 +6969,17 @@ repetition it never plays (claim-safe dtz walk in both paths) + the harness itse
 claiming for White (asymmetric claiming: only the defender claims). Commits 8a5a921..a427779.
 Finding for the writeup: behavior-geometry guards NONE of the rules' draw channels for free;
 "trivially won" hides a six-lane highway to a draw.
+
+## 2026-07-25 -- KRRvKP: 0.88 vs incumbent 0.75; draws SEALED, survival is the new frontier
+
+    VERDICT KRRvKP 5000n: 42/48 (0.88) [clean=39 tb-assisted=3] med_plies=6 med_t/solve=24s
+
+Zero draws -- the 7-channel guard net holds. All 6 fails are SURVIVAL-class: 4 material
+collapses (both rooks lost by ply 6-18) + 2 checkmates (promotion race lost), all in the
+6-piece phase which is OUTSIDE the <=5 nucleus (bank-geometry value there is hang-blind; the
+pawn defense punishes what the pawnless scenarios forgave). Loss bank live (up to 143 mates-
+against harvested). Mechanism candidates for the survival gap (NOT hand-coded guards):
+(a) tactical_prior (exists in mcts.py, currently 0) -- boost capture/check exploration,
+rules-structure; (b) nucleus at 6p (accepting dtm_cnn's weak 0.339 6p fidelity) or a 6p
+DTM retrain; (c) loss-side last mile: dtm net for BLACK-mates + fixing the mixed-units p_l
+(field-scale loss distances / dtm_scale temperature). Awaiting Kaveh's pick.
