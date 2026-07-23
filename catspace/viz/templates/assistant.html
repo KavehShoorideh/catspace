@@ -63,7 +63,9 @@ async function refresh(){
   const s=await j('/state');
   cg.set({fen:s.fen,turnColor:s.turn==='w'?'white':'black',
     movable:{color:'white',free:false,dests:destsMap(s.dests)}});
-  $('#status').textContent=s.over?('game over: '+s.result):(s.turn==='w'?'your move':'…');
+  const v=s.version||{};
+  $('#status').textContent=(s.over?('game over: '+s.result):(s.turn==='w'?'your move':'…'))
+    +'  ·  model '+(v.model||'?')+(v.data_pct!=null?(' ('+v.data_pct+'% of nucleus data)'):'');
 }
 async function humanMove(orig,dest){
   let uci=orig+dest;
