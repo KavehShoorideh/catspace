@@ -7041,3 +7041,9 @@ memo + in-flight dedup + milestone streaming; invalidate(kind) on bank/field cha
 Also: tri-carry probe -> anchor-every-move/C=128 (measured optimum); DTM v3-ALL gen over
 every tablebase class ON DISK (the KRRvKB hole was a hand-list, proving the point);
 full 3-4-5 syzygy download started (the general nucleus next).
+
+## 2026-07-25 -- KRRvKB tail SKIPPED as semantically stale (Kaveh's call): the remaining
+## v2-DTM games only padded a convicted baseline while blocking the queue. Partial stands
+## as the BEFORE measurement; full re-sit on dtm_cnn_v3 when it lands. Enforcement note:
+## the v3 default-flip is a commit, so code-staleness enforcement auto-handles the model
+## swap moment.
