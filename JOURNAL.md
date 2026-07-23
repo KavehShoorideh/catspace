@@ -6887,3 +6887,20 @@ memory signal, visible: late-game mates land in 7-9 plies vs 15-21 early).
 Grading: 0.83>0.79 is suggestive, not significant at n=48 vs n=100 (overlapping CIs); the
 honest claims are (a) zero-knowledge bootstrap REACHES external-bank level, (b) plies shorten
 with bank growth. Ladder continues: KRRvKB started 02:01.
+
+## 2026-07-25 -- full-stack v2 (WDL+reuse+prune+tri-refresh): 0.81, and the reuse-threefold bug
+
+    VERDICT (v2) KRRvK-central nodes=5000 mate=39/48 (0.81)  9 FAILs, ALL threefold
+    FAIL banks: 29/361/503/1082/1319/1464/1688(g025)/1928/3532(g038, +0 harvest)
+
+Speed transformed (~20 min/48 games vs 52 baseline; 5-25s moves; prune audits: refresh err
++0.000, one leaf miss 0.574 from the 256-cap). Rate did NOT improve (0.79-0.83 band) and
+mid-run it DIPPED -- mechanism found: REUSE BLINDS THE SEARCH TO THREEFOLD (flags planted at
+expansion under the then-history; carried subtrees never re-checked). Fixed 0026d28 (additive
+re-flag on adoption; game history only grows so stale flags stay valid). Also per Kaveh:
+warm-up 60328b2 (search until bank>=1000 before the first timed move; warm trees feed the
+real move via reuse) + irreversibility guard 9b15e3e (captures/pawn moves void the
+reversibility bound -> full re-anchor; estimate error is one-sided pessimistic + audited).
+g025 drew AGAIN (bank 1688) = stable FIELD-WRONG-with-support workbench; g038 (+0 harvest,
+bank 3.5k) = second specimen. v3 (fix+warmup+guard) chained; if rate still <100%, queued
+proposal = softmin/multiplicity value over candidates (Kaveh's call).
