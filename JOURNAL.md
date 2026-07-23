@@ -7127,3 +7127,14 @@ MAE 15 plies). The 3 FAILs fit the known sharp-low-DTZ signature -- g041 autopsy
 start (wdl +2, Black pawn b2 one step from queening), move 1 Ka8a7 threw win->draw,
 ply 9 draw->loss, defender claimed threefold while winning. Nucleus r0 too blurry to
 rank "stop the pawn NOW"; re-verdict on the r1 flip (conditional-rejections rule).
+
+## 2026-07-23 -- IQE full-month continuation state (so we can pick this up any time)
+
+Raw 2019-01 month FULLY downloaded (9.4GB zst). Sharded so far: 4GB prefix only (56 shards,
+55.8M positions). lichess_mc2.pt = 60k steps on that prefix (~0.55 epochs, batch 512) --
+headroom remains even in already-sharded data (decline historically appeared past ~4 epochs).
+Continuation recipe: (1) shard the WHOLE month to a fresh dir with --max-gb 10 (no skip flag;
+clean pass avoids the 4GB boundary truncation; disk-heavy -> queue behind nucleus gen);
+(2) warm-start from lichess_mc2.pt and train in gen-parallel rounds as 1M-position shard
+files land (nucleus-style progressive; ~260k steps/epoch on ~130M positions), keeping the
+self-play regime channel; (3) improvement loop composes via the field pointer chain.
