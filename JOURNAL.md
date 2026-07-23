@@ -6701,3 +6701,114 @@ dvc init + 10 generated datasets tracked as content-addressed .dvc pointers (git
 restructured /data/ -> /data/** with .dvc negations — DVC refuses pointers inside blanket-
 ignored dirs). Source lichess prefixes deferred (multi-GB hash; note). Pointer files staged,
 NOT committed (commit-on-request rule); no DVC remote yet (local cache; remote = future).
+
+## 2026-07-23 — determinism audit of the rollout ladder (Kaveh's question); sampling fix
+
+"Is Stockfish deterministic — one continuation per position?" Audit: sf_full = near-deterministic
+(fixed depth + 1 thread) EXCEPT transposition-table history leaked between anchors (engine reuse
+without ucinewgame) — fixed via per-anchor game tokens; kept deterministic BY ROLE (the optimal
+corridor — "continuation", not "rollout"). SF Elo-limited = stochastic BY DESIGN (the strength
+limiter randomizes candidate selection) — true rollouts. Maia at nodes=1 = ARGMAX, i.e. the modal
+human every time — WRONG for visitation/rho semantics (degenerates the distribution to a delta);
+fixed: --temperature=1.0 sampling (verified: same position -> d4/Nc3/c3 across 6 samples). Future
+upgrade: lc0 verbose-move-stats exposes the full per-move policy = exact soft labels for the
+opponent/energy model. Daemon stint 1 banked 15,400 anchors / 1.56M rows / 78 shards in 34 min
+(~27k anchors/hr, 8 regimes); patched daemon relaunched from shard_079.
+
+## 2026-07-23 — corrected multichannel relaunch (lichess_mc2); quarantine + surgery verified
+
+Decision (Kaveh's "should we stop/restart? delete the biased data?"): STOP at the 30k rung (base-
+field learning preserved via resume; riding to 50k would only re-prove the confound), relaunch
+corrected; QUARANTINE pre-fix rollout shards as regime_rollouts_v0_argmax (provenance note: modal
+maia + TT-warm SF; keep for the modal-vs-sampled ablation) — compute is cheap, provenance is not.
+
+Surgery verified numerically: regime table 4->16 with zero-padding; REGIME_RELATIVE conditioning
+(emb(r)-emb(0)) with legacy row-0 drift folded out — regime0==base True, new rows==base at init
+True, trained r2 difference preserved True. Smoke + GATE MINIATURE (standard #14, first use):
+AUC 0.505 / spearman ~0 = NEUTRAL — the anti-correlation (0.37) died with the balanced data;
+no separation expected at 500 steps; no structural pathology. Miniature also exposed gate-region
+coverage: exact deniedness lives at <=6 pieces but rollout anchors are middlegame-heavy -> daemon
+now draws anchors from BOTH the 4gb prefix AND sf_cont endgame shards (std #15 support planning).
+lichess_mc2 launched 30k->60k: human 0.65 + rollouts_v1 ladder (in-file regime tags) 0.25 +
+endgame walks (r1) 0.10; gate reads at every 5k rung.
+
+## 2026-07-23 — mc2 launch: two crashes, one real fix (upgrade => fresh optimizer, enforced by flag)
+
+The resume-upgrade (regime table 4->16) crashed opt.step(): Adam moments shaped for the old table.
+Fix #1 (pop opt_state from the loaded payload) was THEATER — the restore path RE-LOADS the ckpt
+from disk into a fresh payload. Real fix: regime_upgraded flag skips the restore branch outright.
+Monitor caught both crashes within seconds (the watchdog earning its keep). lichess_mc2 now past
+step 30,200 at 1.2 it/s, ladder every 5k, gate reads at each rung. Daemon concurrently on mixed
+sources (human prefix + sf_cont endgame anchors) for gate-region channel coverage.
+
+## 2026-07-23 — AUTONOMOUS: the mate mission (tablebase-free graded conversion)
+
+Kaveh: "get the current checkpoint to reasonably mate progressively harder toy scenarios
+without relying on tablebases." Strategy: the constraint concept scored 0.75 as an ORACLE
+search value (vs 0.12 pure); it is a local pattern -> DISTILL it into a net (labels allowed;
+flood-fill forbidden only at play). Pipeline launched: (1) escape_data_v1 200k rules-only
+labeled rows (20s); (2) escape_net_v1 training (CPU, DTMNet arch); (3) mate_ladder_eval.py
+-- the graded exam: KRvK-easy / KRRvK-central / KRRvKB / KRRvKP / KRRvKBP (synth generators
+for the 5-piece gaps; tb = referee/exam-certifier only); (4) full 4-config exam (pure/dtm/
+escape/blend) auto-runs when the net lands; (5) dtm_endgame_v2 (100k rows) generating for a
+DTM-CNN v2 retrain. Baselines at 600 nodes: pure = 0.12 ladder / 0.06 KRRvKBP (replicates).
+Rollout daemon STOPPED to free CPU (banked: 53,200 anchors / 5.4M rows / 365 shards).
+lichess_mc2 continues on MPS (60k gate suite on completion).
+
+## 2026-07-23 — rule tightened mid-mission: no hand-coded concepts even for training
+
+Kaveh: "no hand coding allowed even for training." Escape-net training killed mid-run; the
+escape lever is retired from the mission (artifacts kept as the DIAGNOSTIC CEILING only — the
+exam's escape config becomes an instrument reading, not a candidate). DECISIONS 4b records the
+tightened rule and the legitimate-signal boundary (outcome-structure facts + own experience;
+no designed features as targets). Mission redirected to legitimate levers: (1) DTM-CNN v2 on
+4x data (generating); (2) EXPERT ITERATION — play games with the current value+search, harvest
+(position, actual plies-to-mate) from its OWN won games, retrain, re-exam, repeat: experience-
+grounded, matches the AZ precedent and the validated distillation finding.
+
+## 2026-07-23 — MISSION REDIRECT (Kaveh): mate via IQE field + flavored-energy prior
+
+"I don't want the DTM + expert iteration to mate. I want the IQE + flavored-energy opponent
+model to mate. Search near mate guided by field." EI stopped (its rows remain exam baselines).
+The mating engine is now: value = HEALTHY geometry field's distance to the toy MATE BANK
+(400 real mates, nearest-exemplar per goal_bank), prior = the flavored-energy model's sf_full-
+cohort policy (step-8000 rung), MCTS + mate_stop. This is the sanctioned RE-TEST of the shelved
+verdicts ("field value hurts near mate", "uniform beats field prior") which were measured on the
+COLLAPSED field — conditional-rejections rule: re-test after field promotions. v2 DTM net landed
+en route (3p 0.917 / 4p 0.704 / 6p 0.339 — 4x data lifts 3p/4p, the 6p wall stands). Exam
+running: pure vs field vs energy vs fieldenergy across all 5 scenarios.
+
+## 2026-07-24 — THE COMPOSITION MATES: fieldenergy 0.75 on the ladder, tablebase-free
+
+    VERDICT MATE_LADDER cfg=fieldenergy KRRvK-central  mate=0.75 (15/20)  med_plies=17  search/mate=5,822
+    VERDICT MATE_LADDER cfg=fieldenergy KRRvKB  0.30 | KRRvKP 0.75 | KRRvKBP 0.30 | KRvK-technique 0.05
+
+Kaveh's specified engine — IQE geometry-field distance-to-mate-bank as VALUE + flavored-energy
+opponent model (sf_full cohort) as PRIOR + batched/cached MCTS(800n, mate_stop) — with NO
+tablebase and NO hand-coded concepts at play, vs tablebase-optimal defense:
+**0.75 on KRRvK-central** = the hand-coded-concept oracle's score, approaching the tb-oracle's
+0.85; 5x pure search on the full toy (0.30 vs 0.06); FIRST nonzero on KRvK-technique (0.05).
+Strength-per-node: ~5.8k nodes/mate (SF ~54k; oracle ~1.2k).
+
+**REVERSALS (conditional-rejections rule paid out):** "field value hurts near mate" and
+"uniform prior beats field prior" are hereby retracted as COLLAPSED-FIELD artifacts — the
+healthy decoupled field (33x, rank 15) + learned prior is the best legal config ever measured.
+DECISIONS sec 3 needs amendment. Engine ingredients: iqe_geom_field.pt + opponent_energy_v1.pt
++ mate bank (400 toy mates) + batched MCTS (eval-cache + batch_leaves=8, built this session).
+
+## 2026-07-24 -- lichess_mc2 60k final: training verdicts in, veto gate still closed
+
+Run complete (60k steps, IQE+QRL, 16 regime channels, regime_relative, resume-upgraded from 20k).
+Training-internal verdicts: VAL_TOP1 0.016 / TOP8 0.097 (chance 0.002; coarse-navigator profile as
+expected), REACH_SLOPE won 0.653 / lost 0.664, DIFF_SLOPE won 0.780 / lost 0.842 (won-lost
+separation present; both were NEGATIVE at step 2000).
+
+    VERDICT VETO_CHANNELS field=lichess_mc2 targets=750 denied-rate=0.13
+      AUC(gap->denied)=0.535 [95% CI 0.46-0.61]  spearman target +0.041 | anchor +0.172
+
+GATE: FAIL (needs AUC>=0.65 with CI clear of 0.5, anchor spearman >=+0.4). Movement vs 35k
+(0.472 [0.40-0.54] -> 0.535 [0.46-0.61], anchor spearman -> +0.172): direction right, magnitude
+far short -- the cross-regime gap d(F;opt)-d(F;rand) still doesn't separate denied targets.
+Recorded levers stay parked pending Kaveh (dedicated endgame-rollout source fraction; FiLM-style
+conditioning instead of additive regime embedding). Thin gate-region support (~5% of targets in
+the informative band, diagnosed at 35k) remains the suspected bottleneck.
