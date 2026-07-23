@@ -7047,3 +7047,23 @@ full 3-4-5 syzygy download started (the general nucleus next).
 ## as the BEFORE measurement; full re-sit on dtm_cnn_v3 when it lands. Enforcement note:
 ## the v3 default-flip is a commit, so code-staleness enforcement auto-handles the model
 ## swap moment.
+
+## 2026-07-25 -- component factorization (Kaveh's catch): the rho head is NOT a peer
+## trainable -- it is a derived readout of field + energy
+
+Question (Kaveh): is trainable #5 (rho soft-reachability head) not the same as #1 (IQE
+field) + #3 (flavored-energy opponent model)?  Answer: in information terms, YES --
+1 and #5 are two READOUTS of the same trajectory ensemble: hardmin (shortest path, plies)
+vs softmin (probability-weighted path mass); that is why rho is implemented as a head ON
+the field's frozen towers. #3 is the GENERATOR: rho = the partition function of the energy
+model's per-edge probabilities path-integrated over the dynamics. The head exists only as
+AMORTIZATION: the path integral is intractable at query time, and composing #3's per-move
+approximations over long paths compounds error, while training on observed walk statistics
+is cheap (90s on frozen towers) and direct.
+
+CONSEQUENCE (architecture): rho loses its pipeline row; its trigger is DERIVED -- retrain
+as a post-step of every field round (towers moved or new walks landed -> 90s head refresh).
+The retraining dispatcher factorizes to FOUR top-level pipelines, each a genuinely distinct
+information stream: field+rho (games-as-geometry), nucleus net (tablebase truth), energy
+model (decisions), planner RL (graded plan choices). Every trainable = one stream; every
+derived quantity = a post-step of the stream it depends on.
