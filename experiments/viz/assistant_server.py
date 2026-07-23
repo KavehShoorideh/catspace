@@ -55,7 +55,47 @@ class Session:
         self.probes = ProbeKit(self.fm, self.bank, self.loss, self.draw,
                                game_ctx=self.ctx, prior_fn=self.pfn)
         self.opp = None
+        self._lm = args.last_mile
+        self.version = self._version_of(self._lm)
         self.new_game(args.opponent)
+        import threading
+        threading.Thread(target=self._reloader, daemon=True).start()
+
+    _CUM = {0: 300, 1: 1000, 2: 3000, 3: 6000, 4: 12000}    # per-class cumulative quotas
+
+    def _version_of(self, ckpt: str) -> dict:
+        name = Path(ckpt).stem if ckpt else "none"
+        pct = None
+        if name.startswith("dtm_tok_r"):
+            try:
+                k = int(name.rsplit("r", 1)[1])
+                pct = round(100 * self._CUM.get(k, 12000) / 12000, 1)
+            except ValueError:
+                pass
+        return {"model": name, "data_pct": pct}
+
+    def _reloader(self):
+        """CHECKPOINT AUTO-SWAP (Kaveh: 'every checkpoint we wanna restart the backend
+        model; local server shouldn't need changing'): watch for new nucleus rounds,
+        rebuild the value in place; the page and the game keep running."""
+        import glob as _g
+        import re as _re
+        while True:
+            time.sleep(45)
+            try:
+                cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
+                if not cands:
+                    continue
+                best = max(cands, key=lambda p: int(_re.search(r"r(\d+)\.pt", p).group(1)))
+                if best != self._lm:
+                    self.vfn = make_boot_value(self.fm, self.bank, self.times, self.loss,
+                                               dtm_ckpt=best, draw_bank=self.draw,
+                                               game_ctx=self.ctx)
+                    self._lm = best
+                    self.version = self._version_of(best)
+                    print(f"[assistant] MODEL SWAPPED -> {self.version}", flush=True)
+            except Exception as e:                          # noqa: BLE001
+                print(f"[assistant] reload check failed: {e}", flush=True)
 
     def new_game(self, weights):
         if self.opp is not None:
@@ -213,7 +253,8 @@ class H(BaseHTTPRequestHandler):
                     chess.square_name(mv.to_square))
             self._send(200, {"fen": b.fen(), "turn": "w" if b.turn else "b",
                              "dests": dests, "over": b.is_game_over(claim_draw=True),
-                             "result": b.result(claim_draw=True) if b.is_game_over(claim_draw=True) else None})
+                             "result": b.result(claim_draw=True) if b.is_game_over(claim_draw=True) else None,
+                             "version": SES.version})
         else:
             self._send(404, {"err": "?"})
 
