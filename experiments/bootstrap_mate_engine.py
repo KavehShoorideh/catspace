@@ -475,7 +475,7 @@ def worker(args):
         with open(res_path, "a") as f:
             f.write(json.dumps(rec) + "\n")
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
-        print(f"  g{gi:03d} {'mate' if mated else 'FAIL:' + term} plies={plies} bank={len(bank)}(+{found_this_game}) "
+        print(f"  g{gi:03d}[w{args.worker}] {'mate' if mated else 'FAIL:' + term} plies={plies} bank={len(bank)}(+{found_this_game}) "
               f"loss={len(loss_bank)} ms={len(ms.stats)} "
               f"t/move={np.median(tmoves):.1f}s t/game={sum(tmoves):.0f}s "
               f"nodes/s={nodes_spent/max(sum(tmoves),1e-9):.0f} [{time.time()-t0:.0f}s]", flush=True)
@@ -531,8 +531,12 @@ def main():
     for p in procs:
         p.wait()
     import json
-    rows = [json.loads(ln) for ln in Path(args.results_file).read_text().splitlines() if ln.strip()] \
+    raw = [json.loads(ln) for ln in Path(args.results_file).read_text().splitlines() if ln.strip()] \
         if Path(args.results_file).exists() else []
+    first = {}
+    for r in raw:                       # dedup by game id, first occurrence wins (crash-replay safety)
+        first.setdefault(r["g"], r)
+    rows = list(first.values())
     n_bank = len(set(Path(args.bank_file).read_text().splitlines())) if Path(args.bank_file).exists() else 0
     m = [r for r in rows if r["mate"]]
     tpm = [r["t"] / max(r["moves"], 1) for r in rows]
