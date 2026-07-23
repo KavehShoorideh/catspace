@@ -7119,3 +7119,11 @@ live (MODEL SWAPPED, version + data-%% shown in UI) -- checkpoint-to-playable wi
 dtm/tree/harvest/move_total/http) + usage.jsonl per request; MLflow UI native :5001.
 Docker stack (qdrant/engine/web/mlflow/prometheus/grafana, deploy/) PARKED per Kaveh --
 publish path only, no slow local inference.
+
+## 2026-07-23 -- ladder7 rebuild: KRRvKP 0.94 (45/48; 43 clean + 2 tb) med 7 plies
+
+Up from 0.88 pre-rebuild despite running on the weak universal dtm_tok_r0 (2.5% data,
+MAE 15 plies). The 3 FAILs fit the known sharp-low-DTZ signature -- g041 autopsy: won
+start (wdl +2, Black pawn b2 one step from queening), move 1 Ka8a7 threw win->draw,
+ply 9 draw->loss, defender claimed threefold while winning. Nucleus r0 too blurry to
+rank "stop the pawn NOW"; re-verdict on the r1 flip (conditional-rejections rule).
