@@ -7014,3 +7014,13 @@ Kaveh's target ('win rate to 100% without losing generality') REACHED. The two r
 logged consults (attribution ledger), not hidden oracle calls; 46/48 = pure field+banks+
 search. Engine journey on this scenario: pure 0.30 -> incumbent 0.79 -> bootstrap 0.83 ->
 +last-mile 0.96 -> complete engine 1.00. Remaining ladder7 scenarios running.
+
+## 2026-07-25 -- KRRvKB root cause: the DTM net NEVER SAW KRRvKB (or KRRvKP)
+
+Autopsy of ladder7 KRRvKB fifty-move fails: wins died on White's FIRST move (plies 1,1,3
+from dtz 3-11 starts) -- no trigger schedule can rescue a move-1 blunder. Cause: the
+last-mile value inside the <=5p nucleus is dtm_cnn_v2, and dtm_endgame_v2.npz contains ONLY
+{KRRvKBP, KRRvK, KRvK} -- KRRvKB and KRRvKP were never sampled; the net extrapolates there,
+confidently wrong. Explains KRRvKB's persistent lag (0.75) across every engine generation.
+FIX (outcome-structure data, no hand-coding): dtm_endgame_v3 regen over all five classes +
+dtm_cnn_v3 retrain, chained (probe cache makes repeats cheap). Future runs get v3.
