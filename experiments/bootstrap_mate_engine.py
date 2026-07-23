@@ -138,22 +138,29 @@ class MilestoneCache:
         return best_d, p
 
 
-def harvest(root) -> tuple[list, list]:
-    """(win_mates, loss_mates) among checkmate leaves the search TOUCHED:
-    Black to move & mated = White wins; White to move & mated = White LOSES
-    (possible once promotions exist, e.g. KRRvKP lines -- feeds the loss bank)."""
-    wins, losses, stack = [], [], [root]
+def harvest(root) -> tuple[list, list, list]:
+    """(win_mates, loss_mates, stalemates) among terminal leaves the search TOUCHED.
+    Mates: Black to move & mated = White wins; White mated = loss bank. Stalemates are
+    the FIXED (history-free) component of the draw surface (Kaveh: 'draw bank') --
+    bankable exactly like mates; the moving components (repetition, clock) are rules-
+    computable per ply and enter kappa(state) directly, no bank needed."""
+    wins, losses, stales, stack = [], [], [], [root]
     while stack:
         n = stack.pop()
-        if n.board is not None and n.board.is_checkmate():
-            (wins if n.board.turn == chess.BLACK else losses).append(n.board)
+        if n.board is not None:
+            if n.board.is_checkmate():
+                (wins if n.board.turn == chess.BLACK else losses).append(n.board)
+            elif n.board.is_stalemate():
+                stales.append(n.board)
         stack.extend(n.children)
-    return wins, losses
+    return wins, losses, stales
 
 
 def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = None,
                     loss_bank: OnlineMateBank | None = None,
-                    dtm_ckpt: str | None = None, nucleus_max_pieces: int = 5):
+                    dtm_ckpt: str | None = None, nucleus_max_pieces: int = 5,
+                    draw_bank: OnlineMateBank | None = None,
+                    game_ctx: dict | None = None):
     """WDL leaf value (Kaveh 2026-07-25 'I want it'): three-outcome Boltzmann from the
     field's energies to the two DISCOVERED absorbing regions plus a draw mass --
         p_w ~ exp(-d_win/M)   p_l ~ exp(-d_loss/M)   p_d ~ kappa = e^-1
@@ -249,6 +256,26 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
 
     dmin_win = _dmin_tracker(bank)
     dmin_loss = _dmin_tracker(loss_bank) if loss_bank is not None else None
+    dmin_draw = _dmin_tracker(draw_bank) if draw_bank is not None else None
+
+    def _kappa(boards, keys):
+        """STATE-DEPENDENT draw mass (Kaveh: the draw surfaces MOVE with the trajectory --
+        but they move by RULES arithmetic, so the sufficient statistic is exact): base +
+        clock deadline pressure + repetition proximity vs the live game history + banked
+        stalemate proximity (the fixed surface component). Emergent behavior: when winning,
+        rising kappa deflates v -> the engine spontaneously prefers zeroing moves (captures
+        and pawn pushes reset the clock); when losing it SEEKS the surface (swindle mode)."""
+        k = np.full(len(boards), KAPPA)
+        clk = np.array([bd.halfmove_clock for bd in boards], dtype=float)
+        k = k + np.exp((clk - 100.0) / 12.0)
+        if game_ctx is not None and game_ctx.get("hist"):
+            h = game_ctx["hist"]
+            k = k + np.array([0.6 if h.get(kk, 0) >= 2 else (0.15 if h.get(kk, 0) == 1 else 0.0)
+                              for kk in keys])
+        if dmin_draw is not None and draw_bank is not None and len(draw_bank) > 0:
+            d_s = dmin_draw(keys)
+            k = k + 0.5 * np.exp(-d_s / max(float(np.median(d_s)), 1e-6))
+        return k
     cand = {"idx": None, "ver": -1, "audit": 0}   # per-move candidate annulus (set_anchor)
 
     def set_anchor(board, slack=16.0):
@@ -305,17 +332,20 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         nuc = ([i for i, b in enumerate(boards) if len(b.piece_map()) <= nucleus_max_pieces]
                if dtm_net is not None else [])
         if len(nuc) == len(boards):
-            # whole batch in the nucleus: DTM path only, no field/bank work at all
+            # whole batch in the nucleus: DTM path for p_w; kappa still needs embeds
+            # when the draw bank is live
             d_w = _dtm_hat(boards, keys)
             p_w = np.exp(-d_w / dtm_scale)
             p_l = 0.0
-            if nl:
+            if nl or (draw_bank is not None and len(draw_bank) > 0):
                 _embed(boards, keys)
+            if nl:
                 d_l = dmin_loss(keys)
                 recent_l.extend(d_l.tolist())
                 M_l = max(float(np.median(recent_l)), 1e-6)
                 p_l = np.exp(-d_l / M_l)
-            return (p_w - p_l) / (p_w + p_l + KAPPA)
+            kap = _kappa(boards, keys)
+            return (p_w - p_l) / (p_w + p_l + kap)
         _embed(boards, keys)
         if nw and cand["idx"] is not None:
             # pruned path: candidates from the root annulus + any mates banked since the
@@ -351,12 +381,13 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             p_l = np.exp(-np.asarray(d_l) / M_l)
         else:
             p_l = 0.0
-        v = (p_w - p_l) / (p_w + p_l + KAPPA)
+        kap = _kappa(boards, keys)
+        v = (p_w - p_l) / (p_w + p_l + kap)
         if nuc:                                     # mixed batch: nucleus rows -> DTM value
             db = [boards[i] for i in nuc]; dk = [keys[i] for i in nuc]
             pw_n = np.exp(-_dtm_hat(db, dk) / dtm_scale)
             pl_n = (p_l[nuc] if isinstance(p_l, np.ndarray) else np.zeros(len(nuc)))
-            v[nuc] = (pw_n - pl_n) / (pw_n + pl_n + KAPPA)
+            v[nuc] = (pw_n - pl_n) / (pw_n + pl_n + kap[nuc])
         return v
     value_fn.set_anchor = set_anchor
     value_fn.invalidate_anchor = lambda: cand.update(idx=None)   # irreversible move played:
@@ -470,10 +501,13 @@ def worker(args):
     fm = FieldModel(args.field, device=args.device)
     bank = OnlineMateBank(fm, Path(args.bank_file))
     loss_bank = OnlineMateBank(fm, Path(args.loss_bank_file))
+    draw_bank = OnlineMateBank(fm, Path(args.draw_bank_file))
+    game_ctx: dict = {}
     times: dict = {}
     vfn = make_boot_value(fm, bank, times, loss_bank,
                           dtm_ckpt=args.last_mile_dtm or None,
-                          nucleus_max_pieces=args.nucleus_max_pieces)
+                          nucleus_max_pieces=args.nucleus_max_pieces,
+                          draw_bank=draw_bank, game_ctx=game_ctx)
     pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times)
     ms = MilestoneCache(fm, Path(args.milestone_file))
 
@@ -489,7 +523,7 @@ def worker(args):
         print(f"[worker {args.worker}] resume: skipping {len(done)} recorded games", flush=True)
     results = []
     for gi in my_games:
-        bank.sync(); loss_bank.sync(); ms.sync()
+        bank.sync(); loss_bank.sync(); draw_bank.sync(); ms.sync()
         b = starts[gi].copy(stack=False)
         start_epd = b.epd()
         plies = 0; nodes_spent = 0; tmoves = []; found_this_game = 0
@@ -502,6 +536,9 @@ def worker(args):
         tb_mode = False   # STICKY handover (g036: alternating field/tb control oscillates
                           # through the consulted position into threefold; once the field
                           # proves gradient-less in a game, tb converts the rest, all logged)
+        game_ctx["hist"] = hist   # live repetition counts -> kappa's moving-surface term
+        noharvest = 0     # WITHIN-GAME progress gating (Kaveh: no cross-game self-stats):
+                          # consecutive searches touching zero new mates = value failing NOW
         reuse = None            # subtree carried across moves (tree reuse; general lever)
         # WARM-UP (Kaveh 2026-07-25 'run until bank is full on first move'): before the
         # first timed move, keep searching+harvesting until the bank reaches the target
@@ -515,10 +552,12 @@ def worker(args):
                           pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
                           policy_batch_fn=pfnb, batch_leaves=32)
                 wroot = mw.run(b, reuse_root=reuse)
-                w_w, w_l = harvest(wroot)
+                w_w, w_l, w_s = harvest(wroot)
                 bank.add(w_w)
                 if w_l:
                     loss_bank.add(w_l)
+                if w_s:
+                    draw_bank.add(w_s)
                 warm_nodes += mw.evals_used
                 reuse = wroot
                 if mw.evals_used <= 1:          # mate at root: no more warming needed
@@ -540,7 +579,7 @@ def worker(args):
                 # never trip the flatness trigger) -> consult tb directly, LOGGED.
                 if (args.tb_fallback_eps > 0
                         and (tb_mode or hist[b.epd()] >= 2 or b.halfmove_clock >= 60
-                             or plies >= 60)
+                             or plies >= 60 or noharvest >= 6)
                         and len(b.piece_map()) <= 6):
                     mv_tb = tb_white_move(b, tb)
                     if mv_tb is not None:
@@ -569,11 +608,15 @@ def worker(args):
                 root = m.run(b, reuse_root=reuse)
                 t_search = time.time() - tm
                 th = time.perf_counter()
-                win_mates, loss_mates = harvest(root)
+                win_mates, loss_mates, stales = harvest(root)
                 mseen.append(len(win_mates) > 0); nmoves.append(m.evals_used)
-                found_this_game += bank.add(win_mates)
+                added = bank.add(win_mates)
+                found_this_game += added
+                noharvest = 0 if added > 0 else noharvest + 1
                 if loss_mates:
                     loss_bank.add(loss_mates)
+                if stales:
+                    draw_bank.add(stales)
                 t_harv = time.perf_counter() - th
                 best = max(root.children,
                            key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None else c.Q)))
@@ -669,7 +712,7 @@ def worker(args):
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
         print(f"  g{gi:03d}[w{args.worker}] {'mate' if mated else 'FAIL:' + term} plies={plies} "
               f"tb={len(tb_consults)} bank={len(bank)}(+{found_this_game}) "
-              f"loss={len(loss_bank)} ms={len(ms.stats)} "
+              f"loss={len(loss_bank)} draws={len(draw_bank)} ms={len(ms.stats)} "
               f"t/move={np.median(tmoves):.1f}s t/game={sum(tmoves):.0f}s "
               f"nodes/s={nodes_spent/max(sum(tmoves),1e-9):.0f} [{time.time()-t0:.0f}s]", flush=True)
     tb.close()
@@ -689,6 +732,7 @@ def main():
     ap.add_argument("--energy-ckpt", default="data/derived/sep/opponent_energy_v1.pt")
     ap.add_argument("--bank-file", default=None)
     ap.add_argument("--loss-bank-file", default=None)
+    ap.add_argument("--draw-bank-file", default=None)
     ap.add_argument("--milestone-file", default=None)
     ap.add_argument("--results-file", default=None)
     ap.add_argument("--fresh", action="store_true",
@@ -716,6 +760,8 @@ def main():
         args.bank_file = f"artifacts/experiments/boot_bank_{tag}.fens"
     if args.loss_bank_file is None:
         args.loss_bank_file = f"artifacts/experiments/boot_lossbank_{tag}.fens"
+    if args.draw_bank_file is None:
+        args.draw_bank_file = f"artifacts/experiments/boot_drawbank_{tag}.fens"
     if args.milestone_file is None:
         args.milestone_file = f"artifacts/experiments/boot_milestones_{tag}.jsonl"
     if args.results_file is None:
@@ -725,7 +771,8 @@ def main():
         worker(args); return
 
     if args.fresh:
-        for p in (args.bank_file, args.loss_bank_file, args.milestone_file, args.results_file):
+        for p in (args.bank_file, args.loss_bank_file, args.draw_bank_file,
+                  args.milestone_file, args.results_file):
             Path(p).unlink(missing_ok=True)
     t0 = time.time()
     procs = [subprocess.Popen([sys.executable, __file__, *sys.argv[1:], "--worker", str(w)])
