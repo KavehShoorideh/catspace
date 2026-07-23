@@ -7067,3 +7067,20 @@ The retraining dispatcher factorizes to FOUR top-level pipelines, each a genuine
 information stream: field+rho (games-as-geometry), nucleus net (tablebase truth), energy
 model (decisions), planner RL (graded plan choices). Every trainable = one stream; every
 derived quantity = a post-step of the stream it depends on.
+
+## 2026-07-25 -- DOCTRINE (Kaveh): foveated planning -- vague at range, sharp up close
+
+The planner does NOT need precise long-term vision. Like human sight: from afar the target
+is a blur in a general vicinity; you move a few plies toward it, re-evaluate, and proximity
+itself sharpens the view. Therefore compounding error in composed quantities (multiplying
+the energy model's edge probabilities over a horizon) is ACCEPTABLE -- decision relevance
+decays with distance faster than composition error grows, and per-move re-anchoring resets
+the error. Quantitative precedent from today: the tri-carry probe showed the hard bound
+degrades past ~3 plies, and play didn't care because every move re-anchors (local ordering
+is all that is consumed). The give-up/reselect cadence IS the re-evaluation loop.
+
+Consequence: rho demoted from routine post-step to SHELVED COMPARATOR. First resorts:
+(a) hardmin field distance w/ per-move re-anchoring, (b) k-ply probability product of the
+energy model for policy-weighted directional guidance. rho v1 stays frozen; it re-earns a
+pipeline step only by winning a three-way comparison (rho vs carried hardmin vs probability
+product, same positions) on the day long-range guidance visibly underperforms.
