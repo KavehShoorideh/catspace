@@ -117,7 +117,8 @@ def main():
             ek = len(list(Path("data/derived/sep").glob("opponent_energy_r*.pt")))
             eck = f"data/derived/sep/opponent_energy_r{ek}.pt"
             rc = subprocess.run([sys.executable, "experiments/train_opponent_model.py",
-                                "--data", f"data/derived/move_selection_v1.npz:0.65,{ms_npz}:0.35",
+                                "--data",
+                                f"data/derived/move_selection_full_v1.npz:0.65,{ms_npz}:0.35",
                                 "--init", energy, "--steps", "2000",
                                 "--out", eck],
                                stdout=open(f"artifacts/experiments/improve_energy_r{rnd}.log", "a"),
