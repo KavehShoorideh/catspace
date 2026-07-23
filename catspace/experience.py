@@ -76,12 +76,12 @@ class ExperienceStore:
         from catspace.data.encode import encode_meta, encode_packed
         last = self.db.execute("SELECT COALESCE(MAX(last_game_id),0) FROM exports").fetchone()[0]
         rows = self.db.execute(
-            "SELECT id,start_epd,ucis,result,opponent FROM games WHERE id>? ORDER BY id",
-            (last,)).fetchall()
+            "SELECT id,start_epd,ucis,result,opponent,engine_commit FROM games WHERE id>? "
+            "ORDER BY id", (last,)).fetchall()
         if len(rows) < min_games:
             return 0
-        cols = {k: [] for k in ("pk", "mt", "ply", "gid", "res", "we", "be")}
-        for gid, start_epd, ucis, result, opponent in rows:
+        cols = {k: [] for k in ("pk", "mt", "ply", "gid", "res", "we", "be", "ec")}
+        for gid, start_epd, ucis, result, opponent, ecommit in rows:
             b = chess.Board(start_epd)
             res = 1 if result == "mate" else 0
             # cohort truth for the opponent model: we play White (stamped 2800 -> top
@@ -95,6 +95,7 @@ class ExperienceStore:
                 cols["pk"].append(encode_packed(b)); cols["mt"].append(encode_meta(b))
                 cols["ply"].append(t); cols["gid"].append(gid); cols["res"].append(res)
                 cols["we"].append(2800); cols["be"].append(belo)
+                cols["ec"].append(ecommit or "")
         out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
         n_existing = len(list(out.glob("shard_*.npz")))
         sp = out / f"shard_{n_existing:03d}.npz"
@@ -106,7 +107,8 @@ class ExperienceStore:
             white_elo=np.array(cols["we"], np.int16), black_elo=np.array(cols["be"], np.int16),
             game_id=np.array(cols["gid"], np.uint32),
             regime=np.full(n, SELF_REGIME, np.int8),
-            anchor_idx=np.zeros(n, np.int32))
+            anchor_idx=np.zeros(n, np.int32),
+            engine_commit=np.array(cols["ec"]))
         self.db.execute("INSERT INTO exports(last_game_id,n_games,out,ts) VALUES(?,?,?,?)",
                         (rows[-1][0], len(rows), str(sp), time.time()))
         self.db.commit()

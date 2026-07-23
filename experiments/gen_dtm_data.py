@@ -14,6 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -151,7 +152,10 @@ def main():
     packed = np.concatenate(packs, axis=0); meta = np.concatenate(metas, axis=0)
     dtm = np.concatenate(dtms, axis=0); material = np.concatenate(mats, axis=0).astype(np.int8)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    np.savez(args.out, packed=packed, meta=meta, dtm=dtm, material=material)
+    commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                            capture_output=True, text=True).stdout.strip()
+    np.savez(args.out, packed=packed, meta=meta, dtm=dtm, material=material,
+             commit=np.array(commit))
     per_mat = {materials[mi]: int((material == mi).sum()) for mi in range(len(materials))}
     print(f"[stage] {len(dtm)} positions: {time.time()-t0:.1f}s  per-material {per_mat}")
     print(f"VERDICT DTM_DATA n={len(dtm)} dtm[min={dtm.min():.0f} med={np.median(dtm):.0f} "

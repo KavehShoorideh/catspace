@@ -853,6 +853,10 @@ def worker(args):
         noharvest = 0     # WITHIN-GAME progress gating (Kaveh: no cross-game self-stats):
                           # consecutive searches touching zero new mates = value failing NOW
         prev_v = None; tactic_events: list = []; probe_snaps: list = []
+        # PER-RECORD PROVENANCE (Kaveh: 'data generated needs to store the commit that
+        # generated it'): with in-place re-exec a game can span commits; the record
+        # carries every commit that produced plies, not just the finisher's.
+        game_commits = {eng_commit} if eng_commit else set()
         if _rs is not None:                     # WIP restore: replay trajectory, rebuild
             for u in _rs["ucis"]:               # hist at each arrival, restore counters
                 b.push(chess.Move.from_uci(u))
@@ -866,6 +870,7 @@ def worker(args):
             tactic_events = [tuple(t) for t in _rs.get("tactics", [])]
             probe_snaps = list(_rs.get("probes", []))
             plan_counts.update(_rs.get("plans", {}))
+            game_commits.update(_rs.get("commits", []))
 
         def _save_wip():
             try:
@@ -874,7 +879,8 @@ def worker(args):
                     tmoves=tmoves, roots=roots, mseen=mseen, nmoves=nmoves,
                     tb_consults=tb_consults, found=found_this_game, tb_mode=tb_mode,
                     noharvest=noharvest, prev_v=prev_v, tactics=tactic_events,
-                    probes=probe_snaps, plans=dict(plan_counts))))
+                    probes=probe_snaps, plans=dict(plan_counts),
+                    commits=sorted(game_commits))))
             except Exception:
                 pass
         # TACTICS TRACKER (Kaveh; INQUIRY_TACTICS: 'a tactic is an opportunity outside our
@@ -1074,14 +1080,15 @@ def worker(args):
         ms.record_game(roots, mated, mseen, nmoves)
         if exp is not None:
             exp.record_game(args.scenario, start_epd, "mate" if mated else "fail", term,
-                            ucis, roots, engine_commit=eng_commit, field_ckpt=args.field,
+                            ucis, roots, engine_commit=",".join(sorted(game_commits)),
+                            field_ckpt=args.field,
                             opponent=Path(args.opponent_weights).stem
                             if args.scenario == "fullgame" else "")
         import json
         rec = dict(g=gi, mate=mated, term=term, plies=plies, nodes=nodes_spent,
                    t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank),
                    tb_consults=tb_consults, plans=dict(plan_counts), tactics=tactic_events,
-                   probes=probe_snaps)
+                   probes=probe_snaps, commits=sorted(game_commits))
         if not mated:           # FAILs carry the full trajectory for field diagnostics
             rec["start_epd"] = start_epd; rec["ucis"] = ucis
         with open(res_path, "a") as f:

@@ -49,6 +49,11 @@ def track_run(experiment: str, args=None, run_name: str | None = None):
             if args is not None:
                 with contextlib.suppress(Exception):
                     ml.log_params({k: str(v)[:250] for k, v in vars(args).items()})
+            with contextlib.suppress(Exception):     # per-record provenance: every
+                import subprocess                    # training run pins its code commit
+                ml.set_tag("git_commit", subprocess.run(
+                    ["git", "rev-parse", "--short", "HEAD"],
+                    capture_output=True, text=True).stdout.strip())
             yield _Log()
     except Exception:
         yield _Log()
