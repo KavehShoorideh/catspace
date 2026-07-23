@@ -1071,7 +1071,9 @@ def worker(args):
         ms.record_game(roots, mated, mseen, nmoves)
         if exp is not None:
             exp.record_game(args.scenario, start_epd, "mate" if mated else "fail", term,
-                            ucis, roots, engine_commit=eng_commit, field_ckpt=args.field)
+                            ucis, roots, engine_commit=eng_commit, field_ckpt=args.field,
+                            opponent=Path(args.opponent_weights).stem
+                            if args.scenario == "fullgame" else "")
         import json
         rec = dict(g=gi, mate=mated, term=term, plies=plies, nodes=nodes_spent,
                    t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank),
@@ -1145,6 +1147,9 @@ def main():
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    _eptr = Path("data/derived/sep/opponent_energy_current.txt")   # improvement-loop swaps
+    if args.energy_ckpt == ap.get_default("energy_ckpt") and _eptr.exists():
+        args.energy_ckpt = _eptr.read_text().strip()
     tag = f"n{args.nodes}_{args.scenario}"
     if args.bank_file is None:
         args.bank_file = f"artifacts/experiments/boot_bank_{tag}.fens"

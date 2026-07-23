@@ -28,6 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.experience import ExperienceStore
 
 PTR = Path("data/derived/sep/self_field_current.txt")
+EPTR = Path("data/derived/sep/opponent_energy_current.txt")
 MAIA = ["data/engines/maia/maia-1100.pb.gz", "data/engines/maia/maia-1200.pb.gz",
         "data/engines/maia/maia-1400.pb.gz"]
 
@@ -98,6 +99,35 @@ def main():
         for line in open(f"artifacts/experiments/improve_rl_r{rnd}.log"):
             if "VERDICT" in line:
                 print("  " + line.strip(), flush=True)
+        # c. energy/opponent model: self cohort (elo 2800) + true maia rungs from the
+        # experience export; fine-tune from the current model, lichess replay 65/35
+        ms_npz = "data/derived/move_selection_self.npz"
+        subprocess.run([sys.executable, "experiments/build_move_selection.py",
+                        "--shards", args.self_shards, "--n-rows", "200000",
+                        "--out", ms_npz],
+                       stdout=open(f"artifacts/experiments/improve_energy_r{rnd}.log", "w"),
+                       stderr=subprocess.STDOUT)
+        import numpy as np
+        n_self = len(np.load(ms_npz)["cohort"]) if Path(ms_npz).exists() else 0
+        if n_self < 200:
+            print(f"[improve] ENERGY skipped (self rows {n_self} < 200)", flush=True)
+        else:
+            energy = EPTR.read_text().strip() if EPTR.exists() \
+                else "data/derived/sep/opponent_energy_v1.pt"
+            ek = len(list(Path("data/derived/sep").glob("opponent_energy_r*.pt")))
+            eck = f"data/derived/sep/opponent_energy_r{ek}.pt"
+            rc = subprocess.run([sys.executable, "experiments/train_opponent_model.py",
+                                "--data", f"data/derived/move_selection_v1.npz:0.65,{ms_npz}:0.35",
+                                "--init", energy, "--steps", "2000",
+                                "--out", eck],
+                               stdout=open(f"artifacts/experiments/improve_energy_r{rnd}.log", "a"),
+                               stderr=subprocess.STDOUT).returncode
+            if rc == 0:
+                EPTR.write_text(eck)
+                print(f"[improve] ENERGY -> {eck}", flush=True)
+            for line in open(f"artifacts/experiments/improve_energy_r{rnd}.log"):
+                if "VERDICT" in line:
+                    print("  " + line.strip(), flush=True)
     print(f"=== IMPROVE done [{time.time()-t0:.0f}s] ===", flush=True)
     store.close()
 
