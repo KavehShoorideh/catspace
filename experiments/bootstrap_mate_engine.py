@@ -22,6 +22,7 @@ from collections import deque
 from pathlib import Path
 
 import chess
+import chess.engine
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -661,7 +662,6 @@ def worker(args):
     t0 = time.time(); tb = TB()
     sf_def = None
     if args.scenario == "KRRvKBNP-7p":
-        import chess.engine
         sf_def = chess.engine.SimpleEngine.popen_uci(["stockfish"])
         starts = gen_7p_starts(np.random.default_rng(args.seed), args.n, sf_def)
     else:
