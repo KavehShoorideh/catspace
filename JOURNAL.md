@@ -6983,3 +6983,24 @@ against harvested). Mechanism candidates for the survival gap (NOT hand-coded gu
 rules-structure; (b) nucleus at 6p (accepting dtm_cnn's weak 0.339 6p fidelity) or a 6p
 DTM retrain; (c) loss-side last mile: dtm net for BLACK-mates + fixing the mixed-units p_l
 (field-scale loss distances / dtm_scale temperature). Awaiting Kaveh's pick.
+
+## 2026-07-25 -- THE COMPLETE ENGINE (Kaveh's design, built end to end) + PLANNER v1
+
+Final architecture, one paragraph: WDL leaf value -- p_win from bank geometry (or the
+tb-trained DTM regression inside the <=5p nucleus; resignation-gap fix), p_loss from the
+engine's own harvested deaths (self-calibrated temperature), and STATE-DEPENDENT draw mass
+kappa(x, history) = base + fifty-clock pressure + live repetition proximity + banked
+stalemate surface (zeroing preference when winning and swindle-seeking when losing EMERGE).
+All three banks (win/loss/draw) discovered by the engine's own search, all pruned by the
+root-anchored triangle-inequality candidate scheme (28c060f -- one full row per bank per
+move, leaves query nearest-256+tail, per-bank printed audits: memory grows without slowing
+thought). Search: reuse (repetition-correct), batched prior, last-mile DTM, 8-channel logged
+tb-fallback + within-game progress gating (no cross-game self-statistics: banks carry FACTS).
+PLANNER v1 on top (also 28c060f): discrete plan selection over rules-state (direct / reset
+@clock>=30 / tradedown @>6p), acting ONLY through the prior alpha-dial (e^alpha on zeroing
+moves; base priors cached unbiased; values untouched), plan usage logged per game.
+PlanSelector = the RL seam; forced-resets-beyond-horizon = its Phase-5 growth path.
+Parked-list triage (Kaveh): enumeration-distillation, root floor, softmin value, 6p retrain,
+milestone wiring all SUPERSEDED by the fallback ledger; research mainline = region-goal
+planner (built v1 today) + opponent-model v2. LADDER7 = the definitive uniform 5-scenario
+rebuild, running (wdlr6_ files).
