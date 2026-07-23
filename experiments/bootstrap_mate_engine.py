@@ -208,14 +208,19 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     dtm_net = None
     if dtm_ckpt:
         import torch
-        from experiments.train_dtm_cnn import DTMNet
         from catspace.data.encode import encode_meta, encode_packed
         from catspace.nn.features import feature_planes
         st = torch.load(dtm_ckpt, map_location="cpu", weights_only=False)
-        dtm_net = DTMNet(c=st["c"]).to(fm.device)
-        dtm_net.load_state_dict(st["state"]); dtm_net.eval()
         dtm_scale = float(st.get("scale", 20.0))
         dtm_cache: dict[str, float] = {}
+        is_tok = isinstance(st.get("config"), dict) and "heads" in st["config"]
+        if is_tok:                                      # token transformer (Kaveh: no CNN)
+            from experiments.train_dtm_tok import DTMTok, tokenize
+            dtm_net = DTMTok(**st["config"]).to(fm.device)
+        else:                                           # legacy CNN ckpt (until v4 lands)
+            from experiments.train_dtm_cnn import DTMNet
+            dtm_net = DTMNet(c=st["c"]).to(fm.device)
+        dtm_net.load_state_dict(st["state"]); dtm_net.eval()
 
         def _dtm_hat(boards, keys):
             import torch as _t
@@ -225,8 +230,14 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
                 pk = np.stack([encode_packed(boards[i]) for i in miss])
                 mt = np.stack([encode_meta(boards[i]) for i in miss])
                 with _t.no_grad():
-                    pred = dtm_net(_t.from_numpy(feature_planes(pk, mt)).to(fm.device)) \
-                        .cpu().numpy() * dtm_scale
+                    if is_tok:
+                        pid, sqi, pad = tokenize(pk, mt)
+                        pred = dtm_net(_t.from_numpy(pid).to(fm.device),
+                                       _t.from_numpy(sqi).to(fm.device),
+                                       _t.from_numpy(pad).to(fm.device)).cpu().numpy() * dtm_scale
+                    else:
+                        pred = dtm_net(_t.from_numpy(feature_planes(pk, mt)).to(fm.device)) \
+                            .cpu().numpy() * dtm_scale
                 for i, p in zip(miss, pred):
                     dtm_cache[keys[i]] = float(p)
                 if times is not None:
