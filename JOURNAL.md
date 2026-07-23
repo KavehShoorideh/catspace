@@ -6953,3 +6953,19 @@ Readings: SF converts on EXACT mate-score propagation (value precision irrelevan
 (a HUMAN-data net) converts at med 187 nodes/move -- terminal exactness + decent policy carry
 the last mile in standard MCTS. We sit 2 games under the engine floor with a known fix
 (enumeration distillation of the 4-piece table) queued.
+
+## 2026-07-25 -- KRRvKB: 0.75 (2.5x incumbent 0.30); the six draw channels of a won endgame
+
+    VERDICT KRRvKB 5000n: 36/48 (0.75) [clean=32 tb-assisted=4] med_plies=10 med_t/solve=25s
+
+Caveat: games span the trigger-generation ladder (most FAILs predate the final guards).
+The tb-fallback policy (Kaveh: convert, log, don't chase the last mile) hardened through SIX
+measured escape channels, each found by a real drawn game: (1) flat-gradient roots (eps
+trigger), (2) confidently-wrong loops (stuckness: 2nd visit consults), (3) repetition-creation
+by our own chosen move (veto), (4) threefolds completed on BLACK-side keys via different White
+routes (both-color arrival counting), (5) field/tb alternation oscillating through the
+consulted position (sticky handover), (6) FIDE claim-by-ANNOUNCING -- Black claims a
+repetition it never plays (claim-safe dtz walk in both paths) + the harness itself auto-
+claiming for White (asymmetric claiming: only the defender claims). Commits 8a5a921..a427779.
+Finding for the writeup: behavior-geometry guards NONE of the rules' draw channels for free;
+"trivially won" hides a six-lane highway to a draw.
