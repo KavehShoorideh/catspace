@@ -296,7 +296,8 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         p_l = np.exp(-d_l / M) if d_l is not None else 0.0
         return (p_w - p_l) / (p_w + p_l + KAPPA)
     value_fn.set_anchor = set_anchor
-    return value_fn
+    value_fn.invalidate_anchor = lambda: cand.update(idx=None)   # irreversible move played:
+    return value_fn                                              # the +-1-ply bound is void
 
 
 def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
@@ -447,12 +448,18 @@ def worker(args):
                       f"+ dbank {d['dbank_s']:5.1f} ({d['dbank_n']:5d}) + tree {tree:5.1f} "
                       f"+ harvest {t_harv:4.1f}  nodes={m.evals_used}", flush=True)
                 ucis.append(best.move.uci())
+                if (b.is_capture(best.move) or b.piece_type_at(best.move.from_square) == chess.PAWN) \
+                        and hasattr(vfn, "invalidate_anchor"):
+                    vfn.invalidate_anchor()      # irreversible: candidate set is void
                 b.push(best.move)
                 reuse = best
             else:
                 mvb = tb_best_move(b, tb)
                 if reuse is not None:
                     reuse = next((c for c in reuse.children if c.move == mvb), None)
+                if (b.is_capture(mvb) or b.piece_type_at(mvb.from_square) == chess.PAWN) \
+                        and hasattr(vfn, "invalidate_anchor"):
+                    vfn.invalidate_anchor()
                 ucis.append(mvb.uci())
                 b.push(mvb)
             plies += 1
