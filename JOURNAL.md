@@ -7138,3 +7138,23 @@ clean pass avoids the 4GB boundary truncation; disk-heavy -> queue behind nucleu
 (2) warm-start from lichess_mc2.pt and train in gen-parallel rounds as 1M-position shard
 files land (nucleus-style progressive; ~260k steps/epoch on ~130M positions), keeping the
 self-play regime channel; (3) improvement loop composes via the field pointer chain.
+
+## 2026-07-23 -- energy-flavor continuation state (companion to the IQE entry above)
+
+Trained: opponent_energy_v1 = 12k steps @ batch 256 on 550k move-selection rows
+(move_selection_full_v1.npz): 300k human rows from the 1GB lichess prefix (elo bins 1-8,
+200-wide) + ~285k ENGINE-cohort rows (8 flavors: maia rungs + sf skills, cohort ids 11-18)
+-- ~5.6 epochs; likely saturated on THIS data, the lever is rows not steps.
+Pipeline (built today, 96c76f0 + replay fix): per improvement round, warm-start fine-tune,
+self-play rows w/ true cohorts (us -> top human bin 8; opponent -> its real rung), engine
+pointer swap. Caught + fixed: replay mix initially pointed at the 300k human-only npz --
+would have forgotten the maia flavors; now full_v1.
+Continue-later levers, in order of availability:
+(a) NOW, no sharding needed: rebuild human rows from the already-sharded 4GB prefix
+    (300k -> ~3M+ rows; CPU-bound, queue behind nucleus gen);
+(b) full-month rows once the IQE sharding step runs (shared dependency, one shard pass
+    feeds both IQE rounds and move-selection);
+(c) engine-cohort rows scale via build_move_selection_engines (more maia/sf games);
+(d) self rows accrue automatically each loop round.
+Follow-up flagged: dedicated self cohort id (self currently folds into sparse human bin 8,
+440 lichess rows -- our rows will dominate that bin's meaning).
