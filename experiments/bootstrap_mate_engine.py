@@ -222,9 +222,24 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         cand["cache"] = {}                       # approx dmins live within ONE move only
         if len(bank) < 256:
             cand["idx"] = None; return
+        cand["moves"] = cand.get("moves", 0) + 1
         F = fm.embed_F_boards([board])
+        # Kaveh 2026-07-25: triangle-inequality estimates BETWEEN refreshes, full
+        # recalculation every 5 moves, error(est vs exact) reported at each refresh
+        if cand["idx"] is not None and cand["moves"] % 5 != 1:
+            return                               # carry candidates; leaves use idx + tail
+        est = None
+        if cand["idx"] is not None:
+            sub = bank.embs[cand["idx"]]
+            if len(bank) > cand["ver"]:
+                sub = np.concatenate([sub, bank.embs[cand["ver"]:]])
+            est = float(fm.d_to_bank(F, sub)[0])
         d_all = _bank_row(F, bank.embs)
-        thr = float(d_all.min()) + slack
+        exact = float(d_all.min())
+        if est is not None:
+            print(f"    [tri-refresh] dmin est {est:.3f} exact {exact:.3f} "
+                  f"err {est - exact:+.3f}", flush=True)
+        thr = exact + slack
         idx = np.flatnonzero(d_all <= thr)
         if len(idx) < 128 or len(idx) > 256:
             # dense-bank regime: the annulus doesn't bite (mates cluster within ~slack of
