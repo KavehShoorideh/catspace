@@ -39,8 +39,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--scenario", default="KRRvK-central")
     ap.add_argument("--rounds", type=int, default=5)
-    ap.add_argument("--games-per-round", type=int, default=24)
-    ap.add_argument("--retrain-every", type=int, default=24, help="new games per retrain")
+    ap.add_argument("--games-per-round", type=int, default=10)
+    ap.add_argument("--retrain-every", type=int, default=10, help="new games per retrain")
     ap.add_argument("--retrain-steps", type=int, default=2000)
     ap.add_argument("--self-frac", type=float, default=0.3,
                     help="self-play channel fraction in the retrain mix")

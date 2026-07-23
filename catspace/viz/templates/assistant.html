@@ -1,0 +1,106 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>catspace assistant</title>
+<link rel="stylesheet" href="/assets/chessground/chessground.base.css">
+<link rel="stylesheet" href="/assets/chessground/chessground.brown.css">
+<link rel="stylesheet" href="/assets/chessground/chessground.cburnett.css">
+<style>
+ body{font:14px/1.45 -apple-system,system-ui,sans-serif;margin:0;display:flex;gap:18px;
+      padding:16px;background:#1c1a17;color:#e8e2d6}
+ #boardwrap{width:480px}  .cg-wrap{width:480px;height:480px}
+ #panel{flex:1;max-width:560px;display:flex;flex-direction:column;gap:12px}
+ .card{background:#262320;border:1px solid #3a352f;border-radius:8px;padding:12px}
+ h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#b8ad98}
+ button{background:#4a6b4a;color:#fff;border:0;border-radius:6px;padding:8px 14px;
+        font-size:14px;cursor:pointer} button:disabled{opacity:.4}
+ select{background:#1c1a17;color:#e8e2d6;border:1px solid #3a352f;border-radius:6px;padding:6px}
+ #prompt{border-left:3px solid #c9a227;padding-left:10px;min-height:1.4em;font-style:italic}
+ table{width:100%;border-collapse:collapse} td,th{padding:3px 8px;text-align:left;
+       border-bottom:1px solid #33302a;font-variant-numeric:tabular-nums}
+ .idea{display:flex;align-items:center;gap:8px;padding:4px 0}
+ .tag{flex:1;padding:2px 6px;border-radius:4px;background:#1c1a17;border:1px dashed transparent}
+ .tag[contenteditable=true]{border-color:#c9a227;outline:none}
+ .pencil{cursor:pointer;opacity:.6} .pencil:hover{opacity:1}
+ .kind{font-size:11px;color:#b8ad98;width:70px}
+ .leaf{margin:6px 0;padding:6px 8px;background:#1c1a17;border-radius:6px;font-size:13px}
+ .muted{color:#8d857a;font-size:12px}
+</style></head>
+<body>
+<div id="boardwrap">
+  <div id="board" class="cg-wrap"></div>
+  <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+    <select id="opp">
+      <option value="data/engines/maia/maia-1100.pb.gz">maia 1100</option>
+      <option value="data/engines/maia/maia-1200.pb.gz" selected>maia 1200</option>
+      <option value="data/engines/maia/maia-1400.pb.gz">maia 1400</option>
+      <option value="data/engines/maia/maia-1600.pb.gz">maia 1600</option>
+      <option value="data/engines/maia/maia-1900.pb.gz">maia 1900</option>
+    </select>
+    <button id="newgame">New game</button>
+    <span id="status" class="muted"></span>
+  </div>
+</div>
+<div id="panel">
+  <div class="card"><h3>assistant</h3>
+    <div id="prompt">…</div>
+    <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+      <button id="calc">Let's calculate</button>
+      <span class="muted">it thinks while you think — compare notes after</span>
+    </div>
+  </div>
+  <div class="card"><h3>top moves</h3><table id="tops"><tbody></tbody></table></div>
+  <div class="card"><h3>where we likely end up <span class="muted">(plan: <span id="plan">—</span>)</span></h3>
+    <div id="leaves"></div></div>
+  <div class="card"><h3>ideas & concepts <span class="muted">(✏️ rename — your names are saved)</span></h3>
+    <div id="ideas"></div></div>
+</div>
+<script type="module">
+import { Chessground } from '/assets/chessground/chessground.js';
+const $=s=>document.querySelector(s);
+let cg, pendingFrom=null;
+async function j(url,body){const r=await fetch(url,body?{method:'POST',body:JSON.stringify(body)}:undefined);return r.json();}
+function destsMap(d){const m=new Map();for(const k in d)m.set(k,d[k]);return m;}
+async function refresh(){
+  const s=await j('/state');
+  cg.set({fen:s.fen,turnColor:s.turn==='w'?'white':'black',
+    movable:{color:'white',free:false,dests:destsMap(s.dests)}});
+  $('#status').textContent=s.over?('game over: '+s.result):(s.turn==='w'?'your move':'…');
+}
+async function humanMove(orig,dest){
+  let uci=orig+dest;
+  const r=await j('/human_move',{uci});
+  if(r.err){ if(!uci.endsWith('q')){const r2=await j('/human_move',{uci:uci+'q'});if(r2.err)return refresh();return after(r2);} return refresh(); }
+  after(r);
+}
+function after(r){
+  refresh();
+  const a=r.assistant||{};
+  $('#prompt').textContent=a.suggest? '🔎 let’s calculate here — '+a.reasons.join('; ')
+                                    : (r.reply?('opponent played '+r.reply+'. position looks routine.'):'');
+}
+$('#calc').onclick=async()=>{
+  $('#calc').disabled=true;$('#prompt').textContent='calculating… (think along: what would YOU play?)';
+  const r=await j('/calculate',{nodes:1500});
+  $('#calc').disabled=false;
+  $('#prompt').textContent='done — '+r.evals+' positions examined. compare with your line:';
+  $('#plan').textContent=r.plan+(r.goal?(' → '+r.goal):'');
+  $('#tops tbody').innerHTML=r.top.map(t=>`<tr><td><b>${t.san}</b></td><td>${t.visits} visits</td><td>v=${t.q}</td></tr>`).join('');
+  $('#leaves').innerHTML=r.leaves.map(l=>`<div class="leaf">${l.line}<br><span class="muted">v=${l.v} · ${l.visits} visits</span></div>`).join('');
+  $('#ideas').innerHTML=r.ideas.map(i=>`<div class="idea" data-id="${i.id}" data-kind="${i.kind}">
+     <span class="kind">${i.kind}</span><span class="tag">${i.tag}</span>
+     <span class="pencil" title="rename this concept">✏️</span></div>`).join('')
+   +'<div class="muted" style="margin-top:6px">'+((r.probe&&('bank d_win '+(+r.probe.d_win).toFixed(1)+' · d_loss '+(r.probe.d_loss===null?'∞':(+r.probe.d_loss).toFixed(1))+' · seen '+r.probe.seen_across_games+'× before'))||'')+'</div>';
+  document.querySelectorAll('.pencil').forEach(p=>p.onclick=()=>{
+    const row=p.closest('.idea'),tag=row.querySelector('.tag');
+    tag.contentEditable=true;tag.focus();
+    tag.onblur=async()=>{tag.contentEditable=false;
+      await j('/tag',{id:row.dataset.id,kind:row.dataset.kind,tag:tag.textContent.trim()});};
+    tag.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();tag.blur();}};
+  });
+};
+$('#newgame').onclick=async()=>{await j('/new',{opponent:$('#opp').value});
+  $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';
+  $('#prompt').textContent='new game — you are White.';refresh();};
+cg=Chessground($('#board'),{movable:{color:'white',free:false,events:{after:humanMove}}});
+refresh();
+</script>
+</body></html>
