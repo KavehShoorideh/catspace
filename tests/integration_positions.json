@@ -1,0 +1,308 @@
+[
+ {
+  "name": "KRRvK-central_g000",
+  "fen": "8/8/K2k4/8/7R/R7/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x2, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g004",
+  "fen": "8/7K/8/2R5/8/3k4/8/1R6 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g005",
+  "fen": "8/8/3R4/8/8/2k5/8/R6K w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g006",
+  "fen": "4K3/5R2/R7/4k3/8/8/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g014",
+  "fen": "8/1K6/8/4R3/8/5k2/8/3R4 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g016",
+  "fen": "8/8/K7/R7/3k4/8/8/6R1 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g021",
+  "fen": "8/7R/3k4/8/8/8/R7/K7 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x2, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g025",
+  "fen": "2R5/8/4R3/8/5k2/8/1K6/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x4, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g026",
+  "fen": "8/K7/8/R7/8/3k4/1R6/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g038",
+  "fen": "8/3R4/4k3/8/8/RK6/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x4, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g039",
+  "fen": "7R/6R1/K7/5k2/8/8/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g042",
+  "fen": "8/1R6/7R/2K5/8/2k5/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvK-central_g047",
+  "fen": "3R4/R7/4k3/8/8/8/K7/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKB_g000",
+  "fen": "8/8/8/4bR2/7R/3k1K2/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKB_g002",
+  "fen": "1k6/8/8/3R4/2b5/R7/8/5K2 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g011",
+  "fen": "5b2/4R2K/8/2R5/5k2/8/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g013",
+  "fen": "8/8/3R1K2/4R3/3b4/8/8/2k5 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x2, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKB_g017",
+  "fen": "2R5/6R1/k7/8/3K4/8/8/b7 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g020",
+  "fen": "8/8/1R5b/8/6k1/8/3K4/4R3 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g021",
+  "fen": "8/8/1R6/2k5/3R4/8/5b2/1K6 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g028",
+  "fen": "3R4/8/8/7b/4R3/8/5k2/7K w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g031",
+  "fen": "8/3K4/8/3k3b/8/4R3/8/6R1 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g036",
+  "fen": "8/8/8/5b1R/4k3/6R1/7K/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKB_g040",
+  "fen": "8/5b2/7k/3R4/1K6/8/1R6/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKB_g041",
+  "fen": "6R1/2k3b1/6K1/8/8/8/6R1/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x2, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g042",
+  "fen": "8/7K/8/8/5b2/5k2/3R4/R7 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x2, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKB_g043",
+  "fen": "4R3/8/8/8/6k1/1b6/2K5/3R4 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x3, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKB_g047",
+  "fen": "R7/8/3b4/4k2K/3R4/8/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x2, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKBP_g002",
+  "fen": "7K/R6p/8/8/2k5/8/4b3/3R4 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g003",
+  "fen": "8/8/5k2/2b1R3/7K/4p3/6R1/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g005",
+  "fen": "8/8/1R6/5R2/6k1/8/K3p3/1b6 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g007",
+  "fen": "5R2/2k5/4b2R/8/8/K7/3p4/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g017",
+  "fen": "8/K7/R7/8/2p3R1/8/4b3/2k5 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g024",
+  "fen": "8/5k2/8/3p2R1/4b3/5KR1/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g031",
+  "fen": "8/6K1/R7/3R4/8/4p3/8/1k1b4 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g036",
+  "fen": "8/8/8/8/RK1k4/R7/4p3/7b w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g037",
+  "fen": "8/8/6k1/8/R7/R7/4p3/1K2b3 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKBP_g041",
+  "fen": "3R4/8/Rb6/8/1p6/2k4K/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKP_g006",
+  "fen": "8/8/8/8/3RR3/2k4p/8/K7 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKP_g008",
+  "fen": "8/8/RR6/8/2k5/7K/p7/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x2, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKP_g014",
+  "fen": "8/1R6/1K3k2/8/5p2/3R4/8/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKP_g018",
+  "fen": "8/K4p2/8/8/5R2/8/4k3/2R5 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKP_g023",
+  "fen": "1K6/8/8/8/4R3/4p3/4k3/7R w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=True"
+ },
+ {
+  "name": "KRRvKP_g041",
+  "fen": "K7/8/8/4k3/2R5/2R5/1p6/8 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvKP_g047",
+  "fen": "8/1R6/1K2k3/4p3/8/8/8/3R4 w - - 0 1",
+  "kind": "must-win",
+  "history": "failed x1, later-succeeded=False"
+ },
+ {
+  "name": "KRRvK-central_g000_clock88",
+  "fen": "8/8/K2k4/8/7R/R7/8/8 w - - 88 1",
+  "kind": "clock-pressure",
+  "history": "synth from KRRvK-central_g000"
+ },
+ {
+  "name": "KRRvK-central_g004_clock88",
+  "fen": "8/7K/8/2R5/8/3k4/8/1R6 w - - 88 1",
+  "kind": "clock-pressure",
+  "history": "synth from KRRvK-central_g004"
+ },
+ {
+  "name": "KRRvK-central_g005_clock88",
+  "fen": "8/8/3R4/8/8/2k5/8/R6K w - - 88 1",
+  "kind": "clock-pressure",
+  "history": "synth from KRRvK-central_g005"
+ },
+ {
+  "name": "KRRvK-central_g006_clock88",
+  "fen": "4K3/5R2/R7/4k3/8/8/8/8 w - - 88 1",
+  "kind": "clock-pressure",
+  "history": "synth from KRRvK-central_g006"
+ },
+ {
+  "name": "KRRvK-central_g014_clock88",
+  "fen": "8/1K6/8/4R3/8/5k2/8/3R4 w - - 88 1",
+  "kind": "clock-pressure",
+  "history": "synth from KRRvK-central_g014"
+ },
+ {
+  "name": "KRRvK-central_g016_clock88",
+  "fen": "8/8/K7/R7/3k4/8/8/6R1 w - - 88 1",
+  "kind": "clock-pressure",
+  "history": "synth from KRRvK-central_g016"
+ }
+]
