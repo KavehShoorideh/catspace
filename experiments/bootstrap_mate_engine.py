@@ -564,15 +564,41 @@ def worker(args):
                       f"({d['prior_n']:4d}) + embF {d['embedF_s']:5.1f} ({d['embedF_n']:4d}) "
                       f"+ dbank {d['dbank_s']:5.1f} ({d['dbank_n']:5d}) + tree {tree:5.1f} "
                       f"+ harvest {t_harv:4.1f}  nodes={m.evals_used}", flush=True)
-                ucis.append(best.move.uci())
-                if (b.is_capture(best.move) or b.piece_type_at(best.move.from_square) == chess.PAWN) \
+                # ANNOUNCE-rule guard (g017: python-chess honors FIDE's claim-by-announcing
+                # -- Black can claim a threefold it never plays out; arrival counters are
+                # blind to it). If the chosen move leaves Black an immediate claim, walk
+                # the tb-winning moves by dtz until one is claim-safe.
+                mv_final = best.move
+                if args.tb_fallback_eps > 0 and len(b.piece_map()) <= 6:
+                    b.push(mv_final)
+                    unsafe = b.can_claim_threefold_repetition()
+                    b.pop()
+                    if unsafe:
+                        alts = []
+                        for m2 in b.legal_moves:
+                            c2 = b.copy(stack=False); c2.push(m2)
+                            w2, dz2 = tb.wdl_dtz(c2)
+                            if w2 is not None and -w2 == 2:
+                                alts.append((abs(dz2) if dz2 is not None else 999, m2))
+                        for _, m2 in sorted(alts, key=lambda x: x[0]):
+                            b.push(m2)
+                            ok = not b.can_claim_threefold_repetition()
+                            b.pop()
+                            if ok:
+                                mv_final = m2
+                                tb_mode = True
+                                tb_consults.append(plies)
+                                best = next((c for c in root.children if c.move == m2), best)
+                                break
+                ucis.append(mv_final.uci())
+                if (b.is_capture(mv_final) or b.piece_type_at(mv_final.from_square) == chess.PAWN) \
                         and hasattr(vfn, "invalidate_anchor"):
                     vfn.invalidate_anchor()      # irreversible: candidate set is void
-                b.push(best.move)
+                b.push(mv_final)
                 hist[b.epd()] += 1               # count BOTH colors (route-independent
                 if hist[b.epd()] >= 2:           # repetitions live on Black-side keys too)
                     tb_mode = True               # g043: BLACK completes threefolds -- any
-                reuse = best                     # 2nd occurrence anywhere => tb converts
+                reuse = best if best.move == mv_final else None   # 2nd occurrence => tb
             else:
                 mvb = tb_best_move(b, tb)
                 if reuse is not None:
