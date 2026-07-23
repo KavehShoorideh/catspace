@@ -6812,3 +6812,22 @@ far short -- the cross-regime gap d(F;opt)-d(F;rand) still doesn't separate deni
 Recorded levers stay parked pending Kaveh (dedicated endgame-rollout source fraction; FiLM-style
 conditioning instead of additive regime embedding). Thin gate-region support (~5% of targets in
 the informative band, diagnosed at 35k) remains the suspected bottleneck.
+
+## 2026-07-24 -- SOFT-MIN SIDE v1: per-regime reach-probability head trained (90s on MPS)
+
+Kaveh: "build the soft-min side under the opponent model." First implementation of the rho half
+of the energy algebra (INQUIRY_MULTICHANNEL_FIELD sec 5): rho_c(x,g) = sigmoid head on the FROZEN
+mc2 towers' [F_c(x), B(g), F*B], trained C-learning-style on the banked shared-anchor rollouts
+(200k states, 15,689 walks, all 8 regimes; positives = same-walk futures at Geometric(1-gamma)
+gaps, gamma=0.85; negatives = other walks; split BY WALK). experiments/train_rho_head.py; full
+run 90s (embed+train) after a 69s smoke caught a shard-granular --n-states cap bug.
+
+    VERDICT RHO_HEAD held-out AUC per regime: 0.985-0.991 (all 8)
+    spearman(-log-odds, ply-gap): +0.466/+0.420/+0.421/+0.388/+0.417/+0.409/+0.413/+0.415
+    (regimes 2,3,4,5,6,8,9,10) -- monotone-in-horizon soft distance in EVERY channel
+
+Grading: AUC is inflated by easy negatives (cross-anchor = different material); the spearman is
+the meaningful verdict -- -log-odds behaves as a soft distance at the ORDERING level. NOT yet
+claimed: ply-unit calibration, the softmin<=hardmin inequality vs IQE d (needs unit alignment --
+define-identifications rule), cross-regime Delta readouts (forcedness/trap potential). Those are
+the v2 readouts. Ckpts: rho_head_v1.pt + step2000/4000 ladder, args embedded.
