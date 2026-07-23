@@ -317,6 +317,7 @@ def worker(args):
         b = starts[gi].copy(stack=False)
         plies = 0; nodes_spent = 0; tmoves = []; found_this_game = 0
         roots: list[str] = []; mseen: list[bool] = []; nmoves: list[int] = []
+        reuse = None            # subtree carried across moves (tree reuse; general lever)
         while plies < args.max_plies and not b.is_game_over(claim_draw=True):
             if b.turn == chess.WHITE:
                 tm = time.time(); snap = dict(times)
@@ -324,7 +325,10 @@ def worker(args):
                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
                          policy_batch_fn=pfnb, batch_leaves=32)
                 roots.append(b.epd())
-                root = m.run(b)
+                if reuse is not None:
+                    reuse.parent = None     # detach: stale ancestors skew the mate-depth
+                                            # discount and double-count _threefold's walk
+                root = m.run(b, reuse_root=reuse)
                 t_search = time.time() - tm
                 th = time.perf_counter()
                 win_mates, loss_mates = harvest(root)
@@ -344,8 +348,12 @@ def worker(args):
                       f"+ dbank {d['dbank_s']:5.1f} ({d['dbank_n']:5d}) + tree {tree:5.1f} "
                       f"+ harvest {t_harv:4.1f}  nodes={m.evals_used}", flush=True)
                 b.push(best.move)
+                reuse = best
             else:
-                b.push(tb_best_move(b, tb))
+                mvb = tb_best_move(b, tb)
+                if reuse is not None:
+                    reuse = next((c for c in reuse.children if c.move == mvb), None)
+                b.push(mvb)
             plies += 1
         out = b.outcome(claim_draw=True)
         mated = bool(out and out.winner == chess.WHITE)
