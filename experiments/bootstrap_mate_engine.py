@@ -664,7 +664,10 @@ def gen_7p_starts(rng, n, sf, min_cp=600):
 def worker(args):
     t0 = time.time(); tb = TB()
     sf_def = None
-    if args.scenario == "KRRvKBNP-7p":
+    if args.fen_file:
+        starts = [chess.Board(f) for f in Path(args.fen_file).read_text().splitlines()
+                  if f.strip()][:args.n]
+    elif args.scenario == "KRRvKBNP-7p":
         sf_def = chess.engine.SimpleEngine.popen_uci(["stockfish"])
         starts = gen_7p_starts(np.random.default_rng(args.seed), args.n, sf_def)
     else:
@@ -1017,6 +1020,8 @@ def main():
                     help="wipe bank/milestones/results; DEFAULT resumes (checkpointed runs)")
     ap.add_argument("--games", default=None,
                     help="comma list of game indices to (re)play (default: all 0..n-1)")
+    ap.add_argument("--fen-file", default=None,
+                    help="explicit start positions, one FEN per line (integration tests)")
     ap.add_argument("--warm-bank", type=int, default=1000,
                     help="first-move warm-up: search+harvest until the bank has this many "
                          "mates (cap 20x --nodes); 0 = off")
