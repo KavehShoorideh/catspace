@@ -315,8 +315,10 @@ def worker(args):
     for gi in my_games:
         bank.sync(); loss_bank.sync(); ms.sync()
         b = starts[gi].copy(stack=False)
+        start_epd = b.epd()
         plies = 0; nodes_spent = 0; tmoves = []; found_this_game = 0
         roots: list[str] = []; mseen: list[bool] = []; nmoves: list[int] = []
+        ucis: list[str] = []    # full trajectory (start_epd + ucis reproduces the game)
         reuse = None            # subtree carried across moves (tree reuse; general lever)
         while plies < args.max_plies and not b.is_game_over(claim_draw=True):
             if b.turn == chess.WHITE:
@@ -347,24 +349,29 @@ def worker(args):
                       f"({d['prior_n']:4d}) + embF {d['embedF_s']:5.1f} ({d['embedF_n']:4d}) "
                       f"+ dbank {d['dbank_s']:5.1f} ({d['dbank_n']:5d}) + tree {tree:5.1f} "
                       f"+ harvest {t_harv:4.1f}  nodes={m.evals_used}", flush=True)
+                ucis.append(best.move.uci())
                 b.push(best.move)
                 reuse = best
             else:
                 mvb = tb_best_move(b, tb)
                 if reuse is not None:
                     reuse = next((c for c in reuse.children if c.move == mvb), None)
+                ucis.append(mvb.uci())
                 b.push(mvb)
             plies += 1
         out = b.outcome(claim_draw=True)
         mated = bool(out and out.winner == chess.WHITE)
+        term = out.termination.name.lower() if out else "timeout"
         ms.record_game(roots, mated, mseen, nmoves)
         import json
+        rec = dict(g=gi, mate=mated, term=term, plies=plies, nodes=nodes_spent,
+                   t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank))
+        if not mated:           # FAILs carry the full trajectory for field diagnostics
+            rec["start_epd"] = start_epd; rec["ucis"] = ucis
         with open(res_path, "a") as f:
-            f.write(json.dumps(dict(g=gi, mate=mated, plies=plies, nodes=nodes_spent,
-                                    t=round(sum(tmoves), 1), moves=len(tmoves),
-                                    bank=len(bank))) + "\n")
+            f.write(json.dumps(rec) + "\n")
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
-        print(f"  g{gi:03d} {'mate' if mated else 'FAIL'} plies={plies} bank={len(bank)}(+{found_this_game}) "
+        print(f"  g{gi:03d} {'mate' if mated else 'FAIL:' + term} plies={plies} bank={len(bank)}(+{found_this_game}) "
               f"loss={len(loss_bank)} ms={len(ms.stats)} "
               f"t/move={np.median(tmoves):.1f}s t/game={sum(tmoves):.0f}s "
               f"nodes/s={nodes_spent/max(sum(tmoves),1e-9):.0f} [{time.time()-t0:.0f}s]", flush=True)
