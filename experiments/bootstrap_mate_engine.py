@@ -791,8 +791,8 @@ def worker(args):
                          policy_batch_fn=pfnb, batch_leaves=32)
                 roots.append(b.epd())
                 ps = planner(b, plies)
-                if ps["plan"] != game_ctx.get("plan"):     # plan switch: log the planner's
-                    snap = probes.summary(b)               # observation (RL seam dataset)
+                if ps["plan"] != game_ctx.get("plan") or plies == 0:   # switch OR game open:
+                    snap = probes.summary(b)               # log the planner's observation
                     probe_snaps.append(dict(ply=plies, plan=ps["plan"], **snap))
                 game_ctx["plan"] = ps["plan"]; game_ctx["target_pt"] = ps.get("target_pt")
                 plan_counts[ps["plan"] + (f"->{ps['goal']}" if ps.get("goal") else "")] += 1
