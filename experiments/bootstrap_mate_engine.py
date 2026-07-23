@@ -85,20 +85,33 @@ def harvest(root) -> list:
 
 def make_boot_value(fm: FieldModel, bank: OnlineMateBank):
     """value = tanh((M - dmin)/M), M = running median of observed dmin (self-calibrating:
-    no field-scale constant; ordering is what MCTS needs). Bank empty -> 0 (prior-only)."""
+    no field-scale constant; ordering is what MCTS needs). Bank empty -> 0 (prior-only).
+
+    dmin caching (Kaveh 2026-07-24): the bank only GROWS, so min-distance decomposes
+    exactly -- dmin_new = min(dmin_cached, d(x, bank[ver:])). Each position pays for the
+    bank TAIL added since its last query, not the full bank."""
     emb_cache: dict[str, np.ndarray] = {}
+    dmin_cache: dict[str, tuple[int, float]] = {}     # epd -> (bank_version, dmin)
     recent = deque(maxlen=512)
 
     def value_fn(boards):
-        if len(bank) == 0:
+        nb = len(bank)
+        if nb == 0:
             return np.zeros(len(boards))
-        miss = [b for b in boards if b.epd() not in emb_cache]
+        keys = [b.epd() for b in boards]
+        miss = [b for b, k in zip(boards, keys) if k not in emb_cache]
         if miss:
             E = fm.embed_F_boards(miss)
             for b, e in zip(miss, E):
                 emb_cache[b.epd()] = e
-        F = np.stack([emb_cache[b.epd()] for b in boards])
-        d = fm.d_to_bank(F, bank.embs)
+        stale = [i for i, k in enumerate(keys) if dmin_cache.get(k, (0, np.inf))[0] < nb]
+        if stale:
+            ver0 = min(dmin_cache.get(keys[i], (0, np.inf))[0] for i in stale)
+            F = np.stack([emb_cache[keys[i]] for i in stale])
+            d_tail = fm.d_to_bank(F, bank.embs[ver0:])
+            for i, dt in zip(stale, d_tail):
+                dmin_cache[keys[i]] = (nb, min(dmin_cache.get(keys[i], (0, np.inf))[1], float(dt)))
+        d = np.array([dmin_cache[k][1] for k in keys])
         recent.extend(d.tolist())
         M = max(float(np.median(recent)), 1e-6)
         return np.tanh((M - d) / M)
