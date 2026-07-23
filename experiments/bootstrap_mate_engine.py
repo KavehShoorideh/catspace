@@ -296,12 +296,13 @@ def main():
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
+    tag = f"n{args.nodes}_{args.scenario}"
     if args.bank_file is None:
-        args.bank_file = f"artifacts/experiments/boot_bank_n{args.nodes}.fens"
+        args.bank_file = f"artifacts/experiments/boot_bank_{tag}.fens"
     if args.milestone_file is None:
-        args.milestone_file = f"artifacts/experiments/boot_milestones_n{args.nodes}.jsonl"
+        args.milestone_file = f"artifacts/experiments/boot_milestones_{tag}.jsonl"
     if args.results_file is None:
-        args.results_file = f"artifacts/experiments/boot_results_n{args.nodes}.jsonl"
+        args.results_file = f"artifacts/experiments/boot_results_{tag}.jsonl"
 
     if args.worker is not None:
         worker(args); return
