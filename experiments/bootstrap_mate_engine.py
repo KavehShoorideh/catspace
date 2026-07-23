@@ -217,7 +217,14 @@ def worker(args):
     pfn = cached_prior(make_energy_prior(ckpt=args.energy_ckpt, device="cpu"), times)
     ms = MilestoneCache(fm, Path(args.milestone_file))
 
-    my_games = list(range(args.worker, len(starts), args.j))
+    res_path = Path(args.results_file)
+    done = set()
+    if res_path.exists():
+        import json
+        done = {json.loads(ln)["g"] for ln in res_path.read_text().splitlines() if ln.strip()}
+    my_games = [g for g in range(args.worker, len(starts), args.j) if g not in done]
+    if done:
+        print(f"[worker {args.worker}] resume: skipping {len(done)} recorded games", flush=True)
     results = []
     for gi in my_games:
         bank.sync(); ms.sync()
@@ -255,6 +262,11 @@ def worker(args):
         out = b.outcome(claim_draw=True)
         mated = bool(out and out.winner == chess.WHITE)
         ms.record_game(roots, mated, mseen, nmoves)
+        import json
+        with open(res_path, "a") as f:
+            f.write(json.dumps(dict(g=gi, mate=mated, plies=plies, nodes=nodes_spent,
+                                    t=round(sum(tmoves), 1), moves=len(tmoves),
+                                    bank=len(bank))) + "\n")
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
         print(f"  g{gi:03d} {'mate' if mated else 'FAIL'} plies={plies} bank={len(bank)}(+{found_this_game}) "
               f"ms={len(ms.stats)} "
@@ -277,6 +289,9 @@ def main():
     ap.add_argument("--energy-ckpt", default="data/derived/sep/opponent_energy_v1.pt")
     ap.add_argument("--bank-file", default=None)
     ap.add_argument("--milestone-file", default=None)
+    ap.add_argument("--results-file", default=None)
+    ap.add_argument("--fresh", action="store_true",
+                    help="wipe bank/milestones/results; DEFAULT resumes (checkpointed runs)")
     ap.add_argument("--max-plies", type=int, default=80)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
@@ -285,22 +300,32 @@ def main():
         args.bank_file = f"artifacts/experiments/boot_bank_n{args.nodes}.fens"
     if args.milestone_file is None:
         args.milestone_file = f"artifacts/experiments/boot_milestones_n{args.nodes}.jsonl"
+    if args.results_file is None:
+        args.results_file = f"artifacts/experiments/boot_results_n{args.nodes}.jsonl"
 
     if args.worker is not None:
         worker(args); return
 
-    Path(args.bank_file).unlink(missing_ok=True)
-    Path(args.milestone_file).unlink(missing_ok=True)
+    if args.fresh:
+        for p in (args.bank_file, args.milestone_file, args.results_file):
+            Path(p).unlink(missing_ok=True)
     t0 = time.time()
     procs = [subprocess.Popen([sys.executable, __file__, *sys.argv[1:], "--worker", str(w)])
              for w in range(args.j)]
     for p in procs:
         p.wait()
-    # aggregate: replay worker stdout is interleaved above; final bank + verdict from file
+    import json
+    rows = [json.loads(ln) for ln in Path(args.results_file).read_text().splitlines() if ln.strip()] \
+        if Path(args.results_file).exists() else []
     n_bank = len(set(Path(args.bank_file).read_text().splitlines())) if Path(args.bank_file).exists() else 0
-    print(f"VERDICT BOOTSTRAP_MATE scenario={args.scenario} nodes={args.nodes} n={args.n} "
-          f"bank_final={n_bank}  [{time.time()-t0:.0f}s] -- per-game lines above; "
-          f"grep ' g' | mate rate = share of 'mate' lines", flush=True)
+    m = [r for r in rows if r["mate"]]
+    tpm = [r["t"] / max(r["moves"], 1) for r in rows]
+    print(f"VERDICT BOOTSTRAP_MATE scenario={args.scenario} nodes={args.nodes} "
+          f"mate={len(m)}/{len(rows)} ({len(m)/max(len(rows),1):.2f})  "
+          f"med_plies={np.median([r['plies'] for r in m]) if m else float('nan'):.0f}  "
+          f"bank_final={n_bank}  med_t/move={np.median(tpm) if tpm else float('nan'):.1f}s  "
+          f"med_t/solve={np.median([r['t'] for r in m]) if m else float('nan'):.0f}s  "
+          f"[{time.time()-t0:.0f}s]", flush=True)
 
 
 if __name__ == "__main__":
