@@ -82,6 +82,11 @@ class Session:
         import re as _re
         while True:
             time.sleep(45)
+            try:                       # banks are SHARED MEMORY: pick up the fleet's
+                for bk in (self.bank, self.loss, self.draw):    # discoveries live
+                    bk.sync()
+            except Exception:
+                pass
             try:
                 cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
                 if not cands:
