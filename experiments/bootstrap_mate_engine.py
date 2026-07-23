@@ -418,6 +418,20 @@ def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
     return policy_fn, policy_batch_fn
 
 
+def tb_white_move(b, tb):
+    """win-preserving min-|dtz| move (tb FALLBACK, consulted only when the field has no
+    gradient; every use is LOGGED -- Kaveh 2026-07-25: wins must stay attributable)."""
+    best, best_dz = None, None
+    for m in b.legal_moves:
+        c = b.copy(stack=False); c.push(m)
+        w, dz = tb.wdl_dtz(c)
+        if w is not None and -w == 2:
+            dz = abs(dz) if dz is not None else 999
+            if best_dz is None or dz < best_dz:
+                best, best_dz = m, dz
+    return best
+
+
 def worker(args):
     t0 = time.time(); tb = TB()
     starts = dict(sample_scenarios(np.random.default_rng(args.seed), args.n))[args.scenario]
@@ -449,6 +463,7 @@ def worker(args):
         plies = 0; nodes_spent = 0; tmoves = []; found_this_game = 0
         roots: list[str] = []; mseen: list[bool] = []; nmoves: list[int] = []
         ucis: list[str] = []    # full trajectory (start_epd + ucis reproduces the game)
+        tb_consults: list[int] = []   # plies where the tb fallback fired (attribution log)
         reuse = None            # subtree carried across moves (tree reuse; general lever)
         # WARM-UP (Kaveh 2026-07-25 'run until bank is full on first move'): before the
         # first timed move, keep searching+harvesting until the bank reaches the target
@@ -496,6 +511,17 @@ def worker(args):
                 best = max(root.children,
                            key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None else c.Q)))
                 nodes_spent += m.evals_used; tmoves.append(time.time() - tm)
+                # TB FALLBACK (Kaveh): if the searched root shows NO gradient (children
+                # value spread < eps) and the position is tb-probeable, consult tb and LOG.
+                if args.tb_fallback_eps > 0 and len(b.piece_map()) <= 6 and root.children:
+                    qs = [c.terminal_v if c.terminal_v is not None
+                          else (c.W / c.N if c.N > 0 else None) for c in root.children]
+                    qs = [q for q in qs if q is not None]
+                    if len(qs) >= 2 and (max(qs) - min(qs)) < args.tb_fallback_eps:
+                        mv_tb = tb_white_move(b, tb)
+                        if mv_tb is not None:
+                            best = next((c for c in root.children if c.move == mv_tb), best)
+                            tb_consults.append(plies)
                 d = {k: times.get(k, 0) - snap.get(k, 0) for k in
                      ("prior_s", "prior_n", "embedF_s", "embedF_n", "dbank_s", "dbank_n")}
                 tree = t_search - d["prior_s"] - d["embedF_s"] - d["dbank_s"]
@@ -525,13 +551,15 @@ def worker(args):
         ms.record_game(roots, mated, mseen, nmoves)
         import json
         rec = dict(g=gi, mate=mated, term=term, plies=plies, nodes=nodes_spent,
-                   t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank))
+                   t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank),
+                   tb_consults=tb_consults)
         if not mated:           # FAILs carry the full trajectory for field diagnostics
             rec["start_epd"] = start_epd; rec["ucis"] = ucis
         with open(res_path, "a") as f:
             f.write(json.dumps(rec) + "\n")
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
-        print(f"  g{gi:03d}[w{args.worker}] {'mate' if mated else 'FAIL:' + term} plies={plies} bank={len(bank)}(+{found_this_game}) "
+        print(f"  g{gi:03d}[w{args.worker}] {'mate' if mated else 'FAIL:' + term} plies={plies} "
+              f"tb={len(tb_consults)} bank={len(bank)}(+{found_this_game}) "
               f"loss={len(loss_bank)} ms={len(ms.stats)} "
               f"t/move={np.median(tmoves):.1f}s t/game={sum(tmoves):.0f}s "
               f"nodes/s={nodes_spent/max(sum(tmoves),1e-9):.0f} [{time.time()-t0:.0f}s]", flush=True)
@@ -566,6 +594,10 @@ def main():
                          "the nucleus (resignation gap: the field has no trajectory support "
                          "there); '' = off")
     ap.add_argument("--nucleus-max-pieces", type=int, default=5)
+    ap.add_argument("--tb-fallback-eps", type=float, default=0.02,
+                    help="if the searched root's child-value spread < eps (no field "
+                         "gradient) and <=6 pieces: consult tb, LOG the consult (win "
+                         "attribution); 0 = never consult")
     ap.add_argument("--max-plies", type=int, default=80)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
@@ -600,9 +632,11 @@ def main():
     rows = list(first.values())
     n_bank = len(set(Path(args.bank_file).read_text().splitlines())) if Path(args.bank_file).exists() else 0
     m = [r for r in rows if r["mate"]]
+    tba = [r for r in m if r.get("tb_consults")]
     tpm = [r["t"] / max(r["moves"], 1) for r in rows]
     print(f"VERDICT BOOTSTRAP_MATE scenario={args.scenario} nodes={args.nodes} "
-          f"mate={len(m)}/{len(rows)} ({len(m)/max(len(rows),1):.2f})  "
+          f"mate={len(m)}/{len(rows)} ({len(m)/max(len(rows),1):.2f}) "
+          f"[clean={len(m)-len(tba)} tb-assisted={len(tba)}]  "
           f"med_plies={np.median([r['plies'] for r in m]) if m else float('nan'):.0f}  "
           f"bank_final={n_bank}  med_t/move={np.median(tpm) if tpm else float('nan'):.1f}s  "
           f"med_t/solve={np.median([r['t'] for r in m]) if m else float('nan'):.0f}s  "
