@@ -177,11 +177,16 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         stale = [i for i, k in enumerate(keys) if dmin_cache.get(k, (0, np.inf))[0] < nb]
         if stale:
             tt = time.perf_counter()
-            ver0 = min(dmin_cache.get(keys[i], (0, np.inf))[0] for i in stale)
-            F = np.stack([emb_cache[keys[i]] for i in stale])
-            d_tail = fm.d_to_bank(F, bank.embs[ver0:])
-            for i, dt in zip(stale, d_tail):
-                dmin_cache[keys[i]] = (nb, min(dmin_cache.get(keys[i], (0, np.inf))[1], float(dt)))
+            # group by EXACT cached version: one ancient position must not drag the whole
+            # batch into a near-full-bank rescan (the 1430s-dbank pathology)
+            by_ver: dict[int, list] = {}
+            for i in stale:
+                by_ver.setdefault(dmin_cache.get(keys[i], (0, np.inf))[0], []).append(i)
+            for ver, idxs in by_ver.items():
+                F = np.stack([emb_cache[keys[i]] for i in idxs])
+                d_tail = fm.d_to_bank(F, bank.embs[ver:])
+                for i, dt in zip(idxs, d_tail):
+                    dmin_cache[keys[i]] = (nb, min(dmin_cache.get(keys[i], (0, np.inf))[1], float(dt)))
             if times is not None:
                 times["dbank_s"] = times.get("dbank_s", 0.0) + time.perf_counter() - tt
                 times["dbank_n"] = times.get("dbank_n", 0) + len(stale)

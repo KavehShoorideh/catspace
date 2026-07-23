@@ -90,14 +90,19 @@ class FieldModel:
 
     def d_to_bank(self, F: np.ndarray, bank: np.ndarray) -> np.ndarray:
         """min over bank of d(F_i, bank_j) -- the goal-as-region readout (goal_bank lesson:
-        nearest exemplar, never a centroid)."""
-        bt = torch.from_numpy(bank).to(self.device)
+        nearest exemplar, never a centroid). Chunked on BOTH sides: IQE pairwise
+        materializes (rows, cols, k) intermediates, and an unchunked 3k+ bank thrashes
+        MPS memory under worker contention (the 1430s-dbank pathology, 2026-07-25)."""
         out = []
         for s in range(0, len(F), self.chunk):
-            with torch.no_grad():
-                out.append(self.fb.distance_matrix(
-                    torch.from_numpy(F[s:s + self.chunk]).to(self.device), bt)
-                    .min(1).values.cpu().numpy())
+            ft = torch.from_numpy(F[s:s + self.chunk]).to(self.device)
+            row_min = None
+            for bs in range(0, len(bank), 512):
+                bt = torch.from_numpy(bank[bs:bs + 512]).to(self.device)
+                with torch.no_grad():
+                    m = self.fb.distance_matrix(ft, bt).min(1).values
+                row_min = m if row_min is None else torch.minimum(row_min, m)
+            out.append(row_min.cpu().numpy())
         return np.concatenate(out)
 
     def d_boards_to_bank(self, boards: list, bank: np.ndarray) -> np.ndarray:
