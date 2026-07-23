@@ -257,6 +257,47 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     dmin_win = _dmin_tracker(bank)
     dmin_loss = _dmin_tracker(loss_bank) if loss_bank is not None else None
     dmin_draw = _dmin_tracker(draw_bank) if draw_bank is not None else None
+    # per-bank root-anchored candidate sets (Kaveh: 'my triangle inequality idea -- add it
+    # to the loss side, and the draw side'): one full-bank row at the root per move, leaves
+    # query the nearest-256 (+tail since anchor); exact-vs-pruned audits printed per bank.
+    cands = {n: {"idx": None, "ver": 0, "cache": {}, "audit": 0}
+             for n in ("win", "loss", "draw")}
+
+    def _anchor_bank(name, bk, F):
+        c = cands[name]
+        c["cache"] = {}
+        if bk is None or len(bk) < 256:
+            c["idx"] = None; return
+        d_all = _bank_row(F, bk.embs)
+        c["idx"] = np.argsort(d_all)[:256]; c["ver"] = len(bk); c["audit"] += 1
+
+    def _dmin_pruned(name, bk, tracker, keys):
+        """min-distance via the root candidate annulus; falls back to the exact tracker
+        when un-anchored. Move-local cache only (approx values never persist)."""
+        c = cands[name]
+        if bk is None or len(bk) == 0:
+            return None
+        if c["idx"] is None:
+            return tracker(keys)
+        cc = c["cache"]
+        miss = [i for i, k in enumerate(keys) if k not in cc]
+        if miss:
+            tt = time.perf_counter()
+            F = np.stack([emb_cache[keys[i]] for i in miss])
+            sub = bk.embs[c["idx"]]
+            if len(bk) > c["ver"]:
+                sub = np.concatenate([sub, bk.embs[c["ver"]:]])
+            d_sub = fm.d_to_bank(F, sub)
+            if c["audit"] % 25 == 1 and not cc:
+                d_ex = fm.d_to_bank(F, bk.embs)
+                print(f"    [prune-audit:{name}] max|err| {np.abs(d_sub - d_ex).max():.3f} "
+                      f"cands {len(sub)}/{len(bk)}", flush=True)
+            for i, dv in zip(miss, d_sub):
+                cc[keys[i]] = float(dv)
+            if times is not None:
+                times["dbank_s"] = times.get("dbank_s", 0.0) + time.perf_counter() - tt
+                times["dbank_n"] = times.get("dbank_n", 0) + len(miss)
+        return np.array([cc[k] for k in keys])
 
     def _kappa(boards, keys):
         """STATE-DEPENDENT draw mass (Kaveh: the draw surfaces MOVE with the trajectory --
@@ -273,7 +314,7 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             k = k + np.array([0.6 if h.get(kk, 0) >= 2 else (0.15 if h.get(kk, 0) == 1 else 0.0)
                               for kk in keys])
         if dmin_draw is not None and draw_bank is not None and len(draw_bank) > 0:
-            d_s = dmin_draw(keys)
+            d_s = _dmin_pruned("draw", draw_bank, dmin_draw, keys)
             k = k + 0.5 * np.exp(-d_s / max(float(np.median(d_s)), 1e-6))
         return k
     cand = {"idx": None, "ver": -1, "audit": 0}   # per-move candidate annulus (set_anchor)
@@ -311,6 +352,8 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             # any won position) -- cap at nearest-256 and let the printed audit police it
             idx = np.argsort(d_all)[:256]
         cand["idx"] = idx; cand["ver"] = len(bank); cand["audit"] += 1
+        _anchor_bank("loss", loss_bank, F)      # pruning symmetry: loss + draw banks get
+        _anchor_bank("draw", draw_bank, F)      # the same root-anchored candidate scheme
 
     def _bank_row(F, embs):
         import torch
@@ -340,7 +383,7 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             if nl or (draw_bank is not None and len(draw_bank) > 0):
                 _embed(boards, keys)
             if nl:
-                d_l = dmin_loss(keys)
+                d_l = _dmin_pruned("loss", loss_bank, dmin_loss, keys)
                 recent_l.extend(d_l.tolist())
                 M_l = max(float(np.median(recent_l)), 1e-6)
                 p_l = np.exp(-d_l / M_l)
@@ -371,7 +414,7 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             d_w = np.array([cc[k] for k in keys])
         else:
             d_w = dmin_win(keys) if nw else None
-        d_l = dmin_loss(keys) if nl else None
+        d_l = _dmin_pruned("loss", loss_bank, dmin_loss, keys) if nl else None
         recent.extend((d_w if d_w is not None else d_l).tolist())
         M = max(float(np.median(recent)), 1e-6)
         p_w = np.exp(-d_w / M) if d_w is not None else 0.0
@@ -394,8 +437,26 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     return value_fn                                              # the +-1-ply bound is void
 
 
+def select_plan(b: chess.Board, nucleus_max: int = 5) -> str:
+    """THE PLANNER SEAM (v1; Kaveh 'let's build that planner'): discrete plan selection
+    over RULES-state, acting on the search ONLY through a prior bias (the alpha-dial --
+    subgoals never contaminate the value). v1 is a deterministic rules-threshold selector;
+    the PlanSelector protocol (catspace/engine/interfaces.py) is the RL-swappable seam.
+      direct    -- default: chase the mate region, no bias
+      reset     -- the fifty-move deadline is absorbing the win (clock >= 30): the path to
+                   victory lies through a zeroing move; bias the prior toward them
+      tradedown -- beyond the tb nucleus (> 6 pieces): steer toward simplification into
+                   the region the engine already converts (the conversion-tree strategy)"""
+    if b.halfmove_clock >= 30:
+        return "reset"
+    if len(b.piece_map()) > 6:
+        return "tradedown"
+    return "direct"
+
+
 def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
-                              times: dict | None = None):
+                              times: dict | None = None, game_ctx: dict | None = None,
+                              plan_alpha: float = 1.0):
     """(policy_fn, policy_batch_fn) sharing one net + one epd cache. The batch fn is the
     speed path: one forward for a whole leaf batch instead of ~2ms singles (mcts.py already
     supports policy_batch_fn -- no search-semantics change, same net, same numbers)."""
@@ -441,11 +502,23 @@ def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
             times["prior_n"] = times.get("prior_n", 0) + B
         return out
 
+    def _bias(b, pri):
+        """plan alpha-dial: multiplicative prior reweighting toward plan-aligned moves
+        (zeroing moves for reset/tradedown). Cache stays BASE priors; bias at retrieval."""
+        plan = game_ctx.get("plan") if game_ctx is not None else None
+        if plan not in ("reset", "tradedown") or plan_alpha <= 0:
+            return pri
+        boost = float(np.exp(plan_alpha))
+        out = {m: (p * boost if (b.is_capture(m) or b.piece_type_at(m.from_square) == chess.PAWN)
+                   else p) for m, p in pri.items()}
+        z = sum(out.values())
+        return {m: p / z for m, p in out.items()} if z > 0 else pri
+
     def policy_fn(b):
         k = b.epd()
         if k not in cache:
             cache[k] = _forward([b])[0]
-        return cache[k]
+        return _bias(b, cache[k])
 
     def policy_batch_fn(boards):
         keys = [b.epd() for b in boards]
@@ -453,7 +526,7 @@ def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
         if miss_i:
             for i, pri in zip(miss_i, _forward([boards[i] for i in miss_i])):
                 cache[keys[i]] = pri
-        return [cache[k] for k in keys]
+        return [_bias(b, cache[k]) for b, k in zip(boards, keys)]
 
     return policy_fn, policy_batch_fn
 
@@ -508,7 +581,8 @@ def worker(args):
                           dtm_ckpt=args.last_mile_dtm or None,
                           nucleus_max_pieces=args.nucleus_max_pieces,
                           draw_bank=draw_bank, game_ctx=game_ctx)
-    pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times)
+    pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times,
+                                          game_ctx=game_ctx, plan_alpha=args.plan_alpha)
     ms = MilestoneCache(fm, Path(args.milestone_file))
 
     res_path = Path(args.results_file)
@@ -537,6 +611,8 @@ def worker(args):
                           # through the consulted position into threefold; once the field
                           # proves gradient-less in a game, tb converts the rest, all logged)
         game_ctx["hist"] = hist   # live repetition counts -> kappa's moving-surface term
+        game_ctx["plan"] = "direct"
+        plan_counts = _Counter()
         noharvest = 0     # WITHIN-GAME progress gating (Kaveh: no cross-game self-stats):
                           # consecutive searches touching zero new mates = value failing NOW
         reuse = None            # subtree carried across moves (tree reuse; general lever)
@@ -600,6 +676,8 @@ def worker(args):
                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
                          policy_batch_fn=pfnb, batch_leaves=32)
                 roots.append(b.epd())
+                game_ctx["plan"] = select_plan(b, args.nucleus_max_pieces)
+                plan_counts[game_ctx["plan"]] += 1
                 if hasattr(vfn, "set_anchor"):
                     vfn.set_anchor(b)
                 if reuse is not None:
@@ -704,14 +782,15 @@ def worker(args):
         import json
         rec = dict(g=gi, mate=mated, term=term, plies=plies, nodes=nodes_spent,
                    t=round(sum(tmoves), 1), moves=len(tmoves), bank=len(bank),
-                   tb_consults=tb_consults)
+                   tb_consults=tb_consults, plans=dict(plan_counts))
         if not mated:           # FAILs carry the full trajectory for field diagnostics
             rec["start_epd"] = start_epd; rec["ucis"] = ucis
         with open(res_path, "a") as f:
             f.write(json.dumps(rec) + "\n")
         results.append((gi, mated, plies, nodes_spent, sum(tmoves), len(tmoves)))
         print(f"  g{gi:03d}[w{args.worker}] {'mate' if mated else 'FAIL:' + term} plies={plies} "
-              f"tb={len(tb_consults)} bank={len(bank)}(+{found_this_game}) "
+              f"tb={len(tb_consults)} plan={','.join(f'{k}:{v}' for k, v in plan_counts.items())} "
+              f"bank={len(bank)}(+{found_this_game}) "
               f"loss={len(loss_bank)} draws={len(draw_bank)} ms={len(ms.stats)} "
               f"t/move={np.median(tmoves):.1f}s t/game={sum(tmoves):.0f}s "
               f"nodes/s={nodes_spent/max(sum(tmoves),1e-9):.0f} [{time.time()-t0:.0f}s]", flush=True)
@@ -747,6 +826,8 @@ def main():
                          "the nucleus (resignation gap: the field has no trajectory support "
                          "there); '' = off")
     ap.add_argument("--nucleus-max-pieces", type=int, default=5)
+    ap.add_argument("--plan-alpha", type=float, default=1.0,
+                    help="planner's prior-bias strength (alpha-dial; 0 = planner off)")
     ap.add_argument("--tb-fallback-eps", type=float, default=0.02,
                     help="if the searched root's child-value spread < eps (no field "
                          "gradient) and <=6 pieces: consult tb, LOG the consult (win "
