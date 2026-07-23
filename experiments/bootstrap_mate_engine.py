@@ -419,17 +419,22 @@ def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
 
 
 def tb_white_move(b, tb):
-    """win-preserving min-|dtz| move (tb FALLBACK, consulted only when the field has no
-    gradient; every use is LOGGED -- Kaveh 2026-07-25: wins must stay attributable)."""
-    best, best_dz = None, None
+    """win-preserving min-|dtz| move that leaves Black NO immediate draw claim (announce
+    rule); falls back to best dtz if every winning move is claimable. Consulted only when
+    the field has no gradient; every use is LOGGED (wins must stay attributable)."""
+    alts = []
     for m in b.legal_moves:
         c = b.copy(stack=False); c.push(m)
         w, dz = tb.wdl_dtz(c)
         if w is not None and -w == 2:
-            dz = abs(dz) if dz is not None else 999
-            if best_dz is None or dz < best_dz:
-                best, best_dz = m, dz
-    return best
+            alts.append((abs(dz) if dz is not None else 999, m))
+    for _, m in sorted(alts, key=lambda x: x[0]):
+        b.push(m)
+        ok = not b.can_claim_threefold_repetition()
+        b.pop()
+        if ok:
+            return m
+    return sorted(alts, key=lambda x: x[0])[0][1] if alts else None
 
 
 def worker(args):
@@ -493,7 +498,15 @@ def worker(args):
                     break
             print(f"    [warm-up] bank {warm0}->{len(bank)} nodes={warm_nodes} "
                   f"[{time.time()-tw:.0f}s]", flush=True)
-        while plies < args.max_plies and not b.is_game_over(claim_draw=True):
+        # asymmetric claiming (g041 harness artifact: outcome(claim_draw=True) auto-claims
+        # for EITHER side -- White would never claim a draw in a won position; only the
+        # DEFENDER claims). Automatic draws (75-move/fivefold/stalemate/material) still end.
+        def _game_over():
+            if b.is_game_over():
+                return True
+            return b.turn == chess.BLACK and (b.can_claim_threefold_repetition()
+                                              or b.can_claim_fifty_moves())
+        while plies < args.max_plies and not _game_over():
             if b.turn == chess.WHITE:
                 # STUCKNESS trigger (Kaveh 'do the fix'): second visit to a position =
                 # the field has no EFFECTIVE gradient in play (confidently-wrong loops
