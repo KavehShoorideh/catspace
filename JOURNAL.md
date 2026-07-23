@@ -6831,3 +6831,18 @@ the meaningful verdict -- -log-odds behaves as a soft distance at the ORDERING l
 claimed: ply-unit calibration, the softmin<=hardmin inequality vs IQE d (needs unit alignment --
 define-identifications rule), cross-regime Delta readouts (forcedness/trap potential). Those are
 the v2 readouts. Ckpts: rho_head_v1.pt + step2000/4000 ladder, args embedded.
+
+## 2026-07-24 -- soft-hard consistency: the two algebra sides agree at rank level; channel
+## separation is the shared bottleneck
+
+experiments/measure_soft_hard_consistency.py (18s, MPS; seed!=training, same-walk pairs gap 1-20):
+
+    VERDICT SOFT_HARD spearman(-log-odds, IQE d) per regime: +0.56..+0.69, ALL +0.615 (n=4000)
+    VERDICT SOFT_CHANNEL_GAPS vs regime 2: mean|gap| 0.071-0.079 log-odds (all 7 comparisons)
+
+Reading: (1) soft (rho head) and hard (IQE d) sides agree substantially at the ORDERING level
+without being redundant (0.6, not 0.95) -- consistent with min-plies vs discounted-visitation
+semantics on shared towers. (2) Cross-regime soft gaps are TINY: the same channel-separation
+weakness the veto gate measures on the hard side (AUC 0.535). Both sides of the energy algebra
+now independently indict the regime conditioning, not the heads -- strengthens the case for the
+parked levers (FiLM conditioning; dedicated endgame-rollout fraction) over more same-recipe steps.
