@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.engine.fields import FieldModel
 from catspace.nn.mcts import MCTS
 from catspace.tb import TB, tb_best_move
-from experiments.mate_ladder_eval import make_energy_prior, sample_scenarios
+from experiments.mate_ladder_eval import sample_scenarios
 
 
 class OnlineMateBank:
@@ -192,19 +192,68 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     return value_fn
 
 
-def cached_prior(pfn, times: dict | None = None):
+def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
+                              times: dict | None = None):
+    """(policy_fn, policy_batch_fn) sharing one net + one epd cache. The batch fn is the
+    speed path: one forward for a whole leaf batch instead of ~2ms singles (mcts.py already
+    supports policy_batch_fn -- no search-semantics change, same net, same numbers)."""
+    import torch
+    from catspace.data.encode import encode_meta, encode_packed
+    from catspace.nn.features import feature_planes
+    from catspace.nn.fb import pick_device
+    from catspace.nn.opponent import OpponentModel
+    dev = pick_device(device)
+    st = torch.load(ckpt, map_location="cpu", weights_only=False)
+    net = OpponentModel(**st["config"]).to(dev)
+    net.load_state_dict(st["state"]); net.eval()
+    L = st["config"].get("max_moves", 80)
     cache: dict[str, dict] = {}
+
+    def _forward(boards):
+        tt = time.perf_counter()
+        B = len(boards)
+        f = np.zeros((B, L), np.int64); t = np.zeros((B, L), np.int64)
+        pc = np.zeros((B, L), np.int64); ct = np.zeros((B, L), np.int64)
+        nm = np.zeros(B, np.int64); movess = []
+        for i, b in enumerate(boards):
+            moves = list(b.legal_moves)[:L]; movess.append(moves); nm[i] = len(moves)
+            for j, m in enumerate(moves):
+                f[i, j], t[i, j] = m.from_square, m.to_square
+                pc[i, j] = b.piece_type_at(m.from_square) or 0
+                cap = b.piece_type_at(m.to_square)
+                ct[i, j] = cap or (1 if b.is_en_passant(m) else 0)
+        pk = np.stack([encode_packed(b) for b in boards])
+        mt = np.stack([encode_meta(b) for b in boards])
+        pl = torch.from_numpy(feature_planes(pk, mt)).to(dev)
+        with torch.no_grad():
+            lg = net(pl, torch.from_numpy(f).to(dev), torch.from_numpy(t).to(dev),
+                     torch.from_numpy(pc).to(dev), torch.from_numpy(ct).to(dev),
+                     torch.from_numpy(nm).to(dev),
+                     torch.full((B,), cohort, dtype=torch.int64).to(dev))
+        out = []
+        for i, moves in enumerate(movess):
+            p = torch.softmax(lg[i, :len(moves)], 0).cpu().numpy()
+            out.append({m: float(p[j]) for j, m in enumerate(moves)})
+        if times is not None:
+            times["prior_s"] = times.get("prior_s", 0.0) + time.perf_counter() - tt
+            times["prior_n"] = times.get("prior_n", 0) + B
+        return out
 
     def policy_fn(b):
         k = b.epd()
         if k not in cache:
-            tt = time.perf_counter()
-            cache[k] = pfn(b)
-            if times is not None:
-                times["prior_s"] = times.get("prior_s", 0.0) + time.perf_counter() - tt
-                times["prior_n"] = times.get("prior_n", 0) + 1
+            cache[k] = _forward([b])[0]
         return cache[k]
-    return policy_fn
+
+    def policy_batch_fn(boards):
+        keys = [b.epd() for b in boards]
+        miss_i = [i for i, k in enumerate(keys) if k not in cache]
+        if miss_i:
+            for i, pri in zip(miss_i, _forward([boards[i] for i in miss_i])):
+                cache[keys[i]] = pri
+        return [cache[k] for k in keys]
+
+    return policy_fn, policy_batch_fn
 
 
 def worker(args):
@@ -214,7 +263,7 @@ def worker(args):
     bank = OnlineMateBank(fm, Path(args.bank_file))
     times: dict = {}
     vfn = make_boot_value(fm, bank, times)
-    pfn = cached_prior(make_energy_prior(ckpt=args.energy_ckpt, device="cpu"), times)
+    pfn, pfnb = make_batched_energy_prior(args.energy_ckpt, device="cpu", times=times)
     ms = MilestoneCache(fm, Path(args.milestone_file))
 
     res_path = Path(args.results_file)
@@ -236,7 +285,7 @@ def worker(args):
                 tm = time.time(); snap = dict(times)
                 m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=args.nodes, mate_stop=True,
                          pw_c=1.5, root_min_visits=10, value_fn=vfn, policy_fn=pfn,
-                         batch_leaves=32)
+                         policy_batch_fn=pfnb, batch_leaves=32)
                 roots.append(b.epd())
                 root = m.run(b)
                 t_search = time.time() - tm
