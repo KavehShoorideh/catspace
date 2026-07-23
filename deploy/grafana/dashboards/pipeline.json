@@ -1,0 +1,11 @@
+{"title":"catspace inference pipeline","uid":"catspace-pipeline","timezone":"browser",
+ "panels":[
+  {"type":"timeseries","title":"stage latency p95 (s)","gridPos":{"x":0,"y":0,"w":12,"h":9},
+   "targets":[{"expr":"histogram_quantile(0.95, sum(rate(catspace_stage_seconds_bucket[1m])) by (le, stage))","legendFormat":"{{stage}}"}]},
+  {"type":"timeseries","title":"stage latency p50 (s)","gridPos":{"x":12,"y":0,"w":12,"h":9},
+   "targets":[{"expr":"histogram_quantile(0.5, sum(rate(catspace_stage_seconds_bucket[1m])) by (le, stage))","legendFormat":"{{stage}}"}]},
+  {"type":"timeseries","title":"stage time share (s/s)","gridPos":{"x":0,"y":9,"w":12,"h":9},
+   "targets":[{"expr":"sum(rate(catspace_stage_seconds_sum[1m])) by (stage)","legendFormat":"{{stage}}"}]},
+  {"type":"timeseries","title":"requests/min","gridPos":{"x":12,"y":9,"w":12,"h":9},
+   "targets":[{"expr":"sum(rate(catspace_requests_total[1m])) by (path) * 60","legendFormat":"{{path}}"}]}],
+ "schemaVersion":39,"version":1,"refresh":"10s"}

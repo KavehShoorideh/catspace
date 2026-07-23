@@ -1,0 +1,6 @@
+apiVersion: 1
+providers:
+  - name: catspace
+    folder: catspace
+    type: file
+    options: { path: /var/lib/grafana/dashboards }

@@ -929,8 +929,18 @@ def worker(args):
                             tb_mode = True
                             tb_consults.append(plies)
                 d = {k: times.get(k, 0) - snap.get(k, 0) for k in
-                     ("prior_s", "prior_n", "embedF_s", "embedF_n", "dbank_s", "dbank_n")}
-                tree = t_search - d["prior_s"] - d["embedF_s"] - d["dbank_s"]
+                     ("prior_s", "prior_n", "embedF_s", "embedF_n", "dbank_s", "dbank_n",
+                      "dtm_s", "dtm_n")}
+                tree = t_search - d["prior_s"] - d["embedF_s"] - d["dbank_s"] - d["dtm_s"]
+                try:                                    # observability (Prometheus)
+                    from catspace.metrics import observe
+                    for st, key in (("prior", "prior_s"), ("embF", "embedF_s"),
+                                    ("dbank", "dbank_s"), ("dtm", "dtm_s")):
+                        observe(st, d[key])
+                    observe("tree", max(tree, 0)); observe("harvest", t_harv)
+                    observe("move_total", t_search)
+                except Exception:
+                    pass
                 print(f"    mv{len(tmoves):02d} {tmoves[-1]:6.1f}s = prior {d['prior_s']:5.1f} "
                       f"({d['prior_n']:4d}) + embF {d['embedF_s']:5.1f} ({d['embedF_n']:4d}) "
                       f"+ dbank {d['dbank_s']:5.1f} ({d['dbank_n']:5d}) + tree {tree:5.1f} "
