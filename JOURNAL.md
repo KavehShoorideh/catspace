@@ -7376,3 +7376,11 @@ The teacher's directed geometry compresses almost losslessly into a quarter of t
 capacity -- strong evidence the scratch-run architecture question is about DATA, not
 width, and that a student-arch line is viable whenever speed demands it. Speed bench +
 fixed-TC play verdict pending (gauntlet deferred per camping plan).
+
+## 2026-07-24 -- SPEED VERDICTS: student 2.01x @ 0.9946 fidelity; fp16 no-gain
+
+bench_value_speed (under scratch-run load, both variants equally handicapped):
+teacher-fp32 36 evals/s baseline; teacher-fp16 1.01x (bottleneck is not matmul
+precision -- honest negative); field_student_v1 2.01x at distance-spearman +0.9946.
+Fixed-TC implication: student = 2x nodes/move. Play referendum deferred (camping
+plan); accept rule needs the gauntlet's SPRT before any pointer changes.
