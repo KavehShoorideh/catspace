@@ -114,7 +114,7 @@ def main():
             trk.metrics(dict(loss=float(loss.detach())), step=s)
         if args.ckpt_every and s > 0 and s % args.ckpt_every == 0:
             op = Path(args.out)
-            torch.save({"state": student.state_dict(), "config": student.config,
+            torch.save({"state_dict": student.state_dict(), "config": student.config,
                         "args": vars(args), "step": s},
                        op.with_name(f"{op.stem}_step{s}{op.suffix}"))
 
@@ -133,7 +133,7 @@ def main():
           f"(n={k*k} pairs) student {n_s/1e6:.1f}M vs teacher {n_t/1e6:.1f}M "
           f"[{time.time()-t0:.0f}s]", flush=True)
     trk.metrics(dict(holdout_spearman=float(sp), holdout_mae=mae))
-    torch.save({"state": student.state_dict(), "config": student.config,
+    torch.save({"state_dict": student.state_dict(), "config": student.config,
                 "args": vars(args), "step": args.steps}, args.out)
     print(f"saved {args.out}", flush=True)
     stack.close()
