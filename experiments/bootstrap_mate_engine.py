@@ -903,9 +903,12 @@ def worker(args):
                     tb_consults=tb_consults, found=found_this_game, tb_mode=tb_mode,
                     noharvest=noharvest, prev_v=prev_v, tactics=tactic_events,
                     probes=probe_snaps, plans=dict(plan_counts),
-                    commits=sorted(game_commits))))
-            except Exception:
-                pass
+                    commits=sorted(game_commits)),
+                    default=float))          # np scalars (prev_v!) must not kill WIP
+            except Exception as e:           # NEVER silent (2026-07-24: prev_v np.float32
+                if not getattr(_save_wip, "warned", False):   # broke WIP for hours --
+                    _save_wip.warned = True                   # re-execs lost whole games)
+                    print(f"[worker {args.worker}] WIP SAVE FAILING: {e}", flush=True)
         # TACTICS TRACKER (Kaveh; INQUIRY_TACTICS: 'a tactic is an opportunity outside our
         # plan afforded by a mistake by our opponent'): an upward DISCONTINUITY in our own
         # root value across the opponent's reply = a detected opportunity-from-mistake.
