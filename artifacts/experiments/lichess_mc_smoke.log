@@ -1,0 +1,33 @@
+2026/07/22 12:28:20 INFO mlflow.tracking.fluent: Experiment with name 'lichess_fb' does not exist. Creating a new experiment.
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=20500 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed lichess_mc_smoke.pt at step 20000
+resume-upgraded to regime_channels=4 (zero-init embedding; regime 0 == base)
+[resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
+opt_state not restored (loaded state dict contains a parameter group that doesn't match the size of optimizer's group); fresh optimizer
+multichannel mix: human(r0)=0.70 + regime_random_v1:1:0.15 sf_cont_endgame_v1:2:0.15
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:667: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 9.109 sq_dev 0.0720 lam 57.914 d_step 0.803 d_rand 52.401 var 0.000 sib 0.000 unr 3.989 unrb 4.018 d_unr 48.67 d_oth 58.96
+step 20100  loss 68.1151  train_top1 0.000  lr 2.75e-05  (1.3 it/s)
+  VAL step 20100  loss 335.9381  top1 0.010  top8 0.079
+    qrl push 7.216 sq_dev 0.2013 lam 58.321 d_step 1.009 d_rand 54.653 var 0.000 sib 0.000 unr 3.218 unrb 4.229 d_unr 53.09 d_oth 56.65
+step 20200  loss 141.6400  train_top1 0.000  lr 2.08e-05  (1.1 it/s)
+  VAL step 20200  loss 335.6293  top1 0.011  top8 0.079
+    qrl push 6.371 sq_dev 0.8887 lam 58.744 d_step 1.038 d_rand 57.505 var 0.000 sib 0.000 unr 2.892 unrb 4.344 d_unr 55.75 d_oth 61.07
+step 20300  loss 93.4867  train_top1 0.000  lr 1.24e-05  (1.1 it/s)
+  VAL step 20300  loss 349.1883  top1 0.012  top8 0.076
+    qrl push 7.663 sq_dev 1.0367 lam 59.006 d_step 1.048 d_rand 54.430 var 0.000 sib 0.000 unr 3.606 unrb 3.671 d_unr 50.61 d_oth 66.63
+step 20400  loss 84.1471  train_top1 0.000  lr 5.63e-06  (1.1 it/s)
+  VAL step 20400  loss 338.6599  top1 0.012  top8 0.080
+    qrl push 9.827 sq_dev 0.0105 lam 59.321 d_step 0.970 d_rand 45.691 var 0.000 sib 0.000 unr 3.890 unrb 8.097 d_unr 47.04 d_oth 22.57
+step 20500  loss 189.1188  train_top1 0.000  lr 3.00e-06  (1.1 it/s)
+  VAL step 20500  loss 337.2128  top1 0.013  top8 0.081
+zgoal MATE_W: 2048 checkmate finals
+zgoal MATE_B: 2048 checkmate finals
+saved data/derived/sep/lichess_mc_smoke.pt
+VERDICT VAL_TOP1=0.013 VAL_TOP8=0.081 (chance 0.0020)
+VERDICT REACH_SLOPE_WON=0.736 (n=200) REACH_SLOPE_LOST=0.747 (n=200)
+VERDICT DIFF_SLOPE_WON=0.847 DIFF_SLOPE_LOST=0.865 (won-lost separation is the outcome signal; both were negative at step 2000)

@@ -1,0 +1,48 @@
+{"g": 0, "mate": true, "term": "checkmate", "plies": 27, "nodes": 54407, "t": 38.1, "moves": 14, "bank": 490, "tb_consults": []}
+{"g": 4, "mate": true, "term": "checkmate", "plies": 19, "nodes": 35000, "t": 24.8, "moves": 10, "bank": 1723, "tb_consults": [14, 16, 18]}
+{"g": 3, "mate": true, "term": "checkmate", "plies": 7, "nodes": 5014, "t": 18.9, "moves": 4, "bank": 1116, "tb_consults": []}
+{"g": 7, "mate": true, "term": "checkmate", "plies": 7, "nodes": 10059, "t": 21.5, "moves": 4, "bank": 1991, "tb_consults": []}
+{"g": 11, "mate": true, "term": "checkmate", "plies": 13, "nodes": 23482, "t": 30.8, "moves": 7, "bank": 2103, "tb_consults": []}
+{"g": 15, "mate": true, "term": "checkmate", "plies": 3, "nodes": 2188, "t": 18.1, "moves": 2, "bank": 2367, "tb_consults": []}
+{"g": 19, "mate": true, "term": "checkmate", "plies": 3, "nodes": 1245, "t": 11.3, "moves": 2, "bank": 2531, "tb_consults": []}
+{"g": 8, "mate": false, "term": "fifty_moves", "plies": 101, "nodes": 247911, "t": 161.7, "moves": 51, "bank": 1976, "tb_consults": [], "start_epd": "8/8/RR6/8/2k5/7K/p7/8 w - -", "ucis": ["b6b1", "a2b1b", "a6a1", "b1h7", "a1g1", "h7f5", "h3g3", "f5h7", "g3f4", "h7d3", "f4e3", "c4c3", "g1g7", "d3a6", "e3e4", "a6b5", "e4d5", "b5e8", "g7c7", "c3b4", "d5d6", "e8g6", "d6d7", "g6h7", "d7c8", "h7g8", "c8b7", "g8e6", "b7a7", "e6g8", "a7b7", "g8e6", "c7g7", "e6f5", "b7b6", "f5c8", "b6c6", "c8e6", "g7h7", "e6g8", "h7b7", "b4a5", "c6c5", "a5a4", "b7b8", "g8h7", "b8d8", "h7g6", "c5c4", "g6f7", "c4d4", "f7g6", "d4c5", "g6h7", "c5d5", "h7g6", "d5c4", "g6f7", "c4d4", "f7g6", "d8b8", "g6h7", "b8h8", "h7g6", "d4d5", "g6f7", "d5e5", "f7g6", "e5d5", "g6f7", "d5e4", "f7g6", "e4d4", "g6f7", "h8b8", "f7g6", "d4c3", "g6f7", "c3d4", "f7g6", "d4c4", "g6f7", "c4c5", "f7g6", "b8f8", "g6h7", "c5d5", "h7g6", "d5c5", "g6h7", "c5d5", "h7g6", "f8c8", "g6h7", "c8h8", "h7g6", "h8h6", "g6e8", "h6e6", "e8f7", "d5c5"]}
+{"g": 12, "mate": true, "term": "checkmate", "plies": 7, "nodes": 10512, "t": 27.3, "moves": 4, "bank": 2837, "tb_consults": []}
+{"g": 1, "mate": true, "term": "checkmate", "plies": 3, "nodes": 420, "t": 5.5, "moves": 2, "bank": 2860, "tb_consults": []}
+{"g": 16, "mate": true, "term": "checkmate", "plies": 3, "nodes": 2797, "t": 18.2, "moves": 2, "bank": 3216, "tb_consults": []}
+{"g": 2, "mate": true, "term": "checkmate", "plies": 7, "nodes": 2623, "t": 23.0, "moves": 4, "bank": 2855, "tb_consults": []}
+{"g": 6, "mate": false, "term": "insufficient_material", "plies": 10, "nodes": 25000, "t": 46.7, "moves": 5, "bank": 3280, "tb_consults": [], "start_epd": "8/8/8/8/3RR3/2k4p/8/K7 w - -", "ucis": ["e4e2", "c3d4", "e2h2", "d4e5", "h2h3", "e5f5", "h3f3", "f5e6", "f3f6", "e6f6"]}
+{"g": 5, "mate": true, "term": "checkmate", "plies": 63, "nodes": 95000, "t": 73.8, "moves": 32, "bank": 2896, "tb_consults": [38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62]}
+{"g": 20, "mate": true, "term": "checkmate", "plies": 15, "nodes": 30931, "t": 58.8, "moves": 8, "bank": 3489, "tb_consults": []}
+{"g": 23, "mate": true, "term": "checkmate", "plies": 51, "nodes": 70000, "t": 78.2, "moves": 26, "bank": 2858, "tb_consults": [28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50]}
+{"g": 10, "mate": true, "term": "checkmate", "plies": 3, "nodes": 5000, "t": 16.6, "moves": 2, "bank": 3638, "tb_consults": []}
+{"g": 9, "mate": true, "term": "checkmate", "plies": 7, "nodes": 6075, "t": 29.0, "moves": 4, "bank": 3520, "tb_consults": []}
+{"g": 27, "mate": true, "term": "checkmate", "plies": 5, "nodes": 3358, "t": 27.1, "moves": 3, "bank": 3619, "tb_consults": []}
+{"g": 13, "mate": true, "term": "checkmate", "plies": 3, "nodes": 695, "t": 6.8, "moves": 2, "bank": 4016, "tb_consults": []}
+{"g": 17, "mate": true, "term": "checkmate", "plies": 3, "nodes": 1133, "t": 10.8, "moves": 2, "bank": 4114, "tb_consults": []}
+{"g": 24, "mate": true, "term": "checkmate", "plies": 9, "nodes": 9601, "t": 46.3, "moves": 5, "bank": 3681, "tb_consults": []}
+{"g": 31, "mate": true, "term": "checkmate", "plies": 7, "nodes": 6978, "t": 36.2, "moves": 4, "bank": 4017, "tb_consults": []}
+{"g": 35, "mate": true, "term": "checkmate", "plies": 3, "nodes": 1143, "t": 9.8, "moves": 2, "bank": 4636, "tb_consults": []}
+{"g": 21, "mate": true, "term": "checkmate", "plies": 7, "nodes": 8762, "t": 40.0, "moves": 4, "bank": 4518, "tb_consults": []}
+{"g": 28, "mate": true, "term": "checkmate", "plies": 7, "nodes": 10471, "t": 42.6, "moves": 4, "bank": 4451, "tb_consults": []}
+{"g": 32, "mate": true, "term": "checkmate", "plies": 5, "nodes": 3207, "t": 23.5, "moves": 3, "bank": 5116, "tb_consults": []}
+{"g": 14, "mate": false, "term": "checkmate", "plies": 40, "nodes": 84594, "t": 112.9, "moves": 20, "bank": 3726, "tb_consults": [], "start_epd": "8/1R6/1K3k2/8/5p2/3R4/8/8 w - -", "ucis": ["b7g7", "f6g7", "d3g3", "f4g3", "b6c5", "g7h8", "c5d6", "h8g8", "d6e6", "g8h8", "e6f6", "h8g8", "f6f5", "g8h8", "f5f4", "g3g2", "f4g5", "g2g1r", "g5f6", "g1e1", "f6g6", "e1f1", "g6h6", "f1g1", "h6h5", "h8h7", "h5h4", "h7g6", "h4h3", "g6f5", "h3h2", "g1g8", "h2h1", "f5f4", "h1h2", "f4f3", "h2h1", "f3f2", "h1h2", "g8h8"]}
+{"g": 25, "mate": true, "term": "checkmate", "plies": 7, "nodes": 11051, "t": 53.2, "moves": 4, "bank": 5628, "tb_consults": []}
+{"g": 29, "mate": true, "term": "checkmate", "plies": 3, "nodes": 1735, "t": 14.4, "moves": 2, "bank": 5934, "tb_consults": []}
+{"g": 18, "mate": false, "term": "insufficient_material", "plies": 6, "nodes": 15000, "t": 34.8, "moves": 3, "bank": 5370, "tb_consults": [], "start_epd": "8/K4p2/8/8/5R2/8/4k3/2R5 w - -", "ucis": ["f4f7", "e2e3", "f7f2", "e3f2", "c1f1", "f2f1"]}
+{"g": 33, "mate": true, "term": "checkmate", "plies": 5, "nodes": 1834, "t": 17.9, "moves": 3, "bank": 6009, "tb_consults": []}
+{"g": 37, "mate": true, "term": "checkmate", "plies": 7, "nodes": 2161, "t": 20.3, "moves": 4, "bank": 6184, "tb_consults": []}
+{"g": 22, "mate": true, "term": "checkmate", "plies": 5, "nodes": 7970, "t": 34.6, "moves": 3, "bank": 6255, "tb_consults": []}
+{"g": 36, "mate": true, "term": "checkmate", "plies": 17, "nodes": 24472, "t": 88.0, "moves": 9, "bank": 5518, "tb_consults": []}
+{"g": 26, "mate": true, "term": "checkmate", "plies": 5, "nodes": 1290, "t": 14.7, "moves": 3, "bank": 6795, "tb_consults": []}
+{"g": 39, "mate": true, "term": "checkmate", "plies": 19, "nodes": 33084, "t": 136.3, "moves": 10, "bank": 5153, "tb_consults": []}
+{"g": 30, "mate": true, "term": "checkmate", "plies": 3, "nodes": 1078, "t": 11.4, "moves": 2, "bank": 6976, "tb_consults": []}
+{"g": 34, "mate": true, "term": "checkmate", "plies": 5, "nodes": 3865, "t": 24.5, "moves": 3, "bank": 7197, "tb_consults": []}
+{"g": 40, "mate": true, "term": "checkmate", "plies": 7, "nodes": 10595, "t": 43.6, "moves": 4, "bank": 7324, "tb_consults": []}
+{"g": 43, "mate": true, "term": "checkmate", "plies": 5, "nodes": 4468, "t": 36.2, "moves": 3, "bank": 7439, "tb_consults": []}
+{"g": 38, "mate": true, "term": "checkmate", "plies": 3, "nodes": 991, "t": 9.7, "moves": 2, "bank": 8068, "tb_consults": []}
+{"g": 44, "mate": true, "term": "checkmate", "plies": 5, "nodes": 1932, "t": 21.1, "moves": 3, "bank": 8289, "tb_consults": []}
+{"g": 42, "mate": true, "term": "checkmate", "plies": 5, "nodes": 2696, "t": 24.0, "moves": 3, "bank": 8397, "tb_consults": []}
+{"g": 46, "mate": true, "term": "checkmate", "plies": 5, "nodes": 2154, "t": 18.9, "moves": 3, "bank": 8737, "tb_consults": []}
+{"g": 41, "mate": false, "term": "insufficient_material", "plies": 18, "nodes": 45000, "t": 140.4, "moves": 9, "bank": 6549, "tb_consults": [], "start_epd": "K7/8/8/4k3/2R5/2R5/1p6/8 w - -", "ucis": ["c4d4", "b2b1b", "a8b8", "e5d4", "c3c4", "d4e5", "c4e4", "e5f6", "b8c7", "f6g7", "c7d6", "g7h8", "d6e5", "h8g8", "e5f6", "g8h8", "f6f7", "b1e4"]}
+{"g": 47, "mate": false, "term": "checkmate", "plies": 30, "nodes": 60657, "t": 97.8, "moves": 15, "bank": 8151, "tb_consults": [], "start_epd": "8/1R6/1K2k3/4p3/8/8/8/3R4 w - -", "ucis": ["d1d4", "e5d4", "b7e7", "e6e7", "b6c5", "d4d3", "c5d4", "d3d2", "d4d3", "d2d1r", "d3c2", "d1d5", "c2c3", "e7d6", "c3c4", "d6c6", "c4c3", "c6b5", "c3b3", "d5c5", "b3a3", "b5c4", "a3b2", "c4b4", "b2a2", "b4c3", "a2a1", "c3c2", "a1a2", "c5a5"]}
+{"g": 45, "mate": true, "term": "checkmate", "plies": 7, "nodes": 6036, "t": 29.3, "moves": 4, "bank": 8925, "tb_consults": []}

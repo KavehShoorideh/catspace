@@ -1,0 +1,6 @@
+VERDICT MOVE_RANK (percentile of tablebase-optimal move in the field's prior ordering; 0.5=uniform, <0.5=harmful)
+  field        |  subgoal-prior | mate-region-prior  (mean over positions, top-1 hit)
+  treat_5k     |     0.55 (12%) |       0.49 ( 2%)   [40 positions]
+  nucleus      |     0.47 ( 0%) |       0.47 ( 0%)   [40 positions]
+  treat_20k    |     0.51 (12%) |       0.51 (12%)   [40 positions]
+[done] 10s

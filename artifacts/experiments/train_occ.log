@@ -1,0 +1,4 @@
+[stage] 240000 occupancy pairs  W/D/L=119240/114848/5912  gap[med=5 max=18]
+  step    0  Lpos 3.906 Lpush 25.650  d_pos 9.67  DTM-grad overall +0.237 within-material +0.211 (beat 0.13)  (2s)
+  step  100  Lpos 6.027 Lpush 7.491  d_pos 12.14  DTM-grad overall +0.168 within-material +0.148 (beat 0.13)  (113s)
+  step  200  Lpos 4.988 Lpush 10.232  d_pos 11.29  DTM-grad overall +0.205 within-material +0.196 (beat 0.13)  (224s)

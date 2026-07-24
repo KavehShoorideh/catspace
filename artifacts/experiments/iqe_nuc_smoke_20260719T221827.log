@@ -1,0 +1,14 @@
+# launched : Sun Jul 19 22:18:27 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/train_iqe_nucleus.py --steps 400 --out /Users/kav/.claude/jobs/20b9956a/tmp/iqe_nuc_smoke.pt
+# ---
+[stage] 19846 won nucleus positions; building material keys...
+[stage] 198 material classes
+/Users/kav/code/remote/github/catspace/experiments/train_iqe_nucleus.py:124: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_rank {float(L_rank):.4f} L_sym {float(L_sym):.4f} "
+  step    0  L_rank 1.0318 L_sym 11.9105 L_sep 38.2423  spearman(d,DTM) -0.044  (0s)
+  step  399  L_rank 0.9156 L_sym 0.0884 L_sep 0.3305  spearman(d,DTM) +0.164  (83s)
+saved /Users/kav/.claude/jobs/20b9956a/tmp/iqe_nuc_smoke.pt
+VERDICT IQE_NUCLEUS overall_spearman(d,DTM)=+0.286 (centroid on incumbent was ~0/neg; >0.5 = a usable DTM-ordered nucleus)

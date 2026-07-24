@@ -1,0 +1,25 @@
+=== FILL DATA HOLES start Thu Jul 23 13:28:44 PDT 2026 ===
+--- [1/6] syzygy 3-4-5 full set ---
+index lists 1 files
+345 done:       22 files on disk
+--- [2/6] 6-man capstone closure ---
+  6man: KRRvKBN.rtbw  80M
+  6man: KRRvKBN.rtbz 352M
+  6man: KRRvKNP.rtbw 257M
+  6man: KRRvKNP.rtbz 385M
+  6man: KRvKBNP.rtbw 4.0K
+  6man: KRvKBNP.rtbz 4.0K
+--- [3/6] maia full elo ladder ---
+maia:        9 nets
+--- [4/6] lc0 real network (regime 7) ---
+lc0 net: 4.0K	data/engines/lc0/t1-smolgen-512x15x8h-distilled-swa-3395000.pb.gz
+--- [5/6] full lichess 2019-01 month ---
+--- FIXER: 345 via 3-4-5-wdl/-dtz, combinatorial names ---
+FIXER 345: +270 files; total      296
+FIXER 6man: KBNPvKR 1.4G	data/syzygy/KBNPvKR.rtbw 1.5G	data/syzygy/KBNPvKR.rtbz 
+FIXER lc0: 145M	data/engines/lc0/t1-512x15x8h-distilled-swa-3395000.pb.gz
+--- FIXER done Thu Jul 23 14:06:20 PDT 2026 ---
+lichess month: 9.4G
+--- [6/6] gaviota 3-4-5 (true DTM) ---
+gaviota:      145 files
+=== FILL DATA HOLES done Thu Jul 23 14:36:35 PDT 2026; disk: 28Gi free ===

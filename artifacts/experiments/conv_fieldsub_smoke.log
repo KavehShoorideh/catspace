@@ -1,0 +1,5 @@
+VERDICT FIELD_SUBGOAL field=iqe_nucleus_gn n=10 bank=1200 lam=1.0 replan=4 short_depth=3
+  A  base (navigate straight to MATE)     mate_rate=0.400  (134s)
+  B  field-subgoal navigation             mate_rate=0.400  (91s)
+  DELTA subgoal - base: +0.000
+[done] 235s

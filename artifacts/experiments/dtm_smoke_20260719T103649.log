@@ -1,0 +1,7 @@
+# launched : Sun Jul 19 10:36:49 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/gen_dtm_data.py --per 150 --materials krrvk,krvk --out /Users/kav/.claude/jobs/20b9956a/tmp/dtm_smoke.npz
+# ---
+[stage] 300 positions: 30.2s
+VERDICT DTM_DATA n=300 dtm[min=1 med=19 max=35] -> /Users/kav/.claude/jobs/20b9956a/tmp/dtm_smoke.npz

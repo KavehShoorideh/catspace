@@ -1,0 +1,8 @@
+# launched : Sun Jul 19 21:19:45 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/conversion_ensemble.py --n 30 --nodes 400 --w 0.15
+# ---
+[A committor]  mate-rate 0.567  (80s)
+[B ensemble]   mate-rate 0.567  (131s)
+VERDICT ENSEMBLE_CONVERSION n=30 nodes=400 w=0.15 A_committor=0.567 B_ensemble=0.567 diff=+0.000

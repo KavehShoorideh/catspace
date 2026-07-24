@@ -1,0 +1,8 @@
+# launched : Sun Jul 19 08:09:06 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python experiments/viz/play_server.py --port 8000 --c-puct 1.0 --pw-c 1.5 --tactical-prior 0.25 --root-min-visits 10 --nodes 400
+# ---
+loading incumbent on CPU (data/derived/sep/cert_base_full.pt) ...
+play-atlas server on http://127.0.0.1:8000  (mcts nodes=400, model on cpu)
+position memory loaded: 200000 entries

@@ -1,0 +1,2 @@
+obvious-region soft-terminal: certainty_stop=0.9
+PLAYOUT_AB fixedsearch_rebase_vs_softterm mate-rate A=0.600 vs B=0.200  diff=-0.400 CI=[-0.520,-0.280]  e=4139916.84 (n=100 starts, 52 decisive, deterministic defender; plies-to-mate A=20 B=22) [SIGNIFICANT]

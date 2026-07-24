@@ -1,0 +1,241 @@
+{
+  "timestamp": "2026-07-14T22:33:24",
+  "tag": "CONFIRMATORY h2h seed-777",
+  "shards": "lichess_db_standard_rated_2019-01.prefix4gb",
+  "device": "mps",
+  "args": {
+    "ckpt": "data/derived/sep/cert_base_full.pt",
+    "baseline": "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+    "shards": null,
+    "opponent": "random",
+    "games": 0,
+    "baseline_games": 40,
+    "depth": 2,
+    "search_nodes": 400,
+    "search_beam": 4,
+    "search": "mcts",
+    "c_puct": 1.5,
+    "opening_plies": 6,
+    "max_plies": 200,
+    "elo_cond": 1800,
+    "skip_decompose": true,
+    "n_pool": 20000,
+    "n_decompose_starts": 60,
+    "device": "auto",
+    "seed": 777,
+    "alpha": 0.05,
+    "tag": "CONFIRMATORY h2h seed-777",
+    "out": null
+  },
+  "candidate": {
+    "path": "data/derived/sep/cert_base_full.pt",
+    "sha256": "e80e6b276a2c3680",
+    "step": 155000,
+    "leakage_audit": {
+      "clean": true,
+      "static": {
+        "clean": true,
+        "hits": {},
+        "checked": [
+          "train_lichess_fb.batch_tensors (what the FB loss actually sees)",
+          "train_lichess_fb.main (the training loop)",
+          "TorchFB.loss_fn",
+          "TorchFB.embed_F",
+          "TorchFB.embed_B",
+          "FBBoardPolicy.move_scored (the planner's read path)",
+          "planner.decompose.decompose",
+          "planner.decompose.waypoint_scores"
+        ]
+      },
+      "provenance": {
+        "status": "clean",
+        "detail": {
+          "script": "train_lichess_fb.py",
+          "args": {
+            "shards": "data/shards/lichess_db_standard_rated_2019-01.prefix4gb",
+            "steps": 155000,
+            "cert_base": true,
+            "cert_base_weight": 1.0,
+            "phead_weight": 0.3,
+            "cert_lam": 8.0,
+            "cert_scale": 50.0,
+            "zgoal_refresh": 2000,
+            "batch": 256,
+            "d": 64,
+            "quasimetric": false,
+            "ply_gap_weight": 0.05,
+            "ply_gap_scale": 50.0,
+            "asym_weight": 0.0,
+            "asym_margin": 0.2,
+            "two_horizon": false,
+            "near_max": 8,
+            "far_min": 16,
+            "near_weight": 1.0,
+            "distributional": false,
+            "n_bins": 12,
+            "dist_weight": 0.5,
+            "competence": false,
+            "competence_weight": 0.1,
+            "outcome_poles": false,
+            "outcome_weight": 0.3,
+            "pole_tau": 1.0,
+            "pole_margin": 3.0,
+            "repel_weight": 0.0,
+            "repel_margin": 1.5,
+            "concept_axes": 0,
+            "axis_weight": 0.5,
+            "axis_margin": 1.0,
+            "axis_gate_plies": 8.0,
+            "selfplay_shards": null,
+            "selfplay_frac": 0.3,
+            "gamma": 0.98,
+            "lr": 0.0002,
+            "lr_min": null,
+            "device": "auto",
+            "val_every": 500,
+            "ckpt_every": 20000,
+            "ckpt": "data/derived/sep/cert_base_full.pt",
+            "seed": 0,
+            "fresh": false
+          },
+          "data_columns_used": [
+            "packed",
+            "meta",
+            "game_id",
+            "white_elo",
+            "black_elo",
+            "clock"
+          ],
+          "stockfish_free": true,
+          "static_check": {
+            "clean": true,
+            "hits": {},
+            "checked": [
+              "train_lichess_fb.batch_tensors (what the FB loss actually sees)",
+              "train_lichess_fb.main (the training loop)",
+              "TorchFB.loss_fn",
+              "TorchFB.embed_F",
+              "TorchFB.embed_B",
+              "FBBoardPolicy.move_scored (the planner's read path)",
+              "planner.decompose.decompose",
+              "planner.decompose.waypoint_scores"
+            ]
+          },
+          "git_commit": "9ad925f"
+        }
+      }
+    },
+    "reach_slopes": {
+      "reach_slope_won": 0.6933061690966917,
+      "reach_slope_lost": 0.6087235868761991,
+      "n_won": 200,
+      "n_lost": 200,
+      "diff_slope_won": 0.6601449088967093,
+      "diff_slope_lost": 0.5460177657347457
+    },
+    "arena_vs_opponent": {
+      "games": 0,
+      "opening_plies": 6,
+      "max_plies": 200,
+      "seed": 777,
+      "wins": 0,
+      "draws": 0,
+      "losses": 0,
+      "score_mean": NaN,
+      "e_value": 1.0,
+      "n_decisive": 0,
+      "k_fb_wins": 0,
+      "reject_at_alpha": false,
+      "alpha": 0.05,
+      "opponent": "random"
+    }
+  },
+  "baseline": {
+    "path": "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+    "sha256": "43ce564843145e55",
+    "step": 90000,
+    "leakage_audit": {
+      "clean": true,
+      "static": {
+        "clean": true,
+        "hits": {},
+        "checked": [
+          "train_lichess_fb.batch_tensors (what the FB loss actually sees)",
+          "train_lichess_fb.main (the training loop)",
+          "TorchFB.loss_fn",
+          "TorchFB.embed_F",
+          "TorchFB.embed_B",
+          "FBBoardPolicy.move_scored (the planner's read path)",
+          "planner.decompose.decompose",
+          "planner.decompose.waypoint_scores"
+        ]
+      },
+      "provenance": {
+        "status": "clean",
+        "detail": {
+          "script": "train_lichess_fb.py",
+          "args": {
+            "shards": "data/shards/lichess_db_standard_rated_2019-01.prefix4gb",
+            "steps": 90000,
+            "batch": 512,
+            "d": 64,
+            "quasimetric": true,
+            "ply_gap_weight": 0.05,
+            "ply_gap_scale": 50.0,
+            "asym_weight": 0.0,
+            "asym_margin": 0.2,
+            "selfplay_shards": null,
+            "selfplay_frac": 0.3,
+            "gamma": 0.98,
+            "lr": 0.0003,
+            "lr_min": null,
+            "device": "auto",
+            "val_every": 500,
+            "ckpt": "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+            "seed": 0,
+            "fresh": true
+          },
+          "data_columns_used": [
+            "packed",
+            "meta",
+            "game_id",
+            "white_elo",
+            "black_elo",
+            "clock"
+          ],
+          "stockfish_free": true,
+          "static_check": {
+            "clean": true,
+            "hits": {},
+            "checked": [
+              "train_lichess_fb.batch_tensors (what the FB loss actually sees)",
+              "train_lichess_fb.main (the training loop)",
+              "TorchFB.loss_fn",
+              "TorchFB.embed_F",
+              "TorchFB.embed_B",
+              "FBBoardPolicy.move_scored (the planner's read path)",
+              "planner.decompose.decompose",
+              "planner.decompose.waypoint_scores"
+            ]
+          },
+          "git_commit": "b07193c"
+        }
+      }
+    }
+  },
+  "head_to_head": {
+    "games": 40,
+    "opening_plies": 6,
+    "max_plies": 200,
+    "seed": 777,
+    "wins": 16,
+    "draws": 20,
+    "losses": 4,
+    "score_mean": 0.65,
+    "e_value": 8.282032012939464,
+    "n_decisive": 20,
+    "k_fb_wins": 16,
+    "reject_at_alpha": false,
+    "alpha": 0.05
+  }
+}

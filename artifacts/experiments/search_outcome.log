@@ -1,0 +1,7 @@
+[stage] outcome-via-search: frontier<= 4p, 800 positions (strata [5, 6]), depths [0, 2, 4, 6], 8 workers
+  depth 0: WDL recovery 0.716  frontier-reach 0.269 (rest = material leaf)
+  depth 2: WDL recovery 0.709  frontier-reach 0.326 (rest = material leaf)
+  depth 4: WDL recovery 0.709  frontier-reach 0.317 (rest = material leaf)
+  depth 6: WDL recovery 0.715  frontier-reach 0.305 (rest = material leaf)
+-> artifacts/experiments/search_outcome.png
+VERDICT SEARCH_OUTCOME frontier=4 n=800 acc@d0=0.716 acc@d6=0.715 reach@d6=0.305 (763s)

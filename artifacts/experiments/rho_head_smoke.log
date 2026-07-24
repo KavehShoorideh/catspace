@@ -1,0 +1,7 @@
+[data] 4000 states, 317 walks, regimes [2, 3]  [54s]
+  embed 0/4000  [57s]
+  step 0 loss 0.8012  [66s]
+VERDICT RHO_HEAD held-out AUC per regime:
+    regime  2: AUC 0.943  spearman(-log-odds, ply-gap) +0.216 (monotone soft distance wanted)  n=41954
+    regime  3: AUC 0.969  spearman(-log-odds, ply-gap) +0.183 (monotone soft distance wanted)  n=39966
+saved /Users/kav/.claude/jobs/20b9956a/tmp/rho_head_smoke.pt  [69s]

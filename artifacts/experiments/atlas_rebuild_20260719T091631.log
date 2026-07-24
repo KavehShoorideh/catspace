@@ -1,0 +1,14 @@
+# launched : Sun Jul 19 09:16:31 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python experiments/viz/build_play_atlas.py --n 6000
+# ---
+[stage] load model+phead: 0.0s  ckpt=cert_base_full.pt step=155000 shards=lichess_db_standard_rated_2019-01.prefix4gb device=cpu
+[stage] certified filter: 7420/9600 sampled rows certified -> using 6000
+[stage] sample+load 6000 holdout rows: 1.0s
+[stage] embed F + reach/winp (6000 rows): 3.7s
+[stage] fit t-SNE (6000x64 -> 2D, perp=40 exag=1.6 iter=1500): 33.2s
+[stage] build+write atlas.json (6000 pts) + tsne_map: 0.3s
+wrote artifacts/generated/play_atlas/atlas.json
+wrote artifacts/generated/play_atlas/tsne_map/normalizer.npz
+wrote artifacts/generated/play_atlas/tsne_map/embedding.pkl

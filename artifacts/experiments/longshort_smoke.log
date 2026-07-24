@@ -1,0 +1,8 @@
+  start: mated=False  phase-trace=peeeee
+  start: mated=False  phase-trace=ppppeeeeeeeeeeeeeeeeeeeee
+  start: mated=False  phase-trace=ppppppppeeeeeeeeeee
+  start: mated=False  phase-trace=pppeeeeeeeeeeee
+  start: mated=False  phase-trace=ppppeeeeeeeeeeeeeeeee
+  start: mated=False  phase-trace=peeeeeeeee
+VERDICT LONGSHORT_ENGINE_SMOKE field=nucleus_distilled n=6 mate_rate=0.00
+[done] 164s

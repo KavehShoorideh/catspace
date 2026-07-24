@@ -1,0 +1,6 @@
+# launched : Sun Jul 19 07:01:59 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/playout_ab.py --ckpt-a data/derived/sep/cert_base_full.pt --ckpt-b data/derived/sep/cert_base_certified.pt --search-a mcts --search-b mcts --phead-a data/derived/sep/cert_base_full_phead.pt --phead-b data/derived/sep/cert_base_certified_phead.pt --nodes 800 --n 100 --label CERTIFIED_VS_INCUMBENT
+# ---
+PLAYOUT_AB CERTIFIED_VS_INCUMBENT mate-rate A=0.600 vs B=0.420  diff=-0.180 CI=[-0.300,-0.060]  e=8.34 (n=100 starts, 40 decisive, deterministic defender; plies-to-mate A=20 B=17) [SIGNIFICANT]

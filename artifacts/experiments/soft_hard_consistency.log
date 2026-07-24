@@ -1,0 +1,20 @@
+[data] 60000 states, 4704 walks, regimes [2, 3, 4, 5, 6, 8, 9, 10] [5s]
+VERDICT SOFT_HARD rank agreement, same-walk future pairs (gap 1-20):
+    regime  2: spearman(soft, hard) +0.623  n=503
+    regime  3: spearman(soft, hard) +0.633  n=477
+    regime  4: spearman(soft, hard) +0.610  n=496
+    regime  5: spearman(soft, hard) +0.613  n=515
+    regime  6: spearman(soft, hard) +0.561  n=487
+    regime  8: spearman(soft, hard) +0.694  n=527
+    regime  9: spearman(soft, hard) +0.580  n=498
+    regime 10: spearman(soft, hard) +0.591  n=497
+    ALL: spearman +0.615  n=4000
+VERDICT SOFT_CHANNEL_GAPS vs regime 2 (same pairs):
+    regime  3: mean -0.025  sd 0.100  mean|gap| 0.074
+    regime  4: mean -0.030  sd 0.103  mean|gap| 0.077
+    regime  5: mean -0.029  sd 0.094  mean|gap| 0.071
+    regime  6: mean -0.027  sd 0.098  mean|gap| 0.073
+    regime  8: mean -0.030  sd 0.095  mean|gap| 0.072
+    regime  9: mean -0.032  sd 0.103  mean|gap| 0.077
+    regime 10: mean -0.033  sd 0.105  mean|gap| 0.079
+done [18s]

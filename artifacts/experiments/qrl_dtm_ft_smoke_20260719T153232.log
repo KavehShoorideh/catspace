@@ -1,0 +1,29 @@
+# launched : Sun Jul 19 15:32:32 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/train_lichess_fb.py --shards data/shards/lichess_db_standard_rated_2019-01.prefix4gb --ckpt data/derived/sep/qrl_dtm_ft_smoke.pt --steps 42000 --quasimetric --iqe --iqe-components 32 --iqe-embed-scale 2.0 --iqe-leak-beta 10.0 --freeze-iqe-scale --spectral-norm --omega-free-field --qrl-objective --qrl-push-offset 8 --qrl-goal-pool 2048 --qrl-two-sided --qrl-use-pid --qrl-pid-kp 0.5 --qrl-pid-ki 0.01 --qrl-pid-kd 0.25 --qrl-pid-eclip 3.0 --qrl-lambda-max 0.0 --qrl-lambda-lr 0.01 --qrl-var-weight 1.0 --qrl-var-target 1.0 --qrl-unreach-weight 4.0 --qrl-unreach-floor 30 --committor-base --phead-weight 0.1 --selfplay-frac 0.3 --lr 1e-4 --batch 128 --seed 0 --d 512 --dh 512 --channels 128 --blocks 10 --enc-out 512 --dtm-hinge data/derived/dtm_endgame.npz --dtm-weight 2.0 --dtm-batch 128 --dtm-bank 256
+# ---
+shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=42000 batch=128 d=512 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed qrl_dtm_ft_smoke.pt at step 40000
+opt_state not restored (loaded state dict has a different number of parameter groups); fresh optimizer
+holdout: 8 batches of 128
+DTM hinge ON: 24000 tablebase positions (dtm min=1 med=21 max=193); mode=COMPOSED bank=256 weight=2.0 scale=1.0 batch=128
+committor-base ON: phead 66051 params, phead-weight=0.1 (no pole term, no goal vectors)
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:654: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 1.462 sq_dev 0.0044 lam 58.236 d_step 1.015 d_rand 43.061 var 0.656 sib 0.000 unr 3.957 unrb 9.850 d_unr 46.25 d_oth 38.71
+    phead 1.2548
+    dtm 18.8611  d_mean 2.09 tgt_mean 21.38  rank_corr +0.100
+step 40100  loss 64.7147  train_top1 0.000  lr 9.95e-05  (1.8 it/s)
+    qrl push 0.181 sq_dev 0.0044 lam 58.265 d_step 1.029 d_rand 57.432 var 0.631 sib 0.000 unr 0.000 unrb 9.072 d_unr 58.24 d_oth 55.59
+    phead 0.7273
+    dtm 20.3390  d_mean 3.17 tgt_mean 23.67  rank_corr +0.111
+step 40200  loss 69.3380  train_top1 0.000  lr 9.78e-05  (1.8 it/s)
+    qrl push 2.194 sq_dev 0.0186 lam 58.269 d_step 1.102 d_rand 47.888 var 0.377 sib 0.000 unr 5.896 unrb 8.239 d_unr 46.56 d_oth 57.20
+    phead 1.1490
+    dtm 19.5566  d_mean 3.86 tgt_mean 23.44  rank_corr +0.038
+step 40300  loss 86.1419  train_top1 0.000  lr 9.51e-05  (1.8 it/s)
+    qrl push 1.935 sq_dev 0.0678 lam 58.332 d_step 1.057 d_rand 43.225 var 0.385 sib 0.000 unr 5.460 unrb 8.286 d_unr 43.31 d_oth 42.80
+    phead 0.7888
+    dtm 17.2083  d_mean 4.31 tgt_mean 21.42  rank_corr +0.101

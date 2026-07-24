@@ -17,7 +17,10 @@ REGIME LADDER (ids are the multichannel vocabulary; 0=human stream, 1=random wal
   8  maia_1100   lc0 + maia-1100 weights, nodes=1 (the Maia human-move protocol)
   9  maia_1500   ...
   10 maia_1900   ...
-Unavailable engines are skipped per-worker with a one-line note -- the daemon runs with
+Maia tiers SAMPLE the policy (temperature 1.0, nodes=1) -- population simulation, not the
+modal argmax; SF channels get per-anchor ucinewgame (TT hygiene -> reproducible). Determinism
+audit 2026-07-23: sf_full = near-deterministic BY ROLE (the optimal corridor); elo-limited SF
+stochastic by design; rand_vs_sf stochastic. Unavailable engines are skipped per-worker with a one-line note -- the daemon runs with
 whatever exists. Controls: touch <out-dir>/STOP; guards: --max-gb / --min-free-gb.
 """
 from __future__ import annotations
@@ -43,9 +46,9 @@ REGIMES = {
     5:  dict(name="sf_1700",   kind="sf",   opts={"UCI_LimitStrength": True, "UCI_Elo": 1700}),
     6:  dict(name="sf_2000",   kind="sf",   opts={"UCI_LimitStrength": True, "UCI_Elo": 2000}),
     7:  dict(name="lc0",       kind="lc0",  weights=None),
-    8:  dict(name="maia_1100", kind="lc0",  weights="data/engines/maia/maia-1100.pb.gz", nodes=1),
-    9:  dict(name="maia_1500", kind="lc0",  weights="data/engines/maia/maia-1500.pb.gz", nodes=1),
-    10: dict(name="maia_1900", kind="lc0",  weights="data/engines/maia/maia-1900.pb.gz", nodes=1),
+    8:  dict(name="maia_1100", kind="lc0",  weights="data/engines/maia/maia-1100.pb.gz", nodes=1, temp=1.0),
+    9:  dict(name="maia_1500", kind="lc0",  weights="data/engines/maia/maia-1500.pb.gz", nodes=1, temp=1.0),
+    10: dict(name="maia_1900", kind="lc0",  weights="data/engines/maia/maia-1900.pb.gz", nodes=1, temp=1.0),
 }
 
 
@@ -76,7 +79,8 @@ def gen_chunk(task):
                 w = spec.get("weights")
                 if w and not Path(w).exists():
                     raise FileNotFoundError(w)
-                cmd = ["lc0"] + ([f"--weights={w}"] if w else [])
+                cmd = (["lc0"] + ([f"--weights={w}"] if w else [])
+                       + ([f"--temperature={spec['temp']}"] if spec.get("temp") else []))
                 e = chess.engine.SimpleEngine.popen_uci(cmd)
         except Exception as ex:
             engines[key] = None
@@ -85,7 +89,7 @@ def gen_chunk(task):
         engines[key] = e
         return e
 
-    def engine_move(rid, b):
+    def engine_move(rid, b, game_token):
         spec = REGIMES[rid]
         e = get_engine(rid)
         if e is None:
@@ -93,7 +97,7 @@ def gen_chunk(task):
         lim = (chess.engine.Limit(nodes=spec["nodes"]) if spec.get("nodes")
                else chess.engine.Limit(depth=sf_depth))
         try:
-            return e.play(b, lim).move
+            return e.play(b, lim, game=game_token).move
         except Exception:
             return None
 
@@ -119,7 +123,7 @@ def gen_chunk(task):
                     lm = list(b.legal_moves)
                     mv = lm[int(rng.integers(len(lm)))]
                 else:
-                    mv = engine_move(rid, b)
+                    mv = engine_move(rid, b, f"a{r}")
                     if mv is None:
                         dead = True; break
                 b.push(mv); walk.append(b.copy(stack=False))
@@ -150,7 +154,8 @@ def gen_chunk(task):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--shards", default="data/shards/lichess_db_standard_rated_2019-01.prefix4gb")
+    ap.add_argument("--shards", default="data/shards/lichess_db_standard_rated_2019-01.prefix4gb,"
+                                    "data/shards/sf_cont_endgame_v1")
     ap.add_argument("--out-dir", default="data/shards/regime_rollouts_v1")
     ap.add_argument("--chunk-anchors", type=int, default=200)
     ap.add_argument("--j", type=int, default=12)
@@ -167,7 +172,9 @@ def main():
     stop_file = out / "STOP"
     regime_ids = [int(x) for x in args.regimes.split(",")]
     workers = args.workers or max(2, (os.cpu_count() or 8) - 4)
-    src_files = sorted(glob.glob(str(Path(args.shards) / "shard_*.npz")))
+    src_files = []
+    for d in args.shards.split(","):                     # comma-separated source dirs --
+        src_files += sorted(glob.glob(str(Path(d) / "*.npz")))   # gate-region coverage (std #15)
     existing = sorted(out.glob("shard_*.npz"))
     shard_no = 1 + max([int(p.stem.split("_")[1]) for p in existing], default=-1)
     print(f"[daemon] workers={workers} chunk={args.chunk_anchors} regimes={regime_ids} "

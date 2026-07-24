@@ -1,0 +1,58 @@
+=== PHEAD_CALIBRATION (incumbent, fixed instruments) ===
+holdout games: 400  positions: 22283
+VERDICT PHEAD_ECE=0.0518 CI=[0.0321,0.0843] (bins=10, per-game bootstrap) SHARPNESS=0.205 n_pos=22283 n_games=400
+VERDICT MARTINGALE_ENDPOINT_DRIFT=-0.00029/ply CI=[-0.00095,+0.00035] (n_games=400; 0 in CI => endpoint-consistent)
+VERDICT MARTINGALE_EARLY_DRIFT=+0.00065/ply CI=[-0.00016,+0.00144] (n=400)
+VERDICT MARTINGALE_MID_DRIFT=-0.00090/ply CI=[-0.00203,+0.00022] (n=400)
+VERDICT MARTINGALE_LATE_DRIFT=-0.00064/ply CI=[-0.00219,+0.00096] (n=400)
+  bin [0.0,0.1) conf=0.058 realized=0.085 n=1043
+  bin [0.1,0.2) conf=0.152 realized=0.190 n=1263
+  bin [0.2,0.3) conf=0.252 realized=0.309 n=1674
+  bin [0.3,0.4) conf=0.355 realized=0.426 n=2471
+  bin [0.4,0.5) conf=0.455 realized=0.468 n=6226
+  bin [0.5,0.6) conf=0.542 realized=0.466 n=4538
+  bin [0.6,0.7) conf=0.645 realized=0.577 n=1955
+  bin [0.7,0.8) conf=0.747 realized=0.686 n=1301
+  bin [0.8,0.9) conf=0.849 realized=0.717 n=1001
+  bin [0.9,1.0) conf=0.935 realized=0.883 n=811
+SURFACES_PNG=artifacts/experiments/phead_surfaces_cert_base_full.png
+.venv/bin/python -u experiments/phead_calibration.py --ckpt  --phead  --shard  4.42s user 0.81s system 81% cpu 6.426 total
+=== EARLYSTOP PAIRED A/B @800n n=100 (playout_ab, MPS) ===
+decision-stability early stop ON (certified mate-stop + visit-gap heuristic)
+PLAYOUT_AB EARLYSTOP_800n mate-rate A=0.600 vs B=0.590  diff=-0.010 CI=[-0.030,+0.000]  e=1.00 (n=100 starts, 1 decisive, deterministic defender; plies-to-mate A=20 B=20) [ns]
+.venv/bin/python -u experiments/playout_ab.py --ckpt-a  --ckpt-b  --search-a   474.10s user 77.72s system 81% cpu 11:18.63 total
+=== ENERGY (MPS): mcts@800 WITH early stop, n=100 ===
+VERDICT ENERGY mcts+stop@800n conversion=0.590 rows/move=768 (p50=807 p90=821) evals/move=768 ms/move=228 util=0.96 plies-to-mate=20 (n=100, 1401 moves, mps, 323s)
+TOTAL 323s -> artifacts/experiments/energy_baseline.jsonl
+.venv/bin/python -u experiments/energy_baseline.py --n 100 --policies mcts     228.08s user 37.26s system 81% cpu 5:23.87 total
+CHAIN_DONE
+=== EARLYSTOP_v2 PAIRED A/B @800n n=100 (MPS) ===
+decision-stability early stop ON (certified mate-stop + visit-gap heuristic)
+PLAYOUT_AB EARLYSTOP_v2_800n mate-rate A=0.600 vs B=0.560  diff=-0.040 CI=[-0.080,-0.010]  e=4.38 (n=100 starts, 4 decisive, deterministic defender; plies-to-mate A=20 B=19) [SIGNIFICANT]
+.venv/bin/python -u experiments/playout_ab.py --ckpt-a  --ckpt-b  --search-a   473.68s user 78.82s system 82% cpu 11:11.78 total
+=== ENERGY v2 (MPS): mcts@800 WITH corrected early stop, n=100 ===
+VERDICT ENERGY mcts+stop@800n conversion=0.560 rows/move=752 (p50=804 p90=820) evals/move=752 ms/move=224 util=0.94 plies-to-mate=19 (n=100, 1425 moves, mps, 324s)
+TOTAL 324s -> artifacts/experiments/energy_baseline.jsonl
+.venv/bin/python -u experiments/energy_baseline.py --n 100 --policies mcts     229.46s user 38.08s system 82% cpu 5:24.96 total
+CHAIN2_DONE
+=== MATESTOP PAIRED A/B @800n n=100 (MPS) — expect diff 0.000 exactly ===
+certified mate-stop ON (stability heuristic OFF)
+PLAYOUT_AB MATESTOP_800n mate-rate A=0.600 vs B=0.600  diff=+0.000 CI=[+0.000,+0.000]  e=1.00 (n=100 starts, 0 decisive, deterministic defender; plies-to-mate A=20 B=20) [ns]
+.venv/bin/python -u experiments/playout_ab.py --ckpt-a  --ckpt-b  --search-a   472.33s user 78.65s system 81% cpu 11:12.93 total
+=== ENERGY (MPS): mcts@800 mate-stop only, n=100 ===
+VERDICT ENERGY mcts+mstop@800n conversion=0.600 rows/move=776 (p50=809 p90=822) evals/move=776 ms/move=232 util=0.97 plies-to-mate=20 (n=100, 1406 moves, mps, 330s)
+TOTAL 330s -> artifacts/experiments/energy_baseline.jsonl
+.venv/bin/python -u experiments/energy_baseline.py --n 100 --policies mcts     233.71s user 39.08s system 82% cpu 5:30.70 total
+=== ENERGY (CPU, fixed code): plan config re-run (fresh policy per start) ===
+VERDICT ENERGY plan@2000/60n conversion=0.150 rows/move=870 (p50=30 p90=4107) ms/move=425 util=0.43 plies-to-mate=10 (n=100, 1764 moves, cpu, 754s)
+TOTAL 754s -> artifacts/experiments/energy_baseline.jsonl
+.venv/bin/python -u experiments/energy_baseline.py --n 100 --policies plan    1666.98s user 682.43s system 311% cpu 12:34.34 total
+CHAIN3_DONE
+=== MCTSPLAN PAIRED A/B @800n n=100 (MPS) ===
+PLAYOUT_AB MCTSPLAN_800_100 mate-rate A=0.600 vs B=0.440  diff=-0.160 CI=[-0.260,-0.060]  e=12.93 (n=100 starts, 30 decisive, deterministic defender; plies-to-mate A=20 B=24) [SIGNIFICANT]
+.venv/bin/python -u experiments/playout_ab.py --ckpt-a  --ckpt-b  --search-a   283.55s user 44.54s system 70% cpu 7:47.63 total
+=== ENERGY (MPS): mctsplan@800/100, n=100 ===
+VERDICT ENERGY mctsplan@800n conversion=0.440 rows/move=223 (p50=111 p90=806) evals/move=222 ms/move=66 util=0.28 plies-to-mate=24 (n=100, 2292 moves, mps, 156s)
+TOTAL 156s -> artifacts/experiments/energy_baseline.jsonl
+.venv/bin/python -u experiments/energy_baseline.py --n 100 --policies mctspla  96.12s user 15.05s system 70% cpu 2:37.37 total
+CHAIN4_DONE

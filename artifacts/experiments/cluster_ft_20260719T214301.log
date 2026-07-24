@@ -1,0 +1,18 @@
+# launched : Sun Jul 19 21:43:01 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/cluster_finetune.py --steps 1500
+# ---
+[before] symmetry_ratio=0.91 (mirror vs random; >1 better)  dtm_clustering=1.02 (between/within; >1 better)
+/Users/kav/code/remote/github/catspace/experiments/cluster_finetune.py:129: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_sym {float(L_sym):.4f} L_clust {float(L_clust):.4f} "
+  step    0  L_sym 0.3259 L_clust 0.5454 L_anchor 1.3100  (0s)
+  step  250  L_sym 0.0156 L_clust 0.1018 L_anchor 0.0436  (15s)
+  step  500  L_sym 0.0088 L_clust 0.0984 L_anchor 0.0362  (32s)
+  step  750  L_sym 0.0075 L_clust 0.0994 L_anchor 0.0378  (52s)
+  step 1000  L_sym 0.0059 L_clust 0.0970 L_anchor 0.0357  (71s)
+  step 1250  L_sym 0.0050 L_clust 0.0983 L_anchor 0.0323  (90s)
+  step 1499  L_sym 0.0057 L_clust 0.0972 L_anchor 0.0363  (109s)
+saved data/derived/sep/cert_base_cluster.pt
+VERDICT CLUSTER symmetry_ratio 0.91->2.37  dtm_clustering 1.02->1.35  (both >1 and rising => clusters formed)

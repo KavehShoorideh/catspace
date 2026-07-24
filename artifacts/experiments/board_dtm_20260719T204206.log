@@ -1,0 +1,17 @@
+# launched : Sun Jul 19 20:42:06 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/train_board_dtm.py --epochs 80
+# ---
+[stage] planes (24000, 20, 8, 8) in 0.0s
+  ep   0  spearman +0.327  (3s)
+  ep  10  spearman +0.559  (18s)
+  ep  20  spearman +0.555  (33s)
+  ep  30  spearman +0.509  (48s)
+  ep  40  spearman +0.535  (63s)
+  ep  50  spearman +0.557  (79s)
+  ep  60  spearman +0.547  (94s)
+  ep  70  spearman +0.550  (109s)
+  ep  79  spearman +0.560  (122s)
+saved data/derived/sep/board_dtm.pt
+VERDICT BOARD_DTM overall_spearman=+0.560 per_material={'krrkbp': 0.29, 'krrvk': 0.681, 'krvk': 0.931} (F-head plateaued 0.227; >0.6 => navigable)

@@ -1,0 +1,21 @@
+# launched : Sun Jul 19 02:46:45 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/train_lichess_fb.py --shards data/shards/lichess_db_standard_rated_2019-01.prefix4gb --ckpt data/derived/sep/cert_certified_smoke.pt --steps 2000 --fresh --cert-base --cert-base-weight 1.0 --cert-lam 8.0 --cert-scale 50.0 --phead-weight 0.3 --committor-certified-only --resign-material-gap 3.0 --d 64 --batch 256 --lr 2e-4 --gamma 0.98 --seed 0
+# ---
+shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=2000 batch=256 d=64 quasimetric=False ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 2.3M (d=64 channels=64 blocks=6 enc_out=256)
+holdout: 8 batches of 256
+committor-certified-only ON (mate|draw|resign@>=3pts): 753191/1000000 games (75.3%) carry outcome labels to the phead; ALL games still train the geometry
+cert-base ON: phead 8707 params, phead-weight=0.3 lam=8.0 scale=50.0
+Traceback (most recent call last):
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py"[0m, line [35m915[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py"[0m, line [35m836[0m, in [35mmain[0m
+    d = [31mfb.distance_matrix[0m[1;31m(f_s[m], z[None, :])[0m[:, 0]
+        [31m~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/catspace/nn/fb.py"[0m, line [35m501[0m, in [35mdistance_matrix[0m
+    assert [1;31mself.quasimetric[0m, "distance_matrix requires quasimetric=True"
+           [1;31m^^^^^^^^^^^^^^^^[0m
+[1;35mAssertionError[0m: [35mdistance_matrix requires quasimetric=True[0m

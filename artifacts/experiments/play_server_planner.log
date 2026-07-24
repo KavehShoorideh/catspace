@@ -1,0 +1,23 @@
+loading incumbent on CPU (data/derived/sep/cert_base_full.pt) ...
+Traceback (most recent call last):
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/viz/play_server.py"[0m, line [35m784[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/viz/play_server.py"[0m, line [35m759[0m, in [35mmain[0m
+    ENGINE = Engine(args.ckpt, args.phead, args.nodes, c_puct=args.c_puct,
+                    prior_tau=args.prior_tau, pw_c=args.pw_c,
+                    memory_dir=args.memory or None, tactical_prior=args.tactical_prior,
+                    root_min_visits=args.root_min_visits, policy_path=policy_path or None,
+                    value_mode=args.value)
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/viz/play_server.py"[0m, line [35m64[0m, in [35m__init__[0m
+    fb, pay = [31mload_ckpt[0m[1;31m(Path(ckpt), self.dev)[0m
+              [31m~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/catspace/nn/fb.py"[0m, line [35m776[0m, in [35mload_ckpt[0m
+    [31mfb.load_state_dict[0m[1;31m(state)[0m
+    [31m~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/nn/modules/module.py"[0m, line [35m2638[0m, in [35mload_state_dict[0m
+    raise RuntimeError(
+    ...<3 lines>...
+    )
+[1;35mRuntimeError[0m: [35mError(s) in loading state_dict for TorchFB:
+	Unexpected key(s) in state_dict: "encF.stem.1.running_mean", "encF.stem.1.running_var", "encF.stem.1.num_batches_tracked", "encF.blocks.0.b1.running_mean", "encF.blocks.0.b1.running_var", "encF.blocks.0.b1.num_batches_tracked", "encF.blocks.0.b2.running_mean", "encF.blocks.0.b2.running_var", "encF.blocks.0.b2.num_batches_tracked", "encF.blocks.1.b1.running_mean", "encF.blocks.1.b1.running_var", "encF.blocks.1.b1.num_batches_tracked", "encF.blocks.1.b2.running_mean", "encF.blocks.1.b2.running_var", "encF.blocks.1.b2.num_batches_tracked", "encF.blocks.2.b1.running_mean", "encF.blocks.2.b1.running_var", "encF.blocks.2.b1.num_batches_tracked", "encF.blocks.2.b2.running_mean", "encF.blocks.2.b2.running_var", "encF.blocks.2.b2.num_batches_tracked", "encF.blocks.3.b1.running_mean", "encF.blocks.3.b1.running_var", "encF.blocks.3.b1.num_batches_tracked", "encF.blocks.3.b2.running_mean", "encF.blocks.3.b2.running_var", "encF.blocks.3.b2.num_batches_tracked", "encF.blocks.4.b1.running_mean", "encF.blocks.4.b1.running_var", "encF.blocks.4.b1.num_batches_tracked", "encF.blocks.4.b2.running_mean", "encF.blocks.4.b2.running_var", "encF.blocks.4.b2.num_batches_tracked", "encF.blocks.5.b1.running_mean", "encF.blocks.5.b1.running_var", "encF.blocks.5.b1.num_batches_tracked", "encF.blocks.5.b2.running_mean", "encF.blocks.5.b2.running_var", "encF.blocks.5.b2.num_batches_tracked", "encF.head.1.running_mean", "encF.head.1.running_var", "encF.head.1.num_batches_tracked", "encB.stem.1.running_mean", "encB.stem.1.running_var", "encB.stem.1.num_batches_tracked", "encB.blocks.0.b1.running_mean", "encB.blocks.0.b1.running_var", "encB.blocks.0.b1.num_batches_tracked", "encB.blocks.0.b2.running_mean", "encB.blocks.0.b2.running_var", "encB.blocks.0.b2.num_batches_tracked", "encB.blocks.1.b1.running_mean", "encB.blocks.1.b1.running_var", "encB.blocks.1.b1.num_batches_tracked", "encB.blocks.1.b2.running_mean", "encB.blocks.1.b2.running_var", "encB.blocks.1.b2.num_batches_tracked", "encB.blocks.2.b1.running_mean", "encB.blocks.2.b1.running_var", "encB.blocks.2.b1.num_batches_tracked", "encB.blocks.2.b2.running_mean", "encB.blocks.2.b2.running_var", "encB.blocks.2.b2.num_batches_tracked", "encB.blocks.3.b1.running_mean", "encB.blocks.3.b1.running_var", "encB.blocks.3.b1.num_batches_tracked", "encB.blocks.3.b2.running_mean", "encB.blocks.3.b2.running_var", "encB.blocks.3.b2.num_batches_tracked", "encB.blocks.4.b1.running_mean", "encB.blocks.4.b1.running_var", "encB.blocks.4.b1.num_batches_tracked", "encB.blocks.4.b2.running_mean", "encB.blocks.4.b2.running_var", "encB.blocks.4.b2.num_batches_tracked", "encB.blocks.5.b1.running_mean", "encB.blocks.5.b1.running_var", "encB.blocks.5.b1.num_batches_tracked", "encB.blocks.5.b2.running_mean", "encB.blocks.5.b2.running_var", "encB.blocks.5.b2.num_batches_tracked", "encB.head.1.running_mean", "encB.head.1.running_var", "encB.head.1.num_batches_tracked". [0m

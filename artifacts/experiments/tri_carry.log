@@ -1,0 +1,22 @@
+[carry] bank 5470
+[carry] 34 trajectories
+[carry] rank positions: 40
+VERDICT TRI_CARRY  (err plies: p50/p95/max | child-rank: top1 / spearman)
+  k= 1 C= 64: err 0.000/0.043/6.145 | top1 0.62 spearman 0.831  (n=1809)
+  k= 1 C=128: err 0.000/0.029/3.164 | top1 0.68 spearman 0.846  (n=1809)
+  k= 1 C=256: err 0.000/0.025/1.292 | top1 0.70 spearman 0.877  (n=1809)
+  k= 2 C= 64: err 0.000/0.057/4.304 | top1 0.62 spearman 0.724  (n=1809)
+  k= 2 C=128: err 0.000/0.035/3.236 | top1 0.65 spearman 0.778  (n=1809)
+  k= 2 C=256: err 0.000/0.027/1.735 | top1 0.75 spearman 0.831  (n=1809)
+  k= 3 C= 64: err 0.001/0.773/14.135 | top1 0.68 spearman 0.768  (n=1809)
+  k= 3 C=128: err 0.000/0.092/7.830 | top1 0.68 spearman 0.765  (n=1809)
+  k= 3 C=256: err 0.000/0.045/5.586 | top1 0.65 spearman 0.810  (n=1809)
+  k= 5 C= 64: err 0.003/2.087/30.789 | top1 0.57 spearman 0.619  (n=1809)
+  k= 5 C=128: err 0.000/0.732/23.453 | top1 0.60 spearman 0.682  (n=1809)
+  k= 5 C=256: err 0.000/0.085/9.547 | top1 0.60 spearman 0.719  (n=1809)
+  k= 8 C= 64: err 0.003/4.935/28.415 | top1 0.40 spearman 0.477  (n=1809)
+  k= 8 C=128: err 0.000/2.848/23.073 | top1 0.50 spearman 0.560  (n=1809)
+  k= 8 C=256: err 0.000/1.576/20.708 | top1 0.55 spearman 0.624  (n=1809)
+  k=12 C= 64: err 0.008/9.447/40.164 | top1 0.30 spearman 0.292  (n=1809)
+  k=12 C=128: err 0.004/6.327/33.186 | top1 0.38 spearman 0.388  (n=1809)
+  k=12 C=256: err 0.001/4.447/31.139 | top1 0.45 spearman 0.520  (n=1809)

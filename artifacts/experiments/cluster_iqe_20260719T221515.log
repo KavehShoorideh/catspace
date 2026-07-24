@@ -1,0 +1,13 @@
+# launched : Sun Jul 19 22:15:15 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/cluster_finetune.py --ckpt data/derived/sep/qrl_iqe_sn_full.pt --out data/derived/sep/qrl_iqe_cluster.pt --steps 1500 --w-strata 0 --lr 5e-5
+# ---
+[before] symmetry_ratio=3.93 (mirror vs random; >1 better)  dtm_clustering=1.06 (between/within; >1 better)  strata_ratio=1.16 (irrev/rev asym; >>1 better)
+/Users/kav/code/remote/github/catspace/experiments/cluster_finetune.py:187: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_sym {float(L_sym):.4f} L_clust {float(L_clust):.4f} "
+  step    0  L_sym 158.5818 L_clust 1793.6315 L_anchor 13092.6631 L_strata 0.0000  (0s)
+  step  250  L_sym 6.2997 L_clust 29.8412 L_anchor 826.4977 L_strata 0.0000  (31s)
+  step  500  L_sym 0.8657 L_clust 4.5467 L_anchor 38.1687 L_strata 0.0000  (61s)
+  step  750  L_sym 0.5551 L_clust 5.0183 L_anchor 6.3078 L_strata 0.0000  (91s)

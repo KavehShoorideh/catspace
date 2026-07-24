@@ -1,0 +1,29 @@
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=500 batch=512 d=512 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 9.1M (d=512 channels=128 blocks=10 enc_out=512)
+mixing self-play data from data/shards/sf_cont_endgame_v1 at frac=0.3
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:654: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 39.718 sq_dev 0.0000 lam 1.000 d_step 0.473 d_rand 0.472 var 0.000 sib 0.000 unr 29.530 unrb 29.528 d_unr 0.47 d_oth 0.48
+step 100  loss 456.3841  train_top1 0.000  lr 2.75e-04  (1.2 it/s)
+  VAL step 100  loss 18.6947  top1 0.002  top8 0.015
+    qrl push 33.670 sq_dev 27.8407 lam 1.632 d_step 6.225 d_rand 6.682 var 0.000 sib 0.000 unr 23.323 unrb 23.878 d_unr 6.68 d_oth 6.69
+step 200  loss 413.7175  train_top1 0.000  lr 2.08e-04  (1.1 it/s)
+  VAL step 200  loss 46.6553  top1 0.001  top8 0.011
+    qrl push 32.558 sq_dev 10.6028 lam 2.181 d_step 4.235 d_rand 7.871 var 0.000 sib 0.000 unr 22.156 unrb 21.709 d_unr 7.84 d_oth 8.25
+step 300  loss 401.9233  train_top1 0.000  lr 1.24e-04  (1.1 it/s)
+  VAL step 300  loss 81.7828  top1 0.001  top8 0.008
+    qrl push 29.475 sq_dev 19.2735 lam 2.808 d_step 3.939 d_rand 11.245 var 0.000 sib 0.000 unr 18.414 unrb 19.411 d_unr 11.59 d_oth 10.55
+step 400  loss 401.7740  train_top1 0.000  lr 5.63e-05  (1.1 it/s)
+  VAL step 400  loss 90.8974  top1 0.001  top8 0.012
+    qrl push 28.833 sq_dev 2.8465 lam 3.496 d_step 2.681 d_rand 11.991 var 0.000 sib 0.000 unr 18.034 unrb 17.951 d_unr 11.97 d_oth 12.37
+step 500  loss 442.8925  train_top1 0.000  lr 3.00e-05  (1.1 it/s)
+  VAL step 500  loss 91.0723  top1 0.001  top8 0.014
+zgoal MATE_W: 2048 checkmate finals
+zgoal MATE_B: 2048 checkmate finals
+saved data/derived/sep/lichess_sharp_smoke.pt
+VERDICT VAL_TOP1=0.001 VAL_TOP8=0.014 (chance 0.0020)
+VERDICT REACH_SLOPE_WON=0.490 (n=200) REACH_SLOPE_LOST=0.456 (n=200)
+VERDICT DIFF_SLOPE_WON=0.471 DIFF_SLOPE_LOST=0.437 (won-lost separation is the outcome signal; both were negative at step 2000)

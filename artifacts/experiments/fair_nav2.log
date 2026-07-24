@@ -1,0 +1,5 @@
+VERDICT FAIR_NAVIGATOR n=30 target<=5p (6-piece DTM>=30 starts)
+  budget |  FIELD reach/plies |    CNN reach/plies |   PURE reach/plies
+     100 |    90%   4.4p (ev    437) |    87%   7.0p (ev    700) |    80%   4.8p (ev    483)
+     400 |    97%   4.1p (ev   1641) |    93%   5.9p (ev   2371) |    77%   4.8p (ev   1930)
+[done] 132s

@@ -47,9 +47,15 @@ def main():
                          "'search to see if we have data points with embeddings near this "
                          "region') -- separates PLATEAU into coverage-hole vs geometry-flat")
     ap.add_argument("--support-n", type=int, default=100_000)
+    ap.add_argument("--energy-ckpt", default=None,
+                    help="also rank the tb move under the energy PRIOR (double-handicap check)")
     args = ap.parse_args()
     fm = FieldModel(args.field, device=args.device)
     tb = TB()
+    pfn = None
+    if args.energy_ckpt:
+        from experiments.mate_ladder_eval import make_energy_prior
+        pfn = make_energy_prior(ckpt=args.energy_ckpt)
 
     sup_B = sup_ref = None
     if args.support_shards:
@@ -115,6 +121,12 @@ def main():
                     if best_dtz is None or dz < best_dtz:
                         best_tb, best_dtz = i, dz
             rank_tb = int((-v_kids).argsort().tolist().index(best_tb)) + 1 if best_tb is not None else -1
+            prio_txt = ""
+            if pfn is not None and best_tb is not None:
+                pri = pfn(pb)
+                pv = np.array([pri.get(m, 0.0) for m in moves])
+                rank_pri = int((-pv).argsort().tolist().index(best_tb)) + 1
+                prio_txt = f" prior-rank {rank_pri}/{len(moves)} (p={pv[best_tb]:.3f})"
             progress = bool((d_kids < d_here).any())
             kind = ("PLATEAU" if spread < args.flat_eps
                     else ("SEARCH-MISS" if 0 < rank_tb <= 3 else "FIELD-WRONG"))
@@ -134,8 +146,8 @@ def main():
                 diags.append(dict(g=f["g"], term=f["term"], spread=spread, rank_tb=rank_tb,
                                   n_moves=len(moves), progress=progress, kind=kind))
             print(f"  g{f['g']:03d} {f['term'][:10]:10s} cycle-pos spread={spread:.4f} "
-                  f"tb-move rank {rank_tb}/{len(moves)} field-progress={progress} -> {kind}{sup_txt}",
-                  flush=True)
+                  f"tb-move rank {rank_tb}/{len(moves)}{prio_txt} field-progress={progress} "
+                  f"-> {kind}{sup_txt}", flush=True)
 
     if diags:
         kinds = Counter(d["kind"] for d in diags)

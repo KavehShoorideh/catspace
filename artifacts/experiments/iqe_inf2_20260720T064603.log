@@ -1,0 +1,15 @@
+# launched : Mon Jul 20 06:46:03 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/cluster_infinite_finetune.py --steps 1200 --batch 96
+# ---
+[before] pawncap asym d_bwd/d_fwd=1.00 (fwd=4.07 bwd=4.09)
+/Users/kav/code/remote/github/catspace/experiments/cluster_infinite_finetune.py:126: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_rank {float(L_rank):.3f} L_sym {float(L_sym):.3f} "
+  step    0  L_rank 0.417 L_sym 36.429 L_step 19.929 L_inf 3139.914  d_fwd 4.10 d_bwd 3.91  sp(d,DTM) +0.294  (1s)
+  step  500  L_rank 4.593 L_sym 3.104 L_step 421.693 L_inf 1211.072  d_fwd 12.05 d_bwd 24.65  sp(d,DTM) -0.236  (209s)
+  step 1000  L_rank 1.184 L_sym 3.477 L_step 0.179 L_inf 1327.554  d_fwd 1.19 d_bwd 24.37  sp(d,DTM) +0.290  (416s)
+  step 1199  L_rank 1.215 L_sym 2.510 L_step 0.078 L_inf 0.007  d_fwd 1.03 d_bwd 64.35  sp(d,DTM) +0.192  (498s)
+saved data/derived/sep/iqe_infinite.pt
+VERDICT INFINITE pawncap_asym 1.00->1.09 (fwd 4.07->6.70, bwd 4.09->7.33; >>1 = one-way learned)

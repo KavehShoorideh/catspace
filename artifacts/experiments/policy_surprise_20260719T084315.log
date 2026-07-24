@@ -1,0 +1,7 @@
+# launched : Sun Jul 19 08:43:15 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python experiments/policy_surprise.py --n 150 --nodes 800
+# ---
+[stage] 150 positions @ 800n: 64.6s
+VERDICT POLICY_SURPRISE KL(search||policy)=1.370 (uniform baseline 0.442; lower=better)  top1_agree=0.040  CE_bestmove=4.143

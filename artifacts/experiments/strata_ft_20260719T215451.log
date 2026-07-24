@@ -1,0 +1,19 @@
+# launched : Sun Jul 19 21:54:51 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/cluster_finetune.py --ckpt data/derived/sep/cert_base_full.pt --out data/derived/sep/cert_base_strata.pt --steps 1500 --w-strata 1.0 --w-anchor 0.5
+# ---
+[before] symmetry_ratio=0.91 (mirror vs random; >1 better)  dtm_clustering=1.02 (between/within; >1 better)  strata_ratio=1.04 (irrev/rev asym; >>1 better)
+[strata] floor = 3.31 (irreversible backward >> this)
+/Users/kav/code/remote/github/catspace/experiments/cluster_finetune.py:187: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_sym {float(L_sym):.4f} L_clust {float(L_clust):.4f} "
+  step    0  L_sym 0.3259 L_clust 0.5454 L_anchor 1.3100 L_strata 4.4048  (0s)
+  step  250  L_sym 0.0131 L_clust 0.1011 L_anchor 0.1041 L_strata 0.0212  (21s)
+  step  500  L_sym 0.0073 L_clust 0.0922 L_anchor 0.0558 L_strata 0.0038  (41s)
+  step  750  L_sym 0.0069 L_clust 0.0933 L_anchor 0.0587 L_strata 0.0015  (68s)
+  step 1000  L_sym 0.0041 L_clust 0.0895 L_anchor 0.0552 L_strata 0.0005  (95s)
+  step 1250  L_sym 0.0033 L_clust 0.0897 L_anchor 0.0502 L_strata 0.0002  (121s)
+  step 1499  L_sym 0.0035 L_clust 0.0908 L_anchor 0.0561 L_strata 0.0001  (148s)
+saved data/derived/sep/cert_base_strata.pt
+VERDICT CLUSTER symmetry_ratio 0.91->2.78  dtm_clustering 1.02->1.47  strata_ratio 1.04->0.68 (all >1 and rising => structure formed)

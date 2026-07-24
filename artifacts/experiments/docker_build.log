@@ -1,0 +1,12 @@
+ Image deploy-engine Building 
+ Image deploy-banksync Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 987B done
+#1 DONE 0.0s
+
+#2 [banksync internal] load build definition from Dockerfile
+#2 transferring dockerfile: 648B done
+#2 DONE 0.0s
+
+#3 [banksync internal] load metadata for docker.io/library/python:3.12-slim
+

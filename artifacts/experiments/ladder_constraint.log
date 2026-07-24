@@ -1,0 +1,5 @@
+[1;34musage: [0m[1;35mladder_mate.py[0m [[32m-h[0m] [[36m--n [33mN[0m] [[36m--nodes [33mNODES [NODES ...][0m]
+                      [[36m--max-plies [33mMAX_PLIES[0m] [[36m--anywhere[0m]
+                      [[36m--value [33m{none,tb,dtm}[0m] [[36m--dtm-ckpt [33mDTM_CKPT[0m]
+                      [[36m--white [33m{mcts,tb}[0m] [[36m--seed [33mSEED[0m]
+ladder_mate.py: error: argument --value: invalid choice: 'constraint' (choose from 'none', 'tb', 'dtm')

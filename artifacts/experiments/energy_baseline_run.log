@@ -1,0 +1,8 @@
+VERDICT ENERGY mcts@200n conversion=0.490 rows/move=210 (p50=209 p90=222) evals/move=210 ms/move=109 util=1.05 plies-to-mate=19 (n=100, 1384 moves, cpu, 154s)
+VERDICT ENERGY mcts@800n conversion=0.600 rows/move=811 (p50=809 p90=822) evals/move=811 ms/move=447 util=1.01 plies-to-mate=20 (n=100, 1406 moves, cpu, 632s)
+VERDICT ENERGY mcts@1600n conversion=0.620 rows/move=1608 (p50=1609 p90=1621) evals/move=1608 ms/move=923 util=1.00 plies-to-mate=21 (n=100, 1399 moves, cpu, 1294s)
+VERDICT ENERGY beam@200n conversion=0.250 rows/move=339 (p50=319 p90=536) ms/move=154 util=1.69 plies-to-mate=11 (n=100, 1156 moves, cpu, 181s)
+VERDICT ENERGY beam@800n conversion=0.400 rows/move=3119 (p50=3184 p90=4740) ms/move=1612 util=3.90 plies-to-mate=9 (n=100, 1000 moves, cpu, 1614s)
+VERDICT ENERGY beam@1600n conversion=0.400 rows/move=3603 (p50=3743 p90=5187) ms/move=1807 util=2.25 plies-to-mate=9 (n=100, 1050 moves, cpu, 1899s)
+VERDICT ENERGY plan@2000/60n conversion=0.120 rows/move=779 (p50=31 p90=4046) ms/move=370 util=0.39 plies-to-mate=9 (n=100, 1907 moves, cpu, 711s)
+TOTAL 6485s -> artifacts/experiments/energy_baseline.jsonl

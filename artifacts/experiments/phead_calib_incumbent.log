@@ -1,0 +1,14 @@
+holdout games: 400  positions: 22283
+VERDICT PHEAD_ECE=0.0518 (bins=10) SHARPNESS=0.205 n_pos=22283
+VERDICT MARTINGALE_DRIFT=-0.00029/ply CI=[-0.00097,+0.00035] (n_games=400; 0 in CI => consistent)
+  bin [0.0,0.1) conf=0.058 realized=0.085 n=1043
+  bin [0.1,0.2) conf=0.152 realized=0.190 n=1263
+  bin [0.2,0.3) conf=0.252 realized=0.309 n=1674
+  bin [0.3,0.4) conf=0.355 realized=0.426 n=2471
+  bin [0.4,0.5) conf=0.455 realized=0.468 n=6226
+  bin [0.5,0.6) conf=0.542 realized=0.466 n=4538
+  bin [0.6,0.7) conf=0.645 realized=0.577 n=1955
+  bin [0.7,0.8) conf=0.747 realized=0.686 n=1301
+  bin [0.8,0.9) conf=0.849 realized=0.717 n=1001
+  bin [0.9,1.0) conf=0.935 realized=0.883 n=811
+SURFACES_PNG=artifacts/experiments/phead_surfaces_cert_base_full.png

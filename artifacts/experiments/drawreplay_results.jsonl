@@ -1,0 +1,6 @@
+{"g": 17, "mate": true, "term": "checkmate", "plies": 9, "nodes": 11627, "t": 470.0, "moves": 5, "bank": 2872}
+{"g": 6, "mate": true, "term": "checkmate", "plies": 23, "nodes": 50736, "t": 746.5, "moves": 12, "bank": 2871}
+{"g": 14, "mate": true, "term": "checkmate", "plies": 23, "nodes": 47246, "t": 788.2, "moves": 12, "bank": 2855}
+{"g": 0, "mate": true, "term": "checkmate", "plies": 29, "nodes": 57855, "t": 878.0, "moves": 15, "bank": 2863}
+{"g": 25, "mate": false, "term": "threefold_repetition", "plies": 18, "nodes": 45000, "t": 221.0, "moves": 9, "bank": 2947, "start_epd": "2R5/8/4R3/8/5k2/8/1K6/8 w - -", "ucis": ["b2c2", "f4f5", "c2d3", "f5e6", "d3e3", "e6d7", "c8c2", "d7e6", "c2h2", "e6d6", "h2c2", "d6d7", "c2g2", "d7e6", "g2h2", "e6d6", "h2h7", "d6e6"]}
+{"g": 22, "mate": true, "term": "checkmate", "plies": 9, "nodes": 13814, "t": 141.9, "moves": 5, "bank": 3129}

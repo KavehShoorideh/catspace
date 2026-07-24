@@ -1,0 +1,13 @@
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_db_standard_rated_2019-01.prefix256mb device=mps steps=3000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed dtm_fixed.pt at step 5000
+[resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
+mixing self-play data from data/shards/sf_cont_endgame_v1 at frac=0.35
+holdout: 8 batches of 512
+DTM hinge ON: 24000 tablebase positions (dtm min=1 med=21 max=193); mode=COMPOSED bank=384 weight=1.0 scale=6.0 batch=256
+zgoal MATE_W: 2048 checkmate finals
+zgoal MATE_B: 2048 checkmate finals
+saved data/derived/sep/dtm_fixed.pt
+VERDICT VAL_TOP1=0.001 VAL_TOP8=0.012 (chance 0.0020)
+VERDICT REACH_SLOPE_WON=-0.168 (n=200) REACH_SLOPE_LOST=-0.246 (n=200)
+VERDICT DIFF_SLOPE_WON=-0.170 DIFF_SLOPE_LOST=-0.250 (won-lost separation is the outcome signal; both were negative at step 2000)

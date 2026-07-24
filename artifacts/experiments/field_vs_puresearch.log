@@ -1,0 +1,13 @@
+=== treat_5k FIELD-GUIDED, nodes 1600 ===
+VERDICT FIELD_MCTS field=xfer_treat n=16 nodes=1600 basins=40 mate_basin_corner=0.39 (NO tablebase in White's search)
+  [field-MCTS] mate_rate 0.250  |  cornered-king reached 0.56 (start 0.19)  [148s]
+=== treat_5k PURE-SEARCH, nodes 1600 ===
+VERDICT FIELD_MCTS field=xfer_treat n=16 nodes=1600 basins=40 mate_basin_corner=0.39 (NO tablebase in White's search)
+  [field-MCTS] mate_rate 0.438  |  cornered-king reached 0.81 (start 0.19)  [4s]
+=== treat_5k FIELD-GUIDED, nodes 3200 ===
+VERDICT FIELD_MCTS field=xfer_treat n=16 nodes=3200 basins=40 mate_basin_corner=0.39 (NO tablebase in White's search)
+  [field-MCTS] mate_rate 0.375  |  cornered-king reached 0.69 (start 0.19)  [242s]
+=== treat_5k PURE-SEARCH, nodes 3200 ===
+VERDICT FIELD_MCTS field=xfer_treat n=16 nodes=3200 basins=40 mate_basin_corner=0.39 (NO tablebase in White's search)
+  [field-MCTS] mate_rate 0.562  |  cornered-king reached 0.75 (start 0.19)  [6s]
+ABDONE

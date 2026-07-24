@@ -1,0 +1,35 @@
+# launched : Sun Jul 19 11:32:29 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/gen_dtm_data.py --workers 9 --per 8000 --materials krrkbp,krrvk,krvk --out data/derived/dtm_endgame.npz
+# ---
+[stage] DTM gen: 3 materials x 8000 = 24000 target across 9 workers (27 chunks)
+  chunk done: krrkbp +889  total 889/24000  (2/s)
+  chunk done: krrkbp +889  total 1778/24000  (5/s)
+  chunk done: krrkbp +889  total 2667/24000  (7/s)
+  chunk done: krrkbp +888  total 3555/24000  (10/s)
+  chunk done: krrkbp +889  total 4444/24000  (12/s)
+  chunk done: krrkbp +889  total 5333/24000  (14/s)
+  chunk done: krrkbp +889  total 6222/24000  (17/s)
+  chunk done: krrkbp +889  total 7111/24000  (19/s)
+  chunk done: krrkbp +889  total 8000/24000  (21/s)
+  chunk done: krrvk +889  total 8889/24000  (18/s)
+  chunk done: krrvk +889  total 9778/24000  (20/s)
+  chunk done: krrvk +889  total 10667/24000  (21/s)
+  chunk done: krrvk +889  total 11556/24000  (23/s)
+  chunk done: krrvk +889  total 12445/24000  (25/s)
+  chunk done: krrvk +889  total 13334/24000  (27/s)
+  chunk done: krrvk +889  total 14223/24000  (28/s)
+  chunk done: krrvk +889  total 15112/24000  (30/s)
+  chunk done: krrvk +888  total 16000/24000  (31/s)
+  chunk done: krvk +889  total 16889/24000  (29/s)
+  chunk done: krvk +889  total 17778/24000  (31/s)
+  chunk done: krvk +889  total 18667/24000  (32/s)
+  chunk done: krvk +889  total 19556/24000  (33/s)
+  chunk done: krvk +889  total 20445/24000  (35/s)
+  chunk done: krvk +889  total 21334/24000  (36/s)
+  chunk done: krvk +889  total 22223/24000  (38/s)
+  chunk done: krvk +889  total 23112/24000  (39/s)
+  chunk done: krvk +888  total 24000/24000  (40/s)
+[stage] 24000 positions: 596.6s  per-material {'krrkbp': 8000, 'krrvk': 8000, 'krvk': 8000}
+VERDICT DTM_DATA n=24000 dtm[min=1 med=21 max=193] workers=9 -> data/derived/dtm_endgame.npz

@@ -1,0 +1,7 @@
+# launched : Sun Jul 19 09:14:10 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python /Users/kav/.claude/jobs/20b9956a/tmp/value_ab.py
+# ---
+VERDICT VALUE_AB committor P(win)        : mate 17/40 = 0.425
+VERDICT VALUE_AB quasimetric d(s->mate)  : mate 21/40 = 0.525

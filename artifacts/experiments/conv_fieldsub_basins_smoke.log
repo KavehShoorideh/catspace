@@ -1,0 +1,6 @@
+VERDICT FIELD_SUBGOAL field=iqe_nucleus_gn n=10 bank=1200 lam=1.0 replan=4 short_depth=3
+  A  base (navigate straight to MATE)     mate_rate=0.400  (137s)
+  B  field-subgoal navigation             mate_rate=0.400  (96s)
+     [40 basins; picked basin->mate dmate: median 6.55 range [6.55,6.55]  (intermediate if > mate-cluster's own spread)]
+  DELTA subgoal - base: +0.000
+[done] 244s

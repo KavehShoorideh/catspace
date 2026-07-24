@@ -4,69 +4,211 @@
 <link rel="stylesheet" href="/assets/chessground/chessground.brown.css">
 <link rel="stylesheet" href="/assets/chessground/chessground.cburnett.css">
 <style>
- body{font:14px/1.45 -apple-system,system-ui,sans-serif;margin:0;display:flex;gap:18px;
-      padding:16px;background:#1c1a17;color:#e8e2d6}
- #boardwrap{width:480px}  .cg-wrap{width:480px;height:480px}
- #panel{flex:1;max-width:560px;display:flex;flex-direction:column;gap:12px}
- .card{background:#262320;border:1px solid #3a352f;border-radius:8px;padding:12px}
+ :root{--bg:#1c1a17;--card:#262320;--line:#3a352f;--ink:#e8e2d6;--muted:#8d857a;--gold:#c9a227;--blue:#7fb8d9}
+ *{box-sizing:border-box}
+ body{font:14px/1.45 -apple-system,system-ui,sans-serif;margin:0;padding:16px;background:var(--bg);color:var(--ink)}
+ .tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--line)}
+ .tab{padding:8px 18px;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;
+      font-size:13px;text-transform:uppercase;letter-spacing:.06em}
+ .tab.on{color:var(--ink);border-bottom-color:var(--gold)}
+ .view{display:none} .view.on{display:block}
+ .stage{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+ .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;
+        overflow:auto;resize:both;min-width:280px;min-height:280px}
+ #boardpanel{width:500px;height:auto;resize:horizontal} #atlaspanel{width:520px;height:560px}
+ /* board stays a locked square regardless of panel width; controls sit below */
+ .cg-wrap{width:100%;aspect-ratio:1/1;height:auto}
+ #atlascanvas{width:100%;height:calc(100% - 26px);display:block;background:#211f1b;border-radius:6px}
+ .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px}
  h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#b8ad98}
- button{background:#4a6b4a;color:#fff;border:0;border-radius:6px;padding:8px 14px;
-        font-size:14px;cursor:pointer} button:disabled{opacity:.4}
- select{background:#1c1a17;color:#e8e2d6;border:1px solid #3a352f;border-radius:6px;padding:6px}
- #prompt{border-left:3px solid #c9a227;padding-left:10px;min-height:1.4em;font-style:italic}
+ button{background:#4a6b4a;color:#fff;border:0;border-radius:6px;padding:8px 14px;font-size:14px;cursor:pointer}
+ button:disabled{opacity:.4}
+ select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px}
+ #prompt{border-left:3px solid var(--gold);padding-left:10px;min-height:1.4em;font-style:italic}
  table{width:100%;border-collapse:collapse} td,th{padding:3px 8px;text-align:left;
        border-bottom:1px solid #33302a;font-variant-numeric:tabular-nums}
  .idea{display:flex;align-items:center;gap:8px;padding:4px 0}
- .tag{flex:1;padding:2px 6px;border-radius:4px;background:#1c1a17;border:1px dashed transparent}
- .tag[contenteditable=true]{border-color:#c9a227;outline:none}
+ .tag{flex:1;padding:2px 6px;border-radius:4px;background:var(--bg);border:1px dashed transparent}
+ .tag[contenteditable=true]{border-color:var(--gold);outline:none}
  .pencil{cursor:pointer;opacity:.6} .pencil:hover{opacity:1}
  .kind{font-size:11px;color:#b8ad98;width:70px}
- .leaf{margin:6px 0;padding:6px 8px;background:#1c1a17;border-radius:6px;font-size:13px}
- .muted{color:#8d857a;font-size:12px}
+ .leaf{margin:6px 0;padding:6px 8px;background:var(--bg);border-radius:6px;font-size:13px;cursor:pointer}
+ .leaf.sel{border-left:3px solid var(--blue)}
+ .muted{color:var(--muted);font-size:12px}
+ .legend{display:flex;gap:14px;font-size:11px;margin-top:4px;flex-wrap:wrap}
+ .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle}
 </style></head>
 <body>
-<div id="boardwrap">
-  <div id="board" class="cg-wrap"></div>
-  <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
-    <select id="opp">
-      <option value="data/engines/maia/maia-1100.pb.gz">maia 1100</option>
-      <option value="data/engines/maia/maia-1200.pb.gz" selected>maia 1200</option>
-      <option value="data/engines/maia/maia-1400.pb.gz">maia 1400</option>
-      <option value="data/engines/maia/maia-1600.pb.gz">maia 1600</option>
-      <option value="data/engines/maia/maia-1900.pb.gz">maia 1900</option>
-    </select>
-    <button id="newgame">New game</button>
-    <a href="/atlas" target="_blank" style="color:#7fb8d9;font-size:13px">🗺 atlas</a>
-    <span id="status" class="muted"></span>
-  </div>
+<div class="tabs">
+  <div class="tab on" data-v="game">▸ Game</div>
+  <div class="tab" data-v="cone">Cone / Rivers</div>
+  <div class="tab" data-v="energy">Energy −logP</div>
+  <div class="tab" data-v="extras">Extras</div>
+  <span class="muted" style="margin-left:auto;align-self:center" id="status"></span>
 </div>
-<div id="panel">
-  <div class="card"><h3>assistant</h3>
-    <div id="prompt">…</div>
-    <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
-      <button id="calc">Let's calculate</button>
-      <span class="muted">it thinks while you think — compare notes after</span>
+
+<div class="view on" id="view-game">
+  <div class="stage">
+    <div class="panel" id="boardpanel">
+      <div id="board" class="cg-wrap"></div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <select id="opp">
+          <option value="data/engines/maia/maia-1100.pb.gz">maia 1100</option>
+          <option value="data/engines/maia/maia-1200.pb.gz" selected>maia 1200</option>
+          <option value="data/engines/maia/maia-1400.pb.gz">maia 1400</option>
+          <option value="data/engines/maia/maia-1600.pb.gz">maia 1600</option>
+          <option value="data/engines/maia/maia-1900.pb.gz">maia 1900</option>
+        </select>
+        <button id="newgame">New game</button>
+        <button id="calc">Let's calculate</button>
+      </div>
+    </div>
+    <div class="panel" id="atlaspanel">
+      <h3 style="margin:0 0 4px">B-space atlas <span class="muted" id="atlasnote">— banked goals + engine lines</span></h3>
+      <canvas id="atlascanvas"></canvas>
+      <div class="legend">
+        <span><span class="dot" style="background:#7fbf7f"></span>mates</span>
+        <span><span class="dot" style="background:#d9705f"></span>losses</span>
+        <span><span class="dot" style="background:#c9a227"></span>draws</span>
+        <span><span class="dot" style="background:#7fb8d9"></span>engine line</span>
+        <span><span class="dot" style="background:#fff"></span>subgoal cluster</span>
+      </div>
     </div>
   </div>
-  <div class="card"><h3>top moves</h3><table id="tops"><tbody></tbody></table></div>
-  <div class="card"><h3>where we likely end up <span class="muted">(plan: <span id="plan">—</span>)</span></h3>
+  <div class="card"><div id="prompt">…</div></div>
+  <div class="card"><h3>where we likely end up <span class="muted">(plan: <span id="plan">—</span>) · click a line to trace it on the atlas</span></h3>
     <div id="leaves"></div></div>
-  <div class="card"><h3>ideas & concepts <span class="muted">(✏️ rename — your names are saved)</span></h3>
-    <div id="ideas"></div></div>
 </div>
+
+<div class="view" id="view-cone">
+  <div class="card"><h3>forward reachability cone <span class="muted">— height = directed distance to nearest mate; the bright chain is the “river” downhill to the goal</span></h3>
+    <button id="conego">Compute cone from current position</button>
+    <canvas id="conecanvas" style="width:100%;height:520px;display:block;background:#211f1b;border-radius:6px;margin-top:10px"></canvas>
+    <div class="muted" id="conenote">nodes are White replies (best under the field); a node where every child rises is a chute/dead-end</div>
+  </div>
+</div>
+
+<div class="view" id="view-energy">
+  <div class="card"><h3>−log P(move) <span class="muted">— under the selected opponent model; low = human-likely, high-but-good = the engine’s surprise</span></h3>
+    <button id="energygo">Read −logP here</button>
+    <div id="energybars" style="margin-top:12px"></div>
+    <h3 style="margin-top:16px">along the top engine line</h3>
+    <div id="energyline" class="muted">calculate first, then read −logP to see how surprising each move of the main line is</div>
+  </div>
+</div>
+
+<div class="view" id="view-extras">
+  <div class="card"><h3>top moves</h3><table id="tops"><tbody></tbody></table></div>
+  <div class="card"><h3>engine belief</h3><div id="belief" class="muted">calculate to read the field here</div></div>
+  <div class="card"><h3>ideas &amp; concepts <span class="muted">(✏️ rename — your names are saved)</span></h3>
+    <div id="ideas"></div></div>
+  <div class="card"><h3>tools</h3>
+    <div><a href="/ab" target="_blank" style="color:var(--blue)">A/B test dashboard →</a></div></div>
+</div>
+
 <script type="module">
 import { Chessground } from '/assets/chessground/chessground.js';
 const $=s=>document.querySelector(s);
-let cg, pendingFrom=null;
 async function j(url,body){const r=await fetch(url,body?{method:'POST',body:JSON.stringify(body)}:undefined);return r.json();}
 function destsMap(d){const m=new Map();for(const k in d)m.set(k,d[k]);return m;}
+
+// ---- tabs
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='view-'+t.dataset.v));
+  if(t.dataset.v==='game')drawAtlas();
+});
+
+// ---- Cone / Rivers
+$('#conego').onclick=async()=>{
+  $('#conenote').textContent='computing forward reachability cone…';
+  const d=await j('/cone');
+  if(d.err){$('#conenote').textContent='error: '+d.err;return;}
+  const cv=$('#conecanvas');cv.width=cv.clientWidth;cv.height=cv.clientHeight;
+  const g=cv.getContext('2d');g.clearRect(0,0,cv.width,cv.height);
+  const byd={};d.nodes.forEach(n=>{(byd[n.depth]=byd[n.depth]||[]).push(n);});
+  const maxd=Math.max(...d.nodes.map(n=>n.depth));
+  const hs=d.nodes.filter(n=>n.h!=null).map(n=>n.h);
+  const hlo=Math.min(...hs,0),hhi=Math.max(...hs,1);
+  const pos={};
+  Object.keys(byd).forEach(dep=>{const row=byd[dep];row.forEach((n,i)=>{
+    pos[n.id]=[(i+1)/(row.length+1)*cv.width, 30+ (+dep)/(maxd||1)*(cv.height-60)];});});
+  const river=new Set(d.river);
+  // edges
+  d.nodes.forEach(n=>{if(n.parent>=0&&pos[n.parent]){
+    g.strokeStyle=river.has(n.id)?'#7fb8d9':'#3a352f';g.lineWidth=river.has(n.id)?2.5:1;
+    g.beginPath();g.moveTo(...pos[n.parent]);g.lineTo(...pos[n.id]);g.stroke();}});
+  // nodes: color by height (blue near mate -> red far)
+  d.nodes.forEach(n=>{const[x,y]=pos[n.id];
+    let col='#b8ad98';
+    if(n.h!=null){const t=(n.h-hlo)/((hhi-hlo)||1);
+      col='rgb('+Math.round(80+175*t)+','+Math.round(180-120*t)+','+Math.round(160-120*t)+')';}
+    g.fillStyle=col;g.beginPath();g.arc(x,y,river.has(n.id)?7:5,0,7);g.fill();
+    g.fillStyle='#e8e2d6';g.font='11px system-ui';g.fillText(n.san+(n.h!=null?(' '+n.h):''),x+8,y+3);});
+  $('#conenote').textContent=d.nodes.length+' nodes · bright chain = downhill river to mate · redder = farther from any mate';
+};
+
+// ---- Energy -logP
+$('#energygo').onclick=async()=>{
+  const d=await j('/energy');
+  if(d.err){$('#energybars').textContent='error: '+d.err;return;}
+  const mx=Math.max(...d.moves.map(m=>m[3]),1);
+  $('#energybars').innerHTML=d.moves.map(m=>{
+    const w=(1-m[3]/(mx*1.1))*100;   // low -logP -> long bar (more human-likely)
+    return `<div style="display:flex;align-items:center;gap:8px;margin:3px 0">
+      <span style="width:52px"><b>${m[0]}</b></span>
+      <div style="flex:1;background:#1c1a17;border-radius:3px;height:16px">
+        <div style="width:${w.toFixed(0)}%;background:#7fb8d9;height:100%;border-radius:3px"></div></div>
+      <span class="muted" style="width:120px">P=${(m[2]*100).toFixed(1)}% · −logP ${m[3]}</span></div>`;}).join('');
+  $('#energyline').innerHTML=d.line.length
+    ? d.line.map(l=>`<span style="margin-right:12px">${l[0]} <b>${l[1]}</b></span>`).join('')
+      +'<br><span class="muted">high −logP on our own line = a move the opponent-model finds unlikely (sharp/only-move territory)</span>'
+    : 'calculate first, then read −logP.';
+};
+
+// ---- atlas
+let atlas=null, sel=null, bounds=null;
+const COL={win:'rgba(127,191,127,0.30)',loss:'rgba(217,112,95,0.85)',draw:'rgba(201,162,39,0.5)'};
+async function loadAtlas(){
+  $('#atlasnote').textContent='— building projection (≈1 min)…';
+  const d=await j('/atlas_data');
+  atlas=d.pts;
+  const xs=atlas.map(p=>p[0]),ys=atlas.map(p=>p[1]);
+  bounds=[Math.min(...xs),Math.max(...xs),Math.min(...ys),Math.max(...ys)];
+  $('#atlasnote').textContent='— '+atlas.length+' banked goals; greens = mate basins';
+  drawAtlas();
+}
+function toPx(cv,x,y){const[a,b,c,d]=bounds;
+  return [(x-a)/((b-a)||1)*(cv.width-24)+12, cv.height-12-(y-c)/((d-c)||1)*(cv.height-24)];}
+function drawAtlas(){
+  const cv=$('#atlascanvas'); if(!cv.clientWidth)return;
+  cv.width=cv.clientWidth; cv.height=cv.clientHeight;
+  const g=cv.getContext('2d'); g.clearRect(0,0,cv.width,cv.height);
+  if(!atlas)return;
+  for(const[x,y,k]of atlas){const[px,py]=toPx(cv,x,y);
+    g.fillStyle=COL[k]||'#888';g.beginPath();g.arc(px,py,k==='win'?1.5:2.3,0,7);g.fill();}
+  if(sel&&sel.near){g.fillStyle='#fff';
+    for(const i of sel.near){const[x,y]=atlas[i];const[px,py]=toPx(cv,x,y);
+      g.beginPath();g.arc(px,py,3,0,7);g.fill();}}
+  if(sel&&sel.path){g.strokeStyle=COL.blue||'#7fb8d9';g.lineWidth=1.6;g.beginPath();
+    sel.path.forEach(([x,y],i)=>{const[px,py]=toPx(cv,x,y);i?g.lineTo(px,py):g.moveTo(px,py);});
+    g.stroke();
+    sel.path.forEach(([x,y],i)=>{const[px,py]=toPx(cv,x,y);
+      g.fillStyle=i===sel.path.length-1?'#fff':'#7fb8d9';
+      g.beginPath();g.arc(px,py,i===sel.path.length-1?5:3.2,0,7);g.fill();});}
+}
+new ResizeObserver(drawAtlas).observe($('#atlaspanel'));
+async function projectLine(fens){const r=await j('/atlas_select',{fens});if(r.path){sel=r;drawAtlas();}}
+
+// ---- game
+let cg;
 async function refresh(){
   const s=await j('/state');
   cg.set({fen:s.fen,turnColor:s.turn==='w'?'white':'black',
     movable:{color:'white',free:false,dests:destsMap(s.dests)}});
   const v=s.version||{};
   $('#status').textContent=(s.over?('game over: '+s.result):(s.turn==='w'?'your move':'…'))
-    +'  ·  model '+(v.model||'?')+(v.data_pct!=null?(' ('+v.data_pct+'% of nucleus data)'):'');
+    +'  ·  model '+(v.model||'?')+(v.data_pct!=null?(' ('+v.data_pct+'%)'):'')+(v.pinned?' (pinned)':'');
 }
 async function humanMove(orig,dest){
   let uci=orig+dest;
@@ -77,33 +219,33 @@ async function humanMove(orig,dest){
 function after(r){
   refresh();
   const a=r.assistant||{};
-  const note=a.suggest? '🔎 let’s calculate here — '+a.reasons.join('; ')
-                      : (r.reply?('opponent played '+r.reply+'.'):'');
-  // the position changed (opponent replied) -> the old calculation is stale:
-  // start a fresh one automatically and stream it in
-  if(r.reply){startCalc(note+' recalculating…');}
-  else{$('#prompt').textContent=note;}
+  const note=a.suggest?'🔎 let’s calculate here — '+a.reasons.join('; ')
+                      :(r.reply?('opponent played '+r.reply+'.'):'');
+  if(r.reply)startCalc(note+' recalculating…');
+  else $('#prompt').textContent=note;
 }
 function paint(r){
   if(r.plan)$('#plan').textContent=r.plan+(r.goal?(' → '+r.goal):'');
   $('#tops tbody').innerHTML=(r.top||[]).map(t=>`<tr><td><b>${t.san}</b></td><td>${t.visits} visits</td><td>v=${t.q}</td></tr>`).join('');
-  $('#leaves').innerHTML=(r.leaves||[]).map((l,i)=>`<div class="leaf" data-i="${i}" style="cursor:pointer" title="click: project this line onto the atlas">${l.line}<br><span class="muted">v=${l.v} · ${l.visits} visits</span></div>`).join('');
   window._leaves=r.leaves||[];
-  document.querySelectorAll('.leaf').forEach(el=>el.onclick=async()=>{
-    const l=window._leaves[+el.dataset.i];
-    if(l&&l.fens){await j('/atlas_select',{fens:l.fens});
-      el.style.borderLeft='3px solid #7fb8d9';
-      setTimeout(()=>el.style.borderLeft='',1500);}
+  $('#leaves').innerHTML=(r.leaves||[]).map((l,i)=>`<div class="leaf" data-i="${i}">${l.line}<br><span class="muted">v=${l.v} · ${l.visits} visits</span></div>`).join('');
+  document.querySelectorAll('.leaf').forEach(el=>el.onclick=()=>{
+    document.querySelectorAll('.leaf').forEach(x=>x.classList.remove('sel'));
+    el.classList.add('sel');
+    const l=window._leaves[+el.dataset.i]; if(l&&l.fens)projectLine(l.fens);
   });
   if(!r.done)return;
+  // auto-project the top engine line onto the atlas ("UMAP along the recommended lines")
+  if(r.leaves&&r.leaves[0]&&r.leaves[0].fens){projectLine(r.leaves[0].fens);
+    const el=document.querySelector('.leaf'); if(el)el.classList.add('sel');}
   $('#ideas').innerHTML=(r.ideas||[]).map(i=>`<div class="idea" data-id="${i.id}" data-kind="${i.kind}">
      <span class="kind">${i.kind}</span><span class="tag">${i.tag}</span>
-     <span class="pencil" title="rename this concept">✏️</span></div>`).join('')
-   +'<div class="muted" style="margin-top:6px">'+((r.probe&&(r.probe.v!=null
-      ?('belief v '+r.probe.v+' · P(win) '+r.probe.p_w+' · P(loss) '+r.probe.p_l+' · draw-mass '+r.probe.kappa
-        +' <span title="raw bank distances; uncalibrated, unreliable far from bank support">(raw d '+(+r.probe.d_win).toFixed(1)+'/'+(r.probe.d_loss==null?'∞':(+r.probe.d_loss).toFixed(1))+')</span>')
-      :('bank d_win '+(+r.probe.d_win).toFixed(1)+' · d_loss '+(r.probe.d_loss==null?'∞':(+r.probe.d_loss).toFixed(1))))
-      +(r.probe.seen_across_games!=null?(' · seen '+r.probe.seen_across_games+'× before'):''))||'')+'</div>';
+     <span class="pencil" title="rename this concept">✏️</span></div>`).join('');
+  $('#belief').innerHTML=(r.probe&&r.probe.v!=null)
+    ?('belief <b>v '+r.probe.v+'</b> · P(win) '+r.probe.p_w+' · P(loss) '+r.probe.p_l+' · draw-mass '+r.probe.kappa
+      +'<br><span class="muted" title="raw bank distances; unreliable far from support">raw d '+(+r.probe.d_win).toFixed(1)+' / '+(r.probe.d_loss==null?'∞':(+r.probe.d_loss).toFixed(1))
+      +(r.probe.seen_across_games!=null?(' · seen '+r.probe.seen_across_games+'× before'):'')+'</span>')
+    :'—';
   document.querySelectorAll('.pencil').forEach(p=>p.onclick=()=>{
     const row=p.closest('.idea'),tag=row.querySelector('.tag');
     tag.contentEditable=true;tag.focus();
@@ -114,29 +256,23 @@ function paint(r){
 }
 let pollTimer=null;
 async function startCalc(prefix){
-  if(pollTimer)return;                 // one live calculation at a time
+  if(pollTimer)return;
   $('#calc').disabled=true;
   $('#prompt').textContent=(prefix||'calculating…')+' (think along: what would YOU play?)';
   const st=await j('/calculate_start',{nodes:1500});
   if(st.busy){$('#calc').disabled=false;return;}
   pollTimer=setInterval(async()=>{
-    const r=await j('/calc_state');
-    paint(r);
-    if(!r.done){
-      $('#prompt').textContent=(prefix||'calculating…')+' '+r.evals+' / '+r.target+' positions — lines firming up live';
-    }else{
-      clearInterval(pollTimer);pollTimer=null;
-      $('#calc').disabled=false;
-      $('#prompt').textContent=r.err?('error: '+r.err)
-        :('done — '+r.evals+' positions examined. compare with your line:');
-    }
+    const r=await j('/calc_state'); paint(r);
+    if(!r.done){$('#prompt').textContent=(prefix||'calculating…')+' '+r.evals+' / '+r.target+' positions — lines firming up live';}
+    else{clearInterval(pollTimer);pollTimer=null;$('#calc').disabled=false;
+      $('#prompt').textContent=r.err?('error: '+r.err):('done — '+r.evals+' positions examined. compare with your line:');}
   },700);
 }
 $('#calc').onclick=()=>startCalc();
 $('#newgame').onclick=async()=>{await j('/new',{opponent:$('#opp').value});
-  $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';
+  $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';sel=null;drawAtlas();
   $('#prompt').textContent='new game — you are White.';refresh();};
 cg=Chessground($('#board'),{movable:{color:'white',free:false,events:{after:humanMove}}});
-refresh();
+refresh(); loadAtlas();
 </script>
 </body></html>

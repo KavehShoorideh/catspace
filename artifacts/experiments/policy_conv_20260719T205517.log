@@ -1,0 +1,6 @@
+# launched : Sun Jul 19 20:55:17 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/conversion_board_policy.py --n 30 --nodes 400
+# ---
+[A committor only]        mate-rate 0.567  (84s)

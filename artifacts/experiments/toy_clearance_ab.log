@@ -1,0 +1,2 @@
+phead committor + draw clearance beta=0.5
+PLAYOUT_AB fixedsearch_vs_clearance mate-rate A=0.600 vs B=0.510  diff=-0.090 CI=[-0.190,+0.000]  e=1.00 (n=100 starts, 23 decisive, deterministic defender; plies-to-mate A=20 B=19) [ns]

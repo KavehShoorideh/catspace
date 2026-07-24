@@ -1,0 +1,10 @@
+shards=lichess_db_standard_rated_2019-01.prefix1gb device=mps steps=300 batch=512 d=256 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 2.5M (d=256 channels=64 blocks=6 enc_out=256)
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py:958: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"step {step}  loss {float(loss):.4f}  train_top1 {float(top1):.3f}  "
+step 100  loss 6.2649  train_top1 0.002  lr 2.34e-04  (0.4 it/s)
+  ladder checkpoint -> lichess_l2_iqe_smoke_step100.pt
+step 200  loss 6.2517  train_top1 0.002  lr 9.87e-05  (0.4 it/s)
+  ladder checkpoint -> lichess_l2_iqe_smoke_step200.pt

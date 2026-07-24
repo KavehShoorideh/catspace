@@ -1,0 +1,56 @@
+=== [1/2] geometry field train, 1500 steps ===
+[stage] 117034 edges, 5812 irreversible (5.0%)
+[before] pawn-death one-way asym (EVAL probe) = 1.00x
+/Users/kav/code/remote/github/catspace/experiments/train_field_geometry.py:178: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_pos {float(L_pos):.3f} L_neg {float(L_neg):.3f} "
+  step    0  L_pos 83.602 L_neg 3.001 L_hard 122.202 L_rank 0.373 L_grank 0.688 L_sym 0.044 L_sep 0.086  d_pos 10.15 d_bwd_irr 10.57  sp(d,DTM) +0.380  (1s)
+  step   50  L_pos 6.116 L_neg 3.020 L_hard 37.933 L_rank 0.924 L_grank 0.530 L_sym 0.035 L_sep 0.704  d_pos 3.28 d_bwd_irr 3.84  sp(d,DTM) +0.185  (33s)
+  step  100  L_pos 11.077 L_neg 2.974 L_hard 32.535 L_rank 0.862 L_grank 0.494 L_sym 0.046 L_sep 0.560  d_pos 4.24 d_bwd_irr 6.12  sp(d,DTM) +0.212  (66s)
+  step  150  L_pos 4.388 L_neg 2.988 L_hard 22.391 L_rank 0.834 L_grank 0.548 L_sym 0.121 L_sep 0.452  d_pos 2.25 d_bwd_irr 5.23  sp(d,DTM) +0.227  (98s)
+  step  200  L_pos 4.163 L_neg 2.828 L_hard 17.755 L_rank 0.924 L_grank 0.731 L_sym 0.100 L_sep 0.500  d_pos 1.83 d_bwd_irr 5.20  sp(d,DTM) -0.167  (130s)
+  step  250  L_pos 3.885 L_neg 2.672 L_hard 10.961 L_rank 0.875 L_grank 0.784 L_sym 0.211 L_sep 0.323  d_pos 1.71 d_bwd_irr 5.87  sp(d,DTM) -0.111  (162s)
+  step  300  L_pos 3.245 L_neg 2.010 L_hard 7.783 L_rank 0.808 L_grank 0.844 L_sym 0.234 L_sep 0.263  d_pos 1.84 d_bwd_irr 6.80  sp(d,DTM) -0.169  (194s)
+  step  350  L_pos 4.289 L_neg 1.975 L_hard 5.132 L_rank 0.681 L_grank 0.816 L_sym 0.360 L_sep 0.245  d_pos 1.86 d_bwd_irr 7.00  sp(d,DTM) -0.145  (226s)
+  step  400  L_pos 2.124 L_neg 1.504 L_hard 3.343 L_rank 0.738 L_grank 0.680 L_sym 0.183 L_sep 0.226  d_pos 1.25 d_bwd_irr 7.48  sp(d,DTM) -0.088  (258s)
+  step  450  L_pos 1.106 L_neg 1.392 L_hard 2.001 L_rank 0.599 L_grank 0.748 L_sym 0.261 L_sep 0.119  d_pos 1.06 d_bwd_irr 7.66  sp(d,DTM) -0.023  (290s)
+  step  500  L_pos 0.819 L_neg 1.210 L_hard 3.018 L_rank 0.911 L_grank 1.230 L_sym 0.267 L_sep 0.144  d_pos 1.18 d_bwd_irr 7.00  sp(d,DTM) -0.116  (322s)
+  step  550  L_pos 1.431 L_neg 1.216 L_hard 1.961 L_rank 0.747 L_grank 0.727 L_sym 0.293 L_sep 0.142  d_pos 1.20 d_bwd_irr 7.82  sp(d,DTM) -0.117  (354s)
+  step  600  L_pos 1.575 L_neg 1.149 L_hard 1.774 L_rank 0.612 L_grank 0.784 L_sym 0.238 L_sep 0.130  d_pos 0.97 d_bwd_irr 7.61  sp(d,DTM) -0.005  (386s)
+  step  650  L_pos 0.295 L_neg 0.965 L_hard 1.768 L_rank 0.693 L_grank 0.583 L_sym 0.219 L_sep 0.316  d_pos 0.99 d_bwd_irr 7.02  sp(d,DTM) +0.111  (418s)
+  step  700  L_pos 0.858 L_neg 0.913 L_hard 0.525 L_rank 0.599 L_grank 0.628 L_sym 0.316 L_sep 0.189  d_pos 0.97 d_bwd_irr 8.94  sp(d,DTM) +0.067  (450s)
+  step  750  L_pos 0.519 L_neg 0.827 L_hard 0.772 L_rank 0.701 L_grank 0.598 L_sym 0.220 L_sep 0.197  d_pos 0.89 d_bwd_irr 8.60  sp(d,DTM) +0.164  (482s)
+  step  800  L_pos 0.678 L_neg 0.804 L_hard 0.559 L_rank 0.496 L_grank 0.548 L_sym 0.190 L_sep 0.156  d_pos 0.90 d_bwd_irr 8.44  sp(d,DTM) +0.189  (514s)
+  step  850  L_pos 0.516 L_neg 0.752 L_hard 0.387 L_rank 0.635 L_grank 0.466 L_sym 0.260 L_sep 0.185  d_pos 0.94 d_bwd_irr 8.57  sp(d,DTM) +0.334  (546s)
+  step  900  L_pos 0.180 L_neg 0.713 L_hard 0.213 L_rank 0.625 L_grank 0.569 L_sym 0.184 L_sep 0.070  d_pos 0.95 d_bwd_irr 8.54  sp(d,DTM) +0.186  (578s)
+  step  950  L_pos 0.542 L_neg 0.627 L_hard 0.308 L_rank 0.615 L_grank 0.583 L_sym 0.202 L_sep 0.131  d_pos 0.89 d_bwd_irr 8.76  sp(d,DTM) +0.187  (610s)
+  step 1000  L_pos 0.172 L_neg 0.534 L_hard 0.363 L_rank 1.058 L_grank 1.273 L_sym 0.227 L_sep 0.086  d_pos 1.01 d_bwd_irr 8.62  sp(d,DTM) -0.009  (642s)
+  step 1050  L_pos 0.330 L_neg 0.572 L_hard 0.404 L_rank 0.676 L_grank 0.716 L_sym 0.134 L_sep 0.224  d_pos 0.91 d_bwd_irr 8.95  sp(d,DTM) +0.126  (674s)
+  step 1100  L_pos 0.117 L_neg 0.547 L_hard 0.573 L_rank 0.503 L_grank 0.568 L_sym 0.111 L_sep 0.154  d_pos 0.81 d_bwd_irr 8.61  sp(d,DTM) +0.322  (706s)
+  step 1150  L_pos 0.153 L_neg 0.613 L_hard 0.675 L_rank 0.547 L_grank 0.541 L_sym 0.141 L_sep 0.077  d_pos 0.95 d_bwd_irr 8.95  sp(d,DTM) +0.305  (738s)
+  step 1200  L_pos 0.173 L_neg 0.469 L_hard 0.235 L_rank 0.428 L_grank 0.505 L_sym 0.155 L_sep 0.087  d_pos 0.89 d_bwd_irr 8.40  sp(d,DTM) +0.406  (770s)
+  step 1250  L_pos 0.064 L_neg 0.540 L_hard 0.731 L_rank 0.612 L_grank 0.526 L_sym 0.169 L_sep 0.112  d_pos 0.95 d_bwd_irr 8.89  sp(d,DTM) +0.202  (803s)
+  step 1300  L_pos 0.074 L_neg 0.486 L_hard 0.158 L_rank 0.499 L_grank 0.507 L_sym 0.133 L_sep 0.069  d_pos 0.94 d_bwd_irr 9.11  sp(d,DTM) +0.339  (835s)
+  step 1350  L_pos 0.063 L_neg 0.431 L_hard 0.179 L_rank 0.543 L_grank 0.534 L_sym 0.118 L_sep 0.136  d_pos 0.93 d_bwd_irr 8.74  sp(d,DTM) +0.325  (867s)
+  step 1400  L_pos 0.125 L_neg 0.430 L_hard 0.099 L_rank 0.507 L_grank 0.448 L_sym 0.192 L_sep 0.234  d_pos 0.98 d_bwd_irr 9.67  sp(d,DTM) +0.468  (899s)
+  step 1450  L_pos 0.058 L_neg 0.408 L_hard 0.325 L_rank 0.503 L_grank 0.478 L_sym 0.126 L_sep 0.062  d_pos 0.89 d_bwd_irr 8.90  sp(d,DTM) +0.410  (931s)
+  step 1499  L_pos 0.138 L_neg 0.328 L_hard 0.251 L_rank 0.453 L_grank 0.597 L_sym 0.139 L_sep 0.114  d_pos 0.99 d_bwd_irr 9.77  sp(d,DTM) +0.269  (963s)
+saved data/derived/sep/iqe_geom.pt
+VERDICT GEOM d_pos~1 pawn-death_asym(EVAL,emergent)=0.9x (one-way should EMERGE from the graph, not a loss term)
+=== [2/2] held-out eval (per-material DTM + one-way separation) ===
+[ckpt] data/derived/sep/iqe_geom.pt
+held-out DTM:  overall=+0.025 (structurally limited by clustering)  per-material MEAN=+0.454 (median +0.481, n_mat=10)
+    KRk          n=348   spearman=+0.521
+    Kkr          n=282   spearman=+0.626
+    KRkr         n=241   spearman=+0.389
+    KPk          n=146   spearman=+0.682
+    KPRkr        n=134   spearman=+0.294
+    KPkq         n=117   spearman=+0.605
+    KRkpr        n=114   spearman=+0.153
+    KPRk         n=78    spearman=+0.310
+    Kkq          n=69    spearman=+0.516
+    KQk          n=65    spearman=+0.446
+REVERSIBLE   edges: d_fwd=0.95 d_bwd=1.04  asym=1.09x
+IRREVERSIBLE edges: d_fwd=1.00 d_bwd=8.96  asym=8.27x
+VERDICT GEOM_EVAL permat=+0.454 overall=+0.025 oneway_separation=7.59x (irrev 8.27x / rev 1.09x)
+=== GEOM FULL DONE ===

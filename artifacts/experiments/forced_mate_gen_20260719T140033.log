@@ -1,0 +1,15 @@
+# launched : Sun Jul 19 14:00:33 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/gen_forced_mate_data.py --cap 40000 --out data/derived/forced_mate.npz
+# ---
+  kept 5000/40000 (scanned 15376, 24070/s)
+  kept 10000/40000 (scanned 30805, 23821/s)
+  kept 15000/40000 (scanned 46297, 23811/s)
+  kept 20000/40000 (scanned 62161, 23925/s)
+  kept 25000/40000 (scanned 77805, 23867/s)
+  kept 30000/40000 (scanned 93817, 23762/s)
+  kept 35000/40000 (scanned 109448, 23597/s)
+  kept 40000/40000 (scanned 124913, 23517/s)
+[stage] 40000 forced-mate positions (124913 scanned): 1.7s
+VERDICT FORCED_MATE n=40000 white_mates=21171 black_mates=18829 dtm[min=1 med=3 max=9] -> data/derived/forced_mate.npz

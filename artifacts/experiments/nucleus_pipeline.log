@@ -1,0 +1,11 @@
+[pipeline] waiting gen round 0 (delta 300/class) [0s]
+[pipeline] gen round 1 launched in parallel
+[pipeline] training round 0 on 1 shard(s) [4591s]
+  VERDICT DTM_TOK overall: spearman +0.507 MAE 15.15 plies (n=4123)
+[pipeline] FLIPPED default -> data/derived/sep/dtm_tok_r0.pt (committed)
+[pipeline] waiting gen round 1 (delta 700/class) [4676s]
+[pipeline] gen round 2 launched in parallel
+[pipeline] training round 1 on 2 shard(s) [14603s]
+  VERDICT DTM_TOK overall: spearman +0.598 MAE 13.25 plies (n=13742)
+[pipeline] FLIPPED default -> data/derived/sep/dtm_tok_r1.pt (committed)
+[pipeline] waiting gen round 2 (delta 2000/class) [14753s]

@@ -1,0 +1,2 @@
+VERDICT FIELD_MCTS field=xfer_treat n=10 nodes=400 basins=40 mate_basin_corner=0.39 (NO tablebase in White's search)
+  mate_rate 0.000  |  cornered-king reached 0.50 (start 0.00)  [29s]

@@ -1,0 +1,7 @@
+=== nodes 3200 ===
+VERDICT FIELD_MCTS field=xfer_treat n=12 nodes=3200 basins=40 mate_basin_corner=0.39 (NO tablebase in White's search)
+  mate_rate 0.333  |  cornered-king reached 0.58 (start 0.17)  [179s]
+=== nodes 6400 ===
+VERDICT FIELD_MCTS field=xfer_treat n=12 nodes=6400 basins=40 mate_basin_corner=0.39 (NO tablebase in White's search)
+  [field-MCTS] mate_rate 0.333  |  cornered-king reached 0.75 (start 0.17)  [368s]
+SWEEP_DONE

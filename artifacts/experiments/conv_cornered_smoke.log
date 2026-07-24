@@ -1,0 +1,6 @@
+VERDICT CONVERSION_CORNERED field=xfer_treat n=12 max_dtm=6 short_depth=3
+  A  goal=winning-simplification   mate_rate=0.333  (40s)
+  [cornered region: 800 near-mate positions (dtm<= 6) embedded on B]
+  B  goal=exposed-cornered-king     mate_rate=0.333  (40s)
+  DELTA cornered - base: +0.000
+[done] 80s

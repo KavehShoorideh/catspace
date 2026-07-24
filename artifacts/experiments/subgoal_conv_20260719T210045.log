@@ -1,0 +1,8 @@
+# launched : Sun Jul 19 21:00:45 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/conversion_subgoal.py --n 30 --nodes 400
+# ---
+[A committor]        mate-rate 0.567  (83s)
+[B subgoal planner]  mate-rate 0.100  (123s)
+VERDICT SUBGOAL_CONVERSION n=30 nodes=400 bank=800 A_committor=0.567 B_subgoal=0.100 diff=-0.467

@@ -1,0 +1,8 @@
+# launched : Sun Jul 19 20:45:51 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/conversion_board_dtm.py --n 30 --nodes 400
+# ---
+[A committor]     mate-rate 0.567  (82s)
+[B board-DTM nav] mate-rate 0.533  (55s)
+VERDICT BOARDDTM_CONVERSION n=30 nodes=400 A_committor=0.567 B_boarddtm=0.533 diff=-0.033

@@ -1,0 +1,79 @@
+[data] 550000 rows -> 495055 train / 54945 held-out
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+  step 0 loss 3.3388  [4s]
+  step 200 loss 2.9448  [66s]
+  step 400 loss 2.8237  [128s]
+  step 600 loss 2.7987  [189s]
+  step 800 loss 2.7125  [251s]
+  step 1000 loss 2.7039  [312s]
+  step 1200 loss 2.7268  [373s]
+  step 1400 loss 2.6081  [435s]
+  step 1600 loss 2.6435  [497s]
+  step 1800 loss 2.5352  [558s]
+  step 2000 loss 2.6475  [620s]
+  step 2200 loss 2.5788  [681s]
+  step 2400 loss 2.4219  [742s]
+  step 2600 loss 2.5853  [805s]
+  step 2800 loss 2.5211  [866s]
+  step 3000 loss 2.6370  [928s]
+  step 3200 loss 2.5324  [990s]
+  step 3400 loss 2.4957  [1051s]
+  step 3600 loss 2.4477  [1113s]
+  step 3800 loss 2.5391  [1174s]
+  step 4000 loss 2.5557  [1236s]
+  step 4200 loss 2.4624  [1297s]
+  step 4400 loss 2.5156  [1354s]
+  step 4600 loss 2.3527  [1414s]
+  step 4800 loss 2.5411  [1474s]
+  step 5000 loss 2.3812  [1533s]
+  step 5200 loss 2.4808  [1593s]
+  step 5400 loss 2.3990  [1652s]
+  step 5600 loss 2.5285  [1711s]
+  step 5800 loss 2.2486  [1771s]
+  step 6000 loss 2.3648  [1830s]
+  step 6200 loss 2.4518  [1890s]
+  step 6400 loss 2.3948  [1952s]
+  step 6600 loss 2.3421  [2013s]
+  step 6800 loss 2.3245  [2075s]
+  step 7000 loss 2.3743  [2136s]
+  step 7200 loss 2.2243  [2197s]
+  step 7400 loss 2.2741  [2258s]
+  step 7600 loss 2.3224  [2320s]
+  step 7800 loss 2.3545  [2381s]
+  step 8000 loss 2.3040  [2443s]
+  step 8200 loss 2.4761  [2505s]
+  step 8400 loss 2.2607  [2567s]
+  step 8600 loss 2.2435  [2628s]
+  step 8800 loss 2.2485  [2690s]
+  step 9000 loss 2.1383  [2752s]
+  step 9200 loss 2.3799  [2815s]
+  step 9400 loss 2.3296  [2876s]
+  step 9600 loss 2.3011  [2941s]
+  step 9800 loss 2.2937  [3004s]
+  step 10000 loss 2.1612  [3067s]
+  step 10200 loss 2.1914  [3130s]
+  step 10400 loss 2.2152  [3191s]
+  step 10600 loss 2.2270  [3254s]
+  step 10800 loss 2.2665  [3316s]
+  step 11000 loss 2.1634  [3380s]
+  step 11200 loss 2.2197  [3443s]
+  step 11400 loss 2.3166  [3504s]
+  step 11600 loss 2.3799  [3565s]
+  step 11800 loss 2.1406  [3625s]
+VERDICT OPPONENT_V1 steps=12000 held-out NLL=2.4839 top1=0.296 (n=54945)
+    elo-bin  1: NLL 2.3506  top1 0.338  (n=2521)
+    elo-bin  2: NLL 2.2834  top1 0.344  (n=5049)
+    elo-bin  3: NLL 2.3266  top1 0.336  (n=7570)
+    elo-bin  4: NLL 2.3413  top1 0.337  (n=7426)
+    elo-bin  5: NLL 2.4134  top1 0.323  (n=4756)
+    elo-bin  6: NLL 2.3685  top1 0.335  (n=1863)
+    elo-bin  7: NLL 2.4410  top1 0.301  (n=472)
+    elo-bin 11: NLL 2.5104  top1 0.284  (n=3610)
+    elo-bin 12: NLL 2.7328  top1 0.218  (n=3715)
+    elo-bin 13: NLL 2.8069  top1 0.208  (n=3611)
+    elo-bin 14: NLL 2.8425  top1 0.190  (n=3654)
+    elo-bin 16: NLL 2.5291  top1 0.280  (n=3512)
+    elo-bin 17: NLL 2.5461  top1 0.287  (n=3539)
+    elo-bin 18: NLL 2.5682  top1 0.291  (n=3595)
+saved data/derived/sep/opponent_energy_v1.pt  [3715s]

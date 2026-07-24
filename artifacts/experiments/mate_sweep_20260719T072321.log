@@ -1,0 +1,17 @@
+# launched : Sun Jul 19 07:23:21 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python /Users/kav/.claude/jobs/20b9956a/tmp/mate_sweep.py
+# ---
+start 0: INSUFFICIENT_MATERIAL
+start 1: THREEFOLD_REPETITION
+start 2: 1-0 mate in 5
+   1.Rxb6+ Ke7 2.Rb7+ Kf8 3.Rc8#
+start 3: 1-0 mate in 29
+   1.Rg5 Bc3+ 2.Kg8 Kc6 3.Re6+ Kd7 4.Reg6 f4 5.Rf5 Bd2 6.Kf7 Kd8 7.Rff6 Kc8 8.Ke7 Kb8 9.Rg8+ Kc7 10.Ke6 Kb7 11.Rf5 Kc7 12.Ke5 Kd7 13.Rg7+ Ke8 14.Rh7 Kd8 15.Rf8#
+start 4: INSUFFICIENT_MATERIAL
+start 5: THREEFOLD_REPETITION
+start 6: THREEFOLD_REPETITION
+start 7: 1-0 mate in 5
+   1.Kxc7 Kg5 2.Rg8+ Kh6 3.Rh2#
+VERDICT show_mate wins=3/8

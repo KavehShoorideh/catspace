@@ -1,0 +1,43 @@
+=== carry-forward armed Thu Jul 23 16:41:42 PDT 2026 ===
+=== nucleus r1 flipped Thu Jul 23 18:44:34 PDT 2026; pausing nucleus pipeline (resume later: rerun nucleus_pipeline.py) ===
+=== [1/4] shard the FULL month Thu Jul 23 18:44:44 PDT 2026 ===
+Traceback (most recent call last):
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/build_lichess_shards.py"[0m, line [35m74[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/build_lichess_shards.py"[0m, line [35m61[0m, in [35mmain[0m
+    manifest = build_shards(pgn_path, gf, out_dir,
+                             shard_positions=args.shard_positions,
+                             max_games=args.max_games, max_gb=args.max_gb,
+                             include_final=not args.no_include_final,
+                             tolerate_truncation=args.tolerate_truncation)
+  File [35m"/Users/kav/code/remote/github/catspace/catspace/data/lichess.py"[0m, line [35m269[0m, in [35mbuild_shards[0m
+    [31mflush[0m[1;31m()[0m
+    [31m~~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/catspace/data/lichess.py"[0m, line [35m224[0m, in [35mflush[0m
+    [31mnp.savez[0m[1;31m([0m
+    [31m~~~~~~~~[0m[1;31m^[0m
+        [1;31mpath,[0m
+        [1;31m^^^^^[0m
+    ...<8 lines>...
+        [1;31mgame_id=np.array(buf["game_id"], dtype=np.uint32),[0m
+        [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/numpy/lib/_npyio_impl.py"[0m, line [35m673[0m, in [35msavez[0m
+    [31m_savez[0m[1;31m(file, args, kwds, False, allow_pickle=allow_pickle)[0m
+    [31m~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/numpy/lib/_npyio_impl.py"[0m, line [35m786[0m, in [35m_savez[0m
+    [31mformat.write_array[0m[1;31m(fid, val,[0m
+    [31m~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^[0m
+                       [1;31mallow_pickle=allow_pickle,[0m
+                       [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+                       [1;31mpickle_kwargs=pickle_kwargs)[0m
+                       [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/numpy/lib/_format_impl.py"[0m, line [35m777[0m, in [35mwrite_array[0m
+    [31mfp.write[0m[1;31m(chunk.tobytes('C'))[0m
+    [31m~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/zipfile/__init__.py"[0m, line [35m1334[0m, in [35mwrite[0m
+    [31mself._fileobj.write[0m[1;31m(data)[0m
+    [31m~~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^[0m
+[1;35mOSError[0m: [35m[Errno 28] No space left on device[0m

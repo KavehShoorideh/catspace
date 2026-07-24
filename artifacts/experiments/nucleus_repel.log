@@ -1,0 +1,9 @@
+[stage] 357223 pool positions, 2172150 edges (9% irrev)
+/Users/kav/code/remote/github/catspace/experiments/train_geometry_l1.py:153: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_pos {float(L_pos):.3f} L_hard {float(L_hard):.3f} L_repel {float(L_repel):.3f}  "
+  step    0  L_pos 96.005 L_hard 29.222 L_repel 373.607  d_pos 10.88  asym rev 0.99 irr 1.01 (sep 1.02x)  KRk->KQk 17.5  (2s)
+  step  100  L_pos 366.371 L_hard 0.000 L_repel 94.522  d_pos 20.30  asym rev 1.01 irr 1.00 (sep 1.00x)  KRk->KQk 20.4  (115s)
+  step  200  L_pos 362.582 L_hard 0.000 L_repel 88.406  d_pos 19.88  asym rev 1.00 irr 1.00 (sep 1.00x)  KRk->KQk 17.5  (227s)
+  step  300  L_pos 180.792 L_hard 4.526 L_repel 82.882  d_pos 13.88  asym rev 1.02 irr 1.04 (sep 1.02x)  KRk->KQk 16.2  (339s)
+  step  400  L_pos 77.073 L_hard 20.345 L_repel 38.448  d_pos 8.04  asym rev 1.04 irr 1.10 (sep 1.05x)  KRk->KQk 7.2  (452s)

@@ -1,0 +1,8 @@
+# launched : Sun Jul 19 21:46:21 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/conversion_subgoal.py --ckpt data/derived/sep/cert_base_cluster.pt --phead data/derived/sep/cert_base_full_phead.pt --n 30 --nodes 400 --replan-every 4
+# ---
+[A committor]        mate-rate 0.600  (74s)
+[B subgoal planner]  mate-rate 0.133  (90s)
+VERDICT SUBGOAL_CONVERSION n=30 nodes=400 bank=800 A_committor=0.600 B_subgoal=0.133 diff=-0.467

@@ -561,6 +561,8 @@ def main():
                     help="MULTICHANNEL field (INQUIRY_MULTICHANNEL_FIELD.md): number of regime ids. "
                          "0 = off. Regime 0 = human/base geometry (zero-anchored embedding, no-op); "
                          ">=1 = generated play regimes conditioning F additively.")
+    ap.add_argument("--regime-relative", type=int, default=1,
+                    help="1 = regime conditioning is emb(r)-emb(0) so regime 0 is exactly the base")
     ap.add_argument("--regime-shards", action="append", default=[],
                     help="DIR:REGIME_ID:FRAC (repeatable) -- lichess-format shard dirs mixed in "
                          "with the given regime tag and batch fraction, e.g. "
@@ -612,22 +614,35 @@ def main():
           flush=True)
 
     step = 0
+    regime_upgraded = False
     if ckpt_path.exists() and not args.fresh:
         fb, payload = load_ckpt(ckpt_path, device)
         step = payload["step"]
         print(f"resumed {ckpt_path.name} at step {step}")
-        # RESUME-UPGRADE to multichannel: rebuild with regime_channels and carry every
-        # trained weight over; the ONLY new parameter is the zero-initialized regime
-        # embedding (regime 0 stays a no-op), so behavior is identical at step one.
+        # RESUME-UPGRADE to multichannel: rebuild with regime_channels (growing the regime
+        # table by zero-padding if it already exists) and carry every trained weight over.
+        # regime_relative makes regime 0 EXACTLY the base channel (emb(r) - emb(0)).
         if args.regime_channels > fb.config.get("regime_channels", 0):
             cfg = dict(fb.config); cfg["regime_channels"] = args.regime_channels
+            cfg["regime_relative"] = bool(args.regime_relative)
             fb2 = TorchFB(**cfg)
-            missing = set(fb2.state_dict()) - set(fb.state_dict())
-            assert missing == {"emb_regime.weight"}, f"unexpected new params: {missing}"
-            fb2.load_state_dict(fb.state_dict(), strict=False)
+            state = dict(fb.state_dict())
+            if "emb_regime.weight" in state:                     # grow the table
+                old = state["emb_regime.weight"]
+                if cfg["regime_relative"]:
+                    # fold out the legacy absolute row 0 (drift, norm ~0.18): keeps the
+                    # LEARNED between-regime differences, re-anchors regime 0 at exactly 0
+                    old = old - old[0:1]
+                new = torch.zeros(args.regime_channels, old.shape[1])
+                new[: old.shape[0]] = old
+                state["emb_regime.weight"] = new
+            missing = set(fb2.state_dict()) - set(state)
+            assert missing <= {"emb_regime.weight"}, f"unexpected new params: {missing}"
+            fb2.load_state_dict(state, strict=False)
             fb = fb2.to(device)
+            regime_upgraded = True
             print(f"resume-upgraded to regime_channels={args.regime_channels} "
-                  f"(zero-init embedding; regime 0 == base)", flush=True)
+                  f"relative={cfg['regime_relative']} (opt state dropped: fresh optimizer)", flush=True)
     else:
         fb = TorchFB(d=args.d, channels=args.channels, blocks=args.blocks,
                      enc_out=args.enc_out, dh=args.dh,
@@ -665,7 +680,8 @@ def main():
         # step, fighting the grad_reverse dual ascent (adversarial-review finding).
     else:
         opt = torch.optim.AdamW(fb.parameters(), lr=args.lr)
-    if ckpt_path.exists() and not args.fresh:
+    if ckpt_path.exists() and not args.fresh and not regime_upgraded:
+        # (regime_upgraded: the moments are shaped for the pre-surgery table -- fresh optimizer)
         payload = torch.load(ckpt_path, map_location=device, weights_only=False)
         if "opt_state" in payload:
             try:

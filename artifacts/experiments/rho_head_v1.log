@@ -1,0 +1,27 @@
+[data] 200000 states, 15689 walks, regimes [2, 3, 4, 5, 6, 8, 9, 10]  [18s]
+  embed 0/200000  [19s]
+  embed 51200/200000  [30s]
+  embed 102400/200000  [41s]
+  embed 153600/200000  [52s]
+  step 0 loss 0.7622  [62s]
+  step 500 loss 0.1985  [65s]
+  step 1000 loss 0.1779  [67s]
+  step 1500 loss 0.2299  [69s]
+  step 2000 loss 0.1768  [71s]
+  step 2500 loss 0.1560  [73s]
+  step 3000 loss 0.1307  [76s]
+  step 3500 loss 0.1282  [78s]
+  step 4000 loss 0.1678  [80s]
+  step 4500 loss 0.1510  [82s]
+  step 5000 loss 0.1250  [85s]
+  step 5500 loss 0.0984  [87s]
+VERDICT RHO_HEAD held-out AUC per regime:
+    regime  2: AUC 0.985  spearman(-log-odds, ply-gap) +0.466 (monotone soft distance wanted)  n=10345
+    regime  3: AUC 0.989  spearman(-log-odds, ply-gap) +0.420 (monotone soft distance wanted)  n=11162
+    regime  4: AUC 0.991  spearman(-log-odds, ply-gap) +0.421 (monotone soft distance wanted)  n=10103
+    regime  5: AUC 0.989  spearman(-log-odds, ply-gap) +0.388 (monotone soft distance wanted)  n=9875
+    regime  6: AUC 0.990  spearman(-log-odds, ply-gap) +0.417 (monotone soft distance wanted)  n=10000
+    regime  8: AUC 0.990  spearman(-log-odds, ply-gap) +0.409 (monotone soft distance wanted)  n=11045
+    regime  9: AUC 0.987  spearman(-log-odds, ply-gap) +0.413 (monotone soft distance wanted)  n=9264
+    regime 10: AUC 0.988  spearman(-log-odds, ply-gap) +0.415 (monotone soft distance wanted)  n=10126
+saved data/derived/sep/rho_head_v1.pt  [90s]

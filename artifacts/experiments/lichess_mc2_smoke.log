@@ -1,0 +1,48 @@
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=30500 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed lichess_mc2_smoke.pt at step 30000
+resume-upgraded to regime_channels=16 relative=True
+[resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
+multichannel mix: human(r0)=0.65 + regime_rollouts_v1:2:0.25 regime_random_endgame_v1:1:0.10
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:676: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 10.339 sq_dev 0.0062 lam 85.474 d_step 0.974 d_rand 49.441 var 0.000 sib 0.000 unr 4.474 unrb 3.338 d_unr 47.97 d_oth 52.03
+Traceback (most recent call last):
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py"[0m, line [35m1136[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py"[0m, line [35m1086[0m, in [35mmain[0m
+    opt.zero_grad(); loss.backward(); [31mopt.step[0m[1;31m()[0m
+                                      [31m~~~~~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/optim/optimizer.py"[0m, line [35m530[0m, in [35mwrapper[0m
+    out = func(*args, **kwargs)
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/optim/optimizer.py"[0m, line [35m80[0m, in [35m_use_grad[0m
+    ret = func(*args, **kwargs)
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/optim/adam.py"[0m, line [35m248[0m, in [35mstep[0m
+    [31madam[0m[1;31m([0m
+    [31m~~~~[0m[1;31m^[0m
+        [1;31mparams_with_grad,[0m
+        [1;31m^^^^^^^^^^^^^^^^^[0m
+    ...<19 lines>...
+        [1;31mdecoupled_weight_decay=group["decoupled_weight_decay"],[0m
+        [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/optim/optimizer.py"[0m, line [35m148[0m, in [35mmaybe_fallback[0m
+    return func(*args, **kwargs)
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/optim/adam.py"[0m, line [35m970[0m, in [35madam[0m
+    [31mfunc[0m[1;31m([0m
+    [31m~~~~[0m[1;31m^[0m
+        [1;31mparams,[0m
+        [1;31m^^^^^^^[0m
+    ...<17 lines>...
+        [1;31mdecoupled_weight_decay=decoupled_weight_decay,[0m
+        [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/optim/adam.py"[0m, line [35m456[0m, in [35m_single_tensor_adam[0m
+    [31mexp_avg.lerp_[0m[1;31m(grad, 1 - device_beta1)[0m
+    [31m~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1;35mRuntimeError[0m: [35mThe size of tensor a (4) must match the size of tensor b (16) at non-singleton dimension 0[0m

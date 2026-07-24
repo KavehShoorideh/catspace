@@ -1,0 +1,4 @@
+  2000/6000 walks  [2s]
+  4000/6000 walks  [4s]
+  6000/6000 walks  [6s]
+VERDICT REGIME_RANDOM walks=6000 rows=65608 j=10 regime=1 -> data/shards/regime_random_endgame_v1/shard_000.npz  [6s]

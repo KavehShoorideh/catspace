@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/mate_ladder_eval.py"[0m, line [35m162[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/mate_ladder_eval.py"[0m, line [35m139[0m, in [35mmain[0m
+    values["escape"] = [31mmake_escape_value[0m[1;31m(args.escape_ckpt)[0m
+                       [31m~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/mate_ladder_eval.py"[0m, line [35m43[0m, in [35mmake_escape_value[0m
+    st = torch.load(ckpt, map_location="cpu", weights_only=False)
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/serialization.py"[0m, line [35m1561[0m, in [35mload[0m
+    with [31m_open_file_like[0m[1;31m(f, "rb")[0m as opened_file:
+         [31m~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/serialization.py"[0m, line [35m795[0m, in [35m_open_file_like[0m
+    return _open_file(name_or_buffer, mode)
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/serialization.py"[0m, line [35m776[0m, in [35m__init__[0m
+    super().__init__([31mopen[0m[1;31m(name, mode)[0m)  # noqa: SIM115
+                     [31m~~~~[0m[1;31m^^^^^^^^^^^^[0m
+[1;35mFileNotFoundError[0m: [35m[Errno 2] No such file or directory: 'data/derived/sep/escape_net_v1.pt'[0m

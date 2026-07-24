@@ -1,0 +1,12 @@
+# launched : Sun Jul 19 10:42:41 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/gen_dtm_data.py --per 8000 --materials krrkbp,krrvk,krvk --out data/derived/dtm_endgame.npz
+# ---
+  krrkbp: 2000/8000  (3/s)
+  krrkbp: 4000/8000  (3/s)
+  krrkbp: 6000/8000  (3/s)
+  krrkbp: 8000/8000  (3/s)
+  krrvk: 2000/8000  (1/s)
+  krrvk: 4000/8000  (1/s)
+  krrvk: 6000/8000  (2/s)

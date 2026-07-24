@@ -1,0 +1,20 @@
+[stage] 40000 pos, 222054 edges (4% drop), 41982 pairs; strata [3, 4, 5, 6]; 7p edges 0
+  <=3p step    0  Lpos 0.675 Lstr 13.207 Ldtm 3.689 Lrep 4.722  d_pos 1.00  cap_asym 1.0x permat +0.009 7p_up nanx  (2s)
+  <=3p step  100  Lpos 0.089 Lstr 0.000 Ldtm 4.326 Lrep 24.553  d_pos 1.22  cap_asym 1.1x permat -0.050 7p_up nanx  (63s)
+  [checkpoint] bottom-up frontier <= 3p -> saved _le3.pt
+  <=4p step  200  Lpos 1.614 Lstr 10.361 Ldtm 4.295 Lrep 21.316  d_pos 2.17  cap_asym 1.2x permat +0.004 7p_up nanx  (123s)
+  [checkpoint] bottom-up frontier <= 4p -> saved _le4.pt
+  <=5p step  300  Lpos 0.847 Lstr 0.904 Ldtm 4.949 Lrep 18.607  d_pos 1.73  cap_asym 1.4x permat +0.024 7p_up nanx  (183s)
+  <=5p step  400  Lpos 1.160 Lstr 4.762 Ldtm 5.403 Lrep 16.726  d_pos 1.80  cap_asym 1.5x permat +0.011 7p_up nanx  (243s)
+  <=5p step  500  Lpos 1.237 Lstr 12.778 Ldtm 4.388 Lrep 12.579  d_pos 1.94  cap_asym 1.4x permat -0.027 7p_up nanx  (303s)
+  [checkpoint] bottom-up frontier <= 5p -> saved _le5.pt
+  <=6p step  600  Lpos 0.684 Lstr 5.867 Ldtm 5.230 Lrep 10.419  d_pos 1.56  cap_asym 1.6x permat -0.021 7p_up nanx  (363s)
+  <=6p step  700  Lpos 0.709 Lstr 30.063 Ldtm 5.748 Lrep 12.393  d_pos 1.57  cap_asym 2.1x permat +0.012 7p_up nanx  (425s)
+  <=6p step  800  Lpos 0.637 Lstr 10.954 Ldtm 5.223 Lrep 9.352  d_pos 1.55  cap_asym 2.3x permat +0.007 7p_up nanx  (485s)
+  <=6p step  900  Lpos 0.708 Lstr 4.602 Ldtm 4.871 Lrep 11.836  d_pos 1.20  cap_asym 2.6x permat -0.042 7p_up nanx  (545s)
+  [checkpoint] bottom-up frontier <= 6p -> saved _le6.pt
+  <=7p step 1000  Lpos 0.411 Lstr 8.947 Ldtm 5.848 Lrep 9.037  d_pos 1.23  cap_asym 2.3x permat +0.051 7p_up nanx  (605s)
+  <=7p step 1100  Lpos 2.374 Lstr 7.104 Ldtm 4.629 Lrep 10.870  d_pos 1.89  cap_asym 2.6x permat -0.106 7p_up nanx  (665s)
+  <=7p step 1199  Lpos 0.369 Lstr 0.167 Ldtm 4.841 Lrep 8.685  d_pos 1.27  cap_asym 3.3x permat -0.025 7p_up nanx  (724s)
+saved data/derived/sep/iqe_stratified.pt
+VERDICT STRAT_FIELD cap_asym=3.1x permat=-0.019 7p_up=nanx

@@ -1,0 +1,10 @@
+# launched : Mon Jul 20 06:38:28 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/cluster_infinite_finetune.py --steps 3000
+# ---
+[before] pawncap asym d_bwd/d_fwd=1.00 (fwd=4.07 bwd=4.09)
+/Users/kav/code/remote/github/catspace/experiments/cluster_infinite_finetune.py:125: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_rank {float(L_rank):.3f} L_sym {float(L_sym):.3f} "
+  step    0  L_rank 0.607 L_sym 0.025 L_step 20.143 L_inf 3134.377  d_fwd 4.03 d_bwd 4.05  sp(d,DTM) +0.186  (2s)
