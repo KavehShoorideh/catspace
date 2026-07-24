@@ -7177,3 +7177,15 @@ valid at ANY stopping time (Ville). Null smoke (v2 vs v2): 6/6 both, 0 discordan
 Live page /ab. First real matchup queued for a quiet machine: dtm_tok_r0 vs dtm_cnn_v2
 on 5p classes. Mid-ladder signal: nucleus 5->6 fix (320b3f2) -- KRRvKBP all 5 FAILs
 pre-fix, consecutive quick mates (5-13 plies) since re-exec; verdict pending.
+
+## 2026-07-23 -- KRRvKBP verdict 0.77 (37/48; 31 clean + 6 tb) med 11 plies -- CORRECTION
+
+My mid-ladder 'consecutive quick mates since the fix' read was premature (sampling luck) --
+RETRACTED per the rigor rule. Provenance-stamp split (first real use of per-record commits;
+record-level counts): pre-nucleus-6 3 mates / 4 FAILs (0.43); post-nucleus-6 34 mates /
+8 FAILs (0.81). So the 5->6 nucleus boundary recovered the class to its old 0.79-0.82
+partial baseline, not past it. Caveats: (1) heavy MPS contention this hour (two assistant
+servers + live human play + AB smoke) -- one FAIL is a pure timeout, nodes/s sank to
+111-170; (2) dtm_tok_r0 blur (MAE 15 plies) is the binding constraint; the class
+re-verdicts on the r1 flip (conditional-rejections rule). One post-fix mated-AGAINST
+game remains the worst symptom (tactical throw to -2 persists at 6p under r0).
