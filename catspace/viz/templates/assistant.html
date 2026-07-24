@@ -48,6 +48,14 @@
  }
  .legend{display:flex;gap:14px;font-size:11px;margin-top:4px;flex-wrap:wrap}
  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle}
+ #peek{position:fixed;display:none;z-index:50;background:#262320;border:1px solid #3a352f;
+       border-radius:8px;padding:6px;box-shadow:0 4px 16px rgba(0,0,0,.5);
+       grid-template-columns:repeat(3,1fr);gap:4px;pointer-events:none}
+ .mini{display:grid;grid-template-columns:repeat(8,1fr);width:88px;height:88px;
+       border:2px solid #3a352f;border-radius:2px;line-height:1}
+ .mini div{width:11px;height:11px;font-size:10px;text-align:center;line-height:11px}
+ .mini .lt{background:#8b7355}.mini .dk{background:#6b5335}
+ .mini.kwin{border-color:#7fbf7f}.mini.kloss{border-color:#d9705f}.mini.kdraw{border-color:#c9a227}
 </style></head>
 <body>
 <div class="tabs">
@@ -82,6 +90,7 @@
     <div class="panel" id="atlaspanel">
       <h3 style="margin:0 0 4px">B-space atlas <span class="muted" id="atlasnote">— banked goals + engine lines · wheel = zoom, drag = pan, double-click = reset</span></h3>
       <svg id="atlassvg" style="width:100%;height:calc(100% - 26px);display:block;background:#211f1b;border-radius:6px;cursor:grab"></svg>
+      <div id="peek"></div>
       <div class="legend">
         <span><span class="dot" style="background:#7fbf7f"></span>mates</span>
         <span><span class="dot" style="background:#d9705f"></span>losses</span>
@@ -294,6 +303,51 @@ function drawAtlas(){         // overlays only; the 6k points are built once
   });
   svg.addEventListener('pointerup',()=>{drag=null;svg.style.cursor='grab';});
   svg.addEventListener('dblclick',()=>{if(fullVb){vb=[...fullVb];applyVb();}});
+  // ---- hover peek: 3x3 mini-boards of positions near the cursor
+  const GLYPH={K:'♔',Q:'♕',R:'♖',B:'♗',N:'♘',P:'♙',k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+  function miniBoard(fen,kind){
+    const g=document.createElement('div');g.className='mini k'+kind;
+    const rows=fen.split(' ')[0].split('/');
+    rows.forEach((row,ri)=>{let f=0;
+      for(const ch of row){
+        if(/\d/.test(ch)){for(let i=0;i<+ch;i++){const c=document.createElement('div');
+          c.className=(ri+f)%2?'dk':'lt';g.appendChild(c);f++;}}
+        else{const c=document.createElement('div');c.className=(ri+f)%2?'dk':'lt';
+          c.textContent=GLYPH[ch]||'';g.appendChild(c);f++;}
+      }});
+    return g;
+  }
+  let peekT=null,peekKey='';
+  svg.addEventListener('mousemove',e=>{
+    if(!atlas||drag)return;
+    clearTimeout(peekT);
+    peekT=setTimeout(async()=>{
+      const r=svg.getBoundingClientRect();
+      const dx=vb[0]+(e.clientX-r.left)/r.width*vb[2];
+      const dy=vb[1]+(e.clientY-r.top)/r.height*vb[3];
+      const rad=0.05*vb[2];                      // search radius ~5% of view width
+      const near=[];
+      for(let i=0;i<atlas.length;i++){
+        const d=(atlas[i][0]-dx)**2+(atlas[i][1]-dy)**2;
+        if(d<rad*rad)near.push([d,i]);
+      }
+      if(!near.length){$('#peek').style.display='none';peekKey='';return;}
+      near.sort((a,b)=>a[0]-b[0]);
+      const idx=near.slice(0,9).map(x=>x[1]);
+      const key=idx.join(',');
+      const peek=$('#peek');
+      if(key!==peekKey){
+        peekKey=key;
+        const d=await j('/atlas_fens',{idx});
+        peek.innerHTML='';
+        for(const[fen,kind]of(d.pos||[]))peek.appendChild(miniBoard(fen,kind));
+      }
+      peek.style.display='grid';
+      peek.style.left=Math.min(e.clientX+14,window.innerWidth-300)+'px';
+      peek.style.top=Math.min(e.clientY+14,window.innerHeight-300)+'px';
+    },160);
+  });
+  svg.addEventListener('mouseleave',()=>{clearTimeout(peekT);$('#peek').style.display='none';peekKey='';});
 })();
 async function showPlan(){const r=await j('/atlas_plan');if(!r.err){planSel=r;drawAtlas();}}
 async function projectLine(fens){window._lastProjFens=fens;
