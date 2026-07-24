@@ -7367,3 +7367,12 @@ MuZero arxiv 2411.04580); PCGrad (emergentmind PCGrad topic), CAGrad (arxiv 2110
 GradNorm (via MTL surveys arxiv 2109.09138); NEC (Pritzel et al., researchgate
 314256022), End-to-End Memory Networks (NIPS 5846), REALM async refresh (arxiv
 2204.04581 discussion).
+
+## 2026-07-24 -- DISTILL VERDICT: student reproduces the quasimetric (spearman +0.995)
+
+field_student_v1 (2.1M params, 4.4x smaller than the 9.1M teacher core): held-out
+distance fidelity spearman +0.9950, MAE 2.8 (n=262k pairs, 20k distillation steps).
+The teacher's directed geometry compresses almost losslessly into a quarter of the
+capacity -- strong evidence the scratch-run architecture question is about DATA, not
+width, and that a student-arch line is viable whenever speed demands it. Speed bench +
+fixed-TC play verdict pending (gauntlet deferred per camping plan).
