@@ -696,3 +696,17 @@ BrokenPipeError: [Errno 32] Broken pipe
     [prune-audit] max|err| 0.000 cands 128/85830
     [prune-audit:loss] max|err| 0.000 cands 128/2274
     [prune-audit:draw] max|err| 0.000 cands 128/10660
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=38470)>: stderr >> [1m[31m       _
+<UciProtocol (pid=38470)>: stderr >> |   _ | |
+<UciProtocol (pid=38470)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=38470)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+[atlas] cache hit
+    [prune-audit] max|err| 0.000 cands 128/85831
+    [prune-audit:loss] max|err| 0.000 cands 128/2293
+    [prune-audit:draw] max|err| 0.000 cands 128/10660
+    [tri-refresh] dmin est 0.941 exact 0.941 err +0.000

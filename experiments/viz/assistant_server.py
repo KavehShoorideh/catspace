@@ -405,14 +405,33 @@ class Session:
             mlp = round(-math.log(max(p, 1e-9)), 2)
             rows.append(dict(san=b.san(mv), uci=mv.uci(), p=round(p, 3), mlp=mlp,
                              v=round(float(v), 3), fen=c.fen()))
+        # SEARCH OVERLAY (Kaveh: 'my own planner's moves are horrible' -- they were raw
+        # 1-ply field reads; the calculated tree has stress-tested rankings): walk the
+        # kept tree along `ucis`; where it covers this node, its visit counts and Q
+        # replace the raw value and dominate the ordering.
+        searched = False
+        rs = getattr(self, "_calc_resume", None)
+        if rs and rs["epd"] == self.board.epd() and rs.get("root") is not None:
+            node = rs["root"]
+            for u in ucis:
+                node = next((c for c in node.children
+                             if c.move.uci() == u), None) if node else None
+            if node is not None and node.children:
+                stats = {c.move.uci(): (int(c.N), round(float(c.W / max(c.N, 1)), 3))
+                         for c in node.children}
+                for r in rows:
+                    if r["uci"] in stats and stats[r["uci"]][0] > 0:
+                        r["visits"], r["v"] = stats[r["uci"]]
+                        searched = True
         ours = b.turn == chess.WHITE
         if ours:
             for r in rows:
                 r["score"] = round(r["v"] + 0.12 * min(r["mlp"], 4.0), 3)
-            rows.sort(key=lambda r: -r["score"])
+            rows.sort(key=lambda r: (-(r.get("visits", 0)), -r["score"]))
         else:
             rows.sort(key=lambda r: -r["p"])
-        return {"moves": rows[:k], "turn": "w" if ours else "b", "fen": b.fen()}
+        return {"moves": rows[:k], "turn": "w" if ours else "b", "fen": b.fen(),
+                "searched": searched}
 
     def calculate_start(self, nodes, chunk=64, resume=False):
         """STREAMING calculation (Kaveh: 'a way for calculations to stream in as it's
