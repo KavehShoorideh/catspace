@@ -174,7 +174,10 @@ class Session:
             depth = 0
             bb = b.copy(stack=False); bb.push(c.move)
             while node.children and depth < 8:
-                node = max(node.children, key=lambda x: x.N)
+                nxt = max(node.children, key=lambda x: x.N)
+                if nxt.N < 1:      # expanded but never simulated: beyond the search's
+                    break          # evidence -- showing it would be prior, not search
+                node = nxt
                 line.append(bb.san(node.move)); bb.push(node.move)
                 depth += 1
             leaves.append({"line": " ".join(line), "fen": bb.fen(),
