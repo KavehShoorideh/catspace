@@ -398,7 +398,7 @@ function exRender(colIdx,data,path){
   if(!data.moves||!data.moves.length)return;
   const col=document.createElement('div');
   col.style.cssText='min-width:190px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px';
-  col.innerHTML='<div class="muted" style="margin-bottom:4px">'+(data.turn==='w'?('your options'+(data.searched?' (searched)':' (field only — calculate for depth)'):'their likely replies')+'</div>';
+  col.innerHTML='<div class="muted" style="margin-bottom:4px">'+(data.turn==='w'?('your options'+(data.searched?' (searched)':' (field only — calculate for depth)')):'their likely replies')+'</div>';
   for(const m of data.moves){
     const el=document.createElement('div');
     el.style.cssText='padding:4px 6px;border-radius:4px;cursor:pointer;display:flex;justify-content:space-between;gap:8px';
