@@ -1,0 +1,20 @@
+# launched : Sun Jul 19 01:54:42 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python experiments/build_position_memory.py --n 200000
+# ---
+[stage] load field cert_base_full.pt@155000: 0.0s
+[stage] sample+load 200000 train rows (77.1% certified): 1.2s
+  2048/200000 embedded (1427 rows/s, eta 139s)
+  22528/200000 embedded (1455 rows/s, eta 122s)
+  43008/200000 embedded (1433 rows/s, eta 110s)
+  63488/200000 embedded (1418 rows/s, eta 96s)
+  83968/200000 embedded (1411 rows/s, eta 82s)
+  104448/200000 embedded (1411 rows/s, eta 68s)
+  124928/200000 embedded (1414 rows/s, eta 53s)
+  145408/200000 embedded (1419 rows/s, eta 38s)
+  165888/200000 embedded (1421 rows/s, eta 24s)
+  186368/200000 embedded (1424 rows/s, eta 10s)
+[stage] embed+index 200000 rows: 140.4s
+[stage] save -> data/derived/position_memory: 0.8s
+VERDICT MEMORY_BUILT n=200000 dim=64 ckpt=cert_base_full.pt@155000 certified_frac=0.771

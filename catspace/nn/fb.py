@@ -97,7 +97,8 @@ class TorchFB(nn.Module):
                  iqe: bool = False, iqe_components: int = 8,
                  iqe_embed_scale: float = 50.0, iqe_leak_beta: float = 0.0,
                  spectral_norm: bool = False, freeze_iqe_scale: bool = False,
-                 omega_free_field: bool = False, regime_channels: int = 0):
+                 omega_free_field: bool = False, regime_channels: int = 0,
+                 regime_relative: bool = False):
         torch.manual_seed(seed)          # one seed, sequential construction:
         super().__init__()               # encF and encB draw DIFFERENT inits
         if two_horizon or distributional or outcome_poles or iqe:
@@ -114,7 +115,8 @@ class TorchFB(nn.Module):
                            spectral_norm=spectral_norm,
                            freeze_iqe_scale=freeze_iqe_scale,
                            omega_free_field=omega_free_field,
-                           regime_channels=regime_channels)
+                           regime_channels=regime_channels,
+                           regime_relative=regime_relative)
         self.encF = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.encB = BoardEncoder(N_PLANES, channels, blocks, enc_out)
         self.emb_we = nn.Embedding(N_ELO_BINS, omega_dim)
@@ -135,9 +137,13 @@ class TorchFB(nn.Module):
         # channel; regimes >= 1 (random / sf-optimal / sf-weak / ...) are DELIBERATE
         # measure-flavored reachabilities that differentiate during training.
         self.regime_channels = regime_channels
+        self.regime_relative = regime_relative
         if regime_channels > 0:
             self.emb_regime = nn.Embedding(regime_channels, enc_out)
             self.emb_regime.weight.data.zero_()
+            # regime_relative: conditioning is emb(r) - emb(0), so regime 0 is EXACTLY a
+            # no-op forever (the 25k run showed absolute row 0 drifts: norm 0.177 -- the
+            # "r0 == base" identity held only at init without this)
         _f_in = enc_out if omega_free_field else enc_out + 3 * omega_dim
         self.headF = nn.Sequential(nn.Linear(_f_in, dh), nn.ReLU(),
                                    nn.Linear(dh, d))
@@ -271,7 +277,10 @@ class TorchFB(nn.Module):
     def embed_F(self, planes: torch.Tensor, omega: torch.Tensor) -> torch.Tensor:
         h = self.encF(planes)
         if self.regime_channels > 0 and omega is not None and omega.shape[1] >= 4:
-            h = h + self.emb_regime(omega[:, 3])     # regime channel (col 3); regime 0 = no-op at init
+            r = self.emb_regime(omega[:, 3])
+            if self.regime_relative:                 # emb(r) - emb(0): regime 0 == base, always
+                r = r - self.emb_regime(torch.zeros_like(omega[:, 3]))
+            h = h + r
         if self.omega_free_field:                    # player-independent geometry
             e = self.headF(h)                        # omega accepted for API, ignored
         else:

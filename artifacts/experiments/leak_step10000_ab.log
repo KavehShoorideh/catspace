@@ -1,0 +1,1 @@
+PLAYOUT_AB LEAK_STEP10000_vs_incumbent mate-rate A=0.600 vs B=0.160  diff=-0.440 CI=[-0.540,-0.340]  e=7762971342.67 (n=100 starts, 48 decisive, deterministic defender; plies-to-mate A=20 B=8) [SIGNIFICANT]

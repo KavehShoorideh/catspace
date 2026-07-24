@@ -1,0 +1,13 @@
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_cnn.py:73: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} loss {float(loss):.4f}", flush=True)
+  step 0 loss 0.5265
+  step 800 loss 0.1312
+  step 1600 loss 0.0748
+  step 2400 loss 0.0504
+  step 3200 loss 0.0354
+VERDICT DTM_CNN steps=4000 -- plain-CNN spearman(pred, DTM) by piece count (held-out):
+  3-piece: spearman=+0.890   (field distilled: 3p .88 4p .71 6p .53)
+  4-piece: spearman=+0.612   (field distilled: 3p .88 4p .71 6p .53)
+  6-piece: spearman=+0.355   (field distilled: 3p .88 4p .71 6p .53)
+  saved data/derived/sep/dtm_cnn.pt  [1107s]

@@ -105,11 +105,19 @@ def main():
     from scipy.stats import spearmanr
     from sklearn.metrics import roc_auc_score
     auc = roc_auc_score(denied, gaps) if 0 < denied.mean() < 1 else float("nan")
+    # bootstrap CI (model-card convention: point estimates carry uncertainty)
+    boots = []
+    brng = np.random.default_rng(1)
+    for _ in range(1000):
+        idx = brng.integers(0, len(gaps), len(gaps))
+        if 0 < denied[idx].mean() < 1:
+            boots.append(roc_auc_score(denied[idx], gaps[idx]))
+    lo, hi = (np.percentile(boots, [2.5, 97.5]) if boots else (float("nan"),) * 2)
     rho_t = spearmanr(gaps, denied).correlation
     fr = np.array(frac_rows)
     rho_a = spearmanr(fr[:, 0], fr[:, 1]).correlation if len(fr) > 5 else float("nan")
     print(f"VERDICT VETO_CHANNELS field={Path(args.field).stem}  targets={len(gaps)} "
-          f"denied-rate={denied.mean():.2f}  AUC(gap->denied)={auc:.3f}  "
+          f"denied-rate={denied.mean():.2f}  AUC(gap->denied)={auc:.3f} [95% CI {lo:.2f}-{hi:.2f}]  "
           f"spearman target-level {rho_t:+.3f} | anchor-level {rho_a:+.3f}  "
           f"[{time.time()-t0:.0f}s]", flush=True)
     print("  gate reading: AUC >= 0.65 / anchor spearman >= +0.4 = the veto is READABLE off the "

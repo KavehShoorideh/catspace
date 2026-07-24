@@ -1,0 +1,8 @@
+# launched : Sun Jul 19 20:39:34 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/conversion_dtmhead_ab.py --n 30 --nodes 400
+# ---
+[A committor]  mate-rate 0.567  (82s)
+[B DTM head]   mate-rate 0.167  (76s)
+VERDICT DTMHEAD_CONVERSION n=30 nodes=400 A_committor=0.567 B_dtmhead=0.167 diff=-0.400

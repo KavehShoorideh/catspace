@@ -1,0 +1,429 @@
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+    [warm-up] bank 0->0 nodes=100000 [123s]
+    [warm-up] bank 0->0 nodes=100000 [123s]
+    mv01    9.4s = prior  23.9 (10742) + embF   0.0 (   0) + dbank   0.0 (    0) + tree -21.2 + harvest  6.7  nodes=5000
+    mv01    9.7s = prior  17.9 (8269) + embF   0.0 (   0) + dbank   0.0 (    0) + tree -15.5 + harvest  7.3  nodes=5000
+    mv02    3.3s = prior   0.4 ( 132) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   2.5 + harvest  0.4  nodes=5000
+    mv02    2.8s = prior   1.1 ( 420) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   1.4 + harvest  0.4  nodes=5000
+    mv03    2.7s = prior   1.4 ( 960) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.9 + harvest  0.3  nodes=5000
+    mv03    4.7s = prior   1.8 (1471) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   1.0 + harvest  0.3  nodes=5000
+    mv04    3.0s = prior   1.5 (1104) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   1.0 + harvest  0.5  nodes=5000
+    mv05    9.9s = prior   3.8 (1557) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   5.8 + harvest  0.3  nodes=4993
+    mv04   22.0s = prior   2.5 ( 848) + embF   9.5 (1620) + dbank   2.1 ( 1620) + tree   4.6 + harvest  0.4  nodes=3666
+    [warm-up] bank 0->19 nodes=100000 [169s]
+    [warm-up] bank 0->5 nodes=100000 [173s]
+    mv05   11.0s = prior   0.9 ( 270) + embF   2.9 ( 371) + dbank   1.7 (  956) + tree   4.1 + harvest  0.3  nodes=1550
+    mv06   22.4s = prior   1.9 ( 625) + embF   8.3 (1314) + dbank   1.8 ( 1314) + tree   5.6 + harvest  0.5  nodes=3683
+    mv01   10.8s = prior  23.4 (13241) + embF  23.6 (12711) + dbank   7.9 (21559) + tree -68.1 + harvest  6.1  nodes=5000
+    mv06    6.5s = prior   0.4 ( 133) + embF   1.3 ( 170) + dbank   1.0 (  587) + tree   3.0 + harvest  0.3  nodes=885
+    mv01   13.2s = prior  27.1 (14650) + embF  18.0 (12091) + dbank   3.7 (12091) + tree -62.2 + harvest  6.4  nodes=5000
+    mv07    3.4s = prior   0.2 (  74) + embF   0.6 (  85) + dbank   0.4 (  292) + tree   1.9 + harvest  0.2  nodes=379
+    mv08    0.1s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.1  nodes=0
+  g001[w1] mate plies=15 tb=2 tac=2 plan=direct:8 bank=43(+43) loss=0 draws=10 ms=8 t/move=5.6s t/game=60s nodes/s=356 [197s]
+    mv07   11.0s = prior   1.0 ( 340) + embF   3.6 ( 499) + dbank   0.7 (  499) + tree   3.6 + harvest  0.4  nodes=1907
+    mv02    8.1s = prior   0.3 ( 170) + embF   0.6 ( 210) + dbank   0.5 ( 1094) + tree   2.4 + harvest  4.0  nodes=5000
+    mv02    5.7s = prior   0.7 ( 361) + embF   1.0 ( 432) + dbank   0.2 (  432) + tree   1.2 + harvest  1.9  nodes=5000
+    mv08    7.8s = prior   0.7 ( 195) + embF   1.9 ( 245) + dbank   0.4 (  245) + tree   3.4 + harvest  0.3  nodes=1150
+    mv03    7.2s = prior   0.6 ( 272) + embF   0.7 ( 274) + dbank   0.5 (  802) + tree   1.4 + harvest  3.6  nodes=5000
+    mv03    4.7s = prior   0.7 ( 307) + embF   1.5 ( 497) + dbank   0.3 (  497) + tree   1.2 + harvest  0.4  nodes=5000
+    mv09    6.4s = prior   0.4 ( 111) + embF   0.9 ( 124) + dbank   0.2 (  124) + tree   4.1 + harvest  0.3  nodes=767
+    mv04    6.3s = prior   0.6 ( 299) + embF   0.8 ( 301) + dbank   0.5 (  619) + tree   1.3 + harvest  2.6  nodes=5000
+    mv10    3.2s = prior   0.2 (  52) + embF   0.5 (  57) + dbank   0.1 (   57) + tree   2.0 + harvest  0.1  nodes=336
+    mv11    0.1s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.1  nodes=0
+  g003[w3] mate plies=21 tb=4 tac=1 plan=direct:11 bank=37(+37) loss=0 draws=11 ms=11 t/move=6.4s t/game=79s nodes/s=415 [215s]
+    mv04    6.1s = prior   1.3 ( 614) + embF   1.8 ( 668) + dbank   0.4 (  668) + tree   1.3 + harvest  0.3  nodes=5000
+    mv05    3.6s = prior   0.5 ( 218) + embF   0.7 ( 219) + dbank   0.4 (  491) + tree   0.9 + harvest  0.7  nodes=5000
+    mv06    4.3s = prior   0.8 ( 273) + embF   1.0 ( 273) + dbank   0.4 (  351) + tree   1.2 + harvest  0.3  nodes=5000
+    mv05    7.0s = prior   1.8 ( 824) + embF   1.9 ( 837) + dbank   0.5 (  837) + tree   1.3 + harvest  0.3  nodes=5000
+    mv07    4.9s = prior   0.4 ( 158) + embF   0.6 ( 160) + dbank   0.2 (  233) + tree   2.8 + harvest  0.5  nodes=5000
+    mv06    7.2s = prior   1.5 (1051) + embF   1.5 (1067) + dbank   0.3 ( 1067) + tree   2.7 + harvest  0.3  nodes=5000
+    mv08    3.4s = prior   0.6 ( 387) + embF   0.8 ( 394) + dbank   0.3 (  481) + tree   0.8 + harvest  0.3  nodes=5000
+    mv07    5.4s = prior   1.4 ( 769) + embF   1.5 ( 776) + dbank   0.3 (  776) + tree   1.1 + harvest  0.3  nodes=5000
+    mv09    6.2s = prior   2.0 (1465) + embF   1.5 (1469) + dbank   0.5 ( 1535) + tree   1.1 + harvest  0.3  nodes=5000
+    mv08    6.5s = prior   1.9 (1108) + embF   1.8 (1109) + dbank   0.4 ( 1109) + tree   1.1 + harvest  0.4  nodes=5000
+  g000[w0] mate plies=41 tb=13 tac=0 plan=direct:8 bank=6(+1) loss=0 draws=1 ms=21 t/move=0.0s t/game=56s nodes/s=715 [242s]
+    mv10    6.1s = prior   1.9 (1205) + embF   1.6 (1209) + dbank   0.4 ( 1243) + tree   1.2 + harvest  0.3  nodes=5000
+    mv11    6.3s = prior   1.9 (1279) + embF   1.6 (1282) + dbank   0.4 ( 1293) + tree   1.2 + harvest  0.4  nodes=5000
+    mv12    6.4s = prior   1.7 (1155) + embF   1.7 (1155) + dbank   0.4 ( 1155) + tree   1.2 + harvest  0.5  nodes=5000
+    mv13    7.2s = prior   2.2 (1573) + embF   1.8 (1573) + dbank   0.4 ( 1573) + tree   1.3 + harvest  0.5  nodes=5000
+    mv14    9.7s = prior   2.3 (1354) + embF   2.2 (1354) + dbank   0.5 ( 1354) + tree   3.2 + harvest  0.3  nodes=5000
+    mv15    5.9s = prior   1.6 ( 952) + embF   1.6 ( 952) + dbank   0.4 (  952) + tree   1.2 + harvest  0.3  nodes=5000
+    mv16    6.6s = prior  42.3 (25119) + embF  42.9 (24655) + dbank  14.2 (35854) + tree -121.5 + harvest  0.4  nodes=5000
+    mv17    7.4s = prior   1.7 ( 878) + embF   2.3 ( 878) + dbank   0.5 (  878) + tree   1.4 + harvest  0.3  nodes=5000
+  g002[w2] mate plies=63 tb=15 tac=0 plan=direct:15,reset:2 bank=36(+17) loss=0 draws=4 ms=32 t/move=3.5s t/game=110s nodes/s=770 [292s]
+    [warm-up] bank 102->104 nodes=100000 [138s]
+    mv01    9.6s = prior  46.5 (20499) + embF  33.6 (7708) + dbank  13.9 (16509) + tree -108.5 + harvest  5.9  nodes=5000
+    mv02   10.6s = prior   0.2 (  73) + embF   0.6 (  91) + dbank   0.5 (  475) + tree   3.0 + harvest  6.0  nodes=5000
+    mv03    4.5s = prior   0.3 (  74) + embF   0.7 (  84) + dbank   0.5 (  299) + tree   1.4 + harvest  1.2  nodes=5000
+    [warm-up] bank 97->125 nodes=100000 [184s]
+    mv04    6.6s = prior   1.2 ( 607) + embF   1.5 ( 641) + dbank   1.2 ( 1694) + tree   1.4 + harvest  0.5  nodes=5000
+    mv01   12.2s = prior  46.5 (23818) + embF  39.6 (15132) + dbank  24.1 (38465) + tree -124.4 + harvest  6.4  nodes=5000
+    mv05   12.5s = prior   1.5 ( 525) + embF   3.4 ( 527) + dbank   1.7 ( 1108) + tree   3.5 + harvest  0.7  nodes=5000
+    mv02    8.9s = prior   0.6 ( 177) + embF   1.3 ( 177) + dbank   1.2 ( 1062) + tree   2.8 + harvest  2.4  nodes=5000
+    mv03   10.9s = prior   0.9 ( 240) + embF   2.1 ( 240) + dbank   2.2 ( 1441) + tree   4.2 + harvest  0.5  nodes=5000
+    mv06   16.2s = prior   1.8 ( 514) + embF   4.4 ( 522) + dbank   2.6 ( 1465) + tree   5.0 + harvest  0.3  nodes=3424
+    mv07   10.9s = prior   0.9 ( 284) + embF   2.4 ( 284) + dbank   1.5 (  844) + tree   4.3 + harvest  0.5  nodes=1593
+    mv04   12.0s = prior   1.0 ( 292) + embF   2.4 ( 292) + dbank   1.3 (  682) + tree   5.3 + harvest  0.8  nodes=4313
+    mv08    7.3s = prior   0.5 ( 154) + embF   1.3 ( 155) + dbank   1.0 (  541) + tree   3.3 + harvest  0.4  nodes=893
+    mv05   10.0s = prior   0.8 ( 237) + embF   2.0 ( 237) + dbank   0.9 (  463) + tree   4.8 + harvest  0.3  nodes=2335
+    mv09    5.0s = prior   0.3 (  91) + embF   0.8 (  91) + dbank   0.6 (  279) + tree   2.6 + harvest  0.2  nodes=408
+    mv10    0.1s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.1  nodes=0
+  g007[w3] mate plies=19 tb=0 tac=1 plan=direct:10 bank=134(+30) loss=0 draws=39 ms=29 t/move=8.4s t/game=83s nodes/s=376 [437s]
+    mv06    6.8s = prior   0.5 ( 141) + embF   1.3 ( 141) + dbank   0.5 (  223) + tree   3.5 + harvest  0.4  nodes=1270
+    mv07    6.1s = prior   0.3 (  71) + embF   0.6 (  71) + dbank   1.1 (  530) + tree   3.4 + harvest  0.4  nodes=775
+    mv08    3.3s = prior   0.2 (  47) + embF   0.4 (  47) + dbank   0.3 (  146) + tree   2.1 + harvest  0.2  nodes=358
+    mv09    0.1s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.1  nodes=0
+  g005[w1] mate plies=17 tb=0 tac=1 plan=direct:9 bank=132(+7) loss=0 draws=38 ms=17 t/move=8.9s t/game=70s nodes/s=342 [452s]
+    [warm-up] bank 122->162 nodes=101015 [347s]
+    mv01   13.8s = prior  54.5 (26086) + embF  67.3 (23891) + dbank  29.3 (32079) + tree -189.6 + harvest  6.4  nodes=2165
+    mv02   10.0s = prior   0.3 (  61) + embF   0.6 (  61) + dbank   0.2 (   78) + tree   5.6 + harvest  3.0  nodes=1977
+    mv03   12.6s = prior   0.6 ( 116) + embF   2.2 ( 117) + dbank   0.7 (  156) + tree   6.6 + harvest  1.4  nodes=1763
+    mv04   11.4s = prior   0.8 ( 134) + embF   2.8 ( 134) + dbank   0.8 (  160) + tree   4.4 + harvest  1.3  nodes=1421
+    [warm-up] bank 177->177 nodes=100000 [190s]
+    mv05    7.5s = prior   0.4 (  89) + embF   1.6 (  89) + dbank   0.4 (  104) + tree   3.8 + harvest  0.4  nodes=1012
+    mv06    5.0s = prior   0.2 (  55) + embF   1.1 (  56) + dbank   0.3 (   68) + tree   2.4 + harvest  0.5  nodes=608
+  g004[w0] mate plies=15 tb=2 tac=0 plan=direct:6 bank=162(+0) loss=0 draws=43 ms=48 t/move=8.7s t/game=60s nodes/s=149 [649s]
+    mv01   11.8s = prior  62.0 (29757) + embF  72.8 (21254) + dbank  54.5 (56817) + tree -222.2 + harvest  7.2  nodes=5000
+    [warm-up] bank 176->177 nodes=100000 [217s]
+    mv02    7.2s = prior   0.4 ( 106) + embF   1.0 ( 107) + dbank   0.6 (  269) + tree   2.9 + harvest  1.6  nodes=5000
+    mv01   11.9s = prior  77.4 (35017) + embF  88.1 (23560) + dbank  39.0 (36754) + tree -245.9 + harvest  7.1  nodes=5000
+    mv03    6.3s = prior   0.2 (  47) + embF   0.4 (  47) + dbank   0.5 (  223) + tree   4.3 + harvest  0.6  nodes=5000
+    mv02    6.1s = prior   0.8 ( 380) + embF   1.3 ( 392) + dbank   0.5 (  404) + tree   1.3 + harvest  1.4  nodes=5000
+    mv04    6.3s = prior   0.0 (   9) + embF   0.1 (   9) + dbank   0.5 (  206) + tree   4.9 + harvest  0.6  nodes=3910
+    mv05    4.3s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.4 (  196) + tree   3.5 + harvest  0.4  nodes=2259
+    mv03    7.4s = prior   0.9 ( 547) + embF   1.2 ( 561) + dbank   0.6 (  593) + tree   3.0 + harvest  0.9  nodes=5000
+    mv06    4.1s = prior   0.0 (   4) + embF   0.0 (   4) + dbank   0.3 (  116) + tree   3.4 + harvest  0.4  nodes=1254
+    mv04    7.0s = prior   1.1 ( 499) + embF   2.0 ( 503) + dbank   0.9 (  520) + tree   1.4 + harvest  0.5  nodes=5000
+    mv07    5.4s = prior   0.0 (   3) + embF   0.0 (   3) + dbank   0.1 (   55) + tree   4.9 + harvest  0.3  nodes=764
+    mv08    2.1s = prior   0.0 (   2) + embF   0.0 (   2) + dbank   0.1 (   31) + tree   1.8 + harvest  0.2  nodes=357
+  g009[w1] mate plies=17 tb=1 tac=1 plan=direct:8 bank=178(+1) loss=0 draws=56 ms=95 t/move=5.4s t/game=48s nodes/s=495 [689s]
+    mv05    7.2s = prior   1.4 ( 650) + embF   2.0 ( 656) + dbank   0.8 (  669) + tree   1.4 + harvest  0.5  nodes=5000
+    mv06    7.8s = prior   1.9 (1021) + embF   2.0 (1022) + dbank   1.0 ( 1025) + tree   1.3 + harvest  0.4  nodes=5000
+  g011[w3] mate plies=39 tb=14 tac=0 plan=direct:6 bank=177(+0) loss=0 draws=55 ms=102 t/move=0.0s t/game=47s nodes/s=633 [702s]
+    [warm-up] bank 180->180 nodes=100000 [159s]
+    mv01    9.9s = prior  72.2 (33988) + embF  97.8 (31795) + dbank  41.5 (40235) + tree -270.4 + harvest  6.5  nodes=5000
+    mv02    4.2s = prior   0.4 ( 150) + embF   0.6 ( 150) + dbank   0.2 (  151) + tree   1.1 + harvest  1.5  nodes=5000
+    mv03    3.7s = prior   0.5 ( 292) + embF   0.9 ( 292) + dbank   0.4 (  304) + tree   1.0 + harvest  0.4  nodes=5000
+    mv04    7.8s = prior   0.9 ( 536) + embF   1.3 ( 537) + dbank   0.8 (  626) + tree   3.6 + harvest  0.4  nodes=5000
+    mv05   10.8s = prior   1.5 ( 584) + embF   2.8 ( 588) + dbank   2.0 ( 1552) + tree   2.5 + harvest  0.4  nodes=5000
+    [warm-up] bank 181->182 nodes=100000 [167s]
+    mv06   14.9s = prior   1.4 ( 441) + embF   3.6 ( 444) + dbank   2.8 ( 1403) + tree   5.0 + harvest  0.3  nodes=3829
+    mv01   10.4s = prior  77.7 (36914) + embF  96.7 (28456) + dbank  66.9 (65261) + tree -288.4 + harvest  6.8  nodes=5000
+    mv07    7.5s = prior   0.6 ( 162) + embF   1.5 ( 162) + dbank   0.8 (  302) + tree   3.6 + harvest  0.1  nodes=1054
+    mv08    3.0s = prior   0.2 (  50) + embF   0.4 (  50) + dbank   0.2 (   85) + tree   1.9 + harvest  0.2  nodes=451
+    mv09    0.1s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.1  nodes=0
+  g008[w0] mate plies=17 tb=0 tac=1 plan=direct:9 bank=186(+6) loss=0 draws=60 ms=108 t/move=7.5s t/game=62s nodes/s=490 [870s]
+[worker 0] code moved past 5943420; re-exec onto newest
+    mv02    5.0s = prior   0.3 ( 130) + embF   0.6 ( 130) + dbank   0.2 (  138) + tree   1.2 + harvest  2.3  nodes=5000
+    mv03    3.8s = prior   0.3 ( 139) + embF   0.8 ( 139) + dbank   0.3 (  145) + tree   1.1 + harvest  0.7  nodes=5000
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 0] resume: skipping 10 recorded games
+    mv04    6.1s = prior   0.5 ( 226) + embF   1.0 ( 226) + dbank   0.4 (  263) + tree   3.4 + harvest  0.3  nodes=5000
+    mv05    2.8s = prior   0.3 ( 137) + embF   0.6 ( 137) + dbank   0.2 (  160) + tree   0.8 + harvest  0.6  nodes=5000
+    mv06    3.8s = prior   0.0 (  14) + embF   0.1 (  14) + dbank   0.0 (   19) + tree   3.4 + harvest  0.2  nodes=3429
+  g013[w1] mate plies=17 tb=3 tac=1 plan=direct:6 bank=182(+0) loss=0 draws=56 ms=112 t/move=3.8s t/game=32s nodes/s=889 [888s]
+[worker 1] code moved past 5943420; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 1] resume: skipping 11 recorded games
+    [warm-up] bank 186->186 nodes=100000 [156s]
+    mv01    9.2s = prior  16.0 (7635) + embF  25.1 (7635) + dbank  10.3 ( 7635) + tree -62.6 + harvest  6.4  nodes=5000
+    mv02    6.5s = prior   0.5 ( 229) + embF   1.0 ( 229) + dbank   0.4 (  229) + tree   1.4 + harvest  2.7  nodes=5000
+    mv03    6.8s = prior   1.0 ( 333) + embF   1.3 ( 333) + dbank   0.6 (  333) + tree   2.5 + harvest  0.6  nodes=5000
+    mv04    6.6s = prior   1.4 ( 716) + embF   1.6 ( 716) + dbank   0.9 (  716) + tree   1.2 + harvest  0.6  nodes=5000
+    mv05    6.9s = prior   1.4 ( 690) + embF   1.8 ( 690) + dbank   0.9 (  690) + tree   1.3 + harvest  0.5  nodes=5000
+    mv06    5.9s = prior   1.2 ( 685) + embF   1.4 ( 685) + dbank   0.9 (  685) + tree   1.1 + harvest  0.4  nodes=5000
+  g012[w0] mate plies=25 tb=7 tac=0 plan=direct:6 bank=186(+0) loss=0 draws=61 ms=143 t/move=0.0s t/game=42s nodes/s=714 [213s]
+    [warm-up] bank 186->205 nodes=101305 [299s]
+    mv01   14.4s = prior  18.6 (7444) + embF  36.9 (7444) + dbank  20.7 (12825) + tree -87.1 + harvest  5.9  nodes=2718
+    mv02   12.7s = prior   0.3 (  89) + embF   0.9 (  89) + dbank   0.3 (  111) + tree   5.9 + harvest  4.9  nodes=2602
+    mv03    9.1s = prior   0.3 (  72) + embF   0.7 (  72) + dbank   0.2 (   82) + tree   5.2 + harvest  2.3  nodes=2415
+    mv04    6.7s = prior   0.3 (  76) + embF   0.8 (  76) + dbank   0.3 (   85) + tree   4.0 + harvest  1.0  nodes=2103
+    mv05    5.8s = prior   0.3 (  83) + embF   0.8 (  83) + dbank   0.2 (   87) + tree   3.4 + harvest  0.6  nodes=1549
+    mv06    5.4s = prior   0.3 (  82) + embF   0.8 (  82) + dbank   0.3 (   86) + tree   2.9 + harvest  0.6  nodes=1059
+    mv07    2.2s = prior   0.0 (   4) + embF   0.0 (   4) + dbank   0.0 (    4) + tree   2.0 + harvest  0.1  nodes=430
+    mv08    0.1s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.1  nodes=0
+  g017[w1] mate plies=15 tb=0 tac=0 plan=direct:8 bank=206(+1) loss=0 draws=66 ms=149 t/move=6.2s t/game=56s nodes/s=228 [369s]
+    [warm-up] bank 206->206 nodes=100000 [194s]
+    mv01   11.3s = prior  41.5 (20791) + embF  59.7 (20791) + dbank  28.9 (20953) + tree -159.3 + harvest  6.8  nodes=5000
+    mv02    6.8s = prior   0.8 ( 391) + embF   1.3 ( 391) + dbank   0.5 (  395) + tree   1.4 + harvest  2.1  nodes=5000
+    mv03    6.1s = prior   0.4 ( 177) + embF   1.0 ( 177) + dbank   0.3 (  178) + tree   3.4 + harvest  0.4  nodes=5000
+    mv04    5.9s = prior   1.0 ( 477) + embF   1.6 ( 477) + dbank   0.8 (  479) + tree   1.3 + harvest  0.3  nodes=5000
+    mv05    4.8s = prior   0.8 ( 396) + embF   1.2 ( 396) + dbank   0.5 (  398) + tree   1.1 + harvest  0.4  nodes=5000
+    mv06    6.8s = prior   1.3 ( 851) + embF   1.7 ( 851) + dbank   1.0 (  880) + tree   1.4 + harvest  0.5  nodes=5000
+  g016[w0] mate plies=25 tb=7 tac=0 plan=direct:6 bank=206(+0) loss=0 draws=68 ms=165 t/move=0.0s t/game=42s nodes/s=720 [448s]
+    [warm-up] bank 181->187 nodes=100002 [670s]
+    mv01   12.0s = prior 107.9 (46398) + embF 150.3 (35192) + dbank  68.8 (53354) + tree -401.1 + harvest  6.0  nodes=815
+    mv02    7.9s = prior   0.1 (  31) + embF   0.3 (  32) + dbank   0.1 (   39) + tree   4.0 + harvest  3.3  nodes=696
+    mv03    5.1s = prior   0.1 (  31) + embF   0.2 (  31) + dbank   0.1 (   31) + tree   2.7 + harvest  2.0  nodes=560
+    mv04    3.5s = prior   0.1 (  19) + embF   0.2 (  19) + dbank   0.1 (   24) + tree   2.6 + harvest  0.4  nodes=321
+    mv05    2.0s = prior   0.0 (   2) + embF   0.0 (   2) + dbank   0.0 (    4) + tree   1.7 + harvest  0.3  nodes=199
+    mv06    0.3s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.2  nodes=0
+  g015[w3] mate plies=11 tb=0 tac=0 plan=direct:6 bank=187(+0) loss=0 draws=60 ms=129 t/move=4.3s t/game=31s nodes/s=84 [1402s]
+[worker 3] code moved past 5943420; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 3] resume: skipping 15 recorded games
+    [warm-up] bank 207->207 nodes=100000 [184s]
+    mv01   11.4s = prior  40.9 (20296) + embF  67.4 (20296) + dbank  36.4 (25813) + tree -176.2 + harvest  6.8  nodes=5000
+    mv02    7.5s = prior   0.8 ( 340) + embF   1.2 ( 340) + dbank   0.5 (  353) + tree   1.5 + harvest  2.8  nodes=5000
+    mv03    5.1s = prior   0.8 ( 390) + embF   1.2 ( 390) + dbank   0.6 (  404) + tree   1.2 + harvest  0.6  nodes=5000
+    mv04    6.7s = prior   1.4 ( 589) + embF   1.6 ( 589) + dbank   0.8 (  598) + tree   1.4 + harvest  0.5  nodes=5000
+    [warm-up] bank 207->207 nodes=100000 [156s]
+    mv05    6.0s = prior   1.5 ( 379) + embF   1.4 ( 379) + dbank   0.7 (  382) + tree   1.3 + harvest  0.3  nodes=5000
+  g021[w1] mate plies=31 tb=11 tac=0 plan=direct:5 bank=207(+0) loss=0 draws=68 ms=175 t/move=0.0s t/game=37s nodes/s=681 [589s]
+    mv01   10.9s = prior  59.9 (30682) + embF  86.3 (30682) + dbank  43.5 (32896) + tree -233.6 + harvest  6.4  nodes=5000
+    mv02    8.0s = prior   0.9 ( 277) + embF   1.1 ( 277) + dbank   0.6 (  476) + tree   1.6 + harvest  3.0  nodes=5000
+    mv03    6.5s = prior   0.7 ( 291) + embF   1.2 ( 291) + dbank   0.6 (  473) + tree   1.6 + harvest  1.9  nodes=5000
+    mv04    6.2s = prior   0.8 ( 393) + embF   1.3 ( 393) + dbank   0.8 (  620) + tree   1.5 + harvest  1.1  nodes=5000
+    mv05    5.5s = prior   0.9 ( 388) + embF   1.4 ( 388) + dbank   0.7 (  509) + tree   1.3 + harvest  0.3  nodes=5000
+    mv06    8.5s = prior   1.4 ( 867) + embF   1.7 ( 867) + dbank   1.0 (  906) + tree   3.3 + harvest  0.3  nodes=5000
+  g020[w0] mate plies=27 tb=8 tac=0 plan=direct:6 bank=207(+0) loss=0 draws=68 ms=185 t/move=0.0s t/game=46s nodes/s=658 [650s]
+    [warm-up] bank 207->207 nodes=100000 [144s]
+    mv01    8.2s = prior  13.6 (6918) + embF  20.0 (6918) + dbank   9.1 ( 6918) + tree -52.0 + harvest  5.9  nodes=5000
+    mv02    7.4s = prior   0.8 ( 380) + embF   1.1 ( 380) + dbank   0.5 (  380) + tree   2.5 + harvest  1.8  nodes=5000
+    mv03    7.3s = prior   1.4 ( 762) + embF   1.6 ( 762) + dbank   0.9 (  762) + tree   1.4 + harvest  1.2  nodes=5000
+    mv04    7.2s = prior   0.9 ( 292) + embF   1.9 ( 292) + dbank   0.6 (  292) + tree   2.2 + harvest  0.6  nodes=5000
+    mv05    9.1s = prior   0.8 ( 247) + embF   2.3 ( 247) + dbank   0.7 (  247) + tree   3.7 + harvest  0.4  nodes=5000
+    mv06    8.5s = prior   0.8 ( 214) + embF   1.9 ( 214) + dbank   0.6 (  214) + tree   3.7 + harvest  0.5  nodes=2851
+    mv07    6.0s = prior   0.5 ( 137) + embF   1.2 ( 137) + dbank   0.4 (  137) + tree   3.0 + harvest  0.3  nodes=1480
+    mv08    2.8s = prior   0.1 (  10) + embF   0.1 (  10) + dbank   0.0 (   10) + tree   2.3 + harvest  0.1  nodes=532
+    mv09    0.1s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.1  nodes=0
+  g019[w3] mate plies=17 tb=0 tac=1 plan=direct:9 bank=208(+1) loss=0 draws=68 ms=185 t/move=7.3s t/game=57s nodes/s=527 [215s]
+    [warm-up] bank 207->207 nodes=100000 [199s]
+    mv01   13.9s = prior  70.0 (35592) + embF 107.0 (35592) + dbank  54.1 (41172) + tree -281.9 + harvest  9.4  nodes=5000
+    mv02   13.2s = prior   0.6 (  96) + embF   0.9 (  96) + dbank   0.3 (   96) + tree   2.6 + harvest  8.4  nodes=5000
+    mv03   14.2s = prior   0.6 ( 106) + embF   1.0 ( 106) + dbank   0.3 (  106) + tree   4.2 + harvest  7.5  nodes=5000
+    mv04    8.7s = prior   0.5 (  92) + embF   0.8 (  92) + dbank   0.3 (   92) + tree   2.0 + harvest  4.6  nodes=5000
+    mv05   11.6s = prior   1.4 ( 197) + embF   2.0 ( 197) + dbank   0.7 (  197) + tree   3.2 + harvest  3.1  nodes=5000
+    mv06   13.3s = prior   1.6 ( 211) + embF   2.4 ( 211) + dbank   0.8 (  211) + tree   4.8 + harvest  2.4  nodes=5000
+  g025[w1] mate plies=21 tb=5 tac=1 plan=direct:6 bank=207(+0) loss=0 draws=68 ms=198 t/move=8.7s t/game=75s nodes/s=400 [863s]
+    [warm-up] bank 207->207 nodes=100685 [635s]
+    mv01   11.1s = prior  90.1 (39516) + embF 147.3 (39516) + dbank  64.4 (42504) + tree -377.8 + harvest  5.6  nodes=914
+    mv02    7.5s = prior   0.1 (  33) + embF   0.3 (  33) + dbank   0.1 (   34) + tree   4.0 + harvest  2.7  nodes=778
+    mv03    6.5s = prior   0.1 (  25) + embF   0.3 (  25) + dbank   0.1 (   26) + tree   4.5 + harvest  1.4  nodes=673
+    mv04    5.6s = prior   0.1 (  20) + embF   0.2 (  20) + dbank   0.1 (   20) + tree   4.0 + harvest  1.0  nodes=493
+    mv05    4.5s = prior   0.1 (   7) + embF   0.1 (   7) + dbank   0.0 (    7) + tree   3.2 + harvest  1.1  nodes=359
+    mv06    2.7s = prior   0.0 (   5) + embF   0.0 (   5) + dbank   0.0 (    5) + tree   2.2 + harvest  0.4  nodes=187
+  g024[w0] mate plies=13 tb=1 tac=0 plan=direct:6 bank=207(+0) loss=0 draws=68 ms=204 t/move=5.6s t/game=38s nodes/s=90 [1323s]
+[worker 0] code moved past 05e3ec5; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 0] resume: skipping 20 recorded games
+    [warm-up] bank 208->209 nodes=100328 [608s]
+    mv01   15.1s = prior  49.4 (18404) + embF  85.4 (18404) + dbank  32.1 (18404) + tree -206.1 + harvest  6.5  nodes=1069
+    mv02   12.4s = prior   0.3 (  55) + embF   0.6 (  55) + dbank   0.1 (   55) + tree   6.0 + harvest  5.1  nodes=1018
+    mv03    8.9s = prior   0.2 (  42) + embF   0.4 (  42) + dbank   0.1 (   42) + tree   5.4 + harvest  2.6  nodes=953
+    mv04    7.2s = prior   0.2 (  37) + embF   0.4 (  37) + dbank   0.1 (   37) + tree   4.8 + harvest  1.5  nodes=794
+    mv05    6.5s = prior   0.4 (  76) + embF   0.8 (  76) + dbank   0.2 (   76) + tree   4.0 + harvest  0.7  nodes=561
+    mv06    5.2s = prior   0.4 (  60) + embF   0.7 (  60) + dbank   0.2 (   60) + tree   3.2 + harvest  0.5  nodes=365
+  g023[w3] mate plies=15 tb=2 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=220 t/move=6.8s t/game=55s nodes/s=86 [878s]
+[worker 3] code moved past 05e3ec5; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 3] resume: skipping 21 recorded games
+    [warm-up] bank 209->209 nodes=100000 [186s]
+    mv01   15.8s = prior  20.6 (8961) + embF  27.7 (8961) + dbank  12.2 ( 8961) + tree -68.3 + harvest  7.8  nodes=5000
+    mv02    4.5s = prior   0.0 (   9) + embF   0.1 (   9) + dbank   0.0 (    9) + tree   1.2 + harvest  3.1  nodes=5000
+    mv03    3.8s = prior   0.3 ( 136) + embF   0.7 ( 136) + dbank   0.3 (  136) + tree   1.2 + harvest  0.8  nodes=5000
+    mv04    3.6s = prior   0.3 (  52) + embF   0.5 (  52) + dbank   0.2 (   52) + tree   1.2 + harvest  1.0  nodes=5000
+    mv05    4.6s = prior   0.6 ( 288) + embF   1.1 ( 288) + dbank   0.5 (  288) + tree   1.3 + harvest  0.5  nodes=5000
+    mv06    9.8s = prior   3.8 ( 804) + embF   1.9 ( 804) + dbank   1.1 (  804) + tree   1.5 + harvest  0.5  nodes=5000
+  g027[w3] mate plies=25 tb=7 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=233 t/move=0.0s t/game=42s nodes/s=713 [243s]
+[worker 3] code moved past 84cdb24; re-exec onto newest
+    [warm-up] bank 209->209 nodes=100977 [323s]
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 3] resume: skipping 22 recorded games
+    mv01   16.7s = prior  26.3 (9676) + embF  44.3 (9676) + dbank  13.5 ( 9676) + tree -97.5 + harvest  7.0  nodes=2751
+    mv02    6.8s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   4.1 + harvest  2.7  nodes=2730
+    mv03    6.2s = prior   0.1 (  30) + embF   0.3 (  30) + dbank   0.1 (   30) + tree   4.2 + harvest  1.5  nodes=2220
+    mv04    7.3s = prior   0.4 (  92) + embF   1.0 (  92) + dbank   0.3 (   92) + tree   4.0 + harvest  1.2  nodes=1701
+    mv05    5.8s = prior   0.3 (  73) + embF   0.7 (  73) + dbank   0.2 (   73) + tree   3.8 + harvest  0.4  nodes=1185
+    mv06    4.5s = prior   0.2 (  42) + embF   0.5 (  42) + dbank   0.1 (   42) + tree   3.1 + harvest  0.4  nodes=677
+  g028[w0] mate plies=15 tb=2 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=223 t/move=6.0s t/game=47s nodes/s=237 [382s]
+[worker 0] code moved past 84cdb24; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 0] resume: skipping 23 recorded games
+    [warm-up] bank 209->209 nodes=100000 [143s]
+    mv01    7.5s = prior  15.7 (8281) + embF  20.3 (8281) + dbank  10.3 ( 8281) + tree -55.6 + harvest  5.1  nodes=5000
+    mv02    6.0s = prior   0.3 ( 153) + embF   0.7 ( 153) + dbank   0.3 (  153) + tree   2.4 + harvest  2.0  nodes=5000
+    mv03    5.8s = prior   0.8 ( 438) + embF   1.3 ( 438) + dbank   0.7 (  438) + tree   1.2 + harvest  1.1  nodes=5000
+    mv04    8.1s = prior   1.1 ( 480) + embF   2.4 ( 480) + dbank   0.9 (  480) + tree   2.1 + harvest  0.4  nodes=5000
+    mv05   11.4s = prior   1.2 ( 446) + embF   3.1 ( 446) + dbank   1.0 (  446) + tree   4.0 + harvest  0.5  nodes=5000
+    mv06    6.8s = prior   0.5 ( 196) + embF   1.5 ( 196) + dbank   0.5 (  196) + tree   3.2 + harvest  0.4  nodes=2803
+  g031[w3] mate plies=17 tb=3 tac=1 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=242 t/move=6.0s t/game=46s nodes/s=608 [198s]
+    [warm-up] bank 209->209 nodes=100000 [156s]
+    mv01    9.4s = prior  18.9 (13122) + embF  21.2 (13122) + dbank  13.3 (13122) + tree -62.2 + harvest  5.8  nodes=5000
+    mv02    8.0s = prior   0.5 ( 265) + embF   0.9 ( 265) + dbank   0.4 (  265) + tree   1.5 + harvest  4.1  nodes=5000
+    mv03    5.1s = prior   0.6 ( 367) + embF   0.9 ( 367) + dbank   0.5 (  367) + tree   1.2 + harvest  1.4  nodes=5000
+    mv04    4.9s = prior   0.6 ( 340) + embF   1.1 ( 340) + dbank   0.5 (  340) + tree   1.2 + harvest  1.0  nodes=5000
+    mv05    4.8s = prior   1.0 ( 694) + embF   1.2 ( 694) + dbank   0.7 (  694) + tree   1.0 + harvest  0.3  nodes=5000
+    mv06    5.5s = prior   0.8 ( 541) + embF   2.4 ( 541) + dbank   0.6 (  541) + tree   0.8 + harvest  0.4  nodes=5000
+  g032[w0] mate plies=27 tb=8 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=244 t/move=0.0s t/game=38s nodes/s=796 [209s]
+    [warm-up] bank 209->209 nodes=100000 [156s]
+    mv01    9.8s = prior  36.6 (22239) + embF  50.4 (22239) + dbank  26.3 (22239) + tree -138.0 + harvest  6.1  nodes=5000
+    mv02   10.9s = prior   0.6 ( 315) + embF   1.0 ( 315) + dbank   0.5 (  315) + tree   3.2 + harvest  5.0  nodes=5000
+    mv03    6.3s = prior   0.8 ( 481) + embF   1.1 ( 481) + dbank   0.7 (  481) + tree   1.2 + harvest  1.9  nodes=5000
+    mv04    4.8s = prior   0.9 ( 763) + embF   1.0 ( 763) + dbank   0.8 (  763) + tree   0.8 + harvest  0.8  nodes=5000
+    [warm-up] bank 209->209 nodes=100000 [126s]
+    mv05    4.6s = prior   0.9 ( 617) + embF   1.0 ( 617) + dbank   0.6 (  617) + tree   1.0 + harvest  0.5  nodes=5000
+    mv01    8.2s = prior  32.6 (22506) + embF  42.1 (22506) + dbank  23.7 (22506) + tree -119.1 + harvest  5.5  nodes=5000
+    mv06    5.2s = prior   1.0 ( 728) + embF   1.1 ( 728) + dbank   0.8 (  728) + tree   1.1 + harvest  0.5  nodes=5000
+  g035[w3] mate plies=31 tb=10 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=255 t/move=0.0s t/game=41s nodes/s=724 [395s]
+    mv02    3.6s = prior   0.4 ( 215) + embF   0.5 ( 215) + dbank   0.2 (  215) + tree   0.9 + harvest  1.3  nodes=5000
+    mv03    6.1s = prior   0.7 ( 466) + embF   0.9 ( 466) + dbank   0.6 (  466) + tree   2.8 + harvest  0.5  nodes=5000
+    mv04    4.4s = prior   0.7 ( 423) + embF   1.1 ( 423) + dbank   0.6 (  423) + tree   1.0 + harvest  0.3  nodes=5000
+    mv05    3.7s = prior   0.7 ( 501) + embF   0.9 ( 501) + dbank   0.5 (  501) + tree   0.8 + harvest  0.2  nodes=5000
+    mv06    5.3s = prior   1.0 ( 569) + embF   1.4 ( 569) + dbank   0.7 (  569) + tree   1.1 + harvest  0.3  nodes=5000
+  g036[w0] mate plies=21 tb=5 tac=1 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=264 t/move=3.6s t/game=31s nodes/s=962 [366s]
+    [warm-up] bank 208->208 nodes=100011 [1345s]
+    mv01   10.9s = prior  99.0 (42929) + embF 168.8 (42929) + dbank  73.8 (48514) + tree -425.0 + harvest  5.8  nodes=360
+    mv02    9.1s = prior   0.1 (  26) + embF   0.3 (  26) + dbank   0.1 (   26) + tree   4.5 + harvest  4.1  nodes=322
+    mv03    7.1s = prior   0.1 (  18) + embF   0.3 (  18) + dbank   0.1 (   18) + tree   4.0 + harvest  2.6  nodes=267
+    mv04    5.7s = prior   0.1 (  11) + embF   0.2 (  11) + dbank   0.0 (   12) + tree   3.5 + harvest  1.8  nodes=230
+    mv05    3.7s = prior   0.0 (   5) + embF   0.1 (   5) + dbank   0.0 (    5) + tree   2.2 + harvest  1.4  nodes=162
+    mv06    2.8s = prior   0.0 (   5) + embF   0.1 (   5) + dbank   0.0 (    5) + tree   2.0 + harvest  0.6  nodes=100
+  g029[w1] mate plies=13 tb=1 tac=0 plan=direct:6 bank=208(+0) loss=0 draws=68 ms=226 t/move=5.7s t/game=39s nodes/s=37 [2247s]
+[worker 1] code moved past 05e3ec5; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 1] resume: skipping 28 recorded games
+    [warm-up] bank 209->209 nodes=100293 [284s]
+    mv01   16.9s = prior  55.4 (32011) + embF  89.7 (32011) + dbank  41.5 (32011) + tree -225.2 + harvest  5.9  nodes=2556
+    mv02   14.8s = prior   0.3 (  84) + embF   1.1 (  84) + dbank   0.3 (   84) + tree   6.8 + harvest  5.8  nodes=2457
+    mv03   12.3s = prior   0.2 (  61) + embF   0.8 (  61) + dbank   0.3 (   61) + tree   6.1 + harvest  4.5  nodes=2449
+    mv04    7.7s = prior   0.1 (  35) + embF   0.4 (  35) + dbank   0.1 (   35) + tree   5.0 + harvest  1.8  nodes=2261
+    mv05    6.8s = prior   0.3 (  95) + embF   1.3 (  95) + dbank   0.3 (   95) + tree   3.6 + harvest  0.6  nodes=1604
+    mv06    6.3s = prior   0.3 (  92) + embF   1.2 (  92) + dbank   0.4 (   92) + tree   3.2 + harvest  0.6  nodes=1149
+  g039[w3] mate plies=19 tb=4 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=268 t/move=6.6s t/game=65s nodes/s=193 [744s]
+[worker 3] code moved past 337a064; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 3] resume: skipping 29 recorded games
+    [warm-up] bank 209->209 nodes=100729 [391s]
+    mv01   13.9s = prior  54.7 (33795) + embF  91.4 (33795) + dbank  41.7 (33795) + tree -228.6 + harvest  5.8  nodes=1439
+    mv02   12.6s = prior   0.2 (  62) + embF   0.9 (  62) + dbank   0.2 (   62) + tree   5.8 + harvest  5.1  nodes=1336
+    mv03    9.5s = prior   0.1 (  44) + embF   0.5 (  44) + dbank   0.2 (   44) + tree   4.8 + harvest  3.6  nodes=1355
+    mv04    7.1s = prior   0.2 (  55) + embF   0.7 (  55) + dbank   0.2 (   55) + tree   4.1 + harvest  1.6  nodes=1220
+    mv05    3.1s = prior   0.0 (   1) + embF   0.0 (   1) + dbank   0.0 (    1) + tree   2.5 + harvest  0.5  nodes=897
+    mv06    3.8s = prior   0.1 (  17) + embF   0.3 (  17) + dbank   0.1 (   17) + tree   2.9 + harvest  0.3  nodes=605
+  g040[w0] mate plies=15 tb=2 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=281 t/move=5.4s t/game=50s nodes/s=137 [806s]
+[worker 0] code moved past 337a064; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 0] resume: skipping 30 recorded games
+    [warm-up] bank 209->209 nodes=102760 [282s]
+    mv01   18.4s = prior  22.1 (11382) + embF  62.2 (11382) + dbank  21.0 (11382) + tree -124.4 + harvest  6.0  nodes=3915
+    mv02   10.2s = prior   0.4 ( 152) + embF   2.0 ( 152) + dbank   0.6 (  152) + tree   4.7 + harvest  1.5  nodes=3106
+    [warm-up] bank 209->209 nodes=100000 [183s]
+    mv03   10.8s = prior   0.4 ( 117) + embF   1.7 ( 117) + dbank   0.5 (  117) + tree   6.1 + harvest  1.2  nodes=2569
+    mv04    8.0s = prior   0.4 ( 128) + embF   1.7 ( 128) + dbank   0.5 (  128) + tree   4.1 + harvest  0.5  nodes=1807
+    mv01   13.5s = prior  16.5 (10235) + embF  39.1 (10235) + dbank  15.2 (10235) + tree -83.1 + harvest  6.5  nodes=5000
+    mv05    5.5s = prior   0.2 (  69) + embF   0.9 (  69) + dbank   0.3 (   69) + tree   3.2 + harvest  0.5  nodes=1230
+    mv06    4.2s = prior   0.1 (  53) + embF   0.7 (  53) + dbank   0.2 (   53) + tree   2.5 + harvest  0.4  nodes=890
+  g033[w1] mate plies=17 tb=3 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=289 t/move=5.5s t/game=57s nodes/s=237 [351s]
+    mv02    5.7s = prior   0.5 ( 367) + embF   1.3 ( 367) + dbank   0.5 (  367) + tree   0.9 + harvest  1.8  nodes=5000
+    mv03    8.1s = prior   1.1 ( 686) + embF   2.5 ( 686) + dbank   1.0 (  686) + tree   1.1 + harvest  1.2  nodes=5000
+    mv04    8.3s = prior   1.2 ( 898) + embF   2.5 ( 898) + dbank   1.4 (  898) + tree   1.1 + harvest  0.8  nodes=5000
+    mv05   12.3s = prior   1.2 ( 470) + embF   4.7 ( 470) + dbank   1.4 (  470) + tree   2.5 + harvest  0.4  nodes=5000
+    mv06   15.1s = prior   1.4 ( 387) + embF   5.2 ( 387) + dbank   1.5 (  387) + tree   4.3 + harvest  0.4  nodes=3463
+  g043[w3] mate plies=21 tb=5 tac=1 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=293 t/move=5.7s t/game=63s nodes/s=452 [263s]
+    [warm-up] bank 209->209 nodes=100000 [202s]
+    mv01   14.4s = prior  21.3 (14470) + embF  44.6 (14470) + dbank  18.8 (14470) + tree -99.0 + harvest  6.6  nodes=5000
+    mv02    7.5s = prior   1.1 ( 763) + embF   2.0 ( 763) + dbank   1.0 (  763) + tree   1.2 + harvest  1.3  nodes=5000
+    mv03    7.9s = prior   1.4 ( 908) + embF   2.5 ( 908) + dbank   1.1 (  908) + tree   1.1 + harvest  0.5  nodes=5000
+    mv04    7.9s = prior   1.6 (1264) + embF   2.5 (1264) + dbank   1.2 ( 1264) + tree   1.1 + harvest  0.3  nodes=5000
+    mv05    7.7s = prior   1.3 ( 751) + embF   2.7 ( 751) + dbank   1.0 (  751) + tree   1.0 + harvest  0.3  nodes=5000
+    mv06    8.6s = prior   0.9 ( 451) + embF   2.2 ( 451) + dbank   0.8 (  451) + tree   3.3 + harvest  0.3  nodes=5000
+  g044[w0] mate plies=27 tb=8 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=300 t/move=0.0s t/game=54s nodes/s=555 [273s]
+[worker 0] 1/1 mate  med t/move=3.9s
+    [warm-up] bank 209->209 nodes=100000 [211s]
+    mv01   12.4s = prior  44.5 (25039) + embF 115.6 (25039) + dbank  41.5 (25039) + tree -253.4 + harvest  6.4  nodes=5000
+    [warm-up] bank 209->211 nodes=100000 [186s]
+    mv02   10.0s = prior   0.7 ( 419) + embF   1.7 ( 419) + dbank   0.6 (  419) + tree   1.6 + harvest  4.6  nodes=5000
+    mv03    8.4s = prior   0.7 ( 424) + embF   1.7 ( 424) + dbank   0.7 (  424) + tree   1.4 + harvest  3.1  nodes=5000
+    mv01   14.5s = prior  34.2 (19077) + embF  91.6 (19077) + dbank  33.1 (19077) + tree -195.3 + harvest  6.4  nodes=5000
+    mv04   10.5s = prior   0.9 ( 510) + embF   4.1 ( 510) + dbank   0.7 (  510) + tree   1.5 + harvest  2.5  nodes=5000
+    mv05    5.1s = prior   0.5 ( 271) + embF   1.5 ( 271) + dbank   0.6 (  271) + tree   1.0 + harvest  0.7  nodes=5000
+    mv02   12.1s = prior   0.7 ( 243) + embF   3.2 ( 243) + dbank   0.9 (  243) + tree   4.3 + harvest  1.6  nodes=5000
+    mv06    5.2s = prior   0.5 ( 363) + embF   1.7 ( 363) + dbank   0.6 (  363) + tree   0.8 + harvest  0.8  nodes=5000
+  g037[w1] mate plies=25 tb=7 tac=0 plan=direct:6 bank=209(+0) loss=0 draws=68 ms=315 t/move=0.0s t/game=52s nodes/s=581 [614s]
+    mv03   14.3s = prior   0.8 ( 274) + embF   3.5 ( 274) + dbank   1.0 (  274) + tree   6.4 + harvest  1.1  nodes=3940
+    mv04    9.1s = prior   0.5 ( 202) + embF   2.4 ( 202) + dbank   0.7 (  202) + tree   3.6 + harvest  0.8  nodes=2712
+    mv05    7.5s = prior   0.5 ( 154) + embF   1.9 ( 154) + dbank   0.6 (  154) + tree   3.2 + harvest  0.6  nodes=1934
+    mv06    5.1s = prior   0.2 (  69) + embF   0.9 (  69) + dbank   0.2 (   69) + tree   3.1 + harvest  0.3  nodes=1249
+  g047[w3] mate plies=17 tb=3 tac=0 plan=direct:6 bank=211(+0) loss=0 draws=68 ms=319 t/move=7.5s t/game=63s nodes/s=317 [512s]
+[worker 3] 2/2 mate  med t/move=6.3s
+    [warm-up] bank 151->161 nodes=100040 [4117s]
+    mv01    7.2s = prior  71.3 (34799) + embF 112.7 (34336) + dbank  60.9 (57634) + tree -306.1 + harvest  4.0  nodes=82
+    mv02    6.8s = prior   0.0 (   3) + embF   0.0 (   3) + dbank   0.0 (    7) + tree   2.8 + harvest  3.9  nodes=62
+    mv03    5.2s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   2.2 + harvest  3.0  nodes=43
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 1] resume: skipping 35 recorded games
+[worker 3] resume: skipping 35 recorded games
+[worker 2] resume: skipping 35 recorded games
+[worker 0] resume: skipping 35 recorded games
+[worker 2] WIP checkpoint: resuming g6 at ply 6
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/numpy/_core/fromnumeric.py:3824: RuntimeWarning: Mean of empty slice
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/numpy/_core/fromnumeric.py:3824: RuntimeWarning: Mean of empty slice
+  return _methods._mean(a, axis=axis, dtype=dtype,
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/numpy/_core/_methods.py:142: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/numpy/_core/_methods.py:142: RuntimeWarning: invalid value encountered in scalar divide
+  ret = ret.dtype.type(ret / rcount)
+[worker 3] 0/0 mate  med t/move=nans
+[worker 0] 0/0 mate  med t/move=nans

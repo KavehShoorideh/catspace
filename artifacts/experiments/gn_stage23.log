@@ -1,0 +1,47 @@
+=== [1/2] Infinite one-way fine-tune (GroupNorm, batch 128, log/50), 1500 steps ===
+[before] pawncap asym d_bwd/d_fwd=0.99 (fwd=11.66 bwd=11.62)
+/Users/kav/code/remote/github/catspace/experiments/cluster_infinite_finetune.py:131: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_rank {float(L_rank):.3f} L_sym {float(L_sym):.3f} "
+  step    0  L_rank 0.289 L_sym 0.024 L_step 213.428 L_inf 2373.819  d_fwd 11.61 d_bwd 11.60  sp(d,DTM) +0.353  (1s)
+  step   50  L_rank 1.870 L_sym 0.440 L_step 581.780 L_inf 1639.638  d_fwd 17.58 d_bwd 19.34  sp(d,DTM) -0.019  (30s)
+  step  100  L_rank 3.297 L_sym 1.145 L_step 851.237 L_inf 1075.822  d_fwd 18.94 d_bwd 27.61  sp(d,DTM) -0.130  (59s)
+  step  150  L_rank 4.865 L_sym 1.275 L_step 750.058 L_inf 979.638  d_fwd 17.34 d_bwd 28.93  sp(d,DTM) +0.255  (88s)
+  step  200  L_rank 3.035 L_sym 2.334 L_step 716.886 L_inf 772.033  d_fwd 12.43 d_bwd 35.58  sp(d,DTM) +0.259  (117s)
+  step  250  L_rank 4.227 L_sym 0.886 L_step 551.527 L_inf 713.070  d_fwd 6.78 d_bwd 38.93  sp(d,DTM) +0.237  (146s)
+  step  300  L_rank 2.995 L_sym 1.930 L_step 648.739 L_inf 602.076  d_fwd 8.27 d_bwd 44.46  sp(d,DTM) +0.228  (175s)
+  step  350  L_rank 3.415 L_sym 3.880 L_step 868.925 L_inf 368.618  d_fwd 8.89 d_bwd 49.58  sp(d,DTM) +0.397  (204s)
+  step  400  L_rank 3.259 L_sym 2.146 L_step 581.217 L_inf 255.646  d_fwd 6.49 d_bwd 53.33  sp(d,DTM) +0.205  (233s)
+  step  450  L_rank 4.065 L_sym 1.824 L_step 292.823 L_inf 613.315  d_fwd 2.55 d_bwd 43.54  sp(d,DTM) +0.045  (262s)
+  step  500  L_rank 3.775 L_sym 3.435 L_step 226.345 L_inf 457.482  d_fwd 1.81 d_bwd 49.21  sp(d,DTM) -0.012  (290s)
+  step  550  L_rank 1.872 L_sym 2.003 L_step 134.320 L_inf 644.125  d_fwd 1.86 d_bwd 46.66  sp(d,DTM) +0.042  (319s)
+  step  600  L_rank 2.620 L_sym 1.024 L_step 198.993 L_inf 160.560  d_fwd 1.81 d_bwd 56.37  sp(d,DTM) +0.076  (348s)
+  step  650  L_rank 1.740 L_sym 2.015 L_step 72.814 L_inf 400.926  d_fwd 1.36 d_bwd 52.01  sp(d,DTM) +0.147  (377s)
+  step  700  L_rank 1.995 L_sym 4.262 L_step 503.957 L_inf 174.759  d_fwd 2.11 d_bwd 60.82  sp(d,DTM) +0.174  (406s)
+  step  750  L_rank 2.189 L_sym 1.741 L_step 137.595 L_inf 232.770  d_fwd 1.69 d_bwd 55.32  sp(d,DTM) +0.272  (435s)
+  step  800  L_rank 2.007 L_sym 3.308 L_step 94.389 L_inf 326.737  d_fwd 0.93 d_bwd 52.85  sp(d,DTM) +0.427  (463s)
+  step  850  L_rank 1.846 L_sym 2.137 L_step 108.852 L_inf 375.757  d_fwd 1.37 d_bwd 54.00  sp(d,DTM) +0.405  (492s)
+  step  900  L_rank 1.558 L_sym 1.244 L_step 164.474 L_inf 268.028  d_fwd 1.23 d_bwd 55.89  sp(d,DTM) +0.268  (521s)
+  step  950  L_rank 1.540 L_sym 4.745 L_step 115.894 L_inf 229.975  d_fwd 1.25 d_bwd 55.35  sp(d,DTM) +0.403  (551s)
+  step 1000  L_rank 1.361 L_sym 1.034 L_step 106.012 L_inf 212.543  d_fwd 1.35 d_bwd 60.77  sp(d,DTM) -0.036  (580s)
+  step 1050  L_rank 2.363 L_sym 2.102 L_step 101.383 L_inf 147.386  d_fwd 0.94 d_bwd 60.36  sp(d,DTM) -0.145  (609s)
+  step 1100  L_rank 1.249 L_sym 5.303 L_step 464.919 L_inf 34.386  d_fwd 1.78 d_bwd 71.78  sp(d,DTM) +0.017  (638s)
+  step 1150  L_rank 1.194 L_sym 1.530 L_step 78.776 L_inf 150.189  d_fwd 1.45 d_bwd 64.02  sp(d,DTM) +0.050  (668s)
+  step 1200  L_rank 1.110 L_sym 3.070 L_step 34.492 L_inf 160.421  d_fwd 1.04 d_bwd 59.02  sp(d,DTM) +0.229  (696s)
+  step 1250  L_rank 1.181 L_sym 1.862 L_step 166.259 L_inf 81.452  d_fwd 1.49 d_bwd 67.02  sp(d,DTM) +0.176  (725s)
+  step 1300  L_rank 1.028 L_sym 1.969 L_step 61.730 L_inf 212.268  d_fwd 1.37 d_bwd 61.88  sp(d,DTM) +0.437  (753s)
+  step 1350  L_rank 1.437 L_sym 2.089 L_step 31.985 L_inf 160.861  d_fwd 0.94 d_bwd 61.96  sp(d,DTM) +0.330  (782s)
+  step 1400  L_rank 2.230 L_sym 1.578 L_step 98.538 L_inf 54.550  d_fwd 1.06 d_bwd 65.17  sp(d,DTM) +0.189  (810s)
+  step 1450  L_rank 1.666 L_sym 1.374 L_step 40.827 L_inf 301.080  d_fwd 0.96 d_bwd 59.47  sp(d,DTM) +0.267  (839s)
+  step 1499  L_rank 1.732 L_sym 1.056 L_step 47.101 L_inf 155.736  d_fwd 1.28 d_bwd 64.22  sp(d,DTM) +0.243  (867s)
+saved data/derived/sep/iqe_infinite_gn.pt
+VERDICT INFINITE pawncap_asym 0.99->47.86 (fwd 11.66->1.36, bwd 11.62->68.31; >>1 = one-way learned)
+=== [2/2] BatchNorm-vs-eval proof on the GroupNorm field (expect eval == train, NO gap) ===
+[ckpt] data/derived/sep/iqe_infinite_gn.pt
+train/eval-sensitive modules: BatchNorm=0  Dropout=0  other=none
+  (A) full EVAL  (BN running stats):        fwd=1.35 bwd=67.66 asym=47.7x
+  (B) full TRAIN (BN batch stats):          fwd=1.36 bwd=67.28 asym=47.2x
+  (C) EVAL except BN->train (isolate BN):   fwd=1.37 bwd=67.28 asym=47.0x
+  reversible-king control (full eval): asym=0.99x  (should be ~1)
+VERDICT BN_PROOF eval=47.7x train=47.2x bn_only=47.0x (C~B>>A + BatchNorm the sole train/eval module => BatchNorm is the cause)
+=== STAGE23 DONE ===

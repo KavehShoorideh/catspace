@@ -1,0 +1,33 @@
+[stage] 357223 pool positions, 2172150 edges (9% irrev)
+[stage] +143790 best-play edges -> 2315940 total
+/Users/kav/code/remote/github/catspace/experiments/train_geometry_l1.py:183: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_pos {float(L_pos):.3f} L_hard {float(L_hard):.3f} L_repel {float(L_repel):.3f} L_dtm {float(L_dtm):.3f}  "
+  step    0  L_pos 94.558 L_hard 28.316 L_repel 373.607 L_dtm 80.564  d_pos 10.91  asym rev 1.00 irr 0.98 (sep 0.99x)  KRk->KQk 17.5  (2s)
+  step  100  L_pos 362.562 L_hard 0.000 L_repel 100.060 L_dtm 1.701  d_pos 19.93  asym rev 1.00 irr 1.00 (sep 1.00x)  KRk->KQk 19.6  (125s)
+  step  200  L_pos 358.336 L_hard 0.000 L_repel 95.178 L_dtm 4.508  d_pos 19.75  asym rev 1.00 irr 0.99 (sep 0.99x)  KRk->KQk 18.9  (245s)
+  step  300  L_pos 349.677 L_hard 0.000 L_repel 93.296 L_dtm 1.695  d_pos 19.17  asym rev 0.98 irr 0.94 (sep 0.96x)  KRk->KQk 14.7  (366s)
+  step  400  L_pos 332.857 L_hard 0.522 L_repel 92.277 L_dtm 3.120  d_pos 19.03  asym rev 0.95 irr 1.04 (sep 1.10x)  KRk->KQk 13.0  (487s)
+  step  500  L_pos 331.404 L_hard 0.121 L_repel 68.605 L_dtm 20.192  d_pos 19.55  asym rev 0.97 irr 1.04 (sep 1.07x)  KRk->KQk 15.8  (609s)
+  step  600  L_pos 199.188 L_hard 3.980 L_repel 92.124 L_dtm 7.701  d_pos 14.88  asym rev 0.93 irr 1.03 (sep 1.10x)  KRk->KQk 11.9  (731s)
+  step  700  L_pos 155.794 L_hard 7.243 L_repel 111.730 L_dtm 7.056  d_pos 12.95  asym rev 1.07 irr 1.14 (sep 1.06x)  KRk->KQk 13.5  (852s)
+  step  800  L_pos 128.835 L_hard 9.953 L_repel 79.675 L_dtm 7.470  d_pos 12.04  asym rev 0.99 irr 1.16 (sep 1.18x)  KRk->KQk 14.7  (973s)
+  step  900  L_pos 159.190 L_hard 3.717 L_repel 42.481 L_dtm 12.502  d_pos 13.27  asym rev 0.98 irr 1.19 (sep 1.22x)  KRk->KQk 17.1  (1093s)
+  step 1000  L_pos 110.130 L_hard 15.259 L_repel 59.250 L_dtm 12.079  d_pos 10.68  asym rev 0.99 irr 1.47 (sep 1.49x)  KRk->KQk 13.3  (1214s)
+  step 1100  L_pos 128.310 L_hard 8.854 L_repel 74.971 L_dtm 15.570  d_pos 10.85  asym rev 1.00 irr 1.69 (sep 1.69x)  KRk->KQk 23.8  (1335s)
+  step 1200  L_pos 63.403 L_hard 28.367 L_repel 44.246 L_dtm 11.137  d_pos 8.18  asym rev 0.99 irr 1.66 (sep 1.68x)  KRk->KQk 20.2  (1456s)
+  step 1300  L_pos 91.007 L_hard 9.177 L_repel 39.074 L_dtm 8.716  d_pos 9.77  asym rev 1.06 irr 1.70 (sep 1.60x)  KRk->KQk 20.8  (1576s)
+  step 1400  L_pos 84.721 L_hard 13.084 L_repel 30.511 L_dtm 7.260  d_pos 9.22  asym rev 0.98 irr 1.82 (sep 1.86x)  KRk->KQk 22.0  (1697s)
+  step 1500  L_pos 76.606 L_hard 12.379 L_repel 40.599 L_dtm 7.225  d_pos 8.77  asym rev 1.02 irr 1.82 (sep 1.78x)  KRk->KQk 24.7  (1818s)
+  step 1600  L_pos 80.571 L_hard 14.481 L_repel 39.945 L_dtm 5.167  d_pos 9.35  asym rev 0.96 irr 1.87 (sep 1.96x)  KRk->KQk 22.4  (1938s)
+  step 1700  L_pos 60.723 L_hard 22.529 L_repel 48.392 L_dtm 6.760  d_pos 7.87  asym rev 1.06 irr 1.86 (sep 1.75x)  KRk->KQk 21.8  (2059s)
+  step 1800  L_pos 53.939 L_hard 14.405 L_repel 57.847 L_dtm 4.116  d_pos 7.42  asym rev 1.04 irr 1.98 (sep 1.90x)  KRk->KQk 24.2  (2180s)
+  step 1900  L_pos 63.044 L_hard 18.573 L_repel 38.083 L_dtm 5.198  d_pos 7.98  asym rev 1.06 irr 1.79 (sep 1.69x)  KRk->KQk 22.7  (2300s)
+  step 2000  L_pos 56.829 L_hard 17.258 L_repel 41.059 L_dtm 3.829  d_pos 7.14  asym rev 0.85 irr 1.85 (sep 2.17x)  KRk->KQk 20.9  (2421s)
+  step 2100  L_pos 58.303 L_hard 23.697 L_repel 41.628 L_dtm 4.390  d_pos 7.60  asym rev 1.03 irr 2.33 (sep 2.26x)  KRk->KQk 16.3  (2542s)
+  step 2200  L_pos 92.769 L_hard 7.483 L_repel 29.305 L_dtm 3.981  d_pos 9.50  asym rev 0.97 irr 1.72 (sep 1.77x)  KRk->KQk 25.6  (2662s)
+  step 2300  L_pos 46.898 L_hard 17.204 L_repel 33.516 L_dtm 3.968  d_pos 6.87  asym rev 0.99 irr 2.02 (sep 2.04x)  KRk->KQk 21.4  (2783s)
+  step 2400  L_pos 79.000 L_hard 14.344 L_repel 35.779 L_dtm 4.572  d_pos 9.44  asym rev 1.12 irr 2.26 (sep 2.02x)  KRk->KQk 26.9  (2904s)
+  step 2499  L_pos 47.518 L_hard 33.215 L_repel 45.322 L_dtm 4.212  d_pos 6.42  asym rev 1.04 irr 2.35 (sep 2.26x)  KRk->KQk 12.9  (3023s)
+saved data/derived/sep/iqe_nucleus_full.pt
+VERDICT GEOM_L1 asym_sep=2.04x (irr 2.03/rev 0.99) KRk->KQk=12.9

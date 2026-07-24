@@ -1,0 +1,12 @@
+[stage] 357223 positions, 2172150 edges; successor key-sets precomputed in 10s
+/Users/kav/code/remote/github/catspace/experiments/train_geometry_min.py:186: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_pos {float(L_pos):.3f} L_push {float(L_push):.3f}  "
+  step    0  L_pos 96.005 L_push 225.021  d_pos 10.88 d_push 10.9  asym rev 0.99 irr 0.90 (sep 0.91x)  KRk->KQk 4.7  excl 0  (2s)
+  step  100  L_pos 22.655 L_push 83.175  d_pos 5.22 d_push 14.5  asym rev 0.90 irr 0.95 (sep 1.05x)  KRk->KQk 3.9  excl 0  (105s)
+  step  200  L_pos 2.537 L_push 21.159  d_pos 2.21 d_push 19.1  asym rev 1.96 irr 1.26 (sep 0.64x)  KRk->KQk 4.0  excl 0  (209s)
+  step  300  L_pos 0.443 L_push 13.639  d_pos 1.26 d_push 23.1  asym rev 3.46 irr 3.22 (sep 0.93x)  KRk->KQk 2.9  excl 0  (311s)
+  step  400  L_pos 0.336 L_push 9.585  d_pos 1.25 d_push 27.4  asym rev 5.40 irr 3.22 (sep 0.60x)  KRk->KQk 2.2  excl 0  (414s)
+  step  500  L_pos 2.207 L_push 8.509  d_pos 1.80 d_push 27.0  asym rev 2.96 irr 1.61 (sep 0.55x)  KRk->KQk 1.4  excl 0  (516s)
+  step  600  L_pos 0.480 L_push 7.104  d_pos 1.37 d_push 28.3  asym rev 4.18 irr 3.77 (sep 0.90x)  KRk->KQk 3.0  excl 0  (618s)
+  step  700  L_pos 0.406 L_push 10.132  d_pos 1.18 d_push 30.1  asym rev 6.60 irr 4.14 (sep 0.63x)  KRk->KQk 4.9  excl 0  (718s)

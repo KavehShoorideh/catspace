@@ -20,9 +20,10 @@ import torch.nn as nn
 from catspace.nn.fb import BoardEncoder
 from catspace.nn.features import N_PLANES
 
-N_COHORTS = 16
-COHORT_SF = 11
-COHORT_LC0 = 12
+N_COHORTS = 24
+# cohort ids: 0-10 human Elo bins (features.elo_bin) · 11 sf_full · 12 sf_2000 · 13 sf_1700
+# · 14 sf_1400 · 15 random (known-uniform anchor) · 16 maia_1100 · 17 maia_1500 · 18 maia_1900
+COHORT_ENGINE = {2: 11, 6: 12, 5: 13, 4: 14, 3: 15, 8: 16, 9: 17, 10: 18}
 
 
 class OpponentModel(nn.Module):

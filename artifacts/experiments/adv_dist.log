@@ -1,0 +1,8 @@
+[stage] remoteness recursion on ~600 won positions, 8 workers...
+  recursion exact: overall 0.545 | near-mate DTM<=10 0.913 | far DTM>10 0.435  (far degradation = DTZ!=DTM artifact)
+  triangle slack: median=2.0 frac_zero(optimal)=0.132 NEGATIVE(violations)=0.2188
+  DTM defined (finite) only on WON positions: 0.511 of the data (draw 0.465, loss 0.025 -> DTM = +inf/undefined there)
+[stage] graded committor (eps=0.15) on 160 positions...
+  committor graded fraction (0<P<1): 0.950  (perfect-play V* is only {0,0.5,1}; eps-defender makes it dense)
+-> artifacts/experiments/adversarial_distance.png
+VERDICT ADV_DIST recursion_exact_overall=0.545 near_mate=0.913 tri_violations=0.2188 DTM_coverage=0.511 committor_graded=0.950 (197s)

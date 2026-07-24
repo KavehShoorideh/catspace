@@ -1,0 +1,170 @@
+{
+  "field": "data/derived/sep/lichess_gn_iqeqrl_sf.pt",
+  "n_mates": 1500,
+  "patterns": {
+    "backrank": 62,
+    "bishop": 49,
+    "double": 13,
+    "knight": 46,
+    "ksupport": 89,
+    "ladder": 323,
+    "pawn": 30,
+    "qkiss": 575,
+    "queen-other": 138,
+    "rook-other": 173,
+    "smothered": 2
+  },
+  "silhouette": -0.32106754183769226,
+  "cohesion": {
+    "backrank": 0.6614140868186951,
+    "bishop": 1.1582034826278687,
+    "knight": 1.0946128368377686,
+    "ksupport": 0.30789244174957275,
+    "ladder": 0.7016075253486633,
+    "qkiss": 1.0732592344284058,
+    "queen-other": 1.0175704956054688,
+    "rook-other": 0.7155627012252808
+  },
+  "catalog": [
+    {
+      "cluster": 2,
+      "n": 774,
+      "dominant": "qkiss",
+      "dominant_frac": 0.33204134366925064,
+      "coherence": 0.9974458813667297,
+      "patterns": {
+        "backrank": 25,
+        "bishop": 23,
+        "double": 4,
+        "knight": 21,
+        "ksupport": 62,
+        "ladder": 183,
+        "pawn": 26,
+        "qkiss": 257,
+        "queen-other": 68,
+        "rook-other": 105
+      }
+    },
+    {
+      "cluster": 4,
+      "n": 244,
+      "dominant": "qkiss",
+      "dominant_frac": 0.5491803278688525,
+      "coherence": 0.9918413162231445,
+      "patterns": {
+        "backrank": 14,
+        "bishop": 12,
+        "double": 3,
+        "knight": 13,
+        "ksupport": 2,
+        "ladder": 20,
+        "qkiss": 134,
+        "queen-other": 28,
+        "rook-other": 16,
+        "smothered": 2
+      }
+    },
+    {
+      "cluster": 1,
+      "n": 197,
+      "dominant": "qkiss",
+      "dominant_frac": 0.3756345177664975,
+      "coherence": 0.9907388687133789,
+      "patterns": {
+        "backrank": 1,
+        "bishop": 5,
+        "double": 2,
+        "knight": 9,
+        "ksupport": 15,
+        "ladder": 72,
+        "qkiss": 74,
+        "queen-other": 10,
+        "rook-other": 9
+      }
+    },
+    {
+      "cluster": 0,
+      "n": 122,
+      "dominant": "qkiss",
+      "dominant_frac": 0.39344262295081966,
+      "coherence": 0.9750758409500122,
+      "patterns": {
+        "backrank": 13,
+        "bishop": 3,
+        "double": 2,
+        "knight": 2,
+        "ksupport": 2,
+        "ladder": 17,
+        "pawn": 2,
+        "qkiss": 48,
+        "queen-other": 15,
+        "rook-other": 18
+      }
+    },
+    {
+      "cluster": 7,
+      "n": 75,
+      "dominant": "qkiss",
+      "dominant_frac": 0.4,
+      "coherence": 0.97044837474823,
+      "patterns": {
+        "backrank": 6,
+        "bishop": 2,
+        "double": 1,
+        "ladder": 12,
+        "qkiss": 30,
+        "queen-other": 11,
+        "rook-other": 13
+      }
+    },
+    {
+      "cluster": 6,
+      "n": 37,
+      "dominant": "qkiss",
+      "dominant_frac": 0.40540540540540543,
+      "coherence": 0.933321475982666,
+      "patterns": {
+        "backrank": 2,
+        "bishop": 2,
+        "knight": 1,
+        "ladder": 10,
+        "pawn": 1,
+        "qkiss": 15,
+        "queen-other": 2,
+        "rook-other": 4
+      }
+    },
+    {
+      "cluster": 3,
+      "n": 31,
+      "dominant": "qkiss",
+      "dominant_frac": 0.3225806451612903,
+      "coherence": 0.8824968934059143,
+      "patterns": {
+        "backrank": 1,
+        "ksupport": 7,
+        "ladder": 8,
+        "pawn": 1,
+        "qkiss": 10,
+        "queen-other": 1,
+        "rook-other": 3
+      }
+    },
+    {
+      "cluster": 5,
+      "n": 20,
+      "dominant": "qkiss",
+      "dominant_frac": 0.35,
+      "coherence": 0.8355462551116943,
+      "patterns": {
+        "bishop": 2,
+        "double": 1,
+        "ksupport": 1,
+        "ladder": 1,
+        "qkiss": 7,
+        "queen-other": 3,
+        "rook-other": 5
+      }
+    }
+  ]
+}

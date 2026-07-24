@@ -1,0 +1,23 @@
+shards=lichess_db_standard_rated_2019-01.prefix1gb device=mps steps=1000 batch=512 d=64 quasimetric=False ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 2.3M (d=64 channels=64 blocks=6 enc_out=256)
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:654: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 39.928 sq_dev 0.0000 lam 1.000 d_step 0.260 d_rand 0.258 var 0.000 sib 0.000 unr 29.739 unrb 29.740 d_unr 0.26 d_oth 0.25
+step 100  loss 448.7159  train_top1 0.000  lr 2.94e-04  (5.4 it/s)
+    qrl push 32.562 sq_dev 35.8770 lam 1.581 d_step 6.795 d_rand 7.835 var 0.000 sib 0.000 unr 22.471 unrb 23.557 d_unr 7.53 d_oth 8.79
+step 200  loss 222.2974  train_top1 0.000  lr 2.74e-04  (5.6 it/s)
+    qrl push 19.366 sq_dev 10.2960 lam 2.208 d_step 3.054 d_rand 25.824 var 0.000 sib 0.000 unr 11.726 unrb 11.304 d_unr 23.05 d_oth 36.08
+step 300  loss 191.1558  train_top1 0.000  lr 2.45e-04  (5.6 it/s)
+    qrl push 17.767 sq_dev 10.6091 lam 2.669 d_step 2.423 d_rand 37.518 var 0.000 sib 0.000 unr 11.368 unrb 8.753 d_unr 33.78 d_oth 58.03
+step 400  loss 107.8695  train_top1 0.000  lr 2.07e-04  (5.6 it/s)
+    qrl push 9.682 sq_dev 3.8715 lam 2.977 d_step 1.744 d_rand 65.803 var 0.000 sib 0.000 unr 6.583 unrb 6.277 d_unr 52.10 d_oth 113.64
+step 500  loss 142.1746  train_top1 0.000  lr 1.65e-04  (5.6 it/s)
+  VAL step 500  loss 395.8735  top1 0.004  top8 0.034
+  ladder checkpoint -> lichess_gn_iqeqrl_smoke_step500.pt
+    qrl push 10.929 sq_dev 10.7946 lam 3.281 d_step 1.916 d_rand 68.607 var 0.000 sib 0.000 unr 7.897 unrb 7.096 d_unr 55.94 d_oth 101.29
+step 600  loss 126.1047  train_top1 0.000  lr 1.24e-04  (4.2 it/s)
+    qrl push 6.910 sq_dev 41.2169 lam 3.602 d_step 4.733 d_rand 93.198 var 0.000 sib 0.000 unr 4.941 unrb 7.260 d_unr 71.96 d_oth 149.62
+step 700  loss 194.6404  train_top1 0.000  lr 8.60e-05  (5.7 it/s)
+    qrl push 9.553 sq_dev 7.9727 lam 3.963 d_step 2.032 d_rand 82.334 var 0.000 sib 0.000 unr 6.179 unrb 4.807 d_unr 72.54 d_oth 121.11

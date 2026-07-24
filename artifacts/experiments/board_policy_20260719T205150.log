@@ -1,0 +1,15 @@
+# launched : Sun Jul 19 20:51:50 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/train_board_policy.py --epochs 60
+# ---
+[stage] planes (24000, 20, 8, 8)
+  ep   0  top1 0.004  (2s)
+  ep  10  top1 0.293  (18s)
+  ep  20  top1 0.298  (33s)
+  ep  30  top1 0.298  (49s)
+  ep  40  top1 0.289  (65s)
+  ep  50  top1 0.295  (80s)
+  ep  59  top1 0.299  (94s)
+saved data/derived/sep/board_policy.pt
+VERDICT BOARD_POLICY top1=0.299 top3=0.503 per_material={'krrkbp': 0.135, 'krrvk': 0.346, 'krvk': 0.423} (high top1 => MCTS with this prior should convert near-optimally)

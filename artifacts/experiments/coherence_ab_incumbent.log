@@ -1,0 +1,2 @@
+coherence-length backup discount k=1.0
+PLAYOUT_AB coherence_k1_vs_off mate-rate A=0.610 vs B=0.510  diff=-0.100 CI=[-0.200,+0.000]  e=1.11 (n=100 starts, 26 decisive, deterministic defender; plies-to-mate A=21 B=15) [ns]

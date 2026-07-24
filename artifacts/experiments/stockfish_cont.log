@@ -1,0 +1,11 @@
+[stage] 8000 seed positions, 9 workers, 8 plies/cont, engine=stockfish (t=0.08s)
+  w8: 883 continuations (7760 rows) -> shard_00000.npz (620s)
+  w0: 883 continuations (7817 rows) -> shard_00001.npz (627s)
+  w2: 880 continuations (7821 rows) -> shard_00002.npz (630s)
+  w3: 884 continuations (7842 rows) -> shard_00003.npz (630s)
+  w6: 887 continuations (7858 rows) -> shard_00004.npz (632s)
+  w5: 881 continuations (7839 rows) -> shard_00005.npz (633s)
+  w1: 888 continuations (7881 rows) -> shard_00006.npz (634s)
+  w4: 884 continuations (7871 rows) -> shard_00007.npz (636s)
+  w7: 888 continuations (7916 rows) -> shard_00008.npz (639s)
+VERDICT STOCKFISH_CONT continuations=7958 plies=8 -> data/shards/stockfish_continuations (639s). Mix with: train_lichess_fb.py --selfplay-shards data/shards/stockfish_continuations --selfplay-frac 0.3

@@ -1,0 +1,42 @@
+=== carry-forward v3 start Thu Jul 23 19:22:09 PDT 2026 ===
+=== [S] sharding full month Thu Jul 23 19:22:09 PDT 2026 ===
+=== IQE round 0 on 9 staged shards -> step 65000 Thu Jul 23 19:26:28 PDT 2026 ===
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_full_stage device=mps steps=65000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed field_fullmonth_r0.pt at step 60000
+[resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
+multichannel mix: human(r0)=0.80 + self_play_v1:11:0.2
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:676: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 11.280 sq_dev 0.0139 lam 139.443 d_step 0.959 d_rand 48.906 var 0.000 sib 0.000 unr 4.494 unrb 3.075 d_unr 48.82 d_oth 49.05
+step 60100  loss 147.5185  train_top1 0.000  lr 3.00e-05  (1.2 it/s)
+    qrl push 12.772 sq_dev 0.0156 lam 139.582 d_step 0.578 d_rand 44.681 var 0.000 sib 0.000 unr 2.846 unrb 3.235 d_unr 60.16 d_oth 33.38
+step 60200  loss 75.6300  train_top1 0.000  lr 2.99e-05  (1.2 it/s)
+    qrl push 10.869 sq_dev 0.0851 lam 139.758 d_step 0.699 d_rand 48.710 var 0.000 sib 0.000 unr 4.647 unrb 3.843 d_unr 52.09 d_oth 40.24
+step 60300  loss 73.2165  train_top1 0.000  lr 2.98e-05  (1.2 it/s)
+    qrl push 8.940 sq_dev 0.0237 lam 139.857 d_step 0.674 d_rand 58.627 var 0.000 sib 0.000 unr 3.382 unrb 11.106 d_unr 64.17 d_oth 13.74
+step 60400  loss 60.5665  train_top1 0.000  lr 2.96e-05  (1.0 it/s)
+    qrl push 9.225 sq_dev 10.2363 lam 139.990 d_step 0.864 d_rand 52.799 var 0.000 sib 0.000 unr 3.469 unrb 2.234 d_unr 58.68 d_oth 46.44
+step 60500  loss 115.6920  train_top1 0.000  lr 2.93e-05  (1.2 it/s)
+    qrl push 7.822 sq_dev 0.2144 lam 140.321 d_step 0.737 d_rand 57.965 var 0.000 sib 0.000 unr 2.897 unrb 2.418 d_unr 61.27 d_oth 52.32
+step 60600  loss 42.8807  train_top1 0.000  lr 2.91e-05  (0.9 it/s)
+    qrl push 7.625 sq_dev 0.0000 lam 140.354 d_step 0.675 d_rand 58.317 var 0.000 sib 0.000 unr 2.853 unrb 2.091 d_unr 63.23 d_oth 49.78
+step 60700  loss 71.8550  train_top1 0.000  lr 2.87e-05  (1.2 it/s)
+    qrl push 12.530 sq_dev 0.0001 lam 140.589 d_step 0.748 d_rand 46.838 var 0.000 sib 0.000 unr 2.699 unrb 13.283 d_unr 59.28 d_oth 7.50
+step 60800  loss 111.3137  train_top1 0.000  lr 2.83e-05  (1.2 it/s)
+    qrl push 10.477 sq_dev 0.0191 lam 140.848 d_step 0.787 d_rand 51.100 var 0.000 sib 0.000 unr 2.753 unrb 13.810 d_unr 59.75 d_oth 8.84
+step 60900  loss 58.7515  train_top1 0.000  lr 2.79e-05  (1.2 it/s)
+    qrl push 10.931 sq_dev 0.0077 lam 141.020 d_step 0.762 d_rand 51.797 var 0.000 sib 0.000 unr 3.869 unrb 8.644 d_unr 59.94 d_oth 16.80
+step 61000  loss 61.6908  train_top1 0.000  lr 2.74e-05  (1.0 it/s)
+  VAL step 61000  loss 282.1922  top1 0.014  top8 0.083
+    qrl push 7.920 sq_dev 0.0025 lam 141.151 d_step 0.684 d_rand 55.423 var 0.000 sib 0.000 unr 3.456 unrb 2.628 d_unr 54.59 d_oth 57.76
+step 61100  loss 54.4093  train_top1 0.000  lr 2.69e-05  (1.1 it/s)
+    qrl push 11.074 sq_dev 0.1102 lam 141.265 d_step 0.843 d_rand 48.173 var 0.000 sib 0.000 unr 4.836 unrb 4.392 d_unr 50.56 d_oth 43.05
+step 61200  loss 53.2402  train_top1 0.000  lr 2.63e-05  (1.2 it/s)
+    qrl push 10.084 sq_dev 0.0042 lam 141.303 d_step 0.778 d_rand 49.280 var 0.000 sib 0.000 unr 3.729 unrb 2.269 d_unr 53.60 d_oth 42.81
+step 61300  loss 115.6438  train_top1 0.000  lr 2.57e-05  (1.2 it/s)
+    qrl push 9.875 sq_dev 0.0029 lam 141.420 d_step 0.769 d_rand 51.248 var 0.000 sib 0.000 unr 4.417 unrb 2.553 d_unr 55.92 d_oth 43.95
+step 61400  loss 112.1541  train_top1 0.000  lr 2.51e-05  (1.1 it/s)
+    qrl push 13.611 sq_dev 0.0086 lam 141.454 d_step 0.831 d_rand 45.660 var 0.000 sib 0.000 unr 2.832 unrb 8.585 d_unr 62.48 d_oth 14.64

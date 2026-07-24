@@ -1,0 +1,79 @@
+[data] 137425 positions  [0s]
+[tok] done  [2s]
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+  step 0 loss 0.8208  [8s]
+  step 500 loss 0.2958  [20s]
+  step 1000 loss 0.3044  [31s]
+  step 1500 loss 0.2813  [43s]
+  step 2000 loss 0.2945  [55s]
+  step 2500 loss 0.2746  [67s]
+  step 3000 loss 0.2600  [78s]
+  step 3500 loss 0.1979  [89s]
+  step 4000 loss 0.2429  [100s]
+  step 4500 loss 0.2199  [111s]
+  step 5000 loss 0.1930  [122s]
+  step 5500 loss 0.1690  [134s]
+VERDICT DTM_TOK overall: spearman +0.598 MAE 13.25 plies (n=13742)
+    class BBKPk   : spearman +0.339 MAE 18.85 (n=107)
+    class BBKRk   : spearman +0.361 MAE 7.44 (n=107)
+    class BBKkn   : spearman +0.281 MAE 20.43 (n=108)
+    class BBKkp   : spearman +0.221 MAE 30.97 (n=118)
+    class BBKkr   : spearman +0.643 MAE 3.69 (n=107)
+    class BKNNk   : spearman +0.524 MAE 7.99 (n=106)
+    class BKNQk   : spearman +0.247 MAE 20.54 (n=106)
+    class BKNRk   : spearman +0.250 MAE 18.60 (n=101)
+    class BKNbk   : spearman +0.635 MAE 4.86 (n=112)
+    class BKNk    : spearman +0.489 MAE 8.24 (n=113)
+    class BKPPk   : spearman +0.341 MAE 17.11 (n=108)
+    class BKPQk   : spearman +0.422 MAE 14.60 (n=108)
+    class BKPkr   : spearman +0.237 MAE 19.84 (n=112)
+    class BKQQk   : spearman +0.281 MAE 6.28 (n=105)
+    class BKQRk   : spearman +0.468 MAE 7.10 (n=110)
+    class BKQkr   : spearman +0.151 MAE 19.16 (n=111)
+    class BKRbk   : spearman +0.338 MAE 9.38 (n=111)
+    class BKRkr   : spearman +0.497 MAE 5.38 (n=103)
+    class KNNNk   : spearman +0.550 MAE 4.18 (n=102)
+    class KNNPk   : spearman +0.313 MAE 20.72 (n=115)
+    class KNPRk   : spearman +0.159 MAE 18.17 (n=116)
+    class KNPk    : spearman +0.453 MAE 15.53 (n=106)
+    class KNPkn   : spearman +0.411 MAE 20.62 (n=108)
+    class KNPkp   : spearman +0.418 MAE 19.99 (n=117)
+    class KNPkq   : spearman +0.480 MAE 13.99 (n=102)
+    class KNQbk   : spearman +0.329 MAE 15.39 (n=123)
+    class KNQkn   : spearman +0.266 MAE 16.01 (n=114)
+    class KNQkq   : spearman +0.390 MAE 5.72 (n=105)
+    class KNRk    : spearman +0.394 MAE 7.02 (n=111)
+    class KNRkn   : spearman +0.086 MAE 15.81 (n=108)
+    class KNRkq   : spearman +0.384 MAE 7.14 (n=109)
+    class KNRkr   : spearman +0.453 MAE 6.66 (n=111)
+    class KPPPk   : spearman +0.517 MAE 13.71 (n=118)
+    class KPPQk   : spearman +0.232 MAE 15.75 (n=108)
+    class KPPk    : spearman +0.456 MAE 11.71 (n=108)
+    class KPPkr   : spearman +0.174 MAE 15.53 (n=110)
+    class KPQQk   : spearman +0.156 MAE 14.13 (n=107)
+    class KPQbk   : spearman +0.376 MAE 14.97 (n=123)
+    class KPQkn   : spearman +0.363 MAE 14.67 (n=112)
+    class KPQkq   : spearman +0.458 MAE 13.54 (n=110)
+    class KPRkq   : spearman +0.405 MAE 12.02 (n=112)
+    class KQQRk   : spearman +0.330 MAE 7.99 (n=102)
+    class KQQbk   : spearman +0.333 MAE 10.27 (n=113)
+    class KQQk    : spearman +0.448 MAE 5.33 (n=113)
+    class KQQkq   : spearman +0.260 MAE 6.87 (n=103)
+    class KQQkr   : spearman +0.276 MAE 16.82 (n=116)
+    class KQRRk   : spearman +0.292 MAE 8.86 (n=117)
+    class KQRbk   : spearman +0.288 MAE 11.93 (n=103)
+    class KQRk    : spearman +0.608 MAE 7.09 (n=107)
+    class KQRkn   : spearman +0.299 MAE 16.04 (n=105)
+    class KQRkp   : spearman +0.401 MAE 21.09 (n=106)
+    class KQRkq   : spearman +0.313 MAE 8.30 (n=107)
+    class KQRkr   : spearman +0.288 MAE 14.97 (n=103)
+    class KQbk    : spearman +0.422 MAE 17.79 (n=114)
+    class KQk     : spearman +0.538 MAE 2.35 (n=108)
+    class KRRRk   : spearman +0.383 MAE 9.23 (n=112)
+    class KRRbkn  : spearman +0.251 MAE 15.50 (n=108)
+    class KRRbkp  : spearman +0.238 MAE 24.63 (n=114)
+    class KRRkq   : spearman +0.475 MAE 7.84 (n=108)
+    class KRRkr   : spearman +0.602 MAE 8.24 (n=103)
+    class KRkp    : spearman +0.427 MAE 20.71 (n=117)
+saved data/derived/sep/dtm_tok_r1.pt  [147s]

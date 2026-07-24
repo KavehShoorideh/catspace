@@ -1,0 +1,17 @@
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/sklearn/linear_model/_logistic.py:599: ConvergenceWarning: lbfgs failed to converge after 400 iteration(s) (status=1):
+STOP: TOTAL NO. OF ITERATIONS REACHED LIMIT
+
+Increase the number of iterations to improve the convergence (max_iter=400).
+You might also want to scale the data as shown in:
+    https://scikit-learn.org/stable/modules/preprocessing.html
+Please also refer to the documentation for alternative solver options:
+    https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression
+  n_iter_i = _check_optimize_result(
+[cav] connected_rooks base-rate 16% in endgame domain, cav=ok (11s)
+VERDICT CONVERSION_CONCEPT field=iqe_nucleus_gn n=24 short_depth=3 frontier=5
+  alpha=0.00  mate_rate=0.375  (549s)
+  alpha=0.40  mate_rate=0.333  (436s)
+  alpha=1.00  mate_rate=0.333  (457s)
+  DELTA alpha=0.40: -0.042 vs alpha=0
+  DELTA alpha=1.00: -0.042 vs alpha=0
+[done] 1453s

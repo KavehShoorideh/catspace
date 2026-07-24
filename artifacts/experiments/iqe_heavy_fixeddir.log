@@ -1,0 +1,297 @@
+shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=40000 batch=128 d=512 quasimetric=True ply_gap_weight=0.0 asym_weight=0.0 two_horizon=False
+model params: 9.1M (d=512 channels=128 blocks=10 enc_out=512)
+holdout: 8 batches of 128
+committor-base ON: phead 66051 params, phead-weight=1.0 (no pole term, no goal vectors)
+/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py:517: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"    phead {float(p_loss):.4f}", flush=True)
+    phead 3.3062
+step 100  loss 12.9938  train_top1 0.016  lr 3.00e-04  (3.0 it/s)
+    phead 0.8393
+step 200  loss 18.7742  train_top1 0.008  lr 3.00e-04  (3.0 it/s)
+    phead 0.1284
+step 300  loss 7.6931  train_top1 0.016  lr 3.00e-04  (3.0 it/s)
+    phead 0.8028
+step 400  loss 7.2707  train_top1 0.008  lr 3.00e-04  (3.0 it/s)
+    phead 1.5594
+step 500  loss 6.2065  train_top1 0.008  lr 3.00e-04  (3.0 it/s)
+  VAL step 500  loss 5.0059  top1 0.008  top8 0.061
+    phead 2.5401
+step 600  loss 6.1229  train_top1 0.008  lr 3.00e-04  (2.9 it/s)
+    phead 1.1948
+step 700  loss 6.1313  train_top1 0.000  lr 3.00e-04  (3.0 it/s)
+    phead 0.6876
+step 800  loss 5.7801  train_top1 0.008  lr 3.00e-04  (3.0 it/s)
+    phead 0.7887
+step 900  loss 5.5840  train_top1 0.008  lr 3.00e-04  (3.0 it/s)
+    phead 0.9107
+step 1000  loss 5.6369  train_top1 0.008  lr 3.00e-04  (3.1 it/s)
+  VAL step 1000  loss 4.8875  top1 0.008  top8 0.060
+    phead 2.8754
+step 1100  loss 5.5761  train_top1 0.023  lr 2.99e-04  (2.9 it/s)
+    phead 0.9681
+step 1200  loss 5.9631  train_top1 0.016  lr 2.99e-04  (3.1 it/s)
+    phead 0.8648
+step 1300  loss 5.6129  train_top1 0.000  lr 2.99e-04  (3.0 it/s)
+    phead 0.6509
+step 1400  loss 5.6003  train_top1 0.016  lr 2.99e-04  (3.0 it/s)
+    phead 0.7587
+step 1500  loss 5.4776  train_top1 0.008  lr 2.99e-04  (3.1 it/s)
+  VAL step 1500  loss 4.7763  top1 0.010  top8 0.062
+    phead 0.7507
+step 1600  loss 5.5649  train_top1 0.008  lr 2.99e-04  (2.9 it/s)
+    phead 0.6801
+step 1700  loss 6.2649  train_top1 0.008  lr 2.99e-04  (3.0 it/s)
+    phead 1.0639
+step 1800  loss 6.0955  train_top1 0.008  lr 2.99e-04  (3.0 it/s)
+    phead 0.7014
+step 1900  loss 6.1844  train_top1 0.016  lr 2.99e-04  (3.0 it/s)
+    phead 1.4752
+step 2000  loss 5.4238  train_top1 0.008  lr 2.98e-04  (3.0 it/s)
+  VAL step 2000  loss 4.7878  top1 0.005  top8 0.064
+    phead 0.7544
+step 2100  loss 5.2003  train_top1 0.008  lr 2.98e-04  (2.9 it/s)
+    phead 0.7527
+step 2200  loss 5.5451  train_top1 0.008  lr 2.98e-04  (3.1 it/s)
+    phead 0.7256
+step 2300  loss 5.4595  train_top1 0.008  lr 2.98e-04  (3.1 it/s)
+    phead 0.6415
+step 2400  loss 5.6232  train_top1 0.016  lr 2.98e-04  (3.0 it/s)
+    phead 0.7369
+step 2500  loss 5.5354  train_top1 0.008  lr 2.97e-04  (2.9 it/s)
+  VAL step 2500  loss 4.8223  top1 0.011  top8 0.058
+    phead 0.7171
+step 2600  loss 5.5497  train_top1 0.008  lr 2.97e-04  (2.8 it/s)
+    phead 0.7297
+step 2700  loss 5.5982  train_top1 0.008  lr 2.97e-04  (3.0 it/s)
+    phead 0.8222
+step 2800  loss 5.4824  train_top1 0.016  lr 2.97e-04  (3.1 it/s)
+    phead 0.7659
+step 2900  loss 5.6749  train_top1 0.016  lr 2.97e-04  (3.0 it/s)
+    phead 0.8176
+step 3000  loss 5.2174  train_top1 0.016  lr 2.96e-04  (3.1 it/s)
+  VAL step 3000  loss 4.7894  top1 0.010  top8 0.060
+    phead 0.7355
+step 3100  loss 5.5472  train_top1 0.008  lr 2.96e-04  (2.9 it/s)
+    phead 1.4130
+step 3200  loss 5.5861  train_top1 0.016  lr 2.96e-04  (3.1 it/s)
+    phead 0.7886
+step 3300  loss 5.6715  train_top1 0.008  lr 2.95e-04  (3.1 it/s)
+    phead 0.7641
+step 3400  loss 5.6283  train_top1 0.008  lr 2.95e-04  (3.1 it/s)
+    phead 0.9409
+step 3500  loss 5.5323  train_top1 0.023  lr 2.95e-04  (3.0 it/s)
+  VAL step 3500  loss 4.6587  top1 0.011  top8 0.091
+    phead 0.6032
+step 3600  loss 5.5417  train_top1 0.000  lr 2.95e-04  (2.9 it/s)
+    phead 0.7237
+step 3700  loss 5.6743  train_top1 0.008  lr 2.94e-04  (3.1 it/s)
+    phead 0.9708
+step 3800  loss 5.2499  train_top1 0.010  lr 2.94e-04  (3.1 it/s)
+    phead 0.7314
+step 3900  loss 5.5107  train_top1 0.016  lr 2.94e-04  (3.0 it/s)
+    phead 0.6097
+step 4000  loss 5.4121  train_top1 0.019  lr 2.93e-04  (3.0 it/s)
+  VAL step 4000  loss 4.6433  top1 0.008  top8 0.101
+    phead 0.8428
+step 4100  loss 5.1404  train_top1 0.008  lr 2.93e-04  (2.9 it/s)
+    phead 0.7492
+step 4200  loss 5.5206  train_top1 0.016  lr 2.93e-04  (3.0 it/s)
+    phead 1.1649
+step 4300  loss 6.8428  train_top1 0.016  lr 2.92e-04  (3.0 it/s)
+    phead 0.9661
+step 4400  loss 17.7133  train_top1 0.008  lr 2.92e-04  (3.1 it/s)
+    phead 1.0624
+step 4500  loss 6.0491  train_top1 0.008  lr 2.92e-04  (3.1 it/s)
+  VAL step 4500  loss 4.9082  top1 0.008  top8 0.053
+    phead 1.0486
+step 4600  loss 5.8631  train_top1 0.008  lr 2.91e-04  (2.9 it/s)
+    phead 1.1421
+step 4700  loss 5.9572  train_top1 0.008  lr 2.91e-04  (3.1 it/s)
+    phead 1.0263
+step 4800  loss 5.6309  train_top1 0.010  lr 2.91e-04  (3.0 it/s)
+    phead 1.0179
+step 4900  loss 6.0162  train_top1 0.000  lr 2.90e-04  (3.1 it/s)
+    phead 1.0317
+step 5000  loss 5.4676  train_top1 0.011  lr 2.90e-04  (3.0 it/s)
+  VAL step 5000  loss 4.8376  top1 0.007  top8 0.051
+    phead 0.9942
+step 5100  loss 5.5393  train_top1 0.016  lr 2.89e-04  (2.9 it/s)
+    phead 0.7172
+step 5200  loss 5.8718  train_top1 0.008  lr 2.89e-04  (3.1 it/s)
+    phead 1.1922
+step 5300  loss 5.5873  train_top1 0.008  lr 2.88e-04  (3.1 it/s)
+    phead 0.9743
+step 5400  loss 5.6455  train_top1 0.008  lr 2.88e-04  (3.1 it/s)
+    phead 0.9739
+step 5500  loss 5.6364  train_top1 0.008  lr 2.88e-04  (3.0 it/s)
+  VAL step 5500  loss 4.6855  top1 0.011  top8 0.077
+    phead 0.9697
+step 5600  loss 5.3153  train_top1 0.018  lr 2.87e-04  (2.9 it/s)
+    phead 0.9611
+step 5700  loss 5.5874  train_top1 0.008  lr 2.87e-04  (3.0 it/s)
+    phead 0.9559
+step 5800  loss 5.1366  train_top1 0.039  lr 2.86e-04  (3.1 it/s)
+    phead 0.9507
+step 5900  loss 5.6356  train_top1 0.016  lr 2.86e-04  (3.0 it/s)
+    phead 0.9439
+step 6000  loss 5.4683  train_top1 0.010  lr 2.85e-04  (3.1 it/s)
+  VAL step 6000  loss 4.6734  top1 0.009  top8 0.076
+    phead 0.9377
+step 6100  loss 5.5316  train_top1 0.016  lr 2.85e-04  (2.9 it/s)
+    phead 0.9338
+step 6200  loss 5.5820  train_top1 0.008  lr 2.84e-04  (3.0 it/s)
+    phead 0.9245
+step 6300  loss 5.5101  train_top1 0.039  lr 2.84e-04  (3.0 it/s)
+    phead 0.9275
+step 6400  loss 5.4601  train_top1 0.016  lr 2.83e-04  (3.1 it/s)
+    phead 0.9200
+step 6500  loss 5.5344  train_top1 0.016  lr 2.83e-04  (3.1 it/s)
+  VAL step 6500  loss 4.6622  top1 0.010  top8 0.064
+    phead 0.9110
+step 6600  loss 5.3942  train_top1 0.016  lr 2.82e-04  (2.9 it/s)
+    phead 0.9091
+step 6700  loss 5.5610  train_top1 0.008  lr 2.82e-04  (3.1 it/s)
+    phead 0.9006
+step 6800  loss 5.7389  train_top1 0.023  lr 2.81e-04  (3.0 it/s)
+    phead 0.9016
+step 6900  loss 5.3993  train_top1 0.016  lr 2.81e-04  (3.1 it/s)
+    phead 0.9032
+step 7000  loss 5.3607  train_top1 0.031  lr 2.80e-04  (3.0 it/s)
+  VAL step 7000  loss 4.6428  top1 0.017  top8 0.104
+    phead 0.8953
+step 7100  loss 5.4366  train_top1 0.016  lr 2.80e-04  (2.9 it/s)
+    phead 0.8914
+step 7200  loss 5.4616  train_top1 0.008  lr 2.79e-04  (3.0 it/s)
+    phead 0.8977
+step 7300  loss 5.3950  train_top1 0.016  lr 2.78e-04  (3.0 it/s)
+    phead 0.8868
+step 7400  loss 5.4431  train_top1 0.008  lr 2.78e-04  (3.0 it/s)
+    phead 0.8828
+step 7500  loss 5.5564  train_top1 0.008  lr 2.77e-04  (3.0 it/s)
+  VAL step 7500  loss 4.6471  top1 0.013  top8 0.087
+    phead 0.8832
+step 7600  loss 5.2803  train_top1 0.008  lr 2.77e-04  (2.9 it/s)
+    phead 0.8736
+step 7700  loss 5.3703  train_top1 0.016  lr 2.76e-04  (3.0 it/s)
+    phead 0.8705
+step 7800  loss 5.5795  train_top1 0.008  lr 2.75e-04  (3.1 it/s)
+    phead 0.8747
+step 7900  loss 5.5772  train_top1 0.008  lr 2.75e-04  (3.0 it/s)
+    phead 0.8625
+step 8000  loss 5.5394  train_top1 0.008  lr 2.74e-04  (3.0 it/s)
+  VAL step 8000  loss 4.6188  top1 0.014  top8 0.091
+    phead 0.8644
+step 8100  loss 5.6790  train_top1 0.008  lr 2.74e-04  (2.9 it/s)
+    phead 0.8579
+step 8200  loss 5.4285  train_top1 0.023  lr 2.73e-04  (3.0 it/s)
+    phead 0.8694
+step 8300  loss 5.2671  train_top1 0.023  lr 2.72e-04  (3.0 it/s)
+    phead 0.8607
+step 8400  loss 5.5095  train_top1 0.000  lr 2.72e-04  (3.0 it/s)
+    phead 0.8452
+step 8500  loss 5.4253  train_top1 0.016  lr 2.71e-04  (3.0 it/s)
+  VAL step 8500  loss 4.6407  top1 0.012  top8 0.064
+    phead 0.8602
+step 8600  loss 6.3861  train_top1 0.016  lr 2.70e-04  (2.9 it/s)
+    phead 0.8482
+step 8700  loss 5.6985  train_top1 0.008  lr 2.70e-04  (3.0 it/s)
+    phead 0.8414
+step 8800  loss 5.5139  train_top1 0.016  lr 2.69e-04  (3.0 it/s)
+    phead 0.8329
+step 8900  loss 5.6694  train_top1 0.016  lr 2.68e-04  (3.0 it/s)
+    phead 0.8467
+step 9000  loss 5.5034  train_top1 0.023  lr 2.68e-04  (3.1 it/s)
+  VAL step 9000  loss 4.6784  top1 0.011  top8 0.090
+    phead 0.8339
+step 9100  loss 5.4343  train_top1 0.023  lr 2.67e-04  (3.0 it/s)
+    phead 0.8271
+step 9200  loss 5.6496  train_top1 0.016  lr 2.66e-04  (3.0 it/s)
+    phead 0.8570
+step 9300  loss 5.3237  train_top1 0.031  lr 2.66e-04  (3.1 it/s)
+    phead 0.8289
+step 9400  loss 5.1768  train_top1 0.016  lr 2.65e-04  (3.0 it/s)
+    phead 0.8308
+step 9500  loss 5.4274  train_top1 0.008  lr 2.64e-04  (3.0 it/s)
+  VAL step 9500  loss 4.6334  top1 0.010  top8 0.084
+    phead 0.8181
+step 9600  loss 5.1651  train_top1 0.022  lr 2.63e-04  (2.9 it/s)
+    phead 0.8342
+step 9700  loss 5.3639  train_top1 0.008  lr 2.63e-04  (3.0 it/s)
+    phead 0.8367
+step 9800  loss 6.6230  train_top1 0.008  lr 2.62e-04  (3.1 it/s)
+    phead 0.8326
+step 9900  loss 5.5660  train_top1 0.023  lr 2.61e-04  (3.0 it/s)
+    phead 0.8243
+step 10000  loss 5.3037  train_top1 0.016  lr 2.60e-04  (3.0 it/s)
+  VAL step 10000  loss 4.6297  top1 0.013  top8 0.092
+  ladder checkpoint -> committor_iqe_heavy_step10000.pt
+    phead 0.8049
+step 10100  loss 5.5016  train_top1 0.008  lr 2.60e-04  (2.9 it/s)
+    phead 0.8327
+step 10200  loss 5.4069  train_top1 0.023  lr 2.59e-04  (3.1 it/s)
+    phead 0.8375
+step 10300  loss 5.5335  train_top1 0.016  lr 2.58e-04  (3.1 it/s)
+    phead 0.8169
+step 10400  loss 5.2008  train_top1 0.024  lr 2.57e-04  (3.0 it/s)
+    phead 0.8395
+step 10500  loss 5.6110  train_top1 0.016  lr 2.57e-04  (3.0 it/s)
+  VAL step 10500  loss 4.6215  top1 0.010  top8 0.087
+    phead 0.8501
+step 10600  loss 5.2810  train_top1 0.016  lr 2.56e-04  (2.9 it/s)
+    phead 1.3492
+step 10700  loss 5.4185  train_top1 0.008  lr 2.55e-04  (3.0 it/s)
+    phead 0.8417
+step 10800  loss 5.5668  train_top1 0.023  lr 2.54e-04  (3.0 it/s)
+    phead 0.8117
+step 10900  loss 5.2101  train_top1 0.017  lr 2.53e-04  (3.0 it/s)
+    phead 0.8197
+step 11000  loss 5.4565  train_top1 0.008  lr 2.53e-04  (3.0 it/s)
+  VAL step 11000  loss 4.6220  top1 0.008  top8 0.080
+    phead 0.8333
+step 11100  loss 5.6264  train_top1 0.016  lr 2.52e-04  (2.6 it/s)
+    phead 0.8153
+step 11200  loss 5.7162  train_top1 0.008  lr 2.51e-04  (1.9 it/s)
+    phead 0.8182
+step 11300  loss 5.4941  train_top1 0.008  lr 2.50e-04  (2.7 it/s)
+    phead 1.2058
+step 11400  loss 6.7046  train_top1 0.000  lr 2.49e-04  (3.1 it/s)
+    phead 1.6225
+step 11500  loss 5.6260  train_top1 0.008  lr 2.49e-04  (3.0 it/s)
+  VAL step 11500  loss 4.8480  top1 0.004  top8 0.049
+    phead 0.8111
+step 11600  loss 5.6475  train_top1 0.008  lr 2.48e-04  (2.9 it/s)
+    phead 0.8155
+step 11700  loss 5.6528  train_top1 0.008  lr 2.47e-04  (1.9 it/s)
+    phead 0.8060
+step 11800  loss 5.6794  train_top1 0.008  lr 2.46e-04  (1.8 it/s)
+    phead 1.3009
+step 11900  loss 5.6844  train_top1 0.008  lr 2.45e-04  (1.8 it/s)
+    phead 0.8140
+step 12000  loss 5.6416  train_top1 0.008  lr 2.44e-04  (2.7 it/s)
+  VAL step 12000  loss 4.8530  top1 0.002  top8 0.008
+    phead 0.7865
+step 12100  loss 5.6443  train_top1 0.016  lr 2.43e-04  (2.9 it/s)
+    phead 0.8070
+step 12200  loss 6.2767  train_top1 0.016  lr 2.43e-04  (3.1 it/s)
+    phead 0.8081
+step 12300  loss 5.3876  train_top1 0.000  lr 2.42e-04  (3.0 it/s)
+    phead 0.8166
+step 12400  loss 5.6102  train_top1 0.008  lr 2.41e-04  (3.0 it/s)
+    phead 0.8098
+step 12500  loss 5.7001  train_top1 0.008  lr 2.40e-04  (3.1 it/s)
+  VAL step 12500  loss 4.8789  top1 0.000  top8 0.009
+    phead 2.1199
+step 12600  loss 5.7029  train_top1 0.016  lr 2.39e-04  (2.9 it/s)
+    phead 0.8001
+step 12700  loss 5.6634  train_top1 0.008  lr 2.38e-04  (3.1 it/s)
+    phead 0.7843
+step 12800  loss 5.6856  train_top1 0.008  lr 2.37e-04  (3.1 it/s)
+    phead 0.8107
+step 12900  loss 5.6516  train_top1 0.008  lr 2.36e-04  (3.1 it/s)
+    phead 0.7934
+step 13000  loss 5.6503  train_top1 0.016  lr 2.36e-04  (3.1 it/s)
+  VAL step 13000  loss 4.8632  top1 0.000  top8 0.008
+    phead 0.7800
+step 13100  loss 5.6374  train_top1 0.008  lr 2.35e-04  (2.9 it/s)
+    phead 0.8225

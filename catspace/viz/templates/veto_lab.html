@@ -1,0 +1,290 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Veto Lab — play, and watch the opponent's veto live</title>
+<link rel="stylesheet" href="/assets/chessground/chessground.base.css">
+<link rel="stylesheet" href="/assets/chessground/chessground.brown.css">
+<link rel="stylesheet" href="/assets/chessground/chessground.cburnett.css">
+<style>
+  :root { --ground:#FAF7F2; --panel:#F1EBE0; --ink:#242118; --muted:#847C6D;
+          --denied:#B5432E; --forceable:#2E7D4F; --brass:#C99B3F; --line:#DCD3C2; --card:#FFFDF8; }
+  @media (prefers-color-scheme: dark) { :root {
+    --ground:#191713; --panel:#211E19; --ink:#EAE4D6; --muted:#9A917F;
+    --denied:#D96B52; --forceable:#54B380; --brass:#D9B45F; --line:#3A352C; --card:#232019; }}
+  * { box-sizing:border-box; }
+  body { background:var(--ground); color:var(--ink); margin:0;
+         font:15px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width:1160px; margin:0 auto; padding:20px 18px 60px; }
+  h1 { font:1.45rem "Iowan Old Style", Palatino, Georgia, serif; margin:0 0 2px; }
+  .sub { color:var(--muted); margin:0 0 14px; max-width:76ch; }
+  .cols { display:grid; grid-template-columns:minmax(300px,430px) 1fr; gap:24px; align-items:start; }
+  @media (max-width:820px){ .cols { grid-template-columns:1fr; } }
+  #board { width:100%; max-width:430px; aspect-ratio:1; }
+  #board .cg-wrap { width:100%; height:100%; }
+  button { border:1px solid var(--line); background:var(--panel); color:var(--ink);
+           padding:8px 13px; border-radius:3px; cursor:pointer; font:600 .84rem/1 inherit; }
+  button.go { background:var(--brass); color:#221B0C; border-color:var(--brass); font-weight:700; }
+  button:disabled { opacity:.45; cursor:default; }
+  .row { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; align-items:center; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:4px;
+          padding:12px 15px; margin-bottom:12px; }
+  .howto { background:var(--panel); border-left:4px solid var(--brass); padding:11px 14px;
+           font-size:.86rem; margin-bottom:14px; max-width:80ch; }
+  .big { font:1.5rem "Iowan Old Style", Georgia, serif; }
+  .f { color:var(--forceable); font-weight:700; } .d { color:var(--denied); font-weight:700; }
+  #status { color:var(--muted); font-size:.84rem; min-height:1.3em; }
+  svg.chart text { fill:var(--muted); font:10px Menlo, monospace; }
+  .feed { display:flex; flex-direction:column-reverse; gap:7px; max-height:230px; overflow-y:auto; }
+  .ev { border-left:4px solid var(--forceable); background:var(--card); border:1px solid var(--line);
+        border-left-width:4px; padding:7px 11px; font-size:.84rem; }
+  .ev.close { border-left-color:var(--denied); }
+  .ev b { font-family:Menlo, monospace; font-size:.8rem; }
+  .contrast { border-left:4px solid var(--forceable); }
+  .mono { font-family:Menlo, monospace; font-size:.82rem; }
+  .tag { display:inline-block; font:600 .64rem/1 Menlo, monospace; letter-spacing:.05em;
+         padding:3px 7px; border-radius:3px; background:var(--forceable); color:#fff;
+         vertical-align:middle; margin-left:6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Veto Lab <span class="tag">LIVE · EXACT</span><span id="prov" class="mono" style="font-weight:400; font-size:.72rem; color:var(--muted); margin-left:10px"></span></h1>
+<p class="sub">You play <b>White</b>; the engine answers as Black automatically after each of
+your moves. After <b>every</b> move by either side, the position is re-analyzed from scratch.
+"engine: one move ▸" makes the engine play the <em>next single move</em> for whoever's turn it
+is — useful when you'd rather watch than decide.</p>
+
+<div class="howto">
+<b>Forceable, precisely:</b> a <b>region</b> = same material, his king within 1 square of a spot,
+yours within 2. <span class="f">GREEN circle</span> = you have moves that reach that region within
+the horizon <em>no matter what he plays</em> — his replies unrestricted, including bad chess played
+purely to dodge (exhaustive search; a guarantee, not an opinion). <span class="d">RED</span> =
+every route can be side-stepped: it needs his cooperation. <b>d_adv</b> = plies the forcing takes.
+<b>Denied is not unreachable</b>: he can still walk into a red area — the analysis only says you
+can't <em>make</em> him. When he enters one anyway, that's a gift: the watchlist calls it out.
+No mark = his king can't be brought there within the horizon even if both sides cooperated.
+</div>
+
+<div class="cols">
+  <div>
+    <div id="board"></div>
+    <div class="row">
+      <button class="go" id="newpos">♟ New random position</button>
+      <button id="engineplay" title="Stockfish plays White's next move; the selected defender then replies as Black.">▸ Stockfish moves for White</button>
+      <label style="font-size:.8rem;color:var(--muted)">horizon
+        <select id="hsel"><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
+      <label style="font-size:.8rem;color:var(--muted)">Black replies:
+        <select id="defsel">
+          <option value="tb" selected>tablebase-optimal (never gifts)</option>
+          <option value="maia1500">Maia-1500 (human — watch for ⚡)</option>
+          <option value="planner">our planner (weak, in training)</option>
+        </select></label>
+    </div>
+    <p id="status"></p>
+    <div class="card" id="contrast" hidden>
+      <b>Aim at areas, not diagrams</b>
+      <div id="contrastbody" style="margin-top:5px; font-size:.9rem"></div>
+    </div>
+  </div>
+  <div>
+    <div class="card"><span class="big" id="headline">—</span>
+      <span id="sub2" class="sub" style="display:block; margin:4px 0 0"></span></div>
+    <div class="card">
+      <b style="font-size:.8rem; letter-spacing:.05em; text-transform:uppercase; color:var(--muted)">
+        The mate approaching — plies-to-mate, best available bound (amber) · his king's escape box (grey)</b>
+      <svg id="chart" class="chart" viewBox="0 0 640 190" style="width:100%"></svg>
+    </div>
+    <div class="card">
+      <b style="font-size:.8rem; letter-spacing:.05em; text-transform:uppercase; color:var(--muted)">
+        Watchlist — opportunities opened / closed by the last move</b>
+      <div class="feed" id="feed"><span class="sub" style="font-size:.8rem">play a move…</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script type="module">
+import { Chessground } from '/assets/chessground/chessground.js';
+
+const S = { fen: null, hist: [], regions: [], sqmap: [], busy: false };
+const statusEl = document.getElementById("status");
+
+const board = Chessground(document.getElementById("board"), {
+  coordinates: true, animation: { duration: 180 },
+  movable: { free: false, color: "white", events: { after: onUserMove } },
+  drawable: { enabled: false, visible: true },
+});
+
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST",
+    headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return r.json();
+}
+
+async function legalDests(fen) {
+  const r = await fetch(`/legal_moves?fen=${encodeURIComponent(fen)}`);
+  const d = await r.json();
+  const dests = new Map();
+  (d.moves || d.legal_moves || []).forEach(u => {
+    const from = u.slice(0, 2), to = u.slice(2, 4);
+    if (!dests.has(from)) dests.set(from, []);
+    dests.get(from).push(to);
+  });
+  return dests;
+}
+
+function keyOf(g) { return g.material + "|" + g.bk; }
+
+async function analyze(fen, movedSan) {
+  statusEl.textContent = "analyzing…";
+  const d = await api("/veto_analyze", { fen, h: +document.getElementById("hsel").value });
+  if (d.error) { statusEl.textContent = "error: " + d.error; return; }
+  S.fen = d.fen;
+  const prev = new Map(S.regions.map(g => [keyOf(g), g.forceable]));
+  S.regions = d.regions;
+  const nf = d.regions.filter(g => g.forceable).length;
+  const frac = d.regions.length ? nf / d.regions.length : 0;
+  S.hist.push({ san: movedSan || "start", frac, dtm: d.dtm, escape: d.escape,
+                his: !!(movedSan && movedSan.startsWith("…")) });
+
+  board.set({ fen: d.fen.split(" ")[0],
+              turnColor: d.fen.includes(" w ") ? "white" : "black",
+              movable: { color: "white", dests: await legalDests(d.fen) } });
+  board.setAutoShapes((d.square_map || []).filter(q => q.status !== "unreachable")
+    .map(q => ({ orig: q.sq, brush: q.status === "forced" ? "green" : "red" })));
+
+  document.getElementById("headline").innerHTML =
+    `<span class="f">${nf} forceable</span> · <span class="d">${d.regions.length - nf} denied</span>`;
+  document.getElementById("sub2").textContent =
+    `${d.regions.length} candidate winning regions · horizon ${d.h} plies · exact search ${d.elapsed_ms} ms`;
+
+  // he stepped into DENIED territory? (the veto-lapse moment, named)
+  if (movedSan && movedSan.startsWith("…") && d.bk) {
+    const was = S.sqmap.find(q => q.sq === d.bk);
+    if (was && was.status === "denied") {
+      const e = document.createElement("div");
+      e.className = "ev"; e.style.borderLeftColor = "var(--brass)";
+      e.innerHTML = `<b>⚡ gift</b> — his ${movedSan} entered the <b class="mono">${d.bk}</b> area you ` +
+        `could NOT force. Denied means "can't make him", not "can't happen": he just gave it to you.`;
+      document.getElementById("feed").appendChild(e);
+    }
+  }
+  S.sqmap = d.square_map || [];
+  // watchlist: diff vs previous analysis
+  if (movedSan) {
+    const feed = document.getElementById("feed");
+    const opened = d.regions.filter(g => g.forceable && prev.get(keyOf(g)) === false);
+    const closed = d.regions.filter(g => !g.forceable && prev.get(keyOf(g)) === true);
+    const fresh  = d.regions.filter(g => g.forceable && !prev.has(keyOf(g)));
+    const mk = (cls, html) => { const e = document.createElement("div");
+      e.className = "ev" + cls; e.innerHTML = html; feed.appendChild(e); };
+    if (opened.length) mk("", `<b>+${opened.length} flipped open</b> after ${movedSan} — his king can now be forced to ${opened.map(g => g.bk).join(", ")}`);
+    if (fresh.length) mk("", `<b>+${fresh.length} new opportunities</b> after ${movedSan} — ${fresh.map(g => g.bk).join(", ")}`);
+    if (closed.length) mk(" close", `<b>−${closed.length} closed</b> after ${movedSan} — ${closed.map(g => g.bk).join(", ")}`);
+    if (!opened.length && !fresh.length && !closed.length)
+      mk("", `<b>no change</b> after ${movedSan} — he held the ridge`);
+  } else {
+    document.getElementById("feed").innerHTML = "";
+  }
+
+  const c = d.contrast;
+  document.getElementById("contrast").hidden = !c;
+  if (c) document.getElementById("contrastbody").innerHTML =
+    `Forcing his king to the <b class="mono">${c.bk}</b> area: ` +
+    `<span class="f">guaranteed, ${c.region_d_adv} plies</span>.<br>` +
+    `Forcing any one exact position there: <span class="d">impossible — he always has a sidestep</span>.`;
+
+  drawChart();
+  statusEl.textContent = "";
+}
+
+function drawChart() {
+  const W = 640, H = 190, L = 34, B = 30;
+  const xs = i => L + i * (W - L - 12) / Math.max(S.hist.length - 1, 1);
+  const dmax = Math.max(8, ...S.hist.map(e => e.dtm ?? 0));
+  const emax = Math.max(8, ...S.hist.map(e => e.escape ?? 0));
+  const yd = v => (H - B) - (v / dmax) * (H - B - 16);
+  const ye = v => (H - B) - (v / emax) * (H - B - 16);
+  let els = "";
+  [0, Math.round(dmax / 2), dmax].forEach(v => els += `<text x="4" y="${yd(v)+3}">${v}</text>
+    <line x1="${L}" y1="${yd(v)}" x2="${W-8}" y2="${yd(v)}" stroke="var(--line)" stroke-dasharray="2 5"/>`);
+  const dpts = S.hist.map((e,i) => e.dtm == null ? null : `${xs(i)},${yd(e.dtm)}`);
+  els += `<polyline fill="none" stroke="var(--muted)" stroke-width="1.5" opacity=".7"
+     points="${S.hist.filter(e => e.escape != null).map((e,i)=>`${xs(i)},${ye(e.escape)}`).join(" ")}"/>`;
+  els += `<polyline fill="none" stroke="var(--brass)" stroke-width="2.5"
+     points="${dpts.filter(Boolean).join(" ")}"/>`;
+  S.hist.forEach((e, i) => {
+    if (e.dtm != null) els += `<circle cx="${xs(i)}" cy="${yd(e.dtm)}" r="4" fill="var(--brass)"/>`;
+    // move quality vs the expected -1 step (an upper-bound metric: grade tolerantly).
+    // White move error: bound rose vs expectation; Black move error: bound FELL (his gift).
+    if (i > 0 && e.dtm != null && S.hist[i-1].dtm != null) {
+      const err = e.his ? (S.hist[i-1].dtm - 1 - e.dtm) : (e.dtm - S.hist[i-1].dtm + 1);
+      let g = null;
+      if (err >= 8) g = ["??", "var(--denied)"];
+      else if (err >= 4) g = ["✕", "#D97706"];
+      else if (err >= 2) g = ["?!", "#CA9A04"];
+      if (g) els += `<text x="${xs(i)-7}" y="${yd(e.dtm)-9}"
+        style="fill:${g[1]};font-size:12px;font-weight:700">${g[0]}</text>`;
+    }
+    els += `<text x="${xs(i)-10}" y="${H-8}">${i % 2 === 0 ? e.san : ""}</text>`;
+  });
+  els += `<text x="${L}" y="12">mate at 0 · amber = min(tb line, SF mate bound), an upper bound · ?? blunder · ✕ mistake · ?! inaccuracy (either side)</text>`;
+  document.getElementById("chart").innerHTML = els;
+}
+
+async function onUserMove(orig, dest) {
+  if (S.busy) return;
+  setBusy(true);
+  const mv = await api("/apply_move", { fen: S.fen, uci: orig + dest });
+  if (!mv.ok) { board.set({ fen: S.fen.split(" ")[0] }); setBusy(false); return; }
+  await analyze(mv.fen, mv.san);
+  if (!mv.game_over) {
+    const kind = document.getElementById("defsel").value;
+    statusEl.textContent = {tb: "optimal defense replying…", maia1500: "Maia-1500 thinking…",
+                            planner: "planner thinking…"}[kind];
+    const em = await api(kind === "planner" ? "/engine_move" : "/step_move",
+                         { fen: S.fen, engine: kind });
+    if (em.fen) await analyze(em.fen, "…" + (em.san || em.move));
+  }
+  setBusy(false);
+}
+
+document.getElementById("newpos").onclick = async () => {
+  if (S.busy) return;
+  setBusy(true);
+  S.hist = []; S.regions = [];
+  await analyze(null, null);
+  setBusy(false);
+};
+function setBusy(b) {
+  S.busy = b;
+  ["newpos", "engineplay"].forEach(id => document.getElementById(id).disabled = b);
+}
+document.getElementById("engineplay").onclick = async () => {
+  if (S.busy || !S.fen) return;
+  if (!S.fen.includes(" w ")) { statusEl.textContent = "it's Black's turn — the defender replies automatically"; return; }
+  setBusy(true);
+  statusEl.textContent = "Stockfish moving for White…";
+  const em = await api("/step_move", { fen: S.fen, engine: "sf" });
+  if (em.fen) {
+    await analyze(em.fen, (em.san || em.move) + " [SF]");
+    if (!em.game_over) {
+      const kind = document.getElementById("defsel").value;
+      statusEl.textContent = {tb: "optimal defense replying…", maia1500: "Maia-1500 thinking…",
+                              planner: "planner thinking…"}[kind];
+      const dm = await api(kind === "planner" ? "/engine_move" : "/step_move",
+                           { fen: S.fen, engine: kind });
+      if (dm.fen) await analyze(dm.fen, "…" + (dm.san || dm.move));
+    }
+  }
+  setBusy(false);
+};
+fetch("/info").then(r => r.json()).then(i => {
+  document.getElementById("prov").textContent =
+    `engine: ${i.planner_field || i.ckpt} · analysis: ${i.analysis} · ui-2026.07.23-j`;
+});
+document.getElementById("newpos").click();
+</script>
+</body>
+</html>

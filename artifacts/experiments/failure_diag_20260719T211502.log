@@ -1,0 +1,36 @@
+# launched : Sun Jul 19 21:15:02 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/conversion_failure_diag.py 25
+# ---
+  game 0: FAIL @ K v BK
+  game 1: FAIL @ KRR v BK
+  game 2: FAIL @ KR v BK
+  game 3: MATE
+  game 4: FAIL @ KRR v BKP
+  game 5: FAIL @ KRR v BKP
+  game 6: MATE
+  game 7: MATE
+  game 8: MATE
+  game 9: MATE
+  game 10: MATE
+  game 11: MATE
+  game 12: FAIL @ KR v BK
+  game 13: FAIL @ KR v BK
+  game 14: MATE
+  game 15: MATE
+  game 16: MATE
+  game 17: MATE
+  game 18: MATE
+  game 19: FAIL @ KRR v K
+  game 20: FAIL @ KRR v BK
+  game 21: MATE
+  game 22: FAIL @ KR v BK
+  game 23: MATE
+  game 24: MATE
+VERDICT FAILURE_DIAG committor mated 15/25 = 0.600
+    4x FAIL final-material  KR v BK
+    2x FAIL final-material  KRR v BK
+    2x FAIL final-material  KRR v BKP
+    1x FAIL final-material  K v BK
+    1x FAIL final-material  KRR v K

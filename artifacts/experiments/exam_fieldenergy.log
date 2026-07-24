@@ -1,0 +1,8 @@
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[exam] scenarios: [('KRRvK-central', 12), ('KRRvKB', 12), ('KRRvKP', 12), ('KRRvKBP', 12), ('KRvK-technique', 12)]  nodes=400
+VERDICT MATE_LADDER cfg=pure    KRRvK-central  mate=0.00 (0/12)  med_plies=nan  search/mate=0  [15s]
+VERDICT MATE_LADDER cfg=pure    KRRvKB         mate=0.08 (1/12)  med_plies=5  search/mate=857  [16s]
+VERDICT MATE_LADDER cfg=pure    KRRvKP         mate=0.58 (7/12)  med_plies=7  search/mate=1,274  [17s]
+VERDICT MATE_LADDER cfg=pure    KRRvKBP        mate=0.08 (1/12)  med_plies=5  search/mate=875  [17s]
+VERDICT MATE_LADDER cfg=pure    KRvK-technique mate=0.00 (0/12)  med_plies=nan  search/mate=0  [18s]

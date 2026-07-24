@@ -227,6 +227,93 @@ class Session:
                            "near": [int(i) for i in near]}
         return {"ok": True, **self._atlas_sel}
 
+    # ---- directed field helpers (the quasimetric is the substrate for cone/rivers)
+    def _d_to_win(self, boards):
+        """d(x -> nearest banked mate): forward cost-to-go over the win basin."""
+        import torch
+        if self.bank.embs is None or len(self.bank.embs) == 0:
+            return np.full(len(boards), np.nan)
+        return self.fm.d_to_bank(self.fm.embed_F_boards(boards), self.bank.embs)
+
+    def cone(self, depth=2, width=6):
+        """FORWARD REACHABILITY CONE (Kaveh: 'basins/rivers, focused on the cone in
+        front of White'). BFS White's legal tree to `depth` full moves; each node's
+        HEIGHT = d(node -> nearest mate). Downhill (height decreasing) = the 'river'
+        toward the goal; a node where every child rises = a chute/dead-end. Feasibility
+        is the directed field itself, not a symmetric projection (per the doctrine)."""
+        import chess as _c
+        root = self.board
+        nodes = [{"id": 0, "fen": root.fen(), "san": "(now)", "depth": 0, "parent": -1}]
+        frontier = [(0, root)]
+        for d in range(depth):
+            nxt = []
+            for pid, b in frontier:
+                if b.is_game_over():
+                    continue
+                # our move (White): rank children by field, keep the best `width`
+                kids = []
+                for mv in b.legal_moves:
+                    c = b.copy(stack=False); c.push(mv)
+                    kids.append((mv, c))
+                hs = self._d_to_win([c for _, c in kids])
+                order = np.argsort(hs)[:width]
+                for oi in order:
+                    mv, c = kids[oi]
+                    nid = len(nodes)
+                    nodes.append({"id": nid, "fen": c.fen(), "san": b.san(mv),
+                                  "h": round(float(hs[oi]), 2), "depth": d + 1, "parent": pid})
+                    # opponent reply (their single best under the energy model), so the
+                    # cone follows the actual game tree, not just our wishes
+                    if d + 1 < depth and not c.is_game_over():
+                        pr = self.pfn([c])[0]
+                        if pr:
+                            best = max(pr, key=pr.get)
+                            c2 = c.copy(stack=False); c2.push(_c.Move.from_uci(best))
+                            nxt.append((nid, c2))
+            frontier = nxt
+        # the 'river': greedy min-height chain from the root
+        river, cur = [], 0
+        while True:
+            ch = [n for n in nodes if n["parent"] == cur]
+            if not ch:
+                break
+            nb = min(ch, key=lambda n: n.get("h", 9e9))
+            river.append(nb["id"]); cur = nb["id"]
+        return {"nodes": nodes, "river": river}
+
+    def energy(self):
+        """-log P(move) under the SELECTED opponent model (Kaveh: 'visualize -log(P) for
+        the selected engine'). Low -logP = the human-likely move; the engine's surprises
+        are the high-(-logP) moves it still rates highly. Returned for the current position
+        (per legal move) and, if a calc ran, along the top engine line."""
+        import math
+        pr = self.pfn([self.board])[0]
+        rows = sorted(([self.board.san(chess.Move.from_uci(u)), u, p,
+                        round(-math.log(max(p, 1e-9)), 2)] for u, p in pr.items()),
+                      key=lambda r: r[2], reverse=True)
+        line = []
+        cs = getattr(self, "calc", {}) or {}
+        if cs.get("leaves"):
+            b = self.board.copy(stack=False)
+            for san in cs["leaves"][0]["line"].split():
+                try:
+                    mv = b.san_and_push(san) if hasattr(b, "san_and_push") else None
+                except Exception:
+                    break
+                pr2 = self.pfn([b])[0] if False else None   # (mover already changed)
+            # simpler: recompute per ply before pushing
+            line = []
+            b = self.board.copy(stack=False)
+            for san in cs["leaves"][0]["line"].split():
+                try:
+                    mv = b.parse_san(san)
+                except Exception:
+                    break
+                p = self.pfn([b])[0].get(mv.uci(), 1e-9)
+                line.append([san, round(-math.log(max(p, 1e-9)), 2)])
+                b.push(mv)
+        return {"cohort": "maia/self mix", "moves": rows[:12], "line": line}
+
     def calculate_start(self, nodes, chunk=64):
         """STREAMING calculation (Kaveh: 'a way for calculations to stream in as it's
         calculating'): chunked MCTS on a thread, tree reused across chunks; /calc_state
@@ -381,6 +468,16 @@ class H(BaseHTTPRequestHandler):
             self._send(200, f.read_bytes(), "text/html")
         elif self.path == "/atlas_data":
             self._send(200, SES.atlas_data())
+        elif self.path == "/cone":
+            try:
+                self._send(200, SES.cone())
+            except Exception as e:                          # noqa: BLE001
+                self._send(200, {"err": str(e), "nodes": [], "river": []})
+        elif self.path == "/energy":
+            try:
+                self._send(200, SES.energy())
+            except Exception as e:                          # noqa: BLE001
+                self._send(200, {"err": str(e), "moves": [], "line": []})
         elif self.path == "/atlas_selected":
             self._send(200, getattr(SES, "_atlas_sel", None) or {})
         elif self.path == "/ab_state":

@@ -1,0 +1,9 @@
+# launched : Sun Jul 19 09:46:55 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python /Users/kav/.claude/jobs/20b9956a/tmp/nearest_reachable_ab.py
+# ---
+reachable rook-mate bank: 300
+VERDICT NEAREST_REACHABLE committor P(win)            : 17/40 = 0.425
+VERDICT NEAREST_REACHABLE centroid d(s->MATE_W)       : 20/40 = 0.500
+VERDICT NEAREST_REACHABLE nearest reachable rook-mate : 4/40 = 0.100

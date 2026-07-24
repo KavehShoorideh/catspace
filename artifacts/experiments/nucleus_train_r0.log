@@ -1,0 +1,14 @@
+[data] 41236 positions  [0s]
+[tok] done  [1s]
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+  step 0 loss 0.8998  [3s]
+  step 500 loss 0.2675  [12s]
+  step 1000 loss 0.2626  [23s]
+  step 1500 loss 0.1768  [32s]
+  step 2000 loss 0.1246  [42s]
+  step 2500 loss 0.0787  [52s]
+  step 3000 loss 0.0487  [62s]
+  step 3500 loss 0.0215  [71s]
+VERDICT DTM_TOK overall: spearman +0.507 MAE 15.15 plies (n=4123)
+saved data/derived/sep/dtm_tok_r0.pt  [82s]

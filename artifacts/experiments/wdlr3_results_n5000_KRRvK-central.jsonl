@@ -1,0 +1,48 @@
+{"g": 2, "mate": true, "term": "checkmate", "plies": 15, "nodes": 30715, "t": 61.2, "moves": 8, "bank": 143}
+{"g": 3, "mate": true, "term": "checkmate", "plies": 33, "nodes": 73466, "t": 143.7, "moves": 17, "bank": 250}
+{"g": 0, "mate": true, "term": "checkmate", "plies": 61, "nodes": 141359, "t": 162.2, "moves": 31, "bank": 178}
+{"g": 7, "mate": true, "term": "checkmate", "plies": 17, "nodes": 32293, "t": 108.5, "moves": 9, "bank": 1084}
+{"g": 11, "mate": true, "term": "checkmate", "plies": 7, "nodes": 9510, "t": 44.0, "moves": 4, "bank": 1305}
+{"g": 4, "mate": true, "term": "checkmate", "plies": 25, "nodes": 50535, "t": 155.6, "moves": 13, "bank": 1172}
+{"g": 15, "mate": true, "term": "checkmate", "plies": 9, "nodes": 15721, "t": 80.1, "moves": 5, "bank": 1471}
+{"g": 6, "mate": false, "term": "threefold_repetition", "plies": 22, "nodes": 55000, "t": 108.4, "moves": 11, "bank": 851, "start_epd": "4K3/5R2/R7/4k3/8/8/8/8 w - -", "ucis": ["e8d8", "e5d4", "a6h6", "d4c4", "h6h4", "c4d5", "h4h5", "d5e4", "h5h6", "e4d4", "d8c8", "d4c4", "h6h3", "c4d5", "h3h5", "d5e4", "h5h3", "e4d5", "h3h5", "d5e4", "h5h8", "e4d5"]}
+{"g": 8, "mate": true, "term": "checkmate", "plies": 11, "nodes": 18301, "t": 93.0, "moves": 6, "bank": 1546}
+{"g": 19, "mate": true, "term": "checkmate", "plies": 9, "nodes": 13995, "t": 68.2, "moves": 5, "bank": 1699}
+{"g": 10, "mate": true, "term": "checkmate", "plies": 7, "nodes": 8958, "t": 71.0, "moves": 4, "bank": 1690}
+{"g": 12, "mate": true, "term": "checkmate", "plies": 9, "nodes": 11399, "t": 87.4, "moves": 5, "bank": 1850}
+{"g": 14, "mate": false, "term": "threefold_repetition", "plies": 12, "nodes": 30000, "t": 52.3, "moves": 6, "bank": 1868, "start_epd": "8/1K6/8/4R3/8/5k2/8/3R4 w - -", "ucis": ["b7c8", "f3f4", "d1h1", "f4e5", "h1h7", "e5f5", "h7h8", "f5e5", "h8h7", "e5f5", "h7b7", "f5e5"]}
+{"g": 16, "mate": false, "term": "threefold_repetition", "plies": 16, "nodes": 40000, "t": 61.5, "moves": 8, "bank": 1988, "start_epd": "8/8/K7/R7/3k4/8/8/6R1 w - -", "ucis": ["g1g7", "d4e4", "a5a3", "e4e5", "a6b7", "e5f6", "g7e7", "f6e7", "a3a6", "e7d8", "b7c6", "d8e7", "c6b7", "e7d8", "b7c6", "d8e7"]}
+{"g": 23, "mate": true, "term": "checkmate", "plies": 21, "nodes": 42889, "t": 131.2, "moves": 11, "bank": 1910}
+{"g": 18, "mate": true, "term": "checkmate", "plies": 11, "nodes": 20834, "t": 77.9, "moves": 6, "bank": 2125}
+{"g": 20, "mate": true, "term": "checkmate", "plies": 7, "nodes": 7955, "t": 46.5, "moves": 4, "bank": 2202}
+{"g": 22, "mate": true, "term": "checkmate", "plies": 9, "nodes": 13793, "t": 72.1, "moves": 5, "bank": 2396}
+{"g": 24, "mate": true, "term": "checkmate", "plies": 11, "nodes": 21754, "t": 80.8, "moves": 6, "bank": 2538}
+{"g": 27, "mate": true, "term": "checkmate", "plies": 21, "nodes": 42887, "t": 148.5, "moves": 11, "bank": 2276}
+{"g": 31, "mate": true, "term": "checkmate", "plies": 5, "nodes": 10000, "t": 19.8, "moves": 3, "bank": 2796}
+{"g": 26, "mate": true, "term": "checkmate", "plies": 15, "nodes": 27287, "t": 114.5, "moves": 8, "bank": 2606}
+{"g": 28, "mate": true, "term": "checkmate", "plies": 13, "nodes": 22329, "t": 79.1, "moves": 7, "bank": 2783}
+{"g": 35, "mate": true, "term": "checkmate", "plies": 19, "nodes": 37539, "t": 107.3, "moves": 10, "bank": 2915}
+{"g": 30, "mate": true, "term": "checkmate", "plies": 17, "nodes": 35732, "t": 90.1, "moves": 9, "bank": 3054}
+{"g": 32, "mate": true, "term": "checkmate", "plies": 13, "nodes": 22894, "t": 89.9, "moves": 7, "bank": 2940}
+{"g": 39, "mate": false, "term": "threefold_repetition", "plies": 12, "nodes": 30000, "t": 63.2, "moves": 6, "bank": 3211, "start_epd": "7R/6R1/K7/5k2/8/8/8/8 w - -", "ucis": ["a6b7", "f5e5", "b7c8", "e5d5", "h8h5", "d5e4", "h5h3", "e4d5", "h3h5", "d5e4", "h5h3", "e4d5"]}
+{"g": 36, "mate": true, "term": "checkmate", "plies": 7, "nodes": 9581, "t": 64.1, "moves": 4, "bank": 3337}
+{"g": 34, "mate": true, "term": "checkmate", "plies": 13, "nodes": 26091, "t": 76.2, "moves": 7, "bank": 3314}
+{"g": 40, "mate": true, "term": "checkmate", "plies": 9, "nodes": 16221, "t": 39.4, "moves": 5, "bank": 3461}
+{"g": 43, "mate": true, "term": "checkmate", "plies": 7, "nodes": 8372, "t": 58.2, "moves": 4, "bank": 3564}
+{"g": 44, "mate": true, "term": "checkmate", "plies": 3, "nodes": 1240, "t": 11.3, "moves": 2, "bank": 3597}
+{"g": 47, "mate": true, "term": "checkmate", "plies": 15, "nodes": 29160, "t": 71.9, "moves": 8, "bank": 3679}
+{"g": 1, "mate": true, "term": "checkmate", "plies": 7, "nodes": 1148, "t": 18.3, "moves": 4, "bank": 734}
+{"g": 38, "mate": false, "term": "timeout", "plies": 80, "nodes": 200000, "t": 224.5, "moves": 40, "bank": 3456, "start_epd": "8/3R4/4k3/8/8/RK6/8/8 w - -", "ucis": ["b3b4", "e6d7", "b4a5", "d7e6", "a5b6", "e6f5", "a3a4", "f5e6", "b6b7", "e6d5", "b7b8", "d5d6", "a4a8", "d6c6", "b8a7", "c6c7", "a8g8", "c7d6", "a7b8", "d6d5", "b8c8", "d5e4", "g8h8", "e4f5", "c8b8", "f5e4", "h8f8", "e4e5", "b8a8", "e5e6", "f8b8", "e6d6", "b8h8", "d6e5", "a8b8", "e5d5", "b8c8", "d5e5", "h8h7", "e5f5", "h7h8", "f5e5", "c8b8", "e5d5", "h8f8", "d5e6", "f8f4", "e6e5", "f4a4", "e5d6", "a4a7", "d6e5", "b8c8", "e5f5", "c8b8", "f5e5", "a7b7", "e5f5", "b7b3", "f5e5", "b8c8", "e5d5", "b3b7", "d5e5", "b7b8", "e5e4", "b8b7", "e4e5", "b7b2", "e5d5", "b2a2", "d5e5", "a2a3", "e5f5", "a3a2", "f5e5", "a2a1", "e5f5", "a1a3", "f5e5"]}
+{"g": 42, "mate": false, "term": "threefold_repetition", "plies": 24, "nodes": 60000, "t": 122.7, "moves": 12, "bank": 3754, "start_epd": "8/1R6/7R/2K5/8/2k5/8/8 w - -", "ucis": ["c5b6", "c3d4", "h6h3", "d4e5", "b6c7", "e5f6", "c7c8", "f6e5", "b7f7", "e5e6", "h3h7", "e6e5", "h7h6", "e5d4", "h6h3", "d4d5", "h3h5", "d5e4", "h5h3", "e4d5", "h3h5", "d5e4", "h5h8", "e4d5"]}
+{"g": 46, "mate": true, "term": "checkmate", "plies": 9, "nodes": 13174, "t": 41.7, "moves": 5, "bank": 3833}
+{"g": 5, "mate": false, "term": "threefold_repetition", "plies": 60, "nodes": 150000, "t": 235.2, "moves": 30, "bank": 3772, "start_epd": "8/8/3R4/8/8/2k5/8/R6K w - -", "ucis": ["h1h2", "c3c4", "d6c6", "c4d5", "c6d6", "d5d6", "h2g3", "d6c6", "a1f1", "c6d7", "g3f3", "d7c7", "f1h1", "c7d6", "h1a1", "d6d5", "a1a7", "d5e5", "a7a8", "e5d5", "a8a1", "d5e6", "a1a5", "e6e7", "a5a2", "e7e6", "a2a7", "e6e5", "f3g3", "e5f6", "g3h2", "f6e6", "a7a8", "e6d5", "a8g8", "d5e6", "g8h8", "e6d5", "h8g8", "d5e6", "g8b8", "e6d6", "b8f8", "d6e7", "f8f3", "e7e6", "f3h3", "e6e5", "h3h7", "e5d5", "h2g2", "d5e6", "h7h4", "e6f5", "h4h8", "f5e6", "h8h4", "e6f5", "h4h8", "f5e6"]}
+{"g": 9, "mate": true, "term": "checkmate", "plies": 3, "nodes": 1278, "t": 9.7, "moves": 2, "bank": 3852}
+{"g": 13, "mate": true, "term": "checkmate", "plies": 9, "nodes": 15296, "t": 45.1, "moves": 5, "bank": 3960}
+{"g": 17, "mate": true, "term": "checkmate", "plies": 9, "nodes": 9611, "t": 38.4, "moves": 5, "bank": 4004}
+{"g": 21, "mate": true, "term": "checkmate", "plies": 9, "nodes": 11974, "t": 36.8, "moves": 5, "bank": 4150}
+{"g": 25, "mate": false, "term": "threefold_repetition", "plies": 56, "nodes": 140000, "t": 154.5, "moves": 28, "bank": 4178, "start_epd": "2R5/8/4R3/8/5k2/8/1K6/8 w - -", "ucis": ["b2c3", "f4f5", "c3d3", "f5e6", "d3e3", "e6d7", "c8h8", "d7e6", "h8b8", "e6e7", "b8b3", "e7d7", "b3d3", "d7c6", "e3f4", "c6c5", "d3d1", "c5c6", "d1d2", "c6c5", "d2g2", "c5d6", "f4f3", "d6d5", "g2g1", "d5e6", "g1a1", "e6d5", "a1a8", "d5e6", "a8a5", "e6e7", "a5a6", "e7f7", "a6a5", "f7e6", "a5h5", "e6e7", "h5a5", "e7e6", "f3e3", "e6e7", "a5a6", "e7f7", "a6a5", "f7e7", "a5a1", "e7e6", "a1f1", "e6d7", "f1f4", "d7e6", "f4f1", "e6d7", "f1g1", "d7e6"]}
+{"g": 29, "mate": true, "term": "checkmate", "plies": 9, "nodes": 14377, "t": 41.5, "moves": 5, "bank": 4300}
+{"g": 33, "mate": true, "term": "checkmate", "plies": 9, "nodes": 12015, "t": 39.5, "moves": 5, "bank": 4396}
+{"g": 37, "mate": true, "term": "checkmate", "plies": 7, "nodes": 8245, "t": 37.0, "moves": 4, "bank": 4562}
+{"g": 41, "mate": true, "term": "checkmate", "plies": 11, "nodes": 16989, "t": 46.3, "moves": 6, "bank": 4695}
+{"g": 45, "mate": true, "term": "checkmate", "plies": 9, "nodes": 12582, "t": 38.0, "moves": 5, "bank": 4980}

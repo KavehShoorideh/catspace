@@ -1,0 +1,77 @@
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+    mv01  115.9s = prior   2.7 (2759) + embF  12.8 (2759) + dbank  98.8 ( 2759) + tree   1.5 + harvest  0.1  nodes=5000
+    mv01  121.8s = prior   2.7 (2710) + embF  16.6 (2710) + dbank 100.8 ( 2710) + tree   1.5 + harvest  0.1  nodes=5000
+    mv01  123.5s = prior   2.8 (2750) + embF  16.9 (2750) + dbank 102.2 ( 2750) + tree   1.4 + harvest  0.2  nodes=5000
+    mv01  132.7s = prior   3.0 (2937) + embF  18.5 (2937) + dbank 109.4 ( 2937) + tree   1.6 + harvest  0.2  nodes=5000
+    mv02   77.7s = prior   2.1 (2170) + embF   8.4 (2170) + dbank  65.4 ( 2170) + tree   1.7 + harvest  0.2  nodes=5000
+    mv02   81.2s = prior   2.2 (1962) + embF  11.7 (1962) + dbank  65.2 ( 1962) + tree   1.9 + harvest  0.1  nodes=5000
+    mv02   76.7s = prior   2.1 (2171) + embF   7.4 (2171) + dbank  65.2 ( 2902) + tree   1.8 + harvest  0.2  nodes=5000
+    mv03   70.6s = prior   1.9 (2096) + embF   6.3 (2096) + dbank  60.3 ( 3066) + tree   1.9 + harvest  0.1  nodes=5000
+    mv03   63.5s = prior   1.6 (1762) + embF   6.3 (1762) + dbank  53.7 ( 2698) + tree   1.7 + harvest  0.2  nodes=5000
+    mv03   82.8s = prior   2.3 (1929) + embF  14.1 (1929) + dbank  64.5 ( 1929) + tree   1.8 + harvest  0.1  nodes=5000
+    mv04   64.5s = prior   1.5 (1736) + embF   7.9 (1736) + dbank  53.3 ( 1736) + tree   1.7 + harvest  0.2  nodes=5000
+    mv02  221.6s = prior   4.9 (2156) + embF  72.7 (2156) + dbank 137.6 ( 2680) + tree   6.2 + harvest  0.2  nodes=4613
+    mv04   95.9s = prior   2.5 (2667) + embF  11.9 (2667) + dbank  79.8 ( 2718) + tree   1.6 + harvest  0.1  nodes=5000
+    mv04   97.2s = prior   2.4 (2444) + embF  13.1 (2444) + dbank  79.5 ( 3354) + tree   2.1 + harvest  0.2  nodes=5000
+    mv05   52.3s = prior   1.3 (1456) + embF   5.5 (1456) + dbank  43.4 ( 2511) + tree   1.9 + harvest  0.2  nodes=5000
+    mv03   92.6s = prior   1.9 ( 690) + embF  30.5 ( 690) + dbank  55.2 ( 1216) + tree   4.9 + harvest  0.2  nodes=1493
+    mv05   84.7s = prior   2.5 (2511) + embF   9.2 (2511) + dbank  70.9 ( 2525) + tree   1.9 + harvest  0.1  nodes=5000
+    mv06   56.8s = prior   1.4 (1327) + embF   7.6 (1327) + dbank  45.7 ( 2274) + tree   1.9 + harvest  0.1  nodes=5000
+    mv05   91.3s = prior   2.7 (2415) + embF  11.3 (2415) + dbank  75.3 ( 3240) + tree   1.8 + harvest  0.1  nodes=5000
+    mv04   32.2s = prior   0.7 ( 239) + embF   9.4 ( 239) + dbank  18.1 (  451) + tree   3.9 + harvest  0.1  nodes=521
+    mv05    0.0s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.0  nodes=0
+  g017 mate plies=9 bank=2872(+43) loss=0 ms=200 t/move=92.6s t/game=470s nodes/s=25 [483s]
+[worker 3] 1/1 mate  med t/move=94.0s
+    mv07   49.5s = prior   1.2 (1407) + embF   5.5 (1407) + dbank  40.8 ( 2185) + tree   1.9 + harvest  0.2  nodes=5000
+    mv06   60.6s = prior   1.6 (1759) + embF   8.6 (1759) + dbank  48.6 ( 1767) + tree   1.7 + harvest  0.1  nodes=5000
+    mv06   57.8s = prior   1.4 (1571) + embF   8.4 (1571) + dbank  46.1 ( 2236) + tree   1.8 + harvest  0.1  nodes=5000
+    mv08   56.7s = prior   1.2 (1499) + embF   7.1 (1499) + dbank  46.6 ( 2683) + tree   1.7 + harvest  0.2  nodes=5000
+    mv07   56.0s = prior   1.2 (1659) + embF   6.7 (1659) + dbank  46.6 ( 2847) + tree   1.4 + harvest  0.1  nodes=5000
+    mv07   53.6s = prior   1.3 (1746) + embF   5.2 (1746) + dbank  45.5 ( 2011) + tree   1.5 + harvest  0.1  nodes=5000
+    mv08   54.7s = prior   1.5 (1565) + embF   7.9 (1565) + dbank  43.4 ( 1713) + tree   1.7 + harvest  0.1  nodes=5000
+    mv09   71.8s = prior   1.8 (1984) + embF  10.3 (1984) + dbank  57.9 ( 2795) + tree   1.6 + harvest  0.1  nodes=5000
+    mv08   63.6s = prior   1.4 (1907) + embF   7.6 (1907) + dbank  53.3 ( 3066) + tree   1.1 + harvest  0.1  nodes=5000
+    mv09   60.6s = prior   1.2 (1758) + embF   7.5 (1758) + dbank  50.2 ( 1898) + tree   1.6 + harvest  0.1  nodes=5000
+    mv10   83.0s = prior   2.6 (2031) + embF  15.1 (2031) + dbank  61.8 ( 2130) + tree   3.4 + harvest  0.1  nodes=5000
+    mv10   49.9s = prior   2.5 (2417) + embF   2.3 (2417) + dbank  43.0 ( 3467) + tree   2.0 + harvest  0.1  nodes=5000
+    mv09   95.8s = prior   3.2 (2126) + embF  20.1 (2126) + dbank  67.9 ( 2474) + tree   4.6 + harvest  0.1  nodes=5000
+    mv11   26.2s = prior   1.0 ( 404) + embF   6.7 ( 404) + dbank  15.0 (  551) + tree   3.4 + harvest  0.0  nodes=736
+    mv12    0.0s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.0  nodes=0
+  g006 mate plies=23 bank=2871(+42) loss=0 ms=206 t/move=60.6s t/game=747s nodes/s=68 [754s]
+    mv10   42.6s = prior   1.7 ( 625) + embF  10.4 ( 625) + dbank  25.4 ( 1343) + tree   5.0 + harvest  0.1  nodes=1766
+    mv11   13.5s = prior   0.4 ( 174) + embF   3.0 ( 174) + dbank   7.6 (  416) + tree   2.5 + harvest  0.0  nodes=480
+    mv12    0.0s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.0  nodes=0
+  g014 mate plies=23 bank=2855(+26) loss=0 ms=208 t/move=63.5s t/game=788s nodes/s=60 [801s]
+[worker 2] 1/1 mate  med t/move=65.7s
+    mv01   51.8s = prior   2.6 (2525) + embF   2.5 (2525) + dbank  44.6 ( 2525) + tree   2.1 + harvest  0.1  nodes=5000
+    mv11   89.9s = prior   4.5 (2447) + embF  19.1 (2447) + dbank  59.8 ( 2965) + tree   6.2 + harvest  0.1  nodes=4828
+    mv02   39.1s = prior   2.1 (2154) + embF   1.4 (2154) + dbank  34.0 ( 2479) + tree   1.5 + harvest  0.1  nodes=5000
+    mv12   33.4s = prior   1.8 ( 760) + embF   7.5 ( 760) + dbank  19.4 ( 1343) + tree   4.5 + harvest  0.1  nodes=1665
+    mv03   24.3s = prior   1.2 (1286) + embF   1.4 (1286) + dbank  20.3 ( 2254) + tree   1.3 + harvest  0.1  nodes=5000
+    mv13   18.2s = prior   0.8 ( 395) + embF   3.6 ( 395) + dbank  10.4 (  801) + tree   3.2 + harvest  0.1  nodes=917
+    mv14   10.0s = prior   0.4 ( 191) + embF   1.8 ( 191) + dbank   5.1 (  369) + tree   2.7 + harvest  0.1  nodes=445
+    mv15    0.0s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.0  nodes=0
+  g000 mate plies=29 bank=2863(+34) loss=0 ms=202 t/move=60.6s t/game=878s nodes/s=66 [891s]
+    mv04   22.3s = prior   1.0 (1234) + embF   1.1 (1234) + dbank  18.9 ( 1310) + tree   1.2 + harvest  0.1  nodes=5000
+    mv05   23.9s = prior   1.3 ( 832) + embF   2.4 ( 832) + dbank  18.2 (  863) + tree   1.9 + harvest  0.1  nodes=5000
+    mv06   18.6s = prior   1.1 ( 581) + embF   2.7 ( 581) + dbank  12.8 (  600) + tree   1.9 + harvest  0.1  nodes=5000
+    mv01   52.9s = prior   2.7 (2397) + embF   2.8 (2397) + dbank  45.1 ( 2397) + tree   2.2 + harvest  0.1  nodes=5000
+    mv07   20.3s = prior   1.0 ( 747) + embF   2.6 ( 747) + dbank  15.4 (  755) + tree   1.2 + harvest  0.1  nodes=5000
+    mv08   14.2s = prior   0.8 ( 411) + embF   2.4 ( 411) + dbank   9.3 (  433) + tree   1.7 + harvest  0.1  nodes=5000
+    mv09    6.4s = prior   0.3 ( 153) + embF   1.1 ( 153) + dbank   3.4 (  158) + tree   1.5 + harvest  0.1  nodes=5000
+  g025 FAIL:threefold_repetition plies=18 bank=2947(+5) loss=0 ms=214 t/move=22.3s t/game=221s nodes/s=204 [975s]
+[worker 1] 1/2 mate  med t/move=43.4s
+    mv02   40.6s = prior   1.9 (2123) + embF   1.7 (2123) + dbank  34.9 ( 2951) + tree   1.9 + harvest  0.1  nodes=5000
+    mv03   37.6s = prior   2.5 (1722) + embF   5.7 (1722) + dbank  25.4 ( 2203) + tree   3.9 + harvest  0.1  nodes=3164
+    mv04   10.7s = prior   0.7 ( 310) + embF   1.5 ( 310) + dbank   6.0 (  558) + tree   2.5 + harvest  0.1  nodes=650
+    mv05    0.0s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.0 + harvest  0.0  nodes=0
+  g022 mate plies=9 bank=3129(+151) loss=0 ms=228 t/move=37.6s t/game=142s nodes/s=97 [1033s]
+[worker 0] 2/2 mate  med t/move=43.5s
+VERDICT BOOTSTRAP_MATE scenario=KRRvK-central nodes=5000 mate=5/6 (0.83)  med_plies=23  bank_final=3129  med_t/move=60.4s  med_t/solve=746s  [1034s]

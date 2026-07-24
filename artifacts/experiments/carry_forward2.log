@@ -1,0 +1,115 @@
+=== carry-forward v2 start Thu Jul 23 18:53:55 PDT 2026 ===
+[carry2] IQE warm-start from data/derived/sep/lichess_mc2.pt -> data/derived/sep/field_fullmonth_r0.pt
+=== IQE round 0 on 18 staged shards Thu Jul 23 18:54:32 PDT 2026 ===
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_full_stage device=mps steps=5000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed field_fullmonth_r0.pt at step 60000
+[resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
+multichannel mix: human(r0)=0.80 + self_play_v1:11:0.2
+holdout: 8 batches of 512
+zgoal MATE_W: 2048 checkmate finals
+zgoal MATE_B: 2048 checkmate finals
+saved data/derived/sep/field_fullmonth_r0.pt
+VERDICT VAL_TOP1=0.016 VAL_TOP8=0.097 (chance 0.0020)
+VERDICT REACH_SLOPE_WON=0.653 (n=200) REACH_SLOPE_LOST=0.664 (n=200)
+VERDICT DIFF_SLOPE_WON=0.780 DIFF_SLOPE_LOST=0.842 (won-lost separation is the outcome signal; both were negative at step 2000)
+[carry2] FIELD pointer -> data/derived/sep/field_fullmonth_r0.pt (round 0 done)
+=== IQE round 1 on 21 staged shards Thu Jul 23 18:55:10 PDT 2026 ===
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_full_stage device=mps steps=5000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed field_fullmonth_r0.pt at step 60000
+[resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
+multichannel mix: human(r0)=0.80 + self_play_v1:11:0.2
+holdout: 8 batches of 512
+zgoal MATE_W: 2048 checkmate finals
+zgoal MATE_B: 2048 checkmate finals
+saved data/derived/sep/field_fullmonth_r0.pt
+VERDICT VAL_TOP1=0.016 VAL_TOP8=0.097 (chance 0.0020)
+VERDICT REACH_SLOPE_WON=0.653 (n=200) REACH_SLOPE_LOST=0.664 (n=200)
+VERDICT DIFF_SLOPE_WON=0.780 DIFF_SLOPE_LOST=0.842 (won-lost separation is the outcome signal; both were negative at step 2000)
+[carry2] FIELD pointer -> data/derived/sep/field_fullmonth_r0.pt (round 1 done)
+=== IQE round 2 on 22 staged shards Thu Jul 23 18:55:43 PDT 2026 ===
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_full_stage device=mps steps=5000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed field_fullmonth_r0.pt at step 60000
+[resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
+multichannel mix: human(r0)=0.80 + self_play_v1:11:0.2
+holdout: 8 batches of 512
+=== carry-forward v2 start Thu Jul 23 18:56:24 PDT 2026 ===
+cp: data/derived/sep/field_fullmonth_r0.pt and data/derived/sep/field_fullmonth_r0.pt are identical (not copied).
+[carry2] IQE warm-start from data/derived/sep/field_fullmonth_r0.pt -> data/derived/sep/field_fullmonth_r0.pt
+=== IQE round 0 on 24 staged shards -> step 65000 Thu Jul 23 18:56:29 PDT 2026 ===
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_full_stage device=mps steps=65000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+resumed field_fullmonth_r0.pt at step 60000
+[resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
+multichannel mix: human(r0)=0.80 + self_play_v1:11:0.2
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:676: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 11.280 sq_dev 0.0139 lam 139.443 d_step 0.959 d_rand 48.906 var 0.000 sib 0.000 unr 4.494 unrb 3.075 d_unr 48.82 d_oth 49.05
+step 60100  loss 147.7303  train_top1 0.000  lr 3.00e-05  (1.1 it/s)
+    qrl push 12.764 sq_dev 0.0114 lam 139.583 d_step 0.417 d_rand 44.673 var 0.000 sib 0.000 unr 2.856 unrb 3.250 d_unr 60.09 d_oth 33.41
+step 60200  loss 75.8974  train_top1 0.000  lr 2.99e-05  (1.1 it/s)
+    qrl push 10.876 sq_dev 0.0840 lam 139.760 d_step 0.463 d_rand 48.671 var 0.000 sib 0.000 unr 4.657 unrb 3.854 d_unr 52.03 d_oth 40.25
+step 60300  loss 72.5062  train_top1 0.000  lr 2.98e-05  (1.1 it/s)
+    qrl push 8.896 sq_dev 0.0254 lam 139.860 d_step 0.765 d_rand 58.683 var 0.000 sib 0.000 unr 3.362 unrb 11.038 d_unr 64.20 d_oth 13.96
+step 60400  loss 59.9682  train_top1 0.000  lr 2.96e-05  (1.1 it/s)
+    qrl push 9.317 sq_dev 10.2783 lam 139.994 d_step 0.591 d_rand 52.658 var 0.000 sib 0.000 unr 3.478 unrb 2.230 d_unr 58.67 d_oth 46.16
+step 60500  loss 116.4886  train_top1 0.000  lr 2.93e-05  (1.1 it/s)
+    qrl push 7.861 sq_dev 0.2090 lam 140.325 d_step 0.583 d_rand 57.868 var 0.000 sib 0.000 unr 2.916 unrb 2.432 d_unr 61.18 d_oth 52.20
+step 60600  loss 42.6454  train_top1 0.000  lr 2.91e-05  (1.1 it/s)
+    qrl push 7.594 sq_dev 0.0000 lam 140.358 d_step 0.903 d_rand 58.391 var 0.000 sib 0.000 unr 2.835 unrb 2.088 d_unr 63.29 d_oth 49.87
+step 60700  loss 69.8472  train_top1 0.000  lr 2.87e-05  (1.2 it/s)
+    qrl push 12.160 sq_dev 0.0002 lam 140.583 d_step 0.962 d_rand 47.688 var 0.000 sib 0.000 unr 2.472 unrb 12.463 d_unr 60.20 d_oth 8.13
+step 60800  loss 116.8197  train_top1 0.000  lr 2.83e-05  (1.2 it/s)
+    qrl push 10.694 sq_dev 0.0143 lam 140.844 d_step 0.945 d_rand 50.815 var 0.000 sib 0.000 unr 2.887 unrb 14.610 d_unr 59.50 d_oth 8.38
+=== sharding finished Thu Jul 23 19:09:25 PDT 2026; [B1] move-selection at scale ===
+  20000/5000000 rows (1192 skipped)  [4s]
+  40000/5000000 rows (2409 skipped)  [8s]
+  60000/5000000 rows (3624 skipped)  [12s]
+  80000/5000000 rows (4801 skipped)  [16s]
+  100000/5000000 rows (5985 skipped)  [20s]
+  120000/5000000 rows (7160 skipped)  [24s]
+  140000/5000000 rows (8348 skipped)  [28s]
+step 60900  loss 58.2455  train_top1 0.000  lr 2.79e-05  (1.2 it/s)
+    qrl push 10.958 sq_dev 0.0069 lam 141.016 d_step 0.934 d_rand 51.788 var 0.000 sib 0.000 unr 3.869 unrb 8.645 d_unr 59.97 d_oth 16.63
+  160000/5000000 rows (9502 skipped)  [32s]
+  180000/5000000 rows (10716 skipped)  [36s]
+  200000/5000000 rows (11898 skipped)  [40s]
+  220000/5000000 rows (13043 skipped)  [44s]
+  240000/5000000 rows (14214 skipped)  [48s]
+  260000/5000000 rows (15322 skipped)  [52s]
+step 61000  loss 62.2040  train_top1 0.000  lr 2.74e-05  (1.2 it/s)
+  VAL step 61000  loss 279.4253  top1 0.015  top8 0.087
+Traceback (most recent call last):
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/serialization.py"[0m, line [35m1003[0m, in [35msave[0m
+    [31m_save[0m[1;31m([0m
+    [31m~~~~~[0m[1;31m^[0m
+        [1;31mobj,[0m
+        [1;31m^^^^[0m
+    ...<3 lines>...
+        [1;31m_disable_byteorder_record,[0m
+        [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+    [1;31m)[0m
+    [1;31m^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/serialization.py"[0m, line [35m1312[0m, in [35m_save[0m
+    [31mzip_file.write_record[0m[1;31m(name, storage, num_bytes)[0m
+    [31m~~~~~~~~~~~~~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1;35mRuntimeError[0m: [35mios_base::clear: unspecified iostream_category error[0m
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py"[0m, line [35m1139[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py"[0m, line [35m1099[0m, in [35mmain[0m
+    [31msave_ckpt[0m[1;31m(fb, ckpt_path, step=step, opt=opt,[0m
+    [31m~~~~~~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+              [1;31mzgoals=embed_zgoals(fb, finals, device), provenance=provenance)[0m
+              [1;31m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+object address  : 0x14a03b940
+object refcount : 3
+

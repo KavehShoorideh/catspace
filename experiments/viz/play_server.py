@@ -603,6 +603,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")   # stale pages caused two ghost-bug reports
         self.end_headers()
         self.wfile.write(data)
 
@@ -623,6 +624,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if u.path == "/":
                 self._send(200, TEMPLATE.read_text(), "text/html; charset=utf-8")
+            elif u.path == "/veto":
+                self._send(200, (TEMPLATE.parent / "veto_lab.html").read_text(),
+                           "text/html; charset=utf-8")
             elif u.path.startswith("/assets/"):
                 # serve vendored chessground JS/CSS (same-origin static files);
                 # resolve() + prefix guard prevents path traversal
@@ -634,6 +638,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, fp.read_bytes(), _MIME.get(fp.suffix, "application/octet-stream"))
             elif u.path == "/atlas":
                 self._send(200, (ATLAS_DIR / "atlas.json").read_bytes())
+            elif u.path == "/info":
+                self._json({"ckpt": ENGINE._ckpt_tag,
+                            "planner_field": getattr(ENGINE, "planner_tag", None),
+                            "analysis": "exact reach-game (rules-only AND-OR + syzygy win labels)"})
             elif u.path == "/toy":
                 self._json({"fen": toy_fen()})
             elif u.path == "/legal_moves":
@@ -670,6 +678,11 @@ class Handler(BaseHTTPRequestHandler):
             elif u.path == "/engine_move":
                 _fn = ENGINE.engine_move_planner if ENGINE.planner is not None else ENGINE.engine_move
                 self._json(_fn(self._board(body["fen"]), body.get("nodes")))
+            elif u.path == "/step_move":
+                self._json(step_move(body["fen"], body.get("engine", "sf")))
+            elif u.path == "/veto_analyze":
+                self._json(veto_analyze(body.get("fen"), int(body.get("h", 4)),
+                                        int(body.get("targets", 16))))
             elif u.path == "/analyze":
                 self._json({"ok": True, **ENGINE.analyze(self._board(body["fen"]),
                             int(body.get("topk", 3)), body.get("nodes"),
@@ -710,6 +723,170 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"error": "not found"}, 404)
         except Exception as e:  # noqa: BLE001
             self._json({"error": str(e)}, 400)
+
+
+_VETO_TB = None
+_STEP_LOCK = threading.Lock()
+_UCI = {}
+
+
+def step_move(fen: str, engine: str) -> dict:
+    """One move by an EXPLICIT engine: 'tb' (tablebase-optimal), 'sf' (Stockfish d12),
+    'maia1500' (lc0+maia, temperature-sampled -- a human who lapses), 'planner' (ours)."""
+    b = chess.Board(fen)
+    if b.is_game_over(claim_draw=True):
+        return {"error": "game over"}
+    with _STEP_LOCK:
+        if engine == "tb":
+            from catspace.tb import TB, tb_best_move
+            global _VETO_TB
+            if _VETO_TB is None:
+                _VETO_TB = TB()
+            mv = tb_best_move(b, _VETO_TB)
+        elif engine in ("sf", "maia1500"):
+            import chess.engine as _ce
+            if engine not in _UCI:
+                cmd = ("stockfish" if engine == "sf" else
+                       ["lc0", "--weights=data/engines/maia/maia-1500.pb.gz", "--temperature=1.0"])
+                e = _ce.SimpleEngine.popen_uci(cmd)
+                if engine == "sf":
+                    e.configure({"Threads": 1})
+                _UCI[engine] = e
+            lim = _ce.Limit(depth=12) if engine == "sf" else _ce.Limit(nodes=1)
+            mv = _UCI[engine].play(b, lim, game=fen).move
+        else:                                              # planner (ours)
+            _fn = ENGINE.engine_move_planner if ENGINE.planner is not None else ENGINE.engine_move
+            out = _fn(b, None)
+            return {**out, "engine": "planner"}
+    if mv is None:
+        return {"error": f"{engine}: no move"}
+    san = b.san(mv); b.push(mv)
+    over = b.is_game_over(claim_draw=True)
+    res = b.outcome(claim_draw=True).result() if over else None
+    return {"move": mv.uci(), "san": san, "fen": b.fen(), "engine": engine,
+            "game_over": over, "result": res}
+
+
+def veto_analyze(fen: str | None, h: int = 4, n_targets: int = 16) -> dict:
+    """VETO LAB (Kaveh 2026-07-23): fresh-position forceability, live, under the CORRECTED
+    definition -- the defender avoids regions by ANY legal means (catspace.reachgame), not
+    by playing canonical optimal chess. Exact: rules-only AND-OR search + tablebase
+    win-labels for target selection. fen=None -> random won toy position."""
+    import time as _t
+    global _VETO_TB
+    from catspace.diagnostic_krrkbp import random_krrkbp
+    from catspace.reachgame import adv_reach, exact_position, region_neighborhood
+    from catspace.tb import TB
+    if _VETO_TB is None:
+        _VETO_TB = TB()
+    rng = np.random.default_rng()
+    t0 = _t.time()
+    if fen:
+        board = chess.Board(fen)
+    else:                                   # random WON (White) anchor, White to move
+        board = None
+        from catspace.tb import rollout_dtm as _rdtm
+        fallback = None
+        for _try in range(40):
+            b = random_krrkbp(rng)
+            if b.turn != chess.WHITE or b.is_game_over():
+                continue
+            w, _d = _VETO_TB.wdl_dtz(b)
+            if w != 2:
+                continue
+            fallback = fallback or b
+            dtm0 = _rdtm(b, _VETO_TB)
+            if dtm0 is not None and dtm0 <= 40:       # nearer wins: the horizon MEANS something
+                board = b; break
+        if board is None:
+            board = fallback
+        if board is None:
+            return {"error": "could not generate a won anchor"}
+    # candidate winning regions: dedup'd random-walk ends within h plies, tb-won
+    seen = {}
+    for _ in range(350):                    # walk DEEPER than the forcing horizon: regions
+        b = board.copy(stack=False); ok = True   # spread beyond the trivial neighborhood,
+        for _t2 in range(h + 2):                 # so verdicts at h are real journeys
+            mv = list(b.legal_moves)
+            if not mv:
+                ok = False; break
+            b.push(mv[int(rng.integers(len(mv)))])
+        if not ok or b.is_game_over(claim_draw=True):
+            continue
+        w, _d = _VETO_TB.wdl_dtz(b)
+        w = w if b.turn == chess.WHITE else (-w if w is not None else None)
+        if w == 2:
+            seen.setdefault(b._transposition_key(), b.copy(stack=False))
+    targets = list(seen.values())
+    rng.shuffle(targets)
+    targets = targets[:n_targets]
+    regions, contrast = [], None
+    for g in targets:
+        pred = region_neighborhood(g)
+        if pred(board):
+            continue                        # anchor already inside -- no journey, no lesson
+        d_adv = adv_reach(board, pred, h)
+        regions.append(dict(bk=chess.square_name(g.king(chess.BLACK)),
+                            wk=chess.square_name(g.king(chess.WHITE)),
+                            material="".join(sorted(p.symbol() for p in g.piece_map().values())),
+                            forceable=d_adv is not None, d_adv=d_adv,
+                            example_fen=g.fen()))
+        # the exact-vs-region contrast: first region-forceable target whose EXACT position dodges
+        if contrast is None and d_adv is not None and d_adv >= 2:
+            ex = adv_reach(board, exact_position(g), h)
+            if ex is None:
+                contrast = dict(bk=regions[-1]["bk"], exact_forceable=False,
+                                region_forceable=True, region_d_adv=d_adv)
+    # TOTAL-COVERAGE square map, ONE pass for all squares (reach_square_sets: the
+    # 40-searches-in-one fix -- the per-square loop cost 52s; this is ~1 search)
+    from catspace.reachgame import reach_square_sets
+    bk0 = board.king(chess.BLACK)
+    square_map = []
+    if bk0 is not None:
+        _cap = {3: 12, 4: 10, 5: 8, 6: 6}.get(h, 6)
+        adv_mask, coop_mask = reach_square_sets(board, _VETO_TB, h, white_cap=_cap)
+        for sq in range(64):
+            if chess.square_distance(sq, bk0) > 3:
+                continue
+            if adv_mask >> sq & 1:
+                status = "forced"
+            elif coop_mask >> sq & 1:
+                status = "denied"
+            else:
+                status = "unreachable"
+            square_map.append(dict(sq=chess.square_name(sq), status=status,
+                                   d_adv=None, d_coop=None))
+    # PROGRESS metrics for the chart: exact distance-to-mate + the king's escape box
+    from catspace.tb import rollout_dtm
+    from catspace.diagnostics import escape_volume
+    w0, _d0 = _VETO_TB.wdl_dtz(board)
+    w0 = w0 if board.turn == chess.WHITE else (-w0 if w0 is not None else None)
+    dtm = rollout_dtm(board, _VETO_TB) if w0 == 2 else None
+    # the canonical DTZ-line meanders (documented: hangs rooks, ~2.5x inflation) -- cross-check
+    # with Stockfish's mate announcement and keep the MIN; both are upper bounds on true DTM
+    if dtm is not None:
+        try:
+            import chess.engine as _ce
+            with _STEP_LOCK:
+                if "sf" not in _UCI:
+                    _UCI["sf"] = _ce.SimpleEngine.popen_uci("stockfish")
+                    _UCI["sf"].configure({"Threads": 1})
+                info = _UCI["sf"].analyse(board, _ce.Limit(depth=16))
+            m = info["score"].white().mate()
+            if m is not None and m > 0:
+                dtm = min(dtm, 2 * m - 1)          # mate-in-m moves = 2m-1 plies (White to move)
+        except Exception:
+            pass
+    # diagnosis trail: every analyzed position logged (jsonl)
+    try:
+        with open("artifacts/experiments/veto_lab_trail.jsonl", "a") as fh:
+            fh.write(json.dumps({"fen": board.fen(), "dtm": dtm, "h": h}) + "\n")
+    except Exception:
+        pass
+    return dict(fen=board.fen(), h=h, regions=regions, contrast=contrast,
+                square_map=square_map, bk=chess.square_name(bk0) if bk0 is not None else None,
+                dtm=dtm, escape=escape_volume(board),
+                elapsed_ms=int((_t.time() - t0) * 1000))
 
 
 def main():
@@ -783,6 +960,8 @@ def main():
         _bi = np.random.default_rng(0).permutation(len(_dz["packed"]))[:args.planner_bank]
         ENGINE.planner = LongShortEngine(args.planner_field, _dz["packed"][_bi], _dz["meta"][_bi],
                                          "cpu", nodes=args.nodes)
+        _pstep = __import__("torch").load(args.planner_field, map_location="cpu", weights_only=False).get("step", "?")
+        ENGINE.planner_tag = f"{Path(args.planner_field).name}@step{_pstep}"
     if not (ATLAS_DIR / "atlas.json").exists():
         print("WARNING: atlas.json missing — run experiments/viz/build_play_atlas.py "
               "(the map will 500 until then)", flush=True)

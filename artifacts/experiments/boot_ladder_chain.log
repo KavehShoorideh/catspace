@@ -1,0 +1,78 @@
+=== LADDER KRRvK-central start 01:08:55 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvK-central nodes=5000 mate=40/48 (0.83)  med_plies=13  bank_final=4006  med_t/move=28.7s  med_t/solve=185s  [3134s]
+=== LADDER KRRvKB start 02:01:10 ===
+=== WDL KRRvK-central TEST start 06:32:13 (Kaveh: 'should get us to 100%') ===
+/Users/kav/.claude/jobs/20b9956a/tmp/wdl_krrvk.sh: line 9: 28188 Terminated: 15          .venv/bin/python experiments/bootstrap_mate_engine.py --nodes 5000 --n 48 --j 4 --fresh --scenario KRRvK-central --bank-file artifacts/experiments/wdl_bank_n5000_KRRvK-central.fens --loss-bank-file artifacts/experiments/wdl_lossbank_n5000_KRRvK-central.fens --milestone-file artifacts/experiments/wdl_ms_n5000_KRRvK-central.jsonl --results-file artifacts/experiments/wdl_results_n5000_KRRvK-central.jsonl > artifacts/experiments/boot_wdl_n5000_KRRvK-central.log 2>&1
+=== WDL KRRvK-central TEST done ===
+=== FULL-STACK v3 (threefold-fix + warm-up) KRRvK-central start 07:42:04 ===
+/Users/kav/.claude/jobs/20b9956a/tmp/wdlr3.sh: line 10: 39589 Killed: 9               .venv/bin/python experiments/bootstrap_mate_engine.py --nodes 5000 --n 48 --j 4 --fresh --scenario KRRvK-central --bank-file artifacts/experiments/wdlr3_bank_n5000_KRRvK-central.fens --loss-bank-file artifacts/experiments/wdlr3_lossbank_n5000_KRRvK-central.fens --milestone-file artifacts/experiments/wdlr3_ms_n5000_KRRvK-central.jsonl --results-file artifacts/experiments/wdlr3_results_n5000_KRRvK-central.jsonl > artifacts/experiments/boot_wdlr3_n5000_KRRvK-central.log 2>&1
+=== FULL-STACK v3 done ===
+=== LADDER4 KRRvKB start 09:01:48 ===
+=== LADDER5 KRRvKB start 09:08:34 ===
+=== LADDER5 KRRvKB start 09:11:31 ===
+=== LADDER5 KRRvKB start 09:13:56 ===
+=== LADDER5 KRRvKB start 09:17:01 ===
+=== LADDER5 KRRvKB start 09:17:27 ===
+=== LADDER5 KRRvKB start 09:19:53 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKB nodes=5000 mate=36/48 (0.75) [clean=32 tb-assisted=4]  med_plies=10  bank_final=22513  med_t/move=4.7s  med_t/solve=25s  [238s]
+=== LADDER5 KRRvKP start 09:23:52 ===
+=== LADDER5 KRRvKB start 09:24:44 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKB nodes=5000 mate=36/48 (0.75) [clean=32 tb-assisted=4]  med_plies=10  bank_final=22513  med_t/move=4.7s  med_t/solve=25s  [8s]
+=== LADDER5 KRRvKP start 09:24:53 ===
+=== LADDER5 KRRvKB start 09:30:23 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKB nodes=5000 mate=36/48 (0.75) [clean=32 tb-assisted=4]  med_plies=10  bank_final=22513  med_t/move=4.7s  med_t/solve=25s  [8s]
+=== LADDER5 KRRvKP start 09:30:32 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKP nodes=5000 mate=42/48 (0.88) [clean=39 tb-assisted=3]  med_plies=6  bank_final=8925  med_t/move=7.1s  med_t/solve=24s  [452s]
+=== LADDER5 KRRvKBP start 09:38:05 ===
+=== LADDER5 KRRvKB start 09:45:33 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKB nodes=5000 mate=36/48 (0.75) [clean=32 tb-assisted=4]  med_plies=10  bank_final=22513  med_t/move=4.7s  med_t/solve=25s  [9s]
+=== LADDER5 KRRvKP start 09:45:43 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKP nodes=5000 mate=42/48 (0.88) [clean=39 tb-assisted=3]  med_plies=6  bank_final=8925  med_t/move=7.1s  med_t/solve=24s  [8s]
+=== LADDER5 KRRvKBP start 09:45:51 ===
+=== LADDER5 KRRvKB start 10:21:50 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKB nodes=5000 mate=36/48 (0.75) [clean=32 tb-assisted=4]  med_plies=10  bank_final=22513  med_t/move=4.7s  med_t/solve=25s  [8s]
+=== LADDER5 KRRvKP start 10:21:59 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKP nodes=5000 mate=42/48 (0.88) [clean=39 tb-assisted=3]  med_plies=6  bank_final=8925  med_t/move=7.1s  med_t/solve=24s  [8s]
+=== LADDER5 KRRvKBP start 10:22:08 ===
+=== LADDER5 KRRvKB start 10:50:48 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKB nodes=5000 mate=36/48 (0.75) [clean=32 tb-assisted=4]  med_plies=10  bank_final=22513  med_t/move=4.7s  med_t/solve=25s  [8s]
+=== LADDER5 KRRvKP start 10:50:57 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKP nodes=5000 mate=42/48 (0.88) [clean=39 tb-assisted=3]  med_plies=6  bank_final=8925  med_t/move=7.1s  med_t/solve=24s  [8s]
+=== LADDER5 KRRvKBP start 10:51:06 ===
+=== LADDER6 KRRvK-central start 11:22:58 ===
+=== LADDER7 KRRvK-central start 12:04:45 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvK-central nodes=5000 mate=48/48 (1.00) [clean=46 tb-assisted=2]  med_plies=9  bank_final=6404  med_t/move=10.0s  med_t/solve=50s  [1856s]
+=== LADDER7 KRRvKB start 12:35:42 ===
+=== DTM v3 gen start 12:53:52 ===
+=== DTM v3 train start 12:53:52 ===
+=== DTM v3 COMPLETE ===
+=== DTM v3 gen start 12:54:27 ===
+=== LADDER7 KRRvK-central start 13:01:40 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvK-central nodes=5000 mate=48/48 (1.00) [clean=46 tb-assisted=2]  med_plies=9  bank_final=6404  med_t/move=10.0s  med_t/solve=50s  [9s]
+=== LADDER7 KRRvKB start 13:01:50 ===
+=== DTM v3-ALL gen start 13:05:56 ===
+=== LADDER7 KRRvK-central start 13:26:50 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvK-central nodes=5000 mate=48/48 (1.00) [clean=46 tb-assisted=2]  med_plies=9  bank_final=6404  med_t/move=10.0s  med_t/solve=50s  [12s]
+=== LADDER7 KRRvKB start 13:27:03 ===
+=== LADDER7 KRRvK-central start 13:45:08 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvK-central nodes=5000 mate=48/48 (1.00) [clean=46 tb-assisted=2]  med_plies=9  bank_final=6404  med_t/move=10.0s  med_t/solve=50s  [11s]
+=== LADDER7 KRRvKB start 13:45:20 ===
+/Users/kav/.claude/jobs/20b9956a/tmp/ladder7_resume.sh: line 3: 48758 Killed: 9               .venv/bin/python experiments/bootstrap_mate_engine.py --nodes 5000 --n 48 --j 4 --max-plies 120 --scenario "$S" --bank-file "artifacts/experiments/wdlr6_bank_n5000_${S}.fens" --loss-bank-file "artifacts/experiments/wdlr6_lossbank_n5000_${S}.fens" --draw-bank-file "artifacts/experiments/wdlr6_drawbank_n5000_${S}.fens" --milestone-file "artifacts/experiments/wdlr6_ms_n5000_${S}.jsonl" --results-file "artifacts/experiments/wdlr6_results_n5000_${S}.jsonl" >> "artifacts/experiments/boot_wdlr6_n5000_${S}.log" 2>&1
+=== LADDER7 KRRvKP start 13:49:36 ===
+/Users/kav/.claude/jobs/20b9956a/tmp/dtm_v3_all.sh: line 5: 46360 Terminated: 15          .venv/bin/python experiments/gen_dtm_data.py --materials all --per 9000 --out data/derived/dtm_endgame_v3.npz --workers 3 > artifacts/experiments/gen_dtm_v3.log 2>&1
+=== DTM v3 train start 14:05:39 ===
+=== DTM v3 COMPLETE ===
+=== [chain] KRRvKP relaunch on new commit ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKP nodes=5000 mate=45/48 (0.94) [clean=43 tb-assisted=2]  med_plies=7  bank_final=9967  med_t/move=15.4s  med_t/solve=61s  [932s]
+=== LADDER7 KRRvKBP start 16:24:27 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKBP nodes=5000 mate=37/48 (0.77) [clean=31 tb-assisted=6]  med_plies=11  bank_final=20710  med_t/move=22.7s  med_t/solve=128s  [6008s]
+=== LADDER7 KRvK-technique start 18:04:36 ===
+=== LADDER7 KRRvK-central start 19:22:08 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvK-central nodes=5000 mate=48/48 (1.00) [clean=46 tb-assisted=2]  med_plies=9  bank_final=6404  med_t/move=10.0s  med_t/solve=50s  [9s]
+=== LADDER7 KRRvKB start 19:22:18 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKB nodes=5000 mate=37/48 (0.77) [clean=35 tb-assisted=2]  med_plies=11  bank_final=23445  med_t/move=12.0s  med_t/solve=78s  [148s]
+=== LADDER7 KRRvKP start 19:24:47 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKP nodes=5000 mate=45/48 (0.94) [clean=43 tb-assisted=2]  med_plies=7  bank_final=9967  med_t/move=15.4s  med_t/solve=61s  [7s]
+=== LADDER7 KRRvKBP start 19:24:55 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKBP nodes=5000 mate=37/48 (0.77) [clean=31 tb-assisted=6]  med_plies=11  bank_final=20710  med_t/move=22.7s  med_t/solve=128s  [8s]
+=== LADDER7 KRvK-technique start 19:25:03 ===

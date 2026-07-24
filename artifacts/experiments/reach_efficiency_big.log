@@ -1,0 +1,8 @@
+VERDICT REACH_EFFICIENCY field=nucleus_distilled n=40 target<=5p (6-piece starts, DTM>=30; White=MCTS, Black=tablebase-optimal)
+  budget |    FIELD reach/plies/evals |     PURE reach/plies/evals
+      50 |    80%   5.4p       269 ev |    72%   4.7p       236 ev
+     100 |    88%   4.6p       463 ev |    72%   4.7p       472 ev
+     200 |    88%   4.0p       806 ev |    72%   4.7p       945 ev
+     400 |    95%   4.3p      1726 ev |    70%   4.7p      1886 ev
+     800 |    88%   4.7p      3794 ev |    82%   4.8p      3830 ev
+[done] 311s

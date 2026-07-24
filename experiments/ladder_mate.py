@@ -102,14 +102,19 @@ def random_krrvk(rng: np.random.Generator, central: bool = True, max_tries: int 
     return None
 
 
+_EVAL_CACHE = {}                    # shared across moves/games; transposition evals are free
+
 def white_mcts(board, nodes, value_fn=None, policy_fn=None):
     reach = (lambda bs: np.zeros(len(bs), dtype=float))
     # MCTS only consults value_fn on the AZ path, which needs a policy_fn too.
     # Pure search => neither (reach_fn=0). Value-guided => uniform prior + value_fn.
     if value_fn is not None and policy_fn is None:
         policy_fn = lambda b: {mv: 1.0 / max(1, b.legal_moves.count()) for mv in b.legal_moves}
+    if len(_EVAL_CACHE) > 400_000:
+        _EVAL_CACHE.clear()
     m = MCTS(reach, max_nodes=nodes, mate_stop=True, pw_c=1.5, root_min_visits=10,
-             value_fn=value_fn, policy_fn=policy_fn)
+             value_fn=value_fn, policy_fn=policy_fn,
+             eval_cache=_EVAL_CACHE if value_fn is not None else None, batch_leaves=8)
     root = m.run(board)
     # White to move: prefer most-visited, break ties toward the best (fastest-mate) value
     best = max(root.children, key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None else c.Q)))

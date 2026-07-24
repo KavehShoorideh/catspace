@@ -1,0 +1,21 @@
+# launched : Sun Jul 19 08:39:48 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python experiments/train_policy_head.py --n 120000 --epochs 12
+# ---
+[stage] dataset F=(120000, 64) val=(5000, 64): 111.8s
+  mean legal moves/pos (val) = 32.3  (random-among-legal top1 ~ 0.031)
+  epoch 1/12 loss 7.444  val top1(legal)=0.076  top1(unmasked)=0.013
+  epoch 2/12 loss 6.639  val top1(legal)=0.093  top1(unmasked)=0.013
+  epoch 3/12 loss 6.525  val top1(legal)=0.097  top1(unmasked)=0.015
+  epoch 4/12 loss 6.460  val top1(legal)=0.098  top1(unmasked)=0.015
+  epoch 5/12 loss 6.402  val top1(legal)=0.098  top1(unmasked)=0.015
+  epoch 6/12 loss 6.351  val top1(legal)=0.101  top1(unmasked)=0.016
+  epoch 7/12 loss 6.308  val top1(legal)=0.106  top1(unmasked)=0.015
+  epoch 8/12 loss 6.269  val top1(legal)=0.104  top1(unmasked)=0.014
+  epoch 9/12 loss 6.235  val top1(legal)=0.105  top1(unmasked)=0.017
+  epoch 10/12 loss 6.205  val top1(legal)=0.107  top1(unmasked)=0.017
+  epoch 11/12 loss 6.179  val top1(legal)=0.105  top1(unmasked)=0.017
+  epoch 12/12 loss 6.156  val top1(legal)=0.108  top1(unmasked)=0.015
+saved data/derived/sep/cert_base_full_policy.pt
+VERDICT POLICY_HEAD top1_legal=0.108 (chance ~0.031) n_train=120000 ckpt=cert_base_full.pt

@@ -1,0 +1,13 @@
+/Users/kav/code/remote/github/catspace/experiments/distill_finetune.py:82: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} distill-loss {float(loss):.4f}", flush=True)
+  step 0 distill-loss 7.4440
+  step 300 distill-loss 0.2912
+  step 600 distill-loss 0.2326
+  step 900 distill-loss 0.2390
+  step 1200 distill-loss 0.1959
+VERDICT DISTILL_FINETUNE field=iqe_nucleus_gn steps=1500 (spearman(d,DTM) by piece count)
+  3-piece: before +0.704 -> after +0.881   [<=5 (in-dist)]
+  4-piece: before +0.502 -> after +0.706   [<=5 (in-dist)]
+  6-piece: before +0.194 -> after +0.534   [6-piece (was EXTRAPOLATION 0.21)]
+  saved data/derived/sep/nucleus_distilled.pt  [1281s]

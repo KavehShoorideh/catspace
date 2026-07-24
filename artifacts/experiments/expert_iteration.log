@@ -1,0 +1,2 @@
+=== ROUND 1: levels 1..1, harvesting with dtm_cnn_v2.pt ===
+VERDICT EI_HARVEST round=1 rows=+207 (total 207)  wins: {'KRRvK-central': '22/40'}  [574s]

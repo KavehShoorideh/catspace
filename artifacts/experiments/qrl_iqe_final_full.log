@@ -1,0 +1,111 @@
+shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=40000 batch=128 d=512 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 9.1M (d=512 channels=128 blocks=10 enc_out=512)
+holdout: 8 batches of 128
+committor-base ON: phead 66051 params, phead-weight=0.1 (no pole term, no goal vectors)
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:587: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  stats = {"push": float(push), "sq_dev": float(sq_dev), "lam": float(lam),
+    qrl push 16.667 sq_dev 0.3134 lam 1.630 d_step 0.443 d_rand 0.426 var 0.936 sib 59.109
+    phead 1.1262
+step 100  loss 66.8365  train_top1 0.000  lr 2.00e-04  (2.4 it/s)
+    qrl push 14.229 sq_dev 1.8593 lam 6.014 d_step 1.802 d_rand 3.595 var 0.219 sib 50.708
+    phead 0.8625
+step 200  loss 55.9922  train_top1 0.000  lr 2.00e-04  (2.9 it/s)
+    qrl push 13.170 sq_dev 12.4422 lam 33.777 d_step 1.267 d_rand 5.690 var 0.004 sib 42.822
+    phead 0.5441
+step 300  loss 65.7414  train_top1 0.000  lr 2.00e-04  (3.0 it/s)
+    qrl push 14.388 sq_dev 1.5310 lam 7.093 d_step 1.489 d_rand 3.391 var 0.036 sib 48.632
+    phead 0.7125
+step 400  loss 44.4315  train_top1 0.000  lr 2.00e-04  (3.1 it/s)
+    qrl push 10.273 sq_dev 0.2140 lam 4.763 d_step 1.252 d_rand 10.583 var 0.000 sib 32.128
+    phead 0.8668
+step 500  loss 73.4526  train_top1 0.000  lr 2.00e-04  (3.0 it/s)
+  VAL step 500  loss 10.7331  top1 0.004  top8 0.033
+    qrl push 15.655 sq_dev 0.2251 lam 5.470 d_step 1.113 d_rand 1.734 var 0.086 sib 54.635
+    phead 1.7528
+step 600  loss 59.7836  train_top1 0.000  lr 2.00e-04  (2.9 it/s)
+    qrl push 13.680 sq_dev 0.0874 lam 5.745 d_step 0.975 d_rand 5.307 var 0.001 sib 45.666
+    phead 0.8704
+step 700  loss 47.6897  train_top1 0.000  lr 2.00e-04  (3.1 it/s)
+    qrl push 11.236 sq_dev 0.0915 lam 6.156 d_step 0.991 d_rand 10.066 var 0.000 sib 35.661
+    phead 0.6593
+step 800  loss 57.7617  train_top1 0.000  lr 2.00e-04  (3.0 it/s)
+    qrl push 13.162 sq_dev 0.7277 lam 8.028 d_step 1.495 d_rand 5.441 var 0.002 sib 44.601
+    phead 1.0512
+step 900  loss 51.3501  train_top1 0.000  lr 2.00e-04  (3.1 it/s)
+    qrl push 12.122 sq_dev 1.8579 lam 11.059 d_step 1.340 d_rand 7.699 var 0.000 sib 37.372
+    phead 1.0458
+step 1000  loss 74.2393  train_top1 0.000  lr 2.00e-04  (3.0 it/s)
+  VAL step 1000  loss 5.1331  top1 0.004  top8 0.032
+    qrl push 16.063 sq_dev 0.0877 lam 7.613 d_step 1.249 d_rand 1.176 var 0.026 sib 57.417
+    phead 3.3402
+step 1100  loss 74.1893  train_top1 0.000  lr 2.00e-04  (3.0 it/s)
+    qrl push 16.004 sq_dev 0.0384 lam 7.568 d_step 1.190 d_rand 1.250 var 0.011 sib 57.605
+    phead 0.7780
+step 1200  loss 74.0903  train_top1 0.000  lr 2.00e-04  (3.2 it/s)
+    qrl push 16.127 sq_dev 0.0093 lam 7.545 d_step 1.083 d_rand 1.097 var 0.005 sib 57.784
+    phead 0.8146
+step 1300  loss 74.0899  train_top1 0.000  lr 2.00e-04  (3.1 it/s)
+    qrl push 16.122 sq_dev 0.0185 lam 7.518 d_step 1.088 d_rand 1.103 var 0.003 sib 57.763
+    phead 0.7276
+step 1400  loss 74.0304  train_top1 0.000  lr 1.99e-04  (3.1 it/s)
+    qrl push 16.069 sq_dev 0.0147 lam 7.498 d_step 1.111 d_rand 1.169 var 0.003 sib 57.654
+    phead 0.8328
+step 1500  loss 74.0305  train_top1 0.000  lr 1.99e-04  (3.2 it/s)
+  VAL step 1500  loss 4.9448  top1 0.004  top8 0.038
+    qrl push 16.039 sq_dev 0.0195 lam 7.482 d_step 1.131 d_rand 1.206 var 0.004 sib 57.569
+    phead 0.7614
+step 1600  loss 73.9491  train_top1 0.000  lr 1.99e-04  (3.0 it/s)
+    qrl push 16.062 sq_dev 0.0197 lam 7.459 d_step 1.121 d_rand 1.178 var 0.005 sib 57.652
+    phead 0.7459
+step 1700  loss 74.0917  train_top1 0.000  lr 1.99e-04  (3.2 it/s)
+    qrl push 16.090 sq_dev 0.0237 lam 7.445 d_step 1.144 d_rand 1.143 var 0.003 sib 57.622
+    phead 1.0982
+step 1800  loss 74.1301  train_top1 0.000  lr 1.99e-04  (3.1 it/s)
+    qrl push 15.963 sq_dev 0.0292 lam 7.429 d_step 1.168 d_rand 1.302 var 0.003 sib 57.709
+    phead 0.7142
+step 1900  loss 75.1878  train_top1 0.000  lr 1.99e-04  (3.1 it/s)
+    qrl push 16.041 sq_dev 0.0286 lam 7.411 d_step 1.137 d_rand 1.204 var 0.003 sib 57.517
+    phead 1.8467
+step 2000  loss 73.9044  train_top1 0.000  lr 1.99e-04  (3.2 it/s)
+  VAL step 2000  loss 4.9020  top1 0.008  top8 0.048
+    qrl push 15.954 sq_dev 0.0231 lam 7.429 d_step 1.145 d_rand 1.312 var 0.002 sib 57.675
+    phead 0.7742
+step 2100  loss 73.6034  train_top1 0.000  lr 1.99e-04  (3.0 it/s)
+    qrl push 15.990 sq_dev 0.0402 lam 7.442 d_step 1.192 d_rand 1.268 var 0.002 sib 57.700
+    phead 0.6487
+step 2200  loss 74.0510  train_top1 0.000  lr 1.99e-04  (3.1 it/s)
+    qrl push 15.973 sq_dev 0.0043 lam 7.359 d_step 1.051 d_rand 1.289 var 0.002 sib 57.730
+    phead 0.7355
+step 2300  loss 73.6627  train_top1 0.000  lr 1.99e-04  (3.1 it/s)
+    qrl push 15.968 sq_dev 0.0489 lam 7.442 d_step 1.207 d_rand 1.296 var 0.002 sib 57.554
+    phead 0.7922
+step 2400  loss 73.8502  train_top1 0.000  lr 1.98e-04  (3.2 it/s)
+    qrl push 15.916 sq_dev 0.0385 lam 7.382 d_step 1.187 d_rand 1.361 var 0.002 sib 57.601
+    phead 0.7450
+step 2500  loss 74.0257  train_top1 0.000  lr 1.98e-04  (3.1 it/s)
+  VAL step 2500  loss 4.9378  top1 0.006  top8 0.037
+    qrl push 15.755 sq_dev 0.0738 lam 7.372 d_step 1.255 d_rand 1.563 var 0.002 sib 57.573
+    phead 0.7200
+step 2600  loss 74.6184  train_top1 0.000  lr 1.98e-04  (3.0 it/s)
+    qrl push 15.724 sq_dev 0.1445 lam 7.428 d_step 1.368 d_rand 1.603 var 0.002 sib 57.178
+    phead 0.7768
+step 2700  loss 73.9856  train_top1 0.000  lr 1.98e-04  (3.3 it/s)
+    qrl push 15.781 sq_dev 0.0474 lam 7.418 d_step 1.203 d_rand 1.531 var 0.002 sib 57.660
+    phead 0.7786
+step 2800  loss 73.8572  train_top1 0.000  lr 1.98e-04  (3.3 it/s)
+    qrl push 15.841 sq_dev 0.0350 lam 7.376 d_step 1.178 d_rand 1.455 var 0.002 sib 56.971
+    phead 0.7704
+step 2900  loss 73.9525  train_top1 0.000  lr 1.98e-04  (3.3 it/s)
+    qrl push 15.689 sq_dev 0.0474 lam 7.370 d_step 1.206 d_rand 1.646 var 0.002 sib 57.340
+    phead 0.7725
+step 3000  loss 74.1626  train_top1 0.000  lr 1.98e-04  (3.3 it/s)
+  VAL step 3000  loss 4.9138  top1 0.003  top8 0.046
+    qrl push 15.607 sq_dev 0.2066 lam 7.735 d_step 1.448 d_rand 1.750 var 0.002 sib 57.044
+
+======================================================================
+  QRL COLLAPSE DETECTED @ step 3000
+  SMALL-WORLD: d_rand=1.297 ~ d_step=1.187 (metric not spreading -- check phead-weight <=0.1, offset ~15, and the diverse goal pool).
+======================================================================
+
+halting on QRL collapse @ step 3000: SMALL-WORLD: d_rand=1.297 ~ d_step=1.187 (metric not spreading -- check phead-weight <=0.1, offset ~15, and the diverse goal pool).

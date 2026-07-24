@@ -1,0 +1,31 @@
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+  g000 mate plies=9 bank=127(+127) t/move=7.6s t/game=42s nodes/s=279 [102s]
+  g002 mate plies=17 bank=117(+117) t/move=8.0s t/game=99s nodes/s=342 [164s]
+  g003 mate plies=21 bank=122(+122) t/move=10.2s t/game=118s nodes/s=371 [182s]
+  g004 mate plies=11 bank=414(+45) t/move=18.2s t/game=92s nodes/s=206 [194s]
+  g001 mate plies=17 bank=416(+416) t/move=23.3s t/game=214s nodes/s=149 [278s]
+  g006 mate plies=11 bank=656(+52) t/move=35.2s t/game=209s nodes/s=99 [373s]
+  g008 mate plies=13 bank=811(+68) t/move=50.0s t/game=319s nodes/s=56 [513s]
+  g010 mate plies=13 bank=1055(+114) t/move=59.5s t/game=346s nodes/s=67 [719s]
+  g012 FAIL plies=8 bank=1036(+6) t/move=58.1s t/game=235s nodes/s=85 [748s]
+  g005 mate plies=17 bank=1027(+192) t/move=56.4s t/game=487s nodes/s=66 [766s]
+  g007 mate plies=25 bank=796(+88) t/move=47.3s t/game=611s nodes/s=86 [794s]
+  g009 mate plies=3 bank=1295(+12) t/move=18.4s t/game=37s nodes/s=18 [803s]
+  g011 mate plies=7 bank=1335(+34) t/move=53.4s t/game=220s nodes/s=33 [1014s]
+  g016 FAIL plies=10 bank=1287(+4) t/move=99.0s t/game=461s nodes/s=54 [1209s]
+  g014 mate plies=15 bank=1347(+64) t/move=90.7s t/game=563s nodes/s=51 [1282s]
+  g013 mate plies=13 bank=1399(+86) t/move=86.6s t/game=508s nodes/s=44 [1311s]
+  g015 mate plies=11 bank=1472(+102) t/move=83.6s t/game=440s nodes/s=40 [1454s]
+  g020 mate plies=9 bank=1539(+133) t/move=70.1s t/game=288s nodes/s=43 [1497s]
+  g024 mate plies=7 bank=1848(+82) t/move=57.2s t/game=289s nodes/s=31 [1786s]
+  g018 mate plies=15 bank=1624(+148) t/move=88.7s t/game=628s nodes/s=44 [1910s]
+  g019 mate plies=9 bank=1663(+38) t/move=123.8s t/game=511s nodes/s=26 [1965s]
+  g028 mate plies=9 bank=2071(+185) t/move=53.0s t/game=376s nodes/s=30 [2162s]
+  g017 mate plies=17 bank=1583(+84) t/move=91.5s t/game=1082s nodes/s=26 [2393s]

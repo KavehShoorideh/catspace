@@ -1,0 +1,39 @@
+shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=2000 batch=128 d=512 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 9.1M (d=512 channels=128 blocks=10 enc_out=512)
+holdout: 8 batches of 128
+committor-base ON: phead 66051 params, phead-weight=1.0 (no pole term, no goal vectors)
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:569: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  stats = {"push": float(push), "sq_dev": float(sq_dev), "lam": float(lam),
+    qrl push 127.572 sq_dev 0.0000 lam 0.843 d_step 0.443 d_rand 0.428 var 0.000
+    phead 1.1262
+step 100  loss 127.3113  train_top1 0.000  lr 2.98e-04  (4.9 it/s)
+    qrl push 126.342 sq_dev 0.2513 lam 1.724 d_step 1.210 d_rand 1.658 var 0.000
+    phead 0.8568
+step 200  loss 127.3243  train_top1 0.000  lr 2.93e-04  (4.9 it/s)
+    qrl push 125.749 sq_dev 0.1133 lam 1.407 d_step 1.259 d_rand 2.251 var 0.000
+    phead 1.1117
+step 300  loss 127.5080  train_top1 0.000  lr 2.85e-04  (4.9 it/s)
+    qrl push 126.003 sq_dev 0.2503 lam 1.913 d_step 1.400 d_rand 1.997 var 0.000
+    phead 0.8687
+step 400  loss 127.0331  train_top1 0.000  lr 2.74e-04  (4.9 it/s)
+    qrl push 126.113 sq_dev 0.0793 lam 2.044 d_step 1.198 d_rand 1.888 var 0.000
+    phead 0.7882
+step 500  loss 127.8261  train_top1 0.000  lr 2.61e-04  (4.9 it/s)
+    qrl push 126.416 sq_dev 0.0541 lam 1.825 d_step 1.061 d_rand 1.584 var 0.000
+    phead 2.2006
+step 600  loss 127.0887  train_top1 0.000  lr 2.45e-04  (4.9 it/s)
+    qrl push 125.971 sq_dev 0.0424 lam 2.348 d_step 1.005 d_rand 2.029 var 0.000
+    phead 0.8461
+step 700  loss 127.0005  train_top1 0.000  lr 2.26e-04  (4.9 it/s)
+    qrl push 126.446 sq_dev 0.0102 lam 2.478 d_step 0.635 d_rand 1.555 var 0.000
+    phead 0.8508
+step 800  loss 127.2956  train_top1 0.000  lr 2.07e-04  (4.9 it/s)
+    qrl push 125.752 sq_dev 0.1570 lam 2.511 d_step 1.267 d_rand 2.248 var 0.000
+    phead 0.7308
+step 900  loss 119.6828  train_top1 0.000  lr 1.86e-04  (4.9 it/s)
+    qrl push 120.690 sq_dev 3.4363 lam 11.318 d_step 1.478 d_rand 7.354 var 0.000
+    phead 0.8243
+step 1000  loss 126.5867  train_top1 0.000  lr 1.65e-04  (4.9 it/s)
+    qrl push 124.515 sq_dev 0.1009 lam 2.843 d_step 0.904 d_rand 3.485 var 0.000
+    phead 3.2056

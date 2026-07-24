@@ -1,0 +1,4 @@
+2026/07/22 16:59:38 INFO mlflow.tracking.fluent: Experiment with name 'escape_net' does not exist. Creating a new experiment.
+[data] 200000 rows -> 180258 train / 19742 held-out
+  step 0 loss 1.1089  [1s]
+  step 500 loss 0.0787  [156s]

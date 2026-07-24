@@ -1,0 +1,25 @@
+shards=lichess_db_standard_rated_2019-01.prefix1gb device=mps steps=1000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 2.3M (d=64 channels=64 blocks=6 enc_out=256)
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/experiments/train_lichess_fb.py:958: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"step {step}  loss {float(loss):.4f}  train_top1 {float(top1):.3f}  "
+step 100  loss 5.7169  train_top1 0.016  lr 2.94e-04  (10.7 it/s)
+step 200  loss 5.1598  train_top1 0.014  lr 2.74e-04  (12.5 it/s)
+step 300  loss 4.9912  train_top1 0.021  lr 2.45e-04  (12.2 it/s)
+step 400  loss 4.9047  train_top1 0.020  lr 2.07e-04  (12.9 it/s)
+step 500  loss 4.8984  train_top1 0.020  lr 1.65e-04  (12.8 it/s)
+  VAL step 500  loss 4.9131  top1 0.024  top8 0.134
+  ladder checkpoint -> lichess_gn_qm_step500.pt
+step 600  loss 4.8313  train_top1 0.025  lr 1.24e-04  (11.8 it/s)
+step 700  loss 4.6070  train_top1 0.029  lr 8.60e-05  (12.8 it/s)
+step 800  loss 4.8772  train_top1 0.025  lr 5.60e-05  (13.3 it/s)
+step 900  loss 4.5227  train_top1 0.039  lr 3.67e-05  (13.1 it/s)
+step 1000  loss 4.7228  train_top1 0.029  lr 3.00e-05  (13.2 it/s)
+  VAL step 1000  loss 4.5677  top1 0.027  top8 0.158
+zgoal MATE_W: 2048 checkmate finals
+zgoal MATE_B: 2048 checkmate finals
+saved data/derived/sep/lichess_gn_qm.pt
+VERDICT VAL_TOP1=0.027 VAL_TOP8=0.158 (chance 0.0020)
+VERDICT REACH_SLOPE_WON=0.779 (n=200) REACH_SLOPE_LOST=0.759 (n=200)
+VERDICT DIFF_SLOPE_WON=-0.210 DIFF_SLOPE_LOST=-0.354 (won-lost separation is the outcome signal; both were negative at step 2000)

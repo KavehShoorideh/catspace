@@ -1,0 +1,25 @@
+# launched : Sun Jul 19 22:21:02 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/train_iqe_nucleus.py --steps 6000 --out data/derived/sep/iqe_nucleus.pt
+# ---
+[stage] 19846 won nucleus positions; building material keys...
+[stage] 198 material classes
+/Users/kav/code/remote/github/catspace/experiments/train_iqe_nucleus.py:124: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {step:4d}  L_rank {float(L_rank):.4f} L_sym {float(L_sym):.4f} "
+  step    0  L_rank 1.0318 L_sym 11.9105 L_sep 38.2423  spearman(d,DTM) -0.044  (0s)
+  step  500  L_rank 0.7896 L_sym 0.0877 L_sep 0.3845  spearman(d,DTM) +0.315  (101s)
+  step 1000  L_rank 0.8411 L_sym 0.0543 L_sep 0.2093  spearman(d,DTM) +0.216  (200s)
+  step 1500  L_rank 0.6607 L_sym 0.0511 L_sep 0.1465  spearman(d,DTM) +0.222  (299s)
+  step 2000  L_rank 0.7166 L_sym 0.0446 L_sep 0.0716  spearman(d,DTM) +0.311  (397s)
+  step 2500  L_rank 0.5753 L_sym 0.0424 L_sep 0.0818  spearman(d,DTM) +0.271  (496s)
+  step 3000  L_rank 0.6526 L_sym 0.0270 L_sep 0.0369  spearman(d,DTM) +0.289  (594s)
+  step 3500  L_rank 0.6082 L_sym 0.0212 L_sep 0.0458  spearman(d,DTM) +0.281  (692s)
+  step 4000  L_rank 0.6078 L_sym 0.0230 L_sep 0.0580  spearman(d,DTM) +0.272  (790s)
+  step 4500  L_rank 0.6111 L_sym 0.0247 L_sep 0.0369  spearman(d,DTM) +0.201  (889s)
+  step 5000  L_rank 0.6401 L_sym 0.0191 L_sep 0.0382  spearman(d,DTM) +0.253  (987s)
+  step 5500  L_rank 0.5349 L_sym 0.0298 L_sep 0.0256  spearman(d,DTM) +0.265  (1085s)
+  step 5999  L_rank 0.5474 L_sym 0.0210 L_sep 0.0305  spearman(d,DTM) +0.212  (1183s)
+saved data/derived/sep/iqe_nucleus.pt
+VERDICT IQE_NUCLEUS overall_spearman(d,DTM)=+0.255 (centroid on incumbent was ~0/neg; >0.5 = a usable DTM-ordered nucleus)

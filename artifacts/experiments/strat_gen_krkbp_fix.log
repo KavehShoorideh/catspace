@@ -1,0 +1,15 @@
+[stage] stratified perfect-play gen: 1 materials, 8 workers, 8 chunks to run (0 already done -> shards in data/derived/stratified_perfect.npz.shards)
+  krkbp    +  500  total 500  (17 pos/s, 29s)
+  krkbp    +  500  total 1000  (33 pos/s, 31s)
+  krkbp    +  500  total 1500  (48 pos/s, 32s)
+  krkbp    +  500  total 2000  (62 pos/s, 32s)
+  krkbp    +  500  total 2500  (77 pos/s, 32s)
+  krkbp    +  500  total 3000  (92 pos/s, 33s)
+  krkbp    +  500  total 3500  (107 pos/s, 33s)
+  krkbp    +  500  total 4000  (119 pos/s, 34s)
+[merge] 85 shards -> 40000 positions, 222054 edges (10670 captures), 41982 pairs  (35s)
+    6p: n=  4000  W=3112 D=887 L=1
+    5p: n= 12000  W=6768 D=5155 L=77
+    4p: n= 16000  W=6761 D=8963 L=276
+    3p: n=  8000  W=3785 D=3587 L=628
+VERDICT STRAT_DATA n=40000 edges=222054 drops=10670 pairs=41982 strata=[3, 4, 5, 6] -> data/derived/stratified_perfect.npz

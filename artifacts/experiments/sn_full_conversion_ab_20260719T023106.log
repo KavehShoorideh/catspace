@@ -1,0 +1,6 @@
+# launched : Sun Jul 19 02:31:06 PDT 2026
+# host     : Kavehs-MacBook-Pro.local
+# cwd      : /Users/kav/code/remote/github/catspace
+# command  : .venv/bin/python -u experiments/playout_ab.py --ckpt-a data/derived/sep/cert_base_full.pt --ckpt-b data/derived/sep/qrl_iqe_sn_full.pt --search-a mcts --search-b mcts --phead-a data/derived/sep/cert_base_full_phead.pt --phead-b data/derived/sep/qrl_iqe_sn_full_phead.pt --nodes 800 --n 100 --label SN_FULL_VS_INCUMBENT
+# ---
+PLAYOUT_AB SN_FULL_VS_INCUMBENT mate-rate A=0.600 vs B=0.150  diff=-0.450 CI=[-0.560,-0.350]  e=14733802752.41 (n=100 starts, 49 decisive, deterministic defender; plies-to-mate A=20 B=7) [SIGNIFICANT]

@@ -1,0 +1,99 @@
+{
+  "field": "data/derived/sep/lichess_gn_iqeqrl_sf.pt",
+  "n_mates": 200,
+  "patterns": {
+    "backrank": 8,
+    "bishop": 7,
+    "double": 1,
+    "knight": 6,
+    "ksupport": 13,
+    "ladder": 51,
+    "pawn": 4,
+    "qkiss": 67,
+    "queen-other": 27,
+    "rook-other": 16
+  },
+  "silhouette": 0.06329821050167084,
+  "cohesion": {
+    "ladder": 0.740336537361145,
+    "qkiss": 1.0983248949050903
+  },
+  "catalog": [
+    {
+      "cluster": 2,
+      "n": 111,
+      "dominant": "qkiss",
+      "dominant_frac": 0.3063063063063063,
+      "coherence": 0.9997621774673462,
+      "patterns": {
+        "backrank": 3,
+        "bishop": 4,
+        "knight": 2,
+        "ksupport": 8,
+        "ladder": 27,
+        "pawn": 4,
+        "qkiss": 34,
+        "queen-other": 15,
+        "rook-other": 14
+      }
+    },
+    {
+      "cluster": 1,
+      "n": 33,
+      "dominant": "qkiss",
+      "dominant_frac": 0.45454545454545453,
+      "coherence": 0.9986668825149536,
+      "patterns": {
+        "backrank": 2,
+        "bishop": 1,
+        "knight": 1,
+        "ladder": 7,
+        "qkiss": 15,
+        "queen-other": 6,
+        "rook-other": 1
+      }
+    },
+    {
+      "cluster": 4,
+      "n": 31,
+      "dominant": "ladder",
+      "dominant_frac": 0.5161290322580645,
+      "coherence": 0.9980366230010986,
+      "patterns": {
+        "ksupport": 4,
+        "ladder": 16,
+        "qkiss": 8,
+        "queen-other": 2,
+        "rook-other": 1
+      }
+    },
+    {
+      "cluster": 3,
+      "n": 21,
+      "dominant": "qkiss",
+      "dominant_frac": 0.42857142857142855,
+      "coherence": 0.9976268410682678,
+      "patterns": {
+        "backrank": 3,
+        "bishop": 2,
+        "double": 1,
+        "knight": 3,
+        "qkiss": 9,
+        "queen-other": 3
+      }
+    },
+    {
+      "cluster": 0,
+      "n": 4,
+      "dominant": "ksupport",
+      "dominant_frac": 0.25,
+      "coherence": 0.9334557056427002,
+      "patterns": {
+        "ksupport": 1,
+        "ladder": 1,
+        "qkiss": 1,
+        "queen-other": 1
+      }
+    }
+  ]
+}

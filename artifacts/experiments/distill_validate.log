@@ -1,0 +1,7 @@
+/Users/kav/code/remote/github/catspace/experiments/distill_validate.py:70: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  field_d.append(float(fb.distance_matrix(embF([b]), MATE_W)[0, 0]))   # raw field distance
+VERDICT DISTILL_VALIDATE field=iqe_nucleus_gn n=60 nodes=800 (6-piece KRRvKBP)
+  field-alone   spearman(d, DTM) = +0.193   (the raw extrapolation)
+  MCTS+field    spearman(-Q, DTM) = +0.269  (BETTER teacher -> distill)
+[done] 72s

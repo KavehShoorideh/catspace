@@ -1,0 +1,9 @@
+[seed] found 5000 seeds with <= 12 pieces (from a 1000000-position ply pool)
+[stage] 5000 seed positions, 6 workers, 60 plies/cont, engine=stockfish (t=0.05s)
+  w2: 822 continuations (24313 rows) -> shard_00000.npz (793s)
+  w4: 824 continuations (24579 rows) -> shard_00001.npz (818s)
+  w0: 821 continuations (24606 rows) -> shard_00002.npz (831s)
+  w3: 822 continuations (24748 rows) -> shard_00003.npz (833s)
+  w1: 820 continuations (25201 rows) -> shard_00004.npz (834s)
+  w5: 815 continuations (25267 rows) -> shard_00005.npz (853s)
+VERDICT STOCKFISH_CONT continuations=4924 plies=60 -> data/shards/sf_cont_endgame_v1 (853s). Mix with: train_lichess_fb.py --selfplay-shards data/shards/sf_cont_endgame_v1 --selfplay-frac 0.3

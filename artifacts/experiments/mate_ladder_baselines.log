@@ -1,0 +1,11 @@
+[exam] scenarios: [('KRvK-easy', 16), ('KRRvK-central', 16), ('KRRvKB', 0), ('KRRvKP', 0), ('KRRvKBP', 16)]  nodes=600
+VERDICT MATE_LADDER cfg=pure    KRvK-easy      mate=0.00 (0/16)  med_plies=nan  search/mate=0  [2s]
+VERDICT MATE_LADDER cfg=pure    KRRvK-central  mate=0.12 (2/16)  med_plies=5  search/mate=1,266  [4s]
+VERDICT MATE_LADDER cfg=pure    KRRvKB         SKIPPED (no starts)
+VERDICT MATE_LADDER cfg=pure    KRRvKP         SKIPPED (no starts)
+VERDICT MATE_LADDER cfg=pure    KRRvKBP        mate=0.06 (1/16)  med_plies=11  search/mate=3,096  [6s]
+VERDICT MATE_LADDER cfg=dtm     KRvK-easy      mate=0.00 (0/16)  med_plies=nan  search/mate=0  [107s]
+VERDICT MATE_LADDER cfg=dtm     KRRvK-central  mate=0.38 (6/16)  med_plies=9  search/mate=2,036  [589s]
+VERDICT MATE_LADDER cfg=dtm     KRRvKB         SKIPPED (no starts)
+VERDICT MATE_LADDER cfg=dtm     KRRvKP         SKIPPED (no starts)
+VERDICT MATE_LADDER cfg=dtm     KRRvKBP        mate=0.12 (2/16)  med_plies=5  search/mate=1,201  [1002s]

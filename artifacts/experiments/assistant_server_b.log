@@ -1,0 +1,42 @@
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=71530)>: stderr >> [1m[31m       _
+<UciProtocol (pid=71530)>: stderr >> |   _ | |
+<UciProtocol (pid=71530)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=71530)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8778  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=74133)>: stderr >> [1m[31m       _
+<UciProtocol (pid=74133)>: stderr >> |   _ | |
+<UciProtocol (pid=74133)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=74133)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8778  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=75674)>: stderr >> [1m[31m       _
+<UciProtocol (pid=75674)>: stderr >> |   _ | |
+<UciProtocol (pid=75674)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=75674)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8778  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=98301)>: stderr >> [1m[31m       _
+<UciProtocol (pid=98301)>: stderr >> |   _ | |
+<UciProtocol (pid=98301)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=98301)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8778  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=12915)>: stderr >> [1m[31m       _
+<UciProtocol (pid=12915)>: stderr >> |   _ | |
+<UciProtocol (pid=12915)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=12915)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8778  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=13899)>: stderr >> [1m[31m       _
+<UciProtocol (pid=13899)>: stderr >> |   _ | |
+<UciProtocol (pid=13899)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=13899)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8778  opponent=data/engines/maia/maia-1200.pb.gz

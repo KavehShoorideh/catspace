@@ -1,0 +1,8 @@
+nodes :   [field-MCTS] mate_rate 0.208  |  cornered-king reached 0.42 (start 0.17)  [2s]
+nodes :   [field-MCTS] mate_rate 0.208  |  cornered-king reached 0.46 (start 0.17)  [3s]
+nodes :   [field-MCTS] mate_rate 0.333  |  cornered-king reached 0.67 (start 0.17)  [3s]
+nodes :   [field-MCTS] mate_rate 0.333  |  cornered-king reached 0.67 (start 0.17)  [6s]
+nodes :   [field-MCTS] mate_rate 0.417  |  cornered-king reached 0.62 (start 0.17)  [9s]
+nodes :   [field-MCTS] mate_rate 0.375  |  cornered-king reached 0.62 (start 0.17)  [19s]
+nodes :   [field-MCTS] mate_rate 0.417  |  cornered-king reached 0.62 (start 0.17)  [39s]
+DONE

@@ -1,0 +1,14 @@
+2026/07/22 17:31:42 INFO mlflow.tracking.fluent: Experiment with name 'dtm_cnn' does not exist. Creating a new experiment.
+  step 0 loss 0.6007
+  step 800 loss 0.2244
+  step 1600 loss 0.1855
+  step 2400 loss 0.1916
+  step 3200 loss 0.1464
+  step 4000 loss 0.0982
+  step 4800 loss 0.0854
+  step 5600 loss 0.0518
+VERDICT DTM_CNN steps=6000 -- plain-CNN spearman(pred, DTM) by piece count (held-out):
+  3-piece: spearman=+0.917   (field distilled: 3p .88 4p .71 6p .53)
+  4-piece: spearman=+0.704   (field distilled: 3p .88 4p .71 6p .53)
+  6-piece: spearman=+0.339   (field distilled: 3p .88 4p .71 6p .53)
+  saved data/derived/sep/dtm_cnn_v2.pt  [1702s]

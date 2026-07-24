@@ -1,0 +1,3 @@
+loading incumbent on CPU (data/derived/sep/lichess_mc2.pt) ...
+long/short PLANNER engine ON: field lichess_mc2.pt
+play-atlas server on http://127.0.0.1:8642  (mcts nodes=400, model on cpu)

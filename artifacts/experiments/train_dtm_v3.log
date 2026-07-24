@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/train_dtm_cnn.py"[0m, line [35m102[0m, in [35m<module>[0m
+    [31mmain[0m[1;31m()[0m
+    [31m~~~~[0m[1;31m^^[0m
+  File [35m"/Users/kav/code/remote/github/catspace/experiments/train_dtm_cnn.py"[0m, line [35m61[0m, in [35mmain[0m
+    dz = np.load(args.dtm_npz); dtm = np.asarray(dz["dtm"]).astype(np.float32)
+  File [35m"/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/numpy/lib/_npyio_impl.py"[0m, line [35m454[0m, in [35mload[0m
+    fid = stack.enter_context([31mopen[0m[1;31m(os.fspath(file), "rb")[0m)
+                              [31m~~~~[0m[1;31m^^^^^^^^^^^^^^^^^^^^^^^[0m
+[1;35mFileNotFoundError[0m: [35m[Errno 2] No such file or directory: 'data/derived/dtm_endgame_v3.npz'[0m

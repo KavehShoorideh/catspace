@@ -1,0 +1,16 @@
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_db_standard_rated_2019-01.prefix1gb device=mps steps=22000 batch=512 d=256 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 2.5M (d=256 channels=64 blocks=6 enc_out=256)
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:654: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 39.748 sq_dev 0.0000 lam 1.000 d_step 0.446 d_rand 0.442 var 0.000 sib 0.000 unr 29.559 unrb 29.553 d_unr 0.44 d_oth 0.44
+step 100  loss 450.1842  train_top1 0.000  lr 3.00e-04  (5.4 it/s)
+    qrl push 32.553 sq_dev 34.1059 lam 1.589 d_step 6.670 d_rand 7.844 var 0.000 sib 0.000 unr 22.400 unrb 23.685 d_unr 7.60 d_oth 8.61
+step 200  loss 214.7494  train_top1 0.000  lr 3.00e-04  (5.6 it/s)
+    qrl push 16.736 sq_dev 20.1280 lam 2.198 d_step 3.498 d_rand 30.471 var 0.000 sib 0.000 unr 9.563 unrb 10.529 d_unr 27.68 d_oth 40.80
+step 300  loss 197.6100  train_top1 0.000  lr 3.00e-04  (5.6 it/s)
+    qrl push 17.400 sq_dev 11.9736 lam 2.644 d_step 2.943 d_rand 36.138 var 0.000 sib 0.000 unr 11.227 unrb 9.291 d_unr 33.22 d_oth 52.12
+step 400  loss 131.2148  train_top1 0.000  lr 3.00e-04  (5.7 it/s)
+    qrl push 10.610 sq_dev 16.3024 lam 2.990 d_step 2.427 d_rand 54.189 var 0.000 sib 0.000 unr 7.513 unrb 8.195 d_unr 44.13 d_oth 89.31

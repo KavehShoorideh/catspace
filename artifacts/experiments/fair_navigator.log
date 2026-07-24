@@ -1,0 +1,11 @@
+=== CNN baseline spearman ===
+  3-piece: spearman=+0.890   (field distilled: 3p .88 4p .71 6p .53)
+  4-piece: spearman=+0.612   (field distilled: 3p .88 4p .71 6p .53)
+  6-piece: spearman=+0.355   (field distilled: 3p .88 4p .71 6p .53)
+  saved data/derived/sep/dtm_cnn.pt  [1107s]
+=== FAIR 3-way: field vs plain-CNN vs pure ===
+VERDICT FAIR_NAVIGATOR n=30 target<=5p (6-piece DTM>=30 starts)
+  budget |  FIELD reach/plies |    CNN reach/plies |   PURE reach/plies
+     100 |    90%   4.4p (ev    437) |    87%   7.0p (ev    700) |    80%   4.8p (ev    483)
+     400 |    97%   4.1p (ev   1641) |    93%   5.9p (ev   2371) |    77%   4.8p (ev   1930)
+[done] 134s
