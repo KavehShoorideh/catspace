@@ -30,7 +30,8 @@ from catspace.experience import ExperienceStore
 PTR = Path("data/derived/sep/self_field_current.txt")
 EPTR = Path("data/derived/sep/opponent_energy_current.txt")
 MAIA = ["data/engines/maia/maia-1100.pb.gz", "data/engines/maia/maia-1200.pb.gz",
-        "data/engines/maia/maia-1400.pb.gz"]
+        "data/engines/maia/maia-1400.pb.gz", "data/engines/maia/maia-1600.pb.gz",
+        "data/engines/maia/maia-1900.pb.gz"]   # full rung rotation (camping phase 2)
 
 
 def field_now():
