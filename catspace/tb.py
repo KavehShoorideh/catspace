@@ -43,7 +43,7 @@ class TB:
                 from pathlib import Path as _P
                 _P(cache_db).parent.mkdir(parents=True, exist_ok=True)
                 self._db = sqlite3.connect(cache_db, timeout=5.0)
-                self._db.execute("PRAGMA journal_mode=WAL")
+                self._db.execute("PRAGMA journal_mode=DELETE")  # DELETE not WAL: many recomputable-cache readers blocked WAL checkpoints -> 14G unbounded growth (2026-07-24)
                 # 2026-07-23 disk-full postmortem: with many long-lived fleet readers the
                 # WAL never checkpointed and grew to 25GB. Cap it: after any checkpoint
                 # sqlite truncates the WAL back to <=256MB.
