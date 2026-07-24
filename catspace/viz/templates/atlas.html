@@ -1,0 +1,58 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>catspace atlas</title>
+<style>
+ body{font:14px/1.5 -apple-system,system-ui,sans-serif;margin:0;padding:16px;
+      background:#1c1a17;color:#e8e2d6}
+ h2{margin:0 0 2px;font-size:16px} .muted{color:#8d857a;font-size:12px}
+ canvas{background:#211f1b;border:1px solid #3a352f;border-radius:8px;margin-top:10px}
+ .legend{display:flex;gap:16px;margin-top:8px;font-size:12px}
+ .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+</style></head>
+<body>
+<h2>B-space atlas <span class="muted">— banked goal states (UMAP)</span></h2>
+<div class="muted" id="status">building atlas… (first load fits UMAP on the banks, ~1 min)</div>
+<canvas id="c" width="1000" height="700"></canvas>
+<div class="legend">
+  <span><span class="dot" style="background:#7fbf7f"></span>mates (ours)</span>
+  <span><span class="dot" style="background:#d9705f"></span>losses</span>
+  <span><span class="dot" style="background:#c9a227"></span>draws</span>
+  <span><span class="dot" style="background:#7fb8d9"></span>selected line → its steps</span>
+  <span><span class="dot" style="background:#fff"></span>nearest subgoal cluster to the line's end</span>
+</div>
+<div class="muted" style="margin-top:6px">click a line in the assistant's “where we likely end up” panel to project it here · feasibility lives in the directed field, not in this map — this view is for seeing basins</div>
+<script>
+const c=document.getElementById('c'),g=c.getContext('2d');
+let pts=null,bounds=null,sel=null;
+const COL={win:'rgba(127,191,127,0.35)',loss:'rgba(217,112,95,0.8)',draw:'rgba(201,162,39,0.55)'};
+function toPx(x,y){const[b0,b1,b2,b3]=bounds;
+  return [ (x-b0)/(b1-b0)*(c.width-30)+15, c.height-15-(y-b2)/(b3-b2)*(c.height-30) ];}
+function draw(){
+  if(!pts)return;
+  g.clearRect(0,0,c.width,c.height);
+  for(const[x,y,k]of pts){const[px,py]=toPx(x,y);
+    g.fillStyle=COL[k]||'#888';g.beginPath();g.arc(px,py,k==='win'?1.6:2.4,0,7);g.fill();}
+  if(sel&&sel.near){g.fillStyle='#fff';
+    for(const i of sel.near){const[x,y]=pts[i];const[px,py]=toPx(x,y);
+      g.beginPath();g.arc(px,py,3.2,0,7);g.fill();}}
+  if(sel&&sel.path){g.strokeStyle='#7fb8d9';g.lineWidth=1.5;g.beginPath();
+    sel.path.forEach(([x,y],i)=>{const[px,py]=toPx(x,y);i?g.lineTo(px,py):g.moveTo(px,py);});
+    g.stroke();
+    sel.path.forEach(([x,y],i)=>{const[px,py]=toPx(x,y);
+      g.fillStyle=i===sel.path.length-1?'#fff':'#7fb8d9';
+      g.beginPath();g.arc(px,py,i===sel.path.length-1?5:3.5,0,7);g.fill();});}
+}
+async function init(){
+  const r=await fetch('/atlas_data');const d=await r.json();
+  pts=d.pts;
+  const xs=pts.map(p=>p[0]),ys=pts.map(p=>p[1]);
+  bounds=[Math.min(...xs),Math.max(...xs),Math.min(...ys),Math.max(...ys)];
+  document.getElementById('status').textContent=pts.length+' banked states · greens are the mate basins (subgoal clusters = your density prior made visible)';
+  draw();
+  setInterval(async()=>{
+    try{const s=await(await fetch('/atlas_selected')).json();
+      if(s.path){sel=s;draw();}}catch(e){}
+  },2000);
+}
+init();
+</script>
+</body></html>
