@@ -430,3 +430,6 @@ step 64700  loss 81.0300  train_top1 0.000  lr 3.24e-06  (0.6 it/s)
   step 11200 loss 2.0336  [1973s]
   step 11400 loss 1.9431  [2014s]
   step 11600 loss 2.0321  [2060s]
+step 64800  loss 70.2718  train_top1 0.000  lr 3.11e-06  (0.6 it/s)
+    qrl push 7.672 sq_dev 0.0005 lam 146.288 d_step 0.922 d_rand 56.546 var 0.000 sib 0.000 unr 2.769 unrb 3.356 d_unr 61.13 d_oth 48.37
+  step 11800 loss 2.1653  [2103s]

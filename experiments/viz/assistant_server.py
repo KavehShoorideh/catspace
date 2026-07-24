@@ -198,25 +198,74 @@ class Session:
     # banks store B-side embeddings (goal identities); trajectories are projected with
     # embed_B too so states and goals live in ONE map. Feasibility is NEVER read off
     # this view (that's the directed field's job) -- the atlas is for seeing basins.
-    def atlas_data(self, n_win=8000):
+    def atlas_data(self, n_win=3000, n_other=1500):
+        """Sampled + DISK-CACHED projection (Kaveh: 'too slow; sample a set of points and
+        UMAP those; cache the umap and reuse if it hasn't changed'). Cache key = field ckpt
+        + bank sizes bucketed to the nearest 1000, so ordinary bank growth reuses the fit
+        and only a real shift (new field / +1000 mates) rebuilds."""
         if getattr(self, "_atlas", None) is None:
-            from umap import UMAP
-            rng = np.random.default_rng(0)
-            embs, kinds = [], []
-            for kind, bk in (("win", self.bank), ("loss", self.loss), ("draw", self.draw)):
-                E = bk.embs
-                if E is None or len(E) == 0:
-                    continue
-                take = min(len(E), n_win if kind == "win" else len(E))
-                idx = rng.permutation(len(E))[:take]
-                embs.append(np.asarray(E)[idx]); kinds += [kind] * take
-            X = np.concatenate(embs, 0).astype(np.float32)
-            um = UMAP(n_components=2, n_neighbors=30, min_dist=0.15, random_state=0)
-            xy = um.fit_transform(X)
-            self._atlas = dict(um=um, xy=xy, kinds=kinds, X=X)
+            import pickle
+            cache_p = ROOT / "artifacts/experiments/atlas_cache.pkl"
+            meta = dict(field=str(self.args.field), n_win=n_win, n_other=n_other,
+                        nw=len(self.bank) // 1000, nl=len(self.loss) // 1000,
+                        nd=len(self.draw) // 1000)
+            if cache_p.exists():
+                try:
+                    c = pickle.load(open(cache_p, "rb"))
+                    if c.get("meta") == meta:
+                        self._atlas = c["atlas"]
+                        print("[atlas] cache hit", flush=True)
+                except Exception:
+                    pass
+            if getattr(self, "_atlas", None) is None:
+                from umap import UMAP
+                rng = np.random.default_rng(0)
+                embs, kinds, sigs = [], [], []
+                for kind, bk, cap in (("win", self.bank, n_win),
+                                      ("loss", self.loss, n_other),
+                                      ("draw", self.draw, n_other)):
+                    E = bk.embs
+                    if E is None or len(E) == 0:
+                        continue
+                    idx = rng.permutation(len(E))[:min(len(E), cap)]
+                    embs.append(np.asarray(E)[idx]); kinds += [kind] * len(idx)
+                    bs = bk.sigs
+                    sigs += [bs[i] if kind == "win" and i < len(bs) else "" for i in idx]
+                X = np.concatenate(embs, 0).astype(np.float32)
+                um = UMAP(n_components=2, n_neighbors=25, min_dist=0.15, random_state=0)
+                xy = um.fit_transform(X)
+                self._atlas = dict(um=um, xy=xy, kinds=kinds, X=X, sigs=sigs)
+                try:
+                    pickle.dump({"meta": meta, "atlas": self._atlas}, open(cache_p, "wb"))
+                except Exception:
+                    pass
         a = self._atlas
         return {"pts": [[round(float(x), 3), round(float(y), 3), k]
                         for (x, y), k in zip(a["xy"], a["kinds"])]}
+
+    def atlas_plan(self):
+        """Plan -> SUBGOAL rendering (Kaveh: 'arrows through subgoals when I click the
+        plan; see the subgoals somehow'). The plan's goal is a material CLASS; its
+        subgoal cluster = the atlas's win points of that class (the density prior made
+        visible). Arrow: current position -> subgoal centroid. Direct plans fall back to
+        the nearest-mates cluster."""
+        if getattr(self, "_atlas", None) is None:
+            return {"err": "atlas not built yet"}
+        a = self._atlas
+        E = np.asarray(self.fm.embed_B_boards([self.board]), dtype=np.float32)
+        cur = a["um"].transform(E)[0]
+        cs = getattr(self, "calc", {}) or {}
+        plan, goal = cs.get("plan") or "direct", cs.get("goal")
+        mem = [i for i, s in enumerate(a["sigs"]) if goal and s == goal]
+        label = f"{plan} → {goal}" if mem else f"{plan} → nearest mate basin"
+        if not mem:      # direct / unknown class: k nearest banked mates in B-space
+            win_idx = np.array([i for i, k in enumerate(a["kinds"]) if k == "win"])
+            d = ((a["X"][win_idx] - E[0]) ** 2).sum(1)
+            mem = [int(i) for i in win_idx[np.argsort(d)[:40]]]
+        cx, cy = a["xy"][mem].mean(0)
+        return {"from": [round(float(cur[0]), 3), round(float(cur[1]), 3)],
+                "centroid": [round(float(cx), 3), round(float(cy), 3)],
+                "members": mem[:500], "label": label}
 
     def atlas_select(self, fens, k=24):
         if getattr(self, "_atlas", None) is None:
@@ -491,6 +540,13 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, {"err": str(e), "moves": [], "line": []})
         elif self.path == "/atlas_selected":
             self._send(200, getattr(SES, "_atlas_sel", None) or {})
+        elif self.path == "/atlas_plan":
+            try:
+                with SES.compute:
+                    data = SES.atlas_plan()
+                self._send(200, data)
+            except Exception as e:                          # noqa: BLE001
+                self._send(200, {"err": str(e)})
         elif self.path == "/ab_state":
             f = ROOT / "artifacts/experiments/ab_live.json"
             self._send(200, f.read_bytes() if f.exists() else b"{}", "application/json")
