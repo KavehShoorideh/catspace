@@ -433,3 +433,27 @@ step 64700  loss 81.0300  train_top1 0.000  lr 3.24e-06  (0.6 it/s)
 step 64800  loss 70.2718  train_top1 0.000  lr 3.11e-06  (0.6 it/s)
     qrl push 7.672 sq_dev 0.0005 lam 146.288 d_step 0.922 d_rand 56.546 var 0.000 sib 0.000 unr 2.769 unrb 3.356 d_unr 61.13 d_oth 48.37
   step 11800 loss 2.1653  [2103s]
+step 64900  loss 51.1208  train_top1 0.000  lr 3.03e-06  (0.7 it/s)
+    qrl push 9.323 sq_dev 0.0094 lam 146.321 d_step 0.949 d_rand 53.789 var 0.000 sib 0.000 unr 2.926 unrb 7.374 d_unr 61.21 d_oth 21.28
+VERDICT OPPONENT_V1 steps=12000 held-out NLL=2.1451 top1=0.369 (n=555017)
+    elo-bin  1: NLL 2.1402  top1 0.373  (n=47077)
+    elo-bin  2: NLL 2.1163  top1 0.377  (n=93242)
+    elo-bin  3: NLL 2.1102  top1 0.376  (n=133202)
+    elo-bin  4: NLL 2.1141  top1 0.375  (n=129320)
+    elo-bin  5: NLL 2.1505  top1 0.368  (n=84627)
+    elo-bin  6: NLL 2.1633  top1 0.364  (n=32819)
+    elo-bin  7: NLL 2.2155  top1 0.349  (n=7832)
+    elo-bin  8: NLL 2.2680  top1 0.343  (n=1330)
+    elo-bin  9: NLL 3.8337  top1 0.380  (n=266)
+    elo-bin 11: NLL 2.4254  top1 0.297  (n=3645)
+    elo-bin 12: NLL 2.7245  top1 0.213  (n=3725)
+    elo-bin 13: NLL 2.7191  top1 0.216  (n=3598)
+    elo-bin 14: NLL 2.6865  top1 0.216  (n=3474)
+    elo-bin 16: NLL 2.4099  top1 0.307  (n=3602)
+    elo-bin 17: NLL 2.3455  top1 0.328  (n=3634)
+    elo-bin 18: NLL 2.2904  top1 0.349  (n=3624)
+    src0 move_selection_fullmonth.npz: NLL 2.1296  top1 0.373  (n=499741)
+    src1 move_selection_full_v1.npz: NLL 2.2800  top1 0.335  (n=55099)
+    src2 move_selection_self.npz: NLL 3.7331  top1 0.446  (n=177)
+saved data/derived/sep/opponent_energy_fullmonth_r0.pt  [2253s]
+[carry3] ENERGY pointer -> opponent_energy_fullmonth_r0

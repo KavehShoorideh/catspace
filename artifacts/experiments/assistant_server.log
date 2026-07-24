@@ -307,3 +307,14 @@ assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
 assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
 <UciProtocol (pid=25768)>: stderr >> Loading weights file from: data/engines/maia/maia-1200.pb.gz
 <UciProtocol (pid=25768)>: stderr >> Initialized metal backend on device Apple M3 Pro
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=26156)>: stderr >> [1m[31m       _
+<UciProtocol (pid=26156)>: stderr >> |   _ | |
+<UciProtocol (pid=26156)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=26156)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(

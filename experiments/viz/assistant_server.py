@@ -348,15 +348,27 @@ class Session:
                       key=lambda r: r[2], reverse=True)
         line = []
         cs = getattr(self, "calc", {}) or {}
-        if cs.get("leaves"):     # -logP of each move along the top engine line
+        if cs.get("leaves"):
+            # CHAINED -logP along the top line (Kaveh: 'the chaining of -logP, and the
+            # chance of going astray'). -logP adds where P multiplies, so the running sum
+            # IS the line's improbability -- the probability-product of the foveated
+            # doctrine. 'Astray' tracks only OPPONENT plies: 1 - prod P(their moves) =
+            # chance they deviate from this line somewhere before ply k. Our own plies
+            # carry style info (inhuman/only-moves), not risk -- we choose our moves.
             b = self.board.copy(stack=False)
+            we_move = b.turn
+            p_stay = 1.0
             for san in cs["leaves"][0]["line"].split():
                 try:
                     mv = b.parse_san(san)
                 except Exception:
                     break
                 p = self.pfn(b).get(mv, 1e-9)
-                line.append([san, round(-math.log(max(p, 1e-9)), 2)])
+                ours = b.turn == we_move
+                if not ours:
+                    p_stay *= max(p, 1e-9)
+                line.append([san, round(-math.log(max(p, 1e-9)), 2),
+                             round(100 * (1 - p_stay), 1), int(ours)])
                 b.push(mv)
         return {"cohort": "maia/self mix", "moves": rows[:12], "line": line}
 

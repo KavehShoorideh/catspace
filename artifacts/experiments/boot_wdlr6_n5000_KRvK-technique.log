@@ -438,3 +438,12 @@
 /Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
   self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
 [worker 1] resume: skipping 36 recorded games
+    [warm-up] bank 212->212 nodes=100000 [269s]
+    mv01   12.1s = prior  12.0 (10664) + embF  93.6 (10664) + dbank  28.4 (10664) + tree -173.7 + harvest  6.3  nodes=5000
+    mv02    3.4s = prior   0.2 ( 131) + embF   0.7 ( 131) + dbank   0.2 (  131) + tree   0.9 + harvest  1.1  nodes=5000
+    mv03    6.2s = prior   0.9 (1121) + embF   2.2 (1121) + dbank   1.1 ( 1121) + tree   0.8 + harvest  0.4  nodes=5000
+    mv04    6.0s = prior   0.9 (1160) + embF   2.1 (1160) + dbank   1.1 ( 1160) + tree   0.8 + harvest  0.4  nodes=5000
+    mv05    8.1s = prior   2.5 (1165) + embF   2.2 (1165) + dbank   1.1 ( 1165) + tree   0.8 + harvest  0.5  nodes=5000
+    mv06    5.2s = prior   0.7 ( 750) + embF   1.9 ( 750) + dbank   0.9 (  750) + tree   0.7 + harvest  0.3  nodes=5000
+  g045[w1] mate plies=27 tb=8 tac=0 plan=direct:6 bank=212(+0) loss=0 draws=68 ms=347 t/move=0.0s t/game=41s nodes/s=732 [325s]
+[worker 1] 1/1 mate  med t/move=2.9s
