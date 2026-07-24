@@ -617,3 +617,82 @@ Traceback (most recent call last):
 BrokenPipeError: [Errno 32] Broken pipe
 ----------------------------------------
     [tri-refresh] dmin est 1.010 exact 1.010 err +0.000
+/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-33232-ntrc4tnf'}
+  warnings.warn(
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=38250)>: stderr >> [1m[31m       _
+<UciProtocol (pid=38250)>: stderr >> |   _ | |
+<UciProtocol (pid=38250)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=38250)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+[atlas] cache hit
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 59686)
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 59719)
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 484, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 568, in do_GET
+    self._get()
+    ~~~~~~~~~^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 605, in _get
+    self._send(200, data)
+    ~~~~~~~~~~^^^^^^^^^^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 563, in _send
+    self.wfile.write(data)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+----------------------------------------
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 484, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 568, in do_GET
+    self._get()
+    ~~~~~~~~~^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 605, in _get
+    self._send(200, data)
+    ~~~~~~~~~~^^^^^^^^^^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 563, in _send
+    self.wfile.write(data)
+    ~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+    [prune-audit] max|err| 0.000 cands 128/85830
+    [prune-audit:loss] max|err| 0.000 cands 128/2274
+    [prune-audit:draw] max|err| 0.000 cands 128/10660

@@ -274,6 +274,7 @@ async function humanMove(orig,dest){
 function after(r){
   $('#explorecols').innerHTML='';                 // explorer tree is for the OLD position
   Object.keys(exCache).forEach(k=>delete exCache[k]);
+  exK=6; $('#explorego').textContent='Explore from here'; $('#explorego').disabled=false;
   refresh();
   const a=r.assistant||{};
   const note=a.suggest?'🔎 let’s calculate here — '+a.reasons.join('; ')
@@ -360,10 +361,10 @@ $('#calc').onclick=()=>{
 $('#plan').onclick=()=>showPlan();
 
 // ---- variation explorer (miller columns; hover previews the board)
-const exCache={};
+const exCache={}; let exK=6;
 async function exFetch(path){
-  const key=path.join(' ');
-  if(!exCache[key])exCache[key]=await j('/explore',{ucis:path});
+  const key=exK+':'+path.join(' ');
+  if(!exCache[key])exCache[key]=await j('/explore',{ucis:path,k:exK});
   return exCache[key];
 }
 function exPreview(fen){cg.set({fen,movable:{color:'white',free:false,dests:new Map()}});}
@@ -394,11 +395,16 @@ function exRender(colIdx,data,path){
   cols.appendChild(col);
 }
 $('#explorego').onclick=async()=>{
+  const btn=$('#explorego');
+  if(btn.textContent.includes('wider'))exK=Math.min(exK+6,24);   // press again = widen
+  btn.disabled=true;
   Object.keys(exCache).forEach(k=>delete exCache[k]);
-  $('#explorecols').innerHTML='<span class="muted">reading field + opponent model…</span>';
+  $('#explorecols').innerHTML='<span class="muted">reading field + opponent model ('+exK+' moves/column)…</span>';
   const d=await exFetch([]);
   $('#explorecols').innerHTML='';
   exRender(0,d,[]);
+  btn.disabled=false;
+  btn.textContent=exK>=24?'Explore (max width)':'Explore wider +';
 };
 $('#explorecols').onmouseleave=()=>exRestore();
 $('#loadbtn').onclick=async()=>{

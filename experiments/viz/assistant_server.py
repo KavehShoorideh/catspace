@@ -732,7 +732,8 @@ class H(BaseHTTPRequestHandler):
         elif self.path == "/explore":
             try:
                 with SES.compute:
-                    data = SES.explore(req.get("ucis", []))
+                    data = SES.explore(req.get("ucis", []),
+                                       k=min(int(req.get("k", 6)), 24))
                 self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e), "moves": []})
