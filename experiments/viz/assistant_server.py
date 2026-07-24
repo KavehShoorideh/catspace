@@ -539,6 +539,44 @@ class H(BaseHTTPRequestHandler):
                                  "assistant": SES._prompt()})
             except Exception as e:                          # noqa: BLE001
                 self._send(400, {"err": str(e)})
+        elif self.path == "/load":          # paste FEN or PGN (PGN keeps move HISTORY --
+            try:                            # repetition/clock state survive the load)
+                text = req.get("text", "").strip()
+                SES._calc_cancel = True
+                b = None
+                try:
+                    b = chess.Board(text)
+                except Exception:
+                    import io
+                    import chess.pgn as _pgn
+                    g = _pgn.read_game(io.StringIO(text))
+                    if g is None or g.errors:
+                        raise ValueError("neither valid FEN nor PGN")
+                    b = g.board()
+                    for mv in g.mainline_moves():
+                        b.push(mv)
+                from collections import Counter as _C
+                hist = _C()
+                bb = b.copy(stack=True)
+                keys = [bb.epd()]
+                while bb.move_stack:
+                    bb.pop(); keys.append(bb.epd())
+                for k2 in keys:
+                    hist[k2] += 1
+                SES.board = b
+                SES.ctx["hist"] = hist
+                SES.ctx["plan"] = "direct"; SES.ctx["target_pt"] = None
+                reply = None
+                if b.turn == chess.BLACK and not b.is_game_over(claim_draw=True) \
+                        and SES.opp is not None:
+                    r = SES.opp.play(b, chess.engine.Limit(nodes=1))
+                    reply = b.san(r.move)
+                    b.push(r.move)
+                    SES.ctx["hist"][b.epd()] += 1
+                self._send(200, {"ok": True, "fen": b.fen(),
+                                 "plies": len(b.move_stack), "reply": reply})
+            except Exception as e:                          # noqa: BLE001
+                self._send(400, {"err": str(e)})
         elif self.path == "/set_fen":       # A/B harness: probe an arbitrary position
             try:
                 from collections import Counter as _C
