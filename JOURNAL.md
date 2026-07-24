@@ -7271,3 +7271,17 @@ then was abandoned early in 3 of 4 (3-5 plies; the give-up cadence is tuned for
 in-class play, not for the capture-hunting a 7p handoff needs); g044 held tradedown 23
 plies but threefolded. The give-up/handoff cadence at 7p is the clear next planner
 lever (feeds #24). Bank grew to 32.7k during the run. [15366s total]
+
+## 2026-07-24 -- IMPROVEMENT LOOP ROUND 0 COMPLETE: all four learners game-fed (MILESTONE)
+
+Round 0: 10 fullgames vs maia-1100 (0/10 -- the honest full-board baseline; med 73s/move
+under all-night contention; opening-temperature v2 fixed deterministic duplicate games,
+28d2fad). Export: 180 accumulated games -> shard_001 (4016 rows, 1912 LOSS rows -- the
+outcome-conditioning payload finally in the training stream). Deliverables:
+  - self_field_r0.pt   (field fine-tuned 90k->92k on self-play channel w/ losses)
+  - planner_rl_r0.pt   (RL plan selector LIVE: n=272 tuples vs 22 at last attempt,
+                        fit-spearman +0.761 -- deployed via make_planner auto-load)
+  - energy step c queued for the round-0 data (pointer already at fullmonth_r0)
+STATE: every trainable stream now has a game-fed checkpoint -- nucleus dtm_tok_r1,
+energy fullmonth_r0, field self_field_r0, planner_rl_r0. The minimal working set Kaveh
+ordered ('carry everything forward, then improve') EXISTS. Rounds 1-5 continue.
