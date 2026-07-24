@@ -388,8 +388,10 @@ class Session:
         if b.is_game_over(claim_draw=True):
             return {"moves": [], "over": True, "fen": b.fen(),
                     "result": b.result(claim_draw=True)}
-        if hasattr(self.vfn, "set_anchor"):
-            self.vfn.set_anchor(b)
+        rk = self.board.epd()          # anchor once per GAME position: hovered nodes sit
+        if hasattr(self.vfn, "set_anchor") and getattr(self, "_ex_anchor", None) != rk:
+            self.vfn.set_anchor(self.board)     # within the anchor's +-ply carry
+            self._ex_anchor = rk
         pr = self.pfn(b)
         moves = list(b.legal_moves)
         kids = []
