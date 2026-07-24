@@ -184,7 +184,16 @@ let atlas=null, sel=null, planSel=null, vb=null, fullVb=null, span=1;
 const COL={win:'rgba(127,191,127,0.30)',loss:'rgba(217,112,95,0.85)',draw:'rgba(201,162,39,0.5)'};
 const SVGNS='http://www.w3.org/2000/svg';
 function svgEl(t,a){const e=document.createElementNS(SVGNS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
-function applyVb(){$('#atlassvg').setAttribute('viewBox',vb.map(v=>v.toFixed(3)).join(' '));}
+function unit(){const w=$('#atlassvg').clientWidth||600;return vb[2]/w;}  // user-units per px
+function applyVb(){
+  $('#atlassvg').setAttribute('viewBox',vb.map(v=>v.toFixed(4)).join(' '));
+  // SCREEN-CONSTANT dot sizes: recompute radii from zoom so points separate instead
+  // of inflating (dots sized in px-equivalents, not data units)
+  const u=unit(),st=document.getElementById('atlasstyle');
+  if(st)st.textContent=`#gpts circle{r:${(2.1*u).toFixed(5)}px}
+    #gpts circle.win{r:${(1.5*u).toFixed(5)}px}`;
+  drawAtlas();     // overlays rebuilt at the new scale (few hundred elements, cheap)
+}
 async function loadAtlas(){
   $('#atlasnote').textContent='— loading projection…';
   const d=await j('/atlas_data');
@@ -195,9 +204,13 @@ async function loadAtlas(){
   fullVb=[x0-pad,y0-pad,(x1-x0)+2*pad,(y1-y0)+2*pad]; vb=[...fullVb];
   span=Math.max(fullVb[2],fullVb[3]);
   const svg=$('#atlassvg'); svg.innerHTML='';
+  const st=document.createElementNS(SVGNS,'style'); st.id='atlasstyle';
+  svg.appendChild(st);
   const gp=svgEl('g',{id:'gpts'});
-  for(const[x,y,k]of atlas)
-    gp.appendChild(svgEl('circle',{cx:x,cy:y,r:(k==='win'?0.003:0.0045)*span,fill:COL[k]||'#888'}));
+  for(const[x,y,k]of atlas){
+    const c=svgEl('circle',{cx:x,cy:y,fill:COL[k]||'#888'});
+    c.setAttribute('class',k); gp.appendChild(c);
+  }
   svg.appendChild(gp);
   svg.appendChild(svgEl('g',{id:'gplan'}));
   svg.appendChild(svgEl('g',{id:'gsel'}));
@@ -207,31 +220,32 @@ async function loadAtlas(){
 }
 function drawAtlas(){         // overlays only; the 6k points are built once
   const gs=document.getElementById('gsel'),gpl=document.getElementById('gplan');
-  if(!gs||!gpl)return;
+  if(!gs||!gpl||!atlas)return;
+  const u=unit();             // px-constant sizing at any zoom
   gs.innerHTML='';gpl.innerHTML='';
   if(planSel&&planSel.centroid){
     for(const i of (planSel.members||[])){const[x,y]=atlas[i];
-      gpl.appendChild(svgEl('circle',{cx:x,cy:y,r:0.006*span,fill:'none',
-        stroke:'rgba(201,162,39,0.9)','stroke-width':0.0012*span}));}
+      gpl.appendChild(svgEl('circle',{cx:x,cy:y,r:4.2*u,fill:'none',
+        stroke:'rgba(201,162,39,0.9)','stroke-width':1.1*u}));}
     const[fx,fyr]=planSel.from,[tx,tyr]=planSel.centroid,fy=-fyr,ty=-tyr;
-    gpl.appendChild(svgEl('line',{x1:fx,y1:fy,x2:tx,y2:ty,stroke:'#c9a227','stroke-width':0.003*span}));
-    const ang=Math.atan2(ty-fy,tx-fx),ah=0.018*span;
+    gpl.appendChild(svgEl('line',{x1:fx,y1:fy,x2:tx,y2:ty,stroke:'#c9a227','stroke-width':2.2*u}));
+    const ang=Math.atan2(ty-fy,tx-fx),ah=11*u;
     gpl.appendChild(svgEl('polygon',{points:[[tx,ty],[tx-ah*Math.cos(ang-0.4),ty-ah*Math.sin(ang-0.4)],
       [tx-ah*Math.cos(ang+0.4),ty-ah*Math.sin(ang+0.4)]].map(p=>p.join(',')).join(' '),fill:'#c9a227'}));
-    gpl.appendChild(svgEl('circle',{cx:fx,cy:fy,r:0.008*span,fill:'#c9a227'}));
-    const t1=svgEl('text',{x:tx+0.02*span,y:ty-0.012*span,fill:'#e8e2d6','font-size':0.025*span});
+    gpl.appendChild(svgEl('circle',{cx:fx,cy:fy,r:5*u,fill:'#c9a227'}));
+    const t1=svgEl('text',{x:tx+12*u,y:ty-8*u,fill:'#e8e2d6','font-size':12*u});
     t1.textContent=planSel.label||''; gpl.appendChild(t1);
-    const t2=svgEl('text',{x:fx+0.012*span,y:fy+0.006*span,fill:'#e8e2d6','font-size':0.02*span});
+    const t2=svgEl('text',{x:fx+8*u,y:fy+4*u,fill:'#e8e2d6','font-size':11*u});
     t2.textContent='now'; gpl.appendChild(t2);
   }
   if(sel&&sel.near)for(const i of sel.near){const[x,y]=atlas[i];
-    gs.appendChild(svgEl('circle',{cx:x,cy:y,r:0.005*span,fill:'#fff'}));}
+    gs.appendChild(svgEl('circle',{cx:x,cy:y,r:3*u,fill:'#fff'}));}
   if(sel&&sel.path){
     const pts=sel.path.map(([x,y])=>[x,-y]);
     gs.appendChild(svgEl('polyline',{points:pts.map(p=>p.join(',')).join(' '),
-      fill:'none',stroke:'#7fb8d9','stroke-width':0.0022*span}));
+      fill:'none',stroke:'#7fb8d9','stroke-width':1.6*u}));
     pts.forEach(([x,y],i)=>gs.appendChild(svgEl('circle',{cx:x,cy:y,
-      r:(i===pts.length-1?0.008:0.0055)*span,fill:i===pts.length-1?'#fff':'#7fb8d9'})));
+      r:(i===pts.length-1?5:3.4)*u,fill:i===pts.length-1?'#fff':'#7fb8d9'})));
   }
 }
 (function(){    // zoom + pan
