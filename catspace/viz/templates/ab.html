@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>catspace A/B</title>
+<style>
+ body{font:14px/1.5 -apple-system,system-ui,sans-serif;margin:0;padding:24px;
+      background:#1c1a17;color:#e8e2d6;max-width:720px}
+ h2{margin:0 0 4px;font-size:16px} .muted{color:#8d857a;font-size:12px}
+ .row{display:flex;gap:16px;margin:14px 0}
+ .card{flex:1;background:#262320;border:1px solid #3a352f;border-radius:8px;padding:14px}
+ .big{font-size:26px;font-variant-numeric:tabular-nums}
+ #verdict{border-left:3px solid #c9a227;padding-left:10px;font-size:16px;margin-top:12px}
+ canvas{width:100%;height:140px;background:#262320;border:1px solid #3a352f;border-radius:8px}
+ .win{color:#7fbf7f}
+</style></head>
+<body>
+<h2>anytime-valid A/B</h2>
+<div class="muted">discordant-pair sign test · Beta(1,1)-mixture e-process · peek freely, stop anytime (Ville)</div>
+<div class="row">
+  <div class="card"><div class="muted" id="la">A</div><div class="big" id="sa">–</div></div>
+  <div class="card"><div class="muted" id="lb">B</div><div class="big" id="sb">–</div></div>
+  <div class="card"><div class="muted">e-value / boundary</div><div class="big" id="e">–</div></div>
+</div>
+<canvas id="chart" width="720" height="140"></canvas>
+<div id="verdict">…</div>
+<div class="muted" id="detail"></div>
+<script>
+const hist=[];
+async function tick(){
+  try{
+    const s=await (await fetch('/ab_state')).json();
+    if(!s.n)return;
+    document.getElementById('la').textContent='A · '+(s.a.model||'?')+(s.a.pinned?' (pinned)':'');
+    document.getElementById('lb').textContent='B · '+(s.b.model||'?')+(s.b.pinned?' (pinned)':'');
+    document.getElementById('sa').textContent=s.ok_a+' / '+s.n;
+    document.getElementById('sb').textContent=s.ok_b+' / '+s.n;
+    document.getElementById('e').textContent=s.e.toFixed(2)+' / '+s.boundary;
+    document.getElementById('verdict').textContent = s.verdict==='gathering'
+      ? 'gathering evidence — '+s.n_disc+' discordant pairs, '+s.k_b+' won by B'
+      : 'WINNER: '+s.verdict+' (valid at alpha='+s.alpha+' despite optional stopping)';
+    document.getElementById('detail').textContent=s.elapsed+'s elapsed';
+    hist.push(Math.log(Math.max(s.e,1e-6)));
+    const c=document.getElementById('chart'),g=c.getContext('2d');
+    g.clearRect(0,0,c.width,c.height);
+    const lo=Math.min(...hist,0),hiv=Math.max(...hist,Math.log(s.boundary))+0.3;
+    const y=v=>c.height-8-(v-lo)/(hiv-lo)*(c.height-16);
+    g.strokeStyle='#c9a227';g.setLineDash([4,4]);g.beginPath();
+    g.moveTo(0,y(Math.log(s.boundary)));g.lineTo(c.width,y(Math.log(s.boundary)));g.stroke();
+    g.setLineDash([]);g.strokeStyle='#7fbf7f';g.beginPath();
+    hist.forEach((v,i)=>{const x=i/(Math.max(hist.length-1,1))*c.width;i?g.lineTo(x,y(v)):g.moveTo(x,y(v));});
+    g.stroke();
+  }catch(e){}
+}
+setInterval(tick,2000);tick();
+</script>
+</body></html>

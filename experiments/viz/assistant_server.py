@@ -47,16 +47,26 @@ class Session:
             bk.sync()
         self.ctx: dict = {"plan": "direct", "hist": {}}
         self.times: dict = {}
+        self.pinned = bool(getattr(args, "pin_model", ""))
+        lm = args.pin_model if self.pinned else args.last_mile
+        if not self.pinned:      # resolve the NEWEST nucleus round at init too (the
+            import glob as _g    # reloader's 45s tick raced the A/B smoke: A served
+            import re as _re     # the stale default for its first minute)
+            cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
+            if cands:
+                lm = max(cands, key=lambda p: int(_re.search(r"r(\d+)\.pt", p).group(1)))
         self.vfn = make_boot_value(self.fm, self.bank, self.times, self.loss,
-                                   dtm_ckpt=args.last_mile or None,
+                                   dtm_ckpt=lm or None,
                                    draw_bank=self.draw, game_ctx=self.ctx)
         self.pfn, self.pfnb = make_batched_energy_prior(args.energy, game_ctx=self.ctx)
         self.planner = make_planner(self.fm, self.bank)
         self.probes = ProbeKit(self.fm, self.bank, self.loss, self.draw,
                                game_ctx=self.ctx, prior_fn=self.pfn)
         self.opp = None
-        self._lm = args.last_mile
+        self._lm = lm
         self.version = self._version_of(self._lm)
+        if self.pinned:
+            self.version["pinned"] = True
         self.new_game(args.opponent)
         import threading
         threading.Thread(target=self._reloader, daemon=True).start()
@@ -87,6 +97,8 @@ class Session:
                     bk.sync()
             except Exception:
                 pass
+            if self.pinned:            # A/B endpoint: model frozen, banks still sync
+                continue
             try:
                 cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
                 if not cands:
@@ -140,28 +152,7 @@ class Session:
             reasons.append("the fifty-move clock is squeezing us")
         return {"suggest": bool(reasons), "reasons": reasons[:3], "probe": s}
 
-    def calculate(self, nodes):
-        b = self.board
-        ps = self.planner(b, len(b.move_stack))
-        self.ctx["plan"] = ps["plan"]; self.ctx["target_pt"] = ps.get("target_pt")
-        snap = dict(self.times); t_run = time.time()
-        m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=nodes, mate_stop=True,
-                 pw_c=1.5, root_min_visits=10, value_fn=self.vfn, policy_fn=self.pfn,
-                 policy_batch_fn=self.pfnb, batch_leaves=32)
-        root = m.run(b.copy(stack=True))
-        try:
-            from catspace.metrics import observe
-            tot = time.time() - t_run
-            acc = 0.0
-            for st, key in (("prior", "prior_s"), ("embF", "embedF_s"),
-                            ("dbank", "dbank_s"), ("dtm", "dtm_s")):
-                v = self.times.get(key, 0) - snap.get(key, 0)
-                observe(st, v); acc += v
-            observe("tree", max(tot - acc, 0)); observe("move_total", tot)
-        except Exception:
-            pass
-        wins, losses, stales = harvest(root)
-        self.bank.add(wins); self.loss.add(losses); self.draw.add(stales)
+    def _tops_leaves(self, b, root):
         kids = sorted(root.children, key=lambda c: -c.N)[:5]
         top = [{"uci": c.move.uci(), "san": b.san(c.move), "visits": int(c.N),
                 "q": round(float(c.W / max(c.N, 1)), 3)} for c in kids]
@@ -178,6 +169,75 @@ class Session:
             leaves.append({"line": " ".join(line), "fen": bb.fen(),
                            "visits": int(node.N),
                            "v": round(float(node.W / max(node.N, 1)), 3)})
+        return top, leaves
+
+    def calculate_start(self, nodes, chunk=64):
+        """STREAMING calculation (Kaveh: 'a way for calculations to stream in as it's
+        calculating'): chunked MCTS on a thread, tree reused across chunks; /calc_state
+        serves the running snapshot after every chunk."""
+        if getattr(self, "_calc_busy", False):
+            return {"ok": False, "busy": True}
+        self._calc_busy = True
+        self.calc = {"done": False, "evals": 0, "target": int(nodes),
+                     "top": [], "leaves": [], "ideas": [], "plan": None, "goal": None}
+        import threading
+        threading.Thread(target=self._calc_work, args=(int(nodes), chunk),
+                         daemon=True).start()
+        return {"ok": True, "target": int(nodes)}
+
+    def _calc_work(self, nodes, chunk):
+        try:
+            b = self.board.copy(stack=True)
+            self.calc["stage"] = "planner"
+            if hasattr(self.vfn, "set_anchor"):     # tri-anchor prune: without this the
+                self.vfn.set_anchor(b)              # 86k seeded bank is scanned per eval
+            ps = self.planner(b, len(b.move_stack))
+            self.ctx["plan"] = ps["plan"]; self.ctx["target_pt"] = ps.get("target_pt")
+            self.calc.update(plan=ps["plan"], goal=ps.get("goal"), stage="search")
+            snap = dict(self.times); t_run = time.time()
+            m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=chunk, mate_stop=True,
+                     pw_c=1.5, root_min_visits=10, value_fn=self.vfn, policy_fn=self.pfn,
+                     policy_batch_fn=self.pfnb, batch_leaves=32)
+            self._calc_live = m          # /calc_state reads sub-chunk progress off this
+            root, used = None, 0
+            while used < nodes:
+                root = m.run(b.copy(stack=True), reuse_root=root)
+                used += int(m.evals_used)
+                top, leaves = self._tops_leaves(b, root)
+                self.calc.update(evals=used, top=top, leaves=leaves)
+                if m.evals_used == 0:        # certified mate in hand -- nothing to add
+                    break
+            try:
+                from catspace.metrics import observe
+                tot = time.time() - t_run
+                acc = 0.0
+                for st, key in (("prior", "prior_s"), ("embF", "embedF_s"),
+                                ("dbank", "dbank_s"), ("dtm", "dtm_s")):
+                    v = self.times.get(key, 0) - snap.get(key, 0)
+                    observe(st, v); acc += v
+                observe("tree", max(tot - acc, 0)); observe("move_total", tot)
+            except Exception:
+                pass
+            self.calc.update(self._finish_calc(b, root, ps, used))
+            self.calc["done"] = True
+        except Exception as e:                              # noqa: BLE001
+            self.calc.update(done=True, err=str(e))
+        finally:
+            self._calc_busy = False
+
+    def calculate(self, nodes):
+        """Blocking wrapper (A/B harness + backwards compat): start + wait."""
+        r = self.calculate_start(nodes)
+        if not r.get("ok"):
+            return {"err": "busy"}
+        while not self.calc.get("done"):
+            time.sleep(0.2)
+        return self.calc
+
+    def _finish_calc(self, b, root, ps, evals_used):
+        wins, losses, stales = harvest(root)
+        self.bank.add(wins); self.loss.add(losses); self.draw.add(stales)
+        top, leaves = self._tops_leaves(b, root)
         ideas = []
         def idea(kind, tag, detail):
             self.idea_seq += 1
@@ -194,7 +254,7 @@ class Session:
             idea("sense", r, "why the assistant wanted to calculate here")
         return {"top": top, "leaves": leaves, "plan": ps["plan"],
                 "goal": ps.get("goal"), "ideas": ideas, "probe": pr["probe"],
-                "evals": int(m.evals_used)}
+                "evals": int(evals_used)}
 
 
 SES: Session | None = None
@@ -250,6 +310,19 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, f.read_bytes(), ct)
             else:
                 self._send(404, {"err": "no asset"})
+        elif self.path == "/calc_state":
+            st = dict(getattr(SES, "calc", {}) or {})
+            if st and not st.get("done"):
+                live = getattr(SES, "_calc_live", None)
+                st["evals"] = min(st.get("evals", 0) + int(getattr(live, "evals_used", 0) or 0),
+                                  st.get("target", 10**9))
+            self._send(200, st)
+        elif self.path == "/ab":
+            f = ROOT / "catspace/viz/templates/ab.html"
+            self._send(200, f.read_bytes(), "text/html")
+        elif self.path == "/ab_state":
+            f = ROOT / "artifacts/experiments/ab_live.json"
+            self._send(200, f.read_bytes() if f.exists() else b"{}", "application/json")
         elif self.path == "/state":
             b = SES.board
             dests = {}
@@ -294,8 +367,19 @@ class H(BaseHTTPRequestHandler):
                                  "assistant": SES._prompt()})
             except Exception as e:                          # noqa: BLE001
                 self._send(400, {"err": str(e)})
+        elif self.path == "/set_fen":       # A/B harness: probe an arbitrary position
+            try:
+                from collections import Counter as _C
+                SES.board = chess.Board(req["fen"])
+                SES.ctx["hist"] = _C({SES.board.epd(): 1})
+                SES.ctx["plan"] = "direct"
+                self._send(200, {"ok": True, "fen": SES.board.fen()})
+            except Exception as e:                          # noqa: BLE001
+                self._send(400, {"err": str(e)})
         elif self.path == "/calculate":
             self._send(200, SES.calculate(int(req.get("nodes", 1500))))
+        elif self.path == "/calculate_start":
+            self._send(200, SES.calculate_start(int(req.get("nodes", 1500))))
         elif self.path == "/tag":
             with open(TAGS, "a") as f:
                 f.write(json.dumps({"id": req.get("id"), "tag": req.get("tag"),
@@ -317,6 +401,10 @@ def main():
     ap.add_argument("--banks-prefix", default="artifacts/experiments/assistant")
     ap.add_argument("--opponent", default="data/engines/maia/maia-1200.pb.gz")
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--pin-model", default="",
+                    help="A/B endpoint mode: serve exactly this dtm ckpt, never auto-swap "
+                         "(bank sync stays live). Run a second instance on another --port "
+                         "as the challenger.")
     args = ap.parse_args()
     SES = Session(args)
     print(f"assistant on http://localhost:{args.port}  opponent={args.opponent}", flush=True)
