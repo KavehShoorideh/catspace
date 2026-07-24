@@ -76,3 +76,9 @@ VERDICT BOOTSTRAP_MATE scenario=KRRvKP nodes=5000 mate=45/48 (0.94) [clean=43 tb
 === LADDER7 KRRvKBP start 19:24:55 ===
 VERDICT BOOTSTRAP_MATE scenario=KRRvKBP nodes=5000 mate=37/48 (0.77) [clean=31 tb-assisted=6]  med_plies=11  bank_final=20710  med_t/move=22.7s  med_t/solve=128s  [8s]
 === LADDER7 KRvK-technique start 19:25:03 ===
+/Users/kav/.claude/jobs/20b9956a/tmp/ladder7_resume.sh: line 3: 11178 Killed: 9                  .venv/bin/python experiments/bootstrap_mate_engine.py --nodes 5000 --n 48 --j 4 --max-plies 120 --scenario "$S" --bank-file "artifacts/experiments/wdlr6_bank_n5000_${S}.fens" --loss-bank-file "artifacts/experiments/wdlr6_lossbank_n5000_${S}.fens" --draw-bank-file "artifacts/experiments/wdlr6_drawbank_n5000_${S}.fens" --milestone-file "artifacts/experiments/wdlr6_ms_n5000_${S}.jsonl" --results-file "artifacts/experiments/wdlr6_results_n5000_${S}.jsonl" >> "artifacts/experiments/boot_wdlr6_n5000_${S}.log" 2>&1
+=== LADDER7 COMPLETE ===
+=== CAPSTONE KRRvKBNP-7p start 22:50:36 ===
+VERDICT BOOTSTRAP_MATE scenario=KRRvKBNP-7p nodes=5000 mate=44/48 (0.92) [clean=44 tb-assisted=0]  med_plies=5  bank_final=32730  med_t/move=17.9s  med_t/solve=66s  [15366s]
+=== CAPSTONE COMPLETE ===
+=== IMPROVEMENT LOOP start 03:06:53 ===

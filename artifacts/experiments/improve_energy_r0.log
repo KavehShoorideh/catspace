@@ -1,0 +1,36 @@
+VERDICT MOVE_SELECTION rows=5676 skipped=2 max_moves=80 -> data/derived/move_selection_self.npz  [1s]
+[data] src0 move_selection_full_v1.npz: 550000 rows, batch share 0.65
+[data] src1 move_selection_self.npz: 5676 rows, batch share 0.35
+[data] 555676 rows -> 500170 train / 55506 held-out
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[init] warm-start from data/derived/sep/opponent_energy_fullmonth_r0.pt
+  step 0 loss 2.6811  [1s]
+  step 200 loss 1.5682  [17s]
+  step 400 loss 1.6017  [32s]
+  step 600 loss 1.4102  [48s]
+  step 800 loss 1.3708  [63s]
+  step 1000 loss 1.5111  [78s]
+  step 1200 loss 1.4031  [94s]
+  step 1400 loss 1.2628  [109s]
+  step 1600 loss 1.3899  [124s]
+  step 1800 loss 1.3959  [140s]
+VERDICT OPPONENT_V1 steps=2000 held-out NLL=2.3039 top1=0.331 (n=55506)
+    elo-bin  1: NLL 2.1533  top1 0.377  (n=2542)
+    elo-bin  2: NLL 2.0955  top1 0.379  (n=5049)
+    elo-bin  3: NLL 2.0978  top1 0.382  (n=7570)
+    elo-bin  4: NLL 2.1119  top1 0.376  (n=7426)
+    elo-bin  5: NLL 2.1533  top1 0.366  (n=4756)
+    elo-bin  6: NLL 2.1334  top1 0.377  (n=1863)
+    elo-bin  7: NLL 2.1394  top1 0.339  (n=472)
+    elo-bin  9: NLL 3.0316  top1 0.537  (n=540)
+    elo-bin 11: NLL 2.3611  top1 0.305  (n=3610)
+    elo-bin 12: NLL 2.6205  top1 0.244  (n=3715)
+    elo-bin 13: NLL 2.6723  top1 0.225  (n=3611)
+    elo-bin 14: NLL 2.7165  top1 0.207  (n=3654)
+    elo-bin 16: NLL 2.3955  top1 0.308  (n=3512)
+    elo-bin 17: NLL 2.3822  top1 0.318  (n=3539)
+    elo-bin 18: NLL 2.3984  top1 0.317  (n=3595)
+    src0 move_selection_full_v1.npz: NLL 2.2974  top1 0.329  (n=54945)
+    src1 move_selection_self.npz: NLL 2.9476  top1 0.547  (n=561)
+saved data/derived/sep/opponent_energy_r0.pt  [160s]

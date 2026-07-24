@@ -1,0 +1,16 @@
+[distill] teacher 9.1M -> student 2.1M (4.4x smaller)
+[data] 197952 train positions + 2048 held-out
+  step 0 loss 340.9213 [3s]
+  step 200 loss 151.2012 [182s]
+  step 400 loss 130.3675 [317s]
+  step 600 loss 132.6595 [439s]
+  step 800 loss 127.7713 [562s]
+  step 1000 loss 120.4982 [688s]
+  step 1200 loss 115.9356 [821s]
+  step 1400 loss 109.6826 [958s]
+  step 1600 loss 112.0568 [1108s]
+  step 1800 loss 112.9252 [1260s]
+  step 2000 loss 107.7876 [1398s]
+  step 2200 loss 110.4854 [1537s]
+  step 2400 loss 110.2622 [1694s]
+  step 2600 loss 115.5041 [1831s]
