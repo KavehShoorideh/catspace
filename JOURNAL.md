@@ -7305,3 +7305,15 @@ evidence). Plan: on distill completion -> bench -> from-scratch IQE (teacher arc
 question cleanly); gauntlet DEFERRED for GPU throughput. PROMOTION RULE while away:
 field_scratch_full_v1 takes the pointer ONLY if it beats the incumbent on val verdicts
 AND the 51-case integration suite; otherwise waits for Kaveh.
+
+## 2026-07-24 -- camping phase 2 armed: whole-system self-play (Kaveh's parting directive)
+
+'Continue training on the self-play data against the different models -- the whole
+system together... a different kind of data because it includes our vector database
+and everything else.' Armed chain (fires on scratch completion): (1) integration
+promotion gate w/ revert-on-fail; (2) model-vs-model gauntlets (fullmonth vs scratch,
+fullmonth vs student, TC 60+0.6) whose PGNs IMPORT into the experience store --
+gauntlet games are composed-system data (field+banks+energy+planner all in the loop)
+and now double as training data; (3) 8 further improvement rounds on the full maia
+rotation (1100-1900). The system now generates, labels, and consumes its own behavior
+end to end.
