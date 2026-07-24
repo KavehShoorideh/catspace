@@ -414,41 +414,54 @@ class Session:
             rows.sort(key=lambda r: -r["p"])
         return {"moves": rows[:k], "turn": "w" if ours else "b", "fen": b.fen()}
 
-    def calculate_start(self, nodes, chunk=64):
+    def calculate_start(self, nodes, chunk=64, resume=False):
         """STREAMING calculation (Kaveh: 'a way for calculations to stream in as it's
         calculating'): chunked MCTS on a thread, tree reused across chunks; /calc_state
-        serves the running snapshot after every chunk."""
+        serves the running snapshot after every chunk. Stop keeps the TREE; resume=True
+        continues it (same position only -- a moved board starts fresh)."""
         if getattr(self, "_calc_busy", False):
             return {"ok": False, "busy": True}
         self._calc_busy = True
         self._calc_cancel = False
+        import threading
+        rs = getattr(self, "_calc_resume", None)
+        if resume and rs and rs["epd"] == self.board.epd():
+            self.calc.update(done=False, stopped=False)
+            threading.Thread(target=self._calc_work, args=(rs["nodes"], chunk),
+                             kwargs={"resume_state": rs}, daemon=True).start()
+            return {"ok": True, "target": rs["nodes"], "resumed": True}
+        self._calc_resume = None
         self.calc = {"done": False, "evals": 0, "target": int(nodes),
                      "top": [], "leaves": [], "ideas": [], "plan": None, "goal": None}
-        import threading
         threading.Thread(target=self._calc_work, args=(int(nodes), chunk),
                          daemon=True).start()
         return {"ok": True, "target": int(nodes)}
 
-    def _calc_work(self, nodes, chunk):
+    def _calc_work(self, nodes, chunk, resume_state=None):
         try:
             self.compute.acquire()                  # serialize field/MPS work (threadsafe)
-            b = self.board.copy(stack=True)
-            self.calc["stage"] = "planner"
-            if hasattr(self.vfn, "set_anchor"):     # tri-anchor prune: without this the
-                self.vfn.set_anchor(b)              # 86k seeded bank is scanned per eval
-            ps = self.planner(b, len(b.move_stack))
-            self.ctx["plan"] = ps["plan"]; self.ctx["target_pt"] = ps.get("target_pt")
-            self.calc.update(plan=ps["plan"], goal=ps.get("goal"), stage="search")
+            if resume_state is not None:            # STOP kept the tree; keep growing it
+                b = resume_state["b"]; ps = resume_state["ps"]
+                m = resume_state["m"]; root = resume_state["root"]
+                used = resume_state["used"]
+                self.calc["stage"] = "search"
+            else:
+                b = self.board.copy(stack=True)
+                self.calc["stage"] = "planner"
+                if hasattr(self.vfn, "set_anchor"):  # tri-anchor prune: without this the
+                    self.vfn.set_anchor(b)           # 86k seeded bank is scanned per eval
+                ps = self.planner(b, len(b.move_stack))
+                self.ctx["plan"] = ps["plan"]; self.ctx["target_pt"] = ps.get("target_pt")
+                self.calc.update(plan=ps["plan"], goal=ps.get("goal"), stage="search")
+                m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=chunk, mate_stop=True,
+                         pw_c=1.5, root_min_visits=10, value_fn=self.vfn,
+                         policy_fn=self.pfn, policy_batch_fn=self.pfnb, batch_leaves=32)
+                root, used = None, 0
             snap = dict(self.times); t_run = time.time()
-            m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=chunk, mate_stop=True,
-                     pw_c=1.5, root_min_visits=10, value_fn=self.vfn, policy_fn=self.pfn,
-                     policy_batch_fn=self.pfnb, batch_leaves=32)
             self._calc_live = m          # /calc_state reads sub-chunk progress off this
-            root, used = None, 0
             while used < nodes:
                 if getattr(self, "_calc_cancel", False):
-                    # the position changed under us (human moved): this calc is STALE --
-                    # stop at the chunk boundary so maia's reply isn't starved of compute
+                    # STOP pressed or human moved: yield at the chunk boundary
                     break
                 root = m.run(b.copy(stack=True), reuse_root=root)
                 used += int(m.evals_used)
@@ -456,6 +469,12 @@ class Session:
                 self.calc.update(evals=used, top=top, leaves=leaves)
                 if m.evals_used == 0:        # certified mate in hand -- nothing to add
                     break
+            stopped = bool(getattr(self, "_calc_cancel", False)) and used < nodes
+            if stopped:                      # keep the tree so Resume continues it
+                self._calc_resume = dict(b=b, ps=ps, m=m, root=root, used=used,
+                                         epd=b.epd(), nodes=nodes)
+            else:
+                self._calc_resume = None
             try:
                 from catspace.metrics import observe
                 tot = time.time() - t_run
@@ -467,7 +486,9 @@ class Session:
                 observe("tree", max(tot - acc, 0)); observe("move_total", tot)
             except Exception:
                 pass
-            self.calc.update(self._finish_calc(b, root, ps, used))
+            if root is not None:
+                self.calc.update(self._finish_calc(b, root, ps, used))
+            self.calc["stopped"] = stopped
             self.calc["done"] = True
         except Exception as e:                              # noqa: BLE001
             self.calc.update(done=True, err=str(e))
@@ -699,7 +720,11 @@ class H(BaseHTTPRequestHandler):
         elif self.path == "/calculate":
             self._send(200, SES.calculate(int(req.get("nodes", 1500))))
         elif self.path == "/calculate_start":
-            self._send(200, SES.calculate_start(int(req.get("nodes", 1500))))
+            self._send(200, SES.calculate_start(int(req.get("nodes", 1500)),
+                                                resume=bool(req.get("resume"))))
+        elif self.path == "/calculate_stop":
+            SES._calc_cancel = True
+            self._send(200, {"ok": True})
         elif self.path == "/explore":
             try:
                 with SES.compute:

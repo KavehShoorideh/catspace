@@ -23,6 +23,8 @@
  h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#b8ad98}
  button{background:#4a6b4a;color:#fff;border:0;border-radius:6px;padding:8px 14px;font-size:14px;cursor:pointer}
  button:disabled{opacity:.4}
+ #calc.ring{background:transparent;padding:0;width:42px;height:42px;border-radius:50%;line-height:0}
+ .depsbusy{pointer-events:none;opacity:.45;transition:opacity .3s}
  select{background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px}
  #prompt{border-left:3px solid var(--gold);padding-left:10px;min-height:1.4em;font-style:italic}
  table{width:100%;border-collapse:collapse} td,th{padding:3px 8px;text-align:left;
@@ -158,7 +160,7 @@ $('#conego').onclick=async()=>{
 };
 
 // ---- Energy -logP
-$('#energygo').onclick=async()=>{
+async function loadEnergy(){
   const d=await j('/energy');
   if(d.err){$('#energybars').textContent='error: '+d.err;return;}
   const mx=Math.max(...d.moves.map(m=>m[3]),1);
@@ -175,7 +177,8 @@ $('#energygo').onclick=async()=>{
         <span class="muted">astray ${l[2]}%</span></span>`).join('')
       +'<br><span class="muted">−logP adds along the line (P multiplies). “astray k%” = chance the OPPONENT has left this line by that ply (their plies underlined red); our own high −logP moves are style signals (only-move / inhuman), not risk</span>'
     : 'calculate first, then read −logP.';
-};
+}
+$('#energygo').onclick=loadEnergy;
 
 // ---- atlas
 let atlas=null, sel=null, bounds=null, planSel=null;
@@ -283,21 +286,46 @@ function paint(r){
     tag.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();tag.blur();}};
   });
 }
-let pollTimer=null;
-async function startCalc(prefix){
+let pollTimer=null, calcState='idle';   // idle | run | stopped
+const DEPS=['#explorego','#explorecols','#leaves','#tops','#ideas','#energygo','#energybars','#energyline','#conego','#plan','#loadbtn'];
+function setBusy(on){DEPS.forEach(s=>{const el=$(s);if(el)el.classList.toggle('depsbusy',on);});}
+function setCalcBtn(state,pct){
+  calcState=state;const b=$('#calc');
+  if(state==='run'){
+    b.classList.add('ring');b.title='stop — keep what we have';
+    b.innerHTML='<svg viewBox="0 0 36 36" width="40" height="40">'
+      +'<circle cx="18" cy="18" r="15.5" fill="none" stroke="#3a352f" stroke-width="3" pathLength="100"/>'
+      +'<circle cx="18" cy="18" r="15.5" fill="none" stroke="#c9a227" stroke-width="3" pathLength="100" stroke-dasharray="'+(pct||0)+' 100" transform="rotate(-90 18 18)" stroke-linecap="round"/>'
+      +'<rect x="12.5" y="12.5" width="11" height="11" rx="1.5" fill="#e8e2d6"/></svg>';
+  }else{b.classList.remove('ring');b.title='';
+    b.textContent=state==='stopped'?'Resume ▶':"Let's calculate";}
+}
+async function startCalc(prefix,resume){
   if(pollTimer)return;
-  $('#calc').disabled=true;
   $('#prompt').textContent=(prefix||'calculating…')+' (think along: what would YOU play?)';
-  const st=await j('/calculate_start',{nodes:1500});
-  if(st.busy){$('#calc').disabled=false;return;}
+  const st=await j('/calculate_start',{nodes:1500,resume:!!resume});
+  if(st.busy)return;
+  setCalcBtn('run',0);setBusy(true);
   pollTimer=setInterval(async()=>{
     const r=await j('/calc_state'); paint(r);
-    if(!r.done){$('#prompt').textContent=(prefix||'calculating…')+' '+r.evals+' / '+r.target+' positions — lines firming up live';}
-    else{clearInterval(pollTimer);pollTimer=null;$('#calc').disabled=false;
-      $('#prompt').textContent=r.err?('error: '+r.err):('done — '+r.evals+' positions examined. compare with your line:');}
+    if(!r.done){
+      setCalcBtn('run',Math.min(100,Math.round(100*r.evals/(r.target||1))));
+      $('#prompt').textContent=(prefix||'calculating…')+' '+r.evals+' / '+r.target+' positions — lines firming up live';
+    }else{
+      clearInterval(pollTimer);pollTimer=null;setBusy(false);
+      setCalcBtn(r.stopped?'stopped':'idle');
+      loadEnergy();                 // refresh everything data-dependent
+      $('#prompt').textContent=r.err?('error: '+r.err)
+        :(r.stopped?('stopped at '+r.evals+' positions — everything below uses what we have; Resume continues the same tree')
+                   :('done — '+r.evals+' positions examined. compare with your line:'));
+    }
   },700);
 }
-$('#calc').onclick=()=>startCalc();
+$('#calc').onclick=()=>{
+  if(calcState==='run'){j('/calculate_stop');}
+  else if(calcState==='stopped'){startCalc('resuming…',true);}
+  else{startCalc();}
+};
 $('#plan').onclick=()=>showPlan();
 
 // ---- variation explorer (miller columns; hover previews the board)
