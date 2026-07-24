@@ -77,9 +77,13 @@ def main():
         k = len(list(Path("data/derived/sep").glob("self_field_r*.pt")))
         fck = f"data/derived/sep/self_field_r{k}.pt"
         subprocess.run(["cp", field, fck], check=True)
+        # --steps is ABSOLUTE and the ckpt resumes at its stored step: fine-tune target
+        # = resume step + field_steps (else the round no-ops -- the carry-forward lesson)
+        import torch as _t
+        _base = int(_t.load(fck, map_location="cpu", weights_only=False).get("step", 0))
         rc = subprocess.run([sys.executable, "experiments/train_lichess_fb.py",
                             "--shards", args.base_shards,
-                            "--steps", str(args.field_steps), "--batch", "512",
+                            "--steps", str(_base + args.field_steps), "--batch", "512",
                             "--iqe", "--l2-preset", "iqe-qrl", "--qrl-objective",
                             "--regime-channels", "16", "--regime-relative", "1",
                             "--regime-shards", f"{args.self_shards}:11:0.35",
