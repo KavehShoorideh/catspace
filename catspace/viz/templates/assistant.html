@@ -166,8 +166,10 @@ $('#energygo').onclick=async()=>{
         <div style="width:${w.toFixed(0)}%;background:#7fb8d9;height:100%;border-radius:3px"></div></div>
       <span class="muted" style="width:120px">P=${(m[2]*100).toFixed(1)}% · −logP ${m[3]}</span></div>`;}).join('');
   $('#energyline').innerHTML=d.line.length
-    ? d.line.map(l=>`<span style="margin-right:12px">${l[0]} <b>${l[1]}</b></span>`).join('')
-      +'<br><span class="muted">high −logP on our own line = a move the opponent-model finds unlikely (sharp/only-move territory)</span>'
+    ? d.line.map(l=>`<span style="margin-right:14px;${l[3]?'':'border-bottom:2px solid #d9705f'}"
+        title="${l[3]?'our move':'opponent move — feeds astray'}">${l[0]} <b>${l[1]}</b>
+        <span class="muted">astray ${l[2]}%</span></span>`).join('')
+      +'<br><span class="muted">−logP adds along the line (P multiplies). “astray k%” = chance the OPPONENT has left this line by that ply (their plies underlined red); our own high −logP moves are style signals (only-move / inhuman), not risk</span>'
     : 'calculate first, then read −logP.';
 };
 
