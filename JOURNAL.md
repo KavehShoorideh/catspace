@@ -7413,3 +7413,23 @@ collapse gate). FIX: v2 = pure full-month lichess (proven mc2 recipe, no self mi
 improvement loop adds outcome-conditioning by FINE-TUNING v2 afterward (proven safe --
 that's exactly the regime a pre-spread field tolerates). ~2h of v1 compute lost;
 collapsed ckpt kept as field_scratch_COLLAPSED.pt for the postmortem.
+
+## 2026-07-24 -- FROM-SCRATCH IS UNSOLVED (flagged for Kaveh); camping pivots to incumbent
+
+Both from-scratch attempts collapsed (v1 self-channel + hot LR ~step 10k; v2 pure
+lichess still collapsed ~step 20-32k -- persistent d_step=d_rand=0). KEY FINDING via the
+search-when-stuck rule: the "known-good mc2 recipe" was NEVER from-scratch -- mc2_full.log
+says 'resumed lichess_mc2.pt at step 30000' at lr 3e-5. EVERY field in the lineage is
+warm-started; NO from-scratch iqe-qrl run at peak LR has ever been shown to converge.
+Mechanism: at peak LR from step 0 the attractive QRL loss collapses the embedding before
+repulsion establishes structure. --repel-weight defaults to 0.0 (OFF) -- the missing
+lever. v3 SMOKE running (repel-weight 0.5 + lr 1e-4, fail-fast to 6k) as one data point;
+early health means little (v1/v2 were healthy early too, collapsed at 10-32k).
+
+DECISION (Kaveh away, disciplined): from-scratch is a research task needing a real
+warmup/repel/LR study, NOT a fire-and-forget -- FLAGGED for Kaveh, not burned into more
+blind runs. Camping window pivots to Kaveh's TOP-EMPHASIS thrust that does NOT need it:
+external campaign (best incumbent line vs maia 1100/1500/1900 + SF skill 1/3, TC 60+0.6)
+-> PGN import as whole-system data -> improvement rounds. Incumbent field_fullmonth_r0
+(warm-started, STABLE, plateaued-not-collapsed) stays the live line. ~7h scratch compute
+spent for a clean negative result + the warm-start-only lineage discovery.
