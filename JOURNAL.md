@@ -7158,3 +7158,22 @@ Continue-later levers, in order of availability:
 (d) self rows accrue automatically each loop round.
 Follow-up flagged: dedicated self cohort id (self currently folds into sparse human bin 8,
 440 lichess rows -- our rows will dominate that bin's meaning).
+
+## 2026-07-23 -- assistant: seeded memory, streaming calc, anytime-valid A/B (37e5296)
+
+Banks seeded from all saved scenario banks (85.8k mates / 2.1k losses / 10.7k draws,
+deduped, zero cross-contamination) + reloader now syncs banks every 45s = the fleet's
+discoveries stream into the live session (banks are FACTS, shared memory). Perf lesson:
+seeding exposed that the server never armed the tri-anchor prune -- every eval scanned
+86k bank embeddings; one set_anchor at calc start = 2-4 -> ~80 evals/s (~25x).
+Streaming calculation (Kaveh: 'calculations stream in as it's calculating'): chunked
+MCTS (64/chunk, tree reuse) on a thread; /calc_state serves the growing snapshot; UI
+paints top moves/leaves live with an eval counter.
+A/B stack (Kaveh: 'separate model endpoint... gather evidence... anytime valid'):
+--pin-model endpoints (frozen model, banks still sync), /set_fen, ab_test.py = paired
+winnable tb positions -> success = win preserved (syzygy truth) -> discordant sign test
+-> Beta(1,1)-mixture e-process E_n = 2^n k!(n-k)!/(n+1)!, decision at E >= 1/alpha,
+valid at ANY stopping time (Ville). Null smoke (v2 vs v2): 6/6 both, 0 discordant, E=1.0.
+Live page /ab. First real matchup queued for a quiet machine: dtm_tok_r0 vs dtm_cnn_v2
+on 5p classes. Mid-ladder signal: nucleus 5->6 fix (320b3f2) -- KRRvKBP all 5 FAILs
+pre-fix, consecutive quick mates (5-13 plies) since re-exec; verdict pending.
