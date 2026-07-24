@@ -145,13 +145,18 @@ class Session:
     def _prompt(self):
         """probe-triggered 'let's calculate here' with the reason."""
         s = self.probes.summary(self.board)
+        try:                    # CALIBRATED belief (raw d_loss is meaningless OOD --
+            if hasattr(self.vfn, "diag"):       # an opening 'reads' d~5 to an endgame
+                s.update(self.vfn.diag(self.board))
+        except Exception:
+            pass
         reasons = []
         if s.get("child_dwin_margin", 1) < 0.02 and s.get("n_win", 0) > 0:
             reasons.append("the field is flat here -- intuition alone won't rank these moves")
         if s.get("prior_entropy", 0) > 2.6:
             reasons.append("many plausible candidates (high prior entropy)")
-        if s.get("d_loss", float("inf")) < 15:
-            reasons.append("we are NEAR remembered losses -- danger in the air")
+        if s.get("p_l", 0) > s.get("p_w", 0) and s.get("v", 0) < -0.1:
+            reasons.append(f"engine reads danger: P(loss) {s['p_l']} > P(win) {s['p_w']}")
         if s.get("seen_across_games", 0) == 0:
             reasons.append("never seen this position before")
         if s.get("clock_headroom", 100) < 30:
