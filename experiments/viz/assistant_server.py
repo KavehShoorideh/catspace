@@ -47,6 +47,12 @@ class Session:
             bk.sync()
         self.ctx: dict = {"plan": "direct", "hist": {}}
         self.times: dict = {}
+        import threading as _thr
+        # ThreadingHTTPServer runs each request in its own thread, but torch-MPS and
+        # UMAP's numba parallel regions are NOT threadsafe -- concurrent field ops crash
+        # the process (2026-07-23 numba workqueue abort). One lock serializes all heavy
+        # compute; /state, /calc_state etc. only read dicts and stay lock-free.
+        self.compute = _thr.Lock()
         self.pinned = bool(getattr(args, "pin_model", ""))
         lm = args.pin_model if self.pinned else args.last_mile
         if not self.pinned:      # resolve the NEWEST nucleus round at init too (the
@@ -265,10 +271,10 @@ class Session:
                     # opponent reply (their single best under the energy model), so the
                     # cone follows the actual game tree, not just our wishes
                     if d + 1 < depth and not c.is_game_over():
-                        pr = self.pfn([c])[0]
+                        pr = self.pfn(c)          # dict keyed by chess.Move
                         if pr:
                             best = max(pr, key=pr.get)
-                            c2 = c.copy(stack=False); c2.push(_c.Move.from_uci(best))
+                            c2 = c.copy(stack=False); c2.push(best)
                             nxt.append((nid, c2))
             frontier = nxt
         # the 'river': greedy min-height chain from the root
@@ -287,29 +293,20 @@ class Session:
         are the high-(-logP) moves it still rates highly. Returned for the current position
         (per legal move) and, if a calc ran, along the top engine line."""
         import math
-        pr = self.pfn([self.board])[0]
-        rows = sorted(([self.board.san(chess.Move.from_uci(u)), u, p,
-                        round(-math.log(max(p, 1e-9)), 2)] for u, p in pr.items()),
+        pr = self.pfn(self.board)                 # dict keyed by chess.Move
+        rows = sorted(([self.board.san(m), m.uci(), p,
+                        round(-math.log(max(p, 1e-9)), 2)] for m, p in pr.items()),
                       key=lambda r: r[2], reverse=True)
         line = []
         cs = getattr(self, "calc", {}) or {}
-        if cs.get("leaves"):
-            b = self.board.copy(stack=False)
-            for san in cs["leaves"][0]["line"].split():
-                try:
-                    mv = b.san_and_push(san) if hasattr(b, "san_and_push") else None
-                except Exception:
-                    break
-                pr2 = self.pfn([b])[0] if False else None   # (mover already changed)
-            # simpler: recompute per ply before pushing
-            line = []
+        if cs.get("leaves"):     # -logP of each move along the top engine line
             b = self.board.copy(stack=False)
             for san in cs["leaves"][0]["line"].split():
                 try:
                     mv = b.parse_san(san)
                 except Exception:
                     break
-                p = self.pfn([b])[0].get(mv.uci(), 1e-9)
+                p = self.pfn(b).get(mv, 1e-9)
                 line.append([san, round(-math.log(max(p, 1e-9)), 2)])
                 b.push(mv)
         return {"cohort": "maia/self mix", "moves": rows[:12], "line": line}
@@ -330,6 +327,7 @@ class Session:
 
     def _calc_work(self, nodes, chunk):
         try:
+            self.compute.acquire()                  # serialize field/MPS work (threadsafe)
             b = self.board.copy(stack=True)
             self.calc["stage"] = "planner"
             if hasattr(self.vfn, "set_anchor"):     # tri-anchor prune: without this the
@@ -366,6 +364,8 @@ class Session:
         except Exception as e:                              # noqa: BLE001
             self.calc.update(done=True, err=str(e))
         finally:
+            if self.compute.locked():
+                self.compute.release()
             self._calc_busy = False
 
     def calculate(self, nodes):
@@ -467,15 +467,21 @@ class H(BaseHTTPRequestHandler):
             f = ROOT / "catspace/viz/templates/atlas.html"
             self._send(200, f.read_bytes(), "text/html")
         elif self.path == "/atlas_data":
-            self._send(200, SES.atlas_data())
+            with SES.compute:
+                data = SES.atlas_data()
+            self._send(200, data)
         elif self.path == "/cone":
             try:
-                self._send(200, SES.cone())
+                with SES.compute:
+                    data = SES.cone()
+                self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e), "nodes": [], "river": []})
         elif self.path == "/energy":
             try:
-                self._send(200, SES.energy())
+                with SES.compute:
+                    data = SES.energy()
+                self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e), "moves": [], "line": []})
         elif self.path == "/atlas_selected":
@@ -542,7 +548,9 @@ class H(BaseHTTPRequestHandler):
             self._send(200, SES.calculate_start(int(req.get("nodes", 1500))))
         elif self.path == "/atlas_select":
             try:
-                self._send(200, SES.atlas_select(req["fens"]))
+                with SES.compute:
+                    data = SES.atlas_select(req["fens"])
+                self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(400, {"err": str(e)})
         elif self.path == "/tag":

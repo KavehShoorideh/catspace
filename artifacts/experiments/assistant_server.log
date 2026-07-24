@@ -142,3 +142,89 @@ assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
 <UciProtocol (pid=14762)>: stderr >> Search algorithm: classic
 <UciProtocol (pid=14762)>: stderr >> Loading weights file from: data/engines/maia/maia-1200.pb.gz
 <UciProtocol (pid=14762)>: stderr >> Initialized metal backend on device Apple M3 Pro
+/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-13786-he8gtf7s'}
+  warnings.warn(
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=15129)>: stderr >> [1m[31m       _
+<UciProtocol (pid=15129)>: stderr >> |   _ | |
+<UciProtocol (pid=15129)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=15129)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=15517)>: stderr >> [1m[31m       _
+<UciProtocol (pid=15517)>: stderr >> |   _ | |
+<UciProtocol (pid=15517)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=15517)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+Numba workqueue threading layer is terminating: Concurrent access has been detected.
+
+ - The workqueue threading layer is not threadsafe and may not be accessed concurrently by multiple threads. Concurrent access typically occurs through a nested parallel region launch or by calling Numba parallel=True functions from multiple Python threads.
+ - Try using the TBB threading layer as an alternative, as it is, itself, threadsafe. Docs: https://numba.readthedocs.io/en/stable/user/threading-layer.html
+
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=15735)>: stderr >> [1m[31m       _
+<UciProtocol (pid=15735)>: stderr >> |   _ | |
+<UciProtocol (pid=15735)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=15735)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=15937)>: stderr >> [1m[31m       _
+<UciProtocol (pid=15937)>: stderr >> |   _ | |
+<UciProtocol (pid=15937)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=15937)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+<UciProtocol (pid=15973)>: stderr >> [1m[31m       _
+<UciProtocol (pid=15973)>: stderr >> |   _ | |
+<UciProtocol (pid=15973)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=15973)>: stderr >> Search algorithm: classic
+<UciProtocol (pid=15973)>: stderr >> Loading weights file from: data/engines/maia/maia-1200.pb.gz
+<UciProtocol (pid=15973)>: stderr >> Initialized metal backend on device Apple M3 Pro
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+  warn(
+    [prune-audit] max|err| 0.000 cands 128/85828
+    [prune-audit:loss] max|err| 0.000 cands 128/2181
+    [prune-audit:draw] max|err| 0.000 cands 128/10660
+Numba workqueue threading layer is terminating: Concurrent access has been detected.
+
+ - The workqueue threading layer is not threadsafe and may not be accessed concurrently by multiple threads. Concurrent access typically occurs through a nested parallel region launch or by calling Numba parallel=True functions from multiple Python threads.
+ - Try using the TBB threading layer as an alternative, as it is, itself, threadsafe. Docs: https://numba.readthedocs.io/en/stable/user/threading-layer.html
+
+/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-15868-p4ddmhpr'}
+  warnings.warn(
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=16867)>: stderr >> [1m[31m       _
+<UciProtocol (pid=16867)>: stderr >> |   _ | |
+<UciProtocol (pid=16867)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=16867)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz

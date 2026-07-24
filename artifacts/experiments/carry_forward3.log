@@ -40,3 +40,31 @@ step 61300  loss 115.6438  train_top1 0.000  lr 2.57e-05  (1.2 it/s)
     qrl push 9.875 sq_dev 0.0029 lam 141.420 d_step 0.769 d_rand 51.248 var 0.000 sib 0.000 unr 4.417 unrb 2.553 d_unr 55.92 d_oth 43.95
 step 61400  loss 112.1541  train_top1 0.000  lr 2.51e-05  (1.1 it/s)
     qrl push 13.611 sq_dev 0.0086 lam 141.454 d_step 0.831 d_rand 45.660 var 0.000 sib 0.000 unr 2.832 unrb 8.585 d_unr 62.48 d_oth 14.64
+step 61500  loss 63.2028  train_top1 0.000  lr 2.44e-05  (0.9 it/s)
+    qrl push 11.534 sq_dev 0.0000 lam 141.623 d_step 0.703 d_rand 46.307 var 0.000 sib 0.000 unr 5.781 unrb 3.111 d_unr 48.45 d_oth 42.92
+step 61600  loss 78.7346  train_top1 0.000  lr 2.37e-05  (0.9 it/s)
+    qrl push 10.890 sq_dev 0.0001 lam 141.757 d_step 0.832 d_rand 48.398 var 0.000 sib 0.000 unr 3.277 unrb 2.839 d_unr 59.09 d_oth 37.79
+step 61700  loss 45.3429  train_top1 0.000  lr 2.30e-05  (0.9 it/s)
+    qrl push 9.037 sq_dev 0.0653 lam 141.780 d_step 0.860 d_rand 54.262 var 0.000 sib 0.000 unr 3.327 unrb 2.276 d_unr 59.00 d_oth 45.06
+step 61800  loss 92.3971  train_top1 0.000  lr 2.23e-05  (1.0 it/s)
+    qrl push 10.186 sq_dev 0.0053 lam 142.012 d_step 0.836 d_rand 52.594 var 0.000 sib 0.000 unr 4.815 unrb 4.090 d_unr 55.03 d_oth 44.98
+step 61900  loss 52.2935  train_top1 0.000  lr 2.15e-05  (1.2 it/s)
+    qrl push 7.282 sq_dev 0.0020 lam 142.192 d_step 0.896 d_rand 56.776 var 0.000 sib 0.000 unr 2.823 unrb 3.563 d_unr 55.42 d_oth 59.72
+step 62000  loss 73.4879  train_top1 0.000  lr 2.07e-05  (0.9 it/s)
+  VAL step 62000  loss 270.2761  top1 0.016  top8 0.090
+    qrl push 7.426 sq_dev 0.0011 lam 142.396 d_step 0.837 d_rand 59.757 var 0.000 sib 0.000 unr 2.087 unrb 9.324 d_unr 66.24 d_oth 16.68
+scanned 1601351 header-passing games, kept 1537868 (138657 with server evals) contributing 86000039 positions across 87 shard(s) -> data/shards/lichess_db_standard_rated_2019-01.full
+=== [S] sharding exit=0 Thu Jul 23 19:58:31 PDT 2026 ===
+=== [B1] move-selection at scale Thu Jul 23 19:59:09 PDT 2026 ===
+  20000/5000000 rows (995 skipped)  [4s]
+  40000/5000000 rows (2061 skipped)  [7s]
+  60000/5000000 rows (3080 skipped)  [11s]
+  80000/5000000 rows (4146 skipped)  [15s]
+  100000/5000000 rows (5189 skipped)  [18s]
+  120000/5000000 rows (6248 skipped)  [22s]
+  140000/5000000 rows (7296 skipped)  [25s]
+  160000/5000000 rows (8358 skipped)  [29s]
+  180000/5000000 rows (9424 skipped)  [33s]
+  200000/5000000 rows (10483 skipped)  [36s]
+  220000/5000000 rows (11590 skipped)  [40s]
+  240000/5000000 rows (12680 skipped)  [44s]
