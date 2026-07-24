@@ -294,3 +294,16 @@ assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
     [prune-audit:loss] max|err| 0.000 cands 128/2181
     [prune-audit:draw] max|err| 0.000 cands 128/10660
     [tri-refresh] dmin est 32.430 exact 32.430 err +0.000
+/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-24950-2ao5pr7p'}
+  warnings.warn(
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=25768)>: stderr >> [1m[31m       _
+<UciProtocol (pid=25768)>: stderr >> |   _ | |
+<UciProtocol (pid=25768)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=25768)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+<UciProtocol (pid=25768)>: stderr >> Loading weights file from: data/engines/maia/maia-1200.pb.gz
+<UciProtocol (pid=25768)>: stderr >> Initialized metal backend on device Apple M3 Pro

@@ -81,7 +81,7 @@
     </div>
   </div>
   <div class="card"><div id="prompt">…</div></div>
-  <div class="card"><h3>where we likely end up <span class="muted">(plan: <span id="plan">—</span>) · click a line to trace it on the atlas</span></h3>
+  <div class="card"><h3>where we likely end up <span class="muted">(plan: <span id="plan" style="cursor:pointer;color:var(--gold)" title="click: show this plan's subgoal cluster + arrow on the atlas">—</span>) · click a line to trace it on the atlas</span></h3>
     <div id="leaves"></div></div>
 </div>
 
@@ -172,7 +172,7 @@ $('#energygo').onclick=async()=>{
 };
 
 // ---- atlas
-let atlas=null, sel=null, bounds=null;
+let atlas=null, sel=null, bounds=null, planSel=null;
 const COL={win:'rgba(127,191,127,0.30)',loss:'rgba(217,112,95,0.85)',draw:'rgba(201,162,39,0.5)'};
 async function loadAtlas(){
   $('#atlasnote').textContent='— building projection (≈1 min)…';
@@ -201,7 +201,22 @@ function drawAtlas(){
     sel.path.forEach(([x,y],i)=>{const[px,py]=toPx(cv,x,y);
       g.fillStyle=i===sel.path.length-1?'#fff':'#7fb8d9';
       g.beginPath();g.arc(px,py,i===sel.path.length-1?5:3.2,0,7);g.fill();});}
+  if(planSel&&planSel.centroid){
+    // subgoal cluster ringed + arrow: current position -> subgoal centroid
+    g.strokeStyle='rgba(201,162,39,0.9)';g.lineWidth=1;
+    for(const i of (planSel.members||[])){const[x,y]=atlas[i];const[px,py]=toPx(cv,x,y);
+      g.beginPath();g.arc(px,py,3.6,0,7);g.stroke();}
+    const[fx,fy]=toPx(cv,...planSel.from),[tx,ty]=toPx(cv,...planSel.centroid);
+    g.strokeStyle='#c9a227';g.lineWidth=2.2;g.beginPath();g.moveTo(fx,fy);g.lineTo(tx,ty);g.stroke();
+    const ang=Math.atan2(ty-fy,tx-fx);
+    g.fillStyle='#c9a227';g.beginPath();g.moveTo(tx,ty);
+    g.lineTo(tx-11*Math.cos(ang-0.4),ty-11*Math.sin(ang-0.4));
+    g.lineTo(tx-11*Math.cos(ang+0.4),ty-11*Math.sin(ang+0.4));g.closePath();g.fill();
+    g.fillStyle='#e8e2d6';g.font='12px system-ui';g.fillText(planSel.label||'',tx+10,ty-8);
+    g.fillStyle='#c9a227';g.beginPath();g.arc(fx,fy,5,0,7);g.fill();
+    g.fillStyle='#e8e2d6';g.fillText('now',fx+8,fy+4);}
 }
+async function showPlan(){const r=await j('/atlas_plan');if(!r.err){planSel=r;drawAtlas();}}
 new ResizeObserver(drawAtlas).observe($('#atlaspanel'));
 async function projectLine(fens){const r=await j('/atlas_select',{fens});if(r.path){sel=r;drawAtlas();}}
 
@@ -243,6 +258,7 @@ function paint(r){
   // auto-project the top engine line onto the atlas ("UMAP along the recommended lines")
   if(r.leaves&&r.leaves[0]&&r.leaves[0].fens){projectLine(r.leaves[0].fens);
     const el=document.querySelector('.leaf'); if(el)el.classList.add('sel');}
+  showPlan();     // subgoal cluster + arrow for the active plan
   $('#ideas').innerHTML=(r.ideas||[]).map(i=>`<div class="idea" data-id="${i.id}" data-kind="${i.kind}">
      <span class="kind">${i.kind}</span><span class="tag">${i.tag}</span>
      <span class="pencil" title="rename this concept">✏️</span></div>`).join('');
@@ -274,6 +290,7 @@ async function startCalc(prefix){
   },700);
 }
 $('#calc').onclick=()=>startCalc();
+$('#plan').onclick=()=>showPlan();
 $('#loadbtn').onclick=async()=>{
   const t=$('#loadtext').value.trim(); if(!t)return;
   const r=await j('/load',{text:t});
