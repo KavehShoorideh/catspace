@@ -15,5 +15,5 @@ PY="$(pwd)/.venv/bin/python"; ENG="$(pwd)/experiments/uci_engine.py"
   -each tc="$TC" timemargin=3000 \
   -rounds "$ROUNDS" -repeat -concurrency 1 \
   -sprt elo0=0 elo1=20 alpha=0.05 beta=0.05 \
-  -pgnout artifacts/experiments/gauntlet_$(basename $A .pt)_vs_$(basename $B .pt).pgn \
+  -pgnout file=artifacts/experiments/gauntlet_$(basename $A .pt)_vs_$(basename $B .pt).pgn \
   2>&1 | tee -a artifacts/experiments/gauntlet.log
