@@ -44,6 +44,11 @@ class TB:
                 _P(cache_db).parent.mkdir(parents=True, exist_ok=True)
                 self._db = sqlite3.connect(cache_db, timeout=5.0)
                 self._db.execute("PRAGMA journal_mode=WAL")
+                # 2026-07-23 disk-full postmortem: with many long-lived fleet readers the
+                # WAL never checkpointed and grew to 25GB. Cap it: after any checkpoint
+                # sqlite truncates the WAL back to <=256MB.
+                self._db.execute("PRAGMA journal_size_limit=268435456")
+                self._db.execute("PRAGMA wal_autocheckpoint=10000")
                 self._db.execute("CREATE TABLE IF NOT EXISTS probe "
                                  "(fen TEXT PRIMARY KEY, w INTEGER, d INTEGER)")
             except Exception:
