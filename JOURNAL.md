@@ -7189,3 +7189,16 @@ servers + live human play + AB smoke) -- one FAIL is a pure timeout, nodes/s san
 111-170; (2) dtm_tok_r0 blur (MAE 15 plies) is the binding constraint; the class
 re-verdicts on the r1 flip (conditional-rejections rule). One post-fix mated-AGAINST
 game remains the worst symptom (tactical throw to -2 persists at 6p under r0).
+
+## 2026-07-23 -- DESIGN CONSTRAINT for region-goal chains (Kaveh's dead-end-in-A question)
+
+'Planner wanting region A then B then mate might sacrifice material to get to A on a
+trajectory that never reaches B... a point in A that doesn't lead to B shouldn't be
+clustered with the rest.' Resolution: dead-end info lives in the DIRECTED distance
+d(a,B), not in cluster membership -- a quasimetric separates near-identical points with
+different forward costs (why IQE). Constraint for #24: chain scores compose through
+CONCRETE waypoints, min_{a in A}[d(x,a)+d(a,B)+d(B,mate)] (or the prob-product form),
+never region aggregates; density prior weights waypoints; foveated re-eval + give-up
+stay as the recovery layer. Today's guards are reactive only (loss-side WDL + re-eval);
+prospective avoidance arrives with #24. Full-board caveat: OOD compression (measured
+today) blinds the field there until the full-month IQE round lands.
