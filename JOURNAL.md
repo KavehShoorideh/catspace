@@ -7317,3 +7317,18 @@ gauntlet games are composed-system data (field+banks+energy+planner all in the l
 and now double as training data; (3) 8 further improvement rounds on the full maia
 rotation (1100-1900). The system now generates, labels, and consumes its own behavior
 end to end.
+
+## 2026-07-24 -- phase 2 v2 per Kaveh's parting refinement: ONE line, OUTWARD, dense signal
+
+Refinements: (1) no variant zoo -- one best line (post-promotion-gate pointer holder);
+only fullmonth-vs-scratch kept as promotion evidence; student parked. (2) External
+campaign: best vs maia 1100/1500/1900 + stockfish skill 1/4 at TC 60+0.6, all PGNs
+imported as whole-system data. (3) THE DENSE SIGNAL (Kaveh: 'a gradient you can impose
+on the vector of all parameters -- system-wide gradient'): formalized as a UNION over
+one trajectory -- field gets per-POSITION signed outcome-distance residuals (the
+quasimetric's native supervision, denser than W/L by a factor of game length); energy
+gets per-MOVE cohort-labeled gradients (SF/leela moves = expert cohorts; their
+trajectories = expert-quality paths for the field); planner-RL gets per-DECISION
+(obs, plan, outcome); banks get per-SEARCH terminal facts (the non-parametric
+parameters). One game updates every component. Leakage gate honored: engines' MOVES
+and OUTCOMES are data; their eval numbers remain banned.
