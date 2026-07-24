@@ -7218,3 +7218,11 @@ journal_size_limit=256MB + wal_autocheckpoint. Sharder restarted CLEAN -- crash 
 showed 51 shards in 23 min, so a full re-pass costs ~25 min of redone work, cheaper
 and safer than adding resume logic. Lesson stacked on the no-concurrent-disk-jobs
 memory: unbounded caches are a disk-heavy job too.
+
+## 2026-07-23 -- ENERGY v0-at-scale: opponent_energy_fullmonth_r0 (pointer swapped)
+
+Full-month move-selection: 5,000,000 rows (270k skipped >80-move positions) built in 971s
+from the 87-shard full-month pass. Retrain: warm-start from v1, 12k steps @ 256,
+mix fullmonth 0.6 / full_v1 replay 0.3 / self 0.05. Held-out (n=555k):
+NLL 2.145 (v1: 2.38), top1 0.369 (v1: 0.331). The flavored-energy stream's first
+data-scaled checkpoint; -logP and astray% readings inherit the sharper cohorts.
