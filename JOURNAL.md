@@ -7285,3 +7285,12 @@ outcome-conditioning payload finally in the training stream). Deliverables:
 STATE: every trainable stream now has a game-fed checkpoint -- nucleus dtm_tok_r1,
 energy fullmonth_r0, field self_field_r0, planner_rl_r0. The minimal working set Kaveh
 ordered ('carry everything forward, then improve') EXISTS. Rounds 1-5 continue.
+
+## 2026-07-24 -- WIP-loss postmortem: silent np.float32 + commit cadence = 3h of lost games
+
+Round 1 completed ZERO games in 3h: prev_v (np.float32) made _save_wip's json.dumps
+throw inside a silent except -> no WIP files -> every code commit (six this morning, UI
+fixes) re-execed workers that then restarted their games FROM SCRATCH. Fixes: (a)
+json default=float + log-once (silent excepts on persistence paths are now banned in
+this codebase's culture), (b) process lesson: batch commits while fullgames are in
+flight -- re-exec is only cheap when WIP works, and WIP failures must be LOUD.
