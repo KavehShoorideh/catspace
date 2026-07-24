@@ -7236,3 +7236,13 @@ w/ repro: WIP saved (tmp/wdlr6...wip.w2.json), g6 ply 6 from start 8/8/8/8/8/8/8
 -- cornered-king KRvK, prime stalemate/draw-guard territory; commit 5943420. Suspect an
 un-bounded loop in the draw-guard/planner interplay when nearly all moves stalemate or
 repeat. CAPSTONE KRRvKBNP-7p started 22:50 (5 workers) -> improvement loop next.
+
+## 2026-07-23 -- spin-bug: repro NEGATIVE with reconstructed state; watchdog armed
+
+The hung position (Kf2+Rc2 vs Kh2, mate-in-2) searched CLEAN in a bounded repro (722
+evals, returned) with hist=3 pressure -- the spin depends on live worker state we don't
+capture (real repetition history / tb_mode / plan wrapper). Instead of chasing blind:
+per-ply faulthandler watchdog (30 min -> stack dump to log + exit + WIP resume). Next
+occurrence self-diagnoses. Capstone running 28/2 (0.93) at 7 pieces meanwhile; first
+real tradedown plan executions observed (goal classes KRRvkbp / KRRvknp) in both FAILs
+-- worth an autopsy pass when the verdict lands.
