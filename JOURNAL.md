@@ -7294,3 +7294,14 @@ fixes) re-execed workers that then restarted their games FROM SCRATCH. Fixes: (a
 json default=float + log-once (silent excepts on persistence paths are now banned in
 this codebase's culture), (b) process lesson: batch commits while fullgames are in
 flight -- re-exec is only cheap when WIP works, and WIP failures must be LOUD.
+
+## 2026-07-24 -- CAMPING-TRIP AUTONOMY (Kaveh away ~36h): FROM-SCRATCH decided
+
+Kaveh's directive on leaving: full autonomy; run the FRESH training on all data to kill
+the warm-start generalization-gap risk (Ash & Adams; our plateau + slope-stiffness
+evidence). Plan: on distill completion -> bench -> from-scratch IQE (teacher arch,
+87-shard month + self-play:11 @0.15, 170k steps = ~1 epoch, ckpt ladder /5k, val /2k)
++ nucleus resume (CPU). hlr continuation SUPERSEDED (same GPU budget, fresh answers the
+question cleanly); gauntlet DEFERRED for GPU throughput. PROMOTION RULE while away:
+field_scratch_full_v1 takes the pointer ONLY if it beats the incumbent on val verdicts
+AND the 51-case integration suite; otherwise waits for Kaveh.
