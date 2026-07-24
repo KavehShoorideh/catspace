@@ -35,29 +35,40 @@ ASSETS = ROOT / "catspace/viz/assets"
 TAGS = ROOT / "artifacts/experiments/concept_tags.jsonl"
 
 
+SHARED: dict = {}      # heavies built once: fm, banks, compute lock, atlas cache
+
+
 class Session:
-    def __init__(self, args):
+    """PER-USER game session (Kaveh: 'persistent chess game sessions per user' via a
+    sid cookie). Heavy state (field model, banks, compute lock, atlas) is SHARED across
+    sessions; each session owns its board/ctx/value-closures/opponent-engine/calc."""
+
+    def __init__(self, args, sid="default"):
         self.args = args
-        self.fm = FieldModel(args.field, device=args.device)
-        pfx = args.banks_prefix
-        self.bank = OnlineMateBank(self.fm, Path(pfx + "_bank.fens"))
-        self.loss = OnlineMateBank(self.fm, Path(pfx + "_lossbank.fens"))
-        self.draw = OnlineMateBank(self.fm, Path(pfx + "_drawbank.fens"))
-        for bk in (self.bank, self.loss, self.draw):
-            bk.sync()
+        self.sid = sid
+        self.last_seen = time.time()
+        if not SHARED:
+            import threading as _thr
+            fm = FieldModel(args.field, device=args.device)
+            pfx = args.banks_prefix
+            bank = OnlineMateBank(fm, Path(pfx + "_bank.fens"))
+            loss = OnlineMateBank(fm, Path(pfx + "_lossbank.fens"))
+            draw = OnlineMateBank(fm, Path(pfx + "_drawbank.fens"))
+            for bk in (bank, loss, draw):
+                bk.sync()
+            # ThreadingHTTPServer runs requests in threads, but torch-MPS and UMAP's
+            # numba are NOT threadsafe -- one lock serializes all heavy compute.
+            SHARED.update(fm=fm, bank=bank, loss=loss, draw=draw, compute=_thr.Lock())
+        self.fm = SHARED["fm"]
+        self.bank, self.loss, self.draw = SHARED["bank"], SHARED["loss"], SHARED["draw"]
+        self.compute = SHARED["compute"]
         self.ctx: dict = {"plan": "direct", "hist": {}}
         self.times: dict = {}
-        import threading as _thr
-        # ThreadingHTTPServer runs each request in its own thread, but torch-MPS and
-        # UMAP's numba parallel regions are NOT threadsafe -- concurrent field ops crash
-        # the process (2026-07-23 numba workqueue abort). One lock serializes all heavy
-        # compute; /state, /calc_state etc. only read dicts and stay lock-free.
-        self.compute = _thr.Lock()
         self.pinned = bool(getattr(args, "pin_model", ""))
         lm = args.pin_model if self.pinned else args.last_mile
-        if not self.pinned:      # resolve the NEWEST nucleus round at init too (the
-            import glob as _g    # reloader's 45s tick raced the A/B smoke: A served
-            import re as _re     # the stale default for its first minute)
+        if not self.pinned:
+            import glob as _g
+            import re as _re
             cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
             if cands:
                 lm = max(cands, key=lambda p: int(_re.search(r"r(\d+)\.pt", p).group(1)))
@@ -80,8 +91,6 @@ class Session:
         if self.pinned:
             self.version["pinned"] = True
         self.new_game(args.opponent)
-        import threading
-        threading.Thread(target=self._reloader, daemon=True).start()
 
     _CUM = {0: 300, 1: 1000, 2: 3000, 3: 6000, 4: 12000}    # per-class cumulative quotas
 
@@ -95,36 +104,6 @@ class Session:
             except ValueError:
                 pass
         return {"model": name, "data_pct": pct}
-
-    def _reloader(self):
-        """CHECKPOINT AUTO-SWAP (Kaveh: 'every checkpoint we wanna restart the backend
-        model; local server shouldn't need changing'): watch for new nucleus rounds,
-        rebuild the value in place; the page and the game keep running."""
-        import glob as _g
-        import re as _re
-        while True:
-            time.sleep(45)
-            try:                       # banks are SHARED MEMORY: pick up the fleet's
-                for bk in (self.bank, self.loss, self.draw):    # discoveries live
-                    bk.sync()
-            except Exception:
-                pass
-            if self.pinned:            # A/B endpoint: model frozen, banks still sync
-                continue
-            try:
-                cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
-                if not cands:
-                    continue
-                best = max(cands, key=lambda p: int(_re.search(r"r(\d+)\.pt", p).group(1)))
-                if best != self._lm:
-                    self.vfn = make_boot_value(self.fm, self.bank, self.times, self.loss,
-                                               dtm_ckpt=best, draw_bank=self.draw,
-                                               game_ctx=self.ctx)
-                    self._lm = best
-                    self.version = self._version_of(best)
-                    print(f"[assistant] MODEL SWAPPED -> {self.version}", flush=True)
-            except Exception as e:                          # noqa: BLE001
-                print(f"[assistant] reload check failed: {e}", flush=True)
 
     def new_game(self, weights):
         if self.opp is not None:
@@ -304,15 +283,18 @@ class Session:
             return np.full(len(boards), np.nan)
         return self.fm.d_to_bank(self.fm.embed_F_boards(boards), self.loss.embs)
 
-    def _threat(self, b, k_opp=5):
-        """Opponent's PLAN at position b (their turn assumed via null-move if needed):
-        their probability-weighted best step toward the loss basin. Returns
-        (threat_value, best_move, d_loss_now, d_loss_after_best)."""
+    def _threat(self, b, M_l, k_opp=5):
+        """Opponent's PLAN at position b (null-move if it's our turn): their
+        probability-weighted best CALIBRATED step toward the loss basin -- deltas in
+        p_l = exp(-d_loss/M_l) space, never raw distances (raw d is meaningless
+        off-support; the running-median temperature is what the value itself uses).
+        Returns (threat, best_move, p_l_now, p_l_after_best)."""
+        import math
         import chess as _c
         bb = b.copy(stack=False)
         if bb.turn == _c.WHITE:                 # what could they do if we PASSED?
             bb.push(_c.Move.null())
-        if bb.is_game_over():
+        if bb.is_game_over() or not M_l:
             return 0.0, None, None, None
         pr = self.pfn(bb)
         if not pr:
@@ -322,16 +304,16 @@ class Session:
         for mv, _p in top:
             c = bb.copy(stack=False); c.push(mv)
             kids.append(c)
-        d_now = float(self._d_to_loss([bb])[0])
+        pl_now = math.exp(-float(self._d_to_loss([bb])[0]) / M_l)
         d_after = self._d_to_loss(kids)
         best_i, best_t = None, 0.0
         for i, (mv, p) in enumerate(top):
-            drop = p * max(0.0, d_now - float(d_after[i]))
-            if drop > best_t:
-                best_t, best_i = drop, i
+            gain = p * max(0.0, math.exp(-float(d_after[i]) / M_l) - pl_now)
+            if gain > best_t:
+                best_t, best_i = gain, i
         if best_i is None:
-            return 0.0, None, d_now, None
-        return best_t, top[best_i][0], d_now, float(d_after[best_i])
+            return 0.0, None, pl_now, None
+        return best_t, top[best_i][0], pl_now, math.exp(-float(d_after[best_i]) / M_l)
 
     def cone(self, depth=2, width=6):
         """FORWARD REACHABILITY CONE (Kaveh: 'basins/rivers, focused on the cone in
@@ -477,16 +459,20 @@ class Session:
             # Threat = their P-weighted best step toward the LOSS BANK (their goal
             # region) if we pass; Prevention = how much our move removes that.
             try:
-                base_T, base_mv, dl0, dl1 = self._threat(b)
-                d_win0 = float(self._d_to_win([b])[0])
+                import math
+                dg = self.vfn.diag(b) if hasattr(self.vfn, "diag") else {}
+                M, M_l = dg.get("M"), dg.get("M_l")
+                base_T, base_mv, dl0, dl1 = self._threat(b, M_l)
+                pw0 = math.exp(-float(self._d_to_win([b])[0]) / M) if M else 0.0
                 for r in rows:
                     c = b.copy(stack=False); c.push(chess.Move.from_uci(r["uci"]))
-                    adv = d_win0 - float(self._d_to_win([c])[0])
-                    T_after, _, _, _ = self._threat(c)
+                    adv = (math.exp(-float(self._d_to_win([c])[0]) / M) - pw0) \
+                        if M else 0.0
+                    T_after, _, _, _ = self._threat(c, M_l)
                     prev = base_T - T_after
-                    r["adv"] = round(adv, 2); r["prev"] = round(prev, 2)
-                    heavy_p = prev > 0.15 and prev > 1.5 * max(adv, 0)
-                    heavy_a = adv > 0.15 and adv > 1.5 * max(prev, 0)
+                    r["adv"] = round(adv, 3); r["prev"] = round(prev, 3)
+                    heavy_p = prev > 0.03 and prev > 1.5 * max(adv, 0)
+                    heavy_a = adv > 0.03 and adv > 1.5 * max(prev, 0)
                     if heavy_p and base_mv is not None:
                         # name the prevented plan via the nearest loss exemplar's class
                         sig = ""
@@ -505,10 +491,10 @@ class Session:
                         r["role"] = "prevents"
                         r["why"] = (f"stops {base_san} — their best plan heads toward"
                                     f"{' ' + sig if sig else ''} losses"
-                                    f" (d_loss {dl0:.1f}→{dl1:.1f})")
+                                    f" (P(loss) {dl0:.2f}→{dl1:.2f})")
                     elif heavy_a:
                         r["role"] = "advances"
-                    elif prev > 0.15 and adv > 0.15:
+                    elif prev > 0.03 and adv > 0.03:
                         r["role"] = "both"
             except Exception:
                 pass
@@ -637,7 +623,72 @@ class Session:
                 "evals": int(evals_used)}
 
 
-SES: Session | None = None
+ARGS = None
+STORE: dict = {}
+
+
+def resolve(handler):
+    """sid cookie -> Session (Kaveh: persistent per-user sessions). Cookie-less
+    clients (harnesses, curl) share the 'default' session so existing tooling keeps
+    working; browsers get a fresh sid on the page load."""
+    import uuid
+    sid = None
+    for part in (handler.headers.get("Cookie", "") or "").split(";"):
+        part = part.strip()
+        if part.startswith("sid="):
+            sid = part[4:]
+    new_cookie = None
+    if not sid:
+        if handler.path == "/":
+            sid = uuid.uuid4().hex[:16]
+            new_cookie = sid
+        else:
+            sid = "default"
+    if sid not in STORE:
+        STORE[sid] = Session(ARGS, sid=sid)
+    S = STORE[sid]
+    S.last_seen = time.time()
+    return S, new_cookie
+
+
+def global_reloader():
+    """One tick for all sessions: shared bank sync, dtm auto-swap per session,
+    idle-session eviction (>3h, never 'default')."""
+    import glob as _g
+    import re as _re
+    while True:
+        time.sleep(45)
+        try:
+            if SHARED:
+                for bk in (SHARED["bank"], SHARED["loss"], SHARED["draw"]):
+                    bk.sync()
+        except Exception:
+            pass
+        try:
+            cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
+            best = max(cands, key=lambda q: int(_re.search(r"r(\d+)\.pt", q).group(1))) \
+                if cands else None
+            now = time.time()
+            for sid in list(STORE):
+                S = STORE[sid]
+                if sid != "default" and now - S.last_seen > 3 * 3600:
+                    STORE.pop(sid, None)
+                    try:
+                        if S.opp is not None:
+                            S.opp.quit()
+                    except Exception:
+                        pass
+                    print(f"[assistant] session {sid} evicted (idle)", flush=True)
+                    continue
+                if best and not S.pinned and best != S._lm:
+                    S.vfn = make_boot_value(S.fm, S.bank, S.times, S.loss,
+                                            dtm_ckpt=best, draw_bank=S.draw,
+                                            game_ctx=S.ctx)
+                    S._lm = best
+                    S.version = S._version_of(best)
+                    print(f"[assistant] {sid} MODEL SWAPPED -> {S.version}", flush=True)
+        except Exception as e:                              # noqa: BLE001
+            print(f"[assistant] reloader: {e}", flush=True)
 PAGE = (ROOT / "catspace/viz/templates/assistant.html")
 
 
@@ -663,10 +714,14 @@ class H(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-store")
+        if getattr(self, "_newck", None):
+            self.send_header("Set-Cookie",
+                             f"sid={self._newck}; Path=/; Max-Age=2592000; SameSite=Lax")
         self.end_headers()
         self.wfile.write(data)
 
     def do_GET(self):
+        self.S, self._newck = resolve(self)
         t = time.time()
         try:
             self._get()
@@ -747,6 +802,7 @@ class H(BaseHTTPRequestHandler):
             self._send(404, {"err": "?"})
 
     def do_POST(self):
+        self.S, self._newck = resolve(self)
         t = time.time()
         try:
             self._post()
@@ -868,7 +924,6 @@ class H(BaseHTTPRequestHandler):
 
 
 def main():
-    global SES
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, default=8777)
     ap.add_argument("--host", default="127.0.0.1")
@@ -883,8 +938,13 @@ def main():
                          "(bank sync stays live). Run a second instance on another --port "
                          "as the challenger.")
     args = ap.parse_args()
-    SES = Session(args)
-    print(f"assistant on http://localhost:{args.port}  opponent={args.opponent}", flush=True)
+    global ARGS
+    ARGS = args
+    STORE["default"] = Session(args, sid="default")   # warm the shared heavies at boot
+    import threading
+    threading.Thread(target=global_reloader, daemon=True).start()
+    print(f"assistant on http://localhost:{args.port}  opponent={args.opponent} "
+          f"(per-user sessions via sid cookie)", flush=True)
     ThreadingHTTPServer((args.host, args.port), H).serve_forever()
 
 
