@@ -7384,3 +7384,17 @@ teacher-fp32 36 evals/s baseline; teacher-fp16 1.01x (bottleneck is not matmul
 precision -- honest negative); field_student_v1 2.01x at distance-spearman +0.9946.
 Fixed-TC implication: student = 2x nodes/move. Play referendum deferred (camping
 plan); accept rule needs the gauntlet's SPRT before any pointer changes.
+
+## 2026-07-24 -- DISK EMERGENCY #2 (camping window), root-caused PERMANENTLY
+
+The probe-cache WAL regrew to 14G despite the journal_size_limit cap from incident #1.
+Root cause finally understood: journal_size_limit only shrinks a WAL AFTER a checkpoint
+COMPLETES, but bootstrap-engine fullgames hold perpetual read snapshots, so checkpoints
+never fully complete (busy=1, 85k pages always uncheckpointed) -> the cap is a no-op and
+the WAL grows forever. THE cap was treating a symptom. PERMANENT FIX: journal_mode=DELETE
+(no shared WAL exists; per-transaction rollback journals delete on commit). Correct mode
+for a many-reader recomputable cache. Recovered: 14G WAL + 6.5G superseded prefix4gb
+shards -> disk 9.7G -> 30G. Scratch trainer (the centerpiece, doesn't touch the cache)
+survived untouched throughout. Process lesson: during the 39h scratch run I am NOT
+running the improvement loop (spawns tb-cache readers + contends MPS); phase 2 runs the
+improvement rounds AFTER scratch completes, as designed.
