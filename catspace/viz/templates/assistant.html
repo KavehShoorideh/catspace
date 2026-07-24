@@ -307,18 +307,22 @@ async function startCalc(prefix,resume){
   if(st.busy)return;
   setCalcBtn('run',0);setBusy(true);
   pollTimer=setInterval(async()=>{
-    const r=await j('/calc_state'); paint(r);
-    if(!r.done){
-      setCalcBtn('run',Math.min(100,Math.round(100*r.evals/(r.target||1))));
-      $('#prompt').textContent=(prefix||'calculating…')+' '+r.evals+' / '+r.target+' positions — lines firming up live';
-    }else{
-      clearInterval(pollTimer);pollTimer=null;setBusy(false);
-      setCalcBtn(r.stopped?'stopped':'idle');
-      loadEnergy();                 // refresh everything data-dependent
+    let r=null;
+    try{r=await j('/calc_state');}catch(e){return;}     // transient fetch hiccup: retry
+    if(r&&r.done){
+      // CLEANUP FIRST, unconditionally -- painting must never leave the ring stuck
+      clearInterval(pollTimer);pollTimer=null;
+      setBusy(false);setCalcBtn(r.stopped?'stopped':'idle');
       $('#prompt').textContent=r.err?('error: '+r.err)
-        :(r.stopped?('stopped at '+r.evals+' positions — everything below uses what we have; Resume continues the same tree')
+        :(r.stopped?('stopped at '+r.evals+' positions — everything uses what we have; Resume continues the same tree')
                    :('done — '+r.evals+' positions examined. compare with your line:'));
+      try{paint(r);}catch(e){console.error('paint',e);}
+      try{loadEnergy();}catch(e){}
+      return;
     }
+    try{paint(r);}catch(e){console.error('paint',e);}
+    setCalcBtn('run',Math.min(100,Math.round(100*r.evals/(r.target||1))));
+    $('#prompt').textContent=(prefix||'calculating…')+' '+r.evals+' / '+r.target+' positions — lines firming up live';
   },700);
 }
 $('#calc').onclick=()=>{
