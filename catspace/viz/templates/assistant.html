@@ -81,7 +81,7 @@
     </div>
   </div>
   <div class="card"><div id="prompt">…</div></div>
-  <div class="card"><h3>explore variations <span class="muted">— hover to walk the tree (board previews); ⚡ = good AND surprising to the opponent; % on their replies = how likely they play it. Click a first-column move to play it</span></h3>
+  <div class="card"><h3>explore variations <span class="muted">— hover to walk the tree (board previews); ⚡ = good AND surprising to the opponent; % on their replies = how likely they play it. To play a move, use the board</span></h3>
     <button id="explorego">Explore from here</button>
     <div id="explorecols" style="display:flex;gap:10px;margin-top:10px;overflow-x:auto;min-height:30px"></div>
   </div>
@@ -243,6 +243,8 @@ async function humanMove(orig,dest){
   after(r);
 }
 function after(r){
+  $('#explorecols').innerHTML='';                 // explorer tree is for the OLD position
+  Object.keys(exCache).forEach(k=>delete exCache[k]);
   refresh();
   const a=r.assistant||{};
   const note=a.suggest?'🔎 let’s calculate here — '+a.reasons.join('; ')
@@ -328,8 +330,6 @@ function exRender(colIdx,data,path){
       exRender(colIdx+1,nxt,[...path,m.uci]);
     };
     el.onmouseleave=()=>{el.style.background='';};
-    if(colIdx===0){el.onclick=async()=>{await humanMove(m.uci.slice(0,2),m.uci.slice(2,4));
-      $('#explorecols').innerHTML='';Object.keys(exCache).forEach(k=>delete exCache[k]);};}
     col.appendChild(el);
   }
   cols.appendChild(col);
