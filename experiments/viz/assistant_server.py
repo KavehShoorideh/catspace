@@ -60,8 +60,14 @@ class Session:
                                    draw_bank=self.draw, game_ctx=self.ctx)
         self.pfn, self.pfnb = make_batched_energy_prior(args.energy, game_ctx=self.ctx)
         self.planner = make_planner(self.fm, self.bank)
+        try:                            # 'seen N× before' from the experience store
+            import sqlite3
+            _edb = sqlite3.connect("data/derived/experience.sqlite",
+                                   check_same_thread=False)
+        except Exception:
+            _edb = None
         self.probes = ProbeKit(self.fm, self.bank, self.loss, self.draw,
-                               game_ctx=self.ctx, prior_fn=self.pfn)
+                               exp_db=_edb, game_ctx=self.ctx, prior_fn=self.pfn)
         self.opp = None
         self._lm = lm
         self.version = self._version_of(self._lm)

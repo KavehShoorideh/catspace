@@ -76,8 +76,12 @@ async function humanMove(orig,dest){
 function after(r){
   refresh();
   const a=r.assistant||{};
-  $('#prompt').textContent=a.suggest? '🔎 let’s calculate here — '+a.reasons.join('; ')
-                                    : (r.reply?('opponent played '+r.reply+'. position looks routine.'):'');
+  const note=a.suggest? '🔎 let’s calculate here — '+a.reasons.join('; ')
+                      : (r.reply?('opponent played '+r.reply+'.'):'');
+  // the position changed (opponent replied) -> the old calculation is stale:
+  // start a fresh one automatically and stream it in
+  if(r.reply){startCalc(note+' recalculating…');}
+  else{$('#prompt').textContent=note;}
 }
 function paint(r){
   if(r.plan)$('#plan').textContent=r.plan+(r.goal?(' → '+r.goal):'');
@@ -87,7 +91,7 @@ function paint(r){
   $('#ideas').innerHTML=(r.ideas||[]).map(i=>`<div class="idea" data-id="${i.id}" data-kind="${i.kind}">
      <span class="kind">${i.kind}</span><span class="tag">${i.tag}</span>
      <span class="pencil" title="rename this concept">✏️</span></div>`).join('')
-   +'<div class="muted" style="margin-top:6px">'+((r.probe&&('bank d_win '+(+r.probe.d_win).toFixed(1)+' · d_loss '+(r.probe.d_loss===null?'∞':(+r.probe.d_loss).toFixed(1))+' · seen '+r.probe.seen_across_games+'× before'))||'')+'</div>';
+   +'<div class="muted" style="margin-top:6px">'+((r.probe&&('bank d_win '+(+r.probe.d_win).toFixed(1)+' · d_loss '+(r.probe.d_loss===null?'∞':(+r.probe.d_loss).toFixed(1))+(r.probe.seen_across_games!=null?(' · seen '+r.probe.seen_across_games+'× before'):'')))||'')+'</div>';
   document.querySelectorAll('.pencil').forEach(p=>p.onclick=()=>{
     const row=p.closest('.idea'),tag=row.querySelector('.tag');
     tag.contentEditable=true;tag.focus();
@@ -96,24 +100,27 @@ function paint(r){
     tag.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();tag.blur();}};
   });
 }
-$('#calc').onclick=async()=>{
+let pollTimer=null;
+async function startCalc(prefix){
+  if(pollTimer)return;                 // one live calculation at a time
   $('#calc').disabled=true;
-  $('#prompt').textContent='calculating… (think along: what would YOU play?)';
+  $('#prompt').textContent=(prefix||'calculating…')+' (think along: what would YOU play?)';
   const st=await j('/calculate_start',{nodes:1500});
   if(st.busy){$('#calc').disabled=false;return;}
-  const poll=setInterval(async()=>{
+  pollTimer=setInterval(async()=>{
     const r=await j('/calc_state');
     paint(r);
     if(!r.done){
-      $('#prompt').textContent='calculating… '+r.evals+' / '+r.target+' positions — lines firming up live';
+      $('#prompt').textContent=(prefix||'calculating…')+' '+r.evals+' / '+r.target+' positions — lines firming up live';
     }else{
-      clearInterval(poll);
+      clearInterval(pollTimer);pollTimer=null;
       $('#calc').disabled=false;
       $('#prompt').textContent=r.err?('error: '+r.err)
         :('done — '+r.evals+' positions examined. compare with your line:');
     }
   },700);
-};
+}
+$('#calc').onclick=()=>startCalc();
 $('#newgame').onclick=async()=>{await j('/new',{opponent:$('#opp').value});
   $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';
   $('#prompt').textContent='new game — you are White.';refresh();};
