@@ -7260,3 +7260,14 @@ re-verdicts); if play also shows nothing, the shelf options are (a) higher-LR wi
 fresh cosine schedule, (b) from-scratch on the full month -- both are Kaveh-call
 directional runs (conditional-rejections: retest on next field promotion). Pointer:
 field_fullmonth_r0.pt @ step 90000 is self_field_current.
+
+## 2026-07-24 -- CAPSTONE KRRvKBNP-7p: 0.92 (44/48, ALL CLEAN) med 5 plies
+
+Seven pieces, zero tablebase assists (structural: no 7p tables) -- the field + banks +
+hierarchical planner alone, beating 6p KRRvKBP's 0.77. Tradedown plans executed live
+throughout (goal classes KRRvknp/KRRvkbp); g045 converted after a full
+tradedown->direct->reset arc. FAIL pattern (4 games, all draw-terms): tradedown fired
+then was abandoned early in 3 of 4 (3-5 plies; the give-up cadence is tuned for
+in-class play, not for the capture-hunting a 7p handoff needs); g044 held tradedown 23
+plies but threefolded. The give-up/handoff cadence at 7p is the clear next planner
+lever (feeds #24). Bank grew to 32.7k during the run. [15366s total]
