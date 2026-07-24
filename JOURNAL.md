@@ -7398,3 +7398,18 @@ shards -> disk 9.7G -> 30G. Scratch trainer (the centerpiece, doesn't touch the 
 survived untouched throughout. Process lesson: during the 39h scratch run I am NOT
 running the improvement loop (spawns tb-cache readers + contends MPS); phase 2 runs the
 improvement rounds AFTER scratch completes, as designed.
+
+## 2026-07-24 -- SCRATCH v1 COLLAPSED (degenerate self-channel); v2 relaunched clean
+
+field_scratch_full_v1 collapsed ~step 10k: ALL distances -> 0 (d_step/d_rand/d_unr all
+0.000), Lagrangian lambda decaying, repulsion dead. ROOT CAUSE: mixed the self-play
+regime channel (self_play_v1, only 6003 rows -- degenerate, mostly cornered endgames)
+into a FROM-SCRATCH QRL objective. Fine-tune runs used the SAME channel at higher
+fraction (0.35) safely BECAUSE a pre-spread embedding resists collapse; from scratch
+there is no structure to protect, so the tiny degenerate channel pulled everything to a
+point. My camping-queue bug (should have caught this: it's the check-representational-
+collapse gate). FIX: v2 = pure full-month lichess (proven mc2 recipe, no self mix),
+120k steps; diagnostics healthy at step 100 (d_step 6.7, d_rand 7.8, sq_dev 35). The
+improvement loop adds outcome-conditioning by FINE-TUNING v2 afterward (proven safe --
+that's exactly the regime a pre-spread field tolerates). ~2h of v1 compute lost;
+collapsed ckpt kept as field_scratch_COLLAPSED.pt for the postmortem.
