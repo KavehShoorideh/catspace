@@ -461,6 +461,29 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
             pl_n = (p_l[nuc] if isinstance(p_l, np.ndarray) else np.zeros(len(nuc)))
             v[nuc] = (pw_n - pl_n) / (pw_n + pl_n + kap[nuc])
         return v
+    def diag(board):
+        """Single-board CALIBRATED belief readout for UIs/probes. Raw bank distances are
+        meaningless out-of-support (an opening reads d_loss~5 to an endgame mate under
+        mc2); what the engine BELIEVES runs through the running-median temperatures --
+        expose exactly that: v, p_w, p_l, kappa, plus the raws and scales for honesty."""
+        boards = [board]; keys = [board.epd()]
+        nw = len(bank); nl = len(loss_bank) if loss_bank is not None else 0
+        in_nuc = dtm_net is not None and len(board.piece_map()) <= nucleus_max_pieces
+        _embed(boards, keys)
+        d_w = float(_dtm_hat(boards, keys)[0]) if in_nuc else \
+            (float(dmin_win(keys)[0]) if nw else None)
+        d_l = float(dmin_loss(keys)[0]) if nl else None
+        M = max(float(np.median(recent)), 1e-6) if len(recent) else None
+        M_l = max(float(np.median(recent_l)), 1e-6) if len(recent_l) else None
+        scale_w = dtm_scale if in_nuc else M
+        p_w = float(np.exp(-d_w / scale_w)) if (d_w is not None and scale_w) else 0.0
+        p_l = float(np.exp(-d_l / M_l)) if (d_l is not None and M_l) else 0.0
+        kap = float(_kappa(boards, keys)[0])
+        v = (p_w - p_l) / (p_w + p_l + kap)
+        return dict(v=round(v, 3), p_w=round(p_w, 3), p_l=round(p_l, 3),
+                    kappa=round(kap, 3), d_win=d_w, d_loss=d_l,
+                    M=M, M_l=M_l, nucleus=in_nuc)
+    value_fn.diag = diag
     value_fn.set_anchor = set_anchor
     value_fn.invalidate_anchor = lambda: cand.update(idx=None)   # irreversible move played:
     return value_fn                                              # the +-1-ply bound is void

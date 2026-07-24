@@ -91,7 +91,11 @@ function paint(r){
   $('#ideas').innerHTML=(r.ideas||[]).map(i=>`<div class="idea" data-id="${i.id}" data-kind="${i.kind}">
      <span class="kind">${i.kind}</span><span class="tag">${i.tag}</span>
      <span class="pencil" title="rename this concept">✏️</span></div>`).join('')
-   +'<div class="muted" style="margin-top:6px">'+((r.probe&&('bank d_win '+(+r.probe.d_win).toFixed(1)+' · d_loss '+(r.probe.d_loss===null?'∞':(+r.probe.d_loss).toFixed(1))+(r.probe.seen_across_games!=null?(' · seen '+r.probe.seen_across_games+'× before'):'')))||'')+'</div>';
+   +'<div class="muted" style="margin-top:6px">'+((r.probe&&(r.probe.v!=null
+      ?('belief v '+r.probe.v+' · P(win) '+r.probe.p_w+' · P(loss) '+r.probe.p_l+' · draw-mass '+r.probe.kappa
+        +' <span title="raw bank distances; uncalibrated, unreliable far from bank support">(raw d '+(+r.probe.d_win).toFixed(1)+'/'+(r.probe.d_loss==null?'∞':(+r.probe.d_loss).toFixed(1))+')</span>')
+      :('bank d_win '+(+r.probe.d_win).toFixed(1)+' · d_loss '+(r.probe.d_loss==null?'∞':(+r.probe.d_loss).toFixed(1))))
+      +(r.probe.seen_across_games!=null?(' · seen '+r.probe.seen_across_games+'× before'):''))||'')+'</div>';
   document.querySelectorAll('.pencil').forEach(p=>p.onclick=()=>{
     const row=p.closest('.idea'),tag=row.querySelector('.tag');
     tag.contentEditable=true;tag.focus();
