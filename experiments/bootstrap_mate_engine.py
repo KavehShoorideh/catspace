@@ -1184,7 +1184,7 @@ def main():
     ap.add_argument("--warm-bank", type=int, default=1000,
                     help="first-move warm-up: search+harvest until the bank has this many "
                          "mates (cap 20x --nodes); 0 = off")
-    ap.add_argument("--last-mile-dtm", default="data/derived/sep/dtm_tok_r0.pt",
+    ap.add_argument("--last-mile-dtm", default="data/derived/sep/dtm_tok_r1.pt",
                     help="tb-trained DTM regression as the value's distance source INSIDE "
                          "the nucleus (resignation gap: the field has no trajectory support "
                          "there); '' = off")
