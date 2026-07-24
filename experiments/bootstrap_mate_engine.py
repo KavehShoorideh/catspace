@@ -1009,6 +1009,17 @@ def worker(args):
                 t_harv = time.perf_counter() - th
                 best = max(root.children,
                            key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None else c.Q)))
+                # OPENING TEMPERATURE (2026-07-24: improvement-loop round 0 produced
+                # IDENTICAL games per worker -- engine argmax + maia nodes=1 are both
+                # deterministic, so a 10-game batch held 2 unique games). AZ convention:
+                # sample the first plies from the root visit distribution, seeded per
+                # (game, worker); certified mates are never sampled away.
+                if (args.scenario == "fullgame" and plies < 8
+                        and best.terminal_v is None and len(root.children) > 1):
+                    _rng = np.random.default_rng(hash((gi, args.worker, plies)) % 2**32)
+                    ns = np.array([float(c.N) for c in root.children])
+                    if ns.sum() > 0:
+                        best = list(root.children)[int(_rng.choice(len(ns), p=ns / ns.sum()))]
                 nodes_spent += m.evals_used; tmoves.append(time.time() - tm)
                 # TB FALLBACK (Kaveh): if the searched root shows NO gradient (children
                 # value spread < eps) and the position is tb-probeable, consult tb and LOG.
