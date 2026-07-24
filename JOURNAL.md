@@ -7202,3 +7202,19 @@ never region aggregates; density prior weights waypoints; foveated re-eval + giv
 stay as the recovery layer. Today's guards are reactive only (loss-side WDL + re-eval);
 prospective avoidance arrives with #24. Full-board caveat: OOD compression (measured
 today) blinds the field there until the full-month IQE round lands.
+
+## 2026-07-23 -- DISK-FULL incident + recovery (root cause: 25GB probe-cache WAL)
+
+Disk hit 100% (139MB free): tb_probe_cache.sqlite-wal grew to 25GB -- the fleet's
+long-lived reader connections blocked WAL checkpointing indefinitely. Casualties:
+full-month sharder (crashed at 51 shards), IQE fullmonth round (iostream error, ckpt
+verified intact at step 60000), and Part B misfired onto the incomplete shard set (its
+gate was pgrep-based: a CRASHED sharder looks identical to a finished one -- replaced
+with a manifest.json marker gate, which build_shards writes only on success).
+Recovery: gaviota deleted (6.7G, unreferenced), prefix1gb+256mb deleted (superseded),
+WAL folded+truncated after briefly pausing ladder readers (needed exclusive checkpoint;
+busy=1 with readers live), partials cleaned -> 40G free. Guard committed: cache sets
+journal_size_limit=256MB + wal_autocheckpoint. Sharder restarted CLEAN -- crash log
+showed 51 shards in 23 min, so a full re-pass costs ~25 min of redone work, cheaper
+and safer than adding resume logic. Lesson stacked on the no-concurrent-disk-jobs
+memory: unbounded caches are a disk-heavy job too.
