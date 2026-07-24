@@ -7246,3 +7246,17 @@ per-ply faulthandler watchdog (30 min -> stack dump to log + exit + WIP resume).
 occurrence self-diagnoses. Capstone running 28/2 (0.93) at 7 pieces meanwhile; first
 real tradedown plan executions observed (goal classes KRRvkbp / KRRvknp) in both FAILs
 -- worth an autopsy pass when the verdict lands.
+
+## 2026-07-24 -- IQE full-month rounds COMPLETE: plateau (aggregate verdict, r0-r5)
+
+30k steps (60k->90k) warm-started from lichess_mc2 on the 87-shard full month, resume-LR
+guard at 0.1x peak (the guard stays: full LR once collapsed a converged field in ~200
+steps). Aggregate across six 5k-step rounds vs the mc2-on-fullmonth baseline:
+VAL_TOP1 0.016 -> 0.015 (flat); REACH_SLOPE_WON 0.653 -> 0.682 (+0.03, mostly round 0);
+DIFF_SLOPE_WON 0.780 -> 0.796 (+0.016); LOST-side slopes unchanged. PLAIN CALL: guarded
+fine-tuning of a converged field on 55%-more data moved these validation metrics only
+marginally. The full-month data's real referendum is PLAY (improvement loop + integration
+re-verdicts); if play also shows nothing, the shelf options are (a) higher-LR with a
+fresh cosine schedule, (b) from-scratch on the full month -- both are Kaveh-call
+directional runs (conditional-rejections: retest on next field promotion). Pointer:
+field_fullmonth_r0.pt @ step 90000 is self_field_current.
