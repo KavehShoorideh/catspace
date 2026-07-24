@@ -173,17 +173,59 @@ class Session:
             node, line = c, [b.san(c.move)]
             depth = 0
             bb = b.copy(stack=False); bb.push(c.move)
+            fens = [bb.fen()]
             while node.children and depth < 8:
                 nxt = max(node.children, key=lambda x: x.N)
                 if nxt.N < 1:      # expanded but never simulated: beyond the search's
                     break          # evidence -- showing it would be prior, not search
                 node = nxt
                 line.append(bb.san(node.move)); bb.push(node.move)
+                fens.append(bb.fen())
                 depth += 1
-            leaves.append({"line": " ".join(line), "fen": bb.fen(),
+            leaves.append({"line": " ".join(line), "fen": bb.fen(), "fens": fens,
                            "visits": int(node.N),
                            "v": round(float(node.W / max(node.N, 1)), 3)})
         return top, leaves
+
+    # ---- ATLAS (Kaveh: 'a tab with a UMAP embedding of known B's -- mates, losses,
+    # draws -- and a highlight of subgoal clusters for the selected sequence'). The
+    # banks store B-side embeddings (goal identities); trajectories are projected with
+    # embed_B too so states and goals live in ONE map. Feasibility is NEVER read off
+    # this view (that's the directed field's job) -- the atlas is for seeing basins.
+    def atlas_data(self, n_win=8000):
+        if getattr(self, "_atlas", None) is None:
+            from umap import UMAP
+            rng = np.random.default_rng(0)
+            embs, kinds = [], []
+            for kind, bk in (("win", self.bank), ("loss", self.loss), ("draw", self.draw)):
+                E = bk.embs
+                if E is None or len(E) == 0:
+                    continue
+                take = min(len(E), n_win if kind == "win" else len(E))
+                idx = rng.permutation(len(E))[:take]
+                embs.append(np.asarray(E)[idx]); kinds += [kind] * take
+            X = np.concatenate(embs, 0).astype(np.float32)
+            um = UMAP(n_components=2, n_neighbors=30, min_dist=0.15, random_state=0)
+            xy = um.fit_transform(X)
+            self._atlas = dict(um=um, xy=xy, kinds=kinds, X=X)
+        a = self._atlas
+        return {"pts": [[round(float(x), 3), round(float(y), 3), k]
+                        for (x, y), k in zip(a["xy"], a["kinds"])]}
+
+    def atlas_select(self, fens, k=24):
+        if getattr(self, "_atlas", None) is None:
+            return {"err": "atlas not built yet -- open the atlas tab first"}
+        boards = [chess.Board(f) for f in fens]
+        E = np.asarray(self.fm.embed_B_boards(boards), dtype=np.float32)
+        xy = self._atlas["um"].transform(E)
+        # subgoal cluster highlight: nearest banked WIN points to the line's END
+        X, kinds = self._atlas["X"], self._atlas["kinds"]
+        win_idx = np.array([i for i, kk in enumerate(kinds) if kk == "win"])
+        d = ((X[win_idx] - E[-1]) ** 2).sum(1)
+        near = win_idx[np.argsort(d)[:k]]
+        self._atlas_sel = {"path": [[round(float(x), 3), round(float(y), 3)] for x, y in xy],
+                           "near": [int(i) for i in near]}
+        return {"ok": True, **self._atlas_sel}
 
     def calculate_start(self, nodes, chunk=64):
         """STREAMING calculation (Kaveh: 'a way for calculations to stream in as it's
@@ -334,6 +376,13 @@ class H(BaseHTTPRequestHandler):
         elif self.path == "/ab":
             f = ROOT / "catspace/viz/templates/ab.html"
             self._send(200, f.read_bytes(), "text/html")
+        elif self.path == "/atlas":
+            f = ROOT / "catspace/viz/templates/atlas.html"
+            self._send(200, f.read_bytes(), "text/html")
+        elif self.path == "/atlas_data":
+            self._send(200, SES.atlas_data())
+        elif self.path == "/atlas_selected":
+            self._send(200, getattr(SES, "_atlas_sel", None) or {})
         elif self.path == "/ab_state":
             f = ROOT / "artifacts/experiments/ab_live.json"
             self._send(200, f.read_bytes() if f.exists() else b"{}", "application/json")
@@ -394,6 +443,11 @@ class H(BaseHTTPRequestHandler):
             self._send(200, SES.calculate(int(req.get("nodes", 1500))))
         elif self.path == "/calculate_start":
             self._send(200, SES.calculate_start(int(req.get("nodes", 1500))))
+        elif self.path == "/atlas_select":
+            try:
+                self._send(200, SES.atlas_select(req["fens"]))
+            except Exception as e:                          # noqa: BLE001
+                self._send(400, {"err": str(e)})
         elif self.path == "/tag":
             with open(TAGS, "a") as f:
                 f.write(json.dumps({"id": req.get("id"), "tag": req.get("tag"),

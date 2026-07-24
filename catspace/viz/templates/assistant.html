@@ -36,6 +36,7 @@
       <option value="data/engines/maia/maia-1900.pb.gz">maia 1900</option>
     </select>
     <button id="newgame">New game</button>
+    <a href="/atlas" target="_blank" style="color:#7fb8d9;font-size:13px">🗺 atlas</a>
     <span id="status" class="muted"></span>
   </div>
 </div>
@@ -86,7 +87,14 @@ function after(r){
 function paint(r){
   if(r.plan)$('#plan').textContent=r.plan+(r.goal?(' → '+r.goal):'');
   $('#tops tbody').innerHTML=(r.top||[]).map(t=>`<tr><td><b>${t.san}</b></td><td>${t.visits} visits</td><td>v=${t.q}</td></tr>`).join('');
-  $('#leaves').innerHTML=(r.leaves||[]).map(l=>`<div class="leaf">${l.line}<br><span class="muted">v=${l.v} · ${l.visits} visits</span></div>`).join('');
+  $('#leaves').innerHTML=(r.leaves||[]).map((l,i)=>`<div class="leaf" data-i="${i}" style="cursor:pointer" title="click: project this line onto the atlas">${l.line}<br><span class="muted">v=${l.v} · ${l.visits} visits</span></div>`).join('');
+  window._leaves=r.leaves||[];
+  document.querySelectorAll('.leaf').forEach(el=>el.onclick=async()=>{
+    const l=window._leaves[+el.dataset.i];
+    if(l&&l.fens){await j('/atlas_select',{fens:l.fens});
+      el.style.borderLeft='3px solid #7fb8d9';
+      setTimeout(()=>el.style.borderLeft='',1500);}
+  });
   if(!r.done)return;
   $('#ideas').innerHTML=(r.ideas||[]).map(i=>`<div class="idea" data-id="${i.id}" data-kind="${i.kind}">
      <span class="kind">${i.kind}</span><span class="tag">${i.tag}</span>
