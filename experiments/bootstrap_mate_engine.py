@@ -945,6 +945,13 @@ def worker(args):
                                               or b.can_claim_fifty_moves())
         while plies < args.max_plies and not _game_over():
             _save_wip()
+            # PLY WATCHDOG (2026-07-23 spin-bug: a technique worker spun 100% CPU for 2h
+            # inside ONE ply, silently; repro with reconstructed state came back clean,
+            # so the trigger needs live state we don't capture). If any single ply takes
+            # 30 min, dump the ACTUAL spinning stack to the log and exit -- the chain
+            # relaunches and WIP resumes; next occurrence self-diagnoses.
+            import faulthandler
+            faulthandler.dump_traceback_later(1800, exit=True)
             if b.turn == chess.WHITE:
                 # STUCKNESS trigger (Kaveh 'do the fix'): second visit to a position =
                 # the field has no EFFECTIVE gradient in play (confidently-wrong loops
