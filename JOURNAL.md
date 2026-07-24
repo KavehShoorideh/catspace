@@ -7226,3 +7226,13 @@ from the 87-shard full-month pass. Retrain: warm-start from v1, 12k steps @ 256,
 mix fullmonth 0.6 / full_v1 replay 0.3 / self 0.05. Held-out (n=555k):
 NLL 2.145 (v1: 2.38), top1 0.369 (v1: 0.331). The flavored-energy stream's first
 data-scaled checkpoint; -logP and astray% readings inherit the sharper cohorts.
+
+## 2026-07-23 -- technique truncated by a SPIN BUG (filed); CAPSTONE 7p underway
+
+KRvK-technique worker spun at 100% CPU for 2h with zero output (the silent-hang failure
+mode); killed -> chain declared LADDER7 COMPLETE at 37/48 technique games (37/0 to that
+point, no formal verdict -- integration suite will re-verdict the scenario). BUG filed
+w/ repro: WIP saved (tmp/wdlr6...wip.w2.json), g6 ply 6 from start 8/8/8/8/8/8/8/2RK3k w
+-- cornered-king KRvK, prime stalemate/draw-guard territory; commit 5943420. Suspect an
+un-bounded loop in the draw-guard/planner interplay when nearly all moves stalemate or
+repeat. CAPSTONE KRRvKBNP-7p started 22:50 (5 workers) -> improvement loop next.
