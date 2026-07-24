@@ -206,7 +206,7 @@ class Session:
         if getattr(self, "_atlas", None) is None:
             import pickle
             cache_p = ROOT / "artifacts/experiments/atlas_cache.pkl"
-            meta = dict(field=str(self.args.field), n_win=n_win, n_other=n_other,
+            meta = dict(v=2, field=str(self.args.field), n_win=n_win, n_other=n_other,
                         nw=len(self.bank) // 1000, nl=len(self.loss) // 1000,
                         nd=len(self.draw) // 1000)
             if cache_p.exists():
@@ -220,21 +220,28 @@ class Session:
             if getattr(self, "_atlas", None) is None:
                 from umap import UMAP
                 rng = np.random.default_rng(0)
-                embs, kinds, sigs = [], [], []
+                embs, kinds, sigs, epds = [], [], [], []
                 for kind, bk, cap in (("win", self.bank, n_win),
                                       ("loss", self.loss, n_other),
                                       ("draw", self.draw, n_other)):
                     E = bk.embs
                     if E is None or len(E) == 0:
                         continue
+                    # bank file order (dedup-first) == emb append order
+                    seen, ordered = set(), []
+                    for line in bk.bank_file.read_text().splitlines():
+                        e = line.strip()
+                        if e and e not in seen:
+                            seen.add(e); ordered.append(e)
                     idx = rng.permutation(len(E))[:min(len(E), cap)]
                     embs.append(np.asarray(E)[idx]); kinds += [kind] * len(idx)
                     bs = bk.sigs
                     sigs += [bs[i] if kind == "win" and i < len(bs) else "" for i in idx]
+                    epds += [ordered[i] if i < len(ordered) else "" for i in idx]
                 X = np.concatenate(embs, 0).astype(np.float32)
                 um = UMAP(n_components=2, n_neighbors=25, min_dist=0.15, random_state=0)
                 xy = um.fit_transform(X)
-                self._atlas = dict(um=um, xy=xy, kinds=kinds, X=X, sigs=sigs)
+                self._atlas = dict(um=um, xy=xy, kinds=kinds, X=X, sigs=sigs, epds=epds)
                 try:
                     pickle.dump({"meta": meta, "atlas": self._atlas}, open(cache_p, "wb"))
                 except Exception:
@@ -834,6 +841,15 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e), "moves": []})
+        elif self.path == "/atlas_fens":    # hover-peek: positions behind atlas indices
+            try:
+                a = getattr(SES, "_atlas", None) or {}
+                epds, kinds = a.get("epds", []), a.get("kinds", [])
+                out = [[epds[i], kinds[i]] for i in req.get("idx", [])[:9]
+                       if 0 <= i < len(epds) and epds[i]]
+                self._send(200, {"pos": out})
+            except Exception as e:                          # noqa: BLE001
+                self._send(200, {"pos": [], "err": str(e)})
         elif self.path == "/atlas_select":
             try:
                 with SES.compute:
