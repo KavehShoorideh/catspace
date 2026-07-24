@@ -17,8 +17,11 @@
  .panel{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px;
         overflow:auto;resize:both;min-width:280px;min-height:280px}
  #boardpanel{width:500px;height:auto;resize:horizontal} #atlaspanel{width:520px;height:560px}
- /* board stays a locked square regardless of panel width; controls sit below */
- .cg-wrap{width:100%;aspect-ratio:1/1;height:auto}
+ /* board stays a locked square regardless of panel width; controls sit below.
+    touch-action:none = the board owns touch gestures (else Android scrolls instead
+    of dragging pieces) */
+ .cg-wrap{width:100%;aspect-ratio:1/1;height:auto;touch-action:none;
+          -webkit-user-select:none;user-select:none}
  .card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px}
  h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#b8ad98}
  button{background:#4a6b4a;color:#fff;border:0;border-radius:6px;padding:8px 14px;font-size:14px;cursor:pointer}
@@ -42,6 +45,7 @@
    body{padding:8px}
    .stage{flex-direction:column}
    #boardpanel,#atlaspanel{width:100% !important;min-width:0;resize:none}
+   #boardpanel{overflow:visible}   /* no scroll container fighting board touches */
    #atlaspanel{height:60vw}
    .tabs{flex-wrap:wrap}
    #status{width:100%;margin-left:0;order:9}
