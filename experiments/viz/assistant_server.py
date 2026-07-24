@@ -318,6 +318,7 @@ class Session:
         if getattr(self, "_calc_busy", False):
             return {"ok": False, "busy": True}
         self._calc_busy = True
+        self._calc_cancel = False
         self.calc = {"done": False, "evals": 0, "target": int(nodes),
                      "top": [], "leaves": [], "ideas": [], "plan": None, "goal": None}
         import threading
@@ -342,6 +343,10 @@ class Session:
             self._calc_live = m          # /calc_state reads sub-chunk progress off this
             root, used = None, 0
             while used < nodes:
+                if getattr(self, "_calc_cancel", False):
+                    # the position changed under us (human moved): this calc is STALE --
+                    # stop at the chunk boundary so maia's reply isn't starved of compute
+                    break
                 root = m.run(b.copy(stack=True), reuse_root=root)
                 used += int(m.evals_used)
                 top, leaves = self._tops_leaves(b, root)
@@ -518,6 +523,7 @@ class H(BaseHTTPRequestHandler):
             self._send(200, {"ok": True, "fen": SES.board.fen()})
         elif self.path == "/human_move":
             try:
+                SES._calc_cancel = True     # any running calc is stale + steals compute
                 mv = chess.Move.from_uci(req["uci"])
                 if mv not in SES.board.legal_moves:
                     raise ValueError("illegal")
