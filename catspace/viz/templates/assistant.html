@@ -79,15 +79,12 @@ function after(r){
   $('#prompt').textContent=a.suggest? '🔎 let’s calculate here — '+a.reasons.join('; ')
                                     : (r.reply?('opponent played '+r.reply+'. position looks routine.'):'');
 }
-$('#calc').onclick=async()=>{
-  $('#calc').disabled=true;$('#prompt').textContent='calculating… (think along: what would YOU play?)';
-  const r=await j('/calculate',{nodes:1500});
-  $('#calc').disabled=false;
-  $('#prompt').textContent='done — '+r.evals+' positions examined. compare with your line:';
-  $('#plan').textContent=r.plan+(r.goal?(' → '+r.goal):'');
-  $('#tops tbody').innerHTML=r.top.map(t=>`<tr><td><b>${t.san}</b></td><td>${t.visits} visits</td><td>v=${t.q}</td></tr>`).join('');
-  $('#leaves').innerHTML=r.leaves.map(l=>`<div class="leaf">${l.line}<br><span class="muted">v=${l.v} · ${l.visits} visits</span></div>`).join('');
-  $('#ideas').innerHTML=r.ideas.map(i=>`<div class="idea" data-id="${i.id}" data-kind="${i.kind}">
+function paint(r){
+  if(r.plan)$('#plan').textContent=r.plan+(r.goal?(' → '+r.goal):'');
+  $('#tops tbody').innerHTML=(r.top||[]).map(t=>`<tr><td><b>${t.san}</b></td><td>${t.visits} visits</td><td>v=${t.q}</td></tr>`).join('');
+  $('#leaves').innerHTML=(r.leaves||[]).map(l=>`<div class="leaf">${l.line}<br><span class="muted">v=${l.v} · ${l.visits} visits</span></div>`).join('');
+  if(!r.done)return;
+  $('#ideas').innerHTML=(r.ideas||[]).map(i=>`<div class="idea" data-id="${i.id}" data-kind="${i.kind}">
      <span class="kind">${i.kind}</span><span class="tag">${i.tag}</span>
      <span class="pencil" title="rename this concept">✏️</span></div>`).join('')
    +'<div class="muted" style="margin-top:6px">'+((r.probe&&('bank d_win '+(+r.probe.d_win).toFixed(1)+' · d_loss '+(r.probe.d_loss===null?'∞':(+r.probe.d_loss).toFixed(1))+' · seen '+r.probe.seen_across_games+'× before'))||'')+'</div>';
@@ -98,6 +95,24 @@ $('#calc').onclick=async()=>{
       await j('/tag',{id:row.dataset.id,kind:row.dataset.kind,tag:tag.textContent.trim()});};
     tag.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();tag.blur();}};
   });
+}
+$('#calc').onclick=async()=>{
+  $('#calc').disabled=true;
+  $('#prompt').textContent='calculating… (think along: what would YOU play?)';
+  const st=await j('/calculate_start',{nodes:1500});
+  if(st.busy){$('#calc').disabled=false;return;}
+  const poll=setInterval(async()=>{
+    const r=await j('/calc_state');
+    paint(r);
+    if(!r.done){
+      $('#prompt').textContent='calculating… '+r.evals+' / '+r.target+' positions — lines firming up live';
+    }else{
+      clearInterval(poll);
+      $('#calc').disabled=false;
+      $('#prompt').textContent=r.err?('error: '+r.err)
+        :('done — '+r.evals+' positions examined. compare with your line:');
+    }
+  },700);
 };
 $('#newgame').onclick=async()=>{await j('/new',{opponent:$('#opp').value});
   $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';
