@@ -426,10 +426,14 @@ class Session:
         import threading
         rs = getattr(self, "_calc_resume", None)
         if resume and rs and rs["epd"] == self.board.epd():
-            self.calc.update(done=False, stopped=False)
-            threading.Thread(target=self._calc_work, args=(rs["nodes"], chunk),
+            # resume = fresh budget ON TOP of the kept tree (works after Stop AND after
+            # a natural finish -- 'Calculate more')
+            target = rs["used"] + int(nodes)
+            rs["nodes"] = target
+            self.calc.update(done=False, stopped=False, target=target)
+            threading.Thread(target=self._calc_work, args=(target, chunk),
                              kwargs={"resume_state": rs}, daemon=True).start()
-            return {"ok": True, "target": rs["nodes"], "resumed": True}
+            return {"ok": True, "target": target, "resumed": True}
         self._calc_resume = None
         self.calc = {"done": False, "evals": 0, "target": int(nodes),
                      "top": [], "leaves": [], "ideas": [], "plan": None, "goal": None}
@@ -470,10 +474,10 @@ class Session:
                 if m.evals_used == 0:        # certified mate in hand -- nothing to add
                     break
             stopped = bool(getattr(self, "_calc_cancel", False)) and used < nodes
-            if stopped:                      # keep the tree so Resume continues it
+            if root is not None:             # keep the tree: Resume (after stop) and
                 self._calc_resume = dict(b=b, ps=ps, m=m, root=root, used=used,
                                          epd=b.epd(), nodes=nodes)
-            else:
+            else:                            # 'Calculate more' (after finish) reuse it
                 self._calc_resume = None
             try:
                 from catspace.metrics import observe

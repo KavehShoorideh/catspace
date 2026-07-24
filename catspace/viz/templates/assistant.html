@@ -71,8 +71,8 @@
       </div>
     </div>
     <div class="panel" id="atlaspanel">
-      <h3 style="margin:0 0 4px">B-space atlas <span class="muted" id="atlasnote">— banked goals + engine lines</span></h3>
-      <canvas id="atlascanvas"></canvas>
+      <h3 style="margin:0 0 4px">B-space atlas <span class="muted" id="atlasnote">— banked goals + engine lines · wheel = zoom, drag = pan, double-click = reset</span></h3>
+      <svg id="atlassvg" style="width:100%;height:calc(100% - 26px);display:block;background:#211f1b;border-radius:6px;cursor:grab"></svg>
       <div class="legend">
         <span><span class="dot" style="background:#7fbf7f"></span>mates</span>
         <span><span class="dot" style="background:#d9705f"></span>losses</span>
@@ -180,53 +180,79 @@ async function loadEnergy(){
 }
 $('#energygo').onclick=loadEnergy;
 
-// ---- atlas
-let atlas=null, sel=null, bounds=null, planSel=null;
+// ---- atlas (SVG: wheel-zoom, drag-pan, instant from server cache)
+let atlas=null, sel=null, planSel=null, vb=null, fullVb=null, span=1;
 const COL={win:'rgba(127,191,127,0.30)',loss:'rgba(217,112,95,0.85)',draw:'rgba(201,162,39,0.5)'};
+const SVGNS='http://www.w3.org/2000/svg';
+function svgEl(t,a){const e=document.createElementNS(SVGNS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+function applyVb(){$('#atlassvg').setAttribute('viewBox',vb.map(v=>v.toFixed(3)).join(' '));}
 async function loadAtlas(){
-  $('#atlasnote').textContent='— building projection (≈1 min)…';
+  $('#atlasnote').textContent='— loading projection…';
   const d=await j('/atlas_data');
-  atlas=d.pts;
+  atlas=d.pts.map(([x,y,k])=>[x,-y,k]);               // SVG y grows downward
   const xs=atlas.map(p=>p[0]),ys=atlas.map(p=>p[1]);
-  bounds=[Math.min(...xs),Math.max(...xs),Math.min(...ys),Math.max(...ys)];
-  $('#atlasnote').textContent='— '+atlas.length+' banked goals; greens = mate basins';
+  const x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  const pad=0.05*Math.max(x1-x0,y1-y0);
+  fullVb=[x0-pad,y0-pad,(x1-x0)+2*pad,(y1-y0)+2*pad]; vb=[...fullVb];
+  span=Math.max(fullVb[2],fullVb[3]);
+  const svg=$('#atlassvg'); svg.innerHTML='';
+  const gp=svgEl('g',{id:'gpts'});
+  for(const[x,y,k]of atlas)
+    gp.appendChild(svgEl('circle',{cx:x,cy:y,r:(k==='win'?0.003:0.0045)*span,fill:COL[k]||'#888'}));
+  svg.appendChild(gp);
+  svg.appendChild(svgEl('g',{id:'gplan'}));
+  svg.appendChild(svgEl('g',{id:'gsel'}));
+  applyVb();
+  $('#atlasnote').textContent='— '+atlas.length+' banked goals; greens = mate basins · wheel/drag/double-click';
   drawAtlas();
 }
-function toPx(cv,x,y){const[a,b,c,d]=bounds;
-  return [(x-a)/((b-a)||1)*(cv.width-24)+12, cv.height-12-(y-c)/((d-c)||1)*(cv.height-24)];}
-function drawAtlas(){
-  const cv=$('#atlascanvas'); if(!cv.clientWidth)return;
-  cv.width=cv.clientWidth; cv.height=cv.clientHeight;
-  const g=cv.getContext('2d'); g.clearRect(0,0,cv.width,cv.height);
-  if(!atlas)return;
-  for(const[x,y,k]of atlas){const[px,py]=toPx(cv,x,y);
-    g.fillStyle=COL[k]||'#888';g.beginPath();g.arc(px,py,k==='win'?1.5:2.3,0,7);g.fill();}
-  if(sel&&sel.near){g.fillStyle='#fff';
-    for(const i of sel.near){const[x,y]=atlas[i];const[px,py]=toPx(cv,x,y);
-      g.beginPath();g.arc(px,py,3,0,7);g.fill();}}
-  if(sel&&sel.path){g.strokeStyle=COL.blue||'#7fb8d9';g.lineWidth=1.6;g.beginPath();
-    sel.path.forEach(([x,y],i)=>{const[px,py]=toPx(cv,x,y);i?g.lineTo(px,py):g.moveTo(px,py);});
-    g.stroke();
-    sel.path.forEach(([x,y],i)=>{const[px,py]=toPx(cv,x,y);
-      g.fillStyle=i===sel.path.length-1?'#fff':'#7fb8d9';
-      g.beginPath();g.arc(px,py,i===sel.path.length-1?5:3.2,0,7);g.fill();});}
+function drawAtlas(){         // overlays only; the 6k points are built once
+  const gs=document.getElementById('gsel'),gpl=document.getElementById('gplan');
+  if(!gs||!gpl)return;
+  gs.innerHTML='';gpl.innerHTML='';
   if(planSel&&planSel.centroid){
-    // subgoal cluster ringed + arrow: current position -> subgoal centroid
-    g.strokeStyle='rgba(201,162,39,0.9)';g.lineWidth=1;
-    for(const i of (planSel.members||[])){const[x,y]=atlas[i];const[px,py]=toPx(cv,x,y);
-      g.beginPath();g.arc(px,py,3.6,0,7);g.stroke();}
-    const[fx,fy]=toPx(cv,...planSel.from),[tx,ty]=toPx(cv,...planSel.centroid);
-    g.strokeStyle='#c9a227';g.lineWidth=2.2;g.beginPath();g.moveTo(fx,fy);g.lineTo(tx,ty);g.stroke();
-    const ang=Math.atan2(ty-fy,tx-fx);
-    g.fillStyle='#c9a227';g.beginPath();g.moveTo(tx,ty);
-    g.lineTo(tx-11*Math.cos(ang-0.4),ty-11*Math.sin(ang-0.4));
-    g.lineTo(tx-11*Math.cos(ang+0.4),ty-11*Math.sin(ang+0.4));g.closePath();g.fill();
-    g.fillStyle='#e8e2d6';g.font='12px system-ui';g.fillText(planSel.label||'',tx+10,ty-8);
-    g.fillStyle='#c9a227';g.beginPath();g.arc(fx,fy,5,0,7);g.fill();
-    g.fillStyle='#e8e2d6';g.fillText('now',fx+8,fy+4);}
+    for(const i of (planSel.members||[])){const[x,y]=atlas[i];
+      gpl.appendChild(svgEl('circle',{cx:x,cy:y,r:0.006*span,fill:'none',
+        stroke:'rgba(201,162,39,0.9)','stroke-width':0.0012*span}));}
+    const[fx,fyr]=planSel.from,[tx,tyr]=planSel.centroid,fy=-fyr,ty=-tyr;
+    gpl.appendChild(svgEl('line',{x1:fx,y1:fy,x2:tx,y2:ty,stroke:'#c9a227','stroke-width':0.003*span}));
+    const ang=Math.atan2(ty-fy,tx-fx),ah=0.018*span;
+    gpl.appendChild(svgEl('polygon',{points:[[tx,ty],[tx-ah*Math.cos(ang-0.4),ty-ah*Math.sin(ang-0.4)],
+      [tx-ah*Math.cos(ang+0.4),ty-ah*Math.sin(ang+0.4)]].map(p=>p.join(',')).join(' '),fill:'#c9a227'}));
+    gpl.appendChild(svgEl('circle',{cx:fx,cy:fy,r:0.008*span,fill:'#c9a227'}));
+    const t1=svgEl('text',{x:tx+0.02*span,y:ty-0.012*span,fill:'#e8e2d6','font-size':0.025*span});
+    t1.textContent=planSel.label||''; gpl.appendChild(t1);
+    const t2=svgEl('text',{x:fx+0.012*span,y:fy+0.006*span,fill:'#e8e2d6','font-size':0.02*span});
+    t2.textContent='now'; gpl.appendChild(t2);
+  }
+  if(sel&&sel.near)for(const i of sel.near){const[x,y]=atlas[i];
+    gs.appendChild(svgEl('circle',{cx:x,cy:y,r:0.005*span,fill:'#fff'}));}
+  if(sel&&sel.path){
+    const pts=sel.path.map(([x,y])=>[x,-y]);
+    gs.appendChild(svgEl('polyline',{points:pts.map(p=>p.join(',')).join(' '),
+      fill:'none',stroke:'#7fb8d9','stroke-width':0.0022*span}));
+    pts.forEach(([x,y],i)=>gs.appendChild(svgEl('circle',{cx:x,cy:y,
+      r:(i===pts.length-1?0.008:0.0055)*span,fill:i===pts.length-1?'#fff':'#7fb8d9'})));
+  }
 }
+(function(){    // zoom + pan
+  const svg=$('#atlassvg'); let drag=null;
+  svg.addEventListener('wheel',e=>{
+    if(!vb)return; e.preventDefault();
+    const r=svg.getBoundingClientRect(),f=e.deltaY>0?1.18:0.85;
+    const px=vb[0]+(e.clientX-r.left)/r.width*vb[2], py=vb[1]+(e.clientY-r.top)/r.height*vb[3];
+    vb=[px-(px-vb[0])*f, py-(py-vb[1])*f, vb[2]*f, vb[3]*f]; applyVb();
+  },{passive:false});
+  svg.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY,...vb];svg.setPointerCapture(e.pointerId);svg.style.cursor='grabbing';});
+  svg.addEventListener('pointermove',e=>{
+    if(!drag)return; const r=svg.getBoundingClientRect();
+    vb=[drag[2]-(e.clientX-drag[0])/r.width*vb[2], drag[3]-(e.clientY-drag[1])/r.height*vb[3], vb[2], vb[3]];
+    applyVb();
+  });
+  svg.addEventListener('pointerup',()=>{drag=null;svg.style.cursor='grab';});
+  svg.addEventListener('dblclick',()=>{if(fullVb){vb=[...fullVb];applyVb();}});
+})();
 async function showPlan(){const r=await j('/atlas_plan');if(!r.err){planSel=r;drawAtlas();}}
-new ResizeObserver(drawAtlas).observe($('#atlaspanel'));
 async function projectLine(fens){const r=await j('/atlas_select',{fens});if(r.path){sel=r;drawAtlas();}}
 
 // ---- game
@@ -298,7 +324,7 @@ function setCalcBtn(state,pct){
       +'<circle cx="18" cy="18" r="15.5" fill="none" stroke="#c9a227" stroke-width="3" pathLength="100" stroke-dasharray="'+(pct||0)+' 100" transform="rotate(-90 18 18)" stroke-linecap="round"/>'
       +'<rect x="12.5" y="12.5" width="11" height="11" rx="1.5" fill="#e8e2d6"/></svg>';
   }else{b.classList.remove('ring');b.title='';
-    b.textContent=state==='stopped'?'Resume ▶':"Let's calculate";}
+    b.textContent=state==='stopped'?'Resume ▶':state==='more'?'Calculate more +':"Let's calculate";}
 }
 async function startCalc(prefix,resume){
   if(pollTimer)return;
@@ -312,7 +338,7 @@ async function startCalc(prefix,resume){
     if(r&&r.done){
       // CLEANUP FIRST, unconditionally -- painting must never leave the ring stuck
       clearInterval(pollTimer);pollTimer=null;
-      setBusy(false);setCalcBtn(r.stopped?'stopped':'idle');
+      setBusy(false);setCalcBtn(r.stopped?'stopped':'more');
       $('#prompt').textContent=r.err?('error: '+r.err)
         :(r.stopped?('stopped at '+r.evals+' positions — everything uses what we have; Resume continues the same tree')
                    :('done — '+r.evals+' positions examined. compare with your line:'));
@@ -328,6 +354,7 @@ async function startCalc(prefix,resume){
 $('#calc').onclick=()=>{
   if(calcState==='run'){j('/calculate_stop');}
   else if(calcState==='stopped'){startCalc('resuming…',true);}
+  else if(calcState==='more'){startCalc('deepening…',true);}
   else{startCalc();}
 };
 $('#plan').onclick=()=>showPlan();
@@ -385,7 +412,8 @@ $('#loadbtn').onclick=async()=>{
     +(r.reply?('; opponent played '+r.reply):'')+') — your move.';
 };
 $('#newgame').onclick=async()=>{await j('/new',{opponent:$('#opp').value});
-  $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';sel=null;drawAtlas();
+  $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';
+  sel=null;planSel=null;drawAtlas();setCalcBtn('idle');
   $('#prompt').textContent='new game — you are White.';refresh();};
 cg=Chessground($('#board'),{movable:{color:'white',free:false,events:{after:humanMove}}});
 refresh(); loadAtlas();
