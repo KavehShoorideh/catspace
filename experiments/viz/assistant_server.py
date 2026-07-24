@@ -733,9 +733,9 @@ class H(BaseHTTPRequestHandler):
             from catspace.metrics import latest
             self._send(200, latest(), "text/plain; version=0.0.4")
         elif self.path == "/health":
-            self._send(200, {"ok": True, "banks": {"win": len(SES.bank),
-                                                   "loss": len(SES.loss),
-                                                   "draw": len(SES.draw)}})
+            self._send(200, {"ok": True, "banks": {"win": len(self.S.bank),
+                                                   "loss": len(self.S.loss),
+                                                   "draw": len(self.S.draw)}})
         elif self.path == "/" or self.path.startswith("/index"):
             self._send(200, PAGE.read_bytes(), "text/html")
         elif self.path.startswith("/assets/"):
@@ -746,9 +746,9 @@ class H(BaseHTTPRequestHandler):
             else:
                 self._send(404, {"err": "no asset"})
         elif self.path == "/calc_state":
-            st = dict(getattr(SES, "calc", {}) or {})
+            st = dict(getattr(self.S, "calc", {}) or {})
             if st and not st.get("done"):
-                live = getattr(SES, "_calc_live", None)
+                live = getattr(self.S, "_calc_live", None)
                 st["evals"] = min(st.get("evals", 0) + int(getattr(live, "evals_used", 0) or 0),
                                   st.get("target", 10**9))
             self._send(200, st)
@@ -759,29 +759,29 @@ class H(BaseHTTPRequestHandler):
             f = ROOT / "catspace/viz/templates/atlas.html"
             self._send(200, f.read_bytes(), "text/html")
         elif self.path == "/atlas_data":
-            with SES.compute:
-                data = SES.atlas_data()
+            with self.S.compute:
+                data = self.S.atlas_data()
             self._send(200, data)
         elif self.path == "/cone":
             try:
-                with SES.compute:
-                    data = SES.cone()
+                with self.S.compute:
+                    data = self.S.cone()
                 self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e), "nodes": [], "river": []})
         elif self.path == "/energy":
             try:
-                with SES.compute:
-                    data = SES.energy()
+                with self.S.compute:
+                    data = self.S.energy()
                 self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e), "moves": [], "line": []})
         elif self.path == "/atlas_selected":
-            self._send(200, getattr(SES, "_atlas_sel", None) or {})
+            self._send(200, getattr(self.S, "_atlas_sel", None) or {})
         elif self.path == "/atlas_plan":
             try:
-                with SES.compute:
-                    data = SES.atlas_plan()
+                with self.S.compute:
+                    data = self.S.atlas_plan()
                 self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e)})
@@ -789,7 +789,7 @@ class H(BaseHTTPRequestHandler):
             f = ROOT / "artifacts/experiments/ab_live.json"
             self._send(200, f.read_bytes() if f.exists() else b"{}", "application/json")
         elif self.path == "/state":
-            b = SES.board
+            b = self.S.board
             dests = {}
             for mv in b.legal_moves:
                 dests.setdefault(chess.square_name(mv.from_square), []).append(
@@ -797,7 +797,7 @@ class H(BaseHTTPRequestHandler):
             self._send(200, {"fen": b.fen(), "turn": "w" if b.turn else "b",
                              "dests": dests, "over": b.is_game_over(claim_draw=True),
                              "result": b.result(claim_draw=True) if b.is_game_over(claim_draw=True) else None,
-                             "version": SES.version})
+                             "version": self.S.version})
         else:
             self._send(404, {"err": "?"})
 
@@ -813,31 +813,31 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
         if self.path == "/new":
-            w = req.get("opponent", SES.args.opponent)
-            SES.new_game(w)
-            self._send(200, {"ok": True, "fen": SES.board.fen()})
+            w = req.get("opponent", self.S.args.opponent)
+            self.S.new_game(w)
+            self._send(200, {"ok": True, "fen": self.S.board.fen()})
         elif self.path == "/human_move":
             try:
-                SES._calc_cancel = True     # any running calc is stale + steals compute
+                self.S._calc_cancel = True     # any running calc is stale + steals compute
                 mv = chess.Move.from_uci(req["uci"])
-                if mv not in SES.board.legal_moves:
+                if mv not in self.S.board.legal_moves:
                     raise ValueError("illegal")
-                SES.board.push(mv)
-                SES.ctx["hist"][SES.board.epd()] += 1
+                self.S.board.push(mv)
+                self.S.ctx["hist"][self.S.board.epd()] += 1
                 reply = None
-                if not SES.board.is_game_over(claim_draw=True) and SES.opp is not None:
-                    r = SES.opp.play(SES.board, chess.engine.Limit(nodes=1))
-                    reply = SES.board.san(r.move)
-                    SES.board.push(r.move)
-                    SES.ctx["hist"][SES.board.epd()] += 1
-                self._send(200, {"ok": True, "fen": SES.board.fen(), "reply": reply,
-                                 "assistant": SES._prompt()})
+                if not self.S.board.is_game_over(claim_draw=True) and self.S.opp is not None:
+                    r = self.S.opp.play(self.S.board, chess.engine.Limit(nodes=1))
+                    reply = self.S.board.san(r.move)
+                    self.S.board.push(r.move)
+                    self.S.ctx["hist"][self.S.board.epd()] += 1
+                self._send(200, {"ok": True, "fen": self.S.board.fen(), "reply": reply,
+                                 "assistant": self.S._prompt()})
             except Exception as e:                          # noqa: BLE001
                 self._send(400, {"err": str(e)})
         elif self.path == "/load":          # paste FEN or PGN (PGN keeps move HISTORY --
             try:                            # repetition/clock state survive the load)
                 text = req.get("text", "").strip()
-                SES._calc_cancel = True
+                self.S._calc_cancel = True
                 b = None
                 try:
                     b = chess.Board(text)
@@ -858,16 +858,16 @@ class H(BaseHTTPRequestHandler):
                     bb.pop(); keys.append(bb.epd())
                 for k2 in keys:
                     hist[k2] += 1
-                SES.board = b
-                SES.ctx["hist"] = hist
-                SES.ctx["plan"] = "direct"; SES.ctx["target_pt"] = None
+                self.S.board = b
+                self.S.ctx["hist"] = hist
+                self.S.ctx["plan"] = "direct"; self.S.ctx["target_pt"] = None
                 reply = None
                 if b.turn == chess.BLACK and not b.is_game_over(claim_draw=True) \
-                        and SES.opp is not None:
-                    r = SES.opp.play(b, chess.engine.Limit(nodes=1))
+                        and self.S.opp is not None:
+                    r = self.S.opp.play(b, chess.engine.Limit(nodes=1))
                     reply = b.san(r.move)
                     b.push(r.move)
-                    SES.ctx["hist"][b.epd()] += 1
+                    self.S.ctx["hist"][b.epd()] += 1
                 self._send(200, {"ok": True, "fen": b.fen(),
                                  "plies": len(b.move_stack), "reply": reply})
             except Exception as e:                          # noqa: BLE001
@@ -875,31 +875,31 @@ class H(BaseHTTPRequestHandler):
         elif self.path == "/set_fen":       # A/B harness: probe an arbitrary position
             try:
                 from collections import Counter as _C
-                SES.board = chess.Board(req["fen"])
-                SES.ctx["hist"] = _C({SES.board.epd(): 1})
-                SES.ctx["plan"] = "direct"
-                self._send(200, {"ok": True, "fen": SES.board.fen()})
+                self.S.board = chess.Board(req["fen"])
+                self.S.ctx["hist"] = _C({self.S.board.epd(): 1})
+                self.S.ctx["plan"] = "direct"
+                self._send(200, {"ok": True, "fen": self.S.board.fen()})
             except Exception as e:                          # noqa: BLE001
                 self._send(400, {"err": str(e)})
         elif self.path == "/calculate":
-            self._send(200, SES.calculate(int(req.get("nodes", 1500))))
+            self._send(200, self.S.calculate(int(req.get("nodes", 1500))))
         elif self.path == "/calculate_start":
-            self._send(200, SES.calculate_start(int(req.get("nodes", 1500)),
+            self._send(200, self.S.calculate_start(int(req.get("nodes", 1500)),
                                                 resume=bool(req.get("resume"))))
         elif self.path == "/calculate_stop":
-            SES._calc_cancel = True
+            self.S._calc_cancel = True
             self._send(200, {"ok": True})
         elif self.path == "/explore":
             try:
-                with SES.compute:
-                    data = SES.explore(req.get("ucis", []),
+                with self.S.compute:
+                    data = self.S.explore(req.get("ucis", []),
                                        k=min(int(req.get("k", 6)), 24))
                 self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e), "moves": []})
         elif self.path == "/atlas_fens":    # hover-peek: positions behind atlas indices
             try:
-                a = getattr(SES, "_atlas", None) or {}
+                a = getattr(self.S, "_atlas", None) or {}
                 epds, kinds = a.get("epds", []), a.get("kinds", [])
                 out = [[epds[i], kinds[i]] for i in req.get("idx", [])[:9]
                        if 0 <= i < len(epds) and epds[i]]
@@ -908,15 +908,15 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, {"pos": [], "err": str(e)})
         elif self.path == "/atlas_select":
             try:
-                with SES.compute:
-                    data = SES.atlas_select(req["fens"])
+                with self.S.compute:
+                    data = self.S.atlas_select(req["fens"])
                 self._send(200, data)
             except Exception as e:                          # noqa: BLE001
                 self._send(400, {"err": str(e)})
         elif self.path == "/tag":
             with open(TAGS, "a") as f:
                 f.write(json.dumps({"id": req.get("id"), "tag": req.get("tag"),
-                                    "kind": req.get("kind"), "fen": SES.board.fen(),
+                                    "kind": req.get("kind"), "fen": self.S.board.fen(),
                                     "ts": time.time()}) + "\n")
             self._send(200, {"ok": True})
         else:
