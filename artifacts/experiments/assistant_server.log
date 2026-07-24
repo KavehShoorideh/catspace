@@ -318,3 +318,87 @@ assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
 assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
 /Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
   warn(
+/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-26059-1_z9f6hx'}
+  warnings.warn(
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+<UciProtocol (pid=26482)>: stderr >> [1m[31m       _
+<UciProtocol (pid=26482)>: stderr >> |   _ | |
+<UciProtocol (pid=26482)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=26482)>: stderr >> Search algorithm: classic
+assistant on http://localhost:8777  opponent=data/engines/maia/maia-1200.pb.gz
+[atlas] cache hit
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 57679)
+----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 57705)
+Traceback (most recent call last):
+Traceback (most recent call last):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 484, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 697, in process_request_thread
+    self.finish_request(request, client_address)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 501, in do_GET
+    pr = self._prompt()
+        ^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 766, in __init__
+    self.handle()
+    ~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 496, in handle
+    self.handle_one_request()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 484, in handle_one_request
+    method()
+    ~~~~~~^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 501, in do_GET
+    pr = self._prompt()
+        ^^^^^^^^^^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 538, in _get
+    def do_GET(self):
+            ^^^^^^^^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 496, in _send
+    idea("plan", ps["plan"] + (f" -> {ps['goal']}" if ps.get("goal") else ""),
+    ^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 538, in _get
+    def do_GET(self):
+            ^^^^^^^^^
+BrokenPipeError: [Errno 32] Broken pipe
+  File "/Users/kav/code/remote/github/catspace/experiments/viz/assistant_server.py", line 496, in _send
+    idea("plan", ps["plan"] + (f" -> {ps['goal']}" if ps.get("goal") else ""),
+    ^^^^^^^^^^^^^^^^^^
+----------------------------------------
+  File "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 845, in write
+    self._sock.sendall(b)
+    ~~~~~~~~~~~~~~~~~~^^^
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+<UciProtocol (pid=26482)>: stderr >> Loading weights file from: data/engines/maia/maia-1200.pb.gz
+<UciProtocol (pid=26482)>: stderr >> Initialized metal backend on device Apple M3 Pro
+<UciProtocol (pid=28702)>: stderr >> [1m[31m       _
+<UciProtocol (pid=28702)>: stderr >> |   _ | |
+<UciProtocol (pid=28702)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=28702)>: stderr >> Search algorithm: classic
+<UciProtocol (pid=28702)>: stderr >> Loading weights file from: data/engines/maia/maia-1200.pb.gz
+<UciProtocol (pid=28702)>: stderr >> Initialized metal backend on device Apple M3 Pro

@@ -81,6 +81,10 @@
     </div>
   </div>
   <div class="card"><div id="prompt">…</div></div>
+  <div class="card"><h3>explore variations <span class="muted">— hover to walk the tree (board previews); ⚡ = good AND surprising to the opponent; % on their replies = how likely they play it. Click a first-column move to play it</span></h3>
+    <button id="explorego">Explore from here</button>
+    <div id="explorecols" style="display:flex;gap:10px;margin-top:10px;overflow-x:auto;min-height:30px"></div>
+  </div>
   <div class="card"><h3>where we likely end up <span class="muted">(plan: <span id="plan" style="cursor:pointer;color:var(--gold)" title="click: show this plan's subgoal cluster + arrow on the atlas">—</span>) · click a line to trace it on the atlas</span></h3>
     <div id="leaves"></div></div>
 </div>
@@ -293,6 +297,51 @@ async function startCalc(prefix){
 }
 $('#calc').onclick=()=>startCalc();
 $('#plan').onclick=()=>showPlan();
+
+// ---- variation explorer (miller columns; hover previews the board)
+const exCache={};
+async function exFetch(path){
+  const key=path.join(' ');
+  if(!exCache[key])exCache[key]=await j('/explore',{ucis:path});
+  return exCache[key];
+}
+function exPreview(fen){cg.set({fen,movable:{color:'white',free:false,dests:new Map()}});}
+function exRestore(){refresh();}
+function exRender(colIdx,data,path){
+  const cols=$('#explorecols');
+  while(cols.children.length>colIdx)cols.removeChild(cols.lastChild);
+  if(!data.moves||!data.moves.length)return;
+  const col=document.createElement('div');
+  col.style.cssText='min-width:190px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px';
+  col.innerHTML='<div class="muted" style="margin-bottom:4px">'+(data.turn==='w'?'your options':'their likely replies')+'</div>';
+  for(const m of data.moves){
+    const el=document.createElement('div');
+    el.style.cssText='padding:4px 6px;border-radius:4px;cursor:pointer;display:flex;justify-content:space-between;gap:8px';
+    const surprise=m.mlp>2.2&&m.v>-0.05&&data.turn==='w';
+    el.innerHTML='<span><b>'+m.san+'</b>'+(surprise?' ⚡':'')+'</span>'
+      +'<span class="muted">'+(data.turn==='w'?('v '+m.v+' · −logP '+m.mlp)
+                                             :((m.p*100).toFixed(0)+'% · v '+m.v))+'</span>';
+    el.onmouseenter=async()=>{
+      el.style.background='#33302a';
+      exPreview(m.fen);
+      const nxt=await exFetch([...path,m.uci]);
+      exRender(colIdx+1,nxt,[...path,m.uci]);
+    };
+    el.onmouseleave=()=>{el.style.background='';};
+    if(colIdx===0){el.onclick=async()=>{await humanMove(m.uci.slice(0,2),m.uci.slice(2,4));
+      $('#explorecols').innerHTML='';Object.keys(exCache).forEach(k=>delete exCache[k]);};}
+    col.appendChild(el);
+  }
+  cols.appendChild(col);
+}
+$('#explorego').onclick=async()=>{
+  Object.keys(exCache).forEach(k=>delete exCache[k]);
+  $('#explorecols').innerHTML='<span class="muted">reading field + opponent model…</span>';
+  const d=await exFetch([]);
+  $('#explorecols').innerHTML='';
+  exRender(0,d,[]);
+};
+$('#explorecols').onmouseleave=()=>exRestore();
 $('#loadbtn').onclick=async()=>{
   const t=$('#loadtext').value.trim(); if(!t)return;
   const r=await j('/load',{text:t});

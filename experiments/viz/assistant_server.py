@@ -372,6 +372,46 @@ class Session:
                 b.push(mv)
         return {"cohort": "maia/self mix", "moves": rows[:12], "line": line}
 
+    def explore(self, ucis, k=6):
+        """VARIATION EXPLORER (Kaveh: options -> opponent reply probabilities -> my
+        replies, board advancing on hover, good-AND-surprising ranked higher).
+        For the position after `ucis` from the current game position:
+          - our move rows score = v + 0.12*min(-logP_opp, 4): value first, boosted when
+            the opponent model finds the move unlikely (they won't have prepared it);
+          - opponent rows rank by THEIR reply probability (that is the question the
+            popup answers), with White-POV v shown so likely-AND-strong replies read
+            as the real dangers."""
+        import math
+        b = self.board.copy(stack=True)
+        for u in ucis:
+            b.push(chess.Move.from_uci(u))
+        if b.is_game_over(claim_draw=True):
+            return {"moves": [], "over": True, "fen": b.fen(),
+                    "result": b.result(claim_draw=True)}
+        if hasattr(self.vfn, "set_anchor"):
+            self.vfn.set_anchor(b)
+        pr = self.pfn(b)
+        moves = list(b.legal_moves)
+        kids = []
+        for mv in moves:
+            c = b.copy(stack=False); c.push(mv)
+            kids.append(c)
+        vs = self.vfn(kids)
+        rows = []
+        for mv, c, v in zip(moves, kids, vs):
+            p = float(pr.get(mv, 0.0))
+            mlp = round(-math.log(max(p, 1e-9)), 2)
+            rows.append(dict(san=b.san(mv), uci=mv.uci(), p=round(p, 3), mlp=mlp,
+                             v=round(float(v), 3), fen=c.fen()))
+        ours = b.turn == chess.WHITE
+        if ours:
+            for r in rows:
+                r["score"] = round(r["v"] + 0.12 * min(r["mlp"], 4.0), 3)
+            rows.sort(key=lambda r: -r["score"])
+        else:
+            rows.sort(key=lambda r: -r["p"])
+        return {"moves": rows[:k], "turn": "w" if ours else "b", "fen": b.fen()}
+
     def calculate_start(self, nodes, chunk=64):
         """STREAMING calculation (Kaveh: 'a way for calculations to stream in as it's
         calculating'): chunked MCTS on a thread, tree reused across chunks; /calc_state
@@ -658,6 +698,13 @@ class H(BaseHTTPRequestHandler):
             self._send(200, SES.calculate(int(req.get("nodes", 1500))))
         elif self.path == "/calculate_start":
             self._send(200, SES.calculate_start(int(req.get("nodes", 1500))))
+        elif self.path == "/explore":
+            try:
+                with SES.compute:
+                    data = SES.explore(req.get("ucis", []))
+                self._send(200, data)
+            except Exception as e:                          # noqa: BLE001
+                self._send(200, {"err": str(e), "moves": []})
         elif self.path == "/atlas_select":
             try:
                 with SES.compute:
