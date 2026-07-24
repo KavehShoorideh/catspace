@@ -86,8 +86,12 @@
         <span><span class="dot" style="background:#7fbf7f"></span>mates</span>
         <span><span class="dot" style="background:#d9705f"></span>losses</span>
         <span><span class="dot" style="background:#c9a227"></span>draws</span>
-        <span><span class="dot" style="background:#7fb8d9"></span>engine line</span>
-        <span><span class="dot" style="background:#fff"></span>subgoal cluster</span>
+        <span><span class="dot" style="background:#7fb8d9;border-radius:0;transform:rotate(45deg)"></span>line start</span>
+        <span><span class="dot" style="background:#fff;border-radius:0"></span>line end</span>
+        <span><span class="dot" style="background:#e8f4fc"></span>after our (White) move</span>
+        <span><span class="dot" style="background:#33607f"></span>after their (Black) move</span>
+        <span><span class="dot" style="background:none;border:1.5px solid #c9a227"></span>subgoal cluster</span>
+        <span><span class="dot" style="background:#c9a227;width:14px;height:3px;border-radius:1px"></span>plan arrow → centroid</span>
       </div>
     </div>
   </div>
@@ -249,13 +253,29 @@ function drawAtlas(){         // overlays only; the 6k points are built once
     t2.textContent='now'; gpl.appendChild(t2);
   }
   if(sel&&sel.near)for(const i of sel.near){const[x,y]=atlas[i];
-    gs.appendChild(svgEl('circle',{cx:x,cy:y,r:3*u,fill:'#fff'}));}
+    gs.appendChild(svgEl('circle',{cx:x,cy:y,r:3*u,fill:'#fff',opacity:0.85}));}
   if(sel&&sel.path){
     const pts=sel.path.map(([x,y])=>[x,-y]);
+    const fens=window._lastProjFens||[];
     gs.appendChild(svgEl('polyline',{points:pts.map(p=>p.join(',')).join(' '),
       fill:'none',stroke:'#7fb8d9','stroke-width':1.6*u}));
-    pts.forEach(([x,y],i)=>gs.appendChild(svgEl('circle',{cx:x,cy:y,
-      r:(i===pts.length-1?5:3.4)*u,fill:i===pts.length-1?'#fff':'#7fb8d9'})));
+    pts.forEach(([x,y],i)=>{
+      const last=i===pts.length-1;
+      if(i===0){                   // START: diamond
+        const s=5*u;
+        gs.appendChild(svgEl('polygon',{points:[[x,y-s],[x+s,y],[x,y+s],[x-s,y]]
+          .map(p=>p.join(',')).join(' '),fill:'#7fb8d9',stroke:'#1c1a17','stroke-width':0.8*u}));
+      }else if(last){              // END: square
+        const s=4.5*u;
+        gs.appendChild(svgEl('rect',{x:x-s,y:y-s,width:2*s,height:2*s,fill:'#fff',
+          stroke:'#1c1a17','stroke-width':0.8*u}));
+      }else{                       // step: colored by WHO JUST MOVED
+        // fens[i] is the position AFTER move i; ' b ' to move => White just moved
+        const whiteMoved=fens[i]?fens[i].includes(' b '):(i%2===0);
+        gs.appendChild(svgEl('circle',{cx:x,cy:y,r:3.2*u,
+          fill:whiteMoved?'#e8f4fc':'#33607f',stroke:'#1c1a17','stroke-width':0.5*u}));
+      }
+    });
   }
 }
 (function(){    // zoom + pan
@@ -276,7 +296,8 @@ function drawAtlas(){         // overlays only; the 6k points are built once
   svg.addEventListener('dblclick',()=>{if(fullVb){vb=[...fullVb];applyVb();}});
 })();
 async function showPlan(){const r=await j('/atlas_plan');if(!r.err){planSel=r;drawAtlas();}}
-async function projectLine(fens){const r=await j('/atlas_select',{fens});if(r.path){sel=r;drawAtlas();}}
+async function projectLine(fens){window._lastProjFens=fens;
+  const r=await j('/atlas_select',{fens});if(r.path){sel=r;drawAtlas();}}
 
 // ---- game
 let cg;
