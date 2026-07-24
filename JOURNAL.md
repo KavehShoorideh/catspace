@@ -7332,3 +7332,38 @@ trajectories = expert-quality paths for the field); planner-RL gets per-DECISION
 (obs, plan, outcome); banks get per-SEARCH terminal facts (the non-parametric
 parameters). One game updates every component. Leakage gate honored: engines' MOVES
 and OUTCOMES are data; their eval numbers remain banned.
+
+## 2026-07-24 -- LIT REVIEW (Kaveh: 'search how others do system-wide gradients')
+
+Three established families, each mapping onto our stack:
+
+1. MUZERO FAMILY (the canonical system gradient): representation+dynamics+prediction as
+   one net, trained jointly with targets FROM THE SEARCH ITSELF -- visit-distribution
+   policy targets + value targets + latent consistency. The transferable principle:
+   search is a policy-improvement operator; distill its output back into the fast
+   components. FOR US: our MCTS visit distributions are free dense per-position policy
+   targets -> train a SELF cohort (energy model) or self-policy head on them (revives
+   the old task-10 AZ-distillation thread as the self-improvement channel).
+   ADOPT-1, highest value.
+
+2. MULTI-TASK GRADIENT COMPOSITION (PCGrad / CAGrad / GradNorm): when one shared net
+   (our field) takes multiple losses (QRL pairs, DTM hinge, human replay vs self-play
+   channels), naive summing causes destructive gradient conflict -- project out
+   conflicting components / normalize magnitudes. FOR US: the fine-tune plateau may
+   partly BE replay-vs-self gradient conflict; if the scratch run underperforms,
+   PCGrad/GradNorm across channels is the next lever. ADOPT-3, conditional.
+
+3. DIFFERENTIABLE RETRIEVAL / EPISODIC MEMORY (Neural Episodic Control's Differentiable
+   Neural Dictionary; REALM's async index refresh): soft-attention reads over memory
+   let outcome error shape the EMBEDDING through retrieval. FOR US: NEC = our banks
+   with gradients -- train the field so softmin-over-bank reads predict outcomes; this
+   formalizes the shelved rho head as trainable retrieval (the literature-grounded
+   fallback if probability-multiplication proves insufficient), and REALM's index
+   refresh = our per-field-version bank re-embedding, already implemented.
+   ADOPT-2, research thread.
+
+Sources: MuZero joint training + search targets (UniZero arxiv 2406.10667, Demystifying
+MuZero arxiv 2411.04580); PCGrad (emergentmind PCGrad topic), CAGrad (arxiv 2110.14048),
+GradNorm (via MTL surveys arxiv 2109.09138); NEC (Pritzel et al., researchgate
+314256022), End-to-End Memory Networks (NIPS 5846), REALM async refresh (arxiv
+2204.04581 discussion).
