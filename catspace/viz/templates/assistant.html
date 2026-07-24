@@ -1,5 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><title>catspace assistant</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <link rel="stylesheet" href="/assets/chessground/chessground.base.css">
 <link rel="stylesheet" href="/assets/chessground/chessground.brown.css">
 <link rel="stylesheet" href="/assets/chessground/chessground.cburnett.css">
@@ -36,6 +37,15 @@
  .leaf{margin:6px 0;padding:6px 8px;background:var(--bg);border-radius:6px;font-size:13px;cursor:pointer}
  .leaf.sel{border-left:3px solid var(--blue)}
  .muted{color:var(--muted);font-size:12px}
+ /* phone (tailscale) play: board fills the width, panels stack, no fixed sizes */
+ @media (max-width: 700px){
+   body{padding:8px}
+   .stage{flex-direction:column}
+   #boardpanel,#atlaspanel{width:100% !important;min-width:0;resize:none}
+   #atlaspanel{height:60vw}
+   .tabs{flex-wrap:wrap}
+   #status{width:100%;margin-left:0;order:9}
+ }
  .legend{display:flex;gap:14px;font-size:11px;margin-top:4px;flex-wrap:wrap}
  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:middle}
 </style></head>
