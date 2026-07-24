@@ -1,0 +1,3 @@
+[data] 272 (obs, plan, outcome) tuples; base rate 0.73
+VERDICT PLANNER_RL n=272 fit-spearman +0.761 [2s]
+saved data/derived/sep/planner_rl_r0.pt

@@ -424,7 +424,9 @@ function exRender(colIdx,data,path){
     const el=document.createElement('div');
     el.style.cssText='padding:4px 6px;border-radius:4px;cursor:pointer;display:flex;justify-content:space-between;gap:8px';
     const surprise=m.mlp>2.2&&m.v>-0.05&&data.turn==='w';
-    el.innerHTML='<span><b>'+m.san+'</b>'+(surprise?' ⚡':'')+'</span>'
+    const role=m.role==='prevents'?' 🛡':m.role==='advances'?' ⚔':m.role==='both'?' ⚔🛡':'';
+    if(m.why)el.title=m.why;
+    el.innerHTML='<span><b>'+m.san+'</b>'+(surprise?' ⚡':'')+role+'</span>'
       +'<span class="muted">'+(data.turn==='w'?((m.visits?('N '+m.visits+' · '):'')+'v '+m.v+' · −logP '+m.mlp)
                                              :((m.p*100).toFixed(0)+'% · v '+m.v))+'</span>';
     el.onmouseenter=async()=>{
@@ -435,6 +437,12 @@ function exRender(colIdx,data,path){
     };
     el.onmouseleave=()=>{el.style.background='';};
     col.appendChild(el);
+    if(m.role==='prevents'&&m.why){
+      const w=document.createElement('div');
+      w.className='muted';w.style.cssText='font-size:11px;padding:0 6px 4px;color:#c9a227';
+      w.textContent='🛡 '+m.why;
+      col.appendChild(w);
+    }
   }
   cols.appendChild(col);
 }

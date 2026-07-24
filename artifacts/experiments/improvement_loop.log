@@ -1,0 +1,384 @@
+=== IMPROVE round 0 field=field_fullmonth_r0 opp=maia-1100.pb [0s] ===
+<UciProtocol (pid=86655)>: stderr >> [1m[31m       _
+<UciProtocol (pid=86654)>: stderr >> [1m[31m       _
+<UciProtocol (pid=86655)>: stderr >> |   _ | |
+<UciProtocol (pid=86654)>: stderr >> |   _ | |
+<UciProtocol (pid=86655)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=86654)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=86655)>: stderr >> Search algorithm: classic
+<UciProtocol (pid=86654)>: stderr >> Search algorithm: classic
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+    [warm-up] bank 0->2 nodes=40000 [90s]
+    [warm-up] bank 0->2 nodes=40000 [90s]
+    mv01   10.2s = prior  15.6 (18939) + embF  11.9 (6762) + dbank   2.6 ( 6762) + tree -24.2 + harvest  4.3  nodes=2000
+<UciProtocol (pid=86654)>: stderr >> Loading weights file from: data/engines/maia/maia-1100.pb.gz
+<UciProtocol (pid=86654)>: stderr >> Initialized metal backend on device Apple M3 Pro
+    mv01   10.2s = prior  15.5 (18939) + embF  11.9 (6762) + dbank   2.5 ( 6762) + tree -24.1 + harvest  4.4  nodes=2000
+<UciProtocol (pid=86655)>: stderr >> Loading weights file from: data/engines/maia/maia-1100.pb.gz
+<UciProtocol (pid=86655)>: stderr >> Initialized metal backend on device Apple M3 Pro
+    mv02    5.7s = prior   1.4 (1627) + embF   2.1 (1627) + dbank   0.4 ( 1627) + tree   0.7 + harvest  1.0  nodes=2000
+    mv02    5.6s = prior   1.4 (1627) + embF   2.1 (1627) + dbank   0.4 ( 1627) + tree   0.7 + harvest  1.0  nodes=2000
+    mv03    4.1s = prior   1.4 (1727) + embF   1.5 (1727) + dbank   0.3 ( 1727) + tree   0.7 + harvest  0.2  nodes=2000
+    mv03    4.2s = prior   1.4 (1727) + embF   1.5 (1727) + dbank   0.3 ( 1727) + tree   0.7 + harvest  0.2  nodes=2000
+    mv04    5.4s = prior   1.4 (1725) + embF   1.5 (1725) + dbank   0.3 ( 1725) + tree   1.9 + harvest  0.3  nodes=2000
+    mv04    5.3s = prior   1.4 (1725) + embF   1.5 (1725) + dbank   0.3 ( 1725) + tree   1.9 + harvest  0.3  nodes=2000
+    mv05    6.5s = prior   1.6 (1713) + embF   2.8 (1713) + dbank   1.1 ( 3431) + tree   0.7 + harvest  0.3  nodes=2000
+    mv05    6.5s = prior   1.6 (1713) + embF   2.8 (1713) + dbank   1.1 ( 3431) + tree   0.7 + harvest  0.2  nodes=2000
+    mv06    6.7s = prior  23.0 (27328) + embF  22.4 (15151) + dbank   6.1 (18533) + tree -45.1 + harvest  0.3  nodes=2000
+    mv06    6.8s = prior  22.9 (27328) + embF  22.3 (15151) + dbank   6.1 (18533) + tree -45.0 + harvest  0.3  nodes=2000
+    mv07    6.4s = prior   1.6 (1895) + embF   2.3 (1895) + dbank   1.4 ( 3795) + tree   0.8 + harvest  0.3  nodes=2000
+    mv07    6.4s = prior   1.6 (1895) + embF   2.3 (1895) + dbank   1.4 ( 3795) + tree   0.8 + harvest  0.3  nodes=2000
+    mv08    7.6s = prior   1.8 (1877) + embF   2.9 (1877) + dbank   1.7 ( 3779) + tree   0.8 + harvest  0.3  nodes=2000
+    mv08    7.6s = prior   1.8 (1877) + embF   3.0 (1877) + dbank   1.7 ( 3779) + tree   0.8 + harvest  0.3  nodes=2000
+    mv09    5.7s = prior   1.4 (1757) + embF   1.8 (1757) + dbank   1.4 ( 3592) + tree   0.8 + harvest  0.3  nodes=2000
+    mv09    5.8s = prior   1.4 (1757) + embF   1.8 (1757) + dbank   1.4 ( 3592) + tree   0.8 + harvest  0.3  nodes=2000
+    mv10    8.3s = prior   1.5 (1570) + embF   2.2 (1570) + dbank   1.9 ( 3316) + tree   2.3 + harvest  0.5  nodes=2000
+    mv10    8.3s = prior   1.5 (1570) + embF   2.2 (1570) + dbank   1.9 ( 3316) + tree   2.3 + harvest  0.5  nodes=2000
+    mv11    7.6s = prior   1.7 (1693) + embF   2.6 (1693) + dbank   2.2 ( 3433) + tree   0.8 + harvest  0.3  nodes=2000
+    mv11    7.7s = prior   1.7 (1693) + embF   2.7 (1693) + dbank   2.2 ( 3433) + tree   0.8 + harvest  0.3  nodes=2000
+    mv12    8.8s = prior   1.9 (1890) + embF   3.0 (1890) + dbank   2.6 ( 3823) + tree   0.8 + harvest  0.3  nodes=2000
+    mv12    8.8s = prior   1.9 (1890) + embF   3.1 (1890) + dbank   2.7 ( 3823) + tree   0.8 + harvest  0.3  nodes=2000
+    mv13    7.9s = prior   1.7 (1730) + embF   2.7 (1730) + dbank   2.5 ( 3466) + tree   0.8 + harvest  0.2  nodes=2000
+    mv13    7.9s = prior   1.7 (1730) + embF   2.6 (1730) + dbank   2.5 ( 3466) + tree   0.8 + harvest  0.2  nodes=2000
+    mv14    9.0s = prior   2.0 (1909) + embF   3.1 (1909) + dbank   2.9 ( 3818) + tree   0.8 + harvest  0.2  nodes=2000
+    mv14    9.0s = prior   2.0 (1909) + embF   3.1 (1909) + dbank   2.9 ( 3818) + tree   0.8 + harvest  0.2  nodes=2000
+    mv15    6.3s = prior   1.5 (1757) + embF   1.7 (1757) + dbank   2.2 ( 3533) + tree   0.7 + harvest  0.2  nodes=2000
+    mv15    6.2s = prior   1.5 (1757) + embF   1.6 (1757) + dbank   2.2 ( 3533) + tree   0.7 + harvest  0.2  nodes=2000
+    mv16    7.5s = prior  39.7 (45134) + embF  47.0 (32957) + dbank  27.7 (54641) + tree -107.1 + harvest  0.3  nodes=2000
+    mv16    7.6s = prior  39.7 (45134) + embF  47.0 (32957) + dbank  27.8 (54641) + tree -107.2 + harvest  0.3  nodes=2000
+    mv17    9.6s = prior   1.5 (1792) + embF   2.2 (1792) + dbank   3.1 ( 3676) + tree   2.5 + harvest  0.3  nodes=2000
+    mv17    9.5s = prior   1.5 (1792) + embF   2.1 (1792) + dbank   3.1 ( 3676) + tree   2.5 + harvest  0.3  nodes=2000
+    mv18    8.3s = prior   1.4 (1680) + embF   2.3 (1680) + dbank   3.6 ( 3419) + tree   0.7 + harvest  0.3  nodes=2000
+    mv18    8.4s = prior   1.4 (1680) + embF   2.2 (1680) + dbank   3.7 ( 3419) + tree   0.7 + harvest  0.3  nodes=2000
+    mv19    9.9s = prior   1.4 (1536) + embF   2.4 (1536) + dbank   4.9 ( 3283) + tree   0.7 + harvest  0.5  nodes=2000
+    mv19    9.9s = prior   1.4 (1536) + embF   2.4 (1536) + dbank   4.9 ( 3283) + tree   0.7 + harvest  0.5  nodes=2000
+    mv20   11.5s = prior   1.3 (1630) + embF   2.4 (1630) + dbank   6.8 ( 3290) + tree   0.6 + harvest  0.3  nodes=2000
+    mv20   11.4s = prior   1.3 (1630) + embF   2.4 (1630) + dbank   6.8 ( 3290) + tree   0.6 + harvest  0.3  nodes=2000
+    mv21   13.7s = prior   1.7 (1765) + embF   3.4 (1765) + dbank   7.6 ( 3578) + tree   0.7 + harvest  0.3  nodes=2000
+    mv21   13.6s = prior   1.7 (1765) + embF   3.4 (1765) + dbank   7.7 ( 3578) + tree   0.7 + harvest  0.3  nodes=2000
+    mv22   13.6s = prior   1.6 (1812) + embF   3.1 (1812) + dbank   7.9 ( 3627) + tree   0.7 + harvest  0.2  nodes=2000
+    mv22   13.6s = prior   1.6 (1812) + embF   3.2 (1812) + dbank   7.8 ( 3627) + tree   0.7 + harvest  0.3  nodes=2000
+    mv23   14.4s = prior   1.8 (1776) + embF   3.5 (1776) + dbank   8.0 ( 3619) + tree   0.8 + harvest  0.3  nodes=2000
+    mv23   14.3s = prior   1.8 (1776) + embF   3.6 (1776) + dbank   7.9 ( 3619) + tree   0.8 + harvest  0.3  nodes=2000
+    mv24   12.4s = prior  51.7 (58830) + embF  68.3 (46653) + dbank  77.7 (82595) + tree -185.7 + harvest  0.4  nodes=2000
+    mv24   12.5s = prior  51.7 (58830) + embF  68.2 (46653) + dbank  77.7 (82595) + tree -185.5 + harvest  0.4  nodes=2000
+    mv25   12.1s = prior   1.2 (1197) + embF   2.7 (1197) + dbank   7.2 ( 2408) + tree   0.8 + harvest  0.4  nodes=2000
+    mv25   12.1s = prior   1.2 (1197) + embF   2.6 (1197) + dbank   7.3 ( 2408) + tree   0.8 + harvest  0.4  nodes=2000
+    mv26   27.0s = prior   2.1 (1846) + embF   4.0 (1846) + dbank  19.1 ( 5668) + tree   1.4 + harvest  0.5  nodes=2000
+    mv26   27.0s = prior   2.1 (1846) + embF   4.0 (1846) + dbank  19.1 ( 5668) + tree   1.4 + harvest  0.5  nodes=2000
+    mv27   15.6s = prior   1.0 ( 595) + embF   2.6 ( 595) + dbank  10.9 ( 1801) + tree   0.9 + harvest  0.2  nodes=684
+  g001[w1] FAIL:checkmate plies=54 tb=0 tac=1 plan=direct:13,tradedown->BBKNPPPPPPPPQRRvbknnppppppppqrr:10,tradedown->BKPPPPPvbbknnppppppqrr:4 bank=5(+3) loss=2465 draws=385 ms=27 t/move=8.3s t/game=262s nodes/s=201 [352s]
+[worker 1] code moved past 1046203; re-exec onto newest
+    mv27   15.5s = prior   1.0 ( 595) + embF   2.6 ( 595) + dbank  10.8 ( 1801) + tree   0.9 + harvest  0.2  nodes=684
+  g000[w0] FAIL:checkmate plies=54 tb=0 tac=1 plan=direct:13,tradedown->BBKNPPPPPPPPQRRvbknnppppppppqrr:10,tradedown->BKPPPPPvbbknnppppppqrr:4 bank=5(+3) loss=2465 draws=385 ms=27 t/move=8.4s t/game=262s nodes/s=201 [352s]
+[worker 0] code moved past 1046203; re-exec onto newest
+<UciProtocol (pid=87581)>: stderr >> [1m[31m       _
+<UciProtocol (pid=87581)>: stderr >> |   _ | |
+<UciProtocol (pid=87581)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=87581)>: stderr >> Search algorithm: classic
+<UciProtocol (pid=87584)>: stderr >> [1m[31m       _
+<UciProtocol (pid=87584)>: stderr >> |   _ | |
+<UciProtocol (pid=87584)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=87584)>: stderr >> Search algorithm: classic
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 1] resume: skipping 2 recorded games
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 0] resume: skipping 2 recorded games
+    [warm-up] bank 5->5 nodes=40000 [708s]
+    [warm-up] bank 5->5 nodes=40000 [709s]
+    mv01   35.3s = prior  28.2 (28462) + embF  64.7 (28462) + dbank 580.1 (93033) + tree -641.8 + harvest  4.1  nodes=2000
+<UciProtocol (pid=87584)>: stderr >> Loading weights file from: data/engines/maia/maia-1100.pb.gz
+<UciProtocol (pid=87584)>: stderr >> Initialized metal backend on device Apple M3 Pro
+    mv01   35.5s = prior  28.2 (28462) + embF  65.6 (28462) + dbank 580.0 (93033) + tree -642.6 + harvest  4.2  nodes=2000
+<UciProtocol (pid=87581)>: stderr >> Loading weights file from: data/engines/maia/maia-1100.pb.gz
+<UciProtocol (pid=87581)>: stderr >> Initialized metal backend on device Apple M3 Pro
+    mv02   38.1s = prior   1.3 (1603) + embF   3.1 (1603) + dbank  32.6 ( 5032) + tree   0.7 + harvest  0.4  nodes=2000
+    mv02   38.4s = prior   1.3 (1603) + embF   3.2 (1603) + dbank  32.8 ( 5032) + tree   0.7 + harvest  0.4  nodes=2000
+    mv03   40.9s = prior  31.0 (31750) + embF  71.6 (31750) + dbank 647.1 (103209) + tree -709.1 + harvest  0.3  nodes=2000
+    mv03   40.8s = prior  31.1 (31750) + embF  72.4 (31750) + dbank 647.3 (103209) + tree -710.2 + harvest  0.3  nodes=2000
+    mv04   44.8s = prior   1.5 (1888) + embF   3.6 (1888) + dbank  38.7 ( 5680) + tree   0.8 + harvest  0.3  nodes=2000
+    mv04   44.9s = prior   1.5 (1888) + embF   3.5 (1888) + dbank  38.9 ( 5680) + tree   0.8 + harvest  0.3  nodes=2000
+    mv05   46.9s = prior   2.9 (1891) + embF   4.1 (1891) + dbank  38.7 ( 5715) + tree   0.8 + harvest  0.3  nodes=2000
+    mv05   46.7s = prior   2.9 (1891) + embF   4.0 (1891) + dbank  38.7 ( 5715) + tree   0.8 + harvest  0.3  nodes=2000
+    mv06   44.5s = prior   1.8 (1817) + embF   4.6 (1817) + dbank  36.9 ( 5530) + tree   0.9 + harvest  0.3  nodes=2000
+    mv06   44.8s = prior   1.8 (1817) + embF   4.3 (1817) + dbank  37.5 ( 5530) + tree   0.9 + harvest  0.3  nodes=2000
+    mv07   43.0s = prior   1.6 (1782) + embF   3.8 (1782) + dbank  36.6 ( 5391) + tree   0.8 + harvest  0.2  nodes=2000
+    mv07   43.3s = prior   1.6 (1782) + embF   3.8 (1782) + dbank  36.8 ( 5391) + tree   0.8 + harvest  0.2  nodes=2000
+    mv08   45.1s = prior   2.0 (1801) + embF   4.8 (1801) + dbank  37.1 ( 5403) + tree   0.9 + harvest  0.2  nodes=2000
+    mv08   44.6s = prior   2.0 (1801) + embF   4.6 (1801) + dbank  36.8 ( 5403) + tree   1.0 + harvest  0.2  nodes=2000
+    mv09   42.2s = prior   2.1 (1666) + embF   4.6 (1666) + dbank  34.1 ( 5051) + tree   1.1 + harvest  0.3  nodes=2000
+    mv09   42.3s = prior   2.0 (1666) + embF   4.6 (1666) + dbank  34.3 ( 5051) + tree   1.0 + harvest  0.3  nodes=2000
+    mv10   43.6s = prior   1.9 (1759) + embF   4.4 (1759) + dbank  36.1 ( 5326) + tree   1.0 + harvest  0.3  nodes=2000
+    mv10   44.0s = prior   1.9 (1759) + embF   4.5 (1759) + dbank  36.3 ( 5326) + tree   1.0 + harvest  0.3  nodes=2000
+    mv11   45.2s = prior   1.7 (1810) + embF   4.1 (1810) + dbank  36.9 ( 5501) + tree   2.3 + harvest  0.3  nodes=2000
+    mv11   44.8s = prior   1.7 (1810) + embF   4.1 (1810) + dbank  36.5 ( 5501) + tree   2.3 + harvest  0.3  nodes=2000
+    mv12   45.4s = prior   1.7 (1841) + embF   4.2 (1841) + dbank  38.4 ( 5549) + tree   0.8 + harvest  0.3  nodes=2000
+    mv12   45.6s = prior   1.7 (1841) + embF   4.3 (1841) + dbank  38.5 ( 5549) + tree   0.8 + harvest  0.3  nodes=2000
+    mv13   45.7s = prior   1.5 (1840) + embF   2.9 (1840) + dbank  40.1 ( 5546) + tree   0.8 + harvest  0.3  nodes=2000
+    mv13   45.7s = prior   1.5 (1840) + embF   3.1 (1840) + dbank  40.0 ( 5546) + tree   0.8 + harvest  0.3  nodes=2000
+    mv14   42.6s = prior  51.4 (51489) + embF 116.8 (51489) + dbank 1056.4 (162964) + tree -1182.2 + harvest  0.3  nodes=2000
+    mv14   43.1s = prior  51.3 (51489) + embF 117.4 (51489) + dbank 1057.6 (162964) + tree -1183.4 + harvest  0.3  nodes=2000
+    mv15   48.8s = prior   1.8 (1881) + embF   4.4 (1881) + dbank  41.4 ( 5707) + tree   0.8 + harvest  0.4  nodes=2000
+    mv15   48.7s = prior   1.8 (1881) + embF   4.5 (1881) + dbank  41.3 ( 5707) + tree   0.8 + harvest  0.4  nodes=2000
+    mv16   48.3s = prior   1.7 (1858) + embF   3.8 (1858) + dbank  41.6 ( 5613) + tree   0.8 + harvest  0.4  nodes=2000
+    mv16   48.3s = prior   1.7 (1858) + embF   3.9 (1858) + dbank  41.6 ( 5613) + tree   0.8 + harvest  0.4  nodes=2000
+    mv17   45.3s = prior  56.5 (56952) + embF 128.5 (56952) + dbank 1178.3 (179494) + tree -1318.4 + harvest  0.4  nodes=2000
+    mv17   45.5s = prior  56.4 (56952) + embF 129.1 (56952) + dbank 1179.7 (179494) + tree -1320.1 + harvest  0.5  nodes=2000
+    mv18   51.2s = prior   1.8 (1839) + embF   4.3 (1839) + dbank  42.0 ( 5541) + tree   2.7 + harvest  0.3  nodes=2000
+    mv18   50.9s = prior   1.8 (1839) + embF   4.3 (1839) + dbank  41.8 ( 5541) + tree   2.7 + harvest  0.3  nodes=2000
+    mv19   44.6s = prior   1.3 (1587) + embF   2.7 (1587) + dbank  39.7 ( 4850) + tree   0.7 + harvest  0.3  nodes=2000
+    mv19   44.8s = prior   1.3 (1587) + embF   2.7 (1587) + dbank  39.8 ( 4850) + tree   0.7 + harvest  0.3  nodes=2000
+    mv20   43.9s = prior   1.2 (1545) + embF   2.9 (1545) + dbank  38.8 ( 4917) + tree   0.7 + harvest  0.3  nodes=2000
+    mv20   44.1s = prior   1.2 (1545) + embF   3.1 (1545) + dbank  38.8 ( 4917) + tree   0.7 + harvest  0.3  nodes=2000
+    mv21   53.3s = prior   1.7 (1838) + embF   4.4 (1838) + dbank  46.0 ( 5514) + tree   0.8 + harvest  0.3  nodes=2000
+    mv21   53.2s = prior   1.7 (1838) + embF   4.4 (1838) + dbank  45.9 ( 5514) + tree   0.8 + harvest  0.4  nodes=2000
+    mv22   47.5s = prior   1.4 (1604) + embF   3.3 (1604) + dbank  41.7 ( 4988) + tree   0.7 + harvest  0.4  nodes=2000
+    mv22   47.5s = prior   1.4 (1604) + embF   3.3 (1604) + dbank  41.6 ( 4988) + tree   0.7 + harvest  0.4  nodes=2000
+    mv23   57.8s = prior   1.6 (1896) + embF   3.8 (1896) + dbank  51.3 ( 5718) + tree   0.8 + harvest  0.3  nodes=2000
+    mv23   57.8s = prior   1.6 (1896) + embF   3.8 (1896) + dbank  51.3 ( 5718) + tree   0.8 + harvest  0.3  nodes=2000
+    mv24   61.9s = prior   2.7 (1633) + embF   6.8 (1633) + dbank  48.4 ( 5101) + tree   3.4 + harvest  0.5  nodes=1820
+    mv24   61.4s = prior   2.7 (1633) + embF   6.7 (1633) + dbank  48.1 ( 5101) + tree   3.4 + harvest  0.5  nodes=1820
+    mv25   30.4s = prior   1.0 ( 687) + embF   2.6 ( 687) + dbank  24.6 ( 2681) + tree   2.0 + harvest  0.3  nodes=1047
+    mv25   30.6s = prior   1.0 ( 687) + embF   2.7 ( 687) + dbank  24.7 ( 2681) + tree   2.0 + harvest  0.3  nodes=1047
+    mv26   27.1s = prior   1.1 ( 610) + embF   2.9 ( 610) + dbank  21.1 ( 1842) + tree   1.8 + harvest  0.2  nodes=623
+    mv26   27.0s = prior   1.1 ( 610) + embF   2.9 ( 610) + dbank  21.0 ( 1842) + tree   1.8 + harvest  0.2  nodes=623
+    mv27   14.9s = prior  70.8 (70486) + embF 163.6 (70486) + dbank 1543.5 (221547) + tree -1763.2 + harvest  0.1  nodes=314
+  g002[w0] FAIL:checkmate plies=54 tb=0 tac=0 plan=direct:6,tradedown->BBKNNPPPPPPPPQRRvbbknnpppppppqrr:10,tradedown->BKNPPPPPPQRvknnppppppppqrr:1,tradedown->KNPPPPPPRvknnppppppppqr:10 bank=8(+3) loss=4416 draws=1083 ms=53 t/move=44.8s t/game=1178s nodes/s=42 [1888s]
+    mv27   15.1s = prior  70.7 (70486) + embF 164.6 (70486) + dbank 1544.5 (221547) + tree -1764.7 + harvest  0.1  nodes=314
+  g003[w1] FAIL:checkmate plies=54 tb=0 tac=0 plan=direct:6,tradedown->BBKNNPPPPPPPPQRRvbbknnpppppppqrr:10,tradedown->BKNPPPPPPQRvknnppppppppqrr:1,tradedown->KNPPPPPPRvknnppppppppqr:10 bank=8(+3) loss=4416 draws=1083 ms=53 t/move=44.8s t/game=1179s nodes/s=42 [1890s]
+    [warm-up] bank 8->8 nodes=40000 [1007s]
+    [warm-up] bank 8->8 nodes=40000 [1009s]
+    mv01   57.5s = prior  90.8 (93559) + embF 208.8 (93559) + dbank 2466.4 (294879) + tree -2712.9 + harvest  4.4  nodes=2000
+    mv01   57.8s = prior  90.9 (93559) + embF 210.1 (93559) + dbank 2468.4 (294879) + tree -2716.0 + harvest  4.5  nodes=2000
+    mv02   64.8s = prior   1.2 (1497) + embF   2.8 (1497) + dbank  57.7 ( 4759) + tree   2.2 + harvest  1.0  nodes=2000
+    mv02   67.1s = prior   1.2 (1497) + embF   2.8 (1497) + dbank  59.9 ( 4759) + tree   2.2 + harvest  1.0  nodes=2000
+    mv03   61.9s = prior  93.1 (96470) + embF 214.3 (96470) + dbank 2581.2 (304074) + tree -2826.9 + harvest  0.2  nodes=2000
+    mv03   62.2s = prior  93.1 (96470) + embF 215.6 (96470) + dbank 2585.7 (304074) + tree -2832.4 + harvest  0.2  nodes=2000
+    mv04   74.2s = prior   1.3 (1676) + embF   3.6 (1676) + dbank  68.2 ( 5033) + tree   0.7 + harvest  0.3  nodes=2000
+    mv04   73.8s = prior   1.4 (1676) + embF   3.6 (1676) + dbank  67.9 ( 5033) + tree   0.7 + harvest  0.2  nodes=2000
+    mv05   79.0s = prior   1.5 (1776) + embF   4.2 (1776) + dbank  72.2 ( 5457) + tree   0.8 + harvest  0.3  nodes=2000
+    mv05   79.0s = prior   1.5 (1776) + embF   4.3 (1776) + dbank  72.1 ( 5457) + tree   0.8 + harvest  0.3  nodes=2000
+    mv06   86.1s = prior   1.8 (1925) + embF   4.9 (1925) + dbank  78.2 ( 5785) + tree   0.9 + harvest  0.3  nodes=2000
+    mv06   85.8s = prior   1.8 (1925) + embF   4.9 (1925) + dbank  78.0 ( 5785) + tree   0.9 + harvest  0.3  nodes=2000
+    mv07   86.5s = prior   1.8 (1924) + embF   5.1 (1924) + dbank  76.6 ( 5790) + tree   2.6 + harvest  0.3  nodes=2000
+    mv07   87.0s = prior   1.8 (1924) + embF   5.1 (1924) + dbank  77.1 ( 5790) + tree   2.6 + harvest  0.3  nodes=2000
+    mv08   85.5s = prior   1.8 (1903) + embF   5.1 (1903) + dbank  77.4 ( 5709) + tree   0.9 + harvest  0.3  nodes=2000
+    mv08   86.2s = prior   1.8 (1903) + embF   5.3 (1903) + dbank  77.9 ( 5709) + tree   0.9 + harvest  0.3  nodes=2000
+    mv09   85.2s = prior   1.4 (1918) + embF   3.0 (1918) + dbank  79.7 ( 5774) + tree   0.8 + harvest  0.3  nodes=2000
+    mv09   85.0s = prior   1.4 (1918) + embF   3.1 (1918) + dbank  79.5 ( 5774) + tree   0.8 + harvest  0.3  nodes=2000
+    mv10   82.2s = prior   1.5 (1837) + embF   3.8 (1837) + dbank  75.7 ( 5597) + tree   0.8 + harvest  0.4  nodes=2000
+    mv10   82.2s = prior   1.5 (1837) + embF   3.7 (1837) + dbank  75.8 ( 5597) + tree   0.8 + harvest  0.4  nodes=2000
+    mv11   84.7s = prior   1.6 (1881) + embF   4.1 (1881) + dbank  77.9 ( 5662) + tree   0.8 + harvest  0.3  nodes=2000
+    mv11   84.6s = prior   1.6 (1881) + embF   4.3 (1881) + dbank  77.6 ( 5662) + tree   0.8 + harvest  0.3  nodes=2000
+    mv12   77.9s = prior   1.4 (1724) + embF   3.6 (1724) + dbank  71.9 ( 5303) + tree   0.8 + harvest  0.3  nodes=2000
+    mv12   77.6s = prior   1.4 (1724) + embF   3.4 (1724) + dbank  71.8 ( 5303) + tree   0.8 + harvest  0.3  nodes=2000
+    mv13   85.2s = prior   1.5 (1887) + embF   4.1 (1887) + dbank  78.6 ( 5689) + tree   0.8 + harvest  0.3  nodes=2000
+    mv13   85.4s = prior   1.5 (1887) + embF   3.9 (1887) + dbank  78.9 ( 5689) + tree   0.8 + harvest  0.3  nodes=2000
+    mv14   86.3s = prior   1.6 (1889) + embF   3.9 (1889) + dbank  77.6 ( 5671) + tree   2.9 + harvest  0.3  nodes=2000
+    mv14   87.0s = prior   1.6 (1889) + embF   4.1 (1889) + dbank  78.1 ( 5671) + tree   3.0 + harvest  0.3  nodes=2000
+    mv15   84.6s = prior   1.5 (1798) + embF   4.0 (1798) + dbank  78.1 ( 5395) + tree   0.8 + harvest  0.3  nodes=2000
+    mv15   83.6s = prior   1.5 (1798) + embF   3.8 (1798) + dbank  77.3 ( 5395) + tree   0.8 + harvest  0.3  nodes=2000
+    mv16   20.3s = prior   0.7 ( 361) + embF   2.1 ( 361) + dbank  16.5 ( 1084) + tree   0.8 + harvest  0.1  nodes=405
+  g004[w0] FAIL:checkmate plies=32 tb=0 tac=0 plan=direct:2,tradedown->BBKNNPPPPPPPPQRRvbbknnpppppppqrr:10,tradedown->BKNNPPPPPRvbbknnppppppqrr:4 bank=8(+0) loss=5131 draws=1083 ms=68 t/move=83.4s t/game=1202s nodes/s=25 [4097s]
+[worker 0] code moved past 6c18336; re-exec onto newest
+<UciProtocol (pid=97992)>: stderr >> [1m[31m       _
+<UciProtocol (pid=97992)>: stderr >> |   _ | |
+<UciProtocol (pid=97992)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=97992)>: stderr >> Search algorithm: classic
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 0] resume: skipping 5 recorded games
+    mv16   19.3s = prior   0.7 ( 361) + embF   2.2 ( 361) + dbank  15.5 ( 1084) + tree   0.8 + harvest  0.1  nodes=405
+  g005[w1] FAIL:checkmate plies=32 tb=0 tac=0 plan=direct:2,tradedown->BBKNNPPPPPPPPQRRvbbknnpppppppqrr:10,tradedown->BKNNPPPPPRvbbknnppppppqrr:4 bank=8(+0) loss=5131 draws=1083 ms=68 t/move=82.9s t/game=1204s nodes/s=25 [4103s]
+[worker 1] code moved past 6c18336; re-exec onto newest
+<UciProtocol (pid=98011)>: stderr >> [1m[31m       _
+<UciProtocol (pid=98011)>: stderr >> |   _ | |
+<UciProtocol (pid=98011)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=98011)>: stderr >> Search algorithm: classic
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 1] resume: skipping 6 recorded games
+    [warm-up] bank 8->15 nodes=40000 [1170s]
+    [warm-up] bank 8->15 nodes=40000 [1169s]
+    mv01   75.4s = prior  21.8 (24438) + embF  52.4 (24438) + dbank 1100.6 (81226) + tree -1103.6 + harvest  4.3  nodes=2000
+<UciProtocol (pid=97992)>: stderr >> Loading weights file from: data/engines/maia/maia-1100.pb.gz
+<UciProtocol (pid=97992)>: stderr >> Initialized metal backend on device Apple M3 Pro
+    mv01   75.4s = prior  21.7 (24438) + embF  51.5 (24438) + dbank 1099.5 (81226) + tree -1101.6 + harvest  4.3  nodes=2000
+<UciProtocol (pid=98011)>: stderr >> Loading weights file from: data/engines/maia/maia-1100.pb.gz
+<UciProtocol (pid=98011)>: stderr >> Initialized metal backend on device Apple M3 Pro
+    mv02   71.9s = prior   1.3 (1459) + embF   3.4 (1459) + dbank  65.6 ( 4554) + tree   0.8 + harvest  0.8  nodes=2000
+    mv02   80.5s = prior   1.7 (1598) + embF   5.1 (1598) + dbank  72.7 ( 4798) + tree   0.8 + harvest  0.2  nodes=2000
+    mv03   78.7s = prior   1.4 (1524) + embF   4.6 (1524) + dbank  71.6 ( 4625) + tree   0.8 + harvest  0.2  nodes=2000
+    mv03   78.1s = prior   1.4 (1609) + embF   3.4 (1609) + dbank  72.4 ( 4827) + tree   0.7 + harvest  0.3  nodes=2000
+    mv04   89.1s = prior  27.2 (29125) + embF  64.5 (29125) + dbank 1316.7 (95517) + tree -1319.8 + harvest  0.4  nodes=2000
+    mv04   89.1s = prior   1.5 (1795) + embF   3.9 (1795) + dbank  81.5 ( 5392) + tree   1.9 + harvest  0.3  nodes=2000
+    mv05   91.6s = prior   1.4 (1891) + embF   2.9 (1891) + dbank  86.3 ( 5673) + tree   0.7 + harvest  0.2  nodes=2000
+    mv05   93.2s = prior   1.5 (1816) + embF   4.4 (1816) + dbank  86.3 ( 5463) + tree   0.7 + harvest  0.2  nodes=2000
+    mv06   89.1s = prior   1.6 (1787) + embF   4.2 (1787) + dbank  82.2 ( 5361) + tree   0.8 + harvest  0.3  nodes=2000
+    mv06   83.9s = prior   1.5 (1648) + embF   4.1 (1648) + dbank  77.3 ( 4961) + tree   0.8 + harvest  0.3  nodes=2000
+    mv07   95.2s = prior   1.7 (1910) + embF   4.4 (1910) + dbank  87.9 ( 5749) + tree   0.9 + harvest  0.3  nodes=2000
+    mv07   96.8s = prior   1.7 (1900) + embF   5.0 (1900) + dbank  89.0 ( 5700) + tree   0.8 + harvest  0.2  nodes=2000
+    mv08   90.1s = prior  32.5 (36650) + embF  81.7 (36650) + dbank 1664.0 (117905) + tree -1688.3 + harvest  0.2  nodes=2000
+    mv08   96.1s = prior   1.8 (1828) + embF   5.6 (1828) + dbank  87.5 ( 5534) + tree   0.9 + harvest  0.3  nodes=2000
+    mv09   84.9s = prior   1.4 (1725) + embF   3.0 (1725) + dbank  79.6 ( 5202) + tree   0.7 + harvest  0.3  nodes=2000
+    mv09   96.5s = prior   1.6 (1875) + embF   4.8 (1875) + dbank  89.0 ( 5653) + tree   0.8 + harvest  0.3  nodes=2000
+    mv10   90.7s = prior   1.4 (1843) + embF   3.2 (1843) + dbank  83.7 ( 5555) + tree   2.2 + harvest  0.3  nodes=2000
+    mv10   97.2s = prior   3.1 (1848) + embF   5.2 (1848) + dbank  87.8 ( 5564) + tree   0.8 + harvest  0.2  nodes=2000
+    mv11   82.5s = prior   1.3 (1711) + embF   2.5 (1711) + dbank  77.7 ( 5226) + tree   0.7 + harvest  0.3  nodes=2000
+    mv11   93.4s = prior   1.7 (1730) + embF   6.2 (1730) + dbank  84.5 ( 5222) + tree   0.8 + harvest  0.2  nodes=2000
+    mv12   46.3s = prior   0.8 ( 946) + embF   1.6 ( 946) + dbank  42.9 ( 3705) + tree   0.7 + harvest  0.3  nodes=2000
+    mv13    5.5s = prior   0.1 (  71) + embF   0.2 (  71) + dbank   4.1 ( 1957) + tree   0.8 + harvest  0.3  nodes=2000
+    mv14    0.2s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.1 (  109) + tree   0.1 + harvest  0.0  nodes=111
+  g006[w0] FAIL:threefold_repetition plies=27 tb=0 tac=0 plan=direct:7,tradedown->BKNNPPPPPPPQRRvbbknppppppppqrr:7 bank=17(+2) loss=5266 draws=1083 ms=79 t/move=83.2s t/game=997s nodes/s=26 [2169s]
+[worker 0] code moved past 2af7a13; re-exec onto newest
+<UciProtocol (pid=3803)>: stderr >> [1m[31m       _
+<UciProtocol (pid=3803)>: stderr >> |   _ | |
+<UciProtocol (pid=3803)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=3803)>: stderr >> Search algorithm: classic
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 0] resume: skipping 7 recorded games
+    mv12   75.3s = prior   1.6 (1502) + embF   4.2 (1502) + dbank  68.4 ( 4575) + tree   0.8 + harvest  0.3  nodes=2000
+    mv13   76.9s = prior   1.5 (1511) + embF   4.0 (1511) + dbank  70.1 ( 4636) + tree   0.8 + harvest  0.5  nodes=2000
+    mv14   79.7s = prior   1.3 (1616) + embF   3.0 (1616) + dbank  74.3 ( 5037) + tree   0.7 + harvest  0.4  nodes=2000
+    mv15   74.0s = prior   1.2 (1513) + embF   2.8 (1513) + dbank  68.9 ( 4691) + tree   0.7 + harvest  0.3  nodes=2000
+    mv16   73.3s = prior   1.2 (1499) + embF   2.6 (1499) + dbank  68.5 ( 4614) + tree   0.7 + harvest  0.3  nodes=2000
+    mv17   69.1s = prior   1.2 (1413) + embF   2.7 (1413) + dbank  64.3 ( 4279) + tree   0.7 + harvest  0.3  nodes=2000
+    mv18   57.1s = prior   0.9 (1130) + embF   1.9 (1130) + dbank  51.8 ( 3479) + tree   2.3 + harvest  0.2  nodes=2000
+    mv19   81.9s = prior   1.4 (1639) + embF   3.2 (1639) + dbank  76.4 ( 4917) + tree   0.6 + harvest  0.3  nodes=2000
+    mv20   86.1s = prior   1.3 (1540) + embF   3.1 (1540) + dbank  80.6 ( 4822) + tree   0.7 + harvest  0.4  nodes=2000
+    mv21  113.3s = prior   2.3 (1661) + embF   7.7 (1661) + dbank 100.2 ( 5271) + tree   2.4 + harvest  0.7  nodes=1951
+    mv22   92.3s = prior   1.6 (1405) + embF   2.5 (1405) + dbank  87.0 ( 4351) + tree   0.8 + harvest  0.3  nodes=2000
+    mv23   68.2s = prior   0.8 (1008) + embF   1.8 (1008) + dbank  64.6 ( 3272) + tree   0.6 + harvest  0.3  nodes=2000
+    mv24   79.1s = prior  57.5 (60655) + embF 139.4 (60655) + dbank 2872.1 (192031) + tree -2990.2 + harvest  0.3  nodes=2000
+    [warm-up] bank 21->25 nodes=40000 [1097s]
+    mv25   92.5s = prior   1.5 (1320) + embF   3.9 (1320) + dbank  85.8 ( 4062) + tree   1.0 + harvest  0.3  nodes=2000
+    mv01   57.9s = prior  22.2 (20060) + embF  66.1 (20060) + dbank 994.3 (66276) + tree -1029.0 + harvest  4.3  nodes=2000
+<UciProtocol (pid=3803)>: stderr >> Loading weights file from: data/engines/maia/maia-1100.pb.gz
+<UciProtocol (pid=3803)>: stderr >> Initialized metal backend on device Apple M3 Pro
+    mv26   73.1s = prior   0.9 (1041) + embF   2.1 (1041) + dbank  69.1 ( 3263) + tree   0.6 + harvest  0.4  nodes=2000
+    mv02   73.4s = prior   1.3 (1303) + embF   4.2 (1303) + dbank  66.3 ( 4389) + tree   0.8 + harvest  0.8  nodes=2000
+    mv27   99.0s = prior   1.1 (1327) + embF   2.5 (1327) + dbank  94.5 ( 4223) + tree   0.6 + harvest  0.3  nodes=2000
+    mv03   90.5s = prior   1.6 (1574) + embF   6.2 (1574) + dbank  81.7 ( 4722) + tree   0.8 + harvest  0.2  nodes=2000
+    mv04   72.2s = prior   2.4 (1432) + embF   2.8 (1432) + dbank  66.1 ( 4296) + tree   0.7 + harvest  0.2  nodes=2000
+    mv28  142.6s = prior   1.9 (1706) + embF   6.5 (1706) + dbank 132.4 ( 5260) + tree   1.4 + harvest  0.4  nodes=2000
+    mv05   74.3s = prior  28.8 (25788) + embF  82.5 (25788) + dbank 1277.2 (84267) + tree -1314.4 + harvest  0.3  nodes=2000
+    mv06   78.1s = prior   1.3 (1655) + embF   2.5 (1655) + dbank  73.2 ( 4969) + tree   0.8 + harvest  0.3  nodes=2000
+    mv29  156.4s = prior   2.0 (1608) + embF   8.3 (1608) + dbank 143.3 ( 4894) + tree   2.2 + harvest  0.6  nodes=1975
+    mv07   78.8s = prior   1.4 (1721) + embF   2.3 (1721) + dbank  74.1 ( 5234) + tree   0.8 + harvest  0.3  nodes=2000
+    mv30   79.4s = prior   1.0 ( 611) + embF   4.6 ( 611) + dbank  71.3 ( 2751) + tree   2.2 + harvest  0.3  nodes=1180
+    mv31   27.3s = prior   0.4 ( 214) + embF   1.8 ( 214) + dbank  24.4 (  668) + tree   0.6 + harvest  0.1  nodes=234
+  g007[w1] FAIL:checkmate plies=62 tb=0 tac=2 plan=direct:11,tradedown->BBKNNPPPPPPPPQRvbknnppppppppqrr:10,tradedown->KPPPPPPPvbbknpppppppqrr:10 bank=19(+4) loss=7210 draws=6602 ms=97 t/move=81.9s t/game=2670s nodes/s=22 [3841s]
+[worker 1] code moved past 2af7a13; re-exec onto newest
+<UciProtocol (pid=8079)>: stderr >> [1m[31m       _
+<UciProtocol (pid=8079)>: stderr >> |   _ | |
+<UciProtocol (pid=8079)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=8079)>: stderr >> Search algorithm: classic
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 1] resume: skipping 8 recorded games
+    mv08   86.6s = prior   1.5 (1803) + embF   3.2 (1803) + dbank  80.8 ( 5460) + tree   0.8 + harvest  0.3  nodes=2000
+    mv09   95.4s = prior   1.6 (1765) + embF   4.2 (1765) + dbank  87.0 ( 5376) + tree   2.3 + harvest  0.3  nodes=2000
+    mv10   95.9s = prior   1.7 (1797) + embF   4.5 (1797) + dbank  88.7 ( 5391) + tree   0.8 + harvest  0.2  nodes=2000
+    mv11   85.5s = prior   1.5 (1585) + embF   4.0 (1585) + dbank  79.0 ( 4918) + tree   0.8 + harvest  0.2  nodes=2000
+    mv12   96.9s = prior   1.6 (1908) + embF   3.3 (1908) + dbank  91.1 ( 5752) + tree   0.7 + harvest  0.2  nodes=2000
+    mv13   98.0s = prior   1.5 (1893) + embF   3.3 (1893) + dbank  92.4 ( 5702) + tree   0.7 + harvest  0.2  nodes=2000
+    mv14   99.2s = prior   1.7 (1835) + embF   4.9 (1835) + dbank  91.6 ( 5570) + tree   0.8 + harvest  0.3  nodes=2000
+    mv15   96.0s = prior  44.3 (43469) + embF 120.3 (43469) + dbank 2122.6 (137874) + tree -2191.3 + harvest  0.3  nodes=2000
+    mv16   92.7s = prior   1.6 (1734) + embF   4.2 (1734) + dbank  85.9 ( 5214) + tree   0.7 + harvest  0.2  nodes=2000
+    mv17   86.1s = prior  47.2 (46779) + embF 127.7 (46779) + dbank 2287.2 (147818) + tree -2376.2 + harvest  0.2  nodes=2000
+    mv18   68.3s = prior   1.1 (1224) + embF   3.2 (1224) + dbank  62.9 ( 3714) + tree   0.7 + harvest  0.4  nodes=2000
+    mv19   89.9s = prior   1.3 (1691) + embF   3.0 (1691) + dbank  84.5 ( 5115) + tree   0.7 + harvest  0.4  nodes=2000
+    mv20   95.4s = prior   1.5 (1631) + embF   4.2 (1631) + dbank  88.5 ( 4895) + tree   0.8 + harvest  0.4  nodes=2000
+    mv21  114.8s = prior   1.8 (1803) + embF   5.6 (1803) + dbank 105.8 ( 5411) + tree   1.1 + harvest  0.5  nodes=2000
+    mv22  105.1s = prior   1.2 (1603) + embF   1.8 (1603) + dbank 101.2 ( 4841) + tree   0.6 + harvest  0.3  nodes=2000
+    mv23   83.1s = prior   0.9 (1191) + embF   1.9 (1191) + dbank  79.3 ( 3919) + tree   0.6 + harvest  0.4  nodes=2000
+    mv24   64.9s = prior   0.7 ( 948) + embF   1.5 ( 948) + dbank  61.7 ( 3734) + tree   0.6 + harvest  0.3  nodes=2000
+    mv25   88.2s = prior   1.0 (1218) + embF   2.6 (1218) + dbank  83.3 ( 3752) + tree   0.8 + harvest  0.6  nodes=2000
+    mv26   11.1s = prior   0.2 ( 100) + embF   0.8 ( 100) + dbank   9.5 (  494) + tree   0.6 + harvest  0.1  nodes=248
+    mv27   44.3s = prior  58.2 (58655) + embF 155.8 (58655) + dbank 3000.8 (185102) + tree -3170.6 + harvest  0.2  nodes=523
+    mv28   40.2s = prior   1.2 ( 398) + embF   3.2 ( 398) + dbank  34.4 ( 1284) + tree   1.2 + harvest  0.2  nodes=486
+  g008[w0] FAIL:checkmate plies=56 tb=0 tac=1 plan=direct:8,tradedown->BBKNNPPPPPPPPQRvbknnppppppppqrr:10,tradedown->BKPPPPPQvbknnpppppppqrr:10 bank=25(+0) loss=6785 draws=3358 ms=106 t/move=86.4s t/game=2263s nodes/s=23 [3361s]
+[worker 0] 0/1 mate  med t/move=80.8s
+    [warm-up] bank 25->25 nodes=40000 [2149s]
+    mv01   77.7s = prior  23.8 (23279) + embF  63.6 (23279) + dbank 2067.5 (70737) + tree -2081.4 + harvest  4.2  nodes=2000
+<UciProtocol (pid=8079)>: stderr >> Loading weights file from: data/engines/maia/maia-1100.pb.gz
+<UciProtocol (pid=8079)>: stderr >> Initialized metal backend on device Apple M3 Pro
+    mv02   95.7s = prior   1.3 (1488) + embF   2.2 (1488) + dbank  90.8 ( 4729) + tree   0.7 + harvest  0.6  nodes=2000
+    mv03   98.6s = prior   1.5 (1505) + embF   2.6 (1505) + dbank  92.5 ( 4518) + tree   1.8 + harvest  0.3  nodes=2000
+    mv04   94.4s = prior   1.2 (1506) + embF   1.7 (1506) + dbank  90.5 ( 4559) + tree   0.7 + harvest  0.2  nodes=2000
+    mv05   98.0s = prior   1.3 (1544) + embF   2.1 (1544) + dbank  93.6 ( 4701) + tree   0.7 + harvest  0.3  nodes=2000
+    mv06  105.4s = prior  30.5 (31001) + embF  74.1 (31001) + dbank 2535.9 (94348) + tree -2535.3 + harvest  0.3  nodes=2000
+    mv07   99.7s = prior   1.3 (1591) + embF   1.8 (1591) + dbank  95.6 ( 4942) + tree   0.7 + harvest  0.4  nodes=2000
+    mv08   97.9s = prior   1.3 (1553) + embF   1.9 (1553) + dbank  93.7 ( 4732) + tree   0.8 + harvest  0.3  nodes=2000
+    mv09  102.8s = prior   1.3 (1617) + embF   1.8 (1617) + dbank  97.3 ( 4972) + tree   2.1 + harvest  0.3  nodes=2000
+    mv10  101.7s = prior   1.3 (1623) + embF   1.8 (1623) + dbank  97.5 ( 4945) + tree   0.7 + harvest  0.3  nodes=2000
+    mv11  118.6s = prior   1.6 (1885) + embF   2.3 (1885) + dbank 113.7 ( 5659) + tree   0.8 + harvest  0.3  nodes=2000
+    mv12  118.3s = prior   1.5 (1887) + embF   2.0 (1887) + dbank 113.6 ( 5678) + tree   0.8 + harvest  0.3  nodes=2000
+    mv13  119.1s = prior   1.4 (1945) + embF   1.5 (1945) + dbank 115.2 ( 5838) + tree   0.8 + harvest  0.3  nodes=2000
+    mv14  106.7s = prior   1.3 (1729) + embF   1.4 (1729) + dbank 102.9 ( 5197) + tree   0.8 + harvest  0.3  nodes=2000
+    mv15  103.2s = prior   2.9 (1611) + embF   1.7 (1611) + dbank  97.4 ( 4939) + tree   0.8 + harvest  0.5  nodes=2000
+    mv16  117.3s = prior   1.4 (1892) + embF   1.5 (1892) + dbank 113.4 ( 5691) + tree   0.7 + harvest  0.3  nodes=2000
+    mv17  110.2s = prior   1.4 (1750) + embF   1.6 (1750) + dbank 106.2 ( 5266) + tree   0.7 + harvest  0.3  nodes=2000
+    mv18  100.6s = prior   1.4 (1534) + embF   2.4 (1534) + dbank  95.7 ( 4626) + tree   0.8 + harvest  0.3  nodes=2000
+    mv19  111.8s = prior   1.5 (1706) + embF   2.3 (1706) + dbank 106.8 ( 5176) + tree   0.8 + harvest  0.4  nodes=2000
+    mv20   93.0s = prior   1.3 (1372) + embF   1.9 (1372) + dbank  88.3 ( 4476) + tree   0.9 + harvest  0.6  nodes=2000
+    mv21   97.3s = prior   1.0 (1483) + embF   1.0 (1483) + dbank  93.9 ( 5097) + tree   0.7 + harvest  0.8  nodes=2000
+    mv22   68.9s = prior   0.8 (1023) + embF   1.0 (1023) + dbank  66.0 ( 3211) + tree   0.7 + harvest  0.4  nodes=2000
+    mv23   68.4s = prior   0.8 ( 969) + embF   1.2 ( 969) + dbank  63.3 ( 3067) + tree   2.7 + harvest  0.4  nodes=2000
+    mv24   87.9s = prior   1.1 (1271) + embF   1.6 (1271) + dbank  84.1 ( 4043) + tree   0.7 + harvest  0.4  nodes=2000
+    mv25   98.1s = prior   1.2 (1407) + embF   1.6 (1407) + dbank  94.2 ( 4543) + tree   0.7 + harvest  0.4  nodes=2000
+    mv26  109.6s = prior  57.7 (62397) + embF 108.2 (62397) + dbank 4479.8 (191298) + tree -4536.5 + harvest  0.4  nodes=2000
+    mv27   98.9s = prior   1.1 (1399) + embF   1.4 (1399) + dbank  95.3 ( 4215) + tree   0.7 + harvest  0.4  nodes=2000
+    mv28   70.1s = prior   0.9 ( 956) + embF   1.4 ( 956) + dbank  66.8 ( 2870) + tree   0.7 + harvest  0.4  nodes=2000
+    mv29   94.5s = prior   1.1 (1294) + embF   1.7 (1294) + dbank  90.7 ( 4170) + tree   0.7 + harvest  0.4  nodes=2000
+    mv30   86.2s = prior   1.1 (1106) + embF   2.1 (1106) + dbank  81.9 ( 3730) + tree   0.8 + harvest  0.2  nodes=2000
+    mv31   68.8s = prior   1.1 ( 831) + embF   2.5 ( 831) + dbank  63.7 ( 2555) + tree   1.3 + harvest  0.2  nodes=1103
+    mv32   19.4s = prior   0.3 ( 218) + embF   0.9 ( 218) + dbank  17.5 (  712) + tree   0.6 + harvest  0.1  nodes=258
+  g009[w1] FAIL:checkmate plies=64 tb=0 tac=0 plan=direct:12,tradedown->BBKNPPPPPPPPQRRvbknnppppppppqrr:10,tradedown->BKPPPPPQRvbknnppppppprr:10 bank=25(+0) loss=9415 draws=7622 ms=139 t/move=98.3s t/game=3039s nodes/s=20 [5191s]
+[worker 1] 0/1 mate  med t/move=95.0s
+VERDICT BOOTSTRAP_MATE scenario=fullgame nodes=2000 mate=0/10 (0.00) [clean=0 tb-assisted=0]  med_plies=nan  bank_final=25  med_t/move=73.2s  med_t/solve=nans  [13497s]
+[improve] exported 180 games
+[improve] FIELD -> data/derived/sep/self_field_r0.pt
+  VERDICT PLANNER_RL n=272 fit-spearman +0.761 [2s]
+[improve] ENERGY -> data/derived/sep/opponent_energy_r0.pt
+  VERDICT MOVE_SELECTION rows=5676 skipped=2 max_moves=80 -> data/derived/move_selection_self.npz  [1s]
+  VERDICT OPPONENT_V1 steps=2000 held-out NLL=2.3039 top1=0.331 (n=55506)
+=== IMPROVE round 1 field=self_field_r0 opp=maia-1200.pb [15327s] ===
+<UciProtocol (pid=25988)>: stderr >> [1m[31m       _
+<UciProtocol (pid=25987)>: stderr >> [1m[31m       _
+<UciProtocol (pid=25988)>: stderr >> |   _ | |
+<UciProtocol (pid=25987)>: stderr >> |   _ | |
+<UciProtocol (pid=25988)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=25987)>: stderr >> |_ |_ |_|[0m v0.32.1+git.dirty built Nov 23 2025
+<UciProtocol (pid=25987)>: stderr >> Search algorithm: classic
+<UciProtocol (pid=25988)>: stderr >> Search algorithm: classic
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)

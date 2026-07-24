@@ -290,6 +290,42 @@ class Session:
             return np.full(len(boards), np.nan)
         return self.fm.d_to_bank(self.fm.embed_F_boards(boards), self.bank.embs)
 
+    def _d_to_loss(self, boards):
+        """d(x -> nearest banked LOSS): the OPPONENT'S goal region -- their plan is
+        movement toward it, so prevention is measurable on the same field."""
+        if self.loss.embs is None or len(self.loss.embs) == 0:
+            return np.full(len(boards), np.nan)
+        return self.fm.d_to_bank(self.fm.embed_F_boards(boards), self.loss.embs)
+
+    def _threat(self, b, k_opp=5):
+        """Opponent's PLAN at position b (their turn assumed via null-move if needed):
+        their probability-weighted best step toward the loss basin. Returns
+        (threat_value, best_move, d_loss_now, d_loss_after_best)."""
+        import chess as _c
+        bb = b.copy(stack=False)
+        if bb.turn == _c.WHITE:                 # what could they do if we PASSED?
+            bb.push(_c.Move.null())
+        if bb.is_game_over():
+            return 0.0, None, None, None
+        pr = self.pfn(bb)
+        if not pr:
+            return 0.0, None, None, None
+        top = sorted(pr.items(), key=lambda kv: -kv[1])[:k_opp]
+        kids = []
+        for mv, _p in top:
+            c = bb.copy(stack=False); c.push(mv)
+            kids.append(c)
+        d_now = float(self._d_to_loss([bb])[0])
+        d_after = self._d_to_loss(kids)
+        best_i, best_t = None, 0.0
+        for i, (mv, p) in enumerate(top):
+            drop = p * max(0.0, d_now - float(d_after[i]))
+            if drop > best_t:
+                best_t, best_i = drop, i
+        if best_i is None:
+            return 0.0, None, d_now, None
+        return best_t, top[best_i][0], d_now, float(d_after[best_i])
+
     def cone(self, depth=2, width=6):
         """FORWARD REACHABILITY CONE (Kaveh: 'basins/rivers, focused on the cone in
         front of White'). BFS White's legal tree to `depth` full moves; each node's
@@ -428,9 +464,51 @@ class Session:
             for r in rows:
                 r["score"] = round(r["v"] + 0.12 * min(r["mlp"], 4.0), 3)
             rows.sort(key=lambda r: (-(r.get("visits", 0)), -r["score"]))
+            rows = rows[:k]
+            # PROPHYLAXIS (Kaveh: 'two types of moves: advancing my plan, preventing
+            # theirs, or both -- name the prevention'). Advance = our d_win progress;
+            # Threat = their P-weighted best step toward the LOSS BANK (their goal
+            # region) if we pass; Prevention = how much our move removes that.
+            try:
+                base_T, base_mv, dl0, dl1 = self._threat(b)
+                d_win0 = float(self._d_to_win([b])[0])
+                for r in rows:
+                    c = b.copy(stack=False); c.push(chess.Move.from_uci(r["uci"]))
+                    adv = d_win0 - float(self._d_to_win([c])[0])
+                    T_after, _, _, _ = self._threat(c)
+                    prev = base_T - T_after
+                    r["adv"] = round(adv, 2); r["prev"] = round(prev, 2)
+                    heavy_p = prev > 0.15 and prev > 1.5 * max(adv, 0)
+                    heavy_a = adv > 0.15 and adv > 1.5 * max(prev, 0)
+                    if heavy_p and base_mv is not None:
+                        # name the prevented plan via the nearest loss exemplar's class
+                        sig = ""
+                        try:
+                            cb = b.copy(stack=False)
+                            cb.push(chess.Move.null()); cb.push(base_mv)
+                            e = self.fm.embed_F_boards([cb])
+                            import numpy as _np
+                            d = ((_np.asarray(self.loss.embs) - e[0]) ** 2).sum(1)
+                            sig = self.loss.sigs[int(_np.argmin(d))]
+                        except Exception:
+                            pass
+                        nb = b.copy(stack=False); nb.push(chess.Move.null())
+                        base_san = nb.san(base_mv) if base_mv in nb.legal_moves \
+                            else base_mv.uci()
+                        r["role"] = "prevents"
+                        r["why"] = (f"stops {base_san} — their best plan heads toward"
+                                    f"{' ' + sig if sig else ''} losses"
+                                    f" (d_loss {dl0:.1f}→{dl1:.1f})")
+                    elif heavy_a:
+                        r["role"] = "advances"
+                    elif prev > 0.15 and adv > 0.15:
+                        r["role"] = "both"
+            except Exception:
+                pass
         else:
             rows.sort(key=lambda r: -r["p"])
-        return {"moves": rows[:k], "turn": "w" if ours else "b", "fen": b.fen(),
+            rows = rows[:k]
+        return {"moves": rows, "turn": "w" if ours else "b", "fen": b.fen(),
                 "searched": searched}
 
     def calculate_start(self, nodes, chunk=64, resume=False):
