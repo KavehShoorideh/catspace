@@ -388,13 +388,13 @@ function exRender(colIdx,data,path){
   if(!data.moves||!data.moves.length)return;
   const col=document.createElement('div');
   col.style.cssText='min-width:190px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px';
-  col.innerHTML='<div class="muted" style="margin-bottom:4px">'+(data.turn==='w'?'your options':'their likely replies')+'</div>';
+  col.innerHTML='<div class="muted" style="margin-bottom:4px">'+(data.turn==='w'?('your options'+(data.searched?' (searched)':' (field only — calculate for depth)'):'their likely replies')+'</div>';
   for(const m of data.moves){
     const el=document.createElement('div');
     el.style.cssText='padding:4px 6px;border-radius:4px;cursor:pointer;display:flex;justify-content:space-between;gap:8px';
     const surprise=m.mlp>2.2&&m.v>-0.05&&data.turn==='w';
     el.innerHTML='<span><b>'+m.san+'</b>'+(surprise?' ⚡':'')+'</span>'
-      +'<span class="muted">'+(data.turn==='w'?('v '+m.v+' · −logP '+m.mlp)
+      +'<span class="muted">'+(data.turn==='w'?((m.visits?('N '+m.visits+' · '):'')+'v '+m.v+' · −logP '+m.mlp)
                                              :((m.p*100).toFixed(0)+'% · v '+m.v))+'</span>';
     el.onmouseenter=async()=>{
       el.style.background='#33302a';
