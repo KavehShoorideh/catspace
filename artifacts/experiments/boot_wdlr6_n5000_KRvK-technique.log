@@ -427,3 +427,14 @@
   ret = ret.dtype.type(ret / rcount)
 [worker 3] 0/0 mate  med t/move=nans
 [worker 0] 0/0 mate  med t/move=nans
+    [warm-up] bank 212->212 nodes=100037 [4967s]
+    mv01    8.1s = prior  23.4 (11020) + embF 146.9 (11020) + dbank  37.8 (11020) + tree -273.8 + harvest  4.8  nodes=55
+    mv02    4.1s = prior   0.0 (   4) + embF   0.2 (   4) + dbank   0.0 (    4) + tree   1.7 + harvest  2.0  nodes=31
+    mv03    1.1s = prior   0.0 (   0) + embF   0.0 (   0) + dbank   0.0 (    0) + tree   0.1 + harvest  1.0  nodes=0
+  g041[w1] mate plies=5 tb=0 tac=0 plan=direct:3 bank=212(+0) loss=0 draws=68 ms=340 t/move=4.1s t/game=13s nodes/s=6 [4987s]
+[worker 1] code moved past 0af631a; re-exec onto newest
+/Users/kav/code/remote/github/catspace/experiments/train_dtm_tok.py:42: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(enc, num_layers=layers)
+/Users/kav/code/remote/github/catspace/catspace/nn/opponent.py:48: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.self_attn = nn.TransformerEncoder(layer, num_layers=n_self_layers)
+[worker 1] resume: skipping 36 recorded games

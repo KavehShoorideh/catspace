@@ -62,6 +62,11 @@
         <button id="newgame">New game</button>
         <button id="calc">Let's calculate</button>
       </div>
+      <div style="margin-top:8px;display:flex;gap:6px">
+        <input id="loadtext" placeholder="paste FEN or PGN, then Load"
+               style="flex:1;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px">
+        <button id="loadbtn" title="PGN keeps the move history (repetitions & clock state)">Load</button>
+      </div>
     </div>
     <div class="panel" id="atlaspanel">
       <h3 style="margin:0 0 4px">B-space atlas <span class="muted" id="atlasnote">— banked goals + engine lines</span></h3>
@@ -269,6 +274,16 @@ async function startCalc(prefix){
   },700);
 }
 $('#calc').onclick=()=>startCalc();
+$('#loadbtn').onclick=async()=>{
+  const t=$('#loadtext').value.trim(); if(!t)return;
+  const r=await j('/load',{text:t});
+  if(r.err){$('#prompt').textContent='load error: '+r.err;return;}
+  $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';sel=null;drawAtlas();
+  $('#loadtext').value='';
+  refresh();
+  $('#prompt').textContent='position loaded ('+r.plies+' plies of history'
+    +(r.reply?('; opponent played '+r.reply):'')+') — your move.';
+};
 $('#newgame').onclick=async()=>{await j('/new',{opponent:$('#opp').value});
   $('#tops tbody').innerHTML='';$('#leaves').innerHTML='';$('#ideas').innerHTML='';sel=null;drawAtlas();
   $('#prompt').textContent='new game — you are White.';refresh();};
