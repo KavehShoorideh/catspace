@@ -7450,3 +7450,20 @@ incumbent gauntlet + integration 51-case), since they're on par by validation. v
 a validated candidate. External campaign (incumbent vs maia+SF) running now = whole-system
 data regardless. The camping window's headline = FIRST WORKING FROM-SCRATCH RECIPE +
 the warm-start-only lineage discovery, not a field upgrade.
+
+## 2026-07-25 -- EXTERNAL CAMPAIGN: full-game strength gap is LARGE (honest)
+
+catspace (incumbent field + banks + planner + energy, TC 60+0.6) vs the outside world:
+  vs maia-1100: +0 =0 -20  (lost every game)
+  vs maia-1500: +0 =0 -11  (in progress, losing all)
+Zero wins, zero draws. Consistent with the improvement-loop baseline (0/10 vs maia-1100).
+STRAIGHT READ (rigor rule): the composed system is NOT competitive at full-board chess --
+its demonstrated strength is confined to the endgame nucleus (KRRvK 1.00, KRRvKBP 0.77,
+7-piece capstone 0.92, med 5-11 plies). Full games expose that the FIELD has no useful
+signal in the opening/middlegame (the OOD-compression we measured; humans-resign data
+gap) and the planner/banks have nothing to grip until material simplifies. The games ARE
+the data (imported to the experience store for outcome-conditioned training) -- this is
+the whole-system-vs-strong-engines dataset Kaveh wanted, and its headline number is the
+size of the gap to close. NOT a regression; a first honest measurement of the full-game
+frontier. The strength-per-node north star: we are far left on it for full games, at the
+frontier for endgames.
