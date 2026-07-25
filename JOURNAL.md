@@ -7433,3 +7433,20 @@ external campaign (best incumbent line vs maia 1100/1500/1900 + SF skill 1/3, TC
 -> PGN import as whole-system data -> improvement rounds. Incumbent field_fullmonth_r0
 (warm-started, STABLE, plateaued-not-collapsed) stays the live line. ~7h scratch compute
 spent for a clean negative result + the warm-start-only lineage discovery.
+
+## 2026-07-25 -- v4 FROM-SCRATCH COMPLETE: recipe SOLVED, field ~= incumbent (honest verdict)
+
+field_scratch_full_v4.pt done (120k, first successful from-scratch iqe-qrl field ever --
+repel-weight 0.5 + lr 1e-4, cleared both collapse zones clean). VERDICT vs the incumbent
+(fullmonth warm-started plateau):
+  v4: VAL_TOP8 0.058 | REACH sep +0.030 | DIFF sep -0.005
+  inc: VAL_TOP8 0.098 | REACH sep -0.005 | DIFF sep -0.047
+HONEST GRADE (rigor rule; retract my initial 'discriminates better' overclaim): v4 is
+COMPARABLE, not superior -- better on REACH outcome-separation, WORSE on VAL_TOP8, DIFF a
+wash. The RESULT is the recipe (from-scratch now possible), not a better field. Promotion
+NOT auto-done (v3 chain dropped the integration gate; pointer correctly still on incumbent).
+DECISION: do NOT unilaterally promote v4 -- it's a Kaveh call needing a play-test (v4 vs
+incumbent gauntlet + integration 51-case), since they're on par by validation. v4 kept as
+a validated candidate. External campaign (incumbent vs maia+SF) running now = whole-system
+data regardless. The camping window's headline = FIRST WORKING FROM-SCRATCH RECIPE +
+the warm-start-only lineage discovery, not a field upgrade.
