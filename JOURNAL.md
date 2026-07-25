@@ -7467,3 +7467,19 @@ the whole-system-vs-strong-engines dataset Kaveh wanted, and its headline number
 size of the gap to close. NOT a regression; a first honest measurement of the full-game
 frontier. The strength-per-node north star: we are far left on it for full games, at the
 frontier for endgames.
+
+## 2026-07-25 -- camping window CLOSE: whole-system data captured, improvement rounds on it
+
+External campaign done: 65 games imported to experience store (maia 1100/1500/1900 x20
+each 0-win + SF skill1 x5 0-win). Dual-phase2 tangle cleaned (killed both; imported PGNs
+manually once, no double-count). Launched improvement_loop --rounds 4 to fine-tune
+field+planner+energy on the ENRICHED store (now incl. 65 strong-engine loss games = the
+richest outcome-conditioning signal to date -- humans-resign gap doesn't apply to engine
+games played to conclusion). This is standing-directive game-fed training, NOT a new
+from-scratch variant. CAMPING WINDOW SUMMARY: headline = from-scratch recipe SOLVED
+(repel-weight); v4 = first clean from-scratch field (~=incumbent, promotion=Kaveh call);
+honest full-game gap = 0/65 vs engines (endgame-competitive only); 2 disk emergencies ->
+permanent tb-cache DELETE-mode fix; distillation 2.1M @ spearman .995 (2x speed);
+sessions/phone-play/UCI/gauntlet/fastchess infra shipped; dense-signal + system-gradient
+(MuZero/PCGrad/NEC) lit reviews; UI: prophylaxis, atlas hover-peek + SVG zoom, calc
+lifecycle, session cookies.
