@@ -7729,3 +7729,22 @@ focus pivots to the MIDGAME (committor/transition/asymmetry), where the field is
 the KL/expected-committor objective (vs FALLIBLE opponents) replaces "force mate". Next per plan:
 S3/S4 -- transition predictor + cohort-asymmetry field on lichess+SF-reference (needs the lichess
 data pipeline = a new phase). mate_with_search.py, mate_field_v1.pt.
+
+## 2026-07-26 -- S2c: MCTS convert = 6.7% (mostly DRAWS). Bottleneck is the FIELD, not search.
+
+mcts_convert.py (negamax MCTS, field=value, draw/loss=-BIG so it steers off the draw interface,
+vs tablebase-optimal defense): sims 64 -> 0%, sims 256 -> 6.7% (mostly DREW), WORSE than
+depth-3 minimax (17.5%). The engine holds the win but shuffles into a 50-move/repetition DRAW --
+it avoids LOSING (draws not losses) but can't force MATE.
+DIAGNOSIS (answers Kaveh's "feasible or need more data?"): the bottleneck is NOT the search
+algorithm -- it's the FIELD's collapsed VALUE. eff_rank 1.7 (single MATE-goal scalar collapsed
+it from the multi-goal 6.3) -> the value is a coarse "roughly how far" with no local resolution
+to distinguish progress from shuffling. Search cannot sharpen a coarse value (minimax > MCTS but
+both plateau). FEASIBLE, but needs a BETTER FIELD, = more STRUCTURED data + objective:
+  (a) RESTORE RANK -- multi-goal geometry (kept 6.3) instead of single MATE-goal;
+  (b) LOCAL RESOLUTION -- rank a parent's CHILDREN by true DTM/DTZ (the signal skipped for speed;
+      DTZ is 1 fast probe/child). This is the move-selection gradient the field lacks.
+SELF-BLUNDER MODEL (Kaveh, "later"): the DRAWS are US blundering into the draw interface. A
+self-blunder model -- where OUR value is unreliable / we're likely to slip -- is the mirror of
+the opponent model + the S1 reliability map applied to ourselves. Deferred, but it's the
+principled fix for draw-throwing. Files: mcts_convert.py.
