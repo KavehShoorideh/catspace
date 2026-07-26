@@ -1,0 +1,26 @@
+[gen-wdl-dtm] 20 chunks / 10 workers
+  chunk 1/20: 2400 rows [896s]
+  chunk 2/20: 2400 rows [896s]
+  chunk 3/20: 2400 rows [912s]
+  chunk 4/20: 2400 rows [912s]
+  chunk 5/20: 2400 rows [912s]
+  chunk 6/20: 2400 rows [912s]
+  chunk 7/20: 2400 rows [916s]
+  chunk 8/20: 2400 rows [916s]
+  chunk 9/20: 2400 rows [930s]
+  chunk 10/20: 2400 rows [930s]
+  chunk 11/20: 1400 rows [930s]
+  chunk 12/20: 1400 rows [930s]
+  chunk 13/20: 1400 rows [930s]
+  chunk 14/20: 1400 rows [930s]
+  chunk 15/20: 1400 rows [930s]
+  chunk 16/20: 1400 rows [930s]
+  chunk 17/20: 1400 rows [930s]
+  chunk 18/20: 1400 rows [930s]
+  chunk 19/20: 1400 rows [930s]
+  chunk 20/20: 1400 rows [930s]
+
+=== data/derived/wdl_dtm_v1.npz: 38000 rows [931s] ===
+  won 21699 (dtm med 23, max 195) | mate 0 | INF(draw/loss) 16301
+  wdl: W 24000 D 13040 L 960 | groups 38000
+DONE gen_wdl_dtm_data

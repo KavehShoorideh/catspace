@@ -7688,3 +7688,30 @@ KNNvKP-type), splice tablebase (endgame) / reference-disagreement (midgame) ther
 clean, honest, ground-truthed reliability map -- S1 of METASTABILITY_PLAN complete.
 Next: S2 (field that MATES: WDL basins + inf barriers + mate attractor + stalemate repellers +
 off-optimal negatives; gate = mate-rate vs optimal defense, currently 5%).
+
+## 2026-07-26 -- S2 result: the STALEMATE/blunder defense works; CONVERSION does not (check-in)
+
+train_mate_field.py (single-space IQE, learnable collapsed MATE goal, WDL hinge-to-M barriers,
+both-color broad data w/ off-optimal draw/loss = INF). Verdict (d32, 38k rows, 250 eval games
+vs tablebase-optimal defense):
+  MATE-RATE 0.4% (1/250)  -- WORSE than the 5% bank-min field
+  kept-win 88.7% (blunder-avoidance)  -- the INF barrier WORKS: field avoids throwing the win
+  won-d med 20.1  vs  INF-d med 468.0  -- clean WDL separation (stalemate/draw repelled)
+  d-vs-DTM +0.808 | eff_rank 1.7/32
+READ: two halves, one solved one not.
+  SOLVED: the ∞ barrier / stalemate defense. The field reliably KEEPS the win (88.7%) and pushes
+  draws/losses to d~468 vs won d~20. Kaveh's WDL-basin + hinge-to-M design works as intended.
+  NOT SOLVED: CONVERSION. It holds the win and shuffles but can't force mate (0.4%). Two causes:
+    (1) eff_rank COLLAPSED to 1.7 -- the single learnable MATE-goal scalar re-collapsed the
+        representation (S1 multi-goal kept 6.3). No maneuvering resolution -> greedy plateaus.
+    (2) greedy 1-ply on a distance field is too weak for a precise multi-step mating maneuver
+        vs a maximally-delaying (tablebase-optimal) defender.
+SIGNIFICANT-DEVIATION CHECK-IN (Kaveh: go autonomously until we must deviate significantly).
+The plan's S2 premise (off-optimal negatives + mate-attractor => the field mates greedily) is
+half-wrong. Fork for Kaveh:
+  A. MERGE S1+S2: multi-goal geometry (healthy rank) + WDL barriers + off-line coverage; retest.
+  B. Bring SEARCH forward (S5 MCTS on current field): mating may need lookahead, not greedy.
+  C. REFRAME: at deployment the TABLEBASE mates the endgame (what real engines do); the learned
+     field's real job is the MIDGAME. Stop gating on endgame-greedy-mate; validate the field on
+     midgame committor/transition instead. Recommendation: C (+ B for the planner), with a quick
+     A to confirm rank-collapse is the culprit. Checkpoint: mate_field_v1.pt.

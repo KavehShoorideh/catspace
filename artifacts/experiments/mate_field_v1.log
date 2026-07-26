@@ -1,0 +1,14 @@
+[mate-field] 38000 rows: won/mate 21699 | INF 16301 | logM 5.99 d32c16
+/Users/kav/code/remote/github/catspace/experiments/train_mate_field.py:105: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} loss {float(loss):.4f} (reg {float(reg):.3f} hinge {float(hinge):.3f}) "
+  step 0 loss 7.5669 (reg 2.089 hinge 5.478) [1s]
+  step 2000 loss 2.3910 (reg 1.569 hinge 0.822) [92s]
+  step 4000 loss 0.5945 (reg 0.322 hinge 0.272) [183s]
+  step 6000 loss 0.4463 (reg 0.218 hinge 0.228) [274s]
+  step 8000 loss 0.3920 (reg 0.272 hinge 0.120) [364s]
+  step 10000 loss 0.2860 (reg 0.223 hinge 0.063) [455s]
+  step 12000 loss 0.3048 (reg 0.130 hinge 0.175) [546s]
+  eff_rank(phi) 1.7/32 | d-vs-DTM spearman +0.808 | won-d med 20.1 vs INF-d med 468.0
+VERDICT MATE-FIELD d32: MATE-RATE 0.4% (1/250) | kept-win 88.7% (blunder-avoidance) | d-vs-DTM +0.808 | eff_rank 1.7 | [694s]
+  saved -> artifacts/experiments/mate_field_v1.pt
