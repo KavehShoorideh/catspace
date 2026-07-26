@@ -182,3 +182,28 @@ def rollout_dtm(board, tb, cap=200):
         b.push(m)
         plies += 1
     return None
+
+
+def rollout_line(board, tb, cap=200):
+    """Tablebase-optimal (adversarial, both-sides-optimal) line from a WON position
+    to mate. Returns a list of chess.Board positions [p0, p1, ..., mate] along the
+    optimal play, or None if it doesn't reach mate within cap. Since play is optimal,
+    the true distance-to-mate of p_i is (len-1 - i) plies and, for i<j on the line,
+    the reach-distance p_i -> p_j is (j - i) plies -- exact strong-opponent pairwise
+    labels for the multi-goal quasimetric (Kaveh 2026-07-26)."""
+    b = board.copy(stack=False)
+    seen = set()
+    line = [b.copy(stack=False)]
+    for _ in range(cap):
+        if b.is_checkmate():
+            return line
+        if b.is_game_over(claim_draw=True):
+            return None
+        m = tb_best_move(b, tb, seen)
+        if m is None:
+            return None
+        if b.turn == chess.BLACK:
+            seen.add(b.board_fen())
+        b.push(m)
+        line.append(b.copy(stack=False))
+    return None
