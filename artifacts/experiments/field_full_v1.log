@@ -1,0 +1,8 @@
+[field-full] pairs 320000 | child won 312764 inf 55793 | rank-groups 15432 | d32 logM 5.99
+/Users/kav/code/remote/github/catspace/experiments/train_field_full.py:146: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} pair {float(L_pair):.3f} repel {float(L_repel):.3f} mate "
+  step 0 pair 0.810 repel 2.800 mate 1.848 hinge 5.423 rank 0.500 [4s]
+  step 2500 pair 0.070 repel 0.141 mate 1.642 hinge 1.087 rank 0.343 [462s]
+  step 5000 pair 0.062 repel 0.098 mate 1.539 hinge 1.073 rank 0.341 [917s]
+  step 7500 pair 0.053 repel 0.091 mate 1.765 hinge 0.064 rank 0.301 [1367s]

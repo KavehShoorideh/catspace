@@ -1,0 +1,11 @@
+[child-rank] 368557 rows | won 312764 inf 55793 | rankable groups 15432 | logM 5.99
+/Users/kav/code/remote/github/catspace/experiments/train_child_rank_field.py:97: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} loss {float(loss):.3f} (reg {float(reg):.3f} hinge {float(hinge):.3f} "
+  step 0 loss 7.664 (reg 1.740 hinge 5.423 rank 0.500) [2s]
+  step 2000 loss 3.063 (reg 1.497 hinge 1.211 rank 0.354) [185s]
+  step 4000 loss 2.990 (reg 1.814 hinge 0.793 rank 0.384) [368s]
+  step 6000 loss 3.006 (reg 1.708 hinge 0.943 rank 0.356) [551s]
+  step 8000 loss 2.229 (reg 1.810 hinge 0.052 rank 0.366) [734s]
+  step 10000 loss 2.905 (reg 2.536 hinge 0.016 rank 0.353) [918s]
+  step 12000 loss 2.933 (reg 2.313 hinge 0.288 rank 0.331) [1101s]
