@@ -1,0 +1,36 @@
+=== phase2 armed Fri Jul 24 11:42:37 PDT 2026 ===
+=== phase2 v2 armed Fri Jul 24 11:48:34 PDT 2026 ===
+=== phase2 v2 armed Fri Jul 24 11:48:52 PDT 2026 ===
+=== phase2 v3 (incumbent-based) armed Fri Jul 24 15:26:45 PDT 2026 ===
+=== GPU free, starting Fri Jul 24 15:42:46 PDT 2026 ===
+best line = data/derived/sep/self_field_r0.pt
+=== [1/2] EXTERNAL CAMPAIGN (whole-system data) Fri Jul 24 15:42:46 PDT 2026 ===
+Error while reading option "-pgnout" with value "artifacts/experiments/ext_maia1100.pgn"
+Reason: Option "-pgnout" expects key=value pairs, got "artifacts/experiments/ext_maia1100.pgn".
+Error while reading option "-pgnout" with value "artifacts/experiments/ext_maia1500.pgn"
+Reason: Option "-pgnout" expects key=value pairs, got "artifacts/experiments/ext_maia1500.pgn".
+Error while reading option "-pgnout" with value "artifacts/experiments/ext_maia1900.pgn"
+Reason: Option "-pgnout" expects key=value pairs, got "artifacts/experiments/ext_maia1900.pgn".
+Error while reading option "-pgnout" with value "artifacts/experiments/ext_sf1.pgn"
+Reason: Option "-pgnout" expects key=value pairs, got "artifacts/experiments/ext_sf1.pgn".
+Error while reading option "-pgnout" with value "artifacts/experiments/ext_sf3.pgn"
+Reason: Option "-pgnout" expects key=value pairs, got "artifacts/experiments/ext_sf3.pgn".
+=== [2/2] improvement rounds on incumbent (full maia rotation) Fri Jul 24 15:42:46 PDT 2026 ===
+=== phase2 v3 (incumbent-based) armed Fri Jul 24 15:45:20 PDT 2026 ===
+/Users/kav/.claude/jobs/20b9956a/tmp/camping_phase2.sh: line 40:  7742 Killed: 9               $PY experiments/improvement_loop.py --rounds 8 --games 10 --nodes 2000 >> artifacts/experiments/improvement_loop.log 2>&1
+=== phase2 v3 COMPLETE Sat Jul 25 08:06:53 PDT 2026 ===
+=== GPU free, starting Sat Jul 25 08:11:35 PDT 2026 ===
+best line = data/derived/sep/self_field_r0.pt
+=== [1/2] EXTERNAL CAMPAIGN (whole-system data) Sat Jul 25 08:11:35 PDT 2026 ===
+Finished match
+Total Time: 00:27:03 (hours:minutes:seconds)
+
+Finished match
+Total Time: 00:27:47 (hours:minutes:seconds)
+
+Finished match
+Total Time: 00:26:40 (hours:minutes:seconds)
+
+Warning; Last info string with score not found from catspace
+Warning; Last info string with score not found from catspace
+Warning; Last info string with score not found from catspace

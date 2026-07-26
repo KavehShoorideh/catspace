@@ -1,0 +1,7 @@
+### EXTRAPOLATION TEST (train DTM<=25, test DTM>25) ###
+VERDICT DTM xf-d16-L4: near[spearman +0.497 MAE 5.7] FAR-extrap[spearman -0.394 MAE 30.0] | far_eff_rank 6.4/16 | 0.01M [132s]
+VERDICT DTM xf-d64-L4: near[spearman +0.563 MAE 5.2] FAR-extrap[spearman -0.430 MAE 28.3] | far_eff_rank 30.4/64 | 0.21M [262s]
+VERDICT DTM cnn-d64-L6: near[spearman +0.707 MAE 4.1] FAR-extrap[spearman -0.439 MAE 27.0] | far_eff_rank 32.8/64 | 0.23M [116s]
+VERDICT DTM xf-d64-L8: near[spearman +0.621 MAE 4.8] FAR-extrap[spearman -0.424 MAE 28.3] | far_eff_rank 38.6/64 | 0.41M [513s]
+### CONTROL: full-range labels (train DTM<=200) -- is it architecture or LABELS? ###
+### DTM BAKEOFF DONE ###

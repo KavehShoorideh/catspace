@@ -1,0 +1,12 @@
+=== queue armed Fri Jul 24 10:54:54 PDT 2026 ===
+=== camping queue armed Fri Jul 24 11:40:05 PDT 2026 ===
+VERDICT DISTILL held-out spearman +0.9950 MAE 2.805 (n=262144 pairs) student 2.1M vs teacher 9.1M [14236s]
+=== [1/3] speed bench Fri Jul 24 12:00:05 PDT 2026 ===
+VERDICT SPEED teacher-fp32: 36 evals/s (baseline, fidelity 1.0)
+VERDICT SPEED teacher-fp16: 36 evals/s (1.01x) fidelity-spearman +1.0000
+VERDICT SPEED field_student_v1: FAILED ('state_dict')
+=== [2/3] FROM-SCRATCH IQE on all data Fri Jul 24 12:01:43 PDT 2026 ===
+scratch IQE launched (fresh init -> 170k steps, field_scratch_full_v1.pt)
+=== [3/3] nucleus pipeline resume Fri Jul 24 12:01:43 PDT 2026 ===
+nucleus resumed
+=== queue done Fri Jul 24 12:01:43 PDT 2026 ===

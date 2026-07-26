@@ -7483,3 +7483,28 @@ permanent tb-cache DELETE-mode fix; distillation 2.1M @ spearman .995 (2x speed)
 sessions/phone-play/UCI/gauntlet/fastchess infra shipped; dense-signal + system-gradient
 (MuZero/PCGrad/NEC) lit reviews; UI: prophylaxis, atlas hover-peek + SVG zoom, calc
 lifecycle, session cookies.
+
+## 2026-07-25 -- ARCHITECTURE BAKE-OFF: middlegame is a LABELS problem, NOT architecture
+
+Kaveh: try architectures (transformer-not-CNN, small dim), target = distance-to-mate (NOT
+policy; planner sits above). Built DTM extrapolation bake-off: train each backbone on
+DTM<=25, test ordering of DTM>25 (middlegame = far-from-mate). Results (held-out spearman):
+  IN-RANGE (DTM<=25):   xf-d16 +0.50 | xf-d64 +0.56 | cnn-d64 +0.71 | xf-d64-L8 +0.62
+  EXTRAPOLATION (>25):  xf-d16 -0.39 | xf-d64 -0.43 | cnn-d64 -0.44 | xf-d64-L8 -0.42
+  CONTROL, labels<=100: cnn-d64 near(<=100) +0.62  (fits long distance WHEN LABELED)
+DECISIVE FINDINGS:
+  1. NO backbone extrapolates distance-to-mate past its training range -- ALL go
+     negative on unseen-longer distances. This IS the '~20 for everything far' middlegame
+     failure, and it is architecture-INDEPENDENT.
+  2. Transformer does NOT beat CNN. CNN is actually BEST in-distribution (+0.71 vs +0.56).
+     Swapping CNN->transformer would not help (tested directly); the current CNN is fine.
+  3. far_eff_rank stays healthy (6-38) -- NOT rank collapse. The distance HEAD saturates.
+  4. WITH long labels (control), the model fits long distances (+0.62 up to DTM 100) --
+     capacity exists; the model just can't INVENT distances it never trained on.
+CONCLUSION: the middlegame distance-to-mate problem is a LABELS/RANGE problem, not an
+architecture problem. Tablebase stops at 6 pieces; human games are censored by resignation;
+so long-distance labels don't exist. The fix must MANUFACTURE them -- bootstrap outward
+from the endgame via TD / value-iteration on the quasimetric (d(s)=1+min_a d(s')), or
+full games played to ACTUAL mate. This VALIDATES Kaveh's instinct to keep the quasimetric
++ planner-on-top: the fix is the training signal, not the backbone. (Files:
+experiments/arch_bakeoff.py, dtm_arch_bakeoff.py; logs arch_bakeoff / dtm_bakeoff.)
