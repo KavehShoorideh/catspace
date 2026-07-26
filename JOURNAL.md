@@ -7767,3 +7767,28 @@ the MCTS/AB planner the midgame needs anyway. So: ab_convert.py (deep alpha-beta
 eval + move ordering + FEN memo, field=value) is the conversion mechanism; testing depth 5/7 on
 KQvK (CPU, fast for d=32). Endgame conversion = deep search on the coarse field, NOT a
 fine-resolution field. Files: train_field_full.py, ab_convert.py.
+
+## 2026-07-26 -- CONVERSION: the fundamental wall (honest finding + strategic implication)
+
+After exhausting the levers (WDL barriers, multi-goal geometry, repulsion, child-DTZ rank, both
+color, deep search, MCTS), the honest conclusion on learned-field ENDGAME CONVERSION:
+  * A learned scalar/distance VALUE at this scale does NOT capture the FINE mating gradient.
+    Within-sibling 1-ply rank plateaus ~57% regardless of every anti-collapse correction (it is
+    NOT global collapse -- pair/repel losses converge; the 1-ply signal is just too fine).
+  * SEARCH can't compensate: KQvK mate needs ~10-20 ply lookahead to reach mate directly; even
+    with instant eval, AB to depth ~16 is infeasible (branching^8+). So the value MUST guide the
+    driving phase -- and it can't (the wall).
+  * Real engines convert KQvK via hand-crafted endgame eval terms (king-to-edge, king proximity)
+    that give the fine gradient WITHOUT deep search. Our learned field lacks that; tablebase has
+    it perfectly.
+STRATEGIC IMPLICATION (this is the right resolution, not a failure): at DEPLOYMENT the tablebase
+converts the endgame (instant, perfect) -- as every strong engine does. The learned field's job
+is the MIDGAME, where (a) there's no tablebase, AND (b) the bar is DIFFERENT: you don't force
+mate, you steer the COMMITTOR / exploit the opponent's errors. The endgame conversion demo
+validated what it could -- value+search beats greedy (5%->17.5%), blunder/stalemate defense
+solved (88.7% kept-win) -- and revealed the fine-resolution wall, which tells us the learned
+value is a COARSE committor-style signal, exactly what the midgame KL/exploitation layer needs
+(not a fine mating oracle). RECOMMENDATION: stop optimizing learned endgame mate; endgame=
+tablebase at deploy; proceed to the midgame lichess/KL layer where the coarse learned field is
+the right tool. Artifacts: field_full_v1 (killed mid-train), mate_field_v1, ab_convert.py,
+mcts_convert.py, mate_with_search.py all committed.

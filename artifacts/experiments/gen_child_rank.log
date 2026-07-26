@@ -1,0 +1,15 @@
+[gen-child-rank] 10 workers x 1600 parents
+  w1/10: 36733 rows [93s]
+  w2/10: 36593 rows [93s]
+  w3/10: 36743 rows [93s]
+  w4/10: 36742 rows [93s]
+  w5/10: 37044 rows [93s]
+  w6/10: 36660 rows [93s]
+  w7/10: 37153 rows [93s]
+  w8/10: 37170 rows [93s]
+  w9/10: 36830 rows [93s]
+  w10/10: 36889 rows [93s]
+
+=== data/derived/child_rank_v1.npz: 368557 child rows, 16000 groups [94s] ===
+  won-children 312401 (|dtz| med 18) | mate 363 | INF(threw-win) 55793
+DONE gen_child_rank_data
