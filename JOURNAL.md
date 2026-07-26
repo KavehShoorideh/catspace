@@ -7748,3 +7748,22 @@ SELF-BLUNDER MODEL (Kaveh, "later"): the DRAWS are US blundering into the draw i
 self-blunder model -- where OUR value is unreliable / we're likely to slip -- is the mirror of
 the opponent model + the S1 reliability map applied to ourselves. Deferred, but it's the
 principled fix for draw-throwing. Files: mcts_convert.py.
+
+## 2026-07-26 -- autonomous window: consolidated field + the fine-resolution wall
+
+Kaveh: go autonomous few hours, get mate within a basin (small), then extend to full-game WDL.
+Also: include ALL anti-collapse corrections, work with the best candidate.
+Built train_field_full.py = the CONSOLIDATED best candidate with EVERY correction: single-space
+IQE + multi-goal pairwise geometry (rank) + REPULSION + WDL hinge-to-M barriers + mate attractor
++ within-sibling DTZ rank + both-color. (field_full_v1, training.)
+KEY WALL (persists across v2 child-rank AND field_full): the within-sibling |DTZ| RANK LOSS
+PLATEAUS at ~0.34 (=~57% pairwise, barely above coin) NO MATTER the corrections. The field
+CANNOT resolve sibling moves 1 ply apart. Pair/repel losses DO drop (geometry/rank develop), so
+it's not global collapse -- it's that a 1-ply |DTZ| delta is too fine a signal for the field.
+IMPLICATION (important): the "better field -> shallow greedy mates" path is CAPPED. The right
+path is DEEP SEARCH + a coarse-but-correct value (which we HAVE: d-vs-DTM +0.81 coarse gradient,
+kept-win 88.7%). This is exactly how real engines convert (coarse eval + deep search), and it's
+the MCTS/AB planner the midgame needs anyway. So: ab_convert.py (deep alpha-beta, batched child
+eval + move ordering + FEN memo, field=value) is the conversion mechanism; testing depth 5/7 on
+KQvK (CPU, fast for d=32). Endgame conversion = deep search on the coarse field, NOT a
+fine-resolution field. Files: train_field_full.py, ab_convert.py.
