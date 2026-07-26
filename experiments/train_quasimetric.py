@@ -44,10 +44,17 @@ class TwoTowerIQE(nn.Module):
     (from-tower vs to-tower + IQE's directed interval union) -- a quasimetric."""
     def __init__(self, d=32, d_bb=64, blocks=6, iqe_components=16, shared=False):
         super().__init__()
+        # shared=True => ONE embedding space phi (single encoder AND single head): d(x,y)=
+        # IQE(phi(x),phi(y)). IQE itself supplies the asymmetry, so this is still a proper
+        # asymmetric quasimetric -- but now the triangle inequality holds structurally (a
+        # node b has ONE embedding, so composition a->b->c is valid). Two separate heads
+        # (shared=False, or the earlier trunk-only sharing) give F(b)!=B(b) and break it.
+        self.shared = shared
         self.encF = CNNBackbone(d_bb, blocks)
         self.encB = self.encF if shared else CNNBackbone(d_bb, blocks)
         self.headF = nn.Sequential(nn.Linear(d_bb, d_bb), nn.GELU(), nn.Linear(d_bb, d))
-        self.headB = nn.Sequential(nn.Linear(d_bb, d_bb), nn.GELU(), nn.Linear(d_bb, d))
+        self.headB = self.headF if shared else nn.Sequential(
+            nn.Linear(d_bb, d_bb), nn.GELU(), nn.Linear(d_bb, d))
         self.iqe = IQE(d, components=iqe_components)
 
     def embedF(self, ids, stm):
@@ -84,6 +91,7 @@ def main():
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--device", default="auto")
+    ap.add_argument("--save", default=None, help="path to save the trained field + metadata")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     t0 = time.time(); dev = pick_device(args.device)
@@ -191,6 +199,16 @@ def main():
     print(f"  (3) held-out pair ordering:   spearman {sp_pair:+.3f} MAE {mae_pair:.1f}  "
           f"[scalar far-ceiling +0.2]", flush=True)
     print(f"  (4) triangle violations: {100*viol:.2f}% of triples (mean slack {viol_mag:.3f})", flush=True)
+
+    if args.save:
+        Path(args.save).parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"state_dict": net.state_dict(),
+                    "cfg": {"d": args.d, "d_bb": args.d_bb, "blocks": args.blocks,
+                            "iqe_components": args.iqe_components, "shared": args.shared},
+                    "data": args.data,
+                    "metrics": {"eff_rank": er_mean, "mate_min_spearman": sp_mate,
+                                "pair_spearman": sp_pair, "triangle_viol": viol}}, args.save)
+        print(f"  saved -> {args.save}", flush=True)
 
 
 if __name__ == "__main__":

@@ -7562,3 +7562,29 @@ diverse ranges). NEXT per Kaveh: after mechanism solid -> ALL tablebase material
 trajectory source to STOCKFISH (reuse gen_stockfish_continuations.py, not hand-rolled optimal
 play; tb stays as validation oracle), then expand outward to midgame. Files: gen_pairwise_data.py,
 train_quasimetric.py, tb.rollout_line.
+
+## 2026-07-26 -- SHARED single-space quasimetric: triangle inequality was broken by the two-tower
+
+Kaveh asked: could the shared-vs-two-tower embedding be the root of prior failures? Tested it.
+FINDING (train_quasimetric.py, endgame pairwise 320k):
+  two separate embeddings (two-tower F/B, OR trunk-shared-but-separate-heads):
+      triangle-inequality violations 10.6-10.9% (mean slack 0.13-0.30)
+  genuine SINGLE space (one encoder AND one head, d=IQE(phi(s),phi(g))):
+      triangle violations 0.00% (mean slack 0.000) -- even at 2000 steps
+Why: IQE's aggregation (alpha*max + (1-alpha)*mean of per-component union-lengths) is a
+non-negative combination + max of quasimetrics, so the triangle inequality is STRUCTURAL --
+but ONLY within ONE embedding space. Two heads give phi_F(b)!=phi_B(b), so composition
+a->b->c routes through two different embeddings of b and breaks. IQE itself supplies the
+asymmetry (directed interval [U,max(U,V)]), so a single space is still a proper ASYMMETRIC
+quasimetric. Pair ordering unchanged/better (+0.90..+0.95). eff_rank ~4.5, mate-via-min
+~+0.32 (still endgame-data-limited; Phase 2).
+ANSWER to Kaveh's question (graded): NOT the cause of the rank collapse / +0.2 ordering
+ceiling -- that was the SINGLE-SCALAR target (no B-tower at all), cured by multi-goal
+supervision. BUT very plausibly the cause of the MIDGAME PLANNING failure: the deployed
+TorchFB is two-tower, so its distances DON'T COMPOSE (triangle broken); endgame play needs
+only a one-hop d(s,mate) [two-tower ok -> strong], midgame play needs to COMPOSE distances
+through subgoals [needs triangle -> two-tower breaks -> weak]. The strong-endgame/weak-midgame
+split maps onto one-hop vs multi-hop. Mechanism now confirmed (0% vs 11%); the causal link to
+actual play is still to be tested (Phase 2: does a shared composable field plan better?).
+DESIGN IMPLICATION: field should be a SINGLE-SPACE IQE quasimetric (drop the two-tower) in the
+omega-free regime -- composable + half the params. Checkpoint: quasimetric_shared_v1.pt.

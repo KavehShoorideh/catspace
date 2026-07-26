@@ -3,3 +3,15 @@
 Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
   print(f"  step {s} loss {float(loss):.4f} [{time.time()-t0:.0f}s]", flush=True)
   step 0 loss 0.5205 [3s]
+  step 2000 loss 0.0596 [180s]
+  step 4000 loss 0.0386 [357s]
+  step 6000 loss 0.0282 [534s]
+  step 8000 loss 0.0229 [712s]
+  step 10000 loss 0.0216 [889s]
+  step 12000 loss 0.0185 [1066s]
+  step 14000 loss 0.0150 [1243s]
+VERDICT QUASIMETRIC d32c16-shared (0.24M, 1335s):
+  (1) eff_rank(F) 4.2±0.0 / 32   [scalar field was ~3-5]
+  (2) mate-via-min vs true DTM: spearman +0.321 MAE 21.3
+  (3) held-out pair ordering:   spearman +0.953 MAE 0.8  [scalar far-ceiling +0.2]
+  (4) triangle violations: 10.60% of triples (mean slack 0.130)
