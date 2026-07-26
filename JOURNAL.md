@@ -7588,3 +7588,84 @@ split maps onto one-hop vs multi-hop. Mechanism now confirmed (0% vs 11%); the c
 actual play is still to be tested (Phase 2: does a shared composable field plan better?).
 DESIGN IMPLICATION: field should be a SINGLE-SPACE IQE quasimetric (drop the two-tower) in the
 omega-free regime -- composable + half the params. Checkpoint: quasimetric_shared_v1.pt.
+
+## 2026-07-26 -- MATE TEST: the endgame field can't mate (5-7%), and exactly why
+
+Kaveh: "let me know how the endgame model mates." Built mate_from_field.py: use the field as
+a GREEDY planner (pick move minimising d(child, MATE)), Black defends TABLEBASE-OPTIMALLY.
+RESULT (quasimetric_shared_v1, single-space, pair-ordering +0.957):
+  pure greedy: mate-rate 5% (2/40).  +mate-in-1 shortcut: 7.5% (9/120), and those are almost
+  all already-at-mate-in-1 (median plies 1). => the field gives ~NO mating guidance, even KQvK.
+DIAGNOSIS (--diag, goal = each line's TRUE terminal mate, no bank):
+  d vs remaining-DTM ALONG optimal lines: spearman +0.981 (median +0.994), 100% monotone-decr
+  greedy picks a DTM-REDUCING move: 52.7% (770/1461)  == COIN FLIP
+READ (this is decisive): the field is a near-perfect PROGRESS COORDINATE *along optimal lines*
+but a useless MOVE-SELECTION policy. Root cause = imitation-learning distribution shift: it was
+trained ONLY on optimal-line positions and ONLY on within-line pairs, so (1) it never saw the
+OFF-optimal positions that suboptimal moves lead to (can't evaluate them), and (2) it has no
+1-ply local resolution (the +0.98 is carried by large-range variation, not adjacent-move diffs).
+Pure regression on expert trajectories teaches the on-manifold coordinate, NOT the gradient
+away from it. The +0.957 pair-ordering metric OVERSOLD it -- it's a global metric dominated by
+easy long-range pairs; the policy needs local + off-line discrimination, which is absent.
+FIX DIRECTION (informs Phase 2): need NEGATIVE / off-optimal samples (Stockfish games naturally
+visit varied+suboptimal positions; plus explicit suboptimal branches per node) and/or a
+CONTRASTIVE/QRL objective (push non-adjacent apart, d(good-child)<d(bad-child)) -- not pure
+supervised regression on optimal lines. This is exactly why Kaveh said use Stockfish + expand
+outward. mate_from_field.py is now the real "can it PLAY" harness (strength, not proxy ordering).
+
+## 2026-07-26 -- MATE GRADIENT PROBE (Kaveh): per-move distances reveal 2 defects
+
+mate_gradient_probe.py prints, for mate-in-1 positions, every legal move with true DTM +
+field d-to-mate, sorted by field distance; also d to BOTH mate regions (White-delivers vs
+White-gets-mated). 5 examples:
+  mate move ranked #1 by the field in only 2/5 (KQvK ex1 Qa7# 0.514, ex2 Qe7# 0.948). In 3/5
+  the field preferred a DTM-6..14 move over immediate mate (ex3 KRRvK: Rf8 DTM10 @1.85 beat
+  Ra2# @2.70; ex5 KQvK: Qc3 DTM6 @0.795 beat Qh8# @0.920).
+DEFECT 1 -- the mate region is NOT collapsed: a checkmate position sits at field-distance
+  0.5-2.7 from the mate BANK, not ~0. Different checkmates are SCATTERED in embedding space,
+  so min-over-bank is nonzero even AT mate. The region-as-min readout can't be sharp when the
+  goal region isn't a point. (This is why mate-via-min was only +0.33.)
+DEFECT 2 -- NO win/loss asymmetry (Kaveh's 'two distances' point, confirmed as a REQUIREMENT
+  the field fails): to-WIN-mate and to-GET-mated are comparable (~1-3), and in ex2/ex3/ex4 the
+  field rates White CLOSER to getting mated than to winning -- in positions where White mates
+  in 1. The field never trained on the losing region, so its distance there is arbitrary.
+  Kaveh predicted one ~1 and the other ~inf; the field gives them roughly equal.
+IMPLICATIONS (fixes): (a) COLLAPSE the mate region to a single attractor (abstract mate goal /
+  pull all mates together, or a mate token) so d->0 at mate and the readout is sharp; (b)
+  represent BOTH mate regions with the WDL sign so the asymmetry emerges (win: d_win small,
+  d_loss huge) -- distance-to-region done properly; (c) + off-optimal negatives & local
+  resolution from the prior finding. Even the 2 'correct' cases had thin margins (fragile).
+
+## 2026-07-26 -- DESIGN LOCKED: metastability / transition-path planning architecture (Kaveh)
+
+Full end-to-end vision for playing a fallible opponent (not just mating). Outcome classes
+{Won,Drawn,Lost} = METASTABLE BASINS; under optimal play barriers are infinite (no cross-basin
+path); under strong-but-real play, RARE transitions = ERRORS. Play STRONG engines (lc0
+t1-512x15x8h vs Stockfish, fixed nodes/depth for reproducible strength, not wall-clock) so
+basins are clean + transitions rare-but-present; a STRONG referee (SF high-depth) detects the
+WDL flips. Cluster positions by eventual outcome -> 3 basins + sparse transitions.
+THE STACK:
+  1. QUASIMETRIC FIELD (single-space IQE): basins + within-basin distance; INFINITE cross-basin
+     barriers via repulsion balanced by within-basin anchor (hinge-to-large-M or QRL local<=1;
+     NOT unbounded -- that diverges/collapses). Mate = collapsed attractor (d->0); stalemate/
+     draw/loss = infinite repellers. Off-optimal negatives + local 1-ply resolution (fixes the
+     52.7% coin-flip move-selection).
+  2. COMMITTOR c(s)=P(win|s,omega): the log-odds outcome coordinate; level sets=basins,
+     c~0.5 iso-surface = transition-state ridge. (committor_root_loop.py already in repo.)
+  3. TRANSITION-PROB PREDICTOR T(s,omega) [CNN/transformer]: per-direction (win-flip, loss-flip),
+     omega-conditioned. 2-D map: SHARP=both high, QUIET=both low, FAVORABLE=win-flip high/loss
+     low, DANGEROUS=inverse. Trained on TABLEBASE-EXACT only-move labels first (dense/exact;
+     fixes rarity), engine transitions second. Off-distribution generalization caveat (imagined
+     futures).
+  4. MCTS PLANNER: maximize EXPECTED COMMITTOR (single scalar -- do NOT hand-balance the two
+     transition probs; committor nets them, sharpness=variance-of-c). T shapes search toward
+     REACHABLE favorable-flux ridges (field distance = within-basin reachability filter).
+     Navigate to unseen future g = argmax_g T_net(g,omega)*reachability(d(cur->g)). Risk-appetite
+     knob (c-variance tolerance): need-a-win(c~0.5)->tolerate SHARP; winning(c~0.9)->seek QUIET.
+     = contempt/risk-mgmt, principled. This is TRANSITION-PATH THEORY: maximize reactive flux
+     draw->win. Opponent plans too -> adversarial navigation; start ONE-SIDED.
+STAGING (ground truth first): (1) endgame transition labels from tablebase (only-move positions)
+-> train T with EXACT labels + validate vs fallible defender (Maia/weak-SF); (2) flux-planner on
+endgames, beat greedy-to-mate against fallible defense; (3) scale to midgame with lc0-vs-SF games
+(gen in background from step 1). Assets present: lc0+t1 net, maia 1200-1900, stockfish, committor
+code, omega embeddings, single-space quasimetric MVP (quasimetric_shared_v1).
