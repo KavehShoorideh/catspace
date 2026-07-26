@@ -3,3 +3,16 @@
 Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
   print(f"  step {s} loss {float(loss):.4f} [{time.time()-t0:.0f}s]", flush=True)
   step 0 loss 0.8418 [2s]
+  step 2000 loss 0.0501 [178s]
+  step 4000 loss 0.0334 [353s]
+  step 6000 loss 0.0278 [528s]
+  step 8000 loss 0.0228 [703s]
+  step 10000 loss 0.0190 [878s]
+  step 12000 loss 0.0153 [1053s]
+  step 14000 loss 0.0138 [1228s]
+VERDICT QUASIMETRIC d32c16-shared (0.23M, 1319s):
+  (1) eff_rank(F) 6.3±0.0 / 32   [scalar field was ~3-5]
+  (2) mate-via-min vs true DTM: spearman +0.328 MAE 20.4
+  (3) held-out pair ordering:   spearman +0.957 MAE 0.9  [scalar far-ceiling +0.2]
+  (4) triangle violations: 0.00% of triples (mean slack 0.000)
+  saved -> artifacts/experiments/quasimetric_shared_v1.pt
