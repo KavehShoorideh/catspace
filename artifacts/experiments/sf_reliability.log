@@ -1,0 +1,36 @@
+[sf-reliability] 10 workers x 900 pos, depths [4, 10, 18], band 150cp
+  worker 1/10: 2700 evals [150s]
+  worker 2/10: 2700 evals [158s]
+  worker 3/10: 2700 evals [158s]
+  worker 4/10: 2700 evals [164s]
+  worker 5/10: 2700 evals [172s]
+  worker 6/10: 2700 evals [172s]
+  worker 7/10: 2700 evals [172s]
+  worker 8/10: 2700 evals [172s]
+  worker 9/10: 2700 evals [172s]
+  worker 10/10: 2700 evals [172s]
+
+=== SF RELIABILITY MAP (27000 evals, 172s) ===
+depth 4: overall WDL-acc 96.2%  (n=9000)
+    true W: acc 96.4% (n=5565)  SF-says[W:96% D:4% L:0%]
+    true D: acc 96.1% (n=3252)  SF-says[W:3% D:96% L:0%]
+    true L: acc 92.3% (n=183)  SF-says[W:1% D:7% L:92%]
+depth 10: overall WDL-acc 97.1%  (n=9000)
+    true W: acc 96.9% (n=5565)  SF-says[W:97% D:3%]
+    true D: acc 97.3% (n=3252)  SF-says[W:3% D:97% L:0%]
+    true L: acc 98.4% (n=183)  SF-says[D:2% L:98%]
+depth 18: overall WDL-acc 97.3%  (n=9000)
+    true W: acc 97.2% (n=5565)  SF-says[W:97% D:3%]
+    true D: acc 97.2% (n=3252)  SF-says[W:3% D:97% L:0%]
+    true L: acc 100.0% (n=183)  SF-says[L:100%]
+
+least-reliable classes @ depth 18:
+    KBBvKN  acc 68.5% (n=483)
+    KNNvKP  acc 81.0% (n=458)
+    KQvKBB  acc 98.6% (n=484)
+    KRvKN   acc 99.8% (n=448)
+    KPvKP   acc 100.0% (n=431)
+    KQvKR   acc 100.0% (n=442)
+    KNNvK   acc 100.0% (n=447)
+    KRvKP   acc 100.0% (n=470)
+DONE sf_reliability_map
