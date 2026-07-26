@@ -1,0 +1,362 @@
+[L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
+shards=lichess_full_stage device=mps steps=170000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
+model params: 2.3M (d=64 channels=64 blocks=6 enc_out=256)
+multichannel mix: human(r0)=0.85 + self_play_v1:11:0.15
+holdout: 8 batches of 512
+/Users/kav/code/remote/github/catspace/catspace/nn/fb.py:676: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  d_unr = float(d_far[m].mean())
+    qrl push 39.955 sq_dev 0.0000 lam 1.000 d_step 0.240 d_rand 0.230 var 0.000 sib 0.000 unr 29.769 unrb 29.762 d_unr 0.23 d_oth 0.23
+step 100  loss 458.8073  train_top1 0.000  lr 3.00e-04  (1.7 it/s)
+    qrl push 35.145 sq_dev 33.1371 lam 1.587 d_step 6.540 d_rand 5.164 var 0.000 sib 0.000 unr 23.289 unrb 23.672 d_unr 6.71 d_oth 4.00
+step 200  loss 371.8220  train_top1 0.000  lr 3.00e-04  (1.2 it/s)
+    qrl push 26.954 sq_dev 11.3170 lam 2.211 d_step 2.748 d_rand 14.223 var 0.000 sib 0.000 unr 15.847 unrb 17.085 d_unr 14.15 d_oth 14.34
+step 300  loss 234.2392  train_top1 0.000  lr 3.00e-04  (1.2 it/s)
+    qrl push 17.660 sq_dev 34.1141 lam 2.755 d_step 4.351 d_rand 29.821 var 0.000 sib 0.000 unr 9.560 unrb 8.051 d_unr 30.02 d_oth 27.78
+step 400  loss 207.1466  train_top1 0.000  lr 3.00e-04  (1.5 it/s)
+    qrl push 16.172 sq_dev 7.4895 lam 3.271 d_step 2.008 d_rand 33.201 var 0.000 sib 0.000 unr 9.707 unrb 13.333 d_unr 30.05 d_oth 43.45
+step 500  loss 154.3190  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 12.529 sq_dev 2.8451 lam 3.616 d_step 1.807 d_rand 48.697 var 0.000 sib 0.000 unr 7.899 unrb 8.402 d_unr 43.29 d_oth 71.25
+step 600  loss 180.3940  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 12.905 sq_dev 3.0006 lam 3.918 d_step 1.506 d_rand 56.799 var 0.000 sib 0.000 unr 8.808 unrb 7.270 d_unr 48.47 d_oth 70.91
+step 700  loss 181.3067  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 11.740 sq_dev 9.8411 lam 4.242 d_step 1.982 d_rand 59.607 var 0.000 sib 0.000 unr 7.631 unrb 7.757 d_unr 50.28 d_oth 74.27
+step 800  loss 190.1260  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 16.431 sq_dev 6.5789 lam 4.625 d_step 1.409 d_rand 42.027 var 0.000 sib 0.000 unr 9.509 unrb 9.873 d_unr 41.56 d_oth 45.12
+step 900  loss 146.7683  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 17.578 sq_dev 0.7469 lam 4.931 d_step 0.356 d_rand 39.671 var 0.000 sib 0.000 unr 10.605 unrb 11.444 d_unr 41.34 d_oth 31.00
+step 1000  loss 134.2143  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 12.222 sq_dev 0.6050 lam 5.214 d_step 0.251 d_rand 63.117 var 0.000 sib 0.000 unr 8.142 unrb 7.510 d_unr 54.89 d_oth 83.73
+step 1100  loss 199.8116  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 14.197 sq_dev 1.3872 lam 5.506 d_step 1.052 d_rand 56.521 var 0.000 sib 0.000 unr 9.149 unrb 8.476 d_unr 51.94 d_oth 68.93
+step 1200  loss 118.6579  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 11.024 sq_dev 9.7311 lam 5.789 d_step 0.618 d_rand 71.271 var 0.000 sib 0.000 unr 7.492 unrb 6.947 d_unr 59.16 d_oth 96.73
+step 1300  loss 491.8082  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 20.498 sq_dev 0.8845 lam 6.261 d_step 0.423 d_rand 32.693 var 0.000 sib 0.000 unr 14.155 unrb 11.844 d_unr 25.31 d_oth 44.22
+step 1400  loss 127.6417  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 15.707 sq_dev 10.9901 lam 6.590 d_step 0.640 d_rand 48.446 var 0.000 sib 0.000 unr 9.831 unrb 10.006 d_unr 47.76 d_oth 50.73
+step 1500  loss 274.3533  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 12.320 sq_dev 0.6820 lam 6.862 d_step 0.171 d_rand 64.568 var 0.000 sib 0.000 unr 8.043 unrb 6.865 d_unr 57.54 d_oth 89.38
+step 1600  loss 155.1568  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 11.443 sq_dev 5.6105 lam 7.152 d_step 0.746 d_rand 74.258 var 0.000 sib 0.000 unr 7.929 unrb 5.948 d_unr 67.29 d_oth 83.40
+step 1700  loss 146.1750  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 9.999 sq_dev 1.7870 lam 7.445 d_step 0.274 d_rand 79.494 var 0.000 sib 0.000 unr 6.713 unrb 6.799 d_unr 68.72 d_oth 102.14
+step 1800  loss 143.3747  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 9.379 sq_dev 0.3106 lam 7.675 d_step 0.098 d_rand 76.520 var 0.000 sib 0.000 unr 5.827 unrb 7.781 d_unr 67.89 d_oth 115.42
+step 1900  loss 128.0838  train_top1 0.000  lr 3.00e-04  (1.7 it/s)
+    qrl push 9.257 sq_dev 4.4503 lam 7.985 d_step 0.391 d_rand 76.081 var 0.000 sib 0.000 unr 6.368 unrb 7.012 d_unr 66.20 d_oth 109.44
+step 2000  loss 471.5078  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+  VAL step 2000  loss 17.4909  top1 0.000  top8 0.001
+    qrl push 39.577 sq_dev 1.4188 lam 8.692 d_step 0.797 d_rand 0.626 var 0.000 sib 0.000 unr 29.128 unrb 25.380 d_unr 0.87 d_oth 0.15
+step 2100  loss 439.9182  train_top1 0.000  lr 3.00e-04  (1.4 it/s)
+    qrl push 38.639 sq_dev 0.0000 lam 8.730 d_step 0.001 d_rand 1.881 var 0.000 sib 0.000 unr 28.365 unrb 21.961 d_unr 2.22 d_oth 0.88
+step 2200  loss 401.5437  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 36.696 sq_dev 0.0000 lam 8.755 d_step 0.003 d_rand 4.733 var 0.000 sib 0.000 unr 26.506 unrb 21.316 d_unr 5.67 d_oth 3.02
+step 2300  loss 367.3613  train_top1 0.000  lr 3.00e-04  (2.0 it/s)
+    qrl push 35.095 sq_dev 0.2825 lam 8.792 d_step 0.120 d_rand 8.304 var 0.000 sib 0.000 unr 24.360 unrb 16.795 d_unr 11.05 d_oth 2.78
+step 2400  loss 341.5743  train_top1 0.000  lr 3.00e-04  (2.1 it/s)
+    qrl push 31.197 sq_dev 0.3594 lam 8.841 d_step 0.148 d_rand 16.171 var 0.000 sib 0.000 unr 20.480 unrb 16.562 d_unr 20.19 d_oth 5.19
+step 2500  loss 400.8432  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 35.407 sq_dev 0.0545 lam 8.877 d_step 0.052 d_rand 7.915 var 0.000 sib 0.000 unr 25.828 unrb 16.796 d_unr 8.10 d_oth 7.75
+step 2600  loss 344.8274  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 34.919 sq_dev 0.3499 lam 8.917 d_step 0.126 d_rand 10.103 var 0.000 sib 0.000 unr 23.876 unrb 16.886 d_unr 14.28 d_oth 3.43
+step 2700  loss 349.7208  train_top1 0.000  lr 3.00e-04  (2.2 it/s)
+    qrl push 33.121 sq_dev 0.0000 lam 8.956 d_step 0.000 d_rand 16.249 var 0.000 sib 0.000 unr 22.657 unrb 16.915 d_unr 20.86 d_oth 1.51
+step 2800  loss 301.2909  train_top1 0.000  lr 3.00e-04  (2.3 it/s)
+    qrl push 30.966 sq_dev 0.0007 lam 8.997 d_step 0.003 d_rand 20.829 var 0.000 sib 0.000 unr 20.164 unrb 14.224 d_unr 27.07 d_oth 0.21
+step 2900  loss 324.0441  train_top1 0.000  lr 3.00e-04  (2.1 it/s)
+    qrl push 33.765 sq_dev 0.0156 lam 9.039 d_step 0.010 d_rand 14.834 var 0.000 sib 0.000 unr 23.340 unrb 15.469 d_unr 19.17 d_oth 3.53
+step 3000  loss 347.6896  train_top1 0.000  lr 3.00e-04  (2.0 it/s)
+    qrl push 30.285 sq_dev 0.0035 lam 9.080 d_step 0.005 d_rand 26.332 var 0.000 sib 0.000 unr 20.067 unrb 16.249 d_unr 32.90 d_oth 10.78
+step 3100  loss 369.6151  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 33.936 sq_dev 0.0000 lam 9.134 d_step 0.000 d_rand 16.021 var 0.000 sib 0.000 unr 23.751 unrb 18.613 d_unr 19.81 d_oth 0.00
+step 3200  loss 249.5390  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 19.009 sq_dev 12.7495 lam 9.242 d_step 0.715 d_rand 36.826 var 0.000 sib 0.000 unr 14.319 unrb 13.039 d_unr 29.60 d_oth 62.61
+step 3300  loss 365.0126  train_top1 0.000  lr 3.00e-04  (2.1 it/s)
+    qrl push 36.836 sq_dev 0.0006 lam 9.568 d_step 0.004 d_rand 5.200 var 0.000 sib 0.000 unr 26.293 unrb 18.539 d_unr 6.54 d_oth 0.63
+step 3400  loss 501.1079  train_top1 0.000  lr 3.00e-04  (2.0 it/s)
+    qrl push 39.520 sq_dev 0.0000 lam 9.607 d_step 0.000 d_rand 1.113 var 0.000 sib 0.000 unr 29.135 unrb 26.021 d_unr 1.72 d_oth 0.00
+step 3500  loss 338.1281  train_top1 0.000  lr 3.00e-04  (2.0 it/s)
+    qrl push 31.882 sq_dev 0.8551 lam 9.633 d_step 0.074 d_rand 15.927 var 0.000 sib 0.000 unr 22.607 unrb 29.416 d_unr 16.64 d_oth 12.47
+step 3600  loss 334.2864  train_top1 0.000  lr 3.00e-04  (2.3 it/s)
+    qrl push 33.601 sq_dev 0.0000 lam 9.677 d_step 0.000 d_rand 14.084 var 0.000 sib 0.000 unr 21.550 unrb 15.526 d_unr 22.90 d_oth 3.04
+step 3700  loss 344.3596  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 35.287 sq_dev 0.8495 lam 9.723 d_step 0.203 d_rand 10.772 var 0.000 sib 0.000 unr 23.972 unrb 15.590 d_unr 15.65 d_oth 1.51
+step 3800  loss 326.9648  train_top1 0.000  lr 3.00e-04  (2.0 it/s)
+    qrl push 27.609 sq_dev 0.0000 lam 9.774 d_step 0.000 d_rand 33.945 var 0.000 sib 0.000 unr 18.599 unrb 19.751 d_unr 38.65 d_oth 3.24
+step 3900  loss 389.9124  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 33.093 sq_dev 0.0000 lam 9.828 d_step 0.000 d_rand 19.063 var 0.000 sib 0.000 unr 22.286 unrb 16.889 d_unr 26.92 d_oth 3.26
+step 4000  loss 292.8185  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+  VAL step 4000  loss 8.7231  top1 0.000  top8 0.000
+    qrl push 29.577 sq_dev 0.0054 lam 9.873 d_step 0.009 d_rand 30.111 var 0.000 sib 0.000 unr 19.025 unrb 13.954 d_unr 40.19 d_oth 9.28
+
+======================================================================
+  QRL COLLAPSE DETECTED @ step 4000
+  LOCAL COLLAPSE: d_step=0.158~0 over last 2000 steps (all-F-above-all-B; the one-sided constraint decayed -- use --qrl-two-sided).
+======================================================================
+
+step 4100  loss 338.0942  train_top1 0.000  lr 3.00e-04  (1.6 it/s)
+    qrl push 32.687 sq_dev 0.0854 lam 9.919 d_step 0.050 d_rand 20.851 var 0.000 sib 0.000 unr 21.883 unrb 15.423 d_unr 27.87 d_oth 0.24
+step 4200  loss 341.0188  train_top1 0.000  lr 3.00e-04  (2.0 it/s)
+    qrl push 34.895 sq_dev 0.0000 lam 9.976 d_step 0.000 d_rand 16.376 var 0.000 sib 0.000 unr 24.427 unrb 16.336 d_unr 22.30 d_oth 2.07
+step 4300  loss 290.9543  train_top1 0.000  lr 3.00e-04  (1.8 it/s)
+    qrl push 33.897 sq_dev 0.0000 lam 10.029 d_step 0.000 d_rand 18.373 var 0.000 sib 0.000 unr 23.316 unrb 16.122 d_unr 24.39 d_oth 0.33
+step 4400  loss 391.7670  train_top1 0.000  lr 3.00e-04  (1.9 it/s)
+    qrl push 33.163 sq_dev 0.1832 lam 10.088 d_step 0.034 d_rand 21.608 var 0.000 sib 0.000 unr 22.981 unrb 16.734 d_unr 30.21 d_oth 7.62
+step 4500  loss 437.1024  train_top1 0.000  lr 3.00e-04  (2.1 it/s)
+    qrl push 36.903 sq_dev 0.0000 lam 10.178 d_step 0.000 d_rand 16.541 var 0.000 sib 0.000 unr 27.112 unrb 30.000 d_unr 18.78 d_oth 0.00
+step 4600  loss 326.0756  train_top1 0.000  lr 3.00e-04  (2.0 it/s)
+    qrl push 31.830 sq_dev 0.0000 lam 10.213 d_step 0.000 d_rand 28.184 var 0.000 sib 0.000 unr 20.669 unrb 16.640 d_unr 40.15 d_oth 1.28
+step 4700  loss 324.8858  train_top1 0.000  lr 2.99e-04  (2.1 it/s)
+    qrl push 34.200 sq_dev 0.0000 lam 10.276 d_step 0.000 d_rand 18.456 var 0.000 sib 0.000 unr 23.044 unrb 16.814 d_unr 27.01 d_oth 0.00
+step 4800  loss 348.2994  train_top1 0.000  lr 2.99e-04  (2.2 it/s)
+    qrl push 27.794 sq_dev 0.0000 lam 10.338 d_step 0.000 d_rand 44.303 var 0.000 sib 0.000 unr 19.322 unrb 30.000 d_unr 49.48 d_oth 6.05
+step 4900  loss 435.8618  train_top1 0.000  lr 2.99e-04  (2.1 it/s)
+    qrl push 35.886 sq_dev 0.6019 lam 10.391 d_step 0.052 d_rand 16.436 var 0.000 sib 0.000 unr 24.904 unrb 16.833 d_unr 24.95 d_oth 0.18
+step 5000  loss 345.7345  train_top1 0.000  lr 2.99e-04  (1.9 it/s)
+  ladder checkpoint -> field_scratch_full_v1_step5000.pt
+    qrl push 33.634 sq_dev 1.3024 lam 10.452 d_step 0.297 d_rand 22.503 var 0.000 sib 0.000 unr 21.791 unrb 15.160 d_unr 36.94 d_oth 0.52
+step 5100  loss 368.0925  train_top1 0.000  lr 2.99e-04  (1.9 it/s)
+    qrl push 23.483 sq_dev 0.0496 lam 10.520 d_step 0.012 d_rand 55.892 var 0.000 sib 0.000 unr 14.481 unrb 19.866 d_unr 66.09 d_oth 0.01
+step 5200  loss 282.5502  train_top1 0.000  lr 2.99e-04  (1.9 it/s)
+    qrl push 28.805 sq_dev 2.0086 lam 10.587 d_step 0.336 d_rand 48.526 var 0.000 sib 0.000 unr 19.337 unrb 14.759 d_unr 58.47 d_oth 3.13
+step 5300  loss 388.8676  train_top1 0.000  lr 2.99e-04  (1.6 it/s)
+    qrl push 25.996 sq_dev 0.0000 lam 10.693 d_step 0.000 d_rand 50.393 var 0.000 sib 0.000 unr 17.568 unrb 29.781 d_unr 56.46 d_oth 0.00
+step 5400  loss 363.0591  train_top1 0.000  lr 2.99e-04  (2.0 it/s)
+    qrl push 17.668 sq_dev 0.0288 lam 10.763 d_step 0.014 d_rand 90.009 var 0.000 sib 0.000 unr 10.940 unrb 0.000 d_unr 99.50 d_oth 3.79
+step 5500  loss 324.1551  train_top1 0.000  lr 2.99e-04  (3.2 it/s)
+    qrl push 33.319 sq_dev 0.0319 lam 10.859 d_step 0.011 d_rand 22.863 var 0.000 sib 0.000 unr 22.049 unrb 17.189 d_unr 33.00 d_oth 0.00
+step 5600  loss 349.6828  train_top1 0.000  lr 2.99e-04  (2.8 it/s)
+    qrl push 28.386 sq_dev 0.2636 lam 10.949 d_step 0.104 d_rand 51.286 var 0.000 sib 0.000 unr 17.399 unrb 13.243 d_unr 70.37 d_oth 1.06
+step 5700  loss 334.5291  train_top1 0.000  lr 2.99e-04  (2.9 it/s)
+    qrl push 34.696 sq_dev 0.1706 lam 11.034 d_step 0.029 d_rand 21.531 var 0.000 sib 0.000 unr 23.724 unrb 16.406 d_unr 31.59 d_oth 0.00
+step 5800  loss 334.5394  train_top1 0.000  lr 2.99e-04  (2.8 it/s)
+    qrl push 31.031 sq_dev 1.4220 lam 11.169 d_step 0.203 d_rand 35.728 var 0.000 sib 0.000 unr 20.255 unrb 14.469 d_unr 48.48 d_oth 0.11
+step 5900  loss 350.5390  train_top1 0.000  lr 2.99e-04  (2.8 it/s)
+    qrl push 30.470 sq_dev 0.0000 lam 11.253 d_step 0.000 d_rand 41.810 var 0.000 sib 0.000 unr 20.170 unrb 16.884 d_unr 53.52 d_oth 0.00
+step 6000  loss 325.3613  train_top1 0.000  lr 2.99e-04  (2.8 it/s)
+  VAL step 6000  loss 6.7571  top1 0.000  top8 0.000
+    qrl push 35.944 sq_dev 0.0027 lam 11.371 d_step 0.004 d_rand 14.809 var 0.000 sib 0.000 unr 25.424 unrb 17.880 d_unr 20.33 d_oth 0.00
+step 6100  loss 291.3617  train_top1 0.000  lr 2.99e-04  (2.2 it/s)
+    qrl push 25.792 sq_dev 3.2778 lam 11.570 d_step 0.281 d_rand 35.206 var 0.000 sib 0.000 unr 19.810 unrb 16.282 d_unr 35.61 d_oth 34.65
+step 6200  loss 312.9001  train_top1 0.000  lr 2.99e-04  (2.8 it/s)
+    qrl push 20.396 sq_dev 0.0000 lam 12.027 d_step 0.000 d_rand 44.891 var 0.000 sib 0.000 unr 16.526 unrb 16.853 d_unr 40.48 d_oth 54.69
+step 6300  loss 193.4014  train_top1 0.000  lr 2.99e-04  (1.8 it/s)
+    qrl push 14.975 sq_dev 7.5639 lam 12.407 d_step 0.511 d_rand 69.977 var 0.000 sib 0.000 unr 11.958 unrb 10.500 d_unr 65.80 d_oth 81.20
+step 6400  loss 334.7307  train_top1 0.000  lr 2.99e-04  (2.5 it/s)
+    qrl push 16.019 sq_dev 0.0000 lam 12.960 d_step 0.000 d_rand 55.993 var 0.000 sib 0.000 unr 13.781 unrb 18.377 d_unr 40.10 d_oth 90.80
+step 6500  loss 180.9206  train_top1 0.000  lr 2.99e-04  (1.0 it/s)
+    qrl push 10.169 sq_dev 1.0637 lam 13.288 d_step 0.155 d_rand 82.256 var 0.000 sib 0.000 unr 8.102 unrb 7.871 d_unr 67.66 d_oth 118.84
+step 6600  loss 121.8304  train_top1 0.000  lr 2.99e-04  (1.3 it/s)
+    qrl push 10.721 sq_dev 10.1440 lam 13.681 d_step 0.268 d_rand 89.342 var 0.000 sib 0.000 unr 7.314 unrb 6.284 d_unr 92.47 d_oth 82.32
+step 6700  loss 328.3331  train_top1 0.000  lr 2.99e-04  (1.9 it/s)
+    qrl push 22.484 sq_dev 1.2774 lam 14.091 d_step 0.171 d_rand 65.688 var 0.000 sib 0.000 unr 12.271 unrb 23.867 d_unr 84.89 d_oth 5.61
+step 6800  loss 227.2917  train_top1 0.000  lr 2.99e-04  (2.5 it/s)
+    qrl push 16.916 sq_dev 0.0515 lam 14.409 d_step 0.018 d_rand 55.195 var 0.000 sib 0.000 unr 12.599 unrb 13.574 d_unr 49.91 d_oth 77.80
+step 6900  loss 156.5718  train_top1 0.000  lr 2.99e-04  (2.5 it/s)
+    qrl push 10.948 sq_dev 0.9306 lam 14.754 d_step 0.190 d_rand 80.554 var 0.000 sib 0.000 unr 8.821 unrb 8.320 d_unr 67.38 d_oth 113.25
+step 7000  loss 196.6618  train_top1 0.000  lr 2.99e-04  (2.5 it/s)
+    qrl push 10.824 sq_dev 1.3468 lam 15.034 d_step 0.203 d_rand 89.321 var 0.000 sib 0.000 unr 7.647 unrb 7.127 d_unr 87.53 d_oth 92.95
+step 7100  loss 189.9697  train_top1 0.000  lr 2.99e-04  (2.7 it/s)
+    qrl push 9.747 sq_dev 1.9895 lam 15.356 d_step 0.094 d_rand 100.602 var 0.000 sib 0.000 unr 7.003 unrb 6.840 d_unr 101.49 d_oth 98.99
+step 7200  loss 152.8744  train_top1 0.000  lr 2.99e-04  (2.8 it/s)
+    qrl push 12.825 sq_dev 0.1314 lam 15.682 d_step 0.047 d_rand 88.401 var 0.000 sib 0.000 unr 9.351 unrb 7.286 d_unr 89.76 d_oth 84.54
+step 7300  loss 514.5555  train_top1 0.000  lr 2.99e-04  (2.7 it/s)
+    qrl push 39.822 sq_dev 0.0000 lam 16.332 d_step 0.000 d_rand 0.371 var 0.000 sib 0.000 unr 29.867 unrb 29.901 d_unr 0.13 d_oth 1.23
+step 7400  loss 519.1556  train_top1 0.000  lr 2.99e-04  (2.8 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.413 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 7500  loss 519.1557  train_top1 0.000  lr 2.99e-04  (2.8 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.412 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 7600  loss 519.1558  train_top1 0.000  lr 2.99e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.411 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 7700  loss 519.1559  train_top1 0.000  lr 2.99e-04  (1.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.410 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 7800  loss 519.1559  train_top1 0.000  lr 2.99e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.409 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 7900  loss 519.1561  train_top1 0.000  lr 2.99e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.407 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8000  loss 519.1561  train_top1 0.000  lr 2.99e-04  (2.6 it/s)
+  VAL step 8000  loss 6.2383  top1 0.000  top8 0.000
+    qrl push 40.181 sq_dev 0.0000 lam 16.406 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8100  loss 519.1562  train_top1 0.000  lr 2.98e-04  (2.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.404 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8200  loss 519.1563  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.182 sq_dev 0.0000 lam 16.403 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8300  loss 519.1564  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.401 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8400  loss 279.1566  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.399 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8500  loss 519.1567  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.397 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8600  loss 519.1568  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.396 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8700  loss 519.1569  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.182 sq_dev 0.0000 lam 16.393 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8800  loss 519.1570  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.391 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 8900  loss 519.1572  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.389 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9000  loss 519.1573  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.387 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9100  loss 519.1575  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.384 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9200  loss 519.1577  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.382 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9300  loss 519.1578  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.379 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9400  loss 519.1580  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.376 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9500  loss 519.1582  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.373 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9600  loss 519.1584  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.370 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9700  loss 519.1586  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.366 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9800  loss 519.1588  train_top1 0.000  lr 2.98e-04  (2.5 it/s)
+    qrl push 40.182 sq_dev 0.0000 lam 16.363 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 9900  loss 519.1591  train_top1 0.000  lr 2.98e-04  (2.6 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.359 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10000  loss 519.1593  train_top1 0.000  lr 2.98e-04  (2.9 it/s)
+  VAL step 10000  loss 6.2383  top1 0.000  top8 0.000
+  ladder checkpoint -> field_scratch_full_v1_step10000.pt
+    qrl push 40.181 sq_dev 0.0000 lam 16.355 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10100  loss 519.1595  train_top1 0.000  lr 2.98e-04  (2.2 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.351 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10200  loss 519.1599  train_top1 0.000  lr 2.98e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.347 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10300  loss 519.1601  train_top1 0.000  lr 2.98e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.342 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10400  loss 519.1604  train_top1 0.000  lr 2.98e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.337 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10500  loss 519.1607  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.182 sq_dev 0.0000 lam 16.332 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10600  loss 519.1611  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.327 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10700  loss 519.1614  train_top1 0.000  lr 2.97e-04  (2.8 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.322 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10800  loss 519.1617  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.316 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 10900  loss 519.1622  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.310 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11000  loss 519.1625  train_top1 0.000  lr 2.97e-04  (3.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.303 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11100  loss 519.1630  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.296 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11200  loss 519.1635  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.289 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11300  loss 519.1639  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.282 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11400  loss 519.1644  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.274 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11500  loss 519.1649  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.266 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11600  loss 519.1655  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.257 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11700  loss 519.1660  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.248 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11800  loss 519.1666  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.238 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 11900  loss 519.1672  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.228 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12000  loss 519.1679  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+  VAL step 12000  loss 6.2383  top1 0.000  top8 0.000
+    qrl push 40.181 sq_dev 0.0000 lam 16.217 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12100  loss 519.1686  train_top1 0.000  lr 2.97e-04  (2.2 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.206 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12200  loss 519.1694  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.194 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12300  loss 519.1701  train_top1 0.000  lr 2.97e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.182 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12400  loss 519.1710  train_top1 0.000  lr 2.96e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.169 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12500  loss 519.1718  train_top1 0.000  lr 2.96e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.155 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12600  loss 519.1727  train_top1 0.000  lr 2.96e-04  (2.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.141 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12700  loss 519.1736  train_top1 0.000  lr 2.96e-04  (3.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.126 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12800  loss 519.1746  train_top1 0.000  lr 2.96e-04  (4.2 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.110 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 12900  loss 519.1757  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.093 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13000  loss 519.1768  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.076 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13100  loss 519.1779  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.057 d_step 0.000 d_rand 0.001 var 0.000 sib 0.000 unr 29.999 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13200  loss 519.1791  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.038 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13300  loss 519.1804  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 16.018 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13400  loss 519.1817  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.996 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13500  loss 519.1831  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.974 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13600  loss 519.1846  train_top1 0.000  lr 2.96e-04  (6.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.950 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13700  loss 519.1862  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.925 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13800  loss 519.1878  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.899 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 13900  loss 519.1895  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.872 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14000  loss 519.1913  train_top1 0.000  lr 2.96e-04  (6.1 it/s)
+  VAL step 14000  loss 6.2383  top1 0.000  top8 0.000
+    qrl push 40.181 sq_dev 0.0000 lam 15.843 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14100  loss 519.1932  train_top1 0.000  lr 2.95e-04  (4.5 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.812 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14200  loss 519.1952  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.780 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14300  loss 519.1973  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.747 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14400  loss 519.1995  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.711 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14500  loss 519.2018  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.674 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14600  loss 519.2043  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.635 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14700  loss 519.2068  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.594 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14800  loss 519.2095  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.551 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 14900  loss 519.2124  train_top1 0.000  lr 2.95e-04  (6.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.506 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15000  loss 519.2153  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+  ladder checkpoint -> field_scratch_full_v1_step15000.pt
+    qrl push 40.181 sq_dev 0.0000 lam 15.458 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15100  loss 519.2185  train_top1 0.000  lr 2.95e-04  (6.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.408 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15200  loss 519.2218  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.355 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15300  loss 519.2252  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.300 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15400  loss 519.2289  train_top1 0.000  lr 2.95e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.242 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15500  loss 519.2327  train_top1 0.000  lr 2.95e-04  (6.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.180 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15600  loss 519.2367  train_top1 0.000  lr 2.94e-04  (6.1 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.116 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15700  loss 519.2409  train_top1 0.000  lr 2.94e-04  (6.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 15.048 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15800  loss 519.2454  train_top1 0.000  lr 2.94e-04  (6.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.977 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 15900  loss 519.2501  train_top1 0.000  lr 2.94e-04  (6.0 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.903 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16000  loss 519.2549  train_top1 0.000  lr 2.94e-04  (6.1 it/s)
+  VAL step 16000  loss 6.2383  top1 0.000  top8 0.000
+    qrl push 40.181 sq_dev 0.0000 lam 14.824 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16100  loss 519.2601  train_top1 0.000  lr 2.94e-04  (4.4 it/s)
+    qrl push 40.182 sq_dev 0.0000 lam 14.742 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16200  loss 519.2655  train_top1 0.000  lr 2.94e-04  (5.8 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.655 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16300  loss 519.2712  train_top1 0.000  lr 2.94e-04  (5.8 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.564 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16400  loss 519.2772  train_top1 0.000  lr 2.94e-04  (5.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.468 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16500  loss 519.2834  train_top1 0.000  lr 2.94e-04  (5.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.368 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16600  loss 519.2900  train_top1 0.000  lr 2.94e-04  (5.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.262 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16700  loss 519.2970  train_top1 0.000  lr 2.94e-04  (5.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.151 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00
+step 16800  loss 519.3043  train_top1 0.000  lr 2.94e-04  (5.9 it/s)
+    qrl push 40.181 sq_dev 0.0000 lam 14.034 d_step 0.000 d_rand 0.000 var 0.000 sib 0.000 unr 30.000 unrb 30.000 d_unr 0.00 d_oth 0.00

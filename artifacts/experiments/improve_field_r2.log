@@ -1,6 +1,6 @@
 [L2] preset=iqe-qrl -> iqe=True quasimetric=True qrl=True embed_scale=1.0
 shards=lichess_db_standard_rated_2019-01.prefix4gb device=mps steps=94000 batch=512 d=64 quasimetric=True ply_gap_weight=0.05 asym_weight=0.0 two_horizon=False
-resumed self_field_r11.pt at step 92000
+resumed self_field_r9.pt at step 92000
 [resume] peak lr scaled 3.00e-04 -> 3.00e-05 (x0.1) to protect the converged field; --resume-lr-scale 1.0 to disable
 multichannel mix: human(r0)=0.65 + self_play_v1:11:0.35
 Traceback (most recent call last):

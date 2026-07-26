@@ -1,0 +1,3 @@
+=== xf d16 L4 22:24:09 ===
+VERDICT ARCH xf-d16-L4: top1 0.230 top5 0.497 | embed_eff_rank(mid) 4.4/16 | 0.01M params [317s]
+=== xf d64 L4 22:29:27 ===

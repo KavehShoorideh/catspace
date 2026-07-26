@@ -1,0 +1,595 @@
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "1"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:28"]
+[GameStartTime "2026-07-25T08:11:35 -0700"]
+[GameEndTime "2026-07-25T08:13:17 -0700"]
+[PlyCount "40"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A43"]
+[Opening "Benoni Defense: Old Benoni"]
+
+1. d4 {ERR/0 3.637s} c5 {-0.32/8 4.607s} 2. Kd2 {ERR/0 3.622s}
+cxd4 {+4.95/9 1.441s} 3. e4 {ERR/0 2.987s} Nc6 {+6.75/8 2.529s}
+4. g4 {ERR/0 2.877s} d5 {+9.04/8 1.430s} 5. b4 {ERR/0 3.222s}
+Nf6 {+10.73/8 1.956s} 6. c4 {ERR/0 3.173s} dxc3+ {+8.39/9 1.750s}
+7. Ke2 {ERR/0 3.206s} c2 {+8.74/10 1.388s} 8. Bh6 {ERR/0 3.172s}
+cxd1=Q+ {+9.79/8 1.217s} 9. Kxd1 {ERR/0 2.928s} gxh6 {+9.08/7 1.804s}
+10. f4 {ERR/0 2.924s} Nxe4 {+8.24/7 2.501s} 11. Bg2 {ERR/0 2.789s}
+Nf2+ {+7.41/8 1.982s} 12. Ke1 {ERR/0 2.239s} Nxh1 {+6.62/8 0.879s}
+13. Kd1 {ERR/0 2.522s} Nf2+ {+6.33/8 1.787s} 14. Ke1 {ERR/0 2.151s}
+Nxg4 {+5.58/7 1.928s} 15. Ne2 {ERR/0 2.521s} Bg7 {+4.96/7 2.345s}
+16. h3 {ERR/0 2.473s} Bxa1 {+4.32/7 1.274s} 17. Ng1 {ERR/0 2.356s}
+Qb6 {+M15/7 1.831s} 18. f5 {ERR/0 2.384s} Qf2+ {+M5/1 0.000s}
+19. Kd1 {ERR/0 2.616s} Ne3+ {+M3/1 0.000s} 20. Kc1 {ERR/0 2.066s}
+Qc2# {+M1/1 0.000s, Black mates} 0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "1"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:28"]
+[GameStartTime "2026-07-25T08:13:17 -0700"]
+[GameEndTime "2026-07-25T08:14:45 -0700"]
+[PlyCount "41"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B00"]
+[Opening "Borg Defense"]
+
+1. e4 {+0.62/9 4.534s} g5 {ERR/0 3.324s} 2. d4 {+3.39/7 1.622s}
+e6 {ERR/0 3.676s} 3. h4 {+4.16/7 2.291s} Na6 {ERR/0 3.586s}
+4. hxg5 {+7.38/7 1.197s} Qf6 {ERR/0 3.307s} 5. gxf6 {+11.96/8 1.159s}
+Nb8 {ERR/0 3.362s} 6. e5 {+11.97/7 2.222s} a5 {ERR/0 3.191s}
+7. Nc3 {+11.77/7 2.269s} a4 {ERR/0 3.191s} 8. a3 {+11.39/7 1.719s}
+b6 {ERR/0 2.997s} 9. Nf3 {+12.15/7 1.963s} Nc6 {ERR/0 2.764s}
+10. Nb5 {+12.23/8 1.113s} Na7 {ERR/0 2.918s} 11. Nxc7+ {+6.94/9 1.140s}
+Kd8 {ERR/0 2.837s} 12. Nxa8 {+6.82/8 0.952s} d5 {ERR/0 2.511s}
+13. Nxb6 {+5.77/7 2.560s} h5 {ERR/0 2.502s} 14. Nxc8 {+5.46/7 2.330s}
+Bxa3 {ERR/0 2.707s} 15. bxa3 {+3.96/7 2.086s} Nb5 {ERR/0 2.392s}
+16. Nb6 {+3.46/7 1.697s} Ke8 {ERR/0 2.371s} 17. Qd3 {+5.40/8 1.040s}
+Nxa3 {ERR/0 2.530s} 18. Qxa3 {+M7/1 0.000s} Kd8 {ERR/0 2.196s}
+19. Qd6+ {+M5/1 0.000s} Ke8 {ERR/0 2.170s} 20. Qd7+ {+M3/1 0.000s}
+Kf8 {ERR/0 2.083s} 21. Qd8# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "2"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:23"]
+[GameStartTime "2026-07-25T08:14:45 -0700"]
+[GameEndTime "2026-07-25T08:16:09 -0700"]
+[PlyCount "38"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A43"]
+[Opening "Benoni Defense: Old Benoni"]
+
+1. d4 {ERR/0 3.777s} c5 {-0.32/8 4.547s} 2. Kd2 {ERR/0 3.743s}
+cxd4 {+4.95/9 1.473s} 3. e3 {ERR/0 3.719s} dxe3+ {+5.99/9 1.554s}
+4. fxe3 {ERR/0 3.391s} Nc6 {+6.13/8 3.109s} 5. Ke1 {ERR/0 3.173s}
+Nf6 {+7.03/8 1.305s} 6. Na3 {ERR/0 3.277s} e5 {+8.86/7 1.908s}
+7. Qd6 {ERR/0 3.122s} Bxd6 {+14.76/7 0.975s} 8. c3 {ERR/0 2.980s}
+Bxa3 {+14.74/8 1.752s} 9. Bd3 {ERR/0 2.449s} Bc5 {+13.50/7 1.971s}
+10. Bc4 {ERR/0 2.764s} d5 {+13.97/8 1.963s} 11. Bb3 {ERR/0 2.752s}
+d4 {+15.44/8 2.249s} 12. Bxf7+ {ERR/0 2.522s} Kxf7 {+12.01/8 0.798s}
+13. h4 {ERR/0 2.642s} dxe3 {+11.73/7 1.770s} 14. Nf3 {ERR/0 1.997s}
+Qd3 {+12.55/8 2.168s} 15. b4 {ERR/0 2.533s} Rd8 {+M13/8 1.361s}
+16. Nd4 {ERR/0 2.496s} Nxd4 {+M7/1 0.000s} 17. cxd4 {ERR/0 2.353s}
+Bxb4+ {+M5/1 0.000s} 18. Bd2 {ERR/0 2.295s} Qxd2+ {+M3/1 0.000s}
+19. Kf1 {ERR/0 2.165s} Qf2# {+M1/1 0.000s, Black mates} 0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "2"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:31"]
+[GameStartTime "2026-07-25T08:16:09 -0700"]
+[GameEndTime "2026-07-25T08:17:40 -0700"]
+[PlyCount "41"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B00"]
+[Opening "King's Pawn Game"]
+
+1. e4 {+0.63/9 4.454s} b5 {ERR/0 3.413s} 2. d4 {+2.29/8 2.618s}
+c6 {ERR/0 3.738s} 3. Nf3 {+2.70/7 1.343s} a5 {ERR/0 3.333s}
+4. c4 {+3.57/8 1.276s} Qb6 {ERR/0 2.965s} 5. cxb5 {+4.81/8 1.666s}
+Qd8 {ERR/0 3.328s} 6. bxc6 {+5.75/8 2.430s} e6 {ERR/0 3.274s}
+7. cxd7+ {+5.86/8 1.056s} Nxd7 {ERR/0 3.152s} 8. Nc3 {+5.83/9 2.387s}
+Ke7 {ERR/0 2.885s} 9. Bb5 {+10.57/7 1.605s} g5 {ERR/0 2.803s}
+10. Bxg5+ {+11.70/8 1.095s} Ngf6 {ERR/0 2.915s} 11. e5 {+14.33/9 1.790s}
+Nxe5 {ERR/0 2.700s} 12. dxe5 {+10.57/10 1.367s} Qd7 {ERR/0 2.765s}
+13. Bxd7 {+10.31/10 1.873s} Kd8 {ERR/0 2.713s} 14. Bxc8+ {+8.62/9 2.441s}
+Kxc8 {ERR/0 2.764s} 15. Bxf6 {+7.60/8 0.957s} Ba3 {ERR/0 2.651s}
+16. bxa3 {+5.13/8 2.444s} Rg8 {ERR/0 2.508s} 17. O-O {+8.42/7 1.583s}
+h5 {ERR/0 2.547s} 18. Rc1 {+9.08/7 1.697s} Kb7 {ERR/0 2.144s}
+19. Qd7+ {+M7/1 0.000s} Kb6 {ERR/0 2.218s} 20. Rb1+ {+M3/1 0.000s}
+Ka6 {ERR/0 2.387s} 21. Qb7# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "3"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:09"]
+[GameStartTime "2026-07-25T08:17:40 -0700"]
+[GameEndTime "2026-07-25T08:18:49 -0700"]
+[PlyCount "30"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A00"]
+[Opening "Sodium Attack"]
+
+1. Na3 {ERR/0 3.625s} e5 {+1.67/8 3.770s} 2. Nh3 {ERR/0 3.444s}
+d5 {+3.21/9 3.050s} 3. Rb1 {ERR/0 3.383s} Nc6 {+5.36/7 2.064s}
+4. Rg1 {ERR/0 3.300s} Nf6 {+7.11/7 1.723s} 5. d3 {ERR/0 3.157s}
+h6 {+6.79/7 1.935s} 6. c4 {ERR/0 3.171s} Be6 {+7.49/8 1.565s}
+7. Ng5 {ERR/0 3.040s} hxg5 {+11.94/7 0.923s} 8. Qd2 {ERR/0 3.081s}
+Bb4 {+17.73/8 1.267s} 9. d4 {ERR/0 2.868s} Bxd2+ {+16.65/8 1.634s}
+10. Kxd2 {ERR/0 2.774s} Bf5 {+16.57/8 3.120s} 11. g3 {ERR/0 2.823s}
+Bxb1 {+13.61/7 1.225s} 12. Ke3 {ERR/0 2.810s} dxc4 {+13.11/8 2.207s}
+13. g4 {ERR/0 2.497s} Qxd4+ {+M5/1 0.000s} 14. Kf3 {ERR/0 2.251s}
+Qe4+ {+M3/1 0.000s} 15. Kg3 {ERR/0 2.403s} Qxg4# {+M1/1 0.000s, Black mates} 0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "3"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:27"]
+[GameStartTime "2026-07-25T08:18:49 -0700"]
+[GameEndTime "2026-07-25T08:20:17 -0700"]
+[PlyCount "41"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B00"]
+[Opening "King's Pawn Game"]
+
+1. e4 {+0.63/9 4.455s} b5 {ERR/0 3.833s} 2. Nf3 {+2.38/8 2.656s}
+a5 {ERR/0 3.455s} 3. Bxb5 {+3.45/8 1.547s} c6 {ERR/0 3.413s}
+4. Ba4 {+3.59/8 0.992s} d5 {ERR/0 3.393s} 5. exd5 {+4.14/10 1.460s}
+Ba6 {ERR/0 3.131s} 6. dxc6 {+7.53/9 2.517s} f6 {ERR/0 3.046s}
+7. c7+ {+12.95/10 0.907s} Nc6 {ERR/0 2.973s} 8. cxd8=Q+ {+11.45/10 1.953s}
+Kxd8 {ERR/0 2.944s} 9. Bxc6 {+10.48/8 1.128s} Nh6 {ERR/0 2.802s}
+10. Bxa8 {+6.86/7 1.446s} Ng4 {ERR/0 2.723s} 11. d3 {+7.13/7 3.126s}
+Nxf2 {ERR/0 2.884s} 12. Kxf2 {+6.20/7 0.834s} Bc8 {ERR/0 2.725s}
+13. Re1 {+6.13/7 2.714s} Rg8 {ERR/0 2.468s} 14. Nc3 {+6.44/6 1.644s}
+h6 {ERR/0 2.463s} 15. Nd5 {+6.76/6 1.690s} Bh3 {ERR/0 2.026s}
+16. gxh3 {+4.59/6 1.397s} Kd7 {ERR/0 2.341s} 17. c4 {+5.50/7 1.917s}
+Rh8 {ERR/0 2.256s} 18. Qa4+ {+M7/4 0.314s} Kd8 {ERR/0 1.956s}
+19. Nb6 {+M5/1 0.000s} Kc7 {ERR/0 2.348s} 20. Qc6+ {+M3/1 0.000s}
+Kb8 {ERR/0 1.971s} 21. Qb7# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "4"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:20"]
+[GameStartTime "2026-07-25T08:20:17 -0700"]
+[GameEndTime "2026-07-25T08:21:38 -0700"]
+[PlyCount "36"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "D00"]
+[Opening "Queen's Pawn Game: Mason Attack"]
+
+1. f4 {ERR/0 3.758s} d5 {+0.72/8 4.800s} 2. d4 {ERR/0 3.649s}
+c5 {+1.22/8 2.138s} 3. Nd2 {ERR/0 3.340s} cxd4 {+2.56/8 1.307s}
+4. e4 {ERR/0 2.905s} dxe3 {+3.21/10 1.405s} 5. Ndf3 {ERR/0 3.395s}
+Nf6 {+3.90/9 1.656s} 6. Nh3 {ERR/0 2.990s} Bxh3 {+4.72/9 1.883s}
+7. c4 {ERR/0 3.281s} Qa5+ {+10.97/9 2.100s} 8. b4 {ERR/0 3.040s}
+Qxb4+ {+11.12/10 1.093s} 9. Qd2 {ERR/0 2.964s} exd2+ {+11.47/10 1.395s}
+10. Nxd2 {ERR/0 2.877s} Qc3 {+10.06/9 2.604s} 11. g3 {ERR/0 2.734s}
+Qxa1 {+5.77/9 1.689s} 12. Bg2 {ERR/0 2.574s} Bxg2 {+4.20/9 2.147s}
+13. Nb3 {ERR/0 2.573s} Qc3+ {+5.16/8 1.485s} 14. Nd2 {ERR/0 2.601s}
+Bxh1 {+3.83/8 1.751s} 15. Ke2 {ERR/0 2.367s} Nc6 {+M13/7 0.838s}
+16. Nf1 {ERR/0 2.318s} Nd4+ {+M5/1 0.000s} 17. Kf2 {ERR/0 2.278s}
+Qf3+ {+M3/1 0.000s} 18. Ke1 {ERR/0 2.301s} Qe2# {+M1/1 0.000s, Black mates} 0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "4"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:10"]
+[GameStartTime "2026-07-25T08:21:38 -0700"]
+[GameEndTime "2026-07-25T08:22:48 -0700"]
+[PlyCount "31"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B00"]
+[Opening "King's Pawn Game"]
+
+1. e4 {+0.62/9 4.548s} b5 {ERR/0 3.609s} 2. d4 {+2.28/8 2.555s}
+c6 {ERR/0 3.456s} 3. Nf3 {+2.71/7 1.320s} a6 {ERR/0 3.488s}
+4. g3 {+2.42/7 1.984s} c5 {ERR/0 3.466s} 5. Bg2 {+3.60/8 1.048s}
+Ra7 {ERR/0 3.330s} 6. O-O {+5.49/8 1.865s} Qb6 {ERR/0 3.185s}
+7. dxc5 {+10.77/7 1.321s} Qc7 {ERR/0 3.030s} 8. Bf4 {+11.00/7 1.731s}
+Qxf4 {ERR/0 2.900s} 9. gxf4 {+16.72/8 1.142s} g5 {ERR/0 2.954s}
+10. Nxg5 {+17.20/8 2.625s} d5 {ERR/0 2.882s} 11. Qxd5 {+15.79/9 1.213s}
+Nf6 {ERR/0 2.699s} 12. Qxf7+ {+17.09/11 1.194s} Kd7 {ERR/0 2.664s}
+13. Qe6+ {+10.62/13 1.651s} Kd8 {ERR/0 2.618s} 14. Nf7+ {+9.44/13 1.100s}
+Ke8 {ERR/0 2.488s} 15. Nd6+ {+M3/1 0.000s} Kd8 {ERR/0 2.037s}
+16. Qxc8# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "5"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:34"]
+[GameStartTime "2026-07-25T08:22:48 -0700"]
+[GameEndTime "2026-07-25T08:24:23 -0700"]
+[PlyCount "42"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A35"]
+[Opening "English Opening: Symmetrical Variation, Two Knights Variation"]
+
+1. c4 {ERR/0 3.838s} c5 {-0.54/8 4.884s} 2. Nc3 {ERR/0 3.677s}
+Nc6 {-0.53/9 2.190s} 3. d3 {ERR/0 3.901s} g6 {+0.07/9 1.886s}
+4. e4 {ERR/0 2.967s} Bg7 {+0.89/7 1.280s} 5. d4 {ERR/0 3.190s}
+cxd4 {+6.33/9 1.135s} 6. Na4 {ERR/0 2.831s} d6 {+7.56/8 2.608s}
+7. Nf3 {ERR/0 2.961s} Nf6 {+7.09/9 1.445s} 8. Bd3 {ERR/0 3.162s}
+Bg4 {+7.00/9 1.216s} 9. O-O {ERR/0 3.039s} Ne5 {+7.68/10 0.366s}
+10. Nxd4 {ERR/0 3.005s} Bxd1 {+16.99/10 1.835s} 11. Re1 {ERR/0 2.859s}
+Bxa4 {+18.06/8 1.924s} 12. Nb5 {ERR/0 2.757s} Nxd3 {+11.67/8 3.045s}
+13. Re2 {ERR/0 2.098s} Bxb5 {+11.95/8 2.328s} 14. cxb5 {ERR/0 2.408s}
+Nxc1 {+10.90/7 1.412s} 15. Rc2 {ERR/0 2.379s} Nd3 {+9.18/7 1.423s}
+16. h3 {ERR/0 2.445s} Nxe4 {+7.42/7 2.135s} 17. b6 {ERR/0 2.450s}
+Qxb6 {+6.35/7 1.818s} 18. a3 {ERR/0 2.311s} O-O {+6.45/7 1.541s}
+19. Re1 {ERR/0 2.259s} Nxe1 {+5.32/7 1.388s} 20. Rc6 {ERR/0 2.231s}
+Qxf2+ {+M3/1 0.000s} 21. Kh1 {ERR/0 1.976s} Qxg2# {+M1/1 0.000s, Black mates}
+0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "5"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:17"]
+[GameStartTime "2026-07-25T08:24:23 -0700"]
+[GameEndTime "2026-07-25T08:25:40 -0700"]
+[PlyCount "35"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B00"]
+[Opening "Duras Gambit"]
+
+1. e4 {+0.63/9 4.478s} f5 {ERR/0 3.653s} 2. exf5 {+2.42/9 2.141s}
+g6 {ERR/0 3.640s} 3. fxg6 {+5.33/8 1.346s} Bg7 {ERR/0 3.568s}
+4. gxh7 {+6.23/8 1.512s} Kf8 {ERR/0 3.465s} 5. hxg8=Q+ {+9.48/8 1.559s}
+Rxg8 {ERR/0 3.139s} 6. d4 {+10.61/8 2.664s} c5 {ERR/0 3.131s}
+7. Qf3+ {+10.74/10 1.116s} Bf6 {ERR/0 3.162s} 8. Bh6+ {+10.59/12 0.264s}
+Rg7 {ERR/0 2.884s} 9. Nc3 {+13.89/10 3.572s} d5 {ERR/0 3.005s}
+10. Nxd5 {+13.64/10 1.287s} Bf5 {ERR/0 2.877s} 11. Bxg7+ {+12.12/10 2.265s}
+Kg8 {ERR/0 2.704s} 12. Bxf6 {+11.50/9 0.943s} Kf8 {ERR/0 2.754s}
+13. Bxe7+ {+5.00/9 1.446s} Kg8 {ERR/0 2.644s} 14. Qxf5 {+M17/9 1.724s}
+Qa5+ {ERR/0 2.405s} 15. c3 {+M15/1 0.000s} Qxc3+ {ERR/0 2.564s}
+16. bxc3 {+M11/1 0.000s} c4 {ERR/0 2.513s} 17. Qg6+ {+M3/1 0.000s}
+Kh8 {ERR/0 2.655s} 18. Bf6# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "6"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:38"]
+[GameStartTime "2026-07-25T08:25:40 -0700"]
+[GameEndTime "2026-07-25T08:27:19 -0700"]
+[PlyCount "48"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A00"]
+[Opening "Kádas Opening"]
+
+1. h4 {ERR/0 3.838s} d5 {+1.09/8 4.673s} 2. d4 {ERR/0 3.689s}
+c5 {+1.06/8 1.519s} 3. Nf3 {ERR/0 3.422s} Nc6 {+1.10/8 2.958s}
+4. Nfd2 {ERR/0 3.310s} cxd4 {+4.92/8 1.000s} 5. b3 {ERR/0 3.265s}
+e5 {+7.09/8 1.951s} 6. h5 {ERR/0 3.172s} Nf6 {+8.81/8 1.426s}
+7. Bb2 {ERR/0 3.097s} Ng4 {+10.19/9 1.323s} 8. c3 {ERR/0 2.994s}
+Qf6 {+10.76/9 2.215s} 9. f4 {ERR/0 2.615s} Qxf4 {+14.05/9 1.229s}
+10. Nf3 {ERR/0 2.720s} Qg3+ {+12.93/11 1.351s} 11. Kd2 {ERR/0 2.848s}
+Nf2 {+13.55/11 1.315s} 12. Qc2 {ERR/0 2.149s} Nxh1 {+15.82/11 2.123s}
+13. Bc1 {ERR/0 2.675s} e4 {+13.60/8 1.786s} 14. a4 {ERR/0 2.408s}
+Qf2 {+12.39/8 1.861s} 15. cxd4 {ERR/0 2.359s} Bb4+ {+11.41/11 1.405s}
+16. Qc3 {ERR/0 2.688s} Bxc3+ {+10.71/10 2.262s} 17. Nxc3 {ERR/0 2.403s}
+exf3 {+9.97/10 1.012s} 18. Nd1 {ERR/0 2.242s} Qxd4+ {+6.50/11 1.701s}
+19. Ke1 {ERR/0 2.253s} f2+ {+5.93/11 2.108s} 20. Nxf2 {ERR/0 2.137s}
+Qxf2+ {+M17/10 0.415s} 21. Kd2 {ERR/0 1.979s} Qd4+ {+M9/1 0.000s}
+22. Ke1 {ERR/0 2.016s} Qc3+ {+M5/1 0.000s} 23. Bd2 {ERR/0 1.567s}
+Qxa1+ {+M3/1 0.000s} 24. Bc1 {ERR/0 1.151s} Qxc1# {+M1/1 0.000s, Black mates}
+0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "6"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:31"]
+[GameStartTime "2026-07-25T08:27:19 -0700"]
+[GameEndTime "2026-07-25T08:28:50 -0700"]
+[PlyCount "43"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B00"]
+[Opening "Nimzowitsch Defense"]
+
+1. e4 {+0.63/9 4.489s} Nc6 {ERR/0 3.764s} 2. d4 {+1.84/9 1.714s}
+b5 {ERR/0 3.629s} 3. d5 {+4.98/9 2.033s} d6 {ERR/0 3.431s}
+4. Bxb5 {+13.15/8 1.477s} Bd7 {ERR/0 3.004s} 5. dxc6 {+13.42/8 1.223s}
+a5 {ERR/0 3.440s} 6. cxd7+ {+11.73/10 1.298s} Qxd7 {ERR/0 2.867s}
+7. Bxd7+ {+11.79/9 1.175s} Kxd7 {ERR/0 3.032s} 8. Nf3 {+12.32/8 3.069s}
+f5 {ERR/0 2.940s} 9. exf5 {+11.73/7 1.902s} g5 {ERR/0 2.789s}
+10. Ne5+ {+8.68/8 1.795s} Kc8 {ERR/0 2.920s} 11. Nf7 {+7.86/8 1.092s}
+Rb8 {ERR/0 2.905s} 12. Nxh8 {+7.85/8 1.385s} Rxb2 {ERR/0 2.648s}
+13. Bxb2 {+4.55/7 1.462s} Kb8 {ERR/0 3.158s} 14. O-O {+5.38/7 3.281s}
+Kc8 {ERR/0 2.063s} 15. Nc3 {+5.81/6 1.756s} g4 {ERR/0 2.080s}
+16. Nd5 {+5.29/6 1.705s} Kd7 {ERR/0 2.478s} 17. Qxg4 {+5.04/7 1.469s}
+a4 {ERR/0 2.437s} 18. Qxa4+ {+M9/6 0.453s} Kd8 {ERR/0 2.307s}
+19. Nf7+ {+M7/1 0.000s} Kc8 {ERR/0 2.259s} 20. Qc6 {+M5/1 0.000s}
+Kb8 {ERR/0 2.277s} 21. Qxc7+ {+M3/1 0.000s} Ka8 {ERR/0 1.985s}
+22. Nb6# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "7"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:18"]
+[GameStartTime "2026-07-25T08:28:50 -0700"]
+[GameEndTime "2026-07-25T08:30:09 -0700"]
+[PlyCount "34"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A43"]
+[Opening "Benoni Defense: Benoni Gambit Accepted"]
+
+1. d4 {ERR/0 3.585s} c5 {-0.32/8 4.549s} 2. dxc5 {ERR/0 3.638s}
+Nc6 {+0.27/9 2.339s} 3. Bd2 {ERR/0 3.560s} Nf6 {+1.55/8 2.234s}
+4. Qc1 {ERR/0 3.594s} e5 {+3.68/7 1.197s} 5. Qd1 {ERR/0 2.852s}
+Bxc5 {+4.77/8 1.118s} 6. Bb4 {ERR/0 3.232s} Bxb4+ {+10.83/9 1.570s}
+7. c3 {ERR/0 3.070s} Ba5 {+10.87/10 2.764s} 8. Qc1 {ERR/0 3.033s}
+d5 {+13.23/7 1.444s} 9. Qd1 {ERR/0 2.831s} d4 {+11.11/8 1.564s}
+10. Nf3 {ERR/0 2.879s} O-O {+11.27/8 2.400s} 11. a4 {ERR/0 2.841s}
+dxc3 {+10.98/7 1.161s} 12. Qc1 {ERR/0 2.663s} cxb2+ {+13.51/10 1.004s}
+13. Nc3 {ERR/0 2.477s} bxc1=Q+ {+13.39/10 1.653s} 14. Rxc1 {ERR/0 2.580s}
+Ne4 {+10.31/9 2.950s} 15. Rg1 {ERR/0 2.495s} Nxc3 {+21.95/8 0.996s}
+16. Ra1 {ERR/0 2.323s} Ne4+ {+M3/1 0.000s} 17. Nd2 {ERR/0 2.240s}
+Qxd2# {+M1/1 0.000s, Black mates} 0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "7"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:05"]
+[GameStartTime "2026-07-25T08:30:09 -0700"]
+[GameEndTime "2026-07-25T08:31:15 -0700"]
+[PlyCount "29"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B28"]
+[Opening "Sicilian Defense: O'Kelly Variation, Réti System"]
+
+1. e4 {+0.63/9 4.462s} a6 {ERR/0 3.773s} 2. Nf3 {+1.05/8 2.168s}
+c5 {ERR/0 3.229s} 3. g3 {+1.12/9 1.666s} Ra7 {ERR/0 3.533s}
+4. Bg2 {+3.55/7 1.072s} g6 {ERR/0 3.393s} 5. O-O {+3.22/9 2.203s}
+e6 {ERR/0 3.299s} 6. d4 {+4.96/9 1.256s} d6 {ERR/0 3.309s}
+7. dxc5 {+3.40/9 1.524s} Qb6 {ERR/0 3.067s} 8. cxb6 {+16.66/8 1.297s}
+Bd7 {ERR/0 3.055s} 9. bxa7 {+8.94/9 1.541s} Kd8 {ERR/0 3.025s}
+10. axb8=Q+ {+7.34/9 2.309s} Bc8 {ERR/0 2.881s} 11. e5 {+7.20/9 2.821s}
+Be7 {ERR/0 2.364s} 12. exd6 {+M17/8 0.422s} Bh4 {ERR/0 2.645s}
+13. d7 {+M7/1 0.000s} Bxg3 {ERR/0 2.596s} 14. Qxc8+ {+M3/1 0.000s}
+Ke7 {ERR/0 2.621s} 15. d8=Q# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "8"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:00:59"]
+[GameStartTime "2026-07-25T08:31:15 -0700"]
+[GameEndTime "2026-07-25T08:32:15 -0700"]
+[PlyCount "26"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A00"]
+[Opening "Polish Opening"]
+
+1. b4 {ERR/0 3.778s} Nf6 {+1.05/9 5.436s} 2. b5 {ERR/0 3.654s}
+g6 {+2.56/8 1.337s} 3. a3 {ERR/0 3.371s} Bg7 {+2.83/8 1.371s}
+4. g3 {ERR/0 3.402s} O-O {+2.82/8 2.042s} 5. b6 {ERR/0 3.311s}
+axb6 {+3.62/7 2.046s} 6. Bg2 {ERR/0 3.259s} d5 {+3.47/7 1.851s}
+7. e4 {ERR/0 2.961s} dxe4 {+7.20/6 1.609s} 8. Bb2 {ERR/0 2.941s}
+Bg4 {+5.71/8 1.641s} 9. c3 {ERR/0 2.400s} Bxd1 {+16.25/8 0.966s}
+10. Kf1 {ERR/0 2.760s} Qd3+ {+13.88/9 1.518s} 11. Ne2 {ERR/0 2.668s}
+Qxe2+ {+M5/1 0.000s} 12. Kg1 {ERR/0 3.046s} Ng4 {+M3/1 0.000s}
+13. f3 {ERR/0 2.542s} Qf2# {+M1/1 0.000s, Black mates} 0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "8"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:06"]
+[GameStartTime "2026-07-25T08:32:15 -0700"]
+[GameEndTime "2026-07-25T08:33:21 -0700"]
+[PlyCount "31"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B00"]
+[Opening "King's Pawn Game"]
+
+1. e4 {+0.62/9 4.510s} b5 {ERR/0 3.665s} 2. Nf3 {+2.38/8 2.581s}
+a5 {ERR/0 3.498s} 3. Bxb5 {+3.46/8 1.542s} f6 {ERR/0 3.426s}
+4. d4 {+5.09/8 1.387s} f5 {ERR/0 3.242s} 5. exf5 {+8.25/7 1.233s}
+Nc6 {ERR/0 3.218s} 6. Ne5 {+11.40/7 1.874s} d6 {ERR/0 3.152s}
+7. Bxc6+ {+13.06/11 1.229s} Qd7 {ERR/0 3.007s} 8. Nxd7 {+10.09/9 1.860s}
+a4 {ERR/0 2.904s} 9. Nxf8+ {+7.29/8 2.110s} Bd7 {ERR/0 3.063s}
+10. Nxd7 {+5.15/8 1.949s} Rc8 {ERR/0 2.966s} 11. Qh5+ {+M15/8 0.915s}
+g6 {ERR/0 2.716s} 12. fxg6 {+M13/1 0.000s} h6 {ERR/0 2.756s}
+13. g7+ {+M7/1 0.000s} Kd8 {ERR/0 2.566s} 14. gxh8=Q {+M5/1 0.000s}
+e5 {ERR/0 2.663s} 15. Qxg8+ {+M3/1 0.000s} Ke7 {ERR/0 2.385s}
+16. Qhf7# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "9"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:40"]
+[GameStartTime "2026-07-25T08:33:21 -0700"]
+[GameEndTime "2026-07-25T08:35:02 -0700"]
+[PlyCount "48"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A00"]
+[Opening "Kádas Opening"]
+
+1. h4 {ERR/0 3.440s} d5 {+1.09/8 4.652s} 2. d4 {ERR/0 3.683s}
+c5 {+1.06/8 1.534s} 3. c3 {ERR/0 3.191s} Nc6 {+1.08/8 2.567s}
+4. Nf3 {ERR/0 3.445s} Nf6 {+1.00/8 1.717s} 5. Nfd2 {ERR/0 3.380s}
+cxd4 {+3.92/8 1.449s} 6. Nb3 {ERR/0 3.190s} dxc3 {+5.31/9 1.383s}
+7. Nxc3 {ERR/0 3.394s} d4 {+6.51/9 1.566s} 8. Nd5 {ERR/0 2.888s}
+Qxd5 {+11.57/8 1.706s} 9. Rg1 {ERR/0 3.033s} e5 {+12.61/8 2.268s}
+10. h5 {ERR/0 2.768s} Qd8 {+13.31/7 2.311s} 11. h6 {ERR/0 2.717s}
+gxh6 {+11.97/7 1.225s} 12. Qc2 {ERR/0 2.822s} Nb4 {+13.53/7 1.227s}
+13. Qxh7 {ERR/0 2.731s} Rxh7 {+11.79/8 1.350s} 14. g3 {ERR/0 2.482s}
+Nc2+ {+10.04/9 1.654s} 15. Kd2 {ERR/0 2.391s} Nxa1 {+10.41/9 1.283s}
+16. Bh3 {ERR/0 2.279s} Bxh3 {+7.47/8 3.222s} 17. Ke1 {ERR/0 2.291s}
+Nc2+ {+7.90/8 1.451s} 18. Kd1 {ERR/0 2.326s} d3 {+7.62/7 1.824s}
+19. Rf1 {ERR/0 2.118s} Bxf1 {+7.04/8 1.623s} 20. Nd4 {ERR/0 2.104s}
+Qxd4 {+M11/6 0.181s} 21. Bd2 {ERR/0 2.009s} dxe2+ {+M9/1 0.000s}
+22. Kxc2 {ERR/0 1.983s} Rc8+ {+M5/1 0.000s} 23. Kb1 {ERR/0 1.822s}
+e1=Q+ {+M3/1 0.000s} 24. Bc1 {ERR/0 1.993s} Qxc1# {+M1/1 0.000s, Black mates}
+0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "9"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:06"]
+[GameStartTime "2026-07-25T08:35:02 -0700"]
+[GameEndTime "2026-07-25T08:36:09 -0700"]
+[PlyCount "31"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B28"]
+[Opening "Sicilian Defense: O'Kelly Variation, Réti System"]
+
+1. e4 {+0.62/9 4.532s} a6 {ERR/0 3.805s} 2. Nf3 {+1.05/8 2.171s}
+c5 {ERR/0 3.583s} 3. g3 {+1.11/9 1.637s} b5 {ERR/0 3.518s}
+4. Bg2 {+2.69/8 1.048s} g5 {ERR/0 3.353s} 5. Nxg5 {+4.39/8 2.058s}
+Nh6 {ERR/0 3.317s} 6. d4 {+6.48/8 2.171s} Qb6 {ERR/0 3.358s}
+7. Nc3 {+8.59/8 1.485s} Qc7 {ERR/0 3.501s} 8. Nd5 {+12.23/8 1.431s}
+Qxg3 {ERR/0 2.964s} 9. hxg3 {+15.91/8 1.344s} Ra7 {ERR/0 2.861s}
+10. Rxh6 {+16.39/9 1.396s} Kd8 {ERR/0 3.097s} 11. Nxf7+ {+M19/9 1.115s}
+Ke8 {ERR/0 2.323s} 12. Qh5 {+M17/1 0.000s} Rb7 {ERR/0 2.744s}
+13. Nxh8+ {+M7/1 0.000s} Kd8 {ERR/0 2.768s} 14. Nf7+ {+M5/1 0.000s}
+Ke8 {ERR/0 2.641s} 15. Nd6+ {+M3/1 0.000s} Kd8 {ERR/0 2.682s}
+16. Qe8# {+M1/1 0.000s, White mates} 1-0
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "10"]
+[White "catspace"]
+[Black "maia1100"]
+[Result "0-1"]
+[GameDuration "00:01:04"]
+[GameStartTime "2026-07-25T08:36:09 -0700"]
+[GameEndTime "2026-07-25T08:37:14 -0700"]
+[PlyCount "28"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "A00"]
+[Opening "Kádas Opening"]
+
+1. h4 {ERR/0 3.792s} d5 {+1.07/8 4.744s} 2. c4 {ERR/0 3.710s}
+d4 {+1.08/8 1.785s} 3. Na3 {ERR/0 3.568s} e5 {+2.79/7 2.180s}
+4. Nb1 {ERR/0 3.945s} Nf6 {+3.37/7 2.055s} 5. c5 {ERR/0 3.288s}
+Nc6 {+6.64/8 1.894s} 6. Nh3 {ERR/0 2.761s} Bxc5 {+7.96/7 1.361s}
+7. Rh2 {ERR/0 2.930s} Ng4 {+13.58/6 1.527s} 8. Nc3 {ERR/0 2.893s}
+Nxh2 {+16.48/8 1.206s} 9. h5 {ERR/0 3.009s} dxc3 {+17.29/7 1.560s}
+10. Qc2 {ERR/0 3.241s} Bxh3 {+18.39/9 1.707s} 11. g3 {ERR/0 2.797s}
+Bxf2+ {+14.70/8 1.890s} 12. Kxf2 {ERR/0 2.533s} Qf6+ {+M9/1 0.000s}
+13. Kg1 {ERR/0 2.081s} Qxf1+ {+M3/1 0.000s} 14. Kxh2 {ERR/0 2.460s}
+Qg2# {+M1/1 0.000s, Black mates} 0-1
+
+[Event "Fastchess Tournament"]
+[Site "?"]
+[Date "2026.07.25"]
+[Round "10"]
+[White "maia1100"]
+[Black "catspace"]
+[Result "1-0"]
+[GameDuration "00:01:23"]
+[GameStartTime "2026-07-25T08:37:14 -0700"]
+[GameEndTime "2026-07-25T08:38:37 -0700"]
+[PlyCount "41"]
+[Termination "normal"]
+[TimeControl "60+0.6"]
+[ECO "B28"]
+[Opening "Sicilian Defense: O'Kelly Variation, Réti System"]
+
+1. e4 {+0.62/9 4.482s} a6 {ERR/0 3.725s} 2. Nf3 {+1.05/8 2.177s}
+c5 {ERR/0 3.525s} 3. g3 {+1.12/9 1.652s} b5 {ERR/0 3.427s}
+4. Bg2 {+2.69/8 1.051s} g5 {ERR/0 3.076s} 5. Nxg5 {+4.42/8 2.006s}
+Nh6 {ERR/0 3.240s} 6. d4 {+6.53/7 2.302s} Qc7 {ERR/0 3.141s}
+7. Nc3 {+9.57/7 1.074s} Qxg3 {ERR/0 3.026s} 8. hxg3 {+15.50/7 1.457s}
+c4 {ERR/0 3.627s} 9. e5 {+17.06/8 2.399s} Bg7 {ERR/0 2.785s}
+10. Bxa8 {+12.68/7 1.014s} a5 {ERR/0 2.886s} 11. Rxh6 {+10.26/7 2.350s}
+b4 {ERR/0 2.757s} 12. Nd5 {+10.84/8 1.774s} Bxh6 {ERR/0 2.560s}
+13. Qh5 {+10.49/9 1.129s} Rf8 {ERR/0 2.664s} 14. Qxh6 {+10.08/9 1.055s}
+c3 {ERR/0 2.521s} 15. Nxh7 {+M13/1 0.000s} Rg8 {ERR/0 2.489s}
+16. Nhf6+ {+M11/1 0.000s} exf6 {ERR/0 2.419s} 17. Qxf6 {+M9/1 0.000s}
+Nc6 {ERR/0 2.358s} 18. Nc7+ {+M7/1 0.000s} Kf8 {ERR/0 2.171s}
+19. Bh6+ {+M5/1 0.000s} Rg7 {ERR/0 2.433s} 20. Qxg7+ {+M3/1 0.000s}
+Ke7 {ERR/0 2.357s} 21. Qf8# {+M1/1 0.000s, White mates} 1-0
+
