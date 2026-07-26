@@ -1,0 +1,56 @@
+[boot-cnn-d64-L6-A25] anchor(DTM<=25) 37122 | boot(DTM>25) 3000 | te_near 4239 | te_far 1850
+  lookahead: 689180 grandchildren, 78202 branches, 3000 parents kept [7s]
+VERDICT BOOT boot-cnn-d64-L6-A25 phase-A(anchor-only):
+  [A0] near sp +0.688 | FAR sp -0.398 MAE 28.4 | far_eff_rank 31.1 [121s]
+/Users/kav/code/remote/github/catspace/experiments/bootstrap_dtm.py:206: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  return float(loss)
+  sweep 0: boot_target median 3 plies (true median 31)
+  [B0] near sp +0.507 | FAR sp -0.076 MAE 36.6 | far_eff_rank 30.2 [146s]
+  sweep 1: boot_target median 8 plies (true median 31)
+  [B1] near sp +0.638 | FAR sp -0.541 MAE 32.1 | far_eff_rank 31.0 [171s]
+  sweep 2: boot_target median 9 plies (true median 31)
+  [B2] near sp +0.657 | FAR sp -0.507 MAE 31.3 | far_eff_rank 31.3 [196s]
+  sweep 3: boot_target median 10 plies (true median 31)
+  [B3] near sp +0.645 | FAR sp -0.514 MAE 30.8 | far_eff_rank 32.6 [221s]
+  sweep 4: boot_target median 11 plies (true median 31)
+  [B4] near sp +0.700 | FAR sp -0.503 MAE 29.1 | far_eff_rank 31.8 [246s]
+  sweep 5: boot_target median 12 plies (true median 31)
+  [B5] near sp +0.675 | FAR sp -0.437 MAE 29.1 | far_eff_rank 32.6 [271s]
+  sweep 6: boot_target median 12 plies (true median 31)
+  [B6] near sp +0.679 | FAR sp -0.377 MAE 28.8 | far_eff_rank 32.1 [296s]
+  sweep 7: boot_target median 13 plies (true median 31)
+  [B7] near sp +0.674 | FAR sp -0.336 MAE 28.4 | far_eff_rank 33.3 [321s]
+  sweep 8: boot_target median 14 plies (true median 31)
+  [B8] near sp +0.671 | FAR sp -0.350 MAE 27.3 | far_eff_rank 33.4 [346s]
+  sweep 9: boot_target median 14 plies (true median 31)
+  [B9] near sp +0.685 | FAR sp -0.287 MAE 27.9 | far_eff_rank 32.6 [371s]
+  sweep 10: boot_target median 15 plies (true median 31)
+  [B10] near sp +0.683 | FAR sp -0.303 MAE 27.9 | far_eff_rank 32.6 [396s]
+  sweep 11: boot_target median 15 plies (true median 31)
+  [B11] near sp +0.687 | FAR sp -0.260 MAE 27.3 | far_eff_rank 32.5 [421s]
+  sweep 12: boot_target median 16 plies (true median 31)
+  [B12] near sp +0.695 | FAR sp -0.266 MAE 27.5 | far_eff_rank 32.2 [447s]
+  sweep 13: boot_target median 16 plies (true median 31)
+  [B13] near sp +0.701 | FAR sp -0.280 MAE 26.7 | far_eff_rank 33.1 [472s]
+  sweep 14: boot_target median 16 plies (true median 31)
+  [B14] near sp +0.686 | FAR sp -0.230 MAE 26.7 | far_eff_rank 32.9 [497s]
+  sweep 15: boot_target median 17 plies (true median 31)
+  [B15] near sp +0.700 | FAR sp -0.247 MAE 27.8 | far_eff_rank 32.2 [522s]
+  sweep 16: boot_target median 17 plies (true median 31)
+  [B16] near sp +0.677 | FAR sp -0.194 MAE 26.3 | far_eff_rank 32.8 [547s]
+  sweep 17: boot_target median 17 plies (true median 31)
+  [B17] near sp +0.684 | FAR sp -0.232 MAE 27.0 | far_eff_rank 32.5 [572s]
+  sweep 18: boot_target median 17 plies (true median 31)
+  [B18] near sp +0.708 | FAR sp -0.279 MAE 25.1 | far_eff_rank 33.2 [597s]
+  sweep 19: boot_target median 17 plies (true median 31)
+  [B19] near sp +0.690 | FAR sp -0.268 MAE 26.4 | far_eff_rank 33.4 [622s]
+  sweep 20: boot_target median 17 plies (true median 31)
+  [B20] near sp +0.684 | FAR sp -0.239 MAE 25.9 | far_eff_rank 33.6 [648s]
+  sweep 21: boot_target median 17 plies (true median 31)
+  [B21] near sp +0.685 | FAR sp -0.217 MAE 27.0 | far_eff_rank 33.6 [673s]
+  sweep 22: boot_target median 17 plies (true median 31)
+  [B22] near sp +0.699 | FAR sp -0.267 MAE 26.5 | far_eff_rank 33.8 [699s]
+  sweep 23: boot_target median 18 plies (true median 31)
+  [B23] near sp +0.696 | FAR sp -0.254 MAE 25.4 | far_eff_rank 34.1 [724s]
+VERDICT BOOT boot-cnn-d64-L6-A25: far_spearman -0.398 (anchor-only) -> see B23 above | [724s]

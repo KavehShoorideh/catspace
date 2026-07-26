@@ -7536,3 +7536,29 @@ labels. That is the missing-label fix working. Honest limits (iteration-2 levers
 CONCLUSION: the bake-off's prescription is confirmed constructive -- manufacturing long
 labels via value iteration repairs long-range distance-to-mate with no architecture change
 and no policy target. Prototype: experiments/bootstrap_dtm.py; log bootstrap_dtm_full.log.
+
+## 2026-07-26 -- MULTI-GOAL QUASIMETRIC field (Kaveh's triangulation reframe): endgame MVP
+
+Reframe: don't regress a single scalar distance-to-mate (collapses to rank ~3, far-ordering
+ceilings at +0.2 -- see bootstrap runs). Instead SUPERVISE d(F(s),F(g)) to MANY reachable
+goals at mixed ranges (triangulation/multilateration) so the geometry is pinned. Strong
+opponent = tablebase-optimal => labels are genuine shortest-path distances (quasimetric-safe).
+Endgame-only MVP (3-4 piece won classes) = mechanism check on GROUND TRUTH; midgame is the
+real regime of interest (catspace weak there) and is Phase 2 (Stockfish rollouts from human
+starts). Endgame strength must be preserved (tablebase anchor stays).
+Pipeline: tb.rollout_line -> gen_pairwise_data.py (parallel, 320k pairs, delta 1-59, 55k mate
+landmarks) -> train_quasimetric.py (two-tower IQE, supervised on log1p(delta)).
+VERDICT (two-tower d32 c16, 0.46M, 1332s):
+  (3) held-out PAIR ORDERING spearman +0.931 MAE 1.0 ply  <- crushes scalar +0.2 ceiling
+  (2) mate-via-min-over-region vs true DTM  +0.428 MAE 21.4  (modest; short-range data)
+  (1) eff_rank(F) 3.4/32  (endgames are low-dim; real rank test is Phase-2 midgame)
+  (4) triangle-inequality violations 10.9% (mean slack 0.30)  <- PROBLEM, diagnosed:
+READ: multi-goal supervision fixes ordering decisively (+0.93 vs +0.2). Triangle violations
+are an artifact of the TWO-TOWER (separate F/B encoders): an intermediate node b has F(b)!=B(b),
+so IQE's single-space triangle guarantee doesn't transfer through b. Fix = SHARED encoder (one
+phi, d=IQE(phi(s),phi(g))); IQE is itself directional so asymmetry is preserved. Shared run
+launched (quasimetric_shared.log). mate-via-min & rank stay limited until Phase 2 (longer/
+diverse ranges). NEXT per Kaveh: after mechanism solid -> ALL tablebase material classes, switch
+trajectory source to STOCKFISH (reuse gen_stockfish_continuations.py, not hand-rolled optimal
+play; tb stays as validation oracle), then expand outward to midgame. Files: gen_pairwise_data.py,
+train_quasimetric.py, tb.rollout_line.

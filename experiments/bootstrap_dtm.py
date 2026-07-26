@@ -109,6 +109,9 @@ def main():
                     help="fraction of each mixed batch drawn from the true-label anchor")
     ap.add_argument("--rank-weight", type=float, default=0.0,
                     help="weight of pairwise margin-rank loss on the bootstrap slice")
+    ap.add_argument("--phased", action="store_true",
+                    help="alternate anchor/boot PHASES (dedicated boot windows) using anchor-ratio "
+                         "as the split; propagates where mixed batches stall")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -240,7 +243,7 @@ def main():
 
     # --- Phase B: value-iteration bootstrap sweeps ---
     br_parent_t = br_parent; gc_branch_t = gc_branch
-    mixed = args.ema_decay > 0 or args.anchor_ratio != 0.5 or args.rank_weight > 0
+    mixed = (not args.phased) and (args.ema_decay > 0 or args.anchor_ratio != 0.5 or args.rank_weight > 0)
     for sw in range(args.sweeps):
         # bootstrap targets from the TARGET net (tnet==net when ema off) -- 2-ply minimax
         gval = np.expm1(predict(gc_ids, gc_stm, use=tnet)).clip(0, args.cap)
@@ -253,9 +256,13 @@ def main():
         good = np.isfinite(target_d)
         boot_idx = boot[good]
         boot_tlog = torch.from_numpy(np.log1p(target_d[good])).to(dev)
-        if mixed:
+        if args.phased:                                      # dedicated boot window; ratio sets the split
+            a_steps = int(round(args.sweep_steps * args.anchor_ratio))
+            train_on(anchor_tr, ltr, a_steps)
+            train_on(boot_idx, boot_tlog, args.sweep_steps - a_steps)
+        elif mixed:
             train_mixed(anchor_tr, ltr, boot_idx, boot_tlog, args.sweep_steps)
-        else:                                                # iteration-1 path: split anchor/boot phases
+        else:                                                # iteration-1 path: 50/50 phased
             train_on(anchor_tr, ltr, args.sweep_steps // 2)
             train_on(boot_idx, boot_tlog, args.sweep_steps // 2)
         med = float(np.median(target_d[good]))

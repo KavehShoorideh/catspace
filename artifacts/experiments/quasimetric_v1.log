@@ -1,0 +1,17 @@
+[quasimetric] 287804 train / 32196 test pairs | delta med 3 max 59 | mate-goals 55154
+/Users/kav/code/remote/github/catspace/experiments/train_quasimetric.py:118: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} loss {float(loss):.4f} [{time.time()-t0:.0f}s]", flush=True)
+  step 0 loss 0.4347 [3s]
+  step 2000 loss 0.1091 [181s]
+  step 4000 loss 0.0626 [357s]
+  step 6000 loss 0.0468 [532s]
+  step 8000 loss 0.0363 [707s]
+  step 10000 loss 0.0412 [884s]
+  step 12000 loss 0.0286 [1062s]
+  step 14000 loss 0.0283 [1240s]
+VERDICT QUASIMETRIC d32c16 (0.46M, 1332s):
+  (1) eff_rank(F) 3.4±0.0 / 32   [scalar field was ~3-5]
+  (2) mate-via-min vs true DTM: spearman +0.428 MAE 21.4
+  (3) held-out pair ordering:   spearman +0.931 MAE 1.0  [scalar far-ceiling +0.2]
+  (4) triangle violations: 10.88% of triples (mean slack 0.302)
