@@ -7715,3 +7715,17 @@ half-wrong. Fork for Kaveh:
      field's real job is the MIDGAME. Stop gating on endgame-greedy-mate; validate the field on
      midgame committor/transition instead. Recommendation: C (+ B for the planner), with a quick
      A to confirm rank-collapse is the culprit. Checkpoint: mate_field_v1.pt.
+
+## 2026-07-26 -- S2b: field + shallow SEARCH converts (reframe validated)
+
+mate_with_search.py (minimax, field=leaf value, checkmate=+inf/draw=-inf, vs tablebase-optimal
+defense, batched leaf frontier): MATE-RATE climbs with depth --
+  depth 1 (greedy): 5.0%  ->  depth 3: 17.5%  (40 games, KQvK/KRvK)
+CONFIRMS: the field is a usable VALUE substrate; the PLANNER (search) supplies the POLICY (Kaveh's
+long-standing "policy from planner not field"). Greedy-field-mating was the wrong bar. Deeper
+search would climb further (needs alpha-beta; full-width depth-3 = 423s/40 games). At deployment
+tablebase mates the endgame anyway; this was a substrate check -> passed. Endgame phase closed;
+focus pivots to the MIDGAME (committor/transition/asymmetry), where the field is all we have and
+the KL/expected-committor objective (vs FALLIBLE opponents) replaces "force mate". Next per plan:
+S3/S4 -- transition predictor + cohort-asymmetry field on lichess+SF-reference (needs the lichess
+data pipeline = a new phase). mate_with_search.py, mate_field_v1.pt.

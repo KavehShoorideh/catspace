@@ -89,9 +89,13 @@ quasimetric MVP (`quasimetric_shared_v1.pt`).
 
 - **S1 — SF reliability map (endgame).** SF eval vs tablebase WDL/DTM across classes, depths,
   margins → where is SF trustworthy? Parallel SF workers; tensor calibration. *(executing now)*
-- **S2 — field that MATES.** Retrain single-space field with WDL basins, ∞ barriers, mate
-  attractor, stalemate/draw/loss repellers, off-optimal negatives. Gate: mate-rate vs optimal
-  defense (currently 5%) + gradient probe + stalemate-avoidance.
+- **S2 — field that MATES.** DONE/REFRAMED (2026-07-26). WDL basins + ∞ hinge-to-M barriers
+  SOLVED the stalemate/blunder defense (kept-win 88.7%, won-d 20 vs draw-d 468); field is a good
+  VALUE (d-vs-DTM +0.81) -- but greedy can't CONVERT (mate 0.4%) and a single MATE-goal collapses
+  rank (1.7). REFRAME (Kaveh): policy comes from the PLANNER not greedy field; at deployment the
+  TABLEBASE mates the endgame (as real engines do); the learned field's real job is the MIDGAME.
+- **S2b — field + shallow search.** Minimax (field=leaf value, checkmate=+inf, draw/loss=-inf)
+  vs tablebase-optimal defense; mate-rate by depth. Validates value+planner=policy.
 - **S3 — transition predictor `T(s,ω)`** on tablebase-exact only-move labels; validate it
   predicts where a fallible defender (Maia) actually errs.
 - **S4 — cohort deviation / asymmetry field** on lichess + engine-ensemble reference (weighted
