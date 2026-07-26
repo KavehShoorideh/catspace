@@ -7508,3 +7508,31 @@ from the endgame via TD / value-iteration on the quasimetric (d(s)=1+min_a d(s')
 full games played to ACTUAL mate. This VALIDATES Kaveh's instinct to keep the quasimetric
 + planner-on-top: the fix is the training signal, not the backbone. (Files:
 experiments/arch_bakeoff.py, dtm_arch_bakeoff.py; logs arch_bakeoff / dtm_bakeoff.)
+
+## 2026-07-26 -- ENDGAME-OUTWARD DISTANCE BOOTSTRAP: mechanism validated (proof-of-concept)
+
+Follow-up to the bake-off (middlegame DTM is a LABELS problem). Built value-iteration on the
+quasimetric to MANUFACTURE the missing long labels: 2-ply minimax DTM backup
+  d(s)=1+min_m V(s.m); V(loser-to-move t)=0 if mate else 1+max_m' g(grandchild)
+Falsifiable test: train field g on tablebase DTM<=25 ONLY (long DTM known but HIDDEN),
+bootstrap using g's own lookahead, measure whether the held-out FAR slice (DTM>25) recovers
+against TRUE dtm. Lookahead structure precomputed once (only python-chess cost); each sweep
+= pure tensor ops (net forward on flat grandchildren + segment min/max). No policy target;
+g=distance-to-mate, planner stays one layer above.
+RESULT (cnn-d64-L6, anchor 25, 3000 boot parents, 20 sweeps, 624s):
+  far-spearman  -0.405 (anchor-only) -> +0.215 (crosses zero at sweep ~3, monotone)
+  far MAE        26.9 plies -> 13.4 plies  (HALVED -- the headline)
+  boot-target median  15 -> 31 (=TRUE) by sweep 16 -> overshoots to 36 by sweep 19
+  cost: near-spearman  +0.70 -> +0.25 (anchor/bootstrap losses compete)
+READ: value iteration DOES propagate the trusted endgame scale outward -- the field learns
+the correct MAGNITUDE of long distances it never had labels for (MAE halved, target median
+hits true 31), and its ordering flips from anti-correlated to positive, using ZERO long
+labels. That is the missing-label fix working. Honest limits (iteration-2 levers):
+  1. near-slice erosion + late overshoot (target 31->36) = TD instability -> target/EMA
+     network (Double-DQN trick), heavier anchor weight, damping.
+  2. far ORDERING ceilings at +0.2 while MAGNITUDE (MAE) is great -> fine-grained far
+     ranking is the hard part; try rank loss on far pairs / deeper (DTZ-consistent) lookahead.
+  3. 2-ply/sweep propagation is slow -> prioritized sweeping outward from the anchor boundary.
+CONCLUSION: the bake-off's prescription is confirmed constructive -- manufacturing long
+labels via value iteration repairs long-range distance-to-mate with no architecture change
+and no policy target. Prototype: experiments/bootstrap_dtm.py; log bootstrap_dtm_full.log.
