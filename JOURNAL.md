@@ -7669,3 +7669,22 @@ STAGING (ground truth first): (1) endgame transition labels from tablebase (only
 endgames, beat greedy-to-mate against fallible defense; (3) scale to midgame with lc0-vs-SF games
 (gen in background from step 1). Assets present: lc0+t1 net, maia 1200-1900, stockfish, committor
 code, omega embeddings, single-space quasimetric MVP (quasimetric_shared_v1).
+
+## 2026-07-26 -- S1 DONE: the SF reliability map (endgame, vs tablebase truth)
+
+sf_reliability_map.py (parallel SF workers, SyzygyPath empty so it's SEARCH not tb-lookup),
+9000 hard-endgame positions x depths {4,10,18} vs tablebase WDL:
+  overall WDL-acc 96.2% (d4) -> 97.1% (d10) -> 97.3% (d18)  [depth 10->18 adds only +0.2%]
+KEY FINDINGS:
+  1. Errors are STRUCTURAL not horizon: deeper search barely helps -> positions SF can't crack.
+  2. Failures concentrate: KBBvKN 68.5% (!), KNNvKP 81.0% (deep win past 50-move rule); rest ~100%.
+  3. Every error is at the WIN/DRAW boundary, NEVER win/loss (confusion is purely W<->D: deep wins
+     called draws, fortresses called wins). SF never mistakes a win for a loss.
+READ: SF's unreliability lives EXACTLY on the basin boundary (committor~0.5 = the transition
+zone). The reliability map and the transition map are the same object: reference-unreliable =
+objectively-hard = where fallible humans also err = the exploitable zone. Downstream value module:
+trust SF in basin interiors + for W/L separation; distrust at the W/D boundary (KBBvKN, deep
+KNNvKP-type), splice tablebase (endgame) / reference-disagreement (midgame) there. This is a
+clean, honest, ground-truthed reliability map -- S1 of METASTABILITY_PLAN complete.
+Next: S2 (field that MATES: WDL basins + inf barriers + mate attractor + stalemate repellers +
+off-optimal negatives; gate = mate-rate vs optimal defense, currently 5%).
