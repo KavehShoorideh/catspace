@@ -102,6 +102,13 @@ def main():
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--cap", type=float, default=300.0, help="clamp bootstrap targets (plies)")
+    # --- iteration-2 stability levers (defaults reproduce iteration 1) ---
+    ap.add_argument("--ema-decay", type=float, default=0.0,
+                    help=">0 uses a target/EMA net to compute bootstrap targets (TD stability)")
+    ap.add_argument("--anchor-ratio", type=float, default=0.5,
+                    help="fraction of each mixed batch drawn from the true-label anchor")
+    ap.add_argument("--rank-weight", type=float, default=0.0,
+                    help="weight of pairwise margin-rank loss on the bootstrap slice")
     ap.add_argument("--device", default="auto")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -143,29 +150,68 @@ def main():
           else TransformerBackbone(args.d, args.layers))
     net = DTMNet(bb, args.d).to(dev)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
-    tgt_log = torch.from_numpy(np.log1p(dtm)).to(dev)
+    # target/EMA net: bootstrap targets come from a lagged copy so the field can't chase
+    # its own moving estimate (the overshoot/near-erosion fix; standard Double-DQN trick).
+    import copy
+    tnet = copy.deepcopy(net) if args.ema_decay > 0 else net
+
+    def ema_update():
+        if args.ema_decay <= 0:
+            return
+        with torch.no_grad():
+            for pt, p in zip(tnet.parameters(), net.parameters()):
+                pt.mul_(args.ema_decay).add_(p, alpha=1 - args.ema_decay)
+            for bt, b in zip(tnet.buffers(), net.buffers()):
+                bt.copy_(b)
+
     ids_t = torch.from_numpy(ids_all.astype(np.int64))
     stm_t = torch.from_numpy(stm_all.astype(np.int64))
 
     def feed(idx):
         return ids_t[idx].to(dev), stm_t[idx].to(dev)
 
-    def train_on(idx, target_log, steps):
+    def train_on(idx, target_log, steps):                    # iteration-1 path (anchor-ratio=0.5, no mix)
         net.train()
         for s in range(steps):
             bi = rng.integers(0, len(idx), args.batch)
             di, ds = ids_t[idx[bi]].to(dev), stm_t[idx[bi]].to(dev)
             pred, _ = net(di, ds)
             loss = F.huber_loss(pred, target_log[bi], delta=1.0)
-            opt.zero_grad(); loss.backward(); opt.step()
+            opt.zero_grad(); loss.backward(); opt.step(); ema_update()
+        return float(loss)
+
+    def train_mixed(a_idx, a_tlog, b_idx, b_tlog, steps):
+        """One field-update stream: every batch mixes true-anchor + bootstrap examples
+        (anchor_ratio split) so anchor calibration never erodes, plus an optional pairwise
+        rank loss on the bootstrap slice to sharpen far ORDERING (not just magnitude)."""
+        net.train()
+        na = max(1, int(round(args.batch * args.anchor_ratio)))
+        nb = max(2, args.batch - na)
+        for s in range(steps):
+            ai = a_idx[rng.integers(0, len(a_idx), na)]
+            bj = rng.integers(0, len(b_idx), nb)
+            bi = b_idx[bj]
+            cat = np.concatenate([ai, bi])
+            di, ds = ids_t[cat].to(dev), stm_t[cat].to(dev)
+            pred, _ = net(di, ds)
+            at = a_tlog_full[ai]; bt = b_tlog[bj]             # true-anchor + bootstrap targets
+            loss = F.huber_loss(pred, torch.cat([at, bt]), delta=1.0)
+            if args.rank_weight > 0:                          # sharpen far ORDERING, not just magnitude
+                pb = pred[na:]
+                perm = torch.from_numpy(rng.permutation(nb)).to(dev)
+                y = torch.sign(bt - bt[perm])
+                loss = loss + args.rank_weight * F.margin_ranking_loss(
+                    pb, pb[perm], y, margin=0.05)
+            opt.zero_grad(); loss.backward(); opt.step(); ema_update()
         return float(loss)
 
     @torch.no_grad()
-    def predict(ids_x, stm_x):
-        net.eval(); out = []
+    def predict(ids_x, stm_x, use=None):
+        m = use if use is not None else net
+        m.eval(); out = []
         for s in range(0, len(ids_x), 4096):
             di, ds = ids_x[s:s + 4096].to(dev), stm_x[s:s + 4096].to(dev)
-            out.append(net(di, ds)[0].cpu().numpy())
+            out.append(m(di, ds)[0].cpu().numpy())
         return np.concatenate(out) if out else np.zeros(0, np.float32)
 
     def far_report(label):
@@ -182,6 +228,7 @@ def main():
 
     # --- Phase A: anchor-only baseline (reproduces bake-off far ~ -0.44) ---
     ltr = torch.from_numpy(np.log1p(dtm[anchor_tr])).to(dev)  # aligned target for anchor idx
+    a_tlog_full = torch.from_numpy(np.log1p(dtm)).to(dev)     # full-length true log-DTM (anchors only used)
     net.train()
     for s in range(args.base_steps):
         bi = rng.integers(0, len(anchor_tr), args.batch)
@@ -193,8 +240,10 @@ def main():
 
     # --- Phase B: value-iteration bootstrap sweeps ---
     br_parent_t = br_parent; gc_branch_t = gc_branch
+    mixed = args.ema_decay > 0 or args.anchor_ratio != 0.5 or args.rank_weight > 0
     for sw in range(args.sweeps):
-        gval = np.expm1(predict(gc_ids, gc_stm)).clip(0, args.cap)   # predicted plies
+        # bootstrap targets from the TARGET net (tnet==net when ema off) -- 2-ply minimax
+        gval = np.expm1(predict(gc_ids, gc_stm, use=tnet)).clip(0, args.cap)
         branch_max = np.full(n_branch, -1.0, np.float32)
         np.maximum.at(branch_max, gc_branch_t, gval)
         branch_V = np.where(br_term, 0.0, 1.0 + np.maximum(branch_max, 0.0))
@@ -204,9 +253,11 @@ def main():
         good = np.isfinite(target_d)
         boot_idx = boot[good]
         boot_tlog = torch.from_numpy(np.log1p(target_d[good])).to(dev)
-        # interleave: half the steps anchor (true), half bootstrap (self-target)
-        train_on(anchor_tr, ltr, args.sweep_steps // 2)
-        train_on(boot_idx, boot_tlog, args.sweep_steps // 2)
+        if mixed:
+            train_mixed(anchor_tr, ltr, boot_idx, boot_tlog, args.sweep_steps)
+        else:                                                # iteration-1 path: split anchor/boot phases
+            train_on(anchor_tr, ltr, args.sweep_steps // 2)
+            train_on(boot_idx, boot_tlog, args.sweep_steps // 2)
         med = float(np.median(target_d[good]))
         print(f"  sweep {sw}: boot_target median {med:.0f} plies (true median "
               f"{np.median(dtm[boot[good]]):.0f})", flush=True)
