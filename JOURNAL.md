@@ -7792,3 +7792,25 @@ value is a COARSE committor-style signal, exactly what the midgame KL/exploitati
 tablebase at deploy; proceed to the midgame lichess/KL layer where the coarse learned field is
 the right tool. Artifacts: field_full_v1 (killed mid-train), mate_field_v1, ab_convert.py,
 mcts_convert.py, mate_with_search.py all committed.
+
+## 2026-07-26 -- CORRECTION: the "1-ply wall" was a BROKEN LOSS, not fundamental (Kaveh was right)
+
+Kaveh pushed back on the "fundamental wall" conclusion. Diagnosis proved him right:
+DATA DIAGNOSIS (child_rank_v1 sibling |DTZ| structure): 39% of random sibling pairs are TIES
+(same |DTZ|); the rank loss did y=sign(0)=0 -> margin_ranking_loss returns a CONSTANT margin
+(0.5) that can never be satisfied -> the loss floored at ~0.34 BY CONSTRUCTION (misread as a
+wall). The metric was poisoned identically (ties counted as errors, capping ~61%). Also margin
+0.5 was ~5x the true sibling log-gap (~0.10).
+FIX (drop ties + margin-free logistic order) SENSITIVITY:
+  w_rank 0 : 1-ply RANK-ACC(distinct) 64.4% | d-vs-DTZ +0.882 | won-d 20.8 vs INF-d 408.6 (scale ok)
+  w_rank 1 : 1-ply RANK-ACC(distinct) 84.2% | d-vs-DTZ +0.602 | won-d 378  vs INF-d 389 (scale BROKE)
+=> the field CAN resolve 1-ply moves (64->84%); the wall was my broken loss. NEW issue: the
+margin-free step is scale-unanchored -> inflates distances, collapsing won-vs-draw. Fix =
+ANCHORED step (margin = true per-pair log-DTZ gap): relu(gap - (d_hi - d_lo)) -- sharpens order
+consistent with the regression, no inflation. (Anchored sweep launched; MPS ~800s/config, slow.)
+ON THE DRAW SURFACE (Kaveh): the d-vs-DTZ +0.89 IS the "reduce DTZ = move away from the 50-move/
+repetition draw surface" agreement -- that always worked; only the FINE 1-ply order was broken.
+BOTTOM LINE: retract the "fundamental wall". Endgame conversion is viable; the recipe is
+drop-ties + anchored per-pair-gap step at a MODERATE weight (balance order vs scale). Files:
+rank_sensitivity.py. Next: find the anchored weight that keeps BOTH (order>=80% AND won-d~20),
+retrain the field, re-run conversion (should beat 17.5%).

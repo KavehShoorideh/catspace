@@ -1,0 +1,4 @@
+[rank-sens] won 312764 inf 55793 | distinguishable pairs 55730
+w_rank | 1-ply RANK-ACC(distinct) | d-vs-DTZ | eff_rank | won-d | INF-d
+    0.0 |    64.4%   |  +0.882 |   1.2  |  20.8 |  408.6  [275s]
+    1.0 |    84.2%   |  +0.602 |   1.1  | 378.4 |  389.3  [1075s]
