@@ -25,21 +25,29 @@ from catspace.stats import spearman_ci, paired_delta_ci, fmt_ci
 
 
 def context_feats(z, use_rating=True, use_clock=True):
-    """engineered context vector (order fixed; ablations zero out blocks)."""
-    n = len(z["ply"])
+    """context vector. ALWAYS-ON position block = sharpness (committor_before near 0.5 = contested =
+    blunder-affording); rating/clock blocks carry their SHARPNESS INTERACTIONS (time/skill matter
+    mainly in sharp positions -- the 3-way interaction the controlled analysis exposed). Ablations
+    zero the rating/clock blocks."""
     base = np.maximum(z["base_s"].astype(np.float32), 1.0)
     cm = z["clk_mover"].astype(np.float32); co = z["clk_opp"].astype(np.float32)
     ply = z["ply"].astype(np.float32)
     em = z["elo_mover"].astype(np.float32); eo = z["elo_opp"].astype(np.float32)
-    clock = np.stack([np.log1p(cm), np.log1p(co), np.clip(cm / base, 0, 3),
-                      np.clip(co / base, 0, 3), np.log1p(base)], 1)
-    rating = np.stack([em / 1000.0, eo / 1000.0, (em - eo) / 1000.0], 1)
-    plyf = np.stack([ply / 100.0], 1)
+    cb = z["committor_before"].astype(np.float32)
+    sharp = 1.0 - np.abs(2 * cb - 1)                    # 1 at c=0.5, 0 at c in {0,1}
+    is_blitz = (base <= 240).astype(np.float32)
+    pos = np.stack([sharp, cb, ply / 100.0], 1)         # POSITION block (always on)
+    cmn = np.clip(cm / base, 0, 3); cslow = np.clip(1 - cm / base, 0, 1)  # fraction time LEFT / USED
+    clock = np.stack([np.log1p(cm), cmn, np.clip(co / base, 0, 3), np.log1p(base),
+                      cslow * sharp * is_blitz,          # time-pressure x sharp x blitz (the real signal)
+                      cmn * sharp], 1)
+    rating = np.stack([em / 1000.0, (em - eo) / 1000.0,
+                       (em / 1000.0) * sharp], 1)        # skill x sharp
     if not use_clock:
         clock = np.zeros_like(clock)
     if not use_rating:
         rating = np.zeros_like(rating)
-    return np.concatenate([plyf, rating, clock], 1).astype(np.float32)
+    return np.concatenate([pos, rating, clock], 1).astype(np.float32)
 
 
 class T(nn.Module):

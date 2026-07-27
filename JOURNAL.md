@@ -8564,3 +8564,30 @@ sf_wdl_by_material all consume it as the committor); it is no longer a navigatio
 Freed loser trunk artifacts (T70/maia onnx + T70 half feats; all regenerable). Disk 18G free.
 M1 gates: pair-order incumbent-beating on the fair all-phase protocol; DTZ-progress ranks well
 (ceiling <1 by DTZ!=DTM); opening sane; eff_rank healthy. M1 COMPLETE. Next: M2 on Maia-2.
+
+## 2026-07-27 -- M2a: context-conditioning PREMISE VALIDATED (rate-level); single-move gate mis-specified
+
+Data: gen_transition_data (18k games -> 143k positions, phi+clocks+Elos) -> SF-labeled 70k (depth 11,
+crossing = mover-POV committor swing >= 0.2, rate 11.1%) -> T (MLP over frozen phi + context).
+FIRST CUT looked bad (raw sign checks BACKWARDS: clk +0.129, elo +0.054; context added ~0) -- but
+diagnose-before-concluding: pure OMITTED-VARIABLE CONFOUND (mixed time controls + crossings cluster
+early/sharp where clock is high + stronger players SELF-SELECT into sharper positions).
+CONTROLLED (matched within sharpness x time-control) -- the effect is REAL, correctly-signed, LARGE:
+  CLOCK (sharp blitz, crossing by clock low->high time): 57.9% 55.3% 49.6% 43.2%  (time pressure
+    +15 pts) -- and FLAT in quiet positions and in rapid (no real pressure there). Textbook.
+  RATING (crossing by Elo low->high): sharp 57.6->46.9%, quiet 8.4->6.3%  (monotone, correct sign).
+=> M2 PREMISE HOLDS: opponent context (clock, rating) conditions crossing risk in the exploitable
+direction, concentrated exactly in sharp positions (where exploitation happens).
+BUT the T MODEL predicting SINGLE-MOVE crossings gains ~nothing from context in aggregate (rho 0.45)
+AND only +0.013 [-0.016,+0.042] on the sharp subpopulation (n=881, not sig). WHY: a single realized
+crossing is a NOISY zero-inflated Bernoulli; a real 43->58% RATE shift is a small RANK signal per
+instance; quiet-position majority dilutes the aggregate. The effect is a RATE property, not a
+single-move-rank property.
+=> The M2a DoD (rho>=0.60, "beats the stopgap", ablation significant) is MIS-SPECIFIED for a noisy
+single-move label -- same class as the DTZ!=DTM ceiling. AND the Maia2xSF stopgap has per-move SF
+LOOKAHEAD (sees the moves' consequences) that T deliberately trades for speed + clock/z-conditioning
++ ~1000x throughput -- so "T beats stopgap on rho" is the wrong bar. Bringing a DoD-reframe to Kaveh
+(milestone rule: mis-specified/unreachable DoD = his call, not silent redefinition). PROPOSED reframe:
+(a) matched clock+rating effects significant [DONE], (b) T's context-conditioned crossing-RATE ranks
+regions correctly (rate-level calibration/AUC), (c) T approximates the stopgap ranking within
+tolerance while conditionable on clock/z and orders-of-magnitude faster.
