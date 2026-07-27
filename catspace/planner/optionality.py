@@ -63,6 +63,8 @@ def soft_reach(dists, beta: float, weights=None):
     finite beta rewards MULTIPLE subgoals being close (optionality). beta -> inf gives -min_k d."""
     dists = np.asarray(dists, dtype=float)
     K = dists.shape[-1]
+    if K == 0:                                        # empty subgoal set -> zero reach contribution
+        return np.zeros(dists.shape[:-1]) if dists.ndim > 1 else 0.0
     w = np.ones(K) if weights is None else np.asarray(weights, dtype=float)
     w = w / w.sum()                                   # normalize so beta alone controls sharpness
     return logsumexp(beta * (-dists), axis=-1, b=w) / beta
@@ -110,6 +112,79 @@ def move_prior(scores, temp: float = 1.0):
     p = np.exp((scores - scores.max()) / max(temp, 1e-6))
     p = p / p.sum()
     return p
+
+
+def board_self_blunder(board) -> float:
+    """self_blunder_proxy from a python-chess board (my-error risk at this position)."""
+    import chess
+    legal = list(board.legal_moves)
+    n_captures = sum(1 for m in legal if board.is_capture(m))
+    n_checks = sum(1 for m in legal if board.gives_check(m))
+    return self_blunder_proxy(len(legal), board.is_check(), n_captures, n_checks)
+
+
+class PortfolioPrior:
+    """A MovePrior (engine interfaces.py) that shapes the search toward a SET of my subgoals G_me and
+    AWAY FROM the opponent's set G_opp, valuing optionality + emergent multipurpose moves. This is
+    the integration seam Kaveh asked to 'wire up': subgoals enter the PRIOR here, never the value.
+
+    distance_fn(boards, subgoal) -> np.ndarray of field distances d(board -> subgoal) for each board.
+    FIELD-AGNOSTIC: pass the FB field's distance now, the single-space IQE d(phi(s),phi(g)) later.
+    G_me / G_opp: lists of subgoals (anything distance_fn accepts -- Region, exemplar board, ...).
+    weights_me / weights_opp: per-subgoal flux*density weights (uniform until T(s,z) exists)."""
+
+    def __init__(self, distance_fn, g_me, g_opp=None, weights: "ShapeWeights" = None,
+                 weights_me=None, weights_opp=None, self_blunder: bool = True):
+        self.distance_fn = distance_fn
+        self.g_me = list(g_me)
+        self.g_opp = list(g_opp or [])
+        self.w = weights or ShapeWeights()
+        self.weights_me = weights_me
+        self.weights_opp = weights_opp
+        self.use_self_blunder = self_blunder
+
+    def _dist_to_set(self, boards, subgoals):
+        if not subgoals:
+            return np.zeros((len(boards), 0))
+        return np.stack([np.asarray(self.distance_fn(boards, g), float) for g in subgoals], axis=1)
+
+    def priors(self, board) -> dict:
+        moves = list(board.legal_moves)
+        if not moves:
+            return {}
+        succ = []
+        for m in moves:
+            b = board.copy(stack=False); b.push(m); succ.append(b)
+        d_me_before = self._dist_to_set([board], self.g_me)[0]
+        d_me_after = self._dist_to_set(succ, self.g_me)                 # (M, K_me)
+        if self.g_opp:
+            d_opp_before = self._dist_to_set([board], self.g_opp)[0]
+            d_opp_after = self._dist_to_set(succ, self.g_opp)
+        else:                                                          # no opponent set -> no denial term
+            d_opp_before = np.zeros(0); d_opp_after = np.zeros((len(moves), 0))
+        sb = np.array([board_self_blunder(b) for b in succ]) if self.use_self_blunder else None
+        scores = move_scores(d_me_before, d_me_after, d_opp_before, d_opp_after, self.w,
+                             self.weights_me, self.weights_opp, sb)
+        p = move_prior(scores, self.w.temp)
+        return {m: float(pi) for m, pi in zip(moves, p)}
+
+
+def select_active_plan(values, incumbent: int | None = None, switch_margin: float = 0.0) -> int:
+    """OPPORTUNISM with hysteresis (Kaveh 2026-07-26): re-select which subgoal to EMPHASIZE from the
+    CURRENT position each ply. `values` = per-subgoal value (flux * reachability), including any
+    transition point the opponent's slip just opened. Forward-looking (Markov, no sunk cost): switch
+    to the best plan, but only if it beats the incumbent by `switch_margin` -- so a clear opportunity
+    is seized while marginal noise doesn't cause thrash. Returns the chosen subgoal index.
+
+    NOTE the SET stays live in the soft portfolio (keep options open); this only picks the emphasis /
+    main plan for move-ordering coherence. With switch_margin=0 it is pure argmax (always opportunistic)."""
+    values = np.asarray(values, float)
+    best = int(np.argmax(values))
+    if incumbent is None or incumbent < 0 or incumbent >= len(values):
+        return best
+    if values[best] >= values[incumbent] + switch_margin:
+        return best
+    return incumbent
 
 
 def multipurpose_index(d_me_before, d_me_after, d_opp_before, d_opp_after, adv: float = 0.25):
@@ -184,6 +259,32 @@ def _tests():
     # 7. self_blunder_proxy monotonicity
     lo = self_blunder_proxy(10, False, 0, 0); hi = self_blunder_proxy(40, True, 5, 5)
     check("self_blunder proxy rises with complexity/tactics", hi > lo and 0 <= lo <= 1 and 0 <= hi <= 1)
+
+    # 8. OPPORTUNISM (hysteresis): incumbent plan value 1.0. A big new opportunity (value 2.0) -> SWITCH;
+    #    a marginal alternative (1.05) within the margin -> STAY.
+    check("opportunism: seize a clearly-better opened transition point",
+          select_active_plan([1.0, 2.0], incumbent=0, switch_margin=0.2) == 1)
+    check("hysteresis: ignore a marginal fluctuation (no thrash)",
+          select_active_plan([1.0, 1.05], incumbent=0, switch_margin=0.2) == 0)
+    check("no incumbent -> pure argmax", select_active_plan([0.3, 0.9, 0.5]) == 1)
+
+    # 9. BOARD-LEVEL PortfolioPrior wiring (real chess board, synthetic distance_fn = king-distance to
+    #    a target square). Valid distribution over legal moves; a move toward BOTH my targets outranks
+    #    a move toward one.
+    import chess
+    def kdist_to_square(boards, sq):                 # field-agnostic stand-in for d(phi(s), phi(g))
+        return np.array([chess.square_distance(b.king(chess.WHITE), sq) for b in boards], float)
+    board = chess.Board("8/8/8/8/4K3/8/8/k6R w - - 0 1")   # white K on e4, targets pull the king
+    g_me = [chess.G6, chess.C6]                            # two subgoals (pull king NE and NW)
+    prior = PortfolioPrior(kdist_to_square, g_me, weights=ShapeWeights(beta=1.0, lam=1.0, mu=0.2))
+    pr = prior.priors(board)
+    legal = list(board.legal_moves)
+    check("PortfolioPrior: valid distribution over legal moves",
+          abs(sum(pr.values()) - 1.0) < 1e-9 and len(pr) == len(legal) and all(p >= 0 for p in pr.values()))
+    # king move toward both targets (e4->d5, reduces dist to both g6 & c6) should beat e4->f3 (away)
+    d5 = chess.Move.from_uci("e4d5"); f3 = chess.Move.from_uci("e4f3")
+    check("PortfolioPrior: multipurpose king step (toward both targets) out-priors a step away",
+          pr.get(d5, 0) > pr.get(f3, 0))
 
     print("ALL OPTIONALITY TESTS PASSED" if ok else "OPTIONALITY TESTS FAILED")
     return ok
