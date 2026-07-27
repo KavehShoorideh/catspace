@@ -25,6 +25,7 @@ def main():
     ap.add_argument("--batch", type=int, default=4096)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--rows-mod", type=int, default=0, help="keep rows where game %% mod == 0 (subset by game); 0 = all")
+    ap.add_argument("--tokens", action="store_true", help="transformer trunk: hook emits (B*64, C) tokens -> reshape to (B, C, 8, 8)")
     args = ap.parse_args()
     t0 = time.time()
     from lczerolens import LczeroModel
@@ -48,10 +49,15 @@ def main():
     out = args.out or f"data/derived/trunk_feats/{tag}__{Path(args.data).stem}.npy"
     Path(out).parent.mkdir(parents=True, exist_ok=True)
 
+    def _shape(t, B):
+        if args.tokens:                                      # (B*64, C) tokens -> (B, C, 8, 8)
+            C = t.shape[-1]
+            return t.reshape(B, 64, C).permute(0, 2, 1).reshape(B, C, 8, 8)
+        return t
     # probe feature shape
     with torch.no_grad():
         m(torch.from_numpy(planes[:2].astype(np.float32)).to(args.device))
-    fshape = tuple(feats["t"].shape[1:])
+    fshape = tuple(_shape(feats["t"], 2).shape[1:])
     print(f"[precompute] {args.onnx} hook={hook_name} feat{fshape} -> {out} | N={N:,} batch={args.batch}", flush=True)
     mm_out = np.lib.format.open_memmap(out, mode="w+", dtype=np.float16, shape=(N, *fshape))
 
@@ -60,7 +66,7 @@ def main():
         for i in range(0, N, args.batch):
             x = torch.from_numpy(planes[i:i + args.batch].astype(np.float32)).to(args.device)
             m(x)
-            mm_out[i:i + len(x)] = feats["t"].to(torch.float16).cpu().numpy()
+            mm_out[i:i + len(x)] = _shape(feats["t"], len(x)).to(torch.float16).cpu().numpy()
             done += len(x)
             if (i // args.batch) % 20 == 0:
                 print(f"  {done:,}/{N:,} [{time.time()-t0:.0f}s, {done/max(time.time()-t0,1e-9):,.0f} pos/s]", flush=True)

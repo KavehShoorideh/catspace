@@ -8493,3 +8493,15 @@ final run. FINAL M1 FIELD: T70 features at rows-mod 2 (~570k rows, 9.4GB -- full
 disk), 8k-step head training running. Tuned-weights lever already rejected (regression). NEXT:
 full-protocol eval vs v3 (on-the-fly features for the ~11k eval rows) -> consolidated table ->
 gate-restatement + ClockField/FB kill decision to Kaveh.
+
+## 2026-07-27 -- T1 transformer REINSTATED as trunk candidate (Kaveh; conditional-rejections rule)
+
+Kaveh: give T80(-era) a chance -- we distill at the end anyway. Correct per the conditional-
+rejections rule: T1's rejection was CONDITIONAL on time-control pressure; the ladder amendment
+deferred TC to end-of-project, so the rejection is void and the transformer re-enters the contest
+on QUALITY (600 pos/s is fine for untimed node-budget matches: 400-node probe ~0.7s; M8 distills
+the winning teacher regardless; BT4/T1-512 remain as M8-teacher escalations). Resolved the hook:
+encoder9/ln2 emits (B*64,256) flattened tokens -> reshape (B,256,8,8) (square-major; 1x1-conv
+adapter permutation-indifferent); added --tokens to precompute. Chained behind the T70 final run:
+T1-256x10 features on the SAME rows-mod-3 subset + seed as the recorded h2h -> identical-protocol
+3-way: maia 0.853/0.443, T70 0.860/0.563, T1 = pending.
