@@ -8424,3 +8424,22 @@ FROZEN trunk features; geometry-only losses (multi-goal + mate DTZ + hinge + rep
 committor head, locked decision 1); scaffold-tracked; batch 4096 MPS from memmap. SMOKE 400 steps /
 27s / 133k params: pair-order +0.882, d_mate rho +0.598, eff_rank 8.8 -- near gates (0.94/0.81)
 already. Full 6k-step runs for BOTH trunk candidates launched (the M1 trunk-choice comparison).
+
+## 2026-07-27 -- M1 fair comparison: historical gates were PROTOCOL ARTIFACTS; head beats incumbent on geometry
+
+Both 6k-step head runs landed at pair-order 0.849 (below the 0.94 gate) -- but diagnose-before-
+concluding caught a PROTOCOL MISMATCH: v3's 0.94 was measured on OPENING-FREE data (ply>=10). Built
+eval_m1_compare.py: ALL models on the IDENTICAL all-phase val protocol (same pairs, same rows):
+  v3 incumbent:      pair-order +0.778 | d_mate +0.665 | eff_rank 8.2   <- 0.94 was the easy protocol
+  head maia-1500:    pair-order +0.861 | d_mate +0.595 | eff_rank 14.9  <- BEATS incumbent on geometry
+  head maia-1900:    pair-order +0.847 | d_mate +0.585 | eff_rank 14.2  <- 1500 >= 1900 on all three
+Gates 2/2 (eval_m1_gates2.py, same probes both models): OPENING pair-order (ply<=12) v3 +0.285 vs
+head +0.684 (2.4x -- v3's opening blindness persists in the metric); opening sanity finite BOTH;
+off-dist synthetic-endgame d_mate v3 +0.517 vs head +0.228 (frozen human trunk never carved endgame
+features; NOTE locked decision 5: <=7p is the TABLEBASE's regime in play, so this probe measures
+territory the field never owns). TrunkField wrapper (fresh-board full path: onnx trunk hook -> head)
+now exists in eval_m1_gates2.py -- the play-time M1 object.
+PENDING: d_mate-tuned run (w_mate 2, 10k steps). THEN the M1 decision to Kaveh (per DoD unreachable-
+gate rule): propose restated fair-protocol gate = beat incumbent on pair-order/opening-order/
+eff_rank/sanity + d_mate within epsilon in-dist above the TB boundary; off-dist demoted to
+informational. Trunk choice: maia-1500.
