@@ -7889,3 +7889,24 @@ CONCRETE BUILD PLAN (next):
 KEY: only INPUT (lczerolens 112) + DATA (real-history trajectories) change; the novel value/
 planning machinery is input-agnostic and carries over. Endgame = grounded special case of the
 full-board field. lczerolens added to deps.
+
+## 2026-07-26 -- DEFINITIVE FIELD ARCH (audit, complete). Committor trained head + all outcomes.
+
+The FIELD is architecturally complete. IN (definitive lc0 training):
+INPUT: lczerolens 112-plane (pieces, 8-pos REAL history, castling, ep, rule50 clock, repetition,
+  perspective); in_planes parameterized (full-board extensible).
+REPR: single-space shared phi (128ch x8 ResNet) + IQE quasimetric.
+OBJECTIVES (tested losses.py): multi-goal d(phi(s),phi(g))->Delta same-line pairs (triangulation
+  -> rank/composability/fine+coarse ordering; SUBSUMES the sibling-rank loss) + REPULSION +
+  mate-goal d(phi,MATE)->DTZ + WDL inf-hinge + DISTRIBUTIONAL ending head (6) + COMMITTOR =
+  score-weighted ending head (trained value over all W/D/L outcomes; replaces exp(-d) proxy).
+BASINS: ALL-OUTCOME data (win/loss/draw class sets) -> committor learns 3 basins; clock-aware
+  (rule50) -> 50-move draw surface. HEALTH: eff_rank gate. Smoke (multi-goal): pair-order +0.949,
+  eff_rank 6.3 (vs 3.5 single-goal), ending 99.6%.
+DEFERRED (opponent/lichess phase, in METASTABILITY_PLAN.md + memory): transition predictor T(s,z),
+  player embedding z, KL/asymmetry exploitation, cohort-regret field, ensemble reference, navigate-
+  to-transition planner, risk-appetite knob, self-blunder model, swappable value signal, non-board
+  endings (time/resign via game layer), king-bucketing.
+NEXT: definitive all-outcome training running (traj_lc0_v3) -> verdict (pair-order/rank/mate/ending/
+  committor-MAE/WDL) -> MCTS vs minimax on the lc0 field (using the trained committor). Field DONE;
+  remaining = planner eval + opponent layer. No more field circles.
