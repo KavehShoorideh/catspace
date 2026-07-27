@@ -52,6 +52,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", default="data/derived/clock_child_v1.npz")
     ap.add_argument("--d", type=int, default=32); ap.add_argument("--margin", type=float, default=400.0)
+    ap.add_argument("--ch", type=int, default=64); ap.add_argument("--blocks", type=int, default=5)
     ap.add_argument("--w-rank", type=float, default=1.0)
     ap.add_argument("--steps", type=int, default=14000); ap.add_argument("--batch", type=int, default=384)
     ap.add_argument("--rank-pairs", type=int, default=384); ap.add_argument("--lr", type=float, default=3e-4)
@@ -85,7 +86,9 @@ def main():
     def fp(idx):
         return torch.from_numpy(feature_planes(packed[idx], meta[idx])).to(dev)
 
-    net = ClockField(args.d).to(dev)
+    net = ClockField(args.d, ch=args.ch, blocks=args.blocks).to(dev)
+    print(f"  encoder: d={args.d} ch={args.ch} blocks={args.blocks} "
+          f"({sum(p.numel() for p in net.parameters())/1e6:.2f}M params)", flush=True)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
     hb = args.batch // 2
     for s in range(args.steps):
