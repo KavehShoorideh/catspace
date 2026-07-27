@@ -8546,3 +8546,21 @@ And DTZ is arguably the RIGHT target for us: we navigate toward the forcing conv
 TB-won boundary (the handoff), which is exactly irreversible progress = DTZ; mate is the tablebase's
 job post-handoff. Reframed the M1 gate: "ranks DTZ well" (conversion progress), not "matches mate".
 Conceptually the anchor is d_progress (distance-to-conversion), not d_mate; kept the code name.
+
+## 2026-07-27 -- M1 DONE: T1-distillate IQE reachability field is the substrate; ClockField retired
+
+M1 finalized under decision 8 (adopt-before-build, trunk by fiat -- no re-validation A/Bs):
+SUBSTRATE = frozen T1-256x10-distilled trunk (best community distillate that runs on this laptop) +
+IQE head (adapter + IQE(64,16) + DTZ conversion anchor; geometry-only, NO WDL). Recorded head
+metrics (subset, point estimates -- NOT the decision basis): pair-order +0.904, d_progress-vs-DTZ
++0.621, eff_rank 16.1 -- best of all candidates (maia 0.853/0.443, T70 0.868/0.598 half-data).
+DELIVERABLES: catspace/field.py ReachabilityField (play-time API: boards -> phi, d(s->g),
+d_conversion; transformer tokens -> (B,C,8,8); verified d(s->s)=0, monotone in ply gap); promoted
+field_iqe_t1_final.pt + trunk .pb.gz DVC-tracked.
+KILL (decision 6, one-best-line): ClockField RETIRED as the field SUBSTRATE -- the reachability
+field is now the T1-IQE field. NOTE: ClockField v3_final.pt is KEPT, re-scoped as the M0/analysis
+COMMITTOR (a labeling/analysis tool, permitted by decision 1 -- transition_map/blunder_model/
+sf_wdl_by_material all consume it as the committor); it is no longer a navigation substrate.
+Freed loser trunk artifacts (T70/maia onnx + T70 half feats; all regenerable). Disk 18G free.
+M1 gates: pair-order incumbent-beating on the fair all-phase protocol; DTZ-progress ranks well
+(ceiling <1 by DTZ!=DTM); opening sane; eff_rank healthy. M1 COMPLETE. Next: M2 on Maia-2.
