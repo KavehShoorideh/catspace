@@ -8299,3 +8299,18 @@ endgame (1.0 vs 0.94 at 5-7p). The outcome IS determined by the position; human 
 midgame open, and that openness (concentrated ~15-25 pieces) is exactly where the z/T planner pushes
 the opponent across the barrier. Empirical foundation of the whole exploitation program. File:
 sf_wdl_by_material.py (+ gen_engine_games, engine_vs_human_basins from the perfect-play control).
+
+## 2026-07-27 -- SF-vs-lichess gallery: the Win<->Loss barrier is INFINITE under perfect play, 0.28 for humans
+
+sf_vs_human_bands.py: 3-basin bands + basin transition matrix, LICHESS (field WDL = human-play
+committor) vs PERFECT (Stockfish d14 WDL), SAME 4000 positions. Transition matrices:
+  LICHESS: Win->Loss 0.27, Loss->Win 0.29 (leaky, low Win<->Loss barrier); bands fill full leak range.
+  PERFECT: Win->Loss 0.00, Loss->Win 0.00 (INFINITE barrier, absorbing basins); only tiny Win<->Draw/
+           Loss<->Draw 0.04-0.08 (the genuine objective win/draw boundary). Bands pinned at leak~0.
+=> Under perfect play the Win<->Loss basins DON'T leak (barrier infinite); human error collapses the
+barrier to ~0.28. The ENTIRE exploitable edge lives in that 0.28. Completes the SF-vs-lichess gallery:
+(1) committor-by-material [sf_wdl_by_material]: perfect bimodal at all material vs human jumble;
+(2) UMAP-by-outcome [engine_vs_human_basins]: perfect segregated (36% determined) vs human jumble (7%);
+(3) bands+matrix [sf_vs_human_bands]: Win<->Loss 0.00 perfect vs 0.28 human. One coherent empirical
+foundation: positions have determined values; human fallibility opens the Win<->Loss barrier; the
+opponent model's job is to predict WHERE/for WHOM that 0.28 leak is largest.
