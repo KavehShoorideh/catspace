@@ -115,19 +115,13 @@ Full-stack play vs the Maia ladder (then other bots): measure the **exploitation
 score(with opponent model) − score(opponent-agnostic) at equal node budget, SPRT/e-values,
 in-game z tightening on. Publishable evaluation + digest write-up.
 
-**Sequencing:** M1 → M2 → (M3 ∥ M5) → M4 → M6. M3b concept mining can run any time after M2.
-
-## Deferred / out of scope (no work without a recorded plan change)
-Dockerized service stack; RL-trained plan selector (revisit after M4); non-board endings
-(time/resign as outcome classes); viz niceties beyond the atlas.
-
-### PARKED — Armed tactics: a conditional-activation store (Kaveh 2026-07-27; unlocks after M3b + M5)
+### M7 — Armed tactics: the conditional-activation store (Kaveh 2026-07-27)
 When search finds a tactic that ALMOST works — a transition point about to cross but not ready —
 store it instead of discarding it, together with WHY it is not ready:
 - **Armed-tactic record:** (region/pattern, the tactical line, payoff estimate, and the BLOCKING
   CONDITION — the specific defensive resource that refutes it, e.g. "the Nf6 guards h7").
-- The blocking condition is precisely a **protective factor** (M3b vocabulary): armed tactic =
-  near-transition whose flux is gated by one identifiable protective factor.
+- The blocking condition is precisely a **protective factor** (M3b vocabulary): an armed tactic =
+  a near-transition whose flux is gated by one identifiable protective factor.
 - **Activation watch:** each ply, cheaply check whether the blocking condition was removed
   (defender left, guard broken, pin released). If yes → the tactic ACTIVATES → high-priority
   pounce subgoal for the planner / first-probe line for MCTS.
@@ -136,8 +130,18 @@ store it instead of discarding it, together with WHY it is not ready:
   depend on (feeds the denial/self-blunder term).
 - Also a search-efficiency win: discover once, arm, watch the trigger — instead of re-finding the
   tactic every ply.
-Prereqs: M3b (protective-factor vocabulary = the "why not ready" language) + M5 (the probing
-search that finds the tactics). Lineage: refines the old "tactics tracking → pounce" idea.
+- **Prereqs:** M3b (protective-factor vocabulary = the "why not ready" language) + M5 (the probing
+  search that finds the tactics). Lineage: refines the old "tactics tracking → pounce" idea.
+- **Gates:** activation detection correct (unit tests: blocker removed ⇒ fires, else not); in play
+  vs Maia, pounce-on-activation converts opportunities the re-search-every-ply baseline misses at
+  equal node budget (e-value significant), and/or equal strength at lower budget (efficiency);
+  defensive side measurable (fewer careless releases of our own blockers).
+
+**Sequencing:** M1 → M2 → (M3 ∥ M5) → M4 → M6 → M7. M3b concept mining can run any time after M2.
+
+## Deferred / out of scope (no work without a recorded plan change)
+Dockerized service stack; RL-trained plan selector (revisit after M4); non-board endings
+(time/resign as outcome classes); viz niceties beyond the atlas.
 
 ## Acronyms & symbols (canonical — GLOSSARY.md defers to this)
 
