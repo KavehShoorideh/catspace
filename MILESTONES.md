@@ -72,24 +72,27 @@ milestone are separate, recorded work items (M1.1, M2.1, …). DoD numbers are f
 If a DoD proves unreachable with the MVP design, that is a plan-level conversation with Kaveh —
 never a silent redefinition.
 
-**The cumulative play ladder (the spine — ALL bars under the standard TIME CONTROL):**
-| after | minimum play bar (standard timed match, below) |
+**The cumulative play ladder (the spine). Amendment (Kaveh 2026-07-27): TIME-CONTROL pressure
+falls at the END of the project (M7/M8) — intermediate bars run at fixed NODE budgets, untimed.
+Time-AWARENESS (clock as an input to T and the planner) stays throughout; only the LATENCY/speed
+pressure is deferred.**
+| after | minimum play bar |
 |---|---|
 | M1–M3 | no play bar — substrate/estimator/map quality only (M5 runs parallel to M3) |
-| M5 | beats the 0.125 shallow-search baseline vs Maia-1100 at equal budget; node-scaling monotone |
-| M4 | **parity or better vs Maia-1100** (SPRT accepts ≥ 0 Elo) + steering demonstrated |
-| M6 | **≥ 0.5 score vs Maia-1200** (CI floor ≥ 0.45) + exploitation dividend > 0 (significant) |
-| M7 | **BEATS Maia-1200 under time control: SPRT accepts H1 ≥ +25 Elo** (and no regression vs 1100) — the roadmap's minimum bar |
+| M5 | beats the 0.125 shallow-search baseline vs Maia-1100 at equal NODE budget; node-scaling monotone |
+| M4 | **parity or better vs Maia-1100** at a fixed recorded node budget, untimed (SPRT ≥ 0 Elo) + steering demonstrated |
+| M6 | **≥ 0.5 score vs Maia-1200** at fixed nodes, untimed (CI floor ≥ 0.45) + exploitation dividend > 0 |
+| M7 | **BEATS Maia-1200 UNDER TIME CONTROL: SPRT accepts H1 ≥ +25 Elo** (no regression vs 1100) — the end-of-project bar |
+| M8 | compression holds strength under TC (non-inferiority; speed = Elo work lives HERE) |
 
-**Standard match protocol (what "vs Maia-X" means): UNDER TIME CONTROL (Kaveh).** Maia-X = lc0
-`maia-X.pb.gz` at nodes=1 (canonical human-like config); **both sides on the clock at the standard
-time control — blitz 3+2 (180s + 2s/move)**; TIME MANAGEMENT IS THE ENGINE'S JOB (running out =
-loss, as in real chess; a faster stack buys more nodes per move — speed converts to strength);
-hardware pinned + recorded per match (this laptop, MPS). Alternating colors; diversified openings
-(random plies or small book); claim-draw rules on; verdicts by SPRT (elo0=0, elo1=+25) or
-anytime-valid e-process, n set by the test, pre-registered; every match MLflow-logged, PGNs kept.
-**Node budgets are for COMPONENT DIAGNOSTICS only** (equal-node ablations, strength-per-node
-curves) — never for DoD ladder matches, which are always timed.
+**Two standard match protocols.** Common to both: Maia-X = lc0 `maia-X.pb.gz` at nodes=1;
+alternating colors; diversified openings; claim-draw rules on; SPRT (elo0=0, elo1=+25) or
+anytime-valid e-process, n pre-registered; MLflow-logged, PGNs kept.
+- **NODE-BUDGET match (intermediate bars M4–M6):** our side at a FIXED, RECORDED node budget per
+  move, untimed — no latency pressure before M7. Generous budgets are fine; record them.
+- **TIMED match (final bars M7–M8):** blitz 3+2, both clocks live; time management is the engine's
+  job (flag = loss; a faster stack buys more nodes — speed converts to strength); hardware pinned
+  + recorded (this laptop, MPS).
 
 ## Milestones
 
@@ -148,9 +151,9 @@ Wire the M3 generator into the built portfolio planner (optionality/denial/oppor
 chain through TB-won regions to mate; re-plan opportunistically each ply.
 - **Gates:** vs fixed Maia — planner-on steers play into predicted-high-flux regions (mean T of
   reached positions ↑ vs planner-off, e-value significant) AND lifts score.
-- **DoD (MVP, first play bar):** integrated planner+probe, standard TIMED match (3+2) vs
-  Maia-1100: SPRT accepts ≥ 0 Elo (parity or better) AND steering demonstrated (mean predicted
-  flux of reached positions ↑ vs planner-off, e-value significant). Time management on.
+- **DoD (MVP, first play bar):** integrated planner+probe, standard NODE-BUDGET match vs
+  Maia-1100 (untimed, budget recorded): SPRT accepts ≥ 0 Elo (parity or better) AND steering
+  demonstrated (mean predicted flux of reached positions ↑ vs planner-off, e-value significant).
 
 ### M5 — MCTS as the probe (the prober)
 Reachability-guided search: node signal = progress on d-to-active-subgoal (+ flux shaping; NO
@@ -167,9 +170,10 @@ already measured better than minimax: 0.125 vs 0.094); clock-aware via T; TB han
 Full-stack play vs the Maia ladder (then other bots): measure the **exploitation dividend** =
 score(with opponent model) − score(opponent-agnostic) at equal node budget, SPRT/e-values,
 in-game z tightening on. Publishable evaluation + digest write-up.
-- **DoD (MVP):** dividend > 0 (both variants under the SAME time control), pre-registered and
-  significant, on ≥ 2 Maia levels; full-stack score ≥ 0.5 vs Maia-1200 in standard timed matches
-  (95% CI floor ≥ 0.45); in-game z tightening ON; eval write-up drafted from MLflow-logged matches.
+- **DoD (MVP):** dividend > 0 (both variants at the SAME fixed node budget, untimed),
+  pre-registered and significant, on ≥ 2 Maia levels; full-stack score ≥ 0.5 vs Maia-1200 in
+  standard node-budget matches (95% CI floor ≥ 0.45); in-game z tightening ON; eval write-up
+  drafted from MLflow-logged matches.
 
 ### M7 — Armed tactics: the conditional-activation store (Kaveh 2026-07-27)
 When search finds a tactic that ALMOST works — a transition point about to cross but not ready —

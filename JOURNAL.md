@@ -8469,3 +8469,11 @@ Forceability (resisted-vs-typical reach) = future T-weighted path property over 
 metric. Also: tuned maia head REGRESSED (pair-order 0.837 / d_mate 0.557 vs base 0.861/0.595 --
 overweighted mate/hinge on 9.5k tb rows overfit+distorted); base recipe kept; d_mate hope rides on
 T70 features (redo chained).
+
+## 2026-07-27 -- Ladder amendment (Kaveh): TC pressure falls at the END; time stays a modeling input
+
+Beat-maia-under-time-control is the END-of-project bar (M7; M8 holds it under compression).
+Intermediate bars (M4/M5/M6) revert to FIXED NODE BUDGETS, untimed -- no latency pressure before M7.
+Time-AWARENESS is unchanged: the clock remains an INPUT to the transition estimator (M2a) and the
+planner's decisions; what is deferred is pressing for LOW wall-clock, not modeling time. MILESTONES
+protocol split into NODE-BUDGET match (M4-M6) vs TIMED match (M7-M8).
