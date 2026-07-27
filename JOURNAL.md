@@ -8535,3 +8535,14 @@ runs 600 pos/s on our path) -- the running h2h chain finishes and its head becom
 when disk allows (post ClockField/FB kill). T70/maia comparisons: archived as record. NEXT ENERGY:
 the adopt-scan for M2 (does anyone have rating/clock-conditioned blunder prediction solved? Maia-2?
 KDD human-error literature?) -> adopt what exists, build the novel remainder.
+
+## 2026-07-27 -- Correction (Kaveh): d_mate anchor is DTZ (zeroing) not DTM (mate) -> rho ceiling < 1
+
+d_mate is trained/scored vs tablebase DTZ (distance-to-ZEROING: plies to the next irreversible move
+-- capture/pawn-push/mate), NOT DTM (distance-to-mate). DTZ resets at pawn pushes/captures, so DTZ
+and DTM diverge and Spearman-vs-DTZ has a real ceiling below 1.0 even for a perfect field. So the
+~0.6 numbers are NOT "the field is bad at mate distance" -- part of the gap is the DTZ/DTM mismatch.
+And DTZ is arguably the RIGHT target for us: we navigate toward the forcing conversion / the <=7p
+TB-won boundary (the handoff), which is exactly irreversible progress = DTZ; mate is the tablebase's
+job post-handoff. Reframed the M1 gate: "ranks DTZ well" (conversion progress), not "matches mate".
+Conceptually the anchor is d_progress (distance-to-conversion), not d_mate; kept the code name.

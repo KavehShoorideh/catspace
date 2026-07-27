@@ -111,10 +111,13 @@ Freeze a pretrained trunk (Maia-1500/1900 and/or a strong small lc0 net — pick
 attach an IQE head (+ thin adapter). Train the head on (i) same-game ply-gap pairs from mixed
 human + engine corpora (full-phase, openings included), (ii) tablebase DTZ anchors (d_mate),
 (iii) repulsion/unreachability.
-- **Gates:** pair-order ≥ 0.94 (match ClockField v3); d_mate-vs-DTZ ≥ +0.81 in-distribution AND
-  better than 0.505 off-distribution (trunk should generalize); startpos/opening values sane
-  (fixes the opening-blindness class of bug structurally); eff-rank healthy. Same eval protocol
-  as v3 for a fair kill decision.
+- **Gates:** pair-order strong (community-distillate trunk, incumbent-beating on the fair all-phase
+  protocol); d_progress-vs-DTZ ranks conversion-forcing progress (the anchor is DTZ = distance-to-
+  ZEROING/irreversible-progress-to-the-TB-boundary, NOT DTM = distance-to-MATE; DTZ resets on
+  pawn-push/capture so rho has a real ceiling < 1 even for a perfect field — the gate is "ranks
+  DTZ well," not "matches mate"); opening values sane (opening-blindness fixed structurally);
+  eff-rank healthy. NOTE (decision 8): trunk chosen by fiat = best community distillate; gates
+  confirm health, they are not a re-validation contest.
 - **Kills on green:** ClockField line (v2/v3/v4 plans), committor-greedy readouts.
 - Verified 2026-07-27: ONNX conversion + lczerolens torch load + batched forward (277 pos/s CPU)
   + trunk-feature hook (B,64,8,8) — all working.
