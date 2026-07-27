@@ -53,15 +53,19 @@ SCALE = 40.0                                                 # committor length-
 
 @torch.no_grad()
 def field_v(boards, net, dev):
-    """Leaf COMMITTOR / expected-score estimate (Kaveh: MCTS optimizes EXPECTED SCORE).
-    c = 0.5 + 0.5*exp(-d/scale): ~1.0 near White-mate (won basin, small d), -> 0.5 at the
-    win/draw INTERFACE (d inflates toward the draw value ~408). So maximizing expected score
-    simultaneously approaches mate AND avoids the draw basin."""
+    """Leaf EXPECTED-SCORE estimate (Kaveh: MCTS maximizes expected score, incl. the LOSS term).
+    General form spanning [0,1]:
+        score = 0.5 + 0.5*exp(-d_win/scale) - 0.5*exp(-d_loss/scale)
+    -> ~1.0 near White-mate (win), 0.5 at the win/draw INTERFACE, -> 0.0 near White-getting-mated.
+    The field currently has only d_win (distance-to-White-mate); loss-distance d_loss = inf for a
+    won toy, so the loss term is 0 and this reduces to [0.5,1]. When the two-region WDL field
+    (defect-2) adds d_loss, it plugs in here unchanged and the loss term activates."""
     pk = np.stack([encode_packed(b) for b in boards]); mt = np.stack([encode_meta(b) for b in boards])
     ids, stm = tokens(pk, mt)
-    d = net.d_to_mate(torch.from_numpy(ids.astype(np.int64)).to(dev),
-                      torch.from_numpy(stm.astype(np.int64)).to(dev)).cpu().numpy()
-    return 0.5 + 0.5 * np.exp(-d / SCALE)
+    d_win = net.d_to_mate(torch.from_numpy(ids.astype(np.int64)).to(dev),
+                          torch.from_numpy(stm.astype(np.int64)).to(dev)).cpu().numpy()
+    d_loss = np.full_like(d_win, np.inf)                     # TODO: two-region field -> real d_loss
+    return 0.5 + 0.5 * np.exp(-d_win / SCALE) - 0.5 * np.exp(-d_loss / SCALE)
 
 
 def terminal_value(board):
