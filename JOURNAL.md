@@ -8591,3 +8591,19 @@ LOOKAHEAD (sees the moves' consequences) that T deliberately trades for speed + 
 (a) matched clock+rating effects significant [DONE], (b) T's context-conditioned crossing-RATE ranks
 regions correctly (rate-level calibration/AUC), (c) T approximates the stopgap ranking within
 tolerance while conditionable on clock/z and orders-of-magnitude faster.
+
+## 2026-07-27 -- M2a DoD reframed (approved); M2b BLOCKED on data (random sampling can't feed z)
+
+Kaveh approved the M2a DoD reframe (matched clock+rating effects [MET] + rate-level ranking + fast
+conditionable approximation of the stopgap; single-move rho / beat-stopgap bars retired as mis-
+specified). M2a premise: DONE/validated.
+M2b feasibility check (decisive): the 100k-game standard dataset has 117,336 unique players, median
+1 game each, only 198 players >= 10 games, ONE player >= 20. Random game sampling CANNOT support
+per-player z -- lichess is long-tail. Two paths: (1) TARGETED extraction -- scan the full 19.35M-game
+records (have usernames), find high-volume players (>=20-50 games/month exist), extract ALL their
+games -> a player-grouped z dataset; multi-hour build. (2) DEFER z -- the M2a rate-level context
+(clock+rating) is validated and ready to feed M3/M4; prove the exploitation LOOP with the signal we
+have, add z later once (a) high-volume data built and (b) the loop works. Given the M2a finding
+(even strong signals barely move single-move prediction; value is rate-level) + z being subtler,
+data-hungrier, more confound-prone, DEFER (path 2) is the higher-ROI move -- bringing the fork to
+Kaveh.

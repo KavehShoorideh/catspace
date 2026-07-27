@@ -139,11 +139,18 @@ per-side crossing risk (Φ, σ).
 - **Gates:** beats the stopgap B(s,r) on held-out real-blunder prediction (ρ, quartile lift,
   calibration); clock effect real on matched positions (risk ↑ as clock ↓); rating monotonic;
   z adds statistically significant lift over Elo-only.
-- **DoD (MVP):** M2a — T(rating, clock) on held-out real blunders: ρ ≥ 0.60 (stopgap smoke 0.54),
-  top-vs-bottom predicted-risk quartile real-blunder lift ≥ 5×, crossing-prob ECE ≤ 0.05; clock
-  effect + rating monotonicity significant. M2b — offline z lifts held-out per-player prediction
-  over Elo-only (pre-registered, significant). M2c — z from ≤20 observed moves beats prior-only
-  (significant). Batched-Maia policy infra ≥ 100 pos/s. All via eval-script VERDICTs.
+- **DoD (MVP) — REFRAMED 2026-07-27 (Kaveh; original single-move rho>=0.60 / "beats stopgap" bars
+  were mis-specified: a single realized crossing is a noisy zero-inflated Bernoulli so single-move
+  rho ceilings ~0.45 even when the RATE effect is large; and the Maia2xSF stopgap has per-move SF
+  LOOKAHEAD that T deliberately trades for speed + clock/z-conditioning). Reframed:**
+  M2a — (a) matched clock + rating effects significant [MET 2026-07-27: sharp-blitz crossing rate
+  58%@low-clock -> 43%@high; sharp Elo 58%@low -> 47%@high; correct signs, controlled for
+  sharpness x time-control]; (b) T's context-conditioned crossing-RATE ranks positions/regions
+  correctly (rate-level calibration / AUC, not single-move rho); (c) T approximates the stopgap
+  ranking within tolerance while clock/z-conditionable and orders-of-magnitude faster.
+  M2b — offline z lifts held-out per-player prediction over Elo-only base (Maia-2), CONFOUND-
+  CONTROLLED (opening/TC/rating) and significant. M2c — z from few observed moves beats prior-only.
+  Batched-Maia infra: Maia-2 adopted (~10ms/pos). All via eval-script VERDICTs, CI'd (stats.py).
 
 ### M3 — Transition atlas + subgoal generator (the map)
 For an opponent context, map reachable high-flux transition regions:
