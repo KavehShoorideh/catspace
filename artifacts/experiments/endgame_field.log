@@ -1,0 +1,6 @@
+[lc0-correct] rows 63905 won 28641 inf 35264 | multi-goal pairs 25252 | SINGLE-SPACE phi, multi-goal+repel+mate+wdl+cat
+  2.63M params
+/Users/kav/code/remote/github/catspace/experiments/train_lc0_field.py:90: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} multi {float(L_multi):.3f} repel {float(L_repel):.3f} mate {float(L_mate):.3f} "
+  step 0 multi 1.257 repel 2.758 mate 1.341 hinge 5.459 cat 1.772 [1s]

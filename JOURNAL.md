@@ -7910,3 +7910,25 @@ DEFERRED (opponent/lichess phase, in METASTABILITY_PLAN.md + memory): transition
 NEXT: definitive all-outcome training running (traj_lc0_v3) -> verdict (pair-order/rank/mate/ending/
   committor-MAE/WDL) -> MCTS vs minimax on the lc0 field (using the trained committor). Field DONE;
   remaining = planner eval + opponent layer. No more field circles.
+
+## 2026-07-26 -- PIVOT: drop learned endgame model; tablebase IS the endgame. Full-board + opponent.
+
+Research (SF/lc0/AZ endgame handling) + Kaveh: a LEARNED endgame converter is redundant and WORSE
+than the tablebase for <=7 pieces (SF/lc0 both probe Syzygy; NNs measurably err at conversion --
+Alberta ACG'21: 3000-Elo lc0+MCTS still errs in 4-piece pawn endgames). So DROP the learned endgame
+foundation. The endgame = TABLEBASE (we have catspace/tb.py).
+NEW ARCHITECTURE (the actual thesis):
+  1. FULL-BOARD model = the OPPONENT-EXPLOITATION model (the whole point). Committor/quasimetric over
+     full positions, opponent-conditioned.
+  2. GOAL REGION = the set of <=7-piece TABLEBASE-WON configurations. The field's embedding/distance
+     TERMINATES at a tablebase-won config; once there, the OUTCOME IS ASSUMED via tablebase lookup
+     (WDL value, DTZ move). So the committor is GROUNDED at the tablebase boundary: <=7 pieces ->
+     c(s)=tablebase WDL (exact); above -> the field predicts toward that boundary. (This is the
+     region-goal / distance-to-region idea, task #24, with the tablebase-won set as the goal region.)
+  3. HANDOVER: at <=7 pieces, consult the tablebase (WDL at nodes, DTZ at root) -- exactly SF/lc0.
+FOCUS NOW: (a) the handover primitive (tablebase lookup at <=7, goal-region membership), (b) the
+OPPONENT + PERSONALIZATION layer (player embedding z, transition predictor T(s,z), KL/asymmetry
+exploitation, cohort-regret field -- all designed in METASTABILITY_PLAN.md + memory).
+KEEP: all the machinery/code (single-space IQE, multi-goal, repulsion, distributional ending head,
+committor, tested losses, lc0 encoder, trajectory data pipeline) -- transfers to the full-board model.
+The endgame work VALIDATED the machinery on ground truth; now build the real thing.
