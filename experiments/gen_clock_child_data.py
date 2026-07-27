@@ -47,17 +47,25 @@ def worker(task):
         for m in b.legal_moves:
             b.push(m)
             ch = b.halfmove_clock                            # 0 if zeroing (pawn/capture), else h+1
+            # ending type (categorical head): WIN_MATE0 DRAW_FIFTY1 STALE2 INSUF3 REP4 LOSS_MATE5
             if b.is_checkmate():
-                key = 0
+                key, end = 0, (0 if b.turn == chess.BLACK else 5)
+            elif b.is_stalemate():
+                key, end = -1, 2
+            elif b.is_insufficient_material():
+                key, end = -1, 3
             elif b.is_game_over(claim_draw=True) or white_pov_value(b, tb) != 1.0:
-                key = -1
+                key, end = -1, 4                             # repetition/other -> approx REP
             else:
                 try:
                     d = abs(syz.probe_dtz(b))
-                    key = d if d <= (100 - ch) else -1       # CLOCK-AWARE: drawn if can't zero in time
+                    if d <= (100 - ch):
+                        key, end = d, 0                      # still winnable -> WIN_MATE
+                    else:
+                        key, end = -1, 1                     # can't zero in time -> DRAW_FIFTY
                 except Exception:
-                    key = -1
-            out.append((encode_packed(b), encode_meta(b), int(key), gid))
+                    key, end = -1, 1
+            out.append((encode_packed(b), encode_meta(b), int(key), gid, int(end)))
             b.pop()
         got += 1
     tb.close()
@@ -81,8 +89,9 @@ def main():
     rows = [x for p in parts for x in p]
     packed = np.stack([r[0] for r in rows]); meta = np.stack([r[1] for r in rows])
     key = np.array([r[2] for r in rows], np.int32); grp = np.array([r[3] for r in rows], np.int64)
+    end = np.array([r[4] for r in rows], np.int8)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(args.out, packed=packed, meta=meta, dtz=key, group=grp)
+    np.savez_compressed(args.out, packed=packed, meta=meta, dtz=key, group=grp, ending=end)
     won = key >= 1; inf = key == -1
     hm = np.minimum(meta[:, 6], 100)
     print(f"\n=== {args.out}: {len(rows)} rows [{time.time()-t0:.0f}s] ===")
