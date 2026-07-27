@@ -8047,3 +8047,22 @@ collapse), committor-MAE 0.225 (< 0.333 predict-0.5 baseline -> learning the val
 Whole pipeline validated end-to-end. NEXT (autonomous): full-month records -> DVC -> balance ->
 full Stage C generation (parallel) -> DVC -> field train (scaffold, ladders, gates) -> TEST
 (committor calibration vs held-out + tablebase, pair-order, eff_rank). Report by morning.
+
+## 2026-07-27 -- FULL-BOARD FIELD v1 diagnosed (eff_rank collapse) + recipe fix (v2). Data at scale.
+
+Full-month records DONE: 19,354,162 games, 97 shards (~4.7h), DVC-tracked. Stage C (100k games,
+parallel, 130s) -> 1,081,834 positions (48.5% win / 6.4% draw / 45.1% loss natural; 10,694
+tablebase-grounded), DVC-tracked. Field v1 (16k-step recipe, defaults) CAUGHT MID-RUN by the
+eff_rank gate (check-long-runs discipline):
+DIAGNOSIS (step-4000 probe): eff_rank COLLAPSED 6.5 -> 2.9 (step 400->1000), recovering slowly to
+4.1; committor-MAE degraded in lockstep 0.225 -> 0.44. The 400-step smoke MISSED it (collapse emerges
+after step 400 -- the "short smoke caught nothing" scar). Probe: committor ORDERS correctly (win
+0.549 > draw 0.476 > loss 0.416) but COMPRESSED; linear probe on frozen phi separates win/loss at
+only 65.7%. KEY METHOD FINDING: committor-MAE vs HARD 0/1 Monte-Carlo labels is MISLEADING -- a
+calibrated committor outputs ~0.5 for genuinely 50/50 human-game positions, so MAE floors ~0.45 by
+construction. Right metrics = CALIBRATION (ECE) + DISCRIMINATION (win/loss sep) + eff_rank; MAE
+retired as a primary gate.
+FIX (v2, bundled + justified, no-one-lever): w_repel 0.3->1.0 + repel_margin 3->4 (anti-collapse, the
+standing cure), w_cat 1->2 (committor is the centerpiece value), w_mate/w_hinge 1->0.5 (the 9.5k-pos
+tablebase subset must not dominate phi). Relaunched 16k steps, watching eff_rank early. NEXT: if
+eff_rank holds >5 and win/loss-sep climbs -> let finish -> test (calibration). Else diagnose further.
