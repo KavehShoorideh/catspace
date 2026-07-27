@@ -48,24 +48,31 @@ class Node:
         self.terminal_v = None
 
 
+SCALE = 40.0                                                 # committor length-scale in plies
+
+
 @torch.no_grad()
 def field_v(boards, net, dev):
+    """Leaf COMMITTOR / expected-score estimate (Kaveh: MCTS optimizes EXPECTED SCORE).
+    c = 0.5 + 0.5*exp(-d/scale): ~1.0 near White-mate (won basin, small d), -> 0.5 at the
+    win/draw INTERFACE (d inflates toward the draw value ~408). So maximizing expected score
+    simultaneously approaches mate AND avoids the draw basin."""
     pk = np.stack([encode_packed(b) for b in boards]); mt = np.stack([encode_meta(b) for b in boards])
     ids, stm = tokens(pk, mt)
     d = net.d_to_mate(torch.from_numpy(ids.astype(np.int64)).to(dev),
                       torch.from_numpy(stm.astype(np.int64)).to(dev)).cpu().numpy()
-    return -d                                                # higher = closer to White-mate
+    return 0.5 + 0.5 * np.exp(-d / SCALE)
 
 
 def terminal_value(board):
     if board.is_checkmate():
-        return BIG if board.turn == chess.BLACK else -BIG    # Black mated => White wins
+        return 1.0 if board.turn == chess.BLACK else 0.0     # Black mated => White wins (score 1)
     if board.is_game_over(claim_draw=True):
-        return -BIG                                          # draw = threw the win
+        return 0.5                                           # draw score
     return None
 
 
-def mcts_move(root_board, sims, net, dev, c=200.0):
+def mcts_move(root_board, sims, net, dev, c=1.4):          # values now in [0,1] -> standard UCT c
     root = Node(root_board.copy(stack=False))
     for _ in range(sims):
         node = root; path = [node]
