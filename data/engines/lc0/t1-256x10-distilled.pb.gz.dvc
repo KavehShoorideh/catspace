@@ -1,0 +1,5 @@
+outs:
+- md5: 4345ce1b49a53493d3a0dc3344303b91
+  size: 37118673
+  hash: md5
+  path: t1-256x10-distilled.pb.gz
