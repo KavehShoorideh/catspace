@@ -58,6 +58,29 @@ research product, headed for publication.
    every comparison statistically rigorous (anytime-valid e-values / SPRT / bootstrap CIs, n
    pre-registered). No journal numbers without a printed script VERDICT.
 
+## Milestone philosophy & Definitions of Done (Kaveh 2026-07-27)
+
+**Every milestone is an MVP milestone.** "Done" = the DoD floor below is met and its VERDICT is
+printed by a script and journaled — NOT "fully formed / perfect." Iteration passes on a done
+milestone are separate, recorded work items (M1.1, M2.1, …). DoD numbers are floors, not targets.
+If a DoD proves unreachable with the MVP design, that is a plan-level conversation with Kaveh —
+never a silent redefinition.
+
+**The cumulative play ladder (the spine):**
+| after | minimum play bar (standard match, below) |
+|---|---|
+| M1–M3 | no play bar — substrate/estimator/map quality only (M5 runs parallel to M3) |
+| M5 | beats the 0.125 shallow-search baseline vs Maia-1100 at equal budget; node-scaling monotone |
+| M4 | **parity or better vs Maia-1100** (SPRT accepts ≥ 0 Elo) + steering demonstrated |
+| M6 | **≥ 0.5 score vs Maia-1200** (CI floor ≥ 0.45) + exploitation dividend > 0 (significant) |
+| M7 | **BEATS Maia-1200: SPRT accepts H1 ≥ +25 Elo** (and no regression vs 1100) — the roadmap's minimum bar |
+
+**Standard match protocol (what "vs Maia-X" means):** Maia-X = lc0 `maia-X.pb.gz` at nodes=1
+(canonical human-like config); our side at a FIXED, recorded node budget; alternating colors;
+diversified openings (random plies or small book); claim-draw rules on; verdicts by SPRT
+(elo0=0, elo1=+25) or anytime-valid e-process, n set by the test, pre-registered; every match
+MLflow-logged, PGNs kept.
+
 ## Milestones
 
 ### M1 — Substrate: Leela-trunk IQE reachability field
@@ -70,6 +93,11 @@ human + engine corpora (full-phase, openings included), (ii) tablebase DTZ ancho
   (fixes the opening-blindness class of bug structurally); eff-rank healthy. Same eval protocol
   as v3 for a fair kill decision.
 - **Kills on green:** ClockField line (v2/v3/v4 plans), committor-greedy readouts.
+- Verified 2026-07-27: ONNX conversion + lczerolens torch load + batched forward (277 pos/s CPU)
+  + trunk-feature hook (B,64,8,8) — all working.
+- **DoD (MVP):** all gates green on the v3 eval protocol, printed by ONE eval-script VERDICT;
+  trunk choice recorded with its comparison table; field ckpt DVC'd + MLflow'd; ClockField kill
+  executed and journaled. Informational, non-blocking: 2-ply d-guided play ≥ the 0.125 baseline.
 
 ### M2 — Transition estimator T(s, context) — the centerpiece
 A context head over frozen φ(s): input [clock_mover, clock_opp, Elo_mover, Elo_opp, z, ply, …] →
@@ -85,6 +113,11 @@ per-side crossing risk (Φ, σ).
 - **Gates:** beats the stopgap B(s,r) on held-out real-blunder prediction (ρ, quartile lift,
   calibration); clock effect real on matched positions (risk ↑ as clock ↓); rating monotonic;
   z adds statistically significant lift over Elo-only.
+- **DoD (MVP):** M2a — T(rating, clock) on held-out real blunders: ρ ≥ 0.60 (stopgap smoke 0.54),
+  top-vs-bottom predicted-risk quartile real-blunder lift ≥ 5×, crossing-prob ECE ≤ 0.05; clock
+  effect + rating monotonicity significant. M2b — offline z lifts held-out per-player prediction
+  over Elo-only (pre-registered, significant). M2c — z from ≤20 observed moves beats prior-only
+  (significant). Batched-Maia policy infra ≥ 100 pos/s. All via eval-script VERDICTs.
 
 ### M3 — Transition atlas + subgoal generator (the map)
 For an opponent context, map reachable high-flux transition regions:
@@ -95,12 +128,19 @@ per-context atlas visualizations + a queryable API `(s, context) → ranked subg
   tension, …) vs **protective factors**; hand-coded extractors first, SAE/CAV stack later.
 - **Gates:** out-of-sample validation — games passing through predicted-high-flux regions show
   elevated actual crossing rates; concept effects significant under matching.
+- **DoD (MVP):** subgoal API live — (s, context) → ranked regions, fast enough for per-move use at
+  play budgets (latency measured + recorded); out-of-sample: top-decile predicted-flux regions show
+  ≥ 2× base crossing rate, for ≥ 2 rating bands, and the bands' maps measurably differ. M3b —
+  ≥ 5 attacking + ≥ 5 protective factors significant under matching. Atlas artifact committed.
 
 ### M4 — Planner: subgoal-chain navigation (the strategist)
 Wire the M3 generator into the built portfolio planner (optionality/denial/opportunism);
 chain through TB-won regions to mate; re-plan opportunistically each ply.
 - **Gates:** vs fixed Maia — planner-on steers play into predicted-high-flux regions (mean T of
   reached positions ↑ vs planner-off, e-value significant) AND lifts score.
+- **DoD (MVP, first play bar):** integrated planner+probe, standard match vs Maia-1100:
+  SPRT accepts ≥ 0 Elo (parity or better) AND steering demonstrated (mean predicted flux of
+  reached positions ↑ vs planner-off, e-value significant).
 
 ### M5 — MCTS as the probe (the prober)
 Reachability-guided search: node signal = progress on d-to-active-subgoal (+ flux shaping; NO
@@ -109,11 +149,17 @@ already measured better than minimax: 0.125 vs 0.094); clock-aware via T; TB han
 (built). Planner triggers probes when near a subgoal or uncertain.
 - **Gates:** strength-per-node curve vs the Maia ladder; ≥ 0.125 shallow baseline at equal
   budget, scaling with nodes; beats a WDL-guided ablation at equal nodes.
+- **DoD (MVP):** vs Maia-1100 at equal budget, beats the 0.125 shallow baseline (significant);
+  node-scaling monotone across ≥ 3 budgets (e.g. 200/800/1600); beats the WDL-guided ablation at
+  equal nodes (significant); TB handoff + expectimax expansion on. Strength-per-node VERDICT table.
 
 ### M6 — Close the loop: the exploiter
 Full-stack play vs the Maia ladder (then other bots): measure the **exploitation dividend** =
 score(with opponent model) − score(opponent-agnostic) at equal node budget, SPRT/e-values,
 in-game z tightening on. Publishable evaluation + digest write-up.
+- **DoD (MVP):** dividend > 0, pre-registered and significant, on ≥ 2 Maia levels; full-stack
+  score ≥ 0.5 vs Maia-1200 (95% CI floor ≥ 0.45); in-game z tightening ON in those matches;
+  eval write-up drafted from MLflow-logged matches.
 
 ### M7 — Armed tactics: the conditional-activation store (Kaveh 2026-07-27)
 When search finds a tactic that ALMOST works — a transition point about to cross but not ready —
@@ -136,6 +182,9 @@ store it instead of discarding it, together with WHY it is not ready:
   vs Maia, pounce-on-activation converts opportunities the re-search-every-ply baseline misses at
   equal node budget (e-value significant), and/or equal strength at lower budget (efficiency);
   defensive side measurable (fewer careless releases of our own blockers).
+- **DoD (MVP — the roadmap's minimum bar):** armed-tactics gates green AND the full stack
+  **BEATS Maia-1200**: SPRT accepts H1 ≥ +25 Elo at the standard protocol, with no regression vs
+  Maia-1100 (parity retained). When this VERDICT prints, the roadmap's minimum is met.
 
 **Sequencing:** M1 → M2 → (M3 ∥ M5) → M4 → M6 → M7. M3b concept mining can run any time after M2.
 

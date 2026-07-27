@@ -8381,3 +8381,19 @@ use), now with GATES (activation-detection unit tests; vs Maia, pounce converts 
 re-search-every-ply baseline misses at equal nodes, e-value significant, and/or equal strength at
 lower budget; defensive side measurable). Sequencing: M1 -> M2 -> (M3 || M5) -> M4 -> M6 -> M7.
 Task #41 renamed M7 (still blocked by #34 M3b + #39 M5). Memory updated.
+
+## 2026-07-27 -- Definitions of Done added: every milestone is an MVP; roadmap bar = beat Maia-1200
+
+Kaveh settled the MVP-vs-perfect question: every milestone is an MVP with a hard DoD floor;
+iteration passes are separate recorded items (M1.1, ...); unreachable DoD = plan-level conversation,
+never silent redefinition. MILESTONES.md now has (1) a "Milestone philosophy & Definitions of Done"
+section, (2) the CUMULATIVE PLAY LADDER: M5 beats the 0.125 shallow baseline vs maia-1100 ->
+M4 parity-or-better vs maia-1100 (SPRT >=0 Elo) + steering demonstrated -> M6 score >=0.5 vs
+maia-1200 (CI floor 0.45) + dividend >0 -> M7 BEATS maia-1200 (SPRT accepts >= +25 Elo, no
+regression vs 1100) = THE ROADMAP'S MINIMUM BAR. (3) the STANDARD MATCH PROTOCOL (maia at nodes=1,
+our fixed recorded budget, alternating colors, diversified openings, SPRT elo0=0/elo1=25 or
+anytime-valid, MLflow-logged, PGNs kept). (4) per-milestone DoD lines: M1 gates via ONE eval-script
+VERDICT + kill executed; M2 rho>=0.60 + quartile lift >=5x + ECE<=0.05 + clock/rating effects + z
+lifts (offline and <=20-move in-game); M3 API live + top-decile flux regions >=2x crossing rate on
+>=2 rating bands + M3b >=5 attacking + >=5 protective factors; M5 >0.125 + monotone node-scaling +
+beats WDL ablation; M6/M7 per the ladder.
