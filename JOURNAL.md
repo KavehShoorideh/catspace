@@ -8237,3 +8237,23 @@ ways -- a shallow unstable saddle (draws are 6% at 1400-1800). Each band spans q
 transition(leak~0.66) smoothly. THESIS implication: the exploitable move is steering the opponent
 across the LOW Win<->Loss barrier (~0.25) in our favor; the draw saddle is the trap when pressing.
 This is aggregate T(s,z); the per-player version (Layer 1) localizes WHOSE barrier is lowest WHERE.
+
+## 2026-07-27 -- MSM basins = PHASE, not outcome; outcome basins CRYSTALLIZE as material falls
+
+Prototyped a Markov State Model on the field (msm_basins.py; deeptime won't build on py3.14 so MSM+
+PCCA-style implemented on numpy/scipy/sklearn): discretize phi (150 microstates) -> reversible
+transition operator from human trajectories -> spectrum -> metastable macrostates.
+SURPRISE (honest): the dynamics-defined basins are GAME PHASE, not W/D/L. Spectral gap -> 3 basins,
+but they are basin0=17pc/ply58, basin1=24pc/ply33, basin2=28pc/ply22, ALL committor ~0.4. T strongly
+diagonal (0.86-0.89), slow phase-forward flow. WHY: phase (material/ply) is the SLOW, irreversible
+coordinate; the outcome fluctuates FAST on top (win<->loss barriers are low, earlier finding). phi is
+dominated by material -> MSM finds phase.
+Kaveh's follow-up (committor_by_material.py) NAILS it: stack the committor distribution BY MATERIAL
+class. As pieces fall 27-32 -> 3-4: mean leak (transition prob) 0.49 -> 0.06 (barriers RISE), outcome
+bimodality (split) 0.39 -> 0.97 (unimodal jumble -> clean bimodal win/loss branches). They CROSS at
+~19-22 pieces. So the OUTCOME basins are real but only CRYSTALLIZE at low material; the midgame is a
+fast-mixing jumble. THREE REGIMES: opening=jumble (no barrier to steer), endgame<=10p=committed
+(barrier too high, tablebase), CRYSTALLIZATION ZONE ~15-22 pieces = barriers exist AND are crossable
+= the EXPLOITATION SWEET SPOT (steer the opponent across win<->loss here). So the right object for
+exploitation is the outcome transition structure WITHIN the ~15-22p band, not a global 3-basin MSM.
+Files: msm_basins.py, committor_by_material.py, transition_map.py, transition_bands.py, transition_time.py.
