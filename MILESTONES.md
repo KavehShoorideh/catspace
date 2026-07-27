@@ -190,7 +190,26 @@ store it instead of discarding it, together with WHY it is not ready:
   **BEATS Maia-1200 UNDER TIME CONTROL** (standard 3+2 protocol): SPRT accepts H1 ≥ +25 Elo, no
   regression vs Maia-1100 (parity retained). When this VERDICT prints, the roadmap's minimum is met.
 
-**Sequencing:** M1 → M2 → (M3 ∥ M5) → M4 → M6 → M7. M3b concept mining can run any time after M2.
+### M8 — Distill, optimize, discretize: the small fast engine (Kaveh 2026-07-27)
+Once the research prototype exists (through M7), compress it until it is SMALLER and FASTER with
+minimal strength loss — under time control, speed IS Elo, so compression climbs the ladder without
+new learning:
+- **Distill:** teacher → student. The full stack (d-field, transition estimator, planner+probe
+  behavior) distilled into smaller nets — including AZ-style amortization of planner+search
+  decisions into a single fast policy, and trunk+head into a smaller trunk.
+- **Optimize:** inference engineering — quantization-aware ops, fusion, batching, caching, native
+  Metal / CoreML or ONNX-runtime export, pruning.
+- **Discretize:** (a) weight quantization (fp16 → int8 where it holds); (b) discretizing the FIELD
+  itself — the atlas/regions as discrete lookup structures (region graphs, distance tables,
+  transition maps) that replace net calls at play time.
+- **Gates:** every compression step measured under the standard TC protocol; non-inferiority SPRT
+  vs the uncompressed stack.
+- **DoD (MVP):** ≥ 5× lower per-move compute (measured pos/s or ms/move on pinned hardware) with
+  strength within −25 Elo of the uncompressed stack (SPRT non-inferiority), AND still beats
+  Maia-1200 under the standard time control. Stretch (informational): beat Maia-1200 at HALF the
+  clock (1.5+1).
+
+**Sequencing:** M1 → M2 → (M3 ∥ M5) → M4 → M6 → M7 → M8. M3b concept mining can run any time after M2.
 
 ## Deferred / out of scope (no work without a recorded plan change)
 Dockerized service stack; RL-trained plan selector (revisit after M4); non-board endings

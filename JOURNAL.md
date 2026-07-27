@@ -8443,3 +8443,14 @@ PENDING: d_mate-tuned run (w_mate 2, 10k steps). THEN the M1 decision to Kaveh (
 gate rule): propose restated fair-protocol gate = beat incumbent on pair-order/opening-order/
 eff_rank/sanity + d_mate within epsilon in-dist above the TB boundary; off-dist demoted to
 informational. Trunk choice: maia-1500.
+
+## 2026-07-27 -- M8 added: distill / optimize / discretize (Kaveh)
+
+New final milestone (Kaveh said "milestone 9"; numbered M8 as next-in-sequence -- renumber if he has
+a separate M8 in mind): once the research prototype exists (M7), COMPRESS it -- distill (teacher->
+student, incl. AZ-style amortization of planner+search into a fast policy; trunk+head into a smaller
+trunk), optimize (quantization-aware ops, fusion, native Metal/CoreML, pruning, caching), discretize
+(int8 weights AND the field itself -> discrete region graphs / distance tables / transition maps
+replacing net calls at play time). Under the TC protocol speed IS Elo, so compression climbs the
+ladder with no new learning. DoD: >=5x lower per-move compute within -25 Elo (SPRT non-inferiority)
+AND still beats maia-1200 under standard TC; stretch = beat maia-1200 at HALF clock (1.5+1).
