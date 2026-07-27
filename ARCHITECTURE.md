@@ -590,7 +590,12 @@ grounded at <=7 via committor_anchor.
 
 ## 7. Opponent-exploitation layer (designed; next build)
 - PLAYER EMBEDDING z (learned, online-inferable, Maia4All-style), conditions the field/heads (omega
-  slot). Planned size ~16-32; a manifold of player types.
+  slot). SIZE z=8 (start), factored ~2 skill (rating-anchored) + ~6 style. Rationale: size to what is
+  INFERABLE online, not expressible -- ~10 informative decisions/dim, 5-10 games give ~80-300 such
+  decisions, so 8 is comfortably recoverable (16 marginal); an over-large z just falls back to the
+  prior + adds noise. Keep nuance via a RICH OFFLINE population manifold (all-lichess) + the 8-dim
+  ONLINE coordinate on it. Gates: eff-rank of fitted z, downstream lift on T(s,z)/move-prediction,
+  few-game recoverability. Widen only if it saturates AND stays inferable.
 - TRANSITION PREDICTOR T(s,z): per-direction basin-crossing probs P(win-flip),P(loss-flip); 2-D
   SHARP/QUIET/FAVORABLE map; tablebase-exact only-move labels first, then human/engine.
 - COMMITTOR grounded at tablebase boundary + game outcomes.
