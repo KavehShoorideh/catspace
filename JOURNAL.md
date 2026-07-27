@@ -8406,3 +8406,21 @@ loss; a faster stack buys more nodes per move -- speed converts to strength), ha
 recorded. NODE BUDGETS remain only for COMPONENT DIAGNOSTICS (equal-node ablations, strength-per-
 node curves), never for ladder bars. M4/M6/M7 DoDs restated as timed; M7 = beat maia-1200 under
 time control (SPRT >= +25 Elo).
+
+## 2026-07-27 -- Efficiency audit + M1 underway on the frozen trunk
+
+AUDIT (Kaveh: is the laptop fully utilized?) -- honest answer NO; fixed: (1) NN inference was the
+big miss: subprocess pattern ~1-10 pos/s vs BATCHED MPS trunk 21-23k pos/s (batch 2048-4096, fp16;
+my earlier "277 pos/s" was a cold single-shot). All NN paths now batched-MPS. (2) trunk-feature
+PRECOMPUTE for the full 1.14M-position standard dataset: 65s per trunk (maia-1500 + maia-1900),
+fp16 OPEN_MEMMAP (9.3GB each, mmap at train time -- decompress-to-RAM retired), DVC-tracked, and
+verified bit-faithful vs fresh forward (max diff = fp16 eps). (3) DISK: features pushed free space
+30G->12G; freed 5.6G (lichess prefix files = strict prefixes of the retained full dump, recreatable
+via head -c; superseded v2data npz; ClockField step-ladder intermediates) -> 18G free. Staged
+reclaims after M1 gates: loser trunk features 9.3G + old FB shards ~10G. (4) idle-gap rule: a
+milestone job stays running during discussions.
+M1 TRAINER (train_iqe_head.py): thin adapter (1x1 conv + linear) + IQE(64,16) + mate anchor over
+FROZEN trunk features; geometry-only losses (multi-goal + mate DTZ + hinge + repulsion; NO
+committor head, locked decision 1); scaffold-tracked; batch 4096 MPS from memmap. SMOKE 400 steps /
+27s / 133k params: pair-order +0.882, d_mate rho +0.598, eff_rank 8.8 -- near gates (0.94/0.81)
+already. Full 6k-step runs for BOTH trunk candidates launched (the M1 trunk-choice comparison).
