@@ -110,7 +110,7 @@ def make_step(net, opt, D, dev, args, rng):
         L_cat = categorical_ending_loss(catlog, end_t[cb])
         loss = args.w_multi * L_multi + args.w_repel * L_repel + args.w_cat * L_cat
         # mate + WDL hinge GATED on tablebase-grounded subset availability
-        L_mate = torch.zeros((), device=dev); L_hinge = torch.zeros((), device=dev)
+        L_mate = torch.zeros((), device=dev); L_hinge = torch.zeros((), device=dev); L_anchor = torch.zeros((), device=dev)
         if len(D["idx_tbwon"]) >= 8:
             hb = args.batch // 2
             bw = D["idx_tbwon"][rng.integers(0, len(D["idx_tbwon"]), hb)]
@@ -123,10 +123,16 @@ def make_step(net, opt, D, dev, args, rng):
                 L_mate = quasimetric_regression(dm[wmask], tgt_mate_t[bb][wmask])
             L_hinge = wdl_hinge(dm, won_all[bb], logM)
             loss = loss + args.w_mate * L_mate + args.w_hinge * L_hinge
+            # COMMITTOR ANCHOR: pull c(s)->1 on tablebase-WON positions (exact basin boundary, ARCH 8).
+            # The class-balanced categorical loss drowns these out (v2 under-committed: 0.69 vs 1.0).
+            if args.w_anchor > 0:
+                c_won = net.committor(fp(bw))
+                L_anchor = ((c_won - 1.0) ** 2).mean()
+                loss = loss + args.w_anchor * L_anchor
         opt.zero_grad(); loss.backward(); opt.step()
         return {k: float(v.detach()) for k, v in
                 {"loss": loss, "multi": L_multi, "repel": L_repel,
-                 "cat": L_cat, "mate": L_mate, "hinge": L_hinge}.items()}
+                 "cat": L_cat, "mate": L_mate, "hinge": L_hinge, "anchor": L_anchor}.items()}
 
     return step, fp
 
@@ -165,6 +171,7 @@ def main():
     ap.add_argument("--w-multi", type=float, default=1.0); ap.add_argument("--w-mate", type=float, default=1.0)
     ap.add_argument("--w-hinge", type=float, default=1.0); ap.add_argument("--w-repel", type=float, default=0.3)
     ap.add_argument("--w-cat", type=float, default=1.0); ap.add_argument("--repel-margin", type=float, default=3.0)
+    ap.add_argument("--w-anchor", type=float, default=0.0, help="committor->1 anchor on tablebase-won subset (basin boundary grounding)")
     ap.add_argument("--steps", type=int, default=12000); ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--pairs", type=int, default=256); ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--device", default="auto")
