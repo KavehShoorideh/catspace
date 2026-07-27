@@ -1,0 +1,6 @@
+outs:
+- md5: b96e29e6662b5a1b9d329a9fd5917adc.dir
+  size: 132596255
+  nfiles: 4
+  hash: md5
+  path: player_games
