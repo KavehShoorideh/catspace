@@ -35,6 +35,7 @@ slips. The system is **two-part**, exactly like Stockfish/Lc0:
 
 | file | what it's for |
 |---|---|
+| **[MILESTONES.md](MILESTONES.md)** | **the locked 30k-foot roadmap (M0–M6) + locked decisions. Read FIRST; do not deviate without a recorded plan change.** |
 | **[JOURNAL.md](JOURNAL.md)** | the lab notebook — every experiment, result, reversal, with reasoning. **Read for the story & the reasoning.** |
 | **[ARCHITECTURE.md](ARCHITECTURE.md)** | the technical spec. **Jump to the `⭐ CURRENT ARCHITECTURE (2026-07-26)` section** — input (lc0 112-plane), layers & sizes, objective functions, tablebase handover, opponent layer, and §10 the DVC/Ray/A-B **infrastructure**. |
 | **[METASTABILITY_PLAN.md](METASTABILITY_PLAN.md)** | the strategy — the staged plan (S1 reliability map → field → opponent layer → eval) and the design rationale. |
