@@ -1,0 +1,3 @@
+[mate+search] artifacts/experiments/field_v3.pt greedy-mate was None%
+  depth 2: MATE-RATE 8.3% (1/12) [14s]
+  depth 3: MATE-RATE 100.0% (12/12) [61s]

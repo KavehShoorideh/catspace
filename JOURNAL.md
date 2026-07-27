@@ -7814,3 +7814,18 @@ BOTTOM LINE: retract the "fundamental wall". Endgame conversion is viable; the r
 drop-ties + anchored per-pair-gap step at a MODERATE weight (balance order vs scale). Files:
 rank_sensitivity.py. Next: find the anchored weight that keeps BOTH (order>=80% AND won-d~20),
 retrain the field, re-run conversion (should beat 17.5%).
+
+## 2026-07-26 -- MILESTONE: we CAN mate the winning toy sets (v3 field + minimax depth 3 = 100%)
+
+After the loss-bug retraction, trained field_v3 with TESTED anchored loss:
+  VERDICT v3: 1-ply rank-acc 80.1% AND won-d 16.5 vs INF-d 410.3 (both order + scale, finally).
+Conversion vs TABLEBASE-OPTIMAL defense (KQvK/KRvK), the payoff run:
+  MCTS 8000 nodes (expected-score committor): 0% (0/12) ALL DRAWS, 44 min
+  minimax depth 2: 8.3%  |  minimax DEPTH 3: 100% (12/12), 61s
+=> WE CAN CONVERT. Two necessary pieces, both Kaveh's pushes: (1) FIX THE FIELD (tested anchored
+rank loss -> 80% 1-ply order + clean win/draw scale; the old collapsed field got 17.5%);
+(2) MINIMAX not MCTS -- vs a PERFECT defender, mean-backup MCTS gets exploited into a draw
+(0%), worst-case minimax converts (100%). Kaveh's "do minimax to see if MCTS wins" -> minimax
+WINS decisively here. Note: MCTS is still right for the FALLIBLE-opponent midgame (expected
+score over a stochastic opponent); minimax is right for the PERFECT-defender endgame. Files:
+train_field_v3.py, mate_with_search.py, mcts_convert.py, field_v3.pt.

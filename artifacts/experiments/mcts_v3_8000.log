@@ -1,0 +1,3 @@
+[mcts-convert] greedy 5% / minimax-d3 17.5% baselines
+  sims 8000: CONVERT 0.0% (0/12) | drew 12 | [2663s]
+DONE mcts_convert

@@ -1,0 +1,13 @@
+[v3] won 312764 inf 55793 | distinguishable pairs 73613 | w_rank 1.0 logM 5.99
+/Users/kav/code/remote/github/catspace/experiments/train_field_v3.py:79: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} reg {float(reg):.3f} hinge {float(hin):.3f} rank {float(rnk):.3f} "
+  step 0 reg 1.837 hinge 5.424 rank 0.295 [2s]
+  step 2000 reg 0.378 hinge 0.325 rank 0.379 [272s]
+  step 4000 reg 0.319 hinge 0.071 rank 0.223 [543s]
+  step 6000 reg 0.267 hinge 0.092 rank 0.222 [813s]
+  step 8000 reg 0.239 hinge 0.086 rank 0.229 [1083s]
+  step 10000 reg 0.304 hinge 0.070 rank 0.247 [1353s]
+  step 12000 reg 0.147 hinge 0.145 rank 0.197 [1623s]
+VERDICT FIELD-V3: 1-ply RANK-ACC 80.1% | d-vs-DTZ +0.917 | eff_rank 1.5 | won-d 16.5 vs INF-d 410.3 (want BOTH: order>=80 AND won<<INF) | [1894s]
+  saved -> artifacts/experiments/field_v3.pt
