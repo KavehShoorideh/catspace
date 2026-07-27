@@ -1,7 +1,8 @@
 # catspace — Architecture
 
-> **➡ See [DECISIONS.md](DECISIONS.md) for the canonical catalogue of SETTLED decisions, data inventory,
-> full-training flags, and the embedding dim (d=512). Read that first so we don't re-derive what's decided.**
+> **➡ JUMP TO the `⭐ CURRENT ARCHITECTURE (2026-07-26)` section at the bottom — it is canonical and
+> SUPERSEDES everything above (the older pre-lc0 design: two-encoder `F/B`, `d=512`, "no value head").
+> The sections between here and there are kept only as historical design context.**
 
 2026-07-18. The working architecture document: motivation, approach, the
 settled method stack (each component: description, mathematics, and the

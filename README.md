@@ -1,147 +1,103 @@
-# catspace — a reachability-based chess planner
+# catspace — a metastability planner for exploiting fallible chess opponents
 
 **A live research project.** Claude (the AI) does the building and experiments;
 Kaveh directs the research — the questions, the reframes, and most of the core
-ideas are his, iterated on turn by turn. If you want to see *how* the work
-actually happens — the hypotheses, the dead ends, the reversals, the reasoning
-behind each decision — read **[JOURNAL.md](JOURNAL.md)**. It's the running lab
-notebook, newest entry last, and it's the most honest picture of the project.
+ideas are his, iterated turn by turn. **[JOURNAL.md](JOURNAL.md)** is the running
+lab notebook (newest entry last) and the most honest picture of how the work
+actually happened — hypotheses, dead ends, reversals, and reasoning.
 
 ---
 
-## The idea
+## The idea (current)
 
-Most engines (Stockfish, Leela) learn a **value** function — "how good is this
-position" — and search over it. catspace instead learns a **reachability**
-embedding: two encoders `F(s)` (a state) and `B(g)` (a goal) such that
-`score(F(s), B(g))` tells you *how reachably a goal follows from a state* under
-real play. Planning is then **navigation toward a goal region** (e.g. checkmate),
-not position-scoring. The bet is that this is a distinct, viable way to build a
-game-playing agent — one that *plans* rather than *evaluates*.
+Chess outcomes {Win, Draw, Loss} are **metastable basins**: under optimal play
+the barriers are infinite, under real play the rare crossings are **errors**. The
+goal is to play a *fallible* opponent by **exploiting the information asymmetry
+about where they err** — steer toward reachable positions where the opponent is
+likely to make the outcome-flipping error and we are not ("pose problems").
 
-Two commitments follow from that bet:
-- The distance is a **quasimetric** (respects the triangle inequality), so
-  multi-step plans compose — "pin, then win the piece, then mate" — instead of
-  only working when the exact sequence was seen in training.
-- We stay reachability-native: no win/draw/loss value head (that would just be
-  Leela). Where the engine needs to know *where to think harder*, it measures its
-  own **reliability** (does searching deeper change its mind here?) rather than
-  importing a value signal.
+The machinery is a **single-space quasimetric field** (IQE) with a **trained
+committor** (the outcome-distribution / expected-score value), plus a **learned
+player embedding** and a **transition predictor** that says where *this* opponent
+slips. The system is **two-part**, exactly like Stockfish/Lc0:
 
-## The documents (and how to use them)
+1. **Full-board model** — the opponent-exploitation model (the thesis).
+2. **Tablebase handover** — at **≤7 pieces the tablebase *is* the endgame**; the
+   committor is grounded there and the goal region is the tablebase-won configs.
+   (No learned endgame model — nets are measurably worse at conversion.)
+
+> Note: earlier design commitments in the git history — a two-encoder `F(s)/B(g)`
+> field, "no WDL/value head", `d=512` — have been **reversed** by the from-scratch
+> rebuild (single-space `φ`, a trained committor, `d=64`). Trust the docs below,
+> not the older `*.md` in history.
+
+## Start here — the canonical docs
 
 | file | what it's for |
 |---|---|
-| **[JOURNAL.md](JOURNAL.md)** | the running lab notebook — every experiment, result, and decision, with reasoning. **Start here.** |
-| **[COMPONENTS.md](COMPONENTS.md)** | a map of the code: what each module/policy/probe does. Read when you're lost in `catspace/` or `experiments/`. |
-| **[GLOSSARY.md](GLOSSARY.md)** | plain-language definitions of every term and metric (reachability, quasimetric, ACPL, ply-gap, e-value, ρ, …). For a chess enthusiast, not just an ML one. |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | the code layer diagram and invariants. |
-| **[UNCERTAINTY_DESIGN.md](UNCERTAINTY_DESIGN.md)** | the current research direction: sharpness-as-self-reliability and the search↔training closed loop. |
-| **[TWO_HORIZON_DESIGN.md](TWO_HORIZON_DESIGN.md)** | a superseded design, kept as a record. |
+| **[JOURNAL.md](JOURNAL.md)** | the lab notebook — every experiment, result, reversal, with reasoning. **Read for the story & the reasoning.** |
+| **[ARCHITECTURE.md](ARCHITECTURE.md)** | the technical spec. **Jump to the `⭐ CURRENT ARCHITECTURE (2026-07-26)` section** — input (lc0 112-plane), layers & sizes, objective functions, tablebase handover, opponent layer, and §10 the DVC/Ray/A-B **infrastructure**. |
+| **[METASTABILITY_PLAN.md](METASTABILITY_PLAN.md)** | the strategy — the staged plan (S1 reliability map → field → opponent layer → eval) and the design rationale. |
+| **[TRAINING_STANDARDS.md](TRAINING_STANDARDS.md)** | standing do's/don'ts for every training run. |
+| **[GLOSSARY.md](GLOSSARY.md)** | plain-language definitions of every term/metric. |
+| **[COMPONENTS.md](COMPONENTS.md)** · **[RUNBOOK.md](RUNBOOK.md)** | code map · ops runbook. |
+| `experiments/losses.py` · `experiments/endgame_handover.py` | the **unit-tested primitives** (run them: `python experiments/losses.py`). No new loss enters a run without a passing test here. |
+| `memory/` (the AI's auto-memory) | standing rules & decisions carried across sessions. |
 
-## Where the data lives
+## Standing rules (Kaveh's — full set in `memory/`, one file each)
 
-Everything heavy is under `data/` (git-ignored) and is produced/downloaded, not
-committed:
-- `data/shards/…` — human Lichess games as packed-bitboard position shards.
-- `data/selfplay/…` — self-play shards (same schema; from `selfplay_generate.py`).
-- `data/derived/…` — trained checkpoints (`*.pt`) and the competence map.
-- `data/syzygy/…` — endgame tablebases (exact ground truth, download-on-demand).
+**Rigor & method**
+- **Rigor over flattery** — no sycophancy; grade every claim (proven / provable / plausible) and retract loose ones explicitly.
+- **Journal numbers must be verdicts** — no metric enters JOURNAL/commits without a printed script `VERDICT`; figures come from repo scripts, not heredocs.
+- **Diagnose before concluding** — never call a plateau/failure "fundamental" before ruling out the loss and the data; **unit-test every loss** (canonical, tested terms live in `experiments/losses.py`); inspect the target distribution before choosing a loss.
+- **Define identifications** — an "X is a Y" claim must state Y's criteria and verify X meets them.
+- **Discuss before building** — exploratory questions get option-space + a recommendation, then wait; directional builds need Kaveh's call. **Notify his phone** for stop-for-a-question decisions (AskUserQuestion + PushNotification when away).
+- **Search when stuck** (>15 min on something that should work) — stop tuning, read the paper / reference impl.
+- **No one-lever rule** — bundle well-justified changes into one run; record what's bundled. **Conditional rejections**: A/B rejections are conditional on the field version — re-test the shelf after field promotions.
 
-Research **results** are split by durability:
-- `artifacts/experiments/` — structured JSON records of every evaluation, plus
-  fixed test sets. **Git-tracked** — this is the quantitative history.
-- `artifacts/generated/` — HTML viewers and logs. Git-ignored (rebuildable).
+**Engineering**
+- **Import, don't reinvent** — standard frameworks (PyTorch, MLflow, Ray, DVC); "PyTorch" in prose, `torch` as the package.
+- **Short runs before big runs** — validate on a short run, commit when it works, then launch the full run.
+- **Optimize before long runs** — can it be parallelized? can unnecessary compute be removed (fuse passes, precompute)? **Check long runs early and often** (watchdog on output growth; CPU-busy ≠ progress).
+- **Always run latest** — kill stale runs on every engine/field update; resume makes it cheap.
+- **Check representational collapse** — bootstrapped `eff_rank` is a health gate on every run; cure is repulsion, not width.
+- **No concurrent disk-heavy jobs**; the tablebase probe cache is **`journal_mode=DELETE`** (not WAL — WAL grew unbounded and filled the disk twice).
+- **Training standards** (`TRAINING_STANDARDS.md`): checkpoint ladders + metadata, **no overwrites**, one richest input format, MLflow not hand-rolled.
+
+**Workflow**
+- **Keep JOURNAL.md current** as work happens; **time every run**. **No AI commit trailers** (no `Co-Authored-By: Claude` / `noreply@anthropic.com`). **Self-contained reports** — weekly-report style; numbers carry baselines.
+
+## Status (2026-07-26)
+
+Field is architecturally complete and validated on ground truth: single-space IQE
++ multi-goal + repulsion + mate + WDL-hinge + distributional ending head +
+committor over all W/D/L outcomes; lc0 112-plane real-history input; tablebase
+handover primitive; SF reliability map. **Next:** the full-board opponent model —
+player embedding `z`, transition predictor `T(s,z)`, cohort-regret/KL exploitation,
+exploitation planner — on the **already-ingested** lichess shards.
+
+## Data & infrastructure (already exists — see ARCHITECTURE.md §10)
+
+- **Lichess** already ingested + DVC-tracked: `data/shards/lichess_db_standard_rated_2019-01.full/`
+  (~10 GB, via `build_lichess_shards.py`), puzzles, and trained `data/derived/lichess_fb_*.pt`.
+  Reuse — do not re-ingest.
+- **DVC** versions the shards/derived datasets. **Ray** (`catspace/engine/orchestrator.py`)
+  does probe memoization/coalescing. **A/B harnesses**: `ab_test.py` (anytime-valid),
+  `move_ab.py`, `playout_ab.py`, `arena_real.py`, `gauntlet.sh` (fastchess SPRT),
+  `experiment_report.py` (+ Stockfish-leakage audit). Tablebases under `data/syzygy/`.
 
 ## Running it
 
 ```bash
-pip install -e .[nn]          # torch is an optional extra ([nn]); numpy core works without it
-pytest                        # the test suite
+pip install -e .[nn]          # torch is the [nn] extra; lczerolens for the lc0 encoder
+pytest                        # test suite
+python experiments/losses.py            # unit-test the loss module
+python experiments/endgame_handover.py  # unit-test the tablebase handover
 
-# train an embedding (composable loss flags -- see COMPONENTS.md / train_lichess_fb.py --help)
-python experiments/train_lichess_fb.py \
-    --shards data/shards/<human-prefix> --ckpt data/derived/run.pt \
-    --steps 90000 --quasimetric --ply-gap-weight 0.05 --ckpt-every 30000
-
-# evaluate: arena vs Stockfish (enforces the no-leakage audit gate), blunder rate, endgame conversion
-python experiments/experiment_report.py --ckpt data/derived/run.pt --opponent sf:skill=0 --games 40 --search-nodes 200
-python experiments/acpl_probe.py    --ckpt data/derived/run.pt --n 400
-python experiments/krrkbp_arena.py  --ckpt data/derived/run.pt --fixed-set artifacts/experiments/krrkbp_fixed_set_n60.json
-
-# the self-improving loop (in progress): self-play -> competence -> reliability-gated search
-python experiments/selfplay_generate.py    --ckpt data/derived/run.pt --out-dir data/selfplay/gen1
-python experiments/build_competence_map.py --ckpt data/derived/run.pt --out data/derived/competence_map.npz
-python experiments/adaptive_vs_uniform.py  --ckpt data/derived/run.pt --competence data/derived/competence_map.npz
+# regenerate clean endgame basin data (both sides tb-optimal, all outcomes) + train the field
+python experiments/gen_traj_lc0.py --games 3000 --eps 0.0 --out data/derived/traj_lc0_endgame.npz
+python experiments/train_lc0_field.py --data data/derived/traj_lc0_endgame.npz --steps 18000
 ```
 
-## Reproducing the journaled results
-
-Every number in JOURNAL.md and in `writing/` comes from a printed `VERDICT`
-line of a script in `experiments/`; this section maps result → data → command.
-
-**Fixed test sets and the confirmatory registry.** All toy-endgame evaluations
-run on git-tracked position sets in `artifacts/experiments/`:
-`krrkbp_fixed_train_n700.json` / `krrkbp_fixed_test_n200.json` (minted by
-`gen_toy_sets.py` from the canonical start, seed-pinned) and the single-use
-confirmatory sets `confirmatory_krrkbp_seed77*_n120.json` (minted by
-`gen_confirmatory_starts.py`, which refuses to reuse a consumed seed;
-`data_registry.json` records which sets are consumed and by which result).
-
-**Certainty tables** (the own-play / tb-White rollout statistics the certainty
-work distills from) are the `certainty_table_*.json` files, rebuilt by
-`certainty_rollouts.py` (generation, `--dump-rollouts`) +
-`table_from_dump.py` (aggregation + quality gates). Sharpness identification:
-`sharpness_identification.py` → `sharpness_table.json`.
-
-**Play comparisons** (paired, deterministic defender, CI + e-value):
-`playout_ab.py --ckpt-a … --ckpt-b … --search-a mcts --search-b mcts
---nodes {200,800,1600} --fixed-set <set.json>`. Full-board head-to-heads and
-the leakage-audit-gated arena: `experiment_report.py`. Field-health probes:
-`qm_fitness_probe.py` → `qm_fitness_*.json`.
-
-**Checkpoints** live in `data/derived/` (git-ignored; retrain via the commands
-above — every checkpoint's provenance dict records the exact script, args, and
-git commit that produced it). The current incumbent is
-`data/derived/sep/cert_base_full.pt` (155k steps, certainty-in-base-objective;
-see JOURNAL 2026-07-15 "PROMOTED").
-
-**Article figures**: `python experiments/viz/article_figures.py` regenerates
-`writing/figures/*.png` from the artifacts above; verdict-sourced numbers in
-that script carry their JOURNAL provenance inline.
-
-## Inspecting results
-
-- **Numbers:** read the JSON in `artifacts/experiments/`, or diff runs with
-  `python experiments/experiment_leaderboard.py`. Every training run also prints
-  `VERDICT` lines that get copied verbatim into JOURNAL.md.
-- **Visually:** `python experiments/viz/build_*.py` renders self-contained HTML
-  into `artifacts/generated/` (training curves, per-move decision viewer, reach
-  maps, the fitness dashboard); `build_gallery.py` indexes them.
-- **The story:** JOURNAL.md ties the numbers to the decisions.
-
-## Metrics
-
-- **Arena score** (0–1) vs a fixed Stockfish strength — the objective play metric
-  (win=1, draw=0.5), reported with an anytime-valid **e-value** so early stopping
-  doesn't inflate false positives.
-- **ACPL** — average centipawn loss per move vs a strong Stockfish's judgment; a
-  blunder-rate proxy (lower better; master <20).
-- **KRRvKBP conversion** — a narrow, tablebase-verified winning endgame the
-  planner must convert; the primary *planning* diagnostic (paired, matched-seed).
-- **Fitness probe** — quasimetric health: Syzygy distance calibration, horizon
-  retrieval, asymmetry, triangle-violation, degeneracy (`qm_fitness_probe.py`).
-- **Reliability / competence** — the engine's self-measured unreliability, used to
-  decide where to search harder (not a quality score).
-
-## Choices worth knowing
-
-- **Reachability, not value** — the thesis; we don't add a WDL head.
-- **No Stockfish-eval leakage** — Stockfish is only ever an opponent or an offline
-  grader; its evaluations never become a training label, enforced by a hard audit
-  gate (`catspace/audit.py`) on every arena run.
-- **Small search budget** (~200 nodes, ~10× below Leela's playing range) — any win
-  should come from the *plan*, not from out-searching the opponent.
-- **Validate by play, not by invented labels** — e.g. "sharpness" is a useful
-  fiction for allocating effort, so it's judged by whether it improves play, not
-  by matching a hand-defined target.
+Every training run prints a `VERDICT` line (pair-order / eff_rank / committor-MAE /
+ending-acc / W-D-L) copied into JOURNAL.md; `eff_rank(φ)` is the standing health gate.
