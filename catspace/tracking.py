@@ -43,17 +43,24 @@ def track_run(experiment: str, args=None, run_name: str | None = None):
     if ml is None:
         yield _Log()
         return
-    try:
+    cm = None
+    try:                                             # SETUP failures only -> degrade to no-op
         ml.set_experiment(experiment)
-        with ml.start_run(run_name=run_name):
-            if args is not None:
-                with contextlib.suppress(Exception):
-                    ml.log_params({k: str(v)[:250] for k, v in vars(args).items()})
-            with contextlib.suppress(Exception):     # per-record provenance: every
-                import subprocess                    # training run pins its code commit
-                ml.set_tag("git_commit", subprocess.run(
-                    ["git", "rev-parse", "--short", "HEAD"],
-                    capture_output=True, text=True).stdout.strip())
-            yield _Log()
+        cm = ml.start_run(run_name=run_name)
+        cm.__enter__()
+        if args is not None:
+            with contextlib.suppress(Exception):
+                ml.log_params({k: str(v)[:250] for k, v in vars(args).items()})
+        with contextlib.suppress(Exception):         # per-record provenance: every
+            import subprocess                        # training run pins its code commit
+            ml.set_tag("git_commit", subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],
+                capture_output=True, text=True).stdout.strip())
     except Exception:
-        yield _Log()
+        cm = None
+    try:                                             # body exceptions PROPAGATE (single yield);
+        yield _Log()                                 # the run is closed either way
+    finally:
+        if cm is not None:
+            with contextlib.suppress(Exception):
+                cm.__exit__(None, None, None)
