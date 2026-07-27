@@ -89,3 +89,19 @@ say so in JOURNAL.md.
     DFS, DTM rollouts, deniedness sets) are results — save them next to the VERDICT, don't
     discard after aggregating. Tablebase probes now go through the persistent sqlite cache in
     catspace/tb.py (the 2026-07-20 'cache tablebase probes' lesson, finally implemented).
+
+## DATA & FRAMEWORKS (Kaveh 2026-07-26)
+
+8. **DVC-track every dataset.** Every generated dataset (`data/records/`, `data/derived/`,
+   `data/shards/`) is versioned with `dvc add` -> commit the `.dvc` pointer; never commit the raw
+   bytes (gitignored `/data/**`). Reproducible + shareable. *(Reuse, don't re-ingest — see the
+   lichess `.dvc` set.)*
+
+9. **Scaffold training with frameworks — don't hand-roll infra.** Use `catspace/train/scaffold.py`:
+   MLflow tracking + checkpoint ladders w/ provenance + health gates + **Ray Tune** for HP sweeps /
+   parallel trials. Parallelize to the frameworks' ability (Tune parallel trials; DataLoader
+   `num_workers`; process-pool data gen). *Verified on this py3.14+MPS box:* Ray **Tune** works;
+   Ray **Train**'s distributed-worker abstraction does NOT (cloudpickle/controller-actor fails under
+   py3.14) — scaffold with Tune, not Train (revisit when Ray supports 3.14). Tune trainables MUST be
+   top-level functions that import inside their body (cloudpickle serializes referenced globals by
+   value).
