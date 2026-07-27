@@ -595,7 +595,16 @@ grounded at <=7 via committor_anchor.
   decisions, so 8 is comfortably recoverable (16 marginal); an over-large z just falls back to the
   prior + adds noise. Keep nuance via a RICH OFFLINE population manifold (all-lichess) + the 8-dim
   ONLINE coordinate on it. Gates: eff-rank of fitted z, downstream lift on T(s,z)/move-prediction,
-  few-game recoverability. Widen only if it saturates AND stays inferable.
+  few-game recoverability. Widen to 16 ONLY if z hits full rank (8/8 used) AND data supports it.
+  UNIVERSAL SPACE: z expresses ANY agent -- human OR engine, any strength/flavor. Manifold spans
+  weak-human -> strong-human -> Maia -> skill-capped engines -> strong engines -> near-optimal
+  (SF/lc0). Engines (near-deterministic, lots of data) ANCHOR the manifold; humans (stochastic)
+  spread off it. Nuance: deterministic engine -> 0/1 transitions (exploit FIXED weakness); fixed-
+  nodes/skill/temperature engine -> stochastic (like humans). PRIOR: unknown player -> rating-
+  conditioned population prior p(z|rating); sharpen to p(z|moves,rating) online (cold-start=prior).
+  DATA: humans = lichess shards (have); engines = CCRL/TCEC/CCC + existing (experience.sqlite,
+  ext_maia/sf PGNs, stockfish_continuations) + fastchess strength-labeled games; ingest via
+  import_pgn_games.py -> trajectory pipeline.
 - TRANSITION PREDICTOR T(s,z): per-direction basin-crossing probs P(win-flip),P(loss-flip); 2-D
   SHARP/QUIET/FAVORABLE map; tablebase-exact only-move labels first, then human/engine.
 - COMMITTOR grounded at tablebase boundary + game outcomes.
