@@ -612,3 +612,43 @@ handover; SF reliability map; MCTS-vs-minimax principle; endgame conversion 100%
 proof. NEXT: full-board opponent model (lichess data -> player embedding z -> transition T(s,z) ->
 cohort-regret/KL exploitation -> exploitation planner). DEFERRED: non-board endings (time/resign),
 king-bucketing, dockerized service stack.
+
+## 10. Harness & infrastructure (EXISTING — reuse, do NOT rebuild/re-ingest)
+
+**DVC — data versioning.** `.dvc/` cache + `*.dvc` pointers make datasets reproducible; don't
+re-generate what's tracked. Tracked shards: `data/shards/{sf_cont_endgame_v1, regime_rollouts_v1,
+regime_random_v1, regime_random_endgame_v1}.dvc`; tracked derived: `data/derived/{dtm_endgame,
+move_selection_v1, stratified_perfect, geom_pool, geom_pool_edges, contrast_mate_tuples}.npz.dvc`.
+
+**LICHESS DATA — already ingested (do not re-ingest).**
+- `data/shards/lichess_db_standard_rated_2019-01.full/` (~10 GB) — the FULL 2019-01 monthly dump,
+  stream-filter-encoded into position shards by `experiments/build_lichess_shards.py` (streams the
+  `.pgn.zst` directly, never decompressing to disk; bounded by `--max-games` / `--max-gb`; supports
+  range-downloaded prefixes with `--tolerate-truncation`).
+- `data/lichess/` (~5.3 GB); `data/lichess_db_puzzle.csv.zst` (puzzles); `data/shards/lichess_full_stage`.
+- Already-trained lichess fields: `data/derived/lichess_fb_*.pt` (4gb_qm_wpov, winnerpov,
+  plaincontrol, step60000, qm_gen1, step2000).
+- => The full-board opponent-model data step REUSES these shards (add player `z` conditioning +
+  tablebase-boundary grounding), rather than re-ingesting from lichess.org.
+
+**RAY — probe orchestration / cross-worker memoization** (`catspace/engine/orchestrator.py`,
+"don't hand-roll — ray is the right framework"). Single-flight, position-indexed async probe
+execution: identical in-flight keys COALESCE onto one running task (never double-compute), finished
+keys resolve from the memo instantly; milestone streaming. Lazy local init. This is the dedup/memo
+layer for parallel probing (answers the earlier "how to avoid workers recomputing" question).
+
+**A/B TESTING HARNESSES** (already built):
+- `ab_test.py` — ANYTIME-VALID A/B between two model ENDPOINTS: ping both, accumulate evidence,
+  declare a winner without a fixed horizon (sequential/anytime-valid).
+- `move_ab.py` — paired MOVE-LEVEL A/B between two checkpoints.
+- `playout_ab.py` — paired PLAYOUT A/B vs a DETERMINISTIC defender.
+- `arena_real.py` — real-board arena: a field policy vs random / Stockfish, alternating colors.
+- `gauntlet.sh` — fastchess **SPRT** gauntlet (`elo0/elo1`, the fishtest-style sequential test).
+- `eval_variant.py` — one-command embedding-variant evaluation.
+- `experiment_report.py` — the A/B experimentation harness + **Stockfish-oracle LEAKAGE audit**
+  (`catspace.audit`) — guards against a candidate having seen the reference's answers.
+
+**Standards** (TRAINING_STANDARDS.md): MLflow (not hand-rolled), checkpoint ladders + metadata
+(no overwrites), one richest input format, eff_rank health gate, short validation run → commit →
+full run. Experience store: `data/derived/experience.sqlite` (games: start_epd, ucis, result,
+opponent, field_ckpt). Engine: `experiments/uci_engine.py` (UCI wrapper for arena/gauntlet play).
