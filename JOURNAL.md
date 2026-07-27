@@ -8371,3 +8371,13 @@ removed protectors instantly; guard OUR blocking conditions their armed tactics 
 self-blunder side). Also search efficiency: discover once, arm, watch -- not re-find every ply.
 Recorded: MILESTONES.md PARKED section (canonical spec), task #41 (blocked by #34 M3b + #39 M5),
 memory armed_tactics_parked. Lineage: refines the old "tactics tracking -> pounce" idea.
+
+## 2026-07-27 -- Armed tactics promoted: PARKED -> MILESTONE M7 (Kaveh)
+
+Kaveh: don't park it, tack it onto the milestone list. Armed tactics (conditional-activation store)
+is now M7, the roadmap's final milestone: spec unchanged (store almost-working tactics + blocking
+condition = protective factor; watch for removal -> activate -> pounce; dual offensive/defensive
+use), now with GATES (activation-detection unit tests; vs Maia, pounce converts opportunities the
+re-search-every-ply baseline misses at equal nodes, e-value significant, and/or equal strength at
+lower budget; defensive side measurable). Sequencing: M1 -> M2 -> (M3 || M5) -> M4 -> M6 -> M7.
+Task #41 renamed M7 (still blocked by #34 M3b + #39 M5). Memory updated.
