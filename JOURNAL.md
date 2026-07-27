@@ -7960,3 +7960,29 @@ scalar max_move E_{π_opp}[V] (max-expectation; reduces to minimax vs perfect de
 Φ=t_win(z_opp)−t_loss(z_me) and sharpness σ=t_win+t_loss are the DECOMPOSITION of dV for search-shaping
 + risk knob -- NOT competing objectives (V nets them). Info-asymmetry edge = their-regret − my-regret vs
 reliability-weighted reference. Fixed the loose "committor==value" usage.
+
+## 2026-07-26 -- DATA PIPELINE stage A+B: identity-preserving game records + stratified balancer
+
+Kaveh green-lit the balanced identity-preserving data pipeline (the blocker before any full train).
+Built two testable stages; smoked on a 4.7k-game lichess slice.
+STAGE A build_game_records.py: streams .pgn.zst -> COMPACT parquet game records, ONE row/game with
+  IDENTITY (white_id/black_id usernames + engine names), elos, result, n_plies, time_control,
+  termination, titles, space-joined UCI moves. 161 B/game (vs ~7KB/lc0-position) -> full month ~1GB;
+  reconstructs positions in ANY encoding on demand; the natural unit for balancing + z-grouping.
+  Reuses catspace.data.lichess.stream_filtered_games (no decompress to disk). Engine PGNs
+  (CCRL/fastchess) ingest into the SAME schema via --source (universal-z manifold = one dataset).
+STAGE B balance_game_records.py: (1) game-level EVENNESS re-check (successor to
+  data_distribution_check which read old position shards) -- OUTCOME / STRENGTH(min-Elo band,
+  norm-entropy) / PHASE / and NEW per-player game-count distribution (>=20 games = z-encoder
+  training bar; 5-10 = online-inference regime). (2) STRATIFIED BALANCER: resamples to even
+  OUTCOME x STRENGTH-BAND with bounded oversampling; writes balanced records + before/after JSON.
+SMOKE VERDICT (4.7k games): balancer lifted outcome-evenness 0.76->0.99 (draws 4.2%->27.6%) and
+  strength-evenness 0.78->0.89. HONEST RESIDUAL (reported, not hidden): the draw lift is
+  OVERSAMPLING of 201 real draws (repetition, not diversity), and the <1000 / >2400 Elo bands are
+  structurally empty in sub-elite lichess -- both gaps require ENGINE data (CCRL ~50% draws +
+  strong tail; Maia weak tail), exactly as the evenness check predicted. Machinery validated.
+  z-trainability: 4.7k-game slice has 0 players >=20 games (max 8) -> the FULL MONTH is required
+  (heavy players accumulate) -> full-month build launched (build_records_fullmonth.log).
+NEXT: full-month records land -> re-run evenness at scale (expect real >=20-game player counts) ->
+  decide engine ingestion (CCRL download) for the draw/tail diversity -> z-encoder (CSSLab
+  stylometry adapt) smoke.
