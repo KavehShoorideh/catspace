@@ -1,0 +1,15 @@
+[gen-traj-lc0] 10 workers x 50 games | lczerolens 112-plane, real history
+  w1/10: 13989 rows [40s]
+  w2/10: 15589 rows [41s]
+  w3/10: 12843 rows [41s]
+  w4/10: 13854 rows [41s]
+  w5/10: 13736 rows [47s]
+  w6/10: 13175 rows [47s]
+  w7/10: 14526 rows [47s]
+  w8/10: 13831 rows [47s]
+  w9/10: 14068 rows [47s]
+  w10/10: 13513 rows [47s]
+
+=== data/derived/traj_lc0_v1.npz: 139124 rows (997MB planes) [50s] ===
+  won 114991 | mate 306 | INF 23827 | groups 6611
+DONE gen_traj_lc0
