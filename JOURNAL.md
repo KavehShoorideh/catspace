@@ -8607,3 +8607,14 @@ have, add z later once (a) high-volume data built and (b) the loop works. Given 
 (even strong signals barely move single-move prediction; value is rate-level) + z being subtler,
 data-hungrier, more confound-prone, DEFER (path 2) is the higher-ROI move -- bringing the fork to
 Kaveh.
+
+## 2026-07-27 -- M2b: provisional prior (Kaveh) -- pool all <20-game players to estimate p(z|Elo)
+
+Kaveh: don't discard the long tail -- pool everyone with <20 games into ONE provisional category so
+we have a PRIOR for all of them (and any new opponent). Realizes locked decision 4's population prior
+p(z|Elo): players >=20 games get an INDIVIDUAL z (deviation), <20-game players route to the RATING-
+CONDITIONED prior (learned from the pooled provisional majority). Every player has a prior z from move
+1; cold start = prior(Elo); M2c tightens in-game. Extended build_player_dataset with a `provisional`
+flag + provisional sampling: now 5,000 individual (>=50 games) + 40,000 provisional (<20, of 235,155)
+= 1,181,379 games. Recorded in MILESTONES M2b. The z-design workflow (wtlx1dlmt) will specify the
+prior mechanism; implementation must fit the prior as a function of Elo on the provisional pool.
