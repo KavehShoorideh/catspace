@@ -8028,3 +8028,22 @@ global). TESTED 16/16 (added opportunism+hysteresis + board-level PortfolioPrior
 valid distribution over legal moves; a multipurpose king step toward BOTH targets out-priors a step
 away). Doc: ARCHITECTURE 8.1 (3). NEXT: the subgoal GENERATOR (candidate transition points + flux
 weights), gated on T(s,z)/z, gated on the full-month data build.
+
+## 2026-07-26 -- STAGE C (records->field data) + FULL-BOARD field trainer on the scaffold (smoked)
+
+Kaveh (going to bed): "make all the decisions yourself and train a proper field, then test it";
+use frameworks to parallelize. Built the chain to a proper full-board field on REAL games:
+STAGE C gen_field_data_fullgame.py: balanced game records -> lc0 112-plane field npz
+(planes/dtz/ending/game/ply), parallelized (ProcessPoolExecutor). DECISIONS: committor/ending label
+= game result WHITE-POV (Monte-Carlo outcome under the human play measure = the metastability
+committor); at <=7 pieces OVERRIDE with exact tablebase WDL + real DTZ (boundary grounding, ARCH 8);
+tail-sampling captures the endgame tail for grounding. Smoke (1177 balanced games): 14540 positions,
+W/D/L 36/27/37% (balanced), 281 tb-grounded.
+TRAINER train_field_fullgame.py on catspace/train/scaffold.py (MLflow + ladders + gates): core losses
+ALWAYS ON = COMMITTOR/ending (class-balanced W/D/L, the value) + MULTI-GOAL quasimetric (same-game
+ply gaps) + REPULSION; mate readout + WDL hinge GATED on the tablebase-won subset (never crashes on
+off-tablebase batches). SMOKE (400 steps, 2.63M params): pair-order +0.973, eff_rank 6.0 (no
+collapse), committor-MAE 0.225 (< 0.333 predict-0.5 baseline -> learning the value), ladder saved.
+Whole pipeline validated end-to-end. NEXT (autonomous): full-month records -> DVC -> balance ->
+full Stage C generation (parallel) -> DVC -> field train (scaffold, ladders, gates) -> TEST
+(committor calibration vs held-out + tablebase, pair-order, eff_rank). Report by morning.
