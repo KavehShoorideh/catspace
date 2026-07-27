@@ -8397,3 +8397,12 @@ VERDICT + kill executed; M2 rho>=0.60 + quartile lift >=5x + ECE<=0.05 + clock/r
 lifts (offline and <=20-move in-game); M3 API live + top-decile flux regions >=2x crossing rate on
 >=2 rating bands + M3b >=5 attacking + >=5 protective factors; M5 >0.125 + monotone node-scaling +
 beats WDL ablation; M6/M7 per the ladder.
+
+## 2026-07-27 -- DoD matches are UNDER TIME CONTROL (Kaveh)
+
+Correction to the standard match protocol: DoD ladder matches are REAL TIMED GAMES -- both sides on
+the clock, standard control blitz 3+2 (180s+2s/move), time management is the engine's job (flag =
+loss; a faster stack buys more nodes per move -- speed converts to strength), hardware pinned +
+recorded. NODE BUDGETS remain only for COMPONENT DIAGNOSTICS (equal-node ablations, strength-per-
+node curves), never for ladder bars. M4/M6/M7 DoDs restated as timed; M7 = beat maia-1200 under
+time control (SPRT >= +25 Elo).
