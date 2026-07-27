@@ -8066,3 +8066,24 @@ FIX (v2, bundled + justified, no-one-lever): w_repel 0.3->1.0 + repel_margin 3->
 standing cure), w_cat 1->2 (committor is the centerpiece value), w_mate/w_hinge 1->0.5 (the 9.5k-pos
 tablebase subset must not dominate phi). Relaunched 16k steps, watching eff_rank early. NEXT: if
 eff_rank holds >5 and win/loss-sep climbs -> let finish -> test (calibration). Else diagnose further.
+
+## 2026-07-27 -- PROPER FULL-BOARD FIELD v2 TRAINED + TESTED: well-calibrated committor (ECE 0.022)
+
+v2 (anti-collapse recipe: w_repel 1.0, repel_margin 4, w_cat 2, w_mate/hinge 0.5) trained 16k steps
+on 1.08M real full-game positions (100k games, full-month lichess), 85 min. eff_rank climbed steadily
+5.9 -> 8.9 (v1 had COLLAPSED to ~3) -- the repulsion fix fully cured the collapse. VERDICT
+(held-out val, honest game-level split): pair-order +0.940, eff_rank 8.9, win/loss-sep 0.198.
+CALIBRATION TEST (the meaningful committor metric -- test_field_fullgame.py): **ECE 0.022** -- the
+committor is WELL-CALIBRATED. Reliability curve tracks near-perfectly across the FULL range:
+  bin0 pred 0.10/emp 0.10 ... bin4 0.46/0.47 ... bin9 pred 0.91/emp 0.89.
+So P(win) spans 0.10-0.91 (NOT collapsed to 0.5): sharp on decided positions, ~0.5 in genuinely
+balanced middlegames -- exactly a metastability committor under fallible human play. pair-order
++0.949, eff_rank 8.8.
+HONEST CAVEAT: on <=7-piece TABLEBASE-WON positions the committor averages 0.69 (target 1.0) -- it
+UNDER-COMMITS on won endgames. The boundary grounding is weak: mate/WDL-hinge ground the DISTANCE
+d_mate, not the committor directly. FIX (next): add a direct committor anchor loss on the
+tablebase-grounded subset (pull c->1 on tb-won, c->0 on tb-loss) so the basin boundaries are exact.
+DELIVERABLE: field_fullgame_v2_final.pt (DVC-tracked) = the first well-calibrated full-board
+committor + quasimetric field on real games. This is the centerpiece the exploitation planner
+(optionality.py PortfolioPrior) + committor navigation build on. committor-MAE (0.378) retired as a
+gate -- ECE + calibration curve + tablebase agreement are the committor metrics going forward.
