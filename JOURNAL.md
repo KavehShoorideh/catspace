@@ -7829,3 +7829,21 @@ rank loss -> 80% 1-ply order + clean win/draw scale; the old collapsed field got
 WINS decisively here. Note: MCTS is still right for the FALLIBLE-opponent midgame (expected
 score over a stochastic opponent); minimax is right for the PERFECT-defender endgame. Files:
 train_field_v3.py, mate_with_search.py, mcts_convert.py, field_v3.pt.
+
+## 2026-07-26 -- Kaveh right again: the 50-move DRAW SURFACE is unrepresented (retract "MCTS wrong")
+
+Kaveh: "our MCTS is buggy, or we're not representing the approaching 50-move draw surface."
+CONFIRMED two gaps: (1) the field is BLIND to the halfmove clock -- tokens() uses only 12 piece
+planes + stm, DROPS the halfmove clock; (2) training data has NO clock variation (halfmove 0-1,
+fresh positions). So the field cannot see or steer off the 50-move draw surface.
+This explains all conversion results: KQvK/KRvK minimax 100% (short mates finish before the clock
+bites); MCTS 0% (mean-backup shuffles, clock runs to 50, field never saw it coming); hard classes
+20% (KBN 66-ply mate approaches the 50-move budget, no clock-awareness to prioritize progress).
+RETRACT "MCTS is the wrong search" -- premature (3rd time concluding fundamental/wrong when it was
+a representation gap; diagnose-first must be reflex). Neither search can avoid a draw surface the
+value can't see.
+FIX: (a) feed halfmove clock (+repetition) into the field input; (b) regen data with clock
+variation, clock-aware labels (won but 100-halfmove < DTZ-to-zero => actually DRAW, committor 0.5);
+(c) committor then ~1 in the win basin with clock budget, ->0.5 at the draw surface -> gives BOTH
+MCTS and minimax the progress gradient (reduce DTZ, reset clock) to steer off the draw. Then re-test
+MCTS (should recover) + long-mate conversion.
