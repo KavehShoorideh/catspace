@@ -21,11 +21,13 @@ from catspace.nn.fb import pick_device
 from catspace.nn.features import feature_planes
 from catspace.nn.iqe import IQE
 from experiments.arch_bakeoff import eff_rank
-from experiments.losses import quasimetric_regression, wdl_hinge, anchored_pairwise_rank
+from experiments.losses import (quasimetric_regression, wdl_hinge, anchored_pairwise_rank,
+                                categorical_ending_loss, N_ENDINGS)
 
 
 class ClockField(nn.Module):
-    """conv over 20 feature planes -> phi; d(s)=IQE(phi(s), MATE). Sees the halfmove clock."""
+    """conv over 20 feature planes -> phi; d(s)=IQE(phi(s), MATE) + CATEGORICAL ending-type head
+    (Kaveh: 'what kind of end is approaching'). Sees the halfmove clock."""
     def __init__(self, d=32, ch=64, blocks=5, iqe_components=16):
         super().__init__()
         self.stem = nn.Sequential(nn.Conv2d(20, ch, 3, padding=1), nn.GroupNorm(8, ch), nn.ReLU())
@@ -36,12 +38,17 @@ class ClockField(nn.Module):
                                   nn.Flatten(), nn.Linear(32 * 64, d))
         self.iqe = IQE(d, components=iqe_components)
         self.mate = nn.Parameter(torch.randn(d) * 0.1)
+        self.cat = nn.Linear(d, N_ENDINGS)                   # categorical ending-type head
 
     def phi(self, x):
         h = self.stem(x)
         for b in self.blocks:
             h = torch.relu(h + b(h))
         return self.head(h)
+
+    def d_mate_and_end(self, x):
+        e = self.phi(x)
+        return self.iqe(e, self.mate.expand_as(e)), self.cat(e)
 
     def d_mate(self, x):
         e = self.phi(x)
@@ -53,7 +60,7 @@ def main():
     ap.add_argument("--data", default="data/derived/clock_child_v1.npz")
     ap.add_argument("--d", type=int, default=32); ap.add_argument("--margin", type=float, default=400.0)
     ap.add_argument("--ch", type=int, default=64); ap.add_argument("--blocks", type=int, default=5)
-    ap.add_argument("--w-rank", type=float, default=1.0)
+    ap.add_argument("--w-rank", type=float, default=1.0); ap.add_argument("--w-cat", type=float, default=0.5)
     ap.add_argument("--steps", type=int, default=14000); ap.add_argument("--batch", type=int, default=384)
     ap.add_argument("--rank-pairs", type=int, default=384); ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--device", default="auto"); ap.add_argument("--save", default="artifacts/experiments/clock_field_v1.pt")
@@ -63,6 +70,7 @@ def main():
 
     z = np.load(args.data)
     packed, meta = z["packed"], z["meta"]; dtz = z["dtz"].astype(np.float32); grp = z["group"]
+    ending = z["ending"].astype(np.int64); end_t = torch.from_numpy(ending).to(dev)
     hm = np.minimum(meta[:, 6], 100).astype(np.float32)
     won = dtz >= 0; inf = dtz < 0
     idx_won = np.flatnonzero(won); idx_inf = np.flatnonzero(inf)
@@ -93,16 +101,18 @@ def main():
     hb = args.batch // 2
     for s in range(args.steps):
         bw = idx_won[rng.integers(0, len(idx_won), hb)]; bi = idx_inf[rng.integers(0, len(idx_inf), hb)]
-        bb = np.concatenate([bw, bi]); dm = net.d_mate(fp(bb))
+        bb = np.concatenate([bw, bi]); dm, catlog = net.d_mate_and_end(fp(bb))
         reg = quasimetric_regression(dm[won_m[bb].bool()], tgt[bb][won_m[bb].bool()])
         hin = wdl_hinge(dm, won_m[bb], logM)
+        cat = categorical_ending_loss(catlog, end_t[bb])     # categorical ending-type head
         pi = rng.integers(0, len(P_lo), args.rank_pairs)
         dlo = net.d_mate(fp(P_lo[pi])); dhi = net.d_mate(fp(P_hi[pi]))
         rnk = anchored_pairwise_rank(dlo, dhi, torch.from_numpy(P_gap[pi]).to(dev))
-        loss = reg + hin + args.w_rank * rnk
+        loss = reg + hin + args.w_rank * rnk + args.w_cat * cat
         opt.zero_grad(); loss.backward(); opt.step()
         if s % 2000 == 0:
-            print(f"  step {s} reg {float(reg):.3f} hinge {float(hin):.3f} rank {float(rnk):.3f} [{time.time()-t0:.0f}s]", flush=True)
+            print(f"  step {s} reg {float(reg):.3f} hinge {float(hin):.3f} rank {float(rnk):.3f} "
+                  f"cat {float(cat):.3f} [{time.time()-t0:.0f}s]", flush=True)
 
     net.eval()
     with torch.no_grad():
@@ -110,6 +120,10 @@ def main():
         racc = float((net.d_mate(fp(P_lo[te])).cpu().numpy() < net.d_mate(fp(P_hi[te])).cpu().numpy()).mean()) * 100
         sub = idx_won[rng.integers(0, len(idx_won), 3000)]
         er = eff_rank(net.phi(fp(sub)).cpu().numpy())
+        # categorical ending-type accuracy on a held sample
+        ce = rng.integers(0, len(dtz), 4000)
+        cat_pred = net.d_mate_and_end(fp(ce))[1].argmax(1).cpu().numpy()
+        cat_acc = float((cat_pred == ending[ce]).mean()) * 100
         # DRAW-SURFACE check: same won positions, sweep halfmove clock -> committor should DROP
         base = idx_won[rng.integers(0, len(idx_won), 400)]
         surf = []
@@ -118,7 +132,7 @@ def main():
             d = net.d_mate(torch.from_numpy(feature_planes(packed[base], m2)).to(dev)).cpu().numpy()
             surf.append((h, float(np.median(d))))
     print(f"VERDICT CLOCK-FIELD d{args.d}: 1-ply rank-acc {racc:.1f}% | eff_rank {er:.1f} | "
-          f"[{time.time()-t0:.0f}s]", flush=True)
+          f"ENDING-acc {cat_acc:.1f}% (6-way) | [{time.time()-t0:.0f}s]", flush=True)
     print(f"  DRAW-SURFACE (median d vs halfmove, should RISE toward the draw as clock->100): "
           + " ".join(f"h{h}:{d:.0f}" for h, d in surf), flush=True)
     Path(args.save).parent.mkdir(parents=True, exist_ok=True)

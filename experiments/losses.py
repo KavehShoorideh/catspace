@@ -27,6 +27,19 @@ def wdl_hinge(d, is_won, log_margin):
     return (F.relu(log_margin - dl) * lost).sum() / lost.sum().clamp(min=1)
 
 
+# Ending-type categories (Kaveh's categorical head: "what kind of end is approaching").
+# Order is the label index. Draws in the middle, decisive at the ends.
+ENDINGS = ["WIN_MATE", "DRAW_FIFTY", "DRAW_STALEMATE", "DRAW_INSUFFICIENT",
+           "DRAW_REPETITION", "LOSS_MATE"]
+N_ENDINGS = len(ENDINGS)
+
+
+def categorical_ending_loss(logits, labels):
+    """Cross-entropy for the categorical ending-type head. logits (N,N_ENDINGS), labels (N,) int
+    in [0,N_ENDINGS). Predicts P(which terminal this position leads to / represents)."""
+    return F.cross_entropy(logits, labels)
+
+
 def anchored_pairwise_rank(d_close, d_far, log_gap):
     """Tie-safe, scale-anchored 1-ply order. Enforces log1p(d_far) - log1p(d_close) >= log_gap,
     where log_gap is the TRUE per-pair target gap (0 for ties -> no push). Caller passes pairs
@@ -64,6 +77,16 @@ def _tests():
     d = torch.tensor([9.0]); t = torch.log1p(torch.tensor([9.0]))
     assert quasimetric_regression(d, t).item() < 1e-6
     print("  quasimetric_regression: exact -> ~0  OK")
+
+    # categorical_ending_loss: confident-correct -> ~0; confident-wrong -> large; N_ENDINGS shape
+    lab = torch.tensor([0, 1])
+    conf = torch.zeros(2, N_ENDINGS); conf[0, 0] = 20.0; conf[1, 1] = 20.0
+    wrong = torch.zeros(2, N_ENDINGS); wrong[0, 3] = 20.0; wrong[1, 4] = 20.0
+    assert categorical_ending_loss(conf, lab).item() < 1e-3, "confident-correct -> ~0"
+    assert categorical_ending_loss(wrong, lab).item() > 10.0, "confident-wrong -> large"
+    assert N_ENDINGS == len(ENDINGS) == 6
+    print(f"  categorical_ending_loss: correct {categorical_ending_loss(conf,lab).item():.4f} | "
+          f"wrong {categorical_ending_loss(wrong,lab).item():.1f} | {N_ENDINGS} endings  OK")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
