@@ -8276,3 +8276,26 @@ opening); HUMAN ERROR smears them into the leaky midgame. The 36%-vs-7% gap IS t
 This empirically validates the whole metastability-exploitation framing. Caveats: 77% draws (draw sea
 + decisive pockets, not 3 equal basins), small decisive sample (~750), phi human-trained (engine mildly
 OOD -> 36% is a lower bound). Files: gen_engine_games.py, engine_vs_human_basins.py.
+
+## 2026-07-27 -- MONEY CHART: perfect vs human committor by material (the exploitable entropy, visualized)
+
+sf_wdl_by_material.py: on the SAME 4800 human positions (600/material-bucket), two committors:
+FIELD (P win under HUMAN play) vs STOCKFISH d16 WDL (P win under PERFECT play), ridgeline by material.
+BIMODALITY (Sarle; 1.0=fully split into win/loss branches):
+  material   HUMAN-field   PERFECT-SF
+  27-32p     0.406         0.897
+  23-26p     0.444         0.948
+  19-22p     0.497         0.963
+  15-18p     0.609         0.984
+  11-14p     0.605         0.991
+  8-10p      0.680         0.997
+  5-7p       0.942         0.999
+  3-4p       0.938         1.000
+=> the PERFECT committor is BIMODAL at ALL material (value decided even at 30 pieces); the HUMAN-play
+committor is a UNIMODAL JUMBLE in the opening/midgame and only splits near the endgame. Same positions
+-> the difference is ENTIRELY the play measure. The GAP between the two ridgelines = the EXPLOITABLE
+ENTROPY: largest in the opening/midgame (0.90 vs 0.41 at 27-32p = max room to steer), vanishing in the
+endgame (1.0 vs 0.94 at 5-7p). The outcome IS determined by the position; human fallibility keeps the
+midgame open, and that openness (concentrated ~15-25 pieces) is exactly where the z/T planner pushes
+the opponent across the barrier. Empirical foundation of the whole exploitation program. File:
+sf_wdl_by_material.py (+ gen_engine_games, engine_vs_human_basins from the perfect-play control).
