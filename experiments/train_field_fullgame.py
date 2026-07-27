@@ -34,22 +34,11 @@ from experiments.arch_bakeoff import eff_rank
 from catspace.train.scaffold import standard_train, TrainConfig, resolve_device
 
 
-def load_field_data(path):
-    z = np.load(path)
-    planes = z["planes"]; dtz = z["dtz"].astype(np.int32); ending = z["ending"].astype(np.int64)
-    game = z["game"]; ply = z["ply"]
-    # class indices for BALANCED committor training (score buckets: win / draw / loss)
-    idx_win = np.flatnonzero(ending == 0)
-    idx_loss = np.flatnonzero(ending == 5)
-    idx_draw = np.flatnonzero((ending >= 1) & (ending <= 4))
-    idx_tbwon = np.flatnonzero(dtz >= 0)                          # tablebase-grounded won subset
-    # multi-goal same-line pairs (s before g -> d = ply gap)
-    g2 = defaultdict(list)
-    for i in range(len(dtz)):
-        g2[int(game[i])].append(i)
-    rng = np.random.default_rng(0)
+def _multigoal_pairs(rows_by_game, ply, rng, games_keep):
     MG_s, MG_g, MG_d = [], [], []
-    for rows in g2.values():
+    for g, rows in rows_by_game.items():
+        if g not in games_keep:
+            continue
         rows = sorted(rows, key=lambda i: ply[i])
         if len(rows) < 2:
             continue
@@ -61,9 +50,31 @@ def load_field_data(path):
             if delta <= 0:
                 continue
             MG_s.append(si); MG_g.append(gj); MG_d.append(np.log1p(delta))
-    return dict(planes=planes, dtz=dtz, ending=ending,
-                idx_win=idx_win, idx_draw=idx_draw, idx_loss=idx_loss, idx_tbwon=idx_tbwon,
-                MG_s=np.array(MG_s), MG_g=np.array(MG_g), MG_d=np.array(MG_d, np.float32))
+    return np.array(MG_s), np.array(MG_g), np.array(MG_d, np.float32)
+
+
+def load_field_data(path, val_frac: float = 0.1, seed: int = 0):
+    z = np.load(path)
+    planes = z["planes"]; dtz = z["dtz"].astype(np.int32); ending = z["ending"].astype(np.int64)
+    game = z["game"]; ply = z["ply"]
+    rng = np.random.default_rng(seed)
+    # GAME-LEVEL train/val split (no position leaks across the split -> honest val metrics)
+    games = np.unique(game)
+    val_games = set(rng.choice(games, size=max(1, int(len(games) * val_frac)), replace=False).tolist())
+    is_val = np.array([int(g) in val_games for g in game])
+    tr = np.flatnonzero(~is_val); va = np.flatnonzero(is_val)
+    def cls(idxset, cond):
+        m = np.flatnonzero(cond); return np.intersect1d(m, idxset, assume_unique=False)
+    rows_by_game = defaultdict(list)
+    for i in range(len(dtz)):
+        rows_by_game[int(game[i])].append(i)
+    train_games = set(int(g) for g in games if int(g) not in val_games)
+    MG_s, MG_g, MG_d = _multigoal_pairs(rows_by_game, ply, rng, train_games)
+    VMG_s, VMG_g, VMG_d = _multigoal_pairs(rows_by_game, ply, np.random.default_rng(seed + 1), val_games)
+    return dict(planes=planes, dtz=dtz, ending=ending, val_idx=va,
+                idx_win=cls(tr, ending == 0), idx_draw=cls(tr, (ending >= 1) & (ending <= 4)),
+                idx_loss=cls(tr, ending == 5), idx_tbwon=cls(tr, dtz >= 0),
+                MG_s=MG_s, MG_g=MG_g, MG_d=MG_d, VMG_s=VMG_s, VMG_g=VMG_g, VMG_d=VMG_d)
 
 
 def make_step(net, opt, D, dev, args, rng):
@@ -121,20 +132,27 @@ def make_step(net, opt, D, dev, args, rng):
 
 
 def make_gates(net, D, dev, fp, rng):
+    """All gates on HELD-OUT VAL games (honest metrics)."""
     from scipy.stats import spearmanr
-    planes = D["planes"]
+    va = D["val_idx"]
 
     def gates(_net):
-        te = rng.integers(0, len(D["MG_s"]), min(4000, len(D["MG_s"])))
-        dp = net.d_pair(fp(D["MG_s"][te]), fp(D["MG_g"][te])).cpu().numpy()
-        pair_order = float(spearmanr(dp, np.expm1(D["MG_d"][te])).correlation)
-        sub = rng.integers(0, len(planes), 3000)
+        # multi-goal pair-order on VAL pairs
+        if len(D["VMG_s"]):
+            te = rng.integers(0, len(D["VMG_s"]), min(4000, len(D["VMG_s"])))
+            dp = net.d_pair(fp(D["VMG_s"][te]), fp(D["VMG_g"][te])).cpu().numpy()
+            pair_order = float(spearmanr(dp, np.expm1(D["VMG_d"][te])).correlation)
+        else:
+            pair_order = float("nan")
+        sub = va[rng.integers(0, len(va), min(3000, len(va)))]
         er = float(eff_rank(net.phi(fp(sub)).cpu().numpy()))
-        # committor-MAE vs actual W/D/L score
         actual = np.where(D["ending"][sub] == 0, 1.0, np.where(D["ending"][sub] == 5, 0.0, 0.5)).astype(np.float32)
         comm = net.committor(fp(sub)).cpu().numpy()
         comm_mae = float(np.abs(comm - actual).mean())
-        return {"pair_order": pair_order, "eff_rank": er, "committor_mae": comm_mae}
+        # committor discrimination: mean committor on true-win vs true-loss val positions
+        win_m = D["ending"][sub] == 0; loss_m = D["ending"][sub] == 5
+        sep = float(comm[win_m].mean() - comm[loss_m].mean()) if win_m.any() and loss_m.any() else float("nan")
+        return {"pair_order": pair_order, "eff_rank": er, "committor_mae": comm_mae, "win_loss_sep": sep}
 
     return gates
 
@@ -152,12 +170,13 @@ def main():
     ap.add_argument("--device", default="auto")
     ap.add_argument("--out", default="artifacts/experiments/field_fullgame")
     ap.add_argument("--ckpt-every", type=int, default=2000); ap.add_argument("--eval-every", type=int, default=1000)
+    ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     t0 = time.time(); dev = resolve_device(args.device); torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
 
-    D = load_field_data(args.data)
+    D = load_field_data(args.data, val_frac=args.val_frac, seed=args.seed)
     print(f"[field-fullgame] positions {len(D['ending'])} | win {len(D['idx_win'])} draw {len(D['idx_draw'])} "
           f"loss {len(D['idx_loss'])} tb-won {len(D['idx_tbwon'])} | multi-goal pairs {len(D['MG_s'])} "
           f"| device {dev}", flush=True)
