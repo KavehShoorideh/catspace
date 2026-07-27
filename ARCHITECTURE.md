@@ -644,6 +644,33 @@ EXPECTED SCORE (W=1,D=.5,L=0, loss term incl). PERFECT defender (endgame vs TB) 
 expected score over pi_z; T shapes search to favorable-flux ridges; risk-appetite knob (need-win->
 SHARP, winning->QUIET = contempt). At <=7 pieces hand to tablebase.
 
+## 8.1 OPTIONALITY portfolio -> MULTIPURPOSE moves (Kaveh 2026-07-26; code catspace/planner/optionality.py, tested)
+The engine INFERS z_opp online (posterior from the opponent's moves this game, cold-started on the
+rating prior p(z|Elo); Matilda-residual [[matilda_residual_style_embedding]]), builds candidate
+transition-point subgoals, navigates high-level to them, and searches low-level -- while STAYING AWAY
+from the opponent's own subgoals. Two additions to the single-subgoal picture above:
+  (1) KEEP OPTIONS OPEN: hold a SET of subgoals G_me (not one), and model the opponent as doing the
+      same (G_opp). We are uncertain WHICH subgoal pans out (and about z_opp), so value is an
+      expectation over which plan succeeds -> aggregate the portfolio SOFTLY, not hard-min:
+        soft_reach(s;G,beta) = (1/beta) logsumexp_k[ beta*(-d(s,g_k)) + log w_k ],  w_k >= Phi*density.
+      A finite beta REWARDS several subgoals being close at once (optionality = a Jensen /
+      value-of-information effect on E[V], NOT a new objective). beta->inf collapses to hard nearest.
+      beta couples to the sigma risk knob (need-a-win -> raise beta = commit to the sharpest subgoal).
+  (2) MULTIPURPOSE MOVES EMERGE (attack + defend + more). Move shaping (a MOVE-PRIOR term, NOT a value
+      term -- interfaces.py keeps subgoals out of the global value):
+        score(move) = [soft_reach(s';G_me) - soft_reach(s;G_me)]      # advance MANY of my subgoals
+                    - lam*[soft_reach(s';G_opp) - soft_reach(s;G_opp)] # DENY MANY of theirs (raise barrier)
+                    - mu*self_blunder(s')                             # avoid my own error regions (z_me)
+      The move that advances many of my subgoals (attack) AND raises the barrier to many of theirs
+      (defend) maximizes ONE uncertainty-aware score -- so multipurpose play is the ARGMAX, with no
+      "prefer multipurpose" rule. self_blunder(s') = search-complexity proxy for t_loss(s',z_me) now
+      (branching + tactical tension + in-check); a learned z_me replaces it later. Flux weights w_k and
+      G_opp come from T(s,z) once trained; the core math is field-agnostic (operates on d[move,subgoal]
+      matrices) so it is unit-tested in isolation and plugs into any field (single-space IQE or FB).
+      TESTED (optionality.py): optionality bonus, beta->inf hard-min, and multipurpose-move emergence
+      (a move advancing 2 of mine + denying 2 of theirs out-ranks pure-attack / pure-defense /
+      single-purpose). NEXT: wrap as a PortfolioPrior (MovePrior) on a real field; gate exploitation on z/T.
+
 ## 9. Status
 DONE/validated: single-space IQE + multi-goal + repulsion + mate + WDL + distributional ending +
 committor; lc0 112 real-history input; tested losses; clean 3-basin endgame data; tablebase
