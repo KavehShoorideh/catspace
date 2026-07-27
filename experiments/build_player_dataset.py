@@ -28,6 +28,8 @@ def main():
     ap.add_argument("--records", default="data/records/lichess_2019-01")
     ap.add_argument("--min-games", type=int, default=50)
     ap.add_argument("--n-players", type=int, default=5000, help="0 = all qualifying players")
+    ap.add_argument("--prov-threshold", type=int, default=20, help="players with < this many games = PROVISIONAL (pooled prior)")
+    ap.add_argument("--prov-players", type=int, default=40000, help="how many provisional players to sample for the prior")
     ap.add_argument("--out", default="data/records/player_games")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -42,13 +44,19 @@ def main():
     qualifying = [u for u, c in cnt.items() if c >= args.min_games]
     if args.n_players and len(qualifying) > args.n_players:
         qualifying = list(rng.choice(qualifying, size=args.n_players, replace=False))
-    selected = set(qualifying)
-    print(f"[player-dataset] {len(cnt):,} players | >= {args.min_games} games: "
-          f"{sum(c >= args.min_games for c in cnt.values()):,} | selected {len(selected):,} [{time.time()-t0:.0f}s]", flush=True)
+    individual = set(qualifying)
+    prov_pool = [u for u, c in cnt.items() if c < args.prov_threshold]
+    if args.prov_players and len(prov_pool) > args.prov_players:
+        prov_pool = list(rng.choice(prov_pool, size=args.prov_players, replace=False))
+    provisional = set(prov_pool)
+    selected = individual | provisional
+    print(f"[player-dataset] {len(cnt):,} players | individual(>= {args.min_games}): {len(individual):,} | "
+          f"provisional(< {args.prov_threshold}): {len(provisional):,} of {sum(c < args.prov_threshold for c in cnt.values()):,} "
+          f"[{time.time()-t0:.0f}s]", flush=True)
 
     # pass 2: extract selected players' games (row per tracked player x game)
     RMAP = {1: 1, -1: -1, 0: 0}
-    cols = {k: [] for k in ("player_id", "player_elo", "opp_elo", "player_white", "result", "n_plies", "moves")}
+    cols = {k: [] for k in ("player_id", "player_elo", "opp_elo", "player_white", "result", "n_plies", "moves", "provisional")}
     out_dir = Path(args.out); out_dir.mkdir(parents=True, exist_ok=True)
     shard_idx = 0; rows = 0
     def flush():
@@ -61,7 +69,8 @@ def main():
                         "player_white": pa.array(cols["player_white"], pa.bool_()),
                         "result": pa.array(cols["result"], pa.int8()),
                         "n_plies": pa.array(cols["n_plies"], pa.int32()),
-                        "moves": pa.array(cols["moves"], pa.string())})
+                        "moves": pa.array(cols["moves"], pa.string()),
+                        "provisional": pa.array(cols["provisional"], pa.bool_())})
         pq.write_table(tbl, out_dir / f"players_{shard_idx:04d}.parquet", compression="zstd")
         shard_idx += 1
         for k in cols: cols[k] = []
@@ -75,6 +84,7 @@ def main():
                     cols["player_id"].append(int(pid(name))); cols["player_elo"].append(int(pe))
                     cols["opp_elo"].append(int(oe)); cols["player_white"].append(is_white)
                     cols["result"].append(int(res)); cols["n_plies"].append(int(npl)); cols["moves"].append(mv)
+                    cols["provisional"].append(name in provisional)
                     rows += 1
         if len(cols["player_id"]) >= 300_000:
             flush()
