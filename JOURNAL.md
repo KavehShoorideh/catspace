@@ -8188,3 +8188,17 @@ coverage is the bottleneck -- more search on a blind value plays worse than exha
 FIX (Kaveh: retrain full-phase): regenerated Stage C with skip_open=0 (openings included, even phase
 coverage) -> field_fullgame_v2data.npz; retrain v4 with the v3 recipe. Startpos should calibrate to
 ~0.5 (balanced outcomes across the dataset). Then re-run Layer 2 vs Maia in-distribution.
+
+## 2026-07-27 -- STANDARD broadly-usable data (Kaveh: spend energy once, standard like others generate)
+
+Directive: generated data must be broadly usable (all phases, standard format), not narrow. Upgraded
+Stage C (gen_field_data_fullgame.py) to a STANDARD position dataset -- ONE dataset serving EVERY
+downstream model:
+  planes (position) | move (PLAYED move = POLICY target, AZ/lc0-style) | result (WHITE-POV VALUE
+  target) | ending (committor) | dtz (mate grounding) | game/ply (quasimetric key) | stm_id (name-
+  MASKED stable-hash player id for the z-encoder) | stm_elo/opp_elo (rating conditioning). ALL PHASES
+  (skip_open default now 0 -- openings included; a value field must evaluate every phase, the v3->v4
+  blindness lesson). Smoke (14.9k pos): policy-move coverage 89.9%, 2045 unique players, ply span
+  0-216, W/D/L balanced. Regenerated the full 100k-game standard dataset (field_std_v1.npz). This
+  replaces the narrow field-only npz: no re-generation needed for policy / z-encoder / stylometry.
+  v4 field retrains on it (trainer reads its subset of keys unchanged).
