@@ -8138,3 +8138,20 @@ as value_fn (2c-1, White-POV) into the existing catspace/nn/mcts.py (PUCT + mate
 recognizers) for a NODE-BUDGETED search vs Maia -- the proper "engine vs Maia" test (my 1-2 ply toys
 undersell the field). Then the quasimetric planner (uses the pair-order-0.94 geometry the committor
 readout wastes) + T(s,z) exploitation.
+
+## 2026-07-27 -- Layer 3 (quasimetric gradient) readiness: rough-but-real, build order 3->2->1
+
+Kaveh set build order 3(field)->2(MCTS on quasimetric distance-to-mate gradient)->1(opponent-weakness
+planner); low-level signal = DISTANCE-TO-MATE (not committor value). Assessed field_v3's d_mate:
+  d_mate vs true DTZ (winning positions, IN-DISTRIBUTION real history): Spearman +0.81, median tracks
+    DTZ bucket monotonically -> usable gradient.
+  FRESH endgames (no history, synthetic): +0.505 -> DISTRIBUTION-SENSITIVE (real history matters,
+    Kaveh's "don't zero-fill" -- confirmed). In ACTUAL PLAY positions carry real history -> the +0.81
+    regime applies (my conversion test was artificially off-distribution).
+  d_mate-greedy mates KQvK/KRvK vs TB-optimal defender: 0/30 -- EXPECTED: value!=policy (needs SEARCH
+    = Layer 2) AND <=7 pieces is the TABLEBASE's job by design (handover), so this is off-architecture.
+VERDICT Layer 3 READY ENOUGH: rough-but-real distance-to-mate gradient in-distribution + strong d_pair
+(0.94) for distance-to-subgoal. Search converts a rough gradient to moves; nn/mcts.py has mate-stop +
+cert recognizers for the <=7p finish. NOT retraining the field now (<=7p = tablebase). NEXT: Layer 2
+-- wire d_mate/d_pair gradient into nn/mcts.py (value from -distance, real-history planes from
+move_stack), test on winning/tactical positions + vs Maia.
