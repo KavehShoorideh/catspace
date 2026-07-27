@@ -8087,3 +8087,21 @@ DELIVERABLE: field_fullgame_v2_final.pt (DVC-tracked) = the first well-calibrate
 committor + quasimetric field on real games. This is the centerpiece the exploitation planner
 (optionality.py PortfolioPrior) + committor navigation build on. committor-MAE (0.378) retired as a
 gate -- ECE + calibration curve + tablebase agreement are the committor metrics going forward.
+
+## 2026-07-27 -- FIELD v3 PROMOTED: committor anchor fixed the endgame boundary (0.69->0.94)
+
+v3 = v2 recipe + committor ANCHOR (c->1 on tablebase-won subset, w_anchor 1.0). 16k steps, eff_rank
+climbed 5.2->8.4 (no collapse). TEST (held-out val, vs v2):
+  committor ECE 0.027 (v2 0.022 -- both well-calibrated, negligible cost)
+  TABLEBASE-WON committor 0.94, MAE 0.065  (v2: 0.69, MAE 0.314 -- THE FIX: sharp basin boundary now)
+  win/loss-sep 0.205 (v2 0.194) | pair-order 0.944 | eff_rank 8.4.
+v3 is STRICTLY better: well-calibrated AND exact at the <=7-piece tablebase handover (the committor
+boundary condition, ARCH 8) -- what the metastability planner needs. PROMOTED: field_fullgame_v3_final.pt
+(DVC-tracked) = THE full-board committor+quasimetric field. THE DELIVERABLE for Kaveh's "train a proper
+field, then test it" is DONE + tested + promoted.
+Recipe (record): d64 ch128 blocks8, w_multi1 w_repel1 repel_margin4 w_cat2 w_mate0.5 w_hinge0.5
+w_anchor1, lr3e-4, 16k steps, 1.08M real-game positions (100k games, full-month lichess), MPS ~95min.
+NEXT (for Kaveh): (1) wire field_fullgame_v3 into the optionality PortfolioPrior planner (committor +
+d_pair as the distance_fn); (2) z-encoder (Matilda residual) on the 19.35M-game identity records ->
+transition predictor T(s,z) -> the exploitation loop goes live; (3) engine data (CCRL) for draw/tail
+diversity. All gated code + interfaces already built + tested this session.
