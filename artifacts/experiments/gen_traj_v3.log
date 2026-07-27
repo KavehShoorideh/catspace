@@ -1,1 +1,15 @@
 [gen-traj-lc0] 10 workers x 240 games | lc0 112-plane real-history LINE positions
+  w1/10: 5245 rows [61s]
+  w2/10: 5777 rows [65s]
+  w3/10: 5655 rows [65s]
+  w4/10: 5178 rows [65s]
+  w5/10: 5213 rows [65s]
+  w6/10: 5059 rows [65s]
+  w7/10: 5552 rows [65s]
+  w8/10: 5236 rows [65s]
+  w9/10: 4922 rows [65s]
+  w10/10: 5416 rows [65s]
+
+=== data/derived/traj_lc0_v3.npz: 53253 rows (382MB) [67s] ===
+  won 21454 | mate 0 | INF 31799 | games 2400
+DONE gen_traj_lc0
