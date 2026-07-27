@@ -121,6 +121,24 @@ in-game z tightening on. Publishable evaluation + digest write-up.
 Dockerized service stack; RL-trained plan selector (revisit after M4); non-board endings
 (time/resign as outcome classes); viz niceties beyond the atlas.
 
+### PARKED — Armed tactics: a conditional-activation store (Kaveh 2026-07-27; unlocks after M3b + M5)
+When search finds a tactic that ALMOST works — a transition point about to cross but not ready —
+store it instead of discarding it, together with WHY it is not ready:
+- **Armed-tactic record:** (region/pattern, the tactical line, payoff estimate, and the BLOCKING
+  CONDITION — the specific defensive resource that refutes it, e.g. "the Nf6 guards h7").
+- The blocking condition is precisely a **protective factor** (M3b vocabulary): armed tactic =
+  near-transition whose flux is gated by one identifiable protective factor.
+- **Activation watch:** each ply, cheaply check whether the blocking condition was removed
+  (defender left, guard broken, pin released). If yes → the tactic ACTIVATES → high-priority
+  pounce subgoal for the planner / first-probe line for MCTS.
+- Dual use: (a) exploit the opponent's removal of their own protective factor the instant it
+  happens; (b) inversely, protect OUR OWN blocking conditions that the opponent's armed tactics
+  depend on (feeds the denial/self-blunder term).
+- Also a search-efficiency win: discover once, arm, watch the trigger — instead of re-finding the
+  tactic every ply.
+Prereqs: M3b (protective-factor vocabulary = the "why not ready" language) + M5 (the probing
+search that finds the tactics). Lineage: refines the old "tactics tracking → pounce" idea.
+
 ## Acronyms & symbols (canonical — GLOSSARY.md defers to this)
 
 **Chess & engines**

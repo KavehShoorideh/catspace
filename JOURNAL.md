@@ -8359,3 +8359,15 @@ metrics/stats, infra, legacy); GLOSSARY.md defers to it and carries a staleness 
 InfoNCE entries describe the LEGACY pre-rebuild architecture). Highlighted confusables: phi (board
 embedding) vs Phi (net favorable flux); DTZ vs DTM; committor (play-measure-dependent) vs WDL head;
 Elo is not an acronym; FB/omega = legacy naming surviving in filenames.
+
+## 2026-07-27 -- PARKED: armed tactics (conditional-activation store), Kaveh
+
+New parked design (no machinery yet -- unlocks after M3b + M5): during search, a tactic that ALMOST
+works = a near-transition point "about to cross but not ready." STORE it with its BLOCKING CONDITION
+(the specific refuting resource = a PROTECTIVE FACTOR in M3b's vocabulary -- the answer to "why is it
+not ready to cross"), then WATCH each ply for the blocker's removal (defender leaves, guard breaks,
+pin releases) -> tactic ACTIVATES -> pounce subgoal / first-probe line. Dual use: exploit their
+removed protectors instantly; guard OUR blocking conditions their armed tactics depend on (denial/
+self-blunder side). Also search efficiency: discover once, arm, watch -- not re-find every ply.
+Recorded: MILESTONES.md PARKED section (canonical spec), task #41 (blocked by #34 M3b + #39 M5),
+memory armed_tactics_parked. Lineage: refines the old "tactics tracking -> pounce" idea.
