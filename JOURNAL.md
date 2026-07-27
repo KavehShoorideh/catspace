@@ -7932,3 +7932,19 @@ exploitation, cohort-regret field -- all designed in METASTABILITY_PLAN.md + mem
 KEEP: all the machinery/code (single-space IQE, multi-goal, repulsion, distributional ending head,
 committor, tested losses, lc0 encoder, trajectory data pipeline) -- transfers to the full-board model.
 The endgame work VALIDATED the machinery on ground truth; now build the real thing.
+
+## 2026-07-26 -- DATA EVENNESS CHECK (before full train, Kaveh's discipline) -- caught 2 problems
+
+Built data_distribution_check.py; ran on lichess shards (3M pos, 54k games, ~52 pos/game). FOUND:
+  1. DRAW BASIN STARVED: outcome per game = 49.3% W-win / 46.6% B-win / only 4.1% DRAW. Sub-2000
+     lichess barely draws -> the committor's DRAW basin would be near-empty -> collapses to binary
+     W/L. FIX: blend draw-rich data (engine-vs-engine ~50% draws; higher-rated humans) + upsample.
+  2. STRENGTH SKEW: evenness 0.79 (norm entropy), peaked 1400-1800, SPARSE <1000 and >2200 (0.1%
+     >2400). z-space would be "everyone ~1500" with no tails. FIX: engine tails -- CCRL/fastchess
+     strong end, Maia-bots weak end (the universal z-space rationale).
+  3. PHASE ok (ply 0-80 spread, midgame-heavy). 4. Shards have Elo+result+game_id/ply but NOT
+     player names -> z is RATING-conditioned on this data; per-individual z needs raw-PGN reprocess.
+VERDICT: data NOT train-ready -- fix draw-starvation + strength-skew (balanced human+engine+rating
+blend) BEFORE the full run. Test-before-train discipline paid off (caught it pre-run). Next
+validations: balanced data pipeline -> re-check evenness -> z-encoder/T/field machinery smokes ->
+THEN full best-shot train. Files: data_distribution_check.py.
