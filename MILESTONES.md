@@ -35,6 +35,12 @@ research product, headed for publication.
    region), terminating in d(s, TB-won→mate). WDL/committor outputs are permitted ONLY as (a)
    analysis instrumentation and (b) transition **labels** (a transition = a crossing between
    outcome basins). Never as the engine's primary navigation value.
+   *Clarification (Kaveh 2026-07-27): the IQE is the MAP, not the basin object — a human-measure
+   reachability metric is basin-PERMEABLE by design (a crossing is 1 ply away; the MSM found phase,
+   not outcome). Basins/transitions live in T; the subgoal score is the product flux(T) ×
+   reachability(d); an adversarial metric would wall off exactly the crossings we exploit.
+   "Resisted vs typical reach" (forceability) derives later as a T-weighted path property over d —
+   not a second metric.*
 2. **Pretrained trunk + IQE head.** The board encoder is a **frozen pretrained Leela-family
    trunk** (Maia/lc0, via `lc0 leela2onnx` → `lczerolens` torch module — VERIFIED 2026-07-27:
    batched forward 277 pos/s CPU, policy+wdl heads, trunk hookable). New head = IQE quasimetric.

@@ -8454,3 +8454,18 @@ trunk), optimize (quantization-aware ops, fusion, native Metal/CoreML, pruning, 
 replacing net calls at play time). Under the TC protocol speed IS Elo, so compression climbs the
 ladder with no new learning. DoD: >=5x lower per-move compute within -25 Elo (SPRT non-inferiority)
 AND still beats maia-1200 under standard TC; stretch = beat maia-1200 at HALF clock (1.5+1).
+
+## 2026-07-27 -- Design Q resolved: "IQE won't separate basins without an adversarial model -- why keep it?"
+
+Kaveh's observation is correct and ALREADY MEASURED: MSM basins = phase not outcome; a basin-crossing
+blunder is 1 ply away = maximally CLOSE in the metric. The human-measure IQE is basin-permeable BY
+DESIGN. Resolution (pinned as a clarification under locked decision 1): the IQE is the MAP not the
+basin object -- basins/transitions are T's job; subgoal score = flux(T) x reachability(d); an
+adversarial (perfect-play) metric would set d(draw->win)=inf and wall off exactly the crossings we
+exploit. d's five consumers: subgoal attainability, MCTS progress gradient (delta-d dense signal),
+plan composition (triangle inequality), the optionality portfolio (soft-min over d), and per-node
+cost. d-without-T = committor-greedy failure (0.125); T-without-d = destinations without a map.
+Forceability (resisted-vs-typical reach) = future T-weighted path property over d, NOT a second
+metric. Also: tuned maia head REGRESSED (pair-order 0.837 / d_mate 0.557 vs base 0.861/0.595 --
+overweighted mate/hinge on 9.5k tb rows overfit+distorted); base recipe kept; d_mate hope rides on
+T70 features (redo chained).
