@@ -629,15 +629,20 @@ grounded at <=7 via committor_anchor.
   max_a V_ref(s.a) - E_{a~pi_z}[V_ref], where reference reliable AND our estimate beats theirs.
 - Value migration engine->ensemble->self-play (committor is outcome-defined -> source swappable).
 
-## 8. Planner (inference)
-TOP-LEVEL HIERARCHICAL PLANNER is conditioned on BOTH (Elo, z): explicit Elo = the always-available,
-interpretable SKILL signal (how hard to press); learned z = the individual STYLE / error-map (where
-to pose problems). Elo also anchors/regularizes z's skill dim so the learned part carries style, not
-re-derived skill. Search on the field (policy=planner). Value=trained committor; maximize EXPECTED
-SCORE (W=1,D=.5, PERFECT defender (endgame vs TB) -> MINIMAX (v3+depth-3 = 100%; MCTS mean-
-backup exploited by perfect defense). FALLIBLE opponent (midgame) -> MCTS on expected score over
-pi_z; T shapes search to favorable-flux ridges; risk-appetite knob (need-win->SHARP, winning->QUIET
-= contempt). At <=7 pieces hand to tablebase.
+## 8. HIERARCHICAL PLANNER (inference) -- the core exploitation component (TWO-SIDED)
+Guides TOWARD the OPPONENT's weak points AND AWAY FROM MY OWN. Conditioned on BOTH agents:
+  - OPPONENT (Elo_opp, z_opp) -> their error map T(s, z_opp): where THEY are likely to slip.
+  - SELF     (Elo_me,  z_me)  -> MY error map / SELF-BLUNDER model T(s, z_me): where I slip.
+    (Self-blunder model is a FIRST-CLASS input here -- NOT deferred.)
+HIERARCHY: the top level chooses SUBGOALS = transition-point regions that MAXIMIZE the NET favorable
+asymmetry (their-error-flux MINUS my-error-flux = the info-asymmetry edge); the committor/field +
+search then NAVIGATE to the chosen subgoal (region-goal chain, task #24). Elo = always-available
+skill signal (how hard to press) + anchors each z's skill dim so z carries STYLE not re-derived skill.
+LOWER LEVEL (navigation): search on the field (policy=planner). Value=trained committor; maximize
+EXPECTED SCORE (W=1,D=.5,L=0, loss term incl). PERFECT defender (endgame vs TB) -> MINIMAX (v3+depth-3
+= 100%; MCTS mean-backup exploited by perfect defense). FALLIBLE opponent (midgame) -> MCTS on
+expected score over pi_z; T shapes search to favorable-flux ridges; risk-appetite knob (need-win->
+SHARP, winning->QUIET = contempt). At <=7 pieces hand to tablebase.
 
 ## 9. Status
 DONE/validated: single-space IQE + multi-goal + repulsion + mate + WDL + distributional ending +
