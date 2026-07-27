@@ -8220,3 +8220,20 @@ This IS the thesis: the human basins are metastable/leaky, the crossings are the
 Caveat: |dc| over ~6-ply strided windows (coarse); UMAP is of phi (reachability != outcome-basin).
 NEXT options: per-move dc (sharp localization); decisive-subset map; rating-conditioned (do stronger
 players transition less = tighter basins?).
+
+## 2026-07-27 -- 3-basin BANDS view: club chess is bistable Win<->Loss with a shallow Draw saddle
+
+transition_bands.py: the 3 basins (W/D/L) as bands full of states, each colored by transition
+probability to a different band (leak = 1 - p_own_basin), + the aggregate 3x3 basin->basin mean
+transition matrix. FINDING (12k states, v3 field):
+        ->Win  ->Draw ->Loss
+  Win   --     0.05   0.25
+  Draw  0.16   --     0.19
+  Loss  0.28   0.09   --
+=> WIN and LOSS are the two real basins and they leak PRIMARILY INTO EACH OTHER (Win->Loss 0.25,
+Loss->Win 0.28); the middle panel shows the Win band mostly red(->Loss), the Loss band mostly
+blue(->Win). DRAW is barely a basin -- almost nothing flows INTO it (0.05/0.09) and it leaks out both
+ways -- a shallow unstable saddle (draws are 6% at 1400-1800). Each band spans quiet(leak~0) ->
+transition(leak~0.66) smoothly. THESIS implication: the exploitable move is steering the opponent
+across the LOW Win<->Loss barrier (~0.25) in our favor; the draw saddle is the trap when pressing.
+This is aggregate T(s,z); the per-player version (Layer 1) localizes WHOSE barrier is lowest WHERE.
