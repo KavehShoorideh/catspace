@@ -602,9 +602,15 @@ grounded at <=7 via committor_anchor.
   spread off it. Nuance: deterministic engine -> 0/1 transitions (exploit FIXED weakness); fixed-
   nodes/skill/temperature engine -> stochastic (like humans). PRIOR: unknown player -> rating-
   conditioned population prior p(z|rating); sharpen to p(z|moves,rating) online (cold-start=prior).
-  DATA: humans = lichess shards (have); engines = CCRL/TCEC/CCC + existing (experience.sqlite,
-  ext_maia/sf PGNs, stockfish_continuations) + fastchess strength-labeled games; ingest via
-  import_pgn_games.py -> trajectory pipeline.
+  DATA (confirmed): humans = lichess shards (HAVE). Engines: (1) CCRL computerchess.org.uk BACKBONE
+  ~5.4M games / 4644+ engine versions, name+version in PGN tags, joinable to Bayeselo (40/15 2.4M +
+  Blitz 2M; license UNSPECIFIED -> train yes, flag for publish); (2) fastchess SELF-PLAY (have it) to
+  evenly sample strength -- SF Skill0-20/UCI_Elo1320-3190/node caps + Lc0 temperature + Maia 1100-1900
+  (our labels+license); (3) Lichess BOT games CC0 (Maia maia1/5/9 ~1100/1500/1900, publishable) = the
+  human<->engine bridge in ONE space; + existing (experience.sqlite, ext_maia/sf, stockfish_continuations).
+  Ingest via import_pgn_games.py -> trajectory pipeline. z-ENCODER: adapt CSSLab Behavioral Stylometry
+  (NeurIPS'21, move->game->player embedding) -- import, don't reinvent. Publication core = CC0 lichess-bot
+  + our fastchess (clean license); engine-style embeddings on CCRL is an UNFILLED niche (paper angle).
 - TRANSITION PREDICTOR T(s,z): per-direction basin-crossing probs P(win-flip),P(loss-flip); 2-D
   SHARP/QUIET/FAVORABLE map; tablebase-exact only-move labels first, then human/engine.
 - COMMITTOR grounded at tablebase boundary + game outcomes.
