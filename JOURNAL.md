@@ -7866,3 +7866,26 @@ the 50-move draw surface, categorical endings 95%, the tie-loss/clock-blindness/
 lessons. STOPPED the running 20-plane clock training + evals.
 NEXT: (1) encoder reuse decision from research; (2) trajectory-rollout data with real history;
 (3) train the field on lc0-encoded real-history data.
+
+## 2026-07-26 -- ENCODER SECURED: lczerolens (reuse lc0's 112-plane encoding, verified)
+
+Research found + verified the reusable lc0 encoder: `lczerolens` 0.4.0 (pip installed).
+  from lczerolens import LczeroBoard        # subclasses chess.Board (drop-in)
+  t = board.to_input_tensor()               # -> (112,8,8) INPUT_CLASSICAL_112_PLANE
+Verified: shape (112,8,8); REAL 8-position history (pops move stack); side-to-move flip;
+castling(104-107); rule50 plane(109) = raw halfmove clock (endgame hm=98 -> plane mean 98.0);
+all-ones(111). This is lc0's proven feature engineering -- we BORROW it, do NOT reinvent.
+CONCRETE BUILD PLAN (next):
+  1. TRAJECTORY-ROLLOUT data (real history): rollout games (tablebase-optimal both sides + epsilon
+     exploration for variety) from endgame starts; store start_epd + uci line + per-ply labels
+     (clock-aware DTZ, ending type; children w/ DTZ for the 1-ply rank loss). History is REAL
+     (replay the line). Same rollout machinery extends to full-game/lichess later.
+  2. TRAINER: reconstruct LczeroBoard by replaying to each ply -> to_input_tensor() (112 planes);
+     feed the field with in_planes=112 (ClockField already parameterized). Our machinery unchanged:
+     IQE quasimetric + learnable MATE goal + tested losses (regression/wdl_hinge/anchored-rank/
+     categorical) + the categorical ending head.
+  3. EVAL: MCTS vs minimax conversion on the lc0-encoded field (the pending machinery question:
+     does MCTS recover with the draw surface visible?).
+KEY: only INPUT (lczerolens 112) + DATA (real-history trajectories) change; the novel value/
+planning machinery is input-agnostic and carries over. Endgame = grounded special case of the
+full-board field. lczerolens added to deps.
