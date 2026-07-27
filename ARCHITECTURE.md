@@ -518,3 +518,97 @@ were tried and rejected as uninformative.
    further health check.
 9. **Publication pipeline** — refresh the papers in `writing/` from
    journaled verdicts once the quasimetric-field verdict lands.
+
+---
+---
+
+# ⭐ CURRENT ARCHITECTURE (2026-07-26) — supersedes the above where they conflict
+
+Rebuilt this session. Definitive input/layers/sizes/objectives. Strategy in METASTABILITY_PLAN.md,
+chronology in JOURNAL.md. NOTE: the old "d=512" (DECISIONS.md) is superseded — the from-scratch
+rebuild uses d=64 (endgame; widen only if effective rank saturates).
+
+## 0. Thesis & two-part design
+Play a FALLIBLE opponent by exploiting the information asymmetry about where they err. Outcomes
+{Win,Draw,Loss} = metastable BASINS; under optimal play barriers are infinite, under real play
+crossings are rare ERRORS. Steer toward reachable states where the opponent errs and we don't.
+TWO PARTS (like SF/lc0): (1) FULL-BOARD model = opponent-exploitation model; (2) TABLEBASE
+HANDOVER — at <=7 pieces the tablebase IS the endgame (no learned endgame model; NNs are worse at
+conversion). Committor is GROUNDED at the tablebase boundary; goal region = <=7-piece tb-WON configs.
+
+## 1. Input — lc0 112-plane (borrowed via lczerolens, not reinvented)
+LczeroBoard.to_input_tensor() -> (112,8,8) INPUT_CLASSICAL_112_PLANE: 104 = 8 history x 13 (12
+piece + 1 repetition), REAL history from the move stack (needs trajectory data, no zero-fill);
+8 aux = 4 castling, side-to-move, rule50 (raw clock, plane 109), zeros, ones; perspective-flipped.
+in_planes is a CONFIG (ClockField(in_planes=...)): 112 full board (the 20-plane feature_planes was
+the endgame toy). Not plane-count-locked.
+
+## 2. Field — layer structure & sizes  (experiments/train_clock_field.py:ClockField)
+SINGLE-SPACE shared phi (one encoder; both IQE args use the same phi -> triangle-safe; two-tower
+gave 10.9% triangle violations, single-space 0.00%).
+  input : (in_planes=112, 8, 8)
+  stem  : Conv2d(112->128,3x3,pad1) + GroupNorm(8,128) + ReLU
+  body  : 8 x ResBlock[ Conv2d(128,128,3x3)+GN(8,128)+ReLU, Conv2d(128,128,3x3)+GN(8,128) ; +skip ; ReLU ]
+  head  : Conv2d(128->32,1x1)+GN(8,32)+ReLU ; Flatten(32*64=2048) ; Linear(2048->d)
+  phi   : R^d, d=64 ;  IQE(d=64, components=16) -> k=d/components=4 intervals/component
+SIZES: conv width ch=128, depth blocks=8, embedding d=64, IQE components=16. PARAMS ~2.63M.
+(lc0 body is 512x15; we scale down — endgame rank is intrinsically low, eff_rank~6; widen only if
+rank saturates.) eff_rank(phi) is a first-class HEALTH GATE every run.
+
+## 3. Readout heads (all off the shared phi)
+- Quasimetric distance d(a,b)=IQE(phi(a),phi(b)) — asymmetric (directed interval union), triangle-
+  safe within the single phi. Uses: PAIRWISE/multi-goal d(phi(s),phi(g)); MATE readout
+  d(phi(s),MATE) where MATE is a LEARNABLE goal vector in R^64.
+- DISTRIBUTIONAL ending head cat: Linear(64->6), softmax over
+  [WIN_MATE, DRAW_FIFTY, DRAW_STALEMATE, DRAW_INSUFFICIENT, DRAW_REPETITION, LOSS_MATE].
+- COMMITTOR / expected score (TRAINED, all outcomes) = sum_e softmax(cat(phi))[e]*score[e],
+  score=[1,.5,.5,.5,.5,0]. Deterministic endgame -> ~0/.5/1; stochastic midgame -> a distribution.
+  Replaces the exp(-d) proxy as the planner value.
+
+## 4. Objective functions (all from the UNIT-TESTED experiments/losses.py; logM=log1p(400))
+1. MULTI-GOAL quasimetric (w=1.0): same-line pairs (s_i,s_j), Delta=ply-gap:
+   L_multi = Huber(log1p(d(phi(s_i),phi(s_j))), log1p(Delta)). Triangulation -> rank+composability
+   +fine(short-Delta)&coarse ordering. Subsumes the old sibling-rank loss.
+2. REPULSION (w=0.3): L_repel = ReLU(repel_margin - log1p(d(phi(s),phi(g_perm)))).mean().
+3. MATE readout (w=1.0): L_mate = Huber(log1p(d(phi(s),MATE)), log1p(DTZ)) on won.
+4. WDL inf-BARRIER (w=1.0): L_hinge = ReLU(logM - log1p(d(phi,MATE))) on draw/loss (bounded repeller).
+5. DISTRIBUTIONAL ending (w=0.5): L_cat = CrossEntropy(cat(phi), ending) — also trains the committor.
+DISCIPLINE: no new loss term into a run without a passing test in losses.py (the ties-poisoned
+margin_ranking bug: 39% tied pairs -> constant margin -> false "wall").
+
+## 5. Tablebase handover (experiments/endgame_handover.py, unit-tested)
+TB_MAX_PIECES=7 (Syzygy ceiling). endgame_lookup -> {in_tb, score(WDL 1/.5/0), move(DTZ)};
+is_goal = <=7-piece tb-WON config (committor terminal); committor_anchor = exact boundary condition.
+Mirrors SF/lc0 (WDL value short-circuits the node, DTZ move).
+
+## 6. Data pipeline (experiments/gen_traj_lc0.py)
+Real-history TRAJECTORY rollouts (precomputed (112,8,8) uint8 + clock-aware DTZ + ending + game_id
++ ply for same-line pairs). ENDGAME: all W/D/L classes, BOTH sides tb-optimal (eps=0) -> 3
+disconnected basins. FULL-BOARD (next): lichess/engine games as move source, outcome-labeled,
+grounded at <=7 via committor_anchor.
+
+## 7. Opponent-exploitation layer (designed; next build)
+- PLAYER EMBEDDING z (learned, online-inferable, Maia4All-style), conditions the field/heads (omega
+  slot). Planned size ~16-32; a manifold of player types.
+- TRANSITION PREDICTOR T(s,z): per-direction basin-crossing probs P(win-flip),P(loss-flip); 2-D
+  SHARP/QUIET/FAVORABLE map; tablebase-exact only-move labels first, then human/engine.
+- COMMITTOR grounded at tablebase boundary + game outcomes.
+- REFERENCE: SF(+lc0) fallible reference weighted by the SF RELIABILITY MAP (sf_reliability_map.py;
+  ~97% vs tablebase, errors on the win/draw boundary). Exploit = cohort REGRET
+  max_a V_ref(s.a) - E_{a~pi_z}[V_ref], where reference reliable AND our estimate beats theirs.
+- Value migration engine->ensemble->self-play (committor is outcome-defined -> source swappable).
+
+## 8. Planner (inference)
+Search on the field (policy=planner). Value=trained committor; maximize EXPECTED SCORE (W=1,D=.5,
+L=0, loss term included). PERFECT defender (endgame vs TB) -> MINIMAX (v3+depth-3 = 100%; MCTS mean-
+backup exploited by perfect defense). FALLIBLE opponent (midgame) -> MCTS on expected score over
+pi_z; T shapes search to favorable-flux ridges; risk-appetite knob (need-win->SHARP, winning->QUIET
+= contempt). At <=7 pieces hand to tablebase.
+
+## 9. Status
+DONE/validated: single-space IQE + multi-goal + repulsion + mate + WDL + distributional ending +
+committor; lc0 112 real-history input; tested losses; clean 3-basin endgame data; tablebase
+handover; SF reliability map; MCTS-vs-minimax principle; endgame conversion 100% (v3) as machinery
+proof. NEXT: full-board opponent model (lichess data -> player embedding z -> transition T(s,z) ->
+cohort-regret/KL exploitation -> exploitation planner). DEFERRED: non-board endings (time/resign),
+king-bucketing, dockerized service stack.
