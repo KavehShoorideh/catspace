@@ -8330,3 +8330,24 @@ n=400 validation running. NEXT: (a) map B(s,r) over the field (where/which regio
 weakest), (b) feed high-B reachable regions as favorable-flux SUBGOALS to the PortfolioPrior planner
 (optionality.py) -> navigate the opponent toward their blunder regions. This is Layer 1 -> connects to
 Layer 2 (quasimetric MCTS navigates there) -> the exploitation loop.
+
+## 2026-07-27 -- RESET: MILESTONES.md = the locked 30k-foot plan (Kaveh)
+
+Kaveh called a step-back (circles were being rehashed: WDL kept creeping back as the primary
+navigation signal; the board trunk stayed hand-rolled despite "borrow from Leela"; the play-measure
+question got re-raised without a lock). Wrote MILESTONES.md (repo root) = the canonical roadmap;
+README routes to it first. LOCKED: geometry-first navigation (WDL only for analysis + transition
+labels); FROZEN pretrained Leela-family trunk + IQE head (encoder gets history, NOT clock); all
+context (clocks/Elos/z/ply/past outcomes) enters the TRANSITION ESTIMATOR T(phi,ctx) -> per-side
+crossing risk; player model = known Elo + residual z (prior -> in-game tightening); transition
+points ARE subgoals (chains -> TB-won -> mate), portfolio planner + MCTS-as-probe under opponent
+model + clock; one-best-line (kill superseded); ops bar (DVC/MLflow/tensor-batch/statistical rigor).
+MILESTONES: M0 atlas DONE -> M1 Leela-trunk IQE field -> M2 transition estimator (M2a clock+rating,
+M2b offline z, M2c in-game z) -> M3 atlas+subgoal generator (M3b concept mining) -> M4 planner ->
+M5 MCTS probe -> M6 exploitation dividend. Sequencing M1->M2->(M3||M5)->M4->M6.
+DE-RISKED TODAY: lc0 leela2onnx converts maia-1500.pb.gz -> ONNX (3.3M); lczerolens loads it as a
+torch module; BATCHED forward 64 boards in 231ms = 277 pos/s CPU (policy 1858 + wdl 3 heads, 115
+modules, trunk hookable) -> M1 substrate + M2 batched-Maia infra verified. Blunder n=400 run had
+crashed (KeyError 'wdl' on a worker) -> killed; smoke rho +0.54 stands as the M2 baseline; protocol
+gets rebuilt tensor-batched in M2. Task queue reshaped to mirror milestones (#35-#40, #34=M3b);
+stale lines pruned (#23,24,25,27,28,32 deleted; #31,#33 closed).
