@@ -8202,3 +8202,21 @@ downstream model:
   0-216, W/D/L balanced. Regenerated the full 100k-game standard dataset (field_std_v1.npz). This
   replaces the narrow field-only npz: no re-generation needed for policy / z-encoder / stylometry.
   v4 field retrains on it (trainer reads its subset of keys unchanged).
+
+## 2026-07-27 -- Human transition-point MAP + endgame-island confirmed
+
+Built transition_map.py: UMAP of the trained field's phi, colored by committor c=P(win), with human
+transition points = committor jumps |dc|>=theta to the next sampled position (metastability: basin
+crossings). THRESHOLD data-driven: |dc| median 0.067, knee at p85=0.225 -> 13.6% transition points
+(vs a static max_p<0.66 flagging 55% -- too many; the empirical-jump definition is the sparse,
+meaningful one). Basins win 36% / draw 19% / loss 45%.
+FINDINGS: (1) a detached LEFT ISLAND in the UMAP -- CONFIRMED endgames: n=245, median 5 pieces
+(range 3-7), 100% <=7 pieces, median ply 125, 55% tablebase-grounded; main blob median 23 pieces,
+ply 35, 3% <=7p. The field's geometry spontaneously isolates the <=7-piece region = EXACTLY the
+tablebase-handoff boundary, and shows a SHARP committor there (decisive endgames). (2) The midgame
+core is LEAKY -- transitions pervasive, not thin ridges: metastability under fallible 1400-1800 play
+has LOW barriers (frequent crossings), while the high-barrier regime (endgames) separates cleanly.
+This IS the thesis: the human basins are metastable/leaky, the crossings are the exploitable errors.
+Caveat: |dc| over ~6-ply strided windows (coarse); UMAP is of phi (reachability != outcome-basin).
+NEXT options: per-move dc (sharp localization); decisive-subset map; rating-conditioned (do stronger
+players transition less = tighter basins?).
