@@ -691,3 +691,42 @@ layer for parallel probing (answers the earlier "how to avoid workers recomputin
 (no overwrites), one richest input format, eff_rank health gate, short validation run → commit →
 full run. Experience store: `data/derived/experience.sqlite` (games: start_epd, ucis, result,
 opponent, field_ckpt). Engine: `experiments/uci_engine.py` (UCI wrapper for arena/gauntlet play).
+
+## 11. Math (canonical, verified) -- supersedes any loose usage above
+
+Notation: s position, φ(s) embedding, z agent embedding, π_z its (fallible) policy.
+
+**Quasimetric (IQE).** d(a,b)=IQE(φ(a),φ(b)) >= 0, ASYMMETRIC, and satisfies the triangle inequality
+d(a,c) <= d(a,b)+d(b,c) WITHIN one φ (single-space; two towers break it). Trained (all Huber on
+log1p): multi-goal d(φ(s_i),φ(s_j))->Δ (same-line, Δ=ply-gap); mate readout d(φ(s),MATE)->DTZ (won);
+repulsion pushes random pairs apart; WDL hinge pushes draw/loss d above margin M.
+
+**Outcome distribution + TWO distinct readouts.** ending head p(s)=softmax(cat(φ(s))) in the 6-simplex
+over {WIN_MATE, DRAW_FIFTY, STALE, INSUF, REP, LOSS_MATE}, trained by cross-entropy.
+  - COMMITTOR  c(s) = P(win) = p_WIN_MATE(s).  (win = checkmate under board rules.) The metastability /
+    transition-path coordinate: level sets = basins, c≈0.5 = the transition ridge. GROUNDED: <=7 pieces
+    -> c = tablebase WDL (exact boundary condition).
+  - EXPECTED SCORE  V(s) = Σ_e p_e·score_e, score=(1,.5,.5,.5,.5,0). The PLANNER VALUE (game points).
+  VERIFIED identities: V = c + 0.5·P(draw) + 0·P(loss);  c + P(draw) + P(loss) = 1.
+  So committor c (win-marginal) and expected score V are DISTINCT readouts of ONE distribution: V is
+  the value backed up in search; c is the basin coordinate. (Replaces the old exp(-d) value proxy.)
+
+**Value is under the JOINT policy -> already two-sided.** V, c are conditioned on both agents: opponent
+plays π_{z_opp} (fallible), I maximize (optionally under my own fallible π_{z_me}). So V(s|z_me,z_opp)
+already reflects BOTH my error-risk and theirs. MCTS objective = ONE scalar:
+    max over my moves of  E_{a~π_opp}[ V(s·a) ]      (MAX-EXPECTATION, opponent fallible not adversarial)
+Against a PERFECT defender (endgame vs tablebase) this reduces to MINIMAX (why v3+depth-3 = 100%; MCTS
+mean-backup gets exploited by perfect defense).
+
+**Transition flux = the DECOMPOSITION of dV (search-shaping, NOT a competing objective).**
+T(s,z) predicts flip probs:  t_win(s,z_opp)=P(draw/loss -> win under π_opp)  [their error, in my favor];
+t_loss(s,z_me)=P(win/draw -> loss under π_me)  [my error]. Define
+    NET FAVORABLE FLUX   Φ(s) = t_win(s,z_opp) − t_loss(s,z_me)    (toward their errors, away from mine)
+    SHARPNESS            σ(s) = t_win + t_loss                     (≈ variance of V; SHARP=high, QUIET=low)
+The single objective stays max E[V]; Φ is the attribution the HIERARCHICAL planner uses to pick
+transition-point SUBGOALS (max reachable Φ), and σ drives the risk knob (need-a-win -> accept high σ;
+winning -> seek low σ = contempt). Do NOT hand-balance t_win vs t_loss -- V already nets them.
+
+**Info-asymmetry edge (measurable proxy for Φ).** With a reliability-weighted reference V_ref (SF, §7),
+the exploitable edge at a node = regret_ref(π_opp) − regret_ref(π_me) = (their deviation from the
+reference) − (mine), evaluated where the reference is RELIABLE (S1 map) AND our estimate beats theirs.
