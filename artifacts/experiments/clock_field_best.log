@@ -1,0 +1,7 @@
+[clock-field] rows 368956 won 246097 inf 122859 | pairs 55399 | 20-plane feature encoder (sees halfmove clock)
+  encoder: d=64 ch=128 blocks=8 (2.52M params)
+/Users/kav/code/remote/github/catspace/experiments/train_clock_field.py:114: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at /Users/runner/work/pytorch/pytorch/torch/csrc/autograd/generated/python_variable_methods.cpp:823.)
+  print(f"  step {s} reg {float(reg):.3f} hinge {float(hin):.3f} rank {float(rnk):.3f} "
+  step 0 reg 1.737 hinge 5.470 rank 0.307 cat 1.831 [1s]
+  step 2000 reg 0.226 hinge 0.112 rank 0.215 cat 0.243 [696s]
