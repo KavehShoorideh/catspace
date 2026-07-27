@@ -8172,3 +8172,19 @@ conversion micro-test was the wrong test (tablebase territory). REAL test = full
 node-budgeted search -- running (FieldMCTS 80n vs maia-1100), baseline to beat = 0.125 (shallow
 search). PERF NOTE: per-node history reconstruction (rebuild LczeroBoard + replay) is the bottleneck
 (200n conversion test was minutes) -> if vs-Maia is too slow, cache planes / incremental encode.
+
+## 2026-07-27 -- Layer 2 testing surfaced OPENING-BLINDNESS; retraining field v4 with full-phase coverage
+
+FieldMCTS(80n) vs maia-1100 scored 0.062 -- WORSE than the 0.125 shallow-search baseline. Diagnosed
+(NOT a bug): value_fn is garbage where games START. Sanity check: startpos value 0.749 (should ~0),
+white+Q value 0.0 (should >0); board_to_planes verified correct (matches direct lc0 encode exactly).
+ROOT CAUSE: the field (committor AND quasimetric) is OPENING-BLIND -- Stage C sampled ply>=10
+(skip_open=10), mid/endgame-heavy, so the field never trained on openings. Games start out-of-
+distribution -> bad early moves -> lost by midgame -> fast losses. Consistent with well-calibrated
+MIDGAME (ECE 0.027) but wrong startpos (0.749). Compounded by fresh-position distribution shift
+(d_mate 0.81->0.505). The quasimetric shares the gap (same-game ply-gap pairs from the same
+opening-skipped positions). Layer 2 MCTS wiring + tablebase handoff are CORRECT; the field's value
+coverage is the bottleneck -- more search on a blind value plays worse than exhaustive shallow search.
+FIX (Kaveh: retrain full-phase): regenerated Stage C with skip_open=0 (openings included, even phase
+coverage) -> field_fullgame_v2data.npz; retrain v4 with the v3 recipe. Startpos should calibrate to
+~0.5 (balanced outcomes across the dataset). Then re-run Layer 2 vs Maia in-distribution.
