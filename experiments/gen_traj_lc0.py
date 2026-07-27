@@ -22,25 +22,31 @@ from catspace.tb import TB, DEFAULT_SYZYGY, tb_best_move
 from experiments.gen_dtm_data import random_class_start
 from experiments.value_fixed_point import white_pov_value
 
-CLASSES = ["KQvK", "KRvK", "KRRvK", "KBNvK", "KBBvK", "KQvKR", "KRvKN"]
+# ALL-OUTCOME classes so the committor learns the W/D/L basins (not win-only).
+CLASSES = (["KQvK", "KRvK", "KRRvK", "KBNvK", "KBBvK", "KQvKR", "KRvKN"]        # WIN (White ahead)
+           + ["KvKQ", "KvKR", "KvKRR", "KvKBN", "KvKBB", "KRvKQ", "KNvKR"]      # LOSS (Black ahead)
+           + ["KNvK", "KBvK", "KNNvK", "KRvKR", "KQvKQ", "KBvKN", "KPvKP"])     # DRAW
 
 
 def _label(board, tb, syz):
-    """clock-aware (dtz, ending) for the CURRENT position. dtz: >=1 won |DTZ|, 0 mate, -1 INF."""
+    """clock-aware (dtz, ending) for CURRENT position. dtz: >=1 won |DTZ|, 0 mate, -1 INF.
+    Ending: 0 WIN_MATE, 1 DRAW_FIFTY, 2 STALE, 3 INSUF, 4 DRAW_REP, 5 LOSS_MATE."""
     ch = board.halfmove_clock
     if board.is_checkmate():
-        return 0, (0 if board.turn == chess.BLACK else 5)
+        return 0, (0 if board.turn == chess.BLACK else 5)    # black mated=WIN; white mated=LOSS
     if board.is_stalemate():
         return -1, 2
     if board.is_insufficient_material():
         return -1, 3
-    if board.is_game_over(claim_draw=True) or white_pov_value(board, tb) != 1.0:
+    if board.is_game_over(claim_draw=True):
         return -1, 4
-    try:
-        d = abs(syz.probe_dtz(board))
-        return (d, 0) if d <= (100 - ch) else (-1, 1)
-    except Exception:
-        return -1, 1
+    v = white_pov_value(board, tb)
+    if v == 1.0:                                             # WIN basin: distance to White-mate
+        try:
+            d = abs(syz.probe_dtz(board)); return (d, 0) if d <= (100 - ch) else (-1, 1)
+        except Exception:
+            return -1, 1
+    return (-1, 5) if v == 0.0 else (-1, 4)                  # LOSS basin -> LOSS_MATE; else DRAW
 
 
 def worker(task):
@@ -53,7 +59,7 @@ def worker(task):
     while games < n_games:
         cls = classes[rng.integers(0, len(classes))]
         b0 = random_class_start(rng, cls)
-        if b0 is None or b0.turn != chess.WHITE or b0.is_game_over() or white_pov_value(b0, tb) != 1.0:
+        if b0 is None or b0.turn != chess.WHITE or b0.is_game_over():   # any outcome (W/D/L basins)
             continue
         games += 1; game_id += 1
         board = LczeroBoard(b0.fen())

@@ -41,7 +41,16 @@ class ClockField(nn.Module):
                                   nn.Flatten(), nn.Linear(32 * 64, d))
         self.iqe = IQE(d, components=iqe_components)
         self.mate = nn.Parameter(torch.randn(d) * 0.1)
-        self.cat = nn.Linear(d, N_ENDINGS)                   # categorical ending-type head
+        self.cat = nn.Linear(d, N_ENDINGS)                   # categorical / DISTRIBUTIONAL ending head
+        # score per ending (WIN_MATE, DRAW_FIFTY, STALE, INSUF, REP, LOSS_MATE) -> committor readout
+        self.register_buffer("outcome_score", torch.tensor([1., .5, .5, .5, .5, 0.]))
+
+    def committor(self, x):
+        """TRAINED committor / expected score over ALL outcome types = score-weighted ending
+        distribution. Endgame (deterministic) -> ~0/0.5/1; stochastic midgame -> a real distribution.
+        Replaces the exp(-d) proxy as the MCTS value; trained by the categorical ending loss."""
+        p = torch.softmax(self.cat(self.phi(x)), dim=-1)
+        return (p * self.outcome_score).sum(-1)
 
     def phi(self, x):
         h = self.stem(x)

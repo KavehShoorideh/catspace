@@ -102,12 +102,18 @@ def main():
         sp_mate = float(spearmanr(dd, dtz[sub]).correlation)
         ce = rng.integers(0, len(dtz), 4000)
         cat_acc = float((net.d_mate_and_end(fp(ce))[1].argmax(1).cpu().numpy() == ending[ce]).mean()) * 100
+        # COMMITTOR (trained head, all outcomes): expected-score vs actual W/D/L score
+        actual = np.where(dtz[ce] >= 0, 1.0, np.where(ending[ce] == 5, 0.0, 0.5)).astype(np.float32)
+        comm = net.committor(fp(ce)).cpu().numpy()
+        comm_mae = float(np.abs(comm - actual).mean())
+        wdl = {"win": int((actual == 1).sum()), "draw": int((actual == .5).sum()), "loss": int((actual == 0).sum())}
         base = idx_won[rng.integers(0, len(idx_won), 400)]; surf = []
         for h in (0, 40, 80, 96):
             pl = planes[base].astype(np.float32).copy(); pl[:, 109] = float(h)
             surf.append((h, float(np.median(net.d_mate(torch.from_numpy(pl).to(dev)).cpu().numpy()))))
     print(f"VERDICT LC0-CORRECT d{args.d}: multi-goal pair-order {sp_pair:+.3f} | eff_rank {er:.1f} "
-          f"(single-goal was ~3.5) | mate-vs-DTZ {sp_mate:+.3f} | ENDING {cat_acc:.1f}% | [{time.time()-t0:.0f}s]", flush=True)
+          f"(single-goal was ~3.5) | mate-vs-DTZ {sp_mate:+.3f} | ENDING {cat_acc:.1f}% | "
+          f"COMMITTOR-MAE {comm_mae:.3f} (W/D/L {wdl}) | [{time.time()-t0:.0f}s]", flush=True)
     print(f"  DRAW-SURFACE (median d vs rule50): " + " ".join(f"h{h}:{d:.0f}" for h, d in surf), flush=True)
     Path(args.save).parent.mkdir(parents=True, exist_ok=True)
     torch.save({"state_dict": net.state_dict(), "model": "ClockField",
