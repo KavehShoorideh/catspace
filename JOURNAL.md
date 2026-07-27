@@ -8520,3 +8520,18 @@ confirms cluster CI wider under game-level noise) + PAIRED delta-rho on shared r
 P(A better) (the honest model-vs-model object). All future VERDICTs carry CIs; the three-way trunk
 table will be re-issued CI'd + paired once the T1 chain frees the machine (features recomputed
 on-the-fly for eval rows only -- cheap).
+
+## 2026-07-27 -- Locked decision 8: ADOPT BEFORE BUILD; trunk closed by fiat
+
+Kaveh's correction: "use the Leela trunk" should have meant TAKE THE BEST DISTILLATE AND MOVE ON --
+Leela solved the strong-small-net problem; every trunk A/B + bootstrap we run costs compute the
+decision doesn't deserve. New operating principle (locked decision 8): for solved subproblems,
+adopt the community's best on trust (web-search-guided), build on it; spend energy exclusively
+where nobody has a good solution (T, exploitation, subgoal planning, armed tactics). Rigor budget
+(decision 7) scoped to OUR novel claims, not to re-validating community rankings.
+TRUNK CLOSED BY FIAT: T1-256x10-distilled (distillate of lc0's strongest teacher line; fits disk +
+runs 600 pos/s on our path) -- the running h2h chain finishes and its head becomes the M1 field
+(numbers recorded for the journal, not as the decision basis); T1-512x15-distilled is the upgrade
+when disk allows (post ClockField/FB kill). T70/maia comparisons: archived as record. NEXT ENERGY:
+the adopt-scan for M2 (does anyone have rating/clock-conditioned blunder prediction solved? Maia-2?
+KDD human-error literature?) -> adopt what exists, build the novel remainder.

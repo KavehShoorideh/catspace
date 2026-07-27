@@ -63,6 +63,16 @@ research product, headed for publication.
    scaffold.py`); batched tensor ops (MPS/GPU) over per-position subprocesses wherever possible;
    every comparison statistically rigorous (anytime-valid e-values / SPRT / bootstrap CIs, n
    pre-registered). No journal numbers without a printed script VERDICT.
+   *Scope note (Kaveh 2026-07-27): the rigor budget applies to OUR OWN novel claims (exploitation
+   dividend, planner effects, T quality) — NOT to re-validating the community's solved rankings.*
+8. **Adopt before build (Kaveh 2026-07-27).** For any subproblem someone else has solved well,
+   ADOPT their best attempt on trust (guided by web search), build on it, and move on — no
+   re-validation A/Bs, no bootstrap battles over decisions that aren't ours. Spend our energy
+   exclusively where nobody has a good solution (the transition estimator, opponent-conditioned
+   exploitation, subgoal planning, armed tactics). Concretely: the field trunk = the best
+   community DISTILLATE that runs within laptop constraints — T1-256x10-distilled now (distilled
+   from lc0's strongest teachers), upgrade to T1-512x15-distilled when disk allows — BY FIAT,
+   trunk A/B testing closed.
 
 ## Milestone philosophy & Definitions of Done (Kaveh 2026-07-27)
 
