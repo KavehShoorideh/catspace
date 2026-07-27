@@ -28,9 +28,12 @@ from experiments.losses import (quasimetric_regression, wdl_hinge, anchored_pair
 class ClockField(nn.Module):
     """conv over 20 feature planes -> phi; d(s)=IQE(phi(s), MATE) + CATEGORICAL ending-type head
     (Kaveh: 'what kind of end is approaching'). Sees the halfmove clock."""
-    def __init__(self, d=32, ch=64, blocks=5, iqe_components=16):
+    def __init__(self, d=32, ch=64, blocks=5, iqe_components=16, in_planes=20):
+        # in_planes: 20 = single-position (endgame). Full board later = 8-history lc0 stack
+        # (~112 planes) -> pass in_planes=112; the rest of the net is unchanged. NOT endgame-locked.
         super().__init__()
-        self.stem = nn.Sequential(nn.Conv2d(20, ch, 3, padding=1), nn.GroupNorm(8, ch), nn.ReLU())
+        self.in_planes = in_planes
+        self.stem = nn.Sequential(nn.Conv2d(in_planes, ch, 3, padding=1), nn.GroupNorm(8, ch), nn.ReLU())
         self.blocks = nn.ModuleList([nn.Sequential(
             nn.Conv2d(ch, ch, 3, padding=1), nn.GroupNorm(8, ch), nn.ReLU(),
             nn.Conv2d(ch, ch, 3, padding=1), nn.GroupNorm(8, ch)) for _ in range(blocks)])
