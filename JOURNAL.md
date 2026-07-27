@@ -8505,3 +8505,18 @@ encoder9/ln2 emits (B*64,256) flattened tokens -> reshape (B,256,8,8) (square-ma
 adapter permutation-indifferent); added --tokens to precompute. Chained behind the T70 final run:
 T1-256x10 features on the SAME rows-mod-3 subset + seed as the recorded h2h -> identical-protocol
 3-way: maia 0.853/0.443, T70 0.860/0.563, T1 = pending.
+
+## 2026-07-27 -- Metrics defined + CI discipline enforced (Kaveh: "why don't they have a CI")
+
+DEFINITIONS (now canonical): pair-order = Spearman rho between predicted d(phi_i -> phi_j) and TRUE
+ply gap over ~4k held-out same-game val pairs (ordering, the consumers' need). d_mate rho = Spearman
+between predicted d(phi -> MATE) and TRUE tablebase DTZ on held-out tb-won val rows (the one exact-
+ground-truth regime). VIOLATION CONCEDED: eval VERDICTs printed bare point estimates -- against
+locked decision 7. RETRACTION: "T70 wins pair-order 0.860 vs 0.853" is NOISE-LEVEL (Spearman CI at
+n=4k ~ +-0.01) -- retracted pending the paired test; the trunk choice rests on the d_mate gap
+(0.563 vs 0.443, n=420, ~+-0.065 -- likely real, to be confirmed). Built catspace/stats.py (tested,
+6/6): CLUSTER bootstrap by GAME (pairs cluster within games -> iid bootstrap too narrow; test
+confirms cluster CI wider under game-level noise) + PAIRED delta-rho on shared resamples with
+P(A better) (the honest model-vs-model object). All future VERDICTs carry CIs; the three-way trunk
+table will be re-issued CI'd + paired once the T1 chain frees the machine (features recomputed
+on-the-fly for eval rows only -- cheap).
