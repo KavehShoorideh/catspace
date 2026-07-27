@@ -8477,3 +8477,19 @@ Intermediate bars (M4/M5/M6) revert to FIXED NODE BUDGETS, untimed -- no latency
 Time-AWARENESS is unchanged: the clock remains an INPUT to the transition estimator (M2a) and the
 planner's decisions; what is deferred is pressing for LOW wall-clock, not modeling time. MILESTONES
 protocol split into NODE-BUDGET match (M4-M6) vs TIMED match (M7-M8).
+
+## 2026-07-27 -- M1 trunk head-to-head: T70-128x10 WINS; final half-data field training
+
+Same-subset h2h (381.6k rows, identical seed/val; the mlh-hook bug fixed first -- T70's earlier
+"features" were a scalar MLH output):
+  maia-1500 head:  pair-order +0.853 | d_mate rho +0.443 | eff_rank 14.9   (trunk 21k pos/s)
+  T70-128x10 head: pair-order +0.860 | d_mate rho +0.563 | eff_rank 12.4   (trunk 4.8k pos/s)
+DECISIVE: on the tb-starved subset (3.2k mate rows) maia's d_mate collapsed 0.595->0.443 while T70
+held 0.563 -- the self-play trunk carries endgame/tactical structure the human-trained trunk lacks.
+With TC pressure deferred to end-of-project (today's amendment), the 4.4x speed gap is acceptable.
+TRUNK CHOICE: T70-128x10 (last T70 net, conv 128x10, hook block9/conv2/relu). One-best-line
+executed: maia-1500 full features deleted (regenerable in 65s), T70 subset feats deleted after the
+final run. FINAL M1 FIELD: T70 features at rows-mod 2 (~570k rows, 9.4GB -- full 18.7GB exceeds
+disk), 8k-step head training running. Tuned-weights lever already rejected (regression). NEXT:
+full-protocol eval vs v3 (on-the-fly features for the ~11k eval rows) -> consolidated table ->
+gate-restatement + ClockField/FB kill decision to Kaveh.
