@@ -24,19 +24,25 @@ def main():
     ap.add_argument("--hook", default="", help="module name to hook (default: last trunk relu)")
     ap.add_argument("--batch", type=int, default=4096)
     ap.add_argument("--device", default="mps")
+    ap.add_argument("--rows-mod", type=int, default=0, help="keep rows where game %% mod == 0 (subset by game); 0 = all")
     args = ap.parse_args()
     t0 = time.time()
     from lczerolens import LczeroModel
 
     m = LczeroModel.from_onnx_path(args.onnx).float().to(args.device).eval()
     names = [n for n, _ in m.named_modules() if n]
-    trunk = [n for n in names if all(k not in n for k in ("policy", "value", "wdl", "output"))]
+    trunk = [n for n in names if all(k not in n.lower() for k in ("policy", "value", "wdl", "output", "mlh"))]
     hook_name = args.hook or trunk[-1]
     feats = {}
     dict(m.named_modules())[hook_name].register_forward_hook(lambda mo, i, o: feats.__setitem__("t", o))
 
     z = np.load(args.data)
     planes = z["planes"]                                     # (N,112,8,8) uint8
+    if args.rows_mod:
+        rows = np.flatnonzero(z["game"] % args.rows_mod == 0)
+        planes = planes[rows]
+    else:
+        rows = np.arange(len(planes))
     N = len(planes)
     tag = Path(args.onnx).stem
     out = args.out or f"data/derived/trunk_feats/{tag}__{Path(args.data).stem}.npy"
@@ -59,8 +65,9 @@ def main():
             if (i // args.batch) % 20 == 0:
                 print(f"  {done:,}/{N:,} [{time.time()-t0:.0f}s, {done/max(time.time()-t0,1e-9):,.0f} pos/s]", flush=True)
     mm_out.flush()
+    np.save(Path(out).with_suffix(".rows.npy"), rows)
     meta = dict(onnx=args.onnx, hook=hook_name, data=args.data, n=N, shape=list(fshape),
-                dtype="float16", elapsed_s=round(time.time() - t0, 1))
+                dtype="float16", rows_mod=args.rows_mod, elapsed_s=round(time.time() - t0, 1))
     Path(out).with_suffix(".json").write_text(json.dumps(meta, indent=2))
     print(f"VERDICT precompute: {N:,} x {fshape} fp16 -> {out} "
           f"({Path(out).stat().st_size/1e9:.1f}GB) [{time.time()-t0:.0f}s]", flush=True)
