@@ -2,6 +2,11 @@
 
 Reference for the embedding and evaluation concepts used throughout the codebase.
 
+> **Acronyms & symbols: [MILESTONES.md §Acronyms](MILESTONES.md) is canonical.**
+> ⚠ **Staleness note (2026-07-27):** the FB / omega / InfoNCE entries below describe the
+> **LEGACY architecture** (pre-2026-07-26 rebuild). The current design is: frozen Leela-family
+> trunk → single-space φ → IQE head; context enters the transition estimator. See MILESTONES.md.
+
 ---
 
 ## Embedding concepts

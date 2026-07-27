@@ -120,3 +120,80 @@ in-game z tightening on. Publishable evaluation + digest write-up.
 ## Deferred / out of scope (no work without a recorded plan change)
 Dockerized service stack; RL-trained plan selector (revisit after M4); non-board endings
 (time/resign as outcome classes); viz niceties beyond the atlas.
+
+## Acronyms & symbols (canonical — GLOSSARY.md defers to this)
+
+**Chess & engines**
+| term | meaning |
+|---|---|
+| WDL | Win / Draw / Loss — the three outcomes; a "WDL head" outputs (p_win, p_draw, p_loss). |
+| SF | Stockfish — strongest open engine; our near-perfect reference/oracle. |
+| lc0 / Leela | Leela Chess Zero — open AlphaZero-style neural engine; "Leela-family trunk" = the body of an lc0-format net. |
+| Maia | (name, not acronym) lc0-format nets trained to predict HUMAN moves at a rating band (maia-1100…1900); our rating-conditioned human policy. |
+| AZ | AlphaZero — DeepMind's self-play engine; "AZ-style" = policy+value net + PUCT search. |
+| TB | (Syzygy) tablebase — precomputed PERFECT play for all ≤7-piece positions. |
+| DTZ | Distance To Zeroing — TB metric: plies to an irreversible move (capture/pawn push/mate) under perfect play. Our exact distance anchor. |
+| DTM | Distance To Mate — plies to checkmate under perfect play (older experiments). |
+| Elo | rating scale (named after Arpad Elo — NOT an acronym). |
+| PGN / FEN | Portable Game Notation (game text) / Forsyth–Edwards Notation (single-position text). |
+| UCI / SAN | Universal Chess Interface (engine protocol) / Standard Algebraic Notation (move text). |
+| CCRL / TCEC | Computer Chess Rating Lists / Top Chess Engine Championship — engine-game archives. |
+| KQvK, KRRvKBP… | material classes: White's pieces "v" Black's (K king, Q queen, R rook, B bishop, N knight, P pawn). |
+| ply | one half-move (one player's move). |
+| ACPL | Average CentiPawn Loss — mean eval loss per move, hundredths of a pawn (legacy metric here). |
+
+**Our method (math / ML)**
+| term | meaning |
+|---|---|
+| IQE | Interval Quasimetric Embedding — the head that turns two embeddings into an ASYMMETRIC distance with the triangle inequality guaranteed by construction (Wang & Isola). Our d(·,·). |
+| quasimetric | a distance where d(a,b) ≠ d(b,a) is allowed (chess reachability is directional). |
+| φ (small phi) | the board EMBEDDING vector from the trunk. |
+| d(s,g), d_mate | learned reachability distances: position→region, position→mate boundary. |
+| committor c(s) | from transition-path theory: P(hit the win boundary before the others) UNDER A PLAY MEASURE. Play-measure-dependent (human c ≠ perfect c). |
+| T(s, context) | the TRANSITION ESTIMATOR (M2): per-side basin-crossing risk given clocks/Elos/z/ply. |
+| Φ (capital Phi) | net favorable flux = t_win − t_loss. ⚠ not the same symbol as φ the embedding. |
+| σ (sigma) | sharpness = t_win + t_loss (how swingy a position is). |
+| z | the UNKNOWN part of the player model — a style-residual embedding on top of known Elo. |
+| MCTS | Monte Carlo Tree Search — build a tree by repeated select/expand/evaluate/backup. |
+| PUCT | Prior + Upper Confidence bound applied to Trees — the AZ selection rule MCTS uses. |
+| expectimax / minimax | back up the EXPECTED value over opponent replies (fallible foe) vs the WORST-case (perfect foe). |
+| MSM | Markov State Model — discretize states, count transitions, analyze the matrix. |
+| PCCA(+) | Perron Cluster Cluster Analysis — spectral grouping of an MSM into metastable basins. |
+| TPT | Transition Path Theory — committors, reactive flux, transition rates. |
+| MFPT | Mean First Passage Time — expected steps to first reach a target set. |
+| SAE | Sparse AutoEncoder — unsupervised concept dictionary (M3b later stage). |
+| CAV / TCAV | (Testing with) Concept Activation Vectors — supervised concept directions (M3b). |
+| NLL | Negative Log-Likelihood (training objective). |
+| OOD | Out-Of-Distribution — inputs unlike the training data. |
+| UMAP / t-SNE | nonlinear 2-D projections for the maps (Uniform Manifold Approx. & Projection / t-dist. Stochastic Neighbor Embedding). |
+| KDE | Kernel Density Estimate — the smooth histograms in ridgeline plots. |
+
+**Metrics & statistics**
+| term | meaning |
+|---|---|
+| ECE | Expected Calibration Error — mean gap between predicted probability and observed frequency (0 = perfectly calibrated). |
+| MAE | Mean Absolute Error. |
+| ρ / Spearman | rank correlation (−1…+1); our ordering-quality metric. |
+| eff_rank | effective rank — how many dimensions an embedding really uses; the collapse gate. |
+| CI | Confidence Interval. |
+| SPRT | Sequential Probability Ratio Test — stop-when-evidence-suffices A/B for engine matches (fishtest-style). |
+| e-value / anytime-valid | evidence measure you may inspect at ANY time without p-hacking; our A/B harness. |
+| A/B, h2h | two-variant controlled comparison; head-to-head. |
+
+**Infrastructure**
+| term | meaning |
+|---|---|
+| DVC | Data Version Control — git-style versioning of datasets/models (pointer files in git, bytes in cache). |
+| MLflow | experiment tracker — logs params/metrics/artifacts per training run (`mlflow ui`). |
+| ONNX | Open Neural Network Exchange — portable net format; `lc0 leela2onnx` → loadable in PyTorch via lczerolens. |
+| MPS | Metal Performance Shaders — Apple-silicon GPU backend for PyTorch (our `device="mps"`). |
+| HP | hyperparameter. |
+| WAL | Write-Ahead Log — SQLite journal mode (banned for the probe cache; grew unbounded, filled the disk). |
+| npz / parquet | NumPy zipped arrays / columnar table format (our tensors / our game records). |
+
+**Legacy (appears in old files & journal history only)**
+| term | meaning |
+|---|---|
+| FB, F(s)/B(g) | the OLD two-encoder Forward/Backward field (superseded by single-space φ; survives in filenames like `lichess_fb*.pt`). |
+| ω (omega) | the old strength/time conditioning of F (superseded; context now enters T, not the encoder). |
+| InfoNCE | the contrastive loss the legacy FB field used (Noise-Contrastive Estimation family). |

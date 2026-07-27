@@ -8351,3 +8351,11 @@ modules, trunk hookable) -> M1 substrate + M2 batched-Maia infra verified. Blund
 crashed (KeyError 'wdl' on a worker) -> killed; smoke rho +0.54 stands as the M2 baseline; protocol
 gets rebuilt tensor-batched in M2. Task queue reshaped to mirror milestones (#35-#40, #34=M3b);
 stale lines pruned (#23,24,25,27,28,32 deleted; #31,#33 closed).
+
+## 2026-07-27 -- Acronym/symbol table added (Kaveh: acronyms were the main confusion source)
+
+MILESTONES.md now carries the CANONICAL "Acronyms & symbols" section (chess/engines, method,
+metrics/stats, infra, legacy); GLOSSARY.md defers to it and carries a staleness banner (its FB/omega/
+InfoNCE entries describe the LEGACY pre-rebuild architecture). Highlighted confusables: phi (board
+embedding) vs Phi (net favorable flux); DTZ vs DTM; committor (play-measure-dependent) vs WDL head;
+Elo is not an acronym; FB/omega = legacy naming surviving in filenames.
