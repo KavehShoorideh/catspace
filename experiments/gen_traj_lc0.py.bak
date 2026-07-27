@@ -87,7 +87,7 @@ def worker(task):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--games", type=int, default=2000); ap.add_argument("--eps", type=float, default=0.0)  # 0 = both sides tb-optimal (clean basins)
+    ap.add_argument("--games", type=int, default=2000); ap.add_argument("--eps", type=float, default=0.3)
     ap.add_argument("--cap", type=int, default=80); ap.add_argument("--workers", type=int, default=0)
     ap.add_argument("--out", default="data/derived/traj_lc0_v2.npz"); ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
