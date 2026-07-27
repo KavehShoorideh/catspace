@@ -600,8 +600,15 @@ grounded at <=7 via committor_anchor.
   weak-human -> strong-human -> Maia -> skill-capped engines -> strong engines -> near-optimal
   (SF/lc0). Engines (near-deterministic, lots of data) ANCHOR the manifold; humans (stochastic)
   spread off it. Nuance: deterministic engine -> 0/1 transitions (exploit FIXED weakness); fixed-
-  nodes/skill/temperature engine -> stochastic (like humans). PRIOR: unknown player -> rating-
-  conditioned population prior p(z|rating); sharpen to p(z|moves,rating) online (cold-start=prior).
+  nodes/skill/temperature engine -> stochastic (like humans).
+  PER-INDIVIDUAL z (goal, not rating-cohort): identity = username (humans) / engine name+version
+  (engines). Rating is the SKILL ANCHOR/prior; the rest of z is the individual's STYLE from THEIR
+  games. Encoder = stylometry (a player's game-SET -> their z), TRAINED on players with enough games
+  (>=~20-50). PRIOR: unknown player -> rating-conditioned population p(z|rating); INFER online for ANY
+  opponent (even 5-10 games) as posterior p(z|their moves, rating) onto that prior (cold-start=prior).
+  DATA NEEDS PLAYER IDENTITY: current shards dropped names (Elo only) -> REPROCESS the raw lichess
+  .pgn.zst (HAVE: data/lichess/*.prefix{256mb,1gb,4gb}.pgn.zst) keeping White/Black usernames; engines
+  carry identity in PGN headers.
   DATA (confirmed): humans = lichess shards (HAVE). Engines: (1) CCRL computerchess.org.uk BACKBONE
   ~5.4M games / 4644+ engine versions, name+version in PGN tags, joinable to Bayeselo (40/15 2.4M +
   Blitz 2M; license UNSPECIFIED -> train yes, flag for publish); (2) fastchess SELF-PLAY (have it) to
