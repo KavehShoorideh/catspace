@@ -8155,3 +8155,20 @@ VERDICT Layer 3 READY ENOUGH: rough-but-real distance-to-mate gradient in-distri
 cert recognizers for the <=7p finish. NOT retraining the field now (<=7p = tablebase). NEXT: Layer 2
 -- wire d_mate/d_pair gradient into nn/mcts.py (value from -distance, real-history planes from
 move_stack), test on winning/tactical positions + vs Maia.
+
+## 2026-07-27 -- Layer 2: quasimetric-gradient MCTS wired (mcts_field.py) + the handoff lesson
+
+Wired ClockField into nn/mcts.py (experiments/mcts_field.py): value_fn = (2c-1) committor navigation
+SHARPENED by distance-to-mate on the winning side (Kaveh's d_mate preference for conversion);
+certainty_fn = tablebase; mate_stop on; real-history planes rebuilt from move_stack.
+CONVERSION MICRO-TEST (d_mate-MCTS 200n vs TB-optimal defender): KQvK 1/12, KRvK 0/12 -- STILL fails.
+DIAGNOSIS (architectural): KQvK/KRvK are <=3 pieces = pure TABLEBASE territory; my certainty_fn
+returned WDL (every winning position = +1) which FLATTENS the gradient (no move looks like progress)
+-> search can't convert. THE HANDOFF = play the tablebase's DTZ-optimal MOVE at <=7 pieces, NOT just
+use its WDL value in search. FIXED: FieldMCTS.select() now returns tb_best_move directly at <=7
+pieces. So the field is only responsible for >7 pieces (navigating toward the boundary); the
+conversion micro-test was the wrong test (tablebase territory). REAL test = full games vs Maia
+(>7p, real history = in-distribution, +0.81 d_mate regime), tablebase handoff at the boundary,
+node-budgeted search -- running (FieldMCTS 80n vs maia-1100), baseline to beat = 0.125 (shallow
+search). PERF NOTE: per-node history reconstruction (rebuild LczeroBoard + replay) is the bottleneck
+(200n conversion test was minutes) -> if vs-Maia is too slow, cache planes / incremental encode.
