@@ -233,6 +233,7 @@ Dockerized service stack; RL-trained plan selector (revisit after M4); non-board
 | WDL | Win / Draw / Loss — the three outcomes; a "WDL head" outputs (p_win, p_draw, p_loss). |
 | SF | Stockfish — strongest open engine; our near-perfect reference/oracle. |
 | lc0 / Leela | Leela Chess Zero — open AlphaZero-style neural engine; "Leela-family trunk" = the body of an lc0-format net. |
+| T30/T40/T60/T70/T79/T80, BT4 | lc0 TRAINING-RUN generations — each a from-scratch self-play RL run at some net size; "T70 net 703810" = the last (strongest) network of run 70, a 128×10 conv SE-ResNet (~3100-Elo class) — our chosen field trunk. Newest runs (T80/BT4) are transformers: stronger but ~35× slower on our torch path. |
 | Maia | (name, not acronym) lc0-format nets trained to predict HUMAN moves at a rating band (maia-1100…1900); our rating-conditioned human policy. |
 | AZ | AlphaZero — DeepMind's self-play engine; "AZ-style" = policy+value net + PUCT search. |
 | TB | (Syzygy) tablebase — precomputed PERFECT play for all ≤7-piece positions. |
