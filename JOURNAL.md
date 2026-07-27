@@ -8125,3 +8125,16 @@ readout wastes the geometry, pair-order 0.94); (3) the OPPONENT-EXPLOITATION lay
 a MODELABLE fallible opponent, exactly the thesis's target, so z_opp + favorable-flux subgoals
 (optionality.py PortfolioPrior) should specifically help vs Maia. Files: play_vs_maia.py, PGNs
 artifacts/experiments/field_v3_*vs_maia*.pgn.
+
+## 2026-07-27 -- Maia baseline closed: opponent-fallibility expectimax > minimax (small, thesis-consistent)
+
+Added --opp-tau to play_vs_maia.py: 2-ply aggregation over opponent replies = MIN (paranoid minimax,
+opp-tau 0) vs SOFT-EXPECTATION (expectimax, models a fallible opponent). vs maia-1100:
+  1-ply greedy ~0.00 | 2-ply minimax 0.094 | 2-ply EXPECTIMAX (opp-tau 0.15) 0.125 (first win).
+Modeling Maia's fallibility (don't assume the refutation is found) earns +0.03 even at 2-ply -- the
+first empirical whiff of the exploitation thesis. Still << maia-1100: shallow value readout is the
+bottleneck. NEXT (the real strength lever, north-star strength-per-node): wire ClockField committor
+as value_fn (2c-1, White-POV) into the existing catspace/nn/mcts.py (PUCT + mate-stop + cert
+recognizers) for a NODE-BUDGETED search vs Maia -- the proper "engine vs Maia" test (my 1-2 ply toys
+undersell the field). Then the quasimetric planner (uses the pair-order-0.94 geometry the committor
+readout wastes) + T(s,z) exploitation.
