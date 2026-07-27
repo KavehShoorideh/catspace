@@ -57,6 +57,12 @@ class ClockField(nn.Module):
         e = self.phi(x)
         return self.iqe(e, self.mate.expand_as(e))
 
+    def d_pair(self, xs, xg):                                # SHARED phi -> triangle-safe quasimetric
+        return self.iqe(self.phi(xs), self.phi(xg))
+
+    def d_pair_emb(self, es, eg):
+        return self.iqe(es, eg)
+
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
