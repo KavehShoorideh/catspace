@@ -1,0 +1,5 @@
+outs:
+- md5: 26a0801b61c7c496b898c486583646a5
+  size: 10550569
+  hash: md5
+  path: field_fullgame_v2_final.pt
