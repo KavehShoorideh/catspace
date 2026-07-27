@@ -8257,3 +8257,22 @@ fast-mixing jumble. THREE REGIMES: opening=jumble (no barrier to steer), endgame
 = the EXPLOITATION SWEET SPOT (steer the opponent across win<->loss here). So the right object for
 exploitation is the outcome transition structure WITHIN the ~15-22p band, not a global 3-basin MSM.
 Files: msm_basins.py, committor_by_material.py, transition_map.py, transition_bands.py, transition_time.py.
+
+## 2026-07-27 -- CONTROL: perfect play -> sharp basins; human error = the exploitable entropy
+
+Kaveh's control experiment: does the 3-basin structure sharpen under (near-)perfect play? Generated
+SF(depth12)-vs-SF games (~2700+ Elo >> 1400-1800 humans), diversified openings (gen_engine_games.py,
+standard npz format). 136 games, 3108 positions, W/D/L 13/77/10 (perfect play mostly DRAWS -- inverts
+humans' 6% draw rate). Embedded engine + human positions with the SAME field phi; UMAP colored by
+ACTUAL outcome; basin purity via phi-microstate outcome-entropy (engine_vs_human_basins.py).
+RESULT (base-rate-controlled via entropy REDUCTION, since raw purity is confounded by the 77% draw
+base rate): knowing your phi-location reduces outcome uncertainty by 36% for ENGINE (H 0.70->0.45)
+vs only 7% for HUMAN (H 0.88->0.82). By material: engine phi-purity high at ALL material (0.79 even
+at 27-32 pieces) while human stays a jumble (~0.52) until the endgame. VISUAL: engine = draw sea with
+localized blue/red pockets (outcomes segregate); human = blue/red thoroughly intermixed (no structure
+except the endgame island). CONCLUSION: the 3 basins are REAL (sharp under perfect play, from the
+opening); HUMAN ERROR smears them into the leaky midgame. The 36%-vs-7% gap IS the exploitable entropy
+-- under human play the outcome is set by WHO ERRS (the z/T-conditioned quantity), not the position.
+This empirically validates the whole metastability-exploitation framing. Caveats: 77% draws (draw sea
++ decisive pockets, not 3 equal basins), small decisive sample (~750), phi human-trained (engine mildly
+OOD -> 36% is a lower bound). Files: gen_engine_games.py, engine_vs_human_basins.py.
