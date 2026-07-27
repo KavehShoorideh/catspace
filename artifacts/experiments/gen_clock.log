@@ -1,0 +1,18 @@
+[gen-clock] 10 workers x 1600 parents
+  w1/10: 36793 [90s]
+  w2/10: 36637 [90s]
+  w3/10: 37142 [91s]
+  w4/10: 36841 [91s]
+  w5/10: 37075 [91s]
+  w6/10: 36736 [91s]
+  w7/10: 37158 [92s]
+  w8/10: 36939 [92s]
+  w9/10: 37056 [92s]
+  w10/10: 36579 [92s]
+
+=== data/derived/clock_child_v1.npz: 368956 rows [92s] ===
+  won 245702 | mate 395 | INF 122859 | halfmove: min 0 med 49 max 99
+  halfmove [0,20): INF-fraction 15% (n=73574)
+  halfmove [40,60): INF-fraction 24% (n=72886)
+  halfmove [80,100): INF-fraction 73% (n=75482)
+DONE gen_clock_child_data

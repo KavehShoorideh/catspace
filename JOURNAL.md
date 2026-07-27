@@ -7847,3 +7847,22 @@ variation, clock-aware labels (won but 100-halfmove < DTZ-to-zero => actually DR
 (c) committor then ~1 in the win basin with clock budget, ->0.5 at the draw surface -> gives BOTH
 MCTS and minimax the progress gradient (reduce DTZ, reset clock) to steer off the draw. Then re-test
 MCTS (should recover) + long-mate conversion.
+
+## 2026-07-26 -- PIVOT: adopt lc0's input encoding + REAL-history trajectory data (Kaveh)
+
+Kaveh: don't zero-fill history; borrow lc0's proven input pipeline (don't reinvent feature
+engineering); then train; stop anything old and devote resources to the newest method.
+DECISION: converge endgame + full-board onto ONE lc0-based input pipeline.
+  - INPUT: reuse lc0's 112-plane encoding (8-position REAL history, perspective flip, castling/
+    rule50/ep, canonicalization) via a reusable Python encoder if one exists, else a faithful
+    port of encoder.cc. NOT our home-rolled 20-plane. (encoder-reuse research dispatched.)
+  - DATA: real trajectories (rollouts / games) so history is REAL, not zeros -- even endgames are
+    played as sequences. Same rollout machinery as the full-game/lichess phase -> unifies them.
+  - KEEP (input-agnostic, transfers unchanged): quasimetric IQE field, committor, categorical
+    ending head, tested losses (losses.py), MCTS/minimax planner. Only input encoding + data swap.
+SUPERSEDED: the home-rolled 20-plane ClockField as the PRODUCTION encoder. Its FINDINGS stand
+(machinery validated): quasimetric+minimax converts endgame 100% (v3), clock-awareness represents
+the 50-move draw surface, categorical endings 95%, the tie-loss/clock-blindness/MCTS-vs-minimax
+lessons. STOPPED the running 20-plane clock training + evals.
+NEXT: (1) encoder reuse decision from research; (2) trajectory-rollout data with real history;
+(3) train the field on lc0-encoded real-history data.
