@@ -687,8 +687,15 @@ from the opponent's own subgoals. Two additions to the single-subgoal picture ab
 DONE/validated: single-space IQE + multi-goal + repulsion + mate + WDL + distributional ending +
 committor; lc0 112 real-history input; tested losses; clean 3-basin endgame data; tablebase
 handover; SF reliability map; MCTS-vs-minimax principle; endgame conversion 100% (v3) as machinery
-proof. NEXT: full-board opponent model (lichess data -> player embedding z -> transition T(s,z) ->
-cohort-regret/KL exploitation -> exploitation planner). DEFERRED: non-board endings (time/resign),
+proof. FULL-BOARD FIELD TRAINED + TESTED (2026-07-27): field_fullgame_v3_final.pt on 1.08M real-game
+positions (100k games, full-month lichess; 19.35M-game identity records DVC-tracked). Committor
+WELL-CALIBRATED (ECE 0.027, reliability tracks 0.10-0.91) + SHARP at the <=7p tablebase boundary
+(committor 0.94, MAE 0.065); pair-order 0.944; eff_rank 8.4 (collapse cured by repulsion). Trained on
+catspace/train/scaffold.py (MLflow + ladders + Ray Tune). OPTIONALITY PLANNER built+tested
+(catspace/planner/optionality.py: PortfolioPrior + multipurpose + opportunism, 16/16).
+NEXT: (1) wire field_fullgame_v3 into PortfolioPrior (committor + d_pair as distance_fn); (2) player
+embedding z (Matilda residual) on the identity records -> transition T(s,z) -> exploitation loop live;
+(3) engine data (CCRL) for draw/tail diversity. DEFERRED: non-board endings (time/resign),
 king-bucketing, dockerized service stack.
 
 ## 10. Harness & infrastructure (EXISTING — reuse, do NOT rebuild/re-ingest)
