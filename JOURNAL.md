@@ -7948,3 +7948,15 @@ VERDICT: data NOT train-ready -- fix draw-starvation + strength-skew (balanced h
 blend) BEFORE the full run. Test-before-train discipline paid off (caught it pre-run). Next
 validations: balanced data pipeline -> re-check evenness -> z-encoder/T/field machinery smokes ->
 THEN full best-shot train. Files: data_distribution_check.py.
+
+## 2026-07-26 -- MATH double-checked + canonical statement (Kaveh)
+
+Verified numerically (data_distribution_check-style sanity in-session): V = c + 0.5·P(draw) + 0·P(loss);
+c + P(draw) + P(loss) = 1; flux/sharpness well-formed. Wrote ARCHITECTURE.md §11 "Math (canonical)":
+committor c=P(win)=P(WIN_MATE) [metastability coordinate, tablebase-grounded] is DISTINCT from EXPECTED
+SCORE V=Σ p_e·score_e [planner value]; both are readouts of the one ending-distribution head. Value is
+under the JOINT policy (opp π_opp fallible, I maximize) -> already TWO-SIDED; MCTS objective = single
+scalar max_move E_{π_opp}[V] (max-expectation; reduces to minimax vs perfect defender). Transition flux
+Φ=t_win(z_opp)−t_loss(z_me) and sharpness σ=t_win+t_loss are the DECOMPOSITION of dV for search-shaping
++ risk knob -- NOT competing objectives (V nets them). Info-asymmetry edge = their-regret − my-regret vs
+reliability-weighted reference. Fixed the loose "committor==value" usage.
