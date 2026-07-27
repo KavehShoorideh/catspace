@@ -604,7 +604,10 @@ grounded at <=7 via committor_anchor.
   PER-INDIVIDUAL z (goal, not rating-cohort): identity = username (humans) / engine name+version
   (engines). Rating is the SKILL ANCHOR/prior; the rest of z is the individual's STYLE from THEIR
   games. Encoder = stylometry (a player's game-SET -> their z), TRAINED on players with enough games
-  (>=~20-50). PRIOR: unknown player -> rating-conditioned population p(z|rating); INFER online for ANY
+  (>=~20-50). GROUP BY player_id but MASK THE NAME: the username is only a GROUPING LABEL for the
+  contrastive objective (same-player games -> nearby z); it is NEVER an input feature. z is a function
+  of PLAY (their moves), so it never memorizes name->identity and GENERALIZES to unseen opponents
+  online. (Same for engines: name+version groups, is not fed in.) PRIOR: unknown player -> rating-conditioned population p(z|rating); INFER online for ANY
   opponent (even 5-10 games) as posterior p(z|their moves, rating) onto that prior (cold-start=prior).
   DATA NEEDS PLAYER IDENTITY: current shards dropped names (Elo only) -> REPROCESS the raw lichess
   .pgn.zst (HAVE: data/lichess/*.prefix{256mb,1gb,4gb}.pgn.zst) keeping White/Black usernames; engines
@@ -627,8 +630,11 @@ grounded at <=7 via committor_anchor.
 - Value migration engine->ensemble->self-play (committor is outcome-defined -> source swappable).
 
 ## 8. Planner (inference)
-Search on the field (policy=planner). Value=trained committor; maximize EXPECTED SCORE (W=1,D=.5,
-L=0, loss term included). PERFECT defender (endgame vs TB) -> MINIMAX (v3+depth-3 = 100%; MCTS mean-
+TOP-LEVEL HIERARCHICAL PLANNER is conditioned on BOTH (Elo, z): explicit Elo = the always-available,
+interpretable SKILL signal (how hard to press); learned z = the individual STYLE / error-map (where
+to pose problems). Elo also anchors/regularizes z's skill dim so the learned part carries style, not
+re-derived skill. Search on the field (policy=planner). Value=trained committor; maximize EXPECTED
+SCORE (W=1,D=.5, PERFECT defender (endgame vs TB) -> MINIMAX (v3+depth-3 = 100%; MCTS mean-
 backup exploited by perfect defense). FALLIBLE opponent (midgame) -> MCTS on expected score over
 pi_z; T shapes search to favorable-flux ridges; risk-appetite knob (need-win->SHARP, winning->QUIET
 = contempt). At <=7 pieces hand to tablebase.
