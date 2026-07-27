@@ -667,9 +667,21 @@ from the opponent's own subgoals. Two additions to the single-subgoal picture ab
       (branching + tactical tension + in-check); a learned z_me replaces it later. Flux weights w_k and
       G_opp come from T(s,z) once trained; the core math is field-agnostic (operates on d[move,subgoal]
       matrices) so it is unit-tested in isolation and plugs into any field (single-space IQE or FB).
-      TESTED (optionality.py): optionality bonus, beta->inf hard-min, and multipurpose-move emergence
-      (a move advancing 2 of mine + denying 2 of theirs out-ranks pure-attack / pure-defense /
-      single-purpose). NEXT: wrap as a PortfolioPrior (MovePrior) on a real field; gate exploitation on z/T.
+  (3) OPPORTUNISM (Kaveh 2026-07-26). The portfolio is RE-SELECTED every ply from the CURRENT position
+      (forward-looking / Markov, no sunk cost): the subgoal generator re-scores candidate transition
+      points each move, INCLUDING any the opponent's slip just opened (a slip raises flux Phi and drops
+      distance at a new transition point -> its weight jumps -> it enters the soft aggregate and, if
+      best, dominates -> we SWITCH plans to seize it). Over-committing would be the bug; the stateless
+      soft portfolio is opportunistic by construction. select_active_plan() adds HYSTERESIS (a
+      switch_margin) so a clearly-better opened point is taken while marginal noise doesn't cause
+      thrash (wasted tempo). Keeping options open (2) and opportunism (3) are the same coin: never
+      locked in, so when a new option becomes best we take it.
+      TESTED (optionality.py, 16/16): optionality bonus, beta->inf hard-min, multipurpose-move
+      emergence (advance-2-mine+deny-2-theirs out-ranks pure-attack / pure-defense / single-purpose),
+      opportunism+hysteresis, and board-level PortfolioPrior (MovePrior) wiring on a real board.
+      PortfolioPrior is field-agnostic (distance_fn seam) -> FB field now, single-space IQE later.
+      NEXT: subgoal GENERATOR (candidate transition points + flux weights) once T(s,z)/z land; gate
+      the exploitation loop on z/T (which are gated on the full-month data build).
 
 ## 9. Status
 DONE/validated: single-space IQE + multi-goal + repulsion + mate + WDL + distributional ending +

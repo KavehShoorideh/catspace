@@ -8012,3 +8012,19 @@ monotonicity; valid prior. Documented ARCHITECTURE.md 8.1. Memory: matilda_resid
 (arXiv 2606.25176) = the recommended z-encoder (rating-conditioned residual, Elo-disentangled).
 NEXT: wrap as a PortfolioPrior (MovePrior) on a real field; full exploitation loop gated on z/T
 (which are gated on the full-month data build, running now).
+
+## 2026-07-26 -- OPPORTUNISM (plan-switching) + PortfolioPrior board wiring
+
+Kaveh: be OPPORTUNISTIC -- if the opponent slips and opens a transition point OFF our main plan,
+SWITCH plans to seize it. This is inherent in the design: the soft portfolio is FORWARD-LOOKING /
+Markov (PortfolioPrior.priors recomputes from the current board every ply, no sunk cost), so when a
+slip opens a new transition point (flux Phi up, distance down -> weight up), it enters the soft
+aggregate and, if best, dominates -> we switch. Over-committing would be the BUG. Added
+select_active_plan() = re-select the emphasized subgoal each ply with HYSTERESIS (switch_margin) so a
+clearly-better opened point is taken but marginal noise doesn't thrash (wasted tempo). Keeping options
+open + opportunism = same coin (never locked in). Also wired PortfolioPrior (a MovePrior:
+distance_fn + G_me/G_opp + ShapeWeights -> shaped move prior; subgoals in the PRIOR, value stays
+global). TESTED 16/16 (added opportunism+hysteresis + board-level PortfolioPrior on a real board:
+valid distribution over legal moves; a multipurpose king step toward BOTH targets out-priors a step
+away). Doc: ARCHITECTURE 8.1 (3). NEXT: the subgoal GENERATOR (candidate transition points + flux
+weights), gated on T(s,z)/z, gated on the full-month data build.
