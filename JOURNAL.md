@@ -7986,3 +7986,29 @@ SMOKE VERDICT (4.7k games): balancer lifted outcome-evenness 0.76->0.99 (draws 4
 NEXT: full-month records land -> re-run evenness at scale (expect real >=20-game player counts) ->
   decide engine ingestion (CCRL download) for the draw/tail diversity -> z-encoder (CSSLab
   stylometry adapt) smoke.
+
+## 2026-07-26 -- OPTIONALITY portfolio -> MULTIPURPOSE moves (mechanism built + tested)
+
+Kaveh's directive: wire the engine to infer z_opp online, find advantageous transition points,
+navigate high-level + search low-level toward them while STAYING AWAY from the opponent's subgoals;
+KEEP OPTIONS OPEN (a SET of subgoals, opponent modeled the same way) -> this should ENCOURAGE
+MULTIPURPOSE moves (attack + defend + more). Two forks decided (AskUserQuestion): prototype the
+mechanism NOW on the current field (heuristic flux placeholder); self-model = search-complexity
+proxy now, learned z_me later.
+RIGOROUS FRAMING (keeps 11's single-objective intact): optionality + multipurpose are NOT new
+objectives -- they FALL OUT of maximizing E[V] under uncertainty about (a) which subgoal pans out,
+(b) z_opp. So aggregate the subgoal portfolio SOFTLY (soft_reach = (1/beta) logsumexp_k[beta*(-d_k)
++ log w_k]) instead of hard-min: a finite beta rewards several subgoals being close (a Jensen /
+value-of-information effect). Move shaping (a MOVE-PRIOR, never a value term -- the engine's
+ValueModel/MovePrior split already enforces "subgoals in prior, not value"): score = advance-many-
+of-mine - lam*let-them-advance-many-of-theirs - mu*self_blunder. The move that attacks (advances my
+set) AND defends (raises the barrier to their set) is the ARGMAX -> MULTIPURPOSE is emergent, not a
+hand-coded rule. beta couples to the sigma risk knob (need-a-win -> commit to the sharpest subgoal).
+BUILT catspace/planner/optionality.py (field-agnostic: operates on d[move,subgoal] matrices, plugs
+into any field). TESTED (11/11 self-checks): optionality bonus (2 near subgoals > 1 at equal min-
+dist), beta->inf -> hard nearest, and MULTIPURPOSE EMERGENCE -- a move advancing 2 of mine + denying
+2 of theirs out-ranks pure-attack / pure-defense / single-purpose; denial sign; self-blunder
+monotonicity; valid prior. Documented ARCHITECTURE.md 8.1. Memory: matilda_residual_style_embedding
+(arXiv 2606.25176) = the recommended z-encoder (rating-conditioned residual, Elo-disentangled).
+NEXT: wrap as a PortfolioPrior (MovePrior) on a real field; full exploitation loop gated on z/T
+(which are gated on the full-month data build, running now).
