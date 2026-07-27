@@ -8314,3 +8314,19 @@ barrier to ~0.28. The ENTIRE exploitable edge lives in that 0.28. Completes the 
 (3) bands+matrix [sf_vs_human_bands]: Win<->Loss 0.00 perfect vs 0.28 human. One coherent empirical
 foundation: positions have determined values; human fallibility opens the Win<->Loss barrier; the
 opponent model's job is to predict WHERE/for WHOM that 0.28 leak is largest.
+
+## 2026-07-27 -- LAYER 1 (stopgap): Maia+Stockfish blunder model B(s,r) = the transition predictor
+
+Kaveh: for each opponent, find where their blunder probability is highest; use an open-source blunder
+calculator for now. -> Maia (rating-conditioned human move model, we have 1100-1900) + Stockfish
+(near-perfect value oracle). blunder_model.py: for a position with opponent (rating r) to move,
+  B(s,r) = sum_m P_Maia_r(m|s) * max(0, mover-POV committor loss of m)   [expected self-blunder]
+computed via a persistent lc0+maia subprocess (VerboseMoveStats -> full per-move policy) + persistent
+SF (WDL committor). B(s,r) IS T(s, z=rating): the opponent's error map / where they cross a basin
+boundary against themselves. VALIDATED against the ACTUAL move played in real games at that rating.
+SMOKE (n=30, depth 10): predicted B vs actual self-committor-loss Spearman +0.537; top-B quartile
+37.5% actual blunder-rate vs 0% bottom quartiles -> the model predicts WHERE blunders happen. Full
+n=400 validation running. NEXT: (a) map B(s,r) over the field (where/which regions is each rating
+weakest), (b) feed high-B reachable regions as favorable-flux SUBGOALS to the PortfolioPrior planner
+(optionality.py) -> navigate the opponent toward their blunder regions. This is Layer 1 -> connects to
+Layer 2 (quasimetric MCTS navigates there) -> the exploitation loop.
