@@ -8105,3 +8105,23 @@ NEXT (for Kaveh): (1) wire field_fullgame_v3 into the optionality PortfolioPrior
 d_pair as the distance_fn); (2) z-encoder (Matilda residual) on the 19.35M-game identity records ->
 transition predictor T(s,z) -> the exploitation loop goes live; (3) engine data (CCRL) for draw/tail
 diversity. All gated code + interfaces already built + tested this session.
+
+## 2026-07-27 -- HOW THE FIELD PLAYS vs MAIA (Kaveh's question): honest baseline, value != policy
+
+Put field_fullgame_v3 into play vs Maia (lc0 + maia-<elo>.pb.gz, nodes=1 = human-like policy) via
+experiments/play_vs_maia.py. Readout = committor-greedy (pick move maximising c(s')=P(my win)).
+RESULTS (field POV, alternating colors):
+  1-ply committor-greedy: vs maia-1100 0/30 (0.000), maia-1500 3D/27L (0.050), maia-1900 0/30 (0.000)
+  2-ply committor-minimax: vs maia-1100 0W/3D/13L (0.094)  [~2x the 1-ply score]
+DIAGNOSIS (inspected games, NOT a bug): the committor is a well-CALIBRATED VALUE (ECE 0.027) but by
+design ~0.5-FLAT in balanced midgames, so used greedily it barely discriminates midgame moves ->
+hangs material. Concrete: as White it played 3.Qxh5?? Rxh5 hanging the queen on move 3 (1-ply can't
+see the recapture). 2-ply minimax fixes the immediate hangs (loss->draw) but still loses most: deeper
+tactics + positional drift on a flat midgame committor. A VALUE IS NOT A POLICY without search.
+VERDICT: field value + shallow search ~= BELOW maia-1100 on the strength-per-node frontier -- the
+honest, expected baseline. LEVERS to move it (all designed/built this session, gated): (1) deeper
+search / more nodes; (2) the QUASIMETRIC planner (region subgoals + progress -- the committor-only
+readout wastes the geometry, pair-order 0.94); (3) the OPPONENT-EXPLOITATION layer T(s,z) -- Maia is
+a MODELABLE fallible opponent, exactly the thesis's target, so z_opp + favorable-flux subgoals
+(optionality.py PortfolioPrior) should specifically help vs Maia. Files: play_vs_maia.py, PGNs
+artifacts/experiments/field_v3_*vs_maia*.pgn.
