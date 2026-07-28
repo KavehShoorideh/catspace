@@ -66,6 +66,32 @@ def reachability_target(n_moves, path_surprisal):
     return np.logaddexp(0.0, np.log(np.maximum(n, 1.0)) + np.maximum(s, 0.0))
 
 
+def first_hit_bce(logit, hit, weight=None):
+    """First-hit reachability BCE (REACHABILITY_FOUNDATIONS §4.1). logit = ⟨φ_r(s,z), ψ_r(g)⟩,
+    hit ∈ {0,1}: did the trajectory FIRST-reach goal region g strictly after s within the game
+    (censored-no-hit = 0; the within-game horizon IS the censoring time — undiscounted first-hit,
+    the FR object at γ→1 restricted to the game). Direct supervised labels from real trajectories:
+    calibrated across goals by construction (no contrastive 1/p(g) constant — the CRL landmine).
+    `weight` (optional, per-pair) preserves calibration under non-uniform negative subsampling
+    (weight = 1/keep_rate); UNIFORM goal subsampling needs no weights."""
+    return F.binary_cross_entropy_with_logits(
+        logit, hit.float(), weight=weight, reduction="mean")
+
+
+def censored_plies_loss(pred_log_plies, plies, hit):
+    """Expected-plies-to-first-hit head: Huber on log1p(plies), OBSERVED (hit=1) pairs only.
+    Censored pairs (hit=0, plies<0) contribute exactly 0 — v1 drops them rather than modeling the
+    censoring distribution (deliberate scope: observed-only regression is biased toward reached
+    goals; recorded in JOURNAL). Empty-hit batches return 0, never NaN."""
+    m = hit.float()
+    n = m.sum()
+    if n.item() == 0:
+        return pred_log_plies.sum() * 0.0
+    t = torch.log1p(plies.clamp(min=0).float())
+    per = F.huber_loss(pred_log_plies, t, delta=1.0, reduction="none")
+    return (per * m).sum() / n
+
+
 # --------------------------------------------------------------------------------------------
 def _tests():
     torch.manual_seed(0); ok = True
@@ -124,6 +150,36 @@ def _tests():
     assert v.shape == (3,) and abs(float(np.expm1(v[2])) - 1000.0) < 1.0
     print(f"  reachability_target: forced 1->{egap(1,0.0):.3f} | forced-5->{egap(5,0.0):.1f} | "
           f"1/1000->{egap(1,log(1000)):.0f} | n3@P1/4->{egap(3,log(4)):.1f} | monotone+additive+floored  OK")
+
+    # first_hit_bce: confident-correct -> ~0; confident-wrong -> large; base-rate logit -> -log(p) mix;
+    # uniform-subsample calibration: weighted == unweighted on duplicated data
+    lg = torch.tensor([12.0, -12.0]); y = torch.tensor([1.0, 0.0])
+    assert first_hit_bce(lg, y).item() < 1e-4, "confident-correct must be ~0"
+    assert first_hit_bce(-lg, y).item() > 10.0, "confident-wrong must be large"
+    lg3 = torch.tensor([0.0, 0.0, 0.0]); y3 = torch.tensor([1.0, 0.0, 0.0])
+    w3 = torch.tensor([1.0, 2.0, 0.0])   # weight-2 negative == counting it twice, zero == dropping
+    manual = (F.binary_cross_entropy_with_logits(torch.zeros(3), torch.tensor([1., 0., 0.]))
+              )  # ln2 each -> mean ln2
+    assert abs(first_hit_bce(lg3, y3).item() - manual.item()) < 1e-6
+    dup = first_hit_bce(torch.tensor([0.0, 0.0, 0.0, 0.0]), torch.tensor([1.0, 0.0, 0.0, 0.0]))
+    wtd = first_hit_bce(lg3, y3, weight=w3 * (3.0 / w3.sum()))  # renormalized weights, same mix
+    assert abs(dup.item() - wtd.item()) < 1e-6, "weights must reproduce duplicated-negative mix"
+    print(f"  first_hit_bce: correct {first_hit_bce(lg, y).item():.5f} | wrong "
+          f"{first_hit_bce(-lg, y).item():.1f} | weighted==duplicated  OK")
+
+    # censored_plies_loss: exact on hits -> 0; censored-only batch -> exactly 0 (no NaN);
+    # censored rows contribute nothing (loss invariant to their pred values)
+    plies = torch.tensor([7.0, -1.0]); hit = torch.tensor([1.0, 0.0])
+    exact = torch.log1p(torch.tensor([7.0, 0.0]))
+    assert censored_plies_loss(exact, plies, hit).item() < 1e-9, "exact on observed -> 0"
+    allc = censored_plies_loss(torch.tensor([3.0]), torch.tensor([-1.0]), torch.tensor([0.0]))
+    assert allc.item() == 0.0 and not torch.isnan(allc), "all-censored batch -> exactly 0"
+    a = censored_plies_loss(torch.tensor([1.0, 99.0]), plies, hit)
+    b = censored_plies_loss(torch.tensor([1.0, -99.0]), plies, hit)
+    assert abs(a.item() - b.item()) < 1e-9, "censored rows must not affect the loss"
+    assert censored_plies_loss(torch.tensor([0.0, 0.0]), torch.tensor([7.0, 7.0]),
+                               torch.tensor([1.0, 1.0])).item() > 0.5, "wrong on observed -> >0"
+    print(f"  censored_plies_loss: exact->0 | all-censored->0 (no NaN) | censored-invariant  OK")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 

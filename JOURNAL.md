@@ -8730,3 +8730,68 @@ committor (distilled / trunk) may be swapped for search but must be VALIDATED ag
 Under a WEAKER opponent the expected SF-refereed crossing risk is higher — the exploitable edge. Full
 opponent-specificity = feed the estimator's z-conditioned move-dist instead of raw Maia-at-Elo. Bridges
 M2 → M3 (crossing risk × reachability = subgoal score).
+
+---
+
+## 2026-07-28 — Reachability foundations locked: whose math, two evaluators, AOEE review
+
+**Architecture lock (Kaveh):** the opponent-free map needs no learning — cooperative reachability is
+degenerate (proof-game connectivity), optimal-play reachability is search-computable pointwise and
+already amortized in the frozen trunk's WDL/MLH; a measure map REQUIRES a kernel, so every measure
+field is z-conditioned by definition. The ONLY learned field: `P(reach g | s, z_self, z_opp)`.
+Forced objects (mates/tactics) come from legal-move search (df-pn/minimax; field = move ordering
+only); subgoals = better basin parts given both z's. (memory: z_conditioned_field_two_evaluators)
+
+**Quantifier formulation:** forced = ∃∀ over legal support (k-step attractor; retrograde tablebase
+generation IS attractor computation — exactly, successor-counter algorithm identical); navigation =
+P(reach/avoid | z-kernel) ≥ 1−ε (MDP P_max reachability once the opponent policy is fixed — the
+game degenerates to 1.5-player). Interpolation knob: mean → CVaR_α (≡ ambiguity radius, Chow et al.
+Prop 1) → ε-support → forced. ε-pruned proofs carry certificate ∏(1−δ_i); even true-forced lines
+are worth P(we execute | z_self), never 1.0.
+
+**Deliverable: `REACHABILITY_FOUNDATIONS.md`** — graded whose-math table ([V] = survived 3-0
+adversarial panel / [Q] = quote-backed extraction / [K] = unfetched knowledge), attribution
+corrections (Mazala chapter not GTW-as-authors; OM-search = Carmel–Markovitch AND Iida et al.
+independently 1993; rPATL = TACAS 2012 not QEST; Abate 2008 = safety not reach-avoid; df-pn GHI
+incompleteness on repetition graphs), novelty ledger (z-conditioned P(reach g)+MFPT to arbitrary
+goals and ε-certificate proof search: plausibly novel, pending completed verification; nearest art:
+USFA / FB / InFOM / Maia-2 both-Elo WDL / Matilda z / ALLIE / Jansen–PrOM), and two standing
+honesty gates: OM/expectimax search-value inflation is structural (PrOM Thm 3) ⇒ exploitation
+claims only from realized outcomes; certified bounds need sound VI stopping criteria.
+
+**AOEE spec review** (`chess_agent_spec.pdf`): ~70% = our locked plan re-derived. ADOPT: c_t
+clock/tilt context into estimator + field; blunder-severity mining channel. SHELF: per-player LoRA
+(M2b evidence: −0.042 nats additive-z overfit vs +0.006–0.009 retrieval fix; trigger ≥~1k-game
+opponents); NNUE distillation kernel (trigger: search depth bottleneck). REJECT as spine:
+deterministic asymmetric alpha-beta (bias-only opponent model discards blunder variance; OM-search
+self-delusion failure mode; LoRA→NNUE fusion dimensionally incoherent as written).
+
+**Process note:** deep-research workflows (~4.7M subagent tokens over 3 runs) exhausted weekly +
+session limits mid-verification twice; extraction salvaged from journals, verification pass on
+[Q]/[K] rows still owed. New standing rule: no multi-agent fan-outs without explicit per-run ok +
+cost estimate (memory: workflows_token_budget).
+
+**Next:** v1 field head prototype (SHORT run first): first-hit BCE + censored-plies head, factored
+⟨φ_r(s,z,c_t), ψ_r(g)⟩ over frozen φ, WDL as competing-risks readout; gates: held-out players,
+wrong-z placebo, effective rank, calibration.
+
+---
+
+## 2026-07-28 — Reach head v1 SMOKE: first-hit field trains, z-lift sign positive, calibrated
+
+Built the v1 z-conditioned first-hit reachability head (REACHABILITY_FOUNDATIONS §4.1):
+`build_reach_data.py` (256 k-means goals on train-φ, ε = median nearest-centroid dist; audit: hit
+rate 1.71% train / 1.75% heldout, plies med 24 p90 64; DVC-tracked) + `train_reach_head.py`
+(factored ⟨φ_r(s, z_self, elos), ψ_r(g)⟩, z-free goal tower, frozen M2b z, base-rate init; losses
+first_hit_bce + censored_plies_loss added to losses.py WITH tests). v1 conditions on z_self +
+BOTH Elos only — opponent style enters as the Elo-population marginal (cache has no opponent ids);
+v2 rebuild adds recovered ẑ_opp + clocks. 600-step smoke VERDICTs (printed):
+
+  z-lift vs z=0     : +0.006 mnats/pair CI[+0.001,+0.011] p=0.990  (seen players, unseen games)
+  z-lift vs wrong-z : +0.003 mnats/pair CI[-0.004,+0.010] p=0.836  (±100-Elo permutation)
+  calibration [eval]: mean pred 0.0181 vs realized 0.0176; mass-bin 0.016→0.016 (2.0M pairs);
+                      max|gap| 0.85 is an artifact of n≤8 top bins → switch verdict to ECE in full
+  plies [eval]      : MAE(log1p) 0.539 vs median-baseline 0.771
+  eff_rank          : 23.2/64 [23.1,23.4] — no collapse; unseen-player z=0 fallback calibrated
+
+Sign of the claim shows at smoke scale (standard 14) → committing, launching full run.
