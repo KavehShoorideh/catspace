@@ -140,7 +140,19 @@ per-side crossing risk (Φ, σ).
   column is already in records — no PGN rebuild). Per Kaveh (2026-07-27) z is ALLOWED to carry strength
   + structure-competence — no purity firewall; only validity controls kept (see DoD).
   [[style_z_allows_strength]]
-- **M2c** in-game z tightening (Laplace posterior update from move surprisals; cold start = μ(Elo) prior).
+- **M2c** — the ONLINE OPPONENT-STATE ESTIMATOR: a single filter over **(Elo, z)** run for EVERY
+  opponent (Kaveh 2026-07-27), fed by the player's own moves — HISTORY as prior + LIVE moves as they
+  arrive, **recency-weighted** (style drifts → recent moves count more). Uniform for all: <20-game
+  players get a personalized estimate from their few games; >20-game players keep updating live; nobody
+  is frozen. The rating prior is only the true cold-start (zero history).
+  - **z**: recover from observed moves → INFER-THEN-CONDITION (retrieve k-NN nearest CLEAN training
+    styles, Elo-banded), NOT the overfit additive point-estimate. [[infer_then_condition_z]]
+  - **Elo**: KNOWN → tight prior; UNKNOWN → broad population prior, ESTIMATED from moves (Maia-2's 11
+    rating buckets ARE a rating estimator — the bucket best explaining the moves is the Elo). Prediction
+    marginalizes the base over the Elo posterior; the retrieval band widens with Elo uncertainty.
+    Graceful by construction: unknown Elo = widest band (still a positive lift — global retrieval +0.006
+    vs Maia; Elo-banded ±100 +0.009).
+  - Because the move-logit is LINEAR in z, the (Elo,z) belief stays tractable (recursive Laplace/Kalman).
 - **Infra:** batched ONNX Maia policies (tensor ops; 277+ pos/s vs ~1/s subprocess) for both
   training targets and MCTS opponent models.
 - **Gates:** beats the stopgap B(s,r) on held-out real-blunder prediction (ρ, quartile lift,
@@ -166,7 +178,14 @@ per-side crossing risk (Φ, σ).
   styles k≈50 → predict with the blend) flips it: beats raw Maia +0.006 nats (P=1.00) AND player-specific
   +0.005–0.010 vs wrong-player conditioning (P=1.00). z-consumer = retrieve-and-condition,
   experiments/m2b_condition.py. See memory infer_then_condition_z.]**
-  M2c — z from few observed moves beats prior-only.
+  M2c — z from few observed moves beats prior-only. **[MET (base capability) 2026-07-27 — 525 held-out
+  players. Cold-start break-even (m2c_ingame.py): identity (beats rating-matched wrong-z) from ~10
+  observed moves; conditioned z beats the raw-Maia prior from ~40–80 moves; immediate for warm
+  (history-prior) opponents. Elo-banded retrieval ±100 lifts the win to +0.009 vs Maia (m2b_condition.py).
+  Unknown-Elo (m2c_elo_id.py): Elo IS recoverable from moves — Elo-MAE 142 @ 40 moves vs 205 no-info
+  (coarse but monotone-tightening), so the wide-band fallback degrades gracefully. Estimator packaged:
+  catspace/style/estimator.py (online (Elo,z) filter, 6/6 self-test). Recency/drift mechanism BUILT;
+  validating its benefit needs MULTI-MONTH timestamped data (single-month 2019-01 has ~no drift) — follow-up.]**
   Batched-Maia infra: Maia-2 adopted (~10ms/pos). All via eval-script VERDICTs, CI'd (stats.py).
 
 ### M3 — Transition atlas + subgoal generator (the map)

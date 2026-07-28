@@ -25,18 +25,22 @@ def _precompute_U(model, feats, device):
     return U, mu, cand_logp, feats["cand_mask"].to(device), feats["played_slot"].to(device)
 
 
-def recover_delta(model, feats, lam: float = 1.0, steps: int = 60, laplace: bool = False, device="cpu"):
+def recover_delta(model, feats, lam: float = 1.0, steps: int = 60, laplace: bool = False, device="cpu",
+                  weights=None):
     """Return (delta (d_z,), optional H^-1 (d_z,d_z)). feats: dict of support-position tensors
-    (phi, cand_idx, cand_logp, cand_mask, rank, played_slot, elo)."""
+    (phi, cand_idx, cand_logp, cand_mask, rank, played_slot, elo). `weights` (n,): optional per-move
+    weights (recency weighting for the online M2c filter -- recent moves count more); None = uniform."""
     model.eval()
     U, mu, cand_logp, cand_mask, played_slot = _precompute_U(model, feats, device)
     delta = torch.zeros(model.d_z, device=device, requires_grad=True)
+    w = None if weights is None else torch.as_tensor(weights, dtype=torch.float32, device=device)
 
     def loss_fn(d):
         z = mu + d                                                          # (n,d_z), mu fixed
         style = (U * z.unsqueeze(1)).sum(-1)                               # (n,K)
         logit = (cand_logp + style).masked_fill(~cand_mask, -1e9)
         nll = -F.log_softmax(logit, -1).gather(1, played_slot.view(-1, 1)).squeeze(1)
+        nll = nll if w is None else nll * w
         return nll.sum() + lam * (d ** 2).sum()
 
     opt = torch.optim.LBFGS([delta], max_iter=steps, line_search_fn="strong_wolfe")
