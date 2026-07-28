@@ -47,7 +47,6 @@ predictor** that says where *this* opponent slips. The system is **two-part**, e
 | **[docs/COMPONENTS.md](docs/COMPONENTS.md)** · **[docs/RUNBOOK.md](docs/RUNBOOK.md)** | code map · ops runbook. |
 | `experiments/losses.py` · `experiments/endgame_handover.py` | the **unit-tested primitives** (run them: `python experiments/losses.py`). No new loss enters a run without a passing test here. |
 | **[docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md)** | **the current design-of-record**: whose-math table (graded), two-evaluator architecture, novelty ledger, AOEE disposition. Supersedes the archived brief/handoff (`docs/archive/`). |
-| `memory/` (the AI's auto-memory) | standing rules & decisions carried across sessions. |
 
 ## Component map
 
@@ -64,28 +63,6 @@ predictor** that says where *this* opponent slips. The system is **two-part**, e
 | Planner / engine / arena / UCI | `catspace/planner/`, `catspace/engine/`, `catspace/arena.py`, `catspace/uci.py` |
 | Superseded experiments (kept for provenance) | `experiments/archive/`, `docs/archive/` |
 
-## Standing rules (Kaveh's — full set in `memory/`, one file each)
-
-**Rigor & method**
-- **Rigor over flattery** — no sycophancy; grade every claim (proven / provable / plausible) and retract loose ones explicitly.
-- **Journal numbers must be verdicts** — no metric enters JOURNAL/commits without a printed script `VERDICT`; figures come from repo scripts, not heredocs.
-- **Diagnose before concluding** — never call a plateau/failure "fundamental" before ruling out the loss and the data; **unit-test every loss** (canonical, tested terms live in `experiments/losses.py`); inspect the target distribution before choosing a loss.
-- **Define identifications** — an "X is a Y" claim must state Y's criteria and verify X meets them.
-- **Discuss before building** — exploratory questions get option-space + a recommendation, then wait; directional builds need Kaveh's call. **Notify his phone** for stop-for-a-question decisions (AskUserQuestion + PushNotification when away).
-- **Search when stuck** (>15 min on something that should work) — stop tuning, read the paper / reference impl.
-- **No one-lever rule** — bundle well-justified changes into one run; record what's bundled. **Conditional rejections**: A/B rejections are conditional on the field version — re-test the shelf after field promotions.
-
-**Engineering**
-- **Import, don't reinvent** — standard frameworks (PyTorch, MLflow, Ray, DVC); "PyTorch" in prose, `torch` as the package.
-- **Short runs before big runs** — validate on a short run, commit when it works, then launch the full run.
-- **Optimize before long runs** — can it be parallelized? can unnecessary compute be removed (fuse passes, precompute)? **Check long runs early and often** (watchdog on output growth; CPU-busy ≠ progress).
-- **Always run latest** — kill stale runs on every engine/field update; resume makes it cheap.
-- **Check representational collapse** — bootstrapped `eff_rank` is a health gate on every run; cure is repulsion, not width.
-- **No concurrent disk-heavy jobs**; the tablebase probe cache is **`journal_mode=DELETE`** (not WAL — WAL grew unbounded and filled the disk twice).
-- **Training standards** (`docs/TRAINING_STANDARDS.md`): checkpoint ladders + metadata, **no overwrites**, one richest input format, MLflow not hand-rolled.
-
-**Workflow**
-- **Keep JOURNAL.md current** as work happens; **time every run**. **No AI commit trailers** (no `Co-Authored-By: Claude` / `noreply@anthropic.com`). **Self-contained reports** — weekly-report style; numbers carry baselines.
 
 ## Status (2026-07-26)
 
