@@ -1,6 +1,7 @@
 # Reachability foundations — whose math we borrow, and how it composes (2026-07-28)
 
-Companion to `REACHABILITY_STRUCTURE_BRIEF.md` (the question) — this is the answer. Sources were
+**Supersedes** `docs/archive/REACHABILITY_STRUCTURE_BRIEF.md` (the question this answers) and the
+open reachability question in `docs/archive/SESSION_HANDOFF.md` (2026-07-27). Sources were
 gathered by a deep-research pass (2026-07-27/28); the full adversarial verification stage was cut
 short by usage limits, so every entry is **graded**:
 

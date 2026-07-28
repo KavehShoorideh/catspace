@@ -4,6 +4,11 @@ Status: active (2026-07-26). Companion to JOURNAL.md (chronology) and the memory
 `metastability-planning-architecture`. This is the coherent plan; execute top-down, ground
 truth first, keep dimensions low until effective rank saturates.
 
+> **2026-07-28 amendment:** §1.1's quasimetric (IQE) field as the reachability spine is
+> superseded by `REACHABILITY_FOUNDATIONS.md` — reachability is a z-conditioned first-hit
+> PROBABILITY field `⟨φ_r(s,z), ψ_r(g)⟩`; the quasimetric survives only as a move-ordering
+> heuristic for the forced-object search. Basins/committor/T/MCTS (§§1.2–1.4, 2–5) stand.
+
 ## 0. Thesis
 
 Play a *fallible* opponent, not a perfect one. Outcome classes {Won, Drawn, Lost} are

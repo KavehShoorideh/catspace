@@ -1,0 +1,10 @@
+# Run artifacts are provenance on DISK, not in git (checkpoints/logs/media; datasets are
+# DVC-pointered). Files already tracked before 2026-07-28 stay tracked (history preserved);
+# everything new of these kinds is ignored.
+*.pt
+*.log
+*.pgn
+*.png
+*.jsonl
+*.npz
+*.npy
