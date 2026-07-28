@@ -1,52 +1,145 @@
 # catspace — a metastability planner for exploiting fallible chess opponents
 
-**A live research project.** Claude (the AI) does the building and experiments;
-Kaveh directs the research — the questions, the reframes, and most of the core
-ideas are his, iterated turn by turn. **[JOURNAL.md](JOURNAL.md)** is the running
-lab notebook (newest entry last) and the most honest picture of how the work
-actually happened — hypotheses, dead ends, reversals, and reasoning.
+Chess engines assume a perfect adversary. Humans aren't. **catspace** is a research
+engine that plays the opponent actually sitting across the board: it models game
+outcomes {Win, Draw, Loss} as **metastable basins** — under optimal play the barriers
+between them are infinite; under real play every crossing is someone's **error** —
+and it plans by steering toward positions where *this particular opponent* is likely
+to make the outcome-flipping error and we are not.
 
----
+It is also an experiment in how research gets done: an AI (Claude) builds and runs
+everything; Kaveh Shoorideh directs — the questions, the reframes, and the core
+calls. The whole process, including the dead ends, is in the open.
 
-## The idea (current)
+## Interesting things to see
 
-Chess outcomes {Win, Draw, Loss} are **metastable basins**: under optimal play
-the barriers are infinite, under real play the rare crossings are **errors**. The
-goal is to play a *fallible* opponent by **exploiting the information asymmetry
-about where they err** — steer toward reachable positions where the opponent is
-likely to make the outcome-flipping error and we are not ("pose problems").
+**[JOURNAL.md](JOURNAL.md)** — the lab notebook, written as the work happened:
+hypotheses, negative results, retractions, reversals, and the reasoning behind each
+turn. If you read one thing, read this — it is the most honest picture of a research
+project you're likely to find in a repo. (Newest entries at the bottom.)
 
-The machinery (design-of-record: **[docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md)**)
-is a **two-evaluator** stack: a **z-conditioned first-hit reachability field**
-`P(reach g | s, z_self, z_opp)` = `⟨φ_r(s,z), ψ_r(g)⟩` with a **trained committor**
-for navigation (the measure side), and legal-move **search** (df-pn/minimax,
-tablebases) for forced objects (the existence side) — plus the **learned player
-embedding `z`** + online `(Elo,z)` estimator and a **transition/crossing-risk
-predictor** that says where *this* opponent slips. The system is **two-part**, exactly like Stockfish/Lc0:
+**[MILESTONES.md](MILESTONES.md)** — the locked roadmap (M0–M8) and every recorded
+design decision. Changes get their own dated entries; it is deliberately hard to
+drift.
 
-1. **Full-board model** — the opponent-exploitation model (the thesis).
-2. **Tablebase handover** — at **≤7 pieces the tablebase *is* the endgame**; the
-   committor is grounded there and the goal region is the tablebase-won configs.
-   (No learned endgame model — nets are measurably worse at conversion.)
+**[docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md)** — the
+current design-of-record. A "whose math we borrow" table mapping each component to
+its source theorem (attractors, ATL/rPATL, MDP reachability, proof-number search,
+contrastive RL, the CVaR risk knob — each graded by how hard it was verified), a
+novelty ledger with nearest prior art, and the **two-evaluator architecture**: a
+learned z-conditioned reachability field for navigation (the measure side), and
+legal-move search for forced tactics (the existence side), with one risk knob
+interpolating between them.
 
-> Note: earlier design commitments in the git history — a two-encoder `F(s)/B(g)`
-> field, "no WDL/value head", `d=512` — have been **reversed** by the from-scratch
-> rebuild (single-space `φ`, a trained committor, `d=64`). Trust the docs below,
-> not the older `*.md` in history.
+**Findings so far** — each number is a committed script verdict; the story behind
+each is in JOURNAL.md:
 
-## Start here — the canonical docs
+- **Per-player style is recoverable and exploitable — but only via retrieval.** A
+  per-player residual `z` used *directly* overfits (−0.042 nats vs the rating
+  baseline on held-out players); used as a *retriever* over clean training styles it
+  beats that baseline (+0.006–0.009 nats) *and* beats a rating-matched wrong
+  player's style. "Infer-then-condition" is the repo's favorite lesson.
+- **You can estimate who you're playing from their moves alone.** The online
+  (Elo, z) estimator discriminates a known player's style from ~10 observed moves
+  and rates an unknown player from moves (Elo-MAE 142 after 40 moves, vs 205
+  uninformed).
+- **Blunder risk is measurable and asymmetric.** The crossing-risk primitive
+  (expected committor swing under a move model, refereed by Stockfish) correlates
+  ρ≈0.64 with realized crossings; weaker opponents cross 1.4–3× more in the same
+  positions.
+- **Where errors happen is position-driven; who errs is strength-driven.** The fast
+  transition predictor finds crossing *locations* at 4.7–4.9× base rate, and its
+  ranking is nearly rating-invariant (Spearman 0.95) — strength scales magnitude,
+  position picks the spot.
+- **Reachability is a probability, not a distance.** Making the quasimetric field
+  opponent-aware failed structurally — a MIN/shortest-path object cannot represent
+  sum-over-paths probability, and the measured z-lift was ~0 exactly as the theory
+  predicts. Its replacement, a first-hit probability field `P(reach g | s, z)`,
+  shows a positive, CI-separated style-lift in its first smoke run and calibrates
+  within noise.
 
-| file | what it's for |
-|---|---|
-| **[MILESTONES.md](MILESTONES.md)** | **the locked 30k-foot roadmap (M0–M6) + locked decisions. Read FIRST; do not deviate without a recorded plan change.** |
-| **[JOURNAL.md](JOURNAL.md)** | the lab notebook — every experiment, result, reversal, with reasoning. **Read for the story & the reasoning.** |
-| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | the technical spec. **Jump to the `⭐ CURRENT ARCHITECTURE (2026-07-26)` section** — input (lc0 112-plane), layers & sizes, objective functions, tablebase handover, opponent layer, and §10 the DVC/Ray/A-B **infrastructure**. |
-| **[docs/METASTABILITY_PLAN.md](docs/METASTABILITY_PLAN.md)** | the strategy — the staged plan (S1 reliability map → field → opponent layer → eval) and the design rationale. |
-| **[docs/TRAINING_STANDARDS.md](docs/TRAINING_STANDARDS.md)** | standing do's/don'ts for every training run. |
-| **[docs/GLOSSARY.md](docs/GLOSSARY.md)** | plain-language definitions of every term/metric. |
-| **[docs/COMPONENTS.md](docs/COMPONENTS.md)** · **[docs/RUNBOOK.md](docs/RUNBOOK.md)** | code map · ops runbook. |
-| `experiments/losses.py` · `experiments/endgame_handover.py` | the **unit-tested primitives** (run them: `python experiments/losses.py`). No new loss enters a run without a passing test here. |
-| **[docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md)** | **the current design-of-record**: whose-math table (graded), two-evaluator architecture, novelty ledger, AOEE disposition. Supersedes the archived brief/handoff (`docs/archive/`). |
+## Two pictures worth seeing
+
+![Engine vs human basins](docs/figures/engine_vs_human_basins.png)
+
+*The thesis in one picture: the same field embedding (UMAP), colored by actual game
+outcome (blue=win, grey=draw, red=loss). Under near-perfect play (Stockfish vs
+Stockfish, left) outcomes separate into basins with purity 0.81; under human play
+(lichess 1400–1800, right) purity drops to 0.53. That blur is not noise to average
+away — it is the object of study: fallible play crossing outcome barriers.*
+(Regenerate: `experiments/engine_vs_human_basins.py`.)
+
+![Committor by material](docs/figures/committor_by_material.png)
+
+*Metastability emerging as the board empties: the distribution of the committor
+`c = P(win)` per material class, opening (top) to endgame (bottom). Openings are
+unimodal around c≈0.3–0.5 — genuinely undecided; endgames are bimodal at 0 and 1 —
+decided. Right panel: per-move transition probability ("leak") falls while outcome
+bimodality rises — the barriers rise as material comes off. This is why the endgame
+is tablebase territory and the exploitation happens before it.*
+
+## What it builds on — and where the novelty is
+
+**Built on** (imported, not reinvented; the fully-cited, verification-graded table is
+in [docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md) §2):
+
+- **Frozen Leela (lc0) trunk** for board embeddings + WDL/moves-left heads; **Maia-2**
+  as the rating-conditioned human move prior; **Stockfish** as the objective referee;
+  **syzygy tablebases** as endgame ground truth.
+- **Transition Path Theory** (committor, reactive flux) and **MSM/PCCA metastability**
+  for the basin machinery.
+- **Contrastive RL / successor representations** (Eysenbach et al.; Dayan;
+  Touati–Ollivier's forward-backward factorization) for the factored `⟨φ(s,z), ψ(g)⟩`
+  reachability critic; **first-occupancy** (Moskovitz et al.) for the first-hit
+  object.
+- **Reachability games / attractors** and **proof-number search** (Allis) for forced
+  tactics; **opponent-model search** (Jansen's speculative play; Donkers' PrOM) as
+  the chess ancestry; **CVaR / robust MDPs** (Chow et al.; Nilim–El Ghaoui) for the
+  risk knob between "likely" and "forced".
+- A **Matilda-style residual** design for the per-player style embedding `z`.
+
+**Where the novelty is** (graded *plausibly novel* — the honest novelty ledger with
+nearest prior art is in the foundations doc §3):
+
+- **Opponent-conditioned reachability:** `P(first-reach g | s, z_self, z_opp)` to
+  arbitrary memorized goal regions, learned from human games. Occupancy/successor
+  models conditioned on an *exogenous opponent's strength+style* don't appear in the
+  prior art we could find (nearest: task-latent successor features, intention-
+  conditioned occupancy, Maia-2's both-Elo outcome head).
+- **Infer-then-condition** (empirical finding): a recovered per-player style vector
+  overfits as a predictor but works as a *retriever* over clean training styles.
+- **ε-support forced wins with certificates** (designed, not yet built): proof
+  search over only the moves *this* opponent would consider, emitting a
+  `∏(1−δᵢ)` probability certificate — "practically forced mate, P ≥ 0.94".
+- **Crossing-risk asymmetry as one primitive:** the same referee-graded committor
+  swing under the opponent's move model (their exploitable risk) or ours (our
+  self-blunder term).
+
+## Code worth reading
+
+- [`catspace/style/estimator.py`](catspace/style/estimator.py) — the online (Elo, z)
+  filter: figures out who you're playing from their moves alone.
+- [`catspace/style/recover.py`](catspace/style/recover.py) — weighted-MAP style
+  recovery + the infer-then-condition retrieval.
+- [`catspace/transition.py`](catspace/transition.py) — the crossing-risk primitive.
+- [`experiments/train_reach_head.py`](experiments/train_reach_head.py) — the factored
+  reachability field, with its acceptance instrument pre-registered in the file
+  header (paired z-lift CIs, wrong-z placebo, calibration bins, collapse gate).
+- [`experiments/losses.py`](experiments/losses.py) — every loss term ships with
+  executable invariant tests; the module docstring explains the bug that made this a
+  rule.
+- [`experiments/m2b_cache.py`](experiments/m2b_cache.py) — the crash-safe, resumable
+  shard pattern used for every expensive precompute.
+- [`experiments/msm_basins.py`](experiments/msm_basins.py) — metastable basins via
+  MSM/PCCA on real games.
+
+**The reference shelf, [docs/](docs/)** — `ARCHITECTURE.md` (the technical spec;
+jump to the `⭐ CURRENT ARCHITECTURE` section), `METASTABILITY_PLAN.md` (the
+basin/committor strategy), `GLOSSARY.md` (every term in plain language),
+`TRAINING_STANDARDS.md` (engineering discipline — each rule cites the scar that
+created it), `RUNBOOK.md` (reproduce any run), `COMPONENTS.md` (code map).
+Superseded documents are preserved in `docs/archive/` — the design history is part
+of the record.
 
 ## Component map
 
@@ -57,31 +150,11 @@ predictor** that says where *this* opponent slips. The system is **two-part**, e
 | Reachability head v1 (first-hit field) + dataset builders | `experiments/train_reach_head.py`, `experiments/build_reach_data.py`, `experiments/build_opp_positions.py` |
 | Fields / embeddings (frozen lc0 trunk φ, IQE history) | `catspace/field.py`, trainers in `experiments/` |
 | Goal bank + vector retrieval | `catspace/goal_bank.py`, `catspace/vectordb.py`, `catspace/memory/` |
-| Canonical tested losses | `experiments/losses.py` |
-| Training scaffold (MLflow / ladders / Tune / gates) | `catspace/train/scaffold.py` |
+| Canonical tested losses (no loss trains untested) | `experiments/losses.py` |
+| Training scaffold (MLflow / checkpoint ladders / Tune / health gates) | `catspace/train/scaffold.py` |
 | Basins / committor / tablebases | `experiments/msm_basins.py`, `catspace/tb.py` |
 | Planner / engine / arena / UCI | `catspace/planner/`, `catspace/engine/`, `catspace/arena.py`, `catspace/uci.py` |
-| Superseded experiments (kept for provenance) | `experiments/archive/`, `docs/archive/` |
-
-
-## Status (2026-07-26)
-
-Field is architecturally complete and validated on ground truth: single-space IQE
-+ multi-goal + repulsion + mate + WDL-hinge + distributional ending head +
-committor over all W/D/L outcomes; lc0 112-plane real-history input; tablebase
-handover primitive; SF reliability map. **Next:** the full-board opponent model —
-player embedding `z`, transition predictor `T(s,z)`, cohort-regret/KL exploitation,
-exploitation planner — on the **already-ingested** lichess shards.
-
-## Data & infrastructure (already exists — see ARCHITECTURE.md §10)
-
-- **Lichess** already ingested + DVC-tracked: `data/shards/lichess_db_standard_rated_2019-01.full/`
-  (~10 GB, via `build_lichess_shards.py`), puzzles, and trained `data/derived/lichess_fb_*.pt`.
-  Reuse — do not re-ingest.
-- **DVC** versions the shards/derived datasets. **Ray** (`catspace/engine/orchestrator.py`)
-  does probe memoization/coalescing. **A/B harnesses**: `ab_test.py` (anytime-valid),
-  `move_ab.py`, `playout_ab.py`, `arena_real.py`, `gauntlet.sh` (fastchess SPRT),
-  `experiment_report.py` (+ Stockfish-leakage audit). Tablebases under `data/syzygy/`.
+| Superseded work (kept for provenance) | `experiments/archive/`, `docs/archive/` |
 
 ## Running it
 
@@ -96,5 +169,15 @@ python experiments/gen_traj_lc0.py --games 3000 --eps 0.0 --out data/derived/tra
 python experiments/train_lc0_field.py --data data/derived/traj_lc0_endgame.npz --steps 18000
 ```
 
-Every training run prints a `VERDICT` line (pair-order / eff_rank / committor-MAE /
-ending-acc / W-D-L) copied into JOURNAL.md; `eff_rank(φ)` is the standing health gate.
+More in [docs/RUNBOOK.md](docs/RUNBOOK.md). Every training run prints a `VERDICT`
+line; no number is quoted anywhere in this repo unless a script printed it. Datasets
+are DVC-tracked (`.dvc` pointers in git, bytes outside). Lichess 2019-01 is already
+ingested (~10 GB of shards) — reuse, don't re-ingest (`docs/ARCHITECTURE.md` §10).
+
+## Status (2026-07-28)
+
+M0–M2 complete: basins + Stockfish-refereed ground truth, frozen-lc0-trunk field,
+player model + online estimator + crossing risk. M3 (subgoal atlas) in progress on
+the new first-hit probability field — its smoke run just passed. Next: the field's
+full run, opponent-style conditioning from the causal in-game estimate, then the
+planner (M4) and MCTS probe (M5).
