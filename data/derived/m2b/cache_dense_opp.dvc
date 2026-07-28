@@ -1,0 +1,6 @@
+outs:
+- md5: 6bbc5a00bf7150a7d4b37dd0764d7eb7.dir
+  size: 27714160
+  nfiles: 12
+  hash: md5
+  path: cache_dense_opp
