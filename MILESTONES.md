@@ -49,6 +49,15 @@ research product, headed for publication.
 3. **Context enters the TRANSITION ESTIMATOR, not the encoder.**
    `T(φ(s), clock_both, Elo_both, z_both, ply, [past outcomes]) → per-side crossing risk`
    (t_win, t_loss → net flux Φ = t_win − t_loss, sharpness σ = t_win + t_loss).
+   *AMENDMENT (Kaveh 2026-07-27) — T is ABSORBED INTO the IQE head; d and T MERGE into ONE
+   CONTEXT-CONDITIONED reachability head. Input = [φ(s), φ(g), context=(clock_both, Elo_both, z,
+   z_uncertainty, ply)] → `d(s→g | context)`. Context FiLM-modulates the head (encoder φ stays frozen —
+   decision 2 intact); zero-init so context=base reproduces the current field (identity, geometry
+   preserved). ONE head → MANY reachability maps (per opponent-z / clock / rating). The transition
+   probability FALLS OUT of the conditioned geometry: flux Φ and transition points = the balance of
+   `d(s→win-boundary|ctx)` vs `d(s→loss-boundary|ctx)`. Supersedes "d z-independent / z only in T"
+   (decision 1's basin-permeable-map framing). z + z_uncertainty come from the M2c estimator's Laplace
+   posterior. [[infer_then_condition_z]]*
 4. **Player model = known Elo part + unknown residual z.** Population prior p(z | Elo);
    per-player offline embeddings where history exists (name-masked ids); **in-game posterior
    tightening** of z from observed moves (cold start = prior). Matilda-style residual design.
