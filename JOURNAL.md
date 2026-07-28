@@ -8618,3 +8618,45 @@ CONDITIONED prior (learned from the pooled provisional majority). Every player h
 flag + provisional sampling: now 5,000 individual (>=50 games) + 40,000 provisional (<20, of 235,155)
 = 1,181,379 games. Recorded in MILESTONES M2b. The z-design workflow (wtlx1dlmt) will specify the
 prior mechanism; implementation must fit the prior as a function of Elo on the provisional pool.
+
+---
+
+## 2026-07-27 — M2b: per-player style-residual z (centerpiece); infer-then-condition beats raw Maia
+
+**Setup.** Matilda-style residual over a FROZEN Maia-2 rapid base + frozen field φ:
+`logit_P(m|s) = log p_maia(m|s,Elo) + z_P·U(s,m)`, z∈R¹⁶. **μ=0** (raw Maia IS the universal rating
+prior — trained on the whole population; a casual-pool prior on active players is a mismatch and blew up
+via the μ/Δ gauge). Opponent base-rate (measured, rapid 2019-01): 66.7% of *accounts* play <20 games but
+only 9.9% of *games* — game-weighted, **81.5% of opponents have ≥40 games**, so individual-z is the MAIN
+pathway (provisional pool → cold-start/prior only, excluded from the z training cache). Single-TC rapid
+(the `time_control` column was already in records — no PGN rebuild). Data: 3,500 active players
+(≥40 rapid games) → 1.03M midgame positions (ply≥16), 2,975 train / 525 held-out. Bugs caught + fixed:
+black-promotion moves masked to −1e9 (index in the MOVER frame via mirror_move), μ/Δ gauge blow-up (μ=0),
+population-mismatch prior. Data-quality gates: played-in-Maia-top16 99.1%, valid 100%, base P(played) 0.41.
+
+**Direct additive z — VERDICT (experiments/m2b_eval.py; 525 held-out players, 62,884 query moves):**
+```
+  mean NLL: base 1.4520 | style(z) 1.4943
+  A2 vs A0 (z helps)     lift -0.0423 [-0.0465,-0.0382] nats  P=0.000  fail
+  A2 vs A3 (this player) lift +0.0170 [+0.0112,+0.0226] nats  P=1.000  PASS
+```
+z DISCRIMINATES the player (beats a rating-matched wrong-z) but the recovered 16-d point-estimate
+OVERFITS ~150 support moves, so applied additively it net-HURTS prediction. Recovery-λ sweep (1→60)
+only raises A2 toward base *from below*, never positive → intrinsic to the featurization, not tuning.
+
+**Infer-then-condition (Kaveh's fix, experiments/m2b_condition.py):** recover z from the player's OWN
+history (game-disjoint from query), use it to RETRIEVE k-NN nearest TRAINING-player styles (fit on full
+data → generalize), predict with the blend. VERDICT:
+```
+  k=50:  cond vs base +0.0058 [+0.0037,+0.0079] P=1.000 PASS | vs wrong-player +0.0069 [+0.0048,+0.0090] P=1.000 PASS
+  k=200: cond vs base +0.0092 [+0.0074,+0.0110] P=1.000 PASS | vs wrong-player +0.0053 [+0.0037,+0.0069] P=1.000 PASS
+```
+Flips the sign: beats raw Maia on held-out move prediction AND is player-specific (correct-history
+conditioning beats a rating-matched impostor's). As k grows the vs-base lift rises but part becomes a
+generic population-style shift; at k≈50 the win is almost entirely player-specific. ⇒ **M2b DoD MET.**
+Downstream z-consumer = retrieve-and-condition, NOT the additive point-estimate.
+
+**Ops.** Resumable crash-safe feature cache (atomic temp-then-rename shards + disk pre-flight; resume
+rebuilds only missing shards — end-to-end tested). `catspace/style/` package (model/recover/dataio);
+`stats.paired_nll_ci` added (player-clustered NLL bootstrap; 9/9 stats tests pass). NEXT: M2c — recover
+z from LIVE moves as they arrive (break-even curve, lift vs #observed moves; cold start = prior).

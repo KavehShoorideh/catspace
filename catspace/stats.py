@@ -57,6 +57,27 @@ def paired_delta_ci(pred_a, pred_b, true, clusters=None, n_boot: int = 2000, see
     return delta, float(lo), float(hi), float(np.mean(boots > 0))
 
 
+def paired_nll_ci(nll_better, nll_base, clusters=None, n_boot: int = 2000, seed: int = 0,
+                  alpha: float = 0.05):
+    """PAIRED per-position NLL comparison (M2b z-lift). nll_better / nll_base are per-position
+    negative log-likelihoods of the played move under the two models on the SAME positions.
+    LIFT = mean(nll_base - nll_better) in nats/move (>0 means `better` model assigns the played
+    move higher probability). clusters = per-position player_id -> resample PLAYERS with replacement
+    (never positions), so the CI reflects player-level n (the M2a lesson). Returns
+    (lift, lo, hi, p_better) where p_better = fraction of resamples with lift > 0."""
+    a = np.asarray(nll_better, float); b = np.asarray(nll_base, float)
+    diff = b - a                                             # per-position lift
+    lift = float(np.mean(diff))
+    rng = np.random.default_rng(seed)
+    n = len(diff); clusters = np.asarray(clusters) if clusters is not None else None
+    boots = np.empty(n_boot)
+    for i in range(n_boot):
+        idx = _cluster_resample_idx(clusters, rng) if clusters is not None else rng.integers(0, n, n)
+        boots[i] = np.mean(diff[idx])
+    lo, hi = np.nanpercentile(boots, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return lift, float(lo), float(hi), float(np.mean(boots > 0))
+
+
 def fmt_ci(rho, lo, hi):
     return f"{rho:+.3f} [{lo:+.3f},{hi:+.3f}]"
 
@@ -95,6 +116,17 @@ def _tests():
     _, lo_c, hi_c = spearman_ci(Ac, true, clusters=g, n_boot=400, seed=4)
     _, lo_i, hi_i = spearman_ci(Ac, true, clusters=None, n_boot=400, seed=4)
     check("cluster bootstrap wider than iid under game-level noise", (hi_c - lo_c) > (hi_i - lo_i))
+
+    # paired NLL lift: model with lower NLL on the played move -> positive lift, CI excludes 0
+    nll_base = -np.log(rng.uniform(0.05, 0.3, size=len(true)))          # base assigns played move modest prob
+    nll_z = nll_base - rng.uniform(0.0, 0.1, size=len(true))            # z shaves NLL (lower = better)
+    lift, lo_n, hi_n, p_n = paired_nll_ci(nll_z, nll_base, clusters=g, n_boot=400, seed=5)
+    check("NLL lift positive and CI excludes 0", lift > 0 and lo_n > 0)
+    check("P(z better) ~ 1", p_n > 0.99)
+    # null: same NLL distribution -> lift CI covers 0
+    nll_z0 = nll_base + rng.uniform(-0.05, 0.05, size=len(true))
+    l0v, l0lo, l0hi, _ = paired_nll_ci(nll_z0, nll_base, clusters=g, n_boot=400, seed=6)
+    check("null NLL lift CI covers 0", l0lo < 0 < l0hi)
 
     print("ALL STATS TESTS PASSED" if ok else "STATS TESTS FAILED")
     return ok

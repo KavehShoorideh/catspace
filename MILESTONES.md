@@ -132,8 +132,15 @@ per-side crossing risk (Φ, σ).
   with `[%clk]` arrays (raw PGNs have them; re-run records build). Train on real games:
   label = realized committor swings (SF-labeled subset) + game outcomes; distill the Maia×SF
   stopgap where labels are thin.
-- **M2b** per-player z offline (identity records, players ≥20 games, rating-residual style).
-- **M2c** in-game z tightening (posterior update from move surprisals; cold start = prior).
+- **M2b** per-player z offline — Matilda-style residual over a FROZEN Maia-2 rating base + frozen φ:
+  `logit_P(m|s) = log p_maia(m|s,Elo) + z_P·U(s,m)`, z ∈ R¹⁶, linear in z so recovery is a CONVEX MAP
+  fit (Laplace posterior = the M2c hook). Prior `z=μ(Elo)+Δ`: players ≥40 games own a free Δ; the
+  <20-game PROVISIONAL pool has Δ=0 so their moves ESTIMATE μ(Elo) (Kaveh 2026-07-27 — "a prior for all
+  of them"). Single time control by construction (rapid, to match Maia-2's base; the `time_control`
+  column is already in records — no PGN rebuild). Per Kaveh (2026-07-27) z is ALLOWED to carry strength
+  + structure-competence — no purity firewall; only validity controls kept (see DoD).
+  [[style_z_allows_strength]]
+- **M2c** in-game z tightening (Laplace posterior update from move surprisals; cold start = μ(Elo) prior).
 - **Infra:** batched ONNX Maia policies (tensor ops; 277+ pos/s vs ~1/s subprocess) for both
   training targets and MCTS opponent models.
 - **Gates:** beats the stopgap B(s,r) on held-out real-blunder prediction (ρ, quartile lift,
@@ -148,8 +155,18 @@ per-side crossing risk (Φ, σ).
   sharpness x time-control]; (b) T's context-conditioned crossing-RATE ranks positions/regions
   correctly (rate-level calibration / AUC, not single-move rho); (c) T approximates the stopgap
   ranking within tolerance while clock/z-conditionable and orders-of-magnitude faster.
-  M2b — offline z lifts held-out per-player prediction over Elo-only base (Maia-2), CONFOUND-
-  CONTROLLED (opening/TC/rating) and significant. M2c — z from few observed moves beats prior-only.
+  M2b — REFRAMED 2026-07-27 (Kaveh relaxed the confound firewall: strength + structure-competence
+  ARE exploitable signal, so no anti-strength / anti-repertoire purge). Gate = VALIDITY only, on
+  HELD-OUT PLAYERS, player-clustered CIs (stats.paired_nll_ci): (a) recovered z beats raw Maia-2 base
+  (A2>A0, NLL-lift CI floor>0); (b) z is THIS player, not generic capacity — beats a rating-matched
+  OTHER player's z (A2>A3, the wrong-z placebo); single-TC (rapid); identity-init reproduces base.
+  **[MET 2026-07-27 — 3k-player run, 525 held-out players / 62.9k query moves. The DIRECT additive z
+  discriminates identity (+0.017 vs wrong-z) but overfits as a predictor (net −0.042 vs base). Kaveh's
+  INFER-THEN-CONDITION fix (recover z from the player's own history → retrieve nearest CLEAN training
+  styles k≈50 → predict with the blend) flips it: beats raw Maia +0.006 nats (P=1.00) AND player-specific
+  +0.005–0.010 vs wrong-player conditioning (P=1.00). z-consumer = retrieve-and-condition,
+  experiments/m2b_condition.py. See memory infer_then_condition_z.]**
+  M2c — z from few observed moves beats prior-only.
   Batched-Maia infra: Maia-2 adopted (~10ms/pos). All via eval-script VERDICTs, CI'd (stats.py).
 
 ### M3 — Transition atlas + subgoal generator (the map)
