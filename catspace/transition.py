@@ -27,18 +27,38 @@ import numpy as np
 
 class CrossingRisk:
     def __init__(self, sf_path: str | None = None, depth: int = 12):
-        self.eng = chess.engine.SimpleEngine.popen_uci(
-            sf_path or shutil.which("stockfish") or "/opt/homebrew/bin/stockfish")
+        self._path = sf_path or shutil.which("stockfish") or "/opt/homebrew/bin/stockfish"
+        self.depth = depth
+        self._open()
+
+    def _open(self):
+        self.eng = chess.engine.SimpleEngine.popen_uci(self._path)
         try:
             self.eng.configure({"UCI_ShowWDL": True})
         except Exception:
             pass
-        self.depth = depth
+
+    def _analyse(self, fen):
+        """Robust SF analyse on a CLEAN chess.Board(fen); restart the engine once on a protocol error
+        (Stockfish occasionally desyncs under rapid reuse). Returns info or None."""
+        b = chess.Board(fen)
+        for attempt in (0, 1):
+            try:
+                return self.eng.analyse(b, chess.engine.Limit(depth=self.depth))
+            except Exception:                              # EngineError OR async IllegalMoveError etc.
+                try:
+                    self.eng.quit()
+                except Exception:
+                    pass
+                self._open()
+        return None
 
     def committor(self, board, pov=None):
-        """SF-refereed win-fraction from `pov` (default the side to move). (win_frac, pov_color)."""
+        """SF-refereed win-fraction from `pov` (default the side to move). (win_frac|None, pov_color)."""
         pov = board.turn if pov is None else pov
-        info = self.eng.analyse(board, chess.engine.Limit(depth=self.depth))
+        info = self._analyse(board.fen())
+        if info is None or "wdl" not in info:
+            return None, pov
         w = info["wdl"].pov(pov); tot = max(1, w.wins + w.draws + w.losses)
         return w.wins / tot, pov
 
@@ -49,14 +69,18 @@ class CrossingRisk:
         if not items:
             return 0.0, self.committor(board)[0]
         cw_s, mover = self.committor(board)                    # mover's objective win-frac at s
+        if cw_s is None:
+            return 0.0, 0.0
         swings, ps = [], []
         for uci, pr in items:
             c = board.copy()
             try:
                 c.push(chess.Move.from_uci(uci))
-            except Exception:
+            except Exception:                              # move illegal in this position -> skip
                 continue
             cw_child, _ = self.committor(c, pov=mover)          # SAME mover's POV after the turn flips
+            if cw_child is None:
+                continue
             swings.append(max(0.0, cw_s - cw_child)); ps.append(pr)
         if not ps:
             return 0.0, cw_s
