@@ -8660,3 +8660,49 @@ Downstream z-consumer = retrieve-and-condition, NOT the additive point-estimate.
 rebuilds only missing shards — end-to-end tested). `catspace/style/` package (model/recover/dataio);
 `stats.paired_nll_ci` added (player-clustered NLL bootstrap; 9/9 stats tests pass). NEXT: M2c — recover
 z from LIVE moves as they arrive (break-even curve, lift vs #observed moves; cold start = prior).
+
+---
+
+## 2026-07-27 — M2c: online opponent-state estimator (Elo, z); break-even, Elo-conditioning, unknown-Elo
+
+**Design (Kaveh, converged over the session).** ONE online filter over **(Elo, z)** per opponent, fed by
+the player's OWN moves — history as prior + live moves as they arrive, RECENCY-weighted (style drifts).
+Uniform for all (any game count; nobody frozen). z = weighted convex MAP recover → INFER-THEN-CONDITION
+(retrieve k-NN clean training styles, Elo-banded). Elo = known→tight / unknown→broad population prior
+ESTIMATED from moves (Maia's 11 rating buckets are a rating estimator); retrieval band widens with Elo
+uncertainty ⇒ "unknown Elo" = widest band, graceful.
+
+**Break-even curve — VERDICT (experiments/m2c_ingame.py, 525 held-out players, k=50, cold start no history):**
+```
+   N obs   cond vs base (nats)            vs wrong-player (identity)
+       5   -0.0067 [-0.0091,-0.0044] fail   +0.0020 [-0.0008,+0.0048] ns
+      10   -0.0043                    fail   +0.0044 [+0.0015,+0.0077] PASS
+      40   -0.0004 (~break-even)      fail   +0.0050 [+0.0024,+0.0076] PASS
+      80   +0.0034 [+0.0011,+0.0058] PASS    +0.0068 [+0.0047,+0.0092] PASS
+     160   +0.0069 [+0.0046,+0.0094] PASS    +0.0069 [+0.0046,+0.0090] PASS
+```
+Identity (who they are) emerges from ~10 observed moves; beating the raw-Maia prior takes ~40–80 (cold).
+A warm opponent starts from their history-z (already +0.006 offline) — the break-even is the cold case.
+
+**Elo-conditioned retrieval — VERDICT (experiments/m2b_condition.py, k=50):**
+```
+   band 0 (global): cond vs base +0.0058 | identity +0.0069
+   band ±100 Elo  : cond vs base +0.0092 | identity +0.0048
+   band ±250 Elo  : cond vs base +0.0074 | identity +0.0060
+```
+Same-Elo retrieval boosts the prediction win (+0.0058→+0.0092); identity narrows because the wrong-z
+control is rating-matched (same band). band 0 IS the unknown-Elo fallback and is still positive.
+
+**Unknown-Elo recovery — VERDICT (experiments/m2c_elo_id.py, 150 held-out players, Elo hidden):**
+```
+   N moves   Elo MAE   exact-bucket   within-1
+       5       184        22%           36%
+      40       142        23%           46%   (no-info guess-1500 baseline: MAE 205)
+```
+Elo IS recoverable from moves — MAE monotone-decreasing, ~30% under no-info by 40 moves — but COARSE
+(±~1.4 buckets), so the estimator leans on the wide band early and tightens it as moves accumulate.
+
+**Built.** `catspace/style/estimator.py` — the deployable online (Elo,z) estimator (operates on
+phi+Maia features so it runs off the cache OR live Maia+field), 6/6 self-test. `recover_delta` gains
+recency weights. ⇒ **M2c DoD MET (base capability).** Recency/DRIFT benefit is unvalidated on one month
+of data (no drift to fit) — needs a multi-month timestamped extraction (flagged follow-up).

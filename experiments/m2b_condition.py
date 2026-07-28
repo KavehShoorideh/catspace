@@ -31,6 +31,7 @@ def main():
     ap.add_argument("--cache", default="data/derived/m2b/cache_3k.npz")
     ap.add_argument("--model", default="artifacts/experiments/m2b_style_3k.pt")
     ap.add_argument("--k", type=int, nargs="+", default=[1, 10, 50], help="k nearest training styles to blend")
+    ap.add_argument("--elo-band", type=int, default=0, help="restrict retrieval to training players within +/- this Elo (0 = all)")
     ap.add_argument("--min-support", type=int, default=40); ap.add_argument("--max-support", type=int, default=150)
     ap.add_argument("--min-query", type=int, default=15); ap.add_argument("--support-frac", type=float, default=0.6)
     ap.add_argument("--lam", type=float, default=1.0); ap.add_argument("--seed", type=int, default=0)
@@ -52,10 +53,22 @@ def main():
                           learn_mu=ck.get("learn_mu", False)).to(dev)
     model.load_state_dict(ck["state_dict"]); model.eval()
     z_train = model.delta.weight.detach()                 # (n_train, d_z) -- clean, full-data styles
+    # training-player Elos (for Elo-conditioned retrieval -- "we also know the elo", Kaveh 2026-07-27)
+    tr = split == "train"; n_tr = int(z_train.shape[0])
+    s = np.bincount(z["pidx"][tr], weights=z["elo_self"][tr].astype(float), minlength=n_tr)
+    c = np.bincount(z["pidx"][tr], minlength=n_tr)
+    train_elo = np.full(n_tr, 1500.0); train_elo[c > 0] = s[c > 0] / c[c > 0]
+    train_elo_t = torch.tensor(train_elo, dtype=torch.float32, device=dev)
 
     def feats(idx):
         return {k: A[k][idx].to(dev) for k in ("phi", "cand_idx", "cand_logp", "cand_mask", "rank",
                                                "played_slot", "elo")}
+
+    def retrieve(delta, elo, k):                           # k-NN clean training styles, optionally Elo-banded
+        d2 = ((z_train - delta.unsqueeze(0)) ** 2).sum(-1)
+        if args.elo_band > 0:
+            d2 = d2 + ((train_elo_t - elo).abs() > args.elo_band).float() * 1e9
+        return z_train[torch.argsort(d2)[:k]].mean(0)
 
     held = np.flatnonzero(split == "heldout"); players = np.unique(pid[held])
     per = []
@@ -72,9 +85,8 @@ def main():
         rec = {"qry": qry, "delta": delta, "elo": float(np.median(z["elo_self"][ridx])),
                "a0": base_nll(model, feats(qry), device=dev).numpy(),
                "a2": score_nll(model, feats(qry), delta, device=dev).numpy()}
-        order = torch.argsort(((z_train - delta.unsqueeze(0)) ** 2).sum(-1))
         for k in args.k:
-            rec[f"aknn{k}"] = score_nll(model, feats(qry), z_train[order[:k]].mean(0), device=dev).numpy()
+            rec[f"aknn{k}"] = score_nll(model, feats(qry), retrieve(delta, rec["elo"], k), device=dev).numpy()
         per.append(rec)
     if len(per) < 4:
         print(f"[condition] only {len(per)} eligible players -- aborting"); return
@@ -84,9 +96,8 @@ def main():
     elos = np.array([q["elo"] for q in per])
     for i, q in enumerate(per):
         dd = np.abs(elos - q["elo"]); dd[i] = 1e9; j = int(np.argmin(dd))
-        order = torch.argsort(((z_train - per[j]["delta"].unsqueeze(0)) ** 2).sum(-1))
         for k in args.k:
-            q[f"aknnw{k}"] = score_nll(model, feats(q["qry"]), z_train[order[:k]].mean(0), device=dev).numpy()
+            q[f"aknnw{k}"] = score_nll(model, feats(q["qry"]), retrieve(per[j]["delta"], per[j]["elo"], k), device=dev).numpy()
 
     clusters = np.concatenate([np.full(len(q["qry"]), i) for i, q in enumerate(per)])
     cat = lambda key: np.concatenate([q[key] for q in per])
