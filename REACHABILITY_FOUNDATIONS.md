@@ -185,3 +185,9 @@ not re-fetched this pass; already load-bearing in M0/M2a.]
 4. ε-pruned df-pn prover with GHI handling + certificate arithmetic — after the field v1.
 5. Re-run the aborted verification pass on the [Q]/[K] rows before any external write-up (budget
    permitting; the extraction is cached — only vote panels + synthesis remain).
+6. **END OF THREAD (Kaveh 2026-07-28): online ẑ_opp.** Opponent-Elo conditioning accepted for now;
+   the z_opp slot is ultimately fed by the M2c estimator's CAUSAL in-game posterior ẑ_opp(t)
+   (identity-free: ~10 moves discriminates, ~40–80 beats the rating prior cold, immediate with
+   history). Train-time must condition on the same causal ẑ_opp(t) (moves ≤ t only — no full-game
+   leakage); cold start = the verified ẑ=0 population fallback; train across observation counts so
+   calibration holds along the whole game arc.

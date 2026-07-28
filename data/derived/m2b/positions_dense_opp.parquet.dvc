@@ -1,0 +1,5 @@
+outs:
+- md5: a28967c60f7e84a68a4f1770f02ccfeb
+  size: 2432484
+  hash: md5
+  path: positions_dense_opp.parquet
