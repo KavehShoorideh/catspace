@@ -8706,3 +8706,26 @@ Elo IS recoverable from moves — MAE monotone-decreasing, ~30% under no-info by
 phi+Maia features so it runs off the cache OR live Maia+field), 6/6 self-test. `recover_delta` gains
 recency weights. ⇒ **M2c DoD MET (base capability).** Recency/DRIFT benefit is unvalidated on one month
 of data (no drift to fit) — needs a multi-month timestamped extraction (flagged follow-up).
+
+---
+
+## 2026-07-27 — Crossing-risk primitive (T-with-z + self-model, one object)
+
+Realized crossing/transition risk as the EXPECTED OBJECTIVE COMMITTOR SWING under a move-distribution
+(catspace/transition.py): `risk(s | model) = Σ_m p_model(m)·max(0, committor(s) − committor(s.m))`.
+Objective committor = the FROZEN TRUNK's own WDL head (strong net, same forward as phi; no per-move SF):
+committor(s) = mover's win-prob = wdl(s)[win]; after the move the turn flips so mover's win at the child
+= wdl(s.m)[loss]. ONE primitive serves both of Kaveh's directives (2026-07-27): feed the OPPONENT's
+(Elo,z) move-model → their exploitable crossing risk (the T-with-z integration; M3 subgoal signal); feed
+OUR OWN move-model → the self-blunder / denial term (defensive half; our engine = placeholder until
+M4/M5). Agnostic to the move-model source.
+
+**Demo VERDICT (catspace/transition.py; live Maia move-dists, weaker should cross more):**
+```
+  position            Maia-1100 risk   Maia-1900 risk
+  Italian (sharp)          0.0064          0.0026   OK
+  tactical (open)          0.0025          0.0008   OK
+```
+Under a WEAKER opponent the expected crossing risk is ~2.5–3× higher — the exploitable edge, computed
+directly (no SF). Full opponent-specificity = feed the estimator's z-conditioned move-dist instead of
+raw Maia-at-Elo. Bridges M2 → M3 (crossing risk × reachability = subgoal score).
