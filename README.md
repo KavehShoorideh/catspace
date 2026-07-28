@@ -16,10 +16,13 @@ goal is to play a *fallible* opponent by **exploiting the information asymmetry
 about where they err** — steer toward reachable positions where the opponent is
 likely to make the outcome-flipping error and we are not ("pose problems").
 
-The machinery is a **single-space quasimetric field** (IQE) with a **trained
-committor** (the outcome-distribution / expected-score value), plus a **learned
-player embedding** and a **transition predictor** that says where *this* opponent
-slips. The system is **two-part**, exactly like Stockfish/Lc0:
+The machinery (design-of-record: **[docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md)**)
+is a **two-evaluator** stack: a **z-conditioned first-hit reachability field**
+`P(reach g | s, z_self, z_opp)` = `⟨φ_r(s,z), ψ_r(g)⟩` with a **trained committor**
+for navigation (the measure side), and legal-move **search** (df-pn/minimax,
+tablebases) for forced objects (the existence side) — plus the **learned player
+embedding `z`** + online `(Elo,z)` estimator and a **transition/crossing-risk
+predictor** that says where *this* opponent slips. The system is **two-part**, exactly like Stockfish/Lc0:
 
 1. **Full-board model** — the opponent-exploitation model (the thesis).
 2. **Tablebase handover** — at **≤7 pieces the tablebase *is* the endgame**; the
@@ -37,13 +40,29 @@ slips. The system is **two-part**, exactly like Stockfish/Lc0:
 |---|---|
 | **[MILESTONES.md](MILESTONES.md)** | **the locked 30k-foot roadmap (M0–M6) + locked decisions. Read FIRST; do not deviate without a recorded plan change.** |
 | **[JOURNAL.md](JOURNAL.md)** | the lab notebook — every experiment, result, reversal, with reasoning. **Read for the story & the reasoning.** |
-| **[ARCHITECTURE.md](ARCHITECTURE.md)** | the technical spec. **Jump to the `⭐ CURRENT ARCHITECTURE (2026-07-26)` section** — input (lc0 112-plane), layers & sizes, objective functions, tablebase handover, opponent layer, and §10 the DVC/Ray/A-B **infrastructure**. |
-| **[METASTABILITY_PLAN.md](METASTABILITY_PLAN.md)** | the strategy — the staged plan (S1 reliability map → field → opponent layer → eval) and the design rationale. |
-| **[TRAINING_STANDARDS.md](TRAINING_STANDARDS.md)** | standing do's/don'ts for every training run. |
-| **[GLOSSARY.md](GLOSSARY.md)** | plain-language definitions of every term/metric. |
-| **[COMPONENTS.md](COMPONENTS.md)** · **[RUNBOOK.md](RUNBOOK.md)** | code map · ops runbook. |
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | the technical spec. **Jump to the `⭐ CURRENT ARCHITECTURE (2026-07-26)` section** — input (lc0 112-plane), layers & sizes, objective functions, tablebase handover, opponent layer, and §10 the DVC/Ray/A-B **infrastructure**. |
+| **[docs/METASTABILITY_PLAN.md](docs/METASTABILITY_PLAN.md)** | the strategy — the staged plan (S1 reliability map → field → opponent layer → eval) and the design rationale. |
+| **[docs/TRAINING_STANDARDS.md](docs/TRAINING_STANDARDS.md)** | standing do's/don'ts for every training run. |
+| **[docs/GLOSSARY.md](docs/GLOSSARY.md)** | plain-language definitions of every term/metric. |
+| **[docs/COMPONENTS.md](docs/COMPONENTS.md)** · **[docs/RUNBOOK.md](docs/RUNBOOK.md)** | code map · ops runbook. |
 | `experiments/losses.py` · `experiments/endgame_handover.py` | the **unit-tested primitives** (run them: `python experiments/losses.py`). No new loss enters a run without a passing test here. |
+| **[docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md)** | **the current design-of-record**: whose-math table (graded), two-evaluator architecture, novelty ledger, AOEE disposition. Supersedes the archived brief/handoff (`docs/archive/`). |
 | `memory/` (the AI's auto-memory) | standing rules & decisions carried across sessions. |
+
+## Component map
+
+| Component | Where |
+|---|---|
+| Player model (M2b/c): style `z`, recovery, online `(Elo,z)` estimator | `catspace/style/` |
+| Crossing-risk primitive (SF-refereed committor swing) | `catspace/transition.py` |
+| Reachability head v1 (first-hit field) + dataset builders | `experiments/train_reach_head.py`, `experiments/build_reach_data.py`, `experiments/build_opp_positions.py` |
+| Fields / embeddings (frozen lc0 trunk φ, IQE history) | `catspace/field.py`, trainers in `experiments/` |
+| Goal bank + vector retrieval | `catspace/goal_bank.py`, `catspace/vectordb.py`, `catspace/memory/` |
+| Canonical tested losses | `experiments/losses.py` |
+| Training scaffold (MLflow / ladders / Tune / gates) | `catspace/train/scaffold.py` |
+| Basins / committor / tablebases | `experiments/msm_basins.py`, `catspace/tb.py` |
+| Planner / engine / arena / UCI | `catspace/planner/`, `catspace/engine/`, `catspace/arena.py`, `catspace/uci.py` |
+| Superseded experiments (kept for provenance) | `experiments/archive/`, `docs/archive/` |
 
 ## Standing rules (Kaveh's — full set in `memory/`, one file each)
 
@@ -63,7 +82,7 @@ slips. The system is **two-part**, exactly like Stockfish/Lc0:
 - **Always run latest** — kill stale runs on every engine/field update; resume makes it cheap.
 - **Check representational collapse** — bootstrapped `eff_rank` is a health gate on every run; cure is repulsion, not width.
 - **No concurrent disk-heavy jobs**; the tablebase probe cache is **`journal_mode=DELETE`** (not WAL — WAL grew unbounded and filled the disk twice).
-- **Training standards** (`TRAINING_STANDARDS.md`): checkpoint ladders + metadata, **no overwrites**, one richest input format, MLflow not hand-rolled.
+- **Training standards** (`docs/TRAINING_STANDARDS.md`): checkpoint ladders + metadata, **no overwrites**, one richest input format, MLflow not hand-rolled.
 
 **Workflow**
 - **Keep JOURNAL.md current** as work happens; **time every run**. **No AI commit trailers** (no `Co-Authored-By: Claude` / `noreply@anthropic.com`). **Self-contained reports** — weekly-report style; numbers carry baselines.
