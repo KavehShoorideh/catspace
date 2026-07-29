@@ -8926,3 +8926,27 @@ M3b concept mining (≥5 attacking + ≥5 protective factors under matching) + t
 QUEUED (recorded iteration M3.1): field-v3 with composite goals (c-band token in the goal tower,
 Maia-2 win_prob as label coordinate) to remove the factorization approximation; T upgrade of the
 flux lookup remains shelved with its trigger.
+
+---
+
+## 2026-07-29 — M3b concept mining: the ILLEGIBILITY finding; attacking side stuck at 4/5
+
+Three extractor rounds (26→34 factors), stratified case-control (sharpness × phase × band
+matched, game-clustered CIs), SF-refereed crossings. Round-1 opp_checks bug (null-move on
+in-check boards) found and fixed; round-3 fixed a king-on-a1 short-circuit before accepting
+numbers. Final: ATTACKING = opp_checks +0.044, all_defended +0.022, xray_royal +0.018,
+discovery_avail +0.016 (4). PROTECTIVE = hanging_opp −0.112, we_checks −0.083, loose_pieces
+−0.077, hanging_own −0.024, in_check −0.024, mobility_low −0.024, opp_minor_near_king −0.019,
+opp_pawn_storm −0.002 (8). Gate needs 5+5 → FAIL on the attacking side.
+
+THE FINDING (consistent across all three rounds): within a sharpness-matched stratum, VISIBLE
+danger — including classic "attack patterns" (minors near king, pawn storms, loose pieces, even
+our own checks) — is PROTECTIVE: players see it and concentrate. Only HIDDEN features afford
+errors (x-ray/discovery alignments, latent checking resources, everything-looks-defended). The
+attacking vocabulary appears intrinsically hard to HAND-code: a feature legible to a 20-line
+extractor is legible to the player = protective. This is precisely the case for the planned
+SAE/CAV stage (learned concept directions from the trunk representation, named post-hoc).
+
+Also: subgoal API gained the explicit AVOID list (steer-away half — Kaveh's directive);
+atlas artifact committed (docs/figures/m3_atlas.png). DoD conversation surfaced to Kaveh
+per the rules (no silent redefinition).
