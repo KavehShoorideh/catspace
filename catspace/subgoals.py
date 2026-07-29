@@ -62,6 +62,29 @@ class SubgoalRanker:
                           dtype=torch.float32, device=self.dev).expand(G, -1)
         return self.T(self.bank, torch.cat([self._t_pos, rb], 1)).cpu().numpy()
 
+    @torch.no_grad()
+    def p_composite(self, phis, elo_self: float, elo_oppo: float, z_self=None, z_opp=None,
+                    n_obs: int = 0):
+        """Batched composite reach probabilities for the PLANNER: phis (B,64) -> (B, G*CB).
+        Same context for all rows (one decision point, many successor boards)."""
+        B = len(phis)
+        f = torch.as_tensor(np.asarray(phis, np.float32), device=self.dev)
+        zs = (torch.zeros(B, 16, device=self.dev) if z_self is None else
+              torch.as_tensor(np.asarray(z_self, np.float32), device=self.dev).view(1, -1).expand(B, -1))
+        ctx = [torch.tensor([[(elo_self - 1500) / 400, (elo_oppo - 1500) / 400, 1.0, 1.0]],
+                            dtype=torch.float32, device=self.dev).expand(B, -1)]
+        if self.model.state[0].in_features > 84:
+            zo = (torch.zeros(B, 16, device=self.dev) if z_opp is None else
+                  torch.as_tensor(np.asarray(z_opp, np.float32), device=self.dev).view(1, -1).expand(B, -1))
+            nn_ = torch.full((B, 1), float(np.log1p(n_obs) / np.log1p(64.0)),
+                             dtype=torch.float32, device=self.dev)
+            ctx.append(torch.cat([zo, nn_], 1))
+        sh, _ = self.model.state_embs(f, zs, torch.cat(ctx, 1))
+        pr = torch.sigmoid(sh @ self.gh.T * self.model.scale + self.model.b_hit).cpu().numpy()
+        if self.pcond is not None:
+            pr = (pr[:, :, None] * self.pcond[None, :, :, self.band(elo_self)]).reshape(B, -1)
+        return pr
+
     def band(self, elo: float) -> int:
         return int(np.searchsorted(self.band_edges, elo, side="right"))
 
