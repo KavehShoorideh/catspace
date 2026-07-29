@@ -8888,3 +8888,24 @@ neighbors share strength components, so this placebo is gentle; z_self's value m
 band-structural rather than individual. z_opp's placebo, by contrast, is decisive.
 DECISION (per the recorded 2026-07-28 trigger): field-z shelf REVERSED — the two-z field
 (reach_v2_full) is the M3 substrate. The v1b negative is now understood as data starvation.
+
+---
+
+## 2026-07-29 — M3 subgoal API built; enrichment gate teaches the atlas its right coordinates
+
+Built catspace/subgoals.py (SubgoalRanker: P̂ × net_flux × quality; goal tower precomputed;
+0.07–0.46 ms/query CPU — latency gate PASS) + m3_build_region_table.py + m3_subgoal_gates.py
+(DoD gates as VERDICTs; table on even-hash games, held-out = odd). Three flux formulations vs
+the ≥2× out-of-sample enrichment gate (SF-refereed crossings, mover_loss≥0.2):
+  φ-regions K=256 empirical table : 1.58× / 1.32×  FAIL (bands differ: Spearman 0.66)
+  φ-regions K=1024 empirical table: 1.66× / 1.36×  FAIL (bands differ: Spearman 0.33)
+  T-at-centroids (continuous Elo) : 1.22× / 1.19×  FAIL — and band maps collapse (0.998),
+    consistent with the M3-groundwork finding that T's RANKING is rating-invariant; region
+    averaging also destroys the sharpness feature that powers T's position-level 4.7×.
+DIAGNOSIS (measured, not assumed): the transition ridge (c≈0.5) cuts ACROSS φ-regions — a pure
+φ-partition is the wrong basis for localizing crossings. MEASUREMENT (counting, even→odd):
+composite (φ-region × committor-band) cells, top decile: 2.96× (<1500) / 2.95× (≥1500) — GATE
+CLEARS on both bands; contested-band alone = 5.2×/4.9× (the committor carries the signal; φ makes
+it addressable). ⇒ the atlas's regions should live in (pattern × outcome-phase) product space.
+Design decision surfaced to Kaveh: how the API should serve composite cells (factorized
+approximation now vs field-v3 with composite goals vs both).
