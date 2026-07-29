@@ -8973,3 +8973,18 @@ dictionary. Protective atoms = the blocker vocabulary M7's armed tactics watch.
 M3b 16+16 + atlas artifact. NEXT MILESTONE: M4 — wire the subgoal API (approach + avoid lists)
 into the optionality portfolio planner; play bar = parity vs Maia-1100 at fixed nodes + steering
 demonstrated.
+
+---
+
+## 2026-07-29 — "Leela's eyes, human flow" diagnostic (Kaveh's caution): cells pass, modestly
+
+Question: do φ-cells predict human blunders BEYOND eval alone (Leela-equivalent-but-human-
+divergent positions merged = lost exploitation signal)? Also flagged honestly: the contested-band
+enrichment is partly MECHANICAL (mover_loss≥0.2 impossible below c=0.2 — label floor effect), so
+the incremental test matters. Held-out (odd games, n=34.9k): eval-only AUC 0.8905 → +φ-cells
+0.9002 (+1.174 mnats/pos), permuted-cell control −0.236 mnats (noise hurts). VERDICT: cells carry
+human signal beyond eval — no forced codebook swap. Recorded upgrade path (cheap, deferred):
+region-assignment space φ ⊕ Maia-2 features (goal tower stays on φ; relabel 8 min + retrain 10
+min), gated on growing this same +1.17 number. Generative proposers / opponent-conditional cells
+deferred (M7 territory). g in the trained field = 256 k-means φ-cells (bank) / 1024×3 composite
+(atlas) — fully data-defined; codebook swaps are one k-means rerun away.
