@@ -97,6 +97,10 @@ class SubgoalRanker:
             net_flux = self.flux[:, b_opp] - self.flux[:, b_self]
         quality = self.quality[:, b_self]
         score = pr * np.maximum(net_flux, 0.0) * quality
+        # AVOID list (Kaveh 2026-07-29): regions we are LIKELY to pass through where the error
+        # asymmetry runs AGAINST us -- the steer-away half. Same tables, roles swapped.
+        score_avoid = pr * np.maximum(-net_flux, 0.0)
         order = np.argsort(-score)[:top]        # composite ids: region*CB + cband
         return {"score": score, "p_reach": pr, "net_flux": net_flux,
-                "quality": quality, "exp_plies": plies.cpu().numpy(), "top": order}
+                "quality": quality, "exp_plies": plies.cpu().numpy(), "top": order,
+                "score_avoid": score_avoid, "avoid": np.argsort(-score_avoid)[:top]}
