@@ -40,6 +40,8 @@ class SubgoalRanker:
         self.quality = t["committor_mean"]      # (G, B) mover-POV committor
         self.counts = t["count"]                # (G, B)
         self.band_edges = t["band_edges"]       # e.g. [1500]
+        self.pcond = t["pcond"] if "pcond" in t.files else None   # (G, CB, B) composite factor
+        self.n_cband = self.pcond.shape[1] if self.pcond is not None else 1
         with torch.no_grad():                   # goal tower ONCE (retrieval-factored)
             self.gh, self.gt = self.model.goal_embs(self.bank)
         self.T = None
@@ -83,12 +85,18 @@ class SubgoalRanker:
         p_reach = torch.sigmoid(sh @ self.gh.T * self.model.scale + self.model.b_hit)[0]
         plies = torch.expm1((st @ self.gt.T * self.model.scale + self.model.b_time).clamp(0, 8))[0]
         b_opp, b_self = self.band(elo_oppo), self.band(elo_self)
+        pr = p_reach.cpu().numpy()
+        if self.pcond is not None:
+            # FACTORIZED COMPOSITE (2026-07-29 decision): P(reach phi-cell AND committor-band)
+            # ~= P(reach cell) * P(cband | cell) -- independence approximation, validated by the
+            # even->odd 2.96x/2.95x enrichment; field-v3 (composite goals) removes it (queued).
+            pr = (pr[:, None] * self.pcond[:, :, b_self]).reshape(-1)    # (G*CB,)
         if self.T is not None:                  # continuous: their risk at g minus ours
             net_flux = self.t_flux(elo_oppo, elo_self) - self.t_flux(elo_self, elo_oppo)
         else:
             net_flux = self.flux[:, b_opp] - self.flux[:, b_self]
         quality = self.quality[:, b_self]
-        score = p_reach.cpu().numpy() * np.maximum(net_flux, 0.0) * quality
-        order = np.argsort(-score)[:top]
-        return {"score": score, "p_reach": p_reach.cpu().numpy(), "net_flux": net_flux,
+        score = pr * np.maximum(net_flux, 0.0) * quality
+        order = np.argsort(-score)[:top]        # composite ids: region*CB + cband
+        return {"score": score, "p_reach": pr, "net_flux": net_flux,
                 "quality": quality, "exp_plies": plies.cpu().numpy(), "top": order}

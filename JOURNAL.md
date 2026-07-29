@@ -8909,3 +8909,20 @@ CLEARS on both bands; contested-band alone = 5.2×/4.9× (the committor carries 
 it addressable). ⇒ the atlas's regions should live in (pattern × outcome-phase) product space.
 Design decision surfaced to Kaveh: how the API should serve composite cells (factorized
 approximation now vs field-v3 with composite goals vs both).
+
+---
+
+## 2026-07-29 — M3 subgoal API gates: ALL PASS on composite (φ × committor) cells
+
+Factorized composite serving per Kaveh's call: P̂(reach φ-cell) × P(cband|cell,band) with the
+independence approximation recorded in-code; regions = 1024 φ-cells × 3 committor bands = 3072
+addressable subgoal cells. Gates (VERDICTs, table on even games, held-out odd, SF referee):
+  latency    : 0.10 ms/query (CPU, single position)                       PASS
+  enrichment : <1500 base 11.8% → top-decile cells 39.3% = 3.32×          PASS (≥2×)
+               ≥1500 base 10.9% → top-decile cells 33.1% = 3.04×          PASS (≥2×)
+  bands-differ: Spearman 0.573, top-decile Jaccard 0.06                   PASS
+M3 DoD status: subgoal API live + out-of-sample + band gates MET. REMAINING for full M3 DoD:
+M3b concept mining (≥5 attacking + ≥5 protective factors under matching) + the atlas artifact.
+QUEUED (recorded iteration M3.1): field-v3 with composite goals (c-band token in the goal tower,
+Maia-2 win_prob as label coordinate) to remove the factorization approximation; T upgrade of the
+flux lookup remains shelved with its trigger.

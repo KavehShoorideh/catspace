@@ -51,6 +51,9 @@ def main():
     phi = d["phi"][held].astype(np.float32)
     d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
     region = d2.argmin(1)
+    if rk.pcond is not None:                   # composite cells: SF committor = the membership referee
+        cb = np.digitize(d["committor_before"][held], np.load(args.table)["cband_edges"])
+        region = region * rk.n_cband + cb
     crossing = (d["mover_loss"][held] >= args.thr).astype(float)
     elo = d["elo_mover"][held]
     passes = []
