@@ -8838,3 +8838,30 @@ PRE-REGISTERED before the full run: the v1b claim rides on the FULL run's z_opp-
 verdict; a 600-step stratified null is not evidence of absence (600 steps under-trains even
 z_self). If the full run's stratified verdict is null → a real finding about the causal
 estimate's information content at rapid game lengths → plan conversation, no silent redefinition.
+
+---
+
+## 2026-07-28 — v1b FULL RUN: field excellent, style slots don't survive; pre-registered decision point
+
+reach_v1b_full (8k steps, both z slots, full pre-registered instrument). VERDICTs (printed):
+  z_self lift        : +0.003 mnats/pair CI[-0.030,+0.033] p=0.581  — NOT significant (the v1
+                       smoke's CI-separated +0.006 did not survive full training/clustered CI)
+  z_opp overall      : -0.001 p=0.354; placebo -0.001 p=0.367
+  z_opp @n_obs>=10   : -0.003 p=0.222
+  z_opp @n_obs>=40   : -0.014 CI[-0.029,+0.001] p(better)=0.036 — NEGATIVE in the informed
+                       stratum: conditioning on causal opponent style HURTS where it should help
+  calibration        : ECE 0.00053 eval / 0.00083 unseen (count-weighted) — near-perfect
+  plies              : MAE 0.362 vs 0.771 median baseline
+  eff_rank           : 29.9/64 [29.7,30.2]
+Diagnosis ladder (diagnose-before-concluding): losses unit-tested + calibration near-perfect ⇒
+not the loss; ladder eval-BCE MONOTONE 0.0748→0.0652 through step 8000 ⇒ NOT overfitting.
+Remaining hypotheses: (a) POWER — 3.2k train games / 255 players cannot resolve a per-pair style
+effect (M2b's +0.006 nats was per MOVE on ~1.0-nat NLL; per-pair BCE base is 0.087); the full
+records hold 19.35M games — scale is available and untested. (b) STRUCTURE — where games GO may
+be genuinely style-insensitive at these bands (position+ratings dominate trajectory flow), with
+style living in the CROSSING channel — consistent with M3 groundwork (crossing location
+rating-invariant; strength scales magnitude) and the validated 1.4–3× crossing asymmetry.
+The field itself (population+Elo conditioning) is a strong, calibrated instrument either way.
+Infra note: MLflow tracking silently no-op'd all reach runs (filestore maintenance-mode
+exception swallowed by the no-fail wrapper) — fix = sqlite backend or MLFLOW_ALLOW_FILE_STORE.
+Decision point surfaced to Kaveh per the pre-registration (no silent redefinition).
