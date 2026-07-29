@@ -44,9 +44,10 @@ class PlannerPolicy(CommittorGreedy):
 
     def __init__(self, ckpt, device, gen: SubgoalGenerator | None, rf: ReachabilityField,
                  eta: float, weights: ShapeWeights, elo_self: float, elo_oppo: float,
-                 opp_tau: float = 0.15):
+                 opp_tau: float = 0.15, nu: float = 0.5, sub_ratio: float = 0.25):
         super().__init__(ckpt, device, opp_tau=opp_tau)
         self.gen = gen; self.rf = rf; self.eta = eta; self.w = weights
+        self.nu = nu; self.sub_ratio = sub_ratio
         self.elo_self = elo_self; self.elo_oppo = elo_oppo
         self.game_key = ""; self.visited_phis = []
 
@@ -108,22 +109,38 @@ class PlannerPolicy(CommittorGreedy):
         if self.gen is None or len(moves) == 1:              # planner OFF -> pure value
             i = int(np.argmax(vals))
             return moves[i], float(vals[i])
-        # --- planner ON: plan at the current node, shape move scores ---
+        # --- planner ON (iter-3 shaping, 2026-07-29 bundle): PROBABILITY-space gains +
+        # successor NET-FLUX term, auto-SUBORDINATED to the value signal (the iter-2 diagnosis:
+        # log-space shaping at small p overrode the engine with amplified noise) ---
         phi_now = self.rf.phi([lcboard]).cpu().numpy()
         pc = self.gen.plan(phi_now[0], self.game_key, ply, "w" if lcboard.turn else "b",
                            self.elo_self, self.elo_oppo)
         succ = []
         for m in moves:
-            lcboard.push(m); succ.append(lcboard); succ[-1] = lcboard.copy(stack=False); lcboard.pop()
+            lcboard.push(m); succ.append(lcboard.copy(stack=False)); lcboard.pop()
         phis_after = self.rf.phi(succ).cpu().numpy()
-        d_me_b = self.gen.neglogp(phi_now, pc.cells_me, self.elo_self, self.elo_oppo)[0]
-        d_op_b = self.gen.neglogp(phi_now, pc.cells_opp, self.elo_self, self.elo_oppo)[0]
-        d_me_a = self.gen.neglogp(phis_after, pc.cells_me, self.elo_self, self.elo_oppo)
-        d_op_a = self.gen.neglogp(phis_after, pc.cells_opp, self.elo_self, self.elo_oppo)
+        wme = pc.w_me / pc.w_me.sum(); wop = pc.w_opp / pc.w_opp.sum()
+        p_me_b = self.gen.reach_p(phi_now, pc.cells_me, self.elo_self, self.elo_oppo)[0]
+        p_op_b = self.gen.reach_p(phi_now, pc.cells_opp, self.elo_self, self.elo_oppo)[0]
+        p_me_a = self.gen.reach_p(phis_after, pc.cells_me, self.elo_self, self.elo_oppo)
+        p_op_a = self.gen.reach_p(phis_after, pc.cells_opp, self.elo_self, self.elo_oppo)
+        gain_me = (p_me_a - p_me_b) @ wme
+        gain_opp = (p_op_a - p_op_b) @ wop
+        # steer INTO their-error territory now: net flux of each successor's composite cell
+        bank = self.gen.rk.bank.cpu().numpy()
+        d2 = ((phis_after * phis_after).sum(1)[:, None] + (bank * bank).sum(1)[None, :]
+              - 2.0 * phis_after @ bank.T)
+        cellp = d2.argmin(1) * self.gen.rk.n_cband + np.digitize(vals, [0.35, 0.65])
+        nf = (self.gen.rk.flux[:, self.gen.rk.band(self.elo_oppo)]
+              - self.gen.rk.flux[:, self.gen.rk.band(self.elo_self)])[cellp]
         blun = np.array([board_self_blunder(b) for b in succ])
-        prior = move_scores(d_me_b, d_me_a, d_op_b, d_op_a, self.w,
-                            weights_me=pc.w_me, weights_opp=pc.w_opp, self_blunder=blun)
-        score = vals + self.eta * prior
+        prior_raw = gain_me - self.w.lam * gain_opp + self.nu * nf - self.w.mu * blun
+        pstd = prior_raw.std()
+        if pstd > 1e-9 and vals.std() > 1e-9:
+            prior = prior_raw * (self.sub_ratio * vals.std() / pstd)   # subordinate by construction
+        else:
+            prior = np.zeros_like(prior_raw)
+        score = vals + prior
         i = int(np.argmax(score))
         return moves[i], float(vals[i])
 
@@ -148,7 +165,10 @@ def main():
     ap.add_argument("--store", default="data/derived/engine_memory.sqlite")
     ap.add_argument("--maia-elo", type=int, default=1100)
     ap.add_argument("--games", type=int, default=20, help="per arm")
-    ap.add_argument("--eta", type=float, default=0.5)
+    ap.add_argument("--eta", type=float, default=0.5, help="(iter-2 legacy; unused in iter-3)")
+    ap.add_argument("--nu", type=float, default=0.5, help="successor net-flux weight in the prior mix")
+    ap.add_argument("--sub-ratio", type=float, default=0.25,
+                    help="shaping spread as a fraction of value spread (subordination)")
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--opp-tau", type=float, default=0.15)
     ap.add_argument("--lam", type=float, default=0.5)
@@ -177,7 +197,8 @@ def main():
     for arm in ("off", "on"):
         gen = SubgoalGenerator(rk, store, top_k=args.top_k) if arm == "on" else None
         pol = PlannerPolicy(args.ckpt, dev, gen, rf, args.eta, weights,
-                            args.our_elo, float(args.maia_elo), opp_tau=args.opp_tau)
+                            args.our_elo, float(args.maia_elo), opp_tau=args.opp_tau,
+                            nu=args.nu, sub_ratio=args.sub_ratio)
         W = D = L = 0; flux_means = []; flux_all = []; pgns = []
         for g in range(args.games):
             from lczerolens import LczeroBoard
