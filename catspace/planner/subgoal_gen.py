@@ -61,6 +61,12 @@ class SubgoalGenerator:
 
     def neglogp(self, phis, cells, elo_self, elo_oppo, z_self=None, z_opp=None, n_obs=0):
         """d(board -> cell) = -log P(reach cell | board, ctx) for a BATCH of boards.
-        phis (B,64), cells (K,) -> (B,K) distances for optionality.move_scores."""
+        phis (B,64), cells (K,) -> (B,K) distances for optionality.move_scores.
+        CAUTION (2026-07-29 iter-2 diagnosis): at small p the log AMPLIFIES encoder jitter into
+        ±0.2-nat per-successor swings -- use reach_p for move shaping; keep this for retrieval."""
         p = self.rk.p_composite(phis, elo_self, elo_oppo, z_self, z_opp, n_obs)[:, cells]
         return -np.log(np.maximum(p, 1e-9))
+
+    def reach_p(self, phis, cells, elo_self, elo_oppo, z_self=None, z_opp=None, n_obs=0):
+        """P(reach cell | board, ctx) (B,K) -- PROBABILITY space: bounded, no log amplification."""
+        return self.rk.p_composite(phis, elo_self, elo_oppo, z_self, z_opp, n_obs)[:, cells]
