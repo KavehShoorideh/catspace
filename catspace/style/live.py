@@ -60,7 +60,11 @@ class LiveOpponent:
         fen = lcboard_before.fen()
         df = pd.DataFrame({"fen": [fen], "move": ["0000"],
                            "elo_self": [int(self._elo)], "elo_oppo": [int(opp_elo_frame)]})
-        df, _ = self.inf.inference_batch(df, self.m2, verbose=False, batch_size=8, num_workers=0)
+        try:
+            df, _ = self.inf.inference_batch(df, self.m2, verbose=False, batch_size=8,
+                                             num_workers=0)
+        except Exception:
+            return False                                     # maia2 poison position: skip obs
         probs = df["move_probs"][0]
         top = [m for m, _ in sorted(probs.items(), key=lambda kv: kv[1], reverse=True)[:K - 1]]
         cand = top + ([uci_played] if uci_played not in top else [])

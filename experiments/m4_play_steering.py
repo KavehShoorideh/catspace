@@ -166,17 +166,34 @@ def maia_feats(m2, inference, fens, elo_self, elo_oppo):
     """production-recipe human-choice features (top-16 entropy/top-p/gap + win_prob) for a
     batch of FENs at the given rating frame. ~10 ms batched."""
     import pandas as pd
+    NEUTRAL = np.array([1.5, 0.5, 0.3, 0.5], np.float32)   # ~population means; standardizes ~0
     es = np.broadcast_to(np.asarray(elo_self, int), (len(fens),))
     eo = np.broadcast_to(np.asarray(elo_oppo, int), (len(fens),))
-    df = pd.DataFrame({"fen": list(fens), "move": ["0000"] * len(fens),
-                       "elo_self": es, "elo_oppo": eo})
-    df, _ = inference.inference_batch(df, m2, verbose=False, batch_size=1024, num_workers=0)
-    out = np.zeros((len(fens), 4), np.float32)
-    for j, (probs, wp) in enumerate(zip(df["move_probs"], df["win_probs"])):
-        p = np.array(sorted(probs.values(), reverse=True)[:16], dtype=np.float64)
-        p = p / p.sum()
-        out[j] = [-(p * np.log(p + 1e-12)).sum(), p[0],
-                  p[0] - (p[1] if len(p) > 1 else 0.0), wp]
+    out = np.tile(NEUTRAL, (len(fens), 1))
+
+    def run(fs, esub, osub):
+        df = pd.DataFrame({"fen": list(fs), "move": ["0000"] * len(fs),
+                           "elo_self": esub, "elo_oppo": osub})
+        df, _ = inference.inference_batch(df, m2, verbose=False, batch_size=1024, num_workers=0)
+        r = np.zeros((len(fs), 4), np.float32)
+        for j, (probs, wp) in enumerate(zip(df["move_probs"], df["win_probs"])):
+            p = np.array(sorted(probs.values(), reverse=True)[:16], dtype=np.float64)
+            p = p / p.sum()
+            r[j] = [-(p * np.log(p + 1e-12)).sum(), p[0],
+                    p[0] - (p[1] if len(p) > 1 else 0.0), wp]
+        return r
+
+    try:
+        out = run(fens, es, eo)
+    except Exception:
+        # POISON GUARD (2026-07-30): maia2's own preprocessing IndexErrors on positions whose
+        # legal moves fall outside its dict (killed the m4f ON arm at game ~68). Per-row retry;
+        # poisoned rows keep NEUTRAL feats -> augmented assignment degrades to phi-geometry.
+        for j, f in enumerate(fens):
+            try:
+                out[j] = run([f], es[j:j+1], eo[j:j+1])[0]
+            except Exception:
+                pass
     return out
 
 
