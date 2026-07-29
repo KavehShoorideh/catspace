@@ -14,6 +14,11 @@ PRE-REGISTERED SPLITS: eval = split 'train' & game_id%10==0 (seen players, UNSEE
 measured here); trainset = split 'train' & game_id%10!=0; unseen = split 'heldout' (45 players
 w/o z -> z=0 fallback; BCE+calibration only, no z-lift possible).
 
+v1b (--zopp): adds the CAUSAL opponent-style slot -- z_opp_t (16) + n_obs (1, log-normalized)
+from build_zopp_causal.py (train-time == play-time conditioning; z=0 cold start). Placebo for the
+slot: permute z_opp among eval rows within (elo_oppo ±100 band x n_obs bucket) -- rating and
+observation count can't leak through it.
+
 PRE-REGISTERED ACCEPTANCE (printed as VERDICT lines; the smoke must show the SIGN):
   1. z-lift nats/pair on eval: BCE(z=0) - BCE(full) and BCE(z permuted within ±100 Elo) - BCE(full),
      paired bootstrap CI clustered by player (catspace.stats.paired_nll_ci).
@@ -42,9 +47,9 @@ from experiments.losses import censored_plies_loss, first_hit_bce      # noqa: E
 class ReachHead(nn.Module):
     """Shared-trunk two-tower head; separate output projections per quantity (STANDARDS 10)."""
 
-    def __init__(self, d_phi=64, d_z=16, d_emb=64, width=128):
+    def __init__(self, d_phi=64, d_z=16, d_emb=64, width=128, d_opp=0):
         super().__init__()
-        self.state = nn.Sequential(nn.Linear(d_phi + d_z + 2, width), nn.ReLU(),
+        self.state = nn.Sequential(nn.Linear(d_phi + d_z + 2 + d_opp, width), nn.ReLU(),
                                    nn.Linear(width, width), nn.ReLU())
         self.goal = nn.Sequential(nn.Linear(d_phi, width), nn.ReLU(),
                                   nn.Linear(width, width), nn.ReLU())
@@ -94,6 +99,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", default="data/derived/reach/reach_v1.npz")
     ap.add_argument("--zckpt", default="artifacts/experiments/m2b_style_3k.pt")
+    ap.add_argument("--zopp", default="", help="zopp_causal_v1.npz path; empty = v1 (no opponent slot)")
     ap.add_argument("--out", default="artifacts/experiments/reach_v1")
     ap.add_argument("--steps", type=int, default=600)
     ap.add_argument("--batch", type=int, default=256)
@@ -126,16 +132,28 @@ def main():
     pidx = d["pidx"].astype(np.int64)                                  # -1 -> last (zero) slot
     zvec = ztab.to(dev)[torch.as_tensor(np.where(pidx < 0, ztab.shape[0] - 1, pidx), device=dev)]
 
-    model = ReachHead(d_phi=phi.shape[1], d_z=ztab.shape[1]).to(dev)
+    if args.zopp:
+        zo = dict(np.load(args.zopp, allow_pickle=True))
+        assert (zo["game_id"] == d["game_id"]).all() and (zo["ply"] == d["ply"]).all(), \
+            "zopp file not row-aligned with reach data"
+        nobs_norm = np.log1p(zo["n_obs"].astype(np.float32)) / np.log1p(64.0)
+        zopp = torch.cat([t(zo["z_opp_t"]), t(nobs_norm).unsqueeze(1)], 1)     # (N,17)
+        d_opp = zopp.shape[1]
+    else:
+        zopp, d_opp = None, 0
+    model = ReachHead(d_phi=phi.shape[1], d_z=ztab.shape[1], d_opp=d_opp).to(dev)
     base = float(hit[t(is_train, torch.bool)][in_now[t(is_train, torch.bool)] == 0].mean())
     with torch.no_grad():
         model.b_hit.fill_(float(np.log(base / (1 - base))))            # base-rate init
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     tr_idx = np.flatnonzero(is_train)
 
+    def ctx(r):
+        return torch.cat([elos[r], zopp[r]], 1) if zopp is not None else elos[r]
+
     def batch_loss(rows):
         r = torch.as_tensor(rows, device=dev)
-        logit, ptime = model(phi[r], zvec[r], elos[r], bank)
+        logit, ptime = model(phi[r], zvec[r], ctx(r), bank)
         mask = in_now[r] == 0
         l_hit = first_hit_bce(logit[mask], hit[r][mask])
         l_t = censored_plies_loss(ptime[mask], plies[r][mask], hit[r][mask])
@@ -153,9 +171,8 @@ def main():
         model.eval()
         with torch.no_grad():
             l_hit, l_t = batch_loss(ev_probe)
-            sh, _ = model.state_embs(phi[torch.as_tensor(ev_probe, device=dev)],
-                                     zvec[torch.as_tensor(ev_probe, device=dev)],
-                                     elos[torch.as_tensor(ev_probe, device=dev)])
+            rp = torch.as_tensor(ev_probe, device=dev)
+            sh, _ = model.state_embs(phi[rp], zvec[rp], ctx(rp))
         return {"eval_hit": l_hit.item(), "eval_time": l_t.item(),
                 "eff_rank": eff_rank(sh.cpu().numpy())}
 
@@ -167,12 +184,18 @@ def main():
     # ---------------- pre-registered acceptance instrument ----------------
     model.eval()
 
-    def per_pair(rows, z):
-        """per-pair NLL + preds on non-in_now pairs, chunked."""
+    def per_pair(rows, z, zo_override=None):
+        """per-pair NLL + preds on non-in_now pairs, chunked. zo_override: (N,17) replacement
+        for the opponent slot (v1b ablations/placebos)."""
         nll, ps, ys, pls, plt, own = [], [], [], [], [], []
         for i in range(0, len(rows), 1024):
             r = torch.as_tensor(rows[i:i + 1024], device=dev)
-            logit, ptime = model(phi[r], z[r], elos[r], bank)
+            if zopp is None:
+                cx = elos[r]
+            else:
+                zz = zopp if zo_override is None else zo_override
+                cx = torch.cat([elos[r], zz[r]], 1)
+            logit, ptime = model(phi[r], z[r], cx, bank)
             m = in_now[r] == 0
             y = hit[r][m]; lg = logit[m]
             nll.append(torch.nn.functional.binary_cross_entropy_with_logits(
@@ -201,13 +224,51 @@ def main():
     print(f"VERDICT z-lift vs wrong-z : {liftp[0]*1e3:+.3f} mnats/pair  CI[{liftp[1]*1e3:+.3f},"
           f"{liftp[2]*1e3:+.3f}]  p(better)={liftp[3]:.3f}   (±100-Elo band permutation)")
 
+    if zopp is not None:
+        with torch.no_grad():
+            n_zo0, *_ = per_pair(ev, zvec, zo_override=torch.cat(
+                [torch.zeros_like(zopp[:, :16]), zopp[:, 16:]], 1))   # kill style, keep n_obs
+            # placebo: permute z_opp among eval rows within (elo_oppo band x n_obs bucket)
+            zperm2 = zopp.clone()
+            eo = d["elo_oppo"][ev]; nb = d["ply"][ev] * 0  # placeholder init
+            nobs_ev = zo["n_obs"][ev]
+            bucket = np.digitize(nobs_ev, [1, 5, 10, 20, 40])
+            band = (eo // 100).astype(int)
+            rng2 = np.random.default_rng(1)
+            for key in set(zip(band.tolist(), bucket.tolist())):
+                grp = np.flatnonzero((band == key[0]) & (bucket == key[1]))
+                if len(grp) > 1:
+                    zperm2[torch.as_tensor(ev[grp], device=dev)] = \
+                        zperm2[torch.as_tensor(ev[rng2.permutation(grp)], device=dev)]
+            n_zop, *_ = per_pair(ev, zvec, zo_override=zperm2)
+        lo0 = paired_nll_ci(n_full, n_zo0, clusters=players)
+        lop = paired_nll_ci(n_full, n_zop, clusters=players)
+        print(f"VERDICT z_opp-lift vs z_opp=0 : {lo0[0]*1e3:+.3f} mnats/pair  CI[{lo0[1]*1e3:+.3f},"
+              f"{lo0[2]*1e3:+.3f}]  p(better)={lo0[3]:.3f}   (causal opponent style, n_obs kept)")
+        print(f"VERDICT z_opp wrong-opp placebo: {lop[0]*1e3:+.3f} mnats/pair  CI[{lop[1]*1e3:+.3f},"
+              f"{lop[2]*1e3:+.3f}]  p(better)={lop[3]:.3f}   (permuted within Elo-band x n_obs bucket)")
+        # STRATIFIED z_opp readout (pre-registered): the style effect can only live where the
+        # causal estimate has information -- M2c break-even ~10 (identity) / ~40 (beats prior).
+        # Unstratified nulls over the 93% low-info rows are uninformative.
+        pair_nobs = np.repeat(nobs_ev, (in_now[torch.as_tensor(ev, device=dev)] == 0)
+                              .sum(1).cpu().numpy())
+        for thr in (10, 40):
+            m = pair_nobs >= thr
+            if m.sum() > 1000:
+                ls = paired_nll_ci(n_full[m], n_zo0[m], clusters=players[m])
+                print(f"VERDICT z_opp-lift@n_obs>={thr}: {ls[0]*1e3:+.3f} mnats/pair  "
+                      f"CI[{ls[1]*1e3:+.3f},{ls[2]*1e3:+.3f}]  p(better)={ls[3]:.3f}  "
+                      f"({m.sum():,} pairs, {100*m.mean():.0f}% of eval)")
+
     for name, rows in (("eval", ev), ("unseen", np.flatnonzero(is_unseen))):
         with torch.no_grad():
             _, p, y, tp2, tt2, _ = per_pair(rows, zvec)
         rel = reliability(p, y)
         gap = max(abs(a - b) for a, b, _ in rel)
-        print(f"VERDICT calibration [{name}]: max|pred-realized| {gap:.4f} over {len(rel)} bins | "
-              f"mean pred {p.mean():.4f} vs realized {y.mean():.4f}")
+        tot = sum(nb for _, _, nb in rel)
+        ece = sum(nb * abs(a - b) for a, b, nb in rel) / tot
+        print(f"VERDICT calibration [{name}]: ECE {ece:.5f} (count-weighted) | max|gap| {gap:.4f} "
+              f"over {len(rel)} bins | mean pred {p.mean():.4f} vs realized {y.mean():.4f}")
         for pm, rz, nb in rel:
             print(f"    bin pred {pm:.3f} realized {rz:.3f} n {nb}")
         med = float(np.median(np.log1p(np.maximum(tt if name == 'eval' else tt2, 0))))
@@ -221,9 +282,8 @@ def main():
     for s in range(3):
         rr = np.random.default_rng(s).choice(ev, min(2048, len(ev)), replace=False)
         with torch.no_grad():
-            sh, _ = model.state_embs(phi[torch.as_tensor(rr, device=dev)],
-                                     zvec[torch.as_tensor(rr, device=dev)],
-                                     elos[torch.as_tensor(rr, device=dev)])
+            rt = torch.as_tensor(rr, device=dev)
+            sh, _ = model.state_embs(phi[rt], zvec[rt], ctx(rt))
         ranks.append(eff_rank(sh.cpu().numpy()))
     print(f"VERDICT eff_rank(state hit-emb, d=64): {np.mean(ranks):.1f} "
           f"[{min(ranks):.1f},{max(ranks):.1f}] over 3 bootstrap draws")
