@@ -44,10 +44,11 @@ class PlannerPolicy(CommittorGreedy):
 
     def __init__(self, ckpt, device, gen: SubgoalGenerator | None, rf: ReachabilityField,
                  eta: float, weights: ShapeWeights, elo_self: float, elo_oppo: float,
-                 opp_tau: float = 0.15, nu: float = 0.5, sub_ratio: float = 0.25):
+                 opp_tau: float = 0.15, nu: float = 0.5, sub_ratio: float = 0.25,
+                 delta: float = 0.02):
         super().__init__(ckpt, device, opp_tau=opp_tau)
         self.gen = gen; self.rf = rf; self.eta = eta; self.w = weights
-        self.nu = nu; self.sub_ratio = sub_ratio
+        self.nu = nu; self.sub_ratio = sub_ratio; self.delta = delta
         self.elo_self = elo_self; self.elo_oppo = elo_oppo
         self.game_key = ""; self.visited_phis = []
 
@@ -135,13 +136,14 @@ class PlannerPolicy(CommittorGreedy):
               - self.gen.rk.flux[:, self.gen.rk.band(self.elo_self)])[cellp]
         blun = np.array([board_self_blunder(b) for b in succ])
         prior_raw = gain_me - self.w.lam * gain_opp + self.nu * nf - self.w.mu * blun
-        pstd = prior_raw.std()
-        if pstd > 1e-9 and vals.std() > 1e-9:
-            prior = prior_raw * (self.sub_ratio * vals.std() / pstd)   # subordinate by construction
-        else:
-            prior = np.zeros_like(prior_raw)
-        score = vals + prior
-        i = int(np.argmax(score))
+        # ITER-4 (2026-07-30): TIE-BREAK, not additive. Additive shaping was either noise (log
+        # space, iter-2) or inert (subordinated, iter-3): one move's honest effect on reaching a
+        # horizon-scale region is tiny. Plans express where chess offers near-equal choices:
+        # among moves within DELTA of the best value, take the most plan-advancing one --
+        # never pay more than delta (committor units) for the plan.
+        best = vals.max()
+        cand = np.flatnonzero(vals >= best - self.delta)
+        i = int(cand[np.argmax(prior_raw[cand])])
         return moves[i], float(vals[i])
 
 
@@ -168,7 +170,9 @@ def main():
     ap.add_argument("--eta", type=float, default=0.5, help="(iter-2 legacy; unused in iter-3)")
     ap.add_argument("--nu", type=float, default=0.5, help="successor net-flux weight in the prior mix")
     ap.add_argument("--sub-ratio", type=float, default=0.25,
-                    help="shaping spread as a fraction of value spread (subordination)")
+                    help="(iter-3 legacy; unused in iter-4 tie-break)")
+    ap.add_argument("--delta", type=float, default=0.02,
+                    help="value tolerance (committor units) inside which the plan picks the move")
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--opp-tau", type=float, default=0.15)
     ap.add_argument("--lam", type=float, default=0.5)
@@ -198,7 +202,7 @@ def main():
         gen = SubgoalGenerator(rk, store, top_k=args.top_k) if arm == "on" else None
         pol = PlannerPolicy(args.ckpt, dev, gen, rf, args.eta, weights,
                             args.our_elo, float(args.maia_elo), opp_tau=args.opp_tau,
-                            nu=args.nu, sub_ratio=args.sub_ratio)
+                            nu=args.nu, sub_ratio=args.sub_ratio, delta=args.delta)
         W = D = L = 0; flux_means = []; flux_all = []; pgns = []
         for g in range(args.games):
             from lczerolens import LczeroBoard

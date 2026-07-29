@@ -9017,3 +9017,15 @@ set features. GATE FIRES per its recording: codebook swap proceeds (augmented fe
 v2 positions are FREE from cached cand_logp/win_prob). Chain: augmented codebook → relabel →
 field retrain + acceptance → table + M3 gates re-cleared (no grandfathering) → planner play-path
 Maia features → M4 steering read on the new substrate.
+
+---
+
+## 2026-07-30 — M4 iter-3 read: inert; iter-4 = value-tolerance TIE-BREAK (mechanism change)
+
+Iter-3 (prob-space + subordination): steering diff exactly +0.00000 (OUR-move), plans reached
+0.0% — harm stopped, behavior unmoved. Structural conclusion after 3 formulations: one-ply
+ADDITIVE shaping toward horizon-scale regions cannot work — the honest per-move effect on
+P(reach distant region) is tiny, so it is either amplified noise (log) or silence (subordinated).
+Iter-4 mechanism: TIE-BREAK — among moves within delta (0.02 committor) of best value, pick the
+most plan-advancing; plans express exactly where chess offers near-equal choices; max cost per
+move = delta by construction. Bundled with the AUGMENTED substrate (v3 codebook) for one read.
