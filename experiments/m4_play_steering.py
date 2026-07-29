@@ -149,6 +149,9 @@ class PlannerPolicy(CommittorGreedy):
         best = vals.max()
         cand = np.flatnonzero(vals >= best - self.delta)
         i = int(cand[np.argmax(prior_raw[cand])])
+        self.n_dec = getattr(self, "n_dec", 0) + 1
+        if i != int(np.argmax(vals)):
+            self.n_swayed = getattr(self, "n_swayed", 0) + 1
         return moves[i], float(vals[i])
 
 
@@ -288,15 +291,16 @@ def main():
             print(f"  [{arm}] game {g+1}/{args.games} -> {res} (us {s}) "
                   f"[{time.time()-t0:.0f}s]", flush=True)
         n = args.games
+        sway = getattr(pol, "n_swayed", 0) / max(getattr(pol, "n_dec", 0), 1)
         results[arm] = dict(score=(W + 0.5 * D) / n, W=int(W), D=int(D), L=int(L),
-                            flux=flux_means, flux_all=flux_all)
+                            flux=flux_means, flux_all=flux_all, sway=sway)
         Path(args.save_pgn.replace(".pgn", f"_{arm}.pgn")).write_text("\n\n".join(pgns))
     maia.quit()
 
     for arm in ("off", "on"):
         r = results[arm]
         print(f"VERDICT M4 score [{arm}]: {r['score']:.3f} (W{r['W']} D{r['D']} L{r['L']} "
-              f"of {args.games}) vs maia-{args.maia_elo}")
+              f"of {args.games}) vs maia-{args.maia_elo} | plan swayed {r['sway']:.1%} of our moves")
     fon, foff = np.array(results["on"]["flux"]), np.array(results["off"]["flux"])
     diff = fon.mean() - foff.mean()
     boots = [np.random.default_rng(i).choice(fon, len(fon)).mean()
