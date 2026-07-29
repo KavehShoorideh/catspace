@@ -1,0 +1,5 @@
+outs:
+- md5: 99e1ef40d2274b05e1d5379097746cbb
+  size: 300779
+  hash: md5
+  path: region_table_v2.npz
