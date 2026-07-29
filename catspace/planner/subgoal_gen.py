@@ -38,7 +38,7 @@ class SubgoalGenerator:
     def plan(self, phi_now, game_key: str, ply: int, side: str,
              elo_self: float, elo_oppo: float, z_self=None, z_opp=None, n_obs: int = 0):
         r = self.rk.rank(phi_now, elo_self, elo_oppo, z_self=z_self, z_opp=z_opp,
-                         n_obs=n_obs, top=self.k)
+                         n_obs=n_obs, top=self.k, ply=ply)
         cells_me, cells_opp = r["top"], r["avoid"]
         w_me = np.maximum(r["score"][cells_me], 1e-9)
         w_opp = np.maximum(r["score_avoid"][cells_opp], 1e-9)
