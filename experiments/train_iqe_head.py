@@ -87,6 +87,7 @@ def main():
     ap.add_argument("--steps", type=int, default=6000); ap.add_argument("--batch", type=int, default=4096)
     ap.add_argument("--lr", type=float, default=1e-3); ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--eval-every", type=int, default=500); ap.add_argument("--ckpt-every", type=int, default=1000)
+    ap.add_argument("--rows", default="", help="rows .npy: train on this game-subset of the data")
     ap.add_argument("--out", default=""); ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     t0 = time.time(); dev = resolve_device("auto"); torch.manual_seed(args.seed)
@@ -97,7 +98,13 @@ def main():
     feats = np.load(args.feats, mmap_mode="r")               # (N,C,8,8) fp16, NEVER fully in RAM
     z = np.load(args.data)
     dtz = z["dtz"].astype(np.int32); game = z["game"]; ply = z["ply"]
-    N, C = feats.shape[0], feats.shape[1]
+    if args.rows:
+        rows = np.load(args.rows)
+        dtz, game, ply = dtz[rows], game[rows], ply[rows]
+        fmap = rows if len(feats) != len(rows) else None     # full-size memmap -> map; subset-sized -> direct
+    else:
+        fmap = None
+    N, C = len(dtz), feats.shape[1]
     games = np.unique(game)
     val_games = set(rng.choice(games, size=max(1, int(len(games) * args.val_frac)), replace=False).tolist())
     train_games = set(int(g) for g in games) - val_games
@@ -117,7 +124,8 @@ def main():
     tgt_mate = torch.from_numpy(np.log1p(np.clip(dtz, 0, None)).astype(np.float32)).to(dev)
 
     def fx(idx):                                             # memmap rows -> fp32 on device
-        return torch.from_numpy(np.asarray(feats[idx], dtype=np.float32)).to(dev)
+        ridx = fmap[idx] if fmap is not None else idx
+        return torch.from_numpy(np.asarray(feats[ridx], dtype=np.float32)).to(dev)
 
     def step(_net, s):
         pi = rng.integers(0, len(MG_s), args.batch)

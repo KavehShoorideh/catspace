@@ -9029,3 +9029,20 @@ P(reach distant region) is tiny, so it is either amplified noise (log) or silenc
 Iter-4 mechanism: TIE-BREAK — among moves within delta (0.02 committor) of best value, pick the
 most plan-advancing; plans express exactly where chess offers near-equal choices; max cost per
 move = delta by construction. Bundled with the AUGMENTED substrate (v3 codebook) for one read.
+
+---
+
+## 2026-07-30 — Augmented stack END-TO-END: field accepted, atlas rebuilt, M3 RE-CLEARED higher
+
+Codebook swap completed and validated at every layer (no grandfathering): reach_v3 field ACCEPTED
+(z_self +0.008 CI[+0.004,+0.012]; wrong-z placebo now DECISIVE +0.022 — was null on phi-only
+cells; z_opp +0.011; calibration ECE 0.0017; plies MAE 0.337/0.869; caveat persists: z_opp
+@n_obs>=40 −0.002 p=0.019, phase-confound follow-up stands). Augmented atlas (production-recipe
+feats at own ratings for the M2a set) + gates: enrichment 3.82×/3.49× (was 3.32×/3.04×), bands
+differ 0.615/0.09, latency 0.14 ms — M3 GATES ALL PASS, higher than the stack they replace.
+Human-choice regions recur sooner (plies med 24→18). Feature provenance recorded: 4 distribution-
+shape statistics of frozen Maia-2's outputs (entropy/top-p/top-gap/win-prob) — semantics-free,
+cache-derived, zero new inference; family validated by the +4.4 gate, not feature-selected;
+learned (SAE-on-Maia) escalation recorded if ever needed. Play path integrated: live per-moveset
+Maia features, augmented assignment shared by shaping/steering/ledger. (Committed by Kaveh's
+hands during the safety-classifier outage.)

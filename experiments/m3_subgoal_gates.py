@@ -29,6 +29,7 @@ def main():
     ap.add_argument("--thr", type=float, default=0.2)
     ap.add_argument("--n-lat", type=int, default=200)
     ap.add_argument("--flux-t", default="", help="m3_flux_T checkpoint -> T-scored region flux")
+    ap.add_argument("--aug-feats", default="", help="m2a production-recipe feats (augmented tables)")
     args = ap.parse_args()
 
     rk = SubgoalRanker(args.field, args.reach, args.table, flux_t=args.flux_t)
@@ -49,8 +50,12 @@ def main():
     # ---- (2) out-of-sample enrichment on held-out games ----
     held = d["game"].astype(np.int64) % 2 == 1
     phi = d["phi"][held].astype(np.float32)
-    d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
-    region = d2.argmin(1)
+    if rk.assign_bank is not None:
+        feats_all = np.load(args.aug_feats)["feats"].astype(np.float32)
+        region = rk.assign(phi, feats_all[held])
+    else:
+        d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
+        region = d2.argmin(1)
     if rk.pcond is not None:                   # composite cells: SF committor = the membership referee
         cb = np.digitize(d["committor_before"][held], np.load(args.table)["cband_edges"])
         region = region * rk.n_cband + cb

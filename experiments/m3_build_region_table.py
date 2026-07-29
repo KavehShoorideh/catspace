@@ -23,6 +23,8 @@ def main():
     ap.add_argument("--band-edges", type=float, nargs="+", default=[1500.0])
     ap.add_argument("--cbands", type=float, nargs="+", default=[0.35, 0.65],
                     help="committor-band edges -> composite (region x band) cells")
+    ap.add_argument("--aug-feats", default="", help="m2a production-recipe feats npz")
+    ap.add_argument("--aug-from", default="", help="reach_v3 npz carrying the codebook scalers")
     ap.add_argument("--regions", type=int, default=0,
                     help="0 = use the field bank; K>0 = fit a FINER k-means on the labeled train half")
     args = ap.parse_args()
@@ -31,15 +33,37 @@ def main():
     z = np.load(args.reach, allow_pickle=True)
     train = (d["game"].astype(np.int64) % 2 == 0)                        # even games -> table
     phi = d["phi"][train].astype(np.float32)
-    if args.regions > 0:
+    aug_meta = {}
+    if args.aug_feats:
+        # AUGMENTED assignment space: the v3 codebook's stored scalers (production recipe)
+        v3 = np.load(args.aug_from, allow_pickle=True)
+        feats_all = np.load(args.aug_feats)["feats"].astype(np.float32)
+        A_all = np.concatenate([
+            (d["phi"].astype(np.float32) - v3["aug_mu_p"]) / v3["aug_sd_p"],
+            float(v3["aug_w"]) * (feats_all - v3["aug_mu_f"]) / v3["aug_sd_f"]], 1)
+        space = A_all[train]
+        from sklearn.cluster import KMeans
+        km = KMeans(n_clusters=args.regions or 1024, n_init=3, random_state=0).fit(space)
+        assign_bank = km.cluster_centers_.astype(np.float32)
+        region = km.predict(space)
+        bank = np.stack([phi[region == g].mean(0) if (region == g).any() else phi.mean(0)
+                         for g in range(len(assign_bank))]).astype(np.float32)
+        aug_meta = {"regions_assign": assign_bank, "aug_mu_p": v3["aug_mu_p"],
+                    "aug_sd_p": v3["aug_sd_p"], "aug_mu_f": v3["aug_mu_f"],
+                    "aug_sd_f": v3["aug_sd_f"], "aug_w": v3["aug_w"]}
+        G, B = len(bank), len(args.band_edges) + 1
+    elif args.regions > 0:
         from sklearn.cluster import KMeans
         bank = KMeans(n_clusters=args.regions, n_init=3, random_state=0).fit(
             phi).cluster_centers_.astype(np.float32)
+        G, B = len(bank), len(args.band_edges) + 1
+        d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
+        region = d2.argmin(1)
     else:
         bank = z["bank"].astype(np.float32)                              # (G,64)
-    G, B = len(bank), len(args.band_edges) + 1
-    d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
-    region = d2.argmin(1)
+        G, B = len(bank), len(args.band_edges) + 1
+        d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
+        region = d2.argmin(1)
     band = np.searchsorted(np.asarray(args.band_edges), d["elo_mover"][train], side="right")
     crossing = (d["mover_loss"][train] >= args.thr).astype(np.float64)
     committor = d["committor_before"][train].astype(np.float64)
@@ -72,7 +96,7 @@ def main():
           f"{[round(crossing[band==b].mean(),3) for b in range(B)]}")
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out, regions=bank, crossing_rate=rate, committor_mean=qual, count=cnt,
-                        pcond=pcond, cband_edges=np.asarray(args.cbands),
+                        **aug_meta, pcond=pcond, cband_edges=np.asarray(args.cbands),
                         band_edges=np.asarray(args.band_edges), thr=args.thr,
                         meta_labeled=args.labeled, meta_reach=args.reach)
     print(f"wrote {args.out}")

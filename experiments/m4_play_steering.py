@@ -45,10 +45,11 @@ class PlannerPolicy(CommittorGreedy):
     def __init__(self, ckpt, device, gen: SubgoalGenerator | None, rf: ReachabilityField,
                  eta: float, weights: ShapeWeights, elo_self: float, elo_oppo: float,
                  opp_tau: float = 0.15, nu: float = 0.5, sub_ratio: float = 0.25,
-                 delta: float = 0.02):
+                 delta: float = 0.02, m2=None, m2_inf=None):
         super().__init__(ckpt, device, opp_tau=opp_tau)
         self.gen = gen; self.rf = rf; self.eta = eta; self.w = weights
         self.nu = nu; self.sub_ratio = sub_ratio; self.delta = delta
+        self.m2 = m2; self.m2_inf = m2_inf
         self.elo_self = elo_self; self.elo_oppo = elo_oppo
         self.game_key = ""; self.visited_phis = []
 
@@ -127,11 +128,15 @@ class PlannerPolicy(CommittorGreedy):
         p_op_a = self.gen.reach_p(phis_after, pc.cells_opp, self.elo_self, self.elo_oppo)
         gain_me = (p_me_a - p_me_b) @ wme
         gain_opp = (p_op_a - p_op_b) @ wop
-        # steer INTO their-error territory now: net flux of each successor's composite cell
-        bank = self.gen.rk.bank.cpu().numpy()
-        d2 = ((phis_after * phis_after).sum(1)[:, None] + (bank * bank).sum(1)[None, :]
-              - 2.0 * phis_after @ bank.T)
-        cellp = d2.argmin(1) * self.gen.rk.n_cband + np.digitize(vals, [0.35, 0.65])
+        # steer INTO their-error territory now: net flux of each successor's composite cell.
+        # Augmented tables assign with the human-choice features at the successor's rating
+        # frame (mover at s' = the opponent); ~10 ms batched per move-set.
+        feats_after = None
+        if self.gen.rk.assign_bank is not None:
+            feats_after = maia_feats(self.m2, self.m2_inf, [b.fen() for b in succ],
+                                     self.elo_oppo, self.elo_self)
+        reg = self.gen.rk.assign(phis_after, feats_after)
+        cellp = reg * self.gen.rk.n_cband + np.digitize(vals, [0.35, 0.65])
         nf = (self.gen.rk.flux[:, self.gen.rk.band(self.elo_oppo)]
               - self.gen.rk.flux[:, self.gen.rk.band(self.elo_self)])[cellp]
         blun = np.array([board_self_blunder(b) for b in succ])
@@ -147,15 +152,28 @@ class PlannerPolicy(CommittorGreedy):
         return moves[i], float(vals[i])
 
 
-def flux_of_positions(rk, phis, cbs, elo_self, elo_oppo):
-    """predicted net-flux of visited positions: composite cell of each -> table lookup."""
-    bank = rk.bank.cpu().numpy()
-    d2 = (phis * phis).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phis @ bank.T
-    reg = d2.argmin(1)
-    cband = np.digitize(cbs, [0.35, 0.65])
-    cell = reg * rk.n_cband + cband
+def maia_feats(m2, inference, fens, elo_self, elo_oppo):
+    """production-recipe human-choice features (top-16 entropy/top-p/gap + win_prob) for a
+    batch of FENs at the given rating frame. ~10 ms batched."""
+    import pandas as pd
+    es = np.broadcast_to(np.asarray(elo_self, int), (len(fens),))
+    eo = np.broadcast_to(np.asarray(elo_oppo, int), (len(fens),))
+    df = pd.DataFrame({"fen": list(fens), "move": ["0000"] * len(fens),
+                       "elo_self": es, "elo_oppo": eo})
+    df, _ = inference.inference_batch(df, m2, verbose=False, batch_size=1024, num_workers=0)
+    out = np.zeros((len(fens), 4), np.float32)
+    for j, (probs, wp) in enumerate(zip(df["move_probs"], df["win_probs"])):
+        p = np.array(sorted(probs.values(), reverse=True)[:16], dtype=np.float64)
+        p = p / p.sum()
+        out[j] = [-(p * np.log(p + 1e-12)).sum(), p[0],
+                  p[0] - (p[1] if len(p) > 1 else 0.0), wp]
+    return out
+
+
+def flux_of_cells(rk, cells, elo_self, elo_oppo):
+    """predicted net-flux of pre-assigned composite cells (assignment via rk.assign)."""
     nf = rk.flux[:, rk.band(elo_oppo)] - rk.flux[:, rk.band(elo_self)]
-    return nf[cell]
+    return nf[cells]
 
 
 def main():
@@ -196,13 +214,19 @@ def main():
     weights = ShapeWeights(beta=args.beta, lam=args.lam, mu=args.mu)
     maia = chess.engine.SimpleEngine.popen_uci(
         ["lc0", f"--weights=data/engines/maia/maia-{args.maia_elo}.pb.gz", "--backend=eigen"])
+    m2 = m2_inf = None
+    if rk.assign_bank is not None:              # augmented tables need live human-choice feats
+        from maia2 import model as maia_model, inference as m2_inf
+        m2_inf.prepare()
+        m2 = maia_model.from_pretrained(type="rapid", device=str(dev))
 
     results = {}
     for arm in ("off", "on"):
         gen = SubgoalGenerator(rk, store, top_k=args.top_k) if arm == "on" else None
         pol = PlannerPolicy(args.ckpt, dev, gen, rf, args.eta, weights,
                             args.our_elo, float(args.maia_elo), opp_tau=args.opp_tau,
-                            nu=args.nu, sub_ratio=args.sub_ratio, delta=args.delta)
+                            nu=args.nu, sub_ratio=args.sub_ratio, delta=args.delta,
+                            m2=m2, m2_inf=m2_inf)
         W = D = L = 0; flux_means = []; flux_all = []; pgns = []
         for g in range(args.games):
             from lczerolens import LczeroBoard
@@ -213,7 +237,7 @@ def main():
                 if not ms:
                     break
                 board.push(ms[rng.integers(0, len(ms))])
-            phis_seen, planes_seen, ours_mask = [], [], []
+            phis_seen, planes_seen, ours_mask, fens_seen = [], [], [], []
             ply = board.ply()
             while not board.is_game_over(claim_draw=True) and ply < args.max_plies:
                 we_move = board.turn == (chess.WHITE if our_white else chess.BLACK)
@@ -228,28 +252,30 @@ def main():
                     phis_seen.append(rf.phi([board]).cpu().numpy()[0])
                     planes_seen.append(board.to_input_tensor().float().numpy())
                     ours_mask.append(we_move)
+                    fens_seen.append(board.fen())
             res = board.result(claim_draw=True)
             s = 0.5 if res == "1/2-1/2" else (1.0 if (res == "1-0") == our_white else 0.0)
             W += s == 1.0; D += s == 0.5; L += s == 0.0
             # steering readout: predicted net-flux of positions actually visited
-            cbs = np.zeros(0)
+            cbs = np.zeros(0); cells_seen = None
             if phis_seen:
                 cbs = pol._committor(planes_seen)
                 cbs = cbs if our_white else 1 - cbs          # mover-POV-ish committor coordinate
-                fx = flux_of_positions(rk, np.stack(phis_seen), np.asarray(cbs),
-                                       args.our_elo, float(args.maia_elo))
                 om = np.asarray(ours_mask, bool)
+                feats_seen = None
+                if rk.assign_bank is not None:
+                    # each visited position's MOVER frame (after our move, THEY are to move)
+                    es = np.where(om, float(args.maia_elo), args.our_elo)
+                    eo = np.where(om, args.our_elo, float(args.maia_elo))
+                    feats_seen = maia_feats(m2, m2_inf, fens_seen, es, eo)
+                reg = rk.assign(np.stack(phis_seen), feats_seen)
+                cells_seen = reg * rk.n_cband + np.digitize(np.asarray(cbs), [0.35, 0.65])
+                fx = flux_of_cells(rk, cells_seen, args.our_elo, float(args.maia_elo))
                 flux_means.append(float(fx[om].mean()) if om.any() else float(fx.mean()))
                 flux_all.append(float(fx.mean()))
             # fill plan outcomes (ledger): did the game enter the active cell later?
+            # (cells_seen already assigned above via rk.assign -- augmented-space consistent)
             if arm == "on":
-                P = np.stack(phis_seen) if phis_seen else np.zeros((0, 64))
-                cells_seen = None
-                if len(P):
-                    bank = rk.bank.cpu().numpy()
-                    d2 = (P * P).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2 * P @ bank.T
-                    cells_seen = d2.argmin(1) * rk.n_cband + np.digitize(
-                        np.asarray(cbs), [0.35, 0.65])
                 for pid, pply, cell in store.pending(pol.game_key):
                     hit = np.flatnonzero(cells_seen == cell) if cells_seen is not None else []
                     store.log_outcome(pid, len(hit) > 0,

@@ -42,6 +42,12 @@ class SubgoalRanker:
         self.band_edges = t["band_edges"]       # e.g. [1500]
         self.pcond = t["pcond"] if "pcond" in t.files else None   # (G, CB, B) composite factor
         self.n_cband = self.pcond.shape[1] if self.pcond is not None else 1
+        # augmented-codebook assignment (fired eyes-gate): regions_assign lives in
+        # [zs(phi) ⊕ w·zs(human_feats)] space; queries assign there, tower stays on phi
+        self.assign_bank = t["regions_assign"] if "regions_assign" in t.files else None
+        if self.assign_bank is not None:
+            self.aug = {k: t[k] for k in ("aug_mu_p", "aug_sd_p", "aug_mu_f", "aug_sd_f", "aug_w")}
+
         with torch.no_grad():                   # goal tower ONCE (retrieval-factored)
             self.gh, self.gt = self.model.goal_embs(self.bank)
         self.T = None
@@ -87,6 +93,23 @@ class SubgoalRanker:
 
     def band(self, elo: float) -> int:
         return int(np.searchsorted(self.band_edges, elo, side="right"))
+
+    def assign(self, phis, feats=None):
+        """(B,64) phi [+ (B,4) production-recipe human feats] -> region ids. Augmented tables
+        assign in [zs(phi) ⊕ w·zs(feats)] space; plain tables in phi space."""
+        phis = np.asarray(phis, np.float32)
+        if self.assign_bank is None:
+            bank = self.bank.cpu().numpy()
+            d2 = (phis*phis).sum(1)[:, None] + (bank*bank).sum(1)[None, :] - 2.0*phis@bank.T
+            return d2.argmin(1)
+        assert feats is not None, "augmented table needs human feats for assignment"
+        A = np.concatenate([(phis - self.aug["aug_mu_p"]) / self.aug["aug_sd_p"],
+                            float(self.aug["aug_w"]) * (np.asarray(feats, np.float32)
+                                                        - self.aug["aug_mu_f"])
+                            / self.aug["aug_sd_f"]], 1).astype(np.float32)
+        ab = self.assign_bank
+        d2 = (A*A).sum(1)[:, None] + (ab*ab).sum(1)[None, :] - 2.0*A@ab.T
+        return d2.argmin(1)
 
     @torch.no_grad()
     def rank(self, phi_s, elo_self: float, elo_oppo: float, z_self=None, z_opp=None,

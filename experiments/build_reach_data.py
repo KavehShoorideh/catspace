@@ -39,6 +39,8 @@ def main():
     ap.add_argument("--goals", type=int, default=256)
     ap.add_argument("--eps-quantile", type=float, default=0.5,
                     help="eps = this quantile of train nearest-centroid distance (pre-registered 0.5)")
+    ap.add_argument("--aug", default="", help="aug_feats npz -> cluster/assign in phi⊕feats space")
+    ap.add_argument("--aug-w", type=float, default=3.0)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     t0 = time.time()
@@ -50,20 +52,38 @@ def main():
     train_mask = split == "train"
     print(f"cache: {N} positions | train {train_mask.sum()} | heldout {(~train_mask).sum()}")
 
-    # ---- goal bank: k-means on TRAIN phi only (bank must not peek at heldout) ----
+    # ---- goal bank: k-means on TRAIN rows only (bank must not peek at heldout) ----
     from sklearn.cluster import KMeans
-    km = KMeans(n_clusters=args.goals, n_init=3, random_state=args.seed)
-    km.fit(phi[train_mask])
-    bank = km.cluster_centers_.astype(np.float32)                    # (G,64)
+    if args.aug:
+        # AUGMENTED CODEBOOK (fired eyes-gate 2026-07-30): cluster + assign in standardized
+        # [phi ⊕ aug_w*feats]; the goal TOWER keeps eating raw phi -> tower bank = per-cluster
+        # mean raw phi (decoupling: assignment space != tower space).
+        feats = np.load(args.aug)["feats"].astype(np.float32)
+        mu_p, sd_p = phi[train_mask].mean(0), phi[train_mask].std(0) + 1e-9
+        mu_f, sd_f = feats[train_mask].mean(0), feats[train_mask].std(0) + 1e-9
+        A = np.concatenate([(phi - mu_p) / sd_p, args.aug_w * (feats - mu_f) / sd_f], 1)
+        km = KMeans(n_clusters=args.goals, n_init=3, random_state=args.seed)
+        km.fit(A[train_mask])
+        assign_bank = km.cluster_centers_.astype(np.float32)
+        lab = km.predict(A)
+        bank = np.stack([phi[lab == g].mean(0) if (lab == g).any() else phi[train_mask].mean(0)
+                         for g in range(args.goals)]).astype(np.float32)
+        phi_assign = A                                               # membership space
+    else:
+        km = KMeans(n_clusters=args.goals, n_init=3, random_state=args.seed)
+        km.fit(phi[train_mask])
+        bank = km.cluster_centers_.astype(np.float32)                # (G,64)
+        assign_bank, phi_assign = bank, phi
+        mu_p = sd_p = mu_f = sd_f = None
 
     # ---- distances position->goal, TWO-PASS chunked (never hold the (N,G) float matrix:
     # at v2 scale that is >4 GB; pass 1 = nearest-centroid dist for eps, pass 2 = membership) ----
     G = args.goals
-    b2 = (bank * bank).sum(1)[None, :]
+    b2 = (assign_bank * assign_bank).sum(1)[None, :]
 
     def dchunk(i):
-        x = phi[i:i + 8192]
-        return np.sqrt(np.maximum((x * x).sum(1)[:, None] + b2 - 2.0 * x @ bank.T, 0.0))
+        x = phi_assign[i:i + 8192]
+        return np.sqrt(np.maximum((x * x).sum(1)[:, None] + b2 - 2.0 * x @ assign_bank.T, 0.0))
 
     near = np.empty(N, dtype=np.float32)
     for i in range(0, N, 8192):
@@ -109,6 +129,8 @@ def main():
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         out, hit=hit, plies=plies, in_now=in_now, bank=bank, eps=np.float32(eps),
+        **({"assign_bank": assign_bank, "aug_mu_p": mu_p, "aug_sd_p": sd_p,
+            "aug_mu_f": mu_f, "aug_sd_f": sd_f, "aug_w": args.aug_w} if args.aug else {}),
         phi=phi, pidx=np.asarray(c["pidx"], dtype=np.int32),
         elo_self=np.asarray(c["elo_self"], dtype=np.float32),
         elo_oppo=np.asarray(c["elo_oppo"], dtype=np.float32),
