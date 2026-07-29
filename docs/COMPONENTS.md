@@ -66,6 +66,9 @@ Design: `THESIS.md`. Plan: `../MILESTONES.md`.*
 - `catspace/vectordb.py` — bank sync + k-NN query over field embeddings. **live**
 - `catspace/memory/retrieval.py` — `d_to_goal` / `d_to_region` retrieval primitives (the
   memory-index half of "index points from memory"). **live**
+- `catspace/memory/plan_store.py` — the engine's live memory (sqlite, DELETE mode): plan ledger
+  (intent vs realization — feeds the M4 steering verdict), per-opponent (Elo,z) persistence,
+  reserved M7 armed-tactics table keyed on protective SAE atoms. **live, M4 substrate**
 
 ## Planner & search — the existence evaluator + navigation (M4/M5 pending)
 
