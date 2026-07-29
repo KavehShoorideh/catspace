@@ -8950,3 +8950,26 @@ SAE/CAV stage (learned concept directions from the trunk representation, named p
 Also: subgoal API gained the explicit AVOID list (steer-away half — Kaveh's directive);
 atlas artifact committed (docs/figures/m3_atlas.png). DoD conversation surfaced to Kaveh
 per the rules (no silent redefinition).
+
+---
+
+## 2026-07-29 — M3 CLOSED: learned concept vocabulary passes (16+16, zero hand-coding)
+
+Kaveh's directive ("NO HAND CODING AT ALL"): the M3b vocabulary comes from the network, not from
+us. Method: TopK-SAE (dictionary_learning.AutoEncoderTopK, dict 1024, k=16) on the frozen trunk's
+per-square tokens (70k SF-labeled positions; recon R² 0.941, 0 dead atoms); position atom score =
+max over squares; the SAME matched harness (sharpness × phase × band strata, game-clustered CIs);
+multiple-comparison discipline = select on even games / confirm on odd. First pass selected by
+|effect| → 0 attacking + 32 protective — a SELECTION ARTIFACT (protective magnitudes dominate:
+−0.47 vs +0.20 SD); directional selection fixed it. FINAL VERDICT: **16 attacking + 16 protective
+atoms, all confirmed on held-out games** (gate ≥5+≥5 PASS). Catalog with top-activating FENs per
+atom committed (m3b_atom_catalog.npz + m3b_sae_latest.pt).
+
+The asymmetry itself is the scientific residue: protective structure is strong/legible; error
+affordance is weak/diffuse/hidden — consistent across hand-coded rounds and the learned
+dictionary. Protective atoms = the blocker vocabulary M7's armed tactics watch.
+
+**M3 DoD MET** (annotated in MILESTONES): API + latency + composite enrichment + bands-differ +
+M3b 16+16 + atlas artifact. NEXT MILESTONE: M4 — wire the subgoal API (approach + avoid lists)
+into the optionality portfolio planner; play bar = parity vs Maia-1100 at fixed nodes + steering
+demonstrated.
