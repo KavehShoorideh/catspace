@@ -49,7 +49,7 @@ class ReachHead(nn.Module):
 
     def __init__(self, d_phi=64, d_z=16, d_emb=64, width=128, d_opp=0):
         super().__init__()
-        self.state = nn.Sequential(nn.Linear(d_phi + d_z + 2 + d_opp, width), nn.ReLU(),
+        self.state = nn.Sequential(nn.Linear(d_phi + d_z + 4 + d_opp, width), nn.ReLU(),
                                    nn.Linear(width, width), nn.ReLU())
         self.goal = nn.Sequential(nn.Linear(d_phi, width), nn.ReLU(),
                                   nn.Linear(width, width), nn.ReLU())
@@ -105,6 +105,8 @@ def main():
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--lam-time", type=float, default=1.0)
+    ap.add_argument("--elo-dropout", type=float, default=0.1,
+                    help="per-side train-time Elo masking prob (teaches the full-pop fallback)")
     ap.add_argument("--ckpt-every", type=int, default=200)
     ap.add_argument("--eval-every", type=int, default=100)
     ap.add_argument("--seed", type=int, default=0)
@@ -127,8 +129,14 @@ def main():
 
     t = lambda x, ty=torch.float32: torch.as_tensor(x, dtype=ty, device=dev)
     phi, bank = t(d["phi"]), t(d["bank"])
-    hit, plies, in_now = t(d["hit"]), t(d["plies"]), t(d["in_now"])
-    elos = torch.stack([(t(d["elo_self"]) - 1500) / 400, (t(d["elo_oppo"]) - 1500) / 400], -1)
+    hit = torch.as_tensor(d["hit"], device=dev)                    # uint8 (native -- v2 is 4M rows)
+    plies = torch.as_tensor(d["plies"], device=dev)                # int16
+    in_now = torch.as_tensor(d["in_now"], device=dev)              # uint8
+    # Elo block: [elo_self_n, elo_oppo_n, known_self, known_oppo]. Data always has Elo (flags=1);
+    # train-time MASKING (below) teaches the full-population fallback (Kaveh 2026-07-28: absent z
+    # -> Elo population; absent/provisional Elo -> full population).
+    elos = torch.stack([(t(d["elo_self"]) - 1500) / 400, (t(d["elo_oppo"]) - 1500) / 400,
+                        torch.ones(N, device=dev), torch.ones(N, device=dev)], -1)
     pidx = d["pidx"].astype(np.int64)                                  # -1 -> last (zero) slot
     zvec = ztab.to(dev)[torch.as_tensor(np.where(pidx < 0, ztab.shape[0] - 1, pidx), device=dev)]
 
@@ -142,7 +150,7 @@ def main():
     else:
         zopp, d_opp = None, 0
     model = ReachHead(d_phi=phi.shape[1], d_z=ztab.shape[1], d_opp=d_opp).to(dev)
-    base = float(hit[t(is_train, torch.bool)][in_now[t(is_train, torch.bool)] == 0].mean())
+    base = float(hit[t(is_train, torch.bool)][in_now[t(is_train, torch.bool)] == 0].float().mean())
     with torch.no_grad():
         model.b_hit.fill_(float(np.log(base / (1 - base))))            # base-rate init
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
@@ -151,17 +159,24 @@ def main():
     def ctx(r):
         return torch.cat([elos[r], zopp[r]], 1) if zopp is not None else elos[r]
 
-    def batch_loss(rows):
+    def batch_loss(rows, train=False):
         r = torch.as_tensor(rows, device=dev)
-        logit, ptime = model(phi[r], zvec[r], ctx(r), bank)
+        logit, ptime = model(phi[r], zvec[r], train_ctx(r) if train else ctx(r), bank)
         mask = in_now[r] == 0
         l_hit = first_hit_bce(logit[mask], hit[r][mask])
         l_t = censored_plies_loss(ptime[mask], plies[r][mask], hit[r][mask])
         return l_hit, l_t
 
+    def train_ctx(r):
+        c = ctx(r).clone()
+        for side in (0, 1):                                        # mask elo value + its flag
+            m = torch.rand(len(r), device=dev) < args.elo_dropout
+            c[m, side] = 0.0; c[m, 2 + side] = 0.0
+        return c
+
     def step_fn(model, step):
         model.train(); opt.zero_grad()
-        l_hit, l_t = batch_loss(rng.choice(tr_idx, args.batch, replace=False))
+        l_hit, l_t = batch_loss(rng.choice(tr_idx, args.batch, replace=False), train=True)
         (l_hit + args.lam_time * l_t).backward(); opt.step()
         return {"loss_hit": l_hit.item(), "loss_time": l_t.item()}
 

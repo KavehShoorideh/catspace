@@ -56,17 +56,22 @@ def main():
     km.fit(phi[train_mask])
     bank = km.cluster_centers_.astype(np.float32)                    # (G,64)
 
-    # ---- distances position->goal, chunked ----
+    # ---- distances position->goal, TWO-PASS chunked (never hold the (N,G) float matrix:
+    # at v2 scale that is >4 GB; pass 1 = nearest-centroid dist for eps, pass 2 = membership) ----
     G = args.goals
-    d = np.empty((N, G), dtype=np.float32)
-    for i in range(0, N, 8192):
+    b2 = (bank * bank).sum(1)[None, :]
+
+    def dchunk(i):
         x = phi[i:i + 8192]
-        d[i:i + 8192] = np.sqrt(
-            np.maximum((x * x).sum(1)[:, None] + (bank * bank).sum(1)[None, :]
-                       - 2.0 * x @ bank.T, 0.0))
-    near_tr = d[train_mask].min(1)
-    eps = float(np.quantile(near_tr, args.eps_quantile))
-    member = d <= eps                                                # (N,G) bool
+        return np.sqrt(np.maximum((x * x).sum(1)[:, None] + b2 - 2.0 * x @ bank.T, 0.0))
+
+    near = np.empty(N, dtype=np.float32)
+    for i in range(0, N, 8192):
+        near[i:i + 8192] = dchunk(i).min(1)
+    eps = float(np.quantile(near[train_mask], args.eps_quantile))
+    member = np.empty((N, G), dtype=bool)
+    for i in range(0, N, 8192):
+        member[i:i + 8192] = dchunk(i) <= eps
 
     # ---- first-hit labels per game (strictly later decision point) ----
     game = np.asarray(c["game_id"]); ply = np.asarray(c["ply"])
@@ -109,6 +114,8 @@ def main():
         elo_oppo=np.asarray(c["elo_oppo"], dtype=np.float32),
         split=split, game_id=game.astype(np.int64), ply=ply.astype(np.int32),
         player_id=np.asarray(c["player_id"]).astype(np.uint64),
+        **({"result_mover": np.asarray(c["result_mover"], dtype=np.float32)}
+           if "result_mover" in c else {}),
         meta_cache=str(args.cache), meta_goals=G, meta_seed=args.seed,
         meta_eps_quantile=args.eps_quantile)
     print(f"wrote {out} ({out.stat().st_size/1e6:.1f} MB) in {time.time()-t0:.1f}s")
