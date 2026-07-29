@@ -33,6 +33,7 @@ from catspace.field import ReachabilityField                           # noqa: E
 from catspace.subgoals import SubgoalRanker                            # noqa: E402
 from catspace.memory.plan_store import PlanStore                       # noqa: E402
 from catspace.planner.subgoal_gen import SubgoalGenerator              # noqa: E402
+from catspace.style.live import LiveOpponent                           # noqa: E402
 from catspace.planner.optionality import (ShapeWeights, board_self_blunder,  # noqa: E402
                                           move_scores)
 from catspace.train.scaffold import resolve_device                     # noqa: E402
@@ -49,7 +50,7 @@ class PlannerPolicy(CommittorGreedy):
         super().__init__(ckpt, device, opp_tau=opp_tau)
         self.gen = gen; self.rf = rf; self.eta = eta; self.w = weights
         self.nu = nu; self.sub_ratio = sub_ratio; self.delta = delta
-        self.m2 = m2; self.m2_inf = m2_inf
+        self.m2 = m2; self.m2_inf = m2_inf; self.live = None
         self.elo_self = elo_self; self.elo_oppo = elo_oppo
         self.game_key = ""; self.visited_phis = []
 
@@ -115,17 +116,23 @@ class PlannerPolicy(CommittorGreedy):
         # successor NET-FLUX term, auto-SUBORDINATED to the value signal (the iter-2 diagnosis:
         # log-space shaping at small p overrode the engine with amplified noise) ---
         phi_now = self.rf.phi([lcboard]).cpu().numpy()
+        zo = self.live.z if self.live is not None else None
+        no = self.live.n_obs if self.live is not None else 0
         pc = self.gen.plan(phi_now[0], self.game_key, ply, "w" if lcboard.turn else "b",
-                           self.elo_self, self.elo_oppo)
+                           self.elo_self, self.elo_oppo, z_opp=zo, n_obs=no)
         succ = []
         for m in moves:
             lcboard.push(m); succ.append(lcboard.copy(stack=False)); lcboard.pop()
         phis_after = self.rf.phi(succ).cpu().numpy()
         wme = pc.w_me / pc.w_me.sum(); wop = pc.w_opp / pc.w_opp.sum()
-        p_me_b = self.gen.reach_p(phi_now, pc.cells_me, self.elo_self, self.elo_oppo)[0]
-        p_op_b = self.gen.reach_p(phi_now, pc.cells_opp, self.elo_self, self.elo_oppo)[0]
-        p_me_a = self.gen.reach_p(phis_after, pc.cells_me, self.elo_self, self.elo_oppo)
-        p_op_a = self.gen.reach_p(phis_after, pc.cells_opp, self.elo_self, self.elo_oppo)
+        p_me_b = self.gen.reach_p(phi_now, pc.cells_me, self.elo_self, self.elo_oppo,
+                                  z_opp=zo, n_obs=no)[0]
+        p_op_b = self.gen.reach_p(phi_now, pc.cells_opp, self.elo_self, self.elo_oppo,
+                                  z_opp=zo, n_obs=no)[0]
+        p_me_a = self.gen.reach_p(phis_after, pc.cells_me, self.elo_self, self.elo_oppo,
+                                  z_opp=zo, n_obs=no)
+        p_op_a = self.gen.reach_p(phis_after, pc.cells_opp, self.elo_self, self.elo_oppo,
+                                  z_opp=zo, n_obs=no)
         gain_me = (p_me_a - p_me_b) @ wme
         gain_opp = (p_op_a - p_op_b) @ wop
         # steer INTO their-error territory now: net flux of each successor's composite cell.
@@ -192,6 +199,8 @@ def main():
     ap.add_argument("--nu", type=float, default=0.5, help="successor net-flux weight in the prior mix")
     ap.add_argument("--sub-ratio", type=float, default=0.25,
                     help="(iter-3 legacy; unused in iter-4 tie-break)")
+    ap.add_argument("--live-z", type=int, default=1,
+                    help="1 = run the in-game (Elo,z) estimator and feed causal z_opp(t) to the field")
     ap.add_argument("--delta", type=float, default=0.02,
                     help="value tolerance (committor units) inside which the plan picks the move")
     ap.add_argument("--depth", type=int, default=2)
@@ -217,11 +226,9 @@ def main():
     weights = ShapeWeights(beta=args.beta, lam=args.lam, mu=args.mu)
     maia = chess.engine.SimpleEngine.popen_uci(
         ["lc0", f"--weights=data/engines/maia/maia-{args.maia_elo}.pb.gz", "--backend=eigen"])
-    m2 = m2_inf = None
-    if rk.assign_bank is not None:              # augmented tables need live human-choice feats
-        from maia2 import model as maia_model, inference as m2_inf
-        m2_inf.prepare()
-        m2 = maia_model.from_pretrained(type="rapid", device=str(dev))
+    from maia2 import model as maia_model, inference as m2_inf
+    prepared = m2_inf.prepare()
+    m2 = maia_model.from_pretrained(type="rapid", device=str(dev))
 
     results = {}
     for arm in ("off", "on"):
@@ -235,6 +242,11 @@ def main():
             from lczerolens import LczeroBoard
             board = LczeroBoard(); our_white = (g % 2 == 0)
             pol.game_key = f"{args.tag}_{arm}_{g}"
+            pol.live = LiveOpponent(rf, m2, m2_inf, prepared,
+                                    "artifacts/experiments/m2b_style_3k.pt",
+                                    "data/derived/m2b/cache_3k.npz",
+                                    elo_known=float(args.maia_elo), device="cpu") \
+                if arm == "on" and args.live_z else None
             for _ in range(args.opening_plies):
                 ms = list(board.legal_moves)
                 if not ms:
@@ -248,6 +260,10 @@ def main():
                     mv, _ = pol.select(board, rng, depth=args.depth, ply=ply)
                 else:
                     mv = maia.play(board, chess.engine.Limit(nodes=1)).move
+                    if mv is not None and pol.live is not None:
+                        pol.live.observe_move(board, mv.uci(),
+                                              mover_white=(board.turn == chess.WHITE),
+                                              opp_elo_frame=args.our_elo)
                 if mv is None:
                     break
                 board.push(mv); ply += 1
