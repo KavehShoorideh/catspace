@@ -58,6 +58,16 @@ research product, headed for publication.
    `d(s→win-boundary|ctx)` vs `d(s→loss-boundary|ctx)`. Supersedes "d z-independent / z only in T"
    (decision 1's basin-permeable-map framing). z + z_uncertainty come from the M2c estimator's Laplace
    posterior. [[infer_then_condition_z]]*
+   *WALK-BACK (Kaveh 2026-07-28, recorded per this file's rules): the d/T-merge amendment above
+   was tried and EMPIRICALLY REJECTED — z-lift ≈ 0 on every target, and structurally a
+   MIN/quasimetric object is best-case reach, hence policy-invariant (cannot carry z). The locked
+   replacement: the learned reachability object is a z-conditioned FIRST-HIT PROBABILITY field
+   `P(reach g | s, z_self, z_opp) ≈ ⟨φ_r(s,z), ψ_r(g)⟩` (retrieval-factored, z-free goal tower);
+   forced objects come from legal-move search (df-pn/minimax/TB) with the field as move-ordering
+   only; z_opp is fed by the M2c estimator's CAUSAL in-game posterior ẑ_opp(t). See
+   docs/THESIS.md §3 and memory [[z_conditioned_field_two_evaluators]]. Decision 1's
+   geometry-first language now reads probability-first: navigation runs on P(reach) × basin
+   quality; WDL/committor remain labels + analysis, never the primary navigation value.*
 4. **Player model = known Elo part + unknown residual z.** Population prior p(z | Elo);
    per-player offline embeddings where history exists (name-masked ids); **in-game posterior
    tightening** of z from observed moves (cold start = prior). Matilda-style residual design.
