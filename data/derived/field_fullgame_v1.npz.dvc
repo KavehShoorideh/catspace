@@ -1,0 +1,5 @@
+outs:
+- md5: 0f6fcdf5b5b000750bf010392ac6efdf
+  size: 143388592
+  hash: md5
+  path: field_fullgame_v1.npz
