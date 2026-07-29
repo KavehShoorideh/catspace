@@ -71,9 +71,20 @@ def paired_nll_ci(nll_better, nll_base, clusters=None, n_boot: int = 2000, seed:
     rng = np.random.default_rng(seed)
     n = len(diff); clusters = np.asarray(clusters) if clusters is not None else None
     boots = np.empty(n_boot)
-    for i in range(n_boot):
-        idx = _cluster_resample_idx(clusters, rng) if clusters is not None else rng.integers(0, n, n)
-        boots[i] = np.mean(diff[idx])
+    if clusters is not None:
+        # FAST cluster bootstrap (2026-07-29): the boot statistic is a ratio of resampled
+        # per-cluster sums, so precompute sums/counts ONCE (O(n)) and make each boot O(#clusters).
+        # Draws rng.integers(0, U, U) exactly like the index path -> bit-for-bit identical results
+        # (asserted in _tests). At v2 scale (93M pairs) the index path was ~seconds/boot.
+        uniq, inv = np.unique(clusters, return_inverse=True)
+        csum = np.bincount(inv, weights=diff, minlength=len(uniq))
+        ccnt = np.bincount(inv, minlength=len(uniq)).astype(float)
+        for i in range(n_boot):
+            picks = rng.integers(0, len(uniq), len(uniq))
+            boots[i] = csum[picks].sum() / ccnt[picks].sum()
+    else:
+        for i in range(n_boot):
+            boots[i] = np.mean(diff[rng.integers(0, n, n)])
     lo, hi = np.nanpercentile(boots, [100 * alpha / 2, 100 * (1 - alpha / 2)])
     return lift, float(lo), float(hi), float(np.mean(boots > 0))
 
