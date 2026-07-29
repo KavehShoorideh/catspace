@@ -173,6 +173,23 @@ def extract_chunk(fens):
     return out
 
 
+def stratified_effect(f, m_case, strat_):
+    """case-control effect within strata, case-count weighted (the M3b matched harness)."""
+    eff, wsum = 0.0, 0.0
+    for st in np.unique(strat_):
+        m = strat_ == st
+        nc, nk = (m & m_case).sum(), (m & ~m_case).sum()
+        if nc >= 20 and nk >= 20:
+            eff += nc * (f[m & m_case].mean() - f[m & ~m_case].mean()); wsum += nc
+    return eff / max(wsum, 1)
+
+
+def build_strata(cb, pieces, elo):
+    s_cb = np.digitize(cb, [0.2, 0.35, 0.65, 0.8])
+    s_pc = np.digitize(pieces, [10, 20, 27])
+    return s_cb * 100 + s_pc * 10 + (np.asarray(elo) >= 1500).astype(int)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--labeled", default="data/derived/transition_data_labeled.npz")
@@ -203,20 +220,7 @@ def main():
     print(f"extracted {feats.shape} in {time.time()-t0:.0f}s")
 
     # strata: sharpness x phase x band (the confounder set)
-    s_cb = np.digitize(cbk, [0.2, 0.35, 0.65, 0.8])
-    s_pc = np.digitize(pieces, [10, 20, 27])
-    s_el = (elok >= 1500).astype(int)
-    strat = s_cb * 100 + s_pc * 10 + s_el
-
-    def stratified_effect(f, m_case, strat_):
-        eff, wsum = 0.0, 0.0
-        for s in np.unique(strat_):
-            m = strat_ == s
-            nc, nk = (m & m_case).sum(), (m & ~m_case).sum()
-            if nc >= 20 and nk >= 20:
-                w = nc
-                eff += w * (f[m & m_case].mean() - f[m & ~m_case].mean()); wsum += w
-        return eff / max(wsum, 1)
+    strat = build_strata(cbk, pieces, elok)
 
     rng = np.random.default_rng(0)
     games = np.unique(gk)

@@ -220,6 +220,18 @@ per-context atlas visualizations + a queryable API `(s, context) → ranked subg
   play budgets (latency measured + recorded); out-of-sample: top-decile predicted-flux regions show
   ≥ 2× base crossing rate, for ≥ 2 rating bands, and the bands' maps measurably differ. M3b —
   ≥ 5 attacking + ≥ 5 protective factors significant under matching. Atlas artifact committed.
+  **[MET 2026-07-29.** API = catspace/subgoals.py (approach + AVOID lists, 0.10 ms/query);
+  regions live in COMPOSITE (φ-pattern × committor-band) space — pure φ-partitions capped at
+  ~1.7× because the transition ridge (c≈0.5) cuts across pattern space; composite cells hit
+  3.32×/3.04× out-of-sample on both bands, band maps differ (Spearman 0.573, Jaccard 0.06).
+  M3b via the NO-HAND-CODING route (Kaveh's directive): TopK-SAE atoms over frozen-trunk square
+  tokens + the matched case-control harness with directional select-even/confirm-odd —
+  **16 attacking + 16 protective learned atoms**, all held-out-confirmed (attacking max +0.22 SD;
+  protective to −0.47 SD). Standing finding: visible danger PROTECTS, error-affordance is hidden
+  and diffuse (three independent methods concur) — hand-coded "attacking features" are
+  structurally capped at ~4. Atlas artifact docs/figures/m3_atlas.png; atom catalog
+  artifacts/experiments/m3b_atom_catalog.npz. Field substrate = reach_v2 two-z first-hit
+  probability field (both style slots CI-positive at 60k games; ECE 0.0005).]**
 
 ### M4 — Planner: subgoal-chain navigation (the strategist)
 Wire the M3 generator into the built portfolio planner (optionality/denial/opportunism);
