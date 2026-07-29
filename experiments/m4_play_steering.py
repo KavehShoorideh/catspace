@@ -43,8 +43,9 @@ class PlannerPolicy(CommittorGreedy):
     """value (committor-greedy 1-ply) + optionality shaping over the M3 subgoal lists."""
 
     def __init__(self, ckpt, device, gen: SubgoalGenerator | None, rf: ReachabilityField,
-                 eta: float, weights: ShapeWeights, elo_self: float, elo_oppo: float):
-        super().__init__(ckpt, device)
+                 eta: float, weights: ShapeWeights, elo_self: float, elo_oppo: float,
+                 opp_tau: float = 0.15):
+        super().__init__(ckpt, device, opp_tau=opp_tau)
         self.gen = gen; self.rf = rf; self.eta = eta; self.w = weights
         self.elo_self = elo_self; self.elo_oppo = elo_oppo
         self.game_key = ""; self.visited_phis = []
@@ -64,11 +65,46 @@ class PlannerPolicy(CommittorGreedy):
         return np.array([t if not isinstance(t, tuple) else
                          (c[t[1]] if my_white else 1 - c[t[1]]) for t in term.values()])
 
-    def select(self, lcboard, rng, depth=1, ply=0):
+    def _values_2ply(self, lcboard, moves):
+        """root values under 2-ply EXPECTIMAX vs a fallible opponent (opp_tau softmax) --
+        the configuration of the historic 0.125 baseline vs Maia-1100."""
+        my_white = (lcboard.turn == chess.WHITE)
+        leaves, move_reply = [], []
+        for m in moves:
+            lcboard.push(m)
+            if lcboard.is_game_over(claim_draw=True):
+                move_reply.append([("term", self._term_myval(lcboard, my_white))])
+                lcboard.pop(); continue
+            rr = []
+            for r_ in lcboard.legal_moves:
+                lcboard.push(r_)
+                if lcboard.is_game_over(claim_draw=True):
+                    rr.append(("term", self._term_myval(lcboard, my_white)))
+                else:
+                    rr.append(("leaf", len(leaves)))
+                    leaves.append(lcboard.to_input_tensor().float().numpy())
+                lcboard.pop()
+            move_reply.append(rr); lcboard.pop()
+        c = self._committor(leaves)
+
+        def leafval(t):
+            return t[1] if t[0] == "term" else (c[t[1]] if my_white else 1 - c[t[1]])
+
+        vals = []
+        for rr in move_reply:
+            v = np.array([leafval(t) for t in rr]) if rr else np.array([0.5])
+            if self.opp_tau <= 0:
+                vals.append(float(v.min()))
+            else:
+                w = np.exp(-(v - v.min()) / self.opp_tau); w /= w.sum()
+                vals.append(float((w * v).sum()))
+        return np.array(vals)
+
+    def select(self, lcboard, rng, depth=2, ply=0):
         moves = list(lcboard.legal_moves)
         if not moves:
             return None, 0.5
-        vals = self._values_1ply(lcboard, moves)
+        vals = self._values_2ply(lcboard, moves) if depth >= 2 else             self._values_1ply(lcboard, moves)
         if self.gen is None or len(moves) == 1:              # planner OFF -> pure value
             i = int(np.argmax(vals))
             return moves[i], float(vals[i])
@@ -112,7 +148,9 @@ def main():
     ap.add_argument("--store", default="data/derived/engine_memory.sqlite")
     ap.add_argument("--maia-elo", type=int, default=1100)
     ap.add_argument("--games", type=int, default=20, help="per arm")
-    ap.add_argument("--eta", type=float, default=0.15)
+    ap.add_argument("--eta", type=float, default=0.5)
+    ap.add_argument("--depth", type=int, default=2)
+    ap.add_argument("--opp-tau", type=float, default=0.15)
     ap.add_argument("--lam", type=float, default=0.5)
     ap.add_argument("--mu", type=float, default=0.1)
     ap.add_argument("--beta", type=float, default=1.0)
@@ -139,8 +177,8 @@ def main():
     for arm in ("off", "on"):
         gen = SubgoalGenerator(rk, store, top_k=args.top_k) if arm == "on" else None
         pol = PlannerPolicy(args.ckpt, dev, gen, rf, args.eta, weights,
-                            args.our_elo, float(args.maia_elo))
-        W = D = L = 0; flux_means = []; pgns = []
+                            args.our_elo, float(args.maia_elo), opp_tau=args.opp_tau)
+        W = D = L = 0; flux_means = []; flux_all = []; pgns = []
         for g in range(args.games):
             from lczerolens import LczeroBoard
             board = LczeroBoard(); our_white = (g % 2 == 0)
@@ -150,11 +188,12 @@ def main():
                 if not ms:
                     break
                 board.push(ms[rng.integers(0, len(ms))])
-            phis_seen, planes_seen = [], []
+            phis_seen, planes_seen, ours_mask = [], [], []
             ply = board.ply()
             while not board.is_game_over(claim_draw=True) and ply < args.max_plies:
-                if board.turn == (chess.WHITE if our_white else chess.BLACK):
-                    mv, _ = pol.select(board, rng, ply=ply)
+                we_move = board.turn == (chess.WHITE if our_white else chess.BLACK)
+                if we_move:
+                    mv, _ = pol.select(board, rng, depth=args.depth, ply=ply)
                 else:
                     mv = maia.play(board, chess.engine.Limit(nodes=1)).move
                 if mv is None:
@@ -163,6 +202,7 @@ def main():
                 if not board.is_game_over(claim_draw=True):
                     phis_seen.append(rf.phi([board]).cpu().numpy()[0])
                     planes_seen.append(board.to_input_tensor().float().numpy())
+                    ours_mask.append(we_move)
             res = board.result(claim_draw=True)
             s = 0.5 if res == "1/2-1/2" else (1.0 if (res == "1-0") == our_white else 0.0)
             W += s == 1.0; D += s == 0.5; L += s == 0.0
@@ -173,7 +213,9 @@ def main():
                 cbs = cbs if our_white else 1 - cbs          # mover-POV-ish committor coordinate
                 fx = flux_of_positions(rk, np.stack(phis_seen), np.asarray(cbs),
                                        args.our_elo, float(args.maia_elo))
-                flux_means.append(float(fx.mean()))
+                om = np.asarray(ours_mask, bool)
+                flux_means.append(float(fx[om].mean()) if om.any() else float(fx.mean()))
+                flux_all.append(float(fx.mean()))
             # fill plan outcomes (ledger): did the game enter the active cell later?
             if arm == "on":
                 P = np.stack(phis_seen) if phis_seen else np.zeros((0, 64))
@@ -196,7 +238,7 @@ def main():
                   f"[{time.time()-t0:.0f}s]", flush=True)
         n = args.games
         results[arm] = dict(score=(W + 0.5 * D) / n, W=int(W), D=int(D), L=int(L),
-                            flux=flux_means)
+                            flux=flux_means, flux_all=flux_all)
         Path(args.save_pgn.replace(".pgn", f"_{arm}.pgn")).write_text("\n\n".join(pgns))
     maia.quit()
 
@@ -209,9 +251,12 @@ def main():
     boots = [np.random.default_rng(i).choice(fon, len(fon)).mean()
              - np.random.default_rng(i + 9999).choice(foff, len(foff)).mean() for i in range(2000)]
     lo, hi = np.percentile(boots, [2.5, 97.5])
-    print(f"VERDICT M4 steering: mean visited-position net-flux ON {fon.mean():+.5f} vs OFF "
+    print(f"VERDICT M4 steering (OUR-move positions): ON {fon.mean():+.5f} vs OFF "
           f"{foff.mean():+.5f} | diff {diff:+.5f} CI[{lo:+.5f},{hi:+.5f}] "
           f"{'PASS' if lo > 0 else 'not yet'} (game-bootstrap)")
+    fa_on, fa_off = np.array(results["on"]["flux_all"]), np.array(results["off"]["flux_all"])
+    print(f"VERDICT M4 steering (all positions):    ON {fa_on.mean():+.5f} vs OFF "
+          f"{fa_off.mean():+.5f} | diff {fa_on.mean()-fa_off.mean():+.5f}")
     rows = store.intent_vs_realization([f"{args.tag}_on_{g}" for g in range(args.games)])
     if rows:
         reached = np.array([r[4] for r in rows])
