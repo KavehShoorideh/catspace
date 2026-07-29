@@ -1,0 +1,5 @@
+outs:
+- md5: 85db888db8f1b32768f9c9a795402a46
+  size: 986104
+  hash: md5
+  path: m2a_aug_feats.npz
