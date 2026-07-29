@@ -8988,3 +8988,18 @@ region-assignment space φ ⊕ Maia-2 features (goal tower stays on φ; relabel 
 min), gated on growing this same +1.17 number. Generative proposers / opponent-conditional cells
 deferred (M7 territory). g in the trained field = 256 k-means φ-cells (bank) / 1024×3 composite
 (atlas) — fully data-defined; codebook swaps are one k-means rerun away.
+
+---
+
+## 2026-07-29 — M4 steering iteration 2: null-to-negative, mechanism diagnosed
+
+Depth-2 base restored real strength (OFF 0.100 vs maia-1100 ≈ the historic baseline). But shaping
+(η=0.5) COST strength (ON 0.050) and steering went null (−0.0017, CI straddles). Probe over 23
+real midgame decisions: η·prior spread = 2.07× value spread (the "nudge" was OVERRIDING the
+engine) and corr(prior, value) = −0.04 with prior std 0.23 nats — far too large to be real
+one-move reachability change. MECHANISM: −log P at small p (reach probs 1e-3..1e-2 to distant
+regions) amplifies successor-encoder jitter into ±0.2-nat swings → the planner steered on noise.
+Candidate fixes (design call): (a) shaping deltas in PROBABILITY space (bounded, no log
+amplification); (b) shape by successor-position NET-FLUX directly (table lookup, bounded, aligned
+with the steering metric); (c) η normalized so shaping stays subordinate (≈0.25× value spread).
+Iteration 1+2 both recorded; machinery (planner, ledger, instrument) validated throughout.
