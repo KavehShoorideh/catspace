@@ -8812,3 +8812,29 @@ DESIGN_NOTES, VIZ_PLAN, PUBLICATION_VETO_NOTE, old COMPONENTS/RUNBOOK/GLOSSARY).
 MILESTONES decision-3: dated WALK-BACK note recorded (the d/T-merge amendment was empirically
 rejected; replacement = z-conditioned first-hit probability field + legal-move search; decision 1
 reads probability-first). MILESTONES itself stays locked at root; README stays the front door.
+
+---
+
+## 2026-07-28 — v1b: causal z_opp(t) slot built; stratified smoke shows the predicted gradient
+
+BUNDLE (recorded per no-one-lever rule): (1) build_zopp_causal.py — per-game causal estimator
+sweep (elo_known, doubling recompute schedule; 61s for 3.7k games); found+guarded a LATENT TRAP:
+maia2 all_moves_dict emits move indices to ~1879 but the M2b model's move_emb is sized
+VOCAB=1858+pad (3k cache never contained the overflow; dense caches do) — unscorable candidates
+strict-masked, observations with unscorable played moves dropped. (2) trainer --zopp: 17-d slot
+(z_opp_t + log-normalized n_obs), z_opp=0-with-n_obs-kept ablation, wrong-opponent placebo
+(permuted within Elo-band × n_obs bucket), STRATIFIED z_opp verdicts at n_obs>=10/40
+(pre-registered: the style effect can only live where the causal estimate has information;
+unstratified nulls over the 93% low-info rows are uninformative), count-weighted ECE.
+Sweep audits: n_obs med 13 at our rows, 95.5%>=1, 60%>=10, 7%>=40; cold rows exactly z=0.
+
+600-step smoke3 VERDICTs (printed): z_self +0.002 [-0.002,+0.006] (diluted vs v1's +0.006 at
+same steps — wider input, same budget); z_opp overall -0.000 p=0.37; @>=10 -0.000 p=0.32;
+@>=40 +0.001 [-0.001,+0.003] p=0.816 — sign appears exactly in the informed stratum. ECE 0.003;
+plies MAE 0.418 vs 0.771 baseline; eff_rank 25.9/64; machinery fully green (an eff_rank-block
+input-dim crash was caught by the smoke and fixed — standard 14 earning its keep twice).
+
+PRE-REGISTERED before the full run: the v1b claim rides on the FULL run's z_opp-lift@n_obs>=40
+verdict; a 600-step stratified null is not evidence of absence (600 steps under-trains even
+z_self). If the full run's stratified verdict is null → a real finding about the causal
+estimate's information content at rapid game lengths → plan conversation, no silent redefinition.
