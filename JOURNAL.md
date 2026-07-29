@@ -8795,3 +8795,20 @@ v2 rebuild adds recovered ẑ_opp + clocks. 600-step smoke VERDICTs (printed):
   eff_rank          : 23.2/64 [23.1,23.4] — no collapse; unseen-player z=0 fallback calibrated
 
 Sign of the claim shows at smoke scale (standard 14) → committing, launching full run.
+
+---
+
+## 2026-07-28 — Doc unification: THESIS / COMPONENTS / TESTING / RUNBOOK / GLOSSARY (+ JOURNAL)
+
+Kaveh's call: the docs were fragmented session-era snapshots; unify to five files reflecting the
+TRUE architecture. Done: docs/THESIS.md (claim + epistemics + two-evaluator architecture of
+record + whose-math/novelty condensed + design-history reversal table), docs/COMPONENTS.md
+(current stack with live/instrument/legacy status), docs/TESTING.md (claims discipline + the 16
+training standards + acceptance-instrument patterns), docs/RUNBOOK.md (current pipelines; durable
+launch kept), docs/GLOSSARY.md (current vocabulary; acronyms stay canonical in MILESTONES).
+Superseded docs preserved via git mv in docs/archive/ (ARCHITECTURE, METASTABILITY_PLAN,
+REACHABILITY_FOUNDATIONS, TRAINING_STANDARDS, PROCESS, relevant_sources, IMPLEMENTATION_PLAN,
+DESIGN_NOTES, VIZ_PLAN, PUBLICATION_VETO_NOTE, old COMPONENTS/RUNBOOK/GLOSSARY). README repointed.
+MILESTONES decision-3: dated WALK-BACK note recorded (the d/T-merge amendment was empirically
+rejected; replacement = z-conditioned first-hit probability field + legal-move search; decision 1
+reads probability-first). MILESTONES itself stays locked at root; README stays the front door.

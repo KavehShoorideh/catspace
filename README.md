@@ -22,8 +22,8 @@ project you're likely to find in a repo. (Newest entries at the bottom.)
 design decision. Changes get their own dated entries; it is deliberately hard to
 drift.
 
-**[docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md)** — the
-current design-of-record. A "whose math we borrow" table mapping each component to
+**[docs/THESIS.md](docs/THESIS.md)** — the claim and the
+architecture of record, unified. A "whose math we borrow" table mapping each component to
 its source theorem (attractors, ATL/rPATL, MDP reachability, proof-number search,
 contrastive RL, the CVaR risk knob — each graded by how hard it was verified), a
 novelty ledger with nearest prior art, and the **two-evaluator architecture**: a
@@ -81,7 +81,7 @@ is tablebase territory and the exploitation happens before it.*
 ## What it builds on — and where the novelty is
 
 **Built on** (imported, not reinvented; the fully-cited, verification-graded table is
-in [docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md) §2):
+in [docs/THESIS.md](docs/THESIS.md) §6):
 
 - **Frozen Leela (lc0) trunk** for board embeddings + WDL/moves-left heads; **Maia-2**
   as the rating-conditioned human move prior; **Stockfish** as the objective referee;
@@ -99,7 +99,7 @@ in [docs/REACHABILITY_FOUNDATIONS.md](docs/REACHABILITY_FOUNDATIONS.md) §2):
 - A **Matilda-style residual** design for the per-player style embedding `z`.
 
 **Where the novelty is** (graded *plausibly novel* — the honest novelty ledger with
-nearest prior art is in the foundations doc §3):
+nearest prior art is in THESIS §6 and the archived foundations doc):
 
 - **Opponent-conditioned reachability:** `P(first-reach g | s, z_self, z_opp)` to
   arbitrary memorized goal regions, learned from human games. Occupancy/successor
@@ -133,13 +133,14 @@ nearest prior art is in the foundations doc §3):
 - [`experiments/msm_basins.py`](experiments/msm_basins.py) — metastable basins via
   MSM/PCCA on real games.
 
-**The reference shelf, [docs/](docs/)** — `ARCHITECTURE.md` (the technical spec;
-jump to the `⭐ CURRENT ARCHITECTURE` section), `METASTABILITY_PLAN.md` (the
-basin/committor strategy), `GLOSSARY.md` (every term in plain language),
-`TRAINING_STANDARDS.md` (engineering discipline — each rule cites the scar that
-created it), `RUNBOOK.md` (reproduce any run), `COMPONENTS.md` (code map).
-Superseded documents are preserved in `docs/archive/` — the design history is part
-of the record.
+**The doc set, [docs/](docs/)** — five files, unified 2026-07-28:
+[`THESIS.md`](docs/THESIS.md) (the claim + architecture of record),
+[`COMPONENTS.md`](docs/COMPONENTS.md) (what exists, where, status),
+[`TESTING.md`](docs/TESTING.md) (how claims are made — each rule cites the scar that
+created it), [`RUNBOOK.md`](docs/RUNBOOK.md) (run and reproduce),
+[`GLOSSARY.md`](docs/GLOSSARY.md) (the vocabulary). Plus the locked
+[`MILESTONES.md`](MILESTONES.md) at root and [`JOURNAL.md`](JOURNAL.md). Superseded
+documents are preserved in `docs/archive/` — the design history is part of the record.
 
 ## Component map
 
