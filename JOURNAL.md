@@ -9003,3 +9003,17 @@ Candidate fixes (design call): (a) shaping deltas in PROBABILITY space (bounded,
 amplification); (b) shape by successor-position NET-FLUX directly (table lookup, bounded, aligned
 with the steering metric); (c) η normalized so shaping stays subordinate (≈0.25× value spread).
 Iteration 1+2 both recorded; machinery (planner, ledger, instrument) validated throughout.
+
+---
+
+## 2026-07-29/30 — INCREMENTAL EYES TEST: the gate FIRES — codebook swaps to φ ⊕ Maia features
+
+Kaveh's "Leela's eyes, human flow" caution tested in the strong form: regions re-clustered in
+φ ⊕ 4 Maia-2 features (policy entropy, top-p, top-gap, win_prob @1550; standardized, human dims
+upweighted 3×). Cell-beyond-eval lift (held-out, permutation-controlled protocol as before):
+phi-only +0.750 mnats (AUC 0.8989) → AUGMENTED +4.395 mnats (AUC 0.9157). The engine-geometry
+merge is real and material — human-divergent, Leela-equivalent positions un-fuse along the choice-
+set features. GATE FIRES per its recording: codebook swap proceeds (augmented features for all 4M
+v2 positions are FREE from cached cand_logp/win_prob). Chain: augmented codebook → relabel →
+field retrain + acceptance → table + M3 gates re-cleared (no grandfathering) → planner play-path
+Maia features → M4 steering read on the new substrate.
