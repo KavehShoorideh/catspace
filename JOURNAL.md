@@ -8865,3 +8865,26 @@ The field itself (population+Elo conditioning) is a strong, calibrated instrumen
 Infra note: MLflow tracking silently no-op'd all reach runs (filestore maintenance-mode
 exception swallowed by the no-fail wrapper) — fix = sqlite backend or MLFLOW_ALLOW_FILE_STORE.
 Decision point surfaced to Kaveh per the pre-registration (no silent redefinition).
+
+---
+
+## 2026-07-29 — v2 FULL RUN: both style slots earn their place; shelf REVERSED on its trigger
+
+reach_v2_full (30k steps ≈ 2.3 epochs, 3.29M train rows / 841M train pairs). VERDICTs (printed):
+  z_self lift vs z=0    : +0.004 mnats/pair CI[+0.001,+0.007] p=0.997   (v1b: null — power confirmed)
+  z_opp  lift vs z_opp=0: +0.006 mnats/pair CI[+0.003,+0.008] p=1.000   (v1b: negative — REVERSED)
+  z_opp @n_obs>=10      : +0.006 CI[+0.003,+0.009] p=1.000
+  z_opp wrong-opp placebo: +0.004 CI[+0.003,+0.006] p=1.000 — opponent-SPECIFIC beyond band×n_obs
+  calibration           : ECE 0.00051 eval / 0.00054 unseen; max|gap| 0.044 — calibrated in EVERY
+                          bin incl. the 0.91-pred bin (realized 0.90); z=0/masked-Elo fallbacks hold
+  plies                 : MAE 0.294 vs 0.867 median baseline
+  eff_rank              : 31.8/64 [31.7,31.9]
+CAVEATS (recorded, not buried): (1) z_opp@n_obs>=40 = −0.001 ns — the smoke's +0.002 there did not
+survive full training. The stratum confounds estimate-information with GAME PHASE (n_obs>=40 ⇒
+ply≳80): late positions leave little room for style to alter first-hits. Follow-up: ply×n_obs
+decomposition (post-hoc, labeled as such). (2) z_self wrong-z placebo +0.001 ns — the z_self lift
+survives a rating-matched wrong player's z; with z allowed to carry strength, nearest-Elo
+neighbors share strength components, so this placebo is gentle; z_self's value may be largely
+band-structural rather than individual. z_opp's placebo, by contrast, is decisive.
+DECISION (per the recorded 2026-07-28 trigger): field-z shelf REVERSED — the two-z field
+(reach_v2_full) is the M3 substrate. The v1b negative is now understood as data starvation.
