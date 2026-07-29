@@ -22,7 +22,7 @@ import torch
 
 class SubgoalRanker:
     def __init__(self, field_ckpt: str, reach_npz: str, region_table: str,
-                 flux_t: str = "", device: str = "cpu"):
+                 flux_t: str = "", home_book: str = "", device: str = "cpu"):
         from experiments.train_reach_head import ReachHead
         self.dev = torch.device(device)
         ck = torch.load(field_ckpt, map_location=self.dev, weights_only=False)
@@ -48,6 +48,11 @@ class SubgoalRanker:
         if self.assign_bank is not None:
             self.aug = {k: t[k] for k in ("aug_mu_p", "aug_sd_p", "aug_mu_f", "aug_sd_f", "aug_w")}
 
+        self.home = None                        # HOME BOOK (Kaveh 2026-07-30): where WE convert
+        if home_book:
+            hb = np.load(home_book, allow_pickle=True)
+            self.home = hb["home"]              # (NC, 2 phases: opening/later)
+            self.home_opening_ply = int(hb["opening_ply"])
         with torch.no_grad():                   # goal tower ONCE (retrieval-factored)
             self.gh, self.gt = self.model.goal_embs(self.bank)
         self.T = None
@@ -113,7 +118,7 @@ class SubgoalRanker:
 
     @torch.no_grad()
     def rank(self, phi_s, elo_self: float, elo_oppo: float, z_self=None, z_opp=None,
-             n_obs: int = 0, top: int = 8):
+             n_obs: int = 0, top: int = 8, ply: int = 999):
         """phi_s: (64,) frozen-trunk embedding of s. Returns dict of per-region components +
         the ranked top-`top` region ids by the default product score."""
         f = torch.as_tensor(np.asarray(phi_s, np.float32), device=self.dev).view(1, -1)
@@ -143,10 +148,16 @@ class SubgoalRanker:
             net_flux = self.flux[:, b_opp] - self.flux[:, b_self]
         quality = self.quality[:, b_self]
         score = pr * np.maximum(net_flux, 0.0) * quality
+        home = None
+        if self.home is not None:               # our-strength component (phase by query ply)
+            ph = 0 if ply <= self.home_opening_ply else 1
+            home = self.home[:, ph]
+            score = score * (0.5 + home)        # x0.5..x1.5: prefer home turf, never veto
         # AVOID list (Kaveh 2026-07-29): regions we are LIKELY to pass through where the error
         # asymmetry runs AGAINST us -- the steer-away half. Same tables, roles swapped.
         score_avoid = pr * np.maximum(-net_flux, 0.0)
         order = np.argsort(-score)[:top]        # composite ids: region*CB + cband
         return {"score": score, "p_reach": pr, "net_flux": net_flux,
                 "quality": quality, "exp_plies": plies.cpu().numpy(), "top": order,
+                "home": home,
                 "score_avoid": score_avoid, "avoid": np.argsort(-score_avoid)[:top]}

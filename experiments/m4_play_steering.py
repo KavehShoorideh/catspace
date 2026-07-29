@@ -199,6 +199,7 @@ def main():
     ap.add_argument("--nu", type=float, default=0.5, help="successor net-flux weight in the prior mix")
     ap.add_argument("--sub-ratio", type=float, default=0.25,
                     help="(iter-3 legacy; unused in iter-4 tie-break)")
+    ap.add_argument("--home-book", default="", help="home_book npz -> prefer our strong cells")
     ap.add_argument("--live-z", type=int, default=1,
                     help="1 = run the in-game (Elo,z) estimator and feed causal z_opp(t) to the field")
     ap.add_argument("--delta", type=float, default=0.02,
@@ -221,7 +222,8 @@ def main():
     dev = resolve_device("auto"); rng = np.random.default_rng(args.seed); t0 = time.time()
 
     rf = ReachabilityField(device=str(dev))
-    rk = SubgoalRanker(args.field, args.reach, args.table, device=str(dev))
+    rk = SubgoalRanker(args.field, args.reach, args.table, home_book=args.home_book,
+                       device=str(dev))
     store = PlanStore(args.store)
     weights = ShapeWeights(beta=args.beta, lam=args.lam, mu=args.mu)
     maia = chess.engine.SimpleEngine.popen_uci(
