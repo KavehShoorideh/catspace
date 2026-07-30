@@ -9244,3 +9244,18 @@ signal"), checkpoint-bank neighbour support (OOD detector), a training-loss map
 the §3.6 VOI spread x stakes gate. Emergent metric: mean evals/move per training
 generation — falling curve = planning replacing search. Budget decisions enter
 the per-move trace. Queued behind the traced-engine MVP.
+
+**Traced-engine MVP DELIVERED (all five components, MacBook, ~12s/game):**
+memory = CheckpointBank (120k mined trap contexts, trunk encoder, victim-side
+filtered retrieval) -> planner = TrapTracePlanner (recognize -> verify [1-ply
+progress + eps=0.05 soundness, stated in trace] -> commit | value-fallback) ->
+per-move trace with exemplar boards (figure: green/red by verdict). Smoke
+verdicts (2 games vs maia-1100): 42 decisions, 57% trap-sourced, 126 proposals
+-> 34% confirmed / 66% REFUTED with explicit reasons ("wrong-side trap",
+"no move approaches", "concedes > eps") — the honest-refutation loop working
+as the goal specified; score 0/2 (expected: weak components, legible choices).
+Known v0 limits: exact-FEN trap grouping fragments support to 1x (atoms are the
+fix); ClockField committor reads 0.897 on a move-4 Italian (calibration
+suspicious out of its training distribution — worth a probe_calibration pass);
+verification is 1-ply (adaptive budget design queued). JEPA encoder swaps in
+via bank rebuild when T1 lands.
