@@ -9167,3 +9167,29 @@ size) — plus reach's material blindness in the route. More descriptive labels
 cannot fix either. Candidate next levers (Kaveh's call): (a) agentive labels —
 retrain reach on OUR steered games (train==play for navigation; self-play to
 scale), (b) real value authority in the route (beyond tier-3 tie-break), (c) both.
+
+---
+
+## 2026-07-30 06:25 — option-3 morning: BOTH levers pay; agentive field is the big one
+
+**(b) value authority** (committor net as MCTS backup, plan keeps ordering; 100
+games, 200n, v3 field+table): committor+tiers **0.095** (W0 D19), committor plain
+PUCT (the pre-registered WDL ablation) **0.090** (W1 D16) — vs reach-backup
+tiered+opp 0.070. Value authority ≈ +0.02–0.025; plan tiers on top of committor
+value ≈ +0.005 (noise).
+
+**(a) agentive labels** (Kaveh's descriptive-vs-agentive fix): 502 M5 self-games
+-> 11,515 our-move rows x 1024 table-region goals, navigator's own phi-argmin hit
+rule, play-time context (z=0, 1800v1100). Fine-tune from v3 field (300 steps, lr
+3e-5). **VERDICT agentive-lift: BCE 0.073 -> 0.042, +0.031 nats/row CI[+0.027,
++0.035] PASS.** Play read (agentive field, REACH backups, v4 table, 200n):
+**0.095** (W0 D19) vs 0.055 same-config descriptive field — **+0.040, the
+largest single lever of the campaign**. And the plan instruments moved for the
+first time in 7 reads: spells 793->514, switch 80%->72%, incumbent decay
+0.130->0.024 nats (plans stop going stale), plies pred 5.6 vs realized 4.0
+(was 9.6 vs 2.0), continue-regions 564->191 (fantasy chutes gone).
+
+Launched: (a)+(b) combo read (agentive field + committor backups) and the
+equal-budget cleaf-800n read (M5 gate: >= 0.125 at ~equal evals). Next lever
+queued: agentive ITERATION (regenerate labels from agentive-field games — the
+small-batch flywheel).
