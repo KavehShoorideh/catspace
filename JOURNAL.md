@@ -9259,3 +9259,16 @@ fix); ClockField committor reads 0.897 on a move-4 Italian (calibration
 suspicious out of its training distribution — worth a probe_calibration pass);
 verification is 1-ply (adaptive budget design queued). JEPA encoder swaps in
 via bank rebuild when T1 lands.
+
+**Alternatives survey (Kaveh asked: what besides IQE and JEPA?) -> docs/ALTERNATIVES.md.**
+The veto kills POINT-to-point composition; three legitimate escapes: (1) vs a
+FIXED stochastic opponent, expected hitting time IS a quasimetric (strong
+Markov) — timing composes, probability doesn't; opponent-conditioned IQE on
+checkpoint timings = cheap shelf item; (2) the veto-proof geometry: set-level
+forcing composes (attractor lattice = transitive partial order) -> box/cone
+order embeddings with calibrated P(containment) — the "neat way to make it
+work", plausibly novel for games, doubles as forced-win certificates (M7);
+(3) sum-over-paths natively: Adversarial Flow Networks (ICLR'24, Connect-4
+>80% optimal, beat AZ) — the named fallback if the hazard energy stalls.
+Bisimulation game metrics = atlas geometry, not navigation. JEPA stays the
+best shot.
