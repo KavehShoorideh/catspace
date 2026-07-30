@@ -9106,3 +9106,12 @@ spec) pays for its purity — the field doesn't price material, so 200-node sear
 walks into refutations en route between chutes. Pre-registered next read: node
 scaling (monotone gate) — 800n arm launched. WDL-guided ablation is the other
 pre-registered control before any design verdict on reach-only leaves.
+
+**M5 read #2 — tiered ordering** (m5_read100_tiered: 100 games, 200 nodes; commit
+`2cfc702`: lexicographic PW descent order reach>safety>eval, per-tier batch-std
+quantization, ordering-only): score **0.055** (W0 D11 L89) vs pure-200n 0.045 —
++0.010, inside noise (SE(diff)≈0.03), still << 0.125 baseline. Instruments ~flat:
+hit 8%, switch 80% (49% decay-dominated), chain depth median 1, plies pred 10.8
+vs realized 3.0, 233 evals/our-move. Next per §M5 spec: opponent-model expansion
+(Maia priors at opponent nodes; the spec's expectimax-over-Maia ingredient,
+worth 0.125-vs-0.094 in shallow search) — building flag-gated.
