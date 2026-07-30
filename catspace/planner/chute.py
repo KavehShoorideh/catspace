@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from catspace.probe.atlas import RegionAtlas
-from catspace.probe.reach import RegionReach
+from catspace.atlas.region_stats import RegionAtlas
+from catspace.reach.region import RegionReach
 
 
 class ChutePlanner:

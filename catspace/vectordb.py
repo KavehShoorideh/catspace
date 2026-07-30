@@ -33,7 +33,7 @@ def _pid(epd: str) -> int:
 def sync_banks(field_ckpt: str, prefix: str, device: str = "cpu", batch: int = 512) -> dict:
     from qdrant_client.models import Distance, PointStruct, VectorParams
     from catspace.engine.fields import FieldModel
-    from experiments.bootstrap_mate_engine import mat_sig
+    from catspace.endgame.material import mat_sig
     fm = FieldModel(field_ckpt, device=device)
     cli = _client()
     out = {}

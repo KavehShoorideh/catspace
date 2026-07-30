@@ -47,7 +47,7 @@ class DTMCNNValue:
         import torch
         from catspace.nn.features import feature_planes
         from catspace.nn.fb import pick_device
-        from experiments.train_dtm_cnn import DTMNet
+        from catspace.endgame.dtm import DTMNet
         self._torch, self._feature_planes = torch, feature_planes
         self.device = pick_device(device)
         st = torch.load(ckpt, map_location="cpu", weights_only=False)

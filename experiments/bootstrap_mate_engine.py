@@ -35,12 +35,7 @@ from catspace.tb import TB, tb_best_move
 from experiments.mate_ladder_eval import sample_scenarios
 
 
-def mat_sig(b: chess.Board) -> str:
-    """material signature, e.g. 'KRRvbkn' (white upper, black lower, sorted) --
-    the planner's goal-region vocabulary (rules-structure, no concepts)."""
-    w = sorted(p.symbol() for p in b.piece_map().values() if p.color)
-    bl = sorted(p.symbol().lower() for p in b.piece_map().values() if not p.color)
-    return "".join(w) + "v" + "".join(bl)
+from catspace.endgame.material import mat_sig  # component home (refactor 2026-07-30)
 
 
 class OnlineMateBank:

@@ -28,11 +28,9 @@ def wdl_hinge(d, is_won, log_margin):
     return (F.relu(log_margin - dl) * lost).sum() / lost.sum().clamp(min=1)
 
 
-# Ending-type categories (Kaveh's categorical head: "what kind of end is approaching").
-# Order is the label index. Draws in the middle, decisive at the ends.
-ENDINGS = ["WIN_MATE", "DRAW_FIFTY", "DRAW_STALEMATE", "DRAW_INSUFFICIENT",
-           "DRAW_REPETITION", "LOSS_MATE"]
-N_ENDINGS = len(ENDINGS)
+# Ending-type categories: canonical home is catspace/value/clock_field.py
+# (component refactor 2026-07-30); re-exported here for existing importers.
+from catspace.value.clock_field import ENDINGS, N_ENDINGS  # noqa: F401,E402
 
 
 def categorical_ending_loss(logits, labels):
