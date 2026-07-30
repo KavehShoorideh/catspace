@@ -9126,3 +9126,16 @@ ZERO wins across all 300 M5 games: the probe increasingly avoids losing but
 never converts. Depth note: value-only expansion = ~6 expansions/move at 200
 evals (~3 opponent nodes) — opp priors act on a very shallow tree; pure-800n
 arm (running, ~21:45) decides depth-vs-signal before any AZ-path restructure.
+
+**M5 read #4 — pure config at 800n** (m5_read100_800n, ~2.2h): score **0.040**
+(W1 D6 L93), 814 evals/our-move. Node scaling for pure reach navigation is FLAT
+(0.045 @200n -> 0.040 @800n): the §M5 monotone-scaling gate FAILS for this
+config; the 4x budget bought nothing. Combined with the fixed-budget ladder
+(pure 0.045 -> tiered 0.055 -> tiered+opp 0.070 @200n), the verdict: the
+BINDING CONSTRAINT IS SIGNAL QUALITY (thin region table: 35k counts, 658/3072
+empty composite rows; centroid-edge approximation), not search depth — AZ-path
+restructure deprioritized. The single win (game 55, W: catspace-m5) is the
+thesis in miniature: rook+bishop+queenside donated (reach doesn't price
+material), maia-1100 hoovered material with king in center, fell through the
+chute — 22.Qg6+ Kd7 23.Qe6#. Next-direction call (table rebuild vs member-
+position edges) is Kaveh's.
