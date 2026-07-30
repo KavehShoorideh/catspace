@@ -9139,3 +9139,31 @@ thesis in miniature: rook+bishop+queenside donated (reach doesn't price
 material), maia-1100 hoovered material with king in center, fell through the
 chute — 22.Qg6+ Kd7 23.Qe6#. Next-direction call (table rebuild vs member-
 position edges) is Kaveh's.
+
+---
+
+## 2026-07-30 05:10 — overnight table-v4 chain COMPLETE; table support was NOT the bottleneck
+
+Chain (experiments/run_table_v4.sh, 22:43->05:06, all stages clean, printed verdicts):
+1. gen: 198,039 games -> 1,588,307 positions [51 min]
+2. SF-label depth 12 x10 workers: 1,588,307 labeled [4.4h]; crossing rate 10.7%
+   @thr 0.2 (70k set: 11.1% — consistent), mean mover_loss 0.076
+3. aug feats (poison-guarded): 0 poisoned rows [55 min]
+4. region_table_v4: 794,661 train rows (22.7x v3's 35k), 1024 regions (k-means on
+   150k subsample), thin cells n<10: 1485/6144 (v3: 658/3072 EMPTY)
+5. M5 read, v4 table (100 games, 200n, tiered+opp): score **0.055** (W0 D11 L89)
+
+**Verdict: 23x table support changed the SCORE not at all** (v3 table same config:
+0.070; diff −0.015, inside noise SE≈0.03). Plan instruments INVARIANT across all
+six M5 reads: hit 8%, switch 79%, plies pred 9.6 vs realized 2.0. Graph under v4:
+fall_opp−fall_us median DROPPED +0.0114 -> +0.0063 (the v3 chute asymmetry was
+partly thin-cell noise); V median 0.376->0.411; chain depth median 1->2.
+
+**Reading (graded plausible):** the binding constraint is not sampling noise in
+the tables but the DESCRIPTIVE-vs-AGENTIVE gap of the reach field itself —
+P(reach | passive human play) keeps mispricing P(reach | we steer), so plans die
+under our own navigation (realized 2 plies vs predicted 9.6, invariant to data
+size) — plus reach's material blindness in the route. More descriptive labels
+cannot fix either. Candidate next levers (Kaveh's call): (a) agentive labels —
+retrain reach on OUR steered games (train==play for navigation; self-play to
+scale), (b) real value authority in the route (beyond tier-3 tie-break), (c) both.
