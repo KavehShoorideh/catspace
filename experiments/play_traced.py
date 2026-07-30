@@ -78,14 +78,17 @@ def bank_meta_ckpt(path):
 
 
 def pretty(trace):
+    ver = trace["verification"]
     lines = [f"position: {trace['fen']}",
-             f"committor (white POV): {trace['committor_now']:.3f} | "
-             f"verification: {trace['verification']}"]
+             f"committor (white POV): {trace['committor_now']:.3f}",
+             f"verification method: {ver['method']} — " + "; ".join(ver["checks"]),
+             f"  caveat: {ver['caveat']}"]
     for i, c in enumerate(trace["candidates"]):
         v = c["verify"]
         lines.append(f"  trap {i+1}: seen {c['support']}x (agreement "
-                     f"{c['agreement']:.0%}), ~{c['med_gap']:.0f} decisions out, "
-                     f"swing {c['med_delta']:.2f} -> {v['verdict']}: {v['reason']}"
+                     f"{c['agreement']:.0%}), expected ~{c['exp_plies']} plies out "
+                     f"({c['med_gap']:.0f} of their moves), swing {c['med_delta']:.2f}"
+                     f" -> {v['verdict']}: {v['reason']}"
                      + (f" [move {v['best_move']}, concedes {v['concession']}]"
                         if v["verdict"] == "CONFIRMED" else ""))
     d = trace["decision"]
@@ -123,9 +126,14 @@ def main():
             draw_board(axes[0], trace["fen"], figlib.INK, "current")
             for j, c in enumerate(trace["candidates"]):
                 ok = c["verify"]["verdict"] == "CONFIRMED"
+                reason = c["verify"]["reason"]
+                short = ("wrong side" if "wrong-side" in reason else
+                         "no approach" if "no legal move" in reason else
+                         "too costly" if "soundness floor" in reason else
+                         f"~{c['exp_plies']}p out")
                 draw_board(axes[j + 1], c["exemplar_fen"],
                            "#2FA089" if ok else "#C0392B",
-                           f"{c['verify']['verdict'].lower()} ({c['support']}x)")
+                           f"{c['verify']['verdict'].lower()}: {short} ({c['support']}x)")
             figlib.save(fig, args.fig, f"Trace — {trace['decision']['source']}: "
                                        f"{trace['decision']['move']}")
         return
