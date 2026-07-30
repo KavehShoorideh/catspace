@@ -9207,3 +9207,19 @@ the m4 lesson recurring). Kaveh's framing recorded: "flywheel works well when
 the algo is right" — no flywheel turn 2 until an algorithmic fix lands.
 Modular refactor committed (catspace/probe/, registries; regression-identical
 PGN) — the stack is now built for per-component iteration.
+
+---
+
+## 2026-07-30 ~13:00 — CENTRAL HYPOTHESIS reframed (Kaveh): interpretability is the product
+
+Planning toward the opponent's weaknesses / away from ours => INTERPRETABLE
+chess (mirrors human thought: recognize trap shape -> verify -> steer).
+Corollary: human-scale search budgets (10-100 nodes) should suffice;
+strength-per-node stays the reporting frame; absolute strength vs Leela/SF is
+explicitly a non-goal ("what we trade there is interpretability").
+Evaluation consequence: interpretability = measured primary endpoint —
+faithfulness (minimal-pair board ablation: claimed structure removed => decision
+must change), legibility (per-move trace w/ exemplar boards + calibrated
+numbers), sparsity/stability (spell instruments), human-concept alignment
+(atoms land on named motifs); later gold standard: human simulatability.
+The component factorization IS the interpretability claim.
