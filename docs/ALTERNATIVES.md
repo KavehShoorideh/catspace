@@ -78,3 +78,23 @@ existing code, adds composition bias to timing) and **#2** (attractor-lattice
 box embeddings — the veto-proof geometry, doubles as the forced-win
 certificate machinery). **#3** is the named alternative if the hazard energy
 or expectimax pricing fails its verdicts.
+
+## Piece-level encodings (Kaveh 2026-07-30: "everything at the piece level")
+
+- **NNUE HalfKP/HalfKA** ([chessprogramming](https://www.chessprogramming.org/Stockfish_NNUE),
+  [Stockfish docs](https://official-stockfish.github.io/docs/nnue-pytorch-wiki/docs/nnue.html)):
+  (king-sq, piece, sq) tuple features — piece-level, sparse, INCREMENTALLY
+  updatable (a move flips few features). Proven at world-champion strength;
+  the incremental property is what cheap tree search wants.
+- **SARFA** ([ICLR 2020](https://arxiv.org/abs/1912.12191)): per-piece saliency
+  by piece-removal perturbation, scored specificity x relevance; +25% human
+  puzzle accuracy. = our `ablate.py board` primitive; adopt their scoring.
+- **Token transformers + mech interp**: searchless-chess line; circuit tracing
+  at square-token granularity. Our encoder is in this family already — occupied
+  square tokens ARE piece tokens; attention = piece-pair relations; the T2 atom
+  layer (unary + pair activations, relative-offset keys) is piece-level by
+  design.
+- **Piece-graph GNNs**: scattered minor works only; attention subsumes.
+
+Shelf: encoder v2 as a piece-SET transformer (<=32 tokens, king-relative
+features, NNUE-style incremental eval) — test at the 25M scale-up, not before.
