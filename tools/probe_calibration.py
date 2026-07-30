@@ -23,6 +23,7 @@ def main():
     ap.add_argument("--y", required=True)
     ap.add_argument("--bins", type=int, default=10)
     ap.add_argument("--quantile", action="store_true", help="equal-mass bins")
+    ap.add_argument("--fig", default="", help="write the reliability diagram")
     args = ap.parse_args()
     d = np.load(args.data, allow_pickle=True)
     p = d[args.pred].astype(float).ravel(); y = d[args.y].astype(float).ravel()
@@ -43,6 +44,22 @@ def main():
           f"{'equal-mass' if args.quantile else 'equal-width'} {args.bins} bins")
     for pm, ym, n in rows:
         print(f"    pred {pm:.3f} realized {ym:.3f} n {n:,}")
+    if args.fig and rows:
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from tools import figlib
+        fig, ax = figlib.new_fig(1, w=4.2, h=4.0)
+        pm = [r[0] for r in rows]; ym = [r[1] for r in rows]; nn = [r[2] for r in rows]
+        ax.plot([0, 1], [0, 1], color=figlib.MUTED, lw=1, ls="--")
+        ax.plot(pm, ym, color=figlib.ACCENT, marker="o", ms=5)
+        for x0, y0, n in zip(pm, ym, nn):
+            ax.annotate(f"{n:,}", (x0, y0), textcoords="offset points",
+                        xytext=(4, -9), fontsize=6, color=figlib.MUTED)
+        ax.set_xlabel("predicted probability"); ax.set_ylabel("realized frequency")
+        ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+        figlib.save(fig, args.fig,
+                    f"Reliability — {args.pred} (ECE {ece:.4f}, max|gap| {mx:.3f})")
 
 
 if __name__ == "__main__":
