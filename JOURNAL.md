@@ -9095,3 +9095,14 @@ half the churn is genuine challenger wins, not just stale plans). Plies pred
 median 11.2 vs realized 2.0 (n=2 hits — selection effect: only fast plans
 survive to realization). Chain depth median 1: argmax mostly picks
 convert-in-place targets. Committed; 100-game read launched.
+
+**M5 read #1** (m5_read100: 100 games, 200 nodes, ~37 min, printed verdicts):
+score **0.045** (W0 D9 L91) vs maia-1100 — BELOW the 0.125 shallow committor
+baseline and below both m4f arms (0.058/0.070), at 216 evals/our-move (the 2-ply
+baseline spends ~900). Plans: 1025 spells, hit 9%, switch 81% (54% decay-
+dominated), chain depth median 1; plies pred median 7.2 vs realized 4.0 (93 hits).
+Reading: pure reach-leaf navigation (no value anywhere in the tree, per §M5
+spec) pays for its purity — the field doesn't price material, so 200-node search
+walks into refutations en route between chutes. Pre-registered next read: node
+scaling (monotone gate) — 800n arm launched. WDL-guided ablation is the other
+pre-registered control before any design verdict on reach-only leaves.
