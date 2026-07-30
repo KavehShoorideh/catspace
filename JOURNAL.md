@@ -9193,3 +9193,17 @@ Launched: (a)+(b) combo read (agentive field + committor backups) and the
 equal-budget cleaf-800n read (M5 gate: >= 0.125 at ~equal evals). Next lever
 queued: agentive ITERATION (regenerate labels from agentive-field games — the
 small-batch flywheel).
+
+**Campaign close-out (2026-07-30 ~07:00):** combo (agentive field + committor
+backups) **0.085** — levers NOT additive; cleaf-800n **0.095** at 836 evals/move
+= equal-budget M5 gate vs the 0.125 shallow baseline **FAILS**, node scaling
+flat in every config. All strong configs sit in an indistinguishable 0.085–0.095
+band -> ALGORITHMIC plateau, not resource-bound. Persistent wrongs the plateau
+points at: (1) no conversion mechanism (wins 0–2 everywhere, draws climb; TB
+handoff + mate machinery unused in this path), (2) chain depth median 1 (the
+multi-hop chute chain never actually plays), (3) plan hit rate pinned 7–9%
+regardless of field quality (ordering-only coupling can't bend trajectories —
+the m4 lesson recurring). Kaveh's framing recorded: "flywheel works well when
+the algo is right" — no flywheel turn 2 until an algorithmic fix lands.
+Modular refactor committed (catspace/probe/, registries; regression-identical
+PGN) — the stack is now built for per-component iteration.
