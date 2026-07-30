@@ -58,8 +58,13 @@ class ChainPlanner:
 
     def __init__(self, rk: SubgoalRanker, rf: ReachabilityField, elo_self: float,
                  elo_oppo: float, nodes: int, cg: CommittorGreedy | None = None,
-                 opp_policy=None, c_puct: float = 1.5, prior_tau: float = 0.5):
+                 opp_policy=None, leaf: str = "reach", order: str = "tiered",
+                 c_puct: float = 1.5, prior_tau: float = 0.5):
+        assert leaf in ("reach", "committor") and order in ("tiered", "none")
+        if leaf == "committor" or order == "tiered":
+            assert cg is not None, "committor leaf / tiered order need --ckpt"
         self.rk = rk; self.rf = rf; self.cg = cg; self.opp_policy = opp_policy
+        self.leaf = leaf; self.order = order
         self.elo_self = elo_self; self.elo_oppo = elo_oppo
         self.nodes = nodes; self.c_puct = c_puct; self.prior_tau = prior_tau
         self.b_self = rk.band(elo_self)
@@ -188,12 +193,22 @@ class ChainPlanner:
                     rows[i] = fresh[j]; memo[boards[i].fen()] = fresh[j]
             return np.stack(rows)
 
-        def reach_fn(boards):
-            pr = p_all(boards)[:, tid]
-            return pr if our_white else -pr                      # White-POV sign
+        if self.leaf == "committor":
+            # VALUE AUTHORITY (Kaveh 2026-07-30, option b): backups = the committor
+            # net (prices material, knows conversion); the PLAN keeps authority over
+            # descent ordering (tiers) and priors. Abandons §M5 "no WDL leaves" —
+            # measured against the reach-leaf configs, not assumed.
+            def reach_fn(boards):
+                c = np.asarray(self.cg._committor(
+                    [b.to_input_tensor().float().numpy() for b in boards]))
+                return c - 0.5                                   # White-POV already
+        else:
+            def reach_fn(boards):
+                pr = p_all(boards)[:, tid]
+                return pr if our_white else -pr                  # White-POV sign
 
         order_fn = None
-        if self.cg is not None:
+        if self.cg is not None and self.order == "tiered":
             # TIERED ORDER (Kaveh 2026-07-29): (1) reach-to-chute, (2) -mated-mass
             # (distance from my losing basin, geometric), (3) committor eval.
             def order_fn(boards, mover_white):
@@ -207,9 +222,10 @@ class ChainPlanner:
                               c - 0.5], 1)                       # White-POV tiers
                 return w if mover_white else -w                  # mover-POV
 
+        ck = "c" if self.leaf == "committor" else tid            # committor is plan-free
         mcts = MCTS(reach_fn, max_nodes=self.nodes, c_puct=self.c_puct,
                     prior_tau=self.prior_tau, cache=self.cache,
-                    cache_key_fn=lambda b: f"{tid}|{b.fen()}",
+                    cache_key_fn=lambda b: f"{ck}|{b.fen()}",
                     pw_c=1.5 if order_fn else 0.0, root_min_visits=10 if order_fn else 0,
                     mate_stop=order_fn is not None, order_fn=order_fn,
                     opp_policy_fn=self.opp_policy)
@@ -251,6 +267,12 @@ def main():
     ap.add_argument("--opp-model", type=int, default=1,
                     help="1 = maia2 priors at opponent tree nodes (§M5 expectimax "
                          "expansion); 0 = adversarial value-softmax priors")
+    ap.add_argument("--leaf", default="reach", choices=["reach", "committor"],
+                    help="MCTS backup value: reach-to-chute (§M5 pure) or committor "
+                         "net (value authority; Kaveh 2026-07-30 option b)")
+    ap.add_argument("--order", default="tiered", choices=["tiered", "none"],
+                    help="descent order: tiered plan lexicographic, or none (plain "
+                         "PUCT; with --leaf committor = the pre-registered WDL ablation)")
     ap.add_argument("--reach", default="data/derived/reach/reach_v3.npz")
     ap.add_argument("--table", default="data/derived/reach/region_table_v3.npz")
     ap.add_argument("--maia-elo", type=int, default=1100)
@@ -273,10 +295,10 @@ def main():
         from maia2 import model as maia_model, inference as m2_inf
         m2 = maia_model.from_pretrained(type="rapid", device=str(dev))
         opp_policy = make_opp_policy(m2, m2_inf, args.maia_elo, int(args.our_elo))
-    print(f"  order: {'TIERED (reach > safety > eval; pw=1.5)' if cg else 'pure reach (read #1)'}"
+    print(f"  leaf: {args.leaf} | order: {args.order}"
           f" | opp nodes: {'maia2 priors' if opp_policy else 'adversarial softmax'}", flush=True)
     nav = ChainPlanner(rk, rf, args.our_elo, float(args.maia_elo), args.nodes, cg=cg,
-                       opp_policy=opp_policy)
+                       opp_policy=opp_policy, leaf=args.leaf, order=args.order)
     chutes = int((nav.next_hop >= 0).sum())
     dep = np.array([len(nav.chain(g)) for g in range(len(nav.V))])
     print(f"  graph: V median {np.median(nav.V):.3f} p90 {np.percentile(nav.V, 90):.3f} | "
