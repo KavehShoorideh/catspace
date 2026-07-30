@@ -9235,3 +9235,12 @@ verification says it isn't one" — and with the small net the verifier saying
 loop to demonstrate: recognize (retrieve trap structures from the checkpoint
 bank) -> verify (search the literal position; refute freely) -> commit or fall
 back (sound value move, trace says so). The per-move trace is the product.
+
+**Design (Kaveh): adaptive verification budget.** Search + memory compensate for
+planner weakness; search deepens ONLY where the plan is unreliable — signals:
+shallow-ply search-vs-prediction disagreement ("first few plies have enough
+signal"), checkpoint-bank neighbour support (OOD detector), a training-loss map
+(held-out per-region losses logged into the atlas as known-weak territory), and
+the §3.6 VOI spread x stakes gate. Emergent metric: mean evals/move per training
+generation — falling curve = planning replacing search. Budget decisions enter
+the per-move trace. Queued behind the traced-engine MVP.
