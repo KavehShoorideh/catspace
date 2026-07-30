@@ -1,3 +1,2 @@
-"""ReachModel component: P(first-hit g | s, ctx) + E[plies|hit]."""
-from catspace.reach.head import ReachHead               # noqa: F401
-from catspace.reach.region import RegionReach           # noqa: F401
+"""Alias -> catspace.predictor.reach (engine-layout refactor 2026-07-30)."""
+from catspace.predictor.reach import *  # noqa: F401,F403

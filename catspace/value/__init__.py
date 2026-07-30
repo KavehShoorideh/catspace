@@ -1,3 +1,2 @@
-"""ValueOracle component: committor nets (the conversion-aware value signal)."""
-from catspace.value.clock_field import ClockField       # noqa: F401
-from catspace.value.committor import CommittorGreedy    # noqa: F401
+"""Alias -> catspace.predictor.value (engine-layout refactor 2026-07-30)."""
+from catspace.predictor.value import *  # noqa: F401,F403

@@ -1,3 +1,2 @@
-"""Atlas component: goal bank, region assignment, region statistics."""
-from catspace.atlas.ranker import SubgoalRanker         # noqa: F401
-from catspace.atlas.region_stats import RegionAtlas     # noqa: F401
+"""Alias -> catspace.predictor.atlas (engine-layout refactor 2026-07-30)."""
+from catspace.predictor.atlas import *  # noqa: F401,F403
