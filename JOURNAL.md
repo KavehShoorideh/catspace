@@ -9115,3 +9115,14 @@ hit 8%, switch 80% (49% decay-dominated), chain depth median 1, plies pred 10.8
 vs realized 3.0, 233 evals/our-move. Next per §M5 spec: opponent-model expansion
 (Maia priors at opponent nodes; the spec's expectimax-over-Maia ingredient,
 worth 0.125-vs-0.094 in shallow search) — building flag-gated.
+
+**M5 read #3 — tiered + opponent-model expansion** (m5_read100_tieropp: 100
+games, 200 nodes; commit `a7f1165`: maia2 move distribution as child priors at
+opponent tree nodes, §M5 expectimax ingredient): score **0.070** (W0 D14 L86).
+Ladder so far at 200n: pure 0.045 -> tiered 0.055 -> tiered+opp 0.070 — monotone
+in the right order, each step inside noise (SE(diff)~0.03), cumulative +0.025
+still not significant and still << 0.125 baseline. Draws climb 9->11->14 with
+ZERO wins across all 300 M5 games: the probe increasingly avoids losing but
+never converts. Depth note: value-only expansion = ~6 expansions/move at 200
+evals (~3 opponent nodes) — opp priors act on a very shallow tree; pure-800n
+arm (running, ~21:45) decides depth-vs-signal before any AZ-path restructure.
