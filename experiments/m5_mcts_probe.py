@@ -23,12 +23,15 @@ import chess.engine
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from experiments.play_vs_maia import CommittorGreedy                    # noqa: E402
-from catspace.field import ReachabilityField                            # noqa: E402
-from catspace.subgoals import SubgoalRanker                             # noqa: E402
-from catspace.probe import (PLANNERS, MCTSNavigator, RegionAtlas,       # noqa: E402
-                            RegionReach, make_maia2_policy, run_games)
+from catspace.atlas import RegionAtlas, SubgoalRanker                   # noqa: E402
+from catspace.encoder import ReachabilityField                          # noqa: E402
+from catspace.harness import run_games                                  # noqa: E402
+from catspace.navigator import MCTSNavigator                            # noqa: E402
+from catspace.opponent import make_maia2_policy                         # noqa: E402
+from catspace.planner import PLANNERS                                   # noqa: E402
+from catspace.reach import RegionReach                                  # noqa: E402
 from catspace.train.scaffold import resolve_device                      # noqa: E402
+from catspace.value import CommittorGreedy                              # noqa: E402
 
 
 def main():

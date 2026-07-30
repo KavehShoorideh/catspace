@@ -35,7 +35,7 @@ class ProbeKit:
                 out[f"d_{name}"] = float("inf")
         wb = self.banks["win"]
         if wb is not None and hasattr(wb, "class_idx"):
-            from experiments.bootstrap_mate_engine import mat_sig
+            from catspace.endgame.material import mat_sig
             out["class_density"] = int(len(wb.class_idx(mat_sig(b))))
         return out
 

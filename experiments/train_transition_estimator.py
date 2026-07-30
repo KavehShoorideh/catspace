@@ -50,14 +50,7 @@ def context_feats(z, use_rating=True, use_clock=True):
     return np.concatenate([pos, rating, clock], 1).astype(np.float32)
 
 
-class T(nn.Module):
-    def __init__(self, d_phi, d_ctx, hidden=128):
-        super().__init__()
-        self.net = nn.Sequential(nn.Linear(d_phi + d_ctx, hidden), nn.ReLU(),
-                                 nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, 1))
-
-    def forward(self, phi, ctx):
-        return self.net(torch.cat([phi, ctx], 1)).squeeze(-1)
+from catspace.atlas.transition import T  # component home (refactor 2026-07-30)
 
 
 def run_variant(phi, ctx, y, games, dev, steps, batch, val_mask, seed, name):
