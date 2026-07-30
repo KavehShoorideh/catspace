@@ -9223,3 +9223,15 @@ must change), legibility (per-move trace w/ exemplar boards + calibrated
 numbers), sparsity/stability (spell instruments), human-concept alignment
 (atoms land on named motifs); later gold standard: human simulatability.
 The component factorization IS the interpretability claim.
+
+---
+
+## 2026-07-30 ~11:30 — GOAL SET (Kaveh): the traced engine MVP, on the MacBook
+
+Target: an engine that makes a move AND explains it, end to end, all five
+components. Explanations may be WRONG in an honest way — "I went for this trap;
+verification says it isn't one" — and with the small net the verifier saying
+"no trap here" most moves is the EXPECTED early behavior, not failure. The
+loop to demonstrate: recognize (retrieve trap structures from the checkpoint
+bank) -> verify (search the literal position; refute freely) -> commit or fall
+back (sound value move, trace says so). The per-move trace is the product.
