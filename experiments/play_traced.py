@@ -37,15 +37,24 @@ from catspace.predictor.value import CommittorGreedy                    # noqa: 
 def make_planner(args, dev):
     bank = CheckpointBank(args.bank)
     cg = CommittorGreedy(args.ckpt, dev)
+    # planes are the profiled bottleneck (to_input_tensor = scalar-read heavy);
+    # encode ONCE per unique fen, share between phi and committor, keep across moves
+    from catspace.search.memo import BoundedMemo
+    from lczerolens import LczeroBoard
+    planes_memo = BoundedMemo(100_000)
+
+    def planes_of(boards):
+        return planes_memo.batch_get_or(
+            [b.fen() for b in boards],
+            lambda miss: [LczeroBoard(f).to_input_tensor().float().numpy()
+                          for f in miss])
 
     if bank.encoder == "trunk":
         from catspace.encoder import ReachabilityField
-        from lczerolens import LczeroBoard
         rf = ReachabilityField()
 
         def embed(boards):
-            return rf.phi([b if isinstance(b, LczeroBoard) else LczeroBoard(b.fen())
-                           for b in boards]).cpu().numpy()
+            return rf.phi_from_planes(planes_of(boards)).cpu().numpy()
     else:
         import torch
         from catspace.encoder.jepa import JepaT1, tokenize
@@ -61,14 +70,7 @@ def make_planner(args, dev):
                     torch.as_tensor(np.stack([g for _, g in tg])).to(dev)).cpu().numpy()
 
     def committor(boards):
-        return cg._committor([b.to_input_tensor().float().numpy()
-                              if hasattr(b, "to_input_tensor") else
-                              _planes(b) for b in boards])
-
-    from lczerolens import LczeroBoard
-
-    def _planes(b):
-        return LczeroBoard(b.fen()).to_input_tensor().float().numpy()
+        return cg._committor(planes_of(boards))
 
     return TrapTracePlanner(bank, embed, committor, eps=args.eps)
 
