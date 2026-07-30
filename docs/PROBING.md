@@ -107,3 +107,29 @@ training-trajectory comparisons.
 - [Gneiting & Raftery 2007 — proper scoring rules](https://mpra.ub.uni-muenchen.de/45186/1/MPRA_paper_45186.pdf) ·
   [proper scoring rules for estimation & evaluation (2025)](https://arxiv.org/html/2504.01781v1) ·
   [forecaster's dilemma — extreme events](https://arxiv.org/pdf/1512.09244)
+
+## House figure conventions (emulating the established labs, not the draft)
+
+Per Kaveh 2026-07-30: figure and evaluation style follows the published
+conventions of FAIR's JEPA line (LeCun et al.), NVIDIA robotics (Fox's SRL),
+AI2/UW-style benchmark rigor — not the draft paper's own templates.
+
+- **Headline evaluation** (`fig_probe_curve.py`): frozen linear + kNN probe
+  performance **vs pretraining step** (the I-JEPA/V-JEPA lead figure), with
+  RankMe alongside and the LeJEPA loss-vs-probe scatter for label-free model
+  selection.
+- **Rates carry exact intervals** (`fig_success.py`): binomial rates get 95%
+  **Clopper–Pearson** intervals (the NVIDIA robot-policy evaluation standard;
+  narrowing 10pts -> 2pts costs ~15x rollouts — plan n accordingly); chess
+  scores get game-bootstrap CIs; every comparison ships an outcome-composition
+  breakdown, never a bare success bit.
+- **Qualitative retrieval** (`fig_retrieval.py`): top-k cosine neighbour grids
+  with panels outlined **green on label match, red on mismatch** (the FAIR
+  nearest-neighbour convention), chance rate printed with the verdict.
+
+### Style sources
+- [I-JEPA (Assran et al.)](https://arxiv.org/abs/2301.08243) ·
+  [V-JEPA 2](https://arxiv.org/abs/2506.09985) ·
+  [LeJEPA (loss-vs-probe model selection)](https://arxiv.org/html/2511.08544v2)
+- [NVIDIA: evaluating general-purpose robot policies (Clopper–Pearson, failure analysis)](https://developer.nvidia.com/blog/how-to-evaluate-general-purpose-robot-policies-for-real-world-deployment/) ·
+  [Dieter Fox — NVIDIA SRL](https://research.nvidia.com/labs/srl/authors/dieter-fox/)
