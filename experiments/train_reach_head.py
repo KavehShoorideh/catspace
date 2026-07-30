@@ -101,6 +101,7 @@ def main():
     ap.add_argument("--zckpt", default="artifacts/experiments/m2b_style_3k.pt")
     ap.add_argument("--zopp", default="", help="zopp_causal_v1.npz path; empty = v1 (no opponent slot)")
     ap.add_argument("--out", default="artifacts/experiments/reach_v1")
+    ap.add_argument("--init", default="", help="warm-start ckpt (fine-tune mode)")
     ap.add_argument("--steps", type=int, default=600)
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -150,9 +151,17 @@ def main():
     else:
         zopp, d_opp = None, 0
     model = ReachHead(d_phi=phi.shape[1], d_z=ztab.shape[1], d_opp=d_opp).to(dev)
-    base = float(hit[t(is_train, torch.bool)][in_now[t(is_train, torch.bool)] == 0].float().mean())
-    with torch.no_grad():
-        model.b_hit.fill_(float(np.log(base / (1 - base))))            # base-rate init
+    if args.init:
+        # FINE-TUNE (agentive labels, Kaveh 2026-07-30): warm-start from a trained
+        # field; keep its calibration, let the agentive data move it.
+        ck = torch.load(args.init, map_location=dev, weights_only=False)
+        model.load_state_dict(ck["state_dict"])
+        print(f"[init] warm-started from {args.init}")
+    else:
+        base = float(hit[t(is_train, torch.bool)][in_now[t(is_train, torch.bool)] == 0]
+                     .float().mean())
+        with torch.no_grad():
+            model.b_hit.fill_(float(np.log(base / (1 - base))))        # base-rate init
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     tr_idx = np.flatnonzero(is_train)
 
@@ -276,6 +285,9 @@ def main():
                       f"({m.sum():,} pairs, {100*m.mean():.0f}% of eval)")
 
     for name, rows in (("eval", ev), ("unseen", np.flatnonzero(is_unseen))):
+        if len(rows) == 0:                       # agentive data has no heldout split
+            print(f"VERDICT calibration [{name}]: skipped (0 rows)")
+            continue
         with torch.no_grad():
             _, p, y, tp2, tt2, _ = per_pair(rows, zvec)
         rel = reliability(p, y)
