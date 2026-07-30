@@ -37,8 +37,10 @@ def main():
     ap.add_argument("reps", nargs="+")
     ap.add_argument("--lda-labels", default="")
     ap.add_argument("--sample", type=int, default=20000)
+    ap.add_argument("--fig", default="", help="write the Fig-3c-style diagnostics panel")
     args = ap.parse_args()
     rng = np.random.default_rng(0)
+    spectra = []
     for path in args.reps:
         d = np.load(path, allow_pickle=True)
         emb = d["emb"].astype(np.float64)
@@ -71,6 +73,33 @@ def main():
             lidar = float(evb.sum() ** 2 / ((evb ** 2).sum() + 1e-12))
             line += f" | LDA-rank[{args.lda_labels}] {lidar:.1f}"
         print("VERDICT rank: " + line)
+        spectra.append((path, ev, rankme(emb_s), eff_rank_pr(emb_s)))
+    if args.fig:
+        import sys
+        from pathlib import Path as _P
+        sys.path.insert(0, str(_P(__file__).resolve().parents[1]))
+        from tools import figlib
+        fig, ax = figlib.new_fig(3)
+        for i, (path, ev, rm, er) in enumerate(spectra[:4]):
+            col = figlib.CAT[i]
+            name = _P(path).stem
+            ax[0].plot(np.arange(1, len(ev) + 1), ev, color=col, label=name)
+            ax[1].plot(np.arange(1, len(ev) + 1), np.cumsum(ev) / ev.sum(), color=col)
+        ax[0].set_xscale("log"); ax[0].set_yscale("log")
+        ax[0].set_title("eigenvalue spectrum"); ax[0].set_xlabel("index (log)")
+        if len(spectra) > 1:
+            ax[0].legend(frameon=False, fontsize=7)
+        ax[1].set_title("cumulative variance"); ax[1].set_xlabel("PCs")
+        ax[1].set_ylim(0, 1.02)
+        names = [_P(p).stem for p, *_ in spectra[:4]]
+        xs = np.arange(len(names))
+        ax[2].bar(xs - 0.2, [rm for _, _, rm, _ in spectra[:4]], 0.4,
+                  color=figlib.CAT[0], label="RankMe")
+        ax[2].bar(xs + 0.2, [er for *_, er in spectra[:4]], 0.4,
+                  color=figlib.CAT[1], label="eff rank")
+        ax[2].set_xticks(xs, names, rotation=20, fontsize=7)
+        ax[2].legend(frameon=False, fontsize=8); ax[2].set_title("rank measures")
+        figlib.save(fig, args.fig, "Representation diagnostics")
 
 
 if __name__ == "__main__":
