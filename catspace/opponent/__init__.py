@@ -1,2 +1,2 @@
-"""OpponentModel component: move priors / style / live-z for the other side."""
-from catspace.opponent.maia2_policy import make_maia2_policy  # noqa: F401
+"""Alias -> catspace.predictor.opponent (engine-layout refactor 2026-07-30)."""
+from catspace.predictor.opponent import *  # noqa: F401,F403

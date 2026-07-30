@@ -1,2 +1,2 @@
-"""Endgame/conversion component: tablebases, DTM, material signatures."""
-from catspace.endgame.material import mat_sig           # noqa: F401
+"""Alias -> catspace.predictor.endgame (engine-layout refactor 2026-07-30)."""
+from catspace.predictor.endgame import *  # noqa: F401,F403
