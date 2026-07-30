@@ -1,0 +1,5 @@
+outs:
+- md5: 89167f88bce38605710910d8fcb589e7
+  size: 383228814
+  hash: md5
+  path: checkpoints_v1_full.npz
