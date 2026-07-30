@@ -58,8 +58,8 @@ class ChainPlanner:
 
     def __init__(self, rk: SubgoalRanker, rf: ReachabilityField, elo_self: float,
                  elo_oppo: float, nodes: int, cg: CommittorGreedy | None = None,
-                 c_puct: float = 1.5, prior_tau: float = 0.5):
-        self.rk = rk; self.rf = rf; self.cg = cg
+                 opp_policy=None, c_puct: float = 1.5, prior_tau: float = 0.5):
+        self.rk = rk; self.rf = rf; self.cg = cg; self.opp_policy = opp_policy
         self.elo_self = elo_self; self.elo_oppo = elo_oppo
         self.nodes = nodes; self.c_puct = c_puct; self.prior_tau = prior_tau
         self.b_self = rk.band(elo_self)
@@ -211,10 +211,35 @@ class ChainPlanner:
                     prior_tau=self.prior_tau, cache=self.cache,
                     cache_key_fn=lambda b: f"{tid}|{b.fen()}",
                     pw_c=1.5 if order_fn else 0.0, root_min_visits=10 if order_fn else 0,
-                    mate_stop=order_fn is not None, order_fn=order_fn)
+                    mate_stop=order_fn is not None, order_fn=order_fn,
+                    opp_policy_fn=self.opp_policy)
         mv = mcts.best_move(board)
         self.evals.append(mcts.evals_used)
         return mv
+
+
+def make_opp_policy(m2, m2_inf, elo_opp: int, elo_self: int):
+    """maia2 move distribution at the opponent's rating frame -> {Move: prior}.
+    Poison-guarded (maia2 preprocessing IndexErrors on dict-gap positions, the
+    m4f killer): any failure returns None -> the tree keeps its default priors."""
+    import pandas as pd
+
+    def opp_policy(board):
+        try:
+            df = pd.DataFrame({"fen": [board.fen()], "move": ["0000"],
+                               "elo_self": [int(elo_opp)], "elo_oppo": [int(elo_self)]})
+            df, _ = m2_inf.inference_batch(df, m2, verbose=False, batch_size=1,
+                                           num_workers=0)
+            out = {}
+            for uci, p in df["move_probs"][0].items():
+                try:
+                    out[chess.Move.from_uci(uci)] = float(p)
+                except ValueError:
+                    pass
+            return out or None
+        except Exception:
+            return None
+    return opp_policy
 
 
 def main():
@@ -223,6 +248,9 @@ def main():
     ap.add_argument("--ckpt", default="artifacts/experiments/field_fullgame_v3_final.pt",
                     help="committor ckpt for the tier-3 ordering eval; '' = pure reach "
                          "config (read #1: plain PUCT, no widening, no ordering)")
+    ap.add_argument("--opp-model", type=int, default=1,
+                    help="1 = maia2 priors at opponent tree nodes (§M5 expectimax "
+                         "expansion); 0 = adversarial value-softmax priors")
     ap.add_argument("--reach", default="data/derived/reach/reach_v3.npz")
     ap.add_argument("--table", default="data/derived/reach/region_table_v3.npz")
     ap.add_argument("--maia-elo", type=int, default=1100)
@@ -240,9 +268,15 @@ def main():
     rf = ReachabilityField(device=str(dev))
     rk = SubgoalRanker(args.field, args.reach, args.table, device=str(dev))
     cg = CommittorGreedy(args.ckpt, dev) if args.ckpt else None
-    print(f"  order: {'TIERED (reach > safety > eval; pw=1.5)' if cg else 'pure reach (read #1)'}",
-          flush=True)
-    nav = ChainPlanner(rk, rf, args.our_elo, float(args.maia_elo), args.nodes, cg=cg)
+    opp_policy = None
+    if args.opp_model:
+        from maia2 import model as maia_model, inference as m2_inf
+        m2 = maia_model.from_pretrained(type="rapid", device=str(dev))
+        opp_policy = make_opp_policy(m2, m2_inf, args.maia_elo, int(args.our_elo))
+    print(f"  order: {'TIERED (reach > safety > eval; pw=1.5)' if cg else 'pure reach (read #1)'}"
+          f" | opp nodes: {'maia2 priors' if opp_policy else 'adversarial softmax'}", flush=True)
+    nav = ChainPlanner(rk, rf, args.our_elo, float(args.maia_elo), args.nodes, cg=cg,
+                       opp_policy=opp_policy)
     chutes = int((nav.next_hop >= 0).sum())
     dep = np.array([len(nav.chain(g)) for g in range(len(nav.V))])
     print(f"  graph: V median {np.median(nav.V):.3f} p90 {np.percentile(nav.V, 90):.3f} | "
