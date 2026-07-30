@@ -157,7 +157,7 @@ class MCTS:
                  root_min_visits: int = 0, ci_z: float = 1.96,
                  policy_fn=None, value_fn=None, fpu_reduction: float = 0.25,
                  eval_cache: dict | None = None, batch_leaves: int = 1,
-                 policy_batch_fn=None):
+                 policy_batch_fn=None, order_fn=None):
         assert max_nodes >= 1
         # EARLY-STOP LEVERS (2026-07-18, the planner energy objective
         # E[score] - c*compute): spend budget only while it can still change
@@ -230,6 +230,16 @@ class MCTS:
         self.eval_cache = eval_cache
         self.batch_leaves = max(1, int(batch_leaves))
         self.policy_batch_fn = policy_batch_fn
+        # TIERED DESCENT ORDER (Kaveh 2026-07-29): order_fn(boards, mover_white) ->
+        # (B, K) MOVER-POV tier scores, tier 0 first (e.g. reach-to-subgoal, then
+        # -distance-to-my-mated-basin, then eval). Used ONLY for the progressive-
+        # widening descent order: lexicographic, each non-final tier quantized at
+        # its own per-expansion batch std (data-derived tolerance -- no hand
+        # constants), final tier raw. Priors and backups untouched (progressive-
+        # bias style, like tactical_prior). Costs len(children) evals per
+        # expansion (the eval tier is a real net pass). None disables (exact
+        # prior behavior). Requires pw_c > 0 to have any effect.
+        self.order_fn = order_fn
         self.fpu_reduction = fpu_reduction
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
@@ -410,7 +420,24 @@ class MCTS:
             # mate-for-the-mover child has maximal persp, so it is index 0.
             # Value recalibration (tree reuse) is monotone, so this order
             # stays valid without recomputation.
-            node.pw_order = [int(i) for i in np.argsort(-persp)]
+            if self.order_fn is not None:
+                T = np.asarray(self.order_fn([c.board for c in children],
+                                             node.board.turn == chess.WHITE), dtype=float)
+                self.evals_used += len(children)     # the eval tier is a real net pass
+                keys = []
+                for k in range(T.shape[1] - 1):
+                    sd = float(T[:, k].std())
+                    keys.append(np.round(T[:, k] / (sd + 1e-9)))
+                keys.append(T[:, -1])
+                # np.lexsort: LAST key is primary; negate all for best-first
+                order = [int(i) for i in np.lexsort(tuple(-k for k in reversed(keys)))]
+                # rule-exact mover-winning terminals must stay in the window
+                # regardless of their reach tier (a mate child can look reach-poor)
+                tw = [i for i in order
+                      if children[i].terminal_v is not None and persp[i] > 0.5]
+                node.pw_order = tw + [i for i in order if i not in set(tw)]
+            else:
+                node.pw_order = [int(i) for i in np.argsort(-persp)]
         # COHERENCE = P(we realize the outcome from here) (Kaveh 2026-07-17). The
         # backup trust factor gamma = exp(-k*(1 - P)): P~1 (a forced/won region,
         # committor confident) => gamma~1, value passes up INTACT -- a proven

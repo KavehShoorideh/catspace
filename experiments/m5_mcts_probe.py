@@ -46,6 +46,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from experiments.play_vs_maia import CommittorGreedy                    # noqa: E402
 from catspace.field import ReachabilityField                            # noqa: E402
 from catspace.subgoals import SubgoalRanker                             # noqa: E402
 from catspace.nn.mcts import MCTS                                       # noqa: E402
@@ -56,8 +57,9 @@ class ChainPlanner:
     """Most-likely-chain plan selection + reach-guided MCTS navigation. Threshold-free."""
 
     def __init__(self, rk: SubgoalRanker, rf: ReachabilityField, elo_self: float,
-                 elo_oppo: float, nodes: int, c_puct: float = 1.5, prior_tau: float = 0.5):
-        self.rk = rk; self.rf = rf
+                 elo_oppo: float, nodes: int, cg: CommittorGreedy | None = None,
+                 c_puct: float = 1.5, prior_tau: float = 0.5):
+        self.rk = rk; self.rf = rf; self.cg = cg
         self.elo_self = elo_self; self.elo_oppo = elo_oppo
         self.nodes = nodes; self.c_puct = c_puct; self.prior_tau = prior_tau
         self.b_self = rk.band(elo_self)
@@ -71,6 +73,7 @@ class ChainPlanner:
         q_bar = float((q * c).sum() / max(c.sum(), 1.0))         # population mean committor
         n0 = float(np.median(n))                                  # pseudo-count = median support
         self.q_region = (n * q_raw + n0 * q_bar) / (n + n0)
+        self.badness = 1.0 - self.q_region                        # mated-ness of a destination
 
         # -- CHUTE fall rates (Kaveh 2026-07-29: subgoal = edge of a chute) --------------
         # crossing_rate[g, band] = SF-refereed committor-crossing rate of the region at that
@@ -171,15 +174,44 @@ class ChainPlanner:
             self.spells.append(self.spell)
 
         tid, our_white = g1, board.turn == chess.WHITE
+        memo: dict = {}                                          # fen -> (G,) reach row;
+                                                                 # shares the trunk pass
+                                                                 # between value and ordering
+
+        def p_all(boards):
+            rows = [memo.get(b.fen()) for b in boards]
+            miss = [i for i, r in enumerate(rows) if r is None]
+            if miss:
+                phis = self.rf.phi([boards[i] for i in miss]).cpu().numpy()
+                fresh = self._region_heads(phis)[0]
+                for j, i in enumerate(miss):
+                    rows[i] = fresh[j]; memo[boards[i].fen()] = fresh[j]
+            return np.stack(rows)
 
         def reach_fn(boards):
-            phis = self.rf.phi(boards).cpu().numpy()
-            pr = self._region_heads(phis)[0][:, tid]
+            pr = p_all(boards)[:, tid]
             return pr if our_white else -pr                      # White-POV sign
+
+        order_fn = None
+        if self.cg is not None:
+            # TIERED ORDER (Kaveh 2026-07-29): (1) reach-to-chute, (2) -mated-mass
+            # (distance from my losing basin, geometric), (3) committor eval.
+            def order_fn(boards, mover_white):
+                P = p_all(boards)
+                t1 = P[:, tid]
+                t2 = -(P @ self.badness)                         # our safety
+                c = np.asarray(self.cg._committor(
+                    [b.to_input_tensor().float().numpy() for b in boards]))
+                w = np.stack([t1 if our_white else -t1,
+                              t2 if our_white else -t2,
+                              c - 0.5], 1)                       # White-POV tiers
+                return w if mover_white else -w                  # mover-POV
 
         mcts = MCTS(reach_fn, max_nodes=self.nodes, c_puct=self.c_puct,
                     prior_tau=self.prior_tau, cache=self.cache,
-                    cache_key_fn=lambda b: f"{tid}|{b.fen()}")
+                    cache_key_fn=lambda b: f"{tid}|{b.fen()}",
+                    pw_c=1.5 if order_fn else 0.0, root_min_visits=10 if order_fn else 0,
+                    mate_stop=order_fn is not None, order_fn=order_fn)
         mv = mcts.best_move(board)
         self.evals.append(mcts.evals_used)
         return mv
@@ -188,6 +220,9 @@ class ChainPlanner:
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--field", default="artifacts/experiments/reach_v3_full_latest.pt")
+    ap.add_argument("--ckpt", default="artifacts/experiments/field_fullgame_v3_final.pt",
+                    help="committor ckpt for the tier-3 ordering eval; '' = pure reach "
+                         "config (read #1: plain PUCT, no widening, no ordering)")
     ap.add_argument("--reach", default="data/derived/reach/reach_v3.npz")
     ap.add_argument("--table", default="data/derived/reach/region_table_v3.npz")
     ap.add_argument("--maia-elo", type=int, default=1100)
@@ -204,7 +239,10 @@ def main():
 
     rf = ReachabilityField(device=str(dev))
     rk = SubgoalRanker(args.field, args.reach, args.table, device=str(dev))
-    nav = ChainPlanner(rk, rf, args.our_elo, float(args.maia_elo), args.nodes)
+    cg = CommittorGreedy(args.ckpt, dev) if args.ckpt else None
+    print(f"  order: {'TIERED (reach > safety > eval; pw=1.5)' if cg else 'pure reach (read #1)'}",
+          flush=True)
+    nav = ChainPlanner(rk, rf, args.our_elo, float(args.maia_elo), args.nodes, cg=cg)
     chutes = int((nav.next_hop >= 0).sum())
     dep = np.array([len(nav.chain(g)) for g in range(len(nav.V))])
     print(f"  graph: V median {np.median(nav.V):.3f} p90 {np.percentile(nav.V, 90):.3f} | "
