@@ -9046,3 +9046,52 @@ cache-derived, zero new inference; family validated by the +4.4 gate, not featur
 learned (SAE-on-Maia) escalation recorded if ever needed. Play path integrated: live per-moveset
 Maia features, augmented assignment shared by shaping/steering/ledger. (Committed by Kaveh's
 hands during the safety-classifier outage.)
+
+---
+
+## 2026-07-29 17:40 — m4f relaunch (poison-guarded); M5 chain-of-chutes probe built
+
+**m4f.** Yesterday's `m4f_read200` died at ON-arm game 68/200 (maia2 preprocessing
+IndexError); commit `e6ab4f7` added the per-row poison guard. Smoke (2 games/arm)
+passed all four verdict lines; full 200/arm relaunched 16:50 (`experiments/launch.sh`,
+pid 25574). Truncated-run partial read: ON 4.0/68 (0.059/game) vs OFF 11.5/200
+(0.058/game) — arms indistinguishable through the crash point.
+
+**M5 probe (Kaveh session, 3 design iterations in `experiments/m5_mcts_probe.py`):**
+1. *Nearest respectable subgoal* (argmin plies-head s.t. committor floor + count):
+   rejected — hand thresholds; gate calibration showed `min_count=50` admits 0/1024
+   regions (median region support at our band is 20; table thin: 35,058 total counts,
+   658/3072 composite rows empty everywhere).
+2. *Launchpad gate* (low-eval region OK if P(reach good region | centroid) high —
+   the gambit lane): 487/1024 respectable (165 eval, 322 launchpad). Subsumed by:
+3. *Chain-of-chutes, threshold-free* (locked direction): subgoal = chute edge;
+   V(g) = max(q̃(g), fall_opp + (1−fall_opp−fall_us)·max_g' P(g→g')V(g')) by value
+   iteration on the centroid-edge graph; plan(a) = argmax_g P(reach g|a)·V(g),
+   replan every our-move, MCTS navigates to first hop (reach leaves, no WDL).
+   q̃ shrunk (pseudo-count = median support); fall rates = table crossing rates at
+   their band vs ours. All selection thresholds eliminated.
+
+**Micro-smoke** (1 game, 64 nodes, 60 plies — mechanics only, printed verdicts):
+graph: fall_opp−fall_us median +0.0114 (chutes exist at 1100-vs-1800); 453/1024
+regions continue-to-next-chute; chain depth median 1 / p90 5. Play: 15 spells,
+1 hit (pred 4.0 plies vs realized 2.0), switch rate 87% — but the switch
+discriminator says margin median 0.047 nats vs incumbent decay 0.103, **77%
+decay-dominated = honest abandonment**, so no hysteresis; the question is whether
+plans stale from weak navigation (64 evals) or opponent drift → node-scaling read.
+Budget 79 fresh evals/our-move. Full 2-game smoke + A/B queued behind m4f.
+
+**m4f FINAL (200 games/arm, poison guard held through all 200 ON games):**
+score ON 0.070 (W3 D22 L175) vs OFF 0.058 (W2 D19 L179); steering (our-move)
+ON +0.00352 vs OFF +0.00424, diff −0.00072 CI[−0.00410,+0.00270] NOT PASSED;
+ledger 5220 plans, **reached 0.7%** with sway 59.2% — the tie-break coupling is
+active but causally inert: horizon-scale plans never get realized. M4 steering
+verdict = NULL, conditional on field v3 + tie-break coupling (retest post-M5
+coupling). Quantitatively confirms the "one-subgoal routing gives no lift" call.
+
+**M5 full-length smoke** (2 games, 200 nodes): score 0.250 (D1 L1; context
+baseline 0.125), 214 evals/our-move. 20 spells, hit 10%, switch 80% (margin
+median 0.146 vs decay 0.133 nats, 50% decay-dominated — at the bigger budget
+half the churn is genuine challenger wins, not just stale plans). Plies pred
+median 11.2 vs realized 2.0 (n=2 hits — selection effect: only fast plans
+survive to realization). Chain depth median 1: argmax mostly picks
+convert-in-place targets. Committed; 100-game read launched.
