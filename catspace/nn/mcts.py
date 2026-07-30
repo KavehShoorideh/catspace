@@ -157,7 +157,7 @@ class MCTS:
                  root_min_visits: int = 0, ci_z: float = 1.96,
                  policy_fn=None, value_fn=None, fpu_reduction: float = 0.25,
                  eval_cache: dict | None = None, batch_leaves: int = 1,
-                 policy_batch_fn=None, order_fn=None):
+                 policy_batch_fn=None, order_fn=None, opp_policy_fn=None):
         assert max_nodes >= 1
         # EARLY-STOP LEVERS (2026-07-18, the planner energy objective
         # E[score] - c*compute): spend budget only while it can still change
@@ -240,6 +240,17 @@ class MCTS:
         # expansion (the eval tier is a real net pass). None disables (exact
         # prior behavior). Requires pw_c > 0 to have any effect.
         self.order_fn = order_fn
+        # OPPONENT-MODEL EXPANSION (MILESTONES §M5: "expansion weighted by the
+        # OPPONENT MODEL -- expectimax over Maia/z policy, measured better than
+        # minimax 0.125 vs 0.094"). opp_policy_fn(board) -> {move: prior} | None,
+        # called at nodes where the OPPONENT is to move (turn != root turn):
+        # child priors P come from the opponent's actual move distribution
+        # instead of the adversarial value-softmax; Q/backups untouched, so
+        # PUCT at opponent nodes becomes soft-expectimax (explore what they
+        # PLAY, value what it does to us). None return = keep default priors
+        # (poisoned/failed model call). Costs 1 eval per opponent expansion.
+        self.opp_policy_fn = opp_policy_fn
+        self._root_turn = None
         self.fpu_reduction = fpu_reduction
         self.reach_fn = reach_fn
         self.detect_threefold = detect_threefold
@@ -412,6 +423,16 @@ class MCTS:
             if tac.any():
                 w = self.tactical_prior
                 pri = (1.0 - w) * pri + w * (tac / tac.sum())
+        if (self.opp_policy_fn is not None and self._root_turn is not None
+                and node.board.turn != self._root_turn):
+            # OPPONENT node: priors = their actual move distribution (Maia/z),
+            # replacing the adversarial value-softmax. Q/backups untouched.
+            mp = self.opp_policy_fn(node.board)
+            if mp:
+                self.evals_used += 1
+                om = np.array([mp.get(c.move, 0.0) for c in children], dtype=float)
+                if om.sum() > 0.0:
+                    pri = om / om.sum()
         for c, p in zip(children, pri):
             c.P = float(p)
         node.children = children
@@ -549,6 +570,7 @@ class MCTS:
         reuse_root: a subtree from a previous search whose board matches --
         its visit statistics carry over (tree reuse across moves)."""
         self.evals_used = 0
+        self._root_turn = board.turn         # opponent-model expansion needs "whose node"
         # seed repetition history from the actual game so far (the board carries
         # its move stack), so the search can detect threefolds that COMPLETE
         # using positions already played before the search root
