@@ -103,7 +103,7 @@ what the planner steers with.*
 ```bash
 pip install -e .[nn]     # torch is the [nn] extra; lczerolens for the lc0 encoder
 pytest                   # 268 tests
-scripts/run_jepa_t1.sh   # the current build: corpus -> anchored-JEPA T1
+scripts/run_jepa_pretrain.sh   # the current build: corpus -> encoder pretraining
 ```
 
 More in [docs/RUNBOOK.md](docs/RUNBOOK.md) and [scripts/README.md](scripts/README.md).
@@ -111,7 +111,7 @@ More in [docs/RUNBOOK.md](docs/RUNBOOK.md) and [scripts/README.md](scripts/READM
 ## Status (2026-07-30)
 
 Pivoted to the anchored-JEPA architecture (Kaveh's draft): checkpoint corpus
-mined (33.8M games scanned), T1 encoder training in flight. The prior stack
+mined (33.8M games scanned), encoder pretraining in flight. The prior stack
 (M0–M5: metastability basins, style models, reach fields, chute planner, MCTS
 probe — and its complete verdict ladder, 0.045→0.095 vs the 0.125 baseline) is
 shelved intact as the known-good component library. History: `docs/archive/`,

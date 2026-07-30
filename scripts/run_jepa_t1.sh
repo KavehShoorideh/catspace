@@ -1,1 +1,0 @@
-../experiments/run_jepa_t1.sh

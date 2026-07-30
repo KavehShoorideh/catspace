@@ -1,0 +1,1 @@
+../experiments/run_jepa_pretrain.sh
