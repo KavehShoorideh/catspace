@@ -27,6 +27,11 @@ def main():
     ap.add_argument("--aug-from", default="", help="reach_v3 npz carrying the codebook scalers")
     ap.add_argument("--regions", type=int, default=0,
                     help="0 = use the field bank; K>0 = fit a FINER k-means on the labeled train half")
+    ap.add_argument("--kmeans-sample", type=int, default=0,
+                    help="fit k-means on a random subsample of N train rows (0 = all rows; "
+                         "assignments always computed for ALL rows). Needed at v4 scale: full "
+                         "Lloyd on ~800k x 68 x 1024 clusters is hours; centroids from a 150k "
+                         "subsample are statistically equivalent.")
     args = ap.parse_args()
 
     d = dict(np.load(args.labeled, allow_pickle=True))
@@ -43,7 +48,11 @@ def main():
             float(v3["aug_w"]) * (feats_all - v3["aug_mu_f"]) / v3["aug_sd_f"]], 1)
         space = A_all[train]
         from sklearn.cluster import KMeans
-        km = KMeans(n_clusters=args.regions or 1024, n_init=3, random_state=0).fit(space)
+        fit_rows = space
+        if args.kmeans_sample and len(space) > args.kmeans_sample:
+            sel = np.random.default_rng(0).choice(len(space), args.kmeans_sample, replace=False)
+            fit_rows = space[sel]
+        km = KMeans(n_clusters=args.regions or 1024, n_init=3, random_state=0).fit(fit_rows)
         assign_bank = km.cluster_centers_.astype(np.float32)
         region = km.predict(space)
         bank = np.stack([phi[region == g].mean(0) if (region == g).any() else phi.mean(0)
@@ -54,8 +63,12 @@ def main():
         G, B = len(bank), len(args.band_edges) + 1
     elif args.regions > 0:
         from sklearn.cluster import KMeans
+        fit_rows = phi
+        if args.kmeans_sample and len(phi) > args.kmeans_sample:
+            sel = np.random.default_rng(0).choice(len(phi), args.kmeans_sample, replace=False)
+            fit_rows = phi[sel]
         bank = KMeans(n_clusters=args.regions, n_init=3, random_state=0).fit(
-            phi).cluster_centers_.astype(np.float32)
+            fit_rows).cluster_centers_.astype(np.float32)
         G, B = len(bank), len(args.band_edges) + 1
         d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
         region = d2.argmin(1)
