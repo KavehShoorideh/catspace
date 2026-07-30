@@ -31,6 +31,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.diagnostics import eff_rank                               # noqa: E402
 from catspace.encoder.jepa import JepaT1                                # noqa: E402
 from catspace.train.scaffold import resolve_device                      # noqa: E402
+from infra import (PreemptGuard, RunLogger, latest_resumable,           # noqa: E402
+                   load_training_state, save_training_state)
 
 GAPS = np.array([1, 2, 3, 5, 8, 13, 21, 34])
 
@@ -54,6 +56,8 @@ def main():
     ap.add_argument("--layers", type=int, default=6)
     ap.add_argument("--ckpt-every", type=int, default=5000)
     ap.add_argument("--eval-every", type=int, default=1000)
+    ap.add_argument("--resume", default="",
+                    help="'auto' = continue from <out>_latest.pt; or a ckpt path")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     t0 = time.time(); rng = np.random.default_rng(args.seed)
@@ -80,6 +84,15 @@ def main():
     opt = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad],
                             lr=args.lr, weight_decay=0.01)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, args.steps)
+    start_step = 0
+    resume_path = (latest_resumable(args.out) if args.resume == "auto"
+                   else args.resume or None)
+    if resume_path:
+        start_step, _ = load_training_state(resume_path, model, opt, sched,
+                                            map_location=dev)
+        print(f"[resume] {resume_path} @ step {start_step}", flush=True)
+    guard = PreemptGuard()
+    runlog = RunLogger(args.out)
 
     def enc(tok, glob, rows, target=False):
         tk = tok[rows].to(dev); gl = glob[rows].to(dev)
@@ -118,18 +131,33 @@ def main():
                  ).sum() / m.sum().clamp(min=1)
         return l_dyn, l_haz, l_boot + l_clamp
 
+    cfg = dict(d=args.d, layers=args.layers, n_class=NC, H=H, gaps=GAPS.tolist())
+    meta = dict(data=args.data, seed=args.seed)
+
+    def checkpoint(step):
+        save_training_state(f"{args.out}_step{step}.pt", model, opt, sched,
+                            step, cfg, meta)
+        save_training_state(f"{args.out}_latest.pt", model, opt, sched,
+                            step, cfg, meta)
+
     model.train()
-    for step in range(1, args.steps + 1):
-        rt = rng.choice(tr_idx, args.batch)
-        rb = rng.choice(bd_idx, min(args.bd_batch, len(bd_idx)))
-        rc = rng.choice(cx_idx, args.batch)
-        l_dyn, l_haz, l_dest = losses(rt, rb, rc)
-        L = args.a_dyn * l_dyn + args.a_haz * l_haz + args.a_dest * l_dest
-        opt.zero_grad(); L.backward(); opt.step(); sched.step()
-        model.ema_update()
+    for step in range(start_step + 1, args.steps + 1):
+        with runlog.timer("train"):
+            rt = rng.choice(tr_idx, args.batch)
+            rb = rng.choice(bd_idx, min(args.bd_batch, len(bd_idx)))
+            rc = rng.choice(cx_idx, args.batch)
+            l_dyn, l_haz, l_dest = losses(rt, rb, rc)
+            L = args.a_dyn * l_dyn + args.a_haz * l_haz + args.a_dest * l_dest
+            opt.zero_grad(); L.backward(); opt.step(); sched.step()
+            model.ema_update()
+        if guard.should_stop:
+            checkpoint(step)
+            runlog.log(step=step, preempted=1)
+            print(f"PREEMPT: checkpointed at step {step}, exiting 0", flush=True)
+            sys.exit(0)
         if step % args.eval_every == 0:
             model.eval()
-            with torch.no_grad():
+            with runlog.timer("eval"), torch.no_grad():
                 re = torch.as_tensor(rng.choice(np.flatnonzero(ho_cx), 1024))
                 phi_e = enc(T["cx_tok"], T["cx_glob"], re)
                 er = eff_rank(phi_e.cpu().numpy())
@@ -139,19 +167,16 @@ def main():
                              .argmax(1).cpu() ==
                              (T["bd_class"][rbh] * 3 + T["bd_wdl"][rbh]).long()).float()
                             .mean()) if len(rbh) else float("nan")
+            runlog.log(step=step, loss=float(L), l_dyn=float(l_dyn),
+                       l_haz=float(l_haz), l_dest=float(l_dest),
+                       eff_rank=er, clamp_acc=acc, lr=sched.get_last_lr()[0])
             print(f"  step {step} | dyn {float(l_dyn):.4f} haz {float(l_haz):.4f} "
                   f"dest {float(l_dest):.4f} | eff_rank(phi) {er:.1f}/{args.d} | "
                   f"clamp-acc {acc:.3f} [{time.time()-t0:.0f}s]", flush=True)
             assert er > args.d * 0.02, f"COLLAPSE GATE: eff_rank {er:.1f}"
             model.train()
         if step % args.ckpt_every == 0 or step == args.steps:
-            torch.save({"state_dict": model.state_dict(),
-                        "cfg": dict(d=args.d, layers=args.layers, n_class=NC,
-                                    H=H, gaps=GAPS.tolist()),
-                        "meta": dict(data=args.data, step=step, seed=args.seed)},
-                       f"{args.out}_step{step}.pt")
-            torch.save(torch.load(f"{args.out}_step{step}.pt", weights_only=False),
-                       f"{args.out}_latest.pt")
+            checkpoint(step)
 
     # ---- final held-out verdicts ------------------------------------------------------
     model.eval()
