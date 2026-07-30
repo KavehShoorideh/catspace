@@ -133,3 +133,10 @@ AI2/UW-style benchmark rigor — not the draft paper's own templates.
   [LeJEPA (loss-vs-probe model selection)](https://arxiv.org/html/2511.08544v2)
 - [NVIDIA: evaluating general-purpose robot policies (Clopper–Pearson, failure analysis)](https://developer.nvidia.com/blog/how-to-evaluate-general-purpose-robot-policies-for-real-world-deployment/) ·
   [Dieter Fox — NVIDIA SRL](https://research.nvidia.com/labs/srl/authors/dieter-fox/)
+
+### Figure-count convention
+One probe ships AT LEAST one figure, not exactly one (Kaveh 2026-07-30). `--fig
+foo.png` is a basename: a probe with more than one idea writes suffixed files
+(`foo_spectrum.png`, `foo_reliability.png`, ...) — one figure, one idea, per the
+lab-paper norm. Multi-panel is fine only when the panels are one argument read
+together (e.g. the hazard identity chain).
