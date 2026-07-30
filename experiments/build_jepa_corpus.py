@@ -33,6 +33,15 @@ from catspace.encoder.jepa import tokenize, move_ids                    # noqa: 
 from catspace.endgame.material import mat_sig                           # noqa: E402
 
 
+def _tokenize_chunk(fens):
+    tok = np.zeros((len(fens), 64), np.uint8)
+    glob = np.zeros((len(fens), 6), np.uint8)
+    for i, fen in enumerate(fens):
+        t, g = tokenize(chess.Board(fen))
+        tok[i] = t; glob[i] = g
+    return tok, glob
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pgn", default="data/raw/lichess_db_standard_rated_2019-01.pgn.zst")
@@ -44,6 +53,7 @@ def main():
     ap.add_argument("--max-eval-games", type=int, default=1000000000)
     ap.add_argument("--out", default="data/derived/checkpoints/jepa_t1_corpus.npz")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=8)
     args = ap.parse_args()
     t0 = time.time(); rng = np.random.default_rng(args.seed)
     tb = chess.syzygy.open_tablebase(args.syzygy)
@@ -117,16 +127,16 @@ def main():
     print(f"AUDIT boundary WDL (white POV): W {np.mean(wdl_arr == 0):.1%} "
           f"D {np.mean(wdl_arr == 1):.1%} L {np.mean(wdl_arr == 2):.1%}")
 
-    # tokenize the mined checkpoint contexts (hazard stream)
+    # tokenize the mined checkpoint contexts (hazard stream) — parallel over chunks
     ck = dict(np.load(args.checkpoints, allow_pickle=True))
-    print(f"[tokenize] {len(ck['cx_fen']):,} contexts", flush=True)
-    cx_tok = np.zeros((len(ck["cx_fen"]), 64), np.uint8)
-    cx_glob = np.zeros((len(ck["cx_fen"]), 6), np.uint8)
-    for i, fen in enumerate(ck["cx_fen"]):
-        t, g = tokenize(chess.Board(fen))
-        cx_tok[i] = t; cx_glob[i] = g
-        if i % 500_000 == 0:
-            print(f"  {i:,}", flush=True)
+    fens_cx = list(ck["cx_fen"])
+    print(f"[tokenize] {len(fens_cx):,} contexts x {args.workers} workers", flush=True)
+    from multiprocessing import Pool
+    chunks = [fens_cx[i:i + 100_000] for i in range(0, len(fens_cx), 100_000)]
+    with Pool(args.workers) as pool:
+        parts = pool.map(_tokenize_chunk, chunks)
+    cx_tok = np.concatenate([p[0] for p in parts])
+    cx_glob = np.concatenate([p[1] for p in parts])
 
     out = Path(args.out); out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(

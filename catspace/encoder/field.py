@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import torch
 
 from catspace.encoder.iqe_head import IQEHead
@@ -41,9 +42,21 @@ class ReachabilityField:
     def phi(self, lcboards):
         """LczeroBoards -> phi (B, d). Batched; the trunk is the dominant cost -> keep batches large."""
         x = torch.stack([b.to_input_tensor() for b in lcboards]).float().to(self.dev)
+        return self._phi_x(x)
+
+    @torch.no_grad()
+    def phi_from_planes(self, planes):
+        """(B,112,8,8) numpy planes -> phi. Lets callers cache to_input_tensor —
+        the plane build is scalar-read heavy (profiled: dominant cost in the
+        traced engine) and worth memoizing per fen."""
+        x = torch.as_tensor(np.stack(planes)).float().to(self.dev)
+        return self._phi_x(x)
+
+    @torch.no_grad()
+    def _phi_x(self, x):
         self.trunk(x); t = self._f["t"]
         if self.tokens:
-            B = len(lcboards); C = t.shape[-1]
+            B = x.shape[0]; C = t.shape[-1]
             t = t.reshape(B, 64, C).permute(0, 2, 1).reshape(B, C, 8, 8)
         return self.head.phi(t)
 

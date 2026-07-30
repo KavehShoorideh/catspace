@@ -25,8 +25,26 @@ EPS_SOUND = 0.05          # soundness floor: max committor concession for a trap
 class TrapTracePlanner:
     def __init__(self, bank, embed_fn, committor_fn, eps: float = EPS_SOUND):
         """embed_fn(boards)->(B,d) unnormalized; committor_fn(boards)->(B,) white-POV."""
+        from catspace.search.memo import BoundedMemo
         self.bank = bank; self.embed = embed_fn; self.committor = committor_fn
         self.eps = eps
+        # cross-move memoization: re-roots and transpositions re-see positions
+        self.emb_memo = BoundedMemo(100_000)
+        self.c_memo = BoundedMemo(100_000)
+
+    def _embed_memo(self, boards):
+        by_fen = {b.fen(): b for b in boards}
+        rows = self.emb_memo.batch_get_or(
+            [b.fen() for b in boards],
+            lambda miss: list(self.embed([by_fen[f] for f in miss])))
+        return np.stack(rows)
+
+    def _committor_memo(self, boards):
+        by_fen = {b.fen(): b for b in boards}
+        rows = self.c_memo.batch_get_or(
+            [b.fen() for b in boards],
+            lambda miss: list(np.asarray(self.committor([by_fen[f] for f in miss]))))
+        return np.asarray(rows)
 
     def decide(self, board):
         import chess
@@ -35,9 +53,9 @@ class TrapTracePlanner:
         succ = []
         for m in moves:
             b2 = board.copy(stack=False); b2.push(m); succ.append(b2)
-        E = self.embed([board] + succ)
+        E = self._embed_memo([board] + succ)
         E = E / (np.linalg.norm(E, axis=1, keepdims=True) + 1e-9)
-        c_all = np.asarray(self.committor([board] + succ))
+        c_all = self._committor_memo([board] + succ)
         c_now = float(c_all[0]); c_succ = c_all[1:]
         c_mover = c_succ if our_white else 1 - c_succ          # our POV
         best_val = float(c_mover.max())
@@ -64,7 +82,7 @@ class TrapTracePlanner:
                                f"{'White' if cand['victim_white'] else 'Black'} — us")
             else:
                 import chess as _c
-                e_trap = self.embed([_c.Board(cand["exemplar_fen"])])[0]
+                e_trap = self._embed_memo([_c.Board(cand["exemplar_fen"])])[0]
                 e_trap = e_trap / (np.linalg.norm(e_trap) + 1e-9)
                 sim_now = float(E[0] @ e_trap)
                 sims = E[1:] @ e_trap
@@ -96,6 +114,8 @@ class TrapTracePlanner:
                                            ("exemplar_fen", "support", "agreement",
                                             "med_gap", "exp_plies", "med_delta")},
                                         "verify": v})
+        trace["cache"] = dict(emb_hit_rate=round(self.emb_memo.rate, 3),
+                              committor_hit_rate=round(self.c_memo.rate, 3))
         if chosen is not None:
             i, cand = chosen
             trace["decision"] = dict(source="trap", move=moves[i].uci(),
