@@ -8,9 +8,15 @@ start would just repeat the same line -- diversity lives entirely in the 100k di
 
 Same STANDARD schema as gen_field_data_fullgame.py (planes/move/result/ending/dtz/game/ply/
 stm_id/stm_elo/opp_elo) so this drops straight into the existing IQE/field training pipeline
-(train_iqe_head.py) unchanged. Real move-history planes: each worker replays the pool's actual
+(train_iqe_head.py) unchanged. Real move-history planes: each shard replays the pool's actual
 opening UCI prefix from the start position (not just the bare FEN) so lc0's 8-position-history
 input is correct, then continues with SF-vs-SF to game end (or <=7p tablebase handoff).
+
+CHECKPOINTED (Kaveh 2026-07-31): the pool is split into small SHARDS; each shard is written
+atomically (temp-then-rename, the m2b_cache.py pattern) to <out>_shards/; a shard whose output
+already exists is SKIPPED on restart -- kill/crash loses at most one shard's worth of work, not
+the whole run. `--collect` merges finished shards into the final combined npz + moves.tsv without
+recomputing anything.
 """
 from __future__ import annotations
 
@@ -18,7 +24,7 @@ import argparse
 import os
 import sys
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import numpy as np
@@ -30,27 +36,26 @@ ENGINE_ELO = 3500
 STM_ID = np.uint64(0xE1E1E1E1E1E1E1E1)   # constant marker: "the engine", not a real player
 
 
-def worker(task):
-    lines, depth, cap, stride, per_game, tail, syzygy, seed = task
+def play_shard(lines, depth, cap, stride, per_game, tail, syzygy, gid0):
+    """The actual generation logic for one shard (list of (fen, prefix)). Unchanged from the
+    original single-process-per-worker version, just factored out of the old `worker`."""
     import shutil
     import chess
     import chess.engine
     import torch
     from lczerolens import LczeroBoard
     from catspace.tb import TB
-    from experiments.value_fixed_point import white_pov_value
+    from experiments.value_fixed_point import white_pov_value, tb_best_move
 
     sf = chess.engine.SimpleEngine.popen_uci(shutil.which("stockfish") or "/opt/homebrew/bin/stockfish")
     sf.configure({"Threads": 1})
     tb = TB(str(syzygy), cache_db=None); syz = tb.tb
     limit = chess.engine.Limit(depth=depth)
 
-    t0 = time.time()
     planes, moves, dtzs, ends, res_out, gouts, plies, sids, selos, oelos = ([] for _ in range(10))
-    for gid, (fen, prefix) in enumerate(lines):
-        if gid and gid % 200 == 0:
-            print(f"    [w seed={seed}] {gid}/{len(lines)} games, {len(planes)} rows "
-                  f"[{time.time()-t0:.0f}s]", flush=True)
+    full_gids, full_moves, full_res = [], [], []
+    for i, (fen, prefix) in enumerate(lines):
+        gid = gid0 + i
         board = LczeroBoard()
         ok = True
         for u in prefix.split(" "):
@@ -72,7 +77,6 @@ def worker(task):
                 break
             board.push(r.move); ucis.append(r.move.uci())
         if chess.popcount(board.occupied) <= 7:
-            from experiments.value_fixed_point import tb_best_move
             for _ in range(cap - len(board.move_stack)):
                 if board.is_game_over(claim_draw=True) or chess.popcount(board.occupied) > 7:
                     break
@@ -84,6 +88,7 @@ def worker(task):
         base_end = {1: 0, -1: 5}.get(result, None)
         n_open = len(prefix.split(" "))
         n = n_open + len(ucis); tail_start = n - tail
+        full_gids.append(gid); full_moves.append(prefix + " " + " ".join(ucis)); full_res.append(result)
 
         rb = LczeroBoard(); taken = 0
         for u in prefix.split(" "):
@@ -112,17 +117,79 @@ def worker(task):
             planes.append(rb.to_input_tensor().to(dtype=torch.uint8).numpy())
             moves.append(ucis[ply - n_open + 1] if ply - n_open + 1 < len(ucis) else "")
             dtzs.append(dtz); ends.append(ending); res_out.append(result)
-            gouts.append(seed * 1_000_000 + gid); plies.append(ply)
-            sids.append(STM_ID); selos.append(ENGINE_ELO if stm_white else ENGINE_ELO)
-            oelos.append(ENGINE_ELO); taken += 1
+            gouts.append(gid); plies.append(ply)
+            sids.append(STM_ID); selos.append(ENGINE_ELO); oelos.append(ENGINE_ELO)
+            taken += 1
     sf.quit(); tb.close()
-    if not planes:
-        z = np.zeros
-        return (z((0, 112, 8, 8), np.uint8), np.array([], "U6"), z(0, np.int32), z(0, np.int8),
-                z(0, np.int8), z(0, np.int64), z(0, np.int32), z(0, np.uint64), z(0, np.int16), z(0, np.int16))
-    return (np.stack(planes), np.asarray(moves, "U6"), np.asarray(dtzs, np.int32), np.asarray(ends, np.int8),
-            np.asarray(res_out, np.int8), np.asarray(gouts, np.int64), np.asarray(plies, np.int32),
-            np.asarray(sids, np.uint64), np.asarray(selos, np.int16), np.asarray(oelos, np.int16))
+    z = np.zeros
+    arrs = (dict(planes=np.stack(planes), move=np.asarray(moves, "U6"), dtz=np.asarray(dtzs, np.int32),
+                ending=np.asarray(ends, np.int8), result=np.asarray(res_out, np.int8),
+                game=np.asarray(gouts, np.int64), ply=np.asarray(plies, np.int32),
+                stm_id=np.asarray(sids, np.uint64), stm_elo=np.asarray(selos, np.int16),
+                opp_elo=np.asarray(oelos, np.int16))
+            if planes else
+            dict(planes=z((0, 112, 8, 8), np.uint8), move=np.array([], "U6"), dtz=z(0, np.int32),
+                ending=z(0, np.int8), result=z(0, np.int8), game=z(0, np.int64), ply=z(0, np.int32),
+                stm_id=z(0, np.uint64), stm_elo=z(0, np.int16), opp_elo=z(0, np.int16)))
+    arrs["moves_gid"] = np.asarray(full_gids, np.int64)
+    arrs["moves_uci"] = np.asarray(full_moves, dtype=object)
+    arrs["moves_result"] = np.asarray(full_res, np.int8)
+    return arrs
+
+
+def run_shard(task):
+    shard_idx, out_path, lines, depth, cap, stride, per_game, tail, syzygy, gid0 = task
+    if out_path.exists():
+        return shard_idx, "skipped", 0
+    arrs = play_shard(lines, depth, cap, stride, per_game, tail, syzygy, gid0)
+    tmp = out_path.with_suffix(out_path.suffix + ".tmp")
+    with open(tmp, "wb") as f:
+        np.savez_compressed(f, **arrs, allow_pickle=True)
+    os.replace(tmp, out_path)
+    return shard_idx, "done", len(arrs["ply"])
+
+
+def bar(frac: float, width: int = 30) -> str:
+    n = int(round(frac * width))
+    return "[" + "#" * n + "-" * (width - n) + f"] {frac:5.1%}"
+
+
+def fmt_eta(seconds: float) -> str:
+    if seconds != seconds or seconds < 0:      # nan guard
+        return "?"
+    m, s = divmod(int(seconds), 60); h, m = divmod(m, 60)
+    return f"{h:d}h{m:02d}m" if h else f"{m:d}m{s:02d}s"
+
+
+def collect(shard_dir: Path, n_shards: int, out: str):
+    cols = {k: [] for k in ("planes", "move", "dtz", "ending", "result", "game", "ply",
+                            "stm_id", "stm_elo", "opp_elo")}
+    full_gids, full_moves, full_res = [], [], []
+    missing = []
+    for i in range(n_shards):
+        p = shard_dir / f"shard_{i:05d}.npz"
+        if not p.exists():
+            missing.append(i); continue
+        d = np.load(p, allow_pickle=True)
+        for k in cols:
+            cols[k].append(d[k])
+        full_gids.append(d["moves_gid"]); full_moves.append(d["moves_uci"]); full_res.append(d["moves_result"])
+    if missing:
+        print(f"[collect] WARNING: {len(missing)}/{n_shards} shards missing (not yet run) -- "
+              f"collecting the {n_shards - len(missing)} that exist", flush=True)
+    merged = {k: np.concatenate(v) for k, v in cols.items()}
+    Path(out).parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(out, **merged)
+    moves_path = str(Path(out).with_suffix("")) + "_moves.tsv"
+    with open(moves_path, "w") as fh:
+        for gids, ucis, ress in zip(full_gids, full_moves, full_res):
+            for g, u, r in zip(gids, ucis, ress):
+                fh.write(f"{g}\t{r}\t{u}\n")
+    end = merged["ending"]
+    w = int((end == 0).sum()); l = int((end == 5).sum()); dr = len(end) - w - l
+    print(f"\n=== {out}: {len(end):,} positions ({merged['planes'].nbytes/1e6:.0f}MB) games "
+          f"{len(np.unique(merged['game'])):,} | ending W {w/len(end):.0%} D {dr/len(end):.0%} "
+          f"L {l/len(end):.0%} === | full move lists -> {moves_path}", flush=True)
 
 
 def main():
@@ -134,12 +201,13 @@ def main():
     ap.add_argument("--stride", type=int, default=6)
     ap.add_argument("--per-game", type=int, default=8)
     ap.add_argument("--tail", type=int, default=4)
-    ap.add_argument("--workers", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=6, help="default 6 = perf-core count on this Mac; "
+                    "os.cpu_count()-1 (10) oversubscribed the 5 efficiency cores and was ~3x SLOWER")
+    ap.add_argument("--shard-size", type=int, default=500)
     ap.add_argument("--out", default="data/derived/opening_pool_sfsf.npz")
-    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--collect-only", action="store_true", help="skip generation, just merge existing shards")
     args = ap.parse_args()
     from catspace.tb import DEFAULT_SYZYGY
-    t0 = time.time()
 
     lines = []
     with open(args.pool) as fh:
@@ -149,26 +217,35 @@ def main():
     if args.limit:
         lines = lines[:args.limit]
 
-    W = args.workers or max(1, (os.cpu_count() or 4) - 1)
-    chunks = [lines[i::W] for i in range(W)]
-    tasks = [(chunks[i], args.depth, args.cap, args.stride, args.per_game, args.tail,
-              str(DEFAULT_SYZYGY), args.seed + i) for i in range(W)]
-    print(f"[gen-opening-pool-sfsf] {len(lines):,} positions | SF depth {args.depth} deterministic "
-          f"| {W} workers | STANDARD format", flush=True)
-    cols = [[] for _ in range(10)]
-    with ProcessPoolExecutor(max_workers=W) as ex:
-        for i, r in enumerate(ex.map(worker, tasks)):
-            for k in range(10):
-                cols[k].append(r[k])
-            print(f"  worker {i+1}/{W}: {len(r[2]):,} positions [{time.time()-t0:.0f}s]", flush=True)
-    planes, moves, dtz, end, res, gid, ply, sid, selo, oelo = [np.concatenate(c) for c in cols]
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(args.out, planes=planes, move=moves, result=res, ending=end, dtz=dtz,
-                        game=gid, ply=ply, stm_id=sid, stm_elo=selo, opp_elo=oelo)
-    w = int((end == 0).sum()); l = int((end == 5).sum()); dr = len(end) - w - l
-    print(f"\n=== {args.out}: {len(dtz):,} positions ({planes.nbytes/1e6:.0f}MB) games "
-          f"{len(np.unique(gid)):,} | ending W {w/len(end):.0%} D {dr/len(end):.0%} L {l/len(end):.0%} "
-          f"[{time.time()-t0:.0f}s] ===")
+    shard_dir = Path(args.out).with_suffix("") .parent / (Path(args.out).stem + "_shards")
+    shard_dir.mkdir(parents=True, exist_ok=True)
+    shards = [lines[i:i + args.shard_size] for i in range(0, len(lines), args.shard_size)]
+    n_shards = len(shards)
+
+    if not args.collect_only:
+        tasks = [(i, shard_dir / f"shard_{i:05d}.npz", shards[i], args.depth, args.cap, args.stride,
+                  args.per_game, args.tail, str(DEFAULT_SYZYGY), i * args.shard_size)
+                 for i in range(n_shards)]
+        already = sum(1 for t in tasks if t[1].exists())
+        print(f"[gen-opening-pool-sfsf] {len(lines):,} positions | {n_shards} shards x {args.shard_size} "
+              f"| SF depth {args.depth} deterministic | {args.workers} workers | "
+              f"{already} shard(s) already done (resume)", flush=True)
+        t0 = time.time(); done = already
+        with ProcessPoolExecutor(max_workers=args.workers) as ex:
+            futs = [ex.submit(run_shard, t) for t in tasks if not t[1].exists()]
+            for fut in as_completed(futs):
+                idx, status, n = fut.result()
+                done += 1
+                elapsed = time.time() - t0
+                rate = (done - already) / elapsed if elapsed > 0 else 0
+                eta = (n_shards - done) / rate if rate > 0 else float("nan")
+                print(f"  {bar(done / n_shards)} shard {idx:05d} {status} ({n} rows) | "
+                      f"{done}/{n_shards} shards | elapsed {fmt_eta(elapsed)} | ETA {fmt_eta(eta)}",
+                      flush=True)
+        print(f"\n[gen-opening-pool-sfsf] all {n_shards} shards on disk [{fmt_eta(time.time()-t0)}]",
+              flush=True)
+
+    collect(shard_dir, n_shards, args.out)
     print("DONE gen_opening_pool_sfsf", flush=True)
 
 
