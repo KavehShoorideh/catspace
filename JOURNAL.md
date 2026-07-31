@@ -9341,3 +9341,44 @@ compared against — no claim of statistical significance yet, just directional
 and large). Next: scale the smoke sample before trusting the number further,
 then revisit the ClockField calibration flag and the 1-ply verification
 depth (adaptive budget design), both still open from the MVP note.
+
+---
+
+## 2026-07-31 — New line: full-strength deterministic SF-vs-SF over 100k human
+## openings, headed for an IQE quasimetric + "only move" bottleneck map
+
+Kaveh's ask: find where an engine has essentially ONE move that holds the
+current outcome basin (stay-in-basin or improve; deviate = drop a basin) —
+i.e. quantify how narrow the margin for error is, position by position, under
+best play. Design settled after two redirects (checked web sources first —
+lc0 training archives and TCEC don't give enough same-position repeat
+coverage for this; then Kaveh moved off "replay the same position many times
+with a stochastic engine" to "many DIFFERENT deterministic-SF starts," which
+changes how only-move gets computed: no cross-replay agreement available
+per position anymore, so it'll be (a) SF MultiPV ground truth per visited
+position and (b) the trained field queried the same way, cross-validated
+against (a) — both, per Kaveh.
+
+**Opening pool.** `experiments/build_opening_pool.py`: distinct human
+move-prefixes at ply 8 (5 full moves/side) counted over 2M real lichess
+games — 581,037 distinct, comfortably clears 100k. Took the top 100,000 by
+real-game frequency (real theory, not one-off lines) -> DVC-tracked
+`data/derived/opening_pool_ply8.txt.dvc`.
+
+**Continuations.** `experiments/gen_opening_pool_sfsf.py`: one deterministic
+SF game per pool position (depth 12, matching the M0 `gen_engine_games.py`
+convention, ~2s/game measured locally) — replayed from the ACTUAL opening
+prefix (not a bare FEN) so lc0's 8-position-history planes are correct, then
+SF-vs-SF to game end or <=7p tablebase handoff (`catspace/tb.py`, exact DTZ
+grounding). Same STANDARD schema as `gen_field_data_fullgame.py`
+(planes/move/result/ending/dtz/game/ply/stm_id/elo) — drops into
+`train_iqe_head.py` unchanged. Smoke (8-14 games) clean: right schema, DTZ
+firing, W/D/L sane for engine-strength ply-8 openings (mostly draws, some
+decisive). First launch had a monitoring gap (ProcessPoolExecutor.map only
+prints when a whole worker chunk finishes — ~6h of silence per the "check
+long runs early" rule) — fixed with per-200-games in-worker progress prints
+before the real run started. Full run launched: 100,000 games, 10 workers,
+est. ~6h wall-clock, watchdog armed (45-min stall threshold). Next once it
+lands: train IQE on the frozen lc0 trunk over this data, then the MultiPV /
+field-query only-move mining pass (cost TBD, will report before running at
+scale — MultiPV over every legal move at every position is not cheap).
