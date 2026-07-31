@@ -9300,3 +9300,44 @@ Checkpoints at every 5k steps + `jepa_t1_latest.pt` in `artifacts/experiments/`.
 This unblocks the swap flagged in the traced-engine MVP note above: CheckpointBank
 retrieval can now run on the JEPA encoder instead of the frozen lc0 trunk via a
 bank rebuild (`tools/embed.py`, per docs/PROBING.md). Not yet done — next step.
+
+---
+
+## 2026-07-30 ~17:15 — CheckpointBank swapped to JEPA T1: confirm rate 34% -> 64%
+
+Cheap validation before touching the bank (`tools/probe_rank.py`, `tools/probe_cka.py`
+on 3,000 matched trap-checkpoint FENs through both encoders): JEPA embeddings
+carry far more usable structure on these positions than the trunk's — RankMe
+90.7 vs 19.7, eff_rank 8.1/256 vs 3.2/64. Linear CKA 0.71 -> related but
+distinct geometry (expected: JEPA trained on hazard/destination signal the
+trunk never saw). No collapse, cleared to rebuild.
+
+`catspace/memory/checkpoint_bank.build(..., encoder="jepa")` over the same
+1,887,099-row mined-checkpoint corpus (`checkpoints_v1_full.npz`) ->
+`bank_jepa.npz`, 150,000 embedded contexts, few minutes.
+
+Re-ran the identical smoke harness used for the v0 MVP baseline
+(`experiments/play_traced.py --games 2 --maia-elo 1100`):
+
+| | v0 (trunk bank) | v1 (JEPA bank) |
+|---|---|---|
+| decisions | 42 | 50 |
+| trap-sourced | 57% | 74% |
+| proposals -> confirmed | 34% | **64%** |
+| score /2 | 0/2 | 0.25 (W0 D1 L1) |
+
+This is the predicted fix landing: v0's flagged limit was exact-FEN trap
+grouping fragmenting neighbour support to 1x per group, starving verification
+of agreement; JEPA's learned geometry clusters near-identical trap contexts
+instead of requiring literal FEN matches, so proposals arrive with real
+neighbour support and confirm at roughly double the rate. Score moving off
+0/2 is a side effect, not the target (central hypothesis is interpretability,
+not strength — [[central_hypothesis_interpretability]]) but a still-honest
+signal the plans are more often real.
+
+Not yet checked: whether the confirm-rate jump holds at larger N (this is
+still a 2-game / 50-decision smoke sample, same size as the v0 baseline it's
+compared against — no claim of statistical significance yet, just directional
+and large). Next: scale the smoke sample before trusting the number further,
+then revisit the ClockField calibration flag and the 1-ply verification
+depth (adaptive budget design), both still open from the MVP note.
