@@ -9272,3 +9272,31 @@ work", plausibly novel for games, doubles as forced-win certificates (M7);
 >80% optimal, beat AZ) — the named fallback if the hazard energy stalls.
 Bisimulation game metrics = atlas geometry, not navigation. JEPA stays the
 best shot.
+
+---
+
+## 2026-07-30 ~16:51 — JEPA T1 LANDED: joint three-loss encoder, full corpus
+
+`experiments/run_jepa_t1.sh` ran corpus build + training end to end, no
+staging (best-shot config per the no-A/B rule). Corpus: 9,480,300 transitions
+(474,429 held out), 105,783 boundary rows, 10,953,757 tokenized contexts
+(97.7% occurred), 151 destination classes — build took 4,665s. Training:
+30,000 steps, 18,881s (~5h15m), all three losses (world-model `dyn`, any-event
+hazard `haz`, anchored-destination `dest`) jointly, EMA target + stop-gradient
++ exact Syzygy clamp anti-collapse guards active throughout.
+
+Collapse gate: eff_rank(phi) rose 57.0 -> 77.0 / 256 monotonically across
+training, no rank-1 slide -> guards held. Destination clamp-acc held ~0.93
+(0.893 -> 0.933) end to end. Loss trends: `dyn` 0.015 -> 0.005, `dest` 0.243 ->
+0.013 (steady decline after early noise); `haz` stayed flat ~0.52-0.58
+(expected — it's an energy term, not meant to hit zero).
+
+**VERDICT** (held-out, printed by the script): any-event hazard NLL 1.8500 vs
+train-marginal baseline 1.9251 -> **lift +0.0751 nats (PASS)**. The encoder
+beats the marginal baseline on held-out timing, i.e. it learned real signal
+about when contested events happen, not just their base rate.
+
+Checkpoints at every 5k steps + `jepa_t1_latest.pt` in `artifacts/experiments/`.
+This unblocks the swap flagged in the traced-engine MVP note above: CheckpointBank
+retrieval can now run on the JEPA encoder instead of the frozen lc0 trunk via a
+bank rebuild (`tools/embed.py`, per docs/PROBING.md). Not yet done — next step.
