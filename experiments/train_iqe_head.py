@@ -138,6 +138,8 @@ def main():
                          "weak attraction outside")
     ap.add_argument("--polesep-krep", type=float, default=10.0, help="repulsive stiffness")
     ap.add_argument("--polesep-katt", type=float, default=0.05, help="attractive stiffness")
+    ap.add_argument("--pole-init", choices=["data", "random"], default="data",
+                    help="data = prototype init at each class's mean terminal phi (recommended)")
     ap.add_argument("--w-absorb", type=float, default=1.0, help="d(pole->s) large: cannot leave")
     ap.add_argument("--termrepel-margin", type=float, default=4.0)
     ap.add_argument("--polesep-margin", type=float, default=4.0)
@@ -219,6 +221,26 @@ def main():
             return torch.from_numpy(feats.gather(idx)).to(dev)
         ridx = fmap[idx] if fmap is not None else idx
         return torch.from_numpy(np.asarray(feats[ridx], dtype=np.float32)).to(dev)
+
+    if poles_on and args.pole_init == "data":
+        # Prototype init: each pole starts at the MEAN phi of its own class's terminal positions
+        # -- literally the Prototypical-Networks prototype (mean of support), which is the method
+        # this head's softmax-over-distances is borrowed from.
+        # Why it matters: randn*0.01 starts all three vertices stacked on top of each other at a
+        # scale ~450x smaller than the crossover the potential wants them at, so early training
+        # is spent climbing out of that hole (measured: pole gap moved only 0.09 -> 0.27 in 100
+        # steps against a crossover of 4.5). Starting them in the right region skips that climb.
+        with torch.no_grad():
+            for k in (WIN, DRAW, LOSS):
+                ck = term_train[y_all[term_train] == k]
+                if len(ck) == 0:
+                    print(f"  [poles] WARNING no terminals for class {k}; keeping random init")
+                    continue
+                pick = ck[rng.integers(0, len(ck), min(2048, len(ck)))]
+                net.poles[k] = net.phi(fx(pick)).mean(0)
+            pg = float(torch.log1p(net.d_poles_pairwise()[~torch.eye(3, dtype=torch.bool,
+                                                                    device=dev)]).median())
+            print(f"  [poles] prototype init from terminals -> pole gap {pg:.2f}", flush=True)
 
     def pole_terms(_rng, batch):
         """The five W/D/L basin terms. Every distance-to-pole is ONE batched IQE.pairwise call
