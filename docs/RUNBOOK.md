@@ -92,7 +92,10 @@ MLflow-logged.
 - **Disk**: check `df -h` before cache builds (m2b_cache pre-flights and refuses); the
   tablebase probe cache is sqlite `journal_mode=DELETE` (WAL banned — filled the disk twice).
 - **Engines/nets**: syzygy under `data/syzygy/`; Maia lc0 nets + Maia-2 ONNX under
-  `maia2_models/`; Stockfish on PATH.
+  `maia2_models/`; Stockfish on PATH. `maia2_models/` is gitignored (the weights are 267 MB,
+  over GitHub's 100 MB limit) — a fresh clone starts without it and
+  `maia2.from_pretrained(type, device)` gdown-downloads into `./maia2_models`, skipping if
+  present.
 
 ## 7. Where things live
 
