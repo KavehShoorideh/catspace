@@ -27,12 +27,64 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.nn.iqe import IQE
-from experiments.losses import quasimetric_regression, wdl_hinge
+from experiments.losses import (quasimetric_regression, wdl_hinge, reachability_target,
+                                basin_ce, basin_logp, pole_radial_anchor, terminal_repulsion,
+                                pole_separation, absorbing_penalty, WIN, DRAW, LOSS)
 from experiments.arch_bakeoff import eff_rank
 from catspace.train.scaffold import standard_train, TrainConfig, resolve_device
 
 
 from catspace.encoder.iqe_head import IQEHead  # component home (refactor 2026-07-30)
+
+
+class DualFeats:
+    """Row-index -> trunk features across the TWO source memmaps, without concatenating them.
+
+    The combined dataset is human + SF-vs-SF, whose precomputed trunk features are two ~36GB
+    fp16 memmaps. Copying them into one file would cost ~72GB of disk and a long serial write
+    for zero modelling benefit, so the combined npz carries (source, local_row) per row and this
+    gathers in place. Indices are SORTED per source before the memmap read -- sequential access
+    on a memmap this size is dramatically friendlier than a random gather -- then unsorted back."""
+
+    def __init__(self, paths, source, local_row):
+        self.paths = list(paths)
+        self.source, self.local_row = source, local_row
+        # LAZY: only sources actually present in `source` are opened, so a --source-restricted
+        # run (e.g. SF-only, while the human trunk features are still being precomputed) does not
+        # require a memmap it will never read.
+        self.mm = [None] * len(self.paths)
+        present = np.unique(source)
+        for s in present:
+            self._open(int(s))
+        ref = self.mm[int(present[0])]
+        self.shape = (len(source), *ref.shape[1:])
+        for s in present:
+            assert self.mm[int(s)].shape[1:] == ref.shape[1:], f"feats[{s}] shape mismatch"
+
+    def _open(self, s):
+        if self.mm[s] is None:
+            self.mm[s] = np.load(self.paths[s], mmap_mode="r")
+        return self.mm[s]
+
+    def __len__(self):
+        return self.shape[0]
+
+    def gather(self, idx):
+        """(B,) global row indices -> (B,C,8,8) float32."""
+        idx = np.asarray(idx)
+        out = np.empty((len(idx), *self.shape[1:]), dtype=np.float32)
+        src = self.source[idx]
+        for s in np.unique(src):
+            s = int(s)
+            m = src == s
+            if not m.any():
+                continue
+            loc = self.local_row[idx[m]]
+            order = np.argsort(loc)                          # sequential memmap reads
+            rows = np.asarray(self._open(s)[loc[order]], dtype=np.float32)
+            dest = np.flatnonzero(m)[order]
+            out[dest] = rows
+        return out
 
 
 def build_pairs(game, ply, games_set, rng, per_game=10):
@@ -71,21 +123,51 @@ def main():
     ap.add_argument("--eval-every", type=int, default=500); ap.add_argument("--ckpt-every", type=int, default=1000)
     ap.add_argument("--rows", default="", help="rows .npy: train on this game-subset of the data")
     ap.add_argument("--out", default=""); ap.add_argument("--seed", type=int, default=0)
+    # --- W/D/L basin poles (Kaveh 2026-08-03). OFF by default: with every w-* at 0 and no
+    # --combined, this script's objective and numerics are bit-for-bit the shipped M1 recipe.
+    ap.add_argument("--combined", default="", help="combined metadata npz from "
+                    "build_combined_field_data.py -> enables the 3-pole basin terms")
+    ap.add_argument("--source", choices=["both", "human", "sf"], default="both",
+                    help="restrict the combined data to one source (smoke-testing convenience)")
+    ap.add_argument("--w-basin", type=float, default=1.0, help="basin cross-entropy (the main term)")
+    ap.add_argument("--w-radial", type=float, default=1.0, help="pole shell anchor, TAIL rows only")
+    ap.add_argument("--w-termrepel", type=float, default=1.0, help="anti-collapse ON the shell")
+    ap.add_argument("--w-polesep", type=float, default=1.0, help="keep the 3 vertices apart")
+    ap.add_argument("--w-absorb", type=float, default=1.0, help="d(pole->s) large: cannot leave")
+    ap.add_argument("--termrepel-margin", type=float, default=4.0)
+    ap.add_argument("--polesep-margin", type=float, default=4.0)
+    ap.add_argument("--absorb-margin", type=float, default=4.0)
     args = ap.parse_args()
     t0 = time.time(); dev = resolve_device("auto"); torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
     tag = Path(args.feats).stem.split("__")[0]
     out = args.out or f"artifacts/experiments/iqe_head_{tag}"
 
-    feats = np.load(args.feats, mmap_mode="r")               # (N,C,8,8) fp16, NEVER fully in RAM
-    z = np.load(args.data)
-    dtz = z["dtz"].astype(np.int32); game = z["game"]; ply = z["ply"]
-    if args.rows:
-        rows = np.load(args.rows)
-        dtz, game, ply = dtz[rows], game[rows], ply[rows]
-        fmap = rows if len(feats) != len(rows) else None     # full-size memmap -> map; subset-sized -> direct
-    else:
+    poles_on = bool(args.combined)
+    if poles_on:
+        z = np.load(args.combined, allow_pickle=True)
+        meta = eval(str(z["_meta"][0]))                      # written by build_combined_field_data.py
+        keep = np.ones(len(z["y"]), bool) if args.source == "both" else \
+            (z["source"] == (0 if args.source == "human" else 1))
+        sel = np.flatnonzero(keep)
+        dtz = z["dtz"][sel].astype(np.int32); game = z["game"][sel]; ply = z["ply"][sel]
+        y_all = z["y"][sel].astype(np.int64)
+        n_to_end = z["n_to_end"][sel].astype(np.int32)
+        is_tail = z["is_tail"][sel]; is_term = z["is_terminal"][sel]
+        feats = DualFeats(meta["feats"], z["source"][sel], z["local_row"][sel])
         fmap = None
+        tag = f"combined-{args.source}"
+        out = args.out or f"artifacts/experiments/iqe_poles_{args.source}"
+    else:
+        feats = np.load(args.feats, mmap_mode="r")           # (N,C,8,8) fp16, NEVER fully in RAM
+        z = np.load(args.data)
+        dtz = z["dtz"].astype(np.int32); game = z["game"]; ply = z["ply"]
+        if args.rows:
+            rows = np.load(args.rows)
+            dtz, game, ply = dtz[rows], game[rows], ply[rows]
+            fmap = rows if len(feats) != len(rows) else None  # full-size memmap -> map; subset -> direct
+        else:
+            fmap = None
     N, C = len(dtz), feats.shape[1]
     games = np.unique(game)
     val_games = set(rng.choice(games, size=max(1, int(len(games) * args.val_frac)), replace=False).tolist())
@@ -99,6 +181,28 @@ def main():
     print(f"[iqe-head:{tag}] N={N:,} C={C} | train pairs {len(MG_s):,} val pairs {len(V_s):,} | "
           f"tb-won train {len(tb_train):,} val {len(tb_val):,} | device {dev}", flush=True)
 
+    if poles_on:
+        # Index sets precomputed ONCE as arrays; every step gathers from them rather than
+        # re-filtering 2.3M rows per step.
+        all_train = np.flatnonzero(~is_val); all_val = va_idx
+        tail_train = np.flatnonzero(is_tail & ~is_val)
+        term_train = np.flatnonzero(is_term & ~is_val)
+        y_t = torch.from_numpy(y_all).to(dev)
+        # Radial target: reachability_target(n_to_end, surprisal=0) -- surprisal is 0 because the
+        # anchor is restricted to tail rows, where the outcome is already locked (see
+        # build_combined_field_data.py). The call site keeps the surprisal channel wired for when
+        # a policy model can supply a real P(path). A terminal (n=0 -> floored to 1) targets
+        # log1p(1), which IS Kaveh's "every terminal sits one ply from its pole".
+        radial_tgt = torch.from_numpy(
+            reachability_target(np.maximum(n_to_end, 1), 0.0).astype(np.float32)).to(dev)
+        yv = y_all[all_val]
+        print(f"  [poles] tail-anchor rows {len(tail_train):,} | terminals {len(term_train):,} | "
+              f"basin mix train win/draw/loss "
+              f"{int((y_all[all_train]==WIN).sum()):,}/{int((y_all[all_train]==DRAW).sum()):,}/"
+              f"{int((y_all[all_train]==LOSS).sum()):,} | val {len(all_val):,}", flush=True)
+        print(f"  [poles] radial target range log1p: {float(radial_tgt.min()):.3f}.."
+              f"{float(radial_tgt.max()):.3f} (terminal shell = {float(np.log(2.0)):.4f})", flush=True)
+
     net = IQEHead(in_ch=C, d=args.d, components=args.components, adapter_ch=args.adapter_ch).to(dev)
     print(f"  head params: {sum(p.numel() for p in net.parameters()):,}", flush=True)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
@@ -106,8 +210,36 @@ def main():
     tgt_mate = torch.from_numpy(np.log1p(np.clip(dtz, 0, None)).astype(np.float32)).to(dev)
 
     def fx(idx):                                             # memmap rows -> fp32 on device
+        if poles_on:
+            return torch.from_numpy(feats.gather(idx)).to(dev)
         ridx = fmap[idx] if fmap is not None else idx
         return torch.from_numpy(np.asarray(feats[ridx], dtype=np.float32)).to(dev)
+
+    def pole_terms(_rng, batch):
+        """The five W/D/L basin terms. Every distance-to-pole is ONE batched IQE.pairwise call
+        (B,3) -- never three per-pole calls -- and all index sets are precomputed arrays."""
+        T = net.temperature
+        # (1) basin CE over a random slice of ALL training rows: forms + calibrates the simplex.
+        bi = all_train[_rng.integers(0, len(all_train), batch)]
+        e_b = net.phi(fx(bi))
+        d_b = net.d_poles(e_b)
+        L_basin = basin_ce(d_b, y_t[bi], T)
+        # (5) absorbing: d(pole -> s) pushed UP on those same ordinary rows. Trains the ASYMMETRY.
+        L_absorb = absorbing_penalty(net.d_from_poles(e_b).reshape(-1), args.absorb_margin)
+        # (2) radial anchor on TAIL rows only, at each row's OWN outcome pole.
+        ti = tail_train[_rng.integers(0, len(tail_train), batch // 2)]
+        d_tail = net.d_poles(net.phi(fx(ti)))
+        d_own = d_tail.gather(1, y_t[ti].unsqueeze(1)).squeeze(1)
+        L_radial = pole_radial_anchor(d_own, radial_tgt[ti])
+        # (3) terminal repulsion: distinct terminals must not pile onto one point of the shell.
+        qi = term_train[_rng.integers(0, len(term_train), batch // 4)]
+        e_q = net.phi(fx(qi))
+        perm = torch.randperm(len(qi), device=dev)
+        L_termrepel = terminal_repulsion(net.d_pair_emb(e_q, e_q[perm]), args.termrepel_margin)
+        # (4) pole separation: 3 vertices, no data needed.
+        L_polesep = pole_separation(net.d_poles_pairwise(), args.polesep_margin)
+        return {"basin": L_basin, "radial": L_radial, "termrepel": L_termrepel,
+                "polesep": L_polesep, "absorb": L_absorb}
 
     def step(_net, s):
         pi = rng.integers(0, len(MG_s), args.batch)
@@ -124,9 +256,16 @@ def main():
         L_mate = quasimetric_regression(dm[:hb], tgt_mate[bw])
         L_hinge = wdl_hinge(dm, won, logM)
         loss = args.w_multi * L_multi + args.w_repel * L_repel + args.w_mate * L_mate + args.w_hinge * L_hinge
+        parts = {"loss": loss, "multi": L_multi, "repel": L_repel, "mate": L_mate, "hinge": L_hinge}
+        if poles_on:
+            pt = pole_terms(rng, args.batch)
+            loss = loss + (args.w_basin * pt["basin"] + args.w_radial * pt["radial"]
+                           + args.w_termrepel * pt["termrepel"] + args.w_polesep * pt["polesep"]
+                           + args.w_absorb * pt["absorb"])
+            parts.update(pt); parts["loss"] = loss
+            parts["T"] = net.temperature
         opt.zero_grad(); loss.backward(); opt.step()
-        return {k: float(v.detach()) for k, v in
-                {"loss": loss, "multi": L_multi, "repel": L_repel, "mate": L_mate, "hinge": L_hinge}.items()}
+        return {k: float(v.detach()) for k, v in parts.items()}
 
     from scipy.stats import spearmanr
 
@@ -141,7 +280,41 @@ def main():
                 mate_rho = float(spearmanr(dm, dtz[tb_val]).correlation)
             else:
                 mate_rho = float("nan")
-        return {"pair_order": pair_order, "eff_rank": er, "mate_rho": mate_rho}
+            g = {"pair_order": pair_order, "eff_rank": er, "mate_rho": mate_rho}
+            if poles_on:
+                g.update(pole_gates())
+        return g
+
+    def pole_gates(n=6000, n_bins=15):
+        """Basin gates. CALIBRATION is the primary one: the poles must yield PROBABILITIES, not
+        just a separating clustering -- an over-confident field would look like clean basins while
+        being wrong, and would empty the undetermined middle the whole design depends on."""
+        vi = all_val[rng.integers(0, len(all_val), min(n, len(all_val)))]
+        e = net.phi(fx(vi))
+        d = net.d_poles(e)
+        p = basin_logp(d, net.temperature).exp().cpu().numpy()
+        yv_b = y_all[vi]
+        conf = p.max(1); pred = p.argmax(1); correct = (pred == yv_b).astype(np.float64)
+        # Expected Calibration Error (equal-width bins on confidence), fully vectorized.
+        b = np.clip(np.digitize(conf, np.linspace(0, 1, n_bins + 1)[1:-1]), 0, n_bins - 1)
+        cnt = np.bincount(b, minlength=n_bins).astype(np.float64)
+        nz = cnt > 0
+        ece = float((cnt[nz] / cnt.sum() * np.abs(
+            np.bincount(b, correct, n_bins)[nz] / cnt[nz]
+            - np.bincount(b, conf, n_bins)[nz] / cnt[nz])).sum())
+        # Terminal effective rank: the DIRECT test that the many mate structures did not collapse
+        # into one point on the shell (Kaveh: "I don't want all mates to be one point").
+        qi = term_train[rng.integers(0, len(term_train), min(3000, len(term_train)))]
+        term_er = float(eff_rank(net.phi(fx(qi)).cpu().numpy()))
+        # Shell radius: do terminals actually land ~1 ply from their own pole?
+        d_q = net.d_poles(net.phi(fx(qi)))
+        shell = float(d_q.gather(1, y_t[qi].unsqueeze(1)).squeeze(1).median())
+        # Asymmetry actually achieved: median log1p(d(P->s)) - log1p(d(s->P)). Must be > 0, else
+        # the field has quietly learned a symmetric metric and the basin flow means nothing.
+        asym = float((torch.log1p(net.d_from_poles(e)) - torch.log1p(d)).median())
+        return {"basin_acc": float(correct.mean()), "basin_ece": ece, "basin_conf": float(conf.mean()),
+                "ambiguous_frac": float((conf < 0.5).mean()), "term_eff_rank": term_er,
+                "shell_median": shell, "pole_asym": asym, "T": float(net.temperature)}
 
     cfg = TrainConfig(out=out, steps=args.steps, ckpt_every=args.ckpt_every, eval_every=args.eval_every,
                       experiment="catspace_m1_iqe_head", run_name=Path(out).name,
@@ -151,6 +324,15 @@ def main():
     print(f"VERDICT M1-IQE-HEAD {tag}: pair-order {last.get('pair_order', float('nan')):+.3f} "
           f"(gate >=0.94) | d_mate rho {last.get('mate_rho', float('nan')):+.3f} (gate >=0.81) | "
           f"eff_rank {last.get('eff_rank', float('nan')):.1f} | [{time.time()-t0:.0f}s]", flush=True)
+    if poles_on:
+        print(f"VERDICT BASIN-POLES {tag}: acc {last.get('basin_acc', float('nan')):.3f} | "
+              f"ECE {last.get('basin_ece', float('nan')):.4f} (primary gate, lower=better) | "
+              f"mean conf {last.get('basin_conf', float('nan')):.3f} | ambiguous<0.5 "
+              f"{last.get('ambiguous_frac', float('nan')):.3f} | terminal eff_rank "
+              f"{last.get('term_eff_rank', float('nan')):.1f} (anti-collapse) | shell median "
+              f"{last.get('shell_median', float('nan')):.2f} (target ~1 ply) | pole asymmetry "
+              f"{last.get('pole_asym', float('nan')):+.2f} (must be >0) | T "
+              f"{last.get('T', float('nan')):.3f}", flush=True)
 
 
 if __name__ == "__main__":

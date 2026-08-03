@@ -36,7 +36,30 @@ class ReachabilityField:
         cfg = p["cfg"]
         self.head = IQEHead(in_ch=cfg["in_ch"], d=cfg["d"], components=cfg["components"],
                             adapter_ch=cfg["adapter_ch"]).to(self.dev)
-        self.head.load_state_dict(p["state_dict"]); self.head.eval()
+        # strict=False via load_compat: checkpoints trained BEFORE the W/D/L basin poles
+        # (2026-08-03) have no `poles`/`log_T` keys. Those fields keep their exact original
+        # numerics -- phi, d_pair_emb and d_mate_emb are unaffected by the added parameters --
+        # but their poles are UNTRAINED, so `has_poles` gates any basin/committor readout
+        # rather than letting it silently return noise.
+        missing, unexpected = self.head.load_compat(p["state_dict"])
+        self.has_poles = not any(m.startswith(("poles", "log_T")) for m in missing)
+        if unexpected:
+            print(f"[field] WARNING unexpected checkpoint keys ignored: {unexpected}")
+        self.head.eval()
+
+    def d_poles(self, boards):
+        """(B,3) basin distances d(s -> P_k), k = win/draw/loss (mover-POV)."""
+        if not self.has_poles:
+            raise RuntimeError(
+                f"this checkpoint predates the W/D/L poles (no `poles` in its state_dict), so its "
+                f"basin readout would be untrained noise -- load a pole-trained field instead")
+        with torch.no_grad():
+            return self.head.d_poles(self.phi(boards))
+
+    def basin_logp(self, boards):
+        """(B,3) log p(win/draw/loss) from the pole geometry -- the calibrated committor readout."""
+        from experiments.losses import basin_logp
+        return basin_logp(self.d_poles(boards), float(self.head.temperature))
 
     @torch.no_grad()
     def phi(self, lcboards):
