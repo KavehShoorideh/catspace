@@ -1,3 +1,10 @@
+> **Status: executed 2026-08-03.** This is the plan as approved, kept as the record of
+> what was intended. It is not a description of the current tree — for that see
+> [`repo_structure.md`](../../../repo_structure.md), whose "Deviations from the refactor
+> plan" section lists the five places the executed result differs from this document and
+> why. Phases P1–P13 landed across commits `ab1f2f1`..`HEAD` on
+> `refactor/repo-structure-2026-08-03`.
+
 # Plan: catspace repo restructure (FINAL — approved, ready to execute)
 
 ## Status

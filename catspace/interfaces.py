@@ -1,4 +1,4 @@
-"""catspace/engine/interfaces.py -- the layer Protocols. Any implementation satisfying a
+"""catspace/interfaces.py -- the layer Protocols. Any implementation satisfying a
 Protocol can be injected into LayeredEngine; this is what makes layers swappable."""
 from __future__ import annotations
 
