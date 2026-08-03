@@ -4,7 +4,7 @@ import chess
 import numpy as np
 import pytest
 
-from catspace.nn.anytime import AnytimePathSearch
+from catspace.research.components.search.approaches.anytime_path.src.anytime import AnytimePathSearch
 
 
 def flat_reach(boards):

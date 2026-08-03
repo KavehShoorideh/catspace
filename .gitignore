@@ -5,17 +5,26 @@ __pycache__/
 build/
 dist/
 
-# generated data artifacts (npy/pkl/json), never committed -- anchored to
-# repo root so it doesn't also hide the catspace/data/ package
-/data/**
-!/data/**/
-!/data/**/*.dvc
+# Generated data, wherever it lives. Post-2026-08-03 restructure, data sits in a
+# data/ subfolder next to the method that generated it, so these are pattern-
+# matched rather than anchored to one /data tree. Keep directory entries and .dvc
+# pointers so tree shape and DVC provenance stay in git.
+**/data/**
+!**/data/
+!**/data/**/
+!**/data/**/*.dvc
+!**/data/**/.gitignore
+# catspace/data/ is a python package (code), not a data directory
+!catspace/data/
+!catspace/data/**
 *.npy
 *.pkl
 *.npz
 
 # regenerated viz output; artifacts/ (curated historical results) stays committed
 artifacts/generated/
+**/artifacts/generated/
+**/logs/
 code/out/
 
 .DS_Store
@@ -25,11 +34,17 @@ artifacts/experiments/rollout_dump_*.jsonl
 # session build outputs & local tracking stores (2026-07-23)
 mlflow.db
 mlruns/
-artifacts/vendor/node_modules/
-artifacts/vendor/package*.json
+**/vendor/node_modules/
+**/vendor/package*.json
 artifacts/viz_options_hub.html
 
-# third-party weights fetched on demand (maia2.from_pretrained gdown-downloads
-# into ./maia2_models and skips if present) -- 267MB, over GitHub's 100MB limit
-maia2_models/
+# third-party assets: downloaded, never generated here -- 267MB+, over GitHub's limit
+assets/models/
+assets/tablebases/
+assets/engines/
+assets/corpora/
+!assets/**/*.dvc
+# maia2.from_pretrained() downloads CWD-relative and cannot be redirected; the root
+# maia2_models symlink points into assets/models/maia2 so it lands in the right place.
+maia2_models
 *.pt

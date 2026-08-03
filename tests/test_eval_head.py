@@ -10,10 +10,10 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from catspace.nn.eval_head import (EvalHead, descriptive_loss, load_heads,
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import (EvalHead, descriptive_loss, load_heads,
                                       normative_loss, save_heads)
-from catspace.nn.features import winprob_cp
-from catspace.util import auc
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import winprob_cp
+from catspace.research.tools.stats_eval.util import auc
 
 
 def _separable(n=600, d=16, seed=0):

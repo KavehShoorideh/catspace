@@ -1,0 +1,25 @@
+> **A repository restructure occurred on 2026-08-03.** File and directory paths
+> mentioned below are historical and no longer valid. The content is left exactly
+> as written — this is the research record, not documentation of the current tree.
+> For the current layout see [`repo_structure.md`](../../../../repo_structure.md); for what
+> moved and why see [the refactor plan](../../../../catspace/research/docs/2026-08-03-refactor-plan.md).
+
+# writing/ — publication drafts
+
+Article-grade write-ups of the research, built from journaled verdicts.
+Numbers are verbatim from printed script VERDICTs (see JOURNAL.md); figures
+regenerate via `python experiments/viz/article_figures.py` and are committed
+under `figures/`. Reproduction map: "Reproducing the journaled results" in the
+repo [README](../README.md).
+
+| piece | what it is |
+|---|---|
+| [adversarial_reachability.md](adversarial_reachability.md) | **the merged paper (lead)**: adversarial committor geometry, with figures. Merges the formal derivation thread (region-necessity theorem, two-ply stitch, IQE, search/memory proofs, plan-space meta-game) with the experimental thread (measured wall-generated gradient, capacity forensics, e-value harness). Includes a §11 ledger of which thread was ahead where. |
+| [committor_planner.md](committor_planner.md) | the earlier single-thread technical paper: committor-field architecture, math, four contribution claims (superseded as lead by the merged paper). |
+| [state_of_the_research.md](state_of_the_research.md) | the main article: hypotheses, confirmed claims, current frontier, methods, data pointers |
+| [research_journey.md](research_journey.md) | the companion: every disproven/inconclusive hypothesis, era by era, and the cross-cutting lessons |
+| [posts/anytime_valid_ab_for_game_evals.md](posts/anytime_valid_ab_for_game_evals.md) | how-to: e-values, paired playouts, single-use confirmatory sets |
+| [posts/find_your_regime_before_you_ab.md](posts/find_your_regime_before_you_ab.md) | lesson: search-limited vs model-limited, and why ties can be meaningless |
+| [posts/your_instrument_is_not_your_objective.md](posts/your_instrument_is_not_your_objective.md) | lesson: seven proxy–play dissociations and the rules they forced |
+| [posts/certainty_weighted_distance.md](posts/certainty_weighted_distance.md) | idea: d = plies + λ(−ln P) — risk-pricing distances that stay quasimetric |
+| [posts/keeping_oracles_out_of_the_loop.md](posts/keeping_oracles_out_of_the_loop.md) | practice: leakage audits, provenance stamps, scaffold-then-de-scaffold |

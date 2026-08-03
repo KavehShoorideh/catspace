@@ -21,11 +21,46 @@ umap = ["umap-learn>=0.5"]
 nn = ["torch>=2.6"]
 dev = ["pytest>=8", "pytest-timeout"]
 
+[project.scripts]
+# The two things you can run without knowing the tree.
+catspace-uci = "catspace.deployment.server.uci_engine:main"
+catspace-server = "catspace.deployment.server.assistant_server:main"
+catspace-banksync = "catspace.deployment.server.banksync:main"
+
 [tool.setuptools.packages.find]
+# `include = ["catspace*"]` alone would sweep the whole research tree into the wheel.
+# Two lines of defence, because either alone is easy to breach by accident:
+#   1. this exclude list, and
+#   2. the rule that experiments/, logs/, artifacts/ and data/ never get an __init__.py,
+#      so find() cannot see them as packages in the first place (see repo_structure.md).
+# An approach's src/ DOES ship -- it is production code that happens to live under
+# research/ -- so the component tree itself is deliberately not excluded.
 include = ["catspace*"]
+exclude = [
+    "catspace.research.docs*",
+    "catspace.research.weekly_report*",
+    "catspace.research.assets*",
+    "catspace.research.logs*",
+    "catspace.incubator*",
+    "catspace*.experiments*",
+    "catspace*.data*",
+    "catspace*.artifacts*",
+    "catspace*.logs*",
+    "catspace.research.tools.viz.vendor*",
+]
 
 [tool.pytest.ini_options]
 markers = [
     "slow: exercises full KRkn-scale training/eval (opt in with -m slow)",
 ]
-testpaths = ["tests"]
+# Cross-component and integration tests live at the root; component unit tests co-locate
+# with the approach they belong to (approaches/<name>/tests/).
+testpaths = ["tests", "catspace"]
+python_files = ["test_*.py"]
+norecursedirs = [
+    ".git", ".venv", ".claude", "*.egg-info", "node_modules", "vendor",
+    "catspace/research/docs", "catspace/research/assets", "catspace/incubator",
+    # Lab scripts, not tests. reachability_field/experiments/test_field_fullgame.py is
+    # named "test the field on full games" and would otherwise be imported at collection.
+    "*/experiments",
+]

@@ -1,7 +1,7 @@
 """CompetenceMap (Method 2): kNN reliability field over embedding space."""
 import numpy as np
 
-from catspace.competence import CompetenceMap
+from catspace.research.components.memory.approaches.competence_map.src.competence import CompetenceMap
 
 
 def test_competence_map_recovers_a_planted_field():

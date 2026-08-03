@@ -1,1 +1,1 @@
-../experiments/play_vs_maia.py
+../catspace/approaches/gauntlet_harness/experiments/play_vs_maia.py

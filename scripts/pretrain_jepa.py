@@ -1,1 +1,1 @@
-../experiments/pretrain_jepa.py
+../catspace/research/components/encoder/approaches/jepa_tokenizer/experiments/pretrain_jepa.py

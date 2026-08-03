@@ -7,8 +7,8 @@ import chess
 import numpy as np
 import pytest
 
-from catspace.controlfield.control import weighted_attacker_field, see_field, compute_fields
-from catspace.controlfield.derivative import (
+from catspace.research.components.encoder.approaches.control_field_wdl.src.control import weighted_attacker_field, see_field, compute_fields
+from catspace.research.components.encoder.approaches.control_field_wdl.src.derivative import (
     move_derivatives, ascent_cone, ConeConfig, target_squares,
 )
 
@@ -95,7 +95,7 @@ def test_see_three_capture_exchange_chain():
     b = chess.Board("4k3/8/3b4/4n3/2N5/8/8/4RK2 w - - 0 1")
     assert b.piece_at(chess.E5).piece_type == chess.KNIGHT and b.piece_at(chess.E5).color == chess.BLACK
     assert chess.E5 in b.attackers(chess.WHITE, chess.E5) or True  # sanity below via SEE directly
-    from catspace.controlfield.control import _see_square, SEE_VALUES
+    from catspace.research.components.encoder.approaches.control_field_wdl.src.control import _see_square, SEE_VALUES
     result = _see_square(b, chess.E5, chess.WHITE)
     # hand computation: white least-valuable attacker = knight c4 (300) captures
     # knight e5 (300) -> net so far +300 for white, black recaptures with bishop

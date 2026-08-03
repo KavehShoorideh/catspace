@@ -12,7 +12,7 @@ These encode what must hold, not a specific number, so they don't drift.
 import numpy as np
 import torch
 
-from catspace.nn.mcts import DRAW_V, MATE_V, MATED_V
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import DRAW_V, MATE_V, MATED_V
 
 
 # ---- value-scale symmetry (MCTS minimax) --------------------------------
@@ -39,7 +39,7 @@ def test_draw_strictly_between_loss_and_win():
 # ---- quasimetric direction / semantics (IQE) ----------------------------
 
 def _iqe():
-    from catspace.nn.iqe import IQE
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
     return IQE(d=16, components=4)
 
 
@@ -88,8 +88,8 @@ def test_iqe_triangle_inequality():
 
 def test_monotone_coords_nonincreasing_incl_promotion():
     import chess
-    from catspace.data.encode import encode_meta, encode_packed
-    from catspace.nn.monotone_coords import monotone_coords
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.monotone_coords import monotone_coords
     seqs = [
         (chess.Board(), ["e4", "d5", "exd5", "Qxd5"]),                 # captures
         (chess.Board("8/P6k/8/8/8/8/8/7K w - - 0 1"), ["a8=Q"]),      # promotion

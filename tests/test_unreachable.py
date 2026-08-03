@@ -4,8 +4,8 @@ reachable direction); no-flag = unknown (allowed)."""
 import chess
 import numpy as np
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.unreachable import provably_unreachable
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.unreachable import provably_unreachable
 
 
 def _pair(a: chess.Board, b: chess.Board):
