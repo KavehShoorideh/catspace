@@ -142,12 +142,40 @@ def terminal_repulsion(d_pairs, margin):
     return F.relu(margin - torch.log1p(d_pairs.clamp(min=0))).mean()
 
 
-def pole_separation(poles_d, margin):
-    """Keep the triangle non-degenerate. poles_d (3,3) = pairwise d(P_i -> P_j); the diagonal is
-    IGNORED (d(P,P)=0 is correct and must not be pushed). If two vertices merge, their basins
-    become unidentifiable and the simplex collapses to a segment."""
-    off = ~torch.eye(poles_d.shape[0], dtype=torch.bool, device=poles_d.device)
-    return F.relu(margin - torch.log1p(poles_d[off].clamp(min=0))).mean()
+def pole_potential(poles_d, ref_scale, k_rep=10.0, k_att=0.05, p=2.0):
+    """Pole-pole POTENTIAL (Kaveh 2026-08-03): huge repulsion if two poles come closer to each
+    other than ordinary points are, and a weak attraction beyond that, so the vertices neither
+    merge nor drift apart without bound.
+
+    Shape: a Lennard-Jones / Morse-style soft core -- steep repulsive wall inside the crossover,
+    shallow attractive basin outside, zero exactly at the crossover. Implemented as an ASYMMETRIC
+    normalized power well rather than the textbook r^-12/r^-6, deliberately: an inverse power
+    diverges as two poles approach and would hand the optimizer an unbounded gradient (the
+    lambda-cap lesson -- pick a form that cannot blow up rather than guarding one that can). Here
+    the compression branch is BOUNDED by k_rep at total collapse while still being ~200x stiffer
+    than the attraction, which is 'huge repulsion' in every practical sense but cannot NaN.
+
+    poles_d (3,3) pairwise d(P_i -> P_j); the diagonal is EXCLUDED -- d(P,P)=0 is correct and
+    must never be pushed.
+
+    ref_scale: the crossover, in log1p distance units. This is DATA-DERIVED -- the typical
+    distance between ordinary positions ("closer than other points to each other") -- and MUST be
+    passed detached. If gradient flowed into it, the cheapest way to satisfy the term would be to
+    shrink every embedding until the reference collapsed onto the poles, i.e. the model would
+    game the ruler instead of moving the vertices."""
+    n = poles_d.shape[0]
+    off = ~torch.eye(n, dtype=torch.bool, device=poles_d.device)
+    u = torch.log1p(poles_d[off].clamp(min=0))
+    r0 = torch.as_tensor(ref_scale, device=u.device, dtype=u.dtype).detach().clamp(min=1e-6)
+    compression = torch.relu(r0 - u) / r0                    # 1 at total collapse, 0 at/after r0
+    extension = torch.relu(u - r0) / r0
+    return (k_rep * compression.pow(p) + k_att * extension.pow(p)).mean()
+
+
+def typical_pair_scale(d_pairs):
+    """The crossover reference for pole_potential: MEDIAN log1p distance between ordinary points.
+    Detached -- it is a measuring stick, not a parameter (see pole_potential)."""
+    return torch.log1p(d_pairs.clamp(min=0)).median().detach()
 
 
 def absorbing_penalty(d_from_pole, margin):
@@ -342,13 +370,30 @@ def _tests():
     assert abs(collapsed.item() - m) < 1e-6, "fully collapsed -> exactly the margin"
     print(f"  terminal_repulsion: separated 0.0 | collapsed {collapsed.item():.2f} (= margin)  OK")
 
-    # pole_separation: the DIAGONAL (d(P,P)=0) must be excluded, else the term can never reach 0
-    # and would fight the anchors forever.
-    far_poles = torch.full((3, 3), 500.0); far_poles.fill_diagonal_(0.0)
-    assert pole_separation(far_poles, m).item() < 1e-6, "separated poles -> 0 (diagonal ignored)"
-    assert abs(pole_separation(torch.zeros(3, 3), m).item() - m) < 1e-6, "merged poles -> margin"
-    print(f"  pole_separation: separated 0.0 (diagonal excluded) | merged "
-          f"{pole_separation(torch.zeros(3,3), m).item():.2f}  OK")
+    # pole_potential: LJ-shaped well. Zero AT the crossover, steep inside, shallow outside.
+    r0 = 4.0                                                  # log1p units
+    def _poles_at(u):                                         # (3,3) with every off-diagonal = u
+        d = torch.full((3, 3), float(np.expm1(u))); d.fill_diagonal_(0.0); return d
+    at_r0 = pole_potential(_poles_at(r0), r0)
+    assert at_r0.item() < 1e-6, f"potential must be exactly 0 at the crossover, got {at_r0.item()}"
+    # the DIAGONAL must be excluded: with it, d(P,P)=0 would read as total collapse and the term
+    # could never reach 0 -- it would fight the anchors forever.
+    assert at_r0.item() < 1e-6, "diagonal excluded (else d(P,P)=0 would look like collapse)"
+    merged = pole_potential(torch.zeros(3, 3), r0)
+    inside = pole_potential(_poles_at(r0 * 0.5), r0)
+    outside = pole_potential(_poles_at(r0 * 1.5), r0)
+    assert merged.item() > inside.item() > outside.item() > 0.0, "monotone: closer = far costlier"
+    # "huge repulsion ... otherwise a small attraction": equal fractional displacement either side
+    # of the crossover must be FAR costlier on the compression side.
+    ratio = inside.item() / outside.item()
+    assert ratio > 100.0, f"repulsion must dwarf attraction at equal offset, ratio {ratio:.1f}"
+    assert merged.item() < 1e3, "repulsion must stay BOUNDED at total collapse (no r^-12 blowup)"
+    # the reference scale must not be a gradient path (else the model shrinks the ruler)
+    ref = typical_pair_scale(torch.tensor([2.0, 10.0, 50.0], requires_grad=True))
+    assert not ref.requires_grad, "ref_scale must be detached"
+    print(f"  pole_potential: at crossover {at_r0.item():.2e} | inside {inside.item():.3f} vs "
+          f"outside {outside.item():.5f} (ratio {ratio:.0f}x) | merged {merged.item():.2f} "
+          f"(bounded) | ref detached  OK")
 
     # absorbing_penalty: d(pole -> s) large means you cannot leave -> 0; small -> penalized.
     assert absorbing_penalty(torch.tensor([500.0]), m).item() < 1e-6, "unreachable from pole -> 0"
