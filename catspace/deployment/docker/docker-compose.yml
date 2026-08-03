@@ -1,5 +1,20 @@
 # catspace service stack (Kaveh 2026-07-25): self-healing local service --
 # vector DB + served engine + web front + observability (MLflow / Prometheus / Grafana).
+#
+# This file moved from deploy/ to catspace/deployment/docker/ in the 2026-08-03
+# restructure, so every relative path is now three levels up to the repo root. Host paths
+# mirror the layout the path registry (catspace/io/paths.py) resolves inside the
+# container, where /app holds pyproject.toml and is therefore REPO_ROOT.
+#
+#   docker compose -f catspace/deployment/docker/docker-compose.yml up
+
+# Without this the project name defaults to the containing directory -- "docker".
+name: catspace
+
+x-engine-build: &engine-build
+  context: ../../..
+  dockerfile: catspace/deployment/docker/Dockerfile
+
 services:
   qdrant:
     image: qdrant/qdrant:latest
@@ -13,31 +28,29 @@ services:
       retries: 3
 
   engine:
-    build: { context: .., dockerfile: deploy/Dockerfile }
+    build: *engine-build
     restart: unless-stopped
     environment: [QDRANT_URL=http://qdrant:6333]
     volumes:
-      - ../data/derived:/app/data/derived:ro
-      - ../data/engines:/app/data/engines:ro
-      - ../artifacts/experiments:/app/artifacts/experiments
+      - ../../../data/derived:/app/data/derived:ro
+      - ../../../assets/engines:/app/assets/engines:ro
+      - ../../../artifacts/experiments:/app/artifacts/experiments
     depends_on:
       qdrant: { condition: service_healthy }
     ports: ["8777:8777"]
 
   banksync:
-    build: { context: .., dockerfile: deploy/Dockerfile }
+    build: *engine-build
     restart: on-failure
     environment: [QDRANT_URL=http://qdrant:6333]
     volumes:
-      - ../data/derived:/app/data/derived:ro
-      - ../artifacts/experiments:/app/artifacts/experiments
+      - ../../../data/derived:/app/data/derived:ro
+      - ../../../artifacts/experiments:/app/artifacts/experiments
     depends_on:
       qdrant: { condition: service_healthy }
-    command: >
-      python -c "import sys; sys.path.insert(0,'.');
-      from catspace.research.components.memory.approaches.vector_store_retrieval.src.vectordb import sync_banks;
-      print(sync_banks('data/derived/sep/lichess_mc2.pt',
-                       'artifacts/experiments/assistant'))"
+    # Was an inline `python -c` with a sys.path.insert and two literal repo-relative
+    # paths; it is now a real entrypoint that reads the same registry the engine does.
+    command: ["python", "-m", "catspace.deployment.server.banksync"]
 
   web:
     image: nginx:alpine
@@ -52,7 +65,8 @@ services:
     image: ghcr.io/mlflow/mlflow:latest
     restart: unless-stopped
     command: mlflow server --backend-store-uri sqlite:////mlflow/mlflow.db --host 0.0.0.0 --port 5000
-    volumes: ["../mlflow.db:/mlflow/mlflow.db"]
+    # The ONE tracking store, at the repo root -- same file tracking.py writes to.
+    volumes: ["../../../mlflow.db:/mlflow/mlflow.db"]
     ports: ["5001:5000"]
 
   prometheus:
