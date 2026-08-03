@@ -64,6 +64,104 @@ def reachability_target(n_moves, path_surprisal):
     return np.logaddexp(0.0, np.log(np.maximum(n, 1.0)) + np.maximum(s, 0.0))
 
 
+# ---------------------------------------------------------------------------------------------
+# THREE-POLE (W/D/L) SIMPLEX TERMS -- Kaveh 2026-08-03.
+#
+# Design: three learned poles P_win/P_draw/P_loss (mover-POV) are the vertices of a triangle;
+# a position's basin probability is the softmax over its NEGATIVE quasimetric distances to the
+# three poles -- the Prototypical-Networks form (Snell et al. 2017, p(y=k|x) ∝ exp(-d(f(x),c_k))),
+# with learned rather than mean-of-support prototypes. The geometry IS the probability, so there
+# is no separate committor head to keep in sync.
+#
+# The logits are -log1p(d)/T, NOT -d/T. This matters and was a real bug in the first draft of
+# this design: softmax is SHIFT-invariant, so with raw -d/T a point far from all three poles
+# keeps whatever distance DIFFERENCES it had and stays just as confident forever -- the
+# attractor would never weaken. In log space the differences themselves decay
+# (log1p(d_k) - log1p(d_j) -> 0 as all d grow at comparable rates), giving
+#     p_k  ∝  (1 + d_k)^(-1/T)
+# an inverse-power attractor law. Two properties then fall out instead of being engineered:
+#   * near a pole one distance dominates    -> confident  -> sits in a corner of the triangle;
+#   * far from all three they converge      -> ~uniform   -> sits in the undetermined middle.
+# That is Kaveh's "each pole has an attractor field that extends out and weakens", and it also
+# keeps this term in the same log1p(d) space as every other distance term in this file.
+#
+# Deliberately ABSENT: any entropy/sharpening penalty to force "exactly 3 basins". The middle
+# must stay genuinely undetermined (many ambiguous positions are expected even in near-perfect
+# SF-vs-SF play); sharpening would manufacture false confidence and make the basin chart a
+# self-fulfilling artifact. Basins come from anchored vertices + a proper scoring rule, and
+# CALIBRATION (not sharpness) is the gate.
+# ---------------------------------------------------------------------------------------------
+
+WIN, DRAW, LOSS = 0, 1, 2                                # pole index order, mover-POV
+
+
+def basin_logits(d_poles, temperature=1.0):
+    """-log1p(d)/T -- the basin logits. d_poles (B,3) >= 0 = quasimetric distances to
+    [win, draw, loss]. See the module note above for why this is log-space and not -d/T."""
+    return -torch.log1p(d_poles.clamp(min=0)) / temperature
+
+
+def basin_ce(d_poles, y, temperature=1.0):
+    """Basin cross-entropy. d_poles (B,3) >= 0; y (B,) int64 in {0,1,2} = mover-POV outcome.
+
+    CE against a realized 1-hot outcome is a PROPER SCORING RULE, so its minimizer is the true
+    conditional probability -- the calibrated committor -- not merely a separating clustering.
+    Its gradient pulls phi toward the observed outcome's pole with weight (1 - p_y): each point
+    is pulled toward a basin in proportion to probability MISMATCH, which is exactly the
+    'transition probability pulls it toward that basin's pole' behaviour."""
+    return F.cross_entropy(basin_logits(d_poles, temperature), y)
+
+
+def basin_logp(d_poles, temperature=1.0):
+    """log p(basin) (B,3) -- the readout used for charting + calibration. Returned in LOG space
+    on purpose: the committor is degenerate inside basins (nearly all mass at p~0/1), so
+    log-odds is the coordinate that resolves basin interiors and the transition region with
+    equal thoroughness (standard practice for committor collective variables)."""
+    return F.log_softmax(basin_logits(d_poles, temperature), dim=-1)
+
+
+def pole_radial_anchor(d_y, target_log):
+    """Radial anchor: pin a row at its outcome-pole's shell. d_y (B,) = d(phi -> P_y) for the
+    row's OWN outcome pole; target_log (B,) = log-space target from reachability_target(n, -log p).
+
+    A terminal (n=1 ply, surprisal 0) targets logaddexp(0,0) = log 2 = log1p(1) -- EXACTLY the
+    one-ply shell ("all draw terminals 1 ply from the draw pole"). Wraps quasimetric_regression
+    so the Huber/log1p convention stays identical to every other distance target in the repo."""
+    return quasimetric_regression(d_y, target_log)
+
+
+def terminal_repulsion(d_pairs, margin):
+    """Anti-collapse ON the shell. d_pairs (B,) = d(t_i -> t_j) between DISTINCT terminals
+    (caller permutes). Pushes log1p(d) up to `margin`.
+
+    This is the term that answers "I don't want all mates to be one point": pole_radial_anchor
+    stops terminals collapsing *onto* the pole (they sit at radius 1), but nothing stops them
+    collapsing onto ONE POINT of that shell. Different mate structures are different arrival
+    points of one surface, and this keeps their signatures distinct. Same functional form as the
+    existing random-pair repel term (relu on a log-space margin), scoped to the terminal set."""
+    return F.relu(margin - torch.log1p(d_pairs.clamp(min=0))).mean()
+
+
+def pole_separation(poles_d, margin):
+    """Keep the triangle non-degenerate. poles_d (3,3) = pairwise d(P_i -> P_j); the diagonal is
+    IGNORED (d(P,P)=0 is correct and must not be pushed). If two vertices merge, their basins
+    become unidentifiable and the simplex collapses to a segment."""
+    off = ~torch.eye(poles_d.shape[0], dtype=torch.bool, device=poles_d.device)
+    return F.relu(margin - torch.log1p(poles_d[off].clamp(min=0))).mean()
+
+
+def absorbing_penalty(d_from_pole, margin):
+    """Absorbing/irreversibility: you cannot leave a terminal. d_from_pole (B,) = d(P_k -> phi(s))
+    for ordinary (non-terminal) s -- pushed UP to `margin`, while pole_radial_anchor pulls the
+    FORWARD direction d(phi -> P_k) DOWN.
+
+    This is where the quasimetric's ASYMMETRY is explicitly trained rather than left incidental:
+    it forces d(s->P) << d(P->s), which is the whole reason an asymmetric embedding (IQE) is the
+    right object here. Without it the field is free to learn a symmetric metric and the basin
+    'flow' direction carries no information."""
+    return F.relu(margin - torch.log1p(d_from_pole.clamp(min=0))).mean()
+
+
 def first_hit_bce(logit, hit, weight=None):
     """First-hit reachability BCE (REACHABILITY_FOUNDATIONS §4.1). logit = ⟨φ_r(s,z), ψ_r(g)⟩,
     hit ∈ {0,1}: did the trajectory FIRST-reach goal region g strictly after s within the game
@@ -178,6 +276,90 @@ def _tests():
     assert censored_plies_loss(torch.tensor([0.0, 0.0]), torch.tensor([7.0, 7.0]),
                                torch.tensor([1.0, 1.0])).item() > 0.5, "wrong on observed -> >0"
     print(f"  censored_plies_loss: exact->0 | all-censored->0 (no NaN) | censored-invariant  OK")
+
+    # ---- three-pole simplex terms (Kaveh 2026-08-03) ----------------------------------------
+
+    # basin_ce: confident-correct -> ~0; confident-wrong -> large. "Confident" = near ONE pole.
+    near_win = torch.tensor([[0.0, 400.0, 400.0]])
+    y_win = torch.tensor([WIN]); y_loss = torch.tensor([LOSS])
+    # NB the ceiling is 1e-2, not 1e-3: confidence here is a POWER law in distance, p ~
+    # (1+d)^(-1/T), so it saturates polynomially rather than exponentially -- at the pole with
+    # rivals 400 away, p_win = 0.995, not 1-1e-6. Deliberate: sharper confidence is a
+    # temperature choice, and over-sharp basins are exactly what we do not want by default.
+    assert basin_ce(near_win, y_win).item() < 1e-2, "at the win pole, outcome=win must be ~free"
+    assert basin_ce(near_win, y_loss).item() > 5.0, "at the win pole, outcome=loss must be costly"
+    print(f"  basin_ce: correct {basin_ce(near_win,y_win).item():.5f} | "
+          f"wrong {basin_ce(near_win,y_loss).item():.2f}  OK")
+
+    # basin_logp: normalized; EQUIDISTANT -> exactly uniform (the centre of the triangle, i.e.
+    # Kaveh's "the middle of the triangle is undetermined"); nearest pole always wins the argmax.
+    p_eq = basin_logp(torch.tensor([[7.0, 7.0, 7.0]])).exp()
+    assert torch.allclose(p_eq.sum(-1), torch.ones(1), atol=1e-6), "p must be normalized"
+    assert torch.allclose(p_eq, torch.full((1, 3), 1 / 3), atol=1e-6), "equidistant -> uniform (centre)"
+    p_mix = basin_logp(torch.tensor([[1.0, 4.0, 9.0]])).exp()
+    assert p_mix.argmax().item() == WIN and p_mix[0, DRAW] > p_mix[0, LOSS], "closer pole -> higher p"
+    print(f"  basin_logp: equidistant -> {p_eq.tolist()[0]} (uniform centre) | "
+          f"ordered by closeness  OK")
+
+    # THE ATTRACTOR MUST WEAKEN WITH DISTANCE. Same distance RATIOS, pushed far out: confidence
+    # must DECAY toward uniform. This is the regression guard for a real bug in the first draft
+    # of this design -- logits of -d/T are shift-invariant, so under raw distances a far-away
+    # point keeps its differences and stays exactly as confident forever (the attractor would
+    # never weaken, and the undetermined middle would never populate). Asserted both ways round.
+    near = torch.tensor([[1.0, 3.0, 5.0]])
+    far = near + 200.0                                          # same DIFFERENCES, far from all
+    c_near = basin_logp(near).exp().max().item()
+    c_far = basin_logp(far).exp().max().item()
+    assert c_far < c_near - 0.1, f"attractor must weaken: near {c_near:.3f} -> far {c_far:.3f}"
+    assert c_far < 0.45, f"far from every pole must be near-ambiguous, got max p {c_far:.3f}"
+    shift_inv = F.softmax(-far, dim=-1).max().item()            # the buggy raw-distance form
+    assert abs(shift_inv - F.softmax(-near, dim=-1).max().item()) < 1e-6, \
+        "sanity: raw -d IS shift-invariant (that was the bug)"
+    print(f"  [regression guard] attractor weakens: max p {c_near:.3f} (near) -> {c_far:.3f} (far); "
+          f"raw -d form stays {shift_inv:.3f} forever (the bug)  OK")
+
+    # temperature sharpens/softens but never reorders
+    hot = basin_logp(near, temperature=4.0).exp(); cold = basin_logp(near, temperature=0.25).exp()
+    assert cold.max() > basin_logp(near).exp().max() > hot.max(), "T must control sharpness"
+    assert hot.argmax() == cold.argmax() == WIN, "T must not reorder the basins"
+    print(f"  basin_logp temperature: T=0.25 {cold.max():.3f} > T=1 "
+          f"{basin_logp(near).exp().max():.3f} > T=4 {hot.max():.3f}, order preserved  OK")
+
+    # pole_radial_anchor: a TERMINAL (n=1 ply, surprisal 0) must target EXACTLY the 1-ply shell.
+    # This is the numeric statement of "all draw terminals are 1 ply away from the draw pole".
+    t_term_f64 = float(reachability_target(1, 0.0))              # assert in f64: the tensor below is f32
+    assert abs(t_term_f64 - float(np.log(2.0))) < 1e-12, "terminal target must be log 2 = log1p(1)"
+    t_term = torch.tensor([t_term_f64])
+    assert pole_radial_anchor(torch.tensor([1.0]), t_term).item() < 1e-9, "d=1 at the shell -> 0"
+    assert pole_radial_anchor(torch.tensor([60.0]), t_term).item() > 0.5, "far from the shell -> >0"
+    print(f"  pole_radial_anchor: terminal target log1p(1)={t_term.item():.4f}; d=1 -> 0, d=60 -> "
+          f"{pole_radial_anchor(torch.tensor([60.0]), t_term).item():.2f}  OK")
+
+    # terminal_repulsion: well-separated terminals -> 0; collapsed-onto-one-point -> large.
+    m = 4.0
+    assert terminal_repulsion(torch.tensor([200.0, 300.0]), m).item() < 1e-6, "separated -> 0"
+    collapsed = terminal_repulsion(torch.tensor([0.0, 0.0]), m)
+    assert abs(collapsed.item() - m) < 1e-6, "fully collapsed -> exactly the margin"
+    print(f"  terminal_repulsion: separated 0.0 | collapsed {collapsed.item():.2f} (= margin)  OK")
+
+    # pole_separation: the DIAGONAL (d(P,P)=0) must be excluded, else the term can never reach 0
+    # and would fight the anchors forever.
+    far_poles = torch.full((3, 3), 500.0); far_poles.fill_diagonal_(0.0)
+    assert pole_separation(far_poles, m).item() < 1e-6, "separated poles -> 0 (diagonal ignored)"
+    assert abs(pole_separation(torch.zeros(3, 3), m).item() - m) < 1e-6, "merged poles -> margin"
+    print(f"  pole_separation: separated 0.0 (diagonal excluded) | merged "
+          f"{pole_separation(torch.zeros(3,3), m).item():.2f}  OK")
+
+    # absorbing_penalty: d(pole -> s) large means you cannot leave -> 0; small -> penalized.
+    assert absorbing_penalty(torch.tensor([500.0]), m).item() < 1e-6, "unreachable from pole -> 0"
+    assert abs(absorbing_penalty(torch.tensor([0.0]), m).item() - m) < 1e-6, "escapable -> margin"
+    # and the pair of terms really does encode ASYMMETRY: forward small, backward large.
+    d_fwd, d_bwd = torch.tensor([1.0]), torch.tensor([500.0])
+    assert pole_radial_anchor(d_fwd, t_term).item() < 1e-9 and absorbing_penalty(d_bwd, m).item() < 1e-6, \
+        "the intended asymmetric configuration must satisfy BOTH terms at once"
+    print(f"  absorbing_penalty: unreachable 0.0 | escapable "
+          f"{absorbing_penalty(torch.tensor([0.0]), m).item():.2f}; d(s->P)=1 vs d(P->s)=500 "
+          f"satisfies both  OK")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
