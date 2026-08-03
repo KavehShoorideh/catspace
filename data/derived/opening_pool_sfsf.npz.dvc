@@ -1,0 +1,5 @@
+outs:
+- md5: f03ccc5d625619773ab74b233c95ce45
+  size: 154029894
+  hash: md5
+  path: opening_pool_sfsf.npz

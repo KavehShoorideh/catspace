@@ -1,0 +1,6 @@
+outs:
+- md5: 1a627619eaf1b8a8cd6e2dbde244c56b.dir
+  size: 2949073643
+  nfiles: 98
+  hash: md5
+  path: lichess_2019-01

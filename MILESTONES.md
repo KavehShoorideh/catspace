@@ -263,6 +263,17 @@ in-game z tightening on. Publishable evaluation + digest write-up.
   drafted from MLflow-logged matches.
 
 ### M7 — Armed tactics: the conditional-activation store (Kaveh 2026-07-27)
+
+**SEQUENCING OVERRIDE (Kaveh, 2026-08-03):** starting M7's detect/store/feedback machinery now,
+ahead of M4/M6 and before M5 clears its gate — M5 plateaued at 0.085-0.095 vs the 0.125 gate
+(node-scaling flat, "algorithmic plateau" per the 2026-07-30 close-out) and that plateau is a
+separate open problem, not a blocker for this: the armed-tactic mechanism doesn't structurally
+need WINNING search, just search that produces candidate lines to watch. Detection reuses
+`catspace/controlfield/wdl_decay.py`'s validated SF-search decay check (parked control-field
+work, but that one utility is generic and proven — not un-parking the ascent-cone thread).
+Formal DoD (beats Maia-1200 under TC) is still gated on the full stack; this is infra work
+toward it, not an early MET.
+
 When search finds a tactic that ALMOST works — a transition point about to cross but not ready —
 store it instead of discarding it, together with WHY it is not ready:
 - **Armed-tactic record:** (region/pattern, the tactical line, payoff estimate, and the BLOCKING
