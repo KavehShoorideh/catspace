@@ -1,5 +1,5 @@
 """ReachHead -- z-conditioned first-hit reachability head (ReachModel component;
-extracted from experiments/train_reach_head.py 2026-07-30)."""
+extracted from catspace/research/components/encoder/approaches/reachability_field/experiments/train_reach_head.py 2026-07-30)."""
 from __future__ import annotations
 
 import torch

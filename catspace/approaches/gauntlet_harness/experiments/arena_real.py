@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-experiments/arena_real.py — real-board arena: FBBoardPolicy (the trained cone,
+catspace/approaches/gauntlet_harness/experiments/arena_real.py — real-board arena: FBBoardPolicy (the trained cone,
 greedy MIN readout) against random or Stockfish opponents, with alternating
 colors, per-game seeded random opening plies (start diversification), and an
 anytime-valid e-value verdict on decisive games (abtest.EValueTest).

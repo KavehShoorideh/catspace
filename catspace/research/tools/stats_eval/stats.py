@@ -7,7 +7,7 @@ evaluated on the SAME rows share noise; the honest comparison is the bootstrap d
 DELTA-rho on shared resamples (tighter than comparing marginal CIs), reported with P(delta>0).
 
 Tested (run `python -m catspace.research.tools.stats_eval.stats`); no new stat enters a VERDICT without a passing test here
-(same discipline as experiments/losses.py).
+(same discipline as catspace/research/tools/training_infra/losses.py).
 """
 from __future__ import annotations
 

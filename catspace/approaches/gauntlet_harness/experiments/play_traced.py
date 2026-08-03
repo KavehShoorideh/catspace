@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""experiments/play_traced.py -- the traced engine, end to end: recognize (memory)
+"""catspace/approaches/gauntlet_harness/experiments/play_traced.py -- the traced engine, end to end: recognize (memory)
 -> verify (honest, refutation-friendly) -> commit (or value fallback), with the
 per-move TRACE as the product.
 
@@ -27,11 +27,11 @@ import chess
 import chess.engine
 import numpy as np
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.research.components.memory.approaches.checkpoint_trap_bank.src.checkpoint_bank import CheckpointBank              # noqa: E402
 from catspace.research.components.planner.approaches.subgoal_cascade.src.trap_trace import TrapTracePlanner                # noqa: E402
 from catspace.research.tools.training_infra.train.scaffold import resolve_device                      # noqa: E402
 from catspace.research.components.planner.approaches.committor_value.src import CommittorGreedy                    # noqa: E402
+from catspace.io import paths
 
 
 def make_planner(args, dev):
@@ -100,8 +100,8 @@ def pretty(trace):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bank", default="data/derived/checkpoints/bank_trunk.npz")
-    ap.add_argument("--ckpt", default="artifacts/experiments/field_fullgame_v3_final.pt")
+    ap.add_argument("--bank", default=paths.derived("checkpoints/bank_trunk.npz"))
+    ap.add_argument("--ckpt", default=paths.experiment("field_fullgame_v3_final.pt"))
     ap.add_argument("--eps", type=float, default=0.05)
     ap.add_argument("--fen", default="")
     ap.add_argument("--fig", default="")
@@ -109,7 +109,7 @@ def main():
     ap.add_argument("--maia-elo", type=int, default=1100)
     ap.add_argument("--opening-plies", type=int, default=4)
     ap.add_argument("--max-plies", type=int, default=200)
-    ap.add_argument("--trace-out", default="artifacts/experiments/traces.jsonl")
+    ap.add_argument("--trace-out", default=paths.experiment("traces.jsonl"))
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     dev = resolve_device("auto"); rng = np.random.default_rng(args.seed)
@@ -120,8 +120,8 @@ def main():
         mv, trace = planner.decide(LczeroBoard(args.fen))
         print(pretty(trace))
         if args.fig:
-            from tools import figlib
-            from tools.fig_retrieval import draw_board
+            from catspace.research.tools.figures import figlib
+            from catspace.research.tools.figures.fig_retrieval import draw_board
             n = len(trace["candidates"])
             fig, axes = figlib.new_fig(n + 1, 1, w=1.9, h=2.05)
             axes = np.atleast_1d(axes)

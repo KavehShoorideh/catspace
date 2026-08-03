@@ -13,7 +13,7 @@ import chess
 
 from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
 from catspace.research.tools.chess_specific.chessdata.sources import PairBatch
-from experiments.train_lichess_fb import batch_tensors
+from catspace.research.components.encoder.approaches.cone_fb_embedding.experiments.train_lichess_fb import batch_tensors
 
 N = 8
 

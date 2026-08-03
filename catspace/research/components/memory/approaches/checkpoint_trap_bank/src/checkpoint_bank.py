@@ -24,13 +24,13 @@ def build(checkpoints_npz: str, out: str, encoder="trunk", ckpt: str = "",
     idx = np.sort(rng.choice(idx, min(sample, len(idx)), replace=False))
     fens = d["cx_fen"][idx]
     if encoder == "trunk":
-        from tools.embed import trunk_encode
+        from catspace.research.tools.embeddings.embed import trunk_encode
         emb = trunk_encode(list(fens))
     else:
         import chess
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
         from catspace.research.tools.training_infra.train.scaffold import resolve_device
-        from tools.embed import jepa_encode
+        from catspace.research.tools.embeddings.embed import jepa_encode
         tg = [tokenize(chess.Board(f)) for f in fens]
         emb = jepa_encode(ckpt, np.stack([t for t, _ in tg]),
                           np.stack([g for _, g in tg]), resolve_device("auto"))

@@ -69,7 +69,7 @@ class Session:
         if not self.pinned:
             import glob as _g
             import re as _re
-            cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
+            cands = _g.glob(str(ROOT / paths.sep("dtm_tok_r*.pt")))
             if cands:
                 lm = max(cands, key=lambda p: int(_re.search(r"r(\d+)\.pt", p).group(1)))
         self.vfn = make_boot_value(self.fm, self.bank, self.times, self.loss,
@@ -79,7 +79,7 @@ class Session:
         self.planner = make_planner(self.fm, self.bank)
         try:                            # 'seen N× before' from the experience store
             import sqlite3
-            _edb = sqlite3.connect("data/derived/experience.sqlite",
+            _edb = sqlite3.connect(paths.derived("experience.sqlite"),
                                    check_same_thread=False)
         except Exception:
             _edb = None
@@ -184,7 +184,7 @@ class Session:
         and only a real shift (new field / +1000 mates) rebuilds."""
         if getattr(self, "_atlas", None) is None:
             import pickle
-            cache_p = ROOT / "artifacts/experiments/atlas_cache.pkl"
+            cache_p = ROOT / paths.experiment("atlas_cache.pkl")
             meta = dict(v=2, field=str(self.args.field), n_win=n_win, n_other=n_other,
                         nw=len(self.bank) // 1000, nl=len(self.loss) // 1000,
                         nd=len(self.draw) // 1000)
@@ -665,7 +665,7 @@ def global_reloader():
         except Exception:
             pass
         try:
-            cands = _g.glob(str(ROOT / "data/derived/sep/dtm_tok_r*.pt"))
+            cands = _g.glob(str(ROOT / paths.sep("dtm_tok_r*.pt")))
             best = max(cands, key=lambda q: int(_re.search(r"r(\d+)\.pt", q).group(1))) \
                 if cands else None
             now = time.time()
@@ -692,7 +692,7 @@ def global_reloader():
 PAGE = (ROOT / "catspace/viz/templates/assistant.html")
 
 
-USAGE = ROOT / "artifacts/experiments/usage.jsonl"
+USAGE = ROOT / paths.experiment("usage.jsonl")
 
 
 class H(BaseHTTPRequestHandler):
@@ -786,7 +786,7 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:                          # noqa: BLE001
                 self._send(200, {"err": str(e)})
         elif self.path == "/ab_state":
-            f = ROOT / "artifacts/experiments/ab_live.json"
+            f = ROOT / paths.experiment("ab_live.json")
             self._send(200, f.read_bytes() if f.exists() else b"{}", "application/json")
         elif self.path == "/state":
             b = self.S.board

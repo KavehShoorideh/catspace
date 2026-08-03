@@ -6,6 +6,7 @@ from pathlib import Path
 
 import chess
 import numpy as np
+from catspace.io import paths
 
 VALUE_C = 8.0   # squash center: value = tanh((C - dist)/C); closer-to-mate reads higher
 
@@ -43,7 +44,7 @@ class DTMCNNValue:
     """The separate mate-distance head (train_dtm_cnn.py): board -> predicted DTM ->
     squashed value. The 'don't overload d' companion (DECISIONS sec 7)."""
 
-    def __init__(self, ckpt: str | Path = "data/derived/sep/dtm_cnn.pt", device: str = "cpu"):
+    def __init__(self, ckpt: str | Path = paths.sep("dtm_cnn.pt"), device: str = "cpu"):
         import torch
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device

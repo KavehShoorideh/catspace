@@ -1,6 +1,6 @@
-"""catspace/train/scaffold.py -- the STANDARD training scaffold (Kaveh 2026-07-26: "use ML
+"""catspace/research/tools/training_infra/train/scaffold.py -- the STANDARD training scaffold (Kaveh 2026-07-26: "use ML
 frameworks like Ray to scaffold training instead of hand-rolling"). Composes the frameworks so a
-new trainer supplies ONLY a plain-PyTorch step_fn; all infra comes from established tools:
+new trainer supplies ONLY a plain-PyTorch step_fn; all infrastructure comes from established tools:
 
   * TRACKING  -> MLflow, via the existing failure-proof catspace.research.tools.stats_eval.tracking.track_run (params = full
                  args, per-step metrics, verdict tags, git commit; ./mlflow.db, `mlflow ui`).
@@ -145,7 +145,7 @@ def _smoke_trainable(config):
 def _tests():
     """Smoke: the scaffold trains a tiny model end-to-end on this machine's device, writes a ckpt
     ladder with provenance, and runs a Ray Tune sweep -- the whole framework path, no hand-rolled
-    infra."""
+    infrastructure."""
     import tempfile, torch.nn as nn
     ok = True
 

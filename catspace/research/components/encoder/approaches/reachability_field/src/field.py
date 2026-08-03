@@ -16,11 +16,12 @@ import numpy as np
 import torch
 
 from catspace.research.components.encoder.approaches.reachability_field.src.iqe_head import IQEHead
+from catspace.io import paths
 
 
 class ReachabilityField:
-    def __init__(self, onnx="data/engines/lc0/t1-256x10.onnx",
-                 head="artifacts/experiments/field_iqe_t1_final.pt", device="auto", tokens=True):
+    def __init__(self, onnx=paths.engine("lc0/t1-256x10.onnx"),
+                 head=paths.experiment("field_iqe_t1_final.pt"), device="auto", tokens=True):
         from catspace.research.tools.training_infra.train.scaffold import resolve_device
         from lczerolens import LczeroModel
         self.dev = resolve_device(device) if device == "auto" else torch.device(device)

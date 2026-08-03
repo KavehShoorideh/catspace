@@ -1,5 +1,5 @@
 """T(phi, ctx) -- transition/crossing-risk estimator (Atlas component; extracted
-from experiments/train_transition_estimator.py 2026-07-30)."""
+from catspace/research/components/planner/approaches/atlas_region_stats/experiments/train_transition_estimator.py 2026-07-30)."""
 from __future__ import annotations
 
 import torch

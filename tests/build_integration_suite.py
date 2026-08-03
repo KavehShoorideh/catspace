@@ -20,13 +20,13 @@ from pathlib import Path
 
 import chess
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
+from catspace.io import paths
 
 
 def main():
     hist = defaultdict(list)          # (scenario, g) -> [(file, mate, start_epd?)]
-    for f in sorted(glob.glob("artifacts/experiments/*results*.jsonl")):
+    for f in sorted(glob.glob(paths.experiment("*results*.jsonl"))):
         scen = None
         for tag in ("KRRvK-central", "KRRvKBP", "KRRvKB", "KRRvKP", "KRvK-technique",
                     "KRRvKBNP-7p"):

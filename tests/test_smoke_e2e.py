@@ -1,7 +1,7 @@
 """
 Deterministic, seconds-scale end-to-end smoke tests: build a domain, train a
 tiny curriculum, confirm it beats a random baseline. Full-scale KRkn training
-is covered by the slow-marked test below and by experiments/train_krkn.py.
+is covered by the slow-marked test below and by catspace/research/components/planner/approaches/endgame_groundtruth/experiments/train_krkn.py.
 """
 import numpy as np
 import pytest
@@ -47,10 +47,10 @@ def test_krkn_full_curriculum_reproduces_headline():
     a noise-band check, not bit-exact -- see tests/baselines/expected.json)."""
     from catspace.research.tools.chess_specific.domains import krkn
     from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "experiments"))
-    import train_krkn as tk
+    # train_krkn used to be importable by bare name because the caller had inserted
+    # experiments/ onto sys.path; it is now addressed by its real location.
+    from catspace.research.components.planner.approaches.endgame_groundtruth.experiments \
+        import train_krkn as tk
 
     chain = krkn.build_chain(verbose=False)
     dtm = krkn.compute_dtm(chain)

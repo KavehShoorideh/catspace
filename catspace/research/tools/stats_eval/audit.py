@@ -3,7 +3,7 @@ audit.py — static + provenance leakage guard: certifies that a TorchFB
 checkpoint (and hence anything built on it -- FBBoardPolicy, the M1.5
 decomposer) was never trained or fine-tuned on Stockfish-derived signal
 (shard eval_cp, sf_labels.npz, or any winprob_cp-based loss). This is the
-one invariant experiments/experiment_report.py refuses to proceed without --
+one invariant catspace/research/tools/stats_eval/experiment_report.py refuses to proceed without --
 see nn/eval_head.py's --joint flag (fine-tunes F on the normative/Stockfish
 loss; off by default, and even when used, train_eval_heads.py never writes
 the fine-tuned F back to a checkpoint the planner could load) for the
@@ -51,14 +51,14 @@ def static_purity_check(train_batch_fn: Callable | None = None,
     check automatically, without anyone remembering to update an audit.
 
     train_batch_fn/train_main_fn: pass these explicitly when calling from
-    INSIDE experiments/train_lichess_fb.py itself (it already has its own
-    `batch_tensors`/`main` in scope) -- importing `experiments.train_lichess_fb`
+    INSIDE catspace/research/components/encoder/approaches/cone_fb_embedding/experiments/train_lichess_fb.py itself (it already has its own
+    `batch_tensors`/`main` in scope) -- importing `catspace.research.components.encoder.approaches.cone_fb_embedding.experiments.train_lichess_fb`
     by name from within that same script's own execution would re-import the
-    file under a second module name (`__main__` vs `experiments.train_lichess_fb`)
+    file under a second module name (`__main__` vs `catspace.research.components.encoder.approaches.cone_fb_embedding.experiments.train_lichess_fb`)
     instead of reusing the running one. External callers (experiment_report.py,
     tests) omit these and the module is imported normally."""
     if train_batch_fn is None or train_main_fn is None:
-        import experiments.train_lichess_fb as train_mod
+        import catspace.research.components.encoder.approaches.cone_fb_embedding.experiments.train_lichess_fb as train_mod
         train_batch_fn = train_batch_fn or train_mod.batch_tensors
         train_main_fn = train_main_fn or train_mod.main
 

@@ -9,7 +9,7 @@ probability holds up or collapses. This is real search-based ground truth, not
 a hand-coded heuristic -- it can see whatever Stockfish can see, arbitrarily far
 ahead, unlike SEE/C which see nothing past the first move.
 
-This generalizes what experiments/controlfield_gate3_decay.py did for 3
+This generalizes what catspace/research/components/encoder/approaches/control_field_wdl/experiments/controlfield_gate3_decay.py did for 3
 hand-picked gambits into a reusable per-move test.
 """
 from __future__ import annotations

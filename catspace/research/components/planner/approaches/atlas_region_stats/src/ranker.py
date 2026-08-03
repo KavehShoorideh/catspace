@@ -4,13 +4,13 @@ score(region) = P_reach(g | s, z_self, z_opp, elos)  x  net_flux(g | bands)  x  
     P_reach : the v2 two-z first-hit field (retrieval-factored -- goal tower precomputed ONCE).
     net_flux: empirical SF-refereed crossing rate of the region at the OPPONENT's band minus at
               OURS (their error zone, not ours -- THESIS §5). Region x band table built offline
-              from the M2a labeled set (experiments/m3_build_region_table.py); the learned
+              from the M2a labeled set (catspace/research/components/planner/approaches/atlas_region_stats/experiments/m3_build_region_table.py); the learned
               T(s, ctx) upgrade replaces the table lookup in M3.1 (recorded follow-up).
     quality : mean SF committor (mover POV, our band) of the region -- how winnable it is for us.
 
 Components are returned unreduced so the planner (optionality portfolio) can re-weigh; `score`
 is the default product with net_flux floored at 0 (a region where WE cross more than they do is
-not a subgoal). Latency is measured by experiments/m3_subgoal_gates.py and recorded in JOURNAL.
+not a subgoal). Latency is measured by catspace/research/components/planner/approaches/atlas_region_stats/experiments/m3_subgoal_gates.py and recorded in JOURNAL.
 """
 from __future__ import annotations
 

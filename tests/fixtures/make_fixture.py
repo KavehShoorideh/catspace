@@ -35,7 +35,6 @@ import numpy as np
 import zstandard
 
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from catspace.research.tools.chess_specific.chessdata.lichess import GameFilter
 
 HERE = Path(__file__).resolve().parent

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import chess
 import numpy as np
+from catspace.io import paths
 
 SELF_REGIME = 11        # regime channel for own-play (daemon used 1-10)
 
@@ -38,7 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_pos_game ON positions(game_id);
 
 
 class ExperienceStore:
-    def __init__(self, path: str | Path = "data/derived/experience.sqlite"):
+    def __init__(self, path: str | Path = paths.derived("experience.sqlite")):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(path), timeout=10.0)
         self.db.execute("PRAGMA journal_mode=WAL")

@@ -1,5 +1,5 @@
 """ClockField -- the M0/analysis committor net (ValueOracle component; extracted
-from experiments/train_clock_field.py 2026-07-30)."""
+from catspace/research/components/encoder/approaches/reachability_field/experiments/train_clock_field.py 2026-07-30)."""
 from __future__ import annotations
 
 import torch
@@ -9,7 +9,7 @@ from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe impo
 
 # Ending-type categories (Kaveh's categorical head: "what kind of end is approaching").
 # Order is the label index. Draws in the middle, decisive at the ends. Canonical home
-# (component refactor 2026-07-30); experiments/losses.py imports from here.
+# (component refactor 2026-07-30); catspace/research/tools/training_infra/losses.py imports from here.
 ENDINGS = ["WIN_MATE", "DRAW_FIFTY", "DRAW_STALEMATE", "DRAW_INSUFFICIENT",
            "DRAW_REPETITION", "LOSS_MATE"]
 N_ENDINGS = len(ENDINGS)

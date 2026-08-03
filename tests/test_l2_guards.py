@@ -11,8 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from experiments.train_lichess_fb import L2_PRESETS, apply_l2_preset, validate_l2_config
+from catspace.research.components.encoder.approaches.cone_fb_embedding.experiments.train_lichess_fb import L2_PRESETS, apply_l2_preset, validate_l2_config
 
 
 def _args(**kw):
