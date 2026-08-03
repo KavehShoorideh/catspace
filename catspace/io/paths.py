@@ -175,7 +175,12 @@ def engines_dir() -> Path:
 
 
 def maia2_models_dir() -> Path:
-    """maia2.from_pretrained() download target -- 267MB, gitignored."""
+    """Where the Maia-2 weights actually live -- 267MB, gitignored.
+
+    maia2.from_pretrained() gdown-downloads into a CWD-relative `maia2_models/` and gives
+    us no way to redirect it, so the repo root carries a symlink of that name pointing
+    here. Moving the real directory without the symlink silently costs a 267MB
+    re-download (which is exactly what happened during the 2026-08-03 restructure)."""
     return _ensure(assets_dir() / "models" / "maia2")
 
 

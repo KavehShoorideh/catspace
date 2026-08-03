@@ -38,11 +38,13 @@ mlruns/
 **/vendor/package*.json
 artifacts/viz_options_hub.html
 
-# third-party assets: downloaded, never generated here (maia2.from_pretrained
-# gdown-downloads into paths.maia2_models_dir()) -- 267MB, over GitHub's limit
+# third-party assets: downloaded, never generated here -- 267MB+, over GitHub's limit
 assets/models/
 assets/tablebases/
 assets/engines/
 assets/corpora/
 !assets/**/*.dvc
+# maia2.from_pretrained() downloads CWD-relative and cannot be redirected; the root
+# maia2_models symlink points into assets/models/maia2 so it lands in the right place.
+maia2_models
 *.pt
