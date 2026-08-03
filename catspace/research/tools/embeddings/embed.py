@@ -42,7 +42,7 @@ def jepa_encode(ckpt, tok, glob, dev, bs=512):
 
 
 def trunk_encode(fens, bs=512):
-    from catspace.encoder import ReachabilityField
+    from catspace.research.components.encoder.approaches.reachability_field.src import ReachabilityField
     from lczerolens import LczeroBoard
     rf = ReachabilityField()
     out = np.zeros((len(fens), 64), np.float32)

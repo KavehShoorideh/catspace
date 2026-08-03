@@ -13,7 +13,7 @@ from pathlib import Path
 import chess
 import numpy as np
 
-from catspace.encoder import ReachabilityField                          # noqa: E402
+from catspace.research.components.encoder.approaches.reachability_field.src import ReachabilityField                          # noqa: E402
 from catspace.io import paths
 
 
