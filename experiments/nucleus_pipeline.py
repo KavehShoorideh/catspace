@@ -82,7 +82,7 @@ def main():
             if "VERDICT" in line:
                 print("  " + line.strip(), flush=True)
         # FLIP the engine default -> fleet self-heals
-        eng = Path("experiments/bootstrap_mate_engine.py")
+        eng = Path("catspace/approaches/bootstrap_mate/experiments/bootstrap_mate_engine.py")
         src = eng.read_text()
         import re
         new = re.sub(r'(--last-mile-dtm",\s*default=")[^"]*(")',

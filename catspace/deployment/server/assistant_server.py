@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""experiments/viz/assistant_server.py -- THE PLANNER AS CO-ANALYST (Kaveh 2026-07-25):
+"""catspace/deployment/server/assistant_server.py -- THE PLANNER AS CO-ANALYST (Kaveh 2026-07-25):
 play against a weak maia (or engine of choice) in the browser while OUR planner assists:
 it prompts 'let's calculate here' (probe-triggered), searches while you think, then shows
 the top moves and -- when a plan is active -- the most likely LEAVES you'll end up in.
@@ -7,13 +7,12 @@ Every suggested idea carries a pencil-editable tag; edited names persist to
 artifacts/experiments/concept_tags.jsonl as HUMAN LABELS for field regions/plans
 (concept-extraction meets the planner).
 
-Run:  .venv/bin/python experiments/viz/assistant_server.py --port 8777
+Run:  .venv/bin/python -m catspace.deployment.server.assistant_server --port 8777
 """
 from __future__ import annotations
 
 import argparse
 import json
-import sys
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -22,17 +21,18 @@ import chess
 import chess.engine
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
-
+from catspace.approaches.bootstrap_mate import (OnlineMateBank, harvest, make_batched_energy_prior,
+                                                make_boot_value, make_planner, mat_sig)
+from catspace.approaches.bootstrap_mate import config as bootstrap_mate_config
 from catspace.fields import FieldModel
 from catspace.introspection import ProbeKit
+from catspace.io import paths
+from catspace.io.paths import REPO_ROOT, experiments_dir
 from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
-from experiments.bootstrap_mate_engine import (OnlineMateBank, harvest, make_batched_energy_prior,
-                                               make_boot_value, make_planner, mat_sig)
 
-ASSETS = ROOT / "catspace/viz/assets"
-TAGS = ROOT / "artifacts/experiments/concept_tags.jsonl"
+ROOT = REPO_ROOT
+ASSETS = REPO_ROOT / "catspace/research/tools/viz/viz/assets"
+TAGS = experiments_dir() / "concept_tags.jsonl"
 
 
 SHARED: dict = {}      # heavies built once: fm, banks, compute lock, atlas cache
@@ -927,11 +927,15 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--port", type=int, default=8777)
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--field", default="data/derived/sep/lichess_mc2.pt")
-    ap.add_argument("--energy", default="data/derived/sep/opponent_energy_v1.pt")
-    ap.add_argument("--last-mile", default="data/derived/sep/dtm_cnn_v2.pt")
-    ap.add_argument("--banks-prefix", default="artifacts/experiments/assistant")
-    ap.add_argument("--opponent", default="data/engines/maia/maia-1200.pb.gz")
+    # Defaults resolve through the path registry, so the server behaves the same whatever
+    # directory it is launched from (and inside the container). The field/energy defaults
+    # follow the bootstrap_mate pointer files when a training run has published one.
+    ap.add_argument("--field", default=bootstrap_mate_config.field_checkpoint())
+    ap.add_argument("--energy", default=bootstrap_mate_config.opponent_energy_checkpoint())
+    ap.add_argument("--last-mile", default=str(paths.sep_dir() / "dtm_cnn_v2.pt"))
+    ap.add_argument("--banks-prefix", default=str(paths.experiments_dir() / "assistant"))
+    ap.add_argument("--opponent",
+                    default=str(paths.engines_dir() / "maia" / "maia-1200.pb.gz"))
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--pin-model", default="",
                     help="A/B endpoint mode: serve exactly this dtm ckpt, never auto-swap "

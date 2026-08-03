@@ -1,5 +1,5 @@
 """Material signatures (Endgame component; extracted from
-experiments/bootstrap_mate_engine.py 2026-07-30)."""
+catspace/approaches/bootstrap_mate/experiments/bootstrap_mate_engine.py 2026-07-30)."""
 from __future__ import annotations
 
 import chess

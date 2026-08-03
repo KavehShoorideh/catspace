@@ -58,7 +58,7 @@ def main():
         print(f"=== IMPROVE round {rnd} field={Path(field).stem} opp={Path(opp).stem} "
               f"[{time.time()-t0:.0f}s] ===", flush=True)
         while True:
-            rc = subprocess.run([sys.executable, "experiments/bootstrap_mate_engine.py",
+            rc = subprocess.run([sys.executable, "catspace/approaches/bootstrap_mate/experiments/bootstrap_mate_engine.py",
                                  "--scenario", "fullgame", "--n", str(args.games),
                                  "--j", "2", "--nodes", str(args.nodes),
                                  "--max-plies", "300", "--field", field,
