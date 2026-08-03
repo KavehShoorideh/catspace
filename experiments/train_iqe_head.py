@@ -138,6 +138,8 @@ def main():
                          "weak attraction outside")
     ap.add_argument("--polesep-krep", type=float, default=10.0, help="repulsive stiffness")
     ap.add_argument("--polesep-katt", type=float, default=0.05, help="attractive stiffness")
+    ap.add_argument("--pole-lr-mult", type=float, default=10.0,
+                    help="lr multiplier for the pole vertices + temperature (own param group)")
     ap.add_argument("--pole-init", choices=["data", "random"], default="data",
                     help="data = prototype init at each class's mean terminal phi (recommended)")
     ap.add_argument("--w-absorb", type=float, default=1.0, help="d(pole->s) large: cannot leave")
@@ -212,7 +214,24 @@ def main():
 
     net = IQEHead(in_ch=C, d=args.d, components=args.components, adapter_ch=args.adapter_ch).to(dev)
     print(f"  head params: {sum(p.numel() for p in net.parameters()):,}", flush=True)
-    opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
+    if poles_on and args.pole_lr_mult != 1.0:
+        # The vertices are 3xd + 1 numbers competing against a ~139k-param adapter at one shared
+        # lr, so they drift toward each other far slower than the embedding they must separate
+        # within (measured: gap 0.91 vs a crossover of 4.55 after 140 steps, and the crossover
+        # GROWS as the embedding expands -- the poles chase a receding target). Their own param
+        # group is the standard fix and touches no loss term. weight_decay=0 on the poles: they
+        # are locations in embedding space, not weights, and decaying them pulls all three back
+        # toward the origin -- i.e. directly against the separation this is meant to fix.
+        pole_params = {id(net.poles), id(net.log_T)}
+        rest = [p_ for p_ in net.parameters() if id(p_) not in pole_params]
+        opt = torch.optim.AdamW(
+            [{"params": rest, "lr": args.lr, "weight_decay": 1e-4},
+             {"params": [net.poles, net.log_T], "lr": args.lr * args.pole_lr_mult,
+              "weight_decay": 0.0}])
+        print(f"  [poles] own param group: lr {args.lr * args.pole_lr_mult:.1e} "
+              f"({args.pole_lr_mult:g}x), weight_decay 0", flush=True)
+    else:
+        opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
     logM = float(np.log1p(args.margin))
     tgt_mate = torch.from_numpy(np.log1p(np.clip(dtz, 0, None)).astype(np.float32)).to(dev)
 
