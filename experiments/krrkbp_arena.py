@@ -9,7 +9,7 @@ Matched-seed pairing, not two independent unpaired batches: for each of the
 20 fixed starting positions, BOTH candidate policies play the SAME position
 against the SAME opponent with the SAME rng seed, isolating the effect of
 the policy itself from opponent-randomness or position difficulty. The
-per-position score DIFFERENCE (b - a) feeds catspace.abtest.EValueTest's
+per-position score DIFFERENCE (b - a) feeds catspace.research.tools.stats_eval.abtest.EValueTest's
 anytime-valid sign test (same e-process arena_real.py uses, but on paired
 diffs instead of unpaired win/loss) plus a time-uniform confidence sequence
 on the mean diff (abtest.confidence_sequence) -- both already built,
@@ -30,11 +30,11 @@ import chess
 import chess.syzygy
 import numpy as np
 
-from catspace.abtest import EValueTest, confidence_sequence
-from catspace.diagnostic_krrkbp import load_fixed_set
+from catspace.research.tools.stats_eval.abtest import EValueTest, confidence_sequence
+from catspace.research.tools.chess_specific.diagnostic_krrkbp import load_fixed_set
 from catspace.io.paths import derived_dir
-from catspace.realboard import play_board_game
-from catspace.uci import UCIBoardPolicy
+from catspace.research.tools.chess_specific.realboard import play_board_game
+from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
 
 RESULT_SCORE = {"1-0": 1.0, "0-1": 0.0, "1/2-1/2": 0.5, "*": 0.5}
 
@@ -117,8 +117,8 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401  (fail early with a clear message if .[nn] absent)
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBPlanPolicy, FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBPlanPolicy, FBSearchPolicy
 
     device = pick_device(args.device)
     fb, payload = load_ckpt(Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt", device)
@@ -139,7 +139,7 @@ def main():
                             device=device)
 
     if args.compare == "bank":
-        from catspace.goal_bank import embed_bank, harvest_mate_finals
+        from catspace.research.components.memory.approaches.goal_region_bank.src.goal_bank import embed_bank, harvest_mate_finals
         mates = harvest_mate_finals(args.bank_shards, want_result=1,
                                     max_pieces=args.bank_max_pieces)
         if len(mates) < 10:

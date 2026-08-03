@@ -63,8 +63,8 @@ def collect_positions(fens, tb, along_line, cap):
 
 
 def preserve_vector(ckpt, positions, tb, nodes, beam, device):
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
     dev = pick_device(device)
     fb, pay = load_ckpt(Path(ckpt), dev)
     pol = FBSearchPolicy(fb, pay["zgoals"]["MATE_W"], max_nodes=nodes, beam=beam, device=dev)

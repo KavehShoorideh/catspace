@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 """
 experiments/experiment_report.py — the A/B experimentation harness: audits a
-candidate TorchFB checkpoint for Stockfish-oracle leakage (catspace.audit,
+candidate TorchFB checkpoint for Stockfish-oracle leakage (catspace.research.tools.stats_eval.audit,
 HARD gate -- refuses to proceed if either the static code-path check or the
 checkpoint's own provenance stamp comes back dirty), then runs the same
 metric suite the viz builders compute (reach/diff slopes, the M1.5
 decomposer's FRAC_IMPROVED/MEAN_GAIN, an arena run vs a fixed opponent with
-catspace.abtest.EValueTest's anytime-valid e-value verdict), and -- if
+catspace.research.tools.stats_eval.abtest.EValueTest's anytime-valid e-value verdict), and -- if
 --baseline is given -- a direct candidate-vs-baseline head-to-head with the
 SAME e-value machinery (experiments.arena_real.run_arena, generalized to
 take a color-specific opponent). Writes ONE structured JSON record per run
@@ -34,15 +34,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import numpy as np
 import torch
 
-from catspace.audit import audit_checkpoint
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.stats_eval.audit import audit_checkpoint
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import derived_dir, experiments_dir, newest_shard_dir
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.policy_fb import FBBoardPolicy, make_search_policy
-from catspace.planner.decompose import WaypointPool, decompose, hop_reach
-from catspace.viz.payload import json_default as _numpy_json_default  # reuse the same numpy-JSON fix
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBBoardPolicy, make_search_policy
+from catspace.research.components.planner.approaches.subgoal_cascade.src.decompose import WaypointPool, decompose, hop_reach
+from catspace.research.tools.viz.viz.payload import json_default as _numpy_json_default  # reuse the same numpy-JSON fix
 
 PLANNER_ELO, PLANNER_CLOCK = 1800, 300.0
 
@@ -207,7 +207,7 @@ def main():
                          "F(s)@z value, no retraining) instead of FBBoardPolicy for the "
                          "candidate's side, with this fixed node budget per move (depth is "
                          "derived from the real branching factor to spend it -- see "
-                         "catspace.nn.policy_fb.FBSearchPolicy)")
+                         "catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb.FBSearchPolicy)")
     ap.add_argument("--search-beam", type=int, default=4,
                     help="branching cap per ply beyond the root, only used with --search-nodes")
     ap.add_argument("--search", choices=("beam", "mcts", "anytime"), default="beam",
@@ -228,7 +228,7 @@ def main():
     args = ap.parse_args()
 
     from experiments.arena_real import make_opponent, run_arena
-    from catspace.uci import UCIBoardPolicy
+    from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
 
     shard_dir = Path(args.shards) if args.shards else newest_shard_dir()
     ckpt_path = Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt"

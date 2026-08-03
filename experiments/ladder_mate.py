@@ -24,8 +24,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.mcts import MCTS
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
 from experiments.value_fixed_point import TB, tb_best_move
 
 CENTER = [sq for sq in range(64) if 2 <= chess.square_file(sq) <= 5 and 2 <= chess.square_rank(sq) <= 5]
@@ -50,7 +50,7 @@ def make_tb_value(tb):
 
 
 # MOVED to catspace/diagnostics.py (canonical; DIAGNOSTIC-ONLY rule documented there).
-from catspace.diagnostics import escape_volume  # noqa: F401
+from catspace.research.tools.chess_specific.diagnostics import escape_volume  # noqa: F401
 
 
 def make_constraint_value():
@@ -66,8 +66,8 @@ def make_dtm_value(ckpt, device="cpu"):
     (train_dtm_cnn.py). value = tanh((C - dtm_pred)/C)."""
     import torch
     from experiments.train_dtm_cnn import DTMNet
-    from catspace.nn.features import feature_planes
-    from catspace.nn.fb import pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
     dev = pick_device(device)
     st = torch.load(ckpt, map_location="cpu", weights_only=False)
     net = DTMNet(c=st["c"]).to(dev); net.load_state_dict(st["state"]); net.eval()

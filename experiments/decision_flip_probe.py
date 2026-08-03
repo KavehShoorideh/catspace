@@ -35,7 +35,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from experiments.value_fixed_point import TB, tb_best_move
-from catspace.planner.probe import probe
+from catspace.research.components.planner.approaches.subgoal_cascade.src.probe import probe
 
 
 def main():
@@ -53,9 +53,9 @@ def main():
     args = ap.parse_args()
 
     import torch
-    from catspace.nn.eval_head import EvalHead
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import make_search_policy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
     dev = pick_device(args.device)
     fb, pay = load_ckpt(Path(args.ckpt), dev)
     hp = torch.load(args.phead, map_location=dev, weights_only=False)

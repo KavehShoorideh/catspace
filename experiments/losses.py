@@ -30,7 +30,7 @@ def wdl_hinge(d, is_won, log_margin):
 
 # Ending-type categories: canonical home is catspace/value/clock_field.py
 # (component refactor 2026-07-30); re-exported here for existing importers.
-from catspace.value.clock_field import ENDINGS, N_ENDINGS  # noqa: F401,E402
+from catspace.research.components.planner.approaches.committor_value.src.clock_field import ENDINGS, N_ENDINGS  # noqa: F401,E402
 
 
 def categorical_ending_loss(logits, labels):

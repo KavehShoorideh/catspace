@@ -58,9 +58,9 @@ def paired_rho(ckpt_a, whead_a, ckpt_b, whead_b, table_path, rim_plies=8.0, seed
     of rhos measured on different tables (holdout target noise attenuates rho
     as the cumulative table grows; measured rounds 5-6)."""
     import torch
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.data.encode import encode_meta, encode_packed
-    from catspace.nn.features import feature_planes, omega_ids
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
     from experiments.certainty_distill import spearman_ci
     dev = pick_device(device)
     rows = json.loads(Path(table_path).read_text())["rows"]
@@ -99,8 +99,8 @@ def paired_rho(ckpt_a, whead_a, ckpt_b, whead_b, table_path, rim_plies=8.0, seed
 def root_probe(ckpt, whead_path, root_fen, n_games, nodes, eps, seed, device):
     """Conversion from THE root under eps-play (the root's own P-hat)."""
     import torch
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.mcts import FBMCTSPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.search.approaches.puct_mcts.src.mcts import FBMCTSPolicy
     dev = pick_device(device)
     fb, pay = load_ckpt(Path(ckpt), dev)
     hp = torch.load(whead_path, map_location=dev, weights_only=False)

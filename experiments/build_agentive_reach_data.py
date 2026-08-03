@@ -28,7 +28,7 @@ import chess.pgn
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.field import ReachabilityField                            # noqa: E402
+from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField                            # noqa: E402
 
 
 def main():

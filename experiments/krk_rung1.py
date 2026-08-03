@@ -21,15 +21,15 @@ import time
 import numpy as np
 import scipy.stats as st
 
-from catspace.chain import exact_P, empirical_P
-from catspace.concepts import KMeansVQ, usage_perplexity
-from catspace.cone.tabular import fb_from_svd, randomized_svd_sm, rank_error, sm_matvec
-from catspace.domains import krk
-from catspace.game import rollout_transitions
-from catspace.opponents import RandomOpponent
-from catspace.planner.policy import RandomPolicy, TablePolicy
-from catspace.planner.readout import ReplyAgg, greedy_policy
-from catspace.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.research.tools.chess_specific.chain import exact_P, empirical_P
+from catspace.research.components.encoder.approaches.concept_quantization.src.concepts import KMeansVQ, usage_perplexity
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import fb_from_svd, randomized_svd_sm, rank_error, sm_matvec
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.game import rollout_transitions
+from catspace.research.tools.chess_specific.opponents import RandomOpponent
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import RandomPolicy, TablePolicy
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg, greedy_policy
+from catspace.research.tools.chess_specific.scoring import TerminalScores, fill_terminal_state_scores
 
 GAMMA = 0.92
 

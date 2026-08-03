@@ -22,7 +22,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.tb import TB, tb_best_move, white_pov_value
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, tb_best_move, white_pov_value
 from experiments.ladder_mate import white_mcts
 from experiments.mate_ladder_eval import make_energy_prior, make_field_value, sample_scenarios
 

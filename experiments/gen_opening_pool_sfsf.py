@@ -44,7 +44,7 @@ def play_shard(lines, depth, cap, stride, per_game, tail, syzygy, gid0):
     import chess.engine
     import torch
     from lczerolens import LczeroBoard
-    from catspace.tb import TB
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
     from experiments.value_fixed_point import white_pov_value, tb_best_move
 
     sf = chess.engine.SimpleEngine.popen_uci(shutil.which("stockfish") or "/opt/homebrew/bin/stockfish")
@@ -207,7 +207,7 @@ def main():
     ap.add_argument("--out", default="data/derived/opening_pool_sfsf.npz")
     ap.add_argument("--collect-only", action="store_true", help="skip generation, just merge existing shards")
     args = ap.parse_args()
-    from catspace.tb import DEFAULT_SYZYGY
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import DEFAULT_SYZYGY
 
     lines = []
     with open(args.pool) as fh:

@@ -19,7 +19,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_clock_field import ClockField
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 
 BUCKETS = [(27, 33), (23, 27), (19, 23), (15, 19), (11, 15), (8, 11), (5, 8), (3, 5)]  # pieces [lo,hi)
 

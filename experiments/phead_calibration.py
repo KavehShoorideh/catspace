@@ -79,7 +79,7 @@ def load_holdout_games(shard_dir: Path, max_games: int, seed: int):
 @torch.no_grad()
 def embed_games(fb, phead, games, device, batch=256):
     """-> per-game arrays of P (n_i, 3) softmax W/D/L, plus flat F embeddings."""
-    from catspace.nn.features import feature_planes, omega_ids
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
     all_p, all_f = [], []
     for g in games:
         om = omega_ids(g["white_elo"], g["black_elo"], g["clock"])
@@ -110,8 +110,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    from catspace.nn.eval_head import EvalHead
-    from catspace.nn.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
     dev = pick_device(args.device)
     fb, _ = load_ckpt(Path(args.ckpt), dev)
     fb.eval()

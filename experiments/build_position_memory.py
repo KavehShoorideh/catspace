@@ -24,12 +24,12 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.certified import collect_certified_games
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.chess_specific.chessdata.certified import collect_certified_games
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import newest_shard_dir
-from catspace.memory.store import PositionMemory
-from catspace.nn.fb import load_ckpt
-from catspace.viz.realboard import board_from_row, embed_positions
+from catspace.research.components.memory.approaches.vector_store_retrieval.src.store import PositionMemory
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
+from catspace.research.tools.viz.viz.realboard import board_from_row, embed_positions
 
 HOLDOUT_MOD = 50           # trainer's holdout convention (game_id % 50 == 0)
 COLS = ("packed", "meta", "ply", "clock", "result", "white_elo", "black_elo", "game_id")

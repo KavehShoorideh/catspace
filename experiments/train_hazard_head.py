@@ -33,7 +33,7 @@ import torch
 import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.train.scaffold import resolve_device                      # noqa: E402
+from catspace.research.tools.training_infra.train.scaffold import resolve_device                      # noqa: E402
 
 GAPS = np.array([1, 2, 3, 5, 8, 13, 21, 34])                            # bucket edges = H=8
 

@@ -41,9 +41,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from catspace.data.encode import board_from_packed
-from catspace.diagnostic_krrkbp import load_fixed_set
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.diagnostic_krrkbp import load_fixed_set
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 
 
 def material_sig(board):
@@ -200,9 +200,9 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBSearchPolicy
-    from catspace.uci import UCIBoardPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
+    from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
 
     device = pick_device(args.device)
     fb, payload = load_ckpt(Path(args.ckpt), device)
@@ -213,7 +213,7 @@ def main():
     tb = chess.syzygy.open_tablebase(args.syzygy_dir)
 
     rng = np.random.default_rng(args.seed)
-    from catspace.data.encode import encode_packed as board_packed, encode_meta as board_meta
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_packed as board_packed, encode_meta as board_meta
 
     print(f"building bank from {args.bank_shards} ...", flush=True)
     bpacked, bmeta = load_bank_positions(args.bank_shards, args.bank_size, rng)

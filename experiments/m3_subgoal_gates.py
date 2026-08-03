@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.subgoals import SubgoalRanker                       # noqa: E402
+from catspace.research.components.planner.approaches.atlas_region_stats.src.ranker import SubgoalRanker                       # noqa: E402
 
 
 def main():

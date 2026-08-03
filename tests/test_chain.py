@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from catspace.domains import krk
-from catspace.chain import exact_P, empirical_P
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.chain import exact_P, empirical_P
 
 
 @pytest.fixture(scope="module")

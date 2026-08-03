@@ -15,18 +15,18 @@ import sys
 
 import numpy as np
 
-from catspace.cone.embedding import make_goal, reach
-from catspace.concepts import KMeansVQ
-from catspace.domains import krkn
-from catspace.cone.tabular import TabularFB
-from catspace.game import play_game
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.embedding import make_goal, reach
+from catspace.research.components.encoder.approaches.concept_quantization.src.concepts import KMeansVQ
+from catspace.research.tools.chess_specific.domains import krkn
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import TabularFB
+from catspace.research.tools.chess_specific.game import play_game
 from catspace.io.paths import generated_dir, load_array
-from catspace.opponents import EpsOptimalDTM, optimal_reply_table
-from catspace.planner.move_identity import RegionPairIdentity, SyntacticIdentity
-from catspace.planner.plans import PlanMemory, PlanStore, calibrate_tau
-from catspace.planner.policy import PlanningPolicy
-from catspace.planner.readout import ReplyAgg
-from catspace.scoring import TerminalScores
+from catspace.research.tools.chess_specific.opponents import EpsOptimalDTM, optimal_reply_table
+from catspace.research.components.planner.approaches.subgoal_cascade.src.move_identity import RegionPairIdentity, SyntacticIdentity
+from catspace.research.components.planner.approaches.subgoal_cascade.src.plans import PlanMemory, PlanStore, calibrate_tau
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import PlanningPolicy
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg
+from catspace.research.tools.chess_specific.scoring import TerminalScores
 
 
 def main():

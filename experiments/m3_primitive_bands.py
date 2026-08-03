@@ -29,8 +29,8 @@ def main():
     idx = rng.choice(ok, min(args.n, len(ok)), replace=False)
     fens = z["fen"][idx]; y = ml[idx].astype(float)
 
-    from catspace.train.scaffold import resolve_device
-    from catspace.transition import CrossingRisk
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
+    from catspace.research.tools.chess_specific.transition import CrossingRisk
     from lczerolens import LczeroBoard
     from maia2 import model as maia_model, inference
     dev = resolve_device("auto"); prepared = inference.prepare()

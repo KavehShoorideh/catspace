@@ -29,15 +29,15 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.play_vs_maia import CommittorGreedy                    # noqa: E402
-from catspace.field import ReachabilityField                           # noqa: E402
-from catspace.subgoals import SubgoalRanker                            # noqa: E402
-from catspace.memory.plan_store import PlanStore                       # noqa: E402
-from catspace.planner.subgoal_gen import SubgoalGenerator              # noqa: E402
-from catspace.style.live import LiveOpponent                           # noqa: E402
-from catspace.planner.optionality import (ShapeWeights, board_self_blunder,  # noqa: E402
+from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField                           # noqa: E402
+from catspace.research.components.planner.approaches.atlas_region_stats.src.ranker import SubgoalRanker                            # noqa: E402
+from catspace.research.components.memory.approaches.plan_ledger.src.plan_store import PlanStore                       # noqa: E402
+from catspace.research.components.planner.approaches.subgoal_cascade.src.subgoal_gen import SubgoalGenerator              # noqa: E402
+from catspace.research.components.planner.approaches.opponent_model.src.style_live import LiveOpponent                           # noqa: E402
+from catspace.research.components.planner.approaches.subgoal_cascade.src.optionality import (ShapeWeights, board_self_blunder,  # noqa: E402
                                           move_scores)
-from catspace.train.scaffold import resolve_device                     # noqa: E402
-from catspace.stats import paired_nll_ci                               # noqa: E402
+from catspace.research.tools.training_infra.train.scaffold import resolve_device                     # noqa: E402
+from catspace.research.tools.stats_eval.stats import paired_nll_ci                               # noqa: E402
 
 
 class PlannerPolicy(CommittorGreedy):

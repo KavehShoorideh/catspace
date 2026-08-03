@@ -3,8 +3,8 @@ warning) and basic ascent-cone sanity."""
 import chess
 import numpy as np
 
-from catspace.controlfield.control import weighted_attacker_field, orient
-from catspace.controlfield.derivative import move_derivatives, ascent_cone, ConeConfig
+from catspace.research.components.encoder.approaches.control_field_wdl.src.control import weighted_attacker_field, orient
+from catspace.research.components.encoder.approaches.control_field_wdl.src.derivative import move_derivatives, ascent_cone, ConeConfig
 
 
 def test_derivative_orientation_not_naive_diff():

@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_clock_field import ClockField
 from experiments.train_field_fullgame import load_field_data
 from experiments.arch_bakeoff import eff_rank
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 
 
 def main():

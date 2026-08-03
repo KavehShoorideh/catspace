@@ -39,7 +39,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 from experiments.viz.build_embedding_neighbors import (
     Bank, dtm_line, load_bank_positions, material_sig, svg_board)
 
@@ -47,7 +47,7 @@ from experiments.viz.build_embedding_neighbors import (
 class Explorer:
     def __init__(self, ckpt, bank_shards, bank_size, syzygy_dir, device, seed=0):
         import torch
-        from catspace.nn.fb import load_ckpt, pick_device
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
         self.torch = torch
         self.device = pick_device(device)
         self.fb, payload = load_ckpt(Path(ckpt), self.device)
@@ -62,7 +62,7 @@ class Explorer:
         print(f"explorer ready: bank {len(self.bank.F)} positions, ckpt {ckpt}", flush=True)
 
     def embed_reach(self, board):
-        from catspace.data.encode import encode_packed, encode_meta
+        from catspace.research.tools.chess_specific.chessdata.encode import encode_packed, encode_meta
         pl = self.torch.from_numpy(feature_planes(encode_packed(board)[None],
                                                   encode_meta(board)[None])).to(self.device)
         om = self.torch.from_numpy(self.omega[None]).to(self.device)
@@ -72,7 +72,7 @@ class Explorer:
         return f.cpu().numpy()[0], reach
 
     def analyse(self, fen, k):
-        from catspace.data.encode import encode_packed, encode_meta
+        from catspace.research.tools.chess_specific.chessdata.encode import encode_packed, encode_meta
         board = chess.Board(fen)                              # may raise
         qmat = material_sig(board)
         key = encode_packed(board).tobytes() + encode_meta(board).tobytes()

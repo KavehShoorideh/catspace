@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 import torch
 
-from catspace.data.encode import board_from_packed, encode_meta, encode_packed
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
 from experiments.gen_stratified_perfect import (ALL_MENUS, STRATA_MENUS, _emit_edges,
                                                 negamax_tb, optimal_line, pcount)
 from experiments.selfplay_generate import random_endgame_start
@@ -95,7 +95,7 @@ def test_reach_mask_material_reachability():
 
 
 def test_iqe_quasimetric_axioms():
-    from catspace.nn.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
     fb = TorchFB(d=32, channels=16, blocks=2, iqe=True, iqe_components=8, seed=0).eval()
     torch.manual_seed(0)
     X = torch.randn(24, 32) * 5.0

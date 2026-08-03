@@ -23,10 +23,10 @@ import torch.nn.functional as tF
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.engine.fields import FieldModel
-from catspace.nn.fb import TorchFB as FB, pick_device
-from catspace.nn.features import feature_planes
-from catspace.tracking import track_run
+from catspace.fields import FieldModel
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB as FB, pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
+from catspace.research.tools.stats_eval.tracking import track_run
 
 
 def load_positions(shards, n, seed):

@@ -5,7 +5,7 @@ experiments/search_tournament.py — which SEARCH is better, statistically?
 Kaveh 2026-07-14: "use the e-value harness ... to figure out which of these
 searches are better in a well-trained embedding space." Round-robin paired
 duels between search readouts at MATCHED eval budget, each duel scored with
-catspace.abtest.EValueTest (anytime-valid: we stop a duel EARLY the moment
+catspace.research.tools.stats_eval.abtest.EValueTest (anytime-valid: we stop a duel EARLY the moment
 e >= 1/alpha, the sequential-bandit efficiency) plus a bootstrap CI on the
 mate-rate diff at whatever n the duel stopped.
 
@@ -39,7 +39,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from catspace.abtest import EValueTest
+from catspace.research.tools.stats_eval.abtest import EValueTest
 from experiments.playout_ab import playout
 from experiments.value_fixed_point import TB
 
@@ -70,7 +70,7 @@ def make_arm(kind, field, nodes, tb, ckpt, device, c_puct, beam):
     if field == "oracle":
         reach = oracle_reach_fn(tb)
         if kind == "mcts":
-            from catspace.nn.mcts import MCTS
+            from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
 
             class P:
                 def __init__(self):
@@ -80,7 +80,7 @@ def make_arm(kind, field, nodes, tb, ckpt, device, c_puct, beam):
                     return self.m.best_move(board)
             return P()
         if kind == "anytime":
-            from catspace.nn.anytime import AnytimePathSearch
+            from catspace.research.components.search.approaches.anytime_path.src.anytime import AnytimePathSearch
 
             class P:
                 def __init__(self):
@@ -91,8 +91,8 @@ def make_arm(kind, field, nodes, tb, ckpt, device, c_puct, beam):
             return P()
         raise ValueError(f"arm {kind!r} not available on the oracle field")
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import make_search_policy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
     dev = pick_device(device)
     fb, pay = load_ckpt(Path(ckpt), dev)
     return make_search_policy(kind, fb, pay["zgoals"]["MATE_W"], max_nodes=nodes,

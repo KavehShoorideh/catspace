@@ -32,9 +32,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scipy.stats import spearmanr
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt, pick_device
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 from experiments.ladder_mate import escape_volume, random_krrvk
 
 BOARD_ONLY = (18, 19)

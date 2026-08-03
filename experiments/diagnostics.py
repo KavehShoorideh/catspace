@@ -16,10 +16,10 @@ from __future__ import annotations
 import numpy as np
 import scipy.stats as st
 
-from catspace.chain import exact_P
-from catspace.cone.tabular import sm_matvec
-from catspace.domains import krk
-from catspace.util import ridge_r2
+from catspace.research.tools.chess_specific.chain import exact_P
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import sm_matvec
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.stats_eval.util import ridge_r2
 
 GAMMA = 0.92
 

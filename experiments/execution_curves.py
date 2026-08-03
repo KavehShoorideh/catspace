@@ -14,8 +14,8 @@ import glob, sys, time
 from pathlib import Path
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.data.encode import board_from_packed
-from catspace.diagnostics import material_count
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.diagnostics import material_count
 import chess
 
 REG = {2: "sf_full", 3: "rand_vs_sf", 4: "sf_1400", 5: "sf_1700", 6: "sf_2000",

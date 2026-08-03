@@ -16,7 +16,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_clock_field import ClockField
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 
 
 def load_embed(net, dev, path, n, rng):

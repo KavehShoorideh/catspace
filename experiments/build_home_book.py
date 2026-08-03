@@ -48,12 +48,12 @@ def main():
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
     t0 = time.time()
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     dev = resolve_device(args.device)
     from experiments.play_vs_maia import CommittorGreedy
     from experiments.m4_play_steering import maia_feats
-    from catspace.field import ReachabilityField
-    from catspace.subgoals import SubgoalRanker
+    from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
+    from catspace.research.components.planner.approaches.atlas_region_stats.src.ranker import SubgoalRanker
     from lczerolens import LczeroBoard
     from maia2 import model as maia_model, inference as m2_inf
     m2_inf.prepare()

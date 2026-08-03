@@ -23,8 +23,8 @@ import chess
 import chess.engine
 import numpy as np
 
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import derived_dir, newest_shard_dir
 
 MATE_CP = 1000  # standard ACPL convention: cap mate scores near the top of the
@@ -106,8 +106,8 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401  (fail early with a clear message if .[nn] absent)
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     shard_dir = Path(args.shards) if args.shards else newest_shard_dir()
     boards = sample_positions(shard_dir, args.n, args.seed)

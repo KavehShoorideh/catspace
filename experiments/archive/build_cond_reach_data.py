@@ -17,8 +17,8 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.style.model import StyleResidual
-from catspace.style.dataio import load_cache
+from catspace.research.components.planner.approaches.opponent_model.src.style_model import StyleResidual
+from catspace.research.components.planner.approaches.opponent_model.src.style_dataio import load_cache
 
 
 def main():

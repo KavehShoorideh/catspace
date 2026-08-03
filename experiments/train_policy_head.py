@@ -25,12 +25,12 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import LichessPairSource
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import LichessPairSource
 from catspace.io.paths import newest_shard_dir
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt
-from catspace.nn.policy_head import PolicyHead, move_index, policy_loss
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_head import PolicyHead, move_index, policy_loss
 
 HOLDOUT_MOD = 50
 

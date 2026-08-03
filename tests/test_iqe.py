@@ -9,7 +9,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
-from catspace.nn.iqe import IQE, _union_length
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE, _union_length
 
 
 def test_union_length_basic():

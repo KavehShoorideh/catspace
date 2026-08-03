@@ -26,10 +26,10 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.fb import pick_device
-from catspace.nn.iqe import IQE
-from catspace.tb import TB, DEFAULT_SYZYGY, rollout_dtm, tb_best_move
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY, rollout_dtm, tb_best_move
 from experiments.arch_bakeoff import CNNBackbone, eff_rank, tokens
 from experiments.gen_dtm_data import random_class_start
 from experiments.value_fixed_point import white_pov_value

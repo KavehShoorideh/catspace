@@ -25,9 +25,9 @@ import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.tracking import track_run
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.tools.stats_eval.tracking import track_run
 
 
 class RhoHead(nn.Module):

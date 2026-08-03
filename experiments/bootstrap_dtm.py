@@ -39,8 +39,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import chess
 
-from catspace.data.encode import board_from_packed, encode_meta, encode_packed
-from catspace.nn.fb import pick_device
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
 from experiments.arch_bakeoff import CNNBackbone, TransformerBackbone, eff_rank, tokens
 from experiments.dtm_arch_bakeoff import DTMNet, spearman
 

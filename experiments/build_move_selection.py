@@ -18,8 +18,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed, encode_packed
-from catspace.nn.features import elo_bin
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import elo_bin
 
 
 def main():

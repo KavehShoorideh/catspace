@@ -24,13 +24,13 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
 from experiments.selfplay_generate import random_endgame_start
 from experiments.value_fixed_point import TB, tb_best_move, white_pov_value
 
 
 # MOVED to catspace/tb.py -- re-export for existing importers.
-from catspace.tb import rollout_dtm  # noqa: F401
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import rollout_dtm  # noqa: F401
 
 
 def gen_chunk(task):

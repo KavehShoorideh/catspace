@@ -32,7 +32,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
 from experiments.planner_longshort import LongShortPlanner
 from experiments.value_fixed_point import tb_best_move
 

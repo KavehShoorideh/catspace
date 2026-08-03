@@ -28,7 +28,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from catspace.data.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
 
 
 def forced_mate_in(board: chess.Board, k: int) -> bool:
@@ -158,7 +158,7 @@ def main():
     args = ap.parse_args()
 
     import chess.engine
-    from catspace.uci import UCIBoardPolicy
+    from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
 
     lim = chess.engine.Limit(depth=args.depth) if args.depth > 0 else chess.engine.Limit(time=args.movetime)
     limdesc = f"depth {args.depth}" if args.depth > 0 else f"movetime {args.movetime}s"

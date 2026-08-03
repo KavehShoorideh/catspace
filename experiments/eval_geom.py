@@ -15,9 +15,9 @@ import sys
 from pathlib import Path
 import numpy as np, torch, chess
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.data.encode import board_from_packed, encode_meta, encode_packed
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
 from scipy.stats import spearmanr
 
 ckpt = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data/derived/sep/iqe_geom.pt")

@@ -21,9 +21,9 @@ from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt, pick_device
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 
 
 def main():

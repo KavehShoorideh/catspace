@@ -28,12 +28,12 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import derived_dir, newest_shard_dir
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.planner.decompose import WaypointPool, decompose, hop_reach
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.planner.approaches.subgoal_cascade.src.decompose import WaypointPool, decompose, hop_reach
 
 PLANNER_ELO, PLANNER_CLOCK = 1800, 300.0
 

@@ -40,7 +40,7 @@ import chess.engine
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.controlfield.derivative import ascent_cone, ConeConfig   # noqa: E402
+from catspace.research.components.encoder.approaches.control_field_wdl.src.derivative import ascent_cone, ConeConfig   # noqa: E402
 from experiments.controlfield_gates import GAMBITS                     # noqa: E402
 
 

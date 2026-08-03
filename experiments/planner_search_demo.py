@@ -11,10 +11,10 @@ import sys
 from pathlib import Path
 import numpy as np, torch, chess
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.data.encode import board_from_packed
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.planner.search import Budget, get_search, SEARCH_REGISTRY
-from catspace.planner.field_heuristic import make_field_goal
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.components.planner.approaches.subgoal_cascade.src.search import Budget, get_search, SEARCH_REGISTRY
+from catspace.research.components.planner.approaches.subgoal_cascade.src.field_heuristic import make_field_goal
 
 dev = pick_device("auto")
 fb, _ = load_ckpt(Path("data/derived/sep/iqe_geom.pt"), dev); fb.eval()
@@ -35,8 +35,8 @@ smat = matkey(start_i)
 # lower-DTM positions and keep those the field puts ~4-8 plies from the start.
 same = won[np.array([matkey(i) == smat for i in won])]
 lower = same[(dtm[same] < dtm[start_i] - 2) & (dtm[same] > dtm[start_i] - 10)]
-from catspace.planner.field_heuristic import _planes
-from catspace.nn.features import omega_ids
+from catspace.research.components.planner.approaches.subgoal_cascade.src.field_heuristic import _planes
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import omega_ids
 _om = omega_ids(np.array([1800]), np.array([1800]), np.array([300.0]))[0]
 with torch.no_grad():
     Fs = fb.embed_F(torch.from_numpy(_planes([start])).to(dev),

@@ -25,7 +25,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from catspace.data.lichess import GameFilter, build_shards
+from catspace.research.tools.chess_specific.chessdata.lichess import GameFilter, build_shards
 from catspace.io.paths import shards_dir
 
 

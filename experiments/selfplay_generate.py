@@ -42,8 +42,8 @@ from pathlib import Path
 import chess
 import numpy as np
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.realboard import play_board_game
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.tools.chess_specific.realboard import play_board_game
 from catspace.io.paths import derived_dir
 
 _RESULT_MAP = {"1-0": 1, "0-1": -1, "1/2-1/2": 0, "*": 0}
@@ -70,7 +70,7 @@ def make_selfplay_pair(fb, zgoals, device, max_nodes: int, beam: int, epsilon: f
                        policy_cls) -> tuple:
     """(white_policy, black_policy), both wrapping the SAME fb weights with
     the color-appropriate zgoal, epsilon-random for diversity."""
-    from catspace.nn.policy_fb import FBPlanPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBPlanPolicy
     if policy_cls is FBPlanPolicy:
         kwargs = dict(plan_nodes=max_nodes, plan_beam=beam, device=device)
     else:
@@ -201,7 +201,7 @@ def generate(fb, zgoals, device, n_games: int, out_dir: Path, max_nodes: int, be
 
     sf_opponent = None
     if sf_opponent_frac > 0 or sf_vs_sf:
-        from catspace.uci import UCIBoardPolicy
+        from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
         sf_opponent = UCIBoardPolicy(skill=sf_skill, movetime=sf_movetime)
         sf_opponent.__enter__()
 
@@ -342,8 +342,8 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBPlanPolicy, FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBPlanPolicy, FBSearchPolicy
 
     device = pick_device(args.device)
     if args.sf_vs_sf:

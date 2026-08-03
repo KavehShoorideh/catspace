@@ -39,8 +39,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 from experiments.certainty_distill import spearman_ci
 
 
@@ -91,8 +91,8 @@ def main():
     args = ap.parse_args()
 
     import torch
-    from catspace.data.shards import LichessPairSource
-    from catspace.nn.fb import load_ckpt, pick_device, save_ckpt
+    from catspace.research.tools.chess_specific.chessdata.shards import LichessPairSource
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device, save_ckpt
     from experiments.train_lichess_fb import batch_tensors, build_zgoals
 
     dev = pick_device(args.device)

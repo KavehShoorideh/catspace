@@ -3,7 +3,7 @@ dependency for the detector-logic tests; the "real codebase is clean" test
 needs torch (imports TorchFB/FBBoardPolicy) so it's skipped without it."""
 import pytest
 
-from catspace.audit import (_scan, audit_checkpoint, checkpoint_provenance_check,
+from catspace.research.tools.stats_eval.audit import (_scan, audit_checkpoint, checkpoint_provenance_check,
                             is_provenance_clean)
 
 
@@ -84,6 +84,6 @@ def test_static_purity_check_passes_on_the_real_codebase():
     path (or an audit-vocabulary word landed somewhere it shouldn't have --
     see test_scan_does_not_false_positive_on_compound_identifiers)."""
     torch = pytest.importorskip("torch")
-    from catspace.audit import static_purity_check
+    from catspace.research.tools.stats_eval.audit import static_purity_check
     r = static_purity_check()
     assert r["clean"], r["hits"]

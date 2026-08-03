@@ -3,7 +3,7 @@
 the endgame. At <=7 pieces the outcome is ASSUMED via a tablebase lookup, so the full-board
 field's committor is GROUNDED here (exact WDL) and its embedding TERMINATES at the goal region =
 <=7-piece tablebase-WON configs. Mirrors Stockfish/Lc0: WDL for the value, DTZ for the move.
-Thin wrapper over catspace.tb (white_pov_value = WDL, tb_best_move = DTZ-optimal).
+Thin wrapper over catspace.research.components.planner.approaches.endgame_groundtruth.src.tb (white_pov_value = WDL, tb_best_move = DTZ-optimal).
 
 Run `python experiments/endgame_handover.py` for the self-test.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 import chess
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.tb import tb_best_move
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import tb_best_move
 from experiments.value_fixed_point import white_pov_value
 
 TB_MAX_PIECES = 7                                            # Syzygy ceiling (no 8-piece)
@@ -58,7 +58,7 @@ def committor_anchor(board: chess.Board, tb):
 
 def _tests():
     import numpy as np
-    from catspace.tb import TB, DEFAULT_SYZYGY
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY
     from experiments.gen_dtm_data import random_class_start
     tb = TB(str(DEFAULT_SYZYGY), cache_db=None); rng = np.random.default_rng(0); ok = True
 

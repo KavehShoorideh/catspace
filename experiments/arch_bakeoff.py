@@ -29,8 +29,8 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import decode_planes
-from catspace.nn.fb import pick_device
+from catspace.research.tools.chess_specific.chessdata.encode import decode_planes
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
 
 
 # ---- input: packed bitboards -> per-square piece-type tokens (0=empty, 1..12 pieces)

@@ -27,7 +27,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
 from experiments.value_fixed_point import TB, white_pov_value
 
 PIECE_VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9}

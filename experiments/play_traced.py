@@ -12,7 +12,7 @@ Modes:
                        reasons / score)
 
 Bank: build once per encoder with
-  python -c "from catspace.memory.checkpoint_bank import build; build('data/derived/checkpoints/checkpoints_v1_full.npz','data/derived/checkpoints/bank_trunk.npz')"
+  python -c "from catspace.research.components.memory.approaches.checkpoint_trap_bank.src.checkpoint_bank import build; build('data/derived/checkpoints/checkpoints_v1_full.npz','data/derived/checkpoints/bank_trunk.npz')"
 """
 from __future__ import annotations
 
@@ -28,10 +28,10 @@ import chess.engine
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.memory.checkpoint_bank import CheckpointBank              # noqa: E402
-from catspace.planner.trap_trace import TrapTracePlanner                # noqa: E402
-from catspace.train.scaffold import resolve_device                      # noqa: E402
-from catspace.predictor.value import CommittorGreedy                    # noqa: E402
+from catspace.research.components.memory.approaches.checkpoint_trap_bank.src.checkpoint_bank import CheckpointBank              # noqa: E402
+from catspace.research.components.planner.approaches.subgoal_cascade.src.trap_trace import TrapTracePlanner                # noqa: E402
+from catspace.research.tools.training_infra.train.scaffold import resolve_device                      # noqa: E402
+from catspace.research.components.planner.approaches.committor_value.src import CommittorGreedy                    # noqa: E402
 
 
 def make_planner(args, dev):
@@ -39,7 +39,7 @@ def make_planner(args, dev):
     cg = CommittorGreedy(args.ckpt, dev)
     # planes are the profiled bottleneck (to_input_tensor = scalar-read heavy);
     # encode ONCE per unique fen, share between phi and committor, keep across moves
-    from catspace.search.memo import BoundedMemo
+    from catspace.research.tools.chess_specific.memo import BoundedMemo
     from lczerolens import LczeroBoard
     planes_memo = BoundedMemo(100_000)
 
@@ -57,7 +57,7 @@ def make_planner(args, dev):
             return rf.phi_from_planes(planes_of(boards)).cpu().numpy()
     else:
         import torch
-        from catspace.encoder.jepa import JepaT1, tokenize
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import JepaT1, tokenize
         ck = torch.load(bank_meta_ckpt(args.bank), map_location=dev, weights_only=False)
         model = JepaT1(**{k: ck["cfg"][k] for k in ("d", "layers", "n_class")}).to(dev)
         model.load_state_dict(ck["state_dict"]); model.eval()

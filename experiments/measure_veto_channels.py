@@ -27,9 +27,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
-from catspace.engine.fields import FieldModel
-from catspace.tb import TB
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.fields import FieldModel
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
 from experiments.measure_adversarial_veto import forceable, neighborhood_of, wdl_white
 
 

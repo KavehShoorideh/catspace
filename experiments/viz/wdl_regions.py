@@ -40,8 +40,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from catspace.data.encode import board_from_packed
-from catspace.nn.features import omega_ids
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import omega_ids
 from experiments.viz.build_embedding_neighbors import Bank, load_bank_positions
 
 
@@ -146,7 +146,7 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 
     device = pick_device(args.device)
     fb, payload = load_ckpt(Path(args.ckpt), device)
@@ -175,7 +175,7 @@ def main():
 
     full = separability(F, y)
     # White-to-move-only, labelled White-POV (== stm there): no stm confound
-    from catspace.data.encode import board_from_packed as _bfp  # noqa
+    from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed as _bfp  # noqa
     ywm = y[wm]
     sub = separability(F[wm], ywm) if wm.sum() >= 50 else {}
     meta_full = (f"all positions ({full['nclass']}-class, balanced-acc chance {full['chance']:.2f}): "

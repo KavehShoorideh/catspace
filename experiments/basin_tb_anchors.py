@@ -18,7 +18,7 @@ have" over downloading more).
 Anchors are mined, not hand-picked: for each of the 4 material classes,
 generate random LEGAL positions of that exact material signature, probe the
 local tablebase (data/syzygy), and for decisive ones roll out tablebase-
-optimal play (both sides, `catspace.predictor.endgame.tb.rollout_line`) to
+optimal play (both sides, `catspace.research.components.planner.approaches.endgame_groundtruth.src.tb.rollout_line`) to
 the ACTUAL mate -- that mate position is the anchor, not an arbitrary
 mid-class position. Drawn instances keep the position itself (a drawn TB
 position doesn't converge onward). Caveat stated once, applies throughout:
@@ -51,7 +51,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.predictor.endgame.tb import TB, rollout_line   # noqa: E402
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, rollout_line   # noqa: E402
 from experiments.basin_umap_compare import (   # noqa: E402
     COLOR_WIN, COLOR_DRAW, COLOR_LOSS, load_sample,
     select_n_human_games_full, select_n_sf_games_full, replay_full_game,
@@ -151,7 +151,7 @@ def main():
     print(f"  total anchors: {len(anchors)} [{time.time()-t0:.0f}s]", flush=True)
 
     print("[2/4] computing phi for anchors + density samples (SF + human) ...", flush=True)
-    from catspace.encoder.field import ReachabilityField
+    from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     from lczerolens import LczeroBoard
     field = ReachabilityField()
     anchor_planes = np.stack([LczeroBoard(fen).to_input_tensor().numpy() for fen, _, _ in anchors])

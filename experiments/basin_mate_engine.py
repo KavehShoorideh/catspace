@@ -13,14 +13,14 @@ from pathlib import Path
 import chess
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.features import feature_planes
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
 
 
 class BasinRolloutEngine:
     def __init__(self, value_ckpt, rollouts=48, max_len=44, eps=0.15, device="cpu", seed=0):
         import torch
-        from catspace.nn.fb import pick_device
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
         from experiments.train_dtm_cnn import DTMNet
         self.torch = torch
         self.dev = pick_device(device)

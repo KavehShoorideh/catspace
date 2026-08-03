@@ -21,10 +21,10 @@ from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 import chess, numpy as np, torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.data.encode import board_from_packed, encode_meta, encode_packed
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt, pick_device, save_ckpt
-from catspace.tracking import track_run
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device, save_ckpt
+from catspace.research.tools.stats_eval.tracking import track_run
 
 BOARD_ONLY = (18, 19)
 NONKING = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10]   # packed planes: white PNBRQ, black pnbrq (skip kings 5,11)

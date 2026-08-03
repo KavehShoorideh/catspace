@@ -22,7 +22,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.tb import TB, DEFAULT_SYZYGY, rollout_dtm, rollout_line
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY, rollout_dtm, rollout_line
 from experiments.gen_dtm_data import random_class_start
 from experiments.mate_from_field import embed, load_field
 from experiments.value_fixed_point import white_pov_value
@@ -65,7 +65,7 @@ def main():
     ap.add_argument("--seed", type=int, default=7)
     args = ap.parse_args()
     torch.set_grad_enabled(False)
-    from catspace.nn.fb import pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
     dev = pick_device(args.device); rng = np.random.default_rng(args.seed)
     net, ck = load_field(args.ckpt, dev)
     tb = TB(str(DEFAULT_SYZYGY), cache_db=None)

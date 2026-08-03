@@ -6,11 +6,11 @@ is covered by the slow-marked test below and by experiments/train_krkn.py.
 import numpy as np
 import pytest
 
-from catspace.domains import krk
-from catspace.opponents import optimal_reply_table, RandomOpponent
-from catspace.planner.policy import RandomPolicy
-from catspace.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
-from catspace.arena import evaluate
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.opponents import optimal_reply_table, RandomOpponent
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import RandomPolicy
+from catspace.research.tools.training_infra.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
+from catspace.research.tools.chess_specific.arena import evaluate
 
 
 def goal_region(chain, dtm):
@@ -45,8 +45,8 @@ def test_krkn_full_curriculum_reproduces_headline():
     headline numbers are in the right ballpark (training is a chaotic-ish
     stochastic process; RNG-stream differences vs the original mean this is
     a noise-band check, not bit-exact -- see tests/baselines/expected.json)."""
-    from catspace.domains import krkn
-    from catspace.planner.readout import ReplyAgg
+    from catspace.research.tools.chess_specific.domains import krkn
+    from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "experiments"))

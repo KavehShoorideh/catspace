@@ -28,9 +28,9 @@ import torch
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.diagnostics import eff_rank                               # noqa: E402
-from catspace.encoder.jepa import JepaT1                                # noqa: E402
-from catspace.train.scaffold import resolve_device                      # noqa: E402
+from catspace.research.tools.chess_specific.diagnostics import eff_rank                               # noqa: E402
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import JepaT1                                # noqa: E402
+from catspace.research.tools.training_infra.train.scaffold import resolve_device                      # noqa: E402
 from infra import (PreemptGuard, RunLogger, latest_resumable,           # noqa: E402
                    load_training_state, save_training_state)
 

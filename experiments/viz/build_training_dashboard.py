@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 
 from catspace.io.paths import generated_dir
-from catspace.viz.build_html import build_html
+from catspace.research.tools.viz.viz.build_html import build_html
 
 TRAIN_RE = re.compile(r"^step (\d+)  loss ([\d.]+)  train_top1 ([\d.]+)  \(([\d.]+) it/s\)$")
 VAL_RE = re.compile(r"^  VAL step (\d+)  loss ([\d.]+)  top1 ([\d.]+)  top8 ([\d.]+)$")

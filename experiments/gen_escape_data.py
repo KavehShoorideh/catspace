@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """experiments/gen_escape_data.py -- training data for the LEARNED constraint value
 (the mate mission, Kaveh 2026-07-23: tablebase-free conversion). Labels = the black king's
-escape volume (catspace.diagnostics.escape_volume -- rules-only; allowed as a DATA LABEL,
+escape volume (catspace.research.tools.chess_specific.diagnostics.escape_volume -- rules-only; allowed as a DATA LABEL,
 forbidden at play; the NET plays, not the flood-fill).
 
 Positions: the toy pool (dtm_endgame) + random-walk children (off-optimal states search
@@ -19,8 +19,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed, encode_meta, encode_packed
-from catspace.diagnostics import escape_volume
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
+from catspace.research.tools.chess_specific.diagnostics import escape_volume
 from experiments.ladder_mate import random_krrvk
 
 

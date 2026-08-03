@@ -32,9 +32,9 @@ from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed, encode_meta, encode_packed  # noqa: F401
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt, pick_device
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed  # noqa: F401
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 
 BOARD_ONLY = (18, 19)
 NONKING = [0, 1, 2, 3, 4, 6, 7, 8, 9, 10]

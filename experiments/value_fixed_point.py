@@ -44,7 +44,7 @@ from experiments.selfplay_generate import random_endgame_start
 
 # MOVED to catspace/tb.py (2026-07-23 refactor) -- canonical home; these re-exports
 # keep the ~10 existing cross-experiment imports working.
-from catspace.tb import TB, rollout, tb_best_move, white_pov_value  # noqa: F401
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, rollout, tb_best_move, white_pov_value  # noqa: F401
 
 
 def v_pi(start, eps_white, tb, rng, n_rollouts):

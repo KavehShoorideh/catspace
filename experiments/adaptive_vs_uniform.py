@@ -19,11 +19,11 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from catspace.competence import CompetenceMap
-from catspace.diagnostic_krrkbp import load_fixed_set
+from catspace.research.components.memory.approaches.competence_map.src.competence import CompetenceMap
+from catspace.research.tools.chess_specific.diagnostic_krrkbp import load_fixed_set
 from catspace.io.paths import derived_dir
-from catspace.realboard import play_board_game
-from catspace.uci import UCIBoardPolicy
+from catspace.research.tools.chess_specific.realboard import play_board_game
+from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
 
 SCORE = {"1-0": 1.0, "0-1": 0.0, "1/2-1/2": 0.5, "*": 0.5}
 
@@ -73,8 +73,8 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBAdaptiveSearchPolicy, FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBAdaptiveSearchPolicy, FBSearchPolicy
 
     device = pick_device(args.device)
     fb, payload = load_ckpt(Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt", device)

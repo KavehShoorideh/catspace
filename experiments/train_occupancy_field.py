@@ -22,9 +22,9 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt, pick_device, save_ckpt
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device, save_ckpt
 from experiments.viz.live_curves import log_and_render
 
 BOARD_ONLY = (18, 19)
@@ -33,7 +33,7 @@ BOARD_ONLY = (18, 19)
 def color_flip(pk, mt):
     """mirror (swap colors + flip vertically) -> turns a White-win line into a Black-win line, so
     the losing signal is balanced by symmetry. Uses python-chess Board.mirror()."""
-    from catspace.data.encode import encode_meta, encode_packed
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
     out_p, out_m = [], []
     for i in range(len(pk)):
         b = board_from_packed(pk[i], mt[i]).mirror()

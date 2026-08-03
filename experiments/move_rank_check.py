@@ -22,7 +22,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.nn.fb import load_ckpt, pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 from experiments.conversion_field_mcts import FieldMCTS
 from experiments.value_fixed_point import TB, tb_best_move
 
@@ -69,8 +69,8 @@ def main():
             kids = [b.copy(stack=False) for _ in moves]
             for c, m in zip(kids, moves):
                 c.push(m)
-            f_child = pl._embF(np.stack([__import__("catspace.data.encode", fromlist=["encode_packed"]).encode_packed(c) for c in kids]),
-                               np.stack([__import__("catspace.data.encode", fromlist=["encode_meta"]).encode_meta(c) for c in kids]))
+            f_child = pl._embF(np.stack([__import__("catspace.research.tools.chess_specific.chessdata.encode", fromlist=["encode_packed"]).encode_packed(c) for c in kids]),
+                               np.stack([__import__("catspace.research.tools.chess_specific.chessdata.encode", fromlist=["encode_meta"]).encode_meta(c) for c in kids]))
             pl._select(b)
             with torch.no_grad():
                 s_sub = -fb.distance_matrix(f_child, pl.subgoal_B).min(1).values.cpu().numpy()

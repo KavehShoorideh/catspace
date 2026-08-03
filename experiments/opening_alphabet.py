@@ -27,7 +27,7 @@ from scipy.sparse import csr_matrix
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
 from experiments.metastable_macrostates import (build_eco_book, coarse_transition, pos_key,
                                                 purity, spectral_macrostates, stationary)
 

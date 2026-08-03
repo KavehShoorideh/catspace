@@ -27,10 +27,10 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.memory.retrieval import WaypointBank, composed_distance
-from catspace.nn.eval_head import EvalHead
-from catspace.nn.fb import load_ckpt
-from catspace.nn.policy_fb import make_search_policy
+from catspace.research.components.memory.approaches.vector_store_retrieval.src.retrieval import WaypointBank, composed_distance
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
 from experiments.playout_ab import playout
 from experiments.value_fixed_point import TB
 

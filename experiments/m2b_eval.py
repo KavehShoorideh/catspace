@@ -20,11 +20,11 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.style.model import StyleResidual, VOCAB
-from catspace.style.recover import recover_delta, score_nll, base_nll
-from catspace.style.dataio import load_cache as load_cache_arrays
-from catspace.stats import paired_nll_ci
-from catspace.train.scaffold import resolve_device
+from catspace.research.components.planner.approaches.opponent_model.src.style_model import StyleResidual, VOCAB
+from catspace.research.components.planner.approaches.opponent_model.src.style_recover import recover_delta, score_nll, base_nll
+from catspace.research.components.planner.approaches.opponent_model.src.style_dataio import load_cache as load_cache_arrays
+from catspace.research.tools.stats_eval.stats import paired_nll_ci
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 
 
 def main():

@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_clock_field import ClockField
 from experiments.losses import quasimetric_regression, wdl_hinge, categorical_ending_loss
 from experiments.arch_bakeoff import eff_rank
-from catspace.train.scaffold import standard_train, TrainConfig, resolve_device
+from catspace.research.tools.training_infra.train.scaffold import standard_train, TrainConfig, resolve_device
 
 
 def _multigoal_pairs(rows_by_game, ply, rng, games_keep):

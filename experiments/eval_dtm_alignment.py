@@ -25,9 +25,9 @@ from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.memory.retrieval import composed_distance, dtm_waypoint_bank
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt
+from catspace.research.components.memory.approaches.vector_store_retrieval.src.retrieval import composed_distance, dtm_waypoint_bank
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
 
 
 def main():

@@ -41,7 +41,7 @@ def worker(task):
     import pyarrow.parquet as pq
     import torch
     from lczerolens import LczeroBoard
-    from catspace.tb import TB
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
     from experiments.value_fixed_point import white_pov_value
 
     tb = TB(str(syzygy), cache_db=None); syz = tb.tb
@@ -117,7 +117,7 @@ def main():
     ap.add_argument("--workers", type=int, default=0)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
-    from catspace.tb import DEFAULT_SYZYGY
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import DEFAULT_SYZYGY
     import pyarrow.parquet as pq
     t0 = time.time(); rng = np.random.default_rng(args.seed)
     W = args.workers or max(1, (os.cpu_count() or 4) - 1)

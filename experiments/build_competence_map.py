@@ -23,9 +23,9 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from catspace.competence import CompetenceMap
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import sample_shard_rows
+from catspace.research.components.memory.approaches.competence_map.src.competence import CompetenceMap
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import derived_dir, newest_shard_dir
 
 
@@ -64,10 +64,10 @@ def main():
     import torch  # noqa: F401
     from scipy.stats import spearmanr
 
-    from catspace.data.encode import encode_meta, encode_packed
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.features import feature_planes, omega_ids
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     device = pick_device(args.device)
     shard_dir = Path(args.shards) if args.shards else newest_shard_dir()

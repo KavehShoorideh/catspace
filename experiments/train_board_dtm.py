@@ -24,9 +24,9 @@ import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.nn.encoder import BoardEncoder
-from catspace.nn.features import feature_planes
-from catspace.nn.fb import pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.encoder import BoardEncoder
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
 
 
 class BoardDTM(nn.Module):

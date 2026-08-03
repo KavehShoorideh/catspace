@@ -17,15 +17,15 @@ import torch
 import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.nn.fb import pick_device
-from catspace.nn.features import feature_planes
-from catspace.nn.iqe import IQE
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
 from experiments.arch_bakeoff import eff_rank
 from experiments.losses import (quasimetric_regression, wdl_hinge, anchored_pairwise_rank,
                                 categorical_ending_loss, N_ENDINGS)
 
 
-from catspace.value.clock_field import ClockField  # component home (refactor 2026-07-30)
+from catspace.research.components.planner.approaches.committor_value.src.clock_field import ClockField  # component home (refactor 2026-07-30)
 
 
 def main():

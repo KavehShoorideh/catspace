@@ -163,8 +163,8 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     device = pick_device(args.device)
     fb, payload = load_ckpt(Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt", device)

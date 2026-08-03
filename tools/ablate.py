@@ -67,8 +67,8 @@ def mode_dims(args):
 def mode_board(args):
     import chess
     import torch
-    from catspace.encoder.jepa import JepaT1, tokenize
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import JepaT1, tokenize
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     dev = resolve_device("auto")
     ck = torch.load(args.ckpt, map_location=dev, weights_only=False)
     model = JepaT1(**{k: ck["cfg"][k] for k in ("d", "layers", "n_class")}).to(dev)

@@ -25,11 +25,11 @@ import numpy as np
 import torch
 from scipy.stats import spearmanr
 
-from catspace.data.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
 from catspace.io.paths import derived_dir, newest_shard_dir
-from catspace.nn.eval_head import load_heads
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.nn.features import feature_planes, omega_ids, winprob_cp
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import load_heads
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids, winprob_cp
 
 
 def main():
@@ -54,7 +54,7 @@ def main():
     desc.eval(); norm.eval()
     z_mate = payload["zgoals"]["MATE_W"].to(device)
 
-    from catspace.data.shards import sample_shard_rows
+    from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
     picks = sample_shard_rows(shard_dir, args.n * 2, args.seed, holdout_only=True)
 
     boards, planes_rows, om_rows, lichess_wp = [], [], [], []

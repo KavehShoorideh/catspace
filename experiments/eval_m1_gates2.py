@@ -20,7 +20,7 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_iqe_head import IQEHead, build_pairs
 from experiments.train_clock_field import ClockField
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 from scipy.stats import spearmanr
 
 
@@ -66,7 +66,7 @@ def main():
     args = ap.parse_args()
     t0 = time.time(); dev = resolve_device("auto"); rng = np.random.default_rng(args.seed)
     from lczerolens import LczeroBoard
-    from catspace.tb import TB, DEFAULT_SYZYGY
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY
     from experiments.gen_dtm_data import random_class_start
 
     tf = TrunkField(args.onnx, args.head, dev)

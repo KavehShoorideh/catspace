@@ -21,7 +21,7 @@ from pathlib import Path
 import chess
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.tb import TB
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
 
 
 def main():

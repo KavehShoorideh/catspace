@@ -28,14 +28,14 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import newest_shard_dir
-from catspace.nn.eval_head import EvalHead
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt
-from catspace.nn.policy_fb import make_search_policy
-from catspace.nn.policy_head import PolicyHead, legal_priors, move_index
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_head import PolicyHead, legal_priors, move_index
 
 
 def main():
@@ -70,7 +70,7 @@ def main():
                              pw_c=1.5, tactical_prior=0.25, root_min_visits=10)
 
     def policy_priors(board):
-        from catspace.data.encode import encode_packed, encode_meta
+        from catspace.research.tools.chess_specific.chessdata.encode import encode_packed, encode_meta
         planes = feature_planes(encode_packed(board)[None], encode_meta(board)[None])
         with torch.no_grad():
             f = fb.embed_F(torch.from_numpy(planes).to(dev),

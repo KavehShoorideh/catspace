@@ -22,9 +22,9 @@ def main():
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
     import torch
-    from catspace.nn.eval_head import EvalHead
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import make_search_policy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
     dev = pick_device(args.device)
     fb, pay = load_ckpt(Path(args.ckpt), dev)
     hp = torch.load(args.phead, map_location=dev, weights_only=False)

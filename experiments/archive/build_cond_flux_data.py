@@ -15,8 +15,8 @@ import pyarrow.parquet as pq
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.style.model import StyleResidual
-from catspace.style.dataio import load_cache
+from catspace.research.components.planner.approaches.opponent_model.src.style_model import StyleResidual
+from catspace.research.components.planner.approaches.opponent_model.src.style_dataio import load_cache
 
 
 def main():
@@ -50,7 +50,7 @@ def main():
     print(f"[flux-data] {len(idx):,} positions | {len(keep_players)} players [{time.time()-t0:.0f}s]", flush=True)
 
     from lczerolens import LczeroBoard
-    from catspace.field import ReachabilityField
+    from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     field = ReachabilityField()
     fens = fen[idx]; wdl = np.empty((len(idx), 3), np.float32); B = 2048
     for s in range(0, len(idx), B):

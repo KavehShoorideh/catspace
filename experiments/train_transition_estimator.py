@@ -20,8 +20,8 @@ import torch
 import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.train.scaffold import standard_train, TrainConfig, resolve_device
-from catspace.stats import spearman_ci, paired_delta_ci, fmt_ci
+from catspace.research.tools.training_infra.train.scaffold import standard_train, TrainConfig, resolve_device
+from catspace.research.tools.stats_eval.stats import spearman_ci, paired_delta_ci, fmt_ci
 
 
 def context_feats(z, use_rating=True, use_clock=True):
@@ -50,7 +50,7 @@ def context_feats(z, use_rating=True, use_clock=True):
     return np.concatenate([pos, rating, clock], 1).astype(np.float32)
 
 
-from catspace.atlas.transition import T  # component home (refactor 2026-07-30)
+from catspace.research.components.planner.approaches.atlas_region_stats.src.transition import T  # component home (refactor 2026-07-30)
 
 
 def run_variant(phi, ctx, y, games, dev, steps, batch, val_mask, seed, name):

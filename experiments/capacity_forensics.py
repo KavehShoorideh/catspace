@@ -25,8 +25,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 
 
 def eff_rank(X):
@@ -50,8 +50,8 @@ def main():
     args = ap.parse_args()
 
     import torch
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.data.shards import LichessPairSource
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.tools.chess_specific.chessdata.shards import LichessPairSource
 
     dev = pick_device("auto")
     rng = np.random.default_rng(args.seed)

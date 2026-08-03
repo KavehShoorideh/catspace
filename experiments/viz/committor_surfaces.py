@@ -32,8 +32,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 
 
 def main():
@@ -49,7 +49,7 @@ def main():
     args = ap.parse_args()
 
     import torch
-    from catspace.nn.fb import load_ckpt
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
 
     fb, _ = load_ckpt(Path(args.ckpt), "cpu")
     hp = torch.load(args.whead, map_location="cpu", weights_only=False)

@@ -19,7 +19,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.tb import TB, tb_best_move
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, tb_best_move
 from experiments.mate_ladder_eval import sample_scenarios
 
 CONFIGS = {

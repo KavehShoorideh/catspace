@@ -41,8 +41,8 @@ def main():
         if E:
             return
         import numpy as np
-        from catspace.engine.fields import FieldModel
-        from catspace.nn.mcts import MCTS
+        from catspace.fields import FieldModel
+        from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
         from experiments.bootstrap_mate_engine import (OnlineMateBank, harvest,
                                                        make_batched_energy_prior,
                                                        make_boot_value, make_planner)

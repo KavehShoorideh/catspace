@@ -19,13 +19,13 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import derived_dir, generated_dir, newest_shard_dir
-from catspace.nn.features import elo_bin, winprob_cp
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.viz.build_html import build_html
-from catspace.viz.realboard import embed_positions, fit_projection
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import elo_bin, winprob_cp
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.tools.viz.viz.build_html import build_html
+from catspace.research.tools.viz.viz.realboard import embed_positions, fit_projection
 
 COLS = ("packed", "meta", "ply", "clock", "eval_cp", "result", "white_elo", "black_elo", "game_id")
 

@@ -87,7 +87,7 @@ def build_rows(labeled_path, balanced_band, hang_thr, fair_thr, max_ctrl, rng):
 # ---------------- trunk-specific per-layer feature extraction ----------------
 
 def jepa_layers(rows, ckpt_path, dev, batch=256):
-    from catspace.encoder.jepa import JepaT1, tokenize
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import JepaT1, tokenize
     ck = torch.load(ckpt_path, map_location=dev, weights_only=False)
     model = JepaT1(**{k: ck["cfg"][k] for k in ("d", "layers", "n_class")}).to(dev)
     model.load_state_dict(ck["state_dict"]); model.eval()
@@ -185,7 +185,7 @@ def main():
     rng = np.random.default_rng(args.seed)
     out = args.out or f"artifacts/experiments/layer_sweep_{args.trunk}"
 
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     dev = resolve_device("auto")
 
     print(f"building rows from {args.labeled} ...")

@@ -105,7 +105,7 @@ def build_policy(kind, fb, pay, phead, nodes, dev, plan_nodes, shallow_nodes,
     z = pay["zgoals"]["MATE_W"]
     if kind == "mcts":
         import torch
-        from catspace.nn.policy_fb import make_search_policy
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
 
         class Committor(torch.nn.Module):
             def forward(self, f):
@@ -119,7 +119,7 @@ def build_policy(kind, fb, pay, phead, nodes, dev, plan_nodes, shallow_nodes,
         return pol, pol.mcts
     if kind == "mctsplan":
         import torch
-        from catspace.nn.policy_fb import make_search_policy
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
 
         class Committor(torch.nn.Module):
             def forward(self, f):
@@ -130,7 +130,7 @@ def build_policy(kind, fb, pay, phead, nodes, dev, plan_nodes, shallow_nodes,
                                  committor_head=Committor())
         return pol, pol.mcts
     if kind == "beam":
-        from catspace.nn.policy_fb import make_search_policy
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
         return make_search_policy("beam", fb, z, max_nodes=nodes, beam=4,
                                   device=dev), None
     if kind == "plan":
@@ -138,7 +138,7 @@ def build_policy(kind, fb, pay, phead, nodes, dev, plan_nodes, shallow_nodes,
         # subgoal, plies-since-plan, reach-at-plan) that must NOT leak
         # across starts (review 2026-07-18 MED) -- a fresh policy per game,
         # exactly one plan lifecycle per playout
-        from catspace.nn.policy_fb import FBPlanPolicy
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBPlanPolicy
 
         def fresh():
             return FBPlanPolicy(fb, z, plan_nodes=plan_nodes,
@@ -175,8 +175,8 @@ def main():
     args = ap.parse_args()
 
     import torch
-    from catspace.nn.eval_head import EvalHead
-    from catspace.nn.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
     dev = pick_device(args.device)
     fb, pay = load_ckpt(Path(args.ckpt), dev)
     hp = torch.load(args.phead, map_location=dev, weights_only=False)

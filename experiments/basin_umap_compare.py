@@ -197,7 +197,7 @@ def main():
     print(f"  human n={len(human['planes'])} | sf n={len(sf['planes'])} [{time.time()-t0:.0f}s]", flush=True)
 
     print("computing phi via the ORIGINAL (human-trained) field, for BOTH datasets ...", flush=True)
-    from catspace.encoder.field import ReachabilityField
+    from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     field = ReachabilityField()   # defaults: t1-256x10 trunk + field_iqe_t1_final.pt (human-trained)
     phi_human = field.phi_from_planes(list(human["planes"].astype(np.float32))).cpu().numpy()
     phi_sf = field.phi_from_planes(list(sf["planes"].astype(np.float32))).cpu().numpy()

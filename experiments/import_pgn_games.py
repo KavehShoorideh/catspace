@@ -17,7 +17,7 @@ import chess.pgn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.experience import ExperienceStore
+from catspace.research.components.memory.approaches.experience_store.src.experience import ExperienceStore
 
 
 def main():

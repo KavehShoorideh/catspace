@@ -37,7 +37,7 @@ def main():
     ap.add_argument("--ctrl-thr", type=float, default=0.05)
     args = ap.parse_args()
     t0 = time.time()
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     dev = resolve_device("auto")
 
     d = dict(np.load(args.labeled, allow_pickle=True))
@@ -51,7 +51,7 @@ def main():
     if tc.exists():
         tok = np.load(tc)["tok"]
     else:
-        from catspace.field import ReachabilityField
+        from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
         from lczerolens import LczeroBoard
         rf = ReachabilityField(device=str(dev))
         outs = []

@@ -15,17 +15,17 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from catspace.chain import empirical_P
-from catspace.concepts import KMeansVQ
-from catspace.domains import krk
-from catspace.domains.krk import white_moves
-from catspace.game import rollout_transitions
+from catspace.research.tools.chess_specific.chain import empirical_P
+from catspace.research.components.encoder.approaches.concept_quantization.src.concepts import KMeansVQ
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.domains.krk import white_moves
+from catspace.research.tools.chess_specific.game import rollout_transitions
 from catspace.io.paths import REPO_ROOT, generated_dir
-from catspace.opponents import RandomOpponent
-from catspace.planner.policy import RandomPolicy
-from catspace.cone.tabular import fb_from_svd, randomized_svd_sm
-from catspace.viz.build_html import build_html
-from catspace.viz.payload import json_default
+from catspace.research.tools.chess_specific.opponents import RandomOpponent
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import RandomPolicy
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import fb_from_svd, randomized_svd_sm
+from catspace.research.tools.viz.viz.build_html import build_html
+from catspace.research.tools.viz.viz.payload import json_default
 
 GAMMA = 0.92
 TEMPLATE = REPO_ROOT / "catspace/viz/templates/krk_viewer.html"
