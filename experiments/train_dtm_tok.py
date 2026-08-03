@@ -23,9 +23,9 @@ import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
-from catspace.nn.fb import pick_device
-from catspace.tracking import track_run
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
+from catspace.research.tools.stats_eval.tracking import track_run
 
 MAX_TOKENS = 8          # <=7 pieces in <=6-man + CLS
 

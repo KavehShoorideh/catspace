@@ -23,15 +23,15 @@ import chess.engine
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.atlas import RegionAtlas, SubgoalRanker                   # noqa: E402
+from catspace.research.components.planner.approaches.atlas_region_stats.src import RegionAtlas, SubgoalRanker                   # noqa: E402
 from catspace.encoder import ReachabilityField                          # noqa: E402
-from catspace.harness import run_games                                  # noqa: E402
-from catspace.navigator import MCTSNavigator                            # noqa: E402
-from catspace.opponent import make_maia2_policy                         # noqa: E402
-from catspace.planner import PLANNERS                                   # noqa: E402
+from catspace.approaches.gauntlet_harness import run_games                                  # noqa: E402
+from catspace.research.components.search.approaches.puct_mcts.src.nav import MCTSNavigator                            # noqa: E402
+from catspace.research.components.planner.approaches.opponent_model.src import make_maia2_policy                         # noqa: E402
+from catspace.research.components.planner.approaches.subgoal_cascade.src import PLANNERS                                   # noqa: E402
 from catspace.reach import RegionReach                                  # noqa: E402
-from catspace.train.scaffold import resolve_device                      # noqa: E402
-from catspace.value import CommittorGreedy                              # noqa: E402
+from catspace.research.tools.training_infra.train.scaffold import resolve_device                      # noqa: E402
+from catspace.research.components.planner.approaches.committor_value.src import CommittorGreedy                              # noqa: E402
 
 
 def main():

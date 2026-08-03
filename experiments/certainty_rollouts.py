@@ -66,8 +66,8 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import make_search_policy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
 
     dev = pick_device(args.device)
     fb, pay = load_ckpt(Path(args.ckpt), dev)

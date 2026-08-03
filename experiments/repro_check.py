@@ -23,7 +23,7 @@ from pathlib import Path
 
 import numpy as np
 
-from catspace.domains import krk, krkn
+from catspace.research.tools.chess_specific.domains import krk, krkn
 
 ROOT = Path(__file__).resolve().parent.parent
 EXPECTED = json.loads((ROOT / "tests" / "baselines" / "expected.json").read_text())

@@ -36,15 +36,15 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from catspace.audit import build_provenance, is_provenance_clean
-from catspace.data.certified import collect_certified_games
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import LichessPairSource, MixedPairSource
-from catspace.nn.hard_negatives import irreversible_sibling_pairs
-from catspace.nn.unreachable import provably_unreachable
+from catspace.research.tools.stats_eval.audit import build_provenance, is_provenance_clean
+from catspace.research.tools.chess_specific.chessdata.certified import collect_certified_games
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import LichessPairSource, MixedPairSource
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.hard_negatives import irreversible_sibling_pairs
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.unreachable import provably_unreachable
 from catspace.io.paths import derived_dir, newest_shard_dir
-from catspace.nn.fb import TorchFB, load_ckpt, pick_device, save_ckpt
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB, load_ckpt, pick_device, save_ckpt
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 
 HOLDOUT_MOD = 50
 
@@ -597,7 +597,7 @@ def main():
     apply_l2_preset(args)
     validate_l2_config(args)
     from contextlib import ExitStack
-    from catspace.tracking import track_run
+    from catspace.research.tools.stats_eval.tracking import track_run
     _trk_stack = ExitStack()
     trk = _trk_stack.enter_context(track_run("lichess_fb", args,
                                              run_name=Path(args.ckpt).stem if args.ckpt else None))
@@ -725,7 +725,7 @@ def main():
     if args.regime_shards:
         # MULTICHANNEL mixing: human stream = regime 0 at the residual fraction;
         # each DIR:REGIME_ID:FRAC entry is its own tagged source.
-        from catspace.data.shards import MultiMixSource
+        from catspace.research.tools.chess_specific.chessdata.shards import MultiMixSource
         entries = []
         for spec in args.regime_shards:
             d_, rid, frac = spec.rsplit(":", 2)
@@ -788,7 +788,7 @@ def main():
     dtm_bank_dtm = None                 # bank waypoint DTMs (constant)
     dtm_rng = np.random.default_rng(args.seed + 777)
     if args.cert_base or args.committor_base:
-        from catspace.nn.eval_head import EvalHead, descriptive_loss
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead, descriptive_loss
         phead = EvalHead(d_in=args.d, seed=args.seed).to(device)
         opt.add_param_group({"params": phead.parameters()})
         mode = "cert-base" if args.cert_base else "committor-base"
@@ -1064,7 +1064,7 @@ def main():
                 print(f"    dtm {float(dtm_loss):.4f}  d_mean {float(d_d.mean()):.2f} "
                       f"tgt_mean {float(tgt_d.mean()):.2f}  rank_corr {_sp:+.3f}", flush=True)
         if args.unreach_weight > 0 and getattr(fb, "quasimetric", False):
-            from catspace.nn.hard_negatives import repel_loss, unreachable_goals
+            from catspace.research.components.encoder.approaches.jepa_tokenizer.src.hard_negatives import repel_loss, unreachable_goals
             neg_packed = unreachable_goals(batch.anchors[np.flatnonzero(
                 (batch.meta["game_id"] % HOLDOUT_MOD) != 0)], seed=step)
             om_neg = omega_ids(np.zeros(len(neg_packed)), np.zeros(len(neg_packed)),

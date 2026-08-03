@@ -73,9 +73,9 @@ def main():
         E = trunk_encode(list(fens))
     else:
         import torch
-        from catspace.encoder.jepa import tokenize
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
         from tools.embed import jepa_encode
-        from catspace.train.scaffold import resolve_device
+        from catspace.research.tools.training_infra.train.scaffold import resolve_device
         tg = [tokenize(chess.Board(f)) for f in fens]
         E = jepa_encode(args.ckpt, np.stack([t for t, _ in tg]),
                         np.stack([g for _, g in tg]), resolve_device("auto"))

@@ -18,7 +18,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_transition_estimator import context_feats, T
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 from scipy.stats import spearmanr
 
 

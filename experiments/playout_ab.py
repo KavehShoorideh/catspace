@@ -53,12 +53,12 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
                 committor_path=None, clearance_beta=0.0, phead_path=None,
                 detect_threefold=True, coherence_k=0.0, certainty_stop=0.0,
                 decision_stop=False, mate_stop=False):
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import make_search_policy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
     dev = pick_device(device)
     fb, pay = load_ckpt(Path(ckpt), dev)
     if bank_boards is not None:                          # region goal: soft-min over exemplars
-        from catspace.goal_bank import embed_bank
+        from catspace.research.components.memory.approaches.goal_region_bank.src.goal_bank import embed_bank
         z = embed_bank(fb, bank_boards, dev)             # (m, d) -> soft_min_bank readout
     else:
         z = pay["zgoals"]["MATE_W"]                      # centroid goal
@@ -72,7 +72,7 @@ def mate_vector(ckpt, starts, tb, nodes, beam, max_plies, seed, device, bank_boa
     kw = {}
     if phead_path:
         import torch
-        from catspace.nn.eval_head import EvalHead
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
         hp = torch.load(phead_path, map_location=dev, weights_only=False)
         ph = EvalHead(d_in=hp["d_in"]).to(dev)
         ph.load_state_dict(hp["state"]); ph.eval()
@@ -237,7 +237,7 @@ def main():
     starts = json.loads(Path(args.fixed_set).read_text())["fens"][:args.n]
     bank_boards = None
     if args.ckpt_b_goal == "bank":
-        from catspace.goal_bank import harvest_mate_finals
+        from catspace.research.components.memory.approaches.goal_region_bank.src.goal_bank import harvest_mate_finals
         bank_boards = harvest_mate_finals(args.bank_shards, want_result=1,
                                           max_pieces=args.bank_max_pieces, cap=args.bank_size)
         print(f"goal bank: {len(bank_boards)} white-mate exemplars (<= {args.bank_max_pieces} pieces)")
@@ -264,9 +264,9 @@ def main():
     lo, hi = np.percentile(boot, [2.5, 97.5])
     sig = (lo > 0 or hi < 0)
     # anytime-valid sign-test e-process over the paired per-start diffs
-    # (catspace.abtest): e-values compose across sequential looks (e.g. the
+    # (catspace.research.tools.stats_eval.abtest): e-values compose across sequential looks (e.g. the
     # data-scaling curve's repeated money tests), unlike bootstrap CIs
-    from catspace.abtest import EValueTest
+    from catspace.research.tools.stats_eval.abtest import EValueTest
     ev = EValueTest()
     for d in (b - a):
         ev.update(float(d))

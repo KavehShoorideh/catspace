@@ -21,8 +21,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.tb import TB, tb_best_move
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, tb_best_move
 from experiments.ladder_mate import make_dtm_value, white_mcts
 from experiments.mate_ladder_eval import sample_scenarios
 

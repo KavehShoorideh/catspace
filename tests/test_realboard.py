@@ -9,7 +9,7 @@ import chess
 import numpy as np
 import pytest
 
-from catspace.realboard import (BoardGameRecord, RandomBoardPolicy, play_board_game,
+from catspace.research.tools.chess_specific.realboard import (BoardGameRecord, RandomBoardPolicy, play_board_game,
                                    record_to_pgn)
 
 
@@ -46,8 +46,8 @@ def test_record_to_pgn_roundtrip():
 
 def test_fb_policy_legal_and_takes_mate():
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBBoardPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBBoardPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     z = np.zeros(16, dtype=np.float32)
@@ -71,8 +71,8 @@ def test_fb_policy_legal_and_takes_mate():
 
 def test_fb_policy_avoids_being_mated_at_depth2():
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBBoardPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBBoardPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     pol = FBBoardPolicy(fb, np.zeros(16, dtype=np.float32), depth=2)
@@ -92,8 +92,8 @@ def test_fb_policy_avoids_being_mated_at_depth2():
 
 def test_fb_policy_move_scored_matches_move_and_reports_feared():
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBBoardPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBBoardPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     z = np.zeros(16, dtype=np.float32)
@@ -124,8 +124,8 @@ def test_fb_policy_move_scored_matches_move_and_reports_feared():
 
 def test_fb_policy_move_scored_mate_shortcircuit():
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBBoardPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBBoardPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     pol = FBBoardPolicy(fb, np.zeros(16, dtype=np.float32), depth=2)
@@ -138,8 +138,8 @@ def test_fb_policy_move_scored_mate_shortcircuit():
 
 def test_fb_search_policy_legal_and_takes_mate():
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     z = np.zeros(16, dtype=np.float32)
@@ -161,8 +161,8 @@ def test_fb_search_policy_legal_and_takes_mate():
 
 def test_fb_search_policy_avoids_being_mated_at_depth4():
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     pol = FBSearchPolicy(fb, np.zeros(16, dtype=np.float32), max_nodes=3000, beam=6)
@@ -191,8 +191,8 @@ def test_fb_search_policy_finds_forced_mate_in_2():
     black king to g8 (its only legal square), and the other rook mates on
     the 8th next move."""
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     # max_nodes=3000, beam=6 comfortably reaches depth>=3 from this sparse
@@ -216,8 +216,8 @@ def test_fb_search_policy_finds_forced_mate_in_2():
 
 def test_fb_search_policy_plan_matches_move_and_has_subgoal():
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     pol = FBSearchPolicy(fb, np.zeros(16, dtype=np.float32), max_nodes=3000, beam=6)
@@ -241,8 +241,8 @@ def test_fb_search_policy_plan_matches_move_and_has_subgoal():
 
 def test_fb_plan_policy_legal_and_takes_mate():
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBPlanPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBPlanPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     z = np.zeros(16, dtype=np.float32)
@@ -269,8 +269,8 @@ def test_fb_plan_policy_holds_plan_across_plies():
     picking on non-replan plies, and plans_made stays well below the ply
     count instead of replanning every single move."""
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBPlanPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBPlanPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     z = np.zeros(16, dtype=np.float32)
@@ -294,8 +294,8 @@ def test_fb_search_policy_goal_bank_readout():
     goal scores exactly (soft-min normalizer), the policy must stay legal,
     and terminal short-circuits (mate-in-1) must be unaffected by banks."""
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBSearchPolicy, soft_min_bank
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy, soft_min_bank
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     rng = np.random.default_rng(0)
@@ -327,8 +327,8 @@ def test_fb_search_policy_reliability_sensor():
     known-hard position (KRRvKBP, where the model hangs material) as more
     unreliable than the quiet start position."""
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     pol = FBSearchPolicy(fb, np.zeros(16, dtype=np.float32), max_nodes=200, beam=4)
@@ -341,9 +341,9 @@ def test_fb_adaptive_search_policy_gates_on_sharpness():
     """Adaptive policy stays legal and spends >= base nodes; a sharp/unreliable
     position (KRRvKBP) should not use FEWER nodes than a quiet one."""
     torch = pytest.importorskip("torch")
-    from catspace.competence import CompetenceMap
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBAdaptiveSearchPolicy
+    from catspace.research.components.memory.approaches.competence_map.src.competence import CompetenceMap
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBAdaptiveSearchPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0)
     # tiny competence map so the policy has a Method-2 signal to query
@@ -368,8 +368,8 @@ def test_fb_two_horizon_policy_far_and_near_modes():
     """Both readout modes on a two-horizon net stay legal and take a
     mate-in-1; near mode accepts either a centroid or an exemplar bank."""
     torch = pytest.importorskip("torch")
-    from catspace.nn.fb import TorchFB
-    from catspace.nn.policy_fb import FBTwoHorizonPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBTwoHorizonPolicy
 
     fb = TorchFB(d=16, channels=16, blocks=2, enc_out=64, dh=64, omega_dim=4, seed=0,
                  two_horizon=True)
@@ -393,7 +393,7 @@ def test_fb_two_horizon_policy_far_and_near_modes():
 
 @pytest.mark.skipif(shutil.which("stockfish") is None, reason="no stockfish binary")
 def test_uci_policy_smoke():
-    from catspace.uci import UCIBoardPolicy
+    from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
     rng = np.random.default_rng(0)
     with UCIBoardPolicy(movetime=0.01, elo=1320) as sf:
         board = chess.Board()

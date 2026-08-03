@@ -104,7 +104,7 @@ def main():
 
     # 2. FIELD committor (P win under human play)
     from experiments.train_clock_field import ClockField
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     import torch.nn.functional as F
     dev = resolve_device("auto")
     p = torch.load(args.ckpt, map_location=dev, weights_only=False); cfg = p["cfg"]

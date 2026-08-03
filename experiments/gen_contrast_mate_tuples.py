@@ -30,7 +30,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed, encode_meta, encode_packed
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
 from experiments.gen_dtm_data import rollout_dtm
 from experiments.value_fixed_point import TB
 

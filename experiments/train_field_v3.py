@@ -15,7 +15,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.nn.fb import pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
 from experiments.arch_bakeoff import eff_rank, tokens
 from experiments.train_mate_field import MateField
 from experiments.losses import quasimetric_regression, wdl_hinge, anchored_pairwise_rank

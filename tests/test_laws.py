@@ -8,11 +8,11 @@ impossible; this is the regression test for that class of bug.
 import numpy as np
 import pytest
 
-from catspace.domains import krk
-from catspace.opponents import optimal_reply_table, EpsOptimalDTM
-from catspace.planner.policy import DTMOraclePolicy, EpsGreedy
-from catspace.game import play_game
-from catspace.arena import evaluate, tempo_ratio
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.opponents import optimal_reply_table, EpsOptimalDTM
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import DTMOraclePolicy, EpsGreedy
+from catspace.research.tools.chess_specific.game import play_game
+from catspace.research.tools.chess_specific.arena import evaluate, tempo_ratio
 
 
 @pytest.fixture(scope="module")

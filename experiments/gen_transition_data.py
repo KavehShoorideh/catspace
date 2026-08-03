@@ -20,7 +20,7 @@ import chess
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.data.lichess import stream_filtered_games, GameFilter, _time_control_base_seconds
+from catspace.research.tools.chess_specific.chessdata.lichess import stream_filtered_games, GameFilter, _time_control_base_seconds
 
 
 def main():
@@ -35,7 +35,7 @@ def main():
     args = ap.parse_args()
     t0 = time.time(); rng = np.random.default_rng(args.seed)
     from lczerolens import LczeroBoard
-    from catspace.field import ReachabilityField
+    from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     import torch
     field = ReachabilityField()
     gf = GameFilter()

@@ -25,9 +25,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.nn.iqe import IQE
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
 from experiments.losses import quasimetric_regression
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 
 
 def context_vec(z, idx):

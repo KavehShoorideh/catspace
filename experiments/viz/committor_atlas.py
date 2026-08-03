@@ -62,8 +62,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    from catspace.nn.eval_head import EvalHead
-    from catspace.nn.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
     dev = pick_device(args.device)
     fb, _ = load_ckpt(Path(args.ckpt), dev)
     fb.eval()

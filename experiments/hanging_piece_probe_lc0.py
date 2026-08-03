@@ -70,7 +70,7 @@ def main():
     t0 = time.time()
     rng = np.random.default_rng(args.seed)
 
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     from lczerolens import LczeroModel, LczeroBoard
     dev = resolve_device("auto")
     trunk = LczeroModel.from_onnx_path(args.onnx).float().to(dev).eval()

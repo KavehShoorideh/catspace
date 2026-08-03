@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_iqe_head import IQEHead, build_pairs
 from experiments.train_clock_field import ClockField
 from experiments.arch_bakeoff import eff_rank
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 from scipy.stats import spearmanr
 
 

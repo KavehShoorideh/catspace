@@ -49,7 +49,7 @@ def load_head(name, dev):
         return emb, d_pair
     else:
         import torch
-        from catspace.value import CommittorGreedy
+        from catspace.research.components.planner.approaches.committor_value.src import CommittorGreedy
         cg = CommittorGreedy("artifacts/experiments/field_fullgame_v3_final.pt", dev)
 
         def emb(boards):
@@ -71,7 +71,7 @@ def main():
     ap.add_argument("--fig", default="")
     args = ap.parse_args()
     rng = np.random.default_rng(0)
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     from lczerolens import LczeroBoard
     dev = resolve_device("auto")
     emb, d_pair = load_head(args.head, dev)

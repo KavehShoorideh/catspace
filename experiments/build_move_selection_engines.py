@@ -8,8 +8,8 @@ from pathlib import Path
 import chess
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.data.encode import board_from_packed, encode_packed
-from catspace.nn.opponent import COHORT_ENGINE
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.opponent import COHORT_ENGINE
 
 def main():
     t0 = time.time(); rng = np.random.default_rng(0)

@@ -17,9 +17,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from catspace.diagnostic_krrkbp import load_fixed_set
+from catspace.research.tools.chess_specific.diagnostic_krrkbp import load_fixed_set
 from experiments.krrkbp_arena import run_paired
-from catspace.uci import UCIBoardPolicy
+from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
 
 
 def main():
@@ -37,8 +37,8 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBSearchPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBSearchPolicy
 
     device = pick_device(args.device)
     fb_a, pay_a = load_ckpt(Path(args.ckpt_a), device)

@@ -26,9 +26,9 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.fb import pick_device
-from catspace.tb import TB, DEFAULT_SYZYGY, rollout_dtm, tb_best_move
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY, rollout_dtm, tb_best_move
 from experiments.arch_bakeoff import tokens
 from experiments.gen_dtm_data import random_class_start
 from experiments.train_quasimetric import TwoTowerIQE
@@ -75,7 +75,7 @@ def main():
 
     if args.diag:
         torch.set_grad_enabled(False)
-        from catspace.tb import rollout_line
+        from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import rollout_line
         from scipy.stats import spearmanr
         line_sp, step_ok, pol_ok, pol_n = [], 0, 0, 0
         got = 0
@@ -122,7 +122,7 @@ def main():
         b = random_class_start(rng, cls)
         if b is None or b.turn != chess.WHITE or white_pov_value(b, tb) != 1.0:
             continue
-        from catspace.tb import rollout_line
+        from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import rollout_line
         line = rollout_line(b, tb, cap=200)
         if line and line[-1].is_checkmate():
             bank_boards.append(line[-1])

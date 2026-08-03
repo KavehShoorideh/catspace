@@ -22,13 +22,13 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from catspace.chain import exact_P
-from catspace.concepts import KMeansVQ
-from catspace.cone.tabular import TabularFB
-from catspace.domains import krk, krkn
+from catspace.research.tools.chess_specific.chain import exact_P
+from catspace.research.components.encoder.approaches.concept_quantization.src.concepts import KMeansVQ
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import TabularFB
+from catspace.research.tools.chess_specific.domains import krk, krkn
 from catspace.io.paths import generated_dir, load_array
-from catspace.viz.plots import style
-from catspace.viz.projection import fit_map
+from catspace.research.tools.viz.viz.plots import style
+from catspace.research.tools.viz.viz.projection import fit_map
 
 
 def render_krkn(projection: str, out_dir):

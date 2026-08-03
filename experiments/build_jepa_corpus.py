@@ -29,8 +29,8 @@ import zstandard
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.encoder.jepa import tokenize, move_ids                    # noqa: E402
-from catspace.endgame.material import mat_sig                           # noqa: E402
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize, move_ids                    # noqa: E402
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.material import mat_sig                           # noqa: E402
 
 
 def _tokenize_chunk(fens):

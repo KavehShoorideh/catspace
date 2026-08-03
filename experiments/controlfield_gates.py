@@ -24,7 +24,7 @@ import chess.engine
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.controlfield.derivative import ascent_cone, ConeConfig   # noqa: E402
+from catspace.research.components.encoder.approaches.control_field_wdl.src.derivative import ascent_cone, ConeConfig   # noqa: E402
 
 
 def gate1_sanity(n, engine, depth, seed=0):
@@ -142,7 +142,7 @@ def gate3_gambits(weights=None):
         # by mover). Report both sides' cone/gain rather than assume; the White-
         # perspective quantity we actually want is best obtained by comparing the
         # control field C_a itself (mover-POV-independent White-raw), not cone_size.
-        from catspace.controlfield.control import weighted_attacker_field
+        from catspace.research.components.encoder.approaches.control_field_wdl.src.control import weighted_attacker_field
         c_acc = weighted_attacker_field(b_acc, weights)   # White POV raw
         c_dec = weighted_attacker_field(b_dec, weights)
         out_acc = ascent_cone(b_acc, weights=weights)

@@ -19,7 +19,7 @@ import chess.engine
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.controlfield.wdl_decay import is_good_by_decay   # noqa: E402
+from catspace.research.components.encoder.approaches.control_field_wdl.src.wdl_decay import is_good_by_decay   # noqa: E402
 
 
 def main():

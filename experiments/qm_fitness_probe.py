@@ -48,9 +48,9 @@ import chess
 import chess.syzygy
 import numpy as np
 
-from catspace.data.encode import board_from_packed, encode_meta, encode_packed
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
 from catspace.io.paths import derived_dir
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 
 HOLDOUT_MOD = 50
 HORIZONS = (1, 2, 5, 10, 20, 50)
@@ -226,7 +226,7 @@ def syzygy_calibration(fb, zgoals, device, syzygy_dir: Path, n_positions: int,
     """d(F(s), zMATE_of_winning_side) vs tablebase DTZ on KRRvKBP-family
     winning positions (winning side to move). Uses the SAME generator as
     the diagnostic set so material/colors match the tables we have."""
-    from catspace.diagnostic_krrkbp import random_krrkbp
+    from catspace.research.tools.chess_specific.diagnostic_krrkbp import random_krrkbp
     rng = np.random.default_rng(seed)
     tb = chess.syzygy.open_tablebase(str(syzygy_dir))
     boards, dtzs = [], []
@@ -454,7 +454,7 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 
     device = pick_device(args.device)
     fb, payload = load_ckpt(Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt", device)

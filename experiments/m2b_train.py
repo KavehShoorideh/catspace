@@ -14,9 +14,9 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.style.model import StyleResidual, VOCAB, elo_norm
-from catspace.style.dataio import load_cache as load_cache_arrays
-from catspace.train.scaffold import standard_train, TrainConfig, resolve_device
+from catspace.research.components.planner.approaches.opponent_model.src.style_model import StyleResidual, VOCAB, elo_norm
+from catspace.research.components.planner.approaches.opponent_model.src.style_dataio import load_cache as load_cache_arrays
+from catspace.research.tools.training_infra.train.scaffold import standard_train, TrainConfig, resolve_device
 
 
 def load_cache(path, dev):

@@ -26,7 +26,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
 from experiments import selfplay_generate as sg
 from experiments.gen_stratified_perfect import ALL_MENUS, STRATA_MENUS, optimal_line
 from experiments.selfplay_generate import random_endgame_start

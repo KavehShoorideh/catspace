@@ -17,7 +17,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.engine.fields import FieldModel
+from catspace.fields import FieldModel
 from experiments.distill_field import load_positions
 
 

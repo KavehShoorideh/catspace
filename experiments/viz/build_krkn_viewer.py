@@ -15,12 +15,12 @@ from pathlib import Path
 
 import numpy as np
 
-from catspace.domains import krkn
-from catspace.opponents import optimal_reply_table
-from catspace.viz.projection import fit_map, FittedMap, PROJECTIONS
-from catspace.viz.payload import (KrknViewerBuilder, build_games, attach_cones,
+from catspace.research.tools.chess_specific.domains import krkn
+from catspace.research.tools.chess_specific.opponents import optimal_reply_table
+from catspace.research.tools.viz.viz.projection import fit_map, FittedMap, PROJECTIONS
+from catspace.research.tools.viz.viz.payload import (KrknViewerBuilder, build_games, attach_cones,
                                       finalize_with_xy, build_background, json_default)
-from catspace.viz.build_html import build_html
+from catspace.research.tools.viz.viz.build_html import build_html
 from catspace.io.paths import derived_dir, generated_dir, load_array
 
 

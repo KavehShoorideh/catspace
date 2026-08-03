@@ -20,7 +20,7 @@ def main():
     out = "data/derived/m2a_trunk_wdl.npy"
     t0 = time.time()
     from lczerolens import LczeroBoard
-    from catspace.field import ReachabilityField
+    from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     field = ReachabilityField()
     z = np.load(data, allow_pickle=True)
     fens = z["fen"]; N = len(fens)

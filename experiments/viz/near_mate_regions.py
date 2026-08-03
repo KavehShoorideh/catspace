@@ -25,8 +25,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from catspace.data.encode import board_from_packed
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 from experiments.viz.wdl_regions import separability, _manifold_2d
 
 
@@ -72,7 +72,7 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401
-    from catspace.nn.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 
     dev = pick_device(args.device)
     fb, pay = load_ckpt(Path(args.ckpt), dev)
@@ -83,7 +83,7 @@ def main():
     omega = omega_ids(np.array([1800]), np.array([1800]), np.array([float("nan")]))[0]
 
     names = {1: "mate_W", 0: "draw", -1: "mate_B"}
-    from catspace.data.encode import encode_packed, encode_meta
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_packed, encode_meta
     import chess as _chess
     packed, meta, y = [], [], []
     if args.forced_set:

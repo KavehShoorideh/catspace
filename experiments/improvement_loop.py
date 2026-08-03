@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.experience import ExperienceStore
+from catspace.research.components.memory.approaches.experience_store.src.experience import ExperienceStore
 
 PTR = Path("data/derived/sep/self_field_current.txt")
 EPTR = Path("data/derived/sep/opponent_energy_current.txt")

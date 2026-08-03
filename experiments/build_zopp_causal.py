@@ -26,9 +26,9 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.style.dataio import load_cache                     # noqa: E402
-from catspace.style.estimator import OpponentEstimator           # noqa: E402
-from catspace.style.model import VOCAB, StyleResidual            # noqa: E402
+from catspace.research.components.planner.approaches.opponent_model.src.style_dataio import load_cache                     # noqa: E402
+from catspace.research.components.planner.approaches.opponent_model.src.style_estimator import OpponentEstimator           # noqa: E402
+from catspace.research.components.planner.approaches.opponent_model.src.style_model import VOCAB, StyleResidual            # noqa: E402
 
 RECOMPUTE_AT = (1, 2, 4, 8, 16, 32, 64)
 

@@ -20,7 +20,7 @@ def main():
     d = dict(np.load(args.labeled, allow_pickle=True))
     fen, em, eo = d['fen'], d['elo_mover'], d['elo_opp']
     from maia2 import model as maia_model, inference
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     dev = resolve_device('auto')
     inference.prepare()
     maia = maia_model.from_pretrained(type='rapid', device=str(dev))

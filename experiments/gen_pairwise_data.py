@@ -5,7 +5,7 @@ multi-goal quasimetric field (Kaveh 2026-07-26). MVP opponent = tablebase-optima
 reach-distance is a genuine shortest-path/minimax distance (quasimetric-safe).
 
 For each sampled WON endgame position we roll out the tablebase-optimal line to mate
-(catspace.tb.rollout_line) and hindsight-relabel pairs (s=line[i], g=line[j], delta=j-i)
+(catspace.research.components.planner.approaches.endgame_groundtruth.src.tb.rollout_line) and hindsight-relabel pairs (s=line[i], g=line[j], delta=j-i)
 for i<j on the SAME optimal line -- reachable, exact, strong-opponent labels. We sample
 goals at MIXED temporal ranges per source state (near + far), which is what fixes the
 'magnitude ok, ordering stuck' failure of the scalar field: an anchor is only triangulated
@@ -32,8 +32,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.tb import TB, rollout_line
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, rollout_line
 from experiments.gen_dtm_data import random_class_start
 from experiments.selfplay_generate import random_endgame_start
 from experiments.value_fixed_point import white_pov_value
@@ -97,7 +97,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     t0 = time.time()
-    from catspace.tb import DEFAULT_SYZYGY
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import DEFAULT_SYZYGY
     syz = args.syzygy or str(DEFAULT_SYZYGY)
 
     # parallel: split each class into W sub-chunks, run across a process pool (each worker
@@ -144,7 +144,7 @@ def main():
 
 
 def _gpc(g_packed):
-    from catspace.data.encode import decode_planes
+    from catspace.research.tools.chess_specific.chessdata.encode import decode_planes
     pl = decode_planes(g_packed).reshape(len(g_packed), 12, 64)
     return pl.sum((1, 2)).astype(int).tolist()          # 12 channels already include both kings
 

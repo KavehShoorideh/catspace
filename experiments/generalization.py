@@ -18,17 +18,17 @@ import time
 import numpy as np
 import scipy.stats as st
 
-from catspace.arena import evaluate
-from catspace.chain import exact_P, empirical_P
-from catspace.cone.neural import NeuralFB, absorbing_vec, one_hot_state
-from catspace.cone.tabular import fb_from_svd, randomized_svd_sm, sm_matvec
-from catspace.data.sources import ChainRolloutSource
-from catspace.domains import krk
-from catspace.game import rollout_transitions
-from catspace.opponents import EpsOptimalDTM, RandomOpponent, optimal_reply_table
-from catspace.planner.policy import RandomPolicy, TablePolicy
-from catspace.planner.readout import ReplyAgg, greedy_policy
-from catspace.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.research.tools.chess_specific.arena import evaluate
+from catspace.research.tools.chess_specific.chain import exact_P, empirical_P
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.neural import NeuralFB, absorbing_vec, one_hot_state
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import fb_from_svd, randomized_svd_sm, sm_matvec
+from catspace.research.tools.chess_specific.chessdata.sources import ChainRolloutSource
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.game import rollout_transitions
+from catspace.research.tools.chess_specific.opponents import EpsOptimalDTM, RandomOpponent, optimal_reply_table
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import RandomPolicy, TablePolicy
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg, greedy_policy
+from catspace.research.tools.chess_specific.scoring import TerminalScores, fill_terminal_state_scores
 
 
 def _policy_from_live_scores(live_scores: np.ndarray, mate_score: float, draw_score: float, chain):

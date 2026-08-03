@@ -19,8 +19,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import umap
 
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
 
 dev = "cpu"
 om = omega_ids(np.array([1800]), np.array([1800]), np.array([300.0]))[0]

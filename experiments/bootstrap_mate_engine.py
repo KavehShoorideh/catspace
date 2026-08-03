@@ -28,14 +28,14 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.engine.fields import FieldModel
-from catspace.experience import ExperienceStore
-from catspace.nn.mcts import MCTS
-from catspace.tb import TB, tb_best_move
+from catspace.fields import FieldModel
+from catspace.research.components.memory.approaches.experience_store.src.experience import ExperienceStore
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, tb_best_move
 from experiments.mate_ladder_eval import sample_scenarios
 
 
-from catspace.endgame.material import mat_sig  # component home (refactor 2026-07-30)
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.material import mat_sig  # component home (refactor 2026-07-30)
 
 
 class OnlineMateBank:
@@ -204,8 +204,8 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
     dtm_net = None
     if dtm_ckpt:
         import torch
-        from catspace.data.encode import encode_meta, encode_packed
-        from catspace.nn.features import feature_planes
+        from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
         st = torch.load(dtm_ckpt, map_location="cpu", weights_only=False)
         dtm_scale = float(st.get("scale", 20.0))
         dtm_cache: dict[str, float] = {}
@@ -613,10 +613,10 @@ def make_batched_energy_prior(ckpt: str, cohort: int = 11, device: str = "cpu",
     speed path: one forward for a whole leaf batch instead of ~2ms singles (mcts.py already
     supports policy_batch_fn -- no search-semantics change, same net, same numbers)."""
     import torch
-    from catspace.data.encode import encode_meta, encode_packed
-    from catspace.nn.features import feature_planes
-    from catspace.nn.fb import pick_device
-    from catspace.nn.opponent import OpponentModel
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.opponent import OpponentModel
     dev = pick_device(device)
     st = torch.load(ckpt, map_location="cpu", weights_only=False)
     net = OpponentModel(**st["config"]).to(dev)
@@ -793,7 +793,7 @@ def worker(args):
                                     capture_output=True, text=True).stdout.strip()
     except Exception:
         eng_commit = ""
-    from catspace.engine.introspection import ProbeKit
+    from catspace.introspection import ProbeKit
     probes = ProbeKit(fm, bank, loss_bank, draw_bank,
                       exp_db=(exp.db if exp is not None else None),
                       game_ctx=game_ctx, prior_fn=pfn)
@@ -1051,7 +1051,7 @@ def worker(args):
                       "dtm_s", "dtm_n")}
                 tree = t_search - d["prior_s"] - d["embedF_s"] - d["dbank_s"] - d["dtm_s"]
                 try:                                    # observability (Prometheus)
-                    from catspace.metrics import observe
+                    from catspace.research.tools.stats_eval.metrics import observe
                     for st, key in (("prior", "prior_s"), ("embF", "embedF_s"),
                                     ("dbank", "dbank_s"), ("dtm", "dtm_s")):
                         observe(st, d[key])

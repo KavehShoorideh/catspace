@@ -11,11 +11,11 @@ import argparse
 
 import numpy as np
 
-from catspace.domains import krkn
-from catspace.opponents import optimal_reply_table
-from catspace.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
-from catspace.planner.readout import ReplyAgg
-from catspace.train.checkpoints import load_ckpt, ckpt_exists
+from catspace.research.tools.chess_specific.domains import krkn
+from catspace.research.tools.chess_specific.opponents import optimal_reply_table
+from catspace.research.tools.training_infra.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg
+from catspace.research.tools.training_infra.train.checkpoints import load_ckpt, ckpt_exists
 from catspace.io.paths import save_array, derived_dir
 
 SCHEDULE = [  # (eps_white, eps_black, n_games, dtm_cap)

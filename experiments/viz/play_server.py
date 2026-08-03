@@ -31,8 +31,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from catspace.nn.features import feature_planes, omega_ids  # noqa: E402
-from catspace.data.encode import encode_meta, encode_packed  # noqa: E402
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids  # noqa: E402
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed  # noqa: E402
 
 TEMPLATE = ROOT / "catspace/viz/templates/play_atlas.html"
 ATLAS_DIR = ROOT / "artifacts/generated/play_atlas"
@@ -54,9 +54,9 @@ class Engine:
                  tactical_prior: float = 0.0, root_min_visits: int = 0,
                  policy_path: str | None = None, value_mode: str = "committor"):
         import torch
-        from catspace.nn.eval_head import EvalHead
-        from catspace.nn.fb import load_ckpt
-        from catspace.nn.policy_fb import make_search_policy
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
         self.torch = torch
         self.lock = threading.Lock()
         self.dev = "cpu"
@@ -101,7 +101,7 @@ class Engine:
         # eval, so a simulation costs ~1 eval instead of branching-many.
         pol_fn = val_fn = None
         if value_mode == "committor" and policy_path and Path(policy_path).exists():
-            from catspace.nn.policy_head import PolicyHead, legal_priors
+            from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_head import PolicyHead, legal_priors
             pp = torch.load(policy_path, map_location=self.dev, weights_only=False)
             self._policy_head = PolicyHead(d_in=pp["d_in"], hidden=pp.get("hidden", 256)).to(self.dev)
             self._policy_head.load_state_dict(pp["state"]); self._policy_head.eval()
@@ -161,8 +161,8 @@ class Engine:
     @property
     def proj(self):
         if self._proj is None:
-            from catspace.viz.projection import Normalizer
-            from catspace.viz.manifold import load_projector
+            from catspace.research.tools.viz.viz.projection import Normalizer
+            from catspace.research.tools.viz.viz.manifold import load_projector
             d = ATLAS_DIR / "tsne_map"
             nz = np.load(d / "normalizer.npz")
             projector = load_projector(d)           # tsne / umap / vae (per manifest)
@@ -178,7 +178,7 @@ class Engine:
     @property
     def memory(self):
         if self._memory is None and self._memory_dir is not None:
-            from catspace.memory.store import PositionMemory
+            from catspace.research.components.memory.approaches.vector_store_retrieval.src.store import PositionMemory
             p = Path(self._memory_dir)
             if (p / "meta.json").exists():
                 self._memory = PositionMemory.load(p, expect_ckpt_tag=self._ckpt_tag)
@@ -244,7 +244,7 @@ class Engine:
         Recognizer-planted terminals (cert_planted) are NOT game truth -> skipped."""
         if self.memory is None:
             return 0
-        from catspace.nn.mcts import game_truth
+        from catspace.research.components.search.approaches.puct_mcts.src.mcts import game_truth
         boards, results = [], []
         stack = [(root, [root.board])]
         while stack and len(boards) < 200:               # cap per search
@@ -415,7 +415,7 @@ class Engine:
         move ordering. Returns the top-k approach lines (with projected hops) and
         the target's own map position. Only as good as the field's directions --
         sharp on an aligned field, mushy on the incumbent."""
-        from catspace.nn.mcts import MCTS
+        from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
         over, res = self._outcome(board)
         if over:
             px, py = self._xy(board)
@@ -498,7 +498,7 @@ class Engine:
                     subgoal_dmate=mv.get("subgoal_dmate"), pv=mv["plan"], plan_hops=hops, candidates=[])
 
     def engine_move(self, board: chess.Board, nodes: int | None = None) -> dict:
-        from catspace.nn.mcts import game_truth
+        from catspace.research.components.search.approaches.puct_mcts.src.mcts import game_truth
         over, res = self._outcome(board)
         if over:
             return dict(move=None, san=None, fen=board.fen(), game_over=True,
@@ -549,7 +549,7 @@ class Engine:
         competes with any training job for CPU."""
         import subprocess
         import sys as _sys
-        from catspace.viz.manifold import clean_params
+        from catspace.research.tools.viz.viz.manifold import clean_params
         params = params or {}
         algo = algo if algo in ("tsne", "umap", "vae") else "tsne"
         n = max(500, min(int(n), 40000))
@@ -738,7 +738,7 @@ def step_move(fen: str, engine: str) -> dict:
         return {"error": "game over"}
     with _STEP_LOCK:
         if engine == "tb":
-            from catspace.tb import TB, tb_best_move
+            from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, tb_best_move
             global _VETO_TB
             if _VETO_TB is None:
                 _VETO_TB = TB()
@@ -769,14 +769,14 @@ def step_move(fen: str, engine: str) -> dict:
 
 def veto_analyze(fen: str | None, h: int = 4, n_targets: int = 16) -> dict:
     """VETO LAB (Kaveh 2026-07-23): fresh-position forceability, live, under the CORRECTED
-    definition -- the defender avoids regions by ANY legal means (catspace.reachgame), not
+    definition -- the defender avoids regions by ANY legal means (catspace.research.tools.chess_specific.reachgame), not
     by playing canonical optimal chess. Exact: rules-only AND-OR search + tablebase
     win-labels for target selection. fen=None -> random won toy position."""
     import time as _t
     global _VETO_TB
-    from catspace.diagnostic_krrkbp import random_krrkbp
-    from catspace.reachgame import adv_reach, exact_position, region_neighborhood
-    from catspace.tb import TB
+    from catspace.research.tools.chess_specific.diagnostic_krrkbp import random_krrkbp
+    from catspace.research.tools.chess_specific.reachgame import adv_reach, exact_position, region_neighborhood
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
     if _VETO_TB is None:
         _VETO_TB = TB()
     rng = np.random.default_rng()
@@ -785,7 +785,7 @@ def veto_analyze(fen: str | None, h: int = 4, n_targets: int = 16) -> dict:
         board = chess.Board(fen)
     else:                                   # random WON (White) anchor, White to move
         board = None
-        from catspace.tb import rollout_dtm as _rdtm
+        from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import rollout_dtm as _rdtm
         fallback = None
         for _try in range(40):
             b = random_krrkbp(rng)
@@ -839,7 +839,7 @@ def veto_analyze(fen: str | None, h: int = 4, n_targets: int = 16) -> dict:
                                 region_forceable=True, region_d_adv=d_adv)
     # TOTAL-COVERAGE square map, ONE pass for all squares (reach_square_sets: the
     # 40-searches-in-one fix -- the per-square loop cost 52s; this is ~1 search)
-    from catspace.reachgame import reach_square_sets
+    from catspace.research.tools.chess_specific.reachgame import reach_square_sets
     bk0 = board.king(chess.BLACK)
     square_map = []
     if bk0 is not None:
@@ -857,8 +857,8 @@ def veto_analyze(fen: str | None, h: int = 4, n_targets: int = 16) -> dict:
             square_map.append(dict(sq=chess.square_name(sq), status=status,
                                    d_adv=None, d_coop=None))
     # PROGRESS metrics for the chart: exact distance-to-mate + the king's escape box
-    from catspace.tb import rollout_dtm
-    from catspace.diagnostics import escape_volume
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import rollout_dtm
+    from catspace.research.tools.chess_specific.diagnostics import escape_volume
     w0, _d0 = _VETO_TB.wdl_dtz(board)
     w0 = w0 if board.turn == chess.WHITE else (-w0 if w0 is not None else None)
     dtm = rollout_dtm(board, _VETO_TB) if w0 == 2 else None

@@ -17,7 +17,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_transition_estimator import T                    # noqa: E402
-from catspace.train.scaffold import resolve_device, save_torch_ckpt     # noqa: E402
+from catspace.research.tools.training_infra.train.scaffold import resolve_device, save_torch_ckpt     # noqa: E402
 
 D_CTX = 3 + 2   # position block (sharp, cb, ply/100) + rating block (em, eo) -- normalized below
 

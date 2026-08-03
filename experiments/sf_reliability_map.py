@@ -28,7 +28,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.tb import TB, DEFAULT_SYZYGY
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY
 from experiments.gen_dtm_data import random_class_start
 from experiments.value_fixed_point import white_pov_value
 

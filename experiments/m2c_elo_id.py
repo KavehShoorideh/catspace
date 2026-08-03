@@ -30,7 +30,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0); ap.add_argument("--device", default="auto")
     args = ap.parse_args()
     t0 = time.time(); rng = np.random.default_rng(args.seed); Ns = sorted(args.observed)
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     dev = resolve_device(args.device)
     from maia2 import model as maia_model, inference
     from maia2.inference import map_to_category

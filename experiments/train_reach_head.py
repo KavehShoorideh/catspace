@@ -21,7 +21,7 @@ observation count can't leak through it.
 
 PRE-REGISTERED ACCEPTANCE (printed as VERDICT lines; the smoke must show the SIGN):
   1. z-lift nats/pair on eval: BCE(z=0) - BCE(full) and BCE(z permuted within ±100 Elo) - BCE(full),
-     paired bootstrap CI clustered by player (catspace.stats.paired_nll_ci).
+     paired bootstrap CI clustered by player (catspace.research.tools.stats_eval.stats.paired_nll_ci).
   2. Calibration: 10-bin reliability (pred vs realized hit freq) on eval + unseen; max |gap|.
   3. Plies head: MAE(log1p) on hit pairs vs global-train-median baseline.
   4. eff_rank of state hit-embeddings (collapse gate), 3 bootstrap draws.
@@ -37,14 +37,14 @@ import torch
 import torch.nn as nn
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.diagnostics import eff_rank                              # noqa: E402
-from catspace.stats import paired_nll_ci                               # noqa: E402
-from catspace.train.scaffold import (TrainConfig, resolve_device,      # noqa: E402
+from catspace.research.tools.chess_specific.diagnostics import eff_rank                              # noqa: E402
+from catspace.research.tools.stats_eval.stats import paired_nll_ci                               # noqa: E402
+from catspace.research.tools.training_infra.train.scaffold import (TrainConfig, resolve_device,      # noqa: E402
                                      save_torch_ckpt, standard_train)
 from experiments.losses import censored_plies_loss, first_hit_bce      # noqa: E402
 
 
-from catspace.reach.head import ReachHead  # component home (refactor 2026-07-30)
+from catspace.research.components.planner.approaches.reach_field.src.head import ReachHead  # component home (refactor 2026-07-30)
 
 
 def reliability(p, y, bins=10):

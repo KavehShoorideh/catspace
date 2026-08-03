@@ -20,14 +20,14 @@ import numpy as np
 import torch
 from scipy.stats import spearmanr
 
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import derived_dir, generated_dir, newest_shard_dir
-from catspace.nn.eval_head import load_heads
-from catspace.nn.features import elo_bin, winprob_cp
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.util import auc
-from catspace.viz.build_html import build_html
-from catspace.viz.realboard import embed_positions
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import load_heads
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import elo_bin, winprob_cp
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.tools.stats_eval.util import auc
+from catspace.research.tools.viz.viz.build_html import build_html
+from catspace.research.tools.viz.viz.realboard import embed_positions
 
 COLS = ("packed", "meta", "ply", "clock", "eval_cp", "result", "white_elo", "black_elo", "game_id")
 MODELS = ["F", "B", "FB", "baseline"]

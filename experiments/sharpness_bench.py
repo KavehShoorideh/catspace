@@ -54,10 +54,10 @@ from scipy.stats import spearmanr
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # run as a plain script
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.diagnostic_krrkbp import random_krrkbp
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.tools.chess_specific.diagnostic_krrkbp import random_krrkbp
 from catspace.io.paths import derived_dir
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 from experiments.qm_fitness_probe import random_krvk
 from experiments.selfplay_generate import random_endgame_start
 
@@ -296,7 +296,7 @@ def main():
     fb, zgoals = None, {}
     if args.ckpt:
         import torch  # noqa: F401
-        from catspace.nn.fb import load_ckpt, pick_device
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
         device = pick_device(args.device)
         fb, payload = load_ckpt(Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt",
                                 device)

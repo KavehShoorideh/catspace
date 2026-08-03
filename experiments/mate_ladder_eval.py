@@ -26,8 +26,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import board_from_packed
-from catspace.tb import TB
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
 from experiments.ladder_mate import make_dtm_value, play_out, random_krrvk
 
 VALUE_C = 8.0
@@ -35,9 +35,9 @@ VALUE_C = 8.0
 
 def make_escape_value(ckpt, device="cpu"):
     import torch
-    from catspace.data.encode import encode_meta, encode_packed
-    from catspace.nn.features import feature_planes
-    from catspace.nn.fb import pick_device
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
     from experiments.train_dtm_cnn import DTMNet
     dev = pick_device(device)
     st = torch.load(ckpt, map_location="cpu", weights_only=False)
@@ -80,7 +80,7 @@ def sample_scenarios(rng, n):
     def synth(extra_piece, lo, hi, tb):
         """5-piece scenarios direct-generated (the pool barely passes through them):
         KRR + k + one black minor/pawn; tb used only to certify the EXAM (won, in band)."""
-        from catspace.tb import rollout_dtm
+        from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import rollout_dtm
         out = []
         for _ in range(n * 300):
             if len(out) >= n:
@@ -171,7 +171,7 @@ def make_field_value(field_ckpt="data/derived/sep/iqe_geom_field.pt", device="cp
     """Value = field distance to the MATE BANK (goal-as-region: nearest exemplar, never a
     centroid). Re-test of the shelved field-value verdict, now on the HEALTHY field."""
     import torch
-    from catspace.engine.fields import FieldModel
+    from catspace.fields import FieldModel
     from experiments.viz_b_mate_clusters import harvest_mates
     fm = FieldModel(field_ckpt, device=device)
     rng = np.random.default_rng(7)
@@ -188,10 +188,10 @@ def make_energy_prior(ckpt="data/derived/sep/opponent_energy_v1.pt", cohort=11, 
     """Move prior = the flavored-energy opponent model's policy for a STRONG cohort
     (11 = sf_full): 'what would strong play consider' as search ordering."""
     import torch
-    from catspace.nn.features import feature_planes
-    from catspace.nn.fb import pick_device
-    from catspace.nn.opponent import OpponentModel
-    from catspace.data.encode import encode_meta, encode_packed
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.opponent import OpponentModel
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
     dev = pick_device(device)
     st = torch.load(ckpt, map_location="cpu", weights_only=False)
     net = OpponentModel(**st["config"]).to(dev)

@@ -18,20 +18,20 @@ import chess
 import numpy as np
 import torch
 
-from catspace.data.encode import encode_meta, encode_packed
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
 from catspace.io.paths import derived_dir, generated_dir
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.nn.policy_fb import FBBoardPolicy
-from catspace.realboard import RandomBoardPolicy
-from catspace.viz.build_html import build_html
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBBoardPolicy
+from catspace.research.tools.chess_specific.realboard import RandomBoardPolicy
+from catspace.research.tools.viz.viz.build_html import build_html
 
 
 def make_opponent(spec: str):
     if spec == "random":
         return RandomBoardPolicy(), "random"
     if spec.startswith("sf:"):
-        from catspace.uci import UCIBoardPolicy
+        from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
         arg = spec[3:]
         if arg.startswith("skill="):
             return UCIBoardPolicy(skill=int(arg[6:]), movetime=0.02), spec

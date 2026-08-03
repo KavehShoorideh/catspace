@@ -20,11 +20,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.nn.iqe import IQE
-from catspace.style.model import StyleResidual, VOCAB
-from catspace.style.dataio import load_cache
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
+from catspace.research.components.planner.approaches.opponent_model.src.style_model import StyleResidual, VOCAB
+from catspace.research.components.planner.approaches.opponent_model.src.style_dataio import load_cache
 from experiments.losses import quasimetric_regression, reachability_target
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 
 
 class CondAdapter(nn.Module):

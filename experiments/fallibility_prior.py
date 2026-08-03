@@ -23,7 +23,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from catspace.nn.features import elo_bin, clock_bucket, winprob_cp, N_ELO_BINS, N_CLOCK_BINS
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import elo_bin, clock_bucket, winprob_cp, N_ELO_BINS, N_CLOCK_BINS
 
 
 def scan(shard_dir, cap_games):

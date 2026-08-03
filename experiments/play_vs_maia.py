@@ -22,10 +22,10 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_clock_field import ClockField
-from catspace.train.scaffold import resolve_device
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
 
 
-from catspace.value.committor import CommittorGreedy  # component home (refactor 2026-07-30)
+from catspace.research.components.planner.approaches.committor_value.src.committor import CommittorGreedy  # component home (refactor 2026-07-30)
 
 
 def play_game(field, maia, field_is_white, opening_plies, max_plies, rng, maia_nodes, depth):

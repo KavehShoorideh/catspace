@@ -22,9 +22,9 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.nn.eval_head import EvalHead
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.nn.policy_fb import make_search_policy
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
 from experiments.playout_ab import playout
 from experiments.train_dtm_head import DTMHead
 from experiments.value_fixed_point import TB

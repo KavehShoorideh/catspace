@@ -58,7 +58,7 @@ def gen_chunk(task):
     src_path, n_anchors, j, sf_depth, regime_ids, seed = task
     import chess
     import chess.engine
-    from catspace.data.encode import board_from_packed, encode_meta, encode_packed
+    from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
     rng = np.random.default_rng(seed)
     z = np.load(src_path)
     P, M = z["packed"], z["meta"]

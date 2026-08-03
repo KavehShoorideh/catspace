@@ -24,8 +24,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from catspace.viz.build_html import build_html
-from catspace.viz.realboard import board_svg
+from catspace.research.tools.viz.viz.build_html import build_html
+from catspace.research.tools.viz.viz.realboard import board_svg
 from experiments.value_fixed_point import TB, tb_best_move
 
 
@@ -50,11 +50,11 @@ def main():
 
     import torch
     from umap import UMAP
-    from catspace.nn.eval_head import EvalHead
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.mcts import FBMCTSPolicy
-    from catspace.data.encode import encode_meta, encode_packed
-    from catspace.nn.features import feature_planes, omega_ids
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.search.approaches.puct_mcts.src.mcts import FBMCTSPolicy
+    from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 
     dev = pick_device(args.device)
     fb, pay = load_ckpt(Path(args.ckpt), dev)

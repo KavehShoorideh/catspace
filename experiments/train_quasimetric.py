@@ -34,8 +34,8 @@ import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.nn.fb import pick_device
-from catspace.nn.iqe import IQE
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
 from experiments.arch_bakeoff import CNNBackbone, eff_rank, tokens
 
 

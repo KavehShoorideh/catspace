@@ -15,16 +15,16 @@ import argparse
 
 import numpy as np
 
-from catspace.abtest import MethodSpec, compare
-from catspace.chain import exact_P
-from catspace.cone.tabular import TabularFB
-from catspace.domains import krk, krkn
+from catspace.research.tools.stats_eval.abtest import MethodSpec, compare
+from catspace.research.tools.chess_specific.chain import exact_P
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import TabularFB
+from catspace.research.tools.chess_specific.domains import krk, krkn
 from catspace.io.paths import load_array
-from catspace.opponents import EpsOptimalDTM, optimal_reply_table
-from catspace.planner.policy import DTMOraclePolicy, RandomPolicy, TablePolicy
-from catspace.planner.readout import ReplyAgg, greedy_policy
-from catspace.scoring import TerminalScores, fill_terminal_state_scores
-from catspace.cone.embedding import make_goal, reach
+from catspace.research.tools.chess_specific.opponents import EpsOptimalDTM, optimal_reply_table
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import DTMOraclePolicy, RandomPolicy, TablePolicy
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg, greedy_policy
+from catspace.research.tools.chess_specific.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.embedding import make_goal, reach
 
 DOMAINS = {"krk": krk, "krkn": krkn}
 

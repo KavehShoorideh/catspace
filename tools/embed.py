@@ -25,11 +25,11 @@ import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.train.scaffold import resolve_device                      # noqa: E402
+from catspace.research.tools.training_infra.train.scaffold import resolve_device                      # noqa: E402
 
 
 def jepa_encode(ckpt, tok, glob, dev, bs=512):
-    from catspace.encoder.jepa import JepaT1
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import JepaT1
     ck = torch.load(ckpt, map_location=dev, weights_only=False)
     model = JepaT1(**{k: ck["cfg"][k] for k in ("d", "layers", "n_class")}).to(dev)
     model.load_state_dict(ck["state_dict"]); model.eval()
@@ -84,7 +84,7 @@ def main():
         fens = [ln.strip() for ln in open(args.fens) if ln.strip()][:args.limit]
         if args.encoder == "jepa":
             import chess
-            from catspace.encoder.jepa import tokenize
+            from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
             tg = [tokenize(chess.Board(f)) for f in fens]
             emb = jepa_encode(args.ckpt, np.stack([t for t, _ in tg]),
                               np.stack([g for _, g in tg]), dev)

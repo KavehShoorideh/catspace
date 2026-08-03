@@ -20,10 +20,10 @@ from pathlib import Path
 
 import numpy as np
 
-from catspace.abtest import EValueTest
+from catspace.research.tools.stats_eval.abtest import EValueTest
 from catspace.io.paths import derived_dir, generated_dir
-from catspace.realboard import RandomBoardPolicy, play_board_game, record_to_pgn
-from catspace.uci import UCIBoardPolicy
+from catspace.research.tools.chess_specific.realboard import RandomBoardPolicy, play_board_game, record_to_pgn
+from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
 
 
 def make_opponent(spec: str):
@@ -97,8 +97,8 @@ def main():
     args = ap.parse_args()
 
     import torch  # noqa: F401  (fail early with a clear message if .[nn] absent)
-    from catspace.nn.fb import load_ckpt, pick_device
-    from catspace.nn.policy_fb import FBBoardPolicy
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import FBBoardPolicy
 
     device = pick_device(args.device)
     fb, payload = load_ckpt(Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt", device)

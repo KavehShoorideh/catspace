@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import torch
 
-from catspace.nn.iqe import IQE
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
 
 
 def _dead_zone(n=8, d=64, gap=5.0, seed=0):
@@ -69,7 +69,7 @@ def test_leaky_iqe_converges_to_exact():
 def test_pid_lambda_cap_and_eclip():
     """lam never exceeds lam_max (with anti-windup on I), and pid_eclip bounds
     the per-step response regardless of the violation size."""
-    from catspace.nn.fb import TorchFB
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB
     fb = TorchFB(d=64, channels=8, blocks=1, enc_out=32, dh=64,
                  iqe=True, iqe_components=8, iqe_embed_scale=1.0)
     planes = torch.randn(6, 20, 8, 8)

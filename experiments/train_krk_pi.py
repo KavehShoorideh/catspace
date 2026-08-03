@@ -11,10 +11,10 @@ import argparse
 
 import numpy as np
 
-from catspace.domains import krk
-from catspace.opponents import optimal_reply_table
-from catspace.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
-from catspace.planner.readout import ReplyAgg
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.opponents import optimal_reply_table
+from catspace.research.tools.training_infra.train.curriculum import CurriculumTrainer, CurriculumConfig, Round
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg
 
 SCHEDULE = [  # (eps_white, eps_black, n_games)
     Round(1.00, 1.00, 20000, None),   # pure random vs random (the original data)

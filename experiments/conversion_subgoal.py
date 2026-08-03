@@ -32,12 +32,12 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.eval_head import EvalHead
-from catspace.nn.features import feature_planes, omega_ids
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.nn.mcts import MCTS
-from catspace.nn.policy_fb import make_search_policy
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
 from experiments.playout_ab import playout
 from experiments.value_fixed_point import TB
 

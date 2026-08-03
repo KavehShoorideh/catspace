@@ -23,8 +23,8 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from experiments.train_clock_field import ClockField
-from catspace.train.scaffold import resolve_device
-from catspace.nn.mcts import MCTS
+from catspace.research.tools.training_infra.train.scaffold import resolve_device
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
 
 
 def board_to_planes(board):
@@ -82,7 +82,7 @@ class FieldMCTS:
     def select(self, board):
         # HANDOFF: at <=7 pieces the tablebase plays the DTZ-optimal MOVE directly (not the field).
         if self.tb is not None and chess.popcount(board.occupied) <= 7 and not board.is_game_over():
-            from catspace.tb import tb_best_move
+            from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import tb_best_move
             try:
                 mv = tb_best_move(board, self.tb, set())
                 if mv is not None:
@@ -101,7 +101,7 @@ class FieldMCTS:
 
 def _conversion_test(nodes=200, N=20):
     """Does SEARCH fix the greedy 0/30? d_mate-MCTS (white) converts won endgames vs TB-optimal defender."""
-    from catspace.tb import TB, DEFAULT_SYZYGY, tb_best_move
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY, tb_best_move
     from experiments.gen_dtm_data import random_class_start
     tb = TB(str(DEFAULT_SYZYGY), cache_db=None); rng = np.random.default_rng(0)
     eng = FieldMCTS("artifacts/experiments/field_fullgame_v3_final.pt", tb=tb, nodes=nodes)
@@ -131,7 +131,7 @@ def _vs_maia(nodes=100, elo=1100, games=6, max_plies=160, seed=0):
     """FieldMCTS vs Maia, full games (real history, in-distribution), <=7p tablebase handoff."""
     import time, chess.engine
     from lczerolens import LczeroBoard
-    from catspace.tb import TB, DEFAULT_SYZYGY
+    from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY
     tb = TB(str(DEFAULT_SYZYGY), cache_db=None); rng = np.random.default_rng(seed)
     eng = FieldMCTS("artifacts/experiments/field_fullgame_v3_final.pt", tb=tb, nodes=nodes)
     maia = chess.engine.SimpleEngine.popen_uci(["lc0", f"--weights=data/engines/maia/maia-{elo}.pb.gz", "--backend=eigen"])

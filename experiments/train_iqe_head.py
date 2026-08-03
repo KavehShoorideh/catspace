@@ -26,13 +26,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.nn.iqe import IQE
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
 from experiments.losses import quasimetric_regression, wdl_hinge
 from experiments.arch_bakeoff import eff_rank
-from catspace.train.scaffold import standard_train, TrainConfig, resolve_device
+from catspace.research.tools.training_infra.train.scaffold import standard_train, TrainConfig, resolve_device
 
 
-from catspace.encoder.iqe_head import IQEHead  # component home (refactor 2026-07-30)
+from catspace.research.components.encoder.approaches.reachability_field.src.iqe_head import IQEHead  # component home (refactor 2026-07-30)
 
 
 def build_pairs(game, ply, games_set, rng, per_game=10):

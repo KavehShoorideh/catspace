@@ -125,7 +125,7 @@ def _demo():
                       "data/syzygy", frontier=5, seed=0)
     nz = np.load("data/derived/stratified_perfect.npz", allow_pickle=True)
     P, M, PCNT = np.asarray(nz["packed"]), np.asarray(nz["meta"]), np.asarray(nz["pcount"]).astype(int)
-    from catspace.data.encode import board_from_packed
+    from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
     rng = np.random.default_rng(0)
     for pc in (5, 6):
         j = int(rng.choice(np.flatnonzero(PCNT == pc)))

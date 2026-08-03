@@ -27,8 +27,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.features import feature_planes, omega_ids
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 from experiments.certainty_distill import spearman_ci
 
 
@@ -69,7 +69,7 @@ def main():
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import torch
-    from catspace.nn.fb import load_ckpt, pick_device
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 
     dev = pick_device(args.device)
     rows = json.loads(Path(args.table).read_text())["rows"]

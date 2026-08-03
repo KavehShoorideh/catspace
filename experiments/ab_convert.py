@@ -19,9 +19,9 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.nn.fb import pick_device
-from catspace.tb import TB, DEFAULT_SYZYGY, rollout_dtm, tb_best_move
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import pick_device
+from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, DEFAULT_SYZYGY, rollout_dtm, tb_best_move
 from experiments.arch_bakeoff import tokens
 from experiments.value_fixed_point import white_pov_value
 

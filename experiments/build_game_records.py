@@ -14,7 +14,7 @@ these records to fix the draw-starvation + strength-skew that data_distribution_
 Engine PGNs (CCRL/fastchess) carry identity in the same headers -> ingest into the SAME schema with
 --source, so the universal-z manifold (humans + engines) is one dataset.
 
-Reuses catspace.data.lichess.stream_filtered_games (the streaming header-prefilter). No decompress
+Reuses catspace.research.tools.chess_specific.chessdata.lichess.stream_filtered_games (the streaming header-prefilter). No decompress
 to disk. Run a SHORT prefix first (--pgn ...prefix256mb...) to validate before the full month.
 """
 from __future__ import annotations
@@ -26,7 +26,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.data.lichess import GameFilter, stream_filtered_games
+from catspace.research.tools.chess_specific.chessdata.lichess import GameFilter, stream_filtered_games
 
 _RESULT_MAP = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}
 

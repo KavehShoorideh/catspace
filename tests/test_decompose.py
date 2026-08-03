@@ -8,7 +8,7 @@ property), and each give-up rule fires under the geometry built to demand it.
 import numpy as np
 import pytest
 
-from catspace.planner.decompose import (Decomposition, WaypointPool, decompose,
+from catspace.research.components.planner.approaches.subgoal_cascade.src.decompose import (Decomposition, WaypointPool, decompose,
                                         hop_reach, waypoint_scores)
 
 

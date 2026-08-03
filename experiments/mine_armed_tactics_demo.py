@@ -1,5 +1,5 @@
 """M7 detection demo run (MILESTONES.md sec.M7, 2026-08-03 sequencing override):
-apply catspace.armed.detect.find_armed_tactic_candidates to real mid-game
+apply catspace.research.components.planner.approaches.armed_tactics.src.detect.find_armed_tactic_candidates to real mid-game
 positions and print whatever it actually finds. Not a benchmark, not a store
 -- just "does this surface real armed tactics on real data" per Kaveh's ask
 ("the goal is to find some tactics").
@@ -17,7 +17,7 @@ import time
 import chess
 import chess.engine
 
-from catspace.armed.detect import find_armed_tactic_candidates
+from catspace.research.components.planner.approaches.armed_tactics.src.detect import find_armed_tactic_candidates
 
 
 def sample_positions(moves_tsv: str, n: int, seed: int, ply_lo: int = 16, ply_hi: int = 50):

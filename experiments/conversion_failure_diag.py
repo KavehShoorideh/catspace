@@ -10,9 +10,9 @@ from collections import Counter
 from pathlib import Path
 import chess, numpy as np, torch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from catspace.nn.eval_head import EvalHead
-from catspace.nn.fb import load_ckpt
-from catspace.nn.policy_fb import make_search_policy
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.policy_fb import make_search_policy
 from experiments.value_fixed_point import TB, tb_best_move
 
 dev = "cpu"

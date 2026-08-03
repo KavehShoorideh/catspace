@@ -138,7 +138,7 @@ def main():
     print("loading density samples + field ...", flush=True)
     human = load_sample("data/derived/field_std_v1.npz", n_density, seed, 0)
     sf = load_sample("data/derived/opening_pool_sfsf.npz", n_density, seed, 1)
-    from catspace.encoder.field import ReachabilityField
+    from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     field = ReachabilityField()
     phi_human = field.phi_from_planes(list(human["planes"].astype(np.float32))).cpu().numpy()
     phi_sf = field.phi_from_planes(list(sf["planes"].astype(np.float32))).cpu().numpy()

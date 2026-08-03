@@ -11,7 +11,7 @@ shot job; a crash (disk-full / sleep / OOM) must not throw it away. So we write 
   <out>/shard_0000.npz ...    contiguous position ranges [c*S : (c+1)*S), features only
 Each shard is written to a .tmp then os.replace'd (atomic -> no half-written shard can exist). On
 restart, chunks whose shard already exists are SKIPPED -> resume from where it died. A disk PRE-FLIGHT
-aborts before starting if there isn't room. Load with catspace.style.dataio.load_cache (auto-detects
+aborts before starting if there isn't room. Load with catspace.research.components.planner.approaches.opponent_model.src.style_dataio.load_cache (auto-detects
 this dir layout or a legacy single .npz).
 """
 from __future__ import annotations
@@ -124,7 +124,7 @@ def main():
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
     t0 = time.time()
-    from catspace.train.scaffold import resolve_device
+    from catspace.research.tools.training_infra.train.scaffold import resolve_device
     dev = resolve_device(args.device)
 
     pos = pq.read_table(args.positions).to_pydict()
@@ -162,7 +162,7 @@ def main():
     from maia2.inference import map_to_category, mirror_move
     prepared = inference.prepare()
     maia = maia_model.from_pretrained(type=args.maia_type, device=str(dev))
-    from catspace.field import ReachabilityField
+    from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     field = ReachabilityField(device=args.device)
 
     tot_in = tot_valid = 0; tot_basep = 0.0; tot_done = 0

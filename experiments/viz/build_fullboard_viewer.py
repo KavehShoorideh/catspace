@@ -19,13 +19,13 @@ import chess
 import numpy as np
 import torch
 
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import derived_dir, generated_dir, newest_shard_dir
-from catspace.nn.eval_head import load_heads
-from catspace.nn.fb import load_ckpt, pick_device
-from catspace.viz.build_html import build_html
-from catspace.viz.realboard import (embed_positions, fit_projection, games_from_pgn,
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import load_heads
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
+from catspace.research.tools.viz.viz.build_html import build_html
+from catspace.research.tools.viz.viz.realboard import (embed_positions, fit_projection, games_from_pgn,
                                     infer_san, load_games_from_shard)
 
 COLS = ("packed", "meta", "ply", "clock", "eval_cp", "result", "white_elo", "black_elo", "game_id")
@@ -137,8 +137,8 @@ def main():
     # ---------------------------------------------------------- optional PGN games
     if args.pgn:
         t0 = time.time()
-        from catspace.data.encode import encode_meta, encode_packed
-        from catspace.nn.features import omega_ids
+        from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import omega_ids
         pgn_games = games_from_pgn(args.pgn)
         for gi, g in enumerate(pgn_games):
             n = len(g["plies"])

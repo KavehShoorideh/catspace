@@ -38,13 +38,13 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from catspace.data.certified import collect_certified_games
-from catspace.data.encode import board_from_packed
-from catspace.data.shards import sample_shard_rows
+from catspace.research.tools.chess_specific.chessdata.certified import collect_certified_games
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import sample_shard_rows
 from catspace.io.paths import newest_shard_dir
-from catspace.nn.eval_head import EvalHead
-from catspace.nn.fb import load_ckpt
-from catspace.viz.realboard import board_from_row, embed_positions, fit_projection
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
+from catspace.research.tools.viz.viz.realboard import board_from_row, embed_positions, fit_projection
 
 # columns pulled from each shard for the sampled rows (contract: packed/meta/
 # elo/clock/result/ply; game_id kept for provenance/debug).
@@ -56,7 +56,7 @@ def draw_pole(fb, shard_dir: Path, device, cap: int = 512):
     'distance to draw' map coloring (the white/black poles are zgoals MATE_W/B).
     None if the field is not quasimetric or no draws are found."""
     import torch
-    from catspace.nn.features import feature_planes
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes
     picks = []
     for path in sorted(shard_dir.glob("shard_*.npz")):
         npz = np.load(path)
@@ -200,8 +200,8 @@ def main():
     # params. The projector fits the 2-D atlas AND persists an out-of-sample
     # transform so the server can map the live board's F into the same map.
     t0 = time.time()
-    from catspace.viz.projection import Normalizer
-    from catspace.viz.manifold import make_projector, save_projector, clean_params
+    from catspace.research.tools.viz.viz.projection import Normalizer
+    from catspace.research.tools.viz.viz.manifold import make_projector, save_projector, clean_params
     normalizer = Normalizer.fit(F)
     Fn = normalizer.apply(F)
     mparams = clean_params(args.algo, dict(

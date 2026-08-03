@@ -25,9 +25,9 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from catspace.engine.fields import FieldModel
-from catspace.engine.introspection import ProbeKit
-from catspace.nn.mcts import MCTS
+from catspace.fields import FieldModel
+from catspace.introspection import ProbeKit
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
 from experiments.bootstrap_mate_engine import (OnlineMateBank, harvest, make_batched_energy_prior,
                                                make_boot_value, make_planner, mat_sig)
 
@@ -570,7 +570,7 @@ class Session:
             else:                            # 'Calculate more' (after finish) reuse it
                 self._calc_resume = None
             try:
-                from catspace.metrics import observe
+                from catspace.research.tools.stats_eval.metrics import observe
                 tot = time.time() - t_run
                 acc = 0.0
                 for st, key in (("prior", "prior_s"), ("embF", "embedF_s"),
@@ -704,7 +704,7 @@ class H(BaseHTTPRequestHandler):
             with open(USAGE, "a") as f:
                 f.write(json.dumps({"ts": time.time(), "path": path, "code": code,
                                     "ms": round(ms, 1)}) + "\n")
-            from catspace.metrics import count, observe
+            from catspace.research.tools.stats_eval.metrics import count, observe
             count(path); observe("http", ms / 1000.0)
         except Exception:
             pass
@@ -730,7 +730,7 @@ class H(BaseHTTPRequestHandler):
 
     def _get(self):
         if self.path == "/metrics":
-            from catspace.metrics import latest
+            from catspace.research.tools.stats_eval.metrics import latest
             self._send(200, latest(), "text/plain; version=0.0.4")
         elif self.path == "/health":
             self._send(200, {"ok": True, "banks": {"win": len(self.S.bank),

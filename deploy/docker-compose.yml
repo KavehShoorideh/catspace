@@ -35,7 +35,7 @@ services:
       qdrant: { condition: service_healthy }
     command: >
       python -c "import sys; sys.path.insert(0,'.');
-      from catspace.vectordb import sync_banks;
+      from catspace.research.components.memory.approaches.vector_store_retrieval.src.vectordb import sync_banks;
       print(sync_banks('data/derived/sep/lichess_mc2.pt',
                        'artifacts/experiments/assistant'))"
 
