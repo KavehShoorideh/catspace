@@ -1,1 +1,1 @@
-../experiments/launch.sh
+../catspace/research/tools/training_infra/launch.sh

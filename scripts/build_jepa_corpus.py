@@ -1,1 +1,1 @@
-../experiments/build_jepa_corpus.py
+../catspace/research/components/encoder/approaches/jepa_tokenizer/experiments/build_jepa_corpus.py

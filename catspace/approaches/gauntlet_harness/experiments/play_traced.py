@@ -50,7 +50,7 @@ def make_planner(args, dev):
                           for f in miss])
 
     if bank.encoder == "trunk":
-        from catspace.encoder import ReachabilityField
+        from catspace.research.components.encoder.approaches.reachability_field.src import ReachabilityField
         rf = ReachabilityField()
 
         def embed(boards):

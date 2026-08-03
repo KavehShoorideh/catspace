@@ -36,7 +36,7 @@ from catspace.io import paths
 
 def load_head(name, dev):
     if name == "trunk":
-        from catspace.encoder import ReachabilityField
+        from catspace.research.components.encoder.approaches.reachability_field.src import ReachabilityField
         rf = ReachabilityField()
 
         def emb(boards):
