@@ -9,7 +9,8 @@ call degrades to a no-op on any mlflow failure.
 from __future__ import annotations
 
 import contextlib
-from pathlib import Path
+
+from catspace.io.paths import mlflow_uri
 
 
 def _mlflow():
@@ -17,7 +18,7 @@ def _mlflow():
         import mlflow
         # sqlite backend (mlflow >= 3.14 deprecates the ./mlruns file store);
         # browse with: mlflow ui --backend-store-uri sqlite:///mlflow.db
-        mlflow.set_tracking_uri(f"sqlite:///{Path(__file__).resolve().parents[1] / 'mlflow.db'}")
+        mlflow.set_tracking_uri(mlflow_uri())
         return mlflow
     except Exception:
         return None

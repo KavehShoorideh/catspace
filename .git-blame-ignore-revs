@@ -1,0 +1,7 @@
+# Bulk-move commits from the 2026-08-03 restructure (see repo_structure.md).
+# These only relocate files; they carry no logic changes worth blaming.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Append the move commit SHAs below as each migration phase lands.
