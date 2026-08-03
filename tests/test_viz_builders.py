@@ -6,10 +6,10 @@ import chess
 import numpy as np
 import pytest
 
-from catspace.data.encode import encode_meta, encode_packed
-from catspace.viz.build_html import build_html
-from catspace.viz.payload import json_default
-from catspace.viz.realboard import (board_svg, embed_positions, fit_projection,
+from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed
+from catspace.research.tools.viz.viz.build_html import build_html
+from catspace.research.tools.viz.viz.payload import json_default
+from catspace.research.tools.viz.viz.realboard import (board_svg, embed_positions, fit_projection,
                                     games_from_pgn, infer_san, load_games_from_shard)
 
 

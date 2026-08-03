@@ -7,8 +7,8 @@ from __future__ import annotations
 import chess
 import numpy as np
 
-from catspace.nn.mcts import MCTS
-from catspace.planner.cascade import Candidate, Decision, DecisionCascade
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
+from catspace.research.components.planner.approaches.subgoal_cascade.src.cascade import Candidate, Decision, DecisionCascade
 
 MATE_IN_1 = "6k1/8/6K1/Q7/8/8/8/8 w - - 0 1"          # Qd8# (verified in test_probe)
 ROOMY = "2k5/8/8/8/8/8/R6P/2K3R1 w - - 0 1"
@@ -63,7 +63,7 @@ def test_certified_draw_ceiling_offers_draw():
 
 
 def _pr(value, lo, hi):
-    from catspace.planner.probe import ProbeResult
+    from catspace.research.components.planner.approaches.subgoal_cascade.src.probe import ProbeResult
     return ProbeResult(value=value, best_move=None, lo=lo, hi=hi)
 
 

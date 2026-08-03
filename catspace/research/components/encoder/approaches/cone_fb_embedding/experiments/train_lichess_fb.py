@@ -1,0 +1,1139 @@
+#!/usr/bin/env python
+"""
+catspace/research/components/encoder/approaches/cone_fb_embedding/experiments/train_lichess_fb.py — train TorchFB (full-board Forward-Backward
+embedding) on Lichess position shards built by build_lichess_shards.py.
+
+Holdout: every game with game_id % 50 == 0 is never trained on; validation
+retrieval and the reach-slope verdicts use only those games.
+
+Verdicts printed at the end:
+  VAL_TOP1     in-batch retrieval acc at batch size --batch (chance ~1/batch)
+  REACH_SLOPE_WON / _LOST  mean per-game spearman(ply, F(s)@zMATE_W) on
+               held-out won/lost games -- the cone must tighten toward the
+               mate as a WON game progresses; lost games should not.
+
+Resumable: if --ckpt exists it is loaded (model+optimizer+step) and training
+continues to --steps total.
+
+LR schedule: cosine decay from --lr down to --lr-min, spanning THIS
+invocation's remaining steps (resume step -> --steps), not the whole
+training history -- each `--steps` extension gets its own fresh decay.
+2026-07-11 finding: a 30k-step extension at a CONSTANT lr=3e-4 (no decay)
+measurably hurt downstream planner quality (decompose FRAC_IMPROVED 0.833
+-> 0.617, MEAN_GAIN 0.417 -> 0.310) even though raw retrieval loss looked
+fine -- consistent with the literature on InfoNCE-style contrastive training
+being prone to representation drift/dimensional collapse under a
+non-decaying LR (SimCLR/CLIP both decay to ~1/10 of peak). See JOURNAL.md.
+"""
+from __future__ import annotations
+
+import argparse
+import math
+import time
+from collections import deque
+from pathlib import Path
+
+import numpy as np
+import torch
+
+from catspace.research.tools.stats_eval.audit import build_provenance, is_provenance_clean
+from catspace.research.tools.chess_specific.chessdata.certified import collect_certified_games
+from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed
+from catspace.research.tools.chess_specific.chessdata.shards import LichessPairSource, MixedPairSource
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.hard_negatives import irreversible_sibling_pairs
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.unreachable import provably_unreachable
+from catspace.io.paths import derived_dir, newest_shard_dir
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import TorchFB, load_ckpt, pick_device, save_ckpt
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
+
+HOLDOUT_MOD = 50
+
+
+def batch_tensors(batch, device):
+    """PairBatch -> (planes_s, omega_s, planes_g, ply_gap) on device, holdout
+    rows dropped.
+
+    2026-07-12: the --winner-pov-only filter (round 11) is REMOVED, per
+    Kaveh. Rationale: (a) the good/bad information is already IN the data
+    -- a goal position that is a mate for the mover is a good future, a
+    mate against them is a bad one; the loss should see both and learn the
+    geometry of each, not have losing trajectories censored out; (b) the
+    ply-gap calibration term specifically NEEDS unrecoverable losing
+    trajectories to learn what "no way back" looks like as a distance --
+    filtering them out deletes exactly that training signal; (c) the
+    filter interacted pathologically with the batch-size skip guard in
+    main() (keeping ~48% of a 512-row batch lands right under the
+    batch//2=256 skip threshold, so most batches were built then thrown
+    away -- the round-13 first launch spun for 35 min without completing
+    100 steps because of this)."""
+    train_mask = (batch.meta["game_id"] % HOLDOUT_MOD) != 0
+    if not train_mask.any():
+        return None
+    idx = np.flatnonzero(train_mask)
+    planes_s = feature_planes(batch.anchors[idx], batch.meta["board_meta"][idx])
+    planes_g = feature_planes(batch.goals[idx], batch.meta["board_meta_g"][idx])
+    om = omega_ids(batch.meta["white_elo"][idx], batch.meta["black_elo"][idx],
+                   batch.meta["clock"][idx])
+    if "regime" in batch.meta:                      # multichannel column 3 (0 = human/base)
+        om = np.concatenate([om, batch.meta["regime"][idx][:, None].astype(np.int64)], axis=1)
+    ply_gap = (batch.meta["ply_g"][idx].astype(np.float32)
+               - batch.meta["ply"][idx].astype(np.float32))
+    # material strictly decreased from anchor to goal: the pair crossed a
+    # capture, so the REVERSE hop (goal -> anchor) is impossible in real
+    # chess -- the asymmetry-margin term (loss_fn) trains on exactly these
+    material_drop = (np.bitwise_count(batch.anchors[idx]).sum(axis=1)
+                     > np.bitwise_count(batch.goals[idx]).sum(axis=1))
+    # game result per anchor (+1 White win / 0 draw / -1 Black win) for the
+    # outcome-poles/axis losses. Already used for zgoals -- not an eval-leak signal.
+    result = batch.meta["result"][idx].astype(np.float32)
+    pte = batch.meta.get("plies_to_end")
+    plies_to_end = (pte[idx].astype(np.float32) if pte is not None
+                    else np.full(len(idx), 1e6, dtype=np.float32))
+    out = [torch.from_numpy(planes_s).to(device),
+           torch.from_numpy(om).to(device),
+           torch.from_numpy(planes_g).to(device),
+           torch.from_numpy(ply_gap).to(device),
+           torch.from_numpy(material_drop).to(device),
+           torch.from_numpy(result).to(device),
+           torch.from_numpy(plies_to_end).to(device)]
+    # QRL successor (1-ply transition s->s') + valid mask, when the source
+    # provides it. valid = successor is a real distinct position (not a game's
+    # last row, where succ==self would give a trivial d(s,s)=0 constraint).
+    if "packed_succ" in batch.meta:
+        planes_succ = feature_planes(batch.meta["packed_succ"][idx],
+                                     batch.meta["board_meta_succ"][idx])
+        valid = ~batch.meta["succ_is_last"][idx]
+        out.append(torch.from_numpy(planes_succ).to(device))
+        out.append(torch.from_numpy(valid).to(device))
+    return tuple(out)
+
+
+def collect_holdout(src: LichessPairSource, n_batches: int, batch_size: int, seed: int):
+    """Fixed holdout pair batches (packed+meta kept small; planes built lazily)."""
+    out = []
+    buf_a, buf_g, buf_ma, buf_mg, buf_om = [], [], [], [], []
+    for batch in src.batches(batch_size, seed):
+        held = np.flatnonzero(batch.meta["game_id"] % HOLDOUT_MOD == 0)
+        if held.size == 0:
+            continue
+        buf_a.append(batch.anchors[held]); buf_g.append(batch.goals[held])
+        buf_ma.append(batch.meta["board_meta"][held]); buf_mg.append(batch.meta["board_meta_g"][held])
+        buf_om.append(omega_ids(batch.meta["white_elo"][held], batch.meta["black_elo"][held],
+                                batch.meta["clock"][held]))
+        if sum(len(a) for a in buf_a) >= n_batches * batch_size:
+            break
+    a = np.concatenate(buf_a); g = np.concatenate(buf_g)
+    ma = np.concatenate(buf_ma); mg = np.concatenate(buf_mg); om = np.concatenate(buf_om)
+    for i in range(0, min(len(a), n_batches * batch_size), batch_size):
+        sl = slice(i, i + batch_size)
+        if len(a[sl]) == batch_size:
+            out.append((a[sl], ma[sl], om[sl], g[sl], mg[sl]))
+    return out
+
+
+@torch.no_grad()
+def val_metrics(fb, holdout, device):
+    fb.eval()
+    top1s, top8s, losses = [], [], []
+    for a, ma, om, g, mg in holdout:
+        ps = torch.from_numpy(feature_planes(a, ma)).to(device)
+        pg = torch.from_numpy(feature_planes(g, mg)).to(device)
+        o = torch.from_numpy(om).to(device)
+        f = fb.embed_F(ps, o); b = fb.embed_B(pg)
+        logits = fb.score_matrix(f, b) / fb.tau
+        target = torch.arange(len(f), device=device)
+        losses.append(float(torch.nn.functional.cross_entropy(logits, target)))
+        ranks = (logits >= logits.gather(1, target[:, None])).sum(1)
+        top1s.append(float((ranks <= 1).float().mean()))
+        top8s.append(float((ranks <= 8).float().mean()))
+    fb.train()
+    return float(np.mean(losses)), float(np.mean(top1s)), float(np.mean(top8s))
+
+
+def collect_mate_finals(shard_dir: Path, cap: int = 2048) -> dict:
+    """(packed, meta) of final CHECKMATE positions of decisive games
+    (include_final=True stored them), keyed by white-POV result (MATE_W =
+    result +1). The shard scan is the expensive half of zgoal building —
+    do it ONCE, re-embed at every save."""
+    finals = {1: [], -1: []}
+    for path in sorted(shard_dir.glob("shard_*.npz")):
+        npz = np.load(path)
+        gid, result = npz["game_id"], npz["result"]      # bind once (NpzFile re-reads per access)
+        packed, meta = npz["packed"], npz["meta"]
+        last = np.flatnonzero(np.r_[np.diff(gid) != 0, True])
+        for row in last:
+            res = int(result[row])
+            if res == 0 or len(finals[res]) >= cap:
+                continue
+            board = board_from_packed(packed[row], meta[row])
+            if board.is_checkmate():
+                finals[res].append((packed[row], meta[row]))
+        if all(len(v) >= cap for v in finals.values()):
+            break
+    return finals
+
+
+def embed_zgoals(fb, finals: dict, device, verbose: bool = False) -> dict:
+    """zMATE_W / zMATE_B = mean B over the collected mate finals under the
+    CURRENT weights, plus MATE_DIFF (the outcome direction: cancels the
+    "generic finality" component the two mate goals share — diagnosed
+    2026-07-11, it made raw reach slopes identical for won and lost games).
+    Attached at every periodic save so an interrupted run still leaves a
+    planner-usable checkpoint (the 2026-07-11 zgoals-less checkpoint bug)."""
+    was_training = fb.training
+    fb.eval()
+    zgoals = {}
+    with torch.no_grad():
+        for res, name in ((1, "MATE_W"), (-1, "MATE_B")):
+            rows = finals[res]
+            packed = np.stack([r[0] for r in rows]); meta = np.stack([r[1] for r in rows])
+            planes = torch.from_numpy(feature_planes(packed, meta)).to(device)
+            zgoals[name] = fb.embed_B(planes).mean(dim=0).cpu()   # FAR centroid
+            if getattr(fb, "two_horizon", False):
+                # NEAR centroid too -- the near readout's default goal (the
+                # policy may swap in a near exemplar BANK at eval time, since
+                # centroids are flat; centroid kept as a cheap baseline)
+                zgoals[name + "_NEAR"] = fb.embed_B_near(planes).mean(dim=0).cpu()
+            if verbose:
+                print(f"zgoal {name}: {len(rows)} checkmate finals")
+    zgoals["MATE_DIFF"] = zgoals["MATE_W"] - zgoals["MATE_B"]
+    if getattr(fb, "outcome_poles", False):
+        # unify the goal: the planner should navigate toward the LEARNED win pole
+        # (the vector F was organised around), not the checkmate-centroid
+        # side-channel. Keep the centroids under *_CENTROID for reference.
+        with torch.no_grad():
+            p = torch.nn.functional.normalize(fb.poles.detach(), dim=1).cpu()
+        zgoals["MATE_W_CENTROID"], zgoals["MATE_B_CENTROID"] = zgoals["MATE_W"], zgoals["MATE_B"]
+        zgoals["POLE_B"], zgoals["POLE_D"], zgoals["POLE_W"] = p[0], p[1], p[2]
+        zgoals["MATE_W"], zgoals["MATE_B"] = p[2], p[0]           # win / loss pole
+        zgoals["MATE_DIFF"] = p[2] - p[0]
+        if verbose:
+            print("zgoals: MATE_W/B overridden with learned win/loss POLES")
+    if was_training:
+        fb.train()
+    return zgoals
+
+
+def build_zgoals(shard_dir: Path, fb, device, cap: int = 2048) -> dict:
+    return embed_zgoals(fb, collect_mate_finals(shard_dir, cap), device, verbose=True)
+
+
+def reach_slope(shard_dir: Path, fb, z, device, want_result: int, n_games: int = 200):
+    """Mean per-game spearman(ply, reach) over held-out games with the given
+    result -- the trajectory-level sanity check of the cone."""
+    from scipy.stats import spearmanr
+    rhos = []
+    for path in sorted(shard_dir.glob("shard_*.npz")):
+        npz = np.load(path)
+        data = {k: npz[k] for k in npz.files}            # bind once (NpzFile re-reads per access)
+        gid = data["game_id"]
+        held = (gid % HOLDOUT_MOD == 0) & (data["result"] == want_result)
+        for g in np.unique(gid[held]):
+            lo, hi = np.searchsorted(gid, [g, g + 1])    # gid non-decreasing within a shard
+            rows = np.arange(lo, hi)
+            if len(rows) < 10:
+                continue
+            planes = torch.from_numpy(feature_planes(data["packed"][rows], data["meta"][rows])).to(device)
+            om = torch.from_numpy(omega_ids(data["white_elo"][rows], data["black_elo"][rows],
+                                            data["clock"][rows])).to(device)
+            with torch.no_grad():
+                reach = fb.score(fb.embed_F(planes, om), z.to(device)).cpu().numpy()
+            rho = spearmanr(data["ply"][rows], reach).statistic
+            if np.isfinite(rho):
+                rhos.append(rho)
+            if len(rhos) >= n_games:
+                return float(np.mean(rhos)), len(rhos)
+    return float(np.mean(rhos)) if rhos else float("nan"), len(rhos)
+
+
+# --- L2 field: embedding<->objective presets + guards (Kaveh 2026-07-21) -------------------------
+# IQE is a metric embedding, so it MUST train with a metric objective (QRL), never InfoNCE (which is
+# scale-blind, ignores the triangle inequality, and collapses IQE to loss=ln(N) -- the 2026-07-21
+# footgun). Presets pin known-good (embedding, objective, scale) combos; 'custom' uses the raw flags.
+# IQE+QRL is the committed default. Extensible: add a row to L2_PRESETS and (if needed) a guard rule.
+L2_PRESETS = {
+    "iqe-qrl": dict(iqe=True, quasimetric=True, qrl_objective=True, iqe_embed_scale=1.0),
+    "mrn-qm":  dict(iqe=False, quasimetric=True, qrl_objective=False),   # MRN + ply-gap InfoNCE (legacy A/B)
+    "cosine":  dict(iqe=False, quasimetric=False, qrl_objective=False),  # plain InfoNCE cosine similarity
+}
+
+
+def apply_l2_preset(args):
+    """Expand --l2-preset into concrete (iqe, quasimetric, qrl_objective, iqe_embed_scale) flags.
+    'custom' leaves the raw flags untouched; a named preset OVERRIDES them so the combo is known-good."""
+    if args.l2_preset == "custom":
+        return
+    for k, v in L2_PRESETS[args.l2_preset].items():
+        setattr(args, k, v)
+
+
+def validate_l2_config(args):
+    """Guard the L2 field's embedding<->objective pairing -- fail-fast BEFORE the ~hour of training,
+    on an incompatible combo. Extensible: add rules here as new embeddings/objectives land."""
+    e = []
+    if args.iqe and not args.quasimetric:
+        e.append("--iqe requires --quasimetric (IQE IS a quasimetric distance head).")
+    if args.iqe and not args.qrl_objective:
+        e.append("IQE+InfoNCE is a category error: InfoNCE is scale-blind, ignores the triangle "
+                 "inequality, and collapses IQE to loss=ln(N). Use --qrl-objective / --l2-preset iqe-qrl.")
+    if args.qrl_objective and not args.quasimetric:
+        e.append("--qrl-objective needs a quasimetric distance (add --quasimetric, or use IQE).")
+    if args.iqe and args.qrl_objective and args.iqe_embed_scale > 5.0:
+        e.append(f"--iqe-embed-scale={args.iqe_embed_scale} too large for QRL (wants ~1; QRL sets its "
+                 "own scale). 50 is the InfoNCE-bootstrap footgun that collapsed the field 2026-07-21.")
+    if e:
+        raise SystemExit("L2 CONFIG ERROR [guard 2026-07-21; IQE<->QRL is the committed default]:\n  - "
+                         + "\n  - ".join(e))
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--shards", default=None, help="shard dir (default: newest under data/shards)")
+    ap.add_argument("--steps", type=int, default=8000)
+    ap.add_argument("--cert-base", action="store_true",
+                    help="certainty in the BASE objective (2026-07-15, toy-validated): "
+                         "win-prob head on F trained on game results (outcome-conditioned, "
+                         "no oracle), and for won games regress d(F(s), zgoal) to "
+                         "(plies_to_end + lam*(-ln P_head))/scale -- the promoted toy "
+                         "target with the head standing in for rollout counts")
+    ap.add_argument("--cert-base-weight", type=float, default=1.0)
+    ap.add_argument("--phead-weight", type=float, default=0.3)
+    ap.add_argument("--committor-base", action="store_true",
+                    help="committor-in-base-objective (2026-07-16): train the 3-class "
+                         "outcome head (= multinomial committor over the W/D/L "
+                         "boundary surfaces) at --phead-weight alongside NCE+ply-gap; "
+                         "NO pole-distance cert term, no goal vectors -- play reads "
+                         "out via playout_ab --phead-b. The zero-training transfer "
+                         "result (cert_base's by-product phead beating toy-trained "
+                         "fields at depth) is this mode's floor.")
+    ap.add_argument("--committor-certified-only", action="store_true",
+                    help="train the committor/phead ONLY on board-certified outcomes -- "
+                         "CHECKMATE (proven win), DRAW, or a decisive win where the winner "
+                         "leads by >= --resign-material-gap points. Balanced-position resign/"
+                         "timeout wins are masked OUT of the outcome cross-entropy so a flag-"
+                         "fall/concession can't create a false win surface (Kaveh 2026-07-19). "
+                         "The field GEOMETRY still trains on ALL positions -- masked games "
+                         "apply to the geometry, just not the phead.")
+    ap.add_argument("--resign-material-gap", type=float, default=3.0,
+                    help="with --committor-certified-only, also certify a decisive non-mate "
+                         "win (resignation/timeout) when the winner leads by >= this many "
+                         "nominal points at the final position (Kaveh 2026-07-19: '3+ points'). "
+                         "Lower => more decisive games certified; very high => mates+draws only.")
+    ap.add_argument("--cert-lam", type=float, default=8.0)
+    ap.add_argument("--cert-scale", type=float, default=50.0)
+    ap.add_argument("--zgoal-refresh", type=int, default=2000,
+                    help="re-embed MATE_W/B goal centroids every N steps (they drift as F/B train)")
+    # -- DTM hinge (Kaveh 2026-07-19): ALIGNMENT term ------------------------
+    ap.add_argument("--dtm-hinge", default=None,
+                    help="tablebase distance-to-mate NPZ (catspace/research/components/planner/approaches/endgame_groundtruth/experiments/gen_dtm_data.py). "
+                         "Auxiliary loss regressing d(F(s), MATE_W) -> dtm (plies) on "
+                         "WON endgame positions. This is the ALIGNMENT lever: it gives "
+                         "the metric a mate-POINTING gradient in tablebase range (where "
+                         "human data is empty), the missing half of the sharp+aligned "
+                         "recipe (QRL gives sharpness, this gives direction).")
+    ap.add_argument("--dtm-weight", type=float, default=1.0)
+    ap.add_argument("--dtm-batch", type=int, default=256)
+    ap.add_argument("--dtm-bank", type=int, default=384,
+                    help="SURFACE bank size for the composed hinge (Kaveh 2026-07-19: "
+                         "mate is a SURFACE not a pole). Instead of regressing d(F(s), "
+                         "MATE_W centroid) -- which can't order diverse endgames -- "
+                         "regress the COMPOSED distance min_g[d(F(s),B(g))+dtm(g)] over "
+                         "a bank of DTM waypoints g toward the true dtm(s). The min picks "
+                         "the nearest useful waypoint (surface, not mean). 0 = old centroid.")
+    ap.add_argument("--dtm-scale", type=float, default=1.0,
+                    help="divide dtm plies by this to match the field's distance units. "
+                         "QRL unit-step => distances ARE in plies => 1.0. An InfoNCE "
+                         "embed-scale field needs ~cert-scale here.")
+    ap.add_argument("--batch", type=int, default=512)
+    ap.add_argument("--d", type=int, default=64)
+    ap.add_argument("--iqe", action="store_true",
+                    help="Interval Quasimetric Embedding distance head (merged paper): "
+                         "valid+universal quasimetric BY CONSTRUCTION, replaces the "
+                         "MRN metric_scale/W score. Right geometry for the field.")
+    ap.add_argument("--iqe-components", type=int, default=32,
+                    help="IQE component count (d must divide it); k=d/components "
+                         "is the per-component interval-union dim")
+    ap.add_argument("--iqe-embed-scale", type=float, default=50.0,
+                    help="fixed scale on IQE embeddings (un-normalized). 50 bootstraps "
+                         "InfoNCE; use ~1 with --qrl-objective (QRL sets its own scale "
+                         "via the push offset + unit-step constraint).")
+    ap.add_argument("--qrl-objective", action="store_true",
+                    help="train the IQE/quasimetric with the QRL objective (Wang et al. "
+                         "2023) it was DESIGNED for -- global push softplus(offset-d) on "
+                         "random pairs + local d(s,s')<=1 constraint (dual-ascent lambda), "
+                         "NO InfoNCE. Fixes the interval collapse InfoNCE leaves.")
+    ap.add_argument("--l2-preset", choices=list(L2_PRESETS) + ["custom"], default="iqe-qrl",
+                    help="L2 field embedding<->objective preset (COMMITTED DEFAULT iqe-qrl). A named "
+                         "preset overrides --iqe/--quasimetric/--qrl-objective/--iqe-embed-scale with a "
+                         "known-good combo; 'custom' respects the raw flags. All go through "
+                         "validate_l2_config, which rejects IQE+InfoNCE and the scale-50 footgun.")
+    ap.add_argument("--qrl-lambda-lr", type=float, default=0.01,
+                    help="dedicated LR for the QRL Lagrange multiplier (dual ascent), "
+                         "excluded from the cosine schedule. Higher = constraint tracks "
+                         "faster so the global push can't inflate the unit-step distance.")
+    ap.add_argument("--qrl-var-weight", type=float, default=0.0,
+                    help="VICReg variance-regularization weight (anti-collapse): hinges "
+                         "each embedding dim's std up to --qrl-var-target so adjacent "
+                         "positions can't squash together (d_step->0). Cures the QRL "
+                         "collapse/oscillation directly.")
+    ap.add_argument("--qrl-var-target", type=float, default=1.0,
+                    help="target per-dimension std for the variance regularizer")
+    ap.add_argument("--struct-weight", type=float, default=0.0,
+                    help="MULTI-TASK anti-collapse (2026-07-21): weight of a piece-placement "
+                         "reconstruction head on F(s) -- the field is REWARDED to encode board "
+                         "structure in its dims, not just value, breaking the ~1D value collapse "
+                         "(effective rank 1.1). Fixes the correlated collapse the var term can't.")
+    ap.add_argument("--qrl-push-mix", type=float, default=0.0,
+                    help="blend of real (coupled, anti-collapse) vs shuffled (far-scale) "
+                         "push pairs, in [0,1]. 0=shuffle only, 1=real only, 0.5=mix. "
+                         "The mix lets a big offset spread without collapsing d_step.")
+    ap.add_argument("--qrl-goal-pool", type=int, default=8192,
+                    help="rolling cross-batch goal-pool size for the push (dataset-wide "
+                         "p_goal -> genuinely far pairs so the metric spreads). 0 = in-batch "
+                         "shuffle only (leaves d_rand flat on low-diversity batches).")
+    ap.add_argument("--qrl-unreach-weight", type=float, default=8.0,
+                    help="weight on the CERTIFIED directional repulsion: push pairs whose "
+                         "s->g direction is provably illegal (count monotonicity, castling, "
+                         "pawn forward-cone matching -- nn/unreachable.py) are hinged above "
+                         "--qrl-unreach-floor. ~90%% of cross-game pairs; zero extra embeds. "
+                         "Replaces the sibling hinge. 0 disables.")
+    ap.add_argument("--qrl-unreach-floor", type=float, default=30.0,
+                    help="floor for certified-unreachable pairs (one-sided hinge; ~2x offset)")
+    ap.add_argument("--qrl-sib-weight", type=float, default=0.0,
+                    help="weight on irreversibility-sibling repulsion: pairs one ply "
+                         "apart through DIVERGENT irreversible moves (different pawn / "
+                         "different capture square) are PROVABLY mutually unreachable -- "
+                         "hinge BOTH directed distances above --qrl-sib-floor. DEPRECATED "
+                         "in favor of --qrl-unreach-weight (default 0).")
+    ap.add_argument("--qrl-sib-floor", type=float, default=30.0,
+                    help="unreachability floor for sibling pairs (a one-sided hinge -- a "
+                         "FLOOR, not a target: no force pulls d back down). Set ~2x the "
+                         "push offset so provably-impossible pairs sit strictly above "
+                         "merely-far reachable ones.")
+    ap.add_argument("--qrl-sib-cap", type=int, default=48,
+                    help="max sibling pairs per step (throughput guard)")
+    ap.add_argument("--qrl-halt-on-collapse", action="store_true",
+                    help="stop the run (SystemExit) when the collapse detector fires "
+                         "(d_step->0 or d_rand not spreading), instead of just warning. "
+                         "Use on long unattended runs so a collapse doesn't waste hours.")
+    ap.add_argument("--qrl-two-sided", action="store_true",
+                    help="pin d(s,s') to EXACTLY 1 (penalize below and above), forbidding "
+                         "the d_step->0 collapse. Correct for chess (every 1-ply move is "
+                         "one step); the fix that lets a big offset train stably.")
+    ap.add_argument("--qrl-use-pid", action="store_true",
+                    help="PID-Lagrangian multiplier (Stooke 2020) instead of plain dual "
+                         "ascent: the derivative term damps the oscillation that made "
+                         "d_step swing/collapse. Enables a stable big offset.")
+    ap.add_argument("--qrl-pid-kp", type=float, default=0.5, help="PID proportional gain")
+    ap.add_argument("--qrl-pid-ki", type=float, default=0.01, help="PID integral gain (= dual-ascent lr)")
+    ap.add_argument("--qrl-pid-kd", type=float, default=2.0, help="PID derivative gain (the damping term)")
+    ap.add_argument("--qrl-pid-eclip", type=float, default=0.0,
+                    help="clip the violation fed to the PID (0=off). The lam-spike "
+                         "implosion: a transient sq_dev 45.5 through kp+kd made lam "
+                         "134 in one interval; clip so the controller answers "
+                         "SUSTAINED violation, not spikes. Try 3.0.")
+    ap.add_argument("--qrl-lambda-max", type=float, default=0.0,
+                    help="hard cap on the PID multiplier + anti-windup on I (0=off). "
+                         "Set at the force-balance scale (push+hinge ~8-16): try 20.")
+    ap.add_argument("--omega-free-field", action="store_true",
+                    help="drop omega (Elo/clock) from F: the quasimetric geometry is "
+                         "player-INDEPENDENT best-case reachability; omega belongs on "
+                         "the committor/measure side only (two-primitive doctrine).")
+    ap.add_argument("--freeze-iqe-scale", action="store_true",
+                    help="freeze the IQE global log_scale at 1x (we compare distances, "
+                         "not need absolute ply counts) -> removes the scalar escape "
+                         "valve; iqe-embed-scale becomes the sole fixed scale knob.")
+    ap.add_argument("--spectral-norm", action="store_true",
+                    help="spectral-normalize the encoder/head Conv+Linear layers "
+                         "(bound the Lipschitz constant so the QRL push/hinge can't "
+                         "inflate the embedding scale without bound -> lambda stops "
+                         "diverging; the scale-growth fix, 2026-07-18).")
+    ap.add_argument("--iqe-leak-beta", type=float, default=0.0,
+                    help="LEAKY IQE (Kaveh): replace the interval hard max with "
+                         "softplus at this inverse temperature so d is never exactly "
+                         "flat at 0 -- the ordering-collapse dead zone keeps an "
+                         "exponentially small escape gradient. 0=exact paper IQE. "
+                         "Try 10 (bias ~log2/beta per interval; eps-quasimetric).")
+    ap.add_argument("--qrl-push-real", action="store_true",
+                    help="push over REAL anchor->future pairs (coupled to the 1-ply "
+                         "constraint via shared positions -> prevents the d_step->0 "
+                         "collapse) instead of shuffled cross-batch pairs.")
+    ap.add_argument("--qrl-push-offset", type=float, default=40.0,
+                    help="QRL global-push target distance (plies). Set WELL beyond the "
+                         "longest forcing line so reachable long lines (chained to their "
+                         "true ply length) stay closer than unreachable random pairs -- "
+                         "it is a saturating prior, NOT a horizon cap.")
+    ap.add_argument("--channels", type=int, default=64, help="trunk conv width")
+    ap.add_argument("--blocks", type=int, default=6, help="trunk residual blocks")
+    ap.add_argument("--enc-out", type=int, default=256, help="encoder output dim")
+    ap.add_argument("--dh", type=int, default=512, help="head hidden dim")
+    ap.add_argument("--l1-metric-scale", type=float, default=0.0,
+                    help="L1 tax on the per-dimension quasimetric metric_scale "
+                         "(2026-07-16): prices DISTANCE dimensions so a wide "
+                         "embedding allocates them sparsely/per-pattern, letting "
+                         "rare regimes decouple from the frequent one instead of "
+                         "being dragged as undefended collateral (effective rank "
+                         "was ~7/64 regardless of width; drift ratio 1.71). The "
+                         "representation stays free; only the metric is taxed.")
+    ap.add_argument("--l1-warmup", type=int, default=10000,
+                    help="steps of 0 L1 before the tax ramps in (explore wide "
+                         "first, then sparsify)")
+    ap.add_argument("--unreach-weight", type=float, default=0.0,
+                    help="monotonicity hard-negative repulsion (2026-07-16): "
+                         "each step, add one piece to every anchor -> a provably "
+                         "unreachable goal (count strictly up), and push its "
+                         "d(F(s),B(neg)) above a batch-relative margin. Exact, "
+                         "free, directional hard negatives to speed separation; "
+                         "quasimetric-safe (inf is allowed). GATE on not taxing "
+                         "short-horizon sharpness (asymmetry-hinge precedent).")
+    ap.add_argument("--unreach-margin-q", type=float, default=0.9,
+                    help="margin = this quantile of the batch's positive-pair "
+                         "distances + 0.25 (push negatives beyond reachable mass)")
+    ap.add_argument("--horizon-k", type=float, default=0.0,
+                    help="bound the quasimetric at k plies: calibrate distance to "
+                         "min(k, ply_gap)/scale (Kaveh 2026-07-16). k~=10 makes the "
+                         "measured ~10-ply retrieval horizon explicit; beyond-k "
+                         "positions become the natural contrast class.")
+    ap.add_argument("--quasimetric", action="store_true",
+                    help="score(f,g) = -d(f,g)+r(f,g), d a real (triangle-inequality-"
+                         "respecting) metric, instead of a plain cosine dot product -- "
+                         "see nn/fb.py module docstring. Only meaningful with --fresh "
+                         "(resuming inherits quasimetric from the checkpoint's own config)")
+    ap.add_argument("--ply-gap-weight", type=float, default=0.05,
+                    help="quasimetric-only: weight of the MSE(d(f,g), ply_gap/scale) term "
+                         "that calibrates the metric's ABSOLUTE scale to real move-distance "
+                         "-- in-batch retrieval alone only enforces relative ranking. 0 disables.")
+    ap.add_argument("--ply-gap-scale", type=float, default=50.0,
+                    help="normalizer for the ply-gap target (roughly the pairing horizon's "
+                         "mean, so the regression target starts near O(1))")
+    ap.add_argument("--asym-weight", type=float, default=0.0,
+                    help="quasimetric-only: weight of the asymmetry-margin hinge -- pairs "
+                         "whose material dropped anchor->goal train d(reverse) > d(forward) "
+                         "+ margin (you can't un-capture; derived from trajectory direction "
+                         "only). 0 disables (default).")
+    ap.add_argument("--asym-margin", type=float, default=0.2)
+    ap.add_argument("--two-horizon", action="store_true",
+                    help="two-horizon architecture (TWO_HORIZON_DESIGN.md): shared trunk + "
+                         "separate near/far heads; near trained on short-gap pairs (cosine), "
+                         "far on long-gap pairs (quasimetric + ply-gap). Forces quasimetric.")
+    ap.add_argument("--near-max", type=int, default=8, help="two-horizon: near head sees gap <= this")
+    ap.add_argument("--far-min", type=int, default=16, help="two-horizon: far head sees gap >= this")
+    ap.add_argument("--near-weight", type=float, default=1.0, help="two-horizon: weight on the near loss")
+    ap.add_argument("--distributional", action="store_true",
+                    help="option B (UNCERTAINTY_DESIGN.md): add a CATEGORICAL head predicting "
+                         "distance-to-goal over ply-gap bins (cross-entropy); quasimetric d stays "
+                         "the planning distance, categorical entropy = the uncertainty signal. "
+                         "Forces quasimetric.")
+    ap.add_argument("--n-bins", type=int, default=12, help="distributional: number of ply-gap bins")
+    ap.add_argument("--dist-weight", type=float, default=0.5, help="distributional: weight on the categorical loss")
+    ap.add_argument("--competence", action="store_true",
+                    help="Method 2 (training-integrated): add a head predicting the model's own "
+                         "per-anchor retrieval error (epistemic 'where I fit poorly'). Native, "
+                         "always-current competence signal for reliability-gated search.")
+    ap.add_argument("--competence-weight", type=float, default=0.1, help="weight on the competence head loss")
+    ap.add_argument("--outcome-poles", action="store_true",
+                    help="add 3 learnable terminal poles (loss/draw/win) and a loss that repels "
+                         "them and hinges each state's quasimetric HOPS so its own-outcome pole is "
+                         "closer than the others -- outcome-conditioned region separation. Forces "
+                         "quasimetric.")
+    ap.add_argument("--outcome-weight", type=float, default=0.3, help="weight on the outcome-poles loss")
+    ap.add_argument("--pole-tau", type=float, default=1.0,
+                    help="softmax temperature for the soft outcome-pole cross-entropy (higher = "
+                         "softer/gentler pull, less region compression)")
+    ap.add_argument("--pole-margin", type=float, default=3.0,
+                    help="minimum (scaled) distance kept between the three poles")
+    ap.add_argument("--repel-weight", type=float, default=0.0,
+                    help="cross-outcome repulsion (t-SNE-style, no attractor): push DIFFERENT-"
+                         "outcome anchor pairs apart in hops up to --repel-margin. Needs quasimetric; "
+                         "no new params (uses embed_B on anchors).")
+    ap.add_argument("--repel-margin", type=float, default=1.5,
+                    help="hops margin cross-outcome pairs are repelled up to (then force saturates)")
+    ap.add_argument("--concept-axes", type=int, default=0,
+                    help="number of learnable concept DIRECTIONS (slot 0 = outcome axis). Each "
+                         "concept separates from its opposite along its own axis; other dims stay "
+                         "free so different concepts' regions can overlap (multi-concept superposition).")
+    ap.add_argument("--axis-weight", type=float, default=0.5, help="outcome-axis hinge weight")
+    ap.add_argument("--axis-margin", type=float, default=1.0)
+    ap.add_argument("--axis-gate-plies", type=float, default=8.0,
+                    help="proximity gate: pull strength ~ exp(-plies_to_end/this)")
+    ap.add_argument("--regime-channels", type=int, default=0,
+                    help="MULTICHANNEL field (INQUIRY_MULTICHANNEL_FIELD.md): number of regime ids. "
+                         "0 = off. Regime 0 = human/base geometry (zero-anchored embedding, no-op); "
+                         ">=1 = generated play regimes conditioning F additively.")
+    ap.add_argument("--regime-relative", type=int, default=1,
+                    help="1 = regime conditioning is emb(r)-emb(0) so regime 0 is exactly the base")
+    ap.add_argument("--regime-shards", action="append", default=[],
+                    help="DIR:REGIME_ID:FRAC (repeatable) -- lichess-format shard dirs mixed in "
+                         "with the given regime tag and batch fraction, e.g. "
+                         "data/shards/regime_random_v1:1:0.15")
+    ap.add_argument("--selfplay-shards", default=None,
+                    help="dir of catspace/research/components/memory/approaches/experience_store/experiments/selfplay_generate.py output shards to MIX into "
+                         "training (holdout/val stay human-only for a stable reference)")
+    ap.add_argument("--selfplay-frac", type=float, default=0.3,
+                    help="fraction of TRAINING batches drawn from --selfplay-shards vs human data")
+    ap.add_argument("--gamma", type=float, default=0.98,
+                    help="pairing horizon: mean k=1+1/(1-gamma)=51 plies, on par with "
+                         "typical stored game length (0.99's 101 snapped ~all goals to "
+                         "final positions)")
+    ap.add_argument("--lr", type=float, default=3e-4)
+    ap.add_argument("--lr-min", type=float, default=None,
+                    help="cosine-decay floor for THIS invocation's remaining steps "
+                         "(resume step -> --steps); default lr/10 (SimCLR/CLIP convention)")
+    ap.add_argument("--resume-lr-scale", type=float, default=0.1,
+                    help="on RESUME, scale the cosine-schedule PEAK lr by this (default 0.1). Guards the "
+                         "resume-at-peak-lr footgun that collapses a converged field in ~200 steps "
+                         "(d_rand->0, seen 2026-07-21). Set 1.0 to disable.")
+    ap.add_argument("--device", default="auto")
+    ap.add_argument("--val-every", type=int, default=500)
+    ap.add_argument("--ckpt-every", type=int, default=0,
+                    help="also save a step-tagged LADDER checkpoint every N steps (kept, not "
+                         "overwritten) for early-stopping: eval the downstream metric across "
+                         "the ladder and pick/stop at the peak instead of a fixed --steps budget")
+    ap.add_argument("--ckpt", default=None, help="default: data/derived/lichess_fb.pt")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--fresh", action="store_true", help="ignore an existing checkpoint")
+    args = ap.parse_args()
+    apply_l2_preset(args)
+    validate_l2_config(args)
+    from contextlib import ExitStack
+    from catspace.research.tools.stats_eval.tracking import track_run
+    _trk_stack = ExitStack()
+    trk = _trk_stack.enter_context(track_run("lichess_fb", args,
+                                             run_name=Path(args.ckpt).stem if args.ckpt else None))
+    print(f"[L2] preset={args.l2_preset} -> iqe={args.iqe} quasimetric={args.quasimetric} "
+          f"qrl={args.qrl_objective} embed_scale={args.iqe_embed_scale}", flush=True)
+
+    shard_dir = Path(args.shards) if args.shards else newest_shard_dir()
+    ckpt_path = Path(args.ckpt) if args.ckpt else derived_dir() / "lichess_fb.pt"
+    device = pick_device(args.device)
+    print(f"shards={shard_dir.name} device={device} steps={args.steps} batch={args.batch} d={args.d} "
+          f"quasimetric={args.quasimetric} ply_gap_weight={args.ply_gap_weight} "
+          f"asym_weight={args.asym_weight} two_horizon={args.two_horizon}"
+          + (f" (near<={args.near_max}/far>={args.far_min})" if args.two_horizon else ""),
+          flush=True)
+
+    step = 0
+    regime_upgraded = False
+    if ckpt_path.exists() and not args.fresh:
+        fb, payload = load_ckpt(ckpt_path, device)
+        step = payload["step"]
+        print(f"resumed {ckpt_path.name} at step {step}")
+        # RESUME-UPGRADE to multichannel: rebuild with regime_channels (growing the regime
+        # table by zero-padding if it already exists) and carry every trained weight over.
+        # regime_relative makes regime 0 EXACTLY the base channel (emb(r) - emb(0)).
+        if args.regime_channels > fb.config.get("regime_channels", 0):
+            cfg = dict(fb.config); cfg["regime_channels"] = args.regime_channels
+            cfg["regime_relative"] = bool(args.regime_relative)
+            fb2 = TorchFB(**cfg)
+            state = dict(fb.state_dict())
+            if "emb_regime.weight" in state:                     # grow the table
+                old = state["emb_regime.weight"]
+                if cfg["regime_relative"]:
+                    # fold out the legacy absolute row 0 (drift, norm ~0.18): keeps the
+                    # LEARNED between-regime differences, re-anchors regime 0 at exactly 0
+                    old = old - old[0:1]
+                new = torch.zeros(args.regime_channels, old.shape[1])
+                new[: old.shape[0]] = old
+                state["emb_regime.weight"] = new
+            missing = set(fb2.state_dict()) - set(state)
+            assert missing <= {"emb_regime.weight"}, f"unexpected new params: {missing}"
+            fb2.load_state_dict(state, strict=False)
+            fb = fb2.to(device)
+            regime_upgraded = True
+            print(f"resume-upgraded to regime_channels={args.regime_channels} "
+                  f"relative={cfg['regime_relative']} (opt state dropped: fresh optimizer)", flush=True)
+    else:
+        fb = TorchFB(d=args.d, channels=args.channels, blocks=args.blocks,
+                     enc_out=args.enc_out, dh=args.dh,
+                     seed=args.seed, quasimetric=args.quasimetric,
+                     two_horizon=args.two_horizon, distributional=args.distributional,
+                     n_bins=args.n_bins, competence=args.competence,
+                     outcome_poles=args.outcome_poles, concept_axes=args.concept_axes,
+                     iqe=args.iqe, iqe_components=args.iqe_components,
+                     iqe_embed_scale=args.iqe_embed_scale,
+                     iqe_leak_beta=args.iqe_leak_beta,
+                     spectral_norm=args.spectral_norm,
+                     freeze_iqe_scale=args.freeze_iqe_scale,
+                     omega_free_field=args.omega_free_field,
+                     regime_channels=args.regime_channels)
+        print(f"model params: {sum(p.numel() for p in fb.parameters())/1e6:.1f}M "
+              f"(d={args.d} channels={args.channels} blocks={args.blocks} enc_out={args.enc_out})")
+        fb.to(device)
+    start_step = step                      # cosine decay spans [start_step, args.steps)
+    # RESUME GUARD (2026-07-21): a resumed (converged) field must NOT be hit with the full peak lr --
+    # that collapses it in ~200 steps (d_rand->0). Scale the peak down on resume.
+    lr_peak = args.lr * args.resume_lr_scale if start_step > 0 else args.lr
+    lr_min = args.lr_min if args.lr_min is not None else lr_peak / 10
+    if start_step > 0 and args.resume_lr_scale != 1.0:
+        print(f"[resume] peak lr scaled {args.lr:.2e} -> {lr_peak:.2e} (x{args.resume_lr_scale}) to "
+              f"protect the converged field; --resume-lr-scale 1.0 to disable", flush=True)
+    if args.qrl_objective and getattr(fb, "quasimetric", False):
+        # the Lagrange multiplier gets its OWN, higher LR and is excluded from
+        # the cosine schedule: dual ascent must track the constraint fast enough
+        # to keep the global push from inflating the 1-ply step distance.
+        main_params = [p for n, p in fb.named_parameters() if n != "qrl_raw_lambda"]
+        opt = torch.optim.AdamW(main_params, lr=args.lr)
+        opt.add_param_group({"params": [fb.qrl_raw_lambda], "lr": args.qrl_lambda_lr,
+                             "is_lambda": True, "weight_decay": 0.0})
+        # ^ no weight decay: AdamW's default 0.01 would pull raw_lambda -> 0 every
+        # step, fighting the grad_reverse dual ascent (adversarial-review finding).
+    else:
+        opt = torch.optim.AdamW(fb.parameters(), lr=args.lr)
+    if ckpt_path.exists() and not args.fresh and not regime_upgraded:
+        # (regime_upgraded: the moments are shaped for the pre-surgery table -- fresh optimizer)
+        payload = torch.load(ckpt_path, map_location=device, weights_only=False)
+        if "opt_state" in payload:
+            try:
+                opt.load_state_dict(payload["opt_state"])
+            except ValueError as e:
+                # e.g. a prior round added the pole param group (2 groups) but this
+                # resume constructs poles as part of the model (1 group). Momentum
+                # is disposable for a fine-tune -> continue with a fresh optimizer.
+                print(f"opt_state not restored ({e}); fresh optimizer", flush=True)
+    # resuming a checkpoint that predates outcome-poles: bolt the 3 poles onto
+    # the loaded model AFTER opt_state restore, as a fresh param group (so the
+    # restored optimizer state for the existing params still lines up).
+    if args.outcome_poles and not getattr(fb, "outcome_poles", False):
+        assert fb.quasimetric, "--outcome-poles needs a quasimetric checkpoint"
+        import torch.nn as nn
+        fb.poles = nn.Parameter(nn.functional.normalize(
+            torch.randn(3, fb.d), dim=1).to(device))
+        fb.outcome_poles = True
+        fb.config["outcome_poles"] = True
+        opt.add_param_group({"params": [fb.poles]})
+        print("added outcome poles to resumed model", flush=True)
+    # same bolt-on for concept axes on a pre-axis checkpoint
+    if args.concept_axes > 0 and getattr(fb, "n_concept_axes", 0) == 0:
+        import torch.nn as nn
+        fb.concept_axes = nn.Parameter(nn.functional.normalize(
+            torch.randn(args.concept_axes, fb.d), dim=1).to(device))
+        fb.n_concept_axes = args.concept_axes
+        fb.config["concept_axes"] = args.concept_axes
+        opt.add_param_group({"params": [fb.concept_axes]})
+        print(f"added {args.concept_axes} concept axes to resumed model", flush=True)
+
+    struct_head = None
+    if args.struct_weight > 0:
+        import torch.nn as nn
+        struct_head = nn.Sequential(nn.Linear(fb.d, 256), nn.ReLU(), nn.Linear(256, 12 * 64)).to(device)
+        opt.add_param_group({"params": list(struct_head.parameters())})
+        print(f"[struct] multi-task piece-placement head active, weight {args.struct_weight}", flush=True)
+
+    human_src = LichessPairSource(shard_dir, gamma=args.gamma)
+    src = human_src
+    if args.regime_shards:
+        # MULTICHANNEL mixing: human stream = regime 0 at the residual fraction;
+        # each DIR:REGIME_ID:FRAC entry is its own tagged source.
+        from catspace.research.tools.chess_specific.chessdata.shards import MultiMixSource
+        entries = []
+        for spec in args.regime_shards:
+            d_, rid, frac = spec.rsplit(":", 2)
+            entries.append((LichessPairSource(Path(d_), gamma=args.gamma, regime=int(rid)),
+                            float(frac)))
+        human_frac = max(0.0, 1.0 - sum(w for _, w in entries))
+        src = MultiMixSource([(human_src, human_frac)] + entries)
+        print(f"multichannel mix: human(r0)={human_frac:.2f} + "
+              + " ".join(f"{Path(s).name}" for s in args.regime_shards), flush=True)
+    elif args.selfplay_shards:
+        selfplay_src = LichessPairSource(Path(args.selfplay_shards), gamma=args.gamma)
+        src = MixedPairSource(human_src, selfplay_src, args.selfplay_frac)
+        print(f"mixing self-play data from {args.selfplay_shards} at frac={args.selfplay_frac}",
+              flush=True)
+    holdout = collect_holdout(human_src, n_batches=8, batch_size=args.batch, seed=999)
+    print(f"holdout: {len(holdout)} batches of {args.batch}", flush=True)
+    finals = collect_mate_finals(shard_dir)
+    dtm_data = None
+    if args.dtm_hinge:
+        _dz = np.load(args.dtm_hinge)
+        dtm_data = dict(packed=_dz["packed"], meta=_dz["meta"],
+                        dtm=_dz["dtm"].astype(np.float32))
+        # SURFACE bank for the composed hinge: a fixed set of waypoints g (disjoint
+        # from the batch pool) with known dtm(g). The lowest-dtm positions are
+        # FORCED in so the composition always has near-mate anchors to reach.
+        _perm = np.random.default_rng(args.seed + 4242).permutation(len(dtm_data["dtm"]))
+        if args.dtm_bank > 0 and len(_perm) > args.dtm_bank + args.dtm_batch:
+            _low = np.argsort(dtm_data["dtm"])[:args.dtm_bank // 4]     # near-mate anchors
+            _rest = _perm[~np.isin(_perm, _low)][:args.dtm_bank - len(_low)]
+            dtm_data["bank_idx"] = np.concatenate([_low, _rest])
+            dtm_data["pool_idx"] = np.setdiff1d(_perm, dtm_data["bank_idx"])
+        print(f"DTM hinge ON: {len(dtm_data['dtm'])} tablebase positions "
+              f"(dtm min={dtm_data['dtm'].min():.0f} med={np.median(dtm_data['dtm']):.0f} "
+              f"max={dtm_data['dtm'].max():.0f}); mode="
+              f"{'COMPOSED bank=' + str(args.dtm_bank) if 'bank_idx' in dtm_data else 'centroid'} "
+              f"weight={args.dtm_weight} scale={args.dtm_scale} batch={args.dtm_batch}", flush=True)
+    cert_games = None
+    if args.committor_certified_only:
+        if not (args.committor_base or args.cert_base):
+            print("WARNING: --committor-certified-only has no effect without "
+                  "--committor-base/--cert-base", flush=True)
+        else:
+            cert_games = collect_certified_games(shard_dir, args.resign_material_gap)
+            print(f"committor-certified-only ON (mate|draw|resign@>={args.resign_material_gap:g}pts): "
+                  f"{int(cert_games.sum())}/{len(cert_games)} games ({100*cert_games.mean():.1f}%) "
+                  f"carry outcome labels to the phead; ALL games still train the geometry",
+                  flush=True)
+
+    provenance = build_provenance(
+        script="train_lichess_fb.py", args=vars(args),
+        data_columns_used=["packed", "meta", "game_id", "white_elo", "black_elo", "clock"],
+        train_batch_fn=batch_tensors, train_main_fn=main)
+    if not is_provenance_clean(provenance):
+        raise SystemExit(f"static_purity_check found forbidden references, refusing to train: "
+                         f"{provenance['static_check']['hits']}")
+
+    phead, zW, zB = None, None, None
+    zW_d = None                         # DTM-hinge centroid MATE_W (refreshed like cert-base)
+    dtm_bankB = None                    # DTM-hinge SURFACE bank B-embeddings (detached, refreshed)
+    dtm_bank_dtm = None                 # bank waypoint DTMs (constant)
+    dtm_rng = np.random.default_rng(args.seed + 777)
+    if args.cert_base or args.committor_base:
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.eval_head import EvalHead, descriptive_loss
+        phead = EvalHead(d_in=args.d, seed=args.seed).to(device)
+        opt.add_param_group({"params": phead.parameters()})
+        mode = "cert-base" if args.cert_base else "committor-base"
+        print(f"{mode} ON: phead {sum(q.numel() for q in phead.parameters())} params, "
+              f"phead-weight={args.phead_weight}"
+              + (f" lam={args.cert_lam} scale={args.cert_scale}" if args.cert_base else
+                 " (no pole term, no goal vectors)"))
+    fb.train()
+    epoch = 0
+    it = iter(src.batches(args.batch, seed=args.seed))
+    # rolling cross-batch GOAL POOL for the QRL push: approximates the
+    # dataset-wide p_goal so the maximize-distance term sees genuinely FAR
+    # (diverse-game / unreachable) pairs -- an in-batch shuffle only spans the
+    # batch's ~2-3 games and leaves d_rand flat (metric doesn't spread).
+    pool_rng = np.random.default_rng(args.seed + 12345)
+    goal_pool_packed = None
+    goal_pool_meta = None
+    # QRL COLLAPSE AUTO-DETECTOR (2026-07-17): the metric can silently degenerate
+    # mid-training -- d_step->0 (local collapse, all F above all B) or d_rand
+    # staying ~d_step (small-world, no spread). We LOG these every step; here we
+    # gate on rolling means so a collapse screams at ~2k instead of being found
+    # by hand at 19k. Warn by default; --qrl-halt-on-collapse stops the run.
+    qrl_dstep_hist: deque = deque(maxlen=2000)
+    qrl_drand_hist: deque = deque(maxlen=2000)
+    qrl_collapse_flagged = False
+    t0 = time.time()
+    while step < args.steps:
+        try:
+            batch = next(it)
+        except StopIteration:
+            epoch += 1
+            it = iter(src.batches(args.batch, seed=args.seed + epoch))
+            continue
+        tensors = batch_tensors(batch, device)
+        if tensors is None or len(tensors[0]) < args.batch // 2:
+            continue
+        frac = min(1.0, (step - start_step) / max(1, args.steps - start_step))
+        lr_now = lr_min + 0.5 * (lr_peak - lr_min) * (1 + math.cos(math.pi * frac))
+        for g in opt.param_groups:
+            if g.get("is_lambda"):
+                continue                      # QRL multiplier keeps its fixed LR
+            g["lr"] = lr_now
+        core, result_t, pte_t = tensors[:5], tensors[5], tensors[6]
+        # per-position "outcome certified" (mate|draw) mask, aligned to the same
+        # train rows batch_tensors kept (holdout dropped). Gates ONLY the phead
+        # outcome label -- the geometry below sees every row regardless.
+        cert_mask = None
+        if cert_games is not None:
+            _cidx = np.flatnonzero((batch.meta["game_id"] % HOLDOUT_MOD) != 0)
+            cert_mask = torch.from_numpy(cert_games[batch.meta["game_id"][_cidx]]).to(device)
+        if args.qrl_objective:
+            if len(tensors) < 9:
+                raise SystemExit("--qrl-objective needs the 1-ply successor from the "
+                                 "shard source (packed_succ); re-run on shards built by "
+                                 "the updated LichessPairSource.")
+            planes_succ, valid = tensors[7], tensors[8]
+            # accumulate this batch's goals into the rolling pool, then draw a
+            # diverse cross-batch goal sample for the push (dataset-wide p_goal)
+            push_goal_planes = None
+            push_unreach_mask = None
+            anchor_perm = anchor_fwd = anchor_rev = None
+            if args.qrl_goal_pool > 0:
+                # mask to TRAIN rows before pooling -- else holdout goals get
+                # pushed through embed_B (with grad) and contaminate the holdout
+                # VAL/REACH verdicts (adversarial-review finding, 2026-07-17).
+                _tm = (batch.meta["game_id"] % HOLDOUT_MOD) != 0
+                gp_new, gm_new = batch.goals[_tm], batch.meta["board_meta_g"][_tm]
+                if goal_pool_packed is None:
+                    goal_pool_packed, goal_pool_meta = gp_new, gm_new
+                else:
+                    goal_pool_packed = np.concatenate([goal_pool_packed, gp_new])[-args.qrl_goal_pool:]
+                    goal_pool_meta = np.concatenate([goal_pool_meta, gm_new])[-args.qrl_goal_pool:]
+                if len(goal_pool_packed) >= len(core[0]):
+                    sel = pool_rng.integers(0, len(goal_pool_packed), size=len(core[0]))
+                    push_goal_planes = torch.from_numpy(
+                        feature_planes(goal_pool_packed[sel], goal_pool_meta[sel])).to(device)
+                    if args.qrl_unreach_weight > 0:
+                        # certified s->g unreachability flags for the SAME pairs
+                        _aidx = np.flatnonzero((batch.meta["game_id"] % HOLDOUT_MOD) != 0)
+                        _uflag = provably_unreachable(
+                            batch.anchors[_aidx], batch.meta["board_meta"][_aidx],
+                            goal_pool_packed[sel], goal_pool_meta[sel])
+                        push_unreach_mask = torch.from_numpy(_uflag).to(device)
+                        # anchor-anchor pairing, BOTH directions certified
+                        _ap = batch.anchors[_aidx]; _am = batch.meta["board_meta"][_aidx]
+                        _perm = pool_rng.permutation(len(_aidx))
+                        _ffwd = provably_unreachable(_ap, _am, _ap[_perm], _am[_perm])
+                        _frev = provably_unreachable(_ap[_perm], _am[_perm], _ap, _am)
+                        anchor_perm = torch.from_numpy(_perm).to(device)
+                        anchor_fwd = torch.from_numpy(_ffwd).to(device)
+                        anchor_rev = torch.from_numpy(_frev).to(device)
+            loss, qstats = fb.qrl_loss(core[0], core[1], planes_succ, core[2], valid,
+                                       push_offset=args.qrl_push_offset,
+                                       push_real=args.qrl_push_real,
+                                       push_mix=args.qrl_push_mix,
+                                       push_goal_planes=push_goal_planes,
+                                       push_unreach_mask=push_unreach_mask,
+                                       unreach_weight=args.qrl_unreach_weight,
+                                       unreach_floor=args.qrl_unreach_floor,
+                                       anchor_perm=anchor_perm,
+                                       anchor_unreach_fwd=anchor_fwd,
+                                       anchor_unreach_rev=anchor_rev,
+                                       use_pid=args.qrl_use_pid,
+                                       pid_kp=args.qrl_pid_kp, pid_ki=args.qrl_pid_ki,
+                                       pid_kd=args.qrl_pid_kd,
+                                       pid_eclip=args.qrl_pid_eclip,
+                                       lam_max=args.qrl_lambda_max,
+                                       two_sided=args.qrl_two_sided,
+                                       var_weight=args.qrl_var_weight,
+                                       var_target=args.qrl_var_target)
+            sib = 0.0
+            if args.qrl_sib_weight > 0:
+                # irreversibility-sibling repulsion (train rows only, holdout-safe)
+                _ridx = np.flatnonzero((batch.meta["game_id"] % HOLDOUT_MOD) != 0)
+                _js = pool_rng.permutation(len(_ridx))[:args.qrl_sib_cap]
+                _boards = [board_from_packed(batch.anchors[_ridx[j]],
+                                             batch.meta["board_meta"][_ridx[j]])
+                           for j in _js]
+                pair = irreversible_sibling_pairs(_boards, pool_rng, cap=args.qrl_sib_cap)
+                if pair is not None:
+                    _pa, _ma, _pb, _mb, _src = pair
+                    # align omega to each pair's ACTUAL parent board: generator
+                    # permutes/skips internally (MATH_AUDIT A4), so map its src
+                    # (index into _boards) back through _js (position in core rows)
+                    om_s = core[1][torch.as_tensor(_js[_src], device=device)]
+                    pl_a = torch.from_numpy(feature_planes(_pa, _ma)).to(device)
+                    pl_b = torch.from_numpy(feature_planes(_pb, _mb)).to(device)
+                    f_a, f_b = fb.embed_F(pl_a, om_s), fb.embed_F(pl_b, om_s)
+                    b_a, b_b = fb.embed_B(pl_a), fb.embed_B(pl_b)
+                    d_ab = fb.directed_distance(f_a, b_b)
+                    d_ba = fb.directed_distance(f_b, b_a)
+                    sib_t = (torch.relu(args.qrl_sib_floor - d_ab)
+                             + torch.relu(args.qrl_sib_floor - d_ba)).mean()
+                    loss = loss + args.qrl_sib_weight * sib_t
+                    sib = float(sib_t)
+            if struct_head is not None:                            # multi-task: reward encoding board structure
+                f_s = fb.embed_F(core[0], core[1])                 # F(s) on train rows
+                tgt = core[0][:, :12].reshape(f_s.shape[0], -1)    # 12 piece-placement planes (binary)
+                struct_t = torch.nn.functional.binary_cross_entropy_with_logits(struct_head(f_s), tgt)
+                loss = loss + args.struct_weight * struct_t
+            top1 = torch.zeros(())      # QRL has no in-batch retrieval term; VAL still tracks it
+            qrl_dstep_hist.append(qstats["d_step"])
+            qrl_drand_hist.append(qstats["d_rand"])
+            if step % 100 == 0:
+                print(f"    qrl push {qstats['push']:.3f} sq_dev {qstats['sq_dev']:.4f} "
+                      f"lam {qstats['lam']:.3f} d_step {qstats['d_step']:.3f} "
+                      f"d_rand {qstats['d_rand']:.3f} var {qstats.get('var', 0.0):.3f} "
+                      f"sib {sib:.3f} unr {qstats.get('unr',0.0):.3f} unrb {qstats.get('unrb',0.0):.3f} "
+                      f"d_unr {qstats.get('d_unr',float('nan')):.2f} d_oth {qstats.get('d_oth',float('nan')):.2f}", flush=True)
+                trk.metrics(dict(push=qstats["push"], sq_dev=qstats["sq_dev"], lam=qstats["lam"],
+                                 d_step=qstats["d_step"], d_rand=qstats["d_rand"]), step=step)
+            # collapse gate: after warmup, on rolling means over the window
+            if step >= 2000 and step % 1000 == 0 and len(qrl_dstep_hist) >= 500:
+                ms = float(np.mean(qrl_dstep_hist))
+                mr = float(np.mean(qrl_drand_hist))
+                reason = None
+                if ms < 0.2:
+                    reason = (f"LOCAL COLLAPSE: d_step={ms:.3f}~0 over last "
+                              f"{len(qrl_dstep_hist)} steps (all-F-above-all-B; the "
+                              f"one-sided constraint decayed -- use --qrl-two-sided).")
+                elif mr < 1.5 * ms:
+                    reason = (f"SMALL-WORLD: d_rand={mr:.3f} ~ d_step={ms:.3f} (metric "
+                              f"not spreading -- check phead-weight <=0.1, offset ~15, "
+                              f"and the diverse goal pool).")
+                if reason and not qrl_collapse_flagged:
+                    qrl_collapse_flagged = True
+                    print(f"\n{'='*70}\n  QRL COLLAPSE DETECTED @ step {step}\n  {reason}\n"
+                          f"{'='*70}\n", flush=True)
+                    if args.qrl_halt_on_collapse:
+                        raise SystemExit(f"halting on QRL collapse @ step {step}: {reason}")
+                elif reason is None:
+                    qrl_collapse_flagged = False   # re-arm if it recovers
+        elif args.two_horizon:
+            ps, om, pg, gap, _mdrop = core
+            loss, top1 = fb.two_horizon_loss(ps, om, pg, gap, near_max=args.near_max,
+                                             far_min=args.far_min, near_weight=args.near_weight,
+                                             ply_gap_weight=args.ply_gap_weight,
+                                             ply_gap_scale=args.ply_gap_scale)
+        else:
+            loss, top1 = fb.loss_fn(*core, ply_gap_weight=args.ply_gap_weight,
+                                    ply_gap_scale=args.ply_gap_scale,
+                                    asym_weight=args.asym_weight, asym_margin=args.asym_margin,
+                                    dist_weight=args.dist_weight,
+                                    competence_weight=args.competence_weight,
+                                    result=result_t, outcome_weight=args.outcome_weight,
+                                    pole_tau=args.pole_tau, pole_margin=args.pole_margin,
+                                    repel_weight=args.repel_weight, repel_margin=args.repel_margin,
+                                    plies_to_end=pte_t, axis_weight=args.axis_weight,
+                                    axis_margin=args.axis_margin,
+                                    axis_gate_plies=args.axis_gate_plies,
+                                    horizon_k=args.horizon_k)
+        if args.committor_base:
+            ps_c, om_c = core[0], core[1]
+            f_s = fb.embed_F(ps_c, om_c)   # geometry uses ALL rows; phead label may be masked
+            if cert_mask is not None:      # mates+draws only: drop resign/timeout labels
+                p_loss = (descriptive_loss(phead, f_s[cert_mask], result_t[cert_mask].long())
+                          if bool(cert_mask.any()) else torch.zeros((), device=device))
+            else:
+                p_loss = descriptive_loss(phead, f_s, result_t.long())
+            loss = loss + args.phead_weight * p_loss
+            if step % 100 == 0:
+                _cf = f"  cert {float(cert_mask.float().mean()):.2f}" if cert_mask is not None else ""
+                print(f"    phead {float(p_loss):.4f}{_cf}", flush=True)
+        if args.cert_base:
+            if zW is None or step % args.zgoal_refresh == 0:
+                zg = embed_zgoals(fb, finals, device)
+                zW = zg["MATE_W"].to(device).float().detach()
+                zB = zg["MATE_B"].to(device).float().detach()
+            ps_c, om_c = core[0], core[1]
+            f_s = fb.embed_F(ps_c, om_c)
+            if cert_mask is not None:      # mates+draws only (see --committor-certified-only)
+                p_loss = (descriptive_loss(phead, f_s[cert_mask], result_t[cert_mask].long())
+                          if bool(cert_mask.any()) else torch.zeros((), device=device))
+            else:
+                p_loss = descriptive_loss(phead, f_s, result_t.long())
+            probs = torch.softmax(phead(f_s), dim=1).detach()
+            cert = torch.zeros((), device=device)
+            ok = torch.isfinite(pte_t)
+            if cert_mask is not None:      # certified won games only regress distance-to-pole
+                ok = ok & cert_mask
+            for res_val, z, cls in ((1, zW, 0), (-1, zB, 2)):
+                m = (result_t == res_val) & ok
+                if int(m.sum()) >= 8:
+                    d = fb.distance_matrix(f_s[m], z[None, :])[:, 0]
+                    ph = probs[m, cls].clamp_min(1e-3)
+                    tgt = (pte_t[m] + args.cert_lam * (-torch.log(ph))) / args.cert_scale
+                    cert = cert + ((d - tgt) ** 2).mean()
+            loss = loss + args.phead_weight * p_loss + args.cert_base_weight * cert
+            if step % 100 == 0:
+                print(f"    cert {float(cert):.4f}  phead {float(p_loss):.4f}", flush=True)
+        if dtm_data is not None:
+            # ALIGNMENT via the COMPOSED surface distance (Kaveh 2026-07-19: mate is
+            # a SURFACE not a pole). For each won position s, the estimate of its
+            # distance-to-mate is min_g[ d(F(s), B(g)) + dtm(g) ] over a bank of DTM
+            # waypoints g (known dtm(g)): the field is trusted only for the short hop
+            # to a nearby waypoint, g's dtm is grounded truth, and the min picks the
+            # nearest useful waypoint. We regress THAT toward the true dtm(s). The
+            # bank B-embeddings drift, so refresh (detached) on the goal cadence.
+            composed_mode = "bank_idx" in dtm_data
+            if composed_mode:
+                if dtm_bankB is None or step % args.zgoal_refresh == 0:
+                    bidx = dtm_data["bank_idx"]
+                    bpl = torch.from_numpy(feature_planes(dtm_data["packed"][bidx],
+                                                          dtm_data["meta"][bidx])).to(device)
+                    with torch.no_grad():
+                        dtm_bankB = fb.embed_B(bpl).detach()               # (K, d)
+                    dtm_bank_dtm = torch.from_numpy(
+                        dtm_data["dtm"][bidx]).to(device) / args.dtm_scale  # (K,)
+                nD = min(args.dtm_batch, len(dtm_data["pool_idx"]))
+                idx = dtm_data["pool_idx"][dtm_rng.integers(0, len(dtm_data["pool_idx"]), size=nD)]
+            else:                                                          # legacy centroid
+                if zW_d is None or step % args.zgoal_refresh == 0:
+                    zW_d = embed_zgoals(fb, finals, device)["MATE_W"].to(device).float().detach()
+                nD = min(args.dtm_batch, len(dtm_data["dtm"]))
+                idx = dtm_rng.integers(0, len(dtm_data["dtm"]), size=nD)
+            pl_d = torch.from_numpy(feature_planes(dtm_data["packed"][idx],
+                                                   dtm_data["meta"][idx])).to(device)
+            om_d = torch.from_numpy(omega_ids(np.full(nD, 1800), np.full(nD, 1800),
+                                              np.full(nD, 300.0))).to(device)   # neutral omega (atlas convention)
+            f_d = fb.embed_F(pl_d, om_d)
+            if composed_mode:
+                D = fb.distance_matrix(f_d, dtm_bankB)                      # (nD, K)
+                d_d = (D + dtm_bank_dtm[None, :]).min(dim=1).values         # composed min
+            else:
+                d_d = fb.distance_matrix(f_d, zW_d[None, :])[:, 0]
+            tgt_d = torch.from_numpy(dtm_data["dtm"][idx]).to(device) / args.dtm_scale
+            dtm_loss = torch.nn.functional.smooth_l1_loss(d_d, tgt_d)
+            loss = loss + args.dtm_weight * dtm_loss
+            if step % 100 == 0:
+                _dn = d_d.detach().cpu().numpy(); _tn = tgt_d.detach().cpu().numpy()
+                _sp = float(np.corrcoef(np.argsort(np.argsort(_dn)),
+                                        np.argsort(np.argsort(_tn)))[0, 1])
+                print(f"    dtm {float(dtm_loss):.4f}  d_mean {float(d_d.mean()):.2f} "
+                      f"tgt_mean {float(tgt_d.mean()):.2f}  rank_corr {_sp:+.3f}", flush=True)
+        if args.unreach_weight > 0 and getattr(fb, "quasimetric", False):
+            from catspace.research.components.encoder.approaches.jepa_tokenizer.src.hard_negatives import repel_loss, unreachable_goals
+            neg_packed = unreachable_goals(batch.anchors[np.flatnonzero(
+                (batch.meta["game_id"] % HOLDOUT_MOD) != 0)], seed=step)
+            om_neg = omega_ids(np.zeros(len(neg_packed)), np.zeros(len(neg_packed)),
+                               np.full(len(neg_packed), np.nan))  # goal side: omega unused
+            neg_planes = feature_planes(neg_packed, batch.meta["board_meta"][np.flatnonzero(
+                (batch.meta["game_id"] % HOLDOUT_MOD) != 0)])
+            b_neg = fb.embed_B(torch.from_numpy(neg_planes).to(device))
+            f_s = fb.embed_F(core[0], core[1])
+            d_neg = fb.distance_matrix(f_s, b_neg).diagonal()
+            d_pos = fb.distance_matrix(f_s, fb.embed_B(core[2])).diagonal().detach()
+            margin = torch.quantile(d_pos, args.unreach_margin_q) + 0.25
+            loss = loss + args.unreach_weight * repel_loss(d_neg, margin)
+        if args.l1_metric_scale > 0 and getattr(fb, "quasimetric", False):
+            # tax on the DISTANCE dimensions (metric_scale), ramped after warmup:
+            # a wide embedding is free; using many dims in the METRIC costs.
+            ramp = min(1.0, max(0.0, (step - args.l1_warmup) / max(1, args.l1_warmup)))
+            l1 = args.l1_metric_scale * ramp * fb.metric_scale.abs().sum()
+            loss = loss + l1
+            if step % 100 == 0 and ramp > 0:
+                nz = int((fb.metric_scale.abs() > 1e-3).sum())
+                print(f"    l1 {float(l1):.4f}  active_dims {nz}/{fb.d}", flush=True)
+        opt.zero_grad(); loss.backward(); opt.step()
+        step += 1
+        if step % 100 == 0:
+            rate = 100 / (time.time() - t0); t0 = time.time()
+            print(f"step {step}  loss {float(loss):.4f}  train_top1 {float(top1):.3f}  "
+                  f"lr {lr_now:.2e}  ({rate:.1f} it/s)", flush=True)
+        if step % args.val_every == 0 or step == args.steps:
+            vloss, vtop1, vtop8 = val_metrics(fb, holdout, device)
+            print(f"  VAL step {step}  loss {vloss:.4f}  top1 {vtop1:.3f}  top8 {vtop8:.3f}", flush=True)
+            trk.metrics(dict(val_loss=vloss, val_top1=vtop1, val_top8=vtop8), step=step)
+            save_ckpt(fb, ckpt_path, step=step, opt=opt,
+                      zgoals=embed_zgoals(fb, finals, device), provenance=provenance)
+        if args.ckpt_every and step % args.ckpt_every == 0 and step < args.steps:
+            # step-tagged LADDER checkpoint (kept, not overwritten) so early
+            # stopping can pick the peak of the real downstream metric across
+            # steps instead of trusting a fixed budget (2026-07-13, Kaveh)
+            ladder = ckpt_path.with_name(f"{ckpt_path.stem}_step{step}{ckpt_path.suffix}")
+            save_ckpt(fb, ladder, step=step, opt=opt,
+                      zgoals=embed_zgoals(fb, finals, device), provenance=provenance)
+            if phead is not None:
+                # phead saves WITH each snapshot (2026-07-16: without it, the
+                # 5k-mates/155k-shuffles regression couldn't be localized)
+                torch.save({"state": phead.state_dict(), "d_in": args.d},
+                           ladder.with_name(ladder.stem + "_phead.pt"))
+            print(f"  ladder checkpoint -> {ladder.name}", flush=True)
+
+    zgoals = embed_zgoals(fb, finals, device, verbose=True)
+    save_ckpt(fb, ckpt_path, step=step, opt=opt, zgoals=zgoals, provenance=provenance)
+    print(f"saved {ckpt_path}")
+    # NOTE 2026-07-16: periodic --ckpt-every snapshots historically saved
+    # WITHOUT their phead, making step-wise play forensics impossible (the
+    # 5k-mates / 155k-shuffles rook regression could not be localized).
+    # Snapshot pheads now save alongside (see periodic-save block).
+    if phead is not None:
+        hp = ckpt_path.with_name(ckpt_path.stem + "_phead.pt")
+        torch.save({"state": phead.state_dict(), "d_in": args.d}, hp)
+        print(f"saved {hp}")
+
+    vloss, vtop1, vtop8 = val_metrics(fb, holdout, device)
+    slope_w, nw = reach_slope(shard_dir, fb, zgoals["MATE_W"], device, want_result=1)
+    slope_l, nl = reach_slope(shard_dir, fb, zgoals["MATE_W"], device, want_result=-1)
+    dslope_w, _ = reach_slope(shard_dir, fb, zgoals["MATE_DIFF"], device, want_result=1)
+    dslope_l, _ = reach_slope(shard_dir, fb, zgoals["MATE_DIFF"], device, want_result=-1)
+    print(f"VERDICT VAL_TOP1={vtop1:.3f} VAL_TOP8={vtop8:.3f} (chance {1/args.batch:.4f})")
+    print(f"VERDICT REACH_SLOPE_WON={slope_w:.3f} (n={nw}) REACH_SLOPE_LOST={slope_l:.3f} (n={nl})")
+    print(f"VERDICT DIFF_SLOPE_WON={dslope_w:.3f} DIFF_SLOPE_LOST={dslope_l:.3f} "
+          f"(won-lost separation is the outcome signal; both were negative at step 2000)")
+
+
+if __name__ == "__main__":
+    main()

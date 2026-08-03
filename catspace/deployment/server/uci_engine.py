@@ -1,0 +1,139 @@
+#!/usr/bin/env python
+"""catspace/deployment/server/uci_engine.py -- UCI shell around the planner engine (Kaveh:
+'use the existing frameworks where chess bots compete'). Speaks enough UCI for
+cutechess-cli / fastchess / python-chess: uci, isready, ucinewgame, position, go
+(movetime / wtime+winc / nodes), quit.
+
+Time management: budget = movetime, else remaining/28 + 0.7*inc. The search runs in
+64-eval chunks with tree reuse until the budget is spent -- a faster field buys MORE
+NODES at the same clock, which is how fixed-TC play converts speed into strength
+(the strength-per-node frontier, operationalized). Mates harvested into the shared
+banks as always (banks are facts).
+
+Engine options (setoption):  Field <ckpt>   -- override the field checkpoint
+                             Nodes <n>      -- hard node cap per move (0 = clock only)
+"""
+from __future__ import annotations
+
+import sys
+import time
+
+_REAL_STDOUT = sys.stdout
+sys.stdout = sys.stderr      # engine-module diagnostics must NOT pollute the UCI stream
+
+
+def say(s):
+    _REAL_STDOUT.write(s + "\n")
+    _REAL_STDOUT.flush()
+
+
+def main():
+    import chess
+    board = chess.Board()
+    opts = {"Field": "", "Nodes": 0}
+    E = {}
+
+    def ensure():
+        if E:
+            return
+        import numpy as np
+        from catspace.approaches.bootstrap_mate.config import build_engine
+        from catspace.approaches.bootstrap_mate.src import harvest
+        from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
+        # The whole engine (field, banks, value/prior closures, planner) is the
+        # bootstrap_mate end-to-end approach; this file is only the UCI shell.
+        E.update(build_engine(field_ckpt=opts["Field"] or None, device="mps"),
+                 np=np, MCTS=MCTS, harvest=harvest)
+
+    def reset_game():
+        from collections import Counter
+        E["ctx"]["hist"] = Counter({board.epd(): 1})
+        E["ctx"]["plan"] = "direct"; E["ctx"]["target_pt"] = None
+
+    def go(budget_ms, node_cap):
+        np, MCTS, p = E["np"], E["MCTS"], E["params"]
+        if hasattr(E["vfn"], "set_anchor"):
+            E["vfn"].set_anchor(board)
+        ps = E["planner"](board, len(board.move_stack))
+        E["ctx"]["plan"] = ps["plan"]; E["ctx"]["target_pt"] = ps.get("target_pt")
+        m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=p["max_nodes"],
+                 mate_stop=p["mate_stop"], pw_c=p["pw_c"],
+                 root_min_visits=p["root_min_visits"], value_fn=E["vfn"],
+                 policy_fn=E["pfn"], policy_batch_fn=E["pfnb"],
+                 batch_leaves=p["batch_leaves"])
+        t0 = time.time()
+        root, used = None, 0
+        while (time.time() - t0) * 1000 < budget_ms and (not node_cap or used < node_cap):
+            root = m.run(board.copy(stack=True), reuse_root=root)
+            used += int(m.evals_used)
+            if m.evals_used == 0:              # certified mate in hand
+                break
+        if root is None or not root.children:
+            mv = next(iter(board.legal_moves))
+        else:
+            best = max(root.children,
+                       key=lambda c: (c.N, (c.terminal_v if c.terminal_v is not None
+                                            else c.Q)))
+            mv = best.move
+            w, l, s = E["harvest"](root)
+            E["bank"].add(w); E["loss"].add(l); E["draw"].add(s)
+        return mv, used
+
+    for line in sys.stdin:
+        parts = line.strip().split()
+        if not parts:
+            continue
+        cmd = parts[0]
+        if cmd == "uci":
+            say("id name catspace-planner")
+            say("id author kaveh+claude")
+            say("option name Field type string default ")
+            say("option name Nodes type spin default 0 min 0 max 100000")
+            say("uciok")
+        elif cmd == "setoption" and len(parts) >= 5 and parts[1] == "name":
+            name = parts[2]
+            val = " ".join(parts[parts.index("value") + 1:]) if "value" in parts else ""
+            if name in opts:
+                opts[name] = int(val) if name == "Nodes" else val
+        elif cmd == "isready":
+            ensure()
+            say("readyok")
+        elif cmd == "ucinewgame":
+            ensure()
+            board.reset()
+            reset_game()
+        elif cmd == "position":
+            ensure()
+            if parts[1] == "startpos":
+                board.reset()
+                mvs = parts[3:] if len(parts) > 2 and parts[2] == "moves" else []
+            else:
+                fi = parts.index("fen") + 1
+                mi = parts.index("moves") if "moves" in parts else len(parts)
+                board.set_fen(" ".join(parts[fi:mi]))
+                mvs = parts[mi + 1:] if mi < len(parts) else []
+            reset_game()
+            for u in mvs:
+                board.push_uci(u)
+                E["ctx"]["hist"][board.epd()] += 1
+        elif cmd == "go":
+            ensure()
+            kv = dict(zip(parts[1::2], parts[2::2]))
+            if "movetime" in kv:
+                budget = int(kv["movetime"])
+            elif "wtime" in kv or "btime" in kv:
+                rem = int(kv.get("wtime" if board.turn else "btime", 60000))
+                inc = int(kv.get("winc" if board.turn else "binc", 0))
+                budget = max(200, rem / 28 + 0.7 * inc)
+            else:
+                budget = 5000
+            cap = int(kv.get("nodes", opts["Nodes"] or 0))
+            mv, used = go(budget, cap)
+            say(f"info nodes {used}")
+            say(f"bestmove {mv.uci()}")
+        elif cmd == "quit":
+            break
+
+
+if __name__ == "__main__":
+    main()

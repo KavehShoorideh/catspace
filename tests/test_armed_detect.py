@@ -12,7 +12,7 @@ import chess
 import chess.engine
 import pytest
 
-from catspace.armed.detect import (
+from catspace.research.components.planner.approaches.armed_tactics.src.detect import (
     BlockingCondition, classify_blocking_move, find_armed_tactic_candidates,
 )
 

@@ -1,3 +1,9 @@
+> **A repository restructure occurred on 2026-08-03.** File and directory paths
+> mentioned below are historical and no longer valid. The content is left exactly
+> as written — this is the research record, not documentation of the current tree.
+> For the current layout see [`repo_structure.md`](repo_structure.md); for what
+> moved and why see [the refactor plan](catspace/research/docs/2026-08-03-refactor-plan.md).
+
 This is an attempt to write an alternative arch without the AI directly writing.
 
 A good World Model for chess will compress the useless info out of the embedding, things like random moves at unimportant times. What matters are the critical moves, moves where one wrong step costs us the game. I.e., most of the success probability is concentrated in one move, or maybe two.

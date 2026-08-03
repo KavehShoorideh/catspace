@@ -10,8 +10,8 @@ import chess
 import numpy as np
 import pytest
 
-from catspace.nn.mcts import DRAW_V, MATE_V, MATED_V, MCTS
-from catspace.planner.probe import ProbeResult, deepen, probe
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import DRAW_V, MATE_V, MATED_V, MCTS
+from catspace.research.components.planner.approaches.subgoal_cascade.src.probe import ProbeResult, deepen, probe
 
 
 def flat_reach(boards):
@@ -233,7 +233,7 @@ def _plan_policy(plan_nodes=120, exec_nodes=24):
     """FBPlanMCTSPolicy needs a real fb; fake the minimum surface instead:
     drive the underlying MCTS directly through the class's budget logic."""
     import types
-    from catspace.nn.mcts import FBPlanMCTSPolicy
+    from catspace.research.components.search.approaches.puct_mcts.src.mcts import FBPlanMCTSPolicy
     pol = FBPlanMCTSPolicy.__new__(FBPlanMCTSPolicy)
     pol.mcts = MCTS(flat_reach, max_nodes=plan_nodes, cache={}, mate_stop=True)
     pol.tree_reuse = True

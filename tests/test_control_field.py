@@ -5,7 +5,7 @@ import chess
 import numpy as np
 import pytest
 
-from catspace.controlfield.control import (
+from catspace.research.components.encoder.approaches.control_field_wdl.src.control import (
     weighted_attacker_field, see_field, critical_square_mask, compute_fields, orient,
 )
 
@@ -16,7 +16,7 @@ def test_starting_position_antisymmetric_and_lr_symmetric():
     # antisymmetric under color flip: swapping which side is "White" (i.e. flipping
     # the board vertically and negating) should reproduce the same raw field, since
     # the starting position is itself mirror-symmetric between colors.
-    from catspace.controlfield.control import _flip_vertical
+    from catspace.research.components.encoder.approaches.control_field_wdl.src.control import _flip_vertical
     assert np.allclose(c, -_flip_vertical(c), atol=1e-6)
     # left-right symmetric on rank 3/6 (files a-h mirror around the d/e file)
     for rank in (2, 5):   # 0-indexed: rank 3 -> index 2, rank 6 -> index 5

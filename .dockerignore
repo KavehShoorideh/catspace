@@ -1,0 +1,41 @@
+# The build context is the repo root; the served image needs the catspace package
+# and its deployment entrypoints, nothing else. Without this the context includes
+# tablebases and derived datasets (tens of GB).
+.git
+.venv
+.dvc/cache
+.dvc/tmp
+mlruns
+mlflow.db
+
+data
+assets
+artifacts
+maia2_models
+
+**/__pycache__
+**/*.pyc
+*.egg-info
+build
+dist
+.pytest_cache
+.mypy_cache
+.DS_Store
+
+# research-only trees: not needed to serve. An approach's src/ SHIPS; its experiments/,
+# logs/, artifacts/ and data/ do not -- same rule at both levels (see repo_structure.md).
+catspace/research/**/experiments
+catspace/research/**/logs
+catspace/research/**/artifacts
+catspace/research/**/data
+catspace/approaches/**/experiments
+catspace/approaches/**/logs
+catspace/approaches/**/artifacts
+catspace/approaches/**/data
+catspace/research/docs
+catspace/research/weekly-report
+catspace/research/assets
+writing
+docs
+tests
+tools/_migration

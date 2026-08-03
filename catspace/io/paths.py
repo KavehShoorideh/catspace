@@ -1,62 +1,250 @@
-"""io/paths.py — repo-rooted, env-overridable data/artifact directories.
+"""io/paths.py — the single path registry for the repo.
 
-Kills the hardcoded /home/claude/toykrk/ and /mnt/user-data/outputs/ paths
-(from an old sandbox) and the CWD-dependent bare filenames that broke
-cross-module artifact handoff on other machines.
+Every dataset, artifact, asset and tracking store is resolved through an accessor
+here, so relocating storage is a one-line change rather than an edit to hundreds
+of call sites (2026-08-03 restructure; see repo_structure.md). Also kills the
+CWD-dependent bare filenames that broke cross-module artifact handoff.
+
+REPO_ROOT walks up for a marker instead of counting parents, so moving a module
+deeper in the tree cannot break it.
 """
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+_MARKERS = ("pyproject.toml", ".git")
 
 
-def data_dir() -> Path:
-    p = Path(os.environ.get("LCP_DATA", REPO_ROOT / "data"))
+def _find_root(start: Path) -> Path:
+    for cand in (start, *start.parents):
+        if any((cand / m).exists() for m in _MARKERS):
+            return cand
+    raise RuntimeError(f"no repo root marker {_MARKERS} above {start}")
+
+
+REPO_ROOT = _find_root(Path(__file__).resolve())
+
+
+def _ensure(p: Path) -> Path:
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+# --- generated data (DVC-tracked); LCP_DATA overrides the whole tree ---
+
+def data_dir() -> Path:
+    return _ensure(Path(os.environ.get("LCP_DATA", REPO_ROOT / "data")))
 
 
 def derived_dir() -> Path:
-    p = data_dir() / "derived"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    return _ensure(data_dir() / "derived")
+
+
+def sep_dir() -> Path:
+    """Checkpoint bay for the separated/certified field family."""
+    return _ensure(derived_dir() / "sep")
+
+
+def reach_dir() -> Path:
+    return _ensure(derived_dir() / "reach")
+
+
+def shards_dir() -> Path:
+    return _ensure(data_dir() / "shards")
+
+
+def records_dir() -> Path:
+    return _ensure(data_dir() / "records")
+
+
+def selfplay_dir() -> Path:
+    return _ensure(data_dir() / "selfplay")
+
+
+def lichess_dir() -> Path:
+    return _ensure(data_dir() / "lichess")
+
+
+# --- artifacts ---
+
+def artifacts_dir() -> Path:
+    return _ensure(REPO_ROOT / "artifacts")
 
 
 def generated_dir() -> Path:
-    p = REPO_ROOT / "artifacts" / "generated"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    """Regenerable viz output -- gitignored."""
+    return _ensure(artifacts_dir() / "generated")
 
 
 def experiments_dir() -> Path:
     """Structured experiment_report.py JSON records -- small and valuable
-    (a research history, like JOURNAL.md), NOT in .gitignore unlike
-    artifacts/generated/'s regenerable viz output."""
-    p = REPO_ROOT / "artifacts" / "experiments"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+    (a research history, like JOURNAL.md), NOT gitignored unlike generated_dir()."""
+    return _ensure(artifacts_dir() / "experiments")
 
 
-def lichess_dir() -> Path:
-    p = data_dir() / "lichess"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+def docs_dir() -> Path:
+    """Research docs. Moved under the research tree in the 2026-08-03 restructure; this
+    accessor is why no call site had to learn the new location."""
+    return _ensure(REPO_ROOT / "catspace" / "research" / "docs")
 
 
-def shards_dir() -> Path:
-    p = data_dir() / "shards"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+def figures_dir() -> Path:
+    return _ensure(docs_dir() / "figures")
 
+
+# --- file accessors -------------------------------------------------------------
+#
+# These replace the CWD-relative string literals that used to sit in ~300 files' argparse
+# defaults, which only resolved when a script happened to be launched from the repo root.
+# The DIRECTORY is declared once, above; the filename stays at the call site, where it is
+# meaningful.
+#
+# They return `str`, not `Path`, on purpose: they stand in for string literals, and a str
+# survives every downstream use those literals had (open(), np.load(), torch.load(),
+# Path(), f-strings, and the occasional `+ "_suffix"`). Parent directories are created,
+# so an accessor is equally valid for reading and for writing.
+
+def _file(base: Path, parts: tuple[str, ...]) -> str:
+    p = base.joinpath(*parts)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return str(p)
+
+
+def derived(*parts: str) -> str:
+    return _file(derived_dir(), parts)
+
+
+def sep(*parts: str) -> str:
+    return _file(sep_dir(), parts)
+
+
+def reach(*parts: str) -> str:
+    return _file(reach_dir(), parts)
+
+
+def shards(*parts: str) -> str:
+    return _file(shards_dir(), parts)
+
+
+def records(*parts: str) -> str:
+    return _file(records_dir(), parts)
+
+
+def selfplay(*parts: str) -> str:
+    return _file(selfplay_dir(), parts)
+
+
+def lichess(*parts: str) -> str:
+    return _file(lichess_dir(), parts)
+
+
+def artifact(*parts: str) -> str:
+    return _file(artifacts_dir(), parts)
+
+
+def experiment(*parts: str) -> str:
+    """A record under artifacts/experiments/ -- the committed research history."""
+    return _file(experiments_dir(), parts)
+
+
+def generated(*parts: str) -> str:
+    """Regenerable viz output under artifacts/generated/ -- gitignored."""
+    return _file(generated_dir(), parts)
+
+
+def figure(*parts: str) -> str:
+    return _file(figures_dir(), parts)
+
+
+# --- third-party assets: downloaded, never generated by us ---
+
+def assets_dir() -> Path:
+    return _ensure(REPO_ROOT / "assets")
+
+
+def syzygy_dir() -> Path:
+    """Syzygy tablebases; SYZYGY_PATH overrides (python-chess convention)."""
+    env = os.environ.get("SYZYGY_PATH")
+    return Path(env) if env else _ensure(assets_dir() / "tablebases" / "syzygy")
+
+
+def engines_dir() -> Path:
+    """Third-party engine binaries/weights (lc0, maia)."""
+    return _ensure(assets_dir() / "engines")
+
+
+def maia2_models_dir() -> Path:
+    """Where the Maia-2 weights actually live -- 267MB, gitignored.
+
+    maia2.from_pretrained() gdown-downloads into a CWD-relative `maia2_models/` and gives
+    us no way to redirect it, so the repo root carries a symlink of that name pointing
+    here. Moving the real directory without the symlink silently costs a 267MB
+    re-download (which is exactly what happened during the 2026-08-03 restructure)."""
+    return _ensure(assets_dir() / "models" / "maia2")
+
+
+def corpora_dir() -> Path:
+    """Raw third-party corpora (lichess PGN dumps, puzzle db, ECO tables)."""
+    return _ensure(assets_dir() / "corpora")
+
+
+def raw_dir() -> Path:
+    return _ensure(corpora_dir() / "raw")
+
+
+def eco_dir() -> Path:
+    return _ensure(corpora_dir() / "eco")
+
+
+def puzzle_db() -> Path:
+    return corpora_dir() / "lichess_db_puzzle.csv.zst"
+
+
+def syzygy(*parts: str) -> str:
+    return _file(syzygy_dir(), parts)
+
+
+def engine(*parts: str) -> str:
+    """A third-party engine binary or weight file, e.g. engine("maia", "maia-1200.pb.gz")."""
+    return _file(engines_dir(), parts)
+
+
+def corpus(*parts: str) -> str:
+    return _file(corpora_dir(), parts)
+
+
+def raw(*parts: str) -> str:
+    return _file(raw_dir(), parts)
+
+
+def eco(*parts: str) -> str:
+    return _file(eco_dir(), parts)
+
+
+# --- experiment tracking: one store, wherever we are invoked from ---
+
+def mlflow_db() -> Path:
+    return REPO_ROOT / "mlflow.db"
+
+
+def mlflow_uri() -> str:
+    """Honour MLFLOW_TRACKING_URI, else the repo-root sqlite store."""
+    return os.environ.get("MLFLOW_TRACKING_URI") or f"sqlite:///{mlflow_db()}"
+
+
+def mlruns_dir() -> Path:
+    return _ensure(REPO_ROOT / "mlruns")
+
+
+# --- helpers ---
 
 def newest_shard_dir() -> Path:
-    """Most recently modified shard directory under data/shards -- the default
-    dataset for training/eval drivers."""
+    """Most recently modified shard directory -- the default training/eval dataset."""
     dirs = [p for p in shards_dir().iterdir() if p.is_dir() and list(p.glob("shard_*.npz"))]
     if not dirs:
-        raise SystemExit("no shard dirs under data/shards -- run experiments/build_lichess_shards.py first")
+        raise SystemExit(
+            "no shard dirs under shards_dir() -- run catspace/research/components/memory/approaches/experience_store/experiments/build_lichess_shards.py first")
     return max(dirs, key=lambda p: p.stat().st_mtime)
 
 
