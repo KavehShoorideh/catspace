@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""experiments/uci_engine.py -- UCI shell around the catspace planner engine (Kaveh:
+"""catspace/deployment/server/uci_engine.py -- UCI shell around the planner engine (Kaveh:
 'use the existing frameworks where chess bots compete'). Speaks enough UCI for
 cutechess-cli / fastchess / python-chess: uci, isready, ucinewgame, position, go
 (movetime / wtime+winc / nodes), quit.
@@ -17,10 +17,6 @@ from __future__ import annotations
 
 import sys
 import time
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 
 _REAL_STDOUT = sys.stdout
 sys.stdout = sys.stderr      # engine-module diagnostics must NOT pollute the UCI stream
@@ -41,33 +37,13 @@ def main():
         if E:
             return
         import numpy as np
-        from catspace.fields import FieldModel
+        from catspace.approaches.bootstrap_mate.config import build_engine
+        from catspace.approaches.bootstrap_mate.src import harvest
         from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
-        from experiments.bootstrap_mate_engine import (OnlineMateBank, harvest,
-                                                       make_batched_energy_prior,
-                                                       make_boot_value, make_planner)
-        field = opts["Field"]
-        if not field:
-            ptr = Path("data/derived/sep/self_field_current.txt")
-            field = ptr.read_text().strip() if ptr.exists() \
-                else "data/derived/sep/lichess_mc2.pt"
-        fm = FieldModel(field, device="mps")
-        pfx = "artifacts/experiments/assistant"        # shared fact banks
-        bank = OnlineMateBank(fm, Path(pfx + "_bank.fens"))
-        loss = OnlineMateBank(fm, Path(pfx + "_lossbank.fens"))
-        draw = OnlineMateBank(fm, Path(pfx + "_drawbank.fens"))
-        for bk in (bank, loss, draw):
-            bk.sync()
-        ctx = {"plan": "direct", "hist": {}}
-        times = {}
-        vfn = make_boot_value(fm, bank, times, loss, draw_bank=draw, game_ctx=ctx)
-        pfn, pfnb = make_batched_energy_prior(
-            (Path("data/derived/sep/opponent_energy_current.txt").read_text().strip()
-             if Path("data/derived/sep/opponent_energy_current.txt").exists()
-             else "data/derived/sep/opponent_energy_v1.pt"), game_ctx=ctx)
-        E.update(np=np, MCTS=MCTS, harvest=harvest, fm=fm, bank=bank, loss=loss,
-                 draw=draw, ctx=ctx, vfn=vfn, pfn=pfn, pfnb=pfnb,
-                 planner=make_planner(fm, bank))
+        # The whole engine (field, banks, value/prior closures, planner) is the
+        # bootstrap_mate end-to-end approach; this file is only the UCI shell.
+        E.update(build_engine(field_ckpt=opts["Field"] or None, device="mps"),
+                 np=np, MCTS=MCTS, harvest=harvest)
 
     def reset_game():
         from collections import Counter
@@ -75,14 +51,16 @@ def main():
         E["ctx"]["plan"] = "direct"; E["ctx"]["target_pt"] = None
 
     def go(budget_ms, node_cap):
-        np, MCTS = E["np"], E["MCTS"]
+        np, MCTS, p = E["np"], E["MCTS"], E["params"]
         if hasattr(E["vfn"], "set_anchor"):
             E["vfn"].set_anchor(board)
         ps = E["planner"](board, len(board.move_stack))
         E["ctx"]["plan"] = ps["plan"]; E["ctx"]["target_pt"] = ps.get("target_pt")
-        m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=64, mate_stop=True,
-                 pw_c=1.5, root_min_visits=10, value_fn=E["vfn"], policy_fn=E["pfn"],
-                 policy_batch_fn=E["pfnb"], batch_leaves=32)
+        m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=p["max_nodes"],
+                 mate_stop=p["mate_stop"], pw_c=p["pw_c"],
+                 root_min_visits=p["root_min_visits"], value_fn=E["vfn"],
+                 policy_fn=E["pfn"], policy_batch_fn=E["pfnb"],
+                 batch_leaves=p["batch_leaves"])
         t0 = time.time()
         root, used = None, 0
         while (time.time() - t0) * 1000 < budget_ms and (not node_cap or used < node_cap):

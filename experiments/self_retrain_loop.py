@@ -62,7 +62,7 @@ def main():
         # re-embed at load); results file stays per-round for per-round verdicts.
         bpfx = f"artifacts/experiments/{args.tag}_persistent"
         pfx = f"artifacts/experiments/{args.tag}_r{rnd}"
-        subprocess.run([sys.executable, "experiments/bootstrap_mate_engine.py",
+        subprocess.run([sys.executable, "catspace/approaches/bootstrap_mate/experiments/bootstrap_mate_engine.py",
                         "--scenario", args.scenario, "--nodes", str(args.nodes),
                         "--n", str(args.games_per_round), "--j", str(args.j),
                         "--max-plies", "120", "--field", field,

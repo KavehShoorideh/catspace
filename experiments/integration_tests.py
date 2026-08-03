@@ -48,7 +48,7 @@ def main():
         args.import_banks = pfx
         print(f"[integration] merged immortal banks -> {pfx}_*.fens", flush=True)
 
-    cmd = [sys.executable, "experiments/bootstrap_mate_engine.py",
+    cmd = [sys.executable, "catspace/approaches/bootstrap_mate/experiments/bootstrap_mate_engine.py",
            "--fen-file", str(fen_file), "--n", str(len(cases)), "--j", str(args.j),
            "--nodes", str(args.nodes), "--max-plies", "120",
            "--bank-file", f"artifacts/experiments/{args.tag}_bank.fens",
