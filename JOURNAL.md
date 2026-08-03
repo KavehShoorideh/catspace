@@ -10716,3 +10716,42 @@ necessarily the "right" one.
 **Not built yet (parts 2 and 3, per Kaveh's own scoping this turn):**
 the armed-tactic STORE (remembering) and the per-ply activation-watch loop
 feeding candidates back to the planner/MCTS as pounce subgoals.
+
+## 2026-08-03 -- M7 detection demo run: real armed tactics found on SF-vs-SF data
+
+Kaveh's ask: "the goal is to find some tactics" -- run detect.py (built
+above) against real positions instead of only the unit tests. Built
+`experiments/mine_armed_tactics_demo.py`: samples mid-game plies (16-50)
+from `data/derived/opening_pool_sfsf_moves.tsv`, replays with python-chess,
+runs `find_armed_tactic_candidates` per position.
+
+**First finding (real, printed-output, not hand-picked):** the spec's own
+default thresholds (`min_gain=0.15`) found ZERO candidates across 70
+SF-vs-SF mid-game positions (n=10 then n=60, depth=10) -- SF-vs-SF games are
+close to optimal at every ply, so a "looks great immediately, decays later"
+line clearing a 0.15-committor bar essentially doesn't occur in this data at
+shallow depth. Loosened to `min_gain=0.05, decay_tol=0.02` (still requires a
+real single-step decay >= 0.02 and a net-negative trend, per the existing
+"sound: no meaningful decay" guard in detect.py) -- found 4/60 positions.
+
+Spot-checked the cleanest hit (source="capture", the more trustworthy
+blocking-condition type): game 64294 ply 34,
+`rn1q1rk1/3n1ppp/2b1pb2/pBPp4/N4P1P/P2QPN2/1B4P1/2R1K2R w K - 3 18` --
+candidate `Nf3-g5` (immediate_gain +0.070, trend [0.179, 0.128, 0.057,
+0.089]) is refuted one exchange later by `Nd7xf6`: White's knight-sac idea
+on f6 nets only a bishop-for-knight trade once Black's d7-knight recaptures,
+not the bigger prize the immediate committor jump suggested. Blocking
+condition: "Black still defends f6." This is a coherent, legible tactic --
+the mechanism traces to a real recapture, not search noise -- first
+end-to-end confirmation that detect.py surfaces genuine armed tactics on
+real game data, not just synthetic unit-test positions.
+
+**Implication for part 2/3 design:** the default `min_gain=0.15` from the
+detect.py docstring/tests is calibrated for synthetic/tactically-loaded test
+positions, not naturally-occurring near-optimal SF-vs-SF midgame play --
+whatever store/replay harness comes next should either loosen thresholds for
+this data source or expect a low hit rate (4/60 = 6.7% at depth 10) and plan
+sample sizes accordingly. Human game data (weaker play, more real blunders)
+is a plausible higher-yield source to try next but not yet tried.
+
+Still not built: parts 2 (store) and 3 (activation-watch feedback loop).
