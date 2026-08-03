@@ -87,3 +87,5 @@
   kbk      +    0  total 40000  (29 pos/s, 1391s)
   kbk      +    0  total 40000  (29 pos/s, 1393s)
   kbk      +    0  total 40000  (29 pos/s, 1395s)
+/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 5 leaked semaphore objects to clean up at shutdown: {'/mp-nda10dib', '/mp-qao6wzh0', '/mp-uzkummt6', '/mp-sdk0b1pn', '/mp-rixcja1e'}
+  warnings.warn(

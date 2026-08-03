@@ -9382,3 +9382,1337 @@ est. ~6h wall-clock, watchdog armed (45-min stall threshold). Next once it
 lands: train IQE on the frozen lc0 trunk over this data, then the MultiPV /
 field-query only-move mining pass (cost TBD, will report before running at
 scale — MultiPV over every legal move at every position is not cheap).
+
+## 2026-07-31 — defender-circuit probe: readout decodes hanging-ness, causal add-a-defender edit does not beat placebo
+
+Kaveh brainstormed a mechanism (query="am I capturable", key="I defend this square",
+value=protection contribution) and asked for a probe with figures before continuing the
+broader piece-identity-tokenization idea. Ran `experiments/defender_circuit_probe.py`
+against the frozen JEPA T1 trunk (`artifacts/experiments/jepa_t1_latest.pt`), n=5200
+positions from `data/derived/transition_data_labeled.npz`, external label only
+(count-based attackers/defenders via python-chess, not fed into the model, per TESTING
+2.9). Smoke (n=420/18) run before the full (n=5200/174) run, per the fail-fast rule.
+
+**Caught + fixed a methodological bug before reporting it**: first pass measured
+Integrated-Gradients attribution with baseline=pre-edit board, input=post-edit board.
+Since those two boards differ at exactly one square by construction, IG's completeness
+axiom guarantees 100% of attribution lands there regardless of what the model does —
+a tautology, not a finding (was about to log a false "PASS"). Fixed by attributing
+against an empty-board baseline instead, so all occupied squares have nonzero
+input-baseline difference and the ranking question is well-posed. Re-smoked before the
+full rerun.
+
+Three verdicts (all printed, `artifacts/experiments/defender_circuit_probe.{png,npz}`,
+`docs/figures/defender_circuit_probe.png`):
+- **Readout** (logistic probe, not SAE — Kantamneni et al. 2025 finding that SAE probes
+  don't reliably beat plain supervised probes on classification tasks applies here):
+  held-out AUC 0.826, acc 0.739 on 29,721 held-out (square, is_hanging) pairs. The
+  trunk's per-square token DOES statically encode hanging-ness well.
+- **Causal edit** (add a real defender vs. a placebo piece of the same type elsewhere,
+  matched attacker/defender counts, n=174, bootstrap CI): d_logit(+defender) +0.220
+  [+0.146,+0.295] vs d_logit(placebo) +0.217 [+0.147,+0.284] — diff +0.003
+  [-0.054,+0.056]. **FAIL**: statistically indistinguishable. Both edits push the
+  logit the same amount in the same direction — consistent with "an extra piece
+  anywhere" (material-count / distribution-shift) driving the move, not
+  defender-specific structure.
+- **Attribution** (IG vs empty-board baseline, rank of the true defender square's
+  attribution magnitude among other occupied squares, n=174): top-1 rate 0.098 (null
+  0.047), top-3 rate 0.322 (null 0.142) — roughly 2x null, not the 3x threshold set
+  pre-registration-style. Weak enrichment, not the sharp legible circuit hypothesized.
+
+Read together: the static representation is decodable for hanging-ness, but the
+specific "defender circuit" (protection encoded locally, causally, at the defender's
+own token) is not supported at n=174 — the readout's static skill may instead lean on
+aggregate/global features (CLS-adjacent) rather than a local per-square defender
+signal, or on attacker-count alone without needing to individuate the defender. Not
+yet tested: literal attention-weight from the target square's query to the defender
+square's key (the cheapest, most direct version of Kaveh's original mechanism
+sketch) — no gradient needed, just read `nn.MultiheadAttention` weights directly.
+Flagged as the natural next step if he wants to keep pulling this thread before
+deciding on the piece-identity-tokenization redesign.
+
+**Follow-up same day**: Kaveh caught that the per-square-token probe above might miss
+the mechanism if it's pooled into the CLS token rather than staying local. Reran with
+features = [phi(CLS) ++ target-square token] (512-dim), same n=5200/174:
+- Readout: AUC 0.830 (~same as square-token-only 0.826).
+- Causal edit: still FAIL, diff +0.011 [-0.056,+0.075] -- defend vs placebo still
+  statistically indistinguishable.
+- Attribution: now PASS -- defender-square top-1 rate 0.224 (null 0.047, ~4.8x), top-3
+  rate 0.448 (null 0.142, ~3.2x). With CLS included, the defender's square IS the
+  most gradient-important occupied square far more often than chance.
+
+Net picture: the CLS-inclusive readout's local gradient sensitivity DOES concentrate on
+the defender's square (real, above the pre-registered 3x bar) -- but that doesn't
+translate into a differential effect on the actual logit shift between a real defender
+edit and a same-piece-elsewhere placebo edit. Working explanation, not yet tested: both
+edits add a 9th/extra piece, which is out-of-distribution for the trunk regardless of
+where it lands; that OOD/complexity signal may dominate the linear readout's output and
+swamp the finer defended-vs-not distinction the attribution is picking up on locally.
+Would need either (a) an in-distribution comparison (naturally-occurring 1-defender vs
+2-defender positions, no synthetic edit) or (b) a placebo that also normalizes for
+"extra piece exists" more carefully, to separate these. Not run yet -- Kaveh's call on
+whether to keep pulling this thread or move to the broader piece-identity-tokenization
+idea.
+
+**Follow-up, dropped the balanced-start filter (Kaveh's third fix)**: "doesn't matter
+where it starts, only whether it suddenly drops toward the attacker." Removed the
+|committor_before-0.5|<0.15 requirement entirely (--balanced-band default now 1.0 =
+no-op). Yield jumped from 155 to 18,925 real captures across the 70k transitions;
+96 hanging (gain>=0.25) vs 15,678 defended/fair (|gain|<=0.05) -- control subsampled
+to 3000 for compute (--max-ctrl). Fixed an en-passant bug along the way (captured
+pawn isn't on move.to_square; skipped, rare).
+
+Now adequately powered (n_test=777, vs n_test=38 before):
+- **Readout: AUC 0.483 [0.372, 0.588]** -- a clean null, CI straddles 0.5 on both
+  sides. The trunk's [phi(CLS) ++ target-square token] representation does NOT
+  distinguish real hanging pieces (verified by actual SF committor swing across the
+  played capture) from fair-trade captures, at adequate sample size.
+- **Attribution** (n=408 defended cases with an identifiable real recapturing
+  defender): top-1 rate 0.083 (null 0.043, ~1.9x), top-3 rate 0.201 (null 0.128,
+  ~1.6x) -- some enrichment above chance, still below the pre-registered 3x bar.
+
+Reading this against the v1 result (count-based "attackers>0,defenders==0" label,
+AUC 0.826): the earlier readout skill likely came from decoding a shallow, locally
+computable geometric fact (is there a visible attacker with no visible defender)
+that's close to directly present in the input tokens -- not from any deeper tactical
+judgment. Once the label is the REAL game-theoretic outcome (does the piece actually
+get lost for free after all forcing sequences, SF-verified), the trunk is at chance.
+Plausible reading: JEPA T1 has the shallow "no visible defender" concept but not
+genuine multi-ply "actually free" tactical depth -- consistent with the standing
+`tactical_blindness_root_cause` note that outcome-agnostic training underweights
+this. Directly relevant to the broader piece-identity-tokenization idea Kaveh's
+building toward: if the current trunk can't resolve real hanging-ness even at the
+readout level, that's evidence FOR needing a representation change, not just an
+interpretability-probe artifact.
+
+**Fix (Kaveh's catch)**: the en-passant skip was patching a symptom, not the cause --
+"the captured piece is on move.to_square" is false only for en passant, but the real,
+general fact ("which square held an enemy piece before the move and doesn't after,
+excluding the mover's own from_square") is true for every capture kind with zero
+branching on move type. Replaced `mv.to_square` with a generic `captured_square()`
+diff between pre/post piece maps; no more skipped rows. Rerun: AUC 0.497
+[0.340, 0.664], attribution top-1 5.4% (null 4.3%) / top-3 17.0% (null 12.8%) --
+same conclusion as before (clean null on the readout), the fix mattered for
+correctness, not for the finding.
+
+**Fix #2 (Kaveh)**: replaced `board.is_capture(move)` (a library semantic flag) with
+the generic primitive fact -- a capture is piece count dropping by exactly one --
+computed directly from the pre/post piece maps, same diff already used to locate the
+captured square. Numbers came out identical (96 hanging / 15,717 defended-fair, AUC
+0.497) -- `is_capture()` was already correct on this data, so this was a robustness/
+principle fix (derive from primitive state, don't trust a library's semantic method)
+not a bug fix. Conclusion unchanged.
+
+**Kaveh's follow-up: same probe against the raw lc0 trunk.** Ran
+`experiments/hanging_piece_probe_lc0.py` against the frozen community Leela
+distillate (`data/engines/lc0/t1-256x10.onnx`, the M1 locked trunk
+`catspace/encoder/field.py::ReachabilityField` wraps) instead of JEPA T1. Same
+case/control construction (real SF committor-swing ground truth, no synthetic edits,
+no balanced-start filter). Readout-only (skipped the IG attribution pass -- ONNX
+trunk's autograd behavior under captum isn't validated, and readout is the direct
+answer to "does it contain the information at all").
+
+Load-bearing fix caught before running: lc0's input planes are POV-oriented -- for
+Black to move, `LczeroBoard.to_config_tensor()` flips the board vertically (rank
+axis only, files unchanged), and the trunk's per-square token order follows the same
+layout. Added `pov_square_index()` to remap the absolute target square correctly per
+side to move; getting this wrong would have silently misaligned every Black-to-move
+example with the wrong square's token.
+
+Result: **AUC 0.601 [0.443, 0.735]**, n_test=767 -- higher point estimate than JEPA
+T1's 0.497, but the CI still straddles chance, so not a clean pass either. Reads as
+"more signal than JEPA T1, not yet a confident positive" -- consistent with lc0 being
+a much bigger, more thoroughly-pretrained network, but the linear readout on
+mean-pooled-tokens ++ target-square-token still doesn't nail it. Open questions before
+concluding further: a nonlinear (small MLP) readout on either trunk, per-layer probing
+(only the deepest hook was used here, matching field.py's own convention), and more
+data (case count is still only 96 across both runs, from the same limited pool).
+
+**MLP probe + literature search (Kaveh's ask).** Web search grounded three things
+before building:
+- Hewitt & Liang 2019 (ACL, "Designing and Interpreting Probes with Control Tasks"):
+  nonlinear probes have low "selectivity" -- high capacity lets them memorize
+  spurious feature-label mappings, so a positive MLP result is untrustworthy without
+  a control task (same probe, same features, independently randomized labels;
+  selectivity = auc_real - auc_control must be clearly positive).
+- McGrath et al. 2022 (PNAS, "Acquisition of Chess Knowledge in AlphaZero"): used
+  sparse LINEAR probes specifically to avoid this, run per-layer AND per-checkpoint
+  ("what-when-where" plots) -- the closest methodological precedent, and it argues
+  for per-layer probing (we've only probed the final layer/hook so far).
+- Jenner et al. 2024 (NeurIPS, "Evidence of Learned Look-Ahead in a Chess-Playing
+  Neural Network"): got a probe to 92% predicting lc0's move 2 plies ahead -- but on
+  the FULL-SIZE lc0 net (15 layers, 768-dim, ~109M params, GPT-2-scale). Our lc0
+  trunk here is the distilled t1-256x10 (256-dim, 10 layers) -- a real, concrete
+  candidate explanation for the weak lc0 signal: undersized/distilled trunk, not
+  necessarily "the concept isn't there." A bigger checkpoint already sits in the repo
+  (`data/engines/lc0/t1-512x15x8h-distilled-swa-3395000.pb.gz`, 512-wide/15-layer,
+  much closer to that paper's scale) -- not yet tried.
+- Also surfaced, not yet used: "The Algorithm Is Not the Behavior" (2026) found lc0's
+  policy net computes correct tactical solutions in INTERMEDIATE layers, overridden
+  by late layers via a learned safety prior (logit-lens methodology) -- would explain
+  a final-layer null even with real internal computation. "Tracing the Thought of a
+  Grandmaster-level Chess-Playing Transformer" (arXiv 2604.10158, Apr 2026) -- sparse
+  decomposition/transcoder circuit-tracing on lc0, code at github.com/JacklEOniden/
+  Leela-SAEs, found verifiable tactical pathways -- a heavier-weight next-level
+  technique if probing continues to stall.
+
+Built `experiments/probe_readout.py` (shared linear + MLP-with-control-task helper),
+wired into both hanging_piece_probe.py and hanging_piece_probe_lc0.py.
+
+Results (same n=767 test set both trunks):
+- **JEPA T1**: MLP AUC 0.493 [0.347,0.628] vs control-task AUC 0.491 [0.370,0.610],
+  selectivity +0.002 -- MLP finds nothing beyond the linear probe's null, and its
+  control task confirms it isn't just failing to fit (same near-chance floor either
+  way).
+- **lc0 (t1-256x10)**: MLP AUC 0.431 [0.335,0.536] vs control-task AUC 0.495
+  [0.375,0.616], selectivity -0.064 -- the MLP actually did WORSE than its own
+  control task here, i.e. it's not a reliable readout on this feature set at these
+  hyperparams (32 hidden units, alpha=1e-3, ~2300 train examples for 512-dim
+  features) -- can't trust any number from it. The linear probe's AUC 0.601
+  [0.443,0.735] on lc0 remains the best actual signal in hand; MLP doesn't
+  corroborate or refute it, it just failed to produce a trustworthy result.
+
+Net: MLP didn't move the conclusion (still no confirmed positive on either trunk).
+The two most promising untried leads from the literature are (a) the bigger lc0
+checkpoint already on disk, and (b) per-layer probing instead of final-layer-only,
+following McGrath's methodology -- Kaveh's call on which to pursue.
+
+**Both requested + a positive control (Kaveh 2026-07-31).**
+
+Positive control: label = "captured piece is major (rook/queen)" from
+`board.piece_at(tgt_sq).piece_type` -- reuses the IDENTICAL rows/features/split as
+the real hanging-piece task, only the label differs, so it's a direct validity check
+of the measurement harness, not a separate experiment. Result: 1.000 (or ~0.99+) AUC
+at essentially every layer of every trunk tested -- harness confirmed sound. Any null
+below is real, not a broken pipeline.
+
+Converted the bigger lc0 checkpoint to ONNX (`lc0 leela2onnx --input=data/engines/lc0/
+t1-512x15x8h-distilled-swa-3395000.pb.gz --output=data/engines/lc0/t1-512x15x8h.onnx`,
+homebrew lc0 0.32.1) -- 15 layers, 512-dim, 8 heads, ~matches Jenner et al. 2024's
+net scale (they used 15L/768d). Built `experiments/layer_sweep_probe.py`: per-layer
+linear-probe sweep (pooled-square-tokens ++ POV-corrected target-square token at
+EVERY encoder block, not just the final one, following McGrath et al. 2022's
+"where" methodology), same real SF committor-swing ground truth throughout, run on
+all three trunks:
+
+- **jepa** (6 layers, 256d): null at all 8 stages (embed + 6 blocks + post-LN),
+  AUC 0.46-0.55 throughout. Consistent with the final-layer result already had.
+- **lc0-small** (t1-256x10, 10 layers, 256d): null at all 10 layers, AUC 0.45-0.67,
+  best CI still crosses 0.5 everywhere (L10 AUC 0.601 [0.457,0.735], matches the
+  earlier final-layer-only run exactly -- good consistency check).
+- **lc0-big** (t1-512x15x8h, 15 layers, 512d): **first confirmed positive.**
+  AUC climbs with depth -- L1-L12 mostly null (0.50-0.67), then L13 0.634
+  [0.465,0.782], L14 0.714 [0.591,0.818], **L15 (final) 0.763 [0.681,0.840]** --
+  clearly and confidently above chance, n_test=767, positive control still ~0.96-1.0
+  at these same layers (rules out a collapsed/degenerate representation at depth).
+  3/15 layers clear the lower-CI>0.5 bar, all in the back third of the network.
+
+Reading: capacity was the blocker, not architecture or absence of the concept. The
+small trunks (JEPA T1, lc0-256x10) genuinely don't carry recoverable hanging-piece
+information by a linear readout; the GPT-2-scale lc0 does, and it's built up
+progressively in the LAST FEW layers specifically -- consistent with Jenner et al.'s
+finding that lc0's look-ahead-related computation lives late/deep, and with "The
+Algorithm Is Not the Behavior"'s finding that tactical solutions can be layer-local
+rather than present throughout. Directly answers Kaveh's standing question: the
+concept is NOT absent from lc0-family networks in general -- it needs the network to
+be big enough, and it needs the last ~3 layers specifically, not the trunk as a
+whole. Whether the same holds at MLP/nonlinear readout on lc0-big, or whether this
+prompts a rethink of JEPA T1's capacity/depth budget, is Kaveh's call next.
+
+---
+
+## 2026-07-31 — CONSOLIDATED: hanging-piece probe series, full methodology + figures
+
+Kaveh asked for a single self-contained record (method + all figures) of the whole
+probe thread, since it went through several corrections across the session. Full
+writeup below; supersedes/summarizes the scattered entries above.
+
+### Question
+
+Does any trunk we have (our own JEPA T1, or the frozen lc0 distillates the M1 plan
+locks onto) represent "this piece is hanging" -- genuinely free material, not just
+"looks undefended" -- as something a simple readout can recover from its
+representation? Motivated by Kaveh's piece-identity-tokenization brainstorm (query =
+"am I capturable", key = "I defend this square").
+
+### Ground truth (final version, after two corrections)
+
+Count-based heuristics ("attacked, zero visible defenders") were REJECTED --
+undefended doesn't mean hanging if a bigger threat elsewhere means it can't actually
+be taken, and it's the wrong instrument to score capturability at all. Final
+definition, Kaveh's: take a REAL capture from a REAL game and ask what Stockfish's
+own win-probability (WDL win-fraction, depth 12, already computed by
+`experiments/sf_label_transitions.py` as `committor_before`/`committor_after` in
+`data/derived/transition_data_labeled.npz` -- no new engine calls needed) did across
+that exact move:
+  - **HANGING** (case): win-probability swung sharply toward the capturer
+    (mover-POV gain >= 0.25). The piece really was free.
+  - **DEFENDED/FAIR** (control): a capture happened but win-probability barely
+    moved (|gain| <= 0.05) -- a real recapture/fair trade existed. This is
+    the requested control: "a capture is made but the evaluation does not change."
+  - No requirement on the STARTING position's balance ("doesn't matter where it
+    starts, only whether it suddenly drops toward the attacker") -- an earlier
+    balanced-start filter was dropped because it starved the sample (155 examples)
+    for no principled reason; without it, 18,925 real captures qualify (96 hanging /
+    15,678 defended-fair after excluding non-captures).
+  - Captured square found generically ("piece count drops by exactly one, then which
+    square lost an enemy piece") rather than via `move.to_square` or
+    `board.is_capture()` -- both are move-type-specific shortcuts that break on en
+    passant; the piece-count definition is the actual fact and needs no branching
+    (Kaveh's catches, `experiments/hanging_piece_probe.py::captured_square`).
+
+The model only ever sees the board BEFORE the capture is played.
+
+### Positive control (Kaveh's ask: "a context where we know something ought to come
+out")
+
+Label = "the captured piece is a major piece (rook/queen)" from
+`board.piece_at(target_square).piece_type` -- literally the piece identity written
+into the input token (an embedding lookup for JEPA, a one-hot plane for lc0). This
+MUST be linearly recoverable at every layer if the harness (feature extraction, POV-
+square mapping, train/test split, probe) works at all -- it reuses the IDENTICAL
+rows/boards/target-squares/features as the real task, only the label differs, so
+it's a validity check of the instrument, not a separate experiment. Result: ~1.00 AUC
+at essentially every layer of every trunk tested (see figures) -- the harness is
+sound; nulls below are real, not measurement failure.
+
+### Readout methods, in order tried
+
+1. **Linear logistic probe** on [pooled/CLS feature ++ target-square token],
+   game-level held-out split (no game in both train/test), bootstrap CI.
+2. **MLP + Hewitt & Liang 2019 control task** (`experiments/probe_readout.py`):
+   nonlinear probes can memorize spurious feature-label mappings, so a positive MLP
+   result is only trustworthy if `selectivity = auc_real - auc_control` (control =
+   same probe/features/split, independently randomized labels) is clearly positive.
+   McGrath et al. 2022 (PNAS, AlphaZero concept probing) used sparse LINEAR probes
+   specifically to sidestep this.
+3. **Per-layer sweep** (`experiments/layer_sweep_probe.py`): probe EVERY encoder
+   block's output, not just the final layer/pooling -- McGrath's "where" axis;
+   motivated by "The Algorithm Is Not the Behavior" (2026) finding that lc0's policy
+   net can solve tactics in intermediate layers and override them later.
+4. Integrated-Gradients attribution (empty-board baseline, ranks which occupied
+   square drives the readout) -- JEPA T1 only, not attempted on lc0 (ONNX-derived
+   trunk's autograd behavior under captum unvalidated).
+
+### Trunks tested
+
+- **JEPA T1** (ours, 6 layers, 256-dim) -- `artifacts/experiments/jepa_t1_latest.pt`
+- **lc0-small** (`data/engines/lc0/t1-256x10.onnx`, 10 layers, 256-dim) -- the
+  distilled M1-locked trunk `catspace/encoder/field.py::ReachabilityField` wraps
+- **lc0-big** (`data/engines/lc0/t1-512x15x8h.onnx`, 15 layers, 512-dim, 8 heads) --
+  converted this session from `t1-512x15x8h-distilled-swa-3395000.pb.gz` via
+  `lc0 leela2onnx --input=... --output=...` (homebrew lc0 0.32.1); chosen because
+  Jenner et al. 2024 (NeurIPS, "Evidence of Learned Look-Ahead in a Chess-Playing
+  Neural Network") got a probe to 92% predicting lc0's move 2-plies-ahead, but on a
+  15-layer/768-dim/~109M-param net (GPT-2 scale) -- our lc0-small is far smaller;
+  lc0-big is the closest match available on disk.
+
+lc0's input planes are POV-oriented (flipped vertically, ranks only, when Black is to
+move -- `LczeroBoard.to_config_tensor()`); `pov_square_index()` in
+`experiments/hanging_piece_probe_lc0.py` remaps the absolute target square correctly
+per side to move. Getting this wrong would silently misalign every Black-to-move
+example -- load-bearing, caught before running, not cosmetic.
+
+### Results
+
+**Linear, final layer only** (first pass, before the layer sweep):
+| trunk | AUC | 95% CI | n_test |
+|---|---|---|---|
+| JEPA T1 | 0.497 | [0.340, 0.664] | 767 |
+| lc0-small | 0.601 | [0.443, 0.735] | 767 |
+
+**MLP + control task, final layer**:
+| trunk | MLP AUC | control-task AUC | selectivity |
+|---|---|---|---|
+| JEPA T1 | 0.493 | 0.491 | +0.002 (nothing beyond linear) |
+| lc0-small | 0.431 | 0.495 | -0.064 (untrustworthy -- MLP underperformed its own control) |
+
+**Per-layer sweep** (linear probe, every encoder block, positive control alongside):
+
+`artifacts/experiments/layer_sweep_jepa.png` / `docs/figures/layer_sweep_jepa.png`
+![JEPA T1 per-layer sweep](docs/figures/layer_sweep_jepa.png)
+JEPA T1, 8 stages (embed + 6 blocks + post-LN): hanging AUC 0.46-0.55 throughout,
+never clears chance. Positive control 1.000 at every stage.
+
+`artifacts/experiments/layer_sweep_lc0_small.png` / `docs/figures/layer_sweep_lc0_small.png`
+![lc0-small per-layer sweep](docs/figures/layer_sweep_lc0_small.png)
+lc0-small, 10 layers: hanging AUC 0.45-0.67, best CI still crosses 0.5 everywhere
+(L10 AUC 0.601 [0.457,0.735], matches the final-layer-only run exactly). Positive
+control 0.99-1.00 throughout.
+
+`artifacts/experiments/layer_sweep_lc0_big.png` / `docs/figures/layer_sweep_lc0_big.png`
+![lc0-big per-layer sweep](docs/figures/layer_sweep_lc0_big.png)
+lc0-big, 15 layers -- **first confirmed positive**:
+| layer | hanging AUC | 95% CI |
+|---|---|---|
+| L1-L12 | 0.50-0.67 | all cross 0.5 |
+| L13 | 0.634 | [0.465, 0.782] |
+| L14 | 0.714 | [0.591, 0.818] |
+| **L15 (final)** | **0.763** | **[0.681, 0.840]** |
+Positive control stays 0.96-1.00 through all 15 layers (rules out a collapsed
+representation at depth as the explanation for the late jump). n_test=767 throughout.
+
+### Interpretation, and what's NOT yet established (Kaveh's follow-up question,
+2026-07-31: "does the data support that many layers are needed to form this concept,
+and could guiding/hand-engineering the representation save capacity?")
+
+**What the data shows, plainly**: capacity was the blocker, not architecture or
+concept-absence. Both small trunks (JEPA T1 6L/256d, lc0-small 10L/256d) show nothing
+recoverable at ANY depth. lc0-big (15L/512d) shows it, but ONLY in the last 3 of 15
+layers (80% of the depth, L1-L12, is flat and null, matching the small trunks'
+magnitude almost exactly).
+
+**Important correction to "it takes a lot of layers"**: the shape of the curve is NOT
+a gradual ramp across many layers -- it's flat through 80% of the depth, then a sharp
+jump in the final ~20%. That's a different claim than "concept formation needs a long
+sequential computation." It's closer to "a late, fairly localized sub-computation
+does this, and it only works if the network has enough capacity there" -- which is
+actually a MORE encouraging reading for Kaveh's compression idea than "needs deep
+sequential composition": if it's a localized late operation rather than an
+accumulation across the whole stack, a smaller network that's *shaped* right (not
+necessarily just "fewer layers") might reproduce it without needing 15 layers.
+
+**What's NOT established, and is the real gap before acting on the compression
+idea**: lc0-small and lc0-big differ in BOTH width (256 vs 512) AND depth (10 vs 15)
+simultaneously -- this experiment cannot tell whether WIDTH or DEPTH (or just raw
+parameter count) is the actual capacity bottleneck. `data/engines/lc0/
+t70-128x10.pb.gz` was considered as a third data point but is a different
+architecture family entirely (SE-ResNet + convolutional policy, not a transformer --
+`describenet` confirms `NETWORK_SE_WITH_HEADFORMAT`/`POLICY_CONVOLUTION`), so it
+would confound architecture family with size rather than isolate width/depth --
+not used. A clean width-vs-depth ablation would need matched-shape transformer
+checkpoints (e.g. same depth/different width, or vice versa) that aren't on disk --
+would require training new nets, not just probing existing ones. Also not yet
+localized: WHERE inside L13-L15 the transition happens (attention sub-block vs FFN
+sub-block) -- would need sub-layer hooks (ln1/attn/ffn/ln2 separately) to say
+anything about which computation to hand-engineer or steer earlier.
+
+Verdict on Kaveh's hypothesis: PLAUSIBLE and consistent with the shape of the data
+(late, sharp, not gradual -- supports "guide/hand-engineer to save capacity" better
+than "just needs raw depth"), but NOT YET PROVEN which axis (width, depth, or params)
+is doing the work, since the two lc0 trunks differ on all three at once. Next
+concrete step to actually test it: sub-layer localization within L13-L15 (cheap,
+reuses this session's infra) before committing to a capacity-reduction redesign.
+
+### Follow-up test: is it "present early but not linearly readable" vs "genuinely computed late"?
+
+Kaveh's question, 2026-07-31: could the last-layers-only signal be because the
+network wants the answer "readily available without modification" right before the
+output heads, rather than the concept being genuinely absent/uncomputed earlier?
+This is a real, distinguishable alternative (logit-lens-style: info present but
+nonlinearly entangled early, only becomes linearly separable once the residual
+stream is reorganized for output) -- a LINEAR probe cannot tell these apart, since it
+only detects what's linearly readable in the CURRENT basis at each layer.
+
+Test: added `--mlp` to `experiments/layer_sweep_probe.py` -- runs the MLP+Hewitt&Liang-
+control-task check (already built) at EVERY layer, not just the final one. If the
+concept is present-but-entangled early, the MLP (which CAN unpack nonlinear
+structure) should clear chance, trustworthily (beating its own control task), several
+layers before the linear probe does. Ran on lc0-big (the only trunk with any linear
+signal to compare against), n_test=767, full scale, `docs/figures/layer_sweep_lc0_big_mlp.png`.
+
+![lc0-big MLP vs linear per-layer](docs/figures/layer_sweep_lc0_big_mlp.png)
+
+Result: **MLP is null-or-untrustworthy (selectivity <=0.11) at every layer 1-14**,
+same flat noise floor as the linear probe there. It only becomes trustworthy
+(selectivity +0.188, beats its control) at **L15 -- the same place, not earlier, than
+where linear signal is real** -- and even there the MLP (AUC 0.636) is WEAKER than
+the linear probe (AUC 0.763) at that same layer. So: no evidence the concept is
+present-in-entangled-form before it's linearly readable. The data argues AGAINST the
+logit-lens-style "already there, just needs unpacking" story and FOR genuine late
+computation -- the network does not appear to have this information available, in any
+form a moderately-sized MLP can find, until the last layer or two.
+
+Caveat on confidence: the MLP underperforms the linear probe even AT L15 where both
+detect something, which suggests the MLP (32 hidden units, ~2300 train examples for
+512-1024-dim input, alpha=1e-3) may itself be underpowered/undertuned rather than a
+maximally strong nonlinear detector -- so this is real evidence against the
+"entangled-early" hypothesis, not ironclad proof of absence. A better-tuned or
+larger-capacity MLP (with its own control task, mandatory) at early-to-mid layers
+would firm this up further if it matters enough to Kaveh to pursue.
+
+**Answer to Kaveh's question**: the data leans against "readily available without
+modification, just needs to be pulled straight to the output" -- the best-available
+nonlinear probe couldn't find it any earlier than the linear one did. It looks more
+like a genuine late computation than a late consolidation of pre-existing information.
+
+### Bigger MLP + a proper nonlinear positive control (Kaveh 2026-07-31)
+
+Kaveh's catch: "major-piece" (the only positive control so far) is trivially LINEAR
+(AUC 1.000 with plain logistic regression) -- it validates that features are
+extractable at all, but says NOTHING about whether the MLP can find genuinely
+nonlinear structure. Without that, a bigger MLP's null is uninterpretable: it could
+mean "the concept isn't there" or "this MLP just can't find nonlinear structure,
+period."
+
+Fix: added a NONLINEAR positive control -- `xor_label = majors XOR white_to_move`,
+i.e. the XOR of two independently-linearly-decodable facts (piece identity, global
+side-to-move). XOR of two linearly-readable quantities is the textbook case a linear
+probe cannot solve but a 1-hidden-layer MLP trivially can (Minsky/Papert). If the MLP
+can't solve THIS, no MLP result anywhere is trustworthy, however large.
+
+Also bumped MLP capacity: `experiments/probe_readout.py::mlp_readout_with_control`
+now takes `hidden` as a tuple (default (128, 32), up from a single 32-unit layer),
+configurable via `--mlp-hidden` in `layer_sweep_probe.py`. The "trustworthy" gate on
+the real hanging-task result now additionally REQUIRES the same MLP to have passed
+the XOR control at that same layer/split (`xor_ok`), not just its own randomized-
+label control task -- two independent validity checks, not one.
+
+Ran full-scale on lc0-big (n_test=767, `docs/figures/layer_sweep_lc0_big_bigmlp.png`):
+
+![lc0-big bigger MLP + XOR control](docs/figures/layer_sweep_lc0_big_bigmlp.png)
+
+- **XOR nonlinear control: AUC ~1.000, selectivity ~+0.45-0.51, at every single
+  layer.** The bigger MLP is unambiguously capable of finding nonlinear structure
+  whenever it's present -- methodology validated, not just on paper.
+- **Real hanging-task MLP: mostly AUC 0.45-0.61, i.e. AT OR BELOW chance, at every
+  layer including L13-L15** where the LINEAR probe shows its strongest, most
+  confident signal (0.634/0.714/0.763). The bigger MLP does not merely fail to beat
+  linear here -- it's noisier and generally worse than the smaller 32-unit MLP was in
+  the previous pass, despite being provably capable of nonlinear detection on the
+  control.
+
+Reading: this is NOT evidence the concept is absent (that would require the MLP to
+reliably match-or-beat the linear probe and still find nothing). Most likely
+explanation: the real task has only 96 positive (hanging) examples against a much
+larger negative class, vs. the XOR control's clean ~50/50 synthetic balance -- higher
+MLP capacity needs more data to generalize reliably, and 96 positives may simply not
+be enough to train a (128,32) MLP reliably regardless of what information is
+available in the representation. The XOR control proves the MLP CAN find nonlinear
+structure in general; it does not prove it can find THIS specific, low-base-rate
+signal with THIS little data.
+
+**Net verdict, unchanged but now on much firmer ground**: the linear probe's
+late-layer pattern (L13-L15 of lc0-big, AUC climbing to 0.763) remains the best,
+most reliable signal in hand. The MLP, now validated as genuinely capable of
+nonlinear detection via the XOR control, still finds nothing beyond what linear
+already found -- consistent with (not proof of) "hanging-ness becomes linearly
+decodable exactly when/where it's computed, not earlier in an entangled form."
+The open gap that would let a bigger MLP help here is DATA (more hanging-piece
+examples), not readout capacity -- getting more requires enumerating captures over a
+larger position pool with fresh Stockfish evals (previously discussed, not yet run),
+not further probe-methodology work.
+
+---
+
+## 2026-07-31 — Koopman-linearization probe on JEPA T1's phi space: does it linearize well?
+
+Kaveh asked, exploratory, while the data-gen job ran in the background: "if we wanted
+to go the Koopman way, how would we do it?" Recommended the cheap version first --
+fit an affine-linear (Koopman/DMDc form: phi(s') ~= A@phi(s) + B@u(a)) one-step
+operator by closed-form RIDGE REGRESSION directly on the frozen, already-trained
+JEPA T1 encoder's phi space, reusing its own action-embedding tables
+(model.dyn.from_emb/to_emb/promo_emb) so the comparison against the existing
+NONLINEAR DynPredictor (2-layer MLP) isolates exactly one axis: linear vs nonlinear
+combiner, same inputs, same action representation. No gradient training loop --
+pure regression, ~2.5 min for n=8000 real transitions.
+
+`experiments/koopman_dyn_probe.py`, held out by game (n_test=1996):
+
+![Koopman vs nonlinear one-step dynamics](docs/figures/koopman_dyn_probe.png)
+
+| model | R2 | cosine sim |
+|---|---|---|
+| identity (phi(s')~=phi(s), no model) | 0.775 | 0.994 |
+| **Koopman (linear-in-phi, affine-in-action)** | **0.936** | **0.998** |
+| DynPredictor (trained nonlinear MLP) | 0.943 | 0.998 |
+
+**VERDICT: LINEARIZES WELL.** The closed-form linear operator captures 0.161 of the
+0.225 R2 headroom above the trivial identity baseline (71.5%); the trained nonlinear
+MLP captures 0.168 (74.7%) -- the linear fit gets ~96% of what the nonlinear model
+gets, gap only +0.006 R2. One-step chess dynamics in this trunk's embedding space are
+close to linear already, without the encoder ever having been trained with any
+linearity-inducing objective.
+
+Caveats before over-reading this: (1) the IDENTITY baseline is already high (0.775)
+-- a single ply is usually a small perturbation to a 256-dim global position summary,
+so the achievable headroom for ANY model is modest; the linear/nonlinear comparison
+should be read relative to that headroom, not the raw R2 numbers. (2) Only ONE-STEP
+prediction was tested -- multi-step rollout coherence (does a repeatedly-applied
+fixed linear operator stay accurate/stable over many plies, a classic Koopman
+concern for genuinely chaotic/combinatorial systems) is untested. (3) Doesn't yet
+say anything about whether the LINEARIZED prediction preserves TACTICALLY relevant
+structure specifically -- e.g. does phi(s') predicted by the Koopman operator still
+decode "hanging piece" as well as the true encoded phi(s') does, or does linearity
+buy its accuracy by getting the "easy" (slowly-varying, non-tactical) dimensions
+right while the few tactically-loaded dimensions are exactly where nonlinearity is
+doing its work? That's the natural next check, directly tying this back to the
+whole probe-series' central question, and cheap to run (reuses the trained
+hanging-piece readout + this session's phi(s') predictions) -- not yet run, Kaveh's
+call on priority next to it.
+
+Practical implication if it holds up: a real Koopman-constrained DynPredictor swap
+(replacing the MLP with this same affine-linear form, trained end-to-end rather than
+fit post-hoc on a frozen encoder) is worth building for real -- it would make the
+learned dynamics operator's eigenmodes available as an unsupervised concept-discovery
+tool (project trajectories onto K's eigenvectors, check for correlation with known
+tactical/positional concepts), complementing the SAE/probe route already used for M3.
+
+### Confirmed against a real, independently-trained Leela net (Kaveh's suspicion check)
+
+Kaveh's worry: the JEPA T1 linearization result might just mean JEPA is too small/
+undertrained, not that chess dynamics genuinely linearize. Reran the identical
+question against `data/engines/lc0/t1-512x15x8h.onnx` -- the biggest well-trained
+Leela distillate actually on disk (no true flagship/BT4-scale net downloaded here,
+noted honestly rather than assumed). lc0 has no pretrained DynPredictor or action-
+embedding tables to borrow, so: phi(s) = mean-pooled per-square token at the final
+layer (order-invariant to lc0's POV board-flip, no remap needed for a pool);
+action features = raw one-hot(from_sq)++one-hot(to_sq)++one-hot(promo) (133-dim,
+standard DMDc control input); nonlinear baseline = a freshly-fit MLPRegressor on the
+same data (fair, since there's nothing pretrained to compare against).
+
+Two bugs caught and fixed before trusting numbers, both at smoke scale: (1) default
+ridge alpha=1.0 was far too weak once X is 645-dim (512+133) -- at n_train<1000 this
+either let the MLP diverge catastrophically (R2 in the billions-negative, a scale/
+capacity mismatch) or let ridge underfit worse than the identity baseline; fixed by
+standardizing all features/targets (fit on train only) and raising default alpha to
+50. (2) switched R2 to `multioutput="variance_weighted"` -- with 512 output dims of
+very different variance, the default uniform-average R2 lets a handful of near-
+constant dimensions dominate and produce nonsensical aggregate values.
+
+Full run (n_test=990, held out by game), `docs/figures/koopman_dyn_probe_lc0.png`:
+
+![Koopman vs nonlinear one-step dynamics, lc0-big](docs/figures/koopman_dyn_probe_lc0.png)
+
+| model | R2 (variance-weighted) | cosine sim |
+|---|---|---|
+| identity (phi(s')~=phi(s)) | -0.378 | 0.699 |
+| **Koopman (linear-in-phi, affine-in-action)** | **0.482** | **0.874** |
+| MLP (fresh nonlinear, 256 hidden) | 0.445 | 0.862 |
+
+**VERDICT: LINEARIZES WELL even in the strong Leela net.** The linear operator
+actually slightly OUTPERFORMS the freshly-trained nonlinear MLP here (gap -0.037,
+i.e. linear wins) -- not just "close to," better. This directly answers Kaveh's
+question: the JEPA T1 linearization result was NOT an undertrained-network artifact.
+A much bigger, independently-trained network shows the same pattern, arguably more
+cleanly (identity baseline is actually unfavorable here, -0.378, unlike JEPA's
+inflated 0.775 floor, so this comparison has less of a "high floor" confound than
+the JEPA version did).
+
+Combined reading across both trunks: one-step chess dynamics are substantially
+linear in these networks' own learned embedding spaces, independent of network
+size/training regime. This is now real, twice-replicated support for building a
+genuine Koopman-constrained DynPredictor (trained end-to-end, not just fit post-hoc
+on a frozen encoder) as a serious architecture direction -- next open question
+(flagged earlier, still unresolved) is whether the linearized one-step prediction
+specifically preserves TACTICAL structure (hanging-piece decodability) as well as
+the true/nonlinear prediction does, not just aggregate cosine/R2.
+
+---
+
+## 2026-07-31 (late) — MAJOR CORRECTION: the "late-layers-only" finding was a statistical-power artifact
+
+Data-gen job (`experiments/gen_all_captures_labeled.py --workers 2`, throttled to
+avoid contending with the pre-existing `gen_opening_pool_sfsf.py` run) finished:
+144,855/144,884 (position, capture) pairs labeled via real SF committor swing --
+**239 hanging cases** (up from 96) and 87,146 defended-fair (subsampled to
+--max-ctrl 3000 as before). `data/derived/all_captures_labeled.npz`.
+
+Reran both probes on the same trunks with this data:
+
+**JEPA T1 readout** (`experiments/hanging_piece_probe.py`, n_test=816):
+- Linear: **AUC 0.637 [0.560, 0.708] -- PASS** (was 0.497, clean null, with 96 cases)
+- MLP: AUC 0.579 vs control 0.499, selectivity +0.080 -- still below the 0.1 bar,
+  not quite trustworthy yet, but much closer than before.
+- Attribution: still null (top-1 0.035 vs null 0.043) -- unchanged.
+
+**lc0-big layer sweep** (`experiments/layer_sweep_probe.py --trunk lc0-big --mlp`,
+n_test~800-1000 per layer), `docs/figures/layer_sweep_lc0_big_v2.png`:
+
+![lc0-big layer sweep, expanded data](docs/figures/layer_sweep_lc0_big_v2.png)
+
+| layer | linear AUC | MLP (trustworthy+positive, incl. XOR check) |
+|---|---|---|
+| L1 | 0.734 [0.679,0.791] | 0.687, selectivity +0.175 |
+| L6 | 0.773 [0.716,0.822] | 0.796, selectivity +0.347 |
+| L12 | 0.831 [0.782,0.878] | 0.784, selectivity +0.319 |
+| L13 | 0.849 [0.804,0.889] | 0.880, selectivity +0.383 |
+| **L14 (peak)** | **0.885 [0.848,0.923]** | **0.919, selectivity +0.379** |
+| L15 (final) | 0.860 [0.812,0.901] | 0.916, selectivity +0.383 |
+
+**ALL 15 layers clear chance now** (previously only L13-L15 did), and the MLP is
+TRUSTWORTHY+POSITIVE (beats its own randomized-label control AND the XOR nonlinear-
+capability check) **at every single layer** -- previously null-or-untrustworthy
+everywhere except a marginal pass at the very end.
+
+**This retracts the earlier "genuine late computation" reading.** With only 96
+hanging cases, the signal was apparently present but too noisy to clear the
+statistical bar except where the effect size happened to be largest (the last 3
+layers) -- that pattern was READ as "the network doesn't compute this until late,"
+but the correct reading, now visible with 2.5x the positive-class data, is: the
+concept is present from the FIRST layer onward and its linear separability
+increases roughly monotonically with depth, peaking around L14 before a slight
+dip at the final layer. Not "late-onset," but "present early, sharpens with depth."
+
+This is a real instance of the standing rule (conditional_rejections /
+rigor_over_flattery): a null conditional on n=96 does not survive to n=239, and the
+earlier interpretive story built on top of that null (logit-lens-style "late
+consolidation" question, the MLP-vs-linear-timing test, the width-vs-depth
+capacity discussion) all inherited the same underpowered foundation. None of the
+METHODOLOGY built along the way was wrong (the positive control, the XOR check, the
+piece-count capture detection, the POV-square mapping are all still correct and
+still validate the harness) -- but the SUBSTANTIVE conclusions drawn from the n=96
+sweep about WHERE/WHEN the concept forms should be considered superseded by this
+result, not read as still-standing alongside it.
+
+Not yet rerun with the expanded data: the JEPA T1 full layer sweep (only the
+final-layer readout above was rerun) and lc0-small's layer sweep. Given the JEPA
+final-layer result also swung from null to PASS, both are likely to show broader
+signal now too -- worth rerunning for a complete, consistent picture across all
+three trunks before drawing final conclusions about the size/architecture
+comparison from the earlier (n=96) sweeps.
+
+**Completing the picture — reran all three trunks on the expanded data:**
+
+- **JEPA T1** (`docs/figures/layer_sweep_jepa_v2.png`): 7/8 layers now clear chance
+  (only L3 doesn't), including AUC 0.633 [0.558,0.708] at L0 -- the raw embedding
+  layer, before any transformer computation at all. Previously null everywhere
+  (0.46-0.55) with n=96.
+- **lc0-small** (`docs/figures/layer_sweep_lc0_small_v2.png`): **10/10 layers**
+  clear chance, all MLP-TRUSTWORTHY+POSITIVE, AUC climbing from 0.755 (L1) to 0.829
+  (L9). Previously null everywhere with n=96.
+- **lc0-big**: 15/15 layers (reported above), peak 0.885-0.919 around L14.
+
+**Full reversal of the earlier size/depth conclusion.** All three trunks --
+including our smallest, JEPA T1 (6 layers, 256-dim) -- carry decodable hanging-piece
+signal essentially throughout their depth once statistical power is adequate. The
+earlier finding that "capacity was the blocker, not the concept being absent" (small
+trunks null everywhere, big trunk only late) does NOT hold up. What actually
+differs between trunks now is DEGREE, not presence: peak linear AUC is JEPA T1
+~0.65, lc0-small ~0.83, lc0-big ~0.89 -- bigger/more-trained networks encode the
+concept more strongly and more accessibly, but even the smallest trunk has real,
+detectable structure from its very first layer.
+
+Practical lesson for how this session's earlier interpretive layer (the logit-lens
+question, the width-vs-depth capacity discussion, the "late consolidation vs late
+computation" framing) should be read going forward: those were reasonable
+inferences from the evidence in hand at the time, but the evidence itself was
+underpowered (n=96 hanging cases). With n=239, the correct story is much simpler:
+the concept is present early and scales in decodability with both depth AND trunk
+size/training, not gated behind a late-layer-only computation. This is the version
+to carry forward into any tokenization/architecture decisions.
+
+### Koopman probes at 5x scale (Kaveh: "what about koopman with more data?")
+
+Both Koopman one-step-dynamics probes rerun with ~5x the data (using the existing
+70k transition_data_labeled.npz pool, no new generation needed):
+
+**JEPA T1** (`experiments/koopman_dyn_probe.py --n 40000`, n_test=9998, up from
+1996): Koopman(linear) R2 0.939 cos 0.998 | DynPredictor(nonlinear) R2 0.943 cos
+0.998 | identity R2 0.777. Gap tightened from +0.006 to **+0.004** -- confirms and
+sharpens the original result, not a small-sample fluke.
+
+**lc0-big** (`experiments/koopman_dyn_probe_lc0.py --n 20000`, n_test=5018, up from
+990), `docs/figures/koopman_dyn_probe_lc0_v2.png`:
+
+![lc0-big Koopman at 5x scale](docs/figures/koopman_dyn_probe_lc0_v2.png)
+
+| model | R2 (was, n_test=990) | R2 (now, n_test=5018) |
+|---|---|---|
+| identity | -0.378 | -0.362 |
+| **Koopman (linear)** | **0.482** | **0.555** |
+| MLP (fresh nonlinear) | 0.445 | 0.547 |
+| gap (mlp-linear) | -0.037 | -0.008 |
+
+Both models' absolute fit improved with more training data (expected), and the
+**linear-beats-nonlinear ordering holds** at 5x scale, though the margin narrowed
+(linear no longer wins by as much -- effectively a near-tie now, still not losing).
+This is now a well-powered (n_test=5018) confirmation, not a small-sample artifact:
+one-step chess dynamics in lc0-big's embedding space are genuinely close to linear,
+matching what a reasonably-sized nonlinear model achieves.
+
+Combined with the JEPA result, this is now twice-replicated at both small and 5x
+scale, across two independently-trained networks of very different size: **chess
+one-step dynamics linearize substantially in these trunks' own embedding spaces**.
+Still open, unchanged from before: does the linearized prediction preserve tactical
+(hanging-piece) structure specifically, and does multi-step rollout stay coherent --
+neither tested yet.
+
+---
+
+## 2026-08-02 — M1 IQE head retrained on SF-vs-SF opening-pool data: BEATS the original human-data field on every metric
+
+Kaveh's ask: rerun the exact M1 recipe (frozen T1-256x10 trunk + IQE head,
+`experiments/train_iqe_head.py`) unchanged, but on the new deterministic
+SF-vs-SF opening-pool data instead of human Lichess games, to see how the
+field's geometry differs when trained on "mostly draw basin + some loss
+transitions" ground truth instead of noisy human play.
+
+**Data**: `data/derived/opening_pool_sfsf.npz` -- the SF-vs-SF run over 100,000
+real human openings (2026-07-31/08-01 session, recovered from a mid-run crash,
+see the entry above), 1,189,891 positions, 100,000 games, outcome mix
+15% White win / 76% draw / 10% Black win. Same STANDARD schema as the human
+data (`planes/move/result/ending/dtz/game/ply/stm_id/elo`) -- confirmed by
+inspection, dropped into the unchanged pipeline with zero code changes.
+
+**Pipeline** (identical to the original M1 recipe, only the data differs):
+1. `experiments/precompute_trunk_features.py --data data/derived/
+   opening_pool_sfsf.npz --onnx data/engines/lc0/t1-256x10.onnx --tokens
+   --device mps` -- frozen T1-256x10 features, (1,189,891, 256, 8, 8) fp16,
+   39.0GB, 1569s (26min, ~758 pos/s -- much slower than the docstring's
+   ~21-23k pos/s claim, likely disk-I/O-bound writing this size of memmap on
+   this laptop, not a correctness issue). DVC-tracked (`data/derived/
+   trunk_feats.dvc`, whole-directory hash, 57.7GB/5 files -- includes older
+   feature caches from the original M1 bake-off, tracked together since none
+   were under DVC control yet).
+2. `experiments/train_iqe_head.py --data data/derived/opening_pool_sfsf.npz
+   --feats data/derived/trunk_feats/t1-256x10__opening_pool_sfsf.npy --out
+   artifacts/experiments/iqe_head_sfsf_t1256` -- SAME architecture as the
+   original (d=64, components=16, adapter-ch=32, all defaults, untouched).
+   Smoke (400 steps) first per the fail-fast rule: 584s, pair-order +0.906,
+   d_mate rho +0.763, eff_rank 9.5 -- already close to or beating the
+   original's FINAL numbers at 5% of the steps, reported to Kaveh before
+   committing to the full run. Full run: 8000 steps, 11,971s (3h19m,
+   ~26min/1000 steps, steady throughout -- monitored via checkpoint file
+   timestamps since eval-print output wasn't captured live through the
+   background-piped log, a redirection/buffering quirk not a training issue).
+
+**Result** (`artifacts/experiments/iqe_head_sfsf_t1256_latest.pt`, DVC-tracked,
+md5 `dbb8ca165d313e0025cec53a95119b12`):
+
+| metric (gate) | smoke, 400 steps | **SF-vs-SF, 8000 steps** | original human-data field (shipped M1) |
+|---|---|---|---|
+| pair-order Spearman (>=0.94) | +0.906 | **+0.926** | +0.904 |
+| d_mate rho vs DTZ (>=0.81) | +0.763 | **+0.818 (PASS)** | +0.621 |
+| eff_rank | 9.5 | **18.8** | 16.1 |
+
+**The new field beats the original shipped M1 field on all three metrics**,
+and is the first of the two to actually CLEAR the d_mate-rho gate (the
+original human-data field never did -- 0.621 < 0.81; M1 was declared DONE
+against a different DoD framing, "gates green on the v3 eval protocol," not
+literally these exact script-printed thresholds, so this isn't a retroactive
+failure of M1, just a note that the printed gate numbers in this script are
+stricter than what M1 shipped against). Pair-order still falls short of its
+own >=0.94 gate, same as the original did (0.904 also < 0.94) -- consistent
+shortfall on that one metric across both data sources, not something unique
+to the new data.
+
+Reading: deterministic engine-vs-engine play from real human openings gives
+CLEANER geometry to learn from than noisy human games -- higher eff_rank (more
+usable directions, less collapse), better DTZ-anchored distance-to-mate
+correlation, and better same-game pair ordering, despite (or because of) being
+heavily draw-dominated. Consistent with Kaveh's original hypothesis for this
+data line: it should "map out mostly the draw basin and boundary, but also
+some transitions to a lost position" -- exactly the outcome mix observed
+(76% draw), and the field trained on it reads that structure better than the
+noisier human-play field does.
+
+**This is a separate, parallel artifact — `field_iqe_t1_final.pt` (the
+original, human-data, play-time-promoted field) was NOT touched or renamed.**
+Nothing here changes what `catspace/encoder/field.py::ReachabilityField`
+loads by default. Promotion/comparison at play time is Kaveh's call, not
+automated by this run.
+
+Not yet done: the "only move" bottleneck-mining pass this data line was
+originally scoped for (MultiPV ground truth per visited position cross-
+validated against the field's own queries) -- flagged in the 2026-07-31 entry
+as cost-TBD before running at scale, still open.
+
+---
+
+## 2026-08-02 — Only-move bottleneck mining (ground truth, part 'a'): 12% of positions have exactly one basin-holding move
+
+Kaveh's ask, following the SF-vs-SF field retrain: "find the only-move
+bottlenecks, find the basins, find where the transitions between basins are
+narrow." This is part 'a' of the original two-part plan from the 2026-07-31
+entry (SF MultiPV ground truth per position); part 'b' (cross-validating the
+trained field's own distance queries against these labels) is deliberately
+NOT built yet -- flagged at the end.
+
+### Method
+
+- **Data source**: `data/derived/opening_pool_sfsf_moves.tsv` -- full UCI move
+  lists for all 100,000 SF-vs-SF opening-pool games (the same games used to
+  train the SF-vs-SF IQE field above). Format: `game_id\tresult\tmove_list`.
+- **Sampling** (`experiments/mine_only_move_bottlenecks.py::sample_positions`):
+  one random mid-game ply per sampled game, avoiding the first 10 plies
+  (opening theory, less informative) and the last 4 (near-terminal/repetitive).
+  20,000 games sampled -> boards replayed from the move list to that ply.
+- **Ground truth**: Stockfish MultiPV, `multipv = number of legal moves`,
+  depth 12 (matching repo convention) -- ONE search per position ranks every
+  legal move's best-play continuation, rather than N separate single-PV
+  searches. Real cost, measured: 0.12-0.15s/position wall-clock with 8-10
+  parallel workers (opening position alone, single-threaded: 0.70s/20 moves --
+  full-dataset scale, 1.19M positions, would be ~40-50h even parallelized,
+  confirmed infeasible as flagged when this data line was first scoped; this
+  20k sample is the deliberate affordable subset).
+- **Basin definition**: WDL-argmax bucketing, MOVER POV, 3 buckets
+  {win, draw, loss} -- from each candidate move's returned `PovWdl` (SF's own
+  win/draw/loss percentage estimate for that continuation).
+- **Safe move**: shares the same bucket as the PV1 (best) move -- i.e. doesn't
+  concede a worse guaranteed outcome than what's achievable. n_safe >= 1
+  always (PV1 matches itself).
+- **Only-move bottleneck**: n_safe == 1 -- every alternative to the top move
+  drops to a strictly worse basin.
+
+### Result (`artifacts/experiments/only_move_bottlenecks.npz`, 19,860 ok / 0
+errors / 140 dropped for <2 legal moves or game-over, 2391s = 40min total)
+
+`VERDICT only-move-bottlenecks: n=19860 | only-move (n_safe==1): 2378 (12.0%)
+| median n_safe 10 | median n_legal 31 | median safe-fraction 0.485`
+
+Matches the 100-position smoke almost exactly (13.1% only-move, median n_safe
+10, median n_legal 33) -- confirms the smoke wasn't a fluke, now at real
+statistical power (n=19,860 vs n=99).
+
+**By outcome bucket** (mover POV):
+| bucket | n | only-move rate |
+|---|---|---|
+| Win | 3,512 | **19.0%** |
+| Draw | 13,288 (67% of sample) | 12.9% |
+| Loss | 3,060 | **0.0%** (mechanical -- see caveat) |
+
+**Caveat, important**: the 0.0% only-move rate in Loss positions is a
+methodological artifact, not a finding -- if the best achievable outcome is
+already Loss, EVERY legal move trivially stays in the Loss bucket (there's no
+worse bucket to drop to), so n_safe==n_legal by construction whenever the
+position is already lost. This metric can only be informative in Win/Draw
+positions where there's a strictly worse bucket to fall into. The real
+signal: converting a winning position is harder to do precisely than holding
+one (19.0% vs 12.9% only-move rate) -- consistent with the general chess
+intuition that winning technique is less forgiving than solid defense, and
+directly relevant to Kaveh's original framing for this data line (map the
+draw basin's boundary, plus win-side transitions).
+
+**By game phase** (ply bucket):
+| phase | n | only-move rate | median n_legal |
+|---|---|---|---|
+| opening 10-20 | 2,331 | 9.9% | 35 |
+| early-mid 20-40 | 4,520 | 13.7% | 37 |
+| mid 40-70 | 5,686 | **15.2%** | 33 |
+| late 70+ | 7,291 | 9.0% | 20 |
+
+Bottleneck rate peaks in the true middlegame (ply 40-70) and drops in both
+the opening (more forgiving, many roughly-equivalent developing moves) and
+the late game (simplified positions with fewer pieces, more forced/drawish
+lines where several moves hold equally, e.g. basic king-and-pawn draws).
+
+### Explicitly NOT done yet (part 'b' of the original plan)
+
+Cross-validating the SF-vs-SF-trained field's own distance queries
+(`ReachabilityField.d()`/`d_conversion()`) against these SF-derived
+only-move labels -- does the field's geometry actually distinguish safe from
+unsafe moves at these bottleneck positions? -- is the natural next step and
+is NOT automated here. Discussed with Kaveh (2026-08-02) as a candidate for
+the physics-literature methods surveyed the same session (Markov State
+Models + PCCA+/G-PCCA for principled spectral basin detection, Transition
+Path Theory for flux-based bottleneck identification, both available
+off-the-shelf via the `deeptime` package per the repo's adopt-before-build
+rule, vs. a simpler direct correlation check between field-distance and
+SF-derived safe/unsafe labels) -- approach not yet chosen, Kaveh's call.
+
+---
+
+## 2026-08-02 — Control-field/ascent-cone spec: Phase 1+2 built, Phase 2 gates FAIL, stopped before Phase 3
+
+Kaveh supplied a full build spec (docs uploaded as controlfieldspec.md,
+"Build Spec: Control Field and Constrained-Ascent Cone") for a differentiable
+control field + directional derivative + ascent cone, meant to make "force
+concentration" measurable rather than hand-coded, going autonomous on
+execution. Built and tested per the spec's own gates, stopping where its
+own rules say to stop.
+
+**Phase 1** (`catspace/controlfield/control.py`, `tests/test_control_field.py`,
+6/6 pass): Variant A (weighted attacker count) and Variant B (hand-rolled SEE
+-- python-chess 1.11.2 has no `Board.see()`, contra the spec's assumption;
+implemented the standard swap-off algorithm, caught and fixed two real bugs
+in it during testing via the spec's own gate tests -- a forward-pass formula
+transcription error and a backward-pass off-by-one that silently truncated
+uncontested captures). Spec's weight table omitted a queen weight; filled in
+(0.3, below rook) as a documented config default, not silently assumed.
+
+**Phase 2** (`catspace/controlfield/derivative.py`, `tests/test_derivative.py`,
+3/3 pass): directional derivative D_m(g) and ascent cone K(s). Explicitly
+tested the orientation bug the spec calls out as "the single most likely bug
+in the whole build" (re-expressing the post-move field in the ORIGINAL
+mover's frame, not the new side-to-move's) -- caught that my first test case
+(a White move) couldn't actually exercise the bug since orientation is a
+no-op for White, fixed to use a Black move where the bug would show.
+
+**Phase 2.3 gates** (`experiments/controlfield_gates.py`, full scale:
+gate1 n=2000, gate2 n=200, gate3 3 gambits, 27s), full report at
+`reports/phase-2.md`:
+- **Gate 1 (sanity)**: Spearman rho +0.144 (p=1e-10) vs shallow SF eval,
+  gate >=0.15 -- FAIL, marginally, but a real and highly significant signal.
+- **Gate 2 (known tactics, mateIn2/kingsideAttack puzzles)**: 12.5% hit rate
+  vs gate >=60% -- FAIL, badly (4.8x short). Working diagnosis (not yet
+  verified): the ascent cone is a ONE-PLY, non-forcing construct, and
+  mate-in-2/attacking puzzles are defined by forcing sequences the one-ply
+  derivative can't see -- a move that looks "costly" elsewhere on the board
+  isn't actually costly if it's check and the opponent has no reply.
+- **Gate 3 (gambit case study, the project's stated central hypothesis)**:
+  only 1/3 (Danish yes, Evans no, Benko no) show higher sacrificer control
+  in the accepted vs declined line. Also flagged a metric mismatch: cone_size/
+  best_gain are always FOR THE SIDE TO MOVE, which after these lines is the
+  defender, not the sacrificer -- the reported White-raw-control-sum
+  comparison is a cruder but honest proxy for what the gate actually wants.
+
+**Per the spec's own explicit instruction** ("if gate 3 fails, stop and
+surface it, the failure is more informative than a workaround; do not tune
+weights to force it") -- stopped here. Phase 3 (train a full GAB transformer
+from scratch, 300k steps, on labels these gates say don't yet capture the
+target phenomenon cleanly) is NOT started. Phase 4 (probe whether an existing
+frozen trunk already represents this better than the hand-coded field does)
+doesn't depend on these gates and reuses tonight's already-validated probing
+infrastructure (linear/MLP probes with Hewitt & Liang control tasks, positive
+controls, layer sweeps) -- flagged as the reasonable next step regardless of
+what's decided about fixing gates 1-3 first.
+
+**Follow-up same day (Kaveh's correction to gate 3)**: compensation isn't a
+static snapshot property, it's whether committor holds up over subsequent
+moves -- decaying even for a good sacrifice if the attacker loses the thread.
+Built `experiments/controlfield_gate3_decay.py`: PRESSING (SF-best moves)
+vs DRIFTING (deliberately passive moves) branches for 8 of the sacrificer's
+own turns per gambit, tracking SF committor + in-cone occupancy at each.
+`VERDICT gate3-decay: 2/3 gambits confirm (pressing-trend > drifting-trend)`
+-- Evans and Benko confirm (Benko strongly: +0.025 vs -0.267), Danish doesn't
+but for an informative reason (committor floor-clamped near 0 in BOTH
+branches -- Danish Gambit accepted is simply losing at SF depth-12 strength
+regardless of follow-up, matching known engine theory, not a methodology
+failure). Bonus: in-cone rate tracks the pressing branch (16.7% vs 0.0%),
+consistent across two k-move settings. Full writeup: reports/phase-2.md
+addendum. This is a small, hand-picked, directional result (3 gambits, one
+depth) -- not a statistically powered replacement gate, but a meaningfully
+better-designed one than the static original. Still stopped before Phase 3.
+
+**Fix applied (Kaveh: "fix the issue from your testing")**: implemented the
+gate-2 diagnosis as a real code fix -- `damage(m)` in
+`catspace/controlfield/derivative.py::ascent_cone` now only counts a lost
+square if the opponent has a LEGAL reply that can actually reach it
+(`move_derivatives(..., exploitable=True)`, one extra ply of legal-move
+enumeration, no search). Added a permanent regression test with a constructed
+discovered-check position proving the old formula over-penalized (10/10
+tests pass). Reran gates at full scale:
+- Gate 1: rho +0.144 -> **+0.249** (p=1.5e-29) -- now PASSES (was FAIL).
+- Gate 2: 12.5% -> **87.5%** -- now PASSES, 7x improvement (was FAIL, 4.8x short).
+- Gate 3 (dynamic decay version): unchanged, still 2/3 confirm.
+Full writeup: reports/phase-2.md. Gates 1 and 2 now both pass; gate 3 mostly
+confirms. This substantially strengthens the case for the control-field
+concept and for eventually proceeding to Phase 3 (GAB transformer training) --
+flagged as the next real decision point with Kaveh, not started automatically.
+
+**More test cases (Kaveh: "think of a few more, make sure it behaves as we
+expect")**: added `tests/test_control_field_edge_cases.py`, 8 new behavioral
+tests targeting the highest-risk areas not covered by the gate scripts --
+knight fork (gain aggregates correctly across TWO simultaneous targets, not
+just one), en passant (the exact special-move class that bit the hanging-
+piece probe earlier tonight -- correct pawn removal, no crash), pawn
+promotion (piece_type_at() correctly reads QUEEN post-promotion, verified via
+long-range diagonal control a pawn could never have), castling (two-piece
+move, no crash, rook's newly-opened file reflected), a 3-capture SEE exchange
+chain (deeper than the earlier 2-capture check, hand-verified net +300),
+checkmate/stalemate terminal positions (zero legal moves, graceful
+cone_size=0.0/is_squeezed=True, no divide-by-zero), and the weak_squares/
+explicit target modes (previously only king_zone had been exercised by the
+gates). One test had a FEN construction bug of my own (black king sitting on
+the pawn's promotion square, blocking it) -- not a code bug, fixed the FEN.
+18/18 tests pass across all three test files (control_field, derivative,
+edge_cases). No new code defects found -- the exploitability fix and
+everything built earlier held up under this additional stress-testing.
+
+---
+
+## 2026-08-02 — PARKED: control field / ascent cone (Kaveh: "park this, come back later")
+
+Status snapshot for resuming later, no new work past this point tonight.
+
+**Built and working**: `catspace/controlfield/` (control.py: weighted-attacker
+field + hand-rolled SEE; derivative.py: directional derivative + ascent cone,
+with the exploitability fix; wdl_decay.py: Stockfish-search-based decay
+tracker, C-free). 18 unit tests across 3 files, all passing
+(tests/test_control_field.py, tests/test_derivative.py,
+tests/test_control_field_edge_cases.py). Gate scripts:
+experiments/controlfield_gates.py (gates 1/2/3, static),
+experiments/controlfield_gate3_decay.py (gate 3 reframed as committor decay),
+experiments/controlfield_gate2_wdl_decay.py (gate 2 via WDL-decay instead of
+C). Full writeup: reports/phase-2.md.
+
+**Where it landed**: gates 1 and 2 pass with the C-based cone after the
+exploitability fix (rho +0.249, 87.5% resp.). Gate 3 (gambit compensation,
+reframed as committor decay) mostly confirms (2/3). Then a deeper limitation
+surfaced: C/SEE are structurally blind to multi-move tactics (a sacrifice
+that only pays off via a follow-up two moves later can't be seen by a
+single-square, single-ply formula) -- not a bug, a ceiling. Pivoted to a
+WDL-decay-based judge of move quality instead (real Stockfish search,
+sees arbitrarily far ahead); re-validated gate 2 that way (99%, though
+flagged as closer to a correctness check on the new tool than a discovery,
+since Lichess puzzles are themselves largely engine-derived).
+
+**Not resolved -- the actual next decision, whenever this resumes**: the
+pivot away from C undercuts the original Phase 3 plan (train a GAB
+transformer to imitate C-derived labels) as specified. Two live paths, not
+chosen yet:
+  (a) redefine Phase 3/4's target to WDL-decay-derived labels instead of C --
+      more principled, much more expensive to compute at scale (needs real
+      search, not a cheap O(legal moves) field).
+  (b) treat the exploitability-fixed C field as the deliverable on its own
+      terms -- a legitimate, cheap, validated auxiliary signal for the
+      "no-follow-up-needed" case -- and leave multi-move tactic detection to
+      WDL/search elsewhere in the project rather than asking this tool to do it.
+Neither started. Phase 3 (the from-scratch GAB transformer training run) was
+never launched at any point in this thread.
+
+---
+
+## 2026-08-02 — Basin UMAP: human vs SF-vs-SF, same field, same projection
+
+Kaveh's ask: embed both the human-Lichess field data and the SF-vs-SF opening-
+pool data through the SAME (original, human-trained) IQE field, UMAP jointly
+so they share one coordinate system, and visualize where the two datasets'
+basins (colored by eventual outcome -- "b" for backward/destiny, not any
+forward/immediate feature) agree vs. disagree -- disagreement = human-only
+basin-crossing = the exploitable leak (M0's central finding), shown directly
+rather than only measured statistically.
+
+`experiments/basin_umap_compare.py`: n=15,000 positions/dataset (random,
+`data/derived/field_std_v1.npz` human / `data/derived/opening_pool_sfsf.npz`
+SF-vs-SF), phi via the ORIGINAL human-trained field
+(`ReachabilityField()` defaults -- T1-256x10 trunk + `field_iqe_t1_final.pt`),
+UMAP fit jointly on the combined 30k points (`n_neighbors=30, min_dist=0.1`),
+then split back for display. Destiny label = mover-POV eventual result
+(win/draw/loss) computed from the STANDARD schema's white-POV `result` +
+`ply` parity. Colors from the dataviz skill's validated reference palette
+(status good/critical for win/loss, neutral gray for draw; documented
+blue<->red diverging pair for the density-difference map). 98s wall-clock.
+
+**Figure 1/2** (`docs/figures/basin_umap_1_2_side_by_side.png`): same overall
+UMAP shape in both panels (confirms the shared-field/shared-projection setup
+worked -- basins DO fall in the same place, as Kaveh predicted, since it's
+literally the same embedding function). The color mix differs sharply: human
+data shows heavy green/red (win/loss) intermixing throughout the main
+cluster; SF-vs-SF shows the SAME region dominated by gray (draw), with a
+visfarrably distinct all-gray branch that has almost no counterpart color
+density in the human panel. Directly visualizes the already-known M0 finding
+(human Win<->Loss barrier ~0.27-0.29 vs SF-vs-SF ~0.00, absorbing) rather than
+just stating it as a number.
+
+**Figure 3** (`docs/figures/basin_umap_3_difference.png`): density-difference
+map (Gaussian-smoothed, sigma=1.2, for display -- not a claim about any single
+cell), diverging blue(human-only)/red(SF-only). Shows a real, localized
+red-wedge-pointing-at-blue-wedge structure near the cluster core -- a
+candidate site where the two datasets' basin boundaries genuinely diverge,
+not just a diffuse everywhere-different smear.
+
+**Figure 4** (`docs/figures/basin_umap_4_trajectories.png`, bonus, not
+originally scoped but requested for the "transition vectors" framing):
+sample game trajectories (25/dataset, full games sampled separately from the
+density sample so consecutive-ply lines exist, projected via the fitted
+UMAP's out-of-sample `.transform()`) overlaid on the difference map. Works
+mechanically but reads rougher than figures 1-3 -- UMAP optimizes LOCAL
+neighborhood preservation across the whole point cloud, not trajectory
+smoothness for a sequentially-related subset, so consecutive-ply jumps can
+be visually large even when nearby in the underlying 64-dim phi space; out-
+of-sample `.transform()` is also less stable than the originally-fit points.
+Flagged honestly as the roughest of the four, not silently smoothed over --
+a real next step if pursued further would be a basin-transition-COUNT
+diagram (e.g. a Sankey between discretized basin regions) rather than literal
+spatial line paths, which would sidestep UMAP's non-smoothness entirely.
+
+Not yet done: quantifying "how much human-only basin-crossing exists" as a
+number (this was a visualization pass, not a statistical one); identifying
+WHICH real positions sit in the red/blue difference-map hotspots (would need
+mapping grid cells back to source FEN/game/ply, straightforward from the
+saved `_data.npz` but not done); repeating with the SF-vs-SF-trained field
+instead of the human-trained one as a robustness check on the embedding choice.
+
+**Correction (Kaveh: "why does the mover lose so much? should be balanced")**:
+caught two real issues in `experiments/basin_umap_compare.py`, both fixed,
+figures rerun:
+1. Side-to-move parity was backwards -- the actual generator convention
+   (`gen_field_data_fullgame.py`) is `stm_white = (ply % 2 == 1)`, this script
+   had `ply % 2 == 0`. Fixed.
+2. Scatter plots were drawn class-by-class in a FIXED order (win, draw, loss),
+   so "loses" (red) was always painted last -- visually dominating every dense/
+   overlapping region regardless of true relative density, a real rendering
+   bias independent of the parity bug. Fixed: single scatter call, points in
+   randomized order.
+
+After both fixes, a small REAL imbalance remains -- 46.5% mover-wins vs 48.8%
+mover-loses (4.7% draws) -- and it's explicable, not a bug: this dataset's
+ply-parity sampling is skewed ~4.7:1 toward Black-to-move positions (941,037
+even-ply rows vs 199,820 odd-ply), a property of the stride/skip-open scheme
+used when `field_std_v1.npz` was generated. Combined with White's normal
+game-level edge (49.4% vs 45.9% wins), the math reproduces the observed
+imbalance exactly (weighted average check performed and matches to within
+rounding). Not something to "fix" in this analysis -- a property of the
+source dataset worth knowing about for any other mover-POV work on it.
+
+Also rebuilt `docs/figures/basin_umap_5_trajectories_on_basins.png`'s
+background from a discrete majority-vote per bin to a continuous (win_frac -
+loss_frac) diverging gradient -- the majority vote was swamped to "draw"
+almost everywhere by the 76% base rate and made win/loss basins nearly
+invisible; caught by inspection before reporting it, not assumed correct.
+
+---
+
+## 2026-08-02 — basin UMAP: full-game replay fix + opening-outlier fix
+
+**Bug found by inspection.** Figures 6/7 (one game per outcome, SF vs human)
+showed n_ply=12 for every single game -- suspiciously uniform. Root cause:
+`select_game()` was pulling from the derived training npz files
+(`field_std_v1.npz`, `opening_pool_sfsf.npz`), which only store a per-game
+SUBSAMPLE (~8-12 positions/game via stride/tail sampling done at data-gen time --
+deliberate, tied to the IQE pair-based losses), not every ply.
+
+**Fix.** Added `replay_full_game()` (LczeroBoard, push every UCI move, capture
+`.to_input_tensor()` at each ply -- same construction as training-data gen) plus
+`select_sf_game_full()`/`select_human_game_full()` sourcing full move lists from
+the ORIGINAL data: `data/derived/opening_pool_sfsf_moves.tsv` for SF, the
+Lichess parquet shards (`data/records/lichess_2019-01/records_*.parquet`) for
+human. Verified: n_ply now varies realistically (SF: 182/137/111, human:
+64/118/73) instead of a flat 12. Applied the same fix to the multi-game overlay
+(figure 4, `load_full_games` -> `select_n_{sf,human}_games_full` +
+`build_traj_source`) per Kaveh's "fix it".
+
+**Second bug, also found by inspection.** With full-ply trajectories, figures
+4/5 (many games overlaid) turned into an unreadable starburst -- every game's
+first few plies was one giant straight-line jump from a peripheral point into
+the main mass. Cause: UMAP's own fit warned `Graph is not fully connected` --
+at 15k background points, true opening positions are sparse enough to land as
+disconnected outliers far from the main manifold. Fixed by dropping the first
+`SKIP_OPENING_PLY=10` plies of each trajectory before plotting in figures 4/5
+only (single-game figures 6/7 intentionally keep the opening -- that's the
+point of tracking "starting position -> eventual outcome" there).
+
+**Result, figure 5 (SF-derived basin background + trajectory overlay,
+openings dropped).** SF-vs-SF trajectories bundle into a tight, narrow
+"highway" through the UMAP space; human trajectories spend much more time
+diffused through the central mixed-basin region rather than following that
+same narrow path. Caveat worth flagging: SF-vs-SF play here is deterministic
+(same engine, same settings, per the `gen_opening_pool_sfsf.py` run), so part
+of that tight bundling could reflect near-duplicate lines from similar opening
+prefixes converging identically, not purely "SF stays disciplined" -- have not
+yet checked how much game-to-game overlap exists among the 25 sampled SF
+games. Qualitatively consistent with, but not yet a statistical confirmation
+of, Kaveh's "SF stays tight, humans leak between basins" framing.
+
+All 7 figures regenerated: `artifacts/experiments/basin_umap_{1_2_side_by_side,
+3_difference,4_trajectories,5_trajectories_on_basins,6_single_games_spatial,
+7_basin_value_vs_ply}.png` (+ `docs/figures/` copies), `basin_umap_compare.py`
+runtime ~100s end-to-end.
+
+**Caveat checked and ruled out.** Re-selected the same 25 SF-vs-SF games (seed=0,
+same RNG draw as figs 4/5) and checked for near-duplicate openings: all 25
+game_ids distinct, all 25 8-ply opening prefixes distinct, pairwise longest
+common move-prefix across full games averages 0.55 ply (max 4 ply) against
+game lengths of 57-172 ply -- i.e. these games diverge almost immediately and
+share essentially no move sequence. The tight "highway" bundle in figure 5 is
+therefore NOT an artifact of resampling near-identical games; it is real
+convergence in embedding space across genuinely different games/openings,
+strengthening (not just qualitatively matching) the "SF stays disciplined"
+reading.
+
+---
+
+## 2026-08-02 (cont.) — basin metastability: TICA, isocommittor contours,
+PCCA+-style macrostates, disconnectivity dendrogram, MSM-flux diagram
+
+Kaveh: "do all four of the suggestions" from the physics-literature search.
+`deeptime` (the standard TICA/MSM/PCCA+/TPT package) has no wheel for this
+repo's Python 3.14 and fails to build from source (checked both sdist and
+`--only-binary=:all:` -- no distribution exists at all) -- hand-rolled all 5
+pieces (numpy/scipy/sklearn/networkx) in `experiments/basin_metastability.py`,
+labeling every simplification explicitly rather than passing it off as the
+textbook algorithm.
+
+**1. TICA** (lag=1 ply, fit on 200 pooled full-game trajectories, human+SF,
+solving the generalized eigenproblem `C_tau_sym v = lam C0 v` directly).
+Eigenvalues 0.996 / 0.976 (autocorrelation, top 2). Result: a much more
+legible spatial figure than the UMAP version -- SF-vs-SF forms one big,
+spatially coherent gray/draw plateau (the 76ase rate now reads as a real,
+contiguous region, not scattered noise), and TICA's linear `.transform()`
+removed the UMAP `.transform()` out-of-sample-approximation issue entirely.
+
+**2. Isocommittor(-style) contours** (value=0, +-0.3) on the same background.
+Honest finding: the contours are small closed islands, not one clean
+separating curve -- the win/loss lean inside the mostly-draw region is patchy,
+not bimodal. No single crisp basin-boundary the way a 2-state MD system would
+show.
+
+**3. PCCA+-style macrostates** (spectral clustering: KMeans on the leading
+non-trivial eigenvectors of the SF-derived 60-microstate transition matrix,
+k=3 to compare against win/draw/loss). P_sf eigenvalues 1.0/0.983/0.952/...
+(no sharp eigengap at k=3 -- a caveat on the k=3 choice). Result is honest but
+weak: 51/6/3 microstate split, mean destiny values -0.05/0.01/0.06 -- all
+near zero. The 3-microstate "win-leaning" macrostate sits at one extreme
+corner of TICA space (likely near-terminal, low-piece-count decisive
+endgames), not a clean win-third of the space. The spectral split is NOT
+cleanly aligned with win/draw/loss identity at this resolution -- reported
+as-is rather than dressed up.
+
+**4. Disconnectivity-graph-style dendrogram** (average-linkage hierarchical
+clustering of the 60 microstates by `1 - normalized transition probability`).
+Most leaves are draw-leaning (gray tick labels); only 2/60 microstates cross
+the +-0.15 destiny threshold to be colored win/loss. Consistent with finding
+3: real win/loss identity is concentrated in a small minority of microstates,
+not spread evenly.
+
+**5. MSM-flux-diagram-style 3-node network** -- THE quantitative headline.
+Same SF-derived macrostate partition applied to both SF and human transition
+counts. Total off-diagonal (basin-crossing) mass: **SF=0.192 vs human=0.306**
+-- humans cross macrostate boundaries about 60% more than SF does, on the
+SAME partition. loss-leaning->mid transition: SF 0.097 vs human 0.158.
+This is the first NUMBER (not just a visual impression) behind "humans leak
+between basins more than SF-vs-SF." One rendering nit not yet fixed: the two
+curved loss<->win edges in the flux diagrams overlap visually, so the specific
+directional numbers there (vs. the aggregate off-diagonal mass) should not be
+read precisely off the current figure.
+
+All 5 figures + `meta_data.npz` in `artifacts/experiments/meta_*` (+
+`docs/figures/` copies). Runtime ~108s end-to-end (mostly the 200-full-game
+replay + phi pass).
+---
+
+## 2026-08-03 -- M7 detection (part 1 of 3): armed-tactic candidate finder built + tested
+
+Kaveh's ask: pivot to M7 (armed tactics) -- three parts (detect, remember,
+feed back), starting with detect. Sequencing override recorded in
+MILESTONES.md (M7 doesn't structurally need M5's search to be winning, just
+producing candidate lines to watch; M5's plateau at 0.085-0.095 vs the 0.125
+gate, per the 2026-07-30 close-out, is a separate open problem).
+
+**Built** `catspace/armed/detect.py`:
+- Reuses `catspace.controlfield.wdl_decay`'s validated SF-search decay check
+  (parked control-field work, but that one utility is generic/proven -- not
+  un-parking the ascent-cone thread, just importing three pure helpers).
+- `find_armed_tactic_candidates(eng, board)`: ranks legal moves by immediate
+  committor gain, and for those clearing `min_gain` runs the multi-ply decay
+  trend; a move whose trend DECAYS (net drop >= decay_tol after a real
+  single-step collapse) qualifies as "almost works" -- flagged instead of
+  discarded, per the M7 spec.
+- `classify_blocking_move` extracts the specific opponent move responsible
+  for the worst single-step drop and reduces it to ONE checkable fact
+  (`BlockingCondition`): does `defender_color` still attack `guarded_square`.
+  Both of M7's example refutation types collapse to this: a capture's
+  guarded_square is the square our piece would be captured ON; a quiet
+  defensive move's guarded_square is the overlap between the new defender's
+  attack set and our own candidate piece's attack set (the shared contested
+  square) -- falls back to the blocking move's own to-square when no overlap
+  exists (e.g. discovered-attack refutations -- a known, documented gap, not
+  hidden).
+- `BlockingCondition.is_active(board)` is the "was it removed" recheck --
+  literally `len(board.attackers(defender_color, guarded_square)) >=
+  min_defenders`, cheap per the spec's "cheaply check" requirement.
+
+**Tests** (`tests/test_armed_detect.py`, 6/6 pass): pure-logic tests for
+BlockingCondition (guard present -> removed -> is_active flips, including a
+min_defenders>=2 case with two independently-sighted rooks), classify_
+blocking_move on 3 hand-constructed positions (the spec's own "Nf6 guards
+h7" example, a capture-refutation, and an en-passant capture -- the special-
+move footgun that already bit the hanging-piece probe once this session, so
+tested explicitly again here), plus a skippable live-Stockfish smoke test
+(structural only -- doesn't assert a specific tactic, since SF's exact line
+is version/hardware-dependent).
+
+**Honest limitation, stated in the module docstring**: the shared-square
+overlap heuristic doesn't disambiguate when a defender's move creates
+MULTIPLE shared squares with our candidate piece (hit this constructing the
+test itself -- a rook/bishop's long rays kept sharing unrelated central
+squares like e4 with the black knight's 8-square attack fan; switched the
+test to a pawn's narrow 2-square attack fan to get a clean single-overlap
+case). Picks the lowest-indexed shared square when ambiguous, not
+necessarily the "right" one.
+
+**Not built yet (parts 2 and 3, per Kaveh's own scoping this turn):**
+the armed-tactic STORE (remembering) and the per-ply activation-watch loop
+feeding candidates back to the planner/MCTS as pounce subgoals.

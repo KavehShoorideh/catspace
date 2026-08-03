@@ -1,6 +1,6 @@
 outs:
-- md5: 98b21dfd63d82f374502506aa43e6f51.dir
-  size: 18691801798
-  nfiles: 4
+- md5: b046aceeea5d6bc63dc5f880f07c181e.dir
+  size: 57682150214
+  nfiles: 5
   hash: md5
   path: trunk_feats
