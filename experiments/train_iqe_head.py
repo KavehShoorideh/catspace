@@ -29,7 +29,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.nn.iqe import IQE
 from experiments.losses import (quasimetric_regression, wdl_hinge, reachability_target,
                                 basin_ce, basin_logp, pole_radial_anchor, terminal_repulsion,
-                                pole_separation, absorbing_penalty, WIN, DRAW, LOSS)
+                                pole_potential, typical_pair_scale, absorbing_penalty,
+                                WIN, DRAW, LOSS)
 from experiments.arch_bakeoff import eff_rank
 from catspace.train.scaffold import standard_train, TrainConfig, resolve_device
 
@@ -132,7 +133,11 @@ def main():
     ap.add_argument("--w-basin", type=float, default=1.0, help="basin cross-entropy (the main term)")
     ap.add_argument("--w-radial", type=float, default=1.0, help="pole shell anchor, TAIL rows only")
     ap.add_argument("--w-termrepel", type=float, default=1.0, help="anti-collapse ON the shell")
-    ap.add_argument("--w-polesep", type=float, default=1.0, help="keep the 3 vertices apart")
+    ap.add_argument("--w-polesep", type=float, default=1.0,
+                    help="pole-pole potential: LJ-shaped, steep repulsion inside the crossover, "
+                         "weak attraction outside")
+    ap.add_argument("--polesep-krep", type=float, default=10.0, help="repulsive stiffness")
+    ap.add_argument("--polesep-katt", type=float, default=0.05, help="attractive stiffness")
     ap.add_argument("--w-absorb", type=float, default=1.0, help="d(pole->s) large: cannot leave")
     ap.add_argument("--termrepel-margin", type=float, default=4.0)
     ap.add_argument("--polesep-margin", type=float, default=4.0)
@@ -236,10 +241,16 @@ def main():
         e_q = net.phi(fx(qi))
         perm = torch.randperm(len(qi), device=dev)
         L_termrepel = terminal_repulsion(net.d_pair_emb(e_q, e_q[perm]), args.termrepel_margin)
-        # (4) pole separation: 3 vertices, no data needed.
-        L_polesep = pole_separation(net.d_poles_pairwise(), args.polesep_margin)
+        # (4) pole-pole potential. The crossover is the TYPICAL distance between ordinary
+        # positions, measured from this same batch and detached: the poles are repelled hard once
+        # they come closer to each other than real positions are, and weakly attracted beyond
+        # that so the triangle cannot drift apart without bound. Recomputed per step so the
+        # crossover tracks the embedding scale instead of being a fixed guess.
+        ref = typical_pair_scale(net.d_pair_emb(e_b, e_b[torch.randperm(len(e_b), device=dev)]))
+        L_polesep = pole_potential(net.d_poles_pairwise(), ref,
+                                   k_rep=args.polesep_krep, k_att=args.polesep_katt)
         return {"basin": L_basin, "radial": L_radial, "termrepel": L_termrepel,
-                "polesep": L_polesep, "absorb": L_absorb}
+                "polesep": L_polesep, "absorb": L_absorb, "pole_ref": ref}
 
     def step(_net, s):
         pi = rng.integers(0, len(MG_s), args.batch)
@@ -312,9 +323,16 @@ def main():
         # Asymmetry actually achieved: median log1p(d(P->s)) - log1p(d(s->P)). Must be > 0, else
         # the field has quietly learned a symmetric metric and the basin flow means nothing.
         asym = float((torch.log1p(net.d_from_poles(e)) - torch.log1p(d)).median())
+        # Where the vertices actually sit relative to the potential's crossover: pole_gap should
+        # settle AT or just above pole_ref (repelled to the crossover, weakly held from beyond).
+        pd = net.d_poles_pairwise()
+        offd = ~torch.eye(3, dtype=torch.bool, device=pd.device)
+        pole_gap = float(torch.log1p(pd[offd]).median())
+        pole_ref = float(typical_pair_scale(net.d_pair_emb(e, e[torch.randperm(len(e), device=dev)])))
         return {"basin_acc": float(correct.mean()), "basin_ece": ece, "basin_conf": float(conf.mean()),
                 "ambiguous_frac": float((conf < 0.5).mean()), "term_eff_rank": term_er,
-                "shell_median": shell, "pole_asym": asym, "T": float(net.temperature)}
+                "shell_median": shell, "pole_asym": asym, "T": float(net.temperature),
+                "pole_gap": pole_gap, "pole_ref": pole_ref}
 
     cfg = TrainConfig(out=out, steps=args.steps, ckpt_every=args.ckpt_every, eval_every=args.eval_every,
                       experiment="catspace_m1_iqe_head", run_name=Path(out).name,
@@ -331,7 +349,9 @@ def main():
               f"{last.get('ambiguous_frac', float('nan')):.3f} | terminal eff_rank "
               f"{last.get('term_eff_rank', float('nan')):.1f} (anti-collapse) | shell median "
               f"{last.get('shell_median', float('nan')):.2f} (target ~1 ply) | pole asymmetry "
-              f"{last.get('pole_asym', float('nan')):+.2f} (must be >0) | T "
+              f"{last.get('pole_asym', float('nan')):+.2f} (must be >0) | pole gap "
+              f"{last.get('pole_gap', float('nan')):.2f} vs crossover "
+              f"{last.get('pole_ref', float('nan')):.2f} | T "
               f"{last.get('T', float('nan')):.3f}", flush=True)
 
 
