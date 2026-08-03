@@ -28,3 +28,8 @@ mlruns/
 artifacts/vendor/node_modules/
 artifacts/vendor/package*.json
 artifacts/viz_options_hub.html
+
+# third-party weights fetched on demand (maia2.from_pretrained gdown-downloads
+# into ./maia2_models and skips if present) -- 267MB, over GitHub's 100MB limit
+maia2_models/
+*.pt
