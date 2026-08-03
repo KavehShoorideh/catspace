@@ -1,3 +1,9 @@
+> **A repository restructure occurred on 2026-08-03.** File and directory paths
+> mentioned below are historical and no longer valid. The content is left exactly
+> as written — this is the research record, not documentation of the current tree.
+> For the current layout see [`repo_structure.md`](../../../repo_structure.md); for what
+> moved and why see [the refactor plan](../../../catspace/research/docs/2026-08-03-refactor-plan.md).
+
 # Phase 2 report: control field + ascent cone validation gates
 
 **Date**: 2026-08-02. **What was run**: `experiments/controlfield_gates.py`

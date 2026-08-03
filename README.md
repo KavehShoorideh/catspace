@@ -1,3 +1,9 @@
+> **A repository restructure occurred on 2026-08-03.** File and directory paths
+> mentioned below are historical and no longer valid. The content is left exactly
+> as written — this is the research record, not documentation of the current tree.
+> For the current layout see [`repo_structure.md`](repo_structure.md); for what
+> moved and why see [the refactor plan](catspace/research/docs/2026-08-03-refactor-plan.md).
+
 # catspace — chess in the latent space of a cat's mind
 
 Cats are said to be opportunistic hunters. But opportunity doesn't just come to them. My cat goes to where the opportunity is. She studies the rats in the yard from various viewpoints, learning their behaviors and moving patterns. She also knows herself well; her coloring, her speed, the limits of her patience. She picks a spot under a shrub, camouflaged by the shadow of the leaves, and waits. Eventually, there's a sound and some motion in the bush. Her body language suddenly changes. She gets ready to pounce. A rat comes confidently running out of its hiding place at the wrong time.
