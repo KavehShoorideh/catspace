@@ -87,7 +87,8 @@ DATASETS = [
 
 def main():
     import mlflow
-    mlflow.set_tracking_uri(f"sqlite:///{Path('mlflow.db').resolve()}")
+    from catspace.io.paths import mlflow_uri
+    mlflow.set_tracking_uri(mlflow_uri())
     mlflow.set_experiment("registry")
     exp = mlflow.get_experiment_by_name("registry")
     existing = set()

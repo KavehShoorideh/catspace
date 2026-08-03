@@ -35,6 +35,9 @@ class RunLogger:
         if os.environ.get("MLFLOW_TRACKING_URI"):
             try:
                 import mlflow
+
+                from catspace.io.paths import mlflow_uri
+                mlflow.set_tracking_uri(mlflow_uri())
                 mlflow.set_experiment(mlflow_run or Path(out_prefix).name)
                 mlflow.start_run(run_name=Path(out_prefix).name)
                 self._mlflow = mlflow
