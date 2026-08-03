@@ -7,7 +7,9 @@
 # fastchess is a third-party binary, not vendored: set FASTCHESS to its path, else we look
 # on PATH. (It used to be hardcoded into a scratch job dir that does not survive a reboot.)
 set -e
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
+# repo root by marker walk-up, mirroring catspace/io/paths.py -- the old
+# `cd "$(dirname "$0")/.."` assumed this script sat one level under the root.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && while [ ! -f pyproject.toml ] && [ "$PWD" != / ]; do cd ..; done; pwd)"
 cd "$ROOT"
 FC="${FASTCHESS:-$(command -v fastchess || true)}"
 if [ -z "$FC" ]; then

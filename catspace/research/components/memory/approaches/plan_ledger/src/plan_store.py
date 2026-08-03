@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+from catspace.io import paths
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS plans (
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS armed_tactics (
 
 
 class PlanStore:
-    def __init__(self, path="data/derived/engine_memory.sqlite"):
+    def __init__(self, path=paths.derived("engine_memory.sqlite")):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.execute("PRAGMA journal_mode=DELETE")        # WAL banned (filled the disk twice)

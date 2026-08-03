@@ -1,4 +1,4 @@
-"""infra contract tests: preemption flag, full-state checkpoint round-trip,
+"""catspace.research.infra contract tests: preemption flag, full-state checkpoint round-trip,
 metrics JSONL."""
 import json
 import os
@@ -8,7 +8,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from infra import (PreemptGuard, RunLogger, latest_resumable,
+from catspace.research.infra import (PreemptGuard, RunLogger, latest_resumable,
                    load_training_state, save_training_state)
 
 

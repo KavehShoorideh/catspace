@@ -1,5 +1,5 @@
 """DTMNet -- distance-to-mate CNN (Endgame/conversion component; extracted from
-experiments/train_dtm_cnn.py 2026-07-30)."""
+catspace/research/components/planner/approaches/endgame_groundtruth/experiments/train_dtm_cnn.py 2026-07-30)."""
 from __future__ import annotations
 
 import torch

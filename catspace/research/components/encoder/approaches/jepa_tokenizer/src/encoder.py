@@ -11,7 +11,7 @@ from torch import nn
 
 def _norm(channels: int) -> nn.GroupNorm:
     """GroupNorm — identical in train and eval (no batch statistics). BatchNorm was
-    proven (2026-07-20, experiments/prove_batchnorm.py) to be the SOLE cause of the
+    proven (2026-07-20, catspace/research/components/encoder/approaches/reachability_field/experiments/prove_batchnorm.py) to be the SOLE cause of the
     learned one-way/strata structure vanishing at inference: it normalizes by batch
     stats in train but running stats in eval, so a directed field learned in
     batch-normalized space collapsed to symmetric when used. GroupNorm removes the

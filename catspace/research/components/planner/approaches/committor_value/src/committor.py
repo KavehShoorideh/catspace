@@ -1,6 +1,6 @@
 """CommittorGreedy -- committor-net value policy (1-ply/2-ply expectimax; the 0.125
 baseline and the probe's value oracle). ValueOracle component; extracted from
-experiments/play_vs_maia.py 2026-07-30."""
+catspace/approaches/gauntlet_harness/experiments/play_vs_maia.py 2026-07-30."""
 from __future__ import annotations
 
 import chess

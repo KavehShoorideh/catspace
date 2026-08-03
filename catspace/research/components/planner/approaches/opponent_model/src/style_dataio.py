@@ -1,7 +1,7 @@
 """catspace/style/dataio.py -- load the M2b feature cache, transparently handling BOTH layouts:
   * legacy single file  cache.npz            (one np.savez of everything)
   * resumable shard dir  cache/  meta.npz + shard_0000.npz, shard_0001.npz, ...
-The shard layout (experiments/m2b_cache.py) is crash-safe & resumable: each shard is a contiguous
+The shard layout (catspace/research/components/planner/approaches/opponent_model/experiments/m2b_cache.py) is crash-safe & resumable: each shard is a contiguous
 position range written atomically (temp-then-rename); a restart skips shards that already exist.
 Feature arrays concatenate in shard order, which matches the global metadata order in meta.npz.
 """

@@ -15,12 +15,13 @@ import pytest
 import torch
 
 from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
-from experiments.gen_stratified_perfect import (ALL_MENUS, STRATA_MENUS, _emit_edges,
+from catspace.research.components.planner.approaches.endgame_groundtruth.experiments.gen_stratified_perfect import (ALL_MENUS, STRATA_MENUS, _emit_edges,
                                                 negamax_tb, optimal_line, pcount)
-from experiments.selfplay_generate import random_endgame_start
-from experiments.train_stratified_field import count_vectors, reach_mask
+from catspace.research.components.memory.approaches.experience_store.experiments.selfplay_generate import random_endgame_start
+from catspace.research.components.encoder.approaches.reachability_field.experiments.train_stratified_field import count_vectors, reach_mask
+from catspace.io import paths
 
-SYZYGY = Path("data/syzygy")
+SYZYGY = Path(str(paths.syzygy_dir()))
 needs_tb = pytest.mark.skipif(not SYZYGY.exists(), reason="no local syzygy tablebase")
 
 
@@ -28,7 +29,7 @@ needs_tb = pytest.mark.skipif(not SYZYGY.exists(), reason="no local syzygy table
 
 def _sample(material, n, seed=0):
     rng = np.random.default_rng(seed)
-    import experiments.selfplay_generate as sg
+    import catspace.research.components.memory.approaches.experience_store.experiments.selfplay_generate as sg
     sg._ENDGAME_MENUS.update(ALL_MENUS)
     out = []
     tries = 0
@@ -112,7 +113,7 @@ def test_iqe_quasimetric_axioms():
 
 @needs_tb
 def test_perfect_play_labels_match_tablebase():
-    from experiments.value_fixed_point import TB, white_pov_value
+    from catspace.research.components.planner.approaches.committor_value.experiments.value_fixed_point import TB, white_pov_value
     tb = TB(str(SYZYGY))
     # KRk is a White win (White to move, mating material)
     krk = chess.Board("4k3/8/8/8/8/8/8/R3K3 w - - 0 1")
@@ -125,7 +126,7 @@ def test_perfect_play_labels_match_tablebase():
 
 @needs_tb
 def test_optimal_line_winner_sign_matches_value():
-    from experiments.value_fixed_point import TB, white_pov_value
+    from catspace.research.components.planner.approaches.committor_value.experiments.value_fixed_point import TB, white_pov_value
     tb = TB(str(SYZYGY))
     for b in _sample("krk", 8, seed=7):
         if b.turn != chess.WHITE:
@@ -141,7 +142,7 @@ def test_optimal_line_winner_sign_matches_value():
 
 @needs_tb
 def test_negamax_grounds_below_frontier():
-    from experiments.value_fixed_point import TB, white_pov_value
+    from catspace.research.components.planner.approaches.committor_value.experiments.value_fixed_point import TB, white_pov_value
     tb = TB(str(SYZYGY))
     checked = 0
     for b in _sample("krkp", 16, seed=11):

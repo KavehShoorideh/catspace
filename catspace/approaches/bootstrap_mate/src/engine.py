@@ -20,6 +20,7 @@ import numpy as np
 
 from catspace.fields import FieldModel
 from catspace.research.components.planner.approaches.endgame_groundtruth.src.material import mat_sig
+from catspace.io import paths
 
 __all__ = ["OnlineMateBank", "MilestoneCache", "harvest", "make_boot_value", "make_planner",
            "make_batched_energy_prior", "tb_white_move", "mat_sig"]
@@ -201,10 +202,10 @@ def make_boot_value(fm: FieldModel, bank: OnlineMateBank, times: dict | None = N
         dtm_cache: dict[str, float] = {}
         is_tok = isinstance(st.get("config"), dict) and "heads" in st["config"]
         if is_tok:                                      # token transformer (Kaveh: no CNN)
-            from experiments.train_dtm_tok import DTMTok, tokenize
+            from catspace.research.components.encoder.approaches.jepa_tokenizer.src.dtm_tok import DTMTok, tokenize
             dtm_net = DTMTok(**st["config"]).to(fm.device)
         else:                                           # legacy CNN ckpt (until v4 lands)
-            from experiments.train_dtm_cnn import DTMNet
+            from catspace.research.components.planner.approaches.endgame_groundtruth.src.dtm import DTMNet
             dtm_net = DTMNet(c=st["c"]).to(fm.device)
         dtm_net.load_state_dict(st["state"]); dtm_net.eval()
 
@@ -498,13 +499,13 @@ def make_planner(fm: FieldModel, bank: OnlineMateBank, give_up_plies: int = 20,
 
     def _rl_load():
         import glob as _g, re as _re
-        cands = _g.glob("data/derived/sep/planner_rl_r*.pt")
+        cands = _g.glob(paths.sep("planner_rl_r*.pt"))
         if not cands:
             return
         best = max(cands, key=lambda p: int(_re.search(r"r(\d+)\.pt", p).group(1)))
         if best != rl["path"]:
             import torch
-            from experiments.train_planner_rl import PlanNet, PLANS, OBS_KEYS, featurize
+            from catspace.research.components.planner.approaches.subgoal_cascade.src.plan_rl import PlanNet, PLANS, OBS_KEYS, featurize
             st = torch.load(best, map_location="cpu", weights_only=False)
             net = PlanNet(); net.load_state_dict(st["state"]); net.eval()
             rl.update(net=net, path=best, mu=st["mu"], sd=st["sd"],

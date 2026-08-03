@@ -14,7 +14,7 @@ estimate is frozen. The rating prior is only the true cold-start (zero history).
         best explains the observed moves is the Elo. The retrieval band widens with Elo uncertainty, so
         "unknown Elo" is just the widest band -- graceful, never a special case.
 
-This packages the validated method (experiments/m2b_condition.py, m2c_ingame.py, m2c_elo_id.py) into
+This packages the validated method (catspace/research/components/planner/approaches/opponent_model/experiments/m2b_condition.py, m2c_ingame.py, m2c_elo_id.py) into
 the deployable object the exploiter (M6) consumes. It operates on FEATURES (phi + Maia candidate
 log-probs) so the same object works off the cache (eval) or off live Maia+field calls (play).
 """

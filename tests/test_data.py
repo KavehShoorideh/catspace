@@ -366,14 +366,14 @@ def test_build_shards_eval_column_and_final_rows(tmp_path):
 
 @pytest.mark.slow
 def test_generalization_band():
-    """Loose smoke band for experiments/generalization.py at reduced scale --
+    """Loose smoke band for catspace/research/tools/stats_eval/generalization.py at reduced scale --
     the full-scale run (default args) reproduces the documented finding
     (holdout spearman ~0.45, ~zero train/holdout gap; see README/RESULTS-v3)."""
     import subprocess
     import sys
 
     result = subprocess.run(
-        [sys.executable, "experiments/generalization.py",
+        [sys.executable, "catspace/research/tools/stats_eval/generalization.py",
          "--n-games", "10000", "--steps", "5000", "--n-eval", "50"],
         cwd=Path(__file__).parent.parent, capture_output=True, text=True, timeout=60,
     )

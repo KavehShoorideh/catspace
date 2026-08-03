@@ -11,7 +11,7 @@ remembering where the engine has been unreliable before: a non-parametric kNN
 field over embedding space. So Method 2 can gate search WITHOUT first paying for
 the deep search, and it generalizes ("this region has been sharp for me").
 
-Built offline (experiments/build_competence_map.py) from a corpus of positions,
+Built offline (catspace/research/components/memory/approaches/competence_map/experiments/build_competence_map.py) from a corpus of positions,
 each stamped with its F-embedding and its Method-1 reliability. Query is cosine
 kNN: the predicted unreliability of a position is the mean measured reliability
 of its k nearest embedded neighbors.

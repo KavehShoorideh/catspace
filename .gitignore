@@ -44,5 +44,5 @@ assets/models/
 assets/tablebases/
 assets/engines/
 assets/corpora/
-maia2_models/
+!assets/**/*.dvc
 *.pt

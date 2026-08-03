@@ -20,6 +20,7 @@ import torch
 
 from catspace.research.components.planner.approaches.opponent_model.src.style_estimator import OpponentEstimator
 from catspace.research.components.planner.approaches.opponent_model.src.style_model import VOCAB, StyleResidual
+from catspace.io import paths
 
 RECOMPUTE_AT = (1, 2, 4, 8, 16, 32, 64)
 K = 17
@@ -111,8 +112,8 @@ def _tests():
     m2 = maia_model.from_pretrained(type="rapid", device="cpu")
     rf = ReachabilityField(device="cpu")
     lo = LiveOpponent(rf, m2, inference, prepared,
-                      "artifacts/experiments/m2b_style_3k.pt",
-                      "data/derived/m2b/cache_3k.npz", elo_known=1100, device="cpu")
+                      paths.experiment("m2b_style_3k.pt"),
+                      paths.derived("m2b/cache_3k.npz"), elo_known=1100, device="cpu")
     assert lo.n_obs == 0 and np.allclose(lo.z, 0), "cold start = population prior"
     b = LczeroBoard()
     moves = ["e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "d2d3", "f6e4"]

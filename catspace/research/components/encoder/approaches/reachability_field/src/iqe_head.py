@@ -1,5 +1,5 @@
 """IQEHead -- thin adapter over frozen trunk features -> phi + IQE quasimetric + mate
-anchor (Encoder component; extracted from experiments/train_iqe_head.py 2026-07-30)."""
+anchor (Encoder component; extracted from catspace/research/components/encoder/approaches/cone_fb_embedding/experiments/train_iqe_head.py 2026-07-30)."""
 from __future__ import annotations
 
 import torch

@@ -32,7 +32,8 @@ from catspace.fields import FieldModel
 from catspace.research.components.memory.approaches.experience_store.src.experience import ExperienceStore
 from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB, tb_best_move
 from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS
-from experiments.mate_ladder_eval import sample_scenarios
+from catspace.research.components.planner.approaches.endgame_groundtruth.experiments.mate_ladder_eval import sample_scenarios
+from catspace.io import paths
 
 
 def gen_7p_starts(rng, n, sf, min_cp=600):
@@ -467,8 +468,8 @@ def main():
     ap.add_argument("--j", type=int, default=4)
     ap.add_argument("--worker", type=int, default=None)
     ap.add_argument("--scenario", default="KRRvK-central")
-    ap.add_argument("--field", default="data/derived/sep/lichess_mc2.pt")
-    ap.add_argument("--energy-ckpt", default="data/derived/sep/opponent_energy_v1.pt")
+    ap.add_argument("--field", default=paths.sep("lichess_mc2.pt"))
+    ap.add_argument("--energy-ckpt", default=paths.sep("opponent_energy_v1.pt"))
     ap.add_argument("--bank-file", default=None)
     ap.add_argument("--loss-bank-file", default=None)
     ap.add_argument("--draw-bank-file", default=None)
@@ -480,12 +481,12 @@ def main():
                     help="comma list of game indices to (re)play (default: all 0..n-1)")
     ap.add_argument("--fen-file", default=None,
                     help="explicit start positions, one FEN per line (integration tests)")
-    ap.add_argument("--opponent-weights", default="data/engines/maia/maia-1500.pb.gz",
+    ap.add_argument("--opponent-weights", default=paths.engine("maia/maia-1500.pb.gz"),
                     help="fullgame opponent net (maia elo ladder / real lc0)")
     ap.add_argument("--warm-bank", type=int, default=1000,
                     help="first-move warm-up: search+harvest until the bank has this many "
                          "mates (cap 20x --nodes); 0 = off")
-    ap.add_argument("--last-mile-dtm", default="data/derived/sep/dtm_tok_r3.pt",
+    ap.add_argument("--last-mile-dtm", default=paths.sep("dtm_tok_r3.pt"),
                     help="tb-trained DTM regression as the value's distance source INSIDE "
                          "the nucleus (resignation gap: the field has no trajectory support "
                          "there); '' = off")
@@ -497,7 +498,7 @@ def main():
                          "the nucleus on an empty bank in resignation-gap field regions)")
     ap.add_argument("--plan-alpha", type=float, default=1.0,
                     help="planner's prior-bias strength (alpha-dial; 0 = planner off)")
-    ap.add_argument("--experience-db", default="data/derived/experience.sqlite",
+    ap.add_argument("--experience-db", default=paths.derived("experience.sqlite"),
                     help="persistence layer: every game + searched roots + provenance; "
                          "'' disables")
     ap.add_argument("--import-banks", default=None,
@@ -513,20 +514,20 @@ def main():
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
-    _eptr = Path("data/derived/sep/opponent_energy_current.txt")   # improvement-loop swaps
+    _eptr = Path(paths.sep("opponent_energy_current.txt"))   # improvement-loop swaps
     if args.energy_ckpt == ap.get_default("energy_ckpt") and _eptr.exists():
         args.energy_ckpt = _eptr.read_text().strip()
     tag = f"n{args.nodes}_{args.scenario}"
     if args.bank_file is None:
-        args.bank_file = f"artifacts/experiments/boot_bank_{tag}.fens"
+        args.bank_file = paths.experiment(f"boot_bank_{tag}.fens")
     if args.loss_bank_file is None:
-        args.loss_bank_file = f"artifacts/experiments/boot_lossbank_{tag}.fens"
+        args.loss_bank_file = paths.experiment(f"boot_lossbank_{tag}.fens")
     if args.draw_bank_file is None:
-        args.draw_bank_file = f"artifacts/experiments/boot_drawbank_{tag}.fens"
+        args.draw_bank_file = paths.experiment(f"boot_drawbank_{tag}.fens")
     if args.milestone_file is None:
-        args.milestone_file = f"artifacts/experiments/boot_milestones_{tag}.jsonl"
+        args.milestone_file = paths.experiment(f"boot_milestones_{tag}.jsonl")
     if args.results_file is None:
-        args.results_file = f"artifacts/experiments/boot_results_{tag}.jsonl"
+        args.results_file = paths.experiment(f"boot_results_{tag}.jsonl")
 
     if args.worker is not None:
         worker(args); return

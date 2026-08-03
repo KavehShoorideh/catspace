@@ -7,7 +7,7 @@ ChainRolloutSource replicates the original neural.py build_pairs/
 sample_episodes geometric-horizon pairing exactly (k = 1 + Geometric(1-gamma),
 holdout excluded in both the anchor and goal role) on top of the unified
 TransitionChain/Policy/Opponent stack, so a full re-run reproduces the
-original generalization result (see experiments/generalization.py).
+original generalization result (see catspace/research/tools/stats_eval/generalization.py).
 """
 from __future__ import annotations
 

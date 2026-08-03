@@ -1,5 +1,5 @@
-"""catspace/tb.py -- canonical tablebase utilities (moved from experiments/value_fixed_point.py
-and experiments/gen_dtm_data.py, which now re-export from here; ~10 scripts imported these
+"""catspace/tb.py -- canonical tablebase utilities (moved from catspace/research/components/planner/approaches/committor_value/experiments/value_fixed_point.py
+and catspace/research/components/planner/approaches/endgame_groundtruth/experiments/gen_dtm_data.py, which now re-export from here; ~10 scripts imported these
 cross-experiment, which is the smell this refactor removes).
 
 TB              cached Syzygy probes (wdl/dtz separately -- dtz raises where wdl is fine)
@@ -19,11 +19,12 @@ from functools import lru_cache
 import chess
 import chess.syzygy
 import numpy as np
+from catspace.io import paths
 
-DEFAULT_SYZYGY = "data/syzygy"
+DEFAULT_SYZYGY = str(paths.syzygy_dir())
 
 
-DEFAULT_PROBE_CACHE = "data/derived/tb_probe_cache.sqlite"
+DEFAULT_PROBE_CACHE = paths.derived("tb_probe_cache.sqlite")
 
 
 class TB:

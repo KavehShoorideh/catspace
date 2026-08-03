@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""experiments/play_vs_maia.py -- put the trained full-board field into PLAY against MAIA (human-like
+"""catspace/approaches/gauntlet_harness/experiments/play_vs_maia.py -- put the trained full-board field into PLAY against MAIA (human-like
 lc0 nets) and measure how it does (Kaveh: "how does the engine play against maia?").
 
 The field player is COMMITTOR-GREEDY on field_fullgame_v3: for each legal move it evaluates the
@@ -20,12 +20,12 @@ import chess, chess.engine, chess.pgn
 import numpy as np
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from experiments.train_clock_field import ClockField
+from catspace.research.components.encoder.approaches.reachability_field.experiments.train_clock_field import ClockField
 from catspace.research.tools.training_infra.train.scaffold import resolve_device
 
 
 from catspace.research.components.planner.approaches.committor_value.src.committor import CommittorGreedy  # component home (refactor 2026-07-30)
+from catspace.io import paths
 
 
 def play_game(field, maia, field_is_white, opening_plies, max_plies, rng, maia_nodes, depth):
@@ -50,7 +50,7 @@ def play_game(field, maia, field_is_white, opening_plies, max_plies, rng, maia_n
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--ckpt", default="artifacts/experiments/field_fullgame_v3_final.pt")
+    ap.add_argument("--ckpt", default=paths.experiment("field_fullgame_v3_final.pt"))
     ap.add_argument("--maia-elo", type=int, default=1500)
     ap.add_argument("--maia-nodes", type=int, default=1)
     ap.add_argument("--games", type=int, default=30)
@@ -60,12 +60,12 @@ def main():
     ap.add_argument("--depth", type=int, default=1, help="1=committor-greedy, 2=2-ply search")
     ap.add_argument("--opp-tau", type=float, default=0.0, help="opponent fallibility temp (0=minimax, >0=expectimax)")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--save-pgn", default="artifacts/experiments/field_v3_vs_maia.pgn")
+    ap.add_argument("--save-pgn", default=paths.experiment("field_v3_vs_maia.pgn"))
     ap.add_argument("--device", default="auto")
     args = ap.parse_args()
     dev = resolve_device(args.device); rng = np.random.default_rng(args.seed); t0 = time.time()
     field = CommittorGreedy(args.ckpt, dev, tau=args.tau, opp_tau=args.opp_tau)
-    wpath = f"data/engines/maia/maia-{args.maia_elo}.pb.gz"
+    wpath = paths.engine(f"maia/maia-{args.maia_elo}.pb.gz")
     maia = chess.engine.SimpleEngine.popen_uci(["lc0", f"--weights={wpath}", "--backend=eigen"])
     print(f"[play] field_v3 (committor-greedy) vs maia-{args.maia_elo} (nodes={args.maia_nodes}) "
           f"| {args.games} games alternating colors depth={args.depth}", flush=True)
