@@ -22,11 +22,16 @@ dist
 .mypy_cache
 .DS_Store
 
-# research-only trees: not needed to serve
+# research-only trees: not needed to serve. An approach's src/ SHIPS; its experiments/,
+# logs/, artifacts/ and data/ do not -- same rule at both levels (see repo_structure.md).
 catspace/research/**/experiments
 catspace/research/**/logs
 catspace/research/**/artifacts
 catspace/research/**/data
+catspace/approaches/**/experiments
+catspace/approaches/**/logs
+catspace/approaches/**/artifacts
+catspace/approaches/**/data
 catspace/research/docs
 catspace/research/weekly-report
 catspace/research/assets
