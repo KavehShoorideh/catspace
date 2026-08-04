@@ -16,7 +16,7 @@ opening-sanity run post-train (eval_iqe_field.py). Scaffold-tracked (MLflow + la
 """
 from __future__ import annotations
 
-import argparse, sys, time
+import argparse, json, sys, time
 from collections import defaultdict
 from pathlib import Path
 
@@ -142,6 +142,13 @@ def main():
                          "weak attraction outside")
     ap.add_argument("--polesep-krep", type=float, default=10.0, help="repulsive stiffness")
     ap.add_argument("--polesep-katt", type=float, default=0.05, help="attractive stiffness")
+    ap.add_argument("--step-log", default="auto",
+                    help="per-STEP train+holdout error -> JSONL ('auto' = <out>_steps.jsonl, "
+                         "'' = off). standard_train only keeps metrics on eval steps, so a 30k "
+                         "run otherwise retains ~120 points out of 30,000.")
+    ap.add_argument("--step-val-batch", type=int, default=512,
+                    help="held-out rows scored EVERY step for the holdout arm. ~3%% of the "
+                         "~17.5k rows a step already gathers -- cheap enough to always pay.")
     ap.add_argument("--timing-every", type=int, default=50,
                     help="print an I/O-vs-compute breakdown every N steps (0 = off)")
     ap.add_argument("--pole-lr-mult", type=float, default=10.0,
@@ -306,6 +313,7 @@ def main():
         bi = all_train[_rng.integers(0, len(all_train), batch)]
         e_b = net.phi(fx(bi))
         d_b = net.d_poles(e_b)
+        d_b_last[0], bi_last[0] = d_b, bi          # reused by the per-step log; no extra forward
         L_basin = basin_ce(d_b, y_t[bi], T)
         # (5) absorbing: d(pole -> s) pushed UP on those same ordinary rows. Trains the ASYMMETRY.
         L_absorb = absorbing_penalty(net.d_from_poles(e_b).reshape(-1), args.absorb_margin)
@@ -338,6 +346,7 @@ def main():
                 "polesep": L_polesep, "absorb": L_absorb, "width": L_width, "pole_ref": ref}
 
     _step_t0 = [0.0]
+    d_b_last, bi_last = [None], [None]
 
     def step(_net, s):
         _step_t0[0] = time.perf_counter()
@@ -365,6 +374,24 @@ def main():
             parts["T"] = net.temperature
         opt.zero_grad(); loss.backward(); opt.step()
         out_m = {k: float(v.detach()) for k, v in parts.items()}
+        # PER-STEP train + holdout error (Kaveh 2026-08-04). The train arm is free -- it is the
+        # batch we just did a forward pass on. The holdout arm costs one extra small batch, which
+        # is the only way to get a genuine per-step generalization curve rather than interpolating
+        # between eval points.
+        if step_log is not None and poles_on:
+            with torch.no_grad():
+                vsub = va_idx[rng.integers(0, len(va_idx), args.step_val_batch)]
+                dv = net.d_poles(net.phi(fx(vsub)))
+                yv_s = y_t[vsub]
+                rec = {"step": s,
+                       "train_ce": float(basin_ce(d_b_last[0], y_t[bi_last[0]], net.temperature)),
+                       "train_acc": float((d_b_last[0].argmin(1) == y_t[bi_last[0]]).float().mean()),
+                       "val_ce": float(basin_ce(dv, yv_s, net.temperature)),
+                       "val_acc": float((dv.argmin(1) == yv_s).float().mean())}
+                rec.update({k: out_m[k] for k in ("loss", "basin", "radial", "width") if k in out_m})
+                step_log.write(json.dumps(rec) + "\n")
+                if s % 200 == 0:
+                    step_log.flush()
         # MPS is ASYNC: without a sync the backward would appear free and all the time would be
         # misattributed to whatever ran next. Sync only on reporting steps so the common path is
         # not slowed by the measurement itself.
@@ -462,11 +489,23 @@ def main():
                 "shell_median": shell, "pole_asym": asym, "T": float(net.temperature),
                 "pole_gap": pole_gap, "pole_ref": pole_ref}
 
+    step_log_path = (f"{out}_steps.jsonl" if args.step_log == "auto" else args.step_log)
+    step_log = None
+    if step_log_path and poles_on:
+        Path(step_log_path).parent.mkdir(parents=True, exist_ok=True)
+        step_log = open(step_log_path, "w")
+        print(f"  [step-log] per-step train+holdout error -> {step_log_path} "
+              f"(val batch {args.step_val_batch})", flush=True)
+
     cfg = TrainConfig(out=out, steps=args.steps, ckpt_every=args.ckpt_every, eval_every=args.eval_every,
                       experiment="catspace_m1_iqe_head", run_name=Path(out).name,
                       extra={"cfg": {"in_ch": C, "d": args.d, "components": args.components,
                                      "adapter_ch": args.adapter_ch, "trunk": tag}})
-    last = standard_train(step, net, cfg, args=args, gates_fn=gates)
+    try:
+        last = standard_train(step, net, cfg, args=args, gates_fn=gates)
+    finally:
+        if step_log is not None:
+            step_log.close()
     print(f"VERDICT M1-IQE-HEAD {tag}: pair-order {last.get('pair_order', float('nan')):+.3f} "
           f"(gate >=0.94) | d_mate rho {last.get('mate_rho', float('nan')):+.3f} (gate >=0.81) | "
           f"eff_rank {last.get('eff_rank', float('nan')):.1f} | [{time.time()-t0:.0f}s]", flush=True)
