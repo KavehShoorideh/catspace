@@ -10917,3 +10917,12 @@ disk-bound full-data run IS defensible -- where I had said it was not worth doin
 Lesson kept: fixing the ESTIMATOR (full holdout + bootstrap CI) rather than the model cost 14
 seconds and changed the conclusion. Any learning curve whose gap is non-monotonic in n is
 measuring its own noise.
+
+**Path collision note.** My learning-curve figures originally wrote to
+`artifacts/experiments/learning_curve.png`, which collides by NAME with the pre-existing
+`artifacts/learning_curve.png` from commit 8d45b3e ("Baseline: toy-domain milestone package") --
+an unrelated toy-domain mate-rate-vs-random-Black plot. Kaveh opened the old one and correctly
+said it was not what I was describing. Renamed to avoid it recurring:
+  artifacts/experiments/basin_learning_curve.png          <- the real one (full holdout + CIs)
+  artifacts/experiments/basin_learning_curve_v1_noisy.png <- the superseded 4,000-row-sample version
+`artifacts/learning_curve.png` is untouched and is NOT from this work.

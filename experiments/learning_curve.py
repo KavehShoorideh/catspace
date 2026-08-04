@@ -57,7 +57,7 @@ def main():
     ap.add_argument("--steps", type=int, default=6000)
     ap.add_argument("--batch", type=int, default=4096)
     ap.add_argument("--python", default="/Users/kav/code/remote/github/catspace/.venv/bin/python")
-    ap.add_argument("--out-prefix", default="artifacts/experiments/learning_curve")
+    ap.add_argument("--out-prefix", default="artifacts/experiments/basin_learning_curve_v1_noisy")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
