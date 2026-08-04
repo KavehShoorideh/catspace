@@ -64,6 +64,7 @@ class TrainConfig:
     out: str                                   # checkpoint prefix (distinct per run -- no overwrite)
     steps: int = 1000
     ckpt_every: int = 200                      # ladder interval
+    start_step: int = 0                        # resume: first step is start_step+1
     eval_every: int = 100                      # gates + metric logging interval
     experiment: str = "catspace"               # MLflow experiment name
     run_name: str | None = None
@@ -89,7 +90,7 @@ def standard_train(step_fn: Callable, model, cfg: TrainConfig, args=None,
     health gates, and (inside a sweep) tune reporting. Returns the last metrics dict."""
     last: dict = {}
     with track_run(cfg.experiment, args=args, run_name=cfg.run_name) as log:
-        for step in range(1, cfg.steps + 1):
+        for step in range(cfg.start_step + 1, cfg.steps + 1):
             metrics = step_fn(model, step) or {}
             if step % cfg.eval_every == 0 or step == cfg.steps:
                 if gates_fn is not None:
