@@ -53,6 +53,11 @@ RESULT_COLOR = {1: COLOR_WHITE_WIN, 0: COLOR_DRAW, -1: COLOR_BLACK_WIN}
 
 # Endpoint SHAPE encodes HOW the game ended; colour still encodes WHO won. Two independent
 # encodings, so neither is carried by colour alone.
+# Start and end are marked DIFFERENTLY on purpose. Every trajectory begins at the same chess
+# position, so the start markers pile up at the apex and act as the tent's origin; the end marker
+# then carries the two things that vary -- shape = how the game ended, fill = who won.
+START_MARKER = "o"          # open circle, white face: "begins here"
+
 ENDING_MARKER = {
     "checkmate": "X", "resign": "v", "flagged": "s", "stalemate": "D",
     "threefold": "^", "fifty-move": "*", "insufficient": "h",
@@ -220,8 +225,12 @@ def main():
             c = RESULT_COLOR[r["result"]]
             ax.plot(r["x"], r["ply"], "-", color=c, lw=0.4, alpha=0.13)     # raw, jitter visible
             ax.plot(parity_smooth(r["x"]), r["ply"], "-", color=c, lw=0.9, alpha=0.6)
+            # START: hollow, so it reads as an origin rather than an outcome.
+            ax.plot(r["x"][0], r["ply"][0], START_MARKER, mfc="white", mec=c,
+                    ms=5, mew=1.2, alpha=0.9, ls="none", zorder=4)
+            # END: shape = how it ended, fill = who won.
             ax.plot(r["x"][-1], r["ply"][-1], ENDING_MARKER.get(r["ending"], "."),
-                    color=c, ms=6, alpha=0.95, mec="black", mew=0.4, ls="none")
+                    color=c, ms=7, alpha=0.95, mec="black", mew=0.5, ls="none", zorder=5)
         ax.axvline(0, color=MUTED, lw=0.7, ls=":")
         ax.set_xlim(-1.05, 1.05)
         ax.set_xlabel("P(White wins) - P(Black wins)")
@@ -231,12 +240,15 @@ def main():
     from matplotlib.lines import Line2D
     res_h = [Line2D([], [], color=RESULT_COLOR[k], lw=2, label=RESULT_NAME[k]) for k in (1, 0, -1)]
     seen = [e for e in ENDING_MARKER if any(r["ending"] == e for rows in traj.values() for r in rows)]
-    end_h = [Line2D([], [], color=INK, marker=ENDING_MARKER[e], ls="none", ms=6,
-                    mec="black", mew=0.4, label=e) for e in seen]
+    end_h = [Line2D([], [], color="white", marker=START_MARKER, ls="none", ms=6,
+                    mec=INK, mew=1.2, label="start (all games)")] + \
+            [Line2D([], [], color=INK, marker=ENDING_MARKER[e], ls="none", ms=6,
+                    mec="black", mew=0.5, label=e) for e in seen]
     axes[0].legend(handles=res_h, fontsize=8, frameon=False, loc="lower left", title="who won")
     axes[1].legend(handles=end_h, fontsize=8, frameon=False, loc="lower right", title="how it ended")
     fig.suptitle("Whole games descending the tent -- every ply replayed, no subsampling\n"
-                 "bold = 2-ply smoothed (cancels the ply-parity alternation); faint = raw per-ply")
+                 "hollow circle = start, filled shape = how it ended, colour = who won; "
+                 "bold = 2-ply smoothed, faint = raw per-ply")
     fig.tight_layout(); fig.savefig(f"{args.out_prefix}_1_trajectories.png", dpi=140)
 
     # ---- Figure 2: envelope -- how wide is the tent, from COMPLETE trajectories -------------
