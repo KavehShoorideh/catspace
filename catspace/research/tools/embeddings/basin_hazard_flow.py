@@ -40,17 +40,69 @@ import torch
 from catspace.research.tools.training_infra.losses import basin_logp
 from catspace.research.tools.embeddings.basin_tent import white_pov_x, COLOR_WHITE_WIN, COLOR_BLACK_WIN
 from catspace.research.tools.embeddings.basin_simplex_chart import INK, MUTED
-from catspace.research.tools.embeddings.basin_tent_fullgames import sf_games, human_games, replay
+from catspace.research.tools.embeddings.basin_tent_fullgames import replay
 
 
-def flow_field(x, ply, gx, gy, min_count):
+def uniform_sf(tsv, n, rng):
+    """n SF games sampled UNIFORMLY. Two passes over a 57MB TSV: count lines, pick indices, then
+    keep only those. Never materializes 100k move lists, and never stratifies -- a hazard map must
+    reflect the real population (81% draws), not a balanced one."""
+    with open(tsv) as f:
+        total = sum(1 for _ in f)
+    keep = set(rng.choice(total, min(n, total), replace=False).tolist())
+    out = []
+    with open(tsv) as f:
+        for i, line in enumerate(f):
+            if i in keep:
+                p = line.rstrip("\n").split("\t")
+                if len(p) >= 3:
+                    out.append((int(p[0]), int(p[1]), p[2].split(), ""))
+    return out
+
+
+def uniform_human(records_dir, n, rng):
+    """n human games sampled UNIFORMLY across shards, same reasoning as uniform_sf."""
+    import pyarrow.parquet as pq
+    shards = sorted(Path(records_dir).glob("records_*.parquet"))
+    counts = [pq.ParquetFile(s).metadata.num_rows for s in shards]
+    total = sum(counts)
+    pick = np.sort(rng.choice(total, min(n, total), replace=False))
+    out, base = [], 0
+    for sh, c in zip(shards, counts):
+        want = pick[(pick >= base) & (pick < base + c)] - base
+        if len(want):
+            d = pq.read_table(sh, columns=["game_id", "result", "moves", "termination"]).to_pydict()
+            for j in want:
+                out.append((int(d["game_id"][j]), int(d["result"][j]),
+                            d["moves"][j].split(), d["termination"][j]))
+        base += c
+    return out
+
+
+def flow_field(x, ply, gx, gy, min_count, horizon=1, smooth=1):
+    """horizon>1 / smooth>1 exist to defeat a SELECTION-ON-NOISE artifact, not for looks.
+
+    The field is not temporally smooth (lag-1 autocorrelation 0.42 vs lag-2 0.63) and median
+    ply-to-ply jitter is ~0.2, while the near-zero x bin is only ~0.077 wide. So a position can
+    land in that bin by jitter alone, and the next ply reverts toward its true value -- which
+    fabricates drift pointing AWAY from zero. Binning on a smoothed x and measuring displacement
+    over `horizon` plies makes the signal exceed the jitter; if a pattern survives both, it is not
+    the artifact."""
     """Mean per-ply displacement vector per (x, ply) cell, plus the per-cell sample count.
 
     Vectorized via weighted 2-d histograms -- one pass per component, no loop over points."""
-    x0, y0 = x[:-1], ply[:-1]
-    dx, dy = np.diff(x), np.diff(ply)
-    ok = dy == 1                                             # consecutive plies within one game
-    x0, y0, dx, dy = x0[ok], y0[ok], dx[ok], dy[ok]
+    xs = x
+    if smooth > 1:                                           # bin on a de-jittered x
+        k = np.ones(smooth) / smooth
+        xs = np.convolve(np.nan_to_num(x, nan=0.0), k, mode="same")
+        xs[~np.isfinite(x)] = np.nan
+    h = horizon
+    x0, y0 = xs[:-h], ply[:-h]
+    dx = (x[h:] - x[:-h]) / h                                # per-ply rate over the horizon
+    dy = ply[h:] - ply[:-h]
+    ok = (dy == h) & np.isfinite(x0) & np.isfinite(dx)       # same game, no separator
+    x0, y0, dx = x0[ok], y0[ok], dx[ok]
+    dy = dy[ok]
     rng = [[gx[0], gx[-1]], [gy[0], gy[-1]]]
     cnt, _, _ = np.histogram2d(x0, y0, bins=[gx, gy])
     sx, _, _ = np.histogram2d(x0, y0, bins=[gx, gy], weights=dx)
@@ -75,6 +127,16 @@ def main():
     ap.add_argument("--out-prefix", default="artifacts/experiments/basin_hazard")
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--horizon", type=int, default=4,
+                    help="measure displacement over this many plies (per-ply rate). >1 defeats "
+                         "selection-on-noise: jitter is ~0.2 vs a 0.077-wide bin.")
+    ap.add_argument("--smooth", type=int, default=2,
+                    help="ply-smoothing applied to x for BINNING only (2 cancels ply parity)")
+    ap.add_argument("--replot", default="", help="re-plot from a saved *_flow.npz, skipping replay")
+    ap.add_argument("--edge", type=float, default=0.90,
+                    help="|x| beyond this is a BOUNDARY cell: drift there can only point inward, "
+                         "so magnitude is inflated by the wall rather than by real divergence. "
+                         "Excluded from the ranked pockets and hatched on the map.")
     args = ap.parse_args()
     t0 = time.time()
 
@@ -83,6 +145,14 @@ def main():
     import matplotlib.pyplot as plt
     from matplotlib.colors import LinearSegmentedColormap
 
+    if args.replot:
+        _z = np.load(args.replot)
+        gx, gy = _z["gx"], _z["gy"]
+        hx, hy, hc = _z["hx"], _z["hy"], _z["hc"]
+        sx_, sy_, sc = _z["sx"], _z["sy"], _z["sc"]
+        _render(args, plt, LinearSegmentedColormap, gx, gy, hx, hy, hc, sx_, sy_, sc, t0)
+        return
+
     from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     field = ReachabilityField(onnx=args.onnx, head=args.ckpt)
     if not field.has_poles:
@@ -90,14 +160,12 @@ def main():
     rng = np.random.default_rng(args.seed)
 
     # UNIFORM game sample: a hazard map must be population-representative (see module docstring).
-    pools = {"human": human_games(args.human_records, 10 ** 9, rng),
-             "SF-vs-SF": sf_games(args.sf_moves, 10 ** 9, rng)}
+    pools = {"human": uniform_human(args.human_records, args.n_games, rng),
+             "SF-vs-SF": uniform_sf(args.sf_moves, args.n_games, rng)}
     data = {}
     for name, pool in pools.items():
-        pick = rng.choice(len(pool), min(args.n_games, len(pool)), replace=False)
         X, P = [], []
-        for j in pick:
-            _, _, ucis, _ = pool[j]
+        for _, _, ucis, _ in pool:
             planes, _, _ = replay(ucis, args.max_ply)
             if planes is None or len(planes) < 4:
                 continue
@@ -112,56 +180,70 @@ def main():
             X.append(white_pov_x(pr, ply)); P.append(ply)
             X.append(np.array([np.nan])); P.append(np.array([-999]))   # game separator
         data[name] = (np.concatenate(X), np.concatenate(P))
-        print(f"  {name}: {len(pick)} games, {len(data[name][0]):,} positions "
+        print(f"  {name}: {len(pool)} games, {len(data[name][0]):,} positions "
               f"[{time.time()-t0:.0f}s]", flush=True)
 
     gx = np.linspace(-1, 1, args.nx + 1)
     gy = np.arange(0, args.max_ply + args.ply_bin, args.ply_bin)
-    F = {n: flow_field(x, p, gx, gy, args.min_count) for n, (x, p) in data.items()}
+    F = {n: flow_field(x, p, gx, gy, args.min_count, args.horizon, args.smooth)
+         for n, (x, p) in data.items()}
     (hx, hy, hc), (sx_, sy_, sc) = F["human"], F["SF-vs-SF"]
+    np.savez(f"{args.out_prefix}_flow.npz", gx=gx, gy=gy, hx=hx, hy=hy, sx=sx_, sy=sy_,
+             hc=hc, sc=sc)
+    _render(args, plt, LinearSegmentedColormap, gx, gy, hx, hy, hc, sx_, sy_, sc, t0)
 
-    # THE HAZARD: magnitude of the VECTOR difference, only where both populations are well sampled.
+
+def _render(args, plt, LSC, gx, gy, hx, hy, hc, sx_, sy_, sc, t0):
+    """Plot ONLY the horizontal drift. dy is identically +1 (ply always advances by one), so it
+    carries no information and, drawn as a quiver component, swamps every arrow with a constant
+    vertical streak -- which is exactly what the first render did. It also means the 'vector
+    difference' reduces to the difference in horizontal drift, since dy cancels."""
     both = (hc >= args.min_count) & (sc >= args.min_count)
-    ddx, ddy = hx - sx_, hy - sy_
-    hazard = np.where(both, np.hypot(ddx, ddy), np.nan)
-
+    ddx = hx - sx_
+    hazard = np.where(both, np.abs(ddx), np.nan)
     cx = 0.5 * (gx[:-1] + gx[1:]); cy = 0.5 * (gy[:-1] + gy[1:])
     CX, CY = np.meshgrid(cx, cy, indexing="ij")
+    edge = np.abs(CX) > args.edge                      # boundary cells: drift can only point inward
+    interior = both & ~edge
 
+    scale = max(np.nanmax(np.abs(hazard)) if np.isfinite(hazard).any() else 1.0, 1e-6) / 0.16
     fig, axes = plt.subplots(1, 3, figsize=(17, 6), sharey=True)
-    for ax, (nm, (fx_, fy_, c)) in zip(axes[:2], F.items()):
+    for ax, (nm, fxv, c, col) in zip(axes[:2],
+                                     [("human", hx, hc, "#2a78d6"), ("SF-vs-SF", sx_, sc, "#e34948")]):
         m = c >= args.min_count
-        ax.quiver(CX[m], CY[m], fx_[m], fy_[m], color="#2a78d6" if nm == "human" else "#e34948",
-                  angles="xy", scale_units="xy", scale=0.02, width=0.005)
-        ax.set_title(f"{nm} flow  ({int(m.sum())} cells)", color=INK)
-    div = LinearSegmentedColormap.from_list("hz", ["#f0efec", "#f7c948", "#d03b3b"])
-    pc = axes[2].pcolormesh(gx, gy, np.ma.masked_invalid(hazard).T, cmap=div, shading="flat")
-    q = np.nanquantile(hazard, 0.9) if np.isfinite(hazard).any() else np.nan
-    hot = np.argwhere(np.nan_to_num(hazard, nan=-1) >= q)
-    axes[2].quiver(CX[both], CY[both], ddx[both], ddy[both], color=INK,
-                   angles="xy", scale_units="xy", scale=0.02, width=0.004, alpha=0.55)
-    fig.colorbar(pc, ax=axes[2], shrink=0.8, label="|human flow - engine flow|  per ply")
-    axes[2].set_title(f"HAZARD = |vector difference|  ({int(both.sum())} comparable cells)", color=INK)
+        ax.quiver(CX[m], CY[m], fxv[m], np.zeros(m.sum()), color=col,
+                  angles="xy", scale_units="xy", scale=scale, width=0.005)
+        ax.set_title(f"{nm} drift per ply  ({int(m.sum())} cells)", color=INK)
+    div = LSC.from_list("hz", ["#f0efec", "#f7c948", "#d03b3b"])
+    pc = axes[2].pcolormesh(gx, gy, np.ma.masked_invalid(np.where(edge, np.nan, hazard)).T,
+                            cmap=div, shading="flat")
+    axes[2].quiver(CX[interior], CY[interior], ddx[interior], np.zeros(interior.sum()),
+                   color=INK, angles="xy", scale_units="xy", scale=scale, width=0.004, alpha=0.6)
+    for i in range(len(cx)):
+        if abs(cx[i]) > args.edge:
+            axes[2].axvspan(gx[i], gx[i + 1], color="#8a8985", alpha=0.18, lw=0)
+    fig.colorbar(pc, ax=axes[2], shrink=0.8, label="|human drift - engine drift|  per ply")
+    axes[2].set_title(f"HAZARD  ({int(interior.sum())} interior cells; grey = boundary, excluded)",
+                      color=INK)
     for ax in axes:
         ax.invert_yaxis(); ax.set_xlim(-1.02, 1.02); ax.set_ylim(args.max_ply, 0)
         ax.axvline(0, color=MUTED, lw=0.7, ls=":")
         ax.set_xlabel("P(White wins) - P(Black wins)")
     axes[0].set_ylabel("ply")
-    fig.suptitle("Density-flow difference: where do humans move differently from engines?\n"
-                 "hazard = magnitude of the VECTOR difference (direction matters, not just speed)")
+    fig.suptitle("Where do humans drift differently from engines? (horizontal drift per ply)\n"
+                 "grey bands = |x|>%.2f, where the wall forces drift inward and inflates it" % args.edge)
     fig.tight_layout(); fig.savefig(f"{args.out_prefix}_flow.png", dpi=140)
 
-    print(f"\nTOP HAZARD POCKETS (>= 90th pct, both populations >= {args.min_count} plies/cell)")
-    print(f"  {'x':>7s} {'ply':>6s} {'hazard':>8s} {'human drift':>22s} {'engine drift':>22s} "
-          f"{'n_hu':>6s} {'n_sf':>6s}")
-    order = sorted(hot.tolist(), key=lambda ij: -hazard[ij[0], ij[1]])[:12]
-    for i, j in order:
-        print(f"  {cx[i]:>+7.2f} {cy[j]:>6.0f} {hazard[i,j]:>8.4f} "
-              f"({hx[i,j]:>+.4f},{hy[i,j]:>+.2f}) {'':>3s} ({sx_[i,j]:>+.4f},{sy_[i,j]:>+.2f}) "
+    hz = np.where(interior, hazard, np.nan)
+    q = np.nanquantile(hz, 0.90) if np.isfinite(hz).any() else np.nan
+    print(f"\nTOP HAZARD POCKETS -- INTERIOR ONLY (|x| <= {args.edge}), both pops >= {args.min_count}")
+    print(f"  {'x':>7s} {'ply':>5s} {'hazard':>8s} {'human':>9s} {'engine':>9s} {'n_hu':>6s} {'n_sf':>6s}")
+    hot = sorted(np.argwhere(np.nan_to_num(hz, nan=-1) >= q).tolist(),
+                 key=lambda ij: -hz[ij[0], ij[1]])[:10]
+    for i, j in hot:
+        print(f"  {cx[i]:>+7.2f} {cy[j]:>5.0f} {hz[i,j]:>8.4f} {hx[i,j]:>+9.4f} {sx_[i,j]:>+9.4f} "
               f"{int(hc[i,j]):>6d} {int(sc[i,j]):>6d}")
-    np.savez(f"{args.out_prefix}_flow.npz", gx=gx, gy=gy, hazard=hazard,
-             hx=hx, hy=hy, sx=sx_, sy=sy_, hc=hc, sc=sc)
-    print(f"wrote {args.out_prefix}_flow.png / .npz [{time.time()-t0:.0f}s]")
+    print(f"wrote {args.out_prefix}_flow.png [{time.time()-t0:.0f}s]")
 
 
 if __name__ == "__main__":
