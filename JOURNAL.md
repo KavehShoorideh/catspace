@@ -10885,3 +10885,35 @@ made for RAM costs accuracy. Not yet complete.
 **Not done**: the data regen that would fix the fixed-phase comb and extend mid-game coverage past
 ply 42; a temporal-smoothness loss term; DVC on the two 35GB+18GB trunk-feature caches (they live
 in the main checkout, outside this worktree's DVC project).
+
+**CORRECTION (2026-08-04), learning curve.** The first learning curve evaluated each arm on a
+4,000-row sample, and I read "bias-limited, more data will not help, skip the full-data run" off
+it. That was WRONG and the plot never supported it -- Kaveh caught that the figure did not match
+the description. The gap swung 0.007 -> 0.027 -> 0.008 -> 0.007 -> 0.024 non-monotonically, i.e.
+estimator noise the same size as the effect.
+
+Re-evaluated the SAME saved checkpoints on the FULL holdout (59,884 rows/arm, ~15x) with bootstrap
+95% CIs -- no retraining, 14 seconds:
+
+|   games | train CE | hold CE |     gap | gap 95% CI          | hold acc |
+|---------|----------|---------|---------|---------------------|----------|
+|  10,442 |   0.6990 |  0.7217 | +0.0227 | [+0.0095, +0.0350]  |   0.6842 |
+|  20,885 |   0.6629 |  0.6818 | +0.0189 | [+0.0045, +0.0325]  |   0.6999 |
+|  43,510 |   0.6663 |  0.6830 | +0.0168 | [+0.0021, +0.0314]  |   0.6985 |
+|  87,021 |   0.6561 |  0.6752 | +0.0191 | [+0.0060, +0.0331]  |   0.7027 |
+| 174,042 |   0.6520 |  0.6669 | +0.0149 | [+0.0008, +0.0280]  |   0.7092 |
+
+Corrected reading: holdout error is STILL IMPROVING at the largest size (CE 0.7217 -> 0.6669, acc
+0.6842 -> 0.7092), and the last doubling still paid (-0.008 CE, +0.65pp acc). The curve has NOT
+saturated. The gap is small, stable and non-growing, so there is no overfitting -- but "not
+overfitting" is a different claim from "more data will not help", and I conflated them. The 174k
+point that broke the trend in v1 was purely an eval-sample artifact; on the full holdout it is the
+best point on every metric.
+
+Practical consequence, reversed: extrapolating the roughly log-linear trend, the full 2.33M-row set
+(~4x the subset) would plausibly buy another ~1-1.5pp holdout accuracy. Modest but real, so the
+disk-bound full-data run IS defensible -- where I had said it was not worth doing.
+
+Lesson kept: fixing the ESTIMATOR (full holdout + bootstrap CI) rather than the model cost 14
+seconds and changed the conclusion. Any learning curve whose gap is non-monotonic in n is
+measuring its own noise.
