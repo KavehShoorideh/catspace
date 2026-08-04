@@ -52,6 +52,52 @@ def parity_smooth(x, w=2):
     return np.convolve(x, k, mode="same")
 RESULT_COLOR = {1: COLOR_WHITE_WIN, 0: COLOR_DRAW, -1: COLOR_BLACK_WIN}
 
+# Endpoint SHAPE encodes HOW the game ended; colour still encodes WHO won. Two independent
+# encodings, so neither is carried by colour alone.
+ENDING_MARKER = {
+    "checkmate": "X", "resign": "v", "flagged": "s", "stalemate": "D",
+    "threefold": "^", "fifty-move": "*", "insufficient": "h",
+    "agreement": "o", "adjudicated": "P", "truncated": "|", "unknown": ".",
+}
+
+
+def classify_ending(board, termination, result, hit_cap):
+    """How did this game end? Board state first, metadata second.
+
+    The two sources carry different evidence and neither alone is enough:
+      * human (lichess) has a `termination` column, but it only distinguishes 'Time forfeit' from
+        'Normal' -- and 'Normal' lumps mate, stalemate, repetition, fifty-move and RESIGNATION
+        together. Resignation is therefore an INFERENCE: a decisive 'Normal' game whose final
+        position is not checkmate. That is what resigning is in a move list -- the loser simply
+        stops -- so it cannot be read off the board directly, only deduced.
+      * SF-vs-SF has no metadata at all; gen_opening_pool_sfsf.py runs to
+        `is_game_over(claim_draw=True)` or a ply cap, so engines never resign or flag, and the cap
+        gives an 'adjudicated' class that has no human counterpart.
+    """
+    if board.is_checkmate():
+        return "checkmate"
+    if termination == "Time forfeit":
+        return "flagged"
+    if board.is_stalemate():
+        return "stalemate"
+    if board.is_insufficient_material():
+        return "insufficient"
+    # can_claim_*, NOT is_repetition(3) / is_fifty_moves(). This distinction is the whole reason
+    # engine draws were landing in "agreement", which is nonsense -- engines never agree to a draw.
+    # gen_opening_pool_sfsf.py stops on is_game_over(claim_draw=True), i.e. as soon as a draw is
+    # CLAIMABLE, which includes the case where the claim only becomes available AFTER a legal move.
+    # is_repetition(3) asks the strictly narrower question "has this exact position already
+    # occurred three times", so it misses precisely the positions the generator stopped on.
+    if board.can_claim_threefold_repetition():
+        return "threefold"
+    if board.can_claim_fifty_moves():
+        return "fifty-move"
+    if hit_cap:
+        return "adjudicated"
+    if result != 0:
+        return "resign"                                    # decisive, not mate, not flagged
+    return "agreement"
+
 
 def sf_games(tsv, per_result, rng):
     """[(gid, result, [uci,...])] stratified by result."""
@@ -61,7 +107,7 @@ def sf_games(tsv, per_result, rng):
             p = line.rstrip("\n").split("\t")
             if len(p) < 3:
                 continue
-            buckets[int(p[1])].append((int(p[0]), int(p[1]), p[2].split()))
+            buckets[int(p[1])].append((int(p[0]), int(p[1]), p[2].split(), ""))
     out = []
     for r, b in buckets.items():
         if b:
@@ -73,10 +119,10 @@ def human_games(records_dir, per_result, rng):
     import pyarrow.parquet as pq
     buckets = {1: [], 0: [], -1: []}
     for shard in sorted(Path(records_dir).glob("records_*.parquet")):
-        d = pq.read_table(shard, columns=["game_id", "result", "moves"]).to_pydict()
-        for gid, r, mv in zip(d["game_id"], d["result"], d["moves"]):
+        d = pq.read_table(shard, columns=["game_id", "result", "moves", "termination"]).to_pydict()
+        for gid, r, mv, tm in zip(d["game_id"], d["result"], d["moves"], d["termination"]):
             if len(buckets[int(r)]) < per_result * 8:
-                buckets[int(r)].append((int(gid), int(r), mv.split()))
+                buckets[int(r)].append((int(gid), int(r), mv.split(), tm))
         if all(len(b) >= per_result * 8 for b in buckets.values()):
             break
     out = []
@@ -87,7 +133,7 @@ def human_games(records_dir, per_result, rng):
 
 
 def replay(ucis, max_ply):
-    """UCI list -> (P,112,8,8) uint8 planes, one per ply, same construction as data-gen."""
+    """UCI list -> ((P,112,8,8) uint8 planes one per ply, final board, whether the cap truncated)."""
     import chess
     from lczerolens import LczeroBoard
     b = LczeroBoard()
@@ -98,7 +144,8 @@ def replay(ucis, max_ply):
         except Exception:
             break
         out.append(b.to_input_tensor().to(dtype=torch.uint8).numpy())
-    return np.asarray(out) if out else None
+    truncated = len(ucis) > max_ply                        # we stopped early, the GAME did not end
+    return (np.asarray(out) if out else None), b, truncated
 
 
 def main():
@@ -132,8 +179,8 @@ def main():
     traj = {}
     for name, games in sources.items():
         rows = []
-        for gid, res, ucis in games:
-            planes = replay(ucis, args.max_ply)
+        for gid, res, ucis, tm in games:
+            planes, endboard, truncated = replay(ucis, args.max_ply)
             if planes is None or len(planes) < 6:
                 continue
             xs = []
@@ -144,7 +191,9 @@ def main():
                     xs.append(p)
             p = np.concatenate(xs)
             ply = np.arange(len(p))
-            rows.append(dict(gid=gid, result=res, ply=ply, x=white_pov_x(p, ply)))
+            ending = ("truncated" if truncated else
+                      classify_ending(endboard, tm, res, hit_cap=False))
+            rows.append(dict(gid=gid, result=res, ply=ply, x=white_pov_x(p, ply), ending=ending))
         traj[name] = rows
         n_pos = sum(len(r["ply"]) for r in rows)
         print(f"  {name}: {len(rows)} full games, {n_pos:,} positions "
@@ -160,16 +209,21 @@ def main():
             c = RESULT_COLOR[r["result"]]
             ax.plot(r["x"], r["ply"], "-", color=c, lw=0.4, alpha=0.13)     # raw, jitter visible
             ax.plot(parity_smooth(r["x"]), r["ply"], "-", color=c, lw=0.9, alpha=0.6)
-            ax.plot(r["x"][-1], r["ply"][-1], "o", color=c, ms=3, alpha=0.85)
+            ax.plot(r["x"][-1], r["ply"][-1], ENDING_MARKER.get(r["ending"], "."),
+                    color=c, ms=6, alpha=0.95, mec="black", mew=0.4, ls="none")
         ax.axvline(0, color=MUTED, lw=0.7, ls=":")
         ax.set_xlim(-1.05, 1.05)
         ax.set_xlabel("P(White wins) - P(Black wins)")
         ax.set_title(f"{name}  ({len(rows)} whole games)", color=INK)
     axes[0].set_ylabel("ply  (start at the top, game descends)")
     axes[0].set_ylim(args.max_ply, 0)
-    for c, lab in RESULT_COLOR.items():
-        axes[1].plot([], [], "-", color=lab, label=RESULT_NAME[c])
-    axes[1].legend(fontsize=8, frameon=False, loc="lower right")
+    from matplotlib.lines import Line2D
+    res_h = [Line2D([], [], color=RESULT_COLOR[k], lw=2, label=RESULT_NAME[k]) for k in (1, 0, -1)]
+    seen = [e for e in ENDING_MARKER if any(r["ending"] == e for rows in traj.values() for r in rows)]
+    end_h = [Line2D([], [], color=INK, marker=ENDING_MARKER[e], ls="none", ms=6,
+                    mec="black", mew=0.4, label=e) for e in seen]
+    axes[0].legend(handles=res_h, fontsize=8, frameon=False, loc="lower left", title="who won")
+    axes[1].legend(handles=end_h, fontsize=8, frameon=False, loc="lower right", title="how it ended")
     fig.suptitle("Whole games descending the tent -- every ply replayed, no subsampling\n"
                  "bold = 2-ply smoothed (cancels the ply-parity alternation); faint = raw per-ply")
     fig.tight_layout(); fig.savefig(f"{args.out_prefix}_1_trajectories.png", dpi=140)
@@ -192,6 +246,17 @@ def main():
     ax2.set_title("Tent width from COMPLETE games -- no stride comb, no population swap", color=INK)
     ax2.legend(fontsize=8, frameon=False)
     fig2.tight_layout(); fig2.savefig(f"{args.out_prefix}_2_envelope.png", dpi=140)
+
+    print("\nHOW GAMES ENDED (sampled games; stratified by result, so not population shares)")
+    import collections
+    allk = []
+    for name, rows in traj.items():
+        allk += [r["ending"] for r in rows]
+    cats = [e for e in ENDING_MARKER if e in set(allk)]
+    print(f"  {'ending':>14s} " + " ".join(f"{n:>10s}" for n in traj))
+    for e in cats:
+        print(f"  {e:>14s} " + " ".join(
+            f"{sum(1 for r in rows if r['ending']==e):>10d}" for rows in traj.values()))
 
     print("\nTENT WIDTH from complete games (median |x|)")
     print(f"  {'ply':>10s} {'human':>9s} {'SF-vs-SF':>9s}")
