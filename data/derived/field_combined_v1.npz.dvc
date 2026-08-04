@@ -1,0 +1,5 @@
+outs:
+- md5: c92141d2327bc5158710db353bdad375
+  size: 79248961
+  hash: md5
+  path: field_combined_v1.npz

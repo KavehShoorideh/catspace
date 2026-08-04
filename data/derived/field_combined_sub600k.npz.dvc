@@ -1,0 +1,5 @@
+outs:
+- md5: 95cc690a5ac978ac4a1bcd003f3e639c
+  size: 21003857
+  hash: md5
+  path: field_combined_sub600k.npz
