@@ -90,7 +90,11 @@ def main():
     del out
 
     keep = {k: z[k][take] for k in
-            ("y", "n_to_end", "is_terminal", "is_tail", "game", "ply", "dtz", "result", "ending")}
+            ("y", "n_to_end", "is_terminal", "is_tail", "game", "ply", "dtz", "result", "ending")
+            if k in z.files}
+    for k in ("stm_elo", "opp_elo"):                          # carried if the parent has them
+        if k in z.files:
+            keep[k] = z[k][take]
     keep["source"] = np.zeros(n, np.int8)                    # single materialized file
     # `source` must be zeroed so DualFeats reads the ONE materialized file -- but the human/SF
     # split is the entire point of the downstream basin comparison, so preserve it separately.

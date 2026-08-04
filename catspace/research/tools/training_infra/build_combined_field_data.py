@@ -106,6 +106,17 @@ def load_meta(path, source, game_offset, label):
         is_terminal=np.asarray([str(m) == "" for m in move], dtype=bool),
         game=game, ply=ply,
         dtz=d["dtz"].astype(np.int32),
+        # Ratings carried through DELIBERATELY. A committor is only defined relative to a
+        # DYNAMICS, and human dynamics vary by strength: measured on field_std_v1, draw rate rises
+        # 4.6% (<1200) -> 7.3% (2100+) and median game length 59 -> 74 plies. Pooling all ratings
+        # therefore learns the AVERAGE lichess player's committor. These columns were in the source
+        # schema and I dropped them in the first build, which made any Elo-stratified readout
+        # impossible without regenerating; carrying them keeps that option open for free.
+        # SF-vs-SF has no meaningful rating -> filled with -1 rather than a fake number.
+        stm_elo=(d["stm_elo"].astype(np.int32) if "stm_elo" in d else
+                 np.full(len(ply), -1, np.int32)),
+        opp_elo=(d["opp_elo"].astype(np.int32) if "opp_elo" in d else
+                 np.full(len(ply), -1, np.int32)),
         result=d["result"].astype(np.int8),
         ending=ending.astype(np.int8),
         source=np.full(len(ply), source, dtype=np.int8),
