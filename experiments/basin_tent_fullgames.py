@@ -132,6 +132,12 @@ def human_games(records_dir, per_result, rng):
     return out
 
 
+def uniform_games(loader_out, n, rng):
+    """n games drawn UNIFORMLY from a stratified loader's pool, restoring population proportions."""
+    idx = rng.choice(len(loader_out), min(n, len(loader_out)), replace=False)
+    return [loader_out[i] for i in idx]
+
+
 def replay(ucis, max_ply):
     """UCI list -> ((P,112,8,8) uint8 planes one per ply, final board, whether the cap truncated)."""
     import chess
@@ -154,7 +160,13 @@ def main():
     ap.add_argument("--onnx", default="assets/engines/lc0/t1-256x10.onnx")
     ap.add_argument("--sf-moves", default="data/derived/opening_pool_sfsf_moves.tsv")
     ap.add_argument("--human-records", default="data/records/lichess_2019-01")
-    ap.add_argument("--per-result", type=int, default=40, help="games per outcome per source")
+    ap.add_argument("--per-result", type=int, default=40,
+                    help="games per outcome per source for the TRAJECTORY figure (stratified)")
+    ap.add_argument("--n-uniform", type=int, default=1200,
+                    help="games per source, sampled UNIFORMLY, for the DENSITY tent. Uniform, not "
+                         "stratified: the trajectory figure over-samples decisive engine games on "
+                         "purpose so the splitting is visible, but a density must be "
+                         "population-representative or the draw column is understated.")
     ap.add_argument("--max-ply", type=int, default=200)
     ap.add_argument("--batch", type=int, default=2048)
     ap.add_argument("--out-prefix", default="artifacts/experiments/basin_fullgames")
