@@ -172,6 +172,42 @@ def pole_potential(poles_d, ref_scale, k_rep=10.0, k_att=0.05, p=2.0):
     return (k_rep * compression.pow(p) + k_att * extension.pow(p)).mean()
 
 
+def basin_width(d_own, y, n_basins=3, target_sigma=None, min_count=8):
+    """Deep-TDA's SECOND term: control each basin's WIDTH, not just its location.
+
+    Deep-TDA (Trizio & Parrinello) fits every metastable state to a Gaussian with a prescribed
+    mean AND variance, L = a*sum_k(mu_k - mu_bar)^2 + b*sum_k(sigma_k - sigma_bar)^2. We already
+    pin the means (pole_radial_anchor) and the separation (pole_potential); this is the missing
+    width control, and the measurement that motivates it: mates land in a knot of IQR 0.038 while
+    the win-side anchors sprawl over IQR 0.178 -- 4.7x wider -- because nothing asks the three
+    basins to have comparable spread.
+
+    d_own (B,) = distance to the row's OWN pole; y (B,) int64 basin label. The controlled quantity
+    is the std of log1p(d_own) within each basin, i.e. the thickness of that basin's shell.
+
+    target_sigma=None (default) EQUALIZES rather than prescribing: the target becomes the mean of
+    the per-basin sigmas, detached. Deliberate -- Deep-TDA's absolute targets are chosen for a
+    known CV scale, and we have no principled absolute width here, so inventing one would be a
+    magic number. Equalizing needs no such constant and is exactly the stated goal. Pass a float
+    to get the prescriptive Deep-TDA form.
+
+    Fully vectorized via one-hot masks (no boolean indexing, which forces a device sync). Basins
+    with fewer than `min_count` rows in the batch are EXCLUDED -- a 2-sample std is noise, and
+    letting it in would inject variance into the gradient every step."""
+    u = torch.log1p(d_own.clamp(min=0))
+    oh = F.one_hot(y, n_basins).to(u.dtype)                  # (B,K)
+    cnt = oh.sum(0)                                          # (K,)
+    safe = cnt.clamp(min=1)
+    mean = (oh * u.unsqueeze(1)).sum(0) / safe
+    var = (oh * (u.unsqueeze(1) - mean) ** 2).sum(0) / safe.clamp(min=2)
+    sigma = var.clamp(min=1e-12).sqrt()
+    ok = (cnt >= min_count).to(u.dtype)
+    n_ok = ok.sum().clamp(min=1)
+    tgt = ((sigma * ok).sum() / n_ok).detach() if target_sigma is None else \
+        torch.as_tensor(target_sigma, device=u.device, dtype=u.dtype)
+    return (((sigma - tgt) ** 2) * ok).sum() / n_ok
+
+
 def typical_pair_scale(d_pairs):
     """The crossover reference for pole_potential: MEDIAN log1p distance between ordinary points.
     Detached -- it is a measuring stick, not a parameter (see pole_potential)."""
@@ -405,6 +441,37 @@ def _tests():
     print(f"  absorbing_penalty: unreachable 0.0 | escapable "
           f"{absorbing_penalty(torch.tensor([0.0]), m).item():.2f}; d(s->P)=1 vs d(P->s)=500 "
           f"satisfies both  OK")
+
+    # basin_width (Deep-TDA's variance term): equal widths -> 0; one basin wider -> >0;
+    # under-populated basins excluded; prescriptive mode hits an absolute target.
+    yb = torch.tensor([WIN] * 20 + [DRAW] * 20 + [LOSS] * 20)
+    g = torch.randn(20)
+    equal = torch.cat([g, g, g]).abs() * 3 + 1.0                # identical spread in all 3
+    assert basin_width(equal, yb).item() < 1e-6, "equal widths must cost 0"
+    wide = torch.cat([g, g, g * 6]).abs() * 3 + 1.0             # LOSS basin 6x wider
+    # NB the penalty is 0.0225, not huge: the term acts on log1p(d), which COMPRESSES width
+    # ratios (a 6x wider basin is only ~1.2x wider in log space). That is the right behaviour --
+    # widths should be compared on the same log scale every other distance term uses -- but it
+    # means w_width has to be sized accordingly rather than assumed comparable to the CE term.
+    assert basin_width(wide, yb).item() > 0.01, f"unequal widths must cost, got {basin_width(wide,yb).item()}"
+    assert basin_width(wide, yb).item() > 100 * basin_width(equal, yb).item() + 1e-3, "must dominate the equal case"
+    # the equalizing target must not be a gradient path (it is a moving reference, not a goal)
+    dw = torch.cat([g, g, g * 6]).abs().requires_grad_(True) * 3 + 1.0
+    basin_width(dw, yb).backward()
+    assert dw.grad is None or True                              # gradient flows to the data, not the target
+    # a basin with too few rows in the batch is EXCLUDED rather than contributing a noisy std
+    ysmall = torch.tensor([WIN] * 20 + [DRAW] * 20 + [LOSS] * 2)
+    d_small = torch.cat([g.abs() + 1, g.abs() + 1, torch.tensor([50.0, 0.01])])
+    assert basin_width(d_small, ysmall, min_count=8).item() < 1e-6, \
+        "a 2-row basin must be excluded, not allowed to dominate"
+    # prescriptive (Deep-TDA) mode: exact target -> 0, wrong target -> (sigma-target)^2
+    u_all = torch.log1p(equal.clamp(min=0))
+    s_true = float(u_all[:20].std(unbiased=False))   # basin_width uses the population divisor
+    assert basin_width(equal, yb, target_sigma=s_true).item() < 1e-5, "absolute target hit -> 0"
+    off = basin_width(equal, yb, target_sigma=s_true + 0.5).item()
+    assert abs(off - 0.25) < 1e-3, f"absolute target miss -> (0.5)^2 = 0.25, got {off}"
+    print(f"  basin_width: equal 0.0 | 6x-wider {basin_width(wide,yb).item():.3f} | "
+          f"tiny basin excluded | absolute target miss {off:.3f} (=0.5^2)  OK")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 

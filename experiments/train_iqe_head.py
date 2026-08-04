@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from catspace.nn.iqe import IQE
 from experiments.losses import (quasimetric_regression, wdl_hinge, reachability_target,
                                 basin_ce, basin_logp, pole_radial_anchor, terminal_repulsion,
-                                pole_potential, typical_pair_scale, absorbing_penalty,
+                                pole_potential, typical_pair_scale, absorbing_penalty, basin_width,
                                 WIN, DRAW, LOSS)
 from experiments.arch_bakeoff import eff_rank
 from catspace.train.scaffold import standard_train, TrainConfig, resolve_device
@@ -145,6 +145,12 @@ def main():
     ap.add_argument("--pole-init", choices=["data", "random"], default="data",
                     help="data = prototype init at each class's mean terminal phi (recommended)")
     ap.add_argument("--w-absorb", type=float, default=1.0, help="d(pole->s) large: cannot leave")
+    ap.add_argument("--w-width", type=float, default=4.0,
+                    help="Deep-TDA basin-WIDTH term. Default 4.0 not 1.0: it acts on log1p(d), "
+                         "which compresses width ratios (a 6x wider basin scores only 0.023), so "
+                         "at weight 1 it would be swamped by CE.")
+    ap.add_argument("--width-sigma", type=float, default=-1.0,
+                    help="<0 = equalize the three basin widths; >=0 = prescriptive Deep-TDA target")
     ap.add_argument("--termrepel-margin", type=float, default=4.0)
     ap.add_argument("--polesep-margin", type=float, default=4.0)
     ap.add_argument("--absorb-margin", type=float, default=4.0)
@@ -306,8 +312,15 @@ def main():
         ref = typical_pair_scale(net.d_pair_emb(e_b, e_b[torch.randperm(len(e_b), device=dev)]))
         L_polesep = pole_potential(net.d_poles_pairwise(), ref,
                                    k_rep=args.polesep_krep, k_att=args.polesep_katt)
+        # (6) Deep-TDA basin WIDTH: pins the three basins to comparable spread. Measured on the
+        # 8k run, the mates formed a knot (IQR 0.038) while the win-side anchors sprawled (0.178,
+        # 4.7x) -- nothing in the objective asked them to be comparable. Computed on the SAME
+        # all-rows batch as the CE term so no extra feature gather is needed.
+        d_own_b = d_b.gather(1, y_t[bi].unsqueeze(1)).squeeze(1)
+        L_width = basin_width(d_own_b, y_t[bi],
+                              target_sigma=None if args.width_sigma < 0 else args.width_sigma)
         return {"basin": L_basin, "radial": L_radial, "termrepel": L_termrepel,
-                "polesep": L_polesep, "absorb": L_absorb, "pole_ref": ref}
+                "polesep": L_polesep, "absorb": L_absorb, "width": L_width, "pole_ref": ref}
 
     _step_t0 = [0.0]
 
@@ -332,7 +345,7 @@ def main():
             pt = pole_terms(rng, args.batch)
             loss = loss + (args.w_basin * pt["basin"] + args.w_radial * pt["radial"]
                            + args.w_termrepel * pt["termrepel"] + args.w_polesep * pt["polesep"]
-                           + args.w_absorb * pt["absorb"])
+                           + args.w_absorb * pt["absorb"] + args.w_width * pt["width"])
             parts.update(pt); parts["loss"] = loss
             parts["T"] = net.temperature
         opt.zero_grad(); loss.backward(); opt.step()
@@ -412,7 +425,12 @@ def main():
         offd = ~torch.eye(3, dtype=torch.bool, device=pd.device)
         pole_gap = float(torch.log1p(pd[offd]).median())
         pole_ref = float(typical_pair_scale(net.d_pair_emb(e, e[torch.randperm(len(e), device=dev)])))
-        return {"basin_acc": float(correct.mean()), "basin_ece": ece, "basin_conf": float(conf.mean()),
+        u = torch.log1p(d.gather(1, y_t[vi].unsqueeze(1)).squeeze(1))
+        w = [float(u[torch.from_numpy((yv_b == k)).to(dev)].std()) if (yv_b == k).sum() > 8
+             else float("nan") for k in (WIN, DRAW, LOSS)]
+        return {"width_win": w[0], "width_draw": w[1], "width_loss": w[2],
+                "width_spread": float(np.nanmax(w) - np.nanmin(w)),
+                "basin_acc": float(correct.mean()), "basin_ece": ece, "basin_conf": float(conf.mean()),
                 "ambiguous_frac": float((conf < 0.5).mean()), "term_eff_rank": term_er,
                 "shell_median": shell, "pole_asym": asym, "T": float(net.temperature),
                 "pole_gap": pole_gap, "pole_ref": pole_ref}
