@@ -92,7 +92,21 @@ def reachability_target(n_moves, path_surprisal):
 # CALIBRATION (not sharpness) is the gate.
 # ---------------------------------------------------------------------------------------------
 
-WIN, DRAW, LOSS = 0, 1, 2                                # pole index order, mover-POV
+WIN, DRAW, LOSS = 0, 1, 2                                # OUTCOME pole order, mover-POV
+START = 3                                                # the TIME-ORIGIN pole -- see below
+
+# The START pole (Kaveh 2026-08-04) is the 4th pole and is NOT a basin. Every game begins at it,
+# and distance from it grows with plies played, so it gives the field an ABSOLUTE ply coordinate
+# where the multi-goal term only ever taught RELATIVE ply gaps between same-game pairs.
+#
+# It is deliberately EXCLUDED from basin_logits/basin_ce. Those are a distribution over OUTCOMES;
+# admitting a time origin would make every opening position read as ~25% "start" and the three
+# outcome probabilities would no longer sum to 1 over outcomes. Basin readouts index poles[:3].
+#
+# It is also where the quasimetric's asymmetry does real work: d(P_start -> s) grows with ply,
+# while d(s -> P_start) is pushed large -- you cannot un-play moves. Chess is genuinely
+# irreversible (pawns, captures), so this is one of the few places the asymmetry is not a modelling
+# convenience but a fact about the domain.
 
 
 def basin_logits(d_poles, temperature=1.0):
@@ -206,6 +220,23 @@ def basin_width(d_own, y, n_basins=3, target_sigma=None, min_count=8):
     tgt = ((sigma * ok).sum() / n_ok).detach() if target_sigma is None else \
         torch.as_tensor(target_sigma, device=u.device, dtype=u.dtype)
     return (((sigma - tgt) ** 2) * ok).sum() / n_ok
+
+
+def start_ply_anchor(d_from_start, log_ply_target):
+    """d(P_start -> phi(s)) regressed to log1p(ply): the beam spreading out of the start pole.
+
+    Same log1p convention and the same Huber as every other distance target, so the ply axis lives
+    on the same scale as the outcome-pole shells rather than in units of its own."""
+    return quasimetric_regression(d_from_start, log_ply_target)
+
+
+def start_irreversibility(d_to_start, margin):
+    """d(phi(s) -> P_start) pushed UP to `margin`: you cannot un-play moves.
+
+    Structurally identical to absorbing_penalty (a one-sided log-space barrier) but pointed the
+    other way in time: absorbing says you cannot LEAVE a terminal, this says you cannot RETURN to
+    the start. Together they orient the field's time axis at both ends."""
+    return F.relu(margin - torch.log1p(d_to_start.clamp(min=0))).mean()
 
 
 def typical_pair_scale(d_pairs):
@@ -472,6 +503,28 @@ def _tests():
     assert abs(off - 0.25) < 1e-3, f"absolute target miss -> (0.5)^2 = 0.25, got {off}"
     print(f"  basin_width: equal 0.0 | 6x-wider {basin_width(wide,yb).item():.3f} | "
           f"tiny basin excluded | absolute target miss {off:.3f} (=0.5^2)  OK")
+
+    # start pole: ply anchor + irreversibility, and the basin softmax must IGNORE it.
+    tgt = torch.log1p(torch.tensor([40.0]))
+    assert start_ply_anchor(torch.tensor([40.0]), tgt).item() < 1e-9, "ply 40 at d=40 -> 0"
+    assert start_ply_anchor(torch.tensor([1.0]), tgt).item() > 0.5, "ply 40 at d=1 -> penalised"
+    # monotone: a later ply must want a LARGER distance from the start
+    d_now = torch.tensor([10.0, 10.0])
+    t_near, t_far = torch.log1p(torch.tensor([10.0, 10.0])), torch.log1p(torch.tensor([80.0, 80.0]))
+    assert start_ply_anchor(d_now, t_near).item() < start_ply_anchor(d_now, t_far).item(), \
+        "the same distance must fit an early ply better than a late one"
+    assert start_irreversibility(torch.tensor([500.0]), 4.0).item() < 1e-6, "unreachable back -> 0"
+    assert abs(start_irreversibility(torch.tensor([0.0]), 4.0).item() - 4.0) < 1e-6, "returnable -> margin"
+    # THE INVARIANT: adding a 4th pole must not touch the basin distribution.
+    d3 = torch.tensor([[1.0, 4.0, 9.0]])
+    p3 = basin_logp(d3).exp()
+    d4 = torch.cat([d3, torch.tensor([[0.01]])], dim=1)      # a start pole sitting very close
+    assert torch.allclose(basin_logp(d4[:, :3]).exp(), p3, atol=1e-9), \
+        "basin probabilities must be computed over poles[:3] ONLY -- a near start pole must not steal mass"
+    assert abs(float(p3.sum()) - 1.0) < 1e-6, "outcome probabilities still sum to 1"
+    print(f"  start pole: ply anchor exact->0, wrong-ply penalised, monotone in ply | "
+          f"irreversibility 0.0/{start_irreversibility(torch.tensor([0.0]),4.0).item():.1f} | "
+          f"basin softmax ignores pole 3  OK")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 

@@ -17,6 +17,7 @@ opening-sanity run post-train (eval_iqe_field.py). Scaffold-tracked (MLflow + la
 from __future__ import annotations
 
 import argparse, json, sys, time
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from pathlib import Path
 
@@ -30,7 +31,7 @@ from catspace.research.tools.training_infra.losses import (
     quasimetric_regression, wdl_hinge, reachability_target,
     basin_ce, basin_logp, pole_radial_anchor, terminal_repulsion,
     pole_potential, typical_pair_scale, absorbing_penalty, basin_width,
-    WIN, DRAW, LOSS)
+    start_ply_anchor, start_irreversibility, WIN, DRAW, LOSS, START)
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.train.scaffold import standard_train, TrainConfig, resolve_device
 
@@ -71,10 +72,13 @@ class DualFeats:
     def __len__(self):
         return self.shape[0]
 
-    def gather(self, idx):
-        """(B,) global row indices -> (B,C,8,8) float32."""
+    def gather(self, idx, dtype=np.float32):
+        """(B,) global row indices -> (B,C,8,8) in `dtype`.
+
+        dtype=float16 keeps the on-disk precision and defers the cast to the GPU, which halves the
+        bytes written here and halves the host->device transfer."""
         idx = np.asarray(idx)
-        out = np.empty((len(idx), *self.shape[1:]), dtype=np.float32)
+        out = np.empty((len(idx), *self.shape[1:]), dtype=dtype)
         src = self.source[idx]
         for s in np.unique(src):
             s = int(s)
@@ -83,7 +87,7 @@ class DualFeats:
                 continue
             loc = self.local_row[idx[m]]
             order = np.argsort(loc)                          # sequential memmap reads
-            rows = np.asarray(self._open(s)[loc[order]], dtype=np.float32)
+            rows = np.asarray(self._open(s)[loc[order]], dtype=dtype)
             dest = np.flatnonzero(m)[order]
             out[dest] = rows
         return out
@@ -143,6 +147,24 @@ def main():
                          "weak attraction outside")
     ap.add_argument("--polesep-krep", type=float, default=10.0, help="repulsive stiffness")
     ap.add_argument("--polesep-katt", type=float, default=0.05, help="attractive stiffness")
+    ap.add_argument("--resume", default="",
+                    help="checkpoint to resume from. Restores model weights AND optimizer state "
+                         "(Adam moments) and continues the step counter, so the ladder, the movie "
+                         "frames and the per-step log stay contiguous with the original run.")
+    ap.add_argument("--prefetch", type=int, default=0,
+                    help="overlap the next batch's gather with this step's GPU compute. DEFAULT "
+                         "OFF: measured on a quiet machine it is a net LOSS (0.39 -> 0.44 s/step "
+                         "alone, and 0.21 vs 0.22 on top of --fp16-transfer, i.e. nothing). The "
+                         "worker thread contends for memory bandwidth and the GIL with the main "
+                         "thread, and MPS dispatch is already async so there is far less idle GPU "
+                         "time to hide behind than the serial timing split suggests. Kept as a "
+                         "flag because it should win at larger batches or on a CUDA box.")
+    ap.add_argument("--fp16-transfer", type=int, default=1,
+                    help="ship fp16 to the device and cast there (1=on). Features are fp16 on "
+                         "disk; casting on the CPU first reads 282MB and writes 564MB then sends "
+                         "564MB. This sends 282MB and casts on device. MEASURED 1.8x end-to-end "
+                         "(0.39 -> 0.22 s/step): the gather drops 2.8x and compute drops too, "
+                         "since the host->device copy halves.")
     ap.add_argument("--step-log", default="auto",
                     help="per-STEP train+holdout error -> JSONL ('auto' = <out>_steps.jsonl, "
                          "'' = off). standard_train only keeps metrics on eval steps, so a 30k "
@@ -154,6 +176,18 @@ def main():
                     help="print an I/O-vs-compute breakdown every N steps (0 = off)")
     ap.add_argument("--pole-lr-mult", type=float, default=10.0,
                     help="lr multiplier for the pole vertices + temperature (own param group)")
+    ap.add_argument("--w-start", type=float, default=1.0,
+                    help="START-pole ply anchor: d(P_start->phi) regressed to log1p(ply+1). "
+                         "Gives the field an ABSOLUTE ply coordinate; the multi-goal term only "
+                         "ever taught relative ply gaps.")
+    ap.add_argument("--w-start-irrev", type=float, default=1.0,
+                    help="d(phi->P_start) pushed large: you cannot un-play moves")
+    ap.add_argument("--start-irrev-margin", type=float, default=4.0,
+                    help="MATCHED to --absorb-margin deliberately. Ablated at 400 steps: margin 6 "
+                         "gave pole asymmetry -1.90, acc 0.533, terminal eff_rank 13.7; margin 4 "
+                         "gave -0.20/0.688/17.6 and crossed positive (+0.47) by step 1500. The "
+                         "start term must not overpower absorb, or it drags the coordinate "
+                         "ordering that lets P_outcome < s < P_start hold.")
     ap.add_argument("--pole-init", choices=["data", "random"], default="data",
                     help="data = prototype init at each class's mean terminal phi (recommended)")
     ap.add_argument("--w-absorb", type=float, default=1.0, help="d(pole->s) large: cannot leave")
@@ -228,6 +262,7 @@ def main():
         tail_train = np.flatnonzero(is_tail & ~is_val)
         term_train = np.flatnonzero(is_term & ~is_val)
         y_t = torch.from_numpy(y_all).to(dev)
+        z_ply = ply.astype(np.float64)
         # Radial target: reachability_target(n_to_end, surprisal=0) -- surprisal is 0 because the
         # anchor is restricted to tail rows, where the outcome is already locked (see
         # build_combined_field_data.py). The call site keeps the surprisal channel wired for when
@@ -235,6 +270,11 @@ def main():
         # log1p(1), which IS Kaveh's "every terminal sits one ply from its pole".
         radial_tgt = torch.from_numpy(
             reachability_target(np.maximum(n_to_end, 1), 0.0).astype(np.float32)).to(dev)
+        # ply+1, not ply: the generator pushes the move THEN records, so row ply=0 is the position
+        # after White's first move and half-moves played = ply+1. Raw ply would target log1p(0)=0
+        # and drag P_start onto the centroid of all ~20 after-first-move positions; ply+1 puts that
+        # position ONE ply from the start pole -- the same convention terminals use.
+        start_tgt = torch.from_numpy(np.log1p(ply.astype(np.float32) + 1.0)).to(dev)
         yv = y_all[all_val]
         print(f"  [poles] tail-anchor rows {len(tail_train):,} | terminals {len(term_train):,} | "
               f"basin mix train win/draw/loss "
@@ -272,19 +312,49 @@ def main():
     # accumulates its own time and byte count and the step reports the split.
     TM = {"gather": 0.0, "bytes": 0.0, "rows": 0.0, "step": 0.0, "n": 0}
 
-    def fx(idx):                                             # memmap rows -> fp32 on device
-        _t = time.perf_counter()
+    _HDT = np.float16 if args.fp16_transfer else np.float32
+
+    def _raw(idx):
+        """memmap rows -> host array. fp16 keeps the on-disk precision and defers the cast to the
+        GPU: casting on the CPU first reads 282MB and writes 564MB, then ships 564MB. This ships
+        282MB and casts on device."""
         if poles_on:
-            arr = feats.gather(idx)
-            x = torch.from_numpy(arr).to(dev)
+            return feats.gather(idx, dtype=_HDT)
+        ridx = fmap[idx] if fmap is not None else idx
+        return np.asarray(feats[ridx], dtype=_HDT)
+
+    def _to_dev(arr):
+        x = torch.from_numpy(arr).to(dev, non_blocking=True)
+        return x.float() if arr.dtype == np.float16 else x
+
+    # PREFETCH: one worker thread gathers the NEXT batch while the GPU computes this one. Without
+    # it the step is a strict serial alternation (gather 0.17s -> compute 0.13s, each idle while
+    # the other runs) at 0.5 of 11 cores; with it the step is ~max() of the two rather than the sum.
+    _pf = {"fut": None, "idx": None}
+    _pool = ThreadPoolExecutor(max_workers=1) if args.prefetch else None
+
+    def fx(idx):
+        _t = time.perf_counter()
+        idx = np.asarray(idx)
+        if _pool is not None and _pf["fut"] is not None and _pf["idx"] is not None \
+                and len(_pf["idx"]) == len(idx) and np.array_equal(_pf["idx"], idx):
+            arr = _pf["fut"].result()                        # already in flight -- just collect
+            _pf["fut"], _pf["idx"] = None, None
         else:
-            ridx = fmap[idx] if fmap is not None else idx
-            arr = np.asarray(feats[ridx], dtype=np.float32)
-            x = torch.from_numpy(arr).to(dev)
+            arr = _raw(idx)
+        x = _to_dev(arr)
         TM["gather"] += time.perf_counter() - _t
         TM["rows"] += len(idx)
         TM["bytes"] += arr.size * 2                          # fp16 on disk, 2 bytes/element
         return x
+
+    def fx_prefetch(idx):
+        """Queue a gather to overlap with the current step's GPU work."""
+        if _pool is None:
+            return
+        idx = np.asarray(idx)
+        _pf["idx"] = idx
+        _pf["fut"] = _pool.submit(_raw, idx)
 
     if poles_on and args.pole_init == "data":
         # Prototype init: each pole starts at the MEAN phi of its own class's terminal positions
@@ -302,7 +372,11 @@ def main():
                     continue
                 pick = ck[rng.integers(0, len(ck), min(2048, len(ck)))]
                 net.poles[k] = net.phi(fx(pick)).mean(0)
-            pg = float(torch.log1p(net.d_poles_pairwise()[~torch.eye(3, dtype=torch.bool,
+            early = np.flatnonzero(ply <= 2)
+            if len(early):
+                pick = early[rng.integers(0, len(early), min(2048, len(early)))]
+                net.poles[START] = net.phi(fx(pick)).mean(0)
+            pg = float(torch.log1p(net.d_poles_pairwise()[~torch.eye(4, dtype=torch.bool,
                                                                     device=dev)]).median())
             print(f"  [poles] prototype init from terminals -> pole gap {pg:.2f}", flush=True)
 
@@ -311,10 +385,16 @@ def main():
         (B,3) -- never three per-pole calls -- and all index sets are precomputed arrays."""
         T = net.temperature
         # (1) basin CE over a random slice of ALL training rows: forms + calibrates the simplex.
-        bi = all_train[_rng.integers(0, len(all_train), batch)]
+        bi = _pf_next[0] if _pf_next[0] is not None else all_train[
+            _rng.integers(0, len(all_train), batch)]
+        _pf_next[0] = None
         e_b = net.phi(fx(bi))
         d_b = net.d_poles(e_b)
         d_b_last[0], bi_last[0] = d_b, bi          # reused by the per-step log; no extra forward
+        # Queue the next step's basin batch now, so its gather overlaps this step's GPU work.
+        nxt = all_train[_rng.integers(0, len(all_train), batch)]
+        _pf_next[0] = nxt
+        fx_prefetch(nxt)
         L_basin = basin_ce(d_b, y_t[bi], T)
         # (5) absorbing: d(pole -> s) pushed UP on those same ordinary rows. Trains the ASYMMETRY.
         L_absorb = absorbing_penalty(net.d_from_poles(e_b).reshape(-1), args.absorb_margin)
@@ -343,11 +423,19 @@ def main():
         d_own_b = d_b.gather(1, y_t[bi].unsqueeze(1)).squeeze(1)
         L_width = basin_width(d_own_b, y_t[bi],
                               target_sigma=None if args.width_sigma < 0 else args.width_sigma)
+        # (7) START pole. Reuses e_b -- the CE batch we already embedded -- so the ply anchor is
+        # free. Applied to ALL rows, unlike the outcome radial anchor: ply is a fact about the
+        # position's PAST and is already determined, whereas plies-to-end is contingent on both
+        # players' future choices (which is why that one stays tail-only).
+        L_start = start_ply_anchor(net.d_from_start(e_b), start_tgt[bi])
+        L_start_irrev = start_irreversibility(net.d_to_start(e_b), args.start_irrev_margin)
         return {"basin": L_basin, "radial": L_radial, "termrepel": L_termrepel,
-                "polesep": L_polesep, "absorb": L_absorb, "width": L_width, "pole_ref": ref}
+                "polesep": L_polesep, "absorb": L_absorb, "width": L_width,
+                "start": L_start, "start_irrev": L_start_irrev, "pole_ref": ref}
 
     _step_t0 = [0.0]
     d_b_last, bi_last = [None], [None]
+    _pf_next = [None]
 
     def step(_net, s):
         _step_t0[0] = time.perf_counter()
@@ -370,10 +458,16 @@ def main():
             pt = pole_terms(rng, args.batch)
             loss = loss + (args.w_basin * pt["basin"] + args.w_radial * pt["radial"]
                            + args.w_termrepel * pt["termrepel"] + args.w_polesep * pt["polesep"]
-                           + args.w_absorb * pt["absorb"] + args.w_width * pt["width"])
+                           + args.w_absorb * pt["absorb"] + args.w_width * pt["width"]
+                           + args.w_start * pt["start"] + args.w_start_irrev * pt["start_irrev"])
             parts.update(pt); parts["loss"] = loss
             parts["T"] = net.temperature
         opt.zero_grad(); loss.backward(); opt.step()
+        # Refresh the optimizer snapshot only on ladder steps: scaffold does payload.update(extra)
+        # at save time and cfg.extra is this same dict, so mutating it here is what lands in the
+        # checkpoint. Doing it every step would serialize Adam moments 30,000 times for nothing.
+        if s % args.ckpt_every == 0 or s == args.steps:
+            _extra["opt_state"] = opt.state_dict()
         out_m = {k: float(v.detach()) for k, v in parts.items()}
         # PER-STEP train + holdout error (Kaveh 2026-08-04). The train arm is free -- it is the
         # batch we just did a forward pass on. The holdout arm costs one extra small batch, which
@@ -391,8 +485,11 @@ def main():
                        "val_acc": float((dv.argmin(1) == yv_s).float().mean())}
                 rec.update({k: out_m[k] for k in ("loss", "basin", "radial", "width") if k in out_m})
                 step_log.write(json.dumps(rec) + "\n")
-                if s % 200 == 0:
-                    step_log.flush()
+                # Flush EVERY step, not every 200. SIGTERM (what `pkill` sends, and what stopping a
+                # run to fix it uses) terminates before `finally: close()` runs, so a buffered tail
+                # is simply lost -- measured: 50 rows missing across one stop/resume. One extra
+                # syscall per step against a ~0.26s step is not worth a hole in the record.
+                step_log.flush()
         # MPS is ASYNC: without a sync the backward would appear free and all the time would be
         # misattributed to whatever ran next. Sync only on reporting steps so the common path is
         # not slowed by the measurement itself.
@@ -476,14 +573,28 @@ def main():
         asym = float((torch.log1p(net.d_from_poles(e)) - torch.log1p(d)).median())
         # Where the vertices actually sit relative to the potential's crossover: pole_gap should
         # settle AT or just above pole_ref (repelled to the crossover, weakly held from beyond).
-        pd = net.d_poles_pairwise()
+        # START-pole gates. start_rho is THE test that the ply coordinate is real: does
+        # d(P_start -> s) actually track ply on held-out games?
+        ds_fwd = net.d_from_start(e).cpu().numpy()
+        from scipy.stats import spearmanr as _sp
+        start_rho = float(_sp(ds_fwd, z_ply[vi]).correlation)
+        start_back = float(torch.log1p(net.d_to_start(e)).median())
+        pdist = net.d_poles_pairwise()
+        d_start_out = [float(pdist[START, k]) for k in (WIN, DRAW, LOSS)]
+        # pole_gap measures the OUTCOME triangle only. The start pole's distances are reported
+        # separately (start_to_*); folding a time origin into the basin-separation number would
+        # make it mean nothing.
+        pd = pdist[:3, :3]
         offd = ~torch.eye(3, dtype=torch.bool, device=pd.device)
         pole_gap = float(torch.log1p(pd[offd]).median())
         pole_ref = float(typical_pair_scale(net.d_pair_emb(e, e[torch.randperm(len(e), device=dev)])))
         u = torch.log1p(d.gather(1, y_t[vi].unsqueeze(1)).squeeze(1))
         w = [float(u[torch.from_numpy((yv_b == k)).to(dev)].std()) if (yv_b == k).sum() > 8
              else float("nan") for k in (WIN, DRAW, LOSS)]
-        return {"width_win": w[0], "width_draw": w[1], "width_loss": w[2],
+        return {"start_rho": start_rho, "start_back": start_back,
+                "start_to_win": d_start_out[0], "start_to_draw": d_start_out[1],
+                "start_to_loss": d_start_out[2],
+                "width_win": w[0], "width_draw": w[1], "width_loss": w[2],
                 "width_spread": float(np.nanmax(w) - np.nanmin(w)),
                 "basin_acc": float(correct.mean()), "basin_ece": ece, "basin_conf": float(conf.mean()),
                 "ambiguous_frac": float((conf < 0.5).mean()), "term_eff_rank": term_er,
@@ -494,14 +605,31 @@ def main():
     step_log = None
     if step_log_path and poles_on:
         Path(step_log_path).parent.mkdir(parents=True, exist_ok=True)
-        step_log = open(step_log_path, "w")
+        step_log = open(step_log_path, "a" if args.resume else "w")
         print(f"  [step-log] per-step train+holdout error -> {step_log_path} "
               f"(val batch {args.step_val_batch})", flush=True)
 
-    cfg = TrainConfig(out=out, steps=args.steps, ckpt_every=args.ckpt_every, eval_every=args.eval_every,
+    _extra = {"cfg": {"in_ch": C, "d": args.d, "components": args.components,
+                      "adapter_ch": args.adapter_ch, "trunk": tag}}
+    start_step = 0
+    if args.resume:
+        _ck = torch.load(args.resume, map_location=dev, weights_only=False)
+        _miss, _unexp = net.load_compat(_ck["state_dict"])
+        start_step = int(_ck.get("step", 0))
+        if "opt_state" in _ck:
+            opt.load_state_dict(_ck["opt_state"])
+            _os = "optimizer state restored"
+        else:
+            # Without Adam moments the first steps after a resume take a transient hit while the
+            # moving averages rebuild. Stated rather than hidden -- it shows up as a brief bump in
+            # the per-step loss right at the resume boundary.
+            _os = "NO optimizer state in ckpt -> Adam moments restart (brief transient expected)"
+        print(f"  [resume] {args.resume} @ step {start_step:,} | {_os}"
+              + (f" | missing {_miss}" if _miss else ""), flush=True)
+
+    cfg = TrainConfig(out=out, steps=args.steps, start_step=start_step, ckpt_every=args.ckpt_every, eval_every=args.eval_every,
                       experiment="catspace_m1_iqe_head", run_name=Path(out).name,
-                      extra={"cfg": {"in_ch": C, "d": args.d, "components": args.components,
-                                     "adapter_ch": args.adapter_ch, "trunk": tag}})
+                      extra=_extra)
     try:
         last = standard_train(step, net, cfg, args=args, gates_fn=gates)
     finally:
@@ -521,6 +649,13 @@ def main():
               f"{last.get('pole_gap', float('nan')):.2f} vs crossover "
               f"{last.get('pole_ref', float('nan')):.2f} | T "
               f"{last.get('T', float('nan')):.3f}", flush=True)
+        print(f"VERDICT START-POLE {tag}: ply rho {last.get('start_rho', float('nan')):+.3f} "
+              f"(the ply coordinate is real iff this is high) | d(s->start) median "
+              f"{last.get('start_back', float('nan')):.2f} (irreversibility, want large) | "
+              f"d(start->win/draw/loss) {last.get('start_to_win', float('nan')):.0f}/"
+              f"{last.get('start_to_draw', float('nan')):.0f}/"
+              f"{last.get('start_to_loss', float('nan')):.0f} "
+              f"(draw furthest => 'straight through is draw')", flush=True)
 
 
 if __name__ == "__main__":
