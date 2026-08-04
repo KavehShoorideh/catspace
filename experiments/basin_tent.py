@@ -62,7 +62,14 @@ def main():
     ap.add_argument("--ckpt", default="artifacts/experiments/iqe_poles_both_latest.pt")
     ap.add_argument("--combined", default="data/derived/field_combined_sub600k.npz")
     ap.add_argument("--n", type=int, default=150000)
-    ap.add_argument("--max-ply", type=int, default=160)
+    ap.add_argument("--max-ply", type=int, default=42,
+                    help="HARD CAP at 42 by default, and this is not cosmetic. "
+                         "gen_field_data_fullgame.py runs --stride 6 --per-game 8, so mid-game "
+                         "stride samples cannot reach beyond ply (8-1)*6 = 42. Past ply ~54 the "
+                         "dataset is 100%% TAIL rows -- positions 1-2 plies from the end. Plotting "
+                         "a ply axis past 42 silently swaps the population from 'mid-game' to "
+                         "'game endings' and the apparent fanning-out is that swap, not chess.")
+    ap.add_argument("--max-to-end", type=int, default=40, help="axis cap for the endgame funnel")
     ap.add_argument("--n-traj", type=int, default=60, help="sample trajectories drawn per panel")
     ap.add_argument("--ply-stride", type=int, default=6,
                     help="ply rows are binned to THIS period. gen_field_data_fullgame.py samples "
@@ -94,6 +101,7 @@ def main():
         p = probs_for_rows(net, mm, z["local_row"][take], args.device)
         ply = z["ply"][take]
         data[name] = dict(x=white_pov_x(p, ply), ply=ply, p=p, game=z["game"][take],
+                          n_to_end=z["n_to_end"][take],
                           y=z["y"][take], term=z["is_terminal"][take],
                           result=z["result"][take])
         print(f"  {name}: n={len(take):,}  mean|x| {np.abs(data[name]['x']).mean():.3f} "
@@ -101,33 +109,62 @@ def main():
 
     Path(args.out_prefix).parent.mkdir(parents=True, exist_ok=True)
 
-    # ---- Figure 1: the tent (density) ------------------------------------------------------
+    # ---- Figure 1: the tent, as CONDITIONAL density P(x | ply) ------------------------------
+    # Aliasing, and why row-normalizing is the fix rather than a nicer bin size.
+    # gen_field_data_fullgame.py samples `(ply - skip_open) % stride == 0` with stride=6 and the
+    # SAME phase in every game, so plies at multiples of 6 hold ~all the mass and the plies
+    # between them hold only the 4-ply tail. The JOINT density therefore has hard horizontal
+    # ridges that are an artifact of the sampler, not of chess, and no choice of bin size removes
+    # them -- a bin either straddles teeth or lands on one.
+    # Normalizing each ply row to sum to 1 removes it BY CONSTRUCTION: row counts cancel, and what
+    # is left is P(x | ply), which is the quantity of interest anyway ("given we are at ply k,
+    # where is the game?"). Rows with too few samples are MASKED rather than shown as noise.
+    def conditional_tent(x, ply, nx=61, stride=None, min_row=200):
+        stride = stride or args.ply_stride
+        edges_y = np.arange(-stride / 2, args.max_ply + stride, stride)   # one comb tooth per row
+        edges_x = np.linspace(-1.0, 1.0, nx + 1)
+        H, _, _ = np.histogram2d(ply, x, bins=[edges_y, edges_x])
+        n = H.sum(1, keepdims=True)
+        P = np.divide(H, n, out=np.full_like(H, np.nan), where=n >= min_row)
+        return np.ma.masked_invalid(P), edges_x, edges_y, n.ravel()
+
     fig, axes = plt.subplots(1, 2, figsize=(13, 6.4), sharey=True)
+    prep = {}
+    for name, d in data.items():
+        prep[name] = conditional_tent(d["x"], d["ply"])
+    # LOG colour scale, shared across panels. Linear was unreadable: the SF-vs-SF draw column
+    # holds ~80% of its row's mass while the human tent spreads its rows below ~10% per cell, so
+    # a linear scale set by the spike washes the human panel to nothing. Log keeps both legible
+    # AND keeps the two panels on ONE scale, which is required for them to be comparable at all.
+    # Floor at 1e-3 = 0.1% of a row; cells below that are empty-ish and masked rather than shown.
+    norm = LogNorm(vmin=1e-3, vmax=1.0)
     for ax, (name, d) in zip(axes, data.items()):
-        nrows = max(8, args.max_ply // args.ply_stride)
-        hb = ax.hexbin(d["x"], d["ply"], gridsize=(60, nrows), bins="log", mincnt=1, linewidths=0,
-                       cmap="Blues" if name == "human" else "Reds",
-                       extent=(-1.02, 1.02, 0, args.max_ply))
-        ax.invert_yaxis()                                   # apex at the TOP = the start position
+        P, ex, ey, n = prep[name]
+        Pm = np.ma.masked_less(P, 1e-3)
+        pc = ax.pcolormesh(ex, ey, Pm, cmap="Blues" if name == "human" else "Reds",
+                           norm=norm, shading="flat")
+        ax.invert_yaxis()
         ax.axvline(0, color=MUTED, lw=0.7, ls=":")
-        ax.set_xlim(-1.05, 1.05); ax.set_ylim(args.max_ply, 0)
+        ax.set_xlim(-1.02, 1.02); ax.set_ylim(args.max_ply, 0)
         ax.set_xlabel("P(White wins) - P(Black wins)")
-        ax.set_title(name, color=INK)
-        fig.colorbar(hb, ax=ax, shrink=0.75, label="positions (log)")
+        ax.set_title(f"{name}   ({int(np.nansum(n)):,} positions)", color=INK)
+        fig.colorbar(pc, ax=ax, shrink=0.75, label="P(x | ply)   [rows sum to 1]")
     axes[0].set_ylabel("ply  (start at the top, game descends)")
     for ax in axes:
-        ax.text(-1.0, args.max_ply * 0.03, "White wins", fontsize=9, color=COLOR_WHITE_WIN, ha="left")
-        ax.text(1.0, args.max_ply * 0.03, "Black wins", fontsize=9, color=COLOR_BLACK_WIN, ha="right")
-        ax.text(0, args.max_ply * 0.03, "draw", fontsize=9, color=MUTED, ha="center")
-    fig.suptitle("The tent: games start undecided at the apex and fan toward a result as plies accumulate")
+        ax.text(-0.99, args.max_ply * 0.04, "White wins", fontsize=9, color=COLOR_WHITE_WIN, ha="left")
+        ax.text(0.99, args.max_ply * 0.04, "Black wins", fontsize=9, color=COLOR_BLACK_WIN, ha="right")
+        ax.text(0, args.max_ply * 0.04, "draw", fontsize=9, color=MUTED, ha="center")
+    fig.suptitle("The tent: P(result lean | ply). Games start undecided at the apex and fan "
+                 "toward a result as plies accumulate\n(each row normalized, so the sampler's "
+                 "6-ply comb cannot appear as banding)")
     fig.tight_layout(); fig.savefig(f"{args.out_prefix}_1_tent.png", dpi=140)
 
     # ---- Figure 2: trajectories descending the tent -----------------------------------------
     fig2, axes2 = plt.subplots(1, 2, figsize=(13, 6.4), sharey=True)
     for ax, (name, d) in zip(axes2, data.items()):
-        ax.hexbin(d["x"], d["ply"], gridsize=(60, max(8, args.max_ply // args.ply_stride)),
-                  bins="log", mincnt=1, linewidths=0,
-                  cmap="Greys", alpha=0.30, extent=(-1.02, 1.02, 0, args.max_ply))
+        P, ex, ey, _ = prep[name]
+        ax.pcolormesh(ex, ey, np.ma.masked_less(P, 1e-3), cmap="Greys",
+                      norm=LogNorm(vmin=1e-3, vmax=1.0), alpha=0.35, shading="flat")
         games, cnt = np.unique(d["game"], return_counts=True)
         pick = games[cnt >= 6]
         pick = rng.choice(pick, min(args.n_traj, len(pick)), replace=False)
@@ -166,9 +203,42 @@ def main():
     ax3.legend(fontsize=8, frameon=False); ax3.set_ylim(0, 1)
     fig3.tight_layout(); fig3.savefig(f"{args.out_prefix}_3_width_vs_ply.png", dpi=140)
 
+    # ---- Figure 4: the ENDGAME FUNNEL -- the honest use of the tail rows -------------------
+    # The tail rows cannot support a ply axis, but they support a plies-TO-END axis perfectly:
+    # every game contributes its last 4 plies, so coverage near the end is complete and unbiased.
+    # Read it the same way as the tent, but time runs toward the END rather than from the start.
+    fig4, axes4 = plt.subplots(1, 2, figsize=(13, 5.6), sharey=True)
+    for ax, (name, d) in zip(axes4, data.items()):
+        n2e = d["n_to_end"]
+        m = n2e <= args.max_to_end
+        edges_y = np.arange(-0.5, args.max_to_end + 1.5, 1.0)
+        edges_x = np.linspace(-1.0, 1.0, 62)
+        H, _, _ = np.histogram2d(n2e[m], d["x"][m], bins=[edges_y, edges_x])
+        nn = H.sum(1, keepdims=True)
+        P = np.divide(H, nn, out=np.full_like(H, np.nan), where=nn >= 200)
+        ax.pcolormesh(edges_x, edges_y, np.ma.masked_less(np.ma.masked_invalid(P), 1e-3),
+                      cmap="Blues" if name == "human" else "Reds",
+                      norm=LogNorm(vmin=1e-3, vmax=1.0), shading="flat")
+        ax.invert_yaxis(); ax.set_xlim(-1.02, 1.02)
+        ax.axvline(0, color=MUTED, lw=0.7, ls=":")
+        ax.set_xlabel("P(White wins) - P(Black wins)"); ax.set_title(name, color=INK)
+    axes4[0].set_ylabel("plies REMAINING (0 = final position, at the bottom)")
+    fig4.suptitle("The endgame funnel: the same view but indexed from the END of the game\n"
+                  "(tail rows cover this completely; they cannot support a ply axis)")
+    fig4.tight_layout(); fig4.savefig(f"{args.out_prefix}_4_endgame_funnel.png", dpi=140)
+
+    print("\nENDGAME FUNNEL (median |x|) by plies remaining")
+    print(f"  {'to end':>8s} {'human':>9s} {'SF-vs-SF':>9s}")
+    for a, b in [(0, 1), (1, 2), (2, 4), (4, 10), (10, 25)]:
+        row = []
+        for name, d in data.items():
+            m = (d["n_to_end"] >= a) & (d["n_to_end"] < b)
+            row.append(np.median(np.abs(d["x"][m])) if m.sum() > 30 else np.nan)
+        print(f"  {a:>3d}-{b:<4d} {row[0]:>9.3f} {row[1]:>9.3f}")
+
     print("\nTENT WIDTH (median |x|) by ply band")
     print(f"  {'ply':>10s} {'human':>9s} {'SF-vs-SF':>9s}")
-    for a, b in [(0, 20), (20, 40), (40, 60), (60, 90), (90, 130), (130, args.max_ply)]:
+    for a, b in [(0, 8), (8, 16), (16, 24), (24, 32), (32, args.max_ply)]:
         row = []
         for name, d in data.items():
             m = (d["ply"] >= a) & (d["ply"] < b)
