@@ -68,7 +68,7 @@ def main():
     ap.add_argument("--ckpt-glob", default="artifacts/experiments/lc/lc_frac*_step6000.pt")
     ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--seed", type=int, default=1, help="MUST match the sweep's --seed")
-    ap.add_argument("--out-prefix", default="artifacts/experiments/learning_curve_full")
+    ap.add_argument("--out-prefix", default="artifacts/experiments/basin_learning_curve")
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
     t0 = time.time()
