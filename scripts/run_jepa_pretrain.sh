@@ -1,1 +1,1 @@
-../experiments/run_jepa_pretrain.sh
+../catspace/research/components/encoder/approaches/jepa_tokenizer/experiments/run_jepa_pretrain.sh

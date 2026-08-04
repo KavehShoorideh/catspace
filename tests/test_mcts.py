@@ -5,7 +5,7 @@ import chess
 import numpy as np
 import pytest
 
-from catspace.nn.mcts import DRAW_V, MATE_V, PLY_DISCOUNT, MCTS
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import DRAW_V, MATE_V, PLY_DISCOUNT, MCTS
 
 
 def flat_reach(boards):
@@ -107,7 +107,7 @@ def test_all_terminal_children_terminates():
     for c in root.children:
         c.terminal_v = -0.999 if c.terminal_v is None else c.terminal_v
     t.evals_used = 0                    # pretend budget untouched: worst case
-    import catspace.nn.mcts as M
+    import catspace.research.components.search.approaches.puct_mcts.src.mcts as M
 
     class Reroot(M.MCTS):
         def _expand(self, node, at_root):
@@ -146,7 +146,7 @@ def test_path_aware_threefold_detection():
     the toy shuffling into an unseen draw."""
     import chess
     import numpy as np
-    from catspace.nn.mcts import MCTS, _Node
+    from catspace.research.components.search.approaches.puct_mcts.src.mcts import MCTS, _Node
 
     m = MCTS(lambda bs: np.zeros(len(bs)), max_nodes=10)
     b = chess.Board("7k/8/8/8/8/8/8/R6K w - - 0 1")
@@ -243,7 +243,7 @@ def test_black_prefers_mate_over_draw():
     b = _chess.Board("r5k1/8/8/8/8/8/5PPP/6K1 b - - 99 60")   # ...Ra1# vs clock-draws
     t = make(nodes=64)
     root = t.run(b.copy())
-    from catspace.nn.mcts import DRAW_V as _DV
+    from catspace.research.components.search.approaches.puct_mcts.src.mcts import DRAW_V as _DV
     draw_children = [c for c in root.children if c.terminal_v == _DV]
     mate_children = [c for c in root.children
                      if c.terminal_v is not None and c.terminal_v < -0.5]
@@ -304,7 +304,7 @@ def test_pw_still_finds_mate_in_one():
 
 # -- tactical prior (2026-07-19: "spend nodes on checks, captures, threats") --
 
-from catspace.nn.mcts import is_tactical_move
+from catspace.research.components.search.approaches.puct_mcts.src.mcts import is_tactical_move
 
 
 def _tac(fen, uci):
@@ -363,7 +363,7 @@ def test_root_min_visits_floor():
 
 
 def test_value_ci_shrinks_with_visits():
-    from catspace.nn.mcts import _Node
+    from catspace.research.components.search.approaches.puct_mcts.src.mcts import _Node
     n = _Node(chess.Board(), None)
     rng = np.random.default_rng(0)
     hw_prev = 1.0

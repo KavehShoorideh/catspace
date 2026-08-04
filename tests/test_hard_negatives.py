@@ -7,11 +7,11 @@ import pytest
 
 import chess
 
-from catspace.data.encode import encode_packed
-from catspace.nn.hard_negatives import piece_count, unreachable_goals
+from catspace.research.tools.chess_specific.chessdata.encode import encode_packed
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.hard_negatives import piece_count, unreachable_goals
 
 torch = pytest.importorskip("torch")
-from catspace.nn.hard_negatives import repel_loss
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.hard_negatives import repel_loss
 
 
 def test_negatives_strictly_increase_count():

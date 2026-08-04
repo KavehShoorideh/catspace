@@ -1,0 +1,14 @@
+# Bulk-move commits from the 2026-08-03 restructure (see repo_structure.md).
+# These only relocate files; they carry no logic changes worth blaming.
+#
+# Enable locally with:
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Append the move commit SHAs below as each migration phase lands.
+
+# P2-P7: components split into approaches, alias shims removed
+18cefc3c09b891872a1ba3fc724192b83376a9f9
+# P8: wrapper approaches (bootstrap_mate glue split, gauntlet harness, approaches.md)
+e8f417bce3d003b617ee39a751f282ea31dff7da
+# P10: 300 experiment scripts + tools/docs/assets relocated; imports and paths rewritten
+17f6b775ffe140cff24452dcf55ef8cf4f6b7a7b
