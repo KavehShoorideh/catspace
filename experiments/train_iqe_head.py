@@ -138,6 +138,8 @@ def main():
                          "weak attraction outside")
     ap.add_argument("--polesep-krep", type=float, default=10.0, help="repulsive stiffness")
     ap.add_argument("--polesep-katt", type=float, default=0.05, help="attractive stiffness")
+    ap.add_argument("--timing-every", type=int, default=50,
+                    help="print an I/O-vs-compute breakdown every N steps (0 = off)")
     ap.add_argument("--pole-lr-mult", type=float, default=10.0,
                     help="lr multiplier for the pole vertices + temperature (own param group)")
     ap.add_argument("--pole-init", choices=["data", "random"], default="data",
@@ -235,11 +237,25 @@ def main():
     logM = float(np.log1p(args.margin))
     tgt_mate = torch.from_numpy(np.log1p(np.clip(dtz, 0, None)).astype(np.float32)).to(dev)
 
+    # Per-phase timers. The open question on this box is whether a step is dominated by the
+    # random memmap gather (71GB of features against 36GB of RAM -> page faults to disk) or by
+    # the actual forward/backward on MPS. Wall-clock alone cannot tell those apart, so fx()
+    # accumulates its own time and byte count and the step reports the split.
+    TM = {"gather": 0.0, "bytes": 0.0, "rows": 0.0, "step": 0.0, "n": 0}
+
     def fx(idx):                                             # memmap rows -> fp32 on device
+        _t = time.perf_counter()
         if poles_on:
-            return torch.from_numpy(feats.gather(idx)).to(dev)
-        ridx = fmap[idx] if fmap is not None else idx
-        return torch.from_numpy(np.asarray(feats[ridx], dtype=np.float32)).to(dev)
+            arr = feats.gather(idx)
+            x = torch.from_numpy(arr).to(dev)
+        else:
+            ridx = fmap[idx] if fmap is not None else idx
+            arr = np.asarray(feats[ridx], dtype=np.float32)
+            x = torch.from_numpy(arr).to(dev)
+        TM["gather"] += time.perf_counter() - _t
+        TM["rows"] += len(idx)
+        TM["bytes"] += arr.size * 2                          # fp16 on disk, 2 bytes/element
+        return x
 
     if poles_on and args.pole_init == "data":
         # Prototype init: each pole starts at the MEAN phi of its own class's terminal positions
@@ -293,7 +309,10 @@ def main():
         return {"basin": L_basin, "radial": L_radial, "termrepel": L_termrepel,
                 "polesep": L_polesep, "absorb": L_absorb, "pole_ref": ref}
 
+    _step_t0 = [0.0]
+
     def step(_net, s):
+        _step_t0[0] = time.perf_counter()
         pi = rng.integers(0, len(MG_s), args.batch)
         es = net.phi(fx(MG_s[pi])); eg = net.phi(fx(MG_g[pi]))
         L_multi = quasimetric_regression(net.d_pair_emb(es, eg), torch.from_numpy(MG_d[pi]).to(dev))
@@ -317,7 +336,30 @@ def main():
             parts.update(pt); parts["loss"] = loss
             parts["T"] = net.temperature
         opt.zero_grad(); loss.backward(); opt.step()
-        return {k: float(v.detach()) for k, v in parts.items()}
+        out_m = {k: float(v.detach()) for k, v in parts.items()}
+        # MPS is ASYNC: without a sync the backward would appear free and all the time would be
+        # misattributed to whatever ran next. Sync only on reporting steps so the common path is
+        # not slowed by the measurement itself.
+        if args.timing_every and s % args.timing_every == 0:
+            if dev.type == "mps":
+                torch.mps.synchronize()
+            elif dev.type == "cuda":
+                torch.cuda.synchronize()
+        TM["step"] += time.perf_counter() - _step_t0[0]
+        TM["n"] += 1
+        if args.timing_every and s % args.timing_every == 0:
+            n = max(TM["n"], 1)
+            sp = TM["step"] / n; g = TM["gather"] / n
+            mb = TM["bytes"] / n / 1048576
+            eta = (args.steps - s) * sp / 3600
+            print(f"  [t] step {s}/{args.steps} | {sp:.2f}s/step "
+                  f"(gather {g:.2f}s = {100*g/max(sp,1e-9):.0f}%, compute {sp-g:.2f}s) | "
+                  f"{TM['rows']/n:,.0f} rows = {mb:.0f}MB/step -> {mb/max(g,1e-9):.0f} MB/s "
+                  f"| ETA {eta:.1f}h", flush=True)
+            for k in ("gather", "bytes", "rows", "step"):
+                TM[k] = 0.0
+            TM["n"] = 0
+        return out_m
 
     from scipy.stats import spearmanr
 
