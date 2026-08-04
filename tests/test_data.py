@@ -13,13 +13,13 @@ import numpy as np
 import pytest
 import zstandard
 
-from catspace.data.encode import PLANES, board_from_packed, decode_planes, encode_meta, encode_packed
-from catspace.data.lichess import GameFilter, build_shards, open_pgn_zst, positions_of, stream_filtered_games
-from catspace.data.shards import LichessPairSource, MixedPairSource, ShardReader, write_shards
-from catspace.data.sources import ChainRolloutSource, PairBatch
-from catspace.domains import krk
-from catspace.opponents import RandomOpponent
-from catspace.planner.policy import RandomPolicy
+from catspace.research.tools.chess_specific.chessdata.encode import PLANES, board_from_packed, decode_planes, encode_meta, encode_packed
+from catspace.research.tools.chess_specific.chessdata.lichess import GameFilter, build_shards, open_pgn_zst, positions_of, stream_filtered_games
+from catspace.research.tools.chess_specific.chessdata.shards import LichessPairSource, MixedPairSource, ShardReader, write_shards
+from catspace.research.tools.chess_specific.chessdata.sources import ChainRolloutSource, PairBatch
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.opponents import RandomOpponent
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import RandomPolicy
 
 FIXTURES = Path(__file__).parent / "fixtures"
 FIXTURE_PGN = FIXTURES / "lichess_mini.pgn.zst"
@@ -366,14 +366,14 @@ def test_build_shards_eval_column_and_final_rows(tmp_path):
 
 @pytest.mark.slow
 def test_generalization_band():
-    """Loose smoke band for experiments/generalization.py at reduced scale --
+    """Loose smoke band for catspace/research/tools/stats_eval/generalization.py at reduced scale --
     the full-scale run (default args) reproduces the documented finding
     (holdout spearman ~0.45, ~zero train/holdout gap; see README/RESULTS-v3)."""
     import subprocess
     import sys
 
     result = subprocess.run(
-        [sys.executable, "experiments/generalization.py",
+        [sys.executable, "catspace/research/tools/stats_eval/generalization.py",
          "--n-games", "10000", "--steps", "5000", "--n-eval", "50"],
         cwd=Path(__file__).parent.parent, capture_output=True, text=True, timeout=60,
     )

@@ -1,1 +1,1 @@
-../experiments/m5_mcts_probe.py
+../catspace/research/components/search/approaches/puct_mcts/experiments/m5_mcts_probe.py

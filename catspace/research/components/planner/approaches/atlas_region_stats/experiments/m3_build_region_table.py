@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+"""catspace/research/components/planner/approaches/atlas_region_stats/experiments/m3_build_region_table.py -- offline region x band table for the M3 subgoal API.
+
+Assigns the M2a SF-labeled positions (70k, phi + committor_before/after + mover_loss) to the v2
+bank's nearest centroid and aggregates per (region, mover-Elo band): SF-refereed crossing rate
+(mover_loss >= --thr), mean mover-POV committor, count. TRAIN-half games only (game hash even) --
+the odd half is the held-out set for catspace/research/components/planner/approaches/atlas_region_stats/experiments/m3_subgoal_gates.py.
+"""
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import numpy as np
+from catspace.io import paths
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--labeled", default=paths.derived("transition_data_labeled.npz"))
+    ap.add_argument("--reach", default=paths.reach("reach_v2.npz"))
+    ap.add_argument("--out", default=paths.reach("region_table_v1.npz"))
+    ap.add_argument("--thr", type=float, default=0.2)
+    ap.add_argument("--band-edges", type=float, nargs="+", default=[1500.0])
+    ap.add_argument("--cbands", type=float, nargs="+", default=[0.35, 0.65],
+                    help="committor-band edges -> composite (region x band) cells")
+    ap.add_argument("--aug-feats", default="", help="m2a production-recipe feats npz")
+    ap.add_argument("--aug-from", default="", help="reach_v3 npz carrying the codebook scalers")
+    ap.add_argument("--regions", type=int, default=0,
+                    help="0 = use the field bank; K>0 = fit a FINER k-means on the labeled train half")
+    ap.add_argument("--kmeans-sample", type=int, default=0,
+                    help="fit k-means on a random subsample of N train rows (0 = all rows; "
+                         "assignments always computed for ALL rows). Needed at v4 scale: full "
+                         "Lloyd on ~800k x 68 x 1024 clusters is hours; centroids from a 150k "
+                         "subsample are statistically equivalent.")
+    args = ap.parse_args()
+
+    d = dict(np.load(args.labeled, allow_pickle=True))
+    z = np.load(args.reach, allow_pickle=True)
+    train = (d["game"].astype(np.int64) % 2 == 0)                        # even games -> table
+    phi = d["phi"][train].astype(np.float32)
+    aug_meta = {}
+    if args.aug_feats:
+        # AUGMENTED assignment space: the v3 codebook's stored scalers (production recipe)
+        v3 = np.load(args.aug_from, allow_pickle=True)
+        feats_all = np.load(args.aug_feats)["feats"].astype(np.float32)
+        A_all = np.concatenate([
+            (d["phi"].astype(np.float32) - v3["aug_mu_p"]) / v3["aug_sd_p"],
+            float(v3["aug_w"]) * (feats_all - v3["aug_mu_f"]) / v3["aug_sd_f"]], 1)
+        space = A_all[train]
+        from sklearn.cluster import KMeans
+        fit_rows = space
+        if args.kmeans_sample and len(space) > args.kmeans_sample:
+            sel = np.random.default_rng(0).choice(len(space), args.kmeans_sample, replace=False)
+            fit_rows = space[sel]
+        km = KMeans(n_clusters=args.regions or 1024, n_init=3, random_state=0).fit(fit_rows)
+        assign_bank = km.cluster_centers_.astype(np.float32)
+        region = km.predict(space)
+        bank = np.stack([phi[region == g].mean(0) if (region == g).any() else phi.mean(0)
+                         for g in range(len(assign_bank))]).astype(np.float32)
+        aug_meta = {"regions_assign": assign_bank, "aug_mu_p": v3["aug_mu_p"],
+                    "aug_sd_p": v3["aug_sd_p"], "aug_mu_f": v3["aug_mu_f"],
+                    "aug_sd_f": v3["aug_sd_f"], "aug_w": v3["aug_w"]}
+        G, B = len(bank), len(args.band_edges) + 1
+    elif args.regions > 0:
+        from sklearn.cluster import KMeans
+        fit_rows = phi
+        if args.kmeans_sample and len(phi) > args.kmeans_sample:
+            sel = np.random.default_rng(0).choice(len(phi), args.kmeans_sample, replace=False)
+            fit_rows = phi[sel]
+        bank = KMeans(n_clusters=args.regions, n_init=3, random_state=0).fit(
+            fit_rows).cluster_centers_.astype(np.float32)
+        G, B = len(bank), len(args.band_edges) + 1
+        d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
+        region = d2.argmin(1)
+    else:
+        bank = z["bank"].astype(np.float32)                              # (G,64)
+        G, B = len(bank), len(args.band_edges) + 1
+        d2 = (phi * phi).sum(1)[:, None] + (bank * bank).sum(1)[None, :] - 2.0 * phi @ bank.T
+        region = d2.argmin(1)
+    band = np.searchsorted(np.asarray(args.band_edges), d["elo_mover"][train], side="right")
+    crossing = (d["mover_loss"][train] >= args.thr).astype(np.float64)
+    committor = d["committor_before"][train].astype(np.float64)
+    CB = len(args.cbands) + 1
+    cband = np.digitize(committor, args.cbands)
+    cell = region * CB + cband                                           # composite cell id
+    NC = G * CB
+
+    rate = np.zeros((NC, B)); qual = np.zeros((NC, B)); cnt = np.zeros((NC, B), np.int64)
+    pcond = np.zeros((G, CB, B))
+    for b in range(B):
+        m = band == b
+        cnt[:, b] = np.bincount(cell[m], minlength=NC)
+        with np.errstate(invalid="ignore"):
+            rate[:, b] = np.bincount(cell[m], weights=crossing[m], minlength=NC) \
+                / np.maximum(cnt[:, b], 1)
+            qual[:, b] = np.bincount(cell[m], weights=committor[m], minlength=NC) \
+                / np.maximum(cnt[:, b], 1)
+        # P(cband | region, elo-band): the factorized-composite conditional (add-1 smoothing)
+        rc = cnt[:, b].reshape(G, CB).astype(float) + 1.0
+        pcond[:, :, b] = rc / rc.sum(1, keepdims=True)
+        gm = crossing[m].mean(); qm = committor[m].mean()
+        w = cnt[:, b] / (cnt[:, b] + 10.0)
+        rate[:, b] = w * rate[:, b] + (1 - w) * gm
+        qual[:, b] = w * qual[:, b] + (1 - w) * qm
+
+    print(f"AUDIT: {train.sum():,} table rows -> {G}x{CB}={NC} composite cells x {B} bands | "
+          f"cells with n<10: {(cnt < 10).sum()}/{NC*B} (shrunk) | "
+          f"rate range {rate.min():.3f}-{rate.max():.3f} | base by band "
+          f"{[round(crossing[band==b].mean(),3) for b in range(B)]}")
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(args.out, regions=bank, crossing_rate=rate, committor_mean=qual, count=cnt,
+                        **aug_meta, pcond=pcond, cband_edges=np.asarray(args.cbands),
+                        band_edges=np.asarray(args.band_edges), thr=args.thr,
+                        meta_labeled=args.labeled, meta_reach=args.reach)
+    print(f"wrote {args.out}")
+
+
+if __name__ == "__main__":
+    main()

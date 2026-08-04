@@ -6,15 +6,15 @@ determinism, and a smoke comparison on KRk (oracle strictly beats random).
 import numpy as np
 import pytest
 
-from catspace.abtest import EValueTest, MethodSpec, compare, confidence_sequence, paired_eval
-from catspace.chain import exact_P
-from catspace.cone.tabular import TabularFB
-from catspace.cone.embedding import make_goal, reach
-from catspace.domains import krk
-from catspace.opponents import EpsOptimalDTM, RandomOpponent, optimal_reply_table
-from catspace.planner.policy import DTMOraclePolicy, RandomPolicy, TablePolicy
-from catspace.planner.readout import ReplyAgg, greedy_policy
-from catspace.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.research.tools.stats_eval.abtest import EValueTest, MethodSpec, compare, confidence_sequence, paired_eval
+from catspace.research.tools.chess_specific.chain import exact_P
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import TabularFB
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.embedding import make_goal, reach
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.opponents import EpsOptimalDTM, RandomOpponent, optimal_reply_table
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import DTMOraclePolicy, RandomPolicy, TablePolicy
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg, greedy_policy
+from catspace.research.tools.chess_specific.scoring import TerminalScores, fill_terminal_state_scores
 
 
 def test_evalue_null_control():

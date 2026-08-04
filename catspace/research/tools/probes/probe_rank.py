@@ -1,0 +1,105 @@
+#!/usr/bin/env python
+"""catspace/research/tools/probes/probe_rank.py -- label-free spectral quality of a representation file.
+
+Reports (per input file, so several can be compared side by side):
+  RankMe        : exp(entropy of normalized singular values) -- Garrido et al. 2023;
+                  tracks downstream linear-probe accuracy WITHOUT labels
+  eff_rank      : participation-ratio effective rank (the repo's collapse gate)
+  variance curve: PCs needed for 50/90/99% variance
+  spectrum slope: log-log linear fit of the eigenvalue decay (a cliff ~ collapse;
+                  healthy JE spectra decay smoothly -- Jing et al. 2022)
+Optionally --lda-labels <col>: LiDAR-flavored check -- effective rank of the LDA
+scatter matrix under a label column (discounts variance that carries no signal).
+
+Usage: catspace/research/tools/probes/probe_rank.py rep1.npz [rep2.npz ...] [--lda-labels class]
+"""
+from __future__ import annotations
+
+import argparse
+
+import numpy as np
+
+
+def rankme(emb):
+    s = np.linalg.svd(emb - emb.mean(0), compute_uv=False)
+    p = s / s.sum() + 1e-12
+    return float(np.exp(-(p * np.log(p)).sum()))
+
+
+def eff_rank_pr(emb):
+    ev = np.linalg.eigvalsh(np.cov(emb.T))
+    ev = np.clip(ev, 0, None)
+    return float(ev.sum() ** 2 / (ev ** 2).sum())
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("reps", nargs="+")
+    ap.add_argument("--lda-labels", default="")
+    ap.add_argument("--sample", type=int, default=20000)
+    ap.add_argument("--fig", default="", help="write the Fig-3c-style diagnostics panel")
+    args = ap.parse_args()
+    rng = np.random.default_rng(0)
+    spectra = []
+    for path in args.reps:
+        d = np.load(path, allow_pickle=True)
+        emb = d["emb"].astype(np.float64)
+        if len(emb) > args.sample:
+            emb_s = emb[np.sort(rng.choice(len(emb), args.sample, replace=False))]
+        else:
+            emb_s = emb
+        N, D = emb_s.shape
+        ev = np.sort(np.clip(np.linalg.eigvalsh(np.cov(emb_s.T)), 1e-12, None))[::-1]
+        var = np.cumsum(ev) / ev.sum()
+        pcs = [int(np.searchsorted(var, q) + 1) for q in (0.5, 0.9, 0.99)]
+        k = max(D // 4, 8)
+        slope = np.polyfit(np.log(np.arange(1, k + 1)), np.log(ev[:k]), 1)[0]
+        line = (f"{path}: N={N} d={D} | RankMe {rankme(emb_s):.1f} | eff_rank "
+                f"{eff_rank_pr(emb_s):.1f} | PCs for 50/90/99% var: "
+                f"{pcs[0]}/{pcs[1]}/{pcs[2]} | spectrum slope {slope:.2f}")
+        if args.lda_labels and args.lda_labels in d.files:
+            y = d[args.lda_labels][:len(emb)]
+            if len(emb) > args.sample:
+                idx = np.sort(rng.choice(len(emb), args.sample, replace=False))
+                Xl, yl = emb[idx], y[idx]
+            else:
+                Xl, yl = emb, y
+            mu = Xl.mean(0)
+            Sb = np.zeros((D, D))
+            for c in np.unique(yl):
+                m = Xl[yl == c].mean(0) - mu
+                Sb += (yl == c).mean() * np.outer(m, m)
+            evb = np.clip(np.linalg.eigvalsh(Sb), 0, None)
+            lidar = float(evb.sum() ** 2 / ((evb ** 2).sum() + 1e-12))
+            line += f" | LDA-rank[{args.lda_labels}] {lidar:.1f}"
+        print("VERDICT rank: " + line)
+        spectra.append((path, ev, rankme(emb_s), eff_rank_pr(emb_s)))
+    if args.fig:
+        import sys
+        from pathlib import Path as _P
+        from catspace.research.tools.figures import figlib
+        fig, ax = figlib.new_fig(3)
+        for i, (path, ev, rm, er) in enumerate(spectra[:4]):
+            col = figlib.CAT[i]
+            name = _P(path).stem
+            ax[0].plot(np.arange(1, len(ev) + 1), ev, color=col, label=name)
+            ax[1].plot(np.arange(1, len(ev) + 1), np.cumsum(ev) / ev.sum(), color=col)
+        ax[0].set_xscale("log"); ax[0].set_yscale("log")
+        ax[0].set_title("eigenvalue spectrum"); ax[0].set_xlabel("index (log)")
+        if len(spectra) > 1:
+            ax[0].legend(frameon=False, fontsize=7)
+        ax[1].set_title("cumulative variance"); ax[1].set_xlabel("PCs")
+        ax[1].set_ylim(0, 1.02)
+        names = [_P(p).stem for p, *_ in spectra[:4]]
+        xs = np.arange(len(names))
+        ax[2].bar(xs - 0.2, [rm for _, _, rm, _ in spectra[:4]], 0.4,
+                  color=figlib.CAT[0], label="RankMe")
+        ax[2].bar(xs + 0.2, [er for *_, er in spectra[:4]], 0.4,
+                  color=figlib.CAT[1], label="eff rank")
+        ax[2].set_xticks(xs, names, rotation=20, fontsize=7)
+        ax[2].legend(frameon=False, fontsize=8); ax[2].set_title("rank measures")
+        figlib.save(fig, args.fig, "Representation diagnostics")
+
+
+if __name__ == "__main__":
+    main()

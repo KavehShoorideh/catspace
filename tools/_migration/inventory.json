@@ -1,0 +1,2047 @@
+{
+  "n_py_files": 551,
+  "n_syspath_files": 303,
+  "syspath_files": [
+    "experiments/ab_convert.py",
+    "experiments/ab_test.py",
+    "experiments/adaptive_vs_uniform.py",
+    "experiments/adversarial_distance_validation.py",
+    "experiments/arch_bakeoff.py",
+    "experiments/archive/build_cond_flux_data.py",
+    "experiments/archive/build_cond_reach_data.py",
+    "experiments/archive/precompute_trunk_wdl.py",
+    "experiments/archive/train_cond_adapter.py",
+    "experiments/archive/train_cond_field.py",
+    "experiments/archive/train_cond_reach2.py",
+    "experiments/audit_channel_balance.py",
+    "experiments/balance_game_records.py",
+    "experiments/basin_mate_engine.py",
+    "experiments/basin_metastability.py",
+    "experiments/basin_tb_anchors.py",
+    "experiments/basin_umap_compare.py",
+    "experiments/bench_engines_krrvk.py",
+    "experiments/bench_value_speed.py",
+    "experiments/blunder_model.py",
+    "experiments/bootstrap_dtm.py",
+    "experiments/bootstrap_mate_engine.py",
+    "experiments/build_agentive_reach_data.py",
+    "experiments/build_aug_feats.py",
+    "experiments/build_competence_map.py",
+    "experiments/build_game_records.py",
+    "experiments/build_home_book.py",
+    "experiments/build_jepa_corpus.py",
+    "experiments/build_m2a_aug_feats.py",
+    "experiments/build_move_selection.py",
+    "experiments/build_move_selection_engines.py",
+    "experiments/build_opp_positions.py",
+    "experiments/build_player_dataset.py",
+    "experiments/build_position_memory.py",
+    "experiments/build_reach_data.py",
+    "experiments/build_reach_positions_v2.py",
+    "experiments/build_zopp_causal.py",
+    "experiments/build_zopp_causal_v2.py",
+    "experiments/capacity_forensics.py",
+    "experiments/catalog_mate_directions.py",
+    "experiments/catspace_engine.py",
+    "experiments/certainty_distill.py",
+    "experiments/certainty_rollouts.py",
+    "experiments/check_conditioning.py",
+    "experiments/check_precision.py",
+    "experiments/cluster_finetune.py",
+    "experiments/cluster_infinite_finetune.py",
+    "experiments/committor_by_material.py",
+    "experiments/committor_distill.py",
+    "experiments/committor_recalibrate.py",
+    "experiments/committor_root_loop.py",
+    "experiments/compute_layer.py",
+    "experiments/concept_cones.py",
+    "experiments/concept_features.py",
+    "experiments/concept_monosemanticity.py",
+    "experiments/concept_reach_rollout.py",
+    "experiments/concept_report.py",
+    "experiments/concept_sae_dl.py",
+    "experiments/conditional_concepts.py",
+    "experiments/conditional_sae.py",
+    "experiments/conditional_sae_dl.py",
+    "experiments/controlfield_gate2_wdl_decay.py",
+    "experiments/controlfield_gate3_decay.py",
+    "experiments/controlfield_gates.py",
+    "experiments/conversion_board_dtm.py",
+    "experiments/conversion_board_policy.py",
+    "experiments/conversion_compare.py",
+    "experiments/conversion_composed_ab.py",
+    "experiments/conversion_concept.py",
+    "experiments/conversion_cornered.py",
+    "experiments/conversion_dtmhead_ab.py",
+    "experiments/conversion_ensemble.py",
+    "experiments/conversion_failure_diag.py",
+    "experiments/conversion_field_mcts.py",
+    "experiments/conversion_field_subgoal.py",
+    "experiments/conversion_subgoal.py",
+    "experiments/data_distribution_check.py",
+    "experiments/decision_flip_probe.py",
+    "experiments/defender_circuit_probe.py",
+    "experiments/denoise_cav.py",
+    "experiments/diag_region_nav.py",
+    "experiments/diag_transfer.py",
+    "experiments/diagnose_field_flatness.py",
+    "experiments/diagnose_fieldenergy_failures.py",
+    "experiments/distill_field.py",
+    "experiments/distill_finetune.py",
+    "experiments/distill_validate.py",
+    "experiments/dtm_arch_bakeoff.py",
+    "experiments/embed_checkpoints.py",
+    "experiments/endgame_handover.py",
+    "experiments/energy_baseline.py",
+    "experiments/engine_search_cost.py",
+    "experiments/engine_vs_human_basins.py",
+    "experiments/eval_agentive_lift.py",
+    "experiments/eval_dtm_alignment.py",
+    "experiments/eval_field_dtm.py",
+    "experiments/eval_geom.py",
+    "experiments/eval_l2_mate_guidance.py",
+    "experiments/eval_m1_compare.py",
+    "experiments/eval_m1_gates2.py",
+    "experiments/execution_curves.py",
+    "experiments/experiment_report.py",
+    "experiments/expert_iteration.py",
+    "experiments/explain_mate_clusters.py",
+    "experiments/fair_navigator.py",
+    "experiments/fallibility_prior.py",
+    "experiments/field_manifold.py",
+    "experiments/forced_mate_set.py",
+    "experiments/gen_all_captures_labeled.py",
+    "experiments/gen_child_rank_data.py",
+    "experiments/gen_clock_child_data.py",
+    "experiments/gen_confirmatory_starts.py",
+    "experiments/gen_contrast_mate_tuples.py",
+    "experiments/gen_demo_viz_data.py",
+    "experiments/gen_dtm_data.py",
+    "experiments/gen_engine_games.py",
+    "experiments/gen_escape_data.py",
+    "experiments/gen_field_data_fullgame.py",
+    "experiments/gen_forced_mate_data.py",
+    "experiments/gen_lichess_nearmate.py",
+    "experiments/gen_opening_pool_sfsf.py",
+    "experiments/gen_optimal_occupancy.py",
+    "experiments/gen_pairwise_data.py",
+    "experiments/gen_pawn_capture_pairs.py",
+    "experiments/gen_regime_random.py",
+    "experiments/gen_regime_rollouts.py",
+    "experiments/gen_rollouts_daemon.py",
+    "experiments/gen_stockfish_continuations.py",
+    "experiments/gen_stratified_perfect.py",
+    "experiments/gen_successor_edges.py",
+    "experiments/gen_tb_policy_data.py",
+    "experiments/gen_toy_sets.py",
+    "experiments/gen_traj_lc0.py",
+    "experiments/gen_transition_data.py",
+    "experiments/gen_wdl_dtm_data.py",
+    "experiments/goal_clusters.py",
+    "experiments/gradient_planner.py",
+    "experiments/hanging_piece_probe.py",
+    "experiments/hanging_piece_probe_lc0.py",
+    "experiments/import_pgn_games.py",
+    "experiments/improvement_loop.py",
+    "experiments/koopman_dyn_probe.py",
+    "experiments/koopman_dyn_probe_lc0.py",
+    "experiments/krrkbp_drilldown.py",
+    "experiments/ladder_mate.py",
+    "experiments/layer_sweep_probe.py",
+    "experiments/longshort_engine.py",
+    "experiments/m2b_cache.py",
+    "experiments/m2b_condition.py",
+    "experiments/m2b_eval.py",
+    "experiments/m2b_sample.py",
+    "experiments/m2b_train.py",
+    "experiments/m2c_elo_id.py",
+    "experiments/m2c_ingame.py",
+    "experiments/m3_atlas_viz.py",
+    "experiments/m3_flux_gate.py",
+    "experiments/m3_primitive_bands.py",
+    "experiments/m3_subgoal_gates.py",
+    "experiments/m3_train_flux_T.py",
+    "experiments/m3b_factors.py",
+    "experiments/m3b_sae_concepts.py",
+    "experiments/m4_play_steering.py",
+    "experiments/m5_mcts_probe.py",
+    "experiments/mate_bench.py",
+    "experiments/mate_from_field.py",
+    "experiments/mate_gradient_probe.py",
+    "experiments/mate_ladder_eval.py",
+    "experiments/mate_probe.py",
+    "experiments/mate_with_search.py",
+    "experiments/mcts_convert.py",
+    "experiments/mcts_field.py",
+    "experiments/measure_adversarial_veto.py",
+    "experiments/measure_soft_hard_consistency.py",
+    "experiments/measure_veto_channels.py",
+    "experiments/metastable_macrostates.py",
+    "experiments/mine_mate_puzzles.py",
+    "experiments/mine_only_move_bottlenecks.py",
+    "experiments/move_ab.py",
+    "experiments/move_rank_check.py",
+    "experiments/msm_basins.py",
+    "experiments/native_concepts.py",
+    "experiments/nucleus_pipeline.py",
+    "experiments/opening_alphabet.py",
+    "experiments/opponent_recovery.py",
+    "experiments/planner_landmark.py",
+    "experiments/planner_longshort.py",
+    "experiments/planner_search_demo.py",
+    "experiments/play_traced.py",
+    "experiments/play_vs_maia.py",
+    "experiments/playout_ab.py",
+    "experiments/policy_surprise.py",
+    "experiments/precision_reps.py",
+    "experiments/precompute_trunk_features.py",
+    "experiments/pretrain_jepa.py",
+    "experiments/probe_constraint_field.py",
+    "experiments/probe_tri_carry.py",
+    "experiments/propagation_ladder.py",
+    "experiments/prove_batchnorm.py",
+    "experiments/rank_sensitivity.py",
+    "experiments/reach_curvature.py",
+    "experiments/reach_efficiency.py",
+    "experiments/register_incumbents.py",
+    "experiments/rim_staircase.py",
+    "experiments/sae_concepts.py",
+    "experiments/search_outcome.py",
+    "experiments/search_retrieval_combined.py",
+    "experiments/search_tournament.py",
+    "experiments/self_retrain_loop.py",
+    "experiments/sf_label_transitions.py",
+    "experiments/sf_reliability_map.py",
+    "experiments/sf_vs_human_bands.py",
+    "experiments/sf_wdl_by_material.py",
+    "experiments/sharpness_bench.py",
+    "experiments/sharpness_identification.py",
+    "experiments/show_mate.py",
+    "experiments/stage_checkers.py",
+    "experiments/steer_concept.py",
+    "experiments/strata_diag.py",
+    "experiments/stratified_mcts.py",
+    "experiments/structure_probe.py",
+    "experiments/subgoal_codebook.py",
+    "experiments/table_from_dump.py",
+    "experiments/tactic_events.py",
+    "experiments/test_field_fullgame.py",
+    "experiments/train_board_dtm.py",
+    "experiments/train_board_policy.py",
+    "experiments/train_child_rank_field.py",
+    "experiments/train_clock_field.py",
+    "experiments/train_dtm_cnn.py",
+    "experiments/train_dtm_head.py",
+    "experiments/train_dtm_tok.py",
+    "experiments/train_escape_net.py",
+    "experiments/train_field_full.py",
+    "experiments/train_field_fullgame.py",
+    "experiments/train_field_geometry.py",
+    "experiments/train_field_v3.py",
+    "experiments/train_geometry_l1.py",
+    "experiments/train_geometry_min.py",
+    "experiments/train_hazard_head.py",
+    "experiments/train_iqe_head.py",
+    "experiments/train_iqe_nucleus.py",
+    "experiments/train_jepa_t1.py",
+    "experiments/train_l2_head.py",
+    "experiments/train_l2_stratified.py",
+    "experiments/train_lc0_field.py",
+    "experiments/train_mate_field.py",
+    "experiments/train_occupancy_field.py",
+    "experiments/train_opponent_model.py",
+    "experiments/train_planner_rl.py",
+    "experiments/train_policy_head.py",
+    "experiments/train_quasimetric.py",
+    "experiments/train_reach_head.py",
+    "experiments/train_rho_head.py",
+    "experiments/train_stratified_field.py",
+    "experiments/train_transition_estimator.py",
+    "experiments/transition_bands.py",
+    "experiments/transition_map.py",
+    "experiments/transition_time.py",
+    "experiments/two_channel_distill.py",
+    "experiments/uci_engine.py",
+    "experiments/validate_concept_arrival.py",
+    "experiments/validate_decoupled.py",
+    "experiments/value_fixed_point.py",
+    "experiments/visualize_batchnorm.py",
+    "experiments/visualize_clusters.py",
+    "experiments/viz/assistant_server.py",
+    "experiments/viz/build_embedding_neighbors.py",
+    "experiments/viz/build_mate_attempt_viewer.py",
+    "experiments/viz/build_play_atlas.py",
+    "experiments/viz/certainty_structure.py",
+    "experiments/viz/committor_atlas.py",
+    "experiments/viz/committor_surfaces.py",
+    "experiments/viz/near_mate_regions.py",
+    "experiments/viz/neighbor_explorer.py",
+    "experiments/viz/play_server.py",
+    "experiments/viz/wdl_regions.py",
+    "experiments/viz_b.py",
+    "experiments/viz_b_mate_clusters.py",
+    "experiments/viz_fb.py",
+    "experiments/viz_stratified_umap.py",
+    "scripts/build_jepa_corpus.py",
+    "scripts/eval_agentive_lift.py",
+    "scripts/m5_mcts_probe.py",
+    "scripts/play_traced.py",
+    "scripts/play_vs_maia.py",
+    "scripts/pretrain_jepa.py",
+    "tests/build_integration_suite.py",
+    "tests/fixtures/make_fixture.py",
+    "tests/test_l2_guards.py",
+    "tests/test_smoke_e2e.py",
+    "tools/_migration/analyze.py",
+    "tools/ablate.py",
+    "tools/embed.py",
+    "tools/fig_hazard.py",
+    "tools/fig_probe_curve.py",
+    "tools/fig_retrieval.py",
+    "tools/fig_success.py",
+    "tools/fig_train_curves.py",
+    "tools/probe_calibration.py",
+    "tools/probe_field.py",
+    "tools/probe_map.py",
+    "tools/probe_quasimetric.py",
+    "tools/probe_rank.py"
+  ],
+  "n_files_with_path_literals": 307,
+  "path_literals": {
+    "catspace/encoder/field.py": [
+      "data/engines/lc0/t1-256x10.onnx",
+      "artifacts/experiments/field_iqe_t1_final.pt"
+    ],
+    "catspace/engine/values.py": [
+      "data/derived/sep/dtm_cnn.pt"
+    ],
+    "catspace/experience.py": [
+      "data/derived/experience.sqlite"
+    ],
+    "catspace/memory/plan_store.py": [
+      "data/derived/engine_memory.sqlite"
+    ],
+    "catspace/predictor/endgame/tb.py": [
+      "data/syzygy",
+      "data/derived/tb_probe_cache.sqlite"
+    ],
+    "catspace/style/live.py": [
+      "artifacts/experiments/m2b_style_3k.pt",
+      "data/derived/m2b/cache_3k.npz"
+    ],
+    "catspace/tracking.py": [
+      "mlflow.db"
+    ],
+    "experiments/ab_convert.py": [
+      "artifacts/experiments/mate_field_v1.pt"
+    ],
+    "experiments/ab_test.py": [
+      "artifacts/experiments/ab_pairs.jsonl",
+      "artifacts/experiments/ab_live.json",
+      "data/syzygy"
+    ],
+    "experiments/adaptive_vs_uniform.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "data/derived/competence_map.npz",
+      "artifacts/experiments/krrkbp_fixed_set_n60.json"
+    ],
+    "experiments/adversarial_distance_validation.py": [
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy",
+      "artifacts/experiments/adversarial_distance.png"
+    ],
+    "experiments/arch_bakeoff.py": [
+      "data/derived/move_selection_full_v1.npz"
+    ],
+    "experiments/archive/build_cond_flux_data.py": [
+      "data/derived/m2b/positions_3k.parquet",
+      "data/derived/m2b/cache_3k.npz",
+      "artifacts/experiments/m2b_style_3k.pt",
+      "data/derived/cond_flux_data.npz"
+    ],
+    "experiments/archive/build_cond_reach_data.py": [
+      "data/derived/m2b/cache_3k.npz",
+      "artifacts/experiments/m2b_style_3k.pt",
+      "data/derived/cond_reach_data.npz"
+    ],
+    "experiments/archive/precompute_trunk_wdl.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/derived/m2a_trunk_wdl.npy"
+    ],
+    "experiments/archive/train_cond_adapter.py": [
+      "data/derived/cond_reach_data.npz"
+    ],
+    "experiments/archive/train_cond_field.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/derived/m2a_trunk_wdl.npy"
+    ],
+    "experiments/archive/train_cond_reach2.py": [
+      "data/derived/m2b/cache_dense",
+      "artifacts/experiments/m2b_style_3k.pt"
+    ],
+    "experiments/audit_channel_balance.py": [
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb",
+      "data/shards/regime_random_v1",
+      "data/shards/regime_random_endgame_v1",
+      "data/shards/sf_cont_endgame_v1",
+      "data/derived/move_selection_v1.npz"
+    ],
+    "experiments/balance_game_records.py": [
+      "data/records/smoke_lichess",
+      "artifacts/experiments/records_evenness.json"
+    ],
+    "experiments/basin_metastability.py": [
+      "data/derived/field_std_v1.npz",
+      "data/derived/opening_pool_sfsf.npz",
+      "data/records/lichess_2019-01",
+      "data/derived/field_std_v1.npz",
+      "data/derived/opening_pool_sfsf_moves.tsv",
+      "artifacts/experiments/meta_1_tica_side_by_side.png",
+      "docs/figures",
+      "docs/figures/meta_1_tica_side_by_side.png",
+      "artifacts/experiments/meta_2_tica_contours_trajectories.png",
+      "docs/figures/meta_2_tica_contours_trajectories.png",
+      "artifacts/experiments/meta_3_pcca_macrostates.png",
+      "docs/figures/meta_3_pcca_macrostates.png",
+      "artifacts/experiments/meta_4_disconnectivity_dendrogram.png",
+      "docs/figures/meta_4_disconnectivity_dendrogram.png",
+      "artifacts/experiments/meta_5_flux_diagram.png",
+      "docs/figures/meta_5_flux_diagram.png",
+      "artifacts/experiments/meta_data.npz"
+    ],
+    "experiments/basin_tb_anchors.py": [
+      "data/derived/field_std_v1.npz",
+      "data/derived/opening_pool_sfsf.npz",
+      "artifacts/experiments",
+      "docs/figures",
+      "artifacts/experiments/tb_anchor_1_basin_rollup_dendrogram.png",
+      "docs/figures/tb_anchor_1_basin_rollup_dendrogram.png",
+      "data/records/lichess_2019-01",
+      "data/derived/field_std_v1.npz",
+      "data/derived/opening_pool_sfsf_moves.tsv",
+      "artifacts/experiments/tb_anchor_2_trajectories.png",
+      "docs/figures/tb_anchor_2_trajectories.png",
+      "data/records/lichess_2019-01",
+      "data/derived/field_std_v1.npz",
+      "data/derived/opening_pool_sfsf_moves.tsv",
+      "artifacts/experiments/tb_anchor_data.npz"
+    ],
+    "experiments/basin_umap_compare.py": [
+      "data/derived/field_std_v1.npz",
+      "data/derived/opening_pool_sfsf.npz",
+      "data/derived/opening_pool_sfsf_moves.tsv",
+      "data/records/lichess_2019-01",
+      "artifacts/experiments/basin_umap",
+      "artifacts/experiments",
+      "docs/figures",
+      "docs/figures/basin_umap_1_2_side_by_side.png",
+      "docs/figures/basin_umap_3_difference.png",
+      "docs/figures/basin_umap_4_trajectories.png",
+      "docs/figures/basin_umap_5_trajectories_on_basins.png",
+      "docs/figures/basin_umap_6_single_games_spatial.png",
+      "docs/figures/basin_umap_7_basin_value_vs_ply.png"
+    ],
+    "experiments/bench_value_speed.py": [
+      "data/derived/sep/self_field_r0.pt",
+      "data/shards/lichess_db_standard_rated_2019-01.full"
+    ],
+    "experiments/blunder_model.py": [
+      "data/records/lichess_2019-01"
+    ],
+    "experiments/bootstrap_dtm.py": [
+      "data/derived/dtm_endgame_v2.npz"
+    ],
+    "experiments/bootstrap_mate_engine.py": [
+      "data/derived/sep/planner_rl_r*.pt",
+      "data/derived/sep/lichess_mc2.pt",
+      "data/derived/sep/opponent_energy_v1.pt",
+      "data/engines/maia/maia-1500.pb.gz",
+      "data/derived/sep/dtm_tok_r3.pt",
+      "data/derived/experience.sqlite",
+      "data/derived/sep/opponent_energy_current.txt",
+      "artifacts/experiments/boot_bank_{tag}.fens",
+      "artifacts/experiments/boot_lossbank_{tag}.fens",
+      "artifacts/experiments/boot_drawbank_{tag}.fens",
+      "artifacts/experiments/boot_milestones_{tag}.jsonl",
+      "artifacts/experiments/boot_results_{tag}.jsonl"
+    ],
+    "experiments/build_agentive_reach_data.py": [
+      "artifacts/experiments/m5_read100*.pgn",
+      "data/derived/reach/region_table_v4.npz",
+      "data/derived/reach/agentive_v1.npz",
+      "data/derived/reach/agentive_v1_zopp.npz"
+    ],
+    "experiments/build_aug_feats.py": [
+      "data/derived/m2b/cache_v2",
+      "data/derived/reach/aug_feats_v2.npz"
+    ],
+    "experiments/build_competence_map.py": [
+      "data/derived/competence_map.npz"
+    ],
+    "experiments/build_game_records.py": [
+      "data/lichess/lichess_db_standard_rated_2019-01.prefix256mb.pgn.zst",
+      "data/records/lichess_2019-01"
+    ],
+    "experiments/build_home_book.py": [
+      "artifacts/experiments/m4_steering_*.pgn",
+      "artifacts/experiments/field_v3_*maia*.pgn",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/reach_v3_full_latest.pt",
+      "data/derived/reach/reach_v3.npz",
+      "data/derived/reach/region_table_v3.npz",
+      "data/derived/reach/home_book_v1.npz"
+    ],
+    "experiments/build_jepa_corpus.py": [
+      "data/raw/lichess_db_standard_rated_2019-01.pgn.zst",
+      "data/derived/checkpoints/checkpoints_v1_full.npz",
+      "data/syzygy",
+      "data/derived/checkpoints/jepa_t1_corpus.npz"
+    ],
+    "experiments/build_m2a_aug_feats.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/derived/m2a_aug_feats.npz"
+    ],
+    "experiments/build_move_selection.py": [
+      "data/shards/lichess_db_standard_rated_2019-01.prefix1gb",
+      "data/derived/move_selection_v1.npz"
+    ],
+    "experiments/build_move_selection_engines.py": [
+      "data/shards/regime_rollouts_v1/shard_*.npz",
+      "data/derived/move_selection_engines_v1.npz"
+    ],
+    "experiments/build_opening_pool.py": [
+      "data/records/lichess_2019-01",
+      "data/derived/opening_pool_ply8.txt"
+    ],
+    "experiments/build_opp_positions.py": [
+      "data/derived/m2b/positions_dense.parquet",
+      "data/derived/m2b/positions_dense_opp.parquet"
+    ],
+    "experiments/build_player_dataset.py": [
+      "data/records/lichess_2019-01",
+      "data/records/player_games_rapid"
+    ],
+    "experiments/build_position_memory.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/position_memory"
+    ],
+    "experiments/build_reach_data.py": [
+      "data/derived/m2b/cache_dense",
+      "data/derived/reach/reach_v1.npz"
+    ],
+    "experiments/build_reach_positions_v2.py": [
+      "data/records/player_games_rapid",
+      "data/derived/m2b/cache_3k.npz",
+      "data/derived/m2b/positions_v2.parquet"
+    ],
+    "experiments/build_zopp_causal.py": [
+      "data/derived/m2b/cache_dense_opp",
+      "data/derived/reach/reach_v1.npz",
+      "artifacts/experiments/m2b_style_3k.pt",
+      "data/derived/m2b/cache_3k.npz",
+      "data/derived/reach/zopp_causal_v1.npz"
+    ],
+    "experiments/build_zopp_causal_v2.py": [
+      "data/derived/m2b/cache_v2",
+      "artifacts/experiments/m2b_style_3k.pt",
+      "data/derived/m2b/cache_3k.npz",
+      "data/derived/reach/zopp_causal_v2.npz"
+    ],
+    "experiments/capacity_forensics.py": [
+      "data/derived/sep/committor_base_full",
+      "artifacts/experiments/certainty_table_r3_K16.json",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb"
+    ],
+    "experiments/catalog_mate_directions.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_sf.pt",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix256mb",
+      "artifacts/experiments/mate_directions_lichess.png",
+      "artifacts/experiments/mate_directions_catalog.json"
+    ],
+    "experiments/catspace_engine.py": [
+      "data/derived/sep/iqe_stratified.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy"
+    ],
+    "experiments/certainty_distill.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "data/derived/sep/certainty_distill.pt",
+      "artifacts/experiments/certainty_table.json",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb"
+    ],
+    "experiments/certainty_rollouts.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "artifacts/experiments/krrkbp_win_starts.json",
+      "artifacts/experiments/certainty_table.json",
+      "data/syzygy"
+    ],
+    "experiments/check_conditioning.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/check_precision.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/cluster_finetune.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/cert_base_cluster.pt"
+    ],
+    "experiments/cluster_infinite_finetune.py": [
+      "data/derived/sep/iqe_nucleus.pt",
+      "data/derived/lichess_nearmate.npz",
+      "data/derived/pawndeath_pairs.npz",
+      "data/derived/sep/iqe_infinite.pt"
+    ],
+    "experiments/committor_by_material.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/field_fullgame_v1.npz",
+      "artifacts/experiments/committor_by_material.png"
+    ],
+    "experiments/committor_distill.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/committor.pt",
+      "artifacts/experiments/certainty_table_r2_K16.json",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb"
+    ],
+    "experiments/committor_recalibrate.py": [
+      "data/derived/sep/committor.pt",
+      "data/derived/sep/committor_whead.pt",
+      "artifacts/experiments/certainty_table_r2_K16.json"
+    ],
+    "experiments/committor_root_loop.py": [
+      "artifacts/experiments",
+      "data/syzygy",
+      "data/derived/sep/committor_joint.pt",
+      "data/derived/sep/{args.tag}_r{r}.pt"
+    ],
+    "experiments/compare_methods.py": [
+      "data/derived/{domain_name}_F.npy not found -- run experiments/train_{domain_name}.py first"
+    ],
+    "experiments/compute_layer.py": [
+      "data/derived/sep/iqe_stratified.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy",
+      "data/derived/stratified_perfect.npz"
+    ],
+    "experiments/concept_cones.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/concept_features.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/concept_monosemanticity.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/concept_reach_rollout.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/concept_report.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt",
+      "artifacts/experiments/concept_report.html"
+    ],
+    "experiments/concept_sae_dl.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/conditional_sae.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/conditional_sae_dl.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/controlfield_gate2_wdl_decay.py": [
+      "data/lichess_db_puzzle.csv.zst"
+    ],
+    "experiments/controlfield_gates.py": [
+      "data/records/lichess_2019-01/records_00000.parquet",
+      "data/lichess_db_puzzle.csv.zst"
+    ],
+    "experiments/conversion_board_dtm.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "data/derived/sep/board_dtm.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_board_policy.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "data/derived/sep/board_policy.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_compare.py": [
+      "artifacts/experiments/krrkbp_fixed_set_n60.json"
+    ],
+    "experiments/conversion_composed_ab.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "data/derived/sep/qrl_iqe_sn_full.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/derived/forced_mate.npz",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_concept.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_cornered.py": [
+      "data/derived/sep/xfer_treat.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_dtmhead_ab.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "data/derived/sep/cert_base_full_dtmhead.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_ensemble.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "data/derived/sep/board_dtm.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_failure_diag.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_field_mcts.py": [
+      "data/derived/sep/xfer_treat.pt",
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_field_subgoal.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/conversion_subgoal.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/data_distribution_check.py": [
+      "data/shards/lichess_db_standard_rated_2019-01.full"
+    ],
+    "experiments/decision_flip_probe.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy",
+      "artifacts/experiments/decision_flip_probe.json"
+    ],
+    "experiments/defender_circuit_probe.py": [
+      "data/derived/transition_data_labeled.npz",
+      "artifacts/experiments/jepa_t1_latest.pt",
+      "artifacts/experiments/defender_circuit_probe",
+      "artifacts/experiments",
+      "docs/figures",
+      "docs/figures/{Path(args.out).name}.png"
+    ],
+    "experiments/denoise_cav.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/diag_region_nav.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/diag_transfer.py": [
+      "data/derived/stratified_perfect.npz",
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/diagnose_field_flatness.py": [
+      "data/derived/sep/lichess_mc2.pt"
+    ],
+    "experiments/diagnose_fieldenergy_failures.py": [
+      "data/derived/sep/opponent_energy_v1.pt"
+    ],
+    "experiments/distill_field.py": [
+      "data/derived/sep/self_field_r0.pt",
+      "data/shards/lichess_db_standard_rated_2019-01.full",
+      "data/derived/sep/field_student_v1.pt"
+    ],
+    "experiments/distill_finetune.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/nucleus_distilled.pt"
+    ],
+    "experiments/distill_validate.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/dtm_endgame.npz"
+    ],
+    "experiments/dtm_arch_bakeoff.py": [
+      "data/derived/dtm_endgame_v2.npz"
+    ],
+    "experiments/embed_checkpoints.py": [
+      "data/derived/checkpoints/checkpoints_v1_full.npz",
+      "data/derived/reach/region_table_v4.npz",
+      "data/derived/checkpoints/checkpoints_v1_emb.npz"
+    ],
+    "experiments/energy_baseline.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy",
+      "artifacts/experiments/energy_baseline.jsonl"
+    ],
+    "experiments/engine_search_cost.py": [
+      "data/syzygy",
+      "artifacts/experiments/krrkbp_test_n200.json"
+    ],
+    "experiments/engine_vs_human_basins.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/engine_sfsf.npz",
+      "data/derived/field_fullgame_v1.npz",
+      "artifacts/experiments/engine_vs_human_basins.png"
+    ],
+    "experiments/eval_agentive_lift.py": [
+      "data/derived/reach/agentive_v1.npz",
+      "artifacts/experiments/reach_v3_full_latest.pt",
+      "artifacts/experiments/reach_v4_agentive_latest.pt"
+    ],
+    "experiments/eval_dtm_alignment.py": [
+      "data/derived/sep/qrl_dtm_surf.pt",
+      "data/derived/dtm_endgame.npz"
+    ],
+    "experiments/eval_field_dtm.py": [
+      "data/derived/sep/iqe_infinite_gn.pt",
+      "data/derived/lichess_nearmate.npz",
+      "data/derived/pawndeath_pairs.npz"
+    ],
+    "experiments/eval_geom.py": [
+      "data/derived/sep/iqe_geom.pt",
+      "data/derived/lichess_nearmate.npz"
+    ],
+    "experiments/eval_l2_mate_guidance.py": [
+      "data/derived/sep/iqe_geom_min.pt",
+      "data/derived/sep/l2_head.pt",
+      "data/derived/lichess_nearmate.npz",
+      "data/syzygy"
+    ],
+    "experiments/eval_m1_compare.py": [
+      "data/derived/field_std_v1.npz",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/iqe_head_maia1500_latest.pt",
+      "artifacts/experiments/iqe_head_maia1900_latest.pt",
+      "data/derived/trunk_feats/maia-1500__field_std_v1.npy",
+      "data/derived/trunk_feats/maia-1900__field_std_v1.npy"
+    ],
+    "experiments/eval_m1_gates2.py": [
+      "data/engines/maia/maia-1500.onnx",
+      "artifacts/experiments/iqe_head_maia1500_latest.pt",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/field_std_v1.npz"
+    ],
+    "experiments/eval_variant.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "artifacts/experiments/overnight_results.jsonl"
+    ],
+    "experiments/execution_curves.py": [
+      "data/shards/regime_rollouts_v1/shard_*.npz"
+    ],
+    "experiments/expert_iteration.py": [
+      "data/derived/sep/dtm_cnn_v2.pt",
+      "data/derived/dtm_endgame_v2.npz",
+      "data/derived/ei_harvest.npz",
+      "data/derived/sep/dtm_cnn_ei_r{r}.pt"
+    ],
+    "experiments/explain_mate_clusters.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_sf.pt",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix256mb"
+    ],
+    "experiments/fair_navigator.py": [
+      "data/derived/sep/nucleus_distilled.pt",
+      "data/derived/sep/dtm_cnn.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/syzygy"
+    ],
+    "experiments/fallibility_prior.py": [
+      "data/shards/lichess_db_standard_rated_2019-01.prefix1gb",
+      "artifacts/experiments/fallibility_prior.json"
+    ],
+    "experiments/field_manifold.py": [
+      "data/derived/sep/iqe_geom.pt",
+      "data/derived/lichess_nearmate.npz",
+      "artifacts/experiments/field_manifold.png"
+    ],
+    "experiments/forced_mate_set.py": [
+      "data/shards/lichess_db_standard_rated_2019-01.prefix1gb",
+      "artifacts/experiments/forced_mate_set.json"
+    ],
+    "experiments/gen_all_captures_labeled.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/derived/all_captures_labeled.npz"
+    ],
+    "experiments/gen_child_rank_data.py": [
+      "data/derived/child_rank_v1.npz"
+    ],
+    "experiments/gen_clock_child_data.py": [
+      "data/derived/clock_child_v1.npz"
+    ],
+    "experiments/gen_confirmatory_starts.py": [
+      "artifacts/experiments/krrkbp_fixed_train_n700.json",
+      "artifacts/experiments/krrkbp_fixed_test_n200.json",
+      "data/syzygy",
+      "artifacts/experiments/confirmatory_krrkbp_seed777_n120.json"
+    ],
+    "experiments/gen_contrast_mate_tuples.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/derived/contrast_mate_tuples.npz",
+      "data/syzygy"
+    ],
+    "experiments/gen_demo_viz_data.py": [
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/demo_viz_data.json"
+    ],
+    "experiments/gen_dtm_data.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/syzygy"
+    ],
+    "experiments/gen_engine_games.py": [
+      "data/derived/engine_sfsf.npz"
+    ],
+    "experiments/gen_escape_data.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/derived/escape_data_v1.npz"
+    ],
+    "experiments/gen_field_data_fullgame.py": [
+      "data/records/smoke_lichess_balanced",
+      "data/derived/field_fullgame.npz"
+    ],
+    "experiments/gen_forced_mate_data.py": [
+      "data/lichess_db_puzzle.csv.zst",
+      "data/derived/forced_mate.npz"
+    ],
+    "experiments/gen_lichess_nearmate.py": [
+      "data/derived/lichess_nearmate.npz",
+      "data/syzygy"
+    ],
+    "experiments/gen_opening_pool_sfsf.py": [
+      "data/derived/opening_pool_ply8.txt",
+      "data/derived/opening_pool_sfsf.npz"
+    ],
+    "experiments/gen_optimal_occupancy.py": [
+      "data/derived/optimal_occupancy.npz",
+      "data/syzygy"
+    ],
+    "experiments/gen_pairwise_data.py": [
+      "data/derived/pairwise_tb_v1.npz"
+    ],
+    "experiments/gen_pawn_capture_pairs.py": [
+      "data/derived/lichess_nearmate.npz",
+      "data/derived/pawndeath_pairs.npz"
+    ],
+    "experiments/gen_regime_random.py": [
+      "data/shards/lichess_db_standard_rated_2019-01.prefix1gb",
+      "data/shards/regime_random_v1"
+    ],
+    "experiments/gen_regime_rollouts.py": [
+      "data/shards/lichess_db_standard_rated_2019-01.prefix1gb",
+      "data/shards/regime_rollouts_v1"
+    ],
+    "experiments/gen_rollouts_daemon.py": [
+      "data/engines/maia/maia-1100.pb.gz",
+      "data/engines/maia/maia-1500.pb.gz",
+      "data/engines/maia/maia-1900.pb.gz",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb,",
+      "data/shards/sf_cont_endgame_v1",
+      "data/shards/regime_rollouts_v1"
+    ],
+    "experiments/gen_stockfish_continuations.py": [
+      "data/syzygy",
+      "data/shards/stockfish_continuations"
+    ],
+    "experiments/gen_stratified_perfect.py": [
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy"
+    ],
+    "experiments/gen_successor_edges.py": [
+      "data/derived/lichess_nearmate.npz",
+      "data/derived/successor_edges.npz"
+    ],
+    "experiments/gen_tb_policy_data.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/derived/dtm_policy.npz",
+      "data/syzygy"
+    ],
+    "experiments/gen_toy_sets.py": [
+      "data/syzygy",
+      "artifacts/experiments"
+    ],
+    "experiments/gen_traj_lc0.py": [
+      "data/derived/traj_lc0_v2.npz"
+    ],
+    "experiments/gen_transition_data.py": [
+      "data/raw/lichess_db_standard_rated_2019-01.pgn.zst",
+      "data/derived/transition_data.npz"
+    ],
+    "experiments/gen_wdl_dtm_data.py": [
+      "data/derived/wdl_dtm_v1.npz"
+    ],
+    "experiments/goal_clusters.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt",
+      "artifacts/experiments/goal_clusters"
+    ],
+    "experiments/gradient_planner.py": [
+      "data/derived/sep/iqe_occupancy.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy"
+    ],
+    "experiments/hanging_piece_probe.py": [
+      "data/derived/transition_data_labeled.npz",
+      "artifacts/experiments/jepa_t1_latest.pt",
+      "artifacts/experiments/hanging_piece_probe",
+      "artifacts/experiments",
+      "docs/figures",
+      "docs/figures/{Path(args.out).name}.png"
+    ],
+    "experiments/hanging_piece_probe_lc0.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/engines/lc0/t1-256x10.onnx",
+      "artifacts/experiments/hanging_piece_probe_lc0",
+      "artifacts/experiments",
+      "docs/figures",
+      "docs/figures/{Path(args.out).name}.png"
+    ],
+    "experiments/improvement_loop.py": [
+      "data/derived/sep/self_field_current.txt",
+      "data/derived/sep/opponent_energy_current.txt",
+      "data/engines/maia/maia-1100.pb.gz",
+      "data/engines/maia/maia-1200.pb.gz",
+      "data/engines/maia/maia-1400.pb.gz",
+      "data/engines/maia/maia-1600.pb.gz",
+      "data/engines/maia/maia-1900.pb.gz",
+      "data/derived/sep/lichess_mc2.pt",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb",
+      "data/shards/self_play_v1",
+      "artifacts/experiments/improve_persistent",
+      "artifacts/experiments/improve_r{rnd}_results.jsonl",
+      "data/derived/sep",
+      "data/derived/sep/self_field_r{k}.pt",
+      "artifacts/experiments/improve_field_r{rnd}.log",
+      "data/derived/sep",
+      "data/derived/sep/planner_rl_r{pk}.pt",
+      "artifacts/experiments/improve_rl_r{rnd}.log",
+      "artifacts/experiments/improve_rl_r{rnd}.log",
+      "data/derived/move_selection_self.npz",
+      "artifacts/experiments/improve_energy_r{rnd}.log",
+      "data/derived/sep/opponent_energy_v1.pt",
+      "data/derived/sep",
+      "data/derived/sep/opponent_energy_r{ek}.pt",
+      "data/derived/move_selection_full_v1.npz:0.65,{ms_npz}:0.35",
+      "artifacts/experiments/improve_energy_r{rnd}.log",
+      "artifacts/experiments/improve_energy_r{rnd}.log"
+    ],
+    "experiments/integration_tests.py": [
+      "artifacts/experiments/{args.tag}_fens.txt",
+      "artifacts/experiments/{args.tag}_results.jsonl",
+      "artifacts/experiments/{args.tag}{sfx}.fens",
+      "artifacts/experiments/{args.tag}_seed",
+      "artifacts/experiments/{pat}",
+      "artifacts/experiments/{args.tag}_bank.fens",
+      "artifacts/experiments/{args.tag}_lossbank.fens",
+      "artifacts/experiments/{args.tag}_drawbank.fens",
+      "artifacts/experiments/{args.tag}_ms.jsonl"
+    ],
+    "experiments/koopman_dyn_probe.py": [
+      "data/derived/transition_data_labeled.npz",
+      "artifacts/experiments/jepa_t1_latest.pt",
+      "artifacts/experiments/koopman_dyn_probe",
+      "artifacts/experiments",
+      "docs/figures",
+      "docs/figures/{Path(args.out).name}.png"
+    ],
+    "experiments/koopman_dyn_probe_lc0.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/engines/lc0/t1-512x15x8h.onnx",
+      "artifacts/experiments/koopman_dyn_probe_lc0",
+      "artifacts/experiments",
+      "docs/figures",
+      "docs/figures/{Path(args.out).name}.png"
+    ],
+    "experiments/krkn_search_sweep.py": [
+      "data/derived/{dtm_krkn,krkn_F,krkn_B}.npy not found -- "
+    ],
+    "experiments/krrkbp_arena.py": [
+      "artifacts/experiments/krrkbp_fixed_set.json",
+      "data/syzygy",
+      "data/selfplay/gen2",
+      "data/selfplay/gen1"
+    ],
+    "experiments/krrkbp_drilldown.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "artifacts/experiments/krrkbp_fixed_set_n60.json",
+      "data/syzygy"
+    ],
+    "experiments/ladder_mate.py": [
+      "data/derived/sep/dtm_cnn.pt",
+      "data/syzygy"
+    ],
+    "experiments/layer_sweep_probe.py": [
+      "data/derived/transition_data_labeled.npz",
+      "artifacts/experiments/jepa_t1_latest.pt",
+      "data/engines/lc0/t1-256x10.onnx",
+      "data/engines/lc0/t1-512x15x8h.onnx",
+      "artifacts/experiments/layer_sweep_{args.trunk}",
+      "artifacts/experiments",
+      "docs/figures",
+      "docs/figures/{Path(out).name}.png"
+    ],
+    "experiments/longshort_engine.py": [
+      "data/derived/sep/nucleus_distilled.pt",
+      "data/syzygy",
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/krrkbp_test_n200.json"
+    ],
+    "experiments/m2b_cache.py": [
+      "data/derived/m2b/positions.parquet",
+      "data/derived/m2b/cache"
+    ],
+    "experiments/m2b_condition.py": [
+      "data/derived/m2b/cache_3k.npz",
+      "artifacts/experiments/m2b_style_3k.pt"
+    ],
+    "experiments/m2b_eval.py": [
+      "data/derived/m2b/cache.npz",
+      "artifacts/experiments/m2b_style.pt"
+    ],
+    "experiments/m2b_sample.py": [
+      "data/records/player_games_rapid",
+      "data/derived/m2b/positions.parquet"
+    ],
+    "experiments/m2b_train.py": [
+      "data/derived/m2b/cache.npz",
+      "artifacts/experiments/m2b_style.pt"
+    ],
+    "experiments/m2c_elo_id.py": [
+      "data/derived/m2b/positions_3k.parquet"
+    ],
+    "experiments/m2c_ingame.py": [
+      "data/derived/m2b/cache_3k.npz",
+      "artifacts/experiments/m2b_style_3k.pt"
+    ],
+    "experiments/m3_atlas_viz.py": [
+      "data/derived/reach/region_table_v2.npz",
+      "artifacts/experiments/m3_atlas.png",
+      "docs/figures",
+      "docs/figures/m3_atlas.png"
+    ],
+    "experiments/m3_build_region_table.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/derived/reach/reach_v2.npz",
+      "data/derived/reach/region_table_v1.npz"
+    ],
+    "experiments/m3_flux_gate.py": [
+      "data/derived/transition_data_labeled.npz"
+    ],
+    "experiments/m3_primitive_bands.py": [
+      "data/derived/transition_data_labeled.npz"
+    ],
+    "experiments/m3_subgoal_gates.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/derived/reach/reach_v2.npz",
+      "data/derived/reach/region_table_v1.npz",
+      "artifacts/experiments/reach_v2_full_latest.pt"
+    ],
+    "experiments/m3_train_flux_T.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/derived/reach/region_table_v1k.npz",
+      "artifacts/experiments/m3_flux_T"
+    ],
+    "experiments/m3b_factors.py": [
+      "data/derived/transition_data_labeled.npz"
+    ],
+    "experiments/m3b_sae_concepts.py": [
+      "data/derived/transition_data_labeled.npz",
+      "data/derived/m3b_trunk_tokens.npz",
+      "artifacts/experiments/m3b_atom_catalog.npz",
+      "artifacts/experiments/m3b_sae_latest.pt"
+    ],
+    "experiments/m4_play_steering.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/reach_v2_full_latest.pt",
+      "data/derived/reach/reach_v2.npz",
+      "data/derived/reach/region_table_v2.npz",
+      "data/derived/engine_memory.sqlite",
+      "artifacts/experiments/m4_steering.pgn",
+      "artifacts/experiments/m2b_style_3k.pt",
+      "data/derived/m2b/cache_3k.npz"
+    ],
+    "experiments/m5_mcts_probe.py": [
+      "artifacts/experiments/reach_v3_full_latest.pt",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/reach/reach_v3.npz",
+      "data/derived/reach/region_table_v3.npz",
+      "artifacts/experiments/m5_probe.pgn"
+    ],
+    "experiments/mate_bench.py": [
+      "artifacts/experiments/mate_in_1_n500.json",
+      "artifacts/experiments/mate_in_2_n500.json",
+      "artifacts/experiments/mate_in_3_n500.json"
+    ],
+    "experiments/mate_from_field.py": [
+      "artifacts/experiments/quasimetric_shared_v1.pt"
+    ],
+    "experiments/mate_gradient_probe.py": [
+      "artifacts/experiments/quasimetric_shared_v1.pt"
+    ],
+    "experiments/mate_ladder_eval.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/dtm_cnn.pt",
+      "data/derived/sep/escape_net_v1.pt",
+      "data/derived/sep/opponent_energy_v1_step8000.pt",
+      "data/derived/sep/iqe_geom_field.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/opponent_energy_v1.pt"
+    ],
+    "experiments/mate_probe.py": [
+      "data/derived/sep/rootloop_r12.pt",
+      "data/derived/sep/rootloop_r12_whead.pt",
+      "data/syzygy"
+    ],
+    "experiments/mate_with_search.py": [
+      "artifacts/experiments/mate_field_v1.pt"
+    ],
+    "experiments/mcts_convert.py": [
+      "artifacts/experiments/mate_field_v1.pt"
+    ],
+    "experiments/mcts_field.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/field_fullgame_v3_final.pt"
+    ],
+    "experiments/measure_adversarial_veto.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/syzygy"
+    ],
+    "experiments/measure_soft_hard_consistency.py": [
+      "data/derived/sep/lichess_mc2.pt",
+      "data/derived/sep/rho_head_v1.pt",
+      "data/shards/regime_rollouts_v1"
+    ],
+    "experiments/measure_veto_channels.py": [
+      "data/derived/sep/lichess_mc.pt",
+      "data/shards/sf_cont_endgame_v1"
+    ],
+    "experiments/metastable_macrostates.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/eco",
+      "artifacts/experiments/macrostates"
+    ],
+    "experiments/mine_armed_tactics_demo.py": [
+      "data/derived/opening_pool_sfsf_moves.tsv"
+    ],
+    "experiments/mine_checkpoints.py": [
+      "data/raw/lichess_db_standard_rated_2019-01.pgn.zst",
+      "data/derived/checkpoints/checkpoints_v0.npz"
+    ],
+    "experiments/mine_mate_puzzles.py": [
+      "data/lichess_db_puzzle.csv.zst",
+      "artifacts/experiments"
+    ],
+    "experiments/mine_only_move_bottlenecks.py": [
+      "data/derived/opening_pool_sfsf_moves.tsv",
+      "artifacts/experiments/only_move_bottlenecks.npz"
+    ],
+    "experiments/move_ab.py": [
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/move_rank_check.py": [
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/msm_basins.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/field_fullgame_v1.npz",
+      "artifacts/experiments/msm_basins.png"
+    ],
+    "experiments/native_concepts.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/nucleus_pipeline.py": [
+      "data/derived/nucleus",
+      "artifacts/experiments/nucleus_gen_r{k}.log",
+      "artifacts/experiments/nucleus_gen_r{k+1}.log",
+      "data/derived/sep/dtm_tok_r{k}.pt",
+      "artifacts/experiments/nucleus_train_r{k}.log",
+      "artifacts/experiments/nucleus_train_r{k}.log"
+    ],
+    "experiments/opening_alphabet.py": [
+      "data/eco",
+      "artifacts/experiments/opening_alphabet"
+    ],
+    "experiments/phead_calibration.py": [
+      "artifacts/experiments/phead_surfaces_{Path(args.ckpt).stem}.png"
+    ],
+    "experiments/plan_memory_demo.py": [
+      "data/derived/{dtm_krkn,krkn_F,krkn_B}.npy not found -- "
+    ],
+    "experiments/planner_landmark.py": [
+      "data/derived/sep/iqe_geom.pt",
+      "data/derived/lichess_nearmate.npz",
+      "artifacts/experiments/planner_landmark.png"
+    ],
+    "experiments/planner_longshort.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy"
+    ],
+    "experiments/planner_search_demo.py": [
+      "data/derived/sep/iqe_geom.pt",
+      "data/derived/lichess_nearmate.npz"
+    ],
+    "experiments/play_traced.py": [
+      "data/derived/checkpoints/checkpoints_v1_full.npz",
+      "data/derived/checkpoints/bank_trunk.npz",
+      "data/derived/checkpoints/bank_trunk.npz",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/traces.jsonl"
+    ],
+    "experiments/play_vs_maia.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/field_v3_vs_maia.pgn",
+      "data/engines/maia/maia-{args.maia_elo}.pb.gz"
+    ],
+    "experiments/playout_ab.py": [
+      "artifacts/experiments/{t}.json",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy",
+      "data/selfplay/krrkbp_sfsf"
+    ],
+    "experiments/policy_surprise.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "data/derived/sep/cert_base_full_policy.pt"
+    ],
+    "experiments/precision_reps.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/precompute_trunk_features.py": [
+      "data/engines/maia/maia-1500.onnx",
+      "data/derived/field_std_v1.npz",
+      "data/derived/trunk_feats/{tag}__{Path(args.data).stem}.npy"
+    ],
+    "experiments/pretrain_jepa.py": [
+      "data/derived/checkpoints/jepa_t1_corpus.npz",
+      "artifacts/experiments/jepa_t1"
+    ],
+    "experiments/probe_constraint_field.py": [
+      "data/derived/sep/iqe_geom_field.pt"
+    ],
+    "experiments/probe_tri_carry.py": [
+      "artifacts/experiments/wdlr6_bank_n5000_KRRvK-central.fens",
+      "data/derived/sep/lichess_mc2.pt",
+      "artifacts/experiments/wdlr[34]_results_n5000_*.jsonl,artifacts/experiments/drawreplay_results.jsonl"
+    ],
+    "experiments/propagation_ladder.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/derived/forced_mate.npz"
+    ],
+    "experiments/prove_batchnorm.py": [
+      "data/derived/sep/iqe_infinite.pt",
+      "data/derived/pawncap_pairs.npz",
+      "data/derived/lichess_nearmate.npz"
+    ],
+    "experiments/qm_fitness_probe.py": [
+      "data/syzygy"
+    ],
+    "experiments/rank_sensitivity.py": [
+      "data/derived/child_rank_v1.npz"
+    ],
+    "experiments/reach_curvature.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "artifacts/experiments/krrkbp_fixed_set_n60.json",
+      "data/syzygy",
+      "artifacts/experiments/reach_curvature.jsonl"
+    ],
+    "experiments/reach_efficiency.py": [
+      "data/derived/sep/nucleus_distilled.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/syzygy"
+    ],
+    "experiments/register_incumbents.py": [
+      "data/derived/sep/iqe_geom_field.pt",
+      "data/derived/sep/lichess_sharp.pt",
+      "data/derived/sep/dtm_cnn.pt",
+      "data/derived/sep/nucleus_distilled.pt",
+      "data/derived/sep/lichess_mc.pt",
+      "data/derived/geom_pool.npz",
+      "data/derived/geom_pool_edges.npz",
+      "data/shards/sf_cont_endgame_v1/",
+      "data/derived/dtm_endgame.npz",
+      "data/derived/contrast_mate_tuples.npz",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix{256mb,1gb,4gb}/",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy/",
+      "data/shards/regime_random_v1/",
+      "data/shards/regime_rollouts_v1/",
+      "data/derived/move_selection_v1.npz",
+      "mlflow.db"
+    ],
+    "experiments/rim_staircase.py": [
+      "data/derived/sep/rootloop_r12.pt",
+      "data/derived/sep/rootloop_r12_whead.pt",
+      "data/syzygy"
+    ],
+    "experiments/sae_concepts.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/search_outcome.py": [
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy",
+      "artifacts/experiments/search_outcome.png"
+    ],
+    "experiments/search_retrieval_combined.py": [
+      "data/derived/sep/iqe_stratified.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy"
+    ],
+    "experiments/search_tournament.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "artifacts/experiments/krrkbp_fixed_test_n200.json",
+      "data/syzygy",
+      "artifacts/experiments/search_tournament.jsonl"
+    ],
+    "experiments/self_retrain_loop.py": [
+      "data/derived/sep/self_field_current.txt",
+      "data/derived/sep/lichess_mc2.pt",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb",
+      "data/shards/self_play_v1",
+      "artifacts/experiments/{args.tag}_persistent",
+      "artifacts/experiments/{args.tag}_r{rnd}",
+      "data/derived/sep",
+      "data/derived/sep/self_field_r{k}.pt"
+    ],
+    "experiments/sf_label_transitions.py": [
+      "data/derived/transition_data.npz"
+    ],
+    "experiments/sf_vs_human_bands.py": [
+      "data/records/lichess_2019-01",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/sf_vs_human_bands.png"
+    ],
+    "experiments/sf_wdl_by_material.py": [
+      "data/records/lichess_2019-01",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/sf_wdl_by_material.png"
+    ],
+    "experiments/sharpness_bench.py": [
+      "data/syzygy"
+    ],
+    "experiments/sharpness_identification.py": [
+      "artifacts/experiments/certainty_table_eps05.json",
+      "artifacts/experiments/certainty_table_demo_tb.json",
+      "artifacts/experiments/certainty_table_eps20.json",
+      "data/syzygy",
+      "artifacts/experiments/sharpness_table.json"
+    ],
+    "experiments/show_mate.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/syzygy"
+    ],
+    "experiments/stage_checkers.py": [
+      "artifacts/experiments/rollout_dump_eps05.jsonl"
+    ],
+    "experiments/steer_concept.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/strata_diag.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/qrl_iqe_sn_full.pt",
+      "data/derived/sep/cert_base_cluster.pt"
+    ],
+    "experiments/stratified_mcts.py": [
+      "data/derived/sep/iqe_stratified.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/syzygy"
+    ],
+    "experiments/structure_probe.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/subgoal_codebook.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/table_from_dump.py": [
+      "artifacts/experiments/rollout_dump_fixedstart.jsonl",
+      "data/syzygy"
+    ],
+    "experiments/tactic_events.py": [
+      "data/derived/dtm_endgame.npz"
+    ],
+    "experiments/test_field_fullgame.py": [
+      "artifacts/experiments/field_fullgame_latest.pt",
+      "data/derived/field_fullgame.npz"
+    ],
+    "experiments/toy_selfplay_loop.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb",
+      "artifacts/experiments/krrkbp_fixed_set_n60.json",
+      "data/selfplay/krrkbp_loop",
+      "data/derived/krrkbp_loop",
+      "artifacts/generated/toy_selfplay_loop.log",
+      "data/selfplay/_krrkbp_r{r}_tmp"
+    ],
+    "experiments/train_board_dtm.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/board_dtm.pt"
+    ],
+    "experiments/train_board_policy.py": [
+      "data/derived/dtm_policy.npz",
+      "data/derived/sep/board_policy.pt"
+    ],
+    "experiments/train_child_rank_field.py": [
+      "data/derived/child_rank_v1.npz",
+      "artifacts/experiments/mate_field_v2.pt"
+    ],
+    "experiments/train_clock_field.py": [
+      "data/derived/clock_child_v1.npz",
+      "artifacts/experiments/clock_field_v1.pt"
+    ],
+    "experiments/train_dtm_cnn.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/dtm_cnn.pt"
+    ],
+    "experiments/train_dtm_head.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/cert_base_full_dtmhead.pt"
+    ],
+    "experiments/train_dtm_tok.py": [
+      "data/derived/dtm_endgame_v3.npz",
+      "data/derived/sep/dtm_tok_v3.pt"
+    ],
+    "experiments/train_escape_net.py": [
+      "data/derived/escape_data_v1.npz",
+      "data/derived/sep/escape_net_v1.pt"
+    ],
+    "experiments/train_field_full.py": [
+      "data/derived/pairwise_tb_v1.npz",
+      "data/derived/child_rank_v1.npz",
+      "artifacts/experiments/field_full_v1.pt"
+    ],
+    "experiments/train_field_fullgame.py": [
+      "data/derived/field_fullgame.npz",
+      "artifacts/experiments/field_fullgame"
+    ],
+    "experiments/train_field_geometry.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/lichess_nearmate.npz",
+      "data/derived/successor_edges.npz",
+      "data/derived/pawndeath_pairs.npz",
+      "data/derived/sep/iqe_geom.pt"
+    ],
+    "experiments/train_field_v3.py": [
+      "data/derived/child_rank_v1.npz",
+      "artifacts/experiments/field_v3.pt"
+    ],
+    "experiments/train_geometry_l1.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/geom_pool.npz",
+      "data/derived/geom_pool_edges.npz",
+      "data/derived/sep/iqe_geom_l1.pt"
+    ],
+    "experiments/train_geometry_min.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/lichess_nearmate.npz",
+      "data/derived/successor_edges_all.npz",
+      "data/derived/sep/iqe_geom_min.pt"
+    ],
+    "experiments/train_hazard_head.py": [
+      "data/derived/checkpoints/checkpoints_v1_emb.npz",
+      "artifacts/experiments/hazard_v0"
+    ],
+    "experiments/train_iqe_head.py": [
+      "data/derived/trunk_feats/maia-1500__field_std_v1.npy",
+      "data/derived/field_std_v1.npz",
+      "artifacts/experiments/iqe_head_{tag}"
+    ],
+    "experiments/train_iqe_nucleus.py": [
+      "data/derived/lichess_nearmate.npz",
+      "data/derived/sep/iqe_nucleus.pt"
+    ],
+    "experiments/train_jepa_t1.py": [
+      "data/derived/checkpoints/jepa_t1_corpus.npz",
+      "artifacts/experiments/jepa_t1"
+    ],
+    "experiments/train_l2_head.py": [
+      "data/derived/sep/iqe_geom_min.pt",
+      "data/derived/lichess_nearmate.npz",
+      "data/derived/sep/l2_head.pt"
+    ],
+    "experiments/train_l2_stratified.py": [
+      "data/derived/sep/iqe_stratified.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/derived/sep/l2_stratified.pt",
+      "artifacts/experiments"
+    ],
+    "experiments/train_lc0_field.py": [
+      "data/derived/traj_lc0_v2.npz",
+      "artifacts/experiments/lc0_field_correct.pt"
+    ],
+    "experiments/train_lichess_fb.py": [
+      "data/shards/regime_random_v1:1:0.15"
+    ],
+    "experiments/train_mate_field.py": [
+      "data/derived/wdl_dtm_v1.npz",
+      "artifacts/experiments/mate_field_v1.pt"
+    ],
+    "experiments/train_occupancy_field.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/optimal_occupancy.npz",
+      "data/derived/stratified_perfect.npz",
+      "data/derived/sep/iqe_occupancy.pt",
+      "artifacts/experiments"
+    ],
+    "experiments/train_opponent_model.py": [
+      "data/derived/move_selection_v1.npz",
+      "data/derived/sep/opponent_v1.pt"
+    ],
+    "experiments/train_planner_rl.py": [
+      "artifacts/experiments/*results*.jsonl",
+      "data/derived/sep/planner_rl_r0.pt"
+    ],
+    "experiments/train_policy_head.py": [
+      "data/derived/sep/cert_base_full.pt"
+    ],
+    "experiments/train_quasimetric.py": [
+      "data/derived/pairwise_tb_v1.npz",
+      "data/derived/dtm_endgame_v2.npz"
+    ],
+    "experiments/train_reach_head.py": [
+      "data/derived/reach/reach_v1.npz",
+      "artifacts/experiments/m2b_style_3k.pt",
+      "artifacts/experiments/reach_v1"
+    ],
+    "experiments/train_rho_head.py": [
+      "data/derived/sep/lichess_mc2.pt",
+      "data/shards/regime_rollouts_v1",
+      "data/derived/sep/rho_head_v1.pt"
+    ],
+    "experiments/train_stratified_field.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/stratified_perfect.npz",
+      "data/derived/sep/iqe_stratified.pt",
+      "artifacts/experiments"
+    ],
+    "experiments/train_transition_estimator.py": [
+      "artifacts/experiments/T_{name}",
+      "data/derived/transition_data_labeled.npz"
+    ],
+    "experiments/transition_bands.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/field_fullgame_v1.npz",
+      "artifacts/experiments/transition_bands.png"
+    ],
+    "experiments/transition_map.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/field_fullgame_v1.npz",
+      "artifacts/experiments/transition_map.png"
+    ],
+    "experiments/transition_time.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/field_fullgame_v1.npz",
+      "artifacts/experiments/transition_time.png"
+    ],
+    "experiments/two_channel_distill.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/two_channel.pt",
+      "artifacts/experiments/certainty_table_eps05.json",
+      "artifacts/experiments/sharpness_table.json",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix4gb"
+    ],
+    "experiments/uci_engine.py": [
+      "data/derived/sep/self_field_current.txt",
+      "data/derived/sep/lichess_mc2.pt",
+      "artifacts/experiments/assistant",
+      "data/derived/sep/opponent_energy_current.txt",
+      "data/derived/sep/opponent_energy_current.txt",
+      "data/derived/sep/opponent_energy_v1.pt"
+    ],
+    "experiments/validate_concept_arrival.py": [
+      "data/derived/sep/lichess_gn_iqeqrl_full.pt"
+    ],
+    "experiments/validate_decoupled.py": [
+      "data/derived/sep/iqe_geom_field.pt",
+      "data/derived/geom_pool.npz",
+      "data/derived/geom_pool_edges.npz",
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep",
+      "data/derived/sep/dtm_head_trunk.pt"
+    ],
+    "experiments/value_fixed_point.py": [
+      "data/syzygy",
+      "artifacts/generated/value_fixed_point.png"
+    ],
+    "experiments/visualize_batchnorm.py": [
+      "data/derived/sep/iqe_infinite.pt",
+      "artifacts/experiments/batchnorm_proof.png",
+      "data/derived/pawncap_pairs.npz",
+      "data/derived/lichess_nearmate.npz"
+    ],
+    "experiments/visualize_clusters.py": [
+      "data/derived/dtm_endgame.npz",
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_cluster.pt",
+      "artifacts/experiments/field_clusters.png"
+    ],
+    "experiments/viz/article_figures.py": [
+      "artifacts/experiments/qm_fitness_qm_plygap_only.json"
+    ],
+    "experiments/viz/assistant_server.py": [
+      "artifacts/experiments/concept_tags.jsonl",
+      "data/derived/sep/dtm_tok_r*.pt",
+      "data/derived/experience.sqlite",
+      "artifacts/experiments/atlas_cache.pkl",
+      "data/derived/sep/dtm_tok_r*.pt",
+      "artifacts/experiments/usage.jsonl",
+      "artifacts/experiments/ab_live.json",
+      "data/derived/sep/lichess_mc2.pt",
+      "data/derived/sep/opponent_energy_v1.pt",
+      "data/derived/sep/dtm_cnn_v2.pt",
+      "artifacts/experiments/assistant",
+      "data/engines/maia/maia-1200.pb.gz"
+    ],
+    "experiments/viz/build_embedding_neighbors.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "data/selfplay/krrkbp_loop",
+      "artifacts/experiments/krrkbp_fixed_set_n60.json",
+      "data/syzygy",
+      "artifacts/generated"
+    ],
+    "experiments/viz/build_mate_attempt_viewer.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "artifacts/experiments/certainty_table_r2_K16.json",
+      "artifacts/experiments/krrkbp_fixed_test_n200.json",
+      "artifacts/generated/mate_attempts.html",
+      "data/syzygy"
+    ],
+    "experiments/viz/build_play_atlas.py": [
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "artifacts/generated/play_atlas"
+    ],
+    "experiments/viz/certainty_structure.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "data/derived/sep/certainty_full.pt",
+      "artifacts/experiments/certainty_table.json",
+      "artifacts/generated/certainty_structure.png"
+    ],
+    "experiments/viz/committor_atlas.py": [
+      "artifacts/experiments/committor_atlas_{Path(args.ckpt).stem}.png"
+    ],
+    "experiments/viz/committor_surfaces.py": [
+      "data/derived/sep/committor.pt",
+      "data/derived/sep/committor_whead.pt",
+      "artifacts/experiments/certainty_table_r2_K16.json",
+      "artifacts/generated/committor_surfaces.png"
+    ],
+    "experiments/viz/near_mate_regions.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix1gb",
+      "artifacts/generated"
+    ],
+    "experiments/viz/neighbor_explorer.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "data/selfplay/krrkbp_loop",
+      "data/syzygy"
+    ],
+    "experiments/viz/play_server.py": [
+      "artifacts/generated/play_atlas",
+      "artifacts/experiments/veto_lab_trail.jsonl",
+      "data/derived/sep/cert_base_full.pt",
+      "data/derived/sep/cert_base_full_phead.pt",
+      "data/derived/position_memory",
+      "data/derived/sep/nucleus_distilled.pt",
+      "data/derived/dtm_endgame.npz"
+    ],
+    "experiments/viz/wdl_regions.py": [
+      "data/derived/lichess_fb_4gb_qm_plygap_only.pt",
+      "data/selfplay/krrkbp_sfsf",
+      "data/selfplay/krrkbp_pvsf",
+      "data/syzygy",
+      "artifacts/generated"
+    ],
+    "experiments/viz_b.py": [
+      "data/derived/sep/iqe_nucleus_gn.pt",
+      "data/derived/dtm_endgame.npz",
+      "artifacts/experiments/viz_b.png"
+    ],
+    "experiments/viz_b_mate_clusters.py": [
+      "artifacts/experiments/krrkbp_test_n200.json",
+      "data/derived/sep/iqe_geom_field.pt",
+      "data/derived/sep/nucleus_distilled.pt",
+      "artifacts/experiments/b_mate_clusters.png",
+      "data/derived/dtm_endgame.npz",
+      "data/syzygy"
+    ],
+    "experiments/viz_fb.py": [
+      "data/derived/sep/xfer_treat_20k.pt",
+      "data/derived/dtm_endgame.npz",
+      "data/shards/lichess_db_standard_rated_2019-01.prefix256mb",
+      "artifacts/experiments/viz_fb.png"
+    ],
+    "experiments/viz_stratified_umap.py": [
+      "data/derived/sep/iqe_stratified.pt",
+      "data/derived/stratified_perfect.npz",
+      "artifacts/experiments/stratified_umap.png"
+    ],
+    "infra/observability/run_metrics.py": [
+      "artifacts/experiments/jepa_pretrain"
+    ],
+    "scripts/build_jepa_corpus.py": [
+      "data/raw/lichess_db_standard_rated_2019-01.pgn.zst",
+      "data/derived/checkpoints/checkpoints_v1_full.npz",
+      "data/syzygy",
+      "data/derived/checkpoints/jepa_t1_corpus.npz"
+    ],
+    "scripts/eval_agentive_lift.py": [
+      "data/derived/reach/agentive_v1.npz",
+      "artifacts/experiments/reach_v3_full_latest.pt",
+      "artifacts/experiments/reach_v4_agentive_latest.pt"
+    ],
+    "scripts/m5_mcts_probe.py": [
+      "artifacts/experiments/reach_v3_full_latest.pt",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "data/derived/reach/reach_v3.npz",
+      "data/derived/reach/region_table_v3.npz",
+      "artifacts/experiments/m5_probe.pgn"
+    ],
+    "scripts/mine_checkpoints.py": [
+      "data/raw/lichess_db_standard_rated_2019-01.pgn.zst",
+      "data/derived/checkpoints/checkpoints_v0.npz"
+    ],
+    "scripts/play_traced.py": [
+      "data/derived/checkpoints/checkpoints_v1_full.npz",
+      "data/derived/checkpoints/bank_trunk.npz",
+      "data/derived/checkpoints/bank_trunk.npz",
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/traces.jsonl"
+    ],
+    "scripts/play_vs_maia.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt",
+      "artifacts/experiments/field_v3_vs_maia.pgn",
+      "data/engines/maia/maia-{args.maia_elo}.pb.gz"
+    ],
+    "scripts/pretrain_jepa.py": [
+      "data/derived/checkpoints/jepa_t1_corpus.npz",
+      "artifacts/experiments/jepa_t1"
+    ],
+    "tests/build_integration_suite.py": [
+      "artifacts/experiments/*results*.jsonl"
+    ],
+    "tests/test_stratified.py": [
+      "data/syzygy"
+    ],
+    "tools/ablate.py": [
+      "artifacts/experiments/jepa_t1_latest.pt"
+    ],
+    "tools/embed.py": [
+      "artifacts/experiments/jepa_t1_latest.pt",
+      "data/derived/checkpoints/jepa_t1_corpus.npz"
+    ],
+    "tools/fig_retrieval.py": [
+      "data/derived/checkpoints/checkpoints_v1_full.npz",
+      "artifacts/experiments/jepa_t1_latest.pt"
+    ],
+    "tools/probe_quasimetric.py": [
+      "artifacts/experiments/field_fullgame_v3_final.pt"
+    ]
+  },
+  "experiments_import_hubs": {
+    "experiments.value_fixed_point": 66,
+    "experiments.gen_dtm_data": 19,
+    "experiments.arch_bakeoff": 18,
+    "experiments.concept_features": 18,
+    "experiments.train_clock_field": 16,
+    "experiments.selfplay_generate": 10,
+    "experiments.losses": 9,
+    "experiments.playout_ab": 8,
+    "experiments.train_lichess_fb": 7,
+    "experiments.certainty_distill": 7,
+    "experiments.ladder_mate": 7,
+    "experiments.train_dtm_cnn": 6,
+    "experiments.train_mate_field": 5,
+    "experiments.mate_ladder_eval": 5,
+    "experiments.conditional_concepts": 4,
+    "experiments.steer_concept": 3,
+    "experiments.planner_longshort": 3,
+    "experiments.measure_adversarial_veto": 3,
+    "experiments.probe_readout": 3,
+    "experiments.viz.live_curves": 3,
+    "experiments.basin_umap_compare": 2,
+    "experiments.play_vs_maia": 2,
+    "experiments.sae_concepts": 2,
+    "experiments.train_board_dtm": 2,
+    "experiments.train_reach_head": 2,
+    "experiments.train_iqe_head": 2,
+    "experiments": 2,
+    "experiments.gen_stratified_perfect": 2,
+    "experiments.hanging_piece_probe": 2,
+    "experiments.train_transition_estimator": 2,
+    "experiments.bootstrap_mate_engine": 2,
+    "experiments.viz.build_embedding_neighbors": 2
+  },
+  "catspace_module_usage": {
+    "catspace.data.encode": 165,
+    "catspace.nn.fb": 159,
+    "catspace.nn.features": 130,
+    "catspace.train.scaffold": 56,
+    "catspace.io.paths": 42,
+    "catspace.nn.policy_fb": 33,
+    "catspace.tb": 30,
+    "catspace.nn.mcts": 28,
+    "catspace.domains": 26,
+    "catspace.nn.eval_head": 26,
+    "catspace.chain": 24,
+    "catspace.opponents": 21,
+    "catspace.data.shards": 21,
+    "catspace.encoder.jepa": 16,
+    "catspace.planner.policy": 15,
+    "catspace.nn.iqe": 14,
+    "catspace.scoring": 14,
+    "catspace.planner.readout": 14,
+    "catspace.engine.fields": 11,
+    "catspace.style.model": 11,
+    "catspace.cone.tabular": 11,
+    "catspace.uci": 11,
+    "catspace.style.dataio": 11,
+    "catspace.viz.build_html": 11,
+    "catspace.cone.embedding": 10,
+    "catspace.game": 9,
+    "catspace.field": 9,
+    "catspace.tracking": 9,
+    "catspace.diagnostic_krrkbp": 8,
+    "catspace.viz.realboard": 8,
+    "catspace.diagnostics": 8,
+    "catspace.realboard": 7,
+    "catspace.encoder": 7,
+    "catspace.arena": 6,
+    "catspace.viz.projection": 6,
+    "catspace.abtest": 6,
+    "catspace.stats": 6,
+    "catspace.util": 5,
+    "catspace.controlfield.control": 5,
+    "catspace.board": 5,
+    "catspace.encoder.field": 5,
+    "catspace.endgame.material": 5,
+    "catspace.viz.payload": 5,
+    "catspace.data.lichess": 5,
+    "catspace.nn.policy_head": 5,
+    "catspace.train.curriculum": 5,
+    "catspace.engine.interfaces": 4,
+    "catspace.search.mcts": 4,
+    "catspace.nn.encoder": 4,
+    "catspace.planner.probe": 4,
+    "catspace.predictor.value": 4,
+    "catspace.style.recover": 4,
+    "catspace.competence": 4,
+    "catspace.experience": 4,
+    "catspace.nn.opponent": 4,
+    "catspace.controlfield.derivative": 4,
+    "catspace.planner.decompose": 4,
+    "catspace.concepts": 4,
+    "catspace.planner": 3,
+    "catspace.encoder.iqe_head": 3,
+    "catspace.nn.anytime": 3,
+    "catspace.planner.plans": 3,
+    "catspace.search.memo": 3,
+    "catspace.predictor.reach.head": 3,
+    "catspace.predictor.reach.region": 3,
+    "catspace.predictor.value.clock_field": 3,
+    "catspace.style.estimator": 3,
+    "catspace.train.checkpoints": 3,
+    "catspace.subgoals": 3,
+    "catspace.data.certified": 3,
+    "catspace.audit": 3,
+    "catspace.data.sources": 3,
+    "catspace.value": 3,
+    "catspace.controlfield.wdl_decay": 2,
+    "catspace.predictor.atlas": 2,
+    "catspace.predictor.atlas.ranker": 2,
+    "catspace.predictor.atlas.region_stats": 2,
+    "catspace.predictor.atlas.transition": 2,
+    "catspace.predictor.endgame": 2,
+    "catspace.predictor.endgame.material": 2,
+    "catspace.predictor.endgame.tb": 2,
+    "catspace.engine.search": 2,
+    "catspace.endgame.dtm": 2,
+    "catspace.search.nav": 2,
+    "catspace.predictor.opponent": 2,
+    "catspace.predictor.opponent.maia2_policy": 2,
+    "catspace.planner.search": 2,
+    "catspace.planner.optionality": 2,
+    "catspace.predictor.reach": 2,
+    "catspace.predictor.value.committor": 2,
+    "catspace.engine.introspection": 2,
+    "catspace.metrics": 2,
+    "catspace.memory.store": 2,
+    "catspace.memory.retrieval": 2,
+    "catspace.goal_bank": 2,
+    "catspace.value.clock_field": 2,
+    "catspace.atlas": 2,
+    "catspace.harness": 2,
+    "catspace.navigator": 2,
+    "catspace.opponent": 2,
+    "catspace.reach": 2,
+    "catspace.armed.detect": 2,
+    "catspace.planner.move_identity": 2,
+    "catspace.memory.checkpoint_bank": 2,
+    "catspace.planner.trap_trace": 2,
+    "catspace.value.committor": 2,
+    "catspace.nn.hard_negatives": 2,
+    "catspace.nn.unreachable": 2,
+    "catspace.viz.manifold": 2,
+    "catspace.predictor.endgame.dtm": 1,
+    "catspace.engine.values": 1,
+    "catspace.engine.priors": 1,
+    "catspace.engine.engine": 1,
+    "catspace.memory.goal_bank": 1,
+    "catspace.harness.play": 1,
+    "catspace.search": 1,
+    "catspace.planner.chute": 1,
+    "catspace.atlas.region_stats": 1,
+    "catspace.reach.region": 1,
+    "catspace.planner.selector": 1,
+    "catspace.atlas.ranker": 1,
+    "catspace.endgame.tb": 1,
+    "catspace.memory.vectordb": 1,
+    "catspace.cone.neural": 1,
+    "catspace.transition": 1,
+    "catspace.memory.plan_store": 1,
+    "catspace.planner.subgoal_gen": 1,
+    "catspace.style.live": 1,
+    "catspace.planner.field_heuristic": 1,
+    "catspace.reach.head": 1,
+    "catspace.atlas.transition": 1,
+    "catspace.domains.krk": 1,
+    "catspace.reachgame": 1,
+    "catspace.viz.plots": 1,
+    "catspace.planner.cascade": 1,
+    "catspace.nn.monotone_coords": 1
+  }
+}

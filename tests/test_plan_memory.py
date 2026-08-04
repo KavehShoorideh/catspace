@@ -8,19 +8,19 @@ greedy MIN readout (single MATE goal, tau=-inf => must choose identical moves).
 import numpy as np
 import pytest
 
-from catspace.chain import exact_P
-from catspace.cone.embedding import GoalSpec, make_goal, reach
-from catspace.cone.tabular import TabularFB
-from catspace.domains import krk
-from catspace.game import play_game
-from catspace.opponents import RandomOpponent
-from catspace.planner.move_identity import RegionPairIdentity, SyntacticIdentity
-from catspace.planner.plans import (
+from catspace.research.tools.chess_specific.chain import exact_P
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.embedding import GoalSpec, make_goal, reach
+from catspace.research.components.encoder.approaches.cone_fb_embedding.src.tabular import TabularFB
+from catspace.research.tools.chess_specific.domains import krk
+from catspace.research.tools.chess_specific.game import play_game
+from catspace.research.tools.chess_specific.opponents import RandomOpponent
+from catspace.research.components.planner.approaches.subgoal_cascade.src.move_identity import RegionPairIdentity, SyntacticIdentity
+from catspace.research.components.planner.approaches.subgoal_cascade.src.plans import (
     BlockReason, Plan, PlanEvent, PlanMemory, PlanStatus, PlanStore, PlanStep, calibrate_tau,
 )
-from catspace.planner.policy import PlanningPolicy, TablePolicy
-from catspace.planner.readout import ReplyAgg, greedy_policy
-from catspace.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.research.components.planner.approaches.subgoal_cascade.src.policy import PlanningPolicy, TablePolicy
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg, greedy_policy
+from catspace.research.tools.chess_specific.scoring import TerminalScores, fill_terminal_state_scores
 
 
 class StubEmb:

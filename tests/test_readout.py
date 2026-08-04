@@ -6,9 +6,9 @@ draw-scored-neutral vs draw-scored-bad flips the chosen move).
 import numpy as np
 import pytest
 
-from catspace.chain import TransitionChain, Terminals
-from catspace.scoring import TerminalScores, fill_terminal_state_scores
-from catspace.planner.readout import ReplyAgg, move_values, policy_from_values, greedy_policy, backup
+from catspace.research.tools.chess_specific.chain import TransitionChain, Terminals
+from catspace.research.tools.chess_specific.scoring import TerminalScores, fill_terminal_state_scores
+from catspace.research.components.planner.approaches.subgoal_cascade.src.readout import ReplyAgg, move_values, policy_from_values, greedy_policy, backup
 
 
 def make_chain():

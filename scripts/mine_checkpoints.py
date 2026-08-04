@@ -1,1 +1,1 @@
-../experiments/mine_checkpoints.py
+../catspace/research/components/memory/approaches/checkpoint_trap_bank/experiments/mine_checkpoints.py

@@ -91,7 +91,7 @@
             "name": "catspace",
             "dir": "",
             "cmd": ".venv/bin/python",
-            "args": "/Users/kav/code/remote/github/catspace/experiments/uci_engine.py",
+            "args": "-m catspace.deployment.server.uci_engine",
             "restart": false,
             "options": [
                 [
@@ -116,7 +116,7 @@
             "name": "maia1900",
             "dir": "",
             "cmd": "lc0",
-            "args": "--weights=/Users/kav/code/remote/github/catspace/data/engines/maia/maia-1900.pb.gz",
+            "args": "--weights=/Users/kav/code/remote/github/catspace/assets/engines/maia/maia-1900.pb.gz",
             "restart": false,
             "options": [],
             "limit": {

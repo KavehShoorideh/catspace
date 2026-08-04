@@ -1,4 +1,4 @@
-from catspace.board import (NSQ, chebyshev, king_moves, knight_moves, rook_slides,
+from catspace.research.tools.chess_specific.board import (NSQ, chebyshev, king_moves, knight_moves, rook_slides,
                                 rook_attacks, sq, rc, KING_MOVES, KNIGHT, KN_ATT)
 
 

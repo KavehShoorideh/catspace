@@ -1,3 +1,9 @@
+> **A repository restructure occurred on 2026-08-03.** File and directory paths
+> mentioned below are historical and no longer valid. The content is left exactly
+> as written — this is the research record, not documentation of the current tree.
+> For the current layout see [`repo_structure.md`](repo_structure.md); for what
+> moved and why see [the refactor plan](catspace/research/docs/2026-08-03-refactor-plan.md).
+
 # MILESTONES.md — the locked 30,000-foot plan (Kaveh, 2026-07-27)
 
 **This file is the roadmap.** Details inside a milestone may change; the milestone structure and
