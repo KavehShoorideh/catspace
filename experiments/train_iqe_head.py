@@ -123,6 +123,10 @@ def main():
     ap.add_argument("--lr", type=float, default=1e-3); ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--eval-every", type=int, default=500); ap.add_argument("--ckpt-every", type=int, default=1000)
     ap.add_argument("--rows", default="", help="rows .npy: train on this game-subset of the data")
+    ap.add_argument("--train-frac", type=float, default=1.0,
+                    help="fraction of TRAIN games to keep (holdout is untouched). For learning "
+                         "curves: the val split is drawn FIRST from a fixed seed, so the holdout "
+                         "is byte-identical at every size and the curves are comparable.")
     ap.add_argument("--out", default=""); ap.add_argument("--seed", type=int, default=0)
     # --- W/D/L basin poles (Kaveh 2026-08-03). OFF by default: with every w-* at 0 and no
     # --combined, this script's objective and numerics are bit-for-bit the shipped M1 recipe.
@@ -187,8 +191,19 @@ def main():
             fmap = None
     N, C = len(dtz), feats.shape[1]
     games = np.unique(game)
+    # Val split FIRST, from the shared seed -> identical holdout regardless of --train-frac.
     val_games = set(rng.choice(games, size=max(1, int(len(games) * args.val_frac)), replace=False).tolist())
     train_games = set(int(g) for g in games) - val_games
+    if args.train_frac < 1.0:
+        # Subsample by GAME, never by row: positions within a game are highly correlated, so a
+        # row-level subsample would leave near-duplicates of held-out positions in training and
+        # the learning curve would flatter itself.
+        tg = np.array(sorted(train_games))
+        keep = np.random.default_rng(args.seed + 991).choice(
+            len(tg), max(1, int(len(tg) * args.train_frac)), replace=False)
+        train_games = set(int(g) for g in tg[keep])
+        print(f"  [learning-curve] train games {len(train_games):,} of {len(tg):,} "
+              f"({100*args.train_frac:.0f}%), holdout {len(val_games):,} games FIXED", flush=True)
     MG_s, MG_g, MG_d = build_pairs(game, ply, train_games, rng)
     V_s, V_g, V_d = build_pairs(game, ply, val_games, np.random.default_rng(args.seed + 1))
     is_val = np.array([int(g) in val_games for g in game])
@@ -388,6 +403,18 @@ def main():
             else:
                 mate_rho = float("nan")
             g = {"pair_order": pair_order, "eff_rank": er, "mate_rho": mate_rho}
+            # TRAIN-side arm of the learning curve, same estimator on the same-size sample so the
+            # two arms are directly comparable (a bigger val sample would look artificially smooth).
+            if poles_on:
+                tr = np.flatnonzero(~is_val)
+                ti2 = tr[rng.integers(0, len(tr), min(4000, len(tr)))]
+                dtr = net.d_poles(net.phi(fx(ti2)))
+                g["tr_basin_ce"] = float(basin_ce(dtr, y_t[ti2], net.temperature))
+                g["tr_basin_acc"] = float((dtr.argmin(1) == y_t[ti2]).float().mean())
+                vi2 = va_idx[rng.integers(0, len(va_idx), min(4000, len(va_idx)))]
+                dva = net.d_poles(net.phi(fx(vi2)))
+                g["va_basin_ce"] = float(basin_ce(dva, y_t[vi2], net.temperature))
+                g["va_basin_acc"] = float((dva.argmin(1) == y_t[vi2]).float().mean())
             if poles_on:
                 g.update(pole_gates())
         return g

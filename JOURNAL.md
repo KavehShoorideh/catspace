@@ -10755,3 +10755,133 @@ sample sizes accordingly. Human game data (weaker play, more real blunders)
 is a plausible higher-yield source to try next but not yet tried.
 
 Still not built: parts 2 (store) and 3 (activation-watch feedback loop).
+
+## 2026-08-03 -- W/D/L basin poles: the field's geometry IS the committor (M1 field variant)
+
+Kaveh's ask, developed live: chart the win/draw/loss basins from the two IQE fields (human
+Lichess and self-generated SF-vs-SF). It turned into a training change, because the charts
+exposed why the basins were not there to chart.
+
+**The diagnosis (Kaveh).** Checkmates are one surface reached at many arrival points (different
+mate structures). Nothing in the M1 objective held those arrival points together, so they drifted
+apart in phi and no UMAP was ever going to show basin structure. Fix: a POLE per outcome, with
+terminals pinned one ply away, so they share a centre while keeping distinct signatures.
+
+**Design.** Three learned poles P_win/P_draw/P_loss (mover-POV) are the vertices of a probability
+simplex, and `p_k(s) = softmax_k(-log1p(d(phi(s)->P_k))/T)` -- the Prototypical-Networks form
+(Snell 2017), so the geometry IS the committor and there is no separate WDL head to keep in sync.
+Projecting configuration space onto a committor simplex and drawing it as a triangle is standard
+MSM/transition-path practice (arXiv 1602.08776, 1605.01150); Kaveh's picture reproduced it
+independently.
+
+Logits are `-log1p(d)/T`, NOT `-d/T`. Softmax is shift-invariant, so under raw distances a point
+far from all three poles keeps its distance differences and stays just as confident forever --
+Kaveh's "attractor extends out and weakens" would never weaken. In log space the differences
+themselves decay, giving `p_k ~ (1+d_k)^(-1/T)`, an inverse-power attractor law. Caught by writing
+the unit test, not by a training run; losses.py carries a regression guard pinning both behaviours
+(confidence 0.545 -> 0.337 moving outward vs the buggy form frozen at 0.867).
+
+**Six loss terms**, all unit-tested before any run (the losses.py rule): basin CE; radial anchor
+via `reachability_target(n,-log p)` (a terminal targets logaddexp(0,0)=log1p(1) EXACTLY, which is
+the "1 ply from the pole" spec); terminal repulsion (anti-collapse ON the shell -- "I don't want
+all mates to be one point"); a Lennard-Jones-shaped pole potential (Kaveh: huge repulsion inside a
+data-derived crossover, weak attraction outside; asymmetric normalized power well rather than
+r^-12 so it cannot hand the optimizer an unbounded gradient; crossover is the median inter-position
+distance, DETACHED, else the cheapest fix is to shrink every embedding and game the ruler);
+absorbing penalty (the only term that trains the ASYMMETRY); and Deep-TDA's basin-WIDTH term
+(Trizio & Parrinello) added after a literature search identified it as the one gap -- we pinned
+basin means and separation but never width.
+
+DELIBERATELY ABSENT: any entropy/sharpening penalty to force three basins. The middle must stay
+genuinely undetermined; sharpening would manufacture confidence and make the chart a
+self-fulfilling artifact. Calibration is the gate, not sharpness.
+
+**The measurement that drove the design.** At a checkmate the side to move is the one who got
+mated, so terminals are almost all mover-loses: 89,891 loss vs 5,496 win (human) and 18,873 vs
+EXACTLY ZERO (SF-vs-SF). Naive per-terminal anchoring would have left the win pole with no
+anchors. The PRE-terminal row fixes it -- its mover is the winner, one ply from delivering the
+finish -- and supplies 108,754 win anchors.
+
+**Final run** (30,000 steps, 2h42m, `artifacts/experiments/movie/iqe_poles_30k_latest.pt`,
+DVC-tracked md5 35b4c3ef05d6a7fb08f8e82fa51effa2):
+
+| metric | this field | human incumbent | SF-vs-SF incumbent |
+|---|---|---|---|
+| eff_rank | **24.9** | 16.1 | 18.8 |
+| terminal eff_rank | 29.5 | -- | -- |
+| basin ECE | 0.0095 | -- | -- |
+| basin acc | 0.710 | -- | -- |
+| pair-order | 0.895 | 0.904 | 0.926 |
+| d_mate rho | 0.731 | 0.621 | 0.818 |
+| pole asymmetry | +4.43 | -- | -- |
+| pole gap vs crossover | 4.75 vs 4.75 | -- | -- |
+
+eff_rank clears both incumbents by a wide margin and terminal eff_rank 29.5 is the direct evidence
+the mates did NOT collapse to a point. ECE 0.0095 means these are calibrated probabilities, not
+merely a separating clustering. The pole gap landing exactly ON the crossover is the LJ potential
+sitting at its zero point, repulsion and attraction in balance.
+
+**I/O, and a measurement error I made.** The first full run was 98% disk-bound: each step randomly
+gathers ~17.6k rows x 32KB = 552MB across 71GB of trunk features on a 36GB box, at 121 MB/s, while
+the GPU sat idle at 0.10 s/step of actual compute. I had estimated 3.72 s/step from smokes that
+all used seed 0 and therefore replayed identical batches straight out of page cache -- the number
+was measured hot and was never trustworthy. Fix: a uniform contiguous 600k-row subset (18.3GB,
+RAM-resident; uniform not stratified, because over-sampling terminals would bias the very
+committor being measured -- verified against the parent, every field within 0.07pp). 4.67 -> 0.26
+s/step, 121 -> 2960 MB/s. Kaveh also caught that the laptop was sleeping (88 sleep/wake cycles);
+everything now runs under `caffeinate`.
+
+**Charts.** The ternary plot is faithful with no reduction or symmetrization (barycentric coords
+have exactly 2 free dimensions), unlike the 2026-08-02 basin charts which ran UMAP on phi under a
+EUCLIDEAN metric and so discarded the quasimetric entirely. Asymmetry is drawn as a drift-vector
+field (the classical asymmetric-MDS construction, defined only in 2-d).
+
+Then Kaveh reframed it as the TENT, which is better: apex at top = start position, points descend
+with plies, left edge = White wins, right edge = Black wins, coming to rest in the middle = draw.
+Draw is not a lost third axis -- it IS the centre column. Poles are mover-POV and the mover
+alternates every ply, so everything is converted to WHITE-POV first or every trajectory zigzags.
+
+**Two data defects found while charting, both real and neither cosmetic.**
+1. `gen_field_data_fullgame.py` samples `(ply-skip_open) % stride == 0` with stride=6 and the SAME
+   PHASE in every game, so the ply axis is a COMB and no bin size can avoid aliasing. Fixed for
+   display by plotting the CONDITIONAL P(x|ply) with rows normalized (row counts cancel by
+   construction, and the conditional is the quantity of interest anyway). The underlying fix is a
+   random per-game phase offset, which needs a data regen and is NOT done.
+2. `--per-game 8 --stride 6` means stride samples cannot reach past ply 42. Beyond ply ~54 the
+   dataset is 100% TAIL rows (median 1-2 plies from the end), so a ply axis past ~50 silently
+   swaps population from mid-game to game-endings. I reported "humans fan out over time" numbers
+   off that axis before catching it -- RETRACTED. Ply axis now hard-capped at 42, and the tail
+   rows get their own honest figure indexed from the END of the game.
+
+**Corrected results.** Tent, ply 0-42, median |P(White wins)-P(Black wins)|: human 0.032 -> 0.467
+across plies 0-42 while SF-vs-SF stays FLAT at 0.047-0.074. Endgame funnel (plies remaining, where
+tail rows give complete coverage): human 0.215 -> 0.849 as the end approaches, SF 0.053 -> 0.000.
+Human games converge to decisive, engine games converge to dead-drawn, both monotone. Ambiguity:
+28.2% of human positions and 9.9% of SF positions sit below p=0.5 -- substantial ambiguity survives
+even in near-perfect play, as Kaveh predicted.
+
+**Full-game replay** (basin_tent_fullgames.py) removes both sampling defects outright -- a
+replayed game has every ply. It exposed a real property: the field is NOT temporally smooth.
+Lag-1 autocorrelation along a game is BELOW lag-2 (+0.42 vs +0.63 human, +0.22 vs +0.57 SF), i.e.
+positions two plies apart agree better than adjacent ones; mean x by parity is ~0 so it is not a
+sign-flip bug, it is genuine turn-dependence. Root cause is structural: the field trains on
+positions 6 plies apart with NO temporal-smoothness term. Candidate loss term, not added.
+
+**Endpoint shape = how the game ended** (checkmate/resign/flagged/stalemate/threefold/fifty-move/
+insufficient/agreement/adjudicated), colour still = who won. Found and fixed a classifier bug:
+every engine draw was landing in "agreement", which is nonsense. The generator stops on
+`is_game_over(claim_draw=True)` i.e. can_claim_*, while I tested `is_repetition(3)`/`is_fifty_moves()`
+("already occurred"), which is strictly narrower and misses exactly the positions it stops on.
+SF agreement 34 -> 0, threefold 0 -> 34. The two populations end games in almost disjoint ways:
+humans resign or flag (61 of 105 sampled), engines mate or repeat (101 of 105).
+
+**Movie**: 600 checkpoints (every 50 steps) rendered to `basin_simplex_movie.mp4`, 40s at 15fps,
+so the basins can be watched forming.
+
+**Running**: a LEARNING CURVE (train/holdout error vs training-set SIZE, holdout fixed and split
+BY GAME) over 5 sizes from 10,442 to 174,042 training games, to settle whether the 4x data cut
+made for RAM costs accuracy. Not yet complete.
+
+**Not done**: the data regen that would fix the fixed-phase comb and extend mid-game coverage past
+ply 42; a temporal-smoothness loss term; DVC on the two 35GB+18GB trunk-feature caches (they live
+in the main checkout, outside this worktree's DVC project).
