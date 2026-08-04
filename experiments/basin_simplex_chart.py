@@ -124,7 +124,7 @@ def main():
     ap.add_argument("--ckpt", default="artifacts/experiments/iqe_poles_both_latest.pt")
     ap.add_argument("--combined", default="data/derived/field_combined_v1.npz")
     ap.add_argument("--n", type=int, default=150000, help="positions sampled per dataset")
-    ap.add_argument("--min-count", type=int, default=25, help="min points per drift cell to draw")
+    ap.add_argument("--min-count", type=int, default=60, help="min points per drift cell to draw")
     ap.add_argument("--bins", type=int, default=22)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out-prefix", default="artifacts/experiments/basin_simplex")
@@ -142,11 +142,16 @@ def main():
     meta = eval(str(z["_meta"][0]))
     rng = np.random.default_rng(args.seed)
 
+    # `orig_source` marks human vs SF-vs-SF; `source` indexes which FEATURE FILE to read, and is
+    # all-zero once the subset has been materialized into one contiguous file. Splitting on the
+    # wrong one silently merges the two populations into a single panel.
+    split = z["orig_source"] if "orig_source" in z.files else z["source"]
     datasets = {}
     for name, src in [("human", 0), ("SF-vs-SF", 1)]:
-        idx = np.flatnonzero(z["source"] == src)
+        idx = np.flatnonzero(split == src)
         take = np.sort(rng.choice(idx, min(args.n, len(idx)), replace=False))
-        p = probs_for(net, meta["feats"][src], z["local_row"][take], args.device)
+        p = probs_for(net, meta["feats"][int(z["source"][take[0]])],
+                      z["local_row"][take], args.device)
         datasets[name] = dict(p=p, xy=bary_to_xy(p), game=z["game"][take], ply=z["ply"][take],
                               y=z["y"][take])
         print(f"  {name}: n={len(take):,} mean max-p {p.max(1).mean():.3f} "
@@ -200,13 +205,27 @@ def main():
             src_xy, dxy, args.bins, [[0, 1], [0, np.sqrt(3) / 2]])
         X, Y = np.meshgrid(cx, cy, indexing="ij")
         m = cnt >= args.min_count
+        mag = np.hypot(mx, my)
+        # Arrow length is AUTO-SCALED so the median drift spans ~0.6 of a cell. A fixed scale
+        # made near-terminal cells (which move across most of the simplex in one ply) shoot far
+        # outside the triangle and swamp everything else -- the first render was unreadable.
+        cell = 1.0 / args.bins
+        med = float(np.median(mag[m])) if m.any() else 1.0
+        scale = max(med, 1e-9) / (0.6 * cell)
+        # Long arrows are CLIPPED in length only (direction preserved) and the count is printed --
+        # a silent cap would read as "nothing moves fast here".
+        cap = float(np.quantile(mag[m], 0.85)) if m.any() else 1.0
+        over = int((mag[m] > cap).sum())
+        f = np.where(mag > cap, cap / np.maximum(mag, 1e-12), 1.0)
         ax.hexbin(xy[:, 0], xy[:, 1], gridsize=48, bins="log", mincnt=1, linewidths=0,
                   cmap="Greys", alpha=0.35)
-        ax.quiver(X[m], Y[m], mx[m], my[m], color=COLOR_HUMAN if name == "human" else COLOR_SF,
-                  angles="xy", scale_units="xy", scale=0.35, width=0.004)
+        ax.quiver(X[m], Y[m], (mx * f)[m], (my * f)[m],
+                  color=COLOR_HUMAN if name == "human" else COLOR_SF,
+                  angles="xy", scale_units="xy", scale=scale, width=0.004)
+        print(f"  drift {name}: {int(m.sum())} cells >= {args.min_count} pts | median |drift| "
+              f"{med:.4f}/ply | {over} cells length-clipped at the 85th pct ({cap:.3f})")
         draw_triangle(ax)
-        ax.set_title(f"{name} -- mean per-ply drift  ({int(m.sum())} cells >= {args.min_count} pts)",
-                     color=INK)
+        ax.set_title(f"{name} -- mean per-ply drift  ({int(m.sum())} cells)", color=INK)
     fig3.suptitle("The field's ASYMMETRY as flow: mean per-ply drift toward the basins\n"
                   "(drift-vector model -- arrows are the skew part, position the symmetric part)")
     fig3.tight_layout(); fig3.savefig(f"{args.out_prefix}_3_drift.png", dpi=140)
