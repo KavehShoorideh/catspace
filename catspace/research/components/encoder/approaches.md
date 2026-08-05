@@ -73,3 +73,31 @@ directory — `scripts/check_approaches.py` enforces both directions. Schema is 
   and the ground-truth labels, not on the engine path.
 - **results** — `wdl_decay.py` module header; docs/ALTERNATIVES.md
 - **added** — 2026-07-10 · **owner** — Kaveh Shoorideh
+
+## reach_probability
+
+- **folder** — `approaches/reach_probability/`
+- **status** — active
+- **hypothesis** — Trained ONLY on positions that really followed one another in lichess games,
+  with no negatives and nothing chess-specific programmed, a JEPA that predicts the *region* of
+  reachable futures will infer the irreversible stratification of chess (piece count never rises)
+  on its own; and split conformal on held-out positives turns its score into a
+  `probability_less_than(a, b, eps)` predicate with a bounded false-"impossible" rate.
+- **definition of done** — (1) the PAIRED ratchet score (target held fixed, source varied) beats a
+  random-init null, so a source that could reach the target outscores one that could not; (2)
+  conformal validity holds at several eps, per bucket, against the multiple-comparison null.
+- **results** — (1) **NEGATIVE on the strata question.** Paired ratchet 0.570 (v2, 10k steps) against
+  a **random-init null of 0.555** — a gain of +0.015 — and flat across the checkpoint ladder
+  (0.585/0.572/0.585/0.570 at 2.5k/5k/7.5k/10k), i.e. no training trend. The material ratchet is a
+  property of the frozen lc0 trunk plus the scoring geometry, not something this objective learns.
+  (2) **Positive on reachability generally**: observed-reachable vs cross-game AUC 0.408 (random
+  init) -> 0.618 (trained), so the model does learn real reachability structure from positives alone
+  — just not the material stratification. (3) Conformal works: pooled validity exact at every eps
+  (0.0010/0.0041/0.0093/0.0455/0.0941 vs eps 0.001..0.10); Mondrian on a LEARNED taxonomy (predicted
+  region volume, no chess) puts the worst bucket at 0.0264 against a multiple-comparison null p95 of
+  0.0254. Power is low: 3.8% of cross-game pairs flagged at eps=0.01.
+  Two metrics were retracted during the work — see the module docstrings of `interpret_reach.py`
+  (matched-|delta| ratchet, which a source-blind model also passed at 0.575) and
+  `calibrate_conformal.py` (material/ply Mondrian buckets, which would have installed the strata
+  being claimed). JOURNAL.md.
+- **added** — 2026-08-05 · **owner** — Kaveh Shoorideh

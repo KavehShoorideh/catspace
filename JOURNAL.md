@@ -11181,3 +11181,70 @@ retraction stays checkable without them: the per-position npz files are RETAINED
 (basin_hazard_data.npz, basin_hazard_null_data.npz), every retracted number in parts 2 and 3 is
 computed from those, and `basin_hazard_field.py --from-data` regenerates any of the deleted figures
 in seconds without re-running the ~12 min trunk pass.
+
+---
+
+## 2026-08-05 — reach_probability: can strata be learned without programming any chess? (NEGATIVE)
+
+Kaveh's question, in his words: *"key point is whether we can get strata without programming
+anything chess specific."* Total piece count only ever falls, so play is a one-way DAG over material
+strata. The existing IQE field is trained only on forward pairs, so backward distances across a
+capture are unconstrained by its objective — nothing in it trains the ratchet.
+
+**The approach.** A positives-only JEPA (`encoder:reach_probability`). Reachability is defined
+EMPIRICALLY — b is reachable from a iff b was observed later in the same lichess game — not by chess
+rules. No negatives (Kaveh: *"I don't want negatives"*), so a predictor maps phi(a) to a REGION of
+reachable futures and is trained by density alone; the "not reachable" side comes afterwards from
+split conformal on held-out positives, which needs no negative class. 799,280 pairs from 79,928
+games, split by game into fit/calibration/test. Nothing in training is told about piece count,
+captures, or legality. Splicing was deferred (Kaveh) and carries a recorded precondition: a join must
+check threefold repetition and the 50-move clock, since a spliced continuation can be terminated
+before it ever reaches b.
+
+**RESULT: the strata are not learned.** Paired ratchet — hold the TARGET fixed, vary the source
+between one that could reach it and one that could not — gives **0.570** for the trained model
+against a **random-init null of 0.555**, a gain of +0.015, and it is FLAT across the checkpoint
+ladder (0.585 / 0.572 / 0.585 / 0.570 at 2.5k/5k/7.5k/10k steps; v1 at 6k gives 0.560). The material
+ratchet visible in the score is a property of the frozen lc0 trunk plus the scoring geometry, not
+something this objective adds. Consistent with JOURNAL 5463: the IQE architecture is necessary but
+not sufficient for strata — they come from training the TRANSITIONS, and this objective does not.
+
+**What IS learned.** Observed-reachable vs cross-game AUC moves 0.408 (random init) -> 0.618
+(trained). The model does acquire real reachability structure from positives alone; it is simply not
+the material stratification.
+
+**The conformal half works.** Pooled validity is exact at every level tested
+(0.0010/0.0041/0.0093/0.0455/0.0941 against eps 0.001/0.005/0.01/0.05/0.10) on test positives held
+out BY GAME from calibration. Power is low: 3.8% of ply-matched cross-game pairs are flagged at
+eps=0.01. Note the guarantee is frequentist — P(say IMPOSSIBLE | genuinely reachable) <= eps — not
+the posterior P(reachable) < eps that the name `probability_less_than` suggests; converting it would
+need a prior on how often queried pairs are reachable, which the data does not supply.
+
+**TWO METRICS RETRACTED DURING THE WORK**, both caught by controls rather than by inspection.
+
+1. *Matched-|delta| ratchet, retracted.* Comparing delta=+k against delta=-k at equal magnitude
+   appeared to show the ratchet (0.595 trained vs 0.444 random init). It is confounded: the +k group
+   has piece-RICH targets and the -k group piece-POOR ones, so a model whose score depends only on
+   the TARGET reproduces the whole effect. Demonstrated — a degenerate run whose predictor input
+   layer had been entirely zeroed by too strong a proximal L1 (support 0/64, mu a constant, provably
+   unable to read the source) still scored **0.575** on it. The paired design replaces it and gives
+   that same model exactly 0.500.
+
+2. *Material/ply Mondrian buckets, retracted before use.* Calibrating conformal per material band
+   would have installed the very stratification the approach claims to discover (Kaveh: *"I don't
+   want to bucket on ply or material count because I'm worried that will effectively create
+   strata"*). The taxonomy is now the model's own predicted region volume — a learned quantity, no
+   chess. Material/ply survive as a diagnostic readout only. Worth recording that pooled calibration
+   was genuinely miscalibrated per bucket (worst 0.0401 vs multiple-comparison null p95 0.0254) and
+   per-bucket calibration fixes it (0.0264, at the null).
+
+Also recorded: worst-bucket is a MAX over bins and exceeds eps on sampling noise alone, so it is now
+always printed beside a simulated null p95 — without it, "Mondrian still fails" was the reading.
+
+**Verified, incidentally**: en passant is NOT encoded anywhere in the lc0 112-plane input (controlled
+FEN pair, zero differing planes), so any future position-identity key for splicing must come from
+`chess.polyglot.zobrist_hash`, not from the planes.
+
+**Artifacts.** `reach_jepa_v{1,2,3}_*.pt`, `reach_conformal_v1.npz`, `data/derived/reach_pairs_v1.npz`.
+v3 is retained deliberately as the source-blind control. Verdicts from `interpret_reach.py`,
+`calibrate_conformal.py`, `build_reach_pairs.py`; losses tested in `training_infra/losses.py::_tests`.
