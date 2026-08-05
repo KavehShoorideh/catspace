@@ -34,7 +34,7 @@ STEP_RE = re.compile(r"_step(\d+)\.pt$")
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--ckpt-glob", default="artifacts/experiments/movie/iqe_poles_30k_step*.pt")
+    ap.add_argument("--ckpt-glob", default="artifacts/experiments/movie4/iqe_4pole_30k_step*.pt")
     ap.add_argument("--combined", default="data/derived/field_combined_sub600k.npz")
     ap.add_argument("--n", type=int, default=25000, help="positions per dataset (held fixed)")
     ap.add_argument("--frames", default="artifacts/experiments/movie/frames")
