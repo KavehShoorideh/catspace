@@ -1,0 +1,6 @@
+=== reach_vit_v1_step2500 ===
+  reversals given IDENTICAL repulsion in training and matched on ply gap, so any
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5003 paired_ratchet_iqe=0.5028 diff_capture=1.152 diff_quiet=1.097 diff_reversible=nan capture_minus_quiet=+0.055 confounded_ratchet=0.5464 rho_signed=-0.0612 rho_absonly=+0.2387 sep_auc=0.8156 l1_kept=64/64 source_blind=0 step=2500 [162s]
+=== reach_vit_v1_randinit_latest ===
+  reversals given IDENTICAL repulsion in training and matched on ply gap, so any
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.4861 paired_ratchet_iqe=0.4875 diff_capture=0.937 diff_quiet=1.001 diff_reversible=nan capture_minus_quiet=-0.064 confounded_ratchet=0.5556 rho_signed=-0.0518 rho_absonly=-0.3129 sep_auc=0.5836 l1_kept=64/64 source_blind=0 step=0 [159s]
