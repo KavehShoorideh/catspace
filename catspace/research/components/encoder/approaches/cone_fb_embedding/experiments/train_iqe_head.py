@@ -132,6 +132,14 @@ def main():
                     help="fraction of TRAIN games to keep (holdout is untouched). For learning "
                          "curves: the val split is drawn FIRST from a fixed seed, so the holdout "
                          "is byte-identical at every size and the curves are comparable.")
+    ap.add_argument("--n-sources", type=int, default=1,
+                    help="1 = the shipped single-dynamics field. 2 = DYNAMICS-CONDITIONED: one "
+                         "SHARED embedding with per-source pole geometry and temperature, so "
+                         "q(s|human) and q(s|SF) come from the same phi. Two SEPARATELY trained "
+                         "fields were measured to disagree no more than two fields trained on "
+                         "disjoint halves of the same data (ratio 1.04x), because per-field "
+                         "representation noise swamped the dynamics difference; sharing phi makes "
+                         "that noise COMMON to both readouts so it cancels in the difference.")
     ap.add_argument("--game-mod", default="",
                     help="'K:R' -> keep only TRAIN games with game %% K == R (holdout untouched). "
                          "Two arms at 2:0 and 2:1 see DISJOINT training games, which is what a "
@@ -221,6 +229,7 @@ def main():
         sel = np.flatnonzero(keep)
         dtz = z["dtz"][sel].astype(np.int32); game = z["game"][sel]; ply = z["ply"][sel]
         y_all = z["y"][sel].astype(np.int64)
+        src_all = z["source"][sel].astype(np.int64)
         n_to_end = z["n_to_end"][sel].astype(np.int32)
         is_tail = z["is_tail"][sel]; is_term = z["is_terminal"][sel]
         feats = DualFeats(meta["feats"], z["source"][sel], z["local_row"][sel])
@@ -295,7 +304,24 @@ def main():
         print(f"  [poles] radial target range log1p: {float(radial_tgt.min()):.3f}.."
               f"{float(radial_tgt.max()):.3f} (terminal shell = {float(np.log(2.0)):.4f})", flush=True)
 
-    net = IQEHead(in_ch=C, d=args.d, components=args.components, adapter_ch=args.adapter_ch).to(dev)
+    net = IQEHead(in_ch=C, d=args.d, components=args.components, adapter_ch=args.adapter_ch,
+                  n_sources=args.n_sources).to(dev)
+    cond = poles_on and args.n_sources > 1
+    src_t = torch.from_numpy(src_all).to(dev) if poles_on else None
+    if cond:
+        n_by_src = np.bincount(src_all, minlength=args.n_sources)
+        print(f"  [conditioned] {args.n_sources} dynamics sharing one phi | rows per source "
+              f"{list(n_by_src)} | pole_delta zero-init (starts at 'no difference')", flush=True)
+
+    def dP(e, idx):
+        """Forward pole distances, per-row conditioned when --n-sources > 1."""
+        return net.d_poles_src(e, src_t[idx]) if cond else net.d_poles(e)
+
+    def dFP(e, idx):
+        return net.d_from_poles_src(e, src_t[idx]) if cond else net.d_from_poles(e)
+
+    def TT(idx):
+        return net.temperature_for(src_t[idx]) if cond else net.temperature
     print(f"  head params: {sum(p.numel() for p in net.parameters()):,}", flush=True)
     if poles_on and args.pole_lr_mult != 1.0:
         # The vertices are 3xd + 1 numbers competing against a ~139k-param adapter at one shared
@@ -305,11 +331,13 @@ def main():
         # group is the standard fix and touches no loss term. weight_decay=0 on the poles: they
         # are locations in embedding space, not weights, and decaying them pulls all three back
         # toward the origin -- i.e. directly against the separation this is meant to fix.
-        pole_params = {id(net.poles), id(net.log_T)}
+        pole_list = [net.poles, net.log_T] + (
+            [net.pole_delta, net.log_T_delta] if net.pole_delta is not None else [])
+        pole_params = {id(p_) for p_ in pole_list}
         rest = [p_ for p_ in net.parameters() if id(p_) not in pole_params]
         opt = torch.optim.AdamW(
             [{"params": rest, "lr": args.lr, "weight_decay": 1e-4},
-             {"params": [net.poles, net.log_T], "lr": args.lr * args.pole_lr_mult,
+             {"params": pole_list, "lr": args.lr * args.pole_lr_mult,
               "weight_decay": 0.0}])
         print(f"  [poles] own param group: lr {args.lr * args.pole_lr_mult:.1e} "
               f"({args.pole_lr_mult:g}x), weight_decay 0", flush=True)
@@ -418,18 +446,18 @@ def main():
             _rng.integers(0, len(all_train), batch)]
         _pf_next[0] = None
         e_b = net.phi(fx(bi))
-        d_b = net.d_poles(e_b)
+        d_b = dP(e_b, bi)
         d_b_last[0], bi_last[0] = d_b, bi          # reused by the per-step log; no extra forward
         # Queue the next step's basin batch now, so its gather overlaps this step's GPU work.
         nxt = all_train[_rng.integers(0, len(all_train), batch)]
         _pf_next[0] = nxt
         fx_prefetch(nxt)
-        L_basin = basin_ce(d_b, y_t[bi], T)
+        L_basin = basin_ce(d_b, y_t[bi], TT(bi))
         # (5) absorbing: d(pole -> s) pushed UP on those same ordinary rows. Trains the ASYMMETRY.
-        L_absorb = absorbing_penalty(net.d_from_poles(e_b).reshape(-1), args.absorb_margin)
+        L_absorb = absorbing_penalty(dFP(e_b, bi).reshape(-1), args.absorb_margin)
         # (2) radial anchor on TAIL rows only, at each row's OWN outcome pole.
         ti = tail_train[_rng.integers(0, len(tail_train), batch // 2)]
-        d_tail = net.d_poles(net.phi(fx(ti)))
+        d_tail = dP(net.phi(fx(ti)), ti)
         d_own = d_tail.gather(1, y_t[ti].unsqueeze(1)).squeeze(1)
         L_radial = pole_radial_anchor(d_own, radial_tgt[ti])
         # (3) terminal repulsion: distinct terminals must not pile onto one point of the shell.
@@ -505,12 +533,12 @@ def main():
         if step_log is not None and poles_on:
             with torch.no_grad():
                 vsub = va_idx[rng.integers(0, len(va_idx), args.step_val_batch)]
-                dv = net.d_poles(net.phi(fx(vsub)))
+                dv = dP(net.phi(fx(vsub)), vsub)
                 yv_s = y_t[vsub]
                 rec = {"step": s,
-                       "train_ce": float(basin_ce(d_b_last[0], y_t[bi_last[0]], net.temperature)),
+                       "train_ce": float(basin_ce(d_b_last[0], y_t[bi_last[0]], TT(bi_last[0]))),
                        "train_acc": float((d_b_last[0].argmin(1) == y_t[bi_last[0]]).float().mean()),
-                       "val_ce": float(basin_ce(dv, yv_s, net.temperature)),
+                       "val_ce": float(basin_ce(dv, yv_s, TT(vsub))),
                        "val_acc": float((dv.argmin(1) == yv_s).float().mean())}
                 rec.update({k: out_m[k] for k in ("loss", "basin", "radial", "width") if k in out_m})
                 step_log.write(json.dumps(rec) + "\n")
@@ -562,12 +590,12 @@ def main():
             if poles_on:
                 tr = np.flatnonzero(~is_val)
                 ti2 = tr[rng.integers(0, len(tr), min(4000, len(tr)))]
-                dtr = net.d_poles(net.phi(fx(ti2)))
-                g["tr_basin_ce"] = float(basin_ce(dtr, y_t[ti2], net.temperature))
+                dtr = dP(net.phi(fx(ti2)), ti2)
+                g["tr_basin_ce"] = float(basin_ce(dtr, y_t[ti2], TT(ti2)))
                 g["tr_basin_acc"] = float((dtr.argmin(1) == y_t[ti2]).float().mean())
                 vi2 = va_idx[rng.integers(0, len(va_idx), min(4000, len(va_idx)))]
-                dva = net.d_poles(net.phi(fx(vi2)))
-                g["va_basin_ce"] = float(basin_ce(dva, y_t[vi2], net.temperature))
+                dva = dP(net.phi(fx(vi2)), vi2)
+                g["va_basin_ce"] = float(basin_ce(dva, y_t[vi2], TT(vi2)))
                 g["va_basin_acc"] = float((dva.argmin(1) == y_t[vi2]).float().mean())
             if poles_on:
                 g.update(pole_gates())
@@ -579,8 +607,8 @@ def main():
         being wrong, and would empty the undetermined middle the whole design depends on."""
         vi = all_val[rng.integers(0, len(all_val), min(n, len(all_val)))]
         e = net.phi(fx(vi))
-        d = net.d_poles(e)
-        p = basin_logp(d, net.temperature).exp().cpu().numpy()
+        d = dP(e, vi)
+        p = basin_logp(d, TT(vi)).exp().cpu().numpy()
         yv_b = y_all[vi]
         conf = p.max(1); pred = p.argmax(1); correct = (pred == yv_b).astype(np.float64)
         # Expected Calibration Error (equal-width bins on confidence), fully vectorized.
@@ -595,11 +623,11 @@ def main():
         qi = term_train[rng.integers(0, len(term_train), min(3000, len(term_train)))]
         term_er = float(eff_rank(net.phi(fx(qi)).cpu().numpy()))
         # Shell radius: do terminals actually land ~1 ply from their own pole?
-        d_q = net.d_poles(net.phi(fx(qi)))
+        d_q = dP(net.phi(fx(qi)), qi)
         shell = float(d_q.gather(1, y_t[qi].unsqueeze(1)).squeeze(1).median())
         # Asymmetry actually achieved: median log1p(d(P->s)) - log1p(d(s->P)). Must be > 0, else
         # the field has quietly learned a symmetric metric and the basin flow means nothing.
-        asym = float((torch.log1p(net.d_from_poles(e)) - torch.log1p(d)).median())
+        asym = float((torch.log1p(dFP(e, vi)) - torch.log1p(d)).median())
         # Where the vertices actually sit relative to the potential's crossover: pole_gap should
         # settle AT or just above pole_ref (repelled to the crossover, weakly held from beyond).
         # START-pole gates. start_rho is THE test that the ply coordinate is real: does
@@ -639,7 +667,8 @@ def main():
               f"(val batch {args.step_val_batch})", flush=True)
 
     _extra = {"cfg": {"in_ch": C, "d": args.d, "components": args.components,
-                      "adapter_ch": args.adapter_ch, "trunk": tag}}
+                      "adapter_ch": args.adapter_ch, "trunk": tag,
+                      "n_sources": args.n_sources}}
     start_step = 0
     if args.resume:
         _ck = torch.load(args.resume, map_location=dev, weights_only=False)
