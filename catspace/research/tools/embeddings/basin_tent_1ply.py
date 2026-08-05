@@ -19,11 +19,12 @@ pools = {"human": uniform_human("/Users/kav/code/remote/github/catspace/data/rec
 import os
 CACHE="artifacts/experiments/basin_tent_1ply_data.npz"
 if os.path.exists(CACHE) and os.environ.get("REPLOT"):
-    _z=np.load(CACHE); D={k:(_z[k+"_x"],_z[k+"_p"]) for k in ("human","SF-vs-SF")}
+    _z=np.load(CACHE); D={k:(_z[k+"_x"],_z[k+"_p"],_z[k+"_q"]) for k in ("human","SF-vs-SF")}
 else:
     D = tent_density(field, pools, MAXPLY)
-    np.savez(CACHE, **{f"{k}_{n}":v for k,(x,p) in D.items() for n,v in (("x",x),("p",p))})
-for k,(x,p) in D.items(): print(f"  {k}: {len(x):,} positions from {len(pools[k])} games [{time.time()-t0:.0f}s]", flush=True)
+    np.savez(CACHE, **{f"{k}_{n}":v for k,(x,p,q) in D.items()
+                       for n,v in (("x",x),("p",p),("q",q))})
+for k,(x,p,_q) in D.items(): print(f"  {k}: {len(x):,} positions from {len(pools[k])} games [{time.time()-t0:.0f}s]", flush=True)
 
 gx = np.linspace(-1, 1, 121)                 # 0.0167-wide x bins
 # TWO plies = ONE FULL MOVE per row. Not a workaround for the sampler comb (full replays have no
@@ -32,7 +33,7 @@ gx = np.linspace(-1, 1, 121)                 # 0.0167-wide x bins
 # of one full move contains both movers and cancels it exactly, and a move is the natural unit.
 gy = np.arange(0, MAXPLY + 2, 2)
 fig, axes = plt.subplots(2, 2, figsize=(13.5, 13), sharey=True)
-for col,(name,(x,p)) in enumerate(D.items()):
+for col,(name,(x,p,_q)) in enumerate(D.items()):
     H,_,_ = np.histogram2d(x, p, bins=[gx, gy])
     cm = "Blues" if name=="human" else "Reds"
     # ROW 0: raw joint -- shows where games actually SPEND time, and the attrition as they end.
