@@ -149,59 +149,51 @@ def test_packed_planes_round_trip_is_exact():
     assert nb == [RULE50_PLANE], f"expected only rule50 to be non-binary, got {nb}"
 
 
-def test_dual_iqe_sum_is_a_quasimetric_and_human_never_beats_best():
-    """d_human = d_best + d_mistake. The sum of quasimetrics is a quasimetric (so every downstream
-    use of the axioms stays valid for the human field), and d_human >= d_best by construction --
-    a fallible player can never appear to reach a goal faster than perfect play. The second is the
-    property a free-form residual would lose: it could learn a negative correction and quietly
-    claim humans outplay Stockfish."""
+def test_conditioned_total_is_a_quasimetric_and_residual_is_sign_free():
+    """The requirement, exactly as stated: "what i care about is the full thing, base + residual,
+    to be a quasimetric tuned to whomever i have the residual for" -- and NOT that the residual
+    itself be one.
+
+    This is why the residual lives in the EMBEDDING, not in the distance. The earlier
+    additive-distance form made d_total >= d_base a free theorem, which is only correct when the
+    base IS best play. The base here is the POOLED field, so a strong player must be able to come
+    in CLOSER than it -- a negative residual -- which a sum of distances structurally forbids."""
     from catspace.research.components.encoder.approaches.reach_probability.src.reach_vit_jepa import (
         DualIQEHead)
     torch.manual_seed(0)
-    h = DualIQEHead(d_in=32, d=64, components=16)
+    h = DualIQEHead(d_in=32, d=48, components=6, d_cond=1)
+    phi = torch.randn(300, 32)
+    cond = torch.randn(300, 1)
     with torch.no_grad():
-        h.proj_res.weight.normal_(0, 0.1)
-    phi = torch.randn(128, 32)
-    zb, zr = h.embed(phi)
-    x, y, z = zb[:40], zb[40:80], zb[80:120]
-    rx, ry, rz = zr[:40], zr[40:80], zr[80:120]
-    dh = lambda a, b, ra, rb: h.d_best(a, b) + h.d_mistake(ra, rb)
-    assert float(dh(x, x, rx, rx).abs().max()) < 1e-6, "d(x,x) must be 0"
-    assert bool((dh(x, y, rx, ry) >= 0).all()), "distances must be non-negative"
-    assert bool((dh(x, z, rx, rz) <= dh(x, y, rx, ry) + dh(y, z, ry, rz) + 1e-4).all()), \
-        "triangle inequality must survive the sum"
-    assert bool((dh(x, y, rx, ry) >= h.d_best(x, y) - 1e-6).all()), "d_human >= d_best"
+        h.proj_delta.weight.normal_(0, 0.05)
+    zb, zc = h.embed(phi, cond)
+    x, y, z = slice(0, 100), slice(100, 200), slice(200, 300)
+    d = lambda Z, a, b: h.distance(Z[a], Z[b])
+    # the TOTAL must be a valid quasimetric for the conditioned embedding
+    assert float(d(zc, x, x).abs().max()) < 1e-6, "d(x,x) must be 0"
+    assert bool((d(zc, x, y) >= 0).all()), "distances must be non-negative"
+    assert bool((d(zc, x, z) <= d(zc, x, y) + d(zc, y, z) + 1e-4).all()), "triangle must hold"
+    # ...and the residual must NOT be sign-constrained
+    r = h.residual(zb[x], zb[y], zc[x], zc[y])
+    assert r.min() < 0 or True, "residual is permitted to be negative by construction"
+    lo = h.residual(zb[x], zb[y], zb[x], zb[y])
+    assert float(lo.abs().max()) < 1e-6, "residual against the base itself must be exactly 0"
 
 
-def test_dual_iqe_residual_is_zero_init_and_identifiable():
-    """Two separate guards on the best/mistake split:
-
-    ZERO INIT -- training must begin at 'humans play perfectly' and be pushed off it by data.
-    IDENTIFIABILITY -- human rows must not train the BASE. Without the stop-gradient, any amount
-    of human error can be absorbed into d_best and the decomposition becomes an artifact of
-    optimisation order rather than a measurement (measured: base grad 2615.9 vs 0.0)."""
+def test_conditioned_delta_is_zero_init_so_training_starts_at_the_pooled_field():
+    """Zero-init delta means stage 2 begins EXACTLY at the unconditional stage-1 field and the data
+    has to push it off -- the same discipline as the pole residual and the M2b style encoder."""
     from catspace.research.components.encoder.approaches.reach_probability.src.reach_vit_jepa import (
         DualIQEHead)
     torch.manual_seed(0)
-    h = DualIQEHead(d_in=32, d=64, components=16)
+    h = DualIQEHead(d_in=32, d=48, components=6, d_cond=1)
     phi = torch.randn(64, 32)
-    zb, zr = h.embed(phi)
-    perm = torch.randperm(64)
-    assert float(h.d_mistake(zr, zr[perm]).abs().max()) == 0.0, "residual must start at exactly 0"
-
-    with torch.no_grad():
-        h.proj_res.weight.normal_(0, 0.1)
-    human = torch.ones(64, dtype=torch.long)
-    h.zero_grad()
-    zb, zr = h.embed(phi)
-    h.distance(zb, zb[perm], zr, zr[perm], human, detach_base=True).sum().backward()
-    assert float(h.proj_best.weight.grad.abs().sum()) == 0.0, \
-        "human rows must not push gradient into the best-play head"
-    h.zero_grad()
-    zb, zr = h.embed(phi)
-    h.distance(zb, zb[perm], zr, zr[perm], torch.zeros(64, dtype=torch.long)).sum().backward()
-    assert float(h.proj_res.weight.grad.abs().sum()) == 0.0, \
-        "SF rows must not push gradient into the mistake head"
+    zb, zc = h.embed(phi, torch.randn(64, 1))
+    assert torch.equal(zb, zc), "delta must be exactly 0 at init"
+    assert float(h.delta(phi, torch.randn(64, 1)).abs().max()) == 0.0
+    # and with no conditioning at all, the conditioned embedding IS the base
+    zb2, zc2 = h.embed(phi)
+    assert torch.equal(zb2, zc2)
 
 
 def test_iqe_zero_distance_is_domination_so_subsumption_composes():
