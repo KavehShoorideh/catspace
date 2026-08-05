@@ -38,8 +38,23 @@ ANAME = {WIN: "mover wins", DRAW: "draw", LOSS: "mover loses", 3: "START"}
 ACOL = {WIN: COLOR_WIN, DRAW: COLOR_DRAW, LOSS: COLOR_LOSS, 3: "#7b5cd6"}
 
 
-def layout(S, pinned_idx, pinned_xy, k=15, epochs=400, seed=0, a=1.6, b=0.9, lr0=1.0):
-    """UMAP-style SGD on a precomputed symmetric distance, with some rows PINNED."""
+def procrustes_to(Y, src_idx, target):
+    """Similarity transform (rotate + uniform scale + translate) putting Y[src_idx] onto `target`.
+
+    This REPLACES pinning during optimisation, and that was the fix. Pinning fought the layout: the
+    anchors sat at radius ~1.15 while the free cloud spread to +-6, so the pins ended up buried
+    inside it and organised nothing. Laying out freely and aligning afterwards gives the same
+    interpretable frame without distorting the local structure the layout is for."""
+    A = Y[src_idx] - Y[src_idx].mean(0)
+    B = target - target.mean(0)
+    U, s_, Vt = np.linalg.svd(A.T @ B)
+    R = U @ Vt
+    scale = s_.sum() / max((A ** 2).sum(), 1e-12)
+    return (Y - Y[src_idx].mean(0)) @ R * scale + target.mean(0)
+
+
+def layout(S, pinned_idx, pinned_xy, k=15, epochs=400, seed=0, a=1.6, b=0.9, lr0=1.0, pin=False):
+    """UMAP-style SGD on a precomputed symmetric distance. `pin` freezes the anchor rows."""
     n = len(S)
     rng = np.random.default_rng(seed)
     nn = np.argsort(S, axis=1)[:, 1:k + 1]                    # kNN edges (skip self)
@@ -48,8 +63,9 @@ def layout(S, pinned_idx, pinned_xy, k=15, epochs=400, seed=0, a=1.6, b=0.9, lr0
     # d2**(b-1) = d2**-0.1 is INFINITE at d2=0, which sent the whole layout to NaN on the first
     # attempt (only the pinned poles survived to render).
     Y = rng.normal(0, 1.0, (n, 2))
-    Y[pinned_idx] = pinned_xy
-    pin = np.zeros(n, bool); pin[pinned_idx] = True
+    pinmask = np.zeros(n, bool)
+    if pin:
+        Y[pinned_idx] = pinned_xy; pinmask[pinned_idx] = True
     for ep in range(epochs):
         lr = lr0 * (1 - ep / epochs)
         d = Y[src] - Y[dst]
@@ -67,8 +83,9 @@ def layout(S, pinned_idx, pinned_xy, k=15, epochs=400, seed=0, a=1.6, b=0.9, lr0
         gn = np.clip(wn * dn, -4, 4)
         np.add.at(upd, src, gn); np.add.at(upd, neg, -gn)
         Y += lr * upd / k
-        Y = np.clip(Y, -6, 6)                                 # keep a diverging point on-canvas
-        Y[pin] = pinned_xy                                    # PINNED: anchors never move
+        Y = np.clip(Y, -20, 20)                               # keep a diverging point on-canvas
+        if pin:
+            Y[pinmask] = pinned_xy
         if not np.isfinite(Y).all():
             raise FloatingPointError(f"layout diverged at epoch {ep}")
     return Y
@@ -119,6 +136,9 @@ def main():
     S = (D + D.T) / 2
     A = (D - D.T) / 2
     np.fill_diagonal(S, 0.0)
+    # Normalise: S has median ~91 while the UMAP force constants (a=1.6, b=0.9) assume distances
+    # of order 1. Without this the kNN graph is fine but the gradients are wildly mis-scaled.
+    S = S / max(np.median(S[np.triu_indices(len(S), 1)]), 1e-9)
 
     npos = len(e)
     pinned_idx = np.arange(npos, npos + 4)

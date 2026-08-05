@@ -96,11 +96,24 @@ class IQEHead(nn.Module):
         # keys but NOT a size mismatch, and pre-start checkpoints carry poles of shape (3,d) --
         # without this they fail to load outright rather than degrading gracefully.
         own = self.state_dict()
-        filtered, mismatched = {}, []
+        filtered, mismatched, padded = {}, [], []
         for k, v in state_dict.items():
             if k in own and own[k].shape != v.shape:
-                mismatched.append(f"{k}{tuple(v.shape)}->{tuple(own[k].shape)}")
+                # A pre-START checkpoint has poles (3,d) against our (4,d). Dropping it entirely
+                # left ALL FOUR poles at random init, so a 3-pole checkpoint silently produced
+                # basin probabilities from noise -- which looked like "the poles collapsed" in a
+                # layout and cost a wrong diagnosis. Copy the outcome poles into place and leave
+                # only the START row uninitialised, which is exactly what a 3-pole field means.
+                if k == "poles" and v.ndim == 2 and own[k].ndim == 2 \
+                        and v.shape[1] == own[k].shape[1] and v.shape[0] < own[k].shape[0]:
+                    merged = own[k].clone()
+                    merged[:v.shape[0]] = v
+                    filtered[k] = merged
+                    padded.append(f"{k}: {v.shape[0]}/{own[k].shape[0]} rows loaded, "
+                                  f"rows {v.shape[0]}..{own[k].shape[0]-1} left at init")
+                else:
+                    mismatched.append(f"{k}{tuple(v.shape)}->{tuple(own[k].shape)}")
             else:
                 filtered[k] = v
         missing, unexpected = self.load_state_dict(filtered, strict=False)
-        return list(missing) + mismatched, list(unexpected)
+        return list(missing) + mismatched + padded, list(unexpected)
