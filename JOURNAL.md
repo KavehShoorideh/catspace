@@ -10932,3 +10932,81 @@ said it was not what I was describing. Renamed to avoid it recurring:
   artifacts/experiments/basin_learning_curve.png          <- the real one (full holdout + CIs)
   artifacts/experiments/basin_learning_curve_v1_noisy.png <- the superseded 4,000-row-sample version
 `artifacts/learning_curve.png` is untouched and is NOT from this work.
+
+## 2026-08-04 -- hazards for humans: two dynamics-conditioned committors (part 1, the data)
+
+**The ask.** Extract the HAZARDS FOR HUMANS from the divergence between lichess games and
+SF-vs-SF games seeded from human openings. The obvious route -- plot the WDL basins and look at
+where the two populations sit differently -- is blocked, and Kaveh named the reason exactly: the
+field is a QUASIMETRIC, d(a->b) != d(b->a), and a 2-D plot cannot show an asymmetric relation.
+That is not a rendering complaint, it is measured: basin_trilateration.py has median rms misfit
+0.358 against an anchor radius 0.65 (55%), basin_trilat3d.py cuts it 48% and is still a
+projection, and basin_perply_umap.py found outcome does not live in neighbourhood structure at all
+(54% of phi variance is linear in ply, 1.8% in outcome).
+
+**The way around it.** A committor is defined WITH RESPECT TO A DYNAMICS -- an argument already in
+build_combined_field_data.py's docstring, there as a reason not to share a TB-corrected label.
+Taken literally it says: train TWO fields, identical but for which population's games they see, and
+define the hazard on their PROBABILITIES rather than on geometry.
+
+    q_X(s) = P(White wins | s, X plays on) - P(Black wins | s, X plays on)     X in {human, SF}
+    h(s)   = q_SF(s) - q_human(s)
+
+h is a SCALAR, so the embedding obstruction simply does not apply. Positive h = the position is
+worth more under engine play than when humans play it out, i.e. humans give it away: a hazard.
+Negative h = humans do better than perfect play concedes: a swindle region. The chart is the
+OFF-DIAGONAL PLOT, every position at (q_SF, q_human) -- two probability axes, no reduction, no
+symmetrisation, distance off the diagonal IS the hazard.
+
+**Both v1 datasets had to be regenerated first, and the reason is the comparison itself.** The two
+v1 samplers (gen_field_data_fullgame.py, gen_opening_pool_sfsf.py) each select rows at
+`(ply - open) % stride == 0 and taken < per_game`, which fixes the phase (the ply axis is a comb)
+and stops at ply 8*6 = 42. Those defects were already known and journaled. What is new is that they
+now matter structurally: if the two populations' datasets sample ply differently, the two fields
+differ for a sampling reason that is indistinguishable from the dynamics reason being measured.
+
+catspace/research/tools/training_infra/gen_field_positions_v2.py is therefore ONE sampler serving
+both populations -- mid-game plies drawn uniformly at random from the whole game, per-game RNG
+seeded from (seed, game_id), tail block kept deterministic because it carries the terminal and
+pre-terminal rows the radial anchor structurally needs. It reads human games from the parquet
+records and SF games from opening_pool_sfsf_moves.tsv, whose move list is prefix + SF continuation,
+i.e. the full game -- so no Stockfish is re-run, this is pure replay.
+
+Generated (80,000 games per source, 3 mid + 2 tail, ~40s and ~57s):
+
+|                  | rows    | games  | ply span | ply%6 shares                     | rows past ply 42 |
+|------------------|---------|--------|----------|----------------------------------|------------------|
+| human v2         | 399,640 | 79,928 | 0-269    | .171 .170 .168 .165 .164 .161    | 50.9%            |
+| SF-vs-SF v2      | 400,000 | 80,000 | 0-299    | .170 .168 .167 .166 .165 .164    | 74.7%            |
+| (v1, both)       |         |        | 0-280    | 1 / 0 / 0 / 0 / 0 / 0            | ~0% mid-game     |
+
+Outcome mixes are the headline population difference before any model is involved: human
+48.3%W / 6.5%D / 45.2%L against SF 16.0%W / 73.2%D / 10.9%L. TB-grounded rows human 5,191 vs SF
+23,408 -- engines reach <=7-piece endgames far more often, which also means the human field's
+d_mate anchor is thinner than v1's and its mate gate should be read with that in mind.
+
+**One population asymmetry recorded rather than hidden.** SF games start from the top-100k most
+FREQUENT human ply-8 prefixes, so below ply 8 the two populations differ in opening COMPOSITION,
+not in dynamics. v2 samples those plies (a position at ply 3 whose continuation is SF play is a
+legitimate sample of SF dynamics) and every downstream comparison defaults to --min-ply 8.
+
+**Disk.** 45GB free on a 460GB disk with the v1 caches (35 + 36 + 18GB) already resident in the
+main checkout, so a full-size v2 pair was not affordable. 80k games x 5 rows lands each cache at
+13.1GB (524s and 525s at ~762 pos/s), 26.2GB total, leaving 20GB. The v2 npz files and the two
+trunk caches live in this worktree; the v1 caches were not touched or deleted.
+
+**Training is now RAM-resident and fast.** 0.21-0.22 s/step with gather only 22-24% of the step
+(10-12 GB/s = page cache, not disk), against the 4.67 s/step 98%-disk-bound regime that motivated
+build_field_subset.py. A 13.1GB per-source cache on a 38GB box needs no subsetting at all.
+
+**Pipeline verified before the real fields exist.** basin_hazard_field.py / _areas.py / _validate.py
+were run end-to-end on 16 games with the SAME checkpoint in all three head slots: h is identically
+0.000, corr(q_human, q_SF) = +1.0000, slope +1.0000. Identical dynamics give exactly zero hazard,
+so the pipeline contributes no asymmetry of its own.
+
+**Running**: four fields at 15,000 steps each, ~53 min apiece. Two REAL (--source human, --source
+sf) and two NULL. The null pair is the point of `--game-mod K:R`, added to train_iqe_head.py: both
+null arms train on HUMAN data with DISJOINT halves of the training games (2:0 and 2:1) and
+different seeds, so h_null measures what two independently-trained fields differ by when there is
+NO dynamics difference. --train-frac 0.5 twice would have overlapped ~50% and understated exactly
+the floor it exists to measure.
