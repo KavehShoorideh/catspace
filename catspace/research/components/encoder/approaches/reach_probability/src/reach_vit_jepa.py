@@ -92,20 +92,54 @@ class DualIQEHead(nn.Module):
     empty, and d_mistake is EXACTLY 0 at step 0 (verified). The model therefore begins at "humans
     play perfectly" and the data has to push it off that -- the same discipline as the pole
     residual and the M2b style encoder.
+
+    CONDITIONED, NOT BINARY (Kaveh 2026-08-05): "we could also treat the next stage as a
+    strength+style conditioned residual, which will extract sf or human play as needed, on top of
+    this; instead of supplanting this." So `d_cond > 0` makes the residual a function of a
+    CONTINUOUS conditioning vector -- strength plus style z -- rather than of a human/SF flag:
+
+        d(u->v | c) = d_best(u->v) + d_res(u->v ; c)
+
+    Three things this buys over the binary split, and one thing to watch:
+      * It generalises to PER-PLAYER. z is the M2b style residual, so "how badly does THIS opponent
+        botch this endgame" is the same query with a different c -- the individual-z pathway the
+        opponent work already established as the main one, rather than a population average.
+      * SF and human stop being separate models. SF is simply the c where the residual is near
+        zero; no branch, no second field, and the pooled base trained today is the warm start
+        rather than something to discard.
+      * The floor property SURVIVES because the residual is still an IQE, hence >= 0. So
+        d(.|c) >= d_best for EVERY c, i.e. the base IS best play by construction and no
+        conditioning can claim a player outruns it. The tempting alternative -- a free conditioned
+        field with d_mistake read off as d(.|c_human) - d(.|c_SF) -- throws this away: a difference
+        of two quasimetrics is neither sign-constrained nor a quasimetric.
+      * TO WATCH: the base must actually be fitted to the STRONGEST play, not the pooled mean, or
+        "floor" is a misnomer and every residual is measured against a half-human reference. That
+        is what `detach_base` and `source` are for; c changes what the residual can express, not
+        where the base sits.
     """
 
-    def __init__(self, d_in: int, d: int = 64, components: int = 16, leak_beta: float = 0.0):
+    def __init__(self, d_in: int, d: int = 64, components: int = 16, leak_beta: float = 0.0,
+                 d_cond: int = 0):
         super().__init__()
+        self.d_cond = int(d_cond)
         self.proj_best = nn.Linear(d_in, d)
-        self.proj_res = nn.Linear(d_in, d)
+        self.proj_res = nn.Linear(d_in + self.d_cond, d)
         nn.init.zeros_(self.proj_res.weight)              # d_mistake == 0 at step 0
         nn.init.zeros_(self.proj_res.bias)
         self.iqe_best = IQE(d, components=components, leak_beta=leak_beta)
         self.iqe_res = IQE(d, components=components, leak_beta=leak_beta)
 
-    def embed(self, phi):
+    def embed(self, phi, cond=None):
         """-> (z_best, z_res). Two projections of ONE shared representation, which is what makes
-        the residual a difference in geometry rather than a difference in encoder noise."""
+        the residual a difference in geometry rather than a difference in encoder noise.
+
+        `cond` (B, d_cond) is the strength+style vector. It enters ONLY the residual: the base must
+        not see it, or best play would become conditional on who is playing, which is exactly the
+        thing the floor is defined to be independent of."""
+        if self.d_cond:
+            if cond is None:
+                cond = phi.new_zeros(len(phi), self.d_cond)
+            return self.proj_best(phi), self.proj_res(torch.cat([phi, cond], -1))
         return self.proj_best(phi), self.proj_res(phi)
 
     def d_best(self, zb_u, zb_v):
@@ -135,11 +169,37 @@ class DualIQEHead(nn.Module):
         train the base to convergence on SF, freeze it, and fit the residual afterwards.
         """
         d = self.d_best(zb_u, zb_v)
-        if zr_u is None or source is None:
+        if zr_u is None:
+            return d
+        if self.d_cond:
+            # CONDITIONED MODE: every row gets base + residual, engine included (Kaveh 2026-08-05:
+            # "both best play (engine) and human play would need both base and residual terms").
+            # There is no branch on population -- SF is just the conditioning point where the
+            # residual should come out near zero, which makes "the base is best play" a CHECKABLE
+            # prediction (see residual_magnitude) instead of an assumption baked in by masking.
+            #
+            # WHAT PINS THE BASE HERE, since gradient masking no longer does. d_res >= 0 alone is
+            # satisfied by d_base = 0 with the residuals carrying everything, so the base is
+            # identified only up to "some lower bound". SHRINKAGE on the residual is what makes it
+            # the TIGHT one: penalise residual magnitude and the optimiser explains as much as it
+            # can with the shared base, spending residual only where populations really differ.
+            # The trainer must therefore carry a residual-shrinkage term; without it this whole
+            # decomposition is unidentified and the base will drift toward zero.
+            return d + self.d_mistake(zr_u, zr_v)
+        if source is None:
             return d
         base = d.detach() if detach_base else d
         is_h = (source == 1)
         return torch.where(is_h, base + self.d_mistake(zr_u, zr_v), d)
+
+    def residual_magnitude(self, zr_u, zr_v):
+        """Mean d_res over the batch -- the SHRINKAGE target, and the diagnostic.
+
+        As a loss term it is what identifies the base as the tight lower envelope rather than any
+        lower bound. As a readout, its value AT THE SF CONDITIONING POINT is the falsifiable check
+        on the whole design: if best play still needs a large residual, the base is not best play
+        and every human 'mistake' number measured against it is inflated by that amount."""
+        return self.d_mistake(zr_u, zr_v).mean()
 
 
 class PoleBank(nn.Module):
