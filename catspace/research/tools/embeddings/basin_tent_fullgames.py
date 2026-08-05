@@ -137,9 +137,46 @@ def human_games(records_dir, per_result, rng):
 
 
 def uniform_games(loader_out, n, rng):
-    """n games drawn UNIFORMLY from a stratified loader's pool, restoring population proportions."""
+    """n games drawn uniformly FROM WHATEVER POOL IT IS GIVEN.
+
+    It does NOT restore population proportions, which is what this docstring used to claim and what
+    the --n-uniform path below was relying on. human_games()/sf_games() return exactly `per_result`
+    games of EACH result, so their pool is balanced by construction and sampling it uniformly leaves
+    it balanced: measured, 300 games per bucket -> 36% draws, against a true lichess draw rate of
+    4.5% (v2 npz, 79,928 games: 39,438 White / 3,566 drawn / 36,924 Black). An 8x over-statement.
+    For a population-representative sample use population_games_human / population_games_sf.
+    """
     idx = rng.choice(len(loader_out), min(n, len(loader_out)), replace=False)
     return [loader_out[i] for i in idx]
+
+
+def population_games_human(records_dir, n, rng):
+    """n human games in their NATURAL proportions -- sampled within each shard, never bucketed by
+    result. Any quantity weighted by how often humans actually reach something (occupancy, expected
+    leaked score) needs this rather than the stratified loader."""
+    import pyarrow.parquet as pq
+    files = sorted(Path(records_dir).glob("records_*.parquet"))
+    per = max(1, -(-n // max(len(files), 1)))               # ceil, so every shard contributes
+    out = []
+    for shard in files:
+        d = pq.read_table(shard, columns=["game_id", "result", "moves", "termination"]).to_pydict()
+        m = len(d["game_id"])
+        for i in rng.choice(m, min(per, m), replace=False):
+            out.append((int(d["game_id"][i]), int(d["result"][i]),
+                        d["moves"][i].split(), d["termination"][i]))
+    idx = rng.choice(len(out), min(n, len(out)), replace=False)
+    return [out[i] for i in idx]
+
+
+def population_games_sf(tsv, n, rng):
+    """n SF-vs-SF games in their natural proportions (~73% drawn). See population_games_human."""
+    lines = [l for l in open(tsv) if l.strip()]
+    out = []
+    for i in rng.choice(len(lines), min(n, len(lines)), replace=False):
+        p = lines[i].rstrip("\n").split("\t")
+        if len(p) >= 3:
+            out.append((int(p[0]), int(p[1]), p[2].split(), ""))
+    return out
 
 
 def replay(ucis, max_ply):
