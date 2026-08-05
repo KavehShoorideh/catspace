@@ -317,10 +317,11 @@ def replot(d, args, plt):
     axes2[0].set_ylabel("ply  (start at the top)")
     axes2[0].set_ylim(args.max_ply, args.min_ply)
     fig2.colorbar(pc, ax=axes2, label="mean h = q_SF - q_human  (red = hazard)", shrink=0.85)
-    fig2.suptitle("Hazard on the tent -- blank cells are UNSUPPORTED "
-                  f"(< {args.min_count} positions), not zero.  The first two panels are dominated "
-                  "by the two fields' SCALE difference (h falls monotonically in q_human); the "
-                  "third removes it and shows what is left.")
+    fig2.suptitle("h across the tent -- blank cells are UNSUPPORTED "
+                  f"(< {args.min_count} positions), NOT zero.\n"
+                  "h falls monotonically in q_human, which is partly the two dynamics' genuine "
+                  "scale difference (slope 0.56); the material figure is where the "
+                  "position-dependent structure is legible.")
     fig2.savefig(f"{args.out_prefix}_tent.png", dpi=140, bbox_inches="tight")
 
     # ---- Figure 3: the material view, real beside its control ---------------------------------
