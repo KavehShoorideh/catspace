@@ -11168,6 +11168,16 @@ is at risk relative to what an engine would hold, and symmetrically, being behin
 for an engine than for a human.
 
 **Artifacts.** basin_hazard_cond_{offdiag,tent,material}.png (material figure draws the permuted
-control beside the real field on one colour scale), basin_hazard_cond_data.npz. The separate-field
-figures basin_hazard_{offdiag,tent,material}.png are SUPERSEDED and their material panel is the
-retracted artifact -- kept only so the retraction is checkable.
+control beside the real field on one colour scale), basin_hazard_cond_data.npz, and the control's
+basin_hazard_condperm_*.
+
+**DELETED (Kaveh's call, 2026-08-05).** Every figure from the retracted separate-field estimator:
+basin_hazard_{offdiag,tent,material}.png, basin_hazard_null_{offdiag,tent,material}.png,
+basin_hazard_areas.png and basin_hazard_areas_boards.html. The material panel of the first set was
+the artifact retracted in part 2, and the areas boards presented phi-cluster "hazard regions" that
+the localisability test showed do not exist (R^2 -0.024, 0.56% of variance between clusters). A
+wrong figure sitting next to a right one is a trap for whoever opens the directory next, and the
+retraction stays checkable without them: the per-position npz files are RETAINED
+(basin_hazard_data.npz, basin_hazard_null_data.npz), every retracted number in parts 2 and 3 is
+computed from those, and `basin_hazard_field.py --from-data` regenerates any of the deleted figures
+in seconds without re-running the ~12 min trunk pass.
