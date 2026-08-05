@@ -554,12 +554,39 @@ class PairSampler:
     """
 
     def __init__(self, tr: Trajectories, games: np.ndarray, seed: int = 0,
-                 cov: np.ndarray | None = None, repeats: tuple | None = None):
+                 cov: np.ndarray | None = None, repeats: tuple | None = None,
+                 min_ply: int = 0):
+        """`min_ply` DROPS the first plies of every game, and for the dynamics-conditioned
+        readouts it is not optional -- it must be 8.
+
+        THE SF POOL IS NOT SF BEFORE PLY 8 (Kaveh 2026-08-05: "the sf-sf games start at ply 8").
+        gen_field_positions_v2.py records the provenance: the SF-vs-SF games are `prefix + SF
+        continuation`, where the prefix is drawn from the top-100k most FREQUENT human ply-8
+        openings. So plies 0..7 of every SF game are HUMAN moves, and below ply 8 the two
+        populations differ in opening COMPOSITION (head of the human distribution vs all of it)
+        rather than in dynamics.
+
+        Two things break if this is ignored, and neither shows up as a bad loss:
+          * d_mistake becomes incoherent. Its whole definition is "extra distance relative to BEST
+            play", and the base would be fitted partly on human opening moves labelled SF -- so the
+            residual would measure human error against a partly-human reference and understate it.
+          * any human-vs-SF pole divergence below ply 8 is an opening-composition artifact. It
+            would read as "the dynamics differ here", which is exactly the finding we would want to
+            claim, arriving for free from a sampling detail.
+
+        The STRATA question is unaffected and correctly uses min_ply=0: it pools both populations,
+        never reads the source label, and compares within-game ply-matched reversals, so opening
+        composition cannot manufacture a material-ratchet differential.
+        """
         self.tr = tr
         self.rng = np.random.default_rng(seed)
-        self.games = np.asarray(games, np.int64)
-        self.start = tr.start[self.games]
-        self.length = tr.length[self.games].astype(np.int64)
+        self.min_ply = int(min_ply)
+        games = np.asarray(games, np.int64)
+        if self.min_ply:                      # a game must still have room for a triple after the cut
+            games = games[tr.length[games] > self.min_ply + 2]
+        self.games = games
+        self.start = tr.start[self.games] + self.min_ply
+        self.length = tr.length[self.games].astype(np.int64) - self.min_ply
         w = np.maximum(self.length - 1, 0).astype(np.float64)   # a 1-ply game has no forward pair
         self.cum = np.cumsum(w)
         self.total = float(self.cum[-1]) if len(self.cum) else 0.0
