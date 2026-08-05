@@ -78,6 +78,20 @@ SF_BASE, HUMAN_RESIDUAL = 0, 1
 POLE_SRC = {SF: SF_BASE, HUMAN: HUMAN_RESIDUAL}
 N_POLE_SOURCES = 2
 
+# STRENGTH SCALE for the conditioning vector. Human rows carry the SIDE-TO-MOVE's real Elo; SF
+# rows carry SF_ELO. That constant is a modelling choice, stated rather than buried: full-strength
+# deterministic Stockfish is far above the human range, and 3500 places it ~4 sigma above the
+# lichess mean on the scale below -- high enough that "best play" sits outside the human
+# distribution, low enough not to blow up the normalised feature. The residual is what has to
+# explain the gap, so this constant sets where the floor is ANCHORED, not how big the gap is.
+SF_ELO = 3500
+ELO_MEAN, ELO_SCALE = 1500.0, 500.0        # standardise: (elo - 1500) / 500
+
+
+def normalise_elo(elo):
+    """Elo -> the strength coordinate of the conditioning vector."""
+    return (np.asarray(elo, np.float32) - ELO_MEAN) / ELO_SCALE
+
 # ---------------------------------------------------------------------------------------------
 # TERMINAL TAXONOMY (Kaveh 2026-08-05: subsumption poles "for all the win and mate types, except
 # for time (flagging)").
@@ -145,7 +159,8 @@ TERM_RADIUS = np.array([0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], np.float32
 # six-instance class dominate. See Trajectories.terminal_weights().
 TERM_WEIGHT_CAP = 8.0
 
-_CACHE_KEYS = ("tok", "glob", "start", "length", "game_id", "source", "result", "term", "mat")
+_CACHE_KEYS = ("tok", "glob", "start", "length", "game_id", "source", "result", "elo",
+               "term", "mat")
 
 
 def classify_terminal(board, flagged: bool):
@@ -266,11 +281,12 @@ def load_human_games(n, seed, records=None, max_plies=400):
     for f in files:
         m = pq.read_metadata(f).num_rows
         take = np.sort(rng.choice(m, size=min(per, m), replace=False))
-        d = pq.read_table(f, columns=["game_id", "result", "moves", "termination"]).to_pydict()
+        d = pq.read_table(f, columns=["game_id", "result", "moves", "termination", "white_elo", "black_elo"]).to_pydict()
         for r in take:
             out.append((int(d["game_id"][r]), int(d["result"][r]),
                         d["moves"][r].split()[:max_plies],
-                        d["termination"][r] == "Time forfeit"))
+                        d["termination"][r] == "Time forfeit",
+                        (int(d["white_elo"][r]), int(d["black_elo"][r]))))
         if len(out) >= n:
             break
     return out[:n]
@@ -288,7 +304,7 @@ def load_sf_games(n, seed, tsv=None, max_plies=400):
     for ln in lines:
         p = ln.rstrip("\n").split("\t")
         if len(p) >= 3:
-            out.append((int(p[0]), int(p[1]), p[2].split()[:max_plies], False))
+            out.append((int(p[0]), int(p[1]), p[2].split()[:max_plies], False, (SF_ELO, SF_ELO)))
     return out
 
 
@@ -322,6 +338,9 @@ class Trajectories:
     game_id: np.ndarray      # (G,)   int64
     source: np.ndarray       # (G,)   int8    HUMAN / SF
     result: np.ndarray       # (G,)   int8
+    # (G,2) int16 [white_elo, black_elo]. Real ratings for human games, SF_ELO for engine games --
+    # this is what makes the conditioning "this 1400 vs this 2200" instead of a human/engine flag.
+    elo: np.ndarray
     term: np.ndarray         # (G,)   int8    TERMINALS index, or TERM_TIME / TERM_NONE
     mat: np.ndarray          # (G,12) uint8   piece counts of the FINAL position (endgame type)
     # (N,889) uint8 bit-packed lc0 112-plane inputs, or None when the token path is in use.
@@ -344,6 +363,16 @@ class Trajectories:
         """(N,) int32 ply index within its game (0 = initial position)."""
         return (np.arange(self.n_positions, dtype=np.int64)
                 - np.repeat(self.start, self.length)).astype(np.int32)
+
+    def elo_of_row(self):
+        """(N,) float32 Elo of the SIDE TO MOVE at each position.
+
+        Side-to-move, not an average: the conditioning asks "how likely is THIS player to err from
+        here", and the player on move is the one about to make the mistake. glob[:,0] is the turn
+        flag (1 = white)."""
+        per_game = np.repeat(self.elo, self.length, axis=0)          # (N,2)
+        white_to_move = self.glob[:, 0].astype(bool)
+        return np.where(white_to_move, per_game[:, 0], per_game[:, 1]).astype(np.float32)
 
     def piece_count(self):
         """(N,) int16 total pieces. ANALYSIS-TIME LABEL ONLY -- never a model input. Straight from
@@ -480,7 +509,8 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
     readout exists to measure. Throwing it away to save a solved-by-tablebase region would discard
     the most legible weakness data in the corpus.
     """
-    key = hashlib.blake2b(f"{n_human}|{n_sf}|{seed}|{max_plies}|{tb_pieces}|{int(with_planes)}"
+    # v2 in the key: the schema gained per-game Elo, so a v1 cache would load without it.
+    key = hashlib.blake2b(f"v2|{n_human}|{n_sf}|{seed}|{max_plies}|{tb_pieces}|{int(with_planes)}"
                           .encode(), digest_size=8).hexdigest()
     cdir = paths.derived(f"cache/traj_{key}")
     if cache and os.path.exists(os.path.join(cdir, "tok.npy")):
@@ -499,14 +529,14 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
 
     workers = workers or max(1, (os.cpu_count() or 4) - 2)
     payload = [(ucis, max_plies, tb_pieces, flg, res, src == SF, with_planes)
-               for (_, res, ucis, flg), src in games]
+               for (_, res, ucis, flg, _el), src in games]
     with ProcessPoolExecutor(max_workers=workers) as ex:
         done = list(ex.map(_replay_one, payload, chunksize=64))
 
     toks, globs, starts, lens, gids, srcs, ress, terms, mats = [], [], [], [], [], [], [], [], []
-    pks = []
+    pks, elos = [], []
     n = 0
-    for ((gid, res, _, _), src), r in zip(games, done):
+    for ((gid, res, _, _, el), src), r in zip(games, done):
         if r is None:
             continue
         tk, gb, term, mat, pk = r
@@ -514,14 +544,15 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
         if pk is not None:
             pks.append(pk)
         starts.append(n); lens.append(len(tk)); n += len(tk)
-        gids.append(gid); srcs.append(src); ress.append(res)
+        gids.append(gid); srcs.append(src); ress.append(res); elos.append(el)
         terms.append(term); mats.append(mat)
 
     tr = Trajectories(
         tok=np.concatenate(toks), glob=np.concatenate(globs),
         start=np.asarray(starts, np.int64), length=np.asarray(lens, np.int32),
         game_id=np.asarray(gids, np.int64), source=np.asarray(srcs, np.int8),
-        result=np.asarray(ress, np.int8), term=np.asarray(terms, np.int8),
+        result=np.asarray(ress, np.int8), elo=np.asarray(elos, np.int16),
+        term=np.asarray(terms, np.int8),
         mat=np.stack(mats).astype(np.uint8),
         planes=np.concatenate(pks) if pks else None)
     if verbose:

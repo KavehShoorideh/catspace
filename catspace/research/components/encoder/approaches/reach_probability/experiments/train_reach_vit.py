@@ -106,20 +106,21 @@ class Phase:
 def row_conditioning(tr, d_cond):
     """(N, d_cond) float32 strength+style vector per POSITION.
 
-    Coordinate 0 is STRENGTH, currently the population indicator (SF = 1.0 best play, human = 0.0).
+    Coordinate 0 is STRENGTH: the SIDE-TO-MOVE's REAL Elo, standardised. Human rows carry the
+    actual lichess rating (measured range 1016..2318, median 1596); SF rows carry SF_ELO. Not a
+    population flag -- that is what makes this "this 1400 vs this 2200" rather than "human vs
+    engine", and it is what lets the same query ask about a specific opponent.
+
+    Side-to-move, not a game average: the conditioning asks how likely THIS player is to err from
+    here, and the player on move is the one about to make the mistake.
+
     The remaining coordinates are reserved for the per-player STYLE z and are zero for now, so the
     conditioning is honest about what it actually knows rather than pretending to a style it has
-    not been given.
-
-    UPGRADE PATH, cheap and worth doing: the human parquet carries white_elo/black_elo, so strength
-    can become a real continuous rating instead of a binary flag with one extra column in the
-    trajectory store. That is what turns "human vs engine" into "this 1400 vs this 2200", which is
-    the whole point of conditioning rather than branching."""
+    not been given."""
     if not d_cond:
         return None
-    src_of_game = (tr.source == T.SF).astype(np.float32)     # 1.0 = SF (best play)
     c = np.zeros((tr.n_positions, d_cond), np.float32)
-    c[:, 0] = np.repeat(src_of_game, tr.length)
+    c[:, 0] = T.normalise_elo(tr.elo_of_row())               # REAL rating of the side to move
     return c
 
 
@@ -138,7 +139,7 @@ def make_batcher(tr, dev, cond=None):
         z_a = net.proj_a(phi)
         if net.dual:
             c = torch.from_numpy(cond[uniq]).to(dev) if cond is not None else None
-            z_b, z_r = net.qhead.embed(phi, c)
+            z_b, z_r = net.qhead.embed(phi, c)      # (z_base, z_conditioned)
         else:
             z_b, z_r = net.proj_b(phi), None
         z_t = net.encode_target(tok, glob)
@@ -168,13 +169,24 @@ def main():
     ap.add_argument("--dual", action="store_true",
                     help="best-play FLOOR + strength/style conditioned residual. Off = the legacy "
                          "single-IQE arm B, kept loadable for checkpoints already on disk")
-    ap.add_argument("--d-cond", type=int, default=8,
-                    help="conditioning width (coord 0 = strength; rest reserved for style z)")
+    ap.add_argument("--d-cond", type=int, default=1,
+                    help="conditioning width. 1 = ELO ONLY (Kaveh 2026-08-05: 'lets leave the "
+                         "style flavor for later where we have lots of data. elo-conditioning is "
+                         "fine'). Widen it when a per-player style z exists to put in coords 1+")
+    ap.add_argument("--init-from", default=None,
+                    help="STAGE 2: warm-start from the unconditional pooled checkpoint. The legacy "
+                         "arm-B weights map exactly onto the conditioned head (proj_b -> proj_base, "
+                         "iqe -> iqe), so part 1 is reused rather than redone")
+    ap.add_argument("--freeze-base", action="store_true",
+                    help="STAGE 2: freeze encoder + proj_base + iqe so ONLY the Elo delta learns. "
+                         "This is what makes the fine-tune a clean residual on a fixed field -- "
+                         "without it the base drifts and 'deviation from the pooled field' stops "
+                         "meaning anything measured against part 1")
     ap.add_argument("--w-res-shrink", type=float, default=0.1,
-                    help="shrinkage on residual magnitude. NOT optional in --dual: it is the only "
-                         "thing identifying the base as the TIGHT lower envelope rather than any "
-                         "lower bound, and at 0 the base drifts toward zero with the residual "
-                         "carrying everything")
+                    help="shrinkage on ||delta||, the conditioned displacement. Keeps the pooled "
+                         "base carrying everything common so a population deviates only where it "
+                         "really differs. Expresses NO preference about SIGN: moving closer than "
+                         "the pooled field is as cheap as moving further")
     ap.add_argument("--min-ply", type=int, default=0,
                     help="drop the first plies of every game. MUST be 8 for dynamics-conditioned "
                          "runs: SF games are human ply-8 opening prefixes + SF continuation, so "
@@ -255,6 +267,32 @@ def main():
                 "dual": bool(args.dual), "d_cond": args.d_cond if args.dual else 0,
                 "min_ply": args.min_ply}
 
+    if args.init_from:
+        pay = torch.load(args.init_from, map_location=dev, weights_only=False)
+        sd = pay["state_dict"]
+        # Map the unconditional (legacy) arm-B weights onto the conditioned head. proj_delta is NOT
+        # in the source and stays zero-init, so the fine-tune starts EXACTLY at the pooled field.
+        remap, dropped = {}, []
+        for k, v in sd.items():
+            if k.startswith("proj_b."):
+                remap["qhead.proj_base." + k.split(".", 1)[1]] = v
+            elif k.startswith("iqe."):
+                remap["qhead.iqe." + k.split(".", 1)[1]] = v
+            else:
+                remap[k] = v
+        missing, unexpected = net.load_state_dict(remap, strict=False)
+        got = [m for m in missing if not m.startswith("qhead.proj_delta")]
+        print(f"[stage2] warm-started from {args.init_from} step {pay.get('step')} | "
+              f"delta stays zero-init | unmapped-missing {len(got)} | unexpected {len(unexpected)}",
+              flush=True)
+        if args.freeze_base:
+            for mod in (net.enc, net.t_enc, net.proj_a, net.qhead.proj_base, net.qhead.iqe):
+                for q in mod.parameters():
+                    q.requires_grad_(False)
+            n_tr = sum(q.numel() for q in net.parameters() if q.requires_grad)
+            print(f"[stage2] base FROZEN -- {n_tr:,} trainable params (the Elo delta only)",
+                  flush=True)
+
     if args.random_init:
         from catspace.research.tools.training_infra.train.scaffold import save_torch_ckpt
         p = save_torch_ckpt(net, args.out + "_randinit", 0, args=args, extra={"cfg": cfg_dict})
@@ -281,7 +319,9 @@ def main():
         with ph("encode"):
             phi, zA, zB, zR, zT, idx = encode(model, rows)
         gi, gj, gk, gx, gra, grb = idx
-        DQ = (lambda u, v: model.distance_cond(zB[u], zB[v], zR[u], zR[v])) if model.dual \
+        # In dual mode zR is the CONDITIONED embedding (z_base + delta), so every distance is the
+        # player-tuned quasimetric; zB stays available as the pooled reference for the readout.
+        DQ = (lambda u, v: model.qhead.distance(zR[u], zR[v])) if model.dual \
             else (lambda u, v: model.distance(zB[u], zB[v]))
         gap_ij = torch.from_numpy((j - i).astype(np.float32)).to(dev)
         gap_jk = torch.from_numpy((k - j).astype(np.float32)).to(dev)
@@ -351,8 +391,19 @@ def main():
         # magnitude makes it the TIGHT lower envelope: explain what you can with the shared base,
         # spend residual only where populations genuinely differ. Without this the whole
         # best-play/mistake decomposition is unidentified.
-        l_shrink = model.qhead.residual_magnitude(zR[gi], zR[gj]) if model.dual \
-            else torch.zeros((), device=dev)
+        # SHRINKAGE ON ||delta||. The pooled base should carry everything common; a population
+        # deviates only where it genuinely differs. Crucially this expresses NO PREFERENCE ABOUT
+        # SIGN -- a stronger player moving CLOSER than the pooled field is exactly as cheap as a
+        # weaker one moving further. The earlier Elo-anchored-to-zero term got this wrong: it
+        # assumed the base was best play and pushed the top of the rating scale toward zero
+        # residual, when a 3500 should sit BELOW the pooled field.
+        l_shrink = (zR - zB).norm(dim=-1).mean() if model.dual else torch.zeros((), device=dev)
+        # ELO-ANCHORED shrinkage: re-embed the SAME positions at the TOP of the strength scale and
+        # push their residual to zero. Best play needs no correction, by definition -- and since
+        # human rows simultaneously require a positive residual, the head must express that
+        # difference through the strength coordinate. Uniform shrinkage alone cannot do this: it
+        # pushes every population's residual down equally and leaves the conditioning unused.
+        l_res_elo = torch.zeros((), device=dev)
         l_var = vicreg_variance(phi) + vicreg_variance(zA) + vicreg_variance(zB)
         l_cov = vicreg_covariance(phi) + vicreg_covariance(zA) + vicreg_covariance(zB)
         l_l1 = model.l1_penalty()
@@ -431,12 +482,18 @@ def main():
             # rather than masking.
             n_probe = min(256, len(phi))
             pp = phi[:n_probe]
-            for tag, val_c in (("sf", 1.0), ("human", 0.0)):
+            zb_p, _ = model.qhead.embed(pp)
+            for tag, elo in (("sf", T.SF_ELO), ("2200", 2200), ("1400", 1400)):
                 c = torch.zeros(n_probe, model.d_cond, device=pp.device)
-                c[:, 0] = val_c
-                _, zr = model.qhead.embed(pp, c)
-                g[f"d_res_{tag}"] = float(model.qhead.d_mistake(zr, zr.flip(0)).mean())
-            g["res_gap"] = g["d_res_human"] - g["d_res_sf"]
+                c[:, 0] = float(T.normalise_elo(elo))
+                _, zc = model.qhead.embed(pp, c)
+                # SIGNED: d(.|elo) - d_pooled. Negative means this player is CLOSER than the
+                # pooled field, which is what a 3500 should look like.
+                g[f"d_res_{tag}"] = float(model.qhead.residual(
+                    zb_p, zb_p.flip(0), zc, zc.flip(0)).mean())
+            # THE monotonicity the prior predicts: weaker players should carry a LARGER residual.
+            g["res_gap"] = g["d_res_1400"] - g["d_res_sf"]
+            g["res_monotone"] = float(g["d_res_1400"] >= g["d_res_2200"] >= g["d_res_sf"])
         # Sparsity as an EXACT count, which only means anything because prox_l1 makes true zeros.
         g["l1_support"] = int(model.input_support().sum())
         # DIRECT ratchet readout, free here: the observed forward distance against its own reversal.

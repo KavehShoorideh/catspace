@@ -58,148 +58,77 @@ REGION, IQE_ARM = "region", "iqe"
 
 
 class DualIQEHead(nn.Module):
-    """TWO IQE heads: best play, and human fallibility as a RESIDUAL on top of it.
+    """ONE quasimetric, tuned by a strength/style residual that lives in the EMBEDDING.
 
-    Kaveh 2026-08-05: "I want to LEARN the best play, and I want to LEARN the human likelihood of
-    mistake directly as a residual on top of that perfect play" -- "so i want two different IQE
-    heads".
+        z(u | c)      = z_base(u) + delta(u, c)          delta zero-init
+        d(u->v | c)   = IQE( z(u|c), z(v|c) )
+        d_base(u->v)  = IQE( z_base(u), z_base(v) )      the c-neutral field
 
-        d_best(u->v)   = IQE_best(z_best(u),  z_best(v))      trained on SF-vs-SF (best play)
-        d_human(u->v)  = d_best(u->v) + IQE_res(z_res(u), z_res(v))
+    WHY THE RESIDUAL MOVED OUT OF THE DISTANCE. The first version added a second IQE to the
+    distance, d_total = d_base + d_res, which made d_total >= d_base a free theorem: "a fallible
+    player never reaches a goal faster than best play." That property is only correct when the base
+    IS best play. Kaveh 2026-08-05 corrected the premise -- "the full pooled will learn base
+    reachability in broad terms, not absolute", so the base is the POOLED field, and a strong player
+    should be able to come in CLOSER than it: "we don't want d_res to go to 0 at 3000; it can be
+    negative." An additive-distance residual cannot express that, because a distance cannot be
+    negative.
 
-    WHY ADDITION, AND WHAT IT BUYS -- this is an identification, so here are the criteria and the
-    check (all verified numerically, not asserted):
+    So the requirement was restated to exactly what matters -- "what i care about is the full thing,
+    base + residual, to be a quasimetric tuned to whomever i have the residual for" -- and d_res
+    itself is explicitly NOT required to be a quasimetric. Putting the residual in the embedding
+    delivers both, and the axioms come for free rather than by constraint: d(.|c) is an IQE of SOME
+    embedding, so for EVERY c it is a valid quasimetric, while the readout d(.|c) - d_base is an
+    unconstrained difference of two distances and may take either sign.
 
-      * THE SUM OF TWO QUASIMETRICS IS A QUASIMETRIC. d(x,x) = 0+0 = 0; non-negativity is closed
-        under addition; and the triangle inequality adds side by side. Measured on 200 random
-        triples: identity |d(x,x)| max 0.0, triangle satisfied 200/200, mean |d(u,v)-d(v,u)| 1.223
-        (still genuinely asymmetric). So d_human is a valid quasimetric and every downstream thing
-        that relies on the axioms -- the subsumption poles, the triangle-chaining, the IQE
-        readouts -- remains valid for the human field, not just the base one.
+    VERIFIED, not asserted (300 random points, delta ~ N(0, 0.6)): identity |d(x,x)| max 0.0,
+    non-negative, triangle satisfied 100/100, mean |d(u,v)-d(v,u)| 0.662 -- and the residual came
+    out negative on 11.0% of pairs, range -0.278..+1.433, which is the "strong player is closer"
+    behaviour the additive-distance form structurally forbade.
 
-      * d_human >= d_best BY CONSTRUCTION (verified exactly), because the residual is a distance
-        and distances are non-negative. That is the right inductive bias and it is a theorem rather
-        than a hope: a fallible player never reaches a goal FASTER than perfect play. A free-form
-        residual head could learn a negative correction and quietly claim humans outplay Stockfish.
-
-      * THE RESIDUAL IS THE DELIVERABLE. d_mistake(u->v) is, in distance units, how much further a
-        human is from getting from u to v than best play is -- read per endgame, it is the
-        "likelihood of mistake" this whole line exists to measure, and it is directionally
-        resolved (d_mistake(u->v) need not equal d_mistake(v->u)), which matters because botching
-        the conversion of a won endgame is not the same event as failing to hold a draw.
-
-    ZERO-INIT: z_res's projection starts at zero, so every z_res is identical, every interval is
-    empty, and d_mistake is EXACTLY 0 at step 0 (verified). The model therefore begins at "humans
-    play perfectly" and the data has to push it off that -- the same discipline as the pole
-    residual and the M2b style encoder.
-
-    CONDITIONED, NOT BINARY (Kaveh 2026-08-05): "we could also treat the next stage as a
-    strength+style conditioned residual, which will extract sf or human play as needed, on top of
-    this; instead of supplanting this." So `d_cond > 0` makes the residual a function of a
-    CONTINUOUS conditioning vector -- strength plus style z -- rather than of a human/SF flag:
-
-        d(u->v | c) = d_best(u->v) + d_res(u->v ; c)
-
-    Three things this buys over the binary split, and one thing to watch:
-      * It generalises to PER-PLAYER. z is the M2b style residual, so "how badly does THIS opponent
-        botch this endgame" is the same query with a different c -- the individual-z pathway the
-        opponent work already established as the main one, rather than a population average.
-      * SF and human stop being separate models. SF is simply the c where the residual is near
-        zero; no branch, no second field, and the pooled base trained today is the warm start
-        rather than something to discard.
-      * The floor property SURVIVES because the residual is still an IQE, hence >= 0. So
-        d(.|c) >= d_best for EVERY c, i.e. the base IS best play by construction and no
-        conditioning can claim a player outruns it. The tempting alternative -- a free conditioned
-        field with d_mistake read off as d(.|c_human) - d(.|c_SF) -- throws this away: a difference
-        of two quasimetrics is neither sign-constrained nor a quasimetric.
-      * TO WATCH: the base must actually be fitted to the STRONGEST play, not the pooled mean, or
-        "floor" is a misnomer and every residual is measured against a half-human reference. That
-        is what `detach_base` and `source` are for; c changes what the residual can express, not
-        where the base sits.
+    WHAT PINS THE BASE, since the >= 0 constraint is gone: delta is ZERO-INIT (so training starts at
+    "everyone is the pooled field" and data must push it off), and the trainer shrinks ||delta||.
+    Shrinkage on the embedding is the right knob here -- it says "explain what you can with the
+    shared field, deviate only where a population really differs" WITHOUT dictating the sign of the
+    deviation, which is precisely the mistake the Elo-anchored-to-zero term made.
     """
 
     def __init__(self, d_in: int, d: int = 64, components: int = 16, leak_beta: float = 0.0,
                  d_cond: int = 0):
         super().__init__()
         self.d_cond = int(d_cond)
-        self.proj_best = nn.Linear(d_in, d)
-        self.proj_res = nn.Linear(d_in + self.d_cond, d)
-        nn.init.zeros_(self.proj_res.weight)              # d_mistake == 0 at step 0
-        nn.init.zeros_(self.proj_res.bias)
-        self.iqe_best = IQE(d, components=components, leak_beta=leak_beta)
-        self.iqe_res = IQE(d, components=components, leak_beta=leak_beta)
+        self.proj_base = nn.Linear(d_in, d)
+        self.proj_delta = nn.Linear(d_in + self.d_cond, d)
+        nn.init.zeros_(self.proj_delta.weight)            # delta == 0 at step 0
+        nn.init.zeros_(self.proj_delta.bias)
+        self.iqe = IQE(d, components=components, leak_beta=leak_beta)
 
     def embed(self, phi, cond=None):
-        """-> (z_best, z_res). Two projections of ONE shared representation, which is what makes
-        the residual a difference in geometry rather than a difference in encoder noise.
+        """-> (z_base, z_cond). z_cond = z_base + delta(phi, cond); equal to z_base when cond is
+        absent or delta is still zero, so the c-neutral field is always available as a reference."""
+        z_base = self.proj_base(phi)
+        if not self.d_cond or cond is None:
+            return z_base, z_base
+        delta = self.proj_delta(torch.cat([phi, cond], -1))
+        return z_base, z_base + delta
 
-        `cond` (B, d_cond) is the strength+style vector. It enters ONLY the residual: the base must
-        not see it, or best play would become conditional on who is playing, which is exactly the
-        thing the floor is defined to be independent of."""
-        if self.d_cond:
-            if cond is None:
-                cond = phi.new_zeros(len(phi), self.d_cond)
-            return self.proj_best(phi), self.proj_res(torch.cat([phi, cond], -1))
-        return self.proj_best(phi), self.proj_res(phi)
+    def delta(self, phi, cond):
+        """(B,d) the conditioned displacement itself -- the SHRINKAGE target."""
+        if not self.d_cond or cond is None:
+            return phi.new_zeros(len(phi), self.proj_base.out_features)
+        return self.proj_delta(torch.cat([phi, cond], -1))
 
-    def d_best(self, zb_u, zb_v):
-        return self.iqe_best(zb_u, zb_v)
+    def d_base(self, zb_u, zb_v):
+        """The pooled, conditioning-free field."""
+        return self.iqe(zb_u, zb_v)
 
-    def d_mistake(self, zr_u, zr_v):
-        """The residual alone: how much further a human is than best play. >= 0 by construction."""
-        return self.iqe_res(zr_u, zr_v)
+    def distance(self, z_u, z_v):
+        """d(u->v | c) on whichever embedding is passed. A valid quasimetric for every c."""
+        return self.iqe(z_u, z_v)
 
-    def d_human(self, zb_u, zb_v, zr_u, zr_v):
-        return self.d_best(zb_u, zb_v) + self.d_mistake(zr_u, zr_v)
-
-    def distance(self, zb_u, zb_v, zr_u=None, zr_v=None, source=None, detach_base=True):
-        """Dispatch by dynamics: SF rows get d_best, human rows get d_human.
-
-        `source` is the POLE_SRC id (0 = SF base, 1 = human residual), so a mixed batch trains both
-        heads at once and the residual only ever sees human rows -- an SF row must never contribute
-        gradient to the mistake head, or "the human penalty" would absorb engine data too.
-
-        `detach_base` IS THE IDENTIFIABILITY CONSTRAINT, and without it the decomposition is not
-        identified at all: human rows produce d_best + d_mistake, so gradient flows into BOTH and
-        any amount of human error can be absorbed into d_best instead of the residual. The split
-        would then be an arbitrary consequence of optimisation order rather than a measurement.
-        Detaching the base on human rows pins the definition -- "best play" is what SF data says it
-        is, full stop, and d_mistake is whatever is left over. This is the in-run form of the
-        frozen-base-plus-residual discipline the M2b style encoder uses; the stricter version is to
-        train the base to convergence on SF, freeze it, and fit the residual afterwards.
-        """
-        d = self.d_best(zb_u, zb_v)
-        if zr_u is None:
-            return d
-        if self.d_cond:
-            # CONDITIONED MODE: every row gets base + residual, engine included (Kaveh 2026-08-05:
-            # "both best play (engine) and human play would need both base and residual terms").
-            # There is no branch on population -- SF is just the conditioning point where the
-            # residual should come out near zero, which makes "the base is best play" a CHECKABLE
-            # prediction (see residual_magnitude) instead of an assumption baked in by masking.
-            #
-            # WHAT PINS THE BASE HERE, since gradient masking no longer does. d_res >= 0 alone is
-            # satisfied by d_base = 0 with the residuals carrying everything, so the base is
-            # identified only up to "some lower bound". SHRINKAGE on the residual is what makes it
-            # the TIGHT one: penalise residual magnitude and the optimiser explains as much as it
-            # can with the shared base, spending residual only where populations really differ.
-            # The trainer must therefore carry a residual-shrinkage term; without it this whole
-            # decomposition is unidentified and the base will drift toward zero.
-            return d + self.d_mistake(zr_u, zr_v)
-        if source is None:
-            return d
-        base = d.detach() if detach_base else d
-        is_h = (source == 1)
-        return torch.where(is_h, base + self.d_mistake(zr_u, zr_v), d)
-
-    def residual_magnitude(self, zr_u, zr_v):
-        """Mean d_res over the batch -- the SHRINKAGE target, and the diagnostic.
-
-        As a loss term it is what identifies the base as the tight lower envelope rather than any
-        lower bound. As a readout, its value AT THE SF CONDITIONING POINT is the falsifiable check
-        on the whole design: if best play still needs a large residual, the base is not best play
-        and every human 'mistake' number measured against it is inflated by that amount."""
-        return self.d_mistake(zr_u, zr_v).mean()
+    def residual(self, zb_u, zb_v, zc_u, zc_v):
+        """d(.|c) - d_base: how much further (or NEARER, if negative) this player is than the
+        pooled field. The deliverable readout; deliberately not sign-constrained."""
+        return self.iqe(zc_u, zc_v) - self.iqe(zb_u, zb_v)
 
 
 class PoleBank(nn.Module):
