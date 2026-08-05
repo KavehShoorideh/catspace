@@ -46,6 +46,11 @@ def main():
     ap.add_argument("--max-ply", type=int, default=110)
     ap.add_argument("--beams", type=int, default=420, help="individual game paths drawn per panel")
     ap.add_argument("--zoom-ply", type=int, default=20, help="upper ply for the zoomed panel")
+    ap.add_argument("--replay-cap", type=int, default=120,
+                    help="the ply cap the cached replays used. A path reaching it is a game STILL "
+                         "IN PROGRESS, not a game that ended -- 45%% of SF games hit it (median SF "
+                         "length is 127 plies). Conflating the two puts truncated paths in the "
+                         "arrival distribution at whatever deflection they happened to be at.")
     ap.add_argument("--out-prefix", default="artifacts/experiments/basin_crt")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -105,23 +110,33 @@ def main():
         azm.set_yticklabels([])
         azm.set_title(f"zoom: plies 0-{args.zoom_ply}", color="#9a9aa8", fontsize=10, loc="left")
 
-        landed = np.array([xx[pp <= args.max_ply][-1] for xx, pp in picked
-                           if (pp <= args.max_ply).sum() >= 4])
+        ended, cut = [], []
+        for xx, pp in picked:
+            k = pp <= args.max_ply
+            if k.sum() < 4:
+                continue
+            (cut if pp[-1] > args.max_ply else ended).append(xx[k][-1])
+        ended, cut = np.array(ended), np.array(cut)
         sc = fig.add_subplot(gs[row, 2])
-        sc.hist(landed, bins=np.linspace(-1, 1, 61), orientation="horizontal",
-                color="#8fd8ff", alpha=.85)
+        bins = np.linspace(-1, 1, 61)
+        sc.hist(ended, bins=bins, orientation="horizontal", color="#8fd8ff", alpha=.9,
+                label=f"ended ({len(ended)})")
+        sc.hist(cut, bins=bins, orientation="horizontal", color="#6b6b7a", alpha=.7,
+                label=f"still going ({len(cut)})")
+        sc.legend(fontsize=6.5, frameon=False, loc="lower right", labelcolor="#9a9aa8")
         sc.set_ylim(-1.05, 1.05); sc.set_yticks([]); sc.set_xticks([])
         sc.set_title("where they\narrive", fontsize=9, color="#9a9aa8")
         for yy, lab, cc in [(0.93, "White wins", "#7CFF9E"), (0.0, "draw", "#c8c8d4"),
                             (-0.93, "Black wins", "#FF8A8A")]:
             sc.text(sc.get_xlim()[1]*0.98, yy, lab, fontsize=8, color=cc, ha="right", va="center")
-        print(f"  {name}: {len(picked)} games | median |deflection| on arrival "
-              f"{np.median(np.abs(landed)):.3f} | at ply {args.zoom_ply}: "
+        print(f"  {name}: {len(ended)} ended / {len(cut)} still going | median |deflection| "
+              f"at a GENUINE end {np.median(np.abs(ended)):.3f} | at ply {args.zoom_ply}: "
               f"{np.median(np.abs(xs_all[(ps_all >= args.zoom_ply-1) & (ps_all <= args.zoom_ply+1)])):.3f}",
               flush=True)
 
-    fig.suptitle("Deflection against ply: games leave the start position and separate three ways",
-                 color="#e8e8ee", fontsize=13)
+    fig.suptitle("Deflection against ply: games leave the start position and separate three ways\n"
+                 "arrival panel separates games that ENDED from those still in progress at the cap",
+                 color="#e8e8ee", fontsize=11.5)
     fig.savefig(f"{args.out_prefix}.png", dpi=150, facecolor="#0b0b10", bbox_inches="tight")
     print(f"wrote {args.out_prefix}.png [{time.time()-t0:.0f}s]")
 
