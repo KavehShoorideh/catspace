@@ -179,13 +179,24 @@ def _replay_one(args):
     Runs in a worker process, so chess/tokenize are imported inside (cloudpickle serialises
     referenced globals by value; see scaffold.py's note on the same hazard).
     """
-    ucis, max_plies, tb_pieces, flagged, result, is_sf = args
+    ucis, max_plies, tb_pieces, flagged, result, is_sf, with_planes = args
     import chess
     from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
-    b = chess.Board()
+    if with_planes:
+        # LczeroBoard subclasses chess.Board, so tokenize() is unaffected; it just also knows how
+        # to emit the lc0 112-plane input. Planes are produced in THIS pass rather than a second
+        # one so they cannot drift out of alignment with the token rows -- a second replay would
+        # have to reproduce every drop/truncation decision exactly to stay row-aligned.
+        from lczerolens import LczeroBoard
+        b = LczeroBoard()
+    else:
+        b = chess.Board()
+    planes = []
     toks, globs = [], []
     t, g = tokenize(b)
     toks.append(t); globs.append(g)                     # ply 0 = the initial position
+    if with_planes:
+        planes.append(b.to_input_tensor())
     truncated = len(ucis) > max_plies                    # the real ending is past our cut
     for u in ucis[:max_plies]:
         try:
@@ -195,6 +206,8 @@ def _replay_one(args):
             break                                        # malformed move list: keep the prefix
         t, g = tokenize(b)
         toks.append(t); globs.append(g)
+        if with_planes:
+            planes.append(b.to_input_tensor())
         # OPTIONAL tablebase handoff, DEFAULT OFF (tb_pieces=0). Kaveh 2026-08-05 first asked to
         # stop at the 5-piece boundary ("we don't need training data for <=5 pieces") and then
         # reversed it -- "carry it to the end" -- so games run to their true end. The switch is
@@ -224,8 +237,14 @@ def _replay_one(args):
     # chess library or plane decoding is involved.
     last = toks[-1]
     mat = np.array([(last == p).sum() for p in range(1, 13)], np.uint8)
+    pk = None
+    if with_planes:
+        from catspace.research.components.encoder.approaches.reach_probability.src.lc0_prefix import (
+            pack_planes)
+        import torch
+        pk = pack_planes(torch.stack(planes))
     return (np.stack(toks).astype(np.uint8), np.stack(globs).astype(np.uint8),
-            np.int8(term), mat)
+            np.int8(term), mat, pk)
 
 
 def load_human_games(n, seed, records=None, max_plies=400):
@@ -305,6 +324,10 @@ class Trajectories:
     result: np.ndarray       # (G,)   int8
     term: np.ndarray         # (G,)   int8    TERMINALS index, or TERM_TIME / TERM_NONE
     mat: np.ndarray          # (G,12) uint8   piece counts of the FINAL position (endgame type)
+    # (N,889) uint8 bit-packed lc0 112-plane inputs, or None when the token path is in use.
+    # 889 B/position against 7168 raw (8.06x); see lc0_prefix.pack_planes for why exactly one
+    # plane (rule50) needs a byte and the other 111 pack to bits.
+    planes: np.ndarray | None = None
 
     def __len__(self):
         return len(self.start)
@@ -446,7 +469,8 @@ class Trajectories:
 
 
 def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
-          records=None, tsv=None, max_plies=400, tb_pieces=0, verbose=True) -> Trajectories:
+          records=None, tsv=None, max_plies=400, tb_pieces=0, with_planes=False,
+          verbose=True) -> Trajectories:
     """Replay and tokenize every ply of `n_human` + `n_sf` games. Cached on disk by (n, seed).
 
     `tb_pieces` (default 0 = off) truncates each game at the first position with <= that many
@@ -456,8 +480,8 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
     readout exists to measure. Throwing it away to save a solved-by-tablebase region would discard
     the most legible weakness data in the corpus.
     """
-    key = hashlib.blake2b(f"{n_human}|{n_sf}|{seed}|{max_plies}|{tb_pieces}".encode(),
-                          digest_size=8).hexdigest()
+    key = hashlib.blake2b(f"{n_human}|{n_sf}|{seed}|{max_plies}|{tb_pieces}|{int(with_planes)}"
+                          .encode(), digest_size=8).hexdigest()
     cdir = paths.derived(f"cache/traj_{key}")
     if cache and os.path.exists(os.path.join(cdir, "tok.npy")):
         if verbose:
@@ -474,18 +498,21 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
               flush=True)
 
     workers = workers or max(1, (os.cpu_count() or 4) - 2)
-    payload = [(ucis, max_plies, tb_pieces, flg, res, src == SF)
+    payload = [(ucis, max_plies, tb_pieces, flg, res, src == SF, with_planes)
                for (_, res, ucis, flg), src in games]
     with ProcessPoolExecutor(max_workers=workers) as ex:
         done = list(ex.map(_replay_one, payload, chunksize=64))
 
     toks, globs, starts, lens, gids, srcs, ress, terms, mats = [], [], [], [], [], [], [], [], []
+    pks = []
     n = 0
     for ((gid, res, _, _), src), r in zip(games, done):
         if r is None:
             continue
-        tk, gb, term, mat = r
+        tk, gb, term, mat, pk = r
         toks.append(tk); globs.append(gb)
+        if pk is not None:
+            pks.append(pk)
         starts.append(n); lens.append(len(tk)); n += len(tk)
         gids.append(gid); srcs.append(src); ress.append(res)
         terms.append(term); mats.append(mat)
@@ -495,7 +522,8 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
         start=np.asarray(starts, np.int64), length=np.asarray(lens, np.int32),
         game_id=np.asarray(gids, np.int64), source=np.asarray(srcs, np.int8),
         result=np.asarray(ress, np.int8), term=np.asarray(terms, np.int8),
-        mat=np.stack(mats).astype(np.uint8))
+        mat=np.stack(mats).astype(np.uint8),
+        planes=np.concatenate(pks) if pks else None)
     if verbose:
         cens = int((tr.term == TERM_TIME).sum())
         named = {TERMINALS[i]: int((tr.term == i).sum()) for i in range(len(TERMINALS))}
@@ -507,6 +535,8 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
         os.makedirs(cdir, exist_ok=True)
         for k in _CACHE_KEYS:
             np.save(os.path.join(cdir, f"{k}.npy"), getattr(tr, k))
+        if tr.planes is not None:
+            np.save(os.path.join(cdir, "planes.npy"), tr.planes)
         if verbose:
             print(f"[traj] cached -> {cdir}", flush=True)
     return tr
