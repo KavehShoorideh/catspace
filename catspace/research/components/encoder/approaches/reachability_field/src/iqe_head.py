@@ -35,7 +35,8 @@ class IQEHead(nn.Module):
     (see `load_compat`), which leaves the poles at their init and is correct for a field that was
     never trained with them."""
 
-    def __init__(self, in_ch: int = 64, d: int = 64, components: int = 16, adapter_ch: int = 32):
+    def __init__(self, in_ch: int = 64, d: int = 64, components: int = 16, adapter_ch: int = 32,
+                 n_sources: int = 1):
         super().__init__()
         self.adapter = nn.Sequential(
             nn.Conv2d(in_ch, adapter_ch, 1), nn.ReLU(),
@@ -45,6 +46,57 @@ class IQEHead(nn.Module):
         # poles[0:3] = win/draw/loss outcomes; poles[3] = START, a TIME ORIGIN, not a basin.
         self.poles = nn.Parameter(torch.randn(N_POLES, d) * 0.01)
         self.log_T = nn.Parameter(torch.zeros(()))           # basin softmax temperature, T = exp(log_T)
+        # DYNAMICS CONDITIONING (Kaveh 2026-08-05). n_sources > 1 gives each dynamics its OWN pole
+        # geometry and temperature on top of a SHARED embedding, as a RESIDUAL from source 0.
+        #
+        # Why residual-on-shared rather than two separately-trained fields: measured, two fields
+        # trained on disjoint halves of the SAME human data disagree by median |q_A - q_B| = 0.144,
+        # against 0.150 for a human-vs-SF pair -- a ratio of 1.04, i.e. the dynamics difference was
+        # entirely buried in per-field training noise. Here phi is shared, so representation noise
+        # is COMMON to both readouts and cancels in their difference by construction; what is left
+        # is only what the two dynamics actually disagree about. Same reason the M2b z-encoder is a
+        # residual on a frozen base rather than a separately-fit model.
+        #
+        # Zero-initialised: at step 0 every source is identical to the shared field, so the model
+        # starts at 'the dynamics do not differ' and must be pushed off it by the data.
+        self.n_sources = int(n_sources)
+        if self.n_sources > 1:
+            self.pole_delta = nn.Parameter(torch.zeros(self.n_sources - 1, N_POLES, d))
+            self.log_T_delta = nn.Parameter(torch.zeros(self.n_sources - 1))
+        else:
+            self.pole_delta, self.log_T_delta = None, None
+
+    def poles_for(self, src):
+        """(B,) int64 source ids -> (B, N_POLES, d) per-row poles."""
+        P = self.poles.unsqueeze(0)
+        if self.pole_delta is None:
+            return P.expand(len(src), -1, -1)
+        D = torch.cat([torch.zeros_like(self.pole_delta[:1]), self.pole_delta], 0)
+        return P + D[src]
+
+    def temperature_for(self, src):
+        """(B,1) per-row softmax temperature, so basin_logits broadcasts over it unchanged."""
+        if self.log_T_delta is None:
+            return torch.exp(self.log_T).expand(len(src)).unsqueeze(1)
+        D = torch.cat([torch.zeros(1, device=self.log_T.device,
+                                   dtype=self.log_T.dtype), self.log_T_delta])
+        return torch.exp(self.log_T + D[src]).unsqueeze(1)
+
+    def _pole_dist(self, es, src, reverse=False):
+        P = self.poles_for(src)[:, :N_OUTCOME_POLES]         # (B,K,d)
+        B, K, dd = P.shape
+        u = es.unsqueeze(1).expand(B, K, dd).reshape(B * K, dd)
+        v = P.reshape(B * K, dd)
+        out = self.iqe(v, u) if reverse else self.iqe(u, v)
+        return out.reshape(B, K)
+
+    def d_poles_src(self, es, src):
+        """(B,K) forward distances with PER-ROW poles -- the conditioned counterpart of d_poles."""
+        return self._pole_dist(es, src, reverse=False)
+
+    def d_from_poles_src(self, es, src):
+        """(B,K) reverse distances d(P_k -> phi) with per-row poles (the absorbing term)."""
+        return self._pole_dist(es, src, reverse=True)
 
     def phi(self, feats):                                    # (B,C,8,8) -> (B,d)
         return self.adapter(feats)

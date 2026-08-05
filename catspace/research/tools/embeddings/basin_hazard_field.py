@@ -72,7 +72,7 @@ def load_head(ckpt, device):
     p = torch.load(ckpt, map_location=device, weights_only=False)
     cfg = p["cfg"]
     head = IQEHead(in_ch=cfg["in_ch"], d=cfg["d"], components=cfg["components"],
-                   adapter_ch=cfg["adapter_ch"]).to(device)
+                   adapter_ch=cfg["adapter_ch"], n_sources=cfg.get("n_sources", 1)).to(device)
     missing, _ = head.load_compat(p["state_dict"])
     if any(m.startswith(("poles", "log_T")) for m in missing):
         raise SystemExit(f"{ckpt} has no trained poles -- its basin readout would be noise")
@@ -117,9 +117,17 @@ def evaluate(field, heads, pools, max_ply, batch, keep_phi="shared"):
             phis = []
             for i in range(0, len(planes), batch):
                 t = field.trunk_feats(list(planes[i:i + batch].astype(np.float32)))
-                for n, hd in heads.items():
+                for n, spec in heads.items():
+                    hd, sid = spec if isinstance(spec, tuple) else (spec, None)
                     e = hd.phi(t)
-                    per_head[n].append(basin_logp(hd.d_poles(e), hd.temperature).exp().cpu().numpy())
+                    if sid is None:
+                        d_, T_ = hd.d_poles(e), hd.temperature
+                    else:
+                        # CONDITIONED read: same head, same phi, only the source id differs, so
+                        # everything the two readouts share cancels exactly in their difference.
+                        si = torch.full((len(e),), sid, dtype=torch.long, device=e.device)
+                        d_, T_ = hd.d_poles_src(e, si), hd.temperature_for(si)
+                    per_head[n].append(basin_logp(d_, T_).exp().cpu().numpy())
                     if n == keep_phi:
                         phis.append(e.cpu().numpy().astype(np.float16))
             ply = np.arange(len(planes))
@@ -164,6 +172,10 @@ def main():
                     help="parity box filter width; the field is turn-dependent (lag-1 autocorr "
                          "BELOW lag-2) and differencing raw per-ply values amplifies that")
     ap.add_argument("--batch", type=int, default=1024)
+    ap.add_argument("--cond-ckpt", default="",
+                    help="a DYNAMICS-CONDITIONED checkpoint (train_iqe_head --n-sources 2): both "
+                         "q's are read from this ONE head with only the source id changed, so the "
+                         "shared representation noise that swamped the separate-field pair cancels")
     ap.add_argument("--from-data", default="",
                     help="skip replay+scoring and re-plot from a previously written _data.npz "
                          "(the trunk pass is ~12 min; figure iteration should not pay it)")
@@ -186,10 +198,18 @@ def main():
     field = ReachabilityField(onnx=args.onnx, head=args.shared_ckpt)
     if not field.has_poles:
         raise SystemExit(f"{args.shared_ckpt} has no trained poles")
-    heads = {"shared": field.head,
-             "human": load_head(args.human_ckpt, field.dev),
-             "sf": load_head(args.sf_ckpt, field.dev)}
-    print(f"trunk + 3 heads loaded [{time.time()-t0:.0f}s]", flush=True)
+    if args.cond_ckpt:
+        ch = load_head(args.cond_ckpt, field.dev)
+        if ch.pole_delta is None:
+            raise SystemExit(f"{args.cond_ckpt} is not conditioned (n_sources=1)")
+        heads = {"shared": field.head, "human": (ch, 0), "sf": (ch, 1)}
+        print(f"trunk + shared head + 1 CONDITIONED head ({ch.n_sources} dynamics) "
+              f"[{time.time()-t0:.0f}s]", flush=True)
+    else:
+        heads = {"shared": field.head,
+                 "human": load_head(args.human_ckpt, field.dev),
+                 "sf": load_head(args.sf_ckpt, field.dev)}
+        print(f"trunk + 3 heads loaded [{time.time()-t0:.0f}s]", flush=True)
 
     rng = np.random.default_rng(args.seed)
     # POPULATION proportions, not the stratified loaders: the headline is an occupancy-weighted
