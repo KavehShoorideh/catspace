@@ -164,6 +164,9 @@ def main():
                     help="parity box filter width; the field is turn-dependent (lag-1 autocorr "
                          "BELOW lag-2) and differencing raw per-ply values amplifies that")
     ap.add_argument("--batch", type=int, default=1024)
+    ap.add_argument("--from-data", default="",
+                    help="skip replay+scoring and re-plot from a previously written _data.npz "
+                         "(the trunk pass is ~12 min; figure iteration should not pay it)")
     ap.add_argument("--out-prefix", default="artifacts/experiments/basin_hazard")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -172,6 +175,12 @@ def main():
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+
+    if args.from_data:
+        z = np.load(args.from_data)
+        d = {k: z[k] for k in z.files if z[k].ndim >= 1 and len(z[k]) == len(z["ply"])}
+        print(f"[re-plot] {len(d['ply']):,} rows from {args.from_data}", flush=True)
+        return replot(d, args, plt)
 
     from catspace.research.components.encoder.approaches.reachability_field.src.field import ReachabilityField
     field = ReachabilityField(onnx=args.onnx, head=args.shared_ckpt)
@@ -206,7 +215,15 @@ def main():
             d[key] = np.concatenate([parity_smooth(seg, args.smooth)
                                      for seg in np.split(d[key], bounds)])
     d["h"] = d["q_sf"] - d["q_human"]
+    np.savez(f"{args.out_prefix}_data.npz", **{k: v for k, v in d.items()})
 
+    return replot(d, args, plt)
+
+
+def replot(d, args, plt):
+    """Every printed table and both figures, from the per-position columns."""
+    from catspace.research.tools.embeddings.basin_hazard_areas import base_rate_residual
+    d["h"] = d["q_sf"] - d["q_human"]
     keep = d["ply"] >= args.min_ply
     h, qh, qs = d["h"][keep], d["q_human"][keep], d["q_sf"][keep]
     ply, src = d["ply"][keep], d["source"][keep]
@@ -241,8 +258,8 @@ def main():
         ax.plot([-1, 1], [-1, 1], "-", color=INK, lw=1.2, alpha=0.8)
         ax.set_xlabel("q under SF dynamics"); ax.set_aspect("equal")
         ax.set_title(f"{name}   n={int(m.sum()):,}", color=c)
-        ax.text(0.62, -0.9, "humans\ngive it away", fontsize=8, color=MUTED, ha="center")
-        ax.text(-0.62, 0.9, "humans do\nbetter", fontsize=8, color=MUTED, ha="center")
+        ax.text(0.66, -0.80, "humans\ngive it away", fontsize=8, color=MUTED, ha="center", va="center")
+        ax.text(-0.66, 0.80, "humans do\nbetter", fontsize=8, color=MUTED, ha="center", va="center")
     axes[0].set_ylabel("q under human dynamics")
     ax = axes[2]
     bins = np.linspace(-1, 1, 81)
@@ -277,13 +294,46 @@ def main():
     axes2[0].set_ylim(args.max_ply, args.min_ply)
     fig2.colorbar(pc, ax=axes2, label="mean h = q_SF - q_human  (red = hazard)", shrink=0.85)
     fig2.suptitle("Hazard on the tent -- blank cells are UNSUPPORTED "
-                  f"(< {args.min_count} positions), not zero")
+                  f"(< {args.min_count} positions), not zero.  The first two panels are dominated "
+                  "by the two fields' SCALE difference (h falls monotonically in q_human); the "
+                  "third removes it and shows what is left.")
     fig2.savefig(f"{args.out_prefix}_tent.png", dpi=140, bbox_inches="tight")
 
-    np.savez(f"{args.out_prefix}_data.npz", **{k: v for k, v in d.items()},
-             min_ply=args.min_ply, smooth=args.smooth)
-    print(f"\nwrote {args.out_prefix}_{{offdiag,tent}}.png + _data.npz "
-          f"({len(d['ply']):,} rows) [{time.time()-t0:.0f}s]")
+    # ---- Figure 3: the residual, on the axis that actually carries it -------------------------
+    # Plotting the q_human-residual against q_human would be a tautology (it is flat by
+    # construction). A depth-4 tree on the interpretable features splits it almost entirely on
+    # MATERIAL DIFFERENCE, so that is the axis the leftover structure lives on.
+    from catspace.research.tools.embeddings.basin_hazard_areas import PIECE_VAL
+    fenk = d["fen"][keep]
+    matd = np.array([sum(PIECE_VAL.get(c.lower(), 0) * (1 if c.isupper() else -1)
+                         for c in str(f).split(" ")[0] if c.isalpha()) for f in fenk], float)
+    hres = np.zeros_like(h)
+    hres[hum] = base_rate_residual(h[hum], qh[hum])
+    fig3, axes3 = plt.subplots(1, 2, figsize=(13, 6.0), sharey=True, sharex=True)
+    mb = np.arange(-9.5, 10.5, 1.0)
+    vm = 0.0
+    g3 = {}
+    for name, m, w in [("mean h", hum, h), ("h with the evaluation level removed", hum, hres)]:
+        g, n = gated_cells(matd[m], ply[m], w[m], mb, yb, args.min_count)
+        g3[name] = g
+        if np.isfinite(g).any():
+            vm = max(vm, float(np.nanmax(np.abs(g))))
+    vm = max(vm, 1e-3)
+    for ax, (name, g) in zip(axes3, g3.items()):
+        pc3 = ax.pcolormesh(mb, yb, g.T, cmap=CMAP_HAZARD, vmin=-vm, vmax=vm, shading="flat")
+        ax.axvline(0, color=MUTED, lw=0.7, ls=":")
+        ax.set_xlabel("material difference (White - Black, pawns)")
+        ax.set_title(f"human positions: {name}", color=INK)
+    axes3[0].set_ylabel("ply  (start at the top)")
+    axes3[0].set_ylim(args.max_ply, args.min_ply)
+    fig3.colorbar(pc3, ax=axes3, label="red = humans give it away, blue = humans do better",
+                  shrink=0.85)
+    fig3.suptitle("The hazard that is NOT just the two fields' scale difference: humans fail to "
+                  "convert a material advantage,\nand hold on better than perfect play concedes "
+                  "when material down -- the same asymmetry from both sides")
+    fig3.savefig(f"{args.out_prefix}_material.png", dpi=140, bbox_inches="tight")
+
+    print(f"\nwrote {args.out_prefix}_{{offdiag,tent,material}}.png ({len(d['ply']):,} rows)")
 
 
 if __name__ == "__main__":
