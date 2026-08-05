@@ -103,7 +103,27 @@ class Phase:
         return False
 
 
-def make_batcher(tr, dev):
+def row_conditioning(tr, d_cond):
+    """(N, d_cond) float32 strength+style vector per POSITION.
+
+    Coordinate 0 is STRENGTH, currently the population indicator (SF = 1.0 best play, human = 0.0).
+    The remaining coordinates are reserved for the per-player STYLE z and are zero for now, so the
+    conditioning is honest about what it actually knows rather than pretending to a style it has
+    not been given.
+
+    UPGRADE PATH, cheap and worth doing: the human parquet carries white_elo/black_elo, so strength
+    can become a real continuous rating instead of a binary flag with one extra column in the
+    trajectory store. That is what turns "human vs engine" into "this 1400 vs this 2200", which is
+    the whole point of conditioning rather than branching."""
+    if not d_cond:
+        return None
+    src_of_game = (tr.source == T.SF).astype(np.float32)     # 1.0 = SF (best play)
+    c = np.zeros((tr.n_positions, d_cond), np.float32)
+    c[:, 0] = np.repeat(src_of_game, tr.length)
+    return c
+
+
+def make_batcher(tr, dev, cond=None):
     """rows -> one encoder pass over the UNIQUE rows, then index back.
 
     The ViT is ~all of the step cost, and the triples/cross/reversible draws overlap heavily, so
@@ -115,11 +135,16 @@ def make_batcher(tr, dev):
         tok = torch.from_numpy(tr.tok[uniq].astype(np.int64)).to(dev)
         glob = torch.from_numpy(tr.glob[uniq].astype(np.float32)).to(dev)
         phi = net.backbone(tok, glob)
-        z_a, z_b = net.proj_a(phi), net.proj_b(phi)
+        z_a = net.proj_a(phi)
+        if net.dual:
+            c = torch.from_numpy(cond[uniq]).to(dev) if cond is not None else None
+            z_b, z_r = net.qhead.embed(phi, c)
+        else:
+            z_b, z_r = net.proj_b(phi), None
         z_t = net.encode_target(tok, glob)
         cuts = np.cumsum([len(r) for r in rows_list])[:-1]
         idx = [torch.from_numpy(p.astype(np.int64)).to(dev) for p in np.split(inv, cuts)]
-        return phi, z_a, z_b, z_t, idx
+        return phi, z_a, z_b, z_r, z_t, idx
     return encode
 
 
@@ -140,6 +165,21 @@ def main():
                     help="IQE components; must divide --d. 16 is the value the working field head "
                          "uses (train_iqe_head.py), not a guess")
     ap.add_argument("--ema", type=float, default=0.996)
+    ap.add_argument("--dual", action="store_true",
+                    help="best-play FLOOR + strength/style conditioned residual. Off = the legacy "
+                         "single-IQE arm B, kept loadable for checkpoints already on disk")
+    ap.add_argument("--d-cond", type=int, default=8,
+                    help="conditioning width (coord 0 = strength; rest reserved for style z)")
+    ap.add_argument("--w-res-shrink", type=float, default=0.1,
+                    help="shrinkage on residual magnitude. NOT optional in --dual: it is the only "
+                         "thing identifying the base as the TIGHT lower envelope rather than any "
+                         "lower bound, and at 0 the base drifts toward zero with the residual "
+                         "carrying everything")
+    ap.add_argument("--min-ply", type=int, default=0,
+                    help="drop the first plies of every game. MUST be 8 for dynamics-conditioned "
+                         "runs: SF games are human ply-8 opening prefixes + SF continuation, so "
+                         "plies 0..7 of an 'SF' game are HUMAN moves. 0 is correct for the pooled "
+                         "strata question, which never reads the source label")
     # objective weights
     ap.add_argument("--w-region", type=float, default=1.0, help="arm A: region NLL on observed pairs")
     ap.add_argument("--w-iqe", type=float, default=1.0, help="arm B: quasimetric regression")
@@ -202,11 +242,18 @@ def main():
     print(f"[split] fit {len(fit_games):,} | val {len(val_games):,} games "
           f"(cal {(split==1).sum():,} / test {(split==2).sum():,} held back)", flush=True)
 
+    if args.dual and args.min_ply < 8:
+        print(f"[warn] --dual with --min-ply {args.min_ply}: plies 0..7 of SF games are HUMAN "
+              f"opening moves, so 'best play' would be fitted partly on human data. Use 8.",
+              flush=True)
     net = ReachViT(d_model=args.d_model, layers=args.layers, heads=args.heads, d=args.d,
-                   hidden=args.hidden, components=args.components, ema_decay=args.ema).to(dev)
+                   hidden=args.hidden, components=args.components, ema_decay=args.ema,
+                   dual=args.dual, d_cond=args.d_cond if args.dual else 0).to(dev)
     cfg_dict = {"arch": "vit", "d_model": args.d_model, "layers": args.layers, "heads": args.heads,
                 "d": args.d, "hidden": args.hidden, "components": args.components,
-                "games": args.games, "max_plies": args.max_plies, "traj_seed": args.seed}
+                "games": args.games, "max_plies": args.max_plies, "traj_seed": args.seed,
+                "dual": bool(args.dual), "d_cond": args.d_cond if args.dual else 0,
+                "min_ply": args.min_ply}
 
     if args.random_init:
         from catspace.research.tools.training_infra.train.scaffold import save_torch_ckpt
@@ -215,10 +262,12 @@ def main():
               f"and read every trained number against it. [{time.time()-t0:.0f}s]")
         return
 
-    fit = T.PairSampler(tr, fit_games, seed=args.seed, cov=cov, repeats=reps)
-    val = T.PairSampler(tr, val_games, seed=args.seed + 1, cov=cov, repeats=reps)
+    fit = T.PairSampler(tr, fit_games, seed=args.seed, cov=cov, repeats=reps, min_ply=args.min_ply)
+    val = T.PairSampler(tr, val_games, seed=args.seed + 1, cov=cov, repeats=reps,
+                        min_ply=args.min_ply)
     opt = torch.optim.Adam([p for p in net.parameters() if p.requires_grad], lr=args.lr)
-    encode = make_batcher(tr, dev)
+    cond = row_conditioning(tr, args.d_cond if args.dual else 0)
+    encode = make_batcher(tr, dev, cond)
     n_rev = max(1, int(args.batch * args.rev_frac))
 
     def terms(model, sampler, n, n_rev, ph=None):
@@ -230,8 +279,10 @@ def main():
             ra, rb, rgap = sampler.reversible(n_rev)    # OBSERVED backward, via repetitions
         rows = [i, j, k, x, ra, rb]
         with ph("encode"):
-            phi, zA, zB, zT, idx = encode(model, rows)
+            phi, zA, zB, zR, zT, idx = encode(model, rows)
         gi, gj, gk, gx, gra, grb = idx
+        DQ = (lambda u, v: model.distance_cond(zB[u], zB[v], zR[u], zR[v])) if model.dual \
+            else (lambda u, v: model.distance(zB[u], zB[v]))
         gap_ij = torch.from_numpy((j - i).astype(np.float32)).to(dev)
         gap_jk = torch.from_numpy((k - j).astype(np.float32)).to(dev)
         gap_ik = torch.from_numpy((k - i).astype(np.float32)).to(dev)
@@ -260,16 +311,14 @@ def main():
         l_rep_a = 0.5 * (rev_a + crs_a)
 
         # ---- arm B: the quasimetric ------------------------------------------------------------
-        d_ij, d_jk, d_ik = (model.distance(zB[gi], zB[gj]), model.distance(zB[gj], zB[gk]),
-                            model.distance(zB[gi], zB[gk]))
+        d_ij, d_jk, d_ik = DQ(gi, gj), DQ(gj, gk), DQ(gi, gk)
         l_q = (quasimetric_regression(d_ij, torch.log1p(gap_ij))
                + quasimetric_regression(d_jk, torch.log1p(gap_jk))
                + quasimetric_regression(d_ik, torch.log1p(gap_ik))) / 3.0
         if len(ra):
-            l_q = 0.75 * l_q + 0.25 * quasimetric_regression(
-                model.distance(zB[gra], zB[grb]), torch.log1p(gap_r))
-        d_ji = model.distance(zB[gj], zB[gi])           # the reversal, on the SAME two positions
-        d_x = model.distance(zB[gi], zB[gx])            # cross-game, from the SAME source i
+            l_q = 0.75 * l_q + 0.25 * quasimetric_regression(DQ(gra, grb), torch.log1p(gap_r))
+        d_ji = DQ(gj, gi)           # the reversal, on the SAME two positions
+        d_x = DQ(gi, gx)            # cross-game, from the SAME source i
         # ABSOLUTE log-margin repulsion -- relu(margin - log1p(d)) -- NOT a relative pairwise
         # margin. This is the single most load-bearing lesson in the repo's IQE history and the
         # first draft of this file got it wrong.
@@ -296,12 +345,21 @@ def main():
         # 7.8 -> 5.0/64 over 400 steps while phi and zA rose. Arm B's only spreading pressure is a
         # two-direction hinge, which is far too thin a repulsion to hold 64 axes apart -- and the
         # cure for rank collapse is repulsion, not width.
+        # RESIDUAL SHRINKAGE. With every row (engine included) on base+residual, d_res >= 0 alone
+        # is satisfied by d_base = 0 with the residuals carrying everything, so the base would be
+        # identified only up to SOME lower bound and would drift toward zero. Penalising residual
+        # magnitude makes it the TIGHT lower envelope: explain what you can with the shared base,
+        # spend residual only where populations genuinely differ. Without this the whole
+        # best-play/mistake decomposition is unidentified.
+        l_shrink = model.qhead.residual_magnitude(zR[gi], zR[gj]) if model.dual \
+            else torch.zeros((), device=dev)
         l_var = vicreg_variance(phi) + vicreg_variance(zA) + vicreg_variance(zB)
         l_cov = vicreg_covariance(phi) + vicreg_covariance(zA) + vicreg_covariance(zB)
         l_l1 = model.l1_penalty()
         loss = (args.w_region * (l_nll + args.w_repel * l_rep_a)
                 + args.w_iqe * (l_q + args.w_repel * l_rep_b)
-                + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1)
+                + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
+                + args.w_res_shrink * l_shrink)
         met = {"loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
@@ -310,7 +368,7 @@ def main():
                # printed rather than assumed (a same-game "cross" pair would be a false negative)
                "uncovered_frac": float(unc.mean()),
                "d_fwd": float(d_ij.detach().mean()), "d_rev": float(d_ji.detach().mean()),
-               "d_far": float(d_x.detach().mean()),
+               "d_far": float(d_x.detach().mean()), "res_shrink": float(l_shrink.detach()),
                # THE DEAD-ZONE GATE. The IQE ordering collapse (all F above all B in the interval
                # coordinates => every directed distance exactly 0) is an ABSORBING fixed point:
                # torch.maximum has zero gradient there, so nothing escapes once it arrives. It
@@ -364,6 +422,21 @@ def main():
         for name, z in (("phi", phi), ("zA", zA), ("zB", zB)):
             g[f"eff_rank_{name}"] = eff_rank(z.detach().float().cpu().numpy())
         g["z_std"] = float(zA.std())
+        if model.dual:
+            # THE CHECK THAT DECIDES WHETHER THE BASE IS BEST PLAY. Evaluate the SAME positions at
+            # the SF conditioning point and at the human one. d_res@SF near 0 means the base really
+            # is the floor; a large d_res@SF means best play still needs a correction, i.e. the base
+            # is NOT best play and every human "mistake" number read against it is inflated by that
+            # much. This is a prediction the design can fail, which is the point of conditioning
+            # rather than masking.
+            n_probe = min(256, len(phi))
+            pp = phi[:n_probe]
+            for tag, val_c in (("sf", 1.0), ("human", 0.0)):
+                c = torch.zeros(n_probe, model.d_cond, device=pp.device)
+                c[:, 0] = val_c
+                _, zr = model.qhead.embed(pp, c)
+                g[f"d_res_{tag}"] = float(model.qhead.d_mistake(zr, zr.flip(0)).mean())
+            g["res_gap"] = g["d_res_human"] - g["d_res_sf"]
         # Sparsity as an EXACT count, which only means anything because prox_l1 makes true zeros.
         g["l1_support"] = int(model.input_support().sum())
         # DIRECT ratchet readout, free here: the observed forward distance against its own reversal.
