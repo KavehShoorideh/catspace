@@ -176,6 +176,10 @@ def main():
                     help="a DYNAMICS-CONDITIONED checkpoint (train_iqe_head --n-sources 2): both "
                          "q's are read from this ONE head with only the source id changed, so the "
                          "shared representation noise that swamped the separate-field pair cancels")
+    ap.add_argument("--compare-data", default="",
+                    help="a CONTROL run's _data.npz (e.g. the --permute-source null). Drawn beside "
+                         "the real field on ONE colour scale, which is the only honest way to show "
+                         "a difference-of-two-models result.")
     ap.add_argument("--from-data", default="",
                     help="skip replay+scoring and re-plot from a previously written _data.npz "
                          "(the trunk pass is ~12 min; figure iteration should not pay it)")
@@ -319,38 +323,38 @@ def replot(d, args, plt):
                   "third removes it and shows what is left.")
     fig2.savefig(f"{args.out_prefix}_tent.png", dpi=140, bbox_inches="tight")
 
-    # ---- Figure 3: the residual, on the axis that actually carries it -------------------------
-    # Plotting the q_human-residual against q_human would be a tautology (it is flat by
-    # construction). A depth-4 tree on the interpretable features splits it almost entirely on
-    # MATERIAL DIFFERENCE, so that is the axis the leftover structure lives on.
+    # ---- Figure 3: the material view, real beside its control ---------------------------------
     from catspace.research.tools.embeddings.basin_hazard_areas import PIECE_VAL
-    fenk = d["fen"][keep]
-    matd = np.array([sum(PIECE_VAL.get(c.lower(), 0) * (1 if c.isupper() else -1)
-                         for c in str(f).split(" ")[0] if c.isalpha()) for f in fenk], float)
-    hres = np.zeros_like(h)
-    hres[hum] = base_rate_residual(h[hum], qh[hum])
-    fig3, axes3 = plt.subplots(1, 2, figsize=(13, 6.0), sharey=True, sharex=True)
+
+    def mat_of(fens):
+        return np.array([sum(PIECE_VAL.get(c.lower(), 0) * (1 if c.isupper() else -1)
+                             for c in str(f).split(" ")[0] if c.isalpha()) for f in fens], float)
+
+    panels = [("this field", h[hum], mat_of(d["fen"][keep][hum]), ply[hum])]
+    if args.compare_data:
+        zc = np.load(args.compare_data)
+        kc = (zc["ply"] >= args.min_ply) & (zc["source"] == 0)
+        panels.append(("permuted-label control", (zc["q_sf"] - zc["q_human"])[kc],
+                       mat_of(zc["fen"][kc]), zc["ply"][kc]))
+    fig3, axes3 = plt.subplots(1, len(panels), figsize=(6.6 * len(panels), 6.0),
+                               sharey=True, sharex=True, squeeze=False)
     mb = np.arange(-9.5, 10.5, 1.0)
-    vm = 0.0
-    g3 = {}
-    for name, m, w in [("mean h", hum, h), ("h with the evaluation level removed", hum, hres)]:
-        g, n = gated_cells(matd[m], ply[m], w[m], mb, yb, args.min_count)
-        g3[name] = g
-        if np.isfinite(g).any():
-            vm = max(vm, float(np.nanmax(np.abs(g))))
-    vm = max(vm, 1e-3)
-    for ax, (name, g) in zip(axes3, g3.items()):
+    grids3 = [(nm, *gated_cells(mm, pp, ww, mb, yb, args.min_count)) for nm, ww, mm, pp in panels]
+    vm = max([float(np.nanmax(np.abs(g))) for _, g, _ in grids3 if np.isfinite(g).any()] + [1e-3])
+    for ax, (nm, g, _n) in zip(axes3[0], grids3):
         pc3 = ax.pcolormesh(mb, yb, g.T, cmap=CMAP_HAZARD, vmin=-vm, vmax=vm, shading="flat")
         ax.axvline(0, color=MUTED, lw=0.7, ls=":")
         ax.set_xlabel("material difference (White - Black, pawns)")
-        ax.set_title(f"human positions: {name}", color=INK)
-    axes3[0].set_ylabel("ply  (start at the top)")
-    axes3[0].set_ylim(args.max_ply, args.min_ply)
-    fig3.colorbar(pc3, ax=axes3, label="red = humans give it away, blue = humans do better",
-                  shrink=0.85)
-    fig3.suptitle("The hazard that is NOT just the two fields' scale difference: humans fail to "
-                  "convert a material advantage,\nand hold on better than perfect play concedes "
-                  "when material down -- the same asymmetry from both sides")
+        ax.set_title(nm, color=INK)
+    axes3[0][0].set_ylabel("ply  (start at the top)")
+    axes3[0][0].set_ylim(args.max_ply, args.min_ply)
+    fig3.colorbar(pc3, ax=axes3[0].tolist(), shrink=0.85,
+                  label="h = q_SF - q_human")
+    fig3.suptitle("A material advantage is worth MORE in human games than in engine games\n"
+                  "blue where a side is ahead, red where it is behind -- engines defend "
+                  "material-down positions far better than humans do\n"
+                  "right: the identical model trained with the source label PERMUTED by game, on "
+                  "the same colour scale", y=1.13, fontsize=11)
     fig3.savefig(f"{args.out_prefix}_material.png", dpi=140, bbox_inches="tight")
 
     print(f"\nwrote {args.out_prefix}_{{offdiag,tent,material}}.png ({len(d['ply']):,} rows)")

@@ -11095,3 +11095,79 @@ geometry does dissolve the quasimetric obstruction -- h is a scalar, the off-dia
 q_human) needs no embedding, no symmetrisation and no reduction -- and the pipeline is verified to
 add no asymmetry of its own (same checkpoint in all three head slots gives h identically 0.000,
 corr +1.0000). What was wrong was the estimator, not the definition.
+
+## 2026-08-05 -- hazards for humans (part 3): the conditioned field clears its null
+
+**Sharing the embedding was the whole fix.** One field, both dynamics, per-source pole geometry and
+temperature as a zero-initialised residual (`--n-sources 2`). Its gates are the best of the five
+fields trained this session: acc 0.804, **ECE 0.0218** (vs 0.0412 human-only, 0.0231 SF-only),
+terminal eff_rank 27.6, pole asymmetry +3.46, pole gap 4.59 on a crossover of 4.56. Sharing phi
+cost nothing in basin quality.
+
+**Its own null is the permuted-label run** -- identical architecture and data, source label
+reassigned at random BY GAME (50.0% -> source 1), so the model keeps every degree of freedom it had
+and loses only the true dichotomy. Both scored on the SAME 1,200 games/source, 223,837 positions.
+
+| test                                            | separate fields | its null | CONDITIONED | its permuted null |
+|-------------------------------------------------|-----------------|----------|-------------|-------------------|
+| median \|h\| (human positions)                  | 0.1497          | 0.1436   | **0.1175**  | **0.0305**        |
+| ratio to own null                               | 1.04x           | --       | **3.85x**   | --                |
+| R^2 of h from material+ply (held out, by game)  | -0.0084         | -0.0277  | **0.2633**  | **0.0377**        |
+
+Mean h by material difference (White - Black, pawns), conditioned vs its permuted control:
+
+| mat diff | conditioned | permuted control |
+|----------|-------------|------------------|
+| < -5     | **+0.198**  | +0.023           |
+| -5..-2   | **+0.203**  | +0.009           |
+| -2..2    | +0.019      | +0.003           |
+| 2..5     | **-0.175**  | -0.002           |
+| > +5     | **-0.196**  | -0.019           |
+
+**The finding, and note the sign is OPPOSITE to what I retracted in part 2.** h < 0 where a side is
+ahead in material means q_SF < q_human: that advantage is worth LESS under engine play. Equivalently
+from the other side, h > 0 where a side is behind means engines survive material deficits far
+better than humans do. One sentence: **a material advantage is worth substantially more in human
+games than in engine games**, ~0.20 in expected-score units at +-5 pawns and ~0.02 at material
+equality, and the permuted control produces none of it.
+
+**Corroborated model-free, no field involved.** Realized white-POV score by material, straight off
+the replayed games:
+
+| mat diff | human score | SF score | SF - human | model h |
+|----------|-------------|----------|------------|---------|
+| < -5     | -0.696      | -0.424   | +0.273     | +0.198  |
+| -5..-3   | -0.457      | -0.239   | +0.217     | +0.233  |
+| 3..5     | +0.342      | +0.222   | -0.120     | -0.195  |
+| > +5     | +0.646      | +0.534   | -0.112     | -0.196  |
+
+The field's h agrees in SIGN at every bucket and within about 2x in magnitude with a measurement
+that uses no model at all. Stated precisely: this is the MARGINAL difference between two
+populations of positions, while h is the position-CONDITIONAL quantity, so it is corroboration of
+direction and scale, not a proof of the conditional claim.
+
+**What it means, and the honest caveat.** The mechanism is presumably the same one behind SF-vs-SF
+being 73% drawn against lichess's 6.5%: engines defend lost positions to a standard humans do not
+reach. The conditioned model expresses the dynamics difference through POLE GEOMETRY ONLY -- 257
+parameters on a shared embedding -- which is exactly what makes the noise cancel, but it is a
+strong constraint. A difference that requires different EMBEDDINGS, not merely different pole
+placements, would be invisible here. So this measures a real difference; it does not bound how much
+more there is.
+
+**CHECK 1 reads correctly as a pass, not a failure.** Adding q_SF to q_human buys -0.0010 held-out
+R^2 for predicting realized HUMAN results (control +0.0047). That is what should happen: q_human is
+already the right predictor of human games, and a committor for ENGINE dynamics has no business
+improving it. Calibration parity behaves the same way -- real slope(q_SF ~ q_human) 0.5606 with
+corr 0.835 (the two dynamics genuinely differ), permuted 0.9489 with corr 0.965 (they do not).
+
+**Answering the original question.** The hazard areas humans face are not localisable as regions of
+the shared field's phi -- that route is measured dead (R^2 -0.024, 0.56% of variance between 120
+clusters) and consistent with basin_perply_umap. They are localisable in interpretable position
+terms, and the dominant axis is MATERIAL: the further ahead a human is, the more of that advantage
+is at risk relative to what an engine would hold, and symmetrically, being behind is much less lost
+for an engine than for a human.
+
+**Artifacts.** basin_hazard_cond_{offdiag,tent,material}.png (material figure draws the permuted
+control beside the real field on one colour scale), basin_hazard_cond_data.npz. The separate-field
+figures basin_hazard_{offdiag,tent,material}.png are SUPERSEDED and their material panel is the
+retracted artifact -- kept only so the retraction is checkable.
