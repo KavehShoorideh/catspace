@@ -78,11 +78,26 @@ class ReachabilityField:
 
     @torch.no_grad()
     def _phi_x(self, x):
+        return self.head.phi(self._trunk_x(x))
+
+    @torch.no_grad()
+    def _trunk_x(self, x):
         self.trunk(x); t = self._f["t"]
         if self.tokens:
             B = x.shape[0]; C = t.shape[-1]
             t = t.reshape(B, 64, C).permute(0, 2, 1).reshape(B, C, 8, 8)
-        return self.head.phi(t)
+        return t
+
+    @torch.no_grad()
+    def trunk_feats(self, planes):
+        """(B,112,8,8) numpy planes -> (B,C,8,8) FROZEN trunk features, before any head.
+
+        Exposed because the trunk is the dominant cost (~700 pos/s replayed) and is SHARED by
+        every head trained on it. Comparing two fields on the same positions -- e.g. a
+        human-trained against an SF-trained committor -- would otherwise pay for the trunk twice
+        to produce bit-identical features.
+        """
+        return self._trunk_x(torch.as_tensor(np.stack(planes)).float().to(self.dev))
 
     @torch.no_grad()
     def d(self, s_boards, g_boards):
