@@ -140,6 +140,12 @@ def main():
                          "disjoint halves of the same data (ratio 1.04x), because per-field "
                          "representation noise swamped the dynamics difference; sharing phi makes "
                          "that noise COMMON to both readouts so it cancels in the difference.")
+    ap.add_argument("--permute-source", action="store_true",
+                    help="NULL CONTROL for --n-sources 2: reassign the source label at random BY "
+                         "GAME, keeping its marginal proportions but destroying its relationship "
+                         "to the actual dynamics. A conditioned field has the capacity to invent a "
+                         "difference between any two labelled halves, so the real run's h means "
+                         "nothing until this run's h is measured and found near zero.")
     ap.add_argument("--game-mod", default="",
                     help="'K:R' -> keep only TRAIN games with game %% K == R (holdout untouched). "
                          "Two arms at 2:0 and 2:1 see DISJOINT training games, which is what a "
@@ -307,6 +313,18 @@ def main():
     net = IQEHead(in_ch=C, d=args.d, components=args.components, adapter_ch=args.adapter_ch,
                   n_sources=args.n_sources).to(dev)
     cond = poles_on and args.n_sources > 1
+    if poles_on and args.permute_source:
+        # BY GAME, not by row: rows within a game share a source in the real data, and permuting
+        # per row would hand the model a label that is pure within-game noise -- an easier null to
+        # beat than the real thing, which is exactly the wrong direction for a control.
+        ug = np.unique(game)
+        share = float((src_all == 1).mean())
+        rp = np.random.default_rng(args.seed + 7717)
+        fake_by_game = dict(zip(ug.tolist(),
+                                (rp.random(len(ug)) < share).astype(np.int64).tolist()))
+        src_all = np.array([fake_by_game[int(g)] for g in game], np.int64)
+        print(f"  [permute-source] source label reassigned at random BY GAME "
+              f"({100*share:.1f}% -> source 1); any h this run learns is manufactured", flush=True)
     src_t = torch.from_numpy(src_all).to(dev) if poles_on else None
     if cond:
         n_by_src = np.bincount(src_all, minlength=args.n_sources)
