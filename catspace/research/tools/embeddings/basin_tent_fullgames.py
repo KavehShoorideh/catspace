@@ -158,6 +158,32 @@ def replay(ucis, max_ply):
     return (np.asarray(out) if out else None), b, truncated
 
 
+def tent_density(field, pools, max_ply, batch=4096):
+    """Full-game replay -> (x, ply) at 1-PLY resolution for a density tent.
+
+    This replaces the 6-ply row binning in basin_tent.py, which existed only to dodge the
+    sampler's fixed-phase comb (stride 6, same phase every game). Replayed games have EVERY ply,
+    so the comb does not exist and the rows can be one ply tall -- no aliasing, no rectangles.
+    """
+    out = {}
+    for name, pool in pools.items():
+        X, P = [], []
+        for _, _, ucis, _ in pool:
+            planes, _, _ = replay(ucis, max_ply)
+            if planes is None or len(planes) < 4:
+                continue
+            with torch.no_grad():
+                ps = []
+                for i in range(0, len(planes), batch):
+                    phi = field.phi_from_planes(list(planes[i:i + batch].astype(np.float32)))
+                    ps.append(basin_logp(field.head.d_poles(phi),
+                                         field.head.temperature).exp().cpu().numpy())
+            pr = np.concatenate(ps); ply = np.arange(len(pr))
+            X.append(white_pov_x(pr, ply)); P.append(ply)
+        out[name] = (np.concatenate(X), np.concatenate(P))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", default="artifacts/experiments/iqe_poles_both_latest.pt")
