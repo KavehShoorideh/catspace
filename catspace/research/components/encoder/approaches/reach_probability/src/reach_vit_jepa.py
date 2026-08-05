@@ -118,16 +118,28 @@ class DualIQEHead(nn.Module):
     def d_human(self, zb_u, zb_v, zr_u, zr_v):
         return self.d_best(zb_u, zb_v) + self.d_mistake(zr_u, zr_v)
 
-    def distance(self, zb_u, zb_v, zr_u=None, zr_v=None, source=None):
+    def distance(self, zb_u, zb_v, zr_u=None, zr_v=None, source=None, detach_base=True):
         """Dispatch by dynamics: SF rows get d_best, human rows get d_human.
 
         `source` is the POLE_SRC id (0 = SF base, 1 = human residual), so a mixed batch trains both
         heads at once and the residual only ever sees human rows -- an SF row must never contribute
-        gradient to the mistake head, or "the human penalty" would absorb engine data too."""
+        gradient to the mistake head, or "the human penalty" would absorb engine data too.
+
+        `detach_base` IS THE IDENTIFIABILITY CONSTRAINT, and without it the decomposition is not
+        identified at all: human rows produce d_best + d_mistake, so gradient flows into BOTH and
+        any amount of human error can be absorbed into d_best instead of the residual. The split
+        would then be an arbitrary consequence of optimisation order rather than a measurement.
+        Detaching the base on human rows pins the definition -- "best play" is what SF data says it
+        is, full stop, and d_mistake is whatever is left over. This is the in-run form of the
+        frozen-base-plus-residual discipline the M2b style encoder uses; the stricter version is to
+        train the base to convergence on SF, freeze it, and fit the residual afterwards.
+        """
         d = self.d_best(zb_u, zb_v)
         if zr_u is None or source is None:
             return d
-        return d + self.d_mistake(zr_u, zr_v) * (source == 1).to(d.dtype)
+        base = d.detach() if detach_base else d
+        is_h = (source == 1)
+        return torch.where(is_h, base + self.d_mistake(zr_u, zr_v), d)
 
 
 class PoleBank(nn.Module):
