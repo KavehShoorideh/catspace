@@ -132,6 +132,12 @@ def main():
                     help="fraction of TRAIN games to keep (holdout is untouched). For learning "
                          "curves: the val split is drawn FIRST from a fixed seed, so the holdout "
                          "is byte-identical at every size and the curves are comparable.")
+    ap.add_argument("--game-mod", default="",
+                    help="'K:R' -> keep only TRAIN games with game %% K == R (holdout untouched). "
+                         "Two arms at 2:0 and 2:1 see DISJOINT training games, which is what a "
+                         "null pair needs: --train-frac 0.5 twice would overlap ~50%% and make the "
+                         "two fields artificially similar, understating the noise floor they exist "
+                         "to measure.")
     ap.add_argument("--out", default=""); ap.add_argument("--seed", type=int, default=0)
     # --- W/D/L basin poles (Kaveh 2026-08-03). OFF by default: with every w-* at 0 and no
     # --combined, this script's objective and numerics are bit-for-bit the shipped M1 recipe.
@@ -246,6 +252,12 @@ def main():
         train_games = set(int(g) for g in tg[keep])
         print(f"  [learning-curve] train games {len(train_games):,} of {len(tg):,} "
               f"({100*args.train_frac:.0f}%), holdout {len(val_games):,} games FIXED", flush=True)
+    if args.game_mod:
+        K, R = (int(v) for v in args.game_mod.split(":"))
+        before = len(train_games)
+        train_games = {g for g in train_games if g % K == R}
+        print(f"  [game-mod] train games {len(train_games):,} of {before:,} (game %% {K} == {R}); "
+              f"holdout {len(val_games):,} games UNCHANGED", flush=True)
     MG_s, MG_g, MG_d = build_pairs(game, ply, train_games, rng)
     V_s, V_g, V_d = build_pairs(game, ply, val_games, np.random.default_rng(args.seed + 1))
     is_val = np.array([int(g) in val_games for g in game])
