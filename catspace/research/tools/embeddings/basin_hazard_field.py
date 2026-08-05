@@ -59,7 +59,7 @@ from catspace.research.tools.training_infra.losses import basin_logp, WIN, DRAW,
 from catspace.research.tools.embeddings.basin_tent import white_pov_x
 from catspace.research.tools.embeddings.basin_simplex_chart import INK, MUTED
 from catspace.research.tools.embeddings.basin_tent_fullgames import (
-    replay, sf_games, human_games, uniform_games, parity_smooth)
+    replay, population_games_human, population_games_sf, parity_smooth)
 
 COLOR_HUMAN, COLOR_SF = "#2a78d6", "#e34948"     # the fixed pairing used across the basin figures
 CMAP_HAZARD = "coolwarm"                          # diverging, neutral midpoint, symmetric about 0
@@ -183,10 +183,11 @@ def main():
     print(f"trunk + 3 heads loaded [{time.time()-t0:.0f}s]", flush=True)
 
     rng = np.random.default_rng(args.seed)
-    pools = {"human": uniform_games(human_games(args.human_records, args.n_games // 2, rng),
-                                    args.n_games, rng),
-             "SF-vs-SF": uniform_games(sf_games(args.sf_moves, args.n_games // 2, rng),
-                                       args.n_games, rng)}
+    # POPULATION proportions, not the stratified loaders: the headline is an occupancy-weighted
+    # expected leaked score, so over-representing draws (the stratified pool gives humans 36%
+    # against a true 4.5%) would put the weight on the wrong positions.
+    pools = {"human": population_games_human(args.human_records, args.n_games, rng),
+             "SF-vs-SF": population_games_sf(args.sf_moves, args.n_games, rng)}
     for k, v in pools.items():
         print(f"  {k}: {len(v)} games", flush=True)
 
