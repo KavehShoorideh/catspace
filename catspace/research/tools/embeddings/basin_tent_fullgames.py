@@ -167,7 +167,7 @@ def tent_density(field, pools, max_ply, batch=4096):
     """
     out = {}
     for name, pool in pools.items():
-        X, P = [], []
+        X, P, Q = [], [], []
         for _, _, ucis, _ in pool:
             planes, _, _ = replay(ucis, max_ply)
             if planes is None or len(planes) < 4:
@@ -180,7 +180,9 @@ def tent_density(field, pools, max_ply, batch=4096):
                                          field.head.temperature).exp().cpu().numpy())
             pr = np.concatenate(ps); ply = np.arange(len(pr))
             X.append(white_pov_x(pr, ply)); P.append(ply)
-        out[name] = (np.concatenate(X), np.concatenate(P))
+        # keep the full (p_win, p_draw, p_loss) too: x = p_w - p_b cannot be inverted, and any
+        # log-ratio coordinate needs the probabilities themselves.
+        out[name] = (np.concatenate(X), np.concatenate(P), np.concatenate(Q))
     return out
 
 
