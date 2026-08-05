@@ -277,16 +277,24 @@ class ReachViT(nn.Module):
 
     def __init__(self, d_model: int = 256, layers: int = 6, heads: int = 8, d: int = 64,
                  hidden: int = 256, components: int = 8, ema_decay: float = 0.996,
-                 leak_beta: float = 0.0):
+                 leak_beta: float = 0.0, dual: bool = False, d_cond: int = 0):
+        """`dual=False` is the LEGACY arm-B path (one IQE over proj_b) and is kept byte-identical
+        on purpose: the strata run launched 2026-08-05 writes checkpoints with `proj_b.*`/`iqe.*`
+        keys, and rewiring in place would have made its own ladder unloadable by interpret_reach
+        halfway through a 3-hour run. `dual=True` swaps in the conditioned DualIQEHead
+        (best-play floor + strength/style residual). Which one a checkpoint wants is recorded in
+        its cfg, so both load correctly forever."""
         super().__init__()
         assert d % components == 0, "IQE needs d divisible by components"
         self.d_model, self.d = int(d_model), int(d)
         self.ema_decay = float(ema_decay)
+        self.dual, self.d_cond = bool(dual), int(d_cond)
         self.source_blind = False        # the control; see blind_source()
 
         self.enc = JepaEncoder(d_model, layers, heads)
         self.proj_a = nn.Linear(d_model, d)          # arm A: region space
-        self.proj_b = nn.Linear(d_model, d)          # arm B: quasimetric space
+        if not self.dual:
+            self.proj_b = nn.Linear(d_model, d)      # arm B (legacy): one quasimetric space
 
         # Target branch for arm A: an EMA copy of (encoder, proj_a). Never optimised, never receives
         # gradient -- the JEPA guard that stops the model making its own target easier to predict.
@@ -300,7 +308,22 @@ class ReachViT(nn.Module):
         self.head = nn.Sequential(nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU(),
                                   nn.Linear(hidden, 2 * d))
         # Arm B: the quasimetric itself. Asymmetric by construction (Wang & Isola 2022).
-        self.iqe = IQE(d, components=components, leak_beta=leak_beta)
+        if self.dual:
+            self.qhead = DualIQEHead(d_in=d_model, d=d, components=components,
+                                     leak_beta=leak_beta, d_cond=self.d_cond)
+        else:
+            self.iqe = IQE(d, components=components, leak_beta=leak_beta)
+        self.poles = None                # attach_poles() installs the subsumption hierarchy
+
+    def attach_poles(self, parent, n_sources: int = 2):
+        """Install the terminal/endgame subsumption hierarchy (see PoleBank).
+
+        Kept out of __init__ because the pole set is DATA-derived -- which (ending x material
+        signature) pairs clear the min_count threshold is a property of the corpus, not of the
+        architecture -- so the trainer builds it from the store and hands it over here. The parent
+        vector is saved in the checkpoint cfg so evaluation rebuilds the identical hierarchy."""
+        self.poles = PoleBank(len(parent), self.d, torch.as_tensor(parent), n_sources=n_sources)
+        return self.poles
 
     # ---- encoding -------------------------------------------------------------------------------
     def backbone(self, tok, glob):
@@ -318,8 +341,23 @@ class ReachViT(nn.Module):
 
     def encode_q(self, tok, glob):
         """-> z_B (B,d), the arm-B quasimetric embedding (gradients flow; no EMA branch, because
-        arm B has an explicit repulsion and does not rely on a bootstrap target to avoid collapse)."""
-        return self.proj_b(self.backbone(tok, glob))
+        arm B has an explicit repulsion and does not rely on a bootstrap target to avoid collapse).
+
+        In dual mode this returns the BEST-PLAY embedding only, so every legacy caller
+        (interpret_reach's directed_distance, score_rows, the conformal path) keeps reading the
+        best-play field rather than silently switching to a conditioned one."""
+        phi = self.backbone(tok, glob)
+        if self.dual:
+            return self.qhead.embed(phi)[0]
+        return self.proj_b(phi)
+
+    def encode_dual(self, tok, glob, cond=None):
+        """-> (z_best, z_res). Dual mode only. `cond` (B,d_cond) is the strength+style vector."""
+        return self.qhead.embed(self.backbone(tok, glob), cond)
+
+    def distance_cond(self, zb_u, zb_v, zr_u=None, zr_v=None):
+        """d(u->v | c) = d_best + d_res. Dual mode only; >= d_best for every conditioning."""
+        return self.qhead.distance(zb_u, zb_v, zr_u, zr_v)
 
     # ---- arm A: the region ------------------------------------------------------------------
     def predict(self, z_a):
@@ -338,8 +376,8 @@ class ReachViT(nn.Module):
 
     # ---- arm B: the quasimetric -------------------------------------------------------------
     def distance(self, zq_a, zq_b):
-        """(B,) directed d(a -> b). Asymmetric by construction: d(a->b) != d(b->a) in general."""
-        return self.iqe(zq_a, zq_b)
+        """(B,) directed d(a -> b) on the BEST-PLAY field. Asymmetric by construction."""
+        return self.qhead.d_best(zq_a, zq_b) if self.dual else self.iqe(zq_a, zq_b)
 
     def score_q(self, zq_a, zq_b):
         """(B,) arm-B analogue of score(): HIGHER = more reachable, so -d."""
