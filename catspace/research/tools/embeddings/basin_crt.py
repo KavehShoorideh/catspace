@@ -1,12 +1,17 @@
 #!/usr/bin/env python
-"""basin_crt.py -- the CRT-gun / Stern-Gerlach view (Kaveh 2026-08-04).
+"""basin_crt.py -- deflection against ply, with the landing distribution (Kaveh 2026-08-04).
 
-The beam is fired from the START position at the left, travels rightward along the PLY axis, is
-deflected transversely by the field, and lands on a screen at the right where it has split three
-ways: White win (up), draw (centre), Black win (down).
+Games leave the START position at the left, run rightward along the PLY axis, are deflected
+transversely by the field, and arrive at the right having separated three ways: White win (up),
+draw (centre), Black win (down).
 
-This is the SIDE view. The polar plot was looking down the barrel -- it shows the angular split but
-collapses the axis the whole picture is about. Same data, rotated, plus the screen.
+This is the SIDE view. The polar plot collapsed the ply axis, which is the axis the whole picture
+is about. Same data, rotated, plus the landing distribution.
+
+CELL SHAPE: bins are chosen so cells render roughly SQUARE. An earlier version used 2-ply x 0.0167
+bins on a wide short panel, which made each cell 7.1x wider than tall -- the visible horizontal
+rectangles. That was the bin aspect against the panel aspect, NOT the 6-ply sampler comb: this view
+uses full-game replays, so every ply is present.
 
 Deflection is WHITE-POV: the poles are mover-POV and the mover alternates every ply, so a raw
 mover-POV deflection would zigzag once per ply and the beam would be noise.
@@ -39,7 +44,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--cache", default="artifacts/experiments/basin_tent_1ply_data.npz")
     ap.add_argument("--max-ply", type=int, default=110)
-    ap.add_argument("--beams", type=int, default=420, help="trajectories drawn per panel")
+    ap.add_argument("--beams", type=int, default=420, help="individual game paths drawn per panel")
+    ap.add_argument("--zoom-ply", type=int, default=20, help="upper ply for the zoomed panel")
     ap.add_argument("--out-prefix", default="artifacts/experiments/basin_crt")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
@@ -56,58 +62,66 @@ def main():
                          "text.color": "#e8e8ee", "axes.labelcolor": "#e8e8ee",
                          "xtick.color": "#9a9aa8", "ytick.color": "#9a9aa8",
                          "axes.edgecolor": "#3a3a48"})
-    fig = plt.figure(figsize=(16, 9))
-    gs = fig.add_gridspec(2, 2, width_ratios=[5, 1], hspace=0.28, wspace=0.03)
+    fig = plt.figure(figsize=(17, 11))
+    gs = fig.add_gridspec(2, 3, width_ratios=[4.6, 1.8, 0.9], hspace=0.30, wspace=0.10)
+
+    def panel(ax, ps_all, xs_all, segs_pick, hi, ny):
+        """Density + individual paths on [0, hi]. ny chosen so cells are ~square, see the note above."""
+        m = ps_all <= hi
+        H, xe, ye = np.histogram2d(ps_all[m], xs_all[m],
+                                   bins=[np.arange(0, hi + 2, 1), np.linspace(-1, 1, ny + 1)])
+        ax.pcolormesh(xe, ye, np.ma.masked_less(H, 1).T, cmap="magma",
+                      norm=LogNorm(vmin=1, vmax=max(H.max(), 10)), shading="flat", zorder=1)
+        for xs, ps in segs_pick:
+            k = ps <= hi
+            if k.sum() < 4:
+                continue
+            sm = parity_smooth(xs[k]); sm[0], sm[-1] = xs[k][0], xs[k][-1]
+            ax.plot(ps[k], sm, "-", color="#8fd8ff", lw=0.45, alpha=0.13, zorder=2)
+        ax.plot([0], [0], marker="o", ms=8, color="#ffe08a", zorder=5)
+        ax.axhline(0, color="#3a3a48", lw=.7, ls=":")
+        ax.set_xlim(0, hi); ax.set_ylim(-1.05, 1.05)
+        ax.set_xlabel("ply")
 
     for row, (name, (x, ply)) in enumerate(D.items()):
-        segs = [s for s in split_games(ply) if len(s) >= 8]
-        ax = fig.add_subplot(gs[row, 0]); sc = fig.add_subplot(gs[row, 1], sharey=None)
-        # glow: the accumulated beam, additive-looking via a log density
+        segs = [s_ for s_ in split_games(ply) if len(s_) >= 8]
         xs_all, ps_all = [], []
         for sgm in segs:
             v = parity_smooth(x[sgm]); v[0], v[-1] = x[sgm][0], x[sgm][-1]
             xs_all.append(v); ps_all.append(ply[sgm])
         xs_all = np.concatenate(xs_all); ps_all = np.concatenate(ps_all)
-        m = ps_all <= args.max_ply
-        H, xe, ye = np.histogram2d(ps_all[m], xs_all[m],
-                                   bins=[np.arange(0, args.max_ply + 2, 2),
-                                         np.linspace(-1, 1, 121)])
-        ax.pcolormesh(xe, ye, np.ma.masked_less(H, 1).T, cmap="magma",
-                      norm=LogNorm(vmin=1, vmax=max(H.max(), 10)), shading="flat", zorder=1)
-        # individual beam paths
         pick = rng.choice(len(segs), min(args.beams, len(segs)), replace=False)
-        landed = []
-        for i in pick:
-            s = segs[i]
-            xs, ps = x[s], ply[s]
-            k = ps <= args.max_ply
-            if k.sum() < 6:
-                continue
-            sm = parity_smooth(xs[k])
-            sm[0], sm[-1] = xs[k][0], xs[k][-1]              # keep true endpoints
-            ax.plot(ps[k], sm, "-", color="#8fd8ff", lw=0.45, alpha=0.13, zorder=2)
-            landed.append(xs[k][-1])
-        landed = np.array(landed)
-        # the gun
-        ax.plot([0], [0], marker="o", ms=9, color="#ffe08a", zorder=5)
-        ax.annotate("gun\n(start position)", (0, 0), textcoords="offset points", xytext=(16, 26),
+        picked = [(x[segs[i]], ply[segs[i]]) for i in pick]
+
+        ax = fig.add_subplot(gs[row, 0])
+        panel(ax, ps_all, xs_all, picked, args.max_ply, 42)
+        ax.set_ylabel("deflection\nP(White wins) - P(Black wins)")
+        ax.set_title(name, color="#e8e8ee", loc="left")
+        ax.annotate("start position", (0, 0), textcoords="offset points", xytext=(14, 24),
                     color="#ffe08a", fontsize=8.5, ha="left")
-        ax.axhline(0, color="#3a3a48", lw=.7, ls=":")
-        ax.set_xlim(0, args.max_ply); ax.set_ylim(-1.05, 1.05)
-        ax.set_xlabel("ply  (beam axis)"); ax.set_ylabel("deflection\nP(White wins) - P(Black wins)")
-        ax.set_title(f"{name}", color="#e8e8ee", loc="left")
-        # the phosphor screen: where the beam lands
+
+        azm = fig.add_subplot(gs[row, 1])
+        panel(azm, ps_all, xs_all, picked, args.zoom_ply, 90)
+        azm.set_yticklabels([])
+        azm.set_title(f"zoom: plies 0-{args.zoom_ply}", color="#9a9aa8", fontsize=10, loc="left")
+
+        landed = np.array([xx[pp <= args.max_ply][-1] for xx, pp in picked
+                           if (pp <= args.max_ply).sum() >= 4])
+        sc = fig.add_subplot(gs[row, 2])
         sc.hist(landed, bins=np.linspace(-1, 1, 61), orientation="horizontal",
                 color="#8fd8ff", alpha=.85)
         sc.set_ylim(-1.05, 1.05); sc.set_yticks([]); sc.set_xticks([])
-        sc.set_title("screen", fontsize=9, color="#9a9aa8")
+        sc.set_title("where they\narrive", fontsize=9, color="#9a9aa8")
         for yy, lab, cc in [(0.93, "White wins", "#7CFF9E"), (0.0, "draw", "#c8c8d4"),
                             (-0.93, "Black wins", "#FF8A8A")]:
             sc.text(sc.get_xlim()[1]*0.98, yy, lab, fontsize=8, color=cc, ha="right", va="center")
-        print(f"  {name}: {len(pick)} beams, {len(landed)} landed | "
-              f"|deflection| at screen: median {np.median(np.abs(landed)):.3f}", flush=True)
-    fig.suptitle("The beam: fired from the start position, deflected along the ply axis, "
-                 "splitting three ways onto the screen", color="#e8e8ee", fontsize=13)
+        print(f"  {name}: {len(picked)} games | median |deflection| on arrival "
+              f"{np.median(np.abs(landed)):.3f} | at ply {args.zoom_ply}: "
+              f"{np.median(np.abs(xs_all[(ps_all >= args.zoom_ply-1) & (ps_all <= args.zoom_ply+1)])):.3f}",
+              flush=True)
+
+    fig.suptitle("Deflection against ply: games leave the start position and separate three ways",
+                 color="#e8e8ee", fontsize=13)
     fig.savefig(f"{args.out_prefix}.png", dpi=150, facecolor="#0b0b10", bbox_inches="tight")
     print(f"wrote {args.out_prefix}.png [{time.time()-t0:.0f}s]")
 
