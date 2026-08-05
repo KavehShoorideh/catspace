@@ -58,7 +58,7 @@ from catspace.research.components.encoder.approaches.reach_probability.src impor
 from catspace.research.components.encoder.approaches.reach_probability.src.reach_vit_jepa import ReachViT
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
-    anchored_pairwise_rank, quasimetric_regression, reach_region_margin, reach_region_nll,
+    quasimetric_regression, reach_region_margin, reach_region_nll, terminal_repulsion,
     vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
     TrainConfig, resolve_device, standard_train)
@@ -97,16 +97,24 @@ def main():
     ap.add_argument("--heads", type=int, default=8)
     ap.add_argument("--d", type=int, default=64, help="head dimension (both arms)")
     ap.add_argument("--hidden", type=int, default=256)
-    ap.add_argument("--components", type=int, default=8, help="IQE components; must divide --d")
+    ap.add_argument("--components", type=int, default=16,
+                    help="IQE components; must divide --d. 16 is the value the working field head "
+                         "uses (train_iqe_head.py), not a guess")
     ap.add_argument("--ema", type=float, default=0.996)
     # objective weights
     ap.add_argument("--w-region", type=float, default=1.0, help="arm A: region NLL on observed pairs")
     ap.add_argument("--w-iqe", type=float, default=1.0, help="arm B: quasimetric regression")
     ap.add_argument("--w-repel", type=float, default=1.0, help="both arms: unobserved-pair repulsion")
     ap.add_argument("--margin", type=float, default=1.0,
-                    help="repulsion margin. Arm A: nats of NLL an unobserved target must exceed the "
-                         "observed one by. Arm B: required gap in log1p(d). Both are RELATIVE to "
-                         "the same source's observed target, so neither can be won by rescaling")
+                    help="arm A repulsion margin: nats of NLL an unobserved target must exceed the "
+                         "observed one of the SAME source by. Relative on purpose -- a Gaussian "
+                         "log-density has no absolute scale to floor")
+    ap.add_argument("--repel-margin", type=float, default=4.0,
+                    help="arm B repulsion floor on log1p(d) for UNOBSERVED pairs, so d >= e^m-1 "
+                         "(4.0 -> ~53.6). ABSOLUTE, not relative: a relative margin is satisfied "
+                         "by d_close=0.001/d_far=0.01 with the geometry fully collapsed, which is "
+                         "the documented IQE failure mode. 4.0 is train_iqe_head.py's measured "
+                         "value, not a guess")
     ap.add_argument("--w-var", type=float, default=1.0, help="VICReg variance (anti-collapse)")
     ap.add_argument("--w-cov", type=float, default=0.04, help="VICReg covariance (anti-rank-collapse)")
     ap.add_argument("--w-l1", type=float, default=0.0,
@@ -220,9 +228,26 @@ def main():
                 model.distance(zB[gra], zB[grb]), torch.log1p(gap_r))
         d_ji = model.distance(zB[gj], zB[gi])           # the reversal, on the SAME two positions
         d_x = model.distance(zB[gi], zB[gx])            # cross-game, from the SAME source i
-        m = torch.full_like(d_ij, args.margin)
-        l_rep_b = 0.5 * (anchored_pairwise_rank(d_jk, d_ji, m * unc)
-                         + anchored_pairwise_rank(d_ij, d_x, m))
+        # ABSOLUTE log-margin repulsion -- relu(margin - log1p(d)) -- NOT a relative pairwise
+        # margin. This is the single most load-bearing lesson in the repo's IQE history and the
+        # first draft of this file got it wrong.
+        #
+        # A relative margin ("the unobserved pair must be further than this observed one") is
+        # satisfied exactly by d_close=0.001, d_far=0.01: the ORDER is right and the whole
+        # geometry is still collapsed. That is the documented IQE failure mode -- QRL's own words,
+        # "the quasimetric could remain arbitrarily small everywhere" -- and it is why pure-ranking
+        # InfoNCE trains MRN fine but leaves IQE flat: MRN's bilinear score does not need large
+        # absolute distances, IQE's union-of-interval lengths do. Only an absolute floor sets the
+        # SCALE, and with margin 4.0 an unobserved pair must sit at d >= e^4-1 ~ 53.6.
+        #
+        # This is the form that WORKS here: train_iqe_head.py's L_repel at repel_margin 4.0,
+        # w_repel 1.0, which on 2026-08-02 beat the shipped M1 field on every metric (pair-order
+        # +0.926, d_mate rho +0.818, eff_rank 18.8). Paired with plain ply-gap regression -- so no
+        # QRL rewrite is needed; the repulsion was always the missing piece, not the objective.
+        um_b = torch.nonzero(unc, as_tuple=True)[0]
+        rep_rev = (terminal_repulsion(d_ji[um_b], args.repel_margin)
+                   if len(um_b) else torch.zeros((), device=dev))
+        l_rep_b = 0.5 * (rep_rev + terminal_repulsion(d_x, args.repel_margin))
 
         # ---- anti-collapse, at the TRUNK and at the region head --------------------------------
         # zB is included on measurement, not on principle: the first smoke had eff_rank_zB DROP
@@ -243,6 +268,14 @@ def main():
                # printed rather than assumed (a same-game "cross" pair would be a false negative)
                "uncovered_frac": float(unc.mean()),
                "d_fwd": float(d_ij.detach().mean()), "d_rev": float(d_ji.detach().mean()),
+               "d_far": float(d_x.detach().mean()),
+               # THE DEAD-ZONE GATE. The IQE ordering collapse (all F above all B in the interval
+               # coordinates => every directed distance exactly 0) is an ABSORBING fixed point:
+               # torch.maximum has zero gradient there, so nothing escapes once it arrives. It
+               # halted qrl_iqe_unreach at 2k. We now aim deliberately NEAR that surface, because
+               # subsumption wants exact zeros, so the distinction between "a few intended zeros"
+               # and "everything collapsed" has to be a logged number rather than an assumption.
+               "zero_frac": float((d_x.detach() < 1e-6).float().mean()),
                # sigma is the region's own width. Driven to the LOG_SIGMA_MIN clamp it means the
                # model claims certainty about the future, which is false and makes the conformal
                # tail meaningless -- so it is watched, not just clamped.
