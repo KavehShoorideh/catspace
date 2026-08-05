@@ -283,6 +283,47 @@ def censored_plies_loss(pred_log_plies, plies, hit):
     return (per * m).sum() / n
 
 
+def reach_region_nll(mu, log_sigma, z_target):
+    """Gaussian NLL of an OBSERVED reachable target z_target under the region (mu, sigma) predicted
+    from the source position (reach_probability, Kaveh 2026-08-05).
+
+    A proper log-density rather than a bare distance, deliberately: the model predicts its own
+    spread, and a wide region must not be penalised for being wide when the future genuinely is
+    uncertain. That is also what makes the score usable as a conformal nonconformity measure --
+    calibration needs a quantity whose tail behaviour means something.
+
+    Positives only. There is no term here that pushes anything apart; collapse is held off by
+    vicreg_variance/vicreg_covariance and by the EMA target branch, NOT by this loss."""
+    var = torch.exp(2.0 * log_sigma)
+    return (0.5 * ((z_target - mu) ** 2) / var + log_sigma).sum(-1).mean()
+
+
+def vicreg_variance(z, gamma=1.0, eps=1e-4):
+    """VICReg variance term: hinge every embedding dimension's std UP to `gamma` (Bardes, Ponce &
+    LeCun 2022). The standard positives-only anti-collapse device.
+
+    Without it a constant encoder is a global optimum of any align-only objective -- every pair fits
+    perfectly and the loss reaches zero while the representation carries nothing. sqrt over the
+    variance (not the variance itself) is load-bearing: the gradient of sqrt stays finite as the std
+    goes to zero, so a dimension that has already collapsed can still be pushed back out."""
+    std = torch.sqrt(z.var(dim=0, unbiased=False) + eps)
+    return F.relu(gamma - std).mean()
+
+
+def vicreg_covariance(z):
+    """VICReg covariance term: drive OFF-DIAGONAL covariances of the embedding to zero, so the
+    dimensions carry different information rather than redundant copies of one.
+
+    Complements vicreg_variance: the variance term alone is satisfied by d copies of a single
+    informative axis, which is collapse of rank rather than collapse of scale and would pass an
+    std-only gate untouched."""
+    n, d = z.shape
+    zc = z - z.mean(dim=0, keepdim=True)
+    cov = (zc.T @ zc) / max(n - 1, 1)
+    off = cov - torch.diag(torch.diagonal(cov))
+    return (off ** 2).sum() / d
+
+
 # --------------------------------------------------------------------------------------------
 def _tests():
     torch.manual_seed(0); ok = True
@@ -525,6 +566,41 @@ def _tests():
     print(f"  start pole: ply anchor exact->0, wrong-ply penalised, monotone in ply | "
           f"irreversibility 0.0/{start_irreversibility(torch.tensor([0.0]),4.0).item():.1f} | "
           f"basin softmax ignores pole 3  OK")
+
+    # ---- reach_probability: positives-only region NLL + the two anti-collapse terms ----
+    B, D = 512, 8
+    zt = torch.randn(B, D)
+
+    # NLL: an exact prediction at sigma=1 costs 0; being wrong costs more; and -- the point of a
+    # DENSITY rather than a distance -- widening sigma where the target is far must REDUCE the loss.
+    exact = reach_region_nll(zt.clone(), torch.zeros(B, D), zt)
+    wrong = reach_region_nll(zt + 2.0, torch.zeros(B, D), zt)
+    wide = reach_region_nll(zt + 2.0, torch.full((B, D), 0.8), zt)
+    assert abs(exact.item()) < 1e-5, f"exact prediction at sigma=1 should cost 0, got {exact.item()}"
+    assert wrong.item() > exact.item(), "a wrong prediction must cost more than an exact one"
+    assert wide.item() < wrong.item(), \
+        "sanity: widening the region must reduce NLL when the target is far -- otherwise the " \
+        "predicted spread is decorative and the conformal score has no calibrated tail"
+
+    # THE COLLAPSE GUARD, which is the whole reason these two terms exist. A constant embedding is
+    # a global optimum of any align-only positives-only objective, so it must be penalised here or
+    # nothing penalises it at all.
+    z_ok = torch.randn(B, D)
+    z_collapsed = torch.ones(B, D) * 0.3
+    assert vicreg_variance(z_collapsed).item() > 0.9, \
+        "a CONSTANT embedding must be heavily penalised -- this is the silent failure mode of a " \
+        "positives-only model, where collapse drives the align loss to zero"
+    assert vicreg_variance(z_ok).item() < 0.1, f"unit-variance embedding should pass, got {vicreg_variance(z_ok).item()}"
+
+    # Rank collapse: d copies of ONE axis has healthy per-dimension std, so the variance term alone
+    # is satisfied. Only the covariance term sees it.
+    z_rank1 = torch.randn(B, 1).repeat(1, D)
+    assert vicreg_variance(z_rank1).item() < 0.1, "rank-1 data has fine per-dim std (that is the trap)"
+    assert vicreg_covariance(z_rank1).item() > vicreg_covariance(z_ok).item() * 10, \
+        "rank-1 collapse must be caught by the COVARIANCE term -- variance alone cannot see it"
+    print(f"  reach region: exact {exact.item():.2e} | wrong {wrong.item():.2f} > wide {wide.item():.2f} | "
+          f"vicreg var collapse {vicreg_variance(z_collapsed).item():.2f} vs ok {vicreg_variance(z_ok).item():.3f} | "
+          f"cov rank1 {vicreg_covariance(z_rank1).item():.2f} vs ok {vicreg_covariance(z_ok).item():.3f}  OK")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
