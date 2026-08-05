@@ -1,0 +1,357 @@
+"""ReachViT -- the FROM-SCRATCH reachability model: one ViT over raw bitboards, two heads.
+
+WHY THE TRUNK HAD TO GO. The first attempt put this objective on the frozen lc0 trunk and measured
+paired ratchet 0.570 against a random-init null of 0.555 -- flat across the checkpoint ladder. That
+is a NEGATIVE, but an inconclusive one, and the reason is structural: a pretrained chess net already
+contains the material ratchet, so its random-init "null" is not zero and no objective on top of it
+can be shown to have added anything. A randomly-initialised ViT over tokenized boards knows no
+chess at all, so here the random-init null IS the real zero and any ratchet that appears was
+learned. That is the whole point of the rebuild (Kaveh 2026-08-05: "key point is whether we can get
+strata without programming anything chess specific").
+
+Two further confounds die with the trunk:
+  * HISTORY LEAK. lc0's 112 planes carry eight plies of history, so for a pair within 8 plies
+    position a sat literally inside b's own input tensor and the model could be right there for
+    reasons that are not reachability. A single tokenized position cannot leak that way, so the
+    `gap > 8` guard and every gap-stratified readout are gone.
+  * EN PASSANT. Verified by controlled FEN pair: ep is encoded NOWHERE in the lc0 112 planes, so a
+    plane-derived position identity is wrong about which positions are the same. tokenize()'s
+    globals carry the ep file explicitly, which is also what makes repetition detection exact.
+
+ONE ENCODER, TWO HEADS, so the arms are directly comparable -- any difference between them is the
+geometry, not the input stage or the amount of training:
+
+  ARM A (region).  proj_a: phi -> z_A, then the ReachJEPA predictor z_A(a) -> Normal(mu, sigma) over
+                   z_A(b). b is scored by log-density, which is what the conformal calibration
+                   consumes. EMA target branch, exactly as before.
+  ARM B (IQE).     proj_b: phi -> z_B, then the Interval Quasimetric Embedding gives a DIRECTED
+                   d(a->b). Kaveh 2026-08-05: "any embedding you learn needs to have asymmetry" --
+                   here the asymmetry is by construction rather than by training, so d(b->a)/d(a->b)
+                   on a pair is a DIRECT readout of the ratchet, with quiet-reversible pairs as the
+                   ~1.0 control.
+
+SEPARATE PROJECTIONS, NOT A SHARED z. The two heads want incompatible things of the same
+coordinates -- arm A wants an isotropic Gaussian region, arm B wants interval endpoints whose
+ORDER encodes direction -- so they share the trunk (which is what makes them comparable) and get
+their own linear map (which is what stops them fighting over the same axes). The anti-collapse
+terms are applied at phi as well as z_A, because a collapse of the trunk is a collapse of both arms.
+
+NOTHING HERE IS TOLD ANY CHESS. The input vocabulary is 13 opaque token ids and 6 opaque globals;
+piece count, captures, legality and material never enter. Piece count appears only in
+interpret_reach.py, as an analysis LABEL computed as (tok > 0).sum(-1).
+"""
+from __future__ import annotations
+
+import copy
+
+import torch
+import torch.nn as nn
+
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import JepaEncoder
+
+# Same clamp as ReachJEPA: without it one easy example drives sigma -> 0 and the NLL to -inf, which
+# is a divergence rather than a fit.
+LOG_SIGMA_MIN, LOG_SIGMA_MAX = -6.0, 3.0
+
+REGION, IQE_ARM = "region", "iqe"
+
+
+class DualIQEHead(nn.Module):
+    """TWO IQE heads: best play, and human fallibility as a RESIDUAL on top of it.
+
+    Kaveh 2026-08-05: "I want to LEARN the best play, and I want to LEARN the human likelihood of
+    mistake directly as a residual on top of that perfect play" -- "so i want two different IQE
+    heads".
+
+        d_best(u->v)   = IQE_best(z_best(u),  z_best(v))      trained on SF-vs-SF (best play)
+        d_human(u->v)  = d_best(u->v) + IQE_res(z_res(u), z_res(v))
+
+    WHY ADDITION, AND WHAT IT BUYS -- this is an identification, so here are the criteria and the
+    check (all verified numerically, not asserted):
+
+      * THE SUM OF TWO QUASIMETRICS IS A QUASIMETRIC. d(x,x) = 0+0 = 0; non-negativity is closed
+        under addition; and the triangle inequality adds side by side. Measured on 200 random
+        triples: identity |d(x,x)| max 0.0, triangle satisfied 200/200, mean |d(u,v)-d(v,u)| 1.223
+        (still genuinely asymmetric). So d_human is a valid quasimetric and every downstream thing
+        that relies on the axioms -- the subsumption poles, the triangle-chaining, the IQE
+        readouts -- remains valid for the human field, not just the base one.
+
+      * d_human >= d_best BY CONSTRUCTION (verified exactly), because the residual is a distance
+        and distances are non-negative. That is the right inductive bias and it is a theorem rather
+        than a hope: a fallible player never reaches a goal FASTER than perfect play. A free-form
+        residual head could learn a negative correction and quietly claim humans outplay Stockfish.
+
+      * THE RESIDUAL IS THE DELIVERABLE. d_mistake(u->v) is, in distance units, how much further a
+        human is from getting from u to v than best play is -- read per endgame, it is the
+        "likelihood of mistake" this whole line exists to measure, and it is directionally
+        resolved (d_mistake(u->v) need not equal d_mistake(v->u)), which matters because botching
+        the conversion of a won endgame is not the same event as failing to hold a draw.
+
+    ZERO-INIT: z_res's projection starts at zero, so every z_res is identical, every interval is
+    empty, and d_mistake is EXACTLY 0 at step 0 (verified). The model therefore begins at "humans
+    play perfectly" and the data has to push it off that -- the same discipline as the pole
+    residual and the M2b style encoder.
+    """
+
+    def __init__(self, d_in: int, d: int = 64, components: int = 16, leak_beta: float = 0.0):
+        super().__init__()
+        self.proj_best = nn.Linear(d_in, d)
+        self.proj_res = nn.Linear(d_in, d)
+        nn.init.zeros_(self.proj_res.weight)              # d_mistake == 0 at step 0
+        nn.init.zeros_(self.proj_res.bias)
+        self.iqe_best = IQE(d, components=components, leak_beta=leak_beta)
+        self.iqe_res = IQE(d, components=components, leak_beta=leak_beta)
+
+    def embed(self, phi):
+        """-> (z_best, z_res). Two projections of ONE shared representation, which is what makes
+        the residual a difference in geometry rather than a difference in encoder noise."""
+        return self.proj_best(phi), self.proj_res(phi)
+
+    def d_best(self, zb_u, zb_v):
+        return self.iqe_best(zb_u, zb_v)
+
+    def d_mistake(self, zr_u, zr_v):
+        """The residual alone: how much further a human is than best play. >= 0 by construction."""
+        return self.iqe_res(zr_u, zr_v)
+
+    def d_human(self, zb_u, zb_v, zr_u, zr_v):
+        return self.d_best(zb_u, zb_v) + self.d_mistake(zr_u, zr_v)
+
+    def distance(self, zb_u, zb_v, zr_u=None, zr_v=None, source=None):
+        """Dispatch by dynamics: SF rows get d_best, human rows get d_human.
+
+        `source` is the POLE_SRC id (0 = SF base, 1 = human residual), so a mixed batch trains both
+        heads at once and the residual only ever sees human rows -- an SF row must never contribute
+        gradient to the mistake head, or "the human penalty" would absorb engine data too."""
+        d = self.d_best(zb_u, zb_v)
+        if zr_u is None or source is None:
+            return d
+        return d + self.d_mistake(zr_u, zr_v) * (source == 1).to(d.dtype)
+
+
+class PoleBank(nn.Module):
+    """The SUBSUMPTION HIERARCHY as points in the quasimetric space, conditioned on the dynamics.
+
+    THE GEOMETRY (Kaveh 2026-08-05). Each endgame is a pole; each instance of that endgame is a
+    point at 0-ply from it -- and 0-ply in an IQE is not a metaphor. d(u->v) accumulates interval
+    length only where v EXCEEDS u, so d(u->v)=0 is exactly "u dominates v coordinatewise", and it
+    coexists with d(v->u) > 0. Verified on our IQE: three specific positions dominating a
+    general-3-fold point which dominates a general-draw point gave forward distances of exactly
+    0.0/0.0/0.0 and reverse distances of 0.88/0.97/0.91, and the chain composed transitively
+    (specific -> general-draw = 0.0) with the triangle inequality satisfied as 0 <= 0 + 0. Mutual
+    zero forces equality, so this is a genuine partial order rather than a pile.
+
+        terminal instance  >=  (ending x material signature)  >=  ending type  >=  outcome
+
+    THE DANGER, stated because it is a recorded scar rather than a worry. This is the SAME surface
+    as the ordering collapse that halted qrl_iqe_unreach (JOURNAL 2026-07-18): all F above all B in
+    the IQE coordinates, every directed distance 0, and torch.maximum's gradient exactly 0 there --
+    an ABSORBING fixed point. Training deliberately toward zero forward distances aims at that
+    corner. Three guards, none optional: the anchor is a HINGE toward a target radius rather than a
+    hard pull to the origin; absorbing_penalty holds every reverse direction open; and `zero_frac`
+    is gated every eval so a global slide into the dead zone appears as a logged number instead of
+    a suspiciously perfect loss. leak_beta > 0 keeps an escape gradient at the cost of making the
+    zero approximate (measured: 0.127 rather than 0.000 at beta=10) -- that trade is the caller's.
+
+    SOURCE CONDITIONING (Kaveh 2026-08-05: "sf won't blunder a stalemate but a human might"). The
+    poles are a RESIDUAL per dynamics on a SHARED embedding, exactly as IQEHead.pole_delta does it,
+    and for the same measured reason: two fields trained separately on disjoint halves of the same
+    human data disagreed as much as a human-vs-SF pair, so a separately-fit-per-source design
+    measures training noise. Sharing phi makes representation noise COMMON to both readouts and
+    cancels it in their difference. Zero-initialised, so step 0 says "the dynamics do not differ"
+    and the data has to push it off that. The difference is only believable against a
+    permuted-source null (the 2026-08-05 conditioned-field protocol), which the readout runs.
+    """
+
+    def __init__(self, n_poles: int, d: int, parent: torch.Tensor, n_sources: int = 2,
+                 init_scale: float = 0.01):
+        super().__init__()
+        self.n_poles, self.d, self.n_sources = int(n_poles), int(d), int(n_sources)
+        self.poles = nn.Parameter(torch.randn(n_poles, d) * init_scale)
+        # `parent[i]` = the pole that pole i subsumes into, or -1 at a root.
+        self.register_buffer("parent", parent.long())
+        self.delta = nn.Parameter(torch.zeros(max(self.n_sources - 1, 0), n_poles, d)) \
+            if self.n_sources > 1 else None
+
+    def for_source(self, src):
+        """(B,) int64 source ids -> (B, n_poles, d). Source 0 is the shared field by construction."""
+        P = self.poles.unsqueeze(0)
+        if self.delta is None:
+            return P.expand(len(src), -1, -1)
+        D = torch.cat([torch.zeros_like(self.delta[:1]), self.delta], 0)
+        return P + D[src]
+
+    def edges(self):
+        """(child_idx, parent_idx) for every subsumption edge in the hierarchy."""
+        c = torch.nonzero(self.parent >= 0, as_tuple=True)[0]
+        return c, self.parent[c]
+
+    def source_divergence(self):
+        """(n_poles,) L2 norm of each pole's per-source residual -- how much the dynamics differ.
+
+        This is the per-endgame competence readout: a pole whose human and SF versions sit apart is
+        an endgame the two populations treat differently, which is precisely the KBN-vs-K question.
+        Meaningless without the permuted-source null beside it."""
+        if self.delta is None:
+            return torch.zeros(self.n_poles, device=self.poles.device)
+        return self.delta.norm(dim=-1).mean(0)
+
+
+class ReachViT(nn.Module):
+    """(tok (B,64) uint8, glob (B,6) uint8) -> phi -> {region head, quasimetric head}."""
+
+    arch = "vit"
+
+    def __init__(self, d_model: int = 256, layers: int = 6, heads: int = 8, d: int = 64,
+                 hidden: int = 256, components: int = 8, ema_decay: float = 0.996,
+                 leak_beta: float = 0.0):
+        super().__init__()
+        assert d % components == 0, "IQE needs d divisible by components"
+        self.d_model, self.d = int(d_model), int(d)
+        self.ema_decay = float(ema_decay)
+        self.source_blind = False        # the control; see blind_source()
+
+        self.enc = JepaEncoder(d_model, layers, heads)
+        self.proj_a = nn.Linear(d_model, d)          # arm A: region space
+        self.proj_b = nn.Linear(d_model, d)          # arm B: quasimetric space
+
+        # Target branch for arm A: an EMA copy of (encoder, proj_a). Never optimised, never receives
+        # gradient -- the JEPA guard that stops the model making its own target easier to predict.
+        self.t_enc = copy.deepcopy(self.enc)
+        self.t_proj_a = copy.deepcopy(self.proj_a)
+        for p in list(self.t_enc.parameters()) + list(self.t_proj_a.parameters()):
+            p.requires_grad_(False)
+
+        # Arm A predictor: z_A -> (mu, log_sigma). `head_in` is the L1-penalised layer.
+        self.head_in = nn.Linear(d, hidden)
+        self.head = nn.Sequential(nn.ReLU(), nn.Linear(hidden, hidden), nn.ReLU(),
+                                  nn.Linear(hidden, 2 * d))
+        # Arm B: the quasimetric itself. Asymmetric by construction (Wang & Isola 2022).
+        self.iqe = IQE(d, components=components, leak_beta=leak_beta)
+
+    # ---- encoding -------------------------------------------------------------------------------
+    def backbone(self, tok, glob):
+        """(B,64) x (B,6) -> phi (B,d_model). The ONLY place the board is read."""
+        return self.enc(tok, glob)
+
+    def encode(self, tok, glob):
+        """-> z_A (B,d), the arm-A ONLINE branch (gradients flow)."""
+        return self.proj_a(self.backbone(tok, glob))
+
+    @torch.no_grad()
+    def encode_target(self, tok, glob):
+        """-> z_A (B,d) from the EMA TARGET branch (no gradient, by construction)."""
+        return self.t_proj_a(self.t_enc(tok, glob))
+
+    def encode_q(self, tok, glob):
+        """-> z_B (B,d), the arm-B quasimetric embedding (gradients flow; no EMA branch, because
+        arm B has an explicit repulsion and does not rely on a bootstrap target to avoid collapse)."""
+        return self.proj_b(self.backbone(tok, glob))
+
+    # ---- arm A: the region ------------------------------------------------------------------
+    def predict(self, z_a):
+        """(B,d) -> (mu (B,d), log_sigma (B,d)): the predicted reachable region from a."""
+        mu, log_sigma = self.head(self.head_in(z_a)).chunk(2, dim=-1)
+        return mu, log_sigma.clamp(LOG_SIGMA_MIN, LOG_SIGMA_MAX)
+
+    def score(self, z_a, z_b):
+        """(B,) log-density of z_b under the region predicted from a. HIGHER = more reachable.
+
+        A proper log-density rather than a bare distance, so the predicted spread is actually used
+        and the conformal nonconformity score has a tail that means something."""
+        mu, log_sigma = self.predict(z_a)
+        var = torch.exp(2.0 * log_sigma)
+        return -0.5 * (((z_b - mu) ** 2) / var + 2.0 * log_sigma).sum(-1)
+
+    # ---- arm B: the quasimetric -------------------------------------------------------------
+    def distance(self, zq_a, zq_b):
+        """(B,) directed d(a -> b). Asymmetric by construction: d(a->b) != d(b->a) in general."""
+        return self.iqe(zq_a, zq_b)
+
+    def score_q(self, zq_a, zq_b):
+        """(B,) arm-B analogue of score(): HIGHER = more reachable, so -d."""
+        return -self.distance(zq_a, zq_b)
+
+    # ---- shared eval entry points (one path for both arms, and the blinding control) ---------
+    def _src(self, tok, glob, q: bool):
+        z = self.encode_q(tok, glob) if q else self.encode(tok, glob)
+        return torch.zeros_like(z) if self.source_blind else z
+
+    @torch.no_grad()
+    def score_rows(self, tok_a, glob_a, tok_b, glob_b, arm: str = REGION):
+        """(B,) reachability score for a batch of (a, b) row pairs, on either arm.
+
+        Both arms expose the same sign convention (higher = b looks more like a future of a), so
+        interpret_reach.py and calibrate_conformal.py run one code path over both."""
+        if arm == IQE_ARM:
+            return self.score_q(self._src(tok_a, glob_a, True), self.encode_q(tok_b, glob_b))
+        return self.score(self._src(tok_a, glob_a, False), self.encode_target(tok_b, glob_b))
+
+    @torch.no_grad()
+    def region_volume_rows(self, tok, glob, arm: str = REGION, ref=None):
+        """(B,) the model's OWN statement of how uncertain it is about the future from each source.
+
+        This is the Mondrian taxonomy calibrate_conformal.py buckets on, and it must introduce no
+        chess (Kaveh 2026-08-05: bucketing on material or ply "will effectively create strata").
+          arm A: sum of log sigma -- the log-volume of the predicted region.
+          arm B: mean d(a -> r) over a FIXED reference bank r of embedded positions -- how far the
+                 quasimetric says it can still travel. Same content, expressed in the geometry the
+                 arm actually has; the bank is fixed before any query is seen, exactly as the
+                 bucket edges are.
+        """
+        if arm == IQE_ARM:
+            if ref is None:
+                raise ValueError("arm B needs a reference bank to express region volume")
+            return self.iqe.pairwise(self.encode_q(tok, glob), ref).mean(-1)
+        return self.predict(self.encode(tok, glob))[1].sum(-1)
+
+    # ---- housekeeping ------------------------------------------------------------------------
+    @torch.no_grad()
+    def update_target(self):
+        """EMA the online (encoder, proj_a) into the target branch. Once per optimiser step."""
+        m = self.ema_decay
+        for tm, om in ((self.t_enc, self.enc), (self.t_proj_a, self.proj_a)):
+            for pt, po in zip(tm.parameters(), om.parameters()):
+                pt.mul_(m).add_(po.detach(), alpha=1.0 - m)
+            for bt, bo in zip(tm.buffers(), om.buffers()):
+                bt.copy_(bo)
+
+    def l1_penalty(self):
+        """L1 on the predictor's input layer -- reported for monitoring. NOT the mechanism that
+        produces sparsity; see prox_l1."""
+        return self.head_in.weight.abs().mean()
+
+    @torch.no_grad()
+    def prox_l1(self, lam: float):
+        """Proximal soft-threshold (ISTA) on the predictor input layer: W <- sign(W)relu(|W| - lam).
+
+        Adding an L1 term to the loss and running Adam does NOT sparsify -- measured on the trunk
+        version, w_l1=0.5 via the subgradient route left 64/64 coordinates alive. The proximal
+        operator sets genuinely small weights to EXACT zero, so 'how many coordinates survive' is a
+        real count rather than a thresholding convention.
+
+        SWEEP IT, DO NOT GUESS IT. At lam scaled by --l1-prox 2.0 this zeroed the entire predictor
+        input layer (support 0/64), producing a model that provably could not read the source at
+        all -- which is the source-blind control, not a model. Start around 0.005."""
+        w = self.head_in.weight
+        w.copy_(torch.sign(w) * torch.clamp(w.abs() - lam, min=0.0))
+
+    def input_support(self, tol: float = 0.0):
+        """(d,) bool: which input coordinates the predictor still reads (any non-zero weight)."""
+        return (self.head_in.weight.abs() > tol).any(dim=0)
+
+    @torch.no_grad()
+    def blind_source(self):
+        """THE control: make the model provably unable to read the SOURCE position.
+
+        Under the paired ratchet (same target b, two sources) a source-blind model returns two
+        identical scores and must therefore score EXACTLY 0.500. This is what exposed the first,
+        confounded metric -- a degenerate run that could not read the source still scored 0.575
+        there. Both arms are blinded: arm A's predictor input layer is zeroed AND the source
+        embedding is forced to a constant, so the blinding cannot be undone by any downstream layer.
+        """
+        self.source_blind = True
+        self.head_in.weight.zero_()
+        self.head_in.bias.zero_()
+        return self

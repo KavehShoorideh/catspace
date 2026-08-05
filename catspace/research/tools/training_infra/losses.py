@@ -298,6 +298,28 @@ def reach_region_nll(mu, log_sigma, z_target):
     return (0.5 * ((z_target - mu) ** 2) / var + log_sigma).sum(-1).mean()
 
 
+def reach_region_margin(mu, log_sigma, z_close, z_far, margin):
+    """Push an UNOBSERVED target OUT of the region predicted from a, by `margin` nats of NLL, with
+    the observed target of the SAME source as the reference (reach_probability ViT arm A).
+
+    The pairing is in the signature on purpose. An absolute floor on the unobserved target's NLL is
+    gameable: NLL scales like 1/sigma^2, so shrinking the predicted spread inflates every distant
+    target's cost without the region having moved at all. Referencing the observed target of the
+    same source cancels that -- sigma enters both terms, so the only way to satisfy the hinge is to
+    actually place z_far further from mu than z_close, in units the model itself sets.
+
+    This is the repulsion the positives-only ReachJEPA deliberately had no analogue of. It is
+    admissible here only because every-ply trajectories supply UNOBSERVED pairs that are grounded in
+    data (a reversal the game did not take, a pair from another game) rather than manufactured by
+    splicing -- and "unobserved" is not "unreachable", so this term states a preference, never a
+    label. Its uniform action across all unobserved pairs is exactly why the strata verdict has to
+    be a DIFFERENTIAL between kinds of reversal rather than "reverses score low"."""
+    var = torch.exp(2.0 * log_sigma)
+    nll_c = (0.5 * ((z_close - mu) ** 2) / var + log_sigma).sum(-1)
+    nll_f = (0.5 * ((z_far - mu) ** 2) / var + log_sigma).sum(-1)
+    return F.relu(margin - (nll_f - nll_c)).mean()
+
+
 def vicreg_variance(z, gamma=1.0, eps=1e-4):
     """VICReg variance term: hinge every embedding dimension's std UP to `gamma` (Bardes, Ponce &
     LeCun 2022). The standard positives-only anti-collapse device.
@@ -581,6 +603,25 @@ def _tests():
     assert wide.item() < wrong.item(), \
         "sanity: widening the region must reduce NLL when the target is far -- otherwise the " \
         "predicted spread is decorative and the conformal score has no calibrated tail"
+
+    # reach_region_margin: the ViT arm's repulsion. Satisfied when the unobserved target is already
+    # `margin` nats worse than the observed one; violated when they swap; and -- the property the
+    # paired signature exists to buy -- INVARIANT to shrinking sigma, which an absolute NLL floor
+    # would reward for free.
+    mu0, ls0 = torch.zeros(B, D), torch.zeros(B, D)
+    z_c, z_f = torch.zeros(B, D), torch.full((B, D), 3.0)
+    ok_far = reach_region_margin(mu0, ls0, z_c, z_f, margin=1.0)
+    swapped = reach_region_margin(mu0, ls0, z_f, z_c, margin=1.0)
+    assert ok_far.item() < 1e-6, f"far target already outside -> 0, got {ok_far.item()}"
+    assert swapped.item() > 1.0, f"observed target further than the unobserved one must cost, got {swapped.item()}"
+    tight = reach_region_margin(mu0, torch.full((B, D), -2.0), z_c, z_f, margin=1.0)
+    assert abs(tight.item() - ok_far.item()) < 1e-6, \
+        "shrinking sigma must NOT satisfy the hinge for free -- that is why the observed target of " \
+        "the same source is the reference rather than an absolute NLL floor"
+    close_call = reach_region_margin(mu0, ls0, z_c, torch.full((B, D), 0.1), margin=1.0)
+    assert 0.9 < close_call.item() <= 1.0, f"a barely-separated pair must pay ~the margin, got {close_call.item()}"
+    print(f"  reach_region_margin: separated {ok_far.item():.2e} | swapped {swapped.item():.2f} | "
+          f"barely-separated {close_call.item():.3f} (~margin) | sigma-shrink invariant  OK")
 
     # THE COLLAPSE GUARD, which is the whole reason these two terms exist. A constant embedding is
     # a global optimum of any align-only positives-only objective, so it must be penalised here or
