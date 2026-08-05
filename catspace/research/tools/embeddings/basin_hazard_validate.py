@@ -1,31 +1,35 @@
 #!/usr/bin/env python
-"""catspace/research/tools/embeddings/basin_hazard_validate.py -- does h actually find hazards, or
-is it two fields disagreeing?
+"""catspace/research/tools/embeddings/basin_hazard_validate.py -- does h = q_SF - q_human measure a
+DYNAMICS difference, or two independently-trained models disagreeing?
 
-h = q_SF - q_human is a difference of two separately-trained models. Two models ALWAYS differ, so a
-non-zero h proves nothing on its own. This script runs the two checks that can kill the claim, and
-prints the numbers whether or not they support it.
+Everything here is a real-vs-NULL comparison. The null pair is two fields trained on DISJOINT
+halves of the SAME human data (train_iqe_head --game-mod 2:0 / 2:1, different seeds), scored on the
+same games. It differs from the real pair in training data and initialisation but NOT in dynamics,
+so any quantity that looks the same for both is training noise, whatever it looks like alone.
 
-CHECK 1 -- PREDICTIVE. If h(s) is a hazard, then among positions humans actually reach, high-h ones
-must be followed by a LARGER realized loss of score in the human game than low-h ones. This is
-measured on the replayed games themselves, on held-out data the fields never trained on, using the
-realized future -- no model in the loop on the outcome side:
+RETRACTED (2026-08-05). An earlier version of CHECK 1 stratified on |q_SF| and asked whether the
+high-h quartile had worse realized results. It passed 8/8 strata with large effects, and it was
+CIRCULAR: at fixed q_SF, h is an affine function of -q_human, and the measured within-stratum
+correlation between h and -q_human is +0.89 to +1.00. So it was testing whether the human-trained
+field predicts human game outcomes -- which is what that field is fit to do -- and not whether h
+locates hazards. It is replaced by CHECK 1 below, which asks the incremental question against the
+null, and no conclusion should be drawn from the retracted numbers.
 
-    drop(s, k) = q_human_realized(s) - q_human_realized(s + k plies)
+CHECK 1 -- INCREMENTAL VALUE. Does knowing the SF field's evaluation improve prediction of the
+REALIZED human result beyond the human field's own evaluation? Held-out R^2, split by game, for
+predicting the white-POV result from q_human alone vs from both. The null pair gets the identical
+treatment: if adding ANY second field's opinion buys the same amount, the gain is not about
+dynamics.
 
-...except q_realized would itself be a field readout. So the outcome side uses the GAME RESULT, the
-only fully model-free quantity available: for each position, the white-POV realized score
-(+1/0/-1). The test is then whether the eventual result is worse (from the side that is ahead by
-q_SF) in high-h positions than in low-h ones, conditioned on q_SF -- i.e. holding the objective
-value of the position FIXED and asking whether h predicts the residual. Conditioning is what makes
-it a test of h rather than a rediscovery that bad positions lose.
+CHECK 2 -- MAGNITUDE. |h| against |h_null|. If the ratio is ~1 the raw magnitude of h is noise.
 
-CHECK 2 -- NULL SCALE. Two fields trained on the SAME mixed data with different seeds also produce
-a non-zero h. That is the noise floor. The real h must exceed it. Pass --null-data to compare.
+CHECK 3 -- STRUCTURE. The magnitude can be noise-dominated while the SYSTEMATIC part is real, so
+this is the one that matters: how much of h is a predictable function of interpretable position
+features (held-out R^2, by game), for the real pair vs the null? Two fields differing only by data
+half also disagree more where data is thin -- which is itself structured by material and ply -- so
+this comparison, not the real pair's R^2 alone, is the evidence.
 
-CHECK 3 -- CALIBRATION PARITY. h is only interpretable if both fields are calibrated; a systematic
-confidence difference would masquerade as hazard everywhere. Reported as each field's mean |q| and
-the correlation between them, so a pure scale difference is visible as a slope, not read as signal.
+CHECK 4 -- CALIBRATION PARITY. A systematic confidence gap would masquerade as hazard everywhere.
 """
 from __future__ import annotations
 
@@ -34,101 +38,125 @@ import time
 
 import numpy as np
 
+PIECE_VAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9}
 
-def boot_diff(a, b, n=2000, seed=0):
-    """Bootstrap 95% CI for mean(a) - mean(b)."""
+
+def load(path, min_ply, human_only=True):
+    z = np.load(path)
+    m = z["ply"] >= min_ply
+    if human_only:
+        m &= z["source"] == 0
+    return {k: z[k][m] for k in ("q_human", "q_sf", "ply", "result", "gid", "fen", "source")}
+
+
+def features(d):
+    """Interpretable per-position features + material difference."""
+    w, b, npc, pawns = [], [], [], []
+    for f in d["fen"]:
+        board = str(f).split(" ")[0]
+        w.append(sum(PIECE_VAL.get(c.lower(), 0) for c in board if c.isupper()))
+        b.append(sum(PIECE_VAL.get(c.lower(), 0) for c in board if c.islower()))
+        npc.append(sum(c.isalpha() for c in board))
+        pawns.append(board.count("p") + board.count("P"))
+    w, b = np.array(w, float), np.array(b, float)
+    return np.column_stack([w, b, w - b, np.array(npc, float), np.array(pawns, float),
+                            d["ply"].astype(float)]), (w - b)
+
+
+def split_by_game(gid, seed, test_frac=0.3):
     rng = np.random.default_rng(seed)
-    da = a[rng.integers(0, len(a), (n, len(a)))].mean(1)
-    db = b[rng.integers(0, len(b), (n, len(b)))].mean(1)
-    d = da - db
-    return float(d.mean()), float(np.percentile(d, 2.5)), float(np.percentile(d, 97.5))
+    games = np.unique(gid)
+    test = set(rng.choice(games, max(1, int(len(games) * test_frac)), replace=False).tolist())
+    te = np.array([int(g) in test for g in gid])
+    return ~te, te
+
+
+def held_out_r2(X, y, tr, te, seed):
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    m = HistGradientBoostingRegressor(max_iter=200, random_state=seed).fit(X[tr], y[tr])
+    return 1.0 - ((y[te] - m.predict(X[te])) ** 2).sum() / ((y[te] - y[tr].mean()) ** 2).sum()
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", default="artifacts/experiments/basin_hazard_data.npz")
-    ap.add_argument("--null-data", default="", help="npz from a NULL field pair (same data, "
-                                                    "different seeds) -- the noise floor")
+    ap.add_argument("--null-data", default="artifacts/experiments/basin_hazard_null_data.npz")
     ap.add_argument("--min-ply", type=int, default=8)
-    ap.add_argument("--bins", type=int, default=8, help="q_SF strata to condition on")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
     t0 = time.time()
 
-    z = np.load(args.data)
-    m = (z["ply"] >= args.min_ply) & (z["source"] == 0)     # human positions only: their hazards
-    h = (z["q_sf"] - z["q_human"])[m]
-    qs, qh = z["q_sf"][m], z["q_human"][m]
-    ply, res, gid = z["ply"][m], z["result"][m], z["gid"][m]
-    print(f"[validate] {len(h):,} human positions, ply >= {args.min_ply} [{time.time()-t0:.0f}s]")
+    real = load(args.data, args.min_ply)
+    null = load(args.null_data, args.min_ply) if args.null_data else None
+    Xr, matr = features(real)
+    hr = real["q_sf"] - real["q_human"]
+    tr, te = split_by_game(real["gid"], args.seed)
+    print(f"[validate] real {len(hr):,} human positions | "
+          f"null {len(null['q_sf']) if null else 0:,} | ply >= {args.min_ply} "
+          f"| {int(tr.sum()):,} train / {int(te.sum()):,} test rows, split BY GAME")
+    if null is not None:
+        Xn, matn = features(null)
+        hn = null["q_sf"] - null["q_human"]
+        trn, ten = split_by_game(null["gid"], args.seed)
 
-    # ---- CHECK 3 first: it decides whether 1 and 2 are even interpretable ----------------------
-    print("\nCHECK 3 -- CALIBRATION PARITY (a pure confidence gap would fake hazard everywhere)")
-    print(f"  mean |q| : human {np.abs(qh).mean():.4f} | SF {np.abs(qs).mean():.4f}")
-    print(f"  corr(q_human, q_SF) = {np.corrcoef(qh, qs)[0,1]:+.4f}   "
-          f"slope(q_SF ~ q_human) = {np.polyfit(qh, qs, 1)[0]:+.4f}")
-    print("  a slope far from 1 means the two fields differ in SCALE, and part of h is that scale "
-          "difference rather than a dynamics difference. Check 1 conditions on q_SF, so it "
-          "survives a scale gap; the raw magnitude of h does not.")
+    # ---- CHECK 1 -------------------------------------------------------------------------------
+    y = real["result"].astype(float)
+    base = held_out_r2(real["q_human"][:, None], y, tr, te, args.seed)
+    both = held_out_r2(np.column_stack([real["q_human"], real["q_sf"]]), y, tr, te, args.seed)
+    print(f"\nCHECK 1 -- INCREMENTAL VALUE for predicting the REALIZED human result (held-out R^2)")
+    print(f"  {'pair':>6s} {'first field alone':>18s} {'+ second field':>15s} {'gain':>8s}")
+    print(f"  {'real':>6s} {base:>18.4f} {both:>15.4f} {both-base:>+8.4f}")
+    if null is not None:
+        yn = null["result"].astype(float)
+        bn = held_out_r2(null["q_human"][:, None], yn, trn, ten, args.seed)
+        on = held_out_r2(np.column_stack([null["q_human"], null["q_sf"]]), yn, trn, ten, args.seed)
+        print(f"  {'null':>6s} {bn:>18.4f} {on:>15.4f} {on-bn:>+8.4f}")
+        print("  The real gain counts only insofar as it EXCEEDS the null gain: adding a second "
+              "field\n  trained on different data helps a little regardless of its dynamics.")
 
-    # ---- CHECK 1: does h predict the realized result, holding q_SF fixed? ----------------------
-    # Score from the perspective of the side the ENGINE evaluation favours, so "worse than the
-    # position deserves" is a single signed number regardless of colour.
-    side = np.sign(qs)
-    fav = side * res.astype(np.float64)                     # +1 the favoured side won, -1 it lost
-    ok = side != 0
-    print(f"\nCHECK 1 -- PREDICTIVE: within a q_SF stratum, does higher h mean a worse realized "
-          f"result for the side the engine favours?")
-    print(f"  {'q_SF stratum':>16s} {'n':>8s} {'lo-h score':>11s} {'hi-h score':>11s} "
-          f"{'difference':>11s} {'95% CI':>19s}")
-    edges = np.quantile(np.abs(qs[ok]), np.linspace(0, 1, args.bins + 1))
-    diffs = []
-    for lo, hi in zip(edges[:-1], edges[1:]):
-        b = ok & (np.abs(qs) >= lo) & (np.abs(qs) < hi)
-        if b.sum() < 400:
-            continue
-        hb = h[b] * side[b]                                 # hazard TO the favoured side
-        q1, q3 = np.quantile(hb, [0.25, 0.75])
-        if not q1 < q3:                                     # degenerate spread -> no contrast to test
-            continue
-        loM, hiM = b.copy(), b.copy()
-        loM[b] = hb <= q1
-        hiM[b] = hb >= q3
-        # h is defined so that POSITIVE = the human side gives it away, i.e. relative to the
-        # favoured side the sign flips with `side`; hi-h should therefore score WORSE.
-        d, cl, cu = boot_diff(fav[hiM], fav[loM], seed=args.seed)
-        diffs.append((d, cl, cu))
-        print(f"  {lo:>7.3f}-{hi:<8.3f} {int(b.sum()):>8,} {fav[loM].mean():>+11.3f} "
-              f"{fav[hiM].mean():>+11.3f} {d:>+11.3f} [{cl:>+7.3f},{cu:>+7.3f}]")
-    if diffs:
-        neg = sum(1 for d, cl, cu in diffs if cu < 0)
-        pos = sum(1 for d, cl, cu in diffs if cl > 0)
-        print(f"\n  VERDICT check 1: {neg}/{len(diffs)} strata show a SIGNIFICANTLY worse realized "
-              f"result in the high-h quartile (CI entirely below 0); {pos} show the opposite. "
-              f"h is predictive iff the first number dominates.")
+    # ---- CHECK 2 -------------------------------------------------------------------------------
+    print("\nCHECK 2 -- MAGNITUDE")
+    print(f"  real |h|: median {np.median(np.abs(hr)):.4f}  mean {np.abs(hr).mean():.4f}  "
+          f"p95 {np.percentile(np.abs(hr), 95):.4f}")
+    if null is not None:
+        print(f"  null |h|: median {np.median(np.abs(hn)):.4f}  mean {np.abs(hn).mean():.4f}  "
+              f"p95 {np.percentile(np.abs(hn), 95):.4f}")
+        print(f"  ratio of medians {np.median(np.abs(hr))/max(np.median(np.abs(hn)),1e-9):.2f}x "
+              f"-- at ~1 the raw magnitude of h is training noise, not dynamics.")
 
-    # ---- CHECK 2: the null floor --------------------------------------------------------------
-    print("\nCHECK 2 -- NULL SCALE")
-    print(f"  this pair  |h|: median {np.median(np.abs(h)):.4f}  p95 {np.percentile(np.abs(h),95):.4f}")
-    if args.null_data:
-        zn = np.load(args.null_data)
-        mn = (zn["ply"] >= args.min_ply) & (zn["source"] == 0)
-        hn = (zn["q_sf"] - zn["q_human"])[mn]
-        print(f"  NULL pair  |h|: median {np.median(np.abs(hn)):.4f}  "
-              f"p95 {np.percentile(np.abs(hn),95):.4f}   (n={len(hn):,})")
-        r = np.median(np.abs(h)) / max(np.median(np.abs(hn)), 1e-9)
-        print(f"  ratio {r:.2f}x -- the dynamics signal is real only to the extent this exceeds 1.")
-    else:
-        print("  (no --null-data given: the floor is UNMEASURED and the magnitude of h above "
-              "carries no scale)")
+    # ---- CHECK 3 (the one that matters) --------------------------------------------------------
+    print("\nCHECK 3 -- STRUCTURE: how much of h is a predictable function of the position?")
+    r2r = held_out_r2(Xr, hr, tr, te, args.seed)
+    print(f"  {'pair':>6s} {'R^2 of h from material+ply':>28s}")
+    print(f"  {'real':>6s} {r2r:>28.4f}")
+    if null is not None:
+        r2n = held_out_r2(Xn, hn, trn, ten, args.seed)
+        print(f"  {'null':>6s} {r2n:>28.4f}")
+        print(f"  A real R^2 well above the null's means the two dynamics disagree SYSTEMATICALLY, "
+              f"in a\n  way two same-dynamics fields do not -- even where the per-position "
+              f"magnitude is noisy.")
 
-    print(f"\n  {'ply band':>10s} {'n':>8s} {'median h':>9s} {'mean|h|':>8s}")
-    for lo, hi in [(8, 20), (20, 40), (40, 60), (60, 90), (90, 10_000)]:
-        b = (ply >= lo) & (ply < hi)
-        if b.sum() < 200:
-            continue
-        print(f"  {lo:>4d}-{hi if hi<10000 else 'inf':>4} {int(b.sum()):>8,} "
-              f"{np.median(h[b]):>+9.3f} {np.abs(h[b]).mean():>8.3f}")
+    # material antisymmetry: the specific structure claimed
+    print(f"\n  mean h by material difference (the claimed structure), real vs null:")
+    print(f"  {'mat diff':>10s} {'real':>9s} {'null':>9s} {'n':>9s}")
+    for lo, hi in [(-99, -5), (-5, -2), (-2, 2), (2, 5), (5, 99)]:
+        mr = (matr >= lo) & (matr < hi)
+        row = f"  {lo if lo>-99 else '-inf':>5}..{hi if hi<99 else 'inf':<4} {hr[mr].mean():>+9.4f}"
+        if null is not None:
+            mn = (matn >= lo) & (matn < hi)
+            row += f" {hn[mn].mean():>+9.4f}"
+        print(row + f" {int(mr.sum()):>9,}")
+
+    # ---- CHECK 4 -------------------------------------------------------------------------------
+    print("\nCHECK 4 -- CALIBRATION PARITY")
+    print(f"  real  mean|q| first {np.abs(real['q_human']).mean():.4f} second "
+          f"{np.abs(real['q_sf']).mean():.4f} | corr {np.corrcoef(real['q_human'], real['q_sf'])[0,1]:+.4f}"
+          f" | slope {np.polyfit(real['q_human'], real['q_sf'], 1)[0]:+.4f}")
+    if null is not None:
+        print(f"  null  mean|q| first {np.abs(null['q_human']).mean():.4f} second "
+              f"{np.abs(null['q_sf']).mean():.4f} | corr "
+              f"{np.corrcoef(null['q_human'], null['q_sf'])[0,1]:+.4f} | slope "
+              f"{np.polyfit(null['q_human'], null['q_sf'], 1)[0]:+.4f}")
     print(f"\ndone [{time.time()-t0:.0f}s]")
 
 
