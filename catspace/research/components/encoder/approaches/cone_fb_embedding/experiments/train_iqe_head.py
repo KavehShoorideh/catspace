@@ -93,7 +93,23 @@ class DualFeats:
         return out
 
 
-def build_pairs(game, ply, games_set, rng, per_game=10):
+def build_pairs(game, ply, games_set, rng, per_game=10, macro=False):
+    """Same-game (source, goal) pairs with a log1p time target.
+
+    macro=False -- the shipped behaviour: any two rows, target log1p(ply gap). Time is counted in
+    PLIES, so a step alternates whose move it is and the metric mixes "my moves" with "theirs".
+
+    macro=True (Kaveh 2026-08-05) -- a step is TWO PLIES, mine plus the opponent's reply, and only
+    SAME-PARITY rows are paired so both ends have the same side to move. Target is log1p(gap/2),
+    i.e. distance measured in MY MOVES.
+
+    Why this is the whole change needed to remove minimax from the metric: the opponent's reply
+    distribution does not have to be modelled, because these games ARE samples from it. A gap
+    measured between two same-side-to-move positions of a real game has already integrated over
+    whatever the opponent actually did in between, for that population. The max over my own moves
+    is not learned here at all -- it belongs at search time, over legal successors (see
+    expectimax_reachability.py). Learned E, searched max.
+    """
     rows_by_game = defaultdict(list)
     for i in range(len(game)):
         g = int(game[i])
@@ -111,6 +127,10 @@ def build_pairs(game, ply, games_set, rng, per_game=10):
             si, gj = rows[a], rows[b]; delta = int(ply[gj] - ply[si])
             if delta <= 0:
                 continue
+            if macro:
+                if delta % 2:
+                    continue                                 # different side to move: not a macro gap
+                delta //= 2                                  # count MY moves, not plies
             S.append(si); G.append(gj); D.append(np.log1p(delta))
     return np.array(S), np.array(G), np.array(D, np.float32)
 
@@ -132,6 +152,11 @@ def main():
                     help="fraction of TRAIN games to keep (holdout is untouched). For learning "
                          "curves: the val split is drawn FIRST from a fixed seed, so the holdout "
                          "is byte-identical at every size and the curves are comparable.")
+    ap.add_argument("--macro-step", action="store_true",
+                    help="a STEP is two plies (mine + the opponent's reply): pair only same-parity "
+                         "rows and regress on log1p(gap/2), so the metric counts MY MOVES. The "
+                         "opponent is not modelled -- the games are samples of its policy -- and "
+                         "the max over my own moves belongs at search time, not here.")
     ap.add_argument("--n-sources", type=int, default=1,
                     help="1 = the shipped single-dynamics field. 2 = DYNAMICS-CONDITIONED: one "
                          "SHARED embedding with per-source pole geometry and temperature, so "
@@ -273,8 +298,12 @@ def main():
         train_games = {g for g in train_games if g % K == R}
         print(f"  [game-mod] train games {len(train_games):,} of {before:,} (game %% {K} == {R}); "
               f"holdout {len(val_games):,} games UNCHANGED", flush=True)
-    MG_s, MG_g, MG_d = build_pairs(game, ply, train_games, rng)
-    V_s, V_g, V_d = build_pairs(game, ply, val_games, np.random.default_rng(args.seed + 1))
+    MG_s, MG_g, MG_d = build_pairs(game, ply, train_games, rng, macro=args.macro_step)
+    V_s, V_g, V_d = build_pairs(game, ply, val_games, np.random.default_rng(args.seed + 1),
+                                macro=args.macro_step)
+    if args.macro_step:
+        print(f"  [macro-step] pairs are SAME-side-to-move; target log1p(my-moves). "
+              f"train {len(MG_s):,} val {len(V_s):,}", flush=True)
     is_val = np.array([int(g) in val_games for g in game])
     tb_train = np.flatnonzero((dtz >= 1) & ~is_val); tb_val = np.flatnonzero((dtz >= 1) & is_val)
     not_won_train = np.flatnonzero((dtz < 0) & ~is_val)
