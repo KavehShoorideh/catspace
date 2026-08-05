@@ -88,6 +88,99 @@ def base_rate_residual(h, q, nbins=25):
     return h - mean[b]
 
 
+def simple_features(fen, ply, qh):
+    """Interpretable per-position features: the ones a player could actually be told about."""
+    w, b, npc, pawns, queens = [], [], [], [], []
+    for f in fen:
+        board = str(f).split(" ")[0]
+        w.append(sum(PIECE_VAL.get(c.lower(), 0) for c in board if c.isupper()))
+        b.append(sum(PIECE_VAL.get(c.lower(), 0) for c in board if c.islower()))
+        npc.append(sum(c.isalpha() for c in board))
+        pawns.append(board.count("p") + board.count("P"))
+        queens.append(board.count("q") + board.count("Q"))
+    w, b = np.array(w, float), np.array(b, float)
+    return np.column_stack([w, b, w - b, np.array(npc, float), np.array(pawns, float),
+                            np.array(queens, float), ply.astype(float), qh])
+
+
+FEATURE_NAMES = ["mat_W", "mat_B", "mat_diff", "n_pieces", "n_pawns", "n_queens", "ply", "q_human"]
+
+
+def hazard_rules(simple, h, gid, seed, max_depth=4, min_leaf=500, test_frac=0.3, cols=None):
+    """Hazard AREAS as readable rules, fitted on train games and scored on held-out ones.
+
+    A shallow regression tree over the interpretable features is the right shape for this once
+    localisability has shown that (a) h is largely a function of those features and (b) it is NOT a
+    function of the shared phi. A leaf is a region stated in terms a player can check -- material,
+    pawn count, ply, how good the position looks to a human -- and its held-out mean h is how much
+    score that region actually leaks. Every number reported is on games the tree never saw, so leaf
+    means are not the fitted values.
+    """
+    from sklearn.tree import DecisionTreeRegressor
+    rng = np.random.default_rng(seed)
+    games = np.unique(gid)
+    test = set(rng.choice(games, max(1, int(len(games) * test_frac)), replace=False).tolist())
+    te = np.array([int(g) in test for g in gid])
+    tr = ~te
+    cols = list(range(simple.shape[1])) if cols is None else list(cols)
+    X = simple[:, cols]
+    names = [FEATURE_NAMES[c] for c in cols]
+    t = DecisionTreeRegressor(max_depth=max_depth, min_samples_leaf=min_leaf, random_state=seed)
+    t.fit(X[tr], h[tr])
+    leaf_te = t.apply(X[te])
+    h_te = h[te]
+
+    tree, rules = t.tree_, {}
+
+    def walk(node, conds):
+        if tree.children_left[node] == -1:
+            rules[node] = list(conds)
+            return
+        f, thr = names[tree.feature[node]], tree.threshold[node]
+        walk(tree.children_left[node], conds + [f"{f} <= {thr:.2f}"])
+        walk(tree.children_right[node], conds + [f"{f} > {thr:.2f}"])
+
+    walk(0, [])
+    out = []
+    for node, conds in rules.items():
+        m = leaf_te == node
+        if m.sum() < 30:
+            continue
+        lo, hi = boot_ci(h_te[m], seed=seed + node)
+        out.append(dict(n=int(m.sum()), occ=m.mean(), mean_h=float(h_te[m].mean()),
+                        ci_lo=lo, ci_hi=hi, rule=" AND ".join(conds)))
+    out.sort(key=lambda r: -r["mean_h"])
+    return out, int(tr.sum()), int(te.sum())
+
+
+def localisability(phi, simple, h, gid, seed, test_frac=0.3):
+    """Is h a FUNCTION OF THE POSITION at all, and in which description?
+
+    The ranked table below can only mean something if hazard actually varies BETWEEN regions rather
+    than within them. This measures that directly, as held-out R^2 (split BY GAME, since positions
+    within a game are near-duplicates) for predicting h from:
+      * simple interpretable features -- material, piece counts, ply, the human evaluation;
+      * the shared field's 64-d phi;
+      * both.
+    An R^2 near zero in every description means h is real but NOT localisable in these coordinates:
+    the hazard would then not be a property of where the position IS, and no clustering of this phi
+    can produce honest 'areas'. Reported before the table so the table is read correctly.
+    """
+    from sklearn.ensemble import HistGradientBoostingRegressor
+    rng = np.random.default_rng(seed)
+    games = np.unique(gid)
+    test = set(rng.choice(games, max(1, int(len(games) * test_frac)), replace=False).tolist())
+    te = np.array([int(g) in test for g in gid])
+    tr = ~te
+    base = ((h[te] - h[tr].mean()) ** 2).sum()
+    out = {}
+    for name, X in [("material+ply+q_human", simple), ("shared phi (64-d)", phi),
+                    ("both", np.hstack([simple, phi]))]:
+        m = HistGradientBoostingRegressor(max_iter=200, random_state=seed).fit(X[tr], h[tr])
+        out[name] = 1.0 - ((h[te] - m.predict(X[te])) ** 2).sum() / base
+    return out, int(tr.sum()), int(te.sum())
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--data", default="artifacts/experiments/basin_hazard_data.npz")
@@ -123,8 +216,53 @@ def main():
           f"q_human has mean {hres[hum].mean():+.4f} with sd {hres[hum].std():.4f} "
           f"(vs raw sd {h[hum].std():.4f}) -- the ratio is how much of h is REGIONAL")
 
+    gid = z["gid"][m]
+    simple = simple_features(fen[hum], ply[hum], qh[hum])
+    r2, ntr, nte = localisability(phi[hum], simple, h[hum], gid[hum], args.seed)
+    print(f"\nLOCALISABILITY of h -- held-out R^2, split BY GAME ({ntr:,} train / {nte:,} test rows)")
+    for k_, v in r2.items():
+        print(f"  {k_:>22s}  R^2 {v:>+7.4f}")
+    print("  Near-zero everywhere = h is real but NOT a function of where the position is in these\n"
+          "  coordinates, and no clustering of this phi can yield honest 'areas'.")
+
+    rules, n_tr, n_te = hazard_rules(simple, h[hum], gid[hum], args.seed)
+    print(f"\nHAZARD AREAS AS RULES -- depth-4 tree on the interpretable features, every number "
+          f"scored on HELD-OUT games ({n_tr:,} train / {n_te:,} test rows)")
+    print(f"  {'occ%':>6s} {'n':>7s} {'mean h':>8s} {'95% CI':>19s}   rule")
+    for r in rules[:8]:
+        print(f"  {100*r['occ']:>5.2f}% {r['n']:>7,} {r['mean_h']:>+8.3f} "
+              f"[{r['ci_lo']:>+7.3f},{r['ci_hi']:>+7.3f}]   {r['rule']}")
+    print("  ... swindle end (most negative):")
+    for r in rules[-4:]:
+        print(f"  {100*r['occ']:>5.2f}% {r['n']:>7,} {r['mean_h']:>+8.3f} "
+              f"[{r['ci_lo']:>+7.3f},{r['ci_hi']:>+7.3f}]   {r['rule']}")
+
+    # The tree above splits mainly on q_human, which is largely the SCALE difference between the
+    # two fields (measured slope 0.63) rather than position-specific hazard. Re-fit on the
+    # base-rate RESIDUAL with q_human excluded from the features: this asks the sharper question --
+    # GIVEN how good the position looks to a human, which KINDS of position leak extra?
+    rres, _, _ = hazard_rules(simple, hres[hum], gid[hum], args.seed,
+                              cols=[i for i, n in enumerate(FEATURE_NAMES) if n != "q_human"])
+    print(f"\nEXTRA HAZARD BEYOND THE EVALUATION LEVEL -- same tree on the q_human-residualised h, "
+          f"with q_human removed from the features (held-out)")
+    print(f"  {'occ%':>6s} {'n':>7s} {'resid h':>8s} {'95% CI':>19s}   rule")
+    for r in rres[:6]:
+        print(f"  {100*r['occ']:>5.2f}% {r['n']:>7,} {r['mean_h']:>+8.3f} "
+              f"[{r['ci_lo']:>+7.3f},{r['ci_hi']:>+7.3f}]   {r['rule']}")
+    print("  ... swindle end:")
+    for r in rres[-3:]:
+        print(f"  {100*r['occ']:>5.2f}% {r['n']:>7,} {r['mean_h']:>+8.3f} "
+              f"[{r['ci_lo']:>+7.3f},{r['ci_hi']:>+7.3f}]   {r['rule']}")
+
     km = MiniBatchKMeans(n_clusters=args.k, random_state=args.seed, n_init=10, batch_size=4096)
     lab = km.fit_predict(phi)
+    bet = np.array([h[hum][lab[hum] == c].mean() for c in range(args.k)
+                    if (lab[hum] == c).sum() > 0])
+    wts = np.array([(lab[hum] == c).sum() for c in range(args.k) if (lab[hum] == c).sum() > 0])
+    bvar = float(np.average((bet - np.average(bet, weights=wts)) ** 2, weights=wts))
+    print(f"\n  k-means variance decomposition: BETWEEN-cluster variance of h {bvar:.5f} of total "
+          f"{h[hum].var():.5f} = {100*bvar/h[hum].var():.2f}% "
+          f"(the rest is WITHIN clusters, i.e. not captured by region identity)")
 
     n_human_tot = int(hum.sum())
     rows = []
