@@ -81,7 +81,8 @@ def load_net(ckpt, device):
     c = p["cfg"]
     if c.get("arch", TRUNK) == VIT:
         net = ReachViT(d_model=c["d_model"], layers=c["layers"], heads=c["heads"], d=c["d"],
-                       hidden=c["hidden"], components=c["components"])
+                       hidden=c["hidden"], components=c["components"],
+                       dual=c.get("dual", False), d_cond=c.get("d_cond", 0))
     else:
         net = ReachJEPA(in_ch=c["in_ch"], d=c["d"], adapter_ch=c["adapter_ch"], hidden=c["hidden"])
     net.load_state_dict(p["state_dict"])
@@ -259,11 +260,32 @@ def differential(net, source, tr, rows, rng, device, n=40_000, max_gap=40):
         a, b = i[sel], j[sel]
         d_fwd = directed_distance(net, source, a, b, device)
         d_rev = directed_distance(net, source, b, a, device)
-        ratio = float(np.median(d_rev / np.maximum(d_fwd, 1e-6)))
+        per_pair = d_rev / np.maximum(d_fwd, 1e-6)          # kept for the bootstrap
+        ratio = float(np.median(per_pair))
         s_fwd = score_pairs(net, source, a, b, device, arm=REGION)
         s_rev = score_pairs(net, source, b, a, device, arm=REGION)
-        out[name] = (ratio, float(np.mean(s_fwd - s_rev)), len(sel))
+        out[name] = (ratio, float(np.mean(s_fwd - s_rev)), len(sel), per_pair)
     return out
+
+
+def bootstrap_diff(per_pair_a, per_pair_b, rng, n_boot=2000):
+    """(point, lo, hi) for median(a) - median(b), percentile bootstrap.
+
+    The differential is THE strata claim, so it does not get to be a bare number. Resampling both
+    groups independently is right here because they are independently drawn pair sets, not a paired
+    design -- and a CI that straddles 0 means the effect is not established however good the point
+    estimate looks. This is the guard against reporting the previous attempt's +0.015 as a finding.
+    """
+    if per_pair_a is None or per_pair_b is None or len(per_pair_a) < 50 or len(per_pair_b) < 50:
+        return float("nan"), float("nan"), float("nan")
+    pt = float(np.median(per_pair_a) - np.median(per_pair_b))
+    na, nb = len(per_pair_a), len(per_pair_b)
+    d = np.empty(n_boot)
+    for k in range(n_boot):
+        d[k] = (np.median(per_pair_a[rng.integers(0, na, na)])
+                - np.median(per_pair_b[rng.integers(0, nb, nb)]))
+    lo, hi = np.percentile(d, [2.5, 97.5])
+    return pt, float(lo), float(hi)
 
 
 def build_eval_context(net, payload, args):
@@ -368,7 +390,7 @@ def main():
         print(f"  difference between them came from the data, not the objective.")
         print(f"  {'group':>9} {'n':>8} {'d(b->a)/d(a->b)':>17} {'score(a->b)-score(b->a)':>25}")
         for name in ("capture", "quiet", "revers."):
-            r, s, nn = diff.get(name, (float("nan"),) * 2 + (0,))
+            r, s, nn = diff.get(name, (float("nan"), float("nan"), 0, None))[:3]
             tag = "  <- trained-in reference, NOT evidence" if name == "revers." else ""
             print(f"  {name:>9} {nn:>8,} {r:>17.3f} {s:>25.3f}{tag}")
 
@@ -416,11 +438,17 @@ def main():
     cap = diff.get("capture", (float("nan"),))[0]
     qui = diff.get("quiet", (float("nan"),))[0]
     rev = diff.get("revers.", (float("nan"),))[0]
+    cm_pt, cm_lo, cm_hi = bootstrap_diff(diff.get("capture", (0, 0, 0, None))[3],
+                                         diff.get("quiet", (0, 0, 0, None))[3], rng) if diff \
+        else (float("nan"),) * 3
+    if diff:
+        print(f"\n  capture - quiet = {cm_pt:+.3f}  95% CI [{cm_lo:+.3f}, {cm_hi:+.3f}]"
+              f"  {'ESTABLISHED (excludes 0)' if (cm_lo > 0 or cm_hi < 0) else 'NOT established (CI spans 0)'}")
     print(f"\nVERDICT REACH-STRATA-VIT arch={'vit' if is_vit else 'trunk'} "
           f"paired_ratchet_region={paired_by_arm.get(REGION, float('nan')):.4f} "
           f"paired_ratchet_iqe={paired_by_arm.get(IQE_ARM, float('nan')):.4f} "
           f"diff_capture={cap:.3f} diff_quiet={qui:.3f} diff_reversible={rev:.3f} "
-          f"capture_minus_quiet={cap-qui:+.3f} "
+          f"capture_minus_quiet={cm_pt:+.3f} ci=[{cm_lo:+.3f},{cm_hi:+.3f}] "
           f"confounded_ratchet={mean_auc:.4f} rho_signed={rho_signed:+.4f} rho_absonly={rho_abs:+.4f} "
           f"sep_auc={sep:.4f} l1_kept={keep_n}/{len(w)} "
           f"source_blind={int(args.source_blind)} step={payload.get('step')} [{time.time()-t0:.0f}s]")

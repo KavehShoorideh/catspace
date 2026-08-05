@@ -284,9 +284,9 @@ class ReachViT(nn.Module):
         """-> (z_best, z_res). Dual mode only. `cond` (B,d_cond) is the strength+style vector."""
         return self.qhead.embed(self.backbone(tok, glob), cond)
 
-    def distance_cond(self, zb_u, zb_v, zr_u=None, zr_v=None):
-        """d(u->v | c) = d_best + d_res. Dual mode only; >= d_best for every conditioning."""
-        return self.qhead.distance(zb_u, zb_v, zr_u, zr_v)
+    def distance_cond(self, z_u, z_v):
+        """d(u->v | c) on the CONDITIONED embedding. A valid quasimetric for every c."""
+        return self.qhead.distance(z_u, z_v)
 
     # ---- arm A: the region ------------------------------------------------------------------
     def predict(self, z_a):
@@ -306,7 +306,7 @@ class ReachViT(nn.Module):
     # ---- arm B: the quasimetric -------------------------------------------------------------
     def distance(self, zq_a, zq_b):
         """(B,) directed d(a -> b) on the BEST-PLAY field. Asymmetric by construction."""
-        return self.qhead.d_best(zq_a, zq_b) if self.dual else self.iqe(zq_a, zq_b)
+        return self.qhead.d_base(zq_a, zq_b) if self.dual else self.iqe(zq_a, zq_b)
 
     def score_q(self, zq_a, zq_b):
         """(B,) arm-B analogue of score(): HIGHER = more reachable, so -d."""
