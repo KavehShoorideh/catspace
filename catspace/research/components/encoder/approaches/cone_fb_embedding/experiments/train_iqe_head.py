@@ -377,10 +377,27 @@ def main():
         # is spent climbing out of that hole (measured: pole gap moved only 0.09 -> 0.27 in 100
         # steps against a crossover of 4.5). Starting them in the right region skips that climb.
         with torch.no_grad():
+            pre_train = np.flatnonzero((n_to_end == 1) & ~is_val)
             for k in (WIN, DRAW, LOSS):
                 ck = term_train[y_all[term_train] == k]
                 if len(ck) == 0:
-                    print(f"  [poles] WARNING no terminals for class {k}; keeping random init")
+                    # ENGINES NEVER RESIGN, so in SF-vs-SF no terminal position has the MOVER
+                    # winning -- the mover at a terminal is the side that got mated or drawn, and
+                    # class WIN has exactly 0 terminals (measured on field_combined_v2: SF terminal
+                    # basins 0 win / 64,867 draw / 15,133 loss). Falling through to random init
+                    # would leave the SF field's win pole stacked at the origin while the human
+                    # field -- whose opponents DO resign, giving it 4,421 terminal wins -- got a
+                    # prototype. h = q_SF - q_human would then partly measure that initialisation
+                    # asymmetry on exactly the win side it is trying to compare.
+                    # The PRE-terminal row is the honest anchor anyway: build_combined_field_data
+                    # calls those rows "the win-pole anchors", because one ply before the end the
+                    # mover IS the winner. SF has 15,133 of them.
+                    ck = pre_train[y_all[pre_train] == k]
+                    print(f"  [poles] class {k} has no terminals (engines never resign) -> "
+                          f"prototype from {len(ck):,} PRE-terminal rows instead", flush=True)
+                if len(ck) == 0:
+                    print(f"  [poles] WARNING no terminal or pre-terminal rows for class {k}; "
+                          f"keeping random init")
                     continue
                 pick = ck[rng.integers(0, len(ck), min(2048, len(ck)))]
                 net.poles[k] = net.phi(fx(pick)).mean(0)
