@@ -11010,3 +11010,88 @@ null arms train on HUMAN data with DISJOINT halves of the training games (2:0 an
 different seeds, so h_null measures what two independently-trained fields differ by when there is
 NO dynamics difference. --train-frac 0.5 twice would have overlapped ~50% and understated exactly
 the floor it exists to measure.
+
+## 2026-08-05 -- hazards for humans (part 2): the null killed it, and why that was the point
+
+**Result first: the two-separately-trained-fields design does not work, and I retract two claims I
+made earlier in the same session on the strength of it.** The method for sidestepping the
+quasimetric is sound and the pipeline is clean; the estimator is not, for a structural reason.
+
+**The four fields.** All 15,000 steps, ~53 min each on the v2 data, 0.21 s/step (RAM-resident).
+
+| field  | source                | acc   | ECE    | eff_rank | term eff_rank | pole asym | gap vs crossover |
+|--------|-----------------------|-------|--------|----------|---------------|-----------|------------------|
+| human  | human v2              | 0.701 | 0.0412 | 25.4     | 25.5          | +3.51     | 4.55 vs 4.55     |
+| SF     | SF-vs-SF v2           | 0.888 | 0.0231 | 27.5     | 27.5          | +2.92     | 4.67 vs 4.66     |
+| nullA  | human v2, games % 2==0| 0.714 | 0.0695 | --       | 27.6          | +3.63     | 4.54 vs 4.52     |
+| nullB  | human v2, games % 2==1| 0.719 | 0.0464 | --       | 25.8          | +3.37     | 4.57 vs 4.53     |
+
+No collapse anywhere, every asymmetry positive, every pole gap sitting on the LJ crossover. The
+null arms are real fields, which is what makes them a fair floor. SF's higher accuracy is mostly
+its easier base rate (73% draws).
+
+**A bug found and fixed before it contaminated the comparison.** ENGINES NEVER RESIGN, so in
+SF-vs-SF no terminal position has the MOVER winning: class WIN has exactly 0 terminals
+(field_combined_v2 SF terminals = 0 win / 64,867 draw / 15,133 loss). train_iqe_head's prototype
+init printed a WARNING and fell through to random init for that pole -- randn*0.01, stacked at the
+origin ~450x below the crossover. The human field, whose opponents DO resign (4,421 terminal wins),
+got a prototype for all three. h would then have partly measured an initialisation asymmetry on
+exactly the win side it exists to compare. Fixed to fall back to PRE-terminal rows, which
+build_combined_field_data already calls "the win-pole anchors" (SF has 15,133). Caught by reading
+the log, not by a gate -- there was no gate for it.
+
+**What h looked like before the null.** Median h +0.006 but mean |h| 0.219, growing 0.043 (ply
+8-20) to 0.302 (ply 90+); 17.9% of human positions above +0.25 and 17.9% below -0.25. Symmetric in
+the mean, large in magnitude, and apparently structured.
+
+**Then the null.**
+
+| quantity                                              | real    | null    |
+|-------------------------------------------------------|---------|---------|
+| median \|h\|                                          | 0.1497  | 0.1436  |
+| R^2 of h from material+ply (held out, by game)        | -0.0084 | -0.0277 |
+| residualised-h spread, mat>+2 minus mat<-2            | +0.3104 | +0.3408 |
+| gain in held-out R^2 for the REALIZED result from the second field | +0.0236 | +0.0347 |
+
+Every apparent finding is reproduced by two fields trained on disjoint halves of the SAME human
+data. The magnitude ratio is 1.04x. On the incremental test the NULL gains MORE.
+
+**RETRACTION 1 -- the predictive check was circular.** I stratified on |q_SF| and found 8/8 strata
+with significantly worse realized results in the high-h quartile, CIs entirely below zero, effects
+-0.13 to -0.32. At fixed q_SF, h is an affine function of -q_human; the measured within-stratum
+correlation between h and -q_human is +0.89 to +1.00. So it tested whether a human-trained field
+predicts human games -- what it is fit to do. It says nothing about hazard. Replaced by an
+incremental test against the null, which the real pair fails.
+
+**RETRACTION 2 -- the material antisymmetry was an artifact, and I had already sent the figure.**
+"Humans fail to convert a material advantage and swindle when behind" was read off the
+q_human-residualised h, which showed clean antisymmetry in material difference. The null pair shows
+the SAME pattern slightly LARGER (+0.341 vs +0.310). Residualising on a quantity collinear with
+material manufactures it. Relatedly, the localisability R^2 +0.5772 for "material+ply+q_human" was
+carried entirely by q_human AS A FEATURE: drop q_human and material+ply explain none of h
+(R^2 -0.008). The correct reading of that table was always the second row -- the shared field's phi
+gives R^2 -0.024, and only 0.56% of h's variance lies BETWEEN its 120 k-means clusters -- which is
+consistent with basin_perply_umap's finding that outcome does not live in neighbourhood structure.
+
+**Why it failed, structurally.** q_human and q_SF came from two independently trained embeddings,
+so their difference carries the SUM of both fields' representation noise. Against a dynamics signal
+of unknown but evidently smaller size, that is hopeless at this budget, and more steps would not
+fix a variance that does not go to zero with them.
+
+**The fix, running.** --n-sources 2 puts both dynamics on ONE shared phi with per-source pole
+geometry and temperature, parameterised as a zero-initialised RESIDUAL from the shared poles.
+Everything the two readouts share then cancels exactly in q_SF - q_human by construction, and
+training starts at "the dynamics do not differ" so a non-zero h has to be earned. Same shape as the
+M2b residual-z decision. Backward compatible: n_sources=1 adds no parameters.
+
+Its OWN null is queued behind it: the identical architecture with --permute-source, which
+reassigns the source label at random BY GAME, keeping the marginals and destroying the link to
+dynamics. A conditioned model can invent a difference between any two labelled halves, so the real
+run's h means nothing until the permuted run's h is measured. That is the lesson of this entry
+applied in advance rather than after the fact.
+
+**Method note that survives all of the above.** Defining the hazard on PROBABILITIES rather than
+geometry does dissolve the quasimetric obstruction -- h is a scalar, the off-diagonal plot (q_SF,
+q_human) needs no embedding, no symmetrisation and no reduction -- and the pipeline is verified to
+add no asymmetry of its own (same checkpoint in all three head slots gives h identically 0.000,
+corr +1.0000). What was wrong was the estimator, not the definition.
