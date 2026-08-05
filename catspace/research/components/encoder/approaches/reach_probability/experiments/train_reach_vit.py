@@ -64,6 +64,45 @@ from catspace.research.tools.training_infra.train.scaffold import (
     TrainConfig, resolve_device, standard_train)
 
 
+def _sync(dev):
+    """Make a timing read MEANINGFUL. MPS and CUDA queue work asynchronously, so a bare
+    time.perf_counter() around a kernel launch measures the launch, not the work -- every phase
+    would look free and the total would land in whichever call happens to block. Syncing costs
+    real time, which is why profiling runs only on eval steps."""
+    if dev.type == "mps":
+        torch.mps.synchronize()
+    elif dev.type == "cuda":
+        torch.cuda.synchronize()
+
+
+class Phase:
+    """Accumulates per-phase wall time so the log says WHAT is constraining the run.
+
+    Without this, "0.58 s/step" is a single number with no lever attached: it could be the
+    encoder, the target branch, the IQE pairwise work, or numpy pair sampling on the main thread,
+    and each has a different fix. Logged as t_* metrics beside the losses."""
+
+    def __init__(self, dev, on):
+        self.dev, self.on, self.t = dev, on, {}
+        self._name, self._t0 = None, None
+
+    def __call__(self, name):
+        self._name = name
+        return self
+
+    def __enter__(self):
+        if self.on:
+            _sync(self.dev)
+            self._t0 = time.perf_counter()
+        return self
+
+    def __exit__(self, *a):
+        if self.on:
+            _sync(self.dev)
+            self.t[f"t_{self._name}"] = self.t.get(f"t_{self._name}", 0.0) + time.perf_counter() - self._t0
+        return False
+
+
 def make_batcher(tr, dev):
     """rows -> one encoder pass over the UNIQUE rows, then index back.
 
@@ -182,13 +221,16 @@ def main():
     encode = make_batcher(tr, dev)
     n_rev = max(1, int(args.batch * args.rev_frac))
 
-    def terms(model, sampler, n, n_rev):
+    def terms(model, sampler, n, n_rev, ph=None):
         """One objective evaluation on freshly sampled pairs. Returns (loss, metrics)."""
-        i, j, k = sampler.triples(n)
-        x = sampler.cross(i)                            # one cross-game partner PER SOURCE i
-        ra, rb, rgap = sampler.reversible(n_rev)        # OBSERVED backward, via repetitions
+        ph = ph or Phase(dev, False)
+        with ph("sample"):
+            i, j, k = sampler.triples(n)
+            x = sampler.cross(i)                        # one cross-game partner PER SOURCE i
+            ra, rb, rgap = sampler.reversible(n_rev)    # OBSERVED backward, via repetitions
         rows = [i, j, k, x, ra, rb]
-        phi, zA, zB, zT, idx = encode(model, rows)
+        with ph("encode"):
+            phi, zA, zB, zT, idx = encode(model, rows)
         gi, gj, gk, gx, gra, grb = idx
         gap_ij = torch.from_numpy((j - i).astype(np.float32)).to(dev)
         gap_jk = torch.from_numpy((k - j).astype(np.float32)).to(dev)
@@ -284,19 +326,37 @@ def main():
         return loss, met, (phi, zA, zB)
 
     def step_fn(model, step):
-        loss, met, _ = terms(model, fit, args.batch, n_rev)
-        opt.zero_grad(set_to_none=True)
-        loss.backward()
-        opt.step()
-        if args.l1_prox > 0:
-            model.prox_l1(args.lr * args.l1_prox)       # ISTA step: what actually zeroes coordinates
-        model.update_target()
+        # Profile only on eval steps: _sync() serialises the device and would otherwise tax every
+        # step to measure it (observer effect on the very number we are optimising).
+        prof = (step % args.eval_every == 0) or step == 1
+        ph = Phase(dev, prof)
+        loss, met, _ = terms(model, fit, args.batch, n_rev, ph)
+        with ph("backward"):
+            opt.zero_grad(set_to_none=True)
+            loss.backward()
+        with ph("opt"):
+            opt.step()
+            if args.l1_prox > 0:
+                model.prox_l1(args.lr * args.l1_prox)   # ISTA step: what actually zeroes coords
+            model.update_target()
+        if prof:
+            tot = sum(ph.t.values()) or 1.0
+            met.update(ph.t)
+            met["t_step"] = tot
+            # ~4 encoder rows per triple (i, j, k, x); the true figure is the unique-row count,
+            # which is slightly lower because the draws overlap.
+            met["rows_per_s"] = args.batch * 4 / tot
+            # share of the step each phase owns -- the lever, not just the cost
+            met.update({f"pct_{k[2:]}": v / tot for k, v in ph.t.items()})
         return met
 
     def gates_fn(model):
         model.eval()
         with torch.no_grad():
             _, met, (phi, zA, zB) = terms(model, val, min(args.batch, 256), n_rev)
+        import resource
+        met["rss_gb"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (2**30 if
+                        __import__('sys').platform == 'darwin' else 2**20)
         g = {f"val_{k}": v for k, v in met.items()}
         # Collapse gates: entropy-of-singular-values eff_rank (arch_bakeoff form), on the trunk AND
         # both heads -- a trunk collapse takes both arms down together and must be visible as a
