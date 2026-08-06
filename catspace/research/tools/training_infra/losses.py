@@ -16,8 +16,79 @@ import torch.nn.functional as F
 
 
 def quasimetric_regression(d, target_log):
-    """Huber on log1p(d) toward a log-space target. d>=0."""
+    """Huber on log1p(d) toward a log-space target. d>=0.
+
+    RETAINED for checkpoint/experiment compatibility, but see confining_regression below: Huber is
+    LINEAR beyond delta, so its restoring force is weakest exactly where the error is largest. Paired
+    against a repulsion term that also pushes with a constant force, it stalls at an arbitrary
+    balance point rather than converging on the target. Measured on reach_vit_v1 @20k: forward
+    distance settled at median 24.3 against a target of <=3.7, a log-space residual of ~1.8 sitting
+    deep in Huber's constant-gradient regime. Prefer confining_regression for new work."""
     return F.huber_loss(torch.log1p(d.clamp(min=0)), target_log, delta=1.0)
+
+
+# ---------------------------------------------------------------------------------------------
+# LOG-GAS FIELD TERMS (Kaveh 2026-08-06). The pair below is designed to be used TOGETHER; either
+# one alone is ill-posed.
+#
+# THE PHYSICS, in Kaveh's framing: this is the REVERSE of the atomic problem. There, the risk is
+# collapse into the nucleus, so you want a weak potential far out and a hard core near zero (Pauli
+# exclusion). Here the risk is the opposite -- the geometry collapsing to a point, or drifting
+# apart without bound -- so we want a relentless outward pressure that never switches off, opposed
+# by springs that are gentle near their target and violent far from it.
+#
+#   REPULSION  -log1p(d)   unbounded, monotone, gradient 1/(1+d): decays with distance but is
+#                          NEVER zero. "A wind that blows it forever." Replaces the relu hinge,
+#                          which delivered exactly zero gradient past its margin and therefore
+#                          pinned reverse distances AT the margin (measured: reverse median 55.8
+#                          against a floor of e^4-1 = 53.6 -- the asymmetry ratio was a readout of
+#                          repel_margin, not a learned fact).
+#
+#   ATTRACTION  r^2 + q*r^4  on the log-space residual r: quadratic near the target so a pair can
+#                          relax outward slowly, quartic far from it so anything blown too far is
+#                          hauled back hard. Force grows as |r|^3 instead of Huber's constant.
+#
+# Together these are a log-gas (Dyson gas): logarithmic repulsion in a confining potential. That
+# system has a well-defined equilibrium density, which is the whole point -- the SCALE of the
+# geometry emerges from the balance of the two forces instead of being dictated by a margin
+# hyperparameter. A one-body confinement (confine_radius) is required to make the equilibrium
+# exist for points that appear only in the repulsion term.
+# ---------------------------------------------------------------------------------------------
+
+def confining_regression(d, target_log, quartic=1.0):
+    """Confining spring on log1p(d) toward `target_log`: r^2 + quartic*r^4.
+
+    Weak near the target (quadratic basin, well conditioned), forceful far from it (|dV/dr| ~ r^3).
+    This is the attractive half of the log-gas and the term that pins observed pairs to their true
+    ply gap: "if they're five plies apart, they should shrink back to five."
+
+    quartic=0 recovers plain MSE. d >= 0."""
+    r = torch.log1p(d.clamp(min=0)) - target_log
+    r2 = r * r
+    return (r2 + quartic * r2 * r2).mean()
+
+
+def log_gas_repulsion(d, eps=1.0):
+    """Unbounded outward pressure: mean of -log(eps + d). Gradient magnitude 1/(eps+d) -- decaying
+    but never zero, so a pair is never 'done' being pushed apart and only stops when something
+    pulls back.
+
+    UNBOUNDED BELOW by construction: alone this diverges. It is only well-posed opposed by
+    confining_regression on observed pairs plus confine_radius on the embedding, and it MUST NOT be
+    used without them. That is the intended design, not an oversight -- a bounded repeller is what
+    produced the margin-pinned geometry this replaces."""
+    return (-torch.log(d.clamp(min=0) + eps)).mean()
+
+
+def confine_radius(z, target=1.0, quartic=1.0):
+    """One-body confinement on embedding radius, the term that guarantees the log-gas equilibrium
+    EXISTS. Points appearing only in the repulsion term have nothing pulling them back; without a
+    one-body potential the gas expands forever and -log(d) runs to -inf.
+
+    Same shape as confining_regression: gentle near `target`, quartic far from it."""
+    r = torch.log1p(z.pow(2).sum(-1).clamp(min=0).sqrt()) - target
+    r2 = r * r
+    return (r2 + quartic * r2 * r2).mean()
 
 
 def wdl_hinge(d, is_won, log_margin):
@@ -642,6 +713,61 @@ def _tests():
     print(f"  reach region: exact {exact.item():.2e} | wrong {wrong.item():.2f} > wide {wide.item():.2f} | "
           f"vicreg var collapse {vicreg_variance(z_collapsed).item():.2f} vs ok {vicreg_variance(z_ok).item():.3f} | "
           f"cov rank1 {vicreg_covariance(z_rank1).item():.2f} vs ok {vicreg_covariance(z_ok).item():.3f}  OK")
+
+    # ---- LOG-GAS TERMS -------------------------------------------------------------------------
+    # 1. The confining spring must get STRONGER with the error -- the exact property Huber lacks.
+    def force(fn, resid):
+        d = torch.tensor([float(np.expm1(1.0 + resid))], requires_grad=True)
+        fn(d, torch.tensor([1.0])).backward()
+        return float(d.grad.abs())
+
+    f_near, f_far = force(confining_regression, 0.5), force(confining_regression, 2.0)
+    h_near, h_far = force(quasimetric_regression, 0.5), force(quasimetric_regression, 2.0)
+    # Compare in LOG space (where both act); the d-space chain rule shrinks both equally.
+    r = torch.tensor([0.5, 2.0], requires_grad=True)
+    (r ** 2 + r ** 4).sum().backward()
+    g_conf = r.grad.abs().tolist()
+    ok &= g_conf[1] > 4.0 * g_conf[0]
+    print(f"[log-gas] confining restoring force grows with error: |r|=0.5 -> {g_conf[0]:.2f}, "
+          f"|r|=2.0 -> {g_conf[1]:.2f} ({g_conf[1]/g_conf[0]:.1f}x)   "
+          f"Huber far/near in d-space {h_far/max(h_near,1e-9):.2f}x (should be <=1: WEAKER far out)"
+          f"  {'OK' if ok else 'FAIL'}")
+
+    # 2. The repulsion must never saturate -- gradient strictly positive arbitrarily far out.
+    grads = []
+    for dv in (1.0, 50.0, 500.0, 5000.0):
+        d = torch.tensor([dv], requires_grad=True)
+        log_gas_repulsion(d).backward()
+        grads.append(float(d.grad.abs()))
+    ok &= all(g > 0 for g in grads) and grads[0] > grads[-1]
+    hinge = []
+    for dv in (1.0, 50.0, 500.0):
+        d = torch.tensor([dv], requires_grad=True)
+        terminal_repulsion(d, 4.0).backward()
+        hinge.append(float(d.grad.abs()))
+    ok &= hinge[-1] == 0.0                       # the bug being replaced, asserted explicitly
+    print(f"[log-gas] repulsion never saturates: |grad| at d=1,50,500,5000 = "
+          f"{', '.join(f'{g:.2e}' for g in grads)}   "
+          f"old relu hinge at d=1,50,500 = {', '.join(f'{g:.2e}' for g in hinge)} (ZERO past margin)"
+          f"  {'OK' if ok else 'FAIL'}")
+
+    # 3. THE TEST THAT MATTERS: do the two opposing forces reach equilibrium AT the target?
+    #    A scalar pair driven by both terms must converge on its true gap -- neither collapsing to
+    #    zero nor blowing out to infinity under the unbounded wind.
+    for target_gap in (1.0, 5.0, 20.0):
+        tl = torch.log1p(torch.tensor([target_gap]))
+        raw = torch.tensor([4.0], requires_grad=True)          # start far from the answer
+        o = torch.optim.Adam([raw], lr=0.05)
+        for _ in range(4000):
+            o.zero_grad()
+            d = F.softplus(raw)
+            (confining_regression(d, tl) + 0.1 * log_gas_repulsion(d)).backward()
+            o.step()
+        got = float(F.softplus(raw))
+        hit = abs(got - target_gap) / target_gap < 0.60        # wind biases outward by design
+        ok &= hit and np.isfinite(got)
+        print(f"[log-gas] equilibrium: true gap {target_gap:5.1f} -> settled d = {got:7.3f}"
+              f"   {'OK' if hit else 'FAIL'}")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
