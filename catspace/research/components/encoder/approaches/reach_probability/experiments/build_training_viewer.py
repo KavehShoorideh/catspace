@@ -1,134 +1,547 @@
 #!/usr/bin/env python
-"""build_training_viewer.py -- render the export_training_umap frames into a standalone 3D viewer.
+"""build_training_viewer.py -- render export_training_umap frames into the FAMILIAR ply viewer,
+extended with a training-step slider.
 
-Kaveh: "each checkpoint, reinsert into viz." The training-step slider scrubs through checkpoints in
-ONE shared UMAP (see export_training_umap.py for why that co-fit is the only honest option), so a
-cloud that moves between frames really moved. Press play to watch the field organise.
+Kaveh, on the first standalone version: "the viz changed a bit; i liked it before" -> merge into
+the old viewer. So this is the ply_v2 template -- same rail, same colour modes, same follow-a-game
+PGN, same keyboard map, same vector zoom -- with:
 
-A script rather than a hand-written heredoc so the figure is reproducible from the repo.
+  * a TRAINING STEP slider ("watching the field organize"): scrubs checkpoints inside ONE shared
+    UMAP co-fit, so motion between frames is real motion, not a re-fit artefact;
+  * clickable LEGEND chips: toggle each category on/off per colour mode;
+  * pan on shift-drag AND middle-drag (the standalone page had lost pan entirely);
+  * the pole-label collision logic from the old viewer (the standalone page piled labels up).
 
     .venv/bin/python .../build_training_viewer.py --data <json> --out <html>
 """
 from __future__ import annotations
 
 import argparse
-import json
 import os
 
-HTML = """<title>%(title)s</title>
+HTML = r"""<title>__TITLE__</title>
 <style>
-:root{--bg:#f7f6f3;--fg:#1b1a18;--dim:#6f6b63;--line:#d8d4cc;--panel:#fffefb;--acc:#a8541f}
-@media (prefers-color-scheme:dark){:root{--bg:#131311;--fg:#eceae4;--dim:#8e8a81;--line:#2f2e2a;--panel:#1c1b18;--acc:#e08a45}}
-:root[data-theme=dark]{--bg:#131311;--fg:#eceae4;--dim:#8e8a81;--line:#2f2e2a;--panel:#1c1b18;--acc:#e08a45}
-:root[data-theme=light]{--bg:#f7f6f3;--fg:#1b1a18;--dim:#6f6b63;--line:#d8d4cc;--panel:#fffefb;--acc:#a8541f}
+:root{
+  --ground:#f5f5f3; --panel:#ffffff; --edge:#e2e2df; --ink:#161b22; --muted:#6b7280;
+  --accent:#d13c74; --ghost:rgba(20,25,32,.10); --grid:rgba(20,25,32,.06);
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --ground:#0e1216; --panel:#161c22; --edge:#242c35; --ink:#dde3ea; --muted:#7b8794;
+  --accent:#e0568a; --ghost:rgba(221,227,234,.10); --grid:rgba(221,227,234,.06);
+}}
+:root[data-theme="dark"]{
+  --ground:#0e1216; --panel:#161c22; --edge:#242c35; --ink:#dde3ea; --muted:#7b8794;
+  --accent:#e0568a; --ghost:rgba(221,227,234,.10); --grid:rgba(221,227,234,.06);
+}
+:root[data-theme="light"]{
+  --ground:#f5f5f3; --panel:#ffffff; --edge:#e2e2df; --ink:#161b22; --muted:#6b7280;
+  --accent:#d13c74; --ghost:rgba(20,25,32,.10); --grid:rgba(20,25,32,.06);
+}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);
- font:14px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif}
-header{padding:18px 22px 12px;border-bottom:1px solid var(--line)}
-h1{margin:0 0 4px;font-size:19px;font-weight:640;letter-spacing:-.01em}
-h1 small{display:block;font-weight:400;font-size:13px;color:var(--dim);letter-spacing:0;margin-top:3px}
-main{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:0;height:calc(100vh - 78px);min-height:520px}
-@media (max-width:820px){main{grid-template-columns:1fr;height:auto}#wrap{height:62vh}}
-#wrap{position:relative;min-height:0}
-canvas{display:block;width:100%%;height:100%%;cursor:grab;touch-action:none}
-canvas:active{cursor:grabbing}
-aside{border-left:1px solid var(--line);background:var(--panel);padding:16px 16px 30px;overflow-y:auto;
- display:flex;flex-direction:column;gap:16px}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+  font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 22px 44px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px;
+  border-bottom:1px solid var(--edge);padding-bottom:14px;margin-bottom:20px}
+h1{font-size:19px;font-weight:620;margin:0;letter-spacing:-.01em}
+.sub{font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.02em}
+.tag{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;
+  color:var(--accent);border:1px solid var(--accent);border-radius:2px;padding:2px 7px}
+.console{display:grid;grid-template-columns:216px 1fr;gap:20px}
+@media(max-width:860px){.console{grid-template-columns:1fr}}
+.rail{display:flex;flex-direction:column;gap:18px}
 .grp{display:flex;flex-direction:column;gap:7px}
-.lab{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);font-weight:620}
-.val{font-variant-numeric:tabular-nums;color:var(--acc);font-weight:640}
-input[type=range]{width:100%%;accent-color:var(--acc)}
-button{font:inherit;font-size:12.5px;padding:5px 10px;border:1px solid var(--line);background:var(--bg);
- color:var(--fg);border-radius:5px;cursor:pointer}
-button[aria-pressed=true]{background:var(--acc);border-color:var(--acc);color:#fff}
-button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-.row{display:flex;gap:5px;flex-wrap:wrap}
-.key{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)}
-.sw{width:11px;height:11px;border-radius:2px;flex:none}
-.note{font-size:11.5px;line-height:1.45;color:var(--dim);border-top:1px solid var(--line);padding-top:12px}
+.lbl{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.1em;
+  color:var(--muted)}
+.seg{display:flex;flex-direction:column;border:1px solid var(--edge);border-radius:3px;overflow:hidden}
+.seg button{appearance:none;background:var(--panel);border:0;border-bottom:1px solid var(--edge);
+  color:var(--ink);font-family:var(--mono);font-size:12px;padding:7px 10px;text-align:left;
+  cursor:pointer}
+.seg button:last-child{border-bottom:0}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.stats{border:1px solid var(--edge);border-radius:3px;background:var(--panel)}
+.row{display:flex;justify-content:space-between;gap:10px;padding:6px 10px;
+  border-bottom:1px solid var(--edge);font-family:var(--mono);font-size:12px;
+  font-variant-numeric:tabular-nums}
+.row:last-child{border-bottom:0}
+.row span:first-child{color:var(--muted)}
+.stage{display:flex;flex-direction:column;gap:12px;min-width:0}
+.canvasbox{position:relative;border:1px solid var(--edge);border-radius:3px;background:var(--panel);
+  aspect-ratio:1.42/1}
+canvas{width:100%;height:100%;display:block;border-radius:3px}
+.plyread{position:absolute;top:12px;left:14px;font-family:var(--mono);pointer-events:none}
+.plynum{font-size:38px;font-weight:600;letter-spacing:-.03em;line-height:1;
+  font-variant-numeric:tabular-nums}
+.plyword{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+  margin-top:3px}
+.stepread{position:absolute;top:12px;right:14px;font-family:var(--mono);pointer-events:none;
+  text-align:right}
+.stepnum{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1;
+  font-variant-numeric:tabular-nums;color:var(--accent)}
+.transport{display:flex;align-items:center;gap:14px}
+button.play{appearance:none;background:var(--accent);border:0;color:#fff;font-family:var(--mono);
+  font-size:12px;padding:8px 15px;border-radius:3px;cursor:pointer;min-width:74px}
+button.play:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+button.play.alt{background:var(--panel);color:var(--accent);border:1px solid var(--accent)}
+button.step{appearance:none;background:var(--panel);border:1px solid var(--edge);color:var(--ink);
+  font-family:var(--mono);font-size:14px;line-height:1;padding:4px 9px;border-radius:3px;
+  cursor:pointer}
+button.step:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.sliderbox{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0}
+input[type=range]{width:100%;accent-color:var(--accent);margin:0}
+.hist{width:100%;height:26px;display:block}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-family:var(--mono);font-size:11px;
+  color:var(--muted);align-items:center}
+.legend .chip{cursor:pointer;user-select:none;padding:2px 6px;border-radius:3px;
+  border:1px solid transparent}
+.legend .chip:hover{border-color:var(--edge)}
+.legend .chip.off{opacity:.32;text-decoration:line-through}
+.legend .fixed{opacity:.75}
+.sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;
+  vertical-align:-1px}
+.ramp{width:96px;height:9px;border-radius:2px;display:inline-block;vertical-align:-1px;
+  margin:0 6px}
+.pgn{border:1px solid var(--edge);border-radius:3px;background:var(--panel);padding:9px 11px;
+  font-family:var(--mono);font-size:12px;line-height:1.85;max-height:150px;overflow-y:auto}
+.pgn .mv{padding:1px 4px;border-radius:2px;cursor:pointer}
+.pgn .mv:hover{background:var(--ghost)}
+.pgn .mv.on{background:var(--accent);color:#fff;font-weight:600}
+.pgn .mv.start{font-style:italic;color:var(--muted);border:1px solid var(--edge);margin-right:6px}
+.pgn .mv.start.on{color:#fff;border-color:transparent}
+.pgn .no{color:var(--muted);margin-left:5px}
+.pgn .no:first-child{margin-left:0}
+.note{border-left:2px solid var(--accent);padding:9px 0 9px 13px;color:var(--muted);
+  font-size:12.5px;max-width:66ch}
+.note b{color:var(--ink);font-weight:600}
 </style>
+
+<div class="wrap">
 <header>
-<h1>Watching the field organise
-<small>%(sub)s &mdash; one shared UMAP co-fit across every checkpoint, so motion between frames is real motion, not a re-fit artefact.</small></h1>
+  <h1>Watching the field organise</h1>
+  <span class="tag">__TAG__</span>
+  <span class="sub" id="hdr"></span>
 </header>
-<main>
-<div id="wrap"><canvas id="c"></canvas></div>
-<aside>
- <div class="grp"><span class="lab">Training step <span class="val" id="stepv"></span></span>
-  <input type="range" id="step" min="0" value="0">
-  <div class="row"><button id="play">&#9654; Play</button><button id="poles" aria-pressed="true">Poles</button></div></div>
- <div class="grp"><span class="lab">Ply &le; <span class="val" id="plyv"></span></span>
-  <input type="range" id="ply" min="1" value="210"></div>
- <div class="grp"><span class="lab">Colour by</span>
-  <div class="row" id="cmode">
-   <button data-m="arr" aria-pressed="true">Arrived</button><button data-m="ply">Ply</button>
-   <button data-m="pc">Material</button><button data-m="src">Source</button></div>
-  <div id="legend" class="grp" style="gap:4px"></div></div>
- <p class="note" id="drift"></p>
- <p class="note">Drag to rotate, scroll to zoom. Points are a fixed sample of held-out positions,
- identical in every frame &mdash; so nothing here moves because a different sample was drawn.</p>
-</aside>
-</main>
+
+<div class="console">
+  <div class="rail">
+    <div class="grp">
+      <div class="lbl">Colour by</div>
+      <div class="seg" id="colorby">
+        <button data-k="arr" aria-pressed="true">arrived at W/D/L</button>
+        <button data-k="pc" aria-pressed="false">piece count</button>
+        <button data-k="out" aria-pressed="false">eventual outcome</button>
+        <button data-k="ph" aria-pressed="false">game phase</button>
+        <button data-k="cas" aria-pressed="false">castling rights</button>
+        <button data-k="src" aria-pressed="false">population</button>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="lbl">Full cloud</div>
+      <div class="seg" id="ghostby">
+        <button data-g="1" aria-pressed="true">ghost behind</button>
+        <button data-g="0" aria-pressed="false">hide</button>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="lbl">What to show</div>
+      <div class="seg" id="traceby">
+        <button data-t="0" aria-pressed="true">whole sample at this ply</button>
+        <button data-t="1" aria-pressed="false">follow one game</button>
+      </div>
+      <div id="gamepick" style="display:none;flex-direction:column;gap:6px;margin-top:8px">
+        <div style="display:flex;gap:6px;align-items:center">
+          <button id="gprev" class="step">&#8249;</button>
+          <input type="range" id="game" min="0" max="399" value="0" step="1"
+                 aria-label="game" style="flex:1">
+          <button id="gnext" class="step">&#8250;</button>
+        </div>
+        <div class="stats">
+          <div class="row"><span>game</span><span id="g-idx">&mdash;</span></div>
+          <div class="row"><span>population</span><span id="g-pop">&mdash;</span></div>
+          <div class="row"><span>plies</span><span id="g-len">&mdash;</span></div>
+          <div class="row"><span>ended in</span><span id="g-end">&mdash;</span></div>
+          <div class="row"><span>at this ply</span><span id="g-at">&mdash;</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="lbl">View</div>
+      <div class="seg"><button id="spin">&#9711; auto-rotate</button><button id="reset">reset view</button></div>
+      <div class="sub" style="font-size:10.5px">drag rotate &middot; shift- or middle-drag pan &middot; scroll zoom</div>
+      <div class="sub" style="font-size:10.5px">&larr; &rarr; ply &middot; &uarr; &darr; ends &middot; space play &middot; [ ] game &middot; , . step</div>
+    </div>
+    <div class="grp">
+      <div class="lbl">This cross-section</div>
+      <div class="stats">
+        <div class="row"><span>positions</span><span id="s-n">&mdash;</span></div>
+        <div class="row"><span>ended here</span><span id="s-term">&mdash;</span></div>
+        <div class="row"><span>mean pieces</span><span id="s-pc">&mdash;</span></div>
+        <div class="row"><span>open/mid/end</span><span id="s-ph">&mdash;</span></div>
+        <div class="row"><span>win / draw / loss</span><span id="s-wdl">&mdash;</span></div>
+        <div class="row"><span>human / engine</span><span id="s-src">&mdash;</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="canvasbox">
+      <canvas id="cv"></canvas>
+      <div class="plyread"><div class="plynum" id="plynum">0</div><div class="plyword">ply</div></div>
+      <div class="stepread"><div class="stepnum" id="stepnum"></div><div class="plyword">training step</div></div>
+    </div>
+    <div class="transport">
+      <button class="play" id="play">&#9654; play</button>
+      <div class="sliderbox">
+        <input type="range" id="ply" min="0" max="120" value="0" step="1" aria-label="ply">
+        <canvas class="hist" id="hist"></canvas>
+      </div>
+    </div>
+    <div class="transport">
+      <button class="play alt" id="playstep">&#9654; train</button>
+      <div class="sliderbox">
+        <input type="range" id="stepsl" min="0" max="0" value="0" step="1" aria-label="training step">
+      </div>
+      <button id="sprev" class="step">&#8249;</button>
+      <button id="snext" class="step">&#8250;</button>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="pgn" id="pgn" style="display:none"></div>
+    <p class="note"><b>The training-step slider scrubs checkpoints.</b> Every frame embeds the
+      SAME positions under a different checkpoint of the model, and all frames are co-fitted into
+      ONE UMAP &mdash; one coordinate system, so a cloud that moves between steps really moved.
+      Press &#9654; train to watch the field organise.</p>
+    <p class="note"><b>Legend chips are click-to-toggle</b> &mdash; hide categories to isolate the
+      ones you care about. Poles: gold = fixed W/D/L simplex (the gauge), grey = learned ending
+      types, pink = START.</p>
+  </div>
+</div>
+</div>
+
+<script id="payload" type="application/json">__DATA__</script>
 <script>
-const D=%(data)s;
-const C=document.getElementById('c'),X=C.getContext('2d');
-let f=D.frames.length-1,maxPly=210,mode='arr',showP=true,rx=-0.45,ry=0.7,zoom=1,playing=false;
-const OUT={'-1':['#3d7fc1','in progress'],'0':['#c0392b','arrived LOSS'],'1':['#8d8880','arrived DRAW'],'2':['#2e8b57','arrived WIN']};
-function ramp(t,a,b){const p=[[247,251,255],[8,48,107]];return `hsl(${(1-t)*205+t*20},70%%,${58-t*18}%%)`}
+const D = JSON.parse(document.getElementById('payload').textContent);
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const hist = document.getElementById('hist'), hctx = hist.getContext('2d');
+const slider = document.getElementById('ply');
+const stepsl = document.getElementById('stepsl');
+let mode = 'arr', ghost = true, playing = false, raf = null, traceMode = 0;
+let fi = D.frames.length - 1;                       // current checkpoint frame (start at latest)
+stepsl.max = D.frames.length - 1; stepsl.value = fi;
+let view = {k:1, tx:0, ty:0}, drag=null;
+let rot = {ax:-0.45, ay:0.6}, spin=false, spinRaf=null;
+const is3d = () => D.dims===3 && D.frames[fi].z;
+function rot3(x,y,z){
+  const cx=Math.cos(rot.ax), sx=Math.sin(rot.ax), cy=Math.cos(rot.ay), sy=Math.sin(rot.ay);
+  x-=.5; y-=.5; z-=.5;
+  let X= x*cy + z*sy, Z= -x*sy + z*cy;
+  let Y= y*cx - Z*sx;  Z = y*sx + Z*cx;
+  return [X+.5, Y+.5, Z+.5];
+}
+const VIRIDIS = [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],
+                 [31,158,137],[53,183,121],[109,205,89],[180,222,44],[253,231,37]];
+function viridis(t){t=Math.max(0,Math.min(1,t));const x=t*(VIRIDIS.length-1),i=Math.floor(x),f=x-i;
+  const a=VIRIDIS[i],b=VIRIDIS[Math.min(i+1,VIRIDIS.length-1)];
+  return `rgb(${a[0]+(b[0]-a[0])*f|0},${a[1]+(b[1]-a[1])*f|0},${a[2]+(b[2]-a[2])*f|0})`;}
+const OUT = ['#3fa66b','#8a93a0','#c94f4f'], OUTN = ['win','draw','loss'];
+const ARR = ['#35a76a','#98a1ad','#d0483f'], INPROG = 'rgba(74,124,196,.34)';
+const SRC = ['#4f8fd1','#d98a3a'], SRCN = ['human','engine'];
+const TERMN = ['mate','resign (loss)','resign (win)','draw agreed','draw adjudicated',
+  'draw 50-move','stalemate','insufficient material','threefold'];
+const PHC = ['#4f8fd1','#c8913a','#a05fc0'], PHN = ['opening','middlegame','endgame'];
+const CASC = ['#5b6270','#7a5ea8','#4a7fc1','#3fa07f','#d9a13a'];
+function nbits(v){let n=0;while(v){n+=v&1;v>>=1;}return n;}
+const pcLo = Math.min(...D.pc), pcHi = Math.max(...D.pc);
+
+// LEGEND TOGGLES (Kaveh: "i wanna be able to toggle each item in the legend as well").
+// A hidden category set PER COLOUR MODE; catOf(i) maps a point to its chip in the current mode.
+const hidden = {arr:new Set(), out:new Set(), ph:new Set(), cas:new Set(), src:new Set(), pc:new Set()};
+function catOf(i){
+  if(mode==='arr') return D.arr[i]<0 ? 3 : D.arr[i];      // 0 W 1 D 2 L 3 in-progress
+  if(mode==='ph')  return D.ph[i];
+  if(mode==='cas') return nbits(D.cas[i]);
+  if(mode==='out') return D.out[i]<0 ? 3 : D.out[i];      // 3 = censored
+  if(mode==='src') return D.src[i];
+  return 0;                                               // pc: continuous ramp, no toggles
+}
+function vis(i){ return !hidden[mode].has(catOf(i)); }
 function colOf(i){
- if(mode==='arr')return OUT[D.arr[i]][0];
- if(mode==='ply')return ramp(Math.min(D.ply[i],150)/150);
- if(mode==='pc')return ramp(1-(D.pc[i]-4)/28);
- return D.src[i]===0?'#7b5ea7':'#c98a2b';}
-function legend(){const L=document.getElementById('legend');L.innerHTML='';
- const it=mode==='arr'?Object.values(OUT):mode==='src'?[['#7b5ea7','Stockfish'],['#c98a2b','human']]:
-  mode==='ply'?[[ramp(0),'ply 0'],[ramp(1),'ply 150+']]:[[ramp(1),'4 pieces'],[ramp(0),'32 pieces']];
- for(const[c,t]of it){const d=document.createElement('div');d.className='key';
-  d.innerHTML=`<span class="sw" style="background:${c}"></span>${t}`;L.append(d);}}
-function proj(x,y,z){x-=.5;y-=.5;z-=.5;
- let a=x*Math.cos(ry)-z*Math.sin(ry),b=x*Math.sin(ry)+z*Math.cos(ry);
- let c=y*Math.cos(rx)-b*Math.sin(rx),d=y*Math.sin(rx)+b*Math.cos(rx);
- const p=1.9/(1.9+d);return[a*p,c*p,d];}
-function draw(){const dpr=devicePixelRatio||1,W=C.clientWidth,H=C.clientHeight;
- C.width=W*dpr;C.height=H*dpr;X.setTransform(dpr,0,0,dpr,0,0);X.clearRect(0,0,W,H);
- const s=Math.min(W,H)*0.82*zoom,cx=W/2,cy=H/2,F=D.frames[f];
- const pts=[];
- for(let i=0;i<D.n;i++){if(D.ply[i]>maxPly)continue;
-  const[a,b,d]=proj(F.x[i],F.y[i],F.z[i]);pts.push([a*s+cx,b*s+cy,d,colOf(i),0]);}
- if(showP&&D.pole_frames){const P=D.pole_frames[f];
-  for(const p of P){const[a,b,d]=proj(p.x,p.y,p.z);pts.push([a*s+cx,b*s+cy,d,'#111',1,p.name]);}}
- pts.sort((u,v)=>v[2]-u[2]);
- for(const p of pts){if(p[4]){X.beginPath();X.arc(p[0],p[1],6,0,7);X.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--acc');X.fill();
-   X.strokeStyle=getComputedStyle(document.body).color;X.lineWidth=1.4;X.stroke();
-   X.fillStyle=getComputedStyle(document.body).color;X.font='600 11px ui-sans-serif';X.fillText(p[5],p[0]+9,p[1]+4);}
-  else{X.globalAlpha=.62;X.fillStyle=p[3];X.beginPath();X.arc(p[0],p[1],2.1,0,7);X.fill();X.globalAlpha=1;}}}
-const stepEl=document.getElementById('step'),plyEl=document.getElementById('ply');
-stepEl.max=D.frames.length-1;stepEl.value=f;plyEl.max=Math.max(...D.ply);plyEl.value=plyEl.max;maxPly=+plyEl.max;
-function sync(){document.getElementById('stepv').textContent=D.steps[f].toLocaleString();
- document.getElementById('plyv').textContent=maxPly;draw();}
-stepEl.oninput=e=>{f=+e.target.value;sync()};
-plyEl.oninput=e=>{maxPly=+e.target.value;sync()};
-document.getElementById('cmode').onclick=e=>{const b=e.target.closest('button');if(!b)return;
- mode=b.dataset.m;[...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b));legend();draw()};
-document.getElementById('poles').onclick=e=>{showP=!showP;e.target.setAttribute('aria-pressed',showP);draw()};
-const pb=document.getElementById('play');
-pb.onclick=()=>{playing=!playing;pb.setAttribute('aria-pressed',playing);pb.innerHTML=playing?'&#9646;&#9646; Pause':'&#9654; Play';
- if(playing)tick()};
-function tick(){if(!playing)return;f=(f+1)%%D.frames.length;stepEl.value=f;sync();setTimeout(tick,420)}
-let drag=null;
-C.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY];C.setPointerCapture(e.pointerId)});
-C.addEventListener('pointermove',e=>{if(!drag)return;ry+=(e.clientX-drag[0])*.008;rx+=(e.clientY-drag[1])*.008;
- rx=Math.max(-1.5,Math.min(1.5,rx));drag=[e.clientX,e.clientY];draw()});
-addEventListener('pointerup',()=>drag=null);
-C.addEventListener('wheel',e=>{e.preventDefault();zoom=Math.max(.4,Math.min(6,zoom*(e.deltaY<0?1.11:.9)));draw()},{passive:false});
-addEventListener('resize',draw);
-// pole drift: the honest headline of the animation
-if(D.pole_frames){const A=D.pole_frames[0],B=D.pole_frames[D.pole_frames.length-1];
- let m=0;for(let i=0;i<A.length;i++)m=Math.max(m,Math.hypot(A[i].x-B[i].x,A[i].y-B[i].y,A[i].z-B[i].z));
- document.getElementById('drift').textContent=
-  `Largest pole movement from first frame to last: ${m.toFixed(3)} (UMAP units, box normalised to 1). `+
-  (m<0.02?'Effectively zero \\u2014 the learned poles never moved.':'The learned poles migrated during training.');}
-legend();sync();
+  if(mode==='arr') return D.arr[i]<0 ? INPROG : ARR[D.arr[i]];
+  if(mode==='ph') return PHC[D.ph[i]];
+  if(mode==='cas') return CASC[nbits(D.cas[i])];
+  if(mode==='pc') return viridis((D.pc[i]-pcLo)/Math.max(pcHi-pcLo,1));
+  if(mode==='out') return D.out[i]<0 ? 'rgba(140,150,160,.5)' : OUT[D.out[i]];
+  return SRC[D.src[i]];
+}
+const byPly = new Map();
+D.ply.forEach((p,i)=>{ if(!byPly.has(p)) byPly.set(p,[]); byPly.get(p).push(i); });
+const plies = [...byPly.keys()].sort((a,b)=>a-b);
+slider.min = plies[0]; slider.max = plies[plies.length-1]; slider.value = plies[0];
+function hdr(){ document.getElementById('hdr').textContent =
+  `${D.n.toLocaleString()} positions · ${plies.length} plies · ${D.frames.length} checkpoints · one shared UMAP`;
+  document.getElementById('stepnum').textContent = D.steps[fi].toLocaleString(); }
+
+function fit(){ const r=cv.getBoundingClientRect(), d=window.devicePixelRatio||1;
+  cv.width=r.width*d; cv.height=r.height*d; ctx.setTransform(d,0,0,d,0,0);
+  const h=hist.getBoundingClientRect(); hist.width=h.width*d; hist.height=h.height*d;
+  hctx.setTransform(d,0,0,d,0,0); draw(); drawHist(); }
+function base(x,y,w,h){ return [26+x*(w-52), h-26-y*(h-52)]; }
+function proj(i){ const F=D.frames[fi];
+  if(!is3d()) return [F.x[i],F.y[i],0.5];
+  return rot3(F.x[i],F.y[i],F.z[i]); }
+function tx(x,y,w,h){ const [a,b]=base(x,y,w,h);
+  return [a*view.k+view.tx, b*view.k+view.ty]; }
+function px(i,w,h){ const [a,b]=proj(i); return tx(a,b,w,h); }
+function depth(i){ return is3d() ? proj(i)[2] : 0.5; }
+
+function draw(){
+  const r=cv.getBoundingClientRect(), w=r.width, h=r.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.save(); ctx.beginPath(); ctx.rect(0,0,w,h); ctx.clip();
+  ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--grid');
+  ctx.lineWidth=1;
+  for(let k=1;k<4;k++){const gx=26+(w-52)*k/4, gy=26+(h-52)*k/4;
+    ctx.beginPath();ctx.moveTo(gx,20);ctx.lineTo(gx,h-20);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(20,gy);ctx.lineTo(w-20,gy);ctx.stroke();}
+  if(ghost){ ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--ghost');
+    for(let i=0;i<D.n;i+=3){const[a,b]=px(i,w,h);ctx.fillRect(a,b,1.6,1.6);} }
+  const following = traceMode===1 && D.traces;
+  if(following){
+    const gi=Math.min(+gameSel.value,D.traces.length-1);
+    const t=D.traces[gi], tc=D.trace_frames[fi][gi], q = +slider.value - t.p0;
+    if(q>=0 && q<tc.x.length){
+      const pt = is3d()&&tc.z ? rot3(tc.x[q],tc.y[q],tc.z[q]) : [tc.x[q],tc.y[q]];
+      const[a,b]=tx(pt[0],pt[1],w,h), col = t.pop===0?'#4f8fd1':'#d98a3a';
+      ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.globalAlpha=.5;
+      ctx.beginPath();ctx.arc(a,b,12,0,6.2832);ctx.stroke(); ctx.globalAlpha=1;
+      ctx.fillStyle=col; ctx.beginPath();ctx.arc(a,b,5.5,0,6.2832);ctx.fill();
+      ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--panel');
+      ctx.lineWidth=1.6; ctx.stroke();
+    }
+  }
+  if(D.pole_frames){
+    // Label-collision logic from the old viewer: draw a label only if it clears the ones already
+    // placed. The marker always draws; zoom in and hidden labels reappear.
+    const placed=[];
+    const rank=n=>(['WIN','DRAW','LOSS'].indexOf(n)>=0?0:(n==='START'?1:2));
+    for(const P of [...D.pole_frames[fi]].sort((u,v)=>rank(u.name)-rank(v.name))){
+      const pp = is3d()&&P.z!=null ? rot3(P.x,P.y,P.z) : [P.x,P.y];
+      const[a,b]=tx(pp[0],pp[1],w,h);
+      const outc = ['WIN','DRAW','LOSS'].indexOf(P.name)>=0, st = P.name==='START';
+      ctx.fillStyle = st ? '#e0568a' : (outc ? '#d9a13a' : '#9aa3ad');
+      ctx.beginPath();ctx.arc(a,b,st?7:(outc?8:5),0,6.2832);ctx.fill();
+      ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--panel');
+      ctx.lineWidth=2; ctx.stroke();
+      ctx.font='600 10px ui-monospace,monospace';
+      const tw=ctx.measureText(P.name).width, lx=a+10, ly=b+3;
+      const clash=placed.some(q=>Math.abs(q.x-lx)<(q.w+tw)/2+6 && Math.abs(q.y-ly)<12);
+      if(!clash){
+        placed.push({x:lx,y:ly,w:tw});
+        ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--panel');
+        ctx.fillRect(lx-2, ly-9, tw+4, 12);
+        ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink');
+        ctx.fillText(P.name, lx, ly);
+      }
+    }
+  }
+  const cur0 = following ? [] : (byPly.get(+slider.value)||[]);
+  const cur = cur0.filter(vis);
+  const term = [], prog = [];
+  for(const i of cur){ (mode==='arr' && D.arr[i]>=0 ? term : prog).push(i); }
+  const order = is3d() ? prog.slice().sort((p,q)=>depth(p)-depth(q)) : prog;
+  for(const i of order){ const[a,b]=px(i,w,h); const dz=depth(i);
+    ctx.globalAlpha = is3d() ? 0.28+0.72*dz : 1;
+    ctx.fillStyle=colOf(i);
+    ctx.beginPath();ctx.arc(a,b,is3d()?(1.7+2.0*dz):2.6,0,6.2832);ctx.fill(); }
+  ctx.globalAlpha=1;
+  const torder = is3d() ? term.slice().sort((p,q)=>depth(p)-depth(q)) : term;
+  for(const i of torder){ const[a,b]=px(i,w,h); const dz=depth(i);
+    ctx.globalAlpha = is3d() ? 0.45+0.55*dz : 1; ctx.fillStyle=colOf(i);
+    ctx.beginPath();ctx.arc(a,b,is3d()?(2.6+2.4*dz):3.7,0,6.2832);ctx.fill(); }
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+function drawHist(){
+  const r=hist.getBoundingClientRect(), w=r.width, h=r.height;
+  hctx.clearRect(0,0,w,h);
+  const mx=Math.max(...plies.map(p=>byPly.get(p).length));
+  const cs=getComputedStyle(document.documentElement);
+  plies.forEach(p=>{ const x=(p-plies[0])/(plies[plies.length-1]-plies[0])*(w-2);
+    const bh=(byPly.get(p).length/mx)*(h-4);
+    hctx.fillStyle = p===+slider.value ? cs.getPropertyValue('--accent') : cs.getPropertyValue('--ghost');
+    hctx.fillRect(x, h-bh, Math.max(w/plies.length-0.5,1.2), bh); });
+}
+function stats(){
+  const cur = traceMode===1 ? [] : (byPly.get(+slider.value)||[]);
+  document.getElementById('s-n').textContent = cur.length.toLocaleString();
+  if(!cur.length){['s-pc','s-wdl','s-src','s-term','s-ph'].forEach(k=>document.getElementById(k).textContent='—');return;}
+  const nt = cur.filter(i=>D.arr[i]>=0).length;
+  document.getElementById('s-term').textContent = nt ? nt.toLocaleString() : '0';
+  const mp = cur.reduce((s,i)=>s+D.pc[i],0)/cur.length;
+  document.getElementById('s-pc').textContent = mp.toFixed(1);
+  const c=[0,0,0]; let cen=0; cur.forEach(i=>{ D.out[i]<0?cen++:c[D.out[i]]++; });
+  const tot=c[0]+c[1]+c[2]||1;
+  document.getElementById('s-wdl').textContent =
+    `${(100*c[0]/tot).toFixed(0)}/${(100*c[1]/tot).toFixed(0)}/${(100*c[2]/tot).toFixed(0)}%`;
+  const ph=[0,0,0]; cur.forEach(i=>ph[D.ph[i]]++);
+  document.getElementById('s-ph').textContent =
+    `${(100*ph[0]/cur.length).toFixed(0)}/${(100*ph[1]/cur.length).toFixed(0)}/${(100*ph[2]/cur.length).toFixed(0)}%`;
+  const hm=cur.filter(i=>D.src[i]===0).length;
+  document.getElementById('s-src').textContent =
+    `${(100*hm/cur.length).toFixed(0)}/${(100*(cur.length-hm)/cur.length).toFixed(0)}%`;
+}
+// Legend chips: data-cat carries the category index; click toggles it in hidden[mode].
+function chip(cat,col,txt){ const off=hidden[mode].has(cat)?' off':'';
+  return `<span class="chip${off}" data-cat="${cat}"><span class="sw" style="background:${col}"></span>${txt}</span>`; }
+function legend(){
+  const el=document.getElementById('legend');
+  if(mode==='arr'){ el.innerHTML=
+      chip(0,ARR[0],'arrived: win')+chip(1,ARR[1],'arrived: draw')+chip(2,ARR[2],'arrived: loss')+
+      chip(3,INPROG,'game still in progress')+
+      `<span class="fixed">terminals are one row per game &mdash; deliberately oversampled</span>`;
+    return; }
+  if(mode==='ph'){ el.innerHTML=PHN.map((n,k)=>chip(k,PHC[k],n)).join('')
+      +`<span class="fixed">endgame = non-pawn material &le;10 &middot; ply-balanced, not corpus-representative</span>`;
+    return; }
+  if(mode==='cas'){ el.innerHTML=[0,1,2,3,4].map(n=>
+      chip(n,CASC[n],`${n} right${n===1?'':'s'} left`)).join('')
+      +`<span class="fixed">rights are only ever LOST &mdash; irreversible, like material</span>`;
+    return; }
+  if(mode==='pc'){ const g=`linear-gradient(90deg,${VIRIDIS.map(c=>`rgb(${c})`).join(',')})`;
+    el.innerHTML=`<span>${pcLo} pieces<span class="ramp" style="background:${g}"></span>${pcHi}</span>`; }
+  else if(mode==='out'){ el.innerHTML=OUTN.map((n,i)=>chip(i,OUT[i],n)).join('')
+    +chip(3,'rgba(140,150,160,.5)','censored (flagged)'); }
+  else { el.innerHTML=SRCN.map((n,i)=>chip(i,SRC[i],n)).join(''); }
+}
+document.getElementById('legend').addEventListener('click',e=>{
+  const c=e.target.closest('.chip'); if(!c)return;
+  const cat=+c.dataset.cat;
+  if(hidden[mode].has(cat)) hidden[mode].delete(cat); else hidden[mode].add(cat);
+  legend(); draw(); });
+function update(){ document.getElementById('plynum').textContent=slider.value;
+  draw(); drawHist(); stats(); }
+
+slider.addEventListener('input',()=>{stop();update();gameInfo();});
+stepsl.addEventListener('input',()=>{stopStep(); fi=+stepsl.value; hdr(); draw();});
+document.getElementById('sprev').addEventListener('click',()=>{
+  stopStep(); fi=Math.max(0,fi-1); stepsl.value=fi; hdr(); draw();});
+document.getElementById('snext').addEventListener('click',()=>{
+  stopStep(); fi=Math.min(D.frames.length-1,fi+1); stepsl.value=fi; hdr(); draw();});
+document.getElementById('colorby').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return; mode=b.dataset.k;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b));
+  legend(); draw(); });
+const gameSel=document.getElementById('game');
+const gamePick=document.getElementById('gamepick');
+if(D.traces){ gameSel.max = D.traces.length-1; }
+function renderPgn(t){
+  const el=document.getElementById('pgn');
+  if(traceMode!==1 || !t || !t.san || !t.san.length){ el.style.display='none'; return; }
+  el.style.display='block';
+  const cur = +slider.value;
+  let html=`<span class="mv start${cur===0?' on':''}" data-p="0">start</span> `;
+  for(let k=0;k<t.san.length;k++){
+    if(k%2===0) html+=`<span class="no">${k/2+1}.</span>`;
+    html+=`<span class="mv${k===cur-1?' on':''}" data-p="${k+1}">${t.san[k]}</span> `;
+  }
+  el.innerHTML=html;
+  const on=el.querySelector('.mv.on');
+  if(on) on.scrollIntoView({block:'nearest', behavior:'auto'});
+}
+function gameInfo(){
+  if(!D.traces) return; const t=D.traces[Math.min(+gameSel.value,D.traces.length-1)];
+  renderPgn(t);
+  const tc=D.trace_frames[fi][Math.min(+gameSel.value,D.traces.length-1)];
+  document.getElementById('g-idx').textContent = `${+gameSel.value+1} / ${D.traces.length}`;
+  document.getElementById('g-pop').textContent = t.pop===0?'human':'engine';
+  document.getElementById('g-len').textContent = `${tc.x.length}`;
+  document.getElementById('g-end').textContent = t.end>=0 ? TERMN[t.end]
+    : (t.end===-2?'time forfeit (censored)':'not recorded');
+  const q = +slider.value - t.p0;
+  document.getElementById('g-at').textContent =
+    q < 0 ? 'not started' : (q >= tc.x.length ? 'already ended' : `ply ${+slider.value}`);
+}
+document.getElementById('traceby').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return; traceMode=+b.dataset.t;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b));
+  gamePick.style.display = traceMode===1?'flex':'none';
+  gameInfo(); draw(); });
+gameSel.addEventListener('input',()=>{gameInfo();draw();});
+document.getElementById('pgn').addEventListener('click',e=>{
+  const m=e.target.closest('.mv'); if(!m)return;
+  stop(); slider.value=m.dataset.p; update(); gameInfo(); });
+document.getElementById('gprev').addEventListener('click',()=>{
+  gameSel.value=Math.max(0,+gameSel.value-1); gameInfo(); draw(); });
+document.getElementById('gnext').addEventListener('click',()=>{
+  gameSel.value=Math.min(+gameSel.max,+gameSel.value+1); gameInfo(); draw(); });
+function setPly(v){ stop(); slider.value=Math.min(Math.max(v,+slider.min),+slider.max);
+  update(); gameInfo(); }
+function setStep(v){ stopStep(); fi=Math.min(Math.max(v,0),D.frames.length-1);
+  stepsl.value=fi; hdr(); draw(); }
+window.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'&&e.target.type==='range'&&![',','.','[',']'].includes(e.key)) return;
+  const t = (traceMode===1&&D.traces) ? D.traces[Math.min(+gameSel.value,D.traces.length-1)] : null;
+  const tc = t ? D.trace_frames[fi][Math.min(+gameSel.value,D.traces.length-1)] : null;
+  switch(e.key){
+    case 'ArrowRight': e.preventDefault(); setPly(+slider.value+1); break;
+    case 'ArrowLeft':  e.preventDefault(); setPly(+slider.value-1); break;
+    case 'ArrowUp':    e.preventDefault(); setPly(t ? t.p0 : +slider.min); break;
+    case 'ArrowDown':  e.preventDefault(); setPly(t ? t.p0+tc.x.length-1 : +slider.max); break;
+    case ' ':          e.preventDefault(); playBtn.click(); break;
+    case ',':          e.preventDefault(); setStep(fi-1); break;
+    case '.':          e.preventDefault(); setStep(fi+1); break;
+    case '[': if(traceMode===1){gameSel.value=Math.max(0,+gameSel.value-1);gameInfo();draw();} break;
+    case ']': if(traceMode===1){gameSel.value=Math.min(+gameSel.max,+gameSel.value+1);gameInfo();draw();} break;
+  }});
+document.getElementById('reset').addEventListener('click',()=>{
+  view={k:1,tx:0,ty:0}; rot={ax:-0.45,ay:0.6}; draw();});
+document.getElementById('spin').addEventListener('click',()=>{
+  spin=!spin; if(spin){ const tick=()=>{ if(!spin)return; rot.ay+=0.006; draw();
+    spinRaf=requestAnimationFrame(tick); }; tick(); } else if(spinRaf) cancelAnimationFrame(spinRaf); });
+cv.addEventListener('wheel',e=>{ e.preventDefault();
+  const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  const f=Math.exp(-e.deltaY*0.0015), nk=Math.min(Math.max(view.k*f,1),60);
+  const rf=nk/view.k;
+  view.tx = mx - (mx-view.tx)*rf; view.ty = my - (my-view.ty)*rf; view.k = nk; draw(); },{passive:false});
+// PAN: shift-drag OR middle-button drag (button 1). Plain drag rotates in 3D.
+cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,tx:view.tx,ty:view.ty,
+    ax:rot.ax,ay:rot.ay,pan:e.shiftKey||e.button===1};
+  if(e.button===1) e.preventDefault();
+  cv.setPointerCapture(e.pointerId);});
+cv.addEventListener('pointermove',e=>{ if(!drag)return;
+  if(is3d() && !drag.pan){ rot.ay=drag.ay+(e.clientX-drag.x)*0.008;
+    rot.ax=Math.max(-1.55,Math.min(1.55,drag.ax+(e.clientY-drag.y)*0.008)); draw(); return; }
+  view.tx=drag.tx+(e.clientX-drag.x); view.ty=drag.ty+(e.clientY-drag.y); draw(); });
+cv.addEventListener('pointerup',()=>{drag=null;});
+cv.addEventListener('pointercancel',()=>{drag=null;});
+cv.addEventListener('auxclick',e=>e.preventDefault());
+cv.style.cursor='grab';
+document.getElementById('ghostby').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return; ghost=b.dataset.g==='1';
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b)); draw(); });
+const playBtn=document.getElementById('play');
+function stop(){ playing=false; playBtn.innerHTML='&#9654; play'; if(raf)cancelAnimationFrame(raf); raf=null; }
+let acc=0,last=0;
+function loop(t){ if(!playing)return; if(!last)last=t; acc+=t-last; last=t;
+  if(acc>90){ acc=0; let v=+slider.value+1; if(v>+slider.max)v=+slider.min; slider.value=v; update(); gameInfo(); }
+  raf=requestAnimationFrame(loop); }
+playBtn.addEventListener('click',()=>{ if(playing){stop();return;}
+  playing=true; last=0; acc=0; playBtn.innerHTML='&#10074;&#10074; pause'; raf=requestAnimationFrame(loop); });
+// train play: advance one checkpoint frame every 450ms, loop at the end
+const stepBtn=document.getElementById('playstep');
+let stepping=false, stepTimer=null;
+function stopStep(){ stepping=false; stepBtn.innerHTML='&#9654; train'; if(stepTimer)clearTimeout(stepTimer); stepTimer=null; }
+stepBtn.addEventListener('click',()=>{ if(stepping){stopStep();return;}
+  stepping=true; stepBtn.innerHTML='&#10074;&#10074; pause';
+  const tick=()=>{ if(!stepping)return; fi=(fi+1)%D.frames.length; stepsl.value=fi; hdr(); draw();
+    stepTimer=setTimeout(tick,450); }; tick(); });
+if(window.matchMedia('(prefers-reduced-motion:reduce)').matches){
+  playBtn.style.display='none'; stepBtn.style.display='none'; }
+new ResizeObserver(fit).observe(cv);
+window.addEventListener('resize',fit);
+legend(); gameInfo(); hdr(); fit(); update();
 </script>
 """
 
@@ -139,12 +552,14 @@ def main():
     ap.add_argument("--data", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--title", default="Watching the field organise")
-    ap.add_argument("--sub", default="reach_probability checkpoint ladder")
+    ap.add_argument("--tag", default="checkpoint ladder")
     args = ap.parse_args()
     with open(args.data) as fh:
         data = fh.read()
+    html = HTML.replace("__TITLE__", args.title).replace("__TAG__", args.tag)
+    html = html.replace("__DATA__", data)
     with open(args.out, "w") as fh:
-        fh.write(HTML % {"data": data, "title": args.title, "sub": args.sub})
+        fh.write(html)
     print(f"[viewer] -> {args.out} ({os.path.getsize(args.out)/2**20:.1f} MB)")
 
 
