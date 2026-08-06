@@ -560,12 +560,26 @@ def main():
         # one point; and each ending must subsume into its outcome pole.
         l_anchor = l_absorb = l_termrep = l_subsume = torch.zeros((), device=dev)
         l_start = l_startirr = torch.zeros((), device=dev)
+        # Anchor regression form, shared by the start and terminal anchors (defined here, OUTSIDE
+        # the conditionals, so disabling one anchor cannot NameError the other).
+        # QUARTIC for the anchors, not LJ-12: anchor residuals START at r ~ log1p(750) - 0.7 =
+        # 5.9, where raw r^12 is ~2e9 -- the smoke with LJ anchors nuked every other term
+        # (quasi 771, rev_ratio 0.31, rank 3.7). r^2 + r^4 pulls with force ~834 at r=5.9 and ~6
+        # near the target: strong enough to beat the repulsion (Huber's constant 1.0 was not),
+        # never explosive. Pairs keep LJ-12 because their residuals start small.
+        _anchor_reg = ((lambda dd, tl: confining_regression(dd, tl, quartic=1.0)) if args.log_gas
+                       else quasimetric_regression)
         if args.w_start > 0 and model.poles is not None:
             Ps = model.poles.poles[START_IDX:START_IDX + 1]
             zs = zB[gi]                                    # the triple's first position
             dq0 = (model.qhead.d_base if model.dual else model.iqe)
             ply_i = torch.from_numpy(ply_of_row[i].astype(np.float32)).to(dev)
-            l_start = start_ply_anchor(dq0(Ps.expand(len(zs), -1), zs), torch.log1p(ply_i))
+            # Under the log-gas the anchors must be the SAME potential family as the pair
+            # springs. Huber's constant restoring force lost the tug-of-war against the repulsion:
+            # measured on the first gauge fleet, median d(terminal -> own pole) ROSE 557 -> 706
+            # over steps 500-1500 (target ~1) and basin_spread sat at 0.001-0.003 through step
+            # 3750 -- positions were not climbing toward their poles at all.
+            l_start = _anchor_reg(dq0(Ps.expand(len(zs), -1), zs), torch.log1p(ply_i))
             l_startirr = start_irreversibility(dq0(zs, Ps.expand(len(zs), -1)),
                                                args.start_margin)
         if args.w_anchor > 0 and model.poles is not None and len(t_rows):
@@ -578,7 +592,7 @@ def main():
             pid = torch.from_numpy(t_pole[tsel].astype(np.int64)).to(dev)
             Pp = Pall[pid]
             dq = (model.qhead.d_base if model.dual else model.iqe)
-            l_anchor = pole_radial_anchor(
+            l_anchor = _anchor_reg(
                 dq(zt_, Pp), torch.from_numpy(t_radius[tsel]).to(dev))
             l_absorb = absorbing_penalty(dq(Pp, zt_), args.absorb_margin)
             # distinct ENDING poles must stay apart -- different arrival points of one surface
