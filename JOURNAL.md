@@ -11011,6 +11011,77 @@ different seeds, so h_null measures what two independently-trained fields differ
 NO dynamics difference. --train-frac 0.5 twice would have overlapped ~50% and understated exactly
 the floor it exists to measure.
 
+## 2026-08-05 — reach_probability rebuilt: every-ply trajectories, IQE+JEPA, and a strata differential that GROWS
+
+Kaveh's framing for the day: "our hypothesis is that strata could emerge if we combine IQE + JEPA
+in chess". Literature check first — JEPA+quasimetric is established (TD-JEPA arXiv 2607.25337, the
+intrinsic-energy theory paper 2602.12245) but TD-JEPA uses **MRN**, and no paper puts **IQE** on a
+JEPA. Independently, TD-JEPA's objective converged on the same shape we built: regress latent
+distance to on-trajectory step count + hinge on permuted cross-trajectory goals + an explicit
+anti-collapse prior.
+
+**Data.** `src/trajectories.py`: every-ply replay of both populations from move lists already on
+disk. 199,910 games → **18,943,706 positions in 72s**, 1.13 GB of tokens (70 B/position vs 7168 for
+lc0 planes — the 100x cut is what makes every-ply tractable at all). **419,658 repetitions in
+96,212 games (48%)**: this is the only data-grounded evidence of REVERSIBILITY in the corpus, and
+the old 5-plies-per-game sample structurally could not see a single one.
+
+**Terminal taxonomy — three drafts were wrong, each caught by measurement, not review:**
+- no `WIN_MATE`: terminals are mover-POV and the side to move loses in **1.000** of 259 mates;
+- `RESIGN` had to SPLIT: the mover is the WINNER in **12.0%** of 45,746 resignations (you may
+  resign on the opponent's turn), so one pole would have put an eighth on the wrong outcome;
+- "agreed" draws were **487/491 SF adjudications**, not agreements.
+Time forfeit (**22,325 games, 11.2%**; 22.3% of human games, matching the recorded 23.0% flag rate)
+is CENSORED — a flagged position may be dead winning, so its result says nothing about the board.
+
+**Objective corrections, all from Kaveh pushing back:**
+1. *Arm B repulsion was the wrong FORM.* It used a RELATIVE margin, which is satisfied by
+   d_close=0.001/d_far=0.01 with the geometry fully collapsed — the documented IQE failure mode.
+   Swapped to the ABSOLUTE floor `relu(4.0 - log1p(d))` (train_iqe_head's measured value, the recipe
+   that beat the shipped M1 field on every metric). His correction — "with proper repulsion terms
+   the iqe turned out good" — also killed a QRL rewrite I was about to start unnecessarily.
+2. *SF games start at ply 8.* The pool is human ply-8 opening prefixes + SF continuation, so plies
+   0..7 of an "SF" game are HUMAN moves. `min_ply=8` now guards every dynamics-conditioned readout.
+   Measured aside: ply-8 material imbalance is 17.90% (human) vs 16.55% (SF), a 1.35pp gap, so the
+   balance filter he floated and withdrew would have cost ~18% of games to fix almost nothing.
+3. *The residual belongs in the EMBEDDING, not the distance.* I had argued for `d_human >= d_best`
+   as a free theorem; that is only true if the base IS best play. Against a POOLED base it is false
+   — a strong player should come in CLOSER. `z(u|c) = z_base(u) + delta(u,c)` keeps the total a
+   valid quasimetric for every c (identity 0.0, triangle 100/100) while the residual is free in
+   sign (11.0% negative). Two-stage: unconditional pretraining, then Elo-conditioned fine-tune;
+   `--init-from` reproduces stage-1 distances to **0.0**.
+4. *Three W/D/L poles need basin CE, not attraction.* Planted-committor simulation: pure attraction
+   to the observed pole COLLAPSES (mean pole distance 0.000, readout spread 0.000) because a
+   quasimetric permits d(s→W)=d(s→D)=0 simultaneously; basin CE is a proper scoring rule and
+   recovers the planted committor to **MAE 0.013** with NO negatives — the competition is the
+   softmax denominator. A follow-up measurement then RETRACTED my "pole init scale needs fixing"
+   hypothesis: 0.01 and 0.3 converge identically, and 0.01 breaks symmetry faster.
+
+**RESULT (run at 42%, ladder still filling).** capture-crossing vs quiet reversals — both
+unobserved, both given byte-identical repulsion, ply-gap matched, so a uniform training signal
+cannot separate them:
+
+  | step | capture - quiet | 95% CI |
+  |---|---|---|
+  | random-init null | **-0.057** | [-0.078, -0.039] |
+  | 2500 | +0.056 | [+0.039, +0.072] |
+  | 5000 | +0.124 | [+0.106, +0.145] |
+  | 7500 | **+0.303** | [+0.278, +0.330] |
+
+Monotone, non-overlapping CIs at every step, sign FLIPPED from a null that is itself significantly
+negative. Not a scale artifact (the readout is a ratio); not trained in (identical repulsion); not
+a population mix — **source-stratified: human +0.294 [+0.262,+0.323], SF +0.291 [+0.264,+0.319]**,
+which is what the ratchet being a property of the RULES rather than of a population predicts.
+`diff_reversible` holds at ~0.95 across every rung (the ~1 control), `sep_auc` 0.569 → 0.863, and
+the retracted confounded metric stays flat as it must.
+
+**The paired ratchet is FLAT at ~0.500 on both arms.** So the emerging finding is narrower and more
+specific than the plan anticipated: the ratchet appears in trajectory-local quasimetric geometry
+but NOT as a transferable cross-game source ranking. Pre-registration and the remaining rungs
+(10k–20k) decide it; single seed, so per-rung CIs bootstrap over pairs and say nothing about seed
+variance.
+
+
 ## 2026-08-05 -- hazards for humans (part 2): the null killed it, and why that was the point
 
 **Result first: the two-separately-trained-fields design does not work, and I retract two claims I
