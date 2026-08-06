@@ -135,6 +135,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
         <button data-k="out" aria-pressed="false">eventual outcome</button>
         <button data-k="ph" aria-pressed="false">game phase</button>
         <button data-k="cas" aria-pressed="false">castling rights</button>
+        <button data-k="endt" aria-pressed="false">ending type</button>
         <button data-k="src" aria-pressed="false">population</button>
       </div>
     </div>
@@ -268,18 +269,23 @@ const SRC = ['#4f8fd1','#d98a3a'], SRCN = ['human','engine'];
 const TERMN = ['mate','resign (loss)','resign (win)','draw agreed','draw adjudicated',
   'draw 50-move','stalemate','insufficient material','threefold'];
 const PHC = ['#4f8fd1','#c8913a','#a05fc0'], PHN = ['opening','middlegame','endgame'];
+// ending-type palette: reds = losses, greens = wins, cool/neutral = draws, dashed grey = censored
+const ENDC = ['#8b1e3f','#d0483f','#2e8b57','#708090','#9aa3ad','#b8860b','#7a5ea8','#4a7fc1','#3fa07f'];
+const ENDCEN = '#5b6270';
+function endCat(i){ const e=D.endt[i]; return e>=0 ? e : (e===-2 ? 9 : 10); }
 const CASC = ['#5b6270','#7a5ea8','#4a7fc1','#3fa07f','#d9a13a'];
 function nbits(v){let n=0;while(v){n+=v&1;v>>=1;}return n;}
 const pcLo = Math.min(...D.pc), pcHi = Math.max(...D.pc);
 
 // LEGEND TOGGLES (Kaveh: "i wanna be able to toggle each item in the legend as well").
 // A hidden category set PER COLOUR MODE; catOf(i) maps a point to its chip in the current mode.
-const hidden = {arr:new Set(), out:new Set(), ph:new Set(), cas:new Set(), src:new Set(), pc:new Set()};
+const hidden = {arr:new Set(), out:new Set(), ph:new Set(), cas:new Set(), src:new Set(), pc:new Set(), endt:new Set()};
 function catOf(i){
   if(mode==='arr') return D.arr[i]<0 ? 3 : D.arr[i];      // 0 W 1 D 2 L 3 in-progress
   if(mode==='ph')  return D.ph[i];
   if(mode==='cas') return nbits(D.cas[i]);
   if(mode==='out') return D.out[i]<0 ? 3 : D.out[i];      // 3 = censored
+  if(mode==='endt') return endCat(i);
   if(mode==='src') return D.src[i];
   return 0;                                               // pc: continuous ramp, no toggles
 }
@@ -290,6 +296,7 @@ function colOf(i){
   if(mode==='cas') return CASC[nbits(D.cas[i])];
   if(mode==='pc') return viridis((D.pc[i]-pcLo)/Math.max(pcHi-pcLo,1));
   if(mode==='out') return D.out[i]<0 ? 'rgba(140,150,160,.5)' : OUT[D.out[i]];
+  if(mode==='endt'){ const c=endCat(i); return c<9 ? ENDC[c] : (c===9 ? ENDCEN : 'rgba(140,150,160,.4)'); }
   return SRC[D.src[i]];
 }
 // TWO cloud samplings: coh=0 per-ply BALANCED (densities engineered), coh=1 fixed COHORT of
@@ -458,6 +465,10 @@ function legend(){
       chip(n,CASC[n],`${n} right${n===1?'':'s'} left`)).join('')
       +`<span class="fixed">rights are only ever LOST &mdash; irreversible, like material</span>`;
     return; }
+  if(mode==='endt'){ el.innerHTML=TERMN.map((n,k)=>chip(k,ENDC[k],n)).join('')
+      +chip(9,ENDCEN,'time forfeit (censored)')
+      +`<span class="fixed">every ply coloured by how its GAME ends &mdash; click chips to filter</span>`;
+    return; }
   if(mode==='pc'){ const g=`linear-gradient(90deg,${VIRIDIS.map(c=>`rgb(${c})`).join(',')})`;
     el.innerHTML=`<span>${pcLo} pieces<span class="ramp" style="background:${g}"></span>${pcHi}</span>`; }
   else if(mode==='out'){ el.innerHTML=OUTN.map((n,i)=>chip(i,OUT[i],n)).join('')
@@ -579,6 +590,7 @@ document.getElementById('cohby').addEventListener('click',e=>{
 // data exported before the cohort feature has no coh array -- hide the toggle rather than
 // offering a mode that would draw an empty cloud
 if(!D.coh) document.getElementById('cohby').parentElement.style.display='none';
+if(!D.endt) document.querySelector('#colorby [data-k=endt]').style.display='none';
 document.getElementById('ghostby').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return; ghost=b.dataset.g==='1';
   [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b)); draw(); });
