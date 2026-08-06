@@ -247,6 +247,9 @@ def main():
                          "and divergent at fene_stretch x it; lj = r^12 outside / r^6 inside, "
                          "normalised so the wall is at fene_stretch x the gap; "
                          "quartic = symmetric r^2+q*r^4")
+    ap.add_argument("--lj-wall", type=int, default=0,
+                    help="0 = raw r^12/r^6 on the log residual (self-scaling, default); "
+                         "1 = normalise so the wall sits at fene_stretch x the observed ply gap")
     ap.add_argument("--fene-stretch", type=float, default=2.0,
                     help="the wall sits at this multiple of the OBSERVED ply gap (Kaveh: "
                          "'infinity at twice the observed distance')")
@@ -472,7 +475,8 @@ def main():
             if not args.log_gas:
                 return quasimetric_regression(dd, tl)
             if args.confine == "lj":
-                return lj_confinement(dd, tl, fene_r_max(gp, args.fene_stretch))
+                return lj_confinement(dd, tl, fene_r_max(gp, args.fene_stretch)
+                                      if args.lj_wall else None)
             if args.confine == "fene":
                 return fene_confinement(dd, tl, fene_r_max(gp, args.fene_stretch),
                                         soft=args.fene_soft)
