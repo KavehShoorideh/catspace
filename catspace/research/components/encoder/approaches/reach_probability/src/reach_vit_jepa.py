@@ -131,6 +131,53 @@ class DualIQEHead(nn.Module):
         return self.iqe(zc_u, zc_v) - self.iqe(zb_u, zb_v)
 
 
+def simplex_poles(d: int, components: int, n_poles: int = 3, height: float = 3.0):
+    """(n_poles, d) FIXED poles: one block of IQE components per outcome.
+
+    Kaveh 2026-08-05: "we'd fix the position of the poles in space so everything stays bounded and
+    doesn't go to infinity" -- then "we need 3 poles, but it's not clear what kind of geometry they
+    should have". The IQE's own structure settles it, and rules out the obvious choices:
+
+    WHY NOT ALL THREE TOGETHER. A pole is ABSORBING when d(P->s) is large, which wants P LOW in the
+    coordinate order; positions REACH it when d(s->P)~0, which needs s >= P. So every pole wants to
+    sit low -- but if all three do, every position dominates all three, all three distances go to
+    zero at once (legal in a quasimetric) and the committor is uniform everywhere. That is not a
+    hypothetical: it is the basin_spread=0.0001 collapse measured on the first pole smoke.
+
+    SO THE POLES MUST BE MUTUALLY INCOMPARABLE -- no pole dominating another. Giving each outcome
+    its own block of components does exactly that:
+
+        pole_o = +height on block o, 0 on every other block
+
+    d(s -> P_o) is then small precisely when s is HIGH on block o, so a position's committor is
+    "which block am I high on" -- readable directly off the coordinates, which is the point.
+
+    VERIFIED (d=48, C=6, height=3): the pole-pole matrix is 0 on the diagonal and EXACTLY 2 off it
+    -- a perfect simplex, symmetric under permuting W/D/L, which is the symmetry the problem has
+    (win and loss are mirror images under colour; no outcome is privileged). A position high on
+    block o reads P = [0.6, 0.2, 0.2] toward that outcome, and one half-high on two blocks reads
+    [0.35, 0.33, 0.32] -- a genuine MIXTURE at the boundary, which is what a committor must do.
+
+    Fixed poles also FIX THE GAUGE. A fully learned embedding has a global scale freedom (the IQE
+    even has a learnable log_scale exploiting it), so no distance is comparable across checkpoints
+    or runs. Nailing three poles down makes every distance relative to a known frame -- and since
+    fixed poles cannot merge, the merged-pole saddle disappears and pole_potential is no longer
+    needed at all.
+
+    `height` is a real knob: it sets pole separation, and should sit near the typical observed-pair
+    distance so the softmax operates in a sensible range instead of saturating. Confidence at the
+    maximum is deliberately soft (0.6, not 0.99) -- over-sharp basins are what the pole design
+    explicitly did not want.
+    """
+    k = d // components
+    per = max(1, components // n_poles)
+    P = torch.zeros(n_poles, d)
+    for o in range(n_poles):
+        for c in range(o * per, min((o + 1) * per, components)):
+            P[o, c * k:(c + 1) * k] = height
+    return P
+
+
 class PoleBank(nn.Module):
     """The SUBSUMPTION HIERARCHY as points in the quasimetric space, conditioned on the dynamics.
 
@@ -166,10 +213,17 @@ class PoleBank(nn.Module):
     """
 
     def __init__(self, n_poles: int, d: int, parent: torch.Tensor, n_sources: int = 2,
-                 init_scale: float = 0.01):
+                 init_scale: float = 0.01, fixed: bool = False, components: int = 16,
+                 height: float = 3.0):
         super().__init__()
         self.n_poles, self.d, self.n_sources = int(n_poles), int(d), int(n_sources)
-        self.poles = nn.Parameter(torch.randn(n_poles, d) * init_scale)
+        self.fixed = bool(fixed)
+        if self.fixed:
+            # A BUFFER, not a Parameter: the frame is a fixed reference, and the whole point is
+            # that it cannot drift. Saved with the checkpoint so evaluation uses the same frame.
+            self.register_buffer("poles", simplex_poles(d, components, n_poles, height))
+        else:
+            self.poles = nn.Parameter(torch.randn(n_poles, d) * init_scale)
         # `parent[i]` = the pole that pole i subsumes into, or -1 at a root.
         self.register_buffer("parent", parent.long())
         self.delta = nn.Parameter(torch.zeros(max(self.n_sources - 1, 0), n_poles, d)) \
@@ -244,7 +298,8 @@ class ReachViT(nn.Module):
             self.iqe = IQE(d, components=components, leak_beta=leak_beta)
         self.poles = None                # attach_poles() installs the subsumption hierarchy
 
-    def attach_poles(self, parent, n_sources: int = 2, init_scale: float = 0.3):
+    def attach_poles(self, parent, n_sources: int = 2, init_scale: float = 0.3,
+                     fixed: bool = True, height: float = 3.0):
         """Install the terminal/endgame subsumption hierarchy (see PoleBank).
 
         Kept out of __init__ because the pole set is DATA-derived -- which (ending x material
@@ -258,7 +313,9 @@ class ReachViT(nn.Module):
         # classes on their own. The uniform basin_spread=0.0001 smoke reading that prompted
         # suspicion here was UNDERTRAINING (300 steps under a deep encoder), not a pole pathology.
         self.poles = PoleBank(len(parent), self.d, torch.as_tensor(parent),
-                              n_sources=n_sources, init_scale=init_scale)
+                              n_sources=n_sources, init_scale=init_scale, fixed=fixed,
+                              components=self.qhead.iqe.components if self.dual
+                              else self.iqe.components, height=height)
         return self.poles
 
     # ---- encoding -------------------------------------------------------------------------------

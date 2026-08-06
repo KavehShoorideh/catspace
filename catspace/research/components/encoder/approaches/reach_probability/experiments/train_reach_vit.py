@@ -196,6 +196,14 @@ def main():
                          "competition is the softmax denominator. Raw attraction to the observed "
                          "pole instead COLLAPSES (measured: mean pole distance 0.000, readout "
                          "uniform) because a quasimetric permits d(s->W)=d(s->D)=0 at once")
+    ap.add_argument("--learned-poles", action="store_true",
+                    help="let the three W/D/L poles move. DEFAULT IS FIXED: fixed poles pin the "
+                         "gauge (a learned embedding has a global scale freedom, so no distance is "
+                         "comparable across checkpoints), and they cannot merge, which removes the "
+                         "uniform-committor saddle for free")
+    ap.add_argument("--pole-height", type=float, default=3.0,
+                    help="fixed-simplex block height -> pole separation. Should sit near the "
+                         "typical observed-pair distance so the softmax does not saturate")
     ap.add_argument("--w-polesep", type=float, default=1.0,
                     help="pole-pole separation. Without it merged poles make every distance equal "
                          "and the CE sits at log 3 forever -- a saddle, not a minimum")
@@ -320,9 +328,10 @@ def main():
     # orienting themselves towards it, trying to answer the probabilistic reachability question
     # from seeing pairs of positions in game that follow each other, without any negatives").
     outcome = tr.outcome_of_row()
-    net.attach_poles([-1, -1, -1], n_sources=1)
+    net.attach_poles([-1, -1, -1], n_sources=1, fixed=not args.learned_poles,
+                     height=args.pole_height)
     net.poles = net.poles.to(dev)
-    print(f"[poles] 3 W/D/L poles | labels W {int((outcome==T.WIN).sum()):,} "
+    print(f"[poles] 3 W/D/L poles ({'FIXED simplex' if net.poles.fixed else 'learned'}) | labels W {int((outcome==T.WIN).sum()):,} "
           f"D {int((outcome==T.DRAW).sum()):,} L {int((outcome==T.LOSS).sum()):,} "
           f"| censored (time forfeit) {int((outcome<0).sum()):,}", flush=True)
     cond = row_conditioning(tr, args.d_cond if args.dual else 0)
@@ -421,10 +430,13 @@ def main():
                 l_basin = basin_ce(dP, y)
                 # Poles must not merge: identical poles make every distance equal and the CE sits
                 # at log 3 forever. LJ-shaped potential, same term the field head uses.
-                pd = torch.stack([(model.qhead.d_base(P[a:a+1], P[b:b+1])[0] if model.dual
-                                   else model.iqe(P[a:a+1], P[b:b+1])[0])
-                                  for a in range(3) for b in range(3)]).view(3, 3)
-                l_polesep = pole_potential(pd, typical_pair_scale(d_ij.detach()))
+                # Fixed poles CANNOT merge, so the separation term is unnecessary -- it exists
+                # only to stop learned poles collapsing into the log-3 saddle.
+                if not model.poles.fixed:
+                    pd = torch.stack([(model.qhead.d_base(P[a:a+1], P[b:b+1])[0] if model.dual
+                                       else model.iqe(P[a:a+1], P[b:b+1])[0])
+                                      for a in range(3) for b in range(3)]).view(3, 3)
+                    l_polesep = pole_potential(pd, typical_pair_scale(d_ij.detach()))
 
         # ---- anti-collapse, at the TRUNK and at the region head --------------------------------
         # zB is included on measurement, not on principle: the first smoke had eff_rank_zB DROP
