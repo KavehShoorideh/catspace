@@ -83,6 +83,13 @@ def load_net(ckpt, device):
         net = ReachViT(d_model=c["d_model"], layers=c["layers"], heads=c["heads"], d=c["d"],
                        hidden=c["hidden"], components=c["components"],
                        dual=c.get("dual", False), d_cond=c.get("d_cond", 0))
+        # Rebuild the POLE hierarchy from the cfg before loading. The pole set is data-derived, so
+        # a pole-bearing checkpoint carries weights the bare architecture has no slots for and a
+        # strict load_state_dict rejects it outright -- which would have failed EVERY v2 rung.
+        if c.get("pole_parent"):
+            net.attach_poles(torch.tensor(c["pole_parent"]), n_sources=1,
+                             fixed=not c.get("learned_poles", False),
+                             height=c.get("pole_height", 3.0))
     else:
         net = ReachJEPA(in_ch=c["in_ch"], d=c["d"], adapter_ch=c["adapter_ch"], hidden=c["hidden"])
     net.load_state_dict(p["state_dict"])
