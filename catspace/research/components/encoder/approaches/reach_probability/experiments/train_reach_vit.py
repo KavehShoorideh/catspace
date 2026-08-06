@@ -60,7 +60,7 @@ from catspace.research.components.encoder.approaches.reach_probability.src.reach
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
     absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
-    confine_radius, confining_regression, log_gas_repulsion,
+    confine_radius, confining_regression, fene_confinement, fene_r_max, log_gas_repulsion,
     start_irreversibility, start_ply_anchor, quasimetric_regression, reach_region_margin,
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
@@ -241,6 +241,14 @@ def main():
     ap.add_argument("--log-gas", type=int, default=1,
                     help="1 = log-gas field (confining spring + unbounded pairwise repulsion + one-body "
                          "confinement); 0 = legacy Huber + relu hinge, for reproducing old runs")
+    ap.add_argument("--confine", default="fene", choices=["fene", "quartic"],
+                    help="confining spring shape: fene = one-sided, soft inside the true ply gap "
+                         "and divergent at fene_stretch x it; quartic = symmetric r^2+q*r^4")
+    ap.add_argument("--fene-stretch", type=float, default=2.0,
+                    help="the wall sits at this multiple of the OBSERVED ply gap (Kaveh: "
+                         "'infinity at twice the observed distance')")
+    ap.add_argument("--fene-soft", type=float, default=0.2,
+                    help="stiffness on the CLOSER-than-equilibrium side (small by design)")
     ap.add_argument("--confine-quartic", type=float, default=1.0,
                     help="quartic weight in the confining spring r^2 + q*r^4; 0 = plain MSE")
     ap.add_argument("--confine-target", type=float, default=2.0,
@@ -455,14 +463,18 @@ def main():
         # arbitrary balance point instead of hitting the target -- measured as forward median 24.3
         # against a target of <=3.7. r^2 + q*r^4 is gentle near the gap and hauls back hard far
         # from it: "if they're five plies apart, they should shrink back to five."
-        _reg = (confining_regression if args.log_gas else
-                (lambda d, t: quasimetric_regression(d, t)))
-        _kw = {"quartic": args.confine_quartic} if args.log_gas else {}
-        l_q = (_reg(d_ij, torch.log1p(gap_ij), **_kw)
-               + _reg(d_jk, torch.log1p(gap_jk), **_kw)
-               + _reg(d_ik, torch.log1p(gap_ik), **_kw)) / 3.0
+        # FENE is the default: soft inside the true gap, wall at args.fene_stretch x the gap.
+        def _spring(dd, gp):
+            tl = torch.log1p(gp)
+            if not args.log_gas:
+                return quasimetric_regression(dd, tl)
+            if args.confine == "fene":
+                return fene_confinement(dd, tl, fene_r_max(gp, args.fene_stretch),
+                                        soft=args.fene_soft)
+            return confining_regression(dd, tl, args.confine_quartic)
+        l_q = (_spring(d_ij, gap_ij) + _spring(d_jk, gap_jk) + _spring(d_ik, gap_ik)) / 3.0
         if len(ra):
-            l_q = 0.75 * l_q + 0.25 * _reg(DQ(gra, grb), torch.log1p(gap_r), **_kw)
+            l_q = 0.75 * l_q + 0.25 * _spring(DQ(gra, grb), gap_r)
         d_ji = DQ(gj, gi)           # the reversal, on the SAME two positions
         d_x = DQ(gi, gx)            # cross-game, from the SAME source i
         # ABSOLUTE log-margin repulsion -- relu(margin - log1p(d)) -- NOT a relative pairwise

@@ -81,6 +81,88 @@ def log_gas_repulsion(d, eps=1.0):
     return (-torch.log(d.clamp(min=0) + eps)).mean()
 
 
+def fene_r_max(gap, stretch=2.0):
+    """Log-space extension ceiling for a pair whose true separation is `gap` plies.
+
+    Kaveh 2026-08-06: "I want infinity to be at twice the observed distance." A pair may never sit
+    further than stretch*gap, so in the log space the spring actually acts in:
+
+        R0 = log1p(stretch*gap) - log1p(gap) = log((1 + stretch*gap) / (1 + gap))
+
+    This is PER PAIR, not a global constant: R0 = 0.405 for a 1-ply gap and rises toward
+    log(stretch) = 0.693 for large gaps, so short bonds are held proportionally tighter."""
+    g = gap.clamp(min=0) if torch.is_tensor(gap) else torch.as_tensor(gap).clamp(min=0)
+    return torch.log1p(stretch * g) - torch.log1p(g)
+
+
+def fene_confinement(d, target_log, r_max, soft=0.2, eps=1e-4):
+    """ONE-SIDED FENE bond: soft inside equilibrium, INFINITE wall at r_max outside it.
+
+    Kaveh's spec, and the asymmetry the symmetric r^2+q*r^4 spring did not have -- "a small
+    repulsion closer than equilibrium and a strong attraction farther than equilibrium":
+
+        r < 0  (closer than the true gap):  soft * r^2          gentle nudge outward
+        r > 0  (farther):                   -log(1 - (r/r_max)^2)  diverges at r = r_max
+
+    WHY FENE RATHER THAN A QUARTIC. The quartic wall is finite everywhere, so a strong enough
+    pairwise repulsion can always overpower it at some radius -- which is why raising w_repel traded
+    asymmetry for effective rank instead of buying separation. FENE's wall is infinite at r_max, so
+    repulsion can act freely in the soft interior and CANNOT push a bonded pair past its ceiling.
+    The force balance stops being a tuning fight. This is the polymer bead-spring construction
+    (Kremer-Grest: FENE bonds along the chain, purely repulsive interaction between all pairs), and
+    the mapping is exact rather than metaphorical -- consecutive positions in a game ARE bonded
+    beads on a chain.
+
+    Continuous and C1 at r=0: both branches -> 0 with zero slope.
+    `r_max` is per-pair (see fene_r_max). eps clamps just inside the singularity so the first
+    overshoot gives a large finite loss instead of NaN.
+
+    BEYOND THE WALL. A bare clamp at r_max is WRONG in a loss, even though MD codes get away with
+    it: clamping makes the potential CONSTANT past the ceiling, so the gradient is exactly zero and
+    an overshooting pair drifts free forever -- the identical saturation failure this whole redesign
+    exists to remove (the unit test caught a 1-ply pair escaping to d=109 against a ceiling of 2).
+    Past the clamp we continue with the tangent plus a quadratic, so the restoring force keeps
+    GROWING outside the wall instead of switching off."""
+    r = torch.log1p(d.clamp(min=0)) - target_log
+    rm = (r_max.clamp(min=1e-3) if torch.is_tensor(r_max)
+          else torch.as_tensor(r_max, dtype=r.dtype, device=r.device).clamp(min=1e-3))
+    rc = rm * (1.0 - eps)                                   # last point strictly inside the wall
+    v_c = -torch.log1p(-(rc / rm) ** 2)                     # potential at the clamp
+    s_c = 2.0 * rc / (rm * rm - rc * rc)                    # its slope (very large by design)
+    rin = r.clamp(min=0.0, max=float("inf"))
+    x = (torch.minimum(rin, rc) / rm)
+    outside = -torch.log1p(-x * x)                          # true FENE, inside the wall
+    over = (r - rc).clamp(min=0.0)
+    beyond = v_c + s_c * over + over * over                 # C1 continuation, force still growing
+    return torch.where(r > rc, beyond, torch.where(r > 0, outside, soft * r * r)).mean()
+
+
+def lj_confinement(d, target_log, r_max=None):
+    """Lennard-Jones-style power potential on the log residual (Kaveh 2026-08-06, explicit spec):
+
+        V = r^12   for r > 0   (farther than equilibrium -- 12th-power wall)
+        V = -r^6   for r < 0   (closer than equilibrium -- 6th-power well)
+
+    where r = log1p(d) - target_log, target_log = log1p(true ply gap).
+
+    If `r_max` is given, r is normalised as r/r_max first, so the wall reaches V=1 exactly at
+    r_max (pass fene_r_max(gap) to put it at twice the observed gap). Strongly recommended: raw
+    r^12 spans twelve orders of magnitude over a modest range of r and the gradients are brutal.
+
+    KNOWN INSTABILITY, measured not assumed: the -r^6 branch is UNBOUNDED BELOW, so collapsing a
+    pair toward d=0 is rewarded. Because d>=0 forces r >= -log1p(gap), the well has a finite floor
+    of -log1p(gap)^6 -- but that floor DEEPENS as the sixth power of the gap (about -2609 for a
+    40-ply pair, unnormalised), so long-range pairs are paid heavily to collapse while the
+    logarithmic pairwise repulsion opposing them grows only as log. See the collapse test."""
+    r = torch.log1p(d.clamp(min=0)) - target_log
+    if r_max is not None:
+        rm = (r_max if torch.is_tensor(r_max)
+              else torch.as_tensor(r_max, dtype=r.dtype, device=r.device))
+        r = r / rm.clamp(min=1e-3)
+    r6 = r ** 6
+    return torch.where(r > 0, r6 * r6, -r6).mean()
+
+
 def confine_radius(z, target=1.0, quartic=1.0):
     """One-body confinement on embedding radius, the term that guarantees the log-gas equilibrium
     EXISTS. Points appearing only in the repulsion term have nothing pulling them back; without a
@@ -769,6 +851,79 @@ def _tests():
         ok &= hit and np.isfinite(got)
         print(f"[log-gas] equilibrium: true gap {target_gap:5.1f} -> settled d = {got:7.3f}"
               f"   {'OK' if hit else 'FAIL'}")
+
+    # ---- ONE-SIDED FENE ------------------------------------------------------------------------
+    # 4. The ceiling really is at TWICE the observed gap, per pair.
+    for gp in (1.0, 5.0, 40.0):
+        rm = float(fene_r_max(torch.tensor([gp])))
+        d_at_wall = float(torch.expm1(torch.log1p(torch.tensor([gp])) + rm))
+        hit = abs(d_at_wall - 2 * gp) < 1e-3
+        ok &= hit
+        print(f"[fene] gap {gp:5.1f} -> R0 {rm:.4f}, wall sits at d = {d_at_wall:7.3f} "
+              f"(2x gap = {2*gp:6.1f})  {'OK' if hit else 'FAIL'}")
+
+    # 5. ASYMMETRY: far side must pull far harder than the near side pushes -- the property the
+    #    symmetric r^2+q*r^4 spring lacked entirely (its ratio is exactly 1.00).
+    def fforce(rv, gp=5.0):
+        tl = torch.log1p(torch.tensor([gp]))
+        d = torch.expm1(tl + rv).clone().detach().requires_grad_(True)
+        fene_confinement(d, tl, fene_r_max(torch.tensor([gp]))).backward()
+        return float(d.grad.abs()) * float(1 + torch.expm1(tl + rv))   # -> log-space force
+    f_out, f_in = fforce(torch.tensor([0.3])), fforce(torch.tensor([-0.3]))
+    sym_out, sym_in = 2 * 0.3 + 4 * 0.3 ** 3, 2 * 0.3 + 4 * 0.3 ** 3
+    ok &= f_out > 5.0 * f_in
+    print(f"[fene] asymmetry at |r|=0.3: outward-pull {f_out:.3f} vs inward-push {f_in:.3f} "
+          f"({f_out/max(f_in,1e-9):.1f}x)   symmetric quartic would be "
+          f"{sym_out/sym_in:.2f}x  {'OK' if ok else 'FAIL'}")
+
+    # 6. The wall is finite-but-huge AT the clamp and never NaN past it.
+    tl5 = torch.log1p(torch.tensor([5.0])); rm5 = fene_r_max(torch.tensor([5.0]))
+    vals = [float(fene_confinement(torch.tensor([dv]), tl5, rm5))
+            for dv in (9.9, 10.0, 12.0, 1e4)]
+    ok &= all(np.isfinite(v) for v in vals) and vals[-1] > vals[2] > vals[1] > vals[0]
+    gw = []
+    for dv in (12.0, 100.0, 1e4):
+        dg = torch.tensor([dv], requires_grad=True)
+        fene_confinement(dg, tl5, rm5).backward(); gw.append(float(dg.grad.abs()))
+    ok &= all(g > 0 for g in gw)
+    print(f"[fene] loss at d = 9.9, 10.0 (the wall), 12.0, 10000 = "
+          f"{', '.join(f'{v:.2f}' for v in vals)}  strictly INCREASING past the wall, "
+          f"|grad| there = {', '.join(f'{g:.1e}' for g in gw)} (never 0)  {'OK' if ok else 'FAIL'}")
+
+    # 7. Equilibrium under FENE + pairwise repulsion: settles near the gap and NEVER past 2x.
+    for target_gap in (1.0, 5.0, 20.0):
+        tl = torch.log1p(torch.tensor([target_gap])); rm = fene_r_max(torch.tensor([target_gap]))
+        raw = torch.tensor([4.0], requires_grad=True)
+        o = torch.optim.Adam([raw], lr=0.05)
+        for _ in range(4000):
+            o.zero_grad()
+            dd = F.softplus(raw)
+            (fene_confinement(dd, tl, rm) + 0.5 * log_gas_repulsion(dd)).backward()
+            o.step()
+        got = float(F.softplus(raw))
+        hit = np.isfinite(got) and got <= 2 * target_gap + 1e-2
+        ok &= hit
+        print(f"[fene] equilibrium: gap {target_gap:5.1f} -> settled d = {got:7.3f} "
+              f"(hard ceiling {2*target_gap:6.1f})  {'OK' if hit else 'FAIL'}")
+
+    # ---- LJ-STYLE r^12 / -r^6 (Kaveh's explicit spec) -----------------------------------------
+    for gp in (1.0, 5.0, 40.0):
+        tl = torch.log1p(torch.tensor([gp])); rm = fene_r_max(torch.tensor([gp]))
+        raw = torch.tensor([1.0], requires_grad=True)
+        o = torch.optim.Adam([raw], lr=0.02)
+        for _ in range(6000):
+            o.zero_grad()
+            dd = F.softplus(raw)
+            (lj_confinement(dd, tl, rm) + 0.5 * log_gas_repulsion(dd)).backward()
+            torch.nn.utils.clip_grad_norm_([raw], 10.0)
+            o.step()
+        got = float(F.softplus(raw)); coll = got < 0.25 * gp
+        print(f"[lj] gap {gp:5.1f} -> settled d = {got:9.4f} "
+              f"(wall at {2*gp:5.1f}) {'COLLAPSED' if coll else 'stable'}")
+    # unnormalised well depth grows as the 6th power of the gap -- the instability, quantified
+    depths = [float(-(np.log1p(g) ** 6)) for g in (1.0, 5.0, 40.0)]
+    print(f"[lj] unnormalised well floor at d=0 for gap 1/5/40: "
+          f"{', '.join(f'{v:.1f}' for v in depths)}  (deepens as gap^6)")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
