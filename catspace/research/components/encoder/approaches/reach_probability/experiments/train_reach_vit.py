@@ -375,12 +375,19 @@ def main():
     fit = T.PairSampler(tr, fit_games, seed=args.seed, cov=cov, repeats=reps, min_ply=args.min_ply)
     val = T.PairSampler(tr, val_games, seed=args.seed + 1, cov=cov, repeats=reps,
                         min_ply=args.min_ply)
+    # ATTACH POLES BEFORE THE OPTIMIZER. Adam captures net.parameters() at construction, so
+    # creating the poles afterwards left ending_delta out of the optimizer entirely: it stayed
+    # EXACTLY zero for all 20k steps (verified in the v2 checkpoint, absmax 0.000000), every
+    # ending pole sat on top of its outcome pole, and the anchor/absorb/repulsion terms trained
+    # the ENCODER against poles that could never move. Ordering bug, silent, and it invalidated
+    # the terminal-structure half of that run.
+    net.attach_poles(t_parent, n_sources=1, fixed=not args.learned_poles,
+                     height=args.pole_height)
+
     opt = torch.optim.Adam([p for p in net.parameters() if p.requires_grad], lr=args.lr)
     # THREE OUTCOME POLES (Kaveh 2026-08-05: "I want three poles (win draw loss) ... and positions
     # orienting themselves towards it, trying to answer the probabilistic reachability question
     # from seeing pairs of positions in game that follow each other, without any negatives").
-    net.attach_poles(t_parent, n_sources=1, fixed=not args.learned_poles,
-                     height=args.pole_height)
     net.poles = net.poles.to(dev)
     print(f"[poles] {len(t_names)} poles ({'FIXED simplex' if net.poles.fixed else 'learned'} "
           f"+ {len(t_names)-3} ending types) | {len(t_rows):,} terminal instances | labels W {int((outcome==T.WIN).sum()):,} "

@@ -149,10 +149,20 @@ def main():
             trace_meta.append((int(pop), int(ply[gr[0]]), int(tr.term[gi]), len(gr), san_of(gi)))
     all_trace = np.concatenate(trace_rows) if trace_rows else np.zeros(0, np.int64)
     fit_rows = np.concatenate([rows, all_trace])
+    # POLE POSITIONS, co-fitted with everything else so they land in the SAME coordinates. They
+    # live in the arm-B embedding space already, so they are just extra points to the projection --
+    # no transform(), no separate fit, nothing to misalign.
+    pole_names, pole_vecs = [], None
+    if getattr(net, "poles", None) is not None:
+        pole_vecs = net.poles.poles.detach().float().cpu().numpy()
+        pole_names = c.get("pole_names") or [f"P{k}" for k in range(len(pole_vecs))]
     print(f"[umap] fitting on {len(fit_rows):,} = {len(rows):,} cross-section "
           f"+ {len(all_trace):,} trace positions", flush=True)
 
     Z = embed(net, tr, fit_rows, args.device).numpy()
+    n_emb = len(Z)
+    if pole_vecs is not None:
+        Z = np.concatenate([Z, pole_vecs])            # poles ride along in the fit
     import umap
     red = umap.UMAP(n_neighbors=args.neighbors, min_dist=args.min_dist, n_components=args.dims,
                     metric="euclidean", random_state=0, verbose=False)
@@ -164,7 +174,8 @@ def main():
     lo, hi = XY_all.min(0), XY_all.max(0)
     XY_all = (XY_all - lo) / np.maximum(hi - lo, 1e-9)
     XY = XY_all[:len(rows)]                       # cross-section points
-    TXY = XY_all[len(rows):]                      # trace points, same fit, no transform() needed
+    TXY = XY_all[len(rows):n_emb]                 # trace points, same fit, no transform() needed
+    PXY = XY_all[n_emb:] if pole_vecs is not None else None
 
     # ---- TRACES: whole games projected into the SAME map -------------------------------------
     # umap.transform() is what makes this honest. Fitting a second UMAP on the trajectories would
@@ -241,6 +252,9 @@ def main():
         "ph": [int(v) for v in phase[rows]],          # 0 opening, 1 middlegame, 2 endgame
         "phv": [int(v) for v in phase_val[rows]],     # raw 0-24 non-pawn material
         "traces": traces,
+        "poles": ([{"name": n, "x": round(float(v[0]), 4), "y": round(float(v[1]), 4),
+                    "z": (round(float(v[2]), 4) if len(v) > 2 else None)}
+                   for n, v in zip(pole_names, PXY)] if PXY is not None else None),
     }
     with open(args.out, "w") as f:
         json.dump(data, f)
