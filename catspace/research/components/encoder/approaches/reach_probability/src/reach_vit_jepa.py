@@ -244,6 +244,15 @@ class PoleBank(nn.Module):
             # hierarchy exactly satisfied and the data has to push each ending off in its own
             # direction -- the same zero-init discipline as every other residual here.
             self.ending_delta = nn.Parameter(torch.zeros(n_learn, d)) if n_learn else None
+            if n_learn:
+                # Rooted poles (parent -1, e.g. START) have no outcome base to sit on, so a zero
+                # delta would pin them at the origin -- which in an IQE is dominated by everything
+                # and therefore degenerate. Only those get a nonzero init; ending poles keep the
+                # zero-init discipline so the hierarchy starts exactly satisfied.
+                with torch.no_grad():
+                    roots = (torch.as_tensor(parent)[self.n_outcome:] < 0)
+                    if roots.any():
+                        self.ending_delta[roots] = torch.rand(int(roots.sum()), d) * height
         else:
             self.poles_p = nn.Parameter(torch.randn(n_poles, d) * init_scale)
         # `parent[i]` = the pole that pole i subsumes into, or -1 at a root.
@@ -259,7 +268,14 @@ class PoleBank(nn.Module):
         if self.ending_delta is None or not len(self.ending_delta):
             return self.outcome_poles
         # each ending pole = its outcome pole + a learned offset (free direction)
-        base = self.outcome_poles[self.parent[self.n_outcome:].clamp(min=0)]
+        # A pole with parent -1 (START) is its OWN root and must NOT inherit an outcome position.
+        # clamp(min=0) silently mapped -1 to index 0, so START was built as "the WIN pole plus a
+        # zero offset" and landed exactly on WIN -- which is why it appeared to sit on top of the
+        # mates. Rooted poles get a zero base and live wherever their delta puts them.
+        par = self.parent[self.n_outcome:]
+        base = torch.where(par[:, None] >= 0,
+                           self.outcome_poles[par.clamp(min=0)],
+                           torch.zeros_like(self.ending_delta))
         return torch.cat([self.outcome_poles, base + self.ending_delta], 0)
 
     def for_source(self, src):
