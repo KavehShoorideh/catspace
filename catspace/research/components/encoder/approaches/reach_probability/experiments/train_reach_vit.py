@@ -60,6 +60,7 @@ from catspace.research.components.encoder.approaches.reach_probability.src.reach
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
     absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
+    confine_radius, confining_regression, log_gas_repulsion,
     start_irreversibility, start_ply_anchor, quasimetric_regression, reach_region_margin,
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
@@ -237,6 +238,14 @@ def main():
                          "strata question, which never reads the source label")
     # objective weights
     ap.add_argument("--w-region", type=float, default=1.0, help="arm A: region NLL on observed pairs")
+    ap.add_argument("--log-gas", type=int, default=1,
+                    help="1 = log-gas field (confining spring + unbounded wind + one-body "
+                         "confinement); 0 = legacy Huber + relu hinge, for reproducing old runs")
+    ap.add_argument("--confine-quartic", type=float, default=1.0,
+                    help="quartic weight in the confining spring r^2 + q*r^4; 0 = plain MSE")
+    ap.add_argument("--confine-target", type=float, default=2.0,
+                    help="one-body confinement target on log1p(|z|); sets the gas radius")
+    ap.add_argument("--w-confine", type=float, default=1.0, help="weight on one-body confinement")
     ap.add_argument("--w-iqe", type=float, default=1.0, help="arm B: quasimetric regression")
     ap.add_argument("--w-repel", type=float, default=1.0, help="both arms: unobserved-pair repulsion")
     ap.add_argument("--margin", type=float, default=1.0,
@@ -441,11 +450,19 @@ def main():
 
         # ---- arm B: the quasimetric ------------------------------------------------------------
         d_ij, d_jk, d_ik = DQ(gi, gj), DQ(gj, gk), DQ(gi, gk)
-        l_q = (quasimetric_regression(d_ij, torch.log1p(gap_ij))
-               + quasimetric_regression(d_jk, torch.log1p(gap_jk))
-               + quasimetric_regression(d_ik, torch.log1p(gap_ik))) / 3.0
+        # CONFINING SPRING (log-gas attraction) rather than Huber. Huber's force is CONSTANT past
+        # delta, so against a repulsion that also pushes with a constant force it stalls at an
+        # arbitrary balance point instead of hitting the target -- measured as forward median 24.3
+        # against a target of <=3.7. r^2 + q*r^4 is gentle near the gap and hauls back hard far
+        # from it: "if they're five plies apart, they should shrink back to five."
+        _reg = (confining_regression if args.log_gas else
+                (lambda d, t: quasimetric_regression(d, t)))
+        _kw = {"quartic": args.confine_quartic} if args.log_gas else {}
+        l_q = (_reg(d_ij, torch.log1p(gap_ij), **_kw)
+               + _reg(d_jk, torch.log1p(gap_jk), **_kw)
+               + _reg(d_ik, torch.log1p(gap_ik), **_kw)) / 3.0
         if len(ra):
-            l_q = 0.75 * l_q + 0.25 * quasimetric_regression(DQ(gra, grb), torch.log1p(gap_r))
+            l_q = 0.75 * l_q + 0.25 * _reg(DQ(gra, grb), torch.log1p(gap_r), **_kw)
         d_ji = DQ(gj, gi)           # the reversal, on the SAME two positions
         d_x = DQ(gi, gx)            # cross-game, from the SAME source i
         # ABSOLUTE log-margin repulsion -- relu(margin - log1p(d)) -- NOT a relative pairwise
@@ -464,10 +481,20 @@ def main():
         # w_repel 1.0, which on 2026-08-02 beat the shipped M1 field on every metric (pair-order
         # +0.926, d_mate rho +0.818, eff_rank 18.8). Paired with plain ply-gap regression -- so no
         # QRL rewrite is needed; the repulsion was always the missing piece, not the objective.
+        # THE WIND (log-gas repulsion): unbounded, never saturating. The relu hinge below it
+        # delivered exactly zero gradient past its margin, which PINNED reverse distances at the
+        # margin -- reverse median 55.8 against a floor of e^4-1 = 53.6, so the asymmetry ratio
+        # was a readout of repel_margin rather than anything learned. -log(d) keeps pushing
+        # forever and stops only when the confining springs on observed pairs tug back.
         um_b = torch.nonzero(unc, as_tuple=True)[0]
-        rep_rev = (terminal_repulsion(d_ji[um_b], args.repel_margin)
+        _rep = ((lambda d, m: log_gas_repulsion(d)) if args.log_gas else terminal_repulsion)
+        rep_rev = (_rep(d_ji[um_b], args.repel_margin)
                    if len(um_b) else torch.zeros((), device=dev))
-        l_rep_b = 0.5 * (rep_rev + terminal_repulsion(d_x, args.repel_margin))
+        l_rep_b = 0.5 * (rep_rev + _rep(d_x, args.repel_margin))
+        # One-body confinement makes the log-gas equilibrium EXIST: points that appear only under
+        # the wind have nothing pulling them back, and -log(d) alone runs to -inf.
+        l_conf = (confine_radius(zB, args.confine_target, args.confine_quartic)
+                  if args.log_gas else torch.zeros((), device=dev))
 
         # ---- the three W/D/L poles: probabilistic reachability, positives only -----------------
         # d(s -> P_k) for k = win/draw/loss, then CE against the outcome the game ACTUALLY reached.
@@ -568,7 +595,7 @@ def main():
         l_cov = vicreg_covariance(phi) + vicreg_covariance(zA) + vicreg_covariance(zB)
         l_l1 = model.l1_penalty()
         loss = (args.w_region * (l_nll + args.w_repel * l_rep_a)
-                + args.w_iqe * (l_q + args.w_repel * l_rep_b)
+                + args.w_iqe * (l_q + args.w_repel * l_rep_b) + args.w_confine * l_conf
                 + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
                 + args.w_res_shrink * l_shrink
                 + args.w_basin * l_basin + args.w_polesep * l_polesep
@@ -577,6 +604,7 @@ def main():
                 + args.w_start * l_start + args.w_start_irr * l_startirr)
         met = {"loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
+               "confine": float(l_conf.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
                # the residue the cross sampler's redraw loop could not clear -- must be ~0, and is
@@ -621,6 +649,18 @@ def main():
             model.update_target()
         step_log.write(json.dumps({"s": step, **{k: round(float(v), 5)
                                                   for k, v in met.items()}}) + "\n")
+        # HARD GATE against the take-2 failure: the pole terms ran for 20,000 steps against poles
+        # that could never move, because attach_poles came after the optimizer was built. Nothing
+        # in the loss or the gates noticed. Check directly that the learned poles are moving, and
+        # abort early rather than spend another 5.5h discovering it at the end.
+        if step == 400 and model.poles is not None and getattr(model.poles, "ending_delta", None) is not None:
+            mv = float(model.poles.ending_delta.abs().max())
+            if mv < 1e-8 and (args.w_anchor > 0 or args.w_termrep > 0 or args.w_start > 0):
+                raise SystemExit(
+                    f"ABORT at step 400: ending_delta is still {mv:.2e} with pole terms active -- "
+                    f"the learned poles are not in the optimizer. This is the take-2 bug; fix the "
+                    f"attach_poles/optimizer ordering before rerunning.")
+            print(f"[poles] gate OK at step 400: ending_delta absmax {mv:.4f} (moving)", flush=True)
         if prof:
             tot = sum(ph.t.values()) or 1.0
             met.update(ph.t)
