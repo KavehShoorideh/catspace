@@ -60,7 +60,8 @@ from catspace.research.components.encoder.approaches.reach_probability.src.reach
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
     absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
-    confine_radius, confining_regression, fene_confinement, fene_r_max, log_gas_repulsion,
+    confine_radius, confining_regression, fene_confinement, fene_r_max, lj_confinement,
+    log_gas_repulsion,
     start_irreversibility, start_ply_anchor, quasimetric_regression, reach_region_margin,
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
@@ -241,9 +242,11 @@ def main():
     ap.add_argument("--log-gas", type=int, default=1,
                     help="1 = log-gas field (confining spring + unbounded pairwise repulsion + one-body "
                          "confinement); 0 = legacy Huber + relu hinge, for reproducing old runs")
-    ap.add_argument("--confine", default="fene", choices=["fene", "quartic"],
+    ap.add_argument("--confine", default="fene", choices=["fene", "lj", "quartic"],
                     help="confining spring shape: fene = one-sided, soft inside the true ply gap "
-                         "and divergent at fene_stretch x it; quartic = symmetric r^2+q*r^4")
+                         "and divergent at fene_stretch x it; lj = r^12 outside / r^6 inside, "
+                         "normalised so the wall is at fene_stretch x the gap; "
+                         "quartic = symmetric r^2+q*r^4")
     ap.add_argument("--fene-stretch", type=float, default=2.0,
                     help="the wall sits at this multiple of the OBSERVED ply gap (Kaveh: "
                          "'infinity at twice the observed distance')")
@@ -468,6 +471,8 @@ def main():
             tl = torch.log1p(gp)
             if not args.log_gas:
                 return quasimetric_regression(dd, tl)
+            if args.confine == "lj":
+                return lj_confinement(dd, tl, fene_r_max(gp, args.fene_stretch))
             if args.confine == "fene":
                 return fene_confinement(dd, tl, fene_r_max(gp, args.fene_stretch),
                                         soft=args.fene_soft)

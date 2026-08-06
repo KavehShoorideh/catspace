@@ -141,7 +141,7 @@ def lj_confinement(d, target_log, r_max=None):
     """Lennard-Jones-style power potential on the log residual (Kaveh 2026-08-06, explicit spec):
 
         V = r^12   for r > 0   (farther than equilibrium -- 12th-power wall)
-        V = -r^6   for r < 0   (closer than equilibrium -- 6th-power well)
+        V = +r^6   for r < 0   (closer than equilibrium -- gentle 6th-power push back out)
 
     where r = log1p(d) - target_log, target_log = log1p(true ply gap).
 
@@ -149,18 +149,24 @@ def lj_confinement(d, target_log, r_max=None):
     r_max (pass fene_r_max(gap) to put it at twice the observed gap). Strongly recommended: raw
     r^12 spans twelve orders of magnitude over a modest range of r and the gradients are brutal.
 
-    KNOWN INSTABILITY, measured not assumed: the -r^6 branch is UNBOUNDED BELOW, so collapsing a
-    pair toward d=0 is rewarded. Because d>=0 forces r >= -log1p(gap), the well has a finite floor
-    of -log1p(gap)^6 -- but that floor DEEPENS as the sixth power of the gap (about -2609 for a
-    40-ply pair, unnormalised), so long-range pairs are paid heavily to collapse while the
-    logarithmic pairwise repulsion opposing them grows only as log. See the collapse test."""
+    THE SIGN. Kaveh first specified -r^6 on the inner branch, carrying Lennard-Jones' attractive
+    term across directly. Measured, that COLLAPSES: gaps of 5 and 40 plies both drove to d=0.0000
+    even normalised and with the pairwise repulsion opposing, because -r^6 is unbounded below and
+    its floor deepens as gap^6 (-0.1 / -33.1 / -2622.7 for gaps 1 / 5 / 40) while the opposing
+    repulsion grows only as log. The minus is inherited from a geometry where r^-6 attracts at
+    LARGE separation; here the confining side is the far side, so the same sign lands on the near
+    side and pulls pairs together. With +r^6 the inner branch pushes back out, which is what
+    'a small repulsion closer than equilibrium' asks for.
+
+    The 12/6 split then gives the asymmetry for free: normalised so |r|<1 near equilibrium, r^6 is
+    tiny there (0.3^6 = 7e-4) while r^12 climbs hard toward the wall."""
     r = torch.log1p(d.clamp(min=0)) - target_log
     if r_max is not None:
         rm = (r_max if torch.is_tensor(r_max)
               else torch.as_tensor(r_max, dtype=r.dtype, device=r.device))
         r = r / rm.clamp(min=1e-3)
     r6 = r ** 6
-    return torch.where(r > 0, r6 * r6, -r6).mean()
+    return torch.where(r > 0, r6 * r6, r6).mean()
 
 
 def confine_radius(z, target=1.0, quartic=1.0):
@@ -918,12 +924,15 @@ def _tests():
             torch.nn.utils.clip_grad_norm_([raw], 10.0)
             o.step()
         got = float(F.softplus(raw)); coll = got < 0.25 * gp
+        ok &= (not coll) and np.isfinite(got) and got <= 2.2 * gp
         print(f"[lj] gap {gp:5.1f} -> settled d = {got:9.4f} "
               f"(wall at {2*gp:5.1f}) {'COLLAPSED' if coll else 'stable'}")
     # unnormalised well depth grows as the 6th power of the gap -- the instability, quantified
-    depths = [float(-(np.log1p(g) ** 6)) for g in (1.0, 5.0, 40.0)]
-    print(f"[lj] unnormalised well floor at d=0 for gap 1/5/40: "
-          f"{', '.join(f'{v:.1f}' for v in depths)}  (deepens as gap^6)")
+    inner = [float(lj_confinement(torch.tensor([0.0]), torch.log1p(torch.tensor([g])),
+                                   fene_r_max(torch.tensor([g])))) for g in (1.0, 5.0, 40.0)]
+    ok &= all(v > 0 for v in inner)
+    print(f"[lj] inner branch at d=0 for gap 1/5/40: {', '.join(f'{v:.2f}' for v in inner)} "
+          f"(POSITIVE = pushes back out; was negative and collapsing)")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
