@@ -139,6 +139,13 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
       </div>
     </div>
     <div class="grp">
+      <div class="lbl">Cloud sampling</div>
+      <div class="seg" id="cohby">
+        <button data-c="0" aria-pressed="true">upsample sparse plies</button>
+        <button data-c="1" aria-pressed="false">true cohort</button>
+      </div>
+    </div>
+    <div class="grp">
       <div class="lbl">Full cloud</div>
       <div class="seg" id="ghostby">
         <button data-g="1" aria-pressed="true">ghost behind</button>
@@ -285,9 +292,14 @@ function colOf(i){
   if(mode==='out') return D.out[i]<0 ? 'rgba(140,150,160,.5)' : OUT[D.out[i]];
   return SRC[D.src[i]];
 }
-const byPly = new Map();
-D.ply.forEach((p,i)=>{ if(!byPly.has(p)) byPly.set(p,[]); byPly.get(p).push(i); });
-const plies = [...byPly.keys()].sort((a,b)=>a-b);
+// TWO cloud samplings: coh=0 per-ply BALANCED (densities engineered), coh=1 fixed COHORT of
+// games end-to-end (densities real; late-ply thinning is genuine attrition).
+let cohMode = 0;
+const byPlyBal = new Map(), byPlyCoh = new Map();
+D.ply.forEach((p,i)=>{ const m = (D.coh && D.coh[i]) ? byPlyCoh : byPlyBal;
+  if(!m.has(p)) m.set(p,[]); m.get(p).push(i); });
+const byPlyAt = () => cohMode ? byPlyCoh : byPlyBal;
+const plies = [...new Set([...byPlyBal.keys(), ...byPlyCoh.keys()])].sort((a,b)=>a-b);
 slider.min = plies[0]; slider.max = plies[plies.length-1]; slider.value = plies[0];
 function sepnote(){ if(!D.pole_sep) return;
   document.getElementById('sepnote').innerHTML =
@@ -325,7 +337,8 @@ function draw(){
     ctx.beginPath();ctx.moveTo(gx,20);ctx.lineTo(gx,h-20);ctx.stroke();
     ctx.beginPath();ctx.moveTo(20,gy);ctx.lineTo(w-20,gy);ctx.stroke();}
   if(ghost){ ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--ghost');
-    for(let i=0;i<D.n;i+=3){const[a,b]=px(i,w,h);ctx.fillRect(a,b,1.6,1.6);} }
+    for(let i=0;i<D.n;i+=3){ if(D.coh && (D.coh[i]===1)!==(cohMode===1)) continue;
+      const[a,b]=px(i,w,h);ctx.fillRect(a,b,1.6,1.6);} }
   const following = traceMode===1 && D.traces;
   if(following){
     const gi=Math.min(+gameSel.value,D.traces.length-1);
@@ -381,7 +394,7 @@ function draw(){
       }
     }
   }
-  const cur0 = following ? [] : (byPly.get(+slider.value)||[]);
+  const cur0 = following ? [] : (byPlyAt().get(+slider.value)||[]);
   const cur = cur0.filter(vis);
   const term = [], prog = [];
   for(const i of cur){ (mode==='arr' && D.arr[i]>=0 ? term : prog).push(i); }
@@ -401,15 +414,16 @@ function draw(){
 function drawHist(){
   const r=hist.getBoundingClientRect(), w=r.width, h=r.height;
   hctx.clearRect(0,0,w,h);
-  const mx=Math.max(...plies.map(p=>byPly.get(p).length));
+  const M=byPlyAt();
+  const mx=Math.max(...plies.map(p=>(M.get(p)||[]).length));
   const cs=getComputedStyle(document.documentElement);
   plies.forEach(p=>{ const x=(p-plies[0])/(plies[plies.length-1]-plies[0])*(w-2);
-    const bh=(byPly.get(p).length/mx)*(h-4);
+    const bh=((M.get(p)||[]).length/mx)*(h-4);
     hctx.fillStyle = p===+slider.value ? cs.getPropertyValue('--accent') : cs.getPropertyValue('--ghost');
     hctx.fillRect(x, h-bh, Math.max(w/plies.length-0.5,1.2), bh); });
 }
 function stats(){
-  const cur = traceMode===1 ? [] : (byPly.get(+slider.value)||[]);
+  const cur = traceMode===1 ? [] : (byPlyAt().get(+slider.value)||[]);
   document.getElementById('s-n').textContent = cur.length.toLocaleString();
   if(!cur.length){['s-pc','s-wdl','s-src','s-term','s-ph'].forEach(k=>document.getElementById(k).textContent='—');return;}
   const nt = cur.filter(i=>D.arr[i]>=0).length;
@@ -558,6 +572,13 @@ cv.addEventListener('pointerup',()=>{drag=null;});
 cv.addEventListener('pointercancel',()=>{drag=null;});
 cv.addEventListener('auxclick',e=>e.preventDefault());
 cv.style.cursor='grab';
+document.getElementById('cohby').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return; cohMode=+b.dataset.c;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b));
+  update(); });
+// data exported before the cohort feature has no coh array -- hide the toggle rather than
+// offering a mode that would draw an empty cloud
+if(!D.coh) document.getElementById('cohby').parentElement.style.display='none';
 document.getElementById('ghostby').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return; ghost=b.dataset.g==='1';
   [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b)); draw(); });
