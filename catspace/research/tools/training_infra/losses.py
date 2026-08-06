@@ -145,9 +145,12 @@ def lj_confinement(d, target_log, r_max=None):
 
     where r = log1p(d) - target_log, target_log = log1p(true ply gap).
 
-    If `r_max` is given, r is normalised as r/r_max first, so the wall reaches V=1 exactly at
-    r_max (pass fene_r_max(gap) to put it at twice the observed gap). Strongly recommended: raw
-    r^12 spans twelve orders of magnitude over a modest range of r and the gradients are brutal.
+    r_max is OPTIONAL and defaults to OFF (Kaveh 2026-08-06: "we don't need the wall at 2x the
+    observed ply gap"). Unnormalised, the log residual already carries its own scale: r = log(2) =
+    0.69 IS twice the gap, and r^12 there is only 0.011, so the potential stays soft through the
+    near field and the effective wall sits out around r = 1 (e ~ 2.7x the gap) where V = 1. Pinning
+    the wall at exactly 2x additionally compresses the whole geometry -- the first full run with it
+    on held effective rank at 7.3 against 22.9 for the legacy field.
 
     THE SIGN. Kaveh first specified -r^6 on the inner branch, carrying Lennard-Jones' attractive
     term across directly. Measured, that COLLAPSES: gaps of 5 and 40 plies both drove to d=0.0000
