@@ -176,6 +176,10 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
       </div>
     </div>
     <div class="grp">
+      <div class="lbl">Point size</div>
+      <input type="range" id="ptsize" min="0.7" max="2.5" step="0.1" value="1" aria-label="point size">
+    </div>
+    <div class="grp">
       <div class="lbl">View</div>
       <div class="seg"><button id="spin">&#9711; auto-rotate</button><button id="reset">reset view</button></div>
       <div class="sub" style="font-size:10.5px">drag rotate (unclamped) &middot; alt-drag roll axis &middot; shift/middle-drag pan &middot; scroll zoom</div>
@@ -301,7 +305,7 @@ function colOf(i){
 }
 // TWO cloud samplings: coh=0 per-ply BALANCED (densities engineered), coh=1 fixed COHORT of
 // games end-to-end (densities real; late-ply thinning is genuine attrition).
-let cohMode = 0;
+let cohMode = 0, ptScale = 1;
 const byPlyBal = new Map(), byPlyCoh = new Map();
 D.ply.forEach((p,i)=>{ const m = (D.coh && D.coh[i]) ? byPlyCoh : byPlyBal;
   if(!m.has(p)) m.set(p,[]); m.get(p).push(i); });
@@ -415,12 +419,12 @@ function draw(){
   for(const i of order){ const[a,b]=px(i,w,h); const dz=depth(i);
     ctx.globalAlpha = is3d() ? 0.28+0.72*dz : 1;
     ctx.fillStyle=colOf(i);
-    ctx.beginPath();ctx.arc(a,b,is3d()?(1.7+2.0*dz):2.6,0,6.2832);ctx.fill(); }
+    ctx.beginPath();ctx.arc(a,b,(is3d()?(1.7+2.0*dz):2.6)*ptScale,0,6.2832);ctx.fill(); }
   ctx.globalAlpha=1;
   const torder = is3d() ? term.slice().sort((p,q)=>depth(p)-depth(q)) : term;
   for(const i of torder){ const[a,b]=px(i,w,h); const dz=depth(i);
     ctx.globalAlpha = is3d() ? 0.45+0.55*dz : 1; ctx.fillStyle=colOf(i);
-    ctx.beginPath();ctx.arc(a,b,is3d()?(2.6+2.4*dz):3.7,0,6.2832);ctx.fill(); }
+    ctx.beginPath();ctx.arc(a,b,(is3d()?(2.6+2.4*dz):3.7)*ptScale,0,6.2832);ctx.fill(); }
   ctx.globalAlpha=1;
   ctx.restore();
 }
@@ -589,6 +593,7 @@ cv.addEventListener('pointerup',()=>{drag=null;});
 cv.addEventListener('pointercancel',()=>{drag=null;});
 cv.addEventListener('auxclick',e=>e.preventDefault());
 cv.style.cursor='grab';
+document.getElementById('ptsize').addEventListener('input',e=>{ptScale=+e.target.value;draw();});
 document.getElementById('cohby').addEventListener('click',e=>{
   const b=e.target.closest('button'); if(!b)return; cohMode=+b.dataset.c;
   [...e.currentTarget.children].forEach(x=>x.setAttribute('aria-pressed',x===b));
