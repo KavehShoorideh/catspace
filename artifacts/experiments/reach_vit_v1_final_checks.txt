@@ -1,0 +1,63 @@
+/Users/kav/code/remote/github/catspace/catspace/research/components/encoder/approaches/jepa_tokenizer/src/jepa.py:62: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.tr = nn.TransformerEncoder(enc, num_layers=layers)
+[interpret] SOURCE-BLIND control active -- paired ratchet must be exactly 0.5000
+[traj] cache hit /Users/kav/code/remote/github/catspace/data/derived/cache/traj_7c0431e71417aac5
+[interpret] vit | 29,987 test games | 2,838,898 positions
+[interpret] ckpt step 20000 | arch vit | piece count 2..32 [1s]
+
+  PAIRED ratchet test -- same target b, source varies. A model that ignores the
+  source scores exactly 0.500 here by construction.
+  [region]   k   n pairs  P(plausible > impossible)
+             1     2,515                     0.5000
+             2     2,432                     0.5000
+             3     2,226                     0.5000
+             4     2,078                     0.5000
+             6     1,723                     0.5000
+             8     1,172                     0.5000
+  [iqe]   k   n pairs  P(plausible > impossible)
+          1     2,528                     0.5000
+          2     2,433                     0.5000
+          3     2,221                     0.5000
+          4     2,085                     0.5000
+          6     1,675                     0.5000
+          8     1,252                     0.5000
+
+[interpret] cross-game pairs 29,997 | |dply| median 3 | delta-pieces p5/50/95 [-6, 0, 6]
+
+  DIFFERENTIAL -- the strata verdict. `capture` and `quiet` are BOTH unobserved
+  reversals given IDENTICAL repulsion in training and matched on ply gap, so any
+  difference between them came from the data, not the objective.
+      group        n   d(b->a)/d(a->b)   score(a->b)-score(b->a)
+    capture    6,963             2.406                    -6.347
+      quiet    8,765             1.596                    -1.355
+    revers.    1,177             0.948                     0.095  <- trained-in reference, NOT evidence
+
+  SOURCE-STRATIFIED differential -- the pooled number must survive INSIDE each
+  population, or it is a mix artifact rather than a property of chess.
+      human  capture 2.590 (n=6,523)  quiet 1.696 (n=8,196)  diff +0.894 CI [+0.849,+0.941]  <- holds
+   sf-vs-sf  capture 2.271 (n=6,874)  quiet 1.517 (n=9,069)  diff +0.754 CI [+0.719,+0.794]  <- holds
+
+  [CONFOUNDED -- retained for comparison only] matched-|delta| test. Its +k group has
+  piece-RICH targets and its -k group piece-POOR ones, so a target-only model passes it.
+  |dpc|    n(+k)    n(-k)  mean s(+k)  mean s(-k)      gap  AUC(-k>+k)
+      1    2,629    2,627     -37.076     -38.116   -1.041       0.482
+      2    2,798    2,745     -33.787     -37.826   -4.039       0.457
+      3    1,786    1,909     -37.499     -45.547   -8.049       0.419
+      4    1,608    1,665     -34.926     -46.529  -11.602       0.388
+      5    1,158    1,125     -36.559     -49.785  -13.226       0.363
+      6      818      793     -35.039     -51.459  -16.420       0.344
+      7      540      511     -34.183     -54.181  -19.997       0.272
+      8      367      381     -33.435     -52.692  -19.257       0.258
+
+  observed-reachable vs cross-game AUC   0.402   (can it tell them apart at all)
+  spearman(score,  delta_pieces)         +0.156   <- SIGNED: the ratchet
+  spearman(score, -|delta_pieces|)       +0.277   <- magnitude only: the confound
+  L1 kept 0/64 input coords of the predictor
+
+  capture - quiet = +0.811  95% CI [+0.766, +0.851]  ESTABLISHED (excludes 0)
+
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5000 paired_ratchet_iqe=0.5000 diff_capture=2.406 diff_quiet=1.596 diff_reversible=0.948 capture_minus_quiet=+0.811 ci=[+0.766,+0.851] confounded_ratchet=0.3728 rho_signed=+0.1561 rho_absonly=+0.2769 sep_auc=0.4021 l1_kept=0/64 source_blind=1 step=20000 [249s]
+  READ, in order: (1) paired_ratchet against the SAME number from the --random-init ckpt;
+  (2) capture_minus_quiet, which the uniform repulsion cannot have produced; (3) the
+  source-blind run, which must print exactly 0.5000. confounded_ratchet is kept only to
+  document the earlier metric that a source-blind model also passed.

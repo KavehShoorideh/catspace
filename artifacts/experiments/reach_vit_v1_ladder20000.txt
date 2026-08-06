@@ -1,0 +1,2 @@
+  capture - quiet = +0.811  95% CI [+0.767, +0.854]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5029 paired_ratchet_iqe=0.5110 diff_capture=2.406 diff_quiet=1.596 diff_reversible=0.948 capture_minus_quiet=+0.811 ci=[+0.767,+0.854] confounded_ratchet=0.5257 rho_signed=-0.0353 rho_absonly=+0.2672 sep_auc=0.8164 l1_kept=64/64 source_blind=0 step=20000 [137s]
