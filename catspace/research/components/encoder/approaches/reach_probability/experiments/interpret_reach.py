@@ -219,7 +219,7 @@ def match_on_gap(gap_a, gap_b, rng, n):
     return np.concatenate(ia), np.concatenate(ib)
 
 
-def differential(net, source, tr, rows, rng, device, n=40_000, max_gap=40):
+def differential(net, source, tr, rows, rng, device, n=40_000, max_gap=40, pop=None):
     """THE strata verdict for the ViT arms: capture-crossing vs quiet reversals, ply-gap matched.
 
     Three groups of BACKWARD pairs (b -> a with a earlier), all within a game:
@@ -235,6 +235,15 @@ def differential(net, source, tr, rows, rng, device, n=40_000, max_gap=40):
     """
     ply, game, pc, cov = tr.ply_of_row(), tr.game_of_row(), tr.piece_count(), tr.coverage()
     rows = np.asarray(rows)
+    if pop is not None:
+        # SOURCE-STRATIFIED. The differential is computed over POOLED test games, so if captures
+        # correlate with population -- SF games are draw-heavy and plausibly quieter -- a
+        # population imbalance between the capture and quiet groups could contribute to the gap.
+        # Ply-matching is exact and the ratio form cancels symmetric dissimilarity, but neither
+        # touches population. Restricting to ONE population removes it entirely: if the effect
+        # holds separately inside human games and inside SF games, it is not a mix artifact.
+        src_row = np.repeat(tr.source, tr.length)
+        rows = rows[src_row[rows] == pop]
     # draw forward pairs (i < j) inside the eval games, then read them BACKWARD
     i = rng.choice(rows, n)
     g = game[i]
@@ -327,6 +336,9 @@ def main():
     ap.add_argument("--ply-tol", type=int, default=5, help="match cross-game partners on ply")
     ap.add_argument("--n-paired", type=int, default=60_000, help="targets sampled for the paired test")
     ap.add_argument("--n-diff", type=int, default=40_000, help="pairs for the capture/quiet differential")
+    ap.add_argument("--by-source", action="store_true",
+                    help="also report the differential WITHIN each population separately, to rule "
+                         "out a human/SF mix artifact in the pooled number")
     ap.add_argument("--source-blind", action="store_true",
                     help="THE control: zero the predictor input layer AND constant the source "
                          "embedding. Must score EXACTLY 0.500 on the paired ratchet")
@@ -393,6 +405,17 @@ def main():
             r, s, nn = diff.get(name, (float("nan"), float("nan"), 0, None))[:3]
             tag = "  <- trained-in reference, NOT evidence" if name == "revers." else ""
             print(f"  {name:>9} {nn:>8,} {r:>17.3f} {s:>25.3f}{tag}")
+
+    if args.by_source and is_vit and tr is not None:
+        print(f"\n  SOURCE-STRATIFIED differential -- the pooled number must survive INSIDE each")
+        print(f"  population, or it is a mix artifact rather than a property of chess.")
+        for pop, lab in ((T.HUMAN, "human"), (T.SF, "sf-vs-sf")):
+            dsub = differential(net, source, tr, rows, rng, args.device, n=args.n_diff, pop=pop)
+            c = dsub.get("capture", (0, 0, 0, None)); q = dsub.get("quiet", (0, 0, 0, None))
+            pt, lo, hi = bootstrap_diff(c[3], q[3], rng)
+            verdict = "holds" if (lo > 0) else ("REVERSED" if hi < 0 else "not established")
+            print(f"  {lab:>9}  capture {c[0]:.3f} (n={c[2]:,})  quiet {q[0]:.3f} (n={q[2]:,})  "
+                  f"diff {pt:+.3f} CI [{lo:+.3f},{hi:+.3f}]  <- {verdict}")
 
     # ---- 4. the OLD matched-magnitude test, retained and labelled CONFOUNDED ---------------------
     print(f"\n  [CONFOUNDED -- retained for comparison only] matched-|delta| test. Its +k group has")
