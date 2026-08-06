@@ -139,10 +139,28 @@ def main():
           f"x {len(cks)} frames", flush=True)
 
     # ---- embed the SAME rows under EVERY checkpoint -------------------------------------------
+    # START-GAP DIAGNOSTIC (Kaveh: "the start point embedding ... maps to a different point than
+    # START on the map"). The start anchor trains d_IQE(START pole -> ply-0 position) toward
+    # log1p(0) = 0 -- and an IQE zero is DOMINATION, not identity: the pole sits coordinatewise
+    # behind the start position, not on it. The UMAP is fitted on raw vectors, so pole and ply-0
+    # can render apart even at convergence. The honest check is the trained quantity itself,
+    # d_IQE in both directions, reported per frame.
+    import torch as _t
+    ply0 = np.flatnonzero(ply[rows] == 0)
+    start_gap = []
     frames_meta, blocks, pole_blocks, pole_names = [], [], [], []
     for f in cks:
         net, pay = load_net(f, args.device)
         Z = embed(net, tr, fit_rows, args.device).numpy()
+        if getattr(net, "poles", None) is not None and len(ply0):
+            _iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
+            _pn = c.get("pole_names") or []
+            if "START" in _pn:
+                _P = net.poles.poles.detach()[_pn.index("START")][None].float()
+                _z0 = _t.from_numpy(Z[ply0[0]][None]).float()
+                with _t.no_grad():
+                    start_gap.append([round(float(_iqe(_P.to(args.device), _z0.to(args.device))), 3),
+                                      round(float(_iqe(_z0.to(args.device), _P.to(args.device))), 3)])
         if getattr(net, "poles", None) is not None:
             P = net.poles.poles.detach().float().cpu().numpy()
             pole_blocks.append(P)
@@ -166,6 +184,8 @@ def main():
         pole_sep.append(round(float(pd / max(zd, 1e-9)), 3))
     if pole_sep:
         print(f"[train-umap] pole/point separation ratio per frame: {pole_sep}", flush=True)
+    if start_gap:
+        print(f"[train-umap] d_IQE(START->ply0), d_IQE(ply0->START) per frame: {start_gap}", flush=True)
 
     allZ = np.concatenate(blocks + (pole_blocks if pole_blocks else []))
     import umap
@@ -224,7 +244,7 @@ def main():
         "src": [int(v) for v in src[rows]], "out": [int(v) for v in outcome[rows]],
         "arr": [int(v) for v in arrived[rows]], "cas": [int(v) for v in castle[rows]],
         "ph": [int(v) for v in phase[rows]], "phv": [int(v) for v in phase_val[rows]],
-        "traces": traces, "pole_sep": pole_sep or None,
+        "traces": traces, "pole_sep": pole_sep or None, "start_gap": start_gap or None,
     }
     with open(args.out, "w") as fh:
         json.dump(data, fh)
