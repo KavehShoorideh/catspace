@@ -11319,3 +11319,96 @@ FEN pair, zero differing planes), so any future position-identity key for splici
 **Artifacts.** `reach_jepa_v{1,2,3}_*.pt`, `reach_conformal_v1.npz`, `data/derived/reach_pairs_v1.npz`.
 v3 is retained deliberately as the source-blind control. Verdicts from `interpret_reach.py`,
 `calibrate_conformal.py`, `build_reach_pairs.py`; losses tested in `training_infra/losses.py::_tests`.
+
+---
+
+## 2026-08-06 — The log-gas field: two saturating losses replaced, three force-balance failures found by measurement, and a viewer that watches training
+
+**Question of the day (Kaveh):** the reverse/forward asymmetry ratio is ~2x — why so small, and how do we raise it?
+
+**Diagnosis** (`diagnose_asymmetry.py`, reach_vit_v1 @20k, 39,557 held-out pairs). The ratio was
+capped from BOTH ends by saturating losses, and the "2x" was largely a hyperparameter readout:
+
+- reverse median 55.8 vs the relu repulsion floor e^4-1 = 53.6 — reverse sat AT the hinge, which
+  has exactly zero gradient once satisfied;
+- forward median 24.3 vs regression target <=3.7 — Huber(delta=1) is linear past delta, so its
+  restoring force is WEAKEST where the error is largest; against a constant-force repulsion it
+  stalls at an arbitrary balance point;
+- component engagement 51.7% fwd / 48.0% rev — a coin flip; the embedding was not encoding a
+  partial order at all, so more IQE components could not have helped.
+- Kept control: pairs whose reversal WAS observed via repetition sit at ratio 0.942 — the model
+  correctly treats data-grounded reversible pairs as symmetric.
+
+**The redesign (Kaveh's physics framing).** This problem is the REVERSE of the atomic one: there
+you fear collapse into the nucleus (hard core, weak tail); here we fear collapsed-or-margin-pinned
+geometry, so: unbounded pairwise repulsion that never switches off, opposed by springs gentle near
+their per-pair equilibrium (the true ply gap) and violent far from it. Scale becomes EMERGENT from
+the force balance instead of dictated by repel_margin. New unit-tested terms in
+`training_infra/losses.py`: `log_gas_repulsion` (-log(d+1); gradient alive at d=5000 where the old
+hinge is 0.00), `confining_regression` (r^2+q r^4; force grows 24x from |r|=0.5 to 2.0 where
+Huber's FALLS to 0.45x), `fene_confinement` (one-sided, divergent wall), `lj_confinement`
+(V=r^12 outside / +r^6 inside), `confine_radius` (one-body; without it the gas diverges).
+
+**Mistakes and dead ends, in order — every one caught by a printed measurement, none by eye:**
+
+1. *My wrong first recommendation.* Before reading the code I recommended "drive forward distance
+   to zero." Wrong: forward is deliberately regressed onto log1p(ply gap) — zeroing it would
+   destroy the time-to-reach semantics. Reading the objective changed the answer.
+2. *FENE clamp = the same bug we were fixing.* First FENE draft clamped AT the wall, making the
+   potential constant past it — zero gradient, and the equilibrium test caught a 1-ply pair
+   escaping to d=109 against a ceiling of 2. Fixed with a tangent+quadratic continuation
+   (loss 9.5 -> 2765 -> 112419 at d=10/12/10000, gradient never 0).
+3. *LJ sign error (Kaveh's spec, my implementation, tested before use).* V=-r^6 inside is unbounded
+   below; gaps of 5 and 40 plies collapsed to d=0.0000 with the well floor deepening as gap^6
+   (-0.1/-33.1/-2622.7). The minus belongs to a geometry where r^-6 attracts at LARGE separation;
+   ours confines on the far side. +r^6 fixed it (1.65/8.26/26.66, all inside their walls).
+4. *2x-gap wall compressed the field.* First full run with the wall: rk_zB flat at 7.3 (legacy
+   22.9), d_far 7.25 (19.3). Kaveh: "we don't need the wall" — raw r^12/r^6 is self-scaling
+   (r=log2 IS 2x the gap, and r^12 there is 0.011). Without it: rk_zB 11.2->13.1 and climbing at
+   the same steps. `--lj-wall 1` preserves the old form.
+5. *zsh word-splitting ate an A/B smoke.* `for a in "1 loggas"` + `--log-gas $1` passed the pair
+   as one argument; both arms died instantly and the "completed" task had produced nothing. Runs
+   are now launched one per line.
+6. *"Parallel seeds are nearly free" was wrong on MPS.* Three concurrent seeds each run at ~0.35
+   steps/s vs ~1.3 solo — aggregate GPU throughput is roughly constant, so parallel = all seeds
+   finish together, NOT cheaper. Sold it as near-free when proposing the fleet; corrected.
+7. *Fixed pole gauge was 100x too small for the log-gas* (found visually by Kaveh — "poles too
+   close compared to the scale of the game" — then measured). Old height 3.0 -> pole-pole IQE
+   distance 2, while radial anchors put positions on shells up to ~210: basins 100x wider than the
+   gauge separating them. Viewer diagnostic: pole/point separation ratio 1.095 -> 0.884 over steps
+   500-1500 (the cloud grows past the fixed simplex). Derivation replacing Kaveh's "100x" guess:
+   measured pole-pole = 0.656 x height, disjoint-basin criterion (>= 2.2 x 210 = 462) -> height
+   ~720, set 750. The gauge stays FIXED — an adaptive gauge is a moving target (Kaveh).
+8. *Huber anchors lose the tug-of-war against the log-gas* — the big one. Gauge fleet (height 750,
+   3 seeds): median d_IQE(terminal -> own pole) rose 557 -> 1156 monotonically over steps 500-3500
+   (target ~1), d(START->ply0) drifted 5.4 -> 73.7, and basin_spread sat at 0.001-0.003 through
+   step 3750 — the committor flat because the encoder never received outcome gradient. Same defect
+   class as items 2 and the original hinge: a term whose force cannot grow gets outmuscled, and in
+   JOINT training a dead term means a blind encoder. Fleet killed at 19% (~12h saved).
+9. *LJ-12 anchors overcorrect catastrophically.* Anchor residuals START at r ~ log1p(750)-0.7 = 5.9
+   where raw r^12 ~ 2e9: the smoke nuked every other term (quasi 771 vs ~1-4 normal, rev_ratio
+   0.31, rk_zB 3.7). The anchor spring is now the QUARTIC (force ~834 at r=5.9, ~6 near target);
+   pairs keep LJ-12 because their residuals start small. Second smoke running at time of writing.
+
+**Also shipped: the training-evolution viewer** ("watch the field organise"). One UMAP co-fitted
+across checkpoint frames (same fixed positions + traces + poles embedded under every checkpoint;
+per-frame or transform() fits would fabricate motion), merged into the familiar ply-viewer
+template after Kaveh preferred it: training-step slider, cohort-vs-balanced cloud toggle (300
+games end-to-end; density real, late-ply thinning IS attrition), ending-type colour mode with
+click-to-filter legend chips, unclamped rotation + alt-drag roll, 2000x vector zoom, per-frame
+diagnostics printed in the page (pole/point separation, d(START->ply0) both directions, median
+d(terminal->own pole)). Validated first on the take-2 pole run, where it renders the frozen-pole
+bug directly: largest pole movement over 20k steps = 0.005 normalised units.
+Mover-POV note for readers of the "arrived" colouring: games end on the LOSER's move, so arrived
+terminals split WIN 79 / DRAW 1198 / LOSS 1223 in the sample — the WIN pole has almost no
+terminal basin BY CONSTRUCTION of chess notation, not by model failure (measured, page note).
+A shared artifact link is now frozen for an external viewer; subsequent pages go to a new URL.
+
+**Standing verdicts unchanged:** pole-free baseline +0.811 [0.767,0.854]; seed variance dwarfs
+pair CIs (two seeds +0.124 vs +0.239, non-overlapping); all single-seed effect sizes remain
+unquotable — the 3-seed fleet exists to fix exactly this.
+
+**Artifacts:** `reach_lj_nowall_step{500..4000}.pt` (superseded, Huber anchors),
+`reach_lj_gauge_s{0,1,2}_step*.pt` (killed at 19%, diagnosis material), smokes
+`reach_anchorfix{,2}_smoke`. Scripts: `diagnose_asymmetry.py`, `export_training_umap.py`,
+`build_training_viewer.py`; all loss terms tested in `training_infra/losses.py::_tests`.
