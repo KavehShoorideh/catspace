@@ -374,6 +374,35 @@ class Trajectories:
         white_to_move = self.glob[:, 0].astype(bool)
         return np.where(white_to_move, per_game[:, 0], per_game[:, 1]).astype(np.float32)
 
+    def outcome_of_row(self):
+        """(N,) int8 MOVER-POV outcome per position: WIN / DRAW / LOSS, or -1 = CENSORED.
+
+        This is the label the basin cross-entropy consumes, and it is the ONLY supervision the
+        three-pole readout needs -- no negatives, no unreachability labels, just "which pole did
+        the game this position came from actually end at". A position seen in games that were won
+        60% of the time converges to reading 60%, because CE over a softmax is a proper scoring
+        rule; the competition lives in the softmax denominator rather than in manufactured
+        negative pairs.
+
+        Mover-POV, matching the rest of the repo: the same board is a WIN for the side to move and
+        a LOSS for the other, so the label has to be relative to whoever is on move or the two
+        colours cancel and every position reads as a draw.
+
+        TIME-FORFEIT games are CENSORED to -1 and take no part: a flagged position may be
+        completely winning, so its recorded result says nothing about the board. Same rule the
+        terminal poles use, applied to every ply rather than just the last one.
+        """
+        res = np.repeat(self.result, self.length).astype(np.int64)
+        censored = np.repeat(self.term == TERM_TIME, self.length)
+        white_to_move = self.glob[:, 0].astype(bool)
+        mover_wins = np.where(white_to_move, res == 1, res == -1)
+        mover_loses = np.where(white_to_move, res == -1, res == 1)
+        out = np.full(self.n_positions, DRAW, np.int8)
+        out[mover_wins] = WIN
+        out[mover_loses] = LOSS
+        out[censored] = -1
+        return out
+
     def piece_count(self):
         """(N,) int16 total pieces. ANALYSIS-TIME LABEL ONLY -- never a model input. Straight from
         the tokens (non-empty squares), so no chess library and no plane decoding is involved."""
@@ -419,6 +448,58 @@ class Trajectories:
         """(n_terminal_instances,) int64 dynamics id (HUMAN/SF) -- the pole conditioning input."""
         ok = np.flatnonzero(self.term >= 0)
         return self.source[ok].astype(np.int64)
+
+    def ending_poles(self, exclude_material=False):
+        """-> (rows, pole, names, parent) keyed on ENDING TYPE ONLY -- no material signature.
+
+        Kaveh 2026-08-05: "if we do poles all the way up to the end, without stopping at 5 piece
+        endgames, then there won't be material signature. And ending type is fine."
+
+        He is right, and my earlier objection was overstated. The leak I worried about was
+        (ending x MATERIAL SIGNATURE) poles, which key terminal identity on piece counts and would
+        feed material straight into a run whose whole claim is that piece count is an analysis
+        label and never an input. Ending type is a different object: "this game ended in stalemate"
+        says nothing about any position's piece count. And because games run to their TRUE end
+        (tb_pieces=0), every game has a well-defined ending type, so the signature was never needed
+        for granularity in the first place.
+
+        `exclude_material` DEFAULTS OFF, and the first draft had it on for a bad reason. It dropped
+        DRAW_INSUFFICIENT because that category is NAMED after material -- a naming criterion, not
+        a leakage one. Kaveh pushed back and the exclusion does not survive:
+
+          * The pole tells the model no piece count. It says "these terminal positions belong
+            together". If the model then works out WHY -- few pieces -- that is an INFERENCE, which
+            is the thing being measured, not a leak.
+          * It was inconsistent. DRAW_FIFTY is about the absence of captures and pawn moves;
+            repetitions and mates both correlate with material configuration. If
+            correlation-with-material disqualified a pole, nearly every pole would go.
+          * Decisively: NO POLE ENCODES DIRECTION. The strata claim is that material never RISES --
+            an ordering. Every pole is an equivalence class over terminal positions and contains no
+            ordering whatever. The paired ratchet asks whether a source that COULD reach a target
+            outscores one that could not, and grouping low-material draws supplies nothing about
+            that.
+
+        The flag is kept so the ablation is one argument away, but the default is to use every
+        board-caused ending.
+
+        Two levels: ending type >= outcome. Poles are the roots WIN/DRAW/LOSS plus one per surviving
+        ending type, each subsuming into its outcome.
+        """
+        rows, term = self.terminal_rows()
+        drop = {TERM_ID["DRAW_INSUFFICIENT"]} if exclude_material else set()
+        keep = ~np.isin(term, list(drop)) if drop else np.ones(len(term), bool)
+        rows, term = rows[keep], term[keep]
+        names = ["WIN", "DRAW", "LOSS"]
+        parent = [-1, -1, -1]
+        slot = {}
+        for t, nm in enumerate(TERMINALS):
+            if t in drop:
+                continue
+            slot[t] = len(names)
+            names.append(nm)
+            parent.append(int(TERM_OUTCOME[t]))
+        pole = np.array([slot[int(t)] for t in term], np.int64)
+        return rows, pole, names, np.asarray(parent, np.int64)
 
     def endgame_poles(self, min_count=50):
         """-> (pole_of_game, names, parent) for the SUBSUMPTION hierarchy.

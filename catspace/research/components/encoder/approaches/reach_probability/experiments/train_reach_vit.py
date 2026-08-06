@@ -58,8 +58,8 @@ from catspace.research.components.encoder.approaches.reach_probability.src impor
 from catspace.research.components.encoder.approaches.reach_probability.src.reach_vit_jepa import ReachViT
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
-    quasimetric_regression, reach_region_margin, reach_region_nll, terminal_repulsion,
-    vicreg_covariance, vicreg_variance)
+    basin_ce, basin_logp, pole_potential, quasimetric_regression, reach_region_margin,
+    reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
     TrainConfig, resolve_device, standard_train)
 
@@ -187,6 +187,18 @@ def main():
                          "base carrying everything common so a population deviates only where it "
                          "really differs. Expresses NO preference about SIGN: moving closer than "
                          "the pooled field is as cheap as moving further")
+    ap.add_argument("--w-basin", type=float, default=1.0,
+                    help="THE probabilistic-reachability readout: cross-entropy of "
+                         "softmax(-log1p(d(s->pole))) against the game's OBSERVED outcome, over "
+                         "three W/D/L poles. Proper scoring rule, so its minimiser is the true "
+                         "P(outcome|s) -- a position seen in wins 60%% of the time reads 60%%. "
+                         "Verified on a planted committor: MAE 0.013. NEEDS NO NEGATIVES; the "
+                         "competition is the softmax denominator. Raw attraction to the observed "
+                         "pole instead COLLAPSES (measured: mean pole distance 0.000, readout "
+                         "uniform) because a quasimetric permits d(s->W)=d(s->D)=0 at once")
+    ap.add_argument("--w-polesep", type=float, default=1.0,
+                    help="pole-pole separation. Without it merged poles make every distance equal "
+                         "and the CE sits at log 3 forever -- a saddle, not a minimum")
     ap.add_argument("--min-ply", type=int, default=0,
                     help="drop the first plies of every game. MUST be 8 for dynamics-conditioned "
                          "runs: SF games are human ply-8 opening prefixes + SF continuation, so "
@@ -304,6 +316,15 @@ def main():
     val = T.PairSampler(tr, val_games, seed=args.seed + 1, cov=cov, repeats=reps,
                         min_ply=args.min_ply)
     opt = torch.optim.Adam([p for p in net.parameters() if p.requires_grad], lr=args.lr)
+    # THREE OUTCOME POLES (Kaveh 2026-08-05: "I want three poles (win draw loss) ... and positions
+    # orienting themselves towards it, trying to answer the probabilistic reachability question
+    # from seeing pairs of positions in game that follow each other, without any negatives").
+    outcome = tr.outcome_of_row()
+    net.attach_poles([-1, -1, -1], n_sources=1)
+    net.poles = net.poles.to(dev)
+    print(f"[poles] 3 W/D/L poles | labels W {int((outcome==T.WIN).sum()):,} "
+          f"D {int((outcome==T.DRAW).sum()):,} L {int((outcome==T.LOSS).sum()):,} "
+          f"| censored (time forfeit) {int((outcome<0).sum()):,}", flush=True)
     cond = row_conditioning(tr, args.d_cond if args.dual else 0)
     encode = make_batcher(tr, dev, cond)
     n_rev = max(1, int(args.batch * args.rev_frac))
@@ -380,6 +401,31 @@ def main():
                    if len(um_b) else torch.zeros((), device=dev))
         l_rep_b = 0.5 * (rep_rev + terminal_repulsion(d_x, args.repel_margin))
 
+        # ---- the three W/D/L poles: probabilistic reachability, positives only -----------------
+        # d(s -> P_k) for k = win/draw/loss, then CE against the outcome the game ACTUALLY reached.
+        # Censored (time-forfeit) rows are dropped: a flagged position may be dead winning, so its
+        # result says nothing about the board.
+        l_basin = torch.zeros((), device=dev)
+        l_polesep = torch.zeros((), device=dev)
+        if args.w_basin > 0 and model.poles is not None:
+            y_np = outcome[np.concatenate([i, j, k])]
+            live = np.flatnonzero(y_np >= 0)
+            if len(live) > 8:
+                zrows = torch.cat([zB[gi], zB[gj], zB[gk]], 0)[
+                    torch.from_numpy(live.astype(np.int64)).to(dev)]
+                y = torch.from_numpy(y_np[live].astype(np.int64)).to(dev)
+                P = model.poles.poles                                   # (3, d)
+                dP = torch.stack([model.qhead.d_base(zrows, P[c].expand(len(zrows), -1))
+                                  if model.dual else model.iqe(zrows, P[c].expand(len(zrows), -1))
+                                  for c in range(3)], 1)                # (B,3)
+                l_basin = basin_ce(dP, y)
+                # Poles must not merge: identical poles make every distance equal and the CE sits
+                # at log 3 forever. LJ-shaped potential, same term the field head uses.
+                pd = torch.stack([(model.qhead.d_base(P[a:a+1], P[b:b+1])[0] if model.dual
+                                   else model.iqe(P[a:a+1], P[b:b+1])[0])
+                                  for a in range(3) for b in range(3)]).view(3, 3)
+                l_polesep = pole_potential(pd, typical_pair_scale(d_ij.detach()))
+
         # ---- anti-collapse, at the TRUNK and at the region head --------------------------------
         # zB is included on measurement, not on principle: the first smoke had eff_rank_zB DROP
         # 7.8 -> 5.0/64 over 400 steps while phi and zA rose. Arm B's only spreading pressure is a
@@ -410,7 +456,8 @@ def main():
         loss = (args.w_region * (l_nll + args.w_repel * l_rep_a)
                 + args.w_iqe * (l_q + args.w_repel * l_rep_b)
                 + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
-                + args.w_res_shrink * l_shrink)
+                + args.w_res_shrink * l_shrink
+                + args.w_basin * l_basin + args.w_polesep * l_polesep)
         met = {"loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
@@ -473,6 +520,19 @@ def main():
         for name, z in (("phi", phi), ("zA", zA), ("zB", zB)):
             g[f"eff_rank_{name}"] = eff_rank(z.detach().float().cpu().numpy())
         g["z_std"] = float(zA.std())
+        if model.poles is not None:
+            # THE COLLAPSE SIGNATURE for the three-pole readout: if positions slide "above" all
+            # three poles at once (legal in a quasimetric -- d(s->W)=d(s->D)=0 simultaneously),
+            # every distance is 0 and P(W/D/L) is uniform everywhere. Measured on the planted
+            # committor, pure attraction gave readout spread 0.000. So spread is gated, not hoped.
+            P = model.poles.poles
+            zr = zB[:min(512, len(zB))]
+            dP = torch.stack([(model.qhead.d_base(zr, P[c].expand(len(zr), -1)) if model.dual
+                               else model.iqe(zr, P[c].expand(len(zr), -1))) for c in range(3)], 1)
+            p_wdl = basin_logp(dP).exp()
+            g["basin_spread"] = float(p_wdl.std(0).mean())     # ~0 => uniform => collapsed
+            g["d_pole_mean"] = float(dP.mean())
+            g["pole_zero_frac"] = float((dP < 1e-6).float().mean())
         if model.dual:
             # THE CHECK THAT DECIDES WHETHER THE BASE IS BEST PLAY. Evaluate the SAME positions at
             # the SF conditioning point and at the human one. d_res@SF near 0 means the base really
