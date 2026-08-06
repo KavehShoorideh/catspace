@@ -170,11 +170,15 @@ def main():
     # d_IQE in both directions, reported per frame.
     import torch as _t
     ply0 = np.flatnonzero(ply[rows] == 0)
-    start_gap = []
+    start_gap, term_gap = [], []
     frames_meta, blocks, pole_blocks, pole_names = [], [], [], []
     for f in cks:
         net, pay = load_net(f, args.device)
         Z = embed(net, tr, fit_rows, args.device).numpy()
+        # TERMINAL->OWN-POLE convergence (Kaveh: "the pole locations are still far from
+        # endings"): median d_IQE from arrived terminals to their outcome pole, trained toward
+        # log1p(1) i.e. raw 1. Falling toward ~1 across frames = the anchors are converging;
+        # large and flat = they are not.
         if getattr(net, "poles", None) is not None and len(ply0):
             _iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
             _pn = c.get("pole_names") or []
@@ -184,6 +188,15 @@ def main():
                 with _t.no_grad():
                     start_gap.append([round(float(_iqe(_P.to(args.device), _z0.to(args.device))), 3),
                                       round(float(_iqe(_z0.to(args.device), _P.to(args.device))), 3)])
+            _tm = np.flatnonzero(arrived[rows] >= 0)
+            if len(_tm):
+                _tm = _tm[rng.choice(len(_tm), min(400, len(_tm)), replace=False)]
+                _pi = [_pn.index(n) for n in ("WIN", "DRAW", "LOSS")]
+                _Pall = net.poles.poles.detach().float()[[_pi[o] for o in arrived[rows][_tm]]]
+                _zt = _t.from_numpy(Z[_tm]).float()
+                with _t.no_grad():
+                    term_gap.append(round(float(_iqe(_zt.to(args.device),
+                                                     _Pall.to(args.device)).median()), 3))
         if getattr(net, "poles", None) is not None:
             P = net.poles.poles.detach().float().cpu().numpy()
             pole_blocks.append(P)
@@ -209,6 +222,8 @@ def main():
         print(f"[train-umap] pole/point separation ratio per frame: {pole_sep}", flush=True)
     if start_gap:
         print(f"[train-umap] d_IQE(START->ply0), d_IQE(ply0->START) per frame: {start_gap}", flush=True)
+    if term_gap:
+        print(f"[train-umap] median d_IQE(terminal->own pole) per frame (target ~1): {term_gap}", flush=True)
 
     allZ = np.concatenate(blocks + (pole_blocks if pole_blocks else []))
     import umap
@@ -272,6 +287,7 @@ def main():
         # TERMINALS taxonomy, -2 = time forfeit (censored), other negatives = not recorded
         "endt": [int(v) for v in tr.term[game[rows]]],
         "traces": traces, "pole_sep": pole_sep or None, "start_gap": start_gap or None,
+        "term_gap": term_gap or None,
     }
     with open(args.out, "w") as fh:
         json.dump(data, fh)

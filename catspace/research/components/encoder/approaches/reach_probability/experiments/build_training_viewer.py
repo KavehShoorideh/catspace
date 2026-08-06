@@ -313,6 +313,8 @@ function sepnote(){ if(!D.pole_sep) return;
     `In the EMBEDDING space (not the projection) the median pole&ndash;pole distance is `+
     `<b>${D.pole_sep[fi]}&times;</b> the median point&ndash;point distance at this checkpoint `+
     `&mdash; if that number is small, the crowding is real geometry, not a UMAP artefact.`+
+    (D.term_gap ? ` Median d(terminal&rarr;its pole) = <b>${D.term_gap[fi]}</b> `+
+    `(trained toward 1; falling across frames = the endings are converging onto their poles).` : '')+
     (D.start_gap ? ` START vs the ply-0 point: d(START&rarr;start pos) = `+
     `<b>${D.start_gap[fi][0]}</b> (trained toward 0 = domination, NOT identity &mdash; the pole `+
     `sits behind the start position, so map separation is expected), reverse = `+
@@ -372,12 +374,10 @@ function draw(){
       const[a,b]=tx(pp[0],pp[1],w,h);
       const outc = ['WIN','DRAW','LOSS'].indexOf(P.name)>=0, st = P.name==='START';
       if(st){
-        // START is a DIAMOND with a halo ring -- a different shape entirely, so it cannot be
-        // mistaken for one more circle in the cloud.
-        ctx.strokeStyle='#e0568a'; ctx.lineWidth=1.5; ctx.globalAlpha=.55;
-        ctx.beginPath();ctx.arc(a,b,15,0,6.2832);ctx.stroke(); ctx.globalAlpha=1;
+        // START: a small diamond -- distinct shape, no halo (Kaveh: "start is highlighted but
+        // it doesn't need to be")
         ctx.fillStyle='#e0568a';
-        ctx.beginPath();ctx.moveTo(a,b-9);ctx.lineTo(a+9,b);ctx.lineTo(a,b+9);ctx.lineTo(a-9,b);
+        ctx.beginPath();ctx.moveTo(a,b-6);ctx.lineTo(a+6,b);ctx.lineTo(a,b+6);ctx.lineTo(a-6,b);
         ctx.closePath();ctx.fill();
       } else {
         ctx.fillStyle = outc ? '#d9a13a' : '#9aa3ad';
@@ -389,16 +389,22 @@ function draw(){
       // so labelling both sets stacks text on itself and says the same thing twice. Only the
       // W/D/L simplex and START get labels; ending poles stay as small unlabelled markers.
       if(!outc && !st) continue;
+      // The four labels (W/D/L/START) ALWAYS draw -- dropping a clashing label hid WIN entirely
+      // (Kaveh: "i see start and loss but no win"). Collisions are resolved by trying offset
+      // positions around the marker instead; the last candidate is used even if it clashes.
       ctx.font='600 10px ui-monospace,monospace';
-      const tw=ctx.measureText(P.name).width, lx=a+10, ly=b+3;
-      const clash=placed.some(q=>Math.abs(q.x-lx)<(q.w+tw)/2+6 && Math.abs(q.y-ly)<12);
-      if(!clash){
-        placed.push({x:lx,y:ly,w:tw});
-        ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--panel');
-        ctx.fillRect(lx-2, ly-9, tw+4, 12);
-        ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink');
-        ctx.fillText(P.name, lx, ly);
+      const tw=ctx.measureText(P.name).width;
+      let lx=a+10, ly=b+3;
+      for(const[dx,dy] of [[10,3],[10,16],[10,-10],[-tw-12,3],[10,29],[-tw-12,16]]){
+        const cx0=a+dx, cy0=b+dy;
+        lx=cx0; ly=cy0;
+        if(!placed.some(q=>Math.abs(q.x-cx0)<(q.w+tw)/2+6 && Math.abs(q.y-cy0)<12)) break;
       }
+      placed.push({x:lx,y:ly,w:tw});
+      ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--panel');
+      ctx.fillRect(lx-2, ly-9, tw+4, 12);
+      ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink');
+      ctx.fillText(P.name, lx, ly);
     }
   }
   const cur0 = following ? [] : (byPlyAt().get(+slider.value)||[]);
