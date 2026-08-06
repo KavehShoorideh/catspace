@@ -1,0 +1,4 @@
+  SOURCE-STRATIFIED differential -- the pooled number must survive INSIDE each
+      human  capture 1.638 (n=6,698)  quiet 1.345 (n=8,472)  diff +0.294 CI [+0.262,+0.323]  <- holds
+   sf-vs-sf  capture 1.577 (n=6,804)  quiet 1.286 (n=9,035)  diff +0.291 CI [+0.264,+0.319]  <- holds
+  capture - quiet = +0.293  95% CI [+0.262, +0.319]  ESTABLISHED (excludes 0)
