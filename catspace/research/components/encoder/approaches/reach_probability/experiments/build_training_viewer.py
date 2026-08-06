@@ -284,7 +284,11 @@ function sepnote(){ if(!D.pole_sep) return;
   document.getElementById('sepnote').innerHTML =
     `In the EMBEDDING space (not the projection) the median pole&ndash;pole distance is `+
     `<b>${D.pole_sep[fi]}&times;</b> the median point&ndash;point distance at this checkpoint `+
-    `&mdash; if that number is small, the crowding is real geometry, not a UMAP artefact.`; }
+    `&mdash; if that number is small, the crowding is real geometry, not a UMAP artefact.`+
+    (D.start_gap ? ` START vs the ply-0 point: d(START&rarr;start pos) = `+
+    `<b>${D.start_gap[fi][0]}</b> (trained toward 0 = domination, NOT identity &mdash; the pole `+
+    `sits behind the start position, so map separation is expected), reverse = `+
+    `<b>${D.start_gap[fi][1]}</b>.` : ''); }
 function hdr(){ sepnote(); document.getElementById('hdr').textContent =
   `${D.n.toLocaleString()} positions · ${plies.length} plies · ${D.frames.length} checkpoints · one shared UMAP`;
   document.getElementById('stepnum').textContent = D.steps[fi].toLocaleString(); }

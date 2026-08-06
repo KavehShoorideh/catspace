@@ -226,9 +226,16 @@ def main():
                          "gauge (a learned embedding has a global scale freedom, so no distance is "
                          "comparable across checkpoints), and they cannot merge, which removes the "
                          "uniform-committor saddle for free")
-    ap.add_argument("--pole-height", type=float, default=3.0,
-                    help="fixed-simplex block height -> pole separation. Should sit near the "
-                         "typical observed-pair distance so the softmax does not saturate")
+    ap.add_argument("--pole-height", type=float, default=750.0,
+                    help="fixed-simplex block height -> pole separation. FIXED at construction, "
+                         "never adaptive (Kaveh: 'it needs to just start at a reasonable level "
+                         "and stay fixed' -- a widening gauge is a moving target). 300 puts "
+                         "pole-pole IQE distance ~200, matching the basin scale: radial anchors "
+                         "put positions on shells up to expm1(log1p(200))~200 from their pole, "
+                         "so the old default 3.0 (pole-pole distance 2) had basins ~100x wider "
+                         "than the gauge separating them. MEASURED (this arch, C=16): pole-pole "
+                         "= 0.656*height; disjoint-basin criterion pole-pole >= 2.2*max shell "
+                         "(462) gives height ~720; 750 adds margin")
     ap.add_argument("--w-polesep", type=float, default=1.0,
                     help="pole-pole separation. Without it merged poles make every distance equal "
                          "and the CE sits at log 3 forever -- a saddle, not a minimum")
