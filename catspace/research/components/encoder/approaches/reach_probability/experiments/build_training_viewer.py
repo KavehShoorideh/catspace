@@ -213,9 +213,10 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
       SAME positions under a different checkpoint of the model, and all frames are co-fitted into
       ONE UMAP &mdash; one coordinate system, so a cloud that moves between steps really moved.
       Press &#9654; train to watch the field organise.</p>
-    <p class="note"><b>Legend chips are click-to-toggle</b> &mdash; hide categories to isolate the
-      ones you care about. Poles: gold = fixed W/D/L simplex (the gauge), grey = learned ending
-      types, pink = START.</p>
+    <p class="note"><span id="sepnote"></span> <b>Legend chips are click-to-toggle</b> &mdash; hide categories to isolate the
+      ones you care about. Poles: gold = fixed W/D/L simplex (the gauge), pink diamond with a halo = START; the small grey markers are
+      the learned ending types &mdash; unlabelled, since they cluster at their outcome pole and
+      one set of names is enough.</p>
   </div>
 </div>
 </div>
@@ -279,7 +280,12 @@ const byPly = new Map();
 D.ply.forEach((p,i)=>{ if(!byPly.has(p)) byPly.set(p,[]); byPly.get(p).push(i); });
 const plies = [...byPly.keys()].sort((a,b)=>a-b);
 slider.min = plies[0]; slider.max = plies[plies.length-1]; slider.value = plies[0];
-function hdr(){ document.getElementById('hdr').textContent =
+function sepnote(){ if(!D.pole_sep) return;
+  document.getElementById('sepnote').innerHTML =
+    `In the EMBEDDING space (not the projection) the median pole&ndash;pole distance is `+
+    `<b>${D.pole_sep[fi]}&times;</b> the median point&ndash;point distance at this checkpoint `+
+    `&mdash; if that number is small, the crowding is real geometry, not a UMAP artefact.`; }
+function hdr(){ sepnote(); document.getElementById('hdr').textContent =
   `${D.n.toLocaleString()} positions · ${plies.length} plies · ${D.frames.length} checkpoints · one shared UMAP`;
   document.getElementById('stepnum').textContent = D.steps[fi].toLocaleString(); }
 
@@ -325,15 +331,31 @@ function draw(){
     // Label-collision logic from the old viewer: draw a label only if it clears the ones already
     // placed. The marker always draws; zoom in and hidden labels reappear.
     const placed=[];
-    const rank=n=>(['WIN','DRAW','LOSS'].indexOf(n)>=0?0:(n==='START'?1:2));
+    // START first: its label is placed before anything else so it can never lose the collision
+    // contest (Kaveh: "its hard to see the start pole").
+    const rank=n=>(n==='START'?0:(['WIN','DRAW','LOSS'].indexOf(n)>=0?1:2));
     for(const P of [...D.pole_frames[fi]].sort((u,v)=>rank(u.name)-rank(v.name))){
       const pp = is3d()&&P.z!=null ? rot3(P.x,P.y,P.z) : [P.x,P.y];
       const[a,b]=tx(pp[0],pp[1],w,h);
       const outc = ['WIN','DRAW','LOSS'].indexOf(P.name)>=0, st = P.name==='START';
-      ctx.fillStyle = st ? '#e0568a' : (outc ? '#d9a13a' : '#9aa3ad');
-      ctx.beginPath();ctx.arc(a,b,st?7:(outc?8:5),0,6.2832);ctx.fill();
+      if(st){
+        // START is a DIAMOND with a halo ring -- a different shape entirely, so it cannot be
+        // mistaken for one more circle in the cloud.
+        ctx.strokeStyle='#e0568a'; ctx.lineWidth=1.5; ctx.globalAlpha=.55;
+        ctx.beginPath();ctx.arc(a,b,15,0,6.2832);ctx.stroke(); ctx.globalAlpha=1;
+        ctx.fillStyle='#e0568a';
+        ctx.beginPath();ctx.moveTo(a,b-9);ctx.lineTo(a+9,b);ctx.lineTo(a,b+9);ctx.lineTo(a-9,b);
+        ctx.closePath();ctx.fill();
+      } else {
+        ctx.fillStyle = outc ? '#d9a13a' : '#9aa3ad';
+        ctx.beginPath();ctx.arc(a,b,outc?8:5,0,6.2832);ctx.fill();
+      }
       ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--panel');
       ctx.lineWidth=2; ctx.stroke();
+      // ONE SET OF NAMES ONLY (Kaveh): the ending-type poles sit right at their outcome pole,
+      // so labelling both sets stacks text on itself and says the same thing twice. Only the
+      // W/D/L simplex and START get labels; ending poles stay as small unlabelled markers.
+      if(!outc && !st) continue;
       ctx.font='600 10px ui-monospace,monospace';
       const tw=ctx.measureText(P.name).width, lx=a+10, ly=b+3;
       const clash=placed.some(q=>Math.abs(q.x-lx)<(q.w+tw)/2+6 && Math.abs(q.y-ly)<12);
@@ -502,7 +524,10 @@ document.getElementById('spin').addEventListener('click',()=>{
     spinRaf=requestAnimationFrame(tick); }; tick(); } else if(spinRaf) cancelAnimationFrame(spinRaf); });
 cv.addEventListener('wheel',e=>{ e.preventDefault();
   const r=cv.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
-  const f=Math.exp(-e.deltaY*0.0015), nk=Math.min(Math.max(view.k*f,1),60);
+  // DEEP ZOOM (Kaveh: the old cap could not resolve near points). Points render at constant
+  // SCREEN radius, so magnification genuinely separates near-identical embeddings instead of
+  // growing blobs; 2000x is enough to split anything the 3-decimal coordinates can distinguish.
+  const f=Math.exp(-e.deltaY*0.0015), nk=Math.min(Math.max(view.k*f,0.5),2000);
   const rf=nk/view.k;
   view.tx = mx - (mx-view.tx)*rf; view.ty = my - (my-view.ty)*rf; view.k = nk; draw(); },{passive:false});
 // PAN: shift-drag OR middle-button drag (button 1). Plain drag rotates in 3D.

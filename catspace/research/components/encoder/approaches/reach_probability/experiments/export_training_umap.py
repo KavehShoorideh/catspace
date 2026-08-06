@@ -151,6 +151,22 @@ def main():
         frames_meta.append(int(pay["step"]))
         print(f"[train-umap]   step {pay['step']:>6} embedded [{time.time()-t0:.0f}s]", flush=True)
 
+    # POLE SEPARATION DIAGNOSTIC (Kaveh: "poles are placed too close to each other compared to
+    # the scale of the game"). The UMAP location of the poles is honest but distorted, like any
+    # projection; this measures the real thing in the embedding space (same Euclidean proxy the
+    # UMAP itself is fitted on): median pole-pole distance over median point-point distance,
+    # per frame. If this ratio is small the crowding is REAL geometry, not a projection artefact.
+    pole_sep = []
+    for k in range(len(pole_blocks)):
+        P, Zk = pole_blocks[k], blocks[k]
+        pd = np.linalg.norm(P[:, None] - P[None], axis=-1)
+        pd = np.median(pd[np.triu_indices(len(P), 1)])
+        sub = Zk[rng.choice(len(Zk), min(2000, len(Zk)), replace=False)]
+        zd = np.median(np.linalg.norm(sub[:, None][:200] - sub[None], axis=-1))
+        pole_sep.append(round(float(pd / max(zd, 1e-9)), 3))
+    if pole_sep:
+        print(f"[train-umap] pole/point separation ratio per frame: {pole_sep}", flush=True)
+
     allZ = np.concatenate(blocks + (pole_blocks if pole_blocks else []))
     import umap
     red = umap.UMAP(n_neighbors=args.neighbors, min_dist=args.min_dist, n_components=args.dims,
@@ -172,7 +188,8 @@ def main():
 
     # ---- unpack per-frame coordinate blocks ----------------------------------------------------
     n_fit, n_cross = len(fit_rows), len(rows)
-    r3 = lambda v: round(float(v), 3)
+    # 4 decimals: the viewer zooms to 2000x, where 3-decimal coords quantise to a grid
+    r3 = lambda v: round(float(v), 4)
     out_frames, off = [], 0
     n_poles = len(pole_blocks[0]) if pole_blocks else 0
     trace_frames = []
@@ -207,7 +224,7 @@ def main():
         "src": [int(v) for v in src[rows]], "out": [int(v) for v in outcome[rows]],
         "arr": [int(v) for v in arrived[rows]], "cas": [int(v) for v in castle[rows]],
         "ph": [int(v) for v in phase[rows]], "phv": [int(v) for v in phase_val[rows]],
-        "traces": traces,
+        "traces": traces, "pole_sep": pole_sep or None,
     }
     with open(args.out, "w") as fh:
         json.dump(data, fh)
