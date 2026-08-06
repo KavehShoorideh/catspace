@@ -58,7 +58,7 @@ from catspace.research.components.encoder.approaches.reach_probability.src impor
 from catspace.research.components.encoder.approaches.reach_probability.src.reach_vit_jepa import ReachViT
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
-    basin_ce, basin_logp, pole_potential, quasimetric_regression, reach_region_margin,
+    absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor, quasimetric_regression, reach_region_margin,
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
     TrainConfig, resolve_device, standard_train)
@@ -196,6 +196,20 @@ def main():
                          "competition is the softmax denominator. Raw attraction to the observed "
                          "pole instead COLLAPSES (measured: mean pole distance 0.000, readout "
                          "uniform) because a quasimetric permits d(s->W)=d(s->D)=0 at once")
+    ap.add_argument("--w-anchor", type=float, default=1.0,
+                    help="terminal instances -> their ending pole, at that ending's certainty "
+                         "radius (0 for rules and all draws, 1 ply for resignations)")
+    ap.add_argument("--w-absorb", type=float, default=1.0,
+                    help="d(pole -> instance) large: a finished game cannot be left. ABSORBING, "
+                         "which is the half a symmetric metric could not express")
+    ap.add_argument("--w-termrep", type=float, default=0.5,
+                    help="distinct ENDING poles apart -- different arrival points of one surface")
+    ap.add_argument("--w-subsume", type=float, default=1.0,
+                    help="d(ending -> outcome) -> 0: every ending subsumes into its outcome, which "
+                         "pins its distance while leaving its DIRECTION free")
+    ap.add_argument("--absorb-margin", type=float, default=4.0)
+    ap.add_argument("--termrep-margin", type=float, default=4.0)
+    ap.add_argument("--n-term", type=int, default=64, help="terminal instances per step")
     ap.add_argument("--learned-poles", action="store_true",
                     help="let the three W/D/L poles move. DEFAULT IS FIXED: fixed poles pin the "
                          "gauge (a learned embedding has a global scale freedom, so no distance is "
@@ -254,6 +268,7 @@ def main():
     t0 = time.time()
     dev = resolve_device(args.device)
     rng = np.random.default_rng(args.seed)
+    rng_np = np.random.default_rng(args.seed + 7)
     torch.manual_seed(args.seed)
 
     n_each = args.games // 2
@@ -271,6 +286,14 @@ def main():
     rng.shuffle(tr_games)
     n_val = max(1, int(len(tr_games) * args.val_frac))
     val_games, fit_games = tr_games[:n_val], tr_games[n_val:]
+    outcome = tr.outcome_of_row()
+    # TWO-LEVEL hierarchy: 3 fixed outcome poles + one LEARNED pole per ending type, each
+    # subsuming into its outcome. Ending poles are DATA-DERIVED, so they must be built before the
+    # model (attach_poles needs the parent vector) and before cfg_dict (which records it so
+    # evaluation rebuilds the identical hierarchy).
+    t_rows, t_pole, t_names, t_parent = tr.ending_poles()
+    t_radius = tr.radial_targets()
+
     print(f"[split] fit {len(fit_games):,} | val {len(val_games):,} games "
           f"(cal {(split==1).sum():,} / test {(split==2).sum():,} held back)", flush=True)
 
@@ -284,6 +307,8 @@ def main():
     cfg_dict = {"arch": "vit", "d_model": args.d_model, "layers": args.layers, "heads": args.heads,
                 "d": args.d, "hidden": args.hidden, "components": args.components,
                 "games": args.games, "max_plies": args.max_plies, "traj_seed": args.seed,
+                "pole_parent": t_parent.tolist(), "pole_names": t_names,
+                "pole_height": args.pole_height, "learned_poles": bool(args.learned_poles),
                 "dual": bool(args.dual), "d_cond": args.d_cond if args.dual else 0,
                 "min_ply": args.min_ply}
 
@@ -327,11 +352,11 @@ def main():
     # THREE OUTCOME POLES (Kaveh 2026-08-05: "I want three poles (win draw loss) ... and positions
     # orienting themselves towards it, trying to answer the probabilistic reachability question
     # from seeing pairs of positions in game that follow each other, without any negatives").
-    outcome = tr.outcome_of_row()
-    net.attach_poles([-1, -1, -1], n_sources=1, fixed=not args.learned_poles,
+    net.attach_poles(t_parent, n_sources=1, fixed=not args.learned_poles,
                      height=args.pole_height)
     net.poles = net.poles.to(dev)
-    print(f"[poles] 3 W/D/L poles ({'FIXED simplex' if net.poles.fixed else 'learned'}) | labels W {int((outcome==T.WIN).sum()):,} "
+    print(f"[poles] {len(t_names)} poles ({'FIXED simplex' if net.poles.fixed else 'learned'} "
+          f"+ {len(t_names)-3} ending types) | {len(t_rows):,} terminal instances | labels W {int((outcome==T.WIN).sum()):,} "
           f"D {int((outcome==T.DRAW).sum()):,} L {int((outcome==T.LOSS).sum()):,} "
           f"| censored (time forfeit) {int((outcome<0).sum()):,}", flush=True)
     cond = row_conditioning(tr, args.d_cond if args.dual else 0)
@@ -438,6 +463,40 @@ def main():
                                       for a in range(3) for b in range(3)]).view(3, 3)
                     l_polesep = pole_potential(pd, typical_pair_scale(d_ij.detach()))
 
+        # ---- the ENDING-TYPE layer: anchor, absorb, keep arrival points distinct ---------------
+        # Terminal instances sit at their ending's certainty radius (0 for rules and every draw,
+        # 1 ply for resignations, where position and result measurably disagree); the ending pole
+        # must be ABSORBING (you cannot leave a finished game); distinct endings must not pile onto
+        # one point; and each ending must subsume into its outcome pole.
+        l_anchor = l_absorb = l_termrep = l_subsume = torch.zeros((), device=dev)
+        if args.w_anchor > 0 and model.poles is not None and len(t_rows):
+            tsel = rng_np.integers(0, len(t_rows), min(args.n_term, len(t_rows)))
+            trow = t_rows[tsel]
+            tk = torch.from_numpy(tr.tok[trow].astype(np.int64)).to(dev)
+            tg = torch.from_numpy(tr.glob[trow].astype(np.float32)).to(dev)
+            zt_ = model.encode_q(tk, tg)
+            Pall = model.poles.poles
+            pid = torch.from_numpy(t_pole[tsel].astype(np.int64)).to(dev)
+            Pp = Pall[pid]
+            dq = (model.qhead.d_base if model.dual else model.iqe)
+            l_anchor = pole_radial_anchor(
+                dq(zt_, Pp), torch.from_numpy(t_radius[tsel]).to(dev))
+            l_absorb = absorbing_penalty(dq(Pp, zt_), args.absorb_margin)
+            # distinct ENDING poles must stay apart -- different arrival points of one surface
+            ne = len(t_names) - 3
+            if ne > 1:
+                a = torch.arange(3, len(t_names), device=dev)
+                b = a[torch.randperm(ne, device=dev)]
+                keep = a != b
+                if keep.any():
+                    l_termrep = terminal_repulsion(dq(Pall[a[keep]], Pall[b[keep]]),
+                                                   args.termrep_margin)
+            # each ending SUBSUMES into its outcome: d(ending -> outcome) driven to 0 (domination)
+            par = model.poles.parent[3:]
+            ok_p = par >= 0
+            if ok_p.any():
+                l_subsume = dq(Pall[3:][ok_p], Pall[par[ok_p]]).mean()
+
         # ---- anti-collapse, at the TRUNK and at the region head --------------------------------
         # zB is included on measurement, not on principle: the first smoke had eff_rank_zB DROP
         # 7.8 -> 5.0/64 over 400 steps while phi and zA rose. Arm B's only spreading pressure is a
@@ -469,7 +528,9 @@ def main():
                 + args.w_iqe * (l_q + args.w_repel * l_rep_b)
                 + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
                 + args.w_res_shrink * l_shrink
-                + args.w_basin * l_basin + args.w_polesep * l_polesep)
+                + args.w_basin * l_basin + args.w_polesep * l_polesep
+                + args.w_anchor * l_anchor + args.w_absorb * l_absorb
+                + args.w_termrep * l_termrep + args.w_subsume * l_subsume)
         met = {"loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
@@ -544,6 +605,13 @@ def main():
             p_wdl = basin_logp(dP).exp()
             g["basin_spread"] = float(p_wdl.std(0).mean())     # ~0 => uniform => collapsed
             g["d_pole_mean"] = float(dP.mean())
+            # READ THIS AGAINST ~0.33, NOT 0. The radial anchor's target for rules and every draw
+            # is radius 0 -- exact subsumption -- so a position SHOULD sit at distance 0 from its
+            # OWN outcome pole and nonzero from the other two, which the mutually-incomparable
+            # simplex guarantees is possible. So ~1/3 is HEALTHY, ->1.0 is the collapse (every
+            # position dominating all three poles at once, committor uniform). An earlier version
+            # of this comment treated any rise as the alarm, which would have flagged the objective
+            # working as if it were failing.
             g["pole_zero_frac"] = float((dP < 1e-6).float().mean())
         if model.dual:
             # THE CHECK THAT DECIDES WHETHER THE BASE IS BEST PLAY. Evaluate the SAME positions at
