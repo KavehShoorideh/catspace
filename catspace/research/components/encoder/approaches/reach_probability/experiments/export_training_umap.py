@@ -268,6 +268,9 @@ def main():
         "arr": [int(v) for v in arrived[rows]], "cas": [int(v) for v in castle[rows]],
         "ph": [int(v) for v in phase[rows]], "phv": [int(v) for v in phase_val[rows]],
         "coh": [int(v) for v in coh_flag],
+        # ending type of the row's GAME, back-projected to every ply (like `out`): index into the
+        # TERMINALS taxonomy, -2 = time forfeit (censored), other negatives = not recorded
+        "endt": [int(v) for v in tr.term[game[rows]]],
         "traces": traces, "pole_sep": pole_sep or None, "start_gap": start_gap or None,
     }
     with open(args.out, "w") as fh:
