@@ -46,6 +46,7 @@ guarantee downstream would be void rather than merely weak.
 from __future__ import annotations
 
 import argparse
+import json
 import time
 
 import numpy as np
@@ -58,7 +59,8 @@ from catspace.research.components.encoder.approaches.reach_probability.src impor
 from catspace.research.components.encoder.approaches.reach_probability.src.reach_vit_jepa import ReachViT
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
-    absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor, quasimetric_regression, reach_region_margin,
+    absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
+    start_irreversibility, start_ply_anchor, quasimetric_regression, reach_region_margin,
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
     TrainConfig, resolve_device, standard_train)
@@ -210,6 +212,13 @@ def main():
     ap.add_argument("--absorb-margin", type=float, default=4.0)
     ap.add_argument("--termrep-margin", type=float, default=4.0)
     ap.add_argument("--n-term", type=int, default=64, help="terminal instances per step")
+    ap.add_argument("--w-start", type=float, default=1.0,
+                    help="d(start -> s) ~ ply: the START pole as a TIME ORIGIN, which is what pulls "
+                         "the 20 first-move positions together instead of leaving them scattered")
+    ap.add_argument("--w-start-irr", type=float, default=1.0,
+                    help="d(s -> start) LARGE: you can never return to the opening. The sharpest "
+                         "statement of irreversibility in the whole objective")
+    ap.add_argument("--start-margin", type=float, default=4.0)
     ap.add_argument("--learned-poles", action="store_true",
                     help="let the three W/D/L poles move. DEFAULT IS FIXED: fixed poles pin the "
                          "gauge (a learned embedding has a global scale freedom, so no distance is "
@@ -254,7 +263,10 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--steps", type=int, default=20_000)
     ap.add_argument("--eval-every", type=int, default=250)
-    ap.add_argument("--ckpt-every", type=int, default=2500)
+    ap.add_argument("--ckpt-every", type=int, default=500,
+                    help="500 gives 40 ladder rungs instead of 8 -- the effect curve is the\n"
+                         "control that decides this experiment, so resolution on it is worth\n"
+                         "the ~1.5 GB of checkpoints, and a crash costs 500 steps not 2500")
     ap.add_argument("--val-frac", type=float, default=0.1, help="held-out slice of TRAIN games; the "
                     "calibration split is left untouched so the conformal guarantee stays honest")
     ap.add_argument("--random-init", action="store_true",
@@ -275,6 +287,7 @@ def main():
     tr = T.build(n_human=n_each, n_sf=n_each, seed=args.seed, cache=not args.no_cache,
                  max_plies=args.max_plies)
     cov, reps = tr.coverage(), tr.repeats()
+    ply_of_row = tr.ply_of_row()
     print(f"[traj] {len(tr):,} games | {tr.n_positions:,} positions | {len(reps[0]):,} repetitions "
           f"in {len(np.unique(tr.game_of_row()[reps[0]])):,} games [{time.time()-t0:.0f}s]", flush=True)
 
@@ -293,6 +306,20 @@ def main():
     # evaluation rebuilds the identical hierarchy).
     t_rows, t_pole, t_names, t_parent = tr.ending_poles()
     t_radius = tr.radial_targets()
+    # START POLE (Kaveh 2026-08-05, from the viewer: "the scattering of the starting positions makes
+    # me think start positions need to cluster together near a pole"). A TIME ORIGIN, not a basin --
+    # appended as its own root so the W/D/L simplex is untouched, and the basin softmax reads
+    # poles[:3] only, so a start pole sitting near a position cannot steal outcome probability mass
+    # (there is an explicit regression test for that in losses.py).
+    #
+    # Two terms, and together they are the sharpest statement of the ratchet we have:
+    #   d(start -> s) ~ ply    you can reach a ply-N position in about N plies
+    #   d(s -> start) LARGE    you can never get back to the opening
+    # Material falling is a consequence of irreversibility; "you cannot return to the start" IS
+    # irreversibility, and a quasimetric can hold both at once where a metric structurally cannot.
+    START_IDX = len(t_names)
+    t_names = list(t_names) + ["START"]
+    t_parent = np.concatenate([t_parent, [-1]])
 
     print(f"[split] fit {len(fit_games):,} | val {len(val_games):,} games "
           f"(cal {(split==1).sum():,} / test {(split==2).sum():,} held back)", flush=True)
@@ -469,6 +496,15 @@ def main():
         # must be ABSORBING (you cannot leave a finished game); distinct endings must not pile onto
         # one point; and each ending must subsume into its outcome pole.
         l_anchor = l_absorb = l_termrep = l_subsume = torch.zeros((), device=dev)
+        l_start = l_startirr = torch.zeros((), device=dev)
+        if args.w_start > 0 and model.poles is not None:
+            Ps = model.poles.poles[START_IDX:START_IDX + 1]
+            zs = zB[gi]                                    # the triple's first position
+            dq0 = (model.qhead.d_base if model.dual else model.iqe)
+            ply_i = torch.from_numpy(ply_of_row[i].astype(np.float32)).to(dev)
+            l_start = start_ply_anchor(dq0(Ps.expand(len(zs), -1), zs), torch.log1p(ply_i))
+            l_startirr = start_irreversibility(dq0(zs, Ps.expand(len(zs), -1)),
+                                               args.start_margin)
         if args.w_anchor > 0 and model.poles is not None and len(t_rows):
             tsel = rng_np.integers(0, len(t_rows), min(args.n_term, len(t_rows)))
             trow = t_rows[tsel]
@@ -530,7 +566,8 @@ def main():
                 + args.w_res_shrink * l_shrink
                 + args.w_basin * l_basin + args.w_polesep * l_polesep
                 + args.w_anchor * l_anchor + args.w_absorb * l_absorb
-                + args.w_termrep * l_termrep + args.w_subsume * l_subsume)
+                + args.w_termrep * l_termrep + args.w_subsume * l_subsume
+                + args.w_start * l_start + args.w_start_irr * l_startirr)
         met = {"loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
@@ -554,6 +591,13 @@ def main():
                "cross_same_game": float((sampler.game_of_row[i] == sampler.game_of_row[x]).mean())}
         return loss, met, (phi, zA, zB)
 
+    # PER-STEP LOSS LOG, full resolution. standard_train only logs at eval_every, so the losses --
+    # which are computed EVERY step anyway -- were being thrown away 249 times out of 250. Writing
+    # them to a jsonl costs nothing and gives a real learning curve instead of a 40-point sketch.
+    # The expensive gates (an extra forward pass + an eff_rank SVD) stay on --eval-every, because
+    # running those every step would roughly double the wall clock to measure the same thing.
+    step_log = open(f"{args.out}_steps.jsonl", "a", buffering=1 << 16)
+
     def step_fn(model, step):
         # Profile only on eval steps: _sync() serialises the device and would otherwise tax every
         # step to measure it (observer effect on the very number we are optimising).
@@ -568,6 +612,8 @@ def main():
             if args.l1_prox > 0:
                 model.prox_l1(args.lr * args.l1_prox)   # ISTA step: what actually zeroes coords
             model.update_target()
+        step_log.write(json.dumps({"s": step, **{k: round(float(v), 5)
+                                                  for k, v in met.items()}}) + "\n")
         if prof:
             tot = sum(ph.t.values()) or 1.0
             met.update(ph.t)
@@ -646,6 +692,8 @@ def main():
                       run_name=f"reach_vit_d{args.d_model}x{args.layers}_g{args.games}",
                       device=str(dev), extra={"cfg": cfg_dict})
     last = standard_train(step_fn, net, cfg, args=args, gates_fn=gates_fn)
+    step_log.close()
+    print(f"[curve] per-step losses -> {args.out}_steps.jsonl", flush=True)
 
     print(f"\nVERDICT REACH-VIT steps={args.steps} games={args.games} "
           f"val_nll={last.get('val_nll', float('nan')):.4f} "
