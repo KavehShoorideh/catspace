@@ -214,20 +214,53 @@ class PoleBank(nn.Module):
 
     def __init__(self, n_poles: int, d: int, parent: torch.Tensor, n_sources: int = 2,
                  init_scale: float = 0.01, fixed: bool = False, components: int = 16,
-                 height: float = 3.0):
+                 height: float = 3.0, n_outcome: int = 3):
+        """TWO LEVELS (Kaveh 2026-08-05: "we should be able to approach these poles from different
+        directions for different type of each ending"):
+
+            terminal instance -> ENDING pole (learned, free direction) -> OUTCOME pole (fixed)
+
+        The first `n_outcome` poles are the FIXED simplex -- the gauge, carrying no chess beyond
+        W/D/L. Every pole after that is a LEARNED ending type (mate, stalemate, repetition,
+        resign...), constrained only to SUBSUME into its outcome pole, i.e. d(ending -> outcome)=0.
+        Domination is a partial order, so that constraint fixes the ending pole's distance to its
+        outcome at zero while leaving its DIRECTION entirely free -- which is exactly "approach the
+        same pole from different directions". Verified independently: distinct points can all sit
+        at distance 0.0 from one pole while being 0.65-0.76 apart from each other.
+
+        terminal_repulsion between ending poles then keeps those arrival points distinct, which is
+        that term's stated purpose in the repo: different mate structures are different arrival
+        points of ONE surface, not one point.
+        """
         super().__init__()
         self.n_poles, self.d, self.n_sources = int(n_poles), int(d), int(n_sources)
-        self.fixed = bool(fixed)
+        self.fixed, self.n_outcome = bool(fixed), int(n_outcome)
+        n_learn = max(0, self.n_poles - self.n_outcome) if self.fixed else self.n_poles
         if self.fixed:
-            # A BUFFER, not a Parameter: the frame is a fixed reference, and the whole point is
-            # that it cannot drift. Saved with the checkpoint so evaluation uses the same frame.
-            self.register_buffer("poles", simplex_poles(d, components, n_poles, height))
+            # A BUFFER, not a Parameter: the frame is a fixed reference and must not drift.
+            self.register_buffer("outcome_poles",
+                                 simplex_poles(d, components, self.n_outcome, height))
+            # Ending poles start ON their outcome pole (zero offset), so training begins with the
+            # hierarchy exactly satisfied and the data has to push each ending off in its own
+            # direction -- the same zero-init discipline as every other residual here.
+            self.ending_delta = nn.Parameter(torch.zeros(n_learn, d)) if n_learn else None
         else:
-            self.poles = nn.Parameter(torch.randn(n_poles, d) * init_scale)
+            self.poles_p = nn.Parameter(torch.randn(n_poles, d) * init_scale)
         # `parent[i]` = the pole that pole i subsumes into, or -1 at a root.
         self.register_buffer("parent", parent.long())
         self.delta = nn.Parameter(torch.zeros(max(self.n_sources - 1, 0), n_poles, d)) \
             if self.n_sources > 1 else None
+
+    @property
+    def poles(self):
+        """(n_poles, d) the full bank: fixed outcome simplex, then learned ending poles."""
+        if not self.fixed:
+            return self.poles_p
+        if self.ending_delta is None or not len(self.ending_delta):
+            return self.outcome_poles
+        # each ending pole = its outcome pole + a learned offset (free direction)
+        base = self.outcome_poles[self.parent[self.n_outcome:].clamp(min=0)]
+        return torch.cat([self.outcome_poles, base + self.ending_delta], 0)
 
     def for_source(self, src):
         """(B,) int64 source ids -> (B, n_poles, d). Source 0 is the shared field by construction."""
