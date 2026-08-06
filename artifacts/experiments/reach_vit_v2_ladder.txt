@@ -1,0 +1,18 @@
+  capture - quiet = -0.102  95% CI [-0.116, -0.090]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.4995 paired_ratchet_iqe=0.4969 diff_capture=0.877 diff_quiet=0.979 diff_reversible=0.962 capture_minus_quiet=-0.102 ci=[-0.116,-0.090] confounded_ratchet=0.6349 rho_signed=-0.1879 rho_absonly=+0.2273 sep_auc=0.8752 l1_kept=64/64 source_blind=0 step=2000 [207s]
+  capture - quiet = -0.058  95% CI [-0.081, -0.036]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5009 paired_ratchet_iqe=0.4986 diff_capture=0.924 diff_quiet=0.981 diff_reversible=0.908 capture_minus_quiet=-0.058 ci=[-0.081,-0.036] confounded_ratchet=0.5623 rho_signed=-0.0798 rho_absonly=+0.2609 sep_auc=0.8694 l1_kept=64/64 source_blind=0 step=4000 [207s]
+  capture - quiet = +0.056  95% CI [+0.034, +0.074]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5065 paired_ratchet_iqe=0.5052 diff_capture=1.081 diff_quiet=1.025 diff_reversible=0.903 capture_minus_quiet=+0.056 ci=[+0.034,+0.074] confounded_ratchet=0.5472 rho_signed=-0.0582 rho_absonly=+0.3116 sep_auc=0.8618 l1_kept=64/64 source_blind=0 step=6000 [207s]
+  capture - quiet = +0.142  95% CI [+0.121, +0.166]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5036 paired_ratchet_iqe=0.5008 diff_capture=1.221 diff_quiet=1.078 diff_reversible=0.903 capture_minus_quiet=+0.142 ci=[+0.121,+0.166] confounded_ratchet=0.5399 rho_signed=-0.0515 rho_absonly=+0.3120 sep_auc=0.8420 l1_kept=64/64 source_blind=0 step=8000 [206s]
+  capture - quiet = +0.189  95% CI [+0.163, +0.210]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5055 paired_ratchet_iqe=0.4962 diff_capture=1.349 diff_quiet=1.161 diff_reversible=0.944 capture_minus_quiet=+0.189 ci=[+0.163,+0.210] confounded_ratchet=0.5479 rho_signed=-0.0651 rho_absonly=+0.3155 sep_auc=0.8467 l1_kept=64/64 source_blind=0 step=10000 [205s]
+  capture - quiet = +0.216  95% CI [+0.185, +0.244]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5060 paired_ratchet_iqe=0.4949 diff_capture=1.423 diff_quiet=1.207 diff_reversible=0.923 capture_minus_quiet=+0.216 ci=[+0.185,+0.244] confounded_ratchet=0.5657 rho_signed=-0.0921 rho_absonly=+0.2919 sep_auc=0.8505 l1_kept=64/64 source_blind=0 step=12000 [206s]
+  capture - quiet = +0.230  95% CI [+0.200, +0.260]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5047 paired_ratchet_iqe=0.4995 diff_capture=1.453 diff_quiet=1.223 diff_reversible=0.920 capture_minus_quiet=+0.230 ci=[+0.200,+0.260] confounded_ratchet=0.5507 rho_signed=-0.0723 rho_absonly=+0.2895 sep_auc=0.8401 l1_kept=64/64 source_blind=0 step=14000 [207s]
+  capture - quiet = +0.250  95% CI [+0.217, +0.281]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5011 paired_ratchet_iqe=0.4973 diff_capture=1.524 diff_quiet=1.274 diff_reversible=0.905 capture_minus_quiet=+0.250 ci=[+0.217,+0.281] confounded_ratchet=0.5532 rho_signed=-0.0776 rho_absonly=+0.2953 sep_auc=0.8223 l1_kept=64/64 source_blind=0 step=16000 [206s]
+  capture - quiet = +0.332  95% CI [+0.306, +0.356]  ESTABLISHED (excludes 0)
+VERDICT REACH-STRATA-VIT arch=vit paired_ratchet_region=0.5000 paired_ratchet_iqe=0.5056 diff_capture=1.606 diff_quiet=1.274 diff_reversible=0.896 capture_minus_quiet=+0.332 ci=[+0.306,+0.356] confounded_ratchet=0.5424 rho_signed=-0.0615 rho_absonly=+0.2785 sep_auc=0.8079 l1_kept=64/64 source_blind=0 step=18000 [205s]
