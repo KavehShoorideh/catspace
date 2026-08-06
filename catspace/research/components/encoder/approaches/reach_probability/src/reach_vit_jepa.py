@@ -244,14 +244,21 @@ class ReachViT(nn.Module):
             self.iqe = IQE(d, components=components, leak_beta=leak_beta)
         self.poles = None                # attach_poles() installs the subsumption hierarchy
 
-    def attach_poles(self, parent, n_sources: int = 2):
+    def attach_poles(self, parent, n_sources: int = 2, init_scale: float = 0.3):
         """Install the terminal/endgame subsumption hierarchy (see PoleBank).
 
         Kept out of __init__ because the pole set is DATA-derived -- which (ending x material
         signature) pairs clear the min_count threshold is a property of the corpus, not of the
         architecture -- so the trainer builds it from the store and hands it over here. The parent
         vector is saved in the checkpoint cfg so evaluation rebuilds the identical hierarchy."""
-        self.poles = PoleBank(len(parent), self.d, torch.as_tensor(parent), n_sources=n_sources)
+        # init_scale is EXPOSED but does not matter -- measured, not assumed. The planted-committor
+        # simulation run at both 0.01 and 0.3 converges identically (MAE 0.015/0.013 at 4k steps),
+        # and 0.01 breaks symmetry FASTER (spread 0.122 vs 0.073 at 300 steps): coincident poles
+        # are the zero-init-softmax situation, where class-dependent gradients separate the
+        # classes on their own. The uniform basin_spread=0.0001 smoke reading that prompted
+        # suspicion here was UNDERTRAINING (300 steps under a deep encoder), not a pole pathology.
+        self.poles = PoleBank(len(parent), self.d, torch.as_tensor(parent),
+                              n_sources=n_sources, init_scale=init_scale)
         return self.poles
 
     # ---- encoding -------------------------------------------------------------------------------
