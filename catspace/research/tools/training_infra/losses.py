@@ -34,11 +34,12 @@ def quasimetric_regression(d, target_log):
 # THE PHYSICS, in Kaveh's framing: this is the REVERSE of the atomic problem. There, the risk is
 # collapse into the nucleus, so you want a weak potential far out and a hard core near zero (Pauli
 # exclusion). Here the risk is the opposite -- the geometry collapsing to a point, or drifting
-# apart without bound -- so we want a relentless outward pressure that never switches off, opposed
+# apart without bound -- so we want a relentless pairwise repulsion that never switches off, opposed
 # by springs that are gentle near their target and violent far from it.
 #
 #   REPULSION  -log1p(d)   unbounded, monotone, gradient 1/(1+d): decays with distance but is
-#                          NEVER zero. "A wind that blows it forever." Replaces the relu hinge,
+#                          NEVER zero. A PAIRWISE repulsion between positions -- not a directed field,
+#                          no preferred direction in space. Replaces the relu hinge,
 #                          which delivered exactly zero gradient past its margin and therefore
 #                          pinned reverse distances AT the margin (measured: reverse median 55.8
 #                          against a floor of e^4-1 = 53.6 -- the asymmetry ratio was a readout of
@@ -753,7 +754,7 @@ def _tests():
 
     # 3. THE TEST THAT MATTERS: do the two opposing forces reach equilibrium AT the target?
     #    A scalar pair driven by both terms must converge on its true gap -- neither collapsing to
-    #    zero nor blowing out to infinity under the unbounded wind.
+    #    zero nor blowing out to infinity under the unbounded pairwise repulsion.
     for target_gap in (1.0, 5.0, 20.0):
         tl = torch.log1p(torch.tensor([target_gap]))
         raw = torch.tensor([4.0], requires_grad=True)          # start far from the answer
@@ -764,7 +765,7 @@ def _tests():
             (confining_regression(d, tl) + 0.1 * log_gas_repulsion(d)).backward()
             o.step()
         got = float(F.softplus(raw))
-        hit = abs(got - target_gap) / target_gap < 0.60        # wind biases outward by design
+        hit = abs(got - target_gap) / target_gap < 0.60        # repulsion biases outward by design
         ok &= hit and np.isfinite(got)
         print(f"[log-gas] equilibrium: true gap {target_gap:5.1f} -> settled d = {got:7.3f}"
               f"   {'OK' if hit else 'FAIL'}")

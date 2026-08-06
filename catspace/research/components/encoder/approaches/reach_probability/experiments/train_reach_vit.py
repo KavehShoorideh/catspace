@@ -239,7 +239,7 @@ def main():
     # objective weights
     ap.add_argument("--w-region", type=float, default=1.0, help="arm A: region NLL on observed pairs")
     ap.add_argument("--log-gas", type=int, default=1,
-                    help="1 = log-gas field (confining spring + unbounded wind + one-body "
+                    help="1 = log-gas field (confining spring + unbounded pairwise repulsion + one-body "
                          "confinement); 0 = legacy Huber + relu hinge, for reproducing old runs")
     ap.add_argument("--confine-quartic", type=float, default=1.0,
                     help="quartic weight in the confining spring r^2 + q*r^4; 0 = plain MSE")
@@ -481,7 +481,8 @@ def main():
         # w_repel 1.0, which on 2026-08-02 beat the shipped M1 field on every metric (pair-order
         # +0.926, d_mate rho +0.818, eff_rank 18.8). Paired with plain ply-gap regression -- so no
         # QRL rewrite is needed; the repulsion was always the missing piece, not the objective.
-        # THE WIND (log-gas repulsion): unbounded, never saturating. The relu hinge below it
+        # PAIRWISE REPULSION (log-gas): unbounded, never saturating. Acts between position
+        # pairs; there is no directed/global force here. The relu hinge below it
         # delivered exactly zero gradient past its margin, which PINNED reverse distances at the
         # margin -- reverse median 55.8 against a floor of e^4-1 = 53.6, so the asymmetry ratio
         # was a readout of repel_margin rather than anything learned. -log(d) keeps pushing
@@ -492,7 +493,7 @@ def main():
                    if len(um_b) else torch.zeros((), device=dev))
         l_rep_b = 0.5 * (rep_rev + _rep(d_x, args.repel_margin))
         # One-body confinement makes the log-gas equilibrium EXIST: points that appear only under
-        # the wind have nothing pulling them back, and -log(d) alone runs to -inf.
+        # the pairwise repulsion have nothing pulling them back, and -log(d) alone runs to -inf.
         l_conf = (confine_radius(zB, args.confine_target, args.confine_quartic)
                   if args.log_gas else torch.zeros((), device=dev))
 
