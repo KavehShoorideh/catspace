@@ -41,10 +41,13 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--prefix", default=paths.experiment("reach_lj_nowall"))
     ap.add_argument("--every", type=int, default=2500, help="use checkpoints at multiples of this")
-    ap.add_argument("--max-frames", type=int, default=10, help="cap on frames (size budget)")
-    ap.add_argument("--per-ply", type=int, default=100, help="positions sampled per ply")
+    ap.add_argument("--max-frames", type=int, default=8, help="cap on frames (size budget)")
+    ap.add_argument("--per-ply", type=int, default=80, help="positions sampled per ply")
+    ap.add_argument("--n-cohort", type=int, default=300,
+                    help="games followed END-TO-END as a true cohort (all their plies; late-ply "
+                         "sparsity in this set is REAL attrition, not a sampling gap)")
     ap.add_argument("--max-ply", type=int, default=210)
-    ap.add_argument("--n-term", type=int, default=2500, help="terminal positions included")
+    ap.add_argument("--n-term", type=int, default=2000, help="terminal positions included")
     ap.add_argument("--n-trace", type=int, default=30, help="games traced per population")
     ap.add_argument("--dims", type=int, default=3)
     ap.add_argument("--neighbors", type=int, default=25)
@@ -80,9 +83,27 @@ def main():
     # moved" with "different positions were drawn"), balanced by ply, deduplicated by position
     # identity -- ply 0 has ONE unique position and ply 1 twenty, and duplicate draws rendered as
     # a misleading scatter of specks in the first ply export.
+    # ---- TRUE COHORT (Kaveh: "aren't we following a fixed set of games?" -> a toggle that
+    # switches the cloud between the per-ply-balanced sample and a fixed cohort followed
+    # end-to-end). Cohort games are excluded from the balanced pool so the two sets are disjoint;
+    # in cohort mode the arrived-density IS meaningful and late-ply sparsity is real attrition.
+    t_rows_full, t_term_full = tr.terminal_rows()
+    arrived = np.full(tr.n_positions, -1, np.int8)
+    arrived[t_rows_full] = T.TERM_OUTCOME[t_term_full]    # ALL terminals, so cohort endings colour
+    coh_games = []
+    for pop in (T.HUMAN, T.SF):
+        gs = np.flatnonzero((tr.source == pop) & np.isin(np.arange(len(tr)), keep_games)
+                            & (tr.length >= 4))
+        coh_games.append(rng.choice(gs, min(args.n_cohort // 2, len(gs)), replace=False))
+    coh_games = np.concatenate(coh_games)
+    coh_rows = np.concatenate([np.arange(int(tr.start[g]),
+                                         int(tr.start[g]) + min(int(tr.length[g]), args.max_ply + 1))
+                               for g in coh_games])
+    in_cohort_game = np.isin(game, coh_games)
+
     rows = []
     for p in range(0, args.max_ply + 1):
-        cand = np.flatnonzero(in_test & (ply == p))
+        cand = np.flatnonzero(in_test & (ply == p) & ~in_cohort_game)
         if len(cand) == 0:
             continue
         h = T.position_hash(tr.tok[cand], tr.glob[cand])
@@ -90,15 +111,17 @@ def main():
         take = cand if len(cand) <= args.per_ply else rng.choice(cand, args.per_ply, replace=False)
         rows.append(take)
     rows = np.concatenate(rows)
-    t_rows, t_term = tr.terminal_rows()
-    t_keep = np.isin(game[t_rows], keep_games) & (ply[t_rows] <= args.max_ply)
-    t_rows, t_term = t_rows[t_keep], t_term[t_keep]
+    t_keep = (np.isin(game[t_rows_full], keep_games) & (ply[t_rows_full] <= args.max_ply)
+              & ~in_cohort_game[t_rows_full])
+    t_rows = t_rows_full[t_keep]
     if len(t_rows) > args.n_term:
-        pick = rng.choice(len(t_rows), args.n_term, replace=False)
-        t_rows, t_term = t_rows[pick], t_term[pick]
-    rows = np.unique(np.concatenate([rows, t_rows]))
-    arrived = np.full(tr.n_positions, -1, np.int8)
-    arrived[t_rows] = T.TERM_OUTCOME[t_term]
+        t_rows = rng.choice(t_rows, args.n_term, replace=False)
+    bal_rows = np.unique(np.concatenate([rows, t_rows]))
+    # cohort rows may not overlap bal_rows (cohort games were excluded above), so plain concat
+    rows = np.concatenate([bal_rows, coh_rows])
+    coh_flag = np.zeros(len(rows), np.int8); coh_flag[len(bal_rows):] = 1
+    print(f"[train-umap] balanced {len(bal_rows):,} + cohort {len(coh_rows):,} rows "
+          f"({len(coh_games)} games end-to-end)", flush=True)
 
     # ---- traces + PGN, same fixed games in every frame ----------------------------------------
     import chess
@@ -244,6 +267,7 @@ def main():
         "src": [int(v) for v in src[rows]], "out": [int(v) for v in outcome[rows]],
         "arr": [int(v) for v in arrived[rows]], "cas": [int(v) for v in castle[rows]],
         "ph": [int(v) for v in phase[rows]], "phv": [int(v) for v in phase_val[rows]],
+        "coh": [int(v) for v in coh_flag],
         "traces": traces, "pole_sep": pole_sep or None, "start_gap": start_gap or None,
     }
     with open(args.out, "w") as fh:

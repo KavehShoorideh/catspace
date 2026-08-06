@@ -170,7 +170,7 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
     <div class="grp">
       <div class="lbl">View</div>
       <div class="seg"><button id="spin">&#9711; auto-rotate</button><button id="reset">reset view</button></div>
-      <div class="sub" style="font-size:10.5px">drag rotate &middot; shift- or middle-drag pan &middot; scroll zoom</div>
+      <div class="sub" style="font-size:10.5px">drag rotate (unclamped) &middot; alt-drag roll axis &middot; shift/middle-drag pan &middot; scroll zoom</div>
       <div class="sub" style="font-size:10.5px">&larr; &rarr; ply &middot; &uarr; &darr; ends &middot; space play &middot; [ ] game &middot; , . step</div>
     </div>
     <div class="grp">
@@ -213,7 +213,14 @@ input[type=range]{width:100%;accent-color:var(--accent);margin:0}
       SAME positions under a different checkpoint of the model, and all frames are co-fitted into
       ONE UMAP &mdash; one coordinate system, so a cloud that moves between steps really moved.
       Press &#9654; train to watch the field organise.</p>
-    <p class="note"><span id="sepnote"></span> <b>Legend chips are click-to-toggle</b> &mdash; hide categories to isolate the
+    <p class="note"><span id="sepnote"></span></p>
+    <p class="note"><b>Cloud sampling:</b> <i>upsample sparse plies</i> draws a per-ply balanced
+      sample &mdash; every cross-section equally readable, but dot DENSITY is engineered
+      (terminals injected, late plies over-represented). <i>True cohort</i> follows a fixed set of
+      games end-to-end: density is real, terminals appear at their natural rate, and thinning at
+      late plies is genuine attrition &mdash; the histogram under the slider becomes the survival
+      curve.</p>
+    <p class="note"><b>Legend chips are click-to-toggle</b> &mdash; hide categories to isolate the
       ones you care about. Poles: gold = fixed W/D/L simplex (the gauge), pink diamond with a halo = START; the small grey markers are
       the learned ending types &mdash; unlabelled, since they cluster at their outcome pole and
       one set of names is enough.</p>
@@ -232,13 +239,15 @@ let mode = 'arr', ghost = true, playing = false, raf = null, traceMode = 0;
 let fi = D.frames.length - 1;                       // current checkpoint frame (start at latest)
 stepsl.max = D.frames.length - 1; stepsl.value = fi;
 let view = {k:1, tx:0, ty:0}, drag=null;
-let rot = {ax:-0.45, ay:0.6}, spin=false, spinRaf=null;
+let rot = {ax:-0.45, ay:0.6, az:0}, spin=false, spinRaf=null;
 const is3d = () => D.dims===3 && D.frames[fi].z;
 function rot3(x,y,z){
   const cx=Math.cos(rot.ax), sx=Math.sin(rot.ax), cy=Math.cos(rot.ay), sy=Math.sin(rot.ay);
   x-=.5; y-=.5; z-=.5;
   let X= x*cy + z*sy, Z= -x*sy + z*cy;
   let Y= y*cx - Z*sx;  Z = y*sx + Z*cx;
+  if(rot.az){ const cz=Math.cos(rot.az), sz=Math.sin(rot.az);
+    const Xr = X*cz - Y*sz, Yr = X*sz + Y*cz; X=Xr; Y=Yr; }
   return [X+.5, Y+.5, Z+.5];
 }
 const VIRIDIS = [[68,1,84],[72,40,120],[62,74,137],[49,104,142],[38,130,142],
@@ -426,7 +435,7 @@ function legend(){
   if(mode==='arr'){ el.innerHTML=
       chip(0,ARR[0],'arrived: win')+chip(1,ARR[1],'arrived: draw')+chip(2,ARR[2],'arrived: loss')+
       chip(3,INPROG,'game still in progress')+
-      `<span class="fixed">terminals are one row per game &mdash; deliberately oversampled</span>`;
+      (cohMode? `<span class="fixed">cohort: terminal density is REAL</span>` : `<span class="fixed">terminals are one row per game &mdash; deliberately oversampled</span>`);
     return; }
   if(mode==='ph'){ el.innerHTML=PHN.map((n,k)=>chip(k,PHC[k],n)).join('')
       +`<span class="fixed">endgame = non-pawn material &le;10 &middot; ply-balanced, not corpus-representative</span>`;
@@ -522,7 +531,7 @@ window.addEventListener('keydown',e=>{
     case ']': if(traceMode===1){gameSel.value=Math.min(+gameSel.max,+gameSel.value+1);gameInfo();draw();} break;
   }});
 document.getElementById('reset').addEventListener('click',()=>{
-  view={k:1,tx:0,ty:0}; rot={ax:-0.45,ay:0.6}; draw();});
+  view={k:1,tx:0,ty:0}; rot={ax:-0.45,ay:0.6,az:0}; draw();});
 document.getElementById('spin').addEventListener('click',()=>{
   spin=!spin; if(spin){ const tick=()=>{ if(!spin)return; rot.ay+=0.006; draw();
     spinRaf=requestAnimationFrame(tick); }; tick(); } else if(spinRaf) cancelAnimationFrame(spinRaf); });
@@ -536,12 +545,14 @@ cv.addEventListener('wheel',e=>{ e.preventDefault();
   view.tx = mx - (mx-view.tx)*rf; view.ty = my - (my-view.ty)*rf; view.k = nk; draw(); },{passive:false});
 // PAN: shift-drag OR middle-button drag (button 1). Plain drag rotates in 3D.
 cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY,tx:view.tx,ty:view.ty,
-    ax:rot.ax,ay:rot.ay,pan:e.shiftKey||e.button===1};
+    ax:rot.ax,ay:rot.ay,az:rot.az,pan:e.shiftKey||e.button===1,roll:e.altKey};
   if(e.button===1) e.preventDefault();
   cv.setPointerCapture(e.pointerId);});
 cv.addEventListener('pointermove',e=>{ if(!drag)return;
-  if(is3d() && !drag.pan){ rot.ay=drag.ay+(e.clientX-drag.x)*0.008;
-    rot.ax=Math.max(-1.55,Math.min(1.55,drag.ax+(e.clientY-drag.y)*0.008)); draw(); return; }
+  if(is3d() && !drag.pan){
+    if(drag.roll){ rot.az=drag.az+(e.clientX-drag.x)*0.008; draw(); return; }
+    rot.ay=drag.ay+(e.clientX-drag.x)*0.008;
+    rot.ax=drag.ax+(e.clientY-drag.y)*0.008; draw(); return; }
   view.tx=drag.tx+(e.clientX-drag.x); view.ty=drag.ty+(e.clientY-drag.y); draw(); });
 cv.addEventListener('pointerup',()=>{drag=null;});
 cv.addEventListener('pointercancel',()=>{drag=null;});
