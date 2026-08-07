@@ -69,6 +69,17 @@ def confining_regression(d, target_log, quartic=1.0):
     return (r2 + quartic * r2 * r2).mean()
 
 
+def screened_repulsion(d, eps=1.0):
+    """BOUNDED pairwise repulsion: mean of 1/(eps+d), in (0, 1/eps]. Force 1/(eps+d)^2 -- never
+    zero (the non-saturation property is preserved), but the potential is bounded below, so the
+    equilibrium EXISTS WITHOUT ANY CONTAINER. Replaces log_gas_repulsion + confine_radius as a
+    pair (Kaveh 2026-08-07, on being shown the confinement formula: 'I don't even want it') --
+    the fishbowl only ever existed to compensate for -log(d) being bottomless, and its size
+    silently disagreeing with the pole gauge caused the infeasible-constraint bug. Faster tail
+    decay (1/d^2 vs 1/d) is the accepted trade; springs + triangle composition carry long range."""
+    return (1.0 / (d.clamp(min=0) + eps)).mean()
+
+
 def log_gas_repulsion(d, eps=1.0):
     """Unbounded outward pressure: mean of -log(eps + d). Gradient magnitude 1/(eps+d) -- decaying
     but never zero, so a pair is never 'done' being pushed apart and only stops when something
@@ -272,13 +283,21 @@ START = 3                                                # the TIME-ORIGIN pole 
 # convenience but a fact about the domain.
 
 
-def basin_logits(d_poles, temperature=1.0):
+def basin_logits(d_poles, temperature=1.0, raw=False):
     """-log1p(d)/T -- the basin logits. d_poles (B,3) >= 0 = quasimetric distances to
     [win, draw, loss]. See the module note above for why this is log-space and not -d/T."""
+    if raw:
+        # RAW distances (Kaveh-era gauge, 2026-08-07 diagnosis): at pole distances ~600 the
+        # log1p form compresses class differences of ~5 raw units into logit differences of
+        # ~0.007 -- softmax uniform, basin_spread pinned at 0.001 in every tall-gauge run, and
+        # the CE gradient muted by 1/(1+d) ~ 0.002. The committor was flat because the READOUT
+        # erased the contrast, not (necessarily) because the geometry lacked it. Raw -d/tau with
+        # tau at the class-difference scale restores both contrast and gradient.
+        return -d_poles.clamp(min=0) / temperature
     return -torch.log1p(d_poles.clamp(min=0)) / temperature
 
 
-def basin_ce(d_poles, y, temperature=1.0):
+def basin_ce(d_poles, y, temperature=1.0, raw=False):
     """Basin cross-entropy. d_poles (B,3) >= 0; y (B,) int64 in {0,1,2} = mover-POV outcome.
 
     CE against a realized 1-hot outcome is a PROPER SCORING RULE, so its minimizer is the true
@@ -286,15 +305,15 @@ def basin_ce(d_poles, y, temperature=1.0):
     Its gradient pulls phi toward the observed outcome's pole with weight (1 - p_y): each point
     is pulled toward a basin in proportion to probability MISMATCH, which is exactly the
     'transition probability pulls it toward that basin's pole' behaviour."""
-    return F.cross_entropy(basin_logits(d_poles, temperature), y)
+    return F.cross_entropy(basin_logits(d_poles, temperature, raw), y)
 
 
-def basin_logp(d_poles, temperature=1.0):
+def basin_logp(d_poles, temperature=1.0, raw=False):
     """log p(basin) (B,3) -- the readout used for charting + calibration. Returned in LOG space
     on purpose: the committor is degenerate inside basins (nearly all mass at p~0/1), so
     log-odds is the coordinate that resolves basin interiors and the transition region with
     equal thoroughness (standard practice for committor collective variables)."""
-    return F.log_softmax(basin_logits(d_poles, temperature), dim=-1)
+    return F.log_softmax(basin_logits(d_poles, temperature, raw), dim=-1)
 
 
 def pole_radial_anchor(d_y, target_log):
