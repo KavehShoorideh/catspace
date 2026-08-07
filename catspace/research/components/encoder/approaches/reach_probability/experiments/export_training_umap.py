@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import pathlib
 import json
 import os
 import re
@@ -162,6 +163,13 @@ def main():
           f"x {len(cks)} frames", flush=True)
 
     # ---- embed the SAME rows under EVERY checkpoint -------------------------------------------
+    # EMBEDDING CACHE (Kaveh: "checkpoints for the exports might be needed!"). The harness has
+    # twice killed this export mid-flight, losing every per-frame embedding (~1-2 min each). Each
+    # frame's embeddings now land on disk keyed by (step, n_rows, row-checksum); a rerun loads
+    # instead of recomputing, so a killed export resumes at the frame it died on.
+    cache_dir = pathlib.Path(str(args.out) + ".embcache")
+    cache_dir.mkdir(exist_ok=True)
+    row_sig = int(np.bitwise_xor.reduce(fit_rows.astype(np.uint64)) % 10**12)
     # START-GAP DIAGNOSTIC (Kaveh: "the start point embedding ... maps to a different point than
     # START on the map"). The start anchor trains d_IQE(START pole -> ply-0 position) toward
     # log1p(0) = 0 -- and an IQE zero is DOMINATION, not identity: the pole sits coordinatewise
@@ -173,6 +181,22 @@ def main():
     start_gap, term_gap = [], []
     frames_meta, blocks, pole_blocks, pole_names = [], [], [], []
     for f in cks:
+        step_no = int(re.search(r"step(\d+)", f).group(1))
+        cpath = cache_dir / f"step{step_no}_n{len(fit_rows)}_sig{row_sig}.npz"
+        if cpath.exists():
+            _c = np.load(cpath, allow_pickle=False)
+            blocks.append(_c["Z"].astype(np.float32))   # fp16 on disk; fp32 in math (norms of ~750-scale coords overflow fp16 intermediates)
+            if "P" in _c:
+                pole_blocks.append(_c["P"])
+                pole_names = c.get("pole_names") or [f"P{k}" for k in range(len(_c["P"]))]
+                pd = np.linalg.norm(_c["P"][:, None] - _c["P"][None], axis=-1)
+            frames_meta.append(step_no)
+            if len(_c.get("sg", [])):
+                start_gap.append([float(v) for v in _c["sg"]])
+            if "tg" in _c and _c["tg"].size:
+                term_gap.append(float(_c["tg"]))
+            print(f"[train-umap]   step {step_no:>6} loaded from cache", flush=True)
+            continue
         net, pay = load_net(f, args.device)
         Z = embed(net, tr, fit_rows, args.device).numpy()
         # TERMINAL->OWN-POLE convergence (Kaveh: "the pole locations are still far from
@@ -203,7 +227,11 @@ def main():
             pole_names = c.get("pole_names") or [f"P{k}" for k in range(len(P))]
         blocks.append(Z)
         frames_meta.append(int(pay["step"]))
-        print(f"[train-umap]   step {pay['step']:>6} embedded [{time.time()-t0:.0f}s]", flush=True)
+        np.savez_compressed(cpath, Z=Z.astype(np.float16),
+                            **({"P": pole_blocks[-1]} if pole_blocks else {}),
+                            sg=np.array(start_gap[-1] if start_gap else [], np.float32),
+                            tg=np.array(term_gap[-1] if term_gap else np.nan, np.float32))
+        print(f"[train-umap]   step {pay['step']:>6} embedded + cached [{time.time()-t0:.0f}s]", flush=True)
 
     # POLE SEPARATION DIAGNOSTIC (Kaveh: "poles are placed too close to each other compared to
     # the scale of the game"). The UMAP location of the poles is honest but distorted, like any
