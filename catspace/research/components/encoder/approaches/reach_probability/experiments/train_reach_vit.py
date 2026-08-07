@@ -567,8 +567,16 @@ def main():
         # (quasi 771, rev_ratio 0.31, rank 3.7). r^2 + r^4 pulls with force ~834 at r=5.9 and ~6
         # near the target: strong enough to beat the repulsion (Huber's constant 1.0 was not),
         # never explosive. Pairs keep LJ-12 because their residuals start small.
-        _anchor_reg = ((lambda dd, tl: confining_regression(dd, tl, quartic=1.0)) if args.log_gas
-                       else quasimetric_regression)
+        # CAPPED anchors (take 3). The force is now bracketed by two measured failures: Huber's
+        # constant 1.0 LOST to the gas (terminal->pole 557->1156 rising), the quartic's ~800 at
+        # the initial residual CRUSHED it (all three seeds collapsed to eff rank ~2 with d_far
+        # 6->3.4 and quasi 20-40 by step 18000). Instead of bisecting force constants, cap the
+        # residual structurally: LJ with the wall at the LARGEST POSSIBLE residual
+        # log1p(pole_height), so the pull is steep only near initialization scale and relaxes as
+        # terminals approach their shells -- capture without crush, bounded by construction.
+        _anchor_rmax = float(np.log1p(args.pole_height))
+        _anchor_reg = ((lambda dd, tl: lj_confinement(dd, tl, r_max=_anchor_rmax))
+                       if args.log_gas else quasimetric_regression)
         if args.w_start > 0 and model.poles is not None:
             Ps = model.poles.poles[START_IDX:START_IDX + 1]
             zs = zB[gi]                                    # the triple's first position
