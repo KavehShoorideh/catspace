@@ -50,6 +50,13 @@ def main():
     ap.add_argument("--max-ply", type=int, default=210)
     ap.add_argument("--n-term", type=int, default=2000, help="terminal positions included")
     ap.add_argument("--n-trace", type=int, default=30, help="games traced per population")
+    ap.add_argument("--coords", default="umap", choices=["umap", "poledist"],
+                    help="poledist (Kaveh 2026-08-07): NO projection -- each position is plotted "
+                         "at (d(s->W), d(s->D), d(s->L)), log1p then normalised over the frame "
+                         "union. The main diagonal IS the flat committor; distance off it IS "
+                         "outcome information; zero UMAP artefacts, ~10x faster export. "
+                         "Fixed-pole ckpts use the poles; contrastive ckpts use per-class "
+                         "terminal-exemplar median distances")
     ap.add_argument("--dims", type=int, default=3)
     ap.add_argument("--neighbors", type=int, default=25)
     ap.add_argument("--min-dist", type=float, default=0.08)
@@ -253,14 +260,67 @@ def main():
     if term_gap:
         print(f"[train-umap] median d_IQE(terminal->own pole) per frame (target ~1): {term_gap}", flush=True)
 
-    allZ = np.concatenate(blocks + (pole_blocks if pole_blocks else []))
-    import umap
-    red = umap.UMAP(n_neighbors=args.neighbors, min_dist=args.min_dist, n_components=args.dims,
-                    metric="euclidean", random_state=0, verbose=False)
-    XY = red.fit_transform(allZ)
-    lo, hi = XY.min(0), XY.max(0)
-    XY = (XY - lo) / np.maximum(hi - lo, 1e-9)
-    print(f"[train-umap] ONE shared fit over {len(allZ):,} points [{time.time()-t0:.0f}s]", flush=True)
+    if args.coords == "poledist":
+        import torch as _t2
+        coords_frames = []
+        for k, f in enumerate(cks):
+            net, pay = load_net(f, args.device)
+            iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
+            Zk = _t2.from_numpy(blocks[k]).float()
+            if getattr(net, "poles", None) is not None:
+                pn = c.get("pole_names") or []
+                piW = [pn.index(nm) for nm in ("WIN", "DRAW", "LOSS")]
+                refs = [net.poles.poles.detach().float()[[q]] for q in piW]
+                D3 = []
+                with _t2.no_grad():
+                    for r in refs:
+                        D3.append(iqe(Zk.to(args.device),
+                                      r.expand(len(Zk), -1).to(args.device)).float().cpu().numpy())
+            else:
+                # contrastive: reference = median distance to 40 terminal exemplars per class
+                t_r, t_t = tr.terminal_rows()
+                oc = T.TERM_OUTCOME[t_t]
+                D3 = []
+                with _t2.no_grad():
+                    for cls in range(3):
+                        exr = t_r[np.flatnonzero(oc == cls)[:40]]
+                        Ze = _t2.from_numpy(
+                            blocks[k][np.searchsorted(fit_rows, exr).clip(0, len(fit_rows)-1)]).float()
+                        dd = []
+                        for e in range(len(Ze)):
+                            dd.append(iqe(Zk.to(args.device),
+                                          Ze[[e]].expand(len(Zk), -1).to(args.device)).float().cpu().numpy())
+                        D3.append(np.median(np.stack(dd), 0))
+            coords_frames.append(np.log1p(np.stack(D3, 1)))
+        XY = np.concatenate(coords_frames)
+        lo, hi = XY.min(0), XY.max(0)
+        XY = (XY - lo) / np.maximum(hi - lo, 1e-9)
+        # pole coordinates in the SAME system: pole i at its own distance triple
+        if pole_blocks:
+            pXY = []
+            for k, f in enumerate(cks):
+                net, pay = load_net(f, args.device)
+                iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
+                P = _t2.from_numpy(pole_blocks[k]).float()
+                pn = c.get("pole_names") or []
+                piW = [pn.index(nm) for nm in ("WIN", "DRAW", "LOSS")]
+                with _t2.no_grad():
+                    pd = np.stack([iqe(P.to(args.device),
+                                       P[[q]].expand(len(P), -1).to(args.device)).float().cpu().numpy()
+                                   for q in piW], 1)
+                pXY.append((np.log1p(pd) - lo) / np.maximum(hi - lo, 1e-9))
+            XY = np.concatenate([XY] + pXY)
+        print(f"[train-umap] POLEDIST coords: axes = log1p d(s->W/D/L), shared normalisation "
+              f"[{time.time()-t0:.0f}s]", flush=True)
+    else:
+        allZ = np.concatenate(blocks + (pole_blocks if pole_blocks else []))
+        import umap
+        red = umap.UMAP(n_neighbors=args.neighbors, min_dist=args.min_dist, n_components=args.dims,
+                        metric="euclidean", random_state=0, verbose=False)
+        XY = red.fit_transform(allZ)
+        lo, hi = XY.min(0), XY.max(0)
+        XY = (XY - lo) / np.maximum(hi - lo, 1e-9)
+        print(f"[train-umap] ONE shared fit over {len(allZ):,} points [{time.time()-t0:.0f}s]", flush=True)
 
     # ---- static attributes (identical across frames) ------------------------------------------
     W = {2: 1, 3: 1, 4: 2, 5: 4, 8: 1, 9: 1, 10: 2, 11: 4}
@@ -303,7 +363,7 @@ def main():
     traces = [{"pop": pop, "p0": p0, "end": end, "san": san}
               for (pop, p0, end, _n, san) in trace_meta]
     data = {
-        "kind": "training",                      # tells the viewer to show the step slider
+        "kind": "training", "coords": args.coords,                      # tells the viewer to show the step slider
         "dims": int(args.dims), "n": int(n_cross), "steps": frames_meta,
         "frames": out_frames, "trace_frames": trace_frames, "pole_frames": pole_frames or None,
         "ply": [int(v) for v in ply[rows]], "pc": [int(v) for v in pc[rows]],
