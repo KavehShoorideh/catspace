@@ -456,7 +456,7 @@ def main():
     # from seeing pairs of positions in game that follow each other, without any negatives").
     if net.poles is not None:
         net.poles = net.poles.to(dev)
-    print(f"[poles] {len(t_names)} poles ({'FIXED simplex' if net.poles.fixed else 'learned'} "
+    print(f"[poles] {len(t_names)} poles ({'FIXED simplex' if (net.poles is not None and net.poles.fixed) else ('learned' if net.poles is not None else 'NONE - contrastive')} "
           f"+ {len(t_names)-3} ending types) | {len(t_rows):,} terminal instances | labels W {int((outcome==T.WIN).sum()):,} "
           f"D {int((outcome==T.DRAW).sum()):,} L {int((outcome==T.LOSS).sum()):,} "
           f"| censored (time forfeit) {int((outcome<0).sum()):,}", flush=True)
@@ -476,10 +476,22 @@ def main():
                 i, j, k = sampler.triples(n)
             x = sampler.cross(i)                        # one cross-game partner PER SOURCE i
             ra, rb, rgap = sampler.reversible(n_rev)    # OBSERVED backward, via repetitions
-        rows = [i, j, k, x, ra, rb]
+            # terminal-contrast rows ride in the SAME fused forward (2026-08-07 speedup: the
+            # separate encode_q calls here were two extra encoder launches per step on a
+            # dispatch-bound loop)
+            if args.poles == "contrastive" and len(t_rows):
+                tia = rng_np.integers(0, len(t_rows), args.n_term)
+                tib = rng_np.integers(0, len(t_rows), args.n_term)
+                rows = [i, j, k, x, ra, rb, t_rows[tia], t_rows[tib]]
+            else:
+                tia = tib = None
+                rows = [i, j, k, x, ra, rb]
         with ph("encode"):
             phi, zA, zB, zR, zT, idx = encode(model, rows)
-        gi, gj, gk, gx, gra, grb = idx
+        if tia is not None:
+            gi, gj, gk, gx, gra, grb, gta, gtb = idx
+        else:
+            gi, gj, gk, gx, gra, grb = idx
         # In dual mode zR is the CONDITIONED embedding (z_base + delta), so every distance is the
         # player-tuned quasimetric; zB stays available as the pooled reference for the readout.
         DQ = (lambda u, v: model.qhead.distance(zR[u], zR[v])) if model.dual \
@@ -639,23 +651,23 @@ def main():
             l_startirr = start_irreversibility(dq0(zs, Ps.expand(len(zs), -1)),
                                                args.start_margin)
         l_termcon_att = l_termcon_rep = torch.zeros((), device=dev)
-        if args.poles == "contrastive" and len(t_rows):
-            # CONTRASTIVE TERMINALS: sample same-outcome and opposite-outcome terminal pairs,
-            # embed, and let them structure each other. No fixed coordinates anywhere.
-            t_out = TPOLE_OUT[t_pole]                       # outcome class of each terminal row
-            n_c = args.n_term
-            ia = rng_np.integers(0, len(t_rows), n_c)
-            ib = rng_np.integers(0, len(t_rows), n_c)
-            za_t = model.encode_q(torch.from_numpy(tr.tok[t_rows[ia]].astype(np.int64)).to(dev),
-                                  torch.from_numpy(tr.glob[t_rows[ia]].astype(np.float32)).to(dev))
-            zb_t = model.encode_q(torch.from_numpy(tr.tok[t_rows[ib]].astype(np.int64)).to(dev),
-                                  torch.from_numpy(tr.glob[t_rows[ib]].astype(np.float32)).to(dev))
+        if tia is not None:
+            # CONTRASTIVE TERMINALS: same-outcome attraction, opposite-outcome floor. Embeddings
+            # come from the fused batch forward above -- zero extra encoder calls.
+            t_out = TPOLE_OUT[t_pole]
+            ia, ib = tia, tib
+            za_t, zb_t = zB[gta], zB[gtb]
             # EUCLIDEAN distances, deliberately not IQE (Kaveh: separation should show in the
             # UMAP, which sees Euclidean z-geometry; IQE can be large while Euclidean is tiny).
-            d_euc = (za_t - zb_t).pow(2).sum(-1).clamp(min=0).sqrt()
-            same = torch.from_numpy((t_out[ia] == t_out[ib]).astype(np.bool_)).to(dev)
+            # eps under the root: sqrt has an INFINITE gradient at exactly 0, and a random pair
+            # draws the same terminal twice every ~50 steps (p~1.8%/step at 64 pairs / 3.5k
+            # terminals) -- the first collision NaN'd the entire graph at step ~80. Self-pairs
+            # additionally excluded (a point attracting itself teaches nothing).
+            d_euc = (za_t - zb_t).pow(2).sum(-1).add(1e-8).sqrt()
+            notself = torch.from_numpy((ia != ib)).to(dev)
+            same = torch.from_numpy((t_out[ia] == t_out[ib]).astype(np.bool_)).to(dev) & notself
             l_termcon_att, l_termcon_rep = terminal_contrast(
-                d_euc[same], d_euc[~same], args.term_margin)
+                d_euc[same], d_euc[(~same) & notself], args.term_margin)
         if args.w_anchor > 0 and model.poles is not None and len(t_rows):
             tsel = rng_np.integers(0, len(t_rows), min(args.n_term, len(t_rows)))
             trow = t_rows[tsel]
