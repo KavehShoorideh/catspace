@@ -63,6 +63,7 @@ from catspace.research.tools.training_infra.losses import (
     confine_radius, confining_regression, fene_confinement, fene_r_max, lj_confinement,
     log_gas_repulsion, screened_repulsion,
     start_irreversibility, start_ply_anchor, quasimetric_regression, reach_region_margin,
+    terminal_contrast,
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
     TrainConfig, resolve_device, standard_train)
@@ -226,6 +227,20 @@ def main():
                          "gauge (a learned embedding has a global scale freedom, so no distance is "
                          "comparable across checkpoints), and they cannot merge, which removes the "
                          "uniform-committor saddle for free")
+    ap.add_argument("--poles", default="contrastive", choices=["fixed", "contrastive"],
+                    help="fixed = simplex gauge + anchors + trained basin CE. contrastive "
+                         "(Kaveh 2026-08-07) = NO fixed poles/anchors/START/basin-CE; terminals "
+                         "structure themselves: same-outcome attraction to a 1-ply shell, "
+                         "opposite-outcome both-direction floor; committor is a READOUT vs "
+                         "terminal exemplars, never a training target")
+    ap.add_argument("--adjacent-frac", type=float, default=0.5,
+                    help="fraction of triples that are STRICT adjacents (i,i+1,i+2): the local "
+                         "signal blunders cannot fake; the rest keep random gaps <=40 for "
+                         "mid-range composition")
+    ap.add_argument("--term-margin", type=float, default=6.0,
+                    help="contrastive: log-space floor between opposite-outcome terminals")
+    ap.add_argument("--w-termcon", type=float, default=1.0,
+                    help="contrastive: weight on the terminal attraction+repulsion pair")
     ap.add_argument("--basin-temp", type=float, default=5.0,
                     help="basin softmax temperature on RAW distances (log-gas mode); ~the scale "
                          "of expected class differences in d")
@@ -256,7 +271,7 @@ def main():
     ap.add_argument("--log-gas", type=int, default=1,
                     help="1 = log-gas field (confining spring + unbounded pairwise repulsion + one-body "
                          "confinement); 0 = legacy Huber + relu hinge, for reproducing old runs")
-    ap.add_argument("--confine", default="fene", choices=["fene", "lj", "quartic"],
+    ap.add_argument("--confine", default="lj", choices=["fene", "lj", "quartic"],
                     help="confining spring shape: fene = one-sided, soft inside the true ply gap "
                          "and divergent at fene_stretch x it; lj = r^12 outside / r^6 inside, "
                          "normalised so the wall is at fene_stretch x the gap; "
@@ -273,9 +288,9 @@ def main():
                     help="quartic weight in the confining spring r^2 + q*r^4; 0 = plain MSE")
     ap.add_argument("--confine-target", type=float, default=2.0,
                     help="one-body confinement target on log1p(|z|); sets the gas radius")
-    ap.add_argument("--w-confine", type=float, default=1.0, help="weight on one-body confinement")
+    ap.add_argument("--w-confine", type=float, default=0.0, help="weight on one-body confinement")
     ap.add_argument("--w-iqe", type=float, default=1.0, help="arm B: quasimetric regression")
-    ap.add_argument("--w-repel", type=float, default=1.0, help="both arms: unobserved-pair repulsion")
+    ap.add_argument("--w-repel", type=float, default=20.0, help="both arms: unobserved-pair repulsion")
     ap.add_argument("--margin", type=float, default=1.0,
                     help="arm A repulsion margin: nats of NLL an unobserved target must exceed the "
                          "observed one of the SAME source by. Relative on purpose -- a Gaussian "
@@ -286,7 +301,7 @@ def main():
                          "by d_close=0.001/d_far=0.01 with the geometry fully collapsed, which is "
                          "the documented IQE failure mode. 4.0 is train_iqe_head.py's measured "
                          "value, not a guess")
-    ap.add_argument("--w-var", type=float, default=1.0, help="VICReg variance (anti-collapse)")
+    ap.add_argument("--w-var", type=float, default=2.0, help="VICReg variance (anti-collapse)")
     ap.add_argument("--w-cov", type=float, default=0.04, help="VICReg covariance (anti-rank-collapse)")
     ap.add_argument("--w-l1", type=float, default=0.0,
                     help="L1 added to the loss (subgradient route; monitoring only -- measured NOT "
@@ -342,6 +357,9 @@ def main():
     # model (attach_poles needs the parent vector) and before cfg_dict (which records it so
     # evaluation rebuilds the identical hierarchy).
     t_rows, t_pole, t_names, t_parent = tr.ending_poles()
+    # outcome class (0 W / 1 D / 2 L) of each terminal row, via its ending-type's parent outcome
+    TPOLE_OUT = np.array([t_parent[k] if t_parent[k] >= 0 else 0 for k in range(len(t_names))])
+    TPOLE_OUT = np.where(TPOLE_OUT < 0, 0, TPOLE_OUT)
     t_radius = tr.radial_targets()
     # START POLE (Kaveh 2026-08-05, from the viewer: "the scattering of the starting positions makes
     # me think start positions need to cluster together near a pole"). A TIME ORIGIN, not a basin --
@@ -418,14 +436,26 @@ def main():
     # ending pole sat on top of its outcome pole, and the anchor/absorb/repulsion terms trained
     # the ENCODER against poles that could never move. Ordering bug, silent, and it invalidated
     # the terminal-structure half of that run.
-    net.attach_poles(t_parent, n_sources=1, fixed=not args.learned_poles,
-                     height=args.pole_height)
+    if args.poles == "contrastive":
+        _r0 = np.log1p(600.0)                  # typical init distance scale
+        print("[forces] per-pair slopes at init scale (d~600): "
+              f"term-attract {2*(_r0-0.7):.1f} x{args.w_termcon} on {args.n_term} pairs | "
+              f"term-repel(hinge) {1.0:.1f} x{args.w_termcon} | "
+              f"screened gas {args.w_repel/(601.0**2):.1e} | "
+              f"spring(LJ) ~12r^11 at r~1: 12 x{args.w_iqe} on 3x{args.batch} legs | "
+              f"vicreg hinge ~1 x{args.w_var}", flush=True)
+        print("[poles] CONTRASTIVE mode: no fixed poles, no anchors, no trained basin; "
+              f"{len(t_rows):,} terminals structure themselves", flush=True)
+    if args.poles == "fixed":
+        net.attach_poles(t_parent, n_sources=1, fixed=not args.learned_poles,
+                         height=args.pole_height)
 
     opt = torch.optim.Adam([p for p in net.parameters() if p.requires_grad], lr=args.lr)
     # THREE OUTCOME POLES (Kaveh 2026-08-05: "I want three poles (win draw loss) ... and positions
     # orienting themselves towards it, trying to answer the probabilistic reachability question
     # from seeing pairs of positions in game that follow each other, without any negatives").
-    net.poles = net.poles.to(dev)
+    if net.poles is not None:
+        net.poles = net.poles.to(dev)
     print(f"[poles] {len(t_names)} poles ({'FIXED simplex' if net.poles.fixed else 'learned'} "
           f"+ {len(t_names)-3} ending types) | {len(t_rows):,} terminal instances | labels W {int((outcome==T.WIN).sum()):,} "
           f"D {int((outcome==T.DRAW).sum()):,} L {int((outcome==T.LOSS).sum()):,} "
@@ -438,7 +468,12 @@ def main():
         """One objective evaluation on freshly sampled pairs. Returns (loss, metrics)."""
         ph = ph or Phase(dev, False)
         with ph("sample"):
-            i, j, k = sampler.triples(n)
+            _na = int(n * args.adjacent_frac)
+            if _na:
+                _a, _b = sampler.adjacent_triples(_na), sampler.triples(n - _na)
+                i, j, k = (np.concatenate([u, v]) for u, v in zip(_a, _b))
+            else:
+                i, j, k = sampler.triples(n)
             x = sampler.cross(i)                        # one cross-game partner PER SOURCE i
             ra, rb, rgap = sampler.reversible(n_rev)    # OBSERVED backward, via repetitions
         rows = [i, j, k, x, ra, rb]
@@ -603,6 +638,24 @@ def main():
             l_start = _anchor_reg(dq0(Ps.expand(len(zs), -1), zs), torch.log1p(ply_i))
             l_startirr = start_irreversibility(dq0(zs, Ps.expand(len(zs), -1)),
                                                args.start_margin)
+        l_termcon_att = l_termcon_rep = torch.zeros((), device=dev)
+        if args.poles == "contrastive" and len(t_rows):
+            # CONTRASTIVE TERMINALS: sample same-outcome and opposite-outcome terminal pairs,
+            # embed, and let them structure each other. No fixed coordinates anywhere.
+            t_out = TPOLE_OUT[t_pole]                       # outcome class of each terminal row
+            n_c = args.n_term
+            ia = rng_np.integers(0, len(t_rows), n_c)
+            ib = rng_np.integers(0, len(t_rows), n_c)
+            za_t = model.encode_q(torch.from_numpy(tr.tok[t_rows[ia]].astype(np.int64)).to(dev),
+                                  torch.from_numpy(tr.glob[t_rows[ia]].astype(np.float32)).to(dev))
+            zb_t = model.encode_q(torch.from_numpy(tr.tok[t_rows[ib]].astype(np.int64)).to(dev),
+                                  torch.from_numpy(tr.glob[t_rows[ib]].astype(np.float32)).to(dev))
+            # EUCLIDEAN distances, deliberately not IQE (Kaveh: separation should show in the
+            # UMAP, which sees Euclidean z-geometry; IQE can be large while Euclidean is tiny).
+            d_euc = (za_t - zb_t).pow(2).sum(-1).clamp(min=0).sqrt()
+            same = torch.from_numpy((t_out[ia] == t_out[ib]).astype(np.bool_)).to(dev)
+            l_termcon_att, l_termcon_rep = terminal_contrast(
+                d_euc[same], d_euc[~same], args.term_margin)
         if args.w_anchor > 0 and model.poles is not None and len(t_rows):
             tsel = rng_np.integers(0, len(t_rows), min(args.n_term, len(t_rows)))
             trow = t_rows[tsel]
@@ -665,10 +718,12 @@ def main():
                 + args.w_basin * l_basin + args.w_polesep * l_polesep
                 + args.w_anchor * l_anchor + args.w_absorb * l_absorb
                 + args.w_termrep * l_termrep + args.w_subsume * l_subsume
-                + args.w_start * l_start + args.w_start_irr * l_startirr)
+                + args.w_start * l_start + args.w_start_irr * l_startirr
+                + args.w_termcon * (l_termcon_att + l_termcon_rep))
         met = {"loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
                "confine": float(l_conf.detach()),
+               "tc_att": float(l_termcon_att.detach()), "tc_rep": float(l_termcon_rep.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
                # the residue the cross sampler's redraw loop could not clear -- must be ~0, and is
