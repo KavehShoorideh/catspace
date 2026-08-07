@@ -11412,3 +11412,42 @@ unquotable — the 3-seed fleet exists to fix exactly this.
 `reach_lj_gauge_s{0,1,2}_step*.pt` (killed at 19%, diagnosis material), smokes
 `reach_anchorfix{,2}_smoke`. Scripts: `diagnose_asymmetry.py`, `export_training_umap.py`,
 `build_training_viewer.py`; all loss terms tested in `training_infra/losses.py::_tests`.
+
+## 2026-08-07 — The committor was flat because the METER was broken: log1p logits erased the contrast
+
+Small-loop day (Kaveh's protocol: iterate tiny models with the full gate suite, ~10 min/turn,
+promote only on a pass). Chain of eliminations, each one measured:
+
+1. **Infeasible constraint set found by formula audit.** confine_target 4.0 (cloud radius 54)
+   dated from the height-3 gauge; the derived gauge put poles at 750. Terminals were anchored
+   toward shells they were forbidden from approaching. All three anchor-spring "failures" were
+   this one contradiction: Huber lost politely (557->1156), the quartic escaped via rank collapse
+   (the only feasible configuration), capped-LJ parked at its own cap (1589, r pinned at R).
+   Committor flatness followed geometrically: from a radius-54 ball all poles are equidistant.
+2. **The fishbowl deleted, not resized** (Kaveh, on being shown the formula: "I don't even want
+   it"). The container only existed because -log(d) is unbounded below. Replaced by
+   screened_repulsion 1/(1+d): bounded, never-zero force, equilibrium needs no walls. Smoke:
+   best-ever smoke rank (zB 19.4), no runaway inflation. One term and one arbitrary constant gone.
+3. **Capped-LJ anchor mid-range plateau became binding** (terminals equidistant at 673/676/673,
+   pull ~0.4 vs opposition ~0) -> anchor form now a flag; quadratic (force 2r) moved term_gap
+   674->612 but NO class separation: W/D/L terminals all at ~612/616/611.
+4. **The real finding: basin logits were -log1p(d)/tau.** At gauge-750 distances (~612), raw
+   class differences of ~5 (odds e^5!) compress to logit differences of ~0.007 -> softmax uniform
+   -> basin_spread 0.001 in EVERY tall-gauge run REGARDLESS of the geometry; and the CE gradient
+   carried 1/(1+d) ~ 0.002, anaesthetizing the one term trained on all 3.7M outcome labels. The
+   committor gate never fired because the gate's own meter erased the signal. Fix: raw -d/tau
+   logits (tau ~ class-difference scale, flag --basin-temp).
+5. **First pulse ever** (2000-step smoke, printed): terminal own-pole accuracy 0.593 vs 0.49
+   majority (all log-basin runs: 0.39-0.43); mid-game committor spread alive (max-prob 0.41 vs
+   uniform 0.33). Honest negative: mid-game argmax accuracy 0.285 vs 0.55 majority --
+   differentiates but miscalibrated (mover-POV labels alternate parity mid-game; 2000 steps).
+   quasi rose 2.7->6.0: the unmuted CE now competes in the force budget.
+
+RETROACTIVE CAVEAT recorded: every "committor still flat" verdict on tall-gauge runs (anchored
+fleet, capped runs) conflated geometry failure with readout failure; dead checkpoints should be
+re-read with raw-basin logits before being cited as evidence that outcome structure was absent.
+
+Deleted from the objective: confine_radius (+confine_target). Added: screened_repulsion,
+--anchor-form {capped,quadratic,quartic}, --basin-temp. All loss changes unit-tested
+(losses.py ALL PASSED). 6000-step smoke running: promote if mid-game committor trends past
+majority.

@@ -61,7 +61,7 @@ from catspace.research.components.encoder.approaches.reachability_field.experime
 from catspace.research.tools.training_infra.losses import (
     absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
     confine_radius, confining_regression, fene_confinement, fene_r_max, lj_confinement,
-    log_gas_repulsion,
+    log_gas_repulsion, screened_repulsion,
     start_irreversibility, start_ply_anchor, quasimetric_regression, reach_region_margin,
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
@@ -226,6 +226,13 @@ def main():
                          "gauge (a learned embedding has a global scale freedom, so no distance is "
                          "comparable across checkpoints), and they cannot merge, which removes the "
                          "uniform-committor saddle for free")
+    ap.add_argument("--basin-temp", type=float, default=5.0,
+                    help="basin softmax temperature on RAW distances (log-gas mode); ~the scale "
+                         "of expected class differences in d")
+    ap.add_argument("--anchor-form", default="quadratic",
+                    choices=["capped", "quadratic", "quartic"],
+                    help="anchor spring shape; force bracketing so far: Huber-1 lost, quartic-800 "
+                         "crushed, capped-LJ plateaued mid-range; quadratic ~12 is the middle")
     ap.add_argument("--pole-height", type=float, default=750.0,
                     help="fixed-simplex block height -> pole separation. FIXED at construction, "
                          "never adaptive (Kaveh: 'it needs to just start at a reasonable level "
@@ -516,7 +523,7 @@ def main():
         # was a readout of repel_margin rather than anything learned. -log(d) keeps pushing
         # forever and stops only when the confining springs on observed pairs tug back.
         um_b = torch.nonzero(unc, as_tuple=True)[0]
-        _rep = ((lambda d, m: log_gas_repulsion(d)) if args.log_gas else terminal_repulsion)
+        _rep = ((lambda d, m: screened_repulsion(d)) if args.log_gas else terminal_repulsion)
         rep_rev = (_rep(d_ji[um_b], args.repel_margin)
                    if len(um_b) else torch.zeros((), device=dev))
         l_rep_b = 0.5 * (rep_rev + _rep(d_x, args.repel_margin))
@@ -542,7 +549,7 @@ def main():
                 dP = torch.stack([model.qhead.d_base(zrows, P[c].expand(len(zrows), -1))
                                   if model.dual else model.iqe(zrows, P[c].expand(len(zrows), -1))
                                   for c in range(3)], 1)                # (B,3)
-                l_basin = basin_ce(dP, y)
+                l_basin = basin_ce(dP, y, temperature=args.basin_temp, raw=bool(args.log_gas))
                 # Poles must not merge: identical poles make every distance equal and the CE sits
                 # at log 3 forever. LJ-shaped potential, same term the field head uses.
                 # Fixed poles CANNOT merge, so the separation term is unnecessary -- it exists
@@ -574,9 +581,15 @@ def main():
         # residual structurally: LJ with the wall at the LARGEST POSSIBLE residual
         # log1p(pole_height), so the pull is steep only near initialization scale and relaxes as
         # terminals approach their shells -- capture without crush, bounded by construction.
+        # Anchor spring selectable; smoke-loop 2026-08-07. capped-LJ has a mid-range plateau
+        # (force ~0.4 at r~5.8) which became the binding constraint once the gas was screened and
+        # the bowl removed (terminals equidistant from all poles at 673/676/673). quadratic = r^2,
+        # force 2r everywhere: ~12 at range, ~2 near target, no plateau, no explosion.
         _anchor_rmax = float(np.log1p(args.pole_height))
-        _anchor_reg = ((lambda dd, tl: lj_confinement(dd, tl, r_max=_anchor_rmax))
-                       if args.log_gas else quasimetric_regression)
+        _forms = {"capped": lambda dd, tl: lj_confinement(dd, tl, r_max=_anchor_rmax),
+                  "quadratic": lambda dd, tl: confining_regression(dd, tl, quartic=0.0),
+                  "quartic": lambda dd, tl: confining_regression(dd, tl, quartic=1.0)}
+        _anchor_reg = (_forms[args.anchor_form] if args.log_gas else quasimetric_regression)
         if args.w_start > 0 and model.poles is not None:
             Ps = model.poles.poles[START_IDX:START_IDX + 1]
             zs = zB[gi]                                    # the triple's first position
@@ -746,7 +759,7 @@ def main():
             zr = zB[:min(512, len(zB))]
             dP = torch.stack([(model.qhead.d_base(zr, P[c].expand(len(zr), -1)) if model.dual
                                else model.iqe(zr, P[c].expand(len(zr), -1))) for c in range(3)], 1)
-            p_wdl = basin_logp(dP).exp()
+            p_wdl = basin_logp(dP, temperature=args.basin_temp, raw=bool(args.log_gas)).exp()
             g["basin_spread"] = float(p_wdl.std(0).mean())     # ~0 => uniform => collapsed
             g["d_pole_mean"] = float(dP.mean())
             # READ THIS AGAINST ~0.33, NOT 0. The radial anchor's target for rules and every draw
