@@ -86,7 +86,9 @@ def load_net(ckpt, device):
         # Rebuild the POLE hierarchy from the cfg before loading. The pole set is data-derived, so
         # a pole-bearing checkpoint carries weights the bare architecture has no slots for and a
         # strict load_state_dict rejects it outright -- which would have failed EVERY v2 rung.
-        if c.get("pole_parent"):
+        # ...but CONTRASTIVE checkpoints (poles mode 'contrastive', 2026-08-07) legitimately
+        # carry no pole weights -- attach only when the state_dict actually has them.
+        if c.get("pole_parent") and any(k.startswith("poles.") for k in p["state_dict"]):
             net.attach_poles(torch.tensor(c["pole_parent"]), n_sources=1,
                              fixed=not c.get("learned_poles", False),
                              height=c.get("pole_height", 3.0))

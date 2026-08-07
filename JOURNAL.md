@@ -11451,3 +11451,39 @@ Deleted from the objective: confine_radius (+confine_target). Added: screened_re
 --anchor-form {capped,quadratic,quartic}, --basin-temp. All loss changes unit-tested
 (losses.py ALL PASSED). 6000-step smoke running: promote if mid-game committor trends past
 majority.
+
+## 2026-08-07 (later) — Design verdict: the trained committor is load-bearing; hard-margin
+## separation is provably the wrong objective for outcome structure
+
+Small-loop results, all printed by the gate suite:
+
+**A vs B, matched budgets.** A = fixed poles + raw-basin CE; B = Kaveh's contrastive redesign
+(no fixed coordinates; same-outcome terminal attraction + opposite-outcome Euclidean floor,
+committor as exemplar readout only).
+
+    mid-game committor acc     @2000    @6000    @12000
+    A (fixed + raw CE)         0.285    0.584    0.568   (majority 0.55-0.59)
+    B (contrastive, d32)       0.227    0.229      --    flat; Euclid separation 1.01x vs floor 403
+
+**Why B fails, and it is structural, not tuning:** terminal classes OVERLAP in appearance --
+resignations and adjudications are ordinary middlegames whose board does not determine the class;
+near-identical positions occur as D-terminals and L-terminals. A hard margin demands separation of
+the non-separable and the encoder rightly ignores it. Cross-entropy learns the conditional
+probability over confusable classes instead -- which is the committor. First DESIGN-level (not
+bug-level) conclusion the small loop has produced.
+
+**What survives of the contrastive redesign** (all verified): no fishbowl (screened 1/(1+d) gas,
+bounded, wall-free); no START pole -- the start-upstream property EMERGES from local springs
+because ply-0 is one shared position (measured: START beyond the p99 of mid-game ending-distances
+in every contrastive smoke); adjacent-triple sampling; d=32 heads match d=64 on every gate.
+
+**A's plateau at smoke scale:** steep 2k->6k, flat 6k->12k at ~majority on a 4k-game store seen
+~8x over -- the more-data signature (the 6k-vs-12k difference within single-seed noise). Data-scaling probe
+launched: same model, 20k games. Climbs -> promote A to the full 200k run with a mechanism in
+hand; flat -> width/depth probe before any promotion. The committor ceiling is now a clean
+quantitative question (what does it scale with), not a mystery.
+
+**Ops:** step loop fused (terminal-contrast rows ride the one deduped batch forward) -- ~8.6
+steps/s solo at smoke scale; loader fixed for pole-free checkpoints; sqrt(0) NaN in Euclidean
+contrast fixed (self-pair collisions, p~1.8%/step, blew up at step ~80 exactly as the collision
+arithmetic predicts).
