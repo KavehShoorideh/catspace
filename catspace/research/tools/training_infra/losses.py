@@ -316,6 +316,62 @@ def basin_logp(d_poles, temperature=1.0, raw=False):
     return F.log_softmax(basin_logits(d_poles, temperature, raw), dim=-1)
 
 
+def adjacent_anchor(d, half_width=0.5):
+    """HARD box on 1-ply distances: V = -ln(1 - ((d-1)/w)^2), diverging at d = 1 -/+ w.
+
+    Kaveh 2026-08-07: 'structurally I want it to stop at one' -- no hand-tuned weight. A 1-ply
+    pair is EXACT data (a legal move happened; that is the definition of one unit of distance),
+    and the measured +2.1-ply bias on gap-1 pairs came from the LJ spring's flat shoulder losing
+    to VICReg's O(1) pressure. A finite-weight spring always concedes a shoulder; a diverging
+    two-sided wall cannot be outmuscled by ANY finite force. Width 0.5 = rounding-correct, a
+    structural constant, not a tuned one. Same beyond-the-wall tangent+quadratic continuation as
+    fene_confinement so an overshooting pair keeps a growing restoring force instead of NaN/flat.
+    This term also FIXES THE GAUGE: with 1-ply spacing pinned, every other distance is expressed
+    in data-defined units and downstream margins stop being arbitrary."""
+    w = float(half_width)
+    x = (d - 1.0) / w
+    eps = 1e-3
+    xc = x.clamp(min=-(1 - eps), max=1 - eps)
+    v_in = -torch.log1p(-xc * xc)
+    v_c = -np.log1p(-(1 - eps) ** 2)
+    s_c = 2 * (1 - eps) / (1 - (1 - eps) ** 2)
+    over = (x.abs() - (1 - eps)).clamp(min=0.0)
+    return (v_in + s_c * over + over * over + 0 * v_c).mean()
+
+
+def pair_walls(d, gap, floor_hw=0.5, slack=1.0):
+    """HARD BRACKET for observed pairs (Kaveh 2026-08-07): no springs, only two data-derived
+    walls, with the interior FREE for the gas and composition to arrange.
+
+      FLOOR    d may not go below 1: distinct positions are at least one move apart. Lower wall
+               diverging at d = 1 - floor_hw (same construction as the gap-1 box).
+      CEILING  d may not exceed the observed gap (+ one gauge unit of slack): the witnessed path
+               IS a route of length g, an exact upper bound, not an estimate. Wall diverges at
+               log1p(g + slack).
+
+    Between the walls: NO force. The soft r^6 interior is gone by Kaveh's call -- min-over-paths
+    emerges from tighter observations and gas pressure, not from a spring's opinion. Both walls
+    carry the tangent+quadratic continuation so nothing that starts outside is ever force-free.
+    gap==1 gives floor+ceiling half a box each -- the adjacent box generalises, one family."""
+    eps = 1e-3
+    # ceiling in log space
+    lg, ls = torch.log1p(gap), torch.log1p(gap + slack)
+    W = (ls - lg).clamp(min=1e-4)
+    rc = (torch.log1p(d.clamp(min=0)) - lg) / W
+    xc = rc.clamp(min=0.0, max=1 - eps)
+    v_c = -torch.log1p(-xc * xc)
+    s_c = 2 * (1 - eps) / (1 - (1 - eps) ** 2)
+    over_c = (rc - (1 - eps)).clamp(min=0.0)
+    ceiling = v_c + s_c * over_c + over_c * over_c
+    # floor in raw space at 1 (gauge unit), wall at 1 - floor_hw
+    rf = ((1.0 - d) / floor_hw)
+    xf = rf.clamp(min=0.0, max=1 - eps)
+    v_f = -torch.log1p(-xf * xf)
+    over_f = (rf - (1 - eps)).clamp(min=0.0)
+    floor = v_f + s_c * over_f + over_f * over_f
+    return (ceiling + floor).mean()
+
+
 def terminal_contrast(d_same, d_opp, margin=6.0, shell=0.7):
     """Contrastive terminal structure (Kaveh 2026-08-07), replacing fixed poles entirely.
 
@@ -976,6 +1032,45 @@ def _tests():
     ok &= all(v > 0 for v in inner)
     print(f"[lj] inner branch at d=0 for gap 1/5/40: {', '.join(f'{v:.2f}' for v in inner)} "
           f"(POSITIVE = pushes back out; was negative and collapsing)")
+
+    # ---- adjacent anchor: the hard 1-ply box ---------------------------------------------------
+    for dv, expect in ((1.0, "zero"), (1.49, "finite"), (3.0, "finite-large")):
+        dd = torch.tensor([dv], requires_grad=True)
+        v = adjacent_anchor(dd); v.backward()
+        print(f"[adj] d={dv}: V={float(v):.3f} |grad|={float(dd.grad.abs()):.2f} ({expect})")
+    d1 = torch.tensor([3.0], requires_grad=True); adjacent_anchor(d1).backward()
+    d2 = torch.tensor([1.3], requires_grad=True); adjacent_anchor(d2).backward()
+    ok &= float(d1.grad.abs()) > 100 * float(d2.grad.abs())
+    # equilibrium against VICReg-scale pressure 2: must stay inside the box
+    raw = torch.tensor([1.5], requires_grad=True)
+    o = torch.optim.Adam([raw], lr=0.02)
+    for _ in range(3000):
+        o.zero_grad(); dd = F.softplus(raw)
+        (adjacent_anchor(dd) + 2.0 * dd).backward()   # constant outward... inward pressure 2
+        o.step()
+    got = float(F.softplus(raw))
+    ok &= 0.4 < got < 1.6
+    print(f"[adj] equilibrium under pressure 2: d = {got:.3f} (must stay in [0.5,1.5])  {'OK' if ok else 'FAIL'}")
+
+    # ---- pair walls ----------------------------------------------------------------------------
+    g5 = torch.tensor([5.0])
+    for dv, expect in ((3.0, "0 (interior FREE)"), (0.9, ">0 floor"), (0.3, "huge floor"),
+                       (5.9, ">0 ceiling"), (9.0, "huge ceiling")):
+        dd = torch.tensor([dv], requires_grad=True)
+        v = pair_walls(dd, g5); v.backward()
+        print(f"[walls] g=5 d={dv}: V={float(v):8.3f} |grad|={float(dd.grad.abs()):9.2f}  ({expect})")
+    dd = torch.tensor([3.0], requires_grad=True); v = pair_walls(dd, g5); v.backward()
+    ok &= float(v) == 0.0 and float(dd.grad.abs()) == 0.0
+    # equilibrium: under outward pressure the pair parks at the ceiling, under inward at the floor
+    for pressure, lo, hi in ((-0.5, 4.0, 6.5), (0.5, 0.4, 1.6)):
+        raw = torch.tensor([1.2], requires_grad=True)
+        o = torch.optim.Adam([raw], lr=0.02)
+        for _ in range(3000):
+            o.zero_grad(); ddq = F.softplus(raw)
+            (pair_walls(ddq, g5) + pressure * ddq).backward(); o.step()
+        got = float(F.softplus(raw)); ok &= lo < got < hi
+        print(f"[walls] pressure {pressure:+.1f}: parks at d={got:.2f} (must be in [{lo},{hi}])  "
+              f"{'OK' if lo < got < hi else 'FAIL'}")
 
     # ---- terminal contrast ---------------------------------------------------------------------
     ds=torch.tensor([1.0,2.0,0.5]); do=torch.tensor([700.0,2.0,50.0])
