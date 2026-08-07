@@ -366,6 +366,25 @@ function draw(){
       ctx.lineWidth=1.6; ctx.stroke();
     }
   }
+  if(D.coords==='poledist'){
+    // AXIS TRIPOD: x = d(->WIN), y = d(->DRAW), z = d(->LOSS) ("wdl on xyz"). Drawn from the
+    // origin corner (near ALL outcomes) along each axis; a position ON the main diagonal is
+    // equidistant from the three endings -- the flat-committor null, made visible.
+    const org=[0,0,0], ax=[[1,0,0,'d\u2192WIN','#2e8b57'],[0,1,0,'d\u2192DRAW','#8a93a0'],[0,0,1,'d\u2192LOSS','#c94f4f']];
+    const o3=is3d()?rot3(0,0,0):[0,0]; const[oa,ob]=tx(o3[0],o3[1],w,h);
+    ctx.font='600 11px ui-monospace,monospace';
+    for(const[axx,ay,az,lab,col] of ax){
+      const p3=is3d()?rot3(axx,ay,az):[axx,ay]; const[pa,pb]=tx(p3[0],p3[1],w,h);
+      ctx.strokeStyle=col; ctx.globalAlpha=.55; ctx.lineWidth=1.4;
+      ctx.beginPath();ctx.moveTo(oa,ob);ctx.lineTo(pa,pb);ctx.stroke(); ctx.globalAlpha=1;
+      ctx.fillStyle=col; ctx.fillText(lab, pa+6, pb+4);
+    }
+    // the flat-committor diagonal, dashed
+    const d3=is3d()?rot3(1,1,1):[1,1]; const[da,db]=tx(d3[0],d3[1],w,h);
+    ctx.setLineDash([4,4]); ctx.strokeStyle=getComputedStyle(document.body).color;
+    ctx.globalAlpha=.3; ctx.beginPath();ctx.moveTo(oa,ob);ctx.lineTo(da,db);ctx.stroke();
+    ctx.setLineDash([]); ctx.globalAlpha=1;
+  }
   if(D.pole_frames){
     // Label-collision logic from the old viewer: draw a label only if it clears the ones already
     // placed. The marker always draws; zoom in and hidden labels reappear.
