@@ -784,6 +784,31 @@ class PairSampler:
         s = self.start[g]
         return s + i, s + i + 1, s + i + 2
 
+    def true_edge_mask(self, ia, ib):
+        """True where (x_ia -> x_ib) is an OBSERVED 1-ply transition anywhere in the corpus, or
+        the two rows are the SAME position (Kaveh 2026-08-07: the random repulsion must not push
+        apart pairs that are actually one legal played move apart -- reverse may push, forward
+        must not). Hash-level, so transpositions across games are caught."""
+        tr = self.tr
+        if not hasattr(tr, "_edge_keys"):
+            from . import trajectories as _T
+            h = _T.position_hash(tr.tok, tr.glob).astype(np.uint64)
+            tr._row_hash = h
+            nxt = np.arange(1, tr.n_positions + 1)
+            last = (tr.start + tr.length - 1)
+            is_last = np.zeros(tr.n_positions, bool); is_last[last] = True
+            src = np.flatnonzero(~is_last)
+            # edge key = (h_src rolled) xor h_dst -- collision-safe enough for a MASK that only
+            # withholds repulsion (a rare false positive just skips one repulsion sample)
+            keys = (np.left_shift(h[src], np.uint64(1)) ^ h[src + 1])
+            tr._edge_keys = np.sort(keys)
+        h = self.tr._row_hash
+        q = (np.left_shift(h[ia], np.uint64(1)) ^ h[ib])
+        pos = np.searchsorted(self.tr._edge_keys, q)
+        pos = np.clip(pos, 0, len(self.tr._edge_keys) - 1)
+        hit = self.tr._edge_keys[pos] == q
+        return hit | (h[ia] == h[ib])
+
     def uncovered(self, ia, ib):
         """(mask,) True where the reversal (x_ib -> x_ia) is NOT observed via any repetition.
 

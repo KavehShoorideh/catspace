@@ -62,8 +62,9 @@ from catspace.research.tools.training_infra.losses import (
     absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
     confine_radius, confining_regression, fene_confinement, fene_r_max, lj_confinement,
     log_gas_repulsion, screened_repulsion,
+    adjacent_anchor,
     start_irreversibility, start_ply_anchor, quasimetric_regression, reach_region_margin,
-    terminal_contrast,
+    pair_walls, terminal_contrast,
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
     TrainConfig, resolve_device, standard_train)
@@ -192,7 +193,7 @@ def main():
                          "base carrying everything common so a population deviates only where it "
                          "really differs. Expresses NO preference about SIGN: moving closer than "
                          "the pooled field is as cheap as moving further")
-    ap.add_argument("--w-basin", type=float, default=1.0,
+    ap.add_argument("--w-basin", type=float, default=10.0,
                     help="THE probabilistic-reachability readout: cross-entropy of "
                          "softmax(-log1p(d(s->pole))) against the game's OBSERVED outcome, over "
                          "three W/D/L poles. Proper scoring rule, so its minimiser is the true "
@@ -201,24 +202,24 @@ def main():
                          "competition is the softmax denominator. Raw attraction to the observed "
                          "pole instead COLLAPSES (measured: mean pole distance 0.000, readout "
                          "uniform) because a quasimetric permits d(s->W)=d(s->D)=0 at once")
-    ap.add_argument("--w-anchor", type=float, default=1.0,
+    ap.add_argument("--w-anchor", type=float, default=0.0,
                     help="terminal instances -> their ending pole, at that ending's certainty "
                          "radius (0 for rules and all draws, 1 ply for resignations)")
-    ap.add_argument("--w-absorb", type=float, default=1.0,
+    ap.add_argument("--w-absorb", type=float, default=0.0,
                     help="d(pole -> instance) large: a finished game cannot be left. ABSORBING, "
                          "which is the half a symmetric metric could not express")
-    ap.add_argument("--w-termrep", type=float, default=0.5,
+    ap.add_argument("--w-termrep", type=float, default=0.0,
                     help="distinct ENDING poles apart -- different arrival points of one surface")
-    ap.add_argument("--w-subsume", type=float, default=1.0,
+    ap.add_argument("--w-subsume", type=float, default=0.0,
                     help="d(ending -> outcome) -> 0: every ending subsumes into its outcome, which "
                          "pins its distance while leaving its DIRECTION free")
     ap.add_argument("--absorb-margin", type=float, default=4.0)
     ap.add_argument("--termrep-margin", type=float, default=4.0)
     ap.add_argument("--n-term", type=int, default=64, help="terminal instances per step")
-    ap.add_argument("--w-start", type=float, default=1.0,
+    ap.add_argument("--w-start", type=float, default=0.0,
                     help="d(start -> s) ~ ply: the START pole as a TIME ORIGIN, which is what pulls "
                          "the 20 first-move positions together instead of leaving them scattered")
-    ap.add_argument("--w-start-irr", type=float, default=1.0,
+    ap.add_argument("--w-start-irr", type=float, default=0.0,
                     help="d(s -> start) LARGE: you can never return to the opening. The sharpest "
                          "statement of irreversibility in the whole objective")
     ap.add_argument("--start-margin", type=float, default=4.0)
@@ -258,7 +259,7 @@ def main():
                          "than the gauge separating them. MEASURED (this arch, C=16): pole-pole "
                          "= 0.656*height; disjoint-basin criterion pole-pole >= 2.2*max shell "
                          "(462) gives height ~720; 750 adds margin")
-    ap.add_argument("--w-polesep", type=float, default=1.0,
+    ap.add_argument("--w-polesep", type=float, default=0.0,
                     help="pole-pole separation. Without it merged poles make every distance equal "
                          "and the CE sits at log 3 forever -- a saddle, not a minimum")
     ap.add_argument("--min-ply", type=int, default=0,
@@ -290,7 +291,7 @@ def main():
                     help="one-body confinement target on log1p(|z|); sets the gas radius")
     ap.add_argument("--w-confine", type=float, default=0.0, help="weight on one-body confinement")
     ap.add_argument("--w-iqe", type=float, default=1.0, help="arm B: quasimetric regression")
-    ap.add_argument("--w-repel", type=float, default=20.0, help="both arms: unobserved-pair repulsion")
+    ap.add_argument("--w-repel", type=float, default=40.0, help="both arms: unobserved-pair repulsion")
     ap.add_argument("--margin", type=float, default=1.0,
                     help="arm A repulsion margin: nats of NLL an unobserved target must exceed the "
                          "observed one of the SAME source by. Relative on purpose -- a Gaussian "
@@ -464,6 +465,12 @@ def main():
     encode = make_batcher(tr, dev, cond)
     n_rev = max(1, int(args.batch * args.rev_frac))
 
+    # row hash (shared with the edge-exclusion structure) + per-row game ids, for the wall
+    # exemptions and in-batch gas masks
+    game_of_row = tr.game_of_row()
+    _ = fit.true_edge_mask(np.array([0]), np.array([0]))   # builds tr._row_hash + edge keys once
+    tr_row_hash = tr._row_hash
+
     def terms(model, sampler, n, n_rev, ph=None):
         """One objective evaluation on freshly sampled pairs. Returns (loss, metrics)."""
         ph = ph or Phase(dev, False)
@@ -542,11 +549,31 @@ def main():
                 return fene_confinement(dd, tl, fene_r_max(gp, args.fene_stretch),
                                         soft=args.fene_soft)
             return confining_regression(dd, tl, args.confine_quartic)
-        l_q = (_spring(d_ij, gap_ij) + _spring(d_jk, gap_jk) + _spring(d_ik, gap_ik)) / 3.0
+        # HARD WALLS ONLY (Kaveh 2026-08-07): floor at 1 (nothing is closer than one move),
+        # ceiling at each observed gap + one gauge unit (a witnessed path is an exact upper
+        # bound). NO spring between the walls -- the interior is the gas's to arrange, and
+        # min-over-paths emerges from whichever observation carries the tightest ceiling.
+        # Pairs whose boards are IDENTICAL (repetitions) are exempt: their true distance is 0
+        # and the floor must not fight it.
+        _h = tr_row_hash
+        def _leg(rows_a, rows_b, dd, gp):
+            distinct = torch.from_numpy((_h[rows_a] != _h[rows_b])).to(dev)
+            if distinct.any() and args.log_gas:
+                return pair_walls(dd[distinct], gp[distinct])
+            if not args.log_gas:
+                return _spring(dd, gp)
+            return dd.sum() * 0
+        l_q = (_leg(i, j, d_ij, gap_ij) + _leg(j, k, d_jk, gap_jk)
+               + _leg(i, k, d_ik, gap_ik)) / 3.0
         if len(ra):
             l_q = 0.75 * l_q + 0.25 * _spring(DQ(gra, grb), gap_r)
         d_ji = DQ(gj, gi)           # the reversal, on the SAME two positions
         d_x = DQ(gi, gx)            # cross-game, from the SAME source i
+        # never repel a pair that is ACTUALLY one played move apart (or the same position) --
+        # hash-level check catches cross-game transpositions; reverse push stays legal
+        _true_edge = sampler.true_edge_mask(i, x)
+        if _true_edge.any():
+            d_x = d_x[torch.from_numpy(~_true_edge).to(dev)]
         # ABSOLUTE log-margin repulsion -- relu(margin - log1p(d)) -- NOT a relative pairwise
         # margin. This is the single most load-bearing lesson in the repo's IQE history and the
         # first draft of this file got it wrong.
@@ -569,11 +596,28 @@ def main():
         # margin -- reverse median 55.8 against a floor of e^4-1 = 53.6, so the asymmetry ratio
         # was a readout of repel_margin rather than anything learned. -log(d) keeps pushing
         # forever and stops only when the confining springs on observed pairs tug back.
+        # K-FOLD IN-BATCH GAS (Kaveh: 'take ten other games from the same batch and apply ten
+        # repulsions -- less force, more repulsions'): a 10x lower-variance Monte Carlo estimate
+        # of the full pairwise pressure, from embeddings already in hand.
+        K = 10
+        n_i = len(i)
+        all_rows = np.concatenate([i, j, k]); all_g = np.concatenate([gi.cpu().numpy(),
+                                                                      gj.cpu().numpy(), gk.cpu().numpy()])
+        pick = rng_np.integers(0, len(all_rows), (n_i, K))
+        srcg = game_of_row[i]
+        diffgame = game_of_row[all_rows[pick]] != srcg[:, None]
+        not_edge = ~np.stack([sampler.true_edge_mask(i, all_rows[pick[:, kk]]) for kk in range(K)], 1)
+        okm = (diffgame & not_edge).ravel()
+        src_idx = np.repeat(np.arange(n_i), K)[okm]
+        tgt_idx = pick.ravel()[okm]
+        d_ib = DQ(gi[torch.from_numpy(src_idx).to(dev)],
+                  torch.from_numpy(all_g[tgt_idx]).to(dev))
         um_b = torch.nonzero(unc, as_tuple=True)[0]
         _rep = ((lambda d, m: screened_repulsion(d)) if args.log_gas else terminal_repulsion)
         rep_rev = (_rep(d_ji[um_b], args.repel_margin)
                    if len(um_b) else torch.zeros((), device=dev))
-        l_rep_b = 0.5 * (rep_rev + _rep(d_x, args.repel_margin))
+        l_rep_b = (rep_rev + _rep(d_x, args.repel_margin)
+                   + (_rep(d_ib, args.repel_margin) if len(d_ib) else torch.zeros((), device=dev))) / 3.0
         # One-body confinement makes the log-gas equilibrium EXIST: points that appear only under
         # the pairwise repulsion have nothing pulling them back, and -log(d) alone runs to -inf.
         l_conf = (confine_radius(zB, args.confine_target, args.confine_quartic)
