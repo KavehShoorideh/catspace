@@ -316,6 +316,27 @@ def basin_logp(d_poles, temperature=1.0, raw=False):
     return F.log_softmax(basin_logits(d_poles, temperature, raw), dim=-1)
 
 
+def terminal_contrast(d_same, d_opp, margin=6.0, shell=0.7):
+    """Contrastive terminal structure (Kaveh 2026-08-07), replacing fixed poles entirely.
+
+    'What I want is: repulsion between terminal endpoints of opposite types and attraction
+    between terminal endpoints of similar types... I don't care about a fixed pull. The fixed
+    pull was just to fix the position in space somewhere.'
+
+    d_same: IQE distances between SAME-outcome terminal pairs (both directions concatenated) --
+    pulled to a ~1-ply shell (log1p(1)=0.69), NOT to zero: same-type terminals coarse-grain into
+    one arrival surface (the metastability basin) without being forced to a single point.
+    d_opp: distances between OPPOSITE-outcome terminals, both directions -- pushed above `margin`
+    in log space. A saturating hinge is CORRECT here (unlike for scale-setting): this is a floor
+    ('no play converts one ending into another'), not a pressure, and once the floor holds there
+    is nothing more to enforce. Long-range position geometry stays supervised ONLY by local
+    pairwise springs; endings separate by mutual exclusion, not by decreed coordinates."""
+    lsame = torch.log1p(d_same.clamp(min=0)) - shell
+    l_att = (lsame * lsame).mean() if len(d_same) else d_same.sum()
+    l_rep = F.relu(margin - torch.log1p(d_opp.clamp(min=0))).mean() if len(d_opp) else d_opp.sum()
+    return l_att, l_rep
+
+
 def pole_radial_anchor(d_y, target_log):
     """Radial anchor: pin a row at its outcome-pole's shell. d_y (B,) = d(phi -> P_y) for the
     row's OWN outcome pole; target_log (B,) = log-space target from reachability_target(n, -log p).
@@ -955,6 +976,17 @@ def _tests():
     ok &= all(v > 0 for v in inner)
     print(f"[lj] inner branch at d=0 for gap 1/5/40: {', '.join(f'{v:.2f}' for v in inner)} "
           f"(POSITIVE = pushes back out; was negative and collapsing)")
+
+    # ---- terminal contrast ---------------------------------------------------------------------
+    ds=torch.tensor([1.0,2.0,0.5]); do=torch.tensor([700.0,2.0,50.0])
+    la,lr=terminal_contrast(ds,do)
+    d1=torch.tensor([700.0],requires_grad=True); _,r1=terminal_contrast(ds,d1); r1.backward()
+    g_far=float(d1.grad.abs())
+    d2=torch.tensor([2.0],requires_grad=True); _,r2=terminal_contrast(ds,d2); r2.backward()
+    g_near=float(d2.grad.abs())
+    ok &= g_far==0.0 and g_near>0
+    print(f"[term-contrast] attraction {la:.3f}, repulsion {lr:.3f}; hinge grad at d=700: {g_far:.1e} "
+          f"(floor satisfied, correctly OFF), at d=2: {g_near:.3f} (pushing)  {'OK' if ok else 'FAIL'}")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 

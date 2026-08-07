@@ -772,6 +772,18 @@ class PairSampler:
         s = self.start[g]
         return s + i, s + j, s + k
 
+    def adjacent_triples(self, n):
+        """STRICT (i, i+1, i+2) -- the maximally-trustworthy local unit (Kaveh 2026-08-07:
+        'shouldn't we just train on every adjacent triplet?'). One ply cannot contain a blunder
+        *between* its endpoints: the observed gap IS the distance. Long range then arrives by
+        composition, never by decree."""
+        u = self.rng.random(n) * self.total3
+        g = np.searchsorted(self.cum3, u, side="right").clip(0, len(self.games) - 1)
+        L = self.length[g]
+        i = (self.rng.random(n) * (L - 2)).astype(np.int64)
+        s = self.start[g]
+        return s + i, s + i + 1, s + i + 2
+
     def uncovered(self, ia, ib):
         """(mask,) True where the reversal (x_ib -> x_ia) is NOT observed via any repetition.
 
