@@ -1,0 +1,10 @@
+{
+ "ckpt": "artifacts/experiments/reach_split2_latest.pt",
+ "since": "2026-08-08 09:41",
+ "history": [
+  {
+   "event": "founding champion",
+   "ckpt": "artifacts/experiments/reach_split2_latest.pt"
+  }
+ ]
+}
