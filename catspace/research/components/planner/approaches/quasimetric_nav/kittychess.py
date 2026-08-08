@@ -77,6 +77,83 @@ class KittyChess:
                 key, best = k, mv
         return best
 
+    MATE = 1e6
+
+    def margins(self, boards):
+        """mover-POV threat-first margin for each board, one batched forward."""
+        import numpy as np, torch
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
+        toks, globs = zip(*(tokenize(b) for b in boards))
+        with torch.no_grad():
+            z = self._embed(list(toks), list(globs))
+            D = {n: self.dist(z, self.poles[[k]].expand(len(z), -1).to(self.device))
+                 .float().cpu().numpy() for n, k in self.pi.items()}
+        # mover POV: my win = d->LOSS pole, my loss = d->WIN, draw = d->DRAW
+        return [float(min(D["DRAW"][i], D["WIN"][i]) - D["LOSS"][i]) for i in range(len(boards))]
+
+    def _terminal_value(self, board):
+        """exact value at game end / tablebase, mover POV, on the MATE scale."""
+        if board.is_checkmate():
+            return -self.MATE                       # mover is mated
+        if board.is_game_over(claim_draw=True):
+            return 0.0                              # stalemate/draw rules
+        if self.tb is not None and len(board.piece_map()) <= 5:
+            try:
+                w, dz = self.tb.wdl_dtz(board)
+                if w is not None:
+                    if w == 0:
+                        return 0.0
+                    sign = 1 if w > 0 else -1
+                    return sign * (self.MATE / 2 - abs(dz or 0))   # prefer faster wins
+            except Exception:
+                pass
+        return None
+
+    def negamax(self, board, depth, alpha, beta):
+        """alpha-beta minimax where the EVALUATION IS THE MARGIN (Kaveh 2026-08-08:
+        'minimax alpha beta pruning but instead of evaluate we do it from the margin').
+        Children are scored in ONE batched forward per node for move ordering, which is also
+        what makes the pruning bite. Returns (value mover-POV, pv list of Moves)."""
+        tv = self._terminal_value(board)
+        if tv is not None:
+            return tv, []
+        moves = list(board.legal_moves)
+        if not moves:
+            return 0.0, []
+        children = []
+        for m in moves:
+            board.push(m); children.append(board.copy(stack=False)); board.pop()
+        cm = self.margins(children)                 # child margins, OPPONENT'S POV
+        order = sorted(range(len(moves)), key=lambda i: cm[i])   # their worst first
+        if depth <= 1:
+            best = order[0]
+            return -cm[best], [moves[best]]
+        best_v, best_pv = -float("inf"), []
+        for i in order:
+            v, pv = self.negamax(children[i], depth - 1, -beta, -alpha)
+            v = -v
+            if v > best_v:
+                best_v, best_pv = v, [moves[i]] + pv
+            alpha = max(alpha, v)
+            if alpha >= beta:
+                break
+        return best_v, best_pv
+
+    def search(self, board, depth=3, top=3):
+        """root search: returns rows sorted by searched value, each with its PV."""
+        tv = self._terminal_value(board)
+        moves = list(board.legal_moves)
+        if not moves:
+            return []
+        rows = []
+        for m in moves:
+            board.push(m)
+            v, pv = self.negamax(board, depth - 1, -float("inf"), float("inf"))
+            board.pop()
+            rows.append({"mv": m, "value": -v, "pv": [m] + pv})
+        rows.sort(key=lambda r: r["value"], reverse=True)
+        return rows
+
     def choose(self, board):
         moves = list(board.legal_moves)
         if not moves:

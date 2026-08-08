@@ -16,6 +16,8 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import chess
+from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess as _KC
+KittyMATE=_KC.MATE
 
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_assets")
 
@@ -45,7 +47,9 @@ __CG_CSS__
 <div id="board" class="cg-wrap"></div>
 <div class="bar"><button id="new">new game</button><button id="flip">play black</button><span id="status"></span></div>
 </div>
-<div class="panel"><h2>engine deliberation</h2>
+<div class="panel"><h2>top lines</h2>
+<table id="lines"><tbody></tbody></table>
+<h2 style="margin-top:14px">engine deliberation <span style="text-transform:none">(alpha-beta on the margin)</span></h2>
 <table id="think"><thead><tr><th>move</th><th>d→win</th><th>d→draw</th><th>d→loss</th><th>margin</th></tr></thead><tbody></tbody></table>
 </div></div></div>
 <script>__CG_JS__</script>
@@ -66,8 +70,13 @@ async function refresh(move){
   const tb=document.querySelector('#think tbody'); tb.innerHTML="";
   (d.think||[]).forEach((row,i)=>{const tr=document.createElement('tr');
     if(i===0)tr.className="pick";
-    tr.innerHTML=`<td>${row.uci}${row.tb?" (tb)":""}</td><td>${row.dwin}</td><td>${row.ddraw}</td><td>${row.dloss}</td><td>${row.margin}</td>`;
+    tr.innerHTML=`<td>${row.uci}${row.tb?" (tb)":""}${row.deep?"*":""}</td><td>${row.dwin}</td><td>${row.ddraw}</td><td>${row.dloss}</td><td>${row.margin}</td>`;
     tb.appendChild(tr);});
+  const lt=document.querySelector('#lines tbody'); lt.innerHTML="";
+  (d.think||[]).slice(0,3).forEach((row,i)=>{ if(!row.line)return;
+    const tr=document.createElement('tr'); if(i===0)tr.className="pick";
+    tr.innerHTML=`<td style="width:3em">${row.margin}</td><td style="text-align:left">${row.line}</td>`;
+    lt.appendChild(tr);});
   S(d.over||d.thinkingNote||"your move");
 }
 async function play(uci){ if(busy)return; busy=true; S("thinking…");
@@ -83,6 +92,7 @@ class H(BaseHTTPRequestHandler):
     eng = None
     board = chess.Board()
     human_white = True
+    depth = 3
 
     def log_message(self, *a):
         pass
@@ -119,8 +129,8 @@ class H(BaseHTTPRequestHandler):
             rows = self._deliberate()
             if rows:
                 cls.board.push(rows[0]["mv"])
-                think = [{k: r[k] for k in ("uci", "dwin", "ddraw", "dloss", "margin", "tb")}
-                         for r in rows[:18]]
+                think = [{k: r.get(k) for k in ("uci", "dwin", "ddraw", "dloss", "margin",
+                                                "tb", "deep", "line")} for r in rows[:18]]
             over = self._over()
         dests = {}
         if not over and (cls.board.turn == chess.WHITE) == cls.human_white:
@@ -146,50 +156,35 @@ class H(BaseHTTPRequestHandler):
         return None
 
     def _deliberate(self):
-        import numpy as np, torch
-        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
-        eng = H.eng
         b = H.board
-        moves = list(b.legal_moves)
-        if not moves:
-            return []
-        if eng.tb is not None and len(b.piece_map()) <= 5:
-            mv = eng._tb_move(b)
-            if mv is not None:
-                return [{"mv": mv, "uci": mv.uci(), "dwin": "-", "ddraw": "-", "dloss": "-",
-                         "margin": "tb", "tb": True}]
-        toks, globs = [], []
-        for mv in moves:
-            b.push(mv)
-            tk, gl = tokenize(b)
-            toks.append(tk); globs.append(gl)
-            b.pop()
-        with torch.no_grad():
-            z = eng._embed(toks, globs)
-            D = {n: eng.dist(z, eng.poles[[k]].expand(len(z), -1).to(eng.device))
-                 .float().cpu().numpy() for n, k in eng.pi.items()}
-        rows = []
-        for i, mv in enumerate(moves):
-            dwin, ddraw, dloss = float(D["LOSS"][i]), float(D["DRAW"][i]), float(D["WIN"][i])
-            dbad = min(ddraw, dloss)
-            rows.append({"mv": mv, "uci": mv.uci(), "dwin": round(dwin, 1),
-                         "ddraw": round(ddraw, 1), "dloss": round(dloss, 1),
-                         "margin": round(dbad - dwin, 1), "tb": False,
-                         "_key": (dbad - dwin, dbad)})
-        rows.sort(key=lambda r: r["_key"], reverse=True)
-        return rows
+        rows = H.eng.search(b, depth=H.depth)
+        out = []
+        for r in rows[:18]:
+            bb = b.copy()
+            sans = []
+            for mv in r["pv"][:4]:
+                sans.append(bb.san(mv)); bb.push(mv)
+            v = r["value"]
+            disp = ("#" if abs(v) >= KittyMATE / 4 else round(v, 1))
+            out.append({"mv": r["mv"], "uci": r["mv"].uci(), "margin": disp,
+                        "dwin": "", "ddraw": "", "dloss": "",
+                        "tb": abs(v) >= KittyMATE / 4, "deep": True,
+                        "line": " ".join(sans)})
+        return out
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--port", type=int, default=8420)
+    ap.add_argument("--depth", type=int, default=3)
     ap.add_argument("--cond-elo", type=float, default=None)
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
     from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
     H.eng = KittyChess(args.ckpt, args.device, args.cond_elo)
+    H.depth = args.depth
     global PAGE_BYTES
     cg_js = open(os.path.join(ASSETS, "bundle.js")).read()
     cg_css = open(os.path.join(ASSETS, "bundle.css")).read()
