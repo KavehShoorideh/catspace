@@ -191,6 +191,30 @@ class KittyChess:
                 pass
         return None
 
+    def bellman_residual(self, board):
+        """|d(s -> mover's win pole) - 1 - min over moves d(child -> same pole)| in the field.
+
+        The field's local self-consistency at this position. ~0 = the geometry's gradient is a
+        valid plan here (trust it, search shallow); large = the map contradicts itself here
+        (deliberate). White-POV pole selection; None for terminals or non-white-pov ckpts."""
+        if not self.white_pov or board.is_game_over(claim_draw=True):
+            return None
+        moves = list(board.legal_moves)
+        if not moves:
+            return None
+        toks, globs = [tokenize(board)], []
+        globs = [toks[0][1]]; toks = [toks[0][0]]
+        for mv in moves:
+            board.push(mv)
+            tk, gl = tokenize(board)
+            toks.append(tk); globs.append(gl)
+            board.pop()
+        pole = self.poles[[self.pi["WIN" if board.turn else "LOSS"]]].to(self.device)
+        with torch.no_grad():
+            z = self._embed(toks, globs)
+            d = self.dist(z, pole.expand(len(z), -1)).float().cpu().numpy()
+        return float(d[0] - 1.0 - d[1:].min())
+
     class SearchStop(Exception):
         """raised mid-search when the caller's stop() turns true (navigation cancelled it)."""
 
@@ -226,11 +250,23 @@ class KittyChess:
                 break
         return best_v, best_pv
 
-    def search(self, board, depth=3, top=3, stop=None, progress=None):
+    def search(self, board, depth=3, top=3, stop=None, progress=None,
+               adaptive=False, max_extra=1, resid_scale=2.0):
         """root search: rows sorted by searched value, each with its PV. `stop` (callable) makes
         the search ABORTABLE lichess-style: checked at every node; on stop the rows finished so
         far are returned (partial MultiPV beats a frozen UI). `progress(rows_sorted)` fires after
-        every completed root move for live streaming."""
+        every completed root move for live streaming.
+
+        `adaptive` (Kaveh 2026-08-08, both Bellman uses): the field's own Bellman residual at
+        the root gates the depth -- consistent field, base depth; contradictory field, up to
+        `max_extra` deeper (one extra ply per `resid_scale` of |residual|). The residual is
+        attached to every returned row as row['resid']; search budget falls automatically as
+        the field's consistency improves ([[adaptive_search_budget]])."""
+        resid = None
+        if adaptive:
+            resid = self.bellman_residual(board)
+            if resid is not None:
+                depth += min(max_extra, int(abs(resid) / resid_scale))
         tv = self._terminal_value(board)
         moves = list(board.legal_moves)
         if not moves:
@@ -244,7 +280,8 @@ class KittyChess:
                 board.pop()
                 break
             board.pop()
-            rows.append({"mv": m, "value": -v, "pv": [m] + pv})
+            rows.append({"mv": m, "value": -v, "pv": [m] + pv,
+                         "resid": resid, "depth_used": depth})
             if progress is not None:
                 progress(sorted(rows, key=lambda r: r["value"], reverse=True))
         rows.sort(key=lambda r: r["value"], reverse=True)

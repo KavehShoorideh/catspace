@@ -115,7 +115,8 @@ async function api(body){
     const dp=await rp.json();
     if(my!==seq)return;
     if(dp.think.length){renderLines(dp);document.getElementById('lnbox').style.opacity=1;}
-    document.getElementById('dinfo').textContent="depth "+dp.depth+(dp.done?"":"…");
+    document.getElementById('dinfo').textContent="depth "+dp.depth+(dp.done?"":"…")
+      +(dp.resid!=null?"  ·  Bellman residual "+dp.resid.toFixed(1):"");
     document.getElementById('dinfo').className=dp.done?"":"spin";
     if(dp.done)break;
   }
@@ -246,13 +247,18 @@ class H(BaseHTTPRequestHandler):
                 def worker():
                     def publish(rows, d):
                         if H.gen == g:
-                            H.an = {"g": g, "depth": d,
+                            H.an = {**H.an, "g": g, "depth": d,
                                     "rows": [{k: r.get(k) for k in ("uci", "margin", "tb", "line")}
                                              for r in self._rows_to_display(bb, rows)[:nlines]],
                                     "done": False}
                     try:
                         with H.lock:
-                            for d in range(1, depth + 1):
+                            # Bellman-residual gate (Kaveh 2026-08-08): a self-contradictory
+                            # field here earns one extra ply; the residual is shown in the UI.
+                            resid = H.eng.bellman_residual(bb)
+                            top = depth + (1 if resid is not None and abs(resid) >= 2.0 else 0)
+                            H.an = {**H.an, "resid": resid, "top": top}
+                            for d in range(1, top + 1):
                                 if H.gen != g:
                                     return
                                 rows = H.eng.search(bb, depth=d, stop=lambda: H.gen != g,
@@ -271,6 +277,7 @@ class H(BaseHTTPRequestHandler):
             cur = H.an if H.an.get("g") == H.gen else {"rows": [], "depth": 0, "done": False}
             self._send(200, json.dumps({"think": cur.get("rows", []),
                                         "depth": cur.get("depth", 0),
+                                        "resid": cur.get("resid"),
                                         "done": bool(cur.get("done"))}).encode())
             return
         # fast phase: position + tricolor committor bar [P(white), P(draw), P(black)]
