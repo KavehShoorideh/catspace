@@ -41,6 +41,19 @@ class KittyChess:
         pn = self.cfg["pole_names"]
         self.poles = self.net.poles.poles.detach().float()
         self.pi = {n: pn.index(n) for n in ("WIN", "DRAW", "LOSS")}
+        # basin-pov 'white' (2026-08-08): poles are colour-fixed (WIN = white wins), so
+        # readouts select the pole by colour, not by whose turn it is at the queried node.
+        self.white_pov = (self.cfg.get("train_args") or {}).get("basin_pov") == "white"
+        # terminal-exemplar committor (2026-08-08): contrastive-mode ckpts train NO poles --
+        # net.poles holds untouched init buffers (the frozen 45/65/139 readout). The validated
+        # readout is median distance to real terminal boards (export_exemplars.py sidecar,
+        # white-POV classes W/D/L). When the sidecar exists it REPLACES the pole readout.
+        exp = (ckpt[:-3] if ckpt.endswith(".pt") else ckpt) + "_exemplars.pt"
+        self.ex = None
+        import os as _os
+        if _os.path.exists(exp):
+            pay_ex = torch.load(exp, map_location=device, weights_only=False)
+            self.ex = {k: pay_ex[k].to(device) for k in ("W", "D", "L")}
         self.tb = TB() if use_tb else None
         if getattr(self.net, "split_head", False):
             self.dist = self.net.dB
@@ -48,6 +61,15 @@ class KittyChess:
             self.dist = self.net.qhead.d_base
         else:
             self.dist = self.net.iqe
+
+    def _exd(self, z):
+        """(len(z), 3) median distance to the W/D/L exemplar sets -- white-POV columns."""
+        cols = []
+        for k in ("W", "D", "L"):
+            E = self.ex[k]
+            dd = torch.stack([self.dist(z, E[e].expand(len(z), -1)) for e in range(len(E))], 1)
+            cols.append(dd.median(1).values)
+        return torch.stack(cols, 1)
 
     def _embed(self, toks, globs):
         tok_t = torch.from_numpy(np.array(toks).astype(np.int64)).to(self.device)
@@ -86,13 +108,27 @@ class KittyChess:
         toks, globs = zip(*(tokenize(b) for b in boards))
         with torch.no_grad():
             z = self._embed(list(toks), list(globs))
+            if self.ex is not None:
+                M = self._exd(z).float().cpu().numpy()   # white-POV cols: W / D / L
+                out = []
+                for i, b in enumerate(boards):
+                    mw, ml = (0, 2) if b.turn else (2, 0)
+                    out.append(float(min(M[i, 1], M[i, ml]) - M[i, mw]))
+                return out
             D = {n: self.dist(z, self.poles[[k]].expand(len(z), -1).to(self.device))
                  .float().cpu().numpy() for n, k in self.pi.items()}
-        # mover POV: my win = d->LOSS pole, my loss = d->WIN, draw = d->DRAW
+        if self.white_pov:
+            out = []
+            for i, b in enumerate(boards):
+                mw, ml = ("WIN", "LOSS") if b.turn else ("LOSS", "WIN")
+                out.append(float(min(D["DRAW"][i], D[ml][i]) - D[mw][i]))
+            return out
+        # mover-POV poles: my win = d->LOSS pole, my loss = d->WIN, draw = d->DRAW
         return [float(min(D["DRAW"][i], D["WIN"][i]) - D["LOSS"][i]) for i in range(len(boards))]
 
     def wdl(self, board, tau=5.0):
-        """P(mover wins, draw, mover loses) -- softmax over the three pole distances.
+        """WHITE-POV [P(white wins), P(draw), P(black wins)] -- softmax over the three
+        pole distances.
 
         This IS the eval bar (Kaveh 2026-08-08): no scalar, three distances softmaxed.
         Exact at terminals and in tablebase range; field softmax elsewhere. tau matches
@@ -103,26 +139,37 @@ class KittyChess:
         CE at w=10 where the force audit demanded ~1000x, so d(z->pole) is position-
         invariant (~0.1 over startpos..bare-kings) and the field part of this bar is
         flat until a re-based checkpoint lands."""
-        if board.is_checkmate():
-            return [0.0, 0.0, 1.0], None
+        wtm = board.turn == chess.WHITE
+        if board.is_checkmate():                        # mover is mated
+            return ([0.0, 0.0, 1.0] if wtm else [1.0, 0.0, 0.0]), None
         if board.is_game_over(claim_draw=True):
             return [0.0, 1.0, 0.0], None
         if self.tb is not None and len(board.piece_map()) <= 5:
             try:
-                w, _ = self.tb.wdl_dtz(board)
+                w, _ = self.tb.wdl_dtz(board)           # mover POV
                 if w is not None:
-                    return ([1.0, 0.0, 0.0] if w > 0 else
-                            ([0.0, 1.0, 0.0] if w == 0 else [0.0, 0.0, 1.0])), None
+                    if w == 0:
+                        return [0.0, 1.0, 0.0], None
+                    mover_wins = w > 0
+                    return ([1.0, 0.0, 0.0] if mover_wins == wtm
+                            else [0.0, 0.0, 1.0]), None
             except Exception:
                 pass
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
         toks, globs = tokenize(board)
         with torch.no_grad():
             z = self._embed([toks], [globs])
-            D = {n: float(self.dist(z, self.poles[[k]].to(self.device)).float().cpu())
-                 for n, k in self.pi.items()}
-        # mover POV: my win = d->LOSS pole (see margins)
-        d = np.array([D["LOSS"], D["DRAW"], D["WIN"]])
+            if self.ex is not None:                     # committor from geometry: white-POV cols
+                d = self._exd(z)[0].float().cpu().numpy()
+            else:
+                D = {n: float(self.dist(z, self.poles[[k]].to(self.device)).float().cpu())
+                     for n, k in self.pi.items()}
+                if self.white_pov:                      # colour-fixed poles: direct readout
+                    d = np.array([D["WIN"], D["DRAW"], D["LOSS"]])
+                else:                                   # mover-POV reachability reading, then flip
+                    d = np.array([D["LOSS"], D["DRAW"], D["WIN"]])
+                    if not wtm:
+                        d = d[::-1].copy()
         e = np.exp(-(d - d.min()) / tau)
         return [float(x) for x in (e / e.sum())], [float(x) for x in d]
 
@@ -205,10 +252,23 @@ class KittyChess:
             board.pop()
         with torch.no_grad():
             z = self._embed(toks, globs)
-            D = {n: self.dist(z, self.poles[[k]].expand(len(z), -1).to(self.device))
-                 .float().cpu().numpy() for n, k in self.pi.items()}
-        # POV flip at the child: our win = child-mover's LOSS
-        d_win, d_draw, d_loss = D["LOSS"], D["DRAW"], D["WIN"]
+            if self.ex is not None:
+                M = self._exd(z).float().cpu().numpy()   # white-POV cols
+                ow, ot = (0, 2) if board.turn else (2, 0)
+                d_win, d_draw, d_loss = M[:, ow], M[:, 1], M[:, ot]
+                D = None
+            else:
+                D = {n: self.dist(z, self.poles[[k]].expand(len(z), -1).to(self.device))
+                     .float().cpu().numpy() for n, k in self.pi.items()}
+        if D is None:
+            pass
+        elif self.white_pov:
+            # colour-fixed poles: our win pole is by OUR colour, same at every child
+            ours, theirs = ("WIN", "LOSS") if board.turn else ("LOSS", "WIN")
+            d_win, d_draw, d_loss = D[ours], D["DRAW"], D[theirs]
+        else:
+            # POV flip at the child: our win = child-mover's LOSS
+            d_win, d_draw, d_loss = D["LOSS"], D["DRAW"], D["WIN"]
         d_bad = np.minimum(d_draw, d_loss)
         margin = d_bad - d_win
         order = np.lexsort((-d_bad, -margin))    # primary margin desc, then d_bad desc

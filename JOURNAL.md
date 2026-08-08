@@ -11607,3 +11607,48 @@ steering (consistent with legal-but-loose mid-range distances; the search/Bellma
 **Stage-2 launched:** winner recipe (split c16, SF-only, w_repel 40, w_basin 1000, no cond) at
 full SF corpus -- 4k balanced + 16k piece-down (95% decisive) -- 128x3 trunk, 20k steps, force
 audit riding. Piece-down batches merged (piecedown_sfsf_all.tsv). Stage-3 seeds follow a pass.
+
+## 2026-08-08 (later) — Mistake #13: vacuous basin + move-head in contrastive mode; the committor
+## was never trained anywhere; white-POV basin fix; lichess-replica analysis board shipped
+
+**The analysis board demanded a committor and the committor did not exist.** Kaveh's spec: eval
+bar = the three pole distances softmaxed (white/gray/black). Wiring it exposed a chain of
+retractions:
+
+1. **Pole distances are position-invariant in every walls-era ckpt** (45.4/65.8/139.8 +/-0.1
+   from startpos to bare kings to an actual delivered mate). Cause: `--poles contrastive` (the
+   2026-08-07 default) never calls attach_poles, so net.poles is None during training;
+   load_net re-attaches RANDOM poles at load. Every pole readout since has read init noise.
+2. **Mistake #13 (the #12 genus: silently-vacuous training).** The basin CE and the ENTIRE
+   move-head loss are gated on `model.poles is not None` -- neither ever ran in mh2. The
+   "deadband freed the head, top1 0.080, under-fed" verdict is RETRACTED: the head was
+   random-init. Stage-2's "w_basin 1000" was equally a no-op. Guard added the hard way: full
+   train_args now saved into ckpt cfg (couldn't even audit mh2's weights from its own file).
+3. **The contrastive committor-from-geometry is empty off the TB boundary.** Exemplar readout
+   (median dB to 64 real terminal boards per class, the readout the 0.6-0.7 routing gate
+   validated) temperature-scaled on 2k val rows: CE 1.0953 vs uniform 1.0986, top1 0.287
+   (chance 0.333). No absolute WDL signal exists anywhere in the champion. Walls train only
+   relative path geometry; outcome never entered.
+4. **Data was NOT the hole**: 4,000/4,000 balanced-SF games replay from the literal startpos
+   (token-verified in the training cache).
+
+**The gauge-frustration finding (why mover-POV basin can't work with walls):** a winning
+mover's rows flow TOWARD the terminal where the OPPONENT is mated, so consecutive plies of one
+trajectory alternate mover-POV class while converging on ONE terminal. Measured on
+reach_stage2: win/loss pole distances collapsed to constants (1.88/5.00, sigma~0.01); only the
+parity-symmetric draw-vs-decisive axis moored (4.87 draws vs 5.17/5.25 decisive on TB probes)
+-- exactly the one frustration-free direction. WHITE-POV labels are frustration-free: every row
+of a white-win game pulls to the same pole. `outcome_of_row_white()` + `--basin-pov white`;
+move-head axis mapping made colour-aware to match.
+
+**Launched (smoke, 1.5k steps): reach_mhw** = split c16 SF-only + `--poles fixed` +
+white-POV basin at 1000 + move-head at last actually training, fed 32 pos/step (was 8,
+hard-coded). Bundled per the no-one-lever rule; force audit riding.
+
+**KittyChess/analysis board (shipped, f07051f + this):** lichess-replica page -- tricolor
+committor eval bar (P_white/P_draw/P_black white/gray/black), engine box with depth+lines
+knobs, clickable PV lines, SAN move list with full navigation (arrow keys, truncate-on-branch),
+free both-sides analysis + play-vs-engine switch. Engine readouts now dispatch per-ckpt:
+exemplar sidecar (export_exemplars.py, calibrated tau inside) > white-POV poles > legacy
+mover-POV poles; raw distances displayed under the bar so a dead committor is visible, never
+mysterious. Exact bar at terminals/TB either way.
