@@ -136,11 +136,16 @@ def make_batcher(tr, dev, cond=None):
     The ViT is ~all of the step cost, and the triples/cross/reversible draws overlap heavily, so
     encoding unique rows once and gathering is a straight multiple off the wall clock (the
     optimize-before-long-runs rule). Returns (index_fn, encode_fn)."""
-    def encode(net, rows_list):
+    def encode(net, rows_list, mirror=False):
         rows = np.concatenate(rows_list)
         uniq, inv = np.unique(rows, return_inverse=True)
-        tok = torch.from_numpy(tr.tok[uniq].astype(np.int64)).to(dev)
-        glob = torch.from_numpy(tr.glob[uniq].astype(np.float32)).to(dev)
+        tk, gb = tr.tok[uniq], tr.glob[uniq]
+        if mirror:
+            from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                mirror_arrays)
+            tk, gb = mirror_arrays(tk, gb)
+        tok = torch.from_numpy(tk.astype(np.int64)).to(dev)
+        glob = torch.from_numpy(gb.astype(np.float32)).to(dev)
         phi = net.backbone(tok, glob)
         z_a = net.proj_a(phi)
         if net.dual:
@@ -265,6 +270,9 @@ def main():
                     help="piece-down SF-vs-SF games (gen_piecedown_sfsf.py) merged into the SF "
                          "pool: decisive optimal play reaching real endings -- the walls the "
                          "Option-B skeleton needs in the TB region")
+    ap.add_argument("--mirror", type=int, default=0,
+                    help="color-mirror involution: coin-flip per step, whole batch mirrored "
+                         "consistently, W/L labels swapped (lc0/NNUE symmetry, our frame)")
     ap.add_argument("--basin-pov", choices=("mover", "white"), default="mover",
                     help="basin CE label POV; 'white' is the gauge-unfrustrated choice "
                          "(2026-08-08 finding), 'mover' reproduces older recipes")
@@ -573,8 +581,12 @@ def main():
             Tg = trow_of_game[game_of_row[i]]
             tvalid = (Tg >= 0) & (src_of_game[game_of_row[i]] == 1)   # SF terminals only (Option B)
             rows.append(np.where(tvalid, Tg, i))            # placeholder self-row where censored
+        # COLOR-MIRROR involution (lc0/NNUE adaptation, 2026-08-08): one coin per STEP so every
+        # leg of every pair is mirrored consistently. Walls/gas/vicreg are mirror-blind; the two
+        # label consumers (basin y, move-head) swap W<->L below when _mirror is set.
+        _mirror = bool(args.mirror) and bool(rng_np.integers(0, 2))
         with ph("encode"):
-            phi, zA, zB, zR, zT, idx = encode(model, rows)
+            phi, zA, zB, zR, zT, idx = encode(model, rows, mirror=_mirror)
         if tia is not None:
             gi, gj, gk, gx, gra, grb, gta, gtb, gT = idx[:9] if len(idx) == 9 else (*idx, None)
         else:
@@ -748,6 +760,9 @@ def main():
         l_polesep = torch.zeros((), device=dev)
         if args.w_basin > 0 and model.poles is not None:
             y_np = outcome[np.concatenate([i, j, k])]
+            if _mirror and args.basin_pov == "white":
+                y_np = np.where(y_np == 0, 2, np.where(y_np == 2, 0, y_np))  # W<->L; mover-POV
+                                                        # labels are mirror-invariant, no swap
             live = np.flatnonzero(y_np >= 0)
             if len(live) > 8:
                 # CONDITIONED committor (2026-08-07): in dual mode the CE trains P(o | s, elo)
@@ -917,13 +932,22 @@ def main():
             for pi_ in psel:
                 a, b2 = int(wdl_pack["off"][pi_]), int(wdl_pack["off"][pi_ + 1])
                 prow = int(wdl_pack["row"][pi_])
+                _ptk, _pgb = tr.tok[prow:prow+1], tr.glob[prow:prow+1]
+                _mid_np = wdl_pack["mid"][a:b2].astype(np.int64)
+                if _mirror:
+                    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                        mirror_arrays, mirror_squares)
+                    _ptk, _pgb = mirror_arrays(_ptk, _pgb)
+                    _mid_np = _mid_np.copy()
+                    _mid_np[:, 0] = mirror_squares(_mid_np[:, 0])
+                    _mid_np[:, 1] = mirror_squares(_mid_np[:, 1])
                 # parent context: one encoder forward
                 phi_p = model.backbone(
-                    torch.from_numpy(tr.tok[prow:prow+1].astype(np.int64)).to(dev),
-                    torch.from_numpy(tr.glob[prow:prow+1].astype(np.float32)).to(dev))
+                    torch.from_numpy(_ptk.astype(np.int64)).to(dev),
+                    torch.from_numpy(_pgb.astype(np.float32)).to(dev))
                 z_p = (model.qhead.embed(phi_p)[0] if model.dual else model.proj_b(phi_p))
                 d_par = torch.stack([_dp2(z_p, POLES3[[o]]) for o in range(3)], 1)  # (1,3)
-                mids = torch.from_numpy(wdl_pack["mid"][a:b2].astype(np.int64)).to(dev)
+                mids = torch.from_numpy(_mid_np).to(dev)
                 delta = model.move_head(phi_p.expand(len(mids), -1), mids)          # (n,3)
                 d_hat = d_par.expand(len(mids), -1) + delta                          # (n,3)
                 # three-pole graded listwise: model's softmax over moves of -d_hat[:,o]/tau vs
@@ -935,7 +959,7 @@ def main():
                 # LOSS-pole distance (child's mover = opponent). white-POV poles: our win =
                 # WIN pole iff the PARENT's mover is white -- poles are colour-fixed.
                 if args.basin_pov == "white":
-                    _wtm = bool(tr.glob[prow, 0])
+                    _wtm = bool(tr.glob[prow, 0]) != _mirror     # mirror flips the mover's colour
                     _cmap = ((0, 0), (1, 1), (2, 2)) if _wtm else ((0, 2), (1, 1), (2, 0))
                 else:
                     _cmap = ((0, 2), (1, 1), (2, 0))
@@ -944,9 +968,12 @@ def main():
                     terms_mh.append(-(tgt[:, o] * logp).sum())
                 # consistency: on 4 sampled children, the chart must match the encoded truth
                 cs = rng_np.integers(0, len(mids), 4)
+                _ctk, _cgb = wdl_pack["tok"][a:b2][cs], wdl_pack["glob"][a:b2][cs]
+                if _mirror:
+                    _ctk, _cgb = mirror_arrays(_ctk, _cgb)
                 zc = model.encode_q(
-                    torch.from_numpy(wdl_pack["tok"][a:b2][cs].astype(np.int64)).to(dev),
-                    torch.from_numpy(wdl_pack["glob"][a:b2][cs].astype(np.float32)).to(dev))
+                    torch.from_numpy(_ctk.astype(np.int64)).to(dev),
+                    torch.from_numpy(_cgb.astype(np.float32)).to(dev))
                 d_true = torch.stack([_dp2(zc, POLES3[[o]].expand(len(zc), -1))
                                       for o in range(3)], 1)
                 # DEADBAND consistency (2026-08-08): hard MSE pinned the head to the field's
