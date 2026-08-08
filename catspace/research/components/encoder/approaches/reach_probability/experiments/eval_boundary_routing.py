@@ -37,12 +37,16 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--n-pos", type=int, default=800)
     ap.add_argument("--cond-elo", type=float, default=None)
+    ap.add_argument("--exemplars", action="store_true",
+                    help="score against real loss-terminal boards instead of poles (the "
+                         "committor-from-geometry readout)")
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
     net, pay = load_net(args.ckpt, args.device)
     c = pay["cfg"]
-    tr = T.build(n_human=c["games"] // 2, n_sf=c["games"] // 2, seed=c["traj_seed"],
+    tr = T.build(n_human=0 if c.get("sf_only") else c["games"] // 2,
+                 n_sf=c["games"] if c.get("sf_only") else c["games"] // 2, seed=c["traj_seed"],
                  max_plies=c["max_plies"], n_piecedown=c.get("n_piecedown", 0), verbose=False)
     split = split_by_game(np.arange(len(tr)), (0.70, 0.15), c["traj_seed"])
     test = np.flatnonzero(split == 2)
@@ -81,9 +85,29 @@ def main():
             return net.encode_dual(tok_t, glob_t, cond)[1]
         return net.encode_q(tok_t, glob_t)
 
-    iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
-    pn = c["pole_names"]
-    pL = net.poles.poles.detach().float()[pn.index("LOSS")]
+    iqe = (net.dB if getattr(net, "split_head", False)
+           else (net.qhead.iqe if getattr(net, "dual", False) else net.iqe))
+    if args.exemplars:
+        # COMMITTOR FROM GEOMETRY (Kaveh 2026-08-08: "I don't plan on needing the committor, it
+        # should come from the geometry"): reference = real mate/loss TERMINAL boards from TRAIN
+        # games, not poles. d(child -> mover-got-mated exemplars) small = opponent about to lose.
+        t_rows, t_term = tr.terminal_rows()
+        tr_games = np.flatnonzero(split == 0)
+        m = np.isin(game[t_rows], tr_games) & (T.TERM_OUTCOME[t_term] == 2)   # mover LOST here
+        ex_rows = t_rows[m][rng.choice(m.sum(), min(64, int(m.sum())), replace=False)]
+        with torch.no_grad():
+            Zex = enc(torch.from_numpy(tr.tok[ex_rows].astype(np.int64)).to(args.device),
+                      torch.from_numpy(tr.glob[ex_rows].astype(np.float32)).to(args.device))
+        def score(z):
+            with torch.no_grad():
+                dd = torch.stack([iqe(z, Zex[e].expand(len(z), -1)) for e in range(len(Zex))], 1)
+            return dd.median(1).values.float().cpu().numpy()
+    else:
+        pn = c["pole_names"]
+        pL = net.poles.poles.detach().float()[pn.index("LOSS")]
+        def score(z):
+            with torch.no_grad():
+                return iqe(z, pL.expand(len(z), -1).to(args.device)).float().cpu().numpy()
 
     tb = TB()
     pair_ok = pair_n = 0
@@ -112,7 +136,7 @@ def main():
         with torch.no_grad():
             z = enc(torch.from_numpy(np.array(toks).astype(np.int64)).to(args.device),
                     torch.from_numpy(np.array(globs).astype(np.float32)).to(args.device))
-            d = iqe(z, pL.expand(len(z), -1).to(args.device)).float().cpu().numpy()
+            d = score(z)
         vals = np.array(vals, float)
         for a in range(len(vals)):
             for bb in range(a + 1, len(vals)):

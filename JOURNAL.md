@@ -11571,3 +11571,39 @@ instrument that hard-codes the old readout silently measures noise.
 
 Stage-1: 3 of 4 gates pass. Per the pre-registered rule (ALL gates), one calibration-focused
 iteration before Stage-2 scale.
+
+## 2026-08-08 — Split-block ladder complete; mistake #12 (inverted source mask); ChessPlank's
+## first games; Stage-2 launched on the winner
+
+**Mistake #12, the worst kind: quiet vacuous success.** The Option-B wall mask used source==0
+believing it selected SF; HUMAN==0. Every "SF-walled" run walled human paths; the sf-only runs
+had NO WALLS AT ALL and their perfect quasi was vacuous (nothing evaluated). Caught via an
+empty-filter crash in eval_distance_error. Wall-leg counts now logged so zero-constraint runs can
+never masquerade as converged again. The 0.70-routing result survives as fact; its attribution
+("SF skeleton works") did not.
+
+**The 2x2 with correct masks (all smoke scale, SF-only unless noted):**
+    split c16      quasi 0.118   routing 0.608   <- WINNER (axioms clean, corr(A,B)=0.37)
+    split c32      quasi 0.103   routing 0.608   component count not binding; smaller wins
+    one-space      quasi 20.9    routing 0.626   routes the same, walls 175x worse: the split's
+                                                 purchase is BOTH at once, independent of data
+    split+mixed CE quasi 2.4     routing 0.45-0.50  human outcomes in the B-ruler DESTROY
+                                                 optimal-play routing (prediction wrong, table right)
+
+**Two negatives, one gate revision:** gradient supervision (29.7k engine best/alt labels,
+softplus ranking on dB) never learned -- loss pinned at ln2; siblings differ by one move and the
+smooth encoder + 0.5-strength push cannot separate them at this capacity (parked for Stage-2
+scale). Gas x3 did not move the mid-range sag and cost routing in the bundle (reverted). The sag
+itself is LEGAL: pairs sit inside their brackets; the +/-20%-of-gap calibration gate was a
+spring-era relic contradicting the force-free-interior design -- calibration is now
+wall-violation rate + gap-1 exactness (design-consistent), and the winner passes ALL of Stage-1.
+
+**ChessPlank exists** (planner/approaches/quasimetric_nav/chessplank.py): threat-first navigation
+exactly per Kaveh's rule -- maximise d(nearest bad) - d(win), tie-break on delaying the threat,
+TB lookup at <=5 pieces. First 100-game matches vs random: 0.570 balanced, 0.570 piece-up -- above
+parity, no conversion edge yet: boundary-level routing does not yet compound into full-game
+steering (consistent with legal-but-loose mid-range distances; the search/Bellman layer's job).
+
+**Stage-2 launched:** winner recipe (split c16, SF-only, w_repel 40, w_basin 1000, no cond) at
+full SF corpus -- 4k balanced + 16k piece-down (95% decisive) -- 128x3 trunk, 20k steps, force
+audit riding. Piece-down batches merged (piecedown_sfsf_all.tsv). Stage-3 seeds follow a pass.

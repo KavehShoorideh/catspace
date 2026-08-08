@@ -340,7 +340,7 @@ def load_piecedown_games(n, seed, tsv=None, max_plies=400):
     starts (gen_piecedown_sfsf.py), played to the board end with Syzygy in the engine -- the
     decisive optimal-play walls the Option-B skeleton needs in the endgame region. game_ids are
     offset by 10_000_000 so they never collide with the balanced SF pool."""
-    tsv = tsv or paths.derived("piecedown_sfsf_moves.tsv")
+    tsv = tsv or paths.derived("piecedown_sfsf_all.tsv")
     if not os.path.exists(tsv):
         return []
     lines = [l for l in open(tsv) if l.strip()]

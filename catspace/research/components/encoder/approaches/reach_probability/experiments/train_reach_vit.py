@@ -242,6 +242,14 @@ def main():
                     help="contrastive: log-space floor between opposite-outcome terminals")
     ap.add_argument("--w-termcon", type=float, default=1.0,
                     help="contrastive: weight on the terminal attraction+repulsion pair")
+    ap.add_argument("--w-grad", type=float, default=0.0,
+                    help="gradient supervision of the field: engine best-move vs alt-move ranking "
+                         "on the B-ruler (needs bestmove_labels.npz); softplus ranking, scale-free")
+    ap.add_argument("--split-head", type=int, default=0,
+                    help="1 = two independent IQE blocks over one embedding: A = length "
+                         "(walls/gas), B = outcome (basin CE readouts). One point, two rulers.")
+    ap.add_argument("--sf-only", action="store_true",
+                    help="train on Stockfish data only (balanced + piece-down); no human games")
     ap.add_argument("--n-piecedown", type=int, default=0,
                     help="piece-down SF-vs-SF games (gen_piecedown_sfsf.py) merged into the SF "
                          "pool: decisive optimal play reaching real endings -- the walls the "
@@ -341,7 +349,8 @@ def main():
     torch.manual_seed(args.seed)
 
     n_each = args.games // 2
-    tr = T.build(n_human=n_each, n_sf=n_each, seed=args.seed, cache=not args.no_cache,
+    _nh, _ns = (0, args.games) if args.sf_only else (n_each, n_each)
+    tr = T.build(n_human=_nh, n_sf=_ns, seed=args.seed, cache=not args.no_cache,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     cov, reps = tr.coverage(), tr.repeats()
     ply_of_row = tr.ply_of_row()
@@ -388,14 +397,15 @@ def main():
         print(f"[warn] --dual with --min-ply {args.min_ply}: plies 0..7 of SF games are HUMAN "
               f"opening moves, so 'best play' would be fitted partly on human data. Use 8.",
               flush=True)
-    net = ReachViT(d_model=args.d_model, layers=args.layers, heads=args.heads, d=args.d,
+    net = ReachViT(split_head=bool(args.split_head),
+                   d_model=args.d_model, layers=args.layers, heads=args.heads, d=args.d,
                    hidden=args.hidden, components=args.components, ema_decay=args.ema,
                    dual=args.dual, d_cond=args.d_cond if args.dual else 0).to(dev)
     cfg_dict = {"arch": "vit", "d_model": args.d_model, "layers": args.layers, "heads": args.heads,
                 "d": args.d, "hidden": args.hidden, "components": args.components,
                 "games": args.games, "max_plies": args.max_plies, "traj_seed": args.seed,
                 "pole_parent": t_parent.tolist(), "pole_names": t_names,
-                "pole_height": args.pole_height, "n_piecedown": args.n_piecedown, "learned_poles": bool(args.learned_poles),
+                "pole_height": args.pole_height, "n_piecedown": args.n_piecedown, "split_head": bool(args.split_head), "sf_only": bool(args.sf_only), "learned_poles": bool(args.learned_poles),
                 "dual": bool(args.dual), "d_cond": args.d_cond if args.dual else 0,
                 "min_ply": args.min_ply}
 
@@ -473,6 +483,11 @@ def main():
     # exemptions and in-batch gas masks
     game_of_row = tr.game_of_row()
     src_of_game = tr.source
+    grad_labels = None
+    if args.w_grad > 0:
+        _gl = np.load(paths.derived("bestmove_labels.npz"))
+        grad_labels = {k: _gl[k] for k in ("best_tok", "best_glob", "alt_tok", "alt_glob")}
+        print(f"[grad] {len(grad_labels['best_tok']):,} engine best-move labels loaded", flush=True)
     ply_of_row = tr.ply_of_row()
     trow_of_game = np.full(len(tr), -1, np.int64)
     trow_of_game[game_of_row[t_rows]] = t_rows          # -1 = censored game, no terminal
@@ -507,7 +522,7 @@ def main():
             # gradient that DTZ/faithfulness showed was absent. Censored games have no terminal
             # row and are skipped.
             Tg = trow_of_game[game_of_row[i]]
-            tvalid = (Tg >= 0) & (src_of_game[game_of_row[i]] == 0)   # SF terminals only (Option B)
+            tvalid = (Tg >= 0) & (src_of_game[game_of_row[i]] == 1)   # SF terminals only (Option B)
             rows.append(np.where(tvalid, Tg, i))            # placeholder self-row where censored
         with ph("encode"):
             phi, zA, zB, zR, zT, idx = encode(model, rows)
@@ -517,7 +532,10 @@ def main():
             gi, gj, gk, gx, gra, grb, gT = idx
         # In dual mode zR is the CONDITIONED embedding (z_base + delta), so every distance is the
         # player-tuned quasimetric; zB stays available as the pooled reference for the readout.
-        DQ = (lambda u, v: model.qhead.distance(zR[u], zR[v])) if model.dual \
+        if getattr(model, "split_head", False):
+            DQ = lambda u, v: model.dA(zB[u], zB[v])
+        else:
+            DQ = (lambda u, v: model.qhead.distance(zR[u], zR[v])) if model.dual \
             else (lambda u, v: model.distance(zB[u], zB[v]))
         gap_ij = torch.from_numpy((j - i).astype(np.float32)).to(dev)
         gap_jk = torch.from_numpy((k - j).astype(np.float32)).to(dev)
@@ -579,8 +597,9 @@ def main():
         # therefore use the conditioned embeddings (each row at its own side-to-move Elo); the
         # base field is shaped through the shared weights, and higher-Elo readouts stay free to
         # exceed human-witnessed ceilings.
-        DQw = ((lambda u, v: model.qhead.iqe(zR[u], zR[v]))
-               if (model.dual and zR is not None) else DQ)
+        DQw = (DQ if getattr(model, "split_head", False)
+               else ((lambda u, v: model.qhead.iqe(zR[u], zR[v]))
+                     if (model.dual and zR is not None) else DQ))
         def _leg(rows_a, rows_b, dd, gp):
             distinct = torch.from_numpy(~_same_board(rows_a, rows_b)).to(dev)
             if distinct.any() and args.log_gas:
@@ -594,7 +613,9 @@ def main():
         # keeps its minimal semantics. Human games are EXCLUDED from every distance assertion;
         # they train only the probabilistic layers (committor CE, arm-A regions, the Elo residual)
         # -- and the surprisal-priced (-log P) route for human paths is the planned Option A.
-        m_sf = torch.from_numpy((src_of_game[game_of_row[i]] == 0)).to(dev)
+        # SF == 1 (HUMAN == 0): this mask was INVERTED from 2026-08-07 until now -- every
+        # 'Option-B' run walled HUMAN paths and the sf-only runs had NO walls at all. Mistake #12.
+        m_sf = torch.from_numpy((src_of_game[game_of_row[i]] == 1)).to(dev)
         msf_np = m_sf.cpu().numpy()
         def _wleg(ra, rb, dd, gp):
             if not msf_np.any():
@@ -688,8 +709,9 @@ def main():
                     torch.from_numpy(live.astype(np.int64)).to(dev)]
                 y = torch.from_numpy(y_np[live].astype(np.int64)).to(dev)
                 P = model.poles.poles                                   # (3, d)
-                dP = torch.stack([model.qhead.d_base(zrows, P[c].expand(len(zrows), -1))
-                                  if model.dual else model.iqe(zrows, P[c].expand(len(zrows), -1))
+                _dpole = (model.dB if getattr(model, "split_head", False)
+                          else (model.qhead.d_base if model.dual else model.iqe))
+                dP = torch.stack([_dpole(zrows, P[c].expand(len(zrows), -1))
                                   for c in range(3)], 1)                # (B,3)
                 l_basin = basin_ce(dP, y, temperature=args.basin_temp, raw=bool(args.log_gas))
                 # Poles must not merge: identical poles make every distance equal and the CE sits
@@ -834,7 +856,23 @@ def main():
                     _audit[_nm] = float(_g.norm(dim=-1).mean()) if _g is not None else 0.0
                 else:
                     _audit[_nm] = 0.0
-        loss = (args.w_region * (l_nll + args.w_repel * l_rep_a)
+        l_grad = torch.zeros((), device=dev)
+        if grad_labels is not None and model.poles is not None:
+            gsel = rng_np.integers(0, len(grad_labels["best_tok"]), 64)
+            zbst = model.encode_q(torch.from_numpy(grad_labels["best_tok"][gsel].astype(np.int64)).to(dev),
+                                  torch.from_numpy(grad_labels["best_glob"][gsel].astype(np.float32)).to(dev))
+            zalt = model.encode_q(torch.from_numpy(grad_labels["alt_tok"][gsel].astype(np.int64)).to(dev),
+                                  torch.from_numpy(grad_labels["alt_glob"][gsel].astype(np.float32)).to(dev))
+            _dp = (model.dB if getattr(model, "split_head", False)
+                   else (model.qhead.d_base if model.dual else model.iqe))
+            PL = model.poles.poles[2]                       # LOSS pole: children's mover = opponent
+            d_best = _dp(zbst, PL.expand(len(zbst), -1))
+            d_alt = _dp(zalt, PL.expand(len(zalt), -1))
+            # the field's discrete gradient must align with the engine arrow: best child strictly
+            # closer to opponent-loses than the alternative. softplus = scale-free ranking.
+            l_grad = torch.nn.functional.softplus(d_best - d_alt).mean()
+        loss = (args.w_grad * l_grad
+                + args.w_region * (l_nll + args.w_repel * l_rep_a)
                 + args.w_iqe * (l_q + args.w_repel * l_rep_b) + args.w_confine * l_conf
                 + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
                 + args.w_res_shrink * l_shrink
@@ -848,6 +886,7 @@ def main():
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
                "confine": float(l_conf.detach()),
                "tc_att": float(l_termcon_att.detach()), "tc_rep": float(l_termcon_rep.detach()),
+               "grad": float(l_grad.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
                # the residue the cross sampler's redraw loop could not clear -- must be ~0, and is

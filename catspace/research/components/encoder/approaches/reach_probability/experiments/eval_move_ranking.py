@@ -74,7 +74,8 @@ def main():
             out.append(zc.float().cpu())
         return _t.cat(out)
     c = pay["cfg"]
-    tr = T.build(n_human=c["games"] // 2, n_sf=c["games"] // 2, seed=c["traj_seed"],
+    tr = T.build(n_human=0 if c.get("sf_only") else c["games"] // 2,
+                 n_sf=c["games"] if c.get("sf_only") else c["games"] // 2, seed=c["traj_seed"],
                  max_plies=c["max_plies"], n_piecedown=c.get("n_piecedown", 0), verbose=False)
     split = split_by_game(np.arange(len(tr)), (0.70, 0.15), c["traj_seed"])
     test = np.flatnonzero(split == 2)

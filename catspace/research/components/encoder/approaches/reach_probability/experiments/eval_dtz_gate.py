@@ -95,7 +95,8 @@ def main():
             out.append(zc.float().cpu())
         return _t.cat(out)
     c = pay["cfg"]
-    tr = T.build(n_human=c["games"] // 2, n_sf=c["games"] // 2, seed=c["traj_seed"],
+    tr = T.build(n_human=0 if c.get("sf_only") else c["games"] // 2,
+                 n_sf=c["games"] if c.get("sf_only") else c["games"] // 2, seed=c["traj_seed"],
                  max_plies=c["max_plies"], n_piecedown=c.get("n_piecedown", 0), verbose=False)
     split = split_by_game(np.arange(len(tr)), (0.70, 0.15), c["traj_seed"])
     test_games = np.flatnonzero(split == 2)
@@ -128,7 +129,8 @@ def main():
           f"D {int((wdl_cls==1).sum())} L {int((wdl_cls==2).sum())}", flush=True)
 
     Z = _embed_rows(net, tr, keep, args.device)
-    iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
+    iqe = (net.dB if getattr(net, "split_head", False)
+           else (net.qhead.iqe if getattr(net, "dual", False) else net.iqe))
     pn = c["pole_names"]; pi = [pn.index(n) for n in ("WIN", "DRAW", "LOSS")]
     sp = net.poles.poles.detach().float()
     with torch.no_grad():
