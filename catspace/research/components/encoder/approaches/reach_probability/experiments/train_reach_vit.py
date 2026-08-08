@@ -635,8 +635,10 @@ def main():
         DQw = (DQ if getattr(model, "split_head", False)
                else ((lambda u, v: model.qhead.iqe(zR[u], zR[v]))
                      if (model.dual and zR is not None) else DQ))
+        _n_wall = [0]
         def _leg(rows_a, rows_b, dd, gp):
             distinct = torch.from_numpy(~_same_board(rows_a, rows_b)).to(dev)
+            _n_wall[0] += int(distinct.sum())
             if distinct.any() and args.log_gas:
                 return pair_walls(dd[distinct], gp[distinct])
             if not args.log_gas:
@@ -972,7 +974,7 @@ def main():
                 + args.w_termcon * (l_termcon_att + l_termcon_rep))
         met = {**_audit,
                "loss": float(loss.detach()), "nll": float(l_nll.detach()),
-               "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
+               "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()), "n_wall": _n_wall[0],
                "confine": float(l_conf.detach()),
                "tc_att": float(l_termcon_att.detach()), "tc_rep": float(l_termcon_rep.detach()),
                "grad": float(l_grad.detach()), "mh": float(l_mh.detach()), "mh_cons": float(l_mh_cons.detach()),
