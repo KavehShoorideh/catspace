@@ -45,12 +45,13 @@ __CG_CSS__
 <div class="sub">threat-first navigation on the learned quasimetric field — served live from the training machine.</div>
 <div class="cols"><div>
 <div id="board" class="cg-wrap"></div>
-<div class="bar"><button id="new">new game</button><button id="flip">play black</button><span id="status"></span></div>
+<div class="bar"><button id="new">new game</button><button id="flip">play black</button>
+<label style="font-size:12px;color:#75716a">depth <select id="depth"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></label>
+<label style="font-size:12px;color:#75716a">lines <select id="lines"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+<span id="status"></span></div>
 </div>
-<div class="panel"><h2>top lines</h2>
-<table id="lines"><tbody></tbody></table>
-<h2 style="margin-top:14px">engine deliberation <span style="text-transform:none">(alpha-beta on the margin)</span></h2>
-<table id="think"><thead><tr><th>move</th><th>d→win</th><th>d→draw</th><th>d→loss</th><th>margin</th></tr></thead><tbody></tbody></table>
+<div class="panel"><h2>analysis — your engine, current position <span style="text-transform:none">(alpha-beta on the margin)</span></h2>
+<table id="linesT"><tbody></tbody></table>
 </div></div></div>
 <script>__CG_JS__</script>
 <script>
@@ -58,30 +59,31 @@ __CG_CSS__
 let humanWhite=true, busy=false, fen="start";
 const cg=window.Chessground(document.getElementById('board'),{coordinates:true});
 const S=t=>document.getElementById('status').textContent=t;
-async function refresh(move){
+function knobs(){return {depth:+document.getElementById('depth').value,
+  lines:+document.getElementById('lines').value};}
+async function refresh(move,analyzeOnly){
   const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({move:move||null, newGame:move===undefined, humanWhite})});
+    body:JSON.stringify({move:move||null, newGame:move===undefined&&!analyzeOnly, humanWhite,
+      analyzeOnly:!!analyzeOnly, ...knobs()})});
   const d=await r.json();
   fen=d.fen;
   cg.set({fen:d.fen, turnColor:d.turn, check:d.check, lastMove:d.lastMove||undefined,
     orientation:humanWhite?"white":"black",
     movable:{free:false, color:d.over?undefined:(humanWhite?"white":"black"),
       dests:new Map(Object.entries(d.dests)), events:{after:(o,t)=>play(o+t)}}});
-  const tb=document.querySelector('#think tbody'); tb.innerHTML="";
-  (d.think||[]).forEach((row,i)=>{const tr=document.createElement('tr');
-    if(i===0)tr.className="pick";
-    tr.innerHTML=`<td>${row.uci}${row.tb?" (tb)":""}${row.deep?"*":""}</td><td>${row.dwin}</td><td>${row.ddraw}</td><td>${row.dloss}</td><td>${row.margin}</td>`;
-    tb.appendChild(tr);});
-  const lt=document.querySelector('#lines tbody'); lt.innerHTML="";
-  (d.think||[]).slice(0,3).forEach((row,i)=>{ if(!row.line)return;
+  const lt=document.querySelector('#linesT tbody'); lt.innerHTML="";
+  (d.think||[]).slice(0,d.lines_n||3).forEach((row,i)=>{
     const tr=document.createElement('tr'); if(i===0)tr.className="pick";
-    tr.innerHTML=`<td style="width:3em">${row.margin}</td><td style="text-align:left">${row.line}</td>`;
+    tr.innerHTML=`<td style="width:4em">${row.margin}${row.tb?" tb":""}</td>`+
+      `<td style="text-align:left">${row.line||row.uci}</td>`;
     lt.appendChild(tr);});
   S(d.over||d.thinkingNote||"your move");
 }
 async function play(uci){ if(busy)return; busy=true; S("thinking…");
   try{ await refresh(uci); } finally{ busy=false; } }
 document.getElementById('new').onclick=()=>refresh();
+document.getElementById('depth').onchange=()=>refresh(null,true);
+document.getElementById('lines').onchange=()=>refresh(null,true);
 document.getElementById('flip').onclick=e=>{humanWhite=!humanWhite;
   e.target.textContent=humanWhite?"play black":"play white"; refresh();};
 refresh();
@@ -114,6 +116,8 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get("content-length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
         cls = H
+        cls.depth = max(1, min(4, int(req.get("depth", cls.depth))))
+        cls.lines = max(1, min(5, int(req.get("lines", getattr(cls, "lines", 3)))))
         if req.get("newGame"):
             cls.board = chess.Board()
             cls.human_white = bool(req.get("humanWhite", True))
@@ -122,16 +126,19 @@ class H(BaseHTTPRequestHandler):
                 cls.board.push_uci(req["move"])
             except Exception:
                 pass
-        think = []
         # engine replies whenever it is to move
         over = self._over()
-        if not over and (cls.board.turn == chess.WHITE) != cls.human_white:
+        if not over and not req.get("analyzeOnly")                 and (cls.board.turn == chess.WHITE) != cls.human_white:
             rows = self._deliberate()
             if rows:
                 cls.board.push(rows[0]["mv"])
-                think = [{k: r.get(k) for k in ("uci", "dwin", "ddraw", "dloss", "margin",
-                                                "tb", "deep", "line")} for r in rows[:18]]
             over = self._over()
+        # ANALYSIS of the *current* position -- the analysis engine IS this engine
+        # (Kaveh 2026-08-08), lichess-style: depth + number of lines are user knobs.
+        think = []
+        if not over:
+            think = [{k: r.get(k) for k in ("uci", "margin", "tb", "line")}
+                     for r in self._deliberate()[:max(cls.lines, 8)]]
         dests = {}
         if not over and (cls.board.turn == chess.WHITE) == cls.human_white:
             for m in cls.board.legal_moves:
@@ -142,6 +149,7 @@ class H(BaseHTTPRequestHandler):
             m = cls.board.move_stack[-1]
             last = [chess.square_name(m.from_square), chess.square_name(m.to_square)]
         out = {"fen": cls.board.fen(), "turn": "white" if cls.board.turn else "black",
+               "lines_n": cls.lines, "depth": cls.depth,
                "check": cls.board.is_check(), "dests": dests, "think": think,
                "lastMove": last, "over": over}
         self._send(200, json.dumps(out).encode())
@@ -162,7 +170,7 @@ class H(BaseHTTPRequestHandler):
         for r in rows[:18]:
             bb = b.copy()
             sans = []
-            for mv in r["pv"][:4]:
+            for mv in r["pv"][:6]:
                 sans.append(bb.san(mv)); bb.push(mv)
             v = r["value"]
             disp = ("#" if abs(v) >= KittyMATE / 4 else round(v, 1))
