@@ -255,6 +255,13 @@ def main():
     ap.add_argument("--w-mh-cons", type=float, default=1.0, help="move-head consistency weight")
     ap.add_argument("--mh-pos", type=int, default=8,
                     help="WDL-labeled positions fed to the move head per step (feeding knob)")
+    ap.add_argument("--w-bellman", type=float, default=0.0,
+                    help="Bellman residual on the mover's-win distance: |d(s->P_mover) - 1 - "
+                         "min_m d(s.m->P_mover)|^2 over full legal child sets (wdl_labels "
+                         "shards). Manufactures DESCENT along chosen lines -- the property "
+                         "selfplay_probe measured at chance level. Requires --basin-pov white.")
+    ap.add_argument("--bellman-pos", type=int, default=8,
+                    help="positions per step for the Bellman residual")
     ap.add_argument("--mh-deadband", type=float, default=2.0,
                     help="consistency tolerance (plies): head may deviate from the field by this "
                          "much before the leash engages")
@@ -389,6 +396,8 @@ def main():
     val_games, fit_games = tr_games[:n_val], tr_games[n_val:]
     # basin labels: white-POV kills the gauge frustration (see outcome_of_row_white);
     # mover-POV kept as the reproduction default for pre-2026-08-08 recipes.
+    if args.w_bellman > 0 and args.basin_pov != "white":
+        raise SystemExit("--w-bellman requires --basin-pov white (colour-fixed mover pole)")
     outcome = (tr.outcome_of_row_white() if args.basin_pov == "white"
                else tr.outcome_of_row())
     # TWO-LEVEL hierarchy: 3 fixed outcome poles + one LEARNED pole per ending type, each
@@ -512,7 +521,7 @@ def main():
     game_of_row = tr.game_of_row()
     src_of_game = tr.source
     wdl_pack = None
-    if args.move_head:
+    if args.move_head or args.w_bellman > 0:
         import os as _os2
         ddir = paths.derived("wdl_labels")
         shards = sorted(_os2.path.join(ddir, f) for f in _os2.listdir(ddir)
@@ -906,6 +915,49 @@ def main():
         l_var = vicreg_variance(phi) + vicreg_variance(zA) + vicreg_variance(zB)
         l_cov = vicreg_covariance(phi) + vicreg_covariance(zA) + vicreg_covariance(zB)
         l_l1 = model.l1_penalty()
+        # BELLMAN RESIDUAL (Kaveh 2026-08-08 "we want both"): d(s -> mover's win pole) must
+        # equal 1 + min over legal moves of the child's distance to the SAME pole. Walls only
+        # enforce consistency along observed game paths; this enforces it along the paths the
+        # ENGINE will choose -- the descent property selfplay_probe measured at chance level.
+        # One-sided by design: only the mover's own goal admits a min (the opponent picks the
+        # other pole's successor, a minimax quantity we don't hand-code).
+        l_bell = torch.zeros((), device=dev)
+        if args.w_bellman > 0 and wdl_pack is not None and model.poles is not None:
+            POLES3b = model.poles.poles[:3]
+            _dpb = (model.dB if getattr(model, "split_head", False)
+                    else (model.qhead.d_base if model.dual else model.iqe))
+            bsel = rng_np.integers(0, len(wdl_pack["row"]), args.bellman_pos)
+            terms_bl = []
+            for pi_ in bsel:
+                a, b2 = int(wdl_pack["off"][pi_]), int(wdl_pack["off"][pi_ + 1])
+                prow = int(wdl_pack["row"][pi_])
+                _ptk, _pgb = tr.tok[prow:prow+1], tr.glob[prow:prow+1]
+                _ctk, _cgb = wdl_pack["tok"][a:b2], wdl_pack["glob"][a:b2]
+                if _mirror:
+                    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                        mirror_arrays as _ma)
+                    _ptk, _pgb = _ma(_ptk, _pgb)
+                    _ctk, _cgb = _ma(_ctk, _cgb)
+                _wtmb = bool(tr.glob[prow, 0]) != _mirror
+                Pm = POLES3b[[0 if _wtmb else 2]]        # mover's win pole, colour-fixed
+                z_par = model.encode_q(
+                    torch.from_numpy(_ptk.astype(np.int64)).to(dev),
+                    torch.from_numpy(_pgb.astype(np.float32)).to(dev))
+                # SEMI-GRADIENT (loss-interaction review, Kaveh 2026-08-08): the min over
+                # children is a BOOTSTRAPPED target -- full gradient both sides is Q-learning's
+                # underestimation spiral (the min picks the most-underestimated child and drags
+                # the parent onto it). Children are DETACHED (no_grad through the online
+                # encoder); gradient flows into the parent only. (The JEPA EMA target encoder
+                # would be the DQN-style upgrade, but encode_target projects to arm A -- the
+                # wrong space for dB -- so online-detached it is.)
+                with torch.no_grad():
+                    z_ch = model.encode_q(
+                        torch.from_numpy(_ctk.astype(np.int64)).to(dev),
+                        torch.from_numpy(_cgb.astype(np.float32)).to(dev))
+                d_par = _dpb(z_par, Pm)
+                d_ch = _dpb(z_ch, Pm.expand(len(z_ch), -1))
+                terms_bl.append((d_par[0] - 1.0 - d_ch.min().detach()) ** 2)
+            l_bell = torch.stack(terms_bl).mean()
         _audit = {}
         if audit:
             # FORCE AUDIT DURING TRAINING (Kaveh 2026-08-07): per-term gradient magnitude on phi,
@@ -1013,6 +1065,7 @@ def main():
                 d_alt = _dp(zalt, PL.expand(len(zalt), -1))
                 l_grad = torch.nn.functional.softplus(d_best - d_alt).mean()
         loss = (args.w_mh * l_mh + args.w_mh_cons * l_mh_cons
+                + args.w_bellman * l_bell
                 + args.w_grad * l_grad
                 + args.w_region * (l_nll + args.w_repel * l_rep_a)
                 + args.w_iqe * (l_q + args.w_repel * l_rep_b) + args.w_confine * l_conf
@@ -1029,6 +1082,7 @@ def main():
                "confine": float(l_conf.detach()),
                "tc_att": float(l_termcon_att.detach()), "tc_rep": float(l_termcon_rep.detach()),
                "grad": float(l_grad.detach()), "mh": float(l_mh.detach()), "mh_cons": float(l_mh_cons.detach()),
+               "bell": float(l_bell.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
                # the residue the cross sampler's redraw loop could not clear -- must be ~0, and is
