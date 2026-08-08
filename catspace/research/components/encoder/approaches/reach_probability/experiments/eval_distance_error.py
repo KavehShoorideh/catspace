@@ -40,11 +40,13 @@ def main():
     net, pay = load_net(args.ckpt, args.device)
     c = pay["cfg"]
     tr = T.build(n_human=c["games"] // 2, n_sf=c["games"] // 2, seed=c["traj_seed"],
-                 max_plies=c["max_plies"], verbose=False)
+                 max_plies=c["max_plies"], n_piecedown=c.get("n_piecedown", 0), verbose=False)
     split = split_by_game(np.arange(len(tr)), (0.70, 0.15), c["traj_seed"])
     test = np.flatnonzero(split == 2)
     game, ply = tr.game_of_row(), tr.ply_of_row()
-    rows = np.flatnonzero(np.isin(game, test))
+    # OPTION-B SCOPE (2026-08-07): the walls only assert SF paths' distances -- scoring human
+    # pairs here would report design-intended looseness as error. SF-source games only.
+    rows = np.flatnonzero(np.isin(game, test) & (tr.source[game] == 0))
     rng = np.random.default_rng(0)
 
     i0 = rows[rng.integers(0, len(rows), args.n_pair)]

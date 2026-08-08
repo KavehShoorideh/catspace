@@ -194,7 +194,11 @@ def _replay_one(args):
     Runs in a worker process, so chess/tokenize are imported inside (cloudpickle serialises
     referenced globals by value; see scaffold.py's note on the same hazard).
     """
-    ucis, max_plies, tb_pieces, flagged, result, is_sf, with_planes = args
+    if len(args) == 8:
+        ucis, max_plies, tb_pieces, flagged, result, is_sf, with_planes, start_fen = args
+    else:
+        ucis, max_plies, tb_pieces, flagged, result, is_sf, with_planes = args
+        start_fen = None
     import chess
     from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
     if with_planes:
@@ -205,7 +209,7 @@ def _replay_one(args):
         from lczerolens import LczeroBoard
         b = LczeroBoard()
     else:
-        b = chess.Board()
+        b = chess.Board(start_fen) if start_fen else chess.Board()
     # CASTLE STATE per side, per ply. The 4-bit rights code in `glob` says what rights REMAIN and
     # therefore cannot tell "castled kingside" from "lost the right by moving the king" -- two very
     # different positions that the rights bits render identically. This tracks the actual EVENT:
@@ -328,6 +332,27 @@ def load_sf_games(n, seed, tsv=None, max_plies=400):
         p = ln.rstrip("\n").split("\t")
         if len(p) >= 3:
             out.append((int(p[0]), int(p[1]), p[2].split()[:max_plies], False, (SF_ELO, SF_ELO)))
+    return out
+
+
+def load_piecedown_games(n, seed, tsv=None, max_plies=400):
+    """-> list[(game_id, result, ucis, flagged, elos, start_fen)]. SF-vs-SF from PIECE-DOWN
+    starts (gen_piecedown_sfsf.py), played to the board end with Syzygy in the engine -- the
+    decisive optimal-play walls the Option-B skeleton needs in the endgame region. game_ids are
+    offset by 10_000_000 so they never collide with the balanced SF pool."""
+    tsv = tsv or paths.derived("piecedown_sfsf_moves.tsv")
+    if not os.path.exists(tsv):
+        return []
+    lines = [l for l in open(tsv) if l.strip()]
+    rng = np.random.default_rng(seed)
+    if n < len(lines):
+        lines = [lines[i] for i in np.sort(rng.choice(len(lines), size=n, replace=False))]
+    out = []
+    for ln in lines:
+        p = ln.rstrip("\n").split("\t")
+        if len(p) >= 4:
+            out.append((10_000_000 + int(p[0]), int(p[1]), p[3].split()[:max_plies], False,
+                        (SF_ELO, SF_ELO), p[2]))
     return out
 
 
@@ -605,7 +630,7 @@ class Trajectories:
 
 def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
           records=None, tsv=None, max_plies=400, tb_pieces=0, with_planes=False,
-          verbose=True) -> Trajectories:
+          n_piecedown=0, verbose=True) -> Trajectories:
     """Replay and tokenize every ply of `n_human` + `n_sf` games. Cached on disk by (n, seed).
 
     `tb_pieces` (default 0 = off) truncates each game at the first position with <= that many
@@ -616,8 +641,8 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
     the most legible weakness data in the corpus.
     """
     # v2 in the key: the schema gained per-game Elo, so a v1 cache would load without it.
-    key = hashlib.blake2b(f"v3|{n_human}|{n_sf}|{seed}|{max_plies}|{tb_pieces}|{int(with_planes)}"
-                          .encode(), digest_size=8).hexdigest()
+    key = hashlib.blake2b(f"v4|{n_human}|{n_sf}|{n_piecedown}|{seed}|{max_plies}|{tb_pieces}|"
+                          f"{int(with_planes)}".encode(), digest_size=8).hexdigest()
     cdir = paths.derived(f"cache/traj_{key}")
     if cache and os.path.exists(os.path.join(cdir, "tok.npy")):
         if verbose:
@@ -629,13 +654,16 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
     t0 = time.time()
     games = ([(g, HUMAN) for g in load_human_games(n_human, seed, records, max_plies)]
              + [(g, SF) for g in load_sf_games(n_sf, seed, tsv, max_plies)])
+    pd = load_piecedown_games(n_piecedown, seed, None, max_plies) if n_piecedown else []
+    games += [((g[0], g[1], g[2], g[3], g[4]), SF) for g in pd]
+    pd_fens = {g[0]: g[5] for g in pd}                # game_id -> start fen
     if verbose:
         print(f"[traj] {len(games):,} games loaded [{time.time()-t0:.0f}s]; replaying every ply...",
               flush=True)
 
     workers = workers or max(1, (os.cpu_count() or 4) - 2)
-    payload = [(ucis, max_plies, tb_pieces, flg, res, src == SF, with_planes)
-               for (_, res, ucis, flg, _el), src in games]
+    payload = [(ucis, max_plies, tb_pieces, flg, res, src == SF, with_planes,
+                pd_fens.get(gid)) for (gid, res, ucis, flg, _el), src in games]
     with ProcessPoolExecutor(max_workers=workers) as ex:
         done = list(ex.map(_replay_one, payload, chunksize=64))
 

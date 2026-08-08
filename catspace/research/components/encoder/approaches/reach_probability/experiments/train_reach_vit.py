@@ -242,6 +242,10 @@ def main():
                     help="contrastive: log-space floor between opposite-outcome terminals")
     ap.add_argument("--w-termcon", type=float, default=1.0,
                     help="contrastive: weight on the terminal attraction+repulsion pair")
+    ap.add_argument("--n-piecedown", type=int, default=0,
+                    help="piece-down SF-vs-SF games (gen_piecedown_sfsf.py) merged into the SF "
+                         "pool: decisive optimal play reaching real endings -- the walls the "
+                         "Option-B skeleton needs in the TB region")
     ap.add_argument("--basin-temp", type=float, default=5.0,
                     help="basin softmax temperature on RAW distances (log-gas mode); ~the scale "
                          "of expected class differences in d")
@@ -338,7 +342,7 @@ def main():
 
     n_each = args.games // 2
     tr = T.build(n_human=n_each, n_sf=n_each, seed=args.seed, cache=not args.no_cache,
-                 max_plies=args.max_plies)
+                 max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     cov, reps = tr.coverage(), tr.repeats()
     ply_of_row = tr.ply_of_row()
     print(f"[traj] {len(tr):,} games | {tr.n_positions:,} positions | {len(reps[0]):,} repetitions "
@@ -391,7 +395,7 @@ def main():
                 "d": args.d, "hidden": args.hidden, "components": args.components,
                 "games": args.games, "max_plies": args.max_plies, "traj_seed": args.seed,
                 "pole_parent": t_parent.tolist(), "pole_names": t_names,
-                "pole_height": args.pole_height, "learned_poles": bool(args.learned_poles),
+                "pole_height": args.pole_height, "n_piecedown": args.n_piecedown, "learned_poles": bool(args.learned_poles),
                 "dual": bool(args.dual), "d_cond": args.d_cond if args.dual else 0,
                 "min_ply": args.min_ply}
 
@@ -468,6 +472,10 @@ def main():
     # row hash (shared with the edge-exclusion structure) + per-row game ids, for the wall
     # exemptions and in-batch gas masks
     game_of_row = tr.game_of_row()
+    src_of_game = tr.source
+    ply_of_row = tr.ply_of_row()
+    trow_of_game = np.full(len(tr), -1, np.int64)
+    trow_of_game[game_of_row[t_rows]] = t_rows          # -1 = censored game, no terminal
     _ = fit.true_edge_mask(np.array([0]), np.array([0]))   # builds tr._row_hash + edge keys once
     tr_row_hash = tr._row_hash
 
@@ -493,12 +501,20 @@ def main():
             else:
                 tia = tib = None
                 rows = [i, j, k, x, ra, rb]
+            # TERMINAL FOURTH LEG (Kaveh-approved next step, 2026-08-07): every position's path
+            # to its OWN game's ending is witnessed, length = remaining plies -- a data-exact
+            # bracket d(i -> T_game) in [1, remaining+1] giving the within-basin distance-to-end
+            # gradient that DTZ/faithfulness showed was absent. Censored games have no terminal
+            # row and are skipped.
+            Tg = trow_of_game[game_of_row[i]]
+            tvalid = (Tg >= 0) & (src_of_game[game_of_row[i]] == 0)   # SF terminals only (Option B)
+            rows.append(np.where(tvalid, Tg, i))            # placeholder self-row where censored
         with ph("encode"):
             phi, zA, zB, zR, zT, idx = encode(model, rows)
         if tia is not None:
-            gi, gj, gk, gx, gra, grb, gta, gtb = idx
+            gi, gj, gk, gx, gra, grb, gta, gtb, gT = idx[:9] if len(idx) == 9 else (*idx, None)
         else:
-            gi, gj, gk, gx, gra, grb = idx
+            gi, gj, gk, gx, gra, grb, gT = idx
         # In dual mode zR is the CONDITIONED embedding (z_base + delta), so every distance is the
         # player-tuned quasimetric; zB stays available as the pooled reference for the readout.
         DQ = (lambda u, v: model.qhead.distance(zR[u], zR[v])) if model.dual \
@@ -557,6 +573,14 @@ def main():
         # and the floor must not fight it.
         def _same_board(ra, rb):
             return ((tr.tok[ra] == tr.tok[rb]).all(1) & (tr.glob[ra] == tr.glob[rb]).all(1))
+        # WALLS CONSTRAIN THE CONDITIONED FIELD AT THE GAME'S OWN ELO (Kaveh 2026-08-07): a
+        # witnessed path upper-bounds distance only UNDER THE PLAY THAT PRODUCED IT -- against an
+        # optimal opponent the distance may be larger (or infinite). In dual mode the wall legs
+        # therefore use the conditioned embeddings (each row at its own side-to-move Elo); the
+        # base field is shaped through the shared weights, and higher-Elo readouts stay free to
+        # exceed human-witnessed ceilings.
+        DQw = ((lambda u, v: model.qhead.iqe(zR[u], zR[v]))
+               if (model.dual and zR is not None) else DQ)
         def _leg(rows_a, rows_b, dd, gp):
             distinct = torch.from_numpy(~_same_board(rows_a, rows_b)).to(dev)
             if distinct.any() and args.log_gas:
@@ -564,8 +588,28 @@ def main():
             if not args.log_gas:
                 return _spring(dd, gp)
             return dd.sum() * 0
-        l_q = (_leg(i, j, d_ij, gap_ij) + _leg(j, k, d_jk, gap_jk)
-               + _leg(i, k, d_ik, gap_ik)) / 3.0
+        d_ij_w, d_jk_w, d_ik_w = DQw(gi, gj), DQw(gj, gk), DQw(gi, gk)
+        # OPTION B (Kaveh 2026-08-07): the QUASIMETRIC is walled by SF games only -- near-optimal
+        # play treated as optimal, so ceilings are true minimal-ish path lengths and the metric
+        # keeps its minimal semantics. Human games are EXCLUDED from every distance assertion;
+        # they train only the probabilistic layers (committor CE, arm-A regions, the Elo residual)
+        # -- and the surprisal-priced (-log P) route for human paths is the planned Option A.
+        m_sf = torch.from_numpy((src_of_game[game_of_row[i]] == 0)).to(dev)
+        msf_np = m_sf.cpu().numpy()
+        def _wleg(ra, rb, dd, gp):
+            if not msf_np.any():
+                return dd.sum() * 0
+            return _leg(ra[msf_np], rb[msf_np], dd[m_sf], gp[m_sf])
+        l_q = (_wleg(i, j, d_ij_w, gap_ij) + _wleg(j, k, d_jk_w, gap_jk)
+               + _wleg(i, k, d_ik_w, gap_ik)) / 3.0
+        if gT is not None and args.log_gas:
+            tv = torch.from_numpy(tvalid).to(dev)
+            if tv.any():
+                Trows = np.where(tvalid, Tg, i)
+                d_iT = DQw(gi, gT)[tv]
+                gap_T = torch.from_numpy((ply_of_row[Trows] - ply_of_row[i])
+                                         .astype(np.float32)).to(dev)[tv].clamp(min=1)
+                l_q = 0.75 * l_q + 0.25 * _leg(i[tvalid], Trows[tvalid], d_iT, gap_T)
         if len(ra):
             l_q = 0.75 * l_q + 0.25 * _spring(DQ(gra, grb), gap_r)
         d_ji = DQ(gj, gi)           # the reversal, on the SAME two positions
