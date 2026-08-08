@@ -28,14 +28,8 @@ h1{font-size:20px;margin:0 0 2px}
 .sub{color:var(--dim);font-size:12.5px;margin-bottom:16px}
 .cols{display:grid;grid-template-columns:minmax(300px,480px) 1fr;gap:22px}
 @media(max-width:760px){.cols{grid-template-columns:1fr}}
-#board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border:2px solid var(--edge);
-border-radius:4px;overflow:hidden;user-select:none}
-.sq{display:flex;align-items:center;justify-content:center;font-size:min(6.2vw,38px);cursor:pointer;
-position:relative}
-.sq.d{background:var(--sqd)}.sq.l{background:var(--sql)}
-.sq.sel{outline:3px solid var(--sel);outline-offset:-3px}
-.sq.hl::after{content:"";position:absolute;width:26%;height:26%;border-radius:50%;background:var(--hl)}
-.sq.cap::after{content:"";position:absolute;inset:6%;border:4px solid var(--hl);border-radius:50%;background:none}
+#board{width:100%;max-width:480px;aspect-ratio:1}
+</style><style>__CG_CSS__</style><style>
 .bar{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:center}
 button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid var(--edge);background:var(--panel);
 color:var(--ink);border-radius:5px;cursor:pointer}
@@ -58,7 +52,7 @@ function: every move is chosen by pushing the nearest unwanted ending away and p
 closer. The table shows the geometry deciding.</div>
 <div class="cols">
 <div>
-  <div id="board"></div>
+  <div id="board" class="cg-wrap"></div>
   <div class="bar">
     <button id="new">new game</button>
     <button id="flip">play black</button>
@@ -78,6 +72,7 @@ closer. The table shows the geometry deciding.</div>
 </div>
 </div>
 </div>
+<script>__CG_JS__</script>
 <script id="W" type="application/json">__WEIGHTS__</script>
 <script>
 "use strict";
@@ -261,23 +256,38 @@ function engineMove(st){
   rows.sort((a,b)=>(b.margin-a.margin)||(b.dbad-a.dbad));
   return rows;
 }
-/* ================= UI ======================================================================= */
-const boardEl=document.getElementById('board');
-let st=startState(), sel=-1, humanWhite=true, thinking=false;
+/* ================= UI (lichess chessground) ================================================ */
 const files="abcdefgh";
-const nameOf=m=>files[F(m.from)]+(R(m.from)+1)+(m.castle?(m.castle==="K"?"-O-O":"-O-O-O"):"")+files[F(m.to)]+(R(m.to)+1)+(m.promo?"=Q":"");
-function render(){
-  boardEl.innerHTML="";
-  for(let r=7;r>=0;r--)for(let f=0;f<8;f++){
-    const s=SQ(f,r), div=document.createElement('div');
-    div.className="sq "+(((f+r)&1)?"l":"d");
-    div.textContent=GLYPH[st.b[s]];
-    if(s===sel)div.classList.add("sel");
-    if(sel>=0){for(const m of legal(st))if(m.from===sel&&m.to===s)
-      div.classList.add(st.b[s]?"cap":"hl");}
-    div.onclick=()=>click(s);
-    boardEl.appendChild(div);
-  }
+const alg=s=>files[F(s)]+(R(s)+1);
+const nameOf=m=>m.castle?(m.castle==="K"?"O-O":"O-O-O"):alg(m.from)+alg(m.to)+(m.promo?"=Q":"");
+function fenOf(st){
+  const SYM={1:"P",2:"N",3:"B",4:"R",5:"Q",6:"K",7:"p",8:"n",9:"b",10:"r",11:"q",12:"k"};
+  let rows=[];
+  for(let r=7;r>=0;r--){let row="",run=0;
+    for(let f=0;f<8;f++){const p=st.b[SQ(f,r)];
+      if(!p)run++;else{if(run){row+=run;run=0;}row+=SYM[p];}}
+    if(run)row+=run;rows.push(row);}
+  let c=(st.cK?"K":"")+(st.cQ?"Q":"")+(st.ck?"k":"")+(st.cq?"q":"");
+  const ep=st.ep?files[st.ep-1]+(st.turn?6:3):"-";
+  return rows.join("/")+" "+(st.turn?"w":"b")+" "+(c||"-")+" "+ep+" 0 1";
+}
+function destsOf(st){
+  const m=new Map();
+  for(const mv of legal(st)){const a=alg(mv.from);
+    if(!m.has(a))m.set(a,[]);m.get(a).push(alg(mv.to));}
+  return m;
+}
+let st=startState(), humanWhite=true, thinking=false;
+const cg=window.Chessground(document.getElementById('board'),{fen:fenOf(st),coordinates:true});
+function inCheck(st){const w=st.turn===1;return attacked(st,kingSq(st,w),!w);}
+function sync(last){
+  const over=gameOver(st);
+  cg.set({fen:fenOf(st), turnColor:st.turn?"white":"black",
+    check:inCheck(st), lastMove:last||undefined,
+    movable:{free:false, color:over?undefined:(humanWhite?"white":"black"),
+             dests:((st.turn===1)===humanWhite&&!over)?destsOf(st):new Map(),
+             events:{after:onUser}}});
+  setStatus(over|| (((st.turn===1)===humanWhite)?"your move":"") );
 }
 function setStatus(t){document.getElementById('status').textContent=t;}
 function showThink(rows){
@@ -288,33 +298,27 @@ function showThink(rows){
       `<td>${r.ddraw.toFixed(1)}</td><td>${r.dloss.toFixed(1)}</td><td>${r.margin.toFixed(1)}</td>`;
     tb.appendChild(tr);});
 }
+function onUser(orig,dest){
+  const mv=legal(st).find(m=>alg(m.from)===orig&&alg(m.to)===dest);
+  if(!mv){sync();return;}
+  st=makeMove(st,mv);sync([orig,dest]);maybeEngine();
+}
 function maybeEngine(){
-  const over=gameOver(st); if(over){setStatus(over);return;}
-  const engineTurn=(st.turn===1)!==humanWhite;
-  if(!engineTurn||thinking)return;
+  if(gameOver(st))return;
+  if((st.turn===1)===humanWhite||thinking)return;
   thinking=true;setStatus("thinking…");
   setTimeout(()=>{
     const rows=engineMove(st);
-    if(rows){st=makeMove(st,rows[0].m);showThink(rows);}
-    thinking=false;
-    const o=gameOver(st);setStatus(o||"your move");
-    render(); if(o)setStatus(o);
+    let last;
+    if(rows){const m=rows[0].m;last=[alg(m.from),alg(m.to)];st=makeMove(st,m);showThink(rows);}
+    thinking=false;sync(last);
   },30);
 }
-function click(s){
-  if(thinking)return;
-  const over=gameOver(st);if(over)return;
-  if((st.turn===1)!==humanWhite)return;
-  const ms=legal(st).filter(m=>m.from===sel&&m.to===s);
-  if(sel>=0&&ms.length){st=makeMove(st,ms[0]);sel=-1;render();setStatus("");maybeEngine();return;}
-  const p=st.b[s];
-  if(p&&((st.turn===1)===isW(p)))sel=s;else sel=-1;
-  render();
-}
-document.getElementById('new').onclick=()=>{st=startState();sel=-1;render();setStatus("your move");maybeEngine();};
+document.getElementById('new').onclick=()=>{st=startState();sync();maybeEngine();};
 document.getElementById('flip').onclick=e=>{humanWhite=!humanWhite;
   e.target.textContent=humanWhite?"play black":"play white";
-  st=startState();sel=-1;render();setStatus("");maybeEngine();};
+  cg.set({orientation:humanWhite?"white":"black"});
+  st=startState();sync();maybeEngine();};
 /* self-test against the PyTorch export */
 (function(){
   const z=forward(W.test.tok,W.test.glob);
@@ -326,7 +330,7 @@ document.getElementById('flip').onclick=e=>{humanWhite=!humanWhite;
   else{el.textContent=`MODEL MISMATCH (js ${got.WIN.toFixed(1)}/${got.DRAW.toFixed(1)}/${got.LOSS.toFixed(1)} vs ${W.test.d.WIN}/${W.test.d.DRAW}/${W.test.d.LOSS}) — refusing to play`;
     el.className="bad";boardEl.style.pointerEvents="none";}
 })();
-render();setStatus("your move");
+sync();
 </script>
 """
 
@@ -336,10 +340,15 @@ def main():
     ap.add_argument("--weights", required=True)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    import os as _os
+    cg = _os.path.join(_os.environ.get("CLAUDE_JOB_DIR", "/tmp"), "tmp/cg")
+    cg_js = open(_os.path.join(cg, "bundle.js")).read()
+    cg_css = open(_os.path.join(cg, "bundle.css")).read()
     with open(args.weights) as f:
         w = f.read()
+    html = HTML.replace("__CG_JS__", cg_js).replace("__CG_CSS__", cg_css)
     with open(args.out, "w") as f:
-        f.write(HTML.replace("__WEIGHTS__", w))
+        f.write(html.replace("__WEIGHTS__", w))
     print(f"[plank-page] -> {args.out} ({os.path.getsize(args.out)/2**20:.1f} MB)")
 
 
