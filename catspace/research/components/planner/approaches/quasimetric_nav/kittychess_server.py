@@ -103,13 +103,22 @@ async function api(body){
   if(d.over){document.getElementById('dinfo').textContent=d.over;return;}
   document.getElementById('dinfo').textContent="thinking…";
   document.getElementById('dinfo').className="spin";
-  const r2=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
+  document.getElementById('lnbox').style.opacity=.4;
+  await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({action:"analyze",...knobs()})});
-  const d2=await r2.json();
-  if(my!==seq)return;
-  renderLines(d2);
-  document.getElementById('dinfo').textContent="depth "+d2.depth;
-  document.getElementById('dinfo').className="";
+  // lichess-style streaming: poll partial lines while the search deepens
+  while(my===seq){
+    await new Promise(r=>setTimeout(r,250));
+    if(my!==seq)return;
+    const rp=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({action:"lines"})});
+    const dp=await rp.json();
+    if(my!==seq)return;
+    if(dp.think.length){renderLines(dp);document.getElementById('lnbox').style.opacity=1;}
+    document.getElementById('dinfo').textContent="depth "+dp.depth+(dp.done?"":"…");
+    document.getElementById('dinfo').className=dp.done?"":"spin";
+    if(dp.done)break;
+  }
 }
 function render(d){
   cg.set({fen:d.fen, turnColor:d.turn, check:d.check, lastMove:d.lastMove||undefined,
@@ -164,6 +173,9 @@ class H(BaseHTTPRequestHandler):
     returns the lines, so navigation never blocks on the engine."""
     eng = None
     lock = None                                          # engine/MPS is not thread-safe
+    gen = 0                                              # bumped by every action: aborts searches
+    an = {"g": -1, "rows": [], "depth": 0, "done": False}
+    an_thread = None
     moves: list = []
     ptr = 0
     depth = 3
@@ -198,6 +210,8 @@ class H(BaseHTTPRequestHandler):
         cls.depth = max(1, min(4, int(req.get("depth", cls.depth))))
         cls.lines = max(1, min(5, int(req.get("lines", cls.lines))))
         act = req.get("action", "noop")
+        if act not in ("analyze", "lines"):
+            H.gen += 1                                   # cancel any in-flight search NOW
         if act == "new":
             cls.moves, cls.ptr = [], 0
         elif act == "goto":
@@ -219,14 +233,45 @@ class H(BaseHTTPRequestHandler):
         over = self._over(b)
         # slow phase, requested separately so navigation never waits on the search --
         # the analysis engine IS this engine (Kaveh 2026-08-08), depth + lines are the knobs
+        # STREAMING analysis, lichess-style (Kaveh 2026-08-08 "the analysis streams in as the
+        # search progresses"): 'analyze' spawns an iterative-deepening worker that publishes
+        # partial lines after every root move and every depth; 'lines' polls the latest.
         if act == "analyze":
-            think = []
-            if not over:
-                with H.lock:
-                    think = [{k: r.get(k) for k in ("uci", "margin", "tb", "line")}
-                             for r in self._deliberate(b)[:cls.lines]]
-            self._send(200, json.dumps({"think": think, "depth": cls.depth,
-                                        "fen": b.fen(), "over": over}).encode())
+            if not over and not (H.an_thread and H.an_thread.is_alive()
+                                 and H.an["g"] == H.gen):
+                import threading
+                g, depth, nlines = H.gen, cls.depth, cls.lines
+                bb = b.copy()
+
+                def worker():
+                    def publish(rows, d):
+                        if H.gen == g:
+                            H.an = {"g": g, "depth": d,
+                                    "rows": [{k: r.get(k) for k in ("uci", "margin", "tb", "line")}
+                                             for r in self._rows_to_display(bb, rows)[:nlines]],
+                                    "done": False}
+                    try:
+                        with H.lock:
+                            for d in range(1, depth + 1):
+                                if H.gen != g:
+                                    return
+                                rows = H.eng.search(bb, depth=d, stop=lambda: H.gen != g,
+                                                    progress=lambda rs, _d=d: publish(rs, _d))
+                                publish(rows, d)
+                    finally:
+                        if H.gen == g:
+                            H.an = {**H.an, "done": True}
+
+                H.an = {"g": g, "depth": 0, "rows": [], "done": False}
+                H.an_thread = threading.Thread(target=worker, daemon=True)
+                H.an_thread.start()
+            self._send(200, json.dumps({"started": True, "over": over}).encode())
+            return
+        if act == "lines":
+            cur = H.an if H.an.get("g") == H.gen else {"rows": [], "depth": 0, "done": False}
+            self._send(200, json.dumps({"think": cur.get("rows", []),
+                                        "depth": cur.get("depth", 0),
+                                        "done": bool(cur.get("done"))}).encode())
             return
         # fast phase: position + tricolor committor bar [P(white), P(draw), P(black)]
         with H.lock:
@@ -264,8 +309,7 @@ class H(BaseHTTPRequestHandler):
             return ("white" if o.winner else "black") + " wins"
         return None
 
-    def _deliberate(self, b):
-        rows = H.eng.search(b, depth=H.depth)
+    def _rows_to_display(self, b, rows):
         out = []
         for r in rows[:18]:
             bb = b.copy()
@@ -273,7 +317,8 @@ class H(BaseHTTPRequestHandler):
             for mv in r["pv"][:6]:
                 sans.append(bb.san(mv)); bb.push(mv)
             v = r["value"]
-            disp = ("#" if abs(v) >= KittyMATE / 4 else round(v, 1))
+            disp = ("#" if abs(v) >= KittyMATE / 4
+                    else round(v, 3) if abs(v) < 10 else round(v, 1))
             out.append({"mv": r["mv"], "uci": r["mv"].uci(), "margin": disp,
                         "dwin": "", "ddraw": "", "dloss": "",
                         "tb": abs(v) >= KittyMATE / 4, "deep": True,

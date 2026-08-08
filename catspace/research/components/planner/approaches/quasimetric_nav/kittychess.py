@@ -191,11 +191,16 @@ class KittyChess:
                 pass
         return None
 
-    def negamax(self, board, depth, alpha, beta):
+    class SearchStop(Exception):
+        """raised mid-search when the caller's stop() turns true (navigation cancelled it)."""
+
+    def negamax(self, board, depth, alpha, beta, stop=None):
         """alpha-beta minimax where the EVALUATION IS THE MARGIN (Kaveh 2026-08-08:
         'minimax alpha beta pruning but instead of evaluate we do it from the margin').
         Children are scored in ONE batched forward per node for move ordering, which is also
         what makes the pruning bite. Returns (value mover-POV, pv list of Moves)."""
+        if stop is not None and stop():
+            raise KittyChess.SearchStop
         tv = self._terminal_value(board)
         if tv is not None:
             return tv, []
@@ -212,7 +217,7 @@ class KittyChess:
             return -cm[best], [moves[best]]
         best_v, best_pv = -float("inf"), []
         for i in order:
-            v, pv = self.negamax(children[i], depth - 1, -beta, -alpha)
+            v, pv = self.negamax(children[i], depth - 1, -beta, -alpha, stop)
             v = -v
             if v > best_v:
                 best_v, best_pv = v, [moves[i]] + pv
@@ -221,8 +226,11 @@ class KittyChess:
                 break
         return best_v, best_pv
 
-    def search(self, board, depth=3, top=3):
-        """root search: returns rows sorted by searched value, each with its PV."""
+    def search(self, board, depth=3, top=3, stop=None, progress=None):
+        """root search: rows sorted by searched value, each with its PV. `stop` (callable) makes
+        the search ABORTABLE lichess-style: checked at every node; on stop the rows finished so
+        far are returned (partial MultiPV beats a frozen UI). `progress(rows_sorted)` fires after
+        every completed root move for live streaming."""
         tv = self._terminal_value(board)
         moves = list(board.legal_moves)
         if not moves:
@@ -230,9 +238,15 @@ class KittyChess:
         rows = []
         for m in moves:
             board.push(m)
-            v, pv = self.negamax(board, depth - 1, -float("inf"), float("inf"))
+            try:
+                v, pv = self.negamax(board, depth - 1, -float("inf"), float("inf"), stop)
+            except KittyChess.SearchStop:
+                board.pop()
+                break
             board.pop()
             rows.append({"mv": m, "value": -v, "pv": [m] + pv})
+            if progress is not None:
+                progress(sorted(rows, key=lambda r: r["value"], reverse=True))
         rows.sort(key=lambda r: r["value"], reverse=True)
         return rows
 
