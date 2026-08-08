@@ -98,16 +98,22 @@ def main():
         with torch.no_grad():
             Zex = enc(torch.from_numpy(tr.tok[ex_rows].astype(np.int64)).to(args.device),
                       torch.from_numpy(tr.glob[ex_rows].astype(np.float32)).to(args.device))
-        def score(z):
+        def score(z, our_white=True):
             with torch.no_grad():
                 dd = torch.stack([iqe(z, Zex[e].expand(len(z), -1)) for e in range(len(Zex))], 1)
             return dd.median(1).values.float().cpu().numpy()
     else:
         pn = c["pole_names"]
-        pL = net.poles.poles.detach().float()[pn.index("LOSS")]
-        def score(z):
+        _poles = net.poles.poles.detach().float()
+        pL = _poles[pn.index("LOSS")]
+        pW = _poles[pn.index("WIN")]
+        # basin-pov 'white' (2026-08-08): poles are colour-fixed, so "our win" is the pole of
+        # OUR colour (the parent mover's), not the child-relative LOSS pole.
+        _white_pov = (c.get("train_args") or {}).get("basin_pov") == "white"
+        def score(z, our_white=True):
+            p = (pW if our_white else pL) if _white_pov else pL
             with torch.no_grad():
-                return iqe(z, pL.expand(len(z), -1).to(args.device)).float().cpu().numpy()
+                return iqe(z, p.expand(len(z), -1).to(args.device)).float().cpu().numpy()
 
     tb = TB()
     pair_ok = pair_n = 0
@@ -136,7 +142,7 @@ def main():
         with torch.no_grad():
             z = enc(torch.from_numpy(np.array(toks).astype(np.int64)).to(args.device),
                     torch.from_numpy(np.array(globs).astype(np.float32)).to(args.device))
-            d = score(z)
+            d = score(z, b.turn == chess.WHITE)
         vals = np.array(vals, float)
         for a in range(len(vals)):
             for bb in range(a + 1, len(vals)):

@@ -11686,3 +11686,29 @@ attached. Process fixes: (1) exemplar-committor calibration CE is now an instrum
 term with force <1% of the max term gets a loud banner, (3) train_args now saved in every ckpt,
 (4) standing rule: no bug enters the JOURNAL without the run artifact (steps.jsonl / log line)
 that proves the code path fired or didn't.
+
+## 2026-08-08 — TITLE CHANGE: reach_mhwm dethrones split2 (10.5/20); the committor EXISTS;
+## the eval bar is live
+
+**reach_mhwm** = split c16 SF-only walls + LEARNED in-manifold poles (+polesep 1) + white-POV
+basin at 1000 + move-head fed 32/step + color-mirror involution, 6000 steps [3181s].
+
+The ladder, all thresholds pre-existing:
+- committor (eval_committor, the new absolute gate): CE 0.496 vs uniform 1.099, top1 0.827 vs
+  majority 0.439, fitted tau 4.96 ~ the training temperature. Class-mean distance matrix
+  diagonal-dominant AND mirror-symmetric (true=W row 9.9/15.0/24.3 vs true=L 25.7/18.8/8.5) --
+  the mirror involution visible as learned W<->L symmetry.
+- battery: axioms clean both blocks (identity 0, triangle 0%, corr(A,B) -0.045); routing
+  0.671 pairwise / 0.668 top1 (gate 0.60; split2 was 0.608). Routing gate made POV-aware
+  (colour-fixed poles: our-win pole by OUR colour, not child-relative LOSS).
+- arena: 10.5/20 over split2, paired openings -> PROMOTE (registry updated).
+
+Deployed: server on mhwm. The tricolor bar now reads startpos 9/81/10 (draw-heavy, W/B
+symmetric -- correct for SF-vs-SF), white-up-a-queen 79/19/2, black-up-a-queen 2/9/89,
+KQK 94/5/2. Root cause of the day, closed: pole PLACEMENT (fixed simplex ~600 data-diameters
+off-manifold made d(z->pole) constant by geometry), not force scale, not label POV alone --
+though white-POV labels and in-manifold poles were both necessary in the bundle.
+
+Board UX shipped alongside (Kaveh: "copy off lichess"): engine never plays; instant nav
+(~35ms) with abortable search (stop() checked per node); streaming analysis (iterative
+deepening, partial lines published per root move, 250ms polls); 3-decimal margins; flip.
