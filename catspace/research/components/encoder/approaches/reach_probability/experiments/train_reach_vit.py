@@ -248,6 +248,9 @@ def main():
                          "encoded children. THE approach as of 2026-08-08 (Kaveh).")
     ap.add_argument("--w-mh", type=float, default=5.0, help="move-head WDL listwise weight")
     ap.add_argument("--w-mh-cons", type=float, default=1.0, help="move-head consistency weight")
+    ap.add_argument("--mh-deadband", type=float, default=2.0,
+                    help="consistency tolerance (plies): head may deviate from the field by this "
+                         "much before the leash engages")
     ap.add_argument("--w-grad", type=float, default=0.0,
                     help="gradient supervision of the field: engine best-move vs alt-move ranking "
                          "on the B-ruler (needs bestmove_labels.npz); softplus ranking, scale-free")
@@ -929,7 +932,11 @@ def main():
                     torch.from_numpy(wdl_pack["glob"][a:b2][cs].astype(np.float32)).to(dev))
                 d_true = torch.stack([_dp2(zc, POLES3[[o]].expand(len(zc), -1))
                                       for o in range(3)], 1)
-                terms_cons.append(((d_hat[cs] - d_true) ** 2).mean())
+                # DEADBAND consistency (2026-08-08): hard MSE pinned the head to the field's
+                # sibling-blindness (head went inert: mean |delta| 0.054 on a ~600 scale). Inside
+                # tau the head answers only to the engine labels -- the sibling-scale resolution
+                # the field cannot carry; beyond tau the chart still cannot hallucinate.
+                terms_cons.append((torch.relu((d_hat[cs] - d_true).abs() - args.mh_deadband) ** 2).mean())
             l_mh = torch.stack(terms_mh).mean()
             l_mh_cons = torch.stack(terms_cons).mean()
         l_grad = torch.zeros((), device=dev)
