@@ -77,6 +77,9 @@ closer. The table shows the geometry deciding.</div>
 <script>
 "use strict";
 const W=JSON.parse(document.getElementById('W').textContent);
+window.onerror=function(m,src,l,c,e){var el=document.getElementById('status');
+  if(el)el.textContent="JS error: "+m+" @"+l+":"+c; return false;};
+
 /* ================= chess rules (ids match the tokenizer: 0 empty, 1-6 PNBRQK, 7-12 pnbrqk) === */
 const WP=1,WN=2,WB=3,WR=4,WQ=5,WK=6,BP=7,BN=8,BB=9,BR=10,BQ=11,BK=12;
 const isW=p=>p>=1&&p<=6, isB=p=>p>=7;
@@ -242,6 +245,18 @@ function poleDists(st){
   const [tk,gl]=tokglob(st); const z=forward(tk,gl);
   return {W:iqeB(z,W.poles.WIN), D:iqeB(z,W.poles.DRAW), L:iqeB(z,W.poles.LOSS)};
 }
+/* self-test against the PyTorch export */
+(function(){
+  const z=forward(W.test.tok,W.test.glob);
+  const got={WIN:iqeB(z,W.poles.WIN),DRAW:iqeB(z,W.poles.DRAW),LOSS:iqeB(z,W.poles.LOSS)};
+  const el=document.getElementById('test');
+  let ok=true;
+  for(const k of["WIN","DRAW","LOSS"])if(Math.abs(got[k]-W.test.d[k])>0.5)ok=false;
+  if(ok){el.textContent="model verified ✓";el.className="ok";}
+  else{el.textContent=`MODEL MISMATCH (js ${got.WIN.toFixed(1)}/${got.DRAW.toFixed(1)}/${got.LOSS.toFixed(1)} vs ${W.test.d.WIN}/${W.test.d.DRAW}/${W.test.d.LOSS}) — refusing to play`;
+    el.className="bad";document.getElementById("board").style.pointerEvents="none";}
+})();
+
 /* threat-first: child's mover = opponent -> our win = d(child->LOSS) etc. */
 function engineMove(st){
   const ms=legal(st); if(!ms.length)return null;
@@ -278,7 +293,10 @@ function destsOf(st){
   return m;
 }
 let st=startState(), humanWhite=true, thinking=false;
-const cg=window.Chessground(document.getElementById('board'),{fen:fenOf(st),coordinates:true});
+let cg;
+try{ cg=window.Chessground(document.getElementById('board'),{fen:fenOf(st),coordinates:true}); }
+catch(e){ document.getElementById('status').textContent="board init failed: "+e.message;
+  cg={set:()=>{}}; }
 function inCheck(st){const w=st.turn===1;return attacked(st,kingSq(st,w),!w);}
 function sync(last){
   const over=gameOver(st);
@@ -319,17 +337,7 @@ document.getElementById('flip').onclick=e=>{humanWhite=!humanWhite;
   e.target.textContent=humanWhite?"play black":"play white";
   cg.set({orientation:humanWhite?"white":"black"});
   st=startState();sync();maybeEngine();};
-/* self-test against the PyTorch export */
-(function(){
-  const z=forward(W.test.tok,W.test.glob);
-  const got={WIN:iqeB(z,W.poles.WIN),DRAW:iqeB(z,W.poles.DRAW),LOSS:iqeB(z,W.poles.LOSS)};
-  const el=document.getElementById('test');
-  let ok=true;
-  for(const k of["WIN","DRAW","LOSS"])if(Math.abs(got[k]-W.test.d[k])>0.5)ok=false;
-  if(ok){el.textContent="model verified ✓";el.className="ok";}
-  else{el.textContent=`MODEL MISMATCH (js ${got.WIN.toFixed(1)}/${got.DRAW.toFixed(1)}/${got.LOSS.toFixed(1)} vs ${W.test.d.WIN}/${W.test.d.DRAW}/${W.test.d.LOSS}) — refusing to play`;
-    el.className="bad";boardEl.style.pointerEvents="none";}
-})();
+
 sync();
 </script>
 """
