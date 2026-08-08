@@ -248,6 +248,8 @@ def main():
                          "encoded children. THE approach as of 2026-08-08 (Kaveh).")
     ap.add_argument("--w-mh", type=float, default=5.0, help="move-head WDL listwise weight")
     ap.add_argument("--w-mh-cons", type=float, default=1.0, help="move-head consistency weight")
+    ap.add_argument("--mh-pos", type=int, default=8,
+                    help="WDL-labeled positions fed to the move head per step (feeding knob)")
     ap.add_argument("--mh-deadband", type=float, default=2.0,
                     help="consistency tolerance (plies): head may deviate from the field by this "
                          "much before the leash engages")
@@ -263,6 +265,9 @@ def main():
                     help="piece-down SF-vs-SF games (gen_piecedown_sfsf.py) merged into the SF "
                          "pool: decisive optimal play reaching real endings -- the walls the "
                          "Option-B skeleton needs in the TB region")
+    ap.add_argument("--basin-pov", choices=("mover", "white"), default="mover",
+                    help="basin CE label POV; 'white' is the gauge-unfrustrated choice "
+                         "(2026-08-08 finding), 'mover' reproduces older recipes")
     ap.add_argument("--basin-temp", type=float, default=5.0,
                     help="basin softmax temperature on RAW distances (log-gas mode); ~the scale "
                          "of expected class differences in d")
@@ -374,7 +379,10 @@ def main():
     rng.shuffle(tr_games)
     n_val = max(1, int(len(tr_games) * args.val_frac))
     val_games, fit_games = tr_games[:n_val], tr_games[n_val:]
-    outcome = tr.outcome_of_row()
+    # basin labels: white-POV kills the gauge frustration (see outcome_of_row_white);
+    # mover-POV kept as the reproduction default for pre-2026-08-08 recipes.
+    outcome = (tr.outcome_of_row_white() if args.basin_pov == "white"
+               else tr.outcome_of_row())
     # TWO-LEVEL hierarchy: 3 fixed outcome poles + one LEARNED pole per ending type, each
     # subsuming into its outcome. Ending poles are DATA-DERIVED, so they must be built before the
     # model (attach_poles needs the parent vector) and before cfg_dict (which records it so
@@ -416,7 +424,10 @@ def main():
                 "pole_parent": t_parent.tolist(), "pole_names": t_names,
                 "pole_height": args.pole_height, "n_piecedown": args.n_piecedown, "split_head": bool(args.split_head), "move_head": bool(args.move_head), "sf_only": bool(args.sf_only), "learned_poles": bool(args.learned_poles),
                 "dual": bool(args.dual), "d_cond": args.d_cond if args.dual else 0,
-                "min_ply": args.min_ply}
+                "min_ply": args.min_ply,
+                # FULL args (2026-08-08): couldn't audit mh2's basin weight from its ckpt --
+                # instruments must be versioned with the model, loss weights included.
+                "train_args": {k: v for k, v in vars(args).items()}}
 
     if args.init_from:
         pay = torch.load(args.init_from, map_location=dev, weights_only=False)
@@ -901,7 +912,7 @@ def main():
             _dp2 = (model.dB if getattr(model, "split_head", False)
                     else (model.qhead.d_base if model.dual else model.iqe))
             POLES3 = model.poles.poles[:3]                  # (W, D, L)
-            psel = rng_np.integers(0, len(wdl_pack["row"]), 8)
+            psel = rng_np.integers(0, len(wdl_pack["row"]), args.mh_pos)
             terms_mh, terms_cons = [], []
             for pi_ in psel:
                 a, b2 = int(wdl_pack["off"][pi_]), int(wdl_pack["off"][pi_ + 1])
@@ -920,9 +931,15 @@ def main():
                 # our (win, draw, oppwin) target axes map to pole distances (LOSS, DRAW, WIN).
                 wdl = torch.from_numpy(wdl_pack["wdl"][a:b2].astype(np.float32)).to(dev)
                 tgt = wdl / wdl.sum(0, keepdim=True).clamp(min=1e-6)                 # per-axis
-                # axis o=0: our win = child's LOSS-pole distance d_hat[:,2]; o=1 draw -> [:,1];
-                # o=2 opp win -> [:,0]
-                for o, col in ((0, 2), (1, 1), (2, 0)):
+                # axis mapping depends on pole POV. mover-POV poles: our win = child's
+                # LOSS-pole distance (child's mover = opponent). white-POV poles: our win =
+                # WIN pole iff the PARENT's mover is white -- poles are colour-fixed.
+                if args.basin_pov == "white":
+                    _wtm = bool(tr.glob[prow, 0])
+                    _cmap = ((0, 0), (1, 1), (2, 2)) if _wtm else ((0, 2), (1, 1), (2, 0))
+                else:
+                    _cmap = ((0, 2), (1, 1), (2, 0))
+                for o, col in _cmap:
                     logp = torch.log_softmax(-d_hat[:, col] / args.basin_temp, 0)
                     terms_mh.append(-(tgt[:, o] * logp).sum())
                 # consistency: on 4 sampled children, the chart must match the encoded truth

@@ -453,6 +453,25 @@ class Trajectories:
         out[censored] = -1
         return out
 
+    def outcome_of_row_white(self):
+        """(N,) int8 WHITE-POV outcome per position: WIN=white wins / DRAW / LOSS=black wins,
+        -1 = censored (time forfeit), same censoring rule as outcome_of_row.
+
+        2026-08-08, the gauge-frustration finding: MOVER-POV basin labels fight the walls
+        quasimetric -- a winning mover's rows flow TOWARD the terminal where the opponent is
+        mated, so consecutive plies of one trajectory alternate WIN/LOSS class while heading to
+        ONE terminal. Measured on reach_stage2 (w_basin 1000): win/loss pole distances collapsed
+        to constants (1.88 / 5.00, sigma~0.01) and only the parity-symmetric draw-vs-decisive
+        axis moored (4.87 vs 5.17/5.25 on TB-labeled probes). White-POV labels are
+        frustration-free: every row of a white-win game, either parity, pulls to the same pole."""
+        res = np.repeat(self.result, self.length).astype(np.int64)
+        censored = np.repeat(self.term == TERM_TIME, self.length)
+        out = np.full(self.n_positions, DRAW, np.int8)
+        out[res == 1] = WIN
+        out[res == -1] = LOSS
+        out[censored] = -1
+        return out
+
     def piece_count(self):
         """(N,) int16 total pieces. ANALYSIS-TIME LABEL ONLY -- never a model input. Straight from
         the tokens (non-empty squares), so no chess library and no plane decoding is involved."""

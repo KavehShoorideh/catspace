@@ -114,7 +114,7 @@ function render(d){
   document.getElementById('eb-b').style.height=(d.wdl[2]*100)+"%";
   document.getElementById('wdltxt').textContent=
     `white ${(d.wdl[0]*100).toFixed(1)}%  ·  draw ${(d.wdl[1]*100).toFixed(1)}%  ·  black ${(d.wdl[2]*100).toFixed(1)}%`
-    +(d.dists?`   |   d→win ${d.dists[0].toFixed(2)}  d→draw ${d.dists[1].toFixed(2)}  d→loss ${d.dists[2].toFixed(2)} (mover)`:"   |   exact (terminal/tablebase)");
+    +(d.dists?`   |   d→white-win ${d.dists[0].toFixed(2)}  d→draw ${d.dists[1].toFixed(2)}  d→black-win ${d.dists[2].toFixed(2)}`:"   |   exact (terminal/tablebase)");
   document.getElementById('dinfo').textContent="depth "+d.depth; document.getElementById('dinfo').className="";
   const lb=document.getElementById('lnbox'); lb.innerHTML="";
   (d.think||[]).forEach((row,i)=>{
@@ -244,8 +244,7 @@ class H(BaseHTTPRequestHandler):
             o = b.outcome(claim_draw=True)
             return ([1.0, 0.0, 0.0] if o.winner is True
                     else [0.0, 0.0, 1.0] if o.winner is False else [0.0, 1.0, 0.0]), None
-        (w, d, l), dists = H.eng.wdl(b)                 # mover POV
-        return ([w, d, l] if b.turn == chess.WHITE else [l, d, w]), dists
+        return H.eng.wdl(b)                             # already white-POV
 
     def _over(self, b):
         if b.is_game_over(claim_draw=True):
