@@ -91,6 +91,41 @@ class KittyChess:
         # mover POV: my win = d->LOSS pole, my loss = d->WIN, draw = d->DRAW
         return [float(min(D["DRAW"][i], D["WIN"][i]) - D["LOSS"][i]) for i in range(len(boards))]
 
+    def wdl(self, board, tau=5.0):
+        """P(mover wins, draw, mover loses) -- softmax over the three pole distances.
+
+        This IS the eval bar (Kaveh 2026-08-08): no scalar, three distances softmaxed.
+        Exact at terminals and in tablebase range; field softmax elsewhere. tau matches
+        the basin-CE training temperature. Returns (probs, dists) with dists=None when
+        the answer is exact.
+
+        KNOWN LIMIT (2026-08-08 diagnostic): every current checkpoint trained the basin
+        CE at w=10 where the force audit demanded ~1000x, so d(z->pole) is position-
+        invariant (~0.1 over startpos..bare-kings) and the field part of this bar is
+        flat until a re-based checkpoint lands."""
+        if board.is_checkmate():
+            return [0.0, 0.0, 1.0], None
+        if board.is_game_over(claim_draw=True):
+            return [0.0, 1.0, 0.0], None
+        if self.tb is not None and len(board.piece_map()) <= 5:
+            try:
+                w, _ = self.tb.wdl_dtz(board)
+                if w is not None:
+                    return ([1.0, 0.0, 0.0] if w > 0 else
+                            ([0.0, 1.0, 0.0] if w == 0 else [0.0, 0.0, 1.0])), None
+            except Exception:
+                pass
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
+        toks, globs = tokenize(board)
+        with torch.no_grad():
+            z = self._embed([toks], [globs])
+            D = {n: float(self.dist(z, self.poles[[k]].to(self.device)).float().cpu())
+                 for n, k in self.pi.items()}
+        # mover POV: my win = d->LOSS pole (see margins)
+        d = np.array([D["LOSS"], D["DRAW"], D["WIN"]])
+        e = np.exp(-(d - d.min()) / tau)
+        return [float(x) for x in (e / e.sum())], [float(x) for x in d]
+
     def _terminal_value(self, board):
         """exact value at game end / tablebase, mover POV, on the MATE scale."""
         if board.is_checkmate():
