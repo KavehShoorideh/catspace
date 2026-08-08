@@ -207,6 +207,12 @@ def main():
                          "competition is the softmax denominator. Raw attraction to the observed "
                          "pole instead COLLAPSES (measured: mean pole distance 0.000, readout "
                          "uniform) because a quasimetric permits d(s->W)=d(s->D)=0 at once")
+    ap.add_argument("--w-anchor-a", type=float, default=0.0,
+                    help="A-side ABSORBING pole anchor (Kaveh 2026-08-08: 'the pole should be "
+                         "dominated by the mate before it, fixed one ply after'): "
+                         "(dA(terminal -> its white-POV outcome pole) - 1)^2. Extends the walls "
+                         "staircase one step past the terminals into the pole; A-ruler only, "
+                         "committor calibration (dB) untouched. Requires white-POV basin.")
     ap.add_argument("--w-anchor", type=float, default=0.0,
                     help="terminal instances -> their ending pole, at that ending's certainty "
                          "radius (0 for rules and all draws, 1 ply for resignations)")
@@ -255,6 +261,13 @@ def main():
     ap.add_argument("--w-mh-cons", type=float, default=1.0, help="move-head consistency weight")
     ap.add_argument("--mh-pos", type=int, default=8,
                     help="WDL-labeled positions fed to the move head per step (feeding knob)")
+    ap.add_argument("--w-mh-bell", type=float, default=0.0,
+                    help="Bellman on the MOVE-HEAD: min over moves of (d_par + delta)[mover win] "
+                         "= d_par - 1, field detached. No bootstrap (nothing chases its own "
+                         "estimate); also pins the head's absolute scale, which the listwise "
+                         "loss leaves gauge-free (softmax shift-invariance). The corrected "
+                         "descent mechanism after field-level --w-bellman failed its smoke "
+                         "(semi-gradient calibrates parent levels but cannot reorder children).")
     ap.add_argument("--w-bellman", type=float, default=0.0,
                     help="Bellman residual on the mover's-win distance: |d(s->P_mover) - 1 - "
                          "min_m d(s.m->P_mover)|^2 over full legal child sets (wdl_labels "
@@ -915,6 +928,24 @@ def main():
         l_var = vicreg_variance(phi) + vicreg_variance(zA) + vicreg_variance(zB)
         l_cov = vicreg_covariance(phi) + vicreg_covariance(zA) + vicreg_covariance(zB)
         l_l1 = model.l1_penalty()
+        # A-SIDE ABSORBING ANCHOR: every terminal sits exactly one ply before its outcome
+        # pole on the LENGTH ruler -- the pole becomes the class's absorbing state, and the
+        # walls staircase (which already ends at the terminals) extends into it. IQE asymmetry
+        # makes many->one at cost 1 representable without the reverse being cheap.
+        l_anchor_a = torch.zeros((), device=dev)
+        if args.w_anchor_a > 0 and model.poles is not None and len(t_rows) \
+                and getattr(model, "split_head", False) and args.basin_pov == "white":
+            asel = rng_np.integers(0, len(t_rows), min(args.n_term, len(t_rows)))
+            arow = t_rows[asel]
+            za_ = model.encode_q(
+                torch.from_numpy(tr.tok[arow].astype(np.int64)).to(dev),
+                torch.from_numpy(tr.glob[arow].astype(np.float32)).to(dev))
+            _mo = TPOLE_OUT[t_pole[asel]]                    # mover-POV outcome at terminal
+            _wt = tr.glob[arow, 0].astype(bool)
+            _cls = np.where(_mo == 1, 1,
+                            np.where(((_mo == 0) & _wt) | ((_mo == 2) & ~_wt), 0, 2))
+            Ppa = model.poles.poles[torch.from_numpy(_cls.astype(np.int64)).to(dev)]
+            l_anchor_a = ((model.dA(za_, Ppa) - 1.0) ** 2).mean()
         # BELLMAN RESIDUAL (Kaveh 2026-08-08 "we want both"): d(s -> mover's win pole) must
         # equal 1 + min over legal moves of the child's distance to the SAME pole. Walls only
         # enforce consistency along observed game paths; this enforces it along the paths the
@@ -974,13 +1005,13 @@ def main():
                     _audit[_nm] = float(_g.norm(dim=-1).mean()) if _g is not None else 0.0
                 else:
                     _audit[_nm] = 0.0
-        l_mh = l_mh_cons = torch.zeros((), device=dev)
+        l_mh = l_mh_cons = l_mh_bell = torch.zeros((), device=dev)
         if wdl_pack is not None and model.poles is not None and getattr(model, "move_head", None) is not None:
             _dp2 = (model.dB if getattr(model, "split_head", False)
                     else (model.qhead.d_base if model.dual else model.iqe))
             POLES3 = model.poles.poles[:3]                  # (W, D, L)
             psel = rng_np.integers(0, len(wdl_pack["row"]), args.mh_pos)
-            terms_mh, terms_cons = [], []
+            terms_mh, terms_cons, terms_mhb = [], [], []
             for pi_ in psel:
                 a, b2 = int(wdl_pack["off"][pi_]), int(wdl_pack["off"][pi_ + 1])
                 prow = int(wdl_pack["row"][pi_])
@@ -1018,6 +1049,15 @@ def main():
                 for o, col in _cmap:
                     logp = torch.log_softmax(-d_hat[:, col] / args.basin_temp, 0)
                     terms_mh.append(-(tgt[:, o] * logp).sum())
+                # BELLMAN ON THE HEAD (2026-08-08, after the field-level term failed): the best
+                # move must chart a distance of exactly parent-1 on the mover's-win axis. Field
+                # detached -- no bootstrap; also pins the head's absolute scale, which the
+                # listwise CE above leaves gauge-free (softmax shift-invariance per axis).
+                if args.w_mh_bell > 0:
+                    # d_par is one row, so min(d_par + delta) - (d_par - 1) == min(delta) + 1:
+                    # the constraint is purely on the head, zero gradient into the field.
+                    _mwcol = _cmap[0][1]                 # mover's-win pole column
+                    terms_mhb.append((delta[:, _mwcol].min() + 1.0) ** 2)
                 # consistency: on 4 sampled children, the chart must match the encoded truth
                 cs = rng_np.integers(0, len(mids), 4)
                 _ctk, _cgb = wdl_pack["tok"][a:b2][cs], wdl_pack["glob"][a:b2][cs]
@@ -1035,6 +1075,8 @@ def main():
                 terms_cons.append((torch.relu((d_hat[cs] - d_true).abs() - args.mh_deadband) ** 2).mean())
             l_mh = torch.stack(terms_mh).mean()
             l_mh_cons = torch.stack(terms_cons).mean()
+            if terms_mhb:
+                l_mh_bell = torch.stack(terms_mhb).mean()
         l_grad = torch.zeros((), device=dev)
         if grad_labels is not None and model.poles is not None:
             _dp = (model.dB if getattr(model, "split_head", False)
@@ -1065,6 +1107,7 @@ def main():
                 d_alt = _dp(zalt, PL.expand(len(zalt), -1))
                 l_grad = torch.nn.functional.softplus(d_best - d_alt).mean()
         loss = (args.w_mh * l_mh + args.w_mh_cons * l_mh_cons
+                + args.w_mh_bell * l_mh_bell
                 + args.w_bellman * l_bell
                 + args.w_grad * l_grad
                 + args.w_region * (l_nll + args.w_repel * l_rep_a)
@@ -1072,6 +1115,7 @@ def main():
                 + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
                 + args.w_res_shrink * l_shrink
                 + args.w_basin * l_basin + args.w_polesep * l_polesep
+                + args.w_anchor_a * l_anchor_a
                 + args.w_anchor * l_anchor + args.w_absorb * l_absorb
                 + args.w_termrep * l_termrep + args.w_subsume * l_subsume
                 + args.w_start * l_start + args.w_start_irr * l_startirr
@@ -1082,7 +1126,8 @@ def main():
                "confine": float(l_conf.detach()),
                "tc_att": float(l_termcon_att.detach()), "tc_rep": float(l_termcon_rep.detach()),
                "grad": float(l_grad.detach()), "mh": float(l_mh.detach()), "mh_cons": float(l_mh_cons.detach()),
-               "bell": float(l_bell.detach()),
+               "bell": float(l_bell.detach()), "mh_bell": float(l_mh_bell.detach()),
+               "anchor_a": float(l_anchor_a.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
                # the residue the cross sampler's redraw loop could not clear -- must be ~0, and is
