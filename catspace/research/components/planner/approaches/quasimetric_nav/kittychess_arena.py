@@ -65,6 +65,27 @@ def random_opening(rng, plies=6):
             return ucis
 
 
+def report_pairs(pairs, a_name, b_name):
+    """Pentanomial + pair-bootstrap verdict (fishtest-style, 2026-08-08). The game PAIR
+    (one opening, colors swapped) is the independent unit -- with deterministic engines the
+    pair outcome is a pure function of the opening, so all sampling variance is over openings
+    and per-game counting overstates evidence by ~2x."""
+    import numpy as np
+    pairs = np.array(pairs, float)
+    n = len(pairs)
+    penta = {k: int((pairs == v).sum()) for k, v in
+             [("0", 0.0), ("0.5", 0.5), ("1", 1.0), ("1.5", 1.5), ("2", 2.0)]}
+    score = pairs.sum() / (2 * n)
+    rng = np.random.default_rng(0)
+    boots = np.array([pairs[rng.integers(0, n, n)].mean() / 2 for _ in range(10000)])
+    lo, hi = np.percentile(boots, [2.5, 97.5])
+    p_gt = float((boots > 0.5).mean())
+    print(f"\n[arena] FINAL: {a_name} {pairs.sum()}/{2*n} ({score:.1%}) vs {b_name}")
+    print(f"[arena] pentanomial (pair outcomes 0/0.5/1/1.5/2): {penta}")
+    print(f"[arena] pair-bootstrap 95% CI on score: [{lo:.1%}, {hi:.1%}]  "
+          f"P(score>50%) = {p_gt:.2f}  ({n} independent opening pairs)")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -73,10 +94,31 @@ def main():
     ap.add_argument("--cond-elo", type=float, default=None)
     ap.add_argument("--promote", action="store_true",
                     help="on a win, update the champion registry (page rebuild is separate)")
+    ap.add_argument("--candidate-nav", default="db", choices=("db", "ab"),
+                    help="candidate navigation: db threat-first | ab A-steer+B-gate")
+    ap.add_argument("--champion-nav", default="db", choices=("db", "ab"))
+    ap.add_argument("--champion-ckpt", default=None,
+                    help="override the registry champion (e.g. same ckpt, other nav mode -- "
+                         "Kaveh 2026-08-08 'try both ways, arena them')")
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
     os.makedirs(CHAMP_DIR, exist_ok=True)
+    if args.champion_ckpt:
+        print(f"[arena] HEAD-TO-HEAD: {args.candidate} ({args.candidate_nav}) vs "
+              f"{args.champion_ckpt} ({args.champion_nav}) -- registry untouched")
+        cand = KittyChess(args.candidate, args.device, args.cond_elo, nav=args.candidate_nav)
+        ch = KittyChess(args.champion_ckpt, args.device, args.cond_elo, nav=args.champion_nav)
+        rng = random.Random(0)
+        pairs = []
+        for rd in range(args.rounds):
+            op = random_opening(rng)
+            p = play_one(cand, ch, op) + (1.0 - play_one(ch, cand, op))
+            pairs.append(p)
+            print(f"[arena] round {rd+1}/{args.rounds}: candidate {sum(pairs)}/{2*len(pairs)}",
+                  flush=True)
+        report_pairs(pairs, f"candidate({args.candidate_nav})", f"champion({args.champion_nav})")
+        return
     champ = load_champion()
     if champ is None:
         if args.promote:
@@ -89,20 +131,20 @@ def main():
         return
 
     print(f"[arena] candidate {args.candidate}\n[arena] champion  {champ['ckpt']}")
-    cand = KittyChess(args.candidate, args.device, args.cond_elo)
-    ch = KittyChess(champ["ckpt"], args.device, args.cond_elo)
+    cand = KittyChess(args.candidate, args.device, args.cond_elo, nav=args.candidate_nav)
+    ch = KittyChess(champ["ckpt"], args.device, args.cond_elo, nav=args.champion_nav)
     rng = random.Random(0)
-    cscore, n = 0.0, 0
+    pairs = []
     for rd in range(args.rounds):
         op = random_opening(rng)
-        cscore += play_one(cand, ch, op)          # candidate white
-        cscore += 1.0 - play_one(ch, cand, op)    # candidate black (same opening)
-        n += 2
-        print(f"[arena] round {rd+1}/{args.rounds}: candidate {cscore}/{n}", flush=True)
-    frac = cscore / n
+        p = play_one(cand, ch, op) + (1.0 - play_one(ch, cand, op))   # white then black
+        pairs.append(p)
+        print(f"[arena] round {rd+1}/{args.rounds}: candidate {sum(pairs)}/{2*len(pairs)}",
+              flush=True)
+    cscore, n = sum(pairs), 2 * len(pairs)
+    report_pairs(pairs, "candidate", "champion")
     win = cscore > n / 2
-    print(f"\n[arena] FINAL: candidate {cscore}/{n} ({frac:.1%}) -> "
-          f"{'PROMOTE' if win else 'REJECTED (champion holds)'}")
+    print(f"[arena] verdict: {'PROMOTE' if win else 'REJECTED (champion holds)'}")
     if win and args.promote:
         champ["history"].append({"event": "dethroned", "old": champ["ckpt"],
                                  "new": args.candidate, "score": f"{cscore}/{n}",
