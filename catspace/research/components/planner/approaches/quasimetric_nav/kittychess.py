@@ -33,7 +33,8 @@ from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb 
 
 
 class KittyChess:
-    def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True):
+    def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="db"):
+        self.nav = nav                           # "db" threat-first | "ab" A-steer + B-gate
         self.net, pay = load_net(ckpt, device)
         self.cfg = pay["cfg"]
         self.device = device
@@ -322,6 +323,22 @@ class KittyChess:
             d_win, d_draw, d_loss = D["LOSS"], D["DRAW"], D["WIN"]
         d_bad = np.minimum(d_draw, d_loss)
         margin = d_bad - d_win
+        if self.nav == "ab" and self.white_pov:
+            # A-STEER + B-GATE (Kaveh 2026-08-08 "try both ways, arena them"): progress along
+            # the LENGTH ruler toward our absorbing pole (descends -- the odometer), safety
+            # from the PROBABILITY ruler (the committor threat margin). Each z-scored within
+            # the move set so neither ruler's native scale dominates.
+            ow, ot = ("WIN", "LOSS") if board.turn else ("LOSS", "WIN")
+            with torch.no_grad():
+                daw = self.net.dA(z, self.poles[[self.pi[ow]]].expand(len(z), -1)
+                                  .to(self.device)).float().cpu().numpy()
+                dal = self.net.dA(z, self.poles[[self.pi[ot]]].expand(len(z), -1)
+                                  .to(self.device)).float().cpu().numpy()
+            prog = dal - daw                     # higher = closer to our end than theirs
+            def _z(v):
+                s = v.std()
+                return (v - v.mean()) / (s if s > 1e-9 else 1.0)
+            margin = _z(prog) + _z(margin)
         order = np.lexsort((-d_bad, -margin))    # primary margin desc, then d_bad desc
         return moves[int(order[0])]
 
