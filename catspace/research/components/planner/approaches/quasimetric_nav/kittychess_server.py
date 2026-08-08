@@ -310,14 +310,18 @@ class H(BaseHTTPRequestHandler):
         return None
 
     def _rows_to_display(self, b, rows):
+        """WHITE-POV values, lichess-style (Kaveh 2026-08-08): the number shown is always
+        white's margin (negated when black is to move), so it doesn't flip sign every ply.
+        Search order (best-for-mover first) is kept: for black that IS lowest-white-value
+        first, which is the requested sort."""
         out = []
         for r in rows[:18]:
             bb = b.copy()
             sans = []
             for mv in r["pv"][:6]:
                 sans.append(bb.san(mv)); bb.push(mv)
-            v = r["value"]
-            disp = ("#" if abs(v) >= KittyMATE / 4
+            v = r["value"] if b.turn == chess.WHITE else -r["value"]
+            disp = (("#" if v > 0 else "-#") if abs(v) >= KittyMATE / 4
                     else round(v, 3) if abs(v) < 10 else round(v, 1))
             out.append({"mv": r["mv"], "uci": r["mv"].uci(), "margin": disp,
                         "dwin": "", "ddraw": "", "dloss": "",
