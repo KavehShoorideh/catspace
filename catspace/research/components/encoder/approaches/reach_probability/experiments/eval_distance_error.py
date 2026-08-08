@@ -39,14 +39,15 @@ def main():
 
     net, pay = load_net(args.ckpt, args.device)
     c = pay["cfg"]
-    tr = T.build(n_human=c["games"] // 2, n_sf=c["games"] // 2, seed=c["traj_seed"],
+    tr = T.build(n_human=0 if c.get("sf_only") else c["games"] // 2,
+                 n_sf=c["games"] if c.get("sf_only") else c["games"] // 2, seed=c["traj_seed"],
                  max_plies=c["max_plies"], n_piecedown=c.get("n_piecedown", 0), verbose=False)
     split = split_by_game(np.arange(len(tr)), (0.70, 0.15), c["traj_seed"])
     test = np.flatnonzero(split == 2)
     game, ply = tr.game_of_row(), tr.ply_of_row()
     # OPTION-B SCOPE (2026-08-07): the walls only assert SF paths' distances -- scoring human
     # pairs here would report design-intended looseness as error. SF-source games only.
-    rows = np.flatnonzero(np.isin(game, test) & (tr.source[game] == 0))
+    rows = np.flatnonzero(np.isin(game, test) & (tr.source[game] == 1))
     rng = np.random.default_rng(0)
 
     i0 = rows[rng.integers(0, len(rows), args.n_pair)]
@@ -58,9 +59,12 @@ def main():
     gap = (ply[j0] - ply[i0]).astype(np.float64)
 
     Za, Zb = embed(net, tr, i0, args.device), embed(net, tr, j0, args.device)
-    iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
     with torch.no_grad():
-        d = iqe(Za.to(args.device), Zb.to(args.device)).float().cpu().detach().numpy().astype(np.float64)
+        if getattr(net, "split_head", False):
+            d = net.dA(Za.to(args.device), Zb.to(args.device)).float().cpu().detach().numpy().astype(np.float64)
+        else:
+            iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
+            d = iqe(Za.to(args.device), Zb.to(args.device)).float().cpu().detach().numpy().astype(np.float64)
 
     err_ply = d - gap
     err_log = np.log1p(np.clip(d, 0, None)) - np.log1p(gap)

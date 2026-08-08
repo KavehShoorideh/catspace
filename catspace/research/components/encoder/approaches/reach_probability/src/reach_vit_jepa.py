@@ -309,7 +309,8 @@ class ReachViT(nn.Module):
 
     def __init__(self, d_model: int = 256, layers: int = 6, heads: int = 8, d: int = 64,
                  hidden: int = 256, components: int = 8, ema_decay: float = 0.996,
-                 leak_beta: float = 0.0, dual: bool = False, d_cond: int = 0):
+                 leak_beta: float = 0.0, dual: bool = False, d_cond: int = 0,
+                 split_head: bool = False):
         """`dual=False` is the LEGACY arm-B path (one IQE over proj_b) and is kept byte-identical
         on purpose: the strata run launched 2026-08-05 writes checkpoints with `proj_b.*`/`iqe.*`
         keys, and rewiring in place would have made its own ladder unloadable by interpret_reach
@@ -345,6 +346,17 @@ class ReachViT(nn.Module):
                                      leak_beta=leak_beta, d_cond=self.d_cond)
         else:
             self.iqe = IQE(d, components=components, leak_beta=leak_beta)
+        # SPLIT-BLOCK QUASIMETRIC (Kaveh 2026-08-08): one embedding, two independent IQE blocks --
+        # A (first half) carries LENGTH (walls/gas: calibrated ply distances), B (second half)
+        # carries OUTCOME structure. Losses touch only their own block, so the measured
+        # walls-vs-CE escalation is impossible at the interface; each block is a full quasimetric
+        # in its own right, read SEPARATELY -- 'one point, two rulers', any exchange rate applied
+        # at query time, never trained in.
+        self.split_head = bool(split_head)
+        if self.split_head:
+            assert d % 2 == 0
+            self.iqe_a = IQE(d // 2, components=max(2, components // 2), leak_beta=leak_beta)
+            self.iqe_b = IQE(d // 2, components=max(2, components // 2), leak_beta=leak_beta)
         self.poles = None                # attach_poles() installs the subsumption hierarchy
 
     def attach_poles(self, parent, n_sources: int = 2, init_scale: float = 0.3,
@@ -380,6 +392,16 @@ class ReachViT(nn.Module):
     def encode_target(self, tok, glob):
         """-> z_A (B,d) from the EMA TARGET branch (no gradient, by construction)."""
         return self.t_proj_a(self.t_enc(tok, glob))
+
+    def dA(self, z_u, z_v):
+        """LENGTH-block distance (walls, calibration, odometry)."""
+        h = z_u.shape[-1] // 2
+        return self.iqe_a(z_u[..., :h], z_v[..., :h])
+
+    def dB(self, z_u, z_v):
+        """OUTCOME-block distance (basins, routing readouts)."""
+        h = z_u.shape[-1] // 2
+        return self.iqe_b(z_u[..., h:], z_v[..., h:])
 
     def encode_q(self, tok, glob):
         """-> z_B (B,d), the arm-B quasimetric embedding (gradients flow; no EMA branch, because
