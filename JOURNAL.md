@@ -11652,3 +11652,37 @@ free both-sides analysis + play-vs-engine switch. Engine readouts now dispatch p
 exemplar sidecar (export_exemplars.py, calibrated tau inside) > white-POV poles > legacy
 mover-POV poles; raw distances displayed under the bar so a dead committor is visible, never
 mysterious. Exact bar at terminals/TB either way.
+
+## 2026-08-08 (correction) — Mistake #13 RETRACTED: it was an inference error, not a training bug
+## (Kaveh: "double check the bugs you find" — he was right)
+
+Claimed hours ago: contrastive mode left poles None, so basin CE + move-head loss never ran in
+mh2/stage2. **The run logs falsify this.** reach_mh2_steps.jsonl: mh loss 1.88-2.62 (training),
+F_basin 0.14 at step 1, tc_att = tc_rep = 0 -> mh2 ran in FIXED-pole mode. Same signature in
+reach_stage2_steps.jsonl (F_basin 0.037, tc legs 0). The CONTRASTIVE banner I reasoned from
+appeared only in MY relaunch, which omitted the --poles flag the original launches carried.
+I inferred a mode from a default instead of reading the artifacts. The mh2 verdict is restored:
+head trained but under-learned (mh loss flat ~2, top1 0.080); feeding fix remains correct.
+
+**What survives, now with the right cause:**
+- Pole readouts frozen (45/66/140 everywhere): poles are FIXED constants by design; the basin
+  force that should pull embeddings toward them ran 9-34x weaker than walls AT STEP 1
+  (F_basin 0.037-0.14 vs F_walls 1.26-2.65) — the imbalance was sitting in our own force audit,
+  un-thresholded. Not a dead code path; a starved one.
+- Exemplar committor empty off the TB boundary: direct measurement, stands
+  (val CE 1.0953 vs uniform 1.0986, top1 0.287).
+- Startpos in the data: verified, stands.
+- Gauge frustration: DOWNGRADED from measured-cause to plausible-mechanism. The stage2
+  asymmetry (draw axis moored sigma~0.3, win/loss collapsed sigma~0.01) is real and frustration
+  predicts exactly it (win/loss basin gradients cancel across ply parity, draw's don't), but a
+  starved-force-plus-easiest-axis account isn't excluded. White-POV labels are correct under
+  either account; reach_mhw proceeds unchanged.
+
+**How it got past the gates (Kaveh's question):** the battery gates ROUTING and relative
+distance calibration — nothing asserts absolute committor calibration, so a frozen committor
+had no gate to fail; and the force audit that plainly showed the starvation has no threshold
+attached. Process fixes: (1) exemplar-committor calibration CE is now an instrument
+(export_exemplars.py prints it; add to battery), (2) step-1 force-balance warning: any active
+term with force <1% of the max term gets a loud banner, (3) train_args now saved in every ckpt,
+(4) standing rule: no bug enters the JOURNAL without the run artifact (steps.jsonl / log line)
+that proves the code path fired or didn't.
