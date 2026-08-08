@@ -242,6 +242,12 @@ def main():
                     help="contrastive: log-space floor between opposite-outcome terminals")
     ap.add_argument("--w-termcon", type=float, default=1.0,
                     help="contrastive: weight on the terminal attraction+repulsion pair")
+    ap.add_argument("--move-head", type=int, default=0,
+                    help="1 = move-aware delta head g(phi, e(m)) -> R^3, trained by three-pole "
+                         "WDL-graded listwise (wdl_labels shards) + consistency vs actually-"
+                         "encoded children. THE approach as of 2026-08-08 (Kaveh).")
+    ap.add_argument("--w-mh", type=float, default=5.0, help="move-head WDL listwise weight")
+    ap.add_argument("--w-mh-cons", type=float, default=1.0, help="move-head consistency weight")
     ap.add_argument("--w-grad", type=float, default=0.0,
                     help="gradient supervision of the field: engine best-move vs alt-move ranking "
                          "on the B-ruler (needs bestmove_labels.npz); softplus ranking, scale-free")
@@ -397,7 +403,7 @@ def main():
         print(f"[warn] --dual with --min-ply {args.min_ply}: plies 0..7 of SF games are HUMAN "
               f"opening moves, so 'best play' would be fitted partly on human data. Use 8.",
               flush=True)
-    net = ReachViT(split_head=bool(args.split_head),
+    net = ReachViT(split_head=bool(args.split_head), move_head=bool(args.move_head),
                    d_model=args.d_model, layers=args.layers, heads=args.heads, d=args.d,
                    hidden=args.hidden, components=args.components, ema_decay=args.ema,
                    dual=args.dual, d_cond=args.d_cond if args.dual else 0).to(dev)
@@ -405,7 +411,7 @@ def main():
                 "d": args.d, "hidden": args.hidden, "components": args.components,
                 "games": args.games, "max_plies": args.max_plies, "traj_seed": args.seed,
                 "pole_parent": t_parent.tolist(), "pole_names": t_names,
-                "pole_height": args.pole_height, "n_piecedown": args.n_piecedown, "split_head": bool(args.split_head), "sf_only": bool(args.sf_only), "learned_poles": bool(args.learned_poles),
+                "pole_height": args.pole_height, "n_piecedown": args.n_piecedown, "split_head": bool(args.split_head), "move_head": bool(args.move_head), "sf_only": bool(args.sf_only), "learned_poles": bool(args.learned_poles),
                 "dual": bool(args.dual), "d_cond": args.d_cond if args.dual else 0,
                 "min_ply": args.min_ply}
 
@@ -483,11 +489,40 @@ def main():
     # exemptions and in-batch gas masks
     game_of_row = tr.game_of_row()
     src_of_game = tr.source
+    wdl_pack = None
+    if args.move_head:
+        import os as _os2
+        ddir = paths.derived("wdl_labels")
+        shards = sorted(_os2.path.join(ddir, f) for f in _os2.listdir(ddir)
+                        if f.endswith(".npz")) if _os2.path.isdir(ddir) else []
+        if not shards:
+            raise SystemExit("[move-head] no wdl_labels shards yet -- run gen_wdl_labels first")
+        packs = [np.load(f) for f in shards]
+        base = 0; row_l, tok_l, glob_l, wdl_l, mid_l, off_l = [], [], [], [], [], [0]
+        for pk in packs:
+            row_l.append(pk["row"]); tok_l.append(pk["tok"]); glob_l.append(pk["glob"])
+            wdl_l.append(pk["wdl"]); mid_l.append(pk["mid"])
+            off_l.extend((pk["off"][1:] + base).tolist()); base += len(pk["tok"])
+        wdl_pack = {"row": np.concatenate(row_l), "tok": np.concatenate(tok_l),
+                    "glob": np.concatenate(glob_l), "wdl": np.concatenate(wdl_l),
+                    "mid": np.concatenate(mid_l), "off": np.array(off_l, np.int64)}
+        print(f"[move-head] {len(wdl_pack['row']):,} WDL-labeled positions, "
+              f"{len(wdl_pack['tok']):,} children across {len(shards)} shard(s)", flush=True)
     grad_labels = None
     if args.w_grad > 0:
-        _gl = np.load(paths.derived("bestmove_labels.npz"))
-        grad_labels = {k: _gl[k] for k in ("best_tok", "best_glob", "alt_tok", "alt_glob")}
-        print(f"[grad] {len(grad_labels['best_tok']):,} engine best-move labels loaded", flush=True)
+        import os as _os
+        _lp = paths.derived("bestmove_listwise.npz")
+        if _os.path.exists(_lp):
+            _gl = np.load(_lp)
+            grad_labels = {"mode": "list", "tok": _gl["tok"], "glob": _gl["glob"],
+                           "off": _gl["off"], "best": _gl["best"]}
+            print(f"[grad] LISTWISE labels: {len(_gl['best']):,} positions, "
+                  f"{len(_gl['tok']):,} children", flush=True)
+        else:
+            _gl = np.load(paths.derived("bestmove_labels.npz"))
+            grad_labels = {"mode": "pair", **{k: _gl[k] for k in
+                           ("best_tok", "best_glob", "alt_tok", "alt_glob")}}
+            print(f"[grad] pairwise labels: {len(_gl['best_tok']):,}", flush=True)
     ply_of_row = tr.ply_of_row()
     trow_of_game = np.full(len(tr), -1, np.int64)
     trow_of_game[game_of_row[t_rows]] = t_rows          # -1 = censored game, no terminal
@@ -856,22 +891,76 @@ def main():
                     _audit[_nm] = float(_g.norm(dim=-1).mean()) if _g is not None else 0.0
                 else:
                     _audit[_nm] = 0.0
+        l_mh = l_mh_cons = torch.zeros((), device=dev)
+        if wdl_pack is not None and model.poles is not None and getattr(model, "move_head", None) is not None:
+            _dp2 = (model.dB if getattr(model, "split_head", False)
+                    else (model.qhead.d_base if model.dual else model.iqe))
+            POLES3 = model.poles.poles[:3]                  # (W, D, L)
+            psel = rng_np.integers(0, len(wdl_pack["row"]), 8)
+            terms_mh, terms_cons = [], []
+            for pi_ in psel:
+                a, b2 = int(wdl_pack["off"][pi_]), int(wdl_pack["off"][pi_ + 1])
+                prow = int(wdl_pack["row"][pi_])
+                # parent context: one encoder forward
+                phi_p = model.backbone(
+                    torch.from_numpy(tr.tok[prow:prow+1].astype(np.int64)).to(dev),
+                    torch.from_numpy(tr.glob[prow:prow+1].astype(np.float32)).to(dev))
+                z_p = (model.qhead.embed(phi_p)[0] if model.dual else model.proj_b(phi_p))
+                d_par = torch.stack([_dp2(z_p, POLES3[[o]]) for o in range(3)], 1)  # (1,3)
+                mids = torch.from_numpy(wdl_pack["mid"][a:b2].astype(np.int64)).to(dev)
+                delta = model.move_head(phi_p.expand(len(mids), -1), mids)          # (n,3)
+                d_hat = d_par.expand(len(mids), -1) + delta                          # (n,3)
+                # three-pole graded listwise: model's softmax over moves of -d_hat[:,o]/tau vs
+                # the engine's normalized o-probabilities. Child-mover POV wdl: (l,d,w) stored ->
+                # our (win, draw, oppwin) target axes map to pole distances (LOSS, DRAW, WIN).
+                wdl = torch.from_numpy(wdl_pack["wdl"][a:b2].astype(np.float32)).to(dev)
+                tgt = wdl / wdl.sum(0, keepdim=True).clamp(min=1e-6)                 # per-axis
+                # axis o=0: our win = child's LOSS-pole distance d_hat[:,2]; o=1 draw -> [:,1];
+                # o=2 opp win -> [:,0]
+                for o, col in ((0, 2), (1, 1), (2, 0)):
+                    logp = torch.log_softmax(-d_hat[:, col] / args.basin_temp, 0)
+                    terms_mh.append(-(tgt[:, o] * logp).sum())
+                # consistency: on 4 sampled children, the chart must match the encoded truth
+                cs = rng_np.integers(0, len(mids), 4)
+                zc = model.encode_q(
+                    torch.from_numpy(wdl_pack["tok"][a:b2][cs].astype(np.int64)).to(dev),
+                    torch.from_numpy(wdl_pack["glob"][a:b2][cs].astype(np.float32)).to(dev))
+                d_true = torch.stack([_dp2(zc, POLES3[[o]].expand(len(zc), -1))
+                                      for o in range(3)], 1)
+                terms_cons.append(((d_hat[cs] - d_true) ** 2).mean())
+            l_mh = torch.stack(terms_mh).mean()
+            l_mh_cons = torch.stack(terms_cons).mean()
         l_grad = torch.zeros((), device=dev)
         if grad_labels is not None and model.poles is not None:
-            gsel = rng_np.integers(0, len(grad_labels["best_tok"]), 64)
-            zbst = model.encode_q(torch.from_numpy(grad_labels["best_tok"][gsel].astype(np.int64)).to(dev),
-                                  torch.from_numpy(grad_labels["best_glob"][gsel].astype(np.float32)).to(dev))
-            zalt = model.encode_q(torch.from_numpy(grad_labels["alt_tok"][gsel].astype(np.int64)).to(dev),
-                                  torch.from_numpy(grad_labels["alt_glob"][gsel].astype(np.float32)).to(dev))
             _dp = (model.dB if getattr(model, "split_head", False)
                    else (model.qhead.d_base if model.dual else model.iqe))
             PL = model.poles.poles[2]                       # LOSS pole: children's mover = opponent
-            d_best = _dp(zbst, PL.expand(len(zbst), -1))
-            d_alt = _dp(zalt, PL.expand(len(zalt), -1))
-            # the field's discrete gradient must align with the engine arrow: best child strictly
-            # closer to opponent-loses than the alternative. softplus = scale-free ranking.
-            l_grad = torch.nn.functional.softplus(d_best - d_alt).mean()
-        loss = (args.w_grad * l_grad
+            if grad_labels["mode"] == "list":
+                # LISTWISE (Kaveh's pick): the engine's move must have the LOWEST d among ALL
+                # legal children -- softmax CE over the full move set, ~30x the contrast of
+                # best-vs-one at the same oracle budget.
+                psel = rng_np.integers(0, len(grad_labels["best"]), 12)
+                terms_l = []
+                for pi_ in psel:
+                    a, b = int(grad_labels["off"][pi_]), int(grad_labels["off"][pi_ + 1])
+                    zc = model.encode_q(
+                        torch.from_numpy(grad_labels["tok"][a:b].astype(np.int64)).to(dev),
+                        torch.from_numpy(grad_labels["glob"][a:b].astype(np.float32)).to(dev))
+                    dc = _dp(zc, PL.expand(len(zc), -1))
+                    tgt = torch.tensor([int(grad_labels["best"][pi_]) - a], device=dev)
+                    terms_l.append(torch.nn.functional.cross_entropy(-dc[None, :], tgt))
+                l_grad = torch.stack(terms_l).mean()
+            else:
+                gsel = rng_np.integers(0, len(grad_labels["best_tok"]), 64)
+                zbst = model.encode_q(torch.from_numpy(grad_labels["best_tok"][gsel].astype(np.int64)).to(dev),
+                                      torch.from_numpy(grad_labels["best_glob"][gsel].astype(np.float32)).to(dev))
+                zalt = model.encode_q(torch.from_numpy(grad_labels["alt_tok"][gsel].astype(np.int64)).to(dev),
+                                      torch.from_numpy(grad_labels["alt_glob"][gsel].astype(np.float32)).to(dev))
+                d_best = _dp(zbst, PL.expand(len(zbst), -1))
+                d_alt = _dp(zalt, PL.expand(len(zalt), -1))
+                l_grad = torch.nn.functional.softplus(d_best - d_alt).mean()
+        loss = (args.w_mh * l_mh + args.w_mh_cons * l_mh_cons
+                + args.w_grad * l_grad
                 + args.w_region * (l_nll + args.w_repel * l_rep_a)
                 + args.w_iqe * (l_q + args.w_repel * l_rep_b) + args.w_confine * l_conf
                 + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
@@ -886,7 +975,7 @@ def main():
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
                "confine": float(l_conf.detach()),
                "tc_att": float(l_termcon_att.detach()), "tc_rep": float(l_termcon_rep.detach()),
-               "grad": float(l_grad.detach()),
+               "grad": float(l_grad.detach()), "mh": float(l_mh.detach()), "mh_cons": float(l_mh_cons.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
                # the residue the cross sampler's redraw loop could not clear -- must be ~0, and is
