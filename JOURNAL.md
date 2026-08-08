@@ -11757,3 +11757,35 @@ side (locked metastability design) or a temperature'd generator flag later.
 **Launched: reach_abs_full** -- the complete bundle at 6000 steps. Gate ladder + arena next.
 Pending Kaveh's call: engine navigation margin rewire (steer by dA progress, gate by dB
 committor).
+
+## 2026-08-08 (night) — Arena statistics done right; the sqlite stall; both nav modes tie;
+## champion holds
+
+**Arena upgraded to the fishtest standard** (Kaveh: "how do other chess engine arenas do it?"):
+game PAIRS with colors swapped on shared openings (colors exactly balanced -- the answer to the
+odd-games instinct), PENTANOMIAL pair outcomes, pair-bootstrap 95% CI + P(score>50%). With
+deterministic engines the pair outcome is a pure function of the opening, so the opening pair
+is the only honest sampling unit; per-game counting overstates evidence ~2x.
+
+**The stalled-arena mystery, solved by sampling the process**: every wedged arena today was
+spinning in sqlite's busy handler -- TWO TB() instances per process fighting the DELETE-mode
+probe-cache writer lock (nanosleep under sqliteDefaultBusyCallback, ~0% CPU). Not MPS, not
+background niceness. Fix: engines share one TB connection (_share_tb). Side effect: matches
+that took ~8 min now take ~40 SECONDS -- the contention had been throttling even the "healthy"
+matches all day. (The tb-cache scar file gains a sibling: one PROCESS, one probe-cache
+connection.)
+
+**Nav A/B (Kaveh: "try both ways, arena them")**: A-steer+B-gate vs threat-first on
+reach_abs_full, 30 pairs: 30.5/60 (50.8%), CI [48.3%, 53.3%], 27/30 pairs split 1-1.
+STATISTICAL TIE -- at 1-ply the chooser cannot cash the odometer; its value must come through
+search. db stays the default.
+
+**Title match**: reach_abs_full vs champion mhwm, 30 pairs: 30.0/60 exactly, REJECTED,
+champion holds. abs_full = equal committor (0.513/0.819) + equal routing (0.676) + the NEW
+odometer (corr 0.481 with remaining plies, 58% descent) + looser walls (quasi 1.38 vs 0.48).
+Science keeps abs_full as the geometry reference; the server keeps mhwm per the rule.
+
+**Day's scoreboard**: committor born (CE 0.496, deployed in the tricolor bar), lichess-replica
+analysis board with streaming abortable search + Bellman-residual display, mirror involution,
+selfplay/committor/odometer instruments, pentanomial arena, two Bellman retractions with the
+split vindicated, and the sqlite scar closed.

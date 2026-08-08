@@ -65,6 +65,19 @@ def random_opening(rng, plies=6):
             return ucis
 
 
+def _share_tb(a, b):
+    """ONE probe-cache connection per process. Two TB() instances hit sqlite's DELETE-mode
+    writer lock and the second spins forever in the busy handler at ~0% CPU (sampled
+    2026-08-08: nanosleep under sqliteDefaultBusyCallback -- every 'stalled arena' today).
+    The arena is single-threaded, so sharing is safe."""
+    if getattr(b, "tb", None) is not None and getattr(a, "tb", None) is not None:
+        try:
+            b.tb.close()
+        except Exception:
+            pass
+        b.tb = a.tb
+
+
 def report_pairs(pairs, a_name, b_name):
     """Pentanomial + pair-bootstrap verdict (fishtest-style, 2026-08-08). The game PAIR
     (one opening, colors swapped) is the independent unit -- with deterministic engines the
@@ -100,6 +113,8 @@ def main():
     ap.add_argument("--champion-ckpt", default=None,
                     help="override the registry champion (e.g. same ckpt, other nav mode -- "
                          "Kaveh 2026-08-08 'try both ways, arena them')")
+    ap.add_argument("--opening-seed", type=int, default=0,
+                    help="seed for the random opening pairs (chunked matches: different seed per chunk = fresh independent pairs)")
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
@@ -109,7 +124,8 @@ def main():
               f"{args.champion_ckpt} ({args.champion_nav}) -- registry untouched")
         cand = KittyChess(args.candidate, args.device, args.cond_elo, nav=args.candidate_nav)
         ch = KittyChess(args.champion_ckpt, args.device, args.cond_elo, nav=args.champion_nav)
-        rng = random.Random(0)
+        _share_tb(cand, ch)
+        rng = random.Random(args.opening_seed)
         pairs = []
         for rd in range(args.rounds):
             op = random_opening(rng)
@@ -133,7 +149,8 @@ def main():
     print(f"[arena] candidate {args.candidate}\n[arena] champion  {champ['ckpt']}")
     cand = KittyChess(args.candidate, args.device, args.cond_elo, nav=args.candidate_nav)
     ch = KittyChess(champ["ckpt"], args.device, args.cond_elo, nav=args.champion_nav)
-    rng = random.Random(0)
+    _share_tb(cand, ch)
+    rng = random.Random(args.opening_seed)
     pairs = []
     for rd in range(args.rounds):
         op = random_opening(rng)
