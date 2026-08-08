@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""build_plank_page.py -- the playable ChessPlank artifact: full rules + the real network forward
+"""build_kitty_page.py -- the playable KittyChess artifact: full rules + the real network forward
 + threat-first navigation, all in-browser, weights inlined. The engine's reasoning is shown per
 move (three pole-distances + margin) -- people see the geometry choose.
 
@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import os
 
-HTML = r"""<title>ChessPlank — navigation on a learned quasimetric</title>
+HTML = r"""<title>KittyChess — navigation on a learned quasimetric</title>
 <style>
 :root{--bg:#f5f4f1;--panel:#fff;--edge:#ddd9d2;--ink:#1d1c1a;--dim:#75716a;--acc:#b3502e;
 --sqd:#b58863;--sql:#f0d9b5;--hl:#7ba05baa;--sel:#e8c35a;--mono:ui-monospace,Menlo,monospace}
@@ -46,7 +46,7 @@ tr.pick td{color:var(--acc);font-weight:700}
 .note{color:var(--dim);font-size:12px;margin-top:10px;max-width:60ch}
 </style>
 <div class="wrap">
-<h1>ChessPlank</h1>
+<h1>KittyChess</h1>
 <div class="sub">a chess engine that navigates a learned quasimetric field — no search, no eval
 function: every move is chosen by pushing the nearest unwanted ending away and pulling the win
 closer. The table shows the geometry deciding.</div>
@@ -357,7 +357,7 @@ def main():
     html = HTML.replace("__CG_JS__", cg_js).replace("__CG_CSS__", cg_css)
     with open(args.out, "w") as f:
         f.write(html.replace("__WEIGHTS__", w))
-    print(f"[plank-page] -> {args.out} ({os.path.getsize(args.out)/2**20:.1f} MB)")
+    print(f"[kitty-page] -> {args.out} ({os.path.getsize(args.out)/2**20:.1f} MB)")
 
 
 if __name__ == "__main__":

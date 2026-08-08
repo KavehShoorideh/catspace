@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""export_plank_web.py -- export a ChessPlank checkpoint to JSON for the in-browser engine.
+"""export_kitty_web.py -- export a KittyChess checkpoint to JSON for the in-browser engine.
 
 Ships every tensor the JS forward needs (token/square/glob embeddings, CLS, transformer layers,
 proj_b, IQE-B params, W/D/L poles) plus a TEST VECTOR: the startpos three-pole distances computed
