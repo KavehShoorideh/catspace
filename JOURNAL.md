@@ -11530,3 +11530,44 @@ and exposed mid-range compression; eval suite grew phase-grouped committor, DTZ 
 ranking faithfulness (Kaveh: rank agreement IS the endpoint, not absolute error), distance-error
 histogram, force-ledger plots. Pre-registered promotion gates recorded (smoke -> full-scale ->
 3 seeds; nothing quotable before Stage 3).
+
+## 2026-08-08 (early) — Hybrid-oracle turn: piece-down data + boundary routing; PRIMARY GATE PASSES
+
+Kaveh's decisions, in sequence: (1) the quasimetric's minimal semantics are incompatible with
+probabilistic human error -> OPTION B: walls from SF games only (near-optimal treated as optimal);
+human play trains only the probabilistic layers; Option A (surprisal-priced human edges via -log P
+/ Maia) recorded as the destination semantics. (2) "At the tablebase we'll just do lookup" ->
+hybrid oracle; the field's endgame deliverable collapses to ROUTING into favourable TB entries.
+(3) Gates re-audited for relevance: in-TB metrics demoted to instruments; NEW primary =
+boundary-routing (6-piece positions, capture children TB-exact, pairwise-choice vs oracle);
+distance calibration rescoped to SF pairs (human looseness is now BY DESIGN).
+
+Option-B coverage hole predicted and confirmed: balanced SF dies to adjudication, so SF-only
+walls barely reach the TB region (TB-WDL edge fell to +0.053). Fix per Kaveh: PIECE-DOWN
+SF-vs-SF -- one Q/R/B/N removed from a human-prefix position, played to the board end with
+SyzygyPath (tb-optimal <=5): 4,000 games, 94% decisive (balanced pool: ~1%), 20 min on 6 workers.
+First data with abundant arrived-WIN terminals; corpus outcome labels balanced (W 250k / D 212k /
+L 252k vs the old 2.6:1 draw skew).
+
+RESULT (small model 64x2/d32, dual, w_basin 1000, walls-on-conditioned, terminal 4th leg,
+piece-down store):
+  boundary routing  0.698@3500 / 0.710@1500 pairwise (chance 0.500, pre-piece-down 0.530), n=434
+                    -> PRIMARY GATE PASSED: the field steers into winning TB entries at ~70%
+  phase edges       +0.189/+0.237/+0.380 (cond-1500; previous best +0.03/+0.09/+0.09), with
+                    conf-right corr ~0.5 -- caveat: balanced data made the test population easier
+                    (majorities fell to ~0.35), so part of the edge is population shift
+  TB-WDL @3500      +0.130 (was -0.26): the best-play readout works once best-play data inhabits
+                    the region -- the off-manifold account confirmed on its second prediction
+  rev_ratio         1.61, a record; the ratchet strengthens with every committor/data improvement
+  STILL FAILING     distance calibration on SF pairs: gap-1 bias +1.06 ply, mid-range sag to
+                    -6.4; walls straining (quasi 92) against the new hard decisive-path
+                    constraints. Routing survives monotone distortion; hop-composition will not.
+
+Instrument bug caught by Kaveh's "make sure the gates are relevant" audit: the tmp phase gate
+read UNCONDITIONED base embeddings after the committor moved into the conditioned branch --
+reported all-negative edges for a model whose conditioned committor was at its best ever. Fixed
+(cond-elo arg); lesson filed with the basin-logits episode: when the model's readout moves, every
+instrument that hard-codes the old readout silently measures noise.
+
+Stage-1: 3 of 4 gates pass. Per the pre-registered rule (ALL gates), one calibration-focused
+iteration before Stage-2 scale.

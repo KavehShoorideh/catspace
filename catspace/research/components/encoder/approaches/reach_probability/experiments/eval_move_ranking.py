@@ -75,7 +75,7 @@ def main():
         return _t.cat(out)
     c = pay["cfg"]
     tr = T.build(n_human=c["games"] // 2, n_sf=c["games"] // 2, seed=c["traj_seed"],
-                 max_plies=c["max_plies"], verbose=False)
+                 max_plies=c["max_plies"], n_piecedown=c.get("n_piecedown", 0), verbose=False)
     split = split_by_game(np.arange(len(tr)), (0.70, 0.15), c["traj_seed"])
     test = np.flatnonzero(split == 2)
     game, pc = tr.game_of_row(), tr.piece_count()
