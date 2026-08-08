@@ -44,7 +44,11 @@ def main():
                 for u in parts[parts.index("moves") + 1:]:
                     board.push_uci(u)
         elif cmd.startswith("go"):
-            mv = eng.choose(board)
+            rows = eng.search(board, depth=3)
+            mv = rows[0]["mv"] if rows else None
+            if rows:
+                pv = " ".join(m.uci() for m in rows[0]["pv"][:6])
+                print(f"info depth 3 score cp {int(rows[0]['value'])} pv {pv}", flush=True)
             print(f"bestmove {mv.uci() if mv else '0000'}", flush=True)
         elif cmd == "quit":
             break
