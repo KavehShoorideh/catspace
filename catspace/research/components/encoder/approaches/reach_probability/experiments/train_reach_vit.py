@@ -207,6 +207,13 @@ def main():
                          "competition is the softmax denominator. Raw attraction to the observed "
                          "pole instead COLLAPSES (measured: mean pole distance 0.000, readout "
                          "uniform) because a quasimetric permits d(s->W)=d(s->D)=0 at once")
+    ap.add_argument("--w-pole-gas-a", type=float, default=0.0,
+                    help="screened repulsion between batch rows and the 3 outcome poles on dA "
+                         "-- the anchor's counter-force. Without it the anchor is attraction "
+                         "without repulsion: poles slide into the cloud and dA(anything->pole) "
+                         "collapses to ~2 (measured on reach_abs). With it, the triangle "
+                         "ceiling d(s->own pole) <= remaining+1 binds and foreign poles float "
+                         "out: the length-committor structure.")
     ap.add_argument("--w-anchor-a", type=float, default=0.0,
                     help="A-side ABSORBING pole anchor (Kaveh 2026-08-08: 'the pole should be "
                          "dominated by the mate before it, fixed one ply after'): "
@@ -946,6 +953,13 @@ def main():
                             np.where(((_mo == 0) & _wt) | ((_mo == 2) & ~_wt), 0, 2))
             Ppa = model.poles.poles[torch.from_numpy(_cls.astype(np.int64)).to(dev)]
             l_anchor_a = ((model.dA(za_, Ppa) - 1.0) ** 2).mean()
+        l_pole_gas_a = torch.zeros((), device=dev)
+        if args.w_pole_gas_a > 0 and model.poles is not None \
+                and getattr(model, "split_head", False):
+            _P3 = model.poles.poles[:3]
+            _dg = torch.stack([model.dA(zB[gi], _P3[[k]].expand(len(gi), -1))
+                               for k in range(3)], 1)
+            l_pole_gas_a = (1.0 / (1.0 + _dg)).mean()
         # BELLMAN RESIDUAL (Kaveh 2026-08-08 "we want both"): d(s -> mover's win pole) must
         # equal 1 + min over legal moves of the child's distance to the SAME pole. Walls only
         # enforce consistency along observed game paths; this enforces it along the paths the
@@ -1115,7 +1129,7 @@ def main():
                 + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
                 + args.w_res_shrink * l_shrink
                 + args.w_basin * l_basin + args.w_polesep * l_polesep
-                + args.w_anchor_a * l_anchor_a
+                + args.w_anchor_a * l_anchor_a + args.w_pole_gas_a * l_pole_gas_a
                 + args.w_anchor * l_anchor + args.w_absorb * l_absorb
                 + args.w_termrep * l_termrep + args.w_subsume * l_subsume
                 + args.w_start * l_start + args.w_start_irr * l_startirr
@@ -1127,7 +1141,7 @@ def main():
                "tc_att": float(l_termcon_att.detach()), "tc_rep": float(l_termcon_rep.detach()),
                "grad": float(l_grad.detach()), "mh": float(l_mh.detach()), "mh_cons": float(l_mh_cons.detach()),
                "bell": float(l_bell.detach()), "mh_bell": float(l_mh_bell.detach()),
-               "anchor_a": float(l_anchor_a.detach()),
+               "anchor_a": float(l_anchor_a.detach()), "pole_gas_a": float(l_pole_gas_a.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
                # the residue the cross sampler's redraw loop could not clear -- must be ~0, and is
