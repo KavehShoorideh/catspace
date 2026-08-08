@@ -471,7 +471,7 @@ def main():
     _ = fit.true_edge_mask(np.array([0]), np.array([0]))   # builds tr._row_hash + edge keys once
     tr_row_hash = tr._row_hash
 
-    def terms(model, sampler, n, n_rev, ph=None):
+    def terms(model, sampler, n, n_rev, ph=None, audit=False):
         """One objective evaluation on freshly sampled pairs. Returns (loss, metrics)."""
         ph = ph or Phase(dev, False)
         with ph("sample"):
@@ -555,9 +555,10 @@ def main():
         # min-over-paths emerges from whichever observation carries the tightest ceiling.
         # Pairs whose boards are IDENTICAL (repetitions) are exempt: their true distance is 0
         # and the floor must not fight it.
-        _h = tr_row_hash
+        def _same_board(ra, rb):
+            return ((tr.tok[ra] == tr.tok[rb]).all(1) & (tr.glob[ra] == tr.glob[rb]).all(1))
         def _leg(rows_a, rows_b, dd, gp):
-            distinct = torch.from_numpy((_h[rows_a] != _h[rows_b])).to(dev)
+            distinct = torch.from_numpy(~_same_board(rows_a, rows_b)).to(dev)
             if distinct.any() and args.log_gas:
                 return pair_walls(dd[distinct], gp[distinct])
             if not args.log_gas:
@@ -633,7 +634,13 @@ def main():
             y_np = outcome[np.concatenate([i, j, k])]
             live = np.flatnonzero(y_np >= 0)
             if len(live) > 8:
-                zrows = torch.cat([zB[gi], zB[gj], zB[gk]], 0)[
+                # CONDITIONED committor (2026-08-07): in dual mode the CE trains P(o | s, elo)
+                # through the conditioned embeddings -- each row at its OWN side-to-move Elo.
+                # Querying at Elo 3500 then reads the near-minimax committor; at 1500, the
+                # exploitation committor. Base embeddings otherwise never receive outcome
+                # gradient conditioned on who is playing.
+                _zsrc = zR if (model.dual and zR is not None) else zB
+                zrows = torch.cat([_zsrc[gi], _zsrc[gj], _zsrc[gk]], 0)[
                     torch.from_numpy(live.astype(np.int64)).to(dev)]
                 y = torch.from_numpy(y_np[live].astype(np.int64)).to(dev)
                 P = model.poles.poles                                   # (3, d)
@@ -767,6 +774,22 @@ def main():
         l_var = vicreg_variance(phi) + vicreg_variance(zA) + vicreg_variance(zB)
         l_cov = vicreg_covariance(phi) + vicreg_covariance(zA) + vicreg_covariance(zB)
         l_l1 = model.l1_penalty()
+        _audit = {}
+        if audit:
+            # FORCE AUDIT DURING TRAINING (Kaveh 2026-08-07): per-term gradient magnitude on phi,
+            # i.e. the ACTUAL force each group exerts on the shared representation this step --
+            # the design-time slope arithmetic, but measured live where the terms compete.
+            _groups = {"F_walls": args.w_iqe * l_q,
+                       "F_gas": args.w_iqe * args.w_repel * l_rep_b,
+                       "F_basin": args.w_basin * l_basin,
+                       "F_vicreg": args.w_var * l_var + args.w_cov * l_cov,
+                       "F_regionA": args.w_region * (l_nll + args.w_repel * l_rep_a)}
+            for _nm, _t in _groups.items():
+                if isinstance(_t, torch.Tensor) and _t.requires_grad:
+                    _g = torch.autograd.grad(_t, phi, retain_graph=True, allow_unused=True)[0]
+                    _audit[_nm] = float(_g.norm(dim=-1).mean()) if _g is not None else 0.0
+                else:
+                    _audit[_nm] = 0.0
         loss = (args.w_region * (l_nll + args.w_repel * l_rep_a)
                 + args.w_iqe * (l_q + args.w_repel * l_rep_b) + args.w_confine * l_conf
                 + args.w_var * l_var + args.w_cov * l_cov + args.w_l1 * l_l1
@@ -776,7 +799,8 @@ def main():
                 + args.w_termrep * l_termrep + args.w_subsume * l_subsume
                 + args.w_start * l_start + args.w_start_irr * l_startirr
                 + args.w_termcon * (l_termcon_att + l_termcon_rep))
-        met = {"loss": float(loss.detach()), "nll": float(l_nll.detach()),
+        met = {**_audit,
+               "loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()),
                "confine": float(l_conf.detach()),
                "tc_att": float(l_termcon_att.detach()), "tc_rep": float(l_termcon_rep.detach()),
@@ -813,7 +837,8 @@ def main():
         # step to measure it (observer effect on the very number we are optimising).
         prof = (step % args.eval_every == 0) or step == 1
         ph = Phase(dev, prof)
-        loss, met, _ = terms(model, fit, args.batch, n_rev, ph)
+        loss, met, _ = terms(model, fit, args.batch, n_rev, ph,
+                             audit=(step % args.eval_every == 0) or step == 1)
         with ph("backward"):
             opt.zero_grad(set_to_none=True)
             loss.backward()
