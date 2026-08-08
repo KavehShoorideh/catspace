@@ -40,6 +40,29 @@ def tokenize(board: chess.Board):
     return tok, glob
 
 
+# COLOR MIRROR (2026-08-08, the lc0/NNUE adaptation): rank-flip + piece-color swap + glob swap
+# is an EXACT involution of chess. lc0 gets color symmetry by canonicalizing every input to the
+# side to move; NNUE by two shared-weight perspectives (black's = the rank-flip color-swap of
+# white's). Our frame is absolute (white-POV labels need it), so the same symmetry enters as a
+# per-step training involution instead: mirrored batch + swapped W/L labels.
+_MIRROR_PIECE = np.array([0, 7, 8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6], np.uint8)
+_MIRROR_SQ = np.arange(64) ^ 56                     # chess.square_mirror, vectorized
+
+
+def mirror_arrays(tok, glob):
+    """(N,64) tok, (N,6) glob -> color-mirrored copies. Result/W-L labels must be swapped by
+    the caller; mover-POV labels are mirror-invariant. ep FILE survives a rank flip unchanged."""
+    tok2 = _MIRROR_PIECE[tok][:, _MIRROR_SQ]
+    glob2 = glob[:, [0, 3, 4, 1, 2, 5]].copy()
+    glob2[:, 0] = 1 - glob[:, 0]
+    return tok2, glob2
+
+
+def mirror_squares(sq):
+    """move from/to squares under the color mirror (promo piece is unchanged)."""
+    return sq ^ 56
+
+
 def move_ids(move: chess.Move):
     """-> (from, to, promo 0-4) for the action embedding."""
     promo = {None: 0, chess.KNIGHT: 1, chess.BISHOP: 2, chess.ROOK: 3, chess.QUEEN: 4}
