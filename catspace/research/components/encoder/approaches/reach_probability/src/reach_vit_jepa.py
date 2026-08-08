@@ -302,6 +302,38 @@ class PoleBank(nn.Module):
         return self.delta.norm(dim=-1).mean(0)
 
 
+class MoveHead(nn.Module):
+    """MOVE-AWARE delta head (Kaveh 2026-08-08): Delta(s, m) = g(phi(s), e(m)) in R^3 -- the
+    predicted CHANGE in the three pole-distances caused by playing m. A learned first-order
+    expansion of the field along the move operator.
+
+    WHY IT EXISTS -- the Lipschitz argument, measured three times before it was believed: sibling
+    children differ by ~2 tokens of 70, so a smooth board encoder gives them near-identical
+    embeddings, and discriminating them from boards alone demands a Lipschitz constant at war with
+    the smoothness every other term needs. Moves are O(1)-distinct tokens; a modest-Lipschitz g
+    on (phi, e(m)) discriminates for free. Pairwise ranking, listwise ranking, and a deeper trunk
+    all flatlined at chance on sibling metrics; this changes the input geometry instead.
+
+    KEPT GEOMETRY, NOT A POLICY HEAD, by the consistency tie: d_B(z(s)->P_o) + Delta_o(s,m) must
+    match d_B(z(s.m)->P_o) computed by actually encoding the child. The head is a chart of the
+    field's own gradient; its residual doubles as a per-move trust signal at planning time.
+    Inference: ranking n moves costs ONE encoder forward + n evaluations of this tiny MLP."""
+
+    def __init__(self, d_model: int, k: int = 32, hidden: int = 128):
+        super().__init__()
+        self.e_from = nn.Embedding(64, k)
+        self.e_to = nn.Embedding(64, k)
+        self.e_promo = nn.Embedding(5, k)
+        self.g = nn.Sequential(nn.Linear(d_model + k, hidden), nn.GELU(),
+                               nn.Linear(hidden, hidden), nn.GELU(),
+                               nn.Linear(hidden, 3))
+
+    def forward(self, phi, mid):
+        """phi (B, d_model); mid (B, 3) int [from, to, promo] -> Delta (B, 3) for (W, D, L)."""
+        e = self.e_from(mid[:, 0]) + self.e_to(mid[:, 1]) + self.e_promo(mid[:, 2])
+        return self.g(torch.cat([phi, e], -1))
+
+
 class ReachViT(nn.Module):
     """(tok (B,64) uint8, glob (B,6) uint8) -> phi -> {region head, quasimetric head}."""
 
@@ -310,7 +342,7 @@ class ReachViT(nn.Module):
     def __init__(self, d_model: int = 256, layers: int = 6, heads: int = 8, d: int = 64,
                  hidden: int = 256, components: int = 8, ema_decay: float = 0.996,
                  leak_beta: float = 0.0, dual: bool = False, d_cond: int = 0,
-                 split_head: bool = False):
+                 split_head: bool = False, move_head: bool = False):
         """`dual=False` is the LEGACY arm-B path (one IQE over proj_b) and is kept byte-identical
         on purpose: the strata run launched 2026-08-05 writes checkpoints with `proj_b.*`/`iqe.*`
         keys, and rewiring in place would have made its own ladder unloadable by interpret_reach
@@ -352,6 +384,7 @@ class ReachViT(nn.Module):
         # walls-vs-CE escalation is impossible at the interface; each block is a full quasimetric
         # in its own right, read SEPARATELY -- 'one point, two rulers', any exchange rate applied
         # at query time, never trained in.
+        self.move_head = MoveHead(d_model) if move_head else None
         self.split_head = bool(split_head)
         if self.split_head:
             assert d % 2 == 0
