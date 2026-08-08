@@ -70,10 +70,30 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--n-pos", type=int, default=2500, help="tb-probed positions (cache-friendly)")
+    ap.add_argument("--cond-elo", type=float, default=None,
+                    help="evaluate the CONDITIONED field at this Elo (e.g. 3500 = near-minimax "
+                         "readout, 1500 = exploitation readout); requires a --dual checkpoint")
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
     net, pay = load_net(args.ckpt, args.device)
+
+    def _embed_rows(net, tr, rows, device, batch=4096):
+        import torch as _t
+        if args.cond_elo is None or not getattr(net, "dual", False):
+            from catspace.research.components.encoder.approaches.reach_probability.experiments.plot_strata_figures import embed as _e
+            return _e(net, tr, rows, device)
+        cval = (args.cond_elo - 1500.0) / 500.0
+        out = []
+        for s0 in range(0, len(rows), batch):
+            r = rows[s0:s0 + batch]
+            cond = _t.full((len(r), net.qhead.proj_delta.in_features
+                            - net.qhead.proj_base.in_features), cval, device=device)
+            zb, zc = net.encode_dual(
+                _t.from_numpy(tr.tok[r].astype(np.int64)).to(device),
+                _t.from_numpy(tr.glob[r].astype(np.float32)).to(device), cond)
+            out.append(zc.float().cpu())
+        return _t.cat(out)
     c = pay["cfg"]
     tr = T.build(n_human=c["games"] // 2, n_sf=c["games"] // 2, seed=c["traj_seed"],
                  max_plies=c["max_plies"], verbose=False)
@@ -107,7 +127,7 @@ def main():
     print(f"[dtz] probed OK: {len(keep):,} | TB classes W {int((wdl_cls==0).sum())} "
           f"D {int((wdl_cls==1).sum())} L {int((wdl_cls==2).sum())}", flush=True)
 
-    Z = embed(net, tr, keep, args.device)
+    Z = _embed_rows(net, tr, keep, args.device)
     iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
     pn = c["pole_names"]; pi = [pn.index(n) for n in ("WIN", "DRAW", "LOSS")]
     sp = net.poles.poles.detach().float()

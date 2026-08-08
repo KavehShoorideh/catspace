@@ -11487,3 +11487,46 @@ quantitative question (what does it scale with), not a mystery.
 steps/s solo at smoke scale; loader fixed for pole-free checkpoints; sqrt(0) NaN in Euclidean
 contrast fixed (self-pair collisions, p~1.8%/step, blew up at step ~80 exactly as the collision
 arithmetic predicts).
+
+## 2026-08-07 (night) — Walls-only objective; the force audit finds the drowned committor;
+## FIRST TB gate pass — via the human-conditioned readout, inverting the hypothesis
+
+**The objective is now five terms** (Kaveh's bracket design, locked + defaults): floor wall at
+d=1 (gauge unit; identical-board pairs exempt, checked by DIRECT board compare -- hashes retained
+only as corpus-scale membership keys), ceiling wall at each observed gap +1 (a witnessed path is
+an exact upper bound; min-over-paths emerges from the tightest ceiling), screened gas x40
+(reversal + cross + K=10 in-batch partners, true 1-ply edges excluded from forward push), VICReg,
+basin CE. Springs deleted. Every constant data-derived or structural.
+
+**The live force audit** (per-term gradient magnitude on phi, measured every 500 steps) instantly
+earned its keep: walls 2.62 at step 1 -> silent by 1000 with violation spikes only; gas constant
+~0.011 after initial expansion (as a gas should be); arm A the sustained shaper (~0.09); and the
+"x10 loud" basin CE measured at 0.002-0.004 THE WHOLE RUN -- never in the fight. Design-time
+slope arithmetic had said x10 sufficed; the measurement said x1000.
+
+**Dose-response, small model (64x2 trunk, d32 head -- matches the 128x3 reference at half the
+cost):** w_basin 100 -> F=0.044, phase edges +0.003/+0.006/+0.015; w_basin 1000 -> F=0.444
+(dominant), phase edges +0.030/+0.087/+0.094 -- ALL POSITIVE, far beyond noise: the first
+position-conditional outcome knowledge in the project's history. rev_ratio rose with CE force
+(1.02 -> 1.28 -> 1.47 with conditioning) -- the committor HELPS the ratchet.
+
+**Elo-conditioned committor (dual head finally live, CE through conditioned embeddings) --
+first TB-WDL gate pass, on the INVERTED side:** cond-1500 acc 0.607 vs majority 0.475, edge
++0.132 (gate: +0.10). cond-3500: -0.258. Mechanism: only HUMAN games reach 5-piece endings (SF
+games die to adjudication), so the TB-probed region is human-Elo data; querying 3500 there is
+off-manifold in the JOINT (position x Elo) space. The trustworthy query Elo is the one supported
+by data in that region -- "minimax = ask 3500" fails wherever SF data never goes. Conditioning
+un-blended the mongrel exactly as intended; the desert is SFxendgame, not just 2318-3500.
+
+**Still failing, and now identifiably ONE deficiency:** DTZ Spearman ~0 and move-ranking
+faithfulness at chance (top1 edge +0.011, tau -0.03) at every conditioning -- the field knows
+WHICH basin but has no within-basin distance-to-ending gradient, so sibling moves are
+indistinguishable. Candidate fix (walls-native, no decree): the game's own terminal as a fourth
+leg -- d(i -> T_game) <= remaining_plies + 1 is a witnessed ceiling, giving every position an
+exact distance-to-end bracket from data alone.
+
+Also: 1-ply hard box (adjacent_anchor) killed the gap-1 bias (+2.11 -> +0.07 plies, RMS 0.21)
+and exposed mid-range compression; eval suite grew phase-grouped committor, DTZ gate, move-
+ranking faithfulness (Kaveh: rank agreement IS the endpoint, not absolute error), distance-error
+histogram, force-ledger plots. Pre-registered promotion gates recorded (smoke -> full-scale ->
+3 seeds; nothing quotable before Stage 3).

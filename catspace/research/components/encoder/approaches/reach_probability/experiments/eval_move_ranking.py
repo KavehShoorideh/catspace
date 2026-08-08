@@ -49,10 +49,30 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--n-pos", type=int, default=600)
+    ap.add_argument("--cond-elo", type=float, default=None,
+                    help="evaluate the CONDITIONED field at this Elo (e.g. 3500 = near-minimax "
+                         "readout, 1500 = exploitation readout); requires a --dual checkpoint")
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
     net, pay = load_net(args.ckpt, args.device)
+
+    def _embed_rows(net, tr, rows, device, batch=4096):
+        import torch as _t
+        if args.cond_elo is None or not getattr(net, "dual", False):
+            from catspace.research.components.encoder.approaches.reach_probability.experiments.plot_strata_figures import embed as _e
+            return _e(net, tr, rows, device)
+        cval = (args.cond_elo - 1500.0) / 500.0
+        out = []
+        for s0 in range(0, len(rows), batch):
+            r = rows[s0:s0 + batch]
+            cond = _t.full((len(r), net.qhead.proj_delta.in_features
+                            - net.qhead.proj_base.in_features), cval, device=device)
+            zb, zc = net.encode_dual(
+                _t.from_numpy(tr.tok[r].astype(np.int64)).to(device),
+                _t.from_numpy(tr.glob[r].astype(np.float32)).to(device), cond)
+            out.append(zc.float().cpu())
+        return _t.cat(out)
     c = pay["cfg"]
     tr = T.build(n_human=c["games"] // 2, n_sf=c["games"] // 2, seed=c["traj_seed"],
                  max_plies=c["max_plies"], verbose=False)
@@ -62,6 +82,14 @@ def main():
     rows = np.flatnonzero(np.isin(game, test) & (pc <= 5) & (pc >= 3))
     rng = np.random.default_rng(0)
     rng.shuffle(rows)
+
+    def _enc_children(net, tok_t, glob_t):
+        if args.cond_elo is not None and getattr(net, "dual", False):
+            cval = (args.cond_elo - 1500.0) / 500.0
+            cond = torch.full((len(tok_t), net.qhead.proj_delta.in_features
+                               - net.qhead.proj_base.in_features), cval, device=args.device)
+            return net.encode_dual(tok_t, glob_t, cond)[1]
+        return net.encode_q(tok_t, glob_t)
 
     iqe = net.qhead.iqe if getattr(net, "dual", False) else net.iqe
     pn = c["pole_names"]
@@ -98,7 +126,7 @@ def main():
         if not ok or len(toks) < 3:
             continue
         with torch.no_grad():
-            z = net.encode_q(torch.from_numpy(np.array(toks).astype(np.int64)).to(args.device),
+            z = _enc_children(net, torch.from_numpy(np.array(toks).astype(np.int64)).to(args.device),
                              torch.from_numpy(np.array(globs).astype(np.float32)).to(args.device))
             d = iqe(z, pL.expand(len(z), -1).to(args.device)).float().cpu().numpy()
         osc = np.array([o[0] for o in oracle], float)      # opponent wdl: -2 best for us
