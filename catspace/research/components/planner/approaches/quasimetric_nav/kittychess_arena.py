@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""plank_arena.py -- promotion gate for the playable server (Kaveh 2026-08-08): the candidate
+"""kittychess_arena.py -- promotion gate for the playable server (Kaveh 2026-08-08): the candidate
 must BEAT the reigning champion head-to-head before it ships.
 
 Paired-opening match: each round samples one short random opening prefix and plays it TWICE with
@@ -7,7 +7,7 @@ colors swapped (both engines are deterministic; unpaired games would repeat one 
 Candidate promotes iff its total score exceeds half the games. The champion registry
 (artifacts/champions/) records the lineage: who beat whom, when, by how much.
 
-    .venv/bin/python -m ...plank_arena --candidate <ckpt> [--rounds 10] [--promote]
+    .venv/bin/python -m ...kittychess_arena --candidate <ckpt> [--rounds 10] [--promote]
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ import time
 import chess
 
 from catspace.io import paths
-from catspace.research.components.planner.approaches.quasimetric_nav.chessplank import ChessPlank
+from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
 
 CHAMP_DIR = os.path.join(paths.experiment(""), "champions")
 CHAMP_FILE = os.path.join(CHAMP_DIR, "champion.json")
@@ -89,8 +89,8 @@ def main():
         return
 
     print(f"[arena] candidate {args.candidate}\n[arena] champion  {champ['ckpt']}")
-    cand = ChessPlank(args.candidate, args.device, args.cond_elo)
-    ch = ChessPlank(champ["ckpt"], args.device, args.cond_elo)
+    cand = KittyChess(args.candidate, args.device, args.cond_elo)
+    ch = KittyChess(champ["ckpt"], args.device, args.cond_elo)
     rng = random.Random(0)
     cscore, n = 0.0, 0
     for rd in range(args.rounds):
@@ -111,7 +111,7 @@ def main():
         champ["since"] = time.strftime("%Y-%m-%d %H:%M")
         json.dump(champ, open(CHAMP_FILE, "w"), indent=1)
         print(f"[arena] champion registry updated -> {args.candidate}")
-        print("[arena] next: export_plank_web + build_plank_page + republish the artifact")
+        print("[arena] next: export_kitty_web + build_kitty_page + republish the artifact")
 
 
 if __name__ == "__main__":

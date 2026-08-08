@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""chessplank.py -- THE most basic quasimetric-navigation engine (Kaveh 2026-08-08).
+"""kittychess.py -- THE most basic quasimetric-navigation engine (Kaveh 2026-08-08).
 
 Move choice is THREAT-FIRST navigation on the outcome field, exactly as specified:
   'it's about holding back the draw and holding back the loss and going towards the win.'
@@ -32,7 +32,7 @@ from catspace.research.components.encoder.approaches.reach_probability.experimen
 from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
 
 
-class ChessPlank:
+class KittyChess:
     def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True):
         self.net, pay = load_net(ckpt, device)
         self.cfg = pay["cfg"]
@@ -128,7 +128,7 @@ def main():
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
-    eng = ChessPlank(args.ckpt, args.device, args.cond_elo)
+    eng = KittyChess(args.ckpt, args.device, args.cond_elo)
     rng = random.Random(0)
 
     def rand_opp(b):
@@ -150,8 +150,8 @@ def main():
         score += play(eng, rand_opp, white, start_fen=start_fen(white))
         n += 1
         if n % 10 == 0:
-            print(f"[plank] {n}/{args.games}  score {score/n:.2f}", flush=True)
-    print(f"[plank] FINAL vs {args.opponent} ({args.start}): {score/n:.3f} over {n} games "
+            print(f"[kitty] {n}/{args.games}  score {score/n:.2f}", flush=True)
+    print(f"[kitty] FINAL vs {args.opponent} ({args.start}): {score/n:.3f} over {n} games "
           f"(0.5 = parity; random-vs-random ~0.5)")
 
 

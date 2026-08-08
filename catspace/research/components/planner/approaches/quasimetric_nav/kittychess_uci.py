@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""chessplank_uci.py -- ChessPlank as a standard UCI engine.
+"""kittychess_uci.py -- KittyChess as a standard UCI engine.
 
 Speaks the protocol every off-the-shelf chess tool understands: cutechess-cli tournaments,
 GUI analysis boards, lichess-bot bridges. Ignores clocks (the engine is single-readout and
 near-instant); `go` always answers with the threat-first choice.
 
-    .venv/bin/python -m ...chessplank_uci --ckpt <ckpt.pt> [--cond-elo E]
+    .venv/bin/python -m ...kittychess_uci --ckpt <ckpt.pt> [--cond-elo E]
 then point any UCI host at that command.
 """
 from __future__ import annotations
@@ -15,7 +15,7 @@ import sys
 
 import chess
 
-from catspace.research.components.planner.approaches.quasimetric_nav.chessplank import ChessPlank
+from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
 
 
 def main():
@@ -24,12 +24,12 @@ def main():
     ap.add_argument("--cond-elo", type=float, default=None)
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
-    eng = ChessPlank(args.ckpt, args.device, args.cond_elo)
+    eng = KittyChess(args.ckpt, args.device, args.cond_elo)
     board = chess.Board()
     for line in sys.stdin:
         cmd = line.strip()
         if cmd == "uci":
-            print("id name ChessPlank"); print("id author catspace"); print("uciok", flush=True)
+            print("id name KittyChess"); print("id author catspace"); print("uciok", flush=True)
         elif cmd == "isready":
             print("readyok", flush=True)
         elif cmd == "ucinewgame":
