@@ -11712,3 +11712,48 @@ though white-POV labels and in-manifold poles were both necessary in the bundle.
 Board UX shipped alongside (Kaveh: "copy off lichess"): engine never plays; instant nav
 (~35ms) with abortable search (stop() checked per node); streaming analysis (iterative
 deepening, partial lines published per root move, 250ms polls); 3-decimal margins; flip.
+
+## 2026-08-08 (evening) — The descent arc: Bellman retracted twice, the split vindicated twice,
+## the A-side absorbing pole structure lands
+
+**selfplay_probe** (new instrument): engine vs itself, per-ply pole distances + monotonicity.
+Baseline on champion mhwm: committor tracks regimes (leader flips 5x/79, all at a real queen
+blunder) but NO DESCENT -- d(->winner's pole) is a random walk (52% of plies decrease = chance),
+black sits at 97% for 36 plies shuffling rooks, game unfinished. The field reads positions; it
+does not yet point anywhere.
+
+**Bellman attempt 1 (field-level, dB): retracted.** w=5 flattened the committor (class-mean
+spread 5 -> 0.3, CE 0.563 -> 0.631, W-row misordered); w=1 was a wash with worse flip rate.
+Mechanism: the semi-gradient (required to avoid the bootstrap spiral) can only calibrate parent
+LEVELS, never reorder children -- structurally unable to create descent. Kaveh then named the
+real error: a per-ply decrement is a LENGTH law and dB is the PROBABILITY ruler ("we split the
+space; the distance should only be calculated in the split space"). Attempt 2 (head-level
+min-delta=-1) was the same category error one level up; killed pre-verdict.
+
+**Split vindicated by measurement, both directions:** softmax on dA does NOT reproduce the dB
+committor -- dA->poles was EXACTLY uniform (pole A-halves never trained: every pole loss reads
+through dB), dA->win-terminal exemplars top1 0.53 vs dB 0.827. And corr(dA,dB) = -0.045. The
+two rulers are complementary, not redundant: B knows who, A knows how far.
+
+**Kaveh's absorbing-pole design:** "the pole should be dominated by the mate before it, fixed
+one ply after." Why it wasn't already true: the walls staircase ends AT the terminals; the
+terminal->pole edge was the zeroed anchor term; basin moors B-halves only. Implemented as
+--w-anchor-a: (dA(terminal -> white-POV outcome pole) - 1)^2.
+  - anchor alone (reach_abs): attraction-without-repulsion collapse -- poles slid into the
+    cloud, dA(anything->pole) ~ 2, still class-uniform. The interaction-review lesson repeats.
+  - anchor + pole gas (reach_abs2, --w-pole-gas-a 5): dB committor held (0.596); dA->own-pole
+    now tracks remaining plies (corr 0.461) and DESCENDS in self-play (58% of plies vs 52%
+    chance, games end at dA ~ 1-3 = at the pole). Class separation on A did NOT emerge (foreign
+    poles capped low via ungoverned cross-game hops) -- A is a progress odometer, not a second
+    committor, and that is the correct division of labor.
+
+**SF determinism (Kaveh's question, measured):** generators are deterministic by design (fixed
+nodes/depth, 1 thread); 796,886 distinct positions, only 0.6% seen in >1 game, disagreeing
+outcomes only in the human-prefix opening (median ply 5). The committor is therefore EPISTEMIC
+confidence about a minimax value (proper-scoring smoothing over the model's resolution), not
+aleatoric play probability -- correct for Option B; true probability enters with the stochastic
+side (locked metastability design) or a temperature'd generator flag later.
+
+**Launched: reach_abs_full** -- the complete bundle at 6000 steps. Gate ladder + arena next.
+Pending Kaveh's call: engine navigation margin rewire (steer by dA progress, gate by dB
+committor).
