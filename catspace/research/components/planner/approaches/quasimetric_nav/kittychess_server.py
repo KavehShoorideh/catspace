@@ -75,10 +75,9 @@ label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
   <div class="box">
     <div class="engrow"><b>KittyChess</b>
       <span id="dinfo"></span>
-      <label>depth <select id="depth"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></label>
+      <label>depth <select id="depth"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label>
       <label>lines <select id="lines"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
-      <label class="sw"><input type="checkbox" id="vs"> play vs engine as
-        <select id="side"><option selected>white</option><option>black</option></select></label>
+      <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
     <div class="lines" id="lnbox"></div>
   </div>
@@ -88,24 +87,33 @@ label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
 <script>__CG_JS__</script>
 <script>
 "use strict";
-let busy=false;
+let seq=0, orient="white";
 const cg=window.Chessground(document.getElementById('board'),{coordinates:true});
 const knobs=()=>({depth:+document.getElementById('depth').value,
-  lines:+document.getElementById('lines').value,
-  vs:document.getElementById('vs').checked,
-  side:document.getElementById('side').value});
+  lines:+document.getElementById('lines').value});
+// Two-phase like lichess: the position updates INSTANTLY, the engine lines stream in after.
+// A stale analysis (older seq) is discarded, so mashing the nav buttons stays responsive.
 async function api(body){
-  if(busy)return; busy=true;
-  document.getElementById('dinfo').textContent="thinking…"; document.getElementById('dinfo').className="spin";
-  try{
-    const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({...body,...knobs()})});
-    render(await r.json());
-  } finally{ busy=false; }
+  const my=++seq;
+  const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({...body,...knobs()})});
+  const d=await r.json();
+  if(my!==seq)return;
+  render(d);
+  if(d.over){document.getElementById('dinfo').textContent=d.over;return;}
+  document.getElementById('dinfo').textContent="thinking…";
+  document.getElementById('dinfo').className="spin";
+  const r2=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify({action:"analyze",...knobs()})});
+  const d2=await r2.json();
+  if(my!==seq)return;
+  renderLines(d2);
+  document.getElementById('dinfo').textContent="depth "+d2.depth;
+  document.getElementById('dinfo').className="";
 }
 function render(d){
   cg.set({fen:d.fen, turnColor:d.turn, check:d.check, lastMove:d.lastMove||undefined,
-    orientation:knobs().side,
+    orientation:orient,
     movable:{free:false, color:d.turn, dests:new Map(Object.entries(d.dests)),
       events:{after:(o,t)=>api({action:"move",uci:o+t})}}});
   // tricolor committor bar: white at the bottom (lichess convention), draw grey between
@@ -115,13 +123,6 @@ function render(d){
   document.getElementById('wdltxt').textContent=
     `white ${(d.wdl[0]*100).toFixed(1)}%  ·  draw ${(d.wdl[1]*100).toFixed(1)}%  ·  black ${(d.wdl[2]*100).toFixed(1)}%`
     +(d.dists?`   |   d→white-win ${d.dists[0].toFixed(2)}  d→draw ${d.dists[1].toFixed(2)}  d→black-win ${d.dists[2].toFixed(2)}`:"   |   exact (terminal/tablebase)");
-  document.getElementById('dinfo').textContent="depth "+d.depth; document.getElementById('dinfo').className="";
-  const lb=document.getElementById('lnbox'); lb.innerHTML="";
-  (d.think||[]).forEach((row,i)=>{
-    const div=document.createElement('div'); div.className="ln"+(i===0?" best":"");
-    div.innerHTML=`<span class="ev">${row.margin}${row.tb?" tb":""}</span><span class="mv">${row.line||row.uci}</span>`;
-    div.onclick=()=>api({action:"move",uci:row.uci});
-    lb.appendChild(div);});
   const mv=document.getElementById('moves'); mv.innerHTML="";
   (d.san||[]).forEach((sn,i)=>{
     if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
@@ -130,6 +131,14 @@ function render(d){
   const cur=mv.querySelector('.cur'); if(cur)cur.scrollIntoView({block:"nearest"});
   if(d.over)document.getElementById('dinfo').textContent=d.over;
 }
+function renderLines(d){
+  const lb=document.getElementById('lnbox'); lb.innerHTML="";
+  (d.think||[]).forEach((row,i)=>{
+    const div=document.createElement('div'); div.className="ln"+(i===0?" best":"");
+    div.innerHTML=`<span class="ev">${row.margin}${row.tb?" tb":""}</span><span class="mv">${row.line||row.uci}</span>`;
+    div.onclick=()=>api({action:"move",uci:row.uci});
+    lb.appendChild(div);});
+}
 document.getElementById('new').onclick=()=>api({action:"new"});
 document.getElementById('first').onclick=()=>api({action:"goto",ptr:0});
 document.getElementById('prev').onclick=()=>api({action:"rel",d:-1});
@@ -137,8 +146,7 @@ document.getElementById('next').onclick=()=>api({action:"rel",d:1});
 document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
 document.getElementById('lines').onchange=()=>api({action:"noop"});
-document.getElementById('vs').onchange=()=>api({action:"noop"});
-document.getElementById('side').onchange=()=>api({action:"noop"});
+document.getElementById('flip').onclick=()=>{orient=orient==="white"?"black":"white";api({action:"noop"});};
 addEventListener('keydown',e=>{
   if(e.key==="ArrowLeft"){e.preventDefault();api({action:"rel",d:-1});}
   if(e.key==="ArrowRight"){e.preventDefault();api({action:"rel",d:1});}});
@@ -149,10 +157,13 @@ api({action:"noop"});
 class H(BaseHTTPRequestHandler):
     """Analysis-board state: ONE shared game line (moves) + a pointer (ptr).
 
-    Free analysis of both sides at any point in the line; moving from mid-history
-    truncates the future (lichess-simplified: no variation tree yet). The optional
-    play-vs-engine switch makes the engine answer at the tip of the line."""
+    PURE analysis board (Kaveh 2026-08-08: "I don't want the engine to play") -- both sides
+    free-movable at any point in the line; moving from mid-history truncates the future
+    (lichess-simplified: no variation tree yet). Two-phase protocol: every action returns the
+    position instantly (wdl included -- one forward); the 'analyze' action runs the search and
+    returns the lines, so navigation never blocks on the engine."""
     eng = None
+    lock = None                                          # engine/MPS is not thread-safe
     moves: list = []
     ptr = 0
     depth = 3
@@ -206,21 +217,20 @@ class H(BaseHTTPRequestHandler):
                 pass
         b = self._board()
         over = self._over(b)
-        # play-vs-engine: only at the tip of the line, only when it's the engine's turn
-        if (req.get("vs") and not over and cls.ptr == len(cls.moves)
-                and (b.turn == chess.WHITE) != (req.get("side", "white") == "white")):
-            rows = self._deliberate(b)
-            if rows:
-                cls.moves.append(rows[0]["mv"]); cls.ptr += 1
-                b = self._board(); over = self._over(b)
-        # ANALYSIS of the current position -- the analysis engine IS this engine
-        # (Kaveh 2026-08-08), lichess-style: depth + number of lines are user knobs.
-        think = []
-        if not over:
-            think = [{k: r.get(k) for k in ("uci", "margin", "tb", "line")}
-                     for r in self._deliberate(b)[:cls.lines]]
-        # tricolor committor bar: [P(white wins), P(draw), P(black wins)]
-        wdl, dists = self._wdl(b, over)
+        # slow phase, requested separately so navigation never waits on the search --
+        # the analysis engine IS this engine (Kaveh 2026-08-08), depth + lines are the knobs
+        if act == "analyze":
+            think = []
+            if not over:
+                with H.lock:
+                    think = [{k: r.get(k) for k in ("uci", "margin", "tb", "line")}
+                             for r in self._deliberate(b)[:cls.lines]]
+            self._send(200, json.dumps({"think": think, "depth": cls.depth,
+                                        "fen": b.fen(), "over": over}).encode())
+            return
+        # fast phase: position + tricolor committor bar [P(white), P(draw), P(black)]
+        with H.lock:
+            wdl, dists = self._wdl(b, over)
         dests = {}
         if not over:                                    # free analysis: mover always movable
             for m in b.legal_moves:
@@ -235,7 +245,7 @@ class H(BaseHTTPRequestHandler):
             san.append(sb.san(m)); sb.push(m)
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
-               "dists": dists, "check": b.is_check(), "dests": dests, "think": think,
+               "dists": dists, "check": b.is_check(), "dests": dests,
                "lastMove": last, "over": over}
         self._send(200, json.dumps(out).encode())
 
@@ -280,8 +290,10 @@ def main():
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
+    import threading
     from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
     H.eng = KittyChess(args.ckpt, args.device, args.cond_elo)
+    H.lock = threading.Lock()
     H.depth = args.depth
     global PAGE_BYTES
     cg_js = open(os.path.join(ASSETS, "bundle.js")).read()
