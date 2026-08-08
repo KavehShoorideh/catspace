@@ -22,79 +22,141 @@ KittyMATE=_KC.MATE
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_assets")
 
 PAGE = """<!doctype html><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>KittyChess (full engine)</title>
+<title>KittyChess analysis</title>
+<style>__CG_CSS__</style>
 <style>
-body{margin:0;background:#f5f4f1;color:#1d1c1a;font:14px/1.5 system-ui,sans-serif}
-.wrap{max-width:1080px;margin:0 auto;padding:24px 18px}
-h1{font-size:20px;margin:0 0 2px}.sub{color:#75716a;font-size:12.5px;margin-bottom:16px}
-.cols{display:grid;grid-template-columns:minmax(300px,480px) 1fr;gap:22px}
-@media(max-width:760px){.cols{grid-template-columns:1fr}}
-#board{width:100%;max-width:480px;aspect-ratio:1}
-.bar{display:flex;gap:8px;margin:10px 0;flex-wrap:wrap;align-items:center}
-button{font:inherit;font-size:13px;padding:6px 12px;border:1px solid #ddd9d2;background:#fff;border-radius:5px;cursor:pointer}
-#status{font-family:ui-monospace,monospace;font-size:12.5px;color:#75716a}
-.panel{background:#fff;border:1px solid #ddd9d2;border-radius:6px;padding:12px 14px}
-.panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#75716a;margin:0 0 8px}
-table{border-collapse:collapse;width:100%;font-family:ui-monospace,monospace;font-size:11.5px}
-th,td{text-align:right;padding:2.5px 7px;border-bottom:1px solid #eee}
-th:first-child,td:first-child{text-align:left}
-tr.pick td{color:#b3502e;font-weight:700}
-__CG_CSS__
+body{margin:0;background:#161512;color:#bababa;font:14px/1.4 'Noto Sans',system-ui,sans-serif}
+.top{padding:10px 16px;font-size:15px;color:#dedede}
+.top b{color:#fff}
+.main{display:grid;grid-template-columns:24px minmax(280px,600px) minmax(260px,420px);gap:10px;
+padding:0 16px 20px;max-width:1100px}
+@media(max-width:760px){.main{grid-template-columns:20px 1fr;} .right{grid-column:1/3}}
+#evalbar{position:relative;border-radius:3px;overflow:hidden;background:#333;align-self:stretch}
+#evalbar div{width:100%;transition:height .3s}
+#eb-b{background:#403d39}#eb-d{background:#8b8680}#eb-w{background:#f0efeb}
+#board{width:100%;aspect-ratio:1}
+.nav{display:flex;gap:4px;margin-top:8px}
+.nav button{flex:1;font-size:15px;padding:5px 0;background:#262421;border:none;color:#bababa;
+border-radius:3px;cursor:pointer}
+.nav button:hover{background:#3a3733}
+.right{display:flex;flex-direction:column;gap:10px;min-width:0}
+.box{background:#262421;border-radius:4px;padding:10px 12px}
+.engrow{display:flex;align-items:center;gap:10px;font-size:12.5px;color:#8f8a82;flex-wrap:wrap}
+.engrow b{color:#dedede;font-size:14px}
+select{background:#161512;color:#bababa;border:1px solid #3a3733;border-radius:3px;font:inherit}
+.lines .ln{display:flex;gap:8px;padding:4px 2px;border-bottom:1px solid #33312e;cursor:pointer;
+font-family:'Noto Sans',sans-serif;font-size:13px;align-items:baseline}
+.lines .ln:hover{background:#302d2a}
+.lines .ev{min-width:52px;font-weight:600;color:#dedede;font-size:12px;font-variant-numeric:tabular-nums}
+.lines .mv{color:#bababa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lines .ln.best .ev{color:#759900}
+#moves{font-size:13.5px;line-height:1.9;max-height:300px;overflow-y:auto}
+#moves .no{color:#6f6b66;margin:0 3px 0 6px}
+#moves .m{padding:1px 4px;border-radius:2px;cursor:pointer}
+#moves .m:hover{background:#3a3733}
+#moves .m.cur{background:#759900;color:#fff}
+#wdltxt{font-size:11.5px;color:#8f8a82;margin-top:6px;font-variant-numeric:tabular-nums}
+.spin{opacity:.6}
+label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
 </style>
-<div class="wrap"><h1>KittyChess <span style="font-size:12px;color:#75716a">full engine · tablebase endgames</span></h1>
-<div class="sub">threat-first navigation on the learned quasimetric field — served live from the training machine.</div>
-<div class="cols"><div>
-<div id="board" class="cg-wrap"></div>
-<div class="bar"><button id="new">new game</button><button id="flip">play black</button>
-<label style="font-size:12px;color:#75716a">depth <select id="depth"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></label>
-<label style="font-size:12px;color:#75716a">lines <select id="lines"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
-<span id="status"></span></div>
+<div class="top"><b>KittyChess</b> analysis board &mdash; three distances, softmaxed into the bar</div>
+<div class="main">
+<div id="evalbar"><div id="eb-b" style="height:33%"></div><div id="eb-d" style="height:34%"></div><div id="eb-w" style="height:33%"></div></div>
+<div>
+  <div id="board" class="cg-wrap"></div>
+  <div class="nav">
+    <button id="first">&#x23EE;</button><button id="prev">&#x25C0;</button>
+    <button id="next">&#x25B6;</button><button id="last">&#x23ED;</button>
+    <button id="new" style="flex:2">new</button>
+  </div>
+  <div id="wdltxt"></div>
 </div>
-<div class="panel"><h2>analysis — your engine, current position <span style="text-transform:none">(alpha-beta on the margin)</span></h2>
-<table id="linesT"><tbody></tbody></table>
-</div></div></div>
+<div class="right">
+  <div class="box">
+    <div class="engrow"><b>KittyChess</b>
+      <span id="dinfo"></span>
+      <label>depth <select id="depth"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></label>
+      <label>lines <select id="lines"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+      <label class="sw"><input type="checkbox" id="vs"> play vs engine as
+        <select id="side"><option selected>white</option><option>black</option></select></label>
+    </div>
+    <div class="lines" id="lnbox"></div>
+  </div>
+  <div class="box"><div id="moves"></div></div>
+</div>
+</div>
 <script>__CG_JS__</script>
 <script>
 "use strict";
-let humanWhite=true, busy=false, fen="start";
+let busy=false;
 const cg=window.Chessground(document.getElementById('board'),{coordinates:true});
-const S=t=>document.getElementById('status').textContent=t;
-function knobs(){return {depth:+document.getElementById('depth').value,
-  lines:+document.getElementById('lines').value};}
-async function refresh(move,analyzeOnly){
-  const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({move:move||null, newGame:move===undefined&&!analyzeOnly, humanWhite,
-      analyzeOnly:!!analyzeOnly, ...knobs()})});
-  const d=await r.json();
-  fen=d.fen;
-  cg.set({fen:d.fen, turnColor:d.turn, check:d.check, lastMove:d.lastMove||undefined,
-    orientation:humanWhite?"white":"black",
-    movable:{free:false, color:d.over?undefined:(humanWhite?"white":"black"),
-      dests:new Map(Object.entries(d.dests)), events:{after:(o,t)=>play(o+t)}}});
-  const lt=document.querySelector('#linesT tbody'); lt.innerHTML="";
-  (d.think||[]).slice(0,d.lines_n||3).forEach((row,i)=>{
-    const tr=document.createElement('tr'); if(i===0)tr.className="pick";
-    tr.innerHTML=`<td style="width:4em">${row.margin}${row.tb?" tb":""}</td>`+
-      `<td style="text-align:left">${row.line||row.uci}</td>`;
-    lt.appendChild(tr);});
-  S(d.over||d.thinkingNote||"your move");
+const knobs=()=>({depth:+document.getElementById('depth').value,
+  lines:+document.getElementById('lines').value,
+  vs:document.getElementById('vs').checked,
+  side:document.getElementById('side').value});
+async function api(body){
+  if(busy)return; busy=true;
+  document.getElementById('dinfo').textContent="thinking…"; document.getElementById('dinfo').className="spin";
+  try{
+    const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({...body,...knobs()})});
+    render(await r.json());
+  } finally{ busy=false; }
 }
-async function play(uci){ if(busy)return; busy=true; S("thinking…");
-  try{ await refresh(uci); } finally{ busy=false; } }
-document.getElementById('new').onclick=()=>refresh();
-document.getElementById('depth').onchange=()=>refresh(null,true);
-document.getElementById('lines').onchange=()=>refresh(null,true);
-document.getElementById('flip').onclick=e=>{humanWhite=!humanWhite;
-  e.target.textContent=humanWhite?"play black":"play white"; refresh();};
-refresh();
+function render(d){
+  cg.set({fen:d.fen, turnColor:d.turn, check:d.check, lastMove:d.lastMove||undefined,
+    orientation:knobs().side,
+    movable:{free:false, color:d.turn, dests:new Map(Object.entries(d.dests)),
+      events:{after:(o,t)=>api({action:"move",uci:o+t})}}});
+  // tricolor committor bar: white at the bottom (lichess convention), draw grey between
+  document.getElementById('eb-w').style.height=(d.wdl[0]*100)+"%";
+  document.getElementById('eb-d').style.height=(d.wdl[1]*100)+"%";
+  document.getElementById('eb-b').style.height=(d.wdl[2]*100)+"%";
+  document.getElementById('wdltxt').textContent=
+    `white ${(d.wdl[0]*100).toFixed(1)}%  ·  draw ${(d.wdl[1]*100).toFixed(1)}%  ·  black ${(d.wdl[2]*100).toFixed(1)}%`
+    +(d.dists?`   |   d→win ${d.dists[0].toFixed(2)}  d→draw ${d.dists[1].toFixed(2)}  d→loss ${d.dists[2].toFixed(2)} (mover)`:"   |   exact (terminal/tablebase)");
+  document.getElementById('dinfo').textContent="depth "+d.depth; document.getElementById('dinfo').className="";
+  const lb=document.getElementById('lnbox'); lb.innerHTML="";
+  (d.think||[]).forEach((row,i)=>{
+    const div=document.createElement('div'); div.className="ln"+(i===0?" best":"");
+    div.innerHTML=`<span class="ev">${row.margin}${row.tb?" tb":""}</span><span class="mv">${row.line||row.uci}</span>`;
+    div.onclick=()=>api({action:"move",uci:row.uci});
+    lb.appendChild(div);});
+  const mv=document.getElementById('moves'); mv.innerHTML="";
+  (d.san||[]).forEach((sn,i)=>{
+    if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
+    const sp=document.createElement('span');sp.className="m"+(i===d.ptr-1?" cur":"");sp.textContent=sn;
+    sp.onclick=()=>api({action:"goto",ptr:i+1}); mv.appendChild(sp);});
+  const cur=mv.querySelector('.cur'); if(cur)cur.scrollIntoView({block:"nearest"});
+  if(d.over)document.getElementById('dinfo').textContent=d.over;
+}
+document.getElementById('new').onclick=()=>api({action:"new"});
+document.getElementById('first').onclick=()=>api({action:"goto",ptr:0});
+document.getElementById('prev').onclick=()=>api({action:"rel",d:-1});
+document.getElementById('next').onclick=()=>api({action:"rel",d:1});
+document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
+document.getElementById('depth').onchange=()=>api({action:"noop"});
+document.getElementById('lines').onchange=()=>api({action:"noop"});
+document.getElementById('vs').onchange=()=>api({action:"noop"});
+document.getElementById('side').onchange=()=>api({action:"noop"});
+addEventListener('keydown',e=>{
+  if(e.key==="ArrowLeft"){e.preventDefault();api({action:"rel",d:-1});}
+  if(e.key==="ArrowRight"){e.preventDefault();api({action:"rel",d:1});}});
+api({action:"noop"});
 </script>"""
 
 
 class H(BaseHTTPRequestHandler):
+    """Analysis-board state: ONE shared game line (moves) + a pointer (ptr).
+
+    Free analysis of both sides at any point in the line; moving from mid-history
+    truncates the future (lichess-simplified: no variation tree yet). The optional
+    play-vs-engine switch makes the engine answer at the tip of the line."""
     eng = None
-    board = chess.Board()
-    human_white = True
+    moves: list = []
+    ptr = 0
     depth = 3
+    lines = 3
 
     def log_message(self, *a):
         pass
@@ -112,50 +174,80 @@ class H(BaseHTTPRequestHandler):
         else:
             self._send(404, b"{}")
 
+    def _board(self):
+        b = chess.Board()
+        for m in H.moves[:H.ptr]:
+            b.push(m)
+        return b
+
     def do_POST(self):
         n = int(self.headers.get("content-length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
         cls = H
         cls.depth = max(1, min(4, int(req.get("depth", cls.depth))))
-        cls.lines = max(1, min(5, int(req.get("lines", getattr(cls, "lines", 3)))))
-        if req.get("newGame"):
-            cls.board = chess.Board()
-            cls.human_white = bool(req.get("humanWhite", True))
-        elif req.get("move"):
+        cls.lines = max(1, min(5, int(req.get("lines", cls.lines))))
+        act = req.get("action", "noop")
+        if act == "new":
+            cls.moves, cls.ptr = [], 0
+        elif act == "goto":
+            cls.ptr = max(0, min(len(cls.moves), int(req.get("ptr", 0))))
+        elif act == "rel":
+            cls.ptr = max(0, min(len(cls.moves), cls.ptr + int(req.get("d", 0))))
+        elif act == "move" and req.get("uci"):
+            b = self._board()
             try:
-                cls.board.push_uci(req["move"])
+                mv = chess.Move.from_uci(req["uci"])
+                if mv not in b.legal_moves:            # chessground sends o+t; default-promote
+                    mv = chess.Move.from_uci(req["uci"] + "q")
+                if mv in b.legal_moves:
+                    cls.moves = cls.moves[:cls.ptr] + [mv]
+                    cls.ptr += 1
             except Exception:
                 pass
-        # engine replies whenever it is to move
-        over = self._over()
-        if not over and not req.get("analyzeOnly")                 and (cls.board.turn == chess.WHITE) != cls.human_white:
-            rows = self._deliberate()
+        b = self._board()
+        over = self._over(b)
+        # play-vs-engine: only at the tip of the line, only when it's the engine's turn
+        if (req.get("vs") and not over and cls.ptr == len(cls.moves)
+                and (b.turn == chess.WHITE) != (req.get("side", "white") == "white")):
+            rows = self._deliberate(b)
             if rows:
-                cls.board.push(rows[0]["mv"])
-            over = self._over()
-        # ANALYSIS of the *current* position -- the analysis engine IS this engine
+                cls.moves.append(rows[0]["mv"]); cls.ptr += 1
+                b = self._board(); over = self._over(b)
+        # ANALYSIS of the current position -- the analysis engine IS this engine
         # (Kaveh 2026-08-08), lichess-style: depth + number of lines are user knobs.
         think = []
         if not over:
             think = [{k: r.get(k) for k in ("uci", "margin", "tb", "line")}
-                     for r in self._deliberate()[:max(cls.lines, 8)]]
+                     for r in self._deliberate(b)[:cls.lines]]
+        # tricolor committor bar: [P(white wins), P(draw), P(black wins)]
+        wdl, dists = self._wdl(b, over)
         dests = {}
-        if not over and (cls.board.turn == chess.WHITE) == cls.human_white:
-            for m in cls.board.legal_moves:
+        if not over:                                    # free analysis: mover always movable
+            for m in b.legal_moves:
                 dests.setdefault(chess.square_name(m.from_square), []).append(
                     chess.square_name(m.to_square))
         last = None
-        if cls.board.move_stack:
-            m = cls.board.move_stack[-1]
+        if cls.ptr:
+            m = cls.moves[cls.ptr - 1]
             last = [chess.square_name(m.from_square), chess.square_name(m.to_square)]
-        out = {"fen": cls.board.fen(), "turn": "white" if cls.board.turn else "black",
-               "lines_n": cls.lines, "depth": cls.depth,
-               "check": cls.board.is_check(), "dests": dests, "think": think,
+        sb, san = chess.Board(), []
+        for m in cls.moves:
+            san.append(sb.san(m)); sb.push(m)
+        out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
+               "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
+               "dists": dists, "check": b.is_check(), "dests": dests, "think": think,
                "lastMove": last, "over": over}
         self._send(200, json.dumps(out).encode())
 
-    def _over(self):
-        b = H.board
+    def _wdl(self, b, over):
+        if over:
+            o = b.outcome(claim_draw=True)
+            return ([1.0, 0.0, 0.0] if o.winner is True
+                    else [0.0, 0.0, 1.0] if o.winner is False else [0.0, 1.0, 0.0]), None
+        (w, d, l), dists = H.eng.wdl(b)                 # mover POV
+        return ([w, d, l] if b.turn == chess.WHITE else [l, d, w]), dists
+
+    def _over(self, b):
         if b.is_game_over(claim_draw=True):
             o = b.outcome(claim_draw=True)
             if o.winner is None:
@@ -163,8 +255,7 @@ class H(BaseHTTPRequestHandler):
             return ("white" if o.winner else "black") + " wins"
         return None
 
-    def _deliberate(self):
-        b = H.board
+    def _deliberate(self, b):
         rows = H.eng.search(b, depth=H.depth)
         out = []
         for r in rows[:18]:
