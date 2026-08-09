@@ -1056,8 +1056,12 @@ def main():
                 # LOSS-pole distance (child's mover = opponent). white-POV poles: our win =
                 # WIN pole iff the PARENT's mover is white -- poles are colour-fixed.
                 if args.basin_pov == "white":
+                    # MISTAKE #14 (2026-08-08, caught by the checkmate/material convention
+                    # probe): stored col0 = the CHILD-mover's win. Parent white -> child mover
+                    # is BLACK -> col0 supervises the LOSS pole. The first white-POV map had
+                    # this exactly backwards and trained the head's W/L axes inverted.
                     _wtm = bool(tr.glob[prow, 0]) != _mirror     # mirror flips the mover's colour
-                    _cmap = ((0, 0), (1, 1), (2, 2)) if _wtm else ((0, 2), (1, 1), (2, 0))
+                    _cmap = ((0, 2), (1, 1), (2, 0)) if _wtm else ((0, 0), (1, 1), (2, 2))
                 else:
                     _cmap = ((0, 2), (1, 1), (2, 0))
                 for o, col in _cmap:
