@@ -264,7 +264,7 @@ setMode('analysis');
 addEventListener('keydown',e=>{
   if(e.key==="ArrowLeft"){e.preventDefault();api({action:"rel",d:-1});}
   if(e.key==="ArrowRight"){e.preventDefault();api({action:"rel",d:1});}});
-api({action:"noop"});
+api({action:"new"});   // fresh page = opening position (server state is shared/persistent)
 </script>"""
 
 
