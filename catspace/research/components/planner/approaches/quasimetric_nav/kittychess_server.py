@@ -77,8 +77,23 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #lnlegend{font-size:10.5px;color:#6f6b66;margin-top:4px}
 .spin{opacity:.6}
 label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
+.navbtn{background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:3px 10px;
+cursor:pointer;font:inherit;font-size:12.5px}
+.navbtn.on{background:#759900;color:#fff}
+body.playmode #evalbar,body.playmode #wdltxt,body.playmode #conceptbox{visibility:hidden}
+body.playmode .right .box:first-child{display:none}
 </style>
-<div class="top"><b>KittyChess</b> analysis board &mdash; three distances, softmaxed into the bar</div>
+<div class="top"><b>KittyChess</b>
+  <span style="margin-left:18px">
+    <button class="navbtn" id="nav-an">Analysis board</button>
+    <button class="navbtn" id="nav-play">Play</button>
+  </span>
+  <span id="playpanel" style="display:none;margin-left:12px;font-size:12.5px">
+    as <select id="pcolor"><option value="w" selected>white</option><option value="b">black</option></select>
+    strength <select id="pdepth"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+    <button class="navbtn" id="pstart" style="background:#759900;color:#fff">start game</button>
+  </span>
+</div>
 <div class="main">
 <div id="evalbar"><div id="eb-b" style="height:33%"></div><div id="eb-d" style="height:34%"></div><div id="eb-w" style="height:33%"></div></div>
 <div>
@@ -114,7 +129,13 @@ label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
 <script>__CG_JS__</script>
 <script>
 "use strict";
-let seq=0, orient="white";
+let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
+function setMode(m){
+  mode=m;
+  document.body.classList.toggle('playmode', m==='play');
+  document.getElementById('nav-an').classList.toggle('on', m==='analysis');
+  document.getElementById('nav-play').classList.toggle('on', m==='play');
+}
 const cg=window.Chessground(document.getElementById('board'),{coordinates:true});
 const knobs=()=>({depth:+document.getElementById('depth').value,
   lines:+document.getElementById('lines').value,
@@ -123,11 +144,15 @@ const knobs=()=>({depth:+document.getElementById('depth').value,
 // A stale analysis (older seq) is discarded, so mashing the nav buttons stays responsive.
 async function api(body){
   const my=++seq;
+  const extra = mode==='play' ? {play:true, engineWhite:playCfg.engineWhite,
+                                 playDepth:playCfg.depth} : {};
+  if(mode==='play') document.getElementById('dinfo').textContent="…";
   const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({...body,...knobs()})});
+    body:JSON.stringify({...body,...knobs(),...extra})});
   const d=await r.json();
   if(my!==seq)return;
   render(d);
+  if(mode==='play'){document.getElementById('dinfo').textContent=d.over||"";return;}
   if(d.over){document.getElementById('dinfo').textContent=d.over;return;}
   document.getElementById('dinfo').textContent="thinking…";
   document.getElementById('dinfo').className="spin";
@@ -150,9 +175,10 @@ async function api(body){
   }
 }
 function render(d){
+  const mvcolor = mode==='play' ? (playCfg.engineWhite?'black':'white') : d.turn;
   cg.set({fen:d.fen, turnColor:d.turn, check:d.check, lastMove:d.lastMove||undefined,
     orientation:orient,
-    movable:{free:false, color:d.turn, dests:new Map(Object.entries(d.dests)),
+    movable:{free:false, color:mvcolor, dests:new Map(Object.entries(d.dests)),
       events:{after:(o,t)=>api({action:"move",uci:o+t})}}});
   // tricolor committor bar: white at the bottom (lichess convention), draw grey between
   document.getElementById('eb-w').style.height=(d.wdl[0]*100)+"%";
@@ -225,6 +251,19 @@ document.getElementById('depth').onchange=()=>api({action:"noop"});
 document.getElementById('lines').onchange=()=>api({action:"noop"});
 document.getElementById('pvlen').onchange=()=>api({action:"noop"});
 document.getElementById('flip').onclick=()=>{orient=orient==="white"?"black":"white";api({action:"noop"});};
+document.getElementById('nav-an').onclick=()=>{
+  document.getElementById('playpanel').style.display="none";
+  setMode('analysis'); api({action:"noop"});};
+document.getElementById('nav-play').onclick=()=>{
+  const pp=document.getElementById('playpanel');
+  pp.style.display = pp.style.display==="none" ? "" : "none";};
+document.getElementById('pstart').onclick=()=>{
+  playCfg={engineWhite:document.getElementById('pcolor').value==='b',
+           depth:+document.getElementById('pdepth').value};
+  orient=playCfg.engineWhite?'black':'white';
+  document.getElementById('playpanel').style.display="none";
+  setMode('play'); api({action:"new"});};
+setMode('analysis');
 addEventListener('keydown',e=>{
   if(e.key==="ArrowLeft"){e.preventDefault();api({action:"rel",d:-1});}
   if(e.key==="ArrowRight"){e.preventDefault();api({action:"rel",d:1});}});
@@ -308,6 +347,18 @@ class H(BaseHTTPRequestHandler):
                 pass
         b = self._board()
         over = self._over(b)
+        # PLAY MODE (Kaveh 2026-08-11, lichess-style menu): the engine answers synchronously
+        # when it is to move; analysis assistance is hidden client-side during play
+        if req.get("play") and act in ("move", "new") and not over \
+                and cls.ptr == len(cls.moves):
+            eng_white = bool(req.get("engineWhite"))
+            if (b.turn == chess.WHITE) == eng_white:
+                pd = max(1, min(4, int(req.get("playDepth", 2))))
+                with H.lock:
+                    rows = H.eng.search(b, depth=pd)
+                if rows:
+                    cls.moves.append(rows[0]["mv"]); cls.ptr += 1
+                    b = self._board(); over = self._over(b)
         # slow phase, requested separately so navigation never waits on the search --
         # the analysis engine IS this engine (Kaveh 2026-08-08), depth + lines are the knobs
         # STREAMING analysis, lichess-style (Kaveh 2026-08-08 "the analysis streams in as the
@@ -374,7 +425,7 @@ class H(BaseHTTPRequestHandler):
         with H.lock:
             wdl, dists = self._wdl(b, over)
         concepts, tokens = [], []
-        if H.vq is not None and not over:
+        if H.vq is not None and not over and not req.get("play"):
             import torch as _torch
             from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
                 tokenize as _tok)
