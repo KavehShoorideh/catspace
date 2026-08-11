@@ -340,7 +340,11 @@ def load_piecedown_games(n, seed, tsv=None, max_plies=400):
     starts (gen_piecedown_sfsf.py), played to the board end with Syzygy in the engine -- the
     decisive optimal-play walls the Option-B skeleton needs in the endgame region. game_ids are
     offset by 10_000_000 so they never collide with the balanced SF pool."""
-    tsv = tsv or paths.derived("piecedown_sfsf_all.tsv")
+    # v2 (2026-08-11): piece 16k + pawn 4k + exchange 3k + deep-prefix 4k -- the
+    # 0.5-2.0-pawn band fill (Kaveh's eval-distribution finding). Falls back to v1.
+    import os as _os
+    _v2 = paths.derived("piecedown_sfsf_all_v2.tsv")
+    tsv = tsv or (_v2 if _os.path.exists(_v2) else paths.derived("piecedown_sfsf_all.tsv"))
     if not os.path.exists(tsv):
         return []
     lines = [l for l in open(tsv) if l.strip()]

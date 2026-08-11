@@ -1,6 +1,6 @@
 {
- "ckpt": "artifacts/experiments/reach_mhwm_latest.pt",
- "since": "2026-08-08 13:48",
+ "ckpt": "artifacts/experiments/reach_hingefull_latest.pt",
+ "since": "2026-08-11 02:48",
  "history": [
   {
    "event": "founding champion",
@@ -12,6 +12,13 @@
    "new": "artifacts/experiments/reach_mhwm_latest.pt",
    "score": "10.5/20",
    "date": "2026-08-08 13:48"
+  },
+  {
+   "event": "dethroned",
+   "old": "artifacts/experiments/reach_mhwm_latest.pt",
+   "new": "artifacts/experiments/reach_hingefull_latest.pt",
+   "score": "31.5/60",
+   "date": "2026-08-11 02:48"
   }
  ]
 }
