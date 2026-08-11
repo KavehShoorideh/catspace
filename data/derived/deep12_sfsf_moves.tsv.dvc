@@ -1,0 +1,5 @@
+outs:
+- md5: b2c3a0992a1aeed307d26855ae98805e
+  size: 2659061
+  hash: md5
+  path: deep12_sfsf_moves.tsv
