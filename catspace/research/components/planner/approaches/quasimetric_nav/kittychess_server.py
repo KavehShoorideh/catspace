@@ -184,9 +184,11 @@ function render(d){
   document.getElementById('eb-w').style.height=(d.wdl[0]*100)+"%";
   document.getElementById('eb-d').style.height=(d.wdl[1]*100)+"%";
   document.getElementById('eb-b').style.height=(d.wdl[2]*100)+"%";
-  drawPosTable(d.wdl, d.dists,
-    d.turb==null ? "static" :
-    (d.turb<0.08 ? "static · quiet" : "static · sharp τ"+d.turb.toFixed(2)));
+  let lbl = d.turb==null ? "static" :
+    (d.turb<0.08 ? "static · quiet" : "static · sharp τ"+d.turb.toFixed(2));
+  if(d.trap&&d.trap.stalemate) lbl += " · ⚠"+d.trap.stalemate+" stalemate-in-1";
+  if(d.trap&&d.trap.mate) lbl += " · #1 available";
+  drawPosTable(d.wdl, d.dists, lbl);
   const mv=document.getElementById('moves'); mv.innerHTML="";
   (d.san||[]).forEach((sn,i)=>{
     if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
@@ -467,6 +469,30 @@ class H(BaseHTTPRequestHandler):
         with H.lock:
             wdl, dists = self._wdl(b, over)
         turb = None
+        trap = None
+        if not over:
+            # ONE-PLY TERMINAL TRUTH (Kaveh 2026-08-11 stalemate trap: dD read 31.3 with
+            # stalemate-in-1 twelve ways): terminal children are EXACT, like the tablebase --
+            # clamp displayed distances and flag the trap. Winners never stalemate in the
+            # training corpus, so the field cannot know these edges.
+            n_stale = n_mate = 0
+            for mv in b.legal_moves:
+                b.push(mv)
+                if b.is_game_over(claim_draw=True):
+                    o = b.outcome(claim_draw=True)
+                    if o.winner is None:
+                        n_stale += 1
+                    else:
+                        n_mate += 1
+                b.pop()
+            if dists is not None and n_stale:
+                dists = [dists[0], min(dists[1], 1.0), dists[2]]
+            if dists is not None and n_mate:
+                k = 0 if b.turn == chess.WHITE else 2
+                dists = [min(dists[0], 1.0) if k == 0 else dists[0], dists[1],
+                         min(dists[2], 1.0) if k == 2 else dists[2]]
+            if n_stale or n_mate:
+                trap = {"stalemate": n_stale, "mate": n_mate}
         if not over and not req.get("play"):
             try:
                 with H.lock:
@@ -513,7 +539,7 @@ class H(BaseHTTPRequestHandler):
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
                "dists": dists, "check": b.is_check(), "dests": dests,
                "concepts": concepts, "tokens": tokens,
-               "turb": (round(turb[0], 3) if turb else None),
+               "turb": (round(turb[0], 3) if turb else None), "trap": trap,
                "lastMove": last, "over": over}
         self._send(200, json.dumps(out).encode())
 
