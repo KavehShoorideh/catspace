@@ -183,14 +183,7 @@ function render(d){
   document.getElementById('eb-w').style.height=(d.wdl[0]*100)+"%";
   document.getElementById('eb-d').style.height=(d.wdl[1]*100)+"%";
   document.getElementById('eb-b').style.height=(d.wdl[2]*100)+"%";
-  const W=document.getElementById('wdltxt');
-  W.innerHTML=`<table><tr><th></th><th>white</th><th>draw</th><th>black</th></tr>`+
-    `<tr><th>dist</th><td><b>${d.dists?d.dists[0].toFixed(1):"—"}</b></td>`+
-    `<td><b>${d.dists?d.dists[1].toFixed(1):"—"}</b></td>`+
-    `<td><b>${d.dists?d.dists[2].toFixed(1):"—"}</b></td></tr>`+
-    `<tr><th>prob</th><td><b>${(d.wdl[0]*100).toFixed(1)}%</b></td>`+
-    `<td><b>${(d.wdl[1]*100).toFixed(1)}%</b></td>`+
-    `<td><b>${(d.wdl[2]*100).toFixed(1)}%</b></td></tr></table>`;
+  drawPosTable(d.wdl, d.dists, "static");
   const mv=document.getElementById('moves'); mv.innerHTML="";
   (d.san||[]).forEach((sn,i)=>{
     if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
@@ -215,6 +208,16 @@ function render(d){
   }
   if(d.over)document.getElementById('dinfo').textContent=d.over;
 }
+function drawPosTable(wdl, dists, label){
+  const W=document.getElementById('wdltxt');
+  W.innerHTML=`<table><tr><th>${label}</th><th>white</th><th>draw</th><th>black</th></tr>`+
+    `<tr><th>dist</th><td><b>${dists?dists[0].toFixed(1):"—"}</b></td>`+
+    `<td><b>${dists?dists[1].toFixed(1):"—"}</b></td>`+
+    `<td><b>${dists?dists[2].toFixed(1):"—"}</b></td></tr>`+
+    `<tr><th>prob</th><td><b>${(wdl[0]*100).toFixed(1)}%</b></td>`+
+    `<td><b>${(wdl[1]*100).toFixed(1)}%</b></td>`+
+    `<td><b>${(wdl[2]*100).toFixed(1)}%</b></td></tr></table>`;
+}
 function renderLines(d){
   // turn-aware bar (Kaveh 2026-08-11: the static field is measurably TURN-BLIND,
   // sensitivity 0.000 on a mid-exchange probe): once analysis exists, the main bar
@@ -224,6 +227,7 @@ function renderLines(d){
     document.getElementById('eb-w').style.height=(w[0]*100)+"%";
     document.getElementById('eb-d').style.height=(w[1]*100)+"%";
     document.getElementById('eb-b').style.height=(w[2]*100)+"%";
+    drawPosTable(w, d.think[0].dists, "best line");   // bar and table: ONE source
   }
   const lb=document.getElementById('lnbox'); lb.innerHTML="";
   (d.think||[]).forEach((row,i)=>{
