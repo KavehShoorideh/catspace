@@ -25,7 +25,7 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--suite", default=None)
     ap.add_argument("--depth", type=int, default=0, help="0 = 1-ply choose(); else search depth")
-    ap.add_argument("--nav", default="db", choices=("db", "ab"))
+    ap.add_argument("--nav", default="db", choices=("db", "ab", "cascade"))
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
