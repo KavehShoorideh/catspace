@@ -61,8 +61,10 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #moves .m{padding:1px 4px;border-radius:2px;cursor:pointer}
 #moves .m:hover{background:#3a3733}
 #moves .m.cur{background:#759900;color:#fff}
-#wdltxt{display:flex;gap:14px;flex-wrap:nowrap;overflow-x:auto;margin-top:6px;
-font-variant-numeric:tabular-nums;white-space:nowrap;font-size:12px;color:#8f8a82}
+#wdltxt{margin-top:6px;font-variant-numeric:tabular-nums;font-size:12px;color:#8f8a82}
+#wdltxt table{border-collapse:collapse}
+#wdltxt th{font-weight:400;color:#6f6b66;text-align:right;padding:1px 10px 1px 0;font-size:11px}
+#wdltxt td{text-align:right;padding:1px 10px 1px 0;white-space:nowrap}
 #wdltxt b{color:#dedede;font-weight:600}
 .lines .ev{cursor:help}
 #lnlegend{font-size:10.5px;color:#6f6b66;margin-top:4px}
@@ -90,7 +92,7 @@ label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
     <div class="lines" id="lnbox"></div>
-    <div id="lnlegend">value = searched margin (white POV) &nbsp;·&nbsp; bar/percent = P(W/D/B) after the move &nbsp;·&nbsp; dW dD dB = plies to each ending</div>
+    <div id="lnlegend">E = expected points for white (probability head) &nbsp;·&nbsp; Δd = decisive-exit gap dB−dW (length head, + = white closer) &nbsp;·&nbsp; ranked by search</div>
   </div>
   <div class="box"><div id="moves"></div></div>
 </div>
@@ -142,12 +144,13 @@ function render(d){
   document.getElementById('eb-d').style.height=(d.wdl[1]*100)+"%";
   document.getElementById('eb-b').style.height=(d.wdl[2]*100)+"%";
   const W=document.getElementById('wdltxt');
-  W.innerHTML=`<span>W <b>${(d.wdl[0]*100).toFixed(1)}%</b></span>`+
-    `<span>D <b>${(d.wdl[1]*100).toFixed(1)}%</b></span>`+
-    `<span>B <b>${(d.wdl[2]*100).toFixed(1)}%</b></span>`+
-    (d.dists?`<span>dW <b>${d.dists[0].toFixed(1)}</b></span>`+
-      `<span>dD <b>${d.dists[1].toFixed(1)}</b></span>`+
-      `<span>dB <b>${d.dists[2].toFixed(1)}</b></span>`:`<span><b>exact</b> (terminal/tablebase)</span>`);
+  W.innerHTML=`<table><tr><th></th><th>white</th><th>draw</th><th>black</th></tr>`+
+    `<tr><th>dist</th><td><b>${d.dists?d.dists[0].toFixed(1):"—"}</b></td>`+
+    `<td><b>${d.dists?d.dists[1].toFixed(1):"—"}</b></td>`+
+    `<td><b>${d.dists?d.dists[2].toFixed(1):"—"}</b></td></tr>`+
+    `<tr><th>prob</th><td><b>${(d.wdl[0]*100).toFixed(1)}%</b></td>`+
+    `<td><b>${(d.wdl[1]*100).toFixed(1)}%</b></td>`+
+    `<td><b>${(d.wdl[2]*100).toFixed(1)}%</b></td></tr></table>`;
   const mv=document.getElementById('moves'); mv.innerHTML="";
   (d.san||[]).forEach((sn,i)=>{
     if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
@@ -160,7 +163,14 @@ function renderLines(d){
   const lb=document.getElementById('lnbox'); lb.innerHTML="";
   (d.think||[]).forEach((row,i)=>{
     const div=document.createElement('div'); div.className="ln"+(i===0?" best":"");
-    let top=`<div class="lnr"><span class="ev" title="searched margin, white point of view: higher = better for white; # = forced mate">${row.margin}${row.tb?" tb":""}</span>`;
+    let ev="";
+    if(row.tb){ev=`<span class="ev" title="tablebase / forced mate">${row.margin}</span>`;}
+    else if(row.wdl){
+      const E=(row.wdl[0]+0.5*row.wdl[1]);
+      ev=`<span class="ev" title="expected points for white after this move (probability head)">E ${(E*100).toFixed(0)}%</span>`+
+         (row.dists?`<span class="ev" style="min-width:58px" title="decisive-exit gap dB−dW (length head): positive = white's ending closer">Δd ${(row.dists[2]-row.dists[0]).toFixed(1)}</span>`:"");
+    } else {ev=`<span class="ev" title="searched margin (white POV)">${row.margin}</span>`;}
+    let top=`<div class="lnr">`+ev;
     if(row.wdl){
       top+=`<span class="minibar"><i style="width:${row.wdl[0]*100}%;background:#f0efeb"></i>`+
            `<i style="width:${row.wdl[1]*100}%;background:#8b8680"></i>`+
