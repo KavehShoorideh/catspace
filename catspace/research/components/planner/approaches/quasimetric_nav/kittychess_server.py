@@ -59,7 +59,8 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lines .ev{min-width:52px;font-weight:600;color:#dedede;font-size:12px;font-variant-numeric:tabular-nums}
 .lines .mv{color:#bababa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lines .ln.best .ev{color:#759900}
-#moves{font-size:13.5px;line-height:1.9;max-height:300px;overflow-y:auto}
+#moves{font-size:13.5px;line-height:1.9;max-height:170px;overflow-y:auto;overflow-wrap:anywhere}
+@media(max-width:760px){#moves{max-height:110px;font-size:12.5px;line-height:1.6}}
 #moves .no{color:#6f6b66;margin:0 3px 0 6px}
 #moves .m{padding:1px 4px;border-radius:2px;cursor:pointer}
 #moves .m:hover{background:#3a3733}
@@ -418,11 +419,13 @@ class H(BaseHTTPRequestHandler):
                         if H.gen == g:
                             # CASCADE RANKING (Kaveh 2026-08-11): display order = the cascade's
                             # order; the searched value rides along per line
-                            # PROVEN results outrank the learned ordering: a searched mate/TB
-                            # value is a certificate; cascade orders only the unproven rest
-                            # (2026-08-11: cascade buried Rd8# under quiet pawn pushes)
+                            # SEARCH RANKS, cascade breaks ties (2026-08-11 second burial:
+                            # after 28.Ke1 the cascade top-ranked a rook blunder the search
+                            # scored -11 vs +3, and the bar followed it to 'white winning'
+                            # with mate-in-3 on the board). Values bucketed to 2.0 so the
+                            # cascade still decides among search-indifferent siblings.
                             rs = sorted(rows, key=lambda r: (
-                                -r["value"] if abs(r["value"]) >= KittyMATE / 4 else 0,
+                                -round(r["value"] / 2.0),
                                 crank.get(r["mv"].uci(), 999)))
                             H.an = {**H.an, "g": g, "depth": d,
                                     "rows": [{k: r.get(k) for k in
