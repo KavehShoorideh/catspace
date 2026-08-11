@@ -610,7 +610,7 @@ def main():
 
     import threading
     from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
-    H.eng = KittyChess(args.ckpt, args.device, args.cond_elo, head_order=True)
+    H.eng = KittyChess(args.ckpt, args.device, args.cond_elo)
     global GAME_LOG
     GAME_LOG = str(paths.experiment("kitty_current_game.json"))
     try:                                             # restore the game across restarts
