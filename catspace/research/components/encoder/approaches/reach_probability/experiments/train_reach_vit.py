@@ -207,6 +207,13 @@ def main():
                          "competition is the softmax denominator. Raw attraction to the observed "
                          "pole instead COLLAPSES (measured: mean pole distance 0.000, readout "
                          "uniform) because a quasimetric permits d(s->W)=d(s->D)=0 at once")
+    ap.add_argument("--w-hinge-a", type=float, default=0.0,
+                    help="decisive hinge on the length ruler: winner's exit must be closer "
+                         "than loser's by hinge-eps, per-position credibility-weighted by the "
+                         "outcome ruler (detached). Draw pole untouched.")
+    ap.add_argument("--hinge-eps", type=float, default=0.5,
+                    help="ordering margin in plies; < one tempo so real threat proximity "
+                         "(mate-in-1 against the winner) is never denied")
     ap.add_argument("--w-pole-gas-a", type=float, default=0.0,
                     help="screened repulsion between batch rows and the 3 outcome poles on dA "
                          "-- the anchor's counter-force. Without it the anchor is attraction "
@@ -960,6 +967,34 @@ def main():
             _dg = torch.stack([model.dA(zB[gi], _P3[[k]].expand(len(gi), -1))
                                for k in range(3)], 1)
             l_pole_gas_a = (1.0 / (1.0 + _dg)).mean()
+        # DECISIVE HINGE (Kaveh 2026-08-10): who-wins enters the LENGTH ruler as an ORDERING
+        # between the two decisive exits only -- relu(eps + dA(s->winner's pole) - dA(s->
+        # loser's pole)). eps=0.5: the win condition is arriving FIRST (tempo = one ply), a
+        # 2-ply gap would deny real threat proximity (the mate-in-1 objection). One-sided:
+        # never pulls the winner-exit distance down (odometer preserved). Draw pole untouched:
+        # d(s->draw) small everywhere is TRUE (absorption asymmetry, measured 6.3x). Per-game
+        # outcome labels are per-POSITION weighted by the outcome ruler's own calibrated
+        # belief in that label (detached) -- the back-rank-blunder objection: pre-blunder
+        # positions of a lost game get ~0 weight. This is dB distilling into dA.
+        l_hinge_a = torch.zeros((), device=dev)
+        if args.w_hinge_a > 0 and model.poles is not None \
+                and getattr(model, "split_head", False) and args.basin_pov == "white":
+            y_h = outcome[i]                                     # white-POV: 0 W / 1 D / 2 L
+            dec = np.flatnonzero((y_h == 0) | (y_h == 2))
+            if len(dec) > 8:
+                gd = torch.from_numpy(dec.astype(np.int64)).to(dev)
+                own_c = torch.from_numpy(y_h[dec].astype(np.int64)).to(dev)      # 0 or 2
+                for_c = 2 - own_c
+                _P3h = model.poles.poles[:3]
+                zdec = zB[gi][gd]
+                d_own = model.dA(zdec, _P3h[own_c])
+                d_for = model.dA(zdec, _P3h[for_c])
+                with torch.no_grad():                            # credibility of the label
+                    dPh = torch.stack([model.dB(zdec, _P3h[[k]].expand(len(zdec), -1))
+                                       for k in range(3)], 1)
+                    w_cred = torch.softmax(-dPh / args.basin_temp, 1)[
+                        torch.arange(len(own_c), device=dev), own_c]
+                l_hinge_a = (w_cred * torch.relu(args.hinge_eps + d_own - d_for)).mean()
         # BELLMAN RESIDUAL (Kaveh 2026-08-08 "we want both"): d(s -> mover's win pole) must
         # equal 1 + min over legal moves of the child's distance to the SAME pole. Walls only
         # enforce consistency along observed game paths; this enforces it along the paths the
@@ -1134,6 +1169,7 @@ def main():
                 + args.w_res_shrink * l_shrink
                 + args.w_basin * l_basin + args.w_polesep * l_polesep
                 + args.w_anchor_a * l_anchor_a + args.w_pole_gas_a * l_pole_gas_a
+                + args.w_hinge_a * l_hinge_a
                 + args.w_anchor * l_anchor + args.w_absorb * l_absorb
                 + args.w_termrep * l_termrep + args.w_subsume * l_subsume
                 + args.w_start * l_start + args.w_start_irr * l_startirr
@@ -1146,6 +1182,7 @@ def main():
                "grad": float(l_grad.detach()), "mh": float(l_mh.detach()), "mh_cons": float(l_mh_cons.detach()),
                "bell": float(l_bell.detach()), "mh_bell": float(l_mh_bell.detach()),
                "anchor_a": float(l_anchor_a.detach()), "pole_gas_a": float(l_pole_gas_a.detach()),
+               "hinge_a": float(l_hinge_a.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
                # the residue the cross sampler's redraw loop could not clear -- must be ~0, and is
