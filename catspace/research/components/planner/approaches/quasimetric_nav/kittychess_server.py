@@ -456,6 +456,17 @@ def main():
                 pos.append((f"suite {cat} #{i+1}", fen))
     except Exception:
         pass
+    try:                                             # mined subgoal exemplars (invariant only)
+        import json as _json
+        n_sub = 0
+        for ln in open(paths.experiment("subgoal_candidates.jsonl")):
+            r = _json.loads(ln)
+            if r.get("invariant") and r.get("fens") and n_sub < 6:
+                n_sub += 1
+                pos.append((f"subgoal c{r['cluster']} (E {r['E_mean']:.2f} d {r['dOwn_mean']:.0f})",
+                            r["fens"][0]))
+    except Exception:
+        pass
     opts = "".join(f'<option value="{f}">{n}</option>' for n, f in pos)
     PAGE_BYTES = (PAGE.replace("__CG_CSS__", cg_css).replace("__CG_JS__", cg_js)
                   .replace("__POSITIONS__", opts).encode())
