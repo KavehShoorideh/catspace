@@ -11819,3 +11819,18 @@ keyed by ARGS, not by corpus content, so a changed loader needs a manual purge.
 13 two-ruler features/move, REINFORCE on self-play outcomes; two cold-start fixes (handicapped
 starts for decisiveness; behavior-cloning warm start off the threat-first chooser, 60%
 imitation in a smoke). Real training runs on the v2 champion once crowned.
+
+## 2026-08-11 (later) — v2 champion (weak title, strongest conduct); RL scorer training begins
+
+**reach_v2** (corpus v2: 31,005 games incl. the tense-band families) took the title 30.5/60
+over reach_hingefull -- P(better)=0.60, a NOISE-LEVEL win promoted by the standing majority
+rule; in-play it is the hinge champion's equal. What it clearly improved: CONDUCT --
+save-draw 9.36/10, 92% top-move at depth 3 (prior best 8.74/84%); resist held at 6.32. Its
+val readouts (margin committor 0.728 vs 0.808) are NOT comparable to hingefull's: v2 is
+scored on its own harder validation rows (tense-band families included), the predecessor on
+the bimodal corpus. External instruments (battery, arena) are the fair comparators -- noted
+as a standing evaluation caveat: SCOREBOARDS FOLLOW CORPORA; only corpus-independent
+instruments compare across corpora.
+
+Deployed to the analysis board (startpos 11/80/9). RL scorer training launched on v2
+(warm 5000 + 60 REINFORCE iters, arena probes every 10).
