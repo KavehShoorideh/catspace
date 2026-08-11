@@ -979,7 +979,9 @@ def main():
         l_hinge_a = torch.zeros((), device=dev)
         if args.w_hinge_a > 0 and model.poles is not None \
                 and getattr(model, "split_head", False) and args.basin_pov == "white":
-            y_h = outcome[i]                                     # white-POV: 0 W / 1 D / 2 L
+            y_h = outcome[i].copy()                              # white-POV: 0 W / 1 D / 2 L
+            if _mirror:                                          # mirrored board = swapped colours
+                y_h = np.where(y_h == 0, 2, np.where(y_h == 2, 0, y_h))
             dec = np.flatnonzero((y_h == 0) | (y_h == 2))
             if len(dec) > 8:
                 gd = torch.from_numpy(dec.astype(np.int64)).to(dev)
@@ -987,7 +989,11 @@ def main():
                 for_c = 2 - own_c
                 _P3h = model.poles.poles[:3]
                 zdec = zB[gi][gd]
-                d_own = model.dA(zdec, _P3h[own_c])
+                # TRULY one-sided (2026-08-10 smoke lesson: relu(eps + d_own - d_for) also
+                # PULLS d_own down -- the whole distance structure compressed to ~2.3): the
+                # own-exit distance is a detached reference; gradient only pushes the foreign
+                # exit away. Odometer calibration stays the anchor/walls' business.
+                d_own = model.dA(zdec, _P3h[own_c]).detach()
                 d_for = model.dA(zdec, _P3h[for_c])
                 with torch.no_grad():                            # credibility of the label
                     dPh = torch.stack([model.dB(zdec, _P3h[[k]].expand(len(zdec), -1))
