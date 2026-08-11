@@ -51,8 +51,16 @@ def _one_game(task):
         eng.quit()
 
 
-def make_starts(n, seed, min_ply=8, max_ply=20):
-    """Piece-down start FENs from human-game prefixes."""
+def make_starts(n, seed, min_ply=8, max_ply=20, mode="piece"):
+    """Handicapped start FENs from human-game prefixes.
+
+    mode (Kaveh 2026-08-10, filling the +0.5..+2 eval hole -- piece-down starts are +/-5,
+    balanced starts +/-0.5, almost nothing between):
+      piece    -- one Q/R/B/N removed (the original, ~+/-5 pawns)
+      pawn     -- one PAWN removed, file varied uniformly (~+/-1 pawn)
+      exchange -- a ROOK from one side and a random MINOR from the other (~+/-2 pawns)
+      none     -- no removal: deeper prefixes alone (use --min-ply 12) for the tense band
+    """
     from catspace.research.components.encoder.approaches.reach_probability.src.trajectories import (
         load_human_games)
     rng = np.random.default_rng(seed)
@@ -72,12 +80,36 @@ def make_starts(n, seed, min_ply=8, max_ply=20):
         if not okpush or b.is_check():
             continue
         side = bool(rng.integers(0, 2))
-        cands = [sq for sq, pc in b.piece_map().items()
-                 if pc.color == side and pc.piece_type in
-                 (chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT)]
-        if not cands:
-            continue
-        b.remove_piece_at(int(rng.choice(cands)))
+        if mode == "none":
+            pass
+        elif mode == "piece":
+            cands = [sq for sq, pc in b.piece_map().items()
+                     if pc.color == side and pc.piece_type in
+                     (chess.QUEEN, chess.ROOK, chess.BISHOP, chess.KNIGHT)]
+            if not cands:
+                continue
+            b.remove_piece_at(int(rng.choice(cands)))
+        elif mode == "pawn":
+            pawns = [sq for sq, pc in b.piece_map().items()
+                     if pc.color == side and pc.piece_type == chess.PAWN]
+            if not pawns:
+                continue
+            # vary the FILE deliberately ("try different pawns"): pick among distinct files
+            by_file = {}
+            for sq in pawns:
+                by_file.setdefault(chess.square_file(sq), []).append(sq)
+            f = rng.choice(sorted(by_file))
+            b.remove_piece_at(int(rng.choice(by_file[f])))
+        elif mode == "exchange":
+            rooks = [sq for sq, pc in b.piece_map().items()
+                     if pc.color == side and pc.piece_type == chess.ROOK]
+            minors = [sq for sq, pc in b.piece_map().items()
+                      if pc.color == (not side) and pc.piece_type in
+                      (chess.BISHOP, chess.KNIGHT)]
+            if not rooks or not minors:
+                continue
+            b.remove_piece_at(int(rng.choice(rooks)))
+            b.remove_piece_at(int(rng.choice(minors)))
         if not b.is_valid():
             continue
         starts.append(b.fen())
@@ -92,11 +124,15 @@ def main():
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--max-plies", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--mode", default="piece", choices=("piece", "pawn", "exchange", "none"),
+                    help="handicap type; pawn/exchange fill the +/-1..2 eval band")
+    ap.add_argument("--min-ply", type=int, default=8)
+    ap.add_argument("--max-ply", type=int, default=20)
     ap.add_argument("--out", default=paths.derived("piecedown_sfsf_moves.tsv"))
     args = ap.parse_args()
 
     t0 = time.time()
-    starts = make_starts(args.games, args.seed)
+    starts = make_starts(args.games, args.seed, args.min_ply, args.max_ply, args.mode)
     print(f"[gen] {len(starts)} piece-down starts [{time.time()-t0:.0f}s]", flush=True)
     syz = str(paths.syzygy_dir())
     tasks = [(i, f, args.nodes, syz, args.max_plies) for i, f in enumerate(starts)]
