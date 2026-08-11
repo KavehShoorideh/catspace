@@ -181,7 +181,7 @@ function render(d){
       d.concepts.map(c=>
         `<tr class="${c.tok_here?'tokhit':''}"><td>${c.name}</td>`+
         `<td class="${c.active?'on':''}">${c.active?'✓':'–'}</td>`+
-        `<td>h${c.head}/c${c.code}${c.tok_here?' ●':''}</td>`+
+        `<td>${c.anti?'anti ':''}h${c.head}/c${c.code}${c.tok_here?' ●':''}</td>`+
         `<td>${Math.round(c.p*100)}% (base ${Math.round(c.base*100)}%)</td></tr>`).join("");
   }
   if(d.over)document.getElementById('dinfo').textContent=d.over;
@@ -394,6 +394,7 @@ class H(BaseHTTPRequestHandler):
                 concepts.append({"name": name, "active": active,
                                  "head": info["head"], "code": info["code"],
                                  "p": info["p_given_code"], "base": info["base"],
+                                 "anti": bool(info.get("anti")),
                                  "tok_here": bool(tok_here)})
         dests = {}
         if not over:                                    # free analysis: mover always movable
