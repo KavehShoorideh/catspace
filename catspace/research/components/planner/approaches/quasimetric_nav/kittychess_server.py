@@ -196,7 +196,11 @@ function render(d){
     if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
     const sp=document.createElement('span');sp.className="m"+(i===d.ptr-1?" cur":"");sp.textContent=sn;
     sp.onclick=()=>api({action:"goto",ptr:i+1}); mv.appendChild(sp);});
-  const cur=mv.querySelector('.cur'); if(cur)cur.scrollIntoView({block:"nearest"});
+  const cur=mv.querySelector('.cur');
+  if(cur){ // scroll ONLY the move list, never the page (scrollIntoView nudged the page)
+    const t=cur.offsetTop-mv.offsetTop;
+    if(t<mv.scrollTop||t>mv.scrollTop+mv.clientHeight-24) mv.scrollTop=t-mv.clientHeight/2;
+  }
   if(d.concepts&&d.concepts.length){
     document.getElementById('conceptbox').style.display="";
     document.getElementById('postoks').textContent="position tokens: "+
