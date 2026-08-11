@@ -250,13 +250,16 @@ document.getElementById('lines').onchange=()=>api({action:"noop"});
 document.getElementById('pvlen').onchange=()=>api({action:"noop"});
 document.getElementById('flip').onclick=()=>{orient=orient==="white"?"black":"white";api({action:"noop"});};
 document.getElementById('nav-an').onclick=()=>{
-  document.getElementById('playpanel').style.display="none";
   setMode('analysis'); api({action:"noop"});};
 document.getElementById('nav-play').onclick=()=>{
   // one click, lichess-quick-pairing style: RANDOM side, fixed strength 6 (1.5s cap)
   playCfg={engineWhite:Math.random()<0.5, depth:6};
   orient=playCfg.engineWhite?'black':'white';
-  setMode('play'); api({action:"new"});};
+  setMode('play');
+  cg.set({movable:{color:undefined}});           // freeze immediately: no moves during load
+  document.getElementById('lnbox').innerHTML="";
+  document.getElementById('dinfo').textContent="starting…";
+  api({action:"new"});};
 setMode('analysis');
 addEventListener('keydown',e=>{
   if(e.key==="ArrowLeft"){e.preventDefault();api({action:"rel",d:-1});}
