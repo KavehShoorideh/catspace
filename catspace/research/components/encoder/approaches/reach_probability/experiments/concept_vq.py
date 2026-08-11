@@ -30,6 +30,50 @@ from catspace.research.components.encoder.approaches.reach_probability.experimen
 from catspace.research.components.encoder.approaches.reach_probability.src import trajectories as T
 
 
+VAL = {0: 0, 1: 1, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0, 7: 1, 8: 3, 9: 3, 10: 5, 11: 9, 12: 0}
+
+
+def predicates_from_tok(tok):
+    """(N,64) tokens -> dict of KNOWN chess concepts (booleans). NAMING/UI ONLY -- these
+    never enter training (Kaveh's rule: concepts stay latent; predicates label them)."""
+    tok = np.asarray(tok)
+    v = np.vectorize(VAL.get)(tok)
+    wm = np.where((tok >= 1) & (tok <= 6), v, 0).sum(1)
+    bm = np.where(tok >= 7, v, 0).sum(1)
+    d = wm - bm
+    npc = (tok > 0).sum(1)
+    board = tok.reshape(-1, 8, 8)                      # [rank, file]; rank 0 = white's first
+    wp = board == 1
+    bp = board == 7
+    def passed(us, them, white):
+        out = np.zeros(len(tok), bool)
+        for r in range(8):
+            for f in range(8):
+                has = us[:, r, f]
+                if not has.any():
+                    continue
+                fl = slice(max(0, f - 1), min(8, f + 2))
+                ahead = them[:, r + 1:, fl].any((1, 2)) if white else them[:, :r, fl].any((1, 2))
+                out |= has & ~ahead
+        return out
+    return {
+        "white up material":  d >= 3,
+        "black up material":  d <= -3,
+        "material even":      np.abs(d) <= 1,
+        "queens on":          ((tok == 5) | (tok == 11)).any(1),
+        "queens traded":      ~((tok == 5) | (tok == 11)).any(1),
+        "pawn endgame":       ~(((tok >= 2) & (tok <= 5)) | ((tok >= 8) & (tok <= 11))).any(1),
+        "endgame (<=10 pc)":  npc <= 10,
+        "middlegame (>=20 pc)": npc >= 20,
+        "white rook pair":    (tok == 4).sum(1) >= 2,
+        "black rook pair":    (tok == 10).sum(1) >= 2,
+        "white passed pawn":  passed(wp, bp, True),
+        "black passed pawn":  passed(bp, wp, False),
+        "white bishop pair":  (tok == 3).sum(1) >= 2,
+        "black bishop pair":  (tok == 9).sum(1) >= 2,
+    }
+
+
 class ConceptVQ(nn.Module):
     def __init__(self, d_in=128, d_code=32, heads=4, codes=64):
         super().__init__()
@@ -60,6 +104,8 @@ def main():
     ap.add_argument("--codes", type=int, default=64)
     ap.add_argument("--rows", type=int, default=200_000)
     ap.add_argument("--steps", type=int, default=4000)
+    ap.add_argument("--save", action="store_true",
+                    help="save quantizer + concept map next to the ckpt")
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
@@ -127,28 +173,37 @@ def main():
               f"(top code {cnt.max():.0%})")
 
     # ---- post-hoc NAMING (predicates never enter training) ----
-    tok_v = tr.tok[val_rows]
-    VAL = {0: 0, 1: 1, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0, 7: 1, 8: 3, 9: 3, 10: 5, 11: 9, 12: 0}
-    vmat = np.vectorize(VAL.get)(tok_v)
-    wm = np.where((tok_v >= 1) & (tok_v <= 6), vmat, 0).sum(1)
-    bm = np.where(tok_v >= 7, vmat, 0).sum(1)
-    preds = {"mat_diff>2": (wm - bm) > 2, "mat_diff<-2": (wm - bm) < -2,
-             "queens_on": ((tok_v == 5).any(1) | (tok_v == 11).any(1)),
-             "few_pieces(<=8)": (tok_v > 0).sum(1) <= 8,
-             "pawn_endgame": (~(((tok_v >= 2) & (tok_v <= 5)) |
-                               ((tok_v >= 8) & (tok_v <= 11))).any(1))}
-    print("\n[naming] strongest predicate per frequent code (top 3 codes/head):")
-    for h in range(args.heads):
-        cnt = np.bincount(idv[:, h], minlength=args.codes)
-        for code in np.argsort(-cnt)[:3]:
-            m = idv[:, h] == code
-            if m.sum() < 100:
-                continue
-            best, bl = max(((abs(float(p[m].mean()) - float(p.mean())), k)
-                            for k, p in preds.items()))
-            k = bl
-            print(f"  h{h}/c{code} ({m.mean():.0%} of rows): {k} "
-                  f"{float(preds[k][m].mean()):.0%} vs base {float(preds[k].mean()):.0%}")
+    preds = predicates_from_tok(tr.tok[val_rows])
+    print("\n[naming] best-matching TOKEN per known concept (Kaveh's table):")
+    cmap = {}
+    for k, pv in preds.items():
+        base = float(pv.mean())
+        if base < 0.01 or base > 0.99:
+            continue
+        best = None
+        for h in range(args.heads):
+            for code in range(args.codes):
+                m = idv[:, h] == code
+                if m.sum() < 200:
+                    continue
+                hit = float(pv[m].mean())
+                lift = hit - base
+                if best is None or abs(lift) > abs(best[3]):
+                    best = (h, code, hit, lift)
+        if best:
+            h, code, hit, lift = best
+            cmap[k] = {"head": h, "code": int(code), "p_given_code": round(hit, 3),
+                       "base": round(base, 3), "lift": round(lift, 3)}
+            print(f"  {k:22s} -> h{h}/c{code:<3} P(concept|token) {hit:.0%} "
+                  f"(base {base:.0%}, lift {lift:+.0%})")
+    if args.save:
+        base_path = args.ckpt[:-3] if args.ckpt.endswith(".pt") else args.ckpt
+        torch.save({"state_dict": model.state_dict(), "heads": args.heads,
+                    "codes": args.codes, "d_in": Xf.shape[1],
+                    "mu": mu, "sd": sd}, base_path + "_vq.pt")
+        import json as _json
+        _json.dump(cmap, open(base_path + "_conceptmap.json", "w"), indent=1)
+        print(f"[vq] saved {base_path}_vq.pt + _conceptmap.json")
 
 
 if __name__ == "__main__":
