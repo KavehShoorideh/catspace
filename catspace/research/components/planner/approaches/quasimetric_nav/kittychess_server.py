@@ -86,13 +86,9 @@ body.playmode .right .box:first-child{display:none}
 <div class="top"><b>catspace</b>
   <span style="margin-left:18px">
     <button class="navbtn" id="nav-an">Analysis board</button>
-    <button class="navbtn" id="nav-play">Play</button>
+    <button class="navbtn" id="nav-play">Play catspace</button>
   </span>
-  <span id="playpanel" style="display:none;margin-left:12px;font-size:12.5px">
-    as <select id="pcolor"><option value="w" selected>white</option><option value="b">black</option></select>
-    strength <select id="pdepth"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
-    <button class="navbtn" id="pstart" style="background:#759900;color:#fff">start game</button>
-  </span>
+
 </div>
 <div class="main">
 <div id="evalbar"><div id="eb-b" style="height:33%"></div><div id="eb-d" style="height:34%"></div><div id="eb-w" style="height:33%"></div></div>
@@ -109,7 +105,7 @@ body.playmode .right .box:first-child{display:none}
 </div>
 <div class="right">
   <div class="box">
-    <div class="engrow"><b>KittyChess</b>
+    <div class="engrow"><b>catspace</b>
       <span id="dinfo"></span>
       <label>depth <select id="depth"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
       <label>pv <select id="pvlen"><option>4</option><option selected>6</option><option>8</option></select></label>
@@ -257,13 +253,9 @@ document.getElementById('nav-an').onclick=()=>{
   document.getElementById('playpanel').style.display="none";
   setMode('analysis'); api({action:"noop"});};
 document.getElementById('nav-play').onclick=()=>{
-  const pp=document.getElementById('playpanel');
-  pp.style.display = pp.style.display==="none" ? "" : "none";};
-document.getElementById('pstart').onclick=()=>{
-  playCfg={engineWhite:document.getElementById('pcolor').value==='b',
-           depth:+document.getElementById('pdepth').value};
+  // one click, lichess-quick-pairing style: RANDOM side, fixed strength 6 (1.5s cap)
+  playCfg={engineWhite:Math.random()<0.5, depth:6};
   orient=playCfg.engineWhite?'black':'white';
-  document.getElementById('playpanel').style.display="none";
   setMode('play'); api({action:"new"});};
 setMode('analysis');
 addEventListener('keydown',e=>{
