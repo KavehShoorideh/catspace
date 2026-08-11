@@ -130,7 +130,8 @@ def main():
             b = row_to_board(tr.tok[cand_row[j]], tr.glob[cand_row[j]])
             if b.is_valid():
                 exemplars.append(b.fen())
-        out_rows.append({"cluster": int(k), "n": int(m.sum()), "games": ngames,
+        out_rows.append({"rows": [int(cand_row[j]) for j in np.flatnonzero(m)[:300]],
+                         "cluster": int(k), "n": int(m.sum()), "games": ngames,
                          "kinds": {kk: int(sum(1 for j in np.flatnonzero(m)
                                                if cand_kind[j] == kk))
                                    for kk in ("jump", "elbow")},

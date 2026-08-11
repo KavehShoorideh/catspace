@@ -68,6 +68,11 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #wdltxt th{font-weight:400;color:#6f6b66;text-align:right;padding:1px 10px 1px 0;font-size:11px}
 #wdltxt td{text-align:right;padding:1px 10px 1px 0;white-space:nowrap}
 #wdltxt b{color:#dedede;font-weight:600}
+#ctable{border-collapse:collapse;font-size:11.5px;width:100%;font-variant-numeric:tabular-nums}
+#ctable th{font-weight:400;color:#6f6b66;text-align:left;padding:2px 6px;font-size:10.5px}
+#ctable td{padding:2px 6px;color:#8f8a82;white-space:nowrap}
+#ctable td.on{color:#759900;font-weight:600}
+#ctable tr.tokhit td{background:#2e2c26}
 .lines .ev{cursor:help}
 #lnlegend{font-size:10.5px;color:#6f6b66;margin-top:4px}
 .spin{opacity:.6}
@@ -100,6 +105,10 @@ label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
     <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡ = line descends ≥0.7 plies/ply toward one ending &nbsp;·&nbsp; ranked by CASCADE</div>
   </div>
   <div class="box"><div id="moves"></div></div>
+  <div class="box" id="conceptbox" style="display:none">
+    <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">concepts &nbsp;<span id="postoks" style="color:#6f6b66"></span></div>
+    <table id="ctable"></table>
+  </div>
 </div>
 </div>
 <script>__CG_JS__</script>
@@ -163,6 +172,18 @@ function render(d){
     const sp=document.createElement('span');sp.className="m"+(i===d.ptr-1?" cur":"");sp.textContent=sn;
     sp.onclick=()=>api({action:"goto",ptr:i+1}); mv.appendChild(sp);});
   const cur=mv.querySelector('.cur'); if(cur)cur.scrollIntoView({block:"nearest"});
+  if(d.concepts&&d.concepts.length){
+    document.getElementById('conceptbox').style.display="";
+    document.getElementById('postoks').textContent="position tokens: "+
+      (d.tokens||[]).map((c,h)=>"h"+h+":c"+c).join(" ");
+    const t=document.getElementById('ctable');
+    t.innerHTML="<tr><th>known concept</th><th>here?</th><th>best token</th><th>P(concept|token)</th></tr>"+
+      d.concepts.map(c=>
+        `<tr class="${c.tok_here?'tokhit':''}"><td>${c.name}</td>`+
+        `<td class="${c.active?'on':''}">${c.active?'✓':'–'}</td>`+
+        `<td>h${c.head}/c${c.code}${c.tok_here?' ●':''}</td>`+
+        `<td>${Math.round(c.p*100)}% (base ${Math.round(c.base*100)}%)</td></tr>`).join("");
+  }
   if(d.over)document.getElementById('dinfo').textContent=d.over;
 }
 function renderLines(d){
@@ -352,6 +373,28 @@ class H(BaseHTTPRequestHandler):
         # fast phase: position + tricolor committor bar [P(white), P(draw), P(black)]
         with H.lock:
             wdl, dists = self._wdl(b, over)
+        concepts, tokens = [], []
+        if H.vq is not None and not over:
+            import torch as _torch
+            from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                tokenize as _tok)
+            from catspace.research.components.encoder.approaches.reach_probability.experiments.concept_vq import (
+                predicates_from_tok)
+            tk, gl = _tok(b)
+            with H.lock, _torch.no_grad():
+                phi = H.eng.net.backbone(
+                    _torch.from_numpy(__import__("numpy").asarray([tk], dtype="int64")).to(H.eng.device),
+                    _torch.from_numpy(__import__("numpy").asarray([gl], dtype="float32")).to(H.eng.device))
+                _, ids, _ = H.vq(phi)
+            tokens = [int(x) for x in ids[0].cpu()]
+            preds = predicates_from_tok([tk])
+            for name, info in H.cmap.items():
+                active = bool(preds[name][0]) if name in preds else None
+                tok_here = tokens[info["head"]] == info["code"]
+                concepts.append({"name": name, "active": active,
+                                 "head": info["head"], "code": info["code"],
+                                 "p": info["p_given_code"], "base": info["base"],
+                                 "tok_here": bool(tok_here)})
         dests = {}
         if not over:                                    # free analysis: mover always movable
             for m in b.legal_moves:
@@ -367,6 +410,7 @@ class H(BaseHTTPRequestHandler):
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
                "dists": dists, "check": b.is_check(), "dests": dests,
+               "concepts": concepts, "tokens": tokens,
                "lastMove": last, "over": over}
         self._send(200, json.dumps(out).encode())
 
@@ -433,6 +477,20 @@ def main():
     import threading
     from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
     H.eng = KittyChess(args.ckpt, args.device, args.cond_elo)
+    # concept quantizer + known-concept map (Kaveh 2026-08-11): optional sidecars
+    H.vq = H.cmap = None
+    try:
+        base = args.ckpt[:-3] if args.ckpt.endswith(".pt") else args.ckpt
+        import json as _json, torch as _torch
+        from catspace.research.components.encoder.approaches.reach_probability.experiments.concept_vq import (
+            ConceptVQ)
+        pv = _torch.load(base + "_vq.pt", map_location=args.device, weights_only=False)
+        H.vq = ConceptVQ(d_in=pv["d_in"], heads=pv["heads"], codes=pv["codes"]).to(args.device)
+        H.vq.load_state_dict(pv["state_dict"]); H.vq.eval()
+        H.cmap = _json.load(open(base + "_conceptmap.json"))
+        print(f"[kitty-server] concept quantizer loaded ({pv['heads']}x{pv['codes']})", flush=True)
+    except Exception as e:
+        print(f"[kitty-server] no concept sidecars ({e})", flush=True)
     H.lock = threading.Lock()
     H.depth = args.depth
     global PAGE_BYTES
