@@ -33,8 +33,9 @@ from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb 
 
 
 class KittyChess:
-    def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="db"):
-        self.nav = nav                           # "db" threat-first | "ab" A-steer + B-gate
+    def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="db", gate=0.05):
+        self.nav = nav          # "db" threat-first | "ab" A-steer+B-gate | "cascade" (2026-08-11)
+        self.gate = gate                         # cascade: E-gap that lets probability decide
         self.net, pay = load_net(ckpt, device)
         self.cfg = pay["cfg"]
         self.device = device
@@ -323,6 +324,33 @@ class KittyChess:
             d_win, d_draw, d_loss = D["LOSS"], D["DRAW"], D["WIN"]
         d_bad = np.minimum(d_draw, d_loss)
         margin = d_bad - d_win
+        if self.nav == "cascade" and self.white_pov:
+            # KAVEH'S CASCADE (2026-08-11): probability decides when it clearly isolates a
+            # move; otherwise standing-aware LENGTH navigation. Gate = expected-points gap.
+            P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"], self.pi["LOSS"]]].to(self.device)
+            with torch.no_grad():
+                DBc = torch.stack([self.dist(z, P3[[k]].expand(len(z), -1))
+                                   for k in range(3)], 1)
+                pr = torch.softmax(-DBc / 5.0, 1).float().cpu().numpy()   # white-POV W/D/L
+                DAc = torch.stack([self.net.dA(z, P3[[k]].expand(len(z), -1))
+                                   for k in range(3)], 1).float().cpu().numpy()
+            E = pr[:, 0] + 0.5 * pr[:, 1]
+            if not board.turn:
+                E = 1.0 - E                                  # mover-POV expected points
+            order_E = np.argsort(-E)
+            if len(E) > 1 and E[order_E[0]] - E[order_E[1]] >= self.gate:
+                return moves[int(order_E[0])]                # probability isolates the move
+            # length fallback, standing-aware; columns mover-POV
+            aw, ad, al = ((DAc[:, 0], DAc[:, 1], DAc[:, 2]) if board.turn
+                          else (DAc[:, 2], DAc[:, 1], DAc[:, 0]))
+            standing = float(E.mean())
+            if standing <= 0.45:
+                # losing: chase the nearer salvage (win or draw), per Kaveh's branch 3
+                tgt = aw if aw.min() <= ad.min() else ad
+                return moves[int(np.argmin(tgt))]
+            # winning/balanced: descend own win, flee draw AND loss (progress + no shuffling)
+            sc = np.minimum(ad, al) - aw
+            return moves[int(np.argmax(sc))]
         if self.nav == "ab" and self.white_pov:
             # A-STEER + B-GATE (Kaveh 2026-08-08 "try both ways, arena them"): progress along
             # the LENGTH ruler toward our absorbing pole (descends -- the odometer), safety

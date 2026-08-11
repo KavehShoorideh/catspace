@@ -107,9 +107,9 @@ def main():
     ap.add_argument("--cond-elo", type=float, default=None)
     ap.add_argument("--promote", action="store_true",
                     help="on a win, update the champion registry (page rebuild is separate)")
-    ap.add_argument("--candidate-nav", default="db", choices=("db", "ab"),
-                    help="candidate navigation: db threat-first | ab A-steer+B-gate")
-    ap.add_argument("--champion-nav", default="db", choices=("db", "ab"))
+    ap.add_argument("--candidate-nav", default="db", choices=("db", "ab", "cascade"),
+                    help="candidate navigation: db threat-first | ab A-steer+B-gate | cascade")
+    ap.add_argument("--champion-nav", default="db", choices=("db", "ab", "cascade"))
     ap.add_argument("--champion-ckpt", default=None,
                     help="override the registry champion (e.g. same ckpt, other nav mode -- "
                          "Kaveh 2026-08-08 'try both ways, arena them')")
