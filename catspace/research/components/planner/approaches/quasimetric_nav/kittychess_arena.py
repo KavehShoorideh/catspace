@@ -32,13 +32,17 @@ def load_champion():
     return None
 
 
-def play_one(white_eng, black_eng, opening, max_plies=300):
+def play_one(white_eng, black_eng, opening, max_plies=300, search_depth=0):
     b = chess.Board()
     for u in opening:
         b.push_uci(u)
     while not b.is_game_over(claim_draw=True) and b.ply() < max_plies:
         eng = white_eng if b.turn == chess.WHITE else black_eng
-        mv = eng.choose(b)
+        if search_depth > 0:
+            rows = eng.search(b, depth=search_depth)
+            mv = rows[0]["mv"] if rows else None
+        else:
+            mv = eng.choose(b)
         if mv is None:
             break
         b.push(mv)
@@ -113,6 +117,12 @@ def main():
     ap.add_argument("--champion-ckpt", default=None,
                     help="override the registry champion (e.g. same ckpt, other nav mode -- "
                          "Kaveh 2026-08-08 'try both ways, arena them')")
+    ap.add_argument("--search-depth", type=int, default=0,
+                    help=">0: engines play by SEARCH at this depth (the real play config; "
+                         "the 1-ply chooser ignores the move-head entirely)")
+    ap.add_argument("--candidate-head", action="store_true",
+                    help="candidate uses the move-head root prior + internal ordering")
+    ap.add_argument("--champion-head", action="store_true")
     ap.add_argument("--opening-seed", type=int, default=0,
                     help="seed for the random opening pairs (chunked matches: different seed per chunk = fresh independent pairs)")
     ap.add_argument("--device", default="mps")
@@ -122,14 +132,17 @@ def main():
     if args.champion_ckpt:
         print(f"[arena] HEAD-TO-HEAD: {args.candidate} ({args.candidate_nav}) vs "
               f"{args.champion_ckpt} ({args.champion_nav}) -- registry untouched")
-        cand = KittyChess(args.candidate, args.device, args.cond_elo, nav=args.candidate_nav)
-        ch = KittyChess(args.champion_ckpt, args.device, args.cond_elo, nav=args.champion_nav)
+        cand = KittyChess(args.candidate, args.device, args.cond_elo, nav=args.candidate_nav,
+                          head_order=args.candidate_head)
+        ch = KittyChess(args.champion_ckpt, args.device, args.cond_elo, nav=args.champion_nav,
+                        head_order=args.champion_head)
         _share_tb(cand, ch)
         rng = random.Random(args.opening_seed)
         pairs = []
         for rd in range(args.rounds):
             op = random_opening(rng)
-            p = play_one(cand, ch, op) + (1.0 - play_one(ch, cand, op))
+            p = (play_one(cand, ch, op, search_depth=args.search_depth)
+                 + (1.0 - play_one(ch, cand, op, search_depth=args.search_depth)))
             pairs.append(p)
             print(f"[arena] round {rd+1}/{args.rounds}: candidate {sum(pairs)}/{2*len(pairs)}",
                   flush=True)

@@ -26,15 +26,17 @@ import numpy as np
 import torch
 
 from catspace.io import paths
-from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
+from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize, move_ids
 from catspace.research.components.encoder.approaches.reach_probability.experiments.interpret_reach import (
     load_net)
 from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import TB
 
 
 class KittyChess:
-    def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="cascade", gate=0.05):
+    def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="cascade",
+                 gate=0.05, head_order=False):
         self.nav = nav          # "db" threat-first | "ab" A-steer+B-gate | "cascade" (2026-08-11)
+        self.head_order = head_order            # move-head orders internal search nodes
         self.gate = gate                         # cascade: E-gap that lets probability decide
         self.net, pay = load_net(ckpt, device)
         self.cfg = pay["cfg"]
@@ -106,7 +108,7 @@ class KittyChess:
     def margins(self, boards):
         """mover-POV threat-first margin for each board, one batched forward."""
         import numpy as np, torch
-        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize, move_ids
         toks, globs = zip(*(tokenize(b) for b in boards))
         with torch.no_grad():
             z = self._embed(list(toks), list(globs))
@@ -157,7 +159,7 @@ class KittyChess:
                             else [0.0, 0.0, 1.0]), None
             except Exception:
                 pass
-        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize, move_ids
         toks, globs = tokenize(board)
         with torch.no_grad():
             z = self._embed([toks], [globs])
@@ -360,6 +362,22 @@ class KittyChess:
         moves = list(board.legal_moves)
         if not moves:
             return []
+        if self.head_order and getattr(self.net, "move_head", None) is not None \
+                and len(moves) > 12:
+            # HEAD AS ROOT PRIOR (2026-08-11): search only the head's top-10 candidates --
+            # the policy narrows, the search verifies. Qg4 (head rank #27) is never searched.
+            tk, gl = tokenize(board)
+            with torch.no_grad():
+                phi = self.net.backbone(
+                    torch.from_numpy(np.asarray([tk], dtype=np.int64)).to(self.device),
+                    torch.from_numpy(np.asarray([gl], dtype=np.float32)).to(self.device))
+                mids = torch.from_numpy(np.array([move_ids(m) for m in moves],
+                                                 dtype=np.int64)).to(self.device)
+                delta = self.net.move_head(phi.expand(len(moves), -1),
+                                           mids).float().cpu().numpy()
+            mw = 0 if board.turn else 2
+            keep = list(np.argsort(delta[:, mw])[:10])
+            moves = [moves[i] for i in keep]
         rows = []
         for m in moves:
             board.push(m)
