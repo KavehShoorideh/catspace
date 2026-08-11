@@ -183,7 +183,9 @@ function render(d){
   document.getElementById('eb-w').style.height=(d.wdl[0]*100)+"%";
   document.getElementById('eb-d').style.height=(d.wdl[1]*100)+"%";
   document.getElementById('eb-b').style.height=(d.wdl[2]*100)+"%";
-  drawPosTable(d.wdl, d.dists, "static");
+  drawPosTable(d.wdl, d.dists,
+    d.turb==null ? "static" :
+    (d.turb<0.08 ? "static · quiet" : "static · sharp τ"+d.turb.toFixed(2)));
   const mv=document.getElementById('moves'); mv.innerHTML="";
   (d.san||[]).forEach((sn,i)=>{
     if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
@@ -461,6 +463,13 @@ class H(BaseHTTPRequestHandler):
         # fast phase: position + tricolor committor bar [P(white), P(draw), P(black)]
         with H.lock:
             wdl, dists = self._wdl(b, over)
+        turb = None
+        if not over and not req.get("play"):
+            try:
+                with H.lock:
+                    turb = H.eng.turbulence(b)
+            except Exception:
+                pass
         concepts, tokens = [], []
         if H.vq is not None and not over and not req.get("play"):
             import torch as _torch
@@ -501,6 +510,7 @@ class H(BaseHTTPRequestHandler):
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
                "dists": dists, "check": b.is_check(), "dests": dests,
                "concepts": concepts, "tokens": tokens,
+               "turb": (round(turb[0], 3) if turb else None),
                "lastMove": last, "over": over}
         self._send(200, json.dumps(out).encode())
 
