@@ -73,6 +73,25 @@ def main():
     ta, ca, t1a = fit_tau_ce(DA, y)
     tb, cb, t1b = fit_tau_ce(DB, y)
     print(f"[2 dA commit] tau {ta:7.3f}  CE {ca:.4f}  top1 {t1a:.3f}   (uniform 1.0986)")
+    # 2-EXIT MARGIN readout (Kaveh 2026-08-10: the draw is TRULY near everywhere -- absorption
+    # asymmetry -- so who-wins must be read from WHICH DECISIVE EXIT IS CLOSER, never from a
+    # 3-way nearest-pole vote). Features: the decisive margin + how far the nearest exit is
+    # beyond the draw (both-exits-far = draw). Small logistic on 2 features.
+    marg = (DA[:, 2] - DA[:, 0]).unsqueeze(1)
+    exit_excess = (torch.minimum(DA[:, 0], DA[:, 2]) - DA[:, 1]).unsqueeze(1)
+    X2 = torch.cat([marg, exit_excess], 1)
+    W2 = torch.zeros(2, 3, requires_grad=True)
+    b2 = torch.zeros(3, requires_grad=True)
+    opt2 = torch.optim.LBFGS([W2, b2], max_iter=300)
+    def cl2():
+        opt2.zero_grad()
+        l = torch.nn.functional.cross_entropy(X2 @ W2 + b2, y)
+        l.backward(); return l
+    opt2.step(cl2)
+    with torch.no_grad():
+        ce2 = torch.nn.functional.cross_entropy(X2 @ W2 + b2, y).item()
+        t12 = float(((X2 @ W2 + b2).argmax(1) == y).float().mean())
+    print(f"[2b dA MARGIN] 2-exit readout: CE {ce2:.4f}  top1 {t12:.3f}")
     print(f"[3 dB commit] tau {tb:7.3f}  CE {cb:.4f}  top1 {t1b:.3f}")
     # 4: does dB still add information once dA has spoken? logistic stack: predict y from
     # dA logits alone vs dA+dB logits (simple ridge multinomial via torch).
