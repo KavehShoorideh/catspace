@@ -51,6 +51,9 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--steps", type=int, default=6000)
+    ap.add_argument("--game-transitions", type=int, default=0,
+                    help="ALSO train on N corpus-derived consecutive-ply transitions "
+                         "(Kaveh: feed it a lot more before judging)")
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--save", action="store_true")
     ap.add_argument("--device", default="mps")
@@ -78,7 +81,48 @@ def main():
     C_GLOB = np.concatenate(C_GLOB); MID = np.concatenate(MID)
     OFF = np.array(OFF, np.int64)
     n_par = len(P_ROW)
-    print(f"[dyn] {n_par:,} parents, {len(C_TOK):,} (move -> child) transitions")
+    print(f"[dyn] {n_par:,} parents, {len(C_TOK):,} shard (move -> child) transitions")
+    GT = None
+    if args.game_transitions:
+        # transitions FROM THE CORPUS ITSELF (2026-08-11: replay-order reconstruction was 30%
+        # wrong -- guessed alignments burn us; derive instead): consecutive same-game rows are
+        # (parent, child); the move is the unique legal move whose push reproduces the child
+        # tokens. Cached per corpus.
+        import chess as _ch
+        from catspace.research.components.encoder.approaches.reach_probability.experiments.eval_dtz_gate import (
+            row_to_board)
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+            tokenize as _tok, move_ids)
+        cache = paths.derived(f"game_transitions_{len(tr.tok)}.npz")
+        if os.path.exists(cache):
+            z = np.load(cache)
+            GT = {"par": z["par"], "mid": z["mid"]}
+        else:
+            gor = tr.game_of_row()
+            cand = np.flatnonzero(gor[:-1] == gor[1:])
+            rng0 = np.random.default_rng(0)
+            cand = cand[rng0.choice(len(cand), min(args.game_transitions, len(cand)),
+                                    replace=False)]
+            par_l, mid_l, bad = [], [], 0
+            for r in cand:
+                b = row_to_board(tr.tok[r], tr.glob[r])
+                if not b.is_valid():
+                    bad += 1; continue
+                child = tr.tok[r + 1]
+                found = None
+                for mv in b.legal_moves:
+                    b.push(mv)
+                    tk, _g = _tok(b)
+                    b.pop()
+                    if np.array_equal(child, np.asarray(tk)):
+                        found = mv; break
+                if found is None:
+                    bad += 1; continue
+                par_l.append(int(r)); mid_l.append(move_ids(found))
+            GT = {"par": np.array(par_l, np.int64), "mid": np.array(mid_l, np.int64)}
+            np.savez(cache, par=GT["par"], mid=GT["mid"])
+            print(f"[dyn] derived {len(par_l):,} transitions ({bad:,} undecodable) -> {cache}")
+        print(f"[dyn] + {len(GT['par']):,} whole-game transitions (corpus-derived)")
 
     # ---- precompute: parent phi + parent codes + child codes (frozen nets, batched) ----
     def phi_codes(tok, glob):
@@ -94,6 +138,17 @@ def main():
         ph, ic = phi_codes(tr.tok[P_ROW[a:a+4096]], tr.glob[P_ROW[a:a+4096]])
         PPHI.append(ph); PCODE.append(ic)
     PPHI = torch.cat(PPHI); PCODE = torch.cat(PCODE)
+    GPHI = GCODE_P = GCODE_C = None
+    if GT is not None:
+        print("[dyn] featurizing game-transition rows...", flush=True)
+        gp, gc_p, gc_c = [], [], []
+        for a in range(0, len(GT["par"]), 4096):
+            rr = GT["par"][a:a+4096]
+            ph, ic = phi_codes(tr.tok[rr], tr.glob[rr])
+            gp.append(ph); gc_p.append(ic)
+            _, icc = phi_codes(tr.tok[rr + 1], tr.glob[rr + 1])
+            gc_c.append(icc)
+        GPHI = torch.cat(gp); GCODE_P = torch.cat(gc_p); GCODE_C = torch.cat(gc_c)
     print("[dyn] featurizing children...", flush=True)
     CCODE = []
     for a in range(0, len(C_TOK), 4096):
@@ -114,7 +169,19 @@ def main():
     model = ConceptDynamics(d_in=PPHI.shape[1], heads=pv["heads"], codes=pv["codes"]).to(args.device)
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     MID_t = torch.from_numpy(MID.astype(np.int64))
+    GMID_t = torch.from_numpy(GT["mid"].astype(np.int64)) if GT is not None else None
+    n_gval = len(GT["par"]) // 10 if GT is not None else 0   # tail 10% of game transitions = val
     for step in range(args.steps):
+        if GT is not None and step % 2 == 1:                 # alternate: shard / game batches
+            gs = np.random.randint(0, len(GT["par"]) - n_gval, args.batch)
+            logits = model(GPHI[gs].to(args.device), GMID_t[gs].to(args.device))
+            tgt = GCODE_C[gs].to(args.device)
+            loss = sum(torch.nn.functional.cross_entropy(logits[:, h], tgt[:, h])
+                       for h in range(pv["heads"])) / pv["heads"]
+            opt.zero_grad(); loss.backward(); opt.step()
+            if (step + 1) % 1000 == 0:
+                print(f"[dyn] step {step+1}: CE {float(loss):.4f} (game)", flush=True)
+            continue
         sel = tr_ch[np.random.randint(0, len(tr_ch), args.batch)]
         pi = par_of_child[sel]
         logits = model(PPHI[pi].to(args.device), MID_t[sel].to(args.device))
