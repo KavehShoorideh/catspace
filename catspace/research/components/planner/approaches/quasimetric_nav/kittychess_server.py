@@ -24,7 +24,7 @@ KittyMATE=_KC.MATE
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_assets")
 
 PAGE = """<!doctype html><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>KittyChess analysis</title>
+<title>catspace</title>
 <style>__CG_CSS__</style>
 <style>
 body{margin:0;background:#161512;color:#bababa;font:14px/1.4 'Noto Sans',system-ui,sans-serif}
@@ -83,14 +83,14 @@ cursor:pointer;font:inherit;font-size:12.5px}
 body.playmode #evalbar,body.playmode #wdltxt,body.playmode #conceptbox{visibility:hidden}
 body.playmode .right .box:first-child{display:none}
 </style>
-<div class="top"><b>KittyChess</b>
+<div class="top"><b>catspace</b>
   <span style="margin-left:18px">
     <button class="navbtn" id="nav-an">Analysis board</button>
     <button class="navbtn" id="nav-play">Play</button>
   </span>
   <span id="playpanel" style="display:none;margin-left:12px;font-size:12.5px">
     as <select id="pcolor"><option value="w" selected>white</option><option value="b">black</option></select>
-    strength <select id="pdepth"><option>1</option><option selected>2</option><option>3</option><option>4</option></select>
+    strength <select id="pdepth"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
     <button class="navbtn" id="pstart" style="background:#759900;color:#fff">start game</button>
   </span>
 </div>
@@ -146,13 +146,15 @@ async function api(body){
   const my=++seq;
   const extra = mode==='play' ? {play:true, engineWhite:playCfg.engineWhite,
                                  playDepth:playCfg.depth} : {};
-  if(mode==='play') document.getElementById('dinfo').textContent="…";
+  if(mode==='play'){document.getElementById('dinfo').textContent="thinking…";
+    document.getElementById('dinfo').className="spin";}
   const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
     body:JSON.stringify({...body,...knobs(),...extra})});
   const d=await r.json();
   if(my!==seq)return;
   render(d);
-  if(mode==='play'){document.getElementById('dinfo').textContent=d.over||"";return;}
+  if(mode==='play'){document.getElementById('dinfo').textContent=d.over||"";
+    document.getElementById('dinfo').className="";return;}
   if(d.over){document.getElementById('dinfo').textContent=d.over;return;}
   document.getElementById('dinfo').textContent="thinking…";
   document.getElementById('dinfo').className="spin";
@@ -353,11 +355,23 @@ class H(BaseHTTPRequestHandler):
                 and cls.ptr == len(cls.moves):
             eng_white = bool(req.get("engineWhite"))
             if (b.turn == chess.WHITE) == eng_white:
-                pd = max(1, min(4, int(req.get("playDepth", 2))))
+                pd = max(1, min(6, int(req.get("playDepth", 2))))
+                # time-capped iterative deepening (Kaveh: think <= ~1.5s): keep the deepest
+                # COMPLETED iteration; a timed-out partial iteration is discarded
+                import time as _time
+                deadline = _time.time() + 1.5
+                best = None
                 with H.lock:
-                    rows = H.eng.search(b, depth=pd)
-                if rows:
-                    cls.moves.append(rows[0]["mv"]); cls.ptr += 1
+                    for d in range(1, pd + 1):
+                        rows = H.eng.search(b, depth=d,
+                                            stop=lambda: _time.time() > deadline)
+                        if _time.time() > deadline:
+                            if best is None:
+                                best = rows
+                            break
+                        best = rows
+                if best:
+                    cls.moves.append(best[0]["mv"]); cls.ptr += 1
                     b = self._board(); over = self._over(b)
         # slow phase, requested separately so navigation never waits on the search --
         # the analysis engine IS this engine (Kaveh 2026-08-08), depth + lines are the knobs
