@@ -212,6 +212,15 @@ function render(d){
   if(d.over)document.getElementById('dinfo').textContent=d.over;
 }
 function renderLines(d){
+  // turn-aware bar (Kaveh 2026-08-11: the static field is measurably TURN-BLIND,
+  // sensitivity 0.000 on a mid-exchange probe): once analysis exists, the main bar
+  // shows the committor at the END of the best line -- search resolves the exchange
+  if(d.think&&d.think[0]&&d.think[0].wdl){
+    const w=d.think[0].wdl;
+    document.getElementById('eb-w').style.height=(w[0]*100)+"%";
+    document.getElementById('eb-d').style.height=(w[1]*100)+"%";
+    document.getElementById('eb-b').style.height=(w[2]*100)+"%";
+  }
   const lb=document.getElementById('lnbox'); lb.innerHTML="";
   (d.think||[]).forEach((row,i)=>{
     const div=document.createElement('div'); div.className="ln"+(i===0?" best":"");
