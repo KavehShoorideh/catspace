@@ -11789,3 +11789,33 @@ Science keeps abs_full as the geometry reference; the server keeps mhwm per the 
 analysis board with streaming abortable search + Bellman-residual display, mirror involution,
 selfplay/committor/odometer instruments, pentanomial arena, two Bellman retractions with the
 split vindicated, and the sqlite scar closed.
+
+## 2026-08-11 — FIRST SIGNIFICANT TITLE CHANGE: the decisive hinge plays better, not just reads
+## better; corpus v2; the RL planner scaffold
+
+**reach_hingefull** (20k steps, decisive hinge full bundle) swept the ladder:
+- dA margin committor 0.808 top1 (was chance pre-hinge; dB 0.877 -- 7 points from the
+  "dB redundant" target). Odometer 0.613. Siblings dA 76.6 / dB 78.2 (random 69.4).
+- Behavioral battery (the new conduct suite): at depth 3, save-draw 8.74/10 (84% top-move),
+  resist 6.33 (beats old champion's 5.98 -- the hinge helps exactly where the lost side must
+  prolong), convert 5.82 (trails 6.57 -- conversion still the weak conduct).
+- TITLE: 31.5/60 vs mhwm -- pentanomial 0/0/27/3/0 (three pairs won, NONE lost),
+  P(better)=0.96, CI [50.0, 55.8]. Every earlier title match was an exact tie; the hinge is
+  the first change that moved PLAY. Deployed to the analysis board (startpos bar 10/76/14).
+
+**Depth hypothesis confirmed**: all three conduct categories improve sharply at depth 3
+(save-draw 6.5->8.7, resist 5.7->6.3, convert 4.8->5.8) -- resistance is a worst-case
+quantity; expectations alone were never going to carry it.
+
+**Corpus v2 shipped + verified** (Kaveh's eval-distribution question -> the 0.5-2.0-pawn hole):
+pawn-down (median 1.66 pawns, 68% decisive), exchange-down (2.07, 76%), deep-prefix 12-16
+(0.73, 40%); 37-51% of new starts inside the once-empty band. 27,006 handicapped starts total
+(DVC). Retrain launched: 31,005 games / 3.26M positions (60% more than any prior run).
+Scar note: a killed first launch poisoned the trajectory cache under the new key (16k games
+stored as 27k) -- caught by label-count identity with reach_big; cache purged; the cache is
+keyed by ARGS, not by corpus content, so a changed loader needs a manual purge.
+
+**RL planner scaffold** (Kaveh's sequencing: simple scorer now, subgoals later): kitty_rl.py,
+13 two-ruler features/move, REINFORCE on self-play outcomes; two cold-start fixes (handicapped
+starts for decisiveness; behavior-cloning warm start off the threat-first chooser, 60%
+imitation in a smoke). Real training runs on the v2 champion once crowned.
