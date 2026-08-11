@@ -3,91 +3,104 @@
   "head": 5,
   "code": 4,
   "p_given_code": 1.0,
-  "base": 0.288,
-  "lift": 0.712
+  "base": 0.289,
+  "lift": 0.711,
+  "anti": false
  },
  "black up material": {
-  "head": 5,
-  "code": 32,
-  "p_given_code": 0.998,
-  "base": 0.265,
-  "lift": 0.733
+  "head": 1,
+  "code": 52,
+  "p_given_code": 1.0,
+  "base": 0.266,
+  "lift": 0.734,
+  "anti": false
  },
  "material even": {
   "head": 3,
   "code": 33,
   "p_given_code": 1.0,
-  "base": 0.32,
-  "lift": 0.68
+  "base": 0.322,
+  "lift": 0.678,
+  "anti": false
  },
  "queens on": {
-  "head": 2,
-  "code": 53,
-  "p_given_code": 0.025,
+  "head": 3,
+  "code": 33,
+  "p_given_code": 0.996,
   "base": 0.537,
-  "lift": -0.512
+  "lift": 0.46,
+  "anti": false
  },
  "queens traded": {
   "head": 2,
   "code": 53,
-  "p_given_code": 0.975,
+  "p_given_code": 0.984,
   "base": 0.463,
-  "lift": 0.512
+  "lift": 0.521,
+  "anti": false
  },
  "endgame (<=10 pc)": {
   "head": 2,
   "code": 53,
   "p_given_code": 1.0,
-  "base": 0.238,
-  "lift": 0.762
+  "base": 0.24,
+  "lift": 0.76,
+  "anti": false
  },
  "middlegame (>=20 pc)": {
   "head": 0,
   "code": 3,
   "p_given_code": 1.0,
-  "base": 0.395,
-  "lift": 0.605
+  "base": 0.397,
+  "lift": 0.603,
+  "anti": false
  },
  "white rook pair": {
   "head": 3,
-  "code": 11,
+  "code": 30,
   "p_given_code": 1.0,
-  "base": 0.42,
-  "lift": 0.58
+  "base": 0.422,
+  "lift": 0.578,
+  "anti": false
  },
  "black rook pair": {
   "head": 3,
-  "code": 11,
+  "code": 30,
   "p_given_code": 1.0,
-  "base": 0.422,
-  "lift": 0.578
+  "base": 0.425,
+  "lift": 0.575,
+  "anti": false
  },
  "white passed pawn": {
   "head": 5,
-  "code": 4,
-  "p_given_code": 0.901,
+  "code": 37,
+  "p_given_code": 0.889,
   "base": 0.332,
-  "lift": 0.569
+  "lift": 0.557,
+  "anti": false
  },
  "black passed pawn": {
   "head": 1,
-  "code": 54,
-  "p_given_code": 0.854,
+  "code": 14,
+  "p_given_code": 0.852,
   "base": 0.319,
-  "lift": 0.535
+  "lift": 0.533,
+  "anti": false
  },
  "white bishop pair": {
   "head": 3,
   "code": 33,
-  "p_given_code": 1.0,
+  "p_given_code": 0.996,
   "base": 0.204,
-  "lift": 0.796
+  "lift": 0.792,
+  "anti": false
  },
  "black bishop pair": {
   "head": 3,
   "code": 33,
-  "p_given_code": 1.0,
-  "base": 0.202,
-  "lift": 0.798
+  "p_given_code": 0.996,
+  "base": 0.203,
+  "lift": 0.794,
+  "anti": false
  }
 }
