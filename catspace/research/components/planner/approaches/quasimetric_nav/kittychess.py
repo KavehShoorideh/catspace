@@ -33,7 +33,7 @@ from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb 
 
 
 class KittyChess:
-    def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="db", gate=0.05):
+    def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="cascade", gate=0.05):
         self.nav = nav          # "db" threat-first | "ab" A-steer+B-gate | "cascade" (2026-08-11)
         self.gate = gate                         # cascade: E-gap that lets probability decide
         self.net, pay = load_net(ckpt, device)
@@ -216,6 +216,65 @@ class KittyChess:
             z = self._embed(toks, globs)
             d = self.dist(z, pole.expand(len(z), -1)).float().cpu().numpy()
         return float(d[0] - 1.0 - d[1:].min())
+
+    def cascade_rank(self, board):
+        """full CASCADE ordering over legal moves (Kaveh 2026-08-11: 'the ranking should be
+        based on the cascade'): returns (moves, order_indices, E_list). Gate passes -> order
+        by expected points; else standing-aware length ordering."""
+        moves = list(board.legal_moves)
+        if not moves:
+            return [], [], []
+        toks, globs = [], []
+        for mv in moves:
+            board.push(mv)
+            tk, gl = tokenize(board)
+            toks.append(tk); globs.append(gl)
+            board.pop()
+        P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"], self.pi["LOSS"]]].to(self.device)
+        with torch.no_grad():
+            z = self._embed(toks, globs)
+            DBc = torch.stack([self.dist(z, P3[[k]].expand(len(z), -1)) for k in range(3)], 1)
+            pr = torch.softmax(-DBc / 5.0, 1).float().cpu().numpy()
+            DAc = torch.stack([self.net.dA(z, P3[[k]].expand(len(z), -1))
+                               for k in range(3)], 1).float().cpu().numpy()
+        E = pr[:, 0] + 0.5 * pr[:, 1]
+        Em = E if board.turn else 1.0 - E                    # mover-POV
+        oE = np.argsort(-Em)
+        if len(Em) > 1 and Em[oE[0]] - Em[oE[1]] >= self.gate:
+            return moves, list(oE), list(E)
+        aw, ad, al = ((DAc[:, 0], DAc[:, 1], DAc[:, 2]) if board.turn
+                      else (DAc[:, 2], DAc[:, 1], DAc[:, 0]))
+        if float(Em.mean()) <= 0.45:
+            tgt = aw if aw.min() <= ad.min() else ad
+            return moves, list(np.argsort(tgt)), list(E)
+        return moves, list(np.argsort(-(np.minimum(ad, al) - aw))), list(E)
+
+    def line_coherence(self, board, pv, max_plies=6):
+        """FORCINGNESS along a line (Kaveh 2026-08-11): walk the PV, read dA to the favored
+        side's pole at every position; forced = the distance steps down ~1 ply per ply.
+        Returns (per_ply_drop, monotone_frac, favored 'w'/'b') or None."""
+        seq = [board.copy()]
+        b = board.copy()
+        for mv in pv[:max_plies]:
+            b.push(mv)
+            seq.append(b.copy())
+            if b.is_game_over(claim_draw=True):
+                break
+        if len(seq) < 3:
+            return None
+        toks, globs = zip(*(tokenize(x) for x in seq))
+        with torch.no_grad():
+            z = self._embed(list(toks), list(globs))
+            dW = self.net.dA(z, self.poles[[self.pi["WIN"]]].expand(len(z), -1)
+                             .to(self.device)).float().cpu().numpy()
+            dB_ = self.net.dA(z, self.poles[[self.pi["LOSS"]]].expand(len(z), -1)
+                              .to(self.device)).float().cpu().numpy()
+        fav = "w" if dW[0] <= dB_[0] else "b"
+        d = dW if fav == "w" else dB_
+        steps = np.diff(d)
+        drop = float(-steps.mean())
+        mono = float((steps < 0).mean())
+        return drop, mono, fav
 
     class SearchStop(Exception):
         """raised mid-search when the caller's stop() turns true (navigation cancelled it)."""

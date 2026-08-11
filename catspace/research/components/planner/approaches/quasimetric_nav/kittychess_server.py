@@ -16,6 +16,8 @@ import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import chess
+
+from catspace.io import paths
 from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess as _KC
 KittyMATE=_KC.MATE
 
@@ -79,7 +81,9 @@ label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
   <div class="nav">
     <button id="first">&#x23EE;</button><button id="prev">&#x25C0;</button>
     <button id="next">&#x25B6;</button><button id="last">&#x23ED;</button>
-    <button id="new" style="flex:2">new</button>
+    <select id="new" style="flex:2;background:#262421;border:none;color:#bababa;border-radius:3px">
+      <option value="">new game…</option>__POSITIONS__
+    </select>
   </div>
   <div id="wdltxt"></div>
 </div>
@@ -87,12 +91,13 @@ label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
   <div class="box">
     <div class="engrow"><b>KittyChess</b>
       <span id="dinfo"></span>
-      <label>depth <select id="depth"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label>
+      <label>depth <select id="depth"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+      <label>pv <select id="pvlen"><option>4</option><option selected>6</option><option>8</option></select></label>
       <label>lines <select id="lines"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
     <div class="lines" id="lnbox"></div>
-    <div id="lnlegend">E = expected points for white (probability head) &nbsp;·&nbsp; Δd = decisive-exit gap dB−dW (length head, + = white closer) &nbsp;·&nbsp; ranked by search</div>
+    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡ = line descends ≥0.7 plies/ply toward one ending &nbsp;·&nbsp; ranked by CASCADE</div>
   </div>
   <div class="box"><div id="moves"></div></div>
 </div>
@@ -103,7 +108,8 @@ label.sw{display:flex;gap:5px;align-items:center;cursor:pointer}
 let seq=0, orient="white";
 const cg=window.Chessground(document.getElementById('board'),{coordinates:true});
 const knobs=()=>({depth:+document.getElementById('depth').value,
-  lines:+document.getElementById('lines').value});
+  lines:+document.getElementById('lines').value,
+  pvlen:+document.getElementById('pvlen').value});
 // Two-phase like lichess: the position updates INSTANTLY, the engine lines stream in after.
 // A stale analysis (older seq) is discarded, so mashing the nav buttons stays responsive.
 async function api(body){
@@ -177,19 +183,26 @@ function renderLines(d){
            `<i style="width:${row.wdl[2]*100}%;background:#403d39"></i></span>`+
            `<span style="font-size:11px;color:#8f8a82">${Math.round(row.wdl[0]*100)}/${Math.round(row.wdl[1]*100)}/${Math.round(row.wdl[2]*100)}</span>`;
     }
+    if(row.force&&row.force.drop>=0.7&&row.force.mono>=0.7)
+      top+=`<span style="color:#dbac16;font-size:11px" title="forcing: distance to ${row.force.fav==='w'?'white':'black'}-win drops ${row.force.drop}/ply, monotone ${Math.round(row.force.mono*100)}%">⚡forced</span>`;
+    else if(row.force&&row.force.drop>=0.35)
+      top+=`<span style="color:#8f8a82;font-size:11px" title="coherent progress: ${row.force.drop}/ply toward ${row.force.fav==='w'?'white':'black'}-win">→${row.force.drop}</span>`;
     top+=`<span class="mv">${row.line||row.uci}</span></div>`;
     if(row.dists) top+=`<div class="sub">dW <b>${row.dists[0].toFixed(1)}</b> · dD <b>${row.dists[1].toFixed(1)}</b> · dB <b>${row.dists[2].toFixed(1)}</b></div>`;
     div.innerHTML=top;
     div.onclick=()=>api({action:"move",uci:row.uci});
     lb.appendChild(div);});
 }
-document.getElementById('new').onclick=()=>api({action:"new"});
+document.getElementById('new').onchange=e=>{
+  const v=e.target.value; e.target.value="";
+  api(v?{action:"load",fen:v}:{action:"new"});};
 document.getElementById('first').onclick=()=>api({action:"goto",ptr:0});
 document.getElementById('prev').onclick=()=>api({action:"rel",d:-1});
 document.getElementById('next').onclick=()=>api({action:"rel",d:1});
 document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
 document.getElementById('lines').onchange=()=>api({action:"noop"});
+document.getElementById('pvlen').onchange=()=>api({action:"noop"});
 document.getElementById('flip').onclick=()=>{orient=orient==="white"?"black":"white";api({action:"noop"});};
 addEventListener('keydown',e=>{
   if(e.key==="ArrowLeft"){e.preventDefault();api({action:"rel",d:-1});}
@@ -211,6 +224,7 @@ class H(BaseHTTPRequestHandler):
     gen = 0                                              # bumped by every action: aborts searches
     an = {"g": -1, "rows": [], "depth": 0, "done": False}
     an_thread = None
+    start_fen = None
     moves: list = []
     ptr = 0
     depth = 3
@@ -233,7 +247,7 @@ class H(BaseHTTPRequestHandler):
             self._send(404, b"{}")
 
     def _board(self):
-        b = chess.Board()
+        b = chess.Board(H.start_fen) if H.start_fen else chess.Board()
         for m in H.moves[:H.ptr]:
             b.push(m)
         return b
@@ -242,13 +256,20 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get("content-length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
         cls = H
-        cls.depth = max(1, min(4, int(req.get("depth", cls.depth))))
+        cls.depth = max(1, min(6, int(req.get("depth", cls.depth))))
         cls.lines = max(1, min(5, int(req.get("lines", cls.lines))))
+        cls.pvlen = max(4, min(8, int(req.get("pvlen", getattr(cls, "pvlen", 6)))))
         act = req.get("action", "noop")
         if act not in ("analyze", "lines"):
             H.gen += 1                                   # cancel any in-flight search NOW
         if act == "new":
-            cls.moves, cls.ptr = [], 0
+            cls.moves, cls.ptr, cls.start_fen = [], 0, None
+        elif act == "load" and req.get("fen"):
+            try:
+                chess.Board(req["fen"])
+                cls.moves, cls.ptr, cls.start_fen = [], 0, req["fen"]
+            except Exception:
+                pass
         elif act == "goto":
             cls.ptr = max(0, min(len(cls.moves), int(req.get("ptr", 0))))
         elif act == "rel":
@@ -279,13 +300,25 @@ class H(BaseHTTPRequestHandler):
                 bb = b.copy()
 
                 def worker():
+                    cmoves, corder, _ = H.eng.cascade_rank(bb)
+                    crank = {cmoves[j].uci(): pos for pos, j in enumerate(corder)} if cmoves else {}
+
                     def publish(rows, d):
                         if H.gen == g:
+                            # CASCADE RANKING (Kaveh 2026-08-11): display order = the cascade's
+                            # order; the searched value rides along per line
+                            # PROVEN results outrank the learned ordering: a searched mate/TB
+                            # value is a certificate; cascade orders only the unproven rest
+                            # (2026-08-11: cascade buried Rd8# under quiet pawn pushes)
+                            rs = sorted(rows, key=lambda r: (
+                                -r["value"] if abs(r["value"]) >= KittyMATE / 4 else 0,
+                                crank.get(r["mv"].uci(), 999)))
                             H.an = {**H.an, "g": g, "depth": d,
                                     "rows": [{k: r.get(k) for k in
-                                              ("uci", "margin", "tb", "line", "wdl", "dists")}
+                                              ("uci", "margin", "tb", "line", "wdl", "dists",
+                                               "force")}
                                              for r in self._rows_to_display(
-                                                 bb, rows, wdl_top=nlines)[:nlines]],
+                                                 bb, rs, wdl_top=nlines)[:nlines]],
                                     "done": False}
                     try:
                         with H.lock:
@@ -361,7 +394,7 @@ class H(BaseHTTPRequestHandler):
         for r in rows[:18]:
             bb = b.copy()
             sans = []
-            for mv in r["pv"][:6]:
+            for mv in r["pv"][:getattr(H, "pvlen", 6)]:
                 sans.append(bb.san(mv)); bb.push(mv)
             v = r["value"] if b.turn == chess.WHITE else -r["value"]
             disp = (("#" if v > 0 else "-#") if abs(v) >= KittyMATE / 4
@@ -375,6 +408,13 @@ class H(BaseHTTPRequestHandler):
                 bc = b.copy(); bc.push(r["mv"])
                 try:
                     row["wdl"], row["dists"] = H.eng.wdl(bc)
+                except Exception:
+                    pass
+                try:
+                    coh = H.eng.line_coherence(b, r["pv"], max_plies=getattr(H, "pvlen", 6))
+                    if coh is not None:
+                        row["force"] = {"drop": round(coh[0], 2), "mono": round(coh[1], 2),
+                                        "fav": coh[2]}
                 except Exception:
                     pass
             out.append(row)
@@ -398,7 +438,27 @@ def main():
     global PAGE_BYTES
     cg_js = open(os.path.join(ASSETS, "bundle.js")).read()
     cg_css = open(os.path.join(ASSETS, "bundle.css")).read()
-    PAGE_BYTES = PAGE.replace("__CG_CSS__", cg_css).replace("__CG_JS__", cg_js).encode()
+    # POSITION LIBRARY (Kaveh 2026-08-11): curated interesting starts -- forced-mate nets,
+    # conversion tests, and live picks from the behavioral sanity suite
+    pos = [("KRK: convert the rook", "8/8/8/4k3/8/8/8/R3K3 w - - 0 1"),
+           ("KQK: convert the queen", "8/8/8/4k3/8/8/3Q4/4K3 w - - 0 1"),
+           ("KPK: promote", "8/8/8/8/4k3/8/4P3/4K3 w - - 0 1"),
+           ("back-rank net (W wins)", "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1"),
+           ("7pc: Q+R vs R (convert)", "3rk3/8/8/8/8/2Q5/2R5/4K3 w - - 0 1")]
+    try:
+        import json as _json
+        cats = {}
+        for ln in open(paths.experiment("sanity_suite.jsonl")):
+            r = _json.loads(ln)
+            cats.setdefault(r["cat"], []).append(r["fen"])
+        for cat in ("resist", "save-draw", "convert"):
+            for i, fen in enumerate(cats.get(cat, [])[:3]):
+                pos.append((f"suite {cat} #{i+1}", fen))
+    except Exception:
+        pass
+    opts = "".join(f'<option value="{f}">{n}</option>' for n, f in pos)
+    PAGE_BYTES = (PAGE.replace("__CG_CSS__", cg_css).replace("__CG_JS__", cg_js)
+                  .replace("__POSITIONS__", opts).encode())
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), H)
     print(f"[kitty-server] serving {args.ckpt} on 0.0.0.0:{args.port}", flush=True)
     srv.serve_forever()
