@@ -22,6 +22,7 @@ from catspace.research.components.planner.approaches.quasimetric_nav.kittychess 
 KittyMATE=_KC.MATE
 
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web_assets")
+GAME_LOG = None
 
 PAGE = """<!doctype html><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>catspace</title>
@@ -309,6 +310,16 @@ class H(BaseHTTPRequestHandler):
             b.push(m)
         return b
 
+    def _log_game(self, b, san, over, play):
+        try:
+            json.dump({"san": san, "fen": b.fen(), "start_fen": H.start_fen,
+                       "ptr": H.ptr, "mode": "play" if play else "analysis",
+                       "over": over,
+                       "moves_uci": [m.uci() for m in H.moves]},
+                      open(GAME_LOG, "w"))
+        except Exception:
+            pass
+
     def do_POST(self):
         n = int(self.headers.get("content-length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
@@ -468,6 +479,7 @@ class H(BaseHTTPRequestHandler):
         sb, san = chess.Board(), []
         for m in cls.moves:
             san.append(sb.san(m)); sb.push(m)
+        self._log_game(b, san, over, bool(req.get("play")))
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
                "dists": dists, "check": b.is_check(), "dests": dests,
@@ -510,7 +522,12 @@ class H(BaseHTTPRequestHandler):
             # per-line committor (Kaveh 2026-08-11: wdl distances + probabilities per line):
             # the position AFTER the line's first move, one forward each, top rows only
             if len(out) < wdl_top:
-                bc = b.copy(); bc.push(r["mv"])
+                # evaluate at the END of the shown variation, not after the first move --
+                # a capture's immediate child is mid-exchange (Kaveh 2026-08-11: Nxe5 read
+                # as a won knight before the recapture existed)
+                bc = b.copy()
+                for mv in r["pv"][:getattr(H, "pvlen", 6)]:
+                    bc.push(mv)
                 try:
                     row["wdl"], row["dists"] = H.eng.wdl(bc)
                 except Exception:
@@ -538,6 +555,16 @@ def main():
     import threading
     from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
     H.eng = KittyChess(args.ckpt, args.device, args.cond_elo)
+    global GAME_LOG
+    GAME_LOG = str(paths.experiment("kitty_current_game.json"))
+    try:                                             # restore the game across restarts
+        st = json.load(open(GAME_LOG))
+        H.start_fen = st.get("start_fen")
+        H.moves = [chess.Move.from_uci(u) for u in st.get("moves_uci", [])]
+        H.ptr = min(int(st.get("ptr", len(H.moves))), len(H.moves))
+        print(f"[kitty-server] restored game: {len(H.moves)} moves", flush=True)
+    except Exception:
+        pass
     # concept quantizer + known-concept map (Kaveh 2026-08-11): optional sidecars
     H.vq = H.cmap = None
     try:
