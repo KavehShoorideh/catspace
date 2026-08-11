@@ -11834,3 +11834,22 @@ instruments compare across corpora.
 
 Deployed to the analysis board (startpos 11/80/9). RL scorer training launched on v2
 (warm 5000 + 60 REINFORCE iters, arena probes every 10).
+
+## 2026-08-11 (night) — RL scorer verdict: PARITY; the information bound holds
+
+kitty_rl on the v2 champion: warm start 62.2% imitation (5k decisions), 60 REINFORCE
+iterations, probes 46.9 -> 50 -> 50 -> 50 -> 53.1 -> 50; definitive 30-game eval 48.3%.
+VERDICT: the learned two-ruler trade-off MATCHES the hand-crafted threat-first chooser and
+cannot exceed it -- REINFORCE recovered the distillation loss in ~10 iterations and then
+plateaued exactly at parity. This is the predicted information bound, now measured from the
+policy side: at 1 ply, both rulers resolve siblings near-identically (Kendall tau 0.17
+between their orderings, both ~5 points over random on keeps-the-win), so ANY policy over
+their 13 features inherits the same ceiling. RL combines information; it does not create it.
+
+Consequence for the roadmap: the planner lever is NOT the policy class -- it is the FEATURES.
+Next candidates, in order: (1) move-head deltas as scorer inputs (the O(1)-distinct sibling
+mechanism, now actually trained -- never yet evaluated as features), (2) scoring at depth
+(the conduct battery showed +2 to +3 grades from depth 3 alone), (3) the Elo-ladder arena
+(vs weak SF levels) to convert "parity between our choosers" into an absolute strength scale.
+Scorer scaffold, cold-start fixes, and parity result all committed; scorer NOT shipped (no
+win to justify replacing the simpler chooser).
