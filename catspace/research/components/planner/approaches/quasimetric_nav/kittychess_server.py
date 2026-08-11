@@ -44,8 +44,14 @@ border-radius:3px;cursor:pointer}
 .engrow{display:flex;align-items:center;gap:10px;font-size:12.5px;color:#8f8a82;flex-wrap:wrap}
 .engrow b{color:#dedede;font-size:14px}
 select{background:#161512;color:#bababa;border:1px solid #3a3733;border-radius:3px;font:inherit}
-.lines .ln{display:flex;gap:8px;padding:4px 2px;border-bottom:1px solid #33312e;cursor:pointer;
-font-family:'Noto Sans',sans-serif;font-size:13px;align-items:baseline}
+.lines .ln{display:block;padding:4px 2px;border-bottom:1px solid #33312e;cursor:pointer;
+font-family:'Noto Sans',sans-serif;font-size:13px}
+.lines .lnr{display:flex;gap:8px;align-items:center}
+.lines .minibar{display:inline-flex;width:64px;height:9px;border-radius:2px;overflow:hidden;
+flex:none;background:#333}
+.lines .minibar i{display:block;height:100%}
+.lines .sub{font-size:10.5px;color:#8f8a82;margin-top:1px;font-variant-numeric:tabular-nums;
+overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lines .ln:hover{background:#302d2a}
 .lines .ev{min-width:52px;font-weight:600;color:#dedede;font-size:12px;font-variant-numeric:tabular-nums}
 .lines .mv{color:#bababa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -145,7 +151,16 @@ function renderLines(d){
   const lb=document.getElementById('lnbox'); lb.innerHTML="";
   (d.think||[]).forEach((row,i)=>{
     const div=document.createElement('div'); div.className="ln"+(i===0?" best":"");
-    div.innerHTML=`<span class="ev">${row.margin}${row.tb?" tb":""}</span><span class="mv">${row.line||row.uci}</span>`;
+    let top=`<div class="lnr"><span class="ev">${row.margin}${row.tb?" tb":""}</span>`;
+    if(row.wdl){
+      top+=`<span class="minibar"><i style="width:${row.wdl[0]*100}%;background:#f0efeb"></i>`+
+           `<i style="width:${row.wdl[1]*100}%;background:#8b8680"></i>`+
+           `<i style="width:${row.wdl[2]*100}%;background:#403d39"></i></span>`+
+           `<span style="font-size:11px;color:#8f8a82">${Math.round(row.wdl[0]*100)}/${Math.round(row.wdl[1]*100)}/${Math.round(row.wdl[2]*100)}</span>`;
+    }
+    top+=`<span class="mv">${row.line||row.uci}</span></div>`;
+    if(row.dists) top+=`<div class="sub">d→Wwin ${row.dists[0].toFixed(2)} · draw ${row.dists[1].toFixed(2)} · Bwin ${row.dists[2].toFixed(2)}</div>`;
+    div.innerHTML=top;
     div.onclick=()=>api({action:"move",uci:row.uci});
     lb.appendChild(div);});
 }
@@ -248,8 +263,10 @@ class H(BaseHTTPRequestHandler):
                     def publish(rows, d):
                         if H.gen == g:
                             H.an = {**H.an, "g": g, "depth": d,
-                                    "rows": [{k: r.get(k) for k in ("uci", "margin", "tb", "line")}
-                                             for r in self._rows_to_display(bb, rows)[:nlines]],
+                                    "rows": [{k: r.get(k) for k in
+                                              ("uci", "margin", "tb", "line", "wdl", "dists")}
+                                             for r in self._rows_to_display(
+                                                 bb, rows, wdl_top=nlines)[:nlines]],
                                     "done": False}
                     try:
                         with H.lock:
@@ -316,7 +333,7 @@ class H(BaseHTTPRequestHandler):
             return ("white" if o.winner else "black") + " wins"
         return None
 
-    def _rows_to_display(self, b, rows):
+    def _rows_to_display(self, b, rows, wdl_top=0):
         """WHITE-POV values, lichess-style (Kaveh 2026-08-08): the number shown is always
         white's margin (negated when black is to move), so it doesn't flip sign every ply.
         Search order (best-for-mover first) is kept: for black that IS lowest-white-value
@@ -330,10 +347,18 @@ class H(BaseHTTPRequestHandler):
             v = r["value"] if b.turn == chess.WHITE else -r["value"]
             disp = (("#" if v > 0 else "-#") if abs(v) >= KittyMATE / 4
                     else round(v, 3) if abs(v) < 10 else round(v, 1))
-            out.append({"mv": r["mv"], "uci": r["mv"].uci(), "margin": disp,
-                        "dwin": "", "ddraw": "", "dloss": "",
-                        "tb": abs(v) >= KittyMATE / 4, "deep": True,
-                        "line": " ".join(sans)})
+            row = {"mv": r["mv"], "uci": r["mv"].uci(), "margin": disp,
+                   "tb": abs(v) >= KittyMATE / 4, "deep": True,
+                   "line": " ".join(sans)}
+            # per-line committor (Kaveh 2026-08-11: wdl distances + probabilities per line):
+            # the position AFTER the line's first move, one forward each, top rows only
+            if len(out) < wdl_top:
+                bc = b.copy(); bc.push(r["mv"])
+                try:
+                    row["wdl"], row["dists"] = H.eng.wdl(bc)
+                except Exception:
+                    pass
+            out.append(row)
         return out
 
 
