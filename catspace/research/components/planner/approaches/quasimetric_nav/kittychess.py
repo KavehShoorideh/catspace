@@ -193,6 +193,34 @@ class KittyChess:
                 pass
         return None
 
+    def turbulence(self, board):
+        """QUIESCENCE FROM OUR OWN EVALS (Kaveh 2026-08-11): tau = |E_static(s) - best
+        child E (mover-POV)|. Quiet <=> the evaluation agrees with itself one ply deeper;
+        the Nxe5 mid-exchange reads tau ~ 0.35. One batched forward. Returns (tau, E_static,
+        E_resolved) white-POV, or None at terminals."""
+        if board.is_game_over(claim_draw=True) or not self.white_pov:
+            return None
+        moves = list(board.legal_moves)
+        if not moves:
+            return None
+        toks, globs = [tokenize(board)], []
+        globs = [toks[0][1]]; toks = [toks[0][0]]
+        for mv in moves:
+            board.push(mv)
+            tk, gl = tokenize(board)
+            toks.append(tk); globs.append(gl)
+            board.pop()
+        P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"], self.pi["LOSS"]]].to(self.device)
+        with torch.no_grad():
+            z = self._embed(toks, globs)
+            DBc = torch.stack([self.dist(z, P3[[k]].expand(len(z), -1))
+                               for k in range(3)], 1)
+            pr = torch.softmax(-DBc / 5.0, 1).float().cpu().numpy()
+        E = pr[:, 0] + 0.5 * pr[:, 1]                    # white-POV, row 0 = the position
+        Em = E[1:] if board.turn else 1.0 - E[1:]        # children, mover-POV
+        e_res = float(E[1:][int(np.argmax(Em))])         # best child's white-POV E
+        return abs(e_res - float(E[0])), float(E[0]), e_res
+
     def bellman_residual(self, board):
         """|d(s -> mover's win pole) - 1 - min over moves d(child -> same pole)| in the field.
 
