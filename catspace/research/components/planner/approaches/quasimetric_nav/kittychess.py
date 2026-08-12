@@ -70,8 +70,24 @@ class KittyChess:
             pay_ex = torch.load(exp, map_location=device, weights_only=False)
             self.ex = {k: pay_ex[k].to(device) for k in ("W", "D", "L")}
         self.tb = TB() if use_tb else None
-        self._mcache = {}                        # fen -> leaf margin (speedup #2: deepening
-                                                 # re-pays every level without it)
+        self._mcache = {}                        # fen -> leaf value cache
+        # CONCEPT-MEDIATED EVALUATION (Kaveh 2026-08-11: 'I don't want it based on some
+        # internal margin'): values flow through the concept bottleneck -- quantize phi,
+        # DECODE the codes back to the six outputs, score from those. Faithful by
+        # construction: every value is a function of the named concept profile.
+        self.cvq = None
+        try:
+            from catspace.research.components.encoder.approaches.reach_probability.experiments.concept_vq import (
+                ConceptVQ)
+            _pv = torch.load((ckpt[:-3] if ckpt.endswith(".pt") else ckpt) + "_vq.pt",
+                             map_location=device, weights_only=False)
+            _m = ConceptVQ(d_in=_pv["d_in"], heads=_pv["heads"], codes=_pv["codes"]).to(device)
+            _m.load_state_dict(_pv["state_dict"]); _m.eval()
+            self.cvq = _m
+            self.cvq_mu = _pv["mu"].to(device)
+            self.cvq_sd = _pv["sd"].to(device)
+        except Exception:
+            pass
         if getattr(self.net, "split_head", False):
             self.dist = self.net.dB
         elif getattr(self.net, "dual", False):
@@ -585,6 +601,8 @@ class KittyChess:
 
     def search_coherent(self, board, budget=1.5, mass_floor=0.01, tau_m=0.35,
                         batch_cap=384):
+        # NOTE: terminal values (MATE scale 1e6) dominate either evaluation scale, so
+        # mates/TB stay decisive under concept evaluation too.
         """COHERENCE-BOUNDED SEARCH (Kaveh 2026-08-11: 'depth has to go as far as the
         coherence allows'). Each node carries P(reach) = product of move probabilities along
         its path, where a mover's move distribution = softmax(their child values / tau_m) --
@@ -645,21 +663,29 @@ class KittyChess:
                             tk, gl = tokenize(cb)
                             toks.append(tk); globs.append(gl)
                 N["kids"][t] = kid_ids
-            for a in range(0, len(new_eval), 4096):
-                with torch.no_grad():
-                    z = self._embed(toks[a:a+4096], globs[a:a+4096])
-                    D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
-                         for k2 in range(3)]
-                for j in range(len(D[0])):
-                    ci = new_eval[a + j]
-                    cb = N["b"][ci]
-                    if self.white_pov:
-                        iw, il = (0, 2) if cb.turn else (2, 0)
-                        m = min(D[1][j], D[il][j]) - D[iw][j]
-                    else:
-                        m = min(D[1][j], D[0][j]) - D[2][j]
-                    N["val"][ci] = float(m)
-                    self._mcache[cb.fen()] = float(m)
+            if self.cvq is not None:
+                for a in range(0, len(new_eval), 4096):
+                    turns = [N["b"][ci].turn for ci in new_eval[a:a+4096]]
+                    vals = self.concept_values(toks[a:a+4096], globs[a:a+4096], turns)
+                    for j, ci in enumerate(new_eval[a:a+4096]):
+                        N["val"][ci] = vals[j]
+                        self._mcache[N["b"][ci].fen()] = vals[j]
+            else:
+                for a in range(0, len(new_eval), 4096):
+                    with torch.no_grad():
+                        z = self._embed(toks[a:a+4096], globs[a:a+4096])
+                        D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                             for k2 in range(3)]
+                    for j in range(len(D[0])):
+                        ci = new_eval[a + j]
+                        cb = N["b"][ci]
+                        if self.white_pov:
+                            iw, il = (0, 2) if cb.turn else (2, 0)
+                            m = min(D[1][j], D[il][j]) - D[iw][j]
+                        else:
+                            m = min(D[1][j], D[0][j]) - D[2][j]
+                        N["val"][ci] = float(m)
+                        self._mcache[cb.fen()] = float(m)
             # priors: mover picks among children ~ softmax(-child_val / tau) (child vals are
             # the CHILD-mover's POV, so the parent's preference is the negation)
             for t in targets:
@@ -693,6 +719,35 @@ class KittyChess:
                          "depth_used": len(pv)})
         rows.sort(key=lambda r: r["value"], reverse=True)
         return rows
+
+    def concept_values(self, toks, globs, turns):
+        """batched concept-bottleneck evaluation: returns mover-POV scalars. Scalar =
+        1000 * mover expected points (decoded probabilities, the cascade's primary) +
+        decoded decisive-distance margin as the tie epsilon. Every value decomposes into
+        the position's 8 concept codes by construction."""
+        with torch.no_grad():
+            tok_t = torch.from_numpy(np.array(toks).astype(np.int64)).to(self.device)
+            glob_t = torch.from_numpy(np.array(globs).astype(np.float32)).to(self.device)
+            if getattr(self, "half", False):
+                glob_t = glob_t.half()
+            phi = self.net.backbone(tok_t, glob_t)
+            y, _, _ = self.cvq(phi)
+            y = (y * self.cvq_sd + self.cvq_mu).float().cpu().numpy()
+        out = []
+        for j, wtm in enumerate(turns):
+            daW, daD, daL, pW, pD, pB = y[j]
+            pW, pD, pB = max(pW, 0.0), max(pD, 0.0), max(pB, 0.0)
+            zs = pW + pD + pB
+            if zs > 1e-6:
+                pW, pD, pB = pW / zs, pD / zs, pB / zs
+            E = pW + 0.5 * pD
+            Em = E if wtm else 1.0 - E
+            if wtm:
+                marg = min(daD, daL) - daW
+            else:
+                marg = min(daD, daW) - daL
+            out.append(1000.0 * Em + float(np.clip(marg, -40, 40)))
+        return out
 
     def mc_tiebreak(self, board, rows, R=24, band=1.0, cap=6, ply_cap=60):
         """CPU rollout tiebreak (Kaveh 2026-08-11 worst case, MEASURED better than the field

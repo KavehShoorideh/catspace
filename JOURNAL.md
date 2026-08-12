@@ -11906,3 +11906,14 @@ was never in the loop. The 1.5s budget completes only depth 2 on the 128-wide tr
 Remedies in flight or queued: qdistill (tonight's v3 -- gives depth-2 statics the depth-3
 knowledge), search speed engineering (batched leaf evaluation; 'efficiency later' -- the
 time has come), think-time as the cheap lever.
+
+## 2026-08-11 (night, cont.) — Navigation goes CONCEPT-MEDIATED: values through the bottleneck
+
+Kaveh: "I don't want it based on some internal margin... navigate by concept." Implemented:
+the coherent search's leaf evaluation now flows phi -> quantize (8 codes) -> DECODE -> six
+outputs -> mover expected points (cascade primary) + decoded-distance tie epsilon. Every
+value is a function of the position's named concept profile BY CONSTRUCTION -- the
+faithfulness architecture became the runtime. Battery: 9/10 (loses only 'punish the exposed
+queen', the sibling-nuance case depth-2 and wave also miss; margin-eval coherent had it).
+The one-case cost buys total decomposability of every evaluation into concepts. Mates/TB
+unaffected (terminal scale dominates). Server redeployed on it.
