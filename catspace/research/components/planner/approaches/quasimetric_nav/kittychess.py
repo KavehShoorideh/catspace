@@ -694,6 +694,41 @@ class KittyChess:
         rows.sort(key=lambda r: r["value"], reverse=True)
         return rows
 
+    def mc_tiebreak(self, board, rows, R=24, band=1.0, cap=6, ply_cap=60):
+        """CPU rollout tiebreak (Kaveh 2026-08-11 worst case, MEASURED better than the field
+        at sibling resolution in winning positions: 82.0% vs 74.7% keeps-the-win over 150):
+        among search rows within `band` of the top value, rank by mean random-playout result.
+        Pure CPU -- runs while the GPU idles; no priors, no network."""
+        import random as _rnd
+        if not rows:
+            return rows
+        top_v = rows[0]["value"]
+        tied = [r for r in rows if top_v - r["value"] <= band][:cap]
+        if len(tied) < 2:
+            return rows
+        rr = _rnd.Random(0xC0FFEE)
+        def playout(bb):
+            n = 0
+            while not bb.is_game_over(claim_draw=True) and n < ply_cap:
+                bb.push(rr.choice(list(bb.legal_moves)))
+                n += 1
+            o = bb.outcome(claim_draw=True)
+            if o is None or o.winner is None:
+                return 0.5
+            return 1.0 if o.winner else 0.0
+        mover_white = board.turn
+        scored = []
+        for r in tied:
+            board.push(r["mv"])
+            w = sum(playout(board.copy(stack=False)) for _ in range(R)) / R
+            board.pop()
+            scored.append((w if mover_white else 1.0 - w, r))
+        scored.sort(key=lambda t: -t[0])
+        reordered = [r for _, r in scored] + rows[len(tied):]
+        for (w, r) in scored:
+            r["mc"] = round(w, 3)
+        return reordered
+
     class SearchStop(Exception):
         """raised mid-search when the caller's stop() turns true (navigation cancelled it)."""
 
