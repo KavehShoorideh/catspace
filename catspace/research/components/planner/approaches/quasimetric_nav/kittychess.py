@@ -70,6 +70,7 @@ class KittyChess:
             pay_ex = torch.load(exp, map_location=device, weights_only=False)
             self.ex = {k: pay_ex[k].to(device) for k in ("W", "D", "L")}
         self.tb = TB() if use_tb else None
+        self._ckpt_base = ckpt[:-3] if ckpt.endswith(".pt") else ckpt
         self._mcache = {}                        # fen -> leaf value cache
         # CONCEPT-MEDIATED EVALUATION (Kaveh 2026-08-11: 'I don't want it based on some
         # internal margin'): values flow through the concept bottleneck -- quantize phi,
@@ -613,8 +614,28 @@ class KittyChess:
         rows.sort(key=lambda r: r["value"], reverse=True)
         return rows
 
+    def _goal_bias(self, toks, globs, goal):
+        """GOAL-CONDITIONED leaf bias (Kaveh 2026-08-12: 'search is towards a subgoal').
+        P(activate goal) on the probability ruler, scaled to the tie-epsilon band of the
+        concept-value scale. The OUTCOME VETO is applied by the caller: mission-ranked,
+        disaster-vetoed."""
+        if getattr(self, "_jqt", None) is None:
+            from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
+                JQTModule)
+            base = getattr(self, "_ckpt_base", None)
+            pay = torch.load(base + "_jqt.pt", map_location=self.device, weights_only=False)
+            self._jqt = JQTModule(d_model=pay["d_in"], heads=pay["heads"], codes=pay["codes"],
+                                  d=pay["d"]).to(self.device)
+            self._jqt.load_state_dict(pay["state_dict"]); self._jqt.eval()
+        with torch.no_grad():
+            hc = torch.tensor([goal], dtype=torch.long, device=self.device)
+            A = self._jqt.anchors_for(hc).float()
+            z = self._embed(toks, globs).float()
+            dB = self.net.dB(z, A.expand(len(z), -1))
+            return torch.sigmoid(self._jqt.activation_logit(dB)).float().cpu().numpy()
+
     def search_coherent(self, board, budget=1.5, mass_floor=0.01, tau_m=0.35,
-                        batch_cap=384):
+                        batch_cap=384, goal=None, w_goal=25.0):
         # NOTE: terminal values (MATE scale 1e6) dominate either evaluation scale, so
         # mates/TB stay decisive under concept evaluation too.
         """COHERENCE-BOUNDED SEARCH (Kaveh 2026-08-11: 'depth has to go as far as the
@@ -634,6 +655,7 @@ class KittyChess:
         # RUST MOVEGEN (Kaveh 2026-08-12 "eng fix with a rust chess framework"): cozy-chess
         # via fastboard.FB -- 13.9x movegen+apply, 3.1x tokenize, zobrist cache keys. Interior
         # nodes are FB; moves are standard-uci STRINGS converted to chess.Move at the rows.
+        self.last_evals = 0                     # per-call leaf-eval count (the effort ruler)
         fast = bool(getattr(self, "fastgen", True))
         if fast:
             try:
@@ -647,7 +669,8 @@ class KittyChess:
             except BaseException:
                 fast = False
         root = root if fast else board.copy(stack=False)
-        ckey = (lambda x: x.key()) if fast else (lambda x: x.fen())
+        _ck0 = (lambda x: x.key()) if fast else (lambda x: x.fen())
+        ckey = (lambda x: (_ck0(x), goal)) if goal is not None else _ck0
         N = {"b": [root], "par": [-1], "mv": [None], "kids": [None],
              "val": [0.0], "preach": [1.0]}
         heap = [(-1.0, 0)]
@@ -707,10 +730,17 @@ class KittyChess:
                             tk, gl = cb.tok_glob() if fast else tokenize(cb)
                             toks.append(tk); globs.append(gl)
                 N["kids"][t] = kid_ids
+            self.last_evals += len(new_eval)
             if self.cvq is not None:
                 for a in range(0, len(new_eval), 4096):
                     turns = [N["b"][ci].turn for ci in new_eval[a:a+4096]]
                     vals = self.concept_values(toks[a:a+4096], globs[a:a+4096], turns)
+                    if goal is not None and len(vals):
+                        pg = self._goal_bias(toks[a:a+4096], globs[a:a+4096], goal)
+                        # mission-ranked, disaster-vetoed: bias only where the mover is
+                        # not already losing outright (Em > 0.35 on the 1000-scale)
+                        vals = [v + w_goal * float(pg[j]) * (1.0 if v > 350.0 else 0.0)
+                                for j, v in enumerate(vals)]
                     for j, ci in enumerate(new_eval[a:a+4096]):
                         N["val"][ci] = vals[j]
                         self._mcache[ckey(N["b"][ci])] = vals[j]

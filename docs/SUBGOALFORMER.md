@@ -83,3 +83,43 @@ LEGIBILITY (does the model attend to the counter-subgoal that actually matters).
 2. Refit concept stack on the jqt2 trunk (codes now persistence-shaped).
 3. Race battery (buildable immediately after 1).
 4. SubgoalFormer v1 (heads 1+2, ~4 layers), warm-started from the RL selector; head 3 after.
+
+## Output contract (2026-08-12, built)
+
+1. **Revised p-hat per subgoal** -- one FC over the post-attention token (the interaction
+   reasoning already happened in the attention). Trained on reach-events only.
+2. **The dissection** -- worry/opportunity attribution is COUNTERFACTUAL (mask token b,
+   recompute p-hat of the committed subgoal; the exact suppression). Attention rides along
+   as a consistency check, never as the attribution (attention-as-explanation is not
+   faithful by default). The rendered certificate is the per-move legibility artifact.
+3. **Alert interface to RL** -- certificates are DIFFED across moves; worries and
+   opportunities are one object with opposite sign (a removed blocker = the M7 armed-tactics
+   pounce, no dedicated machinery). Top-K salience tokens are the RL observation; the action
+   POINTS at one (pursue/deny/hold) and picks a search budget.
+
+## Gradient boundaries (the design, not an implementation detail)
+
+  field/trunk/rulers   <- grounded objectives only (JQT). RL gradients NEVER reach here:
+                          a policy that can bend the ruler bends it to flatter itself.
+  GeoAttention + p-hat <- supervised on reach-events/race truth only. RL-shaped p-hat
+                          would be propaganda; the certificate's value IS its calibration.
+  pointer policy       <- the only RL-trained layer. R = outcome - lambda * evals
+                          (winning strictly dominates; effort tiebreaks; b=0 premove is
+                          an action). Layers couple through DATA (ingest loop), not grads.
+
+## Search is toward a subgoal
+
+All search is goal-conditioned (search_coherent(goal=(h,c))): leaves biased by P(activate
+goal), outcome-vetoed (mission-ranked, disaster-vetoed). The outcome is the ROOT subgoal --
+already encoded in the codes (the VQ decoder reconstructs the committor at R^2 0.995+), so
+"win" is a code-region like any other. Per-call leaf-eval counts feed the effort reward.
+
+## Built 2026-08-12 (all unit-tested; training pending reach_jqt2 gates)
+
+  geo_attention.py   logits from the geometry; head_report() legibility readout
+  subgoal_former.py  GeoQuery (both-POV queries) + SubgoalFormer + Certificate + alert_set
+  pointer_policy.py  pointer+budget policy, effort reward, REINFORCE
+  race_battery.py    oracle-labeled promotion races incl. tempo minimal pairs; empirical
+                     promotion-concept resolver (h0/c9 at 77% on the v3 stack); untrained
+                     baseline printed at chance -- the numbers are the training target
+  kittychess.py      search_coherent(goal=...), goal-scoped eval cache, last_evals counter

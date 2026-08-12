@@ -12021,3 +12021,23 @@ unseen pairs), heads = commitment / revised-P-with-premove-safety / delta-WDL-pe
 (the 2026-08-08 subgoals-as-tokens plan). Spec: docs/SUBGOALFORMER.md. Acceptance = race
 battery (unstoppable / stoppable / tempo-vulnerable) graded on calibration AND attention
 legibility. Build order: jqt2 gates -> concept refit -> race battery -> v1.
+
+## 2026-08-12 — planner stack BUILT: SubgoalFormer + pointer policy + goal search + race battery
+All unit-tested, training pending reach_jqt2 gates:
+- subgoal_former.py: GeoQuery (both-POV geometry via null-move twin), SubgoalFormer
+  (GeoAttention x2 + one-FC p-hat), Certificate (counterfactual worry/opportunity; attention
+  = consistency check only), alert_set (certificate diff; M7 = the removed-blocker special
+  case). End-to-end verified on the jqt2 sidecar.
+- pointer_policy.py: pursue/deny/hold pointer + budget action (b=0 premove); R = outcome −
+  λ·evals (λ default: full deep game costs 0.2 < win−draw); REINFORCE learns a planted
+  opportunity 4/4 greedy.
+- kittychess: search_coherent(goal=(h,c)) — leaves biased by P(activate goal), outcome-
+  vetoed, goal-scoped cache; last_evals counter (the effort ruler). Battery 9/10 no
+  regression; goal bias verified to redirect the search.
+- race_battery.py: 109 oracle-labeled KPvK races incl. 19 tempo minimal pairs (same
+  placement, either turn, TB verdict flips); promotion concept resolved EMPIRICALLY
+  (h0/c9, 77% flip-consistency); untrained baseline at chance (Brier 0.274 / AUC 0.28) —
+  the numbers are the training target.
+- README: personal content removed, name unexplained, Architecture section with full
+  mermaid diagram; docs/SUBGOALFORMER.md completed (output contract, gradient boundaries,
+  alert interface, search-toward-a-subgoal); artifact diagram updated.

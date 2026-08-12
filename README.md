@@ -4,21 +4,27 @@
 > For the current layout see [`repo_structure.md`](repo_structure.md); for what
 > moved and why see [the refactor plan](catspace/research/docs/2026-08-03-refactor-plan.md).
 
-# catspace — chess in the latent space of a cat's mind
+# catspace
 
-Cats are said to be opportunistic hunters. But opportunity doesn't just come to them. My cat goes to where the opportunity is. She studies the rats in the yard from various viewpoints, learning their behaviors and moving patterns. She also knows herself well; her coloring, her speed, the limits of her patience. She picks a spot under a shrub, camouflaged by the shadow of the leaves, and waits. Eventually, there's a sound and some motion in the bush. Her body language suddenly changes. She gets ready to pounce. A rat comes confidently running out of its hiding place at the wrong time.
-
-That is also how I view chess.
-
-Humans play strong chess on 10–100 positions of search, because they plan by making assumptions about their adversaries. Having a plan is the prerequisite to articulating it, which is necessary for interpretability. So here we try to make a chess engine that can plan like humans, hoping that we get interpretability as the reward.
+Humans play strong chess on 10–100 positions of search, because they plan by
+making assumptions about their adversaries. Having a plan is the prerequisite to
+articulating it, which is necessary for interpretability. catspace is a chess
+engine built to plan that way — steering toward learned subgoals rather than
+maximizing a search tree — with interpretability as the measured primary
+endpoint and strength-per-node as the frontier being pushed.
 
 **[JOURNAL.md](JOURNAL.md)** is the lab notebook written as the work happened.
+**[Architecture](#architecture-2026-08-12)** shows the current system in one diagram.
 
 ## Planning
 
-For amateurs like us, the plan is to take the center, develop our pieces, and castle our king to safety. Then duke it out in the middlegame, make a plan, focus our pieces on some weakness, and put pressure. Attack Attack Attack. If we're not attacking, then what are we even doing?
-
-In one game, while we shuffle our pieces around, we see that by placing our rook on the d-file, our rookie would be taking a sneak peak at the opponent's queen through a couple of pieces. Sensing the future pin, we place the rook there, bring some more pieces into the action, and then push the d-pawn to break the center. After the dust settles, we end up winning a pawn, a solid advantage. We got this partly because we placed our rook in a nice spot, and partly because our opponent miscalculated.
+A plan is a commitment to a small set of subgoals — take the center, castle,
+double on an open file, fix a weakness and pile on it — that stays stable across
+many moves while the move-to-move tactics vary. Planning at this level is what
+lets strong human play get away with searching a few dozen positions: most moves
+only need to be checked against the plan, not recomputed from scratch. A plan
+also decomposes an advantage into causes: a well-placed piece, a structural
+weakness, an opponent miscalculation invited rather than lucked into.
 
 ## Adversarial Planning
 
@@ -751,14 +757,67 @@ scripts/run_jepa_pretrain.sh   # the current build: corpus -> encoder pretrainin
 
 More in [docs/RUNBOOK.md](docs/RUNBOOK.md) and [scripts/README.md](scripts/README.md).
 
-## Status (2026-07-30)
+## Architecture (2026-08-12)
 
-Pivoted to the anchored-JEPA architecture (Kaveh's draft): checkpoint corpus
-mined (33.8M games scanned), encoder pretraining in flight. The prior stack
-(M0–M5: metastability basins, style models, reach fields, chute planner, MCTS
-probe — and its complete verdict ladder, 0.045→0.095 vs the 0.125 baseline) is
-shelved intact as the known-good component library. History: `docs/archive/`,
-`JOURNAL.md`.
+The current build is the joint quantized training (JQT) stack plus the
+subgoal-first planner. One trunk reads the board once; a quasimetric field
+grounds everything in real game outcomes; a vector-quantized concept layer is
+trained *jointly* with the field to make future concepts predictable; and the
+planner operates entirely over concepts — committing to subgoals, revising their
+probabilities against the opponent's counter-subgoals, and spending search only
+where the certificate is uncertain.
+
+```mermaid
+flowchart TD
+  classDef io fill:#0f766e22,stroke:#0f766e;
+  classDef frozen stroke-dasharray:5 4,stroke:#b45309;
+  classDef rl fill:#7c3aed22,stroke:#7c3aed;
+
+  IN["board tokens (64) + globals (6)<br/><i>one read per position</i>"]:::io --> TRUNK["ViT trunk phi(s)"]
+
+  subgraph FIELD ["quasimetric field — grounding (trained on outcomes, walls, fork pairs)"]
+    TRUNK --> ZB["proj_b → z_B"]
+    ZB --> DA["IQE-A: dA — LENGTH ruler (plies)"]
+    ZB --> DB["IQE-B: dB — OUTCOME ruler"]
+    POLES["W/D/L poles (fixed gauge)"] --- DA
+    POLES --- DB
+    DB --> COMM["committor P(W/D/L), calibrated"]
+  end
+
+  subgraph JQT ["concept layer — trained JOINTLY with the field"]
+    TRUNK --> VQ["VQ codes 8×64 (EMA)<br/>persistence prior → metastable concepts"]
+    VQ --> DEC["decoder → the field's own outputs<br/><i>faithful by construction</i>"]
+    VQ --> DYN["future-code predictor (move-conditioned,<br/>JEPA embedding-space, EMA target)"]
+    VQ --> ANC["codebook anchors → z_B space"]
+    ANC --> CDA["dA(s → concept): plies-to-activation (censored)"]
+    ANC --> CDB["dB(s → concept): P(activate | resistance)"]
+  end
+
+  subgraph PLANNER ["planner — SubgoalFormer (supervised on reach-events; never RL-trained)"]
+    GQ["GeoQuery: live geometry for any token set,<br/>BOTH points of view (null-move twin)"]:::frozen
+    CDA --> GQ
+    CDB --> GQ
+    GQ --> GA["GeoAttention ×2: logits FROM the geometry<br/>(directed dA/dB relations + race feature; no W_Q/W_K)"]
+    GA --> P["revised p̂ per subgoal (one FC)"]
+    GA --> CERT["CERTIFICATE: committed subgoal, p̂,<br/>counterfactual worry/opportunity vector,<br/>premove-safe predicate"]
+    CERT --> DIFF["certificate DIFF across moves →<br/>alert set (worries + opportunities, top-K)"]
+  end
+
+  subgraph RL ["commitment policy — the only RL-trained layer"]
+    DIFF --> POL["pointer policy: pursue / deny / hold<br/>+ search budget (incl. b=0 premove)"]:::rl
+    POL --> SEARCH["goal-conditioned coherent search<br/>(leaves biased toward the subgoal, outcome-vetoed;<br/>evals counted = the effort ruler)"]
+    SEARCH --> MOVE["move"]:::io
+  end
+  COMM -.-> CERT
+  POL -.->|"R = outcome − λ·evals"| POL
+```
+
+Gradient boundaries are the design: the field trains only on grounded objectives,
+the certificate heads only on reach-events (a policy-shaped certificate would be
+propaganda), the RL only itself; layers couple through generated data, not
+gradients. Full spec: [docs/SUBGOALFORMER.md](docs/SUBGOALFORMER.md). Earlier
+stacks (M0–M5 basins/style/reach-field/chute/MCTS ladder) remain shelved intact
+as the known-good component library (`docs/archive/`, `JOURNAL.md`).
 
 ## Failed attempts
 
