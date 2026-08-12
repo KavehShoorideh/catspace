@@ -479,9 +479,8 @@ class KittyChess:
         deadline = _time.time() + budget
         N = {"b": [board.copy(stack=False)], "par": [-1], "mv": [None],
              "kids": [None], "stat": [0.0], "val": [0.0], "term": [None], "vl": [0]}
-        tv = self._terminal_value(board)
-        if tv is not None or not list(board.legal_moves):
-            return []
+        if board.is_game_over(claim_draw=True) or not list(board.legal_moves):
+            return []                       # TB-covered roots still get searched
         N["term"][0] = None
 
         def backup(idx):
@@ -596,8 +595,10 @@ class KittyChess:
         choice; returns rows like search() plus row['preach'] and row['depth_used']."""
         import heapq, time as _time
         deadline = _time.time() + budget
-        if self._terminal_value(board) is not None or not list(board.legal_moves):
-            return []
+        if board.is_game_over(claim_draw=True) or not list(board.legal_moves):
+            return []                       # TB-covered roots still get searched (sanity
+                                            # battery: wave/coherent returned NO move at
+                                            # <=5 pieces and silently drew ladder games)
         N = {"b": [board.copy(stack=False)], "par": [-1], "mv": [None], "kids": [None],
              "val": [0.0], "preach": [1.0]}
         heap = [(-1.0, 0)]
