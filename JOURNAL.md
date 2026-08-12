@@ -11994,3 +11994,19 @@ skipped, BOTH members labeled by our own depth-2 search -- no oracle) + trainer 
 Interaction addendum: relative-only on dA (cannot fight the walls gauge); counterpart rows ride
 a separate forward and never enter walls/gas/basin (a null-move state must not become "reachable"
 in the geometry); mirror-blind. Labels generate when the GPU frees; bundles into the next run.
+
+## 2026-08-12 — forcing preference in coherent search (the two-queens principle)
+Kaveh's blitz game (lichess nNtmKfDe): promoted a SECOND queen because every move becomes a
+check -- less precision required, premove-able, opponent constrained -- even though the
+single-queen mate was provably nearer. Principle: among equal-value moves prefer the CHEAP-TO-
+EXECUTE win. Implemented in search_coherent row ranking (flag forcing_pref, default ON):
+  force_h  = entropy of the opponent's plausible-reply distribution at the child (low = forcing)
+  premove  = max-min value of ONE of our moves that answers ALL expanded replies (the pawn-push
+             property); proven mates keep absolute rank; ties within forcing_eps=15 re-rank by
+             (force_h asc, premove desc). Zero extra search -- read off the existing tree.
+ACCEPTANCE (his game): after 41.h5 the top move is Qd1+ with premove=MATE (pv Qd1+ Kg5 Qdxh5#,
+one ply faster than the game); after 40.Kg4 forced mates rank first, force_h separates
+constraining (0.69, two replies) from frayed (1.04). Battery: coherent 9/10, no new failures
+(the one FAIL is the pre-existing exposed-queen eval case). Arena validation queued behind
+reach_jqt2. Human-findability prior (Maia-weighted, "more easily spotted") banked for the
+human-data milestone.
