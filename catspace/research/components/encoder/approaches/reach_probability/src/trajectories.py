@@ -402,6 +402,52 @@ class Trajectories:
     # plane (rule50) needs a byte and the other 111 pack to bits.
     planes: np.ndarray | None = None
 
+    def append_games(self, rows, max_plies=400, workers=4, source=SF, elo=None):
+        """STREAMING INGEST (Kaveh 2026-08-12: generate on CPU while training consumes on GPU).
+        `rows` = [(game_id, result, ucis, start_fen)]. Replays through the SAME _replay_one path
+        as build(), appends in place, and invalidates the row-hash/edge caches (they are keyed
+        by row count). Returns (first_new_game_index, kept_input_indices) -- kept indices matter
+        because a failed replay is SKIPPED, so appended games are a subset, not a prefix, of the
+        input. The disk cache is untouched (still keyed to the boot corpus)."""
+        if not rows:
+            return len(self), np.array([], np.int64)
+        payload = [(ucis, max_plies, 0, False, res, source == SF, False, fen)
+                   for (_gid, res, ucis, fen) in rows]
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            done = list(ex.map(_replay_one, payload, chunksize=16))
+        g0 = len(self)
+        n = self.n_positions
+        toks, globs, csts, starts, lens = [], [], [], [], []
+        gids, ress, terms, mats, kept = [], [], [], [], []
+        for ri, ((gid, res, _u, _f), r) in enumerate(zip(rows, done)):
+            if r is None:
+                continue
+            kept.append(ri)
+            tk, gb, term, mat, _pk, cs = r
+            toks.append(tk); globs.append(gb); csts.append(cs)
+            starts.append(n); lens.append(len(tk)); n += len(tk)
+            gids.append(gid); ress.append(res); terms.append(term); mats.append(mat)
+        if not toks:
+            return g0, np.array([], np.int64)
+        self.tok = np.concatenate([self.tok, *toks])
+        self.glob = np.concatenate([self.glob, *globs])
+        if self.cstate is not None:
+            self.cstate = np.concatenate([self.cstate, *csts])
+        self.start = np.concatenate([self.start, np.asarray(starts, np.int64)])
+        self.length = np.concatenate([self.length, np.asarray(lens, np.int32)])
+        self.game_id = np.concatenate([self.game_id, np.asarray(gids, np.int64)])
+        self.source = np.concatenate([self.source, np.full(len(gids), source, np.int8)])
+        self.result = np.concatenate([self.result, np.asarray(ress, np.int8)])
+        self.elo = np.concatenate([self.elo, np.full((len(gids), 2),
+                                                     SF_ELO if elo is None else elo, np.int16)])
+        self.term = np.concatenate([self.term, np.asarray(terms, np.int8)])
+        self.mat = np.concatenate([self.mat, np.stack(mats).astype(np.uint8)])
+        for attr in ("_row_hash", "_edge_keys", "_rep_cache", "_cov_cache"):
+            if hasattr(self, attr):
+                delattr(self, attr)
+        return g0, np.asarray(kept, np.int64)
+
     def __len__(self):
         return len(self.start)
 

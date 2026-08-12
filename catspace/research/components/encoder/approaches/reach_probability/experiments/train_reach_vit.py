@@ -362,6 +362,16 @@ def main():
     ap.add_argument("--balance-npz", default=None,
                     help="stratified anchor-sampling weights (audit_data_balance --save): "
                          "phase x outcome x material inverse-frequency, TRAIN sampler only")
+    # STREAMING INGEST (Kaveh 2026-08-12: "generate data on cpu while training also progresses
+    # consuming that same data on gpu ... split each batch for training vs holdout"). The
+    # filesystem is the queue: the generator flushes complete TSV lines; we poll the line count.
+    ap.add_argument("--ingest-tsv", default=None,
+                    help="stream new games from this growing TSV (gen_stratified_sfsf format) "
+                         "into the live corpus")
+    ap.add_argument("--ingest-every", type=int, default=2000,
+                    help="steps between ingest polls")
+    ap.add_argument("--ingest-min", type=int, default=50,
+                    help="skip a poll with fewer than this many new complete games")
     ap.add_argument("--basin-pov", choices=("mover", "white"), default="mover",
                     help="basin CE label POV; 'white' is the gauge-unfrustrated choice "
                          "(2026-08-08 finding), 'mover' reproduces older recipes")
@@ -722,6 +732,97 @@ def main():
     trow_of_game[game_of_row[t_rows]] = t_rows          # -1 = censored game, no terminal
     _ = fit.true_edge_mask(np.array([0]), np.array([0]))   # builds tr._row_hash + edge keys once
     tr_row_hash = tr._row_hash
+
+    _ing = {"lines": 0, "games": 0}
+    _bw_name_w = None
+    if args.balance_npz and _bw is not None:
+        _bz2 = np.load(args.balance_npz)
+        _bw_name_w = {}
+        for _si, _nm in enumerate(_bz2["names"]):
+            _m = _bz2["stratum"] == _si
+            if _m.any():
+                _bw_name_w[str(_nm)] = float(_bz2["weight"][np.flatnonzero(_m)[0]])
+
+    def _classify_rows(rows):
+        """phase|outcome|material stratum names for new rows (audit_data_balance's criteria)."""
+        VALm = np.array([0, 1, 3, 3, 5, 9, 0, 1, 3, 3, 5, 9, 0])
+        tk = tr.tok[rows]
+        v = VALm[tk]
+        dmat = (np.where((tk >= 1) & (tk <= 6), v, 0).sum(1)
+                - np.where(tk >= 7, v, 0).sum(1))
+        npc = (tk > 0).sum(1)
+        plyr = ply_of_row[rows]
+        yw = outcome[rows]
+        phase_n = np.where(plyr < 16, "opening", np.where(npc <= 10, "endgame", "middlegame"))
+        on = np.where(yw == T.WIN, "white-wins", np.where(yw == T.DRAW, "draw",
+                      np.where(yw == T.LOSS, "black-wins", "censored")))
+        mc = np.select([dmat > 5, dmat > 3, dmat > 1, dmat >= -1, dmat >= -3, dmat >= -5],
+                       ["W-heavy", "W-piece", "W-minor", "even", "B-minor", "B-piece"],
+                       default="B-heavy")
+        return np.char.add(np.char.add(phase_n.astype(str), "|" + on.astype(str)),
+                           "|" + mc.astype(str))
+
+    def ingest():
+        """poll the growing TSV, append complete new games, reassign every corpus-derived
+        structure. Split is hashed from the START PLACEMENT so both members of a fork pair
+        land in the SAME split (a pair straddling train/holdout would be leakage)."""
+        nonlocal fit, val, fit_games, val_games, split, game_of_row, src_of_game, \
+            ply_of_row, trow_of_game, tr_row_hash, outcome, _bw, cov, reps
+        import hashlib as _hl
+        t0i = time.time()
+        with open(args.ingest_tsv) as fh:
+            lines = [l for l in fh if l.endswith("\n")]
+        new = lines[_ing["lines"]:]
+        if len(new) < args.ingest_min:
+            return
+        _ing["lines"] = len(lines)
+        rows_in = []
+        for ln in new:
+            p = ln.rstrip("\n").split("\t")
+            if len(p) >= 4:
+                rows_in.append((20_000_000 + int(p[0]), int(p[1]), p[3].split(), p[2]))
+        g0, kept = tr.append_games(rows_in, max_plies=args.max_plies)
+        ng = len(kept)
+        if ng == 0:
+            return
+        _ing["games"] += ng
+        # split by START PLACEMENT hash -> fork twins co-assigned; 70/15/15 like the boot split
+        hs = np.array([int(_hl.blake2b(rows_in[i][3].split()[0].encode(),
+                                       digest_size=4).hexdigest(), 16) % 100 for i in kept])
+        newsplit = np.where(hs < 70, 0, np.where(hs < 85, 1, 2)).astype(split.dtype)
+        split = np.concatenate([split, newsplit])
+        gnew = np.arange(g0, g0 + ng)
+        # new split-0 games: 10% to val (matching the boot val fraction within the fit pool)
+        nv = gnew[newsplit == 0]
+        n_valn = max(1, int(len(nv) * args.val_frac)) if len(nv) else 0
+        val_games = np.concatenate([val_games, nv[:n_valn]])
+        fit_games = np.concatenate([fit_games, nv[n_valn:]])
+        game_of_row = tr.game_of_row()
+        src_of_game = tr.source
+        ply_of_row = tr.ply_of_row()
+        outcome = (tr.outcome_of_row_white() if args.basin_pov == "white"
+                   else tr.outcome_of_row())
+        tg2 = np.full(len(tr), -1, np.int64)
+        tg2[:len(trow_of_game)] = trow_of_game
+        endsb = (tr.term[gnew] >= 0)                       # board terminals only
+        tg2[gnew[endsb]] = (tr.start[gnew] + tr.length[gnew] - 1)[endsb]
+        trow_of_game = tg2
+        if _bw is not None and _bw_name_w is not None:
+            nrows = np.arange(tr.start[g0], tr.n_positions)
+            names_n = _classify_rows(nrows)
+            wn = np.array([_bw_name_w.get(s, 1.0) for s in names_n], np.float32)
+            _bw = np.concatenate([_bw, wn])
+        cov, reps = tr.coverage(), tr.repeats()
+        fit = T.PairSampler(tr, fit_games, seed=args.seed + _ing["games"], cov=cov,
+                            repeats=reps, min_ply=args.min_ply, row_weight=_bw)
+        val = T.PairSampler(tr, val_games, seed=args.seed + 1, cov=cov, repeats=reps,
+                            min_ply=args.min_ply)
+        _ = fit.true_edge_mask(np.array([0]), np.array([0]))
+        tr_row_hash = tr._row_hash
+        print(f"[ingest] +{ng} games ({(newsplit==0).sum()} train-pool / "
+              f"{(newsplit==1).sum()} cal / {(newsplit==2).sum()} test) | corpus now "
+              f"{len(tr):,} games / {tr.n_positions:,} rows [{time.time()-t0i:.0f}s]",
+              flush=True)
 
     def terms(model, sampler, n, n_rev, ph=None, audit=False):
         """One objective evaluation on freshly sampled pairs. Returns (loss, metrics)."""
@@ -1474,6 +1575,8 @@ def main():
         # Profile only on eval steps: _sync() serialises the device and would otherwise tax every
         # step to measure it (observer effect on the very number we are optimising).
         prof = (step % args.eval_every == 0) or step == 1
+        if args.ingest_tsv and step % args.ingest_every == 0:
+            ingest()
         if jqt is not None and (step == 1 or step % args.jqt_refresh == 0):
             jqt_refresh(model)
         ph = Phase(dev, prof)
