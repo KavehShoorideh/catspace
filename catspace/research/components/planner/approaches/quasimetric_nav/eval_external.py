@@ -71,6 +71,7 @@ def main():
                     help="defender/ladder SF nodes per move")
     ap.add_argument("--skill", type=int, default=None,
                     help="ladder mode: SF Skill Level 0-20 (None = node cap only)")
+    ap.add_argument("--wave", action="store_true", help="use the selective wave search")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
@@ -100,7 +101,7 @@ def main():
         while not b.is_game_over(claim_draw=True) and b.ply() < 350:
             ours = (b.turn == chess.WHITE) == we_white
             if ours:
-                mv = engine_move(eng, b, budget=args.budget)
+                mv = engine_move(eng, b, budget=args.budget, wave=args.wave)
             else:
                 mv = sf.play(b, chess.engine.Limit(nodes=args.sf_nodes)).move
             if mv is None:
