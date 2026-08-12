@@ -178,6 +178,17 @@ def main():
     import os as _os2
     br_path = base + "_code_baserates.npy"
     BR = np.load(br_path) if _os2.path.exists(br_path) else None
+    # CONCEPT LEVERAGE (Kaveh 2026-08-12: 'what concepts help my opponent win -- deny those'):
+    # denial targets must be HARMFUL to the mover (activation swings E toward the opponent),
+    # not merely armed. harm[white_mover] = swing < -0.02 (pro-black), mirrored for black.
+    LEV = None
+    lv_path = base + "_concept_leverage.npz"
+    if _os2.path.exists(lv_path):
+        _lz = np.load(lv_path)
+        LEV = np.zeros((pv["heads"], pv["codes"]), np.float32)
+        for sw, hh, cc in zip(_lz["swing"], _lz["head"], _lz["code"]):
+            LEV[int(hh), int(cc)] = float(sw)
+        print(f"[srl] concept leverage loaded ({(np.abs(LEV) > 0.02).sum()} decisive codes)")
     ach_base, out_base = 0.5, 0.0
     for it in range(args.iters):
         decisions = []                                    # (logp, achieved, outcome_signed)
@@ -222,6 +233,9 @@ def main():
                             nullm = torch.zeros((1, 3), dtype=torch.long, device=args.device)
                             _, lg_r = dyn(phi, nullm)
                             armed = (torch.softmax(lg_r[0], -1) >= args.deny_thr)
+                        if LEV is not None:               # ...and HARMFUL to the mover
+                            harm = LEV < -0.02 if b.turn else LEV > 0.02
+                            armed = armed & torch.from_numpy(harm).to(args.device)
                     gh, gc, logp, mode = pl.pick_subgoal(phi, codes, armed=armed)
                     stats.setdefault((mode, gh, gc), [0, 0, 0.0])[0] += 1
                     pending = [(logp, (gh, gc, mode), b.ply() + pl.H, b.turn, commit_fen,
