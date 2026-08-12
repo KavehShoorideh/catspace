@@ -169,6 +169,12 @@ def main():
     stats = {}                                            # (h,c) -> [chosen, achieved, plies]
     events = []                                           # reach-event stream (fen, g, ok)
     ev_path = base + "_reach_events.jsonl"
+    # HONEST ACHIEVEMENT (2026-08-11, Kaveh's no-common-thread observation -> partial
+    # base-rate farming): reward = achieved MINUS the code's spontaneous within-horizon
+    # activation rate, so drifting codes pay their own tax
+    import os as _os2
+    br_path = base + "_code_baserates.npy"
+    BR = np.load(br_path) if _os2.path.exists(br_path) else None
     ach_base, out_base = 0.5, 0.0
     for it in range(args.iters):
         decisions = []                                    # (logp, achieved, outcome_signed)
@@ -236,8 +242,12 @@ def main():
         ach_base = 0.9 * ach_base + 0.1 * float(ach.mean())
         out_base = 0.9 * out_base + 0.1 * float(outs.mean())
         loss = torch.zeros((), device=args.device)
-        for logp, a, o, *_ in decisions:
-            R = args.a_ach * (a - ach_base) + args.b_out * (o - out_base)
+        for dch in decisions:
+            logp, a, o = dch[0], dch[1], dch[2]
+            gh, gc = dch[4][0], dch[4][1]
+            code_base = float(BR[gh, gc]) if BR is not None else ach_base
+            R = args.a_ach * (a - max(code_base, ach_base * 0.5)) \
+                + args.b_out * (o - out_base)
             loss = loss - logp * float(R)
         (loss / len(decisions)).backward()
         opt.step(); opt.zero_grad()
