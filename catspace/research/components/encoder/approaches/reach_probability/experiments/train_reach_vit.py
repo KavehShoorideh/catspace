@@ -60,7 +60,8 @@ from catspace.research.components.encoder.approaches.reach_probability.src.reach
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
     absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
-    confine_radius, confining_regression, fene_confinement, fene_r_max, lj_confinement,
+    censored_plies_loss, code_persistence, confine_radius, confining_regression,
+    fene_confinement, fene_r_max, first_hit_bce, jepa_code_prediction, lj_confinement,
     log_gas_repulsion, screened_repulsion,
     adjacent_anchor,
     start_irreversibility, start_ply_anchor, quasimetric_regression, reach_region_margin,
@@ -315,6 +316,40 @@ def main():
                          "training concentrates where the static field lies to itself. "
                          "Labels precomputed -- no moving-target bootstrap.")
     ap.add_argument("--qdistill-npz", default=None)
+    # JOINT QUANTIZED TRAINING (Kaveh 2026-08-12: "jointly train all the way down to the concepts
+    # and see if we can predict future concept activations", + "distance to concept activation by
+    # the distance head, so two prediction targets"). See jqt.py for the module.
+    ap.add_argument("--jqt", type=int, default=0, help="1 = joint quantized training on")
+    ap.add_argument("--jqt-heads", type=int, default=8)
+    ap.add_argument("--jqt-codes", type=int, default=64)
+    ap.add_argument("--w-vqrec", type=float, default=3.0,
+                    help="VQ reconstruction of the field's own six outputs (+ commit loss): "
+                         "the faithfulness anchor, unchanged in role from concept_vq")
+    ap.add_argument("--w-pers", type=float, default=1.0,
+                    help="persistence prior: consecutive-ply pre-quant latents pulled together "
+                         "where |dE| < pers-tau -- manufactures the metastability that makes "
+                         "future-code prediction well-posed (and codes legible)")
+    ap.add_argument("--pers-tau", type=float, default=0.05,
+                    help="expected-points scale above which a move counts as an eval jump and "
+                         "the persistence prior goes silent")
+    ap.add_argument("--w-jepa", type=float, default=3.0,
+                    help="future-code prediction in EMBEDDING space vs the EMA target branch "
+                         "(never indices -- the codebook-churn escape)")
+    ap.add_argument("--w-cda", type=float, default=2.0,
+                    help="concept-goal LENGTH ruler: censored plies-to-first-activation on "
+                         "dA(s -> codebook anchor)")
+    ap.add_argument("--w-cdb", type=float, default=2.0,
+                    help="concept-goal PROBABILITY ruler: first-hit BCE on a learned link of "
+                         "dB(s -> codebook anchor) -> P(activate before game end)")
+    ap.add_argument("--jqt-pairs", type=int, default=192,
+                    help="corpus transitions (parent, move, child) per step")
+    ap.add_argument("--jqt-goals", type=int, default=192,
+                    help="activation-label rows per step (balanced pos/censored)")
+    ap.add_argument("--jqt-refresh", type=int, default=2000,
+                    help="steps between ActivationIndex refreshes (recode a game sample with "
+                         "the EMA branch; labels then stand until the next refresh)")
+    ap.add_argument("--jqt-refresh-games", type=int, default=1200,
+                    help="games recoded per refresh")
     ap.add_argument("--basin-pov", choices=("mover", "white"), default="mover",
                     help="basin CE label POV; 'white' is the gauge-unfrustrated choice "
                          "(2026-08-08 finding), 'mover' reproduces older recipes")
@@ -537,7 +572,8 @@ def main():
         net.attach_poles(t_parent, n_sources=1, fixed=not args.learned_poles,
                          height=args.pole_height)
 
-    opt = torch.optim.Adam([p for p in net.parameters() if p.requires_grad], lr=args.lr)
+    # NOTE: the optimizer is created BELOW, after the jqt block -- Adam captures the parameter
+    # list at construction (the take-2 scar), and jqt's parameters must be inside it.
     # THREE OUTCOME POLES (Kaveh 2026-08-05: "I want three poles (win draw loss) ... and positions
     # orienting themselves towards it, trying to answer the probabilistic reachability question
     # from seeing pairs of positions in game that follow each other, without any negatives").
@@ -563,6 +599,57 @@ def main():
               "w": (0.25 + _gap / max(1e-6, float(_gap.mean() * 4))).astype(np.float32)}
         print(f"[qdistill] {len(qd['row']):,} search-resolved labels; "
               f"mean gap {float(_gap.mean()):.3f}", flush=True)
+    jqt = jqt_gt = jqt_idx = None
+    if args.jqt:
+        assert args.split_head and not args.dual and args.poles == "fixed", \
+            "--jqt needs split_head dA/dB rulers, fixed poles, non-dual (the champion recipe)"
+        from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
+            ActivationIndex, JQTModule)
+        _gtp = paths.derived(f"game_transitions_{len(tr.tok)}.npz")
+        _gz = np.load(_gtp)
+        # keep TRAIN-split transitions only (child = par+1 shares the parent's game)
+        _tm = np.isin(game_of_row[_gz["par"]], np.flatnonzero(split == 0))
+        jqt_gt = {"par": _gz["par"][_tm], "mid": _gz["mid"][_tm]}
+        jqt = JQTModule(d_model=args.d_model, heads=args.jqt_heads, codes=args.jqt_codes,
+                        d=args.d, ema=args.ema).to(dev)
+        jqt_idx = ActivationIndex(rng_np, codes=args.jqt_codes)
+        print(f"[jqt] ON: {args.jqt_heads}x{args.jqt_codes} codes | "
+              f"{len(jqt_gt['par']):,} train transitions | refresh every "
+              f"{args.jqt_refresh} steps ({args.jqt_refresh_games} games)", flush=True)
+
+        @torch.no_grad()
+        def jqt_refresh(model):
+            """recode a game sample with the EMA branches -> first-activation index."""
+            t0r = time.time()
+            gsel = rng_np.choice(np.flatnonzero(split == 0), args.jqt_refresh_games,
+                                 replace=False)
+            gmask = np.isin(game_of_row, gsel)
+            rws = np.flatnonzero(gmask)
+            ids_all = np.empty((len(rws), args.jqt_heads), np.int16)
+            for a in range(0, len(rws), 4096):
+                rr = rws[a:a + 4096]
+                tokb = torch.from_numpy(tr.tok[rr].astype(np.int64)).to(dev)
+                globb = torch.from_numpy(tr.glob[rr].astype(np.float32)).to(dev)
+                phi_t = model.t_enc(tokb, globb)
+                _, idsb = jqt.target_codes(phi_t)
+                ids_all[a:a + 4096] = idsb.cpu().numpy().astype(np.int16)
+            games = []
+            gor_s = game_of_row[rws]
+            for g in gsel:
+                m = gor_s == g
+                if m.sum() >= 4:
+                    games.append((rws[m], ids_all[m].astype(np.int64)))
+            jqt_idx.refresh(games)
+            print(f"[jqt] index refreshed: {len(games)} games, {len(rws):,} rows coded "
+                  f"[{time.time()-t0r:.0f}s]", flush=True)
+
+    # optimizer AFTER attach_poles and AFTER jqt construction (both add parameters; Adam
+    # captures the list at construction -- the take-2 scar, twice avoided).
+    _params = [p for p in net.parameters() if p.requires_grad]
+    if args.jqt:
+        _params += [p for p in jqt.parameters() if p.requires_grad]
+    opt = torch.optim.Adam(_params, lr=args.lr)
+
     wdl_pack = None
     if args.move_head or args.w_bellman > 0:
         import os as _os2
@@ -1195,6 +1282,63 @@ def main():
                 d_best = _dp(zbst, PL.expand(len(zbst), -1))
                 d_alt = _dp(zalt, PL.expand(len(zalt), -1))
                 l_grad = torch.nn.functional.softplus(d_best - d_alt).mean()
+        # ---- JOINT QUANTIZED TRAINING ----------------------------------------------------------
+        # Gradients from every jqt term flow into the TRUNK -- that is the joint part; the
+        # grounding stack above is what makes that safe (you cannot collapse while still being
+        # forced to predict real outcomes). Recon targets and dE are DETACHED field readings.
+        l_vqrec = l_pers = l_jepa = l_cda = l_cdb = torch.zeros((), device=dev)
+        _jqt_perp = -1.0
+        if jqt is not None and jqt_idx.ready():
+            jqt.train(model.training)          # val passes must not update the EMA codebooks
+            with ph("jqt_sample"):
+                ts = rng_np.integers(0, len(jqt_gt["par"]), args.jqt_pairs)
+                pr_ = jqt_gt["par"][ts]
+                mid_ = torch.from_numpy(jqt_gt["mid"][ts]).to(dev)
+                grows, ghc, gplies, ghit = jqt_idx.sample(args.jqt_goals)
+                rows_j = np.concatenate([pr_, pr_ + 1, grows])
+                tok_j = torch.from_numpy(tr.tok[rows_j].astype(np.int64)).to(dev)
+                glob_j = torch.from_numpy(tr.glob[rows_j].astype(np.float32)).to(dev)
+            with ph("jqt"):
+                nP = args.jqt_pairs
+                phi_j = model.backbone(tok_j, glob_j)
+                POL = model.poles.poles
+                with torch.no_grad():          # the field's own six outputs, white-POV, frozen
+                    zb_pc = model.proj_b(phi_j[:2 * nP])
+                    DAr = torch.stack([model.dA(zb_pc, POL[[c]].expand(len(zb_pc), -1))
+                                       for c in range(3)], 1)
+                    DBr = torch.stack([model.dB(zb_pc, POL[[c]].expand(len(zb_pc), -1))
+                                       for c in range(3)], 1)
+                    prb = torch.softmax(-DBr / args.basin_temp, 1)
+                    y6 = torch.cat([DAr, prb], 1)
+                    jqt.update_y_stats(y6)
+                    yt = (y6 - jqt.y_mu) / jqt.y_sd
+                    E_pc = prb[:, 0] + 0.5 * prb[:, 1]
+                    dE = E_pc[nP:2 * nP] - E_pc[:nP]
+                # (1) faithfulness: codes must regenerate the field's own evaluations
+                h_pc, zq_flat, ids_pc, vloss = jqt.quantize(phi_j[:2 * nP])
+                l_vqrec = torch.nn.functional.mse_loss(jqt.dec(zq_flat), yt) + vloss
+                # (2) metastability: quiet moves keep their pre-quant latents
+                l_pers = code_persistence(h_pc[:nP], h_pc[nP:2 * nP], dE, tau=args.pers_tau)
+                # (3) future codes, embedding space, EMA target (both branches EMA: model.t_enc
+                # reads the child board, jqt.t_enc + live-EMA codebooks quantize it)
+                with torch.no_grad():
+                    phi_t_ch = model.t_enc(tok_j[nP:2 * nP], glob_j[nP:2 * nP])
+                    zq_t, _ = jqt.target_codes(phi_t_ch)
+                pred_ch = jqt.predict_child(zq_flat[:nP], mid_)
+                l_jepa = jepa_code_prediction(pred_ch, zq_t)
+                # (4)+(5) the two concept-goal rulers: "can I activate this concept" asked of
+                # LENGTH (censored plies-to-first-activation) and PROBABILITY (first-hit BCE)
+                anc = jqt.anchors_for(torch.from_numpy(ghc).to(dev))
+                zb_g = model.proj_b(phi_j[2 * nP:])
+                dA_g = model.dA(zb_g, anc)
+                dB_g = model.dB(zb_g, anc)
+                tpl = torch.from_numpy(gplies).to(dev)
+                thit = torch.from_numpy(ghit).to(dev)
+                l_cda = censored_plies_loss(torch.log1p(dA_g), tpl, thit)
+                l_cdb = first_hit_bce(jqt.activation_logit(dB_g), thit)
+                if audit:
+                    _jqt_perp = jqt.perplexity(ids_pc.detach())
+
         loss = (args.w_mh * l_mh + args.w_mh_cons * l_mh_cons
                 + args.w_mh_bell * l_mh_bell
                 + args.w_bellman * l_bell
@@ -1210,8 +1354,13 @@ def main():
                 + args.w_anchor * l_anchor + args.w_absorb * l_absorb
                 + args.w_termrep * l_termrep + args.w_subsume * l_subsume
                 + args.w_start * l_start + args.w_start_irr * l_startirr
-                + args.w_termcon * (l_termcon_att + l_termcon_rep))
+                + args.w_termcon * (l_termcon_att + l_termcon_rep)
+                + args.w_vqrec * l_vqrec + args.w_pers * l_pers + args.w_jepa * l_jepa
+                + args.w_cda * l_cda + args.w_cdb * l_cdb)
         met = {**_audit,
+               "vqrec": float(l_vqrec.detach()), "pers": float(l_pers.detach()),
+               "jepa": float(l_jepa.detach()), "cda": float(l_cda.detach()),
+               "cdb": float(l_cdb.detach()), "jqt_perp": _jqt_perp,
                "loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()), "n_wall": _n_wall[0],
                "confine": float(l_conf.detach()),
@@ -1253,6 +1402,8 @@ def main():
         # Profile only on eval steps: _sync() serialises the device and would otherwise tax every
         # step to measure it (observer effect on the very number we are optimising).
         prof = (step % args.eval_every == 0) or step == 1
+        if jqt is not None and (step == 1 or step % args.jqt_refresh == 0):
+            jqt_refresh(model)
         ph = Phase(dev, prof)
         loss, met, _ = terms(model, fit, args.batch, n_rev, ph,
                              audit=(step % args.eval_every == 0) or step == 1)
@@ -1264,6 +1415,8 @@ def main():
             if args.l1_prox > 0:
                 model.prox_l1(args.lr * args.l1_prox)   # ISTA step: what actually zeroes coords
             model.update_target()
+            if jqt is not None:
+                jqt.update_target()
         step_log.write(json.dumps({"s": step, **{k: round(float(v), 5)
                                                   for k, v in met.items()}}) + "\n")
         # HARD GATE against the take-2 failure: the pole terms ran for 20,000 steps against poles
@@ -1344,6 +1497,17 @@ def main():
             # THE monotonicity the prior predicts: weaker players should carry a LARGER residual.
             g["res_gap"] = g["d_res_1400"] - g["d_res_sf"]
             g["res_monotone"] = float(g["d_res_1400"] >= g["d_res_2200"] >= g["d_res_sf"])
+        if jqt is not None:
+            # sidecar checkpoint: the jqt payload rides NEXT TO the field ckpt (never inside it,
+            # so every legacy loader keeps working); atomic overwrite, refreshed each eval
+            _tmp = f"{args.out}_jqt.pt.tmp"
+            torch.save({"state_dict": jqt.state_dict(), "d_in": args.d_model,
+                        "heads": args.jqt_heads, "codes": args.jqt_codes, "d": args.d,
+                        "y_mu": jqt.y_mu.cpu(), "y_sd": jqt.y_sd.cpu(),
+                        "train_args": {k: v for k, v in vars(args).items()
+                                       if k.startswith(("jqt", "w_vqrec", "w_pers", "w_jepa",
+                                                        "w_cda", "w_cdb", "pers_tau"))}}, _tmp)
+            __import__("os").replace(_tmp, f"{args.out}_jqt.pt")
         # Sparsity as an EXACT count, which only means anything because prox_l1 makes true zeros.
         g["l1_support"] = int(model.input_support().sum())
         # DIRECT ratchet readout, free here: the observed forward distance against its own reversal.

@@ -605,6 +605,28 @@ def vicreg_covariance(z):
     return (off ** 2).sum() / d
 
 
+def code_persistence(h_par, h_child, dE, tau=0.05):
+    """JQT persistence prior (Kaveh 2026-08-12: metastable concepts are the predictable, legible,
+    subgoal-worthy ones). Pull the PRE-QUANT concept latents of consecutive plies together exactly
+    where the evaluation did NOT move: weight w = relu(1 - |dE|/tau) is 1 on quiet moves and 0
+    once the eval jumps by tau (in expected-points units), so tactical flips stay free to change
+    code while quiet shuffles stop flickering. dE must arrive DETACHED -- this term shapes the
+    quantizer's input geometry, never the evaluation that gates it."""
+    w = torch.relu(1.0 - dE.abs() / tau)
+    per = (h_par - h_child).pow(2).mean(dim=tuple(range(1, h_par.dim())))
+    return (w * per).sum() / w.sum().clamp(min=1e-6)
+
+
+def jepa_code_prediction(pred, target):
+    """JQT future-code prediction, EMBEDDING space (the codebook-index-churn escape: indices drift
+    as the codebook trains, quantized VECTORS drift slowly under EMA -- so the loss never touches
+    indices). pred = predictor(parent latents, move); target = the EMA-target branch's QUANTIZED
+    child embedding, and it must arrive with no graph attached (stop-gradient is the JEPA guard
+    against the model making its own target easier to predict)."""
+    assert not target.requires_grad, "JEPA target must be detached (EMA branch, stop-grad)"
+    return F.mse_loss(pred, target)
+
+
 # --------------------------------------------------------------------------------------------
 def _tests():
     torch.manual_seed(0); ok = True
@@ -1082,6 +1104,43 @@ def _tests():
     ok &= g_far==0.0 and g_near>0
     print(f"[term-contrast] attraction {la:.3f}, repulsion {lr:.3f}; hinge grad at d=700: {g_far:.1e} "
           f"(floor satisfied, correctly OFF), at d=2: {g_near:.3f} (pushing)  {'OK' if ok else 'FAIL'}")
+
+    # ---- JQT: persistence prior ----------------------------------------------------------------
+    hp = torch.zeros(3, 4); hc = torch.ones(3, 4)
+    quiet = torch.tensor([0.0, 0.0, 0.0]); loud = torch.tensor([1.0, 1.0, 1.0])
+    l_quiet = code_persistence(hp, hc, quiet, tau=0.05)
+    l_loud = code_persistence(hp, hc, loud, tau=0.05)
+    ok &= abs(float(l_quiet) - 1.0) < 1e-5 and float(l_loud) == 0.0
+    hg = torch.zeros(3, 4, requires_grad=True)
+    code_persistence(hg, hc, loud, tau=0.05).backward()
+    g_loud = float(hg.grad.abs().max())          # eval jumped -> the prior must be silent
+    ok &= g_loud == 0.0
+    mixed = torch.tensor([0.0, 0.04, 0.5])       # graded weight inside tau, zero outside
+    wm = torch.relu(1.0 - mixed.abs() / 0.05)
+    l_mix = code_persistence(hp, hc, mixed, tau=0.05)
+    ok &= abs(float(l_mix) - float((wm * 1.0).sum() / wm.sum())) < 1e-5
+    print(f"[persistence] quiet {float(l_quiet):.3f} (=1), loud {float(l_loud):.3f} (=0), "
+          f"grad@loud {g_loud:.1e} (=0), mixed {float(l_mix):.3f}  {'OK' if ok else 'FAIL'}")
+
+    # ---- JQT: jepa embedding prediction --------------------------------------------------------
+    pr = torch.randn(5, 8, requires_grad=True); tg = torch.randn(5, 8)
+    l_j = jepa_code_prediction(pr, tg); l_j.backward()
+    ok &= pr.grad is not None and float(jepa_code_prediction(tg.clone(), tg)) == 0.0
+    try:
+        jepa_code_prediction(pr, torch.randn(5, 8, requires_grad=True)); ok = False
+        print("[jepa] FAIL: accepted a target with a live graph")
+    except AssertionError:
+        print(f"[jepa] mse {float(l_j):.3f}, exact target -> 0, live-graph target REFUSED  "
+              f"{'OK' if ok else 'FAIL'}")
+
+    # ---- JQT: the two reused rulers keep their contracts on activation labels ------------------
+    # censored dA-to-activation: censored rows contribute exactly nothing (value AND gradient)
+    dA_pred = torch.tensor([2.0, 3.0, 4.0], requires_grad=True)
+    plies = torch.tensor([6.0, -1.0, 2.0]); hit = torch.tensor([1.0, 0.0, 1.0])
+    lc = censored_plies_loss(torch.log1p(dA_pred), plies, hit); lc.backward()
+    ok &= float(dA_pred.grad[1]) == 0.0 and float(dA_pred.grad[0]) != 0.0
+    print(f"[concept-dA] censored row grad {float(dA_pred.grad[1]):.1e} (=0), observed "
+          f"{float(dA_pred.grad[0]):+.3f} (live)  {'OK' if ok else 'FAIL'}")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 

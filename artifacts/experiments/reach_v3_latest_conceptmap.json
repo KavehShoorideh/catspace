@@ -1,0 +1,93 @@
+{
+ "white up material": {
+  "head": 6,
+  "code": 19,
+  "p_given_code": 1.0,
+  "base": 0.288,
+  "lift": 0.712
+ },
+ "black up material": {
+  "head": 6,
+  "code": 22,
+  "p_given_code": 1.0,
+  "base": 0.265,
+  "lift": 0.735
+ },
+ "material even": {
+  "head": 4,
+  "code": 11,
+  "p_given_code": 0.921,
+  "base": 0.32,
+  "lift": 0.601
+ },
+ "queens on": {
+  "head": 4,
+  "code": 35,
+  "p_given_code": 0.041,
+  "base": 0.537,
+  "lift": -0.496
+ },
+ "queens traded": {
+  "head": 4,
+  "code": 35,
+  "p_given_code": 0.959,
+  "base": 0.463,
+  "lift": 0.496
+ },
+ "endgame (<=10 pc)": {
+  "head": 5,
+  "code": 3,
+  "p_given_code": 0.954,
+  "base": 0.238,
+  "lift": 0.716
+ },
+ "middlegame (>=20 pc)": {
+  "head": 0,
+  "code": 23,
+  "p_given_code": 1.0,
+  "base": 0.395,
+  "lift": 0.605
+ },
+ "white rook pair": {
+  "head": 2,
+  "code": 26,
+  "p_given_code": 0.997,
+  "base": 0.42,
+  "lift": 0.578
+ },
+ "black rook pair": {
+  "head": 5,
+  "code": 8,
+  "p_given_code": 1.0,
+  "base": 0.422,
+  "lift": 0.578
+ },
+ "white passed pawn": {
+  "head": 6,
+  "code": 27,
+  "p_given_code": 0.888,
+  "base": 0.332,
+  "lift": 0.557
+ },
+ "black passed pawn": {
+  "head": 1,
+  "code": 40,
+  "p_given_code": 0.919,
+  "base": 0.319,
+  "lift": 0.6
+ },
+ "white bishop pair": {
+  "head": 3,
+  "code": 47,
+  "p_given_code": 0.873,
+  "base": 0.204,
+  "lift": 0.67
+ },
+ "black bishop pair": {
+  "head": 3,
+  "code": 57,
+  "p_given_code": 0.928,
+  "base": 0.202,
+  "lift": 0.726
+ }
+}
