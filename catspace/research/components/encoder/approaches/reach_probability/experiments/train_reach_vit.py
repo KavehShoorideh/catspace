@@ -350,6 +350,9 @@ def main():
                          "the EMA branch; labels then stand until the next refresh)")
     ap.add_argument("--jqt-refresh-games", type=int, default=1200,
                     help="games recoded per refresh")
+    ap.add_argument("--balance-npz", default=None,
+                    help="stratified anchor-sampling weights (audit_data_balance --save): "
+                         "phase x outcome x material inverse-frequency, TRAIN sampler only")
     ap.add_argument("--basin-pov", choices=("mover", "white"), default="mover",
                     help="basin CE label POV; 'white' is the gauge-unfrustrated choice "
                          "(2026-08-08 finding), 'mover' reproduces older recipes")
@@ -549,7 +552,19 @@ def main():
               f"and read every trained number against it. [{time.time()-t0:.0f}s]")
         return
 
-    fit = T.PairSampler(tr, fit_games, seed=args.seed, cov=cov, repeats=reps, min_ply=args.min_ply)
+    _bw = None
+    if args.balance_npz:
+        _bz = np.load(args.balance_npz)
+        _bw = _bz["weight"]
+        assert len(_bw) == tr.n_positions, \
+            (f"balance weights are for a {len(_bw):,}-row corpus, "
+             f"this one has {tr.n_positions:,}")
+        print(f"[balance] stratified anchor sampling ON: {len(_bz['names'])} strata, "
+              f"weight p50 {float(np.percentile(_bw, 50)):.2f} "
+              f"p90 {float(np.percentile(_bw, 90)):.2f} (TRAIN sampler only; val untouched "
+              f"so metrics stay comparable across runs)", flush=True)
+    fit = T.PairSampler(tr, fit_games, seed=args.seed, cov=cov, repeats=reps,
+                        min_ply=args.min_ply, row_weight=_bw)
     val = T.PairSampler(tr, val_games, seed=args.seed + 1, cov=cov, repeats=reps,
                         min_ply=args.min_ply)
     # ATTACH POLES BEFORE THE OPTIMIZER. Adam captures net.parameters() at construction, so
