@@ -308,6 +308,97 @@ class KittyChess:
         mono = float((steps < 0).mean())
         return drop, mono, fav
 
+    def search_batched(self, board, depth=3, stop=None):
+        """LEVEL-BATCHED fixed-depth minimax (2026-08-11 horizon autopsy: the engine loses on
+        depth; the recursive search paid one tiny MPS forward PER NODE. Batching all frontier
+        leaves into large forwards buys depth 3 inside the old depth-2 budget). Full-width --
+        at these sizes one big batch beats alpha-beta. Returns rows like search()."""
+        root_moves = list(board.legal_moves)
+        if not root_moves:
+            return []
+        # ---- expansion: levels[lv] = list of (board, parent_index, move); kids bookkeeping
+        levels = [[(board.copy(stack=False), -1, None)]]
+        kids = []                                        # kids[lv][parent_i] -> child indices
+        for d in range(depth):
+            frontier = levels[-1]
+            nxt = []
+            k = [[] for _ in frontier]
+            for pi, (b, _, _) in enumerate(frontier):
+                if b.is_game_over(claim_draw=True):
+                    continue
+                for mv in b.legal_moves:
+                    b.push(mv)
+                    k[pi].append(len(nxt))
+                    nxt.append((b.copy(stack=False), pi, mv))
+                    b.pop()
+                if stop is not None and stop():
+                    raise KittyChess.SearchStop
+            if not nxt:
+                break
+            kids.append(k)
+            levels.append(nxt)
+        leaf_lv = len(levels) - 1
+        # ---- evaluate the frontier in large chunks (terminals exact)
+        leaves = levels[leaf_lv]
+        lv_vals = [None] * len(leaves)
+        todo, toks, globs = [], [], []
+        for i, (b, _, _) in enumerate(leaves):
+            tv = self._terminal_value(b)
+            if tv is not None:
+                lv_vals[i] = tv
+            else:
+                todo.append(i)
+                tk, gl = tokenize(b)
+                toks.append(tk); globs.append(gl)
+        P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"], self.pi["LOSS"]]].to(self.device)
+        for a in range(0, len(todo), 4096):
+            if stop is not None and stop():
+                raise KittyChess.SearchStop
+            with torch.no_grad():
+                z = self._embed(toks[a:a+4096], globs[a:a+4096])
+                D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                     for k2 in range(3)]
+            for j in range(len(D[0])):
+                b = leaves[todo[a + j]][0]
+                if self.white_pov:
+                    iw, il = (0, 2) if b.turn else (2, 0)
+                    m = min(D[1][j], D[il][j]) - D[iw][j]
+                else:
+                    m = min(D[1][j], D[0][j]) - D[2][j]
+                lv_vals[todo[a + j]] = float(m)
+        # ---- minimax rollup with stored per-level values
+        vals = [None] * len(levels)
+        vals[leaf_lv] = lv_vals
+        for lv in range(leaf_lv - 1, -1, -1):
+            out = [None] * len(levels[lv])
+            for pi, (b, _, _) in enumerate(levels[lv]):
+                ks = kids[lv][pi] if pi < len(kids[lv]) else []
+                cand = [-vals[lv + 1][ci] for ci in ks if vals[lv + 1][ci] is not None]
+                if cand:
+                    out[pi] = max(cand)
+                else:
+                    tv = self._terminal_value(b)
+                    out[pi] = tv if tv is not None else 0.0
+            vals[lv] = out
+        # ---- rows + PV by argmax walk
+        rows = []
+        for i, (b, pi, mv) in enumerate(levels[1]):
+            pv = [mv]
+            idx, lv = i, 1
+            while lv < leaf_lv:
+                ks = kids[lv][idx] if idx < len(kids[lv]) else []
+                ks = [ci for ci in ks if vals[lv + 1][ci] is not None]
+                if not ks:
+                    break
+                best = max(ks, key=lambda ci: -vals[lv + 1][ci])
+                pv.append(levels[lv + 1][best][2])
+                idx, lv = best, lv + 1
+            # vals[1][i] is the CHILD-mover's value; the root row is its negation
+            rows.append({"mv": mv, "value": float(-vals[1][i]), "pv": pv,
+                         "resid": None, "depth_used": depth})
+        rows.sort(key=lambda r: r["value"], reverse=True)
+        return rows
+
     class SearchStop(Exception):
         """raised mid-search when the caller's stop() turns true (navigation cancelled it)."""
 
