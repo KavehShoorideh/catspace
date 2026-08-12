@@ -12010,3 +12010,14 @@ constraining (0.69, two replies) from frayed (1.04). Battery: coherent 9/10, no 
 (the one FAIL is the pre-existing exposed-queen eval case). Arena validation queued behind
 reach_jqt2. Human-findability prior (Maia-weighted, "more easily spotted") banked for the
 human-data milestone.
+
+## 2026-08-12 — SubgoalFormer spec (transformer over subgoals, geometry-queried)
+Kaveh's premove calculus (promotion subgoal; opponent blockade-subgoal P=0 by the race
+dA(their block) > dA(our promote); check-subgoal unreachable => no tempo risk => P(promote)
+:= 100% => premove) is a worked forward pass of the M4 planner: tokens = both sides'
+candidate subgoals, features = LIVE dA/dB queries to concept anchors (never a stored
+interaction matrix -- attention infers interference from race coordinates, generalizing to
+unseen pairs), heads = commitment / revised-P-with-premove-safety / delta-WDL-per-subgoal
+(the 2026-08-08 subgoals-as-tokens plan). Spec: docs/SUBGOALFORMER.md. Acceptance = race
+battery (unstoppable / stoppable / tempo-vulnerable) graded on calibration AND attention
+legibility. Build order: jqt2 gates -> concept refit -> race battery -> v1.
