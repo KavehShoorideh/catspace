@@ -708,16 +708,53 @@ class KittyChess:
                                                  or N["preach"][c] >= mass_floor):
                         heapq.heappush(heap, (-N["preach"][c], c))
                 backup(t)
+        import math as _math
+        import numpy as _np
         rows = []
         for c in (N["kids"][0] or []):
             pv, idx = [N["mv"][c]], c
             while N["kids"][idx]:
                 nxt = max(N["kids"][idx], key=lambda x: -N["val"][x])
                 pv.append(N["mv"][nxt]); idx = nxt
+            # FORCING METRICS (Kaveh 2026-08-12, the two-queens game: "choose forcing moves
+            # over moves that fray ... where we can premove"). Both come free from the tree:
+            # force_h = entropy of the OPPONENT's plausible-reply distribution at this child
+            # (low = constraining: checks, captures, only-moves). premove = the max-min value
+            # of ONE move of ours that answers ALL their expanded replies (the pawn-push
+            # property: our next move is chosen before seeing theirs).
+            ks = N["kids"][c]
+            if ks:
+                sc = _np.array([-N["val"][k] for k in ks]) / tau_m
+                sc -= sc.max()
+                pr = _np.exp(sc); pr /= pr.sum()
+                force_h = float(-(pr * _np.log(pr + 1e-12)).sum())
+                by_uci = {}
+                for r in ks:
+                    if N["kids"][r]:
+                        for m in N["kids"][r]:
+                            by_uci.setdefault(N["mv"][m].uci(), []).append((r, -N["val"][m]))
+                n_rep = sum(1 for r in ks if N["kids"][r])
+                premove = max((min(v for _r, v in lst) for lst in by_uci.values()
+                               if len(lst) == n_rep), default=None) if n_rep else None
+            else:
+                force_h = _math.log(max(1, len(list(N["b"][c].legal_moves))))
+                premove = None
             rows.append({"mv": N["mv"][c], "value": float(-N["val"][c]), "pv": pv,
                          "preach": float(N["preach"][c]), "resid": None,
-                         "depth_used": len(pv)})
+                         "depth_used": len(pv), "force_h": force_h, "premove": premove})
         rows.sort(key=lambda r: r["value"], reverse=True)
+        # FORCING PREFERENCE: proven mates keep absolute rank; among the rest, moves within
+        # eps of the best value re-rank by (constrain the opponent, then premove-ability) --
+        # the cheap-to-execute win over the merely-shortest win. Flag-gated.
+        if getattr(self, "forcing_pref", True) and len(rows) > 1:
+            eps = getattr(self, "forcing_eps", 15.0)
+            top = rows[0]["value"]
+            band = [r for r in rows if r["value"] > 5e5 or top - r["value"] <= eps]
+            rest = [r for r in rows if r not in band]
+            band.sort(key=lambda r: (0, -r["value"], 0.0) if r["value"] > 5e5
+                      else (1, r["force_h"],
+                            -(r["premove"] if r["premove"] is not None else -1e9)))
+            rows = band + rest
         return rows
 
     def concept_values(self, toks, globs, turns):
