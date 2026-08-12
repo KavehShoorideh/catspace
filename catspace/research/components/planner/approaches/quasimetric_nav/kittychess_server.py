@@ -389,21 +389,8 @@ class H(BaseHTTPRequestHandler):
                 pd = max(1, min(6, int(req.get("playDepth", 2))))
                 # time-capped iterative deepening (Kaveh: think <= ~1.5s): keep the deepest
                 # COMPLETED iteration; a timed-out partial iteration is discarded
-                import time as _time
-                deadline = _time.time() + 1.5
-                best = None
-                with H.lock:
-                    for d in range(1, pd + 1):
-                        try:
-                            rows = H.eng.search(b, depth=d,
-                                                stop=lambda: _time.time() > deadline)
-                        except Exception:
-                            break
-                        if _time.time() > deadline:
-                            if best is None:
-                                best = rows
-                            break
-                        best = rows
+                with H.lock:                     # BEST VERSION ONLY (Kaveh 2026-08-11):
+                    best = H.eng.search_coherent(b, budget=1.5)   # coherence-bounded search
                 if best:
                     cls.moves.append(best[0]["mv"]); cls.ptr += 1
                     b = self._board(); over = self._over(b)
