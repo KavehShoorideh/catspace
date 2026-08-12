@@ -75,8 +75,8 @@ def main():
     ap.add_argument("--coherent", action="store_true", default=True,
                     help="use the coherence-bounded search (sanity 10/10 at 1.48s)")
     ap.add_argument("--mc", action="store_true",
-                    help="CPU rollout tiebreak among near-tied top moves (measured 82.0% vs "
-                         "field 74.7% keeps-the-win)")
+                    help="CPU rollout tiebreak among near-tied top moves (measured 82 vs 74.7 "
+                         "pct keeps-the-win)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
