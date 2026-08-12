@@ -1,6 +1,6 @@
 {
- "ckpt": "artifacts/experiments/reach_v2_latest.pt",
- "since": "2026-08-11 07:58",
+ "ckpt": "artifacts/experiments/reach_v3_latest.pt",
+ "since": "2026-08-12 07:49",
  "history": [
   {
    "event": "founding champion",
@@ -26,6 +26,14 @@
    "new": "artifacts/experiments/reach_v2_latest.pt",
    "score": "30.5/60",
    "date": "2026-08-11 07:58"
+  },
+  {
+   "event": "dethroned",
+   "old": "artifacts/experiments/reach_v2_latest.pt",
+   "new": "artifacts/experiments/reach_v3_latest.pt",
+   "score": "32.0/60 (pentanomial 0/0/26/4/0, P>50% = 0.99)",
+   "note": "external ladder 0.5/8 vs v2 1.0/8 (noise); battery no-regression",
+   "date": "2026-08-12 07:49"
   }
  ]
 }

@@ -11932,3 +11932,37 @@ unaffected (terminal scale dominates). Server redeployed on it.
   Saved reach_v2_latest_concept_leverage.npz. Deny selector now requires armed AND harmful-to-mover
   (|swing|>0.02, sign vs mover). Full v3 concept-stack refit chain launched (VQ->dyn->dyn2->
   interactions->rates/leverage->server deploy).
+
+## 2026-08-12 — JOINT QUANTIZED TRAINING (JQT) built; loss-interaction review
+Kaveh's inversion: concept-prediction joins the foundation (jqt.py + --jqt in train_reach_vit).
+Five new terms on the champion stack: VQREC (faithfulness recon + commit), PERS (persistence
+prior, tau=0.05), JEPA (future codes, EMBEDDING space, EMA target), CDA (censored plies-to-
+activation on dA->codebook-anchor), CDB (first-hit BCE on dB->anchor). Unit tests pass (losses.py).
+
+Target inspection (400 games, v2 quantizer proxy, printed verdicts): plies-to-activation median
+18 (p10 3 / p90 64), log1p spread 1.05 — well-posed for Huber-1; |dE|<0.05 on 75% of moves
+(persistence coverage); activation flips 0.80/ply/head — current codes are maximally flickery,
+the metastability the persistence prior must manufacture. Labels refresh every 2k steps.
+
+PAIRWISE INTERACTION REVIEW (rule: every new term vs the stack, before launch):
+- VQREC x basin/walls: recon targets DETACHED; residual channel is trunk compression pressure
+  (a coarsened committor). Guard: w_vqrec 3 vs basin 1000/qdistill 300; watch val basin + ECE.
+- PERS x walls-odometer: pers wants temporal smoothness, walls want 1-ply resolution — but pers
+  acts after the concept enc MLP, so the bottleneck absorbs the tension, trunk keeps detail.
+  Watch d_fwd/quasi when pers is on.
+- JEPA x EMA: BYOL-style trivial-prediction risk. Collapse cannot pay the grounding bill
+  (basin/walls on real outcomes); signature to watch = jepa->0 WITH perplexity->1 (read together;
+  either alone is benign). Codebook-index churn escaped by predicting embeddings, never indices.
+- JEPA x move-head: both predict move effects (distance space vs code space), no shared target,
+  no spiral; complementary trunk gradients.
+- CDA x CDB shared anchors: CDA pulls (observed-only; censored rows drop — the v1 bias, known),
+  CDB pushes (BCE negatives). No fight: dA reads the first half of the anchor vector, dB the
+  second — independent coordinates of the same learned anchor.
+- CDA x walls: same ruler, same units (plies) — reinforces the odometer rather than fighting it.
+- CDB x basin: both on dB; the learned link (a, b0) absorbs scale; poles receive no CDB gradient.
+- Label feedback loop: activation labels come from EMA-coded games and training moves the codes —
+  a slow self-consistent loop, bounded by EMA decays + 2k-step refresh; only enters at weight 2.
+- Mirror: JQT rows ride a separate un-mirrored forward; white-POV labels unaffected.
+- take-2 scar re-avoided TWICE: optimizer constructed after attach_poles AND after jqt.
+Gates for the smoke: eff_rank (trunk+arms), codebook perplexity (logged), basin_spread, val
+committor; jqt sidecar ckpt (_jqt.pt) saved atomically each eval, never inside the field ckpt.
