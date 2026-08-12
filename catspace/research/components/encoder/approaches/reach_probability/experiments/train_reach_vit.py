@@ -350,6 +350,15 @@ def main():
                          "the EMA branch; labels then stand until the next refresh)")
     ap.add_argument("--jqt-refresh-games", type=int, default=1200,
                     help="games recoded per refresh")
+    ap.add_argument("--w-turnpair", type=float, default=0.0,
+                    help="TURN-CONTRAST term (Kaveh 2026-08-12: 'side to move matters for "
+                         "distance, and for probability'): null-move minimal pairs, both "
+                         "rulers. dB: CE toward each member's search-resolved committor. "
+                         "dA: tie-safe pairwise rank per decisive pole -- the member whose "
+                         "resolved P(pole) is higher must be closer, one-tempo log-gap, no "
+                         "push where search says the turn doesn't matter.")
+    ap.add_argument("--turnpair-npz", default=None)
+    ap.add_argument("--turnpair-n", type=int, default=48, help="pairs per step")
     ap.add_argument("--balance-npz", default=None,
                     help="stratified anchor-sampling weights (audit_data_balance --save): "
                          "phase x outcome x material inverse-frequency, TRAIN sampler only")
@@ -664,6 +673,15 @@ def main():
     if args.jqt:
         _params += [p for p in jqt.parameters() if p.requires_grad]
     opt = torch.optim.Adam(_params, lr=args.lr)
+
+    tp = None
+    if args.w_turnpair > 0:
+        _tz = np.load(args.turnpair_npz)
+        tp = {k: _tz[k] for k in ("row", "probs_a", "probs_b", "tok_b", "glob_b")}
+        _tg = np.abs((tp["probs_a"][:, 0] + 0.5 * tp["probs_a"][:, 1])
+                     - (tp["probs_b"][:, 0] + 0.5 * tp["probs_b"][:, 1]))
+        print(f"[turnpair] {len(tp['row']):,} null-move pairs; mean|dE(turn)| {_tg.mean():.3f}, "
+              f"decisive (>0.1) {(_tg > 0.1).mean():.0%}", flush=True)
 
     wdl_pack = None
     if args.move_head or args.w_bellman > 0:
@@ -1297,6 +1315,40 @@ def main():
                 d_best = _dp(zbst, PL.expand(len(zbst), -1))
                 d_alt = _dp(zalt, PL.expand(len(zalt), -1))
                 l_grad = torch.nn.functional.softplus(d_best - d_alt).mean()
+        # ---- TURN-CONTRAST PAIRS ---------------------------------------------------------------
+        # The corpus has no minimal pairs on the turn flag (multiplicity 0.6%), so the flag's
+        # pathway atrophied (sensitivity 0.000, unfixed by distillation). These null-move pairs
+        # are manufactured minimal pairs: identical placement, only glob[0] differs, targets
+        # differ -> the flag is the ONLY input that can separate them.
+        l_turn = torch.zeros((), device=dev)
+        if tp is not None and model.poles is not None and args.basin_pov == "white":
+            with ph("turnpair"):
+                _ts = rng_np.integers(0, len(tp["row"]), args.turnpair_n)
+                _ra = tp["row"][_ts]
+                tok_p = torch.from_numpy(np.concatenate(
+                    [tr.tok[_ra], tp["tok_b"][_ts]]).astype(np.int64)).to(dev)
+                glob_p = torch.from_numpy(np.concatenate(
+                    [tr.glob[_ra], tp["glob_b"][_ts]]).astype(np.float32)).to(dev)
+                z_p = model.encode_q(tok_p, glob_p)
+                _P3t = model.poles.poles[:3]
+                nT = args.turnpair_n
+                dBt = torch.stack([model.dB(z_p, _P3t[[k]].expand(len(z_p), -1))
+                                   for k in range(3)], 1)
+                tgt_t = torch.from_numpy(np.concatenate(
+                    [tp["probs_a"][_ts], tp["probs_b"][_ts]]).astype(np.float32)).to(dev)
+                l_turn_b = -(tgt_t * torch.log_softmax(-dBt / args.basin_temp, 1)).sum(1).mean()
+                dAt = torch.stack([model.dA(z_p, _P3t[[k]].expand(len(z_p), -1))
+                                   for k in range(3)], 1)
+                l_turn_a = torch.zeros((), device=dev)
+                for _pc in (0, 2):                        # decisive poles only; draw untouched
+                    pa, pb = tgt_t[:nT, _pc], tgt_t[nT:, _pc]
+                    a_closer = (pa > pb).float()
+                    d_close = a_closer * dAt[:nT, _pc] + (1 - a_closer) * dAt[nT:, _pc]
+                    d_far = a_closer * dAt[nT:, _pc] + (1 - a_closer) * dAt[:nT, _pc]
+                    gap = 0.35 * ((pa - pb).abs() > 0.05).float()   # one tempo; tie-safe
+                    l_turn_a = l_turn_a + anchored_pairwise_rank(d_close, d_far, gap)
+                l_turn = l_turn_b + 0.5 * l_turn_a
+
         # ---- JOINT QUANTIZED TRAINING ----------------------------------------------------------
         # Gradients from every jqt term flow into the TRUNK -- that is the joint part; the
         # grounding stack above is what makes that safe (you cannot collapse while still being
@@ -1374,11 +1426,13 @@ def main():
                 + args.w_start * l_start + args.w_start_irr * l_startirr
                 + args.w_termcon * (l_termcon_att + l_termcon_rep)
                 + args.w_vqrec * l_vqrec + args.w_pers * l_pers + args.w_jepa * l_jepa
-                + args.w_cda * l_cda + args.w_cdb * l_cdb)
+                + args.w_cda * l_cda + args.w_cdb * l_cdb
+                + args.w_turnpair * l_turn)
         met = {**_audit,
                "vqrec": float(l_vqrec.detach()), "pers": float(l_pers.detach()),
                "jepa": float(l_jepa.detach()), "cda": float(l_cda.detach()),
                "cdb": float(l_cdb.detach()), "jqt_perp": _jqt_perp, "jqt_flip": _jqt_flip,
+               "turn": float(l_turn.detach()),
                "loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()), "n_wall": _n_wall[0],
                "confine": float(l_conf.detach()),
