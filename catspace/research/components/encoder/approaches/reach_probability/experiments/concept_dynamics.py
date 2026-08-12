@@ -32,25 +32,33 @@ from catspace.research.components.encoder.approaches.reach_probability.src impor
 
 
 class ConceptDynamics(nn.Module):
-    def __init__(self, d_in=128, heads=8, codes=64, d_move=48, hidden=384):
+    def __init__(self, d_in=128, heads=8, codes=64, d_move=48, hidden=384, reply=False):
         super().__init__()
-        self.heads, self.codes = heads, codes
+        self.heads, self.codes, self.reply = heads, codes, reply
         self.e_from = nn.Embedding(64, d_move)
         self.e_to = nn.Embedding(64, d_move)
         self.e_promo = nn.Embedding(5, d_move)
         self.net = nn.Sequential(nn.Linear(d_in + d_move, hidden), nn.GELU(),
                                  nn.Linear(hidden, hidden), nn.GELU(),
-                                 nn.Linear(hidden, heads * codes))
+                                 nn.Linear(hidden, heads * codes * (2 if reply else 1)))
 
     def forward(self, phi, mids):
         m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
-        return self.net(torch.cat([phi, m], -1)).view(len(phi), self.heads, self.codes)
+        out = self.net(torch.cat([phi, m], -1))
+        if self.reply:
+            out = out.view(len(phi), 2, self.heads, self.codes)
+            return out[:, 0], out[:, 1]              # (child codes, after-reply codes)
+        return out.view(len(phi), self.heads, self.codes)
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--steps", type=int, default=6000)
+    ap.add_argument("--reply", action="store_true",
+                    help="v2 DENIAL substrate: second output head predicts the codes after "
+                         "the OPPONENT'S observed reply (labels free from corpus triples); "
+                         "'what move prevents this concept change' = argmin over this head")
     ap.add_argument("--game-transitions", type=int, default=0,
                     help="ALSO train on N corpus-derived consecutive-ply transitions "
                          "(Kaveh: feed it a lot more before judging)")
@@ -93,13 +101,17 @@ def main():
             row_to_board)
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
             tokenize as _tok, move_ids)
-        cache = paths.derived(f"game_transitions_{len(tr.tok)}.npz")
+        cache = paths.derived(f"game_transitions_{len(tr.tok)}"
+                              + ("_triples" if args.reply else "") + ".npz")
         if os.path.exists(cache):
             z = np.load(cache)
             GT = {"par": z["par"], "mid": z["mid"]}
         else:
             gor = tr.game_of_row()
-            cand = np.flatnonzero(gor[:-1] == gor[1:])
+            if args.reply:                              # need r, r+1, r+2 all in one game
+                cand = np.flatnonzero((gor[:-2] == gor[1:-1]) & (gor[1:-1] == gor[2:]))
+            else:
+                cand = np.flatnonzero(gor[:-1] == gor[1:])
             rng0 = np.random.default_rng(0)
             cand = cand[rng0.choice(len(cand), min(args.game_transitions, len(cand)),
                                     replace=False)]
@@ -142,13 +154,18 @@ def main():
     if GT is not None:
         print("[dyn] featurizing game-transition rows...", flush=True)
         gp, gc_p, gc_c = [], [], []
+        gc_r = []
         for a in range(0, len(GT["par"]), 4096):
             rr = GT["par"][a:a+4096]
             ph, ic = phi_codes(tr.tok[rr], tr.glob[rr])
             gp.append(ph); gc_p.append(ic)
             _, icc = phi_codes(tr.tok[rr + 1], tr.glob[rr + 1])
             gc_c.append(icc)
+            if args.reply:
+                _, icr = phi_codes(tr.tok[rr + 2], tr.glob[rr + 2])
+                gc_r.append(icr)
         GPHI = torch.cat(gp); GCODE_P = torch.cat(gc_p); GCODE_C = torch.cat(gc_c)
+        GCODE_R = torch.cat(gc_r) if gc_r else None
     print("[dyn] featurizing children...", flush=True)
     CCODE = []
     for a in range(0, len(C_TOK), 4096):
@@ -166,7 +183,8 @@ def main():
     va_ch = np.flatnonzero(val_par[par_of_child])
     print(f"[dyn] transitions: fit {len(tr_ch):,}  val {len(va_ch):,}")
 
-    model = ConceptDynamics(d_in=PPHI.shape[1], heads=pv["heads"], codes=pv["codes"]).to(args.device)
+    model = ConceptDynamics(d_in=PPHI.shape[1], heads=pv["heads"], codes=pv["codes"],
+                            reply=args.reply).to(args.device)
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     MID_t = torch.from_numpy(MID.astype(np.int64))
     GMID_t = torch.from_numpy(GT["mid"].astype(np.int64)) if GT is not None else None
@@ -174,17 +192,27 @@ def main():
     for step in range(args.steps):
         if GT is not None and step % 2 == 1:                 # alternate: shard / game batches
             gs = np.random.randint(0, len(GT["par"]) - n_gval, args.batch)
-            logits = model(GPHI[gs].to(args.device), GMID_t[gs].to(args.device))
-            tgt = GCODE_C[gs].to(args.device)
-            loss = sum(torch.nn.functional.cross_entropy(logits[:, h], tgt[:, h])
-                       for h in range(pv["heads"])) / pv["heads"]
+            out = model(GPHI[gs].to(args.device), GMID_t[gs].to(args.device))
+            if args.reply:
+                lg_c, lg_r = out
+                tgt = GCODE_C[gs].to(args.device); tgt_r = GCODE_R[gs].to(args.device)
+                loss = (sum(torch.nn.functional.cross_entropy(lg_c[:, h], tgt[:, h])
+                            for h in range(pv["heads"]))
+                        + sum(torch.nn.functional.cross_entropy(lg_r[:, h], tgt_r[:, h])
+                              for h in range(pv["heads"]))) / (2 * pv["heads"])
+            else:
+                logits = out
+                tgt = GCODE_C[gs].to(args.device)
+                loss = sum(torch.nn.functional.cross_entropy(logits[:, h], tgt[:, h])
+                           for h in range(pv["heads"])) / pv["heads"]
             opt.zero_grad(); loss.backward(); opt.step()
             if (step + 1) % 1000 == 0:
                 print(f"[dyn] step {step+1}: CE {float(loss):.4f} (game)", flush=True)
             continue
         sel = tr_ch[np.random.randint(0, len(tr_ch), args.batch)]
         pi = par_of_child[sel]
-        logits = model(PPHI[pi].to(args.device), MID_t[sel].to(args.device))
+        out = model(PPHI[pi].to(args.device), MID_t[sel].to(args.device))
+        logits = out[0] if args.reply else out
         tgt = CCODE[sel].to(args.device)
         loss = sum(torch.nn.functional.cross_entropy(logits[:, h], tgt[:, h])
                    for h in range(pv["heads"])) / pv["heads"]
@@ -196,7 +224,8 @@ def main():
     with torch.no_grad():
         sel = va_ch[np.random.randint(0, len(va_ch), 20000)]
         pi = par_of_child[sel]
-        logits = model(PPHI[pi].to(args.device), MID_t[sel].to(args.device))
+        out = model(PPHI[pi].to(args.device), MID_t[sel].to(args.device))
+        logits = out[0] if args.reply else out
         pred = logits.argmax(-1).cpu()
         tgt = CCODE[sel]; par = PCODE[pi]
     acc = (pred == tgt).float().mean(0)
@@ -209,9 +238,23 @@ def main():
         print(f"  head {h}: model {acc[h]:.3f}  copy {copy_acc[h]:.3f}")
     print(f"[dyn] FLIPS (codes that change, {flip_base:.1%} of slots): "
           f"model predicts the new code {float(flip_recall):.1%} of the time (copy: 0%)")
+    if args.reply and GT is not None:
+        with torch.no_grad():
+            gs = np.arange(len(GT["par"]) - n_gval, len(GT["par"]))
+            _, lg_r = model(GPHI[gs].to(args.device), GMID_t[gs].to(args.device))
+            pr_r = lg_r.argmax(-1).cpu()
+            tr_r = GCODE_R[gs]; pa_r = GCODE_P[gs]
+        acc_r = float((pr_r == tr_r).float().mean())
+        copy_r = float((pa_r == tr_r).float().mean())
+        ch_r = (tr_r != pa_r)
+        fr = float((pr_r[ch_r] == tr_r[ch_r]).float().mean())
+        print(f"[dyn] REPLY head (2 plies out, held-out): acc {acc_r:.3f} vs copy {copy_r:.3f}; "
+              f"flip-recall {fr:.1%}")
     if args.save:
         torch.save({"state_dict": model.state_dict(), "heads": pv["heads"],
-                    "codes": pv["codes"], "d_in": PPHI.shape[1]}, base + "_dyn.pt")
+                    "codes": pv["codes"], "d_in": PPHI.shape[1],
+                    "reply": args.reply},
+                   base + ("_dyn2.pt" if args.reply else "_dyn.pt"))
         print(f"[dyn] saved {base}_dyn.pt")
 
 
