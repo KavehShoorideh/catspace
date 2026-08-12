@@ -11981,3 +11981,16 @@ committor; jqt sidecar ckpt (_jqt.pt) saved atomically each eval, never inside t
   zB 14/32, quasi 253->3.7. 1.15 s/step -> jqt-pairs/goals trimmed 192->128 for the full run.
 - FULL RUN BUNDLE (no-one-lever rule, recorded): champion v3 recipe + JQT (8x64, w 3/1/3/2/2)
   + stratified balance sampling. 20k steps -> reach_jqt1.
+
+## 2026-08-12 — turn-contrast term built (both rulers), pending labels + next run
+Kaveh: "side to move matters for distance, and for probability." Root cause of sensitivity
+0.000: zero minimal pairs in the corpus (multiplicity 0.6%) -- the flag is redundant given the
+pieces, so its pathway atrophied; distillation could not fix it (single positions, natural turns).
+Built: gen_search_labels --turn-contrast (null-move counterpart, ep cleared, illegal-flip
+skipped, BOTH members labeled by our own depth-2 search -- no oracle) + trainer --w-turnpair:
+  dB: soft CE toward each member's resolved committor (qdistill form, absolute -- proven);
+  dA: anchored_pairwise_rank per decisive pole, one-tempo log-gap 0.35, tie-safe (no push when
+      resolved |dP| <= 0.05), draw pole untouched.
+Interaction addendum: relative-only on dA (cannot fight the walls gauge); counterpart rows ride
+a separate forward and never enter walls/gas/basin (a null-move state must not become "reachable"
+in the geometry); mirror-blind. Labels generate when the GPU frees; bundles into the next run.
