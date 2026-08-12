@@ -584,6 +584,118 @@ class KittyChess:
         rows.sort(key=lambda r: r["value"], reverse=True)
         return rows
 
+    def search_coherent(self, board, budget=1.5, mass_floor=0.01, tau_m=0.35,
+                        batch_cap=384):
+        """COHERENCE-BOUNDED SEARCH (Kaveh 2026-08-11: 'depth has to go as far as the
+        coherence allows'). Each node carries P(reach) = product of move probabilities along
+        its path, where a mover's move distribution = softmax(their child values / tau_m) --
+        the probability head's worldview as a policy prior. The frontier is expanded in order
+        of P(reach); expansion STOPS where the mass frays below `mass_floor`. Forced sequences
+        (replies near probability 1) run 8-12 plies deep; quiet positions stay shallow -- the
+        tree's shape IS the position's forcingness. Values back up as minimax for the move
+        choice; returns rows like search() plus row['preach'] and row['depth_used']."""
+        import heapq, time as _time
+        deadline = _time.time() + budget
+        if self._terminal_value(board) is not None or not list(board.legal_moves):
+            return []
+        N = {"b": [board.copy(stack=False)], "par": [-1], "mv": [None], "kids": [None],
+             "val": [0.0], "preach": [1.0]}
+        heap = [(-1.0, 0)]
+        P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"], self.pi["LOSS"]]].to(self.device)
+
+        def backup(idx):
+            while idx != -1:
+                ks = N["kids"][idx]
+                if ks:
+                    N["val"][idx] = max(-N["val"][c] for c in ks)
+                idx = N["par"][idx]
+
+        while heap and _time.time() < deadline:
+            # pop a batch of the most-reachable unexpanded nodes above the floor
+            targets = []
+            while heap and len(targets) < batch_cap:
+                pr, idx = heapq.heappop(heap)
+                if -pr < mass_floor and targets:
+                    heapq.heappush(heap, (pr, idx))
+                    break
+                if N["kids"][idx] is None:
+                    targets.append(idx)
+            if not targets:
+                break
+            new_eval, toks, globs = [], [], []
+            for t in targets:
+                b = N["b"][t]
+                kid_ids = []
+                for mv in b.legal_moves:
+                    b.push(mv)
+                    cb = b.copy(stack=False)
+                    b.pop()
+                    ci = len(N["b"])
+                    N["b"].append(cb); N["par"].append(t); N["mv"].append(mv)
+                    N["kids"].append(None); N["val"].append(0.0); N["preach"].append(0.0)
+                    kid_ids.append(ci)
+                    tv = self._terminal_value(cb)
+                    if tv is not None:
+                        N["val"][ci] = tv
+                        N["kids"][ci] = []
+                    else:
+                        cached = self._mcache.get(cb.fen())
+                        if cached is not None:
+                            N["val"][ci] = cached
+                        else:
+                            new_eval.append(ci)
+                            tk, gl = tokenize(cb)
+                            toks.append(tk); globs.append(gl)
+                N["kids"][t] = kid_ids
+            for a in range(0, len(new_eval), 4096):
+                with torch.no_grad():
+                    z = self._embed(toks[a:a+4096], globs[a:a+4096])
+                    D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                         for k2 in range(3)]
+                for j in range(len(D[0])):
+                    ci = new_eval[a + j]
+                    cb = N["b"][ci]
+                    if self.white_pov:
+                        iw, il = (0, 2) if cb.turn else (2, 0)
+                        m = min(D[1][j], D[il][j]) - D[iw][j]
+                    else:
+                        m = min(D[1][j], D[0][j]) - D[2][j]
+                    N["val"][ci] = float(m)
+                    self._mcache[cb.fen()] = float(m)
+            # priors: mover picks among children ~ softmax(-child_val / tau) (child vals are
+            # the CHILD-mover's POV, so the parent's preference is the negation)
+            for t in targets:
+                ks = N["kids"][t]
+                if not ks:
+                    continue
+                import numpy as _np
+                sc = _np.array([-N["val"][c] for c in ks]) / tau_m
+                sc -= sc.max()
+                pr = _np.exp(sc); pr /= pr.sum()
+                depth_t = 0
+                cur = t
+                while cur != -1:
+                    depth_t += 1; cur = N["par"][cur]
+                for c, pc in zip(ks, pr):
+                    N["preach"][c] = N["preach"][t] * float(pc)
+                    # coherence floor beyond a 2-ply minimum (tactics need >= 2 plies even
+                    # when the prior is flat -- the prior's flatness is the sibling problem)
+                    if N["kids"][c] is None and (depth_t <= 2
+                                                 or N["preach"][c] >= mass_floor):
+                        heapq.heappush(heap, (-N["preach"][c], c))
+                backup(t)
+        rows = []
+        for c in (N["kids"][0] or []):
+            pv, idx = [N["mv"][c]], c
+            while N["kids"][idx]:
+                nxt = max(N["kids"][idx], key=lambda x: -N["val"][x])
+                pv.append(N["mv"][nxt]); idx = nxt
+            rows.append({"mv": N["mv"][c], "value": float(-N["val"][c]), "pv": pv,
+                         "preach": float(N["preach"][c]), "resid": None,
+                         "depth_used": len(pv)})
+        rows.sort(key=lambda r: r["value"], reverse=True)
+        return rows
+
     class SearchStop(Exception):
         """raised mid-search when the caller's stop() turns true (navigation cancelled it)."""
 
