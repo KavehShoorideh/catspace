@@ -152,10 +152,13 @@ def main():
     eng = KittyChess(args.ckpt, args.device)
     sel = Selector(d_in=pv["d_in"], heads=pv["heads"], codes=pv["codes"],
                    deny=args.deny).to(args.device)
-    sel_path = base + "_selector.pt"
+    sel_path = base + ("_selector_deny.pt" if args.deny else "_selector.pt")
     if os.path.exists(sel_path):
-        sel.load_state_dict(torch.load(sel_path, map_location=args.device))
-        print("[srl] resumed selector")
+        try:
+            sel.load_state_dict(torch.load(sel_path, map_location=args.device))
+            print("[srl] resumed selector")
+        except Exception as e:
+            print(f"[srl] fresh selector (resume mismatch: {type(e).__name__})")
     opt = torch.optim.Adam(sel.parameters(), lr=args.lr)
     pl = Planner(eng, vq, dyn, sel, K=args.K, H=args.H, lam=args.lam, device=args.device)
     rng = random.Random(args.seed)
