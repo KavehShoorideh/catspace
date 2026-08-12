@@ -1571,7 +1571,10 @@ def main():
     # running those every step would roughly double the wall clock to measure the same thing.
     step_log = open(f"{args.out}_steps.jsonl", "a", buffering=1 << 16)
 
+    _last_step = [0]
+
     def step_fn(model, step):
+        _last_step[0] = step
         # Profile only on eval steps: _sync() serialises the device and would otherwise tax every
         # step to measure it (observer effect on the very number we are optimising).
         prof = (step % args.eval_every == 0) or step == 1
@@ -1685,6 +1688,13 @@ def main():
             __import__("os").replace(_tmp, f"{args.out}_jqt.pt")
         # Sparsity as an EXACT count, which only means anything because prox_l1 makes true zeros.
         g["l1_support"] = int(model.input_support().sum())
+        # EVERY gate metric also lands in a plain file (Kaveh 2026-08-12: "keep track of all
+        # metrics for all training steps"). MLflow already gets these, but it degrades to a
+        # no-op when unavailable -- and a silent no-op is exactly how metrics get lost.
+        with open(f"{args.out}_gates.jsonl", "a") as _gf:
+            _gf.write(json.dumps({"s": _last_step[0],
+                                  **{k: (round(float(v), 6) if isinstance(v, (int, float))
+                                         else v) for k, v in g.items()}}) + "\n")
         # DIRECT ratchet readout, free here: the observed forward distance against its own reversal.
         g["rev_ratio"] = float(met["d_rev"] / max(met["d_fwd"], 1e-6))
         model.train()
