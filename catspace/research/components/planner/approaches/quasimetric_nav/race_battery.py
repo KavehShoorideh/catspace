@@ -118,6 +118,24 @@ def main():
     print(f"[race] promotion concept resolved: h{h_g}/c{c_g} "
           f"(flips {flips.max()}/{n_res} = {flips.max()/max(n_res,1):.0%} consistent)")
 
+    # DIRECT RULER PROBE (no planner): does P(activate promotion-concept) from the CDB
+    # ruler alone separate TB-won from drawn races? This grades the JQT rulers themselves.
+    import torch as _t
+    ys_r, ps_r = [], []
+    with _t.no_grad():
+        for b, _k, tb_win in cases:
+            z_us, _ = gq.state_embed(b)
+            A = gq.jqt.anchors_for(_t.tensor([[int(h_g), int(c_g)]], device=gq.device)).float()
+            dB = eng.net.dB(z_us[None], A)
+            ps_r.append(float(_t.sigmoid(gq.jqt.activation_logit(dB))))
+            ys_r.append(tb_win)
+    ys_r, ps_r = np.array(ys_r), np.array(ps_r)
+    o = np.argsort(ps_r); rk = np.empty(len(ps_r)); rk[o] = np.arange(len(ps_r))
+    n1, n0 = int(ys_r.sum()), int((1 - ys_r).sum())
+    auc_r = float((rk[ys_r == 1].sum() - n1 * (n1 - 1) / 2) / max(n1 * n0, 1))
+    print(f"[race] RULER-ONLY  P(activate promo) AUC vs oracle: {auc_r:.3f}  "
+          f"(mean p won {ps_r[ys_r==1].mean():.2f} vs drawn {ps_r[ys_r==0].mean():.2f})")
+
     former = SubgoalFormer(n_head=gq.H, n_code=gq.C)
     if args.former:
         former.load_state_dict(torch.load(args.former, map_location="cpu"))

@@ -12041,3 +12041,17 @@ All unit-tested, training pending reach_jqt2 gates:
 - README: personal content removed, name unexplained, Architecture section with full
   mermaid diagram; docs/SUBGOALFORMER.md completed (output contract, gradient boundaries,
   alert interface, search-toward-a-subgoal); artifact diagram updated.
+
+## 2026-08-12 — mid-train probes on the reach_jqt2 ladder (step ~10.5k of 20k)
+Checkpoint ladder: every 500 steps + _latest + _jqt sidecar; probeable without stopping.
+- probe_turn_sensitivity.py (NEW canonical probe; null-move pairs, committor E + dA readouts).
+  CLARIFICATION/RETRACTION: under THIS metric v3's baseline is 0.027, not the historical
+  0.000 -- the old number came from a narrower inline probe; claims about "sensitivity 0.000"
+  are conditional on that older metric. jqt2 mid-train: E-sensitivity 0.032 (+20% vs v3),
+  dA-sensitivity 0.038 (below v3's 0.060); TB tempo-decisive subset underpowered (4 pairs,
+  both models 4/4 right-way) -- needs a TB-dense sampling mode for power.
+- race_battery --ruler-only (no planner): P(activate promotion-concept) from the CDB ruler
+  alone vs the Syzygy oracle: AUC 0.605 (won 0.70 vs drawn 0.66) on 146 races. Above chance
+  mid-train; the number SubgoalFormer training exists to push toward 1. Note: the empirical
+  promotion-concept resolver reads h2/c4 at 49% consistency on the mid-churn jqt2 codebook
+  (vs 77% on frozen v3 codes) -- resolver consistency is itself a codebook-stability metric.
