@@ -744,7 +744,7 @@ class PairSampler:
 
     def __init__(self, tr: Trajectories, games: np.ndarray, seed: int = 0,
                  cov: np.ndarray | None = None, repeats: tuple | None = None,
-                 min_ply: int = 0):
+                 min_ply: int = 0, row_weight: np.ndarray | None = None):
         """`min_ply` DROPS the first plies of every game, and for the dynamics-conditioned
         readouts it is not optional -- it must be 8.
 
@@ -792,6 +792,28 @@ class PairSampler:
         self.rows = (np.arange(int(self.length.sum()), dtype=np.int64)
                      - np.repeat(off, self.length) + np.repeat(self.start, self.length))
         self.game_of_row = tr.game_of_row()
+        # STRATIFIED ANCHOR WEIGHTS (Kaveh 2026-08-12: "make sure our training data is balanced
+        # ... opening/midgame/endgame, endgame types, material classes, W/L/D"): row_weight is a
+        # per-corpus-row inverse-stratum-frequency weight (audit_data_balance --save). The ANCHOR
+        # i of each triple is drawn weight-proportional via one cumsum + searchsorted; j and k
+        # stay uniform-after-anchor, so triple geometry and the walls bracket are untouched.
+        # None = the historical length-weighted behavior, byte-identical.
+        self.row_w = None
+        if row_weight is not None:
+            pos = self.rows - np.repeat(self.start, self.length)           # ply index in game
+            Lr = np.repeat(self.length, self.length)                       # game length per row
+            self.row_pos, self.row_L = pos, Lr
+            w = np.asarray(row_weight, np.float64)[self.rows]
+            w3 = w * (pos < Lr - 2)                                        # triple-eligible
+            wf = w * (pos < Lr - 1)                                        # forward-eligible
+            self.cumw3 = np.cumsum(w3); self.totw3 = float(self.cumw3[-1])
+            self.cumwf = np.cumsum(wf); self.totwf = float(self.cumwf[-1])
+            self.row_w = w
+
+    def _weighted_anchor(self, n, cum, tot):
+        fi = np.searchsorted(cum, self.rng.random(n) * tot, side="right")
+        fi = fi.clip(0, len(self.rows) - 1)
+        return self.rows[fi], self.row_pos[fi], self.row_L[fi]
 
     def _pick_games(self, n):
         u = self.rng.random(n) * self.total
@@ -799,6 +821,10 @@ class PairSampler:
 
     def forward(self, n):
         """(ia, ib, gap): a before b in the same game. OBSERVED reachable, gap plies apart."""
+        if self.row_w is not None:
+            ri, pos, L = self._weighted_anchor(n, self.cumwf, self.totwf)
+            j = pos + 1 + (self.rng.random(n) * (L - 1 - pos)).astype(np.int64)
+            return ri, ri + (j - pos), (j - pos).astype(np.int64)
         k = self._pick_games(n)
         L = self.length[k]
         i = (self.rng.random(n) * (L - 1)).astype(np.int64)
@@ -814,6 +840,11 @@ class PairSampler:
         Sampling a source with both a real future (k) and a real past (i) supplies exactly that,
         and it does so from three encoder rows instead of four.
         """
+        if self.row_w is not None:
+            ri, pos, L = self._weighted_anchor(n, self.cumw3, self.totw3)
+            j = pos + 1 + (self.rng.random(n) * (L - 2 - pos)).astype(np.int64)
+            k = j + 1 + (self.rng.random(n) * (L - 1 - j)).astype(np.int64)
+            return ri, ri + (j - pos), ri + (k - pos)
         u = self.rng.random(n) * self.total3
         g = np.searchsorted(self.cum3, u, side="right").clip(0, len(self.games) - 1)
         L = self.length[g]
@@ -828,6 +859,9 @@ class PairSampler:
         'shouldn't we just train on every adjacent triplet?'). One ply cannot contain a blunder
         *between* its endpoints: the observed gap IS the distance. Long range then arrives by
         composition, never by decree."""
+        if self.row_w is not None:
+            ri, _, _ = self._weighted_anchor(n, self.cumw3, self.totw3)
+            return ri, ri + 1, ri + 2
         u = self.rng.random(n) * self.total3
         g = np.searchsorted(self.cum3, u, side="right").clip(0, len(self.games) - 1)
         L = self.length[g]

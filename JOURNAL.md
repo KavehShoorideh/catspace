@@ -11966,3 +11966,18 @@ PAIRWISE INTERACTION REVIEW (rule: every new term vs the stack, before launch):
 - take-2 scar re-avoided TWICE: optimizer constructed after attach_poles AND after jqt.
 Gates for the smoke: eff_rank (trunk+arms), codebook perplexity (logged), basin_spread, val
 committor; jqt sidecar ckpt (_jqt.pt) saved atomically each eval, never inside the field ckpt.
+
+## 2026-08-12 — corpus balance audit + stratified sampling; JQT smoke PASS; full run launched
+- AUDIT (audit_data_balance.py, printed verdicts): outcomes BALANCED (37.6/28.1/34.4 W/D/L,
+  1.3x); material well-spread (even 32.3%, signed classes 7.9-13.4%, 4.1x); phase middlegame-
+  heavy (15.2/60.4/24.3, 4.0x); endgame types long-tailed (100 signatures, top-12 ratio 3.5x;
+  RR 98% draw, R-only 50/3/47). Weights saved: 63 phase x outcome x material strata, clipped
+  [0.1,10].
+- FIX: PairSampler stratified ANCHOR weights (row_weight; cumsum+searchsorted, j/k uniform-
+  after-anchor so walls brackets untouched; TRAIN sampler only). Measured on 200k triples:
+  anchors 15.6/61.0/23.4 -> 28.6/39.6/31.7 phase, draw-share 28 -> 37.8%, triple integrity 100%.
+- JQT SMOKE (600 steps): PASS. All five terms alive (vqrec 2.13->0.31, cda 1.80->0.49, cdb
+  1.42->0.91, jepa 0.033 steady -- NOT collapsed), perplexity 2.5->48.5/64, eff_rank phi 54/128
+  zB 14/32, quasi 253->3.7. 1.15 s/step -> jqt-pairs/goals trimmed 192->128 for the full run.
+- FULL RUN BUNDLE (no-one-lever rule, recorded): champion v3 recipe + JQT (8x64, w 3/1/3/2/2)
+  + stratified balance sampling. 20k steps -> reach_jqt1.
