@@ -11917,3 +11917,18 @@ faithfulness architecture became the runtime. Battery: 9/10 (loses only 'punish 
 queen', the sibling-nuance case depth-2 and wave also miss; margin-eval coherent had it).
 The one-case cost buys total decomposability of every evaluation into concepts. Mates/TB
 unaffected (terminal scale dominates). Server redeployed on it.
+
+## 2026-08-12 — v3 promoted; external ladder unmoved; concept-leverage table
+- reach_v3 (champion recipe + tactical distillation, w-qdistill 300) PROMOTED: arena 32.0/60 vs v2
+  (pentanomial 0/0/26/4/0, pair-bootstrap P(score>50%)=0.99), battery no-regression (coherent 9/10,
+  d3 10/10), committor held (CE 0.4651 / top-1 0.822). Registry updated.
+- External ladder (convert mode, 8 winning piece-down starts, coherent 1.5s vs SF 100 nodes, seed 3):
+  v3 0.5/8 (6%), v2 1.0/8 (12%), both 0% conversion. Half a point on 8 games = noise. VERDICT:
+  tactical distillation improved internal head-to-head but did NOT move the external anchor;
+  consistent with turn-sensitivity stuck at 0.000 (single-position labels can't reach the turn flag).
+  Turn-contrast pairs remain the required fix.
+- Concept-leverage table (300k transitions, v2 stack): per-code mean white-POV E-swing on activation.
+  Extremes ±0.04 E/activation (n 683–4.7k), all UNNAMED codes; named material codes mid-table.
+  Saved reach_v2_latest_concept_leverage.npz. Deny selector now requires armed AND harmful-to-mover
+  (|swing|>0.02, sign vs mover). Full v3 concept-stack refit chain launched (VQ->dyn->dyn2->
+  interactions->rates/leverage->server deploy).
