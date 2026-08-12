@@ -248,8 +248,15 @@ def main():
         for dch in decisions:
             logp, a, o = dch[0], dch[1], dch[2]
             gh, gc = dch[4][0], dch[4][1]
-            code_base = float(BR[gh, gc]) if BR is not None else ach_base
-            R = args.a_ach * (a - max(code_base, ach_base * 0.5)) \
+            mode_d = dch[4][2] if len(dch[4]) > 2 else "pursue"
+            if BR is not None:
+                # deny's natural success rate is the COMPLEMENT of activation drift --
+                # scoring deny against pursuit drift let 'deny the improbable' farm ~+0.85
+                # advantage per pick (iter-50 spike: 35%->63% raw as deny share tripled)
+                code_base = float(1.0 - BR[gh, gc]) if mode_d == "deny" else float(BR[gh, gc])
+            else:
+                code_base = ach_base
+            R = args.a_ach * (a - max(code_base, ach_base * 0.5 if mode_d != "deny" else code_base)) \
                 + args.b_out * (o - out_base)
             loss = loss - logp * float(R)
         (loss / len(decisions)).backward()
