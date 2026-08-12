@@ -11853,3 +11853,22 @@ mechanism, now actually trained -- never yet evaluated as features), (2) scoring
 (vs weak SF levels) to convert "parity between our choosers" into an absolute strength scale.
 Scorer scaffold, cold-start fixes, and parity result all committed; scorer NOT shipped (no
 win to justify replacing the simpler chooser).
+
+## 2026-08-11 (night) — Subgoal selector v1: the mechanism works; compute-starved; the
+## planner's chosen vocabulary is the UNNAMED workhorses
+
+First full selector run (60 iters x 16 self-play games vs the scaled dynamics head; chain-gate
+bug ate 3h first -- a timestamp guess in shell glue; killed, relaunched direct). Verdict:
+- LEARNING IS REAL: achievement/iter drifts 10% (first 20) -> 14% (last 10), ending 15-17%,
+  crossing its own baseline late.
+- THE PRUNING WORKED AS DESIGNED: at iter 20 the top picks still included never-achieved
+  subgoals (h3/c51: 23 chosen, 0%); by 60 the cumulative top-7 are ALL 21-26% achieved
+  (h4/c7, h2/c62, h3/c24, h0/c10, h4/c11, h0/c20, h6/c35; 83-96 commitments each) -- the
+  selector discovered the achievable subset and concentrated on it.
+- NONE of its preferred subgoals are our predicate-named codes: the planner plans in the
+  unnamed workhorse concepts. The code explorer (artifact) is the naming tool; the planner
+  just told us which codes to name FIRST.
+- Outcome channel still silent (decisive ~0-5%: pursuit-play does not finish games) --
+  achievement did all the teaching. Next levers: more games/iter (512-way REINFORCE is
+  starved at ~300 decisions/iter), pursuit/cascade alternation so games END, denial actions
+  (dynamics v2), longer horizon for slow concepts.
