@@ -102,6 +102,10 @@ def main():
     ap.add_argument("--K", type=int, default=4)
     ap.add_argument("--H", type=int, default=6)
     ap.add_argument("--lam", type=float, default=0.5)
+    ap.add_argument("--cascade-frac", type=float, default=0.35,
+                    help="per ply, probability of playing the CASCADE move instead of pure "
+                         "pursuit -- games must END for the outcome channel to teach "
+                         "(v1: decisive near zero, outcome silent)")
     ap.add_argument("--a-ach", type=float, default=1.0)
     ap.add_argument("--b-out", type=float, default=1.0)
     ap.add_argument("--lr", type=float, default=1e-3)
@@ -160,7 +164,10 @@ def main():
                     stats.setdefault((gh, gc), [0, 0, 0.0])[0] += 1
                     pending = [(logp, (gh, gc), b.ply() + pl.H, b.turn)]
                 gh, gc = pending[0][1]
-                mv = pl.move_for(b, phi, gh, gc)
+                if rng.random() < args.cascade_frac:
+                    mv = eng.choose(b)
+                else:
+                    mv = pl.move_for(b, phi, gh, gc)
                 if mv is None:
                     break
                 b.push(mv); n_moves += 1
@@ -191,7 +198,11 @@ def main():
             for (h, cde), (n, a2, _) in top:
                 print(f"    h{h}/c{cde}: {n} chosen, {a2/max(n,1):.0%} achieved", flush=True)
     torch.save(sel.state_dict(), sel_path)
-    print(f"[srl] saved {sel_path}")
+    import json as _json
+    _json.dump({f"{h}/{c}": {"chosen": v[0], "achieved": v[1]}
+                for (h, c), v in stats.items()},
+               open(sel_path.replace(".pt", "_stats.json"), "w"))
+    print(f"[srl] saved {sel_path} + stats")
 
 
 if __name__ == "__main__":
