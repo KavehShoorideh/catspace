@@ -1,0 +1,5 @@
+outs:
+- md5: 7650bfcd0c4e4d2cebf5dcb2168a6a47
+  size: 1187
+  hash: md5
+  path: stratified_sfsf_meta.json
