@@ -25,7 +25,7 @@ CASES = [
     ("block the mate threat", "6k1/5ppp/8/8/8/8/1r4PP/R5K1 w - - 0 1", None),
     ("escape the attacked queen", "rnb1kbnr/pppp1ppp/8/8/3q4/2P5/PP1PPPPP/RNBQKBNR b KQkq - 0 1",
      {"d4d8", "d4d6", "d4e5", "d4c5", "d4b6", "d4a4", "d4e4", "d4f4", "d4g4", "d4h4", "d4d5", "d4f6", "d4c4", "d4d3", "d4e3"}),
-    ("mate in 2 (ladder)", "7k/8/8/8/8/8/1R6/K1R5 w - - 0 1", {"b2b7", "c1c7", "b2h2", "c1h1", "b2g2"}),
+    ("mate in 2 (ladder)", "7k/8/8/8/8/8/1R6/K1R5 w - - 0 1", {"b2b7", "c1c7", "b2h2", "c1h1", "b2g2", "c1g1"}),
     ("win the skewered rook", "8/8/8/3k4/8/3r4/3B4/3K3R w - - 0 1", None),
 ]
 

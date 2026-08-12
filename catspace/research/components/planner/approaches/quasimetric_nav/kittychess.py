@@ -226,6 +226,20 @@ class KittyChess:
                 pass
         return None
 
+    def _tb_probe(self, fen):
+        """tablebase probe by fen for the fast (Rust-board) path; None = not covered."""
+        if self.tb is None:
+            return None
+        try:
+            w, dz = self.tb.wdl_dtz(chess.Board(fen))
+            if w is None:
+                return None
+            if w == 0:
+                return 0.0
+            return (1 if w > 0 else -1) * (self.MATE / 2 - abs(dz or 0))
+        except Exception:
+            return None
+
     def turbulence(self, board):
         """QUIESCENCE FROM OUR OWN EVALS (Kaveh 2026-08-11): tau = |E_static(s) - best
         child E (mover-POV)|. Quiet <=> the evaluation agrees with itself one ply deeper;
@@ -617,7 +631,24 @@ class KittyChess:
             return []                       # TB-covered roots still get searched (sanity
                                             # battery: wave/coherent returned NO move at
                                             # <=5 pieces and silently drew ladder games)
-        N = {"b": [board.copy(stack=False)], "par": [-1], "mv": [None], "kids": [None],
+        # RUST MOVEGEN (Kaveh 2026-08-12 "eng fix with a rust chess framework"): cozy-chess
+        # via fastboard.FB -- 13.9x movegen+apply, 3.1x tokenize, zobrist cache keys. Interior
+        # nodes are FB; moves are standard-uci STRINGS converted to chess.Move at the rows.
+        fast = bool(getattr(self, "fastgen", True))
+        if fast:
+            try:
+                from catspace.research.components.planner.approaches.quasimetric_nav.fastboard import FB
+            except Exception:
+                fast = False
+        if fast:
+            try:                       # cozy PANICS on illegal roots (analysis-board setups);
+                root = FB.from_chess(board)   # python-chess path tolerates them
+                root.legal_count()
+            except BaseException:
+                fast = False
+        root = root if fast else board.copy(stack=False)
+        ckey = (lambda x: x.key()) if fast else (lambda x: x.fen())
+        N = {"b": [root], "par": [-1], "mv": [None], "kids": [None],
              "val": [0.0], "preach": [1.0]}
         heap = [(-1.0, 0)]
         P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"], self.pi["LOSS"]]].to(self.device)
@@ -642,25 +673,38 @@ class KittyChess:
             for t in targets:
                 b = N["b"][t]
                 kid_ids = []
-                for mv in b.legal_moves:
-                    b.push(mv)
-                    cb = b.copy(stack=False)
-                    b.pop()
+                if fast:
+                    pairs = b.children()
+                else:
+                    pairs = []
+                    for mv in b.legal_moves:
+                        b.push(mv)
+                        pairs.append((mv, b.copy(stack=False)))
+                        b.pop()
+                for mv, cb in pairs:
                     ci = len(N["b"])
                     N["b"].append(cb); N["par"].append(t); N["mv"].append(mv)
                     N["kids"].append(None); N["val"].append(0.0); N["preach"].append(0.0)
                     kid_ids.append(ci)
-                    tv = self._terminal_value(cb)
+                    tv = (cb.terminal_value(self.MATE, self._tb_probe) if fast
+                          else self._terminal_value(cb))
                     if tv is not None:
                         N["val"][ci] = tv
-                        N["kids"][ci] = []
+                        # TB values are BOUNDS, not mate proofs: DTZ cannot rank equal-dtz
+                        # mates (the ladder case). TB-DECISIVE nodes stay EXPANDABLE at any
+                        # depth so the search can prove the real mate (1e6 > 5e5-scale)
+                        # inside the budget; true game-end terminals and TB draws close.
+                        if abs(tv) < self.MATE and tv != 0.0:
+                            pass                      # leave kids=None -> searchable
+                        else:
+                            N["kids"][ci] = []
                     else:
-                        cached = self._mcache.get(cb.fen())
+                        cached = self._mcache.get(ckey(cb))
                         if cached is not None:
                             N["val"][ci] = cached
                         else:
                             new_eval.append(ci)
-                            tk, gl = tokenize(cb)
+                            tk, gl = cb.tok_glob() if fast else tokenize(cb)
                             toks.append(tk); globs.append(gl)
                 N["kids"][t] = kid_ids
             if self.cvq is not None:
@@ -669,7 +713,7 @@ class KittyChess:
                     vals = self.concept_values(toks[a:a+4096], globs[a:a+4096], turns)
                     for j, ci in enumerate(new_eval[a:a+4096]):
                         N["val"][ci] = vals[j]
-                        self._mcache[N["b"][ci].fen()] = vals[j]
+                        self._mcache[ckey(N["b"][ci])] = vals[j]
             else:
                 for a in range(0, len(new_eval), 4096):
                     with torch.no_grad():
@@ -685,7 +729,7 @@ class KittyChess:
                         else:
                             m = min(D[1][j], D[0][j]) - D[2][j]
                         N["val"][ci] = float(m)
-                        self._mcache[cb.fen()] = float(m)
+                        self._mcache[ckey(cb)] = float(m)
             # priors: mover picks among children ~ softmax(-child_val / tau) (child vals are
             # the CHILD-mover's POV, so the parent's preference is the negation)
             for t in targets:
@@ -710,12 +754,13 @@ class KittyChess:
                 backup(t)
         import math as _math
         import numpy as _np
+        _mvo = (lambda u: chess.Move.from_uci(u)) if fast else (lambda u: u)
         rows = []
         for c in (N["kids"][0] or []):
-            pv, idx = [N["mv"][c]], c
+            pv, idx = [_mvo(N["mv"][c])], c
             while N["kids"][idx]:
                 nxt = max(N["kids"][idx], key=lambda x: -N["val"][x])
-                pv.append(N["mv"][nxt]); idx = nxt
+                pv.append(_mvo(N["mv"][nxt])); idx = nxt
             # FORCING METRICS (Kaveh 2026-08-12, the two-queens game: "choose forcing moves
             # over moves that fray ... where we can premove"). Both come free from the tree:
             # force_h = entropy of the OPPONENT's plausible-reply distribution at this child
@@ -732,14 +777,16 @@ class KittyChess:
                 for r in ks:
                     if N["kids"][r]:
                         for m in N["kids"][r]:
-                            by_uci.setdefault(N["mv"][m].uci(), []).append((r, -N["val"][m]))
+                            _u = N["mv"][m] if fast else N["mv"][m].uci()
+                            by_uci.setdefault(_u, []).append((r, -N["val"][m]))
                 n_rep = sum(1 for r in ks if N["kids"][r])
                 premove = max((min(v for _r, v in lst) for lst in by_uci.values()
                                if len(lst) == n_rep), default=None) if n_rep else None
             else:
-                force_h = _math.log(max(1, len(list(N["b"][c].legal_moves))))
+                force_h = _math.log(max(1, N["b"][c].legal_count() if fast
+                                        else len(list(N["b"][c].legal_moves))))
                 premove = None
-            rows.append({"mv": N["mv"][c], "value": float(-N["val"][c]), "pv": pv,
+            rows.append({"mv": _mvo(N["mv"][c]), "value": float(-N["val"][c]), "pv": pv,
                          "preach": float(N["preach"][c]), "resid": None,
                          "depth_used": len(pv), "force_h": force_h, "premove": premove})
         rows.sort(key=lambda r: r["value"], reverse=True)
