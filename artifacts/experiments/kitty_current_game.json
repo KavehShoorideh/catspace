@@ -1,1 +1,1 @@
-{"san": [], "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", "start_fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", "ptr": 0, "mode": "analysis", "over": null, "moves_uci": []}
+{"san": ["d4", "d5", "Nc3", "Nf6", "Bf4", "Nc6", "Nb5"], "fen": "r1bqkb1r/ppp1pppp/2n2n2/1N1p4/3P1B2/8/PPP1PPPP/R2QKBNR b KQkq - 5 4", "start_fen": null, "ptr": 7, "mode": "analysis", "over": null, "moves_uci": ["d2d4", "d7d5", "b1c3", "g8f6", "c1f4", "b8c6", "c3b5"]}
