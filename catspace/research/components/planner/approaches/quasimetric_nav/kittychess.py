@@ -614,11 +614,8 @@ class KittyChess:
             # pop a batch of the most-reachable unexpanded nodes above the floor
             targets = []
             while heap and len(targets) < batch_cap:
-                pr, idx = heapq.heappop(heap)
-                if -pr < mass_floor and targets:
-                    heapq.heappush(heap, (pr, idx))
-                    break
-                if N["kids"][idx] is None:
+                pr, idx = heapq.heappop(heap)      # floor is enforced at PUSH time; the old
+                if N["kids"][idx] is None:         # pop-side re-check starved waves to 1 node
                     targets.append(idx)
             if not targets:
                 break
