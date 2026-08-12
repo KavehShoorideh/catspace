@@ -466,6 +466,124 @@ class KittyChess:
         rows.sort(key=lambda r: r["value"], reverse=True)
         return rows
 
+    def search_wave(self, board, budget=1.5, waves_cap=64, wave_size=384, explore=1.5):
+        """SELECTIVE WAVE SEARCH (2026-08-11, after full-width batching lost to alpha-beta):
+        batching AND pruning. Batched MCTS-shaped minimax: each wave runs `wave_size` tree
+        descents (negamax-best child + optimism bonus for unexpanded nodes, virtual-loss so
+        descents diverge), collects distinct unexpanded nodes, expands and evaluates ALL their
+        children in one large forward, backs values up. Promising lines run deep; dull ones
+        stay shallow; nothing is hard-pruned -- neglected branches revive when siblings sour
+        (the soft-pruning property the tactical-memory design wants). Returns rows like
+        search()."""
+        import heapq, time as _time
+        deadline = _time.time() + budget
+        N = {"b": [board.copy(stack=False)], "par": [-1], "mv": [None],
+             "kids": [None], "stat": [0.0], "val": [0.0], "term": [None], "vl": [0]}
+        tv = self._terminal_value(board)
+        if tv is not None or not list(board.legal_moves):
+            return []
+        N["term"][0] = None
+
+        def backup(idx):
+            while idx != -1:
+                ks = N["kids"][idx]
+                if ks:
+                    N["val"][idx] = max(-N["val"][c] for c in ks)
+                idx = N["par"][idx]
+
+        def descend():
+            idx = 0
+            while True:
+                ks = N["kids"][idx]
+                if ks is None:                       # unexpanded -> select it
+                    return idx
+                if not ks:                           # terminal
+                    return None
+                best, bestv = None, -1e18
+                for c in ks:
+                    v = -N["val"][c] + (explore if N["kids"][c] is None else 0.0) \
+                        - 0.35 * N["vl"][c]
+                    if v > bestv:
+                        bestv, best = v, c
+                N["vl"][best] += 1
+                idx = best
+
+        expanded_root = False
+        for _w in range(waves_cap):
+            if _time.time() > deadline and expanded_root:
+                break
+            targets = []
+            seen = set()
+            for _ in range(wave_size):
+                t = descend()
+                if t is None:
+                    continue
+                if t not in seen:
+                    seen.add(t); targets.append(t)
+            if not targets:
+                break
+            new_nodes, toks, globs = [], [], []
+            for t in targets:
+                b = N["b"][t]
+                kid_ids = []
+                for mv in b.legal_moves:
+                    b.push(mv)
+                    cb = b.copy(stack=False)
+                    b.pop()
+                    ci = len(N["b"])
+                    for k2, v2 in (("b", cb), ("par", t), ("mv", mv), ("kids", None),
+                                   ("stat", 0.0), ("val", 0.0), ("term", None), ("vl", 0)):
+                        N[k2].append(v2)
+                    kid_ids.append(ci)
+                    tvc = self._terminal_value(cb)
+                    if tvc is not None:
+                        N["term"][ci] = tvc
+                        N["stat"][ci] = tvc
+                        N["val"][ci] = tvc
+                        N["kids"][ci] = []
+                    else:
+                        cached = self._mcache.get(cb.fen())
+                        if cached is not None:
+                            N["stat"][ci] = cached; N["val"][ci] = cached
+                        else:
+                            new_nodes.append(ci)
+                            tk, gl = tokenize(cb)
+                            toks.append(tk); globs.append(gl)
+                N["kids"][t] = kid_ids
+            if new_nodes:
+                P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"],
+                                 self.pi["LOSS"]]].to(self.device)
+                for a in range(0, len(new_nodes), 4096):
+                    with torch.no_grad():
+                        z = self._embed(toks[a:a+4096], globs[a:a+4096])
+                        D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                             for k2 in range(3)]
+                    for j in range(len(D[0])):
+                        ci = new_nodes[a + j]
+                        cb = N["b"][ci]
+                        if self.white_pov:
+                            iw, il = (0, 2) if cb.turn else (2, 0)
+                            m = min(D[1][j], D[il][j]) - D[iw][j]
+                        else:
+                            m = min(D[1][j], D[0][j]) - D[2][j]
+                        N["stat"][ci] = float(m); N["val"][ci] = float(m)
+                        self._mcache[cb.fen()] = float(m)
+            for t in targets:
+                backup(t)
+            for i in range(len(N["vl"])):
+                N["vl"][i] = 0
+            expanded_root = True
+        rows = []
+        for c in (N["kids"][0] or []):
+            pv, idx = [N["mv"][c]], c
+            while N["kids"][idx]:
+                nxt = max(N["kids"][idx], key=lambda x: -N["val"][x])
+                pv.append(N["mv"][nxt]); idx = nxt
+            rows.append({"mv": N["mv"][c], "value": float(-N["val"][c]), "pv": pv,
+                         "resid": None, "depth_used": len(pv)})
+        rows.sort(key=lambda r: r["value"], reverse=True)
+        return rows
+
     class SearchStop(Exception):
         """raised mid-search when the caller's stop() turns true (navigation cancelled it)."""
 
