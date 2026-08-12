@@ -1302,7 +1302,7 @@ def main():
         # grounding stack above is what makes that safe (you cannot collapse while still being
         # forced to predict real outcomes). Recon targets and dE are DETACHED field readings.
         l_vqrec = l_pers = l_jepa = l_cda = l_cdb = torch.zeros((), device=dev)
-        _jqt_perp = -1.0
+        _jqt_perp, _jqt_flip = -1.0, -1.0
         if jqt is not None and jqt_idx.ready():
             jqt.train(model.training)          # val passes must not update the EMA codebooks
             with ph("jqt_sample"):
@@ -1351,8 +1351,11 @@ def main():
                 thit = torch.from_numpy(ghit).to(dev)
                 l_cda = censored_plies_loss(torch.log1p(dA_g), tpl, thit)
                 l_cdb = first_hit_bce(jqt.activation_logit(dB_g), thit)
-                if audit:
-                    _jqt_perp = jqt.perplexity(ids_pc.detach())
+                # per-STEP health timeseries (Kaveh 2026-08-12): perplexity is 8 bincounts and
+                # the flip-rate is one comparison on ids already in hand -- cheap enough for
+                # every step, and flip-rate IS the metastability curve (baseline 0.80/ply).
+                _jqt_perp = jqt.perplexity(ids_pc.detach())
+                _jqt_flip = float((ids_pc[:nP] != ids_pc[nP:2 * nP]).float().mean())
 
         loss = (args.w_mh * l_mh + args.w_mh_cons * l_mh_cons
                 + args.w_mh_bell * l_mh_bell
@@ -1375,7 +1378,7 @@ def main():
         met = {**_audit,
                "vqrec": float(l_vqrec.detach()), "pers": float(l_pers.detach()),
                "jepa": float(l_jepa.detach()), "cda": float(l_cda.detach()),
-               "cdb": float(l_cdb.detach()), "jqt_perp": _jqt_perp,
+               "cdb": float(l_cdb.detach()), "jqt_perp": _jqt_perp, "jqt_flip": _jqt_flip,
                "loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()), "n_wall": _n_wall[0],
                "confine": float(l_conf.detach()),
