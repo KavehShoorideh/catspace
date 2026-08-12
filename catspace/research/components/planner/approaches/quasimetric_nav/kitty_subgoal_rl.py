@@ -100,12 +100,17 @@ class Planner:
             act = torch.log_softmax(src[:, gh], -1)[:, gc].float().cpu().numpy()
         if deny:
             act = -act                                    # minimize the threat's activation
+        # RANK BY THE MISSION, VETO DISASTERS (Kaveh 2026-08-11: "should be the likelihood
+        # of getting to the subgoal" -- the old additive margin blend diluted exactly that).
+        # Pure activation-likelihood ranking; standing is only a veto on catastrophic moves.
         score = act.copy()
-        if self.lam > 0:                                  # safety blend: standing z-score,
-            _, _, E = self.eng.cascade_rank(board)        # scaled to the activation spread
+        if self.lam > 0:
+            _, _, E = self.eng.cascade_rank(board)
             Em = np.array(E) if board.turn else 1.0 - np.array(E)
-            sd = Em.std() if Em.std() > 1e-9 else 1.0
-            score = act + self.lam * ((Em - Em.mean()) / sd) * max(1.0, float(act.std()))
+            z = (Em - Em.mean()) / (Em.std() if Em.std() > 1e-9 else 1.0)
+            vetoed = z < -1.5
+            if not vetoed.all():
+                score[vetoed] = -1e9
         return moves[int(np.argmax(score))]
 
 
@@ -162,6 +167,8 @@ def main():
     print(f"[srl] {len(fens):,} start fens; subgoal space {pv['heads']}x{pv['codes']}")
 
     stats = {}                                            # (h,c) -> [chosen, achieved, plies]
+    events = []                                           # reach-event stream (fen, g, ok)
+    ev_path = base + "_reach_events.jsonl"
     ach_base, out_base = 0.5, 0.0
     for it in range(args.iters):
         decisions = []                                    # (logp, achieved, outcome_signed)
@@ -173,26 +180,33 @@ def main():
                 phi, codes = pl.phi_codes(b)
                 # resolve pending achievements at every ply
                 for pdg in pending[:]:
-                    logp, tgt3, dl, ws = pdg
+                    logp, tgt3, dl, ws, cfen, cply = pdg
                     gh, gc, mode = tgt3
                     hit = codes[gh] == gc
                     if mode == "pursue" and hit:          # pursued concept arrived: success
                         decisions.append([logp, 1.0, None, ws, tgt3, b.ply()])
                         stats.setdefault((mode, gh, gc), [0, 0, 0.0])[1] += 1
+                        events.append({"fen": cfen, "h": gh, "c": gc, "mode": mode,
+                                       "ok": 1, "plies": b.ply() - cply})
                         pending.remove(pdg)
                     elif mode == "deny" and hit:          # denied concept slipped in: failure
                         decisions.append([logp, 0.0, None, ws, tgt3, None])
+                        events.append({"fen": cfen, "h": gh, "c": gc, "mode": mode,
+                                       "ok": 0, "plies": b.ply() - cply})
                         pending.remove(pdg)
                     elif b.ply() >= dl:                   # horizon: pursue fails, deny succeeds
                         ok = 1.0 if mode == "deny" else 0.0
                         if mode == "deny":
                             stats.setdefault((mode, gh, gc), [0, 0, 0.0])[1] += 1
                         decisions.append([logp, ok, None, ws, tgt3, None])
+                        events.append({"fen": cfen, "h": gh, "c": gc, "mode": mode,
+                                       "ok": int(ok), "plies": None})
                         pending.remove(pdg)
                 # COMMITMENT PROTOCOL (smoke bug: K-cadence re-picks silently discarded
                 # unresolved subgoals -- 6 decisions logged where ~140 occurred, all biased
                 # toward instant successes): hold ONE subgoal until it RESOLVES.
                 if not pending:
+                    commit_fen = b.fen()
                     armed = None
                     if args.deny:
                         with torch.no_grad():             # opponent-achievable set (reply head)
@@ -201,7 +215,8 @@ def main():
                             armed = (torch.softmax(lg_r[0], -1) >= args.deny_thr)
                     gh, gc, logp, mode = pl.pick_subgoal(phi, codes, armed=armed)
                     stats.setdefault((mode, gh, gc), [0, 0, 0.0])[0] += 1
-                    pending = [(logp, (gh, gc, mode), b.ply() + pl.H, b.turn)]
+                    pending = [(logp, (gh, gc, mode), b.ply() + pl.H, b.turn, commit_fen,
+                                b.ply())]
                 gh, gc, mode = pending[0][1]
                 if rng.random() < args.cascade_frac:
                     mv = eng.choose(b)
@@ -232,6 +247,12 @@ def main():
               flush=True)
         if (it + 1) % 10 == 0:
             torch.save(sel.state_dict(), sel_path)
+            if events:
+                import json as _json
+                with open(ev_path, "a") as f:
+                    for e in events:
+                        f.write(_json.dumps(e) + "\n")
+                events = []
             top = sorted(stats.items(), key=lambda kv: -kv[1][0])[:8]
             print("[srl] most-chosen subgoals (chosen/achieved):")
             for key, (n, a2, _) in top:
