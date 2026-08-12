@@ -26,7 +26,13 @@ from catspace.io import paths
 from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
 
 
-def engine_move(eng, b, budget=1.5, max_depth=6):
+def engine_move(eng, b, budget=1.5, max_depth=6, wave=False, coherent=True, mc=False):
+    if coherent or wave:
+        rows = eng.search_coherent(b, budget=budget) if coherent \
+            else eng.search_wave(b, budget=budget)
+        if rows and mc:
+            rows = eng.mc_tiebreak(b, rows)
+        return rows[0]["mv"] if rows else None
     deadline = time.time() + budget
     best = None
     for d in range(1, max_depth + 1):
