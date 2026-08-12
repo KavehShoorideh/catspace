@@ -256,7 +256,10 @@ function renderLines(d){
     else if(row.force&&row.force.drop>=0.35)
       top+=`<span style="color:#8f8a82;font-size:11px" title="coherent progress: ${row.force.drop}/ply toward ${row.force.fav==='w'?'white':'black'}-win">→${row.force.drop}</span>`;
     top+=`<span class="mv">${row.line||row.uci}</span></div>`;
-    if(row.dists) top+=`<div class="sub">dW <b>${row.dists[0].toFixed(1)}</b> · dD <b>${row.dists[1].toFixed(1)}</b> · dB <b>${row.dists[2].toFixed(1)}</b></div>`;
+    let sub="";
+    if(row.dists) sub+=`dW <b>${row.dists[0].toFixed(1)}</b> · dD <b>${row.dists[1].toFixed(1)}</b> · dB <b>${row.dists[2].toFixed(1)}</b>`;
+    if(row.cnotes&&row.cnotes.length) sub+=(sub?" &nbsp;·&nbsp; ":"")+`<span style="color:#759900">→ ${row.cnotes.join(", ")}</span>`;
+    if(sub) top+=`<div class="sub">${sub}</div>`;
     div.innerHTML=top;
     div.onclick=()=>api({action:"move",uci:row.uci});
     lb.appendChild(div);});
@@ -417,6 +420,33 @@ class H(BaseHTTPRequestHandler):
                     cmoves, corder, _ = H.eng.cascade_rank(bb)
                     crank = {cmoves[j].uci(): pos for pos, j in enumerate(corder)} if cmoves else {}
 
+                    def _concept_notes(rows_disp):
+                        if H.dyn is None or H.vq is None or not rows_disp:
+                            return
+                        import numpy as _np, torch as _torch
+                        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                            tokenize as _tok, move_ids as _mid)
+                        tk, gl = _tok(bb)
+                        with _torch.no_grad():
+                            phi = H.eng.net.backbone(
+                                _torch.from_numpy(_np.asarray([tk], dtype="int64")).to(H.eng.device),
+                                _torch.from_numpy(_np.asarray([gl], dtype="float32")).to(H.eng.device))
+                            _, pids, _ = H.vq(phi)
+                            mids = _torch.from_numpy(_np.array(
+                                [_mid(r["mv"]) for r in rows_disp], dtype="int64")).to(H.eng.device)
+                            out = H.dyn(phi.expand(len(mids), -1), mids)
+                            logits = out[0] if isinstance(out, tuple) else out
+                            pred = logits.argmax(-1).cpu().numpy()
+                        par = pids[0].cpu().numpy()
+                        for i, r in enumerate(rows_disp):
+                            named, raw = [], []
+                            for h in range(len(par)):
+                                if pred[i][h] != par[h]:
+                                    nms = H.code_names.get((h, int(pred[i][h])))
+                                    (named.append(nms[0]) if nms
+                                     else raw.append(f"h{h}:c{int(pred[i][h])}"))
+                            r["cnotes"] = (named + raw)[:3]
+
                     def publish(rows, d):
                         if H.gen == g:
                             # CASCADE RANKING (Kaveh 2026-08-11): display order = the cascade's
@@ -429,12 +459,16 @@ class H(BaseHTTPRequestHandler):
                             rs = sorted(rows, key=lambda r: (
                                 -round(r["value"] / 2.0),
                                 crank.get(r["mv"].uci(), 999)))
+                            disp = self._rows_to_display(bb, rs, wdl_top=nlines)[:nlines]
+                            try:
+                                _concept_notes(disp)
+                            except Exception:
+                                pass
                             H.an = {**H.an, "g": g, "depth": d,
                                     "rows": [{k: r.get(k) for k in
                                               ("uci", "margin", "tb", "line", "wdl", "dists",
-                                               "force")}
-                                             for r in self._rows_to_display(
-                                                 bb, rs, wdl_top=nlines)[:nlines]],
+                                               "force", "cnotes")}
+                                             for r in disp],
                                     "done": False}
                     try:
                         with H.lock:
@@ -632,7 +666,22 @@ def main():
         H.vq = ConceptVQ(d_in=pv["d_in"], heads=pv["heads"], codes=pv["codes"]).to(args.device)
         H.vq.load_state_dict(pv["state_dict"]); H.vq.eval()
         H.cmap = _json.load(open(base + "_conceptmap.json"))
+        H.code_names = {}
+        for nm, info in H.cmap.items():
+            H.code_names.setdefault((info["head"], info["code"]), []).append(nm)
         print(f"[kitty-server] concept quantizer loaded ({pv['heads']}x{pv['codes']})", flush=True)
+        try:
+            from catspace.research.components.encoder.approaches.reach_probability.experiments.concept_dynamics import (
+                ConceptDynamics)
+            pdyn = _torch.load(base + "_dyn.pt", map_location=args.device, weights_only=False)
+            H.dyn = ConceptDynamics(d_in=pdyn["d_in"], heads=pdyn["heads"],
+                                    codes=pdyn["codes"],
+                                    reply=pdyn.get("reply", False)).to(args.device)
+            H.dyn.load_state_dict(pdyn["state_dict"]); H.dyn.eval()
+            print("[kitty-server] concept dynamics loaded", flush=True)
+        except Exception as e:
+            H.dyn = None
+            print(f"[kitty-server] no dynamics head ({e})", flush=True)
     except Exception as e:
         print(f"[kitty-server] no concept sidecars ({e})", flush=True)
     H.lock = threading.Lock()
