@@ -394,8 +394,11 @@ class H(BaseHTTPRequestHandler):
                 best = None
                 with H.lock:
                     for d in range(1, pd + 1):
-                        rows = H.eng.search(b, depth=d,
-                                            stop=lambda: _time.time() > deadline)
+                        try:
+                            rows = H.eng.search_batched(b, depth=d,
+                                                        stop=lambda: _time.time() > deadline)
+                        except Exception:
+                            break
                         if _time.time() > deadline:
                             if best is None:
                                 best = rows

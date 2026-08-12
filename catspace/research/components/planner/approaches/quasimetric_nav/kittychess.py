@@ -34,8 +34,9 @@ from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb 
 
 class KittyChess:
     def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="cascade",
-                 gate=0.20, head_order=False):
+                 gate=0.20, head_order=False, half=False):
         self.nav = nav          # "db" threat-first | "ab" A-steer+B-gate | "cascade" (2026-08-11)
+        self.qext = True                          # quiescence at the batched horizon (#3)
         self.head_order = head_order            # move-head orders internal search nodes
         self.gate = gate    # cascade gate CALIBRATED 2026-08-11: accuracy-vs-gap is a
                             # VALLEY (89% below 0.01, 77-80% in 0.01-0.2, 89% above 0.2) --
@@ -54,6 +55,14 @@ class KittyChess:
         # net.poles holds untouched init buffers (the frozen 45/65/139 readout). The validated
         # readout is median distance to real terminal boards (export_exemplars.py sidecar,
         # white-POV classes W/D/L). When the sidecar exists it REPLACES the pole readout.
+        if half and device == "mps":
+            try:
+                self.net = self.net.half()
+                self.half = True
+            except Exception:
+                self.half = False
+        else:
+            self.half = False
         exp = (ckpt[:-3] if ckpt.endswith(".pt") else ckpt) + "_exemplars.pt"
         self.ex = None
         import os as _os
@@ -61,6 +70,8 @@ class KittyChess:
             pay_ex = torch.load(exp, map_location=device, weights_only=False)
             self.ex = {k: pay_ex[k].to(device) for k in ("W", "D", "L")}
         self.tb = TB() if use_tb else None
+        self._mcache = {}                        # fen -> leaf margin (speedup #2: deepening
+                                                 # re-pays every level without it)
         if getattr(self.net, "split_head", False):
             self.dist = self.net.dB
         elif getattr(self.net, "dual", False):
@@ -80,6 +91,8 @@ class KittyChess:
     def _embed(self, toks, globs):
         tok_t = torch.from_numpy(np.array(toks).astype(np.int64)).to(self.device)
         glob_t = torch.from_numpy(np.array(globs).astype(np.float32)).to(self.device)
+        if getattr(self, "half", False):
+            glob_t = glob_t.half()
         if self.cond_elo is not None and getattr(self.net, "dual", False):
             cval = (self.cond_elo - 1500.0) / 500.0
             cond = torch.full((len(toks), self.net.qhead.proj_delta.in_features
@@ -342,14 +355,26 @@ class KittyChess:
         leaves = levels[leaf_lv]
         lv_vals = [None] * len(leaves)
         todo, toks, globs = [], [], []
+        qx_parent, qx_boards = [], []            # speedup #3: capture-resolution frontier
         for i, (b, _, _) in enumerate(leaves):
             tv = self._terminal_value(b)
             if tv is not None:
                 lv_vals[i] = tv
+                continue
+            fen = b.fen()
+            hit = self._mcache.get(fen)
+            if hit is not None:
+                lv_vals[i] = hit
             else:
                 todo.append(i)
                 tk, gl = tokenize(b)
                 toks.append(tk); globs.append(gl)
+            if self.qext:
+                for mv in b.legal_moves:
+                    if b.is_capture(mv):
+                        b.push(mv)
+                        qx_parent.append(i); qx_boards.append(b.copy(stack=False))
+                        b.pop()
         P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"], self.pi["LOSS"]]].to(self.device)
         for a in range(0, len(todo), 4096):
             if stop is not None and stop():
@@ -366,6 +391,48 @@ class KittyChess:
                 else:
                     m = min(D[1][j], D[0][j]) - D[2][j]
                 lv_vals[todo[a + j]] = float(m)
+                self._mcache[b.fen()] = float(m)
+        if len(self._mcache) > 400_000:
+            self._mcache.clear()
+        # ---- speedup #3: quiescence at the horizon -- resolve captures one level, leaf
+        # value = best of stand-pat and the capture continuation (mover chooses)
+        if self.qext and qx_boards:
+            q_vals = [None] * len(qx_boards)
+            q_todo, q_toks, q_globs = [], [], []
+            for qi, qb in enumerate(qx_boards):
+                tv = self._terminal_value(qb)
+                if tv is not None:
+                    q_vals[qi] = tv
+                    continue
+                hit = self._mcache.get(qb.fen())
+                if hit is not None:
+                    q_vals[qi] = hit
+                else:
+                    q_todo.append(qi)
+                    tk, gl = tokenize(qb)
+                    q_toks.append(tk); q_globs.append(gl)
+            for a in range(0, len(q_todo), 4096):
+                if stop is not None and stop():
+                    raise KittyChess.SearchStop
+                with torch.no_grad():
+                    z = self._embed(q_toks[a:a+4096], q_globs[a:a+4096])
+                    D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                         for k2 in range(3)]
+                for j in range(len(D[0])):
+                    qb = qx_boards[q_todo[a + j]]
+                    if self.white_pov:
+                        iw, il = (0, 2) if qb.turn else (2, 0)
+                        m = min(D[1][j], D[il][j]) - D[iw][j]
+                    else:
+                        m = min(D[1][j], D[0][j]) - D[2][j]
+                    q_vals[q_todo[a + j]] = float(m)
+                    self._mcache[qb.fen()] = float(m)
+            for qi, pi_ in enumerate(qx_parent):
+                if q_vals[qi] is None or lv_vals[pi_] is None:
+                    continue
+                cont = -q_vals[qi]                # capture continuation, leaf-mover POV
+                if cont > lv_vals[pi_]:
+                    lv_vals[pi_] = cont
         # ---- minimax rollup with stored per-level values
         vals = [None] * len(levels)
         vals[leaf_lv] = lv_vals

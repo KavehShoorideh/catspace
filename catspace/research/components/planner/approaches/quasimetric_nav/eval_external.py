@@ -30,7 +30,10 @@ def engine_move(eng, b, budget=1.5, max_depth=6):
     deadline = time.time() + budget
     best = None
     for d in range(1, max_depth + 1):
-        rows = eng.search(b, depth=d, stop=lambda: time.time() > deadline)
+        try:
+            rows = eng.search_batched(b, depth=d, stop=lambda: time.time() > deadline)
+        except Exception:
+            break
         if time.time() > deadline:
             if best is None:
                 best = rows
