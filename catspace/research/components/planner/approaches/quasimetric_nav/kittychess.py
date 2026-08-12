@@ -34,10 +34,12 @@ from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb 
 
 class KittyChess:
     def __init__(self, ckpt, device="mps", cond_elo=None, use_tb=True, nav="cascade",
-                 gate=0.05, head_order=False):
+                 gate=0.20, head_order=False):
         self.nav = nav          # "db" threat-first | "ab" A-steer+B-gate | "cascade" (2026-08-11)
         self.head_order = head_order            # move-head orders internal search nodes
-        self.gate = gate                         # cascade: E-gap that lets probability decide
+        self.gate = gate    # cascade gate CALIBRATED 2026-08-11: accuracy-vs-gap is a
+                            # VALLEY (89% below 0.01, 77-80% in 0.01-0.2, 89% above 0.2) --
+                            # the old 0.05 trusted the head exactly where it is wrongest
         self.net, pay = load_net(ckpt, device)
         self.cfg = pay["cfg"]
         self.device = device
