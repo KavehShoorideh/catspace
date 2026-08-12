@@ -11894,3 +11894,15 @@ Also tonight: selector v2 (cascade-mix; decisive 16% -- outcome channel alive), 
 reply head + denial selector chained, pursuit ranking purified to pure activation likelihood
 with a catastrophe veto (Kaveh), reach-event logging begun (trains the future P(reach g|s)
 readout), per-line concept annotations live on the analysis board.
+
+## 2026-08-11 (later) — Autopsy: the engine loses on DEPTH, full stop
+
+Blunder classifier over losses vs 100-node SF (referee = 150k-node SF as instrument): every
+sampled blunder (5/5) is HORIZON -- our depth-2 search prefers the losing move, our own
+depth-3 search already prefers the referee's move. Zero EVAL-BLIND (leaves know enough one
+ply deeper), zero SELECTION bugs, and play mode bypasses the cascade entirely so navigation
+was never in the loop. The 1.5s budget completes only depth 2 on the 128-wide trunk; every
+2-move tactic sits one ply past the horizon. Causal test running: same tier at 4s (depth 3).
+Remedies in flight or queued: qdistill (tonight's v3 -- gives depth-2 statics the depth-3
+knowledge), search speed engineering (batched leaf evaluation; 'efficiency later' -- the
+time has come), think-time as the cheap lever.
