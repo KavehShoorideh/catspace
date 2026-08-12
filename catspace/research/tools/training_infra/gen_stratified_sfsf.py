@@ -43,6 +43,11 @@ import numpy as np
 from catspace.io import paths
 from catspace.research.tools.training_infra.gen_piecedown_sfsf import _one_game
 
+
+def _one_indexed(task):
+    """(plan_index, fen, ...) -> (plan_index, _one_game result): id-keyed, collision-proof."""
+    return task[0], _one_game(task)
+
 IMBALANCES = ("even", "pawn", "two_pawns", "exchange", "exch_pawn",
               "minor", "minor_pawn", "rook", "queen")
 PHASES = ("opening", "middle", "endgame")
@@ -117,7 +122,9 @@ def _bases(phase, n, seed):
             except Exception:
                 continue
             if not b.is_check() and not b.is_game_over(claim_draw=True):
-                out.append(b)
+                out.append(b.fen())        # FEN, not Board: a board with a move stack gets
+                                           # silently REBUILT by is_game_over's threefold
+                                           # replay, undoing any manual turn/piece mutation
     else:
         from catspace.research.components.encoder.approaches.reach_probability.src.trajectories import (
             load_sf_games)
@@ -136,7 +143,7 @@ def _bases(phase, n, seed):
             except Exception:
                 continue
             if hit is not None:
-                out.append(hit)
+                out.append(hit.fen())
     rng.shuffle(out)
     return out
 
@@ -171,14 +178,15 @@ def main():
     plan = []                                   # (fen, imbalance, phase, tempo, pair_id)
     pair_id = 0
     for phase in PHASES:
-        bases = _bases(phase, args.starts_per_cell * len(IMBALANCES) * 3, args.seed + hash(phase) % 1000)
+        bases = _bases(phase, args.starts_per_cell * len(IMBALANCES) * 3,
+                       args.seed + 1000 * PHASES.index(phase))   # stable seed (hash() is salted)
         bi = 0
         for imb in IMBALANCES:
             got = 0
             tries = 0
-            while got < args.starts_per_cell and bi < len(bases) and tries < len(bases) * 2:
+            while got < args.starts_per_cell and bi < len(bases):
                 tries += 1
-                b = bases[bi % len(bases)].copy(); bi += 1
+                b = chess.Board(bases[bi]); bi += 1    # stackless; never reuse a base
                 side = bool(rng.integers(0, 2))
                 if not _remove(b, imb, side, rng) or not b.is_valid():
                     continue
@@ -189,19 +197,24 @@ def main():
                 plan.append((fp[1], imb, phase, "flip", pair_id))
                 pair_id += 1; got += 1
             print(f"[strat] {phase:8s} {imb:10s}: {got} pairs", flush=True)
+    for q in range(pair_id):                    # HARD GATE: every pair placement-equal, turn-opposed
+        fa, fb = plan[2 * q][0], plan[2 * q + 1][0]
+        assert fa.split()[0] == fb.split()[0] and fa.split()[1] != fb.split()[1], \
+            f"fork pair {q} corrupt at plan time: {fa} / {fb}"
     print(f"[strat] PLAN: {len(plan):,} games ({pair_id:,} fork pairs) "
-          f"across {len(IMBALANCES)}x{len(PHASES)} cells [{time.time()-t0:.0f}s]", flush=True)
+          f"across {len(IMBALANCES)}x{len(PHASES)} cells; pair gate OK [{time.time()-t0:.0f}s]",
+          flush=True)
 
     syz = str(paths.syzygy_dir())
     order = rng.permutation(len(plan))          # interleave cells so partial output is balanced
-    tasks = [(i, plan[i][0], args.nodes, syz, args.max_plies) for i in order]
-    meta = {plan[i][0]: plan[i][1:] for i in range(len(plan))}
+    tasks = [(int(i), plan[i][0], args.nodes, syz, args.max_plies) for i in order]
     n_done = n_dec = 0
     with mp.get_context("spawn").Pool(args.workers) as pool, \
             open(args.out, "w") as fh, open(args.meta, "w") as mh:
         mh.write("id\timbalance\tphase\ttempo\tpair\n")
-        for fen, res, moves, _ended in pool.imap_unordered(_one_game, tasks, chunksize=2):
-            imb, phase, tempo, pid = meta[fen]
+        for pi, (fen, res, moves, _ended) in pool.imap_unordered(_one_indexed, tasks, chunksize=2):
+            assert fen == plan[pi][0], f"task {pi}: returned fen != plan fen"
+            imb, phase, tempo, pid = plan[pi][1:]      # meta by PLAN INDEX, never by fen
             fh.write(f"{n_done}\t{res}\t{fen}\t{' '.join(moves)}\n")
             mh.write(f"{n_done}\t{imb}\t{phase}\t{tempo}\t{pid}\n")
             n_done += 1; n_dec += res != 0
