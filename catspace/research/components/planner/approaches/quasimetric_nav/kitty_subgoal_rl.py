@@ -40,10 +40,11 @@ from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa imp
 
 
 class Selector(nn.Module):
-    def __init__(self, d_in=128, heads=8, codes=64, hidden=256):
+    def __init__(self, d_in=128, heads=8, codes=64, hidden=256, deny=False):
         super().__init__()
+        self.deny = deny
         self.net = nn.Sequential(nn.Linear(d_in, hidden), nn.GELU(),
-                                 nn.Linear(hidden, heads * codes))
+                                 nn.Linear(hidden, heads * codes * (2 if deny else 1)))
 
     def forward(self, phi):
         return self.net(phi)
@@ -64,27 +65,41 @@ class Planner:
             _, ids, _ = self.vq(phi)
         return phi, ids[0].cpu().numpy()
 
-    def pick_subgoal(self, phi, codes, sample=True):
-        logits = self.sel(phi)[0].view(self.heads, self.codes).clone()
-        for h in range(self.heads):                       # mask already-active codes
-            logits[h, codes[h]] = -1e9
-        flat = logits.view(-1)
+    def pick_subgoal(self, phi, codes, sample=True, armed=None):
+        K = self.heads * self.codes
+        deny = getattr(self.sel, "deny", False)
+        logits = self.sel(phi)[0].view(-1).clone()
+        for h in range(self.heads):                       # mask already-active codes (both modes)
+            logits[h * self.codes + codes[h]] = -1e9
+            if deny:
+                logits[K + h * self.codes + codes[h]] = -1e9
+        if deny and armed is not None:                    # denial only against ARMED threats
+            logits[K:][~armed.view(-1)] = -1e9
         if sample:
-            g = int(torch.distributions.Categorical(logits=flat).sample())
+            g = int(torch.distributions.Categorical(logits=logits).sample())
         else:
-            g = int(flat.argmax())
-        logp = torch.log_softmax(flat, 0)[g]
-        return g // self.codes, g % self.codes, logp
+            g = int(logits.argmax())
+        logp = torch.log_softmax(logits, 0)[g]
+        mode = "deny" if (deny and g >= K) else "pursue"
+        g = g % K
+        return g // self.codes, g % self.codes, logp, mode
 
-    def move_for(self, board, phi, gh, gc):
+    def move_for(self, board, phi, gh, gc, deny=False):
         moves = list(board.legal_moves)
         if not moves:
             return None
         mids = torch.from_numpy(np.array([move_ids(m) for m in moves],
                                          dtype=np.int64)).to(self.device)
         with torch.no_grad():
-            logits = self.dyn(phi.expand(len(moves), -1), mids)
-            act = torch.log_softmax(logits[:, gh], -1)[:, gc].float().cpu().numpy()
+            out = self.dyn(phi.expand(len(moves), -1), mids)
+            if isinstance(out, tuple):
+                lg_c, lg_r = out
+                src = lg_r if deny else lg_c              # denial steers the REPLY landscape
+            else:
+                src = out
+            act = torch.log_softmax(src[:, gh], -1)[:, gc].float().cpu().numpy()
+        if deny:
+            act = -act                                    # minimize the threat's activation
         score = act.copy()
         if self.lam > 0:                                  # safety blend: standing z-score,
             _, _, E = self.eng.cascade_rank(board)        # scaled to the activation spread
@@ -102,6 +117,13 @@ def main():
     ap.add_argument("--K", type=int, default=4)
     ap.add_argument("--H", type=int, default=6)
     ap.add_argument("--lam", type=float, default=0.5)
+    ap.add_argument("--deny", action="store_true",
+                    help="v2 action space: PURSUE a concept or DENY one (keep an opponent-"
+                         "achievable concept OFF for the horizon). Requires the reply-head "
+                         "dynamics (_dyn2.pt). Denial only scores against ARMED threats: at "
+                         "commitment the reply head must rate the concept opponent-achievable "
+                         "(P >= deny-thr) -- denying the impossible cannot farm reward.")
+    ap.add_argument("--deny-thr", type=float, default=0.05)
     ap.add_argument("--cascade-frac", type=float, default=0.35,
                     help="per ply, probability of playing the CASCADE move instead of pure "
                          "pursuit -- games must END for the outcome channel to teach "
@@ -117,11 +139,14 @@ def main():
     pv = torch.load(base + "_vq.pt", map_location=args.device, weights_only=False)
     vq = ConceptVQ(d_in=pv["d_in"], heads=pv["heads"], codes=pv["codes"]).to(args.device)
     vq.load_state_dict(pv["state_dict"]); vq.eval()
-    pd_ = torch.load(base + "_dyn.pt", map_location=args.device, weights_only=False)
-    dyn = ConceptDynamics(d_in=pd_["d_in"], heads=pd_["heads"], codes=pd_["codes"]).to(args.device)
+    dyn_path = base + ("_dyn2.pt" if args.deny else "_dyn.pt")
+    pd_ = torch.load(dyn_path, map_location=args.device, weights_only=False)
+    dyn = ConceptDynamics(d_in=pd_["d_in"], heads=pd_["heads"], codes=pd_["codes"],
+                          reply=pd_.get("reply", False)).to(args.device)
     dyn.load_state_dict(pd_["state_dict"]); dyn.eval()
     eng = KittyChess(args.ckpt, args.device)
-    sel = Selector(d_in=pv["d_in"], heads=pv["heads"], codes=pv["codes"]).to(args.device)
+    sel = Selector(d_in=pv["d_in"], heads=pv["heads"], codes=pv["codes"],
+                   deny=args.deny).to(args.device)
     sel_path = base + "_selector.pt"
     if os.path.exists(sel_path):
         sel.load_state_dict(torch.load(sel_path, map_location=args.device))
@@ -148,26 +173,40 @@ def main():
                 phi, codes = pl.phi_codes(b)
                 # resolve pending achievements at every ply
                 for pdg in pending[:]:
-                    logp, (gh, gc), dl, ws = pdg
-                    if codes[gh] == gc:
-                        decisions.append([logp, 1.0, None, ws, (gh, gc), b.ply()])
-                        st = stats.setdefault((gh, gc), [0, 0, 0.0]); st[1] += 1
+                    logp, tgt3, dl, ws = pdg
+                    gh, gc, mode = tgt3
+                    hit = codes[gh] == gc
+                    if mode == "pursue" and hit:          # pursued concept arrived: success
+                        decisions.append([logp, 1.0, None, ws, tgt3, b.ply()])
+                        stats.setdefault((mode, gh, gc), [0, 0, 0.0])[1] += 1
                         pending.remove(pdg)
-                    elif b.ply() >= dl:
-                        decisions.append([logp, 0.0, None, ws, (gh, gc), None])
+                    elif mode == "deny" and hit:          # denied concept slipped in: failure
+                        decisions.append([logp, 0.0, None, ws, tgt3, None])
+                        pending.remove(pdg)
+                    elif b.ply() >= dl:                   # horizon: pursue fails, deny succeeds
+                        ok = 1.0 if mode == "deny" else 0.0
+                        if mode == "deny":
+                            stats.setdefault((mode, gh, gc), [0, 0, 0.0])[1] += 1
+                        decisions.append([logp, ok, None, ws, tgt3, None])
                         pending.remove(pdg)
                 # COMMITMENT PROTOCOL (smoke bug: K-cadence re-picks silently discarded
                 # unresolved subgoals -- 6 decisions logged where ~140 occurred, all biased
                 # toward instant successes): hold ONE subgoal until it RESOLVES.
                 if not pending:
-                    gh, gc, logp = pl.pick_subgoal(phi, codes)
-                    stats.setdefault((gh, gc), [0, 0, 0.0])[0] += 1
-                    pending = [(logp, (gh, gc), b.ply() + pl.H, b.turn)]
-                gh, gc = pending[0][1]
+                    armed = None
+                    if args.deny:
+                        with torch.no_grad():             # opponent-achievable set (reply head)
+                            nullm = torch.zeros((1, 3), dtype=torch.long, device=args.device)
+                            _, lg_r = dyn(phi, nullm)
+                            armed = (torch.softmax(lg_r[0], -1) >= args.deny_thr)
+                    gh, gc, logp, mode = pl.pick_subgoal(phi, codes, armed=armed)
+                    stats.setdefault((mode, gh, gc), [0, 0, 0.0])[0] += 1
+                    pending = [(logp, (gh, gc, mode), b.ply() + pl.H, b.turn)]
+                gh, gc, mode = pending[0][1]
                 if rng.random() < args.cascade_frac:
                     mv = eng.choose(b)
                 else:
-                    mv = pl.move_for(b, phi, gh, gc)
+                    mv = pl.move_for(b, phi, gh, gc, deny=(mode == "deny"))
                 if mv is None:
                     break
                 b.push(mv); n_moves += 1
@@ -195,12 +234,14 @@ def main():
             torch.save(sel.state_dict(), sel_path)
             top = sorted(stats.items(), key=lambda kv: -kv[1][0])[:8]
             print("[srl] most-chosen subgoals (chosen/achieved):")
-            for (h, cde), (n, a2, _) in top:
-                print(f"    h{h}/c{cde}: {n} chosen, {a2/max(n,1):.0%} achieved", flush=True)
+            for key, (n, a2, _) in top:
+                lbl = (f"{key[0]} h{key[1]}/c{key[2]}" if len(key) == 3
+                       else f"h{key[0]}/c{key[1]}")
+                print(f"    {lbl}: {n} chosen, {a2/max(n,1):.0%} achieved", flush=True)
     torch.save(sel.state_dict(), sel_path)
     import json as _json
-    _json.dump({f"{h}/{c}": {"chosen": v[0], "achieved": v[1]}
-                for (h, c), v in stats.items()},
+    _json.dump({(f"{k[0]}:{k[1]}/{k[2]}" if len(k) == 3 else f"{k[0]}/{k[1]}"):
+                {"chosen": v[0], "achieved": v[1]} for k, v in stats.items()},
                open(sel_path.replace(".pt", "_stats.json"), "w"))
     print(f"[srl] saved {sel_path} + stats")
 
