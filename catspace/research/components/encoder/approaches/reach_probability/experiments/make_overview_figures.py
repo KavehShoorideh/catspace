@@ -31,11 +31,11 @@ from catspace.research.components.encoder.approaches.reach_probability.experimen
 from catspace.research.components.encoder.approaches.reach_probability.src import trajectories as T
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import tokenize
 
-# Kaveh vs catspace, 2026-08-11 (from the live game log): queen sac into a mating attack.
-GAME_SAN = ("e4 Nc6 a4 d5 exd5 Qxd5 Nc3 Qd8 Qe2 e6 Qh5 Nf6 Qg5 Qd4 Be2 Bd7 a5 O-O-O "
-            "Qxg7 Bxg7 Nd1 Ne4 h3 Qxf2+ Nxf2 Nxf2 Kxf2 Bd4+ Kf3 Ne5+ Kf4 Ng6+ Kg3 Bc6 "
-            "c3 Be5+ Kf2 Nf4 Bc4 Nd3+ Bxd3 Rxd3 Ne2 Rg8 Rg1 Bg3+ Nxg3 Rgxg3 h4 Kd7 c4 "
-            "Kd6 Rd1 Rxg2+ Ke1 Rh3 d4 Rh1#").split()
+# The Opera Game: Morphy vs Duke of Brunswick & Count Isouard, Paris 1858 -- the most
+# taught game in chess history, and OUT-OF-DISTRIBUTION for our engine-play corpus.
+GAME_SAN = ("e4 e5 Nf3 d6 d4 Bg4 dxe5 Bxf3 Qxf3 dxe5 Bc4 Nf6 Qb3 Qe7 Nc3 c6 Bg5 b5 "
+            "Nxb5 cxb5 Bxb5+ Nbd7 O-O-O Rd8 Rxd7 Rxd7 Rd1 Qe6 Bxd7+ Nxd7 Qb8+ Nxb8 "
+            "Rd8#").split()
 
 INK, DIM, ACC, BG = "#1e2126", "#5c6370", "#1f6f54", "#fbfaf7"
 
@@ -86,6 +86,9 @@ def main():
     ids = ids.cpu().numpy()
     E = pr[:, 0] + 0.5 * pr[:, 1]
     n = len(boards)
+    # marker plies COMPUTED from the moves (2026-08-12: hard-coded 23/56 were both wrong)
+    ply_sac = GAME_SAN.index("Qb8+") + 1               # board index after the sacrifice
+    ply_mate = GAME_SAN.index("Rd8#") + 1               # the mated position (last board)
 
     # ---- 1. ribbon ----
     fig, (a0, a1) = plt.subplots(2, 1, figsize=(8.2, 3.6), dpi=150,
@@ -97,7 +100,7 @@ def main():
     a0.set_xlim(0, n - 1); a0.set_ylim(0, 1); a0.set_xticks([])
     a0.set_ylabel("committor", fontsize=8, color=DIM)
     style(a0)
-    a0.set_title("a real game through the model's eyes  (human queen-sacs on move 12 and mates on 29)",
+    a0.set_title("the Opera Game (Morphy, 1858) through the model's eyes",
                  fontsize=9.5, color=INK, loc="left")
     rng = np.random.default_rng(7)
     palette = rng.permutation(64)
@@ -109,7 +112,7 @@ def main():
     a1.set_yticklabels([f"codebook {h}" for h in range(pv["heads"])], fontsize=7)
     a1.set_xlabel("ply (half-move)", fontsize=8, color=DIM)
     style(a1)
-    for t in (23, 56):                                    # queen sac ply ~23 (12.Qxf2+ ...), mate
+    for t in (ply_sac, ply_mate):
         for ax in (a0, a1):
             ax.axvline(t, color=ACC, lw=0.8, ls="--", alpha=0.8)
     fig.savefig(os.path.join(out_dir, "ribbon.png"), bbox_inches="tight",
@@ -173,15 +176,15 @@ def main():
     # ---- 4. descent ----
     fig, ax = plt.subplots(figsize=(8.2, 2.3), dpi=150)
     fig.patch.set_facecolor(BG)
-    ax.plot(DA[:, 0], color="#8a8580", lw=1.3, label="dA → white-wins")
-    ax.plot(DA[:, 1], color=DIM, lw=1.0, ls=":", label="dA → draw")
-    ax.plot(DA[:, 2], color=INK, lw=1.3, label="dA → black-wins")
-    ax.axvline(23, color=ACC, lw=0.8, ls="--", alpha=0.8)
-    ax.axvline(56, color=ACC, lw=0.8, ls="--", alpha=0.8)
-    ax.text(23.5, ax.get_ylim()[1] * 0.9, "queen sac", fontsize=7, color=ACC)
+    ax.plot(DA[:, 0], color="#8a8580", lw=1.3, label="distance → white-wins")
+    ax.plot(DA[:, 1], color=DIM, lw=1.0, ls=":", label="distance → draw")
+    ax.plot(DA[:, 2], color=INK, lw=1.3, label="distance → black-wins")
+    ax.axvline(ply_sac, color=ACC, lw=0.8, ls="--", alpha=0.8)
+    ax.axvline(ply_mate, color=ACC, lw=0.8, ls="--", alpha=0.8)
+    ax.text(ply_sac + 0.5, ax.get_ylim()[1] * 0.9, "queen sac", fontsize=7, color=ACC)
     ax.set_xlabel("ply", fontsize=8, color=DIM)
     ax.set_ylabel("plies to ending", fontsize=8, color=DIM)
-    ax.set_title("the length ruler along the same game: black's exit approaches as the attack lands",
+    ax.set_title("the distance head along the same game: the winner's ending approaches as the attack builds",
                  fontsize=9.5, color=INK, loc="left")
     ax.legend(fontsize=7, frameon=False, labelcolor=DIM)
     style(ax)
