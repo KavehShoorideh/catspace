@@ -11872,3 +11872,25 @@ bug ate 3h first -- a timestamp guess in shell glue; killed, relaunched direct).
   achievement did all the teaching. Next levers: more games/iter (512-way REINFORCE is
   starved at ~300 decisions/iter), pursuit/cascade alternation so games END, denial actions
   (dynamics v2), longer horizon for slow concepts.
+
+## 2026-08-11 (late) — THE ABSOLUTE ANCHOR: converts vs random 94%, collapses vs any tactics;
+## tactical distillation becomes the critical path
+
+eval_external (new): engine at its real play config, WINNING piece-down starts, SF defending.
+Ladder: 20k nodes 0/3, 2k 0.5/8, 500 0/8, 100 0.5/8 -- 1 point/27 games, ZERO conversions, no
+crossover anywhere in the SF family. Floor probe vs a RANDOM defender: 7.5/8 (94%).
+DIAGNOSIS COMPLETE: conversion technique exists (odometer/cascade/TB handoff all work
+unopposed); TACTICAL SURVIVAL is the single binding constraint on absolute strength -- the
+turn-blindness/sibling wall, now with an external number attached.
+
+Response (built + chained): gen_search_labels.py (search-resolved committor at 30k train rows
+via OUR OWN depth-2 search + PV-end readout; frozen labels, no oracle, gap stored) +
+--w-qdistill in the field trainer (gap-weighted CE of the probability head toward the
+resolved labels; interaction-reviewed: disagrees with outcome-CE exactly at tactical moments
+BY DESIGN). reach_v3 = full v2 recipe + distillation, chained overnight behind the RL queue.
+Gate for v3: the ladder reruns -- the number that must move is score vs 100-node SF.
+
+Also tonight: selector v2 (cascade-mix; decisive 16% -- outcome channel alive), dynamics v2
+reply head + denial selector chained, pursuit ranking purified to pure activation likelihood
+with a catastrophe veto (Kaveh), reach-event logging begun (trains the future P(reach g|s)
+readout), per-line concept annotations live on the analysis board.

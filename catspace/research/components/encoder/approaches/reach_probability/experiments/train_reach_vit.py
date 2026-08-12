@@ -307,6 +307,14 @@ def main():
     ap.add_argument("--mirror", type=int, default=0,
                     help="color-mirror involution: coin-flip per step, whole batch mirrored "
                          "consistently, W/L labels swapped (lc0/NNUE symmetry, our frame)")
+    ap.add_argument("--w-qdistill", type=float, default=0.0,
+                    help="TACTICAL DISTILLATION (2026-08-11 external-ladder verdict: 94 pct "
+                         "vs random defense, ~4 pct vs any real tactics): CE of the "
+                         "probability head toward FROZEN search-resolved committor labels "
+                         "(gen_search_labels.py), weighted by the static/resolved gap so "
+                         "training concentrates where the static field lies to itself. "
+                         "Labels precomputed -- no moving-target bootstrap.")
+    ap.add_argument("--qdistill-npz", default=None)
     ap.add_argument("--basin-pov", choices=("mover", "white"), default="mover",
                     help="basin CE label POV; 'white' is the gauge-unfrustrated choice "
                          "(2026-08-08 finding), 'mover' reproduces older recipes")
@@ -547,6 +555,14 @@ def main():
     # exemptions and in-batch gas masks
     game_of_row = tr.game_of_row()
     src_of_game = tr.source
+    qd = None
+    if args.w_qdistill > 0:
+        _qz = np.load(args.qdistill_npz)
+        _gap = np.abs(_qz["e_static"] - _qz["e_resolved"])
+        qd = {"row": _qz["row"], "probs": _qz["probs"],
+              "w": (0.25 + _gap / max(1e-6, float(_gap.mean() * 4))).astype(np.float32)}
+        print(f"[qdistill] {len(qd['row']):,} search-resolved labels; "
+              f"mean gap {float(_gap.mean()):.3f}", flush=True)
     wdl_pack = None
     if args.move_head or args.w_bellman > 0:
         import os as _os2
@@ -942,6 +958,20 @@ def main():
         l_var = vicreg_variance(phi) + vicreg_variance(zA) + vicreg_variance(zB)
         l_cov = vicreg_covariance(phi) + vicreg_covariance(zA) + vicreg_covariance(zB)
         l_l1 = model.l1_penalty()
+        l_qdist = torch.zeros((), device=dev)
+        if qd is not None and model.poles is not None and args.basin_pov == "white":
+            _qs = rng_np.integers(0, len(qd["row"]), 64)
+            _qrows = qd["row"][_qs]
+            zq = model.encode_q(
+                torch.from_numpy(tr.tok[_qrows].astype(np.int64)).to(dev),
+                torch.from_numpy(tr.glob[_qrows].astype(np.float32)).to(dev))
+            _P3q = model.poles.poles[:3]
+            dPq = torch.stack([model.dB(zq, _P3q[[k]].expand(len(zq), -1))
+                               for k in range(3)], 1)
+            logq = torch.log_softmax(-dPq / args.basin_temp, 1)
+            tgtq = torch.from_numpy(qd["probs"][_qs]).to(dev)
+            wq = torch.from_numpy(qd["w"][_qs]).to(dev)
+            l_qdist = -(wq * (tgtq * logq).sum(1)).mean()
         # A-SIDE ABSORBING ANCHOR: every terminal sits exactly one ply before its outcome
         # pole on the LENGTH ruler -- the pole becomes the class's absorbing state, and the
         # walls staircase (which already ends at the terminals) extends into it. IQE asymmetry
@@ -1175,6 +1205,7 @@ def main():
                 + args.w_res_shrink * l_shrink
                 + args.w_basin * l_basin + args.w_polesep * l_polesep
                 + args.w_anchor_a * l_anchor_a + args.w_pole_gas_a * l_pole_gas_a
+                + args.w_qdistill * l_qdist
                 + args.w_hinge_a * l_hinge_a
                 + args.w_anchor * l_anchor + args.w_absorb * l_absorb
                 + args.w_termrep * l_termrep + args.w_subsume * l_subsume
@@ -1188,6 +1219,7 @@ def main():
                "grad": float(l_grad.detach()), "mh": float(l_mh.detach()), "mh_cons": float(l_mh_cons.detach()),
                "bell": float(l_bell.detach()), "mh_bell": float(l_mh_bell.detach()),
                "anchor_a": float(l_anchor_a.detach()), "pole_gas_a": float(l_pole_gas_a.detach()),
+               "qdist": float(l_qdist.detach()),
                "hinge_a": float(l_hinge_a.detach()),
                "rep_b": float(l_rep_b.detach()), "var": float(l_var.detach()),
                "cov": float(l_cov.detach()), "l1": float(l_l1.detach()),
