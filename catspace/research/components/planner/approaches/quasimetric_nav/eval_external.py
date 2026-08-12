@@ -72,7 +72,7 @@ def main():
     ap.add_argument("--skill", type=int, default=None,
                     help="ladder mode: SF Skill Level 0-20 (None = node cap only)")
     ap.add_argument("--wave", action="store_true", help="use the selective wave search")
-    ap.add_argument("--coherent", action="store_true",
+    ap.add_argument("--coherent", action="store_true", default=True,
                     help="use the coherence-bounded search (sanity 10/10 at 1.48s)")
     ap.add_argument("--mc", action="store_true",
                     help="CPU rollout tiebreak among near-tied top moves (measured 82.0% vs "
