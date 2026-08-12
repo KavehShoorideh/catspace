@@ -395,8 +395,8 @@ class H(BaseHTTPRequestHandler):
                 with H.lock:
                     for d in range(1, pd + 1):
                         try:
-                            rows = H.eng.search_batched(b, depth=d,
-                                                        stop=lambda: _time.time() > deadline)
+                            rows = H.eng.search(b, depth=d,
+                                                stop=lambda: _time.time() > deadline)
                         except Exception:
                             break
                         if _time.time() > deadline:
