@@ -12180,3 +12180,19 @@ tiebreak. Applied to PLAY and the analysis stream. Pony position: Nc6/e6 top, Ng
 Battery: wave 10/10, d3 10/10, d2 9/10, coherent 9/10. Also: coherence-bounded search now
 powers the ANALYSIS stream (budget ladder per depth knob), lines fixed at top-3, wrapped for
 narrow screens, P-then-distance secondary retained inside ties.
+
+## 2026-08-13 — jqt3 generation complete: PROMOTED, refit, planner substrate ready
+GATES: arena 33.5/60 vs jqt2 (pentanomial 0/0/23/7/0 — 7 pairs won, 0 lost, strongest of any
+generation); battery d2 10/11, d3 11/11 (PERFECT incl. the new fortress-hold case), wave
+10/11, coherent 9/11 (new recapture miss flagged); turn-E 0.0456 (gain held); ruler-race AUC
+0.640 (jqt2 0.602); calibration fix CONFIRMED (recon 0.007-0.02 vs jqt2's 6-12). Hanging-
+knight gap still invisible to the raw committor (0.0007 E) — the piece codes exist but no
+eval path READS them yet; that is the planner's job, by design.
+REFIT: leverage extremes ±0.15 (jqt2 ±0.10); 18 names; graph 1,882 gateways (jqt2 1,350);
+SubgoalFormer on the calibrated substrate: corpus AUC 0.798, race AUC 0.622 — FIRST time the
+trained head beats its untrained baseline on races (race-oracle mix still queued for the
+calibration gap, brier 0.385). Server on :8420 = jqt3.
+CONDUCT ARENA (first run, forcing ON vs OFF, 12 paired rounds): 56% for ON, retreats-home
+3 vs 6 (ON retreats LESS), king-walks 5-5, edge-lunges 17-17 (config-independent — the
+champion's residual quiet-tie taste; the standing number for the planner to drive down).
+Winning-gated forcing_pref: conduct-safe, stays default ON.
