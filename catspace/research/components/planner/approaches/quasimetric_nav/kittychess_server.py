@@ -110,7 +110,7 @@ body.playmode .right .box:first-child{display:none}
     <div class="engrow"><b>catspace</b>
       <span id="dinfo"></span>
       <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
-      <label title="principal variation length: how many moves of each line are SHOWN and scored (the eval bar per line reads the position at the end of these moves). Display only — does not change the search">pv <select id="pvlen" title="moves shown per line"><option>4</option><option selected>6</option><option>8</option></select></label>
+      <label title="principal variation length: how many FULL MOVES of each line are shown and scored (the per-line eval reads the position at the end of the shown moves). Display only — does not change the search">pv <select id="pvlen" title="FULL moves shown per line (2 plies each)"><option>4</option><option selected>6</option><option>8</option></select></label>
       <label title="number of candidate moves analyzed and displayed (multi-PV). More lines = broader view, slightly slower updates">lines <select id="lines" title="candidate moves shown"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
@@ -719,7 +719,7 @@ class H(BaseHTTPRequestHandler):
         for r in rows[:18]:
             bb = b.copy()
             sans = []
-            for mv in r["pv"][:getattr(H, "pvlen", 6)]:
+            for mv in r["pv"][:2 * getattr(H, "pvlen", 6)]:
                 sans.append(bb.san(mv)); bb.push(mv)
             v = r["value"] if b.turn == chess.WHITE else -r["value"]
             disp = (("#" if v > 0 else "-#") if abs(v) >= KittyMATE / 4
@@ -734,14 +734,14 @@ class H(BaseHTTPRequestHandler):
                 # a capture's immediate child is mid-exchange (Kaveh 2026-08-11: Nxe5 read
                 # as a won knight before the recapture existed)
                 bc = b.copy()
-                for mv in r["pv"][:getattr(H, "pvlen", 6)]:
+                for mv in r["pv"][:2 * getattr(H, "pvlen", 6)]:
                     bc.push(mv)
                 try:
                     row["wdl"], row["dists"] = H.eng.wdl(bc)
                 except Exception:
                     pass
                 try:
-                    coh = H.eng.line_coherence(b, r["pv"], max_plies=getattr(H, "pvlen", 6))
+                    coh = H.eng.line_coherence(b, r["pv"], max_plies=2 * getattr(H, "pvlen", 6))
                     if coh is not None:
                         row["force"] = {"drop": round(coh[0], 2), "mono": round(coh[1], 2),
                                         "fav": coh[2]}
