@@ -12055,3 +12055,18 @@ Checkpoint ladder: every 500 steps + _latest + _jqt sidecar; probeable without s
   mid-train; the number SubgoalFormer training exists to push toward 1. Note: the empirical
   promotion-concept resolver reads h2/c4 at 49% consistency on the mid-churn jqt2 codebook
   (vs 77% on frozen v3 codes) -- resolver consistency is itself a codebook-stability metric.
+
+## 2026-08-12 — reach_jqt2 GATED and PROMOTED (JQT generation 1)
+20k steps / 6.3h, full stratified corpus ingested mid-run (corpus 49.9k games / 4.65M rows).
+- Battery: d2 9/10 (IMPROVED, block-mate now passes), d3 10/10, wave 9/10, coherent 9/10 —
+  after wiring the engine to consume the JQT-NATIVE quantizer (_jqt sidecar as the concept
+  evaluator; the initial 7/10 was the missing-quantizer confound, not the trunk).
+- Arena vs v3: 31.5/60, pentanomial 0/2/23/5/0 (5 pairs won, 0 lost) — PROMOTE.
+- Turn-sensitivity (canonical probe): E 0.0443 vs v3 0.0268 (+65%) — the turn-fork corpus
+  demonstrably feeds the flag. TB tempo-decisive subset still underpowered (4 pairs).
+- Ruler race probe: AUC 0.602 (≈ mid-train); promotion-concept resolver 79% consistent
+  (codebook stabilized post-training; was 49% mid-churn).
+- Flip-rate arc 0.61→0.44→0.65: persistence won early, eroded after the decisive-heavy
+  ingest (|dE| grows → the tau-gate disengages). v2 bundle: persistence weight/tau fix +
+  per-square VQ + piece-slot stream (identity-matched pairs make persistence well-posed).
+- Promoted; server on :8420 redeployed; leverage + base rates refit on the jqt2 codebook.

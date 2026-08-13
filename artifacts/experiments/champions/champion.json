@@ -1,6 +1,6 @@
 {
- "ckpt": "artifacts/experiments/reach_v3_latest.pt",
- "since": "2026-08-12 07:49",
+ "ckpt": "artifacts/experiments/reach_jqt2_latest.pt",
+ "since": "2026-08-12 17:28",
  "history": [
   {
    "event": "founding champion",
@@ -34,6 +34,14 @@
    "score": "32.0/60 (pentanomial 0/0/26/4/0, P>50% = 0.99)",
    "note": "external ladder 0.5/8 vs v2 1.0/8 (noise); battery no-regression",
    "date": "2026-08-12 07:49"
+  },
+  {
+   "event": "dethroned",
+   "old": "artifacts/experiments/reach_v3_latest.pt",
+   "new": "artifacts/experiments/reach_jqt2_latest.pt",
+   "score": "31.5/60 (pentanomial 0/2/23/5/0, 0 pairs lost)",
+   "note": "JQT gen-1: battery 9-10/9-9-10 with jqt-native cvq (d2 IMPROVED 8->9); turn-sensitivity 0.0443 vs v3 0.0268 (+65%, fork corpus); ruler race AUC 0.602",
+   "date": "2026-08-12 17:28"
   }
  ]
 }

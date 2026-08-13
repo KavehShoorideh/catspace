@@ -88,7 +88,33 @@ class KittyChess:
             self.cvq_mu = _pv["mu"].to(device)
             self.cvq_sd = _pv["sd"].to(device)
         except Exception:
-            pass
+            # JQT-NATIVE concept evaluator (2026-08-12): a jointly-trained run carries its
+            # quantizer in the _jqt sidecar; consume THAT instead of requiring a post-hoc
+            # ConceptVQ refit (always the most complete artifact available).
+            try:
+                from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
+                    JQTModule)
+                import re as _re, os as _osj
+                _cands = [self._ckpt_base + "_jqt.pt",
+                          _re.sub(r"_(latest|step\d+)$", "", self._ckpt_base) + "_jqt.pt"]
+                _jp = next(c for c in _cands if _osj.path.exists(c))
+                _pj = torch.load(_jp, map_location=device, weights_only=False)
+                _jm = JQTModule(d_model=_pj["d_in"], heads=_pj["heads"],
+                                codes=_pj["codes"], d=_pj["d"]).to(device)
+                _jm.load_state_dict(_pj["state_dict"]); _jm.eval()
+
+                class _JQTAsCVQ(torch.nn.Module):
+                    def __init__(self, jm):
+                        super().__init__(); self.jm = jm
+                    def forward(self, phi):
+                        _h, zq, ids, _vl = self.jm.quantize(phi)
+                        return self.jm.dec(zq), ids, 0.0
+
+                self.cvq = _JQTAsCVQ(_jm)
+                self.cvq_mu = _pj["y_mu"].to(device)
+                self.cvq_sd = _pj["y_sd"].to(device)
+            except Exception:
+                pass
         if getattr(self.net, "split_head", False):
             self.dist = self.net.dB
         elif getattr(self.net, "dual", False):
