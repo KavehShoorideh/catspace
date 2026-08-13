@@ -111,6 +111,7 @@ body.playmode .right .box:first-child{display:none}
       <span id="dinfo"></span>
       <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
       <label title="principal variation length: how many FULL MOVES of each line are shown and scored (the per-line eval reads the position at the end of the shown moves). Display only — does not change the search">pv <select id="pvlen" title="FULL moves shown per line (2 plies each)"><option>4</option><option selected>6</option><option>8</option></select></label>
+      <button id="whytog" title="WHY overlay: counterfactual piece saliency — remove each piece, re-evaluate; green = helps white, red = helps black; ring size = |ΔE|. Faithful by construction (not attention)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
       <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
       <label title="number of candidate moves analyzed and displayed (multi-PV). More lines = broader view, slightly slower updates">lines <select id="lines" title="candidate moves shown"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
@@ -135,7 +136,18 @@ body.playmode .right .box:first-child{display:none}
 <script>
 "use strict";
 let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
-let sfOn=false, sfLastFen=null;
+let sfOn=false, sfLastFen=null, whyOn=false, whyLastFen=null;
+function whyRefresh(fen){
+  if(!whyOn){cg.setShapes([]);return;}
+  if(fen===whyLastFen) return;
+  whyLastFen=fen;
+  fetch('/api',{method:'POST',body:JSON.stringify({action:'saliency'})}).then(r=>r.json()).then(e=>{
+    if(!e.sal) return;
+    const shapes=e.sal.filter(x=>Math.abs(x.dE)>=0.015).map(x=>({
+      orig:x.sq, brush:(x.dE>0?(x.dE>0.06?'green':'paleGreen'):(x.dE<-0.06?'red':'paleRed'))}));
+    cg.setShapes(shapes);
+  }).catch(()=>{});
+}
 function sfRefresh(fen){
   if(!sfOn){document.getElementById('sfbox').style.display='none';return;}
   const box=document.getElementById('sfbox');
@@ -262,6 +274,7 @@ function render(d){
   }
   if(d.over)document.getElementById('dinfo').textContent=d.over;
   sfRefresh(d.fen);
+  whyRefresh(d.fen);
 }
 function drawPosTable(wdl, dists, label){
   const W=document.getElementById('wdltxt');
@@ -326,6 +339,9 @@ document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
 document.getElementById('lines').onchange=()=>api({action:"noop"});
 document.getElementById('pvlen').onchange=()=>api({action:"noop"});
+document.getElementById('whytog').onclick=()=>{whyOn=!whyOn;whyLastFen=null;
+  document.getElementById('whytog').style.color=whyOn?'#7fbf5f':'#8f8a82';
+  if(!whyOn)cg.setShapes([]);else api({action:"noop"});};
 document.getElementById('sftog').onclick=()=>{sfOn=!sfOn;sfLastFen=null;
   document.getElementById('sftog').style.color=sfOn?'#dbac16':'#8f8a82';api({action:"noop"});};
 document.getElementById('flip').onclick=()=>{orient=orient==="white"?"black":"white";api({action:"noop"});};
@@ -617,6 +633,34 @@ class H(BaseHTTPRequestHandler):
                                  "p": info["p_given_code"], "base": info["base"],
                                  "anti": bool(info.get("anti")),
                                  "tok_here": bool(tok_here)})
+        if act == "saliency":
+            try:
+                import numpy as _np6, torch as _t6
+                from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                    tokenize as _tk6)
+                tk, gl = _tk6(b)
+                tk = _np6.asarray(tk); gl = _np6.asarray(gl)
+                occ = _np6.flatnonzero(tk > 0)
+                toks = [tk] + [_np6.where(_np6.arange(64) == q, 0, tk) for q in occ]
+                globs = [gl] * len(toks)
+                with H.lock, _t6.no_grad():
+                    wds = []
+                    for a0 in range(0, len(toks), 128):
+                        z = H.eng._embed(toks[a0:a0+128], globs[a0:a0+128]).float()
+                        P3s = H.eng.poles[[H.eng.pi[k] for k in ("WIN","DRAW","LOSS")]].to(H.eng.device)
+                        DB = _t6.stack([H.eng.net.dB(z, P3s[[k]].expand(len(z), -1))
+                                        for k in range(3)], 1)
+                        pr = _t6.softmax(-DB / 5.0, 1).cpu().numpy()
+                        wds.append(pr[:, 0] + 0.5 * pr[:, 1])
+                    E = _np6.concatenate(wds)
+                base_E = float(E[0])
+                out = [{"sq": chess.square_name(int(q)),
+                        "dE": round(float(base_E - E[1 + i]), 4)}   # >0: piece helps WHITE
+                       for i, q in enumerate(occ)]
+                self._send(200, json.dumps({"base": round(base_E, 3), "sal": out}).encode())
+            except Exception as e:
+                self._send(200, json.dumps({"err": str(e)[:80]}).encode())
+            return
         if act == "sfeval":
             try:
                 import chess.engine as _che
