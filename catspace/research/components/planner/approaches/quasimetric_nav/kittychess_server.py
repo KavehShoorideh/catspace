@@ -20,7 +20,10 @@ import chess
 
 from catspace.io import paths
 from catspace.research.components.planner.approaches.quasimetric_nav.player_profile import (
-    PlayerStore, fen_key, expectation_dist, surprisal_bits, SURPRISE_BITS)
+    PlayerStore, fen_key, expectation_dist, ranked_E, surprisal_bits, entropy_bits,
+    SURPRISE_BITS, TAU_E)
+from catspace.research.components.planner.approaches.quasimetric_nav.banter import (
+    make_banter, TemplateBanter)
 from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess as _KC
 KittyMATE=_KC.MATE
 
@@ -132,6 +135,7 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
       <button id="whytog" title="WHY overlay: positional importance beyond material (counterfactual removal, material-fitted residual). Green = load-bearing (doing MORE than its face value), red = underperforming or misplaced (removal costs little — or even helps its owner). Top 3 each. Kings excluded." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
       <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
+      <button id="pgnbtn" title="copy the game as PGN — the engine's reactions ride along as annotations ({comments} + !?/?! glyphs)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">PGN</button>
     </div>
     <div class="lines" id="lnbox"></div>
     <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
@@ -159,7 +163,27 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
 <script>
 "use strict";
 let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
-let user=localStorage.kcUser||"", surprHist=[];
+let user=localStorage.kcUser||"", surprHist=[], lastState=null;
+function buildPGN(d){
+  // the engine's reactions as PGN annotations (Kaveh 2026-08-13 ':D')
+  let out='[Event "catspace"]\\n[Site "kittychess"]\\n';
+  if(user) out+=`[${mode==='play'&&playCfg.engineWhite?'Black':'White'} "${user}"]\\n`;
+  out+=`[${mode==='play'&&playCfg.engineWhite?'White':'Black'} "catspace"]\\n`;
+  if(d.start_fen) out+=`[SetUp "1"]\\n[FEN "${d.start_fen}"]\\n`;
+  out+='\\n';
+  (d.san||[]).forEach((sn,i)=>{
+    if(i%2===0) out+=((i/2+1)+'. ');
+    const nt=(d.notes||{})[String(i)];
+    out+=sn+(nt?(nt.glyph||''):'')+' ';
+    if(nt) out+=`{ ${nt.emoji} ${nt.text.replace(/[{}]/g,'')} } `;
+  });
+  out+=(d.over?(d.over.startsWith('white')?'1-0':d.over.startsWith('black')?'0-1':'1/2-1/2'):'*');
+  return out;
+}
+document.addEventListener('click',e=>{
+  if(e.target&&e.target.id==='pgnbtn'&&lastState){
+    navigator.clipboard.writeText(buildPGN(lastState)).then(()=>{
+      e.target.textContent='copied!';setTimeout(()=>e.target.textContent='PGN',1200);});}});
 function whoRender(){document.getElementById('who').textContent=user?('☺ '+user):'set player name';}
 function setUser(){const u=prompt('Your name — the engine builds a per-player profile (games, surprises, prep):',user);
   if(u&&u.trim()){user=u.trim();localStorage.kcUser=user;}whoRender();}
@@ -318,16 +342,28 @@ function render(d){
   if(d.emote){const em=document.getElementById('emote');
     em.innerHTML=`<span class="e">${d.emote.emoji}</span><span>${d.emote.text}</span>`;
     em.classList.add('show');clearTimeout(window._emT);
-    window._emT=setTimeout(()=>em.classList.remove('show'),6000);}
+    window._emT=setTimeout(()=>em.classList.remove('show'),6000);
+    if(d.emote.pending){                       // the LLM is still typing: swap the line in
+      const sq=d.emote.seq;let tries=0;
+      const poll=setInterval(async()=>{
+        if(++tries>16){clearInterval(poll);return;}
+        const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({action:'emote',seq:sq})});
+        const e=await r.json();
+        if(e.text){clearInterval(poll);
+          em.innerHTML=`<span class="e">${e.emoji||d.emote.emoji}</span><span>${e.text}</span>`;
+          em.classList.add('show');clearTimeout(window._emT);
+          window._emT=setTimeout(()=>em.classList.remove('show'),6000);}},600);}}
   if(mode==='play'&&d.surprise){
-    surprHist.push(d.surprise.bits);
+    surprHist.push(d.surprise.xbits);
     const mean=(surprHist.reduce((a,b)=>a+b,0)/surprHist.length).toFixed(1);
     const sb=document.getElementById('surprbox');sb.style.display='';
+    const x=d.surprise.xbits;
     sb.innerHTML=`<div style="font-size:12px;color:#8f8a82;margin-bottom:3px">surprise`+
       `${d.surprise.pondered?'':' <span title="you moved before the ponder finished — quick estimate">⏱</span>'}</div>`+
-      `your move: <b>${d.surprise.bits} bits</b>${d.surprise.bits>=3?' 😮':''}`+
+      `your move: <b>${x>0?'+':''}${x} bits</b> vs expected${x>=1.7?' 😮':''}`+
       ` · engine expected <b>${d.surprise.expected}</b> (p ${(100*d.surprise.p).toFixed(0)}%)`+
-      `<div style="font-size:11px;color:#6f6b66;margin-top:2px">game mean ${mean} bits`+
+      `<div style="font-size:11px;color:#6f6b66;margin-top:2px" title="raw surprisal ${d.surprise.bits} bits · position entropy ${d.surprise.H} bits · expectation temperature τ=${d.surprise.tau} (high for new players, settles with data)">game mean ${mean>0?'+':''}${mean} bits`+
       `${d.prepared?' · 📖 replied from prep':''}</div>`;}
   const mvcolor = mode==='play' ? (playCfg.engineWhite?'black':'white') : d.turn;
   cg.set({fen:d.fen, turnColor:d.turn, check:d.check, lastMove:d.lastMove||undefined,
@@ -350,9 +386,13 @@ function render(d){
       (d.exit.plies!=null?` · ~<b>${Math.round(d.exit.plies)}</b> plies`:'');
   } else xb.style.display='none';
   const mv=document.getElementById('moves'); mv.innerHTML="";
+  lastState=d;
   (d.san||[]).forEach((sn,i)=>{
     if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
-    const sp=document.createElement('span');sp.className="m"+(i===d.ptr-1?" cur":"");sp.textContent=sn;
+    const sp=document.createElement('span');sp.className="m"+(i===d.ptr-1?" cur":"");
+    const nt=(d.notes||{})[String(i)];
+    sp.textContent=sn+(nt?(nt.glyph||'')+' '+nt.emoji:'');   // PGN annotation, inline
+    if(nt) sp.title=nt.text;
     sp.onclick=()=>api({action:"goto",ptr:i+1}); mv.appendChild(sp);});
   const cur=mv.querySelector('.cur');
   if(cur){ // scroll ONLY the move list, never the page (scrollIntoView nudged the page)
@@ -528,6 +568,11 @@ class H(BaseHTTPRequestHandler):
     game_id = 0
     over_logged = -1
     last_req_t = 0.0
+    banter = TemplateBanter()                            # replaced by --banter in main()
+    banter_fast = TemplateBanter()                       # instant wording while the LLM types
+    notes: dict = {}                                     # ply-index -> PGN annotation (emotes)
+    emote_seq = 0
+    emote_late = None                                    # {seq, text}: the LLM's line, async
 
     def log_message(self, *a):
         pass
@@ -551,6 +596,18 @@ class H(BaseHTTPRequestHandler):
             b.push(m)
         return b
 
+    def _recent_san(self, n=6):
+        """last n plies as a SAN string for banter context ('' if not reconstructible)."""
+        try:
+            sb = chess.Board(H.start_fen) if H.start_fen else chess.Board()
+            sans = []
+            for m in H.moves[:H.ptr]:
+                sans.append(sb.san(m))
+                sb.push(m)
+            return " ".join(sans[-n:])
+        except Exception:
+            return ""
+
     def _start_ponder(self, bb):
         """PONDER (Kaveh 2026-08-13): while waiting for the human, keep searching THEIR
         position and hold a live expectation distribution over their legal moves -- the
@@ -560,7 +617,7 @@ class H(BaseHTTPRequestHandler):
         g = H.gen
         key = fen_key(bb)
         legal = [m.uci() for m in bb.legal_moves]
-        white = bb.turn == chess.WHITE
+        tau = H.store.tau() if H.store else TAU_E
 
         def w():
             for bud in (0.4, 1.0, 2.5):
@@ -570,10 +627,12 @@ class H(BaseHTTPRequestHandler):
                     if H.gen != g:
                         return
                     rows = H.eng.search_coherent(bb, budget=bud)
-                    rows = H.eng.rank_by_child_E(bb, rows)
+                    rows = H.eng.rank_by_child_E(bb, rows, top=24)   # exact E for the dist
                 if rows:
+                    rE = ranked_E(rows)
                     H.ponder = {"key": key, "budget": bud,
-                                "dist": expectation_dist(rows, white, legal)}
+                                "dist": expectation_dist(rows, legal, tau=tau),
+                                "e_top": sorted(rE.items(), key=lambda kv: -kv[1])[:8]}
 
         threading.Thread(target=w, daemon=True).start()
 
@@ -581,7 +640,7 @@ class H(BaseHTTPRequestHandler):
         try:
             json.dump({"san": san, "fen": b.fen(), "start_fen": H.start_fen,
                        "ptr": H.ptr, "mode": "play" if play else "analysis",
-                       "over": over,
+                       "over": over, "notes": H.notes,
                        "moves_uci": [m.uci() for m in H.moves]},
                       open(GAME_LOG, "w"))
         except Exception:
@@ -607,12 +666,12 @@ class H(BaseHTTPRequestHandler):
         if act not in ("analyze", "lines"):
             H.gen += 1                                   # cancel any in-flight search NOW
         if act == "new":
-            cls.moves, cls.ptr, cls.start_fen = [], 0, None
+            cls.moves, cls.ptr, cls.start_fen, cls.notes = [], 0, None, {}
             cls.game_id += 1
         elif act == "load" and req.get("fen"):
             try:
                 chess.Board(req["fen"])
-                cls.moves, cls.ptr, cls.start_fen = [], 0, req["fen"]
+                cls.moves, cls.ptr, cls.start_fen, cls.notes = [], 0, req["fen"], {}
             except Exception:
                 pass
         elif act == "goto":
@@ -628,6 +687,8 @@ class H(BaseHTTPRequestHandler):
                 if mv in b.legal_moves:
                     human_ctx = (b, mv)                  # pre-move board: the surprise ruler
                     cls.moves = cls.moves[:cls.ptr] + [mv]
+                    cls.notes = {k: v for k, v in cls.notes.items()
+                                 if int(k) < cls.ptr}    # truncated future loses its notes
                     cls.ptr += 1
             except Exception:
                 pass
@@ -647,19 +708,25 @@ class H(BaseHTTPRequestHandler):
                     pb, hmv = human_ctx
                     key = fen_key(pb)
                     legal = [m.uci() for m in pb.legal_moves]
+                    tau = H.store.tau() if H.store else TAU_E
                     pond = H.ponder if (H.ponder and H.ponder.get("key") == key) else None
                     dist = pond["dist"] if pond else None
+                    e_top = pond["e_top"] if pond else None
                     if dist is None and H.store is not None:      # idle-time study counts
                         pe = H.store.get_prep(key)
                         if pe and pe.get("dist"):
                             dist = dict(pe["dist"])
+                            e_top = pe.get("e_top")
                     if dist is None:                              # moved too fast: quick look
                         with H.lock:
                             rws = H.eng.search_coherent(pb, budget=0.5)
                             rws = H.eng.rank_by_child_E(pb, rws)
-                        dist = expectation_dist(rws, pb.turn == chess.WHITE, legal)
+                        rE = ranked_E(rws)
+                        dist = expectation_dist(rws, legal, tau=tau)
+                        e_top = sorted(rE.items(), key=lambda kv: -kv[1])[:8]
                     bits = surprisal_bits(dist, hmv.uci())
-                    san_h = pb.san(hmv)
+                    xbits = bits - entropy_bits(dist)   # EXCESS: vs the position's own
+                    san_h = pb.san(hmv)                 # expected surprisal (near-flat E)
                     with H.lock:                                  # one-forward dE, mover POV
                         e0w, _ = self._wdl(pb, None)
                         e1w, _ = self._wdl(b, over)
@@ -668,31 +735,64 @@ class H(BaseHTTPRequestHandler):
                     dE = (e1 - e0) if pb.turn == chess.WHITE else (e0 - e1)
                     # EMOTES (Kaveh 2026-08-13, engine-side only for now): gotcha checks
                     # BEFORE this surprise is recorded, so it always refers to a PAST visit
-                    gr = H.store.check_gotcha(key, hmv.uci(), bits) if H.store else None
+                    gr = H.store.check_gotcha(key, hmv.uci(), xbits) if H.store else None
+                    ev = None
                     if gr:
-                        emote = {"who": "engine", "kind": "gotcha", "emoji": "\U0001F61D",
-                                 "text": f"{san_h}? You got me with that once. "
-                                         f"I did my homework."}
-                    elif bits >= SURPRISE_BITS:
-                        emote = {"who": "engine", "kind": "surprised", "emoji": "\U0001F62E",
-                                 "text": f"{san_h}?! I did not see that coming "
-                                         f"({bits:.1f} bits)"}
+                        ev = {"kind": "gotcha", "san": san_h, "bits": xbits}
+                    elif xbits >= SURPRISE_BITS:
+                        ev = {"kind": "surprised", "san": san_h, "bits": xbits}
                         if H.store:
-                            H.store.note_surprise(key, hmv.uci(), bits, san_h)
+                            H.store.note_surprise(key, hmv.uci(), xbits, san_h)
+                    if ev is not None:
+                        # ASYNC TRASH TALK (Kaveh 2026-08-13: 'make the move first, then
+                        # give the trash talk later'): the DECISION and a template line ship
+                        # with the move instantly; the LLM's wording lands via the 'emote'
+                        # poll and upgrades the bubble + the PGN note in place.
+                        fast = H.banter_fast.speak({**ev, "player": H.user})
+                        H.emote_seq += 1
+                        sid = H.emote_seq
+                        llm = H.banter is not H.banter_fast and hasattr(H.banter, "warm")
+                        emote = {"who": "engine", **ev, "bits": round(xbits, 2),
+                                 **fast, "seq": sid, "pending": bool(llm)}
+                        # PGN ANNOTATION (Kaveh 2026-08-13 'reactions should show up as pgn
+                        # annotations :D'): a surprising GOOD move earns !?, a surprising
+                        # E-loser ?!; gotcha keeps the glyphless smirk
+                        glyph = "" if ev["kind"] == "gotcha" else \
+                            ("!?" if dE >= -0.02 else "?!")
+                        nidx = str(cls.ptr - 1)
+                        cls.notes[nidx] = {"glyph": glyph, "emoji": fast["emoji"],
+                                           "text": fast["text"], "kind": ev["kind"]}
+                        if llm:
+                            import threading as _th2
+                            ev2 = {**ev, "player": H.user, "moves": self._recent_san(6)}
+
+                            def _talk(sid=sid, nidx=nidx, ev2=ev2):
+                                sp = H.banter.speak(ev2)
+                                H.emote_late = {"seq": sid, "text": sp["text"],
+                                                "emoji": sp["emoji"]}
+                                if nidx in H.notes:      # trash talk lands in the PGN too
+                                    H.notes[nidx] = {**H.notes[nidx], "text": sp["text"],
+                                                     "emoji": sp["emoji"]}
+
+                            _th2.Thread(target=_talk, daemon=True).start()
                     exp_uci = max(dist, key=dist.get)
                     try:
                         exp_san = pb.san(chess.Move.from_uci(exp_uci))
                     except Exception:
                         exp_san = exp_uci
-                    surprise = {"bits": round(bits, 2), "expected": exp_san,
+                    surprise = {"bits": round(bits, 2), "xbits": round(xbits, 2),
+                                "H": round(bits - xbits, 2), "tau": round(tau, 3),
+                                "expected": exp_san,
                                 "p": round(dist.get(hmv.uci(), 0.0), 3),
                                 "pondered": bool(pond)}
                     if H.store:
                         H.store.log_ply({
                             "type": "ply", "game": cls.game_id, "mover": "human",
                             "fen_before": pb.fen(), "uci": hmv.uci(), "san": san_h,
-                            "bits": round(bits, 2), "dE_mover": round(dE, 4),
-                            "pondered": bool(pond),
+                            "bits": round(bits, 2), "xbits": round(xbits, 2),
+                            "dE_mover": round(dE, 4),
+                            "pondered": bool(pond), "n_legal": len(legal),
+                            "e_top": [(u, round(e, 4)) for u, e in (e_top or [])],
                             "dist_top": sorted(dist.items(), key=lambda kv: -kv[1])[:5]})
                 # ---- REPLY PHASE: a prepped line answers instantly and deeper than live
                 eb_before = b
@@ -702,7 +802,25 @@ class H(BaseHTTPRequestHandler):
                     try:
                         cand = chess.Move.from_uci(pe["uci"])
                         if cand in b.legal_moves:
-                            reply_mv, prepared = cand, True
+                            # PREP SANITY GATE (Kaveh 2026-08-13: 'we replied from prep the
+                            # same exact moves that led to a bad position'): the book is
+                            # MEMORY, not judgment -- one-forward committor read of the
+                            # child before trusting it. Distrust if the position has
+                            # deteriorated vs what the study recorded, or is losing.
+                            b.push(cand)
+                            with H.lock:
+                                prw, _ = self._wdl(b, self._over(b))
+                            b.pop()
+                            e_child = prw[0] + 0.5 * prw[1]
+                            e_child = e_child if b.turn == chess.WHITE else 1.0 - e_child
+                            e_book = pe.get("E")
+                            if e_child >= 0.42 and (e_book is None
+                                                    or e_child >= float(e_book) - 0.12):
+                                reply_mv, prepared = cand, True
+                            else:
+                                self.__class__ and H.store.put_prep(
+                                    fen_key(b), {**pe, "uci": None,
+                                                 "distrusted": round(e_child, 3)})
                     except Exception:
                         pass
                 if reply_mv is None:
@@ -850,6 +968,13 @@ class H(BaseHTTPRequestHandler):
                 H.an_thread = threading.Thread(target=worker, daemon=True)
                 H.an_thread.start()
             self._send(200, json.dumps({"started": True, "over": over}).encode())
+            return
+        if act == "emote":                               # async trash-talk poll (play mode)
+            late = H.emote_late
+            if late and late.get("seq") == int(req.get("seq", -1)):
+                self._send(200, json.dumps(late).encode())
+            else:
+                self._send(200, b"{}")
             return
         if act == "lines":
             cur = H.an if H.an.get("g") == H.gen else {"rows": [], "depth": 0, "done": False}
@@ -1168,7 +1293,8 @@ class H(BaseHTTPRequestHandler):
                "turb": (round(turb[0], 3) if turb else None), "trap": trap,
                "lastMove": last, "over": over,
                "surprise": surprise, "emote": emote, "prepared": prepared,
-               "player": H.user}
+               "player": H.user, "notes": cls.notes,
+               "start_fen": cls.start_fen}
         self._send(200, json.dumps(out).encode())
 
     def _wdl(self, b, over):
@@ -1256,7 +1382,15 @@ def main():
     ap.add_argument("--cond-elo", type=float, default=None)
     ap.add_argument("--device", default="mps",
                     help="mps | cuda | cpu | auto (cuda -> mps -> cpu)")
+    ap.add_argument("--banter", default="template",
+                    help="emote voice: template | ollama | ollama:<model> "
+                         "(free local LLM phrases the emotes; decision stays mechanical)")
     args = ap.parse_args()
+    H.banter = make_banter(args.banter)
+    if hasattr(H.banter, "warm"):
+        import threading as _th
+        _th.Thread(target=H.banter.warm, daemon=True).start()   # pay the model load NOW
+    print(f"[kitty-server] banter: {args.banter}", flush=True)
     if args.device == "auto":
         import torch as _ta
         args.device = ("cuda" if _ta.cuda.is_available()
@@ -1273,6 +1407,7 @@ def main():
         H.start_fen = st.get("start_fen")
         H.moves = [chess.Move.from_uci(u) for u in st.get("moves_uci", [])]
         H.ptr = min(int(st.get("ptr", len(H.moves))), len(H.moves))
+        H.notes = st.get("notes") or {}
         print(f"[kitty-server] restored game: {len(H.moves)} moves", flush=True)
     except Exception:
         pass
@@ -1449,10 +1584,12 @@ def main():
                     st.put_prep(fen_key(bb), {"uci": None, "budget": 6.0})
                     continue
                 legal = [m.uci() for m in bb.legal_moves]
-                dist = expectation_dist(rows, bb.turn == chess.WHITE, legal)
+                rE = ranked_E(rows)
+                dist = expectation_dist(rows, legal, tau=st.tau())
                 st.put_prep(fen_key(bb), {
-                    "uci": rows[0]["mv"].uci(), "E": rows[0].get("E"), "budget": 6.0,
-                    "mover": mover,
+                    "uci": rows[0]["mv"].uci(), "E": rE.get(rows[0]["mv"].uci()),
+                    "budget": 6.0, "mover": mover,
+                    "e_top": sorted(rE.items(), key=lambda kv: -kv[1])[:8],
                     "dist": sorted(dist.items(), key=lambda kv: -kv[1])[:8]})
                 st.aggregate()
                 print(f"[prep] {st.name}: studied {fen_key(bb)} "
