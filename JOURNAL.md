@@ -12196,3 +12196,15 @@ CONDUCT ARENA (first run, forcing ON vs OFF, 12 paired rounds): 56% for ON, retr
 3 vs 6 (ON retreats LESS), king-walks 5-5, edge-lunges 17-17 (config-independent — the
 champion's residual quiet-tie taste; the standing number for the planner to drive down).
 Winning-gated forcing_pref: conduct-safe, stays default ON.
+
+## 2026-08-13 — reach_jqt4 LAUNCHED: the clean-room base
+Bundle (recorded): d192x4/d48 trunk (2.25x capacity), v3 boot corpus (49,905 games /
+4,652,261 rows — stratified turn-forks folded in with disjoint ids after the replay-
+corruption fix; fresh balance weights), NO cross-generation imports (qdistill cut — labels
+would have anchored jqt4 to jqt3's tactical opinions; self-distillation with the coherent
+resolver reserved for post-gate refinement), square+piece ANCHORS + mixed-goal CDA/CDB
+rulers (spatial subgoals become measurable/committable), w_pers 3 tau 0.1, slot-diff
+transition derivation (1.5M moves in 7s, 0 undecodable). Gated by test_critical_wiring
+(7 behavioral contracts, all pass). Smoke 500 steps clean at 1.88 s/step -> ~10.5h.
+NOTE: "qdistill" is house vocabulary (coined here); the technique is classical search
+distillation (ExIt / AlphaZero MCTS targets / TD-Leaf / NNUE lineage).
