@@ -119,7 +119,7 @@ body.playmode .right .box:first-child{display:none}
     </div>
     <div class="lines" id="lnbox"></div>
     <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
-    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡ only move = one move far above the rest &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by E (calibrated committor)</div>
+    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; ⚡ only move = one move far above the rest &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by E (calibrated committor)</div>
   </div>
   <div class="box"><div id="moves"></div></div>
   <div class="box" id="cdbox" style="display:none">
@@ -346,7 +346,7 @@ function renderLines(d){
     else if(row.wdl){
       const E=(row.wdl[0]+0.5*row.wdl[1]);
       ev=`<span class="ev" title="expected points for white after this move (probability head)">E ${(E*100).toFixed(0)}%</span>`+
-         (row.dists?`<span class="ev" style="min-width:58px" title="decisive-exit gap dB−dW (length head): positive = white's ending closer">Δd ${(row.dists[2]-row.dists[0]).toFixed(1)}</span>`:"");
+         "";
     } else {ev=`<span class="ev" title="searched margin (white POV)">${row.margin}</span>`;}
     let top=`<div class="lnr">`+ev;
     if(row.wdl){
