@@ -686,6 +686,8 @@ def main():
             gmask = np.isin(game_of_row, gsel)
             rws = np.flatnonzero(gmask)
             ids_all = np.empty((len(rws), args.jqt_heads), np.int16)
+            sq_all = (np.empty((len(rws), 64), np.int8) if args.jqt_square_codes else None)
+            pc_all = (np.empty((len(rws), 32), np.int8) if args.jqt_piece_codes else None)
             _ys = []
             _P3r = model.poles.poles[:3]
             for a in range(0, len(rws), 4096):
@@ -695,7 +697,20 @@ def main():
                 phi_t = model.t_enc(tokb, globb)
                 _, idsb = jqt.target_codes(phi_t)
                 ids_all[a:a + 4096] = idsb.cpu().numpy().astype(np.int16)
-                zbr = model.proj_b(model.enc(tokb, globb))
+                if args.jqt_square_codes or args.jqt_piece_codes:
+                    phi_on, sqt_on = model.enc.forward_tokens(tokb, globb)
+                    if args.jqt_square_codes:
+                        _, _, sqi, _ = jqt.square_stream(sqt_on)
+                        sq_all[a:a + 4096] = sqi.cpu().numpy().astype(np.int8)
+                    if args.jqt_piece_codes:
+                        sl_b = torch.from_numpy(tr.slots[rr].astype(np.int64)).to(dev)
+                        st_b = torch.from_numpy(
+                            st_of_game[game_of_row[rr]].astype(np.int64)).to(dev)
+                        _, _, pci, _, _ = jqt.piece_stream(sqt_on, sl_b, st_b)
+                        pc_all[a:a + 4096] = pci.cpu().numpy().astype(np.int8)
+                    zbr = model.proj_b(phi_on)
+                else:
+                    zbr = model.proj_b(model.enc(tokb, globb))
                 DAr = torch.stack([model.dA(zbr, _P3r[[k]].expand(len(zbr), -1))
                                    for k in range(3)], 1)
                 DBr = torch.stack([model.dB(zbr, _P3r[[k]].expand(len(zbr), -1))
