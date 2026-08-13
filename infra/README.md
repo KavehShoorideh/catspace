@@ -28,8 +28,11 @@ service. Images are immutable per-commit tags; prod images change only via `depl
 For a-couple-of-players-a-week, do NOT run `sky serve` (always-on GPU ≈ $300+/mo).
 Ranked cheapest-first:
 1. **Modal serverless** (~$0/mo): $30/mo free credits, T4 $0.59/hr billed per-second,
-   scale-to-zero web endpoints. Cheapest by far but needs a Modal-specific wrapper
-   (a "pick a component" tradeoff -- the Docker image stays the source of truth).
+   scale-to-zero web endpoints that AUTO-WAKE on the visitor's request (~10-30s cold
+   start; --lite needs a human `sky start` + ~2-3 min). Wrapper: `infra/modal_serve.py`
+   (`pip install modal && modal setup`, create the `catspace-registry` secret per the
+   file header, `modal deploy infra/modal_serve.py`). The Docker image stays the
+   source of truth -- Modal builds the same Dockerfile.serve.
 2. **`deploy.sh dev --lite`** (~$3-10/mo): `sky launch` + 20-min idle autostop on the
    same YAML/image -- pay only session-hours (L4 ≈ $0.40-0.70/hr across vendors);
    wake a stopped box with `sky start catspace-dev` (~2-3 min).
