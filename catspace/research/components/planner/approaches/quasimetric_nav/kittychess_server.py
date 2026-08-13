@@ -641,6 +641,12 @@ class H(BaseHTTPRequestHandler):
                         "p_act": (round(float(pa[k]), 3) if pa else None),
                         "dA": (round(float(da[k]), 2) if da else None),
                         "gates": gouts})
+                # SORTED for the dropdown (Kaveh 2026-08-12): active concepts first
+                # (by |leverage| -- highest-stakes on top), then candidates by live
+                # P(activate) from this position, descending.
+                cdeets.sort(key=lambda c: (0 if c["active"] else 1,
+                                           -abs(c["lev"]) if c["active"]
+                                           else -(c["p_act"] or 0.0)))
             except Exception:
                 cdeets = []
         dests = {}
