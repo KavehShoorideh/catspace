@@ -642,7 +642,10 @@ class H(BaseHTTPRequestHandler):
                                device=H.eng.device)
             row_of = _tH2.zeros(len(legal), dtype=_tH2.long, device=H.eng.device)
             eb_t = _tH2.tensor([eb], dtype=_tH2.long, device=H.eng.device)
-            lg = H.human.move_logits(phi.float(), eb_t, mids, row_of)
+            ids = None
+            if getattr(H.human, "heads", 0) and H.gq is not None:
+                ids = H.gq.jqt.target_codes(phi)[1]        # v2: concept codes ride along
+            lg = H.human.move_logits(phi.float(), eb_t, mids, row_of, None, ids)
             p = _tH2.softmax(lg / max(temp, 1e-3), 0).cpu().numpy()
         return {m.uci(): float(pv) for m, pv in zip(legal, p)}
 
@@ -1624,7 +1627,8 @@ def main():
         for cH in (base, _stemH):
             if _osH.path.exists(cH + "_human.pt") and H.human is None:
                 pH = _tH.load(cH + "_human.pt", map_location=args.device, weights_only=False)
-                H.human = HumanMoves(d_in=pH["d_in"]).to(args.device)
+                H.human = HumanMoves(d_in=pH["d_in"], heads=pH.get("heads", 0),
+                                     codes=pH.get("codes", 64)).to(args.device)
                 H.human.load_state_dict(pH["state_dict"])
                 H.human.eval()
         print(f"[kitty-server] human layer: {H.human is not None}", flush=True)
