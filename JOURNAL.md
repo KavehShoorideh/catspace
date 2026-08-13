@@ -12320,3 +12320,17 @@ majority). The SF-fitted probe transfers to humans AT the refit ceiling (57.3 vs
 the concept->outcome MEANING is portable; the drop to 57% is the human games themselves
 (humans un-win won positions), not vocabulary mismatch. Caveat: quantizer is in-corpus for
 SF (probe game-split only); rerun on jqt4 + true holdout for the publishable number.
+
+## 2026-08-13 (night) — Probe v2: outcome-from-concepts BY STAGE + windowed sets (Kaveh's catch)
+The aggregate 67% blended stages; position-level by game-fraction (SF-test | human-transfer):
+  0-20% 60.8|45.5 · 20-40% 61.2|48.8 · 40-60% 64.2|56.0 · 60-80% 72.5|64.9 · 80-100% 77.2|71.2
+Windowed concept-SET (multi-hot of codes seen in the window, ONE sample/game -> final result):
+  10-30% sf 58.3 hu 51.0 · 30-50% sf 63.3 hu 54.5 · 50-70% sf 72.5 hu 57.2 · 70-90% sf 79.2 hu 62.7
+READS: (1) late codes largely DESCRIBE the result (77-79%) — Kaveh's point stands; the honest
+prediction number is the early window. (2) SF early-game 58-61% is partly a CORPUS ARTIFACT:
+piecedown starts are handicapped, so the opening position already encodes the result under
+optimal play. (3) Human early windows are barely above majority (51 vs 49) — balanced starts
++ human volatility; concepts become predictive of human outcomes from midgame (~57%) on.
+(4) Human 0-20% at 45.5% is BELOW human majority: SF-fitted class priors mismatch early
+balanced positions — refit fixes priors, not boundaries. Rerun on jqt4 + standard-start SF
+games for the clean curve.

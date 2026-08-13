@@ -175,6 +175,43 @@ def main():
     W, b = fit_logreg(Xtr, ytr)
     acc_te, nll_te = eval_probe(W, b, Xte, yte)
     acc_hu, nll_hu = eval_probe(W, b, Xhu, yhu)
+    # ---- BY STAGE (Kaveh 2026-08-13: "what stage did you take the concepts from? the
+    # last concept might just [give away] the position"): position-level accuracy per
+    # game-fraction bucket -- how early do the codes know?
+    print("\n[probe] position-level accuracy BY GAME STAGE (SF-test | human-transfer):")
+    for lo, hi in ((0.0, 0.2), (0.2, 0.4), (0.4, 0.6), (0.6, 0.8), (0.8, 1.01)):
+        m1 = (phte >= lo) & (phte < hi)
+        m2 = (phhu >= lo) & (phhu < hi)
+        a1, n1 = eval_probe(W, b, Xte[m1], yte[m1]) if m1.sum() > 30 else (float("nan"), 0)
+        a2, n2 = eval_probe(W, b, Xhu[m2], yhu[m2]) if m2.sum() > 30 else (float("nan"), 0)
+        print(f"  {int(lo*100):3d}-{int(hi*100):3d}%   sf {a1:.1%} ({n1:.2f} bits)   "
+              f"human {a2:.1%} ({n2:.2f} bits)")
+    # ---- WINDOWED CONCEPT SET (one sample per GAME): bag-of-codes seen inside a
+    # fractional window -> final outcome. The clean "prediction, not description" number.
+    def window_feats(games_list, X, ph, lo, hi):
+        Xg, yg, ofs = [], [], 0
+        for g in games_list:
+            n = len(g[0])
+            sl = slice(ofs, ofs + n)
+            m = (ph[sl] >= lo) & (ph[sl] < hi)
+            if m.sum() >= 2:
+                Xg.append(np.clip(X[sl][m][:, :-1].sum(0), 0, 1))   # multi-hot, stm dropped
+                yg.append(g[2])
+            ofs += n
+        return np.stack(Xg).astype(np.float32), np.array(yg)
+    print("\n[probe] WINDOWED concept-set -> final outcome (one sample per game):")
+    for lo, hi in ((0.1, 0.3), (0.3, 0.5), (0.5, 0.7), (0.7, 0.9)):
+        Xg_tr, yg_tr = window_feats(sf[:n_tr], Xtr, phtr, lo, hi)
+        Xg_te, yg_te = window_feats(sf[n_tr:], Xte, phte, lo, hi)
+        Xg_hu, yg_hu = window_feats(hu, Xhu, phhu, lo, hi)
+        Wg, bg = fit_logreg(Xg_tr, yg_tr, l2=3e-3)
+        ag_te, ng_te = eval_probe(Wg, bg, Xg_te, yg_te)
+        ag_hu, ng_hu = eval_probe(Wg, bg, Xg_hu, yg_hu)
+        mj_te = float((yg_te == np.bincount(yg_tr, minlength=3).argmax()).mean())
+        mj_hu = float((yg_hu == np.bincount(yg_tr, minlength=3).argmax()).mean())
+        print(f"  plies {int(lo*100):3d}-{int(hi*100):3d}% of game:  "
+              f"sf {ag_te:.1%} ({ng_te:.2f} bits, maj {mj_te:.1%})   "
+              f"human {ag_hu:.1%} ({ng_hu:.2f} bits, maj {mj_hu:.1%})")
     # phase-only control: is it just "late positions are decisive"?
     Ptr = np.stack([phtr, phtr ** 2, np.ones_like(phtr)], 1).astype(np.float32)
     Pte = np.stack([phte, phte ** 2, np.ones_like(phte)], 1).astype(np.float32)
