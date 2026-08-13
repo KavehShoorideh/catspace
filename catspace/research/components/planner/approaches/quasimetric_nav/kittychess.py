@@ -185,6 +185,34 @@ class KittyChess:
         w_salv = 2.0 * (sig - 0.5)
         return (1.0 - w_salv) * (min(dD, dL) - dW) + w_salv * (dL - min(dD, dW))
 
+    def rank_by_child_E(self, board, rows, top=10):
+        """RANK BY E (Kaveh 2026-08-12: 'results should be ranked by E'; the deep-backup
+        probe showed minimax over near-flat noisy leaves INVERTS the one-ply truth -- Ng8
+        ranked above e6 while the calibrated one-ply E ordered them correctly). Mate/TB
+        proofs keep absolute rank; the rest re-rank by the CHILD'S calibrated E (one batched
+        readout), mover POV. The searched value stays as the tiebreak."""
+        import chess as _ch
+        if not rows:
+            return rows
+        head = [r for r in rows[:top]]
+        rest = rows[top:]
+        boards = []
+        for r in head:
+            b2 = board.copy(stack=False)
+            b2.push(r["mv"])
+            boards.append(b2)
+        probs = []
+        for b2 in boards:
+            pr, _ = self.wdl(b2)
+            probs.append(pr)
+        wtm = board.turn == _ch.WHITE
+        for r, pr in zip(head, probs):
+            e_w = pr[0] + 0.5 * pr[1]
+            r["child_E"] = e_w if wtm else 1.0 - e_w
+        head.sort(key=lambda r: (0, -r["value"], 0) if abs(r["value"]) >= 5e5
+                  else (1, -r["child_E"], -r["value"]))
+        return head + rest
+
     def exit_readout(self, board, tau=5.0):
         """THE position readout contract (Kaveh 2026-08-12): 'every position has 3
         probabilities and 3 distances. expected score should combine the probability,
@@ -503,6 +531,8 @@ class KittyChess:
                 z = self._embed(toks[a:a+4096], globs[a:a+4096])
                 D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
                      for k2 in range(3)]
+                DA = ([self.net.dA(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                       for k2 in (0, 2)] if getattr(self.net, "split_head", False) else None)
             for j in range(len(D[0])):
                 b = leaves[todo[a + j]][0]
                 if self.white_pov:
@@ -513,9 +543,12 @@ class KittyChess:
                 _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
                 _e = _e / _e.sum()
                 _Em = float(_e[iw] + 0.5 * _e[1])
-                # PURE PROBABILITY (Kaveh 2026-08-12: 'just get rid of margin entirely'):
-                # the committor is the move-selection value, full stop.
-                m = 1000.0 * _Em
+                # P primary, DISTANCE secondary (Kaveh: 'maximizing probability then by
+                # distance'): plies to the MOVER'S OWN WIN on the length ruler, tiny
+                # weight (<=4 units) -- only decides inside genuine P-ties, and always
+                # prefers progress over hopping the pony back home (3...Ng8).
+                m = 1000.0 * _Em - (0.1 * min(float(DA[0 if iw == 0 else 1][j]), 40.0)
+                                    if DA is not None else 0.0)
                 lv_vals[todo[a + j]] = float(m)
                 self._mcache[b.fen()] = float(m)
         if len(self._mcache) > 400_000:
@@ -544,6 +577,8 @@ class KittyChess:
                     z = self._embed(q_toks[a:a+4096], q_globs[a:a+4096])
                     D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
                          for k2 in range(3)]
+                    DA = ([self.net.dA(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                           for k2 in (0, 2)] if getattr(self.net, "split_head", False) else None)
                 for j in range(len(D[0])):
                     qb = qx_boards[q_todo[a + j]]
                     if self.white_pov:
@@ -554,7 +589,8 @@ class KittyChess:
                     _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
                     _e = _e / _e.sum()
                     _Em = float(_e[iw] + 0.5 * _e[1])
-                    m = 1000.0 * _Em
+                    m = 1000.0 * _Em - (0.1 * min(float(DA[0 if iw == 0 else 1][j]), 40.0)
+                                        if DA is not None else 0.0)
                     q_vals[q_todo[a + j]] = float(m)
                     self._mcache[qb.fen()] = float(m)
             for qi, pi_ in enumerate(qx_parent):
@@ -687,6 +723,9 @@ class KittyChess:
                         z = self._embed(toks[a:a+4096], globs[a:a+4096])
                         D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
                              for k2 in range(3)]
+                        DA = ([self.net.dA(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                               for k2 in (0, 2)] if getattr(self.net, "split_head", False)
+                              else None)
                     for j in range(len(D[0])):
                         ci = new_nodes[a + j]
                         cb = N["b"][ci]
@@ -698,7 +737,8 @@ class KittyChess:
                         _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
                         _e = _e / _e.sum()
                         _Em = float(_e[iw] + 0.5 * _e[1])
-                        m = 1000.0 * _Em
+                        m = 1000.0 * _Em - (0.1 * min(float(DA[0 if iw == 0 else 1][j]), 40.0)
+                                            if DA is not None else 0.0)
                         N["stat"][ci] = float(m); N["val"][ci] = float(m)
                         self._mcache[cb.fen()] = float(m)
             for t in targets:
@@ -853,6 +893,9 @@ class KittyChess:
                         z = self._embed(toks[a:a+4096], globs[a:a+4096])
                         D = [self.dist(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
                              for k2 in range(3)]
+                        DA = ([self.net.dA(z, P3[[k2]].expand(len(z), -1)).float().cpu().numpy()
+                               for k2 in (0, 2)] if getattr(self.net, "split_head", False)
+                              else None)
                     for j in range(len(D[0])):
                         ci = new_eval[a + j]
                         cb = N["b"][ci]
@@ -864,7 +907,8 @@ class KittyChess:
                         _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
                         _e = _e / _e.sum()
                         _Em = float(_e[iw] + 0.5 * _e[1])
-                        m = 1000.0 * _Em
+                        m = 1000.0 * _Em - (0.1 * min(float(DA[0 if iw == 0 else 1][j]), 40.0)
+                                            if DA is not None else 0.0)
                         N["val"][ci] = float(m)
                         self._mcache[ckey(cb)] = float(m)
             # priors: mover picks among children ~ softmax(-child_val / tau) (child vals are

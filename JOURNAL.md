@@ -12169,3 +12169,14 @@ Nxd3+ case). Distillation didn't fix this class; turn-forks won't (not a turn is
 piece-slot stream (jqt3) is the targeted lever: piece-level codes can encode attacked-and-
 undefended as an IDENTITY property. Interim option if wanted: SF-multipv-based only-move
 chip (referee signal, display-only).
+
+## 2026-08-12/13 — rank by E (the deep-backup inversion) + viz simplifications
+The pony game (3...Ng8) exposed a real search pathology: one-ply calibrated E orders the
+candidates CORRECTLY (e6 0.658 > ... > Ng8 0.508) but the coherent deep backup INVERTED it
+(uneven subtree expansion over near-flat noisy leaves floats max-noise lines). Per Kaveh:
+"results should be ranked by E" — rank_by_child_E(): mate/TB proofs keep rank, the rest
+re-rank by the child's calibrated one-ply E (one batched readout), searched value only as
+tiebreak. Applied to PLAY and the analysis stream. Pony position: Nc6/e6 top, Ng8 -> rank 9.
+Battery: wave 10/10, d3 10/10, d2 9/10, coherent 9/10. Also: coherence-bounded search now
+powers the ANALYSIS stream (budget ladder per depth knob), lines fixed at top-3, wrapped for
+narrow screens, P-then-distance secondary retained inside ties.

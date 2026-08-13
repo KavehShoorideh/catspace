@@ -57,7 +57,7 @@ flex:none;background:#333}
 overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lines .ln:hover{background:#302d2a}
 .lines .ev{min-width:52px;font-weight:600;color:#dedede;font-size:12px;font-variant-numeric:tabular-nums}
-.lines .mv{color:#bababa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lines .mv{white-space:normal;word-break:break-word;color:#bababa}
 .lines .ln.best .ev{color:#759900}
 #moves{font-size:13.5px;line-height:1.9;max-height:170px;overflow-y:auto;overflow-wrap:anywhere}
 @media(max-width:760px){#moves{max-height:110px;font-size:12.5px;line-height:1.6}}
@@ -115,12 +115,11 @@ body.playmode .right .box:first-child{display:none}
       <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
       <button id="whytog" title="WHY overlay: positional importance beyond material (counterfactual removal, material-fitted residual). Green = load-bearing (doing MORE than its face value), red = underperforming or misplaced (removal costs little — or even helps its owner). Top 3 each. Kings excluded." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
       <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
-      <label title="number of candidate moves analyzed and displayed (multi-PV). More lines = broader view, slightly slower updates">lines <select id="lines" title="candidate moves shown"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
     <div class="lines" id="lnbox"></div>
     <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
-    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡ only move = one move far above the rest &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by CASCADE</div>
+    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡ only move = one move far above the rest &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by E (calibrated committor)</div>
   </div>
   <div class="box"><div id="moves"></div></div>
   <div class="box" id="cdbox" style="display:none">
@@ -202,7 +201,7 @@ function renderMat(fen){
   document.getElementById('mat-top').textContent=whiteBottom?m.b:m.w;
 }
 const knobs=()=>({depth:+document.getElementById('depth').value,
-  lines:+document.getElementById('lines').value,
+  lines:3,
   pvlen:8});
 // Two-phase like lichess: the position updates INSTANTLY, the engine lines stream in after.
 // A stale analysis (older seq) is discarded, so mashing the nav buttons stays responsive.
@@ -378,7 +377,6 @@ document.getElementById('prev').onclick=()=>api({action:"rel",d:-1});
 document.getElementById('next').onclick=()=>api({action:"rel",d:1});
 document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
-document.getElementById('lines').onchange=()=>api({action:"noop"});
 document.getElementById('whytog').onclick=()=>{whyOn=!whyOn;whyLastFen=null;
   document.getElementById('whytog').style.color=whyOn?'#7fbf5f':'#8f8a82';
   if(!whyOn)cg.setShapes([]);else api({action:"noop"});};
@@ -501,6 +499,7 @@ class H(BaseHTTPRequestHandler):
                 # COMPLETED iteration; a timed-out partial iteration is discarded
                 with H.lock:                     # BEST VERSION ONLY (Kaveh 2026-08-11):
                     best = H.eng.search_coherent(b, budget=1.5)   # coherence-bounded search
+                    best = H.eng.rank_by_child_E(b, best)         # ranked by E (2026-08-12)
                 if best:
                     cls.moves.append(best[0]["mv"]); cls.ptr += 1
                     b = self._board(); over = self._over(b)
@@ -609,6 +608,7 @@ class H(BaseHTTPRequestHandler):
                                 return
                             with H.lock:
                                 rows = H.eng.search_coherent(bb, budget=bud)
+                                rows = H.eng.rank_by_child_E(bb, rows)
                             if rows:
                                 dmax = max(r.get("depth_used", 1) for r in rows)
                                 publish(rows, dmax)
