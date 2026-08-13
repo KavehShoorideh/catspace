@@ -1,0 +1,4 @@
+channel: prod
+service_name: catspace-prod
+image_tag: prod
+resources: gpu

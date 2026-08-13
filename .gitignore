@@ -48,3 +48,4 @@ assets/corpora/
 # maia2_models symlink points into assets/models/maia2 so it lands in the right place.
 maia2_models
 *.pt
+infra/.secrets.env

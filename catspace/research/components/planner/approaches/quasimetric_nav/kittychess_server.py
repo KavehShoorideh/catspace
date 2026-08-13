@@ -1086,8 +1086,14 @@ def main():
     ap.add_argument("--port", type=int, default=8420)
     ap.add_argument("--depth", type=int, default=3)
     ap.add_argument("--cond-elo", type=float, default=None)
-    ap.add_argument("--device", default="mps")
+    ap.add_argument("--device", default="mps",
+                    help="mps | cuda | cpu | auto (cuda -> mps -> cpu)")
     args = ap.parse_args()
+    if args.device == "auto":
+        import torch as _ta
+        args.device = ("cuda" if _ta.cuda.is_available()
+                       else "mps" if _ta.backends.mps.is_available() else "cpu")
+        print(f"[kitty-server] device auto -> {args.device}", flush=True)
 
     import threading
     from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess

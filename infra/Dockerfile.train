@@ -1,0 +1,11 @@
+# catspace trainer -- CUDA image for cloud GPUs
+FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
+RUN apt-get update && apt-get install -y --no-install-recommends git curl stockfish \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY pyproject.toml ./
+COPY catspace ./catspace
+RUN pip install --no-cache-dir -e . python-chess vector-quantize-pytorch dvc[s3] awscli
+COPY infra/entrypoint_train.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
