@@ -71,6 +71,16 @@ def predicates_from_tok(tok):
         "black passed pawn":  passed(bp, wp, False),
         "white bishop pair":  (tok == 3).sum(1) >= 2,
         "black bishop pair":  (tok == 9).sum(1) >= 2,
+        # CENTER (Kaveh 2026-08-12: "isn't taking the center in the concepts"): occupancy
+        # predicates over d4/e4/d5/e5 (squares 27, 28, 35, 36 in a1=0 indexing)
+        "white center pawn":  ((tok[:, 27] == 1) | (tok[:, 28] == 1)),
+        "black center pawn":  ((tok[:, 35] == 7) | (tok[:, 36] == 7)),
+        "white big center":   ((tok[:, 27] == 1) & (tok[:, 28] == 1)),
+        "black big center":   ((tok[:, 35] == 7) & (tok[:, 36] == 7)),
+        "locked center":      (((tok[:, 27] == 1) & (tok[:, 35] == 7))
+                               | ((tok[:, 28] == 1) & (tok[:, 36] == 7))),
+        "center piece (white minor in center)":
+                              np.isin(tok[:, [27, 28, 35, 36]], [2, 3]).any(1),
     }
 
 

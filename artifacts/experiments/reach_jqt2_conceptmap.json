@@ -102,5 +102,45 @@
   "base": 0.208,
   "lift": 0.781,
   "anti": false
+ },
+ "white center pawn": {
+  "head": 6,
+  "code": 46,
+  "p_given_code": 0.745,
+  "base": 0.286,
+  "lift": 0.458,
+  "anti": false
+ },
+ "black center pawn": {
+  "head": 2,
+  "code": 62,
+  "p_given_code": 0.555,
+  "base": 0.263,
+  "lift": 0.293,
+  "anti": false
+ },
+ "white big center": {
+  "head": 5,
+  "code": 15,
+  "p_given_code": 0.136,
+  "base": 0.015,
+  "lift": 0.121,
+  "anti": false
+ },
+ "locked center": {
+  "head": 2,
+  "code": 62,
+  "p_given_code": 0.382,
+  "base": 0.124,
+  "lift": 0.259,
+  "anti": false
+ },
+ "center piece (white minor in center)": {
+  "head": 2,
+  "code": 2,
+  "p_given_code": 0.001,
+  "base": 0.133,
+  "lift": -0.132,
+  "anti": true
  }
 }
