@@ -12117,3 +12117,14 @@ PROCESS GAP: this conduct regression was invisible to our gates — the battery 
 tactical answers and the internal arena applied the flag to BOTH sides (symmetric handicap).
 Queued: forcing-on vs forcing-off asymmetric arena post-jqt3; conduct changes need an
 asymmetric A-vs-not-A match before defaulting on.
+
+## 2026-08-12 — E-conditional margin (Kaveh: "the margin should differ if you're ahead or behind")
+The old margin min(dD,dL)−dW treats the draw as a threat UNCONDITIONALLY — a losing engine
+spurns perpetuals chasing wins that aren't there. New: outcomes classified relative to the
+current expectation (win always better, loss always worse, the DRAW SWITCHES SIDES at E=0.5,
+dead zone ±0.05): margin = min(d worse-than-E) − min(d better-than-E). One helper (margin_e),
+applied at all seven sites (margins(), 4 leaf evals, quiescence, concept_values). Verified:
+ahead E=.8 unchanged (+3.0); behind E=.2 with a nearby draw flips −6.0 → +1.0 (salvation
+pulled in). Battery 9/10/9/9 unchanged (ahead cases protected by avoid-stalemate).
+HONESTY: no battery case yet exercises draw-SEEKING when lost — queued with the asymmetric
+conduct arena post-jqt3.
