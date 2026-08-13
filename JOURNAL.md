@@ -12128,3 +12128,12 @@ ahead E=.8 unchanged (+3.0); behind E=.2 with a nearby draw flips −6.0 → +1.
 pulled in). Battery 9/10/9/9 unchanged (ahead cases protected by avoid-stalemate).
 HONESTY: no battery case yet exercises draw-SEEKING when lost — queued with the asymmetric
 conduct arena post-jqt3.
+
+## 2026-08-12 — margin_e v2/v3: the bongcloud regression and the piecewise fix
+v1 dead zone (|E−0.5|<=.05) zeroed the DRAW term exactly in the opening band -> Ke2 lunges
+(the draw distance was the structural signal shaping quiet play). v2 symmetric blend leaked
+30% salvation weight at E~0.52 -> wing-pawn lunges. v3 PIECEWISE: E>=0.5 is BYTE-IDENTICAL
+to the classic threat margin (proven: margin_e(...,0.52)==classic); the salvation blend
+ramps only below 0.5. Ke2 rank 27; behind-with-draw stays +1.0; battery 9/10/9/9.
+Two conduct regressions in one evening from one formula: the asymmetric conduct arena
+(post-jqt3) is no longer optional.
