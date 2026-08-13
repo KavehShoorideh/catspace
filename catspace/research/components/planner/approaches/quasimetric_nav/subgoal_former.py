@@ -100,6 +100,60 @@ class GeoQuery:
                              p_act, lev, A.norm(dim=-1).log1p()], -1)
         return G.cpu(), feats.cpu()
 
+    @torch.no_grad()
+    def candidates_live(self, board, k=12, k_lev=4):
+        """POSITION-CONDITIONED candidates (2026-08-13): whole vocabulary ranked by live
+        P(activate) from THIS position + a few leverage staples. One batched pass."""
+        allhc = torch.tensor([(h, c) for h in range(self.H) for c in range(self.C)],
+                             dtype=torch.long, device=self.device)
+        A = self.jqt.anchors_for(allhc).float()
+        z_us, _ = self.state_embed(board)
+        dB = self.eng.net.dB(z_us.expand(len(A), -1), A)
+        p = torch.sigmoid(self.jqt.activation_logit(dB))
+        top = p.argsort(descending=True)[:k].cpu().numpy()
+        hcs = [(int(i // self.C), int(i % self.C)) for i in top]
+        if self.lev is not None:
+            fl = np.argsort(-np.abs(self.lev).ravel())[:k_lev]
+            hcs += [(int(i // self.C), int(i % self.C)) for i in fl]
+        seen, out = set(), []
+        for h, c in hcs:
+            if (h, c) not in seen:
+                seen.add((h, c)); out.append((h, c))
+        return np.array(out, np.int64)
+
+    @torch.no_grad()
+    def move_toward(self, board, goal, minimize=False):
+        """PREMOVE-tier move choice: NO search -- one batched readout of every child's
+        P(activate goal); argmax (pursue) or argmin (deny). The b=0 action."""
+        import chess as _ch
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+            tokenize as _tk)
+        moves = list(board.legal_moves)
+        if not moves:
+            return None, 0
+        rows_t, rows_g = [], []
+        for mv in moves:
+            board.push(mv)
+            tk, gl = _tk(board)
+            rows_t.append(np.asarray(tk)); rows_g.append(np.asarray(gl))
+            board.pop()
+        z = self.eng._embed(rows_t, rows_g).float()
+        A = self.jqt.anchors_for(torch.tensor([goal], dtype=torch.long,
+                                              device=self.device)).float()
+        dB = self.eng.net.dB(z, A.expand(len(z), -1))
+        pg = torch.sigmoid(self.jqt.activation_logit(dB))
+        # disaster veto: among the top half by mover E, pick best goal score
+        probs = []
+        P3 = self.eng.poles[[self.eng.pi[k] for k in ("WIN", "DRAW", "LOSS")]].to(self.device)
+        DBp = torch.stack([self.eng.net.dB(z, P3[[k]].expand(len(z), -1)) for k in range(3)], 1)
+        pr = torch.softmax(-DBp / 5.0, 1)
+        e_w = (pr[:, 0] + 0.5 * pr[:, 1]).cpu().numpy()
+        e_m = e_w if board.turn == _ch.WHITE else 1.0 - e_w
+        ok = e_m >= np.quantile(e_m, 0.5)
+        score = pg.cpu().numpy() * (1 if not minimize else -1)
+        score[~ok] = -1e9
+        return moves[int(np.argmax(score))], len(moves)
+
     def candidates(self, k_lev=12, extra=()):
         """default token set: top-|leverage| codes each way + tempo/check slots + extras."""
         hcs = list(extra)
