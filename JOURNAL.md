@@ -12137,3 +12137,14 @@ to the classic threat margin (proven: margin_e(...,0.52)==classic); the salvatio
 ramps only below 0.5. Ke2 rank 27; behind-with-draw stays +1.0; battery 9/10/9/9.
 Two conduct regressions in one evening from one formula: the asymmetric conduct arena
 (post-jqt3) is no longer optional.
+
+## 2026-08-12 — margin REMOVED from move selection (Kaveh: "maximize probability... just get
+rid of margin entirely")
+Selection is now pure committor: leaf value = 1000*E, everywhere (4 leaf sites, quiescence,
+concept path when it returns). The whole margin saga (threat/salvation, dead zones, blends)
+is retired from move choice -- margin survives only as a display quantity. Battery: wave
+10/10 (FIRST perfect), d3 10/10, d2 9/10, coherent 9/10. Known residue: the probability
+head's sibling wall (2...Ba6 tops after 1.e4 e5 at 1.5s coherent -- the P-head cannot see a
+hanging bishop even after expansion); that is the FIELD's resolution limit, margin never
+fixed it either, and the roadmap answer is depth + jqt3 rulers + planner selection, not a
+scalar tweak.

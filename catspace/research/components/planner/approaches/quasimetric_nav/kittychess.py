@@ -475,8 +475,10 @@ class KittyChess:
                 import numpy as _np9
                 _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
                 _e = _e / _e.sum()
-                m = self.margin_e(D[iw][j], D[1][j], D[il][j],
-                                  float(_e[iw] + 0.5 * _e[1]))
+                _Em = float(_e[iw] + 0.5 * _e[1])
+                # PURE PROBABILITY (Kaveh 2026-08-12: 'just get rid of margin entirely'):
+                # the committor is the move-selection value, full stop.
+                m = 1000.0 * _Em
                 lv_vals[todo[a + j]] = float(m)
                 self._mcache[b.fen()] = float(m)
         if len(self._mcache) > 400_000:
@@ -514,8 +516,8 @@ class KittyChess:
                     import numpy as _np9
                     _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
                     _e = _e / _e.sum()
-                    m = self.margin_e(D[iw][j], D[1][j], D[il][j],
-                                      float(_e[iw] + 0.5 * _e[1]))
+                    _Em = float(_e[iw] + 0.5 * _e[1])
+                    m = 1000.0 * _Em
                     q_vals[q_todo[a + j]] = float(m)
                     self._mcache[qb.fen()] = float(m)
             for qi, pi_ in enumerate(qx_parent):
@@ -659,7 +661,7 @@ class KittyChess:
                         _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
                         _e = _e / _e.sum()
                         _Em = float(_e[iw] + 0.5 * _e[1])
-                        m = self.margin_e(D[iw][j], D[1][j], D[il][j], _Em)
+                        m = 1000.0 * _Em
                         N["stat"][ci] = float(m); N["val"][ci] = float(m)
                         self._mcache[cb.fen()] = float(m)
             for t in targets:
@@ -825,7 +827,7 @@ class KittyChess:
                         _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
                         _e = _e / _e.sum()
                         _Em = float(_e[iw] + 0.5 * _e[1])
-                        m = self.margin_e(D[iw][j], D[1][j], D[il][j], _Em)
+                        m = 1000.0 * _Em
                         N["val"][ci] = float(m)
                         self._mcache[ckey(cb)] = float(m)
             # priors: mover picks among children ~ softmax(-child_val / tau) (child vals are
@@ -930,11 +932,7 @@ class KittyChess:
                 pW, pD, pB = pW / zs, pD / zs, pB / zs
             E = pW + 0.5 * pD
             Em = E if wtm else 1.0 - E
-            if wtm:
-                marg = self.margin_e(daW, daD, daL, Em)
-            else:
-                marg = self.margin_e(daL, daD, daW, Em)
-            out.append(1000.0 * Em + float(np.clip(marg, -40, 40)))
+            out.append(1000.0 * Em)
         return out
 
     def mc_tiebreak(self, board, rows, R=24, band=1.0, cap=6, ply_cap=60):
