@@ -562,10 +562,12 @@ class H(BaseHTTPRequestHandler):
                             # scored -11 vs +3, and the bar followed it to 'white winning'
                             # with mate-in-3 on the board). Values bucketed to 2.0 so the
                             # cascade still decides among search-indifferent siblings.
-                            rs = sorted(rows, key=lambda r: (
-                                -round(r["value"] / 2.0),
-                                crank.get(r["mv"].uci(), 999)))
-                            disp = self._rows_to_display(bb, rs, wdl_top=nlines)[:nlines]
+                            disp = self._rows_to_display(bb, rows, wdl_top=len(rows))
+                            _wtm = bb.turn
+                            disp.sort(key=lambda r: (
+                                0 if r.get("tb") else 1,
+                                -(r.get("E", 0) if _wtm else 1 - r.get("E", 1))))
+                            disp = disp[:nlines]
                             try:
                                 _concept_notes(disp)
                             except Exception:
@@ -573,11 +575,11 @@ class H(BaseHTTPRequestHandler):
                             for r in disp:
                                 merged[r["uci"]] = {**{k: r.get(k) for k in
                                     ("uci", "margin", "tb", "line", "wdl", "dists",
-                                     "force", "eff_replies", "cnotes")}, "_d": d,
-                                    "_rk": (-round(r.get("value", 0) / 2.0) if "value" in r
-                                            else 0, crank.get(r["uci"], 999))}
-                            shown = sorted(merged.values(),
-                                           key=lambda r: (-r["_d"], r["_rk"]))[:max(nlines, len(merged) if len(merged) <= nlines + 2 else nlines)]
+                                     "force", "eff_replies", "cnotes", "E")}, "_d": d}
+                            shown = sorted(merged.values(), key=lambda r: (
+                                0 if r.get("tb") else 1,
+                                -((r.get("E") or 0) if _wtm else 1 - (r.get("E") or 1)),
+                                -r["_d"]))[:nlines]
                             import numpy as _np8
                             _vs = _np8.array([r0["value"] for r0 in rows], float)
                             _sc = (_vs - _vs.max()) / 30.0        # 0.03 E per unit
@@ -906,6 +908,7 @@ class H(BaseHTTPRequestHandler):
                     bc.push(mv)
                 try:
                     row["wdl"], row["dists"] = H.eng.wdl(bc)
+                    row["E"] = round(row["wdl"][0] + 0.5 * row["wdl"][1], 4)
                 except Exception:
                     pass
                 try:
