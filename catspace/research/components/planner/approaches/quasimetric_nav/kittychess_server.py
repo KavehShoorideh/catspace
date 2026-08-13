@@ -121,6 +121,9 @@ body.playmode .right .box:first-child{display:none}
     <div class="lines" id="lnbox"></div>
     <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
   <div id="sqbox" style="display:none;font-size:11px;color:#8f8a82;padding:3px 0;word-break:break-word"></div>
+  <div id="sqfloorrow" style="display:none;font-size:11px;color:#6f6b66;padding:1px 0">noise floor
+    <input id="sqfloor" type="range" min="0" max="2" step="0.05" value="0.4" style="width:120px;vertical-align:middle">
+    <span id="sqfloorval">0.40% E</span></div>
     <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; ⚡ only move = one move far above the rest &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by E (calibrated committor)</div>
   </div>
   <div class="box"><div id="moves"></div></div>
@@ -139,7 +142,7 @@ body.playmode .right .box:first-child{display:none}
 <script>
 "use strict";
 let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
-let sfOn=false, sfLastFen=null, whyOn=false, whyLastFen=null, sqOn=false, sqLastFen=null;
+let sfOn=false, sfLastFen=null, whyOn=false, whyLastFen=null, sqOn=false, sqLastFen=null, sqLast=null;
 function sqRefresh(fen){
   const box=document.getElementById('sqbox');
   if(!sqOn){if(!whyOn)cg.setShapes([]);box.style.display='none';return;}
@@ -147,8 +150,16 @@ function sqRefresh(fen){
   sqLastFen=fen;
   fetch('/api',{method:'POST',body:JSON.stringify({action:'sqconcepts'})}).then(r=>r.json()).then(e=>{
     if(!e.sal){box.style.display='';box.textContent='sq: '+(e.err||'n/a');return;}
-    const FLOOR=0.004;                     // E units: below this a square is NOISE
-    const sig=e.sal.filter(x=>Math.abs(x.imp)>=FLOOR).slice(0,8);
+    sqLast=e.sal;
+    renderSq();
+  }).catch(()=>{});
+}
+function renderSq(){
+    if(!sqLast) return;
+    const box=document.getElementById('sqbox');
+    const FLOOR=(+document.getElementById('sqfloor').value)/100;
+    document.getElementById('sqfloorval').textContent=(FLOOR*100).toFixed(2)+'% E';
+    const sig=sqLast.filter(x=>Math.abs(x.imp)>=FLOOR).slice(0,8);
     const mx=Math.max(...sig.map(x=>Math.abs(x.imp)))||1;
     cg.setShapes(sig.map(x=>({orig:x.sq,
       brush:(x.imp>0?(Math.abs(x.imp)>=0.6*mx?'green':'paleGreen')
@@ -156,8 +167,7 @@ function sqRefresh(fen){
     box.style.display='';
     box.innerHTML=sig.length?('sq concepts: '+sig.map(x=>
       `<b>${x.sq}</b>:s${x.code}(${x.imp>0?'+':''}${(x.imp*100).toFixed(1)})`).join(' · '))
-      :'sq concepts: no square stands out here (all residuals < 0.4% E)';
-  }).catch(()=>{});
+      :'sq concepts: no square stands out at this floor';
 }
 function whyRefresh(fen){
   if(!whyOn){cg.setShapes([]);return;}
@@ -402,7 +412,9 @@ document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
 document.getElementById('sqtog').onclick=()=>{sqOn=!sqOn;sqLastFen=null;
   document.getElementById('sqtog').style.color=sqOn?'#7fbf5f':'#8f8a82';
+  document.getElementById('sqfloorrow').style.display=sqOn?'':'none';
   if(!sqOn){document.getElementById('sqbox').style.display='none';cg.setShapes([]);}else api({action:"noop"});};
+document.getElementById('sqfloor').oninput=renderSq;
 document.getElementById('whytog').onclick=()=>{whyOn=!whyOn;whyLastFen=null;
   document.getElementById('whytog').style.color=whyOn?'#7fbf5f':'#8f8a82';
   if(!whyOn)cg.setShapes([]);else api({action:"noop"});};
