@@ -428,7 +428,10 @@ class H(BaseHTTPRequestHandler):
                 bb = b.copy()
 
                 def worker():
-                    cmoves, corder, _ = H.eng.cascade_rank(bb)
+                    with H.lock:      # UNLOCKED MODEL CALL = the MPS wedge (2026-08-12):
+                        cmoves, corder, _ = H.eng.cascade_rank(bb)   # two threads in MPS
+                                      # deadlock the GPU runtime at 0%% CPU; every engine
+                                      # touch in this server goes through H.lock, no exceptions
                     crank = {cmoves[j].uci(): pos for pos, j in enumerate(corder)} if cmoves else {}
 
                     def _concept_notes(rows_disp):
@@ -488,9 +491,13 @@ class H(BaseHTTPRequestHandler):
                             resid = H.eng.bellman_residual(bb)
                             top = depth + (1 if resid is not None and abs(resid) >= 2.0 else 0)
                             H.an = {**H.an, "resid": resid, "top": top}
-                            for d in range(1, top + 1):
-                                if H.gen != g:
-                                    return
+                        # lock PER DEPTH, not across the whole deepening: state requests
+                        # (navigation, the eval bar, concept panel) get in between depths
+                        # instead of starving for the whole search (the 20s first paint)
+                        for d in range(1, top + 1):
+                            if H.gen != g:
+                                return
+                            with H.lock:
                                 rows = H.eng.search(bb, depth=d, stop=lambda: H.gen != g,
                                                     progress=lambda rs, _d=d: publish(rs, _d))
                                 publish(rows, d)
@@ -591,7 +598,9 @@ class H(BaseHTTPRequestHandler):
                 cand = active_hc + extra_hc
                 pa = da = None
                 if H.gq is not None:
-                    G_, F_ = H.gq.geometry(b, _np3.array(cand, _np3.int64))
+                    with H.lock:                    # NEVER touch the model unlocked: an
+                        G_, F_ = H.gq.geometry(     # unlocked MPS call races the streaming
+                            b, _np3.array(cand, _np3.int64))   # analysis thread (the hang)
                     da = F_[:, 0].tolist(); pa = F_[:, 2].tolist()
                 for k, (hh, cc) in enumerate(cand):
                     names = (H.code_names or {}).get((hh, cc), [])
