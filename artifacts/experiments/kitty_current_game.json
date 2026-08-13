@@ -1,1 +1,1 @@
-{"san": ["d4", "Nf6", "Qd3", "Nc6"], "fen": "rnbqkb1r/pppppppp/5n2/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 1 2", "start_fen": null, "ptr": 2, "mode": "analysis", "over": null, "moves_uci": ["d2d4", "g8f6", "d1d3", "b8c6"]}
+{"san": ["d4", "Nf6", "Bg5"], "fen": "rnbqkb1r/pppppppp/5n2/8/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 1 2", "start_fen": null, "ptr": 2, "mode": "analysis", "over": null, "moves_uci": ["d2d4", "g8f6", "c1g5"]}
