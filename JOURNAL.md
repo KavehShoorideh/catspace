@@ -12070,3 +12070,10 @@ Checkpoint ladder: every 500 steps + _latest + _jqt sidecar; probeable without s
   ingest (|dE| grows → the tau-gate disengages). v2 bundle: persistence weight/tau fix +
   per-square VQ + piece-slot stream (identity-matched pairs make persistence well-posed).
 - Promoted; server on :8420 redeployed; leverage + base rates refit on the jqt2 codebook.
+
+## 2026-08-12 — SubgoalFormer v1 trained (corpus events): AUC 0.843 on-distribution
+20k samples x 14 tokens, 8 epochs, 14m. Held-out corpus activation prediction: Brier 0.0877
+(chance ~0.114), AUC 0.843 (chance 0.5) — the geometry-attention + one-FC head learns "will
+this concept activate" well. RACE TRANSFER FAILS: battery AUC 0.584 (untrained 0.53, raw
+ruler 0.602) — 3-piece KPvK boards are off-corpus. Fix queued: mix oracle-labeled race
+positions into former training (TB referee = allowed; generator is free). _former.pt saved.

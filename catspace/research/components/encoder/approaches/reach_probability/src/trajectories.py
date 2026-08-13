@@ -160,7 +160,7 @@ TERM_RADIUS = np.array([0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], np.float32
 TERM_WEIGHT_CAP = 8.0
 
 _CACHE_KEYS = ("tok", "glob", "start", "length", "game_id", "source", "result", "elo",
-               "term", "mat", "cstate")
+               "term", "mat", "cstate", "slots")
 
 
 def classify_terminal(board, flagged: bool):
@@ -220,9 +220,24 @@ def _replay_one(args):
     castle_state = []
     planes = []
     toks, globs = [], []
+    # PIECE SLOTS (Kaveh 2026-08-12, the piece-level concept stream): a slot is a piece
+    # IDENTITY, assigned at the start position (ascending square order, <=32) and followed
+    # through moves -- captures free the square, castling moves two slots, promotion KEEPS
+    # the slot (the a-pawn that queens is still slot k). slot_map[ply] is (64,) int8 with
+    # -1 = empty; the (slot -> current square) binding the piece stream gathers with.
+    sq2slot = {}
+    for _sq in sorted(b.piece_map()):
+        sq2slot[_sq] = len(sq2slot)
+    def _slot_row():
+        r = np.full(64, -1, np.int8)
+        for _s, _i in sq2slot.items():
+            r[_s] = _i
+        return r
+    slot_maps = []
     t, g = tokenize(b)
     toks.append(t); globs.append(g)                     # ply 0 = the initial position
     castle_state.append(tuple(cst))
+    slot_maps.append(_slot_row())
     if with_planes:
         planes.append(b.to_input_tensor())
     truncated = len(ucis) > max_plies                    # the real ending is past our cut
@@ -234,7 +249,23 @@ def _replay_one(args):
                 cst[side] = 1
             elif b.is_queenside_castling(mv):
                 cst[side] = 2
+            _cap_sq = None
+            if b.is_en_passant(mv):
+                _cap_sq = mv.to_square + (-8 if b.turn else 8)
+            elif b.is_capture(mv):
+                _cap_sq = mv.to_square
+            _rk_from = _rk_to = None
+            if b.is_kingside_castling(mv):
+                _rk_from, _rk_to = (7, 5) if b.turn else (63, 61)
+            elif b.is_queenside_castling(mv):
+                _rk_from, _rk_to = (0, 3) if b.turn else (56, 59)
             b.push(mv)
+            if _cap_sq is not None:
+                sq2slot.pop(_cap_sq, None)
+            if mv.from_square in sq2slot:
+                sq2slot[mv.to_square] = sq2slot.pop(mv.from_square)
+            if _rk_from is not None and _rk_from in sq2slot:
+                sq2slot[_rk_to] = sq2slot.pop(_rk_from)
             # rights gone and never castled -> the king or a rook simply moved
             if cst[0] == 0 and not (b.has_kingside_castling_rights(chess.WHITE)
                                     or b.has_queenside_castling_rights(chess.WHITE)):
@@ -248,6 +279,7 @@ def _replay_one(args):
         t, g = tokenize(b)
         toks.append(t); globs.append(g)
         castle_state.append(tuple(cst))
+        slot_maps.append(_slot_row())
         if with_planes:
             planes.append(b.to_input_tensor())
         # OPTIONAL tablebase handoff, DEFAULT OFF (tb_pieces=0). Kaveh 2026-08-05 first asked to
@@ -286,7 +318,8 @@ def _replay_one(args):
         import torch
         pk = pack_planes(torch.stack(planes))
     return (np.stack(toks).astype(np.uint8), np.stack(globs).astype(np.uint8),
-            np.int8(term), mat, pk, np.asarray(castle_state, np.uint8))
+            np.int8(term), mat, pk, np.asarray(castle_state, np.uint8),
+            np.stack(slot_maps).astype(np.int8))
 
 
 def load_human_games(n, seed, records=None, max_plies=400):
@@ -397,6 +430,9 @@ class Trajectories:
     mat: np.ndarray          # (G,12) uint8   piece counts of the FINAL position (endgame type)
     # (N,2) uint8 per-ply castle state per side: 0 pre / 1 short / 2 long / 3 lost-uncastled
     cstate: np.ndarray | None = None
+    # (N,64) int8 piece-slot ids per square (-1 empty): piece IDENTITY through the game
+    # (assigned at the start position, followed through moves; promotion keeps the slot)
+    slots: np.ndarray | None = None
     # (N,889) uint8 bit-packed lc0 112-plane inputs, or None when the token path is in use.
     # 889 B/position against 7168 raw (8.06x); see lc0_prefix.pack_planes for why exactly one
     # plane (rule50) needs a byte and the other 111 pack to bits.
@@ -419,13 +455,13 @@ class Trajectories:
         g0 = len(self)
         n = self.n_positions
         toks, globs, csts, starts, lens = [], [], [], [], []
-        gids, ress, terms, mats, kept = [], [], [], [], []
+        gids, ress, terms, mats, kept, slts = [], [], [], [], [], []
         for ri, ((gid, res, _u, _f), r) in enumerate(zip(rows, done)):
             if r is None:
                 continue
             kept.append(ri)
-            tk, gb, term, mat, _pk, cs = r
-            toks.append(tk); globs.append(gb); csts.append(cs)
+            tk, gb, term, mat, _pk, cs, sl = r
+            toks.append(tk); globs.append(gb); csts.append(cs); slts.append(sl)
             starts.append(n); lens.append(len(tk)); n += len(tk)
             gids.append(gid); ress.append(res); terms.append(term); mats.append(mat)
         if not toks:
@@ -434,6 +470,8 @@ class Trajectories:
         self.glob = np.concatenate([self.glob, *globs])
         if self.cstate is not None:
             self.cstate = np.concatenate([self.cstate, *csts])
+        if self.slots is not None:
+            self.slots = np.concatenate([self.slots, *slts])
         self.start = np.concatenate([self.start, np.asarray(starts, np.int64)])
         self.length = np.concatenate([self.length, np.asarray(lens, np.int32)])
         self.game_id = np.concatenate([self.game_id, np.asarray(gids, np.int64)])
@@ -710,7 +748,7 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
     the most legible weakness data in the corpus.
     """
     # v2 in the key: the schema gained per-game Elo, so a v1 cache would load without it.
-    key = hashlib.blake2b(f"v4|{n_human}|{n_sf}|{n_piecedown}|{seed}|{max_plies}|{tb_pieces}|"
+    key = hashlib.blake2b(f"v5|{n_human}|{n_sf}|{n_piecedown}|{seed}|{max_plies}|{tb_pieces}|"
                           f"{int(with_planes)}".encode(), digest_size=8).hexdigest()
     cdir = paths.derived(f"cache/traj_{key}")
     if cache and os.path.exists(os.path.join(cdir, "tok.npy")):
@@ -737,13 +775,13 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
         done = list(ex.map(_replay_one, payload, chunksize=64))
 
     toks, globs, starts, lens, gids, srcs, ress, terms, mats = [], [], [], [], [], [], [], [], []
-    pks, elos, csts = [], [], []
+    pks, elos, csts, slts = [], [], [], []
     n = 0
     for ((gid, res, _, _, el), src), r in zip(games, done):
         if r is None:
             continue
-        tk, gb, term, mat, pk, cs = r
-        toks.append(tk); globs.append(gb); csts.append(cs)
+        tk, gb, term, mat, pk, cs, sl = r
+        toks.append(tk); globs.append(gb); csts.append(cs); slts.append(sl)
         if pk is not None:
             pks.append(pk)
         starts.append(n); lens.append(len(tk)); n += len(tk)
@@ -758,7 +796,8 @@ def build(n_human=100_000, n_sf=100_000, seed=0, workers=None, cache=True,
         term=np.asarray(terms, np.int8),
         mat=np.stack(mats).astype(np.uint8),
         planes=np.concatenate(pks) if pks else None,
-        cstate=np.concatenate(csts) if csts else None)
+        cstate=np.concatenate(csts) if csts else None,
+        slots=np.concatenate(slts) if slts else None)
     if verbose:
         cens = int((tr.term == TERM_TIME).sum())
         named = {TERMINALS[i]: int((tr.term == i).sum()) for i in range(len(TERMINALS))}
