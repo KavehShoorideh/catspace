@@ -759,7 +759,7 @@ class KittyChess:
                             toks.append(tk); globs.append(gl)
                 N["kids"][t] = kid_ids
             self.last_evals += len(new_eval)
-            if self.cvq is not None:
+            if self.cvq is not None and getattr(self, "concept_eval", True):
                 for a in range(0, len(new_eval), 4096):
                     turns = [N["b"][ci].turn for ci in new_eval[a:a+4096]]
                     vals = self.concept_values(toks[a:a+4096], globs[a:a+4096], turns)

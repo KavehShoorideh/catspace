@@ -835,6 +835,10 @@ def main():
                 print(f"[kitty-server] concept names loaded: {len(H.cmap)}", flush=True)
     except Exception:
         pass
+    # 2026-08-12: jqt2's decode trained under freeze-at-50 stats (dA dims ~untrained);
+    # concept DISPLAY stays (code ids are valid), concept-mediated PLAY VALUES demoted to
+    # field-direct until a properly-calibrated quantizer (jqt3) gates.
+    H.eng.concept_eval = False
     if H.vq is None and getattr(H.eng, "cvq", None) is not None:
         # JQT-native quantizer (2026-08-12): the engine already consumes the _jqt sidecar;
         # the server reuses it -- same forward(phi) -> (y, ids, .) surface.
