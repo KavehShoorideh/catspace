@@ -12157,3 +12157,15 @@ caps at ~15% (code base rates 1-2% vs predicate 20-50%): known concepts are CODE
 not codes. Greedy covers: "middlegame" = 35 codes at 91/80 prec/rec; "endgame" = 46 at
 78/80; "white up material" = 59 at 82/82. The one-number map had flattered single codes
 (e.g. endgame->h0/c33 "100%") that cover a tenth of the concept.
+
+## 2026-08-12 — only-move chip + a sharp new sibling-wall measurement
+Chip (Kaveh's definition): position-level ⚡ when effective-move count over ALL root values
+<= 1.6 (one move far above the rest). Wired into the analysis stream. ACCEPTANCE PROBE
+FINDING: in a textbook only-move spot (f6-knight hanging to e5, one saving move) the field's
+top-2 value gap is 2.8 units (0.003 E) at d2 and 4.0 (0.004 E) at d3 — eff_moves ~28, same
+as startpos. PROSPECTIVE material loss (piece falls two plies out) barely registers in the
+committor even after search reads the capture; immediate-capture gains DO register (the
+Nxd3+ case). Distillation didn't fix this class; turn-forks won't (not a turn issue). The
+piece-slot stream (jqt3) is the targeted lever: piece-level codes can encode attacked-and-
+undefended as an IDENTITY property. Interim option if wanted: SF-multipv-based only-move
+chip (referee signal, display-only).
