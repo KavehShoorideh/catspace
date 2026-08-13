@@ -1,6 +1,6 @@
 {
- "ckpt": "artifacts/experiments/reach_jqt2_latest.pt",
- "since": "2026-08-12 17:28",
+ "ckpt": "artifacts/experiments/reach_jqt3_latest.pt",
+ "since": "2026-08-13 04:29",
  "history": [
   {
    "event": "founding champion",
@@ -42,6 +42,14 @@
    "score": "31.5/60 (pentanomial 0/2/23/5/0, 0 pairs lost)",
    "note": "JQT gen-1: battery 9-10/9-9-10 with jqt-native cvq (d2 IMPROVED 8->9); turn-sensitivity 0.0443 vs v3 0.0268 (+65%, fork corpus); ruler race AUC 0.602",
    "date": "2026-08-12 17:28"
+  },
+  {
+   "event": "dethroned",
+   "old": "artifacts/experiments/reach_jqt2_latest.pt",
+   "new": "artifacts/experiments/reach_jqt3_latest.pt",
+   "score": "33.5/60 (pentanomial 0/0/23/7/0, 0 pairs lost -- strongest arena of any gen)",
+   "note": "JQT gen-2: piece(32)+square(32) vocabularies, exact-stats calibration (recon 0.02 vs 6-12), battery d3 11/11 incl fortress-hold, turn-E 0.0456, ruler-race AUC 0.640",
+   "date": "2026-08-13 04:29"
   }
  ]
 }

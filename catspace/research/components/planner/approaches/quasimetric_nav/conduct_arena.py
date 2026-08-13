@@ -23,9 +23,10 @@ import chess
 HOME = {chess.B1, chess.G1, chess.C1, chess.F1, chess.B8, chess.G8, chess.C8, chess.F8}
 
 
-def conduct_counters(moves):
-    """the pathology counters, from a movetext replay."""
-    b = chess.Board()
+def conduct_counters(moves, start):
+    """the pathology counters, from a movetext replay (start = the opening position the
+    game actually began from -- replaying on a fresh board was the first crash)."""
+    b = start.copy()
     retreats = kingwalks = lunges = 0
     for i, mv in enumerate(moves):
         pc = b.piece_type_at(mv.from_square)
@@ -103,9 +104,9 @@ def main():
         rA, mvA = play(ea, eb, op)          # A white
         rB, mvB = play(eb, ea, op)          # B white
         pairs.append(rA + (1.0 - rB))
-        for i, v in enumerate(conduct_counters(mvA)):
+        for i, v in enumerate(conduct_counters(mvA, op)):
             condA[i] += v
-        for i, v in enumerate(conduct_counters(mvB)):
+        for i, v in enumerate(conduct_counters(mvB, op)):
             condB[i] += v
         print(f"[conduct] round {rd+1}/{args.rounds}: A {sum(pairs):.1f}/{2*len(pairs)}",
               flush=True)
