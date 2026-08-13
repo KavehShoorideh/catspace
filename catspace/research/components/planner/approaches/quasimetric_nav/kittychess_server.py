@@ -220,15 +220,25 @@ function render(d){
     document.getElementById('cdbox').style.display="";
     const sel=document.getElementById('cdsel');
     const prev=sel.value;
-    sel.innerHTML=d.cdeets.map((c,i)=>
-      `<option value="${i}">${c.active?'● ':'  '}${c.name}  (${c.lev>0.01?'white':c.lev<-0.01?'black':'neutral'}${c.p_act!=null?', P(act) '+Math.round(c.p_act*100)+'%':''})</option>`).join("");
+    const opt=(c,i)=>`<option value="${i}">${c.name}${c.p_act!=null?'  P(act) '+Math.round(c.p_act*100)+'%':''}${Math.abs(c.lev)>0.01?'  ('+(c.lev>0?'+':'')+c.lev.toFixed(2)+'E)':''}</option>`;
+    const grp={act:[],fw:[],fb:[],fn:[]};
+    d.cdeets.forEach((c,i)=>{
+      if(c.active) grp.act.push([c,i]);
+      else if(c.lev>0.01) grp.fw.push([c,i]);
+      else if(c.lev<-0.01) grp.fb.push([c,i]);
+      else grp.fn.push([c,i]);});
+    sel.innerHTML=
+      `<optgroup label="● active in this position">${grp.act.map(([c,i])=>opt(c,i)).join('')}</optgroup>`+
+      `<optgroup label="future — serves WHITE">${grp.fw.map(([c,i])=>opt(c,i)).join('')}</optgroup>`+
+      `<optgroup label="future — serves BLACK (threats for white)">${grp.fb.map(([c,i])=>opt(c,i)).join('')}</optgroup>`+
+      (grp.fn.length?`<optgroup label="future — neutral">${grp.fn.map(([c,i])=>opt(c,i)).join('')}</optgroup>`:'');
     if(prev && prev<d.cdeets.length) sel.value=prev;
     const rend=()=>{const c=d.cdeets[+sel.value]; if(!c) return;
       document.getElementById('cddeets').innerHTML=
         `<b>${c.name}</b> ${c.active?'<span style="color:#7fbf5f">active here</span>':'<span style="color:#8f8a82">not active</span>'}<br>`+
         `serves: ${c.lev>0.01?'white':c.lev<-0.01?'black':'neutral'} (${(c.lev>=0?'+':'')+c.lev.toFixed(3)} E/activation)`+
         (c.br!=null?`<br>base rate: ${(c.br*100).toFixed(1)}%/move`:'')+
-        (c.p_act!=null?`<br>from HERE: P(activate) ${Math.round(c.p_act*100)}%${c.dA!=null?' · dA '+c.dA+' (log-plies)':''}`:'')+
+        (c.p_act!=null?`<br>from HERE: P(activate) ${Math.round(c.p_act*100)}%${c.dA!=null?' · dA '+c.dA:''}${c.dA_opp!=null?' · with THEM to move: dA '+c.dA_opp+(c.dA!=null?(c.dA_opp<c.dA?'  ⚠ they get there first':'  (we are closer)'):''):''}`:'')+
         (c.gates&&c.gates.length?`<br>leads into: ${c.gates.join(', ')}`:'');};
     sel.onchange=rend; rend();
   }
@@ -615,12 +625,13 @@ class H(BaseHTTPRequestHandler):
                 for hc_ in extra_hc:
                     if hc_ not in seen_hc:
                         seen_hc.add(hc_); cand.append(hc_)
-                pa = da = None
+                pa = da = dao = None
                 if H.gq is not None:
                     with H.lock:                    # NEVER touch the model unlocked: an
                         G_, F_ = H.gq.geometry(     # unlocked MPS call races the streaming
                             b, _np3.array(cand, _np3.int64))   # analysis thread (the hang)
                     da = F_[:, 0].tolist(); pa = F_[:, 2].tolist()
+                    dao = F_[:, 1].tolist()         # opponent-to-move distance (the race)
                 for k, (hh, cc) in enumerate(cand):
                     names = (H.code_names or {}).get((hh, cc), [])
                     gouts = []
@@ -640,6 +651,7 @@ class H(BaseHTTPRequestHandler):
                                and hh < H.br.shape[0] and cc < H.br.shape[1] else None),
                         "p_act": (round(float(pa[k]), 3) if pa else None),
                         "dA": (round(float(da[k]), 2) if da else None),
+                        "dA_opp": (round(float(dao[k]), 2) if dao else None),
                         "gates": gouts})
                 # SORTED for the dropdown (Kaveh 2026-08-12): active concepts first
                 # (by |leverage| -- highest-stakes on top), then candidates by live
