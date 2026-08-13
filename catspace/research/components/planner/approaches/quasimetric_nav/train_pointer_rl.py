@@ -35,6 +35,7 @@ def main():
     ap.add_argument("--max-plies", type=int, default=160)
     ap.add_argument("--lr", type=float, default=1e-3)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--ckpt-every", type=int, default=10, help="games between policy checkpoints")
     ap.add_argument("--device", default="mps")
     args = ap.parse_args()
 
@@ -144,6 +145,15 @@ def main():
             "running_score": round(float(np.mean(scores)), 3),
             "running_epm": round(float(np.mean(evals_per_move)), 1),
             "minutes": round((time.time() - t0) / 60, 1)}) + "\n")
+        if (game + 1) % args.ckpt_every == 0:
+            _outp = args.out or (base + "_pointer.pt")
+            torch.save(pol.state_dict(), _outp)                      # latest
+            torch.save({"state_dict": pol.state_dict(),
+                        "opt": opt.state_dict(), "game": game + 1,
+                        "baseline": baseline,
+                        "running_score": float(np.mean(scores)),
+                        "running_epm": float(np.mean(evals_per_move))},
+                       _outp.replace(".pt", f"_g{game+1}.pt"))       # ladder, never overwritten
         print(f"[rl] game {game+1}/{args.games}: {'W' if outcome==1 else 'D' if outcome==0.5 else 'L'} "
               f"R {R:+.3f} evals/move {epm:,.0f} | running score "
               f"{np.mean(scores):.2f} evals/mv {np.mean(evals_per_move):,.0f} "
