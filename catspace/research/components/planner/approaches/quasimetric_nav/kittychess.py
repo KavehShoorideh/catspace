@@ -165,6 +165,20 @@ class KittyChess:
 
     MATE = 1e6
 
+    @staticmethod
+    def margin_e(dW, dD, dL, E, dz=0.05):
+        """E-CONDITIONAL margin (Kaveh 2026-08-12: 'the margin should differ if you're
+        ahead or behind'). Outcomes are threats or salvations relative to the CURRENT
+        expectation: win always better, loss always worse, the DRAW SWITCHES SIDES at
+        E=0.5 -- ahead it is a threat to hold back (the old formula), behind it is the
+        nearest rescue to pull in, in the dead zone (|E-0.5|<=dz) it sits out.
+        margin = min(d to worse-than-E) - min(d to better-than-E), mover POV."""
+        if E >= 0.5 + dz:
+            return min(dD, dL) - dW
+        if E <= 0.5 - dz:
+            return dL - min(dD, dW)
+        return dL - dW
+
     def margins(self, boards):
         """mover-POV threat-first margin for each board, one batched forward."""
         import numpy as np, torch
@@ -174,10 +188,14 @@ class KittyChess:
             z = self._embed(list(toks), list(globs))
             if self.ex is not None:
                 M = self._exd(z).float().cpu().numpy()   # white-POV cols: W / D / L
+                import numpy as _np
+                pr = _np.exp(-M / 5.0)
+                pr = pr / pr.sum(1, keepdims=True)
                 out = []
                 for i, b in enumerate(boards):
                     mw, ml = (0, 2) if b.turn else (2, 0)
-                    out.append(float(min(M[i, 1], M[i, ml]) - M[i, mw]))
+                    Em = float(pr[i, mw] + 0.5 * pr[i, 1])
+                    out.append(float(self.margin_e(M[i, mw], M[i, 1], M[i, ml], Em)))
                 return out
             D = {n: self.dist(z, self.poles[[k]].expand(len(z), -1).to(self.device))
                  .float().cpu().numpy() for n, k in self.pi.items()}
@@ -446,9 +464,13 @@ class KittyChess:
                 b = leaves[todo[a + j]][0]
                 if self.white_pov:
                     iw, il = (0, 2) if b.turn else (2, 0)
-                    m = min(D[1][j], D[il][j]) - D[iw][j]
                 else:
-                    m = min(D[1][j], D[0][j]) - D[2][j]
+                    iw, il = 2, 0
+                import numpy as _np9
+                _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
+                _e = _e / _e.sum()
+                m = self.margin_e(D[iw][j], D[1][j], D[il][j],
+                                  float(_e[iw] + 0.5 * _e[1]))
                 lv_vals[todo[a + j]] = float(m)
                 self._mcache[b.fen()] = float(m)
         if len(self._mcache) > 400_000:
@@ -481,9 +503,13 @@ class KittyChess:
                     qb = qx_boards[q_todo[a + j]]
                     if self.white_pov:
                         iw, il = (0, 2) if qb.turn else (2, 0)
-                        m = min(D[1][j], D[il][j]) - D[iw][j]
                     else:
-                        m = min(D[1][j], D[0][j]) - D[2][j]
+                        iw, il = 2, 0
+                    import numpy as _np9
+                    _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
+                    _e = _e / _e.sum()
+                    m = self.margin_e(D[iw][j], D[1][j], D[il][j],
+                                      float(_e[iw] + 0.5 * _e[1]))
                     q_vals[q_todo[a + j]] = float(m)
                     self._mcache[qb.fen()] = float(m)
             for qi, pi_ in enumerate(qx_parent):
@@ -621,9 +647,13 @@ class KittyChess:
                         cb = N["b"][ci]
                         if self.white_pov:
                             iw, il = (0, 2) if cb.turn else (2, 0)
-                            m = min(D[1][j], D[il][j]) - D[iw][j]
                         else:
-                            m = min(D[1][j], D[0][j]) - D[2][j]
+                            iw, il = 2, 0
+                        import numpy as _np9
+                        _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
+                        _e = _e / _e.sum()
+                        _Em = float(_e[iw] + 0.5 * _e[1])
+                        m = self.margin_e(D[iw][j], D[1][j], D[il][j], _Em)
                         N["stat"][ci] = float(m); N["val"][ci] = float(m)
                         self._mcache[cb.fen()] = float(m)
             for t in targets:
@@ -783,9 +813,13 @@ class KittyChess:
                         cb = N["b"][ci]
                         if self.white_pov:
                             iw, il = (0, 2) if cb.turn else (2, 0)
-                            m = min(D[1][j], D[il][j]) - D[iw][j]
                         else:
-                            m = min(D[1][j], D[0][j]) - D[2][j]
+                            iw, il = 2, 0
+                        import numpy as _np9
+                        _e = _np9.exp(-_np9.array([D[0][j], D[1][j], D[2][j]]) / 5.0)
+                        _e = _e / _e.sum()
+                        _Em = float(_e[iw] + 0.5 * _e[1])
+                        m = self.margin_e(D[iw][j], D[1][j], D[il][j], _Em)
                         N["val"][ci] = float(m)
                         self._mcache[ckey(cb)] = float(m)
             # priors: mover picks among children ~ softmax(-child_val / tau) (child vals are
@@ -891,9 +925,9 @@ class KittyChess:
             E = pW + 0.5 * pD
             Em = E if wtm else 1.0 - E
             if wtm:
-                marg = min(daD, daL) - daW
+                marg = self.margin_e(daW, daD, daL, Em)
             else:
-                marg = min(daD, daW) - daL
+                marg = self.margin_e(daL, daD, daW, Em)
             out.append(1000.0 * Em + float(np.clip(marg, -40, 40)))
         return out
 
