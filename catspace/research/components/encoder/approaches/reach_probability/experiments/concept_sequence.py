@@ -104,15 +104,13 @@ def main():
         trajectories as T)
     from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
         JQTModule)
-    from catspace.research.components.encoder.approaches.reach_probability.src.reach_vit_jepa import (
-        ReachViT)
+    from catspace.research.components.encoder.approaches.reach_probability.experiments.interpret_reach import (
+        load_net)
 
     dev = args.device
     base = args.ckpt[:-3] if args.ckpt.endswith(".pt") else args.ckpt
     stem = re.sub(r"_(latest|step\d+)$", "", base)
-    pk = torch.load(args.ckpt, map_location=dev, weights_only=False)
-    model = ReachViT(**pk["arch"]).to(dev)
-    model.load_state_dict(pk["state_dict"], strict=False)
+    model, _pay = load_net(args.ckpt, dev)
     model.eval()
     pj = torch.load(next(p for p in (base + "_jqt.pt", stem + "_jqt.pt")
                          if os.path.exists(p)), map_location=dev, weights_only=False)
