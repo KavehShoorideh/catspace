@@ -350,6 +350,20 @@ def main():
                          "the EMA branch; labels then stand until the next refresh)")
     ap.add_argument("--jqt-refresh-games", type=int, default=1200,
                     help="games recoded per refresh")
+    # JQT v2 (Kaveh 2026-08-12): square + piece concept vocabularies, residual on global
+    ap.add_argument("--jqt-square-codes", type=int, default=0,
+                    help=">0 = per-square shared VQ over the trunk's 64 square tokens")
+    ap.add_argument("--jqt-piece-codes", type=int, default=0,
+                    help=">0 = per-piece-slot shared VQ (identity tracked through the game)")
+    ap.add_argument("--w-sqrec", type=float, default=2.0,
+                    help="square-stream residual recon (+commit): explains what global missed")
+    ap.add_argument("--w-pcrec", type=float, default=2.0,
+                    help="piece-stream residual recon (+commit), after global+square")
+    ap.add_argument("--w-pers-sq", type=float, default=1.0,
+                    help="persistence on per-square latents (same square, quiet move)")
+    ap.add_argument("--w-pers-pc", type=float, default=2.0,
+                    help="persistence on per-slot latents: identity-matched across the move, "
+                         "THE well-posed persistence space (the metastability bet)")
     ap.add_argument("--w-turnpair", type=float, default=0.0,
                     help="TURN-CONTRAST term (Kaveh 2026-08-12: 'side to move matters for "
                          "distance, and for probability'): null-move minimal pairs, both "
@@ -645,7 +659,17 @@ def main():
         _tm = np.isin(game_of_row[_gz["par"]], np.flatnonzero(split == 0))
         jqt_gt = {"par": _gz["par"][_tm], "mid": _gz["mid"][_tm]}
         jqt = JQTModule(d_model=args.d_model, heads=args.jqt_heads, codes=args.jqt_codes,
-                        d=args.d, ema=args.ema).to(dev)
+                        d=args.d, ema=args.ema, square_codes=args.jqt_square_codes,
+                        piece_codes=args.jqt_piece_codes).to(dev)
+        st_of_game = None
+        if args.jqt_piece_codes:
+            assert tr.slots is not None, "piece stream needs the v5 corpus cache (slots)"
+            st_of_game = np.zeros((len(tr), 32), np.uint8)
+            for _g in range(len(tr)):
+                _r0 = tr.start[_g]
+                _sl0, _tk0 = tr.slots[_r0], tr.tok[_r0]
+                _occ = _sl0 >= 0
+                st_of_game[_g, _sl0[_occ]] = _tk0[_occ]
         jqt_idx = ActivationIndex(rng_np, codes=args.jqt_codes)
         print(f"[jqt] ON: {args.jqt_heads}x{args.jqt_codes} codes | "
               f"{len(jqt_gt['par']):,} train transitions | refresh every "
@@ -1455,7 +1479,8 @@ def main():
         # grounding stack above is what makes that safe (you cannot collapse while still being
         # forced to predict real outcomes). Recon targets and dE are DETACHED field readings.
         l_vqrec = l_pers = l_jepa = l_cda = l_cdb = torch.zeros((), device=dev)
-        _jqt_perp, _jqt_flip = -1.0, -1.0
+        l_sqrec = l_pcrec = l_pers_sq = l_pers_pc = torch.zeros((), device=dev)
+        _jqt_perp, _jqt_flip, _sq_flip, _pc_flip = -1.0, -1.0, -1.0, -1.0
         if jqt is not None and jqt_idx.ready():
             jqt.train(model.training)          # val passes must not update the EMA codebooks
             with ph("jqt_sample"):
@@ -1468,7 +1493,10 @@ def main():
                 glob_j = torch.from_numpy(tr.glob[rows_j].astype(np.float32)).to(dev)
             with ph("jqt"):
                 nP = args.jqt_pairs
-                phi_j = model.backbone(tok_j, glob_j)
+                if args.jqt_square_codes or args.jqt_piece_codes:
+                    phi_j, sqt_j = model.enc.forward_tokens(tok_j, glob_j)
+                else:
+                    phi_j = model.backbone(tok_j, glob_j)
                 POL = model.poles.poles
                 with torch.no_grad():          # the field's own six outputs, white-POV, frozen
                     zb_pc = model.proj_b(phi_j[:2 * nP])
@@ -1487,6 +1515,31 @@ def main():
                 l_vqrec = torch.nn.functional.mse_loss(jqt.dec(zq_flat), yt) + vloss
                 # (2) metastability: quiet moves keep their pre-quant latents
                 l_pers = code_persistence(h_pc[:nP], h_pc[nP:2 * nP], dE, tau=args.pers_tau)
+                # ---- v2 residual streams: square then piece, each explaining the residue
+                y_g_det = jqt.dec(zq_flat).detach()
+                if args.jqt_square_codes:
+                    h_sq, y_sq, ids_sq, vl_sq = jqt.square_stream(sqt_j[:2 * nP])
+                    l_sqrec = (torch.nn.functional.mse_loss(y_g_det + y_sq, yt) + vl_sq)
+                    l_pers_sq = code_persistence(h_sq[:nP], h_sq[nP:2 * nP], dE,
+                                                 tau=args.pers_tau)
+                    _sq_flip = float((ids_sq[:nP] != ids_sq[nP:2 * nP]).float().mean())
+                if args.jqt_piece_codes:
+                    _rows_pc = rows_j[:2 * nP]
+                    slots_b = torch.from_numpy(tr.slots[_rows_pc].astype(np.int64)).to(dev)
+                    st_b = torch.from_numpy(
+                        st_of_game[game_of_row[_rows_pc]].astype(np.int64)).to(dev)
+                    h_pcs, y_pc, ids_pcs, vl_pc, alive_pc = jqt.piece_stream(
+                        sqt_j[:2 * nP], slots_b, st_b)
+                    y_sq_det = y_sq.detach() if args.jqt_square_codes else 0.0
+                    l_pcrec = (torch.nn.functional.mse_loss(y_g_det + y_sq_det + y_pc, yt)
+                               + vl_pc)
+                    both = (alive_pc[:nP] & alive_pc[nP:2 * nP]).float()
+                    wq = torch.relu(1.0 - dE.abs() / args.pers_tau)[:, None] * both
+                    per = (h_pcs[:nP] - h_pcs[nP:2 * nP]).pow(2).mean(-1)
+                    l_pers_pc = (wq * per).sum() / wq.sum().clamp(min=1e-6)
+                    _mb = both.bool()
+                    _pc_flip = float((ids_pcs[:nP][_mb] != ids_pcs[nP:2 * nP][_mb])
+                                     .float().mean()) if _mb.any() else -1.0
                 # (3) future codes, embedding space, EMA target (both branches EMA: model.t_enc
                 # reads the child board, jqt.t_enc + live-EMA codebooks quantize it)
                 with torch.no_grad():
@@ -1528,11 +1581,16 @@ def main():
                 + args.w_termcon * (l_termcon_att + l_termcon_rep)
                 + args.w_vqrec * l_vqrec + args.w_pers * l_pers + args.w_jepa * l_jepa
                 + args.w_cda * l_cda + args.w_cdb * l_cdb
+                + args.w_sqrec * l_sqrec + args.w_pcrec * l_pcrec
+                + args.w_pers_sq * l_pers_sq + args.w_pers_pc * l_pers_pc
                 + args.w_turnpair * l_turn)
         met = {**_audit,
                "vqrec": float(l_vqrec.detach()), "pers": float(l_pers.detach()),
                "jepa": float(l_jepa.detach()), "cda": float(l_cda.detach()),
                "cdb": float(l_cdb.detach()), "jqt_perp": _jqt_perp, "jqt_flip": _jqt_flip,
+               "sqrec": float(l_sqrec.detach()), "pcrec": float(l_pcrec.detach()),
+               "pers_sq": float(l_pers_sq.detach()), "pers_pc": float(l_pers_pc.detach()),
+               "sq_flip": _sq_flip, "pc_flip": _pc_flip,
                "turn": float(l_turn.detach()),
                "loss": float(loss.detach()), "nll": float(l_nll.detach()),
                "rep_a": float(l_rep_a.detach()), "quasi": float(l_q.detach()), "n_wall": _n_wall[0],
@@ -1681,6 +1739,8 @@ def main():
             _tmp = f"{args.out}_jqt.pt.tmp"
             torch.save({"state_dict": jqt.state_dict(), "d_in": args.d_model,
                         "heads": args.jqt_heads, "codes": args.jqt_codes, "d": args.d,
+                        "square_codes": args.jqt_square_codes,
+                        "piece_codes": args.jqt_piece_codes,
                         "y_mu": jqt.y_mu.cpu(), "y_sd": jqt.y_sd.cpu(),
                         "train_args": {k: v for k, v in vars(args).items()
                                        if k.startswith(("jqt", "w_vqrec", "w_pers", "w_jepa",

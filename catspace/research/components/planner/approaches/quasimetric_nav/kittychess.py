@@ -100,7 +100,9 @@ class KittyChess:
                 _jp = next(c for c in _cands if _osj.path.exists(c))
                 _pj = torch.load(_jp, map_location=device, weights_only=False)
                 _jm = JQTModule(d_model=_pj["d_in"], heads=_pj["heads"],
-                                codes=_pj["codes"], d=_pj["d"]).to(device)
+                                codes=_pj["codes"], d=_pj["d"],
+                                square_codes=_pj.get("square_codes", 0),
+                                piece_codes=_pj.get("piece_codes", 0)).to(device)
                 _jm.load_state_dict(_pj["state_dict"]); _jm.eval()
 
                 class _JQTAsCVQ(torch.nn.Module):

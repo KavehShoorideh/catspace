@@ -93,6 +93,16 @@ class JepaEncoder(nn.Module):
         x = torch.cat([self.cls.expand(B, -1, -1) + g, x], 1)     # (B, 65, d)
         return self.out(self.tr(x)[:, 0])                          # CLS -> phi
 
+    def forward_tokens(self, tok, glob):
+        """-> (phi (B,d), square tokens (B,64,d)) -- the per-square last-layer outputs the
+        square/piece concept streams read (2026-08-12). Same compute as forward()."""
+        B = tok.shape[0]
+        x = self.piece_emb(tok.long()) + self.sq_emb.weight[None, :, :]
+        g = self.glob_proj(glob.float())[:, None, :]
+        x = torch.cat([self.cls.expand(B, -1, -1) + g, x], 1)
+        y = self.out(self.tr(x))
+        return y[:, 0], y[:, 1:]
+
 
 class DynPredictor(nn.Module):
     """(phi(s), a) -> predicted phi_target(s'). DELIBERATELY weaker than the encoder
