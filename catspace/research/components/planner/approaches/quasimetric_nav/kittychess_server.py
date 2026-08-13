@@ -113,12 +113,14 @@ body.playmode .right .box:first-child{display:none}
     <div class="engrow"><b>catspace</b>
       <span id="dinfo"></span>
       <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
+      <button id="sqtog" title="SQUARE CONCEPTS: each square's learned concept code and its additive contribution to the evaluation (green helps white, red helps black). The per-square vocabulary is trained jointly; contributions are exact by construction (additive decoder)." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">sq</button>
       <button id="whytog" title="WHY overlay: positional importance beyond material (counterfactual removal, material-fitted residual). Green = load-bearing (doing MORE than its face value), red = underperforming or misplaced (removal costs little — or even helps its owner). Top 3 each. Kings excluded." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
       <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
     <div class="lines" id="lnbox"></div>
     <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
+  <div id="sqbox" style="display:none;font-size:11px;color:#8f8a82;padding:3px 0;word-break:break-word"></div>
     <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; ⚡ only move = one move far above the rest &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by E (calibrated committor)</div>
   </div>
   <div class="box"><div id="moves"></div></div>
@@ -137,7 +139,21 @@ body.playmode .right .box:first-child{display:none}
 <script>
 "use strict";
 let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
-let sfOn=false, sfLastFen=null, whyOn=false, whyLastFen=null;
+let sfOn=false, sfLastFen=null, whyOn=false, whyLastFen=null, sqOn=false, sqLastFen=null;
+function sqRefresh(fen){
+  const box=document.getElementById('sqbox');
+  if(!sqOn){if(!whyOn)cg.setShapes([]);box.style.display='none';return;}
+  if(fen===sqLastFen) return;
+  sqLastFen=fen;
+  fetch('/api',{method:'POST',body:JSON.stringify({action:'sqconcepts'})}).then(r=>r.json()).then(e=>{
+    if(!e.sal){box.style.display='';box.textContent='sq: '+(e.err||'n/a');return;}
+    cg.setShapes(e.sal.slice(0,8).map(x=>({orig:x.sq,
+      brush:(x.imp>0?(x.imp>0.02?'green':'paleGreen'):(x.imp<-0.02?'red':'paleRed'))})));
+    box.style.display='';
+    box.innerHTML='sq concepts: '+e.sal.slice(0,8).map(x=>
+      `<b>${x.sq}</b>:s${x.code}(${x.imp>0?'+':''}${(x.imp*100).toFixed(1)})`).join(' · ');
+  }).catch(()=>{});
+}
 function whyRefresh(fen){
   if(!whyOn){cg.setShapes([]);return;}
   if(fen===whyLastFen) return;
@@ -315,6 +331,7 @@ function render(d){
   if(d.over)document.getElementById('dinfo').textContent=d.over;
   sfRefresh(d.fen);
   whyRefresh(d.fen);
+  sqRefresh(d.fen);
   renderMat(d.fen);
 }
 function drawPosTable(wdl, dists, label){
@@ -378,6 +395,9 @@ document.getElementById('prev').onclick=()=>api({action:"rel",d:-1});
 document.getElementById('next').onclick=()=>api({action:"rel",d:1});
 document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
+document.getElementById('sqtog').onclick=()=>{sqOn=!sqOn;sqLastFen=null;
+  document.getElementById('sqtog').style.color=sqOn?'#7fbf5f':'#8f8a82';
+  if(!sqOn){document.getElementById('sqbox').style.display='none';cg.setShapes([]);}else api({action:"noop"});};
 document.getElementById('whytog').onclick=()=>{whyOn=!whyOn;whyLastFen=null;
   document.getElementById('whytog').style.color=whyOn?'#7fbf5f':'#8f8a82';
   if(!whyOn)cg.setShapes([]);else api({action:"noop"});};
@@ -741,6 +761,33 @@ class H(BaseHTTPRequestHandler):
                                     "excess": round(float(pov - sc * v), 4),
                                     "dE": round(float(pov), 4)})
                 self._send(200, json.dumps({"base": round(base_E, 3), "sal": out}).encode())
+            except Exception as e:
+                self._send(200, json.dumps({"err": str(e)[:80]}).encode())
+            return
+        if act == "sqconcepts":
+            try:
+                import numpy as _np10, torch as _t10
+                jm = H.gq.jqt if H.gq is not None else None
+                if jm is None or not getattr(jm, "square_codes", 0):
+                    self._send(200, json.dumps({"err": "no square stream in this champion"}).encode())
+                    return
+                from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                    tokenize as _tk10)
+                tk, gl = _tk10(b)
+                with H.lock, _t10.no_grad():
+                    tok_t = _t10.from_numpy(_np10.asarray([tk], dtype="int64")).to(H.eng.device)
+                    gl_t = _t10.from_numpy(_np10.asarray([gl], dtype="float32")).to(H.eng.device)
+                    _phi, sqt = H.eng.net.enc.forward_tokens(tok_t, gl_t)
+                    hh = jm.sq_proj(sqt)
+                    qq, ids, _vl = jm.sq_vq(hh)
+                    contrib = jm.sq_dec(qq)[0]          # (64, 6) normalized-space additive
+                # white-E contribution per square: P(W) minus P(B) parts, de-normalized
+                cE = (contrib[:, 3] * jm.y_sd[3] - contrib[:, 5] * jm.y_sd[5]).cpu().numpy()
+                ids = ids[0].cpu().numpy()
+                order = _np10.argsort(-_np10.abs(cE))[:12]
+                out = [{"sq": chess.square_name(int(q)), "code": int(ids[q]),
+                        "imp": round(float(cE[q]), 4)} for q in order]
+                self._send(200, json.dumps({"sal": out}).encode())
             except Exception as e:
                 self._send(200, json.dumps({"err": str(e)[:80]}).encode())
             return
