@@ -60,22 +60,65 @@ def main():
         b0 = float(np.mean(pv))
         if b0 < 0.01 or b0 > 0.99:
             continue
+        n_pred = float(pv.sum())
         best = None
         for h in range(pj["heads"]):
             for code in range(pj["codes"]):
                 m = ids_all[:, h] == code
                 if m.sum() < 200:
                     continue
-                hit = float(np.mean(pv[m]))
-                lift = hit - b0
-                if best is None or abs(lift) > abs(best[3]):
-                    best = (h, code, hit, lift)
+                prec = float(np.mean(pv[m]))                  # P(predicate | code)
+                rec = float(pv[m].sum() / max(n_pred, 1))     # P(code | predicate)
+                f1 = 2 * prec * rec / max(prec + rec, 1e-9)
+                if best is None or f1 > best[4]:
+                    best = (h, code, prec, rec, f1)
         if best:
-            h, code, hit, lift = best
-            cmap[k] = {"head": h, "code": int(code), "p_given_code": round(hit, 3),
-                       "base": round(b0, 3), "lift": round(lift, 3),
-                       "anti": lift < 0}
-            print(f"  {k:22s} -> h{h}/c{code:<3} P {hit:.0%} (base {b0:.0%}, lift {lift:+.0%})")
+            h, code, prec, rec, f1 = best
+            # CONTAINMENT VERDICT (Kaveh 2026-08-12: "we need two numbers... broader or
+            # narrower"): precision->code implies predicate; recall->predicate implies code
+            if prec >= 0.75 and rec < 0.5:
+                rel = "narrower"      # the code is a SPECIALIZATION of the named concept
+            elif rec >= 0.75 and prec < 0.5:
+                rel = "broader"       # the code covers the concept AND more
+            elif prec >= 0.6 and rec >= 0.6:
+                rel = "equivalent"
+            else:
+                rel = "overlapping"
+            cmap[k] = {"head": h, "code": int(code),
+                       "p_given_code": round(prec, 3), "recall": round(rec, 3),
+                       "f1": round(f1, 3), "relation": rel,
+                       "base": round(b0, 3), "lift": round(prec - b0, 3),
+                       "anti": prec < b0}
+            # CODE-FAMILY COVER: human concepts are broader than any single code (recall
+            # caps at code-rate/predicate-rate), so the real mapping is a SET: greedily add
+            # precision->=0.6 codes until the family covers >=80% of the predicate.
+            cands = []
+            for h2 in range(pj["heads"]):
+                for c2 in range(pj["codes"]):
+                    m2 = ids_all[:, h2] == c2
+                    if m2.sum() < 200:
+                        continue
+                    pr2 = float(np.mean(pv[m2]))
+                    if pr2 >= 0.6:
+                        cands.append((pr2, h2, c2, m2))
+            cands.sort(key=lambda x: -x[0])
+            cover = np.zeros(len(pv), bool)
+            fam = []
+            for pr2, h2, c2, m2 in cands:
+                gain = float(pv[m2 & ~cover].sum() / max(n_pred, 1))
+                if gain < 0.005:
+                    continue
+                cover |= m2
+                fam.append([int(h2), int(c2)])
+                if float(pv[cover].sum() / max(n_pred, 1)) >= 0.8:
+                    break
+            fam_rec = float(pv[cover].sum() / max(n_pred, 1))
+            fam_prec = float(np.mean(pv[cover])) if cover.any() else 0.0
+            cmap[k]["family"] = fam
+            cmap[k]["family_recall"] = round(fam_rec, 3)
+            cmap[k]["family_precision"] = round(fam_prec, 3)
+            print(f"  {k:22s} -> h{h}/c{code:<3} prec {prec:.0%} rec {rec:.0%} [{rel}] | "
+                  f"family: {len(fam)} codes -> prec {fam_prec:.0%} rec {fam_rec:.0%}")
     json.dump(cmap, open(stem + "_conceptmap.json", "w"), indent=1)
     print(f"[name] {len(cmap)} named -> {stem}_conceptmap.json")
 

@@ -12148,3 +12148,12 @@ head's sibling wall (2...Ba6 tops after 1.e4 e5 at 1.5s coherent -- the P-head c
 hanging bishop even after expansion); that is the FIELD's resolution limit, margin never
 fixed it either, and the roadmap answer is depth + jqt3 rulers + planner selection, not a
 scalar tweak.
+
+## 2026-08-12 — two-number concept naming (precision+recall) + code-family covers
+Kaveh: one number can't say broader-vs-narrower. Namer now selects by F1, reports precision
+P(pred|code) + recall P(code|pred) + containment verdict. FINDING (the honest reversal the
+second number forced): every human concept maps NARROWER/overlapping — single-code recall
+caps at ~15% (code base rates 1-2% vs predicate 20-50%): known concepts are CODE FAMILIES,
+not codes. Greedy covers: "middlegame" = 35 codes at 91/80 prec/rec; "endgame" = 46 at
+78/80; "white up material" = 59 at 82/82. The one-number map had flattered single codes
+(e.g. endgame->h0/c33 "100%") that cover a tenth of the concept.
