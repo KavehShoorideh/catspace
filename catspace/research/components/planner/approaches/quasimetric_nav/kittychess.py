@@ -166,18 +166,24 @@ class KittyChess:
     MATE = 1e6
 
     @staticmethod
-    def margin_e(dW, dD, dL, E, dz=0.05):
+    def margin_e(dW, dD, dL, E, tau_c=0.03):
         """E-CONDITIONAL margin (Kaveh 2026-08-12: 'the margin should differ if you're
-        ahead or behind'). Outcomes are threats or salvations relative to the CURRENT
-        expectation: win always better, loss always worse, the DRAW SWITCHES SIDES at
-        E=0.5 -- ahead it is a threat to hold back (the old formula), behind it is the
-        nearest rescue to pull in, in the dead zone (|E-0.5|<=dz) it sits out.
-        margin = min(d to worse-than-E) - min(d to better-than-E), mover POV."""
-        if E >= 0.5 + dz:
+        ahead or behind'). Win always better, loss always worse, the DRAW switches from
+        threat (ahead) to salvation (behind) -- as a CONTINUOUS blend, no dead zone:
+        the first version zeroed the draw term exactly in the opening band (E~0.5-0.55)
+        and the engine bongclouded (the draw distance was the signal shaping quiet play).
+            s = sigmoid((E - 0.5)/tau_c)
+            margin = s*[min(dD,dL) - dW] + (1-s)*[dL - min(dD,dW)]"""
+        # PIECEWISE (second iteration: the symmetric blend leaked salvation weight into
+        # the opening band E~0.52 and the engine lunged wing pawns): AT OR ABOVE equality
+        # the classic threat form applies UNCHANGED; the draw-as-salvation blend engages
+        # only when genuinely behind, ramping in over ~tau_c below 0.5.
+        import math
+        if E >= 0.5:
             return min(dD, dL) - dW
-        if E <= 0.5 - dz:
-            return dL - min(dD, dW)
-        return dL - dW
+        sig = 1.0 / (1.0 + math.exp(-(0.5 - E) / tau_c))    # 0.5 at E=0.5 -> 1 when far behind
+        w_salv = 2.0 * (sig - 0.5)
+        return (1.0 - w_salv) * (min(dD, dL) - dW) + w_salv * (dL - min(dD, dW))
 
     def margins(self, boards):
         """mover-POV threat-first margin for each board, one batched forward."""
