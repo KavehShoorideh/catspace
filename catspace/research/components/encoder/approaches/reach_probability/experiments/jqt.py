@@ -235,7 +235,7 @@ class ActivationIndex:
     def ready(self):
         return len(self.games) > 0
 
-    def sample_mixed(self, n, frac_sq=0.25, frac_pc=0.25):
+    def sample_mixed(self, n, frac_sq=0.25, frac_pc=0.25, frac_now=0.3):
         """heterogeneous goal labels (jqt4): global / (square,code) / (slot-type,code).
         -> rows, gtype (0 glob/1 sq/2 pc), key1, key2, plies, hit.
         square goal: 'square k reaches code c'; piece goal: 'a piece of type t reaches c'
@@ -260,6 +260,10 @@ class ActivationIndex:
                 fut = SQ[pp + 1:, sq]; prev = SQ[pp:-1, sq]
                 ev = np.flatnonzero(fut != prev)
                 if bool(self.rng.integers(0, 2)) and len(ev):
+                    if self.rng.random() < frac_now:
+                        rows[b] = rws[pp]; k1[b] = sq; k2[b] = int(SQ[pp, sq])
+                        plies[b] = 0.0; hit[b] = 1.0
+                        continue
                     e = int(ev[self.rng.integers(0, len(ev))])
                     rows[b] = rws[pp]; k1[b] = sq; k2[b] = int(fut[e])
                     plies[b] = float(e + 1); hit[b] = 1.0
@@ -279,6 +283,10 @@ class ActivationIndex:
                 fut = PC[pp + 1:, sl]; prev = PC[pp:-1, sl]
                 ev = np.flatnonzero(fut != prev)
                 if bool(self.rng.integers(0, 2)) and len(ev):
+                    if self.rng.random() < frac_now:
+                        rows[b] = rws[pp]; k1[b] = int(PT[sl]); k2[b] = int(PC[pp, sl])
+                        plies[b] = 0.0; hit[b] = 1.0
+                        continue
                     e = int(ev[self.rng.integers(0, len(ev))])
                     rows[b] = rws[pp]; k1[b] = int(PT[sl]); k2[b] = int(fut[e])
                     plies[b] = float(e + 1); hit[b] = 1.0
@@ -296,6 +304,14 @@ class ActivationIndex:
                 fut = C[pp + 1:, h]; prev = C[pp:-1, h]
                 ev = np.flatnonzero(fut != prev)
                 if bool(self.rng.integers(0, 2)) and len(ev):
+                    if self.rng.random() < frac_now:
+                        # SUBSUMPTION sample (Kaveh 2026-08-13: the point cloud IS the
+                        # region; members sit at ZERO distance from the concept pole, the
+                        # triangle inequality makes d(s->pole) = distance to the NEAREST
+                        # part of the region -- multimodality dissolves)
+                        rows[b] = rws[pp]; k1[b] = h; k2[b] = int(C[pp, h])
+                        plies[b] = 0.0; hit[b] = 1.0
+                        continue
                     e = int(ev[self.rng.integers(0, len(ev))])
                     rows[b] = rws[pp]; k1[b] = h; k2[b] = int(fut[e])
                     plies[b] = float(e + 1); hit[b] = 1.0
