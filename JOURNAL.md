@@ -12101,3 +12101,19 @@ streams converge (global 0.37 / square 0.36 / piece 0.39); METASTABILITY CONFIRM
 pc_flip 0.025, sq_flip 0.032 vs global 0.58 — identity/location-matched codes ~20x stickier,
 as predicted. v5 cache (slots) rebuilt in 11s. Full reach_jqt3 (20k, champion recipe + v2
 streams + ingest) launched.
+
+## 2026-08-12 — the knight-shuffle game: forcing-pref was breaking QUIET ties (fixed, gated)
+Kaveh's game vs the engine: 1.Nh3!? ... 3.Ng5 ... 8.Nb1 9.Nxh7?? — the engine toured knights
+and sacked one for maximal forcingness. ROOT CAUSE: forcing_pref re-ranked ANY moves within
+eps=15 of the top value by opponent-constraint; in quiet positions the mushy field ties
+broadly, so the tie-breaker ruled and preferred lunges (Nh3 at startpos: field claimed ~1
+effective black reply — overconfident reply model amplifying it). The principle is "among
+equal WINS prefer premove-able", never "prefer lunges when equal". FIX: forcing band applies
+only when rows[0] already reads clearly winning (>=650 concept-scale / >=10 margin-scale).
+Startpos back to d4/Nc3/Nf3; pre-sac position now picks Nf3 (Nxh7 remains #2 on RAW value =
+the field's tactical blindness, the known external-ladder constraint — the ranking bug was
+the amplifier, not the source). Battery 9/10/10/9 unchanged.
+PROCESS GAP: this conduct regression was invisible to our gates — the battery has clear
+tactical answers and the internal arena applied the flag to BOTH sides (symmetric handicap).
+Queued: forcing-on vs forcing-off asymmetric arena post-jqt3; conduct changes need an
+asymmetric A-vs-not-A match before defaulting on.
