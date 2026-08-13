@@ -1,1 +1,1 @@
-{"san": ["d4", "d5", "Nc3", "Nf6", "Bf4", "Ng8"], "fen": "rnbqkbnr/ppp1pppp/8/3p4/3P1B2/2N5/PPP1PPPP/R2QKBNR w KQkq - 4 4", "start_fen": null, "ptr": 6, "mode": "play", "over": null, "moves_uci": ["d2d4", "d7d5", "b1c3", "g8f6", "c1f4", "f6g8"]}
+{"san": ["d4", "d5", "Nc3", "Nf6", "Bf4", "Ng8", "Qd2"], "fen": "rnbqkbnr/ppp1pppp/8/3p4/3P1B2/2N5/PPPQPPPP/R3KBNR b KQkq - 5 4", "start_fen": null, "ptr": 7, "mode": "analysis", "over": null, "moves_uci": ["d2d4", "d7d5", "b1c3", "g8f6", "c1f4", "f6g8", "d1d2"]}
