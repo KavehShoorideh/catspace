@@ -112,8 +112,7 @@ body.playmode .right .box:first-child{display:none}
   <div class="box">
     <div class="engrow"><b>catspace</b>
       <span id="dinfo"></span>
-      <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
-      <label title="principal variation length: how many FULL MOVES of each line are shown and scored (the per-line eval reads the position at the end of the shown moves). Display only — does not change the search">pv <select id="pvlen" title="FULL moves shown per line (2 plies each)"><option>4</option><option selected>6</option><option>8</option></select></label>
+      <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
       <button id="whytog" title="WHY overlay: positional importance beyond material (counterfactual removal, material-fitted residual). Green = load-bearing (doing MORE than its face value), red = underperforming or misplaced (removal costs little — or even helps its owner). Top 3 each. Kings excluded." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
       <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
       <label title="number of candidate moves analyzed and displayed (multi-PV). More lines = broader view, slightly slower updates">lines <select id="lines" title="candidate moves shown"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
@@ -204,7 +203,7 @@ function renderMat(fen){
 }
 const knobs=()=>({depth:+document.getElementById('depth').value,
   lines:+document.getElementById('lines').value,
-  pvlen:+document.getElementById('pvlen').value});
+  pvlen:8});
 // Two-phase like lichess: the position updates INSTANTLY, the engine lines stream in after.
 // A stale analysis (older seq) is discarded, so mashing the nav buttons stays responsive.
 async function api(body){
@@ -380,7 +379,6 @@ document.getElementById('next').onclick=()=>api({action:"rel",d:1});
 document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
 document.getElementById('lines').onchange=()=>api({action:"noop"});
-document.getElementById('pvlen').onchange=()=>api({action:"noop"});
 document.getElementById('whytog').onclick=()=>{whyOn=!whyOn;whyLastFen=null;
   document.getElementById('whytog').style.color=whyOn?'#7fbf5f':'#8f8a82';
   if(!whyOn)cg.setShapes([]);else api({action:"noop"});};
@@ -463,7 +461,7 @@ class H(BaseHTTPRequestHandler):
         cls = H
         cls.depth = max(1, min(6, int(req.get("depth", cls.depth))))
         cls.lines = max(1, min(5, int(req.get("lines", cls.lines))))
-        cls.pvlen = max(4, min(8, int(req.get("pvlen", getattr(cls, "pvlen", 6)))))
+        cls.pvlen = 8                       # pv maxed out (Kaveh 2026-08-12), selector gone
         act = req.get("action", "noop")
         if act not in ("analyze", "lines"):
             H.gen += 1                                   # cancel any in-flight search NOW
