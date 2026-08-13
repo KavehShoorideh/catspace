@@ -109,9 +109,9 @@ body.playmode .right .box:first-child{display:none}
   <div class="box">
     <div class="engrow"><b>catspace</b>
       <span id="dinfo"></span>
-      <label>depth <select id="depth"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
-      <label>pv <select id="pvlen"><option>4</option><option selected>6</option><option>8</option></select></label>
-      <label>lines <select id="lines"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
+      <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+      <label title="principal variation length: how many moves of each line are SHOWN and scored (the eval bar per line reads the position at the end of these moves). Display only — does not change the search">pv <select id="pvlen" title="moves shown per line"><option>4</option><option selected>6</option><option>8</option></select></label>
+      <label title="number of candidate moves analyzed and displayed (multi-PV). More lines = broader view, slightly slower updates">lines <select id="lines" title="candidate moves shown"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
     <div class="lines" id="lnbox"></div>
