@@ -332,6 +332,23 @@ def main():
     ap.add_argument("--pers-tau", type=float, default=0.05,
                     help="expected-points scale above which a move counts as an eval jump and "
                          "the persistence prior goes silent")
+    ap.add_argument("--bf16", type=int, default=0,
+                    help="jqt5: autocast bf16 forward+loss (the profiled lever); "
+                         "smoke-validate the curve before any long run")
+    ap.add_argument("--w-flip", type=float, default=0.0,
+                    help="jqt5 hurdle dynamics: per-head flip BCE (replaces JEPA MSE; "
+                         "'at every move there's a concept change -- predict which')")
+    ap.add_argument("--w-dest", type=float, default=0.0,
+                    help="jqt5 destination CE on FLIPPED heads only (mean-collapse-proof)")
+    ap.add_argument("--dest-warmup", type=int, default=2500,
+                    help="steps before the destination CE reaches full weight (index-churn "
+                         "guard: code identities drift until the first refreshes settle)")
+    ap.add_argument("--two-pole-cdb", type=int, default=0,
+                    help="jqt5: CDB logit = contrast vs the anti-pole (negative poles)")
+    ap.add_argument("--w-negpole", type=float, default=0.0,
+                    help="jqt5: pull DEAD states (type fully captured) onto the anti-pole")
+    ap.add_argument("--frac-dead", type=float, default=0.0,
+                    help="fraction of goal samples drawn as dead-state negatives")
     ap.add_argument("--w-jepa", type=float, default=3.0,
                     help="future-code prediction in EMBEDDING space vs the EMA target branch "
                          "(never indices -- the codebook-churn escape)")
@@ -728,10 +745,23 @@ def main():
             for g in gsel:
                 m = gor_s == g
                 if m.sum() >= 4:
+                    A = None
+                    if st_of_game is not None and args.frac_dead > 0:
+                        # jqt5 dead-state mining: alive-count per piece TYPE per row. A
+                        # type at 0 alive = every piece-concept of that type is DEAD
+                        # (anti-pole member; Kaveh's negative-pole design).
+                        slg = tr.slots[rws[m]]
+                        st_g = st_of_game[g]
+                        A = np.zeros((int(m.sum()), 13), np.int8)
+                        for k in range(32):
+                            pres = (slg == k).any(1)
+                            if pres.any():
+                                A[pres, int(st_g[k])] += 1
                     games.append((rws[m], ids_all[m].astype(np.int64),
                                   sq_all[m].astype(np.int64) if sq_all is not None else None,
                                   pc_all[m].astype(np.int64) if pc_all is not None else None,
-                                  st_of_game[g] if st_of_game is not None else None))
+                                  st_of_game[g] if st_of_game is not None else None,
+                                  A))
             jqt_idx.refresh(games)
             print(f"[jqt] index refreshed: {len(games)} games, {len(rws):,} rows coded "
                   f"[{time.time()-t0r:.0f}s]", flush=True)
@@ -882,6 +912,8 @@ def main():
               f"{(newsplit==1).sum()} cal / {(newsplit==2).sum()} test) | corpus now "
               f"{len(tr):,} games / {tr.n_positions:,} rows [{time.time()-t0i:.0f}s]",
               flush=True)
+
+    cur_step = {"s": 0}                     # loop writes; terms reads (dest-CE warmup ramp)
 
     def terms(model, sampler, n, n_rev, ph=None, audit=False):
         """One objective evaluation on freshly sampled pairs. Returns (loss, metrics)."""
@@ -1515,6 +1547,8 @@ def main():
         # forced to predict real outcomes). Recon targets and dE are DETACHED field readings.
         l_vqrec = l_pers = l_jepa = l_cda = l_cdb = torch.zeros((), device=dev)
         l_sqrec = l_pcrec = l_pers_sq = l_pers_pc = torch.zeros((), device=dev)
+        l_flip = l_dest = l_pcflip = l_pcdest = l_negpole = torch.zeros((), device=dev)
+        _flip_gap, _dest_top1, _pcdest_top1 = -1.0, -1.0, -1.0
         _jqt_perp, _jqt_flip, _sq_flip, _pc_flip = -1.0, -1.0, -1.0, -1.0
         if jqt is not None and jqt_idx.ready():
             jqt.train(model.training)          # val passes must not update the EMA codebooks
@@ -1523,11 +1557,13 @@ def main():
                 pr_ = jqt_gt["par"][ts]
                 mid_ = torch.from_numpy(jqt_gt["mid"][ts]).to(dev)
                 if args.jqt_square_codes or args.jqt_piece_codes:
-                    grows, ggt, gk1, gk2, gplies, ghit = jqt_idx.sample_mixed(args.jqt_goals)
+                    grows, ggt, gk1, gk2, gplies, ghit, gdead = jqt_idx.sample_mixed(
+                        args.jqt_goals, frac_dead=args.frac_dead)
                 else:
                     grows, ghc, gplies, ghit = jqt_idx.sample(args.jqt_goals)
                     ggt = np.zeros(len(grows), np.int64)
                     gk1, gk2 = ghc[:, 0].copy(), ghc[:, 1].copy()
+                    gdead = np.zeros(len(grows), np.float32)
                 rows_j = np.concatenate([pr_, pr_ + 1, grows])
                 tok_j = torch.from_numpy(tr.tok[rows_j].astype(np.int64)).to(dev)
                 glob_j = torch.from_numpy(tr.glob[rows_j].astype(np.float32)).to(dev)
@@ -1584,9 +1620,42 @@ def main():
                 # reads the child board, jqt.t_enc + live-EMA codebooks quantize it)
                 with torch.no_grad():
                     phi_t_ch = model.t_enc(tok_j[nP:2 * nP], glob_j[nP:2 * nP])
-                    zq_t, _ = jqt.target_codes(phi_t_ch)
-                pred_ch = jqt.predict_child(zq_flat[:nP], mid_)
-                l_jepa = jepa_code_prediction(pred_ch, zq_t)
+                    zq_t, ids_ch = jqt.target_codes(phi_t_ch)
+                if args.w_jepa > 0:
+                    pred_ch = jqt.predict_child(zq_flat[:nP], mid_)
+                    l_jepa = jepa_code_prediction(pred_ch, zq_t)
+                # jqt5 HURDLE DYNAMICS (Kaveh 2026-08-13): predict WHICH heads change and
+                # WHERE they land. Flip BCE per head; destination CE on flipped heads only,
+                # warm-up-ramped (index churn: identities drift until the books settle).
+                if args.w_flip > 0 or args.w_dest > 0:
+                    fl_lg, ds_lg = jqt.predict_flips(zq_flat[:nP], mid_)
+                    flip_t = (ids_pc[:nP] != ids_ch).float().detach()
+                    l_flip = torch.nn.functional.binary_cross_entropy_with_logits(
+                        fl_lg, flip_t)
+                    fm = flip_t.bool()
+                    ramp = min(1.0, max(0.0, cur_step["s"] / max(args.dest_warmup, 1) - 1.0))
+                    if fm.any() and args.w_dest > 0:
+                        l_dest = ramp * torch.nn.functional.cross_entropy(
+                            ds_lg[fm], ids_ch[fm])
+                        _dest_top1 = float((ds_lg[fm].argmax(-1) == ids_ch[fm])
+                                           .float().mean())
+                    with torch.no_grad():
+                        pr_f = torch.sigmoid(fl_lg)
+                        _flip_gap = (float(pr_f[fm].mean() - pr_f[~fm].mean())
+                                     if fm.any() and (~fm).any() else -1.0)
+                    if args.jqt_piece_codes:
+                        pf_lg, pd_lg = jqt.pc_predict_flips(h_pcs[:nP], mid_)
+                        pflip_t = (ids_pcs[:nP] != ids_pcs[nP:2 * nP]).float().detach()
+                        pmask = (alive_pc[:nP] & alive_pc[nP:2 * nP]).float()
+                        l_pcflip = (torch.nn.functional.binary_cross_entropy_with_logits(
+                            pf_lg, pflip_t, reduction="none") * pmask).sum() \
+                            / pmask.sum().clamp(min=1)
+                        pfm = pflip_t.bool() & pmask.bool()
+                        if pfm.any() and args.w_dest > 0:
+                            l_pcdest = ramp * torch.nn.functional.cross_entropy(
+                                pd_lg[pfm], ids_pcs[nP:2 * nP][pfm])
+                            _pcdest_top1 = float((pd_lg[pfm].argmax(-1)
+                                                  == ids_pcs[nP:2 * nP][pfm]).float().mean())
                 # (4)+(5) the two concept-goal rulers: "can I activate this concept" asked of
                 # LENGTH (censored plies-to-first-activation) and PROBABILITY (first-hit BCE)
                 gt_t = torch.from_numpy(ggt).to(dev)
@@ -1608,7 +1677,28 @@ def main():
                 tpl = torch.from_numpy(gplies).to(dev)
                 thit = torch.from_numpy(ghit).to(dev)
                 l_cda = censored_plies_loss(torch.log1p(dA_g), tpl, thit)
-                l_cdb = first_hit_bce(jqt.activation_logit(dB_g), thit)
+                if args.two_pole_cdb or args.w_negpole > 0:
+                    # jqt5 NEGATIVE POLES: anti-anchor per goal; CDB becomes a two-pole
+                    # contrast (committor pattern) and DEAD states subsume onto the anti-pole
+                    anc_n = torch.zeros(len(ggt), args.d, device=dev)
+                    if m0.any():
+                        anc_n[m0] = jqt.anchors_neg_for(
+                            torch.stack([k1_t[m0], k2_t[m0]], 1))
+                    if m1.any():
+                        anc_n[m1] = jqt.anchors_neg_for_sq(k1_t[m1], k2_t[m1])
+                    if m2.any():
+                        anc_n[m2] = jqt.anchors_neg_for_pc(k1_t[m2], k2_t[m2])
+                    dB_gn = model.dB(zb_g, anc_n)
+                    if args.two_pole_cdb:
+                        l_cdb = first_hit_bce(jqt.activation_logit2(dB_g, dB_gn), thit)
+                    else:
+                        l_cdb = first_hit_bce(jqt.activation_logit(dB_g), thit)
+                    if args.w_negpole > 0:
+                        tdead = torch.from_numpy(gdead).to(dev).bool()
+                        if tdead.any():
+                            l_negpole = torch.log1p(dB_gn[tdead]).mean()
+                else:
+                    l_cdb = first_hit_bce(jqt.activation_logit(dB_g), thit)
                 # per-STEP health timeseries (Kaveh 2026-08-12): perplexity is 8 bincounts and
                 # the flip-rate is one comparison on ids already in hand -- cheap enough for
                 # every step, and flip-rate IS the metastability curve (baseline 0.80/ply).
@@ -1632,6 +1722,8 @@ def main():
                 + args.w_start * l_start + args.w_start_irr * l_startirr
                 + args.w_termcon * (l_termcon_att + l_termcon_rep)
                 + args.w_vqrec * l_vqrec + args.w_pers * l_pers + args.w_jepa * l_jepa
+                + args.w_flip * (l_flip + l_pcflip) + args.w_dest * (l_dest + l_pcdest)
+                + args.w_negpole * l_negpole
                 + args.w_cda * l_cda + args.w_cdb * l_cdb
                 + args.w_sqrec * l_sqrec + args.w_pcrec * l_pcrec
                 + args.w_pers_sq * l_pers_sq + args.w_pers_pc * l_pers_pc
@@ -1640,6 +1732,10 @@ def main():
                "vqrec": float(l_vqrec.detach()), "pers": float(l_pers.detach()),
                "jepa": float(l_jepa.detach()), "cda": float(l_cda.detach()),
                "cdb": float(l_cdb.detach()), "jqt_perp": _jqt_perp, "jqt_flip": _jqt_flip,
+               "flip": float(l_flip.detach()), "dest": float(l_dest.detach()),
+               "pcflipL": float(l_pcflip.detach()), "pcdest": float(l_pcdest.detach()),
+               "negpole": float(l_negpole.detach()),
+               "flip_gap": _flip_gap, "dest_top1": _dest_top1, "pcdest_top1": _pcdest_top1,
                "sqrec": float(l_sqrec.detach()), "pcrec": float(l_pcrec.detach()),
                "pers_sq": float(l_pers_sq.detach()), "pers_pc": float(l_pers_pc.detach()),
                "sq_flip": _sq_flip, "pc_flip": _pc_flip,
@@ -1693,8 +1789,14 @@ def main():
         if jqt is not None and (step == 1 or step % args.jqt_refresh == 0):
             jqt_refresh(model)
         ph = Phase(dev, prof)
-        loss, met, _ = terms(model, fit, args.batch, n_rev, ph,
-                             audit=(step % args.eval_every == 0) or step == 1)
+        cur_step["s"] = step
+        if args.bf16:
+            with torch.autocast(device_type=(dev.type if hasattr(dev, "type") else str(dev).split(":")[0]), dtype=torch.bfloat16):
+                loss, met, _ = terms(model, fit, args.batch, n_rev, ph,
+                                     audit=(step % args.eval_every == 0) or step == 1)
+        else:
+            loss, met, _ = terms(model, fit, args.batch, n_rev, ph,
+                                 audit=(step % args.eval_every == 0) or step == 1)
         with ph("backward"):
             opt.zero_grad(set_to_none=True)
             loss.backward()

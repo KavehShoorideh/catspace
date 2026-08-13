@@ -56,6 +56,21 @@ class JQTModule(nn.Module):
         self.pred = nn.Sequential(nn.Linear(heads * d_code + d_move, hidden), nn.GELU(),
                                   nn.Linear(hidden, hidden), nn.GELU(),
                                   nn.Linear(hidden, heads * d_code))
+        # jqt5 HURDLE DYNAMICS (Kaveh 2026-08-13 "at every move there's a concept change;
+        # predict which ones change"): flip BCE per head + destination CE on flipped heads
+        # only. Replaces the JEPA MSE, whose convergence was measured to be ~persistence
+        # (eval_jepa: copy-parent within 9-14%, move-conditioning 1.07-1.11x). CE cannot
+        # mean-collapse and has no moving embedding floor.
+        self.flip = nn.Sequential(nn.Linear(heads * d_code + d_move, hidden), nn.GELU(),
+                                  nn.Linear(hidden, heads))
+        self.dest = nn.Sequential(nn.Linear(heads * d_code + d_move, hidden), nn.GELU(),
+                                  nn.Linear(hidden, heads * codes))
+        # jqt5 NEGATIVE POLES (Kaveh: "a pole of where the concepts do not exist, something
+        # to push against for CDB"): per-vocabulary anti-anchor; dead states sit at ~0
+        # distance from it; the CDB logit becomes a two-pole contrast (committor pattern).
+        self.anchor_neg = nn.ModuleList([nn.Linear(d_code, d) for _ in range(heads)])
+        self.db_a2 = nn.Parameter(torch.tensor(1.0))
+        self.db_b2 = nn.Parameter(torch.tensor(0.0))
         # concept-goal anchors: per-head projection of a codebook vector into z_B space (d)
         self.anchor = nn.ModuleList([nn.Linear(d_code, d) for _ in range(heads)])
         # activation-probability link: logit = a * (b0 - log1p(dB(s->anchor)))
@@ -84,9 +99,15 @@ class JQTModule(nn.Module):
         if square_codes:
             self.anchor_sq = nn.Linear(d_fine, d)
             self.anchor_sq_pos = nn.Embedding(64, d)
+            self.anchor_sq_neg = nn.Linear(d_fine, d)       # jqt5 anti-pole (shared pos emb)
         if piece_codes:
             self.anchor_pc = nn.Linear(d_fine, d)
             self.anchor_pc_type = nn.Embedding(13, d)
+            self.anchor_pc_neg = nn.Linear(d_fine, d)       # jqt5 anti-pole (shared type emb)
+            self.pc_flip = nn.Sequential(nn.Linear(d_fine + d_move, 128), nn.GELU(),
+                                         nn.Linear(128, 1))
+            self.pc_dest = nn.Sequential(nn.Linear(d_fine + d_move, 128), nn.GELU(),
+                                         nn.Linear(128, piece_codes))
         if piece_codes:
             self.pc_id = nn.Embedding(13, d_model)          # identity: piece type at start
             self.pc_captured = nn.Parameter(torch.randn(d_model) * 0.02)
@@ -132,6 +153,19 @@ class JQTModule(nn.Module):
         m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
         return self.pred(torch.cat([z_q_par, m], -1))
 
+    def predict_flips(self, z_q_par, mids):
+        """jqt5 hurdle dynamics -> (flip logits (B,H), destination logits (B,H,C))."""
+        m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
+        x = torch.cat([z_q_par, m], -1)
+        return self.flip(x), self.dest(x).view(len(x), self.heads, self.codes)
+
+    def pc_predict_flips(self, h_pc, mids):
+        """per-SLOT hurdle dynamics: (B,32,d_fine) pre-quant latents + move ->
+        (flip logits (B,32), destination logits (B,32,C_pc))."""
+        m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
+        x = torch.cat([h_pc, m[:, None].expand(-1, h_pc.shape[1], -1)], -1)
+        return self.pc_flip(x).squeeze(-1), self.pc_dest(x)
+
     def square_stream(self, sq_tokens):
         """(B,64,d_model) per-square trunk outputs -> (h, y_contrib (B,6), ids (B,64), loss)."""
         h = self.sq_proj(sq_tokens)
@@ -174,7 +208,7 @@ class JQTModule(nn.Module):
         for h in range(self.heads):
             m = hc[:, 0] == h
             if m.any():
-                out[m] = self.anchor[h](e[m])
+                out[m] = self.anchor[h](e[m]).to(out.dtype)
         return out
 
     def anchors_for_sq(self, sq, code):
@@ -189,6 +223,32 @@ class JQTModule(nn.Module):
 
     def activation_logit(self, dB):
         return self.db_a * (self.db_b0 - torch.log1p(dB))
+
+    def anchors_neg_for(self, hc):
+        """anti-pole anchors, global vocabulary (jqt5). Same codebook vector, its own
+        projection: 'the region where head-h/code-c is DEAD'."""
+        cb = torch.stack([vq.codebook for vq in self.vq])
+        e = cb[hc[:, 0], hc[:, 1]].detach()
+        out = torch.zeros(len(hc), self.d, device=e.device, dtype=e.dtype)
+        for h in range(self.heads):
+            m = hc[:, 0] == h
+            if m.any():
+                out[m] = self.anchor_neg[h](e[m]).to(out.dtype)
+        return out
+
+    def anchors_neg_for_sq(self, sq, code):
+        cb = self.sq_vq.codebook.detach()
+        return self.anchor_sq_neg(cb[code]) + self.anchor_sq_pos(sq)
+
+    def anchors_neg_for_pc(self, ptype, code):
+        cb = self.pc_vq.codebook.detach()
+        return self.anchor_pc_neg(cb[code]) + self.anchor_pc_type(ptype)
+
+    def activation_logit2(self, dB_pos, dB_neg):
+        """jqt5 two-pole link: contrast against the anti-pole (the committor pattern) --
+        self-normalizing under global dB scale drift, and 'actively dead' becomes
+        representable instead of just 'far'."""
+        return self.db_a2 * (torch.log1p(dB_neg) - torch.log1p(dB_pos)) + self.db_b2
 
     # ---- housekeeping ---------------------------------------------------------------------------
     @torch.no_grad()
@@ -235,7 +295,7 @@ class ActivationIndex:
     def ready(self):
         return len(self.games) > 0
 
-    def sample_mixed(self, n, frac_sq=0.25, frac_pc=0.25, frac_now=0.3):
+    def sample_mixed(self, n, frac_sq=0.25, frac_pc=0.25, frac_now=0.3, frac_dead=0.0):
         """heterogeneous goal labels (jqt4): global / (square,code) / (slot-type,code).
         -> rows, gtype (0 glob/1 sq/2 pc), key1, key2, plies, hit.
         square goal: 'square k reaches code c'; piece goal: 'a piece of type t reaches c'
@@ -244,6 +304,7 @@ class ActivationIndex:
         gtype = np.zeros(n, np.int64)
         k1 = np.empty(n, np.int64); k2 = np.empty(n, np.int64)
         plies = np.empty(n, np.float32); hit = np.empty(n, np.float32)
+        dead = np.zeros(n, np.float32)
         gsel = self.rng.integers(0, len(self.games), n)
         for b in range(n):
             g = self.games[gsel[b]]
@@ -251,9 +312,22 @@ class ActivationIndex:
             SQ = g[2] if len(g) > 2 else None
             PC = g[3] if len(g) > 3 else None
             PT = g[4] if len(g) > 4 else None
+            AL = g[5] if len(g) > 5 else None
             L = len(rws)
             pp = int(self.rng.integers(0, max(1, L - 2)))
             r = self.rng.random()
+            # jqt5 DEAD-STATE negative (anti-pole member): a piece TYPE with zero alive
+            # representatives -- every piece-concept of that type is unreachable from here.
+            if AL is not None and PT is not None and self.rng.random() < frac_dead:
+                started = np.unique(PT[PT > 0])
+                dd = [int(t) for t in started if AL[pp, int(t)] == 0]
+                if dd:
+                    gtype[b] = 2
+                    rows[b] = rws[pp]
+                    k1[b] = dd[int(self.rng.integers(0, len(dd)))]
+                    k2[b] = int(self.rng.integers(0, self.pc_codes))
+                    plies[b] = -1.0; hit[b] = 0.0; dead[b] = 1.0
+                    continue
             if SQ is not None and r < frac_sq:
                 gtype[b] = 1
                 sq = int(self.rng.integers(0, 64))
@@ -324,7 +398,7 @@ class ActivationIndex:
                         c = int(self.rng.integers(0, self.codes))
                     rows[b] = rws[pp]; k1[b] = h; k2[b] = c
                     plies[b] = -1.0; hit[b] = 0.0
-        return rows, gtype, k1, k2, plies, hit
+        return rows, gtype, k1, k2, plies, hit, dead
 
     def sample(self, n):
         rows = np.empty(n, np.int64)
