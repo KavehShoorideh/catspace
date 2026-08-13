@@ -115,7 +115,7 @@ body.playmode .right .box:first-child{display:none}
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
     <div class="lines" id="lnbox"></div>
-    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡ = line descends ≥0.7 plies/ply toward one ending &nbsp;·&nbsp; ranked by CASCADE</div>
+    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡n = forcing, opponent has ~n effective replies &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by CASCADE</div>
   </div>
   <div class="box"><div id="moves"></div></div>
   <div class="box" id="cdbox" style="display:none">
@@ -272,8 +272,10 @@ function renderLines(d){
            `<i style="width:${row.wdl[2]*100}%;background:#403d39"></i></span>`+
            `<span style="font-size:11px;color:#8f8a82">${Math.round(row.wdl[0]*100)}/${Math.round(row.wdl[1]*100)}/${Math.round(row.wdl[2]*100)}</span>`;
     }
+    if(row.eff_replies!=null&&row.eff_replies<=2.5)
+      top+=`<span style="color:#dbac16;font-size:11px" title="forcing: opponent has ~${row.eff_replies} effective replies">⚡${row.eff_replies}</span>`;
     if(row.force&&row.force.drop>=0.7&&row.force.mono>=0.7)
-      top+=`<span style="color:#dbac16;font-size:11px" title="forcing: distance to ${row.force.fav==='w'?'white':'black'}-win drops ${row.force.drop}/ply, monotone ${Math.round(row.force.mono*100)}%">⚡forced</span>`;
+      top+=`<span style="color:#8f8a82;font-size:11px" title="committal: distance to ${row.force.fav==='w'?'white':'black'}-win drops ${row.force.drop}/ply, monotone ${Math.round(row.force.mono*100)}%">↘${row.force.drop}</span>`;
     else if(row.force&&row.force.drop>=0.35)
       top+=`<span style="color:#8f8a82;font-size:11px" title="coherent progress: ${row.force.drop}/ply toward ${row.force.fav==='w'?'white':'black'}-win">→${row.force.drop}</span>`;
     top+=`<span class="mv">${row.line||row.uci}</span></div>`;
@@ -481,7 +483,7 @@ class H(BaseHTTPRequestHandler):
                             H.an = {**H.an, "g": g, "depth": d,
                                     "rows": [{k: r.get(k) for k in
                                               ("uci", "margin", "tb", "line", "wdl", "dists",
-                                               "force", "cnotes")}
+                                               "force", "eff_replies", "cnotes")}
                                              for r in disp],
                                     "done": False}
                     try:
@@ -695,6 +697,26 @@ class H(BaseHTTPRequestHandler):
                     if coh is not None:
                         row["force"] = {"drop": round(coh[0], 2), "mono": round(coh[1], 2),
                                         "fav": coh[2]}
+                except Exception:
+                    pass
+                try:
+                    # TRUE forcingness (Kaveh 2026-08-12, the 2.Bg5 complaint: descending is
+                    # not FORCING): entropy of the opponent's plausible-reply distribution
+                    # after the move. eff_replies = exp(H); <= ~2.5 = genuinely forcing.
+                    import math as _m
+                    b1 = b.copy(); b1.push(r["pv"][0])
+                    reps = list(b1.legal_moves)
+                    if reps:
+                        kids = []
+                        for mv2 in reps:
+                            b1.push(mv2); kids.append(b1.copy(stack=False)); b1.pop()
+                        mg = H.eng.margins(kids)         # child-mover POV; reply prefers max
+                        import numpy as _np4
+                        sc = _np4.array(mg) / 0.35
+                        sc -= sc.max()
+                        pr = _np4.exp(sc); pr /= pr.sum()
+                        Hent = float(-(pr * _np4.log(pr + 1e-12)).sum())
+                        row["eff_replies"] = round(float(_m.exp(Hent)), 1)
                 except Exception:
                     pass
             out.append(row)
