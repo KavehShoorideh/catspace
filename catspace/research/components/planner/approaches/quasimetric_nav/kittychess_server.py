@@ -136,11 +136,13 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
       <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
       <button id="pgnbtn" title="copy the game as PGN — the engine's reactions ride along as annotations ({comments} + !?/?! glyphs)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">PGN</button>
+      <button id="nexttog" title="FUTURE CONCEPTS: a causal transformer over this game's concept stream predicts which concepts NEWLY activate soon (within 2/6 plies), for each side — the sequence layer, history-aware where the geometry is memoryless" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">next</button>
     </div>
     <div class="lines" id="lnbox"></div>
     <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
   <div id="sqbox" style="display:none;font-size:11px;color:#8f8a82;padding:3px 0;word-break:break-word"></div>
   <div id="planbox" style="display:none;font-size:12px;color:#bababa;padding:4px 0;line-height:1.6;border-top:1px solid #3a3733"></div>
+  <div id="nextbox" style="display:none;font-size:12px;color:#bababa;padding:4px 0;line-height:1.6;border-top:1px solid #3a3733"></div>
   <div id="sqfloorrow" style="display:none;font-size:11px;color:#6f6b66;padding:1px 0">noise floor
     <input id="sqfloor" type="range" min="0" max="2" step="0.05" value="0.4" style="width:120px;vertical-align:middle">
     <span id="sqfloorval">0.40% E</span></div>
@@ -207,6 +209,24 @@ function planRefresh(fen){
       h+=`<br><b>policy:</b> ${e.policy.action} · verify with ${e.policy.budget===0?'NO search (premove)':e.policy.budget+'s search'}`;
     box.innerHTML=h;
   }).catch(()=>{box.textContent='plan: unavailable';});
+}
+let nextOn=false, nextLastFen=null;
+function nextRefresh(fen){
+  const box=document.getElementById('nextbox');
+  if(!nextOn){box.style.display='none';return;}
+  if(fen===nextLastFen) return;
+  nextLastFen=fen; box.style.display=''; box.textContent='reading the stream…';
+  fetch('/api',{method:'POST',body:JSON.stringify({action:'futures'})}).then(r=>r.json()).then(e=>{
+    if(e.err){box.textContent='next: '+e.err;return;}
+    const opp=e.mover==='white'?'black':'white';
+    const grp=s=>e.rows.filter(r=>r.side===s).slice(0,5)
+      .map(r=>`<span title="P(newly activates) within 6 plies ${(100*r.p).toFixed(0)}% · within 2 plies ${(100*r.p2).toFixed(0)}% · leverage ${r.lev}">${r.name} <b>${(100*r.p).toFixed(0)}%</b></span>`).join(' · ');
+    let h=`<b>coming for ${opp}</b> (your opponent${e.mover==='white'?'':''}): `+(grp(opp)||'nothing above 10%');
+    h+=`<br><b>coming for ${e.mover}</b>: `+(grp(e.mover)||'nothing above 10%');
+    const w=e.wdl_seq;
+    h+=`<br><span style="color:#6f6b66;font-size:11px" title="outcome read from the concept SEQUENCE alone (no board eval)">sequence says w/d/b ${w.map(x=>(100*x).toFixed(0)+'%').join('/')}</span>`;
+    box.innerHTML=h;
+  }).catch(()=>{box.textContent='next: unavailable';});
 }
 function sqRefresh(fen){
   const box=document.getElementById('sqbox');
@@ -445,6 +465,7 @@ function render(d){
   whyRefresh(d.fen);
   sqRefresh(d.fen);
   planRefresh(d.fen);
+  nextRefresh(d.fen);
   renderMat(d.fen);
 }
 function drawPosTable(wdl, dists, label){
@@ -511,6 +532,9 @@ document.getElementById('depth').onchange=()=>api({action:"noop"});
 document.getElementById('plantog').onclick=()=>{planOn=!planOn;planLastFen=null;
   document.getElementById('plantog').style.color=planOn?'#7fbf5f':'#8f8a82';
   if(!planOn)document.getElementById('planbox').style.display='none';else api({action:"noop"});};
+document.getElementById('nexttog').onclick=()=>{nextOn=!nextOn;nextLastFen=null;
+  document.getElementById('nexttog').style.color=nextOn?'#7fbf5f':'#8f8a82';
+  if(!nextOn)document.getElementById('nextbox').style.display='none';else api({action:"noop"});};
 document.getElementById('sqtog').onclick=()=>{sqOn=!sqOn;sqLastFen=null;
   document.getElementById('sqtog').style.color=sqOn?'#7fbf5f':'#8f8a82';
   document.getElementById('sqfloorrow').style.display=sqOn?'':'none';
@@ -968,6 +992,67 @@ class H(BaseHTTPRequestHandler):
                 H.an_thread = threading.Thread(target=worker, daemon=True)
                 H.an_thread.start()
             self._send(200, json.dumps({"started": True, "over": over}).encode())
+            return
+        if act == "futures":
+            # SEQUENCE-LAYER futures (Kaveh 2026-08-13: "prediction of future likely
+            # concepts for my opponent"): causal transformer over THIS game's concept
+            # stream -> P(newly activates within K plies), both sides, names attached.
+            if H.seq is None:
+                self._send(200, json.dumps(
+                    {"err": "no sequence model yet (trains on jqt4 after it gates)"}).encode())
+                return
+            try:
+                import numpy as _np9, torch as _t9
+                from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                    tokenize as _tk9)
+                boards, sb9 = [], (chess.Board(cls.start_fen) if cls.start_fen
+                                   else chess.Board())
+                boards.append(sb9.copy())
+                for m in cls.moves[:cls.ptr]:
+                    sb9.push(m)
+                    boards.append(sb9.copy())
+                boards = boards[-H.seq.max_len:]
+                tks, gls, stm9 = [], [], []
+                for bb9 in boards:
+                    tk9, gl9 = _tk9(bb9)
+                    tks.append(tk9); gls.append(gl9)
+                    stm9.append(0 if bb9.turn else 1)
+                with H.lock, _t9.no_grad():
+                    phi9 = H.eng.net.backbone(
+                        _t9.from_numpy(_np9.asarray(tks, dtype="int64")).to(H.eng.device),
+                        _t9.from_numpy(_np9.asarray(gls, dtype="float32")).to(H.eng.device))
+                    _, ids9 = H.gq.jqt.target_codes(phi9)
+                    ids9 = ids9.cpu()
+                    act9, wdl9 = H.seq(ids9[None].long(),
+                                       _t9.tensor(stm9, dtype=_t9.long)[None])
+                    p9 = _t9.sigmoid(act9[0, -1])              # (H,C,K) at the current ply
+                    pw9 = _t9.softmax(wdl9[0, -1], -1).tolist()
+                cur9 = ids9[-1].numpy()
+                Ksel = 1                                       # K=6 plies: "this phase"
+                rows9 = []
+                for h in range(p9.shape[0]):
+                    for c in range(p9.shape[1]):
+                        if int(cur9[h]) == c:
+                            continue                           # already held: persistence
+                        pv = float(p9[h, c, Ksel])
+                        if pv < 0.10:
+                            continue
+                        lev9 = (float(H.lev[h, c]) if H.lev is not None
+                                and h < H.lev.shape[0] and c < H.lev.shape[1] else 0.0)
+                        nm = ((H.code_names or {}).get((h, c)) or [f"h{h}/c{c}"])[0]
+                        rows9.append({"name": nm, "h": h, "c": c, "p": round(pv, 3),
+                                      "p2": round(float(p9[h, c, 0]), 3),
+                                      "side": "white" if lev9 > 0 else
+                                              "black" if lev9 < 0 else "either",
+                                      "lev": round(lev9, 3)})
+                rows9.sort(key=lambda r: -r["p"])
+                b9 = self._board()
+                self._send(200, json.dumps(
+                    {"mover": "white" if b9.turn else "black",
+                     "wdl_seq": [round(x, 3) for x in pw9],
+                     "rows": rows9[:14]}).encode())
+            except Exception as e:
+                self._send(200, json.dumps({"err": str(e)[:120]}).encode())
             return
         if act == "emote":                               # async trash-talk poll (play mode)
             late = H.emote_late
@@ -1494,6 +1579,22 @@ def main():
               flush=True)
     except Exception as e:
         print(f"[kitty-server] no concept-details substrate ({e})", flush=True)
+    H.seq = None
+    try:
+        import os as _os9, re as _re9, torch as _t9b
+        from catspace.research.components.encoder.approaches.reach_probability.experiments.concept_sequence import (
+            ConceptSequence)
+        _stem9 = _re9.sub(r"_(latest|step\d+)$", "", base)
+        for c9 in (base, _stem9):
+            if _os9.path.exists(c9 + "_seq.pt") and H.seq is None:
+                pq = _t9b.load(c9 + "_seq.pt", map_location="cpu", weights_only=False)
+                H.seq = ConceptSequence(heads=pq["heads"], codes=pq["codes"],
+                                        d=pq.get("d", 128), layers=pq.get("layers", 3))
+                H.seq.load_state_dict(pq["state_dict"])
+                H.seq.eval()
+        print(f"[kitty-server] sequence layer: {H.seq is not None}", flush=True)
+    except Exception as e:
+        print(f"[kitty-server] no sequence layer ({e})", flush=True)
     H.former = H.pointer = None
     H.plan_prev = {}
     try:

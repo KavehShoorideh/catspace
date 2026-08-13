@@ -12265,3 +12265,17 @@ Kaveh played the board and every directive below was verified against his live s
   PGN button copies the annotated game; notes persist across restarts and truncate with
   the line. Tainted surprise memory from the buggy ruler wiped (would have fired spurious
   gotchas); watchdog restart cmd carries the banter flag.
+
+## 2026-08-13 (later still) — Concept-sequence layer built (probe-ready), negative-pole design accepted for jqt5
+- **concept_sequence.py**: causal transformer (3L/d128) over per-ply global head codes + side
+  -> P(code NEWLY activates within K=2/6/12 plies) per (head,code) + outcome-from-partial-
+  sequence. Tests: causal mask verified (eval-mode leak check), planted trigger->consequence
+  rule learned (P-gap 0.36). TRAINS AFTER JQT4 GATES (frozen probe on its coded games; the
+  agreed plan). Server 'futures' action + 'next' UI panel wired, gated on <stem>_seq.pt.
+- **Negative concept poles** (Kaveh: "you need a pole of where the concepts do not exist to
+  push against for CDB"): accepted for jqt5. Two-pole committor-style CDB logit
+  (log1p dB(s->A-) - log1p dB(s->A+)); anti-pole pinned by DEAD states (captured-slot
+  absorbing token = free piece-stream deaths; precondition-broken minings for global),
+  censored never-fired rows as weak negatives. jqt4's per-concept CDB residuals will
+  baseline the confusion this fixes. Single-pole weaknesses recorded: monotone-scalar
+  bottleneck, b0 calibration drift, the strata positives-only scar.
