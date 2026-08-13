@@ -95,7 +95,9 @@ body.playmode .right .box:first-child{display:none}
 <div class="main">
 <div id="evalbar"><div id="eb-b" style="height:33%"></div><div id="eb-d" style="height:34%"></div><div id="eb-w" style="height:33%"></div></div>
 <div>
+  <div id="mat-top" style="min-height:16px;font-size:13px;color:#8f8a82;letter-spacing:1px"></div>
   <div id="board" class="cg-wrap"></div>
+  <div id="mat-bot" style="min-height:16px;font-size:13px;color:#8f8a82;letter-spacing:1px"></div>
   <div class="nav">
     <button id="first">&#x23EE;</button><button id="prev">&#x25C0;</button>
     <button id="next">&#x25B6;</button><button id="last">&#x23ED;</button>
@@ -167,6 +169,33 @@ function setMode(m){
   document.getElementById('nav-play').classList.toggle('on', m==='play');
 }
 const cg=window.Chessground(document.getElementById('board'),{coordinates:true});
+const PIECEV={p:1,n:3,b:3,r:5,q:9};
+const PIECEU={w:{p:'♙',n:'♘',b:'♗',r:'♖',q:'♕'},b:{p:'♟',n:'♞',b:'♝',r:'♜',q:'♛'}};
+function matDiff(fen){
+  // lichess-style: NET captured pieces per side + point advantage
+  const start={p:8,n:2,b:2,r:2,q:1};
+  const cnt={w:{p:0,n:0,b:0,r:0,q:0},b:{p:0,n:0,b:0,r:0,q:0}};
+  for(const ch of fen.split(' ')[0]){
+    const lo=ch.toLowerCase();
+    if(cnt.w[lo]!==undefined) cnt[ch===lo?'b':'w'][lo]++;
+  }
+  let wPts=0,bPts=0,wCap='',bCap='';   // wCap = black pieces white has WON (shown by white)
+  for(const t of ['p','n','b','r','q']){
+    const lostByB=start[t]-cnt.b[t], lostByW=start[t]-cnt.w[t];
+    const net=lostByB-lostByW;         // >0: white is up in this piece type
+    if(net>0) wCap+=PIECEU.b[t].repeat(net);
+    if(net<0) bCap+=PIECEU.w[t].repeat(-net);
+    wPts+=cnt.w[t]*PIECEV[t]; bPts+=cnt.b[t]*PIECEV[t];
+  }
+  const d=wPts-bPts;
+  return {w:wCap+(d>0?' +'+d:''), b:bCap+(d<0?' +'+(-d):'')};
+}
+function renderMat(fen){
+  const m=matDiff(fen);
+  const whiteBottom=(orient==='white');
+  document.getElementById('mat-bot').textContent=whiteBottom?m.w:m.b;
+  document.getElementById('mat-top').textContent=whiteBottom?m.b:m.w;
+}
 const knobs=()=>({depth:+document.getElementById('depth').value,
   lines:+document.getElementById('lines').value,
   pvlen:+document.getElementById('pvlen').value});
@@ -275,6 +304,7 @@ function render(d){
   if(d.over)document.getElementById('dinfo').textContent=d.over;
   sfRefresh(d.fen);
   whyRefresh(d.fen);
+  renderMat(d.fen);
 }
 function drawPosTable(wdl, dists, label){
   const W=document.getElementById('wdltxt');
