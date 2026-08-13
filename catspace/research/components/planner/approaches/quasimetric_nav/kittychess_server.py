@@ -596,16 +596,22 @@ class H(BaseHTTPRequestHandler):
                             resid = H.eng.bellman_residual(bb)
                             top = depth + (1 if resid is not None and abs(resid) >= 2.0 else 0)
                             H.an = {**H.an, "resid": resid, "top": top}
-                        # lock PER DEPTH, not across the whole deepening: state requests
-                        # (navigation, the eval bar, concept panel) get in between depths
-                        # instead of starving for the whole search (the 20s first paint)
-                        for d in range(1, top + 1):
+                        # COHERENCE-BOUNDED analysis (Kaveh 2026-08-12 'can you have
+                        # coherence based search?'): the depth knob maps to a BUDGET ladder;
+                        # each rung re-searches with more time, expansion allocated by
+                        # P(reach) -- forcing lines run deep, frayed lines stay shallow, and
+                        # the per-line depth SHOWS the coherence. Lock per rung.
+                        _lad = {1: [0.4], 2: [0.4, 1.0], 3: [0.4, 1.5],
+                                4: [0.5, 1.5, 3.0], 5: [0.5, 2.0, 5.0],
+                                6: [0.5, 2.0, 5.0, 10.0]}[max(1, min(6, depth))]
+                        for bud in _lad:
                             if H.gen != g:
                                 return
                             with H.lock:
-                                rows = H.eng.search(bb, depth=d, stop=lambda: H.gen != g,
-                                                    progress=lambda rs, _d=d: publish(rs, _d))
-                                publish(rows, d)
+                                rows = H.eng.search_coherent(bb, budget=bud)
+                            if rows:
+                                dmax = max(r.get("depth_used", 1) for r in rows)
+                                publish(rows, dmax)
                     finally:
                         if H.gen == g:
                             H.an = {**H.an, "done": True}
