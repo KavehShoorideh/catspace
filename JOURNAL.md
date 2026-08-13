@@ -12094,3 +12094,10 @@ codebooks; pers_pc masked to slots alive on BOTH sides of the move (no gradient 
 captures); flip metrics per stream (sq_flip, pc_flip) logged every step -- pc_flip is the
 metastability bet's direct readout and should sit well below the global flip. v2 persistence
 fix bundled: --w-pers 2 --pers-tau 0.1 (the 0.44->0.65 erosion autopsy).
+
+## 2026-08-12 — JQT v2 smoke PASS; reach_jqt3 launched
+500-step smoke (square 32 + piece 32 codes, pers-tau 0.1 w-pers 2): all three residual recon
+streams converge (global 0.37 / square 0.36 / piece 0.39); METASTABILITY CONFIRMED ON CONTACT:
+pc_flip 0.025, sq_flip 0.032 vs global 0.58 — identity/location-matched codes ~20x stickier,
+as predicted. v5 cache (slots) rebuilt in 11s. Full reach_jqt3 (20k, champion recipe + v2
+streams + ingest) launched.
