@@ -591,13 +591,30 @@ class H(BaseHTTPRequestHandler):
                         a, bb = (e["a"], e["b"]) if e["dir"] > 0 else (e["b"], e["a"])
                         gates_by_node.setdefault(a, []).append(bb)
                 active_hc = [(h, int(c)) for h, c in enumerate(tokens)]
+                # POSITION-CONDITIONED candidates (Kaveh 2026-08-12 'why only a limited
+                # set'): rank the WHOLE vocabulary by live P(activate) from this position,
+                # then add the top-leverage staples. One batched pass over all 512 anchors.
                 extra_hc = []
+                if H.gq is not None:
+                    import torch as _t5
+                    with H.lock, _t5.no_grad():
+                        allhc = _t5.tensor([(h, c) for h in range(H.gq.H)
+                                            for c in range(H.gq.C)],
+                                           dtype=_t5.long, device=H.gq.device)
+                        A_all = H.gq.jqt.anchors_for(allhc).float()
+                        z_us, _zo = H.gq.state_embed(b)
+                        dB_all = H.eng.net.dB(z_us.expand(len(A_all), -1), A_all)
+                        p_all = _t5.sigmoid(H.gq.jqt.activation_logit(dB_all))
+                    topr = p_all.argsort(descending=True)[:14].cpu().numpy()
+                    extra_hc = [(int(i // H.gq.C), int(i % H.gq.C)) for i in topr]
                 if H.lev is not None:
                     fl = _np3.argsort(-_np3.abs(H.lev).ravel())[:6]
                     Cw = H.lev.shape[1]
-                    extra_hc = [(int(i // Cw), int(i % Cw)) for i in fl
-                                if (int(i // Cw), int(i % Cw)) not in active_hc]
-                cand = active_hc + extra_hc
+                    extra_hc += [(int(i // Cw), int(i % Cw)) for i in fl]
+                seen_hc, cand = set(active_hc), list(active_hc)
+                for hc_ in extra_hc:
+                    if hc_ not in seen_hc:
+                        seen_hc.add(hc_); cand.append(hc_)
                 pa = da = None
                 if H.gq is not None:
                     with H.lock:                    # NEVER touch the model unlocked: an
