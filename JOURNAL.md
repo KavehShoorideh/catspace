@@ -12239,3 +12239,29 @@ Built the opponent-learning substrate for play mode, VERIFIED by live server smo
   identity = UI name (localStorage), sent with every request.
 Next: per-player tau calibration from logged moves; concept-space weakness mining once jqt4 lands;
 z-conditioning as the learned tier (LoRA rejected: data-starved, opaque, calibration risk).
+
+## 2026-08-13 (later) — Surprise recalibrated live; emotes get a voice; prep gets judgment
+Kaveh played the board and every directive below was verified against his live session:
+- **Uniform-dist bug** ("surprised by every move" #1): expectation read an "E" key raw search
+  rows never carry -> silent uniform fallback, every move = log2(n_legal) bits (his Nxc7+ was
+  the TOP expectation yet scored 5.17). Fix: mover_E reads child_E (head) / value/1000 (tail),
+  mate clamps; test asserts a top move is genuinely expected.
+- **Excess surprisal** (#2, still-flat discrimination): the field's one-ply E is near-flat
+  (sibling wall), so surprise = bits - H(dist), the position's own entropy. e4 now -0.36
+  (calm), unranked g4 +7.5 (shock). Thresholds: surprised >=1.7 excess, gotcha <=0.5.
+- **Annealed temperature** (Kaveh: "first times we play someone the temperature is really
+  high and settles"): tau = 0.30 stranger -> fitted/base via n/(n+60 plies); per-player tau
+  fit (NLL grid over logged e_top) lands in the profile at aggregate time.
+- **Prep sanity gate** (Kaveh: "replied from prep the same exact moves that led to a bad
+  position"): book moves get a one-forward committor read; deteriorated (>0.12 below study)
+  or losing (<0.42) -> distrusted, live search takes over. Concepts-for-unseen-positions =
+  the concept_eval flag, re-tests at jqt4 promotion.
+- **Banter layer** (banter.py): decision stays mechanical; LLM only phrases. Ollama backend
+  (free, local; Kaveh picked mistral-small 22B, ~6s warm) with template fallback + format
+  discipline (emoji-soup -> template). LLM picks the emoji (leading-token parse). ASYNC:
+  move ships instantly with a template line; the LLM's line upgrades bubble + PGN note via
+  an 'emote' poll (Kaveh: "make the move first, then give the trash talk later").
+- **PGN annotations** (":D"): emotes land on the move as !?/?! + {emoji trash talk};
+  PGN button copies the annotated game; notes persist across restarts and truncate with
+  the line. Tainted surprise memory from the buggy ruler wiped (would have fired spurious
+  gotchas); watchdog restart cmd carries the banter flag.
