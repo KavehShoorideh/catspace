@@ -32,7 +32,7 @@ import torch.nn as nn
 
 class JQTModule(nn.Module):
     def __init__(self, d_model=256, heads=8, codes=64, d_code=32, d=64, d_move=48,
-                 hidden=384, ema=0.996):
+                 hidden=384, ema=0.996, square_codes=0, piece_codes=0, d_fine=16):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         self.heads, self.codes, self.d_code, self.d = heads, codes, d_code, d
@@ -65,6 +65,28 @@ class JQTModule(nn.Module):
         self.register_buffer("y_mu", torch.zeros(6))
         self.register_buffer("y_sd", torch.ones(6))
         self.register_buffer("y_n", torch.zeros(1))
+        # ---- v2 streams (Kaveh 2026-08-12): SQUARE and PIECE concept vocabularies, residual
+        # on the global stream (RVQ-across-granularities: each finer vocabulary encodes only
+        # what the coarser ones failed to explain -- collinearity removed by construction).
+        self.square_codes, self.piece_codes = square_codes, piece_codes
+        if square_codes:
+            self.sq_proj = nn.Linear(d_model, d_fine)
+            self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=square_codes,
+                                        decay=0.9, commitment_weight=0.25)
+            # per-square ADDITIVE contribution to the six outputs: summing makes every
+            # square's share of the evaluation an explicit, legible number
+            self.sq_dec = nn.Sequential(nn.Linear(d_fine, 64), nn.GELU(), nn.Linear(64, 6))
+        if piece_codes:
+            self.pc_id = nn.Embedding(13, d_model)          # identity: piece type at start
+            self.pc_captured = nn.Parameter(torch.randn(d_model) * 0.02)
+            lyr = nn.TransformerEncoderLayer(d_model=d_model, nhead=4,
+                                             dim_feedforward=2 * d_model, batch_first=True,
+                                             norm_first=True, dropout=0.0, activation="gelu")
+            self.pc_tr = nn.TransformerEncoder(lyr, num_layers=2)
+            self.pc_proj = nn.Linear(d_model, d_fine)
+            self.pc_vq = VectorQuantize(dim=d_fine, codebook_size=piece_codes,
+                                        decay=0.9, commitment_weight=0.25)
+            self.pc_dec = nn.Sequential(nn.Linear(d_fine, 64), nn.GELU(), nn.Linear(64, 6))
 
     # ---- quantization ---------------------------------------------------------------------------
     def latents(self, phi):
@@ -98,6 +120,38 @@ class JQTModule(nn.Module):
     def predict_child(self, z_q_par, mids):
         m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
         return self.pred(torch.cat([z_q_par, m], -1))
+
+    def square_stream(self, sq_tokens):
+        """(B,64,d_model) per-square trunk outputs -> (h, y_contrib (B,6), ids (B,64), loss)."""
+        h = self.sq_proj(sq_tokens)
+        q, ids, vl = self.sq_vq(h)
+        return h, self.sq_dec(q).sum(1), ids, vl
+
+    def piece_stream(self, sq_tokens, slots, slot_type):
+        """slots (B,64) int64 slot-of-square (-1 empty); slot_type (B,32) piece type at the
+        game start (0 = slot unused). Gathers each ALIVE slot's current square token, adds the
+        identity embedding, contextualizes with a 2-layer transformer over the 32 slots
+        (identity-matched across plies: THE space where persistence is well-posed), quantizes
+        per slot. Returns (h (B,32,d_fine), y_contrib (B,6), ids (B,32), vq_loss,
+        alive (B,32) bool)."""
+        B = len(sq_tokens)
+        dev = sq_tokens.device
+        sq_of_slot = torch.full((B, 32), -1, dtype=torch.long, device=dev)
+        bi, si = torch.nonzero(slots >= 0, as_tuple=True)
+        sq_of_slot[bi, slots[bi, si]] = si
+        alive = sq_of_slot >= 0
+        used = slot_type > 0
+        gath = torch.zeros(B, 32, sq_tokens.shape[-1], device=dev, dtype=sq_tokens.dtype)
+        bb, ss = torch.nonzero(alive, as_tuple=True)
+        gath[bb, ss] = sq_tokens[bb, sq_of_slot[bb, ss]]
+        gath = torch.where(alive[..., None], gath,
+                           self.pc_captured[None, None, :].expand_as(gath))
+        x = gath + self.pc_id(slot_type.long())
+        x = self.pc_tr(x, src_key_padding_mask=~used)
+        h = self.pc_proj(x)
+        q, ids, vl = self.pc_vq(h)
+        contrib = self.pc_dec(q) * used[..., None].float()
+        return h, contrib.sum(1), ids, vl, alive & used
 
     # ---- concept goals --------------------------------------------------------------------------
     def anchors_for(self, hc):

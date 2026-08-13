@@ -12077,3 +12077,20 @@ Checkpoint ladder: every 500 steps + _latest + _jqt sidecar; probeable without s
 this concept activate" well. RACE TRANSFER FAILS: battery AUC 0.584 (untrained 0.53, raw
 ruler 0.602) — 3-piece KPvK boards are off-corpus. Fix queued: mix oracle-labeled race
 positions into former training (TB referee = allowed; generator is free). _former.pt saved.
+
+## 2026-08-12 — JQT v2 BUILD: piece-slot + square streams (interaction review)
+Built for the v2 retrain (Kaveh: "implement all the pieces... so we can get the piece level
+concepts trained"): slot tracking in replay (identity through captures/castling/promotion,
+unit-tested incl. the a2-pawn->xb8=Q odyssey; corpus cache v5), JepaEncoder.forward_tokens
+(per-square outputs, same compute), square VQ (shared 32 codes, ADDITIVE per-square decode --
+each square's share of the eval is an explicit number), piece stream (32 identity slots,
+gather + id-embedding + 2-layer transformer + shared 32-code VQ, captured = learned absorbing
+token), RVQ-across-granularities recon (square explains global's residue, piece explains
+both's -- collinearity removed by construction), per-stream persistence (piece persistence
+identity-matched: THE well-posed space).
+INTERACTION ADDENDUM: residual detachment (y_g detached in sq loss, y_g+y_sq detached in pc
+loss) prevents coarser streams chasing finer ones; per-stream commit losses independent
+codebooks; pers_pc masked to slots alive on BOTH sides of the move (no gradient through
+captures); flip metrics per stream (sq_flip, pc_flip) logged every step -- pc_flip is the
+metastability bet's direct readout and should sit well below the global flip. v2 persistence
+fix bundled: --w-pers 2 --pers-tau 0.1 (the 0.44->0.65 erosion autopsy).
