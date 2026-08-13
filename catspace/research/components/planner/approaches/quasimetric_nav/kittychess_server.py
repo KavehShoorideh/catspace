@@ -113,6 +113,7 @@ body.playmode .right .box:first-child{display:none}
     <div class="engrow"><b>catspace</b>
       <span id="dinfo"></span>
       <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
+      <button id="plantog" title="PLANNER: the SubgoalFormer's live certificate — committed subgoal with revised probability, counterfactual worries, premove-safety — plus the alert diff since the last move and what the pointer policy would do (action + search budget)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">plan</button>
       <button id="sqtog" title="SQUARE CONCEPTS: each square's learned concept code and its additive contribution to the evaluation (green helps white, red helps black). The per-square vocabulary is trained jointly; contributions are exact by construction (additive decoder)." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">sq</button>
       <button id="whytog" title="WHY overlay: positional importance beyond material (counterfactual removal, material-fitted residual). Green = load-bearing (doing MORE than its face value), red = underperforming or misplaced (removal costs little — or even helps its owner). Top 3 each. Kings excluded." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
       <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
@@ -121,6 +122,7 @@ body.playmode .right .box:first-child{display:none}
     <div class="lines" id="lnbox"></div>
     <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
   <div id="sqbox" style="display:none;font-size:11px;color:#8f8a82;padding:3px 0;word-break:break-word"></div>
+  <div id="planbox" style="display:none;font-size:12px;color:#bababa;padding:4px 0;line-height:1.6;border-top:1px solid #3a3733"></div>
   <div id="sqfloorrow" style="display:none;font-size:11px;color:#6f6b66;padding:1px 0">noise floor
     <input id="sqfloor" type="range" min="0" max="2" step="0.05" value="0.4" style="width:120px;vertical-align:middle">
     <span id="sqfloorval">0.40% E</span></div>
@@ -142,7 +144,25 @@ body.playmode .right .box:first-child{display:none}
 <script>
 "use strict";
 let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
-let sfOn=false, sfLastFen=null, whyOn=false, whyLastFen=null, sqOn=false, sqLastFen=null, sqLast=null;
+let sfOn=false, sfLastFen=null, whyOn=false, whyLastFen=null, sqOn=false, sqLastFen=null, sqLast=null, planOn=false, planLastFen=null;
+function planRefresh(fen){
+  const box=document.getElementById('planbox');
+  if(!planOn){box.style.display='none';return;}
+  if(fen===planLastFen) return;
+  planLastFen=fen; box.style.display=''; box.textContent='planning…';
+  fetch('/api',{method:'POST',body:JSON.stringify({action:'plan'})}).then(r=>r.json()).then(e=>{
+    if(e.err){box.textContent='plan: '+e.err;return;}
+    let h=`<b>committed:</b> ${e.committed} · p̂ <b>${e.p_hat}</b>`+
+      (e.premove_safe?' · <span style="color:#7fbf5f">PREMOVE-SAFE</span>':'');
+    if(e.worries&&e.worries.length)
+      h+='<br><b>worries:</b> '+e.worries.map(w=>`${w.name} (Δp̂ ${w.dp}, attn ${w.attn})`).join(' · ');
+    if(e.alerts&&e.alerts.length)
+      h+='<br><b>alerts since last move:</b> '+e.alerts.map(a=>`${a.kind==='opportunity'?'⬆':'⚠'} ${a.name} (${a.dp>0?'+':''}${a.dp})`).join(' · ');
+    if(e.policy)
+      h+=`<br><b>policy:</b> ${e.policy.action} · verify with ${e.policy.budget===0?'NO search (premove)':e.policy.budget+'s search'}`;
+    box.innerHTML=h;
+  }).catch(()=>{box.textContent='plan: unavailable';});
+}
 function sqRefresh(fen){
   const box=document.getElementById('sqbox');
   if(!sqOn){if(!whyOn)cg.setShapes([]);box.style.display='none';return;}
@@ -347,6 +367,7 @@ function render(d){
   sfRefresh(d.fen);
   whyRefresh(d.fen);
   sqRefresh(d.fen);
+  planRefresh(d.fen);
   renderMat(d.fen);
 }
 function drawPosTable(wdl, dists, label){
@@ -410,6 +431,9 @@ document.getElementById('prev').onclick=()=>api({action:"rel",d:-1});
 document.getElementById('next').onclick=()=>api({action:"rel",d:1});
 document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
+document.getElementById('plantog').onclick=()=>{planOn=!planOn;planLastFen=null;
+  document.getElementById('plantog').style.color=planOn?'#7fbf5f':'#8f8a82';
+  if(!planOn)document.getElementById('planbox').style.display='none';else api({action:"noop"});};
 document.getElementById('sqtog').onclick=()=>{sqOn=!sqOn;sqLastFen=null;
   document.getElementById('sqtog').style.color=sqOn?'#7fbf5f':'#8f8a82';
   document.getElementById('sqfloorrow').style.display=sqOn?'':'none';
@@ -781,6 +805,55 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 self._send(200, json.dumps({"err": str(e)[:80]}).encode())
             return
+        if act == "plan":
+            try:
+                import numpy as _np11, torch as _t11
+                from catspace.research.components.planner.approaches.quasimetric_nav.subgoal_former import (
+                    alert_set)
+                if H.former is None or H.gq is None:
+                    self._send(200, json.dumps({"err": "no trained planner substrate"}).encode())
+                    return
+                hc = H.gq.candidates(k_lev=12)
+                sides_t = _t11.zeros(len(hc), dtype=_t11.long)
+                hct = _t11.as_tensor(hc)
+                with H.lock:
+                    G_, F_ = H.gq.geometry(b, hc)
+                # committed = highest p-hat among concepts serving the MOVER
+                with _t11.no_grad():
+                    p_all, _ = H.former(hct, sides_t, F_, G_)
+                mover_white = b.turn
+                lev_row = _np11.array([H.gq.lev[h2, c2] if H.gq.lev is not None else 0.0
+                                       for h2, c2 in hc])
+                serve = (lev_row > 0.005) if mover_white else (lev_row < -0.005)
+                pa = p_all.numpy()
+                cand_idx = _np11.flatnonzero(serve)
+                ci = int(cand_idx[_np11.argmax(pa[cand_idx])]) if len(cand_idx) else int(pa.argmax())
+                cert = H.former.certificate(hct, sides_t, F_, G_, committed_idx=ci)
+                prev = H.plan_prev.get("cert")
+                alerts = alert_set(prev, cert, F_, k=8, lev=H.gq.lev) if prev is not None else []
+                H.plan_prev["cert"] = cert
+                nm = lambda h2, c2: ((H.code_names or {}).get((h2, c2)) or [f"h{h2}/c{c2}"])[0]
+                worries = [{"name": nm(*cert.hc[i]), "dp": round(float(cert.worry[i]), 3),
+                            "attn": round(float(cert.attn[i]), 2)}
+                           for i in _np11.argsort(-cert.worry)[:4] if cert.worry[i] > 0.003]
+                act_out = None
+                if H.pointer is not None:
+                    a, bud, _lp = H.pointer.act(cert, alerts, greedy=True)
+                    act_out = {"action": ("HOLD plan" if a >= len(alerts) else
+                                          f"{'pursue' if alerts[a].kind=='opportunity' else 'deny'} "
+                                          f"{nm(*alerts[a].hc)}"),
+                               "budget": bud}
+                out = {"committed": nm(*cert.hc[cert.committed]),
+                       "p_hat": round(cert.p_hat, 3),
+                       "premove_safe": bool(cert.premove_safe()),
+                       "worries": worries,
+                       "alerts": [{"kind": a2.kind, "name": nm(*a2.hc),
+                                   "dp": round(a2.d_p, 3)} for a2 in alerts[:5]],
+                       "policy": act_out}
+                self._send(200, json.dumps(out).encode())
+            except Exception as e:
+                self._send(200, json.dumps({"err": str(e)[:100]}).encode())
+            return
         if act == "sqconcepts":
             try:
                 import numpy as _np10, torch as _t10
@@ -1112,6 +1185,30 @@ def main():
               flush=True)
     except Exception as e:
         print(f"[kitty-server] no concept-details substrate ({e})", flush=True)
+    H.former = H.pointer = None
+    H.plan_prev = {}
+    try:
+        import re as _re2, os as _os2, torch as _t2
+        from catspace.research.components.planner.approaches.quasimetric_nav.subgoal_former import (
+            SubgoalFormer)
+        from catspace.research.components.planner.approaches.quasimetric_nav.pointer_policy import (
+            PointerPolicy)
+        _stem2 = _re2.sub(r"_(latest|step\d+)$", "", base)
+        for c2 in (base, _stem2):
+            fp = c2 + "_former.pt"
+            if _os2.path.exists(fp) and H.former is None and H.gq is not None:
+                H.former = SubgoalFormer(n_head=H.gq.H, n_code=H.gq.C)
+                H.former.load_state_dict(_t2.load(fp, map_location="cpu"))
+                H.former.eval()
+            pp = c2 + "_pointer.pt"
+            if _os2.path.exists(pp) and H.pointer is None:
+                H.pointer = PointerPolicy()
+                H.pointer.load_state_dict(_t2.load(pp, map_location="cpu"))
+                H.pointer.eval()
+        print(f"[kitty-server] planner: former={H.former is not None} "
+              f"pointer={H.pointer is not None}", flush=True)
+    except Exception as e:
+        print(f"[kitty-server] no planner ({e})", flush=True)
     H.lock = threading.Lock()
     H.depth = args.depth
     global PAGE_BYTES
