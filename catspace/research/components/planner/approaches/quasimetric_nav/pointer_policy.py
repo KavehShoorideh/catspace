@@ -71,6 +71,15 @@ def reinforce_loss(logps, rewards, baseline=0.0):
     return -(lp * adv).mean()
 
 
+def achievement_bonus(achieved, deny, base_rate, alpha=0.3):
+    """base-rate-corrected option credit (2026-08-13). PURSUE: + if the committed concept
+    activated (beyond its spontaneous rate). DENY: + if the opponent concept did NOT activate
+    (beyond 1 - base rate). Signs are the contract; test_critical_wiring asserts them."""
+    if not deny:
+        return alpha * ((1.0 if achieved else 0.0) - base_rate)
+    return alpha * ((0.0 if achieved else 1.0) - (1.0 - base_rate))
+
+
 def effort_reward(outcome, total_evals, lam=2e-6):
     """R = outcome - lambda*evals. Default lam: a FULL deep game (~100k evals) costs 0.2 --
     less than win-vs-draw (0.5), so winning strictly dominates; effort tiebreaks."""

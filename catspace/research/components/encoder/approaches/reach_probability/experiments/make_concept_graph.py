@@ -43,7 +43,7 @@ def main():
     jm = JQTModule(d_model=pj["d_in"], heads=pj["heads"], codes=pj["codes"], d=pj["d"],
                    square_codes=pj.get("square_codes", 0),
                    piece_codes=pj.get("piece_codes", 0)).to(args.device)
-    jm.load_state_dict(pj["state_dict"]); jm.eval()
+    jm.load_state_dict(pj["state_dict"], strict=False); jm.eval()
     H, C = pj["heads"], pj["codes"]
 
     br = np.load(base + "_code_baserates.npy") if os.path.exists(base + "_code_baserates.npy") \

@@ -376,8 +376,12 @@ def load_piecedown_games(n, seed, tsv=None, max_plies=400):
     # v2 (2026-08-11): piece 16k + pawn 4k + exchange 3k + deep-prefix 4k -- the
     # 0.5-2.0-pawn band fill (Kaveh's eval-distribution finding). Falls back to v1.
     import os as _os
+    # v3 (2026-08-13, jqt4 base): v2 + the stratified turn-fork corpus folded into the
+    # BOOT corpus -- walls, poles, terminals and balance all see it from step 0.
+    _v3 = paths.derived("piecedown_sfsf_all_v3.tsv")
     _v2 = paths.derived("piecedown_sfsf_all_v2.tsv")
-    tsv = tsv or (_v2 if _os.path.exists(_v2) else paths.derived("piecedown_sfsf_all.tsv"))
+    tsv = tsv or (_v3 if _os.path.exists(_v3) else
+                  _v2 if _os.path.exists(_v2) else paths.derived("piecedown_sfsf_all.tsv"))
     if not os.path.exists(tsv):
         return []
     lines = [l for l in open(tsv) if l.strip()]

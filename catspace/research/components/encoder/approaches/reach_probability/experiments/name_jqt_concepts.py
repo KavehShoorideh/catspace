@@ -40,7 +40,7 @@ def main():
     jm = JQTModule(d_model=pj["d_in"], heads=pj["heads"], codes=pj["codes"], d=pj["d"],
                    square_codes=pj.get("square_codes", 0),
                    piece_codes=pj.get("piece_codes", 0)).to(args.device)
-    jm.load_state_dict(pj["state_dict"]); jm.eval()
+    jm.load_state_dict(pj["state_dict"], strict=False); jm.eval()
     tr = T.build(n_human=0, n_sf=c["games"], seed=c["traj_seed"], max_plies=c["max_plies"],
                  n_piecedown=c.get("n_piecedown", 0), verbose=False)
     rng = np.random.default_rng(0)
