@@ -221,16 +221,19 @@ function render(d){
     const sel=document.getElementById('cdsel');
     const prev=sel.value;
     const opt=(c,i)=>`<option value="${i}">${c.name}${c.p_act!=null?'  P(act) '+Math.round(c.p_act*100)+'%':''}${Math.abs(c.lev)>0.01?'  ('+(c.lev>0?'+':'')+c.lev.toFixed(2)+'E)':''}</option>`;
-    const grp={act:[],fw:[],fb:[],fn:[]};
+    const wtm=(d.turn==='white');
+    const grp={act:[],mine:[],theirs:[],fn:[]};
     d.cdeets.forEach((c,i)=>{
+      const servesMover=(c.lev>0.01)===wtm&&Math.abs(c.lev)>0.01;
       if(c.active) grp.act.push([c,i]);
-      else if(c.lev>0.01) grp.fw.push([c,i]);
-      else if(c.lev<-0.01) grp.fb.push([c,i]);
-      else grp.fn.push([c,i]);});
+      else if(Math.abs(c.lev)<=0.01) grp.fn.push([c,i]);
+      else if(servesMover) grp.mine.push([c,i]);
+      else grp.theirs.push([c,i]);});
+    const mv=wtm?'WHITE':'BLACK', op=wtm?'BLACK':'WHITE';
     sel.innerHTML=
       `<optgroup label="● active in this position">${grp.act.map(([c,i])=>opt(c,i)).join('')}</optgroup>`+
-      `<optgroup label="future — serves WHITE">${grp.fw.map(([c,i])=>opt(c,i)).join('')}</optgroup>`+
-      `<optgroup label="future — serves BLACK (threats for white)">${grp.fb.map(([c,i])=>opt(c,i)).join('')}</optgroup>`+
+      `<optgroup label="future — serves ${mv} (to move: pursue)">${grp.mine.map(([c,i])=>opt(c,i)).join('')}</optgroup>`+
+      `<optgroup label="future — serves ${op} (threats: deny)">${grp.theirs.map(([c,i])=>opt(c,i)).join('')}</optgroup>`+
       (grp.fn.length?`<optgroup label="future — neutral">${grp.fn.map(([c,i])=>opt(c,i)).join('')}</optgroup>`:'');
     if(prev && prev<d.cdeets.length) sel.value=prev;
     const rend=()=>{const c=d.cdeets[+sel.value]; if(!c) return;
@@ -440,6 +443,10 @@ class H(BaseHTTPRequestHandler):
                 bb = b.copy()
 
                 def worker():
+                    merged = {}       # uci -> best-known display row (Kaveh 2026-08-12:
+                                      # 'the list shouldn't lose anything it's already found'
+                                      # -- deepening ACCUMULATES; new depths overwrite the
+                                      # same move, never evict siblings found earlier)
                     with H.lock:      # UNLOCKED MODEL CALL = the MPS wedge (2026-08-12):
                         cmoves, corder, _ = H.eng.cascade_rank(bb)   # two threads in MPS
                                       # deadlock the GPU runtime at 0%% CPU; every engine
@@ -490,11 +497,17 @@ class H(BaseHTTPRequestHandler):
                                 _concept_notes(disp)
                             except Exception:
                                 pass
+                            for r in disp:
+                                merged[r["uci"]] = {**{k: r.get(k) for k in
+                                    ("uci", "margin", "tb", "line", "wdl", "dists",
+                                     "force", "eff_replies", "cnotes")}, "_d": d,
+                                    "_rk": (-round(r.get("value", 0) / 2.0) if "value" in r
+                                            else 0, crank.get(r["uci"], 999))}
+                            shown = sorted(merged.values(),
+                                           key=lambda r: (-r["_d"], r["_rk"]))[:max(nlines, len(merged) if len(merged) <= nlines + 2 else nlines)]
                             H.an = {**H.an, "g": g, "depth": d,
-                                    "rows": [{k: r.get(k) for k in
-                                              ("uci", "margin", "tb", "line", "wdl", "dists",
-                                               "force", "eff_replies", "cnotes")}
-                                             for r in disp],
+                                    "rows": [{k: v for k, v in r.items()
+                                              if not k.startswith("_")} for r in shown],
                                     "done": False}
                     try:
                         with H.lock:
@@ -809,6 +822,19 @@ def main():
             print(f"[kitty-server] no dynamics head ({e})", flush=True)
     except Exception as e:
         print(f"[kitty-server] no concept sidecars ({e})", flush=True)
+    try:
+        import re as _re0, os as _os0, json as _json0
+        _stem0 = _re0.sub(r"_(latest|step\d+)$", "", base)
+        for _c0 in (base, _stem0):
+            if _os0.path.exists(_c0 + "_conceptmap.json") and not H.cmap:
+                H.cmap = _json0.load(open(_c0 + "_conceptmap.json"))
+                H.code_names = {}
+                for nm0, info0 in H.cmap.items():
+                    if not info0.get("anti"):
+                        H.code_names.setdefault((info0["head"], info0["code"]), []).append(nm0)
+                print(f"[kitty-server] concept names loaded: {len(H.cmap)}", flush=True)
+    except Exception:
+        pass
     if H.vq is None and getattr(H.eng, "cvq", None) is not None:
         # JQT-native quantizer (2026-08-12): the engine already consumes the _jqt sidecar;
         # the server reuses it -- same forward(phi) -> (y, ids, .) surface.
