@@ -670,7 +670,9 @@ def main():
                 _sl0, _tk0 = tr.slots[_r0], tr.tok[_r0]
                 _occ = _sl0 >= 0
                 st_of_game[_g, _sl0[_occ]] = _tk0[_occ]
-        jqt_idx = ActivationIndex(rng_np, codes=args.jqt_codes)
+        jqt_idx = ActivationIndex(rng_np, codes=args.jqt_codes,
+                                  sq_codes=args.jqt_square_codes,
+                                  pc_codes=args.jqt_piece_codes)
         print(f"[jqt] ON: {args.jqt_heads}x{args.jqt_codes} codes | "
               f"{len(jqt_gt['par']):,} train transitions | refresh every "
               f"{args.jqt_refresh} steps ({args.jqt_refresh_games} games)", flush=True)
@@ -711,7 +713,10 @@ def main():
             for g in gsel:
                 m = gor_s == g
                 if m.sum() >= 4:
-                    games.append((rws[m], ids_all[m].astype(np.int64)))
+                    games.append((rws[m], ids_all[m].astype(np.int64),
+                                  sq_all[m].astype(np.int64) if sq_all is not None else None,
+                                  pc_all[m].astype(np.int64) if pc_all is not None else None,
+                                  st_of_game[g] if st_of_game is not None else None))
             jqt_idx.refresh(games)
             print(f"[jqt] index refreshed: {len(games)} games, {len(rws):,} rows coded "
                   f"[{time.time()-t0r:.0f}s]", flush=True)
@@ -1502,7 +1507,12 @@ def main():
                 ts = rng_np.integers(0, len(jqt_gt["par"]), args.jqt_pairs)
                 pr_ = jqt_gt["par"][ts]
                 mid_ = torch.from_numpy(jqt_gt["mid"][ts]).to(dev)
-                grows, ghc, gplies, ghit = jqt_idx.sample(args.jqt_goals)
+                if args.jqt_square_codes or args.jqt_piece_codes:
+                    grows, ggt, gk1, gk2, gplies, ghit = jqt_idx.sample_mixed(args.jqt_goals)
+                else:
+                    grows, ghc, gplies, ghit = jqt_idx.sample(args.jqt_goals)
+                    ggt = np.zeros(len(grows), np.int64)
+                    gk1, gk2 = ghc[:, 0].copy(), ghc[:, 1].copy()
                 rows_j = np.concatenate([pr_, pr_ + 1, grows])
                 tok_j = torch.from_numpy(tr.tok[rows_j].astype(np.int64)).to(dev)
                 glob_j = torch.from_numpy(tr.glob[rows_j].astype(np.float32)).to(dev)
@@ -1564,7 +1574,19 @@ def main():
                 l_jepa = jepa_code_prediction(pred_ch, zq_t)
                 # (4)+(5) the two concept-goal rulers: "can I activate this concept" asked of
                 # LENGTH (censored plies-to-first-activation) and PROBABILITY (first-hit BCE)
-                anc = jqt.anchors_for(torch.from_numpy(ghc).to(dev))
+                gt_t = torch.from_numpy(ggt).to(dev)
+                k1_t = torch.from_numpy(gk1).to(dev)
+                k2_t = torch.from_numpy(gk2).to(dev)
+                anc = torch.zeros(len(ggt), args.d, device=dev)
+                m0 = gt_t == 0
+                if m0.any():
+                    anc[m0] = jqt.anchors_for(torch.stack([k1_t[m0], k2_t[m0]], 1))
+                m1 = gt_t == 1
+                if m1.any():
+                    anc[m1] = jqt.anchors_for_sq(k1_t[m1], k2_t[m1])
+                m2 = gt_t == 2
+                if m2.any():
+                    anc[m2] = jqt.anchors_for_pc(k1_t[m2], k2_t[m2])
                 zb_g = model.proj_b(phi_j[2 * nP:])
                 dA_g = model.dA(zb_g, anc)
                 dB_g = model.dB(zb_g, anc)

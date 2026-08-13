@@ -51,7 +51,7 @@ def main():
     from catspace.research.components.planner.approaches.quasimetric_nav.subgoal_former import (
         GeoQuery, SubgoalFormer, alert_set)
     from catspace.research.components.planner.approaches.quasimetric_nav.pointer_policy import (
-        PointerPolicy, BUDGETS, effort_reward, reinforce_loss)
+        PointerPolicy, BUDGETS, effort_reward, reinforce_loss, achievement_bonus)
 
     base = args.ckpt[:-3] if args.ckpt.endswith(".pt") else args.ckpt
     stem = re.sub(r"_(latest|step\d+)$", "", base)
@@ -131,9 +131,8 @@ def main():
                     expired = b.ply() - committed[2] > args.commit_window
                     if achieved or expired:
                         base_rate = float(BR[gh, gc]) if BR is not None else 0.05
-                        bonus = args.alpha * ((1.0 if achieved and not committed[1] else 0.0)
-                                              - base_rate) if not committed[1] else \
-                                args.alpha * ((0.0 if achieved else 1.0) - (1 - base_rate))
+                        bonus = achievement_bonus(achieved, committed[1], base_rate,
+                                                  args.alpha)
                         segments.append((list(cur_seg), float(bonus)))
                         n_ach += int(achieved and not committed[1])
                         n_aband += int(expired and not achieved)

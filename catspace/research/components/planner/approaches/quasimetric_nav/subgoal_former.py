@@ -41,7 +41,7 @@ class GeoQuery:
         self.jqt = JQTModule(d_model=pay["d_in"], heads=pay["heads"], codes=pay["codes"],
                              d=pay["d"], square_codes=pay.get("square_codes", 0),
                              piece_codes=pay.get("piece_codes", 0)).to(device)
-        self.jqt.load_state_dict(pay["state_dict"])
+        self.jqt.load_state_dict(pay["state_dict"], strict=False)
         self.jqt.eval()
         self.H, self.C = pay["heads"], pay["codes"]
         self.device = device

@@ -76,6 +76,17 @@ class JQTModule(nn.Module):
             # per-square ADDITIVE contribution to the six outputs: summing makes every
             # square's share of the evaluation an explicit, legible number
             self.sq_dec = nn.Sequential(nn.Linear(d_fine, 64), nn.GELU(), nn.Linear(64, 6))
+        # v3 (jqt4, Kaveh 2026-08-13 'best possible base'): ANCHORS for the square and
+        # piece vocabularies -- the planner cannot commit to 'f7:weak' or 'my knight:trapped'
+        # without a z_B-space anchor and rulers trained against it. Square anchors are
+        # ADDRESSED (code embedding + square position embedding); piece anchors are keyed by
+        # the slot's piece TYPE (identity class) + code.
+        if square_codes:
+            self.anchor_sq = nn.Linear(d_fine, d)
+            self.anchor_sq_pos = nn.Embedding(64, d)
+        if piece_codes:
+            self.anchor_pc = nn.Linear(d_fine, d)
+            self.anchor_pc_type = nn.Embedding(13, d)
         if piece_codes:
             self.pc_id = nn.Embedding(13, d_model)          # identity: piece type at start
             self.pc_captured = nn.Parameter(torch.randn(d_model) * 0.02)
@@ -166,6 +177,16 @@ class JQTModule(nn.Module):
                 out[m] = self.anchor[h](e[m])
         return out
 
+    def anchors_for_sq(self, sq, code):
+        """(N,) squares + (N,) square-codes -> z_B anchors: 'square X in state c'."""
+        cb = self.sq_vq.codebook.detach()
+        return self.anchor_sq(cb[code]) + self.anchor_sq_pos(sq)
+
+    def anchors_for_pc(self, ptype, code):
+        """(N,) piece types + (N,) piece-codes -> z_B anchors: 'a TYPE piece in state c'."""
+        cb = self.pc_vq.codebook.detach()
+        return self.anchor_pc(cb[code]) + self.anchor_pc_type(ptype)
+
     def activation_logit(self, dB):
         return self.db_a * (self.db_b0 - torch.log1p(dB))
 
@@ -201,16 +222,93 @@ class ActivationIndex:
       positive: a code that DOES first-activate later in the game (plies-to-activation, hit=1)
       negative: a code that never activates later (censored at game end, hit=0)."""
 
-    def __init__(self, rng, codes=64):
+    def __init__(self, rng, codes=64, sq_codes=0, pc_codes=0):
         self.rng = rng
         self.codes = int(codes)
-        self.games = []          # list of (rows (L,), codes (L,H))
+        self.sq_codes, self.pc_codes = int(sq_codes), int(pc_codes)
+        self.games = []          # (rows, codes (L,H), sq (L,64)|None, pc (L,32)|None,
+                                 #  ptype (32,)|None)
 
     def refresh(self, games):
         self.games = games
 
     def ready(self):
         return len(self.games) > 0
+
+    def sample_mixed(self, n, frac_sq=0.25, frac_pc=0.25):
+        """heterogeneous goal labels (jqt4): global / (square,code) / (slot-type,code).
+        -> rows, gtype (0 glob/1 sq/2 pc), key1, key2, plies, hit.
+        square goal: 'square k reaches code c'; piece goal: 'a piece of type t reaches c'
+        (labeled on a specific alive slot of that type; anchors are type-keyed)."""
+        rows = np.empty(n, np.int64)
+        gtype = np.zeros(n, np.int64)
+        k1 = np.empty(n, np.int64); k2 = np.empty(n, np.int64)
+        plies = np.empty(n, np.float32); hit = np.empty(n, np.float32)
+        gsel = self.rng.integers(0, len(self.games), n)
+        for b in range(n):
+            g = self.games[gsel[b]]
+            rws, C = g[0], g[1]
+            SQ = g[2] if len(g) > 2 else None
+            PC = g[3] if len(g) > 3 else None
+            PT = g[4] if len(g) > 4 else None
+            L = len(rws)
+            pp = int(self.rng.integers(0, max(1, L - 2)))
+            r = self.rng.random()
+            if SQ is not None and r < frac_sq:
+                gtype[b] = 1
+                sq = int(self.rng.integers(0, 64))
+                fut = SQ[pp + 1:, sq]; prev = SQ[pp:-1, sq]
+                ev = np.flatnonzero(fut != prev)
+                if bool(self.rng.integers(0, 2)) and len(ev):
+                    e = int(ev[self.rng.integers(0, len(ev))])
+                    rows[b] = rws[pp]; k1[b] = sq; k2[b] = int(fut[e])
+                    plies[b] = float(e + 1); hit[b] = 1.0
+                else:
+                    active = set(np.unique(fut[ev]).tolist()) if len(ev) else set()
+                    active.add(int(SQ[pp, sq]))
+                    c = int(self.rng.integers(0, self.sq_codes))
+                    for _ in range(20):
+                        if c not in active: break
+                        c = int(self.rng.integers(0, self.sq_codes))
+                    rows[b] = rws[pp]; k1[b] = sq; k2[b] = c
+                    plies[b] = -1.0; hit[b] = 0.0
+            elif PC is not None and r < frac_sq + frac_pc:
+                gtype[b] = 2
+                alive = np.flatnonzero(PT > 0)
+                sl = int(alive[self.rng.integers(0, len(alive))]) if len(alive) else 0
+                fut = PC[pp + 1:, sl]; prev = PC[pp:-1, sl]
+                ev = np.flatnonzero(fut != prev)
+                if bool(self.rng.integers(0, 2)) and len(ev):
+                    e = int(ev[self.rng.integers(0, len(ev))])
+                    rows[b] = rws[pp]; k1[b] = int(PT[sl]); k2[b] = int(fut[e])
+                    plies[b] = float(e + 1); hit[b] = 1.0
+                else:
+                    active = set(np.unique(fut[ev]).tolist()) if len(ev) else set()
+                    active.add(int(PC[pp, sl]))
+                    c = int(self.rng.integers(0, self.pc_codes))
+                    for _ in range(20):
+                        if c not in active: break
+                        c = int(self.rng.integers(0, self.pc_codes))
+                    rows[b] = rws[pp]; k1[b] = int(PT[sl]); k2[b] = c
+                    plies[b] = -1.0; hit[b] = 0.0
+            else:
+                h = int(self.rng.integers(0, C.shape[1]))
+                fut = C[pp + 1:, h]; prev = C[pp:-1, h]
+                ev = np.flatnonzero(fut != prev)
+                if bool(self.rng.integers(0, 2)) and len(ev):
+                    e = int(ev[self.rng.integers(0, len(ev))])
+                    rows[b] = rws[pp]; k1[b] = h; k2[b] = int(fut[e])
+                    plies[b] = float(e + 1); hit[b] = 1.0
+                else:
+                    active = set(np.unique(fut[ev]).tolist()) if len(ev) else set()
+                    active.add(int(C[pp, h]))
+                    c = int(self.rng.integers(0, self.codes))
+                    for _ in range(20):
+                        if c not in active: break
+                        c = int(self.rng.integers(0, self.codes))
+                    rows[b] = rws[pp]; k1[b] = h; k2[b] = c
+                    plies[b] = -1.0; hit[b] = 0.0
+        return rows, gtype, k1, k2, plies, hit
 
     def sample(self, n):
         rows = np.empty(n, np.int64)

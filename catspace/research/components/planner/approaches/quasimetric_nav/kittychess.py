@@ -103,7 +103,7 @@ class KittyChess:
                                 codes=_pj["codes"], d=_pj["d"],
                                 square_codes=_pj.get("square_codes", 0),
                                 piece_codes=_pj.get("piece_codes", 0)).to(device)
-                _jm.load_state_dict(_pj["state_dict"]); _jm.eval()
+                _jm.load_state_dict(_pj["state_dict"], strict=False); _jm.eval()
 
                 class _JQTAsCVQ(torch.nn.Module):
                     def __init__(self, jm):
@@ -769,7 +769,7 @@ class KittyChess:
             pay = torch.load(base + "_jqt.pt", map_location=self.device, weights_only=False)
             self._jqt = JQTModule(d_model=pay["d_in"], heads=pay["heads"], codes=pay["codes"],
                                   d=pay["d"]).to(self.device)
-            self._jqt.load_state_dict(pay["state_dict"]); self._jqt.eval()
+            self._jqt.load_state_dict(pay["state_dict"], strict=False); self._jqt.eval()
         with torch.no_grad():
             hc = torch.tensor([goal], dtype=torch.long, device=self.device)
             A = self._jqt.anchors_for(hc).float()
