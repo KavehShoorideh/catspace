@@ -12219,3 +12219,23 @@ multimodal concepts stop needing a compromised centroid. Implementation = pure s
 14% of goal labels are now-active pairs at plies=0 through the EXISTING censored/first-hit
 losses (one sampler change, three vocabularies). reach_jqt4 restarted with it (~2.5h lost,
 semantics-level change).
+
+## 2026-08-13 — Per-player memory: surprise, emotes, idle prep (Kaveh's "expect my return" directive)
+Built the opponent-learning substrate for play mode, VERIFIED by live server smoke (jqt3 champion, CPU):
+- **Surprise ruler**: engine ponders on the human's clock (0.4/1.0/2.5s rungs, gen-aborted, per-rung lock);
+  P(move) = softmax(E_mover/0.03) over legal moves; the human's move scores -log2 P bits.
+  Smoke: 1.g4 scored **4.32 bits** (surprised, emote fired); pondered:true after a 5s think.
+- **Emotes**: engine-side channel {who,kind,emoji,text} → UI bubble. surprised (≥3 bits) and
+  gotcha (previously-surprising move now ≤1.5 bits: "I did my homework"). Smoke: repeat g4 vs
+  seeded memory → 0.23 bits → gotcha + instant prepared reply. User-side emojis: channel ready, later.
+- **Idle prep worker**: 90s quiet → studies the player's logged positions weakness-first
+  (low-bits + dE_mover<-0.03 = systematic mistakes) at budget 6.0 vs live 1.5; prep cache answers
+  instantly in-game. Smoke: worker studied the 1.g4 e5 node → f1g2, profile aggregated.
+- **Storage abstraction** (Kaveh: "stores on abstract unit systems"): PlayerStore is pure domain
+  logic over Backend units (KVStore get/put/delete/keys + AppendLog append/scan); LocalBackend =
+  files; an S3/Redis backend ports it unchanged (mirrors infra/ vendor abstraction). Unit tests
+  run the store on an IN-MEMORY backend: 3/3 suites pass (dist math, gotcha ordering, file parity).
+- Per-player dirs artifacts/experiments/players/<name>/ {games.jsonl, surprises, prep, profile};
+  identity = UI name (localStorage), sent with every request.
+Next: per-player tau calibration from logged moves; concept-space weakness mining once jqt4 lands;
+z-conditioning as the learned tier (LoRA rejected: data-starved, opaque, calibration risk).
