@@ -118,6 +118,11 @@ body.playmode .right .box:first-child{display:none}
     <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡ = line descends ≥0.7 plies/ply toward one ending &nbsp;·&nbsp; ranked by CASCADE</div>
   </div>
   <div class="box"><div id="moves"></div></div>
+  <div class="box" id="cdbox" style="display:none">
+    <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">position concepts</div>
+    <select id="cdsel" style="width:100%;background:#262421;color:#bababa;border:1px solid #3a3733;border-radius:3px;padding:3px;font-size:12px"></select>
+    <div id="cddeets" style="font-size:12px;margin-top:6px;line-height:1.55"></div>
+  </div>
   <div class="box" id="conceptbox" style="display:none">
     <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">concepts &nbsp;<span id="postoks" style="color:#6f6b66"></span></div>
     <table id="ctable"></table>
@@ -210,6 +215,22 @@ function render(d){
         `<td class="${c.active?'on':''}">${c.active?'✓':'–'}</td>`+
         `<td>${c.anti?'anti ':''}h${c.head}/c${c.code}${c.tok_here?' ●':''}</td>`+
         `<td>${Math.round(c.p*100)}% (base ${Math.round(c.base*100)}%)</td></tr>`).join("");
+  }
+  if(d.cdeets&&d.cdeets.length){
+    document.getElementById('cdbox').style.display="";
+    const sel=document.getElementById('cdsel');
+    const prev=sel.value;
+    sel.innerHTML=d.cdeets.map((c,i)=>
+      `<option value="${i}">${c.active?'● ':'  '}${c.name}  (${c.lev>0.01?'white':c.lev<-0.01?'black':'neutral'}${c.p_act!=null?', P(act) '+Math.round(c.p_act*100)+'%':''})</option>`).join("");
+    if(prev && prev<d.cdeets.length) sel.value=prev;
+    const rend=()=>{const c=d.cdeets[+sel.value]; if(!c) return;
+      document.getElementById('cddeets').innerHTML=
+        `<b>${c.name}</b> ${c.active?'<span style="color:#7fbf5f">active here</span>':'<span style="color:#8f8a82">not active</span>'}<br>`+
+        `serves: ${c.lev>0.01?'white':c.lev<-0.01?'black':'neutral'} (${(c.lev>=0?'+':'')+c.lev.toFixed(3)} E/activation)`+
+        (c.br!=null?`<br>base rate: ${(c.br*100).toFixed(1)}%/move`:'')+
+        (c.p_act!=null?`<br>from HERE: P(activate) ${Math.round(c.p_act*100)}%${c.dA!=null?' · dA '+c.dA+' (log-plies)':''}`:'')+
+        (c.gates&&c.gates.length?`<br>leads into: ${c.gates.join(', ')}`:'');};
+    sel.onchange=rend; rend();
   }
   if(d.over)document.getElementById('dinfo').textContent=d.over;
 }
@@ -546,6 +567,54 @@ class H(BaseHTTPRequestHandler):
                                  "p": info["p_given_code"], "base": info["base"],
                                  "anti": bool(info.get("anti")),
                                  "tok_here": bool(tok_here)})
+        cdeets = []
+        if H.vq is not None and not over and not req.get("play") and tokens:
+            try:
+                import numpy as _np3, torch as _torch3
+                gates_by_node = {}
+                node_of = {}
+                if H.graph:
+                    for i, nd in enumerate(H.graph["nodes"]):
+                        node_of[(nd["h"], nd["c"])] = i
+                    for e in H.graph["edges"]:
+                        if e["kind"] != "gateway":
+                            continue
+                        a, bb = (e["a"], e["b"]) if e["dir"] > 0 else (e["b"], e["a"])
+                        gates_by_node.setdefault(a, []).append(bb)
+                active_hc = [(h, int(c)) for h, c in enumerate(tokens)]
+                extra_hc = []
+                if H.lev is not None:
+                    fl = _np3.argsort(-_np3.abs(H.lev).ravel())[:6]
+                    Cw = H.lev.shape[1]
+                    extra_hc = [(int(i // Cw), int(i % Cw)) for i in fl
+                                if (int(i // Cw), int(i % Cw)) not in active_hc]
+                cand = active_hc + extra_hc
+                pa = da = None
+                if H.gq is not None:
+                    G_, F_ = H.gq.geometry(b, _np3.array(cand, _np3.int64))
+                    da = F_[:, 0].tolist(); pa = F_[:, 2].tolist()
+                for k, (hh, cc) in enumerate(cand):
+                    names = (H.code_names or {}).get((hh, cc), [])
+                    gouts = []
+                    ni = node_of.get((hh, cc))
+                    if ni is not None:
+                        for gj in (gates_by_node.get(ni) or [])[:3]:
+                            gn = H.graph["nodes"][gj]
+                            gnm = ((H.code_names or {}).get((gn["h"], gn["c"]))
+                                   or [f"h{gn['h']}/c{gn['c']}"])[0]
+                            gouts.append(gnm)
+                    cdeets.append({
+                        "h": hh, "c": cc, "name": (names or [f"h{hh}/c{cc}"])[0],
+                        "active": (hh, cc) in active_hc and cand.index((hh, cc)) < len(tokens),
+                        "lev": (float(H.lev[hh, cc]) if H.lev is not None
+                                and hh < H.lev.shape[0] and cc < H.lev.shape[1] else 0.0),
+                        "br": (float(H.br[hh, cc]) if H.br is not None
+                               and hh < H.br.shape[0] and cc < H.br.shape[1] else None),
+                        "p_act": (round(float(pa[k]), 3) if pa else None),
+                        "dA": (round(float(da[k]), 2) if da else None),
+                        "gates": gouts})
+            except Exception:
+                cdeets = []
         dests = {}
         if not over:                                    # free analysis: mover always movable
             for m in b.legal_moves:
@@ -562,7 +631,7 @@ class H(BaseHTTPRequestHandler):
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
                "dists": dists, "check": b.is_check(), "dests": dests,
-               "concepts": concepts, "tokens": tokens,
+               "concepts": concepts, "tokens": tokens, "cdeets": cdeets,
                "turb": (round(turb[0], 3) if turb else None), "trap": trap,
                "lastMove": last, "over": over}
         self._send(200, json.dumps(out).encode())
@@ -674,6 +743,43 @@ def main():
             print(f"[kitty-server] no dynamics head ({e})", flush=True)
     except Exception as e:
         print(f"[kitty-server] no concept sidecars ({e})", flush=True)
+    if H.vq is None and getattr(H.eng, "cvq", None) is not None:
+        # JQT-native quantizer (2026-08-12): the engine already consumes the _jqt sidecar;
+        # the server reuses it -- same forward(phi) -> (y, ids, .) surface.
+        H.vq = H.eng.cvq
+        H.cmap = H.cmap or {}
+        H.code_names = getattr(H, "code_names", {}) or {}
+        print("[kitty-server] concept quantizer: jqt-native (engine sidecar)", flush=True)
+    # per-position concept DETAILS substrate (Kaveh 2026-08-12: "concepts as it applies to
+    # the position under analysis"): leverage, base rates, gateways, live reachability
+    H.lev = H.br = H.graph = H.gq = None
+    try:
+        import re as _re, os as _os3, numpy as _np2, json as _json2
+        stem = _re.sub(r"_(latest|step\d+)$", "", base)
+        for cand in (base, stem):
+            if _os3.path.exists(cand + "_concept_leverage.npz"):
+                _lz = _np2.load(cand + "_concept_leverage.npz")
+                dims = (int(_lz["head"].max()) + 1, int(_lz["code"].max()) + 1)
+                H.lev = _np2.zeros((max(8, dims[0]), max(64, dims[1])), _np2.float32)
+                for sw, hh, cc in zip(_lz["swing"], _lz["head"], _lz["code"]):
+                    H.lev[int(hh), int(cc)] = float(sw)
+            if _os3.path.exists(cand + "_code_baserates.npy"):
+                H.br = _np2.load(cand + "_code_baserates.npy")
+            if _os3.path.exists(cand + "_concept_graph.json"):
+                H.graph = _json2.load(open(cand + "_concept_graph.json"))
+        jqp = next((c + "_jqt.pt" for c in (base, stem)
+                    if _os3.path.exists(c + "_jqt.pt")), None)
+        if jqp:
+            from catspace.research.components.planner.approaches.quasimetric_nav.subgoal_former import (
+                GeoQuery)
+            lvp = next((c + "_concept_leverage.npz" for c in (base, stem)
+                        if _os3.path.exists(c + "_concept_leverage.npz")), None)
+            H.gq = GeoQuery(H.eng, jqp, lvp, args.device)
+        print(f"[kitty-server] concept details: lev={H.lev is not None} "
+              f"br={H.br is not None} graph={H.graph is not None} gq={H.gq is not None}",
+              flush=True)
+    except Exception as e:
+        print(f"[kitty-server] no concept-details substrate ({e})", flush=True)
     H.lock = threading.Lock()
     H.depth = args.depth
     global PAGE_BYTES
