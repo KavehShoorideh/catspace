@@ -370,6 +370,7 @@ function renderLines(d){
     lb.appendChild(div);});
 }
 document.getElementById('new').onchange=e=>{
+  if(e.target.value==='startpos'){api({action:'new'});e.target.value='';return;}
   const v=e.target.value; e.target.value="";
   api(v?{action:"load",fen:v}:{action:"new"});};
 document.getElementById('first').onclick=()=>api({action:"goto",ptr:0});
@@ -1054,7 +1055,8 @@ def main():
     cg_css = open(os.path.join(ASSETS, "bundle.css")).read()
     # POSITION LIBRARY (Kaveh 2026-08-11): curated interesting starts -- forced-mate nets,
     # conversion tests, and live picks from the behavioral sanity suite
-    pos = [("KRK: convert the rook", "8/8/8/4k3/8/8/8/R3K3 w - - 0 1"),
+    pos = [("Standard start", "startpos"),
+           ("KRK: convert the rook", "8/8/8/4k3/8/8/8/R3K3 w - - 0 1"),
            ("KQK: convert the queen", "8/8/8/4k3/8/8/3Q4/4K3 w - - 0 1"),
            ("KPK: promote", "8/8/8/8/4k3/8/4P3/4K3 w - - 0 1"),
            ("back-rank net (W wins)", "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1"),
