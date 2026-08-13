@@ -114,7 +114,7 @@ body.playmode .right .box:first-child{display:none}
       <span id="dinfo"></span>
       <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
       <label title="principal variation length: how many FULL MOVES of each line are shown and scored (the per-line eval reads the position at the end of the shown moves). Display only — does not change the search">pv <select id="pvlen" title="FULL moves shown per line (2 plies each)"><option>4</option><option selected>6</option><option>8</option></select></label>
-      <button id="whytog" title="WHY overlay: counterfactual piece saliency — remove each piece, re-evaluate; green = helps white, red = helps black; ring size = |ΔE|. Faithful by construction (not attention)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
+      <button id="whytog" title="WHY overlay: positional importance beyond material (counterfactual removal, material-fitted residual). Green = load-bearing (doing MORE than its face value), red = underperforming or misplaced (removal costs little — or even helps its owner). Top 3 each. Kings excluded." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
       <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
       <label title="number of candidate moves analyzed and displayed (multi-PV). More lines = broader view, slightly slower updates">lines <select id="lines" title="candidate moves shown"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
@@ -146,8 +146,13 @@ function whyRefresh(fen){
   whyLastFen=fen;
   fetch('/api',{method:'POST',body:JSON.stringify({action:'saliency'})}).then(r=>r.json()).then(e=>{
     if(!e.sal) return;
-    const shapes=e.sal.filter(x=>Math.abs(x.dE)>=0.015).map(x=>({
-      orig:x.sq, brush:(x.dE>0?(x.dE>0.06?'green':'paleGreen'):(x.dE<-0.06?'red':'paleRed'))}));
+    const byX=e.sal.slice().sort((a,b)=>Math.abs(b.excess)-Math.abs(a.excess));
+    const shapes=[];
+    let pos=0,neg=0;
+    for(const x of byX){
+      if(x.excess>0.02&&pos<3){shapes.push({orig:x.sq,brush:x.excess>0.08?'green':'paleGreen'});pos++;}
+      else if(x.excess<-0.02&&neg<3){shapes.push({orig:x.sq,brush:x.excess<-0.08?'red':'paleRed'});neg++;}
+    }
     cg.setShapes(shapes);
   }).catch(()=>{});
 }
@@ -695,9 +700,33 @@ class H(BaseHTTPRequestHandler):
                         wds.append(pr[:, 0] + 0.5 * pr[:, 1])
                     E = _np6.concatenate(wds)
                 base_E = float(E[0])
-                out = [{"sq": chess.square_name(int(q)),
-                        "dE": round(float(base_E - E[1 + i]), 4)}   # >0: piece helps WHITE
-                       for i, q in enumerate(occ)]
+                VALS = {1: 1, 2: 3, 3: 3, 4: 5, 5: 9, 6: 4, 7: 1, 8: 3, 9: 3, 10: 5,
+                        11: 9, 12: 4}
+                raw = []
+                for i, q in enumerate(occ):
+                    t = int(tk[int(q)])
+                    own = base_E - E[1 + i]              # >0: piece helps WHITE
+                    pov = own if t <= 6 else -own        # >0: piece helps ITS OWNER
+                    raw.append((int(q), t, pov))
+                # MATERIAL RESIDUAL (Kaveh 2026-08-12 'highlights all pieces, but why':
+                # removal dE ~ piece value, so raw saliency just re-discovers material.
+                # Fit dE ~ s*value per color; the RESIDUAL is positional importance:
+                # load-bearing (doing more than its face value) vs bystander vs misplaced
+                # (removal HELPS its owner).)
+                import numpy as _np7
+                out = []
+                for color_white in (True, False):
+                    grp = [(q, t, pov) for q, t, pov in raw
+                           if (t <= 6) == color_white and (t % 6) != 0]   # kings excluded
+                    if not grp:
+                        continue
+                    vals = _np7.array([VALS[t] for _q, t, _p in grp], float)
+                    povs = _np7.array([pv for _q, _t, pv in grp], float)
+                    sc = float(_np7.median(povs / vals)) if len(grp) else 0.0
+                    for (q, t, pov), v in zip(grp, vals):
+                        out.append({"sq": chess.square_name(q),
+                                    "excess": round(float(pov - sc * v), 4),
+                                    "dE": round(float(pov), 4)})
                 self._send(200, json.dumps({"base": round(base_E, 3), "sal": out}).encode())
             except Exception as e:
                 self._send(200, json.dumps({"err": str(e)[:80]}).encode())
