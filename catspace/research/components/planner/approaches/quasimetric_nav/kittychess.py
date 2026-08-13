@@ -851,7 +851,13 @@ class KittyChess:
         # FORCING PREFERENCE: proven mates keep absolute rank; among the rest, moves within
         # eps of the best value re-rank by (constrain the opponent, then premove-ability) --
         # the cheap-to-execute win over the merely-shortest win. Flag-gated.
-        if getattr(self, "forcing_pref", True) and len(rows) > 1:
+        # ONLY WHEN WINNING (Kaveh 2026-08-12, the knight-shuffle game: Nh3/Ng5/Nxh7 came
+        # from breaking QUIET-position ties by forcingness -- the principle is 'among equal
+        # WINS prefer the premove-able one', never 'prefer lunges when equal'): the band
+        # re-ranks only if the top move already reads clearly winning for the mover.
+        _win_thr = 650.0 if self.cvq is not None else 10.0
+        if getattr(self, "forcing_pref", True) and len(rows) > 1 \
+                and rows[0]["value"] >= min(_win_thr, 5e5):
             eps = getattr(self, "forcing_eps", 15.0)
             top = rows[0]["value"]
             band = [r for r in rows if r["value"] > 5e5 or top - r["value"] <= eps]
