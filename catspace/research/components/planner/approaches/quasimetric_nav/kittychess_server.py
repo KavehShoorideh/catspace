@@ -620,6 +620,32 @@ class H(BaseHTTPRequestHandler):
             b.push(m)
         return b
 
+    def _human_dist(self, bb, temp=1.0):
+        """P(move) over bb's legal moves from the human layer (caller holds NO lock).
+        temp>1 flattens (the stranger anneal: temp = tau/TAU_E)."""
+        import numpy as _npH, torch as _tH2
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+            tokenize as _tkH)
+        from catspace.research.components.encoder.approaches.reach_probability.experiments.train_human_moves import (
+            mid_of, elo_bucket)
+        legal = list(bb.legal_moves)
+        if not legal:
+            return {}
+        prof = (H.store.profile.get("current") or {}) if H.store else {}
+        eb = int(prof.get("elo_bucket") or elo_bucket(1500))
+        tk, gl = _tkH(bb)
+        with H.lock, _tH2.no_grad():
+            phi = H.eng.net.backbone(
+                _tH2.from_numpy(_npH.asarray([tk], dtype="int64")).to(H.eng.device),
+                _tH2.from_numpy(_npH.asarray([gl], dtype="float32")).to(H.eng.device))
+            mids = _tH2.tensor([mid_of(m) for m in legal], dtype=_tH2.long,
+                               device=H.eng.device)
+            row_of = _tH2.zeros(len(legal), dtype=_tH2.long, device=H.eng.device)
+            eb_t = _tH2.tensor([eb], dtype=_tH2.long, device=H.eng.device)
+            lg = H.human.move_logits(phi.float(), eb_t, mids, row_of)
+            p = _tH2.softmax(lg / max(temp, 1e-3), 0).cpu().numpy()
+        return {m.uci(): float(pv) for m, pv in zip(legal, p)}
+
     def _recent_san(self, n=6):
         """last n plies as a SAN string for banter context ('' if not reconstructible)."""
         try:
@@ -733,21 +759,29 @@ class H(BaseHTTPRequestHandler):
                     key = fen_key(pb)
                     legal = [m.uci() for m in pb.legal_moves]
                     tau = H.store.tau() if H.store else TAU_E
-                    pond = H.ponder if (H.ponder and H.ponder.get("key") == key) else None
-                    dist = pond["dist"] if pond else None
-                    e_top = pond["e_top"] if pond else None
-                    if dist is None and H.store is not None:      # idle-time study counts
-                        pe = H.store.get_prep(key)
-                        if pe and pe.get("dist"):
-                            dist = dict(pe["dist"])
-                            e_top = pe.get("e_top")
-                    if dist is None:                              # moved too fast: quick look
-                        with H.lock:
-                            rws = H.eng.search_coherent(pb, budget=0.5)
-                            rws = H.eng.rank_by_child_E(pb, rws)
-                        rE = ranked_E(rws)
-                        dist = expectation_dist(rws, legal, tau=tau)
-                        e_top = sorted(rE.items(), key=lambda kv: -kv[1])[:8]
+                    pond = e_top = None
+                    if H.human is not None:
+                        # expectation = HUMANS, not the engine's own taste; the stranger
+                        # anneal flattens via temperature tau/TAU_E (1.0 when settled)
+                        dist = self._human_dist(pb, temp=tau / TAU_E)
+                        pond = {"src": "human"}
+                    else:
+                        pond = H.ponder if (H.ponder and H.ponder.get("key") == key) \
+                            else None
+                        dist = pond["dist"] if pond else None
+                        e_top = pond["e_top"] if pond else None
+                        if dist is None and H.store is not None:  # idle-time study counts
+                            pe = H.store.get_prep(key)
+                            if pe and pe.get("dist"):
+                                dist = dict(pe["dist"])
+                                e_top = pe.get("e_top")
+                        if dist is None:                          # moved too fast: quick look
+                            with H.lock:
+                                rws = H.eng.search_coherent(pb, budget=0.5)
+                                rws = H.eng.rank_by_child_E(pb, rws)
+                            rE = ranked_E(rws)
+                            dist = expectation_dist(rws, legal, tau=tau)
+                            e_top = sorted(rE.items(), key=lambda kv: -kv[1])[:8]
                     bits = surprisal_bits(dist, hmv.uci())
                     xbits = bits - entropy_bits(dist)   # EXCESS: vs the position's own
                     san_h = pb.san(hmv)                 # expected surprisal (near-flat E)
@@ -1579,6 +1613,23 @@ def main():
               flush=True)
     except Exception as e:
         print(f"[kitty-server] no concept-details substrate ({e})", flush=True)
+    # HUMAN PREDICTION LAYER (Kaveh 2026-08-13): P(move|position,Elo) replaces the engine's
+    # own E-softmax as the expectation over the human's moves wherever a sidecar exists
+    H.human = None
+    try:
+        import os as _osH, re as _reH, torch as _tH
+        from catspace.research.components.encoder.approaches.reach_probability.experiments.train_human_moves import (
+            HumanMoves)
+        _stemH = _reH.sub(r"_(latest|step\d+)$", "", base)
+        for cH in (base, _stemH):
+            if _osH.path.exists(cH + "_human.pt") and H.human is None:
+                pH = _tH.load(cH + "_human.pt", map_location=args.device, weights_only=False)
+                H.human = HumanMoves(d_in=pH["d_in"]).to(args.device)
+                H.human.load_state_dict(pH["state_dict"])
+                H.human.eval()
+        print(f"[kitty-server] human layer: {H.human is not None}", flush=True)
+    except Exception as e:
+        print(f"[kitty-server] no human layer ({e})", flush=True)
     H.seq = None
     try:
         import os as _os9, re as _re9, torch as _t9b
@@ -1692,7 +1743,51 @@ def main():
                     "budget": 6.0, "mover": mover,
                     "e_top": sorted(rE.items(), key=lambda kv: -kv[1])[:8],
                     "dist": sorted(dist.items(), key=lambda kv: -kv[1])[:8]})
-                st.aggregate()
+                prof = st.aggregate()
+                # PER-PLAYER ELO FIT (Kaveh 2026-08-13, human layer): pick the Elo bucket
+                # whose conditioned move distribution best explains this player's logged
+                # moves (min NLL) -- refit every 40 new plies
+                if (H.human is not None and prof.get("plies", 0) >= 40
+                        and prof.get("plies", 0) - int(prof.get("elo_fit_plies") or 0) >= 40):
+                    try:
+                        import torch as _tF
+                        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+                            tokenize as _tkF)
+                        from catspace.research.components.encoder.approaches.reach_probability.experiments.train_human_moves import (
+                            HumanMoves as _HM, mid_of as _mo, N_BUCKET)
+                        obs = [(r["fen_before"], r["uci"]) for r in st.games.scan()
+                               if r.get("type") == "ply" and r.get("mover") == "human"][-200:]
+                        nll = [0.0] * N_BUCKET
+                        for fenF, uciF in obs:
+                            bF = chess.Board(fenF)
+                            legalF = list(bF.legal_moves)
+                            try:
+                                ji = [m.uci() for m in legalF].index(uciF)
+                            except ValueError:
+                                continue
+                            tkf, glf = _tkF(bF)
+                            with H.lock, _tF.no_grad():
+                                phiF = H.eng.net.backbone(
+                                    _tF.tensor([tkf], dtype=_tF.long, device=H.eng.device),
+                                    _tF.tensor([glf], dtype=_tF.float32,
+                                               device=H.eng.device)).float()
+                                midsF = _tF.tensor([_mo(m) for m in legalF],
+                                                   dtype=_tF.long, device=H.eng.device)
+                                rowF = _tF.zeros(len(legalF), dtype=_tF.long,
+                                                 device=H.eng.device)
+                                for bkt in range(N_BUCKET):
+                                    lgF = H.human.move_logits(
+                                        phiF, _tF.tensor([bkt], device=H.eng.device),
+                                        midsF, rowF)
+                                    nll[bkt] -= float(_tF.log_softmax(lgF, 0)[ji])
+                        best_b = int(min(range(N_BUCKET), key=lambda i: nll[i]))
+                        st.profile.put("current", {**prof, "elo_bucket": best_b,
+                                                   "elo_fit_plies": prof.get("plies", 0)})
+                        print(f"[prep] {st.name}: elo bucket fitted -> {best_b} "
+                              f"(~{800 + max(0, best_b - 1) * 100} Elo, {len(obs)} moves)",
+                              flush=True)
+                    except Exception as e2:
+                        print(f"[prep] elo fit skipped ({e2})", flush=True)
                 print(f"[prep] {st.name}: studied {fen_key(bb)} "
                       f"-> {rows[0]['mv'].uci()}", flush=True)
             except Exception as e:

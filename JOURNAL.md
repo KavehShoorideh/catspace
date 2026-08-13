@@ -12279,3 +12279,17 @@ Kaveh played the board and every directive below was verified against his live s
   censored never-fired rows as weak negatives. jqt4's per-concept CDB residuals will
   baseline the confusion this fixes. Single-pole weaknesses recorded: monotone-scalar
   bottleneck, b0 calibration drift, the strata positives-only scar.
+
+## 2026-08-13 (night) — Human prediction layer built, wired, smoke-verified
+train_human_moves.py: P(move|position, mover-Elo) on the FROZEN trunk (pointwise legal-move
+scorer, the move-head pattern; Elo buckets 800-2400/100). Data: data/records/lichess_2019-01
+(2.7G parquet, load_human_games). Unit tests: ragged segment-softmax sums to 1, planted
+preference learned (2.73->0.00 bits), Elo bucket clamp/separate. CPU smoke (400 games, 1.6k
+plies, 400 steps): 4.72->~4.5 bits/move val, top1 12.7% — pipeline proof only; REAL run on
+MPS/jqt4 trunk queued behind the jqt4 gate (uniform ~5 bits, Maia-class ~1.8/50% is the bar).
+Serving: <stem>_human.pt sidecar; surprise ruler now uses HUMAN expectations (temp=tau/TAU_E
+stranger anneal on its logits; excess-vs-entropy unchanged) — smoke server literally printed
+"expected e4" where the E-softmax expected Nh3. Per-player Elo bucket fitted in the idle
+worker (min-NLL over the player's logged moves, refit per 40 plies). Fallback: no sidecar ->
+the old E-softmax path intact. Smoke sidecar left on jqt3 stem (weak but better-ordered than
+E-softmax); jqt4's run replaces it.
