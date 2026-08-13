@@ -1,0 +1,23 @@
+# catspace engine service -- vendor-abstracted (SkyPilot picks across enabled clouds).
+#   sky serve up -n catspace-ENV infra/sky/serve.yaml --env CHANNEL=ENV ...
+service:
+  readiness_probe: /
+  replicas: 1
+resources:
+  # pick-and-choose: cheapest of any enabled vendor; GPU optional for the field forward
+  any_of:
+    - {cloud: aws, accelerators: T4:1}
+    - {cloud: gcp, accelerators: L4:1}
+    - {cloud: lambda, accelerators: A10:1}
+    - {cpus: 8+}          # CPU fallback: the engine serves fine, just slower analysis
+  ports: 8420
+envs:
+  MODEL_URI: ""           # s3://<bucket>/models
+  CHANNEL: dev
+  S3_ENDPOINT: ""
+  DEVICE: auto
+run: |
+  docker run --rm -p 8420:8420 \
+    -e MODEL_URI -e CHANNEL -e S3_ENDPOINT -e DEVICE \
+    -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+    ${IMAGE:-ghcr.io/OWNER/catspace-serve:latest}
