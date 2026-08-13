@@ -1,0 +1,26 @@
+# Local launch (no cloud, no registry, no secrets):
+#     docker compose -f infra/compose.yaml up --build
+# then open http://localhost:8420
+#
+# The champion + sidecars come straight from the repo's artifacts/ via a read-only mount --
+# no S3 involved (entrypoint_serve.sh skips the sync when MODEL_URI is unset). Per-player
+# memory (games / surprises / prep / profiles) persists in the named volume `players`
+# across container rebuilds. CPU torch inside the container (Docker on macOS has no MPS;
+# on a CUDA host build with TORCH=cu121 and add a gpu reservation).
+services:
+  serve:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.serve
+      args:
+        TORCH: cpu
+    ports:
+      - "8420:8420"
+    environment:
+      DEVICE: cpu
+      CHANNEL: local
+    volumes:
+      - ../artifacts/experiments:/models:ro
+      - players:/app/artifacts/experiments
+volumes:
+  players:
