@@ -12351,3 +12351,34 @@ prediction into the SEQUENCE layer (causal transformer already targets NEWLY-act
 codes) and let JEPA go; move-conditioning needs to earn >>1.1x or the move input is dead.
 Caveats: jqt4 mid-training; jqt3 evaluated cross-corpus (v3 boards; its flip rate reads
 75.7% here vs ~49% in-train) -- directionally identical on both, so the finding stands.
+
+## 2026-08-13 (evening) — jqt4 STOPPED at Kaveh's call (step ~7.9k/20k, ladder kept); JQT5 LAUNCHED
+jqt5 = jqt4 recipe with the dynamics REFRAMED (Kaveh: "at every move there's a concept
+change. Predict which ones change"):
+- HURDLE DYNAMICS replaces JEPA MSE (w_jepa=0): per-head flip BCE (w=2) + destination CE on
+  flipped heads only (w=2, warm-up ramp to step ~5000; index-churn guard), global + per-slot
+  piece stream. Dashboard: flip_gap (sigmoid gap flips-vs-stays), dest_top1, pcdest_top1.
+- NEGATIVE POLES: anti-anchor per vocabulary (global/sq/pc; shared address embeddings,
+  own projections); CDB = two-pole contrast logit (committor pattern, --two-pole-cdb 1);
+  DEAD states (piece type fully captured; alive-counts added to the activation index) pulled
+  onto the anti-pole (w_negpole=0.5, frac_dead=0.1 of goal samples).
+- bf16: flag added; MPS run CRASHED on a dtype seam (anchors scatter fp32/bf16 -- patched)
+  but remains UNVALIDATED (no curve check) -> jqt5 runs fp32; bf16 pending its own smoke.
+VALIDATION before launch: model-free wiring checks (shapes, two-pole monotone, anti-anchors
+distinct, dead sampling: 142 draws all type-5 post-capture); CPU smoke 80 steps (all losses
+fire: flip .69->.17, flip_gap +0.11, dest_top1 .71 tiny-config, negpole live); MPS fp32
+120-step full-width run clean.
+LOSS-INTERACTION REVIEW (standing rule):
+- flip/dest x persistence: COLLUSION RISK -- freezing codes makes flips trivially
+  predictable AND persistence happy. Guards: vqrec (frozen codes can't track evals),
+  perplexity + jqt_flip on every step (early rate 0.002 is init-collapse, must rise toward
+  ~0.4; if it pins near 0 past ~4k steps -> abort and reweigh).
+- dest CE x codebook churn: warm-up ramp + EMA-branch targets; dest_top1 meaningless
+  before ~step 5000.
+- flip/dest x vqrec: both shape codebooks (transition-predictability vs eval-faithfulness);
+  tension is the design; watch vqrec drift after the ramp.
+- two-pole CDB x subsumption: positive-pole zero-distance samples unchanged; anti-pole has
+  own members only in the pc vocabulary (dead mining); global/sq anti-poles shaped by BCE
+  contrast alone -- weaker, noted for the residual analysis.
+- negpole x walls/basin: small weight 0.5; dB-space pressure monitored via cdb curve.
+Watcher armed on jqt5_run.log. jqt4 artifacts retained for salvage/comparison.
