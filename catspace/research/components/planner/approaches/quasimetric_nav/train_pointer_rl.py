@@ -70,12 +70,16 @@ def main():
     baseline = 0.0
     scores, evals_per_move = [], []
     t0 = time.time()
+    import json as _json
+    mlog = open((args.out or (base + "_pointer.pt")).replace(".pt", "_rl.jsonl"), "a",
+                buffering=1)          # EVERY GAME, structured (Kaveh 2026-08-13)
     for game in range(args.games):
         b = chess.Board()
         for _ in range(4):
             b.push(rng.choice(list(b.legal_moves)))
         pol_white = bool(game % 2 == 0)
         logps, total_evals, n_pol_moves = [], 0, 0
+        n_point, n_hold, bud_hist = 0, 0, {}
         cert_prev = None
         committed = None
         while not b.is_game_over(claim_draw=True) and b.ply() < args.max_plies:
@@ -87,6 +91,11 @@ def main():
                     if cert_prev is not None else []
                 a, bud, logp = pol.act(cert, alerts)
                 logps.append(logp)
+                if a < len(alerts):
+                    n_point += 1
+                else:
+                    n_hold += 1
+                bud_hist[str(bud)] = bud_hist.get(str(bud), 0) + 1
                 if a < len(alerts):                    # point: pursue/deny that concept
                     committed = int(np.flatnonzero(
                         (hc == np.array(alerts[a].hc)).all(1))[0]) \
@@ -126,6 +135,15 @@ def main():
         scores.append(outcome)
         epm = total_evals / max(n_pol_moves, 1)
         evals_per_move.append(epm)
+        mlog.write(_json.dumps({
+            "game": game + 1, "outcome": outcome, "R": round(R, 4),
+            "baseline": round(baseline, 4), "evals": int(total_evals),
+            "evals_per_move": round(epm, 1), "n_moves": n_pol_moves,
+            "pol_white": pol_white, "plies": b.ply(),
+            "n_point": n_point, "n_hold": n_hold, "budgets": bud_hist,
+            "running_score": round(float(np.mean(scores)), 3),
+            "running_epm": round(float(np.mean(evals_per_move)), 1),
+            "minutes": round((time.time() - t0) / 60, 1)}) + "\n")
         print(f"[rl] game {game+1}/{args.games}: {'W' if outcome==1 else 'D' if outcome==0.5 else 'L'} "
               f"R {R:+.3f} evals/move {epm:,.0f} | running score "
               f"{np.mean(scores):.2f} evals/mv {np.mean(evals_per_move):,.0f} "
