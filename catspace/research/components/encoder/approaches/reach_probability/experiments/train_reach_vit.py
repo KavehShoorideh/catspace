@@ -684,6 +684,8 @@ def main():
             gmask = np.isin(game_of_row, gsel)
             rws = np.flatnonzero(gmask)
             ids_all = np.empty((len(rws), args.jqt_heads), np.int16)
+            _ys = []
+            _P3r = model.poles.poles[:3]
             for a in range(0, len(rws), 4096):
                 rr = rws[a:a + 4096]
                 tokb = torch.from_numpy(tr.tok[rr].astype(np.int64)).to(dev)
@@ -691,6 +693,19 @@ def main():
                 phi_t = model.t_enc(tokb, globb)
                 _, idsb = jqt.target_codes(phi_t)
                 ids_all[a:a + 4096] = idsb.cpu().numpy().astype(np.int16)
+                zbr = model.proj_b(model.enc(tokb, globb))
+                DAr = torch.stack([model.dA(zbr, _P3r[[k]].expand(len(zbr), -1))
+                                   for k in range(3)], 1)
+                DBr = torch.stack([model.dB(zbr, _P3r[[k]].expand(len(zbr), -1))
+                                   for k in range(3)], 1)
+                _ys.append(torch.cat([DAr, torch.softmax(-DBr / args.basin_temp, 1)],
+                                     1).detach())
+            _Yr = torch.cat(_ys)
+            # EXACT recon-normalization stats at EVERY refresh (2026-08-12, the freeze-at-50
+            # scar: stale sd 0.003 over-weighted prob recon 60x and left decoded dA
+            # untrained; play values through the decode were noise)
+            jqt.y_mu.copy_(_Yr.mean(0)); jqt.y_sd.copy_(_Yr.std(0).clamp(min=1e-3))
+            jqt.y_n.fill_(999)
             games = []
             gor_s = game_of_row[rws]
             for g in gsel:
