@@ -826,6 +826,8 @@ def main():
     opts = "".join(f'<option value="{f}">{n}</option>' for n, f in pos)
     PAGE_BYTES = (PAGE.replace("__CG_CSS__", cg_css).replace("__CG_JS__", cg_js)
                   .replace("__POSITIONS__", opts).encode())
+    import faulthandler, signal as _sig
+    faulthandler.register(_sig.SIGUSR1)      # kill -USR1 <pid> -> all thread stacks to stderr
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), H)
     print(f"[kitty-server] serving {args.ckpt} on 0.0.0.0:{args.port}", flush=True)
     srv.serve_forever()
