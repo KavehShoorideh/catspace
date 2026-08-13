@@ -1,1 +1,1 @@
-{"san": [], "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "start_fen": null, "ptr": 0, "mode": "analysis", "over": null, "moves_uci": []}
+{"san": ["Nh3"], "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", "start_fen": null, "ptr": 0, "mode": "analysis", "over": null, "moves_uci": ["g1h3"]}
