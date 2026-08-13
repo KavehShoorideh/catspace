@@ -13,11 +13,14 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import chess
 
 from catspace.io import paths
+from catspace.research.components.planner.approaches.quasimetric_nav.player_profile import (
+    PlayerStore, fen_key, expectation_dist, surprisal_bits, SURPRISE_BITS)
 from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess as _KC
 KittyMATE=_KC.MATE
 
@@ -84,17 +87,28 @@ cursor:pointer;font:inherit;font-size:12.5px}
 .navbtn.on{background:#759900;color:#fff}
 body.playmode #evalbar,body.playmode #wdltxt,body.playmode #conceptbox{visibility:hidden}
 body.playmode .right .box:first-child{display:none}
+body:not(.playmode) #surprbox{display:none!important}
+#who{float:right;color:#8f8a82;cursor:pointer;font-size:13px}
+#who:hover{color:#dedede}
+#emote{position:absolute;z-index:9;top:6px;right:6px;display:none;max-width:250px;
+background:#262421;border:1px solid #3a3733;border-radius:12px;padding:8px 12px;
+font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:8px}
+#emote .e{font-size:28px;line-height:1}
+#emote.show{display:flex;animation:pop .25s ease-out}
+@keyframes pop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
+#surprbox b{color:#dedede}
 </style>
 <div class="top"><b>catspace</b>
   <span style="margin-left:18px">
     <button class="navbtn" id="nav-an">Analysis board</button>
     <button class="navbtn" id="nav-play">Play catspace</button>
   </span>
-
+  <span id="who" title="the engine keeps a per-player memory: your games, where you surprised it, and prepared lines against you"></span>
 </div>
 <div class="main">
 <div id="evalbar"><div id="eb-b" style="height:33%"></div><div id="eb-d" style="height:34%"></div><div id="eb-w" style="height:33%"></div></div>
-<div>
+<div style="position:relative">
+  <div id="emote"></div>
   <div id="exitline" style="display:none;font-size:13px;color:#bababa;padding:2px 0"></div>
   <div id="mat-top" style="min-height:16px;font-size:13px;color:#8f8a82;letter-spacing:1px"></div>
   <div id="board" class="cg-wrap"></div>
@@ -129,6 +143,7 @@ body.playmode .right .box:first-child{display:none}
     <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; ⚡ only move = one move far above the rest &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by E (calibrated committor)</div>
   </div>
   <div class="box"><div id="moves"></div></div>
+  <div class="box" id="surprbox" style="display:none" title="SURPRISE: the engine ponders on your clock and holds a probability over your legal moves; your move scores -log2 P(move) in bits. High = you left its expectation. It REMEMBERS what surprised it — and preps."></div>
   <div class="box" id="cdbox" style="display:none">
     <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">position concepts</div>
     <select id="cdsel" style="width:100%;background:#262421;color:#bababa;border:1px solid #3a3733;border-radius:3px;padding:3px;font-size:12px"></select>
@@ -144,6 +159,12 @@ body.playmode .right .box:first-child{display:none}
 <script>
 "use strict";
 let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
+let user=localStorage.kcUser||"", surprHist=[];
+function whoRender(){document.getElementById('who').textContent=user?('☺ '+user):'set player name';}
+function setUser(){const u=prompt('Your name — the engine builds a per-player profile (games, surprises, prep):',user);
+  if(u&&u.trim()){user=u.trim();localStorage.kcUser=user;}whoRender();}
+document.getElementById('who').onclick=setUser;
+whoRender();
 let sfOn=false, sfLastFen=null, whyOn=false, whyLastFen=null, sqOn=false, sqLastFen=null, sqLast=null, planOn=false, planLastFen=null;
 function planRefresh(fen){
   const box=document.getElementById('planbox');
@@ -263,7 +284,7 @@ async function api(body){
   if(mode==='play'){document.getElementById('dinfo').textContent="thinking…";
     document.getElementById('dinfo').className="spin";}
   const r=await fetch('/state',{method:'POST',headers:{'content-type':'application/json'},
-    body:JSON.stringify({...body,...knobs(),...extra})});
+    body:JSON.stringify({...body,...knobs(),...extra,user})});
   const d=await r.json();
   if(my!==seq)return;
   render(d);
@@ -292,6 +313,22 @@ async function api(body){
   }
 }
 function render(d){
+  // ENGINE EMOTES (Kaveh 2026-08-13): the engine expresses itself; a generic {who,kind,
+  // emoji,text} channel the user side will post into later
+  if(d.emote){const em=document.getElementById('emote');
+    em.innerHTML=`<span class="e">${d.emote.emoji}</span><span>${d.emote.text}</span>`;
+    em.classList.add('show');clearTimeout(window._emT);
+    window._emT=setTimeout(()=>em.classList.remove('show'),6000);}
+  if(mode==='play'&&d.surprise){
+    surprHist.push(d.surprise.bits);
+    const mean=(surprHist.reduce((a,b)=>a+b,0)/surprHist.length).toFixed(1);
+    const sb=document.getElementById('surprbox');sb.style.display='';
+    sb.innerHTML=`<div style="font-size:12px;color:#8f8a82;margin-bottom:3px">surprise`+
+      `${d.surprise.pondered?'':' <span title="you moved before the ponder finished — quick estimate">⏱</span>'}</div>`+
+      `your move: <b>${d.surprise.bits} bits</b>${d.surprise.bits>=3?' 😮':''}`+
+      ` · engine expected <b>${d.surprise.expected}</b> (p ${(100*d.surprise.p).toFixed(0)}%)`+
+      `<div style="font-size:11px;color:#6f6b66;margin-top:2px">game mean ${mean} bits`+
+      `${d.prepared?' · 📖 replied from prep':''}</div>`;}
   const mvcolor = mode==='play' ? (playCfg.engineWhite?'black':'white') : d.turn;
   cg.set({fen:d.fen, turnColor:d.turn, check:d.check, lastMove:d.lastMove||undefined,
     orientation:orient,
@@ -448,6 +485,8 @@ document.getElementById('flip').onclick=()=>{orient=orient==="white"?"black":"wh
 document.getElementById('nav-an').onclick=()=>{
   setMode('analysis'); api({action:"noop"});};
 document.getElementById('nav-play').onclick=()=>{
+  if(!user)setUser();                    // per-player memory needs an identity
+  surprHist=[];document.getElementById('surprbox').style.display='none';
   // one click, lichess-quick-pairing style: RANDOM side, fixed strength 6 (1.5s cap)
   playCfg={engineWhite:Math.random()<0.5, depth:6};
   orient=playCfg.engineWhite?'black':'white';
@@ -482,6 +521,13 @@ class H(BaseHTTPRequestHandler):
     ptr = 0
     depth = 3
     lines = 3
+    # per-player memory (Kaveh 2026-08-13): identity -> store; ponder -> surprise ruler
+    user = None
+    store = None                                         # PlayerStore of the active player
+    ponder = None                                        # {"key","dist","budget"} human-to-move
+    game_id = 0
+    over_logged = -1
+    last_req_t = 0.0
 
     def log_message(self, *a):
         pass
@@ -505,6 +551,32 @@ class H(BaseHTTPRequestHandler):
             b.push(m)
         return b
 
+    def _start_ponder(self, bb):
+        """PONDER (Kaveh 2026-08-13): while waiting for the human, keep searching THEIR
+        position and hold a live expectation distribution over their legal moves -- the
+        surprise ruler sharpens while they think. Aborts via gen; the lock is taken per
+        rung so a real request preempts within one rung."""
+        import threading
+        g = H.gen
+        key = fen_key(bb)
+        legal = [m.uci() for m in bb.legal_moves]
+        white = bb.turn == chess.WHITE
+
+        def w():
+            for bud in (0.4, 1.0, 2.5):
+                if H.gen != g:
+                    return
+                with H.lock:
+                    if H.gen != g:
+                        return
+                    rows = H.eng.search_coherent(bb, budget=bud)
+                    rows = H.eng.rank_by_child_E(bb, rows)
+                if rows:
+                    H.ponder = {"key": key, "budget": bud,
+                                "dist": expectation_dist(rows, white, legal)}
+
+        threading.Thread(target=w, daemon=True).start()
+
     def _log_game(self, b, san, over, play):
         try:
             json.dump({"san": san, "fen": b.fen(), "start_fen": H.start_fen,
@@ -519,14 +591,24 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get("content-length", 0))
         req = json.loads(self.rfile.read(n) or b"{}")
         cls = H
+        H.last_req_t = time.time()
+        u = str(req.get("user") or "").strip()
+        if u and H.user != u:                            # player identity -> per-player store
+            try:
+                H.store, H.user = PlayerStore(u), u
+                print(f"[players] active player: {H.store.name}", flush=True)
+            except Exception:
+                H.store = None
         cls.depth = max(1, min(6, int(req.get("depth", cls.depth))))
         cls.lines = max(1, min(5, int(req.get("lines", cls.lines))))
         cls.pvlen = 8                       # pv maxed out (Kaveh 2026-08-12), selector gone
         act = req.get("action", "noop")
+        human_ctx = None                    # (board-before, move) when the human just moved
         if act not in ("analyze", "lines"):
             H.gen += 1                                   # cancel any in-flight search NOW
         if act == "new":
             cls.moves, cls.ptr, cls.start_fen = [], 0, None
+            cls.game_id += 1
         elif act == "load" and req.get("fen"):
             try:
                 chess.Board(req["fen"])
@@ -544,6 +626,7 @@ class H(BaseHTTPRequestHandler):
                 if mv not in b.legal_moves:            # chessground sends o+t; default-promote
                     mv = chess.Move.from_uci(req["uci"] + "q")
                 if mv in b.legal_moves:
+                    human_ctx = (b, mv)                  # pre-move board: the surprise ruler
                     cls.moves = cls.moves[:cls.ptr] + [mv]
                     cls.ptr += 1
             except Exception:
@@ -552,19 +635,102 @@ class H(BaseHTTPRequestHandler):
         over = self._over(b)
         # PLAY MODE (Kaveh 2026-08-11, lichess-style menu): the engine answers synchronously
         # when it is to move; analysis assistance is hidden client-side during play
+        surprise = emote = None
+        prepared = False
         if req.get("play") and act in ("move", "new") and not over \
                 and cls.ptr == len(cls.moves):
             eng_white = bool(req.get("engineWhite"))
             if (b.turn == chess.WHITE) == eng_white:
-                pd = max(1, min(6, int(req.get("playDepth", 2))))
-                # time-capped iterative deepening (Kaveh: think <= ~1.5s): keep the deepest
-                # COMPLETED iteration; a timed-out partial iteration is discarded
-                with H.lock:                     # BEST VERSION ONLY (Kaveh 2026-08-11):
-                    best = H.eng.search_coherent(b, budget=1.5)   # coherence-bounded search
-                    best = H.eng.rank_by_child_E(b, best)         # ranked by E (2026-08-12)
-                if best:
-                    cls.moves.append(best[0]["mv"]); cls.ptr += 1
+                # ---- SURPRISE PHASE (Kaveh 2026-08-13): the human just moved; score the
+                # move against the pondered expectation P(move) = softmax(E_mover/tau).
+                if human_ctx is not None:
+                    pb, hmv = human_ctx
+                    key = fen_key(pb)
+                    legal = [m.uci() for m in pb.legal_moves]
+                    pond = H.ponder if (H.ponder and H.ponder.get("key") == key) else None
+                    dist = pond["dist"] if pond else None
+                    if dist is None and H.store is not None:      # idle-time study counts
+                        pe = H.store.get_prep(key)
+                        if pe and pe.get("dist"):
+                            dist = dict(pe["dist"])
+                    if dist is None:                              # moved too fast: quick look
+                        with H.lock:
+                            rws = H.eng.search_coherent(pb, budget=0.5)
+                            rws = H.eng.rank_by_child_E(pb, rws)
+                        dist = expectation_dist(rws, pb.turn == chess.WHITE, legal)
+                    bits = surprisal_bits(dist, hmv.uci())
+                    san_h = pb.san(hmv)
+                    with H.lock:                                  # one-forward dE, mover POV
+                        e0w, _ = self._wdl(pb, None)
+                        e1w, _ = self._wdl(b, over)
+                    e0 = e0w[0] + 0.5 * e0w[1]
+                    e1 = e1w[0] + 0.5 * e1w[1]
+                    dE = (e1 - e0) if pb.turn == chess.WHITE else (e0 - e1)
+                    # EMOTES (Kaveh 2026-08-13, engine-side only for now): gotcha checks
+                    # BEFORE this surprise is recorded, so it always refers to a PAST visit
+                    gr = H.store.check_gotcha(key, hmv.uci(), bits) if H.store else None
+                    if gr:
+                        emote = {"who": "engine", "kind": "gotcha", "emoji": "\U0001F61D",
+                                 "text": f"{san_h}? You got me with that once. "
+                                         f"I did my homework."}
+                    elif bits >= SURPRISE_BITS:
+                        emote = {"who": "engine", "kind": "surprised", "emoji": "\U0001F62E",
+                                 "text": f"{san_h}?! I did not see that coming "
+                                         f"({bits:.1f} bits)"}
+                        if H.store:
+                            H.store.note_surprise(key, hmv.uci(), bits, san_h)
+                    exp_uci = max(dist, key=dist.get)
+                    try:
+                        exp_san = pb.san(chess.Move.from_uci(exp_uci))
+                    except Exception:
+                        exp_san = exp_uci
+                    surprise = {"bits": round(bits, 2), "expected": exp_san,
+                                "p": round(dist.get(hmv.uci(), 0.0), 3),
+                                "pondered": bool(pond)}
+                    if H.store:
+                        H.store.log_ply({
+                            "type": "ply", "game": cls.game_id, "mover": "human",
+                            "fen_before": pb.fen(), "uci": hmv.uci(), "san": san_h,
+                            "bits": round(bits, 2), "dE_mover": round(dE, 4),
+                            "pondered": bool(pond),
+                            "dist_top": sorted(dist.items(), key=lambda kv: -kv[1])[:5]})
+                # ---- REPLY PHASE: a prepped line answers instantly and deeper than live
+                eb_before = b
+                reply_mv = None
+                pe = H.store.get_prep(fen_key(b)) if H.store else None
+                if pe and pe.get("uci"):
+                    try:
+                        cand = chess.Move.from_uci(pe["uci"])
+                        if cand in b.legal_moves:
+                            reply_mv, prepared = cand, True
+                    except Exception:
+                        pass
+                if reply_mv is None:
+                    # time-capped iterative deepening (Kaveh: think <= ~1.5s)
+                    with H.lock:                 # BEST VERSION ONLY (Kaveh 2026-08-11):
+                        best = H.eng.search_coherent(b, budget=1.5)   # coherence-bounded
+                        best = H.eng.rank_by_child_E(b, best)         # ranked by E
+                    if best:
+                        reply_mv = best[0]["mv"]
+                if reply_mv is not None:
+                    cls.moves.append(reply_mv); cls.ptr += 1
                     b = self._board(); over = self._over(b)
+                    if H.store:
+                        H.store.log_ply({
+                            "type": "ply", "game": cls.game_id, "mover": "engine",
+                            "fen_before": eb_before.fen(), "uci": reply_mv.uci(),
+                            "san": eb_before.san(reply_mv), "prepared": prepared})
+                    if not over:
+                        self._start_ponder(b)    # think on the HUMAN's clock
+        if req.get("play") and over and H.store is not None \
+                and H.over_logged != cls.game_id:
+            H.over_logged = cls.game_id
+            H.store.log_ply({"type": "game_end", "game": cls.game_id, "over": over,
+                             "n_plies": len(cls.moves)})
+            try:
+                H.store.aggregate()
+            except Exception:
+                pass
         # slow phase, requested separately so navigation never waits on the search --
         # the analysis engine IS this engine (Kaveh 2026-08-08), depth + lines are the knobs
         # STREAMING analysis, lichess-style (Kaveh 2026-08-08 "the analysis streams in as the
@@ -1000,7 +1166,9 @@ class H(BaseHTTPRequestHandler):
                "dists": dists, "check": b.is_check(), "dests": dests, "exit": xr,
                "concepts": concepts, "tokens": tokens, "cdeets": cdeets,
                "turb": (round(turb[0], 3) if turb else None), "trap": trap,
-               "lastMove": last, "over": over}
+               "lastMove": last, "over": over,
+               "surprise": surprise, "emote": emote, "prepared": prepared,
+               "player": H.user}
         self._send(200, json.dumps(out).encode())
 
     def _wdl(self, b, over):
@@ -1253,6 +1421,46 @@ def main():
     opts = "".join(f'<option value="{f}">{n}</option>' for n, f in pos)
     PAGE_BYTES = (PAGE.replace("__CG_CSS__", cg_css).replace("__CG_JS__", cg_js)
                   .replace("__POSITIONS__", opts).encode())
+    # IDLE PREP WORKER (Kaveh 2026-08-13: "in this five, ten minutes, expected my return and
+    # studied the lines we went down"): when nobody has touched the server for 90s and a
+    # player is known, replay their logged positions -- systematic weaknesses first -- with
+    # 4x the live budget and persist the results in their prep cache. Live play answers
+    # from the cache instantly (and 'gotcha' becomes earnable: the reply is pre-studied).
+    H.last_req_t = time.time()
+
+    def prep_worker():
+        while True:
+            time.sleep(20)
+            st = H.store
+            if st is None or time.time() - H.last_req_t < 90:
+                continue
+            try:
+                pend = st.pending_prep(limit=1)
+                if not pend:
+                    continue
+                fen, mover = pend[0]
+                bb = chess.Board(fen)
+                with H.lock:
+                    if time.time() - H.last_req_t < 90:   # someone came back: yield
+                        continue
+                    rows = H.eng.search_coherent(bb, budget=6.0)
+                    rows = H.eng.rank_by_child_E(bb, rows)
+                if not rows:
+                    st.put_prep(fen_key(bb), {"uci": None, "budget": 6.0})
+                    continue
+                legal = [m.uci() for m in bb.legal_moves]
+                dist = expectation_dist(rows, bb.turn == chess.WHITE, legal)
+                st.put_prep(fen_key(bb), {
+                    "uci": rows[0]["mv"].uci(), "E": rows[0].get("E"), "budget": 6.0,
+                    "mover": mover,
+                    "dist": sorted(dist.items(), key=lambda kv: -kv[1])[:8]})
+                st.aggregate()
+                print(f"[prep] {st.name}: studied {fen_key(bb)} "
+                      f"-> {rows[0]['mv'].uci()}", flush=True)
+            except Exception as e:
+                print(f"[prep] skipped ({e})", flush=True)
+
+    threading.Thread(target=prep_worker, daemon=True).start()
     import faulthandler, signal as _sig
     faulthandler.register(_sig.SIGUSR1)      # kill -USR1 <pid> -> all thread stacks to stderr
     srv = ThreadingHTTPServer(("0.0.0.0", args.port), H)
