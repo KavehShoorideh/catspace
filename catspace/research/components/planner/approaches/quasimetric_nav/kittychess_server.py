@@ -121,7 +121,7 @@ body.playmode .right .box:first-child{display:none}
     </div>
     <div class="lines" id="lnbox"></div>
     <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
-    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡n = forcing, opponent has ~n effective replies &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by CASCADE</div>
+    <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡ only move = one move far above the rest &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by CASCADE</div>
   </div>
   <div class="box"><div id="moves"></div></div>
   <div class="box" id="cdbox" style="display:none">
@@ -235,7 +235,8 @@ async function api(body){
     const dp=await rp.json();
     if(my!==seq)return;
     if(dp.think.length){renderLines(dp);document.getElementById('lnbox').style.opacity=1;}
-    document.getElementById('dinfo').textContent="depth "+dp.depth+(dp.done?"":"…")
+    const only=(dp.eff_moves!=null&&dp.eff_moves<=1.6);
+    document.getElementById('dinfo').innerHTML=(only?`<span style="color:#dbac16" title="ONLY MOVE: one move is much better than the rest (effective moves ≈ ${dp.eff_moves})">⚡ only move</span> · `:"")+"depth "+dp.depth+(dp.done?"":"…")
       +(dp.resid!=null?"  ·  Bellman residual "+dp.resid.toFixed(1):"");
     document.getElementById('dinfo').className=dp.done?"":"spin";
     if(dp.done)break;
@@ -356,8 +357,7 @@ function renderLines(d){
            `<i style="width:${row.wdl[2]*100}%;background:#403d39"></i></span>`+
            `<span style="font-size:11px;color:#8f8a82">${Math.round(row.wdl[0]*100)}/${Math.round(row.wdl[1]*100)}/${Math.round(row.wdl[2]*100)}</span>`;
     }
-    if(row.eff_replies!=null&&row.eff_replies<=2.5)
-      top+=`<span style="color:#dbac16;font-size:11px" title="forcing: opponent has ~${row.eff_replies} effective replies">⚡${row.eff_replies}</span>`;
+
     if(row.force&&row.force.drop>=0.7&&row.force.mono>=0.7)
       top+=`<span style="color:#8f8a82;font-size:11px" title="committal: distance to ${row.force.fav==='w'?'white':'black'}-win drops ${row.force.drop}/ply, monotone ${Math.round(row.force.mono*100)}%">↘${row.force.drop}</span>`;
     else if(row.force&&row.force.drop>=0.35)
@@ -581,7 +581,13 @@ class H(BaseHTTPRequestHandler):
                                             else 0, crank.get(r["uci"], 999))}
                             shown = sorted(merged.values(),
                                            key=lambda r: (-r["_d"], r["_rk"]))[:max(nlines, len(merged) if len(merged) <= nlines + 2 else nlines)]
+                            import numpy as _np8
+                            _vs = _np8.array([r0["value"] for r0 in rows], float)
+                            _sc = (_vs - _vs.max()) / 30.0        # 0.03 E per unit
+                            _pr = _np8.exp(_sc); _pr /= _pr.sum()
+                            _eff = float(_np8.exp(-(_pr * _np8.log(_pr + 1e-12)).sum()))
                             H.an = {**H.an, "g": g, "depth": d,
+                                    "eff_moves": round(_eff, 1),
                                     "rows": [{k: v for k, v in r.items()
                                               if not k.startswith("_")} for r in shown],
                                     "done": False}
