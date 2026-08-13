@@ -1,4 +1,0 @@
-channel: dev
-service_name: catspace-dev
-image_tag: dev
-resources: cpu           # dev runs cheap; switch to gpu to test inference speed
