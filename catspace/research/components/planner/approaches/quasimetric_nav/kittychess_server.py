@@ -111,10 +111,12 @@ body.playmode .right .box:first-child{display:none}
       <span id="dinfo"></span>
       <label title="search depth in plies (half-moves): how far ahead the engine reads every line. Higher = stronger and slower; the streaming analysis deepens one level at a time">depth <select id="depth" title="search depth (plies ahead)"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
       <label title="principal variation length: how many FULL MOVES of each line are shown and scored (the per-line eval reads the position at the end of the shown moves). Display only — does not change the search">pv <select id="pvlen" title="FULL moves shown per line (2 plies each)"><option>4</option><option selected>6</option><option>8</option></select></label>
+      <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
       <label title="number of candidate moves analyzed and displayed (multi-PV). More lines = broader view, slightly slower updates">lines <select id="lines" title="candidate moves shown"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select></label>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
     </div>
     <div class="lines" id="lnbox"></div>
+    <div id="sfbox" style="display:none;font-size:12px;color:#dbac16;padding:3px 0"></div>
     <div id="lnlegend">E = expected points, white (probability head) &nbsp;·&nbsp; Δd = exit gap dB−dW (length head) &nbsp;·&nbsp; ⚡n = forcing, opponent has ~n effective replies &nbsp;·&nbsp; ↘ = committal descent &nbsp;·&nbsp; ranked by CASCADE</div>
   </div>
   <div class="box"><div id="moves"></div></div>
@@ -133,6 +135,19 @@ body.playmode .right .box:first-child{display:none}
 <script>
 "use strict";
 let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
+let sfOn=false, sfLastFen=null;
+function sfRefresh(fen){
+  if(!sfOn){document.getElementById('sfbox').style.display='none';return;}
+  const box=document.getElementById('sfbox');
+  box.style.display=''; 
+  if(fen===sfLastFen) return;
+  sfLastFen=fen; box.textContent='SF: …';
+  fetch('/api',{method:'POST',body:JSON.stringify({action:'sfeval'})}).then(r=>r.json()).then(e=>{
+    if(e.err){box.textContent='SF: '+e.err;return;}
+    const sc=e.mate!=null?('#'+e.mate):((e.cp>=0?'+':'')+(e.cp/100).toFixed(2));
+    box.innerHTML=`SF: <b>${sc}</b>`+(e.wdl?` · w/d/l ${e.wdl.join('/')}‰`:'')+(e.pv?` · ${e.pv}`:'');
+  }).catch(()=>{box.textContent='SF: unavailable';});
+}
 function setMode(m){
   mode=m;
   document.body.classList.toggle('playmode', m==='play');
@@ -246,6 +261,7 @@ function render(d){
     sel.onchange=rend; rend();
   }
   if(d.over)document.getElementById('dinfo').textContent=d.over;
+  sfRefresh(d.fen);
 }
 function drawPosTable(wdl, dists, label){
   const W=document.getElementById('wdltxt');
@@ -310,6 +326,8 @@ document.getElementById('last').onclick=()=>api({action:"goto",ptr:99999});
 document.getElementById('depth').onchange=()=>api({action:"noop"});
 document.getElementById('lines').onchange=()=>api({action:"noop"});
 document.getElementById('pvlen').onchange=()=>api({action:"noop"});
+document.getElementById('sftog').onclick=()=>{sfOn=!sfOn;sfLastFen=null;
+  document.getElementById('sftog').style.color=sfOn?'#dbac16':'#8f8a82';api({action:"noop"});};
 document.getElementById('flip').onclick=()=>{orient=orient==="white"?"black":"white";api({action:"noop"});};
 document.getElementById('nav-an').onclick=()=>{
   setMode('analysis'); api({action:"noop"});};
@@ -599,6 +617,32 @@ class H(BaseHTTPRequestHandler):
                                  "p": info["p_given_code"], "base": info["base"],
                                  "anti": bool(info.get("anti")),
                                  "tok_here": bool(tok_here)})
+        if act == "sfeval":
+            try:
+                import chess.engine as _che
+                if getattr(H, "sf", None) is None:
+                    H.sf = _che.SimpleEngine.popen_uci("stockfish")
+                    from catspace.io import paths as _paths
+                    H.sf.configure({"Threads": 1, "Hash": 128, "UCI_ShowWDL": True,
+                                    "SyzygyPath": str(_paths.syzygy_dir())})
+                    import threading as _th
+                    H.sf_lock = _th.Lock()
+                with H.sf_lock:
+                    info = H.sf.analyse(b, _che.Limit(nodes=200_000))
+                sc = info["score"].white()
+                out = {"cp": (sc.score() if not sc.is_mate() else None),
+                       "mate": (sc.mate() if sc.is_mate() else None)}
+                if "wdl" in info:
+                    out["wdl"] = list(info["wdl"].white())
+                pvm = info.get("pv") or []
+                bb2 = b.copy(); sans2 = []
+                for mv2 in pvm[:6]:
+                    sans2.append(bb2.san(mv2)); bb2.push(mv2)
+                out["pv"] = " ".join(sans2)
+                self._send(200, json.dumps(out).encode())
+            except Exception as e:
+                self._send(200, json.dumps({"err": str(e)[:80]}).encode())
+            return
         cdeets = []
         if H.vq is not None and not over and not req.get("play") and tokens:
             try:
