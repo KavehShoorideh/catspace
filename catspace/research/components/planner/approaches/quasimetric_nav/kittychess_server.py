@@ -147,13 +147,16 @@ function sqRefresh(fen){
   sqLastFen=fen;
   fetch('/api',{method:'POST',body:JSON.stringify({action:'sqconcepts'})}).then(r=>r.json()).then(e=>{
     if(!e.sal){box.style.display='';box.textContent='sq: '+(e.err||'n/a');return;}
-    const mx=Math.max(...e.sal.map(x=>Math.abs(x.imp)))||1;
-    cg.setShapes(e.sal.slice(0,8).map(x=>({orig:x.sq,
+    const FLOOR=0.004;                     // E units: below this a square is NOISE
+    const sig=e.sal.filter(x=>Math.abs(x.imp)>=FLOOR).slice(0,8);
+    const mx=Math.max(...sig.map(x=>Math.abs(x.imp)))||1;
+    cg.setShapes(sig.map(x=>({orig:x.sq,
       brush:(x.imp>0?(Math.abs(x.imp)>=0.6*mx?'green':'paleGreen')
                     :(Math.abs(x.imp)>=0.6*mx?'red':'paleRed'))})));
     box.style.display='';
-    box.innerHTML='sq concepts: '+e.sal.slice(0,8).map(x=>
-      `<b>${x.sq}</b>:s${x.code}(${x.imp>0?'+':''}${(x.imp*100).toFixed(1)})`).join(' · ');
+    box.innerHTML=sig.length?('sq concepts: '+sig.map(x=>
+      `<b>${x.sq}</b>:s${x.code}(${x.imp>0?'+':''}${(x.imp*100).toFixed(1)})`).join(' · '))
+      :'sq concepts: no square stands out here (all residuals < 0.4% E)';
   }).catch(()=>{});
 }
 function whyRefresh(fen){
