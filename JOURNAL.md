@@ -12208,3 +12208,14 @@ transition derivation (1.5M moves in 7s, 0 undecodable). Gated by test_critical_
 (7 behavioral contracts, all pass). Smoke 500 steps clean at 1.88 s/step -> ~10.5h.
 NOTE: "qdistill" is house vocabulary (coined here); the technique is classical search
 distillation (ExIt / AlphaZero MCTS targets / TD-Leaf / NNUE lineage).
+
+## 2026-08-13 — subsumption anchors (Kaveh's point-cloud construction) + jqt4 restart
+Kaveh: "an asymmetric quasimetric can represent regions by having point clouds represent the
+concept, then a 0 distance from them to the concept pole." This is the ending-pole
+subsumption principle generalized to ALL concept anchors: members (positions where the
+concept is CURRENTLY active) train to dA(member->anchor)=0 / P(act)=1; the triangle
+inequality then makes d(s->anchor) the distance to the NEAREST part of the region --
+multimodal concepts stop needing a compromised centroid. Implementation = pure sampling:
+14% of goal labels are now-active pairs at plies=0 through the EXISTING censored/first-hit
+losses (one sampler change, three vocabularies). reach_jqt4 restarted with it (~2.5h lost,
+semantics-level change).
