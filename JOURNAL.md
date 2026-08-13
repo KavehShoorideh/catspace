@@ -12334,3 +12334,20 @@ optimal play. (3) Human early windows are barely above majority (51 vs 49) — b
 (4) Human 0-20% at 45.5% is BELOW human majority: SF-fitted class priors mismatch early
 balanced positions — refit fixes priors, not boundaries. Rerun on jqt4 + standard-start SF
 games for the clean curve.
+
+## 2026-08-13 (night) — NEGATIVE: the JEPA predictor is mostly a persistence emulator
+eval_jepa.py (2000 transitions, CPU, printed): the one-ply global-stream JEPA predictor
+barely beats copy-parent and its MOVE input barely matters, in BOTH generations:
+  jqt3 (trained):    MSE pred .0023 | copy .0025 | shuffled-move .0024  (move gain 1.07x)
+  jqt4 (step 6000):  MSE pred .0072 | copy .0084 | shuffled-move .0080  (move gain 1.11x)
+Code-space decode: pred WORSE than copy-parent overall (19.2 vs 24.3 jqt3; 40.3 vs 43.3
+jqt4); on the FLIPS it names the new code ~14% both (vs ~1.6% chance: 9x chance, weak
+absolute; copy scores 0 on flips by definition). READ: the low training loss (jqt3 0.0021)
+was mostly the EASY persistence component of the MSE -- targets sit near parents, so the
+objective under-weights exactly the flips that matter. The metastability prior makes
+copy-parent a strong baseline the current objective never has to beat.
+Implications (jqt5 slate): flip-weighted/contrastive JEPA objective, or fold next-code
+prediction into the SEQUENCE layer (causal transformer already targets NEWLY-activating
+codes) and let JEPA go; move-conditioning needs to earn >>1.1x or the move input is dead.
+Caveats: jqt4 mid-training; jqt3 evaluated cross-corpus (v3 boards; its flip rate reads
+75.7% here vs ~49% in-train) -- directionally identical on both, so the finding stands.
