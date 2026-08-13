@@ -12308,3 +12308,15 @@ E-softmax); jqt4's run replaces it.
 Tests 4/4 (incl. v2 path + low-time features); CPU shard smoke ran end-to-end (move
 derivation + clocks + codes verified live). Server loader v2-aware. Untimed play UI serves
 ample-time defaults. Full v2 training on jqt4 trunk queued behind the gate.
+
+## 2026-08-13 (night) — Codes-only W/D/L probe + SF→human transfer (Kaveh's curiosity run)
+probe_codes_outcome.py (CPU, niced, zero contention with jqt4). Features: jqt3 global codes
+one-hot (8x64)+stm ONLY; multinomial logistic; split BY GAME; forfeits censored.
+  sf-corpus test   acc 67.3%  nll 1.13 bits  (majority 41.7%; PHASE-ONLY control 41.7%/1.88)
+  ->human transfer acc 57.3%  nll 1.35 bits  (majority 49.0%)
+  human-refit      acc 57.2%  nll 1.20 bits
+READ: codes alone carry substantial outcome signal beyond phase on SF play (+25.6pts over
+majority). The SF-fitted probe transfers to humans AT the refit ceiling (57.3 vs 57.2):
+the concept->outcome MEANING is portable; the drop to 57% is the human games themselves
+(humans un-win won positions), not vocabulary mismatch. Caveat: quantizer is in-corpus for
+SF (probe game-split only); rerun on jqt4 + true holdout for the publishable number.
