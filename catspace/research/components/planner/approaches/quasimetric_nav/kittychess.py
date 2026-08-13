@@ -185,6 +185,43 @@ class KittyChess:
         w_salv = 2.0 * (sig - 0.5)
         return (1.0 - w_salv) * (min(dD, dL) - dW) + w_salv * (dL - min(dD, dW))
 
+    def exit_readout(self, board, tau=5.0):
+        """THE position readout contract (Kaveh 2026-08-12): 'every position has 3
+        probabilities and 3 distances. expected score should combine the probability,
+        chosen exit should show draw win or lose, and distance to it in plies.'
+        -> {"E": white-POV expected points, "exit": "white"|"draw"|"black",
+            "plies": dA to the chosen exit on the LENGTH ruler (calibrated in plies),
+            "probs": [pW,pD,pB], "dA": [3], "dB": [3]}  (exact at terminals/TB)."""
+        import chess as _ch
+        probs, dB = self.wdl(board, tau=tau)
+        out = {"probs": probs, "E": float(probs[0] + 0.5 * probs[1]),
+               "exit": ("white", "draw", "black")[int(np.argmax(probs))],
+               "dB": dB, "dA": None, "plies": None}
+        if dB is None:                                  # terminal or TB-exact
+            if self.tb is not None and not board.is_game_over(claim_draw=True)                     and len(board.piece_map()) <= 5:
+                try:
+                    _w, dz = self.tb.wdl_dtz(board)
+                    out["plies"] = abs(dz) if dz is not None else 0
+                except Exception:
+                    pass
+            else:
+                out["plies"] = 0
+            return out
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+            tokenize as _tkz)
+        tk, gl = _tkz(board)
+        with torch.no_grad():
+            z = self._embed([tk], [gl])
+            if getattr(self.net, "split_head", False):
+                P3 = self.poles[[self.pi[k] for k in ("WIN", "DRAW", "LOSS")]].to(self.device)
+                dA = [float(self.net.dA(z, P3[[k]].expand(1, -1)).float().cpu())
+                      for k in range(3)]
+                if not self.white_pov:
+                    dA = dA[::-1] if not (board.turn == _ch.WHITE) else dA
+                out["dA"] = dA
+                out["plies"] = round(dA[int(np.argmax(probs))], 1)
+        return out
+
     def margins(self, boards):
         """mover-POV threat-first margin for each board, one batched forward."""
         import numpy as np, torch

@@ -95,6 +95,7 @@ body.playmode .right .box:first-child{display:none}
 <div class="main">
 <div id="evalbar"><div id="eb-b" style="height:33%"></div><div id="eb-d" style="height:34%"></div><div id="eb-w" style="height:33%"></div></div>
 <div>
+  <div id="exitline" style="display:none;font-size:13px;color:#bababa;padding:2px 0"></div>
   <div id="mat-top" style="min-height:16px;font-size:13px;color:#8f8a82;letter-spacing:1px"></div>
   <div id="board" class="cg-wrap"></div>
   <div id="mat-bot" style="min-height:16px;font-size:13px;color:#8f8a82;letter-spacing:1px"></div>
@@ -250,6 +251,12 @@ function render(d){
   if(d.trap&&d.trap.stalemate) lbl += " · ⚠"+d.trap.stalemate+" stalemate-in-1";
   if(d.trap&&d.trap.mate) lbl += " · #1 available";
   drawPosTable(d.wdl, d.dists, lbl);
+  const xb=document.getElementById('exitline');
+  if(d.exit){xb.style.display='';
+    const xc={white:'#e8e6e1',draw:'#9a9a9a',black:'#403d39'}[d.exit.exit];
+    xb.innerHTML=`E <b>${d.exit.E.toFixed(2)}</b> · exit: <b style="color:${xc};text-shadow:0 0 2px #000">${d.exit.exit.toUpperCase()}</b>`+
+      (d.exit.plies!=null?` · ~<b>${Math.round(d.exit.plies)}</b> plies`:'');
+  } else xb.style.display='none';
   const mv=document.getElementById('moves'); mv.innerHTML="";
   (d.san||[]).forEach((sn,i)=>{
     if(i%2===0){const no=document.createElement('span');no.className="no";no.textContent=(i/2+1)+".";mv.appendChild(no);}
@@ -609,6 +616,10 @@ class H(BaseHTTPRequestHandler):
         # fast phase: position + tricolor committor bar [P(white), P(draw), P(black)]
         with H.lock:
             wdl, dists = self._wdl(b, over)
+            try:
+                xr = H.eng.exit_readout(b) if not over else None
+            except Exception:
+                xr = None
         turb = None
         trap = None
         if not over:
@@ -807,7 +818,7 @@ class H(BaseHTTPRequestHandler):
         self._log_game(b, san, over, bool(req.get("play")))
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
-               "dists": dists, "check": b.is_check(), "dests": dests,
+               "dists": dists, "check": b.is_check(), "dests": dests, "exit": xr,
                "concepts": concepts, "tokens": tokens, "cdeets": cdeets,
                "turb": (round(turb[0], 3) if turb else None), "trap": trap,
                "lastMove": last, "over": over}

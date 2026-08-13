@@ -1,1 +1,1 @@
-{"san": ["d4", "a5"], "fen": "rnbqkbnr/1ppppppp/8/p7/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 2", "start_fen": null, "ptr": 2, "mode": "play", "over": null, "moves_uci": ["d2d4", "a7a5"]}
+{"san": ["d4", "a5"], "fen": "rnbqkbnr/1ppppppp/8/p7/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 2", "start_fen": null, "ptr": 2, "mode": "analysis", "over": null, "moves_uci": ["d2d4", "a7a5"]}
