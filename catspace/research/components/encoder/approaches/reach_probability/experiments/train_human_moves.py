@@ -40,20 +40,56 @@ def elo_bucket(elo):
 N_BUCKET = (ELO_HI - ELO_LO) // ELO_W + 2
 
 
+N_CLK = 4        # [log1p(self)/7, log1p(opp)/7, frac-of-base, low-time<30s]
+
+
+def clk_feats(clk_self, clk_opp, base):
+    """v2 (Kaveh 2026-08-13: 'as the time runs out, the move quality becomes lower'):
+    the mover's TIME STATE. NaN clocks (untimed / missing) -> ample-time defaults."""
+    import math as _m
+    if not (clk_self == clk_self):                    # NaN
+        clk_self = base
+    if not (clk_opp == clk_opp):
+        clk_opp = base
+    return [(_m.log1p(max(clk_self, 0.0))) / 7.0, (_m.log1p(max(clk_opp, 0.0))) / 7.0,
+            min(clk_self / max(base, 1.0), 1.5), 1.0 if clk_self < 30.0 else 0.0]
+
+
 class HumanMoves(nn.Module):
-    def __init__(self, d_in=192, d=192, d_move=64):
+    """v2: phi PLUS the quantized concept codes PLUS the clock state (Kaveh 2026-08-13:
+    "why throw that away? use the concepts alongside the board embeddings" + time-state).
+    codes give the head the discrete metastable plan-state for free AND make human
+    tendencies readable per concept; heads=0 falls back to the v1 board-only form."""
+
+    def __init__(self, d_in=192, d=192, d_move=64, heads=0, codes=64):
         super().__init__()
+        self.heads = heads
         self.elo = nn.Embedding(N_BUCKET, 32)
-        self.ctx = nn.Sequential(nn.Linear(d_in + 32, d), nn.GELU())
+        self.clkp = nn.Sequential(nn.Linear(N_CLK, 32), nn.GELU())
+        if heads:
+            self.code_emb = nn.ModuleList([nn.Embedding(codes, 32) for _ in range(heads)])
+        self.ctx = nn.Sequential(nn.Linear(d_in + 32 + 32 + (32 if heads else 0), d),
+                                 nn.GELU())
         self.e_from = nn.Embedding(64, d_move)
         self.e_to = nn.Embedding(64, d_move)
         self.e_promo = nn.Embedding(5, d_move)
         self.score = nn.Sequential(nn.Linear(d + d_move, d), nn.GELU(), nn.Linear(d, 1))
 
-    def move_logits(self, phi, elo_b, mids, row_of):
+    def move_logits(self, phi, elo_b, mids, row_of, clk=None, code_ids=None):
         """phi (B,d_in), elo_b (B,), mids (M,3) legal moves flattened over the batch,
-        row_of (M,) which board each move belongs to -> logits (M,)"""
-        c = self.ctx(torch.cat([phi, self.elo(elo_b)], -1))
+        row_of (M,), clk (B,N_CLK) or None, code_ids (B,heads) or None -> logits (M,)"""
+        if clk is None:
+            clk = torch.zeros(len(phi), N_CLK, device=phi.device)
+            clk[:, 0] = clk[:, 1] = 1.0               # ample time
+            clk[:, 2] = 1.0
+        parts = [phi, self.elo(elo_b), self.clkp(clk)]
+        if self.heads:
+            if code_ids is None:
+                code_ids = torch.zeros(len(phi), self.heads, dtype=torch.long,
+                                       device=phi.device)
+            parts.append(sum(self.code_emb[h](code_ids[:, h])
+                             for h in range(self.heads)))
+        c = self.ctx(torch.cat(parts, -1))
         m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
         return self.score(torch.cat([c[row_of], m], -1)).squeeze(-1)
 
@@ -83,10 +119,12 @@ def mid_of(mv: chess.Move):
 
 
 def build_batch(samples, dev):
-    """samples: list of (tok, glob, elo_b, legal_mids, played_j) -> tensors"""
+    """samples: (tok, glob, elo_b, legal_mids, played_j[, clk4]) -> tensors"""
     tok = torch.from_numpy(np.stack([s[0] for s in samples]).astype(np.int64)).to(dev)
     glob = torch.from_numpy(np.stack([s[1] for s in samples]).astype(np.float32)).to(dev)
     elo_b = torch.tensor([s[2] for s in samples], dtype=torch.long, device=dev)
+    clk = torch.tensor([s[5] if len(s) > 5 else clk_feats(float("nan"), float("nan"), 600)
+                        for s in samples], dtype=torch.float32, device=dev)
     mids, row_of, played_ix = [], [], []
     for i, s in enumerate(samples):
         played_ix.append(len(mids) + s[4])
@@ -95,7 +133,7 @@ def build_batch(samples, dev):
     return (tok, glob, elo_b,
             torch.tensor(mids, dtype=torch.long, device=dev),
             torch.tensor(row_of, dtype=torch.long, device=dev),
-            torch.tensor(played_ix, dtype=torch.long, device=dev))
+            torch.tensor(played_ix, dtype=torch.long, device=dev), clk)
 
 
 def sample_plies(games, per_game, rng):
@@ -125,10 +163,76 @@ def sample_plies(games, per_game, rng):
     return out
 
 
+def sample_shard_plies(shard_dir, n, rng):
+    """v2 data path: the FULL-corpus shards (86M positions) carry per-position CLOCKS.
+    The played move is derived by matching consecutive rows of a game (packed-board diff);
+    the mover's remaining time before the move sits on the PREVIOUS row (the %clk of their
+    own last move), the opponent's on the current row. NOTE the source filter dropped
+    moves with <30s left -- the sub-30s cliff needs a re-extraction (min_clock_s=0).
+    -> (tok, glob, elo_bucket, legal mids, played_j, clk4)"""
+    import glob as _gl
+    from catspace.research.tools.chess_specific.chessdata.encode import (
+        board_from_packed, encode_packed)
+    from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+        tokenize)
+    files = sorted(_gl.glob(str(shard_dir) + "/shard_*.npz"))
+    if not files:
+        raise SystemExit(f"no shards under {shard_dir}")
+    out = []
+    per = max(1, n // len(files))
+    for f in files:
+        z = np.load(f)
+        gid, ply, clk = z["game_id"], z["ply"], z["clock"]
+        we, be = z["white_elo"], z["black_elo"]
+        packed, meta = z["packed"], z["meta"]
+        cand = np.flatnonzero((gid[1:] == gid[:-1]) & (ply[1:] == ply[:-1] + 1))
+        take = rng.choice(cand, size=min(per, len(cand)), replace=False)
+        for i in take:
+            try:
+                b1 = board_from_packed(packed[i], meta[i])
+                legal = list(b1.legal_moves)
+                if not (0 < len(legal) <= 128):
+                    continue
+                tgt = packed[i + 1]
+                mv = None
+                for j, m in enumerate(legal):
+                    b1.push(m)
+                    if (encode_packed(b1) == tgt).all():
+                        mv = j
+                        b1.pop()
+                        break
+                    b1.pop()
+                if mv is None:
+                    continue
+                # clocks: mover's = previous row of the SAME game at ply-1, else NaN
+                c_self = float(clk[i - 1]) if (i > 0 and gid[i - 1] == gid[i]
+                                               and ply[i - 1] == ply[i] - 1) \
+                    else float("nan")
+                c_opp = float(clk[i])
+                g0 = np.flatnonzero(gid == gid[i])[:4]
+                base = float(np.nanmax(clk[g0])) if len(g0) else 600.0
+                if not (base == base) or base <= 0:
+                    base = 600.0
+                elo = int(we[i]) if b1.turn else int(be[i])
+                tk, gl = tokenize(b1)
+                out.append((np.asarray(tk), np.asarray(gl), elo_bucket(elo),
+                            [mid_of(m) for m in legal], mv,
+                            clk_feats(c_self, c_opp, base)))
+            except Exception:
+                continue
+        if len(out) >= n:
+            break
+    return out[:n]
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--games", type=int, default=20000)
+    ap.add_argument("--shards", default=None,
+                    help="shard dir (per-position clocks) -> v2 data path; else parquet")
+    ap.add_argument("--codes", type=int, default=1,
+                    help="1 = feed the quantized concept codes alongside phi (v2)")
     ap.add_argument("--per-game", type=int, default=8)
     ap.add_argument("--steps", type=int, default=6000)
     ap.add_argument("--batch", type=int, default=256)
@@ -154,38 +258,61 @@ def main():
         d_in = model.backbone(torch.tensor([_t], dtype=torch.long, device=dev),
                               torch.tensor([_g], dtype=torch.float32, device=dev)).shape[-1]
 
+    jqt = None
+    if args.codes:
+        try:
+            from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
+                JQTModule)
+            pj = torch.load(next(pth for pth in (base + "_jqt.pt", stem + "_jqt.pt")
+                                 if os.path.exists(pth)), map_location=dev,
+                            weights_only=False)
+            jqt = JQTModule(d_model=pj["d_in"], heads=pj["heads"], codes=pj["codes"],
+                            d=pj["d"], square_codes=pj.get("square_codes", 0),
+                            piece_codes=pj.get("piece_codes", 0)).to(dev)
+            jqt.load_state_dict(pj["state_dict"], strict=False)
+            jqt.eval()
+            print(f"[human] concept codes IN ({pj['heads']}x{pj['codes']})", flush=True)
+        except Exception as e:
+            print(f"[human] no jqt sidecar, codes off ({e})", flush=True)
     rng = np.random.default_rng(0)
     t0 = time.time()
-    games = T.load_human_games(args.games, seed=0)
-    print(f"[human] {len(games)} lichess games loaded [{time.time()-t0:.0f}s]", flush=True)
-    t0 = time.time()
-    plies = sample_plies(games, args.per_game, rng)
+    if args.shards:
+        plies = sample_shard_plies(args.shards, args.games * args.per_game, rng)
+    else:
+        games = T.load_human_games(args.games, seed=0)
+        print(f"[human] {len(games)} lichess games loaded [{time.time()-t0:.0f}s]",
+              flush=True)
+        t0 = time.time()
+        plies = sample_plies(games, args.per_game, rng)
     print(f"[human] {len(plies)} plies sampled [{time.time()-t0:.0f}s]", flush=True)
     rng.shuffle(plies)
     n_val = max(512, len(plies) // 20)
     val, tr_p = plies[:n_val], plies[n_val:]
 
-    net = HumanMoves(d_in=d_in).to(dev)
+    net = HumanMoves(d_in=d_in, heads=(jqt.heads if jqt is not None else 0),
+                     codes=(jqt.codes if jqt is not None else 64)).to(dev)
     opt = torch.optim.AdamW(net.parameters(), lr=args.lr, weight_decay=1e-4)
     log = open(stem + "_human_steps.jsonl", "a", buffering=1)
     t0 = time.time()
     for step in range(args.steps):
         ixs = rng.choice(len(tr_p), size=args.batch, replace=False)
-        tok, glob, elo_b, mids, row_of, played_ix = build_batch(
+        tok, glob, elo_b, mids, row_of, played_ix, clk = build_batch(
             [tr_p[i] for i in ixs], dev)
         with torch.no_grad():
             phi = model.backbone(tok, glob)              # FROZEN trunk
-        logits = net.move_logits(phi, elo_b, mids, row_of)
+            ids = jqt.target_codes(phi)[1] if jqt is not None else None
+        logits = net.move_logits(phi, elo_b, mids, row_of, clk, ids)
         loss, _, _ = HumanMoves.nll_loss(logits, row_of, played_ix, len(ixs))
         opt.zero_grad(); loss.backward(); opt.step()
         if step % 250 == 0 or step == args.steps - 1:
             with torch.no_grad():
                 bits_all, top_all = [], []
                 for a in range(0, min(len(val), 2048), 256):
-                    tok, glob, elo_b, mids, row_of, played_ix = build_batch(
+                    tok, glob, elo_b, mids, row_of, played_ix, clk = build_batch(
                         val[a:a + 256], dev)
                     phi = model.backbone(tok, glob)
-                    lg = net.move_logits(phi, elo_b, mids, row_of)
+                    ids = jqt.target_codes(phi)[1] if jqt is not None else None
+                    lg = net.move_logits(phi, elo_b, mids, row_of, clk, ids)
                     _, bits, top1 = HumanMoves.nll_loss(lg, row_of, played_ix,
                                                         len(val[a:a + 256]))
                     bits_all.append(bits.cpu()); top_all.append(top1.cpu())
@@ -197,6 +324,8 @@ def main():
                                   "val_bits": bits_m, "val_top1": top_m}) + "\n")
     outp = args.out or (stem + "_human.pt")
     torch.save({"state_dict": net.state_dict(), "d_in": d_in,
+                "heads": (jqt.heads if jqt is not None else 0),
+                "codes": (jqt.codes if jqt is not None else 64),
                 "elo_lo": ELO_LO, "elo_hi": ELO_HI, "elo_w": ELO_W}, outp)
     # context for the verdict: uniform-over-legal is ~5 bits; Maia-class models sit
     # near ~1.6-2.0 bits/move (top1 ~50%) on rapid pools
@@ -248,6 +377,17 @@ def _tests():
     ok &= elo_bucket(200) == 0 and elo_bucket(3000) == N_BUCKET - 1
     ok &= elo_bucket(1500) != elo_bucket(1600)
     print(f"[human] elo bucketing clamps + separates  {'OK' if ok else 'FAIL'}")
+    # v2: codes + clock inputs accepted, defaults hold, clk features sane
+    net2 = HumanMoves(d_in=32, d=64, d_move=32, heads=2, codes=8)
+    ids2 = torch.randint(0, 8, (B, 2))
+    clk2 = torch.tensor([clk_feats(15.0, 300.0, 300.0)] * B)
+    lg2 = net2.move_logits(phi, elo_b, mids, row_of, clk2, ids2)
+    lg2d = net2.move_logits(phi, elo_b, mids, row_of)          # defaults: ample time
+    ok &= lg2.shape == lg2d.shape == (len(mids),)
+    cf = clk_feats(15.0, 300.0, 300.0)
+    ok &= cf[3] == 1.0 and cf[2] < 0.1                          # low-time flag + low frac
+    ok &= clk_feats(float("nan"), float("nan"), 600)[3] == 0.0  # NaN -> ample
+    print(f"[human] v2 codes+clock path, low-time features  {'OK' if ok else 'FAIL'}")
     print("ALL HUMAN-MOVES TESTS PASSED" if ok else "TESTS FAILED")
     raise SystemExit(0 if ok else 1)
 

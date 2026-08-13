@@ -12293,3 +12293,18 @@ stranger anneal on its logits; excess-vs-entropy unchanged) — smoke server lit
 worker (min-NLL over the player's logged moves, refit per 40 plies). Fallback: no sidecar ->
 the old E-softmax path intact. Smoke sidecar left on jqt3 stem (weak but better-ordered than
 E-softmax); jqt4's run replaces it.
+
+## 2026-08-13 (night, cont.) — Human layer v2: concepts + clock (Kaveh's two design calls)
+1. "Why throw the concepts away?" -> HumanMoves v2 feeds phi AND the quantized codes (8x32
+   embeddings summed into the context). Rationale recorded: codes = f(phi) so nothing is lost
+   info-theoretically, but the discrete plan-state arrives free (low-data inductive bias) and
+   human tendencies become readable/ablatable PER CONCEPT (the thesis endpoint).
+2. Clock state -> clk_feats = [log1p(self), log1p(opp), frac-of-base, low-time<30s]; the
+   Elo x clock interaction is learned, and effective-Elo(clock) falls out as a free probe.
+   DATA: full shards (86M positions) carry per-position clocks; played move derived by
+   packed-board diff of consecutive rows; mover's clock sits on the PREVIOUS row (parity).
+   CAVEAT: source filter dropped <30s moves -- the sub-30s cliff needs a re-extraction of
+   the raw dump (deleted; re-download queued as a later disk job).
+Tests 4/4 (incl. v2 path + low-time features); CPU shard smoke ran end-to-end (move
+derivation + clocks + codes verified live). Server loader v2-aware. Untimed play UI serves
+ample-time defaults. Full v2 training on jqt4 trunk queued behind the gate.
