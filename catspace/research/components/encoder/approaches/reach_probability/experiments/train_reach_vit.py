@@ -496,8 +496,14 @@ def main():
     ap.add_argument("--confine-target", type=float, default=2.0,
                     help="one-body confinement target on log1p(|z|); sets the gas radius")
     ap.add_argument("--w-confine", type=float, default=0.0, help="weight on one-body confinement")
-    ap.add_argument("--w-iqe", type=float, default=1.0, help="arm B: quasimetric regression")
-    ap.add_argument("--w-repel", type=float, default=40.0, help="both arms: unobserved-pair repulsion")
+    ap.add_argument("--w-iqe", type=float, default=1.0,
+                    help="arm B: the quasimetric CONSTRAINTS (floor>=1 + ceiling<=observed "
+                         "gap). NOT a regression despite the historical name -- the interior "
+                         "is force-free by design; see the block comment at `loss =`")
+    ap.add_argument("--w-repel", type=float, default=40.0,
+                    help="THE MAXIMISATION (QRL's objective), not hygiene: the gas that pushes "
+                         "unobserved pairs apart is what makes min-over-paths emerge. Load-"
+                         "bearing -- at 0 the distances collapse onto the floor")
     ap.add_argument("--margin", type=float, default=1.0,
                     help="arm A repulsion margin: nats of NLL an unobserved target must exceed the "
                          "observed one of the SAME source by. Relative on purpose -- a Gaussian "
@@ -1076,6 +1082,8 @@ def main():
         rev_a = (reach_region_margin(mu_j[um], ls_j[um], zT[gk[um]], zT[gi[um]], args.margin)
                  if len(um) else torch.zeros((), device=dev))
         crs_a = reach_region_margin(mu_i, ls_i, zT[gj], zT[gx], args.margin)
+        # THE MAXIMISATION, arm A (see the block comment at `loss =`). Named "rep" for
+        # repulsion, but its job is QRL's objective, not collapse-prevention.
         l_rep_a = 0.5 * (rev_a + crs_a)
 
         # ---- arm B: the quasimetric ------------------------------------------------------------
@@ -1198,6 +1206,8 @@ def main():
         _rep = ((lambda d, m: screened_repulsion(d)) if args.log_gas else terminal_repulsion)
         rep_rev = (_rep(d_ji[um_b], args.repel_margin)
                    if len(um_b) else torch.zeros((), device=dev))
+        # THE MAXIMISATION, arm B. Acts on UNOBSERVED pairs only -- the measured gap: nothing
+        # pushes OBSERVED pairs toward their ceiling, so they settle at ~0.44 of it.
         l_rep_b = (rep_rev + _rep(d_x, args.repel_margin)
                    + (_rep(d_ib, args.repel_margin) if len(d_ib) else torch.zeros((), device=dev))) / 3.0
         # One-body confinement makes the log-gas equilibrium EXIST: points that appear only under
@@ -1373,6 +1383,8 @@ def main():
             tgtq = torch.from_numpy(qd["probs"][_qs]).to(dev)
             wq = torch.from_numpy(qd["w"][_qs]).to(dev)
             l_qdist = -(wq * (tgtq * logq).sum(1)).mean()
+        # THE PLY-SCALE CALIBRATION -- not a radius hinge, not anti-collapse (misread as both
+        # on 2026-08-14). If this term is losing, NOTHING in the geometry is in ply units.
         # A-SIDE ABSORBING ANCHOR: every terminal sits exactly one ply before its outcome
         # pole on the LENGTH ruler -- the pole becomes the class's absorbing state, and the
         # walls staircase (which already ends at the terminals) extends into it. IQE asymmetry
@@ -1949,6 +1961,39 @@ def main():
                 _jqt_perp = jqt.perplexity(ids_pc.detach())
                 _jqt_flip = float((ids_pc[:nP] != ids_pc[nP:2 * nP]).float().mean())
 
+        # ======================================================================================
+        # HOW TO READ THE DISTANCE TERMS  (added 2026-08-14 after they were MISREAD by name)
+        #
+        # The distance machinery is a variant of QRL (Wang/Torralba/Isola/Zhang, ICML 2023,
+        # arXiv 2304.01203). QRL learns a GEODESIC by: maximise d(s,g) everywhere, subject to
+        # observed transitions costing at most their true cost. The names below hide that:
+        #
+        #   l_q         NOT a regression. pair_walls() = two CONSTRAINTS and nothing else:
+        #               floor d>=1 (distinct positions are >=1 move apart) and ceiling
+        #               d <= observed gap (a witnessed path is an exact upper bound). The
+        #               interior is deliberately force-free. This is QRL's constraint set,
+        #               generalised to k-step paths -- STRONGER than canonical QRL, which
+        #               constrains single transitions only.
+        #   l_rep_a/b   NOT anti-collapse hygiene. THIS IS THE MAXIMISATION. The "gas" pushing
+        #               pairs apart is what makes min-over-paths emerge; delete it and the
+        #               distances collapse to the floor. w_repel=40 is load-bearing.
+        #   l_conf      makes the gas equilibrium EXIST (-log d alone runs to -inf). Anti-
+        #               EXPLOSION, the dual risk of a maximisation objective.
+        #   l_anchor_a  NOT a radius hinge. Pins dA(terminal -> its outcome pole) = 1 ply:
+        #               the SCALE calibration. Everything measured in plies rests on it.
+        #   l_pole_gas_a  (1/(1+d)).mean() minimised = maximise distance-to-poles. Gas family.
+        #   l_absorb    holds reverse directions open; guards the IQE dead zone (all-zero
+        #               directed distances is an ABSORBING fixed point with zero gradient).
+        #
+        # MEASURED GAP (2026-08-14, jqt5): the gas acts only on UNOBSERVED pairs, so observed
+        # pairs are free anywhere in [1, gap+1] with nothing pushing them up -- and they sit
+        # at 0.44*gap, near the floor. Consequences: dA behaves as crow-flies (34.9% of steps
+        # go the WRONG way along tablebase-optimal lines, median step -0.18 vs a true -1.0),
+        # and anchor_a is losing (terminals sit ~6 units from their pole, not 1).
+        # THE FIX IS ONE ADDED TERM, not a rewrite: a one-sided push on OBSERVED pairs toward
+        # their ceiling. NOTE this is not the r^6 interior spring Kaveh removed -- a spring has
+        # an opinion about the value and pulls both ways; this only says "as large as allowed".
+        # ======================================================================================
         loss = (args.w_mh * l_mh + args.w_mh_cons * l_mh_cons
                 + args.w_mh_bell * l_mh_bell
                 + args.w_bellman * l_bell

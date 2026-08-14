@@ -69,6 +69,9 @@ def confining_regression(d, target_log, quartic=1.0):
     return (r2 + quartic * r2 * r2).mean()
 
 
+# THE MAXIMISATION HALF of the QRL-style objective (see pair_walls). "Repulsion" names the
+# mechanism, not the purpose: this is what pushes distances up toward their observed-path
+# ceilings so that min-over-paths emerges. It is not optional hygiene.
 def screened_repulsion(d, eps=1.0):
     """BOUNDED pairwise repulsion: mean of 1/(eps+d), in (0, 1/eps]. Force 1/(eps+d)^2 -- never
     zero (the non-saturation property is preserved), but the potential is bounded below, so the
@@ -340,7 +343,14 @@ def adjacent_anchor(d, half_width=0.5):
 
 
 def pair_walls(d, gap, floor_hw=0.5, slack=1.0):
-    """HARD BRACKET for observed pairs (Kaveh 2026-08-07): no springs, only two data-derived
+    """QRL'S CONSTRAINT SET (recognised as such 2026-08-14; arXiv 2304.01203). These walls are
+    the "subject to" half of "maximise d(s,g) subject to observed paths bounding it" -- and the
+    ceiling generalises canonical QRL, which constrains single transitions while this bounds
+    any k-step witnessed path. The OBJECTIVE half lives in screened_repulsion (the gas).
+    A term that only constrains cannot produce a geodesic on its own: with the gas absent or
+    weak, d falls to the floor and the metric reads as crow-flies.
+
+    HARD BRACKET for observed pairs (Kaveh 2026-08-07): no springs, only two data-derived
     walls, with the interior FREE for the gas and composition to arrange.
 
       FLOOR    d may not go below 1: distinct positions are at least one move apart. Lower wall

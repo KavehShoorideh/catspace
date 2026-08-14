@@ -12476,3 +12476,28 @@ NO CLOUD SPEND until gates 1-3 improve: more data buys ~+0.03 spearman.
 - Smoke (90 steps CPU): every new term fires and moves (childval .22->.14, cv_rho -.08->+.15,
   cens 8.5->7.3, sqflip .62->.14). NOT included: bf16 (unvalidated numerics on top of two
   structural changes = unattributable).
+
+## 2026-08-14 — THE DISTANCE TERMS ARE ALREADY QRL. I misread them by name; corrected.
+Kaveh asked whether jqt7 needs anti-collapse terms and which existing terms to remove. My
+first answer was WRONG on nearly every item; reading the implementations line by line
+(at his insistence) inverted it. Recorded so it is never re-derived:
+- l_q is NOT a regression (the --w-iqe help text literally said "regression"). pair_walls =
+  floor d>=1 + ceiling d<=observed gap, interior FORCE-FREE. That is QRL's constraint set
+  (arXiv 2304.01203), and the k-step ceiling is STRONGER than canonical QRL's 1-step form.
+- l_rep_a/l_rep_b (w_repel=40) are NOT anti-collapse hygiene: they are THE MAXIMISATION.
+  The gas is what makes min-over-paths emerge. I had them top of the removal list.
+- l_anchor_a is NOT a radius hinge: it pins dA(terminal -> outcome pole)=1 ply. THE SCALE
+  CALIBRATION. Its value 24.5 means terminals sit ~6 units out, i.e. the pin is LOSING --
+  which is why nothing else is in ply units.
+- l_conf is anti-EXPLOSION (the dual risk of a maximisation), l_absorb guards the IQE
+  dead zone. Both stay.
+=> "jqt7 removes 4 terms and shrinks the loss" was wrong. NOTHING should be removed; there
+   was no spare anti-collapse machinery.
+THE ACTUAL GAP (measured): the gas acts on UNOBSERVED pairs only. Observed pairs are free
+anywhere in [1, gap+1] with no upward force, and sit at 0.44*gap -- near the floor. Hence
+crow-flies: 34.9% wrong-way steps along TB-optimal lines, median step -0.18 vs true -1.0.
+FIX = ONE ADDED TERM: a one-sided push on OBSERVED pairs toward their ceiling. NOT the r^6
+interior spring Kaveh removed (a spring has an opinion about the value; this says only "as
+large as allowed"). Plus: exact ceilings from rollout_line where the observed gap IS the true
+distance (tortuosity 0.31 => game-path ceilings overestimate ~3x), and rebalancing so
+anchor_a wins. Comments added at every misleading name + both help texts fixed.
