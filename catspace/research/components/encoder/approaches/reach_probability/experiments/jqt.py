@@ -98,6 +98,12 @@ class JQTModule(nn.Module):
         # to push against for CDB"): per-vocabulary anti-anchor; dead states sit at ~0
         # distance from it; the CDB logit becomes a two-pole contrast (committor pattern).
         self.anchor_neg = nn.ModuleList([nn.Linear(d_code, d) for _ in range(heads)])
+        # ---- jqt6 MOVE CONCEPTS (Kaveh 2026-08-14: "I also want move concepts"). A
+        # vocabulary over (state, move) pairs, not positions: quantize what a move IS in
+        # this context -- trade, break, development, prophylaxis -- so transitions become
+        # sayable ("this CLASS of move causes this CLASS of concept change") and the planner
+        # can reason over ~m codes instead of ~1900 raw moves.
+        self.move_codes = 0
         self.db_a2 = nn.Parameter(torch.tensor(1.0))
         self.db_b2 = nn.Parameter(torch.tensor(0.0))
         # concept-goal anchors: per-head projection of a codebook vector into z_B space (d)
@@ -191,6 +197,63 @@ class JQTModule(nn.Module):
     def predict_child(self, z_q_par, mids):
         m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
         return self.pred(torch.cat([z_q_par, m], -1))
+
+    def add_move_codes(self, move_codes, d_move_code=16, d_model=None, hidden=256):
+        """build the move vocabulary (called when --move-codes > 0)."""
+        from vector_quantize_pytorch import VectorQuantize
+        d_model = d_model or self.d_code * self.heads
+        self.move_codes = int(move_codes)
+        self.mv_enc = nn.Sequential(
+            nn.Linear(self.heads * self.d_code + self.e_from.embedding_dim, hidden),
+            nn.GELU(), nn.Linear(hidden, d_move_code))
+        self.mv_vq = VectorQuantize(dim=d_move_code, codebook_size=move_codes,
+                                    decay=0.9, commitment_weight=0.25)
+        # a move concept must PREDICT the move's consequence (value equivalence for moves)
+        self.mv_val = nn.Sequential(nn.Linear(d_move_code, 64), nn.GELU(), nn.Linear(64, 1))
+        # ...and WHICH concepts it flips. Value alone would collapse the vocabulary into 64
+        # buckets of "how much did this help"; the flip signature is what makes a move code
+        # a CONCEPT ("a move that trades the centre and frees the bishop").
+        self.mv_sig = nn.Sequential(nn.Linear(d_move_code, 64), nn.GELU(),
+                                    nn.Linear(64, self.heads))
+        # ---- MOVE SELECTOR (Kaveh 2026-08-14): the position's concept vocabulary QUERIES
+        # the move concepts by attention, and an FC turns the attended pairing into a per-
+        # move logit. The policy therefore reasons "given what I understand about this
+        # position, which CLASS of move fits" -- and the attention weights are the
+        # explanation, in the same shape GeoAttention already uses over subgoals.
+        self.sel_q = nn.Linear(self.heads * self.d_code, 64)      # concepts -> query
+        self.sel_k = nn.Linear(d_move_code, 64)                   # move concept -> key
+        self.sel_fc = nn.Sequential(nn.Linear(64 + d_move_code, 96), nn.GELU(),
+                                    nn.Linear(96, 1))             # -> per-move logit
+
+    def move_concepts(self, z_q_par, mids):
+        """(parent codes, move) -> (move latent, quantized, code ids, vq loss).
+        The parent codes enter QUANTIZED, so a move concept is defined relative to the
+        conceptual state it is played in -- the same move is a different concept in a
+        different position, which is what a human means by 'a freeing move'."""
+        m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
+        z = z_q_par if len(z_q_par) == len(mids) else z_q_par.expand(len(mids), -1)
+        h = self.mv_enc(torch.cat([z, m], -1))
+        q, ids, vl = self.mv_vq(h)
+        return h, q, ids, vl
+
+    def move_signature(self, q_mv):
+        """-> (N, heads) logits: which global concept heads this move class flips."""
+        return self.mv_sig(q_mv)
+
+    def select_moves(self, z_q_par, q_mv):
+        """(parent concept codes, per-move quantized concepts) -> (logits (M,), attn (M,)).
+        One position, M legal moves. Attention over the MOVE CONCEPTS, so the explanation is
+        'which kind of move this position wants', not a raw 1900-way softmax."""
+        q = self.sel_q(z_q_par).squeeze(0)                       # (64,)
+        k = self.sel_k(q_mv)                                     # (M, 64)
+        att = torch.softmax((k @ q) / (k.shape[-1] ** 0.5), 0)   # (M,)
+        ctx = q[None].expand(len(q_mv), -1)
+        return self.sel_fc(torch.cat([ctx, q_mv], -1)).squeeze(-1), att
+
+    def move_value(self, q_mv):
+        """the move concept alone must say what the move is WORTH -- the bottleneck that
+        stops the vocabulary from being a meaningless partition."""
+        return self.mv_val(q_mv).squeeze(-1)
 
     # ---- jqt6: atlas, split quantize, value equivalence, square dynamics ---------------
     @torch.no_grad()
@@ -381,11 +444,11 @@ class JQTModule(nn.Module):
             self.y_n += 1
 
     @torch.no_grad()
-    def perplexity(self, ids):
+    def perplexity(self, ids, codes=None):
         """codebook usage per head -> mean exp(entropy); K = fully used, ~1 = collapsed."""
         ps = []
         for h in range(ids.shape[1]):       # width of what was PASSED (per-branch slices)
-            c = torch.bincount(ids[:, h], minlength=self.codes).float()
+            c = torch.bincount(ids[:, h], minlength=(codes or self.codes)).float()
             p = c / c.sum().clamp(min=1)
             ps.append(float(torch.exp(-(p * (p + 1e-9).log()).sum())))
         return float(np.mean(ps))

@@ -542,6 +542,43 @@ def censored_plies_loss(pred_log_plies, plies, hit):
     return (per * m).sum() / n
 
 
+def censored_plies_linear(pred_d, plies, hit, clamp=0.0, delta=2.0, rel=0.15):
+    """LINEAR plies-to-first-hit (2026-08-14, Kaveh: "why are we doing log for the plies?").
+    A quasimetric has to COMPOSE -- distances add along paths, which is what makes macro-steps
+    and planning work -- and log1p(d) is not a distance you can chain: log of a sum is not the
+    sum of logs. The log form also compressed exactly where resolution matters (at d~4 one ply
+    is 0.2 log units; at d~64 it is 0.015), which is the measured slope-0.30 under-response.
+    Targets are clamped: past `clamp` plies "far" is all the planner needs, and letting
+    200-ply tails dominate a linear loss is what the log was wrongly protecting against."""
+    m = hit.float()
+    n = m.sum()
+    if n.item() == 0:
+        return pred_d.sum() * 0.0
+    # NO CLAMP (2026-08-14, Kaveh: "why clamp the distance?"). A clamp makes everything past
+    # the cap read identically -- and the censored hinge piles unreachable goals at the same
+    # cap, recreating the reachable/unreachable confusion this release exists to remove.
+    # Instead the TOLERANCE scales with the target: being 5 plies off at distance 100 is
+    # cheap, at distance 5 it is not. Ordering survives at every range; resolution stays
+    # where it matters. Normalised per-sample so the term is O(1).
+    t = plies.clamp(min=0).float()
+    d = (delta + rel * t)
+    per = F.huber_loss(pred_d / d, t / d, delta=1.0, reduction="none")
+    return (per * m).sum() / n
+
+
+def censored_hinge_linear(pred_d, horizon, hit, clamp=0.0, rel=0.15, delta=2.0):
+    """one-sided: a goal that never activated is at least as far as the window we watched."""
+    m = (hit < 0.5).float()
+    n = m.sum()
+    if n.item() == 0:
+        return pred_d.sum() * 0.0
+    # the TRUE watch horizon (unclamped), scaled by the same relative tolerance so the term
+    # is O(1) and so "never happened over 90 plies" is a stronger statement than over 10
+    h = horizon.clamp(min=0).float()
+    d = (delta + rel * h)
+    return (((torch.relu(h - pred_d) / d) ** 2) * m).sum() / n
+
+
 def reach_region_nll(mu, log_sigma, z_target):
     """Gaussian NLL of an OBSERVED reachable target z_target under the region (mu, sigma) predicted
     from the source position (reach_probability, Kaveh 2026-08-05).

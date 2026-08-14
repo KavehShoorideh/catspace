@@ -60,7 +60,8 @@ from catspace.research.components.encoder.approaches.reach_probability.src.reach
 from catspace.research.components.encoder.approaches.reachability_field.experiments.arch_bakeoff import eff_rank
 from catspace.research.tools.training_infra.losses import (
     absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
-    censored_plies_loss, code_persistence, confine_radius, confining_regression,
+    censored_plies_loss, censored_plies_linear, censored_hinge_linear,
+    code_persistence, confine_radius, confining_regression,
     fene_confinement, fene_r_max, first_hit_bce, jepa_code_prediction, lj_confinement,
     log_gas_repulsion, screened_repulsion,
     adjacent_anchor,
@@ -344,7 +345,7 @@ def main():
                     help="value equivalence: board codes + move -> the child's expected score")
     ap.add_argument("--cv-pos", type=int, default=8,
                     help="positions per step for the value-equivalence term")
-    ap.add_argument("--w-cens-hinge", type=float, default=1.0,
+    ap.add_argument("--w-cens-hinge", type=float, default=0.2,
                     help="one-sided hinge pushing CENSORED goals beyond the watch horizon "
                          "(bones check: censored dA 14.7 vs observed 14.8 -- no separation)")
     ap.add_argument("--w-rank-cda", type=float, default=1.0,
@@ -352,6 +353,23 @@ def main():
                          "readout consumes; regression alone gave log-log slope 0.30")
     ap.add_argument("--horizon-cdb", type=int, default=0,
                     help="CDB predicts P(activate within K) for K in HORIZONS_K")
+    ap.add_argument("--cda-linear", type=int, default=0,
+                    help="train dA in LINEAR plies (composable: distances chain along paths; "
+                         "log1p(d) is not a distance you can add up)")
+    ap.add_argument("--plies-rel", type=float, default=0.15,
+                    help="distance-proportional tolerance for the linear plies loss "
+                         "(replaces the clamp, which flattened everything past the cap and "
+                         "collided with the censored hinge)")
+    ap.add_argument("--move-codes", type=int, default=0,
+                    help="MOVE CONCEPT vocabulary size: quantize (state, move) pairs so "
+                         "transitions become sayable and the planner reasons over move "
+                         "classes instead of ~1900 raw moves")
+    ap.add_argument("--w-movecode", type=float, default=1.0,
+                    help="move concepts must predict the move's value (the bottleneck that "
+                         "stops the vocabulary being a meaningless partition)")
+    ap.add_argument("--w-select", type=float, default=1.0,
+                    help="MOVE SELECTOR: concepts attend over move concepts -> FC -> policy, "
+                         "listwise CE against the engine's best child")
     ap.add_argument("--w-sqdyn", type=float, default=1.0,
                     help="square-stream hurdle dynamics (absent before jqt6)")
     ap.add_argument("--gates", type=int, default=0,
@@ -703,6 +721,11 @@ def main():
                         d_model=args.d_model, heads=args.jqt_heads, codes=args.jqt_codes,
                         d=args.d, ema=args.ema, square_codes=args.jqt_square_codes,
                         piece_codes=args.jqt_piece_codes).to(dev)
+        if args.move_codes:
+            jqt.add_move_codes(args.move_codes)
+            jqt = jqt.to(dev)
+            print(f"[jqt6] move concepts: {args.move_codes} codes over (state, move)",
+                  flush=True)
         st_of_game = None
         if args.jqt_piece_codes:
             assert tr.slots is not None, "piece stream needs the v5 corpus cache (slots)"
@@ -949,6 +972,34 @@ def main():
         print(f"[ingest] +{ng} games ({(newsplit==0).sum()} train-pool / "
               f"{(newsplit==1).sum()} cal / {(newsplit==2).sum()} test) | corpus now "
               f"{len(tr):,} games / {tr.n_positions:,} rows [{time.time()-t0i:.0f}s]",
+              flush=True)
+
+    # ---- bf16 WITH fp32 DISTANCE ISLANDS (Kaveh 2026-08-14 "use bf16 please").
+    # bf16 has an 8-bit mantissa: ~0.4% relative precision. The concept rulers now live in
+    # LINEAR plies (0-60), where the spacing is ~0.25 and one ply is resolvable -- the linear
+    # change made bf16 safe there. But the POLE distances sit near the 750 pole height, where
+    # bf16 spacing is ~3 units, and the committor is a softmax over those. So the trunk and
+    # the encoders run bf16 (that is where the time goes) and every quasimetric distance is
+    # forced back to fp32. Costs almost nothing: the distance heads are tiny next to the
+    # backbone, which is 27% encode + the 61% backward.
+    if args.bf16:
+        _acdev = dev.type if hasattr(dev, "type") else str(dev).split(":")[0]
+
+        def _fp32_dist(fn):
+            def g(a, b):
+                with torch.autocast(device_type=_acdev, enabled=False):
+                    return fn(a.float(), b.float())
+            return g
+
+        for _nm in ("dA", "dB", "dist", "iqe"):
+            _f = getattr(net, _nm, None)          # the module is `net` at this scope
+            if _f is None:
+                continue
+            if isinstance(_f, torch.nn.Module):   # child modules: patch forward in place
+                _f.forward = _fp32_dist(_f.forward)
+            elif callable(_f):
+                setattr(net, _nm, _fp32_dist(_f))
+        print("[bf16] autocast ON for trunk/encoders; quasimetric distances pinned to fp32",
               flush=True)
 
     cur_step = {"s": 0}                     # loop writes; terms reads (dest-CE warmup ramp)
@@ -1587,6 +1638,8 @@ def main():
         l_sqrec = l_pcrec = l_pers_sq = l_pers_pc = torch.zeros((), device=dev)
         l_flip = l_dest = l_pcflip = l_pcdest = l_negpole = torch.zeros((), device=dev)
         l_sqflip = l_sqdest = l_childval = l_cens = l_rank = torch.zeros((), device=dev)
+        l_movecode = l_select = torch.zeros((), device=dev)
+        _mv_perp, _sel_top1 = -1.0, -1.0
         _flip_gap, _dest_top1, _pcdest_top1 = -1.0, -1.0, -1.0
         _sq_f1, _cv_rho, _cv_top1, _geo_perp, _brd_perp = -1.0, -1.0, -1.0, -1.0, -1.0
         _jqt_perp, _jqt_flip, _sq_flip, _pc_flip = -1.0, -1.0, -1.0, -1.0
@@ -1753,15 +1806,22 @@ def main():
                 tpl = torch.from_numpy(gplies).to(dev)
                 thit = torch.from_numpy(ghit).to(dev)
                 thz = torch.from_numpy(ghz).to(dev)
-                l_cda = censored_plies_loss(torch.log1p(dA_g), tpl, thit)
+                if args.cda_linear:
+                    l_cda = censored_plies_linear(dA_g, tpl, thit, rel=args.plies_rel)
+                else:
+                    l_cda = censored_plies_loss(torch.log1p(dA_g), tpl, thit)
                 # jqt6 CENSORED HINGE: a goal that never activated is at LEAST as far as the
                 # window we watched. The v1 loss dropped these rows entirely -- measured
                 # consequence: censored dA 14.7 vs observed 14.8, i.e. the length ruler could
                 # not tell reachable from unreachable.
-                _cm = thit < 0.5
-                if args.w_cens_hinge > 0 and _cm.any():
-                    l_cens = (torch.relu(torch.log1p(thz[_cm])
-                                         - torch.log1p(dA_g[_cm])) ** 2).mean()
+                if args.w_cens_hinge > 0:
+                    if args.cda_linear:
+                        l_cens = censored_hinge_linear(dA_g, thz, thit, rel=args.plies_rel)
+                    else:
+                        _cm = thit < 0.5
+                        if _cm.any():
+                            l_cens = (torch.relu(torch.log1p(thz[_cm])
+                                                 - torch.log1p(dA_g[_cm])) ** 2).mean()
                 # jqt6 RANK: ordering is what the directional readout consumes; pure
                 # regression gave a log-log slope of 0.30 against an ideal of 1.0
                 _hm = torch.nonzero(thit > 0.5).squeeze(-1)
@@ -1771,9 +1831,10 @@ def main():
                     _sgn = torch.sign(tpl[_b3] - tpl[_a])
                     _keep2 = _sgn != 0
                     if _keep2.any():
+                        _ra = (dA_g if args.cda_linear else torch.log1p(dA_g))
                         l_rank = torch.nn.functional.margin_ranking_loss(
-                            torch.log1p(dA_g[_b3][_keep2]), torch.log1p(dA_g[_a][_keep2]),
-                            _sgn[_keep2], margin=0.15)
+                            _ra[_b3][_keep2], _ra[_a][_keep2], _sgn[_keep2],
+                            margin=(1.0 if args.cda_linear else 0.15))
                 if args.two_pole_cdb or args.w_negpole > 0:
                     # jqt5 NEGATIVE POLES: anti-anchor per goal; CDB becomes a two-pole
                     # contrast (committor pattern) and DEAD states subsume onto the anti-pole
@@ -1805,6 +1866,19 @@ def main():
                             l_negpole = torch.log1p(dB_gn[tdead]).mean()
                 else:
                     l_cdb = first_hit_bce(jqt.activation_logit(dB_g), thit)
+                # ---- jqt6 MOVE CONCEPTS: quantize (parent codes, move). Two targets so the
+                # vocabulary cannot degenerate: what the move is WORTH (dE) and WHICH
+                # concepts it flips (its signature).
+                if args.move_codes and args.w_movecode > 0:
+                    _hm2, _qm, _im, _vlm = jqt.move_concepts(zq_flat[:nP], mid_)
+                    _sig_t = (ids_pc[:nP] != ids_ch).float().detach()
+                    l_movecode = (
+                        torch.nn.functional.mse_loss(jqt.move_value(_qm), dE.detach())
+                        + torch.nn.functional.binary_cross_entropy_with_logits(
+                            jqt.move_signature(_qm), _sig_t)
+                        + _vlm)
+                    _mv_perp = jqt.perplexity(_im.reshape(-1, 1).detach(),
+                                              codes=args.move_codes)
                 # ---- jqt6 VALUE EQUIVALENCE: the board codes' ONLY target. From the codes
                 # plus a move, predict that move's resulting expected score (parent-mover
                 # POV) against the engine-labelled children. "Reconstruct the board only in
@@ -1817,7 +1891,7 @@ def main():
                     _phc = model.backbone(_pt, _pg)
                     _zbc = model.proj_b(_phc).detach()
                     _atc = jqt.atlas(_zbc, model.dA, model.dB, POL[:3], args.basin_temp)
-                    _, _, _, _, _, _zbrd = jqt.quantize_split(_phc, _zbc, _atc)
+                    _, _zq_cv, _, _, _, _zbrd = jqt.quantize_split(_phc, _zbc, _atc)
                     _tv, _pv = [], []
                     for _j, _pi in enumerate(_cs):
                         _a2 = int(wdl_pack["off"][_pi]); _b4 = int(wdl_pack["off"][_pi + 1])
@@ -1831,6 +1905,27 @@ def main():
                             wdl_pack["mid"][_a2:_b4].astype(np.int64)).to(dev)
                         _pd = torch.sigmoid(jqt.child_value(_zbrd[_j:_j + 1], _mi))
                         _tv.append(torch.from_numpy(_E).float().to(dev)); _pv.append(_pd)
+                    # MOVE SELECTOR: the same positions, listwise CE over legal moves.
+                    # Labels are the engine's child values -- the best child is the target.
+                    if args.move_codes and args.w_select > 0 and _tv:
+                        _sl = []
+                        for _j, _pi in enumerate(_cs):
+                            _a2 = int(wdl_pack["off"][_pi]); _b4 = int(wdl_pack["off"][_pi + 1])
+                            if _b4 - _a2 < 2:
+                                continue
+                            _w = wdl_pack["wdl"][_a2:_b4].astype(np.float32)
+                            _E2 = ((_w[:, 2] + 0.5 * _w[:, 1])
+                                   / np.clip(_w.sum(1), 1.0, None))
+                            _mi2 = torch.from_numpy(
+                                wdl_pack["mid"][_a2:_b4].astype(np.int64)).to(dev)
+                            _, _qm2, _, _ = jqt.move_concepts(zq_flat[:1] * 0
+                                                              + _zq_cv[_j:_j + 1], _mi2)
+                            _lg2, _ = jqt.select_moves(_zq_cv[_j:_j + 1], _qm2)
+                            _tgt2 = torch.tensor([int(np.argmax(_E2))], device=dev)
+                            _sl.append(torch.nn.functional.cross_entropy(_lg2[None], _tgt2))
+                            _sel_top1 = float(int(_lg2.argmax()) == int(np.argmax(_E2)))
+                        if _sl:
+                            l_select = torch.stack(_sl).mean()
                     if _tv:
                         l_childval = torch.stack(
                             [torch.nn.functional.mse_loss(a, b) for a, b in zip(_pv, _tv)]
@@ -1873,7 +1968,8 @@ def main():
                 + args.w_vqrec * l_vqrec + args.w_pers * l_pers + args.w_jepa * l_jepa
                 + args.w_flip * (l_flip + l_pcflip) + args.w_dest * (l_dest + l_pcdest)
                 + args.w_sqdyn * (l_sqflip + l_sqdest)
-                + args.w_childval * l_childval
+                + args.w_childval * l_childval + args.w_movecode * l_movecode
+                + args.w_select * l_select
                 + args.w_cens_hinge * l_cens + args.w_rank_cda * l_rank
                 + args.w_negpole * l_negpole
                 + args.w_cda * l_cda + args.w_cdb * l_cdb
@@ -1890,6 +1986,8 @@ def main():
                "flip_gap": _flip_gap, "dest_top1": _dest_top1, "pcdest_top1": _pcdest_top1,
                "sqflipL": float(l_sqflip.detach()), "sqdest": float(l_sqdest.detach()),
                "childval": float(l_childval.detach()), "cens": float(l_cens.detach()),
+               "movecode": float(l_movecode.detach()), "mv_perp": _mv_perp,
+               "select": float(l_select.detach()), "sel_top1": _sel_top1,
                "rank": float(l_rank.detach()),
                "sq_f1_ex": _sq_f1, "cv_rho": _cv_rho, "cv_top1": _cv_top1,
                "geo_perp": _geo_perp, "brd_perp": _brd_perp,
@@ -1934,6 +2032,7 @@ def main():
     # running those every step would roughly double the wall clock to measure the same thing.
     step_log = open(f"{args.out}_steps.jsonl", "a", buffering=1 << 16)
     gate_log = open(f"{args.out}_gatecheck.jsonl", "a", buffering=1)   # jqt6 abort gates
+    _cvh = []                                    # cv_rho history (gated on the mean, not a spike)
 
     _last_step = [0]
 
@@ -1981,16 +2080,34 @@ def main():
                 if step >= 1500 and _v >= 0 and not (_lo <= _v <= _hi):
                     _fail.append(f"{_k}={_v:.4f} outside [{_lo},{_hi}] "
                                  f"(frozen or thrashing vocabulary)")
-            if step >= 400:
-                for _k, _thr in (("jqt_perp", 8.0), ("geo_perp", 6.0), ("brd_perp", 8.0)):
-                    _v = met.get(_k, -1.0)
-                    if _v >= 0 and _v < _thr:
-                        _fail.append(f"{_k}={_v:.1f} < {_thr} (codebook collapse)")
-            if args.jqt6 and step >= 1200:
-                _v = met.get("cv_rho", -1.0)
-                if 0 <= _v < 0.20:
-                    _fail.append(f"cv_rho={_v:.3f} < 0.20 -- the BOARD branch is starving: "
-                                 f"it is not learning action-conditioned structure")
+            # CALIBRATED against jqt5's real warm-up (2026-08-14: the first version aborted a
+            # HEALTHY jqt6 at step 400 for perp 5.8, when jqt5 -- which finished at 44.5 --
+            # was only at 3.66 there and did not cross 8 until past step 1000). Codebooks
+            # warm up slowly; gates must be set from a known-good trajectory, not intuition.
+            for _st, _thr in ((2000, 8.0), (4000, 15.0)):
+                if step >= _st:
+                    for _k in ("jqt_perp", "geo_perp", "brd_perp", "mv_perp"):
+                        _v = met.get(_k, -1.0)
+                        # the move vocabulary is allowed to be genuinely smaller: a few
+                        # dozen move CLASSES is a plausible answer, unlike a collapsed
+                        # position vocabulary. Gentler bar, same abort.
+                        _t2 = (_thr * 0.5) if _k == "mv_perp" else _thr
+                        if _v >= 0 and _v < _t2:
+                            _thr = _t2
+                            _fail.append(f"{_k}={_v:.1f} < {_thr} at step {_st}+ "
+                                         f"(codebook collapse)")
+                        _thr = (15.0 if _st == 4000 else 8.0)
+            # cv_rho is computed on cv_pos positions per step -- far too noisy to gate on
+            # instantaneously (it swung 0.32 -> -0.10 between steps 250 and 400). Smoothed.
+            _cvh.append(met.get("cv_rho", -1.0))
+            if len(_cvh) > 200:
+                _cvh.pop(0)
+            if args.jqt6 and step >= 2500:
+                _vv = [x for x in _cvh if x >= -1.0]
+                _v = float(np.mean(_vv)) if _vv else 0.0
+                if _v < 0.20:
+                    _fail.append(f"cv_rho(200-step mean)={_v:.3f} < 0.20 -- the BOARD branch "
+                                 f"is starving: not learning action-conditioned structure")
             if _fail:
                 gate_log.write(json.dumps({"s": step, "ABORT": _fail}) + "\n")
                 raise SystemExit("[gate] ABORT at step %d: %s" % (step, "; ".join(_fail)))
