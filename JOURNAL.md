@@ -12439,3 +12439,40 @@ NEXT (jqt6 slate, NOT a jqt5 restart): one-sided hinge for censored pairs (survi
 the "v2" the loss docstring already anticipates) + rank-based dA training (ranking is what
 the directional readout actually consumes) + re-run this suite on jqt5 as the gate.
 NO CLOUD SPEND until gates 1-3 improve: more data buys ~+0.03 spearman.
+
+## 2026-08-14 — jqt5 VERDICT + jqt6 LAUNCHED (multimodal split, value equivalence, full-bank dynamics)
+### jqt5 finished 20k steps 02:37. Verdict: mixed, with one hard NEGATIVE.
+- **PIECE STREAM FROZE.** pc_flip 0.018 -> 0.125 -> 0.000 and stayed; last-2000 mean 0.0028.
+  Global 0.46 and square 0.30 stayed healthy, so nothing in the loss complained: the pc flip
+  head scored ~100% predicting "never changes" (pcflipL -> 0.0001) and persistence was happy
+  too. THE COLLUSION MODE, exactly as designed-against but not yet gated. Cause: w_pers_pc=2
+  was the strongest persistence weight AND the piece stream is already persistent by identity
+  matching -> double counted. jqt6 default drops to 0.25 + per-vocabulary abort gates.
+- Bones check on jqt5 vs jqt3: spearman 0.412 (was 0.495, WORSE); slope 0.31 (was 0.30);
+  monotonicity 79.6% (was 79.1%); probe ceiling 0.602 (was 0.616).
+- **Negative poles did NOT fix censored separation: 7.1 vs 7.2 plies (jqt3: 14.7 vs 14.8).**
+  Diagnosis: they act on the CDB (probability) path while censored rows still contribute
+  ZERO to CDA (length). Right fix is the censored HINGE -> now in jqt6. Absolute dA fell
+  (near-goal floor 8.9 -> 4.5), so subsumption samples DID help the floor.
+- Hurdle dynamics graduated: dest_top1 0.192-0.29 vs 1.6% chance (12-18x); JEPA's flip
+  naming was 14% (9x). Kept and extended.
+### jqt6 built and launched (20k steps, fp32, MPS, gates ON)
+- MULTIMODAL SPLIT: heads 0-2 GEOMETRY (read z_B detached + atlas: pole dA/committor +
+  fwd/bwd DENSITY vs a 256-position reference bank refreshed with the index, radius = median
+  pairwise dA). Heads 3-7 BOARD (read phi conditioned on detached geo codes).
+- VALUE EQUIVALENCE replaces board reconstruction (Kaveh: "reconstruct the board only in so
+  much as it helps me win"): board codes + move -> child's expected score, graded on the
+  wdl_labels shards (62,916 positions / 1,760,600 children). Naive "same eval" would be 6
+  numbers the geometry branch already has; ACTION-CONDITIONING is what makes it non-degenerate.
+- FULL CODE BANK DYNAMICS: flip+dest now on all four vocabularies (square stream had NO
+  predictor before), QUANTIZED inputs everywhere (jqt5 fed the piece head pre-quant latents,
+  which no code-space rollout could reproduce). Anti-JEPA metric: square flip F1 EXCLUDING
+  the from/to squares (those are readable off the move token; ~62/64 never change).
+- RULER FIXES: one-sided censored hinge (dA must exceed the watched horizon), pairwise RANK
+  loss on true plies, horizon-conditioned CDB P(activate within K in {2,6,12,ever}).
+- GATES (verified firing): abort on NaN, per-vocabulary flip bands, per-branch codebook
+  collapse, board-branch starvation (cv_rho < 0.20 at step 1200). Test run aborted at step
+  400 with exit 1 as designed. Rows -> <out>_gatecheck.jsonl.
+- Smoke (90 steps CPU): every new term fires and moves (childval .22->.14, cv_rho -.08->+.15,
+  cens 8.5->7.3, sqflip .62->.14). NOT included: bf16 (unvalidated numerics on top of two
+  structural changes = unattributable).

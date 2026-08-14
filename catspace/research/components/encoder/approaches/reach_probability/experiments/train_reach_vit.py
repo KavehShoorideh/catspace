@@ -332,6 +332,30 @@ def main():
     ap.add_argument("--pers-tau", type=float, default=0.05,
                     help="expected-points scale above which a move counts as an eval jump and "
                          "the persistence prior goes silent")
+    ap.add_argument("--jqt6", type=int, default=0,
+                    help="MULTIMODAL SPLIT: geometry heads read (z_B, atlas) and quantize the "
+                         "field; board heads read phi and are graded on VALUE EQUIVALENCE")
+    ap.add_argument("--geo-heads", type=int, default=3,
+                    help="how many of --jqt-heads go to the geometry branch")
+    ap.add_argument("--bank-n", type=int, default=256,
+                    help="reference positions for the density features (the only geometry "
+                         "input not derivable from z_B)")
+    ap.add_argument("--w-childval", type=float, default=3.0,
+                    help="value equivalence: board codes + move -> the child's expected score")
+    ap.add_argument("--cv-pos", type=int, default=8,
+                    help="positions per step for the value-equivalence term")
+    ap.add_argument("--w-cens-hinge", type=float, default=1.0,
+                    help="one-sided hinge pushing CENSORED goals beyond the watch horizon "
+                         "(bones check: censored dA 14.7 vs observed 14.8 -- no separation)")
+    ap.add_argument("--w-rank-cda", type=float, default=1.0,
+                    help="pairwise ranking on true plies -- ordering is what the directional "
+                         "readout consumes; regression alone gave log-log slope 0.30")
+    ap.add_argument("--horizon-cdb", type=int, default=0,
+                    help="CDB predicts P(activate within K) for K in HORIZONS_K")
+    ap.add_argument("--w-sqdyn", type=float, default=1.0,
+                    help="square-stream hurdle dynamics (absent before jqt6)")
+    ap.add_argument("--gates", type=int, default=0,
+                    help="in-training gates on the HOLDOUT: abort early rather than burn a run")
     ap.add_argument("--bf16", type=int, default=0,
                     help="jqt5: autocast bf16 forward+loss (the profiled lever); "
                          "smoke-validate the curve before any long run")
@@ -378,7 +402,7 @@ def main():
                     help="piece-stream residual recon (+commit), after global+square")
     ap.add_argument("--w-pers-sq", type=float, default=1.0,
                     help="persistence on per-square latents (same square, quiet move)")
-    ap.add_argument("--w-pers-pc", type=float, default=2.0,
+    ap.add_argument("--w-pers-pc", type=float, default=0.25,
                     help="persistence on per-slot latents: identity-matched across the move, "
                          "THE well-posed persistence space (the metastability bet)")
     ap.add_argument("--w-turnpair", type=float, default=0.0,
@@ -675,7 +699,8 @@ def main():
         # keep TRAIN-split transitions only (child = par+1 shares the parent's game)
         _tm = np.isin(game_of_row[_gz["par"]], np.flatnonzero(split == 0))
         jqt_gt = {"par": _gz["par"][_tm], "mid": _gz["mid"][_tm]}
-        jqt = JQTModule(d_model=args.d_model, heads=args.jqt_heads, codes=args.jqt_codes,
+        jqt = JQTModule(geo_heads=(args.geo_heads if args.jqt6 else 0), bank_n=args.bank_n,
+                        d_model=args.d_model, heads=args.jqt_heads, codes=args.jqt_codes,
                         d=args.d, ema=args.ema, square_codes=args.jqt_square_codes,
                         piece_codes=args.jqt_piece_codes).to(dev)
         st_of_game = None
@@ -763,6 +788,19 @@ def main():
                                   st_of_game[g] if st_of_game is not None else None,
                                   A))
             jqt_idx.refresh(games)
+            if args.jqt6:
+                # density bank: real positions, so the feature cannot be derived from z_B.
+                # radius = median pairwise dA in the sample -> scale-free as the field moves.
+                _bs = rng_np.choice(len(rws), min(args.bank_n, len(rws)), replace=False)
+                _btok = torch.from_numpy(tr.tok[rws[_bs]].astype(np.int64)).to(dev)
+                _bglb = torch.from_numpy(tr.glob[rws[_bs]].astype(np.float32)).to(dev)
+                _bz = model.proj_b(model.t_enc(_btok, _bglb)).detach()
+                jqt.refresh_bank(_bz)
+                _i = torch.randint(0, len(_bz), (512,), device=dev)
+                _j = torch.randint(0, len(_bz), (512,), device=dev)
+                jqt.set_bank_radius(float(model.dA(_bz[_i], _bz[_j]).median()))
+                print(f"[jqt6] density bank {len(_bz)} positions, radius "
+                      f"{float(jqt.bank_r):.2f}", flush=True)
             print(f"[jqt] index refreshed: {len(games)} games, {len(rws):,} rows coded "
                   f"[{time.time()-t0r:.0f}s]", flush=True)
 
@@ -1548,7 +1586,9 @@ def main():
         l_vqrec = l_pers = l_jepa = l_cda = l_cdb = torch.zeros((), device=dev)
         l_sqrec = l_pcrec = l_pers_sq = l_pers_pc = torch.zeros((), device=dev)
         l_flip = l_dest = l_pcflip = l_pcdest = l_negpole = torch.zeros((), device=dev)
+        l_sqflip = l_sqdest = l_childval = l_cens = l_rank = torch.zeros((), device=dev)
         _flip_gap, _dest_top1, _pcdest_top1 = -1.0, -1.0, -1.0
+        _sq_f1, _cv_rho, _cv_top1, _geo_perp, _brd_perp = -1.0, -1.0, -1.0, -1.0, -1.0
         _jqt_perp, _jqt_flip, _sq_flip, _pc_flip = -1.0, -1.0, -1.0, -1.0
         if jqt is not None and jqt_idx.ready():
             jqt.train(model.training)          # val passes must not update the EMA codebooks
@@ -1557,13 +1597,14 @@ def main():
                 pr_ = jqt_gt["par"][ts]
                 mid_ = torch.from_numpy(jqt_gt["mid"][ts]).to(dev)
                 if args.jqt_square_codes or args.jqt_piece_codes:
-                    grows, ggt, gk1, gk2, gplies, ghit, gdead = jqt_idx.sample_mixed(
+                    grows, ggt, gk1, gk2, gplies, ghit, gdead, ghz = jqt_idx.sample_mixed(
                         args.jqt_goals, frac_dead=args.frac_dead)
                 else:
                     grows, ghc, gplies, ghit = jqt_idx.sample(args.jqt_goals)
                     ggt = np.zeros(len(grows), np.int64)
                     gk1, gk2 = ghc[:, 0].copy(), ghc[:, 1].copy()
                     gdead = np.zeros(len(grows), np.float32)
+                    ghz = np.full(len(grows), 40.0, np.float32)
                 rows_j = np.concatenate([pr_, pr_ + 1, grows])
                 tok_j = torch.from_numpy(tr.tok[rows_j].astype(np.int64)).to(dev)
                 glob_j = torch.from_numpy(tr.glob[rows_j].astype(np.float32)).to(dev)
@@ -1586,13 +1627,23 @@ def main():
                     yt = (y6 - jqt.y_mu) / jqt.y_sd
                     E_pc = prb[:, 0] + 0.5 * prb[:, 1]
                     dE = E_pc[nP:2 * nP] - E_pc[:nP]
-                # (1) faithfulness: codes must regenerate the field's own evaluations
-                h_pc, zq_flat, ids_pc, vloss = jqt.quantize(phi_j[:2 * nP])
-                l_vqrec = torch.nn.functional.mse_loss(jqt.dec(zq_flat), yt) + vloss
+                # (1) faithfulness. jqt6: the GEOMETRY heads quantize the field (easy by
+                # design -- y6 is a function of their own input; the health check is
+                # partition FINENESS, not recon), and the BOARD heads are graded by value
+                # equivalence below, never on reconstruction.
+                if args.jqt6:
+                    _zb_det = zb_pc.detach()
+                    _atl = jqt.atlas(_zb_det, model.dA, model.dB, POL[:3], args.basin_temp)
+                    (h_pc, zq_flat, ids_pc, vloss,
+                     zq_geo, zq_brd) = jqt.quantize_split(phi_j[:2 * nP], _zb_det, _atl)
+                    l_vqrec = torch.nn.functional.mse_loss(jqt.geo_dec(zq_geo), yt) + vloss
+                else:
+                    h_pc, zq_flat, ids_pc, vloss = jqt.quantize(phi_j[:2 * nP])
+                    l_vqrec = torch.nn.functional.mse_loss(jqt.dec(zq_flat), yt) + vloss
                 # (2) metastability: quiet moves keep their pre-quant latents
                 l_pers = code_persistence(h_pc[:nP], h_pc[nP:2 * nP], dE, tau=args.pers_tau)
                 # ---- v2 residual streams: square then piece, each explaining the residue
-                y_g_det = jqt.dec(zq_flat).detach()
+                y_g_det = (jqt.geo_dec(zq_geo) if args.jqt6 else jqt.dec(zq_flat)).detach()
                 if args.jqt_square_codes:
                     h_sq, y_sq, ids_sq, vl_sq = jqt.square_stream(sqt_j[:2 * nP])
                     l_sqrec = (torch.nn.functional.mse_loss(y_g_det + y_sq, yt) + vl_sq)
@@ -1643,8 +1694,33 @@ def main():
                         pr_f = torch.sigmoid(fl_lg)
                         _flip_gap = (float(pr_f[fm].mean() - pr_f[~fm].mean())
                                      if fm.any() and (~fm).any() else -1.0)
+                    if args.jqt_square_codes and args.w_sqdyn > 0:
+                        # jqt6: the square stream had NO predictor. Quantized input (STE) so
+                        # the head could roll forward in code space at inference.
+                        _qsq = h_sq + (jqt.sq_vq.codebook[ids_sq] - h_sq).detach()
+                        sf_lg, sd_lg = jqt.sq_predict_flips(_qsq[:nP], mid_)
+                        sflip_t = (ids_sq[:nP] != ids_sq[nP:2 * nP]).float().detach()
+                        l_sqflip = torch.nn.functional.binary_cross_entropy_with_logits(
+                            sf_lg, sflip_t)
+                        sfm = sflip_t.bool()
+                        if sfm.any() and args.w_dest > 0:
+                            l_sqdest = ramp * torch.nn.functional.cross_entropy(
+                                sd_lg[sfm], ids_sq[nP:2 * nP][sfm])
+                        # THE ANTI-JEPA METRIC: ~62 of 64 squares never change and the two
+                        # that do are readable straight off the move token we handed the
+                        # head. Score only the OTHER squares -- influence propagation.
+                        with torch.no_grad():
+                            _keep = torch.ones_like(sflip_t, dtype=torch.bool)
+                            _keep.scatter_(1, mid_[:, :2], False)
+                            _pf = (torch.sigmoid(sf_lg) > 0.5) & _keep
+                            _tf = sflip_t.bool() & _keep
+                            _tp = float((_pf & _tf).sum())
+                            _sq_f1 = (2 * _tp / max(float(_pf.sum()) + float(_tf.sum()), 1.0))
                     if args.jqt_piece_codes:
-                        pf_lg, pd_lg = jqt.pc_predict_flips(h_pcs[:nP], mid_)
+                        # quantized (STE) input, matching the global head -- jqt5 fed this one
+                        # PRE-quant latents, which no code-space rollout could reproduce
+                        _qpc = h_pcs + (jqt.pc_vq.codebook[ids_pcs] - h_pcs).detach()
+                        pf_lg, pd_lg = jqt.pc_predict_flips(_qpc[:nP], mid_)
                         pflip_t = (ids_pcs[:nP] != ids_pcs[nP:2 * nP]).float().detach()
                         pmask = (alive_pc[:nP] & alive_pc[nP:2 * nP]).float()
                         l_pcflip = (torch.nn.functional.binary_cross_entropy_with_logits(
@@ -1676,7 +1752,28 @@ def main():
                 dB_g = model.dB(zb_g, anc)
                 tpl = torch.from_numpy(gplies).to(dev)
                 thit = torch.from_numpy(ghit).to(dev)
+                thz = torch.from_numpy(ghz).to(dev)
                 l_cda = censored_plies_loss(torch.log1p(dA_g), tpl, thit)
+                # jqt6 CENSORED HINGE: a goal that never activated is at LEAST as far as the
+                # window we watched. The v1 loss dropped these rows entirely -- measured
+                # consequence: censored dA 14.7 vs observed 14.8, i.e. the length ruler could
+                # not tell reachable from unreachable.
+                _cm = thit < 0.5
+                if args.w_cens_hinge > 0 and _cm.any():
+                    l_cens = (torch.relu(torch.log1p(thz[_cm])
+                                         - torch.log1p(dA_g[_cm])) ** 2).mean()
+                # jqt6 RANK: ordering is what the directional readout consumes; pure
+                # regression gave a log-log slope of 0.30 against an ideal of 1.0
+                _hm = torch.nonzero(thit > 0.5).squeeze(-1)
+                if args.w_rank_cda > 0 and len(_hm) > 8:
+                    _pi = _hm[torch.randperm(len(_hm), device=dev)]
+                    _a, _b3 = _pi[: len(_pi) // 2], _pi[len(_pi) // 2: 2 * (len(_pi) // 2)]
+                    _sgn = torch.sign(tpl[_b3] - tpl[_a])
+                    _keep2 = _sgn != 0
+                    if _keep2.any():
+                        l_rank = torch.nn.functional.margin_ranking_loss(
+                            torch.log1p(dA_g[_b3][_keep2]), torch.log1p(dA_g[_a][_keep2]),
+                            _sgn[_keep2], margin=0.15)
                 if args.two_pole_cdb or args.w_negpole > 0:
                     # jqt5 NEGATIVE POLES: anti-anchor per goal; CDB becomes a two-pole
                     # contrast (committor pattern) and DEAD states subsume onto the anti-pole
@@ -1689,7 +1786,16 @@ def main():
                     if m2.any():
                         anc_n[m2] = jqt.anchors_neg_for_pc(k1_t[m2], k2_t[m2])
                     dB_gn = model.dB(zb_g, anc_n)
-                    if args.two_pole_cdb:
+                    if args.horizon_cdb:
+                        # jqt6: P(activate WITHIN K), not "ever" -- the bones check found
+                        # P(act) at 0.59-0.62 for goals 2 plies away AND 60 plies away
+                        from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
+                            HORIZONS_K)
+                        _lg = jqt.activation_logit_h(dB_g)
+                        _yk = torch.stack([((thit > 0.5) & (tpl <= K)).float()
+                                           for K in HORIZONS_K], 1)
+                        l_cdb = torch.nn.functional.binary_cross_entropy_with_logits(_lg, _yk)
+                    elif args.two_pole_cdb:
                         l_cdb = first_hit_bce(jqt.activation_logit2(dB_g, dB_gn), thit)
                     else:
                         l_cdb = first_hit_bce(jqt.activation_logit(dB_g), thit)
@@ -1699,6 +1805,49 @@ def main():
                             l_negpole = torch.log1p(dB_gn[tdead]).mean()
                 else:
                     l_cdb = first_hit_bce(jqt.activation_logit(dB_g), thit)
+                # ---- jqt6 VALUE EQUIVALENCE: the board codes' ONLY target. From the codes
+                # plus a move, predict that move's resulting expected score (parent-mover
+                # POV) against the engine-labelled children. "Reconstruct the board only in
+                # so much as it helps me win" (Kaveh 2026-08-13).
+                if args.jqt6 and args.w_childval > 0 and wdl_pack is not None:
+                    _cs = rng_np.integers(0, len(wdl_pack["row"]), args.cv_pos)
+                    _pr = wdl_pack["row"][_cs].astype(np.int64)
+                    _pt = torch.from_numpy(tr.tok[_pr].astype(np.int64)).to(dev)
+                    _pg = torch.from_numpy(tr.glob[_pr].astype(np.float32)).to(dev)
+                    _phc = model.backbone(_pt, _pg)
+                    _zbc = model.proj_b(_phc).detach()
+                    _atc = jqt.atlas(_zbc, model.dA, model.dB, POL[:3], args.basin_temp)
+                    _, _, _, _, _, _zbrd = jqt.quantize_split(_phc, _zbc, _atc)
+                    _tv, _pv = [], []
+                    for _j, _pi in enumerate(_cs):
+                        _a2 = int(wdl_pack["off"][_pi]); _b4 = int(wdl_pack["off"][_pi + 1])
+                        if _b4 - _a2 < 2:
+                            continue
+                        _w = wdl_pack["wdl"][_a2:_b4].astype(np.float32)
+                        _tot = np.clip(_w.sum(1), 1.0, None)
+                        # stored col0 = the CHILD mover's win, so the PARENT's win is col2
+                        _E = (_w[:, 2] + 0.5 * _w[:, 1]) / _tot
+                        _mi = torch.from_numpy(
+                            wdl_pack["mid"][_a2:_b4].astype(np.int64)).to(dev)
+                        _pd = torch.sigmoid(jqt.child_value(_zbrd[_j:_j + 1], _mi))
+                        _tv.append(torch.from_numpy(_E).float().to(dev)); _pv.append(_pd)
+                    if _tv:
+                        l_childval = torch.stack(
+                            [torch.nn.functional.mse_loss(a, b) for a, b in zip(_pv, _tv)]
+                        ).mean()
+                        with torch.no_grad():
+                            _fa = torch.cat(_pv); _fb = torch.cat(_tv)
+                            _fa = _fa - _fa.mean(); _fb = _fb - _fb.mean()
+                            _den = (_fa.pow(2).sum() * _fb.pow(2).sum()).sqrt()
+                            _cv_rho = float((_fa * _fb).sum() / _den) if _den > 0 else -1.0
+                            _cv_top1 = float(np.mean([
+                                float(a.argmax() == b.argmax()) for a, b in zip(_pv, _tv)]))
+                # per-branch codebook health (jqt5 scar: a healthy GLOBAL flip rate hid a
+                # completely frozen piece stream -- every gate is per-vocabulary now)
+                if args.jqt6:
+                    _G = args.geo_heads
+                    _geo_perp = jqt.perplexity(ids_pc[:, :_G].detach())
+                    _brd_perp = jqt.perplexity(ids_pc[:, _G:].detach())
                 # per-STEP health timeseries (Kaveh 2026-08-12): perplexity is 8 bincounts and
                 # the flip-rate is one comparison on ids already in hand -- cheap enough for
                 # every step, and flip-rate IS the metastability curve (baseline 0.80/ply).
@@ -1723,6 +1872,9 @@ def main():
                 + args.w_termcon * (l_termcon_att + l_termcon_rep)
                 + args.w_vqrec * l_vqrec + args.w_pers * l_pers + args.w_jepa * l_jepa
                 + args.w_flip * (l_flip + l_pcflip) + args.w_dest * (l_dest + l_pcdest)
+                + args.w_sqdyn * (l_sqflip + l_sqdest)
+                + args.w_childval * l_childval
+                + args.w_cens_hinge * l_cens + args.w_rank_cda * l_rank
                 + args.w_negpole * l_negpole
                 + args.w_cda * l_cda + args.w_cdb * l_cdb
                 + args.w_sqrec * l_sqrec + args.w_pcrec * l_pcrec
@@ -1736,6 +1888,11 @@ def main():
                "pcflipL": float(l_pcflip.detach()), "pcdest": float(l_pcdest.detach()),
                "negpole": float(l_negpole.detach()),
                "flip_gap": _flip_gap, "dest_top1": _dest_top1, "pcdest_top1": _pcdest_top1,
+               "sqflipL": float(l_sqflip.detach()), "sqdest": float(l_sqdest.detach()),
+               "childval": float(l_childval.detach()), "cens": float(l_cens.detach()),
+               "rank": float(l_rank.detach()),
+               "sq_f1_ex": _sq_f1, "cv_rho": _cv_rho, "cv_top1": _cv_top1,
+               "geo_perp": _geo_perp, "brd_perp": _brd_perp,
                "sqrec": float(l_sqrec.detach()), "pcrec": float(l_pcrec.detach()),
                "pers_sq": float(l_pers_sq.detach()), "pers_pc": float(l_pers_pc.detach()),
                "sq_flip": _sq_flip, "pc_flip": _pc_flip,
@@ -1776,6 +1933,7 @@ def main():
     # The expensive gates (an extra forward pass + an eff_rank SVD) stay on --eval-every, because
     # running those every step would roughly double the wall clock to measure the same thing.
     step_log = open(f"{args.out}_steps.jsonl", "a", buffering=1 << 16)
+    gate_log = open(f"{args.out}_gatecheck.jsonl", "a", buffering=1)   # jqt6 abort gates
 
     _last_step = [0]
 
@@ -1809,6 +1967,38 @@ def main():
                 jqt.update_target()
         step_log.write(json.dumps({"s": step, **{k: round(float(v), 5)
                                                   for k, v in met.items()}}) + "\n")
+        # ---- jqt6 GATES (Kaveh 2026-08-14: "all sorts of gates so we don't waste compute").
+        # Every one of these fires on a failure we have ACTUALLY seen: jqt5 froze its piece
+        # stream at flip-rate 0.003 while the global rate looked healthy at 0.46, and the
+        # loss curves never complained. Per-vocabulary, and they ABORT.
+        if args.gates:
+            _fail = []
+            if not np.isfinite(met.get("loss", 0.0)):
+                _fail.append("loss is NaN/Inf")
+            for _k, _lo, _hi in (("jqt_flip", 0.15, 0.80), ("sq_flip", 0.05, 0.80),
+                                 ("pc_flip", 0.02, 0.80)):
+                _v = met.get(_k, -1.0)
+                if step >= 1500 and _v >= 0 and not (_lo <= _v <= _hi):
+                    _fail.append(f"{_k}={_v:.4f} outside [{_lo},{_hi}] "
+                                 f"(frozen or thrashing vocabulary)")
+            if step >= 400:
+                for _k, _thr in (("jqt_perp", 8.0), ("geo_perp", 6.0), ("brd_perp", 8.0)):
+                    _v = met.get(_k, -1.0)
+                    if _v >= 0 and _v < _thr:
+                        _fail.append(f"{_k}={_v:.1f} < {_thr} (codebook collapse)")
+            if args.jqt6 and step >= 1200:
+                _v = met.get("cv_rho", -1.0)
+                if 0 <= _v < 0.20:
+                    _fail.append(f"cv_rho={_v:.3f} < 0.20 -- the BOARD branch is starving: "
+                                 f"it is not learning action-conditioned structure")
+            if _fail:
+                gate_log.write(json.dumps({"s": step, "ABORT": _fail}) + "\n")
+                raise SystemExit("[gate] ABORT at step %d: %s" % (step, "; ".join(_fail)))
+            if step % args.eval_every == 0:
+                gate_log.write(json.dumps({"s": step, "ok": True, **{
+                    k: round(float(met.get(k, -1)), 4) for k in
+                    ("jqt_flip", "sq_flip", "pc_flip", "geo_perp", "brd_perp",
+                     "cv_rho", "cv_top1", "sq_f1_ex", "dest_top1", "cens", "rank")}}) + "\n")
         # HARD GATE against the take-2 failure: the pole terms ran for 20,000 steps against poles
         # that could never move, because attach_poles came after the optimizer was built. Nothing
         # in the loss or the gates noticed. Check directly that the learned poles are moving, and
