@@ -12382,3 +12382,29 @@ LOSS-INTERACTION REVIEW (standing rule):
   contrast alone -- weaker, noted for the residual analysis.
 - negpole x walls/basin: small weight 0.5; dB-space pressure monitored via cdb curve.
 Watcher armed on jqt5_run.log. jqt4 artifacts retained for salvage/comparison.
+
+## 2026-08-13 (late) — Directional queries: "which move gets me closer to my goal"
+Kaveh's ask ("I need directions in space") + his two design calls (scoring-first; cache
+everything). Built on the engine, VERIFIED by printed runs:
+- kittychess.goal_directions(board, goal, gtype): ONE batched readout over EVERY legal move
+  -> per move p_act (P(activate goal) after the move), dp (change), dA (length ruler), dd,
+  E and dE (what the direction costs). Sorted p_act then dA (Kaveh's probability-then-
+  distance rule). Returns `spread` = max-min p_act so FLATNESS IS VISIBLE.
+- goal_candidates(): the best-shot shortlist (top-k, E-vetoed) to feed goal-conditioned
+  search. Kaveh's framing: flat at one ply is FINE, these are candidates to search down.
+- _zcache (embedding cache) + embed_cached(): repeat query 0 embeddings / 32x faster; a
+  DIFFERENT goal on the same position costs 0 embeddings (predict-once/query-any-goal
+  without a learned head). Bounded 200k, cleared wholesale.
+- Server action "directions" + UI panel on the concept dropdown ("which move gets me
+  there?"), with the spread shown and a flat-field warning.
+MEASURED (jqt3, after 1.e4 e5 2.Nf3): 30 moves scored in 0.03s; spread 0.054-0.057 in
+P(activate); DIFFERENT goals rank DIFFERENT top moves (d5 vs g6) -- the readout does
+discriminate by goal.
+NEGATIVE/HONEST: the LENGTH ruler is flat at one ply (dd within +-0.01 across all 30 moves);
+all the directional signal sits in the PROBABILITY ruler (dp up to +0.023). One ply of
+movement is far below dA's resolution -- expected, and the reason macro-steps exist.
+NOT DONE (deferred, flagged): search_coherent's hot path does NOT read _zcache (its own
+batched leaf path + value cache); the prefetch claim currently holds for repeat/multi-goal
+directional queries, not for search. Wiring it needs an arena validation the running jqt5
+forbids. Also deferred per Kaveh's "scoring first": the learned (state,move)->z_B head and
+the HER-trained goal-conditioned proposer.
