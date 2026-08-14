@@ -12501,3 +12501,32 @@ interior spring Kaveh removed (a spring has an opinion about the value; this say
 large as allowed"). Plus: exact ceilings from rollout_line where the observed gap IS the true
 distance (tortuosity 0.31 => game-path ceilings overestimate ~3x), and rebalancing so
 anchor_a wins. Comments added at every misleading name + both help texts fixed.
+
+## 2026-08-14 — QRL read properly (arXiv 2304.01203 + repo). Exact formulation on record.
+OBJECTIVE (their Eq. 12):
+  min_theta max_{lambda>=0}  -E_{s~p_state, g~p_goal}[phi(d(s,g))]
+                             + lambda * ( E_{(s,a,s',r)}[relu(d(s,s')+r)^2] - eps^2 )
+EXACT DEFAULTS (quasimetric_rl/modules/quasimetric_critic/losses/local_constraint.py):
+  epsilon = 0.25 | step_cost = 1 | init_lagrange_multiplier = 0.01 (softplus-parametrised)
+  sq_deviation = (dist - step_cost).relu().square().mean(); violation = sq_deviation - eps^2;
+  loss = violation * lagrange_mult
+  lambda LR = 0.01 vs model 1e-4..5e-4 (paper appendix) -- the dual moves ~100x faster.
+  phi(x) = -softplus(15 - x, beta=0.1): saturating, knee at the task horizon; exists because
+  naive maximisation inflates late-layer weight norms and lambda "needs to constantly catch up".
+  Theorem 3: relaxed constraint recovers -V* up to a KNOWN SCALE (1+eps) => distances come out
+  ~1.25x true. Divide out before reading plies.
+  Maximisation pairs: s and g from INDEPENDENT MARGINALS, not same-trajectory.
+  IQE: 2048-d projector, 64 components x 32. OURS: 48-d, 16 components -- ~40x smaller.
+  L_transition = 0.5*(d^z(zhat',z')^2 + d^z(z',zhat')^2) -- predicts the next latent scored BY
+  THE LEARNED QUASIMETRIC, "empirically superior to a simple regression loss on Z, whose scale
+  is meaningless". This independently explains our JEPA-MSE = persistence failure. They raise
+  its weight 0.1 -> 10 for non-deterministic dynamics (chess-with-opponent is that regime).
+CROSS-CHECK vs OUR MEASUREMENTS: their step target puts one ply at ~1.00-1.25 units; we measure
+1.400 (slightly loose, right ballpark). But long-range d/k = 0.44 where taut gives ~1.0.
+=> LOCAL SCALE ~RIGHT, GLOBAL INFLATION ABSENT. Exactly a missing maximisation term.
+WHAT WE HAVE THAT THEY DON'T: k-step ceilings (a witnessed k-ply path bounds d); they constrain
+single transitions only. KEEP.
+WHAT WE LACK: (1) maximisation over independent (s,g) marginals, (2) saturating phi with the
+knee at OUR horizon (~60-100 plies, not 15), (3) adaptive dual lambda instead of fixed
+w_iqe/w_repel, (4) squared-hinge + eps relaxation instead of diverging hard walls,
+(5) possibly IQE width.
