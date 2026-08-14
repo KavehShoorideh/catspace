@@ -12408,3 +12408,34 @@ batched leaf path + value cache); the prefetch claim currently holds for repeat/
 directional queries, not for search. Wiring it needs an arena validation the running jqt5
 forbids. Also deferred per Kaveh's "scoring first": the learned (state,move)->z_B head and
 the HER-trained goal-conditioned proposer.
+
+## 2026-08-13 (late) — BONES CHECK: the dA flatness is NOT a data problem (jqt3, printed)
+Kaveh: "I can't tell if the flatness of the dA is because of lack of data ... don't wanna
+[scale] until the bones are right." bones_check.py, 4 gates, CPU, 900 games / 24k events:
+  GATE 1 CALIBRATION  spearman(true plies, dA) +0.495 | log-log slope 0.30 (1.0 = ruler)
+    true 1-3 -> dA 8.9 | 4-8 -> 9.8 | 9-20 -> 13.2 | 21-60 -> 22.1 | 61+ -> 33.9
+    => COMPRESSED ~13x (dA spans 3.8x while truth spans 50x) with a FLOOR at ~9 plies.
+    => censored (never activates) dA 14.7 vs observed 14.8: the length ruler CANNOT tell
+       reachable from unreachable. (The loss DROPS censored pairs -- verified in code.)
+  GATE 2 MONOTONICITY 400 trajectories: slope +0.568/ply (ideal 1.0), 79.1% of steps move
+    the right way vs 50% chance => the ruler is REAL and directional, just under-responsive.
+  GATE 3 RESOLUTION near/mid/far buckets overlap heavily (p10-p90 5.0-24.0 vs 8.8-43.1).
+  GATE 4 LEARNING CURVE probe(frozen z_B + anchor -> log1p plies), held-out spearman:
+    3% .357 | 10% .444 | 30% .578 | 60% .604 | 100% (n=9525) .616  -- FLATTENING.
+    A 2-layer probe on 9.5k labels BEATS the production dA head (.616 vs .495).
+VERDICT: data is NOT the binding constraint. If it were, the probe would trail the head and
+the curve would be steep; instead the probe passes it with ~10k labels and is saturating
+(+0.03 for the last 3.3x of data). The limits are structural, and specific:
+  (a) LOSS COMPRESSION: Huber on log1p(dA) vs log1p(plies) under-responds -> slope 0.30 and
+      the ~9-ply floor. We are optimizing exactly what we asked for; we asked wrong.
+  (b) CENSORED DROPPED: nothing teaches "unreachable is far" (jqt5's negative poles target
+      this directly).
+  (c) NEAR-GOAL FLOOR: 1-3 ply goals read ~9 (jqt3 predates the subsumption zero-distance
+      samples; jqt4/jqt5 have them at frac_now=0.3).
+CAVEAT (honest): the probe is an unconstrained MLP while dA is a QUASIMETRIC (IQE) -- part
+of the .495 vs .616 gap is the price of the structure we deliberately pay for (composability,
+asymmetry). The slope-0.30 compression is diagnosable and fixable independent of that.
+NEXT (jqt6 slate, NOT a jqt5 restart): one-sided hinge for censored pairs (survival-style,
+the "v2" the loss docstring already anticipates) + rank-based dA training (ranking is what
+the directional readout actually consumes) + re-run this suite on jqt5 as the gate.
+NO CLOUD SPEND until gates 1-3 improve: more data buys ~+0.03 spearman.
