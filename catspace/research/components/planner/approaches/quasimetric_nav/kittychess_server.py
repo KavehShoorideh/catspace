@@ -154,6 +154,8 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
     <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">position concepts</div>
     <select id="cdsel" style="width:100%;background:#262421;color:#bababa;border:1px solid #3a3733;border-radius:3px;padding:3px;font-size:12px"></select>
     <div id="cddeets" style="font-size:12px;margin-top:6px;line-height:1.55"></div>
+    <button id="dirbtn" title="score EVERY legal move against this concept: P(activate) after the move, its change, distance on the length ruler, and what the move costs in expected points. No search — this is the shortlist you then search." style="margin-top:6px;background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:3px 9px;cursor:pointer;font:inherit;font-size:12px">which move gets me there?</button>
+    <div id="dirbox" style="display:none;font-size:11.5px;margin-top:6px;line-height:1.5;font-variant-numeric:tabular-nums"></div>
   </div>
   <div class="box" id="conceptbox" style="display:none">
     <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">concepts &nbsp;<span id="postoks" style="color:#6f6b66"></span></div>
@@ -228,6 +230,37 @@ function nextRefresh(fen){
     box.innerHTML=h;
   }).catch(()=>{box.textContent='next: unavailable';});
 }
+function dirQuery(){
+  const sel=document.getElementById('cdsel');
+  if(!sel||sel.value===''||!lastState||!lastState.cdeets){return;}
+  const cd=lastState.cdeets[+sel.value];        // dropdown value is the cdeets INDEX
+  if(!cd){return;}
+  const h=cd.h, c=cd.c;
+  const box=document.getElementById('dirbox');
+  box.style.display=''; box.textContent='reading the geometry…';
+  fetch('/api',{method:'POST',body:JSON.stringify({action:'directions',h:h,c:c})})
+    .then(r=>r.json()).then(e=>{
+      if(e.err){box.textContent='directions: '+e.err;return;}
+      const flat=e.spread<0.02;
+      let h2=`<b>${e.goal}</b> — now p ${(100*e.p_now).toFixed(1)}% · dA ${e.dA_now}`+
+        `<div style="color:#6f6b66;margin:2px 0" title="max-minus-min P(activate) across all legal moves. When this is small the one-ply field cannot separate the moves — the ranking is a SHORTLIST to search, not a verdict.">`+
+        `spread ${(100*e.spread).toFixed(1)}pts over ${e.n_moves} moves`+
+        `${flat?' · <span style="color:#dbac16">flat — search the top few</span>':''}</div>`;
+      h2+='<table style="width:100%;border-collapse:collapse">'+
+        '<tr style="color:#6f6b66"><th align="left">move</th><th align="right">P(act)</th>'+
+        '<th align="right">Δp</th><th align="right">dA</th><th align="right">ΔE</th></tr>';
+      for(const r of e.rows.slice(0,8)){
+        const dpc=r.dp>0?'#7fbf5f':(r.dp<0?'#bf5f5f':'#8f8a82');
+        const dec=r.dE<-0.05?'#bf5f5f':'#8f8a82';
+        h2+=`<tr><td>${r.san}</td><td align="right"><b>${(100*r.p_act).toFixed(1)}%</b></td>`+
+          `<td align="right" style="color:${dpc}">${r.dp>0?'+':''}${(100*r.dp).toFixed(1)}</td>`+
+          `<td align="right">${r.dA.toFixed(2)}</td>`+
+          `<td align="right" style="color:${dec}">${r.dE>0?'+':''}${r.dE.toFixed(3)}</td></tr>`;
+      }
+      box.innerHTML=h2+'</table>';
+    }).catch(()=>{box.textContent='directions: unavailable';});
+}
+document.addEventListener('click',e=>{if(e.target&&e.target.id==='dirbtn')dirQuery();});
 function sqRefresh(fen){
   const box=document.getElementById('sqbox');
   if(!sqOn){if(!whyOn)cg.setShapes([]);box.style.display='none';return;}
@@ -1029,6 +1062,22 @@ class H(BaseHTTPRequestHandler):
                 H.an_thread = threading.Thread(target=worker, daemon=True)
                 H.an_thread.start()
             self._send(200, json.dumps({"started": True, "over": over}).encode())
+            return
+        if act == "directions":
+            # DIRECTIONS IN SPACE (Kaveh 2026-08-13: "which move gets me closer to my
+            # goal"): every legal move scored against a chosen concept anchor, no search.
+            # Embeddings are cached, so re-querying with a DIFFERENT goal costs nothing.
+            try:
+                g = (int(req.get("h", 0)), int(req.get("c", 0)))
+                gt = str(req.get("gtype", "global"))
+                with H.lock:
+                    out = H.eng.goal_directions(b, g, gtype=gt)
+                nm = ((H.code_names or {}).get(g) or [f"h{g[0]}/c{g[1]}"])[0] \
+                    if gt == "global" else f"{gt} {g[0]}/c{g[1]}"
+                self._send(200, json.dumps({**out, "goal": nm,
+                                            "mover": "white" if b.turn else "black"}).encode())
+            except Exception as e:
+                self._send(200, json.dumps({"err": str(e)[:140]}).encode())
             return
         if act == "futures":
             # SEQUENCE-LAYER futures (Kaveh 2026-08-13: "prediction of future likely

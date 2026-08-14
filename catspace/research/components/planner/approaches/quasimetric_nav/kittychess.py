@@ -72,6 +72,12 @@ class KittyChess:
         self.tb = TB() if use_tb else None
         self._ckpt_base = ckpt[:-3] if ckpt.endswith(".pt") else ckpt
         self._mcache = {}                        # fen -> leaf value cache
+        # EMBEDDING CACHE (Kaveh 2026-08-13: "cache all of the embeddings and evaluations
+        # so we don't have to keep doing it again"). Scoring a move's direction embeds the
+        # CHILD -- which is exactly the node search expands next, so with this cache the
+        # directional readout is PREFETCH, not overhead. Keyed like the value cache
+        # (zobrist under FB, fen otherwise). Bounded; z rows live on device.
+        self._zcache = {}
         # CONCEPT-MEDIATED EVALUATION (Kaveh 2026-08-11: 'I don't want it based on some
         # internal margin'): values flow through the concept bottleneck -- quantize phi,
         # DECODE the codes back to the six outputs, score from those. Faithful by
@@ -757,19 +763,143 @@ class KittyChess:
         rows.sort(key=lambda r: r["value"], reverse=True)
         return rows
 
+    def _jqt_mod(self):
+        """the concept sidecar (lazy, shared by the goal bias and the directional readout)."""
+        if getattr(self, "_jqt", None) is None:
+            from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
+                JQTModule)
+            import os as _os, re as _re
+            base = getattr(self, "_ckpt_base", None)
+            _stem = _re.sub(r"_(latest|step\d+)$", "", base or "")
+            _p = next((c + "_jqt.pt" for c in (base, _stem)
+                       if c and _os.path.exists(c + "_jqt.pt")), None)
+            if _p is None:
+                raise FileNotFoundError(f"no _jqt.pt beside {base}")
+            pay = torch.load(_p, map_location=self.device, weights_only=False)
+            self._jqt = JQTModule(d_model=pay["d_in"], heads=pay["heads"], codes=pay["codes"],
+                                  d=pay["d"], square_codes=pay.get("square_codes", 0),
+                                  piece_codes=pay.get("piece_codes", 0)).to(self.device)
+            self._jqt.load_state_dict(pay["state_dict"], strict=False)
+            self._jqt.eval()
+        return self._jqt
+
+    def embed_cached(self, keys, toks, globs):
+        """embed only the MISSES; returns (z (N,d), n_new). Rows come back in input order.
+        The cache is shared with everything else that embeds positions, so a position
+        scored for direction is free when the search reaches it."""
+        miss = [i for i, k in enumerate(keys) if k not in self._zcache]
+        if miss:
+            with torch.no_grad():
+                zm = self._embed([toks[i] for i in miss], [globs[i] for i in miss]).float()
+            for j, i in enumerate(miss):
+                self._zcache[keys[i]] = zm[j]
+            if len(self._zcache) > 200_000:
+                self._zcache.clear()
+        return torch.stack([self._zcache[k] for k in keys]), len(miss)
+
+    def goal_anchor(self, goal, gtype="global"):
+        """(key1, key2) -> the z_B-space anchor for a concept goal, any vocabulary."""
+        jm = self._jqt_mod()
+        k1 = torch.tensor([int(goal[0])], dtype=torch.long, device=self.device)
+        k2 = torch.tensor([int(goal[1])], dtype=torch.long, device=self.device)
+        with torch.no_grad():
+            if gtype == "square":
+                return jm.anchors_for_sq(k1, k2).float()
+            if gtype == "piece":
+                return jm.anchors_for_pc(k1, k2).float()
+            return jm.anchors_for(torch.stack([k1, k2], 1)).float()
+
+    def goal_directions(self, board, goal, gtype="global", k=None):
+        """DIRECTIONS IN SPACE (Kaveh 2026-08-13: "which move gets me closer to my goal").
+        One batched readout over EVERY legal move -- no search -- returning per move:
+            p_act    P(activate the goal) from the resulting position (probability ruler)
+            dp       change vs the current position (+ = this move helps)
+            dA       log1p distance to the goal anchor (length ruler)
+            dd       parent dA - child dA (+ = moved closer, in plies-ish units)
+            E        mover-POV expected points at the child (the disaster veto input)
+            dE       change in E (what the direction COSTS)
+        Sorted by p_act then dA (Kaveh's move-selection rule: probability first, then
+        distance). Also returns `spread` = max-min p_act: when the field is flat this is
+        near zero and the ranking is a SHORTLIST for search, not an answer.
+        Embeddings and values are cached, so the search that follows pays nothing again."""
+        import numpy as _np
+        moves = list(board.legal_moves)
+        if not moves:
+            return {"rows": [], "spread": 0.0, "n_embedded": 0}
+        fast = bool(getattr(self, "fastgen", True))
+        try:
+            from catspace.research.components.planner.approaches.quasimetric_nav.fastboard import FB
+            rb = FB.from_chess(board) if fast else None
+        except Exception:
+            rb, fast = None, False
+        keys, toks, globs, kids = [], [], [], []
+        if fast and rb is not None:
+            pairs = rb.children()
+            _mv = {}
+            for u, cb in pairs:
+                keys.append(cb.key())
+                tk, gl = cb.tok_glob()
+                toks.append(tk); globs.append(gl); kids.append(cb)
+                _mv[len(keys) - 1] = chess.Move.from_uci(u)
+            moves = [_mv[i] for i in range(len(keys))]
+        else:
+            for mv in moves:
+                board.push(mv)
+                keys.append(board.fen())
+                tk, gl = tokenize(board)
+                toks.append(tk); globs.append(gl); kids.append(None)
+                board.pop()
+        pk = rb.key() if (fast and rb is not None) else board.fen()
+        ptk, pgl = (rb.tok_glob() if (fast and rb is not None) else tokenize(board))
+        z_all, n_new = self.embed_cached([pk] + keys, [ptk] + toks, [pgl] + globs)
+        A = self.goal_anchor(goal, gtype)
+        P3 = self.poles[[self.pi["WIN"], self.pi["DRAW"], self.pi["LOSS"]]].to(self.device)
+        jm = self._jqt_mod()
+        with torch.no_grad():
+            Ae = A.expand(len(z_all), -1)
+            dB = self.net.dB(z_all, Ae)
+            p_act = torch.sigmoid(jm.activation_logit(dB)).cpu().numpy()
+            dA = torch.log1p(self.net.dA(z_all, Ae).clamp(min=0)).cpu().numpy()
+            DBp = torch.stack([self.net.dB(z_all, P3[[j]].expand(len(z_all), -1))
+                               for j in range(3)], 1)
+            pr = torch.softmax(-DBp / 5.0, 1).cpu().numpy()
+        E_w = pr[:, 0] + 0.5 * pr[:, 1]
+        # parent row is index 0; children follow. E is the MOVER's (the side to move NOW).
+        mover_white = board.turn == chess.WHITE
+        E_m = E_w if mover_white else 1.0 - E_w
+        p0, d0, e0 = float(p_act[0]), float(dA[0]), float(E_m[0])
+        rows = []
+        for i, mv in enumerate(moves, start=1):
+            rows.append({"uci": mv.uci(), "san": board.san(mv),
+                         "p_act": round(float(p_act[i]), 4),
+                         "dp": round(float(p_act[i]) - p0, 4),
+                         "dA": round(float(dA[i]), 3),
+                         "dd": round(d0 - float(dA[i]), 3),
+                         "E": round(float(E_m[i]), 4),
+                         "dE": round(float(E_m[i]) - e0, 4)})
+        rows.sort(key=lambda r: (-r["p_act"], r["dA"]))
+        sp = float(p_act[1:].max() - p_act[1:].min()) if len(moves) else 0.0
+        return {"rows": rows[:k] if k else rows, "spread": round(sp, 4),
+                "p_now": round(p0, 4), "dA_now": round(d0, 3), "E_now": round(e0, 4),
+                "n_embedded": n_new, "n_moves": len(moves)}
+
+    def goal_candidates(self, board, goal, gtype="global", k=6, min_E=None):
+        """the BEST-SHOT shortlist (Kaveh 2026-08-13: "we wanna start from our best shot"):
+        top-k moves by goal progress, disaster-vetoed. Flatness is fine here -- these are
+        candidates to SEARCH, and the field differentiates as the search descends."""
+        out = self.goal_directions(board, goal, gtype)
+        rows = out["rows"]
+        if min_E is not None:
+            keep = [r for r in rows if r["E"] >= min_E]
+            rows = keep or rows[:k]
+        return [chess.Move.from_uci(r["uci"]) for r in rows[:k]], out
+
     def _goal_bias(self, toks, globs, goal):
         """GOAL-CONDITIONED leaf bias (Kaveh 2026-08-12: 'search is towards a subgoal').
         P(activate goal) on the probability ruler, scaled to the tie-epsilon band of the
         concept-value scale. The OUTCOME VETO is applied by the caller: mission-ranked,
         disaster-vetoed."""
-        if getattr(self, "_jqt", None) is None:
-            from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
-                JQTModule)
-            base = getattr(self, "_ckpt_base", None)
-            pay = torch.load(base + "_jqt.pt", map_location=self.device, weights_only=False)
-            self._jqt = JQTModule(d_model=pay["d_in"], heads=pay["heads"], codes=pay["codes"],
-                                  d=pay["d"]).to(self.device)
-            self._jqt.load_state_dict(pay["state_dict"], strict=False); self._jqt.eval()
+        self._jqt_mod()
         with torch.no_grad():
             hc = torch.tensor([goal], dtype=torch.long, device=self.device)
             A = self._jqt.anchors_for(hc).float()
