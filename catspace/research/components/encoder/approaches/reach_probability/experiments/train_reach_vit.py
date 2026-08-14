@@ -2033,6 +2033,7 @@ def main():
     step_log = open(f"{args.out}_steps.jsonl", "a", buffering=1 << 16)
     gate_log = open(f"{args.out}_gatecheck.jsonl", "a", buffering=1)   # jqt6 abort gates
     _cvh = []                                    # cv_rho history (gated on the mean, not a spike)
+    _rh = {}                                     # flip-rate histories; same rule
 
     _last_step = [0]
 
@@ -2074,12 +2075,22 @@ def main():
             _fail = []
             if not np.isfinite(met.get("loss", 0.0)):
                 _fail.append("loss is NaN/Inf")
+            # WINDOWED, never instantaneous (2026-08-14: this gate killed a HEALTHY jqt6 at
+            # step 1818 on a single batch reading sq_flip=0.039 when the 200-step mean was
+            # ~0.19 -- the second false-positive abort of the day, same root cause as the
+            # perplexity one. Per-batch flip rates swing wildly with position type.)
             for _k, _lo, _hi in (("jqt_flip", 0.15, 0.80), ("sq_flip", 0.05, 0.80),
                                  ("pc_flip", 0.02, 0.80)):
-                _v = met.get(_k, -1.0)
-                if step >= 1500 and _v >= 0 and not (_lo <= _v <= _hi):
-                    _fail.append(f"{_k}={_v:.4f} outside [{_lo},{_hi}] "
-                                 f"(frozen or thrashing vocabulary)")
+                _v0 = met.get(_k, -1.0)
+                if _v0 >= 0:
+                    _rh.setdefault(_k, []).append(_v0)
+                    if len(_rh[_k]) > 200:
+                        _rh[_k].pop(0)
+                if step >= 1500 and len(_rh.get(_k, [])) >= 100:
+                    _v = float(np.mean(_rh[_k]))
+                    if not (_lo <= _v <= _hi):
+                        _fail.append(f"{_k}(200-step mean)={_v:.4f} outside [{_lo},{_hi}] "
+                                     f"(frozen or thrashing vocabulary)")
             # CALIBRATED against jqt5's real warm-up (2026-08-14: the first version aborted a
             # HEALTHY jqt6 at step 400 for perp 5.8, when jqt5 -- which finished at 44.5 --
             # was only at 3.66 there and did not cross 8 until past step 1000). Codebooks
