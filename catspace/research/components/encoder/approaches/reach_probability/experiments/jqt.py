@@ -29,13 +29,42 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+HORIZONS_K = (2, 6, 12, 10_000)      # plies; the last is effectively "ever"
+
 
 class JQTModule(nn.Module):
     def __init__(self, d_model=256, heads=8, codes=64, d_code=32, d=64, d_move=48,
-                 hidden=384, ema=0.996, square_codes=0, piece_codes=0, d_fine=16):
+                 hidden=384, ema=0.996, square_codes=0, piece_codes=0, d_fine=16,
+                 geo_heads=0, bank_n=256):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         self.heads, self.codes, self.d_code, self.d = heads, codes, d_code, d
+        # ---- jqt6 MULTIMODAL SPLIT (Kaveh 2026-08-13): heads [0, geo_heads) read the
+        # GEOMETRY (z_B detached + atlas features) and are a discrete quantizer of the
+        # field; heads [geo_heads, heads) read the BOARD and are graded on VALUE
+        # EQUIVALENCE (reproduce what every legal move leads to), never on reconstruction.
+        # geo_heads=0 keeps the jqt5 single-encoder behaviour.
+        self.geo_heads = int(geo_heads)
+        self.n_atlas = 8              # 3 pole dA + 3 committor + fwd/bwd density
+        if geo_heads:
+            self.geo_enc = nn.Sequential(nn.Linear(d + self.n_atlas, 256), nn.GELU(),
+                                         nn.Linear(256, geo_heads * d_code))
+            self.geo_dec = nn.Sequential(nn.Linear(geo_heads * d_code, 128), nn.GELU(),
+                                         nn.Linear(128, 6))
+            n_brd = heads - geo_heads
+            # board encoder is CONDITIONED on the (detached) geometry codes so it can spend
+            # its capacity on what geometry did not already say
+            self.brd_enc = nn.Sequential(
+                nn.Linear(d_model + geo_heads * d_code, 256), nn.GELU(),
+                nn.Linear(256, n_brd * d_code))
+            # VALUE EQUIVALENCE head: (board codes, move) -> the child's expected score,
+            # parent-mover POV. Graded against the wdl_labels shards.
+            self.cv_head = nn.Sequential(nn.Linear(n_brd * d_code + d_move, hidden),
+                                         nn.GELU(), nn.Linear(hidden, 1))
+            # density reference bank (the only geometry input NOT derivable from z_B)
+            self.register_buffer("bank", torch.zeros(bank_n, d))
+            self.register_buffer("bank_r", torch.ones(1) * 10.0)
+            self.register_buffer("bank_n", torch.zeros(1))
         self.ema = float(ema)
         self.enc = nn.Sequential(nn.Linear(d_model, 256), nn.GELU(),
                                  nn.Linear(256, heads * d_code))
@@ -76,6 +105,12 @@ class JQTModule(nn.Module):
         # activation-probability link: logit = a * (b0 - log1p(dB(s->anchor)))
         self.db_a = nn.Parameter(torch.tensor(1.0))
         self.db_b0 = nn.Parameter(torch.tensor(3.0))
+        # jqt6 HORIZON-CONDITIONED activation (bones check: P(act) read 0.59-0.62 for goals
+        # 2 plies away AND 60 plies away -- "does it ever happen" carries no direction).
+        # One (a, b) pair per horizon K in HORIZONS_K, so the probability ruler becomes a
+        # family of horizon-specific readouts.
+        self.hz_a = nn.Parameter(torch.ones(len(HORIZONS_K)))
+        self.hz_b = nn.Parameter(torch.tensor([3.0, 3.0, 3.0, 3.0][:len(HORIZONS_K)]))
         # running normalisation of the 6 reconstruction targets (dA3 + P3)
         self.register_buffer("y_mu", torch.zeros(6))
         self.register_buffer("y_sd", torch.ones(6))
@@ -100,6 +135,10 @@ class JQTModule(nn.Module):
             self.anchor_sq = nn.Linear(d_fine, d)
             self.anchor_sq_pos = nn.Embedding(64, d)
             self.anchor_sq_neg = nn.Linear(d_fine, d)       # jqt5 anti-pole (shared pos emb)
+            self.sqd_flip = nn.Sequential(nn.Linear(d_fine + d_move, 128), nn.GELU(),
+                                          nn.Linear(128, 1))
+            self.sqd_dest = nn.Sequential(nn.Linear(d_fine + d_move, 128), nn.GELU(),
+                                          nn.Linear(128, square_codes))
         if piece_codes:
             self.anchor_pc = nn.Linear(d_fine, d)
             self.anchor_pc_type = nn.Embedding(13, d)
@@ -152,6 +191,77 @@ class JQTModule(nn.Module):
     def predict_child(self, z_q_par, mids):
         m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
         return self.pred(torch.cat([z_q_par, m], -1))
+
+    # ---- jqt6: atlas, split quantize, value equivalence, square dynamics ---------------
+    @torch.no_grad()
+    def refresh_bank(self, zb_sample):
+        """reference positions for the density features, refreshed with the activation
+        index. r = median pairwise distance, so density is scale-free as the field moves."""
+        n = min(len(zb_sample), self.bank.shape[0])
+        self.bank[:n] = zb_sample[:n].detach()
+        self.bank_n.fill_(float(n))
+
+    def set_bank_radius(self, r):
+        self.bank_r.fill_(float(r))
+
+    def atlas(self, zb, dA_fn, dB_fn, poles3, basin_temp=5.0):
+        """graph-structural features for the geometry branch. Pole distances are supervised
+        by every game's outcome; DENSITY is the only part not derivable from z_B -- it needs
+        to know where real positions live, forward and backward (a quasimetric asymmetry:
+        'how much can I reach' vs 'how much reaches me')."""
+        dA3 = torch.stack([dA_fn(zb, poles3[[k]].expand(len(zb), -1)) for k in range(3)], 1)
+        dB3 = torch.stack([dB_fn(zb, poles3[[k]].expand(len(zb), -1)) for k in range(3)], 1)
+        pr3 = torch.softmax(-dB3 / basin_temp, 1)
+        n = int(self.bank_n.item())
+        if n <= 0:
+            dens = torch.zeros(len(zb), 2, device=zb.device, dtype=zb.dtype)
+        else:
+            B = self.bank[:n]
+            ii = torch.arange(len(zb), device=zb.device).repeat_interleave(n)
+            jj = torch.arange(n, device=zb.device).repeat(len(zb))
+            d_fwd = dA_fn(zb[ii], B[jj]).view(len(zb), n)     # what I can reach
+            d_bwd = dA_fn(B[jj], zb[ii]).view(len(zb), n)     # what reaches me
+            r = self.bank_r
+            dens = torch.stack([torch.sigmoid((r - d_fwd) / (0.25 * r)).mean(1),
+                                torch.sigmoid((r - d_bwd) / (0.25 * r)).mean(1)], 1)
+        return torch.cat([torch.log1p(dA3.clamp(min=0)), pr3, dens], -1)
+
+    def quantize_split(self, phi, zb_det, atlas_feats):
+        """jqt6 forward: geometry heads from (z_B, atlas), board heads from (phi, geo codes).
+        -> (h_pre (B,H,d_code), zq flat, ids (B,H), vq_loss, zq_geo, zq_brd)"""
+        G = self.geo_heads
+        h_geo = self.geo_enc(torch.cat([zb_det, atlas_feats], -1)).view(len(phi), G,
+                                                                        self.d_code)
+        qs, ids, vloss = [], [], 0.0
+        for i in range(G):
+            q, idx, l = self.vq[i](h_geo[:, i])
+            qs.append(q); ids.append(idx); vloss = vloss + l
+        zq_geo = torch.cat(qs, -1)
+        h_brd = self.brd_enc(torch.cat([phi, zq_geo.detach()], -1)).view(
+            len(phi), self.heads - G, self.d_code)
+        for i in range(G, self.heads):
+            q, idx, l = self.vq[i](h_brd[:, i - G])
+            qs.append(q); ids.append(idx); vloss = vloss + l
+        zq_brd = torch.cat(qs[G:], -1)
+        h_pre = torch.cat([h_geo, h_brd], 1)
+        return h_pre, torch.cat(qs, -1), torch.stack(ids, 1), vloss, zq_geo, zq_brd
+
+    def child_value(self, zq_brd, mids):
+        """VALUE EQUIVALENCE (Kaveh 2026-08-13: "reconstruct the board only in so much as it
+        helps me win"): from the BOARD codes plus a move, predict that move's resulting
+        expected score. Forces the codes to encode placement exactly to the extent it
+        changes which moves work -- and no further."""
+        m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
+        n = len(mids)
+        z = zq_brd if len(zq_brd) == n else zq_brd.expand(n, -1)
+        return self.cv_head(torch.cat([z, m], -1)).squeeze(-1)
+
+    def sq_predict_flips(self, h_sq, mids):
+        """per-SQUARE hurdle dynamics (jqt6: the square stream had NO predictor before).
+        -> (flip logits (B,64), destination logits (B,64,C_sq))"""
+        m = self.e_from(mids[:, 0]) + self.e_to(mids[:, 1]) + self.e_promo(mids[:, 2])
+        x = torch.cat([h_sq, m[:, None].expand(-1, h_sq.shape[1], -1)], -1)
+        return self.sqd_flip(x).squeeze(-1), self.sqd_dest(x)
 
     def predict_flips(self, z_q_par, mids):
         """jqt5 hurdle dynamics -> (flip logits (B,H), destination logits (B,H,C))."""
@@ -224,6 +334,11 @@ class JQTModule(nn.Module):
     def activation_logit(self, dB):
         return self.db_a * (self.db_b0 - torch.log1p(dB))
 
+    def activation_logit_h(self, dB):
+        """-> (N, len(HORIZONS_K)) logits: P(activate within K plies) for each horizon."""
+        l = torch.log1p(dB)[:, None]
+        return self.hz_a[None] * (self.hz_b[None] - l)
+
     def anchors_neg_for(self, hc):
         """anti-pole anchors, global vocabulary (jqt5). Same codebook vector, its own
         projection: 'the region where head-h/code-c is DEAD'."""
@@ -269,7 +384,7 @@ class JQTModule(nn.Module):
     def perplexity(self, ids):
         """codebook usage per head -> mean exp(entropy); K = fully used, ~1 = collapsed."""
         ps = []
-        for h in range(self.heads):
+        for h in range(ids.shape[1]):       # width of what was PASSED (per-branch slices)
             c = torch.bincount(ids[:, h], minlength=self.codes).float()
             p = c / c.sum().clamp(min=1)
             ps.append(float(torch.exp(-(p * (p + 1e-9).log()).sum())))
@@ -305,6 +420,7 @@ class ActivationIndex:
         k1 = np.empty(n, np.int64); k2 = np.empty(n, np.int64)
         plies = np.empty(n, np.float32); hit = np.empty(n, np.float32)
         dead = np.zeros(n, np.float32)
+        horiz = np.zeros(n, np.float32)      # jqt6: plies remaining = the censoring bound
         gsel = self.rng.integers(0, len(self.games), n)
         for b in range(n):
             g = self.games[gsel[b]]
@@ -315,6 +431,7 @@ class ActivationIndex:
             AL = g[5] if len(g) > 5 else None
             L = len(rws)
             pp = int(self.rng.integers(0, max(1, L - 2)))
+            horiz[b] = float(L - pp - 1)     # how long we WATCHED before the game ended
             r = self.rng.random()
             # jqt5 DEAD-STATE negative (anti-pole member): a piece TYPE with zero alive
             # representatives -- every piece-concept of that type is unreachable from here.
@@ -398,7 +515,7 @@ class ActivationIndex:
                         c = int(self.rng.integers(0, self.codes))
                     rows[b] = rws[pp]; k1[b] = h; k2[b] = c
                     plies[b] = -1.0; hit[b] = 0.0
-        return rows, gtype, k1, k2, plies, hit, dead
+        return rows, gtype, k1, k2, plies, hit, dead, horiz
 
     def sample(self, n):
         rows = np.empty(n, np.int64)
