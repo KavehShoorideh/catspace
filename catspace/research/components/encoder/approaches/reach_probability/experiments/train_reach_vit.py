@@ -725,6 +725,17 @@ def main():
         print("[poles] CONTRASTIVE mode: no fixed poles, no anchors, no trained basin; "
               f"{len(t_rows):,} terminals structure themselves", flush=True)
     if args.poles == "fixed":
+        # --pole-height ONLY reaches simplex_poles() in the fixed branch. With
+        # --learned-poles the poles are nn.Parameters initialised at randn*init_scale and the
+        # height is silently ignored -- it was a DEAD FLAG in every generation from jqt1 to
+        # jqt7 (found 2026-08-14). Say so rather than let the next reader trust the number.
+        if args.learned_poles and args.pole_height != 3.0:
+            print(f"[poles] WARNING: --pole-height {args.pole_height} is IGNORED because "
+                  f"--learned-poles is set (poles are learned from randn*init_scale; the "
+                  f"height only applies to the fixed simplex). Measured consequence: the "
+                  f"learned frame settles near coord 3.3 with LOSS->WIN ~24 units, and the "
+                  f"free gauge means absolute distances are NOT comparable across "
+                  f"checkpoints -- only scale-invariant metrics are.", flush=True)
         net.attach_poles(t_parent, n_sources=1, fixed=not args.learned_poles,
                          height=args.pole_height)
 
@@ -2014,8 +2025,7 @@ def main():
                                    / np.clip(_w.sum(1), 1.0, None))
                             _mi2 = torch.from_numpy(
                                 wdl_pack["mid"][_a2:_b4].astype(np.int64)).to(dev)
-                            _, _qm2, _, _ = jqt.move_concepts(zq_flat[:1] * 0
-                                                              + _zq_cv[_j:_j + 1], _mi2)
+                            _, _qm2, _, _ = jqt.move_concepts(_zq_cv[_j:_j + 1], _mi2)
                             _lg2, _ = jqt.select_moves(_zq_cv[_j:_j + 1], _qm2)
                             _tgt2 = torch.tensor([int(np.argmax(_E2))], device=dev)
                             _sl.append(torch.nn.functional.cross_entropy(_lg2[None], _tgt2))
@@ -2231,15 +2241,15 @@ def main():
                 if step >= _st:
                     for _k in ("jqt_perp", "geo_perp", "brd_perp", "mv_perp"):
                         _v = met.get(_k, -1.0)
-                        # the move vocabulary is allowed to be genuinely smaller: a few
-                        # dozen move CLASSES is a plausible answer, unlike a collapsed
-                        # position vocabulary. Gentler bar, same abort.
-                        _t2 = (_thr * 0.5) if _k == "mv_perp" else _thr
-                        if _v >= 0 and _v < _t2:
-                            _thr = _t2
-                            _fail.append(f"{_k}={_v:.1f} < {_thr} at step {_st}+ "
+                        # the move vocabulary is allowed to be genuinely smaller: a few dozen
+                        # move CLASSES is a plausible answer, unlike a collapsed position
+                        # vocabulary. Gentler bar, same abort. (Rewritten 2026-08-15: the
+                        # first version mutated the loop's own threshold variable and reset
+                        # it with a trailing assignment -- correct by accident, unreadable.)
+                        _kthr = (_thr * 0.5) if _k == "mv_perp" else _thr
+                        if 0 <= _v < _kthr:
+                            _fail.append(f"{_k}={_v:.1f} < {_kthr} at step {_st}+ "
                                          f"(codebook collapse)")
-                        _thr = (15.0 if _st == 4000 else 8.0)
             # cv_rho is computed on cv_pos positions per step -- far too noisy to gate on
             # instantaneously (it swung 0.32 -> -0.10 between steps 250 and 400). Smoothed.
             _cvh.append(met.get("cv_rho", -1.0))
