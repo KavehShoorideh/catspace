@@ -2176,6 +2176,7 @@ def main():
     gate_log = open(f"{args.out}_gatecheck.jsonl", "a", buffering=1)   # jqt6 abort gates
     _cvh = []                                    # cv_rho history (gated on the mean, not a spike)
     _rh = {}                                     # flip-rate histories; same rule
+    _last_warn = [-1]                            # de-dupe the gate shout
 
     _last_step = [0]
 
@@ -2262,8 +2263,21 @@ def main():
                     _fail.append(f"cv_rho(200-step mean)={_v:.3f} < 0.20 -- the BOARD branch "
                                  f"is starving: not learning action-conditioned structure")
             if _fail:
-                gate_log.write(json.dumps({"s": step, "ABORT": _fail}) + "\n")
-                raise SystemExit("[gate] ABORT at step %d: %s" % (step, "; ".join(_fail)))
+                # NEVER KILL A RUN (Kaveh 2026-08-15: "I don't want any runs automatically
+                # killed at all. I want us to talk and think about the failure and then
+                # decide"). Gates DETECT and shout; the decision to stop is a human one.
+                # Every automatic abort this project has fired was either miscalibrated
+                # (perplexity thresholds set by intuition, an instantaneous flip-rate read)
+                # or was a real signal that still deserved a conversation rather than a kill.
+                gate_log.write(json.dumps({"s": step, "WARN": _fail}) + "\n")
+                if step != _last_warn[0]:
+                    _last_warn[0] = step
+                    print(f"\n[gate] !! WARNING at step {step} -- RUN CONTINUES !!",
+                          flush=True)
+                    for _f in _fail:
+                        print(f"[gate]    {_f}", flush=True)
+                    print("[gate] not aborting; decide by hand whether to stop.\n",
+                          flush=True)
             if step % args.eval_every == 0:
                 gate_log.write(json.dumps({"s": step, "ok": True, **{
                     k: round(float(met.get(k, -1)), 4) for k in
@@ -2276,10 +2290,15 @@ def main():
         if step == 400 and model.poles is not None and getattr(model.poles, "ending_delta", None) is not None:
             mv = float(model.poles.ending_delta.abs().max())
             if mv < 1e-8 and (args.w_anchor > 0 or args.w_termrep > 0 or args.w_start > 0):
-                raise SystemExit(
-                    f"ABORT at step 400: ending_delta is still {mv:.2e} with pole terms active -- "
-                    f"the learned poles are not in the optimizer. This is the take-2 bug; fix the "
-                    f"attach_poles/optimizer ordering before rerunning.")
+                # WARN, never kill (Kaveh 2026-08-15). This one is a genuine wiring bug rather
+                # than a tuning question -- the poles are not in the optimizer -- so it is very
+                # likely worth stopping BY HAND, but that is the human's call.
+                print(f"\n[poles] !! WARNING at step 400 -- RUN CONTINUES !!\n"
+                      f"[poles]   ending_delta is still {mv:.2e} with pole terms active: the "
+                      f"learned poles are NOT in the optimizer (the take-2 bug).\n"
+                      f"[poles]   Nothing downstream of the poles can train. Almost certainly "
+                      f"worth killing by hand and fixing attach_poles/optimizer ordering.\n",
+                      flush=True)
             print(f"[poles] gate OK at step 400: ending_delta absmax {mv:.4f} (moving)", flush=True)
         if prof:
             tot = sum(ph.t.values()) or 1.0

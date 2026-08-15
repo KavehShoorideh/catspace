@@ -12617,3 +12617,16 @@ semantics now would mean the commit no longer describes the running job:
 REPRODUCIBILITY NOTE: source has been edited repeatedly while runs were in flight this
 session. A running job executes the code as loaded at launch, so the commit at any later
 moment may not describe it. jqt7 v3 = commit bb41955 + the lambda-LR/w_qrl change.
+
+## 2026-08-15 — GATES NEVER KILL A RUN (Kaveh's standing rule)
+"I don't want any runs automatically killed at all. I want us to talk and think about the
+failure and then decide whether or not we wanna kill it."
+Every gate now WARNS loudly (stdout + <out>_gatecheck.jsonl "WARN") and the run CONTINUES.
+The pole-wiring check at step 400 also warns instead of aborting, though it flags itself as
+almost certainly worth a manual kill (nothing downstream of the poles can train).
+Justification from this project's own record: of the automatic aborts fired to date, two were
+miscalibrated by me (perplexity thresholds set by intuition rather than a known-good curve;
+an instantaneous flip-rate read against a 200-step mean of 3x that) and the rest were real
+signals that still deserved a conversation -- jqt7 v3's board-perplexity abort used a
+threshold inherited from a 64-code vocabulary applied to a 16-code one. Detection is worth
+keeping; the kill decision is not the gate's to make.
