@@ -370,6 +370,15 @@ def main():
                          "push is too weak and the ruler stays crow-flies. MEASURED 2026-08-14 on a CPU smoke: w=10 leaves violation at -0.0625 "
                          "with lambda decaying 0.01->0.002 (loop never closes); w=200 drives "
                          "violation to +0.023 with lambda growing 0.01->0.056 (closed).")
+    ap.add_argument("--w-hazard", type=float, default=0.0,
+                    help="CONCEPT TIMING AS THE GEOMETRY (Kaveh 2026-08-15: the geometry sits "
+                         "ON TOP of the concepts). Per-concept distribution over plies-to-"
+                         "first-activation, one class per ply out to 12 then buckets then "
+                         "NEVER. Replaces the anchor-based CDA/CDB: no metric, no maximisation "
+                         "competing with the codebooks, censoring native, and one-ply "
+                         "resolution exactly where plans are made -- the old dA read 8.9 plies "
+                         "for goals 1-3 plies away, so 'castling in 2' and 'castling in 20' "
+                         "were indistinguishable.")
     ap.add_argument("--proj-mlp", type=int, default=0,
                     help="hidden width of the metric projection proj_b. 0 = the legacy single "
                          "Linear(d_model, d), which is 0.23%% of the model and was MEASURED on "
@@ -906,9 +915,19 @@ def main():
 
     # optimizer AFTER attach_poles and AFTER jqt construction (both add parameters; Adam
     # captures the list at construction -- the take-2 scar, twice avoided).
+    hazard = None
+    if args.w_hazard > 0:
+        from catspace.research.components.encoder.approaches.reach_probability.experiments.concept_hazard import (
+            ConceptHazard, N_CLASS as _HZC)
+        hazard = ConceptHazard(d_in=args.d_model, heads=args.jqt_heads,
+                               codes=args.jqt_codes, hidden=args.hidden).to(dev)
+        print(f"[hazard] concept timing head: {args.jqt_heads}x{args.jqt_codes} concepts x "
+              f"{_HZC} time classes (1..12 exact plies, then buckets, then NEVER)", flush=True)
     _params = [p for p in net.parameters() if p.requires_grad]
     if args.jqt:
         _params += [p for p in jqt.parameters() if p.requires_grad]
+    if hazard is not None:
+        _params += list(hazard.parameters())
     # QRL dual multiplier: softplus-parametrised so it is always positive under unconstrained
     # updates, and given its OWN param group at ~100x the model LR (paper appendix: 0.01 for
     # lambda vs 1e-4..5e-4 for the model). A slow dual is the failure they call out -- it
@@ -1778,7 +1797,8 @@ def main():
         l_sqrec = l_pcrec = l_pers_sq = l_pers_pc = torch.zeros((), device=dev)
         l_flip = l_dest = l_pcflip = l_pcdest = l_negpole = torch.zeros((), device=dev)
         l_sqflip = l_sqdest = l_childval = l_cens = l_rank = torch.zeros((), device=dev)
-        l_movecode = l_select = torch.zeros((), device=dev)
+        l_movecode = l_select = l_hazard = torch.zeros((), device=dev)
+        _hz_acc, _hz_acc_fin, _hz_pm1, _hz_mae, _hz_sep = -1.0, -1.0, -1.0, -1.0, -1.0
         _mv_perp, _sel_top1 = -1.0, -1.0
         _flip_gap, _dest_top1, _pcdest_top1 = -1.0, -1.0, -1.0
         _sq_f1, _cv_rho, _cv_top1, _geo_perp, _brd_perp = -1.0, -1.0, -1.0, -1.0, -1.0
@@ -1946,6 +1966,40 @@ def main():
                 tpl = torch.from_numpy(gplies).to(dev)
                 thit = torch.from_numpy(ghit).to(dev)
                 thz = torch.from_numpy(ghz).to(dev)
+                # ---- CONCEPT TIMING: the geometry, sitting ON TOP of the concepts.
+                # Reuses the goal rows already embedded above, so it costs one MLP and no
+                # extra forward pass. Grades the FULL time distribution per concept, which
+                # is what makes "castling in 4 vs a threat in 3" a comparison the model can
+                # answer -- both are distributions over the same ply axis.
+                if hazard is not None:
+                    from catspace.research.components.encoder.approaches.reach_probability.experiments.concept_hazard import (
+                        plies_to_class as _p2c)
+                    _hm = ggt == 0                       # global-vocabulary goals
+                    if _hm.any():
+                        _hmt = torch.from_numpy(_hm).to(dev)
+                        _hcls = torch.from_numpy(_p2c(gplies[_hm], ghit[_hm])).to(dev)
+                        _hlg = hazard(phi_j[2 * nP:][_hmt])
+                        _hi = torch.arange(len(_hcls), device=dev)
+                        _sel = _hlg[_hi, k1_t[_hmt], k2_t[_hmt]]
+                        l_hazard = torch.nn.functional.cross_entropy(_sel, _hcls)
+                        with torch.no_grad():
+                            _pred = _sel.argmax(-1)
+                            _hz_acc = float((_pred == _hcls).float().mean())
+                            _fin = _hcls < (_sel.shape[-1] - 1)
+                            # OVERALL accuracy is dominated by NEVER (most concepts never fire),
+                            # so it climbs while the model learns nothing about TIMING. These
+                            # three are the ones that matter for "am I four steps away":
+                            #   fin   exact ply, on concepts that DO fire (harsh)
+                            #   pm1   within +-1 ply (what a plan actually needs)
+                            #   mae   mean |error| in plies
+                            #   sep   can it tell FIRES from NEVER at all
+                            if _fin.any():
+                                _d = (_pred[_fin].float() - _hcls[_fin].float()).abs()
+                                _hz_acc_fin = float((_d == 0).float().mean())
+                                _hz_pm1 = float((_d <= 1).float().mean())
+                                _hz_mae = float(_d.mean())
+                            _hz_sep = float(((_pred == (_sel.shape[-1] - 1)) ==
+                                             (~_fin)).float().mean())
                 if args.cda_linear:
                     l_cda = censored_plies_linear(dA_g, tpl, thit, rel=args.plies_rel)
                 else:
@@ -2141,6 +2195,7 @@ def main():
                 + args.w_flip * (l_flip + l_pcflip) + args.w_dest * (l_dest + l_pcdest)
                 + args.w_sqdyn * (l_sqflip + l_sqdest)
                 + args.w_childval * l_childval + args.w_movecode * l_movecode
+                + args.w_hazard * l_hazard
                 + args.w_select * l_select
                 + args.w_qrl * l_qrl_max + l_qrl_con
                 + args.w_cens_hinge * l_cens + args.w_rank_cda * l_rank
@@ -2160,6 +2215,9 @@ def main():
                "sqflipL": float(l_sqflip.detach()), "sqdest": float(l_sqdest.detach()),
                "childval": float(l_childval.detach()), "cens": float(l_cens.detach()),
                "movecode": float(l_movecode.detach()), "mv_perp": _mv_perp,
+               "hazard": float(l_hazard.detach()), "hz_acc": _hz_acc,
+               "hz_acc_fin": _hz_acc_fin, "hz_pm1": _hz_pm1, "hz_mae": _hz_mae,
+               "hz_sep": _hz_sep,
                "select": float(l_select.detach()), "sel_top1": _sel_top1,
                "rank": float(l_rank.detach()),
                "qrl_max": float(l_qrl_max.detach()), "qrl_lam": _qrl_lam,
@@ -2412,6 +2470,12 @@ def main():
                                        if k.startswith(("jqt", "w_vqrec", "w_pers", "w_jepa",
                                                         "w_cda", "w_cdb", "pers_tau"))}}, _tmp)
             __import__("os").replace(_tmp, f"{args.out}_jqt.pt")
+            if hazard is not None:
+                _ht = f"{args.out}_hazard.pt.tmp"
+                torch.save({"state_dict": hazard.state_dict(), "d_in": args.d_model,
+                            "heads": args.jqt_heads, "codes": args.jqt_codes,
+                            "hidden": args.hidden}, _ht)
+                __import__("os").replace(_ht, f"{args.out}_hazard.pt")
         # Sparsity as an EXACT count, which only means anything because prox_l1 makes true zeros.
         g["l1_support"] = int(model.input_support().sum())
         # EVERY gate metric also lands in a plain file (Kaveh 2026-08-12: "keep track of all
