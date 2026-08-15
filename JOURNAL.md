@@ -12530,3 +12530,36 @@ WHAT WE LACK: (1) maximisation over independent (s,g) marginals, (2) saturating 
 knee at OUR horizon (~60-100 plies, not 15), (3) adaptive dual lambda instead of fixed
 w_iqe/w_repel, (4) squared-hinge + eps relaxation instead of diverging hard walls,
 (5) possibly IQE width.
+
+## 2026-08-14 — QRL RULER IMPLEMENTED; jqt6 stopped; JQT7 LAUNCHED; disk reclaimed
+IMPLEMENTED (the fix planned from the QRL read):
+- losses.py: qrl_phi (= -softplus(knee - d, beta), knee at OUR 60-ply horizon, not their 15),
+  qrl_maximise, qrl_constraint_violation (squared hinge, target eps).
+- Trainer: maximisation over INDEPENDENTLY-sampled state pairs (marginals, as QRL does --
+  same-trajectory sampling is why contrastive methods recover on-policy values); constraint on
+  our K-STEP ceilings (stronger than QRL's single-transition form, kept deliberately); dual
+  multiplier softplus-parametrised in its OWN param group at lr 0.01 (~100x model), min-max via
+  lam.detach()*v - lam*v.detach() so one optimizer drives both directions.
+  SCOPE: state-state pairs ONLY -- never touches concept anchors/poles, so it cannot fight the
+  subsumption zeros.
+- MEASURED that the loop closes: w_qrl=10 leaves violation at -0.0625 with lambda decaying
+  0.01->0.002 (never binds); w_qrl=200 drives violation to +0.023 with lambda 0.01->0.056.
+  Default set to 200 -- our stack has basin at w=1000, theirs has one constraint and nothing
+  else, so the push must be scaled to compete.
+- INTERACTION (loss-review rule): the gas (rep_a/rep_b) and the QRL push overlap -- both act on
+  effectively-unobserved pairs -- and the gas is UNSATURATED where phi is not, which is the
+  weight-norm inflation phi exists to prevent. w_repel halved 40 -> 20 for jqt7, both logged.
+- bones_check GATE 5: wrong-way-step rate along TB-optimal lines (jqt5 baseline 34.9%,
+  median step -0.18 vs a true -1.000). This is the decisive test; correlation missed it entirely.
+DATA: gen_tb_line_pairs.py -> data/derived/tb_line_pairs.npz, DVC-tracked. 3000 TB-optimal
+lines, 82,796 positions, 71,019 EXACT ordered pairs (gap 1-125, mean 7.4). On an optimal line
+position i is exactly (j-i) plies from j, so these are ground-truth quasimetric labels and the
+tightest possible ceilings -- game-path ceilings overestimate ~3x (tortuosity 0.31). CAVEAT
+recorded in the npz: Syzygy is DTZ-optimal, so lines are correct wins, not guaranteed shortest
+mates. NOT yet wired into training (jqt8 or a jqt7 restart).
+HOUSEKEEPING: prune_checkpoints.py (dry-run by default; never touches *_latest.pt or sidecars;
+keeps last N + every Nth). Freed 7GB / 433 ladder files; disk 31GB -> 38GB free (was 93% full).
+jqt6 STOPPED at step 2006 by Kaveh's call, cv_rho 0.646 and brd_perp 12.7 (it was healthy --
+the multimodal split and value-equivalence head were working; partial metrics kept as
+reach_jqt6_partial_steps.jsonl).
+JQT7 = jqt6's full stack + the QRL ruler, ckpt every 100 steps, gates on, bf16 on.
