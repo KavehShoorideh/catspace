@@ -370,6 +370,13 @@ def main():
                          "push is too weak and the ruler stays crow-flies. MEASURED 2026-08-14 on a CPU smoke: w=10 leaves violation at -0.0625 "
                          "with lambda decaying 0.01->0.002 (loop never closes); w=200 drives "
                          "violation to +0.023 with lambda growing 0.01->0.056 (closed).")
+    ap.add_argument("--proj-mlp", type=int, default=0,
+                    help="hidden width of the metric projection proj_b. 0 = the legacy single "
+                         "Linear(d_model, d), which is 0.23%% of the model and was MEASURED on "
+                         "2026-08-15 to be unable to restructure distances on its own once the "
+                         "QRL push was detached from the trunk. Give it capacity and the "
+                         "geometry can be shaped without deforming the shared representation "
+                         "the codebooks quantise.")
     ap.add_argument("--qrl-trunk-grad", type=float, default=0.15,
                     help="how much of the QRL maximisation's gradient reaches the TRUNK "
                          "(1.0 = fully attached, 0.0 = fully detached; proj_b always trains). "
@@ -655,6 +662,7 @@ def main():
               f"opening moves, so 'best play' would be fitted partly on human data. Use 8.",
               flush=True)
     net = ReachViT(split_head=bool(args.split_head), move_head=bool(args.move_head),
+                   proj_mlp=int(args.proj_mlp),
                    d_model=args.d_model, layers=args.layers, heads=args.heads, d=args.d,
                    hidden=args.hidden, components=args.components, ema_decay=args.ema,
                    dual=args.dual, d_cond=args.d_cond if args.dual else 0).to(dev)
@@ -662,7 +670,7 @@ def main():
                 "d": args.d, "hidden": args.hidden, "components": args.components,
                 "games": args.games, "max_plies": args.max_plies, "traj_seed": args.seed,
                 "pole_parent": t_parent.tolist(), "pole_names": t_names,
-                "pole_height": args.pole_height, "n_piecedown": args.n_piecedown, "split_head": bool(args.split_head), "move_head": bool(args.move_head), "sf_only": bool(args.sf_only), "learned_poles": bool(args.learned_poles),
+                "pole_height": args.pole_height, "proj_mlp": int(args.proj_mlp), "n_piecedown": args.n_piecedown, "split_head": bool(args.split_head), "move_head": bool(args.move_head), "sf_only": bool(args.sf_only), "learned_poles": bool(args.learned_poles),
                 "dual": bool(args.dual), "d_cond": args.d_cond if args.dual else 0,
                 "min_ply": args.min_ply,
                 # FULL args (2026-08-08): couldn't audit mh2's basin weight from its ckpt --

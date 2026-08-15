@@ -342,7 +342,8 @@ class ReachViT(nn.Module):
     def __init__(self, d_model: int = 256, layers: int = 6, heads: int = 8, d: int = 64,
                  hidden: int = 256, components: int = 8, ema_decay: float = 0.996,
                  leak_beta: float = 0.0, dual: bool = False, d_cond: int = 0,
-                 split_head: bool = False, move_head: bool = False):
+                 split_head: bool = False, move_head: bool = False,
+                 proj_mlp: int = 0):
         """`dual=False` is the LEGACY arm-B path (one IQE over proj_b) and is kept byte-identical
         on purpose: the strata run launched 2026-08-05 writes checkpoints with `proj_b.*`/`iqe.*`
         keys, and rewiring in place would have made its own ladder unloadable by interpret_reach
@@ -359,7 +360,16 @@ class ReachViT(nn.Module):
         self.enc = JepaEncoder(d_model, layers, heads)
         self.proj_a = nn.Linear(d_model, d)          # arm A: region space
         if not self.dual:
-            self.proj_b = nn.Linear(d_model, d)      # arm B (legacy): one quasimetric space
+            # arm B: the metric projection. A SINGLE Linear(d_model, d) is 0.23% of the
+            # model, and 2026-08-15 measured that this is a real ceiling: with the QRL
+            # maximisation detached from the trunk, proj_b alone could not restructure
+            # distances at all (violation pinned at -0.06, lambda decayed to 0). proj_mlp>0
+            # gives the metric head enough capacity to shape the geometry without the push
+            # having to deform the shared trunk that the codebooks quantise.
+            # Default 0 keeps the legacy shape so every pre-jqt8 checkpoint still loads.
+            self.proj_b = (nn.Linear(d_model, d) if not proj_mlp else
+                           nn.Sequential(nn.Linear(d_model, int(proj_mlp)), nn.GELU(),
+                                         nn.Linear(int(proj_mlp), d)))
 
         # Target branch for arm A: an EMA copy of (encoder, proj_a). Never optimised, never receives
         # gradient -- the JEPA guard that stops the model making its own target easier to predict.
