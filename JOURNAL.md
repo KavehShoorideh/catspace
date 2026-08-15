@@ -12588,3 +12588,32 @@ SPEED: 2.44 s/step at the full jqt7 config => ~13.6h for 20k (not the 8h quoted 
 1.4s/step). Known hotspot NOT fixed: the move-head term runs mh_pos=32 SINGLE-ROW backbone
 forwards per step in a python loop -- batching it is the obvious win, deferred as too delicate
 to land untested in front of a long run.
+
+## 2026-08-15 — known-broken sweep. Fixed now vs deliberately deferred.
+FIXED (safe while jqt7 runs -- none change training semantics):
+- Gate threshold loop mutated its own loop variable and reset it with a trailing assignment
+  (correct by accident, unreadable). Rewritten with a per-key threshold.
+- Selector's `zq_flat[:1]*0 + _zq_cv[j:j+1]` broadcast hack replaced with the direct slice.
+- --pole-height now WARNS that it is ignored under --learned-poles (dead flag in jqt1..jqt7),
+  and states the consequence: the learned frame settles near coord 3.3, LOSS->WIN ~24 units,
+  and a free gauge means absolute distances are NOT comparable across checkpoints.
+- Runtime state gitignored: kitty_current_game.json and artifacts/experiments/players/ were
+  dirtying every commit (the latter also holds per-player game data).
+DEFERRED to a labelled jqt8 batch, ON PURPOSE -- jqt7 is mid-flight and editing training
+semantics now would mean the commit no longer describes the running job:
+- 7 DEAD LOSS TERMS (res_shrink, qdist, bell, mh_bell, grad, tc_att/tc_rep, turn) measured at
+  exactly 0.0000. They inflate the apparent loss stack by a third. Delete or flag-gate.
+- MOVE-HEAD SPEED: mh_pos=32 single-row backbone forwards per step in a python loop is the
+  hotspot behind 2.44 s/step (~13.6h per 20k run). Batching is the obvious win; delicate
+  because of per-position mirroring and variable child counts.
+- DENSE CONSTRAINT COVERAGE: QRL constrains EVERY observed transition; we only constrain the
+  sampled triangle legs. Adding d(s_t, s_t+1) <= 1 over consecutive plies is nearly free and
+  is the structural half of why our dual has to work so hard.
+- TB EXACT PAIRS: 71,019 ground-truth ply distances generated and DVC-tracked but NOT wired
+  into training. Tightest ceilings we will ever have (game-path ceilings overestimate ~3x).
+- concept_eval still disabled since jqt2's decode corruption; re-test on the new champion.
+- Server search hot path still does not read the embedding cache (prefetch claim holds for
+  directional queries only).
+REPRODUCIBILITY NOTE: source has been edited repeatedly while runs were in flight this
+session. A running job executes the code as loaded at launch, so the commit at any later
+moment may not describe it. jqt7 v3 = commit bb41955 + the lambda-LR/w_qrl change.
