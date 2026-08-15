@@ -370,6 +370,11 @@ def main():
                          "push is too weak and the ruler stays crow-flies. MEASURED 2026-08-14 on a CPU smoke: w=10 leaves violation at -0.0625 "
                          "with lambda decaying 0.01->0.002 (loop never closes); w=200 drives "
                          "violation to +0.023 with lambda growing 0.01->0.056 (closed).")
+    ap.add_argument("--qrl-detach", type=int, default=1,
+                    help="the QRL maximisation trains proj_b ONLY, not the trunk. The push is "
+                         "content-free (identical for every pair) and flattens phi, starving "
+                         "the codebooks; the constraints, which carry real per-pair facts, "
+                         "still reach phi. Set 0 to let the push train the trunk too.")
     ap.add_argument("--qrl-pairs", type=int, default=256,
                     help="independently-sampled state pairs per step for the maximisation")
     ap.add_argument("--qrl-knee", type=float, default=60.0,
@@ -1240,7 +1245,18 @@ def main():
             _nz = len(zB)
             _ia = torch.randint(0, _nz, (args.qrl_pairs,), device=dev)
             _ib = torch.randint(0, _nz, (args.qrl_pairs,), device=dev)
-            l_qrl_max = qrl_maximise(model.dA(zB[_ia], zB[_ib]),
+            # DETACHED FROM THE TRUNK (Kaveh 2026-08-15). The maximisation says "be far from
+            # everything" identically for every pair -- it carries NO information about any
+            # particular pair; it is the mechanism that makes min-over-paths emerge, not data.
+            # Letting it reach phi flattens the representation toward uniformity, which is the
+            # opposite of what VECTOR QUANTISATION needs (clustered modes for codes to capture).
+            # Measured: jqt6 without QRL reached brd_perp 12.7 at step 2000; jqt7 with the push
+            # reaching phi managed 5.2 on an identical config. So the push now trains proj_b
+            # ONLY. The CONSTRAINTS still flow to phi untouched -- the walls carry real facts
+            # ("these two are k plies apart", "distinct positions are >= 1 apart"), and the
+            # FLOOR is what forces phi to separate positions at all.
+            _zbq = model.proj_b(phi.detach()) if args.qrl_detach else zB
+            l_qrl_max = qrl_maximise(model.dA(_zbq[_ia], _zbq[_ib]),
                                      args.qrl_knee, args.qrl_beta)
             # constraint on our K-STEP ceilings (stronger than QRL's single-transition form):
             # a witnessed k-ply path is an exact upper bound on the distance.
