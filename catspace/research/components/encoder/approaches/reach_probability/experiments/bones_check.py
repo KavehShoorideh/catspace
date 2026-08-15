@@ -192,6 +192,45 @@ def main():
             pr = net(Xte).squeeze(-1).numpy()
         rho_p = spearman(np.expm1(Y[te].numpy()), np.expm1(pr))
         print(f"  {int(frac*100):3d}% of labels (n={k:5d})  held-out spearman {rho_p:+.3f}")
+    # ---- GATE 5: NAVIGABILITY on tablebase-optimal lines --------------------------------
+    # THE decisive test for the QRL ruler fix. On a TB-optimal line the true distance falls by
+    # exactly 1 every ply, so any step where dA RISES is a step greedy descent would get wrong.
+    # Correlation completely misses this: jqt5 scored ~0.5 while going the wrong way 34.9% of
+    # the time. Measured before the fix: 34.9% wrong-way, median step -0.18 (true: -1.000).
+    print(f"\n[gate 5: NAVIGABILITY] dA along TABLEBASE-OPTIMAL lines")
+    try:
+        import chess
+        from catspace.research.components.planner.approaches.endgame_groundtruth.src.tb import (
+            TB, rollout_line)
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
+            tokenize as _tkg)
+        from catspace.io import paths as _paths
+        _tb = TB(str(_paths.syzygy_dir()))
+        _fens = ["8/8/8/4k3/8/8/3Q4/4K3 w - - 0 1", "8/8/8/4k3/8/8/8/R3K3 w - - 0 1",
+                 "8/8/8/8/4k3/8/4P3/4K3 w - - 0 1", "4k3/8/8/8/8/8/6PP/4K2R w K - 0 1",
+                 "8/5k2/8/8/8/2K5/1Q6/8 w - - 0 1", "3k4/8/3K4/8/8/8/8/5R2 w - - 0 1"]
+        P0 = model.poles.poles[:3]
+        steps_all, nlines = [], 0
+        for _f in _fens:
+            _line = rollout_line(chess.Board(_f), _tb, cap=120)
+            if not _line or len(_line) < 8:
+                continue
+            nlines += 1
+            _t, _g = zip(*(_tkg(b) for b in _line))
+            with torch.no_grad():
+                _phi = model.backbone(torch.from_numpy(np.array(_t, dtype="int64")).to(dev),
+                                      torch.from_numpy(np.array(_g, dtype="float32")).to(dev))
+                _d = model.dA(model.proj_b(_phi).float(),
+                              P0[[0]].expand(len(_line), -1)).cpu().numpy()
+            steps_all.append(np.diff(_d))
+        S = np.concatenate(steps_all)
+        print(f"  {nlines} lines | steps going the WRONG way {100*(S>0).mean():.1f}%  "
+              f"(perfect ruler 0%; jqt5 measured 34.9%)")
+        print(f"  median step {np.median(S):+.3f}  (perfect ruler -1.000; jqt5 -0.180)")
+        print(f"  worst backward step {S.max():+.2f}")
+    except Exception as e:
+        print(f"  skipped ({e})")
+
     print("\n[bones] READ: gate1 slope ~1 + gate2 slope ~1 => the ruler is a ruler; "
           "gate4 still climbing at 100% => data helps, flat => structure is the limit.")
 
