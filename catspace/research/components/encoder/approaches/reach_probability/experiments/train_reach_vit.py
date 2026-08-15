@@ -61,6 +61,7 @@ from catspace.research.components.encoder.approaches.reachability_field.experime
 from catspace.research.tools.training_infra.losses import (
     absorbing_penalty, basin_ce, basin_logp, pole_potential, pole_radial_anchor,
     censored_plies_loss, censored_plies_linear, censored_hinge_linear,
+    qrl_maximise, qrl_constraint_violation,
     code_persistence, confine_radius, confining_regression,
     fene_confinement, fene_r_max, first_hit_bce, jepa_code_prediction, lj_confinement,
     log_gas_repulsion, screened_repulsion,
@@ -353,6 +354,37 @@ def main():
                          "readout consumes; regression alone gave log-log slope 0.30")
     ap.add_argument("--horizon-cdb", type=int, default=0,
                     help="CDB predicts P(activate within K) for K in HORIZONS_K")
+    ap.add_argument("--qrl", type=int, default=0,
+                    help="QRL RULER (arXiv 2304.01203): add the MAXIMISATION our machinery is "
+                         "missing. pair_walls already gives the constraint set; the gas only "
+                         "pushes UNOBSERVED pairs, so observed ones sit at 0.44x their ceiling "
+                         "and dA reads as crow-flies (34.9%% wrong-way steps on TB-optimal "
+                         "lines). This pushes state-state pairs sampled from INDEPENDENT "
+                         "marginals, which is what makes min-over-paths emerge.")
+    ap.add_argument("--w-qrl", type=float, default=200.0,
+                    help="weight on the MAXIMISATION. QRL runs it at 1.0 against a constraint "
+                         "and nothing else; here it competes with a large stack (basin alone "
+                         "is w=1000), so it must be scaled until the push actually reaches the "
+                         "ceiling -- the loop is CLOSED when qrl_viol goes positive and lambda "
+                         "starts growing. If violation stays negative and lambda decays, the "
+                         "push is too weak and the ruler stays crow-flies. MEASURED 2026-08-14 on a CPU smoke: w=10 leaves violation at -0.0625 "
+                         "with lambda decaying 0.01->0.002 (loop never closes); w=200 drives "
+                         "violation to +0.023 with lambda growing 0.01->0.056 (closed).")
+    ap.add_argument("--qrl-pairs", type=int, default=256,
+                    help="independently-sampled state pairs per step for the maximisation")
+    ap.add_argument("--qrl-knee", type=float, default=60.0,
+                    help="phi saturation knee IN PLIES -- set to OUR horizon. QRL used 15 for "
+                         "50-step episodes; chess games run 40-150 plies")
+    ap.add_argument("--qrl-beta", type=float, default=0.03,
+                    help="phi sharpness; 0.03 gives a transition width proportional to theirs")
+    ap.add_argument("--qrl-eps", type=float, default=0.25,
+                    help="target constraint violation (their default). NOTE Theorem 3: "
+                         "distances then recover -V* up to a KNOWN SCALE (1+eps) ~ 1.25x, which "
+                         "must be divided out before reading them as plies")
+    ap.add_argument("--qrl-lambda-init", type=float, default=0.01,
+                    help="dual multiplier init (softplus-parametrised, always positive)")
+    ap.add_argument("--qrl-lambda-lr", type=float, default=0.01,
+                    help="the dual moves ~100x faster than the model, per the paper")
     ap.add_argument("--cda-linear", type=int, default=0,
                     help="train dA in LINEAR plies (composable: distances chain along paths; "
                          "log1p(d) is not a distance you can add up)")
@@ -838,7 +870,23 @@ def main():
     _params = [p for p in net.parameters() if p.requires_grad]
     if args.jqt:
         _params += [p for p in jqt.parameters() if p.requires_grad]
-    opt = torch.optim.Adam(_params, lr=args.lr)
+    # QRL dual multiplier: softplus-parametrised so it is always positive under unconstrained
+    # updates, and given its OWN param group at ~100x the model LR (paper appendix: 0.01 for
+    # lambda vs 1e-4..5e-4 for the model). A slow dual is the failure they call out -- it
+    # "needs to constantly catch up" while the maximisation inflates weight norms.
+    qrl_lambda = None
+    if args.qrl:
+        import math as _m
+        qrl_lambda = torch.nn.Parameter(
+            torch.tensor(float(_m.log(_m.expm1(args.qrl_lambda_init))), device=dev))
+        opt = torch.optim.Adam([{"params": _params},
+                                {"params": [qrl_lambda], "lr": args.qrl_lambda_lr}],
+                               lr=args.lr)
+        print(f"[qrl] maximisation ON | knee {args.qrl_knee} plies, beta {args.qrl_beta}, "
+              f"eps {args.qrl_eps} (=> distances read ~{1+args.qrl_eps:.2f}x true), "
+              f"lambda0 {args.qrl_lambda_init} @ lr {args.qrl_lambda_lr}", flush=True)
+    else:
+        opt = torch.optim.Adam(_params, lr=args.lr)
 
     tp = None
     if args.w_turnpair > 0:
@@ -1157,6 +1205,31 @@ def main():
                 l_q = 0.75 * l_q + 0.25 * _leg(i[tvalid], Trows[tvalid], d_iT, gap_T)
         if len(ra):
             l_q = 0.75 * l_q + 0.25 * _spring(DQ(gra, grb), gap_r)
+        # ---- QRL: the maximisation our objective was missing (2026-08-14) --------------
+        # pair_walls above is the CONSTRAINT half. Without an upward force on OBSERVED pairs
+        # they settle near the floor -- measured 0.44x their ceiling, which is exactly what
+        # "crow flies" looks like numerically. Pairs come from INDEPENDENT marginals, as in
+        # QRL; same-trajectory sampling is what makes contrastive methods recover on-policy
+        # rather than optimal values. STATE-STATE ONLY: concept anchors and poles keep their
+        # own supervision, so this never fights the subsumption zeros.
+        l_qrl_max = l_qrl_con = torch.zeros((), device=dev)
+        _qrl_lam = _qrl_viol = -1.0
+        if args.qrl:
+            _nz = len(zB)
+            _ia = torch.randint(0, _nz, (args.qrl_pairs,), device=dev)
+            _ib = torch.randint(0, _nz, (args.qrl_pairs,), device=dev)
+            l_qrl_max = qrl_maximise(model.dA(zB[_ia], zB[_ib]),
+                                     args.qrl_knee, args.qrl_beta)
+            # constraint on our K-STEP ceilings (stronger than QRL's single-transition form):
+            # a witnessed k-ply path is an exact upper bound on the distance.
+            _dcat = torch.cat([d_ij_w, d_jk_w, d_ik_w])
+            _gcat = torch.cat([gap_ij, gap_jk, gap_ik]) + 1.0        # +1 gauge unit of slack
+            _viol = qrl_constraint_violation(_dcat, _gcat, args.qrl_eps)
+            _lam = torch.nn.functional.softplus(qrl_lambda)
+            # min-max with ONE optimizer: theta sees lambda detached (satisfy the constraint),
+            # lambda sees the violation detached with a FLIPPED sign (grow while violated).
+            l_qrl_con = _lam.detach() * _viol - _lam * _viol.detach()
+            _qrl_lam, _qrl_viol = float(_lam.detach()), float(_viol.detach())
         d_ji = DQ(gj, gi)           # the reversal, on the SAME two positions
         d_x = DQ(gi, gx)            # cross-game, from the SAME source i
         # never repel a pair that is ACTUALLY one played move apart (or the same position) --
@@ -2015,6 +2088,7 @@ def main():
                 + args.w_sqdyn * (l_sqflip + l_sqdest)
                 + args.w_childval * l_childval + args.w_movecode * l_movecode
                 + args.w_select * l_select
+                + args.w_qrl * l_qrl_max + l_qrl_con
                 + args.w_cens_hinge * l_cens + args.w_rank_cda * l_rank
                 + args.w_negpole * l_negpole
                 + args.w_cda * l_cda + args.w_cdb * l_cdb
@@ -2034,6 +2108,8 @@ def main():
                "movecode": float(l_movecode.detach()), "mv_perp": _mv_perp,
                "select": float(l_select.detach()), "sel_top1": _sel_top1,
                "rank": float(l_rank.detach()),
+               "qrl_max": float(l_qrl_max.detach()), "qrl_lam": _qrl_lam,
+               "qrl_viol": _qrl_viol,
                "sq_f1_ex": _sq_f1, "cv_rho": _cv_rho, "cv_top1": _cv_top1,
                "geo_perp": _geo_perp, "brd_perp": _brd_perp,
                "sqrec": float(l_sqrec.detach()), "pcrec": float(l_pcrec.detach()),

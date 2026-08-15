@@ -589,6 +589,40 @@ def censored_hinge_linear(pred_d, horizon, hit, clamp=0.0, rel=0.15, delta=2.0):
     return (((torch.relu(h - pred_d) / d) ** 2) * m).sum() / n
 
 
+def qrl_phi(d, knee=60.0, beta=0.03):
+    """QRL's saturating transform on the MAXIMISED distance (arXiv 2304.01203, appendix:
+    phi(x) = -softplus(15 - x, beta=0.1) for 50-step episodes).
+
+    Why it exists, in their words: maximising E[d] by gradient descent "tends to increase the
+    weight norms of the late layers", so lambda "needs to constantly catch up". phi's slope is
+    ~1 below the knee and decays to 0 above it, so the push is strong where distances are still
+    short and switches off once they reach the horizon. `knee` must be set to OUR horizon
+    (chess games run 40-150 plies), not theirs."""
+    return -F.softplus(knee - d, beta=beta)
+
+
+def qrl_maximise(d, knee=60.0, beta=0.03):
+    """THE OBJECTIVE HALF: minimise this to push distances up. Pairs should come from
+    INDEPENDENT marginals (QRL samples s ~ p_state, g ~ p_goal separately), not from the same
+    trajectory -- same-trajectory sampling is what contrastive methods do, and it is precisely
+    why they recover on-policy rather than optimal values."""
+    return -qrl_phi(d, knee, beta).mean()
+
+
+def qrl_constraint_violation(d, ceiling, eps=0.25):
+    """THE CONSTRAINT HALF, squared hinge with a TARGET violation level (their default
+    eps=0.25, step_cost=1):
+        sq_deviation = relu(d - ceiling)^2 . mean()
+        violation    = sq_deviation - eps^2          # <=0 means satisfied
+    Returned UNWEIGHTED: the caller multiplies by the dual multiplier lambda. Note Theorem 3 --
+    a relaxed constraint recovers -V* only up to a KNOWN SCALE (1+eps), so distances read
+    ~1.25x true and must be divided by (1+eps) before being interpreted as plies.
+
+    Ours generalises theirs: their ceiling is a single transition's cost, ours is any witnessed
+    k-ply path (a stronger constraint set, kept deliberately)."""
+    return (d - ceiling).relu().square().mean() - eps ** 2
+
+
 def reach_region_nll(mu, log_sigma, z_target):
     """Gaussian NLL of an OBSERVED reachable target z_target under the region (mu, sigma) predicted
     from the source position (reach_probability, Kaveh 2026-08-05).
