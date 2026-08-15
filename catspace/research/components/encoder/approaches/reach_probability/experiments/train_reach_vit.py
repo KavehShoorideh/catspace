@@ -361,7 +361,7 @@ def main():
                          "and dA reads as crow-flies (34.9%% wrong-way steps on TB-optimal "
                          "lines). This pushes state-state pairs sampled from INDEPENDENT "
                          "marginals, which is what makes min-over-paths emerge.")
-    ap.add_argument("--w-qrl", type=float, default=30.0,
+    ap.add_argument("--w-qrl", type=float, default=12.0,
                     help="weight on the MAXIMISATION. QRL runs it at 1.0 against a constraint "
                          "and nothing else; here it competes with a large stack (basin alone "
                          "is w=1000), so it must be scaled until the push actually reaches the "
@@ -389,8 +389,13 @@ def main():
                          "must be divided out before reading them as plies")
     ap.add_argument("--qrl-lambda-init", type=float, default=0.01,
                     help="dual multiplier init (softplus-parametrised, always positive)")
-    ap.add_argument("--qrl-lambda-lr", type=float, default=0.01,
-                    help="the dual moves ~100x faster than the model, per the paper")
+    ap.add_argument("--qrl-lambda-lr", type=float, default=0.03,
+                    help="THE RATIO IS WHAT MATTERS: the paper runs lambda at 0.01 against a "
+                         "model LR of 1e-4, i.e. 100:1. At our model LR of 3e-4, lambda at "
+                         "0.01 is only 33:1 -- three times slower than theirs relative to the "
+                         "thing it has to keep up with. 2026-08-15: that is why jqt7 v2 drifted "
+                         "(lambda climbing 0.01->6.6 over 1176 steps while violation grew "
+                         "0->0.96 and confine 0.23->32). 0.03 restores 100:1.")
     ap.add_argument("--cda-linear", type=int, default=0,
                     help="train dA in LINEAR plies (composable: distances chain along paths; "
                          "log1p(d) is not a distance you can add up)")
