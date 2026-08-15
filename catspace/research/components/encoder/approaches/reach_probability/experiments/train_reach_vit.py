@@ -370,11 +370,15 @@ def main():
                          "push is too weak and the ruler stays crow-flies. MEASURED 2026-08-14 on a CPU smoke: w=10 leaves violation at -0.0625 "
                          "with lambda decaying 0.01->0.002 (loop never closes); w=200 drives "
                          "violation to +0.023 with lambda growing 0.01->0.056 (closed).")
-    ap.add_argument("--qrl-detach", type=int, default=1,
-                    help="the QRL maximisation trains proj_b ONLY, not the trunk. The push is "
-                         "content-free (identical for every pair) and flattens phi, starving "
-                         "the codebooks; the constraints, which carry real per-pair facts, "
-                         "still reach phi. Set 0 to let the push train the trunk too.")
+    ap.add_argument("--qrl-trunk-grad", type=float, default=0.15,
+                    help="how much of the QRL maximisation's gradient reaches the TRUNK "
+                         "(1.0 = fully attached, 0.0 = fully detached; proj_b always trains). "
+                         "BOTH ENDPOINTS ARE MEASURED AND BOTH FAIL: at 1.0 the push flattens "
+                         "phi and starves the codebooks (brd_perp 5.2 vs jqt6's 12.7 at step "
+                         "2000, confine 0.23->32); at 0.0 it is INERT -- violation pinned at "
+                         "-0.06 and lambda decayed to 0, because proj_b is a single "
+                         "Linear(192,48), 0.23%% of the model, and cannot restructure "
+                         "distances alone. This dial interpolates the two.")
     ap.add_argument("--qrl-pairs", type=int, default=256,
                     help="independently-sampled state pairs per step for the maximisation")
     ap.add_argument("--qrl-knee", type=float, default=60.0,
@@ -1255,7 +1259,12 @@ def main():
             # ONLY. The CONSTRAINTS still flow to phi untouched -- the walls carry real facts
             # ("these two are k plies apart", "distinct positions are >= 1 apart"), and the
             # FLOOR is what forces phi to separate positions at all.
-            _zbq = model.proj_b(phi.detach()) if args.qrl_detach else zB
+            # gradient scaling: forward value is exactly phi, backward is alpha * dphi.
+            _a = float(args.qrl_trunk_grad)
+            _phiq = (phi if _a >= 1.0 else
+                     phi.detach() if _a <= 0.0 else
+                     _a * phi + (1.0 - _a) * phi.detach())
+            _zbq = model.proj_b(_phiq)
             l_qrl_max = qrl_maximise(model.dA(_zbq[_ia], _zbq[_ib]),
                                      args.qrl_knee, args.qrl_beta)
             # constraint on our K-STEP ceilings (stronger than QRL's single-transition form):
