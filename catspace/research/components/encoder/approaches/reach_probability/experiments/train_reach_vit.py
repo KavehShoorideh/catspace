@@ -361,7 +361,7 @@ def main():
                          "and dA reads as crow-flies (34.9%% wrong-way steps on TB-optimal "
                          "lines). This pushes state-state pairs sampled from INDEPENDENT "
                          "marginals, which is what makes min-over-paths emerge.")
-    ap.add_argument("--w-qrl", type=float, default=200.0,
+    ap.add_argument("--w-qrl", type=float, default=30.0,
                     help="weight on the MAXIMISATION. QRL runs it at 1.0 against a constraint "
                          "and nothing else; here it competes with a large stack (basin alone "
                          "is w=1000), so it must be scaled until the push actually reaches the "
@@ -375,8 +375,14 @@ def main():
     ap.add_argument("--qrl-knee", type=float, default=60.0,
                     help="phi saturation knee IN PLIES -- set to OUR horizon. QRL used 15 for "
                          "50-step episodes; chess games run 40-150 plies")
-    ap.add_argument("--qrl-beta", type=float, default=0.03,
-                    help="phi sharpness; 0.03 gives a transition width proportional to theirs")
+    ap.add_argument("--qrl-beta", type=float, default=0.1,
+                    help="phi sharpness. KEEP THEIR 0.1 -- do NOT rescale it to the knee. "
+                         "2026-08-14 scar: beta=0.03 was chosen to keep the transition width "
+                         "'proportional' to the larger knee, which flattened phi so its slope "
+                         "was still 0.71 at d=30 -- the push NEVER saturated in our operating "
+                         "range. Combined with w_qrl=200 it inflated dA to ~48, violated the "
+                         "ceilings by +5.4, drove lambda to 16, and collapsed the board "
+                         "codebook to a single code by step 1500.")
     ap.add_argument("--qrl-eps", type=float, default=0.25,
                     help="target constraint violation (their default). NOTE Theorem 3: "
                          "distances then recover -V* up to a KNOWN SCALE (1+eps) ~ 1.25x, which "

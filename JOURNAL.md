@@ -12563,3 +12563,28 @@ jqt6 STOPPED at step 2006 by Kaveh's call, cv_rho 0.646 and brd_perp 12.7 (it wa
 the multimodal split and value-equivalence head were working; partial metrics kept as
 reach_jqt6_partial_steps.jsonl).
 JQT7 = jqt6's full stack + the QRL ruler, ckpt every 100 steps, gates on, bf16 on.
+
+## 2026-08-14 — jqt7 v1 ABORTED (true positive); beta scar; relaunched at corrected settings
+jqt7 v1 died at step 1500 on the windowed jqt_flip gate -- and this time the gate was RIGHT.
+The QRL push at w_qrl=200 / beta=0.03 overwhelmed the stack: qrl_max 64.8->29.7 (mean dA
+inflated to ~48), qrl_viol -0.06 -> +5.4 (ceilings blown), lambda 0.01 -> 16.1 (dual chasing
+and losing), confine 0.23 -> 41.1 (embedding expanding), brd_perp -> 1.0 (board codebook
+collapsed to ONE code), cv_rho 0.24 -> -0.21.
+ROOT CAUSE = MY BETA CHOICE. I scaled beta 0.1 -> 0.03 to keep phi's transition width
+"proportional" to the larger knee. Wrong: the KNEE sets where the push stops, BETA sets how
+sharply. Widening the transition to ~1/0.03 = 33 units meant the push never saturated in our
+range (slope still 0.71 at d=30, 0.59 at d=48), so it pushed forever -- and I compensated with
+w_qrl=200, the worst of both. Restored beta=0.1: slope 0.95 at d=30 but 0.047 at d=90.
+PROCESS LESSON: my loop-closing smoke tested only "does violation go positive and lambda grow".
+It never tested whether the equilibrium is STABLE or whether the vocabularies survive. A
+tiny-config 250-step smoke cannot see a failure that appears at step 500-1500 at full width.
+Stability smokes must run at the REAL config, past the step where prior failures appeared.
+RELAUNCH (w_qrl=30, beta=0.1) verified to step 588 at full config: violation 0.001 (sitting ON
+the boundary -- the equilibrium the formulation is meant to find), lambda 0.0016 stable,
+confine 8.5 bounded, cv_rho +0.36. WATCHING: brd_perp 1.18 and jqt_flip 0.063 are low vs jqt6's
+12.7/0.14 at ~step 2000 without QRL, so the push still competes with codebook formation. The
+windowed gates decide by step 1500-2000; if they fire, lower w_qrl again.
+SPEED: 2.44 s/step at the full jqt7 config => ~13.6h for 20k (not the 8h quoted for jqt4's
+1.4s/step). Known hotspot NOT fixed: the move-head term runs mh_pos=32 SINGLE-ROW backbone
+forwards per step in a python loop -- batching it is the obvious win, deferred as too delicate
+to land untested in front of a long run.
