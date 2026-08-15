@@ -83,7 +83,8 @@ def load_net(ckpt, device):
         net = ReachViT(d_model=c["d_model"], layers=c["layers"], heads=c["heads"], d=c["d"],
                        hidden=c["hidden"], components=c["components"],
                        dual=c.get("dual", False), d_cond=c.get("d_cond", 0),
-                       split_head=c.get("split_head", False), move_head=c.get("move_head", False))
+                       split_head=c.get("split_head", False), move_head=c.get("move_head", False),
+                       proj_mlp=c.get("proj_mlp", 0))
         # Rebuild the POLE hierarchy from the cfg before loading. The pole set is data-derived, so
         # a pole-bearing checkpoint carries weights the bare architecture has no slots for and a
         # strict load_state_dict rejects it outright -- which would have failed EVERY v2 rung.
