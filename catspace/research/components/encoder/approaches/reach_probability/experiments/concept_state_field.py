@@ -52,7 +52,8 @@ class ConceptStateField(nn.Module):
 
     def __init__(self, d_model=192, layers=4, tr_heads=8, heads=16, codes=16, d_code=32,
                  d_state=256, components=16, ply_cap=60.0, square_codes=32,
-                 d_fine=32, kmeans_init=True, dead_code=2, n_poles=3, proj_h=512):
+                 d_fine=32, kmeans_init=True, dead_code=2, n_poles=3, proj_h=512,
+                 pole_init=2.0, temp_init=1.0):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
@@ -144,7 +145,19 @@ class ConceptStateField(nn.Module):
         # than merely how good, and each endgame type gets its own anchor to be measured
         # against -- which is the whole point of a geometry over a classifier.
         self.n_poles = int(n_poles)
-        self.poles = nn.Parameter(torch.randn(self.n_poles, d_state) * 0.5)
+        # POLE INIT SCALE AND TEMPERATURE ARE A JOINT CONSTRAINT, not two free knobs.
+        # MEASURED (placing z exactly ON its target pole -- the most favourable case there is,
+        # so this is an upper bound on what any encoder could achieve):
+        #     init 0.5, T 5.0  -> best P(correct) 0.0061   <- chance is 1/267 = 0.0037
+        #     init 0.5, T 0.25 -> 0.9825
+        #     init 2.0, T 1.0  -> 0.9856
+        #     init 8.0, T 5.0  -> 0.9157
+        # csf7 ran at (0.5, 5.0) and sat at chance for 2,000 steps because a perfect encoder
+        # would also have sat at 0.6%. 267 random points in 1024-d are all nearly equidistant,
+        # so the pole cloud's whole spread was 20-25 units while ~33 were needed to be
+        # confident; the softmax stayed flat, and a flat softmax gives the poles almost no
+        # gradient, which is why they never left their init radius.
+        self.poles = nn.Parameter(torch.randn(self.n_poles, d_state) * pole_init)
         # LEARNABLE TEMPERATURE (Kaveh 2026-08-16: "make it learnable"). basin_temp was a
         # hardcoded 5.0 inherited from the 3-pole W/D/L committor, and it was already MEASURED
         # to cap that readout: probe_value_proxy found the committor compressed into
@@ -152,7 +165,7 @@ class ConceptStateField(nn.Module):
         # many multiples of 5. With 267 poles it is worse -- 90% confidence needs the nearest
         # pole ~39 distance units clear of the rest at T=5, against ~11 at three poles. Learned
         # in log space, initialised at the old value so nothing shifts at step 0.
-        self.log_temp = nn.Parameter(torch.tensor(float(np.log(5.0))))
+        self.log_temp = nn.Parameter(torch.tensor(float(np.log(temp_init))))
         # dynamics: (state, move) -> next position's code in every head
         # all three share a width because they are SUMMED, as MoveHead does it (64x32, 64x32,
         # 5x32 -> one 32-d action vector)
@@ -263,12 +276,16 @@ def main():
                     help="state width; splits into two IQE rulers of d_state/2. Was 48 (two "
                          "24-d rulers) -- QRL's reference IQE is 2048-d, so ours was ~40x "
                          "smaller and had to separate 64 poles.")
+    ap.add_argument("--pole-init", type=float, default=2.0,
+                    help="stddev of the pole initialisation. With T, this decides whether a "
+                         "confident call is REACHABLE at all: (0.5, T=5) caps any encoder at "
+                         "0.6% on 267 classes; (2.0, T=1) reaches 98.6%.")
     ap.add_argument("--proj-h", type=int, default=512,
                     help="hidden width of the 3-layer projector feeding the IQE")
     ap.add_argument("--components", type=int, default=16,
                     help="IQE components per ruler; d_state/2 must divide by this")
     ap.add_argument("--lr", type=float, default=3e-4)
-    ap.add_argument("--basin-temp", type=float, default=5.0,
+    ap.add_argument("--basin-temp", type=float, default=1.0,
                     help="INITIAL softmax temperature only. It is a learned parameter "
                          "(log_temp); passing it at the call sites silently pinned it -- "
                          "verified by log_temp sitting bit-identical to its init after 40 "
@@ -421,7 +438,8 @@ def main():
                             square_codes=args.square_codes,
                             kmeans_init=bool(args.kmeans_init),
                             dead_code=args.dead_code, n_poles=n_cls,
-                            proj_h=args.proj_h).to(dev)
+                            proj_h=args.proj_h, pole_init=args.pole_init,
+                            temp_init=args.basin_temp).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     print(f"[csf] {sum(p.numel() for p in net.parameters()):,} params | state space "
           f"{args.codes}^{args.heads}", flush=True)
