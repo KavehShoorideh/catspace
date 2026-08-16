@@ -12658,3 +12658,54 @@ optimization from the policy-value net AND the MCTS tree, and finds "dynamic con
 motivate a sequence of actions" -- the closest published analogue to our trajectory layer.
 Codebook Features (arXiv 2310.17230) applies VQ at every hidden layer for interpretability and
 steering -- closest analogue to our multi-head concept design. Both worth reading in full.
+
+---
+
+## 2026-08-15 — Codebook collapse: three hypotheses tested, three refuted
+
+Kaveh asked why VQ reaches 100% usage on a frozen lc0 trunk but collapses inside jqt. Ran the
+suspects one at a time (`ablate_collapse.py`, frozen trunk, 256 codes, majority 40.0%):
+
+| config | usage% | perplexity | outcome |
+|---|---|---|---|
+| A baseline | 100.0% | 217.6 | 56.7% |
+| B +persistence (w=3) | 100.0% | 212.9 | 52.6% |
+| C +moving trunk | 100.0% | 212.1 | 61.3% |
+| D −standardise | 57.8% | 116.7 | 52.8% |
+| E all three | 48.4% | 88.3 | 48.6% |
+
+**Persistence is NOT the cause** — I predicted it would be (its optimum literally is "all
+latents identical") and it held 100% usage. **A moving representation is NOT the cause** — and
+it scored the *best* outcome accuracy (61.3%), mild evidence that letting the trunk train helps
+the codes carry the game.
+
+Only normalisation moved the needle, so I proposed adding one. **It does not apply, and Kaveh's
+question is why**: he asked whether a norm was already there. `JepaEncoder` ends in
+`nn.LayerNorm(d)` (`jepa.py:87`), and measurement confirms jqt's quantizer inputs are already
+well-conditioned — per-dim std max/median is 2.6x on phi, 3.7x on z_B. No scale pathology.
+
+Measuring the *trained* path instead (`probe_codebook_health.py`) showed a real difference:
+
+    jqt6 (healthy)    |z|/|c| 0.63-1.03    16/16 codes    perplexity 11.1-15.3
+    jqt8 (collapsed)  |z|/|c| 3.15-11.26    1-2/16        perplexity 1.00-1.86
+
+**Two errors of my own in getting there**, both of which produce falsely healthy readings and
+are now documented in the probe: the jqt weights live in a sidecar (`reach_<gen>_jqt.pt`), so
+reading `_latest.pt` alone measures a random init; and with `geo_heads>0` the trained path is
+`quantize_split`, so `jqt.enc` is a dead module.
+
+**The magnitude ratio is a SYMPTOM, not the cause** (`probe_magnitude_collapse.py`). Forcing a
+10x ratio with a fixed gain left usage at 100% and perplexity 213 — EMA just grows the codebook
+until the ratio returns to ~1. The spread seen in jqt8 is what collapse leaves behind: one code
+wins every assignment, so only it is updated and the other 15 stay frozen at their init radius.
+
+**Retracted, and it was my proposed fix**: a LayerNorm between encoder and quantizer was the
+only harmful row measured — 15.6% usage, perplexity 36.4. Pinning latents to a fixed radius
+removes the freedom EMA needs to track the cloud. Do not add it.
+
+**Status: cause still unnamed.** The harness never collapses (worst honest row 57.8%), so it
+cannot discriminate among cures it never needs. Remaining lead is the jqt6→jqt8 delta:
+`w_cda`/`w_cdb` were removed, which took implicit codebook-usage pressure with them, and a
+collapsed head then feeds a constant `zq` to the straight-through estimator — a constant
+gradient direction that would drift the encoder outward exactly as measured. Untested. No
+relaunch until it is named.
