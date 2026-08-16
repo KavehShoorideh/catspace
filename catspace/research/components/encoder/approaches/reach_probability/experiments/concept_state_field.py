@@ -179,6 +179,15 @@ def main():
     ap.add_argument("--w-dyn", type=float, default=2.0, help="concepts predict next concepts")
     ap.add_argument("--w-ply", type=float, default=0.2, help="deliberately weak ('poorly')")
     ap.add_argument("--ply-gap", type=int, default=8, help="max gap for the dA pair sample")
+    ap.add_argument("--stratify", type=int, default=1,
+                    help="sample the committor batch EQUALLY from WIN/DRAW/LOSS instead of at "
+                         "the corpus rate (measured 12.4/78.9/8.7). Without this the majority "
+                         "class supplies ~79%% of the gradient and 'always draw' is a near "
+                         "optimum. NOTE the consequence: the committor is then calibrated to a "
+                         "UNIFORM prior, not the corpus prior -- to read a true P(outcome) add "
+                         "log(corpus prior) before the softmax. Accuracy is reported against "
+                         "the 33.3%% balanced baseline, which is why it looks lower and means "
+                         "more.")
     ap.add_argument("--eval-every", type=int, default=200)
     ap.add_argument("--eval-sf", type=int, default=1,
                     help="report the Stockfish within-parent yardstick. EVALUATION ONLY -- "
@@ -203,6 +212,12 @@ def main():
     cls = np.full(len(gor), -1, np.int64)
     cls[out_w == T.WIN] = 0; cls[out_w == T.DRAW] = 1; cls[out_w == T.LOSS] = 2
     ok = np.flatnonzero(cls >= 0)
+    by_cls = [np.flatnonzero(cls == k) for k in range(3)]
+    base = np.bincount(cls[ok], minlength=3) / max(len(ok), 1)
+    print(f"[csf] outcome base rate  WIN {base[0]:.1%}  DRAW {base[1]:.1%}  LOSS {base[2]:.1%}"
+          f"  -> majority baseline {base.max():.1%}, balanced baseline 33.3%", flush=True)
+    assert all(len(c) > 0 for c in by_cls), \
+        f"stratification needs all three outcomes present; got {[len(c) for c in by_cls]}"
     # the transitions cache is keyed by ROW COUNT, so a new corpus needs a new one; build it
     # rather than die (no script in the repo generated this file before gen_game_transitions)
     from catspace.research.tools.training_infra import gen_game_transitions as GT
@@ -227,7 +242,11 @@ def main():
     for step in range(1, args.steps + 1):
         net.train()
         # --- (1) committor on outcome-labelled positions (the free label) ----------------
-        r = ok[rng.integers(0, len(ok), args.batch)]
+        if args.stratify:
+            per = args.batch // 3
+            r = np.concatenate([c[rng.integers(0, len(c), per)] for c in by_cls])
+        else:
+            r = ok[rng.integers(0, len(ok), args.batch)]
         tk, gb = batch(r)
         z, ids, vl, ids_sq = net.encode(tk, gb)
         y = torch.from_numpy(cls[r]).to(dev)

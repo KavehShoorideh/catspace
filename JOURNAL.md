@@ -13025,3 +13025,35 @@ Capacity was one bottleneck; the label is the other, and only the first is now f
   coarser ones failed to explain -- collinearity removed by construction." I CONCATENATED
   instead, so the global stream is redundant and dies. That is a design regression against the
   existing jqt structure and should be restored before any long run.
+
+---
+
+## 2026-08-15 — Stratifying the outcome label does NOT rescue the committor
+
+Kaveh: "stratify". Implemented stratified sampling of the committor batch — equal draws from
+WIN/DRAW/LOSS instead of the corpus rate (12.4/78.9/8.7). Same smoke setup, only that change.
+
+    sampling        committor acc   baseline   margin
+    corpus rate         0.844        0.789     +5.5 pts
+    STRATIFIED          0.333        0.333     **+0.0 pts**
+
+**NEGATIVE, and it reorders the diagnosis.** On balanced batches the committor sits EXACTLY at
+the 33.3% baseline after 200 steps. So the earlier +5.5 points was essentially the class prior,
+and the label imbalance was NOT the binding constraint: the state is not carrying
+outcome-relevant information in the first place. Stratification correctly removed the prior and
+revealed that nothing was underneath it.
+
+Note on calibration, since this changes what the number means: a stratified committor is
+calibrated to a UNIFORM prior, not the corpus prior. To read a true P(outcome) you must add
+log(corpus prior) before the softmax. Accuracy is now reported against the 33.3% balanced
+baseline, which is a much more honest reference than 78.9%.
+
+**Upstream cause, and the caveat on it.** Both codebooks are near-degenerate at this point:
+global perplexity 1.21 (2.1 of 16 codes), square 2.13 (2.1 of 32). A state built from ~2 global
+codes cannot support outcome prediction, so the committor result is downstream of collapse
+rather than of the label. BUT 200 steps is early and this is NOT yet proof of terminal collapse:
+jqt8 at step 200 was at geo_perp 5.30 / brd_perp 4.34, and jqt6's geometry grew 3.45 (step 250)
+-> 14.08 (step 1000). csf is starting WORSE than both at the same step, which is the real
+signal; whether it recovers needs ~1500+ steps to say.
+
+`cells` held at 30.5 throughout, so the square-concept fix is stable under stratification.
