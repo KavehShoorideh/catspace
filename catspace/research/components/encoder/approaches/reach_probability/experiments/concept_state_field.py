@@ -431,7 +431,12 @@ def main():
                 torch.from_numpy(tr.glob[rows].astype(np.float32)).to(dev))
 
     rng = np.random.default_rng(args.seed)
-    log = open(f"{args.out}_steps.jsonl", "w", buffering=1 << 14)   # NOT append: one run, one file
+    # LINE-buffered, not 16KB-buffered: at ~200 B/row and one row per 20 steps a 16 KB buffer
+    # does not flush until ~1,600 steps, so the metrics file sits EMPTY for the first half hour
+    # of a long run and loses everything since the last flush if the run is killed. Same class
+    # of mistake as piping progress through grep. (The .log written by `python -u` is
+    # unbuffered and remains the authoritative record either way.)
+    log = open(f"{args.out}_steps.jsonl", "w", buffering=1)   # NOT append: one run, one file
     for step in range(1, args.steps + 1):
         net.train()
         # --- (1) committor on outcome-labelled positions (the free label) ----------------
