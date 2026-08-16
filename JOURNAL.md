@@ -12876,3 +12876,59 @@ reaches it only through the separate `call1` forward (0.038).
 The 64-slot concern is real for `sqrec` (99.47) and `pcrec` (122.34) — genuinely per-square
 streams — but both put **zero** gradient on these concept heads. They train the separate
 `sq_vq`/`pc_vq` codebooks, a different system.
+
+---
+
+## 2026-08-15 — How good is the committor as a value estimate? Measured: it is a material counter
+
+Kaveh: "how do we estimate this value currently? using the probability block of jqt6? how good
+of a proxy is that?" There is no value head — value is inferred from GEOMETRY:
+`prb = softmax(-dB(z_B, pole_k)/basin_temp)`, `E = prb[WIN] + 0.5*prb[DRAW]`, white POV.
+
+`probe_value_proxy.py`, jqt6 step 2000, 84,162 children of 3,000 parents, target = Stockfish
+`UCI_ShowWDL` expectation on the same positions (POV-aligned: parent-mover is white iff the
+child's `glob[0]==0`).
+
+    GLOBAL (all children)
+      committor E    pearson +0.686   spearman +0.708
+      material only  pearson +0.598   spearman +0.687     <- the bar
+      committor E    range [0.247, 0.768]  sd 0.169
+      stockfish E    range [0.000, 1.000]  sd 0.443
+      MAE 0.3129  vs  0.4069 for predicting the constant mean
+
+    WITHIN-PARENT (ranking the legal moves of ONE position)
+      mean spearman over 1,965 parents : +0.096 (sd 0.276)
+      top-1 agreement with SF's best   : 10.6%  (random ~4.4%)
+
+    RESOLUTION (spread among children of one parent)
+      committor E  mean within-parent sd : 0.0298
+      stockfish E  mean within-parent sd : 0.1355
+      ratio                              : 0.220
+
+**VERDICT: a poor proxy, and poor in a specific, diagnosable way.**
+
+1. **Globally it is barely more than a material count.** Spearman +0.708 against material's
+   +0.687 — a margin of 0.021. Almost all of its global signal is "who has more wood".
+2. **For move choice it is nearly blind.** Within-parent spearman +0.096; it picks Stockfish's
+   best move 10.6% of the time against a 4.4% random baseline. Better than chance, useless for
+   planning. This is the number that matters, and a reader looking only at the global +0.71
+   would conclude the opposite.
+3. **The cause is RESOLUTION, not direction.** Among siblings our E moves only 22% as much as
+   the truth does. It is not pointing the wrong way so much as barely moving — one ply apart,
+   two positions get nearly the same committor. Same pathology already measured on dA
+   (crow-flies: 34.9% wrong-way steps, median step −0.18 vs a true −1.0): the geometry is
+   smooth exactly where planning needs it sharp.
+4. **It cannot express certainty.** Range [0.247, 0.768] against a true [0,1]. `softmax(−dB/5)`
+   over three poles cannot saturate unless pole distances differ by many multiples of
+   `basin_temp=5`, so "completely won" is not representable. MAE beats a constant by only 23%.
+
+**Caveats, stated because they bound the claim.** This measures THIS checkpoint: jqt6 at step
+2000 of 20,000 requested, and its `proj_b` — the very projection z_B comes from — was left at
+random init by the warm-start bug. So this is not proof the committor design is inherently
+incapable; it is proof that what we currently have is not a usable value estimate. 1,035 of
+3,000 parents were skipped for having <3 children or no spread in the target.
+
+**Consequence for the board-target question**: independent support for grading the board codes
+on the CHILD-VALUE VECTOR over legal moves rather than a scalar. The quantity planning needs is
+exactly the one the current estimate cannot produce — discrimination between siblings — and no
+scalar-per-position target trains it.
