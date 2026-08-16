@@ -12932,3 +12932,58 @@ incapable; it is proof that what we currently have is not a usable value estimat
 on the CHILD-VALUE VECTOR over legal moves rather than a scalar. The quantity planning needs is
 exactly the one the current estimate cannot produce — discrimination between siblings — and no
 scalar-per-position target trains it.
+
+---
+
+## 2026-08-15 — concept_state_field: the IQE moved one layer downstream (built + smoke-tested)
+
+Kaveh: "let's replace the iqe and send it one layer downstream... get concepts from some board
+trunk. concepts should be predictive of next concepts. then we define states as the set of
+concepts active. then we iqe on those states... at least get committor right. I don't wanna
+evaluate sf on every state yet as learning labels."
+
+Built as a NEW self-contained script rather than bolted onto train_reach_vit, whose loss stack
+is half measured-dead. `concept_state_field.py`:
+
+    board -> phi -> VQ concepts -> STATE = f(codes only) -> IQE (dA plies / dB committor)
+
+The state is a function of the CODES ALONE (zq carries straight-through gradient but takes only
+K values per head), so the geometry is piecewise constant on concept cells by construction --
+"subgoal = invariance class" made structural. Losses are all free from the corpus, NO Stockfish
+in the gradient: committor vs the game's actual W/D/L, next-concept prediction from (state,
+move), a deliberately weak ply term, VQ commitment. Stockfish appears ONLY as `--eval-sf`, a
+yardstick that never touches the loss.
+
+Also written: **`gen_game_transitions.py`**. Five scripts read `game_transitions_{N}.npz` and
+NONE created it — it had been made ad hoc for one corpus, and the filename is keyed to the row
+count, so any new corpus died on FileNotFoundError. Now built on demand.
+
+**SMOKE RUN (200 steps, 600 games, 69,455 positions) — runs end to end, and immediately
+surfaces two structural problems that decide whether the design can work at all.**
+
+    step   committor acc   next-code acc   perp   used/16
+       1       0.818           0.064       2.46     4.6
+     100       0.792           0.771       4.10     7.6
+     200       0.844           0.482       2.02     2.7
+
+    SF yardstick   step 100: within-parent spearman -0.023 | top-1 41.1% | cells 2.72
+                   step 200: within-parent spearman +0.001 | top-1 19.1% | cells 1.85
+
+1. **The free outcome label is nearly constant.** Measured on this corpus: WIN 12.4% / DRAW
+   **78.9%** / LOSS 8.7% of positions. Committor accuracy 0.844 against a 0.789 majority
+   baseline is a 5-point margin — the label carries very little signal because SF-vs-SF with
+   adjudication draws 81% of games (terminals: 487 DRAW_ADJUDICATED, 112 LOSS_MATE of 600).
+   This is the "minimax value is nearly constant" problem, now confirmed on our own data, and
+   it is the direct consequence of taking outcome as the only free supervision.
+2. **`cells` = 1.85–2.72.** Among the ~30 legal children of one position, the concept state
+   takes only ~2 DISTINCT values. The partition therefore CANNOT rank moves even in principle —
+   most siblings are literally the same state and receive identical value. Within-parent
+   spearman is correspondingly ~0.00. This is the structural risk named in the script's own
+   docstring before the run, and it is now measured rather than feared.
+
+Codebook usage also fell (7.6 -> 2.7 of 16 by step 200), so the collapse tendency followed the
+concepts into the new architecture — unsurprising at 200 steps, but noted.
+
+**NOT LAUNCHED as a long run.** Both problems above are about the training SIGNAL and the
+vocabulary's fineness, not about optimisation, so more steps do not address either. Decision
+needed before spending hours.
