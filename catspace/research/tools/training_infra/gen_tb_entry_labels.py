@@ -70,7 +70,13 @@ def main():
     ap.add_argument("--n-piecedown", type=int, default=45906)
     ap.add_argument("--max-plies", type=int, default=400)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--men", type=int, default=5, help="tablebase level to detect entry into")
+    ap.add_argument("--levels", default="5,4,3",
+                    help="tablebase levels to label entry into, coarsest first. Kaveh "
+                         "2026-08-16: 'also label all 4 3 pieces endgames and allow poles for "
+                         "those too'. A capture removes exactly one man and promotion removes "
+                         "none, so a game descending past 6 men passes through 5, then 4, then "
+                         "3 -- each is a further, fully-solved resolution point.")
+    ap.add_argument("--men", type=int, default=5, help="(legacy) single level; --levels wins")
     ap.add_argument("--min-count", type=int, default=50,
                     help="entrance types rarer than this are folded into an OTHER class, since "
                          "a class with a handful of examples cannot be learned or evaluated")
@@ -92,59 +98,99 @@ def main():
     print(f"[tb] men per position: min {men.min()} max {men.max()} "
           f"mean {men.mean():.1f}", flush=True)
 
+    # Kaveh 2026-08-16: "there should be wdl labels for games ending before reaching 5 pcs".
+    # That closes the censoring hole and makes ONE vocabulary cover every position. The label
+    # is not "which tablebase" but "WHERE DOES THIS GAME RESOLVE" -- either into a specific
+    # solved region, or by ending outright with a result. 76.5% of positions had no label at
+    # all before this; now none are dropped and no NEVER class swamps the distribution.
+    outcome_w = tr.outcome_of_row_white()
+    WDL_NAME = {T.WIN: "WDL:W", T.DRAW: "WDL:D", T.LOSS: "WDL:L"}
+    levels = sorted({int(x) for x in args.levels.split(",")}, reverse=True)
     tb_class = np.full(n_pos, -1, np.int16)
     tb_plies = np.full(n_pos, -1, np.int32)
-    sigs, entry_row, entry_game = [], [], []
+    tb_level = np.full(n_pos, -1, np.int8)
+    sigs_all, rows_all = [], []            # (label string, row) for vocabulary counting
+    per_level = {L: 0 for L in levels}
+    n_enter_any = 0
+
+    # THE LABEL IS "THE NEXT TABLEBASE ENTRANCE FROM HERE". At 8 men the next entrance is the
+    # 5-man one; once inside 5 men it is the 4-man one; then the 3-man one; and when no further
+    # level is reached the game simply ends, so the label is its RESULT. That makes the target
+    # a genuine progression of resolution points and -- unlike labelling only the 5-man entry --
+    # covers every position, including the 6% already inside the tablebase.
     for g in range(n_games):
-        s, n = int(start[g]), int(length[g])
-        m = men[s:s + n]
-        hit = np.flatnonzero(m == args.men)
-        if len(hit) == 0:
-            continue                       # never enters -- stays -1 (censored)
-        i = int(hit[0])                    # FIRST time at exactly `men` men
-        sigs.append(signature(tok[s + i]))
-        entry_row.append(s + i); entry_game.append(g)
-        tb_plies[s:s + i + 1] = np.arange(i, -1, -1, dtype=np.int32)
+        s0, n = int(start[g]), int(length[g])
+        m = men[s0:s0 + n]
+        entry = {}
+        for L in levels:
+            hit = np.flatnonzero(m == L)
+            if len(hit):
+                entry[L] = int(hit[0])
+        if entry:
+            n_enter_any += 1
+        wdl = WDL_NAME.get(int(outcome_w[s0]))
+        for i in range(n):
+            nxt = None
+            for L in levels:                       # levels are descending: 5, 4, 3
+                if L < m[i] and L in entry and entry[L] >= i:
+                    nxt = L
+                    break
+            if nxt is not None:
+                lab = signature(tok[s0 + entry[nxt]])
+                tb_plies[s0 + i] = entry[nxt] - i
+                tb_level[s0 + i] = nxt
+            elif wdl is not None:
+                lab = wdl
+                tb_plies[s0 + i] = n - 1 - i
+                tb_level[s0 + i] = 0
+            else:
+                continue                            # no result (time forfeit): stays -1
+            sigs_all.append(lab); rows_all.append(s0 + i)
+        for L, i in entry.items():
+            per_level[L] += 1
 
-    n_enter = len(sigs)
-    print(f"[tb] games reaching {args.men} men: {n_enter:,} / {n_games:,} "
-          f"({100 * n_enter / max(n_games, 1):.1f}%)", flush=True)
-    if not n_enter:
+    for L in levels:
+        print(f"[tb] games reaching {L} men: {per_level[L]:,} / {n_games:,} "
+              f"({100 * per_level[L] / max(n_games, 1):.1f}%)", flush=True)
+    if not sigs_all:
         return
-
-    cnt = Counter(sigs)
-    tables = Counter(canonical(s) for s in sigs)
+    cnt = Counter(s for s in sigs_all if not s.startswith("WDL:"))
+    cnt_wdl = Counter(s for s in sigs_all if s.startswith("WDL:"))
+    tables = Counter(canonical(s) for s in cnt)
     print(f"[tb] DISTINCT entrance types: {len(cnt):,} colour-explicit | "
           f"{len(tables):,} colour-folded (= Syzygy tables touched)", flush=True)
 
     keep = {s for s, c in cnt.items() if c >= args.min_count}
-    vocab = sorted(keep) + ["OTHER"]
+    # WDL classes are always in the vocabulary -- they are the resolution mode for every game
+    # that never simplifies, not a rare tail to be folded into OTHER.
+    vocab = sorted(keep) + ["OTHER"] + sorted(cnt_wdl)
     idx = {s: i for i, s in enumerate(vocab)}
     print(f"[tb] vocabulary: {len(keep):,} types with >={args.min_count} examples, "
           f"+1 OTHER (covers {sum(c for s, c in cnt.items() if s not in keep):,} entries)",
           flush=True)
 
-    for r, sg in zip(entry_row, sigs):
-        pass
-    # assign the class to every row of the game that leads to that entry
-    for g, r, sg in zip(entry_game, entry_row, sigs):
-        s = int(start[g])
-        tb_class[s:r + 1] = idx.get(sg, idx["OTHER"])
+    other = idx["OTHER"]
+    for r, sg in zip(rows_all, sigs_all):
+        tb_class[r] = idx.get(sg, other)
 
     lab = int((tb_class >= 0).sum())
     print(f"[tb] labelled positions: {lab:,} / {n_pos:,} ({100 * lab / n_pos:.1f}%)", flush=True)
+    print(f"[tb] positions labelled by RESULT (no further level reached): "
+          + " ".join(f"{k} {v:,}" for k, v in sorted(cnt_wdl.items())), flush=True)
+    print(f"[tb] NOTE: counts are per POSITION, not per entry -- --min-count therefore "
+          f"filters far more weakly here than it did on entries alone.")
     print(f"\n[tb] top 15 entrance types (colour-explicit, white|black):")
     for s, c in cnt.most_common(15):
-        print(f"     {s:<14} {c:>7,}  ({100 * c / n_enter:4.1f}%)")
+        print(f"     {s:<14} {c:>9,}  ({100 * c / max(len(sigs_all),1):4.1f}% of labelled)")
     pl = tb_plies[tb_plies >= 0]
     if len(pl):
         print(f"\n[tb] plies-to-entry over labelled rows: median {np.median(pl):.0f} "
               f"p90 {np.percentile(pl, 90):.0f} max {pl.max()}")
 
     if args.save:
-        out = paths.derived(f"tb_entry_{args.men}men_{n_pos}.npz")
+        out = paths.derived(f"tb_entry_{'-'.join(map(str, levels))}men_{n_pos}.npz")
         np.savez_compressed(out, tb_class=tb_class, tb_plies=tb_plies,
-                            vocab=np.array(vocab), men=men)
+                            tb_level=tb_level, vocab=np.array(vocab), men=men)
         print(f"\n[tb] wrote {out}", flush=True)
         with open(str(out).replace(".npz", "_vocab.json"), "w") as f:
             json.dump({"vocab": vocab, "counts": dict(cnt.most_common())}, f, indent=1)

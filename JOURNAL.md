@@ -13264,3 +13264,57 @@ move-ranking figure reported before the screen existed was measured overwhelming
 positions -- where the model should look its best. That does not rescue those numbers (they were
 ~0.00, i.e. bad even on train), but it does mean they were never the held-out measurement I
 described them as.
+
+---
+
+## 2026-08-16 — Tablebase-entrance labels at 5/4/3 men, and 267 white-POV poles
+
+Kaveh, in sequence: make the 5-piece entrance the label; "there should be wdl labels for games
+ending before reaching 5 pcs"; "increase the iqe size and allow it to learn a pole for all 5
+pieces endgame types"; "also label all 4 3 pieces endgames and allow poles for those too"; and
+on the pole count, "this is from pov of white so it should be more than 64".
+
+**THE LABEL: the NEXT tablebase entrance from this position.** At 8 men that is the 5-man
+entrance; once inside 5 men it is the 4-man one; then the 3-man one; and when no further level
+is reached, the game's own W/D/L result. A capture removes exactly one man and promotion removes
+none, so a game descending past 6 men passes through 5, then 4, then 3 -- each entry is
+unambiguous, and the sequence is a genuine progression of resolution points.
+
+    games reaching 5 men  10,901 / 49,905  (21.8%)
+             4 men         6,051           (12.1%)
+             3 men         2,529            (5.1%)
+    distinct types        266 colour-explicit | 139 colour-folded (Syzygy tables touched)
+    vocabulary            263 (>=50) + OTHER + 3 WDL = 267 classes
+    labelled positions    4,652,261 / 4,652,261  (100.0%)
+    train majority        WDL:W at 30.2%   (balanced baseline 0.4%)
+
+**Coverage went 23.5% -> 94.0% -> 100.0%** across the three corrections. The first version
+labelled only games that reached 5 men and only up to entry, censoring 3,280,920 positions --
+71% of the corpus -- because I took "the label is the 5-piece entrance type" literally and never
+asked what happens to games that never get there. Kaveh caught it ("every game should have had a
+label regardless, right?"). The second fix left 277,076 post-entry positions unlabelled; the
+next-entrance formulation closes that too.
+
+**WHY 267 AND NOT 64.** The original 64 was not principled: it was `--min-count 50` applied to
+ENTRIES, which kept 60 of 201 observed 5-man types. Two things changed it. Adding 4- and 3-man
+levels raised observed types to 266. And counting per POSITION rather than per entry made the
+threshold far weaker -- 263 of 266 survive, with only 61 positions folded into OTHER. Types are
+COLOUR-EXPLICIT on purpose (`KRP|KR` is not `KR|KRP`): they are opposite propositions, and
+folding them would destroy exactly the signal a value head needs. That is why it is 267 rather
+than the 139 colour-folded Syzygy tables.
+
+**Architecture changes.** IQE widened from d_state 48 (two 24-d rulers, 8 components) to 256
+(two 128-d, 16 components) -- QRL's reference IQE is 2048-d, so 48 was ~40x smaller and now has
+267 poles to separate. `poles` generalised from 3 to n_classes, and `committor()` became
+`resolution()`, batched into ONE IQE call rather than a python loop (at 3 poles a loop was free;
+at 267 it would be 267 evaluations per forward). MEASURED cost: 62.4 ms vs 3.5 ms per call,
+~187 ms/step over three calls -- about 15% of step time, so ~7.8 h for 20k steps.
+
+**Per-pole values**, needed to turn a 267-way distribution back into one number for move
+ranking: `V(k)` = mean white score of TRAIN games resolving at k. Verified WDL:W 1.00 /
+WDL:D 0.50 / WDL:L 0.00. Train-split only, so the yardstick cannot read val/test outcomes.
+
+**Split coverage caveat**: train carries 260 of 267 classes, val 198, test 189 -- rare endgames
+legitimately miss a 10% split, so those splits score over a smaller vocabulary and their
+baselines differ (0.4% train, 0.5% val). Classes absent from a split are dropped from its
+sampling rather than asserted away.

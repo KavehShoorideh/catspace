@@ -51,8 +51,8 @@ class ConceptStateField(nn.Module):
     """board -> concepts -> state -> quasimetric."""
 
     def __init__(self, d_model=192, layers=4, tr_heads=8, heads=16, codes=16, d_code=32,
-                 d_state=48, components=8, ply_cap=60.0, square_codes=32, d_fine=32,
-                 kmeans_init=True, dead_code=2):
+                 d_state=256, components=16, ply_cap=60.0, square_codes=32,
+                 d_fine=32, kmeans_init=True, dead_code=2, n_poles=3):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
@@ -127,7 +127,16 @@ class ConceptStateField(nn.Module):
             f"{components} IQE components (try --d-state {components * 2 * 2})")
         self.iqe_a = IQE(h, components=components)      # LENGTH ruler (plies) -- weak on purpose
         self.iqe_b = IQE(h, components=components)      # OUTCOME ruler -> committor
-        self.poles = nn.Parameter(torch.randn(3, d_state) * 0.5)   # W / D / L
+        # ONE POLE PER RESOLUTION CLASS (Kaveh 2026-08-16: "allow it to learn a pole for all
+        # 5 pieces endgame types"). Previously three poles for W/D/L. Now one learnable point
+        # per class of the tablebase-entrance vocabulary -- 60 endgame types (KRP|KR, KRPP|K,
+        # ...) + OTHER + the three WDL resolution modes for games that end before simplifying.
+        # The readout is structurally unchanged: softmax(-dB(z, pole_k)/temp). What changes is
+        # that "where does this position sit in the space" now answers WHICH ENDGAME rather
+        # than merely how good, and each endgame type gets its own anchor to be measured
+        # against -- which is the whole point of a geometry over a classifier.
+        self.n_poles = int(n_poles)
+        self.poles = nn.Parameter(torch.randn(self.n_poles, d_state) * 0.5)
         # dynamics: (state, move) -> next position's code in every head
         # all three share a width because they are SUMMED, as MoveHead does it (64x32, 64x32,
         # 5x32 -> one 32-d action vector)
@@ -186,10 +195,20 @@ class ConceptStateField(nn.Module):
         k = u.shape[-1] // 2
         return self.iqe_b(u[..., k:], v[..., k:])
 
+    def resolution(self, z, temp=5.0):
+        """-> (N, n_poles): P(this game resolves at pole k), from OUTCOME-ruler distance.
+
+        Computed in ONE batched call rather than a python loop over poles -- at 3 poles the
+        loop was free, at 64 it would be 64 IQE evaluations per forward."""
+        n, P = len(z), self.n_poles
+        zz = z.repeat_interleave(P, 0)                      # (n*P, d)
+        pp = self.poles.unsqueeze(0).expand(n, -1, -1).reshape(n * P, -1)
+        d = self.dB(zz, pp).view(n, P)
+        return torch.softmax(-d / temp, 1)
+
+    # kept so older call sites and checkpoints keep working
     def committor(self, z, temp=5.0):
-        """-> (N,3) over (WIN, DRAW, LOSS) from OUTCOME-ruler distance to the three poles."""
-        d3 = torch.stack([self.dB(z, self.poles[[k]].expand(len(z), -1)) for k in range(3)], 1)
-        return torch.softmax(-d3 / temp, 1)
+        return self.resolution(z, temp)
 
     def predict_next(self, z, mid):
         """-> (global logits (B,H,codes), square logits (B,64,square_codes) or None)."""
@@ -223,13 +242,22 @@ def main():
                     help="per-square concept vocabulary; 0 = pooled-global only "
                          "(which measured cells~2, i.e. cannot rank moves)")
     ap.add_argument("--d-model", type=int, default=192)
-    ap.add_argument("--d-state", type=int, default=48)
+    ap.add_argument("--d-state", type=int, default=256,
+                    help="state width; splits into two IQE rulers of d_state/2. Was 48 (two "
+                         "24-d rulers) -- QRL's reference IQE is 2048-d, so ours was ~40x "
+                         "smaller and had to separate 64 poles.")
+    ap.add_argument("--components", type=int, default=16,
+                    help="IQE components per ruler; d_state/2 must divide by this")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--basin-temp", type=float, default=5.0)
     ap.add_argument("--w-outcome", type=float, default=3.0, help="committor: GET THIS RIGHT")
     ap.add_argument("--w-dyn", type=float, default=2.0, help="concepts predict next concepts")
     ap.add_argument("--w-ply", type=float, default=0.2, help="deliberately weak ('poorly')")
     ap.add_argument("--ply-gap", type=int, default=8, help="max gap for the dA pair sample")
+    ap.add_argument("--labels", default="tb_entry_5-4-3men_{n}.npz",
+                    help="TB-entrance label file, {n} = corpus row count. Colour-EXPLICIT "
+                         "white-POV types (KRP|KR is not KR|KRP -- opposite propositions), so "
+                         "the vocabulary is ~267, not the 139 colour-folded Syzygy tables.")
     ap.add_argument("--n-piecedown", type=int, default=45906,
                     help="piece-down games folded into the corpus. The cache key is the FULL "
                          "build signature, so this must match an existing cache to reuse it: "
@@ -283,9 +311,20 @@ def main():
     tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     gor = tr.game_of_row(); por = tr.ply_of_row()
-    out_w = tr.outcome_of_row_white()          # WIN / DRAW / LOSS per row, white POV
-    cls = np.full(len(gor), -1, np.int64)
-    cls[out_w == T.WIN] = 0; cls[out_w == T.DRAW] = 1; cls[out_w == T.LOSS] = 2
+    # ---- TARGET: where does this game RESOLVE? -------------------------------------
+    # Not the 3-class final result (78.9% draw on the balanced pool, near-constant and
+    # near-unlearnable) but the tablebase-entrance vocabulary: which 5-man endgame this game
+    # falls into, or -- for the 78% of games that end before simplifying -- its W/D/L result.
+    # 64 classes, largest 30.7%. Built by gen_tb_entry_labels.py.
+    out_w = tr.outcome_of_row_white()          # still needed for per-pole values
+    _lp = paths.derived(args.labels.format(n=len(tr.tok)))
+    _lz = np.load(_lp, allow_pickle=True)
+    VOCAB = [str(x) for x in _lz["vocab"]]
+    cls = _lz["tb_class"].astype(np.int64)     # -1 = already inside the tablebase
+    tb_plies = _lz["tb_plies"]
+    n_cls = len(VOCAB)
+    print(f"[csf] target = TB-entrance resolution, {n_cls} classes; "
+          f"{int((cls>=0).sum()):,} labelled ({100*(cls>=0).mean():.1f}%)", flush=True)
     # ---- TRAIN / VAL / TEST, SPLIT BY GAME ------------------------------------------
     # By GAME, never by position: consecutive plies are nearly identical and share one label,
     # so a positional split leaks the answer across itself and "validation" becomes training
@@ -301,9 +340,9 @@ def main():
     split_of_game[_perm[:_nv]] = 1
     split_of_game[_perm[_nv:_nv + _nt]] = 2
     spl = split_of_game[gor]                               # per POSITION
-    by_cls  = [np.flatnonzero((cls == k) & (spl == 0)) for k in range(3)]
-    by_cls_val  = [np.flatnonzero((cls == k) & (spl == 1)) for k in range(3)]
-    by_cls_test = [np.flatnonzero((cls == k) & (spl == 2)) for k in range(3)]
+    by_cls  = [np.flatnonzero((cls == k) & (spl == 0)) for k in range(n_cls)]
+    by_cls_val  = [np.flatnonzero((cls == k) & (spl == 1)) for k in range(n_cls)]
+    by_cls_test = [np.flatnonzero((cls == k) & (spl == 2)) for k in range(n_cls)]
     ok = np.flatnonzero((cls >= 0) & (spl == 0))
     print(f"[csf] split by GAME  train {int((split_of_game==0).sum())} / "
           f"val {_nv} / test {_nt} games  ->  "
@@ -314,9 +353,32 @@ def main():
     train_keys = np.unique(_trk.view(np.dtype((np.void, _trk.shape[1]))).ravel())
     print(f"[csf] {len(train_keys):,} distinct TRAIN board keys for yardstick leak-screening",
           flush=True)
-    for nm, b in (("train", by_cls), ("val", by_cls_val), ("test", by_cls_test)):
-        assert all(len(c) > 0 for c in b), \
-            f"{nm} split is missing an outcome class: {[len(c) for c in b]}"
+    # A class absent from a split cannot be trained or scored there, so it is dropped from
+    # sampling rather than asserted away -- with 64 classes and a 10% split, rare endgames can
+    # legitimately miss. Reported so the loss is never silently over a different vocabulary.
+    live      = [k for k in range(n_cls) if len(by_cls[k])]
+    live_val  = [k for k in range(n_cls) if len(by_cls_val[k])]
+    live_test = [k for k in range(n_cls) if len(by_cls_test[k])]
+    print(f"[csf] classes present: train {len(live)}/{n_cls}  val {len(live_val)}  "
+          f"test {len(live_test)}", flush=True)
+    # PER-POLE VALUE, needed to turn a 64-way resolution distribution back into one number
+    # for move ranking: E[score] = sum_k P(k) * V(k). V(k) is the mean white score of TRAIN
+    # games that resolved at k -- free from the corpus, no Stockfish, and for the endgame
+    # classes it is close to the true value of entering that table since everything after
+    # entry is solved. Train-split only, so the yardstick cannot read val/test outcomes.
+    _sc = np.where(out_w == T.WIN, 1.0, np.where(out_w == T.DRAW, 0.5, 0.0))
+    pole_val = np.full(n_cls, 0.5, np.float32)
+    for k in range(n_cls):
+        m = (cls == k) & (spl == 0)
+        if m.any():
+            pole_val[k] = _sc[m].mean()
+    print(f"[csf] pole values from TRAIN: WDL:W {pole_val[VOCAB.index('WDL:W')]:.2f} "
+          f"WDL:D {pole_val[VOCAB.index('WDL:D')]:.2f} "
+          f"WDL:L {pole_val[VOCAB.index('WDL:L')]:.2f} | endgame range "
+          f"{pole_val.min():.2f}-{pole_val.max():.2f}", flush=True)
+    _b = np.bincount(cls[(cls >= 0) & (spl == 0)], minlength=n_cls)
+    print(f"[csf] train majority class {VOCAB[int(_b.argmax())]} at "
+          f"{100*_b.max()/_b.sum():.1f}%  (balanced baseline {100/len(live):.1f}%)", flush=True)
 
     # the transitions cache is keyed by ROW COUNT, so a new corpus needs a new one; build it
     # rather than die (no script in the repo generated this file before gen_game_transitions)
@@ -332,10 +394,10 @@ def main():
           f"| {len(par):,} transitions [{time.time()-t0:.0f}s]", flush=True)
 
     net = ConceptStateField(d_model=args.d_model, heads=args.heads, codes=args.codes,
-                            d_state=args.d_state,
+                            d_state=args.d_state, components=args.components,
                             square_codes=args.square_codes,
                             kmeans_init=bool(args.kmeans_init),
-                            dead_code=args.dead_code).to(dev)
+                            dead_code=args.dead_code, n_poles=n_cls).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     print(f"[csf] {sum(p.numel() for p in net.parameters()):,} params | state space "
           f"{args.codes}^{args.heads}", flush=True)
@@ -350,8 +412,11 @@ def main():
         net.train()
         # --- (1) committor on outcome-labelled positions (the free label) ----------------
         if args.stratify:
-            per = args.batch // 3
-            r = np.concatenate([c[rng.integers(0, len(c), per)] for c in by_cls])
+            # pick a CLASS uniformly, then a position within it. With 64 classes and batch 192
+            # a fixed per-class quota would give 3 each; sampling this way keeps the batch size
+            # independent of the class count and still equalises class exposure in expectation.
+            ks = rng.choice(live, args.batch)
+            r = np.array([by_cls[k][rng.integers(0, len(by_cls[k]))] for k in ks])
         else:
             r = ok[rng.integers(0, len(ok), args.batch)]
         tk, gb = batch(r)
@@ -360,11 +425,11 @@ def main():
         # jqt's residual pattern: the coarse stream is graded ALONE (so it cannot become
         # redundant), the fine stream is graded on coarse.detach() + fine (so it learns only
         # the residue). Same target for both, exactly as l_vqrec / l_sqrec do it.
-        p3 = net.committor(net.full(z_g, z_sq), args.basin_temp)
-        l_out = F.nll_loss((net.committor(z_g, args.basin_temp) + 1e-8).log(), y)
+        p3 = net.resolution(net.full(z_g, z_sq), args.basin_temp)
+        l_out = F.nll_loss((net.resolution(z_g, args.basin_temp) + 1e-8).log(), y)
         if z_sq is not None:
             l_out = l_out + F.nll_loss(
-                (net.committor(net.residual(z_g, z_sq), args.basin_temp) + 1e-8).log(), y)
+                (net.resolution(net.residual(z_g, z_sq), args.basin_temp) + 1e-8).log(), y)
 
         # --- (2) concepts predict next concepts ------------------------------------------
         ti = rng.integers(0, len(par), args.batch)
@@ -416,7 +481,7 @@ def main():
                    "sq_perp": sq_perp}
             log.write(json.dumps(rec) + "\n")
             if step % 100 == 0 or step == 1:
-                print(f"[csf] {step:5d} loss {float(loss):8.3f} | committor acc {acc:.3f} "
+                print(f"[csf] {step:5d} loss {float(loss):8.3f} | resolution acc {acc:.3f} "
                       f"| next-code acc {dyn_acc:.3f} sq {sq_acc:.3f} | perp {perp:5.2f} "
                       f"sq_perp {sq_perp:5.2f} used {used:4.1f}/{args.codes} | {time.time()-t0:.0f}s", flush=True)
 
@@ -424,14 +489,16 @@ def main():
             net.eval()
             with torch.no_grad():
                 _per = 256 // 3
-                _rv = np.concatenate([c[rng.integers(0, len(c), _per)] for c in by_cls_val])
+                _kv = rng.choice(live_val, 256)
+                _rv = np.array([by_cls_val[k][rng.integers(0, len(by_cls_val[k]))]
+                                for k in _kv])
                 _zg, _zs, _, _, _ = net.encode(*batch(_rv))
-                _p = net.committor(net.full(_zg, _zs), args.basin_temp)
+                _p = net.resolution(net.full(_zg, _zs), args.basin_temp)
                 _yv = torch.from_numpy(cls[_rv]).to(dev)
                 val_acc = float((_p.argmax(1) == _yv).float().mean())
             net.train()
-            print(f"[csf] {step:5d} VAL committor {val_acc:.3f} (balanced baseline 0.333) "
-                  f"| train {acc:.3f}", flush=True)
+            print(f"[csf] {step:5d} VAL resolution {val_acc:.3f} "
+                  f"(balanced baseline {1/len(live_val):.3f}) | train {acc:.3f}", flush=True)
             log.write(json.dumps({"s": step, "val_acc": val_acc}) + "\n")
 
         if args.ckpt_every and step % args.ckpt_every == 0:
@@ -441,7 +508,7 @@ def main():
                        f"{args.out}_step{step}.pt")
 
         if args.eval_sf and (step % args.eval_every == 0 or step == args.steps):
-            sf = sf_yardstick(net, args, dev, train_keys, want=1)
+            sf = sf_yardstick(net, args, dev, train_keys, want=1, pole_val=pole_val)
             if sf:
                 print(f"[csf] {step:5d} SF YARDSTICK (eval only, never a label): "
                       f"within-parent spearman {sf['sp']:+.3f} | top-1 {sf['top1']:.1%} "
@@ -454,13 +521,15 @@ def main():
     net.eval()
     with torch.no_grad():
         _per = 512 // 3
-        _rt = np.concatenate([c[rng.integers(0, len(c), _per)] for c in by_cls_test])
+        _kt = rng.choice(live_test, 512)
+        _rt = np.array([by_cls_test[k][rng.integers(0, len(by_cls_test[k]))] for k in _kt])
         _zg, _zs, _, _, _ = net.encode(*batch(_rt))
-        _p = net.committor(net.full(_zg, _zs), args.basin_temp)
+        _p = net.resolution(net.full(_zg, _zs), args.basin_temp)
         test_acc = float((_p.argmax(1) == torch.from_numpy(cls[_rt]).to(dev)).float().mean())
-    sf_te = sf_yardstick(net, args, dev, train_keys, want=2)
+    sf_te = sf_yardstick(net, args, dev, train_keys, want=2, pole_val=pole_val)
     print(f"\n[csf] ===== TEST (single touch) =====", flush=True)
-    print(f"[csf]   committor {test_acc:.3f}   (balanced baseline 0.333)", flush=True)
+    print(f"[csf]   resolution {test_acc:.3f}   (balanced baseline "
+          f"{1/len(live_test):.3f}, {len(live_test)} classes)", flush=True)
     if sf_te:
         print(f"[csf]   move ranking: within-parent spearman {sf_te['sp']:+.3f} | "
               f"top-1 {sf_te['top1']:.1%} | cells {sf_te['cells']:.2f} | n={sf_te['n']}",
@@ -472,7 +541,7 @@ def main():
     print(f"[csf] done -> {args.out}_latest.pt [{time.time()-t0:.0f}s]", flush=True)
 
 
-def sf_yardstick(net, args, dev, train_keys=None, want=1):
+def sf_yardstick(net, args, dev, train_keys=None, want=1, pole_val=None):
     """Stockfish shards as a MEASURING STICK ONLY -- no gradient, never in the loss.
 
     Reports the question this architecture lives or dies on: among the legal children of one
@@ -544,8 +613,10 @@ def sf_yardstick(net, args, dev, train_keys=None, want=1):
             z = net.full(zg_, zsq_)
             full = (ids if ids_sq is None else
                     torch.cat([ids, ids_sq], -1)).cpu().numpy()
-            p3 = net.committor(z, args.basin_temp)
-            e_ours = (p3[:, 0] + 0.5 * p3[:, 1]).cpu().numpy()
+            p3 = net.resolution(z, args.basin_temp)
+            # move-ranking still needs a SCALAR: expected score under the
+            # resolution distribution, using each pole's own value.
+            e_ours = (p3.cpu().numpy() * pole_val[None, :]).sum(-1)
             cells.append(len(np.unique(full, axis=0)))
             if np.ptp(e_white) < 1e-6:
                 continue
