@@ -13146,3 +13146,43 @@ tested and none sufficient) the untested lever with direct literature support is
 quantizer's own anti-collapse machinery, which we have never switched on: `kmeans_init` and
 `threshold_ema_dead_code` are both OFF in every VectorQuantize in this repo. FSQ's paper
 measures VQ usage at 0.78% WITHOUT code splitting versus 81% with it.
+
+---
+
+## 2026-08-16 — kmeans_init + dead-code replacement: collapse solved, committor 0.443 -> 0.792
+
+Kaveh: "do the kmeans init" then "do the dead code too and run 2500 steps". Both were OFF
+everywhere in this repo -- verified against the library source that `VectorQuantize`'s own
+defaults are `kmeans_init=False`, `threshold_ema_dead_code=0` (the `2` in that file belongs to
+the inner `Codebook` class, which VectorQuantize overrides).
+
+csf3 = csf2 + both switches. Identical otherwise. 2500 steps, 600 games, 52 min.
+
+    step   csf2 perp (used/16)   csf3 perp (used/16)   csf2 sq   csf3 sq   csf2 out   csf3 out
+     500      2.37 ( 5.2)          5.83 (10.9)          1.80      2.55      0.380      0.354
+    1000      1.96 ( 2.0)         11.04 (14.1)          2.11      4.25      0.375      0.438
+    1500      1.96 ( 2.0)          2.40 ( 5.5)          1.48      2.68      0.339      0.521
+    2000      3.84 ( 6.7)          5.25 (10.2)          1.48      4.22      0.359      0.635
+    2500      3.33 ( 4.7)         10.13 (**16.0**)      1.52      3.10      0.443    **0.792**
+
+**COLLAPSE IS SOLVED, and it was the quantizer's own machinery all along.** Full vocabulary
+alive at the end (16 of 16 codes) against 4.7 for the identical run without the switches. The
+square codebook survives (3.10 vs 1.52) though it remains the weaker of the two. After a
+session of ablations -- persistence, moving trunk, latent magnitude, input normalisation,
+w_cda/w_cdb, concat-vs-residual, all measured and all insufficient -- the answer was two
+constructor arguments nobody had ever set.
+
+**Committor climbs monotonically: 0.354 -> 0.438 -> 0.521 -> 0.635 -> 0.792** against a 0.333
+balanced baseline, and is still rising at step 2500. csf2 finished at 0.443.
+
+**Move ranking remains flat.** Within-parent spearman across all ten checkpoints: -0.023,
++0.017, +0.024, +0.024, +0.021, -0.004, +0.044, -0.000, +0.030 -- noise around zero, no trend.
+top-1 2.9-7.3%. So healthy codebooks and a strong committor do NOT by themselves produce move
+discrimination. `cells` steady at 28.5.
+
+**CAVEAT, and it is the reason a validation split now exists.** 0.792 was TRAINING accuracy;
+this script had no held-out data, so it could not distinguish learning from memorisation (3.9M
+params over 69k positions). Added a split BY GAME -- never by position, since consecutive plies
+are nearly identical and share a label, so a positional split leaks across itself. 60 held-out
+games -> 7,671 val positions. At 120 steps train and val are both at chance, so the question is
+open; the 20k run will answer it.

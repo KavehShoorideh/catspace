@@ -52,7 +52,7 @@ class ConceptStateField(nn.Module):
 
     def __init__(self, d_model=192, layers=4, tr_heads=8, heads=16, codes=16, d_code=32,
                  d_state=48, components=8, ply_cap=60.0, square_codes=32, d_fine=32,
-                 kmeans_init=True, dead_code=0):
+                 kmeans_init=True, dead_code=2):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
@@ -230,14 +230,18 @@ def main():
     ap.add_argument("--w-dyn", type=float, default=2.0, help="concepts predict next concepts")
     ap.add_argument("--w-ply", type=float, default=0.2, help="deliberately weak ('poorly')")
     ap.add_argument("--ply-gap", type=int, default=8, help="max gap for the dA pair sample")
+    ap.add_argument("--val-frac", type=float, default=0.1,
+                    help="fraction of GAMES held out (never positions -- see note "
+                         "at the split)")
     ap.add_argument("--kmeans-init", type=int, default=1,
                     help="seed every codebook with k-means on the first batch "
                          "instead of a random normal cloud")
-    ap.add_argument("--dead-code", type=int, default=0,
+    ap.add_argument("--dead-code", type=int, default=2,
                     help="threshold_ema_dead_code: any code whose EMA assignment "
                          "count falls below this is RESEEDED from a real latent in "
                          "the current batch. 2 is the library's own Codebook "
-                         "default. 0 disables (what we have always run).")
+                         "default, and now ours. 0 disables (what this repo ran "
+                         "everywhere until 2026-08-16).")
     ap.add_argument("--stratify", type=int, default=1,
                     help="sample the committor batch EQUALLY from WIN/DRAW/LOSS instead of at "
                          "the corpus rate (measured 12.4/78.9/8.7). Without this the majority "
@@ -270,8 +274,20 @@ def main():
     out_w = tr.outcome_of_row_white()          # WIN / DRAW / LOSS per row, white POV
     cls = np.full(len(gor), -1, np.int64)
     cls[out_w == T.WIN] = 0; cls[out_w == T.DRAW] = 1; cls[out_w == T.LOSS] = 2
-    ok = np.flatnonzero(cls >= 0)
-    by_cls = [np.flatnonzero(cls == k) for k in range(3)]
+    # HELD-OUT SPLIT BY GAME, not by position. Consecutive plies of one game are nearly
+    # identical and share a label, so a positional split leaks the answer across it and any
+    # "validation" number is really training accuracy. Added 2026-08-16 because csf3 reached
+    # 0.792 train committor with no way to tell learning from memorisation.
+    _vg = np.zeros(len(tr.start), bool)
+    _vg[np.random.default_rng(args.seed).choice(
+        len(tr.start), max(1, int(args.val_frac * len(tr.start))), replace=False)] = True
+    is_val = _vg[gor]
+    ok = np.flatnonzero((cls >= 0) & ~is_val)
+    ok_val = np.flatnonzero((cls >= 0) & is_val)
+    by_cls = [np.flatnonzero((cls == k) & ~is_val) for k in range(3)]
+    by_cls_val = [np.flatnonzero((cls == k) & is_val) for k in range(3)]
+    print(f"[csf] split by GAME: {int(_vg.sum())} val games -> {len(ok):,} train / "
+          f"{len(ok_val):,} val positions", flush=True)
     base = np.bincount(cls[ok], minlength=3) / max(len(ok), 1)
     print(f"[csf] outcome base rate  WIN {base[0]:.1%}  DRAW {base[1]:.1%}  LOSS {base[2]:.1%}"
           f"  -> majority baseline {base.max():.1%}, balanced baseline 33.3%", flush=True)
@@ -373,6 +389,20 @@ def main():
                 print(f"[csf] {step:5d} loss {float(loss):8.3f} | committor acc {acc:.3f} "
                       f"| next-code acc {dyn_acc:.3f} sq {sq_acc:.3f} | perp {perp:5.2f} "
                       f"sq_perp {sq_perp:5.2f} used {used:4.1f}/{args.codes} | {time.time()-t0:.0f}s", flush=True)
+
+        if step % args.eval_every == 0 or step == args.steps:
+            net.eval()
+            with torch.no_grad():
+                _per = 256 // 3
+                _rv = np.concatenate([c[rng.integers(0, len(c), _per)] for c in by_cls_val])
+                _zg, _zs, _, _, _ = net.encode(*batch(_rv))
+                _p = net.committor(net.full(_zg, _zs), args.basin_temp)
+                _yv = torch.from_numpy(cls[_rv]).to(dev)
+                val_acc = float((_p.argmax(1) == _yv).float().mean())
+            net.train()
+            print(f"[csf] {step:5d} VAL committor {val_acc:.3f} (balanced baseline 0.333) "
+                  f"| train {acc:.3f}", flush=True)
+            log.write(json.dumps({"s": step, "val_acc": val_acc}) + "\n")
 
         if args.eval_sf and (step % args.eval_every == 0 or step == args.steps):
             sf = sf_yardstick(net, args, dev)
