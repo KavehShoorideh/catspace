@@ -12630,3 +12630,31 @@ an instantaneous flip-rate read against a 200-step mean of 3x that) and the rest
 signals that still deserved a conversation -- jqt7 v3's board-perplexity abort used a
 threshold inherited from a 64-code vocabulary applied to a 16-code one. Detection is worth
 keeping; the kill decision is not the gate's to make.
+
+## 2026-08-15 — Literature base extracted to docs/LITERATURE.md; two of my claims retracted
+Kaveh asked for a thorough search + the EXACT cost functions and parameters, not summaries.
+RETRACTION 1 (his rebuttal, correct): I claimed the quasimetric formalism was structurally
+inapplicable to chess because an adversary picks half the plies. Wrong. Our corpus is
+SF-vs-SF, so a witnessed path IS an adversarially-realised path and `d <= observed gap` is a
+valid ceiling under optimal opposition -- exactly the Option-B argument already encoded in our
+own walls. The adversary is in the data-generating process. The literature gap is that nobody
+has DONE it, not that it is invalid.
+RETRACTION 2 (found by reading the FSQ paper properly): I called FSQ the highest-value change.
+Its own Table/Fig 3 says it beats VQ only ABOVE ~2^10 = 1024 codes and that "VQ marginally
+outperforms FSQ" below that. Our heads carry 16-64 codes -- three orders of magnitude inside
+VQ's regime. FSQ's DIMENSIONS also play the role our HEADS play (recommended configs are ~6
+factors with L>=5 each), so adopting it pushes toward few-rich-concepts, the opposite of the
+16x16 more-thinner-concepts design Kaveh chose. Still worth testing because our pathology is
+COLLAPSE (which FSQ prevents by construction), but it is a trade, not a free win.
+EXTRACTED VERBATIM into docs/LITERATURE.md: QRL's full objective + eps=0.25 / step_cost=1 /
+lambda init 0.01 softplus-parametrised / lambda LR 0.01 at ~100:1 over the model / phi =
+-softplus(15-x, beta=0.1) / (1+eps) recovery scale / IQE 64 components x 32 = 2048-d (ours is
+48-d, 16 components, ~40x smaller) / L_transition scored BY THE QUASIMETRIC not MSE, weight
+raised to 10 for non-deterministic dynamics. FSQ's bounding f = floor(L/2)*tanh(z), round_ste,
+the full levels table, the L>=5 rule, ~100% usage vs VQ's 81% (0.78% without splitting), and
+the residual-magnitude-decay caveat for our global->square->piece stack.
+CLOSEST PRIOR ART: AlphaZero concept discovery (PNAS) extracts concept vectors by convex
+optimization from the policy-value net AND the MCTS tree, and finds "dynamic concepts that
+motivate a sequence of actions" -- the closest published analogue to our trajectory layer.
+Codebook Features (arXiv 2310.17230) applies VQ at every hidden layer for interpretability and
+steering -- closest analogue to our multi-head concept design. Both worth reading in full.
