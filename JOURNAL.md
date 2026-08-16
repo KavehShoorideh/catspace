@@ -12709,3 +12709,58 @@ cannot discriminate among cures it never needs. Remaining lead is the jqt6→jqt
 collapsed head then feeds a constant `zq` to the straight-through estimator — a constant
 gradient direction that would drift the encoder outward exactly as measured. Untested. No
 relaunch until it is named.
+
+---
+
+## 2026-08-15 — Is the collapse real? Verified per generation, and it is two different failures
+
+Kaveh doubted the diagnosis itself and asked for jqt6/7/8 checked against verified write paths.
+
+**Write paths, confirmed by reading them.** `training_infra/train/scaffold.py:55` writes
+`<out>_step{N}.pt` and `<out>_latest.pt` at the ladder cadence. The trainer itself contains only
+two `torch.save` calls, both sidecars: `<out>_jqt.pt` and `<out>_hazard.pt`, refreshed at the
+EVAL cadence via tmp+`os.replace`. Two consequences that bit me: the two cadences differ, so
+`_latest.pt` and `_jqt.pt` are NOT necessarily the same step; and `_steps.jsonl` /
+`_gates.jsonl` / `_gatecheck.jsonl` all open in APPEND mode, so one file can hold many runs.
+jqt7's gates.jsonl holds **five**. Any curve read from these files without splitting on step
+resets is a splice of different configurations.
+
+**COLLAPSE IS REAL.** Three independent sources agree — the run's own per-step metric
+(`steps.jsonl`), its eval metric (`gates.jsonl`), and an offline probe of the saved sidecar
+weights (`probe_codebook_health.py`). It is not a probe artifact.
+
+**But it is not one phenomenon, and jqt6 does not have it:**
+
+| gen | geo_perp peak → final | brd_perp peak → final | probe (codes used /16) |
+|---|---|---|---|
+| jqt6 run2 | 14.98 → 12.43 | 12.61 → 10.81 | **16/16 every head** — HEALTHY |
+| jqt7 run4 | 14.94 → 1.00 | **8.10 → 1.00** | geo 12-16/16, brd **1/16** |
+| jqt8 | 14.52 → 1.25 | 8.96 → 1.00 | geo 2-3/16, brd 2/16 |
+
+jqt7's board heads **never worked in any of its five runs** — peak brd_perp 8.10, typically
+2.7-4.3 out of 16. That is a failure to ever learn, under QRL (w_qrl 12).
+jqt8's board heads **did work and then died** — brd 8.96 at step ~1250, 1.00 by step 2000.
+That is a late destabilisation, under the hazard head, with the concept-goal block removed.
+Different failures; a single cause was the wrong thing to look for.
+
+**jqt8 IS STILL RUNNING** (PID 26009, step ~2800 and climbing). My previous entry's premise
+that it had stopped was wrong — the auto-kill gates were removed by standing rule, so it has
+been training in a fully collapsed state since roughly step 2000.
+
+**What changed, from each checkpoint's own train_args:**
+* **jqt6 → jqt7**: QRL added (`w_qrl` 12, eps 0.25, knee 60, beta 0.1, lambda_lr 0.03, pairs
+  256, trunk_grad 0); `proj_mlp` 0→512; `w_repel` 40→20; `ckpt_every` 500→100; `init_from`
+  dropped (jqt6 was warm-started, jqt7 from scratch).
+* **jqt7 → jqt8**: QRL removed (`qrl` 1→0); the ENTIRE concept-goal block removed (`w_cda`
+  2→0, `w_cdb` 2→0, `w_negpole` 0.5→0, `frac_dead` 0.1→0, `cda_linear` 1→0, `horizon_cdb` 1→0,
+  `two_pole_cdb` 1→0); hazard added (`w_hazard` 2); `jqt_goals` 128→256; `proj_mlp` 512→0;
+  `w_repel` 20→40.
+
+`frac_dead` is goal-label sampling for CDA/CDB, not codebook revival — it went to zero because
+those losses did, so it is not an independent suspect.
+
+**New dead flag**: jqt8 sets `qrl_trunk_grad` 0.0→0.15 while `qrl=0`, so it does nothing. Same
+class of bug as `--pole-height` under `--learned-poles`.
+
+**The clean read**: jqt6 is a healthy baseline at 16/16 on every head. Whatever kills the board
+codebooks arrived with jqt7 and was never fixed, and jqt8 added a second, later failure on top.
