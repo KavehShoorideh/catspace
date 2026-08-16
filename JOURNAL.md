@@ -13225,3 +13225,42 @@ surviving pool is now split deterministically in half: disjoint monitoring and f
 Standing limitation, stated rather than hidden: the shards carry no game identity, so the
 yardstick pool cannot be split by game the way the corpus is -- it is held out by CONTENT
 screening only, and n is small (~200 parents at `--sf-parents 300`).
+
+---
+
+## 2026-08-16 — Pre-launch review of the 20k run: three defects, and an 80% leak in the yardstick
+
+Kaveh: "lets do a full review of what you're about to run when you're not very confident" and
+"what's this n piece down?". Stopped the freshly-launched 20k run to review it.
+
+**What n_piecedown is.** SF-vs-SF games started from artificial MATERIAL-HANDICAP positions
+(piece 16k + pawn 4k + exchange 3k + deep-prefix 4k), played to the board end with Syzygy in the
+engine, `game_id` offset by 10,000,000. Built to supply "the decisive optimal-play walls the
+Option-B skeleton needs in the endgame region". MEASURED composition of the corpus I launched on:
+
+    balanced SF   470,091 positions ( 8.0%)   W 13.9%  D 78.6%  L  7.5%
+    PIECE-DOWN  4,182,170 positions (92.0%)   W 41.9%  D 18.8%  L 39.3%
+
+So 92% of it is handicap chess, and it is **81% decisive against the balanced pool's 21%** --
+which is exactly why it exists, and also why **csf6 committor scores are NOT comparable to
+csf2/csf3/csf5**, which trained on the pure balanced pool. The task got easier ("a piece down
+loses"), so a higher number will not mean a better model.
+
+**Three defects found before spending 7 hours:**
+1. **No intermediate checkpoints.** One `torch.save`, after 20k steps. A crash at hour 6 lost
+   everything. Added a `--ckpt-every` ladder (default 1000); verified `_step100/_step200.pt`.
+2. **Output invisible.** stdout piped through `grep`, which block-buffers, so no progress
+   appeared for 95s and the monitor could not fire. Now `python -u` straight to a log file.
+3. **Invariant work per eval.** The yardstick leak-screen (isin of 1.76M shard children against
+   3.63M train keys) was recomputed at EVERY eval though both inputs are fixed. Cached once.
+
+**And the screen printed a number that matters more than any of them:**
+
+    yardstick screen: dropped 50,260 of 62,916 shard parents seen in TRAIN
+
+**80% of the move-ranking yardstick's positions are ones we train on.** On this corpus the WDL
+shards overlap the training set almost entirely, leaving 12,656 usable parents. Every
+move-ranking figure reported before the screen existed was measured overwhelmingly on TRAINING
+positions -- where the model should look its best. That does not rescue those numbers (they were
+~0.00, i.e. bad even on train), but it does mean they were never the held-out measurement I
+described them as.

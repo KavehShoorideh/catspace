@@ -261,6 +261,9 @@ def main():
                          "the 33.3%% balanced baseline, which is why it looks lower and means "
                          "more.")
     ap.add_argument("--eval-every", type=int, default=200)
+    ap.add_argument("--ckpt-every", type=int, default=1000,
+                    help="write <out>_step{N}.pt this often. 0 disables. At 20k steps (~7h) a "
+                         "single end-of-run save is a data-loss risk, not a style choice.")
     ap.add_argument("--eval-sf", type=int, default=1,
                     help="report the Stockfish within-parent yardstick. EVALUATION ONLY -- "
                          "never enters the loss (Kaveh: no SF as learning labels yet)")
@@ -431,6 +434,12 @@ def main():
                   f"| train {acc:.3f}", flush=True)
             log.write(json.dumps({"s": step, "val_acc": val_acc}) + "\n")
 
+        if args.ckpt_every and step % args.ckpt_every == 0:
+            # A 20k-step run is ~7h. Saving only at the end means a crash at hour 6 loses
+            # everything, so the ladder is not optional at this length.
+            torch.save({"state_dict": net.state_dict(), "step": step, "args": vars(args)},
+                       f"{args.out}_step{step}.pt")
+
         if args.eval_sf and (step % args.eval_every == 0 or step == args.steps):
             sf = sf_yardstick(net, args, dev, train_keys, want=1)
             if sf:
@@ -489,13 +498,21 @@ def sf_yardstick(net, args, dev, train_keys=None, want=1):
     # independent: hash each child board and drop any parent with a child we trained on.
     cand = np.arange(len(off) - 1)
     if train_keys is not None:
-        key = np.ascontiguousarray(
-            np.concatenate([toks, globs], 1).astype(np.uint8)).view(
-                np.dtype((np.void, toks.shape[1] + globs.shape[1]))).ravel()
-        seen = np.isin(key, train_keys)
-        keep = np.array([not seen[int(off[i]):int(off[i + 1])].any()
-                         for i in cand], bool)
-        n_drop = int((~keep).sum())
+        # Both inputs are invariant across the run, so this is computed ONCE and cached on the
+        # function. Recomputing an isin of 1.76M children against 3.63M keys at every eval was
+        # pure waste (40x over a 20k-step run).
+        cache = getattr(sf_yardstick, "_screen", None)
+        if cache is None:
+            key = np.ascontiguousarray(
+                np.concatenate([toks, globs], 1).astype(np.uint8)).view(
+                    np.dtype((np.void, toks.shape[1] + globs.shape[1]))).ravel()
+            seen = np.isin(key, train_keys)
+            keep = np.array([not seen[int(off[i]):int(off[i + 1])].any()
+                             for i in cand], bool)
+            sf_yardstick._screen = (keep, int((~keep).sum()))
+            print(f"[csf] yardstick screen: dropped {int((~keep).sum()):,} of {len(cand):,} "
+                  f"shard parents seen in TRAIN", flush=True)
+        keep, n_drop = sf_yardstick._screen
         cand = cand[keep]
         # The shards carry no game identity and come from a DIFFERENT corpus draw, so they
         # cannot be split by game the way the corpus is. Screening removes boards we trained
