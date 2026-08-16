@@ -12764,3 +12764,60 @@ class of bug as `--pole-height` under `--learned-poles`.
 
 **The clean read**: jqt6 is a healthy baseline at 16/16 on every head. Whatever kills the board
 codebooks arrived with jqt7 and was never fixed, and jqt8 added a second, later failure on top.
+
+---
+
+## 2026-08-15 — Following the code path: what ACTUALLY trains the codebooks (measured)
+
+Kaveh, standing rule: "Always follow the code paths... if you doubt what code path is running,
+add logging statements and run it yourself and see where the code is touching what. That's the
+only way to know what's running."
+
+Added `--trace-grad N`: at step N it takes `torch.autograd.grad(term, <pre-VQ latents>)` for
+every loss term and prints the norm. A term can be present, large and nonzero and still put
+EXACTLY ZERO gradient on a codebook; only autograd can tell you which.
+
+**Getting the instrument right took three tries, and the first two gave confident wrong
+answers** — which is the rule's point:
+1. Hooked `h_pc`, the tensor `quantize_split` RETURNS. It is a `cat` of the real inputs, i.e.
+   downstream of them, so every term entering through the VQ read as "unused". That version
+   said *nothing trains the codebooks at all*. False.
+2. Stashed the pre-VQ tensors but OVERWROTE them — `quantize_split` is called TWICE per step
+   (main forward, then the value-equivalence probe). I hooked the second call and every
+   main-path term read "unused". Also false.
+3. Append every call, clear per step, label them `main` / `call1`. Only then coherent.
+
+**MEASURED at step 3 (identical batch/seed, jqt6 config vs jqt8 config):**
+
+| term | jqt6 main.geo | jqt6 main.brd | jqt8 main.geo | jqt8 main.brd |
+|---|---|---|---|---|
+| vqrec | 0.177590 | 0.002538 | 0.164575 | 0.002661 |
+| pers | 0.002182 | 0.001349 | 0.002246 | 0.001460 |
+| flip | 0.002130 | 0.002694 | 0.002124 | 0.002481 |
+| movecode | 0.000162 | 0.000201 | 0.000156 | 0.000183 |
+| **TOTAL** | **0.177786** | **0.004166** | **0.164761** | **0.004233** |
+
+**RETRACTED — my leading hypothesis for 7→8 is refuted.** I proposed that removing `w_cda`
+/`w_cdb` removed implicit codebook-usage pressure. In jqt6 those terms are live and large
+(cda 3.34, cdb 3.78) and they put **exactly zero** gradient on the pre-quantisation latents.
+They never trained the codebooks, so removing them cannot be what killed them. Same for
+`hazard`, `cens`, `rank_cda`, `negpole` — all zero. The hazard head reads phi directly, by
+design, so it does not touch the vocabularies at all.
+
+**The real measured facts:**
+* Board heads receive ~**40x less** gradient than geometry heads (0.0042 vs 0.177). `vqrec`
+  dominates geo at 0.165 but reaches board at 0.0027 — 62x weaker — because `geo_dec`
+  reconstructs a real target from `zq_geo` while the board side has no such reconstruction.
+* The gradient landscape at step 3 is **nearly identical** between healthy jqt6 and collapsed
+  jqt8 (0.004166 vs 0.004233 on board). So the divergence is NOT in which terms train what at
+  init; it develops during training. Cause still unnamed.
+* `childval` and `select` train the board encoder ONLY through the second forward (call1
+  0.038/0.032), never the main one whose codes are measured for perplexity.
+
+**Also found by running it**: the shell here is zsh, where unquoted `$ARGS` does NOT word-split,
+so a reconstructed command arrives as ONE argument and argparse rejects everything. Use
+`${=ARGS}`. This is why the first trace run "failed to parse" flags that demonstrably exist.
+
+**jqt8 killed** at Kaveh's instruction (PID 26009, step 2882, 3h38m). Note its final logged
+values were geo_perp 3.92 / brd_perp 3.66 — **partially recovered from 1.00**, so this
+oscillates rather than being an absorbing state.

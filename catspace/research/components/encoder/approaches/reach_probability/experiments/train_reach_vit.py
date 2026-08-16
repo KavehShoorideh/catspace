@@ -457,6 +457,11 @@ def main():
                     help="jqt5: CDB logit = contrast vs the anti-pole (negative poles)")
     ap.add_argument("--w-negpole", type=float, default=0.0,
                     help="jqt5: pull DEAD states (type fully captured) onto the anti-pole")
+    ap.add_argument("--trace-grad", type=int, default=0,
+                    help="at this step, print the gradient norm each loss term puts on the "
+                         "pre-quantisation latents h_pc, split geo vs board. Answers 'what is "
+                         "actually training this codebook' by measurement rather than by "
+                         "reading the loss assembly. 0 disables.")
     ap.add_argument("--frac-dead", type=float, default=0.0,
                     help="fraction of goal samples drawn as dead-state negatives")
     ap.add_argument("--w-jepa", type=float, default=3.0,
@@ -812,6 +817,7 @@ def main():
             jqt = jqt.to(dev)
             print(f"[jqt6] move concepts: {args.move_codes} codes over (state, move)",
                   flush=True)
+        jqt._trace_on = bool(args.trace_grad)   # retain pre-VQ tensors ONLY when tracing
         st_of_game = None
         if args.jqt_piece_codes:
             assert tr.slots is not None, "piece stream needs the v5 corpus cache (slots)"
@@ -1845,6 +1851,8 @@ def main():
                 # partition FINENESS, not recon), and the BOARD heads are graded by value
                 # equivalence below, never on reconstruction.
                 if args.jqt6:
+                    if getattr(jqt, "_trace_on", False):
+                        jqt._trace_h = []          # fresh per step; call 0 = this main forward
                     _zb_det = zb_pc.detach()
                     _atl = jqt.atlas(_zb_det, model.dA, model.dB, POL[:3], args.basin_temp)
                     (h_pc, zq_flat, ids_pc, vloss,
@@ -2204,6 +2212,60 @@ def main():
                 + args.w_sqrec * l_sqrec + args.w_pcrec * l_pcrec
                 + args.w_pers_sq * l_pers_sq + args.w_pers_pc * l_pers_pc
                 + args.w_turnpair * l_turn)
+        # ---- WHICH TERMS ACTUALLY TRAIN THE CODEBOOKS (Kaveh 2026-08-15: "always follow the
+        # code paths... add logging statements and run it yourself and see where the code is
+        # touching what. That's the only way to know what's running.")
+        #
+        # Reading the loss assembly tells you which terms are SUMMED. It does not tell you
+        # which ones reach the pre-quantisation latents h_pc -- a term can be present, nonzero,
+        # and still have exactly zero gradient there (detached input, dead flag, a branch that
+        # never fired). That distinction is the whole question for codebook collapse, so it is
+        # measured with autograd rather than inferred: grad norm 0.0 means that term does not
+        # train that head, whatever the source implies.
+        if args.trace_grad and _last_step[0] == args.trace_grad and jqt is not None:
+            _G = args.geo_heads if args.jqt6 else 0
+            _terms = [("vqrec", args.w_vqrec * l_vqrec), ("pers", args.w_pers * l_pers),
+                      ("jepa", args.w_jepa * l_jepa), ("cda", args.w_cda * l_cda),
+                      ("cdb", args.w_cdb * l_cdb), ("negpole", args.w_negpole * l_negpole),
+                      ("hazard", args.w_hazard * l_hazard),
+                      ("childval", args.w_childval * l_childval),
+                      ("movecode", args.w_movecode * l_movecode),
+                      ("select", args.w_select * l_select),
+                      ("flip", args.w_flip * (l_flip + l_pcflip)),
+                      ("dest", args.w_dest * (l_dest + l_pcdest)),
+                      ("qrl_max", args.w_qrl * l_qrl_max), ("qrl_con", l_qrl_con),
+                      ("cens", args.w_cens_hinge * l_cens),
+                      ("rank_cda", args.w_rank_cda * l_rank)]
+            # Hook the tensors the QUANTIZERS consumed (jqt._trace_h), NOT the h_pc cat that
+            # quantize_split returns -- h_pc is downstream of them, so grad(vqrec, h_pc) is
+            # legitimately None and reads as "nothing trains the codebook", which is false.
+            _hooks = getattr(jqt, "_trace_h", None)
+            if isinstance(_hooks, list) and _hooks:
+                _tgt, _lbl = [], []
+                for _ci, (_hg, _hb) in enumerate(_hooks):
+                    _tag = "main" if _ci == 0 else f"call{_ci}"
+                    _tgt += [_hg, _hb]; _lbl += [f"{_tag}.geo", f"{_tag}.brd"]
+            else:
+                _tgt, _lbl = [h_pc], ["h_pc"]
+            print(f"\n[trace] step {_last_step[0]}: gradient reaching the tensors the "
+                  f"QUANTIZERS consume ({' / '.join(_lbl)})", flush=True)
+            print(f"[trace] {'term':>10} {'value':>11} "
+                  + " ".join(f"{'|grad| '+l:>12}" for l in _lbl), flush=True)
+            def _row(nm, val, gs):
+                print(f"[trace] {nm:>10} {val:>11.5f} "
+                      + " ".join(("{:>12.6f}".format(g) if g is not None else f"{'unused':>12}")
+                                 for g in gs), flush=True)
+            for _nm, _tm in _terms:
+                if not torch.is_tensor(_tm) or not _tm.requires_grad:
+                    print(f"[trace] {_nm:>10} {float(_tm):>11.5f} {'--- not in graph ---':>26}",
+                          flush=True)
+                    continue
+                _gs = torch.autograd.grad(_tm, _tgt, retain_graph=True, allow_unused=True)
+                _row(_nm, float(_tm), [float(g.norm()) if g is not None else None for g in _gs])
+            _gs = torch.autograd.grad(loss, _tgt, retain_graph=True, allow_unused=True)
+            _row("TOTAL", float(loss),
+                 [float(g.norm()) if g is not None else None for g in _gs])
+            print("", flush=True)
         met = {**_audit,
                "vqrec": float(l_vqrec.detach()), "pers": float(l_pers.detach()),
                "jepa": float(l_jepa.detach()), "cda": float(l_cda.detach()),

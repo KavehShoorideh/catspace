@@ -307,6 +307,19 @@ class JQTModule(nn.Module):
             qs.append(q); ids.append(idx); vloss = vloss + l
         zq_brd = torch.cat(qs[G:], -1)
         h_pre = torch.cat([h_geo, h_brd], 1)
+        # TRACE HOOK: h_pre is a CAT, i.e. DOWNSTREAM of the tensors the quantizers actually
+        # consumed. Taking autograd.grad(term, h_pre) therefore reports "unused" for every loss
+        # that entered through the VQ (vqrec included) and makes it look as though nothing
+        # trains the codebooks. The real quantizer inputs are h_geo/h_brd, stashed here so a
+        # gradient trace can hook the tensors that are genuinely on the path.
+        # APPEND, never overwrite: quantize_split is called more than once per training step
+        # (the main forward, and again for the value-equivalence/childval probe). Keeping only
+        # the last call means a gradient trace hooks the WRONG forward and reports every main
+        # -path term as "unused". Gated on _trace_on so normal runs never retain these graphs.
+        if getattr(self, "_trace_on", False):
+            if not isinstance(getattr(self, "_trace_h", None), list):
+                self._trace_h = []
+            self._trace_h.append((h_geo, h_brd))
         return h_pre, torch.cat(qs, -1), torch.stack(ids, 1), vloss, zq_geo, zq_brd
 
     def child_value(self, zq_brd, mids):
