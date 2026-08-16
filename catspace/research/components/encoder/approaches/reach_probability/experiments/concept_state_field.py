@@ -52,7 +52,7 @@ class ConceptStateField(nn.Module):
 
     def __init__(self, d_model=192, layers=4, tr_heads=8, heads=16, codes=16, d_code=32,
                  d_state=256, components=16, ply_cap=60.0, square_codes=32,
-                 d_fine=32, kmeans_init=True, dead_code=2, n_poles=3):
+                 d_fine=32, kmeans_init=True, dead_code=2, n_poles=3, proj_h=512):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
@@ -112,11 +112,19 @@ class ConceptStateField(nn.Module):
         # "collinearity removed by construction".
         # Concatenating instead let the 64x32 square stream explain everything on its own and
         # the 16 global heads died: perplexity 2.02 -> 1.22, ~2 of 16 codes.
-        self.state_g = nn.Sequential(nn.Linear(heads * d_code, 256), nn.GELU(),
-                                     nn.Linear(256, d_state))
+        # DEEPER/WIDER PROJECTOR into the IQE (Kaveh 2026-08-16: "increase the parameter size
+        # of the iqe layer"). The IQE module itself holds only two scalars (alpha_logit,
+        # log_scale) -- its capacity lives in the WIDTH of the space it measures and the
+        # projector that builds it. QRL's reference is a 256->1024->1024->2048 projector into a
+        # 64-component IQE; ours was a 2-layer MLP into 24-d rulers, ~40x smaller, and now has
+        # 267 poles to keep apart.
+        self.state_g = nn.Sequential(nn.Linear(heads * d_code, proj_h), nn.GELU(),
+                                     nn.Linear(proj_h, proj_h), nn.GELU(),
+                                     nn.Linear(proj_h, d_state))
         if square_codes:
-            self.state_sq = nn.Sequential(nn.Linear(64 * d_fine, 256), nn.GELU(),
-                                          nn.Linear(256, d_state))
+            self.state_sq = nn.Sequential(nn.Linear(64 * d_fine, proj_h), nn.GELU(),
+                                          nn.Linear(proj_h, proj_h), nn.GELU(),
+                                          nn.Linear(proj_h, d_state))
             # zero-init the residual so training STARTS at "the square stream says nothing",
             # the same discipline as every other residual in this repo (PoleBank.ending_delta,
             # qhead.proj_delta): the data has to push it off zero.
@@ -137,6 +145,14 @@ class ConceptStateField(nn.Module):
         # against -- which is the whole point of a geometry over a classifier.
         self.n_poles = int(n_poles)
         self.poles = nn.Parameter(torch.randn(self.n_poles, d_state) * 0.5)
+        # LEARNABLE TEMPERATURE (Kaveh 2026-08-16: "make it learnable"). basin_temp was a
+        # hardcoded 5.0 inherited from the 3-pole W/D/L committor, and it was already MEASURED
+        # to cap that readout: probe_value_proxy found the committor compressed into
+        # [0.247, 0.768] because softmax(-dB/5) cannot saturate unless pole distances differ by
+        # many multiples of 5. With 267 poles it is worse -- 90% confidence needs the nearest
+        # pole ~39 distance units clear of the rest at T=5, against ~11 at three poles. Learned
+        # in log space, initialised at the old value so nothing shifts at step 0.
+        self.log_temp = nn.Parameter(torch.tensor(float(np.log(5.0))))
         # dynamics: (state, move) -> next position's code in every head
         # all three share a width because they are SUMMED, as MoveHead does it (64x32, 64x32,
         # 5x32 -> one 32-d action vector)
@@ -195,7 +211,7 @@ class ConceptStateField(nn.Module):
         k = u.shape[-1] // 2
         return self.iqe_b(u[..., k:], v[..., k:])
 
-    def resolution(self, z, temp=5.0):
+    def resolution(self, z, temp=None):
         """-> (N, n_poles): P(this game resolves at pole k), from OUTCOME-ruler distance.
 
         Computed in ONE batched call rather than a python loop over poles -- at 3 poles the
@@ -204,10 +220,11 @@ class ConceptStateField(nn.Module):
         zz = z.repeat_interleave(P, 0)                      # (n*P, d)
         pp = self.poles.unsqueeze(0).expand(n, -1, -1).reshape(n * P, -1)
         d = self.dB(zz, pp).view(n, P)
-        return torch.softmax(-d / temp, 1)
+        t = self.log_temp.exp() if temp is None else temp
+        return torch.softmax(-d / t.clamp(min=1e-3) if torch.is_tensor(t) else -d / t, 1)
 
     # kept so older call sites and checkpoints keep working
-    def committor(self, z, temp=5.0):
+    def committor(self, z, temp=None):
         return self.resolution(z, temp)
 
     def predict_next(self, z, mid):
@@ -246,10 +263,16 @@ def main():
                     help="state width; splits into two IQE rulers of d_state/2. Was 48 (two "
                          "24-d rulers) -- QRL's reference IQE is 2048-d, so ours was ~40x "
                          "smaller and had to separate 64 poles.")
+    ap.add_argument("--proj-h", type=int, default=512,
+                    help="hidden width of the 3-layer projector feeding the IQE")
     ap.add_argument("--components", type=int, default=16,
                     help="IQE components per ruler; d_state/2 must divide by this")
     ap.add_argument("--lr", type=float, default=3e-4)
-    ap.add_argument("--basin-temp", type=float, default=5.0)
+    ap.add_argument("--basin-temp", type=float, default=5.0,
+                    help="INITIAL softmax temperature only. It is a learned parameter "
+                         "(log_temp); passing it at the call sites silently pinned it -- "
+                         "verified by log_temp sitting bit-identical to its init after 40 "
+                         "steps while iqe_b.log_scale moved.")
     ap.add_argument("--w-outcome", type=float, default=3.0, help="committor: GET THIS RIGHT")
     ap.add_argument("--w-dyn", type=float, default=2.0, help="concepts predict next concepts")
     ap.add_argument("--w-ply", type=float, default=0.2, help="deliberately weak ('poorly')")
@@ -397,7 +420,8 @@ def main():
                             d_state=args.d_state, components=args.components,
                             square_codes=args.square_codes,
                             kmeans_init=bool(args.kmeans_init),
-                            dead_code=args.dead_code, n_poles=n_cls).to(dev)
+                            dead_code=args.dead_code, n_poles=n_cls,
+                            proj_h=args.proj_h).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     print(f"[csf] {sum(p.numel() for p in net.parameters()):,} params | state space "
           f"{args.codes}^{args.heads}", flush=True)
@@ -425,11 +449,11 @@ def main():
         # jqt's residual pattern: the coarse stream is graded ALONE (so it cannot become
         # redundant), the fine stream is graded on coarse.detach() + fine (so it learns only
         # the residue). Same target for both, exactly as l_vqrec / l_sqrec do it.
-        p3 = net.resolution(net.full(z_g, z_sq), args.basin_temp)
-        l_out = F.nll_loss((net.resolution(z_g, args.basin_temp) + 1e-8).log(), y)
+        p3 = net.resolution(net.full(z_g, z_sq))
+        l_out = F.nll_loss((net.resolution(z_g) + 1e-8).log(), y)
         if z_sq is not None:
             l_out = l_out + F.nll_loss(
-                (net.resolution(net.residual(z_g, z_sq), args.basin_temp) + 1e-8).log(), y)
+                (net.resolution(net.residual(z_g, z_sq)) + 1e-8).log(), y)
 
         # --- (2) concepts predict next concepts ------------------------------------------
         ti = rng.integers(0, len(par), args.batch)
@@ -493,7 +517,7 @@ def main():
                 _rv = np.array([by_cls_val[k][rng.integers(0, len(by_cls_val[k]))]
                                 for k in _kv])
                 _zg, _zs, _, _, _ = net.encode(*batch(_rv))
-                _p = net.resolution(net.full(_zg, _zs), args.basin_temp)
+                _p = net.resolution(net.full(_zg, _zs))
                 _yv = torch.from_numpy(cls[_rv]).to(dev)
                 val_acc = float((_p.argmax(1) == _yv).float().mean())
             net.train()
@@ -524,7 +548,7 @@ def main():
         _kt = rng.choice(live_test, 512)
         _rt = np.array([by_cls_test[k][rng.integers(0, len(by_cls_test[k]))] for k in _kt])
         _zg, _zs, _, _, _ = net.encode(*batch(_rt))
-        _p = net.resolution(net.full(_zg, _zs), args.basin_temp)
+        _p = net.resolution(net.full(_zg, _zs))
         test_acc = float((_p.argmax(1) == torch.from_numpy(cls[_rt]).to(dev)).float().mean())
     sf_te = sf_yardstick(net, args, dev, train_keys, want=2, pole_val=pole_val)
     print(f"\n[csf] ===== TEST (single touch) =====", flush=True)
@@ -613,7 +637,7 @@ def sf_yardstick(net, args, dev, train_keys=None, want=1, pole_val=None):
             z = net.full(zg_, zsq_)
             full = (ids if ids_sq is None else
                     torch.cat([ids, ids_sq], -1)).cpu().numpy()
-            p3 = net.resolution(z, args.basin_temp)
+            p3 = net.resolution(z)
             # move-ranking still needs a SCALAR: expected score under the
             # resolution distribution, using each pole's own value.
             e_ours = (p3.cpu().numpy() * pole_val[None, :]).sum(-1)
