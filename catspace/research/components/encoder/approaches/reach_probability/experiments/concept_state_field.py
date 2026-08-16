@@ -230,6 +230,13 @@ def main():
     ap.add_argument("--w-dyn", type=float, default=2.0, help="concepts predict next concepts")
     ap.add_argument("--w-ply", type=float, default=0.2, help="deliberately weak ('poorly')")
     ap.add_argument("--ply-gap", type=int, default=8, help="max gap for the dA pair sample")
+    ap.add_argument("--n-piecedown", type=int, default=45906,
+                    help="piece-down games folded into the corpus. The cache key is the FULL "
+                         "build signature, so this must match an existing cache to reuse it: "
+                         "games=4000 + n_piecedown=45906 -> the 49,905-game / 4,652,261-position "
+                         "corpus jqt6-jqt8 used, which already has its transitions built. "
+                         "Running 0 here silently built a 600-game corpus instead and is why "
+                         "csf5 overfit.")
     ap.add_argument("--test-frac", type=float, default=0.1,
                     help="fraction of GAMES held out for the single final test read")
     ap.add_argument("--val-frac", type=float, default=0.1,
@@ -271,7 +278,7 @@ def main():
     dev = args.device
     t0 = time.time()
     tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
-                 max_plies=args.max_plies, n_piecedown=0)
+                 max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     gor = tr.game_of_row(); por = tr.ply_of_row()
     out_w = tr.outcome_of_row_white()          # WIN / DRAW / LOSS per row, white POV
     cls = np.full(len(gor), -1, np.int64)
