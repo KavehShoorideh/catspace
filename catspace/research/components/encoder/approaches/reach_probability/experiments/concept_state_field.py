@@ -80,9 +80,26 @@ class ConceptStateField(nn.Module):
             self.sq_proj = nn.Linear(d_model, d_fine)
             self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=square_codes, decay=0.9,
                                         commitment_weight=0.25)
-        n_in = heads * d_code + (64 * d_fine if square_codes else 0)
-        self.state = nn.Sequential(nn.Linear(n_in, 256), nn.GELU(),
-                                   nn.Linear(256, d_state))
+        # RESIDUAL ACROSS GRANULARITIES (restoring jqt's design, which the first version
+        # regressed into a concatenation). jqt does it as:
+        #     y_g_det = geo_dec(zq_geo).detach()
+        #     l_sqrec = mse(y_g_det + y_sq, yt)        <- square is graded on the RESIDUE
+        # i.e. each granularity contributes ADDITIVELY to one shared target, and the coarser
+        # stream is DETACHED inside the finer stream's loss. Two consequences, both the point:
+        # the global stream alone must explain what it can (so it cannot be made redundant),
+        # and the square stream has no incentive to re-encode what global already carries --
+        # "collinearity removed by construction".
+        # Concatenating instead let the 64x32 square stream explain everything on its own and
+        # the 16 global heads died: perplexity 2.02 -> 1.22, ~2 of 16 codes.
+        self.state_g = nn.Sequential(nn.Linear(heads * d_code, 256), nn.GELU(),
+                                     nn.Linear(256, d_state))
+        if square_codes:
+            self.state_sq = nn.Sequential(nn.Linear(64 * d_fine, 256), nn.GELU(),
+                                          nn.Linear(256, d_state))
+            # zero-init the residual so training STARTS at "the square stream says nothing",
+            # the same discipline as every other residual in this repo (PoleBank.ending_delta,
+            # qhead.proj_delta): the data has to push it off zero.
+            nn.init.zeros_(self.state_sq[-1].weight); nn.init.zeros_(self.state_sq[-1].bias)
         h = d_state // 2
         assert d_state % 2 == 0 and h % components == 0, (
             f"d_state={d_state} splits into two {h}-d rulers; each must divide into "
@@ -114,18 +131,31 @@ class ConceptStateField(nn.Module):
         return torch.cat(qs, -1), torch.stack(ids, 1), vl
 
     def encode(self, tok, glob):
-        """-> (state, global ids (B,H), vq loss, square ids (B,64) or None).
+        """-> (z_g, z_sq, global ids (B,H), vq loss, square ids (B,64) or None).
 
-        forward_tokens costs the SAME as forward -- the per-square outputs are already computed
-        by the trunk, they were simply being discarded."""
+        Returns the two granularities SEPARATELY so the caller can form both the full state
+        (z_g + z_sq, for every readout) and the residual state (z_g.detach() + z_sq, which is
+        the only thing the square path is graded on). forward_tokens costs the SAME as forward
+        -- the per-square outputs are already computed by the trunk and were being discarded."""
         phi, sq_tok = self.trunk.forward_tokens(tok, glob)
         zq, ids, vl = self.quantize(phi)
-        ids_sq = None
+        z_g = self.state_g(zq)
+        z_sq, ids_sq = None, None
         if self.square_codes:
             q_sq, ids_sq, vl_sq = self.sq_vq(self.sq_proj(sq_tok))
             vl = vl + vl_sq
-            zq = torch.cat([zq, q_sq.reshape(len(phi), -1)], -1)
-        return self.state(zq), ids, vl, ids_sq
+            z_sq = self.state_sq(q_sq.reshape(len(phi), -1))
+        return z_g, z_sq, ids, vl, ids_sq
+
+    @staticmethod
+    def full(z_g, z_sq):
+        """the state every readout uses."""
+        return z_g if z_sq is None else z_g + z_sq
+
+    @staticmethod
+    def residual(z_g, z_sq):
+        """what the SQUARE path is graded on: the coarse contribution is a FIXED offset."""
+        return z_g.detach() if z_sq is None else z_g.detach() + z_sq
 
     def dA(self, u, v):
         k = u.shape[-1] // 2
@@ -248,19 +278,26 @@ def main():
         else:
             r = ok[rng.integers(0, len(ok), args.batch)]
         tk, gb = batch(r)
-        z, ids, vl, ids_sq = net.encode(tk, gb)
+        z_g, z_sq, ids, vl, ids_sq = net.encode(tk, gb)
         y = torch.from_numpy(cls[r]).to(dev)
-        p3 = net.committor(z, args.basin_temp)
-        l_out = F.nll_loss((p3 + 1e-8).log(), y)
+        # jqt's residual pattern: the coarse stream is graded ALONE (so it cannot become
+        # redundant), the fine stream is graded on coarse.detach() + fine (so it learns only
+        # the residue). Same target for both, exactly as l_vqrec / l_sqrec do it.
+        p3 = net.committor(net.full(z_g, z_sq), args.basin_temp)
+        l_out = F.nll_loss((net.committor(z_g, args.basin_temp) + 1e-8).log(), y)
+        if z_sq is not None:
+            l_out = l_out + F.nll_loss(
+                (net.committor(net.residual(z_g, z_sq), args.basin_temp) + 1e-8).log(), y)
 
         # --- (2) concepts predict next concepts ------------------------------------------
         ti = rng.integers(0, len(par), args.batch)
         pr = par[ti]
         tk_p, gb_p = batch(pr)
         tk_c, gb_c = batch(pr + 1)
-        z_p, ids_p, vl_p, _ = net.encode(tk_p, gb_p)
+        zg_p, zsq_p, ids_p, vl_p, _ = net.encode(tk_p, gb_p)
+        z_p = net.full(zg_p, zsq_p)
         with torch.no_grad():
-            _, ids_c, _, sq_c = net.encode(tk_c, gb_c)       # target codes, detached
+            _, _, ids_c, _, sq_c = net.encode(tk_c, gb_c)    # target codes, detached
         mv = torch.from_numpy(mid[ti].astype(np.int64)).to(dev)
         lg, lg_sq = net.predict_next(z_p, mv)
         l_dyn = F.cross_entropy(lg.reshape(-1, args.codes), ids_c.reshape(-1))
@@ -275,8 +312,8 @@ def main():
             b = np.clip(a + k, 0, len(gor) - 1)
             keep = gor[b] == gor[a]
             a, b, k = a[keep], b[keep], k[keep]
-            za, _, _, _ = net.encode(*batch(a))
-            zb_, _, _, _ = net.encode(*batch(b))
+            za = net.full(*net.encode(*batch(a))[:2])
+            zb_ = net.full(*net.encode(*batch(b))[:2])
             l_ply = F.mse_loss(net.dA(za, zb_),
                                torch.from_numpy(k.astype(np.float32)).to(dev))
         else:
@@ -351,9 +388,10 @@ def sf_yardstick(net, args, dev):
             e_par = (w[:, 2] + 0.5 * w[:, 1]) / np.clip(w.sum(1), 1.0, None)
             g = globs[a:b]
             e_white = np.where(g[:, 0] == 0, e_par, 1.0 - e_par)
-            z, ids, _, ids_sq = net.encode(
+            zg_, zsq_, ids, _, ids_sq = net.encode(
                 torch.from_numpy(toks[a:b].astype(np.int64)).to(dev),
                 torch.from_numpy(g.astype(np.float32)).to(dev))
+            z = net.full(zg_, zsq_)
             full = (ids if ids_sq is None else
                     torch.cat([ids, ids_sq], -1)).cpu().numpy()
             p3 = net.committor(z, args.basin_temp)

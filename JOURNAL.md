@@ -13057,3 +13057,38 @@ jqt8 at step 200 was at geo_perp 5.30 / brd_perp 4.34, and jqt6's geometry grew 
 signal; whether it recovers needs ~1500+ steps to say.
 
 `cells` held at 30.5 throughout, so the square-concept fix is stable under stratification.
+
+---
+
+## 2026-08-15 — Residual across granularities restored: global codebook 2.1 -> 4.8 codes
+
+Kaveh: "fix the residual". Ported jqt's RVQ-across-granularities into concept_state_field. jqt
+does it as `l_sqrec = mse(y_g_det + y_sq, yt)` with `y_g_det` DETACHED -- additive
+contributions to ONE shared target, coarse stream frozen inside the fine stream's loss. Here
+the shared target is the committor and the additive quantity is the STATE:
+
+    z_g   = state_g(zq_global)                 graded ALONE  -> global cannot become redundant
+    z_sq  = state_sq(zq_square)  (zero-init)   graded on z_g.detach() + z_sq -> only the residue
+    z     = z_g + z_sq                         what every readout uses
+
+Same smoke (200 steps, 600 games, stratified); only the concat->residual change:
+
+    step         concat: perp (used/16)      residual: perp (used/16)
+     100            1.29  (2.1)                 **2.49  (4.8)**
+     200            1.21  (2.1)                   2.13  (2.2)
+    committor acc @200   0.333 (= chance)         0.375
+    cells                30.5                     30.2
+
+**PARTIAL WIN, not a fix.** At step 100 the global codebook holds roughly twice the vocabulary
+it did under concatenation (4.8 vs 2.1 of 16 codes, perplexity 2.49 vs 1.29) -- exactly the
+failure the residual was meant to remove, since the global stream now has a job no other stream
+can do for it. Committor also moved off exactly-chance for the first time under stratification
+(0.375 vs 0.333). But by step 200 usage decays back toward the concat number, and the square
+codebook declines too (2.33 -> 1.79), so the residual structure alone does not stop collapse.
+
+`cells` unchanged at ~30, so the square-concept fix survives the restructure.
+
+Whether this is collapse or just slow population is still not answerable at 200 steps: jqt6's
+geometry went 3.45 (step 250) -> 14.08 (step 1000), so these vocabularies populate over the
+first ~1000 steps when they populate at all. A 2500-step run is the smallest experiment that
+can distinguish the two.
