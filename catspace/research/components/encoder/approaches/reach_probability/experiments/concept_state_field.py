@@ -51,19 +51,40 @@ class ConceptStateField(nn.Module):
     """board -> concepts -> state -> quasimetric."""
 
     def __init__(self, d_model=192, layers=4, tr_heads=8, heads=16, codes=16, d_code=32,
-                 d_state=48, components=8, ply_cap=60.0, square_codes=32, d_fine=32):
+                 d_state=48, components=8, ply_cap=60.0, square_codes=32, d_fine=32,
+                 kmeans_init=True, dead_code=0):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
             JepaEncoder)
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe import IQE
 
+        # ---- ANTI-COLLAPSE MACHINERY, previously never switched on anywhere in this repo.
+        # VectorQuantize's OWN defaults are kmeans_init=False and threshold_ema_dead_code=0
+        # (the `2` in the file belongs to the inner Codebook class, which VectorQuantize
+        # overrides), so every codebook here has been starting from a random normal cloud with
+        # no dead-code recovery.
+        #
+        # kmeans_init: seed the codebook by running k-means on the FIRST training batch, so the
+        #   codes start inside the data instead of wherever randn put them. Measured motivation:
+        #   jqt8's codebooks sat at 1/10th the radius of their own latent cloud.
+        #
+        # threshold_ema_dead_code: `cluster_size` is an EMA (decay 0.9) of how many batch
+        #   vectors each code won. expire_codes_() marks every code with cluster_size below the
+        #   threshold as DEAD and `replace()` overwrites its embedding with a randomly chosen
+        #   REAL latent from the current batch, resetting cluster_size/embed_avg so it competes
+        #   again. This breaks the lock-in that has produced every collapse we measured: one
+        #   code wins everything, so only that code is EMA-updated and the rest stay frozen at
+        #   their init radius forever. FSQ's paper measures VQ usage at 0.78% WITHOUT this
+        #   splitting versus 81% with it.
+        vq_kw = dict(decay=0.9, commitment_weight=0.25, kmeans_init=bool(kmeans_init),
+                     threshold_ema_dead_code=int(dead_code))
         self.heads, self.codes, self.d_code = heads, codes, d_code
         self.trunk = JepaEncoder(d_model, layers, tr_heads)
         self.enc = nn.Sequential(nn.Linear(d_model, 256), nn.GELU(),
                                  nn.Linear(256, heads * d_code))
-        self.vq = nn.ModuleList([VectorQuantize(dim=d_code, codebook_size=codes, decay=0.9,
-                                                commitment_weight=0.25) for _ in range(heads)])
+        self.vq = nn.ModuleList([VectorQuantize(dim=d_code, codebook_size=codes, **vq_kw)
+                                 for _ in range(heads)])
         # STATE = a function of the CODES ALONE. zq carries the straight-through gradient, and
         # takes only `codes` distinct values per head, so z_state is piecewise constant on
         # concept cells exactly as intended. Head identity is preserved (concatenation, not a
@@ -78,8 +99,8 @@ class ConceptStateField(nn.Module):
         self.square_codes, self.d_fine = square_codes, d_fine
         if square_codes:
             self.sq_proj = nn.Linear(d_model, d_fine)
-            self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=square_codes, decay=0.9,
-                                        commitment_weight=0.25)
+            self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=square_codes,
+                                        **vq_kw)
         # RESIDUAL ACROSS GRANULARITIES (restoring jqt's design, which the first version
         # regressed into a concatenation). jqt does it as:
         #     y_g_det = geo_dec(zq_geo).detach()
@@ -209,6 +230,14 @@ def main():
     ap.add_argument("--w-dyn", type=float, default=2.0, help="concepts predict next concepts")
     ap.add_argument("--w-ply", type=float, default=0.2, help="deliberately weak ('poorly')")
     ap.add_argument("--ply-gap", type=int, default=8, help="max gap for the dA pair sample")
+    ap.add_argument("--kmeans-init", type=int, default=1,
+                    help="seed every codebook with k-means on the first batch "
+                         "instead of a random normal cloud")
+    ap.add_argument("--dead-code", type=int, default=0,
+                    help="threshold_ema_dead_code: any code whose EMA assignment "
+                         "count falls below this is RESEEDED from a real latent in "
+                         "the current batch. 2 is the library's own Codebook "
+                         "default. 0 disables (what we have always run).")
     ap.add_argument("--stratify", type=int, default=1,
                     help="sample the committor batch EQUALLY from WIN/DRAW/LOSS instead of at "
                          "the corpus rate (measured 12.4/78.9/8.7). Without this the majority "
@@ -258,7 +287,9 @@ def main():
 
     net = ConceptStateField(d_model=args.d_model, heads=args.heads, codes=args.codes,
                             d_state=args.d_state,
-                            square_codes=args.square_codes).to(dev)
+                            square_codes=args.square_codes,
+                            kmeans_init=bool(args.kmeans_init),
+                            dead_code=args.dead_code).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     print(f"[csf] {sum(p.numel() for p in net.parameters()):,} params | state space "
           f"{args.codes}^{args.heads}", flush=True)
