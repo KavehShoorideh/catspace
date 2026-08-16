@@ -230,6 +230,8 @@ def main():
     ap.add_argument("--w-dyn", type=float, default=2.0, help="concepts predict next concepts")
     ap.add_argument("--w-ply", type=float, default=0.2, help="deliberately weak ('poorly')")
     ap.add_argument("--ply-gap", type=int, default=8, help="max gap for the dA pair sample")
+    ap.add_argument("--test-frac", type=float, default=0.1,
+                    help="fraction of GAMES held out for the single final test read")
     ap.add_argument("--val-frac", type=float, default=0.1,
                     help="fraction of GAMES held out (never positions -- see note "
                          "at the split)")
@@ -274,30 +276,48 @@ def main():
     out_w = tr.outcome_of_row_white()          # WIN / DRAW / LOSS per row, white POV
     cls = np.full(len(gor), -1, np.int64)
     cls[out_w == T.WIN] = 0; cls[out_w == T.DRAW] = 1; cls[out_w == T.LOSS] = 2
-    # HELD-OUT SPLIT BY GAME, not by position. Consecutive plies of one game are nearly
-    # identical and share a label, so a positional split leaks the answer across it and any
-    # "validation" number is really training accuracy. Added 2026-08-16 because csf3 reached
-    # 0.792 train committor with no way to tell learning from memorisation.
-    _vg = np.zeros(len(tr.start), bool)
-    _vg[np.random.default_rng(args.seed).choice(
-        len(tr.start), max(1, int(args.val_frac * len(tr.start))), replace=False)] = True
-    is_val = _vg[gor]
-    ok = np.flatnonzero((cls >= 0) & ~is_val)
-    ok_val = np.flatnonzero((cls >= 0) & is_val)
-    by_cls = [np.flatnonzero((cls == k) & ~is_val) for k in range(3)]
-    by_cls_val = [np.flatnonzero((cls == k) & is_val) for k in range(3)]
-    print(f"[csf] split by GAME: {int(_vg.sum())} val games -> {len(ok):,} train / "
-          f"{len(ok_val):,} val positions", flush=True)
-    base = np.bincount(cls[ok], minlength=3) / max(len(ok), 1)
-    print(f"[csf] outcome base rate  WIN {base[0]:.1%}  DRAW {base[1]:.1%}  LOSS {base[2]:.1%}"
-          f"  -> majority baseline {base.max():.1%}, balanced baseline 33.3%", flush=True)
-    assert all(len(c) > 0 for c in by_cls), \
-        f"stratification needs all three outcomes present; got {[len(c) for c in by_cls]}"
+    # ---- TRAIN / VAL / TEST, SPLIT BY GAME ------------------------------------------
+    # By GAME, never by position: consecutive plies are nearly identical and share one label,
+    # so a positional split leaks the answer across itself and "validation" becomes training
+    # accuracy under another name.
+    # THREE ways, not two: val is read every eval and therefore steers our decisions (when to
+    # stop, which config to keep), which makes it an optimisation target and no longer an
+    # unbiased estimate. test is touched EXACTLY ONCE, at the end.
+    _rs = np.random.default_rng(args.seed)
+    _perm = _rs.permutation(len(tr.start))
+    _nv = max(1, int(args.val_frac * len(tr.start)))
+    _nt = max(1, int(args.test_frac * len(tr.start)))
+    split_of_game = np.zeros(len(tr.start), np.int8)      # 0 train / 1 val / 2 test
+    split_of_game[_perm[:_nv]] = 1
+    split_of_game[_perm[_nv:_nv + _nt]] = 2
+    spl = split_of_game[gor]                               # per POSITION
+    by_cls  = [np.flatnonzero((cls == k) & (spl == 0)) for k in range(3)]
+    by_cls_val  = [np.flatnonzero((cls == k) & (spl == 1)) for k in range(3)]
+    by_cls_test = [np.flatnonzero((cls == k) & (spl == 2)) for k in range(3)]
+    ok = np.flatnonzero((cls >= 0) & (spl == 0))
+    print(f"[csf] split by GAME  train {int((split_of_game==0).sum())} / "
+          f"val {_nv} / test {_nt} games  ->  "
+          f"{int((spl==0).sum()):,} / {int((spl==1).sum()):,} / {int((spl==2).sum()):,} "
+          f"positions", flush=True)
+    _trk = np.ascontiguousarray(
+        np.concatenate([tr.tok[spl == 0], tr.glob[spl == 0]], 1).astype(np.uint8))
+    train_keys = np.unique(_trk.view(np.dtype((np.void, _trk.shape[1]))).ravel())
+    print(f"[csf] {len(train_keys):,} distinct TRAIN board keys for yardstick leak-screening",
+          flush=True)
+    for nm, b in (("train", by_cls), ("val", by_cls_val), ("test", by_cls_test)):
+        assert all(len(c) > 0 for c in b), \
+            f"{nm} split is missing an outcome class: {[len(c) for c in b]}"
+
     # the transitions cache is keyed by ROW COUNT, so a new corpus needs a new one; build it
     # rather than die (no script in the repo generated this file before gen_game_transitions)
     from catspace.research.tools.training_infra import gen_game_transitions as GT
     gz = GT.ensure(tr, T.load_sf_games(args.games, args.seed, max_plies=args.max_plies))
     par, mid = gz["par"], gz["mid"]
+    # LEAK FIX: the dynamics and ply terms sampled EVERY transition, including held-out games,
+    # so the encoder saw val/test boards during training even though their outcome labels were
+    # withheld. Restrict to train games.
+    _ptr = split_of_game[gor[par]] == 0
+    par, mid = par[_ptr], mid[_ptr]
     print(f"[csf] {len(tr):,} games | {len(tr.tok):,} positions | {len(ok):,} outcome-labelled "
           f"| {len(par):,} transitions [{time.time()-t0:.0f}s]", flush=True)
 
@@ -405,19 +425,38 @@ def main():
             log.write(json.dumps({"s": step, "val_acc": val_acc}) + "\n")
 
         if args.eval_sf and (step % args.eval_every == 0 or step == args.steps):
-            sf = sf_yardstick(net, args, dev)
+            sf = sf_yardstick(net, args, dev, train_keys, want=1)
             if sf:
                 print(f"[csf] {step:5d} SF YARDSTICK (eval only, never a label): "
                       f"within-parent spearman {sf['sp']:+.3f} | top-1 {sf['top1']:.1%} "
                       f"| distinct concept cells among siblings {sf['cells']:.2f}", flush=True)
                 log.write(json.dumps({"s": step, **{f"sf_{k}": v for k, v in sf.items()}}) + "\n")
 
+    # ---- TEST, TOUCHED EXACTLY ONCE ------------------------------------------------
+    # val steered every decision above, so it is no longer an unbiased estimate. This is the
+    # only read of test in the whole script.
+    net.eval()
+    with torch.no_grad():
+        _per = 512 // 3
+        _rt = np.concatenate([c[rng.integers(0, len(c), _per)] for c in by_cls_test])
+        _zg, _zs, _, _, _ = net.encode(*batch(_rt))
+        _p = net.committor(net.full(_zg, _zs), args.basin_temp)
+        test_acc = float((_p.argmax(1) == torch.from_numpy(cls[_rt]).to(dev)).float().mean())
+    sf_te = sf_yardstick(net, args, dev, train_keys, want=2)
+    print(f"\n[csf] ===== TEST (single touch) =====", flush=True)
+    print(f"[csf]   committor {test_acc:.3f}   (balanced baseline 0.333)", flush=True)
+    if sf_te:
+        print(f"[csf]   move ranking: within-parent spearman {sf_te['sp']:+.3f} | "
+              f"top-1 {sf_te['top1']:.1%} | cells {sf_te['cells']:.2f} | n={sf_te['n']}",
+              flush=True)
+    log.write(json.dumps({"s": args.steps, "test_acc": test_acc,
+                          **{f"test_{k}": v for k, v in (sf_te or {}).items()}}) + "\n")
     torch.save({"state_dict": net.state_dict(), "step": args.steps,
                 "args": vars(args)}, f"{args.out}_latest.pt")
     print(f"[csf] done -> {args.out}_latest.pt [{time.time()-t0:.0f}s]", flush=True)
 
 
-def sf_yardstick(net, args, dev):
+def sf_yardstick(net, args, dev, train_keys=None, want=1):
     """Stockfish shards as a MEASURING STICK ONLY -- no gradient, never in the loss.
 
     Reports the question this architecture lives or dies on: among the legal children of one
@@ -436,8 +475,34 @@ def sf_yardstick(net, args, dev):
         cnt.append(np.diff(z["off"]))
     toks, globs, wdls = np.concatenate(toks), np.concatenate(globs), np.concatenate(wdls)
     off = np.concatenate([[0], np.cumsum(np.concatenate(cnt))]).astype(np.int64)
+    # LEAK CHECK BY POSITION IDENTITY, not row index. The shards' `row` field indexes the
+    # corpus they were GENERATED against (the 4000-game, 4.65M-row build); this script trains
+    # on a different draw (600 games, 69k rows), so those indices are meaningless here -- using
+    # them raised IndexError, which is how this was found. Position content is corpus
+    # independent: hash each child board and drop any parent with a child we trained on.
+    cand = np.arange(len(off) - 1)
+    if train_keys is not None:
+        key = np.ascontiguousarray(
+            np.concatenate([toks, globs], 1).astype(np.uint8)).view(
+                np.dtype((np.void, toks.shape[1] + globs.shape[1]))).ravel()
+        seen = np.isin(key, train_keys)
+        keep = np.array([not seen[int(off[i]):int(off[i + 1])].any()
+                         for i in cand], bool)
+        n_drop = int((~keep).sum())
+        cand = cand[keep]
+        # The shards carry no game identity and come from a DIFFERENT corpus draw, so they
+        # cannot be split by game the way the corpus is. Screening removes boards we trained
+        # on; this then splits the surviving pool deterministically in half so the monitoring
+        # yardstick (want=1) and the single final read (want=2) are DISJOINT -- otherwise the
+        # "test" move-ranking number is the same sample we watched all run and is not a fresh
+        # read at all.
+        half = np.random.default_rng(12345).permutation(len(cand))
+        cut = len(half) // 2
+        cand = cand[half[:cut]] if want == 1 else cand[half[cut:]]
+        if len(cand) == 0:
+            return None
     rng = np.random.default_rng(0)
-    pick = rng.choice(len(off) - 1, size=min(args.sf_parents, len(off) - 1), replace=False)
+    pick = rng.choice(cand, size=min(args.sf_parents, len(cand)), replace=False)
     net.eval()
     sps, tops, cells = [], [], []
     with torch.no_grad():
@@ -468,7 +533,8 @@ def sf_yardstick(net, args, dev):
     if not sps:
         return None
     return {"sp": float(np.mean(sps)), "top1": float(np.mean(tops)),
-            "cells": float(np.mean(cells)), "n": len(sps)}
+            "cells": float(np.mean(cells)), "n": len(sps),
+            "dropped_seen_in_train": int(n_drop) if train_keys is not None else 0}
 
 
 if __name__ == "__main__":

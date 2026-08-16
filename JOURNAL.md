@@ -13186,3 +13186,42 @@ params over 69k positions). Added a split BY GAME -- never by position, since co
 are nearly identical and share a label, so a positional split leaks across itself. 60 held-out
 games -> 7,671 val positions. At 120 steps train and val are both at chance, so the question is
 open; the 20k run will answer it.
+
+---
+
+## 2026-08-16 — Proper train/val/test split, and three leaks it exposed
+
+Kaveh: "Can you please do a proper train test validation split?" Killed the 20k run 10 min in
+rather than let it produce uninterpretable numbers. Building it properly found three leaks, not
+just the missing test set.
+
+**The split.** By GAME, never by position -- consecutive plies are nearly identical and share
+one label, so a positional split leaks across itself. 480 train / 60 val / 60 test games ->
+55,323 / 7,014 / 7,118 positions. Three ways rather than two because val is read every eval and
+therefore steers decisions, which makes it an optimisation target and not an unbiased estimate;
+**test is touched exactly once, at the end**, and the script enforces that structurally.
+
+**Leak 1 -- dynamics trained on held-out games.** `ti = rng.integers(0, len(par))` sampled
+EVERY transition, so the encoder saw val and test boards during training even though their
+outcome labels were withheld. Transitions are now filtered to train games.
+
+**Leak 2 -- the move-ranking yardstick was scoring training positions.** It never loaded the
+shards' `row` field, so it had no idea which split its parents came from.
+
+**Leak 3, found by the fix to leak 2 -- the WDL shards are keyed to a DIFFERENT CORPUS.** Their
+`row` indexes the 4000-game, 4,652,261-row build; this script trains on a 600-game, 69,455-row
+draw, so those indices are meaningless here. Using them raised
+`IndexError: index 459003 is out of bounds for axis 0 with size 69455`, which is how it was
+found. Row-index filtering CANNOT work across corpora. Replaced with screening on **position
+identity**: hash every train board (51,472 distinct keys) and drop any shard parent with a
+child we trained on. Corpus-independent and exact.
+
+**And a fourth, in my own fix.** With screening in place the val and test yardsticks returned
+IDENTICAL numbers (-0.042, 7.4%, n=68) because screening does not distinguish them -- it is one
+pool read twice, so the "test" move-ranking figure was the same sample watched all run. The
+surviving pool is now split deterministically in half: disjoint monitoring and final read
+(verified: +0.006 val vs -0.002 test, n=197).
+
+Standing limitation, stated rather than hidden: the shards carry no game identity, so the
+yardstick pool cannot be split by game the way the corpus is -- it is held out by CONTENT
+screening only, and n is small (~200 parents at `--sf-parents 300`).
