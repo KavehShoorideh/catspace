@@ -51,7 +51,7 @@ class ConceptStateField(nn.Module):
     """board -> concepts -> state -> quasimetric."""
 
     def __init__(self, d_model=192, layers=4, tr_heads=8, heads=16, codes=16, d_code=32,
-                 d_state=48, components=8, ply_cap=60.0):
+                 d_state=48, components=8, ply_cap=60.0, square_codes=32, d_fine=32):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
@@ -69,7 +69,19 @@ class ConceptStateField(nn.Module):
         # concept cells exactly as intended. Head identity is preserved (concatenation, not a
         # permutation-invariant sum) because head h is a specific slot, not an interchangeable
         # set member.
-        self.state = nn.Sequential(nn.Linear(heads * d_code, 256), nn.GELU(),
+        # SQUARE CONCEPTS (Kaveh 2026-08-15: "don't we have board square concepts? are you
+        # including those in the prediction"). They were missing from the first version and
+        # that is almost certainly why the state could not separate siblings: a move changes
+        # two squares, and a POOLED global embedding barely registers that, so ~30 legal
+        # children collapsed to ~2 distinct states (measured `cells` 1.85-2.72). One code per
+        # square from a shared book makes the change explicit at the from/to squares.
+        self.square_codes, self.d_fine = square_codes, d_fine
+        if square_codes:
+            self.sq_proj = nn.Linear(d_model, d_fine)
+            self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=square_codes, decay=0.9,
+                                        commitment_weight=0.25)
+        n_in = heads * d_code + (64 * d_fine if square_codes else 0)
+        self.state = nn.Sequential(nn.Linear(n_in, 256), nn.GELU(),
                                    nn.Linear(256, d_state))
         h = d_state // 2
         assert d_state % 2 == 0 and h % components == 0, (
@@ -85,6 +97,11 @@ class ConceptStateField(nn.Module):
         self.mv_promo = nn.Embedding(5, 32)
         self.dyn = nn.Sequential(nn.Linear(d_state + 32, 512), nn.GELU(),
                                  nn.Linear(512, heads * codes))
+        # concepts predict NEXT concepts at both granularities; the square head is where a
+        # move's actual effect lives (from-square empties, to-square changes)
+        if square_codes:
+            self.dyn_sq = nn.Sequential(nn.Linear(d_state + 32, 512), nn.GELU(),
+                                        nn.Linear(512, 64 * square_codes))
         self.ply_cap = ply_cap
 
     # ---- concepts -------------------------------------------------------------------
@@ -97,9 +114,18 @@ class ConceptStateField(nn.Module):
         return torch.cat(qs, -1), torch.stack(ids, 1), vl
 
     def encode(self, tok, glob):
-        phi = self.trunk(tok, glob)
+        """-> (state, global ids (B,H), vq loss, square ids (B,64) or None).
+
+        forward_tokens costs the SAME as forward -- the per-square outputs are already computed
+        by the trunk, they were simply being discarded."""
+        phi, sq_tok = self.trunk.forward_tokens(tok, glob)
         zq, ids, vl = self.quantize(phi)
-        return self.state(zq), ids, vl, zq
+        ids_sq = None
+        if self.square_codes:
+            q_sq, ids_sq, vl_sq = self.sq_vq(self.sq_proj(sq_tok))
+            vl = vl + vl_sq
+            zq = torch.cat([zq, q_sq.reshape(len(phi), -1)], -1)
+        return self.state(zq), ids, vl, ids_sq
 
     def dA(self, u, v):
         k = u.shape[-1] // 2
@@ -115,8 +141,13 @@ class ConceptStateField(nn.Module):
         return torch.softmax(-d3 / temp, 1)
 
     def predict_next(self, z, mid):
+        """-> (global logits (B,H,codes), square logits (B,64,square_codes) or None)."""
         e = self.mv_from(mid[:, 0]) + self.mv_to(mid[:, 1]) + self.mv_promo(mid[:, 2])
-        return self.dyn(torch.cat([z, e], -1)).view(len(z), self.heads, self.codes)
+        x = torch.cat([z, e], -1)
+        g = self.dyn(x).view(len(z), self.heads, self.codes)
+        s = (self.dyn_sq(x).view(len(z), 64, self.square_codes)
+             if self.square_codes else None)
+        return g, s
 
 
 def perplexity(ids, codes):
@@ -137,6 +168,9 @@ def main():
     ap.add_argument("--max-plies", type=int, default=400)
     ap.add_argument("--heads", type=int, default=16)
     ap.add_argument("--codes", type=int, default=16)
+    ap.add_argument("--square-codes", type=int, default=32,
+                    help="per-square concept vocabulary; 0 = pooled-global only "
+                         "(which measured cells~2, i.e. cannot rank moves)")
     ap.add_argument("--d-model", type=int, default=192)
     ap.add_argument("--d-state", type=int, default=48)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -178,7 +212,8 @@ def main():
           f"| {len(par):,} transitions [{time.time()-t0:.0f}s]", flush=True)
 
     net = ConceptStateField(d_model=args.d_model, heads=args.heads, codes=args.codes,
-                            d_state=args.d_state).to(dev)
+                            d_state=args.d_state,
+                            square_codes=args.square_codes).to(dev)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     print(f"[csf] {sum(p.numel() for p in net.parameters()):,} params | state space "
           f"{args.codes}^{args.heads}", flush=True)
@@ -194,7 +229,7 @@ def main():
         # --- (1) committor on outcome-labelled positions (the free label) ----------------
         r = ok[rng.integers(0, len(ok), args.batch)]
         tk, gb = batch(r)
-        z, ids, vl, _ = net.encode(tk, gb)
+        z, ids, vl, ids_sq = net.encode(tk, gb)
         y = torch.from_numpy(cls[r]).to(dev)
         p3 = net.committor(z, args.basin_temp)
         l_out = F.nll_loss((p3 + 1e-8).log(), y)
@@ -206,10 +241,13 @@ def main():
         tk_c, gb_c = batch(pr + 1)
         z_p, ids_p, vl_p, _ = net.encode(tk_p, gb_p)
         with torch.no_grad():
-            _, ids_c, _, _ = net.encode(tk_c, gb_c)          # target codes, detached
+            _, ids_c, _, sq_c = net.encode(tk_c, gb_c)       # target codes, detached
         mv = torch.from_numpy(mid[ti].astype(np.int64)).to(dev)
-        lg = net.predict_next(z_p, mv)
+        lg, lg_sq = net.predict_next(z_p, mv)
         l_dyn = F.cross_entropy(lg.reshape(-1, args.codes), ids_c.reshape(-1))
+        if lg_sq is not None and sq_c is not None:
+            l_dyn = l_dyn + F.cross_entropy(lg_sq.reshape(-1, args.square_codes),
+                                            sq_c.reshape(-1))
 
         # --- (3) ply, deliberately weak ---------------------------------------------------
         g = gor[pr]; same = np.flatnonzero(gor[np.clip(pr + args.ply_gap, 0, len(gor) - 1)] == g)
@@ -234,15 +272,20 @@ def main():
                 perp, used = perplexity(ids.detach(), args.codes)
                 acc = float((p3.argmax(1) == y).float().mean())
                 dyn_acc = float((lg.argmax(-1) == ids_c).float().mean())
+                sq_acc = (float((lg_sq.argmax(-1) == sq_c).float().mean())
+                          if lg_sq is not None else -1.0)
+                sq_perp = (perplexity(ids_sq.detach(), args.square_codes)[0]
+                           if ids_sq is not None else -1.0)
             rec = {"s": step, "loss": float(loss.detach()), "outcome": float(l_out.detach()),
                    "dyn": float(l_dyn.detach()), "ply": float(l_ply.detach()),
                    "vq": float(vl.detach()), "perp": perp, "used": used,
-                   "out_acc": acc, "dyn_acc": dyn_acc}
+                   "out_acc": acc, "dyn_acc": dyn_acc, "sq_acc": sq_acc,
+                   "sq_perp": sq_perp}
             log.write(json.dumps(rec) + "\n")
             if step % 100 == 0 or step == 1:
                 print(f"[csf] {step:5d} loss {float(loss):8.3f} | committor acc {acc:.3f} "
-                      f"| next-code acc {dyn_acc:.3f} | perp {perp:5.2f} used {used:4.1f}/"
-                      f"{args.codes} | {time.time()-t0:.0f}s", flush=True)
+                      f"| next-code acc {dyn_acc:.3f} sq {sq_acc:.3f} | perp {perp:5.2f} "
+                      f"sq_perp {sq_perp:5.2f} used {used:4.1f}/{args.codes} | {time.time()-t0:.0f}s", flush=True)
 
         if args.eval_sf and (step % args.eval_every == 0 or step == args.steps):
             sf = sf_yardstick(net, args, dev)
@@ -289,12 +332,14 @@ def sf_yardstick(net, args, dev):
             e_par = (w[:, 2] + 0.5 * w[:, 1]) / np.clip(w.sum(1), 1.0, None)
             g = globs[a:b]
             e_white = np.where(g[:, 0] == 0, e_par, 1.0 - e_par)
-            z, ids, _, _ = net.encode(
+            z, ids, _, ids_sq = net.encode(
                 torch.from_numpy(toks[a:b].astype(np.int64)).to(dev),
                 torch.from_numpy(g.astype(np.float32)).to(dev))
+            full = (ids if ids_sq is None else
+                    torch.cat([ids, ids_sq], -1)).cpu().numpy()
             p3 = net.committor(z, args.basin_temp)
             e_ours = (p3[:, 0] + 0.5 * p3[:, 1]).cpu().numpy()
-            cells.append(len(np.unique(ids.cpu().numpy(), axis=0)))
+            cells.append(len(np.unique(full, axis=0)))
             if np.ptp(e_white) < 1e-6:
                 continue
             s = spearmanr(e_ours, e_white)[0]

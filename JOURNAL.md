@@ -12987,3 +12987,41 @@ concepts into the new architecture — unsurprising at 200 steps, but noted.
 **NOT LAUNCHED as a long run.** Both problems above are about the training SIGNAL and the
 vocabulary's fineness, not about optimisation, so more steps do not address either. Decision
 needed before spending hours.
+
+---
+
+## 2026-08-15 — Square concepts fix the partition (cells 2 -> 30.5); the bottleneck moves to the label
+
+Kaveh: "don't we have board square concepts? are you including those in the prediction". We do
+(`jqt.square_stream`: per-square trunk outputs -> `sq_proj` -> `sq_vq`, one code per square from
+a 32-code book) and I was NOT — the first `concept_state_field` built its state from the pooled
+global embedding alone. `JepaEncoder.forward_tokens` returns the per-square outputs for the SAME
+compute as `forward`, so they were being computed and discarded.
+
+Wired square concepts into the state and into the next-concept prediction. Same smoke setup
+(200 steps, 600 games), only that change:
+
+    variant                cells   within-parent sp   top-1    global perp   sq perp
+    pooled global only      1.85        +0.001        19.1%      2.02          --
+    + square concepts      30.47        +0.004        14.2%      1.22         2.12
+
+**The prediction was right and the fix is decisive on its own metric.** Among ~30 legal
+children, distinct concept states went from ~2 to **30.5** — essentially every child now gets
+its own state. The partition can rank moves; before, it structurally could not.
+
+**And that isolates the remaining problem.** Move ranking is still ~0 (spearman +0.004). So
+distinct states are NECESSARY but not SUFFICIENT: the states are now separable, and the
+committor still fails to order them — because it is trained on a label that is 78.9% DRAW.
+Capacity was one bottleneck; the label is the other, and only the first is now fixed.
+
+**Two things this run also exposes, both mine:**
+* `cells=30` was bought cheaply. The square codebook uses only ~2 of 32 codes (sq_perp 2.12),
+  so distinctness comes from having 64 SLOTS, not from a rich vocabulary — 64 near-binary
+  squares generate plenty of distinct 64-tuples. Do not read cells=30 as "the concepts are
+  good".
+* The global heads collapsed harder once squares were added (perp 2.02 -> 1.22, 2.1 of 16
+  codes). jqt makes the finer vocabularies RESIDUAL on the coarser one for exactly this reason
+  — its own comment: "RVQ-across-granularities: each finer vocabulary encodes only what the
+  coarser ones failed to explain -- collinearity removed by construction." I CONCATENATED
+  instead, so the global stream is redundant and dies. That is a design regression against the
+  existing jqt structure and should be restored before any long run.
