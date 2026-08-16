@@ -706,6 +706,20 @@ def main():
                 remap[k] = v
         missing, unexpected = net.load_state_dict(remap, strict=False)
         got = [m for m in missing if not m.startswith("qhead.proj_delta")]
+        # The remap above is UNCONDITIONAL, but only a dual/conditioned model HAS qhead.*.
+        # Warm-starting a non-dual model therefore sends proj_b/iqe to keys that do not exist,
+        # and they stay at RANDOM INIT while the source weights are silently discarded.
+        # MEASURED on jqt6 (2026-08-15): warm-starting reach_jqt6_step1500.pt left
+        # missing=['proj_b.weight','proj_b.bias','iqe.alpha_logit','iqe.log_scale'] and
+        # unexpected=['qhead.proj_base.*','qhead.iqe.*'] -- proj_b.weight was byte-identical to
+        # its random init afterwards. Behaviour is left unchanged so old runs stay reproducible;
+        # this only makes the loss impossible to miss.
+        _lost = [m for m in got if m.startswith(("proj_b.", "iqe."))]
+        if _lost and not args.dual:
+            print(f"[stage2] WARNING: --init-from remaps proj_b/iqe onto qhead.* (the DUAL "
+                  f"layout), but this model is NOT dual. {len(_lost)} tensor(s) stayed at "
+                  f"RANDOM INIT and the source weights were discarded: {_lost}. The arm-B "
+                  f"metric projection did NOT warm-start.", flush=True)
         print(f"[stage2] warm-started from {args.init_from} step {pay.get('step')} | "
               f"delta stays zero-init | unmapped-missing {len(got)} | unexpected {len(unexpected)}",
               flush=True)
@@ -1857,7 +1871,12 @@ def main():
                     _atl = jqt.atlas(_zb_det, model.dA, model.dB, POL[:3], args.basin_temp)
                     (h_pc, zq_flat, ids_pc, vloss,
                      zq_geo, zq_brd) = jqt.quantize_split(phi_j[:2 * nP], _zb_det, _atl)
-                    l_vqrec = torch.nn.functional.mse_loss(jqt.geo_dec(zq_geo), yt) + vloss
+                    # split out so --trace-grad can attribute vqrec: the RECONSTRUCTION half
+                    # exists only for the geometry branch (geo_dec has a target, the board
+                    # branch has none), while the COMMITMENT half applies to every head.
+                    _vq_rec = torch.nn.functional.mse_loss(jqt.geo_dec(zq_geo), yt)
+                    _vq_com = vloss
+                    l_vqrec = _vq_rec + _vq_com
                 else:
                     h_pc, zq_flat, ids_pc, vloss = jqt.quantize(phi_j[:2 * nP])
                     l_vqrec = torch.nn.functional.mse_loss(jqt.dec(zq_flat), yt) + vloss
@@ -2224,7 +2243,11 @@ def main():
         # train that head, whatever the source implies.
         if args.trace_grad and _last_step[0] == args.trace_grad and jqt is not None:
             _G = args.geo_heads if args.jqt6 else 0
-            _terms = [("vqrec", args.w_vqrec * l_vqrec), ("pers", args.w_pers * l_pers),
+            _terms = [("vqrec", args.w_vqrec * l_vqrec),
+                      ("  ..recon", args.w_vqrec * _vq_rec),      # geometry-only target
+                      ("  ..commit", args.w_vqrec * _vq_com),     # all heads
+                      ("sqrec", args.w_sqrec * l_sqrec), ("pcrec", args.w_pcrec * l_pcrec),
+                      ("pers", args.w_pers * l_pers),
                       ("jepa", args.w_jepa * l_jepa), ("cda", args.w_cda * l_cda),
                       ("cdb", args.w_cdb * l_cdb), ("negpole", args.w_negpole * l_negpole),
                       ("hazard", args.w_hazard * l_hazard),
@@ -2249,6 +2272,12 @@ def main():
                 _tgt, _lbl = [h_pc], ["h_pc"]
             print(f"\n[trace] step {_last_step[0]}: gradient reaching the tensors the "
                   f"QUANTIZERS consume ({' / '.join(_lbl)})", flush=True)
+            # SHAPES, because a gradient-norm comparison is only fair between equal-sized
+            # tensors: if one side were per-square (64 slots) its norm would be spread over 64x
+            # the elements and the ratio would be an artefact of shape, not of training signal.
+            for _ci, (_hg, _hb) in enumerate(_hooks if isinstance(_hooks, list) else []):
+                print(f"[trace] shapes call{_ci}: geo {tuple(_hg.shape)}  brd {tuple(_hb.shape)}"
+                      f"  (elems {_hg.numel()} vs {_hb.numel()})", flush=True)
             print(f"[trace] {'term':>10} {'value':>11} "
                   + " ".join(f"{'|grad| '+l:>12}" for l in _lbl), flush=True)
             def _row(nm, val, gs):

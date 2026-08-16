@@ -12821,3 +12821,58 @@ so a reconstructed command arrives as ONE argument and argparse rejects everythi
 **jqt8 killed** at Kaveh's instruction (PID 26009, step 2882, 3h38m). Note its final logged
 values were geo_perp 3.92 / brd_perp 3.66 — **partially recovered from 1.00**, so this
 oscillates rather than being an absorbing state.
+
+---
+
+## 2026-08-15 — How far jqt6 got, and a silent warm-start bug it exposed
+
+**How far jqt6 trained.** `reach_jqt6_latest.pt` records **step 2000**, against `--steps 20000`
+requested — **10% of the intended run**. Lineage reconstructed from the artifacts:
+
+| prefix | runs in its step log | reached |
+|---|---|---|
+| `reach_jqt6_abort1` | 3 | 400, 55, 1818 |
+| `reach_jqt6_partial` | 1 | 2006 |
+| `reach_jqt6` (final) | 1 | **2000**, `--init-from reach_jqt6_step1500.pt` |
+
+Ladder retained: step1000 / 1500 / 2000 (step500 dropped by the retention policy). Wall clock
+from ckpt mtimes: 15:21 → 16:11 → 17:03, i.e. ~51 min per 500 steps ≈ **6.2 s/step**, so the
+final run took ~3.4 h. Cumulative on the surviving lineage ≈ 1500 inherited + 2000 = **3500
+optimiser steps** — with the exception below.
+
+**BUG, verified by replaying the load path (not by reading it).** `--init-from` remaps
+`proj_b.*`→`qhead.proj_base.*` and `iqe.*`→`qhead.iqe.*` UNCONDITIONALLY, but only a
+dual/conditioned model has `qhead.*`. jqt6 is non-dual, so:
+
+    missing    = ['proj_b.weight','proj_b.bias','iqe.alpha_logit','iqe.log_scale']
+    unexpected = ['qhead.proj_base.weight','qhead.proj_base.bias','qhead.iqe.*']
+    proj_b.weight byte-identical to random init after the warm start: True
+
+**jqt6's final run did NOT warm-start its arm-B metric projection.** `proj_b` — which produces
+z_B, hence the geometry branch's entire input — trained for 2000 steps from random init while
+the backbone carried 1500 steps of history. So "3500 steps" holds for the trunk; the geometry
+projection only ever saw 2000. Behaviour left unchanged so old runs stay reproducible; a loud
+warning now fires (verified firing).
+
+**Kaveh's hypothesis: "there are 64 board slots, so the gradient gets split between them."**
+Tested, and it does not apply to the compared tensors — but it correctly identifies where the
+per-square machinery lives.
+
+    shapes call0: geo (256, 8, 32)   brd (256, 8, 32)   elems 65536 vs 65536
+
+Identical shape, both read from the POOLED global embedding, so no 64-way division. Decomposing
+`vqrec` gives the real cause of the 40x asymmetry:
+
+| half | value | grad geo | grad brd |
+|---|---|---|---|
+| `..recon` (geo_dec → target) | 245.65 | **0.179297** | **exactly zero (unused)** |
+| `..commit` (VQ commitment) | 0.0385 | 0.002776 | 0.002528 |
+
+The commitment half is **symmetric** — both branches get ~0.0026. The whole asymmetry is the
+RECONSTRUCTION half, which has a target only for geometry (`geo_dec` predicts y6); the board
+branch has no reconstruction target by design (value-equivalence instead), and that objective
+reaches it only through the separate `call1` forward (0.038).
+
+The 64-slot concern is real for `sqrec` (99.47) and `pcrec` (122.34) — genuinely per-square
+streams — but both put **zero** gradient on these concept heads. They train the separate
+`sq_vq`/`pc_vq` codebooks, a different system.
