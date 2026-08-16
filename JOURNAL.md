@@ -13092,3 +13092,57 @@ Whether this is collapse or just slow population is still not answerable at 200 
 geometry went 3.45 (step 250) -> 14.08 (step 1000), so these vocabularies populate over the
 first ~1000 steps when they populate at all. A 2500-step run is the smallest experiment that
 can distinguish the two.
+
+---
+
+## 2026-08-16 — concept_state_field 2500-step run: the two streams fail differently
+
+The 200-step smokes could not distinguish collapse from slow population. 2500 steps can.
+600 games / 69,455 positions, stratified committor, residual granularities. 52 min, 1.24 s/step.
+Artifacts: `csf2_latest.pt`, `csf2_steps.jsonl`, `csf2_run.log`.
+
+    step   committor   global perp  used/16   sq perp   next-code   sq-code
+       1     0.333        2.47        4.6      2.33       0.071      0.024
+     100     0.333        2.49        4.8      2.33       0.955      0.765
+     500     0.380        2.37        5.2      1.80       0.987      0.784
+    1000     0.375        1.96        2.0      2.11       0.650      0.504
+    1500     0.339        1.96        2.0      1.48       0.575      0.707
+    2000     0.359        3.84        6.7      1.48       0.875      0.887
+    2500     0.443        3.33        4.7      1.52       0.954      0.896
+
+    step   within-parent sp   top-1    cells
+     250        -0.002        4.4%     28.11
+    1000        -0.005        3.9%     26.14
+    1500        +0.025        9.8%     18.92
+    2500        +0.003        5.4%     19.20
+
+**VERDICT: the two granularities fail in DIFFERENT ways, which is why one answer never fit.**
+
+1. **The global stream does not collapse -- it populates, slowly and unstably.** Perplexity ends
+   at 3.33 (4.7 of 16 codes) having dipped to 1.96 (2.0 codes) at step 1000-1500 and recovered.
+   It oscillates rather than dying. But the reference is jqt6, whose geometry codebook reached
+   **14.08 by step 1000**; this is 4x worse at 2.5x the steps.
+2. **The square stream DOES collapse, monotonically.** sq_perp 2.33 -> 1.52 and it never
+   recovers. Roughly 1.5 of 32 codes. That is the real collapse in this architecture.
+3. **`cells` decays as a direct consequence: 28.1 -> 19.2.** Sibling separation was bought by
+   the square codes, so as they die the partition coarsens. The square-concept fix is real but
+   it is being eaten by the square codebook's collapse.
+4. **Committor reached 0.443 against a 0.333 balanced baseline** -- +11 points, the first
+   substantive learning seen in this architecture (200 steps gave +0.0 to +4). So outcome IS
+   learnable from the concept state, just weakly.
+5. **Move ranking never worked at any checkpoint.** Within-parent spearman oscillates around
+   zero (-0.023 to +0.025); top-1 3.9-10.2%. No trend. This is the endpoint that matters for
+   planning and it is flat.
+
+High next-code accuracy (0.954 / 0.896) is NOT evidence of good dynamics: with ~1.5 square
+codes live, predicting the majority code is nearly free. Dynamics accuracy must be read against
+codebook perplexity or it is meaningless.
+
+**What this rules out.** More steps is not the missing ingredient -- 2500 steps produced a
+2-point committor gain and a flat ranking curve while the square vocabulary died. The
+bottleneck is the square codebook's survival, and after this session's ablations
+(persistence, moving trunk, magnitude, normalisation, w_cda/w_cdb, concat-vs-residual all
+tested and none sufficient) the untested lever with direct literature support is the
+quantizer's own anti-collapse machinery, which we have never switched on: `kmeans_init` and
+`threshold_ema_dead_code` are both OFF in every VectorQuantize in this repo. FSQ's paper
+measures VQ usage at 0.78% WITHOUT code splitting versus 81% with it.
