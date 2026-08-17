@@ -13625,3 +13625,32 @@ concepts freeze, which is exactly how a degenerate solution would look good.
 
 Composition still clearly beats the 1-step model (gap 0.131 vs 0.350), so the unroll's benefit
 survives; the persistence weight is a separate dial that overshot.
+
+### RETRACTED: the concepts are NOT turn-partitioned
+
+Kaveh, on the canonicalisation proposal: "the concept set should be two sets of concepts... it's
+one set of concepts for the whole board, some pertain to the opponent, some to me, and they
+should change slowly. So I don't get what the issue is."
+
+Re-measured on cdf5 final. **There is no issue.**
+
+    head   codes|white   codes|black   SHARED
+       0            16            16       16      100%
+       1            14            14       14      100%
+       ...                                          100%
+    mean shared fraction 100%   (cdf2 measured 0% -- fully disjoint)
+
+Every head now uses its ENTIRE vocabulary regardless of whose turn it is. The turn-partitioning
+was real when measured, but on **cdf2** -- an early model whose persistence term was dead. The
+persistence fix dissolved it: once concepts are rewarded for surviving across plies, tagging
+them by side-to-move is actively costly, so the model stopped doing it.
+
+So the representation already does what the design calls for: ONE vocabulary over the whole
+board, used regardless of whose move it is, changing slowly (30.6% of codes survive a ply,
+against 4.7% before). **No canonicalisation is needed** and the design question I raised does
+not exist.
+
+I carried a cdf2-era finding into the cdf5 report without rechecking it. Worse, I reported the
+persistence baseline of 0.306 and the turn-partitioning claim in the SAME message without
+noticing they are arithmetically incompatible -- codes cannot survive a ply 30% of the time if
+they are strictly partitioned by a quantity that flips every ply.
