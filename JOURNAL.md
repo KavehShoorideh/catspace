@@ -13490,3 +13490,41 @@ Also: the persistence TERM costs 0.1% while producing its inputs costs 10%.
 
 **cdf3 launched** on the full corpus: 3,719,695 train positions, 3,520,487 five-ply unroll
 windows, K=5, persistence on, 8 threads, ~4.4 h, checkpoints every 1000.
+
+### Overnight addendum — MuZero verified, and the named bottleneck is NOT cacheable
+
+**Verified MuZero against the PDF rather than recall** (arXiv 1911.08265, App. G), because I had
+implemented K=5 and the 1/K loss scaling from memory. K=5 and 1/K were right; **two further
+rules were missing**:
+
+    "We also scale the gradient at the start of the dynamics function by 1/2."
+    "we also scale the hidden state to the same range as the action input ([0,1])"
+
+The second is load-bearing for us: at unroll step 0 our state is an ACTUAL codebook vector, at
+k>=1 it is a CONVEX MIXTURE of them. That distribution gap is the off-manifold drift behind
+cdf1's free-running collapse (0.590 -> 0.223 over 8 plies). Both implemented, both tested
+(scale_grad leaves the forward untouched and halves the backward; norm_state maps rows to
+exactly [0,1] and survives a constant row). 26 tests, all pass. Cost 0.80 -> 0.92 s/step (15%).
+Also corrected: MuZero uses **16** residual blocks, not AlphaZero's 20 -- my earlier parameter
+comparison assumed 20. LITERATURE.md now carries the verified quotes.
+
+cdf3 was killed at step ~1800 and relaunched as **cdf4** with the corrections. Running four more
+hours on an implementation known to be missing the stability rules for the exact failure under
+test was not defensible to save the 25 minutes already spent.
+
+**NEGATIVE: `encode_target` (36% of the step) cannot be fixed by caching.**
+
+    unroll windows available      3,520,487
+    window draws over the run     3,840,000
+    mean draws per window              1.09
+    EMA validity (0.996 half-life)  ~173 steps
+    windows drawn in that span     33,024 = 0.94% of the pool
+
+A cache needs reuse; uniform sampling over 3.5M windows gives each one ~1.09 draws across the
+WHOLE run, so a target-code cache would hit essentially never. The cost is inherent to the
+unroll under i.i.d. sampling. Checked before building it, which saved the work.
+
+What would actually reduce it, for later: epoch-style shuffled sweeps so rows recur predictably
+(trading i.i.d. batches for cache viability); computing `l_dyn` on a subset as persistence now
+does, since K*B = 960 target rows/step is the single largest encode; or a SMALLER EMA trunk,
+since targets need to be stable rather than expressive.
