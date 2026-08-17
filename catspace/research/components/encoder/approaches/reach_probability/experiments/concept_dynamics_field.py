@@ -158,6 +158,26 @@ class ConceptDynamics(nn.Module):
                                   for i in range(self.heads)], 0)
         self._book_sq = self.sq_vq.codebook.squeeze(0) if self.square_codes else None
 
+    @staticmethod
+    def scale_grad(x, scale):
+        """MuZero App. G: 'We also scale the gradient at the start of the dynamics function by
+        1/2. This ensures that the total gradient applied to the dynamics function stays
+        constant.' Forward value untouched, backward multiplied -- the standard trick."""
+        return x * scale + x.detach() * (1 - scale)
+
+    @staticmethod
+    def norm_state(x, eps=1e-5):
+        """MuZero App. G: 'we also scale the hidden state to the same range as the action input
+        ([0,1]): s_scaled = (s - min(s)) / (max(s) - min(s))'.
+
+        Load-bearing for US in particular: at unroll step 0 the state is an ACTUAL codebook
+        vector, at k>=1 it is a CONVEX MIXTURE of them -- a different distribution. That gap is
+        the off-manifold drift behind cdf1's free-running collapse (0.590 -> 0.223 over 8
+        plies). Normalising puts every step on the same footing."""
+        lo = x.min(dim=-1, keepdim=True).values
+        hi = x.max(dim=-1, keepdim=True).values
+        return (x - lo) / (hi - lo).clamp(min=eps)
+
     def soft_state(self, g_logits, s_logits):
         """the PREDICTED next state as a differentiable vector: expected code under the
         dynamics' own distribution. This is what value(c_hat) is read from, so a dynamics that
@@ -341,12 +361,15 @@ def main():
             t_ids_all = t_ids_all.view(B, K, -1)
             t_sq_all = t_sq_all.view(B, K, 64) if t_sq_all is not None else None
 
-        zq_roll = zq0
+        # step 0 must enter the unroll in the SAME range as later steps, otherwise the
+        # normalisation just moves the mismatch rather than removing it
+        zq_roll = net.norm_state(zq0)
         l_dyn = 0.0; l_vnext = 0.0
         for k in range(K):
             rk = wi + k
             mv = MVR[torch.as_tensor(rk)].to(dev)
-            g_lg, s_lg = net.predict_next(zq_roll, mv)
+            # MuZero scales the gradient entering the dynamics by 1/2 at each unroll step
+            g_lg, s_lg = net.predict_next(net.scale_grad(zq_roll, 0.5), mv)
             t_ids = t_ids_all[:, k]
             step_dyn = F.cross_entropy(g_lg.reshape(-1, args.codes), t_ids.reshape(-1))
             if s_lg is not None:
@@ -354,7 +377,9 @@ def main():
                     s_lg.reshape(-1, args.square_codes), t_sq_all[:, k].reshape(-1))
             _r1 = torch.as_tensor(rk + 1)
             y_k = torch.where(SYZ[_r1] >= 0, SYZ[_r1], RES[_r1]).to(dev)
-            zq_roll = net.soft_state(g_lg, s_lg)          # FREE-RUNNING: our own prediction
+            # FREE-RUNNING: our own prediction, range-normalised so step 0 (a true code) and
+            # step k>0 (a mixture of codes) occupy the same range
+            zq_roll = net.norm_state(net.soft_state(g_lg, s_lg))
             step_v = F.cross_entropy(net.value(zq_roll), y_k)
             # MuZero scales each unroll step by 1/K so depth does not silently reweight the
             # other terms.

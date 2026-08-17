@@ -185,6 +185,26 @@ def test_each_loss_reaches_what_it_should():
     print()
 
 
+def test_muzero_scaling_rules():
+    """The two scaling rules verified against MuZero App. G (arXiv 1911.08265), both of which I
+    originally implemented from recall and missed."""
+    net, tok, glob, _ = fixture()
+    x = torch.randn(4, 16, requires_grad=True)
+    y = net.scale_grad(x, 0.5)
+    check("scale_grad leaves the FORWARD value unchanged", torch.allclose(y, x, atol=1e-6))
+    g = torch.autograd.grad(y.sum(), x)[0]
+    check("scale_grad halves the BACKWARD gradient",
+          torch.allclose(g, torch.full_like(g, 0.5), atol=1e-6), f"mean {float(g.mean()):.3f}")
+    z = net.norm_state(torch.randn(4, 16) * 7 + 3)
+    check("norm_state maps every row to [0,1]",
+          float(z.min()) >= 0.0 and float(z.max()) <= 1.0 and
+          torch.allclose(z.min(-1).values, torch.zeros(4), atol=1e-6) and
+          torch.allclose(z.max(-1).values, torch.ones(4), atol=1e-6),
+          f"range [{float(z.min()):.3f}, {float(z.max()):.3f}]")
+    flat = net.norm_state(torch.ones(2, 8))          # degenerate row: max == min
+    check("norm_state survives a constant row (no NaN)", bool(torch.isfinite(flat).all()))
+
+
 def test_persistence_is_alive_at_every_unroll_step():
     """THE BUG THIS FILE EXISTS FOR. The training loop assigns the no_grad next-state encode to
     `zq_here` for the following step, so from k=1 both operands are detached and the term
@@ -271,6 +291,7 @@ def main():
     test_batched_encode_equals_per_row_encode()
     print("\n-- gradient paths")
     test_each_loss_reaches_what_it_should()
+    test_muzero_scaling_rules()
     test_persistence_is_alive_at_every_unroll_step()
     print("\n-- data invariants")
     test_quiet_mask_is_exact()

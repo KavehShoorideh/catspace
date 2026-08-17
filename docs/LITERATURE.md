@@ -159,3 +159,61 @@ opposition. That is exactly the Option-B argument already encoded in our walls. 
 is in the data-generating process. The gap is that nobody has *done* it, not that it is invalid.
 Residual nuance, acknowledged: which optimal line gets played is stochastic, and we do not
 condition on opponent identity or full history.
+
+---
+
+## 6. MuZero — Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model
+Schrittwieser et al. · [arXiv 1911.08265](https://arxiv.org/abs/1911.08265) · verified against the
+PDF 2026-08-16, NOT from recall (this entry exists because I implemented K=5 from memory and
+missed two of the four scaling choices).
+
+### Training (Appendix G) — the exact wording
+```
+"During training, the MuZero network is unrolled for K hypothetical steps"
+"In the experiments reported in this paper, we always unroll for K = 5 steps."
+```
+**Gradient is scaled in TWO separate places**, and they are easy to conflate:
+```
+"We scale the loss of each head by 1/K, where K is the number of unroll steps. This ensures
+ that the total gradient has similar magnitude irrespective of how many steps we unroll for."
+
+"We also scale the gradient at the start of the dynamics function by 1/2. This ensures that
+ the total gradient applied to the dynamics function stays constant."
+```
+**Hidden state is RANGE-NORMALISED at every step:**
+```
+"To improve the learning process and bound the activations, we also scale the hidden state to
+ the same range as the action input ([0,1]): s_scaled = (s - min(s)) / (max(s) - min(s))"
+```
+**OURS:** we had the 1/K only. The other two matter for us specifically: at unroll step 0 our
+state is an actual codebook vector, at k>=1 it is a CONVEX MIXTURE of codebook vectors -- a
+different distribution, which is exactly the off-manifold drift that made cdf1's free-running
+rollout fall 0.590 -> 0.223 over 8 plies. Range normalisation puts both on the same footing.
+
+**Board games bootstrap to the game's end, not n-step:**
+```
+"in board games without intermediate rewards, we omit the reward prediction loss. For board
+ games we bootstrap directly to the end of the game, equivalent to predicting the final
+ outcome; for Atari we bootstrap for n = 10 steps into the future."
+```
+Which is what our outcome term already does.
+
+### Architecture (Appendix F)
+```
+"Both the representation and dynamics function use the same architecture as AlphaZero, but
+ with 16 instead of 20 residual blocks. We use 3x3 kernels and 256 hidden planes."
+```
+**OURS:** 8.96M params against MuZero's ~40M+ (16 blocks x 256 planes). Correction to an earlier
+estimate of mine that assumed AlphaZero's 20 blocks.
+
+### Search and data (Appendices C, D)
+```
+"For board games, we use the same UCB constants, dirichlet exploration noise and the same 800
+ simulations per search as in AlphaZero."
+"the latest checkpoint of the network (updated every 1000 training steps) is used to play games"
+"the training job keeps an in-memory replay buffer of the most recent 1 million games"
+```
+pUCT constants c1 = 1.25, c2 = 19652. Discount 0.997 (1 for board games, no intermediate rewards).
+
+**OURS:** no search, no self-play, fixed 49,905-game corpus. The gap in TRAINING COMPUTE is
+~500x (3.84M samples seen vs ~2B), far larger than the ~5x parameter gap.
