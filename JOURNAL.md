@@ -13561,3 +13561,32 @@ SUBSAMPLE (visible as 'unmatched 45905'), so it was scoring rollouts on 8% of th
 to use the full 4.6M set. The same mistake has now appeared in the trainer, in
 gen_game_transitions.main, and in this evaluator -- anything that loads transitions must be
 checked for it.
+
+### Overnight verdict — the unroll bought COMPOSITION, not VALUE
+
+Four in-scope readings on cdf5 against cdf1 (1-step training), same corpus, split, target, metric:
+
+    cdf5   1000 0.605   3000 0.687   6000 0.667   9000 0.672
+    cdf1   1000 0.642   3000 0.658   5000 0.674          (range 0.62-0.674)
+
+**Indistinguishable on value accuracy.** cdf5's 0.672 against cdf1's best 0.674, both bouncing
+inside a ~5-point band that is roughly twice the measured checkpoint jitter. The K=5 unroll
+bought nothing measurable on the value metric.
+
+**Clearly better on composition**, which is what it was for:
+
+    free-running @8 plies   0.223 -> 0.417
+    compounding gap         0.350 -> 0.117
+
+That is coherent rather than disappointing: the unroll trains the dynamics to survive being
+composed with itself. It was never going to make the value head better at reading a single
+position, and it did not.
+
+**RETRACTED: the 101+ ply band.** At step 3000 it read 0.582 against a 0.435 baseline and I
+called it "the first time long-range prediction has worked at all". Two later checkpoints read
+0.490 and 0.488. It was an outlier and I over-read it on one sample, which is the third time
+this session I have taken a single favourable checkpoint for a finding. The rule I keep setting
+and breaking: nothing below ~2 points, and nothing on fewer than five readings.
+
+The 16-40 ply band is consistently ahead (0.780 vs 0.774) but by a margin inside the jitter, so
+it is not claimable either.
