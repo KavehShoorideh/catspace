@@ -185,6 +185,23 @@ def test_each_loss_reaches_what_it_should():
     print()
 
 
+def test_every_state_is_normalised():
+    """Both state-producing paths must emit the SAME range, or the value head is trained on two
+    input distributions -- which is exactly what happened when normalisation lived at the call
+    sites: l_vnext fed it normalised states while l_anchor/l_out fed it raw ones."""
+    net, tok, glob, mid = fixture()
+    zq, ids, ids_sq, _ = net.encode(tok, glob)
+    g, s = net.predict_next(zq, mid)
+    soft = net.soft_state(g, s)
+    for nm, x in (("encode", zq), ("soft_state", soft)):
+        lo, hi = float(x.min()), float(x.max())
+        check(f"{nm} emits states in [0,1]", lo >= -1e-6 and hi <= 1 + 1e-6,
+              f"[{lo:.3f}, {hi:.3f}]")
+    check("encode and soft_state share a range",
+          abs(float(zq.min()) - float(soft.min())) < 1e-5 and
+          abs(float(zq.max()) - float(soft.max())) < 1e-5)
+
+
 def test_muzero_scaling_rules():
     """The two scaling rules verified against MuZero App. G (arXiv 1911.08265), both of which I
     originally implemented from recall and missed."""
@@ -292,6 +309,7 @@ def main():
     print("\n-- gradient paths")
     test_each_loss_reaches_what_it_should()
     test_muzero_scaling_rules()
+    test_every_state_is_normalised()
     test_persistence_is_alive_at_every_unroll_step()
     print("\n-- data invariants")
     test_quiet_mask_is_exact()

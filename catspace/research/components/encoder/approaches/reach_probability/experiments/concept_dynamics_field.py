@@ -124,7 +124,12 @@ class ConceptDynamics(nn.Module):
             q_sq, ids_sq, vl_sq = self.sq_vq(sqp(sq_tok))
             vl = vl + vl_sq
             zq = torch.cat([zq, q_sq.reshape(len(phi), -1)], -1)
-        return zq, torch.stack(ids, 1), ids_sq, vl
+        # RANGE-NORMALISE HERE, not at the call sites. MuZero App. G scales the hidden state to
+        # [0,1]; doing it per-call-site left the value head seeing normalised states through
+        # l_vnext and raw ones through l_anchor/l_out -- two input distributions for one head.
+        # Normalising at the source makes every state in the model comparable by construction,
+        # including the encoder's and the dynamics' (soft_state normalises too).
+        return self.norm_state(zq), torch.stack(ids, 1), ids_sq, vl
 
     @torch.no_grad()
     def update_ema(self):
@@ -188,10 +193,10 @@ class ConceptDynamics(nn.Module):
         pg = g_logits.softmax(-1)                                  # (B,H,C)
         zg = torch.einsum("bhc,hcd->bhd", pg, book).reshape(len(pg), -1)
         if s_logits is None:
-            return zg
+            return self.norm_state(zg)
         ps = s_logits.softmax(-1)                                  # (B,64,S)
         zs = torch.einsum("bnc,cd->bnd", ps, self._book_sq)
-        return torch.cat([zg, zs.reshape(len(pg), -1)], -1)
+        return self.norm_state(torch.cat([zg, zs.reshape(len(pg), -1)], -1))
 
 
 def main():
@@ -361,9 +366,7 @@ def main():
             t_ids_all = t_ids_all.view(B, K, -1)
             t_sq_all = t_sq_all.view(B, K, 64) if t_sq_all is not None else None
 
-        # step 0 must enter the unroll in the SAME range as later steps, otherwise the
-        # normalisation just moves the mismatch rather than removing it
-        zq_roll = net.norm_state(zq0)
+        zq_roll = zq0
         l_dyn = 0.0; l_vnext = 0.0
         for k in range(K):
             rk = wi + k
@@ -377,9 +380,8 @@ def main():
                     s_lg.reshape(-1, args.square_codes), t_sq_all[:, k].reshape(-1))
             _r1 = torch.as_tensor(rk + 1)
             y_k = torch.where(SYZ[_r1] >= 0, SYZ[_r1], RES[_r1]).to(dev)
-            # FREE-RUNNING: our own prediction, range-normalised so step 0 (a true code) and
-            # step k>0 (a mixture of codes) occupy the same range
-            zq_roll = net.norm_state(net.soft_state(g_lg, s_lg))
+            # FREE-RUNNING: our own prediction (already range-normalised by soft_state)
+            zq_roll = net.soft_state(g_lg, s_lg)
             step_v = F.cross_entropy(net.value(zq_roll), y_k)
             # MuZero scales each unroll step by 1/K so depth does not silently reweight the
             # other terms.
