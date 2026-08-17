@@ -46,6 +46,7 @@ def main():
     from catspace.research.components.encoder.approaches.reach_probability.src import (
         trajectories as T)
     from catspace.research.tools.training_infra import gen_game_transitions as GT
+    from catspace.io import paths
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     A = ck["args"]
@@ -55,7 +56,15 @@ def main():
     # SUBSAMPLE of 4.65M rows (made for jqt), and requiring k CONSECUTIVE moves from a
     # subsample almost never succeeds -- it yielded 51 usable rollouts out of 3,000 requested,
     # which is not a sample anyone should draw a conclusion from.
-    par, mid = GT.build(tr, T.load_sf_games(A["games"], A["seed"], max_plies=A["max_plies"]))
+    # BOTH pools, or 92% of the corpus (the piece-down games) is silently dropped and the
+    # rollout is scored on 8% of it. Same bug as in training; missed here until the output
+    # showed 'unmatched 45905'.
+    try:
+        _z = np.load(paths.derived(f"game_transitions_FULL_{len(tr.tok)}.npz"))
+        par, mid = _z["par"], _z["mid"]
+    except FileNotFoundError:
+        par, mid = GT.build(tr, GT.all_rows(A["games"], A["n_piecedown"], A["seed"],
+                                            A["max_plies"]))
     gor = tr.game_of_row()
 
     rs = np.random.default_rng(A["seed"]); perm = rs.permutation(len(tr.start))

@@ -13528,3 +13528,36 @@ What would actually reduce it, for later: epoch-style shuffled sweeps so rows re
 (trading i.i.d. batches for cache viability); computing `l_dyn` on a subset as persistence now
 does, since K*B = 960 target rows/step is the single largest encode; or a SMALLER EMA trunk,
 since targets need to be stable rather than expressive.
+
+### Overnight result — the unroll fixed composition
+
+`eval_rollout` on cdf5 @step1000, 3,000 rollouts, test split, full transition set:
+
+    ply   teacher-forced   free-running   persistence   compounding gap
+      1       0.513            0.513         0.035          0.000
+      2       0.519            0.492         0.035          0.026
+      4       0.526            0.457         0.035          0.069
+      8       0.534            0.417         0.037          0.117
+
+Against the 1-step model (cdf1), which is the whole point of the change:
+
+    free-running @8 plies   0.223  ->  0.417   (nearly double)
+    compounding gap         0.350  ->  0.117   (a third)
+
+Teacher-forced is flat at ~0.53 across all eight plies and free-running now TRACKS it instead
+of falling away. A concept trajectory from this model is usable for ~8 plies where before it
+was good for about two -- the difference between "trajectory" describing the design and
+describing the model's behaviour.
+
+PER-STEP accuracy is LOWER than cdf1's (0.51 vs 0.59): training now spends capacity on states
+five plies out rather than perfecting one step. For a planning model that is the right side of
+the trade, and it is the trade MuZero makes deliberately.
+
+Caveat: one checkpoint at step 1000/20000, and cdf1's comparison figures were taken at step
+5000. To be re-measured at matched steps rather than leant on.
+
+**Third bug of the same family**: `eval_rollout` called `GT.ensure`, i.e. the 466k-transition
+SUBSAMPLE (visible as 'unmatched 45905'), so it was scoring rollouts on 8% of the corpus. Fixed
+to use the full 4.6M set. The same mistake has now appeared in the trainer, in
+gen_game_transitions.main, and in this evaluator -- anything that loads transitions must be
+checked for it.
