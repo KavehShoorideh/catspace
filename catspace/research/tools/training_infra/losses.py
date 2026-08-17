@@ -216,6 +216,140 @@ def categorical_ending_loss(logits, labels):
     return F.cross_entropy(logits, labels)
 
 
+def capture_ce(logits, target, ignore_index=-1):
+    """Cross-entropy for a capture field (square / victim / attacker), skipping absent captures.
+
+    The next-N-captures labels carry -1 wherever a game has fewer than N captures remaining --
+    40.3% of positions have at least one such slot. Those must be SKIPPED, not learned: -1 is
+    "we do not know", not a class. F.cross_entropy's ignore_index does exactly this, and returns
+    nan (not 0) when EVERY entry is ignored, so the all-masked case is handled explicitly rather
+    than poisoning the total.
+
+    logits (N, C); target (N,) int64 with -1 for absent. -> scalar
+    """
+    if target.numel() == 0:
+        return logits.sum() * 0.0
+    valid = (target != ignore_index)
+    if not bool(valid.any()):
+        return logits.sum() * 0.0            # keeps the graph, contributes nothing
+    return F.cross_entropy(logits, target, ignore_index=ignore_index)
+
+
+def effective_number_weights(counts, beta=0.999, device=None):
+    """Class-balanced weights from Cui et al. 2019, "Class-Balanced Loss Based on Effective
+    Number of Samples" (CVPR).
+
+        w_c  proportional to  (1 - beta) / (1 - beta ** n_c)
+
+    Rather than the naive 1/n_c, this models each class as covering an *effective* number of
+    samples (1-beta^n)/(1-beta): as n grows, new samples of a common class overlap ones already
+    seen and stop adding information. beta -> 0 gives uniform weights, beta -> 1 gives 1/n. The
+    paper's default 0.999 is used here because the resolution signatures span a 769x imbalance
+    (57,681 rows for the commonest, 75 for the rarest), where raw 1/n would hand the 75-row
+    class a 769x gradient and make training track its sampling noise.
+
+    Weights are normalised to mean 1 over classes that actually occur, so swapping them in does
+    not silently rescale the loss term against everything else in the stack.
+
+    counts (C,) -> weights (C,) float32. Classes with n_c == 0 get weight 0.
+    """
+    c = torch.as_tensor(counts, dtype=torch.float64)
+    w = torch.zeros_like(c)
+    nz = c > 0
+    w[nz] = (1.0 - beta) / (1.0 - torch.pow(torch.tensor(beta, dtype=torch.float64), c[nz]))
+    if bool(nz.any()):
+        w[nz] = w[nz] / w[nz].mean()                 # mean 1 over occurring classes
+    return w.float().to(device) if device is not None else w.float()
+
+
+def factorized_resolution_ce(reach_logits, eg_logits, out_logits, reach_t, eg_t, out_t,
+                             eg_weight=None, w_reach=1.0, w_eg=1.0, w_out=1.0):
+    """The resolution label is COARSE x FINE, so train it that way.
+
+    `KRP|KR=W` is "this game simplifies into a tablebase" AND "it is that specific ending";
+    `WDL:W` is "the game ended before simplifying" AND an outcome. Predicting all 401
+    combinations with one flat softmax manufactures an imbalance that has nothing to do with the
+    task: three WDL classes hold 75% of the rows, so the head maximises accuracy by never naming
+    an endgame at all. Measured on ccf1 at step 5000: 95.5% of predictions were WDL classes
+    against a 77.9% true rate, and only 4.2% of true-endgame rows got their class right -- WORSE
+    than the 0.138 it was built to beat.
+
+    Split into three heads, each trained only where its label is defined:
+        reach  3-way   0 = ends first (WDL), 1 = reaches a tablebase, 2 = OTHER   [all rows]
+        eg     E-way   WHICH ending -- signature and outcome jointly    [only reach==1 rows]
+        out    3-way   W / D / L, for the games that end first          [only reach==0 rows]
+
+    The endgame head therefore never competes with the 75% majority -- they are not in its
+    softmax -- which is what removes the collapse rather than merely reweighting it. Absent
+    factors carry -1 and are skipped via ignore_index (see `capture_ce` for why -1 must be
+    skipped and not learned).
+
+    WHY `eg` IS JOINT rather than a signature head times an outcome head. Two reasons, one
+    statistical and one arithmetic. Statistical: signature and outcome are NOT conditionally
+    independent -- `KRP|KR=D` (Philidor) and `KRP|KR=W` (Lucena) are the same material with
+    opposite results, and a product of marginals cannot express that. Arithmetic: composing a
+    product spreads P(reach=1) over 786 signature-outcome pairs while P(reach=0) concentrates on
+    3 WDL classes, so an endgame class only wins the argmax when P(sig) exceeds 0.83 -- measured,
+    with P(reach)=0.52 and P(out)=0.6 against a WDL class holding 25.9% of the mass. Given reach,
+    the ending distribution has 286 classes with the commonest at 5.0%, so 0.83 is unreachable
+    and the model would be punished for being calibrated. A joint head needs only
+    P(ending | reaches) > 0.50, which is a real target.
+
+    eg_weight (E,) optionally class-balances the endgame head; see `effective_number_weights`.
+    The endings are long-tailed even after the WDL rows are gone (49,129 rows for the commonest,
+    58 for the rarest), so the two mechanisms are complementary: splitting removes the majority
+    classes, weighting handles the tail that remains.
+
+    -> (total, {res_reach, res_eg, res_out}) so each part can be logged separately.
+    """
+    l_reach = F.cross_entropy(reach_logits, reach_t, ignore_index=-1)
+    l_eg = capture_ce(eg_logits, eg_t) if eg_weight is None else (
+        _weighted_ce_masked(eg_logits, eg_t, eg_weight))
+    l_out = capture_ce(out_logits, out_t)
+    total = w_reach * l_reach + w_eg * l_eg + w_out * l_out
+    return total, {"res_reach": float(l_reach.detach()), "res_eg": float(l_eg.detach()),
+                   "res_out": float(l_out.detach())}
+
+
+def _weighted_ce_masked(logits, target, weight, ignore_index=-1):
+    """Weighted CE that stays finite when every row is masked. F.cross_entropy returns nan when
+    all rows are ignored, and with `weight` it also renormalises by the weights of the surviving
+    rows -- both are correct, but the all-masked case must not poison the sum."""
+    if target.numel() == 0 or not bool((target != ignore_index).any()):
+        return logits.sum() * 0.0
+    return F.cross_entropy(logits, target, weight=weight, ignore_index=ignore_index)
+
+
+def compose_resolution_logits(reach_logits, eg_logits, out_logits, cls_reach, cls_eg, cls_out):
+    """Recombine the three heads into log P over the ORIGINAL flat classes, so a split model is
+    scored by exactly the instrument a flat one was.
+
+        log P(WDL:o)   = log P(reach=0) + log P(out=o)
+        log P(ending c)= log P(reach=1) + log P(eg=c | reaches)
+        log P(OTHER)   = log P(reach=2)
+
+    A proper distribution over the flat classes: the WDL branch sums to P(reach=0), the endgame
+    branch to P(reach=1), and OTHER is P(reach=2), so the three total 1 exactly. Each flat class
+    takes its term from exactly ONE branch -- an endgame class must not also pick up an `out`
+    term, since its outcome is already inside the joint `eg` index.
+
+    cls_reach/cls_eg/cls_out are (C,) int64 lookup tables over the flat classes: cls_eg = -1
+    unless the class is an ending, cls_out = -1 unless the class is a WDL class.
+    -> (B, C) log-probabilities.
+    """
+    lr = F.log_softmax(reach_logits, -1)
+    le = F.log_softmax(eg_logits, -1)
+    lo = F.log_softmax(out_logits, -1)
+    out = lr[:, cls_reach.clamp(min=0)]                                  # (B, C)
+    has_eg = cls_eg >= 0
+    if bool(has_eg.any()):
+        out = out + torch.where(has_eg, le[:, cls_eg.clamp(min=0)], torch.zeros_like(out))
+    has_out = cls_out >= 0
+    if bool(has_out.any()):
+        out = out + torch.where(has_out, lo[:, cls_out.clamp(min=0)], torch.zeros_like(out))
+    return out
+
+
 def anchored_pairwise_rank(d_close, d_far, log_gap):
     """Tie-safe, scale-anchored 1-ply order. Enforces log1p(d_far) - log1p(d_close) >= log_gap,
     where log_gap is the TRUE per-pair target gap (0 for ties -> no push). Caller passes pairs
@@ -1222,6 +1356,122 @@ def _tests():
     ok &= float(dA_pred.grad[1]) == 0.0 and float(dA_pred.grad[0]) != 0.0
     print(f"[concept-dA] censored row grad {float(dA_pred.grad[1]):.1e} (=0), observed "
           f"{float(dA_pred.grad[0]):+.3f} (live)  {'OK' if ok else 'FAIL'}")
+
+    # ---- capture_ce: the -1 mask must be SKIPPED, not learned ------------------------
+    torch.manual_seed(0)
+    lg = torch.randn(8, 64, requires_grad=True)
+    tgt = torch.full((8,), -1, dtype=torch.long)
+    allmask = capture_ce(lg, tgt)
+    fin = bool(torch.isfinite(allmask))          # bool(), or `ok &=` hits a Tensor
+    ok &= (float(allmask) == 0.0) and fin
+    print(f"[capture_ce] all-absent -> {float(allmask):.4f} (finite, not nan)  "
+          f"{'OK' if fin and float(allmask) == 0.0 else 'FAIL'}")
+    ok &= torch.autograd.grad(allmask, lg, retain_graph=True)[0].abs().sum().item() == 0.0
+    tgt2 = tgt.clone(); tgt2[:4] = torch.tensor([3, 9, 17, 40])
+    part = capture_ce(lg, tgt2)
+    # must equal CE over the VALID rows only -- if the -1s leaked in, this differs
+    ref = F.cross_entropy(lg[:4], tgt2[:4])
+    ok &= abs(float(part) - float(ref)) < 1e-5
+    print(f"[capture_ce] half-absent {float(part):.4f} == CE on valid rows {float(ref):.4f}  "
+          f"{'OK' if abs(float(part)-float(ref)) < 1e-5 else 'FAIL'}")
+    g = torch.autograd.grad(part, lg, retain_graph=True)[0]
+    ok &= g[4:].abs().sum().item() == 0.0 and g[:4].abs().sum().item() > 0
+    print(f"[capture_ce] gradient reaches ONLY the valid rows  "
+          f"{'OK' if g[4:].abs().sum().item()==0 and g[:4].abs().sum().item()>0 else 'FAIL'}")
+
+    # ---- effective_number_weights: the class-balance term -----------------------------
+    w = effective_number_weights(torch.tensor([100, 100, 100]))
+    ok &= bool(torch.allclose(w, torch.ones(3), atol=1e-5))
+    print(f"[cb-weights] equal counts -> uniform weights {w.tolist()}  "
+          f"{'OK' if torch.allclose(w, torch.ones(3), atol=1e-5) else 'FAIL'}")
+    w2 = effective_number_weights(torch.tensor([57681, 1197, 75]))    # the real spread
+    rare_up = float(w2[2]) > float(w2[0])
+    ok &= rare_up and abs(float(w2.mean()) - 1.0) < 1e-4
+    print(f"[cb-weights] 769x imbalance -> w {w2.tolist()} (rare up-weighted "
+          f"{float(w2[2])/float(w2[0]):.1f}x, mean {float(w2.mean()):.3f})  "
+          f"{'OK' if rare_up else 'FAIL'}")
+    w3 = effective_number_weights(torch.tensor([100, 0, 50]))
+    ok &= float(w3[1]) == 0.0
+    print(f"[cb-weights] absent class gets weight 0  {'OK' if float(w3[1])==0 else 'FAIL'}")
+    # 1/n is the beta->1 limit; effective-number must be GENTLER than it on the rare class
+    inv = torch.tensor([1/57681, 1/1197, 1/75]); inv = inv / inv.mean()
+    gentler = float(w2[2]) < float(inv[2])
+    ok &= gentler
+    print(f"[cb-weights] rare-class weight {float(w2[2]):.2f} < naive 1/n {float(inv[2]):.2f}  "
+          f"{'OK' if gentler else 'FAIL'}")
+
+    # ---- factorized_resolution_ce -----------------------------------------------------
+    torch.manual_seed(0)
+    B, E = 12, 7
+    rl = torch.randn(B, 3, requires_grad=True)
+    el = torch.randn(B, E, requires_grad=True)
+    ol = torch.randn(B, 3, requires_grad=True)
+    # rows 0-5 reach a tablebase (ending defined, outcome inside it); rows 6-11 end first
+    rt = torch.tensor([1]*6 + [0]*6)
+    et = torch.tensor([0, 1, 2, 3, 4, 5] + [-1]*6)
+    ot = torch.tensor([-1]*6 + [0, 1, 2, 0, 1, 2])
+    tot, parts = factorized_resolution_ce(rl, el, ol, rt, et, ot)
+    g = torch.autograd.grad(tot, el, retain_graph=True)[0]
+    only_reach = g[6:].abs().sum().item() == 0.0 and g[:6].abs().sum().item() > 0
+    ok &= only_reach
+    print(f"[res-factored] ending gradient reaches ONLY the reaching rows  "
+          f"{'OK' if only_reach else 'FAIL'}")
+    go = torch.autograd.grad(tot, ol, retain_graph=True)[0]
+    split_ok = go[:6].abs().sum().item() == 0.0 and go[6:].abs().sum().item() > 0
+    ok &= split_ok
+    print(f"[res-factored] outcome gradient reaches ONLY the ends-first rows "
+          f"(no double count)  {'OK' if split_ok else 'FAIL'}")
+    # the whole point: with NO reaching rows the ending head must not poison the total
+    et_none = torch.full((B,), -1, dtype=torch.long)
+    tot2, _ = factorized_resolution_ce(rl, el, ol, rt, et_none, ot)
+    fin2 = bool(torch.isfinite(tot2))
+    ok &= fin2
+    print(f"[res-factored] no reaching rows in batch -> total {float(tot2):.4f} finite  "
+          f"{'OK' if fin2 else 'FAIL'}")
+    # class-balanced variant must run and differ from the unweighted one
+    ew = effective_number_weights(torch.tensor([500, 400, 300, 200, 100, 50, 25]))
+    tot3, _ = factorized_resolution_ce(rl, el, ol, rt, et, ot, eg_weight=ew)
+    diff = abs(float(tot3) - float(tot)) > 1e-6
+    ok &= diff and bool(torch.isfinite(tot3))
+    print(f"[res-factored] class-balanced total {float(tot3):.4f} != unweighted "
+          f"{float(tot):.4f}  {'OK' if diff else 'FAIL'}")
+
+    # ---- compose_resolution_logits: MUST be a proper distribution ---------------------
+    # a miniature vocab: WDL:W/D/L, then 6 endings (2 signatures x 3 outcomes), then OTHER.
+    # cls_out is -1 on the endings -- their outcome already lives inside the joint eg index.
+    cls_reach = torch.tensor([0, 0, 0] + [1]*6 + [2])
+    cls_eg = torch.tensor([-1, -1, -1] + [0, 1, 2, 3, 4, 5] + [-1])
+    cls_out = torch.tensor([0, 1, 2] + [-1]*6 + [-1])
+    rl2, el2, ol2 = torch.randn(5, 3), torch.randn(5, 6), torch.randn(5, 3)
+    logp = compose_resolution_logits(rl2, el2, ol2, cls_reach, cls_eg, cls_out)
+    tot_p = logp.logsumexp(-1)
+    norm = bool(torch.allclose(tot_p, torch.zeros(5), atol=1e-5))
+    ok &= norm and logp.shape == (5, 10)
+    print(f"[res-compose] composed {tuple(logp.shape)} sums to 1 "
+          f"(logsumexp {float(tot_p.max()):+.2e})  {'OK' if norm else 'FAIL'}")
+    lr_, le_, lo_ = (F.log_softmax(rl2, -1), F.log_softmax(el2, -1), F.log_softmax(ol2, -1))
+    hand = lr_[:, 1] + le_[:, 5]                      # class 8 = the 6th ending, reaching
+    match = bool(torch.allclose(logp[:, 8], hand, atol=1e-6))
+    ok &= match
+    print(f"[res-compose] ending == logP(reach=1)+logP(eg), no double-counted outcome  "
+          f"{'OK' if match else 'FAIL'}")
+    wdl_ok = bool(torch.allclose(logp[:, 1], lr_[:, 0] + lo_[:, 1], atol=1e-6))
+    ok &= wdl_ok
+    print(f"[res-compose] WDL:D == logP(reach=0)+logP(out=D)  {'OK' if wdl_ok else 'FAIL'}")
+    other_ok = bool(torch.allclose(logp[:, 9], lr_[:, 2], atol=1e-6))
+    ok &= other_ok
+    print(f"[res-compose] OTHER == logP(reach=2), no phantom factors  "
+          f"{'OK' if other_ok else 'FAIL'}")
+    # THE ARITHMETIC THAT DROVE THIS DESIGN: with the endgame branch joint, a confident model
+    # CAN out-argmax a WDL class; with a sig x out product at the same confidence it cannot.
+    rr = torch.log(torch.tensor([[0.48, 0.52, 0.0001]]))
+    ee = torch.log(torch.tensor([[0.05, 0.05, 0.05, 0.05, 0.20, 0.60]]))
+    oo = torch.log(torch.tensor([[0.5, 0.3, 0.2]]))
+    lp = compose_resolution_logits(rr, ee, oo, cls_reach, cls_eg, cls_out)
+    won = int(lp.argmax(-1)) == 8
+    ok &= won
+    print(f"[res-compose] P(reach)=.52 x P(ending)=.60 beats P(WDL:W)=.48*.5 -> argmax is the "
+          f"ENDING  {'OK' if won else 'FAIL'}")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
