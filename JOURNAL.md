@@ -13352,3 +13352,71 @@ draw and the TB-entrance label's 30.7% majority.
 
 Also emitted: `syz_dtz`, the exact distance-to-zeroing, kept for later -- if a ply metric is
 ever wanted again, DTZ is the true one rather than a learned approximation.
+
+---
+
+## 2026-08-16 — cdf1 in-scope results, and two defects found by measuring the right things
+
+**SCOPE, and a metric I was reporting that did not matter.** Kaveh: "my model's scope is up
+until tablebase, at which point we look up optimal play." Every accuracy reported before that
+was on ANCHORED positions -- <=5 men, inside the tablebase, where the answer is looked up and
+the model is never consulted. 0.940 against a 0.929 material-lookup baseline measured how well
+it reproduces a table we already own.
+
+    IN SCOPE  (>5 men)   4,364,284   93.81%
+    OUT       (<=5 men)    287,977    6.19%
+
+`eval_in_scope.py` scores the real task: of in-scope positions, 1,083,252 (24.8%) belong to
+games that DO reach a tablebase, so their resolution is known exactly from Syzygy at the entry.
+No material shortcut exists there -- majority baseline 40.3%, against 92.9% inside.
+
+    step   overall   0-5    6-15   16-40   41-100   101+
+    1000    0.642   0.853  0.838  0.728   0.580   0.500
+    2000    0.620   0.861  0.837  0.692   0.559   0.477
+    3000    0.658   0.860  0.851  0.727   0.611   0.503
+    4000    0.649   0.838  0.842  0.750   0.599   0.461
+    5000  **0.674** 0.850  0.847 **0.774** **0.625** 0.502
+
++26.9 points over baseline, still climbing at step 5000/20000. Gains are concentrated at
+16-100 plies -- the planning range. The near band is saturated (~0.85, material decides), the
+far band sits at chance.
+
+**TWO CALLS I GOT WRONG, both from reading noise as signal.** At step 2000 I proposed KILLING
+the run, having built a mechanism (anchor weight 5.0 stealing capacity from the in-scope task)
+out of two checkpoints. At step 4000 I called a plateau after four. Step 3000 and step 5000
+refuted each in turn. The eval set is FIXED (seed 0, identical 20,000 rows), so the variation
+is not eval sampling -- it is checkpoint-to-checkpoint weight jitter, ±2 points. Nothing below
+that is readable, and I said so before doing it twice anyway.
+
+**PATH DEPENDENCE: retracted.** I described the target as path-dependent with an irreducible
+noise floor. Kaveh: "the played lines are sf vs sf so it's optimal play, starting from
+different start points." Measured: of 10,901 games reaching 5 men, the solved value at entry
+matches the final result in 93.5%, and **every one of the 708 disagreements is
+DRAW_ADJUDICATED** -- not a single genuine misplay. Play from entry is perfect. So the target
+is approximately the theoretical value, the ceiling is near 1.0, and 0.674 has real headroom.
+
+**ROLLOUT: the dynamics does NOT compose** (`eval_rollout.py`, 3,000 rollouts, test split).
+
+    ply   teacher-forced   free-running   persistence
+      1        0.590          0.590          0.045
+      2        0.589          0.477          0.045
+      4        0.584          0.328          0.046
+      8        0.573          0.223          0.047
+
+Teacher-forced is FLAT at ~0.58 -- per-step prediction never degrades. Free-running loses more
+than half by ply 4. Trained on one step, nothing ever asks the model to be right about its own
+predicted state, so it drifts off the encoder's manifold. A concept trajectory from this model
+is trustworthy for ~2 plies. The k-step unroll (MuZero uses K=5) is not a refinement; it is
+what would make the trajectory story true.
+
+**AND THE CONCEPTS CHURN.** The persistence baseline -- "assume nothing changed" -- is 0.045.
+Under 5% of (position, head) code assignments survive ONE ply. I wrote that baseline expecting
+it to be the bar to beat. Concepts that reshuffle wholesale every ply are not concepts in the
+sense this project needs; 'castled' should persist and change at an identifiable moment.
+Earlier generations carried explicit persistence losses; `concept_dynamics_field` has none,
+because I dropped everything from the prior design when rebuilding around dynamics.
+
+**Sample-size scar**: the first rollout run used `GT.ensure`, whose cached file is a 1.5M
+SUBSAMPLE of 4.65M rows, so requiring 8 CONSECUTIVE moves yielded 51 usable rollouts out of
+3,000 requested. Fixed by building the full transition set. The conclusion held, but 51 was not
+a sample to conclude from.
