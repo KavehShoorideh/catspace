@@ -57,10 +57,17 @@ def signature(tok_row):
     return f"{fmt(w)}|{fmt(b)}"
 
 
-def canonical(sig):
-    """colour-folded form, i.e. the Syzygy TABLE this maps to ('KRP|KR' and 'KR|KRP' are one
-    table). Reported alongside so we can quote both counts honestly."""
-    a, b = sig.split("|")
+def material_of(label):
+    """'KRP|KR=W' -> 'KRP|KR'. Labels carry a solved-outcome suffix since 2026-08-16; anything
+    that reasons about MATERIAL must strip it first."""
+    return label.split("=", 1)[0]
+
+
+def canonical(label):
+    """colour-folded material, i.e. the Syzygy TABLE this maps to ('KRP|KR' and 'KR|KRP' are
+    one table). Strips the outcome suffix first -- without that it silently stopped folding
+    and reported one 'table' per label, which was meaningless."""
+    a, b = material_of(label).split("|")
     return f"{a}v{b}" if a >= b else f"{b}v{a}"
 
 
@@ -105,6 +112,14 @@ def main():
     # all before this; now none are dropped and no NEVER class swamps the distribution.
     outcome_w = tr.outcome_of_row_white()
     WDL_NAME = {T.WIN: "WDL:W", T.DRAW: "WDL:D", T.LOSS: "WDL:L"}
+    # Kaveh 2026-08-16: "record both the class AND the outcome class ... under theoretical
+    # optimum play." Measured why this is necessary: a material class is NOT a verdict.
+    # KRP|KR is 75.4% draw / 24.6% win, KP|K is 64.1% win / 35.9% draw, KP|KP carries all
+    # three. Only 92.2% of anchored positions sit in a unanimous class. So "which tablebase
+    # do I fall into" under-determines the result, and the label has to carry the SOLVED
+    # outcome at the entry position, not just its material.
+    _sz = np.load(paths.derived(f"syzygy_wdl_{n_pos}.npz"))["syz_wdl"].astype(np.int64)
+    _OUT = {2: "W", 1: "D", 0: "L"}
     levels = sorted({int(x) for x in args.levels.split(",")}, reverse=True)
     tb_class = np.full(n_pos, -1, np.int16)
     tb_plies = np.full(n_pos, -1, np.int32)
@@ -136,7 +151,12 @@ def main():
                     nxt = L
                     break
             if nxt is not None:
-                lab = signature(tok[s0 + entry[nxt]])
+                _er = s0 + entry[nxt]
+                _sig = signature(tok[_er])
+                _o = int(_sz[_er])
+                # entry rows are <=5 men so Syzygy always covers them; if a probe ever failed
+                # the class is kept unqualified rather than silently mislabelled
+                lab = f"{_sig}={_OUT[_o]}" if _o >= 0 else _sig
                 tb_plies[s0 + i] = entry[nxt] - i
                 tb_level[s0 + i] = nxt
             elif wdl is not None:
@@ -156,18 +176,28 @@ def main():
         return
     cnt = Counter(s for s in sigs_all if not s.startswith("WDL:"))
     cnt_wdl = Counter(s for s in sigs_all if s.startswith("WDL:"))
-    tables = Counter(canonical(s) for s in cnt)
-    print(f"[tb] DISTINCT entrance types: {len(cnt):,} colour-explicit | "
-          f"{len(tables):,} colour-folded (= Syzygy tables touched)", flush=True)
+    mats = Counter()
+    for lab, c in cnt.items():
+        mats[material_of(lab)] += c
+    tables = Counter(canonical(lab) for lab in cnt)
+    split = sum(1 for m in mats
+                if len({material_of(l) for l in cnt if material_of(l) == m}) and
+                sum(1 for l in cnt if material_of(l) == m) > 1)
+    print(f"[tb] LABELS      {len(cnt):,}   (material + solved outcome, e.g. 'KRP|KR=W')")
+    print(f"[tb] MATERIALS   {len(mats):,}   (colour-explicit signatures, white|black)")
+    print(f"[tb] TABLES      {len(tables):,}   (colour-folded = distinct Syzygy tables touched)")
+    print(f"[tb] of the {len(mats):,} materials, {split:,} are SPLIT by outcome -- the same "
+          f"material occurring as more than one verdict, which is exactly why the outcome "
+          f"belongs in the label", flush=True)
 
     keep = {s for s, c in cnt.items() if c >= args.min_count}
     # WDL classes are always in the vocabulary -- they are the resolution mode for every game
     # that never simplifies, not a rare tail to be folded into OTHER.
     vocab = sorted(keep) + ["OTHER"] + sorted(cnt_wdl)
     idx = {s: i for i, s in enumerate(vocab)}
-    print(f"[tb] vocabulary: {len(keep):,} types with >={args.min_count} examples, "
-          f"+1 OTHER (covers {sum(c for s, c in cnt.items() if s not in keep):,} entries)",
-          flush=True)
+    print(f"[tb] vocabulary: {len(keep):,} LABELS with >={args.min_count} positions, +1 OTHER "
+          f"(absorbing {sum(c for s, c in cnt.items() if s not in keep):,} positions), "
+          f"+{len(cnt_wdl)} WDL = {len(vocab)} classes", flush=True)
 
     other = idx["OTHER"]
     for r, sg in zip(rows_all, sigs_all):
@@ -177,8 +207,9 @@ def main():
     print(f"[tb] labelled positions: {lab:,} / {n_pos:,} ({100 * lab / n_pos:.1f}%)", flush=True)
     print(f"[tb] positions labelled by RESULT (no further level reached): "
           + " ".join(f"{k} {v:,}" for k, v in sorted(cnt_wdl.items())), flush=True)
-    print(f"[tb] NOTE: counts are per POSITION, not per entry -- --min-count therefore "
-          f"filters far more weakly here than it did on entries alone.")
+    print(f"[tb] NOTE: every count above is per POSITION (each ply of a game carries the "
+          f"label of\n[tb]       the resolution it is heading for), NOT per game and NOT per "
+          f"entry event.")
     print(f"\n[tb] top 15 entrance types (colour-explicit, white|black):")
     for s, c in cnt.most_common(15):
         print(f"     {s:<14} {c:>9,}  ({100 * c / max(len(sigs_all),1):4.1f}% of labelled)")
