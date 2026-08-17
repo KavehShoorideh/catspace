@@ -56,6 +56,19 @@ def build(tr, games_rows, verbose=True):
     if verbose:
         print(f"[trans] {len(par):,} transitions from {len(tr.start):,} games "
               f"(unmatched {missing}, too-short {short})", flush=True)
+    # GUARD. This bug has now appeared THREE times independently -- in train_reach_vit, in
+    # this file's own main(), and in eval_rollout -- each time by passing only
+    # T.load_sf_games(), which on the standard corpus covers 4,000 of 49,905 games. The
+    # symptom was a single line reading "unmatched 45905" that is trivial to scroll past,
+    # and the consequence was training or scoring on 8% of the corpus. Refuse instead.
+    if missing:
+        raise ValueError(
+            f"gen_game_transitions.build: {missing:,} of {len(tr.start):,} games "
+            f"({100*missing/len(tr.start):.0f}%) had no entry in the games list, so their "
+            f"transitions are MISSING. This almost always means only one pool was passed "
+            f"(T.load_sf_games covers the balanced games only; the piece-down pool is "
+            f"separate and is usually the large majority). Use "
+            f"gen_game_transitions.all_rows(n_sf, n_piecedown, seed) to load both.")
     return par, mid
 
 
@@ -80,7 +93,18 @@ def ensure(tr, games_rows, verbose=True):
     p = paths.derived(f"game_transitions_{len(tr.tok)}.npz")
     try:
         z = np.load(p)
-        return {"par": z["par"], "mid": z["mid"]}
+        par = z["par"]
+        # A cache can be a stale SUBSAMPLE from an earlier run: the shipped
+        # game_transitions_4652261.npz holds 1.5M entries for a 4.65M-row corpus, so anything
+        # needing CONSECUTIVE plies (a k-step unroll) finds almost none. Say so rather than
+        # let it be discovered as "51 usable windows out of 3,000 requested".
+        frac = len(par) / max(len(tr.tok), 1)
+        if frac < 0.7 and verbose:
+            print(f"[trans] WARNING: cache {p} holds {len(par):,} transitions for a "
+                  f"{len(tr.tok):,}-row corpus ({100*frac:.0f}%). It is a SUBSAMPLE. Anything "
+                  f"requiring consecutive plies will find very few windows; build the full "
+                  f"set instead.", flush=True)
+        return {"par": par, "mid": z["mid"]}
     except FileNotFoundError:
         if verbose:
             print(f"[trans] no cache for {len(tr.tok):,} rows -- building {p}", flush=True)
