@@ -13590,3 +13590,38 @@ and breaking: nothing below ~2 points, and nothing on fewer than five readings.
 
 The 16-40 ply band is consistently ahead (0.780 vs 0.774) but by a margin inside the jitter, so
 it is not claimable either.
+
+### cdf5 FINAL (20,000 steps, 9.2 h) — and the persistence weight is too high
+
+**In-scope value, 40,000 held-out test positions (double the usual sample):**
+
+    IN-SCOPE accuracy   0.690    majority baseline 0.405    +28.5 points
+      0-5 plies   0.844    16-40   0.779    101+   0.530
+      6-15        0.830    41-100  0.655
+
+Best of the project. Unchanged in character from cdf1's 0.674, confirming the unroll bought
+composition rather than value.
+
+**Rollout, 4,000 rollouts, test split:**
+
+                          cdf1(1-step)  cdf5@1000  cdf5@20000
+    teacher-forced @8        0.573        0.534       0.441
+    free-running @8          0.223        0.417       0.310
+    compounding gap          0.350        0.117       0.131
+    persistence baseline     0.047        0.037       0.306
+    edge over persistence   +0.526       +0.497      +0.135
+
+**The persistence term worked, and w_pers=1.0 is too high.** Codes now survive a ply 30.6% of
+the time against 4.7% before -- exactly the churn fix intended. But the model's margin over the
+trivial "nothing changed" strategy COLLAPSED from +0.53 to +0.135, and free-running at 8 plies
+fell back from 0.417 (step 1000) to 0.310 as training proceeded. Stabilising the concepts left
+the dynamics with less to predict, and it is now only modestly better than a rule that asserts
+nothing ever happens.
+
+I picked w_pers=1.0 with no evidence. The evidence now says it trades away the thing the
+dynamics exists to do. A sweep is the obvious next step, and the metric to sweep against is
+**edge over the persistence baseline**, not raw next-code accuracy -- raw accuracy rises as
+concepts freeze, which is exactly how a degenerate solution would look good.
+
+Composition still clearly beats the 1-step model (gap 0.131 vs 0.350), so the unroll's benefit
+survives; the persistence weight is a separate dial that overshot.
