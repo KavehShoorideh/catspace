@@ -59,6 +59,21 @@ def build(tr, games_rows, verbose=True):
     return par, mid
 
 
+def all_rows(n_sf, n_piecedown, seed, max_plies=400):
+    """EVERY game the corpus was built from, BOTH pools.
+
+    `T.load_sf_games` alone returns only the balanced pool -- on the standard corpus that is
+    4,000 of 49,905 games, the other 45,906 being PIECE-DOWN starts, i.e. 92% of it. Building
+    transitions from the SF list alone silently drops them (observed: 'unmatched 45905') and
+    yields a set covering 8% of the corpus. main() below had this bug too."""
+    from catspace.research.components.encoder.approaches.reach_probability.src import (
+        trajectories as T)
+    rows = list(T.load_sf_games(n_sf, seed, max_plies=max_plies))
+    if n_piecedown:
+        rows += list(T.load_piecedown_games(n_piecedown, seed, None, max_plies))
+    return rows
+
+
 def ensure(tr, games_rows, verbose=True):
     """Load the cache for this corpus, building it if absent. -> dict(par=..., mid=...)."""
     from catspace.io import paths
@@ -85,7 +100,7 @@ def main():
         trajectories as T)
     tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
-    rows = T.load_sf_games(args.games, args.seed, max_plies=args.max_plies)
+    rows = all_rows(args.games, args.n_piecedown, args.seed, args.max_plies)
     d = ensure(tr, rows)
     print(f"[trans] ok: par {d['par'].shape} mid {d['mid'].shape}")
 

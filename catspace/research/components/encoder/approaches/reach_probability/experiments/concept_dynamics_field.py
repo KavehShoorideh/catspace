@@ -175,6 +175,18 @@ def main():
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--ema", type=float, default=0.996)
     ap.add_argument("--w-dyn", type=float, default=2.0, help="predict the next concept set")
+    ap.add_argument("--unroll", type=int, default=5,
+                    help="K-step unroll. Measured on the 1-step model: teacher-forced accuracy "
+                         "is FLAT at ~0.58 over 8 plies while FREE-RUNNING falls 0.590 -> 0.223, "
+                         "because nothing ever asked it to be right about its OWN predicted "
+                         "state. Unrolling feeds the prediction back in during training, which "
+                         "is what makes a concept TRAJECTORY mean anything. MuZero uses K=5.")
+    ap.add_argument("--w-pers", type=float, default=1.0,
+                    help="persistence on QUIET plies. Measured: only 4.5%% of code assignments "
+                         "survive one ply -- concepts that reshuffle wholesale are not concepts. "
+                         "Applied only where no capture occurred, so the term asks for "
+                         "stability where the board really did barely change, and never fights "
+                         "a genuine transition.")
     ap.add_argument("--w-anchor", type=float, default=5.0,
                     help="Syzygy WDL. The ONLY ground truth we have, so it outweighs the "
                          "outcome term; it disagrees with the final result on 6.2%% of "
@@ -202,7 +214,15 @@ def main():
     tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     gor = tr.game_of_row()
-    gz = GT.ensure(tr, T.load_sf_games(args.games, args.seed, max_plies=args.max_plies))
+    # the FULL transition set: a K-ply unroll needs K CONSECUTIVE moves, which the 1.5M
+    # subsample almost never has (it yielded 51 usable 8-ply windows out of 3,000)
+    _fp = paths.derived(f"game_transitions_FULL_{len(tr.tok)}.npz")
+    try:
+        gz = np.load(_fp)
+    except FileNotFoundError:
+        gz = GT.ensure(tr, T.load_sf_games(args.games, args.seed, max_plies=args.max_plies))
+        print("[cdf] WARNING: full transitions absent, falling back to the SUBSAMPLE -- "
+              "k-step windows will be scarce", flush=True)
     par, mid = gz["par"], gz["mid"]
 
     # ---- targets: EXACT where the tablebase reaches, the game's result elsewhere ------
@@ -225,6 +245,26 @@ def main():
           f"val {len(anc[1]):,} test {len(anc[2]):,}", flush=True)
     print(f"[cdf] {len(tr_par):,} train transitions [{time.time()-t0:.0f}s]", flush=True)
 
+    # move id per ROW so an unroll can look up consecutive actions
+    mv_of_row = np.full((len(tr.tok), 3), -1, np.int64)
+    mv_of_row[par] = mid
+    K = max(1, int(args.unroll))
+    _g = gor
+    win = np.flatnonzero((spl == 0) & (mv_of_row[:, 0] >= 0))
+    # the unroll reads rows win..win+K and TARGETS win+K+1, so the whole window plus its last
+    # target must exist. Clipping the game-boundary check was not enough -- the move lookup
+    # below indexes win+K-1 directly and ran off the end.
+    win = win[win + K + 1 < len(tr.tok)]
+    win = win[_g[win + K] == _g[win]]
+    win = win[(mv_of_row[win[:, None] + np.arange(K)[None, :], 0] >= 0).all(1)]
+    # QUIET = no capture on this ply. Piece count falls by exactly one on a capture and is
+    # unchanged otherwise, so this is exact, not a heuristic.
+    men_row = (tr.tok != 0).sum(1)
+    quiet_row = np.zeros(len(tr.tok), bool)
+    quiet_row[par] = men_row[par] == men_row[par + 1]
+    print(f"[cdf] {len(win):,} valid {K}-ply unroll windows in train | "
+          f"{100*quiet_row[par].mean():.1f}% of plies are quiet (no capture)", flush=True)
+
     net = ConceptDynamics(d_model=args.d_model, heads=args.heads, codes=args.codes,
                           square_codes=args.square_codes, hidden=args.hidden,
                           ema=args.ema).to(dev)
@@ -239,22 +279,46 @@ def main():
     log = open(f"{args.out}_steps.jsonl", "w", buffering=1)
     for step in range(1, args.steps + 1):
         net.train()
-        # (1) transitions: dynamics + value-of-next
-        ti = rng.integers(0, len(tr_par), args.batch)
-        p_rows = tr_par[ti]
-        zq, ids, ids_sq, vl = net.encode(*batch(p_rows))
-        with torch.no_grad():
-            _, t_ids, t_ids_sq, _ = net.encode(*batch(p_rows + 1), target=True)
-        mv = torch.from_numpy(tr_mid[ti].astype(np.int64)).to(dev)
-        g_lg, s_lg = net.predict_next(zq, mv)
-        l_dyn = F.cross_entropy(g_lg.reshape(-1, args.codes), t_ids.reshape(-1))
-        if s_lg is not None:
-            l_dyn = l_dyn + F.cross_entropy(s_lg.reshape(-1, args.square_codes),
-                                            t_ids_sq.reshape(-1))
-        # value of the state the dynamics PREDICTS, graded against the child's own target
-        y_next = torch.from_numpy(np.where(syz[p_rows + 1] >= 0, syz[p_rows + 1],
-                                           res[p_rows + 1])).to(dev)
-        l_vnext = F.cross_entropy(net.value(net.soft_state(g_lg, s_lg)), y_next)
+        # (1) K-STEP UNROLL: predict forward from our OWN predicted state, so the dynamics
+        # is trained on the states it will actually produce at rollout time rather than only
+        # on encoder states it never sees again.
+        wi = win[rng.integers(0, len(win), args.batch)]
+        zq, ids, ids_sq, vl = net.encode(*batch(wi))
+        zq_roll = zq
+        zq_here = zq                      # live encode of the state at unroll step k
+        l_dyn = 0.0; l_vnext = 0.0; l_pers = 0.0
+        for k in range(K):
+            rk = wi + k
+            mv = torch.from_numpy(mv_of_row[rk].astype(np.int64)).to(dev)
+            with torch.no_grad():
+                _, t_ids, t_ids_sq, _ = net.encode(*batch(rk + 1), target=True)
+                # ONE live encode of the next state, reused for persistence below. The first
+                # version encoded rk+1 twice and rk again per unroll step -- 4 encodes where 2
+                # suffice, which cost 5.8 s/step against 0.62 for the 1-step model.
+                zq_next_true, _, _, _ = net.encode(*batch(rk + 1))
+            g_lg, s_lg = net.predict_next(zq_roll, mv)
+            step_dyn = F.cross_entropy(g_lg.reshape(-1, args.codes), t_ids.reshape(-1))
+            if s_lg is not None:
+                step_dyn = step_dyn + F.cross_entropy(
+                    s_lg.reshape(-1, args.square_codes), t_ids_sq.reshape(-1))
+            y_k = torch.from_numpy(np.where(syz[rk + 1] >= 0, syz[rk + 1],
+                                            res[rk + 1])).to(dev)
+            zq_roll = net.soft_state(g_lg, s_lg)
+            step_v = F.cross_entropy(net.value(zq_roll), y_k)
+            # MuZero scales each unroll step by 1/K so total gradient magnitude does not grow
+            # with depth; without it a deeper unroll silently reweights every other term.
+            l_dyn = l_dyn + step_dyn / K
+            l_vnext = l_vnext + step_v / K
+            # PERSISTENCE on quiet plies only, in the pre-quantisation space
+            qm = torch.from_numpy(quiet_row[rk].astype(np.float32)).to(dev)
+            if qm.sum() > 0:
+                # persistence between the state we are AT (zq_here) and the true next state.
+                # At k=0 that is the window's own encode; afterwards it is the previous step's
+                # next-state encode, so no extra forward pass is needed.
+                d = (zq_here - zq_next_true).pow(2).mean(-1)
+                l_pers = l_pers + (qm * d).sum() / qm.sum().clamp(min=1) / K
+            zq_here = zq_next_true
+        p_rows = wi                       # the outcome term below scores the window start
 
         # (2) value now: EXACT anchor, and the noisy outcome everywhere
         a_rows = anc[0][rng.integers(0, len(anc[0]), args.batch // 2)]
@@ -263,14 +327,15 @@ def main():
                                    torch.from_numpy(syz[a_rows]).to(dev))
         l_out = F.cross_entropy(net.value(zq), torch.from_numpy(res[p_rows]).to(dev))
 
-        loss = (args.w_dyn * l_dyn + args.w_vnext * l_vnext
+        loss = (args.w_dyn * l_dyn + args.w_vnext * l_vnext + args.w_pers * l_pers
                 + args.w_anchor * l_anchor + args.w_outcome * l_out + vl + vl_a)
         opt.zero_grad(); loss.backward(); opt.step()
         net.update_ema()
 
         if step % 20 == 0 or step == 1:
             with torch.no_grad():
-                dyn_acc = float((g_lg.argmax(-1) == t_ids).float().mean())
+                dyn_acc = float((g_lg.argmax(-1) == t_ids).float().mean())   # at the LAST
+                # unroll step, i.e. the hardest one -- free-running depth K
                 anc_acc = float((net.value(zq_a).argmax(-1) ==
                                  torch.from_numpy(syz[a_rows]).to(dev)).float().mean())
                 ps = [torch.bincount(ids[:, h], minlength=args.codes).float() for h in
@@ -278,6 +343,7 @@ def main():
                 perp = float(np.mean([float(torch.exp(-((p/p.sum()) *
                              ((p/p.sum())+1e-9).log()).sum())) for p in ps]))
             rec = {"s": step, "loss": float(loss.detach()), "dyn": float(l_dyn.detach()),
+                   "pers": float(l_pers.detach()) if torch.is_tensor(l_pers) else 0.0,
                    "vnext": float(l_vnext.detach()), "anchor": float(l_anchor.detach()),
                    "out": float(l_out.detach()), "dyn_acc": dyn_acc, "anchor_acc": anc_acc,
                    "perp": perp}
