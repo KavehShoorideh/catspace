@@ -146,17 +146,31 @@ class ConceptDynamics(nn.Module):
              if self.square_codes else None)
         return g, s
 
+    def cache_books(self):
+        """Snapshot the codebooks ONCE per training step.
+
+        The VQ advances its EMA on every forward, and a K=5 unroll calls encode several times,
+        so `self.vq[i].codebook` read later in the step is NOT the book that produced the
+        encoder's own state. Measured: identical in eval mode (diff 0.0), but 2.79 apart in
+        train mode. Snapshotting also removes a torch.stack over all heads from every
+        soft_state call."""
+        self._book = torch.stack([self.vq[i].codebook.squeeze(0)
+                                  for i in range(self.heads)], 0)
+        self._book_sq = self.sq_vq.codebook.squeeze(0) if self.square_codes else None
+
     def soft_state(self, g_logits, s_logits):
         """the PREDICTED next state as a differentiable vector: expected code under the
         dynamics' own distribution. This is what value(c_hat) is read from, so a dynamics that
         predicts value-irrelevant codes is penalised through the value head."""
+        book = getattr(self, "_book", None)
+        if book is None:
+            self.cache_books(); book = self._book
         pg = g_logits.softmax(-1)                                  # (B,H,C)
-        book = torch.stack([self.vq[i].codebook.squeeze(0) for i in range(self.heads)], 0)
         zg = torch.einsum("bhc,hcd->bhd", pg, book).reshape(len(pg), -1)
         if s_logits is None:
             return zg
         ps = s_logits.softmax(-1)                                  # (B,64,S)
-        zs = torch.einsum("bnc,cd->bnd", ps, self.sq_vq.codebook.squeeze(0))
+        zs = torch.einsum("bnc,cd->bnd", ps, self._book_sq)
         return torch.cat([zg, zs.reshape(len(pg), -1)], -1)
 
 
@@ -201,6 +215,10 @@ def main():
     ap.add_argument("--ckpt-every", type=int, default=1000)
     ap.add_argument("--out", default="artifacts/experiments/cdf1")
     ap.add_argument("--device", default="cpu")
+    ap.add_argument("--threads", type=int, default=0,
+                    help="torch intra-op threads; 0 keeps the default (measured 5 of 11 cores "
+                         "on this machine). The step is one big BLAS-bound forward/backward, "
+                         "so this is the main parallelism lever available on CPU.")
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -210,6 +228,8 @@ def main():
     from catspace.io import paths
 
     torch.manual_seed(args.seed)
+    if args.threads:
+        torch.set_num_threads(args.threads)
     dev, t0 = args.device, time.time()
     tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
@@ -271,61 +291,104 @@ def main():
     opt = torch.optim.Adam([p for p in net.parameters() if p.requires_grad], lr=args.lr)
     print(f"[cdf] {sum(p.numel() for p in net.parameters()):,} params", flush=True)
 
+    # CORPUS HELD AS TORCH TENSORS, ONCE. `torch.from_numpy` SHARES memory (no copy), so this
+    # costs nothing extra in RAM but removes a numpy fancy-index + astype + from_numpy round
+    # trip from every batch. With batched unrolls a single step now gathers ~1,150 rows, so the
+    # conversion was being paid on 64 x 1,150 elements per call.
+    TOK = torch.from_numpy(tr.tok)                     # uint8, shared with numpy
+    GLB = torch.from_numpy(tr.glob)                    # uint8, shared
+    SYZ = torch.from_numpy(syz)                        # int64 targets, cached once
+    RES = torch.from_numpy(res)
+    MVR = torch.from_numpy(mv_of_row)
+
     def batch(rows):
-        return (torch.from_numpy(tr.tok[rows].astype(np.int64)).to(dev),
-                torch.from_numpy(tr.glob[rows].astype(np.float32)).to(dev))
+        r = torch.as_tensor(rows)
+        return TOK[r].long().to(dev), GLB[r].float().to(dev)
 
     rng = np.random.default_rng(args.seed)
     log = open(f"{args.out}_steps.jsonl", "w", buffering=1)
     for step in range(1, args.steps + 1):
         net.train()
-        # (1) K-STEP UNROLL: predict forward from our OWN predicted state, so the dynamics
-        # is trained on the states it will actually produce at rollout time rather than only
-        # on encoder states it never sees again.
+        # (1) K-STEP UNROLL over SEQUENTIAL transitions, with every encode BATCHED.
+        #
+        # CACHING (Kaveh: "cache encodes if appropriate", "if there's a way to cache, do it").
+        # The naive loop ran one trunk forward per unroll step per branch -- 1 + 2K + 1 = 12
+        # forwards for K=5, each on a batch of B. The rows needed are known up front, so they
+        # are gathered and encoded in THREE calls instead: one live pass over wi..wi+K, one EMA
+        # pass over wi+1..wi+K, one anchor pass. Same arithmetic, far better BLAS utilisation,
+        # and it removes the codebook-staleness problem because every state in the step comes
+        # from one forward with one book.
+        net.cache_books()
         wi = win[rng.integers(0, len(win), args.batch)]
-        zq, ids, ids_sq, vl = net.encode(*batch(wi))
-        zq_roll = zq
-        zq_here = zq                      # live encode of the state at unroll step k
-        l_dyn = 0.0; l_vnext = 0.0; l_pers = 0.0
+        B = len(wi)
+        # WHICH STATES ACTUALLY NEED GRADIENT. The unroll itself only needs the START state:
+        # every later state it consumes is its OWN prediction (soft_state), not an encode. The
+        # t..t+K encodes exist solely for persistence. Carrying gradient through all K+1 of
+        # them cost 2.37 s/step against 1.77 for the (broken) version where they were all
+        # no_grad -- so persistence runs on a SUBSET of the batch, which is ample: at 48 rows
+        # x 20k steps it still sees ~1M pairs.
+        zq0, ids0, sq0, vl = net.encode(*batch(wi))       # start state, full batch, with grad
+        Bp = max(8, args.batch // 4)
+        wp = wi[:Bp]
+        rows_p = (wp[:, None] + np.arange(K + 1)[None, :]).reshape(-1)
+        zq_p, _, _, vl_p = net.encode(*batch(rows_p))     # persistence states, subset, w/ grad
+        zq_p = zq_p.view(Bp, K + 1, -1)
+        vl = vl + vl_p
+        ids_all = ids0.unsqueeze(1)
+        with torch.no_grad():
+            rows_tgt = (wi[:, None] + np.arange(1, K + 1)[None, :]).reshape(-1)
+            _, t_ids_all, t_sq_all, _ = net.encode(*batch(rows_tgt), target=True)
+            t_ids_all = t_ids_all.view(B, K, -1)
+            t_sq_all = t_sq_all.view(B, K, 64) if t_sq_all is not None else None
+
+        zq_roll = zq0
+        l_dyn = 0.0; l_vnext = 0.0
         for k in range(K):
             rk = wi + k
-            mv = torch.from_numpy(mv_of_row[rk].astype(np.int64)).to(dev)
-            with torch.no_grad():
-                _, t_ids, t_ids_sq, _ = net.encode(*batch(rk + 1), target=True)
-                # ONE live encode of the next state, reused for persistence below. The first
-                # version encoded rk+1 twice and rk again per unroll step -- 4 encodes where 2
-                # suffice, which cost 5.8 s/step against 0.62 for the 1-step model.
-                zq_next_true, _, _, _ = net.encode(*batch(rk + 1))
+            mv = MVR[torch.as_tensor(rk)].to(dev)
             g_lg, s_lg = net.predict_next(zq_roll, mv)
+            t_ids = t_ids_all[:, k]
             step_dyn = F.cross_entropy(g_lg.reshape(-1, args.codes), t_ids.reshape(-1))
             if s_lg is not None:
                 step_dyn = step_dyn + F.cross_entropy(
-                    s_lg.reshape(-1, args.square_codes), t_ids_sq.reshape(-1))
-            y_k = torch.from_numpy(np.where(syz[rk + 1] >= 0, syz[rk + 1],
-                                            res[rk + 1])).to(dev)
-            zq_roll = net.soft_state(g_lg, s_lg)
+                    s_lg.reshape(-1, args.square_codes), t_sq_all[:, k].reshape(-1))
+            _r1 = torch.as_tensor(rk + 1)
+            y_k = torch.where(SYZ[_r1] >= 0, SYZ[_r1], RES[_r1]).to(dev)
+            zq_roll = net.soft_state(g_lg, s_lg)          # FREE-RUNNING: our own prediction
             step_v = F.cross_entropy(net.value(zq_roll), y_k)
-            # MuZero scales each unroll step by 1/K so total gradient magnitude does not grow
-            # with depth; without it a deeper unroll silently reweights every other term.
+            # MuZero scales each unroll step by 1/K so depth does not silently reweight the
+            # other terms.
             l_dyn = l_dyn + step_dyn / K
             l_vnext = l_vnext + step_v / K
-            # PERSISTENCE on quiet plies only, in the pre-quantisation space
-            qm = torch.from_numpy(quiet_row[rk].astype(np.float32)).to(dev)
-            if qm.sum() > 0:
-                # persistence between the state we are AT (zq_here) and the true next state.
-                # At k=0 that is the window's own encode; afterwards it is the previous step's
-                # next-state encode, so no extra forward pass is needed.
-                d = (zq_here - zq_next_true).pow(2).mean(-1)
-                l_pers = l_pers + (qm * d).sum() / qm.sum().clamp(min=1) / K
-            zq_here = zq_next_true
-        p_rows = wi                       # the outcome term below scores the window start
+
+        # PERSISTENCE, over TWO plies rather than one.
+        # One ply is the wrong comparison: side-to-move flips, and the codes are turn-tagged
+        # (measured: code sets for white-to-move and black-to-move are DISJOINT in 7 of 8
+        # heads), so a code can never survive one ply and the term asks for the impossible.
+        # t -> t+2 is the same side to move. Applied only where NEITHER ply captured, so it
+        # asks for stability where the board really did barely change.
+        l_pers = torch.zeros((), device=dev)
+        if K >= 2:
+            npair = 0
+            for k in range(K - 1):
+                qm = torch.from_numpy((quiet_row[wp + k] & quiet_row[wp + k + 1])
+                                      .astype(np.float32)).to(dev)
+                if qm.sum() == 0:
+                    continue
+                # BOTH operands live -> gradient at every k, unlike the previous version which
+                # carried a no_grad encode forward and was dead for k>=1.
+                d = (zq_p[:, k] - zq_p[:, k + 2]).pow(2).mean(-1)
+                l_pers = l_pers + (qm * d).sum() / qm.sum().clamp(min=1)
+                npair += 1
+            l_pers = l_pers / max(npair, 1)
+        p_rows = wi
+        zq = zq0
 
         # (2) value now: EXACT anchor, and the noisy outcome everywhere
         a_rows = anc[0][rng.integers(0, len(anc[0]), args.batch // 2)]
         zq_a, _, _, vl_a = net.encode(*batch(a_rows))
-        l_anchor = F.cross_entropy(net.value(zq_a),
-                                   torch.from_numpy(syz[a_rows]).to(dev))
-        l_out = F.cross_entropy(net.value(zq), torch.from_numpy(res[p_rows]).to(dev))
+        l_anchor = F.cross_entropy(net.value(zq_a), SYZ[torch.as_tensor(a_rows)].to(dev))
+        l_out = F.cross_entropy(net.value(zq), RES[torch.as_tensor(p_rows)].to(dev))
 
         loss = (args.w_dyn * l_dyn + args.w_vnext * l_vnext + args.w_pers * l_pers
                 + args.w_anchor * l_anchor + args.w_outcome * l_out + vl + vl_a)
@@ -338,7 +401,9 @@ def main():
                 # unroll step, i.e. the hardest one -- free-running depth K
                 anc_acc = float((net.value(zq_a).argmax(-1) ==
                                  torch.from_numpy(syz[a_rows]).to(dev)).float().mean())
-                ps = [torch.bincount(ids[:, h], minlength=args.codes).float() for h in
+                # window-START codes: ids_all is (B, K+1, heads) after the batched encode
+                _ids0 = ids0
+                ps = [torch.bincount(_ids0[:, h], minlength=args.codes).float() for h in
                       range(args.heads)]
                 perp = float(np.mean([float(torch.exp(-((p/p.sum()) *
                              ((p/p.sum())+1e-9).log()).sum())) for p in ps]))

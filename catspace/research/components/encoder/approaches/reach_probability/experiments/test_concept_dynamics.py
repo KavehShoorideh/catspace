@@ -117,7 +117,13 @@ def test_target_encode_uses_the_ema_modules():
 
 
 def test_soft_state_matches_the_codebook():
+    """In EVAL mode soft_state at one-hot logits must reproduce the encoder's own state
+    exactly. It does NOT in train mode, and that is not a representational mismatch: the VQ
+    advances its codebook EMA during each forward, so a book read afterwards is not the book
+    that produced the state (measured: diff 0.0 eval, 2.79 train). Training now snapshots the
+    book once per step via cache_books() for exactly this reason."""
     net, tok, glob, mid = fixture()
+    net.eval()
     zq, ids, ids_sq, _ = net.encode(tok, glob)
     g, s = net.predict_next(zq, mid)
     # one-hot logits on the TRUE ids must reproduce the true quantised state exactly
@@ -129,6 +135,25 @@ def test_soft_state_matches_the_codebook():
           f"max|diff| {float((soft-zq).abs().max()):.2e}")
     check("soft_state is differentiable w.r.t. the dynamics logits",
           gnorm(net.soft_state(g, s).sum(), net.dyn.parameters()) > 0)
+    net.train()
+
+
+def test_batched_encode_equals_per_row_encode():
+    """The training step encodes wi..wi+K in ONE call and slices, instead of K+1 calls. That is
+    only valid if a batched encode equals the per-row encodes -- true for a per-position model,
+    but worth pinning, since a stray batch-coupling (a norm over the batch, say) would make the
+    unroll silently wrong."""
+    net, tok, glob, _ = fixture(B=8)
+    net.eval()
+    zq_all, ids_all, sq_all, _ = net.encode(tok, glob)
+    ok_z = ok_i = True
+    for i in range(len(tok)):
+        z1, i1, s1, _ = net.encode(tok[i:i+1], glob[i:i+1])
+        ok_z &= torch.allclose(z1[0], zq_all[i], atol=1e-5)
+        ok_i &= bool((i1[0] == ids_all[i]).all())
+    check("batched encode == per-row encode (states)", ok_z)
+    check("batched encode == per-row encode (codes)", ok_i)
+    net.train()
 
 
 # ---------------------------------------------------------------- gradient paths
@@ -164,18 +189,21 @@ def test_persistence_is_alive_at_every_unroll_step():
     """THE BUG THIS FILE EXISTS FOR. The training loop assigns the no_grad next-state encode to
     `zq_here` for the following step, so from k=1 both operands are detached and the term
     optimises nothing while still reporting a plausible value."""
-    net, tok, glob, mid = fixture()
+    net, tok, glob, mid = fixture(B=4)
     K = 3
-    zq, _, _, _ = net.encode(tok, glob)
-    zq_here = zq
+    # as the trainer does it: ONE batched live encode over t..t+K, persistence over t -> t+2.
+    # The slots must be DIFFERENT boards -- repeating one board makes zq[k]-zq[k+2] identically
+    # zero, whose gradient is legitimately zero, and the test then fails for its own reason.
+    B = len(tok)
+    big = torch.randint(0, 13, (B * (K + 1), 64))
+    bigg = torch.rand(B * (K + 1), 6)
+    zq_all, _, _, _ = net.encode(big, bigg)
+    zq_all = zq_all.view(K + 1, len(tok), -1).transpose(0, 1)      # (B, K+1, D)
     alive = []
-    for k in range(K):
-        with torch.no_grad():
-            zq_next_true, _, _, _ = net.encode(tok, glob)      # as the loop does it
-        d = (zq_here - zq_next_true).pow(2).mean(-1).mean()
+    for k in range(K - 1):
+        d = (zq_all[:, k] - zq_all[:, k + 2]).pow(2).mean(-1).mean()
         alive.append(gnorm(d, net.trunk.parameters()) > 0)
-        zq_here = zq_next_true
-    check("persistence has gradient at EVERY unroll step", all(alive),
+    check("persistence has gradient at EVERY unroll step", all(alive) and len(alive) > 0,
           f"alive per step: {alive}")
 
 
@@ -240,6 +268,7 @@ def main():
     test_ema_target_is_frozen_and_tracks()
     test_target_encode_uses_the_ema_modules()
     test_soft_state_matches_the_codebook()
+    test_batched_encode_equals_per_row_encode()
     print("\n-- gradient paths")
     test_each_loss_reaches_what_it_should()
     test_persistence_is_alive_at_every_unroll_step()
