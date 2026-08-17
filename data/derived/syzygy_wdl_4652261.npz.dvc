@@ -1,0 +1,5 @@
+outs:
+- md5: 592c6696fafee011d00ed524dc21e120
+  size: 940012
+  hash: md5
+  path: syzygy_wdl_4652261.npz

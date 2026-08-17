@@ -279,7 +279,7 @@ def main():
     ap.add_argument("--pole-init", type=float, default=2.0,
                     help="stddev of the pole initialisation. With T, this decides whether a "
                          "confident call is REACHABLE at all: (0.5, T=5) caps any encoder at "
-                         "0.6% on 267 classes; (2.0, T=1) reaches 98.6%.")
+                         "0.6%% on 267 classes; (2.0, T=1) reaches 98.6%%.")
     ap.add_argument("--proj-h", type=int, default=512,
                     help="hidden width of the 3-layer projector feeding the IQE")
     ap.add_argument("--components", type=int, default=16,

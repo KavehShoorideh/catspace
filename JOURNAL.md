@@ -13318,3 +13318,37 @@ WDL:D 0.50 / WDL:L 0.00. Train-split only, so the yardstick cannot read val/test
 legitimately miss a 10% split, so those splits score over a smaller vocabulary and their
 baselines differ (0.4% train, 0.5% val). Classes absent from a split are dropped from its
 sampling rather than asserted away.
+
+---
+
+## 2026-08-16 — The tablebase anchor: 287,977 positions of solved ground truth
+
+Kaveh's redesign: drop the quasimetric entirely. Encoder goes straight to a vector-quantized
+DISCRETE STATE (the concept set); a dynamics function advances it; predict the next concept set
+plus the WDL of this step and the next; and "eventually we will reach a tablebase five piece
+ending, and when we do we will anchor it to the particular tablebase lookup... it's gonna be one
+hundred percent, either win or lost or drawn." Dynamics target is an EMA copy (his call, agreed
+-- it stops the encoder and dynamics colluding on a trivial solution).
+
+He flagged the WDL labels as the missing piece. **They were not missing.** The repo already
+holds the complete Syzygy 3/4/5-man set -- 145 tables (5 + 30 + 110) in
+`assets/tablebases/syzygy`. `gen_syzygy_wdl.py` probes every corpus position at <=5 men:
+
+    287,977 positions (6.19% of the corpus), 0 unprobeable
+    EXACT white-POV: LOSS 84,738 (29.4%)  DRAW 114,759 (39.9%)  WIN 88,480 (30.7%)
+
+**This is the only ground truth in the project.** Every other value signal is an estimate: the
+game's final result is one noisy sample of one playout, and Stockfish's WDL is an engine's
+opinion at a node budget (the `gen_wdl_labels` docstring calls those "cardinal ground truth",
+which was an overstatement -- corrected in LITERATURE terms here).
+
+**And it is worth having, measured rather than assumed: it agrees with the game's final result
+only 93.8% of the time.** In 6.2% of these positions the played line left the theoretical value
+-- a draw converted, or a win thrown away. Outcome-only supervision can never see that error,
+because there the final result IS the error. That 6.2% is what the anchor exists to correct.
+
+The label is also the best-balanced one we have: 29/40/31 against the outcome label's 78.9%
+draw and the TB-entrance label's 30.7% majority.
+
+Also emitted: `syz_dtz`, the exact distance-to-zeroing, kept for later -- if a ply metric is
+ever wanted again, DTZ is the true one rather than a learned approximation.
