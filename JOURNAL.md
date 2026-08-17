@@ -13420,3 +13420,73 @@ because I dropped everything from the prior design when rebuilding around dynami
 SUBSAMPLE of 4.65M rows, so requiring 8 CONSECUTIVE moves yielded 51 usable rollouts out of
 3,000 requested. Fixed by building the full transition set. The conclusion held, but 51 was not
 a sample to conclude from.
+
+---
+
+## 2026-08-16 (overnight) — tests, caching, verification, and the next bottleneck named
+
+Kaveh went to bed: "build the tests, ensure the structure, the data, and the losses are what you
+expect, then run it on all our data, using parallelization when possible, and keeping track of
+time it takes to do stuff and metrics, so we can address bottlenecks later" + "leverage caching
+as much as possible".
+
+**TESTS (22, all pass)** -- `test_concept_dynamics.py`. Gradient paths measured with autograd,
+not inspection, because every serious bug in this model has been a gradient bug that shapes and
+loss curves could not see. The map:
+
+                  trunk    proj   sq_proj    dyn    value
+      l_dyn      0.0666  0.0342   0.1130  0.7722  0.0000
+      l_vnext    0.0030  0.0016   0.0053  0.0024  0.4706
+      l_value    0.1018  0.0492   0.1889  0.0000  0.7894
+      l_commit   0.0332  0.0117   0.0728  0.0000  0.0000
+
+Note `l_vnext` reaches `dyn` at 0.0024 against `l_dyn`'s 0.772 -- value-equivalence is ~300x
+weaker on the dynamics than code-matching, the opposite of MuZero's emphasis. Open.
+
+**TWO DEFECTS FIXED.**
+* `soft_state != encode` was NOT a representational mismatch. The VQ advances its codebook EMA
+  DURING each forward, so a book read later in the step is not the one that produced the state:
+  diff 0.0 in eval, 2.79 in train. `cache_books()` snapshots once per step.
+  **RETRACTED**: I claimed this invalidated `eval_rollout`'s free-running numbers. It does not
+  -- that script calls `net.eval()`, where the two agree exactly.
+* Persistence had gradient only at k=0, because the no_grad next-state encode was carried into
+  `zq_here` -- my own speed optimisation detached it. Now t -> t+2 (same side to move, since
+  codes are turn-tagged and a one-ply comparison asks for the impossible), both operands live.
+
+**CACHING: 1.77 -> 0.80 s/step (2.2x), 9.8h -> 4.4h.**
+
+    12 unbatched encodes, persistence BROKEN   1.77 s/step    9.8 h
+    batched encodes, full-grad persistence     2.37 s/step   13.1 h
+    + persistence on a batch SUBSET            1.23 s/step    6.9 h
+    + 8 torch threads (was 5 of 11 cores)      0.80 s/step    4.4 h
+
+Naive batching was SLOWER, which was not the expected result: the version it replaced had 10 of
+12 encodes under no_grad, so making persistence work is what added the backward cost. The subset
+buys it back and still sees ~1M pairs over a run. Corpus/labels/moves are held as torch tensors
+once (`from_numpy` shares memory, no copy).
+
+**DATA VERIFIED (11 checks).** 4,652,261 positions; every <=5-man position anchored and no
+>5-man one; anchor classes L0.29/D0.40/W0.31; 4,602,356 transitions, all in-game, move ids in
+range; **man-count delta across every transition is 0 or -1 ONLY** -- the quiet mask's premise,
+now measured rather than argued; quiet fraction 0.814; resolution labels cover 100%.
+
+**PROFILE (`profile_step.py`) -- the next bottleneck, named.** Shares (3 threads, so absolute
+times inflated; cdf3 was running):
+
+    backward         37.9%
+    encode_target    36.2%   <- no_grad EMA forward over 960 rows, produces ONLY labels
+    encode_pers      10.0%
+    anchor+outcome    7.2%
+    encode_start      5.6%
+    unroll            2.5%
+    optimiser         0.5%
+    persistence       0.1%
+
+Encodes are 59% of the step. `encode_target` is the single biggest lever: the EMA moves at 0.996
+per step, so its targets change very slowly and could be CACHED per row and refreshed every N
+steps, removing ~a third of the cost. NOT done tonight -- Kaveh asked to track bottlenecks for
+later, and another restart would cost the elapsed run plus re-verification.
+Also: the persistence TERM costs 0.1% while producing its inputs costs 10%.
+
+**cdf3 launched** on the full corpus: 3,719,695 train positions, 3,520,487 five-ply unroll
+windows, K=5, persistence on, 8 threads, ~4.4 h, checkpoints every 1000.
