@@ -13654,3 +13654,86 @@ I carried a cdf2-era finding into the cdf5 report without rechecking it. Worse, 
 persistence baseline of 0.306 and the turn-partitioning claim in the SAME message without
 noticing they are arithmetically incompatible -- codes cannot survive a ply 30% of the time if
 they are strictly partitioned by a quantity that flips every ply.
+
+---
+
+## 2026-08-17 17:20 — captures fix localisation; the split resolution head does NOT fix endgame naming (NEGATIVE on its headline)
+
+**What ran.** Two runs of `concept_capture_field.py` on the 4,652,261-position
+SF-vs-SF corpus (train 3,719,695, split by game, seed 0), 8x16 global + 64x64
+square codes, `w_cap 2.0 / w_res 1.0 / w_pers 0.25`, Adam 3e-4, batch 192, CPU
+8 threads.
+
+* `ccf1` — flat 401-way resolution head. Killed at step 9000 (2.5 h) once the
+  replacement was tested, per the decision to run latest.
+* `ccf2` — the same model with the resolution label SPLIT into
+  reach(3) x ending(397, class-balanced) x outcome(3). 20,000 steps, 168.1 min,
+  0.504 s/step.
+
+**Verdicts, copied from `eval_capture.py` (held-out TEST split, n=20,000).**
+
+```
+                       cdf5    ccf1@9000   ccf2@20000   baseline
+next_sq               0.044      0.185       0.168       0.051
+next_att              0.217      0.322       0.315       0.138
+next_vic              0.327      0.411       0.405       0.291
+fifth_sq                 --      0.065       0.061       0.042
+endgame_20            0.138      0.052       0.059       0.213   <- HEADLINE, FAILS
+resolution_20            --      0.693       0.688       0.606
+                      5/6 PASS   5/6 PASS
+```
+
+**RESULT: the capture objective delivers localisation.** `next_sq` 0.044 -> 0.168
+against a 0.051 baseline, i.e. 3.3x. cdf5 had *literally no signal* on this row
+(0.044 against a 0.044 baseline); the concepts now say where the action is. Holds
+across both runs, so it is not a single-run artifact.
+
+**NEGATIVE: the split head did not deliver its headline.** `endgame_20` 0.052 ->
+0.059 is a +0.007 move, which is nothing, and both are below cdf5's 0.138 and far
+below the 0.213 material lookup. The row FAILS and is reported as failing; the
+instrument was written before the run and is not renegotiated.
+
+**The fix worked on the thing it targeted, which was not the binding constraint.**
+The flat head's collapse was real and measurable, and splitting genuinely reduced
+it, monotonically:
+
+```
+                            ccf1@5000   ccf1@9000   ccf2@20000    (true 22.1%)
+distinct classes predicted     83          100         164
+predicted as endgame          4.5%        7.0%        8.9%
+true-endgame rows -> WDL     84.6%       78.8%       73.1%
+```
+
+So the diagnosis (a 401-way softmax collapsing onto three classes holding 75% of
+the rows) was correct, the repair moved every collapse metric in the right
+direction, and the headline still did not move. **Earlier today I attributed the
+endgame failure to that collapse; that attribution was too strong and is
+retracted.** Collapse was a real defect, not the binding one.
+
+**Where the constraint actually is.** From the post-hoc conditional block, given
+the game *does* reach a tablebase:
+
+```
+name the exact ending        0.210    material floor 0.211   -- at parity
+name the material signature  0.223
+name the outcome (W/D/L)     0.805
+```
+
+The concepts know *who is winning* very well (0.805) and know *where the action
+is* (3.3x on capture square), but know no more about *which material will be left
+on the board* than counting pieces does. Captures taught them WHERE without
+teaching them WHAT SURVIVES.
+
+**Caveat on the ccf1/ccf2 comparison.** Different step counts (9,000 vs 20,000)
+and single seeds. ccf1 scores slightly *higher* on `next_sq` (0.185 vs 0.168)
+despite less training; per the measured seed-variance result (two seeds of one
+recipe gave +0.124 vs +0.239 with non-overlapping pair CIs) a gap this size is
+not attributable to the objective change. Only the collapse metrics, which move
+monotonically and by large margins, are read as a real difference.
+
+**Also landed (independent of the above):** `rust/catspace-concepts`, a named
+board-probe basis — 1,892 dims, differential-tested against a python-chess oracle
+on 200,000 stratified corpus rows with **zero mismatches** on all 128 columns, at
+4.5 us/position vs 896.8 us for the oracle and 2,347 us for the learned trunk
+(521x). Built for a concept->program distillation design that is now on hold; the
+basis stands on its own.

@@ -170,6 +170,55 @@ class SoftAST(nn.Module):
         return len(live)
 
 
+def describe_program(prog, sq_names, glob_names, max_out=6):
+    """Render a hardened program as named expressions -- the deliverable a learned trunk cannot
+    produce. Only the sub-DAG reachable from the outputs is printed, since unreached nodes are
+    not part of the concept."""
+    n_leaf, n_sq = prog["n_leaf"], prog["n_sq"]
+
+    def leaf_name(j):
+        return f"sq.{sq_names[j]}" if j < n_sq else f"pos.{glob_names[j - n_sq]}"
+
+    def ref(j):
+        return leaf_name(j) if j < n_leaf else f"t{j - n_leaf}"
+
+    live, stack = set(), [o for o in prog["out"] if o >= n_leaf]
+    while stack:
+        i = stack.pop()
+        if i < n_leaf or i in live:
+            continue
+        live.add(i)
+        nd = prog["nodes"][i - n_leaf]
+        for c in (nd["a"], nd["b"]):
+            if c >= n_leaf:
+                stack.append(c)
+
+    lines = []
+    for i in sorted(live):
+        nd = prog["nodes"][i - n_leaf]
+        a, b, th = ref(nd["a"]), ref(nd["b"]), nd["theta"]
+        op = nd["op"]
+        if op == "gt":
+            import math
+            expr = f"sigmoid(({a} - {th[0]:.3f}) * {math.log1p(math.exp(th[1])):.3f})"
+        elif op == "wsum":
+            expr = f"{th[0]:.3f}*{a} + {th[1]:.3f}*{b}"
+        elif op in ("mean_sq", "max_sq"):
+            expr = f"{op}({a})"
+        elif op == "id_a":
+            expr = a
+        else:
+            sym = {"add": "+", "sub": "-", "mul": "*", "max": "max", "min": "min"}[op]
+            expr = f"max({a}, {b})" if op == "max" else (
+                f"min({a}, {b})" if op == "min" else f"{a} {sym} {b}")
+        lines.append(f"    t{i - n_leaf} = {expr}")
+    for d, o in enumerate(prog["out"][:max_out]):
+        lines.append(f"    out[{d}] = {prog['scale'][d]:.3f} * {ref(o)} + {prog['bias'][d]:.3f}")
+    if len(prog["out"]) > max_out:
+        lines.append(f"    ... {len(prog['out']) - max_out} more outputs")
+    return "\n".join(lines)
+
+
 def soft_code_ce(pred, codebook, target_code, tau_c=1.0):
     """CE over the SOFT nearest code -- the differentiable form of 'does this program fire the
     same concept the network fired'.
