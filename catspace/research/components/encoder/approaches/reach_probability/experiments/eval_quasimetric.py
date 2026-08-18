@@ -113,8 +113,10 @@ def main():
     dback = dist(R + args.k_max, R) / scale
     fwd = dk[args.k_max]
     print(f"\n  3 ASYMMETRY     forward d(t -> t+{args.k_max}) {fwd.mean():.2f}   "
-          f"reverse {dback.mean():.2f}   ratio {fwd.mean()/max(dback.mean(),1e-9):.2f}x")
-    print(f"                  forward > reverse on {100*(fwd>dback).mean():.1f}% of pairs")
+          f"reverse d(t+{args.k_max} -> t) {dback.mean():.2f}   "
+          f"reverse/forward {dback.mean()/max(fwd.mean(),1e-9):.2f}x")
+    print(f"                  reverse > forward on {100*(dback>fwd).mean():.1f}% of pairs "
+          f"(un-capturing is impossible, so this should be near 100%)")
 
     dself = dist(R, R)
     a, b, c = R[:2000], R[2000:4000], R[4000:6000]

@@ -14103,3 +14103,68 @@ good enough to build the geometry on, which is the actual deliverable.
 get harder -- it may be the wrong floor. Every cross-corpus comparison in this project
 should quote the material floor, which is the baseline all the other claims are already
 measured against, not the majority class.
+
+---
+
+## 2026-08-18 06:40 — DELIVERABLE: a quasimetric over concept states (cqm1)
+
+Stage 2 of concepts-first. `cef3_step10000` frozen (NOW12 0.958, eg_cond 0.281, at
+parity with cef1 relative to the material floor), its codes cached for all 6,545,146
+positions, and an IQE head trained on those states with QRL.
+
+**Setup.** 3,147,266 params, IQE 16 components x 32. Constraint d(z_t -> z_{t+1}) <= 1
+over 5,829,752 adjacent pairs; objective pushes d up on pairs drawn from INDEPENDENT
+marginals; dual multiplier by ascent on the violation. Held out by GAME (6,590 games).
+
+**Speed.** 20,000 steps in **7.3 minutes at 0.022 s/step**. Caching codes rather than
+dense states is what bought this: the frozen trunk never runs in the loop, and the
+state is a codebook gather. Encoding the corpus once cost 25.6 min at 4,261 pos/s.
+Codebooks fully alive at the cache: 32 of 32 global values and 256 of 256 square codes.
+
+**Convergence.** Constraint satisfied and stable -- violation +0.008 with lambda parked
+at 34.4, so the dual found its own level rather than being tuned.
+
+**Verdicts** (`eval_quasimetric.py`, 6,000 held-out rows):
+
+```
+1 CALIBRATION  adjacent d 0.839 raw against a ceiling of 1.0 (0.684 after the
+               (1+eps) correction). Sits just under the constraint, as intended.
+2 ODOMETER     k:   1     2     3     4     6     8    12    16    24
+               d: 0.68  0.95  1.24  1.51  2.08  2.64  3.74  4.80  6.72
+               rank correlation with k  +0.740     slope 0.265 units/ply
+3 ASYMMETRY    forward d(t->t+24) 6.72   reverse 58.10   ratio 8.65x
+               reverse exceeds forward on 98.5% of pairs
+4 AXIOMS       d(z,z) max 0.00e+00
+               triangle violations on 2,000 REAL triples: 0.000% (0)
+5 GROUND TRUTH syzygy DTZ: rank corr with the true DTZ drop -0.154 / -0.114 / -0.156
+               at k = 2 / 4 / 8
+```
+
+**RESULT: the object is a genuine quasimetric and it has learned time's arrow.**
+Self-distance is exactly zero, not one triangle violation in 2,000 real triples, and
+the asymmetry is both large (8.65x) and in the right direction on 98.5% of pairs --
+going forward is what the game did and is cheap, going back means un-capturing pieces
+and is not. That asymmetry is the whole reason for a quasimetric rather than a metric,
+and it is the clearest positive here.
+
+The odometer works in RANK (+0.740) and is deliberately SUBLINEAR -- 24 plies of play
+costs 6.72 units, not 24. That is correct for QRL, which learns the OPTIMAL distance
+rather than the on-policy one: the played line is not the shortest path between its own
+endpoints. It does mean one unit is not one ply, so the geometry orders reachability
+without yet being a calibrated ply ruler.
+
+**NEGATIVE: no alignment with tablebase ground truth.** Against syzygy DTZ the rank
+correlation is -0.15 to -0.11 -- slightly the WRONG way, and near zero either way. The
+learned distance tracks how far apart two positions are ALONG A PLAYED LINE, and carries
+essentially no information about the tablebase-optimal distance to conversion. Stated
+plainly rather than buried: DTZ was kept as the stage-2 ruler precisely to be this
+check, and the geometry does not pass it.
+
+**Caveat on that test, stated so it is not over-read.** DTZ is distance-to-zeroing under
+optimal play, not plies-between-two-positions, so the DTZ drop over k plies is not k and
+this is a weak instrument. A near-zero correlation is evidence of no alignment; the
+negative sign is not itself meaningful at this magnitude.
+
+**Bug caught by the run.** `eval_quasimetric.py` originally asserted forward > reverse.
+That is backwards -- the measurement made it obvious (5.7 forward vs 47.6 reverse) and
+the assertion was fixed to match the chess, not the other way round.
