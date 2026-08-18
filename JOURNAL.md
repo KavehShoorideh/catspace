@@ -13737,3 +13737,106 @@ on 200,000 stratified corpus rows with **zero mismatches** on all 128 columns, a
 4.5 us/position vs 896.8 us for the oracle and 2,347 us for the learned trunk
 (521x). Built for a concept->program distillation design that is now on hold; the
 basis stands on its own.
+
+---
+
+## 2026-08-17 21:40 — why captures do not name the ending; the event+material objective; cef1 vs ccf2
+
+**Question (Kaveh):** "why can't concepts predict materials? that should be most
+obvious from the captures."
+
+**The chain, walked with ground truth at every link** (`diag_captures_to_material.py`,
+committed). The premise is exact arithmetic — final material = current minus
+everything captured — so each link was checked separately.
+
+```
+1 HORIZON      81% of endgame_20 rows need <=5 captures to reach 5 men.
+               Median 9 men now, median 4 captures needed. NOT the problem.
+2 ORACLE       subtracting the TRUE victims reproduces the true signature on
+               only 53.6% of in-horizon rows:
+                  promotion occurs (13.2% of rows)   0.0%
+                  no promotion     (86.8%)          61.7%
+               Label sanity checked: the position at the resolution ply matches
+               its own signature 100% of the time and always has exactly 5 men.
+               The non-promotion residual is NOT attributed — recorded as open.
+3 MODEL        ccf2 reaches 8.1% against that 54.8% ceiling.
+4 COMPOUNDING  per-capture victim accuracy 0.436 / 0.412 / 0.389 / 0.348 / 0.352;
+               getting EVERY victim right: 10.4% (a product of independent
+               marginals would give 2.4%, so there is real sequence structure —
+               just nowhere near enough).
+```
+
+**Interpretation.** Capture prediction is a per-event *marginal*; naming the ending
+is a *joint over a sequence*. Four predictions at ~0.40 give ~10% jointly. The 0.211
+material floor never runs this chain at all — it is a marginal statistic ("from this
+material, usually that ending"), and a robust marginal beats a fragile conjunction.
+The concepts had learned the marginal, not the trajectory.
+
+**New objective (Kaveh):** "predict the next five interesting events, whether
+they're captures or promotions, and we predict the piece count or type of pieces
+that are available at that stage." Both diagnosed causes addressed at source:
+promotions become events (36,422 pure + 945 capture-promotions, 4.08% of events,
+none representable before), and the material after each event becomes its OWN
+target — 12 piece-count heads per event — instead of being chained from victims.
+
+**Go/no-go, measured before building:** the 5-event horizon reaches a 5-man position
+on 76.2% of endgame_20 rows (by event 3: 36.2%, by event 4: 57.7%). Slightly below
+the 81.8% captures-only bound, because promotions consume horizon slots without
+reducing the man count.
+
+**`cef1`** — 20,000 steps, **95.7 min on MPS at 0.287 s/step**, against ccf2's 168.1
+min on CPU at 0.504 (1.76x). `ConceptEvent` subclasses `ConceptCapture`, so encoder,
+both codebooks, persistence and the resolution head cannot drift from the control.
+
+**Verdicts** (`compare_event_vs_capture.py`, held-out TEST, n=20,000).
+
+```
+SHARED TASK (identical head, directly comparable)   ccf2     cef1    baseline
+  resolution_20                                    0.689    0.690    0.606
+  endgame_20                                       0.060    0.058    0.213  <- BOTH FAIL
+  conditional: name the exact ending                0.208    0.211    0.211
+  conditional: name the signature                   0.221    0.223
+  conditional: name the outcome                     0.805    0.803
+  predicted-endgame rate                            0.089    0.097   true 0.221
+  distinct classes predicted                          164      179   of 401
+```
+
+**No detectable difference on the shared task.** Every delta is <=0.003 and the
+repo's measured seed variance (two seeds of one recipe: +0.124 vs +0.239, CIs not
+overlapping) is an order of magnitude larger. Not attributable.
+
+```
+cef1 ONLY — naming the material AT the event that reaches 5 men
+  an event reaches 5 men within 5 events              75.4%
+  per-count accuracy                                  0.865
+  ALL 12 counts correct  (names the material)         0.123
+  total man-count correct                             0.417
+  ccf2's chained-victim route (measured)              0.081
+  oracle ceiling for that route                       0.548
+```
+
+**RESULT: predicting material directly beats deriving it, 0.123 vs 0.081 (+52%).**
+The hypothesis behind the objective change is confirmed in its own terms.
+
+**NEGATIVE: it did not transfer.** 0.123 is still far below the 0.211 material
+floor, so the direct route remains worse than the lookup and `endgame_20` does not
+move (0.058 vs 0.060, both failing 0.213). The conjunction problem reappeared one
+level up: per-count accuracy 0.865 but all-twelve-at-once 0.123. Most striking, the
+model gets the **total man count** right only 41.7% of the time — it cannot reliably
+say how many pieces will be left, let alone which.
+
+**Which is better:** cef1, weakly. It is strictly more capable (names material at
+0.123 where ccf2's route gives 0.081), never worse on the shared task, and trains
+1.76x faster on MPS. But the headline claim is unmet by both, and the honest reading
+is that the objective change bought a real new capability that is not yet strong
+enough to matter.
+
+**Open question this sets up.** Is 0.123 near the ceiling for the task, or is the
+concept bottleneck the limit? The Rust probe basis (committed, 1,892 named dims,
+zero mismatches, 4.5 us/position) can answer it directly: fit the same material
+target on raw named features with no concept layer. If that also lands near 0.12,
+the information is not in the position 20 plies out and the endgame_20 target should
+be retired; if it lands much higher, the concepts are the bottleneck.
+
+**Process note.** MPS was left unused for ccf1/ccf2 out of inherited defaults; it is
+2.7x faster in isolation and 1.76x end-to-end. All later runs use `--device mps`.
