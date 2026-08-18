@@ -14168,3 +14168,57 @@ negative sign is not itself meaningful at this magnitude.
 **Bug caught by the run.** `eval_quasimetric.py` originally asserted forward > reverse.
 That is backwards -- the measurement made it obvious (5.7 forward vs 47.6 reverse) and
 the assertion was fixed to match the chess, not the other way round.
+
+---
+
+## 2026-08-18 07:20 — does the quasimetric play? sibling discrimination: yes. move quality: no.
+
+**Question (Kaveh):** "how does this quasimetric play? can it distinguish sibling
+moves?"
+
+`eval_quasimetric_moves.py` (committed). 793 held-out positions fully expanded, every
+legal child encoded through the frozen trunk (children are not corpus rows, so this is
+the one place in stage 2 where the encoder must run), scored by d(child -> goal) with
+the goal being where the game actually got to 16 plies later.
+
+```
+1 CAN IT SEE THE DIFFERENCE?
+    legal moves per position                28.2
+    DISTINCT concept states among them      28.2   = 100.0% of siblings
+    positions where all siblings collapse    0.0%
+    siblings tied at the minimum distance    1.0    (the argmin is unique)
+    spread of d across siblings (std)        4.567
+
+2 DOES IT PLAY?  (rank of the move Stockfish actually played)
+    picks the played move first             11.5%
+    random baseline                          5.9%
+    material-greedy baseline                16.5%
+    mean percentile of the played move      38.1%   (0% best, 50% random)
+```
+
+**RESULT: sibling discrimination is total, and the obvious failure mode does not
+occur.** The concern was structural -- the concept state is a vector of DISCRETE codes,
+so two children quantising identically would be the same state and their distance
+exactly zero by construction, with no training able to fix it. Measured: all 28.2
+siblings get distinct states, no position collapses, the nearest child is unique, and
+distances spread with std 4.57. The vocabulary is fine-grained enough to separate every
+legal move.
+
+**NEGATIVE: it does not play.** Picking Stockfish's move 11.5% of the time is about 2x
+random (5.9%) but LOSES to a one-line material-greedy baseline (16.5%) on identical
+rows. Mean percentile 38.1% against 50% for random -- better than chance, not much
+better.
+
+**Why, and it is consistent with the DTZ result.** This geometry was trained to measure
+SEPARATION ALONG PLAYED LINES: adjacent states one apart, independent pairs pushed far.
+Nothing in QRL as set up here asks it which of two positions is BETTER. It answers "how
+far", not "how good", and the two are different questions -- which is exactly what the
+syzygy DTZ correlation of -0.15 already said. A move-ranking use needs either a goal
+that encodes desirability (a won tablebase region rather than "wherever the game went")
+or a value signal in the objective; neither is present.
+
+**Caveat on the instrument.** Using the actual continuation as the goal is a proxy: it
+rewards children that sit near where the game went, and 16 plies of play separate the
+goal from every sibling, so all children are roughly equidistant in a geometry that
+mostly encodes ply-separation. A goal chosen for desirability would be a fairer test of
+planning use and has not been run.
