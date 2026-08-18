@@ -14222,3 +14222,63 @@ rewards children that sit near where the game went, and 16 plies of play separat
 goal from every sibling, so all children are roughly equidistant in a geometry that
 mostly encodes ply-separation. A goal chosen for desirability would be a fairer test of
 planning use and has not been run.
+
+---
+
+## 2026-08-18 08:00 — poles: the approach structure emerged UNTRAINED, and SF agrees on direction
+
+**Question (Kaveh):** "how well does sf agree with direction of approach to poles? do
+we have poles in this iteration"
+
+**Do we have poles.** In the DATA, yes and completely: `terminal_rows()` gives a
+board-caused ending for **65,905 of 65,905 games**, with time forfeits censored by
+design so a dead-won flagged position never anchors to a loss pole. `ending_poles()`
+(ending type) and `endgame_poles()` (subsumption hierarchy) are both intact.
+
+In the GEOMETRY, no. cqm1 saw only the adjacent-ply constraint and the independent-pair
+objective -- no pole term of any kind. So this measures whether pole structure EMERGED,
+which is a stronger claim than whether it was fitted.
+
+Each game's own terminal position is its pole: concrete, per-game, no clustering, and
+no material signature leaking in.
+
+```
+1 APPROACH  along 150 held-out games
+    rank corr of d(s_t -> pole) with ply t     -0.980   (negative = approaching)
+    games where it decreases overall           100.0%
+    mean d at the START 35.00  ->  at the END    0.71
+
+2 SF's DIRECTION on 585 positions (27.2 legal moves each)
+    SF's move reduces d to the pole            71.6%
+    mean change from SF's move                 -0.361
+    mean change, RANDOM sibling                +0.094   (away from the pole)
+    mean change, BEST sibling                  -1.074
+    SF picks the best approacher               12.3%   (random 6.3%)
+    SF's percentile among siblings             39.2%   (0 = best, 50 = random)
+```
+
+**RESULT: an untrained pole geometry, and it is nearly perfect.** Distance to the
+game's own terminal falls monotonically from 35.0 to 0.71 with a rank correlation of
+**-0.980**, decreasing overall in **100%** of held-out games. Nothing asked for this --
+the objective only ever said "one ply apart is distance one" and "push unrelated pairs
+apart". Monotone approach to the ending is what fell out.
+
+**RESULT: Stockfish agrees on DIRECTION, clearly.** SF's move reduces the distance
+71.6% of the time, mean -0.361, while a random legal move INCREASES it (+0.094). The
+sign flip between SF and random is the finding: the geometry's notion of "toward the
+end" is one that strong play systematically follows and random play systematically
+violates.
+
+**But SF is not the FASTEST approacher, and should not be.** The best sibling reduces
+by -1.074, three times SF's -0.361, and SF is the best approacher only 12.3% of the
+time (percentile 39.2%). That is the correct behaviour, not a defect: the pole is the
+END of the game, and rushing there -- forcing exchanges, simplifying, trading into a
+finish -- is not the same as playing well. **SF is trying to win, not to finish.** The
+quasimetric measures time-to-end; agreement on direction with disagreement on magnitude
+is exactly what that predicts.
+
+**This reframes the earlier move-ranking negative.** That test used "the position 16
+plies later" as the goal and found near-random ranking. With the TERMINAL POLE as the
+goal instead, the same geometry shows a clean directional signal. The geometry was
+fine; the goal was weak -- which is what the caveat on that instrument said would
+matter.
