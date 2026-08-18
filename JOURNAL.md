@@ -14282,3 +14282,60 @@ plies later" as the goal and found near-random ranking. With the TERMINAL POLE a
 goal instead, the same geometry shows a clean directional signal. The geometry was
 fine; the goal was weak -- which is what the caveat on that instrument said would
 matter.
+
+---
+
+## 2026-08-18 08:40 — WHICH pole is ours: the labels were there, the objective never saw them
+
+**Kaveh:** "we have the poles. we know if they're white winning or black winning or
+draw. we know whose move it is. why don't we know which pole is ours?"
+
+A fair correction. The previous pole test used each game's OWN terminal as its pole, so
+it measured TIME TO THE END regardless of whether that end was a win, a loss or a draw
+for the side to move -- which is why it produced a direction with no notion of
+desirability. The outcome labels were available and unused.
+
+Redone with poles as CLASSES relativised to the mover (`eval_pole_identity.py`): our
+pole = terminals of games the side to move won, their pole = terminals of games it lost,
+plus a draw pole. Poles sampled from TRAIN games, positions from HELD-OUT games, so
+nothing is scored against its own ending.
+
+```
+1 SEPARATION      n     d_our  d_draw  d_their   d_their - d_our
+   mover WINS    893     5.78   4.39    6.43        +0.65
+   draw        1,194     7.75   5.03    7.98        +0.23
+   mover LOSES   913     6.76   4.55    5.93        -0.83
+   rank corr of the gap with the true result      +0.202
+   AUC, mover-wins vs mover-loses                  0.655
+
+2 COMMITTOR  softmax(-d/T), 3-way   47.1%   majority baseline 39.8%
+
+3 SF DIRECTION (original mover's frame)  d_our change   d_their change
+   SF played move                          -0.204         -0.146
+   average legal move                      -0.007         -0.132
+   SF picks the best (our down, theirs up)   9.8%   (random 6.1%)
+```
+
+**RESULT: the geometry does know which pole is ours -- weakly.** `d_their - d_our` is
+monotone in the true result (+0.65 / +0.23 / -0.83), AUC 0.655, and the committor beats
+its majority baseline (47.1% vs 39.8%). SF separates cleanly on direction: it closes on
+OUR pole by 0.204 where an average legal move manages 0.007 -- about 29x -- while its
+movement toward THEIR pole is unremarkable (-0.146 against -0.132 average).
+
+**Why only weak, and it is not mysterious.** cqm1 was trained on ply-adjacency and
+pair-separation ONLY. Nothing in the objective ever distinguished a white-win terminal
+from a black-win one. That any value ordering emerged is the surprise; that it is weak
+is not. The project's earlier IQE work anchored W/D/L poles explicitly and read a
+committor off softmax(-d_B/basin_temp); rebuilding stage 2 from pure QRL dropped that,
+and this measurement is the cost of the omission.
+
+**This is the common cause of both earlier negatives.** DTZ correlation -0.15 and move
+ranking below material-greedy both said the same thing: the geometry knows HOW FAR
+(pole approach -0.980, odometer +0.740) and barely knows TOWARD WHAT. Pole identity in
+the objective is the missing term, and the labels for it already exist for 65,905 of
+65,905 games.
+
+**Next, specified rather than vague:** add a pole-anchoring term to the QRL objective --
+constrain d(s -> our-pole) against the outcome-conditioned target and keep the existing
+adjacency constraint -- then re-run this exact instrument. The comparison is
+pre-registered by this entry: AUC 0.655, committor 47.1%, SF differential -0.204/-0.007.
