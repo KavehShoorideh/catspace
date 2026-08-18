@@ -14057,3 +14057,49 @@ intended shape at OUR horizon: per-element push 0.856 at d=0.5, exactly 0.500 at
 knee, 0.063 at d=150, a 13.6x decay across 0-150 plies. Dual ascent raises lambda
 under violation and relaxes it when satisfied. The codebook gather reconstructs the
 concept state exactly, which is what lets the frozen trunk stay out of the loop.
+
+---
+
+## 2026-08-18 05:05 — RETRACTION: cef2 did not regress; I used the wrong baseline
+
+The entry above ("cef2 NEGATIVE: perfecting the representation broke the prediction")
+attributed a drop in conditional outcome accuracy, 0.803 -> 0.682, to the `w_now`
+term. **That attribution is wrong and is retracted.**
+
+I ruled out the corpus by checking the MAJORITY-CLASS outcome baseline, which moves
+only 39.0% -> 41.6% between the old and new corpora. That is the wrong floor. The
+right one is the same floor used everywhere else in this work -- outcome predicted
+from the MATERIAL SIGNATURE, fitted on train:
+
+```
+                          majority   material floor    model    over floor
+OLD corpus (cef1)           40.6%        78.9%         0.803       +1.4
+NEW corpus (cef2)           41.7%        66.6%         0.682       +1.6
+NEW corpus (cef3 @7000)     41.7%        66.6%         0.683       +1.7
+```
+
+The added opening-pool games make outcome prediction **12 points harder** by the
+material floor, while barely moving the majority baseline. Measured against their own
+floors all three models are indistinguishable, and if anything the new ones are
+marginally ahead.
+
+The same correction applies to the conditional ending row: cef1 0.211/0.211 = 1.00 of
+floor, cef2 0.193/0.200 = 0.97, cef3@7000 0.198/0.200 = 0.99. A spread of three points
+of floor-relative accuracy, not the collapse I described.
+
+**What survives from that entry:** `endgame_20` did fall (0.058 -> 0.036 -> 0.029) and
+the collapse metrics did worsen (distinct classes predicted 179 -> 131 -> 75). Those
+are unconditional-argmax quantities, already established to be decision-rule artifacts,
+and they are also sensitive to the true-endgame rate which rose 22.1% -> 25.6% with the
+corpus change. I am not claiming they are fine -- only that they are not evidence for
+the `w_now` story I told.
+
+**What this means for the plan.** cef3 is not broken and does not need further
+troubleshooting: it matches cef1 relative to its floor AND represents material far
+better (NOW12 ~0.90+ against the 0.425 a probe got from cef1's codes). The concepts are
+good enough to build the geometry on, which is the actual deliverable.
+
+**Lesson, worth keeping.** A floor that does not move is not evidence the task did not
+get harder -- it may be the wrong floor. Every cross-corpus comparison in this project
+should quote the material floor, which is the baseline all the other claims are already
+measured against, not the majority class.
