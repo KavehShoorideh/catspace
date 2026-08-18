@@ -75,6 +75,15 @@ class ConceptEvent(ConceptCapture):
         # individually easy.
         self.mat_body = nn.Sequential(nn.Linear(d, hidden), nn.GELU())
         self.ev_counts = nn.Linear(hidden, N_EV * N_CLASS * N_COUNT)
+        # CURRENT material, read back out of the concepts. Measured on cef1: a linear probe
+        # recovers all twelve counts of the board ALREADY IN FRONT OF IT only 42.5% of the time
+        # (global codes alone 3.8%, square codes alone 35.6%) -- so the quantiser discards piece
+        # identity even though 416 bits are available for 17.2 bits of material. Capacity gives
+        # the codes room to keep it; this term gives them a reason. Labels are free: they are
+        # just the board. It is also a ceiling-raiser, since future material cannot be predicted
+        # better than present material is represented.
+        self.now_body = nn.Sequential(nn.Linear(d, hidden), nn.GELU())
+        self.now_counts = nn.Linear(hidden, N_CLASS * N_COUNT)
 
     def predict_events(self, zq):
         b = self.ev_body(zq); n = len(zq)
@@ -82,6 +91,10 @@ class ConceptEvent(ConceptCapture):
                 self.ev_sq(b).view(n, N_EV, 64),
                 self.ev_mover(b).view(n, N_EV, N_PIECE),
                 self.ev_victim(b).view(n, N_EV, N_PIECE))
+
+    def predict_now(self, zq):
+        """-> (B, 12, N_COUNT) logits over the count of each piece class ON THE BOARD NOW."""
+        return self.now_counts(self.now_body(zq)).view(len(zq), N_CLASS, N_COUNT)
 
     def predict_material(self, zq):
         """-> (B, N_EV, 12, N_COUNT) logits over the count of each piece class after each event."""
@@ -119,6 +132,8 @@ def build_step(args, dev):
     r_eg = np.where(res_cls >= 0, ce_np[res_cls.clip(0)], -1).astype(np.int64)
     r_out = np.where(res_cls >= 0, co_np[res_cls.clip(0)], -1).astype(np.int64)
 
+    now_cnt = np.stack([(tr.tok == t).sum(1) for t in range(1, 13)], 1).astype(np.int64)
+    NOW = torch.from_numpy(now_cnt)
     TOK = torch.from_numpy(tr.tok); GLB = torch.from_numpy(tr.glob)
     EKI = torch.from_numpy(ev["ev_type"].astype(np.int64))
     ESQ = torch.from_numpy(ev["ev_sq"].astype(np.int64))
@@ -179,6 +194,8 @@ def build_step(args, dev):
         tgt_c = ECN[rt].to(dev)                                  # (B, N_EV, 12)
         l_mat = capture_ce(mc.reshape(-1, N_COUNT), tgt_c.reshape(-1))
 
+        l_now = capture_ce(model.predict_now(zq).reshape(-1, N_COUNT), NOW[rt].to(dev).reshape(-1))
+
         r_l, e_l, o_l = model.predict_resolution(zq)
         l_res, res_parts = factorized_resolution_ce(
             r_l, e_l, o_l, RCH[rt].to(dev), REG[rt].to(dev), ROT[rt].to(dev), eg_weight=eg_w)
@@ -193,8 +210,8 @@ def build_step(args, dev):
                 d = (za - zb).pow(2).mean(-1)
                 l_pers = (qm * d).sum() / qm.sum().clamp(min=1)
 
-        loss = (args.w_ev * l_ev + args.w_mat * l_mat + args.w_res * l_res
-                + args.w_pers * l_pers + vl)
+        loss = (args.w_ev * l_ev + args.w_mat * l_mat + args.w_now * l_now
+                + args.w_res * l_res + args.w_pers * l_pers + vl)
         opt.zero_grad(); loss.backward(); opt.step()
 
         with torch.no_grad():
@@ -211,6 +228,8 @@ def build_step(args, dev):
                 if bool(lm.any()) else float("nan")
             kacc = float((ki[:, 0].argmax(-1)[m1] == EKI[rt, 0].to(dev)[m1]).float().mean()) \
                 if bool(m1.any()) else float("nan")
+            pn = model.predict_now(zq).argmax(-1)
+            now_all = float((pn == NOW[rt].to(dev)).all(-1).float().mean())
             ps = [torch.bincount(ids[:, h], minlength=args.codes).float()
                   for h in range(args.heads)]
             perp = float(np.mean([float(torch.exp(-((p / p.sum()) *
@@ -223,13 +242,14 @@ def build_step(args, dev):
                   f"({el/max(1,step):.3f}s/step) | loss {float(loss.detach()):.3f} "
                   f"ev {float(l_ev.detach()):.3f} mat {float(l_mat.detach()):.3f} "
                   f"res {float(l_res.detach()):.3f} | ev_sq {sq_acc:.3f} kind {kacc:.3f} "
-                  f"| count {cnt_acc:.3f} ALL12 {mat_all:.3f} | perp {perp:.1f} "
+                  f"| count {cnt_acc:.3f} ALL12 {mat_all:.3f} NOW12 {now_all:.3f} | perp {perp:.1f} "
                   f"sq_perp {sq_perp:.1f}", flush=True)
         return {"loss": float(loss.detach()), "ev": float(l_ev.detach()),
                 "mat": float(l_mat.detach()), "res": float(l_res.detach()),
                 "pers": float(l_pers.detach()), "vq": float(vl.detach()),
-                "ev_sq_acc": sq_acc, "kind_acc": kacc, "count_acc": cnt_acc,
-                "mat_all12": mat_all, "perp": perp, "sq_perp": sq_perp, **res_parts}
+                "now": float(l_now.detach()), "ev_sq_acc": sq_acc, "kind_acc": kacc,
+                "count_acc": cnt_acc, "mat_all12": mat_all, "now_all12": now_all,
+                "perp": perp, "sq_perp": sq_perp, **res_parts}
 
     return net, step_fn
 
@@ -251,7 +271,13 @@ def main():
     ap.add_argument("--w-mat", type=float, default=2.0,
                     help="material left after each event -- the term this run exists for")
     ap.add_argument("--w-res", type=float, default=1.0)
-    ap.add_argument("--w-pers", type=float, default=0.25)
+    ap.add_argument("--w-now", type=float, default=2.0,
+                    help="predict the CURRENT board's material from the concepts. cef1 could "
+                         "only recover it 42.5%% of the time, which caps everything downstream.")
+    ap.add_argument("--w-pers", type=float, default=0.0,
+                    help="quiet-ply persistence. DEFAULT 0: persistence rewards codes that do "
+                         "not change, while material changes at every capture, so the two are "
+                         "plausibly in direct tension. Kaveh 2026-08-18 -- test by removal.")
     ap.add_argument("--cb-beta", type=float, default=0.999)
     ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--test-frac", type=float, default=0.1)
