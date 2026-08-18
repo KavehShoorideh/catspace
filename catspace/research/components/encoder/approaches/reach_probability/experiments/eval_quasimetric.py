@@ -64,9 +64,20 @@ def main():
         lo = zq.min(-1, keepdim=True).values; hi = zq.max(-1, keepdim=True).values
         return (zq - lo) / (hi - lo).clamp(min=1e-5)
 
-    net = ConceptQuasimetric(d_state, d_iqe=A["d_iqe"], components=A["components"],
-                             hidden=A["hidden"], leak_beta=A["leak_beta"]).to(dev)
+    # which geometry is this? clf* is the length-only field (3-layer projection, B head
+    # dropped); cqm* is the earlier 2-layer one. Read it off the checkpoint rather than
+    # assuming, so both stay scoreable by the same instrument.
+    is_len = any(k.startswith("proj.4") for k in ck["state_dict"])
+    if is_len:
+        from catspace.research.components.encoder.approaches.reach_probability.experiments \
+            .concept_length_field import ConceptLengthField
+        net = ConceptLengthField(d_state, d_iqe=A["d_iqe"], components=A["components"],
+                                 hidden=A["hidden"], leak_beta=A["leak_beta"]).to(dev)
+    else:
+        net = ConceptQuasimetric(d_state, d_iqe=A["d_iqe"], components=A["components"],
+                                 hidden=A["hidden"], leak_beta=A["leak_beta"]).to(dev)
     net.load_state_dict(ck["state_dict"]); net.eval()
+    print(f"  [geometry: {'LENGTH-ONLY (clf)' if is_len else 'QRL (cqm)'}]")
 
     tr = T.build(n_human=0, n_sf=A["games"], seed=A["seed"], cache=True,
                  max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])

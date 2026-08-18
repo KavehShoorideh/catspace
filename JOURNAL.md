@@ -14395,3 +14395,77 @@ the pre-registered comparison for it: 43.3% against 42.0% random and 66.7%
 material-greedy. I do not expect training alone to close a 25-point gap, given the +0.096
 within-parent prior, but that is a prediction and it will be measured rather than
 asserted.
+
+---
+
+## 2026-08-18 10:30 — B head dropped (verified redundant); length-only field; and the crux negative
+
+**Kaveh:** "get rid of the B head is what I'm saying... we already have a committor head
+prediction, so we don't even need that. Devote the entire thing to the length head."
+
+**The premise was verified before building.** Same held-out probe, same 414 classes:
+
+```
+cef3's EXISTING resolution head    accuracy 0.603   top5 0.816
+csg1's B block, trained for it     accuracy 0.616   top5 0.790
+```
+
+The B block was spending half the geometry's capacity rebuilding a committor the concept
+model already carries, and losing top-5 doing it. Dropped.
+
+**`clf1`** -- one IQE, all of it length, QRL plus a ply-calibration term. 20,000 steps in
+**11.8 minutes** at 0.035 s/step.
+
+```
+              clf1 (length-only)   cqm1 (earlier QRL)
+adjacent d            0.654               0.684
+odometer rank        +0.748              +0.740
+fitted slope          0.320               0.265   units/ply
+asymmetry             9.15x               8.65x   (97.9% of pairs)
+triangle violations   0.000%              0.000%
+self-distance         0                   0
+syzygy DTZ         -0.23/-0.28         -0.15/-0.16
+```
+
+Essentially unchanged, which is the correct reading: **cqm1 was ALREADY length-only** --
+the split was csg1's addition -- so removing it returns to that design and confirms
+nothing was lost. The ply-calibration term pulled the odometer slightly more linear
+(slope 0.265 -> 0.320) but not to 1.0, and QRL is arguably right to resist: positions 24
+plies apart in a PLAYED game genuinely are fewer than 24 OPTIMAL plies apart, and
+calibrating to the played path would teach the on-policy distance QRL exists to avoid.
+
+**THE CRUX NEGATIVE, now measured four independent ways.** The winning-track test --
+Stockfish scores every legal move, a move is on-track if it does not drop the outcome
+category, only positions where the distinction exists are scored:
+
+```
+                                            on winning track   (random)
+cef3's own committor -- THE PROPOSED VALUE        49.3%         52.1%
+csg1's B-block committor                          43.3%         42.0%
+cqm1 QRL geometry                                 44.2%         42.0%
+material-greedy                                58.7 - 66.7%
+```
+
+**Every learned component in this stack is at chance at choosing between sibling moves,
+and cef3's committor is BELOW random.** A one-line "capture the most valuable piece"
+rule beats all three by 10-25 points. Off-track picks give up 0.63 win probability, so
+these are not near-misses.
+
+**The premise "we already have a committor" is true for the wrong quantity.** cef3's head
+scores 0.603 on 414-class resolution against a 0.275 base -- a large, real,
+between-position signal. It does not transfer to within-position choice at all. Those are
+different quantities and this project has been reporting the first while needing the
+second.
+
+**Mechanism, consistent across all four results.** Siblings differ by one move, so their
+concept states differ in roughly 2 codes out of 80 (16 global + 64 square). The
+committor's decision surface is dominated by coarse position type -- piece-down endgame
+versus balanced middlegame -- which is exactly what a 414-class resolution target
+rewards. Nothing in the training stack has ever asked any component to separate two
+positions one move apart.
+
+**This is the thing to fix, and it is upstream of the geometry.** No arrangement of
+rulers or poles over a state that cannot distinguish a good move from a blunder will rank
+moves, because the information is absent before the geometry is reached. The earlier
+within-parent measurement in `concept_state_field.py` (+0.096 spearman, sibling spread
+22% of truth) said this, and it should have been the prior for everything built since.

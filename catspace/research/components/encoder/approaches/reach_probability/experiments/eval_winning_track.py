@@ -43,7 +43,7 @@ def wp_of(score, mover_pov=True):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--model", choices=["csg", "cqm"], default="csg")
+    ap.add_argument("--model", choices=["csg", "cqm", "cef"], default="csg")
     ap.add_argument("--ckpt", default="artifacts/experiments/csg1_latest.pt")
     ap.add_argument("--concept-ckpt", default="artifacts/experiments/cef3_step10000.pt")
     ap.add_argument("--codes", default="data/derived/concept_codes_cef3_6545146.npz")
@@ -90,10 +90,26 @@ def main():
                                 torch.from_numpy(gb.astype(np.float32)).to(dev))
         return z
 
-    qk = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    QA = qk["args"] if isinstance(qk.get("args"), dict) else vars(qk["args"])
+    if args.model == "cef":
+        # THE PROPOSED SYSTEM: no geometry at all for value -- score children with the concept
+        # model's OWN resolution head, which is the committor we already have. Kaveh 2026-08-18:
+        # "we already have a committor head prediction, so we don't even need that."
+        out_of0 = np.array([v.split("=")[-1] if "=" in v else v.split(":")[-1] for v in vocab])
+        ww = torch.from_numpy((out_of0 == "W").astype(np.float32)).to(dev)
+        wb = torch.from_numpy((out_of0 == "L").astype(np.float32)).to(dev)
+
+        @torch.no_grad()
+        def score(zc, white_to_move):
+            p = torch.softmax(enc.resolution_logits(zc), -1)
+            return (p * (ww if white_to_move else wb)).sum(1).cpu().numpy()
+        qk = None
+    else:
+        qk = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+    QA = (qk["args"] if isinstance(qk.get("args"), dict) else vars(qk["args"])) if qk else {}
     d_in = A["heads"] * 32 + 64 * 32
-    if args.model == "csg":
+    if args.model == "cef":
+        pass
+    elif args.model == "csg":
         from catspace.research.components.encoder.approaches.reach_probability.experiments \
             .concept_split_geometry import ConceptSplitGeometry
         net = ConceptSplitGeometry(d_in, d_state=QA["d_state"], components=QA["components"],
