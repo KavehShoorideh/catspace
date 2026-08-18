@@ -13997,3 +13997,63 @@ and a 4x larger square codebook — wide codebooks suit the GPU. ~80 min for 20k
 objective term) plus removes persistence, against the standing "bundle well-justified
 changes" rule. If it wins, attribution needs a follow-up; if the material metrics move
 and nothing else does, the attribution is already implied by the NOW12 curve.
+
+---
+
+## 2026-08-18 03:10 — cef2 NEGATIVE: perfecting the representation broke the prediction
+
+**cef2 finished** — 20,000 steps, 70.5 min on MPS at 0.211 s/step (16x32 global +
+64x256 square codes, 6.5M positions, `w_now 2.0`, persistence off).
+
+**The representation goal was met completely.** NOW12 — all twelve CURRENT piece
+counts correct — reached **1.000** at the final step, against the 0.425 a linear probe
+achieved on cef1's codes. The concepts now carry the board's material exactly. The
+bottleneck identified in the horizon sweep is gone.
+
+**And the task got worse.** Verdicts from the unmodified instrument, held-out test:
+
+```
+                        cef1 (own corpus)   cef2 (own corpus)
+endgame_20                    0.058               0.036
+resolution_20                 0.690               0.666
+conditional: name ending      0.211               0.193
+   its material floor         0.211               0.200
+   -> relative to floor       1.00                0.97
+conditional: name outcome     0.803               0.682
+predicted-endgame rate        0.097               0.048   (true 0.221 / 0.256)
+distinct classes predicted     179                 131
+```
+
+**Ruled out: the corpus did not get harder.** The added 16,000 opening-pool games
+barely move the label difficulty at this horizon — outcome majority baseline 39.0% ->
+41.6%, distinct endings present 302 -> 309, signatures 201 -> 203. The regression is
+real, not a distribution artifact.
+
+**Diagnosis.** `w_now` was set to 2.0, equal to the event and material terms, so a
+third of the gradient went into autoencoding the present. `l_now` is easy to drive to
+zero, and the codes reorganised to do exactly that, losing the predictive structure
+the resolution head needs. **I optimised the representation for the diagnostic metric
+and the actual task paid for it** -- the collapse metrics say so directly: cef2 names
+an endgame on 4.8% of rows where cef1 managed 9.7%, and uses 131 distinct classes
+where cef1 used 179.
+
+**Correction (cef3, running).** `w_now` 2.0 -> 0.25 and persistence restored 0 ->
+0.25, capacity and data unchanged. Also added a LIVE `eg_cond` metric to the training
+log: cef2 regressed on conditional ending naming for 70 minutes and the log showed
+none of it, which is a monitoring failure as much as a modelling one.
+
+**Cost note.** cef3 runs at 0.742 s/step against cef2's 0.211 -- persistence adds two
+extra encodes, and the VQ loop is Python-sequential over heads, so cef3 makes 48 VQ
+calls per step (16 heads x 3 encodes) where cef2 made 16. 4.1 h for 20k steps.
+Checkpoints every 1,000 steps, so an early one can be taken if the curve is clearly
+good.
+
+**Stage 2 machinery landed and tested** (`test_concept_quasimetric.py`, all passing on
+CPU in seconds, no corpus needed): IQE self-distance exactly 0, asymmetry, the
+triangle inequality, and the DIRECTION convention (d(high->low)=0 "already reached",
+d(low->high) large "must climb" -- a flipped convention has shipped by accident before
+and makes the geometry run backwards against time). QRL's phi verified to have the
+intended shape at OUR horizon: per-element push 0.856 at d=0.5, exactly 0.500 at the
+knee, 0.063 at d=150, a 13.6x decay across 0-150 plies. Dual ascent raises lambda
+under violation and relaxes it when satisfied. The codebook gather reconstructs the
+concept state exactly, which is what lets the frozen trunk stay out of the loop.

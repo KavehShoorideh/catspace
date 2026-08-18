@@ -51,7 +51,10 @@ def main():
     tr = T.build(n_human=0, n_sf=A["games"], seed=A["seed"], cache=True,
                  max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
     n = len(tr.tok)
-    cl = np.load(paths.derived(f"capture_labels_{N_CAP}_{n}.npz"))
+    is_event = any(k.startswith("ev_kind") for k in ck["state_dict"])
+    # capture labels exist only for corpora built for the capture objective; an event model does
+    # not use them, so requiring the file would make the instrument unrunnable for no reason.
+    cl = None if is_event else np.load(paths.derived(f"capture_labels_{N_CAP}_{n}.npz"))
     lz = np.load(paths.derived(f"tb_entry_5-4-3men_{n}.npz"), allow_pickle=True)
     vocab = [str(x) for x in lz["vocab"]]
     res_cls, plies, men = lz["tb_class"].astype(np.int64), lz["tb_plies"], lz["men"]
@@ -68,12 +71,18 @@ def main():
         .concept_capture_field import factor_vocab
     factored = any(k.startswith("res_reach") for k in ck["state_dict"])
     cr, ce, co, egs = factor_vocab(vocab)
-    net = ConceptCapture(d_model=A["d_model"], heads=A["heads"], codes=A["codes"],
+    if is_event:
+        from catspace.research.components.encoder.approaches.reach_probability.experiments \
+            .concept_event_field import ConceptEvent as _Cls
+    else:
+        _Cls = ConceptCapture
+    net = _Cls(d_model=A["d_model"], heads=A["heads"], codes=A["codes"],
                          square_codes=A["square_codes"], hidden=A["hidden"],
                          n_res=len(vocab), factored=factored, n_eg=len(egs),
                          cls_reach=cr, cls_eg=ce, cls_out=co)
     net.load_state_dict(ck["state_dict"]); net.eval()
-    print(f"  [head: {'SPLIT reach x ending' if factored else 'FLAT 401-way'}]")
+    print(f"  [head: {'SPLIT reach x ending' if factored else 'FLAT 401-way'}"
+          f"{' | EVENT model -- capture rows N/A' if is_event else ''}]")
 
     def run(rows):
         sq, vi, at, rz = [], [], [], []
@@ -83,9 +92,13 @@ def main():
                 zq, _, _, _ = net.encode(
                     torch.from_numpy(tr.tok[r].astype(np.int64)),
                     torch.from_numpy(tr.glob[r].astype(np.float32)))
-                s, v, t_ = net.predict_captures(zq)
-                sq.append(s.argmax(-1).numpy()); vi.append(v.argmax(-1).numpy())
-                at.append(t_.argmax(-1).numpy())
+                if is_event:
+                    z0 = np.zeros((len(r), N_CAP), np.int64) - 1
+                    sq.append(z0); vi.append(z0); at.append(z0)
+                else:
+                    s, v, t_ = net.predict_captures(zq)
+                    sq.append(s.argmax(-1).numpy()); vi.append(v.argmax(-1).numpy())
+                    at.append(t_.argmax(-1).numpy())
                 rz.append(net.resolution_logits(zq).argmax(-1).numpy())
         return (np.concatenate(sq), np.concatenate(vi), np.concatenate(at),
                 np.concatenate(rz))
@@ -93,15 +106,19 @@ def main():
     rng = np.random.default_rng(0)
     base = (spl == args.split) & (res_cls >= 0)
     base_tr = (spl == 0) & (res_cls >= 0)      # material floor is FITTED ON TRAIN
-    rows = np.flatnonzero(base & (cl["cap_sq"][:, 0] >= 0))
-    rows = rows[rng.choice(len(rows), min(args.n, len(rows)), replace=False)]
-    P_sq, P_vi, P_at, _ = run(rows)
     got = {}
-    got["next_sq"] = float((P_sq[:, 0] == cl["cap_sq"][rows, 0]).mean())
-    got["next_vic"] = float((P_vi[:, 0] == cl["cap_vic"][rows, 0]).mean())
-    got["next_att"] = float((P_at[:, 0] == cl["cap_att"][rows, 0]).mean())
-    m5 = cl["cap_sq"][rows, N_CAP - 1] >= 0
-    got["fifth_sq"] = float((P_sq[m5, N_CAP - 1] == cl["cap_sq"][rows[m5], N_CAP - 1]).mean())
+    if is_event:
+        rows = np.flatnonzero(base)
+        rows = rows[rng.choice(len(rows), min(args.n, len(rows)), replace=False)]
+    else:
+        rows = np.flatnonzero(base & (cl["cap_sq"][:, 0] >= 0))
+        rows = rows[rng.choice(len(rows), min(args.n, len(rows)), replace=False)]
+        P_sq, P_vi, P_at, _ = run(rows)
+        got["next_sq"] = float((P_sq[:, 0] == cl["cap_sq"][rows, 0]).mean())
+        got["next_vic"] = float((P_vi[:, 0] == cl["cap_vic"][rows, 0]).mean())
+        got["next_att"] = float((P_at[:, 0] == cl["cap_att"][rows, 0]).mean())
+        m5 = cl["cap_sq"][rows, N_CAP - 1] >= 0
+        got["fifth_sq"] = float((P_sq[m5, N_CAP-1] == cl["cap_sq"][rows[m5], N_CAP-1]).mean())
 
     # resolution at 20 plies, whole label and endgame-only
     band = base & (plies >= 18) & (plies <= 22) & (men > 5)
@@ -116,7 +133,8 @@ def main():
     print(f"\n  ACCEPTANCE INSTRUMENT — {args.ckpt.split('/')[-1]} step {ck.get('step')}, "
           f"split {args.split}, n={len(rows):,}\n")
     print(f"  {'claim':<26} {'result':>8} {'baseline':>9} {'delta':>8}   verdict")
-    order = ["next_sq", "next_att", "next_vic", "fifth_sq", "endgame_20", "resolution_20"]
+    order = (["endgame_20", "resolution_20"] if is_event else
+             ["next_sq", "next_att", "next_vic", "fifth_sq", "endgame_20", "resolution_20"])
     npass = 0
     for k in order:
         d = got[k] - BASELINE[k]

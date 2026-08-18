@@ -230,6 +230,12 @@ def build_step(args, dev):
                 if bool(m1.any()) else float("nan")
             pn = model.predict_now(zq).argmax(-1)
             now_all = float((pn == NOW[rt].to(dev)).all(-1).float().mean())
+            # CONDITIONAL ENDING: given the game reaches a tablebase, is the ending named?
+            # cef2 regressed here (0.211 -> 0.193 against its floor) while NOW12 went to 1.000,
+            # and the log showed none of it. Watch the thing that actually matters.
+            rm = REG[rt].to(dev) >= 0
+            eg_cond = float((e_l.argmax(-1)[rm] == REG[rt].to(dev)[rm]).float().mean()) \
+                if bool(rm.any()) else float("nan")
             ps = [torch.bincount(ids[:, h], minlength=args.codes).float()
                   for h in range(args.heads)]
             perp = float(np.mean([float(torch.exp(-((p / p.sum()) *
@@ -242,13 +248,15 @@ def build_step(args, dev):
                   f"({el/max(1,step):.3f}s/step) | loss {float(loss.detach()):.3f} "
                   f"ev {float(l_ev.detach()):.3f} mat {float(l_mat.detach()):.3f} "
                   f"res {float(l_res.detach()):.3f} | ev_sq {sq_acc:.3f} kind {kacc:.3f} "
-                  f"| count {cnt_acc:.3f} ALL12 {mat_all:.3f} NOW12 {now_all:.3f} | perp {perp:.1f} "
+                  f"| count {cnt_acc:.3f} ALL12 {mat_all:.3f} NOW12 {now_all:.3f} "
+                  f"eg_cond {eg_cond:.3f} | perp {perp:.1f} "
                   f"sq_perp {sq_perp:.1f}", flush=True)
         return {"loss": float(loss.detach()), "ev": float(l_ev.detach()),
                 "mat": float(l_mat.detach()), "res": float(l_res.detach()),
                 "pers": float(l_pers.detach()), "vq": float(vl.detach()),
                 "now": float(l_now.detach()), "ev_sq_acc": sq_acc, "kind_acc": kacc,
                 "count_acc": cnt_acc, "mat_all12": mat_all, "now_all12": now_all,
+                "eg_cond": eg_cond,
                 "perp": perp, "sq_perp": sq_perp, **res_parts}
 
     return net, step_fn
@@ -271,10 +279,10 @@ def main():
     ap.add_argument("--w-mat", type=float, default=2.0,
                     help="material left after each event -- the term this run exists for")
     ap.add_argument("--w-res", type=float, default=1.0)
-    ap.add_argument("--w-now", type=float, default=2.0,
+    ap.add_argument("--w-now", type=float, default=0.25,
                     help="predict the CURRENT board's material from the concepts. cef1 could "
                          "only recover it 42.5%% of the time, which caps everything downstream.")
-    ap.add_argument("--w-pers", type=float, default=0.0,
+    ap.add_argument("--w-pers", type=float, default=0.25,
                     help="quiet-ply persistence. DEFAULT 0: persistence rewards codes that do "
                          "not change, while material changes at every capture, so the two are "
                          "plausibly in direct tension. Kaveh 2026-08-18 -- test by removal.")
