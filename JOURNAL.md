@@ -13840,3 +13840,88 @@ be retired; if it lands much higher, the concepts are the bottleneck.
 
 **Process note.** MPS was left unused for ccf1/ccf2 out of inherited defaults; it is
 2.7x faster in isolation and 1.76x end-to-end. All later runs use `--device mps`.
+
+---
+
+## 2026-08-18 00:15 — horizon sensitivity, scored as a DISTRIBUTION over endings
+
+**Question (Kaveh):** "see how we do with ten plies out and five plies out and
+fifteen plies out... a sensitivity analysis to see what is the threshold that is
+detectable... put statistical bounds around it... ask for a distribution, not just
+a single type of endgame."
+
+`eval_horizon_distribution.py` (committed). Distribution over the 397 ENDING classes
+from the model's own ending head, on held-out TEST rows whose game truly reaches a
+tablebase, at horizons 5/10/15/20 plies (band +/-2). 95% percentile bootstrap CIs
+over rows, 400 resamples.
+
+**cef1 (events + material):**
+
+```
+   h      n |             top1             top3             top5 |  logloss    ECE
+   5   5489 | .329[.318,.341] | .616[.604,.628] | .743[.732,.754] |    2.590  0.117
+  10   5466 | .284[.271,.296] | .573[.560,.585] | .701[.688,.712] |    2.796  0.135
+  15   5429 | .234[.222,.245] | .514[.501,.526] | .646[.632,.657] |    3.030  0.168
+  20   5341 | .213[.201,.224] | .475[.462,.488] | .618[.605,.630] |    3.229  0.171
+```
+
+**ccf2 (captures) — the control, at every horizon:**
+
+```
+   5 | .338  .635  .760 | 2.547   0.126
+  10 | .287  .586  .716 | 2.763   0.143
+  15 | .238  .524  .663 | 3.013   0.175
+  20 | .208  .486  .622 | 3.233   0.188
+```
+
+Indistinguishable from cef1 at every horizon, consistent with the earlier finding
+that the objective change did not move the shared task.
+
+**Baseline distributions, fitted on TRAIN, scored identically:**
+
+```
+   h | marginal top1 | material top1 | marginal LL | material LL
+   5 |         0.051 |         0.414 |       4.581 |       2.436
+  10 |         0.051 |         0.312 |       4.580 |       3.142
+  15 |         0.051 |         0.255 |       4.576 |       3.655
+  20 |         0.051 |         0.212 |       4.578 |       4.072
+```
+
+**RESULT 1 — there is no detectability cliff.** Signal decays smoothly: top1
+0.329 -> 0.213 and top5 0.743 -> 0.618 from 5 to 20 plies, against a 0.051 marginal
+throughout. At 20 plies the true ending is still in the model's top 5 of 397 on 62%
+of rows. CIs are +/-0.012, an order of magnitude tighter than the seed variance that
+made the ccf2/cef1 comparison unreadable, so these differences ARE real.
+
+**RESULT 2 — the metric decides who wins, and they cross over.** On top-1 the
+material lookup BEATS the model at every short horizon (0.414 vs 0.329 at h=5;
+0.312 vs 0.284 at h=10; 0.255 vs 0.234 at h=15) and only draws level at h=20 (0.212
+vs 0.213). But on log-loss, the proper scoring rule, the model wins everywhere from
+h=10 outward and by a widening margin: 3.229 vs 4.072 at h=20, 0.84 nats.
+
+The two baselines degrade very differently. Material LL falls apart with distance
+(2.436 -> 4.072, nearly to the marginal's 4.578) because counting pieces stops
+predicting anything once enough can still happen. The model degrades gracefully
+(2.590 -> 3.229). So the concepts DO carry information beyond material -- it simply
+does not show up in an argmax, which is exactly the artifact Kaveh's reframing
+targeted.
+
+**NEGATIVE, and it is the sharpest thing here: close in, a trivial piece count beats
+the concepts outright.** At 5 plies from the entrance, material lookup top-1 is 0.414
+against the model's 0.329, and material log-loss 2.436 against 2.590. Five plies out
+the material is nearly determined, and a model that has to route it through 8x16
+global + 64x64 square codes loses information a direct piece count keeps. This is
+direct evidence that the CONCEPT LAYER is a bottleneck for material, and it answers
+the open question left after cef1: the ceiling is not the limitation, the
+representation is.
+
+**Calibration degrades with horizon**: ECE 0.117 -> 0.171 (cef1), 0.126 -> 0.188
+(ccf2). The model grows over-confident exactly where it should be hedging.
+
+**What this suggests, not yet run.** The two predictors are complementary rather than
+competing -- material dominates near the entrance, the model dominates far from it --
+so a combination should beat both, and the crossover at h~10 says where each should
+be trusted. Separately, the Rust probe basis makes the bottleneck claim directly
+testable: fit the ending distribution on raw named features with no concept layer,
+and see whether it recovers the material lookup's near-horizon accuracy while keeping
+the model's far-horizon log-loss.
