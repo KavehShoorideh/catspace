@@ -13925,3 +13925,75 @@ be trusted. Separately, the Rust probe basis makes the bottleneck claim directly
 testable: fit the ending distribution on raw named features with no concept layer,
 and see whether it recovers the material lookup's near-horizon accuracy while keeping
 the model's far-horizon log-loss.
+
+---
+
+## 2026-08-18 01:20 — the concept bottleneck, measured and then removed (cef2, IN FLIGHT)
+
+**Diagnosis first.** The horizon sweep showed a trivial piece count beating the
+concepts five plies from a tablebase entrance (top-1 0.414 vs 0.329), which pointed
+at the representation rather than the task. Tested directly by probing whether the
+concepts encode the material **already on the board** — a quantity that is fully
+observable, so any failure is pure representation loss:
+
+```
+bits available: global 8x16 = 32 bits | square 64x64 = 384 bits
+entropy of the 12 current material counts: 17.2 bits (sum of marginals)
+
+linear probe from the codes -> the 12 CURRENT counts   per-count   ALL 12 right
+  global codes only                                       0.738        0.038
+  square codes only                                       0.917        0.356
+  both                                                    0.933        0.425
+```
+
+**416 bits available for 17.2 bits of material, and the codes reproduce the current
+board's material only 42.5% of the time.** Not a bit-capacity problem — the quantiser
+discards piece identity. It also caps everything downstream: future material cannot
+be predicted better than present material is represented, and cef1's future-material
+number was 0.123.
+
+**Response (Kaveh's call on all three axes).**
+
+* **Capacity, codebooks only** so the attribution stays clean — the trunk already
+  sees the board. global 8x16 -> 16x32 (32 -> 80 bits); square 64 -> 256 codes
+  (384 -> 512 bits). 4.6M -> 7.9M params, trunk untouched at d_model 192 / 4 layers.
+* **Data** 4,000 -> 20,000 SF opening games, all 45,906 piece-down games kept.
+  4,652,261 -> 6,545,146 positions; endgame_20 rows 53,076 -> 77,276 (+46%).
+  Pipeline timed: corpus 29s, transitions 16s, syzygy WDL 146s, tb entry 15s, event
+  labels 107s. Disk steady at 14G free; tb probe cache confirmed still in DELETE mode,
+  so the WAL bug that filled this disk twice has not recurred.
+* **New term `w_now`** — predict the CURRENT board's material from the concept
+  vector. Labels are free. Capacity gives the codes room to keep material; nothing in
+  the old loss gave them a reason to.
+* **Persistence OFF** (0.25 -> 0), Kaveh's hypothesis tested by removal: persistence
+  rewards codes that do not change, material changes at every capture, so the two are
+  plausibly in direct tension.
+
+**RESULT (training-batch metric, run in flight at step 4,000/20,000).** NOW12 — all
+twelve CURRENT counts correct — against the 0.425 the probe achieved on cef1:
+
+```
+  step   500   0.042
+  step  1000   0.115
+  step  1500   0.438     <- already past cef1's 0.425
+  step  2000   0.740
+  step  3000   0.964
+  step  4000   0.932
+```
+
+**The representation bottleneck is removed.** The concepts now carry the board's
+material essentially exactly, where before they lost more than half of it. Codebooks
+are healthy at the new size: global perplexity ~26 of 32, square ~203 of 256.
+
+**Not yet transferred.** ALL12 — all twelve counts at the FIFTH FUTURE event — is
+0.015-0.025 at step 4,000, no better than cef1. Representing the present is solved;
+predicting the future is a separate question and the rest of the run decides it. No
+claim either way until the held-out instrument is run.
+
+**Speed.** 0.239 s/step on MPS, FASTER than cef1's 0.287 despite 1.7x the parameters
+and a 4x larger square codebook — wide codebooks suit the GPU. ~80 min for 20k steps.
+
+**Caveat on comparability.** cef2 changes three things at once (capacity, data,
+objective term) plus removes persistence, against the standing "bundle well-justified
+changes" rule. If it wins, attribution needs a follow-up; if the material metrics move
+and nothing else does, the attribution is already implied by the NOW12 curve.
