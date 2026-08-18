@@ -14339,3 +14339,59 @@ the objective is the missing term, and the labels for it already exist for 65,90
 constrain d(s -> our-pole) against the outcome-conditioned target and keep the existing
 adjacency constraint -- then re-run this exact instrument. The comparison is
 pre-registered by this entry: AUC 0.655, committor 47.1%, SF differential -0.204/-0.007.
+
+---
+
+## 2026-08-18 09:30 — the winning-track test: between-position skill does not become within-position skill
+
+**Kaveh:** "there should be a bunch of moves that stockfish says maintains your winning
+chances, and then some moves that basically lose the winning chances... how often is the
+top move given by our field inside of the winning track?"
+
+A better instrument than exact-move agreement, which punishes a field for picking a
+different GOOD move. `eval_winning_track.py` (committed): Stockfish scores EVERY legal
+move (multipv = all, depth 10, WDL on), the track is defined on OUTCOME CATEGORY --
+WIN >= 0.75, DRAW, LOSS <= 0.25 win probability -- and a move is on-track if it does not
+DROP the category the best move achieves. Only positions where the distinction EXISTS
+are scored: at least one move keeps the result and at least one throws it away.
+
+```
+120 held-out positions, 29.6 legal moves each, 42.0% of them on-track
+
+  method                     on winning track
+  cqm1 (pure QRL)                  44.2%
+  csg1 (split A/B, step 1000)      43.3%
+  random legal move                42.0%
+  material-greedy                  66.7%
+
+  win probability given up when our pick is off-track   0.55 - 0.59
+```
+
+**RESULT: both geometries are at chance on within-parent move choice, and a one-line
+material rule beats them by 25 points.**
+
+**The important part is that csg1's committor is NOT bad at its own task.** It scores
+0.614 resolution-class accuracy against a 0.275 majority base -- a large, real signal.
+It simply does not convert into ranking SIBLINGS. Between-position accuracy and
+within-position discrimination are different quantities, and every headline number in
+this project so far has been the first kind.
+
+**This was already measured here once, and the earlier work said so.** From
+`concept_state_field.py`'s own docstring: "probe_value_proxy measured the current
+committor at within-parent spearman +0.096 with sibling spread 22% of truth, so this
+design does not inherit a good number; it inherits a bad one and makes the cause
+explicit and measurable." That is exactly what happened, and it should have been my
+prior rather than a surprise.
+
+**Mechanism.** Siblings differ by one move, so their concept states differ in a couple
+of codes out of 16 global + 64 square. The committor separates a piece-down endgame from
+a balanced middlegame far more strongly than it separates this move from that one. And
+the misses are not near-misses: when the pick is off-track it gives up 0.55-0.59 of win
+probability, i.e. it is picking moves that genuinely throw the game away.
+
+**What this does NOT say.** csg1 was at step 1,000 of 20,000 when tested; the committor
+was still climbing (0.614 -> 0.619). The end-of-run number is pending and this entry is
+the pre-registered comparison for it: 43.3% against 42.0% random and 66.7%
+material-greedy. I do not expect training alone to close a 25-point gap, given the +0.096
+within-parent prior, but that is a prediction and it will be measured rather than
+asserted.
