@@ -14582,3 +14582,30 @@ goals -> hindsight reach-field, gated on held-out AUC/calibration beating base r
 child self-consistency (Bellman over legal children; the robotics analog is a learned
 one-step model) -> goal-conditioned self-play with hit/miss retraining, which is the
 "self-play reach-events under adversarial resistance" spec of 8/11.
+
+### Addendum, same morning — miner verdict + the reach-field mechanism validated
+
+**Miner on cef3's vocabulary (engine-free, gates: persist>=4 plies, P(hit<=20)>=0.05,
+base<=0.5, >=500 games):**
+
+```
+GLOBAL atoms   512 candidates    median persistence 1.0 ply    PASS: 0   (0.0%)
+SQUARE atoms  15,608 candidates  median persistence 2.0 plies  PASS: 74  (0.5%)
+```
+
+ZERO global goals. The number that motivated the two-timescale directive is now a
+vocabulary-wide census: the current concepts contain no persistent global predicates at
+all, and only a thin persistent tail among square codes (best: 6.9-ply mean runs,
+recurring in 11k-14k games). cef5's slow heads are not an optimisation -- without them
+there is nothing to aim the burrito plan at.
+
+**Reach-field smoke on those 74 goals** (crf_smoke, CPU, 1.4 min, 1,500 steps):
+
+```
+held-out AUC 0.946   ECE 0.004   (per-goal base rates median 0.102)
+```
+
+The mechanism works immediately and is CALIBRATED -- predicted P(reach) matches realized
+frequency to 0.4%. This is the first working instance of the object Kaveh asked for:
+P(reach concept goal within 20 plies | state), from trajectories alone, no engine, no
+oracle. Its goals are just the wrong ones until cef5's slow vocabulary lands.
