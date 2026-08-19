@@ -60,7 +60,7 @@ class ConceptEvent(ConceptCapture):
     MATERIAL head. Subclassed rather than copied so the encoder cannot silently drift from the
     control run."""
 
-    def __init__(self, *a, hidden=512, **kw):
+    def __init__(self, *a, hidden=512, move_head=False, **kw):
         super().__init__(*a, hidden=hidden, **kw)
         d = self.d_state
         del self.cap_body, self.cap_sq, self.cap_vic, self.cap_att
@@ -84,6 +84,16 @@ class ConceptEvent(ConceptCapture):
         # better than present material is represented.
         self.now_body = nn.Sequential(nn.Linear(d, hidden), nn.GELU())
         self.now_counts = nn.Linear(hidden, N_CLASS * N_COUNT)
+        # MOVE-CHOICE head (Kaveh 2026-08-19: "we have to train our concepts to pick the
+        # stockfish move... right now we are predicting the next five captures, which is similar
+        # but not exactly"). cpl1 measured the frozen ceiling: a linear probe on cef3's codes
+        # reaches 11.4%% top-1 because nothing upstream ever needed sibling-distinguishing
+        # features. This head exists so the PL top-1 gradient reaches the TRUNK AND THE
+        # CODEBOOKS -- the vocabulary itself must earn move choice. Conditional so cef3/cef5
+        # checkpoints (no such head) still load strict.
+        if move_head:
+            self.move_score = nn.Sequential(nn.Linear(d, hidden), nn.GELU(),
+                                            nn.Linear(hidden, 1))
 
     def pre_vq_global(self, tok, glob):
         """the projection BEFORE quantisation, which is where head redundancy lives.
@@ -196,7 +206,8 @@ def build_step(args, dev):
     net = ConceptEvent(d_model=args.d_model, heads=args.heads, codes=args.codes,
                        square_codes=args.square_codes, hidden=args.hidden,
                        n_res=len(vocab), factored=True, n_eg=len(egs),
-                       cls_reach=cr_np, cls_eg=ce_np, cls_out=co_np).to(dev)
+                       cls_reach=cr_np, cls_eg=ce_np, cls_out=co_np,
+                       move_head=args.w_sib > 0).to(dev)
     print(f"[cef] {sum(p.numel() for p in net.parameters()):,} params | "
           f"{args.heads}x{args.codes} global + 64x{args.square_codes} square", flush=True)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
@@ -251,14 +262,11 @@ def build_step(args, dev):
             B2 = len(bi)
             zc, _, _, _ = model.encode(tks.reshape(B2 * (K + 1), 64).long().to(dev),
                                        gbs.reshape(B2 * (K + 1), 6).float().to(dev))
-            p = torch.softmax(model.resolution_logits(zc), -1)
-            wsc = (p * WIN_W.to(dev)).sum(1) * wm.repeat_interleave(K + 1) + \
-                  (p * WIN_B.to(dev)).sum(1) * (1 - wm).repeat_interleave(K + 1)
-            wsc = wsc.view(B2, K + 1)
+            sc = model.move_score(zc).squeeze(-1).view(B2, K + 1)
             valid = torch.arange(K, device=dev)[None, :] < SIB["n_neg"][bi].to(dev)[:, None]
-            logits = torch.cat([wsc[:, :1], wsc[:, 1:].masked_fill(~valid, -1e4)], 1)
-            l_sib = F.cross_entropy(logits / args.sib_temp,
-                                    torch.zeros(B2, dtype=torch.long, device=dev))
+            logits = torch.cat([sc[:, :1], sc[:, 1:].masked_fill(~valid, -1e4)], 1)
+            # pure Plackett-Luce top-1: supervision is exactly the ~5 bits the record holds
+            l_sib = F.cross_entropy(logits, torch.zeros(B2, dtype=torch.long, device=dev))
             sib_acc = float((logits.argmax(1) == 0).float().mean())
 
         r_l, e_l, o_l = model.predict_resolution(zq)
@@ -338,7 +346,8 @@ def build_step(args, dev):
                   f"ev {float(l_ev.detach()):.3f} mat {float(l_mat.detach()):.3f} "
                   f"res {float(l_res.detach()):.3f} | ev_sq {sq_acc:.3f} kind {kacc:.3f} "
                   f"| count {cnt_acc:.3f} ALL12 {mat_all:.3f} NOW12 {now_all:.3f} "
-                  f"eg_cond {eg_cond:.3f} | churn slow {slow_churn:.2f} fast {fast_churn:.2f} "
+                  f"eg_cond {eg_cond:.3f} sib {sib_acc:.3f} | churn slow {slow_churn:.2f} "
+                  f"fast {fast_churn:.2f} "
                   f"| perp {perp:.1f} "
                   f"sq_perp {sq_perp:.1f}", flush=True)
         return {"loss": float(loss.detach()), "ev": float(l_ev.detach()),
@@ -388,8 +397,9 @@ def main():
     ap.add_argument("--w-sib", type=float, default=1.0,
                     help="within-parent contrast -- the played move must outrank its siblings. "
                          "THE term this run exists for: every component measured at chance here.")
-    ap.add_argument("--sib-batch", type=int, default=48)
-    ap.add_argument("--sib-k", type=int, default=7)
+    ap.add_argument("--sib-batch", type=int, default=8,
+                    help="parents per step; each costs (1+K) child encodes")
+    ap.add_argument("--sib-k", type=int, default=40, help="all-siblings cache (K cap)")
     ap.add_argument("--sib-temp", type=float, default=0.1)
     ap.add_argument("--w-dec", type=float, default=0.5,
                     help="vicreg covariance on the pre-VQ global projection; 12 of 16 heads "

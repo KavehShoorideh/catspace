@@ -40,6 +40,7 @@ def main():
     ap.add_argument("--open-plies", type=int, default=8)
     ap.add_argument("--engine", default="/opt/homebrew/bin/stockfish")
     ap.add_argument("--sf-skill", type=int, default=0)
+    ap.add_argument("--lam", type=float, default=1.0, help="value weight in the combo policy")
     ap.add_argument("--sf-ms", type=int, default=10)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
@@ -77,6 +78,9 @@ def main():
                           arch=PA.get("arch", "mlp"), n_heads=A["heads"], n_codes=A["codes"],
                           n_sq_codes=A["square_codes"]).to(dev)
     scorer.load_state_dict(pk["state_dict"]); scorer.eval()
+    out_of = np.array([v.split("=")[-1] if "=" in v else v.split(":")[-1] for v in vocab])
+    WIN_W = torch.from_numpy((out_of == "W").astype(np.float32)).to(dev)
+    WIN_B = torch.from_numpy((out_of == "L").astype(np.float32)).to(dev)
 
     def tok_glob_of(b):
         t = np.zeros(64, np.uint8)
@@ -90,21 +94,39 @@ def main():
         return t, g
 
     @torch.no_grad()
-    def cpl_move(b, rng, ply):
+    def child_scores(b):
+        """-> (moves, prior, value) with value = P(mover wins) read off the committor."""
         mv = list(b.legal_moves)
-        if len(mv) == 1:
-            return mv[0]
         tks, gbs = [], []
         for m in mv:
             b.push(m); t, g = tok_glob_of(b); b.pop()
             tks.append(t); gbs.append(g)
         z, ig, isq, _ = enc.encode(torch.from_numpy(np.stack(tks).astype(np.int64)).to(dev),
                                    torch.from_numpy(np.stack(gbs).astype(np.float32)).to(dev))
-        sc = scorer(z, ig, isq).cpu().numpy()
-        if ply < args.open_plies:
-            p = np.exp(sc - sc.max()); p /= p.sum()
-            return mv[rng.choice(len(mv), p=p)]
-        return mv[int(np.argmax(sc))]
+        prior = scorer(z, ig, isq).cpu().numpy()
+        pw = torch.softmax(enc.resolution_logits(z), -1)
+        val = (pw * (WIN_W if b.turn else WIN_B)).sum(1).cpu().numpy()
+        return mv, prior, val
+
+    def zs(x):
+        x = np.asarray(x, np.float64); sd = x.std()
+        return (x - x.mean()) / (sd if sd > 1e-6 else 1.0)
+
+    def make_policy(use_prior, use_val, lam):
+        """COMBO = zscore(prior) + lam * zscore(value), the AlphaZero halves without search:
+        the prior says plausible, the committor says toward-the-win; z-scoring within the
+        children puts the two on one scale."""
+        def pol(b, rng, ply):
+            mv, prior, val = child_scores(b)
+            if len(mv) == 1:
+                return mv[0]
+            sc = (zs(prior) if use_prior else 0.0) + (lam * zs(val) if use_val else 0.0)
+            if ply < args.open_plies:
+                pd = np.exp(sc - sc.max()); pd /= pd.sum()
+                return mv[rng.choice(len(mv), p=pd)]
+            return mv[int(np.argmax(sc))]
+        return pol
+    cpl_move = make_policy(True, False, 0.0)
 
     def material_move(b, rng, ply):
         mv = list(b.legal_moves)
@@ -171,10 +193,12 @@ def main():
 
     print(f"\n  {args.games} games per pairing, colors alternated, {args.max_plies}-ply cap "
           f"(adjudicated at |material| >= 3)\n")
-    series("cpl1 vs RANDOM", cpl_move, random_move)
-    series("cpl1 vs MATERIAL-GREEDY", cpl_move, material_move)
-    series("material vs RANDOM (calib)", material_move, random_move)
-    series(f"cpl1 vs SF skill {args.sf_skill} ({args.sf_ms}ms)", cpl_move, sf_move,
+    combo = make_policy(True, True, args.lam)
+    valonly = make_policy(False, True, 1.0)
+    series("COMBO vs RANDOM", combo, random_move)
+    series("COMBO vs MATERIAL-GREEDY", combo, material_move)
+    series("VALUE-ONLY vs RANDOM", valonly, random_move)
+    series(f"COMBO vs SF skill {args.sf_skill} ({args.sf_ms}ms)", combo, sf_move,
            need_engine=True)
 
 

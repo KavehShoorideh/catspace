@@ -14800,3 +14800,36 @@ for tactics. cpl1 alone was never going to play; now the gap has numbers.
 Anchor for scale: -727 elo against even skill-0 Stockfish. Interpretability remains the
 endpoint, not strength -- but conversion-vs-random is a fair minimal bar and it is not
 met by the prior alone.
+
+---
+
+## 2026-08-19 14:20 — combo policy measured (value stops losses, nobody converts); cef6 launched
+
+**Kaveh's diagnosis, verbatim:** "we trained on stockfish, which only gives you the
+winning move... why are we not able to pick the winning move? Because we don't have the
+right concepts. We have to train our concepts to pick the stockfish move... right now we
+are predicting the next five captures, which is similar but not exactly."
+
+**The combo arena confirms it** (prior + committor, z-scored within children, lam=1;
+100 games/pairing):
+
+```
+COMBO vs RANDOM              +7 =93 -0   53.5%   elo +24    (cpl alone: 57.0%)
+COMBO vs MATERIAL-GREEDY     +3 =90 -7   48.0%   elo -14    (cpl alone: 35.0%)
+VALUE-ONLY vs RANDOM         +6 =93 -1   52.5%   elo +17
+COMBO vs SF skill 0          +0  =7 -93   3.5%   elo -576
+```
+
+The value term is worth +13 points against material-greedy -- almost entirely by not
+LOSING (31 losses -> 7) -- and conversion stays absent everywhere (93% draws vs random).
+Two sibling-flat signals summed remain sibling-flat: caution without direction. The
+failure is upstream of every readout, in the vocabulary, exactly as Kaveh said.
+
+**cef6 (RUNNING, ~3.7h):** the move objective inside the encoder. A dedicated
+move_score head (conditional module, so old checkpoints still load strict), pure
+Plackett-Luce top-1 over played-vs-ALL-siblings (K<=40 cache), gradient reaching the
+trunk AND both codebooks: the vocabulary itself must earn move choice, alongside the
+event/material/resolution objectives (bundled per the no-one-lever rule; w_sib 2.0,
+decorrelation kept, MSE slow heads off as refuted). cpl1's frozen-probe ceiling (11.4%
+top-1 held-out, arena +49 elo vs random) is the pre-registered comparison: cef6 must
+raise the CEILING, not just the readout.
