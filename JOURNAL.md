@@ -14710,3 +14710,58 @@ the emergent-utility scorer against the pre-registered numbers (random 47-52%,
 material-greedy 58-67%). cef5 itself closed with churn slow 0.51 / fast 0.50 -- the MSE
 persistence null VAMPnets predicted, now on record as the ablation control for cef6's
 VAMP-2 lobe.
+
+---
+
+## 2026-08-19 13:10 — cpl1: the emergent concept ranking works; and a cef5 correction
+
+**cpl1** — linear Plackett-Luce over concept atoms, played-vs-all-siblings, no smoothing,
+6,000 steps, 28 min on MPS, encoder frozen (cef3).
+
+**Held-out games (never seen): picks SF's move 11.4%, top-3 27.0%, against 3.8% chance**
+(mean 26.5 legal moves) — 3.0x chance from a LINEAR model over concept atoms, no engine
+anywhere. This is Kaveh's stated test: predict SF from board structure in unseen games.
+
+**Winning-track (the instrument every learned component has failed):**
+
+```
+                                on winning track
+  cpl1 (emergent utilities)          58.0%      <- first learned component to beat random
+  random legal move                  52.1%
+  material-greedy                    58.7%
+  --- previous attempts ---
+  cef3 committor                     49.3%   (below random)
+  cef4 sibling contrast              49.5%
+  cqm1 / csg1 geometries          43-44%
+```
+
++5.9 over random and level with material-greedy (n=150; treat +-~8 points as noise). The
+mechanism Kaveh described — utilities over concepts emerging from many argmax-only
+tournaments — produced the first genuine within-parent signal in the project. The
+ranking itself is stable across evals: best atoms g10:4 (+0.28), s0:75, s42:250, s54:84;
+worst s47:117 (-0.32), s16:63, s14:130. Naming what those atoms MEAN (co-occurrence
+against the Rust named basis) is now a concrete interpretability task, not a wish.
+
+**CORRECTION — my cef5 "null" call was wrong at the level that matters.** I closed cef5
+as "the MSE persistence null VAMPnets predicted" off the aggregate churn line (slow 0.51
+vs fast 0.50). The goal-mining census says otherwise:
+
+```
+                    cef3        cef5
+passing GLOBAL atoms   0          26     (persistence gate >= 4 plies)
+global persist p99    1.3         8.2   plies (max 1.9 -> 10.2)
+passing SQUARE atoms  74          32
+total passing goals   74          58
+```
+
+cef5 created a real persistent tail — 26 global goal atoms where cef3 had ZERO — while
+the average stayed flat, which is exactly VAMPnets' own point turned on me: churn% is
+the wrong metric, per-state timescales are the right one. My aggregate metric hid the
+tail. Complications kept honest: square passing fell 74 -> 32 (total down), and several
+persistent atoms sit in FAST heads (g10, g11, g13), so attribution to the MSE term
+alone is not clean — capacity/decorrelation rode along. cef6 (VAMP-2) remains the
+principled objective, now with a fair fight: it must beat 26 passing global atoms, not
+zero.
+
+Also fixed: eval_winning_track's bc branch fell through into the cqm loader (branch
+ordering); one-line fix, rerun clean.

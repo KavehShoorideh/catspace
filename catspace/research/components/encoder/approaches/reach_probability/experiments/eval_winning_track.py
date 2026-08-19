@@ -125,8 +125,8 @@ def main():
         qk = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     QA = (qk["args"] if isinstance(qk.get("args"), dict) else vars(qk["args"])) if qk else {}
     d_in = A["heads"] * 32 + 64 * 32
-    if args.model == "cef":
-        pass
+    if args.model in ("cef", "bc"):
+        pass                       # scorer already built above; no geometry to load
     elif args.model == "csg":
         from catspace.research.components.encoder.approaches.reach_probability.experiments \
             .concept_split_geometry import ConceptSplitGeometry
