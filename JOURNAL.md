@@ -14765,3 +14765,38 @@ zero.
 
 Also fixed: eval_winning_track's bc branch fell through into the cqm loader (branch
 ordering); one-line fix, rerun clean.
+
+---
+
+## 2026-08-19 13:40 — how well does it play? Barely. And the failure mode is precise.
+
+`play_concept_policy.py` (committed): cpl1 as a 1-ply argmax policy (softmax-sampled for
+the first 8 plies for variety), 100 games per pairing, colors alternated, 240-ply cap
+adjudicated at |material| >= 3.
+
+```
+cpl1 vs RANDOM               +15 =84 -1    57.0%   elo  +49
+cpl1 vs MATERIAL-GREEDY       +1 =68 -31   35.0%   elo -108
+material vs RANDOM (calib)   +46 =54 -0    73.0%   elo +173
+cpl1 vs SF skill 0, 10ms      +0  =3 -97    1.5%   elo -727
+```
+
+**The headline is the 84 draws against RANDOM.** A random mover hands over material
+constantly, and cpl1 still could not get 3 points up within 240 plies in 84 of 100
+games. It does not convert. Material-greedy against the same random mover: 46 wins, 0
+losses. So the winning-track parity (58.0 vs 58.7) did NOT carry to games: one-shot
+move plausibility and closing a game are different capabilities, and games compound
+~120 decisions where the winning-track asks one.
+
+**Diagnosis, consistent with everything measured:** the linear utilities encode "what
+does a plausible SF move look like, structurally" -- they avoid catastrophic moves well
+enough to match material-greedy one-shot -- but contain no drive toward ANY outcome: no
+value, no goal, no preference for capturing a hanging queen over a quiet developing
+move (context-free atom sums cannot express "capture BECAUSE it hangs"). Play needs the
+other half of the AlphaZero shape this project already owns pieces of: the
+committor/reach field for direction, the prior for plausibility, one ply of lookahead
+for tactics. cpl1 alone was never going to play; now the gap has numbers.
+
+Anchor for scale: -727 elo against even skill-0 Stockfish. Interpretability remains the
+endpoint, not strength -- but conversion-vs-random is a fair minimal bar and it is not
+met by the prior alone.
