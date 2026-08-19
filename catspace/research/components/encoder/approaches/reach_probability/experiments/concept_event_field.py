@@ -44,7 +44,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from catspace.research.tools.training_infra.losses import (
-    capture_ce, effective_number_weights, factorized_resolution_ce)
+    capture_ce, effective_number_weights, factorized_resolution_ce, vicreg_covariance)
 from catspace.research.components.encoder.approaches.reach_probability.experiments \
     .concept_capture_field import ConceptCapture, factor_vocab, signature_of
 
@@ -84,6 +84,15 @@ class ConceptEvent(ConceptCapture):
         # better than present material is represented.
         self.now_body = nn.Sequential(nn.Linear(d, hidden), nn.GELU())
         self.now_counts = nn.Linear(hidden, N_CLASS * N_COUNT)
+
+    def pre_vq_global(self, tok, glob):
+        """the projection BEFORE quantisation, which is where head redundancy lives.
+        Measured on cef3: 16 heads carry 75.4 bits marginally but only 17.5 jointly -- 77%
+        redundant, about 3.6 effective heads. Per-head perplexity looked perfect throughout
+        and could never have shown it, because each head is individually healthy while being
+        a near-copy of its neighbours."""
+        phi, _ = self.trunk.forward_tokens(tok, glob)
+        return self.proj(phi)
 
     def predict_events(self, zq):
         b = self.ev_body(zq); n = len(zq)
@@ -144,6 +153,23 @@ def build_step(args, dev):
     RES = torch.from_numpy(res_cls)
     RCH = torch.from_numpy(r_reach); REG = torch.from_numpy(r_eg); ROT = torch.from_numpy(r_out)
 
+    # SIBLING CONTRAST: the played move versus random legal alternatives from the SAME parent.
+    # Every learned component measured at chance on within-parent choice, and the cause is that
+    # the corpus only ever contains positions Stockfish played INTO -- the model has never seen a
+    # sibling comparison. The label is free: the played move beats a random legal move on average,
+    # so no engine enters the loss.
+    SIB = None
+    if args.w_sib > 0:
+        try:
+            _sb = np.load(paths.derived(f"sibling_contrast_{args.sib_k}_{n}.npz"))
+            _keep = ~np.isin(gor[_sb["p_row"]], np.flatnonzero(sog != 0))
+            SIB = {k: torch.from_numpy(_sb[k][_keep]) for k in
+                   ("p_row", "pos_tok", "pos_glb", "neg_tok", "neg_glb", "n_neg")}
+            print(f"[cef] sibling contrast: {len(SIB['p_row']):,} train parents, "
+                  f"{float(SIB['n_neg'].float().mean()):.1f} siblings each", flush=True)
+        except FileNotFoundError:
+            print(f"[cef] NO sibling cache for n={n}; run gen_sibling_contrast --save", flush=True)
+
     train_rows = np.flatnonzero((spl == 0) & (res_cls >= 0))
     pers_rows = train_rows[(train_rows + 2 < n)]
     pers_rows = pers_rows[gor[pers_rows + 2] == gor[pers_rows]]
@@ -154,6 +180,10 @@ def build_step(args, dev):
     print(f"[cef] events in train: capture {100*(k==1).mean():.1f}%  promotion "
           f"{100*(k==2).mean():.2f}%  capture+promotion {100*(k==3).mean():.2f}%  "
           f"absent {100*(k<0).mean():.1f}%", flush=True)
+
+    _outc = np.array([v.split("=")[-1] if "=" in v else v.split(":")[-1] for v in vocab])
+    WIN_W = torch.from_numpy((_outc == "W").astype(np.float32))
+    WIN_B = torch.from_numpy((_outc == "L").astype(np.float32))
 
     eg_w = None
     if args.cb_beta > 0:
@@ -196,6 +226,38 @@ def build_step(args, dev):
 
         l_now = capture_ce(model.predict_now(zq).reshape(-1, N_COUNT), NOW[rt].to(dev).reshape(-1))
 
+        # DECORRELATION on the pre-VQ global projection. 12 of 16 heads were redundant; the
+        # variance term is deliberately NOT added -- scale collapse is not the failure here,
+        # rank redundancy is, and vicreg_covariance is the term that targets it.
+        l_dec = torch.zeros((), device=dev)
+        if args.w_dec > 0:
+            h_pre = model.pre_vq_global(*batch(rows))
+            l_dec = vicreg_covariance(h_pre)
+
+        # SIBLING CONTRAST, a RANKING loss not an absolute target: it says "played beats its
+        # siblings", never "played equals a win", so the committor's calibration is untouched.
+        l_sib = torch.zeros((), device=dev)
+        sib_acc = float("nan")
+        if SIB is not None and args.w_sib > 0:
+            bi = torch.from_numpy(rng.integers(0, len(SIB["p_row"]), args.sib_batch))
+            K = SIB["neg_tok"].shape[1]
+            pr_ = SIB["p_row"][bi].numpy()
+            wm = torch.from_numpy(tr.glob[pr_, 0].astype(np.float32)).to(dev)   # parent's mover
+            tks = torch.cat([SIB["pos_tok"][bi][:, None], SIB["neg_tok"][bi]], 1)
+            gbs = torch.cat([SIB["pos_glb"][bi][:, None], SIB["neg_glb"][bi]], 1)
+            B2 = len(bi)
+            zc, _, _, _ = model.encode(tks.reshape(B2 * (K + 1), 64).long().to(dev),
+                                       gbs.reshape(B2 * (K + 1), 6).float().to(dev))
+            p = torch.softmax(model.resolution_logits(zc), -1)
+            wsc = (p * WIN_W.to(dev)).sum(1) * wm.repeat_interleave(K + 1) + \
+                  (p * WIN_B.to(dev)).sum(1) * (1 - wm).repeat_interleave(K + 1)
+            wsc = wsc.view(B2, K + 1)
+            valid = torch.arange(K, device=dev)[None, :] < SIB["n_neg"][bi].to(dev)[:, None]
+            logits = torch.cat([wsc[:, :1], wsc[:, 1:].masked_fill(~valid, -1e4)], 1)
+            l_sib = F.cross_entropy(logits / args.sib_temp,
+                                    torch.zeros(B2, dtype=torch.long, device=dev))
+            sib_acc = float((logits.argmax(1) == 0).float().mean())
+
         r_l, e_l, o_l = model.predict_resolution(zq)
         l_res, res_parts = factorized_resolution_ce(
             r_l, e_l, o_l, RCH[rt].to(dev), REG[rt].to(dev), ROT[rt].to(dev), eg_weight=eg_w)
@@ -211,7 +273,8 @@ def build_step(args, dev):
                 l_pers = (qm * d).sum() / qm.sum().clamp(min=1)
 
         loss = (args.w_ev * l_ev + args.w_mat * l_mat + args.w_now * l_now
-                + args.w_res * l_res + args.w_pers * l_pers + vl)
+                + args.w_res * l_res + args.w_pers * l_pers
+                + args.w_sib * l_sib + args.w_dec * l_dec + vl)
         opt.zero_grad(); loss.backward(); opt.step()
 
         with torch.no_grad():
@@ -249,14 +312,15 @@ def build_step(args, dev):
                   f"ev {float(l_ev.detach()):.3f} mat {float(l_mat.detach()):.3f} "
                   f"res {float(l_res.detach()):.3f} | ev_sq {sq_acc:.3f} kind {kacc:.3f} "
                   f"| count {cnt_acc:.3f} ALL12 {mat_all:.3f} NOW12 {now_all:.3f} "
-                  f"eg_cond {eg_cond:.3f} | perp {perp:.1f} "
+                  f"eg_cond {eg_cond:.3f} sib {sib_acc:.3f} dec {float(l_dec):.3f} | perp {perp:.1f} "
                   f"sq_perp {sq_perp:.1f}", flush=True)
         return {"loss": float(loss.detach()), "ev": float(l_ev.detach()),
                 "mat": float(l_mat.detach()), "res": float(l_res.detach()),
                 "pers": float(l_pers.detach()), "vq": float(vl.detach()),
                 "now": float(l_now.detach()), "ev_sq_acc": sq_acc, "kind_acc": kacc,
                 "count_acc": cnt_acc, "mat_all12": mat_all, "now_all12": now_all,
-                "eg_cond": eg_cond,
+                "eg_cond": eg_cond, "sib_acc": sib_acc, "sib": float(l_sib.detach()),
+                "dec": float(l_dec.detach()),
                 "perp": perp, "sq_perp": sq_perp, **res_parts}
 
     return net, step_fn
@@ -286,6 +350,15 @@ def main():
                     help="quiet-ply persistence. DEFAULT 0: persistence rewards codes that do "
                          "not change, while material changes at every capture, so the two are "
                          "plausibly in direct tension. Kaveh 2026-08-18 -- test by removal.")
+    ap.add_argument("--w-sib", type=float, default=1.0,
+                    help="within-parent contrast -- the played move must outrank its siblings. "
+                         "THE term this run exists for: every component measured at chance here.")
+    ap.add_argument("--sib-batch", type=int, default=48)
+    ap.add_argument("--sib-k", type=int, default=7)
+    ap.add_argument("--sib-temp", type=float, default=0.1)
+    ap.add_argument("--w-dec", type=float, default=0.5,
+                    help="vicreg covariance on the pre-VQ global projection; 12 of 16 heads "
+                         "were measured redundant (75.4 bits marginal -> 17.5 joint)")
     ap.add_argument("--cb-beta", type=float, default=0.999)
     ap.add_argument("--val-frac", type=float, default=0.1)
     ap.add_argument("--test-frac", type=float, default=0.1)
