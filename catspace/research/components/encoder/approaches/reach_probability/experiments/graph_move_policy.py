@@ -100,6 +100,7 @@ def featurize(batch, dev):
     """uint8 arrays -> dense node features + flattened edge lists."""
     sq, gl, mv, mut, att, n_mv, n_att = (batch[k] for k in
                                          ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att"))
+    n_mv = n_mv.long(); n_att = n_att.long()          # uint8/uint16 do not promote with Long
     B = sq.shape[0]
     piece = F.one_hot(sq[:, :, 0].long(), 13).float()
     counts = torch.stack([sq[:, :, 1].float() / 7, sq[:, :, 2].float() / 7,
@@ -223,6 +224,8 @@ def main():
     ap.add_argument("--device", default="mps")
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--resume", default="", help="checkpoint to continue from (Adam state "
+                    "resets -- the scaffold saves models only)")
     ap.add_argument("--out", default="artifacts/experiments/gmp1")
     args = ap.parse_args()
     if args.threads:
@@ -231,8 +234,13 @@ def main():
     from catspace.research.tools.training_infra.train.scaffold import (
         TrainConfig, standard_train)
     net, step_fn = build_step(args, args.device)
+    start = 0
+    if args.resume:
+        ck = torch.load(args.resume, map_location="cpu", weights_only=False)
+        net.load_state_dict(ck["state_dict"]); start = int(ck.get("step", 0))
+        print(f"[gmp] resumed from {args.resume} at step {start}", flush=True)
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
-                      eval_every=args.eval_every, experiment="catspace",
+                      start_step=start, eval_every=args.eval_every, experiment="catspace",
                       run_name=args.out.split("/")[-1], device=args.device)
     standard_train(step_fn, net, cfg, args)
 
