@@ -14642,3 +14642,37 @@ completion (~11:30) and becomes the ablation control -- "MSE persistence" vs "VA
 identical data. cef6 gets a VAMP slow lobe (softmax states, VAMP-2 at a lag ladder,
 implied-timescale + CK validation replacing churn%); built and smoke-tested while cef5
 owns the GPU. crf2 gets the TD C-learning update after the vocabulary lands.
+
+---
+
+## 2026-08-19 12:20 — BC proposal killed by its author; the information budget, stated
+
+Kaveh proposed contrasting the played move against every unplayed legal sibling, I built
+it (`concept_policy_head.py`, all-sibling cache K<=40, --model bc eval branch), and he
+then killed it before the first training step: "to get ranking you need extra info from
+sf beyond what it played. you can't have that."
+
+He is right, and the bit-count makes it exact: a position's game record carries at most
+log2(n_legal) ~ 5 bits about SF's preferences -- the identity of the played move. A
+quality ordering over ~28 children carries ~90. The remaining ~85 bits are simply absent
+from played-only data; any training signal that appears to rank unplayed siblings is
+assigning unsupervised fiction, and my label-smoothing framing had quietly implied
+otherwise. BC recovers the argmax at most -- a policy prior whose scores on unplayed
+moves mean nothing.
+
+The two legal sources of within-parent ranking, both engine-free beyond the trajectories
+themselves:
+  RECOMBINATION  the TD/C-learning recursion grounds a child one ply deeper through
+                 legal-move expansion. The blunder-child connects to a
+                 queen-already-captured grandchild, and THAT region is densely labeled --
+                 the 45,906 piece-down games populate material-imbalance states by
+                 construction. No new bits; existing between-position bits routed into
+                 within-parent comparisons.
+  GENERATION     self-play from unplayed children -- the only way new bits about an
+                 unplayed move can exist is to play it and observe consequences.
+
+`concept_policy_head.py` and the K=40 sibling cache stay on disk, flag-gated, untrained
+(conditional-rejections discipline). The live path is unchanged and now exclusive:
+crf2 = TD update over legal children, then goal-conditioned self-play reach-events.
+Meanwhile cef5's code-caching is running for the ablation re-mine, and cef6 (VAMP-2 slow
+lobe) is the next build.

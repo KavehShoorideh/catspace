@@ -43,7 +43,7 @@ def wp_of(score, mover_pov=True):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--model", choices=["csg", "cqm", "cef"], default="csg")
+    ap.add_argument("--model", choices=["csg", "cqm", "cef", "bc"], default="csg")
     ap.add_argument("--ckpt", default="artifacts/experiments/csg1_latest.pt")
     ap.add_argument("--concept-ckpt", default="artifacts/experiments/cef3_step10000.pt")
     ap.add_argument("--codes", default="data/derived/concept_codes_cef3_6545146.npz")
@@ -90,7 +90,23 @@ def main():
                                 torch.from_numpy(gb.astype(np.float32)).to(dev))
         return z
 
-    if args.model == "cef":
+    if args.model == "bc":
+        # BEHAVIORAL-CLONING PRIOR (Kaveh 2026-08-19): rank children by the policy scorer
+        # trained on played-vs-every-sibling. A perfect learner of that objective picks SF's
+        # move and is on-track by construction; the number here measures how close training got.
+        from catspace.research.components.encoder.approaches.reach_probability.experiments \
+            .concept_policy_head import PolicyScorer
+        pk = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+        PA = pk["args"] if isinstance(pk.get("args"), dict) else vars(pk["args"])
+        scorer = PolicyScorer(A["heads"] * 32 + 64 * 32, hidden=PA["hidden"],
+                              depth=PA["depth"]).to(dev)
+        scorer.load_state_dict(pk["state_dict"]); scorer.eval()
+
+        @torch.no_grad()
+        def score(zc, white_to_move):
+            return scorer(zc).cpu().numpy()
+        qk = None
+    elif args.model == "cef":
         # THE PROPOSED SYSTEM: no geometry at all for value -- score children with the concept
         # model's OWN resolution head, which is the committor we already have. Kaveh 2026-08-18:
         # "we already have a committor head prediction, so we don't even need that."
