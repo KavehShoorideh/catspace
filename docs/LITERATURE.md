@@ -217,3 +217,74 @@ pUCT constants c1 = 1.25, c2 = 19652. Discount 0.997 (1 for board games, no inte
 
 **OURS:** no search, no self-play, fixed 49,905-game corpus. The gap in TRAINING COMPUTE is
 ~500x (3.84M samples seen vs ~2B), far larger than the ~5x parameter gap.
+
+---
+
+## 2026-08-19 — read for the reachability pivot (full texts, arXiv PDFs)
+
+### VAMPnets (Mardt, Pasquali, Wu, Noé — arXiv 1710.06012 / Nat. Comm. 9:5, 2018)
+
+Read for: how to learn SLOW discrete states from trajectories. It answers with a
+refutation of our current mechanism first:
+
+* **The degenerate-objective warning (their §II.A, verbatim logic):** minimizing the
+  least-squares change ||chi(x_{t+tau}) - K chi(x_t)||^2 is solved by chi = constant —
+  "the model is completely uninformative as all dynamical information is lost."
+  **cef5's slow-head MSE persistence penalty is exactly this objective.** Slowness must
+  be bought as maximal time-lagged CORRELATION in a whitened space, not minimal change.
+* **The objective:** VAMP-2 score R2 = ||C00^{-1/2} C01 C11^{-1/2}||_F^2 (+1 with the
+  constant function added), with MEAN-FREE batch covariances
+  C00=(T-1)^{-1} X̄X̄ᵀ, C01=(T-1)^{-1} X̄Ȳᵀ, C11=(T-1)^{-1} ȲȲᵀ over time-lagged pairs
+  (x_t, x_{t+tau}); two identical network lobes; backprop through both (their Eqs 6-11).
+  The C00^{-1/2}/C11^{-1/2} whitening forces decorrelated unit-variance features — it
+  does structurally what our vicreg_covariance patch does, plus the slowness.
+* **Softmax states:** output layer is a softmax over k states (chi_i >= 0, sum 1) — a
+  FUZZY clustering to metastable states; K(tau) = C00^{-1} C01 is then the transition
+  matrix of a fuzzy MSM. Hard state = argmax. k softmax outputs resolve k-1 timescales.
+* **Lag time tau:** choose where implied timescales t_i(tau) = -tau / ln|lambda_i(tau)|
+  plateau in tau; validate with Chapman-Kolmogorov K(n·tau) ≈ K(tau)^n. Their measured
+  coupling: MORE output states -> SHORTER lag suffices (alanine: 2 states need tau=200ps,
+  8 states tau=1ps). Too-long lag: slow process amplitude vanishes; too-short: everything
+  looks slow and optimization sticks.
+* **Training facts:** Adam on (x_t, x_{t+tau}) pair batches, 90/10 split scored by
+  validation VAMP-2; pyramid layer sizing n_i/n_{i+1} = (n_in/n_out)^{1/d}, depth 4-7
+  best, ReLU, dropout in early layers; optimisation is multi-modal — they run 100
+  restarts and report <40% success at finding the rarest slow process. Multiple seeds
+  are part of the method, not paranoia.
+* **What replaces our churn% metric:** implied timescales in PLIES per slow state +
+  the CK test. "Slow concept" becomes a measured relaxation time, not a percentage.
+
+### C-learning (Eysenbach, Salakhutdinov, Levine — arXiv 2011.08909, ICLR 2021)
+github.com/google-research/google-research/tree/master/c_learning
+
+Read for: the canonical P(reach) estimator and its TD form. Our crf1 is their MC
+variant with a hard window; the pieces we lack are:
+
+* **The object:** gamma-discounted future-state density
+  p+^pi(s+|s,a) = (1-gamma) * sum_Delta gamma^Delta * p(s_{t+Delta}=s+). GEOMETRIC
+  horizon, not a hard H — sample Delta ~ Geom(1-gamma) along the trajectory for
+  positives, random states for negatives; classifier C(F=1|s,a,s+); Bayes recovers the
+  density f = C/(1-C) * p(s+), and POLICY decisions don't need the marginal p(s+).
+* **Their Remarks 1-2 kill two tempting shortcuts:** exact-match Q is identically zero
+  in stochastic/continuous settings, and hindsight-relabeled Q-learning learns neither
+  a Q nor a density (bounded [0,1] while the density isn't). Supports classifier +
+  calibration as the primary object (what crf1 already is).
+* **TD / off-policy C-learning (Alg 2) — the within-parent machinery.** Recursion:
+  p+(s+|s,a) = (1-gamma) p(s_{t+1}=s+|s,a) + gamma E_{s',a'~pi}[p+(s+|s',a')].
+  Per transition (s,a,s') with random goal s+, three-term CE loss:
+      (1-gamma) * CE(C(s,a,s'), y=1)              # next state as positive
+    +            CE(C(s,a,s+), y=0)               # random goal as negative
+    + gamma * stopgrad(w) * CE(C(s,a,s+), y=1)    # bootstrapped positive
+  with w = C(s',a',s+) / (1 - C(s',a',s+)), a' ~ pi(s'). Equivalent soft target
+  y = gamma*w / (gamma*w + 1). THIS evaluates a NEW policy's reach probabilities from
+  OLD data — the flywheel-safe step before any self-play generation.
+* **Goal-conditioned form (Alg 3):** condition classifier and policy on the commanded
+  goal; policy objective is simply max E[log C(F=1|s,a,g)].
+* **Their HER hypothesis, confirmed experimentally:** Q-learning-with-relabeling is
+  sensitive to the goal-relabeling ratio with optimum ~ (1+gamma)/2, and UNDERESTIMATES
+  the density; C-learning has no such knob.
+* **Resonance with our measured failure:** their Fig 2 — a 1-step dynamics model
+  UNROLLED to predict far futures degrades badly with horizon while the direct
+  classifier stays accurate. Same lesson as our victim-chaining conjunction failure
+  (joint 10.4%, derived signature 8.1%): predict the destination directly, never
+  compose per-step predictions.

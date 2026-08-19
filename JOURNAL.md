@@ -14609,3 +14609,36 @@ The mechanism works immediately and is CALIBRATED -- predicted P(reach) matches 
 frequency to 0.4%. This is the first working instance of the object Kaveh asked for:
 P(reach concept goal within 20 plies | state), from trajectories alone, no engine, no
 oracle. Its goals are just the wrong ones until cef5's slow vocabulary lands.
+
+---
+
+## 2026-08-19 08:40 — papers read (full text); cef5's slow mechanism is the canonical degenerate objective
+
+Per the search-when-stuck rule, before the churn gap could become a mystery: VAMPnets
+(1710.06012) and C-learning (2011.08909) read in full, distilled to docs/LITERATURE.md.
+
+**VAMPnets refutes cef5's slow mechanism directly.** Their motivating example: the
+least-squares objective ||chi(x_{t+tau}) - chi(x_t)||^2 is solved by a CONSTANT map --
+"completely uninformative". cef5's slow-head MSE persistence penalty is exactly that
+objective, held up only by the competing predictive losses. The measured churn gap
+(slow 0.46 vs fast 0.49 at step 6000) is what a near-degenerate term produces. The
+correct objective is VAMP-2 -- maximal time-lagged correlation under whitening -- with
+softmax fuzzy states, lag chosen by implied-timescale plateau, validated by
+Chapman-Kolmogorov. Bonus: the whitening decorrelates states structurally, doing what
+vicreg_covariance patched.
+
+**C-learning supplies the exact TD form the reach field lacks.** crf1 is their MC
+variant with a hard window (and its AUC 0.946 / ECE 0.004 matches their claim that the
+MC classifier is easy and calibrated). The off-policy recursion -- next-state positive
+at weight (1-gamma), random-goal negative, bootstrapped positive at gamma*stopgrad(w)
+with w = C/(1-C) at (s', a'~pi) -- gives (a) within-parent structure through a'-sampling
+over legal children with NO oracle, and (b) evaluation of a NEW policy's reach
+probabilities from OLD data, which is the flywheel-safe step before generating any
+self-play. Their Fig 2 (unrolled 1-step models degrade with horizon; direct classifiers
+do not) is our victim-chaining failure, independently measured.
+
+**Decision, honouring both the no-auto-kill rule and always-run-latest:** cef5 runs to
+completion (~11:30) and becomes the ablation control -- "MSE persistence" vs "VAMP-2" on
+identical data. cef6 gets a VAMP slow lobe (softmax states, VAMP-2 at a lag ladder,
+implied-timescale + CK validation replacing churn%); built and smoke-tested while cef5
+owns the GPU. crf2 gets the TD C-learning update after the vocabulary lands.
