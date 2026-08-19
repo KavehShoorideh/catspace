@@ -173,6 +173,9 @@ def build_step(args, dev):
     train_rows = np.flatnonzero((spl == 0) & (res_cls >= 0))
     pers_rows = train_rows[(train_rows + 2 < n)]
     pers_rows = pers_rows[gor[pers_rows + 2] == gor[pers_rows]]
+    # TWO-TIMESCALE persistence needs r+8 in the same game as well
+    pers8_rows = train_rows[(train_rows + 8 < n)]
+    pers8_rows = pers8_rows[gor[pers8_rows + 8] == gor[pers8_rows]]
     print(f"[cef] {n:,} positions | train {len(train_rows):,} | persistence-eligible "
           f"{len(pers_rows):,} | {len(vocab)} resolution classes [{time.time()-t0:.0f}s]",
           flush=True)
@@ -262,18 +265,41 @@ def build_step(args, dev):
         l_res, res_parts = factorized_resolution_ce(
             r_l, e_l, o_l, RCH[rt].to(dev), REG[rt].to(dev), ROT[rt].to(dev), eg_weight=eg_w)
 
+        # TWO TIMESCALES (Kaveh 2026-08-19): "some concepts should change slowly, some fast.
+        # A tactic that suddenly becomes available vs a bad pawn structure that stays broken
+        # the entire game." Measured need: the global heads change code on ~98% of plies --
+        # every one of them was a fast concept, so persistent predicates ("opponent uncastled")
+        # had nowhere to live. The first `slow_heads` global heads get a persistence pull on
+        # ALL plies at two horizons (t+2 and t+8 -- structure survives captures elsewhere, so
+        # no quiet mask); the remaining heads are FREE to flip per ply (that is where tactics
+        # go); the square stream keeps the original quiet-ply term. Whether the split actually
+        # produces two timescales is MEASURED (slow_churn vs fast_churn below), not assumed.
         l_pers = torch.zeros((), device=dev)
-        if args.w_pers > 0:
-            pr = pers_rows[rng.integers(0, len(pers_rows), max(8, args.batch // 4))]
-            qm = torch.from_numpy((quiet[pr] & quiet[pr + 1]).astype(np.float32)).to(dev)
-            if float(qm.sum()) > 0:
-                za, _, _, _ = model.encode(*batch(pr))
-                zb, _, _, _ = model.encode(*batch(pr + 2))
-                d = (za - zb).pow(2).mean(-1)
-                l_pers = (qm * d).sum() / qm.sum().clamp(min=1)
+        l_slow = torch.zeros((), device=dev)
+        slow_churn = fast_churn = float("nan")
+        slow_dim = args.slow_heads * model.d_code
+        g_dim = model.heads * model.d_code
+        if args.w_pers > 0 or (args.w_slow > 0 and args.slow_heads > 0):
+            pr = pers8_rows[rng.integers(0, len(pers8_rows), max(8, args.batch // 4))]
+            z0, ids0, _, _ = model.encode(*batch(pr))
+            z2, ids2, _, _ = model.encode(*batch(pr + 2))
+            if args.w_pers > 0:
+                qm = torch.from_numpy((quiet[pr] & quiet[pr + 1]).astype(np.float32)).to(dev)
+                if float(qm.sum()) > 0:
+                    d = (z0[:, g_dim:] - z2[:, g_dim:]).pow(2).mean(-1)
+                    l_pers = (qm * d).sum() / qm.sum().clamp(min=1)
+            if args.w_slow > 0 and args.slow_heads > 0:
+                z8, _, _, _ = model.encode(*batch(pr + 8))
+                l_slow = ((z0[:, :slow_dim] - z2[:, :slow_dim]).pow(2).mean()
+                          + (z0[:, :slow_dim] - z8[:, :slow_dim]).pow(2).mean())
+            with torch.no_grad():
+                ch = (ids0 != ids2).float()
+                slow_churn = float(ch[:, :args.slow_heads].mean()) if args.slow_heads else float("nan")
+                fast_churn = float(ch[:, args.slow_heads:].mean()) \
+                    if args.slow_heads < model.heads else float("nan")
 
         loss = (args.w_ev * l_ev + args.w_mat * l_mat + args.w_now * l_now
-                + args.w_res * l_res + args.w_pers * l_pers
+                + args.w_res * l_res + args.w_pers * l_pers + args.w_slow * l_slow
                 + args.w_sib * l_sib + args.w_dec * l_dec + vl)
         opt.zero_grad(); loss.backward(); opt.step()
 
@@ -312,7 +338,8 @@ def build_step(args, dev):
                   f"ev {float(l_ev.detach()):.3f} mat {float(l_mat.detach()):.3f} "
                   f"res {float(l_res.detach()):.3f} | ev_sq {sq_acc:.3f} kind {kacc:.3f} "
                   f"| count {cnt_acc:.3f} ALL12 {mat_all:.3f} NOW12 {now_all:.3f} "
-                  f"eg_cond {eg_cond:.3f} sib {sib_acc:.3f} dec {float(l_dec):.3f} | perp {perp:.1f} "
+                  f"eg_cond {eg_cond:.3f} | churn slow {slow_churn:.2f} fast {fast_churn:.2f} "
+                  f"| perp {perp:.1f} "
                   f"sq_perp {sq_perp:.1f}", flush=True)
         return {"loss": float(loss.detach()), "ev": float(l_ev.detach()),
                 "mat": float(l_mat.detach()), "res": float(l_res.detach()),
@@ -320,7 +347,8 @@ def build_step(args, dev):
                 "now": float(l_now.detach()), "ev_sq_acc": sq_acc, "kind_acc": kacc,
                 "count_acc": cnt_acc, "mat_all12": mat_all, "now_all12": now_all,
                 "eg_cond": eg_cond, "sib_acc": sib_acc, "sib": float(l_sib.detach()),
-                "dec": float(l_dec.detach()),
+                "dec": float(l_dec.detach()), "slow": float(l_slow.detach()),
+                "slow_churn": slow_churn, "fast_churn": fast_churn,
                 "perp": perp, "sq_perp": sq_perp, **res_parts}
 
     return net, step_fn
@@ -350,6 +378,13 @@ def main():
                     help="quiet-ply persistence. DEFAULT 0: persistence rewards codes that do "
                          "not change, while material changes at every capture, so the two are "
                          "plausibly in direct tension. Kaveh 2026-08-18 -- test by removal.")
+    ap.add_argument("--slow-heads", type=int, default=8,
+                    help="first K global heads are SLOW: persistence at t+2 and t+8 on all "
+                         "plies. The rest are free to flip per ply (tactics). Kaveh 2026-08-19.")
+    ap.add_argument("--w-slow", type=float, default=2.0,
+                    help="slow-head persistence. w_pers 0.25 on the whole state left churn at "
+                         "98%%, so this must bite harder; per-group perplexity is the collapse "
+                         "watch.")
     ap.add_argument("--w-sib", type=float, default=1.0,
                     help="within-parent contrast -- the played move must outrank its siblings. "
                          "THE term this run exists for: every component measured at chance here.")

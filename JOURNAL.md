@@ -14523,3 +14523,62 @@ line this project has deliberately held (no Stockfish in the loss). Worth noting
 line can be held in a weaker form: engine labels used ONLY to SELECT which siblings to
 contrast, never as a target, keeps the training signal free while making the comparison
 hard. That is a design decision for Kaveh, not one to take unilaterally.
+
+---
+
+## 2026-08-19 07:30 — REORIENTATION: the deliverable is P(reach concept state), engine-free
+
+**Kaveh's five-day review request and redirect, in his words:** "We've been chasing
+details... what I'm really going for is reachability and probability of reaching a
+concept state. I don't wanna use stockfish labels along the way... I want to think about
+the robotics world... the more I rely on things that exist only in chess -- for example
+the perfect oracle -- the worse it'll transfer."
+
+**The five-day pattern, from the 41 entries since 8/14.** Every representation deficit we
+named, we fixed: codebook collapse (0.443 -> 0.792), capture localisation (0.044 ->
+0.168), current-material (0.425 -> 1.000), head redundancy (77% -> 0). And one failure
+recurred through five instruments untouched: nothing knows which of two adjacent choices
+is better (winning-track: committor 49.3%, B block 43.3%, geometry 44.2%, sibling
+contrast 49.5%, vs material-greedy 58.7-66.7%). The quasimetric detour re-derived the
+M3 lock of 7/28 verbatim -- "no cooperative-quasimetric field; learned field =
+P(reach g | s, z_self, z_opp)" -- a distance along played lines is value-blind by
+construction, and two days of building a valid, beautiful odometer (asym 9.15x, zero
+triangle violations) measured that prediction rather than escaping it.
+
+**Constraint rulings (Kaveh):** two-timescale concepts -- "some concepts should change
+slowly, some fast. A tactic that suddenly becomes available vs a bad pawn structure that
+stays broken the entire game." And: "I'm ok with syzygy tables, but not sf labeling."
+So the resolution head stays, DTZ stays a ruler, the SF-rated-hard-negatives idea is
+dead, and my tablebase-anchored MCTS-labeling recommendation is withdrawn as
+chess-oracle-dependent in the wrong place.
+
+**Measurements grounding the new design** (cached cef3 codes, engine-free):
+
+```
+single-head goals (h=c):  P(reach <=20 | not now) median 0.153, time-to-hit median 7
+random PAIR goals:        median 0.000 -- 22/48 never occur; compositions must be MINED
+full 80-code state:       ~1.6% in-game revisit -> useless as a goal
+global-head churn:        ~98% of plies change code -> no slow predicates existed
+label density:            ~1,500 head-transition events per 99-ply game, free
+```
+
+**Built and launched this morning:**
+1. `cef5` (RUNNING): two-timescale vocabulary. First 8 global heads get persistence at
+   t+2 AND t+8 on ALL plies (structure survives captures elsewhere -- no quiet mask);
+   remaining 8 free to flip (tactics); squares keep the quiet-ply term. slow/fast churn
+   logged per group so the split is measured, not assumed. At step 1000 churn is slow
+   0.47 vs fast 0.44 -- not yet separated; check at 5k.
+2. `mine_concept_goals.py` (RUNNING on cef3 codes): every atomic pattern scored for
+   PERSISTENT / REACHABLE / RECURRENT; random conjunctions measured 46% dead, so atoms
+   first.
+3. `concept_reach_field.py` (BUILT): P(reach g <= H | s) + censored time-to-hit, from
+   hindsight first-hit labels. Both losses imported from losses.py where they were built
+   for exactly this ("REACHABILITY_FOUNDATIONS §4.1") -- reconnected, not reinvented.
+   The 8/14 scar is honoured: strata were unlearnable from POSITIVES-ONLY reachability
+   (d97f22a), so censored negatives are in both terms.
+
+**Sequencing (per the flywheel rule -- no self-play until the field earns it):** mined
+goals -> hindsight reach-field, gated on held-out AUC/calibration beating base rates ->
+child self-consistency (Bellman over legal children; the robotics analog is a learned
+one-step model) -> goal-conditioned self-play with hit/miss retraining, which is the
+"self-play reach-events under adversarial resistance" spec of 8/11.
