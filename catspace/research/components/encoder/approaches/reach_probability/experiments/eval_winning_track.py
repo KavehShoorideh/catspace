@@ -86,9 +86,9 @@ def main():
 
     @torch.no_grad()
     def enc_np(tk, gb):
-        z, _, _, _ = enc.encode(torch.from_numpy(tk.astype(np.int64)).to(dev),
-                                torch.from_numpy(gb.astype(np.float32)).to(dev))
-        return z
+        z, ids, ids_sq, _ = enc.encode(torch.from_numpy(tk.astype(np.int64)).to(dev),
+                                       torch.from_numpy(gb.astype(np.float32)).to(dev))
+        return z, ids, ids_sq
 
     if args.model == "bc":
         # BEHAVIORAL-CLONING PRIOR (Kaveh 2026-08-19): rank children by the policy scorer
@@ -99,12 +99,14 @@ def main():
         pk = torch.load(args.ckpt, map_location="cpu", weights_only=False)
         PA = pk["args"] if isinstance(pk.get("args"), dict) else vars(pk["args"])
         scorer = PolicyScorer(A["heads"] * 32 + 64 * 32, hidden=PA["hidden"],
-                              depth=PA["depth"]).to(dev)
+                              depth=PA["depth"], arch=PA.get("arch", "mlp"),
+                              n_heads=A["heads"], n_codes=A["codes"],
+                              n_sq_codes=A["square_codes"]).to(dev)
         scorer.load_state_dict(pk["state_dict"]); scorer.eval()
 
         @torch.no_grad()
-        def score(zc, white_to_move):
-            return scorer(zc).cpu().numpy()
+        def score(zc, ig, isq, white_to_move):
+            return scorer(zc, ig, isq).cpu().numpy()
         qk = None
     elif args.model == "cef":
         # THE PROPOSED SYSTEM: no geometry at all for value -- score children with the concept
@@ -115,7 +117,7 @@ def main():
         wb = torch.from_numpy((out_of0 == "L").astype(np.float32)).to(dev)
 
         @torch.no_grad()
-        def score(zc, white_to_move):
+        def score(zc, ig, isq, white_to_move):
             p = torch.softmax(enc.resolution_logits(zc), -1)
             return (p * (ww if white_to_move else wb)).sum(1).cpu().numpy()
         qk = None
@@ -138,7 +140,7 @@ def main():
         win_b = torch.from_numpy((out_of == "L").astype(np.float32)).to(dev)
 
         @torch.no_grad()
-        def score(zc, white_to_move):
+        def score(zc, ig, isq, white_to_move):
             """-> higher is better for the ORIGINAL mover."""
             p = net.resolution(net.embed(zc))
             return (p * (win_w if white_to_move else win_b)).sum(1).cpu().numpy()
@@ -159,10 +161,10 @@ def main():
         for nm, want in (("W", 1), ("B", -1)):
             sel = term_rows[keep & (tr.result[gor0[term_rows]] == want)]
             sel = sel[rr.choice(len(sel), min(args.n_poles, len(sel)), replace=False)]
-            POLE[nm] = enc_np(tr.tok[sel], tr.glob[sel])
+            POLE[nm] = enc_np(tr.tok[sel], tr.glob[sel])[0]
 
         @torch.no_grad()
-        def score(zc, white_to_move):
+        def score(zc, ig, isq, white_to_move):
             P = POLE["W"] if white_to_move else POLE["B"]
             d = torch.full((len(zc),), float("inf"), device=dev)
             for i in range(len(P)):
@@ -238,8 +240,8 @@ def main():
         for m in mvs:
             b.push(m); t, g = tok_glob_of(b); b.pop()
             tks.append(t); gbs.append(g)
-        zc = enc_np(np.stack(tks), np.stack(gbs))
-        sc = score(zc, bool(tr.glob[r, 0]))
+        zc, ig, isq = enc_np(np.stack(tks), np.stack(gbs))
+        sc = score(zc, ig, isq, bool(tr.glob[r, 0]))
         pick = mvs[int(np.argmax(sc))]
         ours.append(on[pick]); best_wp_drop.append(best - wp[pick])
         rand.append(np.mean([on[m] for m in mvs]))

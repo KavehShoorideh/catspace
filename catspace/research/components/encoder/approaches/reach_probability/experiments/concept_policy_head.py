@@ -12,17 +12,25 @@ includes the hard negatives (good moves SF happened not to pick) with no engine 
 them. And the readout is a DEDICATED scorer rather than the win-probability head, whose
 calibration cef4 was quietly distorting.
 
-WHAT THE LABEL MEANS, precisely. 42-52%% of legal moves also keep the game result (measured,
-winning-track census), so "not played" is NOT "bad" -- it is "SF preferred otherwise". The loss
-is therefore a RANKING: softmax over the played move and every legal sibling, cross-entropy to
-the played slot, with label smoothing so equal-quality siblings are not crushed to zero. What
-this learns is the demonstrator's preference -- behavioral cloning on trajectories, the
-robotics-legal object -- and a perfect learner aces the winning-track test by construction,
-since it picks SF's move.
+THE INFORMATION BUDGET, which killed v1 and then revived it (Kaveh 2026-08-19). A position's
+record carries at most log2(n_legal) ~ 5 bits about SF's preferences -- the played move's
+identity. A per-position ordering over ~28 siblings (~90 bits) is NOT in the data, so nothing
+here pretends to rank unplayed moves: the loss is the pure Plackett-Luce top-1 likelihood,
+"played beat these", label smoothing removed.
 
-WHAT IT DOES NOT LEARN, kept on record: value or reachability. No goal conditioning, silent off
-the demonstrator's distribution. It is the POLICY PRIOR of the AlphaZero shape; the reach field
-stays the value half.
+WHAT MAKES A RANKING EMERGE ANYWAY, in his words: "in different end games, different concepts
+become the best move... some concepts might be number two because in some other position this is
+number one... concepts that never get picked are always bad. Ranking of the concepts will emerge
+after we study stockfish's behavior in a lot of different situations." The scorer reads moves
+ONLY through the concept vocabulary, so it cannot memorise positions; millions of ~5-bit
+tournaments then overdetermine a GLOBAL utility over concepts -- Elo for concepts. The `linear`
+arch makes that object literal: score(move) = sum of learned utilities of the child's concept
+atoms; within one position shared atoms cancel in the softmax, across positions the utilities
+are the emergent ranking, printable. The `mlp` arch is the context-sensitivity ceiling, and the
+linear-vs-mlp gap MEASURES how context-dependent concept worth is.
+
+Still not value: no goal conditioning, silent off-distribution. Policy prior of the
+AlphaZero shape; the reach field stays the value half.
 
     .venv/bin/python -m ...concept_policy_head --steps 6000 --device mps
 """
@@ -38,19 +46,43 @@ import torch.nn.functional as F
 
 
 class PolicyScorer(nn.Module):
-    """child concept state -> scalar preference. Scores any child of any node, which is what a
-    search prior needs; the softmax is taken over whatever children are on the table."""
+    """child concepts -> scalar preference. `linear` scores the SUM OF ATOM UTILITIES -- the
+    emergent concept ranking, readable off the weights; `mlp` is the context-sensitive ceiling
+    on the dense concept state."""
 
-    def __init__(self, d_in, hidden=1024, depth=3):
+    def __init__(self, d_in, hidden=1024, depth=3, arch="mlp",
+                 n_heads=16, n_codes=32, n_sq_codes=256):
         super().__init__()
-        layers = [nn.Linear(d_in, hidden), nn.GELU()]
-        for _ in range(depth - 1):
-            layers += [nn.Linear(hidden, hidden), nn.GELU()]
-        layers += [nn.Linear(hidden, 1)]
-        self.f = nn.Sequential(*layers)
+        self.arch = arch
+        self.n_heads, self.n_codes, self.n_sq_codes = n_heads, n_codes, n_sq_codes
+        if arch == "linear":
+            self.w_g = nn.Embedding(n_heads * n_codes, 1)
+            self.w_s = nn.Embedding(64 * n_sq_codes, 1)
+            nn.init.zeros_(self.w_g.weight); nn.init.zeros_(self.w_s.weight)
+        else:
+            layers = [nn.Linear(d_in, hidden), nn.GELU()]
+            for _ in range(depth - 1):
+                layers += [nn.Linear(hidden, hidden), nn.GELU()]
+            layers += [nn.Linear(hidden, 1)]
+            self.f = nn.Sequential(*layers)
 
-    def forward(self, z):
+    def forward(self, z, g_idx=None, s_idx=None):
+        if self.arch == "linear":
+            go = g_idx + torch.arange(self.n_heads, device=g_idx.device)[None, :] * self.n_codes
+            so = s_idx + torch.arange(64, device=s_idx.device)[None, :] * self.n_sq_codes
+            return (self.w_g(go).squeeze(-1).sum(1) + self.w_s(so).squeeze(-1).sum(1))
         return self.f(z).squeeze(-1)
+
+    def top_atoms(self, k=6):
+        """(top, bottom) lists of (kind, slot, code, weight) -- the emergent ranking."""
+        import numpy as np
+        out = []
+        for kind, W, n2 in (("g", self.w_g.weight.detach().cpu().numpy().ravel(), self.n_codes),
+                            ("s", self.w_s.weight.detach().cpu().numpy().ravel(), self.n_sq_codes)):
+            for i in np.argsort(W):
+                out.append((kind, i // n2, i % n2, float(W[i])))
+        out.sort(key=lambda t: t[3])
+        return out[-k:][::-1], out[:k]
 
 
 def build_step(args, dev):
@@ -94,7 +126,9 @@ def build_step(args, dev):
           f"(mean {float(D['n_neg'].float().mean()):.1f}) | d_state {d_state} "
           f"[{time.time()-t0:.0f}s]", flush=True)
 
-    net = PolicyScorer(d_state, hidden=args.hidden, depth=args.depth).to(dev)
+    net = PolicyScorer(d_state, hidden=args.hidden, depth=args.depth, arch=args.arch,
+                       n_heads=A["heads"], n_codes=A["codes"],
+                       n_sq_codes=A["square_codes"]).to(dev)
     print(f"[cpl] {sum(p.numel() for p in net.parameters()):,} params (encoder frozen)",
           flush=True)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
@@ -103,16 +137,16 @@ def build_step(args, dev):
 
     @torch.no_grad()
     def encode(tk, gb):
-        z, _, _, _ = enc.encode(tk.long().to(dev), gb.float().to(dev))
-        return z
+        z, ids, ids_sq, _ = enc.encode(tk.long().to(dev), gb.float().to(dev))
+        return z, ids, ids_sq
 
     def batch_logits(idx, model):
         """-> (B, 1+K) logits with -inf on invalid slots; slot 0 = played."""
         B = len(idx)
         tk = torch.cat([D["pos_tok"][idx][:, None], D["neg_tok"][idx]], 1)
         gb = torch.cat([D["pos_glb"][idx][:, None], D["neg_glb"][idx]], 1)
-        z = encode(tk.reshape(B * (K + 1), 64), gb.reshape(B * (K + 1), 6))
-        sc = model(z).view(B, K + 1)
+        z, ig, isq = encode(tk.reshape(B * (K + 1), 64), gb.reshape(B * (K + 1), 6))
+        sc = model(z, ig, isq).view(B, K + 1)
         valid = torch.cat([torch.ones(B, 1, dtype=torch.bool),
                            torch.arange(K)[None, :].expand(B, K) < D["n_neg"][idx][:, None]],
                           1).to(dev)
@@ -148,6 +182,11 @@ def build_step(args, dev):
                   f"({el/max(1,step):.3f}s/step) | loss {float(loss):.4f} | "
                   f"picks played {hits1/tot:.3f} top3 {hits3/tot:.3f} "
                   f"(chance {1/nl:.3f}) held-out", flush=True)
+            if args.arch == "linear" and step >= args.steps // 2:
+                top, bot = model.top_atoms(4)
+                fmt = lambda t: f"{t[0]}{t[1]}:{t[2]}={t[3]:+.2f}"
+                print(f"[cpl]   concept ranking  best {' '.join(map(fmt, top))}  |  "
+                      f"worst {' '.join(map(fmt, bot))}", flush=True)
             m = {"top1": hits1 / tot, "top3": hits3 / tot}
             model.train()
         return {"loss": float(loss.detach()), **m}
@@ -164,7 +203,10 @@ def main():
     ap.add_argument("--hidden", type=int, default=1024)
     ap.add_argument("--depth", type=int, default=3)
     ap.add_argument("--temp", type=float, default=1.0)
-    ap.add_argument("--smooth", type=float, default=0.05)
+    ap.add_argument("--smooth", type=float, default=0.0,
+                    help="label smoothing is OFF: supervision must not exceed the ~5 bits the "
+                         "data holds (the played move identity). Kept as a knob for ablation.")
+    ap.add_argument("--arch", choices=["linear", "mlp"], default="linear")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--games", type=int, default=20000)
     ap.add_argument("--eval-every", type=int, default=250)

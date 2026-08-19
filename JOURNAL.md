@@ -14676,3 +14676,37 @@ themselves:
 crf2 = TD update over legal children, then goal-conditioned self-play reach-events.
 Meanwhile cef5's code-caching is running for the ablation re-mine, and cef6 (VAMP-2 slow
 lobe) is the next build.
+
+---
+
+## 2026-08-19 12:50 — the ranking that CAN emerge: concept utilities from argmax-only data
+
+**Kaveh, resolving his own retraction:** "you have to predict it based on concepts that
+exist... in different end games, different concepts become the best move. That's when we
+learn that some concepts might be number two, because in some other position this is
+number one. Concepts that never get picked are always bad. Ranking of the concepts will
+emerge after we study stockfish's behavior in a lot of different situations."
+
+This is consistent with the morning's ruling, not a reversal, and the distinction is
+worth stating exactly. FORBIDDEN: per-position ordering labels among unplayed siblings
+(~90 bits/position that the data does not contain). ALLOWED: a global utility over
+CONCEPTS, learned from millions of ~5-bit "played beat these" tournaments, where the
+scorer reads moves only through the shared concept vocabulary and therefore cannot
+memorise positions -- cross-context generalization is the mechanism that turns argmax
+bits into an ordering. Elo for concepts, formally Plackett-Luce top-1 with concept
+features.
+
+`concept_policy_head.py` un-shelved in exactly that form and no other: label smoothing
+REMOVED (supervision must not exceed the bits that exist), and a `linear` arch added
+whose weights ARE the emergent ranking -- score(move) = sum of learned utilities of the
+child's concept atoms; shared atoms cancel within a position's softmax, and the printed
+top/bottom atoms are the deliverable Kaveh described. The `mlp` arch stays as the
+context-sensitivity ceiling; the linear-vs-mlp gap is a measurement of "different
+endgames, different best concepts".
+
+QUEUED (single chained script): cef5 code-cache completes -> ablation re-mine on cef5's
+vocabulary (CPU) in parallel with cpl1 (linear, GPU, 6k steps) -> winning-track eval of
+the emergent-utility scorer against the pre-registered numbers (random 47-52%,
+material-greedy 58-67%). cef5 itself closed with churn slow 0.51 / fast 0.50 -- the MSE
+persistence null VAMPnets predicted, now on record as the ablation control for cef6's
+VAMP-2 lobe.
