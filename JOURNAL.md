@@ -14469,3 +14469,57 @@ rulers or poles over a state that cannot distinguish a good move from a blunder 
 moves, because the information is absent before the geometry is reached. The earlier
 within-parent measurement in `concept_state_field.py` (+0.096 spearman, sibling spread
 22% of truth) said this, and it should have been the prior for everything built since.
+
+---
+
+## 2026-08-19 05:00 — cef4: sibling contrast works on its own objective, does not transfer
+
+`cef4` = the concept model with two additions: within-parent contrast (the played move
+must outrank 7 random legal siblings, a free label -- no engine in the loss) and
+vicreg_covariance decorrelation on the pre-VQ global projection. 20,000 steps, 180.6 min.
+
+**Both terms did what they were built to do.**
+
+```
+sibling ranking (chance 1/8 = 0.125)   0.146 at step 1  ->  0.31-0.35 by the end
+decorrelation penalty                  0.078 -> 0.000 within 500 steps
+NOW12 (current material)               0.979
+eg_cond (conditional ending)           0.259
+```
+
+Sibling ranking reached ~2.5x chance, the first within-parent signal anything in this
+stack has shown.
+
+**NEGATIVE: it does not transfer to the winning-track test.**
+
+```
+                              on winning track   (random)   (material-greedy)
+cef4 (with sibling contrast)        49.5%          47.3%          64.0%
+cef3 (without)                      49.3%          52.1%          58.7%
+```
+
++2.2 points over random where cef3 was -2.8, so the sign flipped, but the gap to a
+one-line material rule is unchanged at ~15 points.
+
+**The cause is the one flagged when the term was built, and it is worth stating as a
+prediction that came true rather than a discovery.** The contrast teaches "the played
+move beats a RANDOM legal sibling". A random sibling is usually obviously bad -- hanging
+a queen, walking into mate -- so the model learns to reject blunders. The winning-track
+test scores something else: among moves that are all superficially reasonable, which ones
+preserve the result. Learning to beat a random sibling does not teach that, and 2.5x
+chance on the easy comparison buying 2 points on the hard one is exactly the expected
+shape.
+
+**What this rules in.** The failure is not capacity (100% sibling state distinctness),
+not redundancy (decorrelation solved it and nothing moved), and not the absence of any
+within-parent signal (the contrast term learned one). It is the DIFFICULTY of the
+negatives. Random siblings are too easy to be informative about the decision that
+matters.
+
+**The specified next step:** HARD negatives -- siblings a strong engine rates close to
+the played move, so the contrast is between plausible alternatives rather than between a
+move and a blunder. That does require engine labels at cache-build time, which crosses a
+line this project has deliberately held (no Stockfish in the loss). Worth noting that the
+line can be held in a weaker form: engine labels used ONLY to SELECT which siblings to
+contrast, never as a target, keeps the training signal free while making the comparison
+hard. That is a design decision for Kaveh, not one to take unilaterally.
