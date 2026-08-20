@@ -15336,3 +15336,27 @@ question "which heads take it" goes to the alignment eval.
 
 Move-prediction on this corpus is HUMAN-move prediction -- the Maia framing: held-out
 top1 is now "how well do the concepts predict what a 1500 plays".
+
+---
+
+## 2026-08-20 evening — human threat/execution census: the SF inversion VANISHES in human play
+
+3.4M threats censused on the 2.1M-row human corpus (labels built from token diffs, no
+board replay). Side by side with the 2026-08-19 SF census:
+
+                                SF corpus     HUMAN corpus
+    P(exec <= 8 | threat)          0.149          0.227
+    SEE>0 (winning capture)        0.187          0.547
+    SEE=0 (even trade)             0.369          0.401
+    SEE<0 (bad capture)            0.074          0.068
+    P(immediate | executed)        ~0.5-0.9       0.639 median 1 ply
+    queen victim                   0.280          0.525 (94 percent immediate)
+
+The SF signature -- winning captures RARELY execute because perfect defence pre-empts
+them (the threat's product is the forced retreat) -- does not exist in human play: humans
+execute available winning captures 55 percent of the time. The "when do you cash in"
+knowledge is POPULATION-SPECIFIC, which is precisely why the human concept model is
+trained separately and why its threat head must be trained on human labels.
+
+Artifacts ready for the post-run fine-tune: threat_exec_k8 (census head) and
+capture_within8 (the unconditional v2b per-square head) for the human corpus.
