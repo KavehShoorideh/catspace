@@ -14973,3 +14973,17 @@ off named features rather than asserted.
 First pass verdict: the interpretability claim has its first named atoms -- coarse
 structural concepts are nameable, the slow/fast split is semantically real, tactical
 naming awaits edge concepts. Partial, honest, and now measurable run-over-run.
+
+### gcf3 design notes banked (Kaveh, evening of 2026-08-19)
+
+Static square-square relations for gcf3, one per movement geometry, each with its own
+message weights, built once at init (position-independent):
+file + rank (full lines, rook geometry), diagonal + anti-diagonal (bishop), KNIGHT-JUMP
+(the 8 offsets -- fork topology, not derivable from lines), king-step (8-neighborhood =
+"manhattan" + single diagonals). Optional: color-directional pawn-front relations.
+Plus: 8 FILE-NODES aggregating their squares (hosts per-file pawn structure -- the
+measured 0.01 eta^2 gap); phase-designated head + gradient-reversal phase adversary on
+the rest ("different codes for the same phase"); threat-vs-execution labels (threat =
+capture available, from the position; execution = taken within k plies, from the
+trajectory; the gap = tension, its resolution timing = the tactics-vs-phase bridge).
+Recurrence stays a measured validation, not a loss, until #3's effect is seen.
