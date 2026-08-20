@@ -950,9 +950,13 @@ class H(BaseHTTPRequestHandler):
                         pass
                 if reply_mv is None:
                     # time-capped iterative deepening (Kaveh: think <= ~1.5s)
-                    with H.lock:                 # BEST VERSION ONLY (Kaveh 2026-08-11):
-                        best = H.eng.search_coherent(b, budget=1.5)   # coherence-bounded
-                        best = H.eng.rank_by_child_E(b, best)         # ranked by E
+                    if hasattr(H.eng, "concepts"):   # gcf3 self-locks per forward
+                        best = H.eng.search_coherent(b, budget=1.5)
+                        best = H.eng.rank_by_child_E(b, best)
+                    else:
+                        with H.lock:             # BEST VERSION ONLY (Kaveh 2026-08-11):
+                            best = H.eng.search_coherent(b, budget=1.5)
+                            best = H.eng.rank_by_child_E(b, best)
                     if best:
                         reply_mv = best[0]["mv"]
                 if reply_mv is not None:
@@ -991,8 +995,11 @@ class H(BaseHTTPRequestHandler):
                                       # 'the list shouldn't lose anything it's already found'
                                       # -- deepening ACCUMULATES; new depths overwrite the
                                       # same move, never evict siblings found earlier)
-                    with H.lock:      # UNLOCKED MODEL CALL = the MPS wedge (2026-08-12):
-                        cmoves, corder, _ = H.eng.cascade_rank(bb)   # two threads in MPS
+                    if hasattr(H.eng, "concepts"):
+                        cmoves, corder, _ = H.eng.cascade_rank(bb)   # self-locked forward
+                    else:
+                        with H.lock:  # UNLOCKED MODEL CALL = the MPS wedge (2026-08-12):
+                            cmoves, corder, _ = H.eng.cascade_rank(bb)
                                       # deadlock the GPU runtime at 0%% CPU; every engine
                                       # touch in this server goes through H.lock, no exceptions
                     crank = {cmoves[j].uci(): pos for pos, j in enumerate(corder)} if cmoves else {}
@@ -1079,9 +1086,18 @@ class H(BaseHTTPRequestHandler):
                         for bud in _lad:
                             if H.gen != g:
                                 return
-                            with H.lock:
-                                rows = H.eng.search_coherent(bb, budget=bud)
-                                rows = H.eng.rank_by_child_E(bb, rows)
+                            if hasattr(H.eng, "concepts"):
+                                # gcf3: engine self-locks per forward; lines STREAM per
+                                # root candidate and a new move aborts mid-wave
+                                rows = H.eng.search_coherent(
+                                    bb, budget=bud, stop=lambda: H.gen != g,
+                                    progress=lambda rr: publish(list(rr), bud))
+                            else:
+                                with H.lock:
+                                    rows = H.eng.search_coherent(bb, budget=bud)
+                                    rows = H.eng.rank_by_child_E(bb, rows)
+                            if H.gen != g:
+                                return
                             if rows:
                                 dmax = max(r.get("depth_used", 1) for r in rows)
                                 publish(rows, dmax)
@@ -1186,7 +1202,11 @@ class H(BaseHTTPRequestHandler):
                                         "done": bool(cur.get("done"))}).encode())
             return
         # fast phase: position + tricolor committor bar [P(white), P(draw), P(black)]
-        with H.lock:
+        if hasattr(H.eng, "concepts"):
+            wdl, dists = self._wdl(b, over)        # forwards self-lock
+            xr = None                              # exit_readout is a kitty-engine feature
+        else:
+          with H.lock:
             wdl, dists = self._wdl(b, over)
             try:
                 xr = H.eng.exit_readout(b) if not over else None
@@ -1491,8 +1511,7 @@ class H(BaseHTTPRequestHandler):
         gconcepts = None
         if hasattr(H.eng, "concepts"):
             try:
-                with H.lock:
-                    gconcepts = H.eng.concepts(b)
+                gconcepts = H.eng.concepts(b)      # forwards self-lock
             except Exception:
                 gconcepts = None
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
@@ -1620,10 +1639,11 @@ def main():
         from catspace.research.components.planner.approaches.quasimetric_nav.concept_engine import (
             ConceptAlphaBeta)
         H.eng = ConceptAlphaBeta(args.ckpt, args.device, width=args.width)
+        H.eng.lock = H.lock       # engine self-locks per forward batch
         print(f"[kitty-server] CONCEPT ENGINE: alpha-beta ordered by the gcf3 move head, "
               f"leaves = W/D/L expectation ({H.eng.tag}, width {args.width})", flush=True)
         threading.Thread(target=lambda: H.eng.warm_openings(
-            plies=args.warm_plies, lock=H.lock,
+            plies=args.warm_plies, lock=None,     # _forward self-locks now
             log=lambda m: print(m, flush=True)), daemon=True).start()
     else:
         from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess

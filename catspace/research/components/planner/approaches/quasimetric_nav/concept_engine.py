@@ -61,6 +61,9 @@ class ConceptAlphaBeta:
         self.net.load_state_dict(ck["state_dict"]); self.net.eval()
         self.device = device
         self.width = width
+        self.lock = None          # injected by the server: every net touch self-locks at
+                                  # FORWARD granularity, so UI requests interleave between
+                                  # node evaluations instead of queueing behind whole waves
         self.tag = ckpt.split("/")[-1]
         try:
             sz = np.load(stats_path, allow_pickle=True)
@@ -81,43 +84,45 @@ class ConceptAlphaBeta:
             parent_graph, glob_of_board)
         from catspace.research.components.encoder.approaches.reach_probability.experiments \
             .graph_move_policy import featurize, MV_CAP
+        from contextlib import nullcontext
         misses = [b for b in boards if b.fen() not in self._cache]
         if misses:
-            gs = [parent_graph(b)[0] for b in misses]
-            D = {k: torch.from_numpy(np.stack([g[k] for g in gs]))
-                 for k in ("sq", "mv", "mut", "vac", "dsc", "att")}
-            D["gl"] = torch.from_numpy(np.stack([glob_of_board(b) for b in misses]))
-            D["n_mv"] = torch.tensor([g["n_mv"] for g in gs], dtype=torch.uint8)
-            D["n_att"] = torch.tensor([g["n_att"] for g in gs], dtype=torch.uint16)
-            dev = self.device
-            bb = {k: D[k].to(dev) for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
-            sqf, mvf, edges, mask = featurize(bb, dev, n_nodes=self.net.n_nodes)
-            off = (torch.arange(len(misses), device=dev) * self.net.n_nodes)[:, None]
-            jj = torch.arange(MV_CAP, device=dev)[None, :]
-            for name in ("vac", "dsc"):
-                arr = D[name].to(dev).long()
-                val = (arr != 255) & mask[:, :, None]
-                edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
-                               (arr + off[:, :, None])[val])
-            zq, g_ids, sq_ids, _, h_mv, pre_g = self.net.encode(sqf, mvf, edges, mask)
-            lg = self.net.move_logits(zq, h_mv, mask)
-            _, _, out_l = self.net.predict_resolution(zq)
-            pwdl = torch.softmax(out_l, -1).cpu().numpy()      # White-POV [W, D, L]
-            te = (torch.sigmoid(self.net.te_head(self.net.last_h_sq).squeeze(-1)).cpu().numpy()
-                  if self.net.threat_head else None)
-            lgn = lg.cpu().numpy(); gin = g_ids.cpu().numpy()
-            for i, b in enumerate(misses):
-                n = int(D["n_mv"][i])
-                mvs = list(b.legal_moves)[:n]
-                sc = lgn[i, :n]
-                order = list(np.argsort(-sc))
-                w, d, l = float(pwdl[i, 0]), float(pwdl[i, 1]), float(pwdl[i, 2])
-                margin = (w - l) if b.turn == chess.WHITE else (l - w)
-                self._cache[b.fen()] = dict(
-                    moves=mvs, order=order, logits=sc, margin=margin, wdl=(w, d, l),
-                    g_ids=gin[i], te=(te[i] if te is not None else None))
-                if len(self._cache) > 200000:
-                    self._cache.clear()
+          with (self.lock if self.lock is not None else nullcontext()):
+              gs = [parent_graph(b)[0] for b in misses]
+              D = {k: torch.from_numpy(np.stack([g[k] for g in gs]))
+                   for k in ("sq", "mv", "mut", "vac", "dsc", "att")}
+              D["gl"] = torch.from_numpy(np.stack([glob_of_board(b) for b in misses]))
+              D["n_mv"] = torch.tensor([g["n_mv"] for g in gs], dtype=torch.uint8)
+              D["n_att"] = torch.tensor([g["n_att"] for g in gs], dtype=torch.uint16)
+              dev = self.device
+              bb = {k: D[k].to(dev) for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
+              sqf, mvf, edges, mask = featurize(bb, dev, n_nodes=self.net.n_nodes)
+              off = (torch.arange(len(misses), device=dev) * self.net.n_nodes)[:, None]
+              jj = torch.arange(MV_CAP, device=dev)[None, :]
+              for name in ("vac", "dsc"):
+                  arr = D[name].to(dev).long()
+                  val = (arr != 255) & mask[:, :, None]
+                  edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
+                                 (arr + off[:, :, None])[val])
+              zq, g_ids, sq_ids, _, h_mv, pre_g = self.net.encode(sqf, mvf, edges, mask)
+              lg = self.net.move_logits(zq, h_mv, mask)
+              _, _, out_l = self.net.predict_resolution(zq)
+              pwdl = torch.softmax(out_l, -1).cpu().numpy()      # White-POV [W, D, L]
+              te = (torch.sigmoid(self.net.te_head(self.net.last_h_sq).squeeze(-1)).cpu().numpy()
+                    if self.net.threat_head else None)
+              lgn = lg.cpu().numpy(); gin = g_ids.cpu().numpy()
+              for i, b in enumerate(misses):
+                  n = int(D["n_mv"][i])
+                  mvs = list(b.legal_moves)[:n]
+                  sc = lgn[i, :n]
+                  order = list(np.argsort(-sc))
+                  w, d, l = float(pwdl[i, 0]), float(pwdl[i, 1]), float(pwdl[i, 2])
+                  margin = (w - l) if b.turn == chess.WHITE else (l - w)
+                  self._cache[b.fen()] = dict(
+                      moves=mvs, order=order, logits=sc, margin=margin, wdl=(w, d, l),
+                      g_ids=gin[i], te=(te[i] if te is not None else None))
+                  if len(self._cache) > 200000:
+                      self._cache.clear()
         return [self._cache[b.fen()] for b in boards]
 
     def _terminal_value(self, board):
@@ -151,6 +156,26 @@ class ConceptAlphaBeta:
         f = self._forward([board])[0]
         if depth <= 0:
             return f["margin"], []
+        if depth == 1:
+            # LEAF LEVEL, BATCHED: all top-width children in ONE forward (2026-08-20
+            # "why is it so slow" -- unbatched leaves dominated the node count)
+            cand = f["order"][:self.width]
+            vals, kids = [], []
+            for i in cand:
+                board.push(f["moves"][i])
+                tv2 = self._terminal_value(board)
+                if tv2 is not None:
+                    vals.append((-tv2, i))
+                else:
+                    kids.append((i, board.copy(stack=False)))
+                board.pop()
+            if kids:
+                for (i, _b2), fc in zip(kids, self._forward([b2 for _, b2 in kids])):
+                    vals.append((-fc["margin"], i))
+            if not vals:
+                return f["margin"], []
+            v, bi = max(vals)
+            return v, [f["moves"][bi]]
         best_v, best_pv = -float("inf"), []
         for i in f["order"][:self.width]:
             m = f["moves"][i]
@@ -230,10 +255,12 @@ class ConceptAlphaBeta:
             f"({plies} plies) in {_t.time()-t0:.0f}s; cache {len(self._cache):,}")
 
     # ---- server-surface compatibility shims -------------------------------------
-    def search_coherent(self, board, budget=1.5, **kw):
-        """the server's one search entry point: budget (s) -> alpha-beta depth."""
-        depth = 2 if budget < 1.0 else 3 if budget < 3.0 else 4
-        return self.search(board, depth=depth, top=6)
+    def search_coherent(self, board, budget=1.5, stop=None, progress=None, **kw):
+        """the server's one search entry point: budget (s) -> alpha-beta depth. stop and
+        progress stream through to the root loop: lines publish per candidate, and a new
+        move aborts mid-wave."""
+        depth = 2 if budget < 1.0 else 3 if budget < 3.5 else 4
+        return self.search(board, depth=depth, top=6, stop=stop, progress=progress)
 
     def rank_by_child_E(self, board, rows, *a, **kw):
         return rows                      # rows already sorted by searched value
