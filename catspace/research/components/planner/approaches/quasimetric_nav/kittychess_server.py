@@ -1595,6 +1595,8 @@ def main():
                     help="gcf3: ConceptAlphaBeta -- minimax/alpha-beta ranked by the "
                          "concept move head (Kaveh 2026-08-20); --ckpt is then the gcf3 ckpt")
     ap.add_argument("--width", type=int, default=8, help="gcf3: alpha-beta beam width")
+    ap.add_argument("--warm-plies", type=int, default=3,
+                    help="gcf3: prewarm the opening tree this many plies deep at startup")
     ap.add_argument("--cond-elo", type=float, default=None)
     ap.add_argument("--device", default="mps",
                     help="mps | cuda | cpu | auto (cuda -> mps -> cpu)")
@@ -1620,6 +1622,9 @@ def main():
         H.eng = ConceptAlphaBeta(args.ckpt, args.device, width=args.width)
         print(f"[kitty-server] CONCEPT ENGINE: alpha-beta ordered by the gcf3 move head, "
               f"leaves = W/D/L expectation ({H.eng.tag}, width {args.width})", flush=True)
+        threading.Thread(target=lambda: H.eng.warm_openings(
+            plies=args.warm_plies, lock=H.lock,
+            log=lambda m: print(m, flush=True)), daemon=True).start()
     else:
         from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
         H.eng = KittyChess(args.ckpt, args.device, args.cond_elo)

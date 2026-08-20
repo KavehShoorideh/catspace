@@ -196,6 +196,39 @@ class ConceptAlphaBeta:
             pass
         return rows
 
+    def warm_openings(self, plies=3, chunk=256, lock=None, log=print):
+        """prewarm the fen cache with the opening tree (Kaveh 2026-08-20: "cache the
+        embeddings of the start position and all first few legal moves"). Runs in a
+        background thread at startup; takes `lock` per batch so live requests interleave
+        instead of queueing behind the whole warmup."""
+        import time as _t
+        import chess as _c
+        t0 = _t.time()
+        seen, frontier = {_c.Board().fen()}, [_c.Board()]
+        boards = [_c.Board()]
+        for _ in range(plies):
+            nxt = []
+            for b in frontier:
+                for m in b.legal_moves:
+                    b.push(m)
+                    f = b.fen()
+                    if f not in seen:
+                        seen.add(f); c = b.copy(stack=False)
+                        nxt.append(c); boards.append(c)
+                    b.pop()
+            frontier = nxt
+        done = 0
+        for a in range(0, len(boards), chunk):
+            batch = boards[a:a + chunk]
+            if lock is not None:
+                with lock:
+                    self._forward(batch)
+            else:
+                self._forward(batch)
+            done += len(batch)
+        log(f"[concept-engine] opening cache warm: {done:,} positions "
+            f"({plies} plies) in {_t.time()-t0:.0f}s; cache {len(self._cache):,}")
+
     # ---- server-surface compatibility shims -------------------------------------
     def search_coherent(self, board, budget=1.5, **kw):
         """the server's one search entry point: budget (s) -> alpha-beta depth."""
