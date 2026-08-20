@@ -48,6 +48,8 @@ def main():
     ap.add_argument("--sf-ms", type=int, default=10)
     ap.add_argument("--device", default="mps")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--h2h", action="store_true", help="gdv only: run ONLY combo-vs-prior")
+    ap.add_argument("--beta", type=float, default=0.0, help="h2h: raw dV weight on log-probs")
     args = ap.parse_args()
 
     import chess
@@ -227,6 +229,29 @@ def main():
           f"(adjudicated at |material| >= 3)\n")
     combo = make_policy(True, True, args.lam)
     valonly = make_policy(False, True, 1.0)
+    if args.model == "gdv" and args.h2h:
+        # the dV ablation: identical net, identical prior -- the ONLY difference is the
+        # dV term. Any score above 50 is the derivative's causal contribution.
+        if args.beta > 0:
+            # CALIBRATED combination: dV is in game points, so add it to log-probabilities
+            # raw. zs() would force unit variance per position, amplifying noise exactly
+            # where the field is flat -- and flat is the common case (73 percent of CF
+            # deltas are ties).
+            def rawcombo(b, rng, ply):
+                mv, prior, val = child_scores(b)
+                if len(mv) == 1:
+                    return mv[0]
+                pr = prior - prior.max()
+                lp = pr - np.log(np.exp(pr).sum())
+                sc = lp + args.beta * val
+                if ply < args.open_plies:
+                    pd = np.exp(sc - sc.max()); pd /= pd.sum()
+                    return mv[rng.choice(len(mv), p=pd)]
+                return mv[int(np.argmax(sc))]
+            series(f"RAW-COMBO b={args.beta} vs PRIOR-ONLY", rawcombo, cpl_move)
+        else:
+            series("COMBO vs PRIOR-ONLY (dV ablation)", combo, cpl_move)
+        return
     if args.model == "gdv":
         series("PRIOR-ONLY vs RANDOM", cpl_move, random_move)
         series("PRIOR-ONLY vs MATERIAL-GREEDY", cpl_move, material_move)

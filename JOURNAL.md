@@ -15090,3 +15090,55 @@ round-trip. Arena and winning-track both grew --model gdv branches: ONE forward 
 Full gdv1 (6k steps, CPU, ~26 min) finishing; then winning-track n=300 + 100-game arena.
 Held-out gates pre-registered: top1 >= 0.288 (gmp1 -- value semantics must not cost
 imitation); CF sign-acc > 0.663 majority; arena conversion better than +15=84-1.
+
+---
+
+## 2026-08-20 00:50 — gdv1 VERDICT: the graph prior converts; dV discriminates labels but does not yet steer play
+
+Full battery on gdv1_latest (6k steps, 24.8 CPU-min, 733k params). Pre-registered gates first:
+
+**Held-out imitation: PASS.** top1 0.287-0.303 across closing evals vs gmp1's 0.288 -- the pair
+loss cost imitation nothing. (Probe n=3,000; the two are indistinguishable.)
+
+**CF pair-sign: PASS.** 0.708 final (peak 0.718) vs 0.663 always-say-worse majority on 1,118
+nonzero held-out pairs, ~3 sigma clear. But MAE 0.300 does NOT beat the zero-predictor
+(~0.27): the head gets the SIGN of within-parent contrasts, not the magnitude. That
+asymmetry explains everything downstream.
+
+**Winning-track n=300: PASS, by a margin that retires the old bar.** gdv (lam=1) picks an
+on-track move 84.3 percent vs material-greedy 66.0 and random 48.3 ON IDENTICAL POSITIONS.
+The standing bar was material-greedy 58.7 / cpl1 58.0. Off-track picks are rare (mean wp
+given up over all picks: 0.080) but severe when they happen (0.401).
+
+**Arena, 100 games/pairing, the conversion question:**
+
+    PRIOR-ONLY vs RANDOM            +88 =12 -0   94.0%   (cpl1 baseline: +15 =84 -1)
+    PRIOR-ONLY vs MATERIAL-GREEDY   +81 =19 -0   90.5%   first-ever win over this baseline
+    COMBO(zs,lam=1) vs RANDOM       +85 =15 -0   92.5%
+    COMBO(zs,lam=1) vs MATERIAL     +78 =22 -0   89.0%
+    dV-ONLY vs RANDOM               +22 =78 -0   61.0%   never loses, rarely converts
+    COMBO vs SF skill 0 (10ms)      +14 =12 -74  20.0%   elo -241 vs prior best 1.5-3.5%
+
+The week-long "plausible moves, no direction" pathology is CLOSED at this imitation level:
+top1 0.114 -> 0.287 turned +15=84-1 into +88=12-0. Conversion was an imitation-quality
+problem, not a missing-value problem.
+
+**The ablation nobody gets to skip (COMBO vs PRIOR-ONLY head-to-head, identical net):**
+
+    zs-combo   lam=1.0   40.0%  (-70 elo)   the dV term HURTS
+    zs-combo   lam=0.5   49.0%
+    zs-combo   lam=0.25  47.0%
+    raw-combo  beta=1    53.5%  (+24 elo)   log_softmax(prior) + beta*dV
+    raw-combo  beta=2    49.5%
+    raw-combo  beta=4    47.0%
+
+Mechanism found and confirmed: zs() forces unit variance on dV within every position,
+amplifying noise exactly where the field is flat -- and flat is the common case (73 percent
+of CF deltas are ties). The calibrated raw addition fixes the sign of the effect at every
+weight. But +24 elo at beta=1 on 100 games is inside single-seed noise: dV's playing
+contribution is NOT established. Sign-without-magnitude is exactly what a Huber pair loss
+on mostly-tied labels buys; the designed fixes are v2c's TD self-consistency (ground
+unplayed children through expectimax recursion) and more nonzero pairs (branch deeper into
+the game, where deltas are decisive).
+
+Winning-track lam=0 ablation running for the same view on that instrument.
