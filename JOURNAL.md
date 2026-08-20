@@ -15311,3 +15311,28 @@ Caveats carried on the tin: all change-prediction inherits the dynamics head's s
 move-conditioning (dyn_g ~0.5, persistence-heavy), and null-move positions are OOD for the
 prior, so threat EXAMPLE moves can be silly even when the flip direction is right. Both
 sharpen with v2c TD grounding and self-play data -- the same two items already queued.
+
+---
+
+## 2026-08-20 afternoon — gcf4h: the HUMAN concept model (design + launch notes)
+
+Kaveh's pivot: "we trained on SF vs sf. let's build a version trained only on human data.
+we need a way to incorporate elo into the concept heads. I also want more concept heads
+but shallower for global especially."
+
+Corpus: 30k lichess-2019 games -> 2,126,316 rows, elo mean 1563, 22.7 percent time-forfeit
+(TERM_TIME) games censored from the outcome loss per the conversion ruling (first attempt
+wrongly read `term` as a boolean and would have censored 73 percent -- the field is the
+terminal-type table, -2 = time).
+
+Design: 32 global heads x d_code 16 (same state width as 16x32, twice the factors, each
+shallower -- more nameable, decor keeps them apart; slow block = 16 heads). Elo enters as
+a (mover, opp) normalized embedding broadcast into the trunk (codes may be rating-
+dependent; the style-carries-strength ruling says DON'T purge it) + an elo readout from
+the concept state. Resolution head = 3-way White-POV game-result committor (no tablebase
+anywhere). Threat head off (human threat/exec census not yet generated -- queued).
+Elo x VAMP interaction reviewed and ACCEPTED: rating is legitimate slow structure; the
+question "which heads take it" goes to the alignment eval.
+
+Move-prediction on this corpus is HUMAN-move prediction -- the Maia framing: held-out
+top1 is now "how well do the concepts predict what a 1500 plays".

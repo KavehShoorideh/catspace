@@ -142,6 +142,10 @@ def parent_graph(b, nxt_tok=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", type=int, default=20000)
+    ap.add_argument("--n-human", type=int, default=0)
+    ap.add_argument("--sample", type=int, default=0,
+                    help="sample N random non-terminal parent rows (for corpora without a "
+                         "sibling cache, e.g. human games)")
     ap.add_argument("--n-piecedown", type=int, default=45906)
     ap.add_argument("--max-plies", type=int, default=400)
     ap.add_argument("--seed", type=int, default=0)
@@ -160,7 +164,7 @@ def main():
         trajectories as T)
     from catspace.io import paths
 
-    tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
+    tr = T.build(n_human=args.n_human, n_sf=args.games, seed=args.seed, cache=True,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     n = len(tr.tok)
     gor = tr.game_of_row()
@@ -177,6 +181,11 @@ def main():
             p_row = p_row[~term]
         print(f"  parents from {args.rows_npz}[{args.rows_key}]: {len(raw):,} rows -> "
               f"{len(p_row):,} unique non-terminal")
+    elif args.sample:
+        rng0 = np.random.default_rng(args.seed)
+        cand = np.flatnonzero(np.arange(n) != g_end)      # non-terminal rows
+        p_row = np.sort(rng0.choice(cand, min(args.sample, len(cand)), replace=False))
+        print(f"  sampled {len(p_row):,} non-terminal parents")
     else:
         sb = np.load(paths.derived(f"sibling_contrast_{args.sib_k}_{n}.npz"))
         p_row = sb["p_row"]

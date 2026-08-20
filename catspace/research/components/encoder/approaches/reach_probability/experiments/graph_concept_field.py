@@ -103,7 +103,7 @@ class GraphConceptField(nn.Module):
                  cls_reach=None, cls_eg=None, cls_out=None,
                  edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
                  agg_max=False, kin=False, file_nodes=False, phase_head=False,
-                 threat_head=False):
+                 threat_head=False, elo_cond=False):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         self.edge_codes, self.move_codes = edge_codes, move_codes
@@ -137,6 +137,16 @@ class GraphConceptField(nn.Module):
             self.phase_cls = nn.Linear(d_code, 4)
             self.phase_adv = nn.Sequential(nn.Linear((g_heads - 1) * d_code, 128), nn.GELU(),
                                            nn.Linear(128, 4))
+        self.elo_cond = elo_cond
+        if elo_cond:
+            # Kaveh 2026-08-20: "incorporate elo into the concept heads" -- (mover, opp)
+            # normalized ratings enter the trunk as a node-broadcast embedding (the codes
+            # may be rating-dependent: a 1500's "mobility" is not a 2200's), and an
+            # elo READOUT from the concept state measures how much rating the vocabulary
+            # carries (the effective-Elo probe). elo=None at inference = zeros = the
+            # 1500 population mean.
+            self.elo_in = nn.Linear(2, d)
+            self.elo_head = nn.Linear(0, 2)   # re-bound after d_state known (below)
         if threat_head:
             # threat -> execution (Kaveh: "how often is it actually taken... when is a good
             # time to execute"): per-square P(exec within 8 | threat), supervised only on
@@ -194,6 +204,8 @@ class GraphConceptField(nn.Module):
                                         commitment_weight=0.25, kmeans_init=True,
                                         threshold_ema_dead_code=2)
         self.d_state = d_state
+        if elo_cond:
+            self.elo_head = nn.Linear(d_state, 2)
 
         self.move_head = nn.Sequential(
             nn.Linear(d_state + d + (32 if move_codes else 0), hidden), nn.GELU(),
@@ -262,9 +274,12 @@ class GraphConceptField(nn.Module):
             out["sqf"] = ((fd[None] + off).reshape(-1), (fs[None] + off).reshape(-1))
         return out
 
-    def backbone(self, sqf, mvf, edges, mv_mask):
+    def backbone(self, sqf, mvf, edges, mv_mask, elo=None):
         B = sqf.shape[0]
         h = torch.cat([self.sq_in(sqf), self.mv_in(mvf)], 1)
+        if self.elo_cond:
+            e = elo if elo is not None else torch.zeros(B, 2, device=sqf.device)
+            h = h + self.elo_in(e)[:, None, :]
         if self.file_nodes:
             h = torch.cat([h, self.file_emb[None].expand(B, 8, self.d)], 1)
         pad = torch.cat([torch.zeros(B, 64, dtype=torch.bool, device=sqf.device), ~mv_mask], 1)
@@ -315,11 +330,11 @@ class GraphConceptField(nn.Module):
                 h = self.ln_f[i](h + self.ffn[i](h))
         return h                                              # (B, 112, d)
 
-    def encode(self, sqf, mvf, edges, mv_mask, want_edge_ids=False):
+    def encode(self, sqf, mvf, edges, mv_mask, want_edge_ids=False, elo=None):
         """-> zq (B,d_state) in [0,1], g_ids (B,H), sq_ids (B,64), vq_loss, h_mv, pre_g
         [, edge_hist (B,E)]"""
         B = sqf.shape[0]
-        h = self.backbone(sqf, mvf, edges, mv_mask)
+        h = self.backbone(sqf, mvf, edges, mv_mask, elo=elo)
         h_sq, h_mv = h[:, :64], h[:, 64:64 + MV_CAP]
         pre_g = self.g_proj(h_sq.mean(1)).view(B, self.g_heads, self.d_code)
         # stashed for the aux heads (phase adversary reads projections of a DETACHED trunk,
@@ -379,6 +394,18 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--graphs", required=True)
     ap.add_argument("--games", type=int, default=20000)
+    ap.add_argument("--n-human", type=int, default=0,
+                    help="human (lichess) games; with --games 0 the corpus is human-only")
+    ap.add_argument("--res-mode", default="tb", choices=["tb", "outcome"],
+                    help="outcome: no tablebase vocab -- the resolution head trains as a "
+                         "3-way White-POV game-result committor, censored (time-forfeit) "
+                         "games excluded from that loss")
+    ap.add_argument("--elo", type=int, default=0,
+                    help="elo conditioning into the trunk + elo readout head")
+    ap.add_argument("--w-elo", type=float, default=0.1)
+    ap.add_argument("--g-heads", type=int, default=16)
+    ap.add_argument("--g-codes", type=int, default=32)
+    ap.add_argument("--d-code", type=int, default=32)
     ap.add_argument("--n-piecedown", type=int, default=45906)
     ap.add_argument("--max-plies", type=int, default=400)
     ap.add_argument("--steps", type=int, default=8000)
@@ -436,13 +463,22 @@ def main():
     z = np.load(args.graphs)
     D = {k: torch.from_numpy(np.ascontiguousarray(z[k])) for k in z.files}
     N = len(D["p_row"])
-    tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
+    tr = T.build(n_human=args.n_human, n_sf=args.games, seed=args.seed, cache=True,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     n = len(tr.tok)
-    lz = np.load(paths.derived(f"tb_entry_5-4-3men_{n}.npz"), allow_pickle=True)
-    vocab = [str(x) for x in lz["vocab"]]
-    res_cls = lz["tb_class"].astype(np.int64)
-    cr, ce, co, egs = factor_vocab(vocab)
+    if args.res_mode == "tb":
+        lz = np.load(paths.derived(f"tb_entry_5-4-3men_{n}.npz"), allow_pickle=True)
+        vocab = [str(x) for x in lz["vocab"]]
+        res_cls = lz["tb_class"].astype(np.int64)
+        cr, ce, co, egs = factor_vocab(vocab)
+    else:
+        # OUTCOME mode (human corpus, no oracle anywhere): the resolution head becomes a
+        # 3-way White-POV game-result committor; time-forfeit (censored) games are
+        # excluded from that loss -- the board does not explain their ending.
+        vocab, egs = ["W", "D", "L"], ["-"]
+        res_cls = np.zeros(1, np.int64)
+        cr = np.zeros(3, np.int64); ce = np.zeros(3, np.int64)
+        co = np.arange(3, dtype=np.int64)
     gor = tr.game_of_row()
     rs = np.random.default_rng(args.seed); perm = rs.permutation(len(tr.start))
     nt = max(1, int(0.1 * len(tr.start)))
@@ -456,8 +492,30 @@ def main():
     r_eg = np.where(res_cls >= 0, ce[res_cls.clip(0)], -1).astype(np.int64)
     r_out = np.where(res_cls >= 0, co[res_cls.clip(0)], -1).astype(np.int64)
     p_np = D["p_row"].numpy()
-    cnt = np.bincount(r_eg[p_np[tr_i]][r_eg[p_np[tr_i]] >= 0], minlength=len(egs))
-    eg_w = effective_number_weights(torch.from_numpy(cnt), beta=args.cb_beta).to(dev)
+    if args.res_mode == "tb":
+        cnt = np.bincount(r_eg[p_np[tr_i]][r_eg[p_np[tr_i]] >= 0], minlength=len(egs))
+        eg_w = effective_number_weights(torch.from_numpy(cnt), beta=args.cb_beta).to(dev)
+    else:
+        eg_w = None
+        res_w = np.asarray(tr.result)[gor]                       # per-row game result
+        OUTW = torch.from_numpy((1 - res_w[p_np]).astype(np.int64))   # W=0 D=1 L=2 White-POV
+        term = np.asarray(tr.term)
+        CEN = torch.from_numpy(term[gor[p_np]] == -2)            # TERM_TIME only: the board
+                                                                  # does not explain a flag
+        print(f"[gcf] outcome mode: {int(CEN.sum()):,}/{len(CEN):,} rows censored "
+              f"(time forfeit)", flush=True)
+    EL = None
+    if args.elo:
+        el_g = np.asarray(tr.elo, np.float32)                    # (games, 2) white/black
+        el_rows = el_g[gor[p_np]]
+        stm_rows = D["gl"][:, 0].numpy().astype(bool)
+        mover = np.where(stm_rows, el_rows[:, 0], el_rows[:, 1])
+        opp = np.where(stm_rows, el_rows[:, 1], el_rows[:, 0])
+        from catspace.research.components.encoder.approaches.reach_probability.src \
+            .trajectories import normalise_elo
+        EL = torch.from_numpy(np.stack([normalise_elo(mover), normalise_elo(opp)], 1))
+        print(f"[gcf] elo conditioning: mover mean {mover.mean():.0f} "
+              f"range {mover.min():.0f}-{mover.max():.0f}", flush=True)
     print(f"[gcf] {N:,} graphs | train {len(tr_i):,} / held-out {len(te_i):,} | "
           f"lag-8 pairs {len(tr8):,} [{time.time()-t0:.0f}s]", flush=True)
 
@@ -488,9 +546,13 @@ def main():
                             agg_max=bool(args.agg_max), kin=bool(args.kin),
                             file_nodes=bool(args.file_nodes),
                             phase_head=bool(args.phase_head),
-                            threat_head=bool(args.threat_head)).to(dev)
+                            threat_head=bool(args.threat_head),
+                            elo_cond=bool(args.elo),
+                            g_heads=args.g_heads, g_codes=args.g_codes,
+                            d_code=args.d_code).to(dev)
     print(f"[gcf] {sum(p.numel() for p in net.parameters()):,} params | "
-          f"{args.slow_heads} slow + {16-args.slow_heads} fast global heads x 32 | 64x256 sq",
+          f"{args.slow_heads} slow + {args.g_heads - args.slow_heads} fast global "
+          f"heads x {args.g_codes} (d_code {args.d_code}) | 64x256 sq",
           flush=True)
     opt = torch.optim.Adam(net.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed)
@@ -525,7 +587,8 @@ def main():
         model.train()
         idx = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
         sqf, mvf, edges, mask = parent_batch(idx)
-        zq, g_ids, sq_ids, vl, h_mv, pre_g = model.encode(sqf, mvf, edges, mask)
+        elo_b = EL[idx].to(dev) if EL is not None else None
+        zq, g_ids, sq_ids, vl, h_mv, pre_g = model.encode(sqf, mvf, edges, mask, elo=elo_b)
         # capture NOW: the child/lag-8 encodes below overwrite the stashes
         h_sq_p = model.last_h_sq
         pre_adv_p = model.last_pre_adv if args.phase_head else None
@@ -538,12 +601,13 @@ def main():
             csqf, cmvf, cedges, cmask = slim_batch(idx, "c")
             if args.edge_codes:
                 _, cg_ids, csq_ids, _, _, _, c_hist = model.encode(
-                    csqf, cmvf, cedges, cmask, want_edge_ids=True)
+                    csqf, cmvf, cedges, cmask, want_edge_ids=True, elo=elo_b)
             else:
-                _, cg_ids, csq_ids, _, _, _ = model.encode(csqf, cmvf, cedges, cmask)
+                _, cg_ids, csq_ids, _, _, _ = model.encode(csqf, cmvf, cedges, cmask,
+                                                           elo=elo_b)
         mv_played = mvf[torch.arange(len(idx), device=dev), played]
         dy = model.dyn(torch.cat([zq, model.mv_emb(mv_played)], -1))
-        H, C, SC = model.g_heads, 32, model.sq_codes
+        H, C, SC = model.g_heads, args.g_codes, model.sq_codes
         dg = dy[:, :H * C].reshape(-1, C)
         ds = dy[:, H * C:].reshape(-1, SC)
         l_dyn = F.cross_entropy(dg, cg_ids.reshape(-1)) + F.cross_entropy(ds, csq_ids.reshape(-1))
@@ -554,22 +618,32 @@ def main():
             l_edyn = F.kl_div(pred_h, c_hist.clamp(min=1e-8), reduction="batchmean")
         l_mvvq = getattr(model, "_mv_vq_loss", torch.zeros((), device=dev))
 
-        rt = torch.from_numpy(p_np[idx.numpy()])
-        r_l, e_l, o_l = model.predict_resolution(zq)
-        l_res, _ = factorized_resolution_ce(
-            r_l, e_l, o_l, torch.from_numpy(r_reach[rt]).to(dev),
-            torch.from_numpy(r_eg[rt]).to(dev), torch.from_numpy(r_out[rt]).to(dev),
-            eg_weight=eg_w)
+        if args.res_mode == "tb":
+            rt = torch.from_numpy(p_np[idx.numpy()])
+            r_l, e_l, o_l = model.predict_resolution(zq)
+            l_res, _ = factorized_resolution_ce(
+                r_l, e_l, o_l, torch.from_numpy(r_reach[rt]).to(dev),
+                torch.from_numpy(r_eg[rt]).to(dev), torch.from_numpy(r_out[rt]).to(dev),
+                eg_weight=eg_w)
+        else:
+            _, _, o_l = model.predict_resolution(zq)
+            ok_m = ~CEN[idx]
+            l_res = F.cross_entropy(o_l[ok_m], OUTW[idx][ok_m].to(dev)) if ok_m.any() \
+                else torch.zeros((), device=dev)
+        l_elo = torch.zeros((), device=dev)
+        if EL is not None:
+            l_elo = F.mse_loss(model.elo_head(zq), elo_b)
 
         counts = torch.stack([(D["sq"][idx, :, 0] == t).sum(1) for t in range(1, 13)], 1)
         l_now = F.cross_entropy(model.now_head(zq).view(-1, N_COUNT),
                                 counts.clamp(max=8).reshape(-1).long().to(dev))
 
         i8 = torch.from_numpy(tr8[rng.integers(0, len(tr8), args.vamp_batch)])
+        elo8 = EL[i8].to(dev) if EL is not None else None
         s0f, m0f, e0, k0 = parent_batch(i8)
-        _, _, _, _, _, pg0 = model.encode(s0f, m0f, e0, k0)
+        _, _, _, _, _, pg0 = model.encode(s0f, m0f, e0, k0, elo=elo8)
         s8f, m8f, e8, k8 = slim_batch(i8, "c8")
-        _, _, _, _, _, pg8 = model.encode(s8f, m8f, e8, k8)
+        _, _, _, _, _, pg8 = model.encode(s8f, m8f, e8, k8, elo=elo8)
         sl = args.slow_heads * model.d_code
         v0 = model.vamp_proj(pg0.reshape(len(i8), -1)[:, :sl])
         v8_ = model.vamp_proj(pg8.reshape(len(i8), -1)[:, :sl])
@@ -601,7 +675,7 @@ def main():
                 + args.w_res * l_res + args.w_now * l_now + args.w_slow * l_slow
                 + args.w_dec * l_dec + args.w_decor * l_decor
                 + args.w_phase * l_phase + args.w_adv * l_adv + args.w_te * l_te
-                + vl + l_mvvq)
+                + args.w_elo * l_elo + vl + l_mvvq)
         opt.zero_grad(); loss.backward(); opt.step()
 
         m = {}
@@ -627,7 +701,7 @@ def main():
                   f"dyn_s {dyn_s:.2f} edyn {float(l_edyn):.3f} | vamp {float(vamp):.1f}/32 "
                   f"dec {float(l_dec):.3f} decor {float(l_decor):.3f} "
                   f"ph {float(l_phase.detach()):.2f} advacc {adv_acc:.2f} "
-                  f"te {float(l_te.detach()):.3f}",
+                  f"te {float(l_te.detach()):.3f} elo {float(l_elo.detach()):.3f}",
                   flush=True)
             m = {"top1": h1 / tot, "top3": h3 / tot, "vamp": float(vamp),
                  "dyn_g": dyn_g, "dyn_s": dyn_s, "decor": float(l_decor),
