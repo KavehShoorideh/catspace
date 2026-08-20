@@ -339,3 +339,54 @@ layer). What it validates and what it corrects:
    information; PNA is GPS's strongest MPNN on several tasks).
 5. RWSE-8 over the attack graph as 8 extra square features (precomputed at graph build).
 6. Centrality: already covered by attacker/defender count features -- no change.
+
+---
+
+## TreeQN / ATreeC (Farquhar et al., ICLR 2018, 1710.11417) — read in full (pdf)
+
+Differentiable tree unrolled INSIDE the network: encoder -> per-action residual transitions
+z^a = z_env + tanh(W^a z_env) with z_env = z + tanh(W_env z) -- SHARED down the tree; states
+UNIT-L2-NORMALIZED before every transition (their anti-drift trick); linear value per node;
+soft-greedy backup b(x) = sum_i x_i softmax(x)_i so gradients flow down ALL paths (temp 1
+sufficed, learned temp = no empirical gain); TD(lambda) mixing of INTERMEDIATE node values
+into the final estimate ("encourages intermediate nodes to correspond to meaningful states,
+reduces outlier impact"). Backprop end-to-end from the final Q through backup, values,
+transitions, encoder. Ablations: depth 2-3 > 1; REWARD grounding helps; latent STATE
+grounding (L2 to encoded true next state) does NOT help (and decoder-grounding also failed,
+citing Oh et al.).
+
+ADOPTED for gct: move-embedding-conditioned residual transition (4096 chess actions forbid
+per-action matrices; our mv_emb replaces W^a), unit-norm before transitions, soft backup
+with NEGAMAX parity (opponent plies: -b(-x)), lambda-mixing ~0.8, depth 3-4 beam 2-3.
+STATE-grounding kept ONLY as the interpretability contract (dyn CE on real children), with
+TreeQN's finding noted: do not expect performance from it.
+
+## Gumbel MuZero (Danihelka et al., ICLR 2022) — via the mctx REFERENCE IMPLEMENTATION
+## (openreview text is login-walled; formulas verified against
+## google-deepmind/mctx/_src/policies.py, which we fetched)
+
+Mechanism: root samples top-k actions WITHOUT replacement via Gumbel noise on prior logits
+(argtop-k of g + logits); sequential halving spends the simulation budget over phases;
+Q-values COMPLETED for unvisited actions by a mixed value estimate
+(qtransform_completed_by_mix_value); the TRAINING TARGET is
+    action_weights = softmax(prior_logits + sigma(completed_Q))
+(verified verbatim in policies.py: softmax(root.prior_logits + completed_qvalues) after
+invalid-action masking). Non-root selection is deterministic. The paper's claim (from the
+abstract + reproductions): POLICY IMPROVEMENT GUARANTEED even at tiny budgets (n = 2-16
+simulations) -- exactly the narrow-beam regime Kaveh specified.
+
+ADOPTED for gct: the B-loss = CE(policy_head, softmax(prior + sigma*normQ_searched)) with
+searched Q from our beam alpha-beta (real boards) on a per-batch subset; unsearched moves'
+Q completed by the root value (mix form). sigma constants tuned, mctx defaults as start.
+
+## TD-leaf (Baxter et al. 1999, KnightCap) — mechanism from the classic literature
+
+Train the STATIC eval toward the backed-up minimax leaf value of a shallow search from the
+same position: V(s) <- stopgrad(minimax_d(V)(s)) (gradient on the principal-variation leaf
+in the original; root-consistency Huber in ours). The eval absorbs tactics below depth d,
+which is what makes a NARROW beam safe. ADOPTED as the C-loss.
+
+## Predictron (1612.08810) / VIN (1602.02867) — related, not adopted (per TreeQN's own
+## comparison, which we read): Predictron is policy evaluation without control; VIN needs
+## spatial full-state-space planning with convolutional dynamics -- neither matches a
+## move-conditioned game tree.
