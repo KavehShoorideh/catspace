@@ -14987,3 +14987,42 @@ the rest ("different codes for the same phase"); threat-vs-execution labels (thr
 capture available, from the position; execution = taken within k plies, from the
 trajectory; the gap = tension, its resolution timing = the tactics-vs-phase bridge).
 Recurrence stays a measured validation, not a loss, until #3's effect is seen.
+
+---
+
+## 2026-08-19 22:40 — threat-vs-execution census: tension quantified, one inversion
+
+Per Kaveh's directive ("engineer this feature... how often is a threat actually taken?"),
+`gen_threat_execution.py`: threats from the Rust basis (enemy piece on an attacked
+square), executions from the existing event labels -- a pure numpy join, no board
+replay. 1.5M rows scanned, 2,173,011 threats (1.45/position), k=8 plies.
+
+```
+P(executed <= 8 | threat)                    0.149
+  by the threatening side                    0.674 of executions
+by SEE soundness:
+  SEE>0  winning capture available   0.187   n=592k
+  SEE=0  even trade available        0.369   n=321k     <- INVERSION
+  SEE<0  bad capture only            0.074   n=1.26M
+timing: median 2 plies; immediate (1 ply) 0.279
+victim: pawn P(exec) 0.128 (imm 0.15) | minor 0.196 (0.41) | rook 0.203 (0.61)
+        | queen 0.280 (0.80)
+```
+
+**Kaveh's intuition quantified: tension mostly does NOT resolve** -- 85%% of available
+captures go unexecuted within 8 plies. And the inversion is the insight: EVEN trades
+execute at 2x the rate of WINNING captures (0.369 vs 0.187). Reading: a winning
+capture's victim usually RUNS -- the threat's main product is forcing the defence, not
+gaining material -- while even trades are standing tension structures (pawn chains,
+recapture agreements) that resolve by consent. Execution prediction therefore requires
+predicting the DEFENCE, which is exactly the one-ply-deep information this
+architecture's mutation edges carry. Escalation by value is clean: queen threats
+resolve fast or not at all (80%% immediate when executed), pawn tension lingers.
+
+Labels saved (2.17M records: victim, SEE, executed, timing, by-whom) -- the training
+target for gcf3's tension-resolution head, and the recurrence-bearing tactical concept
+Kaveh predicted ("there should be repeats of the same concept over the course of the
+game": an unresolved threat persists until executed or dissolved).
+
+Also this hour, per "don't let resources sit idle": gcf2 launched on the idle GPU
+alongside the two CF straggler workers (uneven Pool shards -- chunk finer next time).
