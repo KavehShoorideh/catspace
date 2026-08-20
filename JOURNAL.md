@@ -15227,3 +15227,18 @@ TARGET restated (the strategic ruling): find something that RESPECTABLY PLAYS, t
 it with SELF-PLAY. The gdv prior is the current candidate; its ~0.2 s/game CPU cost is what
 makes self-play affordable at volume. Loop design note to follow for morning review --
 flywheel rule applies (compounds only on a correct algorithm).
+
+---
+
+## 2026-08-20 04:00 — self-play generator built + smoked (the loop's raw material, SF-free)
+
+Per the target restated ("respectably play, then improve with self-play"):
+gen_selfplay_games.py plays the gdv prior against itself (or a past checkpoint), records
+every position + played move + outcome, and with --branch-frac replays a random ply with
+the policy's OWN 2nd choice and finishes the branch -- the counterfactual pair machinery
+with no Stockfish anywhere: we own the imitation labels AND the outcome labels AND the
+within-parent contrasts. Smoke: 20 games in 7 s (0.35 s/game), 1,490 positions, 7 branch
+pairs. 50 percent draws in self-mirror -- the known collapse mode, which the --temp and
+--opp-ckpt knobs exist to fight. Loop design (what each generation learns, gating) goes to
+Kaveh for review before any spinning; generation itself is ready to fire at volume
+(~100k games / few CPU-hours, embarrassingly parallel).
