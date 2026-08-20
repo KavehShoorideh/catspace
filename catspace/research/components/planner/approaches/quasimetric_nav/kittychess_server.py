@@ -56,7 +56,10 @@ border-radius:3px;cursor:pointer}
 select{background:#161512;color:#bababa;border:1px solid #3a3733;border-radius:3px;font:inherit}
 .lines .ln{display:block;padding:4px 2px;border-bottom:1px solid #33312e;cursor:pointer;
 font-family:'Noto Sans',sans-serif;font-size:13px}
-.lines .lnr{display:flex;gap:8px;align-items:center}
+.lines .lnr{display:flex;gap:6px;row-gap:2px;align-items:center;flex-wrap:wrap;min-width:0}
+#gctable{width:100%}
+#gctable td{white-space:normal;overflow-wrap:anywhere;vertical-align:top}
+#gcexec{white-space:normal;overflow-wrap:anywhere}
 .lines .minibar{display:inline-flex;width:64px;height:9px;border-radius:2px;overflow:hidden;
 flex:none;background:#333}
 .lines .minibar i{display:block;height:100%}
