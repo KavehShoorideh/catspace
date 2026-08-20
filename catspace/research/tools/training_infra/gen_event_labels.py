@@ -53,6 +53,7 @@ def sig_of_counts(c):
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", type=int, default=4000)
+    ap.add_argument("--n-human", type=int, default=0)
     ap.add_argument("--n-piecedown", type=int, default=45906)
     ap.add_argument("--max-plies", type=int, default=400)
     ap.add_argument("--seed", type=int, default=0)
@@ -64,7 +65,7 @@ def main():
         trajectories as T)
     from catspace.io import paths
 
-    tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
+    tr = T.build(n_human=args.n_human, n_sf=args.games, seed=args.seed, cache=True,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     tok, n = tr.tok, len(tr.tok)
     gz = np.load(paths.derived(f"game_transitions_FULL_{n}.npz"))

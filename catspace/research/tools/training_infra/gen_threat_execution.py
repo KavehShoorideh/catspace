@@ -31,6 +31,7 @@ import numpy as np
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--games", type=int, default=20000)
+    ap.add_argument("--n-human", type=int, default=0)
     ap.add_argument("--n-piecedown", type=int, default=45906)
     ap.add_argument("--max-plies", type=int, default=400)
     ap.add_argument("--seed", type=int, default=0)
@@ -45,7 +46,7 @@ def main():
     from catspace.io import paths
 
     t0 = time.time()
-    tr = T.build(n_human=0, n_sf=args.games, seed=args.seed, cache=True,
+    tr = T.build(n_human=args.n_human, n_sf=args.games, seed=args.seed, cache=True,
                  max_plies=args.max_plies, n_piecedown=args.n_piecedown)
     n = len(tr.tok)
     ev = np.load(paths.derived(f"event_labels_5_{n}.npz"))
