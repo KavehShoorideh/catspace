@@ -184,6 +184,10 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
 <script>__CG_JS__</script>
 <script>
 "use strict";
+window.addEventListener('error',e=>{try{fetch('/api',{method:'POST',
+  body:JSON.stringify({action:'jslog',msg:String(e.message)+' @line '+e.lineno})});}catch(_){}});
+window.addEventListener('unhandledrejection',e=>{try{fetch('/api',{method:'POST',
+  body:JSON.stringify({action:'jslog',msg:'promise: '+String(e.reason).slice(0,200)})});}catch(_){}});
 let seq=0, orient="white", mode="analysis", playCfg={engineWhite:false,depth:2};
 let user=localStorage.kcUser||"", surprHist=[], lastState=null;
 function buildPGN(d){
@@ -678,11 +682,15 @@ function renderLines(d){
       top+=`<span style="color:#9db4d0;font-size:11px" title="concept move-head prior (softmax over legal moves) — the ordering signal inside the alpha-beta; rank on screen is the SEARCHED value, so a high-prior move ranked low means search vetoed it">p ${(100*row.prior).toFixed(0)}%</span>`;
     if(row.cdelta&&row.cdelta.length){
       const humanWhite=(mode!=='play')||!playCfg.engineWhite;
-      top+=row.cdelta.map(cd=>{
+      const named=row.cdelta.filter(c=>c.sig&&!c.label.startsWith('('));
+      const anon=row.cdelta.filter(c=>c.sig&&c.label.startsWith('('));
+      const show=(named.length?named:anon).slice(0,3);
+      top+=show.map(cd=>{
         const you=humanWhite?cd.dw:-cd.dw;
-        const cls=!cd.sig?'gc-neu':(you>0?'gc-you':'gc-opp');
+        const cls=you>0?'gc-you':'gc-opp';
         const arrow=you>0?'\u2191':'\u2193';
-        return `<span class="${cls}" style="font-size:10.5px" title="the dynamics head predicts this move flips '${cd.label}' from code ${cd.fr} to ${cd.to}; corpus lean shifts ${cd.dw>0?'+':''}${cd.dw}\u00b1${cd.ci} (White-POV)${cd.sig?'':' — not significant at 95%'}">${arrow}${cd.label.split(" (")[0].split(" /")[0]}</span>`;
+        const nm=cd.label.startsWith('(')?('concept h'+(cd.label.match(/[0-9]+/)||[''])[0]):cd.label.split(" (")[0].split(" /")[0];
+        return `<span class="${cls}" style="font-size:10.5px" title="predicted concept flip c${cd.fr}\u2192c${cd.to}; positions with the new code historically score ${cd.dw>0?'+':''}${cd.dw}\u00b1${cd.ci} (White-POV) vs the old one — the OUTCOME impact of this change, from your side: ${you>0?'+':''}${you.toFixed(2)} expected points">${arrow}${nm} ${you>0?'+':''}${you.toFixed(2)}</span>`;
       }).join(" ");
     }
     if(row.wdl){
@@ -1542,6 +1550,10 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(out).encode())
             except Exception as e:
                 self._send(200, json.dumps({"err": str(e)[:100]}).encode())
+            return
+        if act == "jslog":
+            print(f"[client-js] {str(req.get('msg'))[:300]}", flush=True)
+            self._send(200, b"{}")
             return
         if act == "chead":
             if hasattr(H.eng, "concept_attribution"):
