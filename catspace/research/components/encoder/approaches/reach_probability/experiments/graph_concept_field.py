@@ -343,6 +343,8 @@ class GraphConceptField(nn.Module):
                 e = self.edge_mlp(torch.cat([hf[sd[0]], hf[sd[1]]], -1))
                 _, e_ids, vl3 = self.edge_vq(e)
                 vl = vl + vl3
+                # stashed for live inspection (kitty edge-concepts panel)
+                self.last_edge_ids, self.last_edge_sd = e_ids, sd
                 # bucket edges by their DST node's sample, then pool per sample
                 hist = torch.zeros(B, self.edge_codes, device=h.device)
                 samp = (sd[1] // self.n_nodes).long()

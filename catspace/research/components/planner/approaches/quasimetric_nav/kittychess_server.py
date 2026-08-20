@@ -481,8 +481,14 @@ function render(d){
         `<td style="color:#6f6b66;padding-right:6px">h${h.head}&middot;c${h.code}</td>`+
         `<td class="${cls}">${lean}</td></tr>`;});
     document.getElementById('gctable').innerHTML=rows.join("");
-    document.getElementById('gcexec').textContent=(g.exec_hot&&g.exec_hot.length)?
-      ("capture timers: "+g.exec_hot.map(t=>t.sq+" "+Math.round(100*t.p)+"%").join("  ")):"";
+    const gx=document.getElementById('gcexec');
+    gx.title="threat\u2192execution head (held-out AUC 0.737): squares where a currently "+
+      "threatened piece is predicted to ACTUALLY get captured within 8 plies -- most "+
+      "threats never execute (base rate 15%). The percent is that probability.";
+    gx.innerHTML=((g.exec_hot&&g.exec_hot.length)?
+      ("likely captures \u22648 plies: "+g.exec_hot.map(t=>t.sq+" "+Math.round(100*t.p)+"%").join("  ")):"")
+      +((g.edges&&g.edges.length)?
+        `<div style="color:#9db4d0" title="edge concepts: the attack-edge VQ codes present in this position (the bag-of-tactics state); en = code id, \u00d7count, one example attacker\u2192target">edge concepts: ${g.edges.map(e=>"e"+e.code+"\u00d7"+e.n+" ("+e.ex+")").join("  ")}</div>`:"");
   } else {document.getElementById('gcbox').style.display="none";}
   if(d.concepts&&d.concepts.length){
     document.getElementById('conceptbox').style.display="";
@@ -1113,7 +1119,9 @@ class H(BaseHTTPRequestHandler):
                                 # root candidate and a new move aborts mid-wave
                                 rows = H.eng.search_coherent(
                                     bb, budget=bud, stop=lambda: H.gen != g,
-                                    progress=lambda rr: publish(list(rr), bud))
+                                    progress=lambda rr: publish(
+                                        list(rr), max([r.get("depth_used", 1)
+                                                       for r in rr] or [1])))
                             else:
                                 with H.lock:
                                     rows = H.eng.search_coherent(bb, budget=bud)
@@ -1392,6 +1400,15 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, json.dumps({"err": str(e)[:100]}).encode())
             return
         if act == "sqconcepts":
+            if hasattr(H.eng, "concepts"):
+                try:
+                    gc2 = H.eng.concepts(b)
+                    sal = sorted((x for x in (gc2.get("sq") or []) if x["imp"] != 0.0),
+                                 key=lambda x: -abs(x["imp"]))[:12]
+                    self._send(200, json.dumps({"sal": sal}).encode())
+                except Exception as e:
+                    self._send(200, json.dumps({"err": str(e)[:80]}).encode())
+                return
             try:
                 import numpy as _np10, torch as _t10
                 jm = H.gq.jqt if H.gq is not None else None

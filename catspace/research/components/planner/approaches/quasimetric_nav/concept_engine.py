@@ -106,7 +106,16 @@ class ConceptAlphaBeta:
                   val = (arr != 255) & mask[:, :, None]
                   edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
                                  (arr + off[:, :, None])[val])
-              zq, g_ids, sq_ids, _, h_mv, pre_g = self.net.encode(sqf, mvf, edges, mask)
+              if self.net.edge_codes:
+                  zq, g_ids, sq_ids, _, h_mv, pre_g, _hist = self.net.encode(
+                      sqf, mvf, edges, mask, want_edge_ids=True)
+                  e_ids = self.net.last_edge_ids.cpu().numpy()
+                  e_s = (self.net.last_edge_sd[0] % self.net.n_nodes).cpu().numpy()
+                  e_d = (self.net.last_edge_sd[1] % self.net.n_nodes).cpu().numpy()
+                  e_samp = (self.net.last_edge_sd[1] // self.net.n_nodes).cpu().numpy()
+              else:
+                  zq, g_ids, sq_ids, _, h_mv, pre_g = self.net.encode(sqf, mvf, edges, mask)
+                  e_ids = None
               lg = self.net.move_logits(zq, h_mv, mask)
               _, _, out_l = self.net.predict_resolution(zq)
               pwdl = torch.softmax(out_l, -1).cpu().numpy()      # White-POV [W, D, L]
@@ -120,9 +129,23 @@ class ConceptAlphaBeta:
                   order = list(np.argsort(-sc))
                   w, d, l = float(pwdl[i, 0]), float(pwdl[i, 1]), float(pwdl[i, 2])
                   margin = (w - l) if b.turn == chess.WHITE else (l - w)
+                  edges_i = None
+                  if e_ids is not None:
+                      m_i = e_samp == i
+                      ei, es, ed = e_ids[m_i], e_s[m_i], e_d[m_i]
+                      keep = (es < 64) & (ed < 64)
+                      ei, es, ed = ei[keep], es[keep], ed[keep]
+                      edges_i = {}
+                      if len(ei):
+                          for c2 in np.bincount(ei).argsort()[::-1][:3]:
+                              j2 = np.flatnonzero(ei == c2)
+                              if len(j2):
+                                  edges_i[int(c2)] = (int(len(j2)),
+                                                      int(es[j2[0]]), int(ed[j2[0]]))
                   self._cache[b.fen()] = dict(
                       moves=mvs, order=order, logits=sc, margin=margin, wdl=(w, d, l),
-                      g_ids=gin[i], te=(te[i] if te is not None else None))
+                      g_ids=gin[i], te=(te[i] if te is not None else None),
+                      sq_ids=sq_ids[i].cpu().numpy(), edge_top=edges_i)
                   if len(self._cache) > 200000:
                       self._cache.clear()
         return [self._cache[b.fen()] for b in boards]
@@ -215,7 +238,7 @@ class ConceptAlphaBeta:
                 finally:
                     board.pop()
                 rows.append({"mv": m, "pv": [m] + pv, "value": -v,
-                             "prior": round(float(pr[i]), 4)})
+                             "prior": round(float(pr[i]), 4), "depth_used": depth})
                 rows.sort(key=lambda r: -r["value"])
                 if progress is not None:
                     progress(rows)
@@ -306,5 +329,23 @@ class ConceptAlphaBeta:
             idx = np.argsort(-f["te"])[:3]
             te_top = [{"sq": chess.SQUARE_NAMES[int(q)], "p": round(float(f["te"][q]), 2)}
                       for q in idx if f["te"][q] > 0.25 and board.piece_at(int(q))]
+        sq_out = None
+        if f.get("sq_ids") is not None:
+            sq_out = []
+            for q in range(64):
+                pc = board.piece_at(q)
+                imp = 0.0
+                if f["te"] is not None and pc is not None:
+                    # capture-risk map, White-POV sign: green = a BLACK piece likely
+                    # falls (helps White), red = a White piece in danger
+                    imp = float(f["te"][q]) * (1.0 if not pc.color else -1.0)
+                sq_out.append({"sq": chess.SQUARE_NAMES[q], "code": int(f["sq_ids"][q]),
+                               "imp": round(imp, 3)})
+        edge_out = None
+        if f.get("edge_top"):
+            edge_out = [{"code": c2, "n": n2,
+                         "ex": f"{chess.SQUARE_NAMES[s2]}\u2192{chess.SQUARE_NAMES[d2]}"}
+                        for c2, (n2, s2, d2) in f["edge_top"].items()]
         return {"heads": rows, "wdl": [round(w, 3), round(d, 3), round(l, 3)],
-                "phase_bucket": None, "exec_hot": te_top, "model": self.tag}
+                "phase_bucket": None, "exec_hot": te_top, "model": self.tag,
+                "sq": sq_out, "edges": edge_out}
