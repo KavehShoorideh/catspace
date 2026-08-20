@@ -517,6 +517,10 @@ function render(d){
     const t=cur.offsetTop-mv.offsetTop;
     if(t<mv.scrollTop||t>mv.scrollTop+mv.clientHeight-24) mv.scrollTop=t-mv.clientHeight/2;
   }
+  if(d.feat){
+    document.getElementById('plantog').style.display=d.feat.plan?'':'none';
+    document.getElementById('nexttog').style.display=d.feat.next?'':'none';
+  }
   if(d.gconcepts&&d.gconcepts.heads){
     gcLast=d.gconcepts;renderGc();
   } else {document.getElementById('gcbox').style.display="none";}
@@ -1355,6 +1359,34 @@ class H(BaseHTTPRequestHandler):
                                  "anti": bool(info.get("anti")),
                                  "tok_here": bool(tok_here)})
         if act == "saliency":
+            if hasattr(H.eng, "concepts"):
+                # counterfactual piece removal on gcf3: ONE batched forward for all
+                # occupied non-king squares. excess = White-POV E(now) - E(without),
+                # signed to the piece's OWNER: green = the piece is doing work for its
+                # side; red = its removal would HELP its side (misplaced / blocking).
+                try:
+                    occ = [q for q in range(64)
+                           if b.piece_at(q) and b.piece_at(q).piece_type != chess.KING]
+                    boards2 = []
+                    for q in occ:
+                        b2 = b.copy(stack=False)
+                        b2.remove_piece_at(q); b2.ep_square = None
+                        boards2.append(b2)
+                    fs = H.eng._forward([b] + boards2)
+                    def wE(fr):
+                        w0, d0, _l0 = fr["wdl"]
+                        return w0 + 0.5 * d0
+                    base = wE(fs[0])
+                    sal = []
+                    for q, fr in zip(occ, fs[1:]):
+                        contrib = base - wE(fr)          # White-POV help from presence
+                        own = 1.0 if b.piece_at(q).color else -1.0
+                        sal.append({"sq": chess.square_name(q),
+                                    "excess": round(contrib * own, 4)})
+                    self._send(200, json.dumps({"sal": sal}).encode())
+                except Exception as e:
+                    self._send(200, json.dumps({"err": str(e)[:80]}).encode())
+                return
             try:
                 import numpy as _np6, torch as _t6
                 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.jepa import (
@@ -1612,6 +1644,9 @@ class H(BaseHTTPRequestHandler):
             except Exception:
                 gconcepts = None
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
+               "feat": {"plan": H.former is not None, "next": H.seq is not None,
+                        "why": True, "sq": True,
+                        "cdeets": not hasattr(H.eng, "concepts")},
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
                "dists": dists, "check": b.is_check(), "dests": dests, "exit": xr,
                "concepts": concepts, "tokens": tokens, "cdeets": cdeets,
