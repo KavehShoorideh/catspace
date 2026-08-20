@@ -633,6 +633,15 @@ function renderLines(d){
     let top=`<div class="lnr">`+ev;
     if(row.prior!==undefined)
       top+=`<span style="color:#9db4d0;font-size:11px" title="concept move-head prior (softmax over legal moves) — the ordering signal inside the alpha-beta; rank on screen is the SEARCHED value, so a high-prior move ranked low means search vetoed it">p ${(100*row.prior).toFixed(0)}%</span>`;
+    if(row.cdelta&&row.cdelta.length){
+      const humanWhite=(mode!=='play')||!playCfg.engineWhite;
+      top+=row.cdelta.map(cd=>{
+        const you=humanWhite?cd.dw:-cd.dw;
+        const cls=!cd.sig?'gc-neu':(you>0?'gc-you':'gc-opp');
+        const arrow=you>0?'\u2191':'\u2193';
+        return `<span class="${cls}" style="font-size:10.5px" title="the dynamics head predicts this move flips '${cd.label}' from code ${cd.fr} to ${cd.to}; corpus lean shifts ${cd.dw>0?'+':''}${cd.dw}\u00b1${cd.ci} (White-POV)${cd.sig?'':' — not significant at 95%'}">${arrow}${cd.label.split(" (")[0].split(" /")[0]}</span>`;
+      }).join(" ");
+    }
     if(row.wdl){
       top+=`<span class="minibar"><i style="width:${row.wdl[0]*100}%;background:#f0efeb"></i>`+
            `<i style="width:${row.wdl[1]*100}%;background:#8b8680"></i>`+
@@ -1139,7 +1148,8 @@ class H(BaseHTTPRequestHandler):
                             for r in disp:
                                 merged[r["uci"]] = {**{k: r.get(k) for k in
                                     ("uci", "margin", "tb", "line", "wdl", "dists",
-                                     "force", "eff_replies", "cnotes", "E")}, "_d": d}
+                                     "force", "eff_replies", "cnotes", "E", "prior",
+                                     "cdelta")}, "_d": d}
                             shown = sorted(merged.values(), key=lambda r: (
                                 0 if r.get("tb") else 1,
                                 -((r.get("E") or 0) if _wtm else 1 - (r.get("E") or 1)),
@@ -1692,6 +1702,11 @@ class H(BaseHTTPRequestHandler):
                    "line": " ".join(sans)}
             if r.get("prior") is not None:
                 row["prior"] = r["prior"]
+            if hasattr(H.eng, "move_concept_deltas"):
+                try:
+                    row["cdelta"] = H.eng.move_concept_deltas(b).get(row["uci"], [])
+                except Exception:
+                    pass
             # per-line committor (Kaveh 2026-08-11: wdl distances + probabilities per line):
             # the position AFTER the line's first move, one forward each, top rows only
             if len(out) < wdl_top:

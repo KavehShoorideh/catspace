@@ -280,6 +280,73 @@ class ConceptAlphaBeta:
         log(f"[concept-engine] opening cache warm: {done:,} positions "
             f"({plies} plies) in {_t.time()-t0:.0f}s; cache {len(self._cache):,}")
 
+    @torch.no_grad()
+    def move_concept_deltas(self, board):
+        """Kaveh 2026-08-20: "which concepts are likely to change with that move". The
+        dynamics head predicts the CHILD's global codes from (concept state, move); heads
+        whose predicted code differs from the current one are the expected concept
+        changes, each scored by the corpus-lean delta (White-POV) with propagated
+        cluster-CIs. One encode + one tiny MLP batch for ALL legal moves; fen-cached."""
+        from contextlib import nullcontext
+        from catspace.research.tools.training_infra.gen_move_graphs import (
+            parent_graph, glob_of_board)
+        from catspace.research.components.encoder.approaches.reach_probability.experiments \
+            .graph_move_policy import featurize, MV_CAP
+        key = board.fen()
+        if not hasattr(self, "_cd_cache"):
+            self._cd_cache = {}
+        if key in self._cd_cache:
+            return self._cd_cache[key]
+        with (self.lock if self.lock is not None else nullcontext()):
+            g, _ = parent_graph(board)
+            D = {k: torch.from_numpy(np.asarray(g[k])[None])
+                 for k in ("sq", "mv", "mut", "vac", "dsc", "att")}
+            D["gl"] = torch.from_numpy(glob_of_board(board)[None])
+            D["n_mv"] = torch.tensor([g["n_mv"]], dtype=torch.uint8)
+            D["n_att"] = torch.tensor([g["n_att"]], dtype=torch.uint16)
+            dev = self.device
+            bb = {k: D[k].to(dev) for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
+            sqf, mvf, edges, mask = featurize(bb, dev, n_nodes=self.net.n_nodes)
+            off = (torch.arange(1, device=dev) * self.net.n_nodes)[:, None]
+            jj = torch.arange(MV_CAP, device=dev)[None, :]
+            for name in ("vac", "dsc"):
+                arr = D[name].to(dev).long()
+                val = (arr != 255) & mask[:, :, None]
+                edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
+                               (arr + off[:, :, None])[val])
+            enc = self.net.encode(sqf, mvf, edges, mask)
+            zq, g_ids = enc[0], enc[1]
+            n = int(g["n_mv"])
+            emb = self.net.mv_emb(mvf[0, :n])
+            dy = self.net.dyn(torch.cat([zq.expand(n, -1), emb], -1))
+            Hh, C = self.net.g_heads, 32
+            pred = dy[:, :Hh * C].reshape(n, Hh, C).argmax(-1).cpu().numpy()
+        cur = g_ids[0].cpu().numpy()
+        mvs = list(board.legal_moves)[:n]
+        out = {}
+        for j, m in enumerate(mvs):
+            ch = []
+            for h in range(Hh):
+                new = int(pred[j, h])
+                if new == int(cur[h]) or self.stat_mean is None:
+                    continue
+                dw = float(self.stat_mean[h, new] - self.stat_mean[h, int(cur[h])])
+                if getattr(self, "stat_ci", None) is not None:
+                    ci = float((self.stat_ci[h, new] ** 2
+                                + self.stat_ci[h, int(cur[h])] ** 2) ** 0.5)
+                else:
+                    ci = 1.0
+                ch.append({"label": HEAD_LABELS.get(h, f"h{h}"),
+                           "fr": int(cur[h]), "to": new,
+                           "dw": round(dw, 3), "ci": round(ci, 3),
+                           "sig": abs(dw) > ci})
+            ch.sort(key=lambda x: (not x["sig"], -abs(x["dw"])))
+            out[m.uci()] = ch[:3]
+        if len(self._cd_cache) > 2000:
+            self._cd_cache.clear()
+        self._cd_cache[key] = out
+        return out
+
     # ---- server-surface compatibility shims -------------------------------------
     def search_coherent(self, board, budget=1.5, stop=None, progress=None, **kw):
         """the server's one search entry point: budget (s) -> alpha-beta depth. stop and
