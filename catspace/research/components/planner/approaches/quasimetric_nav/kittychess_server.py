@@ -562,6 +562,8 @@ function renderLines(d){
          "";
     } else {ev=`<span class="ev" title="searched margin (white POV)">${row.margin}</span>`;}
     let top=`<div class="lnr">`+ev;
+    if(row.prior!==undefined)
+      top+=`<span style="color:#9db4d0;font-size:11px" title="concept move-head prior (softmax over legal moves) — the ordering signal inside the alpha-beta; rank on screen is the SEARCHED value, so a high-prior move ranked low means search vetoed it">p ${(100*row.prior).toFixed(0)}%</span>`;
     if(row.wdl){
       top+=`<span class="minibar"><i style="width:${row.wdl[0]*100}%;background:#f0efeb"></i>`+
            `<i style="width:${row.wdl[1]*100}%;background:#8b8680"></i>`+
@@ -1537,6 +1539,8 @@ class H(BaseHTTPRequestHandler):
             row = {"mv": r["mv"], "uci": r["mv"].uci(), "margin": disp,
                    "tb": abs(v) >= KittyMATE / 4, "deep": True,
                    "line": " ".join(sans)}
+            if r.get("prior") is not None:
+                row["prior"] = r["prior"]
             # per-line committor (Kaveh 2026-08-11: wdl distances + probabilities per line):
             # the position AFTER the line's first move, one forward each, top rows only
             if len(out) < wdl_top:

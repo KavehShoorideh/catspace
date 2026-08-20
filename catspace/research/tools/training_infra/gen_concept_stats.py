@@ -64,6 +64,7 @@ def main():
 
     H, C = net.g_heads, 32
     s_sum = np.zeros((H, C)); s_cnt = np.zeros((H, C), np.int64)
+    s_sq = np.zeros((H, C))
     N = len(D["p_row"])
     with torch.no_grad():
         for a in range(0, N, args.batch):
@@ -82,11 +83,13 @@ def main():
             w = ow[ii.numpy()]
             for h in range(H):
                 np.add.at(s_sum, (h, gi[:, h]), w)
+                np.add.at(s_sq, (h, gi[:, h]), w * w)
                 np.add.at(s_cnt, (h, gi[:, h]), 1)
             if (a // args.batch) % 100 == 0:
                 print(f"  {a:,}/{N:,} [{time.time()-t0:.0f}s]", flush=True)
     mean = s_sum / np.maximum(s_cnt, 1)
-    np.savez_compressed(args.out, mean_wpov=mean, count=s_cnt, ckpt=args.ckpt)
+    ex2 = s_sq / np.maximum(s_cnt, 1)
+    np.savez_compressed(args.out, mean_wpov=mean, count=s_cnt, ex2=ex2, ckpt=args.ckpt)
     live = (s_cnt > 0).sum()
     print(f"\n  wrote {args.out} | {live}/{H*C} codes seen | "
           f"strongest leans: {np.abs(mean)[s_cnt>300].max():.3f} [{time.time()-t0:.0f}s]")

@@ -65,8 +65,9 @@ class ConceptAlphaBeta:
         try:
             sz = np.load(stats_path, allow_pickle=True)
             self.stat_mean, self.stat_cnt = sz["mean_wpov"], sz["count"]
+            self.stat_ex2 = sz["ex2"] if "ex2" in sz.files else None
         except Exception:
-            self.stat_mean = self.stat_cnt = None
+            self.stat_mean = self.stat_cnt = self.stat_ex2 = None
         self._cache = {}
 
     class SearchStop(Exception):
@@ -175,6 +176,8 @@ class ConceptAlphaBeta:
         if tv is not None:
             return []
         f = self._forward([board])[0]
+        sc = f["logits"] - f["logits"].max()
+        pr = np.exp(sc); pr = pr / pr.sum()
         rows = []
         try:
             for i in f["order"][:max(top, self.width)]:
@@ -184,7 +187,8 @@ class ConceptAlphaBeta:
                     v, pv = self.negamax(board, depth - 1, -MATE, MATE, stop)
                 finally:
                     board.pop()
-                rows.append({"mv": m, "pv": [m] + pv, "value": -v})
+                rows.append({"mv": m, "pv": [m] + pv, "value": -v,
+                             "prior": round(float(pr[i]), 4)})
                 rows.sort(key=lambda r: -r["value"])
                 if progress is not None:
                     progress(rows)
@@ -216,11 +220,23 @@ class ConceptAlphaBeta:
                  "slow": h < 8}
             if self.stat_mean is not None:
                 n = int(self.stat_cnt[h, c]); mw = float(self.stat_mean[h, c])
+                # 95 percent CI on the mean: exact when the sweep stored E[x^2], else the
+                # conservative bound var <= 1 - mu^2 (outcomes live in [-1, 1]). The chip
+                # only claims a side when |mean| clears the CI (Kaveh 2026-08-20: "our
+                # scores and deltas need CIs").
+                if n > 1:
+                    var = (float(self.stat_ex2[h, c]) - mw * mw) if self.stat_ex2 is not None \
+                        else (1.0 - mw * mw)
+                    ci = 1.96 * (max(var, 0.0) / n) ** 0.5
+                else:
+                    ci = 2.0
                 r["n"] = n
                 r["wpov"] = round(mw, 3)
-                you = mw if human_white else -mw
-                r["helps"] = ("you" if you > 0.03 else "opp" if you < -0.03 else "even") \
-                    if n >= 300 else "?"
+                r["ci"] = round(ci, 3)
+                r["helps"] = ("you" if mw - ci > 0 else "opp" if mw + ci < 0
+                              else "even") if n > 30 else "?"
+                if not human_white and r["helps"] in ("you", "opp"):
+                    r["helps"] = "opp" if r["helps"] == "you" else "you"
             rows.append(r)
         w, d, l = f["wdl"]
         te_top = []
