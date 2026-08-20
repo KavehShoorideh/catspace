@@ -15397,3 +15397,15 @@ plain prior (headline: does the tool help prediction), prior top1 (must not degr
 tree-value calibration. Risks carried: root-beam pruning is non-differentiable (Gumbel
 loss owns ranking); soft backup blurs past ~4-5 plies (anneal later); latent replies can
 smear (slot-diversity via decor on slot embeddings if needed).
+
+---
+
+## 2026-08-20 — gct1 target amended per Kaveh: SF-move prediction THROUGH the search
+
+"maybe we want sf-move prediction through the search; that makes more sense." Locked
+config becomes the BRIDGE experiment: gcf4h trunk (human concepts, elo-conditioned) +
+differentiable tree, trained to predict SF PLAYED moves on the SF corpus (trajectory-
+legal as always), elo input fixed at the human corpus' max (~2750). Headline comparison:
+searched-top1 on held-out SF games vs gcf3's plain-prior 0.292 -- does human intuition
+plus a narrow learned search predict the engine better than engine-imitation alone.
+Human prior itself stays intact in gcf4h_latest; gct1 is a separate checkpoint line.

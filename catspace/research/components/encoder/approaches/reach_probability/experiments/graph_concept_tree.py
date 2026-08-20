@@ -154,6 +154,10 @@ def main():
                     "depth-1 search targets (0 disables)")
     ap.add_argument("--gumbel-width", type=int, default=3)
     ap.add_argument("--sigma", type=float, default=4.0)
+    ap.add_argument("--fixed-elo", type=float, default=None,
+                    help="condition EVERY row at this elo (SF corpus has none; use the "
+                         "human corpus max ~2750 -- 'predict SF through the search' with "
+                         "the trunk dialed to its strongest-seen rating)")
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--eval-every", type=int, default=250)
     ap.add_argument("--ckpt-every", type=int, default=1000)
@@ -216,7 +220,14 @@ def main():
           flush=True)
 
     EL = None
-    if A.get("elo", 0):
+    if A.get("elo", 0) and args.fixed_elo is not None:
+        from catspace.research.components.encoder.approaches.reach_probability.src \
+            .trajectories import normalise_elo
+        e = float(normalise_elo(np.float32(args.fixed_elo)))
+        EL = torch.full((N, 2), e)
+        print(f"[gct] fixed elo conditioning: {args.fixed_elo:.0f} (normalized {e:.2f})",
+              flush=True)
+    elif A.get("elo", 0):
         el_g = np.asarray(tr.elo, np.float32)
         el_rows = el_g[gor[p_np]]
         stm_rows = D["gl"][:, 0].numpy().astype(bool)
