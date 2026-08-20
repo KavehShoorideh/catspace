@@ -172,6 +172,7 @@ def main():
     ap.add_argument("--device", default="mps")
     ap.add_argument("--threads", type=int, default=8)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--resume", default="", help="checkpoint to continue from (Adam resets)")
     ap.add_argument("--out", default="artifacts/experiments/gcf1")
     args = ap.parse_args()
     torch.set_num_threads(args.threads); torch.manual_seed(args.seed)
@@ -325,8 +326,13 @@ def main():
                 "dyn": float(l_dyn.detach()), "res": float(l_res.detach()),
                 "slow": float(l_slow.detach()), **m}
 
+    start = 0
+    if args.resume:
+        ck = torch.load(args.resume, map_location="cpu", weights_only=False)
+        net.load_state_dict(ck["state_dict"]); start = int(ck.get("step", 0))
+        print(f"[gcf] resumed from {args.resume} at step {start}", flush=True)
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
-                      eval_every=args.eval_every, experiment="catspace",
+                      start_step=start, eval_every=args.eval_every, experiment="catspace",
                       run_name=args.out.split("/")[-1], device=dev)
     standard_train(step_fn, net, cfg, args)
 

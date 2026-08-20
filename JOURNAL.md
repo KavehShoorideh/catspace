@@ -14870,3 +14870,22 @@ vamp 9.4 -> 13.0/32 and climbing; dyn_g 0.20; dec 0.102 -> 0.007.
 
 Two build bugs found by the smoke, both fixed and committed: .view on a non-contiguous
 slice (-> .reshape), and the MPS eigh gap.
+
+---
+
+## 2026-08-19 19:35 — disk full killed gcf1 at step 2750; purged; resumed
+
+Third disk incident of the project, first one that killed a run: gcf1 died at step 2750
+with OSError 28 mid-write. Cause was checkpoint hygiene, not caches: 924 checkpoint
+files had accumulated across the week's runs (11G -> 15G in artifacts/experiments).
+
+Purge: 549 intermediate ladder checkpoints of RETIRED runs deleted (9.0 GiB), keeping
+every _latest, every final step, and an explicit protect-list (cef3_step10000 -- the
+frozen production vocabulary -- cef5/cef6/ccf2 finals, gmp1/cqm1/clf1/cpl1 finals, all
+of active gcf1). 13 Gi free after.
+
+gcf1 resumed from step 2000 (Adam state resets; the scaffold stores models only). At
+death it read held-out top1 0.269 / top3 0.519, vamp 25.2/32, dec 0.001 -- all still
+climbing. Standing lesson appended to the disk scars: checkpoint ladders are the
+dominant writer at ~30 MB x every-1000-steps x concurrent runs; prune retired runs'
+intermediates as they retire, not when the disk objects.
