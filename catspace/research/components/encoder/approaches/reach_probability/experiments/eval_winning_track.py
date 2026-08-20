@@ -43,7 +43,9 @@ def wp_of(score, mover_pov=True):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--model", choices=["csg", "cqm", "cef", "bc"], default="csg")
+    ap.add_argument("--model", choices=["csg", "cqm", "cef", "bc", "gdv"], default="csg")
+    ap.add_argument("--lam", type=float, default=1.0,
+                    help="gdv only: dV weight in zs(prior) + lam*zs(dV), matching the arena")
     ap.add_argument("--ckpt", default="artifacts/experiments/csg1_latest.pt")
     ap.add_argument("--concept-ckpt", default="artifacts/experiments/cef3_step10000.pt")
     ap.add_argument("--codes", default="data/derived/concept_codes_cef3_6545146.npz")
@@ -90,7 +92,45 @@ def main():
                                        torch.from_numpy(gb.astype(np.float32)).to(dev))
         return z, ids, ids_sq
 
-    if args.model == "bc":
+    gdv_score_moves = None
+    if args.model == "gdv":
+        from catspace.research.components.encoder.approaches.reach_probability.experiments \
+            .graph_delta_value import GraphDeltaValue, batch_of
+        from catspace.research.tools.training_infra.gen_move_graphs import (
+            parent_graph, glob_of_board)
+        gk = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+        GA = gk["args"] if isinstance(gk.get("args"), dict) else vars(gk["args"])
+        gnet = GraphDeltaValue(d=GA["d_model"], layers=GA["layers"],
+                               heads=GA["attn_heads"]).to(args.device)
+        gnet.load_state_dict(gk["state_dict"]); gnet.eval()
+        PRC = {None: 0, chess.KNIGHT: 1, chess.BISHOP: 2, chess.ROOK: 3, chess.QUEEN: 4}
+
+        @torch.no_grad()
+        def gdv_score_moves(b, mvs):
+            """parent-side single pass; multipv moves matched to move-nodes by (from,to,promo);
+            moves beyond the 48-slot cap score -inf (never picked; 2.4 percent of parents)."""
+            g, _ = parent_graph(b)
+            D = {k: torch.from_numpy(np.asarray(g[k])[None])
+                 for k in ("sq", "mv", "mut", "vac", "dsc", "att")}
+            D["gl"] = torch.from_numpy(glob_of_board(b)[None])
+            D["n_mv"] = torch.tensor([g["n_mv"]], dtype=torch.uint8)
+            D["n_att"] = torch.tensor([g["n_att"]], dtype=torch.uint16)
+            sqf, mvf, edges, mask = batch_of(D, torch.arange(1), args.device)
+            prior, dv = gnet(sqf, mvf, edges, mask)
+            n = int(g["n_mv"])
+            pr = prior[0, :n].cpu().numpy(); dvn = dv[0, :n].cpu().numpy()
+            def zs(x):
+                sd = x.std(); return (x - x.mean()) / (sd if sd > 1e-6 else 1.0)
+            comb = zs(pr) + args.lam * zs(dvn)
+            jmap = {(int(g["mv"][j, 1]), int(g["mv"][j, 2]), int(g["mv"][j, 5])): j
+                    for j in range(n)}
+            return np.array([comb[jmap[(m.from_square, m.to_square, PRC.get(m.promotion, 0))]]
+                             if (m.from_square, m.to_square, PRC.get(m.promotion, 0)) in jmap
+                             else -np.inf for m in mvs])
+
+    if args.model == "gdv":
+        qk = None                  # scored by gdv_score_moves; no geometry, no child scorer
+    elif args.model == "bc":
         # BEHAVIORAL-CLONING PRIOR (Kaveh 2026-08-19): rank children by the policy scorer
         # trained on played-vs-every-sibling. A perfect learner of that objective picks SF's
         # move and is on-track by construction; the number here measures how close training got.
@@ -125,7 +165,7 @@ def main():
         qk = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     QA = (qk["args"] if isinstance(qk.get("args"), dict) else vars(qk["args"])) if qk else {}
     d_in = A["heads"] * 32 + 64 * 32
-    if args.model in ("cef", "bc"):
+    if args.model in ("cef", "bc", "gdv"):
         pass                       # scorer already built above; no geometry to load
     elif args.model == "csg":
         from catspace.research.components.encoder.approaches.reach_probability.experiments \
@@ -236,12 +276,15 @@ def main():
         nsc += 1
         ntrack.append(np.mean([on[m] for m in mvs])); nlegal.append(len(mvs))
 
-        tks, gbs = [], []
-        for m in mvs:
-            b.push(m); t, g = tok_glob_of(b); b.pop()
-            tks.append(t); gbs.append(g)
-        zc, ig, isq = enc_np(np.stack(tks), np.stack(gbs))
-        sc = score(zc, ig, isq, bool(tr.glob[r, 0]))
+        if gdv_score_moves is not None:
+            sc = gdv_score_moves(b, mvs)
+        else:
+            tks, gbs = [], []
+            for m in mvs:
+                b.push(m); t, g = tok_glob_of(b); b.pop()
+                tks.append(t); gbs.append(g)
+            zc, ig, isq = enc_np(np.stack(tks), np.stack(gbs))
+            sc = score(zc, ig, isq, bool(tr.glob[r, 0]))
         pick = mvs[int(np.argmax(sc))]
         ours.append(on[pick]); best_wp_drop.append(best - wp[pick])
         rand.append(np.mean([on[m] for m in mvs]))

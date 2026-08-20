@@ -33,6 +33,10 @@ VAL = {1: 1, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0}
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--model", default="cef", choices=["cef", "gdv"],
+                    help="cef: frozen concept encoder + PL scorer, per-child encoding. "
+                         "gdv: graph delta-value net, ONE forward scores all moves; "
+                         "--policy-ckpt is the gdv checkpoint, --concept-ckpt unused")
     ap.add_argument("--policy-ckpt", default="artifacts/experiments/cpl1_latest.pt")
     ap.add_argument("--concept-ckpt", default="artifacts/experiments/cef3_step10000.pt")
     ap.add_argument("--games", type=int, default=100, help="per pairing, colors alternated")
@@ -60,53 +64,81 @@ def main():
     from catspace.io import paths
 
     dev = args.device
-    ck = torch.load(args.concept_ckpt, map_location="cpu", weights_only=False)
-    A = ck["args"] if isinstance(ck.get("args"), dict) else vars(ck["args"])
-    tr = T.build(n_human=0, n_sf=A["games"], seed=A["seed"], cache=True,
-                 max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
-    lz = np.load(paths.derived(f"tb_entry_5-4-3men_{len(tr.tok)}.npz"), allow_pickle=True)
-    vocab = [str(x) for x in lz["vocab"]]
-    cr, ce, co, egs = factor_vocab(vocab)
-    enc = ConceptEvent(d_model=A["d_model"], heads=A["heads"], codes=A["codes"],
-                       square_codes=A["square_codes"], hidden=A["hidden"],
-                       n_res=len(vocab), factored=True, n_eg=len(egs),
-                       cls_reach=cr, cls_eg=ce, cls_out=co).to(dev)
-    enc.load_state_dict(ck["state_dict"]); enc.eval()
-    pk = torch.load(args.policy_ckpt, map_location="cpu", weights_only=False)
-    PA = pk["args"] if isinstance(pk.get("args"), dict) else vars(pk["args"])
-    scorer = PolicyScorer(A["heads"] * 32 + 64 * 32, hidden=PA["hidden"], depth=PA["depth"],
-                          arch=PA.get("arch", "mlp"), n_heads=A["heads"], n_codes=A["codes"],
-                          n_sq_codes=A["square_codes"]).to(dev)
-    scorer.load_state_dict(pk["state_dict"]); scorer.eval()
-    out_of = np.array([v.split("=")[-1] if "=" in v else v.split(":")[-1] for v in vocab])
-    WIN_W = torch.from_numpy((out_of == "W").astype(np.float32)).to(dev)
-    WIN_B = torch.from_numpy((out_of == "L").astype(np.float32)).to(dev)
+    if args.model == "gdv":
+        from catspace.research.components.encoder.approaches.reach_probability.experiments \
+            .graph_delta_value import GraphDeltaValue, batch_of
+        from catspace.research.tools.training_infra.gen_move_graphs import (
+            parent_graph, glob_of_board)
+        gk = torch.load(args.policy_ckpt, map_location="cpu", weights_only=False)
+        GA = gk["args"] if isinstance(gk.get("args"), dict) else vars(gk["args"])
+        gnet = GraphDeltaValue(d=GA["d_model"], layers=GA["layers"],
+                               heads=GA["attn_heads"]).to(dev)
+        gnet.load_state_dict(gk["state_dict"]); gnet.eval()
 
-    def tok_glob_of(b):
-        t = np.zeros(64, np.uint8)
-        for q, p in b.piece_map().items():
-            t[q] = TOK_PIECES.index((p.piece_type, p.color)) + 1
-        g = np.array([int(b.turn), int(b.has_kingside_castling_rights(chess.WHITE)),
-                      int(b.has_queenside_castling_rights(chess.WHITE)),
-                      int(b.has_kingside_castling_rights(chess.BLACK)),
-                      int(b.has_queenside_castling_rights(chess.BLACK)),
-                      0 if b.ep_square is None else chess.square_file(b.ep_square) + 1], np.uint8)
-        return t, g
+        @torch.no_grad()
+        def child_scores(b):
+            """ONE graph forward scores every legal move: prior = imitation plausibility,
+            value slot = dV (game-point derivative, CF-grounded). Positions with > 48 legal
+            moves have the tail unscored (2.4 percent of corpus parents; capped, stated)."""
+            g, _ = parent_graph(b)
+            D = {k: torch.from_numpy(np.asarray(g[k])[None])
+                 for k in ("sq", "mv", "mut", "vac", "dsc", "att")}
+            D["gl"] = torch.from_numpy(glob_of_board(b)[None])
+            D["n_mv"] = torch.tensor([g["n_mv"]], dtype=torch.uint8)
+            D["n_att"] = torch.tensor([g["n_att"]], dtype=torch.uint16)
+            sqf, mvf, edges, mask = batch_of(D, torch.arange(1), dev)
+            prior, dv = gnet(sqf, mvf, edges, mask)
+            n = int(g["n_mv"])
+            mv = list(b.legal_moves)[:n]
+            return mv, prior[0, :n].cpu().numpy(), dv[0, :n].cpu().numpy()
+    else:
+        ck = torch.load(args.concept_ckpt, map_location="cpu", weights_only=False)
+        A = ck["args"] if isinstance(ck.get("args"), dict) else vars(ck["args"])
+        tr = T.build(n_human=0, n_sf=A["games"], seed=A["seed"], cache=True,
+                     max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
+        lz = np.load(paths.derived(f"tb_entry_5-4-3men_{len(tr.tok)}.npz"), allow_pickle=True)
+        vocab = [str(x) for x in lz["vocab"]]
+        cr, ce, co, egs = factor_vocab(vocab)
+        enc = ConceptEvent(d_model=A["d_model"], heads=A["heads"], codes=A["codes"],
+                           square_codes=A["square_codes"], hidden=A["hidden"],
+                           n_res=len(vocab), factored=True, n_eg=len(egs),
+                           cls_reach=cr, cls_eg=ce, cls_out=co).to(dev)
+        enc.load_state_dict(ck["state_dict"]); enc.eval()
+        pk = torch.load(args.policy_ckpt, map_location="cpu", weights_only=False)
+        PA = pk["args"] if isinstance(pk.get("args"), dict) else vars(pk["args"])
+        scorer = PolicyScorer(A["heads"] * 32 + 64 * 32, hidden=PA["hidden"], depth=PA["depth"],
+                              arch=PA.get("arch", "mlp"), n_heads=A["heads"], n_codes=A["codes"],
+                              n_sq_codes=A["square_codes"]).to(dev)
+        scorer.load_state_dict(pk["state_dict"]); scorer.eval()
+        out_of = np.array([v.split("=")[-1] if "=" in v else v.split(":")[-1] for v in vocab])
+        WIN_W = torch.from_numpy((out_of == "W").astype(np.float32)).to(dev)
+        WIN_B = torch.from_numpy((out_of == "L").astype(np.float32)).to(dev)
 
-    @torch.no_grad()
-    def child_scores(b):
-        """-> (moves, prior, value) with value = P(mover wins) read off the committor."""
-        mv = list(b.legal_moves)
-        tks, gbs = [], []
-        for m in mv:
-            b.push(m); t, g = tok_glob_of(b); b.pop()
-            tks.append(t); gbs.append(g)
-        z, ig, isq, _ = enc.encode(torch.from_numpy(np.stack(tks).astype(np.int64)).to(dev),
-                                   torch.from_numpy(np.stack(gbs).astype(np.float32)).to(dev))
-        prior = scorer(z, ig, isq).cpu().numpy()
-        pw = torch.softmax(enc.resolution_logits(z), -1)
-        val = (pw * (WIN_W if b.turn else WIN_B)).sum(1).cpu().numpy()
-        return mv, prior, val
+        def tok_glob_of(b):
+            t = np.zeros(64, np.uint8)
+            for q, p in b.piece_map().items():
+                t[q] = TOK_PIECES.index((p.piece_type, p.color)) + 1
+            g = np.array([int(b.turn), int(b.has_kingside_castling_rights(chess.WHITE)),
+                          int(b.has_queenside_castling_rights(chess.WHITE)),
+                          int(b.has_kingside_castling_rights(chess.BLACK)),
+                          int(b.has_queenside_castling_rights(chess.BLACK)),
+                          0 if b.ep_square is None else chess.square_file(b.ep_square) + 1], np.uint8)
+            return t, g
+
+        @torch.no_grad()
+        def child_scores(b):
+            """-> (moves, prior, value) with value = P(mover wins) read off the committor."""
+            mv = list(b.legal_moves)
+            tks, gbs = [], []
+            for m in mv:
+                b.push(m); t, g = tok_glob_of(b); b.pop()
+                tks.append(t); gbs.append(g)
+            z, ig, isq, _ = enc.encode(torch.from_numpy(np.stack(tks).astype(np.int64)).to(dev),
+                                       torch.from_numpy(np.stack(gbs).astype(np.float32)).to(dev))
+            prior = scorer(z, ig, isq).cpu().numpy()
+            pw = torch.softmax(enc.resolution_logits(z), -1)
+            val = (pw * (WIN_W if b.turn else WIN_B)).sum(1).cpu().numpy()
+            return mv, prior, val
 
     def zs(x):
         x = np.asarray(x, np.float64); sd = x.std()
@@ -195,6 +227,9 @@ def main():
           f"(adjudicated at |material| >= 3)\n")
     combo = make_policy(True, True, args.lam)
     valonly = make_policy(False, True, 1.0)
+    if args.model == "gdv":
+        series("PRIOR-ONLY vs RANDOM", cpl_move, random_move)
+        series("PRIOR-ONLY vs MATERIAL-GREEDY", cpl_move, material_move)
     series("COMBO vs RANDOM", combo, random_move)
     series("COMBO vs MATERIAL-GREEDY", combo, material_move)
     series("VALUE-ONLY vs RANDOM", valonly, random_move)
