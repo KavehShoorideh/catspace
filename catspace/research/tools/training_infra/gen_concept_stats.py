@@ -26,6 +26,10 @@ def main():
     ap.add_argument("--device", default="mps")
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--out", default="data/derived/concept_stats_gcf3.npz")
+    ap.add_argument("--standard-only", type=int, default=1,
+                    help="exclude the piece-down games: their engineered imbalances leak "
+                         "huge fake outcome leans into early-game codes (the move-1 "
+                         "'material balance improves on a knight hop' artifact)")
     args = ap.parse_args()
 
     from catspace.research.components.encoder.approaches.reach_probability.experiments \
@@ -70,6 +74,11 @@ def main():
     # up to ~10x too narrow for codes that fire all game long; SE must be over games)
     gor = tr.game_of_row()
     gids = gor[z["p_row"]]
+    keep = np.ones(N, bool)
+    if args.standard_only:
+        keep = gids < args.games                      # piece-down games are appended AFTER
+        print(f"  standard-only: {int(keep.sum()):,}/{N:,} rows "
+              f"({N - int(keep.sum()):,} piece-down rows excluded)", flush=True)
     g_part = {}                                       # (h, c, gid) -> [sum, n]
     N = len(D["p_row"])
     with torch.no_grad():
@@ -88,6 +97,10 @@ def main():
             gi = g_ids.cpu().numpy()
             w = ow[ii.numpy()]
             gb = gids[ii.numpy()]
+            kp = keep[ii.numpy()]
+            gi, w, gb = gi[kp], w[kp], gb[kp]
+            if not len(w):
+                continue
             for h in range(H):
                 np.add.at(s_sum, (h, gi[:, h]), w)
                 np.add.at(s_sq, (h, gi[:, h]), w * w)

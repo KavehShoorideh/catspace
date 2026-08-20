@@ -24,12 +24,15 @@ MATE = 100.0
 
 # head labels from the 2026-08-20 alignment eval on gcf3 (eta^2 evidence; heads whose top
 # feature is weak stay honestly unnamed)
+# labels from the 2026-08-20 alignment eval, WITH their eta^2 share so a weak label
+# discloses itself (Kaveh: a 33-percent-material head must not masquerade as "material
+# balance" when its code flips for the other 67 percent of reasons)
 HEAD_LABELS = {
-    0: "phase / global state", 1: "pawn structure", 2: "mobility & tension",
-    3: "(mixed slow)", 4: "knights", 5: "rooks & majors", 6: "material balance",
-    7: "queens", 8: "(fast 8)", 9: "pawn count (fast)", 10: "(fast 10)",
-    11: "(fast 11)", 12: "phase shift (fast)", 13: "(fast 13)", 14: "(fast 14)",
-    15: "material swing (fast)",
+    0: "phase+kingsafety 95%", 1: "pawn counts 17%", 2: "mobility/tension 17%",
+    3: "mixed-slow 10%", 4: "knights 11%", 5: "rooks+majors 23%",
+    6: "material+minors 33%", 7: "queens 18%", 8: "fast-8 ?", 9: "pawn-count 39%",
+    10: "fast-10 ?", 11: "fast-11 ?", 12: "phase-shift 43%", 13: "fast-13 ?",
+    14: "fast-14 ?", 15: "material-swing 58%",
 }
 
 
