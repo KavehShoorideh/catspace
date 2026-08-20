@@ -1549,3 +1549,28 @@ def _tests():
 
 if __name__ == "__main__":
     _tests()
+
+
+def cross_head_decorrelation(pre_g):
+    """Barlow-style off-diagonal penalty ACROSS concept heads.
+
+    pre_g (B, H, D): per-head pre-VQ features. Standardize per dim over the batch, then
+    penalize the mean squared cross-correlation between every pair of DISTINCT heads. Zero
+    when heads carry independent factors; ~1 when two heads are copies -- which is exactly
+    the gcf2 failure (all 8 slow heads = castling+stm, rank 3 in a 256-dim block).
+
+    Composition with VAMP-2 is free: the VAMP score is invariant to invertible linear maps
+    of the slow block, so decorrelation costs no slowness -- VAMP picks the slow SUBSPACE,
+    this term distributes it non-redundantly across heads (one head may keep castling; the
+    other seven must find something else). Kaveh 2026-08-20: "if it has only one concept
+    and decorrelation terms are forcing the other concepts away, that's great."
+    """
+    B, H, D = pre_g.shape
+    z = pre_g - pre_g.mean(0, keepdim=True)
+    z = z / (z.std(0, keepdim=True) + 1e-6)
+    c = torch.einsum("bhd,bke->hkde", z, z) / B          # (H, H, D, D) cross-correlations
+    # scale by D: a copied head pair scores ~1 (its cross-corr is ~identity, D entries of 1
+    # in D^2 slots); independent heads score ~D/B sampling noise
+    off = (c ** 2).mean(dim=(2, 3)) * pre_g.shape[-1]
+    mask = ~torch.eye(H, dtype=torch.bool, device=pre_g.device)
+    return off[mask].mean()

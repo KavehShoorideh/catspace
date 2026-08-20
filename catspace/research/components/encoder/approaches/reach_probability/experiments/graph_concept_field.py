@@ -48,14 +48,53 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from catspace.research.tools.training_infra.losses import (
-    effective_number_weights, factorized_resolution_ce, vamp2_score, vicreg_covariance)
+    effective_number_weights, factorized_resolution_ce, vamp2_score, vicreg_covariance, cross_head_decorrelation)
 from catspace.research.components.encoder.approaches.reach_probability.experiments \
     .concept_capture_field import factor_vocab
 from catspace.research.components.encoder.approaches.reach_probability.experiments \
     .graph_move_policy import MV_CAP, N_NODES, Relation
 
 RELS = ("att", "src", "dst", "mut", "vac", "dsc")
+# gcf3 kinematic relations: STATIC board geometry, independent of occupancy -- the wiring a
+# piece could ever move along. file/rank/diag are full lines (a rook/bishop hears its whole
+# line even through blockers; occupancy is what the learned messages must gate), knight is
+# the jump graph, king the step graph ("manhattan" + single diagonals).
+KIN_RELS = ("kfile", "krank", "kdiag", "kadiag", "kknight", "kking")
+# file-node relations: 8 file-nodes aggregate their squares (per-file pawn structure lives
+# here -- the feature gcf1/gcf2 measurably lacked) and broadcast back.
+FN_RELS = ("fsq", "sqf")
 N_COUNT, N_CLASS = 9, 12
+
+
+class _GradReverse(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        return x.view_as(x)
+
+    @staticmethod
+    def backward(ctx, g):
+        return -g
+
+
+def grad_reverse(x):
+    return _GradReverse.apply(x)
+
+
+def kin_templates():
+    """-> {rel: (src, dst) LongTensors} over 64 local square indices, both directions."""
+    fr = torch.arange(64); f, r = fr % 8, fr // 8
+    df = f[:, None] - f[None, :]; dr = r[:, None] - r[None, :]
+    ad, adr = df.abs(), dr.abs()
+    ident = torch.eye(64, dtype=torch.bool)
+    masks = {
+        "kfile": (df == 0) & ~ident,
+        "krank": (dr == 0) & ~ident,
+        "kdiag": (df == dr) & ~ident,
+        "kadiag": (df == -dr) & ~ident,
+        "kknight": ((ad == 1) & (adr == 2)) | ((ad == 2) & (adr == 1)),
+        "kking": (ad <= 1) & (adr <= 1) & ~ident,
+    }
+    return {k: tuple(torch.nonzero(m, as_tuple=True)) for k, m in masks.items()}
 
 
 class GraphConceptField(nn.Module):
@@ -63,23 +102,52 @@ class GraphConceptField(nn.Module):
                  sq_codes=256, d_fine=32, slow_heads=8, hidden=512, n_res=414, n_eg=397,
                  cls_reach=None, cls_eg=None, cls_out=None,
                  edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
-                 agg_max=False):
+                 agg_max=False, kin=False, file_nodes=False, phase_head=False,
+                 threat_head=False):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         self.edge_codes, self.move_codes = edge_codes, move_codes
         self.gps_parallel, self.use_bias, self.agg_max = gps_parallel, attn_bias, agg_max
+        self.kin, self.file_nodes = kin, file_nodes
+        self.phase_head, self.threat_head = phase_head, threat_head
+        self.n_nodes = N_NODES + (8 if file_nodes else 0)
         self.d, self.g_heads, self.d_code = d, g_heads, d_code
         self.sq_codes, self.d_fine, self.slow_heads = sq_codes, d_fine, slow_heads
+        self.rels = RELS + (KIN_RELS if kin else ()) + (FN_RELS if file_nodes else ())
         self.sq_in = nn.Linear(13 + 7 + 6 + 2, d)
         self.mv_in = nn.Linear(6 + 4 + 5 + 4, d)
-        self.rel = nn.ModuleList([nn.ModuleDict({r: Relation(d) for r in RELS})
+        self.rel = nn.ModuleList([nn.ModuleDict({r: Relation(d) for r in self.rels})
                                   for _ in range(layers)])
+        if kin:
+            for name, (ks, kd) in kin_templates().items():
+                self.register_buffer(f"kin_s_{name}", ks.long())
+                self.register_buffer(f"kin_d_{name}", kd.long())
+        if file_nodes:
+            self.file_emb = nn.Parameter(torch.randn(8, d) * 0.02)
+            fr = torch.arange(64)
+            self.register_buffer("fn_sq", fr.long())            # square index
+            self.register_buffer("fn_file", (fr % 8).long())    # its file-node (local 0-7)
+        if phase_head:
+            # DESIGNATED phase head (Kaveh 2026-08-20: castling MAY own one head; phase owns
+            # head 0 -- with 32 codes over 4 buckets there is room for "different codes for
+            # the same phase"). The ADVERSARY pushes phase OUT of heads 1..15: gradient
+            # reversal confined to the projection slices (trunk input detached), so the
+            # trunk keeps phase for the move head while the other concept heads must encode
+            # something else.
+            self.phase_cls = nn.Linear(d_code, 4)
+            self.phase_adv = nn.Sequential(nn.Linear((g_heads - 1) * d_code, 128), nn.GELU(),
+                                           nn.Linear(128, 4))
+        if threat_head:
+            # threat -> execution (Kaveh: "how often is it actually taken... when is a good
+            # time to execute"): per-square P(exec within 8 | threat), supervised only on
+            # censused threat squares.
+            self.te_head = nn.Linear(d, 1)
         if agg_max:      # PNA-lite: mean+max concatenated per relation (GraphGPS best MPNNs)
-            self.rel_max = nn.ModuleList([nn.ModuleDict({r: Relation(d) for r in RELS})
+            self.rel_max = nn.ModuleList([nn.ModuleDict({r: Relation(d) for r in self.rels})
                                           for _ in range(layers)])
             self.agg_proj = nn.ModuleList([nn.Linear(2 * d, d) for _ in range(layers)])
         if attn_bias:    # Graphormer spatial encoding: learnable scalar per pair-relation bucket
-            self.n_buckets = 14
+            self.n_buckets = 17 if file_nodes else 14   # +file<->own-sq, file<->file, file<->other
             self.bias_emb = nn.Parameter(torch.zeros(attn_heads, self.n_buckets))
             fr = torch.arange(64); f, r = fr % 8, fr // 8
             df = (f[:, None] - f[None, :]).abs(); dr = (r[:, None] - r[None, :]).abs()
@@ -151,7 +219,7 @@ class GraphConceptField(nn.Module):
 
     def _attn_bias(self, B, mvf, mv_mask, dev):
         """(B*heads, N, N) additive bias from static square geometry + move src/dst buckets."""
-        nb = torch.full((B, N_NODES, N_NODES), 7, dtype=torch.long, device=dev)
+        nb = torch.full((B, self.n_nodes, self.n_nodes), 7, dtype=torch.long, device=dev)
         nb[:, :64, :64] = self.sq_bucket[None]
         # move-node buckets: 8 = its source square, 9 = its dest square, 10 = other sq<->mv,
         # 11/12/13 = move<->move same-from/same-to/other
@@ -167,36 +235,65 @@ class GraphConceptField(nn.Module):
         mm_same_f = f_sq[:, :, None] == f_sq[:, None, :]
         mm_same_t = t_sq[:, :, None] == t_sq[:, None, :]
         mm = torch.where(mm_same_f, 11, torch.where(mm_same_t, 12, 13))
-        nb[:, 64:, 64:] = mm
+        nb[:, 64:64 + MV_CAP, 64:64 + MV_CAP] = mm
+        if self.file_nodes:
+            F0 = 64 + MV_CAP
+            nb[:, F0:, :] = 16; nb[:, :, F0:] = 16                       # file<->anything
+            fi = torch.arange(8, device=dev)
+            nb[:, (F0 + fi)[:, None], (F0 + fi)[None, :]] = 15           # file<->file
+            sq = torch.arange(64, device=dev)
+            nb[:, F0 + (sq % 8), sq] = 14; nb[:, sq, F0 + (sq % 8)] = 14  # file<->own squares
         bias = self.bias_emb[:, nb]                    # (heads, B, N, N)
-        return bias.permute(1, 0, 2, 3).reshape(-1, N_NODES, N_NODES)
+        return bias.permute(1, 0, 2, 3).reshape(-1, self.n_nodes, self.n_nodes)
+
+    def _static_edges(self, B, dev):
+        """kinematic + file-node edge lists, offset for a B-batch (they are the same for
+        every position -- geometry, not occupancy)."""
+        out = {}
+        off = (torch.arange(B, device=dev) * self.n_nodes)[:, None]
+        if self.kin:
+            for name in KIN_RELS:
+                ks = getattr(self, f"kin_s_{name}"); kd = getattr(self, f"kin_d_{name}")
+                out[name] = ((ks[None] + off).reshape(-1), (kd[None] + off).reshape(-1))
+        if self.file_nodes:
+            F0 = 64 + MV_CAP
+            fs = self.fn_sq; fd = F0 + self.fn_file
+            out["fsq"] = ((fs[None] + off).reshape(-1), (fd[None] + off).reshape(-1))
+            out["sqf"] = ((fd[None] + off).reshape(-1), (fs[None] + off).reshape(-1))
+        return out
 
     def backbone(self, sqf, mvf, edges, mv_mask):
         B = sqf.shape[0]
         h = torch.cat([self.sq_in(sqf), self.mv_in(mvf)], 1)
+        if self.file_nodes:
+            h = torch.cat([h, self.file_emb[None].expand(B, 8, self.d)], 1)
         pad = torch.cat([torch.zeros(B, 64, dtype=torch.bool, device=sqf.device), ~mv_mask], 1)
+        if self.file_nodes:
+            pad = torch.cat([pad, torch.zeros(B, 8, dtype=torch.bool, device=sqf.device)], 1)
+        if self.kin or self.file_nodes:
+            edges = {**edges, **self._static_edges(B, sqf.device)}
         abias = self._attn_bias(B, mvf, mv_mask, sqf.device) if self.use_bias else None
 
         def local(x, i):
-            xf = x.reshape(B * N_NODES, self.d)
+            xf = x.reshape(B * self.n_nodes, self.d)
             agg = 0.0
-            for r in RELS:
+            for r in self.rels:
                 sd = edges.get(r)
                 if sd is not None and len(sd[0]):
-                    agg = agg + self.rel[i][r](xf, sd[0], sd[1], B * N_NODES)
+                    agg = agg + self.rel[i][r](xf, sd[0], sd[1], B * self.n_nodes)
             if self.agg_max:
                 mx = 0.0
-                for r in RELS:
+                for r in self.rels:
                     sd = edges.get(r)
                     if sd is not None and len(sd[0]):
                         m = self.rel_max[i][r].w(xf[sd[0]])
-                        out = torch.zeros(B * N_NODES, self.d, device=x.device, dtype=m.dtype)
+                        out = torch.zeros(B * self.n_nodes, self.d, device=x.device, dtype=m.dtype)
                         out.index_reduce_(0, sd[1], m, "amax", include_self=False)
                         mx = mx + out
                 agg = self.agg_proj[i](torch.cat(
                     [agg if torch.is_tensor(agg) else torch.zeros_like(mx),
                      mx if torch.is_tensor(mx) else torch.zeros_like(agg)], -1))
-            return (agg.reshape(B, N_NODES, self.d) if torch.is_tensor(agg) else
+            return (agg.reshape(B, self.n_nodes, self.d) if torch.is_tensor(agg) else
                     torch.zeros_like(x))
 
         for i in range(len(self.rel)):
@@ -223,8 +320,14 @@ class GraphConceptField(nn.Module):
         [, edge_hist (B,E)]"""
         B = sqf.shape[0]
         h = self.backbone(sqf, mvf, edges, mv_mask)
-        h_sq, h_mv = h[:, :64], h[:, 64:]
+        h_sq, h_mv = h[:, :64], h[:, 64:64 + MV_CAP]
         pre_g = self.g_proj(h_sq.mean(1)).view(B, self.g_heads, self.d_code)
+        # stashed for the aux heads (phase adversary reads projections of a DETACHED trunk,
+        # so reversal shapes only the projection slices; te head reads square states)
+        self.last_h_sq = h_sq
+        if self.phase_head:
+            self.last_pre_adv = self.g_proj(h_sq.mean(1).detach()).view(
+                B, self.g_heads, self.d_code)[:, 1:]
         qs, ids, vl = [], [], 0.0
         for i in range(self.g_heads):
             q, idx, l = self.vq[i](pre_g[:, i])
@@ -235,14 +338,14 @@ class GraphConceptField(nn.Module):
         hist = None
         if self.edge_codes:
             sd = edges.get("att")
-            hf = h.reshape(B * N_NODES, self.d)
+            hf = h.reshape(B * self.n_nodes, self.d)
             if sd is not None and len(sd[0]):
                 e = self.edge_mlp(torch.cat([hf[sd[0]], hf[sd[1]]], -1))
                 _, e_ids, vl3 = self.edge_vq(e)
                 vl = vl + vl3
                 # bucket edges by their DST node's sample, then pool per sample
                 hist = torch.zeros(B, self.edge_codes, device=h.device)
-                samp = (sd[1] // N_NODES).long()
+                samp = (sd[1] // self.n_nodes).long()
                 hist.index_put_((samp, e_ids), torch.ones_like(e_ids, dtype=hist.dtype),
                                 accumulate=True)
                 hist = hist / hist.sum(-1, keepdim=True).clamp(min=1)
@@ -278,7 +381,8 @@ def main():
     ap.add_argument("--max-plies", type=int, default=400)
     ap.add_argument("--steps", type=int, default=8000)
     ap.add_argument("--batch", type=int, default=48)
-    ap.add_argument("--vamp-batch", type=int, default=128)
+    ap.add_argument("--vamp-batch", type=int, default=128,
+                    help="also the decor batch: noise floor is 32/B, so keep >= 128")
     ap.add_argument("--d-model", type=int, default=128)
     ap.add_argument("--layers", type=int, default=3)
     ap.add_argument("--slow-heads", type=int, default=8)
@@ -287,6 +391,16 @@ def main():
     ap.add_argument("--gps-parallel", type=int, default=0)
     ap.add_argument("--attn-bias", type=int, default=0)
     ap.add_argument("--agg-max", type=int, default=0)
+    ap.add_argument("--kin", type=int, default=0, help="kinematic square relations")
+    ap.add_argument("--file-nodes", type=int, default=0, help="8 file-nodes (pawn structure)")
+    ap.add_argument("--phase-head", type=int, default=0,
+                    help="designated phase head 0 + confined GRL adversary on heads 1..15")
+    ap.add_argument("--threat-head", type=int, default=0, help="per-square exec-within-8 head")
+    ap.add_argument("--w-phase", type=float, default=0.3)
+    ap.add_argument("--w-adv", type=float, default=0.2)
+    ap.add_argument("--w-decor", type=float, default=0.5,
+                    help="cross-head decorrelation (the castling-collapse fix)")
+    ap.add_argument("--w-te", type=float, default=0.3)
     ap.add_argument("--w-edge-dyn", type=float, default=0.5,
                     help="child edge-histogram prediction: tactics added and deleted")
     ap.add_argument("--w-move", type=float, default=2.0)
@@ -345,13 +459,34 @@ def main():
     print(f"[gcf] {N:,} graphs | train {len(tr_i):,} / held-out {len(te_i):,} | "
           f"lag-8 pairs {len(tr8):,} [{time.time()-t0:.0f}s]", flush=True)
 
+    PH = TE = None
+    if args.phase_head:
+        from catspace.research.tools.training_infra.concepts_reference import TOK_PIECES
+        ids = D["sq"][:, :, 0].numpy()
+        minor_ids = [k + 1 for k, (pt, c) in enumerate(TOK_PIECES) if pt not in (1, 6)]
+        npc = np.isin(ids, minor_ids).sum(1)
+        PH = torch.from_numpy(np.digitize(npc, [4, 8, 12]))     # 0-3|4-7|8-11|12+ -> 4 buckets
+        print(f"[gcf] phase buckets: {np.bincount(PH.numpy(), minlength=4).tolist()}", flush=True)
+    if args.threat_head:
+        import glob as _g
+        from catspace.research.tools.training_infra.threat_exec_join import join_threat_exec
+        te_path = sorted(_g.glob(str(paths.derived(f"threat_exec_k8_*_{n}.npz"))))[-1]
+        TE = torch.from_numpy(join_threat_exec(p_np, te_path))
+        n_ev = int((TE >= 0).sum())
+        te_pw = torch.tensor((TE == 0).sum().item() / max(1, (TE == 1).sum().item()),
+                             device=dev)
+        print(f"[gcf] threat/exec: {n_ev:,} events, pos_weight {float(te_pw):.1f}", flush=True)
+
     net = GraphConceptField(d=args.d_model, layers=args.layers, slow_heads=args.slow_heads,
                             n_res=len(vocab), n_eg=len(egs),
                             cls_reach=cr, cls_eg=ce, cls_out=co,
                             edge_codes=args.edge_codes, move_codes=args.move_codes,
                             gps_parallel=bool(args.gps_parallel),
                             attn_bias=bool(args.attn_bias),
-                            agg_max=bool(args.agg_max)).to(dev)
+                            agg_max=bool(args.agg_max), kin=bool(args.kin),
+                            file_nodes=bool(args.file_nodes),
+                            phase_head=bool(args.phase_head),
+                            threat_head=bool(args.threat_head)).to(dev)
     print(f"[gcf] {sum(p.numel() for p in net.parameters()):,} params | "
           f"{args.slow_heads} slow + {16-args.slow_heads} fast global heads x 32 | 64x256 sq",
           flush=True)
@@ -361,9 +496,9 @@ def main():
 
     def parent_batch(idx):
         b = {k: D[k][idx].to(dev) for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
-        sqf, mvf, edges, mask = featurize(b, dev)
+        sqf, mvf, edges, mask = featurize(b, dev, n_nodes=net.n_nodes)
         # deletion relations, same flattening as featurize's mut
-        off = (torch.arange(len(idx), device=dev) * N_NODES)[:, None]
+        off = (torch.arange(len(idx), device=dev) * net.n_nodes)[:, None]
         jj = torch.arange(MV_CAP, device=dev)[None, :]
         for name, arr in (("vac", D["vac"][idx].to(dev)), ("dsc", D["dsc"][idx].to(dev))):
             a = arr.long()
@@ -382,13 +517,16 @@ def main():
              "att": D[f"{pfx}_att"][idx].to(dev),
              "n_mv": torch.zeros(B, dtype=torch.uint8, device=dev),
              "n_att": D[f"{pfx}_n_att"][idx].to(dev)}
-        return featurize(b, dev)
+        return featurize(b, dev, n_nodes=net.n_nodes)
 
     def step_fn(model, step):
         model.train()
         idx = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
         sqf, mvf, edges, mask = parent_batch(idx)
         zq, g_ids, sq_ids, vl, h_mv, pre_g = model.encode(sqf, mvf, edges, mask)
+        # capture NOW: the child/lag-8 encodes below overwrite the stashes
+        h_sq_p = model.last_h_sq
+        pre_adv_p = model.last_pre_adv if args.phase_head else None
 
         played = D["played"][idx].long().to(dev)
         lg = model.move_logits(zq, h_mv, mask)
@@ -436,10 +574,32 @@ def main():
         vamp = vamp2_score(v0, v8_)
         l_slow = -vamp / 32.0
         l_dec = vicreg_covariance(pg0.reshape(len(i8), -1)[:, sl:])
+        # cross-head decorrelation on the LARGE (vamp) batch: noise floor is 32/B
+        l_decor = cross_head_decorrelation(pg0) if args.w_decor > 0 else \
+            torch.zeros((), device=dev)
+
+        l_phase = l_adv = torch.zeros((), device=dev)
+        adv_acc = 0.0
+        if args.phase_head:
+            ph_t = PH[idx].to(dev)
+            l_phase = F.cross_entropy(model.phase_cls(pre_g[:, 0]), ph_t)
+            adv_lg = model.phase_adv(grad_reverse(pre_adv_p.reshape(len(idx), -1)))
+            l_adv = F.cross_entropy(adv_lg, ph_t)
+            adv_acc = float((adv_lg.argmax(-1) == ph_t).float().mean())
+        l_te = torch.zeros((), device=dev)
+        if args.threat_head:
+            te_t = TE[idx].to(dev)
+            msk = te_t >= 0
+            if msk.any():
+                l_te = F.binary_cross_entropy_with_logits(
+                    model.te_head(h_sq_p).squeeze(-1)[msk], te_t[msk].float(),
+                    pos_weight=te_pw)
 
         loss = (args.w_move * l_move + args.w_dyn * l_dyn + args.w_edge_dyn * l_edyn
                 + args.w_res * l_res + args.w_now * l_now + args.w_slow * l_slow
-                + args.w_dec * l_dec + vl + l_mvvq)
+                + args.w_dec * l_dec + args.w_decor * l_decor
+                + args.w_phase * l_phase + args.w_adv * l_adv + args.w_te * l_te
+                + vl + l_mvvq)
         opt.zero_grad(); loss.backward(); opt.step()
 
         m = {}
@@ -463,10 +623,13 @@ def main():
                   f"dyn {float(l_dyn):.3f} res {float(l_res):.3f} | "
                   f"HELD-OUT top1 {h1/tot:.3f} top3 {h3/tot:.3f} | dyn_g {dyn_g:.2f} "
                   f"dyn_s {dyn_s:.2f} edyn {float(l_edyn):.3f} | vamp {float(vamp):.1f}/32 "
-                  f"dec {float(l_dec):.3f}",
+                  f"dec {float(l_dec):.3f} decor {float(l_decor):.3f} "
+                  f"ph {float(l_phase.detach()):.2f} advacc {adv_acc:.2f} "
+                  f"te {float(l_te.detach()):.3f}",
                   flush=True)
             m = {"top1": h1 / tot, "top3": h3 / tot, "vamp": float(vamp),
-                 "dyn_g": dyn_g, "dyn_s": dyn_s}
+                 "dyn_g": dyn_g, "dyn_s": dyn_s, "decor": float(l_decor),
+                 "adv_acc": adv_acc}
             model.train()
         return {"loss": float(loss.detach()), "move": float(l_move.detach()),
                 "dyn": float(l_dyn.detach()), "res": float(l_res.detach()),

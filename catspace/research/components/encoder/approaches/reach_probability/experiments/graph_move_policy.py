@@ -96,8 +96,9 @@ class GraphMovePolicy(nn.Module):
         return lg.masked_fill(~mv_mask, float("-inf"))
 
 
-def featurize(batch, dev):
-    """uint8 arrays -> dense node features + flattened edge lists."""
+def featurize(batch, dev, n_nodes=N_NODES):
+    """uint8 arrays -> dense node features + flattened edge lists. `n_nodes` sets the
+    flattening stride for models with extra nodes (gcf3 file-nodes: 120)."""
     sq, gl, mv, mut, att, n_mv, n_att = (batch[k] for k in
                                          ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att"))
     n_mv = n_mv.long(); n_att = n_att.long()          # uint8/uint16 do not promote with Long
@@ -122,7 +123,7 @@ def featurize(batch, dev):
     mvf = torch.cat([pt, mcoord, promo, flags], -1)
 
     mv_mask = (torch.arange(MV_CAP, device=dev)[None, :] < n_mv[:, None])
-    off = (torch.arange(B, device=dev) * N_NODES)[:, None]
+    off = (torch.arange(B, device=dev) * n_nodes)[:, None]
 
     ea = att.long()
     val_a = (ea[:, :, 0] != 255) & (torch.arange(ATT_CAP, device=dev)[None, :] < n_att[:, None])
