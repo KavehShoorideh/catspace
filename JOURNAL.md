@@ -15200,3 +15200,30 @@ amplification), 1 collapse mode identified with its fix designed, 1 self-inflict
 thrash diagnosed by stack-sample and rules updated, and the first policy that converts:
 +88 =12 -0 vs random, +81 =19 -0 vs material-greedy, 84.7 winning-track, elo -241 vs SF
 skill 0 (from -576 best prior).
+
+---
+
+## 2026-08-20 03:45 — AMENDMENT (Kaveh's CI ruling): which of tonight's claims survive
+
+Ruling: metrics are stochastic, no CIs, no budget for seed replicates -- close single-seed
+numbers get NO verdicts. Re-grading tonight's claims under it:
+
+SURVIVES (structural or gross-gap):
+- gcf2 slow-block collapse: all 8 heads identical (castle_k 1.00 / stm 0.88 / castle_q 0.87)
+  -- qualitative, not a close number. The decorrelation fix stands.
+- gdv1 conversion: +88 =12 -0 vs random against +15 =84 -1 baseline; +81 =19 -0 vs
+  material-greedy; winning-track 84.7 vs 66.0 same-positions. Order-of-magnitude gaps.
+- zs-combo harm at lam=1 (40.0 percent h2h, worst of 6 configs) -- large and mechanism-backed.
+- advacc at chance + decor falling in gcf3 -- direct loss readouts of the designed mechanisms.
+
+DOWNGRADED to observations (close numbers, one seed):
+- "gcf2 NEGATIVE on imitation" (0.276 vs gcf1 0.292) -> indistinguishable at one seed;
+  the run-level confounds (two Adam resets, half-run old loss) make it triply unquotable.
+- gdv1 top1 0.287 "matching" gmp1 0.288 -> consistent-with, not equal.
+- raw-combo beta=1 at +24 elo -> already called not-established; stays that way.
+- gcf3's eventual top1 vs 0.292 will be judged the same way: only a gross gap counts.
+
+TARGET restated (the strategic ruling): find something that RESPECTABLY PLAYS, then improve
+it with SELF-PLAY. The gdv prior is the current candidate; its ~0.2 s/game CPU cost is what
+makes self-play affordable at volume. Loop design note to follow for morning review --
+flywheel rule applies (compounds only on a correct algorithm).
