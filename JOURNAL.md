@@ -15142,3 +15142,20 @@ unplayed children through expectimax recursion) and more nonzero pairs (branch d
 the game, where deltas are decisive).
 
 Winning-track lam=0 ablation running for the same view on that instrument.
+
+---
+
+## 2026-08-20 01:05 — self-inflicted swap-thrash: parallel evals starved gcf2 (caught by stack sample)
+
+gcf2's log went silent at 00:22 with the process at 89 percent CPU -- the "CPU busy is not
+progress" signature. `sample` showed the main thread inside bool(tensor) truthiness checks
+forcing MPS->CPU sync copies (mps_copy_ under is_nonzero): every step paying a swap-storm
+tax. vm.swapusage: 14.4G of 15.4G. Cause is mine: I launched winning-track n=300 AND the
+100-game arena (then three h2h sweeps) alongside gcf2 -- each eval loads the corpus, and the
+sum pushed a 6G-resident MPS training run into swap. Same physics as the 2026-07-27 scar,
+new costume: it is not disk-bound jobs OR orphaned workers, it is TOTAL RESIDENT SET vs one
+MPS trainer. Mitigation: killed the remaining eval (the lam=0 winning-track ablation,
+rerunnable in 12 min), letting gcf2 page back in and finish alone on the box.
+
+Rule sharpened for the night protocol: while an MPS training run is live, evals run ONE at a
+time, and never two corpus-loading processes alongside the trainer.
