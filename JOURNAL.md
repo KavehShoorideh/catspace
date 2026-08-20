@@ -14926,3 +14926,50 @@ Also this hour: 288 more stale checkpoints purged (2.5 GiB; protect-list verifie
 counterfactual selector upgraded to SF-2nd/3rd per Kaveh (multipv as SAMPLER only,
 labels remain rollout outcomes; pilot: runner-up arms 82%% ties = boundary calibration,
 delta ordering 3rd > 2nd cost confirms sanity).
+
+---
+
+## 2026-08-19 22:10 — first concept-naming pass: gcf1's codes against the Rust basis
+
+`eval_concept_alignment.py` (committed): 30k positions encoded with gcf1, the same rows
+through the zero-mismatch Rust basis, eta^2 per (code, named feature), with an enforced
+honesty split (INPUT-ECHO features marked ~; LEARNED = never shown to the model). One
+measurement bug caught before believing anything: constant features (halfmove/repetition
+unset, n_K always 1) produce eta^2 = 0/0 masquerading as 1.00; zero-variance mask added.
+
+**Named identities that exist (LEARNED features only):**
+
+```
+head  6 (SLOW)  phase 0.81 | king_open_files_w 0.44 | tension 0.29 | shield 0.27 | escape 0.26
+                -> a structural king-safety/phase composite, on a SLOW head
+head  2 (SLOW)  legal_moves 0.41                    -> mobility, SLOW
+head  8 (fast)  material_diff 0.44                  -> material balance
+fast heads      in_check 0.08, checks_available 0.13 -> transient facts land FAST
+square codes    24/26/29: SEE<0 at P=0.10-0.11 vs base 0.026 (4x lift, n up to 8k)
+                -> "piece en prise" codes exist
+```
+
+The slow/fast SEMANTIC split matches the design: structural, game-scale quantities
+(phase, king air, mobility) align with VAMP-slowed heads; transient facts (checks) land
+on fast heads. That is the two-timescale vocabulary doing what it was built for, read
+off named features rather than asserted.
+
+**The honest gaps:**
+1. Every head's TOP alignments are phase/piece-count/side-to-move -- the dominant
+   variance axis of chess soaks up most code capacity, and the heads are substantially
+   redundant descriptions of it (the old native_concepts-era lesson: phase drowns
+   structure unless projected out). Decorrelation acts on pre-VQ features; the CODE
+   assignments still co-align with phase. Candidate fix if it matters: an MI penalty
+   across head assignments, not built.
+2. Per-file pawn structure is absent (eta^2 0.01-0.02) -- 32-way global codes do not
+   resolve file-level binaries. Aggregate pawn counts may align better (metric
+   refinement pending) or the vocabulary genuinely drops it.
+3. Tactical square bits are weak: hanging 2x lift at P=0.02, pinned 3x at P=0.01.
+   Consistent with the training distribution (SF play rarely leaves pieces en prise) --
+   and this is EXACTLY the gap gcf2's edge concepts + the counterfactual branches
+   target: interventions create the hanging-piece positions the corpus lacks, and
+   edge codes give them somewhere to live.
+
+First pass verdict: the interpretability claim has its first named atoms -- coarse
+structural concepts are nameable, the slow/fast split is semantically real, tactical
+naming awaits edge concepts. Partial, honest, and now measurable run-over-run.
