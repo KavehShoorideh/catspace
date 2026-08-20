@@ -15360,3 +15360,40 @@ trained separately and why its threat head must be trained on human labels.
 
 Artifacts ready for the post-run fine-tune: threat_exec_k8 (census head) and
 capture_within8 (the unconditional v2b per-square head) for the human corpus.
+
+---
+
+## 2026-08-20 — LOCKED DESIGN: gct1, search breathed into training (v2c realized)
+
+Kaveh's spec: narrow-beam shallow search (2-3 wide, 3-6 deep) + planner ~ 2000-elo-ish;
+"predict stockfish not just based on one or two moves but based on a shallow search --
+bring the search into training so the weights build around the tool." Approved stack:
+TreeQN-style differentiable tree (A) + Gumbel search targets (B) + TD-leaf consistency (C).
+
+**gct1 = tree fine-tune on the gcf4h trunk.** The tree is FULLY LATENT past the root
+(TreeQN-faithful, chess-adapted):
+
+  root      real board; ALL legal moves' depth-1 latent children from the trained dyn
+            machinery in ONE batch (expected-code embeddings -- differentiable, and the
+            tree's internal states remain CONCEPT states: legible plans)
+  deeper    beam B=3: opponent/our replies as B learned REPLY-SLOT residual transitions
+            z' = unitnorm(z + tanh(W[z (+) e_slot])) -- probabilistic plies, the original
+            v2c vision; per-slot softmax weights
+  values    existing committor head on every node; NEGAMAX-parity soft backup
+            b(x) = sum x_i softmax(x)_i with -b(-x) on opponent plies; TD(lambda~0.8)
+            mixing of intermediate values (TreeQN)
+  output    searched root logits = prior + kappa * Q_backed; L_tree = CE(searched, played)
+            -- the model predicts the human/SF move THROUGH the search
+
+  B-loss    Gumbel-style: real-board beam alpha-beta (depth 2, width 3, CURRENT weights)
+            on a 4-position subset per step; target softmax(prior + sigma*normQ) with
+            root-value completion (mctx form); CE on the prior head
+  C-loss    huber(V_static(root), stopgrad(V_backed(root)))
+
+Cost budget: latent tree ~40 MLP rows + value heads (trivial); Gumbel subset ~52 board
+forwards/step (~+50 percent). Plain-prior PL stays in the stack at reduced weight (the
+prior must remain a good RANKER for pruning). Eval: held-out top1 of SEARCHED policy vs
+plain prior (headline: does the tool help prediction), prior top1 (must not degrade),
+tree-value calibration. Risks carried: root-beam pruning is non-differentiable (Gumbel
+loss owns ranking); soft backup blurs past ~4-5 plies (anneal later); latent replies can
+smear (slot-diversity via decor on slot embeddings if needed).
