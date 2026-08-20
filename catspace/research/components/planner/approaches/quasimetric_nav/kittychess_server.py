@@ -140,7 +140,6 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
       <button id="plantog" title="PLANNER: the SubgoalFormer's live certificate — committed subgoal with revised probability, counterfactual worries, premove-safety — plus the alert diff since the last move and what the pointer policy would do (action + search budget)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">plan</button>
       <button id="sqtog" title="SQUARE CONCEPTS: each square's learned concept code and its additive contribution to the evaluation (green helps white, red helps black). The per-square vocabulary is trained jointly; contributions are exact by construction (additive decoder)." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">sq</button>
       <button id="whytog" title="WHY overlay: positional importance beyond material (counterfactual removal, material-fitted residual). Green = load-bearing (doing MORE than its face value), red = underperforming or misplaced (removal costs little — or even helps its owner). Top 3 each. Kings excluded." style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">why</button>
-      <button id="sftog" title="toggle a Stockfish second opinion for the current position (referee only — never feeds our engine)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">SF</button>
       <button id="flip" style="background:#3a3733;border:none;color:#bababa;border-radius:3px;padding:2px 8px;cursor:pointer">flip</button>
       <button id="pgnbtn" title="copy the game as PGN — the engine's reactions ride along as annotations ({comments} + !?/?! glyphs)" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">PGN</button>
       <button id="nexttog" title="FUTURE CONCEPTS: a causal transformer over this game's concept stream predicts which concepts NEWLY activate soon (within 2/6 plies), for each side — the sequence layer, history-aware where the geometry is memoryless" style="background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:2px 8px;cursor:pointer">next</button>
@@ -291,7 +290,22 @@ function sqRefresh(fen){
     renderSq();
   }).catch(()=>{});
 }
-let gcLast=null,gcTab=0;
+let gcLast=null,gcTab=0,cheadOn=null;
+function cheadShow(h){
+  if(cheadOn===h){cheadOn=null;cg.setShapes([]);document.getElementById('gcexec').innerHTML='';renderGc();return;}
+  cheadOn=h;
+  fetch('/api',{method:'POST',body:JSON.stringify({action:'chead',head:h})}).then(r=>r.json()).then(e=>{
+    if(e.err){return;}
+    const mx=Math.max(...(e.sal||[]).map(x=>Math.abs(x.a)))||1;
+    cg.setShapes((e.sal||[]).map(x=>({orig:x.sq,
+      brush:x.a>0?(Math.abs(x.a)>=0.5*mx?'green':'paleGreen'):(Math.abs(x.a)>=0.5*mx?'red':'paleRed')})));
+    const gx=document.getElementById('gcexec');
+    gx.innerHTML=`<span style="color:#9db4d0">h${e.head}&middot;c${e.code} carried by:</span> `+
+      (e.sal||[]).slice(0,6).map(x=>(x.pc||'')+x.sq).join(" ")+
+      ((e.held&&e.held.length)?`<br><span style="color:#c9a26a">held up by:</span> `+
+        e.held.map(x=>`${x.pc}${x.sq}\u2192c${x.to}${x.dw?` (${x.dw>0?'+':''}${x.dw})`:''}`).join(" "):"");
+  }).catch(()=>{});
+}
 function gcLean(w,ci,n,helps){
   const humanWhite=(mode!=='play')||!playCfg.engineWhite;
   if(helps==="?"||helps===undefined)return['gc-neu','&middot;'];
@@ -307,9 +321,11 @@ function renderGc(){
   const T=document.getElementById('gctable');
   if(gcTab===0){
     T.innerHTML=g.heads.map(h=>{const[cls,lean]=gcLean(h.wpov,h.ci,h.n,h.helps);
-      return `<tr><td style="color:${h.slow?'#9db4d0':'#8f8a82'};padding-right:6px">${h.label}</td>`+
+      return `<tr class="gcrow" data-h="${h.head}" style="cursor:pointer" title="tap: highlight the squares carrying this concept (green supports the active code, red pushes against) + the pieces holding it up">`+
+        `<td style="color:${h.slow?'#9db4d0':'#8f8a82'};padding-right:6px">${h.label}</td>`+
         `<td style="color:#6f6b66;padding-right:6px">h${h.head}&middot;c${h.code}</td>`+
         `<td class="${cls}">${lean}</td></tr>`;}).join("");
+    T.querySelectorAll('.gcrow').forEach(tr=>tr.onclick=()=>cheadShow(+tr.dataset.h));
   } else if(gcTab===1){
     const sq=(g.sq||[]).filter(x=>x.pc).sort((a,b)=>Math.abs(b.imp)-Math.abs(a.imp));
     const hot=sq.slice(0,12);
@@ -712,8 +728,7 @@ document.getElementById('sqfloor').oninput=renderSq;
 document.getElementById('whytog').onclick=()=>{whyOn=!whyOn;whyLastFen=null;
   document.getElementById('whytog').style.color=whyOn?'#7fbf5f':'#8f8a82';
   if(!whyOn)cg.setShapes([]);else api({action:"noop"});};
-document.getElementById('sftog').onclick=()=>{sfOn=!sfOn;sfLastFen=null;
-  document.getElementById('sftog').style.color=sfOn?'#dbac16':'#8f8a82';api({action:"noop"});};
+/* SF button removed (Kaveh 2026-08-20) */
 document.getElementById('flip').onclick=()=>{orient=orient==="white"?"black":"white";api({action:"noop"});};
 document.getElementById('nav-an').onclick=()=>{
   setMode('analysis'); api({action:"noop"});};
@@ -779,7 +794,11 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path in ("/", "/index.html"):
-            self._send(200, PAGE_BYTES, "text/html; charset=utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, must-revalidate")
+            self.end_headers()
+            self.wfile.write(PAGE_BYTES)
         else:
             self._send(404, b"{}")
 
@@ -1523,6 +1542,16 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(out).encode())
             except Exception as e:
                 self._send(200, json.dumps({"err": str(e)[:100]}).encode())
+            return
+        if act == "chead":
+            if hasattr(H.eng, "concept_attribution"):
+                try:
+                    out2 = H.eng.concept_attribution(b, int(req.get("head", 0)))
+                    self._send(200, json.dumps(out2).encode())
+                except Exception as e:
+                    self._send(200, json.dumps({"err": str(e)[:100]}).encode())
+                return
+            self._send(200, json.dumps({"err": "not available"}).encode())
             return
         if act == "sqconcepts":
             if hasattr(H.eng, "concepts"):

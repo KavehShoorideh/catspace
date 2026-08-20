@@ -438,6 +438,76 @@ class ConceptAlphaBeta:
             out["restrict"] = out["restrict"][:3]
         return out
 
+    @torch.no_grad()
+    def concept_attribution(self, board, head):
+        """Kaveh 2026-08-20: "tie concepts to pieces or squares". Exact by architecture:
+        pre_g[h] = W_h . MEAN_q(h_sq[q]), so square q's vote for the ACTIVE code over its
+        nearest rival is  a_q = (W_h h_sq[q]/64) . (e_active - e_runnerup)  -- closed form,
+        one forward. Plus the causal tie: pieces whose REMOVAL flips this head's code
+        (reuses the batched removal forwards)."""
+        from contextlib import nullcontext
+        import chess as _c
+        h = int(head)
+        f_now = self._forward([board])[0]
+        cur = int(f_now["g_ids"][h])
+        with (self.lock if self.lock is not None else nullcontext()):
+            # fresh single forward for the h_sq stash (cache bypass is fine: cheap)
+            from catspace.research.tools.training_infra.gen_move_graphs import (
+                parent_graph, glob_of_board)
+            from catspace.research.components.encoder.approaches.reach_probability.experiments \
+                .graph_move_policy import featurize, MV_CAP
+            g, _ = parent_graph(board)
+            D = {k: torch.from_numpy(np.asarray(g[k])[None])
+                 for k in ("sq", "mv", "mut", "vac", "dsc", "att")}
+            D["gl"] = torch.from_numpy(glob_of_board(board)[None])
+            D["n_mv"] = torch.tensor([g["n_mv"]], dtype=torch.uint8)
+            D["n_att"] = torch.tensor([g["n_att"]], dtype=torch.uint16)
+            dev = self.device
+            bb = {k: D[k].to(dev) for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
+            sqf, mvf, edges, mask = featurize(bb, dev, n_nodes=self.net.n_nodes)
+            off = (torch.arange(1, device=dev) * self.net.n_nodes)[:, None]
+            jj = torch.arange(MV_CAP, device=dev)[None, :]
+            for name in ("vac", "dsc"):
+                arr = D[name].to(dev).long()
+                val = (arr != 255) & mask[:, :, None]
+                edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
+                               (arr + off[:, :, None])[val])
+            enc = self.net.encode(sqf, mvf, edges, mask)
+            pre_g = enc[5]
+            h_sq = self.net.last_h_sq[0]                       # (64, d)
+            dc = self.net.d_code
+            W_h = self.net.g_proj.weight[h * dc:(h + 1) * dc]  # (d_code, d)
+            emb = self.net.vq[h]._codebook.embed[0]            # (32, d_code)
+            dist = ((pre_g[0, h][None] - emb) ** 2).sum(-1)
+            order = dist.argsort()
+            c1 = int(order[0]); c2 = int(order[1])
+            direction = (emb[c1] - emb[c2])                    # decision direction
+            contrib = (h_sq @ W_h.T) / 64.0                    # (64, d_code)
+            a = (contrib @ direction).cpu().numpy()            # per-square vote
+        sal = [{"sq": _c.SQUARE_NAMES[q], "a": round(float(a[q]), 4),
+                "pc": (board.piece_at(q).unicode_symbol() if board.piece_at(q) else None)}
+               for q in np.argsort(-np.abs(a))[:10] if abs(a[q]) > 1e-6]
+        # causal: removal flips (batched, shares the why-cache)
+        occ = [q for q in range(64)
+               if board.piece_at(q) and board.piece_at(q).piece_type != _c.KING]
+        boards2 = []
+        for q in occ:
+            b2 = board.copy(stack=False)
+            b2.remove_piece_at(q); b2.ep_square = None
+            boards2.append(b2)
+        held = []
+        if boards2:
+            for q, fr in zip(occ, self._forward(boards2)):
+                new = int(fr["g_ids"][h])
+                if new != cur:
+                    dw, ci = (float(self.stat_mean[h, new] - self.stat_mean[h, cur]),
+                              0.0) if self.stat_mean is not None else (0.0, 0.0)
+                    held.append({"sq": _c.SQUARE_NAMES[q],
+                                 "pc": board.piece_at(q).unicode_symbol(),
+                                 "to": new, "dw": round(dw, 3)})
+        held.sort(key=lambda x: -abs(x["dw"]))
+        return {"head": h, "code": cur, "runner_up": c2, "sal": sal, "held": held[:6]}
+
     # ---- server-surface compatibility shims -------------------------------------
     def search_coherent(self, board, budget=1.5, stop=None, progress=None, **kw):
         """the server's one search entry point: budget (s) -> alpha-beta depth. stop and
