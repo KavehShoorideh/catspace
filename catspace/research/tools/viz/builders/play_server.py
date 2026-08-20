@@ -34,9 +34,9 @@ ROOT = Path(__file__).resolve().parents[2]
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids  # noqa: E402
 from catspace.research.tools.chess_specific.chessdata.encode import encode_meta, encode_packed  # noqa: E402
 
-TEMPLATE = ROOT / "catspace/viz/templates/play_atlas.html"
+TEMPLATE = Path(__file__).resolve().parents[1] / "viz/templates/play_atlas.html"
 ATLAS_DIR = ROOT / paths.generated("play_atlas")
-ASSETS_DIR = ROOT / "catspace/viz/assets"      # vendored chessground (JS+CSS)
+ASSETS_DIR = Path(__file__).resolve().parents[1] / "viz/assets"   # vendored chessground
 # THE canonical KRRvKBP toy START (experiments/selfplay_generate.KRRKBP_FIXED_START,
 # syzygy wdl=2): Ra1 Ke1 Rh1 vs Bc8 Ke8 pd7. Every train/eval position derives
 # from THIS by 2-10 random legal moves — so the test-set FENs look "scattered";

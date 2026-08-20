@@ -39,6 +39,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--ckpt", default="artifacts/experiments/gdv1_latest.pt")
     ap.add_argument("--port", type=int, default=8011)
+    ap.add_argument("--host", default="127.0.0.1", help="0.0.0.0 for tailscale/LAN access")
     ap.add_argument("--device", default="cpu")
     args = ap.parse_args()
 
@@ -119,7 +120,7 @@ def main():
             else:
                 self._send(404, json.dumps({"error": "not found"}))
 
-    ThreadingHTTPServer(("127.0.0.1", args.port), H).serve_forever()
+    ThreadingHTTPServer((args.host, args.port), H).serve_forever()
 
 
 if __name__ == "__main__":
