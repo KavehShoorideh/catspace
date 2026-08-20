@@ -794,6 +794,37 @@ def reach_region_margin(mu, log_sigma, z_close, z_far, margin):
     return F.relu(margin - (nll_f - nll_c)).mean()
 
 
+def vamp2_score(x0, xt, eps=1e-4):
+    """VAMP-2 score (Mardt et al., VAMPnets, arXiv 1710.06012; distilled in docs/LITERATURE.md):
+
+        R2 = || C00^{-1/2} C0t Ctt^{-1/2} ||_F^2
+
+    over MEAN-FREE batch covariances of time-lagged feature pairs (x0, xt). MAXIMISE it (the
+    caller negates) to make features SLOW -- maximal time-lagged correlation under whitening --
+    which is the objective that replaces the refuted MSE-persistence: their own motivating
+    example shows least-squares change is solved by a CONSTANT map, and cef5 measured that
+    null (churn 0.51 vs 0.50). Under VAMP-2 a constant feature has zero variance and, with the
+    eps-regularised inverse, contributes ~nothing -- slowness cannot be faked by collapse.
+    The whitening also decorrelates the features structurally (the vicreg_covariance job).
+
+    x0, xt (N, d) with N comfortably > d (project first; rank-deficient covariances are the
+    caller's bug, softened here only by eps). -> scalar, in [0, ~d].
+    """
+    x0 = x0 - x0.mean(0, keepdim=True)
+    xt = xt - xt.mean(0, keepdim=True)
+    n = max(x0.shape[0] - 1, 1)
+    c00 = x0.T @ x0 / n + eps * torch.eye(x0.shape[1], device=x0.device, dtype=x0.dtype)
+    ctt = xt.T @ xt / n + eps * torch.eye(xt.shape[1], device=xt.device, dtype=xt.dtype)
+    c0t = x0.T @ xt / n
+
+    def inv_sqrt(c):
+        w, v = torch.linalg.eigh(c)
+        return v @ torch.diag(w.clamp(min=eps).rsqrt()) @ v.T
+
+    k = inv_sqrt(c00) @ c0t @ inv_sqrt(ctt)
+    return (k ** 2).sum()
+
+
 def vicreg_variance(z, gamma=1.0, eps=1e-4):
     """VICReg variance term: hinge every embedding dimension's std UP to `gamma` (Bardes, Ponce &
     LeCun 2022). The standard positives-only anti-collapse device.
@@ -1472,6 +1503,28 @@ def _tests():
     ok &= won
     print(f"[res-compose] P(reach)=.52 x P(ending)=.60 beats P(WDL:W)=.48*.5 -> argmax is the "
           f"ENDING  {'OK' if won else 'FAIL'}")
+
+    # ---- vamp2_score: slowness that cannot be faked by collapse -----------------------
+    torch.manual_seed(0)
+    N, d = 512, 8
+    base = torch.randn(N, d)
+    s_persist = float(vamp2_score(base, base))                      # perfectly slow, varied
+    s_indep = float(vamp2_score(base, torch.randn(N, d)))           # no temporal structure
+    s_const = float(vamp2_score(torch.ones(N, d), torch.ones(N, d)))  # the MSE-degenerate case
+    ok &= s_persist > 0.9 * d
+    print(f"[vamp2] persistent varied features -> {s_persist:.2f} (~d={d})  "
+          f"{'OK' if s_persist > 0.9*d else 'FAIL'}")
+    ok &= s_indep < 0.25 * d
+    print(f"[vamp2] independent features -> {s_indep:.2f} (<< d)  "
+          f"{'OK' if s_indep < 0.25*d else 'FAIL'}")
+    ok &= s_const < 0.1
+    print(f"[vamp2] CONSTANT features -> {s_const:.4f} (~0: collapse cannot fake slowness, "
+          f"unlike MSE persistence)  {'OK' if s_const < 0.1 else 'FAIL'}")
+    xg = base.clone().requires_grad_()
+    g = torch.autograd.grad(vamp2_score(xg, base), xg)[0]
+    ok &= bool(torch.isfinite(g).all()) and float(g.abs().sum()) > 0
+    print(f"[vamp2] gradient finite and nonzero through the eigendecomposition  "
+          f"{'OK' if torch.isfinite(g).all() and g.abs().sum() > 0 else 'FAIL'}")
 
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
