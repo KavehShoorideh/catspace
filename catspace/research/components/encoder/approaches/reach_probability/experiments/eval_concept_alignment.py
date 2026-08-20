@@ -91,7 +91,11 @@ def main():
     cr, ce, co, egs = factor_vocab(vocab)
     net = GraphConceptField(d=A["d_model"], layers=A["layers"], slow_heads=A["slow_heads"],
                             n_res=len(vocab), n_eg=len(egs),
-                            cls_reach=cr, cls_eg=ce, cls_out=co).to(dev)
+                            cls_reach=cr, cls_eg=ce, cls_out=co,
+                            edge_codes=A.get("edge_codes", 0), move_codes=A.get("move_codes", 0),
+                            gps_parallel=bool(A.get("gps_parallel", 0)),
+                            attn_bias=bool(A.get("attn_bias", 0)),
+                            agg_max=bool(A.get("agg_max", 0))).to(dev)
     net.load_state_dict(ck["state_dict"]); net.eval()
 
     rng = np.random.default_rng(args.seed)

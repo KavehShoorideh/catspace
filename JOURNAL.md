@@ -15159,3 +15159,44 @@ rerunnable in 12 min), letting gcf2 page back in and finish alone on the box.
 
 Rule sharpened for the night protocol: while an MPS training run is live, evals run ONE at a
 time, and never two corpus-loading processes alongside the trainer.
+
+---
+
+## 2026-08-20 02:05 — gcf2 VERDICT: NEGATIVE on imitation, slow block collapsed to castling echoes; edge codes redeem the tactical rows
+
+gcf2 (edge-codes 128 + move-codes 64 + GPS-parallel + attn-bias + agg-max, hardened VAMP from
+step 2000) finished 8000 steps. Judged against gcf1 (0.292/0.540):
+
+**Move imitation: 0.276 / 0.514 — behind gcf1.** Confounded three ways, stated up front: two
+mid-run kills (Adam state resets both times), steps 0-2000 trained under the old gameable
+VAMP, and the flag bundle itself. Per the conditional-rejections rule this is a rejection OF
+THE RUN, not yet of each flag; attribution only if a flag matters for gcf3.
+
+**The slow block died, and the alignment eval names the corpse: ALL EIGHT slow heads are the
+same three input bits** — castle_k eta2 1.00, stm_white 0.88, castle_q 0.87, identically on
+heads 0-7. Castling rights are monotone-slow, so the model satisfied "slowness" with frozen
+input echoes; rank ~3 across a 256-dim block is exactly the vamp 2.5/32 the hardened score
+reported (and kept reporting after the clean-box resume — this is real, not thrash debris).
+The instructive irony: the OLD loss was gamed via the scale exploit, which left features free
+to be useful (gcf1's slow heads: phase 0.81, king_open_files 0.44, tension 0.29); CLOSING the
+exploit pushed the optimizer to the next cheapest degeneracy, input-echo collapse, which the
+relative eigenvalue floor tolerates. A variational score is a contract: every clause you fix
+reveals the next loophole. gcf3 carries the designed fix -- a cross-head decorrelation /
+repulsion term (the standing "cure is repulsion, not width" rule) alongside the hardened
+score.
+
+**What the bundle DID buy — the tactical rows moved:** hanging lift 4x (gcf1: 2x), pinned 5x
+(gcf1: 3x), SEE<0 4x, and the shared square codes now carry LEARNED least_att_w/b at eta2
+0.38-0.40 (the SEE ingredient, absent from gcf1's top rows). Edge concepts earn their slot in
+gcf3; the collapsed slow block does not discredit them.
+
+**gdv1 closure — winning-track lam=0 rerun (same 300 positions): 84.7 vs 84.3 at lam=1.**
+dV adds nothing on this instrument either. Final triangulation: prior carries everything
+playable today; dV is a sign-level discriminator (0.708) awaiting v2c's TD grounding and
+deeper/more-decisive CF branches before it can steer.
+
+Night's box score: 2 exploits found and closed (VAMP scale-gaming, zs flat-field
+amplification), 1 collapse mode identified with its fix designed, 1 self-inflicted swap
+thrash diagnosed by stack-sample and rules updated, and the first policy that converts:
++88 =12 -0 vs random, +81 =19 -0 vs material-greedy, 84.7 winning-track, elo -241 vs SF
+skill 0 (from -576 best prior).
