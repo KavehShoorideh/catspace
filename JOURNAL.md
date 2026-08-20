@@ -15292,3 +15292,22 @@ needs a file-node probe extension before calling the file-nodes dead).
 Concept-side scoreboard after the night+morning: collapse fixed by design (decor),
 phase controlled by design (GRL confined to projections), tactics regressed by an
 interaction nobody predicted -- and the instrument caught all three.
+
+---
+
+## 2026-08-20 late — KittyChess became the concept cockpit (the day's UX sprint, consolidated)
+
+Kaveh drove a full interpretability-UI sprint on top of gcf3 + the ConceptAlphaBeta engine:
+tabbed concepts panel (board / squares / edges / WATCH, Tab cycles), per-line predicted
+concept changes (dynamics head), counterfactual why-overlay, cluster-robust CIs everywhere
+(measured inflation vs iid: median 1.2x, max 1.5x -- the feared 10x retracted), streaming
+analysis with nodes+time, and the WATCH tab: recent concept flips from game history,
+null-move opponent threats (prior-weighted P per flip), and RESTRICTIONS -- bad flips
+hanging over >=50 percent of the player's moves with the escape moves named. The watch
+machinery is armed-tactics-lite (M7 preview): "what constrains my choices, in change
+language."
+
+Caveats carried on the tin: all change-prediction inherits the dynamics head's soft
+move-conditioning (dyn_g ~0.5, persistence-heavy), and null-move positions are OOD for the
+prior, so threat EXAMPLE moves can be silly even when the flip direction is right. Both
+sharpen with v2c TD grounding and self-play data -- the same two items already queued.

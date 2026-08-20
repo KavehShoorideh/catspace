@@ -347,6 +347,97 @@ class ConceptAlphaBeta:
         self._cd_cache[key] = out
         return out
 
+    def watch(self, board, hist_fens=None, human_white=True):
+        """Kaveh 2026-08-20: "which concepts are likely to change and become bad for me
+        ... what restricts my move choice, and just changed recently." Three readouts,
+        all in concept-flip language (changes, not states):
+
+          recent    flips that actually happened in the last plies of the game
+          threats   null-move view: the opponent's prior-weighted likely flips vs me
+          restrict  bad flips present in MOST of my moves -- the constraints -- with
+                    the escape moves that avoid each
+
+        White-POV lean deltas throughout; 'bad for me' resolved by human_white."""
+        import chess as _c
+        sgn = 1.0 if human_white else -1.0
+        out = {"recent": [], "threats": [], "restrict": []}
+        if self.stat_mean is None:
+            return out
+
+        def flip_dw(h, fr, to):
+            dw = float(self.stat_mean[h, to] - self.stat_mean[h, fr])
+            ci = float((self.stat_ci[h, to] ** 2 + self.stat_ci[h, fr] ** 2) ** 0.5) \
+                if getattr(self, "stat_ci", None) is not None else 1.0
+            return dw, ci
+
+        # ---- recent: diff the game's code history ---------------------------------
+        if hist_fens:
+            boards = [_c.Board(f) for f in hist_fens[-5:]] + [board]
+            fs = self._forward(boards)
+            for k in range(len(fs) - 1):
+                ago = len(fs) - 1 - k
+                a, b2 = fs[k]["g_ids"], fs[k + 1]["g_ids"]
+                for h in range(len(a)):
+                    if int(a[h]) != int(b2[h]):
+                        dw, ci = flip_dw(h, int(a[h]), int(b2[h]))
+                        if abs(dw) > ci:
+                            out["recent"].append(
+                                {"label": HEAD_LABELS.get(h, f"h{h}"), "ago": ago,
+                                 "fr": int(a[h]), "to": int(b2[h]),
+                                 "dw": round(dw, 3), "ci": round(ci, 3)})
+            out["recent"].sort(key=lambda x: (x["ago"], -abs(x["dw"])))
+            out["recent"] = out["recent"][:4]
+
+        # ---- threats: what the opponent's plausible moves do to the concepts ------
+        bn = board.copy(stack=False)
+        try:
+            bn.push(_c.Move.null())
+            cd_opp = self.move_concept_deltas(bn)
+            f_opp = self._forward([bn])[0]
+            pr = np.exp(f_opp["logits"] - f_opp["logits"].max())
+            pr = pr / pr.sum()
+            agg = {}
+            for j, m in enumerate(f_opp["moves"]):
+                for cdx in cd_opp.get(m.uci(), []):
+                    if cdx["dw"] * sgn < 0 and cdx["sig"]:       # bad for the human
+                        k2 = (cdx["label"], cdx["to"])
+                        e = agg.setdefault(k2, {"label": cdx["label"], "to": cdx["to"],
+                                                "dw": cdx["dw"], "p": 0.0, "ex": m})
+                        e["p"] += float(pr[j])
+            th = sorted(agg.values(), key=lambda x: -x["p"] * abs(x["dw"]))[:3]
+            out["threats"] = [{"label": t["label"], "dw": round(t["dw"], 3),
+                              "p": round(t["p"], 2), "ex": board.san(t["ex"])
+                              if t["ex"] in board.legal_moves else t["ex"].uci()}
+                             for t in th]
+        except Exception:
+            pass
+
+        # ---- restrictions: bad flips hanging over MOST of my moves ----------------
+        cd_me = self.move_concept_deltas(board)
+        f_me = self._forward([board])[0]
+        n_mv = len(f_me["moves"])
+        if n_mv:
+            per_move = [(m, {(c["label"], c["to"]) for c in cd_me.get(m.uci(), [])
+                             if c["dw"] * sgn < 0 and c["sig"]})
+                        for m in f_me["moves"]]
+            cnt = {}
+            for _m, fl in per_move:
+                for k2 in fl:
+                    cnt[k2] = cnt.get(k2, 0) + 1
+            esc = {k2: [m for m, fl in per_move if k2 not in fl] for k2 in cnt}
+            for k2, c2 in sorted(cnt.items(), key=lambda kv: -kv[1]):
+                frac = c2 / n_mv
+                if frac >= 0.5:
+                    escapes = esc.get(k2, [])
+                    pr_me = np.exp(f_me["logits"] - f_me["logits"].max())
+                    pr_me = pr_me / pr_me.sum()
+                    escapes.sort(key=lambda m: -pr_me[f_me["moves"].index(m)])
+                    out["restrict"].append(
+                        {"label": k2[0], "frac": round(frac, 2),
+                         "esc": [board.san(m) for m in escapes[:4]]})
+            out["restrict"] = out["restrict"][:3]
+        return out
+
     # ---- server-surface compatibility shims -------------------------------------
     def search_coherent(self, board, budget=1.5, stop=None, progress=None, **kw):
         """the server's one search entry point: budget (s) -> alpha-beta depth. stop and

@@ -168,6 +168,7 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
         <span class="gctab gcton" data-t="0" title="the 16 global concept heads (Tab cycles sections)">board</span>
         <span class="gctab" data-t="1" title="per-square codes + capture risk (Tab cycles sections)">squares</span>
         <span class="gctab" data-t="2" title="attack-edge codes: the bag of tactics (Tab cycles sections)">edges</span>
+        <span class="gctab" data-t="3" title="defensive view: recent concept flips, the opponent's likely flips against you, and the flips hanging over MOST of your moves with the escape moves (Tab cycles sections)">watch</span>
       </span></div>
     <table id="gctable" style="font-size:11.5px;line-height:1.45;border-spacing:0"></table>
     <div id="gcexec" style="font-size:11px;color:#c9a26a;margin-top:3px"></div>
@@ -319,13 +320,36 @@ function renderGc(){
         `<td style="color:#6f6b66;padding-right:6px">s${x.code}</td>`+
         `<td class="${cls}">${txt}</td></tr>`;}).join("")
       +(sq.length>12?`<tr><td colspan=3 style="color:#6f6b66">…${sq.length-12} more pieces quiet</td></tr>`:"");
-  } else {
+  } else if(gcTab===2){
     const ed=g.edges||[];
     T.innerHTML=ed.length?ed.map(e=>
       `<tr><td style="padding-right:6px">edge code <b>e${e.code}</b></td>`+
       `<td style="color:#6f6b66;padding-right:6px">\u00d7${e.n}</td>`+
       `<td style="color:#9db4d0">${(e.ex||[]).join("  ")}</td></tr>`).join("")
       :'<tr><td style="color:#6f6b66">no attack edges (bare position)</td></tr>';
+  } else {
+    const w=g.watch||{};const pov=g.watch_pov||"you";
+    const sec=(t)=>`<tr><td colspan=3 style="color:#8f8a82;padding-top:5px;text-transform:uppercase;letter-spacing:.06em;font-size:10px">${t}</td></tr>`;
+    let html="";
+    html+=sec("changed recently");
+    html+=(w.recent&&w.recent.length)?w.recent.map(x=>
+      `<tr><td style="padding-right:6px">${x.label.split(" (")[0]}</td>`+
+      `<td style="color:#6f6b66;padding-right:6px">${x.ago} ply ago</td>`+
+      `<td class="${x.dw>0?'gc-you':'gc-opp'}" title="c${x.fr}\u2192c${x.to}, lean shift ${x.dw>0?'+':''}${x.dw}\u00b1${x.ci} White-POV">${x.dw>0?'+':''}${x.dw}</td></tr>`).join("")
+      :'<tr><td colspan=3 style="color:#6f6b66">no significant flips</td></tr>';
+    html+=sec(`threats to ${pov} (opponent's likely flips)`);
+    html+=(w.threats&&w.threats.length)?w.threats.map(x=>
+      `<tr><td style="padding-right:6px">${x.label.split(" (")[0]}</td>`+
+      `<td style="color:#6f6b66;padding-right:6px">P\u2248${Math.round(100*x.p)}% e.g. ${x.ex}</td>`+
+      `<td class="gc-opp" title="prior-weighted probability the opponent's reply flips this concept against ${pov}; example move shown">${x.dw>0?'+':''}${x.dw}</td></tr>`).join("")
+      :'<tr><td colspan=3 style="color:#6f6b66">no significant threats detected</td></tr>';
+    html+=sec("restricting your choice");
+    html+=(w.restrict&&w.restrict.length)?w.restrict.map(x=>
+      `<tr><td style="padding-right:6px">${x.label.split(" (")[0]}</td>`+
+      `<td style="color:#6f6b66;padding-right:6px">bad in ${Math.round(100*x.frac)}% of moves</td>`+
+      `<td class="gc-you" title="moves that AVOID this bad flip, by prior">${(x.esc||[]).join(" ")||"\u2014 none"}</td></tr>`).join("")
+      :'<tr><td colspan=3 style="color:#6f6b66">nothing restricts most of your moves</td></tr>';
+    T.innerHTML=html;
   }
   const gx=document.getElementById('gcexec');
   gx.title="threat\u2192execution head (held-out AUC 0.737): squares where a currently threatened piece is predicted to ACTUALLY get captured within 8 plies -- most threats never execute (base rate 15%).";
@@ -334,7 +358,7 @@ function renderGc(){
 document.querySelectorAll('.gctab').forEach(t=>t.onclick=()=>{gcTab=+t.dataset.t;renderGc();});
 document.addEventListener('keydown',e=>{
   if(e.key==='Tab'&&gcLast&&!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)){
-    e.preventDefault();gcTab=(gcTab+1)%3;renderGc();}});
+    e.preventDefault();gcTab=(gcTab+1)%4;renderGc();}});
 function renderSq(){
     if(!sqLast) return;
     const box=document.getElementById('sqbox');
@@ -1651,6 +1675,18 @@ class H(BaseHTTPRequestHandler):
         if hasattr(H.eng, "concepts"):
             try:
                 gconcepts = H.eng.concepts(b)      # forwards self-lock
+                try:
+                    hb2 = chess.Board(cls.start_fen) if cls.start_fen else chess.Board()
+                    hist = []
+                    for m in cls.moves[:cls.ptr]:
+                        hist.append(hb2.fen()); hb2.push(m)
+                    hw = (not bool(req.get("engineWhite"))) if req.get("play") \
+                        else (b.turn == chess.WHITE)
+                    gconcepts["watch"] = H.eng.watch(b, hist[-5:], human_white=hw)
+                    gconcepts["watch_pov"] = "you" if req.get("play") else \
+                        ("White" if b.turn == chess.WHITE else "Black")
+                except Exception:
+                    pass
             except Exception:
                 gconcepts = None
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
