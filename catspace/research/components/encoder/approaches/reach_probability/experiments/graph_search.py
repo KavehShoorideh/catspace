@@ -125,6 +125,7 @@ class GdvSearch:
             row = {"uci": mv[i].uci(), "san": b.san(mv[i]), "prior_p": float(p[i]),
                    "dv": float(dv[i]), "q": float(dv[i]), "depth": 1, "pv": []}
             if i in cand and depth >= 1 and self.nodes < self._budget:
+                n0 = self.nodes
                 b.push(mv[i])
                 t2 = self._terminal(b)
                 if t2 is not None:
@@ -138,6 +139,7 @@ class GdvSearch:
                     sans.append(bb.san(m2)); bb.push(m2)
                 row["pv"] = [row["san"]] + sans
                 b.pop()
+                row["nodes"] = self.nodes - n0
             rows.append(row)
         rows.sort(key=lambda r: (-r["depth"], -r["q"]))
         return {"rows": rows[:max(topk, 1)], "nodes": self.nodes,

@@ -778,8 +778,21 @@ def load_ckpt(path, device: str = "cpu") -> tuple[TorchFB, dict]:
     is bit-identical to the old one on rep=0 inputs (and inert on the new
     plane until trained)."""
     payload = torch.load(Path(path), map_location=device, weights_only=False)
-    fb = TorchFB(**payload["config"])
     state = payload["state_dict"]
+    if any(k.endswith(".running_mean") for k in state):
+        # BatchNorm-era checkpoint (pre GroupNorm switch, <= 2026-07): rebuild the exact
+        # old architecture so eval-mode BN uses the saved running stats -- bit-identical
+        # to the model that was trained, no silent normalization swap.
+        from catspace.research.components.encoder.approaches.jepa_tokenizer.src import (
+            encoder as _enc)
+        _old_norm = _enc._norm
+        _enc._norm = lambda c: nn.BatchNorm2d(c)
+        try:
+            fb = TorchFB(**payload["config"])
+        finally:
+            _enc._norm = _old_norm
+    else:
+        fb = TorchFB(**payload["config"])
     for k, ref in fb.state_dict().items():
         if (k in state and state[k].dim() == 4 and state[k].shape[1] < ref.shape[1]
                 and state[k].shape[0] == ref.shape[0] and state[k].shape[2:] == ref.shape[2:]):

@@ -404,6 +404,124 @@ class Engine:
         return dict(game_over=False, result=None, winp=root_winp,
                     x=px, y=py, candidates=out, pv=pv, nodes=total)
 
+    # ---- gdv engine mode (Kaveh 2026-08-20: the new best model behind THE streaming
+    # viz UI). The atlas/projection/winp panels keep the incumbent trunk; PLAY and
+    # ANALYZE run the gdv graph policy + budget search. Streaming semantics preserved:
+    # each extend chunk RAISES the node budget on the same position, and the fen-LRU
+    # eval cache makes the re-search pay only for NEW nodes -- visits accumulate
+    # frame to frame exactly like the MCTS tree did.
+    @staticmethod
+    def _gdv_log(src, fen, budget, cands):
+        """append to the shared game log (Kaveh 2026-08-20: "leave access to server
+        logs for yourself so you can see my game")."""
+        import json as _json
+        import time as _time
+        try:
+            with open("artifacts/experiments/gdv_ui_games.jsonl", "a") as f:
+                f.write(_json.dumps({
+                    "ts": _time.strftime("%Y-%m-%d %H:%M:%S"), "src": src, "fen": fen,
+                    "budget": budget,
+                    "top": [{"san": c["san"], "q": c.get("q"), "dv": c.get("dv"),
+                             "prior_p": c.get("prior_p"), "winp": c["winp"]}
+                            for c in cands[:3]],
+                    "pv": [h["san"] for h in cands[0]["hops"]] if cands else []}) + "\n")
+        except Exception:
+            pass
+
+    @staticmethod
+    def _gdv_depth(budget):
+        return 2 if budget < 600 else 3 if budget < 1600 else 4 if budget < 3600 else 5
+
+    def _gdv_candidates(self, board, rows, project=True):
+        """gdv analyze rows -> the atlas candidate contract (uci/san/visits/value/ci/
+        winp/x,y/hops), winp + map points from the incumbent in ONE batched pass."""
+        per, seq = [], [board]
+        for r in rows:
+            child = board.copy(stack=False); child.push(chess.Move.from_uci(r["uci"]))
+            hop_items, b2 = [], board.copy(stack=False)
+            for s in (r.get("pv") or [r["san"]]):
+                try:
+                    m2 = b2.parse_san(s)
+                except Exception:
+                    break
+                wht = b2.turn == chess.WHITE
+                b2.push(m2)
+                hop_items.append((s, b2.fen(), wht, b2.copy(stack=False)))
+            seq.append(child); seq.extend(h[3] for h in hop_items)
+            per.append((r, hop_items))
+        xy, winp = self._project_boards(seq, project=project)
+
+        def _xy_i(i):
+            if xy is None:
+                return None, None
+            return round(float(xy[i][0]), 3), round(float(xy[i][1]), 3)
+
+        sign = 1.0 if board.turn == chess.WHITE else -1.0
+        cands, i = [], 1
+        for r, hop_items in per:
+            (cx, cy), cwin = _xy_i(i), round(float(winp[i]), 3)
+            i += 1
+            hops = []
+            for (s, fen, wht, _b) in hop_items:
+                hx, hy = _xy_i(i)
+                hops.append(dict(san=s, fen=fen, white=wht, x=hx, y=hy))
+                i += 1
+            import math
+            cands.append(dict(uci=r["uci"], san=r["san"], visits=int(r.get("nodes", 0)),
+                              value=round(sign * math.tanh(r["q"]), 3), ci=0.0,
+                              winp=cwin, x=cx, y=cy, hops=hops,
+                              q=round(r["q"], 3), dv=round(r["dv"], 3),
+                              prior_p=round(r["prior_p"], 4), depth=r["depth"]))
+        return _xy_i(0), round(float(winp[0]), 3), cands
+
+    def gdv_analyze(self, board, topk=3, nodes=None, extend=False, project=True):
+        over, res = self._outcome(board)
+        if over:
+            px, py = self._xy(board)
+            return dict(game_over=True, result=res, winp=round(self.winp(board), 4),
+                        x=px, y=py, candidates=[], pv=[], nodes=0)
+        fen = board.fen()
+        with self.lock:
+            chunk = int(nodes) if nodes else 400
+            if extend and self._gdv_fen == fen:
+                self._gdv_total += chunk
+            elif nodes == 0 and self._gdv_fen == fen and self._gdv_total:
+                pass                               # readout: re-serve at current budget
+            else:
+                self._gdv_fen, self._gdv_total = fen, chunk
+            total = self._gdv_total
+            r = self.gdv.analyze(board, depth=self._gdv_depth(total), beam=6,
+                                 topk=max(topk, 3), max_nodes=total)
+        (px, py), rw, cands = self._gdv_candidates(board, r["rows"][:topk],
+                                                   project=project)
+        pv = [h["san"] for h in cands[0]["hops"]] if cands else []
+        self._gdv_log("atlas-analyze", fen, total, cands)
+        return dict(game_over=False, result=None, winp=rw, x=px, y=py,
+                    candidates=cands, pv=pv, nodes=total)
+
+    def gdv_engine_move(self, board, nodes=None):
+        over, res = self._outcome(board)
+        if over:
+            return dict(move=None, san=None, fen=board.fen(), game_over=True,
+                        result=res, winp=round(self.winp(board), 4),
+                        pv=[], candidates=[])
+        budget = int(nodes) if nodes else 1200
+        with self.lock:
+            r = self.gdv.analyze(board, depth=self._gdv_depth(budget), beam=6,
+                                 topk=6, max_nodes=budget)
+        rows = r["rows"]
+        (px, py), _rw, cands = self._gdv_candidates(board, rows[:6])
+        best = rows[0]
+        move = chess.Move.from_uci(best["uci"])
+        san = board.san(move)
+        after = board.copy(stack=False); after.push(move)
+        over2, res2 = self._outcome(after)
+        pv = [h["san"] for h in cands[0]["hops"]] if cands else [san]
+        self._gdv_log("atlas-move", board.fen(), budget, cands)
+        return dict(move=best["uci"], san=san, fen=after.fen(), game_over=over2,
+                    result=res2, x=px, y=py, winp=round(self.winp(after), 4),
+                    pv=pv, candidates=cands)
+
     def navigate(self, board: chess.Board, target_fen: str, nodes: int = 400,
                  topk: int = 3) -> dict:
         """Adversarial goal-conditioned search: the side to move at the ROOT
@@ -676,7 +794,9 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True, "fen": b.fen(), "san": san,
                             "game_over": over, "result": res})
             elif u.path == "/engine_move":
-                _fn = ENGINE.engine_move_planner if ENGINE.planner is not None else ENGINE.engine_move
+                _fn = (ENGINE.engine_move_planner if ENGINE.planner is not None else
+                       ENGINE.gdv_engine_move if getattr(ENGINE, "gdv", None) is not None
+                       else ENGINE.engine_move)
                 self._json(_fn(self._board(body["fen"]), body.get("nodes")))
             elif u.path == "/step_move":
                 self._json(step_move(body["fen"], body.get("engine", "sf")))
@@ -684,10 +804,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._json(veto_analyze(body.get("fen"), int(body.get("h", 4)),
                                         int(body.get("targets", 16))))
             elif u.path == "/analyze":
-                self._json({"ok": True, **ENGINE.analyze(self._board(body["fen"]),
-                            int(body.get("topk", 3)), body.get("nodes"),
-                            bool(body.get("extend", False)),
-                            bool(body.get("project", True)))})
+                _an = (ENGINE.gdv_analyze if getattr(ENGINE, "gdv", None) is not None
+                       else ENGINE.analyze)
+                self._json({"ok": True, **_an(self._board(body["fen"]),
+                                        int(body.get("topk", 3)), body.get("nodes"),
+                                        bool(body.get("extend", False)),
+                                        bool(body.get("project", True)))})
             elif u.path == "/project":
                 self._json({"ok": True, **ENGINE.project(self._board(body["fen"]))})
             elif u.path == "/neighbors":
@@ -938,6 +1060,10 @@ def main():
     ap.add_argument("--planner", action="store_true",
                     help="route /engine_move through the long/short planner engine instead of the incumbent MCTS.")
     ap.add_argument("--planner-bank", type=int, default=1500)
+    ap.add_argument("--gdv-ckpt", default=None,
+                    help="mount the gdv graph policy as the PLAY+ANALYZE engine (atlas/"
+                         "winp panels keep the incumbent); e.g. artifacts/experiments/"
+                         "gdv1_latest.pt")
     ap.add_argument("--port", type=int, default=8000)
     ap.add_argument("--host", default="127.0.0.1")
     args = ap.parse_args()
@@ -953,6 +1079,14 @@ def main():
                     memory_dir=args.memory or None, tactical_prior=args.tactical_prior,
                     root_min_visits=args.root_min_visits, policy_path=policy_path or None,
                     value_mode=args.value)
+    ENGINE.gdv = None
+    ENGINE._gdv_fen, ENGINE._gdv_total = None, 0
+    if args.gdv_ckpt:
+        from catspace.research.components.encoder.approaches.reach_probability.experiments \
+            .graph_search import GdvSearch
+        ENGINE.gdv = GdvSearch(args.gdv_ckpt)
+        print(f"[play-atlas] PLAY+ANALYZE engine: gdv ({args.gdv_ckpt.split('/')[-1]}); "
+              f"atlas/winp: incumbent", flush=True)
     if args.planner:
         from catspace.research.components.planner.approaches.endgame_groundtruth.experiments.longshort_engine import LongShortEngine
         print(f"long/short PLANNER engine ON: field {Path(args.planner_field).name}", flush=True)
