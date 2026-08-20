@@ -93,8 +93,8 @@ class GdvSearch:
         t = self._terminal(b)
         if t is not None:
             return t, []
-        if depth == 0:
-            return 0.0, []
+        if depth == 0 or self.nodes >= self._budget:
+            return 0.0, []          # budget horizon: treat like depth exhaustion
         mv, prior, dv = self.node_eval(b)
         best, best_pv = -1e9, []
         for i in self._candidates(mv, prior, dv, beam):
@@ -110,10 +110,13 @@ class GdvSearch:
                 best, best_pv = q, [mv[i]] + pv
         return best, best_pv
 
-    def analyze(self, b, depth=2, beam=6, topk=8):
-        """-> dict with per-move rows (searched root candidates first, then shallow rest)."""
+    def analyze(self, b, depth=2, beam=6, topk=8, max_nodes=3000):
+        """-> dict with per-move rows (searched root candidates first, then shallow rest).
+        max_nodes caps total forwards: a maxed depth*beam request stays interactive (the
+        8011 UI freeze of 2026-08-20); candidates hit after the cap stay depth-1."""
         import chess
         self.nodes = 0
+        self._budget = max(200, int(max_nodes))
         mv, prior, dv = self.node_eval(b)
         p = np.exp(prior - prior.max()); p = p / p.sum()
         cand = self._candidates(mv, prior, dv, beam)
@@ -121,7 +124,7 @@ class GdvSearch:
         for i in range(len(mv)):
             row = {"uci": mv[i].uci(), "san": b.san(mv[i]), "prior_p": float(p[i]),
                    "dv": float(dv[i]), "q": float(dv[i]), "depth": 1, "pv": []}
-            if i in cand and depth >= 1:
+            if i in cand and depth >= 1 and self.nodes < self._budget:
                 b.push(mv[i])
                 t2 = self._terminal(b)
                 if t2 is not None:
@@ -139,4 +142,5 @@ class GdvSearch:
         rows.sort(key=lambda r: (-r["depth"], -r["q"]))
         return {"rows": rows[:max(topk, 1)], "nodes": self.nodes,
                 "model": self.tag, "depth": depth, "beam": beam,
-                "n_legal": len(mv), "capped": len(mv) == 48}
+                "n_legal": len(mv), "capped": len(mv) == 48,
+                "budget_hit": self.nodes >= self._budget}

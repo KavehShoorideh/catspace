@@ -28,6 +28,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 HERE = Path(__file__).resolve().parent
+GAMELOG = "artifacts/experiments/gdv_ui_games.jsonl"
 ASSETS_DIR = HERE.parent / "viz/assets"
 TEMPLATE = HERE.parent / "viz/templates/gdv_analysis.html"
 CTYPES = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
@@ -92,11 +93,28 @@ def main():
                 depth = max(1, min(int(body.get("depth", 2)), 5))
                 beam = max(2, min(int(body.get("beam", 6)), 16))
                 topk = max(1, min(int(body.get("topk", 10)), 48))
+                mn = max(200, min(int(body.get("max_nodes", 3000)), 20000))
                 t0 = time.time()
                 with lock:
-                    r = search.analyze(b, depth=depth, beam=beam, topk=topk)
+                    r = search.analyze(b, depth=depth, beam=beam, topk=topk, max_nodes=mn)
                 r["ms"] = int(1000 * (time.time() - t0))
                 r["fen"] = body["fen"]
+                # game log: one line per analyze, so the session (me) can replay what
+                # Kaveh saw and played (his request, 2026-08-20)
+                try:
+                    with open(GAMELOG, "a") as f:
+                        f.write(json.dumps({
+                            "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "fen": body["fen"], "depth": depth, "beam": beam,
+                            "nodes": r["nodes"], "ms": r["ms"],
+                            "budget_hit": r["budget_hit"],
+                            "top": [{"san": x["san"], "q": round(x["q"], 3),
+                                     "dv": round(x["dv"], 3),
+                                     "prior_p": round(x["prior_p"], 4)}
+                                    for x in r["rows"][:3]],
+                            "pv": r["rows"][0]["pv"] if r["rows"] else []}) + "\n")
+                except Exception:
+                    pass
                 self._send(200, json.dumps(r))
             else:
                 self._send(404, json.dumps({"error": "not found"}))

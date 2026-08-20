@@ -73,14 +73,21 @@ function sync(){ cg.set(cfg()); }
 function setStatus(t){ $("status").textContent = t; }
 function fmt(x,d=2){ return (x>=0?"+":"") + x.toFixed(d); }
 
+let inflight = null;
 async function analyze(){
   const seq = ++S.seq;
+  if(inflight){ try{ inflight.abort(); }catch(e){} }
+  inflight = new AbortController();
   const depth = +$("depth").value, beam = +$("beam").value;
   if(game.isGameOver()){ $("rows").innerHTML=""; $("meta").textContent="";
     setStatus("game over: " + (game.isCheckmate() ? (game.turn()==="w"?"black":"white")+" mates" : "draw")); return null; }
   setStatus(`thinking… d${depth} b${beam}`);
-  const r = await fetch("/analyze", {method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({fen: game.fen(), depth, beam, topk: 12})});
+  let r;
+  try{
+    r = await fetch("/analyze", {method:"POST", headers:{"Content-Type":"application/json"},
+      signal: inflight.signal,
+      body: JSON.stringify({fen: game.fen(), depth, beam, topk: 12})});
+  }catch(e){ if(e.name==="AbortError") return null; throw e; }
   if(!r.ok){ setStatus("error: "+(await r.json()).error); return null; }
   const a = await r.json();
   if(seq !== S.seq) return null;          // superseded by a newer position
@@ -90,7 +97,8 @@ async function analyze(){
   return a;
 }
 function render(a){
-  $("meta").textContent = ` — ${a.model} · ${a.nodes} nodes · ${a.ms} ms` + (a.capped?" · >48 legal (tail unscored)":"");
+  $("meta").textContent = ` — ${a.model} · ${a.nodes} nodes · ${a.ms} ms`
+    + (a.budget_hit?" · node budget hit (some moves shallow)":"") + (a.capped?" · >48 legal (tail unscored)":"");
   const tb = $("rows"); tb.innerHTML = "";
   a.rows.forEach((row,i)=>{
     const tr = document.createElement("tr"); if(i===0) tr.className="best";
