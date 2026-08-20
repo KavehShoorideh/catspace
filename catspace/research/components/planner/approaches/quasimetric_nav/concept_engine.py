@@ -65,6 +65,7 @@ class ConceptAlphaBeta:
                                   # FORWARD granularity, so UI requests interleave between
                                   # node evaluations instead of queueing behind whole waves
         self.tag = ckpt.split("/")[-1]
+        self._visited = 0          # positions touched (cache hits included), for the UI
         try:
             sz = np.load(stats_path, allow_pickle=True)
             self.stat_mean, self.stat_cnt = sz["mean_wpov"], sz["count"]
@@ -85,6 +86,7 @@ class ConceptAlphaBeta:
         from catspace.research.components.encoder.approaches.reach_probability.experiments \
             .graph_move_policy import featurize, MV_CAP
         from contextlib import nullcontext
+        self._visited += len(boards)
         misses = [b for b in boards if b.fen() not in self._cache]
         if misses:
           with (self.lock if self.lock is not None else nullcontext()):

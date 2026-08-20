@@ -50,7 +50,8 @@ border-radius:3px;cursor:pointer}
 .nav button:hover{background:#3a3733}
 .right{display:flex;flex-direction:column;gap:10px;min-width:0}
 .box{background:#262421;border-radius:4px;padding:10px 12px}
-.engrow{display:flex;align-items:center;gap:10px;font-size:12.5px;color:#8f8a82;flex-wrap:wrap}
+.engrow{display:flex;align-items:center;gap:6px;row-gap:4px;font-size:12.5px;color:#8f8a82;flex-wrap:wrap;min-width:0}
+#dinfo{white-space:normal;overflow-wrap:anywhere}
 .engrow b{color:#dedede;font-size:14px}
 select{background:#161512;color:#bababa;border:1px solid #3a3733;border-radius:3px;font:inherit}
 .lines .ln{display:block;padding:4px 2px;border-bottom:1px solid #33312e;cursor:pointer;
@@ -60,7 +61,7 @@ font-family:'Noto Sans',sans-serif;font-size:13px}
 flex:none;background:#333}
 .lines .minibar i{display:block;height:100%}
 .lines .sub{font-size:10.5px;color:#8f8a82;margin-top:1px;font-variant-numeric:tabular-nums;
-overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+white-space:normal;overflow-wrap:anywhere}
 .lines .ln:hover{background:#302d2a}
 .lines .ev{min-width:52px;font-weight:600;color:#dedede;font-size:12px;font-variant-numeric:tabular-nums}
 .lines .mv{white-space:normal;word-break:break-word;color:#bababa}
@@ -74,11 +75,11 @@ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #wdltxt{margin-top:6px;font-variant-numeric:tabular-nums;font-size:12px;color:#8f8a82}
 #wdltxt table{border-collapse:collapse}
 #wdltxt th{font-weight:400;color:#6f6b66;text-align:right;padding:1px 10px 1px 0;font-size:11px}
-#wdltxt td{text-align:right;padding:1px 10px 1px 0;white-space:nowrap}
+#wdltxt td{text-align:right;padding:1px 10px 1px 0;white-space:normal;overflow-wrap:anywhere}
 #wdltxt b{color:#dedede;font-weight:600}
 #ctable{border-collapse:collapse;font-size:11.5px;width:100%;font-variant-numeric:tabular-nums}
 #ctable th{font-weight:400;color:#6f6b66;text-align:left;padding:2px 6px;font-size:10.5px}
-#ctable td{padding:2px 6px;color:#8f8a82;white-space:nowrap}
+#ctable td{padding:2px 6px;color:#8f8a82;white-space:normal;overflow-wrap:anywhere}
 #ctable td.on{color:#759900;font-weight:600}
 #ctable tr.tokhit td{background:#2e2c26}
 .lines .ev{cursor:help}
@@ -391,6 +392,8 @@ async function api(body){
     if(dp.think.length){renderLines(dp);document.getElementById('lnbox').style.opacity=1;}
     const only=(dp.eff_moves!=null&&dp.eff_moves<=1.6);
     document.getElementById('dinfo').innerHTML=(only?`<span style="color:#dbac16" title="ONLY MOVE: one move is much better than the rest (effective moves ≈ ${dp.eff_moves})">⚡ only move</span> · `:"")+"depth "+dp.depth+(dp.done?"":"…")
+      +(dp.nodes!=null?` · ${dp.nodes.toLocaleString()} nodes`:"")
+      +(dp.secs!=null?` · ${dp.secs}s`:"")
       +(dp.resid!=null?"  ·  Bellman residual "+dp.resid.toFixed(1):"");
     document.getElementById('dinfo').className=dp.done?"":"spin";
     if(dp.done)break;
@@ -991,6 +994,9 @@ class H(BaseHTTPRequestHandler):
                 bb = b.copy()
 
                 def worker():
+                    _t_an0 = time.time()
+                    if hasattr(H.eng, "_visited"):
+                        H.eng._visited = 0
                     merged = {}       # uci -> best-known display row (Kaveh 2026-08-12:
                                       # 'the list shouldn't lose anything it's already found'
                                       # -- deepening ACCUMULATES; new depths overwrite the
@@ -1064,6 +1070,8 @@ class H(BaseHTTPRequestHandler):
                             _pr = _np8.exp(_sc); _pr /= _pr.sum()
                             _eff = float(_np8.exp(-(_pr * _np8.log(_pr + 1e-12)).sum()))
                             H.an = {**H.an, "g": g, "depth": d,
+                                    "nodes": getattr(H.eng, "_visited", None),
+                                    "secs": round(time.time() - _t_an0, 1),
                                     "eff_moves": round(_eff, 1),
                                     "rows": [{k: v for k, v in r.items()
                                               if not k.startswith("_")} for r in shown],
@@ -1197,6 +1205,8 @@ class H(BaseHTTPRequestHandler):
         if act == "lines":
             cur = H.an if H.an.get("g") == H.gen else {"rows": [], "depth": 0, "done": False}
             self._send(200, json.dumps({"think": cur.get("rows", []),
+                                        "nodes": cur.get("nodes"),
+                                        "secs": cur.get("secs"),
                                         "depth": cur.get("depth", 0),
                                         "resid": cur.get("resid"),
                                         "done": bool(cur.get("done"))}).encode())
