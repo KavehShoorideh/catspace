@@ -102,6 +102,8 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
 @keyframes pop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
 #surprbox b{color:#dedede}
 .gc-you{color:#8fdc9f}.gc-opp{color:#e89090}.gc-neu{color:#8f8a82}
+.gctab{cursor:pointer;color:#6f6b66;padding:1px 7px;border-radius:3px;font-size:11px;margin-left:2px}
+.gctab.gcton{color:#dedede;background:#3a3733}
 </style>
 <div class="top"><b>catspace</b>
   <span style="margin-left:18px">
@@ -161,7 +163,12 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
   </div>
   <div class="box" id="gcbox" style="display:none">
     <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">concepts in play
-      <span id="gcmodel" style="color:#6f6b66"></span></div>
+      <span id="gcmodel" style="color:#6f6b66"></span>
+      <span id="gctabs" style="float:right">
+        <span class="gctab gcton" data-t="0" title="the 16 global concept heads (Tab cycles sections)">board</span>
+        <span class="gctab" data-t="1" title="per-square codes + capture risk (Tab cycles sections)">squares</span>
+        <span class="gctab" data-t="2" title="attack-edge codes: the bag of tactics (Tab cycles sections)">edges</span>
+      </span></div>
     <table id="gctable" style="font-size:11.5px;line-height:1.45;border-spacing:0"></table>
     <div id="gcexec" style="font-size:11px;color:#c9a26a;margin-top:3px"></div>
   </div>
@@ -280,6 +287,54 @@ function sqRefresh(fen){
     renderSq();
   }).catch(()=>{});
 }
+let gcLast=null,gcTab=0;
+function gcLean(w,ci,n,helps){
+  const humanWhite=(mode!=='play')||!playCfg.engineWhite;
+  if(helps==="?"||helps===undefined)return['gc-neu','&middot;'];
+  if(helps==="even")return['gc-neu','&plusmn;'+Math.abs(w).toFixed(2)];
+  if(mode==='play'){const you=humanWhite?w:-w;
+    return[you>0?'gc-you':'gc-opp',(you>0?'helps you +':'helps engine +')+Math.abs(you).toFixed(2)+(ci!==undefined?'\u00b1'+ci.toFixed(2):'')];}
+  return[w>0?'gc-you':'gc-opp',(w>0?'White +'+w.toFixed(2):'Black +'+(-w).toFixed(2))+(ci!==undefined?'\u00b1'+ci.toFixed(2):'')];}
+function renderGc(){
+  if(!gcLast)return;
+  const g=gcLast;document.getElementById('gcbox').style.display="";
+  document.getElementById('gcmodel').textContent=" — "+(g.model||"");
+  document.querySelectorAll('.gctab').forEach(t=>t.classList.toggle('gcton',+t.dataset.t===gcTab));
+  const T=document.getElementById('gctable');
+  if(gcTab===0){
+    T.innerHTML=g.heads.map(h=>{const[cls,lean]=gcLean(h.wpov,h.ci,h.n,h.helps);
+      return `<tr><td style="color:${h.slow?'#9db4d0':'#8f8a82'};padding-right:6px">${h.label}</td>`+
+        `<td style="color:#6f6b66;padding-right:6px">h${h.head}&middot;c${h.code}</td>`+
+        `<td class="${cls}">${lean}</td></tr>`;}).join("");
+  } else if(gcTab===1){
+    const sq=(g.sq||[]).filter(x=>x.pc).sort((a,b)=>Math.abs(b.imp)-Math.abs(a.imp));
+    const hot=sq.slice(0,12);
+    T.innerHTML=hot.map(x=>{
+      const risk=Math.abs(x.imp);
+      const humanWhite=(mode!=='play')||!playCfg.engineWhite;
+      const helpsYou=(mode==='play')?((x.imp>0)===humanWhite):null;
+      const cls=risk<0.05?'gc-neu':(mode==='play'?(helpsYou?'gc-you':'gc-opp'):(x.imp>0?'gc-you':'gc-opp'));
+      const txt=risk<0.05?'quiet':`falls ${(100*risk).toFixed(0)}%`+(mode==='play'?'':(x.imp>0?' (helps White)':' (helps Black)'));
+      return `<tr><td style="padding-right:6px">${x.pc} <b>${x.sq}</b></td>`+
+        `<td style="color:#6f6b66;padding-right:6px">s${x.code}</td>`+
+        `<td class="${cls}">${txt}</td></tr>`;}).join("")
+      +(sq.length>12?`<tr><td colspan=3 style="color:#6f6b66">…${sq.length-12} more pieces quiet</td></tr>`:"");
+  } else {
+    const ed=g.edges||[];
+    T.innerHTML=ed.length?ed.map(e=>
+      `<tr><td style="padding-right:6px">edge code <b>e${e.code}</b></td>`+
+      `<td style="color:#6f6b66;padding-right:6px">\u00d7${e.n}</td>`+
+      `<td style="color:#9db4d0">${(e.ex||[]).join("  ")}</td></tr>`).join("")
+      :'<tr><td style="color:#6f6b66">no attack edges (bare position)</td></tr>';
+  }
+  const gx=document.getElementById('gcexec');
+  gx.title="threat\u2192execution head (held-out AUC 0.737): squares where a currently threatened piece is predicted to ACTUALLY get captured within 8 plies -- most threats never execute (base rate 15%).";
+  gx.innerHTML=(g.exec_hot&&g.exec_hot.length)?("likely captures \u22648 plies: "+g.exec_hot.map(t=>t.sq+" "+Math.round(100*t.p)+"%").join("  ")):"";
+}
+document.querySelectorAll('.gctab').forEach(t=>t.onclick=()=>{gcTab=+t.dataset.t;renderGc();});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Tab'&&gcLast&&!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)){
+    e.preventDefault();gcTab=(gcTab+1)%3;renderGc();}});
 function renderSq(){
     if(!sqLast) return;
     const box=document.getElementById('sqbox');
@@ -463,8 +518,10 @@ function render(d){
     if(t<mv.scrollTop||t>mv.scrollTop+mv.clientHeight-24) mv.scrollTop=t-mv.clientHeight/2;
   }
   if(d.gconcepts&&d.gconcepts.heads){
-    const g=d.gconcepts;document.getElementById('gcbox').style.display="";
-    document.getElementById('gcmodel').textContent=" — "+(g.model||"");
+    gcLast=d.gconcepts;renderGc();
+  } else {document.getElementById('gcbox').style.display="none";}
+  if(false){
+    const g=d.gconcepts;
     const humanWhite=(mode!=='play')||!playCfg.engineWhite;
     const rows=g.heads.map(h=>{
       let lean="",cls="gc-neu";
@@ -478,10 +535,8 @@ function render(d){
           lean=(h.wpov>0?("White +"+h.wpov.toFixed(2)):("Black +"+(-h.wpov).toFixed(2)))
             +(h.ci!==undefined?("\u00b1"+h.ci.toFixed(2)):"");}
       }
-      return `<tr><td style="color:${h.slow?'#9db4d0':'#8f8a82'};padding-right:6px">${h.label}</td>`+
-        `<td style="color:#6f6b66;padding-right:6px">h${h.head}&middot;c${h.code}</td>`+
-        `<td class="${cls}">${lean}</td></tr>`;});
-    document.getElementById('gctable').innerHTML=rows.join("");
+      return "";});
+    void rows;
     const gx=document.getElementById('gcexec');
     gx.title="threat\u2192execution head (held-out AUC 0.737): squares where a currently "+
       "threatened piece is predicted to ACTUALLY get captured within 8 plies -- most "+

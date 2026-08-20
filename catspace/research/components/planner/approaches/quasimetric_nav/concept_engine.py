@@ -138,11 +138,11 @@ class ConceptAlphaBeta:
                       ei, es, ed = ei[keep], es[keep], ed[keep]
                       edges_i = {}
                       if len(ei):
-                          for c2 in np.bincount(ei).argsort()[::-1][:3]:
+                          for c2 in np.bincount(ei).argsort()[::-1][:8]:
                               j2 = np.flatnonzero(ei == c2)
                               if len(j2):
-                                  edges_i[int(c2)] = (int(len(j2)),
-                                                      int(es[j2[0]]), int(ed[j2[0]]))
+                                  exs = [(int(es[j3]), int(ed[j3])) for j3 in j2[:2]]
+                                  edges_i[int(c2)] = (int(len(j2)), exs)
                   self._cache[b.fen()] = dict(
                       moves=mvs, order=order, logits=sc, margin=margin, wdl=(w, d, l),
                       g_ids=gin[i], te=(te[i] if te is not None else None),
@@ -343,12 +343,15 @@ class ConceptAlphaBeta:
                     # falls (helps White), red = a White piece in danger
                     imp = float(f["te"][q]) * (1.0 if not pc.color else -1.0)
                 sq_out.append({"sq": chess.SQUARE_NAMES[q], "code": int(f["sq_ids"][q]),
-                               "imp": round(imp, 3)})
+                               "imp": round(imp, 3),
+                               "pc": (pc.unicode_symbol() if pc else None)})
         edge_out = None
         if f.get("edge_top"):
             edge_out = [{"code": c2, "n": n2,
-                         "ex": f"{chess.SQUARE_NAMES[s2]}\u2192{chess.SQUARE_NAMES[d2]}"}
-                        for c2, (n2, s2, d2) in f["edge_top"].items()]
+                         "ex": [f"{chess.SQUARE_NAMES[s2]}\u2192{chess.SQUARE_NAMES[d2]}"
+                                for (s2, d2) in exs]}
+                        for c2, (n2, exs) in sorted(f["edge_top"].items(),
+                                                    key=lambda kv: -kv[1][0])]
         return {"heads": rows, "wdl": [round(w, 3), round(d, 3), round(l, 3)],
                 "phase_bucket": None, "exec_hot": te_top, "model": self.tag,
                 "sq": sq_out, "edges": edge_out}
