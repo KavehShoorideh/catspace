@@ -100,6 +100,7 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
 #emote.show{display:flex;animation:pop .25s ease-out}
 @keyframes pop{0%{transform:scale(.6);opacity:0}100%{transform:scale(1);opacity:1}}
 #surprbox b{color:#dedede}
+.gc-you{color:#8fdc9f}.gc-opp{color:#e89090}.gc-neu{color:#8f8a82}
 </style>
 <div class="top"><b>catspace</b>
   <span style="margin-left:18px">
@@ -156,6 +157,12 @@ font-size:13px;color:#dedede;box-shadow:0 3px 12px #000c;align-items:center;gap:
     <div id="cddeets" style="font-size:12px;margin-top:6px;line-height:1.55"></div>
     <button id="dirbtn" title="score EVERY legal move against this concept: P(activate) after the move, its change, distance on the length ruler, and what the move costs in expected points. No search — this is the shortlist you then search." style="margin-top:6px;background:#3a3733;border:none;color:#8f8a82;border-radius:3px;padding:3px 9px;cursor:pointer;font:inherit;font-size:12px">which move gets me there?</button>
     <div id="dirbox" style="display:none;font-size:11.5px;margin-top:6px;line-height:1.5;font-variant-numeric:tabular-nums"></div>
+  </div>
+  <div class="box" id="gcbox" style="display:none">
+    <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">concepts in play
+      <span id="gcmodel" style="color:#6f6b66"></span></div>
+    <table id="gctable" style="font-size:11.5px;line-height:1.45;border-spacing:0"></table>
+    <div id="gcexec" style="font-size:11px;color:#c9a26a;margin-top:3px"></div>
   </div>
   <div class="box" id="conceptbox" style="display:none">
     <div style="font-size:12px;color:#8f8a82;margin-bottom:4px">concepts &nbsp;<span id="postoks" style="color:#6f6b66"></span></div>
@@ -452,6 +459,28 @@ function render(d){
     const t=cur.offsetTop-mv.offsetTop;
     if(t<mv.scrollTop||t>mv.scrollTop+mv.clientHeight-24) mv.scrollTop=t-mv.clientHeight/2;
   }
+  if(d.gconcepts&&d.gconcepts.heads){
+    const g=d.gconcepts;document.getElementById('gcbox').style.display="";
+    document.getElementById('gcmodel').textContent=" — "+(g.model||"");
+    const humanWhite=(mode!=='play')||!playCfg.engineWhite;
+    const rows=g.heads.map(h=>{
+      let lean="",cls="gc-neu";
+      if(h.helps==="?"||h.helps===undefined){lean="&middot;";}
+      else{
+        const you=humanWhite?h.wpov:-h.wpov;
+        if(h.helps==="even"){lean="&plusmn;"+Math.abs(h.wpov).toFixed(2);}
+        else if(mode==='play'){const isYou=(you>0);cls=isYou?"gc-you":"gc-opp";
+          lean=(isYou?"helps you ":"helps engine ")+(you>0?"+":"")+you.toFixed(2);}
+        else{cls=h.wpov>0?"gc-you":"gc-opp";
+          lean=(h.wpov>0?"White +":"Black ")+h.wpov.toFixed(2);}
+      }
+      return `<tr><td style="color:${h.slow?'#9db4d0':'#8f8a82'};padding-right:6px">${h.label}</td>`+
+        `<td style="color:#6f6b66;padding-right:6px">h${h.head}&middot;c${h.code}</td>`+
+        `<td class="${cls}">${lean}</td></tr>`;});
+    document.getElementById('gctable').innerHTML=rows.join("");
+    document.getElementById('gcexec').textContent=(g.exec_hot&&g.exec_hot.length)?
+      ("capture timers: "+g.exec_hot.map(t=>t.sq+" "+Math.round(100*t.p)+"%").join("  ")):"";
+  } else {document.getElementById('gcbox').style.display="none";}
   if(d.concepts&&d.concepts.length){
     document.getElementById('conceptbox').style.display="";
     document.getElementById('postoks').textContent="position tokens: "+
@@ -1457,10 +1486,18 @@ class H(BaseHTTPRequestHandler):
         for m in cls.moves:
             san.append(sb.san(m)); sb.push(m)
         self._log_game(b, san, over, bool(req.get("play")))
+        gconcepts = None
+        if hasattr(H.eng, "concepts"):
+            try:
+                with H.lock:
+                    gconcepts = H.eng.concepts(b)
+            except Exception:
+                gconcepts = None
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
                "depth": cls.depth, "san": san, "ptr": cls.ptr, "wdl": wdl,
                "dists": dists, "check": b.is_check(), "dests": dests, "exit": xr,
                "concepts": concepts, "tokens": tokens, "cdeets": cdeets,
+               "gconcepts": gconcepts,
                "turb": (round(turb[0], 3) if turb else None), "trap": trap,
                "lastMove": last, "over": over,
                "surprise": surprise, "emote": emote, "prepared": prepared,
@@ -1550,6 +1587,10 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--port", type=int, default=8420)
     ap.add_argument("--depth", type=int, default=3)
+    ap.add_argument("--engine", default="kitty", choices=["kitty", "gcf3"],
+                    help="gcf3: ConceptAlphaBeta -- minimax/alpha-beta ranked by the "
+                         "concept move head (Kaveh 2026-08-20); --ckpt is then the gcf3 ckpt")
+    ap.add_argument("--width", type=int, default=8, help="gcf3: alpha-beta beam width")
     ap.add_argument("--cond-elo", type=float, default=None)
     ap.add_argument("--device", default="mps",
                     help="mps | cuda | cpu | auto (cuda -> mps -> cpu)")
@@ -1569,8 +1610,15 @@ def main():
         print(f"[kitty-server] device auto -> {args.device}", flush=True)
 
     import threading
-    from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
-    H.eng = KittyChess(args.ckpt, args.device, args.cond_elo)
+    if args.engine == "gcf3":
+        from catspace.research.components.planner.approaches.quasimetric_nav.concept_engine import (
+            ConceptAlphaBeta)
+        H.eng = ConceptAlphaBeta(args.ckpt, args.device, width=args.width)
+        print(f"[kitty-server] CONCEPT ENGINE: alpha-beta ordered by the gcf3 move head, "
+              f"leaves = W/D/L expectation ({H.eng.tag}, width {args.width})", flush=True)
+    else:
+        from catspace.research.components.planner.approaches.quasimetric_nav.kittychess import KittyChess
+        H.eng = KittyChess(args.ckpt, args.device, args.cond_elo)
     global GAME_LOG
     GAME_LOG = str(paths.experiment("kitty_current_game.json"))
     try:                                             # restore the game across restarts
