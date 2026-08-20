@@ -15026,3 +15026,30 @@ game": an unresolved threat persists until executed or dissolved).
 
 Also this hour, per "don't let resources sit idle": gcf2 launched on the idle GPU
 alongside the two CF straggler workers (uneven Pool shards -- chunk finer next time).
+
+---
+
+## 2026-08-19 23:25 — watchdog night: disk emergency #4 (resolved) and a gamed VAMP loss (fixed)
+
+The new watchdog earned its keep twice within an hour of being armed.
+
+**DISK LOW at 4G.** Nothing in the repo had grown; the mass was the accumulated stale
+trajectory caches. The two LIVE cache dirs were identified EMPIRICALLY (ran T.build for
+both corpora and read the cache-hit paths -- my hash-format guess was wrong, so guessing
+would have deleted a live cache); the other 21 dirs (9.9 GiB, all regenerable in
+minutes) deleted. 13Gi free.
+
+**vamp 114.0/32 -- the slow loss was being GAMED.** The VAMP-2 score is bounded by the
+block dimension (32); 114 means the model found the exploit in my implementation:
+shrink the slow-block features toward degeneracy and the eps-floored inverse sqrt
+amplifies by up to 1/sqrt(eps) = 100x, so the "slowness" reward grows without the
+features being slow. Fix, tested in losses.py: per-dimension standardization before the
+covariances (score becomes scale-invariant) plus a RELATIVE eigenvalue floor
+(rank-deficient directions suppressed, never amplified). New unit test pins the exploit:
+1e-3-scaled features must score <= d. gcf2 restarted from its step-2000 checkpoint with
+the hardened loss -- 250 steps lost, and the run before the fix was training against a
+corrupted objective from ~step 1500 on, so the restart is the cheap option.
+
+Lesson filed where the VAMPnets notes live: a variational score with a matrix inverse
+in it needs its INVARIANCES tested (scale, rank-deficiency), not just its happy path --
+the same class of gap as the eta^2 constant-feature artifact caught this afternoon.

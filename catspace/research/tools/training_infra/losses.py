@@ -814,16 +814,25 @@ def vamp2_score(x0, xt, eps=1e-4):
         # torch.linalg.eigh has no MPS kernel; the covariances are tiny (d x d, d ~ 32), so
         # hop through CPU -- autograd flows across the device moves, cost is microseconds.
         return vamp2_score(x0.cpu(), xt.cpu(), eps).to(x0.device)
+    # STANDARDIZE first. Without this the loss is GAMEABLE: shrink the features and the
+    # eps-floored inverse sqrt amplifies by up to 1/sqrt(eps), sending the "score" past its
+    # mathematical bound of d. Observed in the wild (gcf2 step 2250: vamp 114 on a 32-d block).
+    # Per-dimension standardization makes the score scale-invariant, and the ridge below is
+    # then a true shrinkage rather than an exploitable floor.
     x0 = x0 - x0.mean(0, keepdim=True)
     xt = xt - xt.mean(0, keepdim=True)
+    x0 = x0 / (x0.std(0, keepdim=True) + 1e-6)
+    xt = xt / (xt.std(0, keepdim=True) + 1e-6)
     n = max(x0.shape[0] - 1, 1)
-    c00 = x0.T @ x0 / n + eps * torch.eye(x0.shape[1], device=x0.device, dtype=x0.dtype)
-    ctt = xt.T @ xt / n + eps * torch.eye(xt.shape[1], device=xt.device, dtype=xt.dtype)
+    d = x0.shape[1]
+    c00 = x0.T @ x0 / n + eps * torch.eye(d, device=x0.device, dtype=x0.dtype)
+    ctt = xt.T @ xt / n + eps * torch.eye(d, device=xt.device, dtype=xt.dtype)
     c0t = x0.T @ xt / n
 
     def inv_sqrt(c):
         w, v = torch.linalg.eigh(c)
-        return v @ torch.diag(w.clamp(min=eps).rsqrt()) @ v.T
+        # relative floor: rank-deficient directions are suppressed, never amplified
+        return v @ torch.diag(w.clamp(min=max(eps, 1e-3) * float(w.max())).rsqrt()) @ v.T
 
     k = inv_sqrt(c00) @ c0t @ inv_sqrt(ctt)
     return (k ** 2).sum()
@@ -1524,6 +1533,11 @@ def _tests():
     ok &= s_const < 0.1
     print(f"[vamp2] CONSTANT features -> {s_const:.4f} (~0: collapse cannot fake slowness, "
           f"unlike MSE persistence)  {'OK' if s_const < 0.1 else 'FAIL'}")
+    # the exploit that bit gcf2: scaled-down features must NOT inflate the score
+    s_tiny = float(vamp2_score(base * 1e-3, base * 1e-3))
+    ok &= s_tiny <= d + 0.5
+    print(f"[vamp2] 1e-3-scaled features -> {s_tiny:.2f} (<= d: scale-invariant, the gcf2 "
+          f"exploit closed)  {'OK' if s_tiny <= d + 0.5 else 'FAIL'}")
     xg = base.clone().requires_grad_()
     g = torch.autograd.grad(vamp2_score(xg, base), xg)[0]
     ok &= bool(torch.isfinite(g).all()) and float(g.abs().sum()) > 0
