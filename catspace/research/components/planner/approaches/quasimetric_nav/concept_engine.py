@@ -70,8 +70,9 @@ class ConceptAlphaBeta:
             sz = np.load(stats_path, allow_pickle=True)
             self.stat_mean, self.stat_cnt = sz["mean_wpov"], sz["count"]
             self.stat_ex2 = sz["ex2"] if "ex2" in sz.files else None
+            self.stat_ci = sz["ci_cluster"] if "ci_cluster" in sz.files else None
         except Exception:
-            self.stat_mean = self.stat_cnt = self.stat_ex2 = None
+            self.stat_mean = self.stat_cnt = self.stat_ex2 = self.stat_ci = None
         self._cache = {}
 
     class SearchStop(Exception):
@@ -309,7 +310,9 @@ class ConceptAlphaBeta:
                 # conservative bound var <= 1 - mu^2 (outcomes live in [-1, 1]). The chip
                 # only claims a side when |mean| clears the CI (Kaveh 2026-08-20: "our
                 # scores and deltas need CIs").
-                if n > 1:
+                if getattr(self, "stat_ci", None) is not None:
+                    ci = float(self.stat_ci[h, c])   # cluster-robust by GAME (honest n)
+                elif n > 1:
                     var = (float(self.stat_ex2[h, c]) - mw * mw) if self.stat_ex2 is not None \
                         else (1.0 - mw * mw)
                     ci = 1.96 * (max(var, 0.0) / n) ** 0.5

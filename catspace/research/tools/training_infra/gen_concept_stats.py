@@ -65,6 +65,12 @@ def main():
     H, C = net.g_heads, 32
     s_sum = np.zeros((H, C)); s_cnt = np.zeros((H, C), np.int64)
     s_sq = np.zeros((H, C))
+    # per-(head, code, GAME) partial sums for CLUSTER-ROBUST CIs (Kaveh 2026-08-20
+    # "where's the ci coming from": positions share their game's outcome, so iid SEs are
+    # up to ~10x too narrow for codes that fire all game long; SE must be over games)
+    gor = tr.game_of_row()
+    gids = gor[z["p_row"]]
+    g_part = {}                                       # (h, c, gid) -> [sum, n]
     N = len(D["p_row"])
     with torch.no_grad():
         for a in range(0, N, args.batch):
@@ -81,15 +87,35 @@ def main():
             _, g_ids, _, _, _, _ = net.encode(sqf, mvf, edges, mask)
             gi = g_ids.cpu().numpy()
             w = ow[ii.numpy()]
+            gb = gids[ii.numpy()]
             for h in range(H):
                 np.add.at(s_sum, (h, gi[:, h]), w)
                 np.add.at(s_sq, (h, gi[:, h]), w * w)
                 np.add.at(s_cnt, (h, gi[:, h]), 1)
+                for j in range(len(w)):
+                    k = (h, int(gi[j, h]), int(gb[j]))
+                    e = g_part.get(k)
+                    if e is None:
+                        g_part[k] = [float(w[j]), 1]
+                    else:
+                        e[0] += float(w[j]); e[1] += 1
             if (a // args.batch) % 100 == 0:
                 print(f"  {a:,}/{N:,} [{time.time()-t0:.0f}s]", flush=True)
     mean = s_sum / np.maximum(s_cnt, 1)
     ex2 = s_sq / np.maximum(s_cnt, 1)
-    np.savez_compressed(args.out, mean_wpov=mean, count=s_cnt, ex2=ex2, ckpt=args.ckpt)
+    # cluster-robust (CR0) 95 percent CI: var_cluster = sum_g (S_g - n_g*mu)^2 / N^2
+    cr = np.zeros((H, C)); ngames = np.zeros((H, C), np.int64)
+    for (h, c, _gid), (sg, ng) in g_part.items():
+        cr[h, c] += (sg - ng * mean[h, c]) ** 2
+        ngames[h, c] += 1
+    ci_cluster = 1.96 * np.sqrt(cr) / np.maximum(s_cnt, 1)
+    np.savez_compressed(args.out, mean_wpov=mean, count=s_cnt, ex2=ex2,
+                        ci_cluster=ci_cluster, n_games=ngames, ckpt=args.ckpt)
+    big = (s_cnt > 1000)
+    iid_ci = 1.96 * np.sqrt(np.maximum(ex2 - mean ** 2, 0) / np.maximum(s_cnt, 1))
+    infl = np.where(iid_ci > 0, ci_cluster / np.maximum(iid_ci, 1e-9), 1.0)
+    print(f"  cluster-CI inflation vs iid on well-sampled codes: "
+          f"median {np.median(infl[big]):.1f}x, max {infl[big].max():.1f}x")
     live = (s_cnt > 0).sum()
     print(f"\n  wrote {args.out} | {live}/{H*C} codes seen | "
           f"strongest leans: {np.abs(mean)[s_cnt>300].max():.3f} [{time.time()-t0:.0f}s]")
