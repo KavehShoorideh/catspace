@@ -15253,3 +15253,42 @@ between the gcf2 verdict (01:36) and the gcf3 build (07:43) into a fictitious co
 night. All headers above corrected to git commit timestamps (real, PDT). gcf3's true
 launch: 07:43; true ETA at 2.44 s/step: ~11:50 PDT. Rule now in memory: timestamps come
 from `date`, never from narrative inference -- turn gaps are real hours.
+
+---
+
+## 2026-08-20 12:15 — gcf3 VERDICT: the collapse is fixed structurally; imitation holds; one honest regression
+
+gcf3 (kinematics + file-nodes + phase head/adversary + decorrelation + threat head, on top
+of gcf2's flag bundle, hardened VAMP) finished 6000 steps / 3.9 h.
+
+**Imitation: 0.292 / 0.546 vs gcf1's 0.292 / 0.540.** Identical top1 at one seed
+(observation, not verdict, per the CI ruling) -- with ~6M more parameters of machinery
+aboard and a LIVING slow block: vamp 24.5/32 vs gcf2's collapsed 2.5.
+
+**The decorrelation referendum -- the gcf2 failure is GONE (structural, judgeable):**
+no head pair is a copy; castling monopolizes nothing (it landed as a 0.27-0.37 sideline on
+two fast heads). The slow block now spans DIFFERENT material-decay coordinates per head
+(pawns / mobility+tension / knights / rooks / bishops+material / queens at eta2 0.1-0.3
+each) -- individually weak by single-feature eta2, but non-redundant, which was the goal;
+naming composites is the program-distillation route's job. Piece counts are honest slow
+features (monotone over a game) -- a far better slowness vocabulary than castling echoes.
+
+**Designated phase head: worked, with bounded leak.** Head 0 carries phase at eta2 0.947
+(plus the king-safety cluster + tension + legal_moves -- it became the global-state head).
+Phase elsewhere peaked at 0.43 (fast head 12) -- the adversary halved the soak vs gcf1's
+0.81-everywhere, didn't erase it (advacc oscillated 0.25-0.40 all run).
+
+**Threat->execution head: real.** Held-out 10,481 threat events: AUC 0.737; top-decile
+P(exec)=0.396 vs base 0.150 (2.6x). Kaveh's execution-timing feature discriminates.
+
+**The regression, stated plainly: the tactical SQUARE CODES got weaker.** hanging lift
+4x->2x, pinned 5x->3x, learned least_att eta2 0.38->0.03 vs gcf2. Suspected mechanism:
+the te_head reads h_sq DIRECTLY, so the tactical signal gets a gradient shortcut around
+the codebook -- the codes no longer need to carry it. gcf4 fix queued: bottleneck the
+threat head THROUGH the quantized square codes. Also still absent: per-file pawn structure
+in the measured codes (file-node STATES are not probed by the alignment eval at all --
+needs a file-node probe extension before calling the file-nodes dead).
+
+Concept-side scoreboard after the night+morning: collapse fixed by design (decor),
+phase controlled by design (GRL confined to projections), tactics regressed by an
+interaction nobody predicted -- and the instrument caught all three.

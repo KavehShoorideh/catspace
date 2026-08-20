@@ -95,7 +95,11 @@ def main():
                             edge_codes=A.get("edge_codes", 0), move_codes=A.get("move_codes", 0),
                             gps_parallel=bool(A.get("gps_parallel", 0)),
                             attn_bias=bool(A.get("attn_bias", 0)),
-                            agg_max=bool(A.get("agg_max", 0))).to(dev)
+                            agg_max=bool(A.get("agg_max", 0)),
+                            kin=bool(A.get("kin", 0)),
+                            file_nodes=bool(A.get("file_nodes", 0)),
+                            phase_head=bool(A.get("phase_head", 0)),
+                            threat_head=bool(A.get("threat_head", 0))).to(dev)
     net.load_state_dict(ck["state_dict"]); net.eval()
 
     rng = np.random.default_rng(args.seed)
@@ -104,8 +108,8 @@ def main():
 
     def parent_batch(ii):
         b = {k: D[k][ii].to(dev) for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
-        sqf, mvf, edges, mask = featurize(b, dev)
-        off = (torch.arange(len(ii), device=dev) * N_NODES)[:, None]
+        sqf, mvf, edges, mask = featurize(b, dev, n_nodes=net.n_nodes)
+        off = (torch.arange(len(ii), device=dev) * net.n_nodes)[:, None]
         jj = torch.arange(MV_CAP, device=dev)[None, :]
         for name in ("vac", "dsc"):
             a = D[name][ii].to(dev).long()
