@@ -15029,7 +15029,7 @@ alongside the two CF straggler workers (uneven Pool shards -- chunk finer next t
 
 ---
 
-## 2026-08-19 23:25 — watchdog night: disk emergency #4 (resolved) and a gamed VAMP loss (fixed)
+## 2026-08-19 23:07 — watchdog night: disk emergency #4 (resolved) and a gamed VAMP loss (fixed)
 
 The new watchdog earned its keep twice within an hour of being armed.
 
@@ -15056,7 +15056,7 @@ the same class of gap as the eta^2 constant-feature artifact caught this afterno
 
 ---
 
-## 2026-08-20 00:20 — gdv1: the counterfactual pairs become a trained dV/dmove head (build + smokes)
+## 2026-08-20 00:01 — gdv1: the counterfactual pairs become a trained dV/dmove head (build + smokes)
 
 Pipelined against the gcf2 restart (MPS busy, CPU idle). The docket item "delta-V head on the
 CF pairs" is now a training run.
@@ -15093,7 +15093,7 @@ imitation); CF sign-acc > 0.663 majority; arena conversion better than +15=84-1.
 
 ---
 
-## 2026-08-20 00:50 — gdv1 VERDICT: the graph prior converts; dV discriminates labels but does not yet steer play
+## 2026-08-20 00:24 — gdv1 VERDICT: the graph prior converts; dV discriminates labels but does not yet steer play
 
 Full battery on gdv1_latest (6k steps, 24.8 CPU-min, 733k params). Pre-registered gates first:
 
@@ -15145,7 +15145,7 @@ Winning-track lam=0 ablation running for the same view on that instrument.
 
 ---
 
-## 2026-08-20 01:05 — self-inflicted swap-thrash: parallel evals starved gcf2 (caught by stack sample)
+## 2026-08-20 00:27 — self-inflicted swap-thrash: parallel evals starved gcf2 (caught by stack sample)
 
 gcf2's log went silent at 00:22 with the process at 89 percent CPU -- the "CPU busy is not
 progress" signature. `sample` showed the main thread inside bool(tensor) truthiness checks
@@ -15162,7 +15162,7 @@ time, and never two corpus-loading processes alongside the trainer.
 
 ---
 
-## 2026-08-20 02:05 — gcf2 VERDICT: NEGATIVE on imitation, slow block collapsed to castling echoes; edge codes redeem the tactical rows
+## 2026-08-20 01:36 — gcf2 VERDICT: NEGATIVE on imitation, slow block collapsed to castling echoes; edge codes redeem the tactical rows
 
 gcf2 (edge-codes 128 + move-codes 64 + GPS-parallel + attn-bias + agg-max, hardened VAMP from
 step 2000) finished 8000 steps. Judged against gcf1 (0.292/0.540):
@@ -15203,7 +15203,7 @@ skill 0 (from -576 best prior).
 
 ---
 
-## 2026-08-20 03:45 — AMENDMENT (Kaveh's CI ruling): which of tonight's claims survive
+## 2026-08-20 08:38 — AMENDMENT (Kaveh's CI ruling): which of tonight's claims survive
 
 Ruling: metrics are stochastic, no CIs, no budget for seed replicates -- close single-seed
 numbers get NO verdicts. Re-grading tonight's claims under it:
@@ -15230,7 +15230,7 @@ flywheel rule applies (compounds only on a correct algorithm).
 
 ---
 
-## 2026-08-20 04:00 — self-play generator built + smoked (the loop's raw material, SF-free)
+## 2026-08-20 08:41 — self-play generator built + smoked (the loop's raw material, SF-free)
 
 Per the target restated ("respectably play, then improve with self-play"):
 gen_selfplay_games.py plays the gdv prior against itself (or a past checkpoint), records
@@ -15242,3 +15242,14 @@ pairs. 50 percent draws in self-mirror -- the known collapse mode, which the --t
 --opp-ckpt knobs exist to fight. Loop design (what each generation learns, gating) goes to
 Kaveh for review before any spinning; generation itself is ready to fire at volume
 (~100k games / few CPU-hours, embarrassingly parallel).
+
+---
+
+## 2026-08-20 08:50 — correction: journal timestamps were inferred, not read; fixed to commit times
+
+Kaveh caught it ("you got your time zone wrong. we're PDT"). Worse than a timezone: entry
+headers were written from my sense of session flow, which compressed the real 6-hour gap
+between the gcf2 verdict (01:36) and the gcf3 build (07:43) into a fictitious continuous
+night. All headers above corrected to git commit timestamps (real, PDT). gcf3's true
+launch: 07:43; true ETA at 2.44 s/step: ~11:50 PDT. Rule now in memory: timestamps come
+from `date`, never from narrative inference -- turn gaps are real hours.
