@@ -288,3 +288,54 @@ variant with a hard window; the pieces we lack are:
   classifier stays accurate. Same lesson as our victim-chaining conjunction failure
   (joint 10.4%, derived signature 8.1%): predict the destination directly, never
   compose per-step predictions.
+
+---
+
+## 2026-08-19 — GNN best-practice audit for the graph concept field (full texts)
+
+### GraphGPS (Rampasek et al., arXiv 2205.12454)
+
+The canonical paper for exactly our architecture family (local MPNN + global attention per
+layer). What it validates and what it corrects:
+
+* **VALIDATED: the hybrid itself.** Their ablation: removing the MPNN is a "major drop" on
+  every dataset; adding the Transformer module is beneficial-or-neutral everywhere. They argue
+  AGAINST two-stage stacks (all-MPNN-then-attention, GraphTrans-style) -- early over-smoothing
+  "irreparably" loses information -- which our per-layer interleaving already avoids.
+* **CORRECTION: their canonical layer runs MPNN and attention IN PARALLEL on the same input,
+  summed, then a 2-layer MLP** (X^{l+1} = MLP(MPNN(X) + Attn(X)), residuals on each). Ours is
+  sequential (local, then attention on the refined output). Not ablated head-to-head by them,
+  but the parallel-sum is the published recipe.
+* **CORRECTION: positional/structural encodings are "one of the most important factors" for
+  graph transformers.** RWSE -- diagonal of the m-step random-walk matrix as node features --
+  gives consistent cheap gains (ZINC MAE 0.113 -> 0.070). Caveat for us: their graphs are
+  ANONYMOUS (molecules); our square-nodes carry identity (file/rank + piece), so the 1-WL
+  blindness argument is weaker here. Still, RWSE over the per-position ATTACK graph is a
+  meaningful mobility/connectivity summary and cheap to precompute.
+* Edge features feed the MPNN only, never the attention -- matches our design exactly.
+
+### Graphormer (Ying et al., arXiv 2106.05234)
+
+* **Spatial encoding as attention bias**: A_ij += b_phi(i,j), a learnable scalar per pair-
+  relation bucket (they use shortest-path distance), per head, shared across layers. This is
+  THE practice we lack: our global attention sees no board geometry at all beyond what leaks
+  through features. The chess-native phi is not SPD but the square-pair relation itself:
+  same-file / same-rank / same-diagonal / knight-hop / king-adjacent / else, plus
+  move-node<->its-src/dst buckets. A static 64x64 bucket table, near-zero cost.
+* **Centrality encoding** (degree embeddings added to node features): our attacker/defender
+  counts per square ARE degree-in-the-attack-graph -- already satisfied.
+* **Pre-LN** (LN before MHA and FFN) "has been unanimously adopted... leads to more effective
+  optimization" -- ours is post-LN; switch.
+* **Virtual node** = their graph readout; GPS's Fact 2 shows plain self-attention can emulate
+  mean readout, so our pooled-mean global-concept readout is defensible as-is.
+
+### Deltas adopted for gcf2 (bundled per the no-one-lever rule; gcf1 finishes as baseline)
+
+1. GPS parallel form: MLP(MPNN(X) + Attn(X)) with residuals, replacing sequential.
+2. Pre-LN throughout.
+3. Chess spatial attention bias: learnable per-head scalar over static square-pair relation
+   buckets (+ move-node buckets).
+4. PNA-lite aggregation in relations: mean + max concatenated (mean-only discards existence
+   information; PNA is GPS's strongest MPNN on several tasks).
+5. RWSE-8 over the attack graph as 8 extra square features (precomputed at graph build).
+6. Centrality: already covered by attacker/defender count features -- no change.
