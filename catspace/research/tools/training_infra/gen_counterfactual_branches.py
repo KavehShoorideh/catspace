@@ -37,7 +37,8 @@ VAL = {1: 1, 2: 3, 3: 3, 4: 5, 5: 9, 6: 0}
 
 def _run_shard(job):
     """worker: own engine instance, plays out its share of branches."""
-    (rows, toks, globs, played_next, engine_path, movetime, cap, seed) = job
+    (rows, toks, globs, played_next, engine_path, movetime, cap, seed,
+     selector, random_frac, sel_ms) = job
     import chess
     import chess.engine
     from catspace.research.tools.training_infra.concepts_reference import board_from_row
@@ -65,29 +66,44 @@ def _run_shard(job):
         alts = [m for m in mv if m != played]
         if played is None or not alts:
             continue
-        rnd = alts[rng.integers(0, len(alts))]
-        mover_white = b.turn
-        b.push(rnd)
-        plies = 1
-        res = None
-        while plies < cap:
-            oc = b.outcome(claim_draw=True)
-            if oc is not None:
-                res = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}[oc.result()]
-                break
-            b.push(eng.play(b, chess.engine.Limit(time=movetime / 1000)).move)
-            plies += 1
-        if res is None:
-            oc = b.outcome(claim_draw=True)
-            if oc is not None:
-                res = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}[oc.result()]
-            else:
-                d = sum((1 if p.color else -1) * VAL[p.piece_type]
-                        for p in b.piece_map().values())
-                res = 1 if d >= 3 else (-1 if d <= -3 else 0)
-        res_mover = res if mover_white else -res
-        out.append((int(rows[i]), rnd.from_square, rnd.to_square,
-                    int(res_mover), int(plies)))
+        # SELECTOR: which siblings earn a rollout
+        if selector == "multipv" and rng.random() >= random_frac:
+            try:
+                info = eng.analyse(b, chess.engine.Limit(time=sel_ms / 1000),
+                                   multipv=min(4, len(mv)))
+                ranked = [e["pv"][0] for e in info if "pv" in e and e["pv"]]
+                cands = [m for m in ranked if m != played][:2]     # SF's 2nd and 3rd best
+                tags = [1, 2][:len(cands)]
+            except Exception:
+                cands, tags = [alts[rng.integers(0, len(alts))]], [0]
+            if not cands:
+                cands, tags = [alts[rng.integers(0, len(alts))]], [0]
+        else:
+            cands, tags = [alts[rng.integers(0, len(alts))]], [0]
+        for rnd, tag in zip(cands, tags):
+            b2 = b.copy(stack=False)
+            mover_white = b2.turn
+            b2.push(rnd)
+            plies = 1
+            res = None
+            while plies < cap:
+                oc = b2.outcome(claim_draw=True)
+                if oc is not None:
+                    res = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}[oc.result()]
+                    break
+                b2.push(eng.play(b2, chess.engine.Limit(time=movetime / 1000)).move)
+                plies += 1
+            if res is None:
+                oc = b2.outcome(claim_draw=True)
+                if oc is not None:
+                    res = {"1-0": 1, "0-1": -1, "1/2-1/2": 0}[oc.result()]
+                else:
+                    d = sum((1 if p.color else -1) * VAL[p.piece_type]
+                            for p in b2.piece_map().values())
+                    res = 1 if d >= 3 else (-1 if d <= -3 else 0)
+            res_mover = res if mover_white else -res
+            out.append((int(rows[i]), rnd.from_square, rnd.to_square,
+                        int(res_mover), int(plies), int(tag)))
     eng.quit()
     return out
 
@@ -101,6 +117,11 @@ def main():
     ap.add_argument("--n", type=int, default=50000, help="parents to branch")
     ap.add_argument("--movetime", type=float, default=10.0, help="ms per continuation move")
     ap.add_argument("--cap", type=int, default=240)
+    ap.add_argument("--selector", choices=["random", "multipv"], default="multipv")
+    ap.add_argument("--random-frac", type=float, default=0.15,
+                    help="fraction of parents that still get a RANDOM branch, keeping bad "
+                         "moves inside the Delta-V head's support")
+    ap.add_argument("--sel-ms", type=float, default=30.0, help="multipv analyse budget, ms")
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--engine", default="/opt/homebrew/bin/stockfish")
     ap.add_argument("--save", action="store_true")
@@ -123,7 +144,8 @@ def main():
 
     shards = np.array_split(np.arange(len(rows)), args.workers)
     jobs = [(rows[s], tr.tok[rows[s]], tr.glob[rows[s]], tr.tok[rows[s] + 1],
-             args.engine, args.movetime, args.cap, args.seed * 1000 + wi)
+             args.engine, args.movetime, args.cap, args.seed * 1000 + wi,
+             args.selector, args.random_frac, args.sel_ms)
             for wi, s in enumerate(shards)]
     t0 = time.time()
     with Pool(args.workers) as pool:
@@ -135,6 +157,15 @@ def main():
 
     A = np.array(res, dtype=np.int64)
     r_i = A[:, 0]
+    for tag, nm in ((0, "random"), (1, "sf-2nd"), (2, "sf-3rd")):
+        m = A[:, 5] == tag
+        if m.sum():
+            tt = A[m, 3]
+            cc = np.where(tr.glob[r_i[m], 0].astype(bool),
+                          tr.result[gor[r_i[m]]], -tr.result[gor[r_i[m]]])
+            d = cc - tt
+            print(f"[cf]   {nm:>7}: n={int(m.sum()):,}  played better {np.mean(d>0):.2f} "
+                  f"equal {np.mean(d==0):.2f} worse {np.mean(d<0):.2f}  mean {d.mean():+.3f}")
     ctrl = np.where(tr.glob[r_i, 0].astype(bool), tr.result[gor[r_i]], -tr.result[gor[r_i]])
     treat = A[:, 3]
     delta = ctrl - treat
@@ -147,7 +178,7 @@ def main():
     if args.save:
         p = paths.derived(f"counterfactual_{len(res)}_{n}.npz")
         np.savez_compressed(p, row=A[:, 0], rnd_from=A[:, 1], rnd_to=A[:, 2],
-                            treat=A[:, 3], branch_plies=A[:, 4], ctrl=ctrl)
+                            treat=A[:, 3], branch_plies=A[:, 4], sel_tag=A[:, 5], ctrl=ctrl)
         print(f"[cf] wrote {p}")
 
 
