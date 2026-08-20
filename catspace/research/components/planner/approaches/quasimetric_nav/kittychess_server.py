@@ -743,7 +743,17 @@ class H(BaseHTTPRequestHandler):
             for bud in (0.4, 1.0, 2.5):
                 if H.gen != g:
                     return
-                with H.lock:
+                if hasattr(H.eng, "concepts"):
+                    # gcf3 self-locks per forward; an OUTER lock here double-acquires the
+                    # same non-reentrant lock inside _forward = the 2026-08-20 wedge (the
+                    # ponder thread hung holding H.lock and the whole server starved)
+                    rows = H.eng.search_coherent(bb, budget=bud,
+                                                 stop=lambda: H.gen != g)
+                    rows = H.eng.rank_by_child_E(bb, rows, top=24)
+                    if H.gen != g:
+                        return
+                else:
+                  with H.lock:
                     if H.gen != g:
                         return
                     rows = H.eng.search_coherent(bb, budget=bud)
@@ -846,7 +856,11 @@ class H(BaseHTTPRequestHandler):
                                 dist = dict(pe["dist"])
                                 e_top = pe.get("e_top")
                         if dist is None:                          # moved too fast: quick look
-                            with H.lock:
+                            if hasattr(H.eng, "concepts"):        # gcf3 self-locks
+                                rws = H.eng.search_coherent(pb, budget=0.5)
+                                rws = H.eng.rank_by_child_E(pb, rws)
+                            else:
+                              with H.lock:
                                 rws = H.eng.search_coherent(pb, budget=0.5)
                                 rws = H.eng.rank_by_child_E(pb, rws)
                             rE = ranked_E(rws)
@@ -1867,8 +1881,15 @@ def main():
                     continue
                 fen, mover = pend[0]
                 bb = chess.Board(fen)
-                with H.lock:
-                    if time.time() - H.last_req_t < 90:   # someone came back: yield
+                if time.time() - H.last_req_t < 90:       # someone came back: yield
+                    continue
+                if hasattr(H.eng, "concepts"):            # gcf3 self-locks per forward
+                    rows = H.eng.search_coherent(
+                        bb, budget=6.0, stop=lambda: time.time() - H.last_req_t < 90)
+                    rows = H.eng.rank_by_child_E(bb, rows)
+                else:
+                  with H.lock:
+                    if time.time() - H.last_req_t < 90:
                         continue
                     rows = H.eng.search_coherent(bb, budget=6.0)
                     rows = H.eng.rank_by_child_E(bb, rows)
