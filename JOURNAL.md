@@ -14833,3 +14833,40 @@ event/material/resolution objectives (bundled per the no-one-lever rule; w_sib 2
 decorrelation kept, MSE slow heads off as refuted). cpl1's frozen-probe ceiling (11.4%
 top-1 held-out, arena +49 elo vs random) is the pre-registered comparison: cef6 must
 raise the CEILING, not just the readout.
+
+---
+
+## 2026-08-19 17:50 — cef6 verdict (ceiling raised, architecture outclassed); gcf1 launched
+
+**cef6 final, held-out** (`eval_move_top1.py`, same cache/split/readout as every scorer):
+
+```
+                              top1     top3     compute
+cpl1 (frozen concepts)        0.114    0.270    28 GPU-min
+cef6 (concepts end-to-end)    0.181    0.369    222 GPU-min
+gmp1 (graph scorer)           0.288    0.532    ~10 CPU-min
+chance                        0.038
+```
+
+Two verdicts in one table. KAVEH'S DIAGNOSIS CONFIRMED: training the concepts on the
+move objective raised the frozen ceiling 0.114 -> 0.181 (+59%) -- the vocabulary CAN
+carry choice information when asked. ARCHITECTURE OUTCLASSED: the graph scorer reaches
+2.5x that ceiling at roughly 1/130th the compute, because the structural priors (attack
+edges, mutation edges) hand it what the transformer trunk must learn from scratch.
+
+**gcf1 (RUNNING, ~75 min)** -- the synthesis per Kaveh's full spec: graph encoder (now
+with the DELETION half of the derivative: vac = attacks the mover abandons + the captured
+piece's dying attacks, 5,017 truncations in 300k graphs; dsc = discovered lines through
+the vacated square) + transformer attention interleaved; VQ concepts on top (16x32
+global + 64x256 square); 8 slow heads via VAMP-2 at lag 8 (vamp2_score in losses.py,
+tested: constant features score exactly 0 -- collapse cannot fake slowness, unlike the
+MSE that nulled cef5; eigh has no MPS kernel so the 32x32 computation hops through CPU);
+fast-head decorrelation; future-codes dynamics (zq + played move -> the child's own
+codes, child encoded from a slim square-only block); move head = concepts-as-context (+)
+move-node, so the concepts must carry the choice.
+
+Smoke at step 60 (36 seconds): held-out top1 0.191 -- already past cef6's final number.
+vamp 9.4 -> 13.0/32 and climbing; dyn_g 0.20; dec 0.102 -> 0.007.
+
+Two build bugs found by the smoke, both fixed and committed: .view on a non-contiguous
+slice (-> .reshape), and the MPS eigh gap.

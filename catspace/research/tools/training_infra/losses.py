@@ -810,6 +810,10 @@ def vamp2_score(x0, xt, eps=1e-4):
     x0, xt (N, d) with N comfortably > d (project first; rank-deficient covariances are the
     caller's bug, softened here only by eps). -> scalar, in [0, ~d].
     """
+    if x0.device.type == "mps":
+        # torch.linalg.eigh has no MPS kernel; the covariances are tiny (d x d, d ~ 32), so
+        # hop through CPU -- autograd flows across the device moves, cost is microseconds.
+        return vamp2_score(x0.cpu(), xt.cpu(), eps).to(x0.device)
     x0 = x0 - x0.mean(0, keepdim=True)
     xt = xt - xt.mean(0, keepdim=True)
     n = max(x0.shape[0] - 1, 1)

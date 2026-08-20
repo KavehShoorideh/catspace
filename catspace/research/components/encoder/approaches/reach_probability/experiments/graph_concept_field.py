@@ -265,8 +265,8 @@ def main():
         mv_played = mvf[torch.arange(len(idx), device=dev), played]
         dy = model.dyn(torch.cat([zq, model.mv_emb(mv_played)], -1))
         H, C, SC = model.g_heads, 32, model.sq_codes
-        dg = dy[:, :H * C].view(-1, C)
-        ds = dy[:, H * C:].view(-1, SC)
+        dg = dy[:, :H * C].reshape(-1, C)
+        ds = dy[:, H * C:].reshape(-1, SC)
         l_dyn = F.cross_entropy(dg, cg_ids.reshape(-1)) + F.cross_entropy(ds, csq_ids.reshape(-1))
 
         rt = torch.from_numpy(p_np[idx.numpy()])
