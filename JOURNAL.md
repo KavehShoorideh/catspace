@@ -15053,3 +15053,40 @@ corrupted objective from ~step 1500 on, so the restart is the cheap option.
 Lesson filed where the VAMPnets notes live: a variational score with a matrix inverse
 in it needs its INVARIANCES tested (scale, rank-deficiency), not just its happy path --
 the same class of gap as the eta^2 constant-feature artifact caught this afternoon.
+
+---
+
+## 2026-08-20 00:20 — gdv1: the counterfactual pairs become a trained dV/dmove head (build + smokes)
+
+Pipelined against the gcf2 restart (MPS busy, CPU idle). The docket item "delta-V head on the
+CF pairs" is now a training run.
+
+**The supervision, once more with feeling:** each of the 45,142 CF branches carries two
+rollout outcomes at the SAME parent -- played move -> ctrl (the original game), alternative
+move -> treat (SF finished the branch). The pair loss
+
+    huber( (dV[alt] - dV[played]) - (treat - ctrl) )  +  0.2 * dV[played]^2
+
+cancels the position's value and the shared game-prefix noise, and pins the gauge
+(SF plays the played move, so its edge over the position's value is ~0 in expectation).
+delta units are GAME POINTS: dV is a calibrated derivative of value w.r.t. the move.
+Within-parent contrast from GENERATION -- the sanctioned pathway -- not from imitation.
+
+**Build:** move-graphs for the 24,696 unique CF parents (42 s, truncation profile matches the
+300k file); graph_delta_value.py = 6-relation gmp backbone (no GPS/bias/max -- those are gcf2's
+experiment; the ONLY new ingredient here is pair supervision) + prior head (PL top-1 on the
+300k) + dV head. CF matching census: 45,009/45,142 usable; 83 truncated, 50 where reanalysis
+ranked the played move 2nd (alt==played), 180 promotion fans resolved to queen.
+parent_graph()/glob_of_board() extracted from the generator as the single source of truth for
+offline AND live graphs -- differential-checked byte-exact on 300 rows including the glob
+round-trip. Arena and winning-track both grew --model gdv branches: ONE forward per position.
+
+**Smokes (step-1000 checkpoint, quotable numbers only after the full run):**
+- winning-track n=30: gdv 83.3 percent on-track vs material-greedy 70.0 / random 50.1 on
+  identical positions. The standing full-run bar is material-greedy 58.7 / cpl1 58.0 -- no
+  policy of ours has ever beaten material-greedy here.
+- arena 4-game smoke: plumbing works; PRIOR-ONLY took 3+1= off material-greedy.
+
+Full gdv1 (6k steps, CPU, ~26 min) finishing; then winning-track n=300 + 100-game arena.
+Held-out gates pre-registered: top1 >= 0.288 (gmp1 -- value semantics must not cost
+imitation); CF sign-acc > 0.663 majority; arena conversion better than +15=84-1.
