@@ -475,7 +475,8 @@ function render(d){
         else if(mode==='play'){const isYou=(you>0);cls=isYou?"gc-you":"gc-opp";
           lean=(isYou?"helps you ":"helps engine ")+(you>0?"+":"")+you.toFixed(2);}
         else{cls=h.wpov>0?"gc-you":"gc-opp";
-          lean=(h.wpov>0?"White +":"Black ")+h.wpov.toFixed(2);}
+          lean=(h.wpov>0?("White +"+h.wpov.toFixed(2)):("Black +"+(-h.wpov).toFixed(2)))
+            +(h.ci!==undefined?("\u00b1"+h.ci.toFixed(2)):"");}
       }
       return `<tr><td style="color:${h.slow?'#9db4d0':'#8f8a82'};padding-right:6px">${h.label}</td>`+
         `<td style="color:#6f6b66;padding-right:6px">h${h.head}&middot;c${h.code}</td>`+
