@@ -14889,3 +14889,40 @@ death it read held-out top1 0.269 / top3 0.519, vamp 25.2/32, dec 0.001 -- all s
 climbing. Standing lesson appended to the disk scars: checkpoint ladders are the
 dominant writer at ~30 MB x every-1000-steps x concurrent runs; prune retired runs'
 intermediates as they retire, not when the disk objects.
+
+---
+
+## 2026-08-19 21:20 — gcf1 VERDICT: concepts now cost nothing on move choice; gcf2 adds edge/move concepts
+
+**gcf1 final, held-out: top1 0.292 / top3 0.540** -- the full concept stack (VQ
+bottleneck, VAMP-2 slow heads at ~25/32, future-code dynamics, committor) MATCHES the
+raw graph scorer (gmp1: 0.288/0.532). The week's biggest stated uncertainty -- what the
+discrete bottleneck costs on move choice -- measured: nothing. The taxonomy so far:
+
+```
+                              top1     top3     compute
+cpl1 (frozen transformer)     0.114    0.270    28 GPU-min
+cef6 (transformer e2e)        0.181    0.369    222 GPU-min
+gmp1 (raw graph)              0.288    0.532    ~10 CPU-min
+gcf1 (graph + full concepts)  0.292    0.540    71 GPU-min
+```
+
+**Kaveh's taxonomy correction:** "in the graph mode we want global, NODE, EDGE concepts
+instead of global and square concepts." Right, and his own derivative-hierarchy sentence
+already demanded it: "some tactics are added and some deleted" is a difference over
+EDGE concepts, which did not exist. gcf2 adds:
+  EDGE concepts   VQ(att-edge endpoint pairs), 128 codes; the STATE carries the code
+                  HISTOGRAM (bag-of-tactics); the dynamics head predicts the CHILD's
+                  histogram (KL) -- tactics added/deleted as a first-class target.
+  MOVE concepts   VQ(move-node embeddings), 64 codes, ANNOTATIVE: the score reads raw
+                  (+) quantized so ranking keeps resolution while codes learn move types.
+Plus the literature deltas from the audit, bundled per the no-one-lever rule:
+GPS-parallel blocks, pre-LN, Graphormer-style spatial attention bias over chess
+geometry buckets (file/rank/diag/knight/king-adj + move src/dst), PNA-lite mean+max
+aggregation. Smoke (40 steps): everything trains, edge-dyn KL 4.05 -> 2.98, top1 0.172.
+gcf2 chained behind the counterfactual generation; gcf1 is its baseline.
+
+Also this hour: 288 more stale checkpoints purged (2.5 GiB; protect-list verified),
+counterfactual selector upgraded to SF-2nd/3rd per Kaveh (multipv as SAMPLER only,
+labels remain rollout outcomes; pilot: runner-up arms 82%% ties = boundary calibration,
+delta ordering 3rd > 2nd cost confirms sanity).

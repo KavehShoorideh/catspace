@@ -61,15 +61,36 @@ N_COUNT, N_CLASS = 9, 12
 class GraphConceptField(nn.Module):
     def __init__(self, d=128, layers=3, attn_heads=4, g_heads=16, g_codes=32, d_code=32,
                  sq_codes=256, d_fine=32, slow_heads=8, hidden=512, n_res=414, n_eg=397,
-                 cls_reach=None, cls_eg=None, cls_out=None):
+                 cls_reach=None, cls_eg=None, cls_out=None,
+                 edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
+                 agg_max=False):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
+        self.edge_codes, self.move_codes = edge_codes, move_codes
+        self.gps_parallel, self.use_bias, self.agg_max = gps_parallel, attn_bias, agg_max
         self.d, self.g_heads, self.d_code = d, g_heads, d_code
         self.sq_codes, self.d_fine, self.slow_heads = sq_codes, d_fine, slow_heads
         self.sq_in = nn.Linear(13 + 7 + 6 + 2, d)
         self.mv_in = nn.Linear(6 + 4 + 5 + 4, d)
         self.rel = nn.ModuleList([nn.ModuleDict({r: Relation(d) for r in RELS})
                                   for _ in range(layers)])
+        if agg_max:      # PNA-lite: mean+max concatenated per relation (GraphGPS best MPNNs)
+            self.rel_max = nn.ModuleList([nn.ModuleDict({r: Relation(d) for r in RELS})
+                                          for _ in range(layers)])
+            self.agg_proj = nn.ModuleList([nn.Linear(2 * d, d) for _ in range(layers)])
+        if attn_bias:    # Graphormer spatial encoding: learnable scalar per pair-relation bucket
+            self.n_buckets = 14
+            self.bias_emb = nn.Parameter(torch.zeros(attn_heads, self.n_buckets))
+            fr = torch.arange(64); f, r = fr % 8, fr // 8
+            df = (f[:, None] - f[None, :]).abs(); dr = (r[:, None] - r[None, :]).abs()
+            bt = torch.full((64, 64), 7, dtype=torch.long)
+            bt[(df == 1) & (dr == 2)] = 5; bt[(df == 2) & (dr == 1)] = 5   # knight
+            bt[(df <= 1) & (dr <= 1)] = 6                                   # king-adjacent
+            bt[(df == dr) & (df > 0)] = 3                                   # diagonal
+            bt[(df == 0) & (dr > 0)] = 1                                    # same file
+            bt[(dr == 0) & (df > 0)] = 2                                    # same rank
+            bt.fill_diagonal_(0)
+            self.register_buffer("sq_bucket", bt)
         self.ln_l = nn.ModuleList([nn.LayerNorm(d) for _ in range(layers)])
         self.attn = nn.ModuleList([nn.MultiheadAttention(d, attn_heads, batch_first=True)
                                    for _ in range(layers)])
@@ -86,13 +107,35 @@ class GraphConceptField(nn.Module):
         self.sq_proj = nn.Linear(d, d_fine)
         self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=sq_codes, **vq_kw)
         d_state = g_heads * d_code + 64 * d_fine
+        if edge_codes:
+            # EDGE CONCEPTS (Kaveh 2026-08-19: "global, node, EDGE concepts"). An att edge's
+            # embedding is its endpoint pair; the VQ code is the tactic-type; the STATE carries
+            # the histogram of codes -- a bag-of-tactics, fixed width, interpretable. The
+            # dynamics head then predicts the CHILD's histogram: "some tactics are added and
+            # some deleted" as a first-class training target.
+            self.edge_mlp = nn.Sequential(nn.Linear(2 * d, d), nn.GELU(), nn.Linear(d, 32))
+            self.edge_vq = VectorQuantize(dim=32, codebook_size=edge_codes, decay=0.9,
+                                          commitment_weight=0.25, kmeans_init=True,
+                                          threshold_ema_dead_code=2)
+            d_state = d_state + edge_codes
+        if move_codes:
+            # MOVE CONCEPTS: annotative, not bottlenecking -- the score reads raw (+) quantized,
+            # so the fine ranking keeps its resolution while the codes learn move types.
+            self.mv_vq_proj = nn.Linear(d, 32)
+            self.mv_vq = VectorQuantize(dim=32, codebook_size=move_codes, decay=0.9,
+                                        commitment_weight=0.25, kmeans_init=True,
+                                        threshold_ema_dead_code=2)
         self.d_state = d_state
 
-        self.move_head = nn.Sequential(nn.Linear(d_state + d, hidden), nn.GELU(),
-                                       nn.Linear(hidden, 1))
+        self.move_head = nn.Sequential(
+            nn.Linear(d_state + d + (32 if move_codes else 0), hidden), nn.GELU(),
+            nn.Linear(hidden, 1))
         self.mv_emb = nn.Sequential(nn.Linear(6 + 4 + 5 + 4, 64), nn.GELU())
         self.dyn = nn.Sequential(nn.Linear(d_state + 64, hidden), nn.GELU(),
                                  nn.Linear(hidden, g_heads * g_codes + 64 * sq_codes))
+        if edge_codes:
+            self.dyn_edge = nn.Sequential(nn.Linear(d_state + 64, hidden), nn.GELU(),
+                                          nn.Linear(hidden, edge_codes))
         self.now_head = nn.Sequential(nn.Linear(d_state, hidden), nn.GELU(),
                                       nn.Linear(hidden, N_CLASS * N_COUNT))
         self.res_body = nn.Sequential(nn.Linear(d_state, hidden), nn.GELU())
@@ -106,40 +149,120 @@ class GraphConceptField(nn.Module):
         # covariances (rank-deficiency is the caller's bug, per the loss docstring)
         self.vamp_proj = nn.Linear(slow_heads * d_code, 32, bias=False)
 
+    def _attn_bias(self, B, mvf, mv_mask, dev):
+        """(B*heads, N, N) additive bias from static square geometry + move src/dst buckets."""
+        nb = torch.full((B, N_NODES, N_NODES), 7, dtype=torch.long, device=dev)
+        nb[:, :64, :64] = self.sq_bucket[None]
+        # move-node buckets: 8 = its source square, 9 = its dest square, 10 = other sq<->mv,
+        # 11/12/13 = move<->move same-from/same-to/other
+        fr = (mvf[:, :, 6:8] * 7).round().long()      # from (file,rank) scaled back
+        to = (mvf[:, :, 8:10] * 7).round().long()
+        f_sq = fr[:, :, 1] * 8 + fr[:, :, 0]
+        t_sq = to[:, :, 1] * 8 + to[:, :, 0]
+        nb[:, :64, 64:] = 10; nb[:, 64:, :64] = 10
+        bidx = torch.arange(B, device=dev)[:, None]
+        mv_i = torch.arange(MV_CAP, device=dev)[None, :]
+        nb[bidx, f_sq, mv_i + 64] = 8; nb[bidx, mv_i + 64, f_sq] = 8
+        nb[bidx, t_sq, mv_i + 64] = 9; nb[bidx, mv_i + 64, t_sq] = 9
+        mm_same_f = f_sq[:, :, None] == f_sq[:, None, :]
+        mm_same_t = t_sq[:, :, None] == t_sq[:, None, :]
+        mm = torch.where(mm_same_f, 11, torch.where(mm_same_t, 12, 13))
+        nb[:, 64:, 64:] = mm
+        bias = self.bias_emb[:, nb]                    # (heads, B, N, N)
+        return bias.permute(1, 0, 2, 3).reshape(-1, N_NODES, N_NODES)
+
     def backbone(self, sqf, mvf, edges, mv_mask):
         B = sqf.shape[0]
         h = torch.cat([self.sq_in(sqf), self.mv_in(mvf)], 1)
         pad = torch.cat([torch.zeros(B, 64, dtype=torch.bool, device=sqf.device), ~mv_mask], 1)
-        for i in range(len(self.rel)):
-            hf = h.reshape(B * N_NODES, self.d)
+        abias = self._attn_bias(B, mvf, mv_mask, sqf.device) if self.use_bias else None
+
+        def local(x, i):
+            xf = x.reshape(B * N_NODES, self.d)
             agg = 0.0
             for r in RELS:
                 sd = edges.get(r)
                 if sd is not None and len(sd[0]):
-                    agg = agg + self.rel[i][r](hf, sd[0], sd[1], B * N_NODES)
-            h = self.ln_l[i](h + (agg.reshape(B, N_NODES, self.d) if torch.is_tensor(agg) else 0))
-            a, _ = self.attn[i](h, h, h, key_padding_mask=pad, need_weights=False)
-            h = self.ln_g[i](h + a)
-            h = self.ln_f[i](h + self.ffn[i](h))
+                    agg = agg + self.rel[i][r](xf, sd[0], sd[1], B * N_NODES)
+            if self.agg_max:
+                mx = 0.0
+                for r in RELS:
+                    sd = edges.get(r)
+                    if sd is not None and len(sd[0]):
+                        m = self.rel_max[i][r].w(xf[sd[0]])
+                        out = torch.zeros(B * N_NODES, self.d, device=x.device, dtype=m.dtype)
+                        out.index_reduce_(0, sd[1], m, "amax", include_self=False)
+                        mx = mx + out
+                agg = self.agg_proj[i](torch.cat(
+                    [agg if torch.is_tensor(agg) else torch.zeros_like(mx),
+                     mx if torch.is_tensor(mx) else torch.zeros_like(agg)], -1))
+            return (agg.reshape(B, N_NODES, self.d) if torch.is_tensor(agg) else
+                    torch.zeros_like(x))
+
+        for i in range(len(self.rel)):
+            if self.gps_parallel:
+                # GPS canonical form, pre-LN: parallel MPNN + attention on the same input,
+                # summed into the residual stream, then FFN. (GraphGPS Eq. 2-4; Graphormer's
+                # pre-LN placement.)
+                a_l = local(self.ln_l[i](h), i)
+                hg = self.ln_g[i](h)
+                a_g, _ = self.attn[i](hg, hg, hg, key_padding_mask=pad,
+                                      attn_mask=abias, need_weights=False)
+                h = h + a_l + a_g
+                h = h + self.ffn[i](self.ln_f[i](h))
+            else:
+                h = self.ln_l[i](h + local(h, i))
+                a, _ = self.attn[i](h, h, h, key_padding_mask=pad,
+                                    attn_mask=abias, need_weights=False)
+                h = self.ln_g[i](h + a)
+                h = self.ln_f[i](h + self.ffn[i](h))
         return h                                              # (B, 112, d)
 
-    def encode(self, sqf, mvf, edges, mv_mask):
-        """-> zq (B,d_state) in [0,1], g_ids (B,H), sq_ids (B,64), vq_loss, h_mv, pre_g"""
+    def encode(self, sqf, mvf, edges, mv_mask, want_edge_ids=False):
+        """-> zq (B,d_state) in [0,1], g_ids (B,H), sq_ids (B,64), vq_loss, h_mv, pre_g
+        [, edge_hist (B,E)]"""
+        B = sqf.shape[0]
         h = self.backbone(sqf, mvf, edges, mv_mask)
         h_sq, h_mv = h[:, :64], h[:, 64:]
-        pre_g = self.g_proj(h_sq.mean(1)).view(len(h), self.g_heads, self.d_code)
+        pre_g = self.g_proj(h_sq.mean(1)).view(B, self.g_heads, self.d_code)
         qs, ids, vl = [], [], 0.0
         for i in range(self.g_heads):
             q, idx, l = self.vq[i](pre_g[:, i])
             qs.append(q); ids.append(idx); vl = vl + l
         q_sq, sq_ids, vl2 = self.sq_vq(self.sq_proj(h_sq))
-        zq = torch.cat(qs + [q_sq.reshape(len(h), -1)], -1)
+        parts = qs + [q_sq.reshape(B, -1)]
+        vl = vl + vl2
+        hist = None
+        if self.edge_codes:
+            sd = edges.get("att")
+            hf = h.reshape(B * N_NODES, self.d)
+            if sd is not None and len(sd[0]):
+                e = self.edge_mlp(torch.cat([hf[sd[0]], hf[sd[1]]], -1))
+                _, e_ids, vl3 = self.edge_vq(e)
+                vl = vl + vl3
+                # bucket edges by their DST node's sample, then pool per sample
+                hist = torch.zeros(B, self.edge_codes, device=h.device)
+                samp = (sd[1] // N_NODES).long()
+                hist.index_put_((samp, e_ids), torch.ones_like(e_ids, dtype=hist.dtype),
+                                accumulate=True)
+                hist = hist / hist.sum(-1, keepdim=True).clamp(min=1)
+            else:
+                hist = torch.zeros(B, self.edge_codes, device=h.device)
+            parts.append(hist)
+        zq = torch.cat(parts, -1)
         lo = zq.min(-1, keepdim=True).values; hi = zq.max(-1, keepdim=True).values
         zq = (zq - lo) / (hi - lo).clamp(min=1e-5)
-        return zq, torch.stack(ids, 1), sq_ids, vl + vl2, h_mv, pre_g
+        if want_edge_ids:
+            return zq, torch.stack(ids, 1), sq_ids, vl, h_mv, pre_g, hist
+        return zq, torch.stack(ids, 1), sq_ids, vl, h_mv, pre_g
 
     def move_logits(self, zq, h_mv, mv_mask):
-        x = torch.cat([zq[:, None, :].expand(-1, h_mv.shape[1], -1), h_mv], -1)
+        parts = [zq[:, None, :].expand(-1, h_mv.shape[1], -1), h_mv]
+        if self.move_codes:
+            q_mv, _, vl_mv = self.mv_vq(self.mv_vq_proj(h_mv))
+            parts.append(q_mv)
+            self._mv_vq_loss = vl_mv
+        x = torch.cat(parts, -1)
         return self.move_head(x).squeeze(-1).masked_fill(~mv_mask, float("-inf"))
 
     def predict_resolution(self, zq):
@@ -159,6 +282,13 @@ def main():
     ap.add_argument("--d-model", type=int, default=128)
     ap.add_argument("--layers", type=int, default=3)
     ap.add_argument("--slow-heads", type=int, default=8)
+    ap.add_argument("--edge-codes", type=int, default=0, help="0 off; 128 = edge concepts on")
+    ap.add_argument("--move-codes", type=int, default=0, help="0 off; 64 = move concepts on")
+    ap.add_argument("--gps-parallel", type=int, default=0)
+    ap.add_argument("--attn-bias", type=int, default=0)
+    ap.add_argument("--agg-max", type=int, default=0)
+    ap.add_argument("--w-edge-dyn", type=float, default=0.5,
+                    help="child edge-histogram prediction: tactics added and deleted")
     ap.add_argument("--w-move", type=float, default=2.0)
     ap.add_argument("--w-dyn", type=float, default=1.0)
     ap.add_argument("--w-res", type=float, default=1.0)
@@ -217,7 +347,11 @@ def main():
 
     net = GraphConceptField(d=args.d_model, layers=args.layers, slow_heads=args.slow_heads,
                             n_res=len(vocab), n_eg=len(egs),
-                            cls_reach=cr, cls_eg=ce, cls_out=co).to(dev)
+                            cls_reach=cr, cls_eg=ce, cls_out=co,
+                            edge_codes=args.edge_codes, move_codes=args.move_codes,
+                            gps_parallel=bool(args.gps_parallel),
+                            attn_bias=bool(args.attn_bias),
+                            agg_max=bool(args.agg_max)).to(dev)
     print(f"[gcf] {sum(p.numel() for p in net.parameters()):,} params | "
           f"{args.slow_heads} slow + {16-args.slow_heads} fast global heads x 32 | 64x256 sq",
           flush=True)
@@ -262,13 +396,23 @@ def main():
 
         with torch.no_grad():
             csqf, cmvf, cedges, cmask = slim_batch(idx, "c")
-            _, cg_ids, csq_ids, _, _, _ = model.encode(csqf, cmvf, cedges, cmask)
+            if args.edge_codes:
+                _, cg_ids, csq_ids, _, _, _, c_hist = model.encode(
+                    csqf, cmvf, cedges, cmask, want_edge_ids=True)
+            else:
+                _, cg_ids, csq_ids, _, _, _ = model.encode(csqf, cmvf, cedges, cmask)
         mv_played = mvf[torch.arange(len(idx), device=dev), played]
         dy = model.dyn(torch.cat([zq, model.mv_emb(mv_played)], -1))
         H, C, SC = model.g_heads, 32, model.sq_codes
         dg = dy[:, :H * C].reshape(-1, C)
         ds = dy[:, H * C:].reshape(-1, SC)
         l_dyn = F.cross_entropy(dg, cg_ids.reshape(-1)) + F.cross_entropy(ds, csq_ids.reshape(-1))
+        l_edyn = torch.zeros((), device=dev)
+        if args.edge_codes:
+            pred_h = F.log_softmax(model.dyn_edge(
+                torch.cat([zq, model.mv_emb(mv_played)], -1)), -1)
+            l_edyn = F.kl_div(pred_h, c_hist.clamp(min=1e-8), reduction="batchmean")
+        l_mvvq = getattr(model, "_mv_vq_loss", torch.zeros((), device=dev))
 
         rt = torch.from_numpy(p_np[idx.numpy()])
         r_l, e_l, o_l = model.predict_resolution(zq)
@@ -293,8 +437,9 @@ def main():
         l_slow = -vamp / 32.0
         l_dec = vicreg_covariance(pg0.reshape(len(i8), -1)[:, sl:])
 
-        loss = (args.w_move * l_move + args.w_dyn * l_dyn + args.w_res * l_res
-                + args.w_now * l_now + args.w_slow * l_slow + args.w_dec * l_dec + vl)
+        loss = (args.w_move * l_move + args.w_dyn * l_dyn + args.w_edge_dyn * l_edyn
+                + args.w_res * l_res + args.w_now * l_now + args.w_slow * l_slow
+                + args.w_dec * l_dec + vl + l_mvvq)
         opt.zero_grad(); loss.backward(); opt.step()
 
         m = {}
@@ -317,7 +462,8 @@ def main():
                   f"({el/max(1,step):.3f}s/step) | move {float(l_move):.3f} "
                   f"dyn {float(l_dyn):.3f} res {float(l_res):.3f} | "
                   f"HELD-OUT top1 {h1/tot:.3f} top3 {h3/tot:.3f} | dyn_g {dyn_g:.2f} "
-                  f"dyn_s {dyn_s:.2f} | vamp {float(vamp):.1f}/32 dec {float(l_dec):.3f}",
+                  f"dyn_s {dyn_s:.2f} edyn {float(l_edyn):.3f} | vamp {float(vamp):.1f}/32 "
+                  f"dec {float(l_dec):.3f}",
                   flush=True)
             m = {"top1": h1 / tot, "top3": h3 / tot, "vamp": float(vamp),
                  "dyn_g": dyn_g, "dyn_s": dyn_s}
