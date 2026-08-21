@@ -15679,3 +15679,10 @@ direct-head gap (both pre-registered). gko1c's 2500-step record = the bilinear-l
 reference row. gko1d = the target design per the interaction-ordering ruling:
 TransformerLift (attention over 97 concept tokens -- 32 heads + 64 squares + hist --
 3 layers (Kaveh: "at least 3"), d_phi 256, gentler 0.5x lr group), operators after, rollouts never re-lift.
+
+**MPS wedge taxonomy variant 5 (2026-08-21): fused sdpa backward.** gko1d froze at
+step 1 (~40 min, 0% CPU/GPU, alive): stack showed the main thread in autograd
+ReadyQueue::pop / condition_variable::wait -- the fused scaled_dot_product_attention
+BACKWARD wedged the autograd worker on MPS (after the forward's dropout constraint
+was already worked around). Fix: TransformerLift forces the MATH sdpa path (matmuls +
+softmax); fwd+bwd x5 smoked at 0.7s. Relaunched.
