@@ -83,13 +83,20 @@ def main():
     z = np.load(args.graphs)
     D = {k: torch.from_numpy(np.ascontiguousarray(z[k])) for k in
          ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att", "p_row")}
-    tr = T.build(n_human=0, n_sf=A["games"], seed=A["seed"], cache=True,
+    tr = T.build(n_human=A.get("n_human", 0), n_sf=A["games"], seed=A["seed"], cache=True,
                  max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
     n = len(tr.tok)
-    lz = np.load(paths.derived(f"tb_entry_5-4-3men_{n}.npz"), allow_pickle=True)
-    vocab = [str(x) for x in lz["vocab"]]
-    cr, ce, co, egs = factor_vocab(vocab)
+    if A.get("res_mode", "tb") == "tb":
+        lz = np.load(paths.derived(f"tb_entry_5-4-3men_{n}.npz"), allow_pickle=True)
+        vocab = [str(x) for x in lz["vocab"]]
+        cr, ce, co, egs = factor_vocab(vocab)
+    else:
+        vocab, egs = ["W", "D", "L"], ["-"]
+        cr = np.zeros(3, np.int64); ce = np.zeros(3, np.int64)
+        co = np.arange(3, dtype=np.int64)
     net = GraphConceptField(d=A["d_model"], layers=A["layers"], slow_heads=A["slow_heads"],
+                            g_heads=A.get("g_heads", 16), g_codes=A.get("g_codes", 32),
+                            d_code=A.get("d_code", 32), elo_cond=bool(A.get("elo", 0)),
                             n_res=len(vocab), n_eg=len(egs),
                             cls_reach=cr, cls_eg=ce, cls_out=co,
                             edge_codes=A.get("edge_codes", 0), move_codes=A.get("move_codes", 0),

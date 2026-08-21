@@ -85,7 +85,9 @@ class ConceptTree(nn.Module):
             return v_here
         z2, w = self._expand_slots(z)                      # (N,B,d), (N,B)
         flat = z2.reshape(-1, z2.shape[-1])
-        v_child = self._recurse(flat, depth - 1, ~white_pov if isinstance(white_pov, torch.Tensor) else (not white_pov))
+        wp = white_pov if torch.is_tensor(white_pov) else torch.full(
+            (z.shape[0],), bool(white_pov), device=z.device, dtype=torch.bool)
+        v_child = self._recurse(flat, depth - 1, (~wp).repeat_interleave(self.beam))
         v_child = v_child.reshape(z.shape[0], self.beam)
         # child values are OPPONENT-POV; negamax: my value of a reply set = -softbackup(-(-v))
         # children maximize their own POV, I see the negation, weighted by slot plausibility
@@ -341,8 +343,15 @@ def main():
                     root_v = tree._value(zq2, WHITE_ROOT[gi].to(dev))
                     filled = torch.where(torch.isnan(qreal),
                                          root_v[:, None].expand_as(qreal), qreal)
+                    # mctx qtransform: min-max normalize Q across legal moves per position
+                    # so sigma spans the full range regardless of margin compression
+                    big = filled.masked_fill(~mask2, float("inf"))
+                    qmin = big.min(dim=1, keepdim=True).values
+                    qmax = filled.masked_fill(~mask2, float("-inf")).max(
+                        dim=1, keepdim=True).values
+                    qn = (filled - qmin) / (qmax - qmin).clamp(min=1e-6)
                     tgt = torch.softmax(
-                        (prior_g + args.sigma * filled).masked_fill(~mask2, -1e9), -1)
+                        (prior_g + args.sigma * qn).masked_fill(~mask2, -1e9), -1)
             prior_live = None
             sqf, mvf2, edges, mask2 = parent_batch(gi)
             zq3, _, _, _, hmv3, _ = field.encode(sqf, mvf2, edges, mask2, elo=elo_g)
@@ -371,7 +380,7 @@ def main():
             print(f"[gct] step {step:>5}/{args.steps} {el/60:>5.1f}m "
                   f"({el/max(1,step):.3f}s/step) | tree {float(l_tree.detach()):.3f} "
                   f"prior {float(l_prior.detach()):.3f} tdleaf {float(l_tdleaf.detach()):.4f} "
-                  f"gum {float(l_gum.detach()):.4f} | HELD-OUT searched-top1 {s1/tot:.3f} "
+                  f"gum {float(l_gum.detach()):.6f} | HELD-OUT searched-top1 {s1/tot:.3f} "
                   f"prior-top1 {p1/tot:.3f} ({(s1-p1)/tot:+.3f} from the tree)", flush=True)
             m = {"searched_top1": s1 / tot, "prior_top1": p1 / tot}
             field.train(); tree.train()
