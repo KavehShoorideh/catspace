@@ -22,11 +22,20 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
 ## 2. Components (tensor contracts)
 - Trunk + concept heads: GraphConceptField (gcf4h arch; warm-start gcf4h_latest),
   z_state = zq in R^{d_state}; move tokens: mv_vq codes c(m) in {0..63}.
-- KoopmanOps module: z' = clamp_spectral(A + B_{c(m)}) z
-    A in R^{d x d} shared; B_c LOW-RANK (U_c V_c^T, rank r=16) per move-code; spectral
-    clamp: power-iteration estimate of rho(A+B_c), penalty max(0, rho - 1.02)^2
-    (Koopman Dreamer's stabilizer, penalty form). Null-move operator: B_null == 0 and
-    A initialized at I (identity-at-init invariant).
+- KoopmanOps module (v1, INTERACTION-AWARE VIA THE LIFTING -- Kaveh 2026-08-21:
+  "if both concepts a and b are present, the evolution of both will be different"):
+    z_aug = [z ; phi(z)]  with phi = learned low-rank pairwise interaction features
+    (128 dims: bilinear layer over head embeddings, jointly trained). Operators are
+    STRICTLY LINEAR on z_aug: z_aug' = clamp_spectral(A + B_{c(m)}) z_aug -- the
+    Koopman-orthodox move: lift past nonlinearity, keep the algebra (composition,
+    spectra, persistence rulebook all intact on the augmented space).
+    A shared; B_c low-rank (U_c V_c^T, r=16) per move-code; spectral clamp via
+    power iteration, penalty max(0, rho - 1.02)^2. Null move: B == 0, A init = I.
+  v2 FLAG-GATED (switching-linear, Kaveh's literal mechanism): + Sum_h E_h[code_h]
+    low-rank code-conditioned terms (rSLDS-style). TRIGGER, pre-registered: one-ply
+    residuals stratified by co-active code PAIRS still dominated by specific pairs
+    despite phi -- then v2 turns on for those heads; costs trajectory-varying
+    operators (codes re-read from predictions at each ply; compounding risk noted).
 - Interval head: MLP([zq ; e_code(m)]) -> (dv, softplus lo-off, softplus hi-off)
   (the gciv architecture, now unfrozen and joint).
 - Oracle heads: SF action-value distribution per move — HL-Gauss binned classification,
@@ -74,7 +83,10 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
   (both favor non-explosive slow dynamics, aligned).
 
 ## 5. Invariants + unit tests (all must pass BEFORE any long run)
-  U1  operator identity: A:=I, B:=0 => z' == z exactly (null-move fixed point)
+  U1  operator identity: A:=I, B:=0 => z_aug' == z_aug exactly (null-move fixed point)
+  U1b phi consistency: the z-part of a composed rollout stays consistent with re-lifting
+      (||phi(z'_pred) - phi-part of z_aug'|| tracked; drift bounded on synthetic linear
+      systems with known quadratic observables)
   U2  spectral clamp: rho estimate within 5% of torch.linalg.eigvals on random 64x64
   U3  composability algebra: op(op(z,m1),m2) == matmul-composed (A+B2)(A+B1) z (fp32 tol)
   U4  ridge-fit cross-check: closed-form per-code operator fit on synthetic linear data
@@ -102,7 +114,8 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
 ## 6. Evaluation gates + ablations
   - ChessBench test set: action-value Spearman + top1-vs-SF; puzzles solve-rate.
   - Their data-scale curve with our query-count points (H3 headline).
-  - Operator table: 1/3/6-ply R2 vs MLP dyn (H1); per-horizon error growth curve
+  - Operator table: 1/3/6-ply R2 vs MLP dyn (H1); per-horizon error growth curve;
+    INTERACTION RESIDUAL TABLE: one-ply residual by co-active code pair (the v2 trigger)
     (the composability signature: sub-exponential for ops, exponential for MLP chains);
     persistence-table accuracy.
   - Intervals: coverage/width vs the frozen gciv1 "before" row (H2); pruning power
