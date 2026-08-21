@@ -17,29 +17,56 @@ import time
 import numpy as np
 
 
+MV_CAP = 48
+
+
+def _order_cache(fens, path="data/derived/gko1_chain_move_order.npz"):
+    """One-time: uci move order per chain row (python-chess legal_moves order --
+    the same order the graph cache's mv slots use)."""
+    import os
+    if os.path.exists(path):
+        return np.load(path, allow_pickle=True)["ucis"]
+    import chess
+    t0 = time.time()
+    ucis = []
+    for i, f in enumerate(fens):
+        b = chess.Board(f)
+        ucis.append(" ".join(m.uci() for m in list(b.legal_moves)[:MV_CAP]))
+        if i and i % 100000 == 0:
+            print(f"  [order] {i:,}/{len(fens):,} [{time.time()-t0:.0f}s]", flush=True)
+    ucis = np.array(ucis)
+    np.savez_compressed(path, ucis=ucis)
+    print(f"  [order] cached {len(ucis):,} rows [{time.time()-t0:.0f}s]", flush=True)
+    return ucis
+
+
 def build_once(out="data/derived/gko1_chain_values.npz"):
     t0 = time.time()
     cf = np.load("data/derived/gko1_chain_fens.npz", allow_pickle=False)
     fens = [str(x) for x in cf["fen"]]
+    order = _order_cache(fens)
     c = sqlite3.connect("file:data/derived/gko1_oracle.sqlite?mode=ro", uri=True,
                         timeout=90)
     c.execute("PRAGMA busy_timeout=60000")
-    fset = set(fens)
-    vals = {}
-    for fen, payload in c.execute("SELECT fen, payload FROM labels WHERE oracle='sf'"):
-        if fen in fset:
-            wp = json.loads(payload).get("wp", {})
-            if wp:
-                vals[fen] = max(wp.values())
-    c.close()
+    fset = {f: i for i, f in enumerate(fens)}
     v = np.full(len(fens), np.nan, np.float32)
-    for i, f in enumerate(fens):
-        if f in vals:
-            v[i] = vals[f]
+    wpv = np.full((len(fens), MV_CAP), np.nan, np.float16)
+    for fen, payload in c.execute("SELECT fen, payload FROM labels WHERE oracle='sf'"):
+        i = fset.get(fen)
+        if i is None:
+            continue
+        wp = json.loads(payload).get("wp", {})
+        if not wp:
+            continue
+        v[i] = max(wp.values())
+        for j, u in enumerate(order[i].split()):
+            if u in wp:
+                wpv[i, j] = wp[u]
+    c.close()
     ok = int(np.isfinite(v).sum())
-    np.savez_compressed(out, v=v)
-    print(f"[cv] {ok:,}/{len(fens):,} chain rows valued ({100*ok/len(fens):.1f}%) "
-          f"[{time.time()-t0:.0f}s]", flush=True)
+    np.savez_compressed(out, v=v, wp=wpv)
+    print(f"[cv] {ok:,}/{len(fens):,} chain rows valued ({100*ok/len(fens):.1f}%), "
+          f"full action-value vectors included [{time.time()-t0:.0f}s]", flush=True)
     return ok / len(fens)
 
 

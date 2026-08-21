@@ -65,6 +65,12 @@ def main():
     ap.add_argument("--w-v0", type=float, default=0.5, help="state-value grounding at k=0")
     ap.add_argument("--w-vk", type=float, default=1.0, help="ROLLED future-value vs SF truth")
     ap.add_argument("--chain-values", default="data/derived/gko1_chain_values.npz")
+    ap.add_argument("--w-cons", type=float, default=0.15, help="hypothesis-validity AND "
+                    "joint dictionary search: carried phi vs the dictionary at the rolled "
+                    "state, gradients BOTH ways (Kaveh: the lift must help the dynamics "
+                    "be linear; collapse is priced by oracle saturation, not detaching)")
+    ap.add_argument("--w-av", type=float, default=1.0, help="future ACTION-VALUE profiles "
+                    "from rolled states (the full multipv, ~30 oracle targets/state)")
     ap.add_argument("--op-rank", type=int, default=16)
     ap.add_argument("--chain-batch", type=int, default=16)
     ap.add_argument("--op6-after", type=int, default=2000)
@@ -156,6 +162,10 @@ def main():
                 self.sf_v = nn.Sequential(
                     nn.Linear(self.lift.d_aug, 256), nn.GELU(),
                     nn.Linear(256, args.k_bins))
+                # per-move future action-values from ROLLED states: [z_aug ; mv_emb]
+                self.av_roll = nn.Sequential(
+                    nn.Linear(self.lift.d_aug + 64, 512), nn.GELU(),
+                    nn.Linear(512, args.k_bins))
     model = GKO().to(dev)
     if args.resume_self:
         ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
@@ -220,11 +230,13 @@ def main():
         row_elo_n = _ne(rel.astype(np.float32))
         print(f"[gko1] chains {len(CH_pos):,} ({len(ch_te):,} held out by GAME) | "
               f"graphs {args.chain_graphs}", flush=True)
-        CHV = None
+        CHV = CHW = None
         if os.path.exists(args.chain_values):
-            CHV = np.load(args.chain_values)["v"]
-            print(f"[gko1] chain values: {int(np.isfinite(CHV).sum()):,} rows valued",
-                  flush=True)
+            _z = np.load(args.chain_values)
+            CHV = _z["v"]
+            CHW = _z["wp"].astype(np.float32) if "wp" in _z.files else None
+            print(f"[gko1] chain values: {int(np.isfinite(CHV).sum()):,} rows valued"
+                  f" (av vectors: {'yes' if CHW is not None else 'no'})", flush=True)
 
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att",
             "kind", "band", "tgt")
@@ -264,10 +276,12 @@ def main():
     model_has_v = args.ops and hasattr(model, "sf_v")
 
     def refresh_store():
-        nonlocal D, N, tr_i, te_i, hold, CHV
+        nonlocal D, N, tr_i, te_i, hold, CHV, CHW
         if args.ops and os.path.exists(args.chain_values):
             try:
-                CHV = np.load(args.chain_values)["v"]
+                _z = np.load(args.chain_values)
+                CHV = _z["v"]
+                CHW = _z["wp"].astype(np.float32) if "wp" in _z.files else None
             except Exception:
                 pass
         if rescan():
@@ -362,6 +376,12 @@ def main():
             if k in (0, 2, 5):
                 merr[k] = F.mse_loss(s, zq_c[:, k])
         l_mlp = merr[0] + merr[2] + merr[5]
+        l_cons = torch.zeros((), device=dev)
+        if args.w_cons > 0:
+            ds_ = model.lift.d_state
+            for k in (1, 3, 6):
+                l_cons = l_cons + F.mse_loss(traj[:, k - 1, ds_:],
+                                             model.lift.phi(traj[:, k - 1, :ds_]))
         l_v = torch.zeros((), device=dev)
         v_n = 0
         if CHV is not None and model_has_v:
@@ -372,6 +392,7 @@ def main():
                 l_v = l_v + args.w_v0 * hl.ce(model.sf_v(za0[m0]), vt0[m0])
                 v_n += int(m0.sum())
             w6r = min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
+            mvc_all = mvc.reshape(cb, 6, MV_CAP, -1)
             for k, wk in ((1, 1.0), (3, 1.0), (6, w6r)):
                 if wk <= 0:
                     continue
@@ -381,6 +402,24 @@ def main():
                     l_v = l_v + args.w_vk * wk * hl.ce(model.sf_v(traj[:, k - 1][mk]),
                                                        vtk[mk])
                     v_n += int(mk.sum())
+                if CHW is not None and args.w_av > 0:
+                    wpk = torch.from_numpy(CHW[ci[:, k]]).to(dev)      # (cb, MV_CAP)
+                    fm = torch.isfinite(wpk)
+                    if fm.any():
+                        emb = model.field.mv_emb(mvc_all[:, k - 1])
+                        x = torch.cat([traj[:, k - 1][:, None, :].expand(
+                            -1, MV_CAP, -1), emb], -1)
+                        l_v = l_v + args.w_av * wk * hl.ce(
+                            model.av_roll(x)[fm], wpk[fm])
+                        v_n += int(fm.sum())
+            if CHW is not None and args.w_av > 0:
+                wp0 = torch.from_numpy(CHW[ci[:, 0]]).to(dev)
+                fm0 = torch.isfinite(wp0)
+                if fm0.any():
+                    emb0 = model.field.mv_emb(mvf)
+                    x0 = torch.cat([za0[:, None, :].expand(-1, MV_CAP, -1), emb0], -1)
+                    l_v = l_v + args.w_av * hl.ce(model.av_roll(x0)[fm0], wp0[fm0])
+                    v_n += int(fm0.sum())
             assert not vt0.requires_grad
         l_slow = l_dec = torch.zeros((), device=dev)
         vamp_v = 0.0
@@ -399,7 +438,7 @@ def main():
             l_dec = vicreg_covariance(pg0.reshape(len(vb), -1)[:, sl:])
         w6 = args.w_op6 * min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
         total = (args.w_op1 * l1 + args.w_op3 * l3 + w6 * l6 +
-                 args.w_spec * l_spec + l_mlp + l_v +
+                 args.w_spec * l_spec + l_mlp + l_v + args.w_cons * l_cons +
                  args.w_move * l_move + args.w_dyn2 * l_dyn2 +
                  args.w_slow * l_slow * args.vamp_every + args.w_dec * l_dec * args.vamp_every)
         with torch.no_grad():
@@ -407,7 +446,8 @@ def main():
         return total, {"op1": float(l1), "op3": float(l3), "op6": float(l6),
                        "mlp": float(l_mlp), "rho": float(rho.max()), "cons6": cons6,
                        "move": float(l_move), "dyn2": float(l_dyn2), "vamp": vamp_v,
-                       "lv": float(l_v), "vn": v_n}
+                       "lv": float(l_v), "vn": v_n, "cons_l": float(l_cons),
+                       "phivar": float(model.lift.phi(zq_p.detach()).std(0).mean())}
 
     @torch.no_grad()
     def op_eval(n_ch=384):
@@ -441,6 +481,24 @@ def main():
                 s = model.dyn_z(torch.cat([s, model.field.mv_emb(toks[:, k])], -1))
                 if k in (0, 2, 5):
                     mlp_s[k] = s
+            if CHW is not None and model_has_v and hasattr(model, "av_roll"):
+                from scipy.stats import spearmanr as _sp
+                mvc_all2 = mvc.reshape(len(ci), 6, MV_CAP, -1)
+                for kk, key in ((1, "a1"), (3, "a3"), (6, "a6")):
+                    wpk = torch.from_numpy(CHW[ci[:, kk]]).to(zq_p.device)
+                    emb = model.field.mv_emb(mvc_all2[:, kk - 1])
+                    x = torch.cat([traj[:, kk - 1][:, None, :].expand(-1, MV_CAP, -1),
+                                   emb], -1)
+                    pv = hl.decode(model.av_roll(x))
+                    for r in range(len(ci)):
+                        fm = torch.isfinite(wpk[r])
+                        if int(fm.sum()) > 3:
+                            c_ = _sp(pv[r][fm].cpu().numpy(),
+                                     wpk[r][fm].cpu().numpy()).statistic
+                            if np.isfinite(c_):
+                                agg.setdefault(key, [0.0, 0.0])
+                                agg[key][0] += c_
+                                agg[key][1] += 1.0
             if CHV is not None and model_has_v:
                 for kk, key in ((1, "v1"), (3, "v3"), (6, "v6")):
                     vt = torch.from_numpy(CHV[ci[:, kk]]).to(zq_p.device)
@@ -462,6 +520,8 @@ def main():
         for k, v in agg.items():
             if k.startswith("v"):
                 out2[k] = v[0] / max(v[1], 1e-9)      # MAE, wp units
+            elif k.startswith("a"):
+                out2[k] = v[0] / max(v[1], 1e-9)      # mean spearman
             else:
                 out2[k] = 1.0 - v[0] / max(v[1], 1e-9)
         return out2
@@ -586,7 +646,10 @@ def main():
                        f" vamp {op_d.get('vamp', 0):.1f}/32"
                        + (f" | vMAE {r2.get('v1', -1):.3f}/{r2.get('v3', -1):.3f}/"
                           f"{r2.get('v6', -1):.3f} vn {op_d.get('vn', 0)}"
-                          if "v1" in r2 else ""))
+                          if "v1" in r2 else "")
+                       + f" phivar {op_d.get('phivar', 0):.4f}"
+                       + (f" | avSp {r2.get('a1', -1):.3f}/{r2.get('a3', -1):.3f}/"
+                          f"{r2.get('a6', -1):.3f}" if "a1" in r2 else ""))
                 out.update({f"op_r2_{k}": v for k, v in r2.items()})
                 if r2["i1"] < 0.5:
                     print(f"[gko1] ALARM identity-R2@1 {r2['i1']:.3f} < 0.5 -- "
