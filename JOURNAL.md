@@ -15437,3 +15437,32 @@ conditioning, Gumbel targets mctx-normalized (the q-normalization fix took gum f
 to 0.70 -- unnormalized margins were too compressed to move the targets). 4000 steps,
 ~85 min. Headline metric printed every eval: held-out searched-top1 vs prior-top1 vs
 gcf3's plain 0.292.
+
+---
+
+## 2026-08-20 20:45 — gct1 VERDICT: trunk transfer works; the tree contributed ZERO, and
+## the artifact says exactly why
+
+**Transfer: the human trunk reached SF-native prediction.** Fine-tuned to held-out
+SF-move top1 0.292 = gcf3's number, from a human start, in 4000 steps. Human concepts are
+not a handicap for engine prediction.
+
+**The tree: null, mechanism verified on the checkpoint.** searched-top1 == prior-top1
+(+-0.000 the whole run). Postmortem measured on gct1_latest over 64 positions:
+
+    Q spread across the beam per position:   0.00000
+    cosine(sibling-1 child, sibling-2 child): 1.00000
+    prior top-3 logit spread (for scale):     1.325
+
+The dynamics head's expected-code children are IDENTICAL across sibling moves: its
+move-conditioning is so weak that per-move code distributions coincide, so the value head
+saw one state three times and the backup was a constant. This triangulates with two prior
+instruments: the UI's per-move concept chips showing identical flips across moves, and
+dyn_g ~0.10. ROOT CAUSE (the sibling-blindness pattern at the DYNAMICS level): dyn trains
+only on PLAYED moves -- one move per position -- so it never receives gradient
+distinguishing moves, and learned to predict the average child regardless of the move
+input.
+
+The null is NOT evidence against search-in-training; it is evidence the transition model
+must be move-sensitive before any tree over it can discriminate. Fix option space drafted
+for Kaveh (contrastive move-sensitivity / CF alt-transition data / real-board beam).
