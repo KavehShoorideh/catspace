@@ -77,6 +77,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="artifacts/experiments/gko0")
     args = ap.parse_args()
+    if args.iv_frozen:
+        args.iv = True          # the head must exist at model build time
     torch.set_num_threads(args.threads); torch.manual_seed(args.seed)
     dev = args.device
 
@@ -132,7 +134,6 @@ def main():
               f"{len(miss)} new keys init fresh, {len(unex)} unexpected)", flush=True)
     hl = HLGauss(k=args.k_bins).to(dev)
     if args.iv_frozen:
-        args.iv = True
         for pr in model.field.parameters():
             pr.requires_grad_(False)
         for pr in model.sf_av.parameters():
