@@ -119,6 +119,9 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
   U15 the flat-Q lesson: any score-combination path reduces to its base when the added
       signal is constant (searched==prior class of invariants, applied to acquisition
       and to interval-adjusted orderings)
+  U16 metrics sanity: every logged metric MOVES when its input is perturbed (no
+      constant/disconnected gauges); a planted NaN triggers the pause-alarm path end
+      to end in a synthetic dry run
 
 ## 6. Evaluation gates + ablations
   - ChessBench test set: action-value Spearman + top1-vs-SF; puzzles solve-rate.
@@ -133,7 +136,28 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
     ConceptAlphaBeta — strength-per-node frontier.
   - Concept health: alignment eval + decor + effective-rank gate (standing rule).
 
-## 7. Risks
+## 7. Observability (Kaveh 2026-08-21: "proper logs and metrics so you can check on
+## the health")
+- TRAINER (every eval, MLflow via scaffold + live_curves jsonl/png/html dashboard --
+  the "watchable, not just logged" standard): every loss term; per-horizon operator R2
+  (1/3/6); interval coverage + width on the dev slice; distill fidelity (action-value
+  Spearman on a FIXED 5k dev set); code-usage entropy per head + EFFECTIVE RANK
+  (bootstrapped -- the standing collapse gate); decor; grad-norm; steps/sec.
+- PRODUCER (per-minute heartbeat line + per-window summary in producer.log):
+  queries/sec, oracle latency p50/p95, queue depth, label-store rows, cache hit rate,
+  engine restarts, SF-vs-maia band mix, and the DISTRIBUTION of acquisition scores
+  among claimed rows (drift check: is the scorer still discriminating).
+- PIPELINE: snapshot staleness (steps since refresh), fresh-label fraction per batch,
+  labeled/consumed ratio (starvation and overrun both alarm).
+- HEALTH GATES (auto-alarm via watchdog; PAUSE both processes, never silent-kill):
+  coverage outside [nominal-0.02, nominal+0.10]; effective rank down >20% from start;
+  op R2@1 falling 3 consecutive evals; queue starved >15 min; any NaN anywhere.
+- Watchdogs: PID-based on producer AND consumer, swap guard, queue-stall detection,
+  30-min heartbeats into the session (the day's watchdog lineage, both scars encoded).
+- Files: artifacts/experiments/gko1/{train.log, producer.log, metrics.jsonl,
+  dashboard.html}; verdicts land in JOURNAL with printed numbers only (standing rule).
+
+## 8. Risks
   - Hard code-flips may defeat linear ops (captures): measured by L_op1 stratified by
     move type; if capture rows dominate the residual, ops get a capture-conditioned
     rank boost r=32 for capture codes (flag-gated, pre-registered).
@@ -142,12 +166,13 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
     (gcf4h trunk, gciv-style head init), operator A at identity, ramp L_op3 after 1k.
   - Pool staleness: acquisition re-scores every round on the CURRENT model.
 
-## 8. Build order (each step lands with its unit tests green)
+## 9. Build order (each step lands with its unit tests green)
   1. vendored bagz reader + ChessBench test loader (U11); game_transitions cache for
      both corpora (the 6-ply composition targets)
   2. hl_gauss.py (U5) ; ops module (U1-U4) ; interval head reuse (U6-U7)
   3. oracle_service.py (U9) + maia weights fetch
   4. acquisition.py (U10, U15)
-  5. gko trainer assembling all (U12-U14) ; invariant review script that GATES
+  5. gko trainer assembling all (U12-U14) ; observability wiring (U16) ; invariant
+     review script that GATES
   6. smoke (crash/scale only) -> round-0 bootstrap (gciv scorer) -> launch producer
      FIRST (warm the label store while units finalize), consumer joins when gates pass
