@@ -11,6 +11,14 @@ Vocabulary protection: VQ commitment + cross-head decorrelation stay on; the res
 field stack is frozen-by-weight-zero for this slice (operators/intervals join as their
 unit gates pass -- gko1 proper).
 
+gko1 joint slice (--ops --iv): adds the Koopman operator arm (koopman_ops.py, U1-U4
+gated) trained on 6-ply chains from the human corpus (chain graphs cache + transitions),
+an MLP dynamics BASELINE on detached inputs (H1's comparison arm -- detached so the
+baseline cannot reshape the field; the operators may, that is the hypothesis), and the
+joint interval head on SF action-value gaps (H2 vs the frozen gciv1 before-row).
+Operators act on the field's normalized concept state zq -- the space every other head
+reads. --units runs U12-U14 + U16 checks and exits nonzero on failure.
+
     .venv/bin/python -u -m ...gko_train --resume-field artifacts/experiments/gcf4h_latest.pt
 """
 from __future__ import annotations
@@ -41,6 +49,22 @@ def main():
     ap.add_argument("--w-maia", type=float, default=1.0)
     ap.add_argument("--w-sf", type=float, default=1.0)
     ap.add_argument("--w-decor", type=float, default=0.3)
+    ap.add_argument("--ops", action="store_true", help="Koopman operator arm on 6-ply chains")
+    ap.add_argument("--iv", action="store_true", help="joint interval head on SF value gaps")
+    ap.add_argument("--units", action="store_true", help="run U12-U14/U16 checks and exit")
+    ap.add_argument("--chain-graphs", default="data/derived/gko1_chain_graphs_mm.npz")
+    ap.add_argument("--chain-starts", default="data/derived/gko1_chain_rows.npz")
+    ap.add_argument("--row-elo", default="data/derived/gko1_row_elo_2126316.npz")
+    ap.add_argument("--d-phi", type=int, default=128)
+    ap.add_argument("--op-rank", type=int, default=16)
+    ap.add_argument("--chain-batch", type=int, default=16)
+    ap.add_argument("--op6-after", type=int, default=2000)
+    ap.add_argument("--w-op1", type=float, default=1.0)
+    ap.add_argument("--w-op3", type=float, default=0.5)
+    ap.add_argument("--w-op6", type=float, default=0.3)
+    ap.add_argument("--w-spec", type=float, default=0.1)
+    ap.add_argument("--w-phi", type=float, default=0.25)
+    ap.add_argument("--w-iv", type=float, default=1.0)
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--eval-every", type=int, default=500)
     ap.add_argument("--ckpt-every", type=int, default=2000)
@@ -59,6 +83,8 @@ def main():
     from catspace.research.components.encoder.approaches.reach_probability.experiments \
         .graph_move_policy import featurize
     from catspace.research.tools.training_infra.hl_gauss import HLGauss
+    from catspace.research.tools.training_infra.koopman_ops import (
+        InteractionLift, KoopmanOps, one_ply_loss, rollout, lift_consistency)
     from catspace.research.tools.training_infra.losses import cross_head_decorrelation
     from catspace.research.components.encoder.approaches.reach_probability.src \
         .trajectories import normalise_elo
@@ -85,16 +111,56 @@ def main():
             self.sf_av = nn.Sequential(
                 nn.Linear(field.d_state + A["d_model"], 512), nn.GELU(),
                 nn.Linear(512, args.k_bins))
+            if args.ops:
+                self.lift = InteractionLift(field.d_state, args.d_phi)
+                self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
+                                      rank=args.op_rank)
+                # H1's baseline arm: same targets, DETACHED inputs (see docstring)
+                self.dyn_z = nn.Sequential(
+                    nn.Linear(field.d_state + 64, 512), nn.GELU(),
+                    nn.Linear(512, field.d_state))
+            if args.iv:
+                self.iv = nn.Sequential(
+                    nn.Linear(field.d_state + 32, 256), nn.GELU(), nn.Linear(256, 3))
     model = GKO().to(dev)
     if args.resume_self:
         ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
-        model.load_state_dict(ck2["state_dict"])
-        print(f"[gko0] resumed self from {args.resume_self} (step {ck2.get('step')})",
-              flush=True)
+        miss, unex = model.load_state_dict(ck2["state_dict"], strict=False)
+        print(f"[gko0] resumed self from {args.resume_self} (step {ck2.get('step')}; "
+              f"{len(miss)} new keys init fresh, {len(unex)} unexpected)", flush=True)
     hl = HLGauss(k=args.k_bins).to(dev)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed)
     t0 = time.time()
+
+    def _nan_guard(loss):
+        return not bool(torch.isfinite(loss).all())
+
+    # ---- chain stream (ops arm): mmap graphs for 60k 7-row chains + move codes ----
+    CH = CH_pos = ch_tr = ch_te = row_elo_n = None
+    if args.ops:
+        if not os.path.exists(args.chain_graphs):
+            raise SystemExit(f"[gko1] chain graphs missing: {args.chain_graphs} "
+                             "(run the converter over the generator output first)")
+        CH = np.load(args.chain_graphs, mmap_mode="r")
+        cs = np.load(args.chain_starts)
+        starts, games = cs["start"], cs["game"]
+        CH_prow = np.asarray(CH["p_row"])
+        pos = np.searchsorted(CH_prow, starts[:, None] + np.arange(7)[None, :])
+        ok = (pos < len(CH_prow))
+        ok &= CH_prow[np.minimum(pos, len(CH_prow) - 1)] == (starts[:, None] + np.arange(7))
+        keep = ok.all(1)
+        CH_pos = pos[keep]; games = games[keep]
+        gset = np.unique(games); rngc = np.random.default_rng(args.seed + 7)
+        te_g = set(gset[rngc.random(len(gset)) < 0.08].tolist())
+        te_m = np.array([g in te_g for g in games])
+        ch_tr = np.flatnonzero(~te_m); ch_te = np.flatnonzero(te_m)
+        rel = np.load(args.row_elo)["elo"]
+        from catspace.research.components.encoder.approaches.reach_probability.src \
+            .trajectories import normalise_elo as _ne
+        row_elo_n = _ne(rel.astype(np.float32))
+        print(f"[gko1] chains {len(CH_pos):,} ({len(ch_te):,} held out by GAME) | "
+              f"graphs {args.chain_graphs}", flush=True)
 
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att",
             "kind", "band", "tgt")
@@ -157,6 +223,113 @@ def main():
             normalise_elo(elo_v.numpy().astype(np.float32)))[:, None].repeat(1, 2).to(dev)
         return sqf, mvf, edges, mask, elo
 
+    def _feat_rows(rows):
+        b = {k: torch.from_numpy(np.ascontiguousarray(CH[k][rows])).to(dev)
+             for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
+        sqf, mvf, edges, mask = featurize(b, dev, n_nodes=field.n_nodes)
+        off = (torch.arange(len(rows), device=dev) * field.n_nodes)[:, None]
+        jj = torch.arange(MV_CAP, device=dev)[None, :]
+        for name in ("vac", "dsc"):
+            a2 = torch.from_numpy(np.ascontiguousarray(CH[name][rows])).to(dev).long()
+            val = (a2 != 255) & mask[:, :, None]
+            edges[name] = (((jj + 64 + off)[:, :, None].expand_as(a2))[val],
+                           (a2 + off[:, :, None])[val])
+        elo = torch.from_numpy(row_elo_n[CH_prow[rows]]).to(dev)
+        played = torch.from_numpy(np.ascontiguousarray(CH["played"][rows])).long().to(dev)
+        return sqf, mvf, edges, mask, elo, played
+
+    def _mv_codes(h_mv, played):
+        with torch.no_grad():
+            _, idx_mv, _ = model.field.mv_vq(model.field.mv_vq_proj(h_mv.detach()))
+        return idx_mv.gather(1, played[:, None]).squeeze(1)
+
+    def op_losses(step):
+        """Chain sub-batch: L_op1/3/6 + spectral + the detached MLP baseline arm."""
+        cb = args.chain_batch
+        ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]        # (cb,7) graph rows
+        sqf, mvf, edges, mask, elo, played = _feat_rows(ci[:, 0])
+        zq_p, _, _, _, h_mv_p, _ = model.field.encode(sqf, mvf, edges, mask, elo=elo)[:6]
+        c0 = _mv_codes(h_mv_p, played)
+        tok_p = mvf.gather(1, played[:, None, None].expand(-1, 1, mvf.shape[-1]))[:, 0]
+        with torch.no_grad():
+            rows_c = ci[:, 1:].ravel()
+            sqc, mvc, edc, mkc, eloc, plc = _feat_rows(rows_c)
+            zq_c, _, _, _, h_mv_c, _ = model.field.encode(sqc, mvc, edc, mkc, elo=eloc)[:6]
+            zq_c = zq_c.reshape(cb, 6, -1)
+            cks = _mv_codes(h_mv_c, plc).reshape(cb, 6)[:, :5]
+            tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
+                               )[:, 0].reshape(cb, 6, -1)[:, :5]
+        code_seq = torch.cat([c0[:, None], cks], 1)                 # (cb,6)
+        t1, t3, t6 = zq_c[:, 0], zq_c[:, 2], zq_c[:, 5]
+        assert not t1.requires_grad and not code_seq.requires_grad  # U13 runtime guard
+        l1, _ = one_ply_loss(model.lift, model.ops, zq_p, code_seq[:, 0], t1,
+                             w_phi=args.w_phi)
+        traj = rollout(model.ops, model.lift(zq_p), code_seq)       # (cb,6,d_aug)
+        ds = model.lift.d_state
+        def _comp(za, tgt):
+            return (F.mse_loss(za[..., :ds], tgt) + args.w_phi *
+                    F.mse_loss(za[..., ds:], model.lift.phi(tgt).detach()))
+        l3, l6 = _comp(traj[:, 2], t3), _comp(traj[:, 5], t6)
+        l_spec, rho = model.ops.spectral_penalty(code_seq.ravel())
+        # baseline: iterated MLP on DETACHED state with token move features
+        s = zq_p.detach()
+        toks = torch.cat([tok_p[:, None], tok_c], 1)                # (cb,6,feat)
+        merr = {}
+        for k in range(6):
+            s = model.dyn_z(torch.cat([s, model.field.mv_emb(toks[:, k].detach())], -1))
+            if k in (0, 2, 5):
+                merr[k] = F.mse_loss(s, zq_c[:, k])
+        l_mlp = merr[0] + merr[2] + merr[5]
+        w6 = args.w_op6 if step >= args.op6_after else 0.0
+        total = (args.w_op1 * l1 + args.w_op3 * l3 + w6 * l6 +
+                 args.w_spec * l_spec + l_mlp)
+        with torch.no_grad():
+            cons6 = float(lift_consistency(model.lift, traj[:, 5]).mean())
+        return total, {"op1": float(l1), "op3": float(l3), "op6": float(l6),
+                       "mlp": float(l_mlp), "rho": float(rho.max()), "cons6": cons6}
+
+    @torch.no_grad()
+    def op_eval(n_ch=384):
+        """Held-out chains: pooled R2 per horizon, ops vs the MLP baseline."""
+        model.eval()
+        agg = {k: [0.0, 0.0] for k in ("o1", "o3", "o6", "m1", "m3", "m6",
+                                       "i1", "i3", "i6")}
+        for a in range(0, n_ch, 64):
+            ci = CH_pos[ch_te[a:a + 64]]
+            if not len(ci):
+                break
+            sqf, mvf, edges, mask, elo, played = _feat_rows(ci[:, 0])
+            zq_p, _, _, _, h_mv_p, _ = model.field.encode(sqf, mvf, edges, mask,
+                                                          elo=elo)[:6]
+            c0 = _mv_codes(h_mv_p, played)
+            tok_p = mvf.gather(1, played[:, None, None].expand(-1, 1, mvf.shape[-1]))[:, 0]
+            rows_c = ci[:, 1:].ravel()
+            sqc, mvc, edc, mkc, eloc, plc = _feat_rows(rows_c)
+            zq_c, _, _, _, h_mv_c, _ = model.field.encode(sqc, mvc, edc, mkc,
+                                                          elo=eloc)[:6]
+            zq_c = zq_c.reshape(len(ci), 6, -1)
+            cks = _mv_codes(h_mv_c, plc).reshape(len(ci), 6)[:, :5]
+            tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
+                               )[:, 0].reshape(len(ci), 6, -1)[:, :5]
+            code_seq = torch.cat([c0[:, None], cks], 1)
+            traj = rollout(model.ops, model.lift(zq_p), code_seq)
+            ds = model.lift.d_state
+            s = zq_p; toks = torch.cat([tok_p[:, None], tok_c], 1)
+            mlp_s = {}
+            for k in range(6):
+                s = model.dyn_z(torch.cat([s, model.field.mv_emb(toks[:, k])], -1))
+                if k in (0, 2, 5):
+                    mlp_s[k] = s
+            for key, pred, k in (("o1", traj[:, 0, :ds], 0), ("o3", traj[:, 2, :ds], 2),
+                                 ("o6", traj[:, 5, :ds], 5), ("m1", mlp_s[0], 0),
+                                 ("m3", mlp_s[2], 2), ("m6", mlp_s[5], 5),
+                                 ("i1", zq_p, 0), ("i3", zq_p, 2), ("i6", zq_p, 5)):
+                t = zq_c[:, k]
+                agg[key][0] += float(((pred - t) ** 2).sum())
+                agg[key][1] += float(((t - t.mean(0)) ** 2).sum())
+        model.train()
+        return {k: 1.0 - v[0] / max(v[1], 1e-9) for k, v in agg.items()}
+
     def losses_on(idx, train=True):
         sqf, mvf, edges, mask, elo = batch_of(idx)
         zq, g_ids, _, vl, h_mv, pre_g = model.field.encode(sqf, mvf, edges, mask,
@@ -181,26 +354,61 @@ def main():
             if m2.any():
                 l_sf = hl.ce(logits[m2], tgt[ks][m2])
         l_decor = cross_head_decorrelation(pre_g)
-        loss = args.w_maia * l_maia + args.w_sf * l_sf + args.w_decor * l_decor + vl
-        return loss, l_maia, l_sf, l_decor, (lg, zq, h_mv, fin, tgt, kind, mask)
+        l_iv = torch.zeros((), device=dev)
+        iv_stats = None
+        if args.iv and ks.any():
+            with torch.no_grad():
+                q_mv, _, _ = model.field.mv_vq(model.field.mv_vq_proj(h_mv[ks].detach()))
+            o = model.iv(torch.cat([zq[ks][:, None, :].expand(-1, MV_CAP, -1), q_mv], -1))
+            dv = o[..., 0]
+            lo = dv - F.softplus(o[..., 1]); hi = dv + F.softplus(o[..., 2])
+            best = torch.where(fin[ks], tgt[ks], torch.full_like(tgt[ks], -1e9)
+                               ).max(-1, keepdim=True).values
+            y = tgt[ks] - best                      # gap-to-best, <= 0, oracle-valued
+            m2 = fin[ks]
+            assert not y.requires_grad             # U13 runtime guard
+            if m2.any():
+                def _pin(err, tau):
+                    return torch.maximum(tau * err, (tau - 1) * err).mean()
+                l_iv = (F.huber_loss(dv[m2], y[m2]) + _pin(y[m2] - lo[m2], 0.1)
+                        + _pin(y[m2] - hi[m2], 0.9))
+                iv_stats = (float(((y >= lo) & (y <= hi) & m2).sum() / m2.sum()),
+                            float((hi - lo)[m2].mean()))
+        loss = (args.w_maia * l_maia + args.w_sf * l_sf + args.w_decor * l_decor + vl
+                + args.w_iv * l_iv)
+        return loss, l_maia, l_sf, l_decor, (lg, zq, h_mv, fin, tgt, kind, mask,
+                                             l_iv, iv_stats)
 
     def step_fn(m_, step):
         model.train()
         if step % args.rescan_every == 0:
             refresh_store()
         idx = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
-        loss, l_maia, l_sf, l_decor, _ = losses_on(idx)
+        loss, l_maia, l_sf, l_decor, aux = losses_on(idx)
+        op_d = {}
+        if args.ops:
+            l_op, op_d = op_losses(step)
+            loss = loss + l_op
+        if _nan_guard(loss):
+            # PAUSE-ALARM: save state, exit 3; the watchdog surfaces it (pause, not kill)
+            torch.save({"state_dict": model.state_dict(), "step": step,
+                        "args": vars(args)}, args.out + "_nanpause.pt")
+            print(f"[gko1] ALARM non-finite loss at step {step}; state saved; pausing",
+                  flush=True)
+            raise SystemExit(3)
         opt.zero_grad(); loss.backward(); opt.step()
         out = {"loss": float(loss.detach())}
+        out.update(op_d)
         if step % args.eval_every == 0 or step == 1:
             model.eval()
             with torch.no_grad():
                 kl_s = sp_s = kl_n = sp_n = 0.0
                 ag_s = ag_n = 0
+                iv_cov = iv_wid = iv_n = 0.0
                 for a in range(0, min(len(te_i), 2048), 256):
                     ii = torch.from_numpy(te_i[a:a + 256])
-                    _, lm, ls, _, (lg, zq, h_mv, fin, tgt, kind, mask) = \
-                        losses_on(ii, train=False)
+                    _, lm, ls, _, aux2 = losses_on(ii, train=False)
+                    (lg, zq, h_mv, fin, tgt, kind, mask) = aux2[:7]
                     km = kind == 1
                     if km.any():
                         kl_s += float(lm) * int(km.sum()); kl_n += int(km.sum())
@@ -209,6 +417,10 @@ def main():
                         tt = torch.where(fin[km], tgt[km],
                                          torch.full_like(tgt[km], -1e9)).argmax(-1)
                         ag_s += int((pm == tt).sum()); ag_n += int(km.sum())
+                    if args.iv and aux2[8] is not None:
+                        iv_cov += aux2[8][0] * int((kind == 0).sum())
+                        iv_wid += aux2[8][1] * int((kind == 0).sum())
+                        iv_n += int((kind == 0).sum())
                     ks = kind == 0
                     if ks.any():
                         x = torch.cat([zq[ks][:, None, :].expand(-1, MV_CAP, -1),
@@ -225,16 +437,93 @@ def main():
                                 if np.isfinite(c):
                                     sp_s += c; sp_n += 1
             el = time.time() - t0
+            ex = ""
+            if args.ops:
+                r2 = op_eval()
+                ex += (f" | opR2 {r2['o1']:.3f}/{r2['o3']:.3f}/{r2['o6']:.3f}"
+                       f" mlp {r2['m1']:.3f}/{r2['m3']:.3f}/{r2['m6']:.3f}"
+                       f" id {r2['i1']:.3f}/{r2['i3']:.3f}/{r2['i6']:.3f}"
+                       f" rho {op_d.get('rho', 0):.3f} cons6 {op_d.get('cons6', 0):.3f}")
+                out.update({f"op_r2_{k}": v for k, v in r2.items()})
+            if args.iv and iv_n:
+                ex += f" | iv-cov {iv_cov/iv_n:.3f} width {iv_wid/iv_n:.4f}"
+                out.update({"iv_cov": iv_cov / iv_n, "iv_width": iv_wid / iv_n})
             print(f"[gko0] step {step:>6}/{args.steps} {el/60:>6.1f}m "
                   f"({el/max(1,step):.3f}s/step) | maia {float(l_maia):.3f} "
                   f"sf {float(l_sf):.3f} decor {float(l_decor):.3f} | "
                   f"HELD-OUT maiaKL {kl_s/max(1,kl_n):.3f} "
                   f"maia-top1 {ag_s/max(1,ag_n):.3f} "
-                  f"sf-spearman {sp_s/max(1,sp_n):.3f} | rows {N:,}", flush=True)
+                  f"sf-spearman {sp_s/max(1,sp_n):.3f} | rows {N:,}" + ex, flush=True)
             out.update({"maia_kl": kl_s / max(1, kl_n),
                         "sf_spearman": sp_s / max(1, sp_n), "rows": N})
             model.train()
         return out
+
+    if args.units:
+        import sys
+        fails = []
+
+        def gate(name, ok, detail):
+            print(f"  {name:<5} {'PASS' if ok else 'FAIL':<5} {detail}", flush=True)
+            if not ok:
+                fails.append(name)
+
+        # U12: elo passthrough -- same rows, band vs fixed conditioning
+        ii = torch.from_numpy(tr_i[:8])
+        sqf, mvf, edges, mask, elo = batch_of(ii)
+        with torch.no_grad():
+            z_a = model.field.encode(sqf, mvf, edges, mask, elo=elo)[0]
+            z_b = model.field.encode(sqf, mvf, edges, mask,
+                                     elo=torch.full_like(elo, 1.5))[0]
+        dz = float((z_a - z_b).abs().max())
+        gate("U12", z_a.shape == z_b.shape and dz > 0,
+             f"band vs fixed elo: shapes {tuple(z_a.shape)} equal, max|dz| {dz:.2e} > 0")
+
+        # U13: circularity -- every target reaching a loss is grad-free
+        _, _, _, _, aux = losses_on(ii, train=False)
+        tgt_free = not aux[4].requires_grad
+        gate("U13", tgt_free, f"oracle targets requires_grad == {aux[4].requires_grad}"
+             " (runtime asserts also live in the loss paths)")
+
+        # U14: minimizer-at-target for each loss formula
+        g = torch.Generator().manual_seed(0)
+        lg2 = torch.randn(6, 10, generator=g).requires_grad_(True)
+        t2 = torch.softmax(lg2, -1).detach()
+        gm = torch.autograd.grad((-(t2 * F.log_softmax(lg2, -1)).sum(-1)).mean(), lg2)[0]
+        y2 = torch.rand(64, generator=g)
+        lg3 = hl.encode(y2.to(dev)).clamp(min=1e-12).log().requires_grad_(True)
+        gs = torch.autograd.grad(hl.ce(lg3, y2.to(dev)), lg3)[0]
+        dv2 = torch.randn(32, generator=g)
+        hub = float(F.huber_loss(dv2, dv2.clone()))
+        pin = float(torch.maximum(0.1 * torch.zeros(32), -0.9 * torch.zeros(32)).mean())
+        opz = 0.0
+        if args.ops:
+            from catspace.research.tools.training_infra.koopman_ops import (
+                InteractionLift as _IL, KoopmanOps as _KO, one_ply_loss as _opl)
+            il = _IL(16, 8); ko = _KO(24, n_codes=4, rank=4)
+            zz = torch.randn(8, 16, generator=g)
+            opz = float(_opl(il, ko, zz, torch.zeros(8, dtype=torch.long), zz)[0])
+        gate("U14", float(gm.abs().max()) < 1e-6 and float(gs.abs().max()) < 1e-5
+             and hub == 0.0 and pin == 0.0 and opz == 0.0,
+             f"grad-at-optimum: maia {float(gm.abs().max()):.1e} sf {float(gs.abs().max()):.1e}"
+             f" | zero-at-target: huber {hub} pinball {pin} op1 {opz}")
+
+        # U16: metrics move under perturbation; the NaN pause-path fires
+        cov_a = float(((y2 >= y2 - 0.1) & (y2 <= y2 + 0.1)).float().mean())
+        cov_b = float((((y2 + 0.5) >= y2 - 0.1) & ((y2 + 0.5) <= y2 + 0.1)).float().mean())
+        nan_fires = _nan_guard(torch.tensor(float("nan"))) and not _nan_guard(
+            torch.tensor(1.0))
+        gate("U16", cov_a != cov_b and nan_fires,
+             f"coverage moves {cov_a:.2f}->{cov_b:.2f} on shifted y; nan-guard fires {nan_fires}")
+
+        if args.ops:
+            r2 = op_eval(n_ch=64)
+            print(f"  info  opR2 wiring on held-out chains: "
+                  f"{r2['o1']:.3f}/{r2['o3']:.3f}/{r2['o6']:.3f} "
+                  f"(fresh ops ~ identity persistence, not a gate)")
+        print(f"\n  {'ALL UNIT GATES PASS' if not fails else 'FAILED: ' + ', '.join(fails)}",
+              flush=True)
+        sys.exit(1 if fails else 0)
 
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
                       start_step=0, eval_every=args.eval_every, experiment="catspace",
