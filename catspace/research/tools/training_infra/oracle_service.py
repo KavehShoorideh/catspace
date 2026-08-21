@@ -122,7 +122,10 @@ def _maia_engine(band):
     import chess.engine
     return chess.engine.SimpleEngine.popen_uci(
         ["lc0", f"--weights=data/external/maia/maia-{band}.pb.gz",
-         "--verbose-move-stats", "--threads=1"])
+         "--verbose-move-stats", "--threads=1", "--backend=eigen"])
+    # eigen = pure CPU: at nodes=1 the policy read needs no GPU, and lc0-on-Metal
+    # wedges the shared command queue against the kitty server's MPS forwards
+    # (2026-08-21 "waiting for localhost" lockup)
 
 
 _P_RE = re.compile(r"^([a-h][1-8][a-h][1-8]\S*).*?P: *([0-9.]+)%")
