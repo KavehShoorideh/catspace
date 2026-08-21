@@ -15648,3 +15648,15 @@ rho clamped at 1.001, vamp 31.2, iv-cov 0.803 on nominal. The blowup happened 25
 threshold -- runaway, not activation shock. So clipping + w_spec 0.2 are the
 load-bearing fixes; the linear ramp is belt. mlp led ops at composed horizons
 (0.894/0.853 vs 0.884/0.785) pre-explosion: H1 is a live, close fight.
+
+**The producer collapse was THREE stacked bugs (2026-08-21 late morning), each masking
+the next.** (1) macOS QoS demotion re-backgrounded the fleet (taskpolicy -B fixes it;
+a babysitter loop now re-asserts every 5 min). (2) The bootstrap refill's NOT-IN +
+ORDER BY RANDOM scanned pool 900k x labels 600k under a SHARED lock, starving every
+writer for minutes per firing (fixed: rowid-subsample + PK anti-join; composite claim
+index added). (3) The killer: with N sibling workers per oracle, the deterministic
+claim (ORDER BY score DESC LIMIT 1) made ALL siblings fetch the SAME row; losers read
+UPDATE rowcount=0 as "queue empty" and EXITED -- a silent fleet walkout with 72,800
+rows todo. The composite index made claims fast enough to synchronize the race that
+the old slowness had been jittering apart. Fixed: randomized top-8 claim + retry.
+After: +4,659 labels/min (day's best) with a lean 7-loop fleet.
