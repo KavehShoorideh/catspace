@@ -32,6 +32,8 @@ from catspace.research.components.encoder.approaches.reach_probability.experimen
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--resume-field", default="artifacts/experiments/gcf4h_latest.pt")
+    ap.add_argument("--resume-self", default="", help="a prior gko checkpoint (wrapper "
+                    "state: field.* + sf_av.*) to continue from")
     ap.add_argument("--shards", default="data/derived/gko1_shards")
     ap.add_argument("--steps", type=int, default=20000)
     ap.add_argument("--batch", type=int, default=48)
@@ -84,6 +86,11 @@ def main():
                 nn.Linear(field.d_state + A["d_model"], 512), nn.GELU(),
                 nn.Linear(512, args.k_bins))
     model = GKO().to(dev)
+    if args.resume_self:
+        ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
+        model.load_state_dict(ck2["state_dict"])
+        print(f"[gko0] resumed self from {args.resume_self} (step {ck2.get('step')})",
+              flush=True)
     hl = HLGauss(k=args.k_bins).to(dev)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed)
@@ -189,6 +196,7 @@ def main():
             model.eval()
             with torch.no_grad():
                 kl_s = sp_s = kl_n = sp_n = 0.0
+                ag_s = ag_n = 0
                 for a in range(0, min(len(te_i), 2048), 256):
                     ii = torch.from_numpy(te_i[a:a + 256])
                     _, lm, ls, _, (lg, zq, h_mv, fin, tgt, kind, mask) = \
@@ -196,6 +204,11 @@ def main():
                     km = kind == 1
                     if km.any():
                         kl_s += float(lm) * int(km.sum()); kl_n += int(km.sum())
+                        # per-eval maia top-1 agreement (argmax match with the oracle)
+                        pm = lg[km].masked_fill(~mask[km], -1e9).argmax(-1)
+                        tt = torch.where(fin[km], tgt[km],
+                                         torch.full_like(tgt[km], -1e9)).argmax(-1)
+                        ag_s += int((pm == tt).sum()); ag_n += int(km.sum())
                     ks = kind == 0
                     if ks.any():
                         x = torch.cat([zq[ks][:, None, :].expand(-1, MV_CAP, -1),
@@ -216,6 +229,7 @@ def main():
                   f"({el/max(1,step):.3f}s/step) | maia {float(l_maia):.3f} "
                   f"sf {float(l_sf):.3f} decor {float(l_decor):.3f} | "
                   f"HELD-OUT maiaKL {kl_s/max(1,kl_n):.3f} "
+                  f"maia-top1 {ag_s/max(1,ag_n):.3f} "
                   f"sf-spearman {sp_s/max(1,sp_n):.3f} | rows {N:,}", flush=True)
             out.update({"maia_kl": kl_s / max(1, kl_n),
                         "sf_spearman": sp_s / max(1, sp_n), "rows": N})
