@@ -177,6 +177,16 @@ def round_once(a, dev="cpu"):
                 [(f, oracle, sc) for f, sc in ranked])
     grow = expansion_walks([f for f, _ in ranked[:a.grow_from]],
                            n_walks=a.walks, seed=int(time.time()) % 99999)
+    # U11 hygiene: never grow the pool into a ChessBench test position
+    try:
+        import numpy as _np
+        _tk = set(_np.load("data/derived/chessbench_test_keys.npz")["keys"].tolist())
+        pre = len(grow)
+        grow = [f for f in grow if " ".join(f.split()[:4]) not in _tk]
+        if pre - len(grow):
+            print(f"[acq] U11 filter dropped {pre - len(grow)} test-set walk fens", flush=True)
+    except FileNotFoundError:
+        pass
     with c:
         c.executemany("INSERT OR IGNORE INTO pool VALUES (?, 'expand')",
                       [(f,) for f in grow])
