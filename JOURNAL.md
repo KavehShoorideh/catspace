@@ -15571,3 +15571,10 @@ maiaKL 2.276 -> 2.219, on 2.74M rows. Gains real, flattening -- the next jump be
 the gko1 architecture components (operators + joint intervals), not more epochs. Gen-3
 continues regardless (the DATA keeps changing under it: acquisition-steered + expansion
 positions rising as a fraction of the store).
+
+**Milestone (2026-08-21 ~04:00): COMPLETE MAIA COVERAGE.** All five bands at 100.0
+percent of the 518k pool -- 2.59M policy distributions: a dense map of how the same
+position is played at 1100 vs 1900, keyed to our concepts. SF backfill scaled 1->4
+producers (28.7 percent -> converging). The pool now grows only where the model is
+uncertain (expansion walks), so band coverage of NEW positions is acquisition-authored
+by construction.
