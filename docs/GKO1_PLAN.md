@@ -229,3 +229,16 @@ Next-run design: head budgets per quadrant (few wide, many narrow) + selective L
 (narrow only). Verdict artifact from gko1c (measurement-only): THE CONCEPT PLANE --
 scatter every learned concept on (support size x persistence); Kaveh's prior = mass
 in narrow-fast thinning toward a few important wide-slow heads.
+
+## INTERACTION-LIFT v2 (Kaveh 2026-08-21, verbal): transformer-over-concepts BEFORE ops
+Ruling: concept interactions (pin x check) are computed by 1-3 transformer layers OVER
+THE CONCEPT TOKENS, written back onto the tokens ("a little bit of a rotation"); the
+Koopman operator applies AFTER, to the post-interaction state, and rollouts carry the
+interaction signal with NO re-encoding and NO re-application of the transformer --
+"otherwise I am no better than MuZero." Current gko1c already enforces the ordering
+(lift -> ops -> never re-lift; consistency metric = the meter); the bilinear phi is
+the weakest instance and becomes the ablation "before" row. v2 = InteractionLift as a
+small concept-token transformer feeding the augmentation block; U1/U1b/U3 gates apply
+unchanged. Bet named: interactions, once computed, evolve linearly too (Koopman-
+orthodox observable enrichment); if code-pair residuals still leak, that is the rSLDS
+v2 trigger, unchanged.
