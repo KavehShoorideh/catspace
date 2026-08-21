@@ -15686,3 +15686,19 @@ ReadyQueue::pop / condition_variable::wait -- the fused scaled_dot_product_atten
 BACKWARD wedged the autograd worker on MPS (after the forward's dropout constraint
 was already worked around). Fix: TransformerLift forces the MATH sdpa path (matmuls +
 softmax); fwd+bwd x5 smoked at 0.7s. Relaunched.
+
+**gko1e LAUNCHED (2026-08-21 afternoon): the oracle-saturated target design.** The
+day's rulings composed into one run: TransformerLift 3 layers over 97 concept tokens
+(interactions BEFORE operators; MATH sdpa -- wedge variant 5), KoopmanOps after,
+rollouts never re-lift. Rolled hypothesis states answer to three graders: (1) real
+child concepts (state-part), (2) STOCKFISH at every horizon -- scalar value AND the
+full action-value profile per move (av_roll head on [z_aug; mv_emb], ~30 targets/
+state at k=0/1/3/6, masked to live sidecar coverage), (3) the dictionary itself
+(bidirectional consistency, joint Koopman search -- Kaveh: the lift must help the
+dynamics be linear; collapse priced by oracle saturation, not gradient-blocking).
+Phi one-ply self-target OFF; phivar in every heartbeat. gko1d killed pre-checkpoint
+(priority-inversion crawl: the babysitter un-backgrounded producers but not the
+trainer -- now it covers gko_train too); its phi-collapse question formally open,
+moot for this design. Chain-SF labeling: 336k states at top priority, ~1.5k/min,
+sidecar v2 refreshes value+av vectors every 10 min. New headline metrics: vMAE and
+future-ordering avSp per horizon -- "rank moves six plies ahead without re-encoding."
