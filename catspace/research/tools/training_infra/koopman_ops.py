@@ -93,12 +93,23 @@ class KoopmanOps(nn.Module):
 
     def spectral_penalty(self, codes, k: int = 8, iters: int = 48, keep: int = 24):
         """max(0, rho - rho_max)^2 over <=k sampled distinct codes in the batch.
-        Fewer iterations than the U2-gated estimator: the penalty needs a usable
-        gradient signal, not 5 percent accuracy; rho is also returned for logging."""
+        MATRIX-FREE power iteration (Mv = Av + U(Vv)): materializing k full d_aug^2
+        operators was a 1.4GB-per-step allocation at the 512-concept scale. Same
+        Gelfand estimate, near-zero extra memory."""
         uc = torch.unique(codes)
         if uc.numel() > k:
             uc = uc[torch.randperm(uc.numel(), device=uc.device)[:k]]
-        rho = spectral_radius(self.matrix(uc), iters=iters, keep=keep)
+        v = torch.randn(uc.numel(), self.d_aug, device=self.A.device, dtype=self.A.dtype)
+        v = v / v.norm(dim=-1, keepdim=True)
+        Uc, Vc = self.U[uc], self.V[uc]
+        logs = []
+        for _ in range(iters):
+            w = v @ self.A.T + torch.einsum("br,bdr->bd",
+                                            torch.einsum("bd,brd->br", v, Vc), Uc)
+            r = w.norm(dim=-1, keepdim=True).clamp(min=1e-30)
+            logs.append(r.log().squeeze(-1))
+            v = w / r
+        rho = torch.stack(logs[-keep:], -1).mean(-1).exp()
         return F.relu(rho - self.rho_max).pow(2).mean(), rho.detach()
 
     @torch.no_grad()
@@ -257,6 +268,17 @@ def _selftest():
         est = spectral_radius(M2.unsqueeze(0), iters=256, keep=128)[0].item()
         worst = max(worst, abs(est - true) / true)
     gate("U2", worst < 0.05, f"rho estimate vs eigvals, 5 seeds: worst rel err {worst:.3f} (tol 0.05)")
+
+    # U2b: matrix-free penalty rho == dense-matrix rho on perturbed ops -------------
+    ops2b = KoopmanOps(96, n_codes=8, rank=8)
+    with torch.no_grad():
+        ops2b.V.normal_(0, 0.2); ops2b.A.add_(torch.randn(96, 96) * 0.05)
+    cds2b = torch.arange(8)
+    torch.manual_seed(5)
+    _, rho_mf = ops2b.spectral_penalty(cds2b, k=8, iters=256, keep=128)
+    rho_dn = spectral_radius(ops2b.matrix(cds2b), iters=256, keep=128)
+    d2b = float((rho_mf - rho_dn).abs().max() / rho_dn.abs().max())
+    gate("U2b", d2b < 0.02, f"matrix-free vs dense rho rel err {d2b:.1e} (tol 0.02)")
 
     # U3: two-op application == matmul-composed operator ----------------------------
     with torch.no_grad():
