@@ -51,6 +51,8 @@ def main():
     ap.add_argument("--w-decor", type=float, default=0.3)
     ap.add_argument("--ops", action="store_true", help="Koopman operator arm on 6-ply chains")
     ap.add_argument("--iv", action="store_true", help="joint interval head on SF value gaps")
+    ap.add_argument("--iv-frozen", action="store_true", help="H2 before-arm: train ONLY the "
+                    "interval head on a frozen field (same targets, same holdout)")
     ap.add_argument("--units", action="store_true", help="run U12-U14/U16 checks and exit")
     ap.add_argument("--chain-graphs", default="data/derived/gko1_chain_graphs_mm.npz")
     ap.add_argument("--chain-starts", default="data/derived/gko1_chain_rows.npz")
@@ -129,7 +131,15 @@ def main():
         print(f"[gko0] resumed self from {args.resume_self} (step {ck2.get('step')}; "
               f"{len(miss)} new keys init fresh, {len(unex)} unexpected)", flush=True)
     hl = HLGauss(k=args.k_bins).to(dev)
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.iv_frozen:
+        args.iv = True
+        for pr in model.field.parameters():
+            pr.requires_grad_(False)
+        for pr in model.sf_av.parameters():
+            pr.requires_grad_(False)
+        opt = torch.optim.Adam(model.iv.parameters(), lr=args.lr)
+    else:
+        opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed)
     t0 = time.time()
 
