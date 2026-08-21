@@ -15409,3 +15409,31 @@ legal as always), elo input fixed at the human corpus' max (~2750). Headline com
 searched-top1 on held-out SF games vs gcf3's plain-prior 0.292 -- does human intuition
 plus a narrow learned search predict the engine better than engine-imitation alone.
 Human prior itself stays intact in gcf4h_latest; gct1 is a separate checkpoint line.
+
+---
+
+## 2026-08-20 19:40 — gcf4h VERDICT + gct1 launched
+
+**gcf4h (human concept model): the strongest model of the project.** 6000 steps (twice
+interrupted by my own co-tenant jobs; resumed 3000 clean): HELD-OUT human-move top1
+0.380 / top3 0.656 (SF-corpus ceiling was 0.292/0.546 -- humans are the more predictable
+teacher, the Maia result reproduced in concept space). vamp 31.2/32 -- the slow block
+nearly saturates its bound (rating is legitimate slow structure, as reviewed). decor 0.238
+across 32 shallow heads: no collapse. Outcome committor 0.865 CE on censored-clean labels.
+
+**Alignment:** phase clean on designated head 0 (eta2 0.958, leak-free-ish), king-safety
+cluster on heads 0/11, tactical lifts 3-4x, per-file pawn structure STILL absent (two
+architectures, two corpora -- file-nodes alone don't buy it; needs its own probe/head).
+
+**Elo stratification (the new instrument):** rating concentrates in specific heads --
+h5 (slow) spreads 149 elo across its codes (c31~1196 vs c8~1905), seven heads at 110-135,
+bottom heads rating-free at ~55. Codes are rating-tiered: "the positions a 1200 reaches"
+is literally a code. Elo readout trained alongside (conditioning makes it a consistency
+check, not a probe).
+
+**gct1 (search into training) launched:** gcf4h trunk + differentiable concept tree
+(beam 3 depth 3), SF-move-through-search target on the SF corpus, fixed-elo 2750
+conditioning, Gumbel targets mctx-normalized (the q-normalization fix took gum from 3e-5
+to 0.70 -- unnormalized margins were too compressed to move the targets). 4000 steps,
+~85 min. Headline metric printed every eval: held-out searched-top1 vs prior-top1 vs
+gcf3's plain 0.292.
