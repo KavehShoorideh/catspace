@@ -15565,3 +15565,9 @@ Honest open items: operators (U1-U4 + kooplearn cross-check) and the joint inter
 are the remaining gko1 components; ChessBench-test standardized eval not yet wired
 (dev-holdout only); maia-top1 eval added for gen-2; sibling-blindness lesson stands
 ready to be tested by the operators' indexed-by-construction design.
+
+**Gen-2 verdict (2026-08-21 ~03:15):** maia-top1 0.647, sf-spearman 0.553 -> 0.565,
+maiaKL 2.276 -> 2.219, on 2.74M rows. Gains real, flattening -- the next jump belongs to
+the gko1 architecture components (operators + joint intervals), not more epochs. Gen-3
+continues regardless (the DATA keeps changing under it: acquisition-steered + expansion
+positions rising as a fraction of the store).
