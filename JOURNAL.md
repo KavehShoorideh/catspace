@@ -15702,3 +15702,12 @@ trainer -- now it covers gko_train too); its phi-collapse question formally open
 moot for this design. Chain-SF labeling: 336k states at top priority, ~1.5k/min,
 sidecar v2 refreshes value+av vectors every 10 min. New headline metrics: vMAE and
 future-ordering avSp per horizon -- "rank moves six plies ahead without re-encoding."
+
+**gko1e preempted at step 500 and relaunched with w_spec 2.0.** The good: phivar
+1.053 (collapse dead), avSp +0.107/+0.119/+0.117 climbing off random at ALL horizons
+(future-ordering from rolled states works from the first eval). The threat: rho 1.046
+with opR2 diving (-1/-13/-59) -- the gko1b runaway signature. Root measured, not
+guessed: at rho 1.046 the quadratic penalty's gradient is ~1e-4 -- toothless against
+the value/av/consistency flux now flowing through the operators (gko1c held at 1.00
+because its op-gradients were small, not because the penalty was strong). One change:
+w-spec 0.2 -> 2.0. Same design otherwise.
