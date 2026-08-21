@@ -15678,4 +15678,4 @@ together -- the discriminating verdict metrics are delta-space accuracy and the
 direct-head gap (both pre-registered). gko1c's 2500-step record = the bilinear-lift
 reference row. gko1d = the target design per the interaction-ordering ruling:
 TransformerLift (attention over 97 concept tokens -- 32 heads + 64 squares + hist --
-2 layers, d_phi 256, gentler 0.5x lr group), operators after, rollouts never re-lift.
+3 layers (Kaveh: "at least 3"), d_phi 256, gentler 0.5x lr group), operators after, rollouts never re-lift.
