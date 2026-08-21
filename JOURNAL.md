@@ -15491,5 +15491,7 @@ pruning power, prune-search arena on the strength-per-node frontier.
 the entire move distribution for a given state... ask for information that is maximally
 informative." Acquisition scored by OUR machinery: interval width (where bounds are
 loose) x concept-code rarity (vocabulary coverage) x predicted-distribution entropy;
-batch rounds of query->fine-tune->re-score. Data: ChessBench subset download for SF;
-lc0+Maia nets for the human oracle, queried under the acquisition budget.
+batch rounds of query->fine-tune->re-score, POOL-BASED ("not necessarily adjacent
+states" -- Kaveh's clarification: no trajectory constraint; query wherever informativeness
+peaks). Data: ChessBench subset download for SF; lc0+Maia nets for the human oracle,
+queried under the acquisition budget.
