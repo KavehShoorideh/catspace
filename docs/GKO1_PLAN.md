@@ -213,3 +213,19 @@ pin-like small-support exemplars as case studies. Honest architecture note: glob
 heads mean-pool ALL 64 squares, so support sparsity must be learned against the
 pooling; if the penalty fights the architecture, the structural fix is region-gated
 heads (next-design decision, Kaveh's call).
+
+## LOCALITY REFINEMENT 3 (Kaveh 2026-08-21, verbal): the 2x2 concept plane
+Two locality axes: SPACE (piece-support size) x TIME (persistence; "fast = local in
+time, slow = global in time"). Naming discipline: WIDE/NARROW for the spatial axis
+(the codebase already uses "global heads" for trunk-level VQ heads -- do not overload).
+- WIDE heads: FEW of them; NO piece-sparsity penalty (game phase = canonical
+  wide-slow; they may legitimately read many pieces).
+- NARROW heads: MANY; the piece-support group-L1 applies; ladder-shaped supports.
+- Temporal axis already exists (slow_heads under VAMP lag pressure vs fast + vicreg).
+- Quadrant examples: wide-slow phase; wide-fast initiative/tempo; narrow-slow pin,
+  structure motifs; narrow-fast checks, hanging pieces. Per-square codes = maximally
+  narrow end of the ladder.
+Next-run design: head budgets per quadrant (few wide, many narrow) + selective L1
+(narrow only). Verdict artifact from gko1c (measurement-only): THE CONCEPT PLANE --
+scatter every learned concept on (support size x persistence); Kaveh's prior = mass
+in narrow-fast thinning toward a few important wide-slow heads.
