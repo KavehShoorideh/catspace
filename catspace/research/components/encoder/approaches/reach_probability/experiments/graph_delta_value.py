@@ -65,6 +65,10 @@ class GraphDeltaValue(nn.Module):
         self.ln_f = nn.ModuleList([nn.LayerNorm(d) for _ in range(layers)])
         self.prior_head = nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.Linear(d, 1))
         self.dv_head = nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.Linear(d, 1))
+        # interval head (Kaveh 2026-08-20 pruning idea): per-move [dV_lo, dV_hi] as
+        # OFFSETS below/above the point estimate (softplus keeps lo <= dV <= hi by
+        # construction), trained by pinball loss on the CF pair deltas
+        self.iv_head = nn.Sequential(nn.Linear(d, d), nn.GELU(), nn.Linear(d, 2))
 
     def forward(self, sqf, mvf, edges, mv_mask):
         """-> prior logits (B,MV) masked, dV (B,MV) zeroed on invalid slots."""
@@ -85,6 +89,9 @@ class GraphDeltaValue(nn.Module):
         h_mv = h[:, 64:]
         prior = self.prior_head(h_mv).squeeze(-1).masked_fill(~mv_mask, float("-inf"))
         dv = self.dv_head(h_mv).squeeze(-1) * mv_mask.float()
+        off = F.softplus(self.iv_head(h_mv)) * mv_mask.float()[:, :, None]
+        self.last_lo = dv - off[:, :, 0]
+        self.last_hi = dv + off[:, :, 1]
         return prior, dv
 
 
@@ -176,6 +183,9 @@ def build_step(args, dev):
     rng = np.random.default_rng(args.seed)
     probe = te_i[rng.choice(len(te_i), min(3000, len(te_i)), replace=False)]
 
+    def pinball(err, tau):
+        return torch.maximum(tau * err, (tau - 1) * err).mean()
+
     def pair_terms(idx_records):
         gi = torch.from_numpy(cgi[idx_records])
         sqf, mvf, edges, mask = batch_of(C, gi, dev)
@@ -185,7 +195,15 @@ def build_step(args, dev):
         dl = torch.from_numpy(cdl[idx_records]).to(dev)
         dva = dv.gather(1, ja[:, None]).squeeze(1)
         dvp = dv.gather(1, jp[:, None]).squeeze(1)
-        return F.huber_loss(dva - dvp, dl), (dvp ** 2).mean(), dva - dvp, dl
+        # interval pinball on the SAME pair contrast: predicted [lo,hi] of (alt - played)
+        lo_a = net.last_lo.gather(1, ja[:, None]).squeeze(1)
+        hi_a = net.last_hi.gather(1, ja[:, None]).squeeze(1)
+        lo_p = net.last_lo.gather(1, jp[:, None]).squeeze(1)
+        hi_p = net.last_hi.gather(1, jp[:, None]).squeeze(1)
+        # pair delta bounds: lo(alt)-hi(played) .. hi(alt)-lo(played)
+        d_lo, d_hi = lo_a - hi_p, hi_a - lo_p
+        l_iv = pinball(dl - d_lo, args.tau_lo) + pinball(dl - d_hi, args.tau_hi)
+        return (F.huber_loss(dva - dvp, dl), (dvp ** 2).mean(), dva - dvp, dl, l_iv)
 
     def step_fn(model, step):
         model.train()
@@ -194,8 +212,8 @@ def build_step(args, dev):
         prior, _ = model(sqf, mvf, edges, mask)
         played = D["played"][idx].long().to(dev)
         l_pl = F.cross_entropy(prior, played)
-        l_pair, l_gauge, _, _ = pair_terms(rng.integers(0, len(ctr), args.pair_batch))
-        loss = l_pl + args.w_pair * l_pair + args.w_gauge * l_gauge
+        l_pair, l_gauge, _, _, l_iv = pair_terms(rng.integers(0, len(ctr), args.pair_batch))
+        loss = l_pl + args.w_pair * l_pair + args.w_gauge * l_gauge + args.w_iv * l_iv
         opt.zero_grad(); loss.backward(); opt.step()
 
         m = {}
@@ -211,18 +229,28 @@ def build_step(args, dev):
                     played = D["played"][ii].long().to(dev)
                     rk = (prior > prior.gather(1, played[:, None])).sum(1)
                     h1 += int((rk == 0).sum()); h3 += int((rk < 3).sum()); tot += len(ii)
+                cov = 0; covn = 0
                 for a in range(0, len(cte), 256):
-                    _, g2, dhat, dl = pair_terms(cte[a:a + 256])
+                    _, g2, dhat, dl, _liv = pair_terms(cte[a:a + 256])
                     se += float((dhat - dl).abs().sum()); sn += len(dl)
                     nz = dl != 0
                     sgn_ok += int(((dhat[nz] > 0) == (dl[nz] > 0)).sum())
                     sgn_n += int(nz.sum()); gau += float(g2) * len(dl)
+                    ja2 = torch.from_numpy(cja[cte[a:a + 256]]).long().to(dev)
+                    jp2 = torch.from_numpy(cjp[cte[a:a + 256]]).long().to(dev)
+                    dlo = (net.last_lo.gather(1, ja2[:, None]).squeeze(1)
+                           - net.last_hi.gather(1, jp2[:, None]).squeeze(1))
+                    dhi = (net.last_hi.gather(1, ja2[:, None]).squeeze(1)
+                           - net.last_lo.gather(1, jp2[:, None]).squeeze(1))
+                    dl2 = torch.from_numpy(cdl[cte[a:a + 256]]).to(dev)
+                    cov += int(((dl2 >= dlo) & (dl2 <= dhi)).sum()); covn += len(dl2)
             el = time.time() - t0
             print(f"[gdv] step {step:>6}/{args.steps} {el/60:>5.1f}m "
                   f"({el/max(1,step):.3f}s/step) | pl {float(l_pl.detach()):.3f} pair "
                   f"{float(l_pair.detach()):.3f} | HELD-OUT top1 {h1/tot:.3f} top3 {h3/tot:.3f} | "
                   f"CF sign {sgn_ok/max(1,sgn_n):.3f} mae {se/max(1,sn):.3f} "
-                  f"gauge {gau/max(1,sn):.4f}", flush=True)
+                  f"gauge {gau/max(1,sn):.4f} | IV coverage {cov/max(1,covn):.3f} "
+                  f"(target {args.tau_hi - args.tau_lo:.1f})", flush=True)
             m = {"top1": h1 / tot, "top3": h3 / tot, "cf_sign": sgn_ok / max(1, sgn_n),
                  "cf_mae": se / max(1, sn)}
             model.train()
@@ -244,6 +272,10 @@ def main():
     ap.add_argument("--pair-batch", type=int, default=64)
     ap.add_argument("--w-pair", type=float, default=1.0)
     ap.add_argument("--w-gauge", type=float, default=0.2)
+    ap.add_argument("--w-iv", type=float, default=1.0,
+                    help="pinball losses (tau 0.1/0.9) on the interval head")
+    ap.add_argument("--tau-lo", type=float, default=0.1)
+    ap.add_argument("--tau-hi", type=float, default=0.9)
     ap.add_argument("--d-model", type=int, default=128)
     ap.add_argument("--layers", type=int, default=3)
     ap.add_argument("--attn-heads", type=int, default=4)
@@ -265,7 +297,10 @@ def main():
     start = 0
     if args.resume:
         ck = torch.load(args.resume, map_location="cpu", weights_only=False)
-        net.load_state_dict(ck["state_dict"]); start = int(ck.get("step", 0))
+        missing, unexpected = net.load_state_dict(ck["state_dict"], strict=False)
+        assert not unexpected, f"unexpected keys: {unexpected[:4]}"
+        assert all(k.startswith("iv_head") for k in missing), f"missing non-iv: {missing[:4]}"
+        start = int(ck.get("step", 0))
         print(f"[gdv] resumed from {args.resume} at step {start}", flush=True)
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
                       start_step=start, eval_every=args.eval_every, experiment="catspace",
