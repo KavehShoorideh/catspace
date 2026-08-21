@@ -10,7 +10,9 @@ oracle-QUERY paradigm (no bulk corpus; pool + acquisition + budgets); gciv folde
 ## 1. Falsifiable hypotheses
 H1 (operators): bilinear per-move-code linear operators over the concept state predict
     child concept states with one-ply fidelity within 10% of the MLP dyn, and BEAT it on
-    2-3-ply composed rollouts (composability is the point).
+    COMPOSED rollouts at 3 AND 6 plies (Kaveh 2026-08-21: "2-3 plies is too few" -- 6-ply
+    composition matches the target search regime; MLP chains typically collapse there,
+    operator products should merely widen).
 H2 (intervals): jointly-trained concept intervals reach coverage within [nominal,
     nominal+0.07] with width narrower than the frozen-field probe by >=25%.
 H3 (query efficiency): active acquisition (interval-width x code-rarity x entropy)
@@ -52,6 +54,13 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
   L_maia (KL, queried bands)                   1.0
   L_op1 (one-ply: ||K_m z - sg(z_child)||)     1.0   operator grounding (real children)
   L_op3 (3-ply composed vs real, 25% of batch) 0.5   composability trained, not hoped
+  L_op6 (6-ply composed vs real, 32-row sub-
+         batch, weight ramped in after 2k steps) 0.3   the full-horizon claim; targets
+                                                     need the intervening move sequence:
+                                                     once-per-corpus game_transitions
+                                                     cache (gen_game_transitions.build)
+                                                     + live slim encodes of s_{t+3},
+                                                     s_{t+6} for the sub-batch
   L_persist (CE code-survival vs truth)        0.5   the rulebook's accuracy
   L_iv (pinball 0.1/0.9 on oracle value gaps)  1.0   NOTE: intervals now supervise on
                                                      SF action-value gaps, not CF pairs
@@ -93,7 +102,9 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
 ## 6. Evaluation gates + ablations
   - ChessBench test set: action-value Spearman + top1-vs-SF; puzzles solve-rate.
   - Their data-scale curve with our query-count points (H3 headline).
-  - Operator table: 1/2/3-ply R2 vs MLP dyn (H1); persistence-table accuracy.
+  - Operator table: 1/3/6-ply R2 vs MLP dyn (H1); per-horizon error growth curve
+    (the composability signature: sub-exponential for ops, exponential for MLP chains);
+    persistence-table accuracy.
   - Intervals: coverage/width vs the frozen gciv1 "before" row (H2); pruning power
     (survivor counts by phase) via eval_interval_pruning.
   - Play: prune-search arena (intervals gate, committor ranks) vs fixed-beam
@@ -110,7 +121,8 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
   - Pool staleness: acquisition re-scores every round on the CURRENT model.
 
 ## 8. Build order (each step lands with its unit tests green)
-  1. vendored bagz reader + ChessBench test loader (U11)
+  1. vendored bagz reader + ChessBench test loader (U11); game_transitions cache for
+     both corpora (the 6-ply composition targets)
   2. hl_gauss.py (U5) ; ops module (U1-U4) ; interval head reuse (U6-U7)
   3. oracle_service.py (U9) + maia weights fetch
   4. acquisition.py (U10, U15)
