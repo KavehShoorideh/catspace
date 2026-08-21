@@ -15609,3 +15609,20 @@ gciv1's frozen-field row. H3 instrument ready; curve when acquisition-vs-random 
 Widths across spaces are not comparable. The H2 "before" arm is therefore --iv-frozen:
 interval head alone on the FROZEN gko0c field, same gap targets, same seed/holdout, run
 at verdict time. H2 = joint width <= 0.75x frozen width at coverage in [0.80, 0.87].
+
+**NEGATIVE + ROOT CAUSE (2026-08-21 ~06:0x): stack-less distillation eroded temporal
+coherence; gko1a killed at step 500.** gko1a's first heartbeat showed operator R2
+-52/-308/-793 at 1/3/6 plies -- but the IDENTITY baseline was also -0.72, vs +0.91 in
+the CPU units run. Decisive CPU test on the same 128 held-out chains: gcf4h identity-R2
++0.918/+0.885/+0.822; gko0c -0.779/-0.753/+0.094. Generations 1-3 (decor + VQ-commit
+only -- a deviation from plan section 4, which keeps the field stack) let distillation
+gradients destroy the concept state's ply-to-ply persistence while maia-top1/sf-spearman
+IMPROVED throughout: representational health does not show up in task metrics. The
+absurd -20k/-761k step-1 R2s were the same rot amplified: eroded zq has tiny
+cross-position variance (the R2 denominator), so one blind Adam first-step on the
+2816^2 near-identity A blew past it (koopman module itself verified bit-exact identity
+on both devices at init). Fix (gko1b): relaunch from gcf4h (last coherent field) with
+fresh heads and the stack restored on the chain batch -- move-PL 2.0, dyn 1.0, VAMP-2
+lag-6 every 4th step at batch 128 (x4 scaled), vicreg 0.5 -- ops param-group lr 3e-5,
+and identity-R2@1 < 0.5 now an ALARM line. Omitted from restoration (recorded per the
+conditional-rejection rule): phase/adv, te, edge-dyn, res, now, elo aux losses.
