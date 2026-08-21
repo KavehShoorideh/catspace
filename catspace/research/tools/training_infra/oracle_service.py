@@ -193,7 +193,8 @@ def cmd_produce(a):
             b = chess.Board(row)
             payload = query_maia(eng, b) if band else query_sf(eng, b, a)
             with c:
-                c.execute("INSERT OR REPLACE INTO labels VALUES (?,?,?,?)",
+                c.execute("INSERT OR REPLACE INTO labels(fen, oracle, payload, created)"
+                          " VALUES (?,?,?,?)",
                           (row, oracle, json.dumps(payload), time.time()))
                 c.execute("UPDATE queue SET status='done' WHERE fen=? AND oracle=?",
                           (row, oracle))
