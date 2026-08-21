@@ -152,6 +152,16 @@ def main():
     ap.add_argument("--w-prior", type=float, default=0.5)
     ap.add_argument("--w-tdleaf", type=float, default=0.5)
     ap.add_argument("--w-gumbel", type=float, default=1.0)
+    ap.add_argument("--w-dc", type=float, default=1.0,
+                    help="dyn move-sensitivity: InfoNCE over legal moves -- the played "
+                         "move's predicted child must match the TRUE child best (the gct1 "
+                         "null's root cause was dyn move-blindness)")
+    ap.add_argument("--w-alt", type=float, default=0.5,
+                    help="CF alt-transition grounding: dyn(z, alt move) -> the alt child's "
+                         "REAL codes (45k counterfactual branches)")
+    ap.add_argument("--alt-n", type=int, default=16)
+    ap.add_argument("--cf-graphs", default="data/derived/move_graphs_v2_cf_24696_6545146.npz")
+    ap.add_argument("--cf", default="data/derived/counterfactual_45142_6545146.npz")
     ap.add_argument("--gumbel-n", type=int, default=8, help="positions/step given REAL "
                     "depth-1 search targets (0 disables)")
     ap.add_argument("--gumbel-width", type=int, default=3)
@@ -242,6 +252,29 @@ def main():
     opt = torch.optim.Adam(tree.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed)
     probe = te_i[rng.choice(len(te_i), min(2500, len(te_i)), replace=False)]
+
+    CFD = None
+    if args.w_alt > 0 and args.games > 0:
+        zc = np.load(args.cf_graphs)
+        CFD = {k: torch.from_numpy(np.ascontiguousarray(zc[k])) for k in
+               ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att", "p_row")}
+        cf = np.load(args.cf)
+        rowmap = {int(r): i for i, r in enumerate(CFD["p_row"].numpy())}
+        mvC, n_mvC = CFD["mv"].numpy(), CFD["n_mv"].numpy()
+        cf_gi, cf_slot = [], []
+        for row, rf, rt in zip(cf["row"], cf["rnd_from"], cf["rnd_to"]):
+            gidx = rowmap.get(int(row))
+            if gidx is None:
+                continue
+            k = n_mvC[gidx]
+            hit = np.flatnonzero((mvC[gidx, :k, 1] == rf) & (mvC[gidx, :k, 2] == rt))
+            if len(hit):
+                cf_gi.append(gidx); cf_slot.append(int(hit[0]))
+        cf_gi = np.array(cf_gi); cf_slot = np.array(cf_slot)
+        cf_train = ~test_g[gor[CFD["p_row"].numpy()[cf_gi]]]
+        cf_gi, cf_slot = cf_gi[cf_train], cf_slot[cf_train]
+        cf_rows = CFD["p_row"].numpy()[cf_gi]
+        print(f"[gct] CF alt-transitions: {len(cf_gi):,} train pairs", flush=True)
     WHITE_ROOT = torch.from_numpy(D["gl"][:, 0].numpy().astype(bool))
 
     def parent_batch(idx):
@@ -291,6 +324,33 @@ def main():
         enc = field.encode(sqf, mvf, edges, mask, elo=elo_rows)
         return enc[0]
 
+    def child_codes_of(idx):
+        """true played-child global codes from the slim child block (no grad)."""
+        B = len(idx)
+        b = {"sq": D["c_sq"][idx].to(dev), "gl": D["c_gl"][idx].to(dev),
+             "mv": torch.zeros(B, MV_CAP, 10, dtype=torch.uint8, device=dev),
+             "mut": torch.full((B, MV_CAP, 24), 255, dtype=torch.uint8, device=dev),
+             "att": D["c_att"][idx].to(dev),
+             "n_mv": torch.zeros(B, dtype=torch.uint8, device=dev),
+             "n_att": D["c_n_att"][idx].to(dev)}
+        sqf, mvf, edges, mask = featurize(b, dev, n_nodes=field.n_nodes)
+        elo_b = EL[idx].to(dev) if EL is not None else None
+        with torch.no_grad():
+            enc = field.encode(sqf, mvf, edges, mask, elo=elo_b)
+        return enc[1]                                    # (B, H) codes
+
+    def cf_parent_batch(gidx):
+        b = {k: CFD[k][gidx].to(dev) for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
+        sqf, mvf, edges, mask = featurize(b, dev, n_nodes=field.n_nodes)
+        off = (torch.arange(len(gidx), device=dev) * field.n_nodes)[:, None]
+        jj = torch.arange(MV_CAP, device=dev)[None, :]
+        for name in ("vac", "dsc"):
+            a = CFD[name][gidx].to(dev).long()
+            val = (a != 255) & mask[:, :, None]
+            edges[name] = (((jj + 64 + off)[:, :, None].expand_as(a))[val],
+                           (a + off[:, :, None])[val])
+        return sqf, mvf, edges, mask
+
     def searched_forward(idx, want_probe=False):
         sqf, mvf, edges, mask = parent_batch(idx)
         elo_b = EL[idx].to(dev) if EL is not None else None
@@ -311,6 +371,51 @@ def main():
         v_static = tree._value(zq, wr)
         v_backed = q.max(dim=1).values
         l_tdleaf = F.huber_loss(v_static, v_backed.detach())
+
+        # DYN MOVE-SENSITIVITY (the gct1 null's fix): every legal move's predicted child
+        # code-distribution scores the TRUE child; InfoNCE over moves, target = played.
+        l_dc = torch.zeros((), device=dev)
+        if args.w_dc > 0:
+            true_c = child_codes_of(idx)                              # (B, H) no-grad
+            e_all = field.mv_emb(mvf)                                 # (B, MV, 64)
+            MVn = e_all.shape[1]
+            dy = field.dyn(torch.cat([zq[:, None, :].expand(-1, MVn, -1), e_all], -1))
+            Hh = field.g_heads
+            lgm = dy[:, :, :Hh * G_CODES].reshape(len(idx), MVn, Hh, G_CODES)
+            lp = F.log_softmax(lgm, -1)
+            score = lp.gather(3, true_c[:, None, :, None].expand(-1, MVn, -1, -1)
+                              ).squeeze(-1).sum(-1)                   # (B, MV)
+            score = score.masked_fill(~mask, float("-inf"))
+            l_dc = F.cross_entropy(score, played)
+
+        # CF ALT-TRANSITION grounding: dyn(z_parent, alt move) -> alt child's real codes
+        l_alt = torch.zeros((), device=dev)
+        if CFD is not None and args.alt_n > 0:
+            ai = rng.integers(0, len(cf_gi), args.alt_n)
+            gidx = torch.from_numpy(cf_gi[ai])
+            sqf2, mvf2, edges2, mask2 = cf_parent_batch(gidx)
+            elo2 = (torch.full((len(gidx), 2), float(EL[0, 0]), device=dev)
+                    if EL is not None else None)
+            zq2, _, _, _, _, _ = field.encode(sqf2, mvf2, edges2, mask2, elo=elo2)
+            slots = torch.from_numpy(cf_slot[ai]).to(dev)
+            e_alt = field.mv_emb(mvf2.gather(
+                1, slots[:, None, None].expand(-1, 1, mvf2.shape[-1])).squeeze(1))
+            dy2 = field.dyn(torch.cat([zq2, e_alt], -1))
+            with torch.no_grad():
+                boards = []
+                for r, sl in zip(cf_rows[ai], cf_slot[ai]):
+                    b2 = board_from_row(tr.tok[r], tr.glob[r])
+                    mv2 = list(b2.legal_moves)[:MV_CAP][sl]
+                    b2.push(mv2); boards.append(b2)
+                z_alt = encode_boards(boards, elo2)
+                # quantize the alt child's globals through the codebooks
+                pre = field.g_proj(field.last_h_sq.mean(1)).view(len(boards),
+                                                                field.g_heads, field.d_code)
+                alt_c = torch.stack([field.vq[h](pre[:, h])[1]
+                                     for h in range(field.g_heads)], 1)
+            Hh = field.g_heads
+            lg2 = dy2[:, :Hh * G_CODES].reshape(len(gidx), Hh, G_CODES)
+            l_alt = F.cross_entropy(lg2.reshape(-1, G_CODES), alt_c.reshape(-1))
 
         l_gum = torch.zeros((), device=dev)
         if args.gumbel_n > 0 and step % 2 == 0:
@@ -360,7 +465,8 @@ def main():
                              tgt, reduction="batchmean")
 
         loss = (args.w_tree * l_tree + args.w_prior * l_prior
-                + args.w_tdleaf * l_tdleaf + args.w_gumbel * l_gum + vl)
+                + args.w_tdleaf * l_tdleaf + args.w_gumbel * l_gum
+                + args.w_dc * l_dc + args.w_alt * l_alt + vl)
         opt.zero_grad(); loss.backward(); opt.step()
 
         m = {}
@@ -380,7 +486,7 @@ def main():
             print(f"[gct] step {step:>5}/{args.steps} {el/60:>5.1f}m "
                   f"({el/max(1,step):.3f}s/step) | tree {float(l_tree.detach()):.3f} "
                   f"prior {float(l_prior.detach()):.3f} tdleaf {float(l_tdleaf.detach()):.4f} "
-                  f"gum {float(l_gum.detach()):.6f} | HELD-OUT searched-top1 {s1/tot:.3f} "
+                  f"gum {float(l_gum.detach()):.4f} dc {float(l_dc.detach()):.3f} alt {float(l_alt.detach()):.3f} | HELD-OUT searched-top1 {s1/tot:.3f} "
                   f"prior-top1 {p1/tot:.3f} ({(s1-p1)/tot:+.3f} from the tree)", flush=True)
             m = {"searched_top1": s1 / tot, "prior_top1": p1 / tot}
             field.train(); tree.train()
