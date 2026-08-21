@@ -262,3 +262,13 @@ attention still trivial. This is the next FIELD generation (gcf5/gko2), calibrat
 gko1e's concept-plane + duplicate-merge analysis (how many distinct concepts the
 current 32x32 already expresses). Composes with: piece-support L1 (narrow only),
 per-head diffusion scales (emergent spatial granularity), per-band maia heads.
+
+## VOCABULARY SCALE AMENDMENT (Kaveh, same day): 512 concepts
+512 heads, not ~200. Proposed quadrant split 16 wide-slow + 16 wide-fast + 240
+narrow-slow + 240 narrow-fast; mixed depth (wide d_code 16, narrow d_code 4-8 --
+narrow concepts are present/absent + mode). Cost at narrow-d8: d_state ~6.3k, d_aug
+~6.5k, shared operator ~43M params (Adam state ~0.5GB -- the one real jump), apply
+~300us/node = still >=10x under re-encode, MORE once piece-support L1 makes the
+operator block-sparse (touched-blocks-only application). Lift tokens ~577, attention
+still cheap. Verdict-time duplicate-merge analysis on gko1e calibrates how much of
+512 the data can actually individuate.
