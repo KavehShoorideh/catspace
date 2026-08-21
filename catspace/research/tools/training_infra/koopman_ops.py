@@ -351,7 +351,7 @@ class TransformerLift(nn.Module):
         self.p_hist = nn.Linear(self.d_hist, d_tok) if self.d_hist else None
         self.tok_emb = nn.Parameter(torch.randn(self.n_tok, d_tok) * 0.02)
         layer = nn.TransformerEncoderLayer(d_model=d_tok, nhead=n_attn,
-                                           dim_feedforward=2 * d_tok,
+                                           dim_feedforward=2 * d_tok, dropout=0.0,
                                            batch_first=True, norm_first=True)
         self.enc = nn.TransformerEncoder(layer, num_layers=n_layers)
         self.out = nn.Linear(self.n_tok * d_tok, d_phi)
