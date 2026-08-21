@@ -62,6 +62,11 @@ def main():
                     help="interaction module BEFORE the operators (Kaveh 2026-08-21: "
                     "attention over concept tokens, then linear rollforward)")
     ap.add_argument("--lift-layers", type=int, default=2)
+    ap.add_argument("--g-heads", type=int, default=0, help="override field concept heads "
+                    "(512-concept ruling); 0 = use the field ckpt's value")
+    ap.add_argument("--g-codes", type=int, default=0)
+    ap.add_argument("--d-code", type=int, default=0)
+    ap.add_argument("--slow-heads", type=int, default=0)
     ap.add_argument("--w-v0", type=float, default=0.5, help="state-value grounding at k=0")
     ap.add_argument("--w-vk", type=float, default=1.0, help="ROLLED future-value vs SF truth")
     ap.add_argument("--chain-values", default="data/derived/gko1_chain_values.npz")
@@ -118,7 +123,12 @@ def main():
         TrainConfig, standard_train)
 
     ck = torch.load(args.resume_field, map_location="cpu", weights_only=False)
-    A = ck["args"]
+    A = dict(ck["args"])
+    if args.g_heads:
+        A["g_heads"], A["g_codes"], A["d_code"] = args.g_heads, args.g_codes, args.d_code
+        A["slow_heads"] = args.slow_heads or A["slow_heads"]
+        print(f"[gko2] field OVERRIDE: {A['g_heads']} heads x {A['g_codes']} codes "
+              f"x d{A['d_code']}, slow {A['slow_heads']}", flush=True)
     field = GraphConceptField(
         d=A["d_model"], layers=A["layers"], slow_heads=A["slow_heads"], n_res=3, n_eg=1,
         cls_reach=np.zeros(3, np.int64), cls_eg=np.zeros(3, np.int64),
@@ -128,7 +138,15 @@ def main():
         file_nodes=bool(A["file_nodes"]), phase_head=bool(A["phase_head"]),
         threat_head=bool(A["threat_head"]), elo_cond=True,
         g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"]).to(dev)
-    field.load_state_dict(ck["state_dict"])
+    if args.g_heads:
+        own = field.state_dict()
+        sdf = {k: v for k, v in ck["state_dict"].items()
+               if k in own and own[k].shape == v.shape}
+        print(f"[gko2] trunk warm-start: {len(sdf)}/{len(own)} tensors carried, "
+              f"{len(own) - len(sdf)} fresh (concept layer + heads)", flush=True)
+        field.load_state_dict(sdf, strict=False)
+    else:
+        field.load_state_dict(ck["state_dict"])
 
     class GKO(nn.Module):
         def __init__(self):
