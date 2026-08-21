@@ -15578,3 +15578,28 @@ position is played at 1100 vs 1900, keyed to our concepts. SF backfill scaled 1-
 producers (28.7 percent -> converging). The pool now grows only where the model is
 uncertain (expansion walks), so band coverage of NEW positions is acquisition-authored
 by construction.
+
+**gko1 build slice complete; gko1a joint run LAUNCHED (2026-08-21 morning).** Every
+remaining plan component landed with its gates green, printed numbers only:
+- koopman_ops.py: U1 identity exact-0, U1b 6-step no-relift phi-drift 1.2e-10 on the
+  monomial synthetic, U2 rho worst 0.002 vs eigvals (tol 0.05), U3 compose 7.8e-07,
+  U4 ridge-vs-generator 1.2e-05 AND kooplearn agreement 1.0e-14 once its C_X/n + alpha
+  convention was read from source (the initial 1.6e-2 "failure" was a regularization-
+  scaling mismatch, not a bug).
+- Chain data: game_transitions cache (2.096M transitions, 91.5 percent of rows carry
+  full 6-chains); 60k chain-starts sampled, 383,620 full graph rows generated in 12m,
+  mmap-converted (1.66G); per-row (mover, opp) elo sidecar.
+- Trainer surgery (gko_train --ops --iv): operator arm on 6-ply chains + detached MLP
+  baseline arm (H1 instrument) + identity arm; joint interval head on SF gap-to-best
+  (H2 instrument); pause-alarm NaN guard. Units U12-U16 ALL PASS. Fresh-ops info line:
+  identity-persistence R2 0.913/0.863/0.805 at 1/3/6 plies -- the HONEST bar for H1
+  (concept states are slow; persistence is strong).
+- ChessBench yardstick: vendored bagz (framing verified on-file, 0/1000 probe
+  failures); U11 CAUGHT REAL CONTAMINATION -- 2,257 lichess-shared positions excised
+  from the pool, walks now filter against all 62,445 test keys; gko0c scores
+  action-value spearman 0.598 / top1 0.302 (clean-subset deltas negligible).
+- gen-3 verdict (gko0c, 3.17M rows): maia-top1 0.701, sf-spearman 0.574, maiaKL 2.107
+  (gen-2: 0.647/0.565/2.219). The gen-2 "flattening" was data composition, not ceiling.
+gko1a resumes gko0c with ops+iv joint, 20k steps. H1: ops beat mlp AND identity on
+composed 3/6-ply R2. H2: iv coverage in [0.80, 0.87] with width >=25 percent under
+gciv1's frozen-field row. H3 instrument ready; curve when acquisition-vs-random arms run.
