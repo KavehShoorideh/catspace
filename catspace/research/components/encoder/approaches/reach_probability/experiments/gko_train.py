@@ -148,9 +148,17 @@ def main():
     model = GKO().to(dev)
     if args.resume_self:
         ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
-        miss, unex = model.load_state_dict(ck2["state_dict"], strict=False)
+        sd2 = dict(ck2["state_dict"])
+        own = model.state_dict()
+        # strict=False does NOT tolerate shape mismatches -- drop them explicitly
+        # (e.g. operators sized for a different lift width start fresh)
+        drop = [k for k, v in sd2.items() if k in own and own[k].shape != v.shape]
+        for k in drop:
+            del sd2[k]
+        miss, unex = model.load_state_dict(sd2, strict=False)
         print(f"[gko0] resumed self from {args.resume_self} (step {ck2.get('step')}; "
-              f"{len(miss)} new keys init fresh, {len(unex)} unexpected)", flush=True)
+              f"{len(miss)} new keys init fresh, {len(drop)} shape-dropped, "
+              f"{len(unex)} unexpected)", flush=True)
     hl = HLGauss(k=args.k_bins).to(dev)
     if args.iv_frozen:
         for pr in model.field.parameters():
