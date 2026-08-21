@@ -64,7 +64,7 @@ def main():
     ap.add_argument("--w-op1", type=float, default=1.0)
     ap.add_argument("--w-op3", type=float, default=0.5)
     ap.add_argument("--w-op6", type=float, default=0.3)
-    ap.add_argument("--w-spec", type=float, default=0.1)
+    ap.add_argument("--w-spec", type=float, default=0.2)
     ap.add_argument("--w-phi", type=float, default=0.25)
     ap.add_argument("--w-iv", type=float, default=1.0)
     ap.add_argument("--w-move", type=float, default=2.0, help="corpus move PL on chain parents")
@@ -304,8 +304,7 @@ def main():
         traj = rollout(model.ops, model.lift(zq_p), code_seq)       # (cb,6,d_aug)
         ds = model.lift.d_state
         def _comp(za, tgt):
-            return (F.mse_loss(za[..., :ds], tgt) + args.w_phi *
-                    F.mse_loss(za[..., ds:], model.lift.phi(tgt).detach()))
+            return F.mse_loss(za[..., :ds], tgt)
         l3, l6 = _comp(traj[:, 2], t3), _comp(traj[:, 5], t6)
         l_spec, rho = model.ops.spectral_penalty(code_seq.ravel())
         # baseline: iterated MLP on DETACHED state with token move features
@@ -332,7 +331,7 @@ def main():
             vamp_v = float(vamp)
             l_slow = -vamp / 32.0
             l_dec = vicreg_covariance(pg0.reshape(len(vb), -1)[:, sl:])
-        w6 = args.w_op6 if step >= args.op6_after else 0.0
+        w6 = args.w_op6 * min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
         total = (args.w_op1 * l1 + args.w_op3 * l3 + w6 * l6 +
                  args.w_spec * l_spec + l_mlp +
                  args.w_move * l_move + args.w_dyn2 * l_dyn2 +
@@ -451,7 +450,9 @@ def main():
             print(f"[gko1] ALARM non-finite loss at step {step}; state saved; pausing",
                   flush=True)
             raise SystemExit(3)
-        opt.zero_grad(); loss.backward(); opt.step()
+        opt.zero_grad(); loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        opt.step()
         out = {"loss": float(loss.detach())}
         out.update(op_d)
         if step % args.eval_every == 0 or step == 1:
