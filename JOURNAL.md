@@ -15639,3 +15639,12 @@ ramps linearly over 2000 steps; 3/6-ply composed losses supervise the STATE part
 (the phi-part at long horizon chased a drifting lift -- U1b says consistency follows
 from good operators, it is not a target); w_spec 0.1 -> 0.2. Relaunch gko1c resumes
 gko1b_step2000.pt (saved pre-ramp, all metrics healthy there).
+
+**Post-mortem amendment (step-2500 line recovered from the watchdog):** the op6 loss
+ran HEALTHY for 500 steps after activation -- at 2500: opR2 0.927/0.884/0.785, ABOVE
+identity 0.914/0.861/0.764 at all three horizons (first sighting of H1's direction),
+rho clamped at 1.001, vamp 31.2, iv-cov 0.803 on nominal. The blowup happened 2500->
+3000 via spectral creep (rho 1.001 -> 1.041) crossing the 6-product amplification
+threshold -- runaway, not activation shock. So clipping + w_spec 0.2 are the
+load-bearing fixes; the linear ramp is belt. mlp led ops at composed horizons
+(0.894/0.853 vs 0.884/0.785) pre-explosion: H1 is a live, close fight.
