@@ -15495,3 +15495,12 @@ batch rounds of query->fine-tune->re-score, POOL-BASED ("not necessarily adjacen
 states" -- Kaveh's clarification: no trajectory constraint; query wherever informativeness
 peaks). Data: ChessBench subset download for SF; lc0+Maia nets for the human oracle,
 queried under the acquisition budget.
+
+**23:45 amendment (Kaveh): ORACLE-QUERY PARADIGM, no bulk corpus.** "We don't have to
+train on a corpus; instead we ask the oracle questions." SF runs locally = a programmable
+oracle (full multipv ordering per query, ~50ms); Maia via lc0 likewise. gko1's data
+engine becomes: free unlabeled state POOL + acquisition (interval-width x code-rarity x
+entropy) + per-round query budgets + an oracle service with a persistent cache
+(journal_mode=DELETE per the tb-cache scar). ChessBench reduces to the 141MB test set +
+puzzles as the standardized yardstick; the headline eval is THEIR accuracy-vs-labels
+ablation curve with OUR query-efficient point on it.
