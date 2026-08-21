@@ -195,3 +195,21 @@ Composition fidelity is necessary, not sufficient. The real payoffs, in order:
     -- "don't pay for non-interaction" as a training pressure.
 Concepts are mandatory throughout (interpretability is the endpoint); linearity is
 what makes them cheap to search through.
+
+## LOCALITY REFINEMENT 2 (Kaveh 2026-08-21, verbal): piece-support ladder + L1
+Plain-language rename: the "touch table" is the PIECE-SUPPORT picture -- per concept,
+which pieces it reads; per move, which concepts it can change. Kaveh's prior, testable:
+a DECREASING LADDER of support sizes (many 1-piece concepts, fewer 2-piece, fewer
+3-piece, one or two 4-5-piece structural ones). The pin reads its three pieces only;
+pin-fails-to-knight-check is an INTERACTION between two small concepts (carried by
+phi / the code-pair table), never a widening of either concept's support.
+Levers (flag-gated, NEXT run, never mid-run):
+  (a) field-side: group-L1 over per-square attribution mass per concept head
+      (concepts become piece-sparse against the mean-pool architecture);
+  (b) operator-side: group-L1 over per-head blocks of B_c (moves change few concepts).
+Verdict artifacts from gko1c (free, measurement-only): per-concept support-size
+histogram judged against the ladder shape; per-move-code changed-concepts histogram;
+pin-like small-support exemplars as case studies. Honest architecture note: global
+heads mean-pool ALL 64 squares, so support sparsity must be learned against the
+pooling; if the penalty fights the architecture, the structural fix is region-gated
+heads (next-design decision, Kaveh's call).
