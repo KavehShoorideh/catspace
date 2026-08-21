@@ -62,6 +62,9 @@ def main():
                     help="interaction module BEFORE the operators (Kaveh 2026-08-21: "
                     "attention over concept tokens, then linear rollforward)")
     ap.add_argument("--lift-layers", type=int, default=2)
+    ap.add_argument("--w-v0", type=float, default=0.5, help="state-value grounding at k=0")
+    ap.add_argument("--w-vk", type=float, default=1.0, help="ROLLED future-value vs SF truth")
+    ap.add_argument("--chain-values", default="data/derived/gko1_chain_values.npz")
     ap.add_argument("--op-rank", type=int, default=16)
     ap.add_argument("--chain-batch", type=int, default=16)
     ap.add_argument("--op6-after", type=int, default=2000)
@@ -145,6 +148,14 @@ def main():
             if args.iv:
                 self.iv = nn.Sequential(
                     nn.Linear(field.d_state + 32, 256), nn.GELU(), nn.Linear(256, 3))
+            if args.ops:
+                # value-from-AUGMENTED-state (Kaveh 2026-08-21): the same readout is
+                # applied to rolled states and scored vs future SF truth, so concepts
+                # AND interaction features must carry value-relevant signal at every
+                # horizon (phi is oracle-load-bearing; its self-target is dropped)
+                self.sf_v = nn.Sequential(
+                    nn.Linear(self.lift.d_aug, 256), nn.GELU(),
+                    nn.Linear(256, args.k_bins))
     model = GKO().to(dev)
     if args.resume_self:
         ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
@@ -209,6 +220,11 @@ def main():
         row_elo_n = _ne(rel.astype(np.float32))
         print(f"[gko1] chains {len(CH_pos):,} ({len(ch_te):,} held out by GAME) | "
               f"graphs {args.chain_graphs}", flush=True)
+        CHV = None
+        if os.path.exists(args.chain_values):
+            CHV = np.load(args.chain_values)["v"]
+            print(f"[gko1] chain values: {int(np.isfinite(CHV).sum()):,} rows valued",
+                  flush=True)
 
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att",
             "kind", "band", "tgt")
@@ -245,8 +261,15 @@ def main():
           f"sf {int((D['kind']==0).sum()):,} maia {int((D['kind']==1).sum()):,}",
           flush=True)
 
+    model_has_v = args.ops and hasattr(model, "sf_v")
+
     def refresh_store():
-        nonlocal D, N, tr_i, te_i, hold
+        nonlocal D, N, tr_i, te_i, hold, CHV
+        if args.ops and os.path.exists(args.chain_values):
+            try:
+                CHV = np.load(args.chain_values)["v"]
+            except Exception:
+                pass
         if rescan():
             D = {k: torch.from_numpy(flat(k)) for k in KEYS}
             oldN = N; N = len(D["kind"])
@@ -339,6 +362,26 @@ def main():
             if k in (0, 2, 5):
                 merr[k] = F.mse_loss(s, zq_c[:, k])
         l_mlp = merr[0] + merr[2] + merr[5]
+        l_v = torch.zeros((), device=dev)
+        v_n = 0
+        if CHV is not None and model_has_v:
+            za0 = model.lift(zq_p)
+            vt0 = torch.from_numpy(CHV[ci[:, 0]]).to(dev)
+            m0 = torch.isfinite(vt0)
+            if m0.any():
+                l_v = l_v + args.w_v0 * hl.ce(model.sf_v(za0[m0]), vt0[m0])
+                v_n += int(m0.sum())
+            w6r = min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
+            for k, wk in ((1, 1.0), (3, 1.0), (6, w6r)):
+                if wk <= 0:
+                    continue
+                vtk = torch.from_numpy(CHV[ci[:, k]]).to(dev)
+                mk = torch.isfinite(vtk)
+                if mk.any():
+                    l_v = l_v + args.w_vk * wk * hl.ce(model.sf_v(traj[:, k - 1][mk]),
+                                                       vtk[mk])
+                    v_n += int(mk.sum())
+            assert not vt0.requires_grad
         l_slow = l_dec = torch.zeros((), device=dev)
         vamp_v = 0.0
         if args.w_slow > 0 and step % args.vamp_every == 0:
@@ -356,14 +399,15 @@ def main():
             l_dec = vicreg_covariance(pg0.reshape(len(vb), -1)[:, sl:])
         w6 = args.w_op6 * min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
         total = (args.w_op1 * l1 + args.w_op3 * l3 + w6 * l6 +
-                 args.w_spec * l_spec + l_mlp +
+                 args.w_spec * l_spec + l_mlp + l_v +
                  args.w_move * l_move + args.w_dyn2 * l_dyn2 +
                  args.w_slow * l_slow * args.vamp_every + args.w_dec * l_dec * args.vamp_every)
         with torch.no_grad():
             cons6 = float(lift_consistency(model.lift, traj[:, 5]).mean())
         return total, {"op1": float(l1), "op3": float(l3), "op6": float(l6),
                        "mlp": float(l_mlp), "rho": float(rho.max()), "cons6": cons6,
-                       "move": float(l_move), "dyn2": float(l_dyn2), "vamp": vamp_v}
+                       "move": float(l_move), "dyn2": float(l_dyn2), "vamp": vamp_v,
+                       "lv": float(l_v), "vn": v_n}
 
     @torch.no_grad()
     def op_eval(n_ch=384):
@@ -397,6 +441,15 @@ def main():
                 s = model.dyn_z(torch.cat([s, model.field.mv_emb(toks[:, k])], -1))
                 if k in (0, 2, 5):
                     mlp_s[k] = s
+            if CHV is not None and model_has_v:
+                for kk, key in ((1, "v1"), (3, "v3"), (6, "v6")):
+                    vt = torch.from_numpy(CHV[ci[:, kk]]).to(zq_p.device)
+                    mk = torch.isfinite(vt)
+                    if mk.any():
+                        pv = hl.decode(model.sf_v(traj[:, kk - 1][mk]))
+                        agg.setdefault(key, [0.0, 0.0])
+                        agg[key][0] += float((pv - vt[mk]).abs().sum())
+                        agg[key][1] += float(mk.sum())
             for key, pred, k in (("o1", traj[:, 0, :ds], 0), ("o3", traj[:, 2, :ds], 2),
                                  ("o6", traj[:, 5, :ds], 5), ("m1", mlp_s[0], 0),
                                  ("m3", mlp_s[2], 2), ("m6", mlp_s[5], 5),
@@ -405,7 +458,13 @@ def main():
                 agg[key][0] += float(((pred - t) ** 2).sum())
                 agg[key][1] += float(((t - t.mean(0)) ** 2).sum())
         model.train()
-        return {k: 1.0 - v[0] / max(v[1], 1e-9) for k, v in agg.items()}
+        out2 = {}
+        for k, v in agg.items():
+            if k.startswith("v"):
+                out2[k] = v[0] / max(v[1], 1e-9)      # MAE, wp units
+            else:
+                out2[k] = 1.0 - v[0] / max(v[1], 1e-9)
+        return out2
 
     def losses_on(idx, train=True):
         sqf, mvf, edges, mask, elo = batch_of(idx)
@@ -524,7 +583,10 @@ def main():
                        f" id {r2['i1']:.3f}/{r2['i3']:.3f}/{r2['i6']:.3f}"
                        f" rho {op_d.get('rho', 0):.3f} cons6 {op_d.get('cons6', 0):.3f}"
                        f" | mv {op_d.get('move', 0):.2f} dyn {op_d.get('dyn2', 0):.2f}"
-                       f" vamp {op_d.get('vamp', 0):.1f}/32")
+                       f" vamp {op_d.get('vamp', 0):.1f}/32"
+                       + (f" | vMAE {r2.get('v1', -1):.3f}/{r2.get('v3', -1):.3f}/"
+                          f"{r2.get('v6', -1):.3f} vn {op_d.get('vn', 0)}"
+                          if "v1" in r2 else ""))
                 out.update({f"op_r2_{k}": v for k, v in r2.items()})
                 if r2["i1"] < 0.5:
                     print(f"[gko1] ALARM identity-R2@1 {r2['i1']:.3f} < 0.5 -- "
