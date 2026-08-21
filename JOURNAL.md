@@ -15509,3 +15509,25 @@ ablation curve with OUR query-efficient point on it.
 component. Tonight's single frozen-field gciv1 run is kept only as (a) the "before" row
 of the joint-training ablation and (b) the BOOTSTRAP acquisition scorer for gko1's first
 query round. All subsequent interval training happens inside gko1, jointly.
+
+---
+
+## 2026-08-21 01:00 — gct2b VERDICT (the latent-tree line closes) + gciv1 before-row
+
+**gct2b: null survives the fix; the mechanism is architectural.** 4000 steps with
+move-sensitivity InfoNCE + 40,561 real alt-transitions: searched-top1 == prior-top1 ==
+0.293 (+0.000), and the postmortem beam-sibling child cosine is STILL 1.00000 (mean and
+min, 256 positions). The InfoNCE could not crack it (dc rebounded to 3.07 vs chance 3.55;
+alt CE flat near chance): the dyn head's 64-dim move embedding into a state-dominated MLP
+is an architectural bottleneck that loss pressure does not open. Two clean shots, same
+verified mechanism -> the latent-tree-over-dyn line CLOSES. The handoff is exact: gko1's
+per-move-code OPERATORS differ by construction (indexed weights), which is the
+architectural fix this null demands. Positive residue: the human->SF bridge held again
+(prior fine-tuned to 0.293 >= gcf3's 0.292 from a human start).
+
+**gciv1 (frozen concepts -> alpha/beta): calibrated but blunt -- a proper before-row.**
+Coverage 0.848 (target 0.8; conservative like the reference), width 0.824, but SIGN only
+0.581 vs the continuous reference's 0.776: the frozen vocabulary + a 1-of-64 move code
+carries calibration but weak sibling discrimination. Exactly what gko1's joint training
+must sharpen (H2), and sufficient as the bootstrap acquisition scorer (acquisition needs
+width RANKING, which calibration supports).
