@@ -251,3 +251,14 @@ continuous dial, bands 1100-1900). Verdict obligation added: PER-BAND top-1-vs-M
 at each band's own dial setting (pooled maia-top1 hides blur); if bands blur into one
 average human, escalate to discrete per-band heads (cheap swap). Play wiring: "best"
 mode = search on sf_av; "human@elo" = dialed move head, tempered.
+
+## VOCABULARY SCALE (Kaveh 2026-08-21, verbal): a couple hundred concepts
+Ruling: the concept vocabulary should be O(200) nameable units, not 32. Proposed
+default (his 2x2 as budget sheet): 8 wide-slow + 8 wide-fast + ~96 narrow-slow +
+~96 narrow-fast heads; heads get SHALLOWER as they multiply (narrow = 4-8 codes,
+present/absent + mode; wide keep richer books). Cost check: d_state ~3.8k, operator
+~17M params, apply ~120us/node = still 20x+ under re-encode; lift tokens 97->~270,
+attention still trivial. This is the next FIELD generation (gcf5/gko2), calibrated by
+gko1e's concept-plane + duplicate-merge analysis (how many distinct concepts the
+current 32x32 already expresses). Composes with: piece-support L1 (narrow only),
+per-head diffusion scales (emergent spatial granularity), per-band maia heads.
