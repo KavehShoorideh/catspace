@@ -89,9 +89,11 @@ class ConceptTree(nn.Module):
             (z.shape[0],), bool(white_pov), device=z.device, dtype=torch.bool)
         v_child = self._recurse(flat, depth - 1, (~wp).repeat_interleave(self.beam))
         v_child = v_child.reshape(z.shape[0], self.beam)
-        # child values are OPPONENT-POV; negamax: my value of a reply set = -softbackup(-(-v))
-        # children maximize their own POV, I see the negation, weighted by slot plausibility
-        v_opp = self._backup(v_child + torch.log(w.clamp(min=1e-8)))   # their soft-best
+        # children maximize their own POV; weights from value + slot log-plausibility,
+        # SUMMAND is the value alone (the audit's bug 2: adding log w into the summand
+        # leaked an entropy-dependent negative bias into every ply's backed value)
+        wts = torch.softmax(v_child + torch.log(w.clamp(min=1e-8)), -1)
+        v_opp = (wts * v_child).sum(-1)
         v_search = -v_opp
         # TD(lambda) mixing (TreeQN eq. 4): blend this node's static value in
         return (1 - self.lam) * v_here + self.lam * v_search
@@ -109,8 +111,13 @@ class ConceptTree(nn.Module):
         wp_child = (~white_root)[:, None].expand(-1, top).reshape(-1)
         v_kid = self._recurse(flat, self.depth - 1, wp_child)          # child-mover POV
         q = (-v_kid).reshape(Bb, top)                                  # root-mover POV
+        # CENTER Q within the beam (Kaveh's audit, 2026-08-20: uncentered Q with a
+        # negative mean demoted the whole beam vs never-searched moves -- 65/65 measured
+        # disagreements were a non-beam move overtaking). Centered: flat Q reduces to
+        # searched == prior EXACTLY; only sibling DIFFERENCES act.
+        q_c = q - q.mean(dim=1, keepdim=True)
         searched = prior.clone()
-        searched = searched.scatter(1, idx, prior.gather(1, idx) + self.kappa * q)
+        searched = searched.scatter(1, idx, prior.gather(1, idx) + self.kappa * q_c)
         return searched.masked_fill(~mv_mask, float("-inf")), q, idx
 
 
