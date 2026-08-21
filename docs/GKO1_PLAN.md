@@ -52,11 +52,18 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
         moves' cp/wdl -> win-prob targets
     maia(band): lc0 --weights=maia-<band> nodes=1 verbose-move-stats -> raw policy P(m)
   sqlite cache, journal_mode=DELETE (the tb-cache scar), keyed (fen, oracle, band).
-- Active loop: round k: score pool on current model -> top-B by acquisition (dedup by
-  concept-code signature to enforce diversity) -> query -> add to labeled set ->
-  fine-tune -> re-score. Budgets: B=5k/round, 8 rounds v1 (40k SF + 10k Maia calls).
-  Baseline arm: random acquisition, same budgets (H3 needs it; approved as part of the
-  hypothesis test, not an A/B rollout).
+- Active loop, PIPELINED (Kaveh 2026-08-21: "pipeline data generation with training
+  so you can work in batches"): producer/consumer over the sqlite store --
+    PRODUCER (CPU, concurrent with training): oracle worker process drains an
+      acquisition-ranked queue; SF capped at Threads=2/Hash=64MB, lc0 nodes=1, so the
+      co-tenancy stays inside the one-heavy-job rule's RAM budget; labels commit
+      atomically to the store (queue row claimed -> labeled exactly once).
+    CONSUMER (GPU): trains continuously; each batch mixes newly-landed labels with
+      replay; acquisition scores refresh from a model SNAPSHOT every 500 steps (stale
+      scores only need to RANK -- exactness not required; staleness noted, accepted).
+  Budgets unchanged: ~5k queries per refresh window, ~8 windows v1 (40k SF + 10k Maia).
+  Baseline arm: random acquisition, same budgets (H3's control; part of the hypothesis
+  test, not an A/B rollout).
 
 ## 4. Losses (weights at launch; interaction review inline)
   L_sf (HL-Gauss CE, all legal moves)          2.0   the distillation target
@@ -102,6 +109,8 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
       moves (count match python-chess), Maia policy sums to ~1
   U10 acquisition: on a synthetic pool with planted rare codes + wide intervals, the
       scorer ranks planted states first; dedup-by-signature caps duplicates
+  U10b queue atomicity: concurrent claim of the same row labels it EXACTLY once; the
+      trainer never reads a row before its label commit (WAL-free store, DELETE mode)
   U11 pool/label split hygiene: ChessBench test FENs excluded from the pool (hash check)
   U12 elo-conditioning passthrough: fixed-elo vs per-band Maia conditioning shapes agree
   U13 gradient isolation: oracle targets are stop-grad; no loss reads model predictions
@@ -140,4 +149,5 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
   3. oracle_service.py (U9) + maia weights fetch
   4. acquisition.py (U10, U15)
   5. gko trainer assembling all (U12-U14) ; invariant review script that GATES
-  6. smoke (crash/scale only) -> round-0 bootstrap (gciv scorer) -> launch
+  6. smoke (crash/scale only) -> round-0 bootstrap (gciv scorer) -> launch producer
+     FIRST (warm the label store while units finalize), consumer joins when gates pass
