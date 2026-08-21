@@ -242,3 +242,12 @@ small concept-token transformer feeding the augmentation block; U1/U1b/U3 gates 
 unchanged. Bet named: interactions, once computed, evolve linearly too (Koopman-
 orthodox observable enrichment); if code-pair residuals still leak, that is the rSLDS
 v2 trigger, unchanged.
+
+## PRODUCT SHAPE (Kaveh 2026-08-21): multiple heads on one concept state
+Final model = one checkpoint, two play personalities: (1) BEST-PLAY head -- the SF
+action-value head (multipv-distilled win-probs; argmax = best move, magnitudes = the
+search eval); (2) HUMAN head(s) -- the Maia-KL move head, elo-CONDITIONED (one head,
+continuous dial, bands 1100-1900). Verdict obligation added: PER-BAND top-1-vs-Maia
+at each band's own dial setting (pooled maia-top1 hides blur); if bands blur into one
+average human, escalate to discrete per-band heads (cheap swap). Play wiring: "best"
+mode = search on sf_av; "human@elo" = dialed move head, tempered.
