@@ -58,6 +58,10 @@ def main():
     ap.add_argument("--chain-starts", default="data/derived/gko1_chain_rows.npz")
     ap.add_argument("--row-elo", default="data/derived/gko1_row_elo_2126316.npz")
     ap.add_argument("--d-phi", type=int, default=128)
+    ap.add_argument("--lift", choices=["bilinear", "transformer"], default="bilinear",
+                    help="interaction module BEFORE the operators (Kaveh 2026-08-21: "
+                    "attention over concept tokens, then linear rollforward)")
+    ap.add_argument("--lift-layers", type=int, default=2)
     ap.add_argument("--op-rank", type=int, default=16)
     ap.add_argument("--chain-batch", type=int, default=16)
     ap.add_argument("--op6-after", type=int, default=2000)
@@ -95,7 +99,8 @@ def main():
         .graph_move_policy import featurize
     from catspace.research.tools.training_infra.hl_gauss import HLGauss
     from catspace.research.tools.training_infra.koopman_ops import (
-        InteractionLift, KoopmanOps, one_ply_loss, rollout, lift_consistency)
+        InteractionLift, KoopmanOps, TransformerLift, one_ply_loss, rollout,
+        lift_consistency)
     from catspace.research.tools.training_infra.losses import (
         cross_head_decorrelation, vamp2_score, vicreg_covariance)
     from catspace.research.components.encoder.approaches.reach_probability.src \
@@ -124,7 +129,13 @@ def main():
                 nn.Linear(field.d_state + A["d_model"], 512), nn.GELU(),
                 nn.Linear(512, args.k_bins))
             if args.ops:
-                self.lift = InteractionLift(field.d_state, args.d_phi)
+                if args.lift == "transformer":
+                    self.lift = TransformerLift(
+                        field.d_state, g_heads=A["g_heads"], d_code=A["d_code"],
+                        d_sq=32, d_phi=max(args.d_phi, 256),
+                        n_layers=args.lift_layers)
+                else:
+                    self.lift = InteractionLift(field.d_state, args.d_phi)
                 self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
                                       rank=args.op_rank)
                 # H1's baseline arm: same targets, DETACHED inputs (see docstring)
@@ -149,10 +160,14 @@ def main():
         opt = torch.optim.Adam(model.iv.parameters(), lr=args.lr)
     elif args.ops:
         op_ids = {id(pr) for pr in model.ops.parameters()}
-        rest = [pr for pr in model.parameters() if id(pr) not in op_ids]
+        lift_ids = {id(pr) for pr in model.lift.parameters()}
+        rest = [pr for pr in model.parameters()
+                if id(pr) not in op_ids and id(pr) not in lift_ids]
         opt = torch.optim.Adam([{"params": rest, "lr": args.lr},
                                 {"params": list(model.ops.parameters()),
-                                 "lr": args.lr_ops}])
+                                 "lr": args.lr_ops},
+                                {"params": list(model.lift.parameters()),
+                                 "lr": args.lr * 0.5}])
     else:
         opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed)

@@ -322,3 +322,57 @@ if __name__ == "__main__":
         _selftest()
     else:
         print("nothing to do without --selftest")
+
+
+class TransformerLift(nn.Module):
+    """z -> [z ; phi(z)] where phi = attention over the CONCEPT TOKENS (Kaveh
+    2026-08-21: interactions -- pin attends to check -- are computed ONCE, written
+    onto the tokens 'as a little bit of a rotation', and the operator applies AFTER,
+    carrying the interaction signal through rollouts with no re-encode; 'otherwise I
+    am no better than MuZero'). Same interface as InteractionLift, so the operator
+    algebra, losses, and the consistency meter apply unchanged.
+
+    Token layout for the gcf4h-family state (d_state = heads*d_code + 64*d_sq + d_hist):
+    one token per global VQ head, one per square code, one for the edge-histogram
+    block; typed + positioned, n_layers of standard attention, all output tokens
+    concatenated and projected to d_phi."""
+
+    def __init__(self, d_state: int, g_heads: int = 32, d_code: int = 16,
+                 d_sq: int = 32, d_phi: int = 256, d_tok: int = 64,
+                 n_layers: int = 2, n_attn: int = 4):
+        super().__init__()
+        self.d_state, self.d_phi = d_state, d_phi
+        self.g_heads, self.d_code, self.d_sq = g_heads, d_code, d_sq
+        self.d_hist = d_state - g_heads * d_code - 64 * d_sq
+        assert self.d_hist >= 0, (d_state, g_heads, d_code, d_sq)
+        self.n_tok = g_heads + 64 + (1 if self.d_hist else 0)
+        self.p_head = nn.Linear(d_code, d_tok)
+        self.p_sq = nn.Linear(d_sq, d_tok)
+        self.p_hist = nn.Linear(self.d_hist, d_tok) if self.d_hist else None
+        self.tok_emb = nn.Parameter(torch.randn(self.n_tok, d_tok) * 0.02)
+        layer = nn.TransformerEncoderLayer(d_model=d_tok, nhead=n_attn,
+                                           dim_feedforward=2 * d_tok,
+                                           batch_first=True, norm_first=True)
+        self.enc = nn.TransformerEncoder(layer, num_layers=n_layers)
+        self.out = nn.Linear(self.n_tok * d_tok, d_phi)
+
+    def _tokens(self, z):
+        B = z.shape[0]
+        h = self.g_heads * self.d_code
+        s = h + 64 * self.d_sq
+        toks = [self.p_head(z[:, :h].reshape(B, self.g_heads, self.d_code)),
+                self.p_sq(z[:, h:s].reshape(B, 64, self.d_sq))]
+        if self.p_hist is not None:
+            toks.append(self.p_hist(z[:, s:])[:, None, :])
+        return torch.cat(toks, 1) + self.tok_emb
+
+    def phi(self, z):
+        t = self.enc(self._tokens(z))
+        return self.out(t.reshape(z.shape[0], -1))
+
+    def forward(self, z):
+        return torch.cat([z, self.phi(z)], -1)
+
+    @property
+    def d_aug(self):
+        return self.d_state + self.d_phi

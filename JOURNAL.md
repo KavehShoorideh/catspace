@@ -15667,3 +15667,15 @@ apply 59 us = 47x nodes per compute (CPU, batch 64), pre-sparsity. New verdict-t
 instrument: the touch table (mass of B_c per concept-head block) = "what move changes
 what concept" as an artifact + pruning map. Group-sparsity on operator blocks
 pre-registered as a next-run lever if learned locality is weak.
+
+**gko1c stopped by ruling at step 2500 (Kaveh: "stop training the old and wire up the
+new"); the stabilization bundle VALIDATED on its way out.** Its final heartbeat sat in
+the exact full-w6 window that killed gko1b -- opR2 0.952/0.932/0.886, mlp
+0.952/0.941/0.9xx, id ~0.95/0.93/0.89, rho stable, vamp/decor healthy: clip 1.0 +
+linear ramp + state-only composed + spec 0.2 held. Note the raw-R2 compression: as
+the stack re-coheres, identity becomes so strong a baseline that all arms pack
+together -- the discriminating verdict metrics are delta-space accuracy and the
+direct-head gap (both pre-registered). gko1c's 2500-step record = the bilinear-lift
+reference row. gko1d = the target design per the interaction-ordering ruling:
+TransformerLift (attention over 97 concept tokens -- 32 heads + 64 squares + hist --
+2 layers, d_phi 256, gentler 0.5x lr group), operators after, rollouts never re-lift.
