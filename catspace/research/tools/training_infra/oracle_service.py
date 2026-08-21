@@ -34,7 +34,16 @@ WP_K = 0.00368208          # lichess/lc0 logistic constant: wp = 1/(1+exp(-k*cp)
 
 def db():
     c = sqlite3.connect(DB, timeout=60)
-    c.execute("PRAGMA journal_mode=DELETE")
+    # WAL, not DELETE (2026-08-21 revision): the DELETE ruling was for the perpetual-
+    # reader tb-cache topology (readers pinned the WAL -> 25G growth). THIS store is
+    # many-tiny-writers + rare-readers -- DELETE mode gave four reader/writer
+    # starvation incidents in one day, ending with a wedged writer's journal blocking
+    # the fleet for an hour. WAL + autocheckpoint + size cap fits this topology;
+    # journal_mode is set once by the store owner, NEVER forced per-connection
+    # (a per-connection mode flip needs an exclusive lock and crashes concurrent
+    # clients -- the bug that emptied the fleet at relaunch).
+    c.execute("PRAGMA busy_timeout=60000")
+    c.execute("PRAGMA synchronous=NORMAL")
     return c
 
 

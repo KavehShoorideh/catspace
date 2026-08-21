@@ -30,7 +30,7 @@ MV_CAP = 48
 
 def db():
     c = sqlite3.connect(DB, timeout=60)
-    c.execute("PRAGMA journal_mode=DELETE")
+    c.execute("PRAGMA busy_timeout=60000")  # WAL store; never force mode per-connection
     return c
 
 

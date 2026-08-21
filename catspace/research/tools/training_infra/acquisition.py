@@ -154,7 +154,7 @@ def expansion_walks(fens, n_walks=2, max_plies=4, seed=0):
 def round_once(a, dev="cpu"):
     field, head, counts, A = load_models(a.gko, a.gciv, a.stats, dev)
     c = sqlite3.connect(DB, timeout=60)
-    c.execute("PRAGMA journal_mode=DELETE")
+    c.execute("PRAGMA busy_timeout=60000")  # WAL store; never force mode per-connection
     fens = [r[0] for r in c.execute(
         "SELECT fen FROM pool ORDER BY RANDOM() LIMIT ?", (a.sample,))]
     t0 = time.time()
