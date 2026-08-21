@@ -469,6 +469,23 @@ const knobs=()=>({depth:+document.getElementById('depth').value,
   pvlen:8});
 // Two-phase like lichess: the position updates INSTANTLY, the engine lines stream in after.
 // A stale analysis (older seq) is discarded, so mashing the nav buttons stays responsive.
+let thinkPoll=null;
+function startThinkPoll(){
+  if(thinkPoll) return;
+  const ln=document.getElementById('lnbox'); if(ln){ln.style.display='';ln.style.opacity=1;}
+  thinkPoll=setInterval(async ()=>{
+    try{
+      const rp=await fetch('/api',{method:'POST',body:JSON.stringify({action:'lines'})});
+      const dp=await rp.json();
+      if(dp.think&&dp.think.length){renderLines(dp);}
+      const di=document.getElementById('dinfo');
+      if(di) di.innerHTML='thinking&hellip; depth '+(dp.depth||0)
+        +(dp.nodes!=null?` &middot; ${dp.nodes.toLocaleString()} nodes`:'')
+        +(dp.secs!=null?` &middot; ${dp.secs}s`:'');
+      if(dp.done){clearInterval(thinkPoll);thinkPoll=null;api({action:'noop'});}
+    }catch(_){}
+  },450);
+}
 async function api(body){
   const my=++seq;
   const extra = mode==='play' ? {play:true, engineWhite:playCfg.engineWhite,
@@ -480,8 +497,11 @@ async function api(body){
   const d=await r.json();
   if(my!==seq)return;
   render(d);
-  if(mode==='play'){document.getElementById('dinfo').textContent=d.over||"";
-    document.getElementById('dinfo').className="";return;}
+  if(mode==='play'){
+    if(d.thinking){startThinkPoll();}
+    else{document.getElementById('dinfo').textContent=d.over||"";
+      document.getElementById('dinfo').className="";}
+    return;}
   if(d.over){document.getElementById('dinfo').textContent=d.over;return;}
   document.getElementById('dinfo').textContent="thinking…";
   document.getElementById('dinfo').className="spin";
@@ -575,7 +595,9 @@ function render(d){
   }
   if(d.gconcepts&&d.gconcepts.heads){
     gcLast=d.gconcepts;renderGc();
-  } else {document.getElementById('gcbox').style.display="none";}
+  }
+  /* STALE-TOLERANT (2026-08-21 device-report fix: one null-gconcepts response was
+     hiding the panel forever): keep showing the last good panel; never re-hide. */
   if(false){
     const g=d.gconcepts;
     const humanWhite=(mode!=='play')||!playCfg.engineWhite;
@@ -929,6 +951,11 @@ class H(BaseHTTPRequestHandler):
         human_ctx = None                    # (board-before, move) when the human just moved
         if act not in ("analyze", "lines"):
             H.gen += 1                                   # cancel any in-flight search NOW
+        if act in ("move", "new", "load", "goto", "rel"):
+            H.think_gen = getattr(H, "think_gen", 0) + 1  # play-think cancels ONLY on
+                                                          # history changes, never on
+                                                          # read-polls (the noop-assassin
+                                                          # bug, 2026-08-21)
         if act == "new":
             cls.moves, cls.ptr, cls.start_fen, cls.notes = [], 0, None, {}
             cls.game_id += 1
@@ -1105,15 +1132,56 @@ class H(BaseHTTPRequestHandler):
                         pass
                 if reply_mv is None:
                     # time-capped iterative deepening (Kaveh: think <= ~1.5s)
-                    if hasattr(H.eng, "concepts"):   # gcf3 self-locks per forward
-                        best = H.eng.search_coherent(b, budget=1.5)
-                        best = H.eng.rank_by_child_E(b, best)
+                    if hasattr(H.eng, "concepts"):
+                        # STREAMING PLAY (Kaveh 2026-08-21 "show the result of its search
+                        # while it plays"): think in a worker, publish lines live into
+                        # H.an (the /lines poller renders them); commit the reply when
+                        # the search lands. Depth follows the page's depth knob.
+                        d2b = {1: 0.3, 2: 0.8, 3: 1.5, 4: 4.0, 5: 4.0, 6: 4.0}
+                        bud = d2b.get(int(req.get("playDepth") or cls.depth), 1.5)
+                        tg0 = getattr(H, "think_gen", 0)
+                        bb0 = b.copy()
+                        hcls = self
+
+                        def _play_worker():
+                            t_th0 = time.time()
+                            if hasattr(H.eng, "_visited"):
+                                H.eng._visited = 0
+
+                            def prog(rows):
+                                if getattr(H, "think_gen", 0) != tg0 or not rows:
+                                    return
+                                disp = hcls._rows_to_display(bb0, rows, wdl_top=3)
+                                H.an = {"g": H.gen, "rows": disp[:cls.lines],
+                                        "depth": max([r.get("depth_used", 1)
+                                                      for r in rows] or [1]),
+                                        "nodes": getattr(H.eng, "_visited", None),
+                                        "secs": round(time.time() - t_th0, 1),
+                                        "done": False}
+                            try:
+                                rows = H.eng.search_coherent(
+                                    bb0, budget=bud,
+                                    stop=lambda: getattr(H, "think_gen", 0) != tg0,
+                                    progress=prog)
+                            except Exception:
+                                rows = None
+                            if getattr(H, "think_gen", 0) == tg0 and rows \
+                                    and cls.ptr == len(cls.moves):
+                                cls.moves.append(rows[0]["mv"]); cls.ptr += 1
+                                H.an = {**H.an, "done": True}
+                            H.thinking = False
+
+                        H.thinking = True
+                        H.an = {"g": H.gen, "rows": [], "depth": 0, "done": False}
+                        import threading as _thr
+                        _thr.Thread(target=_play_worker, daemon=True).start()
+                        reply_mv = None
                     else:
                         with H.lock:             # BEST VERSION ONLY (Kaveh 2026-08-11):
                             best = H.eng.search_coherent(b, budget=1.5)
                             best = H.eng.rank_by_child_E(b, best)
-                    if best:
-                        reply_mv = best[0]["mv"]
+                        if best:
+                            reply_mv = best[0]["mv"]
                 if reply_mv is not None:
                     cls.moves.append(reply_mv); cls.ptr += 1
                     b = self._board(); over = self._over(b)
@@ -1741,9 +1809,12 @@ class H(BaseHTTPRequestHandler):
                         ("White" if b.turn == chess.WHITE else "Black")
                 except Exception:
                     pass
-            except Exception:
+            except Exception as _ge:
+                print(f"[gconcepts] FAILED: {type(_ge).__name__}: {str(_ge)[:120]}",
+                      flush=True)
                 gconcepts = None
         out = {"fen": b.fen(), "turn": "white" if b.turn else "black",
+               "thinking": bool(getattr(H, "thinking", False)),
                "feat": {"plan": H.former is not None, "next": H.seq is not None,
                         "why": True, "sq": True,
                         "cdeets": not hasattr(H.eng, "concepts")},
