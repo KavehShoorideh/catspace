@@ -15626,3 +15626,16 @@ fresh heads and the stack restored on the chain batch -- move-PL 2.0, dyn 1.0, V
 lag-6 every 4th step at batch 128 (x4 scaled), vicreg 0.5 -- ops param-group lr 3e-5,
 and identity-R2@1 < 0.5 now an ALARM line. Omitted from restoration (recorded per the
 conditional-rejection rule): phase/adv, te, edge-dyn, res, now, elo aux losses.
+
+**gko1b killed at step 3000: the op6 step-function ramp blew up the joint system.**
+Between 2000 (w6 switches on) and 3000: decor 0.478 -> 4.551, vamp 31.2 -> 18.4,
+maia-top1 0.633 -> 0.507, opR2 -629/-730/-1633, rho 1.041 -- while identity-R2 stayed
+0.86-0.88 (the zq geometry survived; the trained heads on top of it were all knocked
+stale by one violent gradient event through the field). No NaN, so the nan-guard
+rightly stayed quiet; a finite explosion. Root: L_op6's first gradients backprop
+through SIX chained 2816x2816 products (rho already 1.04 > clamp) into zq_p, with NO
+gradient clipping anywhere in the stack. Bundle (recorded): clip_grad_norm 1.0; w6
+ramps linearly over 2000 steps; 3/6-ply composed losses supervise the STATE part only
+(the phi-part at long horizon chased a drifting lift -- U1b says consistency follows
+from good operators, it is not a target); w_spec 0.1 -> 0.2. Relaunch gko1c resumes
+gko1b_step2000.pt (saved pre-ramp, all metrics healthy there).
