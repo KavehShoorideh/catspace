@@ -15603,3 +15603,9 @@ remaining plan component landed with its gates green, printed numbers only:
 gko1a resumes gko0c with ops+iv joint, 20k steps. H1: ops beat mlp AND identity on
 composed 3/6-ply R2. H2: iv coverage in [0.80, 0.87] with width >=25 percent under
 gciv1's frozen-field row. H3 instrument ready; curve when acquisition-vs-random arms run.
+
+**H2 pre-registration amendment (before any gko1a interval numbers exist):** gciv1's
+0.848/0.824 row is in CF-pair-delta space; gko1a intervals are in SF gap-to-best space.
+Widths across spaces are not comparable. The H2 "before" arm is therefore --iv-frozen:
+interval head alone on the FROZEN gko0c field, same gap targets, same seed/holdout, run
+at verdict time. H2 = joint width <= 0.75x frozen width at coverage in [0.80, 0.87].
