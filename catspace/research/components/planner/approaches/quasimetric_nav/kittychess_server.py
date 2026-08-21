@@ -317,8 +317,13 @@ function gcLean(w,ci,n,helps){
   if(mode==='play'){const you=humanWhite?w:-w;
     return[you>0?'gc-you':'gc-opp',(you>0?'helps you +':'helps engine +')+Math.abs(you).toFixed(2)+(ci!==undefined?'\u00b1'+ci.toFixed(2):'')];}
   return[w>0?'gc-you':'gc-opp',(w>0?'White +'+w.toFixed(2):'Black +'+(-w).toFixed(2))+(ci!==undefined?'\u00b1'+ci.toFixed(2):'')];}
+let gcDbg=false;
 function renderGc(){
   if(!gcLast)return;
+  if(!gcDbg){gcDbg=true;setTimeout(()=>{try{const el=document.getElementById('gcbox');
+    const cs=getComputedStyle(el);
+    fetch('/api',{method:'POST',body:JSON.stringify({action:'jslog',
+      msg:`gcbox: heads=${(gcLast.heads||[]).length} display=${cs.display} vis=${cs.visibility} h=${el.offsetHeight} onscreen=${!!el.offsetParent} tab=${gcTab}`})});}catch(_){}},800);}
   const g=gcLast;document.getElementById('gcbox').style.display="";
   document.getElementById('gcmodel').textContent=" — "+(g.model||"");
   document.querySelectorAll('.gctab').forEach(t=>t.classList.toggle('gcton',+t.dataset.t===gcTab));
@@ -957,13 +962,16 @@ class H(BaseHTTPRequestHandler):
         # when it is to move; analysis assistance is hidden client-side during play
         surprise = emote = None
         prepared = False
+        concept_mode = hasattr(H.eng, "concepts")
         if req.get("play") and act in ("move", "new") and not over \
                 and cls.ptr == len(cls.moves):
             eng_white = bool(req.get("engineWhite"))
             if (b.turn == chess.WHITE) == eng_white:
                 # ---- SURPRISE PHASE (Kaveh 2026-08-13): the human just moved; score the
                 # move against the pondered expectation P(move) = softmax(E_mover/tau).
-                if human_ctx is not None:
+                # DISABLED in concept-engine mode (Kaveh 2026-08-21: "get rid of the
+                # surprise stuff" + it injected phantom moves via the prep path).
+                if human_ctx is not None and not concept_mode:
                     pb, hmv = human_ctx
                     key = fen_key(pb)
                     legal = [m.uci() for m in pb.legal_moves]
@@ -1068,7 +1076,8 @@ class H(BaseHTTPRequestHandler):
                 # ---- REPLY PHASE: a prepped line answers instantly and deeper than live
                 eb_before = b
                 reply_mv = None
-                pe = H.store.get_prep(fen_key(b)) if H.store else None
+                pe = (H.store.get_prep(fen_key(b))
+                      if (H.store and not concept_mode) else None)
                 if pe and pe.get("uci"):
                     try:
                         cand = chess.Move.from_uci(pe["uci"])
@@ -1114,7 +1123,8 @@ class H(BaseHTTPRequestHandler):
                             "fen_before": eb_before.fen(), "uci": reply_mv.uci(),
                             "san": eb_before.san(reply_mv), "prepared": prepared})
                     if not over:
-                        self._start_ponder(b)    # think on the HUMAN's clock
+                        if not concept_mode:
+                            self._start_ponder(b)    # think on the HUMAN's clock
         if req.get("play") and over and H.store is not None \
                 and H.over_logged != cls.game_id:
             H.over_logged = cls.game_id
