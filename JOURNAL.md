@@ -15504,3 +15504,8 @@ entropy) + per-round query budgets + an oracle service with a persistent cache
 (journal_mode=DELETE per the tb-cache scar). ChessBench reduces to the 141MB test set +
 puzzles as the standardized yardstick; the headline eval is THEIR accuracy-vs-labels
 ablation curve with OUR query-efficient point on it.
+
+**23:55 (Kaveh): gciv1 and gko1 combined.** gciv is not a line; it is gko1's interval
+component. Tonight's single frozen-field gciv1 run is kept only as (a) the "before" row
+of the joint-training ablation and (b) the BOOTSTRAP acquisition scorer for gko1's first
+query round. All subsequent interval training happens inside gko1, jointly.
