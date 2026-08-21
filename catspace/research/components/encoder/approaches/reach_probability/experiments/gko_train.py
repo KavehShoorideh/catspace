@@ -67,6 +67,13 @@ def main():
     ap.add_argument("--w-spec", type=float, default=0.1)
     ap.add_argument("--w-phi", type=float, default=0.25)
     ap.add_argument("--w-iv", type=float, default=1.0)
+    ap.add_argument("--w-move", type=float, default=2.0, help="corpus move PL on chain parents")
+    ap.add_argument("--w-dyn2", type=float, default=1.0, help="dyn CE to played-child codes")
+    ap.add_argument("--w-slow", type=float, default=1.0, help="VAMP-2 slow pressure, lag-6")
+    ap.add_argument("--w-dec", type=float, default=0.5, help="vicreg cov on fast slice")
+    ap.add_argument("--vamp-every", type=int, default=4)
+    ap.add_argument("--vamp-batch", type=int, default=128)
+    ap.add_argument("--lr-ops", type=float, default=3e-5, help="gentler for near-identity A")
     ap.add_argument("--lr", type=float, default=1e-4)
     ap.add_argument("--eval-every", type=int, default=500)
     ap.add_argument("--ckpt-every", type=int, default=2000)
@@ -89,7 +96,8 @@ def main():
     from catspace.research.tools.training_infra.hl_gauss import HLGauss
     from catspace.research.tools.training_infra.koopman_ops import (
         InteractionLift, KoopmanOps, one_ply_loss, rollout, lift_consistency)
-    from catspace.research.tools.training_infra.losses import cross_head_decorrelation
+    from catspace.research.tools.training_infra.losses import (
+        cross_head_decorrelation, vamp2_score, vicreg_covariance)
     from catspace.research.components.encoder.approaches.reach_probability.src \
         .trajectories import normalise_elo
     from catspace.research.tools.training_infra.train.scaffold import (
@@ -139,6 +147,12 @@ def main():
         for pr in model.sf_av.parameters():
             pr.requires_grad_(False)
         opt = torch.optim.Adam(model.iv.parameters(), lr=args.lr)
+    elif args.ops:
+        op_ids = {id(pr) for pr in model.ops.parameters()}
+        rest = [pr for pr in model.parameters() if id(pr) not in op_ids]
+        opt = torch.optim.Adam([{"params": rest, "lr": args.lr},
+                                {"params": list(model.ops.parameters()),
+                                 "lr": args.lr_ops}])
     else:
         opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed)
@@ -262,14 +276,26 @@ def main():
         zq_p, _, _, _, h_mv_p, _ = model.field.encode(sqf, mvf, edges, mask, elo=elo)[:6]
         c0 = _mv_codes(h_mv_p, played)
         tok_p = mvf.gather(1, played[:, None, None].expand(-1, 1, mvf.shape[-1]))[:, 0]
+        # RESTORED FIELD STACK (the gko0 slice dropped it; identity-R2 collapse
+        # +0.92 -> -0.78 over gens 1-3 was the measured cost). PL on the corpus move:
+        lg_p = model.field.move_logits(zq_p, h_mv_p, mask)
+        l_move = F.cross_entropy(lg_p.masked_fill(~mask, -1e9), played)
         with torch.no_grad():
             rows_c = ci[:, 1:].ravel()
             sqc, mvc, edc, mkc, eloc, plc = _feat_rows(rows_c)
-            zq_c, _, _, _, h_mv_c, _ = model.field.encode(sqc, mvc, edc, mkc, elo=eloc)[:6]
+            zq_c, gi_c, si_c, _, h_mv_c, _ = model.field.encode(sqc, mvc, edc, mkc,
+                                                                elo=eloc)[:6]
             zq_c = zq_c.reshape(cb, 6, -1)
+            gi1 = gi_c.reshape(cb, 6, -1)[:, 0]
+            si1 = si_c.reshape(cb, 6, -1)[:, 0]
             cks = _mv_codes(h_mv_c, plc).reshape(cb, 6)[:, :5]
             tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
                                )[:, 0].reshape(cb, 6, -1)[:, :5]
+        # dyn CE to the played child's codes (global + square)
+        dy = model.field.dyn(torch.cat([zq_p, model.field.mv_emb(tok_p)], -1))
+        Hh, Cc, SC = model.field.g_heads, A["g_codes"], model.field.sq_codes
+        l_dyn2 = (F.cross_entropy(dy[:, :Hh * Cc].reshape(-1, Cc), gi1.reshape(-1)) +
+                  F.cross_entropy(dy[:, Hh * Cc:].reshape(-1, SC), si1.reshape(-1)))
         code_seq = torch.cat([c0[:, None], cks], 1)                 # (cb,6)
         t1, t3, t6 = zq_c[:, 0], zq_c[:, 2], zq_c[:, 5]
         assert not t1.requires_grad and not code_seq.requires_grad  # U13 runtime guard
@@ -291,13 +317,31 @@ def main():
             if k in (0, 2, 5):
                 merr[k] = F.mse_loss(s, zq_c[:, k])
         l_mlp = merr[0] + merr[2] + merr[5]
+        l_slow = l_dec = torch.zeros((), device=dev)
+        vamp_v = 0.0
+        if args.w_slow > 0 and step % args.vamp_every == 0:
+            vb = CH_pos[ch_tr[rng.integers(0, len(ch_tr), args.vamp_batch)]]
+            s0, m0, e0, k0, el0, _ = _feat_rows(vb[:, 0])
+            pg0 = model.field.encode(s0, m0, e0, k0, elo=el0)[5]
+            s6, m6, e6, k6, el6, _ = _feat_rows(vb[:, 6])
+            pg6 = model.field.encode(s6, m6, e6, k6, elo=el6)[5]
+            sl = model.field.slow_heads * model.field.d_code
+            v0 = model.field.vamp_proj(pg0.reshape(len(vb), -1)[:, :sl])
+            v6 = model.field.vamp_proj(pg6.reshape(len(vb), -1)[:, :sl])
+            vamp = vamp2_score(v0, v6)
+            vamp_v = float(vamp)
+            l_slow = -vamp / 32.0
+            l_dec = vicreg_covariance(pg0.reshape(len(vb), -1)[:, sl:])
         w6 = args.w_op6 if step >= args.op6_after else 0.0
         total = (args.w_op1 * l1 + args.w_op3 * l3 + w6 * l6 +
-                 args.w_spec * l_spec + l_mlp)
+                 args.w_spec * l_spec + l_mlp +
+                 args.w_move * l_move + args.w_dyn2 * l_dyn2 +
+                 args.w_slow * l_slow * args.vamp_every + args.w_dec * l_dec * args.vamp_every)
         with torch.no_grad():
             cons6 = float(lift_consistency(model.lift, traj[:, 5]).mean())
         return total, {"op1": float(l1), "op3": float(l3), "op6": float(l6),
-                       "mlp": float(l_mlp), "rho": float(rho.max()), "cons6": cons6}
+                       "mlp": float(l_mlp), "rho": float(rho.max()), "cons6": cons6,
+                       "move": float(l_move), "dyn2": float(l_dyn2), "vamp": vamp_v}
 
     @torch.no_grad()
     def op_eval(n_ch=384):
@@ -454,8 +498,13 @@ def main():
                 ex += (f" | opR2 {r2['o1']:.3f}/{r2['o3']:.3f}/{r2['o6']:.3f}"
                        f" mlp {r2['m1']:.3f}/{r2['m3']:.3f}/{r2['m6']:.3f}"
                        f" id {r2['i1']:.3f}/{r2['i3']:.3f}/{r2['i6']:.3f}"
-                       f" rho {op_d.get('rho', 0):.3f} cons6 {op_d.get('cons6', 0):.3f}")
+                       f" rho {op_d.get('rho', 0):.3f} cons6 {op_d.get('cons6', 0):.3f}"
+                       f" | mv {op_d.get('move', 0):.2f} dyn {op_d.get('dyn2', 0):.2f}"
+                       f" vamp {op_d.get('vamp', 0):.1f}/32")
                 out.update({f"op_r2_{k}": v for k, v in r2.items()})
+                if r2["i1"] < 0.5:
+                    print(f"[gko1] ALARM identity-R2@1 {r2['i1']:.3f} < 0.5 -- "
+                          f"temporal coherence eroding despite the stack", flush=True)
             if args.iv and iv_n:
                 ex += f" | iv-cov {iv_cov/iv_n:.3f} width {iv_wid/iv_n:.4f}"
                 out.update({"iv_cov": iv_cov / iv_n, "iv_width": iv_wid / iv_n})
@@ -532,6 +581,20 @@ def main():
             print(f"  info  opR2 wiring on held-out chains: "
                   f"{r2['o1']:.3f}/{r2['o3']:.3f}/{r2['o6']:.3f} "
                   f"(fresh ops ~ identity persistence, not a gate)")
+            # U-extra: run BOTH op_losses branches end to end and check the restored
+            # stack pushes gradients into the field (the erosion lesson, gated)
+            tot4, d4 = op_losses(4)          # vamp branch
+            tot4.backward()
+            gf = max((pr.grad.abs().max().item() for pr in model.field.parameters()
+                      if pr.grad is not None), default=0.0)
+            model.zero_grad()
+            tot1, d1 = op_losses(1)          # non-vamp branch
+            ok_st = (d4["vamp"] != 0.0 and d1["vamp"] == 0.0 and gf > 0
+                     and all(np.isfinite(v) for v in d4.values()))
+            gate("U17", ok_st,
+                 f"op_losses branches: vamp {d4['vamp']:.1f}/32 (step4) vs {d1['vamp']:.1f} "
+                 f"(step1) | move {d4['move']:.2f} dyn {d4['dyn2']:.2f} | "
+                 f"field-grad max {gf:.1e} > 0")
         print(f"\n  {'ALL UNIT GATES PASS' if not fails else 'FAILED: ' + ', '.join(fails)}",
               flush=True)
         sys.exit(1 if fails else 0)
