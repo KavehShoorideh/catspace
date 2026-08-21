@@ -48,6 +48,7 @@ def cmd_init(_a):
     CREATE TABLE IF NOT EXISTS labels(
       fen TEXT, oracle TEXT, payload TEXT, created REAL, PRIMARY KEY(fen, oracle));
     CREATE INDEX IF NOT EXISTS q_status ON queue(status, score);
+    CREATE INDEX IF NOT EXISTS q_oracle ON queue(oracle, status, score);
     """)
     c.commit(); c.close()
     print(f"[oracle] initialized {DB}")
@@ -101,10 +102,15 @@ def cmd_enqueue(a):
         rows = [(str(fens[i]), a.oracle, float(sc[i])) for i in order]
         mode = "scored"
     else:
+        # subsample candidates by random rowid FIRST, then PK-indexed anti-join --
+        # the old NOT IN + ORDER BY RANDOM() scanned 900k x 600k under a SHARED lock
+        # and starved every writer for minutes (the 2026-08-21 producer collapse)
         rows = [(f, a.oracle, 0.0) for (f,) in c.execute(
-            "SELECT fen FROM pool WHERE fen NOT IN "
-            "(SELECT fen FROM labels WHERE oracle=?) ORDER BY RANDOM() LIMIT ?",
-            (a.oracle, a.n))]
+            "SELECT fen FROM pool WHERE rowid IN "
+            "(SELECT rowid FROM pool ORDER BY RANDOM() LIMIT ?) "
+            "AND NOT EXISTS (SELECT 1 FROM labels "
+            "WHERE labels.fen = pool.fen AND labels.oracle = ?) LIMIT ?",
+            (max(a.n * 4, 20000), a.oracle, a.n))]
         mode = "random(bootstrap)"
     c.executemany("INSERT OR IGNORE INTO queue(fen, oracle, score) VALUES (?,?,?)", rows)
     c.commit(); c.close()
