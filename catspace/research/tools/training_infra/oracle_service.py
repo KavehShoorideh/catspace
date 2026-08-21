@@ -248,10 +248,30 @@ def main():
     p.add_argument("--engine", default="/opt/homebrew/bin/stockfish")
     p.add_argument("--sf-depth", type=int, default=10)
     p.add_argument("--sf-time", type=float, default=0.05)
+    p = sub.add_parser("loop", help="produce FOREVER: when the queue drains, self-refill "
+                       "with random pool batches (Kaveh: 'if you don't know what to "
+                       "generate, generate something')")
+    p.add_argument("--oracle", required=True)
+    p.add_argument("--refill", type=int, default=5000)
+    p.add_argument("--engine", default="/opt/homebrew/bin/stockfish")
+    p.add_argument("--sf-depth", type=int, default=10)
+    p.add_argument("--sf-time", type=float, default=0.05)
     sub.add_parser("stats")
     a = ap.parse_args()
+    def cmd_loop(a):
+        while True:
+            c = db()
+            todo = c.execute("SELECT COUNT(*) FROM queue WHERE oracle=? AND status='todo'",
+                             (a.oracle,)).fetchone()[0]
+            c.close()
+            if todo == 0:
+                class E: n = a.refill; oracle = a.oracle; scores = ""
+                cmd_enqueue(E)
+            a.budget = 0
+            cmd_produce(a)
+            time.sleep(2)
     {"init": cmd_init, "seed": cmd_seed, "enqueue": cmd_enqueue,
-     "produce": cmd_produce, "stats": cmd_stats}[a.cmd](a)
+     "produce": cmd_produce, "stats": cmd_stats, "loop": cmd_loop}[a.cmd](a)
 
 
 if __name__ == "__main__":
