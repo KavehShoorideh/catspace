@@ -15466,3 +15466,30 @@ input.
 The null is NOT evidence against search-in-training; it is evidence the transition model
 must be move-sensitive before any tree over it can discriminate. Fix option space drafted
 for Kaveh (contrastive move-sensitivity / CF alt-transition data / real-board beam).
+
+---
+
+## 2026-08-20 23:30 — LOCKED DESIGN: gko1 (the unified Koopman-concept distillation)
+
+Kaveh's combination, approved after the literature sweep (JOURNAL + LITERATURE.md today):
+jointly train (1) graph trunk, (2) concept VQ heads, (3) move tokens, (4) PER-MOVE-CODE
+LINEAR ROLLFORWARD OPERATORS in bilinear form z' = (A + B_[movecode]) z with spectral-
+radius clamping (Koopman Dreamer), (5) the concepts->alpha/beta interval head, (6) an SF
+action-value DISTRIBUTION output in binned-classification form (ChessBench recipe; full-
+label use explicitly authorized for this line). Novelty vs literature: named concept
+factorization as the Koopman lifting + spectral persistence rulebook ("which move-codes
+preserve which concepts") + interval-driven B* pruning; VAMP already shapes the slow
+block toward Koopman-invariant subspaces (the internal coherence).
+
+Ops losses: one-ply rollforward consistency (operator vs true child state), multi-ply
+composition consistency (2-3 ply chains vs real), persistence CE (does head h's code
+survive -- readable from the operator, checked against truth). Eval: distill fidelity,
+operator rollout R2 vs MLP dyn, persistence-table accuracy, interval calibration +
+pruning power, prune-search arena on the strength-per-node frontier.
+
+**Maia side (Kaveh tonight): ACTIVE LEARNING, not bulk.** "Use Maia sparingly... ask for
+the entire move distribution for a given state... ask for information that is maximally
+informative." Acquisition scored by OUR machinery: interval width (where bounds are
+loose) x concept-code rarity (vocabulary coverage) x predicted-distribution entropy;
+batch rounds of query->fine-tune->re-score. Data: ChessBench subset download for SF;
+lc0+Maia nets for the human oracle, queried under the acquisition budget.
