@@ -181,17 +181,30 @@ def cmd_produce(a):
     done = errs = 0
     t0 = time.time(); t_hb = t0
     while a.budget <= 0 or done < a.budget:
+        # Claim among the top-8 by score, chosen at random, retrying lost races:
+        # with N siblings and a deterministic LIMIT 1, every cycle all N fetch the
+        # SAME row, one wins the UPDATE and the rest read rowcount=0 as "queue
+        # empty" and exit (the 2026-08-21 sf-fleet silent walkout -- 72,800 rows
+        # todo, four workers gone). Randomized top-K + retry makes losing a race
+        # a delay, not a death.
         row = None
-        with c:                                    # atomic claim (U10b)
-            r = c.execute("SELECT fen FROM queue WHERE oracle=? AND status='todo' "
-                          "ORDER BY score DESC LIMIT 1", (oracle,)).fetchone()
-            if r:
+        for _ in range(6):
+            with c:                                # atomic claim (U10b)
+                rs = c.execute("SELECT fen FROM queue WHERE oracle=? AND "
+                               "status='todo' ORDER BY score DESC LIMIT 8",
+                               (oracle,)).fetchall()
+                if not rs:
+                    break
+                cand = rs[int(time.time() * 1e6) % len(rs)][0]
                 got = c.execute(
                     "UPDATE queue SET status='claimed', claimed_at=? "
                     "WHERE fen=? AND oracle=? AND status='todo'",
-                    (time.time(), r[0], oracle)).rowcount
+                    (time.time(), cand, oracle)).rowcount
                 if got == 1:
-                    row = r[0]
+                    row = cand
+            if row is not None:
+                break
+            time.sleep(0.05)
         if row is None:
             print(f"[oracle:{oracle}] queue empty after {done:,} labels; exiting", flush=True)
             break
