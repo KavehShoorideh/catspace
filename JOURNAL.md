@@ -15531,3 +15531,37 @@ Coverage 0.848 (target 0.8; conservative like the reference), width 0.824, but S
 carries calibration but weak sibling discrimination. Exactly what gko1's joint training
 must sharpen (H2), and sufficient as the bootstrap acquisition scorer (acquisition needs
 width RANKING, which calibration supports).
+
+---
+
+## 2026-08-21 — OVERNIGHT: the flywheel became real (generation 1 complete)
+
+Kaveh's directives executed end to end: "start the flywheel... keep asking" / "both GPU
+and CPU maxed, one generating, one training" / "if you don't know what to generate,
+generate something" / "wire [acquisition] in so it kicks in immediately."
+
+**The machine as it now runs, four pipelined stages, all watchdogged:**
+  PRODUCE   6 perpetual CPU oracles (SF multipv-all + maia 1100/1300/1500/1700/1900 at
+            nodes=1 policy, lc0 pinned to CPU after the cross-process Metal wedge);
+            self-refilling queues; >1.5M labels in ~9 hours
+  CONVERT   labels -> graph shards continuously (schema-migration INSERT bug caught by
+            the utilization watchdog within one window; 594k spurious errors recycled)
+  TRAIN     gko0: maia-KL through elo conditioning (one model, five bands) + HL-Gauss
+            SF action-value head over all legal moves, on the LIVE-GROWING store
+            (14k rows at launch -> 1,551,487 by step 20k). Gen-1 verdict: held-out
+            sf-spearman 0.553, maia-KL 2.276. Gen-2 (gko0b) resumed immediately.
+  ACQUIRE   live since dawn: score = z(gciv interval width) + z(code rarity) +
+            z(policy entropy), code-signature dedup, ranked rows preempt random refill
+            by score-DESC claiming; top-uncertainty positions seed EXPANSION WALKS that
+            grow the pool (generation as exploration). U10 60/60 planted-signal
+            recovery; U15 flat-component invariance.
+
+Gates that caught real bugs before they shipped: U5 (HL-Gauss edge bias 1 percent ->
+padded support), U9/U10b (oracle correctness/claim atomicity), U14 (loss-zero); the
+utilization watchdog caught the producer schema break. The kitty UI survived its own
+sub-saga (streaming play, think_gen isolation, stale-tolerant panel, CPU serving).
+
+Honest open items: operators (U1-U4 + kooplearn cross-check) and the joint interval head
+are the remaining gko1 components; ChessBench-test standardized eval not yet wired
+(dev-holdout only); maia-top1 eval added for gen-2; sibling-blindness lesson stands
+ready to be tested by the operators' indexed-by-construction design.
