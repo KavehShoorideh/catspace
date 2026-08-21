@@ -52,18 +52,28 @@ def main():
     om = z["outcome_mover"].astype(np.float32)
     stm = z["gl"][:, 0].astype(bool)
     ow = np.where(stm, om, -om)                      # White-POV outcome per row
-    tr = T.build(n_human=0, n_sf=A["games"], seed=A["seed"], cache=True,
-                 max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
-    lz = np.load(paths.derived(f"tb_entry_5-4-3men_{len(tr.tok)}.npz"), allow_pickle=True)
-    vocab = [str(x) for x in lz["vocab"]]
-    cr, ce, co, egs = factor_vocab(vocab)
+    tr = T.build(n_human=A.get("n_human", 0), n_sf=A["games"], seed=A["seed"],
+                 cache=True, max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
+    if A.get("res_mode", "tb") == "tb":
+        lz = np.load(paths.derived(f"tb_entry_5-4-3men_{len(tr.tok)}.npz"),
+                     allow_pickle=True)
+        vocab = [str(x) for x in lz["vocab"]]
+        cr, ce, co, egs = factor_vocab(vocab)
+    else:
+        vocab, egs, cr, ce, co = ["W", "D", "L"], ["-"], None, None, None
+    if A.get("res_mode", "tb") != "tb":
+        vocab, egs = ["W", "D", "L"], ["-"]
+        cr = np.zeros(3, np.int64); ce = np.zeros(3, np.int64)
+        co = np.arange(3, dtype=np.int64)
     net = GraphConceptField(
         d=A["d_model"], layers=A["layers"], slow_heads=A["slow_heads"], n_res=len(vocab),
         n_eg=len(egs), cls_reach=cr, cls_eg=ce, cls_out=co, edge_codes=A["edge_codes"],
         move_codes=A["move_codes"], gps_parallel=bool(A["gps_parallel"]),
         attn_bias=bool(A["attn_bias"]), agg_max=bool(A["agg_max"]), kin=bool(A["kin"]),
         file_nodes=bool(A["file_nodes"]), phase_head=bool(A["phase_head"]),
-        threat_head=bool(A["threat_head"])).to(dev)
+        threat_head=bool(A["threat_head"]), elo_cond=bool(A.get("elo", 0)),
+        g_heads=A.get("g_heads", 16), g_codes=A.get("g_codes", 32),
+        d_code=A.get("d_code", 32)).to(dev)
     net.load_state_dict(ck["state_dict"]); net.eval()
 
     H, C = net.g_heads, 32
@@ -74,6 +84,7 @@ def main():
     # up to ~10x too narrow for codes that fire all game long; SE must be over games)
     gor = tr.game_of_row()
     gids = gor[z["p_row"]]
+    N = len(z["p_row"])
     keep = np.ones(N, bool)
     if args.standard_only:
         keep = gids < args.games                      # piece-down games are appended AFTER
@@ -93,7 +104,18 @@ def main():
                 val = (arr != 255) & mask[:, :, None]
                 edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
                                (arr + off[:, :, None])[val])
-            _, g_ids, _, _, _, _ = net.encode(sqf, mvf, edges, mask)
+            elo_in = None
+            if getattr(net, "elo_cond", False):
+                from catspace.research.components.encoder.approaches.reach_probability \
+                    .src.trajectories import normalise_elo
+                stmv = z["gl"][ii.numpy(), 0].astype(bool)
+                gid2 = gids[ii.numpy()]
+                el2 = np.asarray(tr.elo, np.float32)[gid2]
+                mv_e = np.where(stmv, el2[:, 0], el2[:, 1])
+                op_e = np.where(stmv, el2[:, 1], el2[:, 0])
+                elo_in = torch.from_numpy(np.stack(
+                    [normalise_elo(mv_e), normalise_elo(op_e)], 1)).to(dev)
+            _, g_ids, _, _, _, _ = net.encode(sqf, mvf, edges, mask, elo=elo_in)
             gi = g_ids.cpu().numpy()
             w = ow[ii.numpy()]
             gb = gids[ii.numpy()]

@@ -27,6 +27,12 @@ MATE = 100.0
 # labels from the 2026-08-20 alignment eval, WITH their eta^2 share so a weak label
 # discloses itself (Kaveh: a 33-percent-material head must not masquerade as "material
 # balance" when its code flips for the other 67 percent of reasons)
+HEAD_LABELS_GCF4H = {   # human model, 32 shallow heads (2026-08-20 alignment + elo evals)
+    0: "phase+kingsafety 96%", 2: "elo-tier s115", 5: "elo-tier s149",
+    8: "pawn-isolated (weak)", 9: "elo-tier s130", 10: "elo-tier s110",
+    11: "tension+mobility 33%", 12: "elo-tier s112", 15: "elo-tier s111",
+    18: "elo-tier f130", 20: "elo-tier f135", 27: "in-check f24", 28: "checks f9",
+}
 HEAD_LABELS = {
     0: "phase+kingsafety 95%", 1: "pawn counts 17%", 2: "mobility/tension 17%",
     3: "mixed-slow 10%", 4: "knights 11%", 5: "rooks+majors 23%",
@@ -38,7 +44,7 @@ HEAD_LABELS = {
 
 class ConceptAlphaBeta:
     def __init__(self, ckpt, device="cpu", width=8,
-                 stats_path="data/derived/concept_stats_gcf3.npz"):
+                 stats_path="data/derived/concept_stats_gcf3.npz", view_elo=1500.0):
         from catspace.research.components.encoder.approaches.reach_probability.experiments \
             .graph_concept_field import GraphConceptField
         from catspace.research.components.encoder.approaches.reach_probability.experiments \
@@ -48,11 +54,21 @@ class ConceptAlphaBeta:
         from catspace.io import paths
         ck = torch.load(ckpt, map_location="cpu", weights_only=False)
         A = ck["args"] if isinstance(ck.get("args"), dict) else vars(ck["args"])
-        tr = T.build(n_human=0, n_sf=A["games"], seed=A["seed"], cache=True,
-                     max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
-        lz = np.load(paths.derived(f"tb_entry_5-4-3men_{len(tr.tok)}.npz"), allow_pickle=True)
-        vocab = [str(x) for x in lz["vocab"]]
-        cr, ce, co, egs = factor_vocab(vocab)
+        if A.get("res_mode", "tb") == "tb":
+            tr = T.build(n_human=0, n_sf=A["games"], seed=A["seed"], cache=True,
+                         max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
+            lz = np.load(paths.derived(f"tb_entry_5-4-3men_{len(tr.tok)}.npz"),
+                         allow_pickle=True)
+            vocab = [str(x) for x in lz["vocab"]]
+            cr, ce, co, egs = factor_vocab(vocab)
+        else:                     # outcome-mode checkpoint: no corpus/TB needed at all
+            vocab, egs = ["W", "D", "L"], ["-"]
+            cr = np.zeros(3, np.int64); ce = np.zeros(3, np.int64)
+            co = np.arange(3, dtype=np.int64)
+        if A.get("res_mode", "tb") != "tb":
+            vocab, egs = ["W", "D", "L"], ["-"]
+            cr = np.zeros(3, np.int64); ce = np.zeros(3, np.int64)
+            co = np.arange(3, dtype=np.int64)
         self.net = GraphConceptField(
             d=A["d_model"], layers=A["layers"], slow_heads=A["slow_heads"],
             n_res=len(vocab), n_eg=len(egs), cls_reach=cr, cls_eg=ce, cls_out=co,
@@ -60,7 +76,11 @@ class ConceptAlphaBeta:
             gps_parallel=bool(A["gps_parallel"]), attn_bias=bool(A["attn_bias"]),
             agg_max=bool(A["agg_max"]), kin=bool(A["kin"]),
             file_nodes=bool(A["file_nodes"]), phase_head=bool(A["phase_head"]),
-            threat_head=bool(A["threat_head"])).to(device)
+            threat_head=bool(A["threat_head"]), elo_cond=bool(A.get("elo", 0)),
+            g_heads=A.get("g_heads", 16), g_codes=A.get("g_codes", 32),
+            d_code=A.get("d_code", 32)).to(device)
+        self.labels = HEAD_LABELS_GCF4H if A.get("n_human", 0) else HEAD_LABELS
+        self.elo_default = float(view_elo)
         self.net.load_state_dict(ck["state_dict"]); self.net.eval()
         self.device = device
         self.width = width
@@ -80,6 +100,14 @@ class ConceptAlphaBeta:
 
     class SearchStop(Exception):
         pass
+
+    def _elo_in(self, n, dev):
+        if not getattr(self.net, "elo_cond", False):
+            return None
+        from catspace.research.components.encoder.approaches.reach_probability \
+            .src.trajectories import normalise_elo
+        ev = float(normalise_elo(np.float32(self.elo_default)))
+        return torch.full((n, 2), ev, device=dev)
 
     # ---- gcf3 forward on a batch of boards ------------------------------------
     @torch.no_grad()
@@ -110,15 +138,17 @@ class ConceptAlphaBeta:
                   val = (arr != 255) & mask[:, :, None]
                   edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
                                  (arr + off[:, :, None])[val])
+              elo_in = self._elo_in(len(misses), dev)
               if self.net.edge_codes:
                   zq, g_ids, sq_ids, _, h_mv, pre_g, _hist = self.net.encode(
-                      sqf, mvf, edges, mask, want_edge_ids=True)
+                      sqf, mvf, edges, mask, want_edge_ids=True, elo=elo_in)
                   e_ids = self.net.last_edge_ids.cpu().numpy()
                   e_s = (self.net.last_edge_sd[0] % self.net.n_nodes).cpu().numpy()
                   e_d = (self.net.last_edge_sd[1] % self.net.n_nodes).cpu().numpy()
                   e_samp = (self.net.last_edge_sd[1] // self.net.n_nodes).cpu().numpy()
               else:
-                  zq, g_ids, sq_ids, _, h_mv, pre_g = self.net.encode(sqf, mvf, edges, mask)
+                  zq, g_ids, sq_ids, _, h_mv, pre_g = self.net.encode(sqf, mvf, edges,
+                                                                      mask, elo=elo_in)
                   e_ids = None
               lg = self.net.move_logits(zq, h_mv, mask)
               _, _, out_l = self.net.predict_resolution(zq)
@@ -317,7 +347,7 @@ class ConceptAlphaBeta:
                 val = (arr != 255) & mask[:, :, None]
                 edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
                                (arr + off[:, :, None])[val])
-            enc = self.net.encode(sqf, mvf, edges, mask)
+            enc = self.net.encode(sqf, mvf, edges, mask, elo=self._elo_in(1, dev))
             zq, g_ids = enc[0], enc[1]
             n = int(g["n_mv"])
             emb = self.net.mv_emb(mvf[0, :n])
@@ -339,7 +369,7 @@ class ConceptAlphaBeta:
                                 + self.stat_ci[h, int(cur[h])] ** 2) ** 0.5)
                 else:
                     ci = 1.0
-                ch.append({"label": HEAD_LABELS.get(h, f"h{h}"),
+                ch.append({"label": self.labels.get(h, f"h{h}"),
                            "fr": int(cur[h]), "to": new,
                            "dw": round(dw, 3), "ci": round(ci, 3),
                            "sig": abs(dw) > ci})
@@ -385,7 +415,7 @@ class ConceptAlphaBeta:
                         dw, ci = flip_dw(h, int(a[h]), int(b2[h]))
                         if abs(dw) > ci:
                             out["recent"].append(
-                                {"label": HEAD_LABELS.get(h, f"h{h}"), "ago": ago,
+                                {"label": self.labels.get(h, f"h{h}"), "ago": ago,
                                  "fr": int(a[h]), "to": int(b2[h]),
                                  "dw": round(dw, 3), "ci": round(ci, 3)})
             out["recent"].sort(key=lambda x: (x["ago"], -abs(x["dw"])))
@@ -475,7 +505,7 @@ class ConceptAlphaBeta:
                 val = (arr != 255) & mask[:, :, None]
                 edges[name] = (((jj + 64 + off)[:, :, None].expand_as(arr))[val],
                                (arr + off[:, :, None])[val])
-            enc = self.net.encode(sqf, mvf, edges, mask)
+            enc = self.net.encode(sqf, mvf, edges, mask, elo=self._elo_in(1, dev))
             pre_g = enc[5]
             h_sq = self.net.last_h_sq[0]                       # (64, d)
             dc = self.net.d_code
@@ -533,7 +563,7 @@ class ConceptAlphaBeta:
         rows = []
         for h in range(len(f["g_ids"])):
             c = int(f["g_ids"][h])
-            r = {"head": h, "label": HEAD_LABELS.get(h, f"head {h}"), "code": c,
+            r = {"head": h, "label": self.labels.get(h, f"head {h}"), "code": c,
                  "slow": h < 8}
             if self.stat_mean is not None:
                 n = int(self.stat_cnt[h, c]); mw = float(self.stat_mean[h, c])

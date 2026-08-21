@@ -1841,6 +1841,9 @@ def main():
                     help="gcf3: ConceptAlphaBeta -- minimax/alpha-beta ranked by the "
                          "concept move head (Kaveh 2026-08-20); --ckpt is then the gcf3 ckpt")
     ap.add_argument("--width", type=int, default=8, help="gcf3: alpha-beta beam width")
+    ap.add_argument("--stats", default="data/derived/concept_stats_gcf3.npz")
+    ap.add_argument("--view-elo", type=float, default=1500.0,
+                    help="elo the elo-conditioned model views positions AS (the dial v1)")
     ap.add_argument("--warm-plies", type=int, default=3,
                     help="gcf3: prewarm the opening tree this many plies deep at startup")
     ap.add_argument("--cond-elo", type=float, default=None)
@@ -1865,7 +1868,8 @@ def main():
     if args.engine == "gcf3":
         from catspace.research.components.planner.approaches.quasimetric_nav.concept_engine import (
             ConceptAlphaBeta)
-        H.eng = ConceptAlphaBeta(args.ckpt, args.device, width=args.width)
+        H.eng = ConceptAlphaBeta(args.ckpt, args.device, width=args.width,
+                                 stats_path=args.stats, view_elo=args.view_elo)
         H.eng.lock = H.lock       # engine self-locks per forward batch
         print(f"[kitty-server] CONCEPT ENGINE: alpha-beta ordered by the gcf3 move head, "
               f"leaves = W/D/L expectation ({H.eng.tag}, width {args.width})", flush=True)
