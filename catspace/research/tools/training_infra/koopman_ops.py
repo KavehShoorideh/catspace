@@ -367,7 +367,17 @@ class TransformerLift(nn.Module):
         return torch.cat(toks, 1) + self.tok_emb
 
     def phi(self, z):
-        t = self.enc(self._tokens(z))
+        # force the unfused MATH attention path: the fused sdpa BACKWARD wedges the
+        # autograd worker on MPS (main thread parks in ReadyQueue::pop forever --
+        # wedge-taxonomy variant 5, 2026-08-21); math = matmuls + softmax, MPS-safe
+        try:
+            from torch.nn.attention import sdpa_kernel, SDPBackend
+            ctx = sdpa_kernel([SDPBackend.MATH])
+        except Exception:
+            import contextlib
+            ctx = contextlib.nullcontext()
+        with ctx:
+            t = self.enc(self._tokens(z))
         return self.out(t.reshape(z.shape[0], -1))
 
     def forward(self, z):
