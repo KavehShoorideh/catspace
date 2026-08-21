@@ -176,3 +176,22 @@ H3 (query efficiency): active acquisition (interval-width x code-rarity x entrop
      review script that GATES
   6. smoke (crash/scale only) -> round-0 bootstrap (gciv scorer) -> launch producer
      FIRST (warm the label store while units finalize), consumer joins when gates pass
+
+## H1 REFINEMENT (Kaveh 2026-08-21, verbal): search economics + locality are the prize
+Composition fidelity is necessary, not sufficient. The real payoffs, in order:
+(a) SEARCH SPEED: inside a tree, child evaluation = one linear apply, not a re-encode.
+    Measured 2026-08-21 (CPU, batch 64, gcf4h-scale): re-encode 2.766 ms/node vs
+    operator apply 59 us/node = 47x more nodes per unit compute. This is the number
+    that bootstraps the weak policy via search; report it beside every H1 fidelity row.
+(b) LOCALITY ("what move changes what concept," separated IN ADVANCE): a concept
+    localized to one region must be touched only by moves connected to it (the
+    corner-pawn-vs-mate example). Anti-MuZero: no monolithic latent rollforward.
+    Verdict-time instrument: the TOUCH TABLE -- per (move-code c, concept-head h),
+    mass of B_c on head h's block; plus square-geometry alignment for the per-square
+    part of the state. Interpretability artifact AND a pruning map: zero blocks =
+    certified non-interaction = skipped compute.
+(c) PRE-REGISTERED LEVER (next run, flag-gated, NOT mid-run): if learned B_c is not
+    naturally block-sparse, add group-sparsity (L2 over per-head blocks of U_c V_c)
+    -- "don't pay for non-interaction" as a training pressure.
+Concepts are mandatory throughout (interpretability is the endpoint); linearity is
+what makes them cheap to search through.

@@ -15660,3 +15660,10 @@ UPDATE rowcount=0 as "queue empty" and EXITED -- a silent fleet walkout with 72,
 rows todo. The composite index made claims fast enough to synchronize the race that
 the old slowness had been jittering apart. Fixed: randomized top-8 claim + retry.
 After: +4,659 labels/min (day's best) with a lean 7-loop fleet.
+
+**H1 reframed (Kaveh ruling, 2026-08-21): the prize is search economics + locality,
+not composition alone.** Per-node microbenchmark: full re-encode 2.766 ms vs operator
+apply 59 us = 47x nodes per compute (CPU, batch 64), pre-sparsity. New verdict-time
+instrument: the touch table (mass of B_c per concept-head block) = "what move changes
+what concept" as an artifact + pruning map. Group-sparsity on operator blocks
+pre-registered as a next-run lever if learned locality is weak.
