@@ -15783,3 +15783,9 @@ is TARGETED DATA (check-dense acquisition -> value gradients stretch the directi
 the codebook allocates the symbol at 64), not capacity; sequencing: data gates
 nothing here, capacity gates nothing here. 18 idle codes stand as the corroborating
 witness. Alternative if ever wanted: multi-head move concepts (several small books).
+
+**Ruling (Kaveh 2026-08-22): NO check-dense acquisition targeting.** The tactical-bias
+flag stays dormant (default 0, off per ruling). Acquisition remains pure
+uncertainty-driven (interval-width x rarity x entropy). The geometry finding is
+DIAGNOSIS only; the check-capture symbol emerges if value gradients make it matter
+naturally -- mechanisms, not hand-coded steering.
