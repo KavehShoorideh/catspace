@@ -321,3 +321,16 @@ slow/fast labels imported (same philosophy as the check-targeting rejection).
 Adjudicating experiment: train under the global prior, rerun the block-structure
 measurement -- slow rows shrinking harder ON THEIR OWN retires the label-informed
 variant (demoted to fallback). Both variants gated on the normalization prerequisite.
+
+## GCF5 COMPONENT: PIECE CONCEPTS (Kaveh 2026-08-22 late, verbal)
+The missing persistence layer: squares = places, board = global state, moves =
+actions; the PIECE -- the entity that has activity -- exists only implicitly. Design:
+32 piece slots (identity = original square; promotions inherit; captures mark dead),
+token = gather(current square hidden) + identity embedding, small per-piece codebook
+(8-16 codes: active/passive/trapped/hanging/...), joins trunk attention + the
+interaction table (~430 tokens) + a piece block in the operator state.
+PRE-REGISTERED PREDICTION + compute subsidy: one move touches <=2 pieces, so under
+the I+delta prior the operator's piece-block writes must be <=2 slots/move (skip 30
+of 32 at apply). Piece concepts naturally slow -> VAMP split; piece-support ladder
+becomes literal slot-sets. Completes the concept type system: piece x square x move
+x board, all at one interaction table.
