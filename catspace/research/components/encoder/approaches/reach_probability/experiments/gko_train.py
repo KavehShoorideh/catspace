@@ -67,6 +67,7 @@ def main():
     ap.add_argument("--g-codes", type=int, default=0)
     ap.add_argument("--d-code", type=int, default=0)
     ap.add_argument("--slow-heads", type=int, default=0)
+    ap.add_argument("--sq-codes", type=int, default=0, help="override square codebook size")
     ap.add_argument("--ops-after", type=int, default=0, help="gate operator code-matching "
                     "losses until the fresh vocabulary consolidates (ramp over 1000)")
     ap.add_argument("--ema-decay", type=float, default=0.0, help="EMA target encoder for "
@@ -133,6 +134,8 @@ def main():
     if args.g_heads:
         A["g_heads"], A["g_codes"], A["d_code"] = args.g_heads, args.g_codes, args.d_code
         A["slow_heads"] = args.slow_heads or A["slow_heads"]
+        if args.sq_codes:
+            A["sq_codes"] = args.sq_codes
         print(f"[gko2] field OVERRIDE: {A['g_heads']} heads x {A['g_codes']} codes "
               f"x d{A['d_code']}, slow {A['slow_heads']}", flush=True)
     field = GraphConceptField(
@@ -144,6 +147,7 @@ def main():
         file_nodes=bool(A["file_nodes"]), phase_head=bool(A["phase_head"]),
         threat_head=bool(A["threat_head"]), elo_cond=True,
         g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"],
+        sq_codes=A.get("sq_codes", 256),
         mh_vq=bool(args.g_heads)).to(dev)
     if args.g_heads:
         own = field.state_dict()
@@ -375,6 +379,14 @@ def main():
             _, idx_mv, _ = f.mv_vq(f.mv_vq_proj(h_mv.detach()))
         return idx_mv.gather(1, played[:, None]).squeeze(1)
 
+    def _mv_q(h_mv, mask):
+        """Quantized move-token embeddings for the lift's interaction table
+        (zero-padded on dead slots); detached -- the lift reads move CONCEPTS,
+        it does not train the move codebook."""
+        with torch.no_grad():
+            q, _, _ = model.field.mv_vq(model.field.mv_vq_proj(h_mv.detach()))
+        return q * mask[..., None]
+
     def op_losses(step):
         """Chain sub-batch: L_op1/3/6 + spectral + the detached MLP baseline arm."""
         cb = args.chain_batch
@@ -407,9 +419,11 @@ def main():
         code_seq = torch.cat([c0[:, None], cks], 1)                 # (cb,6)
         t1, t3, t6 = zq_c[:, 0], zq_c[:, 2], zq_c[:, 5]
         assert not t1.requires_grad and not code_seq.requires_grad  # U13 runtime guard
-        l1, _ = one_ply_loss(model.lift, model.ops, zq_p, code_seq[:, 0], t1,
-                             w_phi=args.w_phi)
-        traj = rollout(model.ops, model.lift(zq_p), code_seq)       # (cb,6,d_aug)
+        q_mv_p = _mv_q(h_mv_p, mask)
+        za_root = model.lift(zq_p, q_mv_p)
+        pred1 = model.ops(za_root, code_seq[:, 0])
+        l1 = F.mse_loss(pred1[..., :model.lift.d_state], t1)
+        traj = rollout(model.ops, za_root, code_seq)                # (cb,6,d_aug)
         ds = model.lift.d_state
         def _comp(za, tgt):
             return F.mse_loss(za[..., :ds], tgt)
@@ -429,11 +443,11 @@ def main():
             ds_ = model.lift.d_state
             for k in (1, 3, 6):
                 l_cons = l_cons + F.mse_loss(traj[:, k - 1, ds_:],
-                                             model.lift.phi(traj[:, k - 1, :ds_]))
+                                             model.lift.phi(traj[:, k - 1, :ds_], None))
         l_v = torch.zeros((), device=dev)
         v_n = 0
         if CHV is not None and model_has_v:
-            za0 = model.lift(zq_p)
+            za0 = za_root
             vt0 = torch.from_numpy(CHV[ci[:, 0]]).to(dev)
             m0 = torch.isfinite(vt0)
             if m0.any():
@@ -523,7 +537,7 @@ def main():
             tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
                                )[:, 0].reshape(len(ci), 6, -1)[:, :5]
             code_seq = torch.cat([c0[:, None], cks], 1)
-            traj = rollout(model.ops, model.lift(zq_p), code_seq)
+            traj = rollout(model.ops, model.lift(zq_p, _mv_q(h_mv_p, mask)), code_seq)
             ds = model.lift.d_state
             s = zq_p; toks = torch.cat([tok_p[:, None], tok_c], 1)
             mlp_s = {}

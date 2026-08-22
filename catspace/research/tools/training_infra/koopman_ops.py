@@ -377,8 +377,11 @@ class TransformerLift(nn.Module):
                                            batch_first=True, norm_first=True)
         self.enc = nn.TransformerEncoder(layer, num_layers=n_layers)
         self.out = nn.Linear(self.n_tok * d_tok, d_phi)
+        self.out_pool = nn.Linear(d_tok, d_phi)
+        self.p_mv = nn.Linear(32, d_tok)
+        self.mv_emb_tok = nn.Parameter(torch.randn(1, 1, d_tok) * 0.02)
 
-    def _tokens(self, z):
+    def _tokens(self, z, mv_q=None):
         B = z.shape[0]
         h = self.g_heads * self.d_code
         s = h + 64 * self.d_sq
@@ -386,9 +389,17 @@ class TransformerLift(nn.Module):
                 self.p_sq(z[:, h:s].reshape(B, 64, self.d_sq))]
         if self.p_hist is not None:
             toks.append(self.p_hist(z[:, s:])[:, None, :])
-        return torch.cat(toks, 1) + self.tok_emb
+        out = torch.cat(toks, 1) + self.tok_emb
+        if mv_q is not None and self.p_mv is not None:
+            # MOVE CONCEPTS AT THE TABLE (Kaveh 2026-08-21 late): the position's
+            # available-move tokens join the interaction conversation ("the check is
+            # available" participates in pre-operator interactions). Rolled states
+            # carry the result; they cannot re-present moves (no re-encode), so the
+            # consistency check runs move-blind -- approximate by design, noted.
+            out = torch.cat([out, self.p_mv(mv_q) + self.mv_emb_tok], 1)
+        return out
 
-    def phi(self, z):
+    def phi(self, z, mv_q=None):
         # force the unfused MATH attention path: the fused sdpa BACKWARD wedges the
         # autograd worker on MPS (main thread parks in ReadyQueue::pop forever --
         # wedge-taxonomy variant 5, 2026-08-21); math = matmuls + softmax, MPS-safe
@@ -399,11 +410,13 @@ class TransformerLift(nn.Module):
             import contextlib
             ctx = contextlib.nullcontext()
         with ctx:
-            t = self.enc(self._tokens(z))
-        return self.out(t.reshape(z.shape[0], -1))
+            t = self.enc(self._tokens(z, mv_q))
+        # pool: mean over tokens (token count varies with mv presence), then project
+        return self.out_pool(t.mean(1)) + self.out(
+            t[:, :self.n_tok].reshape(z.shape[0], -1))
 
-    def forward(self, z):
-        return torch.cat([z, self.phi(z)], -1)
+    def forward(self, z, mv_q=None):
+        return torch.cat([z, self.phi(z, mv_q)], -1)
 
     @property
     def d_aug(self):
