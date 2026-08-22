@@ -145,6 +145,23 @@ class KoopmanEngine:
             vals, zac = self._child_values(za, codes)
             order = torch.argsort(vals, descending=True)
             if d <= 1:
+                # CAPTURE QUIESCENCE (stockfish-style): never trust a hot leaf --
+                # if the best reply is a capture or check, resolve one ply further
+                # (rolled values misprice hanging pieces; quiet states they price well)
+                bi = order[0].item()
+                if budget[0] > 0 and (bd.is_capture(moves[bi])
+                                      or bd.gives_check(moves[bi])):
+                    budget[0] -= 1
+                    bd.push(moves[bi])
+                    v = 1.0 - ab(bd, 1, 1.0 - beta, 1.0 - alpha, False)
+                    bd.pop()
+                    # stand-pat: the best QUIET alternative's static value; the hot
+                    # move counts only at its RESOLVED value
+                    quiet = [o.item() for o in order
+                             if not bd.is_capture(moves[o.item()])
+                             and not bd.gives_check(moves[o.item()])]
+                    sp = float(vals[quiet[0]]) if quiet else 0.0
+                    return max(sp, v)
                 return float(vals[order[0]])
             best = alpha
             for rank, oi in enumerate(order.tolist()):
