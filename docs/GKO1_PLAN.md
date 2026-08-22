@@ -295,3 +295,20 @@ forward) -- U18 (bit-frozen under train), U19 (first-update exact equivalence), 
 for the operator-search engine: mh_vq checkpoints store codebooks as vq_mh[group]
 (8 groups), not vq[i] -- the engine's concept-stats access must be group-aware.
 Sidecar rewrite race is benign (torn npz read raises; rescan keeps prior coverage).
+
+## GCF5 OPERATOR DESIGN (Kaveh 2026-08-22 evening, verbal): slowness as compute subsidy
+Measured baseline (18k ops, printed): A near-copy everywhere (slow-block dev 0.0850 ~=
+fast 0.0859 -- NO slow/fast asymmetry despite vamp 30.8/32); move-writes land equally
+on slow/fast (1.14 vs 1.15 per-dim), most on phi (1.76). The encoder's timescales have
+NOT propagated into operator structure. Pre-registered levers:
+ (1) delta-form slow-write penalty: z' = z + Delta, ||Delta_slow|| charged -- silence
+     free, movement justified; enables row-skip application (z'_slow = z_slow).
+ (2) A_slow-block FROZEN at exact identity (ambient drift structurally zero; slow
+     change only through B_c events) -- verify the 0.085 dev is normalization artifact
+     vs real macro-drift before committing.
+ (3) horizon-matched loss weights: slow dims graded at long horizons, fast at 1-ply.
+ PREREQUISITE: kill per-row min-max zq normalization (couples all dims; slow constancy
+ unrepresentable today) -> per-block or fixed-global affine.
+ Compute: frozen-slow + sparse writes -> apply ~900/2944 dims (~3x); makes the
+ token-preserving lift (24k dims) tractable at 10-15 percent active rows. The temporal
+ twin of piece-support sparsity -- the two multiply.
