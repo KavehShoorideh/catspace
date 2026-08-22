@@ -334,3 +334,11 @@ the I+delta prior the operator's piece-block writes must be <=2 slots/move (skip
 of 32 at apply). Piece concepts naturally slow -> VAMP split; piece-support ladder
 becomes literal slot-sets. Completes the concept type system: piece x square x move
 x board, all at one interaction table.
+
+## GCF5 STATE BUDGET (Kaveh 2026-08-22: reallocate, do not grow; powers of two)
+d_aug = 2048 EXACTLY (down from 2944): squares 64x16=1024 (the funding cut: 32->16,
+squares were 76 percent of state) | board 64x8=512 (2x2 budgets herein) | pieces
+32x4=128 | hist 128 -> concept state 1792 + phi 256. VARIANT (preferred, pending the
+hist redundancy trial): hist retired, pieces 32x8=256. Wins: operator A halves to
+4.2M params, apply ~75us (economics IMPROVE while adding a concept type), power-of-two
+blocks make slow-silence + piece-sparsity subsidies clean strided slices.
