@@ -15749,3 +15749,15 @@ otherwise. Silver lining: the dead run's 1000 steps = a free NO-ANCHOR ablation
 (opR2 0.802/0.741/0.517 vs id 0.15/0.10/0.02 -- operators track EMA-smoothed dynamics
 through vocabulary churn even unanchored; dyn 7.3->2.6; phivar rising 0.18 on the
 0.05 consistency term alone). The relaunch adds the anchors on top of that baseline.
+
+**gko2d killed by the memory killer at step 5000 (2026-08-22 ~02:4x): the unbounded
+shard store.** The trainer accumulates every rescanned shard in RAM forever; backlog
+ingestion pushed it to 2.33M rows between evals and jetsam took the process (no
+traceback -- log ends clean at the 5000 heartbeat; system free leapt 9G -> 37G on
+death). Weights safe at step-4000 ckpt. Final 2k steps resumed with a STATIC store
+(--rescan-every huge, last-400 shards only) -- reaches effective 6k without the OOM
+vector. Trainer fix owed: a bounded/ring store (drop oldest rows past a cap).
+Curves through 5000 stand: vMAE 0.213 -> 0.147/0.149/0.159 monotone; avSp 0 -> ~0.15
+at all horizons; rho capped all run (max 1.015); vamp 30.8-31.3 THROUGH three
+vocabulary churn waves (the EMA decoupling working); phivar 1.10 -> 0.57 drifting
+(watch); identity oscillating with churn (alarm needs the vamp-conditioned form).
