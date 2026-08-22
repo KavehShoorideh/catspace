@@ -208,6 +208,7 @@ def main():
         p.add_argument("--top", type=int, default=6000)
         p.add_argument("--grow-from", type=int, default=1500)
         p.add_argument("--walks", type=int, default=2)
+        p.add_argument("--tactical-bias", type=float, default=0.0)
         p.add_argument("--oracles",
                        default="sf,maia:1100,maia:1300,maia:1500,maia:1700,maia:1900")
         p.add_argument("--every", type=int, default=3600)

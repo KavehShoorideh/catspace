@@ -104,6 +104,9 @@ def main():
     ap.add_argument("--ckpt-every", type=int, default=2000)
     ap.add_argument("--rescan-every", type=int, default=200)
     ap.add_argument("--max-shards", type=int, default=400)
+    ap.add_argument("--max-rows", type=int, default=0, help="ROTATING store cap: when "
+                    "rescans push past this, oldest files are evicted (the unbounded "
+                    "store was jetsam-killed at 2.33M rows; 0 = unbounded)")
     ap.add_argument("--device", default="mps")
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--seed", type=int, default=0)
@@ -309,6 +312,8 @@ def main():
     store = {k: [] for k in KEYS}
     seen = set()
 
+    order = []                                   # file ingestion order for eviction
+
     def rescan():
         files = sorted(glob.glob(os.path.join(args.shards, "shard_*.npz")))
         new = [f for f in files if f not in seen][-args.max_shards:]
@@ -318,8 +323,18 @@ def main():
                 for k in KEYS:
                     store[k].append(np.ascontiguousarray(z[k]))
                 seen.add(f)
+                order.append(len(store["kind"]) - 1)
             except Exception:
                 pass
+        if args.max_rows:
+            total = sum(len(a) for a in store["kind"])
+            while total > args.max_rows and len(store["kind"]) > 1:
+                # evict the OLDEST ingested chunk (ring behavior); `seen` keeps the
+                # file from re-ingesting, so the ring walks forward through the bank
+                for k in KEYS:
+                    total_drop = len(store[k][0])
+                    store[k].pop(0)
+                total -= total_drop
         return len(new)
 
     def flat(k):
