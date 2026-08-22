@@ -15770,3 +15770,16 @@ attempts scored 35-48 percent, the winning-track bar was 58.7). Economics in the
 games: ~78x cheaper per node than encode-everywhere. Both mandate arms delivered in
 one night: the value channel trained (vMAE 0.213 -> ~0.12; future-ordering 0 -> 0.21+
 at every horizon) and the search that consumes it built, gated, and winning.
+
+**Capacity claim RETRACTED with data (2026-08-22 midday): the missing check-capture
+symbol is a GEOMETRY issue, not capacity.** Kaveh challenged the 64->128 move-code
+recommendation; the diagnostic battery adjudicated: probe gap pre-VQ AUC 0.991 vs
+code AUC 0.768 (information reaches the gate); no sub-clusters inside capture codes;
+check-capture VQ residual 1.132 vs quiet 0.899; DECISIVE: offline k-means at k=256
+reaches only 0.27 best-cluster purity (k=64: 0.09, k=128: 0.14) -- quadrupled offline
+capacity cannot carve the cluster. Check-ness is a thin low-variance direction:
+linearly decodable, invisible to any proximity-based codebook at any width. The lever
+is TARGETED DATA (check-dense acquisition -> value gradients stretch the direction ->
+the codebook allocates the symbol at 64), not capacity; sequencing: data gates
+nothing here, capacity gates nothing here. 18 idle codes stand as the corroborating
+witness. Alternative if ever wanted: multi-head move concepts (several small books).
