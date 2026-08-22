@@ -63,9 +63,20 @@ class KoopmanEngine:
                                   if k.startswith("ops.")})
         import torch.nn as nn
         kb = sd["sf_v.2.bias"].shape[0]
-        self.sf_v = nn.Sequential(nn.Linear(256, 256), nn.GELU(), nn.Linear(256, kb))
-        self.sf_v.load_state_dict({k[5:]: v for k, v in sd.items()
-                                   if k.startswith("sf_v.")})
+        if any(k.startswith("sf_v_full.") for k in sd):
+            # search reads the FULL head when trained (material-sighted); phi-only
+            # remains the training anchor
+            self.sf_v = nn.Sequential(nn.Linear(self.lift.d_aug, 256), nn.GELU(),
+                                      nn.Linear(256, kb))
+            self.sf_v.load_state_dict({k[10:]: v for k, v in sd.items()
+                                       if k.startswith("sf_v_full.")})
+            self._v_slice = slice(None)
+        else:
+            self.sf_v = nn.Sequential(nn.Linear(256, 256), nn.GELU(),
+                                      nn.Linear(256, kb))
+            self.sf_v.load_state_dict({k[5:]: v for k, v in sd.items()
+                                       if k.startswith("sf_v.")})
+            self._v_slice = slice(self.lift.d_state, None)
         self.av = nn.Sequential(nn.Linear(self.lift.d_aug + 64, 512), nn.GELU(),
                                 nn.Linear(512, kb))
         self.av.load_state_dict({k[8:]: v for k, v in sd.items()
@@ -115,7 +126,7 @@ class KoopmanEngine:
         t0 = time.perf_counter()
         with torch.no_grad():
             zac = self.ops(za.expand(len(codes), -1), codes)
-            wp_child = self.hl.decode(self.sf_v(zac[:, self.lift.d_state:]))
+            wp_child = self.hl.decode(self.sf_v(zac[:, self._v_slice]))
         self.stats["op_applies"] += len(codes)
         self.stats["t_op"] += time.perf_counter() - t0
         return 1.0 - wp_child, zac

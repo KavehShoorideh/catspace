@@ -198,6 +198,12 @@ def main():
                 self.sf_v = nn.Sequential(
                     nn.Linear(self.lift.d_phi, 256), nn.GELU(),
                     nn.Linear(256, args.k_bins))
+                # FULL value head for SEARCH (2026-08-22 maia autopsy: phi-only sees
+                # ~quarter of a removed queen -- material lives in the state part;
+                # the phi-only head REMAINS the anti-collapse anchor, this one plays)
+                self.sf_v_full = nn.Sequential(
+                    nn.Linear(self.lift.d_aug, 256), nn.GELU(),
+                    nn.Linear(256, args.k_bins))
                 # per-move future action-values from ROLLED states: [z_aug ; mv_emb]
                 self.av_roll = nn.Sequential(
                     nn.Linear(self.lift.d_aug + 64, 512), nn.GELU(),
@@ -484,6 +490,7 @@ def main():
             if m0.any():
                 l_v = l_v + args.w_v0 * hl.ce(model.sf_v(za0[m0][:, model.lift.d_state:]),
                                               vt0[m0])
+                l_v = l_v + args.w_v0 * hl.ce(model.sf_v_full(za0[m0]), vt0[m0])
                 v_n += int(m0.sum())
             w6r = min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
             mvc_all = mvc.reshape(cb, 6, MV_CAP, -1)
@@ -495,6 +502,8 @@ def main():
                 if mk.any():
                     l_v = l_v + args.w_vk * wk * hl.ce(
                         model.sf_v(traj[:, k - 1][mk][:, model.lift.d_state:]), vtk[mk])
+                    l_v = l_v + args.w_vk * wk * hl.ce(
+                        model.sf_v_full(traj[:, k - 1][mk]), vtk[mk])
                     v_n += int(mk.sum())
                 if CHW is not None and args.w_av > 0:
                     wpk = torch.from_numpy(CHW[ci[:, k]]).to(dev)      # (cb, MV_CAP)
