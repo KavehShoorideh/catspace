@@ -103,7 +103,7 @@ class GraphConceptField(nn.Module):
                  cls_reach=None, cls_eg=None, cls_out=None,
                  edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
                  agg_max=False, kin=False, file_nodes=False, phase_head=False,
-                 threat_head=False, elo_cond=False):
+                 threat_head=False, elo_cond=False, mh_vq=False):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         self.edge_codes, self.move_codes = edge_codes, move_codes
@@ -180,8 +180,24 @@ class GraphConceptField(nn.Module):
         vq_kw = dict(decay=0.9, commitment_weight=0.25, kmeans_init=True,
                      threshold_ema_dead_code=2)
         self.g_proj = nn.Linear(d, g_heads * d_code)
-        self.vq = nn.ModuleList([VectorQuantize(dim=d_code, codebook_size=g_codes, **vq_kw)
-                                 for _ in range(g_heads)])
+        self.mh_vq = mh_vq
+        if mh_vq:
+            # GROUPED multi-head VQ: 8 groups x (g_heads/8) heads each. One monolithic
+            # 512-head module OOMs at construction (lib-internal init buffers); groups
+            # keep per-head codebooks, bound memory, and cut the python loop 512 -> 8
+            # (the loop was ~10s/step at the 512-concept scale).
+            self.vq_groups = 8
+            gh = g_heads // self.vq_groups
+            assert gh * self.vq_groups == g_heads
+            self.vq_mh = nn.ModuleList([
+                VectorQuantize(dim=gh * d_code, heads=gh,
+                               separate_codebook_per_head=True,
+                               codebook_size=g_codes, **vq_kw)
+                for _ in range(self.vq_groups)])
+        else:
+            self.vq = nn.ModuleList([VectorQuantize(dim=d_code, codebook_size=g_codes,
+                                                    **vq_kw)
+                                     for _ in range(g_heads)])
         self.sq_proj = nn.Linear(d, d_fine)
         self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=sq_codes, **vq_kw)
         d_state = g_heads * d_code + 64 * d_fine
@@ -343,10 +359,20 @@ class GraphConceptField(nn.Module):
         if self.phase_head:
             self.last_pre_adv = self.g_proj(h_sq.mean(1).detach()).view(
                 B, self.g_heads, self.d_code)[:, 1:]
-        qs, ids, vl = [], [], 0.0
-        for i in range(self.g_heads):
-            q, idx, l = self.vq[i](pre_g[:, i])
-            qs.append(q); ids.append(idx); vl = vl + l
+        if self.mh_vq:
+            gh = self.g_heads // self.vq_groups
+            qs, ids, vl = [], [], 0.0
+            for gi in range(self.vq_groups):
+                blk = pre_g[:, gi * gh:(gi + 1) * gh].reshape(B, 1, -1)
+                q_g, idx_g, l_g = self.vq_mh[gi](blk)
+                qs.append(q_g.reshape(B, -1))
+                ids.extend(idx_g.reshape(B, gh).unbind(-1))
+                vl = vl + l_g
+        else:
+            qs, ids, vl = [], [], 0.0
+            for i in range(self.g_heads):
+                q, idx, l = self.vq[i](pre_g[:, i])
+                qs.append(q); ids.append(idx); vl = vl + l
         q_sq, sq_ids, vl2 = self.sq_vq(self.sq_proj(h_sq))
         parts = qs + [q_sq.reshape(B, -1)]
         vl = vl + vl2

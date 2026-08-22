@@ -137,7 +137,8 @@ def main():
         attn_bias=bool(A["attn_bias"]), agg_max=bool(A["agg_max"]), kin=bool(A["kin"]),
         file_nodes=bool(A["file_nodes"]), phase_head=bool(A["phase_head"]),
         threat_head=bool(A["threat_head"]), elo_cond=True,
-        g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"]).to(dev)
+        g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"],
+        mh_vq=bool(args.g_heads)).to(dev)
     if args.g_heads:
         own = field.state_dict()
         sdf = {k: v for k, v in ck["state_dict"].items()
