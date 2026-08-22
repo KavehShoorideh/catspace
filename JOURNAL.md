@@ -15727,7 +15727,7 @@ interactions carrying it), all op-side losses gated to step 1500 + 1000-ramp (op
 wait out vocabulary consolidation), hard spectral projection (U *= 0.97 when rho>1.03,
 no gradient arms race). Relaunch gko2b at 6k steps.
 
-**gko2c launched (~00:30): the overnight configuration.** Kaveh's two midnight rulings:
+**gko2c launched (21:09 PDT): the overnight configuration.** Kaveh's two midnight rulings:
 (1) EMA target encoder (decay 0.999) for ALL child-side operator targets -- the online
 vocabulary churns freely while operators train against its low-passed shadow
 (BYOL/MuZero lineage); restores full-time co-adaptation, so ops-after drops 1500 ->
