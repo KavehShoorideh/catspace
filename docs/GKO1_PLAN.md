@@ -286,3 +286,12 @@ moves = available actions -- different kinds). VERIFICATION OWED at verdict: mov
 table (code x gives_check/capture/promo MI + exemplars) -- do the 64 codes split
 check-ness; widen the move vocabulary if blurred. Timing: fold into gko2d on gko2c's
 morning verdict (one change on top of tonight's three-mechanism bundle).
+
+## COMPONENT-REVIEW NOTES (2026-08-21 night, Kaveh-requested)
+EMA bugs found+fixed+gated (train()-recursion re-arm; uninitialized-codebook first
+forward) -- U18 (bit-frozen under train), U19 (first-update exact equivalence), U19b
+(lag inequality) now in the suite. eval_chessbench fixed to honor run-ckpt geometry
+(64-head ckpts would have shape-mismatched the morning battery). FORWARD-COMPAT NOTE
+for the operator-search engine: mh_vq checkpoints store codebooks as vq_mh[group]
+(8 groups), not vq[i] -- the engine's concept-stats access must be group-aware.
+Sidecar rewrite race is benign (torn npz read raises; rescan keeps prior coverage).

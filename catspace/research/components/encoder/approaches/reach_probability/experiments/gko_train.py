@@ -188,6 +188,15 @@ def main():
                 self.ema_field = _copy.deepcopy(field).eval()
                 for pr in self.ema_field.parameters():
                     pr.requires_grad_(False)
+
+        def train(self, mode=True):
+            # model.train() recurses into ALL submodules -- without this override the
+            # EMA target encoder flips to train mode and its VQ codebooks self-update
+            # from every child-target batch (the drift EMA exists to prevent)
+            super(GKO, self).train(mode)
+            if hasattr(self, "ema_field"):
+                self.ema_field.eval()
+            return self
             if args.ops:
                 # value-from-AUGMENTED-state (Kaveh 2026-08-21): the same readout is
                 # applied to rolled states and scored vs future SF truth, so concepts
@@ -219,10 +228,21 @@ def main():
               f"{len(unex)} unexpected)", flush=True)
     hl = HLGauss(k=args.k_bins).to(dev)
     ema_field = getattr(model, "ema_field", None)
+    ema_started = [False]
 
     def _ema_update():
         d = args.ema_decay
         with torch.no_grad():
+            if not ema_started[0]:
+                # FIRST update is a HARD copy: the deepcopy predates any forward, so
+                # the copy's VQ books are uninitialized (kmeans never fires in eval);
+                # without this, early child targets quantize against random codebooks
+                for po, pe in zip(model.field.parameters(), ema_field.parameters()):
+                    pe.copy_(po)
+                for bo, be in zip(model.field.buffers(), ema_field.buffers()):
+                    be.copy_(bo)
+                ema_started[0] = True
+                return
             for po, pe in zip(model.field.parameters(), ema_field.parameters()):
                 pe.mul_(d).add_(po, alpha=1 - d)
             for bo, be in zip(model.field.buffers(), ema_field.buffers()):
@@ -796,6 +816,52 @@ def main():
             torch.tensor(1.0))
         gate("U16", cov_a != cov_b and nan_fires,
              f"coverage moves {cov_a:.2f}->{cov_b:.2f} on shifted y; nan-guard fires {nan_fires}")
+
+        if args.ops and ema_field is not None:
+            import hashlib
+
+            def _fp(m):
+                h = hashlib.sha256()
+                for t in list(m.parameters()) + list(m.buffers()):
+                    h.update(t.detach().cpu().numpy().tobytes())
+                return h.hexdigest()
+
+            # U18: the EMA target encoder must be BIT-FROZEN under model.train() +
+            # a full target-encode forward (the train()-recursion re-arm bug)
+            model.train()
+            ok18_mode = not model.ema_field.training
+            f0 = _fp(ema_field)
+            ci_u = CH_pos[ch_tr[:4]]
+            sq_u, mv_u, ed_u, mk_u, el_u, pl_u = _feat_rows(ci_u[:, 1:].ravel())
+            with torch.no_grad():
+                ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)
+            gate("U18", ok18_mode and _fp(ema_field) == f0,
+                 f"ema frozen under train(): mode-pin {ok18_mode}, "
+                 f"fingerprint unchanged {_fp(ema_field) == f0}")
+
+            # U19: first _ema_update -> exact output equivalence (hard copy end to end)
+            _ema_update()
+            with torch.no_grad():
+                zo = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
+                ze = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
+            eq = float((zo - ze).abs().max())
+            gate("U19", eq == 0.0, f"post-first-update ema==online: max|dz| {eq:.1e} (exact)")
+
+            # U19b: after one optimizer step + update, ema LAGS (differs, moves less)
+            p0_on = model.field.g_proj.weight.detach().clone()
+            p0_em = ema_field.g_proj.weight.detach().clone()
+            idxu = torch.from_numpy(tr_i[:4])
+            lu, *_ = losses_on(idxu)
+            opt.zero_grad(); lu.backward(); opt.step()
+            _ema_update()
+            d_on = float((model.field.g_proj.weight - p0_on).abs().max())
+            d_em = float((ema_field.g_proj.weight - p0_em).abs().max())
+            with torch.no_grad():
+                ze2 = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
+                zo2 = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
+            diff = float((zo2 - ze2).abs().max())
+            gate("U19b", d_on > 0 and 0 < d_em < 0.01 * d_on and diff > 0,
+                 f"lag: online moved {d_on:.2e}, ema {d_em:.2e} (<1pct), outputs differ {diff:.2e}")
 
         if args.ops:
             r2 = op_eval(n_ch=64)

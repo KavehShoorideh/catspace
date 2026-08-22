@@ -47,7 +47,15 @@ def main():
 
     dev = args.device
     ckf = torch.load(args.field_args, map_location="cpu", weights_only=False)
-    A = ckf["args"]
+    A = dict(ckf["args"])
+    ck_run = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+    RA = ck_run.get("args") or {}
+    # a run ckpt carries its own field geometry (g_heads overrides etc.) -- prefer it,
+    # else a 64-head checkpoint shape-mismatches the gcf4h-arch build
+    mh = bool(RA.get("g_heads"))
+    for k in ("g_heads", "g_codes", "d_code", "slow_heads", "sq_codes"):
+        if RA.get(k):
+            A[k] = RA[k]
     field = GraphConceptField(
         d=A["d_model"], layers=A["layers"], slow_heads=A["slow_heads"], n_res=3, n_eg=1,
         cls_reach=np.zeros(3, np.int64), cls_eg=np.zeros(3, np.int64),
@@ -56,9 +64,9 @@ def main():
         attn_bias=bool(A["attn_bias"]), agg_max=bool(A["agg_max"]), kin=bool(A["kin"]),
         file_nodes=bool(A["file_nodes"]), phase_head=bool(A["phase_head"]),
         threat_head=bool(A["threat_head"]), elo_cond=True,
-        g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"])
-    ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    sd = ck["state_dict"]
+        g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"],
+        sq_codes=A.get("sq_codes", 256), mh_vq=mh)
+    sd = ck_run["state_dict"]
     field.load_state_dict({k[6:]: v for k, v in sd.items() if k.startswith("field.")})
     k_bins = sd["sf_av.2.bias"].shape[0]
     sf_av = torch.nn.Sequential(
