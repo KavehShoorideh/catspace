@@ -67,8 +67,12 @@ def main():
     ap.add_argument("--g-codes", type=int, default=0)
     ap.add_argument("--d-code", type=int, default=0)
     ap.add_argument("--slow-heads", type=int, default=0)
-    ap.add_argument("--ops-after", type=int, default=0, help="gate ALL operator-side "
+    ap.add_argument("--ops-after", type=int, default=0, help="gate operator code-matching "
                     "losses until the fresh vocabulary consolidates (ramp over 1000)")
+    ap.add_argument("--ema-decay", type=float, default=0.0, help="EMA target encoder for "
+                    "ALL child-side operator targets (BYOL/MuZero-style): the online "
+                    "vocabulary may churn while operators train against its low-passed "
+                    "shadow. 0 = off")
     ap.add_argument("--w-v0", type=float, default=0.5, help="state-value grounding at k=0")
     ap.add_argument("--w-vk", type=float, default=1.0, help="ROLLED future-value vs SF truth")
     ap.add_argument("--chain-values", default="data/derived/gko1_chain_values.npz")
@@ -175,6 +179,11 @@ def main():
             if args.iv:
                 self.iv = nn.Sequential(
                     nn.Linear(field.d_state + 32, 256), nn.GELU(), nn.Linear(256, 3))
+            if args.ops and args.ema_decay > 0:
+                import copy as _copy
+                self.ema_field = _copy.deepcopy(field).eval()
+                for pr in self.ema_field.parameters():
+                    pr.requires_grad_(False)
             if args.ops:
                 # value-from-AUGMENTED-state (Kaveh 2026-08-21): the same readout is
                 # applied to rolled states and scored vs future SF truth, so concepts
@@ -205,6 +214,19 @@ def main():
               f"{len(miss)} new keys init fresh, {len(drop)} shape-dropped, "
               f"{len(unex)} unexpected)", flush=True)
     hl = HLGauss(k=args.k_bins).to(dev)
+    ema_field = getattr(model, "ema_field", None)
+
+    def _ema_update():
+        d = args.ema_decay
+        with torch.no_grad():
+            for po, pe in zip(model.field.parameters(), ema_field.parameters()):
+                pe.mul_(d).add_(po, alpha=1 - d)
+            for bo, be in zip(model.field.buffers(), ema_field.buffers()):
+                if be.dtype.is_floating_point:
+                    be.mul_(d).add_(bo, alpha=1 - d)
+                else:
+                    be.copy_(bo)
+
     if args.iv_frozen:
         for pr in model.field.parameters():
             pr.requires_grad_(False)
@@ -215,7 +237,7 @@ def main():
         op_ids = {id(pr) for pr in model.ops.parameters()}
         lift_ids = {id(pr) for pr in model.lift.parameters()}
         rest = [pr for pr in model.parameters()
-                if id(pr) not in op_ids and id(pr) not in lift_ids]
+                if id(pr) not in op_ids and id(pr) not in lift_ids and pr.requires_grad]
         opt = torch.optim.Adam([{"params": rest, "lr": args.lr},
                                 {"params": list(model.ops.parameters()),
                                  "lr": args.lr_ops},
@@ -347,9 +369,10 @@ def main():
         played = torch.from_numpy(np.ascontiguousarray(CH["played"][rows])).long().to(dev)
         return sqf, mvf, edges, mask, elo, played
 
-    def _mv_codes(h_mv, played):
+    def _mv_codes(h_mv, played, f=None):
+        f = f or model.field
         with torch.no_grad():
-            _, idx_mv, _ = model.field.mv_vq(model.field.mv_vq_proj(h_mv.detach()))
+            _, idx_mv, _ = f.mv_vq(f.mv_vq_proj(h_mv.detach()))
         return idx_mv.gather(1, played[:, None]).squeeze(1)
 
     def op_losses(step):
@@ -364,15 +387,16 @@ def main():
         # +0.92 -> -0.78 over gens 1-3 was the measured cost). PL on the corpus move:
         lg_p = model.field.move_logits(zq_p, h_mv_p, mask)
         l_move = F.cross_entropy(lg_p.masked_fill(~mask, -1e9), played)
+        enc_t = ema_field if ema_field is not None else model.field
         with torch.no_grad():
             rows_c = ci[:, 1:].ravel()
             sqc, mvc, edc, mkc, eloc, plc = _feat_rows(rows_c)
-            zq_c, gi_c, si_c, _, h_mv_c, _ = model.field.encode(sqc, mvc, edc, mkc,
-                                                                elo=eloc)[:6]
+            zq_c, gi_c, si_c, _, h_mv_c, _ = enc_t.encode(sqc, mvc, edc, mkc,
+                                                          elo=eloc)[:6]
             zq_c = zq_c.reshape(cb, 6, -1)
             gi1 = gi_c.reshape(cb, 6, -1)[:, 0]
             si1 = si_c.reshape(cb, 6, -1)[:, 0]
-            cks = _mv_codes(h_mv_c, plc).reshape(cb, 6)[:, :5]
+            cks = _mv_codes(h_mv_c, plc, enc_t).reshape(cb, 6)[:, :5]
             tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
                                )[:, 0].reshape(cb, 6, -1)[:, :5]
         # dyn CE to the played child's codes (global + square)
@@ -492,10 +516,10 @@ def main():
             tok_p = mvf.gather(1, played[:, None, None].expand(-1, 1, mvf.shape[-1]))[:, 0]
             rows_c = ci[:, 1:].ravel()
             sqc, mvc, edc, mkc, eloc, plc = _feat_rows(rows_c)
-            zq_c, _, _, _, h_mv_c, _ = model.field.encode(sqc, mvc, edc, mkc,
-                                                          elo=eloc)[:6]
+            enc_e = ema_field if ema_field is not None else model.field
+            zq_c, _, _, _, h_mv_c, _ = enc_e.encode(sqc, mvc, edc, mkc, elo=eloc)[:6]
             zq_c = zq_c.reshape(len(ci), 6, -1)
-            cks = _mv_codes(h_mv_c, plc).reshape(len(ci), 6)[:, :5]
+            cks = _mv_codes(h_mv_c, plc, enc_e).reshape(len(ci), 6)[:, :5]
             tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
                                )[:, 0].reshape(len(ci), 6, -1)[:, :5]
             code_seq = torch.cat([c0[:, None], cks], 1)
@@ -627,6 +651,8 @@ def main():
             # shrink the low-rank move terms directly, no gradients involved
             with torch.no_grad():
                 model.ops.U.mul_(0.97)
+        if args.ops and ema_field is not None:
+            _ema_update()
         out = {"loss": float(loss.detach())}
         out.update(op_d)
         if step % args.eval_every == 0 or step == 1:
