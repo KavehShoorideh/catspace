@@ -342,3 +342,13 @@ squares were 76 percent of state) | board 64x8=512 (2x2 budgets herein) | pieces
 hist redundancy trial): hist retired, pieces 32x8=256. Wins: operator A halves to
 4.2M params, apply ~75us (economics IMPROVE while adding a concept type), power-of-two
 blocks make slow-silence + piece-sparsity subsidies clean strided slices.
+
+## VALUE METRICS RULING (Kaveh 2026-08-22 night): distributions, not scalars
+Flat vMAE launders decision-relevance (0.1 at +12 meaningless; 0.1 near equality is
+the game). Standard form now: STRATIFIED by band (near-equal / advantage / decided)
++ CRPS over the predicted bin distribution. First table (gko2h-4k, k=0, printed):
+near-equal 0.072 | ADVANTAGE 0.134 (the weak band = edge-conversion = what the
+piece-down diet treats) | decided 0.066 -- pooled 0.095 hid all of it. Retrofit:
+W/D/L triples synthesized from stored wp (invertible to cp -> standard WDL model),
+no re-querying. GCF5: native W/D/L value heads (reconnects to the committor/basin
+founding frame).
