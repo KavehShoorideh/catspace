@@ -67,6 +67,8 @@ def main():
     ap.add_argument("--g-codes", type=int, default=0)
     ap.add_argument("--d-code", type=int, default=0)
     ap.add_argument("--slow-heads", type=int, default=0)
+    ap.add_argument("--ops-after", type=int, default=0, help="gate ALL operator-side "
+                    "losses until the fresh vocabulary consolidates (ramp over 1000)")
     ap.add_argument("--w-v0", type=float, default=0.5, help="state-value grounding at k=0")
     ap.add_argument("--w-vk", type=float, default=1.0, help="ROLLED future-value vs SF truth")
     ap.add_argument("--chain-values", default="data/derived/gko1_chain_values.npz")
@@ -178,8 +180,11 @@ def main():
                 # applied to rolled states and scored vs future SF truth, so concepts
                 # AND interaction features must carry value-relevant signal at every
                 # horizon (phi is oracle-load-bearing; its self-target is dropped)
+                # PHI-ONLY (2026-08-21 heartbeat-1000 falsification: heads reading
+                # the full z_aug route AROUND phi and it collapses to constants;
+                # value-at-rolled-horizons must be impossible WITHOUT interactions)
                 self.sf_v = nn.Sequential(
-                    nn.Linear(self.lift.d_aug, 256), nn.GELU(),
+                    nn.Linear(self.lift.d_phi, 256), nn.GELU(),
                     nn.Linear(256, args.k_bins))
                 # per-move future action-values from ROLLED states: [z_aug ; mv_emb]
                 self.av_roll = nn.Sequential(
@@ -408,7 +413,8 @@ def main():
             vt0 = torch.from_numpy(CHV[ci[:, 0]]).to(dev)
             m0 = torch.isfinite(vt0)
             if m0.any():
-                l_v = l_v + args.w_v0 * hl.ce(model.sf_v(za0[m0]), vt0[m0])
+                l_v = l_v + args.w_v0 * hl.ce(model.sf_v(za0[m0][:, model.lift.d_state:]),
+                                              vt0[m0])
                 v_n += int(m0.sum())
             w6r = min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
             mvc_all = mvc.reshape(cb, 6, MV_CAP, -1)
@@ -418,8 +424,8 @@ def main():
                 vtk = torch.from_numpy(CHV[ci[:, k]]).to(dev)
                 mk = torch.isfinite(vtk)
                 if mk.any():
-                    l_v = l_v + args.w_vk * wk * hl.ce(model.sf_v(traj[:, k - 1][mk]),
-                                                       vtk[mk])
+                    l_v = l_v + args.w_vk * wk * hl.ce(
+                        model.sf_v(traj[:, k - 1][mk][:, model.lift.d_state:]), vtk[mk])
                     v_n += int(mk.sum())
                 if CHW is not None and args.w_av > 0:
                     wpk = torch.from_numpy(CHW[ci[:, k]]).to(dev)      # (cb, MV_CAP)
@@ -455,9 +461,10 @@ def main():
             vamp_v = float(vamp)
             l_slow = -vamp / 32.0
             l_dec = vicreg_covariance(pg0.reshape(len(vb), -1)[:, sl:])
-        w6 = args.w_op6 * min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
-        total = (args.w_op1 * l1 + args.w_op3 * l3 + w6 * l6 +
-                 args.w_spec * l_spec + l_mlp + l_v + args.w_cons * l_cons +
+        opg = min(1.0, max(0.0, (step - args.ops_after) / 1000.0)) if args.ops_after else 1.0
+        w6 = args.w_op6 * min(1.0, max(0.0, (step - args.op6_after) / 2000.0)) * opg
+        total = (opg * (args.w_op1 * l1 + args.w_op3 * l3) + w6 * l6 +
+                 args.w_spec * l_spec + l_mlp + l_v + opg * args.w_cons * l_cons +
                  args.w_move * l_move + args.w_dyn2 * l_dyn2 +
                  args.w_slow * l_slow * args.vamp_every + args.w_dec * l_dec * args.vamp_every)
         with torch.no_grad():
@@ -523,7 +530,8 @@ def main():
                     vt = torch.from_numpy(CHV[ci[:, kk]]).to(zq_p.device)
                     mk = torch.isfinite(vt)
                     if mk.any():
-                        pv = hl.decode(model.sf_v(traj[:, kk - 1][mk]))
+                        pv = hl.decode(model.sf_v(
+                            traj[:, kk - 1][mk][:, model.lift.d_state:]))
                         agg.setdefault(key, [0.0, 0.0])
                         agg[key][0] += float((pv - vt[mk]).abs().sum())
                         agg[key][1] += float(mk.sum())
@@ -614,6 +622,11 @@ def main():
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
+        if args.ops and op_d.get("rho", 0) > 1.03:
+            # hard projection: the penalty lost the arms race twice (rho 1.046, 1.070);
+            # shrink the low-rank move terms directly, no gradients involved
+            with torch.no_grad():
+                model.ops.U.mul_(0.97)
         out = {"loss": float(loss.detach())}
         out.update(op_d)
         if step % args.eval_every == 0 or step == 1:

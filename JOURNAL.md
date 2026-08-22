@@ -15711,3 +15711,18 @@ guessed: at rho 1.046 the quadratic penalty's gradient is ~1e-4 -- toothless aga
 the value/av/consistency flux now flowing through the operators (gko1c held at 1.00
 because its op-gradients were small, not because the penalty was strong). One change:
 w-spec 0.2 -> 2.0. Same design otherwise.
+
+**gko2a killed at step 1000: two failures, one falsification, one healthy vocabulary.**
+The 512-head vocabulary itself formed well (decor 2.08 -> 0.300 at 1000 steps; avSp
++0.115/+0.122/+0.122 climbing; vamp 30.8/32) BUT: (1) identity-R2 alarm fired (-0.02
+at 1-ply) -- a fresh VQ layer CHURNS while codebooks reorganize (distinct from the
+gko0c erosion of a trained layer; vamp healthy = pre-code features persistent, codes
+reassigning); training operators against churning code targets exploded them again
+(opR2 -57k/-134k/-233k, rho 1.070 through the 2.0 penalty -- the penalty has now lost
+the arms race twice). (2) phivar 0.0010: PHI COLLAPSED WITHOUT the self-target --
+FALSIFIES the information-saturation bet in its v1 form: heads reading the full z_aug
+simply route around phi (vMAE flat while phi died). Oracle pressure must be AIMED:
+bundle (recorded) = sf_v reads PHI ONLY (value at rolled horizons impossible without
+interactions carrying it), all op-side losses gated to step 1500 + 1000-ramp (operators
+wait out vocabulary consolidation), hard spectral projection (U *= 0.97 when rho>1.03,
+no gradient arms race). Relaunch gko2b at 6k steps.
