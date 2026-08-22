@@ -15737,3 +15737,15 @@ projection, grouped VQ, staged 6-ply ramp at 2000, 6k steps, ckpt/2k + janitor.
 Heartbeats at 1000-multiples; the reads that matter: phivar RISING (the phi-forcing's
 first live test), identity-R2 recovering as codes consolidate under EMA, rho pinned,
 avSp climbing, decor falling at 256 heads.
+
+**The silent-feature-off bug (2026-08-21 ~03:0x): value anchors were dead in the
+armed-looking run.** A patch-anchor accident stranded the sf_v/av_roll construction
+inside train() AFTER return self -- syntactically valid, gates green, never executed;
+every value loss and meter silently skipped behind model_has_v=False. Found via the
+missing vMAE column -> coverage proven fine -> guard-value debug print (mhv=False).
+Lesson encoded as U20: a configuration's INTENDED features must be asserted ARMED
+(heads exist + targets actually hit: 1,252/batch) -- guarded degradation gates green
+otherwise. Silver lining: the dead run's 1000 steps = a free NO-ANCHOR ablation
+(opR2 0.802/0.741/0.517 vs id 0.15/0.10/0.02 -- operators track EMA-smoothed dynamics
+through vocabulary churn even unanchored; dyn 7.3->2.6; phivar rising 0.18 on the
+0.05 consistency term alone). The relaunch adds the anchors on top of that baseline.
