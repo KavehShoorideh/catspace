@@ -668,6 +668,11 @@ def main():
         loss, l_maia, l_sf, l_decor, aux = losses_on(idx)
         op_d = {}
         if args.ops:
+            if ema_field is not None and not ema_started[0]:
+                # hard-copy BEFORE the first child-target encode: the online field's
+                # books initialized during losses_on above; the copy must be frozen
+                # AND initialized from step 1's very first target (U18's contract)
+                _ema_update()
             l_op, op_d = op_losses(step)
             loss = loss + l_op
         if _nan_guard(loss):
@@ -829,6 +834,7 @@ def main():
             # U18: the EMA target encoder must be BIT-FROZEN under model.train() +
             # a full target-encode forward (the train()-recursion re-arm bug)
             model.train()
+            _ema_update()                      # mirror the real flow: hard copy first
             ok18_mode = not model.ema_field.training
             f0 = _fp(ema_field)
             ci_u = CH_pos[ch_tr[:4]]
@@ -839,8 +845,7 @@ def main():
                  f"ema frozen under train(): mode-pin {ok18_mode}, "
                  f"fingerprint unchanged {_fp(ema_field) == f0}")
 
-            # U19: first _ema_update -> exact output equivalence (hard copy end to end)
-            _ema_update()
+            # U19: post-hard-copy exact output equivalence (end to end)
             with torch.no_grad():
                 zo = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
                 ze = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
