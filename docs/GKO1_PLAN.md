@@ -272,3 +272,17 @@ narrow concepts are present/absent + mode). Cost at narrow-d8: d_state ~6.3k, d_
 operator block-sparse (touched-blocks-only application). Lift tokens ~577, attention
 still cheap. Verdict-time duplicate-merge analysis on gko1e calibrates how much of
 512 the data can actually individuate.
+
+## MOVE CONCEPTS IN THE INTERACTION LAYERS (Kaveh 2026-08-21 late, verbal)
+Ruling: moves have concepts (the mv_vq 64-code book IS them; gives_check is a raw
+move-token feature, and operators are already indexed by move code -- his tempo
+example: check-capture vs quiet-capture = different codes = different operators =
+different rolled futures). MISSING piece his ruling adds: the 48 move-concept tokens
+join the 3-layer interaction transformer (currently board-state tokens only), so
+"the check is available" participates in pre-operator interactions and rolled states
+carry tactical texture. Everything-talks-to-everything x3 layers, THEN operators.
+Edge-histogram token stays pending redundancy analysis (edges = standing relations;
+moves = available actions -- different kinds). VERIFICATION OWED at verdict: move-code
+table (code x gives_check/capture/promo MI + exemplars) -- do the 64 codes split
+check-ness; widen the move vocabulary if blurred. Timing: fold into gko2d on gko2c's
+morning verdict (one change on top of tonight's three-mechanism bundle).
