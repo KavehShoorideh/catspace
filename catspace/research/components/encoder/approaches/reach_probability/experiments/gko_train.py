@@ -655,6 +655,23 @@ def main():
             if m2.any():
                 l_sf = hl.ce(logits[m2], tgt[ks][m2])
         l_decor = cross_head_decorrelation(pre_g)
+        # STATE-VALUE from every SF shard row (2026-08-22 queen-probe finding: value
+        # heads trained only on mostly-balanced chains never learn material; a shard
+        # row's max win-prob IS its state value -- free supervision, full-bank scale,
+        # and piece-down enrichment flows through this path automatically)
+        l_sv = torch.zeros((), device=dev)
+        if args.ops and hasattr(model, "sf_v_full") and ks.any():
+            sv_t = torch.where(fin[ks], tgt[ks], torch.full_like(tgt[ks], -1e9)
+                               ).max(-1).values
+            okv = sv_t > -1e8
+            if okv.any():
+                with torch.no_grad():
+                    q_mv_s, _, _ = model.field.mv_vq(
+                        model.field.mv_vq_proj(h_mv[ks][okv].detach()))
+                za_s = model.lift(zq[ks][okv], q_mv_s * mask[ks][okv][..., None])
+                sv_tt = sv_t[okv].detach()
+                l_sv = (hl.ce(model.sf_v_full(za_s), sv_tt) +
+                        hl.ce(model.sf_v(za_s[:, model.lift.d_state:]), sv_tt))
         l_iv = torch.zeros((), device=dev)
         iv_stats = None
         if args.iv and ks.any():
@@ -676,7 +693,7 @@ def main():
                 iv_stats = (float(((y >= lo) & (y <= hi) & m2).sum() / m2.sum()),
                             float((hi - lo)[m2].mean()))
         loss = (args.w_maia * l_maia + args.w_sf * l_sf + args.w_decor * l_decor + vl
-                + args.w_iv * l_iv)
+                + args.w_iv * l_iv + 0.5 * l_sv)
         return loss, l_maia, l_sf, l_decor, (lg, zq, h_mv, fin, tgt, kind, mask,
                                              l_iv, iv_stats)
 
