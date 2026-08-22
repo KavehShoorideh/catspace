@@ -15726,3 +15726,14 @@ bundle (recorded) = sf_v reads PHI ONLY (value at rolled horizons impossible wit
 interactions carrying it), all op-side losses gated to step 1500 + 1000-ramp (operators
 wait out vocabulary consolidation), hard spectral projection (U *= 0.97 when rho>1.03,
 no gradient arms race). Relaunch gko2b at 6k steps.
+
+**gko2c launched (~00:30): the overnight configuration.** Kaveh's two midnight rulings:
+(1) EMA target encoder (decay 0.999) for ALL child-side operator targets -- the online
+vocabulary churns freely while operators train against its low-passed shadow
+(BYOL/MuZero lineage); restores full-time co-adaptation, so ops-after drops 1500 ->
+300. (2) 256 heads, not 512 (width GEMMs halved; ~5.5-6s/step expected; 2,048 global
+symbols -- still 2x the 32-head vocabulary). Carries: phi-only value head, hard rho
+projection, grouped VQ, staged 6-ply ramp at 2000, 6k steps, ckpt/2k + janitor.
+Heartbeats at 1000-multiples; the reads that matter: phivar RISING (the phi-forcing's
+first live test), identity-R2 recovering as codes consolidate under EMA, rho pinned,
+avSp climbing, decor falling at 256 heads.
