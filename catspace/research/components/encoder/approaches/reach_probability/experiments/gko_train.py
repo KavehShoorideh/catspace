@@ -188,6 +188,17 @@ def main():
                 self.ema_field = _copy.deepcopy(field).eval()
                 for pr in self.ema_field.parameters():
                     pr.requires_grad_(False)
+            if args.ops:
+                # PHI-ONLY value head (the saturation falsification: heads reading
+                # full z_aug route AROUND phi; value-at-rolled-horizons must be
+                # impossible WITHOUT interaction features carrying it)
+                self.sf_v = nn.Sequential(
+                    nn.Linear(self.lift.d_phi, 256), nn.GELU(),
+                    nn.Linear(256, args.k_bins))
+                # per-move future action-values from ROLLED states: [z_aug ; mv_emb]
+                self.av_roll = nn.Sequential(
+                    nn.Linear(self.lift.d_aug + 64, 512), nn.GELU(),
+                    nn.Linear(512, args.k_bins))
 
         def train(self, mode=True):
             # model.train() recurses into ALL submodules -- without this override the
@@ -197,21 +208,6 @@ def main():
             if hasattr(self, "ema_field"):
                 self.ema_field.eval()
             return self
-            if args.ops:
-                # value-from-AUGMENTED-state (Kaveh 2026-08-21): the same readout is
-                # applied to rolled states and scored vs future SF truth, so concepts
-                # AND interaction features must carry value-relevant signal at every
-                # horizon (phi is oracle-load-bearing; its self-target is dropped)
-                # PHI-ONLY (2026-08-21 heartbeat-1000 falsification: heads reading
-                # the full z_aug route AROUND phi and it collapses to constants;
-                # value-at-rolled-horizons must be impossible WITHOUT interactions)
-                self.sf_v = nn.Sequential(
-                    nn.Linear(self.lift.d_phi, 256), nn.GELU(),
-                    nn.Linear(256, args.k_bins))
-                # per-move future action-values from ROLLED states: [z_aug ; mv_emb]
-                self.av_roll = nn.Sequential(
-                    nn.Linear(self.lift.d_aug + 64, 512), nn.GELU(),
-                    nn.Linear(512, args.k_bins))
     model = GKO().to(dev)
     if args.resume_self:
         ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
@@ -867,6 +863,18 @@ def main():
             diff = float((zo2 - ze2).abs().max())
             gate("U19b", d_on > 0 and 0 < d_em < 0.01 * d_on and diff > 0,
                  f"lag: online moved {d_on:.2e}, ema {d_em:.2e} (<1pct), outputs differ {diff:.2e}")
+
+        # U20: the configuration's INTENT is armed -- value heads exist and the
+        # value losses actually fire (a guarded feature silently off gated green
+        # tonight; absence must FAIL, not skip)
+        armed = model_has_v and hasattr(model, "av_roll") and CHV is not None
+        vn20 = 0
+        if armed:
+            _, d20 = op_losses(4)
+            vn20 = d20.get("vn", 0)
+        gate("U20", armed and vn20 > 0,
+             f"value anchors armed: heads {model_has_v}/{hasattr(model, 'av_roll')}, "
+             f"coverage loaded {CHV is not None}, targets hit this batch {vn20}")
 
         if args.ops:
             r2 = op_eval(n_ch=64)
