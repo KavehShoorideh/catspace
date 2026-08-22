@@ -15761,3 +15761,12 @@ Curves through 5000 stand: vMAE 0.213 -> 0.147/0.149/0.159 monotone; avSp 0 -> ~
 at all horizons; rho capped all run (max 1.015); vamp 30.8-31.3 THROUGH three
 vocabulary churn waves (the EMA decoupling working); phivar 1.10 -> 0.57 drifting
 (watch); identity oscillating with churn (alarm needs the vamp-conditioned form).
+
+**ARENA (2026-08-22 morning, printed): the operator engine is the project's strongest
+player.** koopman_search (12k weights, depth 2, re-encode budget 6/search) vs the
+historical baselines: RANDOM +15 =1 -0 (97 percent; the old cert line managed +15 =84
+-1 -- mostly draws); MATERIAL-GREEDY +10 =6 -0 (81 percent, UNDEFEATED; prior engine
+attempts scored 35-48 percent, the winning-track bar was 58.7). Economics in the same
+games: ~78x cheaper per node than encode-everywhere. Both mandate arms delivered in
+one night: the value channel trained (vMAE 0.213 -> ~0.12; future-ordering 0 -> 0.21+
+at every horizon) and the search that consumes it built, gated, and winning.
