@@ -312,3 +312,12 @@ NOT propagated into operator structure. Pre-registered levers:
  Compute: frozen-slow + sparse writes -> apply ~900/2944 dims (~3x); makes the
  token-preserving lift (24k dims) tractable at 10-15 percent active rows. The temporal
  twin of piece-support sparsity -- the two multiply.
+
+## OPERATOR PRIOR AMENDMENT (Kaveh 2026-08-22, asking-not-telling -> adopted):
+PRIMARY: global near-identity prior ON THE OPERATOR -- K = I + Delta with Delta
+earning magnitude everywhere (explicit ||A - I|| + move-correction norm penalties,
+ongoing, not just init). Timescale structure EMERGES in the operator; no encoder
+slow/fast labels imported (same philosophy as the check-targeting rejection).
+Adjudicating experiment: train under the global prior, rerun the block-structure
+measurement -- slow rows shrinking harder ON THEIR OWN retires the label-informed
+variant (demoted to fallback). Both variants gated on the normalization prerequisite.
