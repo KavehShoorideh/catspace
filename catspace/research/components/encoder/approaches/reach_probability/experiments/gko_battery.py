@@ -116,7 +116,8 @@ def eff_rank(X, n_boot=1000, seed=0):
     return full, lo, hi
 
 
-def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo):
+def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo,
+                  lift=None, sf_v_full=None, vb=3):
     """sf_av on UNSEEN sf rows: ORDERING (scale-free, survives thin data) vs
     absolute LEVEL (what starves first). Reporting both separates 'undertrained'
     from 'miscalibrated'. Works for gen4 and gen5 checkpoints."""
@@ -130,6 +131,7 @@ def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo):
         hl = HLGauss(k=kb)
         hl.centers = hl.centers.to(dev)
         sps, lvl_p, lvl_t = [], [], []
+        sv_p, sv_t = [], []
         for f in hf:
             H = np.load(f)
             for i0 in range(0, len(H["kind"]), 256):
@@ -153,6 +155,17 @@ def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo):
                                                         elo=elo, pslot=psl)[:6]
                     x = torch.cat([zq[:, None, :].expand(-1, MV_CAP, -1), h_mv], -1)
                     pv = hl.decode(sf_av(x)).cpu().numpy()
+                    svv_batch = None
+                    if lift is not None and sf_v_full is not None:
+                        q, _, _ = field.mv_vq(field.mv_vq_proj(h_mv))
+                        za = lift(zq, q * mask[..., None])
+                        lg = sf_v_full(za)
+                        if vb == 3:
+                            pr = torch.softmax(lg, -1)
+                            svv = (pr[:, 0] + 0.5 * pr[:, 1]).cpu().numpy()
+                        else:
+                            svv = hl.decode(lg).cpu().numpy()
+                        svv_batch = svv
                 tg = H["tgt"][rr]
                 fin = np.isfinite(tg) & (tg > -1e8)
                 for r in range(len(rr)):
@@ -164,6 +177,13 @@ def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo):
                         if np.isfinite(c):
                             sps.append(c)
                         lvl_p.append(pv[r][m].max()); lvl_t.append(tg[r][m].max())
+                        if svv_batch is not None:
+                            # append PRED and TARGET together, inside the same filter --
+                            # accumulating preds per-batch and targets per-row silently
+                            # misaligns them at the first skipped row and reads as
+                            # corr ~ 0 for a perfectly good head.
+                            sv_p.append(float(svv_batch[r]))
+                            sv_t.append(float(tg[r][m].max()))
         lp, lt = np.array(lvl_p), np.array(lvl_t)
         print(f"[bat] SHARP n={len(sps)} unseen sf positions: "
               f"ORDERING spearman {np.mean(sps):.3f} "
@@ -172,6 +192,17 @@ def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo):
               f"| bias {lp.mean()-lt.mean():+.3f} | MAE {np.abs(lp-lt).mean():.3f} "
               f"| corr {np.corrcoef(lp, lt)[0,1]:.3f} "
               f"(untethered level = bias large and/or corr low)", flush=True)
+        if sv_p:
+            # STATE VALUE (sf_v_full) on the same unseen rows. l_sv is what teaches
+            # this head material -- it is gated on kind==0, so sf starvation blinds
+            # it. SF's state value is max-over-moves, exactly l_sv's target.
+            a = np.array(sv_p); b3 = np.array(sv_t)
+            assert len(a) == len(b3), (len(a), len(b3))
+            print(f"[bat] VALUE sf_v_full on {len(a)} unseen positions: "
+                  f"corr {np.corrcoef(a, b3)[0,1]:.3f} | MAE {np.abs(a-b3).mean():.3f} "
+                  f"| pred sd {a.std():.3f} vs SF sd {b3.std():.3f} "
+                  f"(ratio {a.std()/max(b3.std(),1e-9):.2f}; <<1 = flat/material-blind)",
+                  flush=True)
     else:
         print(f"[bat] SHARP skipped: no shards in {args.sharp_dir}", flush=True)
 
@@ -197,7 +228,8 @@ def main():
     from catspace.research.components.encoder.approaches.reach_probability.src \
         .trajectories import normalise_elo
     if args.sharp_only:
-        sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo)
+        sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo,
+                      lift, sf_v_full, vb)
         return
     CH = np.load(args.cache, mmap_mode="r")
     CH_prow = np.asarray(CH["p_row"])
@@ -251,7 +283,8 @@ def main():
     print(f"[bat] RANK block variances {bv} (no block dead)", flush=True)
 
     # ---- WDL ----
-    sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo)
+    sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo,
+                  lift, sf_v_full, vb)
 
     SC = np.load(args.sidecar)
     wdl = SC["wdl"][tail].astype(np.float32)  # f16 on disk: 1e-9 underflows to 0 there

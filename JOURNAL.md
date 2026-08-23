@@ -16032,3 +16032,52 @@ reads 0.000 while training on it is healthy (sf-spearman 0.000 alongside sf loss
 3.361). Now a fixed-seed random subsample. Every held-out number this lineage has
 printed came from the oldest-shard slice; cross-run comparisons were only valid
 while composition happened to be uniform.
+
+**DIAGNOSIS RESOLVED (2026-08-23): gen5's operator is 98.7pct move-INDEPENDENT.**
+Decomposing BasisOps on a real midgame position, K(m)z = Az + sum_k w_k(m) U_k V_k^T z:
+
+    shared A-term      ||Az||           27.615
+    move-dependent     ||K(m)z - Az||    0.352
+    ratio                                0.0127
+
+The move-dependent term -- the ONLY part of the operator that knows which move was
+played -- is 1.3pct of the shared term. Children land 0.494 apart (incumbent: 1.232,
+2.5x more) against a state norm of ~27.6, i.e. siblings differ by under 2pct. No
+downstream head can recover discrimination that is not in its input.
+
+This closes the investigation and RETIRES both earlier hypotheses, each of which
+was refuted by measurement on 5,903 unseen sf positions:
+  - "sharp head untethered"       REFUTED: gen5 0.537 ordering / 0.874 level-corr
+                                  vs incumbent 0.535 / 0.864. gen5 is BETTER.
+  - "l_sv starvation -> value
+     head material-blind"         REFUTED: sf_v_full correlates 0.853 (gen5),
+                                  0.865 (gko3b@2k), 0.866 (incumbent) with SF
+                                  state value. All three are materially sighted
+                                  ON ENCODED STATES.
+The heads are fine. The operator's move-conditioning is the defect, and it is the
+one quantity that differs 2.5x between the generation that plays at 62pct and the
+one that plays at 38-50pct.
+
+GRADED. Proven: the 1.3pct ratio, the 2.5x child-separation gap, and that both
+heads match or beat the incumbent on unseen data. Plausible (not proven): that the
+identity prior (||A-I||^2 + 0.1||U||^2) caused it -- the U penalty shrinks exactly
+the move-dependent term, and gen5's A sits 4.12 from I vs the incumbent's 9.24. The
+design intent (Kaveh's I+small-delta, for slowness and stability) worked; the cost
+is that ALL move information lives in the delta that was shrunk.
+
+**Why no loss caught it:** every k-step target follows the PLAYED line, a single
+move per step, where the shared A-term alone suffices to predict the next state.
+Nothing in the objective ever required the move-dependent term to be large enough
+to matter. This is precisely Kaveh's multipv point (2026-08-23): sf labels carry a
+value for EVERY legal move at 100pct coverage (mean 32.3 moves/position, verified),
+so rolling the parent through each legal move and training each rolled state
+against that move's own WDL would force the move-dependent term to grow -- it is
+the only component that can separate siblings. No new labelling required.
+
+**Also fixed a measurement bug that nearly produced a false headline.** The VALUE
+probe accumulated predictions per-BATCH and targets per-ROW inside a
+`>3 finite moves` filter; 241 of 6,144 rows were skipped, so the arrays misaligned
+at the first skip and every model read corr ~0.00 with healthy spread. Aligned
+(both appended inside the same filter, with a length assert) the same models read
+0.853-0.866. A near-zero correlation with well-matched variance is the signature of
+misalignment, not of a broken model.
