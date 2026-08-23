@@ -404,3 +404,13 @@ I just need to see it play well." Standing epistemology, third statement of the 
 ruling this week: GATES = performance (play strength, outcome prediction, decor
 health). PROBES = post-hoc interpretation only, never pass/fail. Named-concept
 recovery is a curiosity, not a criterion.
+
+## FINAL GATE FORM (Kaveh 2026-08-23): correctness, then adequacy
+"The gate is that it trains correctly, and it works... it doesn't have to play
+perfectly well because we can always offset playing strength with search. We're
+planning as where we wanna go next. Something that plays a few plies of search as
+good as Maia-1100 is good enough. I just want it to be bug free."
+gko3a acceptance: (1) BUG-FREE (the U-gate suite + review discipline, the week's real
+deliverable), (2) trains/works (curves move, machinery sound), (3) ~Maia-1100 at
+shallow search = sufficient substrate. Beyond that: the PLANNER, designed with Kaveh
+present. Current engine already clears (3).
