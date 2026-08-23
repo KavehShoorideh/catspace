@@ -15855,3 +15855,65 @@ width read from its own bias (3-way vs 64-bin HL). gko2i regression S1-S4 PASS
 position 1.000 with correct move). Noted: gen5 root value at the start position
 reads compressed (0.142) on ROLLED quiet positions -- ordering is what search
 uses; arena adjudicates.
+
+**gko3a PLAY VERDICT (2026-08-23 morning, all printed): gen5 is CORRECT but not yet
+the better PLAYER; the incumbent keeps the KittyChess mount.** Arena vs Maia-1100
+(12 games/row unless noted, openings balanced, colors alternated): d2 21%, d3 46%,
+d3 at 24 games 38%, d4 50%; vs random 96%. Re-measured incumbent gko2i today: 62%
+(+5 =5 -2), reproducing its earlier number exactly. Per the seed-variance rule
+these rows are single-seed and CLOSE numbers get no verdict -- but two things are
+judgeable. (1) STRUCTURAL: gen5 scales with depth (21 -> ~40 -> 50 across d2/d3/d4)
+where the old lineage got nothing from depth before the sharp blend existed --
+consistent with the operator thesis that deeper search is where the machinery pays.
+(2) GROSS GAP: rolled-only play (blend 0.0) scores 0% (+0 =0 -12).
+
+**Why, measured -- the diagnosis for the next generation.** The sharp head is NOT
+the problem: gen5's sibling discrimination is BETTER than the incumbent's (av sd
+0.077/0.099/0.194 across start/down-a-queen/midgame vs gko2i's 0.017/0.056/0.093),
+and held-out sf-spearman is 0.544 vs the incumbent's ~0.5. The dead component is
+the operator-rolled value path: rolled sibling sd is 0.0004-0.0007 (incumbent
+0.0012-0.0045), i.e. every child prices the same, so av:rolled discrimination
+ratio is 118-316x (incumbent 14-48x). That inertness also explains why the blend
+weight barely matters (d2 av-only 38% vs blend 21%; d3 12% vs 38%; d4 50% vs 50%
+-- no systematic direction): a near-constant term shifts the level, not the order.
+RULED OUT by measurement: operator collapse to identity (||K(m)z-z||/||z|| = 0.340,
+incumbent 0.385; children DO separate, pairwise 0.494) and WDL draw-collapse
+(held-out pred W/D/L 0.337/0.400/0.263 vs oracle 0.383/0.321/0.296, draw excess
+only +0.079; pred spread 0.322 vs oracle 0.395, ratio 0.815). What IS wrong is the
+sharp head's absolute LEVEL: it reads 0.855 at the start position and 0.978 for a
+mover who is down a queen -- untethered from material/outcome. Ordering is
+scale-free so within-node ranking survives, but alpha-beta compares values ACROSS
+nodes, so deeper search inherits the miscalibration. Two fixes for the next design
+(NOT applied -- planner/design is Kaveh's call): tie sf_av's level to the
+calibrated WDL head (train per-move heads against child WDL triples, sharing one
+scale) and give the rolled path a within-parent contrast objective, which it has
+never had (it is trained on horizon-matched value, not sibling contrast).
+
+**Two defects found and fixed while gating the continuation.** (1) EMA lag was
+DESTROYED on every resume: ema_started was unconditionally False, so the first
+update hard-copied the online weights over the restored target, silently un-lagging
+every child target for ~1000 steps. Now detected from the loaded keys and preserved
+(the run log states which). (2) U19/U19b asserted fresh-start-only invariants;
+U19's bit-exactness was data-dependent (intervening online forwards drift the VQ
+codebooks while the ema is eval-pinned) so it read as a flaky failure, and U19b
+compared the ema's step to the ONLINE step, which only holds from a hard copy.
+Both re-scoped to invariants true in both modes -- fresh asserts TRACKING (<5pct of
+|z|), resumed asserts the hard copy was suppressed, and both assert the decay law
+d_ema <= 1.5(1-d)*gap. The law verifies to three digits (8.80e-06 vs 8.80e-06
+resumed; 1.04e-07 vs 1.00e-07 fresh). ALL GATES PASS in both modes.
+
+**gko3b LAUNCHED (2026-08-23, continuation of gko3a to 16k total).** Same design,
+resumed from step8000 with the lag preserved (0 keys fresh/dropped/unexpected).
+Rationale: gko3a was cut by its step budget, not by convergence -- held-out WDL
+MAE was still falling (0.1624/0.1603/0.1521 across the ladder) and avSp still
+rising at the final step -- and the incumbent lineage has ~22k effective steps
+against gen5's 8k, so "young" is the leading hypothesis for the play gap. The
+diagnosed value-tethering defects are design changes and are NOT in this run.
+
+**Store VACUUM FAILED and must not be retried casually (2026-08-23).** sqlite
+VACUUM needs a full second copy: 19G store + 19G temp against 26G free -> "database
+or disk is full", disk hit 141MB, and the reclaim only came back when the temp file
+was released. The store is UNHARMED (freelist 0, 4,887,758 pages intact) and no
+data was lost, but the freelist being 0 means there was little to reclaim anyway --
+the 13G->18G growth was real payload (doubled WDL rows), not churn. Retry only with
+a scratch volume or after the store shrinks; do not retry in place on this disk.
