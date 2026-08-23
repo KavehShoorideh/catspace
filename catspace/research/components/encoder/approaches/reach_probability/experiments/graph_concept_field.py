@@ -103,7 +103,7 @@ class GraphConceptField(nn.Module):
                  cls_reach=None, cls_eg=None, cls_out=None,
                  edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
                  agg_max=False, kin=False, file_nodes=False, phase_head=False,
-                 threat_head=False, elo_cond=False, mh_vq=False):
+                 threat_head=False, elo_cond=False, mh_vq=False, gen5=False):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         self.edge_codes, self.move_codes = edge_codes, move_codes
@@ -198,9 +198,18 @@ class GraphConceptField(nn.Module):
             self.vq = nn.ModuleList([VectorQuantize(dim=d_code, codebook_size=g_codes,
                                                     **vq_kw)
                                      for _ in range(g_heads)])
+        self.gen5 = gen5
+        if gen5:
+            d_fine = 16                      # gcf5 budget: squares 64x16 = 1024
         self.sq_proj = nn.Linear(d, d_fine)
         self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=sq_codes, **vq_kw)
         d_state = g_heads * d_code + 64 * d_fine
+        if gen5:
+            # PIECE CONCEPTS: 32 canonical slots, shared small book; dead slots = 0
+            self.d_piece = 4
+            self.piece_proj = nn.Linear(d, self.d_piece)
+            self.piece_vq = VectorQuantize(dim=self.d_piece, codebook_size=16, **vq_kw)
+            d_state += 32 * self.d_piece
         if edge_codes:
             # EDGE CONCEPTS (Kaveh 2026-08-19: "global, node, EDGE concepts"). An att edge's
             # embedding is its endpoint pair; the VQ code is the tactic-type; the STATE carries
@@ -346,7 +355,7 @@ class GraphConceptField(nn.Module):
                 h = self.ln_f[i](h + self.ffn[i](h))
         return h                                              # (B, 112, d)
 
-    def encode(self, sqf, mvf, edges, mv_mask, want_edge_ids=False, elo=None):
+    def encode(self, sqf, mvf, edges, mv_mask, want_edge_ids=False, elo=None, pslot=None):
         """-> zq (B,d_state) in [0,1], g_ids (B,H), sq_ids (B,64), vq_loss, h_mv, pre_g
         [, edge_hist (B,E)]"""
         B = sqf.shape[0]
@@ -375,6 +384,19 @@ class GraphConceptField(nn.Module):
                 qs.append(q); ids.append(idx); vl = vl + l
         q_sq, sq_ids, vl2 = self.sq_vq(self.sq_proj(h_sq))
         parts = qs + [q_sq.reshape(B, -1)]
+        if self.gen5:
+            # gather each slot's square hidden (dead slots -> zeros)
+            psl = pslot.long()
+            slot_h = h_sq.new_zeros(B, 32, h_sq.shape[-1])
+            bb, sqx = torch.where(psl < 32)               # live slots, both colors
+            if len(bb):
+                slot_h[bb, psl[bb, sqx]] = h_sq[bb, sqx]
+            q_pc, pc_ids, vl_pc = self.piece_vq(self.piece_proj(slot_h))
+            dead = (slot_h.abs().sum(-1, keepdim=True) == 0)
+            q_pc = q_pc.masked_fill(dead, 0.0)
+            vl = vl + vl_pc
+            parts.append(q_pc.reshape(B, -1))
+            self.last_piece_ids = pc_ids
         vl = vl + vl2
         hist = None
         if self.edge_codes:
@@ -396,8 +418,12 @@ class GraphConceptField(nn.Module):
                 hist = torch.zeros(B, self.edge_codes, device=h.device)
             parts.append(hist)
         zq = torch.cat(parts, -1)
-        lo = zq.min(-1, keepdim=True).values; hi = zq.max(-1, keepdim=True).values
-        zq = (zq - lo) / (hi - lo).clamp(min=1e-5)
+        if not self.gen5:
+            # legacy per-row min-max (couples all dims; slow constancy is
+            # unrepresentable -- the gcf5 finding). gen5: RAW quantized embeddings,
+            # no data-dependent normalization at all.
+            lo = zq.min(-1, keepdim=True).values; hi = zq.max(-1, keepdim=True).values
+            zq = (zq - lo) / (hi - lo).clamp(min=1e-5)
         if want_edge_ids:
             return zq, torch.stack(ids, 1), sq_ids, vl, h_mv, pre_g, hist
         return zq, torch.stack(ids, 1), sq_ids, vl, h_mv, pre_g
