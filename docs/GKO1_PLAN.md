@@ -373,3 +373,15 @@ scorer -- ALREADY the student) closes ordering 0.27 -> ~0.5 via (i) move-code
 embedding input, (ii) sharp-head soft-target distillation at encoded states,
 (iii) capacity; structural unlock = gcf5 token-preserving state. MuZero-consistent:
 heads trained through the dynamics make latent-only search sound.
+
+## OPERATOR CONDITIONING REDESIGN (Kaveh 2026-08-23: position-free move lookup)
+Ruling-question answered YES with one refinement: move representation = the CHEAP-FLAG
+token (from,to,piece,captured,promo,CHECK -- all python-chess-derivable, no encoder;
+= the existing 19-feature mv token), NOT bare uci (would resurrect tempo blindness).
+Operator selection: VQ codes -> BASIS MIXING B(m) = sum_k w_k(mv_emb) B_k, K=64 basis
+operators (same params; smooth, no quantization loss; mixture weights = soft move
+concepts with discrete readout on demand; U1/U3 gates unchanged). MuZero-precedented:
+context lives in the STATE; the move needs identity + cheap flags only. Deletes the
+move-code-predictor need; unifies with cross-roll distillation (one move rep
+everywhere). Completes the roll-only search stack: rolled nodes need NOTHING from the
+encoder.
