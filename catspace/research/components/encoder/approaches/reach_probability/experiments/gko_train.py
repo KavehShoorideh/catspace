@@ -760,8 +760,25 @@ def main():
                         model.field.mv_vq_proj(h_mv[ks][okv].detach()))
                 za_s = model.lift(zq[ks][okv], q_mv_s * mask[ks][okv][..., None])
                 sv_tt = sv_t[okv].detach()
-                l_sv = (hl.ce(model.sf_v_full(za_s), sv_tt) +
-                        hl.ce(model.sf_v(za_s[:, model.lift.d_state:]), sv_tt))
+                if args.gen5:
+                    # state WDL = the best move's triple from the row's wdl array
+                    wrow = D["wdl"][idx].to(dev)[ks][okv].float()      # (n,48,3)
+                    tsel = torch.where(fin[ks][okv], tgt[ks][okv],
+                                       torch.full_like(tgt[ks][okv], -1e9))
+                    bidx = tsel.argmax(-1)
+                    wsel = wrow.gather(1, bidx[:, None, None].expand(-1, 1, 3))[:, 0]
+                    mws = torch.isfinite(wsel).all(-1)
+                    if mws.any():
+                        tg = wsel[mws].clamp(min=1e-6)
+                        tg = tg / tg.sum(-1, keepdim=True)
+                        for head, inp in ((model.sf_v_full, za_s[mws]),
+                                          (model.sf_v,
+                                           za_s[mws][:, model.lift.d_state:])):
+                            lp = torch.log_softmax(head(inp), -1)
+                            l_sv = l_sv + (-(tg * lp).sum(-1).mean())
+                else:
+                    l_sv = (hl.ce(model.sf_v_full(za_s), sv_tt) +
+                            hl.ce(model.sf_v(za_s[:, model.lift.d_state:]), sv_tt))
         l_iv = torch.zeros((), device=dev)
         iv_stats = None
         if args.iv and ks.any():
