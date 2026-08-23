@@ -16155,3 +16155,47 @@ better model.
 Note on statistics: 21pct vs 38pct at n=24 is ~1.7 sigma -- suggestive, not
 established, per the seed-variance rule. But the falsification does not depend on
 that: the claim PREDICTED >=38pct and the observation was on the wrong side of it.
+
+**THE DISSOCIATION (2026-08-23, the day's central result): gen5's HEADS now BEAT the
+incumbent's on unseen data, and it still plays far worse. The difference is entirely
+in the rolled/search path.**
+
+On 5,903 unseen sf positions (heads) and 39 real positions (search internals):
+
+  model        ord    lvlMAE  lvlcorr  valcorr | rolled-sd  sharp-sd  ratio | arena
+  gko2i       0.535   0.139   0.864    0.866   |  0.00484    0.0934    19x  | 62pct
+  gko3a @8k   0.537   0.110   0.874    0.853   |  0.00058    0.0811   140x  | 38pct
+  gko3b @2k   0.540   0.137   0.873    0.865   |     --         --     --   | 21pct
+  gko3b @4k   0.546   0.097   0.891    0.875   |  0.00092    0.0999   109x  | 25pct
+
+gko3b @4k is the BEST checkpoint ever measured on every head metric -- ordering,
+level bias (-0.032), level MAE (0.097), level corr (0.891), value corr (0.875) --
+beating the 62pct incumbent on all five. It plays at 25pct. Head quality is
+therefore NOT what separates these engines.
+
+What does differ, consistently and by a wide margin, is the rolled-child value
+spread -- the quantity alpha-beta consumes at every un-encoded node. The incumbent
+prices siblings 5-8x more distinctly (0.00484 vs 0.00058/0.00092). In gen5 the
+sharp head carries 109-140x more discrimination than the rolled path, versus 19x in
+the incumbent, so gen5's search is effectively blind everywhere it cannot re-encode
+-- which is most of the tree, and exactly where operators were supposed to pay.
+
+DISCIPLINE / WHAT IS NOT ESTABLISHED. The step-2000 regression was transient (heads
+recovered and surpassed by 4000), so that earlier read was right. But no mechanism
+metric measured today predicts the arena ORDERING across all three models: child
+separation is non-monotone (retracted earlier), and rolled-sd is too (gko3b has
+more than gko3a yet scored lower). Moreover 25pct vs 38pct at n=24 is ~1.3 sigma --
+per the seed-variance rule that is NOT a verdict, and the gko3a-vs-gko3b ordering
+should be treated as unresolved. What IS solid: the gap from either gen5 checkpoint
+to the incumbent (62pct), and the 5-8x rolled-pricing deficit that accompanies it.
+
+DECISION: gko3b CONTINUES (no second restart). Its heads are the lineage's best, the
+diet is self-correcting toward the historical ~10pct regime as converted maia shards
+enter the window (rows 409,600 -> 598,016), and cons6 recovered on its own
+(0.278 -> 0.367). Restarting would cost 4,000 steps to buy interpretability that no
+longer changes any decision.
+
+The standing recommendation is unchanged and now rests on a directly measured
+deficit rather than an inference: train rolled states against per-move SF values
+(Kaveh's multipv point). Nothing in the current objective asks the rolled path to
+separate siblings, and it is 5-8x behind the engine that plays 62pct.
