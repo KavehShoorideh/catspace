@@ -1167,7 +1167,16 @@ class H(BaseHTTPRequestHandler):
                                 rows = None
                             if getattr(H, "think_gen", 0) == tg0 and rows \
                                     and cls.ptr == len(cls.moves):
-                                cls.moves.append(rows[0]["mv"]); cls.ptr += 1
+                                mv_pick = rows[0]["mv"]
+                                if getattr(H, "koop", None) is not None:
+                                    try:
+                                        with H.koop_lock:
+                                            km = H.koop.search(bb0, depth=2)
+                                        if km:
+                                            mv_pick = km[0][0].uci()
+                                    except Exception:
+                                        pass
+                                cls.moves.append(mv_pick); cls.ptr += 1
                                 H.an = {**H.an, "done": True}
                             H.thinking = False
 
@@ -1182,6 +1191,14 @@ class H(BaseHTTPRequestHandler):
                             best = H.eng.rank_by_child_E(b, best)
                         if best:
                             reply_mv = best[0]["mv"]
+                        if getattr(H, "koop", None) is not None:
+                            try:
+                                with H.koop_lock:
+                                    km = H.koop.search(b, depth=2)
+                                if km:
+                                    reply_mv = km[0][0].uci()
+                            except Exception:
+                                pass
                 if reply_mv is not None:
                     cls.moves.append(reply_mv); cls.ptr += 1
                     b = self._board(); over = self._over(b)
@@ -1918,6 +1935,9 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--port", type=int, default=8420)
     ap.add_argument("--depth", type=int, default=3)
+    ap.add_argument("--koop-ckpt", default="", help="mount the Koopman search engine "
+                    "for MOVE CHOICE (panel stays on the concept engine); the 62pct-"
+                    "vs-maia-1100 configuration when given gko2i weights")
     ap.add_argument("--engine", default="kitty", choices=["kitty", "gcf3"],
                     help="gcf3: ConceptAlphaBeta -- minimax/alpha-beta ranked by the "
                          "concept move head (Kaveh 2026-08-20); --ckpt is then the gcf3 ckpt")
@@ -1946,6 +1966,18 @@ def main():
         print(f"[kitty-server] device auto -> {args.device}", flush=True)
 
     import threading
+    H.koop = None
+    if args.koop_ckpt:
+        try:
+            from catspace.research.components.planner.approaches.quasimetric_nav                 .koopman_search import KoopmanEngine
+            import threading as _thrk
+            H.koop = KoopmanEngine(args.koop_ckpt, device="cpu", reencode_budget=12)
+            H.koop_lock = _thrk.Lock()
+            print(f"[kitty] koopman play engine mounted: {args.koop_ckpt}", flush=True)
+        except Exception as e:
+            print(f"[kitty] koopman mount FAILED ({e}); falling back to concept engine",
+                  flush=True)
+            H.koop = None
     if args.engine == "gcf3":
         from catspace.research.components.planner.approaches.quasimetric_nav.concept_engine import (
             ConceptAlphaBeta)
