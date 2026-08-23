@@ -15789,3 +15789,15 @@ flag stays dormant (default 0, off per ruling). Acquisition remains pure
 uncertainty-driven (interval-width x rarity x entropy). The geometry finding is
 DIAGNOSIS only; the check-capture symbol emerges if value gradients make it matter
 naturally -- mechanisms, not hand-coded steering.
+
+**BREAKTHROUGH (2026-08-23 dawn, printed): 62 percent vs Maia-1100 (+5 =5 -2), from
+4 percent, via ONE search change.** The precision diagnosis held: the rolled-value
+comparator's noise floor (~0.07) exceeded sibling value gaps (~0.02-0.05), drowning
+move ranking -- so depth never helped (d1/d2/d3 all ~0-12 percent). Fix: at ENCODED
+nodes (root + PV re-encodes), sibling ranking is dominated by the sharp per-move
+action-value head (SF-spearman ~0.5), blended 0.75/0.25 with rolled values; operators
+keep pruning and carrying value at un-encoded breadth. The lineage's arc to get here:
+material-blind phi-only head (queen delta +0.06) -> dual heads -> piece-down diet
+(probe +0.34) -> sibling-resolution blend -> 62 percent vs the 1100 human model.
+Games are real fights now (7.1m/12 vs 42s/12 at the 0 percent era). Maia-1500 test
+launched; H2 frozen arm training; WDL campaign at 5 loops.
