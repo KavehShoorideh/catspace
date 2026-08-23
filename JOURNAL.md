@@ -16257,3 +16257,24 @@ within gko3b's own trajectory, but the cross-model claim was falsified earlier t
 2,000 steps remain. Open question for the final checkpoint: whether play continues
 past gko3a's 38pct, which would make gen5 the better model on both heads AND play
 and justify promoting it over the incumbent for the KittyChess mount.
+
+**The held-out eval fix is VERIFIED, and every held-out number this lineage has
+published was PESSIMISTIC (2026-08-23).** Ran gko3b_step6000 for one step with the
+corrected random-subsample eval:
+
+    metric        old (prefix te_i[0:2048])   fixed (random subsample)
+    sf-spearman        0.000                       0.540
+    maia-top1          0.557                       0.650
+
+The prefix was not merely missing sf rows (which read as 0.000) -- it was also a
+HARDER or otherwise unrepresentative slice for the maia metric, understating top-1
+by ~9 points. So the models have been better than their own gauges reported for as
+long as the window was compositionally uneven. Cross-run comparisons within the
+lineage stay roughly valid (all shared the same bias) but every ABSOLUTE held-out
+number in this journal predating this fix should be read as a lower bound.
+
+Note gko3b itself cannot benefit: its process was launched before the fix, so its
+heartbeats will print sf-spearman 0.000 to the end. Its TRUE held-out sf-spearman at
+step 6000 is 0.540 and maia-top1 is 0.650 -- both measured above, both healthy, and
+the sf figure matches the battery's independent 0.543 on the unseen holdout, which
+is a satisfying cross-check of two separately-written eval paths.
