@@ -129,7 +129,7 @@ def cmd_enqueue(a):
 def _sf_engine(a):
     import chess.engine
     eng = chess.engine.SimpleEngine.popen_uci(a.engine)
-    eng.configure({"Threads": 2, "Hash": 64})
+    eng.configure({"Threads": 2, "Hash": 64, "UCI_ShowWDL": True})
     return eng
 
 
@@ -152,17 +152,24 @@ def query_sf(eng, b, a):
     info = eng.analyse(b, chess.engine.Limit(depth=a.sf_depth, time=a.sf_time),
                        multipv=len(mv))
     out = {}
+    wdl_out = {}
     for e in info:
         if "pv" not in e or not e["pv"]:
             continue
         m = e["pv"][0]
+        # TRUE W/D/L (Kaveh 2026-08-23: scalar wp destroys basin structure --
+        # drawn-fortress vs coin-flip are different positions; SF computes wdl
+        # internally, record it): per-mille from the mover's POV
+        if "wdl" in e:
+            w = e["wdl"].pov(b.turn)
+            wdl_out[m.uci()] = [w.wins, w.draws, w.losses]
         s = e["score"].pov(b.turn)
         if s.is_mate():
             wp = 1.0 if s.mate() > 0 else 0.0
         else:
             wp = 1.0 / (1.0 + math.exp(-WP_K * s.score()))
         out[m.uci()] = round(wp, 5)
-    return {"kind": "sf_av", "wp": out, "n_legal": len(mv)}
+    return {"kind": "sf_av", "wp": out, "wdl": wdl_out, "n_legal": len(mv)}
 
 
 def query_maia(eng, b):
