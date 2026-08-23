@@ -16229,3 +16229,31 @@ inferred), "36pct is an overcorrection" (single checkpoint mid-adaptation). The
 common fault is concluding from ONE measurement point before the next checkpoint or
 the real distribution was available. The battery now makes the multi-checkpoint
 comparison cheap; use it BEFORE publishing, not after.
+
+**gko3b trajectory, three matched checkpoints (2026-08-23) -- the transient-
+regression hypothesis is CONFIRMED, and this time it was measured before being
+published.** All arena rows d3 x24 vs Maia-1100, identical openings/colours:
+
+  ckpt        arena   ord     lvlbias  lvlMAE  valcorr | childsep(rel)
+  gko3b @2k    21pct  0.540   -0.120   0.137   0.865   |    --
+  gko3b @4k    25pct  0.546   -0.032   0.097   0.875   |   0.99pct
+  gko3b @6k    35pct  0.543   -0.015   0.098   0.846   |   1.30pct
+  gko3a @8k    38pct  0.537   -0.060   0.110   0.853   |   0.48pct
+  gko2i        62pct  0.535   -0.109   0.139   0.866   |   2.95pct
+
+Play recovered monotonically 21 -> 25 -> 35pct and is now at parity with its parent
+(35 vs 38pct is ~0.3 sigma at n=24, indistinguishable). The step-2000 dip was
+mid-adaptation to the diet change, exactly as hypothesised; the correct action was
+to let it run, and the earlier instinct to restart would have destroyed the
+recovery. Level bias improved monotonically toward zero (-0.120 -> -0.032 -> -0.015),
+which is the head re-calibrating to the new input distribution.
+
+Child separation is also climbing (0.99 -> 1.30pct, vs gko3a's 0.48pct and the
+incumbent's 2.95pct) -- gen5 now has 2.7x its parent's move-conditioning and is
+~44pct of the way to the incumbent. NOT A PREDICTION: separation and play co-move
+within gko3b's own trajectory, but the cross-model claim was falsified earlier today
+(gko3b @2k had more separation than gko3a @8k and played worse) and remains retracted.
+
+2,000 steps remain. Open question for the final checkpoint: whether play continues
+past gko3a's 38pct, which would make gen5 the better model on both heads AND play
+and justify promoting it over the incumbent for the KittyChess mount.
