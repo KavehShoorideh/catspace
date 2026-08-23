@@ -965,17 +965,17 @@ def main():
             ok18_mode = not model.ema_field.training
             f0 = _fp(ema_field)
             ci_u = CH_pos[ch_tr[:4]]
-            sq_u, mv_u, ed_u, mk_u, el_u, pl_u = _feat_rows(ci_u[:, 1:].ravel())
+            sq_u, mv_u, ed_u, mk_u, el_u, pl_u, ps_u = _feat_rows(ci_u[:, 1:].ravel())
             with torch.no_grad():
-                ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)
+                ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)
             gate("U18", ok18_mode and _fp(ema_field) == f0,
                  f"ema frozen under train(): mode-pin {ok18_mode}, "
                  f"fingerprint unchanged {_fp(ema_field) == f0}")
 
             # U19: post-hard-copy exact output equivalence (end to end)
             with torch.no_grad():
-                zo = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
-                ze = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
+                zo = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)[0]
+                ze = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)[0]
             eq = float((zo - ze).abs().max())
             gate("U19", eq == 0.0, f"post-first-update ema==online: max|dz| {eq:.1e} (exact)")
 
@@ -989,8 +989,8 @@ def main():
             d_on = float((model.field.g_proj.weight - p0_on).abs().max())
             d_em = float((ema_field.g_proj.weight - p0_em).abs().max())
             with torch.no_grad():
-                ze2 = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
-                zo2 = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u)[0]
+                ze2 = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)[0]
+                zo2 = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)[0]
             diff = float((zo2 - ze2).abs().max())
             gate("U19b", d_on > 0 and 0 < d_em < 0.01 * d_on and diff > 0,
                  f"lag: online moved {d_on:.2e}, ema {d_em:.2e} (<1pct), outputs differ {diff:.2e}")

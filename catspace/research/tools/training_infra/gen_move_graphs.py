@@ -225,6 +225,7 @@ def main():
     N = len(p_row)
 
     SQ = np.zeros((N, 64, 8), np.uint8)
+    PSLOT = np.full((N, 64), 255, np.uint8)
     GL = np.zeros((N, 6), np.uint8)
     MVI = np.zeros((N, MV_CAP, 10), np.uint8)
     MUT = np.full((N, MV_CAP, MUT_CAP), 255, np.uint8)
@@ -254,6 +255,7 @@ def main():
         GL[i] = tr.glob[r]
         g, tc = parent_graph(b, nxt_tok=tr.tok[r + 1])
         SQ[i], MVI[i], MUT[i] = g["sq"], g["mv"], g["mut"]
+        PSLOT[i] = g["pslot"]
         VAC[i], DSC[i], ATT[i] = g["vac"], g["dsc"], g["att"]
         NMV[i], PLY[i], NATT[i] = g["n_mv"], g["played"], g["n_att"]
         trunc_mv += tc["mv"]; trunc_mut += tc["mut"]
@@ -302,7 +304,7 @@ def main():
     if args.save:
         tag = f"_{args.tag}" if args.tag else ""
         p = paths.derived(f"move_graphs_v2{tag}_{N}_{n}.npz")
-        np.savez_compressed(p, sq=SQ, gl=GL, mv=MVI, mut=MUT, vac=VAC, dsc=DSC, att=ATT,
+        np.savez_compressed(p, sq=SQ, pslot=PSLOT, gl=GL, mv=MVI, mut=MUT, vac=VAC, dsc=DSC, att=ATT,
                             n_mv=NMV, played=PLY, n_att=NATT, p_row=p_row,
                             c_sq=CSQ, c_gl=CGL, c_att=CATT, c_n_att=CNATT,
                             c8_sq=C8SQ, c8_gl=C8GL, c8_att=C8ATT, c8_n_att=C8NATT,

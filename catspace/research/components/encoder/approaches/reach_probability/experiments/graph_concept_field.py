@@ -385,7 +385,10 @@ class GraphConceptField(nn.Module):
         q_sq, sq_ids, vl2 = self.sq_vq(self.sq_proj(h_sq))
         parts = qs + [q_sq.reshape(B, -1)]
         if self.gen5:
-            # gather each slot's square hidden (dead slots -> zeros)
+            # gather each slot's square hidden (dead slots -> zeros); pslot=None
+            # (legacy caches / old shards) -> all slots dead, pieces train dark
+            if pslot is None:
+                pslot = torch.full((B, 64), 255, dtype=torch.long, device=h_sq.device)
             psl = pslot.long()
             slot_h = h_sq.new_zeros(B, 32, h_sq.shape[-1])
             bb, sqx = torch.where(psl < 32)               # live slots, both colors
