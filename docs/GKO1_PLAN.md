@@ -352,3 +352,14 @@ piece-down diet treats) | decided 0.066 -- pooled 0.095 hid all of it. Retrofit:
 W/D/L triples synthesized from stored wp (invertible to cp -> standard WDL model),
 no re-querying. GCF5: native W/D/L value heads (reconnects to the committor/basin
 founding frame).
+
+## ROLL-ONLY SEARCH PROGRAM (Kaveh 2026-08-23 dawn: "why child encodes at all?")
+Target: encode ONCE at root, roll everywhere, re-encode = drift audit only. Current
+child encodes pay for: (1) contextual move codes (operator selection), (2) the sharp
+per-move head's inputs (the 4pct-vs-62pct gap: rolled ordering 0.27 vs sharp 0.5),
+(3) drift resets. Closure path, pre-registered: (a) CROSS-ROLL DISTILLATION -- rolled
+move-scorer trained to match the sharp head at encoded states (teacher-student across
+the roll; data already flows); (b) MOVE-CODE PREDICTOR from rolled state + move
+tokens (closes operator selection); (c) token-preserving state (gcf5 format lever).
+(a)+(b) are trainable in the CURRENT lineage. Endgame: ~25ms/move, another 10x on
+strength-per-node.
