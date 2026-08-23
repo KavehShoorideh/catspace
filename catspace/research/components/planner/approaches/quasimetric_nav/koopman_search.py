@@ -63,6 +63,10 @@ class KoopmanEngine:
                                   if k.startswith("ops.")})
         import torch.nn as nn
         kb = sd["sf_v.2.bias"].shape[0]
+        self.sf_av = nn.Sequential(nn.Linear(self.field.d_state + A["d_model"], 512),
+                                   nn.GELU(), nn.Linear(512, kb))
+        self.sf_av.load_state_dict({k[6:]: v for k, v in sd.items()
+                                    if k.startswith("sf_av.")})
         if any(k.startswith("sf_v_full.") for k in sd):
             # search reads the FULL head when trained (material-sighted); phi-only
             # remains the training anchor
@@ -88,6 +92,14 @@ class KoopmanEngine:
         self.reencode_budget = reencode_budget
         self.stats = {"encodes": 0, "op_applies": 0, "t_encode": 0.0, "t_op": 0.0}
 
+    def _root_av(self, zq, h_mv, n):
+        """Per-move action-values at an ENCODED node -- the sharp head (SF-spearman
+        ~0.5); rolled values are the cheap wide net, this is the aimed rifle."""
+        with torch.no_grad():
+            x = torch.cat([zq[:, None, :].expand(-1, h_mv.shape[1], -1), h_mv], -1)
+            wp = self.hl.decode(self.sf_av(x))[0, :n]
+        return wp
+
     def _encode(self, board, elo=2000.0):
         """Full root/anchor encode -> (z_aug, per-move codes, move list)."""
         from catspace.research.tools.training_infra.gen_move_graphs import (
@@ -97,6 +109,7 @@ class KoopmanEngine:
         from catspace.research.components.encoder.approaches.reach_probability.src \
             .trajectories import normalise_elo
         t0 = time.perf_counter()
+        self._last = None
         g, _ = parent_graph(board)
         b = {k: torch.from_numpy(np.asarray(g[k])[None]) for k in
              ("sq", "mv", "mut", "att", "n_mv", "n_att")}
@@ -115,6 +128,7 @@ class KoopmanEngine:
             q_mv, idx_mv, _ = self.field.mv_vq(self.field.mv_vq_proj(h_mv))
             za = self.lift(zq, q_mv * mask[..., None])
         moves = list(board.legal_moves)[:int(g["n_mv"])]
+        self._last = (zq, h_mv, len(moves))
         self.stats["encodes"] += 1
         self.stats["t_encode"] += time.perf_counter() - t0
         return za, idx_mv[0, :len(moves)], moves, mvf[0, :len(moves)]
@@ -154,6 +168,10 @@ class KoopmanEngine:
             if not moves:
                 return 0.5
             vals, zac = self._child_values(za, codes)
+            # SHARP-HEAD BLEND at encoded nodes: per-move action-values dominate the
+            # ranking (sibling resolution); rolled values remain as the tiebreak/prune
+            av = self._root_av(*self._last)
+            vals = 0.75 * av + 0.25 * vals
             order = torch.argsort(vals, descending=True)
             if d <= 1:
                 # CAPTURE QUIESCENCE (stockfish-style): never trust a hot leaf --
@@ -192,6 +210,8 @@ class KoopmanEngine:
 
         za, codes, moves, mvf = self._encode(board, elo)
         vals, zac = self._child_values(za, codes)
+        av = self._root_av(*self._last)
+        vals = 0.75 * av + 0.25 * vals
         order = torch.argsort(vals, descending=True)
         scored = []
         for oi in order.tolist()[:8]:
