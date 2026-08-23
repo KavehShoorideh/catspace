@@ -187,6 +187,64 @@ def one_ply_loss(lift: InteractionLift, ops: KoopmanOps, z, codes, z_child,
     return ls + w_phi * lp, pred
 
 
+class BasisOps(nn.Module):
+    """gcf5 operator: K basis matrices mixed by weights from a BARE move-identity
+    embedding (Kaveh 2026-08-23: position-free lookup; context lives in the STATE).
+    K(m) = A + sum_k w_k(m) U_k V_k^T, w = softmax(W e_m). Same linear-in-state
+    algebra as KoopmanOps (U1/U3 apply); smooth conditioning, no quantization loss;
+    mixture weights = soft move concepts (discrete readout via argmax on demand)."""
+
+    def __init__(self, d_aug: int, n_basis: int = 64, rank: int = 16,
+                 d_move: int = 64, rho_max: float = 1.02):
+        super().__init__()
+        self.d_aug, self.n_basis, self.rank, self.rho_max = d_aug, n_basis, rank, rho_max
+        self.A = nn.Parameter(torch.eye(d_aug))
+        self.U = nn.Parameter(torch.randn(n_basis, d_aug, rank) / math.sqrt(d_aug))
+        self.V = nn.Parameter(torch.zeros(n_basis, rank, d_aug))
+        # bare identity: from-square x to-square x promo-class lookup
+        self.emb_from = nn.Embedding(64, d_move)
+        self.emb_to = nn.Embedding(64, d_move)
+        self.emb_promo = nn.Embedding(5, d_move)
+        self.mix = nn.Linear(d_move, n_basis)
+
+    def move_weights(self, frm, to, promo):
+        e = self.emb_from(frm) + self.emb_to(to) + self.emb_promo(promo)
+        return torch.softmax(self.mix(e), -1)             # (B, K)
+
+    def forward(self, z_aug, frm, to, promo):
+        w = self.move_weights(frm, to, promo)             # (B, K)
+        out = z_aug @ self.A.T
+        t = torch.einsum("bd,krd->bkr", z_aug, self.V)    # V_k z
+        t = t * w[..., None]
+        return out + torch.einsum("bkr,kdr->bd", t, self.U)
+
+    def matrix(self, frm, to, promo):
+        w = self.move_weights(frm, to, promo)
+        B = torch.einsum("bk,kdr,kre->bde", w, self.U, self.V)
+        return self.A.unsqueeze(0) + B
+
+    def spectral_penalty(self, frm, to, promo, k: int = 8, iters: int = 48,
+                         keep: int = 24):
+        n = min(k, len(frm))
+        idx = torch.randperm(len(frm), device=frm.device)[:n]
+        w = self.move_weights(frm[idx], to[idx], promo[idx])
+        v = torch.randn(n, self.d_aug, device=self.A.device, dtype=self.A.dtype)
+        v = v / v.norm(dim=-1, keepdim=True)
+        logs = []
+        for _ in range(iters):
+            t = torch.einsum("bd,krd->bkr", v, self.V) * w[..., None]
+            wv = v @ self.A.T + torch.einsum("bkr,kdr->bd", t, self.U)
+            r = wv.norm(dim=-1, keepdim=True).clamp(min=1e-30)
+            logs.append(r.log().squeeze(-1))
+            v = wv / r
+        rho = torch.stack(logs[-keep:], -1).mean(-1).exp()
+        return F.relu(rho - self.rho_max).pow(2).mean(), rho.detach()
+
+    def identity_prior(self):
+        """Kaveh's I+delta: the delta earns its magnitude everywhere, ongoing."""
+        return (self.A - torch.eye(self.d_aug, device=self.A.device)).pow(2).mean()             + self.U.pow(2).mean() * 0.1
+
+
 # ---------------------------------------------------------------------------------
 # self-test: the U1-U4 gates. Every check prints its measured number; any failure
 # exits nonzero (gates must gate).
@@ -258,6 +316,22 @@ def _selftest():
     serr = ((za6[:, -1, :d] - xt).norm() / xt.norm()).item()
     gate("U1b", drift < 1e-3 and serr < 1e-3,
          f"6-step no-relift: phi drift {drift:.1e}, state err {serr:.1e} (tol 1e-3)")
+
+    # U1d: BasisOps identity at init + compose == matmul (the U1/U3 forms) ----------
+    bo = BasisOps(96, n_basis=8, rank=8, d_move=16)
+    zb = torch.randn(16, 96)
+    frm = torch.randint(0, 64, (16,)); to = torch.randint(0, 64, (16,))
+    pr = torch.zeros(16, dtype=torch.long)
+    e1d = (bo(zb, frm, to, pr) - zb).abs().max().item()
+    with torch.no_grad():
+        bo.V.normal_(0, 0.1); bo.A.add_(torch.randn(96, 96) * 0.02)
+    frm2 = torch.randint(0, 64, (16,)); to2 = torch.randint(0, 64, (16,))
+    two_b = bo(bo(zb, frm, to, pr), frm2, to2, pr)
+    M = torch.einsum("bde,bef->bdf", bo.matrix(frm2, to2, pr), bo.matrix(frm, to, pr))
+    comp_b = torch.einsum("bd,bed->be", zb, M)
+    rel_b = ((two_b - comp_b).norm() / comp_b.norm()).item()
+    gate("U1d", e1d == 0.0 and rel_b < 1e-4,
+         f"BasisOps: init identity {e1d:.1e} (exact) | compose rel err {rel_b:.1e}")
 
     # U2: Gelfand estimator vs torch.linalg.eigvals on random 64x64, 5 seeds --------
     worst = 0.0
