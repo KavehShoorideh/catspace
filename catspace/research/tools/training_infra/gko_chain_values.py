@@ -51,20 +51,26 @@ def build_once(out="data/derived/gko1_chain_values.npz"):
     fset = {f: i for i, f in enumerate(fens)}
     v = np.full(len(fens), np.nan, np.float32)
     wpv = np.full((len(fens), MV_CAP), np.nan, np.float16)
+    wdl3 = np.full((len(fens), 3), np.nan, np.float16)
     for fen, payload in c.execute("SELECT fen, payload FROM labels WHERE oracle='sf'"):
         i = fset.get(fen)
         if i is None:
             continue
-        wp = json.loads(payload).get("wp", {})
+        pl = json.loads(payload)
+        wp = pl.get("wp", {})
         if not wp:
             continue
         v[i] = max(wp.values())
+        best_u = max(wp, key=wp.get)
+        wsrc = pl.get("wdl", {})
+        if best_u in wsrc:
+            wdl3[i] = np.asarray(wsrc[best_u], np.float16) / 1000.0
         for j, u in enumerate(order[i].split()):
             if u in wp:
                 wpv[i, j] = wp[u]
     c.close()
     ok = int(np.isfinite(v).sum())
-    np.savez_compressed(out, v=v, wp=wpv)
+    np.savez_compressed(out, v=v, wp=wpv, wdl=wdl3)
     print(f"[cv] {ok:,}/{len(fens):,} chain rows valued ({100*ok/len(fens):.1f}%), "
           f"full action-value vectors included [{time.time()-t0:.0f}s]", flush=True)
     return ok / len(fens)

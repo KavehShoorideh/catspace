@@ -55,7 +55,7 @@ def convert_batch(out_dir, batch=SHARD_N):
         return 0
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att")
     acc = {k: [] for k in KEYS}
-    n_mv_l, n_att_l, kind_l, band_l, tgt_l, fen_l = [], [], [], [], [], []
+    n_mv_l, n_att_l, kind_l, band_l, tgt_l, fen_l, wdl_l = [], [], [], [], [], [], []
     done_ids = []
     for fen, oracle, payload, rid in rows:
         try:
@@ -64,8 +64,13 @@ def convert_batch(out_dir, batch=SHARD_N):
             pl = json.loads(payload)
             mvs = [m.uci() for m in list(b.legal_moves)[:int(g["n_mv"])]]
             tgt = np.full(MV_CAP, np.nan, np.float32)
+            wdl = np.full((MV_CAP, 3), np.nan, np.float16)
             if pl["kind"] == "sf_av":
                 src = pl["wp"]; kind = 0; band = 0
+                wsrc = pl.get("wdl", {})
+                for j, u in enumerate(mvs):
+                    if u in wsrc:
+                        wdl[j] = np.asarray(wsrc[u], np.float16) / 1000.0
             else:
                 src = pl["p"]; kind = 1
                 band = int(oracle.split(":")[1])
@@ -76,6 +81,7 @@ def convert_batch(out_dir, batch=SHARD_N):
                 acc[k].append(g[k] if k != "gl" else glob_of_board(b))
             n_mv_l.append(g["n_mv"]); n_att_l.append(g["n_att"])
             kind_l.append(kind); band_l.append(band); tgt_l.append(tgt)
+            wdl_l.append(wdl)
             fen_l.append(fen)
         except Exception:
             pass
@@ -88,7 +94,7 @@ def convert_batch(out_dir, batch=SHARD_N):
             **{k: np.stack(acc[k]) for k in KEYS},
             n_mv=np.array(n_mv_l, np.uint8), n_att=np.array(n_att_l, np.uint16),
             kind=np.array(kind_l, np.int8), band=np.array(band_l, np.int16),
-            tgt=np.stack(tgt_l), fen=np.array(fen_l))
+            tgt=np.stack(tgt_l), wdl=np.stack(wdl_l), fen=np.array(fen_l))
     with c:
         c.executemany("UPDATE labels SET converted=1 WHERE rowid=?",
                       [(i,) for i in done_ids])
