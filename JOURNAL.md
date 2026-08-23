@@ -16199,3 +16199,33 @@ The standing recommendation is unchanged and now rests on a directly measured
 deficit rather than an inference: train rolled states against per-move SF values
 (Kaveh's multipv point). Nothing in the current objective asks the rolled path to
 separate siblings, and it is 5-8x behind the engine that plays 62pct.
+
+**CORRECTION to the "36pct sf is an overcorrection" call (2026-08-23) -- it was
+premature, and this is the THIRD premature conclusion today.** The call rested on
+gko3b @2k playing 21pct plus a degraded level bias (-0.120). By @4k, on the SAME
+36pct diet, every head metric was the best in the lineage -- level bias -0.032,
+level MAE 0.097 (vs gko3a 0.110 and the incumbent's 0.139), ordering 0.546, value
+corr 0.875. A diet that produces the best-calibrated heads yet measured is not an
+overcorrection; the @2k numbers were mid-adaptation, exactly as the transient
+hypothesis predicted, and I should have waited one checkpoint before concluding.
+
+The diet-dilution attempt is therefore ABANDONED (and was ineffective anyway: 125
+converted maia shards displaced OLDER MAIA shards, since by mtime the sf shards sit
+between the old and new maia ones -- the window stayed at exactly 36.0pct. Reaching
+10pct needs >180 maia shards so that sf falls out of the newest-200 entirely.
+Recorded because the mtime-ordering trap will recur: to dilute a kind out of the
+window you must add MORE shards than the window holds beyond it, not merely many.)
+
+Standing read after all of today's measurements: the sf diet governs HEAD quality
+(0pct starved them, 36pct produced the best ever), and head quality does not govern
+PLAY (gko3b @4k beats the incumbent on all five head metrics and plays 25pct vs
+62pct). Play is governed by the rolled/search path, whose sibling discrimination is
+5-8x behind the incumbent and which NO diet touches, because no loss in the
+objective asks the rolled path to separate siblings at all.
+
+Process note for the day: three conclusions published and then withdrawn --
+"untethered level" (synthetic OOD probes), "separation tracks play" (3 points, one
+inferred), "36pct is an overcorrection" (single checkpoint mid-adaptation). The
+common fault is concluding from ONE measurement point before the next checkpoint or
+the real distribution was available. The battery now makes the multi-checkpoint
+comparison cheap; use it BEFORE publishing, not after.
