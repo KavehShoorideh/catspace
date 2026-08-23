@@ -318,7 +318,8 @@ def main():
     store = {k: [] for k in KEYS}
     seen = set()
 
-    order = []                                   # file ingestion order for eviction
+    hold_chunks = []                 # per-chunk holdout masks, evicted IN LOCKSTEP
+    hold_rng = np.random.default_rng(args.seed + 3)
 
     def rescan():
         files = sorted(glob.glob(os.path.join(args.shards, "shard_*.npz")))
@@ -328,19 +329,21 @@ def main():
                 z = np.load(f, allow_pickle=True)
                 for k in KEYS:
                     store[k].append(np.ascontiguousarray(z[k]))
+                hold_chunks.append(hold_rng.random(len(store["kind"][-1])) < 0.08)
                 seen.add(f)
-                order.append(len(store["kind"]) - 1)
             except Exception:
                 pass
         if args.max_rows:
             total = sum(len(a) for a in store["kind"])
             while total > args.max_rows and len(store["kind"]) > 1:
-                # evict the OLDEST ingested chunk (ring behavior); `seen` keeps the
-                # file from re-ingesting, so the ring walks forward through the bank
+                # evict the OLDEST chunk (ring); split masks pop in lockstep so
+                # train/holdout alignment survives index shifts (the negative-dims
+                # crash + silent split-drift bug, 2026-08-23)
+                drop = len(store["kind"][0])
                 for k in KEYS:
-                    total_drop = len(store[k][0])
                     store[k].pop(0)
-                total -= total_drop
+                hold_chunks.pop(0)
+                total -= drop
         return len(new)
 
     def flat(k):
@@ -352,9 +355,7 @@ def main():
         rescan()
     D = {k: torch.from_numpy(flat(k)) for k in KEYS}
     N = len(D["kind"])
-    hold = (np.frombuffer(np.ascontiguousarray(
-        D["band"].numpy() * 0), dtype=np.int16, count=N) * 0)  # placeholder
-    hold = rng.random(N) < 0.08
+    hold = np.concatenate(hold_chunks)
     tr_i = np.flatnonzero(~hold); te_i = np.flatnonzero(hold)
     print(f"[gko0] start: {N:,} rows ({len(te_i):,} held out) | "
           f"sf {int((D['kind']==0).sum()):,} maia {int((D['kind']==1).sum()):,}",
@@ -373,9 +374,8 @@ def main():
                 pass
         if rescan():
             D = {k: torch.from_numpy(flat(k)) for k in KEYS}
-            oldN = N; N = len(D["kind"])
-            extra = rng.random(N - oldN) < 0.08
-            hold = np.concatenate([hold, extra])
+            N = len(D["kind"])
+            hold = np.concatenate(hold_chunks)
             tr_i = np.flatnonzero(~hold); te_i = np.flatnonzero(hold)
 
     def batch_of(idx):
