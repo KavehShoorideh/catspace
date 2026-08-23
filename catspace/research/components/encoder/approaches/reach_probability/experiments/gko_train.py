@@ -874,8 +874,17 @@ def main():
                 kl_s = sp_s = kl_n = sp_n = 0.0
                 ag_s = ag_n = 0
                 iv_cov = iv_wid = iv_n = 0.0
-                for a in range(0, min(len(te_i), 2048), 256):
-                    ii = torch.from_numpy(te_i[a:a + 256])
+                # te_i is sorted, so a PREFIX is the oldest shards only -- when the
+                # window is compositionally uneven (sf shards converted last land at
+                # the end) the prefix silently excludes a whole row-kind and its
+                # gauges read 0.000. Sample instead, fixed seed for step-to-step
+                # comparability. (2026-08-23: sf-spearman read 0.000 on a run whose
+                # sf TRAINING loss was healthy at 3.361.)
+                te_ev = (te_i if len(te_i) <= 2048 else
+                         np.sort(np.random.default_rng(12345).choice(
+                             te_i, 2048, replace=False)))
+                for a in range(0, len(te_ev), 256):
+                    ii = torch.from_numpy(te_ev[a:a + 256])
                     _, lm, ls, _, aux2 = losses_on(ii, train=False)
                     (lg, zq, h_mv, fin, tgt, kind, mask) = aux2[:7]
                     km = kind == 1
