@@ -22,7 +22,7 @@ import torch
 
 class KoopmanEngine:
     def __init__(self, ckpt, field_args="artifacts/experiments/gcf4h_latest.pt",
-                 device="cpu", reencode_budget=8):
+                 device="cpu", reencode_budget=8, blend=0.75):
         import chess
         from catspace.research.tools.training_infra.hl_gauss import HLGauss
         from catspace.research.tools.training_infra.koopman_ops import (
@@ -101,6 +101,7 @@ class KoopmanEngine:
             for p in m.parameters():
                 p.requires_grad_(False)
         self.reencode_budget = reencode_budget
+        self.blend = blend
         self.stats = {"encodes": 0, "op_applies": 0, "t_encode": 0.0, "t_op": 0.0}
 
     def _root_av(self, zq, h_mv, n):
@@ -201,7 +202,7 @@ class KoopmanEngine:
             # SHARP-HEAD BLEND at encoded nodes: per-move action-values dominate the
             # ranking (sibling resolution); rolled values remain as the tiebreak/prune
             av = self._root_av(*self._last)
-            vals = 0.75 * av + 0.25 * vals
+            vals = self.blend * av + (1.0 - self.blend) * vals
             order = torch.argsort(vals, descending=True)
             if d <= 1:
                 # CAPTURE QUIESCENCE (stockfish-style): never trust a hot leaf --
@@ -241,7 +242,7 @@ class KoopmanEngine:
         za, codes, moves, mvf = self._encode(board, elo)
         vals, zac = self._child_values(za, codes)
         av = self._root_av(*self._last)
-        vals = 0.75 * av + 0.25 * vals
+        vals = self.blend * av + (1.0 - self.blend) * vals
         order = torch.argsort(vals, descending=True)
         scored = []
         for oi in order.tolist()[:8]:
