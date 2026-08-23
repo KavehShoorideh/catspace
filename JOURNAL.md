@@ -16118,3 +16118,40 @@ siblings at all.
 
 Watch item: cons6 drifting down across gko3b (0.394 -> 0.303 -> 0.278 at 1k/2k/3k);
 gko3a's range was 0.329-0.455 ending 0.365. Below ~0.25 it warrants a look.
+
+**RETRACTION (2026-08-23, same day it was published): "operator child-separation
+tracks play strength" is FALSIFIED.** The claim was made on three points of which
+only two had arena numbers; the third was inferred. Measured it:
+
+    model          child sep (rel)   arena vs Maia-1100 (d3 x24 unless noted)
+    gko2i           2.95pct           62pct (d2 x12)
+    gko3a @8k       0.48pct           38pct
+    gko3b @2k       1.13pct           21pct   <-- MORE separation, WORSE play
+
+The ordering is not monotone, so separation is not a sufficient statistic for play
+strength and must not be used as a standalone leading indicator. It stays in the
+battery as a MECHANISM probe -- it still correctly measures how move-conditioned
+the operator is, which is a real and previously invisible quantity -- but it does
+not license predictions about arena results. I published a predictive claim from an
+inferred data point and it was wrong within the hour; the fault was reporting a
+3-point pattern as "tracks exactly" when one point was not measured.
+
+**What the same battery says about WHY gko3b @2k plays worse:** it is mid-adaptation
+to the diet change, and the damage is in the sharp head's LEVEL, not its ordering:
+
+                    ordering   level bias   level MAE   value MAE
+    gko3a @8k        0.537       -0.060       0.110       0.135
+    gko3b @2k        0.540       -0.120       0.137       0.144
+
+Ordering held (0.540, its best) while the level bias DOUBLED. Going from a 0pct-sf
+diet to 36pct sf changes the input distribution the value heads calibrate against,
+and 2,000 steps is evidently not enough to re-converge. Plausible, not proven:
+the regression is transient and later checkpoints recover. That is now the run's
+open question, and steps 4000/6000/8000 answer it directly -- if level bias returns
+toward -0.06 and play recovers past 38pct, the diet change is vindicated; if not,
+the restored diet is actively harmful mid-lineage and gko3a_step8000 stands as the
+better model.
+
+Note on statistics: 21pct vs 38pct at n=24 is ~1.7 sigma -- suggestive, not
+established, per the seed-variance rule. But the falsification does not depend on
+that: the claim PREDICTED >=38pct and the observation was on the wrong side of it.
