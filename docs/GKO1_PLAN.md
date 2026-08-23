@@ -385,3 +385,14 @@ context lives in the STATE; the move needs identity + cheap flags only. Deletes 
 move-code-predictor need; unifies with cross-roll distillation (one move rep
 everywhere). Completes the roll-only search stack: rolled nodes need NOTHING from the
 encoder.
+
+## CONDITIONING AMENDMENT (Kaveh 2026-08-23: bare move identity, no flags)
+The check flag RETRACTED from the move token: check-ness is a property of the ROLLED
+STATE, not the move -- the operator (same matrix per move) acting on the state's
+king-geometry features writes the check concept exactly when circumstance warrants
+(linear-representable via kin/king-line features already in the state). Move token =
+bare identity lookup (from,to,piece,promo -- promo is move-intrinsic). Emergence over
+injection, MuZero-orthodox, and faster at depth (no per-candidate flag computation,
+~1s/move saved at d5-6). PRE-REGISTERED GATE: rolled-check AUC (rolled state's
+king-danger readout vs python-chess gives_check truth); the flag returns only on
+measured emergence failure.
