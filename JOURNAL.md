@@ -15917,3 +15917,37 @@ was released. The store is UNHARMED (freelist 0, 4,887,758 pages intact) and no
 data was lost, but the freelist being 0 means there was little to reclaim anyway --
 the 13G->18G growth was real payload (doubled WDL rows), not churn. Retry only with
 a scratch volume or after the store shrinks; do not retry in place on this disk.
+
+**SF STARVATION: gko3b's first launch trained 1000 steps with the sharp head frozen
+(2026-08-23, caught and aborted).** The heartbeat read `sf 0.000` and
+`sf-spearman 0.000` from step 1. Cause: the converter drains
+`WHERE converted=0 LIMIT n` in rowid order with no oracle filter, so it chewed
+through maia bands (maia:1700 96pct converted, maia:1300 96pct) and left sf at
+**4.9pct (207,031 of 4,218,180)**. The 200-shard window rotated completely sf-free
+-- 100pct kind==1. Consequence, verified in the source rather than inferred:
+`sf_av` takes gradient at exactly ONE site, gated on `kind == 0`, so with no sf
+rows the sharp head -- gen5's strongest measured component (held-out spearman
+0.544, sibling spread 3-10x the incumbent's) -- was FROZEN while the field drifted
+underneath it; and `l_sv`, whose code comment records it as the queen-probe
+material-blindness fix ("value heads trained only on mostly-balanced chains never
+learn material"), was also off. The run was training back toward the 4pct-vs-Maia
+regime. Every other gauge stayed green throughout: vamp 30.8/32, cons6 0.403,
+avSp 0.237/0.250/0.240, phivar 0.715 -- which is exactly why it needed a gate.
+
+**The evidence was printed at launch and I did not read it.** The startup line
+`[gko0] start: 409,600 rows | sf 0 maia 409,600` was in the log from second one
+(gko3a's read `sf 3,043 maia 38,509`). An informational count is not a gate.
+
+Fixes: converter gains `--oracle` (LIKE filter), `--newest` and `--shards N`.
+`--newest` is load-bearing: the WDL re-labelling APPENDED rows, so the newest sf
+labels carry wdl triples (5,000/5,000 sampled) and the oldest carry none
+(0/5,000) -- draining ascending yields wdl-free sf shards that would revive l_sf
+but leave l_sv dead. Trainer gains a diet gate at BOTH the startup print and every
+rescan, alarming below 5pct sf. Diet rebuilt to **36pct sf / 64pct maia**
+(147,456 sf rows, 145,408 carrying WDL triples) -- richer in sf than gko3a's own
+launch diet (7.3pct). Converter left OFF during training: running it unfiltered
+would re-dilute sf back toward zero, which is the bug.
+
+**gko3b RELAUNCHED** from the clean gko3a_step8000 parent (the 1000 broken steps
+discarded, not resumed), all gates green in both fresh and resumed modes, EMA lag
+preserved, startup diet line clean.
