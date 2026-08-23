@@ -68,6 +68,8 @@ def main():
     ap.add_argument("--d-code", type=int, default=0)
     ap.add_argument("--slow-heads", type=int, default=0)
     ap.add_argument("--sq-codes", type=int, default=0, help="override square codebook size")
+    ap.add_argument("--gen5", action="store_true", help="gcf5: piece concepts, "
+                    "no min-max, BasisOps bare identity, WDL value heads")
     ap.add_argument("--ops-after", type=int, default=0, help="gate operator code-matching "
                     "losses until the fresh vocabulary consolidates (ramp over 1000)")
     ap.add_argument("--ema-decay", type=float, default=0.0, help="EMA target encoder for "
@@ -123,8 +125,8 @@ def main():
         .graph_move_policy import featurize
     from catspace.research.tools.training_infra.hl_gauss import HLGauss
     from catspace.research.tools.training_infra.koopman_ops import (
-        InteractionLift, KoopmanOps, TransformerLift, one_ply_loss, rollout,
-        lift_consistency)
+        InteractionLift, KoopmanOps, BasisOps, TransformerLift, one_ply_loss,
+        rollout, lift_consistency)
     from catspace.research.tools.training_infra.losses import (
         cross_head_decorrelation, vamp2_score, vicreg_covariance)
     from catspace.research.components.encoder.approaches.reach_probability.src \
@@ -151,7 +153,7 @@ def main():
         threat_head=bool(A["threat_head"]), elo_cond=True,
         g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"],
         sq_codes=A.get("sq_codes", 256),
-        mh_vq=bool(args.g_heads)).to(dev)
+        mh_vq=bool(args.g_heads), gen5=args.gen5).to(dev)
     if args.g_heads:
         own = field.state_dict()
         sdf = {k: v for k, v in ck["state_dict"].items()
@@ -173,12 +175,17 @@ def main():
                 if args.lift == "transformer":
                     self.lift = TransformerLift(
                         field.d_state, g_heads=A["g_heads"], d_code=A["d_code"],
-                        d_sq=32, d_phi=max(args.d_phi, 256),
-                        n_layers=args.lift_layers)
+                        d_sq=(16 if args.gen5 else 32), d_phi=max(args.d_phi, 256),
+                        n_layers=args.lift_layers,
+                        n_piece=(32 if args.gen5 else 0))
                 else:
                     self.lift = InteractionLift(field.d_state, args.d_phi)
-                self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
-                                      rank=args.op_rank)
+                if args.gen5:
+                    self.ops = BasisOps(self.lift.d_aug, n_basis=64,
+                                        rank=args.op_rank)
+                else:
+                    self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
+                                          rank=args.op_rank)
                 # H1's baseline arm: same targets, DETACHED inputs (see docstring)
                 self.dyn_z = nn.Sequential(
                     nn.Linear(field.d_state + 64, 512), nn.GELU(),
@@ -195,15 +202,16 @@ def main():
                 # PHI-ONLY value head (the saturation falsification: heads reading
                 # full z_aug route AROUND phi; value-at-rolled-horizons must be
                 # impossible WITHOUT interaction features carrying it)
+                v_out = 3 if args.gen5 else args.k_bins
                 self.sf_v = nn.Sequential(
                     nn.Linear(self.lift.d_phi, 256), nn.GELU(),
-                    nn.Linear(256, args.k_bins))
+                    nn.Linear(256, v_out))
                 # FULL value head for SEARCH (2026-08-22 maia autopsy: phi-only sees
                 # ~quarter of a removed queen -- material lives in the state part;
                 # the phi-only head REMAINS the anti-collapse anchor, this one plays)
                 self.sf_v_full = nn.Sequential(
                     nn.Linear(self.lift.d_aug, 256), nn.GELU(),
-                    nn.Linear(256, args.k_bins))
+                    nn.Linear(256, 3 if args.gen5 else args.k_bins))
                 # per-move future action-values from ROLLED states: [z_aug ; mv_emb]
                 self.av_roll = nn.Sequential(
                     nn.Linear(self.lift.d_aug + 64, 512), nn.GELU(),
@@ -305,16 +313,18 @@ def main():
         row_elo_n = _ne(rel.astype(np.float32))
         print(f"[gko1] chains {len(CH_pos):,} ({len(ch_te):,} held out by GAME) | "
               f"graphs {args.chain_graphs}", flush=True)
-        CHV = CHW = None
+        CHV = CHW = CHWDL = None
         if os.path.exists(args.chain_values):
             _z = np.load(args.chain_values)
             CHV = _z["v"]
             CHW = _z["wp"].astype(np.float32) if "wp" in _z.files else None
+            CHWDL = _z["wdl"] if "wdl" in _z.files else None
             print(f"[gko1] chain values: {int(np.isfinite(CHV).sum()):,} rows valued"
                   f" (av vectors: {'yes' if CHW is not None else 'no'})", flush=True)
 
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att",
             "kind", "band", "tgt")
+    OPT_KEYS = ("pslot", "wdl")   # newer shards only; synthesized when absent
     store = {k: [] for k in KEYS}
     seen = set()
 
@@ -329,13 +339,25 @@ def main():
                 z = np.load(f, allow_pickle=True)
                 for k in KEYS:
                     store[k].append(np.ascontiguousarray(z[k]))
-                hold_chunks.append(hold_rng.random(len(store["kind"][-1])) < 0.08)
+                n_z = len(store["kind"][-1])
+                for k in OPT_KEYS:
+                    if k in z.files:
+                        store.setdefault(k, []).append(np.ascontiguousarray(z[k]))
+                    elif k == "pslot":
+                        store.setdefault(k, []).append(np.full((n_z, 64), 255, np.uint8))
+                    else:
+                        store.setdefault(k, []).append(
+                            np.full((n_z, 48, 3), np.nan, np.float16))
+                hold_chunks.append(hold_rng.random(n_z) < 0.08)
                 seen.add(f)
             except Exception:
                 pass
         if args.max_rows:
             total = sum(len(a) for a in store["kind"])
             while total > args.max_rows and len(store["kind"]) > 1:
+                for k in OPT_KEYS:
+                    if store.get(k):
+                        store[k].pop(0)
                 # evict the OLDEST chunk (ring); split masks pop in lockstep so
                 # train/holdout alignment survives index shifts (the negative-dims
                 # crash + silent split-drift bug, 2026-08-23)
@@ -353,7 +375,7 @@ def main():
         print("[gko0] waiting for shards...", flush=True)
         time.sleep(30)
         rescan()
-    D = {k: torch.from_numpy(flat(k)) for k in KEYS}
+    D = {k: torch.from_numpy(flat(k)) for k in KEYS + OPT_KEYS}
     N = len(D["kind"])
     hold = np.concatenate(hold_chunks)
     tr_i = np.flatnonzero(~hold); te_i = np.flatnonzero(hold)
@@ -364,16 +386,17 @@ def main():
     model_has_v = args.ops and hasattr(model, "sf_v")
 
     def refresh_store():
-        nonlocal D, N, tr_i, te_i, hold, CHV, CHW
+        nonlocal D, N, tr_i, te_i, hold, CHV, CHW, CHWDL
         if args.ops and os.path.exists(args.chain_values):
             try:
                 _z = np.load(args.chain_values)
                 CHV = _z["v"]
                 CHW = _z["wp"].astype(np.float32) if "wp" in _z.files else None
+                CHWDL = _z["wdl"] if "wdl" in _z.files else None
             except Exception:
                 pass
         if rescan():
-            D = {k: torch.from_numpy(flat(k)) for k in KEYS}
+            D = {k: torch.from_numpy(flat(k)) for k in KEYS + OPT_KEYS}
             N = len(D["kind"])
             hold = np.concatenate(hold_chunks)
             tr_i = np.flatnonzero(~hold); te_i = np.flatnonzero(hold)
@@ -393,7 +416,8 @@ def main():
         elo_v = torch.where(band > 0, band, torch.full_like(band, 2750.0))
         elo = torch.from_numpy(
             normalise_elo(elo_v.numpy().astype(np.float32)))[:, None].repeat(1, 2).to(dev)
-        return sqf, mvf, edges, mask, elo
+        psl = D["pslot"][idx].to(dev) if args.gen5 else None
+        return sqf, mvf, edges, mask, elo, psl
 
     def _feat_rows(rows):
         b = {k: torch.from_numpy(np.ascontiguousarray(CH[k][rows])).to(dev)
@@ -408,13 +432,22 @@ def main():
                            (a2 + off[:, :, None])[val])
         elo = torch.from_numpy(row_elo_n[CH_prow[rows]]).to(dev)
         played = torch.from_numpy(np.ascontiguousarray(CH["played"][rows])).long().to(dev)
-        return sqf, mvf, edges, mask, elo, played
+        psl = (torch.from_numpy(np.ascontiguousarray(CH["pslot"][rows])).to(dev)
+               if "pslot" in CH.files else None)
+        return sqf, mvf, edges, mask, elo, played, psl
 
     def _mv_codes(h_mv, played, f=None):
         f = f or model.field
         with torch.no_grad():
             _, idx_mv, _ = f.mv_vq(f.mv_vq_proj(h_mv.detach()))
         return idx_mv.gather(1, played[:, None]).squeeze(1)
+
+    def _raw_ftp(rows, played):
+        """Bare move identity (from, to, promo) from the RAW mv arrays, cols 1/2/5
+        (gcf5 BasisOps conditioning -- no encoder involvement)."""
+        raw = torch.from_numpy(np.ascontiguousarray(CH["mv"][rows])).long().to(dev)
+        g = raw.gather(1, played[:, None, None].expand(-1, 1, raw.shape[-1]))[:, 0]
+        return g[:, 1], g[:, 2], g[:, 5]
 
     def _mv_q(h_mv, mask):
         """Quantized move-token embeddings for the lift's interaction table
@@ -428,8 +461,8 @@ def main():
         """Chain sub-batch: L_op1/3/6 + spectral + the detached MLP baseline arm."""
         cb = args.chain_batch
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]        # (cb,7) graph rows
-        sqf, mvf, edges, mask, elo, played = _feat_rows(ci[:, 0])
-        zq_p, _, _, _, h_mv_p, _ = model.field.encode(sqf, mvf, edges, mask, elo=elo)[:6]
+        sqf, mvf, edges, mask, elo, played, psl_p = _feat_rows(ci[:, 0])
+        zq_p, _, _, _, h_mv_p, _ = model.field.encode(sqf, mvf, edges, mask, elo=elo, pslot=psl_p)[:6]
         c0 = _mv_codes(h_mv_p, played)
         tok_p = mvf.gather(1, played[:, None, None].expand(-1, 1, mvf.shape[-1]))[:, 0]
         # RESTORED FIELD STACK (the gko0 slice dropped it; identity-R2 collapse
@@ -439,9 +472,9 @@ def main():
         enc_t = ema_field if ema_field is not None else model.field
         with torch.no_grad():
             rows_c = ci[:, 1:].ravel()
-            sqc, mvc, edc, mkc, eloc, plc = _feat_rows(rows_c)
+            sqc, mvc, edc, mkc, eloc, plc, psl_c = _feat_rows(rows_c)
             zq_c, gi_c, si_c, _, h_mv_c, _ = enc_t.encode(sqc, mvc, edc, mkc,
-                                                          elo=eloc)[:6]
+                                                          elo=eloc, pslot=psl_c)[:6]
             zq_c = zq_c.reshape(cb, 6, -1)
             gi1 = gi_c.reshape(cb, 6, -1)[:, 0]
             si1 = si_c.reshape(cb, 6, -1)[:, 0]
@@ -458,14 +491,32 @@ def main():
         assert not t1.requires_grad and not code_seq.requires_grad  # U13 runtime guard
         q_mv_p = _mv_q(h_mv_p, mask)
         za_root = model.lift(zq_p, q_mv_p)
-        pred1 = model.ops(za_root, code_seq[:, 0])
-        l1 = F.mse_loss(pred1[..., :model.lift.d_state], t1)
-        traj = rollout(model.ops, za_root, code_seq)                # (cb,6,d_aug)
+        if args.gen5:
+            f0, tt0, pr0 = _raw_ftp(ci[:, 0], played)
+            fs, ts, ps_ = [f0], [tt0], [pr0]
+            for k in range(5):
+                fk, tk, pk = _raw_ftp(ci[:, 1 + k], plc.reshape(cb, 6)[:, k])
+                fs.append(fk); ts.append(tk); ps_.append(pk)
+            pred1 = model.ops(za_root, fs[0], ts[0], ps_[0])
+            l1 = F.mse_loss(pred1[..., :model.lift.d_state], t1)
+            outs, zz = [], za_root
+            for k in range(6):
+                zz = model.ops(zz, fs[k], ts[k], ps_[k])
+                outs.append(zz)
+            traj = torch.stack(outs, 1)
+        else:
+            pred1 = model.ops(za_root, code_seq[:, 0])
+            l1 = F.mse_loss(pred1[..., :model.lift.d_state], t1)
+            traj = rollout(model.ops, za_root, code_seq)            # (cb,6,d_aug)
         ds = model.lift.d_state
         def _comp(za, tgt):
             return F.mse_loss(za[..., :ds], tgt)
         l3, l6 = _comp(traj[:, 2], t3), _comp(traj[:, 5], t6)
-        l_spec, rho = model.ops.spectral_penalty(code_seq.ravel())
+        if args.gen5:
+            l_spec, rho = model.ops.spectral_penalty(fs[0], ts[0], ps_[0])
+            l_spec = l_spec + 0.05 * model.ops.identity_prior()
+        else:
+            l_spec, rho = model.ops.spectral_penalty(code_seq.ravel())
         # baseline: iterated MLP on DETACHED state with token move features
         s = zq_p.detach()
         toks = torch.cat([tok_p[:, None], tok_c], 1)                # (cb,6,feat)
@@ -487,7 +538,18 @@ def main():
             za0 = za_root
             vt0 = torch.from_numpy(CHV[ci[:, 0]]).to(dev)
             m0 = torch.isfinite(vt0)
-            if m0.any():
+            if args.gen5 and CHWDL is not None:
+                w0 = torch.from_numpy(CHWDL[ci[:, 0]].astype(np.float32)).to(dev)
+                mw = torch.isfinite(w0).all(-1)
+                if mw.any():
+                    tgtw = w0[mw].clamp(min=1e-6)
+                    tgtw = tgtw / tgtw.sum(-1, keepdim=True)
+                    for head, inp in ((model.sf_v, za0[mw][:, model.lift.d_state:]),
+                                      (model.sf_v_full, za0[mw])):
+                        lp = torch.log_softmax(head(inp), -1)
+                        l_v = l_v + args.w_v0 * (-(tgtw * lp).sum(-1).mean())
+                    v_n += int(mw.sum())
+            elif m0.any():
                 l_v = l_v + args.w_v0 * hl.ce(model.sf_v(za0[m0][:, model.lift.d_state:]),
                                               vt0[m0])
                 l_v = l_v + args.w_v0 * hl.ce(model.sf_v_full(za0[m0]), vt0[m0])
@@ -499,7 +561,19 @@ def main():
                     continue
                 vtk = torch.from_numpy(CHV[ci[:, k]]).to(dev)
                 mk = torch.isfinite(vtk)
-                if mk.any():
+                if args.gen5 and CHWDL is not None:
+                    wk_t = torch.from_numpy(CHWDL[ci[:, k]].astype(np.float32)).to(dev)
+                    mw = torch.isfinite(wk_t).all(-1)
+                    if mw.any():
+                        tg = wk_t[mw].clamp(min=1e-6)
+                        tg = tg / tg.sum(-1, keepdim=True)
+                        for head, inp in ((model.sf_v,
+                                           traj[:, k - 1][mw][:, model.lift.d_state:]),
+                                          (model.sf_v_full, traj[:, k - 1][mw])):
+                            lp = torch.log_softmax(head(inp), -1)
+                            l_v = l_v + args.w_vk * wk * (-(tg * lp).sum(-1).mean())
+                        v_n += int(mw.sum())
+                elif mk.any():
                     l_v = l_v + args.w_vk * wk * hl.ce(
                         model.sf_v(traj[:, k - 1][mk][:, model.lift.d_state:]), vtk[mk])
                     l_v = l_v + args.w_vk * wk * hl.ce(
@@ -528,10 +602,10 @@ def main():
         vamp_v = 0.0
         if args.w_slow > 0 and step % args.vamp_every == 0:
             vb = CH_pos[ch_tr[rng.integers(0, len(ch_tr), args.vamp_batch)]]
-            s0, m0, e0, k0, el0, _ = _feat_rows(vb[:, 0])
-            pg0 = model.field.encode(s0, m0, e0, k0, elo=el0)[5]
-            s6, m6, e6, k6, el6, _ = _feat_rows(vb[:, 6])
-            pg6 = model.field.encode(s6, m6, e6, k6, elo=el6)[5]
+            s0, m0, e0, k0, el0, _, ps0 = _feat_rows(vb[:, 0])
+            pg0 = model.field.encode(s0, m0, e0, k0, elo=el0, pslot=ps0)[5]
+            s6, m6, e6, k6, el6, _, ps6 = _feat_rows(vb[:, 6])
+            pg6 = model.field.encode(s6, m6, e6, k6, elo=el6, pslot=ps6)[5]
             sl = model.field.slow_heads * model.field.d_code
             v0 = model.field.vamp_proj(pg0.reshape(len(vb), -1)[:, :sl])
             v6 = model.field.vamp_proj(pg6.reshape(len(vb), -1)[:, :sl])
@@ -563,21 +637,33 @@ def main():
             ci = CH_pos[ch_te[a:a + 64]]
             if not len(ci):
                 break
-            sqf, mvf, edges, mask, elo, played = _feat_rows(ci[:, 0])
+            sqf, mvf, edges, mask, elo, played, psl_p = _feat_rows(ci[:, 0])
             zq_p, _, _, _, h_mv_p, _ = model.field.encode(sqf, mvf, edges, mask,
                                                           elo=elo)[:6]
             c0 = _mv_codes(h_mv_p, played)
             tok_p = mvf.gather(1, played[:, None, None].expand(-1, 1, mvf.shape[-1]))[:, 0]
             rows_c = ci[:, 1:].ravel()
-            sqc, mvc, edc, mkc, eloc, plc = _feat_rows(rows_c)
+            sqc, mvc, edc, mkc, eloc, plc, psl_c = _feat_rows(rows_c)
             enc_e = ema_field if ema_field is not None else model.field
-            zq_c, _, _, _, h_mv_c, _ = enc_e.encode(sqc, mvc, edc, mkc, elo=eloc)[:6]
+            zq_c, _, _, _, h_mv_c, _ = enc_e.encode(sqc, mvc, edc, mkc, elo=eloc, pslot=psl_c)[:6]
             zq_c = zq_c.reshape(len(ci), 6, -1)
             cks = _mv_codes(h_mv_c, plc, enc_e).reshape(len(ci), 6)[:, :5]
             tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
                                )[:, 0].reshape(len(ci), 6, -1)[:, :5]
             code_seq = torch.cat([c0[:, None], cks], 1)
-            traj = rollout(model.ops, model.lift(zq_p, _mv_q(h_mv_p, mask)), code_seq)
+            if args.gen5:
+                f0e, t0e, p0e = _raw_ftp(ci[:, 0], played)
+                zz = model.lift(zq_p, _mv_q(h_mv_p, mask))
+                outs_e = []
+                fe, te_, pe = f0e, t0e, p0e
+                for k in range(6):
+                    if k > 0:
+                        fe, te_, pe = _raw_ftp(ci[:, k], plc.reshape(len(ci), 6)[:, k - 1])
+                    zz = model.ops(zz, fe, te_, pe)
+                    outs_e.append(zz)
+                traj = torch.stack(outs_e, 1)
+            else:
+                traj = rollout(model.ops, model.lift(zq_p, _mv_q(h_mv_p, mask)), code_seq)
             ds = model.lift.d_state
             s = zq_p; toks = torch.cat([tok_p[:, None], tok_c], 1)
             mlp_s = {}
@@ -608,8 +694,12 @@ def main():
                     vt = torch.from_numpy(CHV[ci[:, kk]]).to(zq_p.device)
                     mk = torch.isfinite(vt)
                     if mk.any():
-                        pv = hl.decode(model.sf_v(
-                            traj[:, kk - 1][mk][:, model.lift.d_state:]))
+                        lg5 = model.sf_v(traj[:, kk - 1][mk][:, model.lift.d_state:])
+                        if args.gen5:
+                            pw = torch.softmax(lg5, -1)
+                            pv = pw[:, 0] + 0.5 * pw[:, 1]
+                        else:
+                            pv = hl.decode(lg5)
                         agg.setdefault(key, [0.0, 0.0])
                         agg[key][0] += float((pv - vt[mk]).abs().sum())
                         agg[key][1] += float(mk.sum())
@@ -632,9 +722,9 @@ def main():
         return out2
 
     def losses_on(idx, train=True):
-        sqf, mvf, edges, mask, elo = batch_of(idx)
+        sqf, mvf, edges, mask, elo, psl = batch_of(idx)
         zq, g_ids, _, vl, h_mv, pre_g = model.field.encode(sqf, mvf, edges, mask,
-                                                          elo=elo)[:6]
+                                                          elo=elo, pslot=psl)[:6]
         lg = model.field.move_logits(zq, h_mv, mask)
         tgt = D["tgt"][idx].to(dev)
         kind = D["kind"][idx].to(dev)
@@ -813,11 +903,11 @@ def main():
 
         # U12: elo passthrough -- same rows, band vs fixed conditioning
         ii = torch.from_numpy(tr_i[:8])
-        sqf, mvf, edges, mask, elo = batch_of(ii)
+        sqf, mvf, edges, mask, elo, psl = batch_of(ii)
         with torch.no_grad():
-            z_a = model.field.encode(sqf, mvf, edges, mask, elo=elo)[0]
+            z_a = model.field.encode(sqf, mvf, edges, mask, elo=elo, pslot=psl)[0]
             z_b = model.field.encode(sqf, mvf, edges, mask,
-                                     elo=torch.full_like(elo, 1.5))[0]
+                                     elo=torch.full_like(elo, 1.5), pslot=psl)[0]
         dz = float((z_a - z_b).abs().max())
         gate("U12", z_a.shape == z_b.shape and dz > 0,
              f"band vs fixed elo: shapes {tuple(z_a.shape)} equal, max|dz| {dz:.2e} > 0")

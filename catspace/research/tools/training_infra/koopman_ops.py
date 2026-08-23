@@ -435,13 +435,17 @@ class TransformerLift(nn.Module):
 
     def __init__(self, d_state: int, g_heads: int = 32, d_code: int = 16,
                  d_sq: int = 32, d_phi: int = 256, d_tok: int = 64,
-                 n_layers: int = 2, n_attn: int = 4):
+                 n_layers: int = 2, n_attn: int = 4, n_piece: int = 0,
+                 d_piece: int = 4):
         super().__init__()
         self.d_state, self.d_phi = d_state, d_phi
         self.g_heads, self.d_code, self.d_sq = g_heads, d_code, d_sq
-        self.d_hist = d_state - g_heads * d_code - 64 * d_sq
-        assert self.d_hist >= 0, (d_state, g_heads, d_code, d_sq)
-        self.n_tok = g_heads + 64 + (1 if self.d_hist else 0)
+        self.n_piece, self.d_piece = n_piece, d_piece
+        self.d_hist = d_state - g_heads * d_code - 64 * d_sq - n_piece * d_piece
+        assert self.d_hist >= 0, (d_state, g_heads, d_code, d_sq, n_piece)
+        self.n_tok = g_heads + 64 + n_piece + (1 if self.d_hist else 0)
+        if n_piece:
+            self.p_piece = nn.Linear(d_piece, d_tok)
         self.p_head = nn.Linear(d_code, d_tok)
         self.p_sq = nn.Linear(d_sq, d_tok)
         self.p_hist = nn.Linear(self.d_hist, d_tok) if self.d_hist else None
@@ -461,6 +465,10 @@ class TransformerLift(nn.Module):
         s = h + 64 * self.d_sq
         toks = [self.p_head(z[:, :h].reshape(B, self.g_heads, self.d_code)),
                 self.p_sq(z[:, h:s].reshape(B, 64, self.d_sq))]
+        if self.n_piece:
+            pe = s + self.n_piece * self.d_piece
+            toks.append(self.p_piece(z[:, s:pe].reshape(B, self.n_piece, self.d_piece)))
+            s = pe
         if self.p_hist is not None:
             toks.append(self.p_hist(z[:, s:])[:, None, :])
         out = torch.cat(toks, 1) + self.tok_emb

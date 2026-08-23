@@ -53,7 +53,7 @@ def convert_batch(out_dir, batch=SHARD_N):
     if not rows:
         c.close()
         return 0
-    KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att")
+    KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "pslot")
     acc = {k: [] for k in KEYS}
     n_mv_l, n_att_l, kind_l, band_l, tgt_l, fen_l, wdl_l = [], [], [], [], [], [], []
     done_ids = []
@@ -78,7 +78,10 @@ def convert_batch(out_dir, batch=SHARD_N):
                 if u in src:
                     tgt[j] = src[u]
             for k in KEYS:
-                acc[k].append(g[k] if k != "gl" else glob_of_board(b))
+                if k == "gl":
+                    acc[k].append(glob_of_board(b))
+                else:
+                    acc[k].append(g[k])
             n_mv_l.append(g["n_mv"]); n_att_l.append(g["n_att"])
             kind_l.append(kind); band_l.append(band); tgt_l.append(tgt)
             wdl_l.append(wdl)
