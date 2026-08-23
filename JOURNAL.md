@@ -15801,3 +15801,10 @@ material-blind phi-only head (queen delta +0.06) -> dual heads -> piece-down die
 (probe +0.34) -> sibling-resolution blend -> 62 percent vs the 1100 human model.
 Games are real fights now (7.1m/12 vs 42s/12 at the 0 percent era). Maia-1500 test
 launched; H2 frozen arm training; WDL campaign at 5 loops.
+
+**WDL campaign closed at the high-value boundary (2026-08-23 morning).** Chains +
+piece-down + ~2.2M ambient positions carry true W/D/L triples; the remaining ambient
+tail paused (scalar labels stand) because the re-labeling was inflating the store
+(13G -> 18G: doubled payloads + sqlite replace-in-place page churn). VACUUM queued
+for the next quiet window (needs transient headroom the disk lacks mid-run). gko3a's
+training diet is fully covered.
