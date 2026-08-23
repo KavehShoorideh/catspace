@@ -8,7 +8,7 @@ survive into the principal variation (the trusted-anchor budget). Move ordering 
 rolled states uses the rolled action-value head with position-free move tokens, so
 grandchildren are ranked without any re-encode.
 
-    .venv/bin/python -m ...koopman_search --ckpt artifacts/experiments/gko2e_latest.pt \
+    .venv/bin/python -m ...koopman_search --ckpt artifacts/experiments/gko2i_latest.pt \
         --selftest
 """
 from __future__ import annotations
@@ -293,7 +293,7 @@ def _selftest(ckpt):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--ckpt", default="artifacts/experiments/gko2d_fin_latest.pt")
+    ap.add_argument("--ckpt", default="artifacts/experiments/gko2i_latest.pt")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
