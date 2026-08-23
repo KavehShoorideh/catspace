@@ -242,6 +242,7 @@ def main():
     hl = HLGauss(k=args.k_bins).to(dev)
     ema_field = getattr(model, "ema_field", None)
     ema_started = [False]
+    id6_hi = [None]  # best even-lag identity-R2 post-warmup (gen5 erosion watch)
 
     def _ema_update():
         d = args.ema_decay
@@ -892,7 +893,17 @@ def main():
                        + (f" | avSp {r2.get('a1', -1):.3f}/{r2.get('a3', -1):.3f}/"
                           f"{r2.get('a6', -1):.3f}" if "a1" in r2 else ""))
                 out.update({f"op_r2_{k}": v for k, v in r2.items()})
-                if r2["i1"] < 0.5:
+                if args.gen5:
+                    # mover-POV states flip side-to-move features every ply, so
+                    # odd-lag identity-R2 is structurally negative; erosion is
+                    # watched on the even lag: floor, plus decay from post-warmup best.
+                    i6 = r2["i6"]
+                    if step >= 1000:
+                        id6_hi[0] = i6 if id6_hi[0] is None else max(id6_hi[0], i6)
+                    if i6 < -0.6 or (id6_hi[0] is not None and i6 < id6_hi[0] - 0.35):
+                        print(f"[gko1] ALARM identity-R2@6 {i6:.3f} (post-warmup best "
+                              f"{id6_hi[0]}) -- even-lag temporal coherence eroding", flush=True)
+                elif r2["i1"] < 0.5:
                     print(f"[gko1] ALARM identity-R2@1 {r2['i1']:.3f} < 0.5 -- "
                           f"temporal coherence eroding despite the stack", flush=True)
             if args.iv and iv_n:

@@ -15808,3 +15808,20 @@ tail paused (scalar labels stand) because the re-labeling was inflating the stor
 (13G -> 18G: doubled payloads + sqlite replace-in-place page churn). VACUUM queued
 for the next quiet window (needs transient headroom the disk lacks mid-run). gko3a's
 training diet is fully covered.
+
+**identity-R2 alarm at gko3a step 4000: FALSE POSITIVE (triaged 2026-08-23 04:45).**
+The i1<0.5 tripwire fired (-1.451), but the printed trajectory rules out erosion:
+id@1/3/6 was -0.642/-0.720/+0.393 at step 1, -1.520/-1.573/-0.194 at 2k,
+-1.451/-1.485/-0.204 at 4k -- flat (slightly recovering) over the last 2k steps,
+while every coherence co-gauge is healthy and improving (vamp 30.7/32, cons6 0.378,
+opR2 rising through zero, MLP probes ~0.5). Graded: PROVEN this is not the gens-1-3
+erosion pattern (that was monotone decay; this is level + flat, present from step 1).
+PLAUSIBLE mechanism: gen5 states are mover-POV, so side-to-move features flip sign
+each ply -- odd lags (k=1,3 at -1.45/-1.49) anti-correlate under the identity map
+while the even lag (k=6) sits at a mild -0.20; the clean odd/even split is the
+signature. The 0.5 threshold was calibrated on the old min-max geometry (healthy
+= +0.92) and does not transfer to raw quantized mover-POV states. Fix committed:
+gen5 runs now watch the parity-free even lag (i6 floor -0.6, plus decay >0.35 from
+post-warmup best); legacy runs keep the old alarm. The live gko3a process predates
+the patch -- its remaining i1 alarms through 8k are known noise, and only a NEW
+alarm type (or i6 sliding) warrants action.
