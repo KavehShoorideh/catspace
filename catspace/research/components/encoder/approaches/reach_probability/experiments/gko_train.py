@@ -387,9 +387,16 @@ def main():
     N = len(D["kind"])
     hold = np.concatenate(hold_chunks)
     tr_i = np.flatnonzero(~hold); te_i = np.flatnonzero(hold)
+    _nsf = int((D["kind"] == 0).sum())
     print(f"[gko0] start: {N:,} rows ({len(te_i):,} held out) | "
-          f"sf {int((D['kind']==0).sum()):,} maia {int((D['kind']==1).sum()):,}",
-          flush=True)
+          f"sf {_nsf:,} maia {int((D['kind']==1).sum()):,}", flush=True)
+    # this line has always printed the fatal condition; on 2026-08-23 it read
+    # "sf 0" at launch and the run trained 1000 steps with a frozen sharp head
+    # before anyone noticed. An informational count is not a gate -- alarm on it.
+    if args.w_sf > 0 and _nsf < 0.05 * max(N, 1):
+        print(f"[gko1] ALARM sf-diet {_nsf:,}/{N:,} ({_nsf/max(N,1):.2%}) at START "
+              f"-- l_sf, l_sv and every sf_av gradient are OFF. Convert sf shards: "
+              f"gko_data loop --oracle sf --newest --shards 70", flush=True)
 
     model_has_v = args.ops and hasattr(model, "sf_v")
 
