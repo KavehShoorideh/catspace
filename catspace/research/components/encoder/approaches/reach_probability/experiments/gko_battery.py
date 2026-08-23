@@ -207,6 +207,58 @@ def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo,
         print(f"[bat] SHARP skipped: no shards in {args.sharp_dir}", flush=True)
 
 
+def ops_section(ckpt, sharp_dir, n_pos=48):
+    """Operator move-CONDITIONING on real positions: split K(m)z into the shared
+    part (A z, identical for every move) and the move-dependent part. If the
+    move-dependent term is a tiny fraction of the shared one, every child lands in
+    nearly the same place and NO downstream head can separate siblings, however
+    well calibrated it is (2026-08-23: gen5 measured 1.3pct).
+    Reuses KoopmanEngine so both generations load through the same tested path."""
+    import glob as _g, chess
+    from catspace.research.components.planner.approaches.quasimetric_nav \
+        .koopman_search import KoopmanEngine
+    ke = KoopmanEngine(ckpt, reencode_budget=12)
+    fens = []
+    for f in sorted(_g.glob(os.path.join(sharp_dir, "*.npz"))):
+        d = np.load(f)
+        fens.extend([x.decode() if isinstance(x, bytes) else str(x)
+                     for x in d["fen"][:n_pos]])
+        if len(fens) >= n_pos:
+            break
+    sh_l, md_l, sep_l, nrm_l = [], [], [], []
+    for fen in fens[:n_pos]:
+        try:
+            bd = chess.Board(fen)
+        except Exception:
+            continue
+        if bd.is_game_over() or not list(bd.legal_moves):
+            continue
+        za, cond, moves, _ = ke._encode(bd)
+        if len(moves) < 2:
+            continue
+        with torch.no_grad():
+            zin = za.expand(len(cond), -1)
+            if ke.gen5:
+                zac = ke.ops(zin, cond[:, 0], cond[:, 1], cond[:, 2])
+                shared = zin @ ke.ops.A.T
+                md = zac - shared
+                sh_l.append(float(shared.norm(dim=-1).mean()))
+                md_l.append(float(md.norm(dim=-1).mean()))
+            else:
+                zac = ke.ops(zin, cond)
+            sep_l.append(float(torch.cdist(zac, zac).mean()))
+            nrm_l.append(float(zac.norm(dim=-1).mean()))
+    if sh_l:
+        sh, md = float(np.mean(sh_l)), float(np.mean(md_l))
+        print(f"[bat] OPS n={len(sep_l)} real positions: shared ||Az|| {sh:.2f} | "
+              f"move-dep ||K z - Az|| {md:.4f} | RATIO {md/max(sh,1e-9):.5f} "
+              f"(gko3a@8k baseline 0.0127; higher = more move-conditioning)",
+              flush=True)
+    print(f"[bat] OPS child separation {float(np.mean(sep_l)):.4f} "
+          f"(rel. to |z| {float(np.mean(sep_l))/max(float(np.mean(nrm_l)),1e-9):.5f}) "
+          f"| incumbent gko2i 1.2322 on midgame", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
@@ -216,11 +268,16 @@ def main():
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--state_boot", type=int, default=200)
     ap.add_argument("--sharp_dir", default="data/derived/gko1_holdout_sf")
+    ap.add_argument("--ops_only", action="store_true",
+                    help="operator move-conditioning decomposition only")
     ap.add_argument("--sharp_only", action="store_true",
                     help="SHARP section only -- works for gen4 and gen5 checkpoints")
     args = ap.parse_args()
     dev = ("mps" if torch.backends.mps.is_available() else "cpu")
 
+    if args.ops_only:
+        ops_section(args.ckpt, args.sharp_dir)
+        return
     ck, d, A, field, lift, sf_v_full, sf_av, kb, gen5, vb = build(args.ckpt, dev)
     print(f"[bat] {args.ckpt} step {ck['step']} | d_state {field.d_state} "
           f"d_aug {lift.d_aug} | dev {dev}", flush=True)

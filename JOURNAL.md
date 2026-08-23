@@ -16081,3 +16081,40 @@ at the first skip and every model read corr ~0.00 with healthy spread. Aligned
 (both appended inside the same filter, with a length assert) the same models read
 0.853-0.866. A near-zero correlation with well-matched variance is the signature of
 misalignment, not of a broken model.
+
+**Operator child-separation is instrumented and TRACKS PLAY STRENGTH (2026-08-23).**
+gko_battery gains an OPS section (`--ops_only`) measuring, over 47 real positions
+drawn from the unseen holdout, the split of K(m)z into its shared (A z) and
+move-dependent parts plus the pairwise separation of the children a position's
+legal moves produce. Reuses KoopmanEngine so both generations load through the same
+tested path. On IDENTICAL positions:
+
+    model          child sep   rel. to |z|   arena vs Maia-1100
+    gko2i           0.8218       2.95pct        62pct
+    gko3a @8k       0.1343       0.48pct        38-50pct
+    gko3b @2k       0.2899       1.13pct        --
+
+The incumbent separates children 6.1x more than gen5 did, and the ordering matches
+the arena ordering exactly. This is now a LEADING INDICATOR: it costs ~40s to
+measure against ~2min per 12-game arena row, and it reads the mechanism rather than
+the outcome.
+
+CORRECTION to the figure published earlier today: the 1.3pct move-dependent ratio
+came from ONE hand-picked midgame position. Over 47 real positions gko3a reads
+0.45pct -- the single position was 2.8x optimistic. The qualitative claim (the
+operator is overwhelmingly move-independent) stands and is in fact stronger; the
+number is corrected. Do not publish single-position operator numbers again.
+
+**gko3b @2k has 2.4x gko3a's move-conditioning** (ratio 0.01088 vs 0.00450) and
+2.2x its child separation, from a resume that STARTED at gko3a's values -- so the
+quantity is moving, and fast, in 2000 steps. NOT ATTRIBUTABLE from this data: the
+run changed diet (0pct -> 36pct sf) and gained 2000 steps simultaneously, and per
+the no-A/B rule no control was run. Both plausible; the honest statement is that
+move-conditioning is rising under the restored diet. It remains 2.6x below the
+incumbent (1.13pct vs 2.95pct relative), so the diet alone may not close it -- which
+is precisely the question the per-move rolled-value loss (Kaveh's multipv point)
+would settle, since nothing else in the objective asks the operator to separate
+siblings at all.
+
+Watch item: cons6 drifting down across gko3b (0.394 -> 0.303 -> 0.278 at 1k/2k/3k);
+gko3a's range was 0.329-0.455 ending 0.365. Below ~0.25 it warrants a look.
