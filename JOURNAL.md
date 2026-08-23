@@ -16278,3 +16278,45 @@ heartbeats will print sf-spearman 0.000 to the end. Its TRUE held-out sf-spearma
 step 6000 is 0.540 and maia-top1 is 0.650 -- both measured above, both healthy, and
 the sf figure matches the battery's independent 0.543 on the unseen holdout, which
 is a satisfying cross-check of two separately-written eval paths.
+
+**gko3b FINAL VERDICT (2026-08-23): best heads in the lineage, and the INCUMBENT
+KEEPS THE MOUNT.** 8000/8000 in 5h40m, clean exit, every gauge in band
+(avSp 0.251/0.269/0.268 -- the lineage's best final values; phivar 0.938;
+vamp 30.9/32; rho 1.024).
+
+HEADS on 5,903 unseen sf positions -- gko3b @8k beats BOTH predecessors:
+    model       ordering  lvl bias  lvl MAE  lvl corr  value corr
+    gko2i        0.535     -0.109    0.139    0.864     0.866
+    gko3a @8k    0.537     -0.060    0.110    0.874     0.853
+    gko3b @8k    0.549     -0.056    0.100    0.895     0.879
+
+PLAY, matched-depth matrix vs Maia-1100 (openings/colours identical):
+    depth      gko3b @8k        gko2i
+    d2         46pct (n=12)     62pct (n=12)
+    d3         38pct (n=24)     --
+    d4         58pct (n=12)     58pct (n=12)
+    pooled     45pct (n=48)     60pct (n=24)
+
+VERDICT: the incumbent is ahead by ~15 points pooled. GRADED: that gap is ~1.2
+sigma at these sample sizes and is NOT statistically clean -- but the incumbent rule
+requires gen5 to BEAT it, not to be indistinguishable, so gko2i keeps the
+KittyChess mount. Within-model depth curves are non-monotone (gko3b 46/38/58 across
+d2/d3/d4) and per the seed-variance rule none of those cells is individually
+judgeable; only the pooled comparison carries weight.
+
+Operator move-conditioning ended at ratio 0.0099, child separation 1.12pct relative
+-- 2.3x gko3a's 0.48pct, still 2.6x below the incumbent's 2.95pct. So a full run on
+a healthy sf diet moved move-conditioning substantially but did not close the gap,
+which is the strongest evidence yet that the deficit is STRUCTURAL (no loss asks the
+rolled path to separate siblings) rather than nutritional.
+
+Search cost at the last move of a d4 game: gko3b 15 encodes / 169 op-applies vs the
+incumbent's 19 / 281 -- gen5 is cheaper per move at equal depth, so its parity at d4
+is not bought with more compute.
+
+THE RESULT THAT MATTERS: heads improved monotonically across three generations while
+play did not follow. gen5 now has the best evaluator in the lineage and the worst
+search economics. Everything measured today converges on one lever -- per-move SF
+values on rolled states (Kaveh's multipv point), for which the labels already exist
+at 100pct coverage and which is the only proposed change that targets play rather
+than head quality.
