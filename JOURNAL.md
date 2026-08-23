@@ -15825,3 +15825,33 @@ gen5 runs now watch the parity-free even lag (i6 floor -0.6, plus decay >0.35 fr
 post-warmup best); legacy runs keep the old alarm. The live gko3a process predates
 the patch -- its remaining i1 alarms through 8k are known noise, and only a NEW
 alarm type (or i6 sliding) warrants action.
+
+**gko3a COMPLETE (2026-08-23 07:07): 8000/8000 in 7h47m, clean exit, all gauges
+in-band.** Final heartbeat: avSp 0.239/0.249/0.241 (run best), opR2 0.057/0.034/
+-0.017, vamp 30.8/32, cons6 0.365, rho 1.033, phivar 0.887, iv-cov 0.877.
+
+**Battery ladder (gko_battery.py on steps 2000/6000/8000, held-out-by-game split
+reconstructed bit-exactly -- 60,000 chains / 4,655 held out, asserted): the
+collapse flag is CLEARED and step8000 is the promotion candidate.** phi effective
+rank ROSE through training (3.0 -> 3.7 -> 3.9 of 256; top-2 eigen mass 0.90 ->
+0.86): the eigen-concentration is structural (phi's anchor target, WDL, is ~2-D),
+not training collapse; phivar on the fixed sample is U-shaped (1.25 -> 1.09 ->
+1.20), so the step-7000 heartbeat trough (0.63) was transient. State effective
+rank rose 23.5 -> 26.1 -> 33.2. Held-out WDL improved to the end: scalar-MAE
+0.1624 -> 0.1603 -> 0.1521 (KL ~0.48, CRPS ~0.17); the 6000->8000 stretch that
+looked wobbly in train-loss windows HELPED on held-out. Bands (gen5): near-equal
+0.107 (best), advantage 0.147, decided 0.168 (weakest) -- the weak band moved
+vs the gko2i era's advantage-band weakness (different metric/set; qualitative
+statement only). FINDINGS for next gen: hist block born dead (variance ~1.4e-4
+at ALL checkpoints, 3 orders below other blocks; 128 dims to reallocate --
+pending a mean-substitution ablation before "unused" is claimed); ckpt
+git_commit stamps at SAVE time not launch (misattributes late-run commits).
+
+**KoopmanEngine gen5 branch: ALL SEARCH GATES PASS both generations.** gen5 =
+pslot through parent_graph -> encode, bare-identity (from,to,promo) conditioning
+into BasisOps, WDL-softmax pricing (E[W]+0.5E[D]) on rolled states; value-head
+width read from its own bias (3-way vs 64-bin HL). gko2i regression S1-S4 PASS
+(107x/node, KittyChess path untouched); gko3a S1-S4 PASS (117x/node, S4 winning
+position 1.000 with correct move). Noted: gen5 root value at the start position
+reads compressed (0.142) on ROLLED quiet positions -- ordering is what search
+uses; arena adjudicates.

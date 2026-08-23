@@ -26,7 +26,7 @@ class KoopmanEngine:
         import chess
         from catspace.research.tools.training_infra.hl_gauss import HLGauss
         from catspace.research.tools.training_infra.koopman_ops import (
-            KoopmanOps, TransformerLift)
+            BasisOps, KoopmanOps, TransformerLift)
         from catspace.research.components.encoder.approaches.reach_probability \
             .experiments.graph_concept_field import GraphConceptField
         self.chess = chess
@@ -35,6 +35,7 @@ class KoopmanEngine:
         A = dict(ckf["args"])
         ck = torch.load(ckpt, map_location="cpu", weights_only=False)
         RA = ck.get("args") or {}
+        self.gen5 = bool(RA.get("gen5"))
         for k in ("g_heads", "g_codes", "d_code", "slow_heads", "sq_codes"):
             if RA.get(k):
                 A[k] = RA[k]
@@ -48,21 +49,27 @@ class KoopmanEngine:
             phase_head=bool(A["phase_head"]), threat_head=bool(A["threat_head"]),
             elo_cond=True, g_heads=A["g_heads"], g_codes=A["g_codes"],
             d_code=A["d_code"], sq_codes=A.get("sq_codes", 256),
-            mh_vq=bool(RA.get("g_heads"))).eval()
+            mh_vq=bool(RA.get("g_heads")), gen5=self.gen5).eval()
         sd = ck["state_dict"]
         self.field.load_state_dict({k[6:]: v for k, v in sd.items()
                                     if k.startswith("field.")})
         self.lift = TransformerLift(self.field.d_state, g_heads=A["g_heads"],
-                                    d_code=A["d_code"], d_sq=32, d_phi=256,
-                                    n_layers=int(RA.get("lift_layers", 3))).eval()
+                                    d_code=A["d_code"],
+                                    d_sq=(16 if self.gen5 else 32), d_phi=256,
+                                    n_layers=int(RA.get("lift_layers", 3)),
+                                    n_piece=(32 if self.gen5 else 0)).eval()
         self.lift.load_state_dict({k[5:]: v for k, v in sd.items()
                                    if k.startswith("lift.")})
-        self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
-                              rank=int(RA.get("op_rank", 16))).eval()
+        if self.gen5:
+            self.ops = BasisOps(self.lift.d_aug, n_basis=64,
+                                rank=int(RA.get("op_rank", 16))).eval()
+        else:
+            self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
+                                  rank=int(RA.get("op_rank", 16))).eval()
         self.ops.load_state_dict({k[4:]: v for k, v in sd.items()
                                   if k.startswith("ops.")})
         import torch.nn as nn
-        kb = sd["sf_v.2.bias"].shape[0]
+        kb = sd["sf_av.2.bias"].shape[0]
         self.sf_av = nn.Sequential(nn.Linear(self.field.d_state + A["d_model"], 512),
                                    nn.GELU(), nn.Linear(512, kb))
         self.sf_av.load_state_dict({k[6:]: v for k, v in sd.items()
@@ -70,17 +77,21 @@ class KoopmanEngine:
         if any(k.startswith("sf_v_full.") for k in sd):
             # search reads the FULL head when trained (material-sighted); phi-only
             # remains the training anchor
+            vb = sd["sf_v_full.2.bias"].shape[0]
             self.sf_v = nn.Sequential(nn.Linear(self.lift.d_aug, 256), nn.GELU(),
-                                      nn.Linear(256, kb))
+                                      nn.Linear(256, vb))
             self.sf_v.load_state_dict({k[10:]: v for k, v in sd.items()
                                        if k.startswith("sf_v_full.")})
             self._v_slice = slice(None)
+            self._wdl = (vb == 3)
         else:
+            vb = sd["sf_v.2.bias"].shape[0]
             self.sf_v = nn.Sequential(nn.Linear(256, 256), nn.GELU(),
-                                      nn.Linear(256, kb))
+                                      nn.Linear(256, vb))
             self.sf_v.load_state_dict({k[5:]: v for k, v in sd.items()
                                        if k.startswith("sf_v.")})
             self._v_slice = slice(self.lift.d_state, None)
+            self._wdl = (vb == 3)
         self.av = nn.Sequential(nn.Linear(self.lift.d_aug + 64, 512), nn.GELU(),
                                 nn.Linear(512, kb))
         self.av.load_state_dict({k[8:]: v for k, v in sd.items()
@@ -113,6 +124,8 @@ class KoopmanEngine:
         g, _ = parent_graph(board)
         b = {k: torch.from_numpy(np.asarray(g[k])[None]) for k in
              ("sq", "mv", "mut", "att", "n_mv", "n_att")}
+        psl = (torch.from_numpy(np.asarray(g["pslot"])[None]).long()
+               if self.gen5 else None)
         b["gl"] = torch.from_numpy(glob_of_board(board)[None])
         sqf, mvf, edges, mask = featurize(b, self.dev, n_nodes=self.field.n_nodes)
         off = torch.zeros(1, 1, dtype=torch.long)
@@ -124,14 +137,22 @@ class KoopmanEngine:
                            (a2 + off[:, :, None])[val])
         el = torch.from_numpy(normalise_elo(np.full((1, 2), elo, np.float32)))
         with torch.no_grad():
-            zq, _, _, _, h_mv, _ = self.field.encode(sqf, mvf, edges, mask, elo=el)[:6]
+            zq, _, _, _, h_mv, _ = self.field.encode(sqf, mvf, edges, mask, elo=el,
+                                                     pslot=psl)[:6]
             q_mv, idx_mv, _ = self.field.mv_vq(self.field.mv_vq_proj(h_mv))
             za = self.lift(zq, q_mv * mask[..., None])
         moves = list(board.legal_moves)[:int(g["n_mv"])]
         self._last = (zq, h_mv, len(moves))
         self.stats["encodes"] += 1
         self.stats["t_encode"] += time.perf_counter() - t0
-        return za, idx_mv[0, :len(moves)], moves, mvf[0, :len(moves)]
+        if self.gen5:
+            # bare move identity (from, to, promo-class): raw mv cols 1/2/5 --
+            # the BasisOps conditioning contract (state carries all context)
+            cond = torch.from_numpy(
+                np.asarray(g["mv"])[:len(moves), [1, 2, 5]].astype(np.int64))
+        else:
+            cond = idx_mv[0, :len(moves)]
+        return za, cond, moves, mvf[0, :len(moves)]
 
     def _child_values(self, za, codes):
         """Batched operator roll of ALL children + phi-value pricing.
@@ -139,8 +160,17 @@ class KoopmanEngine:
         child's mover = opponent, so flip)."""
         t0 = time.perf_counter()
         with torch.no_grad():
-            zac = self.ops(za.expand(len(codes), -1), codes)
-            wp_child = self.hl.decode(self.sf_v(zac[:, self._v_slice]))
+            if self.gen5:
+                zac = self.ops(za.expand(len(codes), -1),
+                               codes[:, 0], codes[:, 1], codes[:, 2])
+            else:
+                zac = self.ops(za.expand(len(codes), -1), codes)
+            logits = self.sf_v(zac[:, self._v_slice])
+            if self._wdl:
+                pr = torch.softmax(logits, -1)
+                wp_child = pr[:, 0] + 0.5 * pr[:, 1]
+            else:
+                wp_child = self.hl.decode(logits)
         self.stats["op_applies"] += len(codes)
         self.stats["t_op"] += time.perf_counter() - t0
         return 1.0 - wp_child, zac
