@@ -15986,3 +15986,49 @@ therefore NOT yet justified -- gko3b at 36pct sf is the clean test, and it must 
 before any design change is argued for. If the untethered level and the flat rolled
 spread both improve at 16k with no architectural change, the design was never the
 problem.
+
+**RETRACTION: "the sharp head's level is untethered" is FALSE (2026-08-23).** That
+claim rested on hand-built synthetic FENs -- the start position with a queen
+surgically removed -- where gen5's per-move head read 0.978 for a mover down a
+queen. Those positions are far out of distribution (no game reaches them) and the
+reading was OOD extrapolation, not calibration. Measured properly on 5,903 UNSEEN
+sf positions (converted straight from the store into a holdout dir that never
+entered any training rotation), gen5's sharp head is EQUAL OR BETTER than the
+62pct incumbent's on every axis:
+
+    ordering(spearman)   level bias   level MAE   level corr
+    gko2i   0.535          -0.109       0.139       0.864
+    gko3a   0.537          -0.060       0.110       0.874
+
+So the sharp head is NOT the source of the play gap, and the "tie sf_av's level to
+the WDL head" proposal is withdrawn -- it would fix a component that already beats
+the incumbent's. Lesson recorded: probe on the DISTRIBUTION THE MODEL SERVES;
+synthetic diagnostic positions measure extrapolation and will manufacture defects
+that do not exist. The queen-probe FENs are fine as a coarse material check, never
+as evidence about calibration.
+
+**What survives, and the resulting causal chain.** The one measured difference that
+still tracks the play gap is the rolled value path: gen5's sibling spread 0.0004
+vs the incumbent's 0.0012-0.0045. Combined with the starvation finding, the
+coherent chain is: sf rows starved -> `l_sv` off (it is gated on the same
+`kind == 0`) -> sf_v_full loses the material supervision its code comment names
+("value heads trained only on mostly-balanced chains never learn material") ->
+rolled child values price flat -> alpha-beta cannot discriminate siblings -> weak
+play, DESPITE a sharp head that matches the incumbent. This also explains why the
+starvation hurt play more than it hurt the sharp head: sf_av's ordering is
+scale-free and robust, while the value head's material sightedness is exactly the
+thing l_sv supplies.
+
+gko3b is the test and is behaving: sf loss 3.361 -> 3.204 over its first 1000
+steps (gko3a's went 3.868 -> 4.219 over its whole run). NEXT MEASUREMENT: the same
+unseen-holdout comparison for sf_v_full (value head) across generations -- if
+gko2i's value head is materially sighted on real positions and gko3a's is not, the
+chain above is confirmed end to end.
+
+**Also fixed: the held-out eval read a PREFIX of the sorted index** (te_i[0:2048]),
+i.e. the oldest shards only. When the window is compositionally uneven -- sf shards
+converted last land at the end -- an entire row-kind is excluded and its gauge
+reads 0.000 while training on it is healthy (sf-spearman 0.000 alongside sf loss
+3.361). Now a fixed-seed random subsample. Every held-out number this lineage has
+printed came from the oldest-shard slice; cross-run comparisons were only valid
+while composition happened to be uniform.

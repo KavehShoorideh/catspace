@@ -6,12 +6,18 @@ Sections, each printing labeled verdict lines:
           of phi, participation ratio, per-block state variances.
   WDL  -- k=0 value calibration on chain rows with sidecar oracle triples:
           KL(oracle||pred), 3-outcome CRPS, derived-scalar MAE, stratified by band.
+  SHARP-- the sf_av per-move head on UNSEEN sf shard rows (converted straight out of
+          the store into a holdout dir, so they never entered any training rotation):
+          within-position Spearman (ORDERING) and absolute LEVEL calibration. These
+          two dissociate: ordering is scale-free and survives thin data, level is
+          what starves first, so reporting both separates "undertrained" from
+          "miscalibrated" (2026-08-23 sf-starvation).
 
 Rows come from the trainer's own held-out-by-GAME chain split, reconstructed
 bit-exactly (seeded RNG; hard-asserted against the trainer's printed count) with
 true per-row elo conditioning -- so WDL numbers are genuine held-out.
 """
-import argparse, sys
+import argparse, os, sys
 import numpy as np
 import torch
 import torch.nn as nn
@@ -25,7 +31,7 @@ def build(ckpt_path, dev):
 
     ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     d = ck["args"] if isinstance(ck["args"], dict) else vars(ck["args"])
-    assert d.get("gen5"), "battery v1 targets gen5 checkpoints"
+    gen5 = bool(d.get("gen5"))
     warm = torch.load(d["resume_field"], map_location="cpu", weights_only=False)
     A = dict(warm["args"])
     A["g_heads"], A["g_codes"], A["d_code"] = d["g_heads"], d["g_codes"], d["d_code"]
@@ -43,22 +49,32 @@ def build(ckpt_path, dev):
         threat_head=bool(A["threat_head"]), elo_cond=True,
         g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"],
         sq_codes=A.get("sq_codes", 256),
-        mh_vq=bool(d["g_heads"]), gen5=True).to(dev)
+        mh_vq=bool(d["g_heads"]), gen5=gen5).to(dev)
     lift = TransformerLift(field.d_state, g_heads=A["g_heads"], d_code=A["d_code"],
-                           d_sq=16, d_phi=max(d["d_phi"], 256),
-                           n_layers=d["lift_layers"], n_piece=32).to(dev)
+                           d_sq=(16 if gen5 else 32), d_phi=max(d["d_phi"], 256),
+                           n_layers=d["lift_layers"],
+                           n_piece=(32 if gen5 else 0)).to(dev)
+    # width from the checkpoint's own head: gen5 is 3-way WDL, gen4 is 64-bin HL
+    _vb = ck["state_dict"].get("sf_v_full.2.bias")
+    vb = _vb.shape[0] if _vb is not None else 3
     sf_v_full = nn.Sequential(nn.Linear(lift.d_aug, 256), nn.GELU(),
-                              nn.Linear(256, 3)).to(dev)
+                              nn.Linear(256, vb)).to(dev)
+    kb = ck["state_dict"]["sf_av.2.bias"].shape[0]
+    sf_av = nn.Sequential(nn.Linear(field.d_state + A["d_model"], 512), nn.GELU(),
+                          nn.Linear(512, kb)).to(dev)
 
     sd = ck["state_dict"]
-    for mod, pre in ((field, "field."), (lift, "lift."), (sf_v_full, "sf_v_full.")):
+    for mod, pre in ((field, "field."), (lift, "lift."),
+                     (sf_v_full, "sf_v_full."), (sf_av, "sf_av.")):
         sub = {k[len(pre):]: v for k, v in sd.items() if k.startswith(pre)}
+        if not sub:
+            continue
         missing, unexpected = mod.load_state_dict(sub, strict=False)
         assert not missing and not unexpected, (pre, missing, unexpected)
         mod.eval()
         for p in mod.parameters():
             p.requires_grad_(False)
-    return ck, d, A, field, lift, sf_v_full
+    return ck, d, A, field, lift, sf_v_full, sf_av, kb, gen5, vb
 
 
 def encode_rows(CH, rows, field, lift, dev, elo_n):
@@ -100,6 +116,66 @@ def eff_rank(X, n_boot=1000, seed=0):
     return full, lo, hi
 
 
+def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo):
+    """sf_av on UNSEEN sf rows: ORDERING (scale-free, survives thin data) vs
+    absolute LEVEL (what starves first). Reporting both separates 'undertrained'
+    from 'miscalibrated'. Works for gen4 and gen5 checkpoints."""
+    # ---- SHARP (unseen sf shard rows; ordering vs level) ----
+    import glob as _glob
+    from catspace.research.tools.training_infra.hl_gauss import HLGauss
+    from catspace.research.components.encoder.approaches.reach_probability \
+        .experiments.graph_move_policy import featurize as _ftz, MV_CAP
+    hf = sorted(_glob.glob(os.path.join(args.sharp_dir, "*.npz")))
+    if hf:
+        hl = HLGauss(k=kb)
+        hl.centers = hl.centers.to(dev)
+        sps, lvl_p, lvl_t = [], [], []
+        for f in hf:
+            H = np.load(f)
+            for i0 in range(0, len(H["kind"]), 256):
+                rr = np.arange(i0, min(i0 + 256, len(H["kind"])))
+                b = {k: torch.from_numpy(np.ascontiguousarray(H[k][rr])).to(dev)
+                     for k in ("sq", "gl", "mv", "mut", "att", "n_mv", "n_att")}
+                sqf, mvf, edges, mask = _ftz(b, dev, n_nodes=field.n_nodes)
+                off = (torch.arange(len(rr), device=dev) * field.n_nodes)[:, None]
+                jj = torch.arange(MV_CAP, device=dev)[None, :]
+                for nm in ("vac", "dsc"):
+                    a2 = torch.from_numpy(np.ascontiguousarray(H[nm][rr])).to(dev).long()
+                    val = (a2 != 255) & mask[:, :, None]
+                    edges[nm] = (((jj + 64 + off)[:, :, None].expand_as(a2))[val],
+                                 (a2 + off[:, :, None])[val])
+                elo = torch.from_numpy(normalise_elo(
+                    np.full((len(rr), 2), 2750.0, np.float32))).to(dev)
+                psl = (torch.from_numpy(np.ascontiguousarray(H["pslot"][rr])).to(dev)
+                       if gen5 else None)
+                with torch.no_grad():
+                    zq, _, _, _, h_mv, _ = field.encode(sqf, mvf, edges, mask,
+                                                        elo=elo, pslot=psl)[:6]
+                    x = torch.cat([zq[:, None, :].expand(-1, MV_CAP, -1), h_mv], -1)
+                    pv = hl.decode(sf_av(x)).cpu().numpy()
+                tg = H["tgt"][rr]
+                fin = np.isfinite(tg) & (tg > -1e8)
+                for r in range(len(rr)):
+                    m = fin[r]
+                    if m.sum() > 3:
+                        a = np.argsort(np.argsort(pv[r][m]))
+                        b2 = np.argsort(np.argsort(tg[r][m]))
+                        c = np.corrcoef(a, b2)[0, 1]
+                        if np.isfinite(c):
+                            sps.append(c)
+                        lvl_p.append(pv[r][m].max()); lvl_t.append(tg[r][m].max())
+        lp, lt = np.array(lvl_p), np.array(lvl_t)
+        print(f"[bat] SHARP n={len(sps)} unseen sf positions: "
+              f"ORDERING spearman {np.mean(sps):.3f} "
+              f"(gko2i-era held-out ~0.50, gko3a final 0.544)", flush=True)
+        print(f"[bat] SHARP LEVEL best-move pred {lp.mean():.3f} vs SF {lt.mean():.3f} "
+              f"| bias {lp.mean()-lt.mean():+.3f} | MAE {np.abs(lp-lt).mean():.3f} "
+              f"| corr {np.corrcoef(lp, lt)[0,1]:.3f} "
+              f"(untethered level = bias large and/or corr low)", flush=True)
+    else:
+        print(f"[bat] SHARP skipped: no shards in {args.sharp_dir}", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", required=True)
@@ -108,15 +184,21 @@ def main():
     ap.add_argument("--n", type=int, default=8192)
     ap.add_argument("--batch", type=int, default=512)
     ap.add_argument("--state_boot", type=int, default=200)
+    ap.add_argument("--sharp_dir", default="data/derived/gko1_holdout_sf")
+    ap.add_argument("--sharp_only", action="store_true",
+                    help="SHARP section only -- works for gen4 and gen5 checkpoints")
     args = ap.parse_args()
     dev = ("mps" if torch.backends.mps.is_available() else "cpu")
 
-    ck, d, A, field, lift, sf_v_full = build(args.ckpt, dev)
+    ck, d, A, field, lift, sf_v_full, sf_av, kb, gen5, vb = build(args.ckpt, dev)
     print(f"[bat] {args.ckpt} step {ck['step']} | d_state {field.d_state} "
           f"d_aug {lift.d_aug} | dev {dev}", flush=True)
 
     from catspace.research.components.encoder.approaches.reach_probability.src \
         .trajectories import normalise_elo
+    if args.sharp_only:
+        sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo)
+        return
     CH = np.load(args.cache, mmap_mode="r")
     CH_prow = np.asarray(CH["p_row"])
     cs = np.load(d["chain_starts"])
@@ -169,6 +251,8 @@ def main():
     print(f"[bat] RANK block variances {bv} (no block dead)", flush=True)
 
     # ---- WDL ----
+    sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo)
+
     SC = np.load(args.sidecar)
     wdl = SC["wdl"][tail].astype(np.float32)  # f16 on disk: 1e-9 underflows to 0 there
     valid = np.isfinite(wdl).all(1) & (wdl.sum(1) > 0.5)
