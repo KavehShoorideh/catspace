@@ -189,6 +189,14 @@ def main():
     print(f"[bat] WDL overall n={int(valid.sum())}: KL {kl:.4f} CRPS {crps:.4f} "
           f"scalar-MAE {mae:.4f} (held-out by game, true elo cond)",
           flush=True)
+    print(f"[bat] WDL class means  pred W/D/L "
+          f"{pred.mean(0)[0]:.3f}/{pred.mean(0)[1]:.3f}/{pred.mean(0)[2]:.3f} vs "
+          f"oracle {orc.mean(0)[0]:.3f}/{orc.mean(0)[1]:.3f}/{orc.mean(0)[2]:.3f} "
+          f"| pred-draw>oracle-draw by {pred.mean(0)[1]-orc.mean(0)[1]:+.3f} "
+          f"(draw-collapse check)", flush=True)
+    print(f"[bat] WDL spread  pred sd of E[W]+0.5E[D] {e_p.std():.4f} vs "
+          f"oracle {e_o.std():.4f} (ratio {e_p.std()/max(e_o.std(),1e-9):.3f}; "
+          f"<<1 => head is near-constant)", flush=True)
     bands = {
         "near-equal": (e_o >= 0.45) & (e_o < 0.55),
         "advantage": ((e_o >= 0.55) & (e_o < 0.85)) | ((e_o > 0.15) & (e_o <= 0.45)),

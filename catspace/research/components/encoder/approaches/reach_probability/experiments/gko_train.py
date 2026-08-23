@@ -226,6 +226,7 @@ def main():
                 self.ema_field.eval()
             return self
     model = GKO().to(dev)
+    ema_restored = False
     if args.resume_self:
         ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
         sd2 = dict(ck2["state_dict"])
@@ -236,12 +237,18 @@ def main():
         for k in drop:
             del sd2[k]
         miss, unex = model.load_state_dict(sd2, strict=False)
+        # did the resume actually RESTORE an ema target (vs leaving the fresh
+        # deepcopy)? if so its lag is real training state -- a hard copy on the
+        # first update would throw it away and un-lag the child targets.
+        ema_restored = any(k.startswith("ema_field.") for k in sd2)
         print(f"[gko0] resumed self from {args.resume_self} (step {ck2.get('step')}; "
               f"{len(miss)} new keys init fresh, {len(drop)} shape-dropped, "
-              f"{len(unex)} unexpected)", flush=True)
+              f"{len(unex)} unexpected; ema target "
+              f"{'RESTORED (lag preserved)' if ema_restored else 'fresh (will hard-copy)'})",
+              flush=True)
     hl = HLGauss(k=args.k_bins).to(dev)
     ema_field = getattr(model, "ema_field", None)
-    ema_started = [False]
+    ema_started = [bool(ema_restored)]
     id6_hi = [None]  # best even-lag identity-R2 post-warmup (gen5 erosion watch)
 
     def _ema_update():
@@ -1005,7 +1012,19 @@ def main():
                 zo = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)[0]
                 ze = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)[0]
             eq = float((zo - ze).abs().max())
-            gate("U19", eq == 0.0, f"post-first-update ema==online: max|dz| {eq:.1e} (exact)")
+            zsc = float(zo.abs().max()) + 1e-9
+            if ema_restored:
+                # RESUMED with a real target: its lag is training state. The invariant
+                # is that the hard copy was SUPPRESSED (they still differ), not equality.
+                gate("U19", eq > 0.0,
+                     f"resumed ema LAGS online, hard copy suppressed: max|dz| {eq:.1e}")
+            else:
+                # FRESH: the hard copy ran. Bit-exactness is NOT the invariant -- online
+                # forwards between the copy and here drift the VQ codebooks while the ema
+                # is pinned to eval (U18) -- so assert close TRACKING, scaled to |z|.
+                gate("U19", eq < 0.05 * zsc,
+                     f"post-hard-copy ema tracks online: max|dz| {eq:.1e} "
+                     f"< 5pct of |z|max {zsc:.1e}")
 
             # U19b: after one optimizer step + update, ema LAGS (differs, moves less)
             p0_on = model.field.g_proj.weight.detach().clone()
@@ -1020,8 +1039,16 @@ def main():
                 ze2 = ema_field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)[0]
                 zo2 = model.field.encode(sq_u, mv_u, ed_u, mk_u, elo=el_u, pslot=ps_u)[0]
             diff = float((zo2 - ze2).abs().max())
-            gate("U19b", d_on > 0 and 0 < d_em < 0.01 * d_on and diff > 0,
-                 f"lag: online moved {d_on:.2e}, ema {d_em:.2e} (<1pct), outputs differ {diff:.2e}")
+            # the EMA's per-step movement is (1-decay) x its CURRENT GAP to online --
+            # near zero from a fresh hard copy, larger from a restored lag. Testing it
+            # against the online step size only holds in the fresh case; test the
+            # decay law itself, which holds in both.
+            gap = float((model.field.g_proj.weight - p0_em).abs().max())
+            pred = (1.0 - args.ema_decay) * gap
+            ok19b = d_on > 0 and diff > 0 and d_em <= max(1.5 * pred, 1e-9)
+            gate("U19b", ok19b,
+                 f"lag obeys decay law: online moved {d_on:.2e}, ema {d_em:.2e} "
+                 f"<= 1.5x(1-d)*gap {pred:.2e}, outputs differ {diff:.2e}")
 
         # U20: the configuration's INTENT is armed -- value heads exist and the
         # value losses actually fire (a guarded feature silently off gated green
