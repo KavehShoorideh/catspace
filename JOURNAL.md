@@ -15951,3 +15951,38 @@ would re-dilute sf back toward zero, which is the bug.
 **gko3b RELAUNCHED** from the clean gko3a_step8000 parent (the 1000 broken steps
 discarded, not resumed), all gates green in both fresh and resumed modes, EMA lag
 preserved, startup diet line clean.
+
+**REVISION to the gko3a play diagnosis (2026-08-23): the "design defects" are very
+likely STARVATION ARTIFACTS.** The SF-starvation discovery reaches backwards into
+gko3a, and the printed trajectory says so plainly. gko3a's sf loss over its run:
+3.868 (step 1) / 3.095 / 3.034 / 3.258 / 3.296 / 3.363 / 2.779 / 3.730 / **4.219
+(step 8000)** -- it ended WORSE THAN IT STARTED, while maia loss improved
+monotonically over the same steps (3.417 -> 2.286). A single objective degrading
+while its co-objectives improve is the signature of a shrinking, noisier sample,
+not of optimization. Corroboration: every shard written DURING gko3a's window
+(03:12-04:12, mid-run) is 100pct kind==1, so the converter was actively evicting
+sf-bearing shards from the rotation while gko3a trained; gko3a launched at 7.3pct
+sf and three hours after it finished the window was 0pct.
+
+This reframes BOTH findings from this morning's battery, and they collapse into one
+cause. (a) The sharp head's untethered LEVEL (0.978 for a mover down a queen)
+while its ORDERING stayed good (held-out spearman 0.544): ordering is scale-free
+and robust to thin data; absolute calibration is exactly what starves first.
+(b) The inert rolled value path: `l_sv` -- state-value from every SF shard row --
+is what feeds sf_v_full's material sightedness, and it is gated on the same
+`kind == 0`. Starve sf rows and you disable precisely the term whose code comment
+reads "value heads trained only on mostly-balanced chains never learn material".
+That is the queen-probe failure mode, re-entered silently.
+
+Also consistent: gko2i, the 62pct incumbent, trained EARLIER when the sf diet was
+healthy; gen5 never got one. The play gap may be substantially a diet gap, not an
+architecture gap.
+
+GRADED. Proven: the sf loss degraded across gko3a; mid-run shards were sf-free.
+Plausible (the leading hypothesis, NOT established): that starvation caused the
+untethered level and the flat rolled values. The two design changes proposed this
+morning (tie sf_av's level to the WDL head; add a sibling-contrast objective) are
+therefore NOT yet justified -- gko3b at 36pct sf is the clean test, and it must run
+before any design change is argued for. If the untethered level and the flat rolled
+spread both improve at 16k with no architectural change, the design was never the
+problem.
