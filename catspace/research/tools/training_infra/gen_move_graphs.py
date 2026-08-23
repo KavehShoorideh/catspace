@@ -49,6 +49,38 @@ def glob_of_board(b):
                      int(b.has_queenside_castling_rights(chess.BLACK)), ep], np.uint8)
 
 
+_SLOT_ORDER = {1: (8, 16), 2: (6, 8), 3: (4, 6), 4: (2, 4), 5: (1, 2), 6: (0, 1)}
+# per side: K=0, Q=1, R=2-3, B=4-5, N=6-7, P=8-15 (by square order within type);
+# promoted extras beyond standard counts fill vacant pawn slots. CANONICAL-BY-BOARD:
+# identity is deterministic from the position alone (no history); twin pieces that
+# cross in square order swap slots -- rare, documented, the v1 price of a
+# board-only API (gcf5 piece concepts).
+
+
+def piece_slots(b):
+    """(64,) uint8: which of 32 piece slots occupies each square; 255 = empty."""
+    import chess
+    ps = np.full(64, 255, np.uint8)
+    for color in (chess.WHITE, chess.BLACK):
+        base = 0 if color else 16
+        used = set()
+        overflow = []
+        for pt in (6, 5, 4, 3, 2, 1):
+            lo, hi = _SLOT_ORDER[pt]
+            sqs = sorted(b.pieces(pt, color))
+            for i, sq in enumerate(sqs):
+                slot = lo + i
+                if slot < hi:
+                    ps[sq] = base + slot
+                    used.add(slot)
+                else:
+                    overflow.append(sq)
+        free_pawn = [k for k in range(8, 16) if k not in used]
+        for sq, slot in zip(overflow, free_pawn):
+            ps[sq] = base + slot
+    return ps
+
+
 def parent_graph(b, nxt_tok=None):
     """all parent-side arrays for ONE position -- the single source of truth shared by this
     offline generator and the live policies (arena play must build the exact encoding training
@@ -62,6 +94,7 @@ def parent_graph(b, nxt_tok=None):
     vac = np.full((MV_CAP, VAC_CAP), 255, np.uint8)
     dsc = np.full((MV_CAP, DISC_CAP), 255, np.uint8)
     att = np.full((ATT_CAP, 2), 255, np.uint8)
+    pslot = piece_slots(b)
     tc = dict(mv=0, mut=0, vac=0, att=0)
     kw, kb = b.king(chess.WHITE), b.king(chess.BLACK)
     ring_w = chess.SquareSet(chess.BB_KING_ATTACKS[kw]) if kw is not None else chess.SquareSet()
@@ -135,7 +168,7 @@ def parent_graph(b, nxt_tok=None):
                   {None: 0, chess.KNIGHT: 1, chess.BISHOP: 2, chess.ROOK: 3,
                    chess.QUEEN: 4}.get(m.promotion, 0),
                   int(gc), len(new), int(castle), 0)
-    return (dict(sq=sq, mv=mvi, mut=mut, vac=vac, dsc=dsc, att=att,
+    return (dict(sq=sq, pslot=pslot, mv=mvi, mut=mut, vac=vac, dsc=dsc, att=att,
                  n_mv=len(mv), played=played, n_att=ne), tc)
 
 
