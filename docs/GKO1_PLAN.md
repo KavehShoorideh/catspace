@@ -396,3 +396,11 @@ injection, MuZero-orthodox, and faster at depth (no per-candidate flag computati
 ~1s/move saved at d5-6). PRE-REGISTERED GATE: rolled-check AUC (rolled state's
 king-danger readout vs python-chess gives_check truth); the flag returns only on
 measured emergence failure.
+
+## GATE CORRECTION (Kaveh, immediately following): NO named-concept gates, ever
+The rolled-check AUC is DEMOTED from gate to optional post-hoc description. "The
+check concept might be spread across three other concepts. I don't need to see it.
+I just need to see it play well." Standing epistemology, third statement of the same
+ruling this week: GATES = performance (play strength, outcome prediction, decor
+health). PROBES = post-hoc interpretation only, never pass/fail. Named-concept
+recovery is a curiosity, not a criterion.
