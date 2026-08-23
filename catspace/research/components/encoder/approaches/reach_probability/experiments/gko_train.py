@@ -408,6 +408,21 @@ def main():
             N = len(D["kind"])
             hold = np.concatenate(hold_chunks)
             tr_i = np.flatnonzero(~hold); te_i = np.flatnonzero(hold)
+            # DIET GATE (2026-08-23): sf_av's ONLY gradient, l_sf, and l_sv (the
+            # material-sightedness supervision behind the queen-probe fix) all live
+            # behind `kind == 0`. A shard window that rotates sf-free switches them
+            # off silently -- every remaining gauge stays healthy while the sharp
+            # head freezes under a drifting field. Never let that pass unannounced.
+            k_arr = D["kind"].numpy()
+            sf_frac = float((k_arr == 0).mean()) if len(k_arr) else 0.0
+            if sf_frac < 0.05:
+                print(f"[gko1] ALARM sf-diet {sf_frac:.3%} of {N:,} rows (<5pct) -- "
+                      f"l_sf/l_sv/sf_av get NO gradient; convert sf shards "
+                      f"(gko_data loop --oracle sf --newest) before trusting this run",
+                      flush=True)
+            else:
+                print(f"[gko1] diet: sf {sf_frac:.0%} / maia {1-sf_frac:.0%} "
+                      f"of {N:,} rows", flush=True)
 
     def batch_of(idx):
         b = {k: D[k][idx].to(dev) for k in ("sq", "gl", "mv", "mut", "att",

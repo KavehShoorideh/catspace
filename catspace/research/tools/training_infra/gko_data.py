@@ -43,13 +43,27 @@ def ensure_flag():
     c.close()
 
 
-def convert_batch(out_dir, batch=SHARD_N):
+def convert_batch(out_dir, batch=SHARD_N, oracle_like=None, newest=False):
+    """oracle_like: optional SQL LIKE pattern ('sf', 'maia:%') restricting which
+    oracle's labels this batch drains. The unfiltered scan drains in rowid order,
+    which starves whichever oracle was enqueued later -- sf sat at 4.9pct converted
+    while maia bands ran to 96pct, so the shard window went sf-free and silently
+    switched off l_sf/l_sv and every sf_av gradient (2026-08-23)."""
     import chess
     from catspace.research.tools.training_infra.gen_move_graphs import (
         parent_graph, glob_of_board)
     c = db()
-    rows = c.execute("SELECT fen, oracle, payload, rowid FROM labels "
-                     "WHERE converted=0 LIMIT ?", (batch,)).fetchall()
+    # newest-first matters: the WDL re-labelling APPENDED rows, so the newest sf
+    # labels carry wdl triples (100pct of the newest 5k) and the oldest carry none
+    # (0pct). Draining ascending yields wdl-free shards and silently kills l_sv.
+    order = "ORDER BY rowid DESC " if newest else ""
+    if oracle_like:
+        rows = c.execute("SELECT fen, oracle, payload, rowid FROM labels "
+                         f"WHERE converted=0 AND oracle LIKE ? {order}LIMIT ?",
+                         (oracle_like, batch)).fetchall()
+    else:
+        rows = c.execute("SELECT fen, oracle, payload, rowid FROM labels "
+                         f"WHERE converted=0 {order}LIMIT ?", (batch,)).fetchall()
     if not rows:
         c.close()
         return 0
@@ -111,18 +125,30 @@ def main():
     p = sub.add_parser("loop")
     p.add_argument("--out", default="data/derived/gko1_shards")
     p.add_argument("--batch", type=int, default=SHARD_N)
+    p.add_argument("--oracle", default=None, help="SQL LIKE filter, e.g. 'sf'")
+    p.add_argument("--shards", type=int, default=0, help="stop after N shards (0=forever)")
+    p.add_argument("--newest", action="store_true", help="drain newest rowids first (wdl-bearing)")
     p = sub.add_parser("once")
     p.add_argument("--out", default="data/derived/gko1_shards")
     p.add_argument("--batch", type=int, default=SHARD_N)
+    p.add_argument("--oracle", default=None, help="SQL LIKE filter, e.g. 'sf'")
+    p.add_argument("--shards", type=int, default=0, help="stop after N shards (0=forever)")
+    p.add_argument("--newest", action="store_true", help="drain newest rowids first (wdl-bearing)")
     a = ap.parse_args()
     ensure_flag()
-    t0 = time.time(); tot = 0
+    t0 = time.time(); tot = 0; nsh = 0
     while True:
-        n = convert_batch(a.out, a.batch)
+        n = convert_batch(a.out, a.batch, a.oracle, a.newest)
         tot += n
         if n:
-            print(f"[gko-data] {tot:,} converted ({tot/(time.time()-t0):.0f}/s)",
+            nsh += 1
+            print(f"[gko-data] {tot:,} converted ({tot/(time.time()-t0):.0f}/s)"
+                  + (f" [{a.oracle}] shard {nsh}"
+                     + (f"/{a.shards}" if a.shards else "") if a.oracle else ""),
                   flush=True)
+        if a.shards and nsh >= a.shards:
+            print(f"[gko-data] reached --shards {a.shards}; stopping", flush=True)
+            break
         if a.cmd == "once" or (n == 0 and a.cmd == "once"):
             break
         if n == 0:
