@@ -363,3 +363,13 @@ the roll; data already flows); (b) MOVE-CODE PREDICTOR from rolled state + move
 tokens (closes operator selection); (c) token-preserving state (gcf5 format lever).
 (a)+(b) are trainable in the CURRENT lineage. Endgame: ~25ms/move, another 10x on
 strength-per-node.
+
+## SEARCH CADENCE CONTRACT (Kaveh 2026-08-23: "happy to re-encode like MuZero after
+## every move, but search shouldn't need re-encoding")
+Encode ONCE per real game move; zero encodes inside a search. Arithmetic: 1 encode
+(23ms) + ~1800 operator applies at the same per-move budget = wide depth 4-6 in
+concept space (vs 9 encodes + 180 applies today). Requirement: av_roll (the rolled
+scorer -- ALREADY the student) closes ordering 0.27 -> ~0.5 via (i) move-code
+embedding input, (ii) sharp-head soft-target distillation at encoded states,
+(iii) capacity; structural unlock = gcf5 token-preserving state. MuZero-consistent:
+heads trained through the dynamics make latent-only search sound.
