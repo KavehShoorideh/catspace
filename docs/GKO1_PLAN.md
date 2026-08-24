@@ -464,3 +464,26 @@ for EACH candidate (33 PVs/position); oracle_service keeps only pv[0]. Recording
 would give ~33 trajectories per position instead of the chain's single played line --
 the "Stockfish for all children six plies down" data, already computed today and
 thrown away. Free for new labels; a re-label for the existing 4.2M.
+
+## Ruling 2026-08-24: the operator is state-conditioned, and composability is spent
+
+`move_weights` now takes the POST-INTERACTION concepts (the phi tail of z_aug, after
+the interaction transformer) alongside the move. Rationale, measured: without it K(m)
+is a FIXED matrix per move identity -- the same transform in the opening and the
+endgame -- so it cannot express that Nf3 is a capture *here*, and the rolled path
+emitted a near-constant across siblings (4pct of the true spread; within-position
+ordering 0.00 vs the sharp head's 0.532).
+
+COST, ACCEPTED BY KAVEH: K is no longer linear in z, so K(m1)K(m2) is not a matrix
+product and the operator is not a composable Koopman operator. His ruling: "we never
+want to see exactly n plies ahead in one shot, we're happy to roll forward one ply at
+a time." Search applies sequentially and re-derives the mixture at each node, so the
+composition property was never being used. Everything that motivated the linear
+design is retained: one encode at the root, one matmul per node, no re-encoding
+anywhere below it.
+
+FOLLOW-ON worth remembering: several constraints in this stack exist to keep LONG
+COMPOSITIONS stable -- the spectral projection (U *= 0.97 when rho > 1.03) and, in
+part, the identity prior. If we only ever roll 4-6 plies with weights re-derived each
+step, those are more conservative than the use-case requires and are candidate levers
+if the operator turns out to need more expressiveness. Not changed yet; flagged.
