@@ -103,6 +103,17 @@ def main():
                          "move's own SF WDL. The only term that asks the operator's "
                          "move-dependent component to separate siblings (2026-08-23: "
                          "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--state-mix", action="store_true",
+                    help="condition the operator's basis mixture on the POST-"
+                         "INTERACTION concepts (phi) as well as the move. Without it "
+                         "K(m) is a fixed matrix per move identity -- the same in the "
+                         "opening and the endgame -- which is the architectural "
+                         "ceiling on within-position sibling discrimination.")
+    ap.add_argument("--sib-pl", action="store_true",
+                    help="score the sibling term with listwise Plackett-Luce instead "
+                         "of per-move KL. KL is satisfied by predicting the position "
+                         "MEAN (measured: 4pct of true spread, ordering 0.00); PL "
+                         "scores only the ORDER and penalises a constant.")
     ap.add_argument("--all-ply", action="store_true",
                     help="supervise the operator and value head at EVERY ply 1..6 "
                          "instead of {1,3,6}. Unsupervised plies came out "
@@ -143,6 +154,7 @@ def main():
     from catspace.research.components.encoder.approaches.reach_probability.experiments \
         .graph_move_policy import featurize
     from catspace.research.tools.training_infra.hl_gauss import HLGauss
+    from catspace.research.tools.training_infra.losses import plackett_luce
     from catspace.research.tools.training_infra.koopman_ops import (
         InteractionLift, KoopmanOps, BasisOps, TransformerLift, one_ply_loss,
         rollout, lift_consistency)
@@ -201,7 +213,9 @@ def main():
                     self.lift = InteractionLift(field.d_state, args.d_phi)
                 if args.gen5:
                     self.ops = BasisOps(self.lift.d_aug, n_basis=64,
-                                        rank=args.op_rank)
+                                        rank=args.op_rank,
+                                        d_phi=(self.lift.d_aug - self.lift.d_state)
+                                        if args.state_mix else 0)
                 else:
                     self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
                                           rank=args.op_rank)
@@ -568,7 +582,8 @@ def main():
                 l_mid = l_mid + _comp(traj[:, _k], zq_c[:, _k])
             l_mid = l_mid / 3.0
         if args.gen5:
-            l_spec, rho = model.ops.spectral_penalty(fs[0], ts[0], ps_[0])
+            l_spec, rho = model.ops.spectral_penalty(fs[0], ts[0], ps_[0],
+                                                     z_aug=za_root)
             l_spec = l_spec + 0.05 * model.ops.identity_prior(args.u_pen)
         else:
             l_spec, rho = model.ops.spectral_penalty(code_seq.ravel())
@@ -879,11 +894,24 @@ def main():
                     pro = raw_a[ri, order, 5][vsel]
                     zrep = za_a[:, None, :].expand(-1, nsel, -1)[vsel]
                     zc = model.ops(zrep, frm, to, pro)
-                    tg_s = wrow_a[ri, order][vsel].flip(-1)        # child-mover POV
-                    tg_s = tg_s.clamp(min=1e-6)
-                    tg_s = tg_s / tg_s.sum(-1, keepdim=True)
-                    lp_s = torch.log_softmax(model.sf_v_full(zc), -1)
-                    l_sib = -(tg_s.detach() * lp_s).sum(-1).mean()
+                    wsel_s = wrow_a[ri, order]                     # (B,nsel,3) parent POV
+                    if args.sib_pl:
+                        # LISTWISE: score only the ORDER. KL below is minimised well
+                        # by emitting the position MEAN for every sibling (measured:
+                        # 4pct of true spread, within-position ordering 0.00); PL has
+                        # no constant escape.
+                        pr_c = torch.softmax(model.sf_v_full(zc), -1)
+                        vc = pr_c[:, 0] + 0.5 * pr_c[:, 1]         # child-mover POV
+                        sc = torch.zeros(vsel.shape, device=dev, dtype=vc.dtype)
+                        sc[vsel] = 1.0 - vc                        # parent-POV score
+                        tv = (wsel_s[..., 0] + 0.5 * wsel_s[..., 1])
+                        l_sib = plackett_luce(sc, tv.detach(), vsel)
+                    else:
+                        tg_s = wsel_s[vsel].flip(-1)               # child-mover POV
+                        tg_s = tg_s.clamp(min=1e-6)
+                        tg_s = tg_s / tg_s.sum(-1, keepdim=True)
+                        lp_s = torch.log_softmax(model.sf_v_full(zc), -1)
+                        l_sib = -(tg_s.detach() * lp_s).sum(-1).mean()
         l_iv = torch.zeros((), device=dev)
         iv_stats = None
         if args.iv and ks.any():
@@ -1196,6 +1224,28 @@ def main():
                                          retain_graph=True, allow_unused=True)[0]
                 gsib = float(gU.abs().max()) if gU is not None else 0.0
                 gvsib = float(gM.abs().max()) if gM is not None else 0.0
+            # U22: state-conditioning must make K ACTUALLY depend on z. Zero-init
+            # means a fresh model is identical to the old one, so this gate would pass
+            # vacuously at step 0 -- it therefore perturbs state_proj and checks the
+            # weights MOVE, i.e. that the wiring is live rather than merely present.
+            if args.state_mix and hasattr(model.ops, "state_proj"):
+                with torch.no_grad():
+                    z1 = torch.randn(1, model.ops.d_aug, device=dev)
+                    z2 = torch.randn(1, model.ops.d_aug, device=dev)
+                    f1 = torch.zeros(1, dtype=torch.long, device=dev)
+                    w_a = model.ops.move_weights(f1, f1, f1, z1)
+                    w_b = model.ops.move_weights(f1, f1, f1, z2)
+                    same_at_init = float((w_a - w_b).abs().max())
+                    model.ops.state_proj.weight.normal_(0, 0.1)
+                    w_c = model.ops.move_weights(f1, f1, f1, z1)
+                    w_d = model.ops.move_weights(f1, f1, f1, z2)
+                    live = float((w_c - w_d).abs().max())
+                    model.ops.state_proj.weight.zero_()
+                gate("U22", same_at_init == 0.0 and live > 1e-6,
+                     f"state-conditioned mixing: zero-init reproduces old operator "
+                     f"exactly ({same_at_init:.1e}), and once weighted the SAME move "
+                     f"gets different mixtures in different states ({live:.2e})")
+
             gate("U21", gsib > 0 and gvsib > 0 and pov_ok,
                  f"sibling loss reaches move-conditioning: grad U {gsib:.2e}, "
                  f"grad mix {gvsib:.2e} (both > 0 required) | POV flip {pov_ok}")

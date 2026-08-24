@@ -195,9 +195,24 @@ class BasisOps(nn.Module):
     mixture weights = soft move concepts (discrete readout via argmax on demand)."""
 
     def __init__(self, d_aug: int, n_basis: int = 64, rank: int = 16,
-                 d_move: int = 64, rho_max: float = 1.02):
+                 d_move: int = 64, rho_max: float = 1.02, d_phi: int = 0):
         super().__init__()
         self.d_aug, self.n_basis, self.rank, self.rho_max = d_aug, n_basis, rank, rho_max
+        # STATE-CONDITIONED MIXING (Kaveh 2026-08-24: "the state absolutely must be in
+        # the operator... post interaction concepts and the move"). Without this,
+        # move_weights ignores z entirely, so K(m) is a FIXED matrix per move identity
+        # -- the same transform in the opening and the endgame. But what Nf3 DOES
+        # depends on the position (capture? block? defend?), so a position-independent
+        # map cannot express it, and the rolled path emitted a near-constant across
+        # siblings (4pct of true spread, ordering 0.00).
+        # phi is the lift's POST-INTERACTION tail of z_aug, i.e. concepts after the
+        # interaction transformer -- not the raw pre-interaction heads.
+        # Zero-init so a fresh/resumed model starts EXACTLY at the old behaviour.
+        self.d_phi = int(d_phi)
+        if self.d_phi:
+            self.state_proj = nn.Linear(self.d_phi, d_move)
+            nn.init.zeros_(self.state_proj.weight)
+            nn.init.zeros_(self.state_proj.bias)
         self.A = nn.Parameter(torch.eye(d_aug))
         self.U = nn.Parameter(torch.randn(n_basis, d_aug, rank) / math.sqrt(d_aug))
         self.V = nn.Parameter(torch.zeros(n_basis, rank, d_aug))
@@ -207,12 +222,17 @@ class BasisOps(nn.Module):
         self.emb_promo = nn.Embedding(5, d_move)
         self.mix = nn.Linear(d_move, n_basis)
 
-    def move_weights(self, frm, to, promo):
+    def move_weights(self, frm, to, promo, z_aug=None):
         e = self.emb_from(frm) + self.emb_to(to) + self.emb_promo(promo)
+        if self.d_phi and z_aug is not None:
+            phi = z_aug[..., -self.d_phi:]
+            if phi.dim() == 1:
+                phi = phi[None]
+            e = e + self.state_proj(phi)
         return torch.softmax(self.mix(e), -1)             # (B, K)
 
     def forward(self, z_aug, frm, to, promo):
-        w = self.move_weights(frm, to, promo)             # (B, K)
+        w = self.move_weights(frm, to, promo, z_aug)      # (B, K)
         out = z_aug @ self.A.T
         t = torch.einsum("bd,krd->bkr", z_aug, self.V)    # V_k z
         t = t * w[..., None]
@@ -231,23 +251,26 @@ class BasisOps(nn.Module):
         z: (d_aug,) or (1, d_aug). Returns (n_moves, d_aug).
         """
         z = z.reshape(-1)
-        w = self.move_weights(frm, to, promo)                  # (n, K)
+        # phi is shared across the batch here too, so state conditioning costs one
+        # extra (1, d_phi) @ (d_phi, d_move) -- the shared-z speedup is preserved
+        w = self.move_weights(frm, to, promo, z)               # (n, K)
         az = z @ self.A.T                                      # (d,)   once
         vz = torch.einsum("d,krd->kr", z, self.V)              # (K, r) once
         t = (w[..., None] * vz[None]).reshape(len(w), -1)      # (n, K*r)
         u = self.U.permute(0, 2, 1).reshape(-1, self.d_aug)    # (K*r, d)
         return az[None] + t @ u
 
-    def matrix(self, frm, to, promo):
-        w = self.move_weights(frm, to, promo)
+    def matrix(self, frm, to, promo, z_aug=None):
+        w = self.move_weights(frm, to, promo, z_aug)
         B = torch.einsum("bk,kdr,kre->bde", w, self.U, self.V)
         return self.A.unsqueeze(0) + B
 
     def spectral_penalty(self, frm, to, promo, k: int = 8, iters: int = 48,
-                         keep: int = 24):
+                         keep: int = 24, z_aug=None):
         n = min(k, len(frm))
         idx = torch.randperm(len(frm), device=frm.device)[:n]
-        w = self.move_weights(frm[idx], to[idx], promo[idx])
+        zs = None if z_aug is None else (z_aug[idx] if z_aug.dim() > 1 else z_aug)
+        w = self.move_weights(frm[idx], to[idx], promo[idx], zs)
         v = torch.randn(n, self.d_aug, device=self.A.device, dtype=self.A.dtype)
         v = v / v.norm(dim=-1, keepdim=True)
         logs = []

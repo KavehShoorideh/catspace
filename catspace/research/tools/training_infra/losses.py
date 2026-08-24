@@ -1574,3 +1574,39 @@ def cross_head_decorrelation(pre_g):
     off = (c ** 2).mean(dim=(2, 3)) * pre_g.shape[-1]
     mask = ~torch.eye(H, dtype=torch.bool, device=pre_g.device)
     return off[mask].mean()
+
+
+def plackett_luce(scores, target, mask, tau=1.0):
+    """Listwise Plackett-Luce NLL of the ordering that `target` induces.
+
+    Why this and not KL-per-item (2026-08-24): within a chess position SF's move
+    values are tightly clustered (sd ~0.116 on [0,1]), so a KL against each move's
+    value is very well satisfied by predicting the position MEAN for every sibling --
+    measured, the rolled path did exactly that, emitting 4pct of the true spread and
+    a within-position ordering of 0.00. PL has no such escape: it scores only the
+    ORDER, is invariant to any shift or positive rescale of `scores`, and its gradient
+    is driven entirely by pairs that are ranked wrongly.
+
+    scores: (B, N) model scores, higher = better.
+    target: (B, N) reference values, higher = better; only their ORDER is used.
+    mask:   (B, N) True where the slot is a real move.
+    Returns a scalar mean NLL over rows with >= 2 valid moves.
+    """
+    import torch
+    s = scores / tau
+    s = s.masked_fill(~mask, -1e9)
+    t = target.masked_fill(~mask, -float("inf"))
+    order = t.argsort(dim=-1, descending=True)
+    s_sorted = s.gather(-1, order)
+    m_sorted = mask.gather(-1, order)
+    s_sorted = s_sorted.masked_fill(~m_sorted, -1e9)
+    # denominator for position i is logsumexp over the SUFFIX i..N (the items still
+    # unchosen), so a reverse cumulative logsumexp gives all N terms in one pass
+    rev = torch.logcumsumexp(s_sorted.flip(-1), dim=-1).flip(-1)
+    nll = -(s_sorted - rev)
+    nll = nll.masked_fill(~m_sorted, 0.0)
+    n_valid = mask.sum(-1)
+    keep = n_valid >= 2
+    if not keep.any():
+        return scores.sum() * 0.0
+    return (nll.sum(-1)[keep] / n_valid[keep].clamp(min=1)).mean()
