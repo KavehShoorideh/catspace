@@ -17238,3 +17238,30 @@ TERMINATED __init__ mid-body -- everything after it, including `move_head`, sile
 stopped being constructed. Caught by the gates (AttributeError), not by reading.
 
 ALL UNIT GATES PASS with --gen6 --binary --depth-cost together.
+
+**gko6a NaN ROOT-CAUSED: an empty fast-head slice, created by the 64->32 board cut
+(2026-08-24).** The run died at step 4 with a non-finite loss three times. Diagnosis
+took three wrong guesses before instrumentation gave the answer, which is the lesson.
+
+CAUSE: `l_dec = vicreg_covariance(pre_g[:, sl:])` where `sl = slow_heads *
+code_width`. Kaveh cut the board to 32 heads, but `slow_heads` was still 32 -- so
+EVERY head is slow, the fast slice `[:, sl:]` is EMPTY, and vicreg on an empty tensor
+is NaN. Verified directly: vicreg_covariance(randn(128, 0)) -> nan.
+
+TWO FIXES, both needed:
+  * vicreg_covariance now returns 0 for a degenerate (<2 column) slice. A guard
+    alone would have SILENTLY disabled decorrelation, so it is not sufficient.
+  * slow_heads 32 -> 16, restoring a real 16-slow/16-fast split. This is the actual
+    bug: the slow/fast split stopped being a split when the head count halved.
+
+METHOD NOTE, the real lesson. I guessed the cause three times -- LFQ's entropy loss,
+then VAMP-2's inverse square root, then vicreg-on-constant-dims -- and tested each in
+ISOLATION, where all three passed. The isolated tests were not wrong, they were
+answering a different question than the one the run was asking. What found it was
+adding per-sub-term finiteness to op_losses' returned dict so the alarm NAMES the
+culprit: 'culprits: [NONFINITE_dec]'. That instrumentation is now permanent.
+
+Also note the guard did its job perfectly throughout: state saved, exit 3, nothing
+corrupted, three failed launches cost minutes rather than hours.
+
+gko6a is now RUNNING past the failure point with binary concepts + depth cost.

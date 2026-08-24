@@ -763,11 +763,20 @@ def main():
                  args.w_slow * l_slow * args.vamp_every + args.w_dec * l_dec * args.vamp_every)
         with torch.no_grad():
             cons6 = float(lift_consistency(model.lift, traj[:, 5]).mean())
+        # If any operator sub-term is non-finite, NAME it. A bare 'op_total=nan'
+        # left me guessing twice (LFQ entropy, then VAMP) and wrong both times.
+        _nf = {}
+        for _n, _t in (("l1", l1), ("l3", l3), ("l6", l6), ("mid", l_mid),
+                       ("spec", l_spec), ("mlp", l_mlp), ("v", l_v),
+                       ("cons", l_cons), ("move", l_move), ("dyn2", l_dyn2),
+                       ("slow", l_slow), ("dec", l_dec)):
+            if not bool(torch.isfinite(torch.as_tensor(_t)).all()):
+                _nf["NONFINITE_" + _n] = float("nan")
         return total, {"op1": float(l1), "op3": float(l3), "op6": float(l6),
                        "mlp": float(l_mlp), "rho": float(rho.max()), "cons6": cons6,
                        "move": float(l_move), "dyn2": float(l_dyn2), "vamp": vamp_v,
                        "lv": float(l_v), "vn": v_n, "cons_l": float(l_cons),
-                       "phivar": float(model.lift.phi(zq_p.detach()).std(0).mean())}
+                       "phivar": float(model.lift.phi(zq_p.detach()).std(0).mean()), **_nf}
 
     @torch.no_grad()
     def op_eval(n_ch=384):
@@ -1022,8 +1031,10 @@ def main():
             # PAUSE-ALARM: save state, exit 3; the watchdog surfaces it (pause, not kill)
             torch.save({"state_dict": model.state_dict(), "step": step,
                         "args": vars(args)}, args.out + "_nanpause.pt")
-            print(f"[gko1] ALARM non-finite loss at step {step}; state saved; pausing",
-                  flush=True)
+            _culprits = [k for k in (op_d or {}) if k.startswith("NONFINITE_")]
+            print(f"[gko1] ALARM non-finite loss at step {step}; state saved; pausing"
+                  f" | culprits: {_culprits or 'none in op_losses -- check the main '
+                  'losses or the vq/aux terms folded into vl'}", flush=True)
             raise SystemExit(3)
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)

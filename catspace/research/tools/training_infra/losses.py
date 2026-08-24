@@ -857,6 +857,12 @@ def vicreg_covariance(z):
     Complements vicreg_variance: the variance term alone is satisfied by d copies of a single
     informative axis, which is collapse of rank rather than collapse of scale and would pass an
     std-only gate untouched."""
+    # an EMPTY or single-column slice has no off-diagonal covariance to
+    # penalise; returning nan poisons the whole loss. This fires when the
+    # caller's slow/fast head split leaves no fast heads (2026-08-24:
+    # board cut to 32 heads with slow_heads still 32 -> empty fast slice).
+    if z.ndim < 2 or z.shape[-1] < 2:
+        return z.sum() * 0.0
     n, d = z.shape
     zc = z - z.mean(dim=0, keepdim=True)
     cov = (zc.T @ zc) / max(n - 1, 1)
