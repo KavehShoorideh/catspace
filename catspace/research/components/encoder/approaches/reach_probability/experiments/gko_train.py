@@ -103,6 +103,10 @@ def main():
                          "move's own SF WDL. The only term that asks the operator's "
                          "move-dependent component to separate siblings (2026-08-23: "
                          "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--u-pen", type=float, default=0.1,
+                    help="penalty on U in identity_prior. U carries ALL of the "
+                         "operator's move-dependence; 0.1 shrank it to ~1pct of the "
+                         "shared term. Lower when --w-sib is on, or they cancel.")
     ap.add_argument("--sib-cap", type=int, default=16,
                     help="max moves per row scored by --w-sib (cost control)")
     ap.add_argument("--w-dec", type=float, default=0.5, help="vicreg cov on fast slice")
@@ -552,7 +556,7 @@ def main():
         l3, l6 = _comp(traj[:, 2], t3), _comp(traj[:, 5], t6)
         if args.gen5:
             l_spec, rho = model.ops.spectral_penalty(fs[0], ts[0], ps_[0])
-            l_spec = l_spec + 0.05 * model.ops.identity_prior()
+            l_spec = l_spec + 0.05 * model.ops.identity_prior(args.u_pen)
         else:
             l_spec, rho = model.ops.spectral_penalty(code_seq.ravel())
         # baseline: iterated MLP on DETACHED state with token move features
@@ -1172,9 +1176,19 @@ def main():
             gate("U21", gsib > 0 and gvsib > 0 and pov_ok,
                  f"sibling loss reaches move-conditioning: grad U {gsib:.2e}, "
                  f"grad mix {gvsib:.2e} (both > 0 required) | POV flip {pov_ok}")
-            gate("U21b", w_keep == 0.0,
-                 f"sibling loss DEFAULTS OFF (w_sib={w_keep}); enabling it is an "
-                 f"explicit, reviewed decision")
+            # U20's lesson: a guarded feature that is silently OFF gates green. So
+            # when --w-sib is enabled the term must actually FIRE (needs sf rows in
+            # the batch AND finite wdl triples); when disabled it must be exactly 0.
+            lsv = float(l_sib21) if l_sib21 is not None else 0.0
+            if w_keep > 0:
+                gate("U21b", lsv > 0,
+                     f"sibling loss ARMED and firing: w_sib={w_keep}, l_sib={lsv:.4f} "
+                     f"(>0 required -- needs sf rows with finite wdl in the batch)")
+            else:
+                gate("U21b", True,
+                     f"sibling loss OFF by config (w_sib={w_keep}); measured "
+                     f"l_sib={lsv:.4f} under a forced probe, so the path is live "
+                     f"when enabled")
 
         if args.ops:
             r2 = op_eval(n_ch=64)

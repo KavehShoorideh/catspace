@@ -240,9 +240,18 @@ class BasisOps(nn.Module):
         rho = torch.stack(logs[-keep:], -1).mean(-1).exp()
         return F.relu(rho - self.rho_max).pow(2).mean(), rho.detach()
 
-    def identity_prior(self):
-        """Kaveh's I+delta: the delta earns its magnitude everywhere, ongoing."""
-        return (self.A - torch.eye(self.d_aug, device=self.A.device)).pow(2).mean()             + self.U.pow(2).mean() * 0.1
+    def identity_prior(self, u_pen: float = 0.1):
+        """Kaveh's I+delta: the delta earns its magnitude everywhere, ongoing.
+
+        `u_pen` scales the penalty on U. CAUTION (2026-08-23): U carries the
+        ENTIRE move-dependent part of K(m) = A + sum_k w_k(m) U_k V_k^T. Measured
+        over 47 real positions, that term had shrunk to ~0.5-1pct of the shared A
+        term -- ~99pct of the operator was identical whichever move was played,
+        so no downstream head could separate siblings. Penalising U buys slowness
+        at the direct cost of move-conditioning; lower it when a loss (--w-sib) is
+        actively asking the operator to distinguish moves, or the two cancel."""
+        return ((self.A - torch.eye(self.d_aug, device=self.A.device)).pow(2).mean()
+                + self.U.pow(2).mean() * u_pen)
 
 
 # ---------------------------------------------------------------------------------
