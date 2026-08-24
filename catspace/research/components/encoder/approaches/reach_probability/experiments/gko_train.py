@@ -1230,21 +1230,37 @@ def main():
             # weights MOVE, i.e. that the wiring is live rather than merely present.
             if args.state_mix and hasattr(model.ops, "state_proj"):
                 with torch.no_grad():
+                    # RESTORE, never zero_(): an earlier version of this gate reset
+                    # state_proj to zero after probing, silently wiping whatever the
+                    # resumed checkpoint had learned. A diagnostic must not mutate
+                    # the thing it measures.
+                    keep_w = model.ops.state_proj.weight.detach().clone()
                     z1 = torch.randn(1, model.ops.d_aug, device=dev)
                     z2 = torch.randn(1, model.ops.d_aug, device=dev)
                     f1 = torch.zeros(1, dtype=torch.long, device=dev)
                     w_a = model.ops.move_weights(f1, f1, f1, z1)
                     w_b = model.ops.move_weights(f1, f1, f1, z2)
                     same_at_init = float((w_a - w_b).abs().max())
+                    w_is_zero = float(keep_w.abs().max()) == 0.0
                     model.ops.state_proj.weight.normal_(0, 0.1)
                     w_c = model.ops.move_weights(f1, f1, f1, z1)
                     w_d = model.ops.move_weights(f1, f1, f1, z2)
                     live = float((w_c - w_d).abs().max())
-                    model.ops.state_proj.weight.zero_()
-                gate("U22", same_at_init == 0.0 and live > 1e-6,
-                     f"state-conditioned mixing: zero-init reproduces old operator "
-                     f"exactly ({same_at_init:.1e}), and once weighted the SAME move "
-                     f"gets different mixtures in different states ({live:.2e})")
+                    model.ops.state_proj.weight.copy_(keep_w)
+                # FRESH state_proj is all-zero, so the operator must start exactly at
+                # the old behaviour. A RESUMED one has LEARNED, so non-zero state
+                # sensitivity is the property working, not a violation -- the same
+                # fresh-only-invariant trap U19 fell into.
+                if w_is_zero:
+                    gate("U22", same_at_init == 0.0 and live > 1e-6,
+                         f"fresh state-mix: zero-init reproduces the old operator "
+                         f"exactly ({same_at_init:.1e}) and is live once weighted "
+                         f"({live:.2e})")
+                else:
+                    gate("U22", same_at_init > 1e-6,
+                         f"resumed state-mix is LIVE: the same move gets different "
+                         f"mixtures in different states ({same_at_init:.2e}) -- "
+                         f"state_proj has trained away from its zero init")
 
             gate("U21", gsib > 0 and gvsib > 0 and pov_ok,
                  f"sibling loss reaches move-conditioning: grad U {gsib:.2e}, "

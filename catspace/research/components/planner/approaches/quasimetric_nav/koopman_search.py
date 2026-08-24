@@ -61,8 +61,12 @@ class KoopmanEngine:
         self.lift.load_state_dict({k[5:]: v for k, v in sd.items()
                                    if k.startswith("lift.")})
         if self.gen5:
+            # a state-conditioned checkpoint carries ops.state_proj.*; size d_phi from
+            # the weight itself rather than a flag, so old and new both load
+            _sp = sd.get("ops.state_proj.weight")
             self.ops = BasisOps(self.lift.d_aug, n_basis=64,
-                                rank=int(RA.get("op_rank", 16))).eval()
+                                rank=int(RA.get("op_rank", 16)),
+                                d_phi=(_sp.shape[1] if _sp is not None else 0)).eval()
         else:
             self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
                                   rank=int(RA.get("op_rank", 16))).eval()
