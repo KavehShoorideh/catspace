@@ -103,6 +103,11 @@ def main():
                          "move's own SF WDL. The only term that asks the operator's "
                          "move-dependent component to separate siblings (2026-08-23: "
                          "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--av-concepts", action="store_true",
+                    help="sharp head reads the QUANTISED move code instead of raw "
+                         "backbone features, so every head in the model reads "
+                         "concepts. Changes sf_av's input width -> the head "
+                         "re-initialises on resume.")
     ap.add_argument("--state-mix", action="store_true",
                     help="condition the operator's basis mixture on the POST-"
                          "INTERACTION concepts (phi) as well as the move. Without it "
@@ -199,8 +204,15 @@ def main():
         def __init__(self):
             super().__init__()
             self.field = field
+            # CONCEPTS-ONLY (Kaveh 2026-08-24: "I don't wanna read off of the raw
+            # board or the encoded board, I wanna read off of the concepts"). The
+            # sharp head was the ONE head still reading h_mv -- raw backbone output,
+            # never quantised -- while the policy, value and rolled heads all read
+            # quantised codes. --av-concepts feeds it the QUANTISED move code (q_mv,
+            # 32-d) instead, so every head in the model reads concepts.
+            _av_mv = 32 if args.av_concepts else A["d_model"]
             self.sf_av = nn.Sequential(
-                nn.Linear(field.d_state + A["d_model"], 512), nn.GELU(),
+                nn.Linear(field.d_state + _av_mv, 512), nn.GELU(),
                 nn.Linear(512, args.k_bins))
             if args.ops:
                 if args.lift == "transformer":
@@ -513,6 +525,17 @@ def main():
         g = raw.gather(1, played[:, None, None].expand(-1, 1, raw.shape[-1]))[:, 0]
         return g[:, 1], g[:, 2], g[:, 5]
 
+    def _av_in(zq_, h_mv_, mask_):
+        """The sharp head's move input: quantised concept code when --av-concepts,
+        else the raw backbone move features (legacy)."""
+        if args.av_concepts:
+            with torch.no_grad():
+                q, _, _ = model.field.mv_vq(model.field.mv_vq_proj(h_mv_))
+            mv_in = q * mask_[..., None]
+        else:
+            mv_in = h_mv_
+        return torch.cat([zq_[:, None, :].expand(-1, mv_in.shape[1], -1), mv_in], -1)
+
     def _mv_q(h_mv, mask):
         """Quantized move-token embeddings for the lift's interaction table
         (zero-padded on dead slots); detached -- the lift reads move CONCEPTS,
@@ -820,7 +843,7 @@ def main():
         l_sf = torch.zeros((), device=dev)
         ks = kind == 0
         if ks.any():
-            x = torch.cat([zq[ks][:, None, :].expand(-1, MV_CAP, -1), h_mv[ks]], -1)
+            x = _av_in(zq[ks], h_mv[ks], mask[ks])
             logits = model.sf_av(x)
             m2 = fin[ks]
             if m2.any():
@@ -1006,8 +1029,7 @@ def main():
                         iv_n += int((kind == 0).sum())
                     ks = kind == 0
                     if ks.any():
-                        x = torch.cat([zq[ks][:, None, :].expand(-1, MV_CAP, -1),
-                                       h_mv[ks]], -1)
+                        x = _av_in(zq[ks], h_mv[ks], mask[ks])
                         pred = hl.decode(model.sf_av(x))
                         for r in range(len(pred)):
                             f2 = fin[ks][r]

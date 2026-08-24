@@ -16973,3 +16973,46 @@ Also note the ceiling this implies for root-prior-only play: the sharp head's TO
 recall is 65.3pct, so an engine that just plays its best move without search is
 right about two thirds of the time. That is roughly what the old re-encoding search
 does (it barely searches), and it scores 44pct vs Maia-1100.
+
+**"READ OFF THE CONCEPTS, NOT THE RAW ENCODING" -- AUDITED, FIXED, AND IT HITS AN
+INFORMATION CEILING (2026-08-24, Kaveh's ruling).**
+
+AUDIT. Only ONE head violated it:
+    head                     state input        move input
+    maia policy              zq (quantised)     q_mv  (quantised)   OK
+    value sf_v / sf_v_full   lift(zq)           q_mv  (quantised)   OK
+    rolled scorer av_roll    rolled zq          move-token embed    OK
+    sharp head sf_av         zq (quantised)     h_mv  RAW BACKBONE  <-- violation
+So our BEST head (spearman 0.532), the one the whole search leans on, was the one
+reading unquantised transformer output. `--av-concepts` now feeds it the quantised
+move code instead; all gates pass. Note sf_av's input width changes (1792+128 ->
+1792+32), so the head re-initialises on resume and must retrain.
+
+THE CEILING, measured before committing to a run. 120 held-out positions:
+    mean 34.9 legal moves  ->  13.9 DISTINCT move codes  (40pct resolvable)
+    21.0 moves per position collapse onto a shared code
+    within a shared code SF's value spans 0.156 on average (max 0.901)
+    ... against a total within-position sibling spread of 0.116
+
+Moves that share a code differ MORE than the average sibling pair. So a concepts-only
+sharp head cannot resolve 60pct of the moves in a position, and the pairs it conflates
+are exactly the ones that matter. This is an information ceiling, not a training
+problem -- no amount of steps recovers what quantisation discarded.
+
+CAUSE: the move codebook is 64 entries (set during the "reallocate concept space,
+powers of two" cut). 64 is ample as a VOCABULARY but only ~14 get used per position,
+so it is far too coarse to serve as the move's identity for ranking.
+
+OPTIONS (Kaveh's call):
+  1. Grow the move codebook (64 -> 512/1024). Cheapest; keeps everything conceptual.
+  2. Multi-head move VQ, as the board already has (64 heads x 8): a move gets a
+     COMPOSITE code, so k heads x c codes gives c^k distinguishable moves without a
+     huge single codebook. Matches the existing design language.
+  3. Feed bare (from,to,promo) alongside the code. Discrete and symbolic rather than a
+     learned continuous encoding, so arguably not a "raw encoding" violation -- but it
+     routes around the move concepts instead of fixing them.
+
+RECOMMENDATION: option 2. It is the same trick the board concepts already use, it
+preserves "everything reads concepts", and c^k grows the resolvable set without
+inflating any single codebook. Option 1 is the cheap fallback if a composite is
+awkward to fit.
