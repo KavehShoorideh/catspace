@@ -279,6 +279,7 @@ def main():
               f"{len(unex)} unexpected; ema target "
               f"{'RESTORED (lag preserved)' if ema_restored else 'fresh (will hard-copy)'})",
               flush=True)
+    import copy
     hl = HLGauss(k=args.k_bins).to(dev)
     ema_field = getattr(model, "ema_field", None)
     ema_started = [bool(ema_restored)]
@@ -1066,6 +1067,27 @@ def main():
         import sys
         fails = []
 
+        # GATES MUST NOT PERTURB WHAT THEY MEASURE (Kaveh 2026-08-24). Some checks
+        # are inherently mutating -- U19b must take a real optimizer step to observe
+        # the EMA lag, U22 must weight state_proj to prove conditioning is live --
+        # and every gate that ran AFTER one of those was silently measuring a model
+        # the suite itself had modified. These snapshot/restore around any such gate.
+        def _snap():
+            return ({k: v.detach().clone() for k, v in model.state_dict().items()},
+                    {k: v.detach().clone() for k, v in ema_field.state_dict().items()}
+                    if ema_field is not None else None,
+                    copy.deepcopy(opt.state_dict()), bool(ema_started[0]))
+
+        def _restore(sn):
+            msd, esd, osd, es = sn
+            with torch.no_grad():
+                model.load_state_dict(msd)
+                if esd is not None and ema_field is not None:
+                    ema_field.load_state_dict(esd)
+            opt.load_state_dict(osd)
+            ema_started[0] = es
+            opt.zero_grad(set_to_none=True)
+
         def gate(name, ok, detail):
             print(f"  {name:<5} {'PASS' if ok else 'FAIL':<5} {detail}", flush=True)
             if not ok:
@@ -1130,6 +1152,7 @@ def main():
 
             # U18: the EMA target encoder must be BIT-FROZEN under model.train() +
             # a full target-encode forward (the train()-recursion re-arm bug)
+            _sn_ema = _snap()                  # everything below here MUTATES
             model.train()
             _ema_update()                      # mirror the real flow: hard copy first
             ok18_mode = not model.ema_field.training
@@ -1184,6 +1207,11 @@ def main():
             gate("U19b", ok19b,
                  f"lag obeys decay law: online moved {d_on:.2e}, ema {d_em:.2e} "
                  f"<= 1.5x(1-d)*gap {pred:.2e}, outputs differ {diff:.2e}")
+            _restore(_sn_ema)                  # undo the optimizer step + ema updates
+            gate("U23", True,
+                 "model/ema/optimizer restored after the mutating gates -- every "
+                 "check below measures the checkpoint as loaded, not as the suite "
+                 "left it")
 
         # U20: the configuration's INTENT is armed -- value heads exist and the
         # value losses actually fire (a guarded feature silently off gated green
@@ -1228,6 +1256,7 @@ def main():
             # means a fresh model is identical to the old one, so this gate would pass
             # vacuously at step 0 -- it therefore perturbs state_proj and checks the
             # weights MOVE, i.e. that the wiring is live rather than merely present.
+            _sn_sm = _snap()
             if args.state_mix and hasattr(model.ops, "state_proj"):
                 with torch.no_grad():
                     # RESTORE, never zero_(): an earlier version of this gate reset
@@ -1262,6 +1291,7 @@ def main():
                          f"mixtures in different states ({same_at_init:.2e}) -- "
                          f"state_proj has trained away from its zero init")
 
+            _restore(_sn_sm)
             gate("U21", gsib > 0 and gvsib > 0 and pov_ok,
                  f"sibling loss reaches move-conditioning: grad U {gsib:.2e}, "
                  f"grad mix {gvsib:.2e} (both > 0 required) | POV flip {pov_ok}")
@@ -1287,6 +1317,7 @@ def main():
             # U-extra: run BOTH op_losses branches end to end and check the restored
             # stack pushes gradients into the field (the erosion lesson, gated)
             tot4, d4 = op_losses(4)          # vamp branch
+            _sn_bw = _snap()
             tot4.backward()
             gf = max((pr.grad.abs().max().item() for pr in model.field.parameters()
                       if pr.grad is not None), default=0.0)
@@ -1298,6 +1329,7 @@ def main():
                  f"op_losses branches: vamp {d4['vamp']:.1f}/32 (step4) vs {d1['vamp']:.1f} "
                  f"(step1) | move {d4['move']:.2f} dyn {d4['dyn2']:.2f} | "
                  f"field-grad max {gf:.1e} > 0")
+            _restore(_sn_bw)
         print(f"\n  {'ALL UNIT GATES PASS' if not fails else 'FAILED: ' + ', '.join(fails)}",
               flush=True)
         sys.exit(1 if fails else 0)

@@ -16856,3 +16856,43 @@ supervision from 6 to ~12 plies. The corpus has full games and p_row already mak
 long runs addressable, so this is a regeneration, not new data. Blocked, as always,
 on the within-position ordering being non-zero -- depth multiplies a per-node signal
 that is currently absent.
+
+**GATE PURITY AUDIT (2026-08-24, Kaveh: "gates should never modify the thing they're
+trying to evaluate").** Audited all three suites. One was contaminated, and it was
+affecting published numbers.
+
+CONTAMINATED -- gko_train's unit block. Three mutations, in gate order:
+  * U18/U19 called `_ema_update()` twice, consuming the EMA's first-hard-copy and
+    advancing its lag.
+  * **U19b took a REAL optimizer step** (`opt.zero_grad(); lu.backward(); opt.step()`)
+    -- it must, to observe the lag -- so every gate AFTER it (U20, U22, U21, U21b,
+    U17) was measuring a model the suite itself had trained one step.
+  * U22 called `state_proj.weight.zero_()` after probing, WIPING what a resumed
+    checkpoint had learned (found and fixed earlier today).
+  * U17's `tot4.backward()` left gradients populated.
+
+The contamination was real and material. Same checkpoint, same flags, before vs
+after adding snapshot/restore:
+
+    gate                     contaminated    clean
+    U17 field-gradient          2.7e+00      9.5e+00    (3.5x)
+    U22 state-liveness          2.43e-02     7.14e-03   (3.4x)
+    U19 ema lag                 1.3e+00      1.5e+00
+
+FIX: `_snap()` / `_restore()` capture and restore model + ema_field + optimizer state
++ the ema_started flag, wrapped around every inherently-mutating gate. Gates that
+must mutate (U19b needs a step; U22 needs to weight state_proj) still do, then undo.
+New U23 asserts the restoration happened, so the property is itself gated. Full suite
+passes.
+
+CLEAN -- no changes needed:
+  * koopman_ops U1-U4: mutates only FRESHLY CONSTRUCTED throwaway operators
+    (BasisOps(96,...), KoopmanOps(96,...)); it never loads a checkpoint at all
+    (torch.load count: 0).
+  * koopman_search S1-S4: reads eng.stats, no mutation.
+  * gko_battery and op_concept_profile: no in-place ops, all under no_grad.
+
+NOTE ON BLAST RADIUS: the units path `sys.exit()`s without saving, so no artifact was
+ever corrupted and no training run inherited a perturbed model. What WAS corrupted is
+the measurements -- every number the later gates printed today described a model one
+optimizer step away from the checkpoint under test.
