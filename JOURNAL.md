@@ -16564,3 +16564,44 @@ operator reproduces STATES less well without the extra state targets. That is th
 trade being made deliberately -- a latent search needs the rolled VALUE to be right,
 not the rolled state, and the six-ply value correlations above are the metric that
 matters. Worth re-examining if state fidelity turns out to matter downstream.
+
+**gko4b FINAL (2026-08-24): every mechanism target improved, and PLAY DID NOT
+FOLLOW.** This is the deepest form of the dissociation found the previous day, and
+it should be stated plainly rather than dressed up.
+
+MECHANISM -- all confirmed, several at lineage bests:
+  * six-ply orientation: ALL POSITIVE and stable (k=1..6: +0.735 +0.746 +0.652
+    +0.692 +0.633 +0.643 vs re-encoded +0.726 +0.815 +0.728 +0.789 +0.714 +0.766).
+    The ply-2/5 inversions are gone and stayed gone across four checkpoints.
+  * move-conditioning: reversal CONFIRMED, two consecutive rises
+    (gko4a@6k 0.01113 -> gko4b@2k 0.01240 -> gko4b@4k 0.01320; sep 1.29 -> 1.37 ->
+    1.49pct). The competitor diagnosis (--w-opk) was right.
+  * representation: phi effective rank 3.9 (gko3b) -> 8.1 -> 11.2; state rank
+    33.2 -> 71.1 -> 100.2. Roughly 3x richer than the generation before.
+  * heads: value corr 0.887 and value MAE 0.118, both LINEAGE BESTS; level corr
+    0.895; ordering 0.553. avSp finished 0.261/0.293/0.297, best by a clear margin.
+
+PLAY -- matched depths vs Maia-1100, identical openings/colours:
+    depth      gko4b        gko3b       incumbent gko2i
+    d2        33pct (12)    46pct (12)    62pct (12)
+    d3        44pct (24)    38pct (24)      --
+    d4        38pct (12)    58pct (12)    58pct (12)
+    POOLED    40pct (48)    45pct (48)    60pct (24)
+
+GRADED. gko4b vs gko3b: 40 vs 45pct at n=48 each is ~0.5 sigma -- INDISTINGUISHABLE,
+no verdict. gko4b vs the incumbent: 20 points at ~1.6 sigma -- suggestive, not clean,
+but the incumbent has now held a 15-20 point lead over three successive generations,
+which is the pattern rather than any single row.
+
+WHAT THIS MEANS. Three real defects were found and fixed today -- sf starvation
+(heads), ply-orientation inversions (search coherence), move-conditioning decay
+(sibling separation). Each was measured before and after; each moved the metric it
+targeted; none moved play. The honest reading is that the binding constraint on
+playing strength is NOT any of the quantities measured so far. Candidates not yet
+examined: the search algorithm itself (alpha-beta with a re-encode budget and a
+0.75/0.25 blend, all inherited untested from the gko2 era), the move ORDERING that
+drives pruning, quiescence behaviour, or simply that move-conditioning at 1.49pct is
+still 2x short of the incumbent's 2.95pct and the effect is threshold-like rather
+than gradual.
+
+The incumbent gko2i KEEPS the KittyChess mount, unchanged since yesterday.
