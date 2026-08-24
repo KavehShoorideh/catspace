@@ -283,6 +283,41 @@ class KoopmanEngine:
         scored.sort(key=lambda t: -t[1])
         return scored
 
+    def search_budget(self, board, max_nodes=50, max_depth=24, elo=2000.0,
+                      root_blend=None):
+        """Iterative deepening under a NODE BUDGET rather than a fixed depth.
+
+        Kaveh 2026-08-24: compare on fair terms -- fix the search EFFORT, then report
+        what depth that effort buys. A fixed depth is the wrong axis because the same
+        depth costs wildly different amounts in different positions, and the opponent
+        (Maia at nodes=1) is not searching at all.
+
+        Deepens until the budget is spent, keeping the last COMPLETED depth's result,
+        so the returned move is always backed by a finished search. Returns
+        (scored, info) with info = {nodes, depth, seconds, nodes_per_sec}.
+        """
+        import time as _t
+        t0 = _t.perf_counter()
+        best, reached, used = None, 0, 0
+        for d in range(1, max_depth + 1):
+            remaining = max_nodes - used
+            if remaining <= 0:
+                break
+            scored = self.search_latent(board, depth=d, max_nodes=remaining,
+                                        elo=elo, root_blend=root_blend)
+            spent = self.stats.get("nodes", 0)
+            used += spent
+            if not scored:
+                break
+            # a depth that exhausted the budget was cut short -- keep the last
+            # depth we could actually finish
+            if spent >= remaining and d > 1:
+                break
+            best, reached = scored, d
+        dt = _t.perf_counter() - t0
+        return best or [], {"nodes": used, "depth": reached, "seconds": dt,
+                            "nodes_per_sec": used / max(dt, 1e-9)}
+
     def search(self, board, depth=3, elo=2000.0):
         """Alpha-beta with operator-rolled leaf evaluation and PV re-encoding."""
         self.stats = {"encodes": 0, "op_applies": 0, "t_encode": 0.0, "t_op": 0.0}

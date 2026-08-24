@@ -16896,3 +16896,44 @@ NOTE ON BLAST RADIUS: the units path `sys.exit()`s without saving, so no artifac
 ever corrupted and no training run inherited a perturbed model. What WAS corrupted is
 the measurements -- every number the later gates printed today described a model one
 optimizer step away from the checkpoint under test.
+
+**FAIR-TERMS BENCHMARK (2026-08-24, Kaveh: fix the search EFFORT, not the depth).**
+New `search_budget()` -- iterative deepening under a node budget, keeping the last
+COMPLETED depth so the returned move is always backed by a finished search.
+
+    OUR ENGINE (gko4b, CPU)              MAIA-1100 (lc0, eigen)
+    budget  depth  nodes  s/move  n/s     @  1 node:  11.4 ms/move
+        20   1.2     34   0.087   397     @ 50 nodes: 114.0 ms/move (2.28 ms/node)
+        50   1.2     68   0.142   476
+       200   2.2    236   0.477   496    ONE SECOND buys us ~600 nodes, depth ~2-3
+      1000   2.8   1018   1.657   615
+      4000   3.8   4036   6.496   621
+
+THREE CONSEQUENCES.
+
+1. **Every arena result to date was fought on terms that FAVOURED US, heavily.** We
+   have been playing Maia at `nodes=1` -- a single NN evaluation, no search at all.
+   Meanwhile our engine spent ~21 nodes (old search) to 4,662 (latent). So we used
+   20-4000x the opponent's search and still lost 40-45pct to 60pct. That makes the
+   evaluator gap worse than reported, not better. (nodes=1 IS the correct setting for
+   Maia as a CALIBRATED 1100 benchmark -- its rating is defined there -- so the runs
+   were not wrong, but "we lose while searching thousands of times harder" is the
+   honest framing and I had not stated it.)
+
+2. **b=33 makes 50 nodes very shallow: depth 1.2.** A 50-node budget cannot see past
+   the root's own children in chess. Depth 3 needs ~1,000 nodes; depth 4 needs
+   ~4,000. So "50 nodes" is a meaningful HUMAN comparison but not a meaningful
+   depth-3+ search. If the goal is a few plies of real search, the budget has to be
+   ~1k-4k nodes.
+
+3. **Per NODE we are competitive: 1.6 ms vs Maia's 2.3 ms.** So the latent search is
+   not slow per unit of work -- it is simply doing far more work per move. Our
+   throughput (~620 nodes/s) is CPU-bound on the value head + operator per node; MPS
+   and batching sibling nodes are the obvious levers if we need more.
+
+TENSION TO SETTLE BEFORE THE NEXT ARENA: a node-matched arena (50 vs 50) makes the
+opponent STRONGER than the 1100 benchmark, because search improves Maia while making
+it less human-like. So there are two different experiments and they answer different
+questions: (a) vs Maia@1node = "what rating do we play at", the calibrated benchmark;
+(b) vs Maia@same-nodes = "who is better per unit of compute", the strength-per-node
+frontier. Both are worth running; they must not be conflated in one number.
