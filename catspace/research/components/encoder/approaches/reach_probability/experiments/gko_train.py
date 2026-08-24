@@ -103,6 +103,11 @@ def main():
                          "move's own SF WDL. The only term that asks the operator's "
                          "move-dependent component to separate siblings (2026-08-23: "
                          "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--binary", action="store_true",
+                    help="BINARY concepts via LFQ: every state dim is a bit (+/-1), "
+                         "the code is the sign pattern, no learned codebook -> no "
+                         "dead codes, no kmeans, no collapse. Concept distance "
+                         "becomes Hamming. ~1.3x d_state for the same content.")
     ap.add_argument("--gen6", action="store_true",
                     help="gcf6 concept space: EVERY family compositional like the "
                          "board -- squares 8 heads x 8 codes (8^8 per square, same "
@@ -196,7 +201,7 @@ def main():
         g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"],
         sq_codes=A.get("sq_codes", 256),
         mh_vq=bool(args.g_heads), gen5=args.gen5,
-        gen6=args.gen6).to(dev)
+        gen6=args.gen6, binary=args.binary).to(dev)
     if args.g_heads:
         own = field.state_dict()
         sdf = {k: v for k, v in ck["state_dict"].items()
@@ -732,7 +737,8 @@ def main():
             pg0 = model.field.encode(s0, m0, e0, k0, elo=el0, pslot=ps0)[5]
             s6, m6, e6, k6, el6, _, ps6 = _feat_rows(vb[:, 6])
             pg6 = model.field.encode(s6, m6, e6, k6, elo=el6, pslot=ps6)[5]
-            sl = model.field.slow_heads * model.field.d_code
+            sl = model.field.slow_heads * getattr(
+                model.field, 'code_width', model.field.d_code)
             v0 = model.field.vamp_proj(pg0.reshape(len(vb), -1)[:, :sl])
             v6 = model.field.vamp_proj(pg6.reshape(len(vb), -1)[:, :sl])
             vamp = vamp2_score(v0, v6)

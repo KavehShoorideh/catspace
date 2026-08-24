@@ -17173,3 +17173,36 @@ WHAT IT WOULD BUY BEYOND READABILITY:
 CAVEATS, stated because this was a 60-step fit on FROZEN features, not end-to-end
 training: reconstruction is not the objective, task performance is, and a 9pct
 fidelity cost may matter more or less than it looks. The honest test is a short run.
+
+**BINARY CONCEPT FIELD BUILT AND GATED (2026-08-24, Kaveh: "go binary first").**
+LFQ replaces VectorQuantize for every family. Verified on a real board:
+
+    zq (1, 2400) -- distinct values in the ENTIRE state: 2  ->  [-1.0, +1.0]
+    a square's 8 concept ids: [5, 4, 6, 0, 0, 7, 3, 0]   (each 0-7, readable)
+    33 legal moves -> 32 distinct 32-book composite codes (untrained)
+
+    family   books x bits   dims        vocabulary
+    board     32 x 3          96        8^32
+    square     8 x 3 (x64)  1536        8^8 per square
+    piece      8 x 3 (x32)   768        8^8 per piece
+    move      32 x 2           64       4^32 = 2^64
+    d_state 2400, d_aug 2656 -- 1.30x the float gcf6, ~1.7x its operator cost
+
+FOUR MORE width assumptions found while wiring it, all the SAME bug as the gcf6
+review: a per-head code width written as a literal or as `d_code`. The phase
+adversary's view, the VAMP slow-slice, `vamp_proj`'s construction, and the board
+`pre_g` view. Root-caused rather than patched one by one: the field now exposes
+`self.code_width` (3 when binary, d_code otherwise) and every consumer reads it.
+That literal has now bitten this codebase in NINE places across two days --
+move_head, TransformerLift.p_mv, the iv head, av-concepts, l_dyn2's class count,
+the phase adversary, the vamp slice, vamp_proj, and pre_g.
+
+WHAT BINARY BUYS, concretely, now that it exists:
+  * the whole state is +/-1, so a concept is a BIT you can name and watch flip
+  * concept distance = Hamming distance, which is what the quasimetric field wants
+  * no learned codebook: no dead codes, no kmeans init, no codebook collapse --
+    three failure modes this lineage has actually hit
+  * per-bit change diagnostics replace "42.7 of 64 codes flipped": we will be able
+    to say WHICH properties a move changes
+
+ALL UNIT GATES PASS. Not launched -- next step is the run.

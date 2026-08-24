@@ -45,6 +45,7 @@ import time
 import numpy as np
 import torch
 import torch.nn as nn
+from vector_quantize_pytorch import LFQ
 import torch.nn.functional as F
 
 from catspace.research.tools.training_infra.losses import (
@@ -104,9 +105,9 @@ class GraphConceptField(nn.Module):
                  edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
                  agg_max=False, kin=False, file_nodes=False, phase_head=False,
                  threat_head=False, elo_cond=False, mh_vq=False, gen5=False,
-                 gen6=False):
+                 gen6=False, binary=False):
         super().__init__()
-        from vector_quantize_pytorch import VectorQuantize
+        from vector_quantize_pytorch import VectorQuantize, LFQ
         self.edge_codes, self.move_codes = edge_codes, move_codes
         self.gps_parallel, self.use_bias, self.agg_max = gps_parallel, attn_bias, agg_max
         self.kin, self.file_nodes = kin, file_nodes
@@ -180,9 +181,24 @@ class GraphConceptField(nn.Module):
 
         vq_kw = dict(decay=0.9, commitment_weight=0.25, kmeans_init=True,
                      threshold_ema_dead_code=2)
-        self.g_proj = nn.Linear(d, g_heads * d_code)
+        self.g_proj = nn.Linear(d, g_heads * (3 if binary else d_code))
+        self.binary = bool(binary)
+        self._bits = 3
+        # per-head code width: 3 bits when binary, d_code floats otherwise.
+        # EVERY consumer must read this -- the literal has bitten us in
+        # move_head, p_mv, the iv head, av-concepts, the phase adversary
+        # and the vamp slice.
+        self.code_width = 3 if binary else d_code                      # log2(8 codes) per head
         self.mh_vq = mh_vq
-        if mh_vq:
+        if self.binary:
+            # BINARY CONCEPTS (Kaveh 2026-08-24: "binary is a lot more understandable,
+            # float is hard to say"). LFQ: every dim IS a bit, the code is the sign
+            # pattern, no learned codebook -> no dead codes, no kmeans, no collapse.
+            # Measured on real move features: resolves 100pct of moves vs float VQ's
+            # 98pct, at ~9pct worse reconstruction and 1.5x the width per bit.
+            self.vq_bin = LFQ(dim=g_heads * self._bits, codebook_size=8,
+                              num_codebooks=g_heads)
+        elif mh_vq:
             # GROUPED multi-head VQ: 8 groups x (g_heads/8) heads each. One monolithic
             # 512-head module OOMs at construction (lib-internal init buffers); groups
             # keep per-head codebooks, bound memory, and cut the python loop 512 -> 8
@@ -203,8 +219,12 @@ class GraphConceptField(nn.Module):
         self.gen6 = bool(gen6)
         if gen5:
             d_fine = 16                      # gcf5 budget: squares 64x16 = 1024
+        if self.binary:
+            d_fine = 8 * self._bits          # 8 heads x 3 bits = 24 dims
         self.sq_proj = nn.Linear(d, d_fine)
-        if self.gen6:
+        if self.binary:
+            self.sq_vq = LFQ(dim=d_fine, codebook_size=8, num_codebooks=8)
+        elif self.gen6:
             # gcf6 (Kaveh 2026-08-24): every family COMPOSITIONAL, like the board.
             # A square was one code from a 64-book -> 64 states; now 8 heads x 8 codes
             # = 8^8 = 16.8M states in the SAME 16 dims. A piece was 16 states; now
@@ -216,12 +236,15 @@ class GraphConceptField(nn.Module):
                                         codebook_size=8, **vq_kw)
         else:
             self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=sq_codes, **vq_kw)
-        d_state = g_heads * d_code + 64 * d_fine
+        d_state = g_heads * (self._bits if self.binary else d_code) + 64 * d_fine
         if gen5:
             # PIECE CONCEPTS: 32 canonical slots, shared small book; dead slots = 0
-            self.d_piece = 16 if self.gen6 else 4
+            self.d_piece = (8 * self._bits if self.binary
+                            else (16 if self.gen6 else 4))
             self.piece_proj = nn.Linear(d, self.d_piece)
-            if self.gen6:
+            if self.binary:
+                self.piece_vq = LFQ(dim=self.d_piece, codebook_size=8, num_codebooks=8)
+            elif self.gen6:
                 self.piece_vq = VectorQuantize(dim=self.d_piece, heads=8,
                                                separate_codebook_per_head=True,
                                                codebook_size=8, **vq_kw)
@@ -248,7 +271,10 @@ class GraphConceptField(nn.Module):
             self.mv_vq_proj = nn.Linear(d, _mvd)
             _mv_kw = dict(decay=0.9, commitment_weight=0.25, kmeans_init=True,
                           threshold_ema_dead_code=2)
-            if self.gen6:
+            if self.binary:
+                # 32 books x 2 bits = 64 bits per move; every dim readable
+                self.mv_vq = LFQ(dim=_mvd, codebook_size=4, num_codebooks=32)
+            elif self.gen6:
                 # 32 heads x 4 codes = 4^32 distinguishable moves; collisions vanish
                 self.mv_vq = VectorQuantize(dim=_mvd, heads=32,
                                             separate_codebook_per_head=True,
@@ -283,7 +309,7 @@ class GraphConceptField(nn.Module):
                 v if v is not None else np.zeros(n_res, np.int64)).long())
         # slow-block projection for VAMP-2: 32-d so a few-hundred-pair batch supports the
         # covariances (rank-deficiency is the caller's bug, per the loss docstring)
-        self.vamp_proj = nn.Linear(slow_heads * d_code, 32, bias=False)
+        self.vamp_proj = nn.Linear(slow_heads * (3 if binary else d_code), 32, bias=False)
 
     def _attn_bias(self, B, mvf, mv_mask, dev):
         """(B*heads, N, N) additive bias from static square geometry + move src/dst buckets."""
@@ -392,14 +418,19 @@ class GraphConceptField(nn.Module):
         B = sqf.shape[0]
         h = self.backbone(sqf, mvf, edges, mv_mask, elo=elo)
         h_sq, h_mv = h[:, :64], h[:, 64:64 + MV_CAP]
-        pre_g = self.g_proj(h_sq.mean(1)).view(B, self.g_heads, self.d_code)
+        _cw = self.code_width
+        pre_g = self.g_proj(h_sq.mean(1)).view(B, self.g_heads, _cw)
         # stashed for the aux heads (phase adversary reads projections of a DETACHED trunk,
         # so reversal shapes only the projection slices; te head reads square states)
         self.last_h_sq = h_sq
         if self.phase_head:
             self.last_pre_adv = self.g_proj(h_sq.mean(1).detach()).view(
-                B, self.g_heads, self.d_code)[:, 1:]
-        if self.mh_vq:
+                B, self.g_heads, _cw)[:, 1:]
+        if self.binary:
+            q_b, ids_b, vl = self.vq_bin(pre_g.reshape(B, 1, -1))
+            qs = [q_b.reshape(B, -1)]
+            ids = list(ids_b.reshape(B, self.g_heads).unbind(-1))
+        elif self.mh_vq:
             gh = self.g_heads // self.vq_groups
             qs, ids, vl = [], [], 0.0
             for gi in range(self.vq_groups):
