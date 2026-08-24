@@ -16537,3 +16537,30 @@ and ops.mix.
 
 Orientation held at 6k before the stop (k=2 +0.761, k=5 +0.634), so the property is
 carried into gko4b by the resume rather than needing to be relearned.
+
+**gko4b @2k: the decline REVERSED, and value fidelity held (2026-08-24).**
+
+    checkpoint                      ratio     sep      note
+    probe @600  (sibling only)     0.01676   1.83pct
+    gko4a @2k   (+all-ply state)   0.01631   1.79pct   decline begins
+    gko4a @4k                      0.01293   1.48pct
+    gko4a @6k                      0.01113   1.29pct   4-point monotone fall
+    gko4b @2k   (-all-ply state)   0.01240   1.37pct   REVERSED
+
+Removing `--w-opk` (all-ply STATE supervision) while keeping `--all-ply` (VALUE
+supervision) turned the trend around, which is exactly what the diagnosis predicted:
+played-line state targets favour the shared move-independent term and compete with
+sibling separation, whereas value targets at every ply only fix orientation.
+
+Value fidelity across six plies of pure rolling, unchanged and all positive:
+0.647-0.747 rolled vs 0.695-0.788 re-encoded. So the orientation fix survived the
+configuration change -- it was carried in by the resume and is not being eroded.
+
+GRADED. Proven: the 4-point decline, and that it reversed at the checkpoint after
+the change. NOT established: that the reversal is a durable trend -- it is ONE
+point, and by the standard I have applied all day that is not a trade. Step 4000
+(the finish) is the confirmation. Also note opR2 fell (0.052/-0.008/-0.198): the
+operator reproduces STATES less well without the extra state targets. That is the
+trade being made deliberately -- a latent search needs the rolled VALUE to be right,
+not the rolled state, and the six-ply value correlations above are the metric that
+matters. Worth re-examining if state fidelity turns out to matter downstream.
