@@ -16786,3 +16786,39 @@ Recorded so the next session does not re-derive it: the search INFRASTRUCTURE is
 correct, fast and gated (1 encode at any depth, 4,662 positions at d4, 28k
 applies/s, real cutoffs, mate-in-1 found). The moment the rolled value acquires
 within-position ordering, the search becomes useful with no further work.
+
+**WHY THE FIELD HAS NOT LEARNED MOVE RANKING, GIVEN WE HAVE FULL SF MULTIPV
+(2026-08-24, Kaveh's question).** Within-position sibling spread on held-out
+positions:
+
+    SF truth          sd 0.1159      reality varies this much between siblings
+    sharp head (sf_av)   0.1049      91pct of truth -- it HAS learned the ranking
+    rolled path (gko3b)  0.0024       2.1pct
+    rolled path (gko4b)  0.0049       4.2pct  (sibling loss doubled it, still ~constant)
+
+The field HAS learned move ranking -- sf_av does it at spearman 0.532 and captures
+91pct of the true spread. What has not learned it is the ROLLED path, and the causes
+compound:
+
+1. **No loss asked until yesterday.** Every k-step value target follows the PLAYED
+   line, one move per step. `--w-sib` (2026-08-23) is the first term that ever
+   compared siblings on rolled states. It is working -- spread doubled 2.1 -> 4.2pct
+   -- from a base so low that it is still predicting a constant.
+
+2. **KL is satisfied by the MEAN.** Within a position SF's values are tightly
+   clustered (sd 0.116 on a [0,1] scale), so predicting the position average for
+   every sibling captures most of the KL. The gradient toward actually separating
+   siblings is weak, and the constant solution is a good local optimum. A KL-to-each-
+   move loss is not a RANKING loss.
+
+3. **The operator can barely express move-dependence at all, by construction.**
+   `move_weights(frm, to, promo)` ignores z entirely -- so K(m) is a FIXED matrix per
+   move identity, the same in the opening and the endgame. But what Nf3 does depends
+   completely on the position (is it a capture, does it block, what does it defend).
+   A position-independent rank-16 update, further shrunk by the identity prior,
+   cannot represent that. Even a perfect value head cannot recover ordering from
+   child states that differ from one another by ~1.5pct of their norm.
+
+Cause 3 is the ceiling and it is architectural, not a training accident. Causes 1-2
+are cheap to fix and worth fixing first because they are what determines whether we
+are anywhere near that ceiling.
