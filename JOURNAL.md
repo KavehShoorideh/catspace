@@ -16736,3 +16736,16 @@ vs the incumbent's 2.95pct.
 The sibling loss is therefore not an improvement to latent search; it is its
 PRECONDITION. Nothing else in the objective produces within-position discrimination
 on rolled states.
+
+**DISCRETE CONFIRMATION: 42.7 of 64 concept CODES flip per move (2026-08-24).**
+`op_concept_profile --codes` on gko4b, 160 moves from held-out positions: mean
+66.8pct of the 64 board concept codes change when a single move is played (median
+65.6, min 34.4, max 96.9). So the diffuseness is not an artefact of looking at
+continuous vectors -- it holds at the quantised level, where planning would actually
+operate. Two thirds of the concept vocabulary turns over every ply.
+
+This closes the loop with [[concept_dynamics_planning]] (moves predict VQ
+transitions, search in code space): that design presumes codes are STABLE enough
+that a move is a sparse transition. Measured, it is a near-total rewrite each ply,
+so code-space planning is not currently possible for the same reason latent search
+is not -- the substrate does not hold still.

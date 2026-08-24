@@ -53,6 +53,11 @@ def main():
     ap.add_argument("--ckpt", default="artifacts/experiments/gko4b_step4000.pt")
     ap.add_argument("--holdout", default="data/derived/gko1_holdout_sf")
     ap.add_argument("--n_pos", type=int, default=24)
+    ap.add_argument("--codes", action="store_true",
+                    help="DISCRETE profile: how many VQ CODES flip per move. The "
+                         "concepts are quantised, so a diffuse continuous delta is "
+                         "compatible with sparse code changes -- and sparsity at the "
+                         "code level is the thing planning would actually use.")
     ap.add_argument("--truth", action="store_true",
                     help="profile the TRUE delta (encode(child) - encode(parent)) "
                          "instead of the operator's. Decides whether a diffuse "
@@ -83,6 +88,65 @@ def main():
         fens += [x.decode() if isinstance(x, bytes) else str(x) for x in d["fen"]]
         if len(fens) >= args.n_pos * 3:
             break
+
+    if args.codes:
+        import chess as _ch
+        from catspace.research.components.encoder.approaches.reach_probability \
+            .experiments.graph_move_policy import featurize as _ftz
+        flips = {"board": [], "square": [], "piece": []}
+        n_mv_tot = 0
+        for fen in fens:
+            if n_mv_tot >= args.n_pos * 20:
+                break
+            try:
+                bd = _ch.Board(fen)
+            except Exception:
+                continue
+            if bd.is_game_over() or len(list(bd.legal_moves)) < 4:
+                continue
+
+            def codes_of(board):
+                """discrete concept codes: board heads, per-square, per-piece."""
+                from catspace.research.tools.training_infra.gen_move_graphs import (
+                    parent_graph, glob_of_board, piece_slots)
+                from catspace.research.components.encoder.approaches \
+                    .reach_probability.src.trajectories import normalise_elo
+                g, _ = parent_graph(board)
+                b = {k: torch.from_numpy(np.asarray(g[k])[None]) for k in
+                     ("sq", "mv", "mut", "att", "n_mv", "n_att")}
+                b["gl"] = torch.from_numpy(glob_of_board(board)[None])
+                sqf, mvf, edges, mask = _ftz(b, ke.dev, n_nodes=ke.field.n_nodes)
+                off = torch.zeros(1, 1, dtype=torch.long)
+                jj = torch.arange(mvf.shape[1])[None, :]
+                for nm in ("vac", "dsc"):
+                    a2 = torch.from_numpy(np.asarray(g[nm])[None]).long()
+                    val = (a2 != 255) & mask[:, :, None]
+                    edges[nm] = (((jj + 64 + off)[:, :, None].expand_as(a2))[val],
+                                 (a2 + off[:, :, None])[val])
+                el = torch.from_numpy(normalise_elo(
+                    np.full((1, 2), 2000.0, np.float32)))
+                psl = torch.from_numpy(np.asarray(g["pslot"])[None]).long()
+                with torch.no_grad():
+                    out = ke.field.encode(sqf, mvf, edges, mask, elo=el, pslot=psl)
+                return out[1]     # g_ids: the discrete concept code indices
+
+            c0 = codes_of(bd)
+            if c0 is None:
+                raise SystemExit("field.encode did not return code ids at [1]")
+            c0 = c0.reshape(-1)
+            for mv in list(bd.legal_moves)[:12]:
+                bd.push(mv)
+                c1 = codes_of(bd).reshape(-1)
+                bd.pop()
+                n = min(len(c0), len(c1))
+                flips["board"].append(float((c0[:n] != c1[:n]).float().mean()))
+                n_mv_tot += 1
+        f = np.array(flips["board"])
+        print(f"\n  DISCRETE code flips per move ({n_mv_tot} moves, {len(c0)} codes):")
+        print(f"    mean {100*f.mean():.1f}% of codes change | median {100*np.median(f):.1f}%"
+              f" | min {100*f.min():.1f}% max {100*f.max():.1f}%")
+        print(f"    => effective codes changed: {f.mean()*len(c0):.1f} of {len(c0)}")
+        raise SystemExit(0)
 
     agg = {k: [] for k in ("board", "square", "piece")}
     mover_rank, mover_n = [], 0
