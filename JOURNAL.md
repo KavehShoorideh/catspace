@@ -17054,3 +17054,45 @@ RECOMMENDATION: mirror the board's design -- multi-head move VQ, e.g. 8 heads x 
 codes (16^8 = 4.3e9 distinguishable, ~8 codes describing each move compositionally:
 its from-ness, to-ness, capture-ness, tactical role). Cost is per-move compute and a
 wider move embedding, not state dims. Board/square/piece stay exactly as they are.
+
+**WHERE THE PROBLEM ACTUALLY IS: THE OPERATOR, AND BY A LARGE MARGIN (2026-08-24).**
+The decisive experiment -- give the value head TRUE encoded children (what a perfect
+operator would emit) and see if it ranks them:
+
+    value head on ROLLED children (operator output):  spearman -0.028
+    value head on TRUE   children (encoded directly): spearman +0.556
+    sharp head, for reference:                                 +0.532
+
+THE VALUE HEAD IS FINE. Handed real child states it ranks siblings as well as the
+sharp head does. Every "the head can only predict the mean" reading from earlier
+today was describing the head's INPUT, not the head.
+
+How bad is the operator? Distances relative to |z|, 30 held-out positions:
+
+    TRUE children are spread apart by     0.6605
+    ROLLED children are spread apart by   0.0288   =  4.4pct of true
+    operator ERROR per child              0.9772   =  1.5x the true sibling spread
+
+Two separate failures, and the second is the fatal one. The children are 23x too
+close together AND each one is individually wrong by more than the entire spread it
+is supposed to resolve. The operator is not approximately right with poor resolution;
+its error exceeds the signal.
+
+WHAT THIS RETIRES. Tuning is not the lever: --w-sib at 12x with state-conditioning
+and PL moved state_proj 4.6x and sibling spread 1.6x and left ordering at +0.003
++/-0.020, indistinguishable from zero, same as w=1 (+0.034) and same as no
+state-mixing at all (-0.002). Three configurations, one answer -- because a 1.5x-of-
+signal error is not something a loss weight fixes.
+
+WHAT IT IMPLIES. Sibling discrimination needs the operator's per-child error to fall
+BELOW the true sibling spread -- roughly a 20x accuracy improvement, not a
+refinement. Candidates, in the order I would try them: (a) Kaveh's richer concept
+space, since a linear map may simply be unable to express chess transitions over the
+current coarse codes -- especially moves, which get ONE code out of 64 today;
+(b) capacity, since rank-16 over 64 bases is small for this job; (c) accepting a
+hybrid that re-encodes at a few nodes, which is what the 44pct-playing search already
+does implicitly.
+
+The latent-search infrastructure, the beam prior, the PL loss and the
+state-conditioning all remain correct and stay built; they are downstream of an
+operator that is not yet accurate enough to use them.
