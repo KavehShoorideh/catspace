@@ -16438,3 +16438,41 @@ k=1/3/6, so at k=2/5 it is being asked about a region of the rolled manifold it 
 never trained on. Both locations imply the same fix (supervise every ply), and the
 next run is the definitive test: if all-ply supervision removes the inversions, the
 diagnosis is confirmed.
+
+**LATENT SEARCH IS NOW COHERENT AT EVERY DEPTH (2026-08-23, gko4a @2k).** The
+all-ply fix worked, measured on the same held-out protocol that found the fault:
+
+    ply   gko3b @8k    gko4a @2k    re-encoded (gko4a)
+    k=1     +0.805       +0.763        +0.715
+    k=2     -0.772       +0.749        +0.771     <-- inversion GONE
+    k=3     +0.761       +0.691        +0.708
+    k=4     +0.637       +0.716        +0.774
+    k=5     -0.726       +0.650        +0.697     <-- inversion GONE
+    k=6     +0.683       +0.652        +0.730
+
+Every ply is now positively oriented, and the ROLLED value tracks the RE-ENCODED
+value within a few points at every depth (at k=1 rolling is actually better,
+0.763 vs 0.715). This is the precondition Kaveh asked about: a search that never
+re-encodes can now read all six plies the right way round. The diagnosis
+(unsupervised plies -> unconstrained orientation) is confirmed by the fix removing
+exactly the predicted symptom.
+
+Move-conditioning continues to climb: ratio 0.0163, child separation 1.79pct
+(gko3b @8k: 0.0099 / 1.12pct; incumbent 2.95pct). Now 61pct of the way to the
+incumbent, from 38pct.
+
+**Both step-1000 watch items resolved, and the phivar one resolved the OPPOSITE way
+to the worry.** opR2 recovered (-0.091/-0.071/-0.229 -> +0.047/+0.028/-0.127), so
+that dip was transient. And phivar falling to 0.57-0.62 was NOT collapse: phi
+effective rank went 3.9 -> **8.1** and state rank 33.2 -> **71.1**, i.e. the
+representation more than DOUBLED in richness while its variance redistributed. This
+is the second time this lineage has read low phi variance as danger when the rank
+said the opposite -- variance is not the collapse gate, rank is.
+
+Heads held or improved through the change: ordering 0.553 (lineage best), level
+corr 0.891, value corr 0.875, value MAE 0.125 (best). So the all-ply and sibling
+losses bought orientation and move-conditioning WITHOUT costing head quality.
+
+NOT YET MEASURED: play. gko3b @2k played 21pct mid-adaptation and recovered to
+45pct, so a mid-run arena on gko4a would be uninterpretable. Arena at the 8k finish,
+matched d2/d3/d4 against the incumbent's 60pct pooled.
