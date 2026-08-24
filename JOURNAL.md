@@ -17265,3 +17265,38 @@ Also note the guard did its job perfectly throughout: state saved, exit 3, nothi
 corrupted, three failed launches cost minutes rather than hours.
 
 gko6a is now RUNNING past the failure point with binary concepts + depth cost.
+
+**CHECKED THE REFERENCES — THREE REAL DEFECTS (2026-08-24, Kaveh: "did you check with
+the inventor of these methods how they set up their implementation?").** I had NOT.
+Both LFQ and the layer mixture went in from the library API without reading the
+source. Reading them found three things, two of which would have silently corrupted
+results.
+
+**LFQ (Yu et al., MagViT-2, ICLR 2024; lucidrains implementation).**
+  * Its aux loss being NEGATIVE is EXPECTED -- it combines per-sample entropy
+    (minimised, for confident assignment) against codebook entropy (maximised, for
+    uniform usage). I had noticed -0.12 and moved on; now confirmed correct.
+  * **BUG: forward() takes a `mask` for variable-length sequences and I passed none.**
+    The entropy term shapes CODEBOOK USAGE over the batch, and our move tensor is 48
+    slots with a mean of 32.7 legal moves -- so 32pct of every batch is padding being
+    counted as real codes. Same for pieces: dead slots were quantised and only zeroed
+    AFTERWARDS, ~26pct of 32. Both now masked. This would not have crashed; it would
+    have quietly optimised the codebook against garbage.
+  * commitment_loss_weight defaults to 0.0 in the library while MagViT-2 keeps a
+    commitment loss. Noted, not changed -- flagging rather than silently diverging.
+
+**ELMo scalar mix (Peters et al. 2018), which is what the depth readout is.**
+  * **The formula is gamma * sum(s_j * h_j), not the bare softmax sum I wrote.** The
+    paper calls gamma "of practical importance to the optimization process." Added.
+  * **ELMo LAYER-NORMS each layer before weighting**, because layers have different
+    activation distributions. Measured in OUR trunk: layer 3's std is 1.40x layer 1's.
+    Without normalisation the learned weights partly compensate for SCALE instead of
+    expressing which layer a concept prefers -- which would have made the depth
+    profile, the entire interpretability payoff of this mechanism, report the wrong
+    thing. Added.
+
+The layer-norm one is the sharpest lesson: it would not have shown up as a bug at
+all. Training would have proceeded, the profile would have printed plausible numbers,
+and every conclusion drawn from it would have been wrong.
+
+ALL GATES PASS with the corrections. gko6a stopped and relaunching on the fixed code.

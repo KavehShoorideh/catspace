@@ -197,7 +197,17 @@ class GraphConceptField(nn.Module):
             self.mix_board = nn.Parameter(torch.zeros(g_heads, layers))
             self.mix_sq = nn.Parameter(torch.zeros(1, layers))
             self.mix_pc = nn.Parameter(torch.zeros(1, layers))
-            self.mix_mv = nn.Parameter(torch.zeros(1, layers))                      # log2(8 codes) per head
+            self.mix_mv = nn.Parameter(torch.zeros(1, layers))
+            # ELMo (Peters et al. 2018) does gamma * sum(s_j * h_j), NOT the bare
+            # softmax sum: gamma lets the consumer rescale the whole mixture and the
+            # paper calls it "of practical importance to the optimization process".
+            self.mix_gamma = nn.Parameter(torch.ones(4))
+            # ELMo also LAYER-NORMS each layer before weighting, because layers have
+            # different activation distributions. Measured here: 1.40x std between
+            # layer 1 and layer 3. Without this the weights partly compensate for
+            # SCALE rather than expressing preference -- which would make the depth
+            # profile report the wrong thing, and the profile is the whole point.
+            self.mix_ln = nn.LayerNorm(d, elementwise_affine=False)                      # log2(8 codes) per head
         self.mh_vq = mh_vq
         if self.binary:
             # BINARY CONCEPTS (Kaveh 2026-08-24: "binary is a lot more understandable,
@@ -466,18 +476,22 @@ class GraphConceptField(nn.Module):
             a_s = torch.softmax(self.mix_sq, -1)[0]
             a_p = torch.softmax(self.mix_pc, -1)[0]
             a_m = torch.softmax(self.mix_mv, -1)[0]
-            h_sq = sum(a_s[i] * L_[i][:, :64] for i in range(len(L_)))
-            h_pc = sum(a_p[i] * L_[i][:, :64] for i in range(len(L_)))
-            h_mv = sum(a_m[i] * L_[i][:, 64:64 + MV_CAP] for i in range(len(L_)))
+            h_sq = self.mix_gamma[1] * sum(
+                a_s[i] * self.mix_ln(L_[i][:, :64]) for i in range(len(L_)))
+            h_pc = self.mix_gamma[2] * sum(
+                a_p[i] * self.mix_ln(L_[i][:, :64]) for i in range(len(L_)))
+            h_mv = self.mix_gamma[3] * sum(
+                a_m[i] * self.mix_ln(L_[i][:, 64:64 + MV_CAP]) for i in range(len(L_)))
         else:
             h_pc = h_sq
         _cw = self.code_width
         if self.depth_cost:
             # g_proj is tiny, so applying it per layer is cheap; the mix is per HEAD
-            pl = torch.stack([hl[:, :64].mean(1) for hl in self.last_layers])  # (L,B,d)
+            pl = torch.stack([self.mix_ln(hl[:, :64]).mean(1)
+                              for hl in self.last_layers])             # (L,B,d) normed
             pg_all = self.g_proj(pl).view(len(pl), B, self.g_heads, _cw)
             a_b = torch.softmax(self.mix_board, -1)                    # (H, L)
-            pre_g = torch.einsum("lbhc,hl->bhc", pg_all, a_b)
+            pre_g = self.mix_gamma[0] * torch.einsum("lbhc,hl->bhc", pg_all, a_b)
         else:
             pre_g = self.g_proj(h_sq.mean(1)).view(B, self.g_heads, _cw)
         # stashed for the aux heads (phase adversary reads projections of a DETACHED trunk,
@@ -516,8 +530,14 @@ class GraphConceptField(nn.Module):
             bb, sqx = torch.where(psl < 32)               # live slots, both colors
             if len(bb):
                 slot_h[bb, psl[bb, sqx]] = h_pc[bb, sqx]
-            q_pc, pc_ids, vl_pc = self.piece_vq(self.piece_proj(slot_h))
             dead = (slot_h.abs().sum(-1, keepdim=True) == 0)
+            if self.binary:
+                # same masking issue as moves: captured/absent pieces are dead slots
+                # (~26pct of 32) and must not count toward codebook usage
+                q_pc, pc_ids, vl_pc = self.piece_vq(self.piece_proj(slot_h),
+                                                    mask=~dead.squeeze(-1))
+            else:
+                q_pc, pc_ids, vl_pc = self.piece_vq(self.piece_proj(slot_h))
             q_pc = q_pc.masked_fill(dead, 0.0)
             vl = vl + vl_pc
             parts.append(q_pc.reshape(B, -1))
@@ -556,7 +576,14 @@ class GraphConceptField(nn.Module):
     def move_logits(self, zq, h_mv, mv_mask):
         parts = [zq[:, None, :].expand(-1, h_mv.shape[1], -1), h_mv]
         if self.move_codes:
-            q_mv, _, vl_mv = self.mv_vq(self.mv_vq_proj(h_mv))
+            if self.binary:
+                # LFQ's entropy term shapes CODEBOOK USAGE over the batch, so padded
+                # move slots (32pct of every batch: ~33 legal of 48) would be counted
+                # as real codes. The reference implementation takes a mask for exactly
+                # this; not passing one silently corrupts the usage statistics.
+                q_mv, _, vl_mv = self.mv_vq(self.mv_vq_proj(h_mv), mask=mv_mask)
+            else:
+                q_mv, _, vl_mv = self.mv_vq(self.mv_vq_proj(h_mv))
             parts.append(q_mv)
             self._mv_vq_loss = vl_mv
         x = torch.cat(parts, -1)
