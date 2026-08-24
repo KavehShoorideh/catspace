@@ -103,6 +103,13 @@ def main():
                          "move's own SF WDL. The only term that asks the operator's "
                          "move-dependent component to separate siblings (2026-08-23: "
                          "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--all-ply", action="store_true",
+                    help="supervise the operator and value head at EVERY ply 1..6 "
+                         "instead of {1,3,6}. Unsupervised plies came out "
+                         "sign-INVERTED (measured k=2,5), which a search reads "
+                         "backwards. Uses the chain cache's existing 6 plies.")
+    ap.add_argument("--w-opk", type=float, default=0.5,
+                    help="weight on the previously-unsupervised plies (--all-ply)")
     ap.add_argument("--u-pen", type=float, default=0.1,
                     help="penalty on U in identity_prior. U carries ALL of the "
                          "operator's move-dependence; 0.1 shrank it to ~1pct of the "
@@ -554,6 +561,12 @@ def main():
         def _comp(za, tgt):
             return F.mse_loss(za[..., :ds], tgt)
         l3, l6 = _comp(traj[:, 2], t3), _comp(traj[:, 5], t6)
+        # plies 2,4,5 (0-indexed 1,3,4): supervised only when --all-ply
+        l_mid = torch.zeros((), device=dev)
+        if args.all_ply:
+            for _k in (1, 3, 4):
+                l_mid = l_mid + _comp(traj[:, _k], zq_c[:, _k])
+            l_mid = l_mid / 3.0
         if args.gen5:
             l_spec, rho = model.ops.spectral_penalty(fs[0], ts[0], ps_[0])
             l_spec = l_spec + 0.05 * model.ops.identity_prior(args.u_pen)
@@ -565,13 +578,14 @@ def main():
         merr = {}
         for k in range(6):
             s = model.dyn_z(torch.cat([s, model.field.mv_emb(toks[:, k].detach())], -1))
-            if k in (0, 2, 5):
+            if k in (0, 2, 5) or args.all_ply:
                 merr[k] = F.mse_loss(s, zq_c[:, k])
-        l_mlp = merr[0] + merr[2] + merr[5]
+        l_mlp = (sum(merr.values()) / len(merr) * 3.0 if args.all_ply
+                 else merr[0] + merr[2] + merr[5])
         l_cons = torch.zeros((), device=dev)
         if args.w_cons > 0:
             ds_ = model.lift.d_state
-            for k in (1, 3, 6):
+            for k in ((1, 2, 3, 4, 5, 6) if args.all_ply else (1, 3, 6)):
                 l_cons = l_cons + F.mse_loss(traj[:, k - 1, ds_:],
                                              model.lift.phi(traj[:, k - 1, :ds_], None))
         l_v = torch.zeros((), device=dev)
@@ -598,7 +612,15 @@ def main():
                 v_n += int(m0.sum())
             w6r = min(1.0, max(0.0, (step - args.op6_after) / 2000.0))
             mvc_all = mvc.reshape(cb, 6, MV_CAP, -1)
-            for k, wk in ((1, 1.0), (3, 1.0), (6, w6r)):
+            # ALL-PLY (2026-08-23): supervising only {1,3,6} left plies 2/4/5
+            # untrained, and the rolled value came out sign-INVERTED at 2 and 5 --
+            # reproduced on two disjoint held-out samples, and NOT a mover-POV effect
+            # (identical for white- and black-to-move roots). A search visits every
+            # ply, so it read those levels backwards. The chain cache already holds
+            # all six plies; this is a loop bound, not new data.
+            _KS = (((1, 1.0), (2, 1.0), (3, 1.0), (4, 1.0), (5, 1.0), (6, w6r))
+                   if args.all_ply else ((1, 1.0), (3, 1.0), (6, w6r)))
+            for k, wk in _KS:
                 if wk <= 0:
                     continue
                 vtk = torch.from_numpy(CHV[ci[:, k]]).to(dev)
@@ -658,6 +680,7 @@ def main():
         opg = min(1.0, max(0.0, (step - args.ops_after) / 1000.0)) if args.ops_after else 1.0
         w6 = args.w_op6 * min(1.0, max(0.0, (step - args.op6_after) / 2000.0)) * opg
         total = (opg * (args.w_op1 * l1 + args.w_op3 * l3) + w6 * l6 +
+                 opg * args.w_opk * l_mid +
                  args.w_spec * l_spec + l_mlp + l_v + opg * args.w_cons * l_cons +
                  args.w_move * l_move + args.w_dyn2 * l_dyn2 +
                  args.w_slow * l_slow * args.vamp_every + args.w_dec * l_dec * args.vamp_every)
