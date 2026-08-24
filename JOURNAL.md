@@ -16370,3 +16370,44 @@ the only copy: t1-256x10__opening_pool_sfsf.npy 36.31 GB, maia-1500__field_std_v
 (small JSONs and .rows.npy indices) survives; regeneration path is
 precompute_trunk_features.py. Data volume 96pct -> 81pct used, 87 GiB free; dvc cache
 63 GB -> 9.3 GB.
+
+**WHY LATENT SEARCH CANNOT CURRENTLY WORK -- MEASURED, REPRODUCED, AND FIXABLE
+(2026-08-23, answering Kaveh's direct question).**
+
+Rolled 256 held-out chains 6 plies with the operator ONLY (no re-encoding, ever)
+and compared each rolled state's value against the truth at that ply. Then repeated
+on a disjoint 256 to check it was not noise. IDENTICAL pattern both times:
+
+    ply  rolled corr   re-encoded corr   supervised?
+    k=1   +0.805/+0.774    +0.817/+0.733     YES (w_op1)
+    k=2   -0.772/-0.746    +0.844/+0.793     no      <-- INVERTED
+    k=3   +0.761/+0.684    +0.838/+0.750     YES (w_op3)
+    k=4   +0.637/+0.646    +0.858/+0.790     no
+    k=5   -0.726/-0.641    +0.838/+0.731     no      <-- INVERTED
+    k=6   +0.683/+0.654    +0.817/+0.738     YES (w_op6)
+
+TWO findings, and the first is the good news:
+
+1. **The latent space DOES carry the value 6 plies deep with no re-encoding.**
+   |corr| is 0.64-0.81 at every depth against 0.73-0.86 for full re-encoding. The
+   operator is not losing the signal -- rolling is a viable substitute for encoding,
+   which is the whole premise of search in the linear space.
+
+2. **The ORIENTATION is unconstrained wherever nothing trains it.** Every operator
+   supervision in this objective lands on k in {1,3,6}: the state losses are
+   `w_op1*l1 + w_op3*l3 + w6*l6`, `l_mlp = merr[0]+merr[2]+merr[5]`, `l_cons` loops
+   `(1,3,6)`, and the value/av evals report k=1/3/6. Plies 2, 4 and 5 are trained by
+   NOTHING -- and exactly at k=2 and k=5 the rolled value comes out sign-INVERTED
+   (k=4 survives, presumably interpolating between its supervised neighbours 3 and 6).
+
+An alpha-beta search visits EVERY ply. It would read plies 2 and 5 exactly backwards
+-- scoring losing lines as winning. That is a sufficient explanation for why deeper
+latent search has never paid, and it is independent of the sibling-discrimination
+deficit found earlier today (that one is about separating siblings AT a ply; this one
+is about the sign of the value BETWEEN plies).
+
+We were blind to it because the training gauges report vMAE and opR2 at k=1/3/6 --
+the supervised depths. The metrics only ever looked where the losses looked.
+
+FIX: supervise every ply 1..6, not the sparse {1,3,6}. The chain cache already
+carries all six plies, so this needs no new data -- it is a loop bound.
