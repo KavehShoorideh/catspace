@@ -414,3 +414,53 @@ gko3a acceptance: (1) BUG-FREE (the U-gate suite + review discipline, the week's
 deliverable), (2) trains/works (curves move, machinery sound), (3) ~Maia-1100 at
 shallow search = sufficient substrate. Beyond that: the PLANNER, designed with Kaveh
 present. Current engine already clears (3).
+
+---
+
+## Resolved 2026-08-23: where the play gap actually lives
+
+Three generations measured on identical unseen data (5,903 SF positions the models
+never trained on; 39-47 real positions for search internals):
+
+    model       ord     lvlMAE  lvlcorr  valcorr | childsep(rel) | arena vs Maia-1100
+    gko2i      0.535    0.139   0.864    0.866   |    2.95pct    | 60pct pooled (n=24)
+    gko3a @8k  0.537    0.110   0.874    0.853   |    0.48pct    | 38pct (n=24)
+    gko3b @8k  0.549    0.100   0.895    0.879   |    1.12pct    | 45pct pooled (n=48)
+
+**The heads are not the problem.** gko3b @8k beats the 62pct-era incumbent on every
+head metric. **The search path is.** The quantity that separates them is the
+rolled-child value spread -- what alpha-beta consumes at every node it cannot afford
+to re-encode. The incumbent prices siblings 5-8x more distinctly (0.00484 vs
+0.00058/0.00092). In gen5 the sharp head carries 109-140x more discrimination than
+the rolled path, versus 19x in the incumbent, so gen5's search is effectively blind
+across most of the tree -- precisely where operators were supposed to pay.
+
+**Mechanism (measured):** decomposing K(m)z = Az + sum_k w_k(m) U_k V_k^T z over 47
+real positions, the move-DEPENDENT term is ~0.5-1pct of the shared A term. ~99pct of
+what the operator does is identical regardless of which move is played.
+
+**Why no loss caught it:** every k-step target follows the PLAYED line -- one move
+per step -- where the shared A term alone predicts the next state. Nothing in the
+objective ever required K(m) to depend on m.
+
+**Diet is not the fix (tested).** A full 8,000-step run on a healthy sf diet raised
+move-conditioning 2.3x and left it 2.6x below the incumbent. The sf diet governs
+HEAD quality (0pct starved them; 36pct produced the lineage's best) and does not
+govern play. Do not expect data fixes to close a search-path gap.
+
+**The fix, implemented and gated OFF (`--w-sib`, `--sib-cap`):** roll the parent
+through each legal move and price each rolled child against that move's own SF WDL.
+SF already labels 100pct of legal moves (mean 32.3/position), so no new labelling is
+required -- this is Kaveh's multipv observation as a loss. U21 gates that the
+gradient reaches ops.U and ops.mix rather than only sf_v_full.
+
+**Ship it bundled with a reduced U-penalty.** The identity prior's 0.1||U||^2 term
+shrinks exactly the component this loss grows; at current weights they may cancel,
+and the hard spectral projection sits in the same conflict. Per the no-one-lever
+rule these move together, not in sequence.
+
+**Also discarded and recoverable for free:** SF returns a ~10-ply principal variation
+for EACH candidate (33 PVs/position); oracle_service keeps only pv[0]. Recording them
+would give ~33 trajectories per position instead of the chain's single played line --
+the "Stockfish for all children six plies down" data, already computed today and
+thrown away. Free for new labels; a re-label for the existing 4.2M.
