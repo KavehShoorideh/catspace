@@ -17137,3 +17137,39 @@ square (was 64), piece 8^8 (was 16), move 4^32 (was 64). Verified separately tha
 composite codes with all heads live, and that real move features ARE near-orthogonal
 (0.992 relative separation) -- so the collisions were the codebook's fault and gen6
 fixes them.
+
+**BINARY CONCEPTS ARE POSSIBLE AND CHEAP (2026-08-24, Kaveh: "binary is a lot more
+understandable, float is hard to say").** The library we already use ships LFQ
+(Lookup-Free Quantization, MagViT-2): each dimension IS a bit, the code is the sign
+pattern, there is NO learned codebook, and the vocabulary is 2^dims.
+
+Measured on 2,169 REAL move features (60 held-out positions), both schemes at 64
+dims and 2^64 vocabulary, 60 fitting steps each:
+
+    scheme                                recon err   resolves moves   values in state
+    VQ  32 heads x 4 codes (float)          0.614      2124/2169 98pct    132,723
+    LFQ 8 books x 8 bits   (BINARY)         0.672      2169/2169 100pct         2
+
+Binary RESOLVES BETTER (100pct vs 98pct) at ~9pct worse reconstruction. The state
+holds exactly two values -- every dimension is a bit you can name, count and watch
+flip.
+
+Note the arithmetic Kaveh asked about ("more codes, lower dimension"): with LFQ,
+codes = 2^dims, so dims ARE the bits and you cannot have more codes in fewer dims.
+The real cost is information density: a gen6 square is 16 float dims carrying 8 heads
+x 3 bits = 24 bits, whereas binary needs 24 dims for those same 24 bits -- 1.5x the
+width for identical content. That widens d_state and the operator's A is quadratic in
+it, which is the only real price.
+
+WHAT IT WOULD BUY BEYOND READABILITY:
+  * concept distance becomes HAMMING distance -- a natural, interpretable input to
+    the quasimetric field Kaveh wants to plan with, and it makes "how far has the
+    concept moved" a count of flipped bits rather than a float norm.
+  * the code-flip diagnostic (42.7 of 64 codes turning over per move) becomes a
+    per-BIT measurement, so we could see WHICH properties a move changes.
+  * no learned codebook means no dead codes, no kmeans init, and no codebook
+    collapse -- three failure modes this lineage has hit.
+
+CAVEATS, stated because this was a 60-step fit on FROZEN features, not end-to-end
+training: reconstruction is not the objective, task performance is, and a 9pct
+fidelity cost may matter more or less than it looks. The honest test is a short run.
