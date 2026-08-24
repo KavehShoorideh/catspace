@@ -16605,3 +16605,53 @@ still 2x short of the incumbent's 2.95pct and the effect is threshold-like rathe
 than gradual.
 
 The incumbent gko2i KEEPS the KittyChess mount, unchanged since yesterday.
+
+**THE SEARCH IS THE PROBLEM, AND IT IS NOT A LATENT SEARCH AT ALL (2026-08-24,
+Kaveh asked me to check it -- I had not).**
+
+Instrumented KoopmanEngine.search on a 33-move midgame position:
+
+    depth   encodes   op-applies   a real alpha-beta (~33^d)
+      2       12         328          1,089
+      3       19         550         35,937
+      4       21         593      1,185,921
+      5       21         585     39,135,393
+
+Depth 5 performs IDENTICAL work to depth 4 -- the search saturates at ~21 encodes.
+It examines about 21 positions total. That is not a search; it is a static
+evaluation with a short walk.
+
+Three structural faults, all in the source:
+
+1. **Every node RE-ENCODES.** `ab()` opens with `self._encode(bd, elo)` -- a full
+   graph encode at each visited node. The operator is used only to price children AT
+   a node; it NEVER carries the search forward. So this is the opposite of the stated
+   design ("linear operators only... I don't wanna have to have any extra
+   encodings"). The 47x-186x per-node economics measured earlier describe the cost of
+   ONE node's children, not the search.
+
+2. **Only the top-ranked move recurses.** `if rank == 0 and can_encode and budget>0`
+   -- every other move at every node takes its STATIC value with no deeper look.
+   There is no branching exploration anywhere; "depth d" means walking one line d
+   plies. This is a PV walk, not alpha-beta, and the alpha/beta bookkeeping around it
+   is therefore nearly inert.
+
+3. **Two hard caps compound it.** The root considers only `order[:8]` of 33 legal
+   moves -- a statically 9th-ranked best move can never be found -- and
+   `reencode_budget=12` is a GLOBAL pool, so once ~12 recursions have happened the
+   entire remaining tree degenerates to static values. That is the saturation above.
+
+THIS EXPLAINS THE DISSOCIATION. Two days of work improved what FEEDS the search --
+heads to lineage bests, six-ply orientations fixed, move-conditioning up, rank 3x --
+while the search itself examines ~21 positions and deepens one line. Improving the
+evaluator cannot help an engine that barely looks. It also explains why depth never
+paid: d4 and d5 are the same computation.
+
+THE FIX IS THE DESIGN KAVEH ALREADY SPECIFIED. gen5's BasisOps conditions on BARE
+move identity (from, to, promo) -- no encoder needed to roll. So a true latent search
+can: encode ONCE at the root; at each node take legal moves from the board (cheap,
+rules only); roll the latent through each move; price children with sf_v_full;
+recurse carrying the LATENT, never re-encoding. The six-ply measurement says the
+rolled value survives that (corr 0.63-0.75 at every ply, all correctly oriented as of
+gko4b), which is precisely the property that makes it viable NOW and did not hold
+before today.
