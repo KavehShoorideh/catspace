@@ -16320,3 +16320,44 @@ search economics. Everything measured today converges on one lever -- per-move S
 values on rolled states (Kaveh's multipv point), for which the labels already exist
 at 100pct coverage and which is the only proposed change that targets play rather
 than head quality.
+
+**SIBLING LOSS IMPLEMENTED, GATED, AND NOT LAUNCHED (2026-08-23).** `--w-sib`
+(default 0.0, `--sib-cap 16`): for SF shard rows, roll the lifted parent through
+each of up to 16 legal moves and price each rolled child against THAT MOVE's own SF
+WDL triple. This is Kaveh's multipv point made into a loss; no new labelling (SF
+covers 100pct of legal moves, mean 32.3/position, verified).
+
+POV, the easy thing to get wrong: the stored triple is the PARENT mover's view; the
+rolled state is the CHILD position whose mover is the opponent, and the engine reads
+sf_v_full(rolled) as the child-mover's win prob (it applies 1 - wp). Target is
+therefore the triple REVERSED. A sign error here would train the head to invert
+every child, so it is gated.
+
+GATES: U21 PASS -- the loss reaches the operator's MOVE-DEPENDENT parameters
+(grad ops.U 9.25e-03, grad ops.mix 6.06e-03, both required > 0) and the POV flip is
+verified. This was the gate that mattered: a variant that only trained sf_v_full
+would have looked healthy and changed nothing, since the entire deficit is that
+K(m) barely depends on m. U21b PASS -- defaults OFF. Full suite ALL PASS (U12-U21b).
+Cost: below measurement noise at 3 steps (~272 extra operator applies/step).
+
+LOSS-INTERACTION REVIEW (standing rule, before any launch):
+1. vs identity_prior (||A-I||^2 + 0.1||U||^2) -- DIRECT OPPOSITION and the crux.
+   The prior shrinks U; l_sib grows the move-dependent term, which lives in U. This
+   tension is intended (the prior is the measured cause of the 1pct ratio), but at
+   the current weights they may simply neutralise. RECOMMENDATION: enable l_sib
+   bundled with a reduced U-penalty, per the no-one-lever rule -- not alone.
+2. vs the hard spectral projection (U *= 0.97 when rho > 1.03) -- same conflict at
+   the safety layer. If l_sib grows U enough to push rho past 1.03 the projection
+   will fight it every step. WATCH rho; it has already lost this arms race twice
+   in this lineage.
+3. vs l_op1/3/6 -- compatible. l_op anchors the rolled STATE to the encoded child
+   along the played line; l_sib anchors its VALUE across siblings. Same reality,
+   different projections, and l_op is the stronger constraint.
+4. vs l_sv -- sf_v_full must now fit BOTH encoded states (l_sv) and rolled states
+   (l_sib). That is exactly what the engine asks of it, but it could cost
+   encoded-state accuracy. WATCH the battery's VALUE corr (currently 0.879).
+5. vs av_roll -- complementary; av_roll scores moves FROM a rolled state, l_sib
+   prices the rolled state itself.
+
+NOT LAUNCHED: enabling this is a design change and Kaveh's call, and the review
+above says it should ship bundled with a U-penalty reduction rather than alone.

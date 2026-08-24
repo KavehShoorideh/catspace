@@ -97,6 +97,14 @@ def main():
     ap.add_argument("--w-move", type=float, default=2.0, help="corpus move PL on chain parents")
     ap.add_argument("--w-dyn2", type=float, default=1.0, help="dyn CE to played-child codes")
     ap.add_argument("--w-slow", type=float, default=1.0, help="VAMP-2 slow pressure, lag-6")
+    ap.add_argument("--w-sib", type=float, default=0.0,
+                    help="per-move SIBLING value on rolled states: roll the parent "
+                         "through EVERY legal move and price each child against that "
+                         "move's own SF WDL. The only term that asks the operator's "
+                         "move-dependent component to separate siblings (2026-08-23: "
+                         "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--sib-cap", type=int, default=16,
+                    help="max moves per row scored by --w-sib (cost control)")
     ap.add_argument("--w-dec", type=float, default=0.5, help="vicreg cov on fast slice")
     ap.add_argument("--vamp-every", type=int, default=4)
     ap.add_argument("--vamp-batch", type=int, default=128)
@@ -809,6 +817,46 @@ def main():
                 else:
                     l_sv = (hl.ce(model.sf_v_full(za_s), sv_tt) +
                             hl.ce(model.sf_v(za_s[:, model.lift.d_state:]), sv_tt))
+        # ---- SIBLING VALUE ON ROLLED STATES ----
+        # SF labels carry a value for EVERY legal move (100pct coverage, mean 32.3
+        # moves/position). Every other k-step target follows the PLAYED line, where
+        # the operator's shared move-INDEPENDENT term alone predicts the next state --
+        # so nothing else in this objective ever requires K(m) to depend on m. Here we
+        # roll the parent through each of several legal moves and price each rolled
+        # child against THAT MOVE's own SF triple.
+        # POV: the stored triple is from the PARENT mover's view; the rolled state is
+        # the CHILD position, whose mover is the opponent, and the engine reads
+        # sf_v_full(rolled) as the child-mover's win prob (it applies 1 - wp). So the
+        # target is the triple REVERSED: (W,D,L) -> (L,D,W).
+        l_sib = torch.zeros((), device=dev)
+        if (args.w_sib > 0 and args.gen5 and args.ops
+                and hasattr(model, "sf_v_full") and ks.any()):
+            wrow_a = D["wdl"][idx].to(dev)[ks].float()            # (n,48,3) parent POV
+            raw_a = D["mv"][idx].to(dev).long()[ks]               # (n,48,C) raw moves
+            fin_a = fin[ks]
+            valid = fin_a & torch.isfinite(wrow_a).all(-1) & (wrow_a.sum(-1) > 0)
+            if valid.any():
+                with torch.no_grad():
+                    q_a, _, _ = model.field.mv_vq(
+                        model.field.mv_vq_proj(h_mv[ks].detach()))
+                za_a = model.lift(zq[ks], q_a * mask[ks][..., None])   # (n, d_aug)
+                nsel = min(args.sib_cap, valid.shape[1])
+                # take the first nsel VALID moves per row (move order is the graph's,
+                # which is legal-move order -- not value-sorted, so no selection bias)
+                order = torch.argsort((~valid).float(), dim=1, stable=True)[:, :nsel]
+                vsel = valid.gather(1, order)
+                if vsel.any():
+                    ri = torch.arange(len(order), device=dev)[:, None].expand_as(order)
+                    frm = raw_a[ri, order, 1][vsel]
+                    to = raw_a[ri, order, 2][vsel]
+                    pro = raw_a[ri, order, 5][vsel]
+                    zrep = za_a[:, None, :].expand(-1, nsel, -1)[vsel]
+                    zc = model.ops(zrep, frm, to, pro)
+                    tg_s = wrow_a[ri, order][vsel].flip(-1)        # child-mover POV
+                    tg_s = tg_s.clamp(min=1e-6)
+                    tg_s = tg_s / tg_s.sum(-1, keepdim=True)
+                    lp_s = torch.log_softmax(model.sf_v_full(zc), -1)
+                    l_sib = -(tg_s.detach() * lp_s).sum(-1).mean()
         l_iv = torch.zeros((), device=dev)
         iv_stats = None
         if args.iv and ks.any():
@@ -830,9 +878,10 @@ def main():
                 iv_stats = (float(((y >= lo) & (y <= hi) & m2).sum() / m2.sum()),
                             float((hi - lo)[m2].mean()))
         loss = (args.w_maia * l_maia + args.w_sf * l_sf + args.w_decor * l_decor + vl
+                + args.w_sib * l_sib
                 + args.w_iv * l_iv + 0.5 * l_sv)
         return loss, l_maia, l_sf, l_decor, (lg, zq, h_mv, fin, tgt, kind, mask,
-                                             l_iv, iv_stats)
+                                             l_iv, iv_stats, l_sib)
 
     def step_fn(m_, step):
         model.train()
@@ -1092,6 +1141,40 @@ def main():
         gate("U20", armed and vn20 > 0,
              f"value anchors armed: heads {model_has_v}/{hasattr(model, 'av_roll')}, "
              f"coverage loaded {CHV is not None}, targets hit this batch {vn20}")
+
+        # U21: the SIBLING loss must reach the operator's MOVE-DEPENDENT parameters.
+        # A version that only trained sf_v_full would look healthy and fix nothing --
+        # the whole point is pressure on K(m)'s dependence on m (2026-08-23: measured
+        # at ~1pct of the shared term). Also checks the POV flip, since a sign error
+        # here trains the value head to invert every child.
+        if args.gen5 and args.ops and hasattr(model, "sf_v_full"):
+            import copy as _c21
+            w_keep = args.w_sib
+            args.w_sib = 1.0
+            try:
+                idx21 = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
+                _, _, _, _, aux21 = losses_on(idx21)
+                l_sib21 = aux21[-1] if isinstance(aux21[-1], torch.Tensor) else None
+            finally:
+                args.w_sib = w_keep
+            # POV: reversing a decisive parent-win triple must yield a child LOSS
+            wpar = torch.tensor([[900.0, 80.0, 20.0]])          # parent mover winning
+            wchild = wpar.flip(-1)
+            pov_ok = bool(wchild[0, 0] < wchild[0, 2] and wchild[0, 2] == wpar[0, 0])
+            gsib = gvsib = 0.0
+            if l_sib21 is not None and float(l_sib21) > 0:
+                gU = torch.autograd.grad(l_sib21, model.ops.U, retain_graph=True,
+                                         allow_unused=True)[0]
+                gM = torch.autograd.grad(l_sib21, model.ops.mix.weight,
+                                         retain_graph=True, allow_unused=True)[0]
+                gsib = float(gU.abs().max()) if gU is not None else 0.0
+                gvsib = float(gM.abs().max()) if gM is not None else 0.0
+            gate("U21", gsib > 0 and gvsib > 0 and pov_ok,
+                 f"sibling loss reaches move-conditioning: grad U {gsib:.2e}, "
+                 f"grad mix {gvsib:.2e} (both > 0 required) | POV flip {pov_ok}")
+            gate("U21b", w_keep == 0.0,
+                 f"sibling loss DEFAULTS OFF (w_sib={w_keep}); enabling it is an "
+                 f"explicit, reviewed decision")
 
         if args.ops:
             r2 = op_eval(n_ch=64)
