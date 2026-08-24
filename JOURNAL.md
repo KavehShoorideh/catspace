@@ -16361,3 +16361,12 @@ LOSS-INTERACTION REVIEW (standing rule, before any launch):
 
 NOT LAUNCHED: enabling this is a design change and Kaveh's call, and the review
 above says it should ship bundled with a U-penalty reduction rather than alone.
+
+**RECLAIM EXECUTED (2026-08-23, Kaveh's go-ahead): 53 GB freed.** Removed
+`data/derived/trunk_feats.dvc` (and the stale basin-two-fields worktree's copy) then
+`dvc gc --workspace`. Destroyed permanently -- there is no DVC remote, so this was
+the only copy: t1-256x10__opening_pool_sfsf.npy 36.31 GB, maia-1500__field_std_v1.npy
+8.70 GB, maia-1900__field_std_v1.npy 8.70 GB. The 27 MB working-tree remainder
+(small JSONs and .rows.npy indices) survives; regeneration path is
+precompute_trunk_features.py. Data volume 96pct -> 81pct used, 87 GiB free; dvc cache
+63 GB -> 9.3 GB.
