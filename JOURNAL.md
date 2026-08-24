@@ -16476,3 +16476,37 @@ losses bought orientation and move-conditioning WITHOUT costing head quality.
 NOT YET MEASURED: play. gko3b @2k played 21pct mid-adaptation and recovered to
 45pct, so a mid-run arena on gko4a would be uninterpretable. Arena at the 8k finish,
 matched d2/d3/d4 against the incumbent's 60pct pooled.
+
+**gko4a @4k: orientations HOLD, move-conditioning REGRESSED -- an interaction I did
+not review (2026-08-23).**
+
+Inversion fix is stable (all six plies positive at both 2k and 4k):
+    ply     @2k      @4k
+    k=2   +0.749   +0.747
+    k=5   +0.650   +0.642
+Magnitudes softened ~2-4pct, within noise. The property Kaveh's search depends on is
+holding across checkpoints, not a lucky snapshot.
+
+Move-conditioning, however, went DOWN:
+    probe @600 (sibling loss alone)      ratio 0.01676   sep 1.83pct
+    gko4a @2k  (+ all-ply)               ratio 0.01631   sep 1.79pct
+    gko4a @4k  (+ all-ply)               ratio 0.01293   sep 1.48pct
+
+PLAUSIBLE (two points, not established): the all-ply STATE supervision I added
+(l_mid, w_opk 0.5) opposes the sibling loss. Predicting the next state accurately
+along a PLAYED line is best served by the shared move-independent term A -- that is
+exactly why the sparse {1,3,6} regime produced a 99pct move-independent operator in
+the first place. Adding MORE played-line state targets at plies 2/4/5 may therefore
+push back toward the shared term, partially undoing what --w-sib buys.
+
+MY REVIEW GAP: the loss-interaction review covered l_sib vs the identity prior and
+vs the spectral projection, and it covered l_op vs l_sib as "compatible, same
+reality". It did NOT consider that ADDING played-line state supervision would
+directly compete with sibling separation. The two fixes were reviewed separately and
+bundled without reviewing the bundle. That is precisely what the pairwise-interaction
+rule exists to catch, and I applied it to the terms that already existed rather than
+to the one I was adding.
+
+NOT ACTING YET: two points is not a trend, and w_opk is a knob (0.5) that can be
+lowered without touching the design. Step 6000 decides -- if the ratio keeps falling,
+lower w_opk; if it stabilises or recovers, the two coexist and the bundle stands.
