@@ -488,7 +488,7 @@ class TransformerLift(nn.Module):
     def __init__(self, d_state: int, g_heads: int = 32, d_code: int = 16,
                  d_sq: int = 32, d_phi: int = 256, d_tok: int = 64,
                  n_layers: int = 2, n_attn: int = 4, n_piece: int = 0,
-                 d_piece: int = 4):
+                 d_piece: int = 4, d_mv: int = 32):
         super().__init__()
         self.d_state, self.d_phi = d_state, d_phi
         self.g_heads, self.d_code, self.d_sq = g_heads, d_code, d_sq
@@ -508,7 +508,8 @@ class TransformerLift(nn.Module):
         self.enc = nn.TransformerEncoder(layer, num_layers=n_layers)
         self.out = nn.Linear(self.n_tok * d_tok, d_phi)
         self.out_pool = nn.Linear(d_tok, d_phi)
-        self.p_mv = nn.Linear(32, d_tok)
+        # move-code width is 32 (gcf5) or 64 (gcf6) -- never assume
+        self.p_mv = nn.Linear(d_mv, d_tok)
         self.mv_emb_tok = nn.Parameter(torch.randn(1, 1, d_tok) * 0.02)
 
     def _tokens(self, z, mv_q=None):

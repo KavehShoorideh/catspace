@@ -103,6 +103,12 @@ def main():
                          "move's own SF WDL. The only term that asks the operator's "
                          "move-dependent component to separate siblings (2026-08-23: "
                          "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--gen6", action="store_true",
+                    help="gcf6 concept space: EVERY family compositional like the "
+                         "board -- squares 8 heads x 8 codes (8^8 per square, same "
+                         "16 dims), pieces 8x8, moves 32 heads x 4 codes (4^32, "
+                         "collisions gone). Pair with --g-heads 32. Same d_state as "
+                         "gcf5, vastly larger vocabulary.")
     ap.add_argument("--av-concepts", action="store_true",
                     help="sharp head reads the QUANTISED move code instead of raw "
                          "backbone features, so every head in the model reads "
@@ -189,7 +195,8 @@ def main():
         threat_head=bool(A["threat_head"]), elo_cond=True,
         g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"],
         sq_codes=A.get("sq_codes", 256),
-        mh_vq=bool(args.g_heads), gen5=args.gen5).to(dev)
+        mh_vq=bool(args.g_heads), gen5=args.gen5,
+        gen6=args.gen6).to(dev)
     if args.g_heads:
         own = field.state_dict()
         sdf = {k: v for k, v in ck["state_dict"].items()
@@ -210,7 +217,9 @@ def main():
             # never quantised -- while the policy, value and rolled heads all read
             # quantised codes. --av-concepts feeds it the QUANTISED move code (q_mv,
             # 32-d) instead, so every head in the model reads concepts.
-            _av_mv = 32 if args.av_concepts else A["d_model"]
+            # same literal-32 trap as move_head had: read the field's real width
+            _av_mv = (getattr(field, "mv_code_dim", 32) if args.av_concepts
+                      else A["d_model"])
             self.sf_av = nn.Sequential(
                 nn.Linear(field.d_state + _av_mv, 512), nn.GELU(),
                 nn.Linear(512, args.k_bins))
@@ -220,7 +229,9 @@ def main():
                         field.d_state, g_heads=A["g_heads"], d_code=A["d_code"],
                         d_sq=(16 if args.gen5 else 32), d_phi=max(args.d_phi, 256),
                         n_layers=args.lift_layers,
-                        n_piece=(32 if args.gen5 else 0))
+                        n_piece=(32 if args.gen5 else 0),
+                        d_piece=getattr(field, "d_piece", 4),
+                        d_mv=getattr(field, "mv_code_dim", 32))
                 else:
                     self.lift = InteractionLift(field.d_state, args.d_phi)
                 if args.gen5:
@@ -237,7 +248,8 @@ def main():
                     nn.Linear(512, field.d_state))
             if args.iv:
                 self.iv = nn.Sequential(
-                    nn.Linear(field.d_state + 32, 256), nn.GELU(), nn.Linear(256, 3))
+                    nn.Linear(field.d_state + getattr(field, "mv_code_dim", 32),
+                              256), nn.GELU(), nn.Linear(256, 3))
             if args.ops and args.ema_decay > 0:
                 import copy as _copy
                 self.ema_field = _copy.deepcopy(field).eval()
@@ -516,6 +528,9 @@ def main():
         f = f or model.field
         with torch.no_grad():
             _, idx_mv, _ = f.mv_vq(f.mv_vq_proj(h_mv.detach()))
+        if idx_mv.dim() == 3:          # gen6: composite (B, MV, heads)
+            return idx_mv.gather(
+                1, played[:, None, None].expand(-1, 1, idx_mv.shape[-1]))[:, 0]
         return idx_mv.gather(1, played[:, None]).squeeze(1)
 
     def _raw_ftp(rows, played):
@@ -550,7 +565,7 @@ def main():
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]        # (cb,7) graph rows
         sqf, mvf, edges, mask, elo, played, psl_p = _feat_rows(ci[:, 0])
         zq_p, _, _, _, h_mv_p, _ = model.field.encode(sqf, mvf, edges, mask, elo=elo, pslot=psl_p)[:6]
-        c0 = _mv_codes(h_mv_p, played)
+        c0 = None if args.gen5 else _mv_codes(h_mv_p, played)
         tok_p = mvf.gather(1, played[:, None, None].expand(-1, 1, mvf.shape[-1]))[:, 0]
         # RESTORED FIELD STACK (the gko0 slice dropped it; identity-R2 collapse
         # +0.92 -> -0.78 over gens 1-3 was the measured cost). PL on the corpus move:
@@ -565,17 +580,25 @@ def main():
             zq_c = zq_c.reshape(cb, 6, -1)
             gi1 = gi_c.reshape(cb, 6, -1)[:, 0]
             si1 = si_c.reshape(cb, 6, -1)[:, 0]
-            cks = _mv_codes(h_mv_c, plc, enc_t).reshape(cb, 6)[:, :5]
+            cks = (None if args.gen5 else
+                   _mv_codes(h_mv_c, plc, enc_t).reshape(cb, 6)[:, :5])
             tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
                                )[:, 0].reshape(cb, 6, -1)[:, :5]
         # dyn CE to the played child's codes (global + square)
         dy = model.field.dyn(torch.cat([zq_p, model.field.mv_emb(tok_p)], -1))
-        Hh, Cc, SC = model.field.g_heads, A["g_codes"], model.field.sq_codes
+        Hh, Cc = model.field.g_heads, A["g_codes"]
+        # gen6 squares are 8 heads x 8 codes, so the CE is over 8 classes and there
+        # are 64*8 targets -- NOT 64 targets over sq_codes. The dyn head's WIDTH is
+        # identical either way (64*64 == 64*8*8), which is exactly why this had to be
+        # made explicit: a wrong SC here reshapes correctly-sized logits into the
+        # wrong number of rows and cross_entropy dies on the batch mismatch.
+        SC = 8 if getattr(model.field, "gen6", False) else model.field.sq_codes
         l_dyn2 = (F.cross_entropy(dy[:, :Hh * Cc].reshape(-1, Cc), gi1.reshape(-1)) +
                   F.cross_entropy(dy[:, Hh * Cc:].reshape(-1, SC), si1.reshape(-1)))
-        code_seq = torch.cat([c0[:, None], cks], 1)                 # (cb,6)
+        code_seq = None if args.gen5 else torch.cat([c0[:, None], cks], 1)  # (cb,6)
         t1, t3, t6 = zq_c[:, 0], zq_c[:, 2], zq_c[:, 5]
-        assert not t1.requires_grad and not code_seq.requires_grad  # U13 runtime guard
+        assert not t1.requires_grad and (code_seq is None
+                                         or not code_seq.requires_grad)  # U13 guard
         q_mv_p = _mv_q(h_mv_p, mask)
         za_root = model.lift(zq_p, q_mv_p)
         if args.gen5:
@@ -744,17 +767,18 @@ def main():
             sqf, mvf, edges, mask, elo, played, psl_p = _feat_rows(ci[:, 0])
             zq_p, _, _, _, h_mv_p, _ = model.field.encode(sqf, mvf, edges, mask,
                                                           elo=elo)[:6]
-            c0 = _mv_codes(h_mv_p, played)
+            c0 = None if args.gen5 else _mv_codes(h_mv_p, played)
             tok_p = mvf.gather(1, played[:, None, None].expand(-1, 1, mvf.shape[-1]))[:, 0]
             rows_c = ci[:, 1:].ravel()
             sqc, mvc, edc, mkc, eloc, plc, psl_c = _feat_rows(rows_c)
             enc_e = ema_field if ema_field is not None else model.field
             zq_c, _, _, _, h_mv_c, _ = enc_e.encode(sqc, mvc, edc, mkc, elo=eloc, pslot=psl_c)[:6]
             zq_c = zq_c.reshape(len(ci), 6, -1)
-            cks = _mv_codes(h_mv_c, plc, enc_e).reshape(len(ci), 6)[:, :5]
+            cks = (None if args.gen5 else
+                   _mv_codes(h_mv_c, plc, enc_e).reshape(len(ci), 6)[:, :5])
             tok_c = mvc.gather(1, plc[:, None, None].expand(-1, 1, mvc.shape[-1])
                                )[:, 0].reshape(len(ci), 6, -1)[:, :5]
-            code_seq = torch.cat([c0[:, None], cks], 1)
+            code_seq = None if args.gen5 else torch.cat([c0[:, None], cks], 1)
             if args.gen5:
                 f0e, t0e, p0e = _raw_ftp(ci[:, 0], played)
                 zz = model.lift(zq_p, _mv_q(h_mv_p, mask))
@@ -1266,14 +1290,14 @@ def main():
             wpar = torch.tensor([[900.0, 80.0, 20.0]])          # parent mover winning
             wchild = wpar.flip(-1)
             pov_ok = bool(wchild[0, 0] < wchild[0, 2] and wchild[0, 2] == wpar[0, 0])
-            gsib = gvsib = 0.0
+            gsib = gvsib = gvv = 0.0
             if l_sib21 is not None and float(l_sib21) > 0:
-                gU = torch.autograd.grad(l_sib21, model.ops.U, retain_graph=True,
-                                         allow_unused=True)[0]
-                gM = torch.autograd.grad(l_sib21, model.ops.mix.weight,
-                                         retain_graph=True, allow_unused=True)[0]
+                gU, gM, gV = (torch.autograd.grad(
+                    l_sib21, t, retain_graph=True, allow_unused=True)[0]
+                    for t in (model.ops.U, model.ops.mix.weight, model.ops.V))
                 gsib = float(gU.abs().max()) if gU is not None else 0.0
                 gvsib = float(gM.abs().max()) if gM is not None else 0.0
+                gvv = float(gV.abs().max()) if gV is not None else 0.0
             # U22: state-conditioning must make K ACTUALLY depend on z. Zero-init
             # means a fresh model is identical to the old one, so this gate would pass
             # vacuously at step 0 -- it therefore perturbs state_proj and checks the
@@ -1314,9 +1338,21 @@ def main():
                          f"state_proj has trained away from its zero init")
 
             _restore(_sn_sm)
-            gate("U21", gsib > 0 and gvsib > 0 and pov_ok,
-                 f"sibling loss reaches move-conditioning: grad U {gsib:.2e}, "
-                 f"grad mix {gvsib:.2e} (both > 0 required) | POV flip {pov_ok}")
+            # BasisOps inits V=0 so K starts at EXACT identity (U1c). The whole
+            # move-dependent term is then identically zero, so U and mix provably
+            # receive NO gradient until V moves -- asserting grad U > 0 on a fresh
+            # model asserts something false. V is the parameter the signal must reach
+            # at init; U and mix carry it once the operator has left identity. Third
+            # instance of this fresh-vs-resumed trap (see U19, U22).
+            if float(model.ops.V.abs().max()) == 0.0:
+                gate("U21", gvv > 0 and pov_ok,
+                     f"fresh op (V=0, K=identity): sibling loss reaches V {gvv:.2e} "
+                     f"> 0, the only live move-dependent parameter; U/mix are "
+                     f"structurally zero here | POV flip {pov_ok}")
+            else:
+                gate("U21", gsib > 0 and gvsib > 0 and gvv > 0 and pov_ok,
+                     f"trained op: sibling loss reaches U {gsib:.2e}, mix {gvsib:.2e}, "
+                     f"V {gvv:.2e} (all > 0) | POV flip {pov_ok}")
             # U20's lesson: a guarded feature that is silently OFF gates green. So
             # when --w-sib is enabled the term must actually FIRE (needs sf rows in
             # the batch AND finite wdl triples); when disabled it must be exactly 0.

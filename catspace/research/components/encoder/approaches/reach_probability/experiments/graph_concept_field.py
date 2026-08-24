@@ -103,7 +103,8 @@ class GraphConceptField(nn.Module):
                  cls_reach=None, cls_eg=None, cls_out=None,
                  edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
                  agg_max=False, kin=False, file_nodes=False, phase_head=False,
-                 threat_head=False, elo_cond=False, mh_vq=False, gen5=False):
+                 threat_head=False, elo_cond=False, mh_vq=False, gen5=False,
+                 gen6=False):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize
         self.edge_codes, self.move_codes = edge_codes, move_codes
@@ -199,16 +200,34 @@ class GraphConceptField(nn.Module):
                                                     **vq_kw)
                                      for _ in range(g_heads)])
         self.gen5 = gen5
+        self.gen6 = bool(gen6)
         if gen5:
             d_fine = 16                      # gcf5 budget: squares 64x16 = 1024
         self.sq_proj = nn.Linear(d, d_fine)
-        self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=sq_codes, **vq_kw)
+        if self.gen6:
+            # gcf6 (Kaveh 2026-08-24): every family COMPOSITIONAL, like the board.
+            # A square was one code from a 64-book -> 64 states; now 8 heads x 8 codes
+            # = 8^8 = 16.8M states in the SAME 16 dims. A piece was 16 states; now
+            # 8^8. Measured motivation: one move got ONE code out of 64, resolving
+            # only 13.9 of 34.9 legal moves, and moves sharing a code differed by
+            # more than the whole sibling spread.
+            self.sq_vq = VectorQuantize(dim=d_fine, heads=8,
+                                        separate_codebook_per_head=True,
+                                        codebook_size=8, **vq_kw)
+        else:
+            self.sq_vq = VectorQuantize(dim=d_fine, codebook_size=sq_codes, **vq_kw)
         d_state = g_heads * d_code + 64 * d_fine
         if gen5:
             # PIECE CONCEPTS: 32 canonical slots, shared small book; dead slots = 0
-            self.d_piece = 4
+            self.d_piece = 16 if self.gen6 else 4
             self.piece_proj = nn.Linear(d, self.d_piece)
-            self.piece_vq = VectorQuantize(dim=self.d_piece, codebook_size=16, **vq_kw)
+            if self.gen6:
+                self.piece_vq = VectorQuantize(dim=self.d_piece, heads=8,
+                                               separate_codebook_per_head=True,
+                                               codebook_size=8, **vq_kw)
+            else:
+                self.piece_vq = VectorQuantize(dim=self.d_piece, codebook_size=16,
+                                               **vq_kw)
             d_state += 32 * self.d_piece
         if edge_codes:
             # EDGE CONCEPTS (Kaveh 2026-08-19: "global, node, EDGE concepts"). An att edge's
@@ -224,16 +243,28 @@ class GraphConceptField(nn.Module):
         if move_codes:
             # MOVE CONCEPTS: annotative, not bottlenecking -- the score reads raw (+) quantized,
             # so the fine ranking keeps its resolution while the codes learn move types.
-            self.mv_vq_proj = nn.Linear(d, 32)
-            self.mv_vq = VectorQuantize(dim=32, codebook_size=move_codes, decay=0.9,
-                                        commitment_weight=0.25, kmeans_init=True,
-                                        threshold_ema_dead_code=2)
+            _mvd = 64 if self.gen6 else 32
+            self.mv_code_dim = _mvd          # heads read THIS, never a literal
+            self.mv_vq_proj = nn.Linear(d, _mvd)
+            _mv_kw = dict(decay=0.9, commitment_weight=0.25, kmeans_init=True,
+                          threshold_ema_dead_code=2)
+            if self.gen6:
+                # 32 heads x 4 codes = 4^32 distinguishable moves; collisions vanish
+                self.mv_vq = VectorQuantize(dim=_mvd, heads=32,
+                                            separate_codebook_per_head=True,
+                                            codebook_size=4, **_mv_kw)
+            else:
+                self.mv_vq = VectorQuantize(dim=_mvd, codebook_size=move_codes,
+                                            **_mv_kw)
         self.d_state = d_state
         if elo_cond:
             self.elo_head = nn.Linear(d_state, 2)
 
+        # the move-code width is 32 (gcf5) or 64 (gcf6); reading a LITERAL here made
+        # the policy head silently wrong-sized the moment the move vocabulary changed
         self.move_head = nn.Sequential(
-            nn.Linear(d_state + d + (32 if move_codes else 0), hidden), nn.GELU(),
+            nn.Linear(d_state + d + (getattr(self, "mv_code_dim", 32)
+                                     if move_codes else 0), hidden), nn.GELU(),
             nn.Linear(hidden, 1))
         self.mv_emb = nn.Sequential(nn.Linear(6 + 4 + 5 + 4, 64), nn.GELU())
         self.dyn = nn.Sequential(nn.Linear(d_state + 64, hidden), nn.GELU(),

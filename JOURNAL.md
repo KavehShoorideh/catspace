@@ -17096,3 +17096,44 @@ does implicitly.
 The latent-search infrastructure, the beam prior, the PL loss and the
 state-conditioning all remain correct and stay built; they are downstream of an
 operator that is not yet accurate enough to use them.
+
+**gcf6 CODE-PATH REVIEW (2026-08-24, Kaveh: "check the code path you're about to
+launch tonight, don't assume anything"). EIGHT real defects, several fatal.** The
+run would have crashed at its first evaluation.
+
+CRASHES:
+  1. `l_dyn2` square CE used `sq_codes` (64) as the class count, but gen6 squares are
+     8 heads x 8 codes -> 64*8 targets over 8 classes. cross_entropy dies on the batch
+     mismatch. INSIDIOUS: the dyn head's WIDTH is identical either way
+     (64*64 == 64*8*8), so only the row count reveals it.
+  2. `_mv_codes` gathers on 2-D ids; gen6 ids are (B, MV, heads) -> crash.
+  3. `code_seq` is DEAD under gen5 (only the legacy operator consumes it) yet was
+     computed unconditionally, so gen6's composite ids reached a scalar-only path.
+     Now skipped entirely when gen5.
+  4-7. FOUR hardcoded `32`s for the move-code width, which gen6 changes to 64:
+     `move_head` (the Maia policy head), `TransformerLift.p_mv`, the `iv` interval
+     head, and `_av_mv` in my own --av-concepts change from an hour earlier. All now
+     read `field.mv_code_dim`.
+  8. Both the training AND eval copies of the code_seq block needed fixing -- the eval
+     path would have crashed at the first heartbeat even if training survived.
+
+GATE BUG (third of its kind):
+  U21 asserted `grad U > 0`, but BasisOps inits V=0 so K starts at EXACT identity
+  (U1c documents this). The move-dependent term is then identically zero, so U and
+  mix PROVABLY receive no gradient until V moves. The gate was asserting something
+  false about every fresh model. Now: fresh asserts the signal reaches V (the only
+  live move-dependent parameter at identity), trained asserts U/mix/V all live.
+  This is the third fresh-vs-resumed invariant trap after U19 and U22 -- the pattern
+  is a gate written for the state the author happened to be testing.
+
+LESSON: the move-code width was a literal in four separate files. Any change to a
+shared dimension needs a grep for its VALUE, not just its name -- `32` appears
+innocuously everywhere.
+
+STATUS: gcf6 constructs, forward-passes on real boards, and ALL UNIT GATES PASS.
+d_state 1920 (vs gcf5's 1792). Vocabulary per family: board 8^32, square 8^8 per
+square (was 64), piece 8^8 (was 16), move 4^32 (was 64). Verified separately that
+32 heads x 4 codes resolves 33 near-orthogonal move features into 33 distinct
+composite codes with all heads live, and that real move features ARE near-orthogonal
+(0.992 relative separation) -- so the collisions were the codebook's fault and gen6
+fixes them.
