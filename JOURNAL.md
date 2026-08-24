@@ -16937,3 +16937,39 @@ it less human-like. So there are two different experiments and they answer diffe
 questions: (a) vs Maia@1node = "what rating do we play at", the calibrated benchmark;
 (b) vs Maia@same-nodes = "who is better per unit of compute", the strength-per-node
 frontier. Both are worth running; they must not be conflated in one number.
+
+**BEAM RECALL: at what width does a winning move survive? (2026-08-24, Kaveh's
+question -- and it is the right one, RECALL not precision.)** 150 held-out positions,
+mean 35 legal moves; "winning move" = any move within 0.02 of SF's best:
+
+    beam   sharp head   rolled value   random
+      1      65.3pct       13.3pct     12.0pct
+      2      80.7          25.3        20.7
+      3      88.0          28.7        22.7
+      4      91.3          36.0        28.0
+      5      92.0          39.3        32.7
+      6      92.7          44.0        36.0
+      8      94.7          51.3        44.7
+
+ANSWER: with the SHARP HEAD, beam 8-10 retains a winning move ~95pct of the time.
+That is a real prior and exactly the human-style filter Kaveh described -- consider
+eight candidates, discard the other twenty-seven, lose almost nothing.
+
+With the ROLLED VALUE it is 51.3pct at beam 8 against RANDOM's 44.7pct. It cannot
+filter. Beaming an internal node to 3 on that signal keeps a winning move 28.7pct of
+the time -- i.e. discards the win at 71pct of nodes, compounding at every ply.
+
+THIS RESOLVES THE BEAM-DEPTH RESULT FROM MINUTES AGO. Beam 3 reaching depth 7 on a
+1000-node budget (vs depth 2 at full width) is not the bargain it looked like: it is
+searching seven plies deep inside a tree whose winning moves were thrown away at ply
+one. Depth bought with a chance-level filter is worse than no depth.
+
+WHAT IS ACTUALLY BUILDABLE TODAY: beam 8-10 AT THE ROOT ONLY, full width below.
+Sound, because the root is the one place the prior exists, and it cuts the tree ~4x
+for a 5pct recall cost. Everything deeper waits on the same blocked quantity --
+within-position ordering on rolled states.
+
+Also note the ceiling this implies for root-prior-only play: the sharp head's TOP-1
+recall is 65.3pct, so an engine that just plays its best move without search is
+right about two thirds of the time. That is roughly what the old re-encoding search
+does (it barely searches), and it scores 44pct vs Maia-1100.
