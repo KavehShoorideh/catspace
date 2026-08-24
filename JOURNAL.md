@@ -16695,3 +16695,44 @@ made true of the REPRESENTATION first (sparsity/locality pressure in the encoder
 concepts that are local by construction rather than global pools), and only then can
 an operator be sparse in it. Retrain-the-operator and fix-the-representation are
 different problems and this measurement separates them.
+
+**THE LATENT SEARCH WORKS AND PLAYS AT 4pct. THE OLD BROKEN ONE PLAYS AT 44pct.
+(2026-08-24)** Same weights (gko4b), same openings, same opponent:
+
+    search                        positions examined   score vs Maia-1100
+    old (re-encodes every node)         ~21                44pct (d3 x24)
+    NEW latent (1 encode, real a-b)    4,662                4pct (d3 x12)
+
+The implementation is not at fault: gates pass (all 33 root moves legal, board
+restored, deterministic, mate-in-1 found at value 1.000), it does one encode at any
+depth, and nodes grow properly with depth (33/963/4662/8054).
+
+WHY, and it is a measurement I already had and failed to connect: below the root a
+latent search has NO sharp head -- sf_av needs h_mv from the encoder, so it exists
+only where we encode. Every internal node must therefore rank and evaluate moves
+using the ROLLED value alone. And the rolled value's SIBLING spread was measured
+yesterday at sd 0.0009 against the sharp head's 0.10 -- a 109x gap. The engine is
+searching 4,662 positions with a comparator that cannot tell siblings apart.
+Yesterday's ablation already said this outright: gen5 with blend=0.0 (rolled-only)
+scored 0pct. A latent search IS rolled-only below the root, so 4pct is that number
+reappearing, not a new failure.
+
+THE DISTINCTION I SHOULD HAVE DRAWN EARLIER. The six-ply test measures correlation
+ACROSS positions (0.63-0.75, healthy) -- "is this position good?". Search needs
+discrimination WITHIN a position -- "which of these 33 children is best?" -- and
+that is the sibling spread, which is ~0. A value can be excellent at the first and
+useless at the second. I have been quoting the first as evidence that latent search
+is viable; it is necessary but nowhere near sufficient.
+
+WHAT THIS SETTLES. The old search's 44pct is bought entirely by RE-ENCODING at every
+node so the sharp head can rank siblings. That is precisely the cost Kaveh wants to
+eliminate. So the 40-point gap between the two searches is a direct measurement of
+how much work the encoder is still doing that the operator cannot yet do. Latent
+search is not blocked by the search algorithm -- that is now correct and fast (28k
+applies/s, 1 encode, real cutoffs). It is blocked by sibling discrimination in the
+rolled value, which is the exact quantity --w-sib targets and which stands at 1.49pct
+vs the incumbent's 2.95pct.
+
+The sibling loss is therefore not an improvement to latent search; it is its
+PRECONDITION. Nothing else in the objective produces within-position discrimination
+on rolled states.
