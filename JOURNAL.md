@@ -16749,3 +16749,40 @@ transitions, search in code space): that design presumes codes are STABLE enough
 that a move is a sparse transition. Measured, it is a near-total rewrite each ply,
 so code-space planning is not currently possible for the same reason latent search
 is not -- the substrate does not hold still.
+
+**"IS THERE INFORMATION IN IT?" -- MEASURED, AND THE ANSWER SPLITS BY QUESTION
+(2026-08-24, Kaveh's test).** I had reported sibling SPREAD (sd 0.0009) as evidence
+of no signal, which was the wrong statistic: spread is magnitude, and argmax does not
+care about scale. The right measurement is within-position ORDERING. On 120 held-out
+positions, Spearman against SF's own per-move verdicts:
+
+    rolled value (what a latent search MUST use below the root):  -0.002
+    sharp head   (what the old search re-encodes to obtain):      +0.532
+    rolled positive in 47pct of positions (chance = 50pct)
+
+So it is not "small but correctly ordered" -- the ordering is chance. That fully
+explains the latent search at 4pct and clears my implementation: a correct,
+fast search cannot do anything with a comparator carrying zero signal.
+
+THE SPLIT THAT MATTERS FOR WHAT COMES NEXT. Two different questions, two different
+measurements, and the operator answers one of them well:
+
+    ACROSS positions -- "how good is this position?"    corr 0.63-0.75 at ALL six
+      plies, orientations correct (gko4b). Rolling PRESERVES this.
+    WITHIN a position -- "which of these children is best?"   spearman 0.00.
+      Rolling DESTROYS this.
+
+SEARCH needs the second and is therefore blocked. PLANNING as Kaveh describes it --
+concepts through a quasimetric field, asking what leads to what along trajectories --
+needs the FIRST, which the operator already carries at 0.63-0.75 six plies deep with
+no re-encoding. So his instinct to proceed to planning is not refuted by any of
+today's negative results; it is the one direction the current substrate actually
+supports. His point about flipped codes also stands on its own terms: a quasimetric
+learns from trajectory adjacency, so codes that reliably co-occur end up close
+regardless of how often they flip -- flip RATE is not the obstacle there, only
+flip CONSISTENCY would be, and that is untested.
+
+Recorded so the next session does not re-derive it: the search INFRASTRUCTURE is now
+correct, fast and gated (1 encode at any depth, 4,662 positions at d4, 28k
+applies/s, real cutoffs, mate-in-1 found). The moment the rolled value acquires
+within-position ordering, the search becomes useful with no further work.
