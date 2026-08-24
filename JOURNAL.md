@@ -16411,3 +16411,30 @@ the supervised depths. The metrics only ever looked where the losses looked.
 
 FIX: supervise every ply 1..6, not the sparse {1,3,6}. The chain cache already
 carries all six plies, so this needs no new data -- it is a loop bound.
+
+**POV RULED OUT as the cause of the ply-2/5 sign inversion (2026-08-23, Kaveh's
+hypothesis, tested).** Split held-out chains by the ROOT's true side-to-move
+(gl[:,0] = int(board.turn), not a row-index proxy) and re-ran the 6-ply roll:
+
+    root stm   k1     k2     k3     k4     k5     k6
+    black    +0.77  -0.75  +0.71  +0.63  -0.64  +0.62
+    white    +0.80  -0.76  +0.72  +0.65  -0.71  +0.71
+
+Identical. Mover-POV would make the flip plies MOVE with the root side; they do not.
+It would also predict ALTERNATION (every other ply), not flips at 2 and 5
+specifically. So turn alternation is not the mechanism.
+
+METHOD NOTE: the first version of this test split on ply-index parity (starts % 2)
+as a stand-in for side-to-move. Checked against the real flag it agreed on 50.1pct
+of chains -- i.e. it was pure coincidence and the test measured nothing. Caught
+before publishing. Row-index parity is NOT side-to-move: p_row is a global corpus
+index and games have odd lengths.
+
+What survives is the supervision explanation: all three SUPERVISED plies (1,3,6) are
+correctly oriented and two of three UNSUPERVISED plies (2,5) are inverted, with ply
+4 surviving between its supervised neighbours. Note the mechanism may sit in the
+VALUE HEAD rather than the operator -- sf_v_full only ever sees rolled states at
+k=1/3/6, so at k=2/5 it is being asked about a region of the rolled manifold it was
+never trained on. Both locations imply the same fix (supervise every ply), and the
+next run is the definitive test: if all-ply supervision removes the inversions, the
+diagnosis is confirmed.
