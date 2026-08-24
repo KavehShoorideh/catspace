@@ -105,7 +105,7 @@ class GraphConceptField(nn.Module):
                  edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
                  agg_max=False, kin=False, file_nodes=False, phase_head=False,
                  threat_head=False, elo_cond=False, mh_vq=False, gen5=False,
-                 gen6=False, binary=False):
+                 gen6=False, binary=False, depth_cost=False):
         super().__init__()
         from vector_quantize_pytorch import VectorQuantize, LFQ
         self.edge_codes, self.move_codes = edge_codes, move_codes
@@ -188,7 +188,16 @@ class GraphConceptField(nn.Module):
         # EVERY consumer must read this -- the literal has bitten us in
         # move_head, p_mv, the iv head, av-concepts, the phase adversary
         # and the vamp slice.
-        self.code_width = 3 if binary else d_code                      # log2(8 codes) per head
+        self.code_width = 3 if binary else d_code
+        # DEPTH COST: one softmax over trunk layers per concept family, and a
+        # SEPARATE one per board head so each global concept reveals the depth it
+        # needs. Init uniform (no prior); the penalty does the pushing.
+        self.depth_cost = bool(depth_cost)
+        if self.depth_cost:
+            self.mix_board = nn.Parameter(torch.zeros(g_heads, layers))
+            self.mix_sq = nn.Parameter(torch.zeros(1, layers))
+            self.mix_pc = nn.Parameter(torch.zeros(1, layers))
+            self.mix_mv = nn.Parameter(torch.zeros(1, layers))                      # log2(8 codes) per head
         self.mh_vq = mh_vq
         if self.binary:
             # BINARY CONCEPTS (Kaveh 2026-08-24: "binary is a lot more understandable,
@@ -283,6 +292,7 @@ class GraphConceptField(nn.Module):
                 self.mv_vq = VectorQuantize(dim=_mvd, codebook_size=move_codes,
                                             **_mv_kw)
         self.d_state = d_state
+
         if elo_cond:
             self.elo_head = nn.Linear(d_state, 2)
 
@@ -310,6 +320,31 @@ class GraphConceptField(nn.Module):
         # slow-block projection for VAMP-2: 32-d so a few-hundred-pair batch supports the
         # covariances (rank-deficiency is the caller's bug, per the loss docstring)
         self.vamp_proj = nn.Linear(slow_heads * (3 if binary else d_code), 32, bias=False)
+
+    def depth_penalty(self):
+        """Mean expected DEPTH (0..1) across concept families. Reading the last layer
+        costs 1.0, the first costs 1/L. Minimising this pulls concepts shallow, which
+        in a graph net also pulls their receptive field local."""
+        if not self.depth_cost:
+            return torch.zeros(())
+        outs = []
+        for m in (self.mix_board, self.mix_sq, self.mix_pc, self.mix_mv):
+            L = m.shape[-1]
+            depth = torch.arange(1, L + 1, device=m.device, dtype=m.dtype) / L
+            outs.append((torch.softmax(m, -1) * depth).sum(-1).mean())
+        return torch.stack(outs).mean()
+
+    def depth_profile(self):
+        """Interpretability readout: expected layer per family, and per board head."""
+        if not self.depth_cost:
+            return {}
+        out = {}
+        for nm, m in (("board", self.mix_board), ("square", self.mix_sq),
+                      ("piece", self.mix_pc), ("move", self.mix_mv)):
+            L = m.shape[-1]
+            idx = torch.arange(1, L + 1, device=m.device, dtype=m.dtype)
+            out[nm] = float((torch.softmax(m, -1) * idx).sum(-1).mean())
+        return out
 
     def _attn_bias(self, B, mvf, mv_mask, dev):
         """(B*heads, N, N) additive bias from static square geometry + move src/dst buckets."""
@@ -393,6 +428,7 @@ class GraphConceptField(nn.Module):
             return (agg.reshape(B, self.n_nodes, self.d) if torch.is_tensor(agg) else
                     torch.zeros_like(x))
 
+        _per_layer = []
         for i in range(len(self.rel)):
             if self.gps_parallel:
                 # GPS canonical form, pre-LN: parallel MPNN + attention on the same input,
@@ -410,6 +446,13 @@ class GraphConceptField(nn.Module):
                                     attn_mask=abias, need_weights=False)
                 h = self.ln_g[i](h + a)
                 h = self.ln_f[i](h + self.ffn[i](h))
+            _per_layer.append(h)
+        # DEPTH-COST readout (Kaveh 2026-08-24): concepts may read an
+        # EARLIER layer instead of waiting for the full trunk. Stashing
+        # every layer lets each concept family learn WHICH depth it needs,
+        # and depth is receptive-field radius in a graph net, so paying for
+        # depth is also paying for non-locality.
+        self.last_layers = _per_layer
         return h                                              # (B, 112, d)
 
     def encode(self, sqf, mvf, edges, mv_mask, want_edge_ids=False, elo=None, pslot=None):
@@ -418,8 +461,25 @@ class GraphConceptField(nn.Module):
         B = sqf.shape[0]
         h = self.backbone(sqf, mvf, edges, mv_mask, elo=elo)
         h_sq, h_mv = h[:, :64], h[:, 64:64 + MV_CAP]
+        if self.depth_cost:
+            L_ = self.last_layers
+            a_s = torch.softmax(self.mix_sq, -1)[0]
+            a_p = torch.softmax(self.mix_pc, -1)[0]
+            a_m = torch.softmax(self.mix_mv, -1)[0]
+            h_sq = sum(a_s[i] * L_[i][:, :64] for i in range(len(L_)))
+            h_pc = sum(a_p[i] * L_[i][:, :64] for i in range(len(L_)))
+            h_mv = sum(a_m[i] * L_[i][:, 64:64 + MV_CAP] for i in range(len(L_)))
+        else:
+            h_pc = h_sq
         _cw = self.code_width
-        pre_g = self.g_proj(h_sq.mean(1)).view(B, self.g_heads, _cw)
+        if self.depth_cost:
+            # g_proj is tiny, so applying it per layer is cheap; the mix is per HEAD
+            pl = torch.stack([hl[:, :64].mean(1) for hl in self.last_layers])  # (L,B,d)
+            pg_all = self.g_proj(pl).view(len(pl), B, self.g_heads, _cw)
+            a_b = torch.softmax(self.mix_board, -1)                    # (H, L)
+            pre_g = torch.einsum("lbhc,hl->bhc", pg_all, a_b)
+        else:
+            pre_g = self.g_proj(h_sq.mean(1)).view(B, self.g_heads, _cw)
         # stashed for the aux heads (phase adversary reads projections of a DETACHED trunk,
         # so reversal shapes only the projection slices; te head reads square states)
         self.last_h_sq = h_sq
@@ -455,7 +515,7 @@ class GraphConceptField(nn.Module):
             slot_h = h_sq.new_zeros(B, 32, h_sq.shape[-1])
             bb, sqx = torch.where(psl < 32)               # live slots, both colors
             if len(bb):
-                slot_h[bb, psl[bb, sqx]] = h_sq[bb, sqx]
+                slot_h[bb, psl[bb, sqx]] = h_pc[bb, sqx]
             q_pc, pc_ids, vl_pc = self.piece_vq(self.piece_proj(slot_h))
             dead = (slot_h.abs().sum(-1, keepdim=True) == 0)
             q_pc = q_pc.masked_fill(dead, 0.0)

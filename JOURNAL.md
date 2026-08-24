@@ -17206,3 +17206,35 @@ WHAT BINARY BUYS, concretely, now that it exists:
     to say WHICH properties a move changes
 
 ALL UNIT GATES PASS. Not launched -- next step is the run.
+
+**DEPTH COST BUILT AND GATED, BUNDLED WITH BINARY (2026-08-24, Kaveh: "I am happy to
+confound them, put them together").** Each concept family -- and each board head
+individually -- reads a LEARNED softmax mixture over trunk layers instead of only the
+final one, penalised by expected depth (last layer costs 1.0, first costs 1/L).
+Precedent: ELMo's scalar mix; the penalty is the addition.
+
+WHY IT MAY MATTER BEYOND READABILITY: in a graph network, layer depth IS
+receptive-field radius. A concept read at layer 2 sees a 2-hop neighbourhood; one
+read at the last layer sees the whole board through global attention. So paying for
+depth is paying for NON-LOCALITY -- which attacks the diffuseness measured earlier
+(the TRUE delta already spreads over 38 of 64 concepts, because global attention plus
+global pooling makes every concept a function of everything). Kaveh's two ideas
+converge: binary makes concepts readable, shallow makes them local.
+
+NEW READOUT: `field.depth_profile()` returns the expected layer per family, so we can
+finally say WHICH depth a concept needs -- a measure of conceptual complexity we have
+never had.
+
+U24 gates that the penalty is LIVE, not merely present: grad to mix_board 8.68e-04,
+and descending the penalty moves the board profile 2.00 -> 1.97. A penalty that
+existed but carried no gradient would have left the profile pinned at its uniform
+init and looked perfectly healthy.
+
+CAVEAT: this trunk has only 3 layers, so the mixture chooses among three depths. The
+interpretability payoff is real but coarse; a deeper trunk would give a finer profile.
+
+BUG FOUND WHILE BUILDING: inserting the two new methods after `self.d_state = d_state`
+TERMINATED __init__ mid-body -- everything after it, including `move_head`, silently
+stopped being constructed. Caught by the gates (AttributeError), not by reading.
+
+ALL UNIT GATES PASS with --gen6 --binary --depth-cost together.

@@ -103,6 +103,14 @@ def main():
                          "move's own SF WDL. The only term that asks the operator's "
                          "move-dependent component to separate siblings (2026-08-23: "
                          "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--depth-cost", action="store_true",
+                    help="each concept family (and each board head) reads a LEARNED "
+                         "mixture over trunk layers, penalised by expected depth. "
+                         "Pulls concepts shallow -- and in a graph net depth IS "
+                         "receptive-field radius, so it also pulls them LOCAL. "
+                         "Yields a per-concept depth profile.")
+    ap.add_argument("--w-depth", type=float, default=0.1,
+                    help="weight on the expected-depth penalty")
     ap.add_argument("--binary", action="store_true",
                     help="BINARY concepts via LFQ: every state dim is a bit (+/-1), "
                          "the code is the sign pattern, no learned codebook -> no "
@@ -201,7 +209,8 @@ def main():
         g_heads=A["g_heads"], g_codes=A["g_codes"], d_code=A["d_code"],
         sq_codes=A.get("sq_codes", 256),
         mh_vq=bool(args.g_heads), gen5=args.gen5,
-        gen6=args.gen6, binary=args.binary).to(dev)
+        gen6=args.gen6, binary=args.binary,
+        depth_cost=args.depth_cost).to(dev)
     if args.g_heads:
         own = field.state_dict()
         sdf = {k: v for k, v in ck["state_dict"].items()
@@ -986,8 +995,10 @@ def main():
                         + _pin(y[m2] - hi[m2], 0.9))
                 iv_stats = (float(((y >= lo) & (y <= hi) & m2).sum() / m2.sum()),
                             float((hi - lo)[m2].mean()))
+        l_depth = (model.field.depth_penalty().to(dev)
+                   if args.depth_cost else torch.zeros((), device=dev))
         loss = (args.w_maia * l_maia + args.w_sf * l_sf + args.w_decor * l_decor + vl
-                + args.w_sib * l_sib
+                + args.w_sib * l_sib + args.w_depth * l_depth
                 + args.w_iv * l_iv + 0.5 * l_sv)
         return loss, l_maia, l_sf, l_decor, (lg, zq, h_mv, fin, tgt, kind, mask,
                                              l_iv, iv_stats, l_sib)
@@ -1372,6 +1383,33 @@ def main():
                      f"sibling loss OFF by config (w_sib={w_keep}); measured "
                      f"l_sib={lsv:.4f} under a forced probe, so the path is live "
                      f"when enabled")
+
+        # U24: the depth penalty must actually REACH the layer mixes, and pushing on
+        # it must move concepts SHALLOWER. A penalty that is present but ungradiented
+        # would leave the profile pinned at its uniform init and look fine.
+        if args.depth_cost:
+            _sn_d = _snap()
+            d0 = model.field.depth_profile()
+            pen = model.field.depth_penalty()
+            gmix = torch.autograd.grad(pen, model.field.mix_board,
+                                       retain_graph=True, allow_unused=True)[0]
+            gd = float(gmix.abs().max()) if gmix is not None else 0.0
+            mixes = (model.field.mix_board, model.field.mix_sq,
+                     model.field.mix_pc, model.field.mix_mv)
+            grads = torch.autograd.grad(model.field.depth_penalty(), mixes,
+                                        allow_unused=True)   # OUTSIDE no_grad
+            with torch.no_grad():          # one big step DOWN the penalty
+                for m, g in zip(mixes, grads):
+                    if g is not None:
+                        m -= 50.0 * g
+            d1 = model.field.depth_profile()
+            shallower = all(d1[k] < d0[k] - 1e-6 for k in d0)
+            _restore(_sn_d)
+            gate("U24", gd > 0 and shallower,
+                 f"depth penalty is live: grad to mix_board {gd:.2e} > 0, and "
+                 f"descending it moves concepts shallower "
+                 f"(board layer {d0['board']:.2f} -> {d1['board']:.2f} of "
+                 f"{model.field.mix_board.shape[-1]})")
 
         if args.ops:
             r2 = op_eval(n_ch=64)
