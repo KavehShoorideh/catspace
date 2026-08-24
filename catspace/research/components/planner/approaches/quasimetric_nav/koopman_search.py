@@ -185,6 +185,100 @@ class KoopmanEngine:
             wp = self.hl.decode(self.av(x))[0]
         return wp
 
+    # ---------------- TRUE LATENT SEARCH (2026-08-24) ----------------
+    # The older search() below RE-ENCODES at every node, only recurses on the
+    # top-ranked move, caps the root at 8 moves and shares a global re-encode
+    # budget -- measured: 21 encodes at depth 4 AND at depth 5 (identical work),
+    # ~21 positions examined. It is a PV walk with an expensive evaluator, not a
+    # search, and no evaluator improvement can help it.
+    #
+    # This one is what the operator was built for: ONE encode at the root, then
+    # the latent is CARRIED by the operator. gen5's BasisOps conditions on bare
+    # move identity (from, to, promo) straight off a chess.Move, so rolling needs
+    # no encoder at all. Per node: one batched matmul + one value-head call.
+    _PROMO = {None: 0, 2: 1, 3: 2, 4: 3, 5: 4}   # chess.KNIGHT..QUEEN
+
+    def _cond_of(self, moves):
+        """Bare move identity -> the BasisOps conditioning contract, matching
+        gen_move_graphs' mv columns 1/2/5 exactly."""
+        frm = torch.tensor([m.from_square for m in moves], dtype=torch.long)
+        to = torch.tensor([m.to_square for m in moves], dtype=torch.long)
+        pro = torch.tensor([self._PROMO.get(m.promotion, 0) for m in moves],
+                           dtype=torch.long)
+        return frm, to, pro
+
+    def _val_of(self, z):
+        """Win prob FOR THE MOVER AT z's position, from a latent alone."""
+        lg = self.sf_v(z[:, self._v_slice])
+        if getattr(self, "_wdl", False):
+            pr = torch.softmax(lg, -1)
+            return pr[:, 0] + 0.5 * pr[:, 1]
+        return self.hl.decode(lg)
+
+    def search_latent(self, board, depth=4, max_nodes=8000, elo=2000.0,
+                      root_blend=None):
+        """Alpha-beta carried entirely in the latent space. Returns [(move, value)]
+        sorted best-first, same contract as search()."""
+        if not self.gen5:
+            raise RuntimeError("latent search needs gen5 bare-identity conditioning")
+        self.stats = {"encodes": 0, "op_applies": 0, "t_encode": 0.0, "t_op": 0.0,
+                      "nodes": 0}
+        bl = self.blend if root_blend is None else root_blend
+        za, _, moves, _ = self._encode(board, elo)        # the ONLY encode
+        if not moves:
+            return []
+
+        def child_vals(bd, z, moves):
+            """Roll z through every legal move; return (values for the mover at bd,
+            child latents). One batched operator apply -- no encoding."""
+            frm, to, pro = self._cond_of(moves)
+            with torch.no_grad():
+                # every row is the SAME z here -- roll_shared hoists the shared
+                # A-matmul and V-contraction out of the batch (U1e-gated identical)
+                zc = self.ops.roll_shared(z, frm, to, pro)
+                v_child = self._val_of(zc)                # child-mover POV
+            self.stats["op_applies"] += len(moves)
+            return 1.0 - v_child, zc                      # flip to bd's mover
+
+        def ab(bd, z, d, alpha, beta):
+            self.stats["nodes"] += 1
+            if bd.is_checkmate():
+                return 0.0
+            if bd.is_stalemate() or bd.is_insufficient_material() \
+                    or bd.can_claim_fifty_moves():
+                return 0.5
+            mv = list(bd.legal_moves)
+            if not mv:
+                return 0.5
+            vals, zc = child_vals(bd, z, mv)
+            order = torch.argsort(vals, descending=True)
+            if d <= 1 or self.stats["nodes"] >= max_nodes:
+                return float(vals[order[0]])
+            best = alpha
+            for oi in order.tolist():
+                bd.push(mv[oi])
+                v = 1.0 - ab(bd, zc[oi], d - 1, 1.0 - beta, 1.0 - best)
+                bd.pop()
+                if v > best:
+                    best = v
+                if best >= beta:            # real cutoff: every move can recurse
+                    break
+            return best
+
+        # ROOT: the sharp head is available here (we encoded), and it is the best
+        # move-orderer we have -- good ordering is what makes the cutoffs bite.
+        rolled, zc0 = child_vals(board, za, moves)
+        av = self._root_av(*self._last)
+        rank = bl * av + (1.0 - bl) * rolled
+        scored = []
+        for oi in torch.argsort(rank, descending=True).tolist():
+            board.push(moves[oi])
+            v = 1.0 - ab(board, zc0[oi], depth - 1, 0.0, 1.0)
+            board.pop()
+            scored.append((moves[oi], v))
+        scored.sort(key=lambda t: -t[1])
+        return scored
+
     def search(self, board, depth=3, elo=2000.0):
         """Alpha-beta with operator-rolled leaf evaluation and PV re-encoding."""
         self.stats = {"encodes": 0, "op_applies": 0, "t_encode": 0.0, "t_op": 0.0}

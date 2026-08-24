@@ -218,6 +218,26 @@ class BasisOps(nn.Module):
         t = t * w[..., None]
         return out + torch.einsum("bkr,kdr->bd", t, self.U)
 
+    def roll_shared(self, z, frm, to, promo):
+        """Roll ONE state through MANY moves -- the search's exact access pattern.
+
+        forward() recomputes `z @ A.T` and `V z` once per row, but in a search node
+        every row is the SAME z, so both are constant across the batch. Hoisting
+        them out drops the per-move cost from (d*d + 2*K*r*d) to a single
+        (n, K*r) @ (K*r, d) GEMM: ~4x fewer MACs and one BLAS call instead of two
+        einsums. Mathematically identical to forward() on an expanded z -- gated
+        by U1e.
+
+        z: (d_aug,) or (1, d_aug). Returns (n_moves, d_aug).
+        """
+        z = z.reshape(-1)
+        w = self.move_weights(frm, to, promo)                  # (n, K)
+        az = z @ self.A.T                                      # (d,)   once
+        vz = torch.einsum("d,krd->kr", z, self.V)              # (K, r) once
+        t = (w[..., None] * vz[None]).reshape(len(w), -1)      # (n, K*r)
+        u = self.U.permute(0, 2, 1).reshape(-1, self.d_aug)    # (K*r, d)
+        return az[None] + t @ u
+
     def matrix(self, frm, to, promo):
         w = self.move_weights(frm, to, promo)
         B = torch.einsum("bk,kdr,kre->bde", w, self.U, self.V)
