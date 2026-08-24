@@ -17016,3 +17016,41 @@ RECOMMENDATION: option 2. It is the same trick the board concepts already use, i
 preserves "everything reads concepts", and c^k grows the resolvable set without
 inflating any single codebook. Option 1 is the cheap fallback if a composite is
 awkward to fit.
+
+**CONCEPT BUDGET RUNDOWN (2026-08-24, Kaveh asked for it before reallocating).**
+
+CONFIGURED
+    family    units        codes/unit   dims in state   composite vocabulary
+    board     64 heads          8            512        8^64
+    square    64 squares       64           1024        64^64
+    piece     32 slots         16            128        16^32
+    move       1 head          64          (none)       64
+    history      -              -           128          -
+                                     d_state 1792 + phi 256 = d_aug 2048
+
+MEASURED (120 held-out positions)
+    board :   8/8  codes live | effective vocabulary  7.9 of 8   (saturated)
+    square: 64/64  codes live | effective vocabulary 53.9 of 64  (well used)
+    move  : 62/64  codes live | effective vocabulary 33.3 of 64  globally,
+            but only 13.9 DISTINCT codes per position vs 34.9 legal moves
+
+THE ASYMMETRY, and it is not the one I expected. Board, square and piece are all
+MULTI-HEAD -- a position gets a 64-dimensional composite code, so its vocabulary is
+8^64. A MOVE gets ONE code from a single 64-entry book. Everything else in the model
+describes its object compositionally; moves alone are described by a single symbol.
+That is why 21 of 35 legal moves collapse together each position.
+
+So Kaveh's read is right about the imbalance but I would not phrase it as "too many
+board concepts": the board heads are SATURATED (7.9 of 8 effective, all live), so
+they are earning their dims. The move side is the anomaly -- one head where every
+other family has 32-64.
+
+IMPORTANT: growing move concepts costs NOTHING from the board. The move code is
+per-move-slot (48 slots x 32 dims), NOT part of the 1792-dim state. So this is not
+the zero-sum reallocation the "powers of two" cut assumed -- move capacity and board
+capacity are separate budgets and we can raise one without cutting the other.
+
+RECOMMENDATION: mirror the board's design -- multi-head move VQ, e.g. 8 heads x 16
+codes (16^8 = 4.3e9 distinguishable, ~8 codes describing each move compositionally:
+its from-ness, to-ness, capture-ness, tactical role). Cost is per-move compute and a
+wider move embedding, not state dims. Board/square/piece stay exactly as they are.
