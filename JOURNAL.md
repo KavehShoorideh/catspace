@@ -16822,3 +16822,37 @@ compound:
 Cause 3 is the ceiling and it is architectural, not a training accident. Causes 1-2
 are cheap to fix and worth fixing first because they are what determines whether we
 are anywhere near that ceiling.
+
+**HOW DEEP CAN WE ROLL? 14 PLIES, GRACEFULLY (2026-08-24, prompted by Kaveh: "we
+might need 10 plies or even more if the probability mass stays only in a few
+branches").** New probe `deep_roll.py` builds long consecutive-ply runs straight from
+p_row (the 6-ply chain cache is not the limit -- p_row indexes consecutive plies, so
+15-row runs are free) and rolls with the operator ONLY, comparing against encoding
+the true position at each ply. gko4b, 200 held-out runs:
+
+    ply    value corr    |z|/|z0|
+     1       +0.850        0.914
+     3       +0.808        0.854
+     6       +0.777        0.882     <- edge of ALL supervision
+     8       +0.695        0.933
+    10       +0.636        0.995
+    12       +0.590        1.062
+    14       +0.586        1.135
+
+Two things worth keeping. (a) Degradation is SMOOTH and modest -- 0.85 -> 0.64 over
+ten plies, no collapse. (b) Plies 7-14 are trained by NOTHING (chains stop at 6) and
+the operator extrapolates through them without falling apart, which is a real
+property of the linear form and not something I expected to hold.
+
+The norm is the thing to watch for deeper still: flat-to-shrinking through ply 9,
+then growing (0.995 at k=10 -> 1.135 at k=14). That is rho compounding becoming
+visible. So the spectral projection is NOT the over-conservative constraint I
+suggested it might be an hour ago when I was assuming 4-6 ply rolls -- at 10+ plies
+it is doing necessary work, and I retract that suggestion.
+
+IMPLICATION: a 10-ply latent search is supported by the substrate TODAY on the
+across-position axis. Cheap follow-on if we commit to that depth: extend chain
+supervision from 6 to ~12 plies. The corpus has full games and p_row already makes
+long runs addressable, so this is a regeneration, not new data. Blocked, as always,
+on the within-position ordering being non-zero -- depth multiplies a per-node signal
+that is currently absent.
