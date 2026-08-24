@@ -16655,3 +16655,43 @@ recurse carrying the LATENT, never re-encoding. The six-ply measurement says the
 rolled value survives that (corr 0.63-0.75 at every ply, all correctly oriented as of
 gko4b), which is precisely the property that makes it viable NOW and did not hold
 before today.
+
+**WHY THERE IS NO PRESSURE TO DIFFERENTIATE: THE TARGET ITSELF IS DIFFUSE
+(2026-08-24, answering Kaveh's concern).** New repo tool
+`training_infra/op_concept_profile.py` groups the delta by semantic unit and reports
+the EFFECTIVE NUMBER OF UNITS MOVED (participation ratio; 1 = all mass on one unit,
+N = uniform). Run on gko4b for both the operator's delta and the TRUE delta
+(encode(child) - encode(parent)) on held-out positions:
+
+    grouping        units   TRUE delta   operator delta   uniform
+    board concepts    64       38.5          38.4           64
+    squares           64       55.6          56.7           64
+    piece slots       32       20.1          28.5           32
+    moved piece's own slot, median rank:   #11           #15    (chance #16)
+
+THE FINDING: the operator is not failing to concentrate -- it is faithfully copying a
+target that is not concentrated. Encoding a parent and its child DIRECTLY, one move
+changes ~38 of 64 board concepts and ~56 of 64 squares. Kaveh's premise ("one concept
+ought to change a lot, others not so much") is not satisfied by the ENCODER, so there
+is nothing sparse for the operator to learn. That is the answer to "why is there no
+pressure to differentiate": the pressure would have to come from a target that
+differentiates, and this one does not.
+
+MECHANISM (plausible, architectural): the field is a graph transformer with global
+attention and the 64 board concepts are GLOBAL POOLS over it. Any single-square
+change perturbs the pooling, so every concept moves a little. Global attention +
+global pooling => every input change touches every output. Locality is not something
+the operator can recover downstream of that.
+
+WHERE THE OPERATOR *DOES* FAIL, separately: the piece block. Truth concentrates
+(20.1 of 32) and the operator does not (28.5) -- so real structure exists there and
+the roll loses it. Likewise the moved piece's own slot ranks #11 in truth vs #15 for
+the operator. Weak structure exists; the operator discards even that.
+
+IMPLICATION FOR THE NEXT DESIGN (Kaveh's back-burner item): retraining the operator
+with a different prior -- not identity-plus-penalty -- will not by itself produce
+per-concept locality, because the supervision target is diffuse. Locality has to be
+made true of the REPRESENTATION first (sparsity/locality pressure in the encoder, or
+concepts that are local by construction rather than global pools), and only then can
+an operator be sparse in it. Retrain-the-operator and fix-the-representation are
+different problems and this measurement separates them.
