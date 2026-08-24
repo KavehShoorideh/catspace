@@ -16510,3 +16510,30 @@ to the one I was adding.
 NOT ACTING YET: two points is not a trend, and w_opk is a knob (0.5) that can be
 lowered without touching the design. Step 6000 decides -- if the ratio keeps falling,
 lower w_opk; if it stabilises or recovers, the two coexist and the bundle stands.
+
+**gko4a STOPPED at 6k and gko4b LAUNCHED with the competitor removed (2026-08-24).**
+Four monotone points made it a trend, not oscillation:
+
+    probe @600 (sibling only)   ratio 0.01676   sep 1.83pct
+    gko4a @2k  (+ all-ply)            0.01631       1.79pct
+    gko4a @4k                         0.01293       1.48pct
+    gko4a @6k                         0.01113       1.29pct
+
+At that rate the run would have FINISHED below its own starting point
+(gko3b 0.00991 / 1.12pct) on the metric it exists to move. Stopped it.
+
+THE FIX IS SURGICAL because the two effects live in different terms, which the
+first bundle conflated:
+  - orientation (the ply-2/5 inversion fix) comes from all-ply VALUE supervision --
+    training sf_v_full on rolled states at every ply (the _KS tuple).
+  - the competitor is all-ply STATE supervision (l_mid, weighted by --w-opk):
+    predicting the next state along a PLAYED line is best served by the shared
+    move-independent term A, which is the very mechanism that made the operator
+    99pct move-independent under the old sparse {1,3,6} regime.
+So gko4b keeps `--all-ply` (orientation) and sets `--w-opk 0.0` (drops the state
+competitor). Resumed from gko4a_step6000, which already banks the orientation fix.
+Gates ALL PASS in the new configuration; U21 still shows gradient reaching ops.U
+and ops.mix.
+
+Orientation held at 6k before the stop (k=2 +0.761, k=5 +0.634), so the property is
+carried into gko4b by the resume rather than needing to be relearned.
