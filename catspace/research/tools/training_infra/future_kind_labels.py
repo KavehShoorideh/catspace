@@ -142,7 +142,9 @@ def encode_boards(ke, boards, bs=256, dev=None, jobs=1, pool=None):
     # fine at 480 rows/shard (28k positions) and thrashes at full rows (121k positions,
     # ~530 MB of graph arrays plus pickling), which showed up as the main process
     # sitting at 3.6% CPU waiting on the pool while RSS climbed past 2 GB.
-    fens = [b.fen() for b in boards]
+    # `boards` are already FENs (strings) -- the pool needs strings anyway, and
+    # pickling Board objects to workers is slower than rebuilding from FEN
+    fens = [b if isinstance(b, str) else b.fen() for b in boards]
     _tg = [0.0]
     for s0 in range(0, len(boards), bs):
         import time as _tt
@@ -199,7 +201,10 @@ def shard_occupancy(ke, shard, fkfile, gamma=0.9, bs=256, dev=None,
     recogniser (measured: only 17% of positions reach >1 kind)."""
     import chess
     d, p = np.load(shard), np.load(fkfile)
+    pv_a, pvn_a, rmv_a = p["pv"], p["pvn"], p["rmv"]        # decompress ONCE
     N = len(d["fen"]) if not max_rows else min(max_rows, len(d["fen"]))
+    import time as _t
+    _tb = _t.time()
     boards, owner = [], []          # owner = (row, move_slot, discount weight)
     for i in range(N):
         try:
@@ -207,34 +212,33 @@ def shard_occupancy(ke, shard, fkfile, gamma=0.9, bs=256, dev=None,
         except Exception:
             continue
         for j in range(max_moves or NMV):
-            n = int(p["pvn"][i, j])
+            n = int(pvn_a[i, j])
             if n == 0:
                 continue
             b = b0.copy()
-            f_, t_, pr = (int(x) for x in p["rmv"][i, j])
+            f_, t_, pr = (int(x) for x in rmv_a[i, j])
             try:
                 b.push(chess.Move(f_, t_, promotion=pr or None))
             except Exception:
                 continue
             keep = set(_plies(n, pv_samples))
             for k in range(n):
-                f2, t2, p2 = (int(x) for x in p["pv"][i, j, k])
+                f2, t2, p2 = (int(x) for x in pv_a[i, j, k])
                 try:
                     b.push(chess.Move(f2, t2, promotion=p2 or None))
                 except Exception:
                     break
                 if k not in keep:
                     continue          # walked (board state must advance) but not encoded
-                boards.append(b.copy())
+                boards.append(b.fen())
                 owner.append((i, j, gamma ** k))
     if not boards:
         return None
-    import time as _t
+    _bt = _t.time() - _tb
     _t0 = _t.time()
     phi = encode_boards(ke, boards, bs=bs, dev=dev, pool=pool)
     _dt = _t.time() - _t0
-    print(f"[occ] {os.path.basename(shard)}: {len(boards)} positions built+encoded in "
-          f"{_dt:.0f}s ({_dt/max(len(boards),1)*1000:.2f} ms/position)", flush=True)
+    _t1 = _t.time()
     acc = {}
     for (i, j, w), v in zip(owner, phi):
         a = acc.get((i, j))
@@ -253,6 +257,9 @@ def shard_occupancy(ke, shard, fkfile, gamma=0.9, bs=256, dev=None,
         sel = ri == i
         if sel.sum() > 1:
             R[sel] -= R[sel].mean(0)
+    print(f"[occ] {os.path.basename(shard)}: {len(boards)} pos | board-build {_bt:.0f}s "
+          f"| encode {_dt:.0f}s ({_dt/max(len(boards),1)*1000:.2f} ms/pos) | "
+          f"accumulate {_t.time()-_t1:.0f}s", flush=True)
     return R, ri, mj, p
 
 
@@ -410,6 +417,7 @@ def stage_assign(a):
         if r is None:
             continue
         R, ri, mj, p = r
+        rmv_a = p["rmv"]                                    # decompress ONCE
         Zc = (R - mu) / sd
         if W is not None:
             Zc = Zc @ W
@@ -438,23 +446,24 @@ def stage_assign(a):
         # bug on the hot path, which is how the lift came to slice the board at the
         # wrong offsets for a whole run.
         d = np.load(s)          # the shard itself, for its own move ordering
-        MV48 = d["mv"].shape[1]
+        mv_a, nmv_a = d["mv"], d["n_mv"]                    # decompress ONCE
+        MV48 = mv_a.shape[1]
         fk48 = np.full((n, MV48), -1, np.int8)
         miss = 0
         for i in range(n):
-            k = int(d["n_mv"][i])
+            k = int(nmv_a[i])
             if k == 0:
                 continue
             exact, byft = {}, {}
             for c in range(k):
-                key = (int(d["mv"][i, c, 1]), int(d["mv"][i, c, 2]),
-                       int(d["mv"][i, c, 5]))
+                key = (int(mv_a[i, c, 1]), int(mv_a[i, c, 2]),
+                       int(mv_a[i, c, 5]))
                 exact[key] = c
                 byft.setdefault(key[:2], []).append(c)
             for j in range(NMV):
                 if fkind[i, j] < 0:
                     continue
-                f_, t_, pr = (int(x) for x in p["rmv"][i, j])
+                f_, t_, pr = (int(x) for x in rmv_a[i, j])
                 c = exact.get((f_, t_, pr))
                 if c is None:
                     cand = byft.get((f_, t_), [])
@@ -467,8 +476,11 @@ def stage_assign(a):
         out["fkind"] = fkind
         out["fkind48"] = fk48
         out["fspread"] = spread.astype(np.float16)
+        import time as _tw
+        _w0 = _tw.time()
         np.savez_compressed(f + ".tmp.npz", **out)
         os.replace(f + ".tmp.npz", f)
+        print(f"[wr] {os.path.basename(s)}: remap+write {_tw.time()-_w0:.0f}s", flush=True)
         done += 1
         # report over LABELLED rows only. Reporting over all 2048 conflates "no
         # choice here" with "not labelled yet" and reads as a collapsed clustering
