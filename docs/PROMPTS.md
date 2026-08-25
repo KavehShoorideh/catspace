@@ -135,3 +135,75 @@ experiment, not the tenth.
 
 > Show me the arithmetic, on the real distribution, with the gradient attached — and
 > tell me which of these numbers you inferred rather than measured.
+
+---
+
+## 10. Before "optimising" anything
+
+> Benchmark the thing you believe is slow, in isolation, and show me the number —
+> before you change it. Then show me the arithmetic that says it accounts for the
+> total you are trying to explain. If it doesn't, the bottleneck is elsewhere and
+> your fix is noise.
+
+**Caught (would have):** I replaced `Board.copy()` with storing a FEN, certain copying
+was the cost. Benchmarked afterwards: `copy()` is **0.8 µs**, `fen()` is **19.9 µs** —
+copying was 25× cheaper and the change was pointless. Worse, 118k iterations × 0.8 µs
+is 0.1 s against a phase measuring **115 s**, so the arithmetic alone ruled it out. That
+mismatch is what finally pointed at the real cause (prompt 11).
+
+---
+
+## 11. When a phase is slower than the sum of its parts
+
+> Instrument every phase separately and print each one. Do not reason about which is
+> slow. And check whether any object indexed inside a loop is *lazy* — a handle that
+> re-reads or re-decompresses on each access.
+
+**Caught:** `np.load` on an `.npz` returns a **lazy** `NpzFile`; every `p["pv"]`
+re-reads and re-decompresses the entire array. Indexing `p["pv"][i, j, k]` in a
+triple-nested loop decompressed a 737 KB array **118,000 times per shard**. Hoisting
+three reads out of the loops: **115 s → 3 s**, and per-shard 8.5 min → 3.8 min. The same
+shape hides in `h5py`, memory-mapped arrays, Django querysets, and any `__getitem__`
+that does I/O.
+
+---
+
+## 12. Low CPU% is not "stalled"
+
+> Before calling a job stuck: what is its bottleneck? A GPU-bound process sits at
+> 6–12% CPU by construction. Sample the stack or print per-phase timing; don't read
+> `%CPU` and act.
+
+**Caught (would have):** I declared the label pass "stalled" twice from low CPU% and
+restarted it both times, losing minutes each. Metal queues were active the whole time
+and one shard was simply a 4-minute unit of work I kept checking inside of.
+
+---
+
+## 13. Whenever a tuple, list, or record grows
+
+> You appended a field to a structure that is read positionally somewhere else. Find
+> every reader. Any that indexes from the end (`[-1]`) or unpacks a fixed arity is now
+> wrong. Show me the list.
+
+**Caught:** appending two floats to the aux tuple turned `aux[-1]` from `l_sib` into a
+float, the `isinstance(..., Tensor)` guard sent it to `None`, and the gate reported
+"sibling loss dead, 0.0000" for a loss actually measuring **1.7098**. I then spent three
+tool calls blaming the *data* — including checking WDL finiteness with `.any()` when the
+loss requires `.all(-1)`.
+
+---
+
+## 14. Before running anything beside a live trainer
+
+> What is the resident set of what you are about to run, and how much RAM is actually
+> free (`vm_stat` free+inactive+purgeable)? Does it construct a model? If free memory
+> is under ~3 GB, the answer is CPU-only, one model per process, or wait.
+
+**Caught (would have):** short diagnostic scripts — a gate check, a throughput
+benchmark, one comparison holding two engines in a single process — run beside a live
+MPS trainer with ~1.3 GB free. **gko7a was killed by the OS at step 4000 of 8000**,
+losing four hours. Its log ended cleanly with no traceback, which is the signature of an
+OS kill rather than a crash. The rule as previously written said "no concurrent
+disk-heavy *jobs*"; these were thirty-second checks, so it did not read as covered. The
+trigger is resident set, not duration.
