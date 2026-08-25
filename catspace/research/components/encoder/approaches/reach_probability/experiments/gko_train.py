@@ -144,6 +144,11 @@ def main():
     ap.add_argument("--fkind-dir", default="data/derived/gko1_fkind",
                     help="parallel labels, one file per shard, joined by basename")
     ap.add_argument("--fkind-K", type=int, default=12)
+    ap.add_argument("--dump-arch", action="store_true",
+                    help="print every parameter name and shape, then exit. This is the "
+                         "architecture as BUILT, and the equivalence test for any "
+                         "refactor of it: the key list must not change or existing "
+                         "checkpoints stop loading.")
     ap.add_argument("--trunk-layers", type=int, default=0,
                     help="override the trunk depth carried by --resume-field. The warm "
                          "start has 3; asking for more loads those 3 and initialises "
@@ -268,124 +273,11 @@ def main():
     else:
         field.load_state_dict(ck["state_dict"])
 
-    class GKO(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.field = field
-            # CONCEPTS-ONLY (Kaveh 2026-08-24: "I don't wanna read off of the raw
-            # board or the encoded board, I wanna read off of the concepts"). The
-            # sharp head was the ONE head still reading h_mv -- raw backbone output,
-            # never quantised -- while the policy, value and rolled heads all read
-            # quantised codes. --av-concepts feeds it the QUANTISED move code (q_mv,
-            # 32-d) instead, so every head in the model reads concepts.
-            # same literal-32 trap as move_head had: read the field's real width
-            _av_mv = (getattr(field, "mv_code_dim", 32) if args.av_concepts
-                      else A["d_model"])
-            self.sf_av = (nn.Linear(field.d_state + _av_mv, args.k_bins)
-                          if args.linear_heads else
-                          nn.Sequential(nn.Linear(field.d_state + _av_mv, 512),
-                                        nn.GELU(), nn.Linear(512, args.k_bins)))
-            if args.linear_heads:
-                # ONE linear map, concepts -> WDL, shared by the root state and by
-                # operator-rolled states. Rolled concepts occupy the same first
-                # d_state columns of the lifted vector, so the SAME head reads both:
-                # "rolled-forward concepts must give the WDL Stockfish gives" becomes
-                # true by construction instead of by two heads happening to agree.
-                class _ConceptWDL(nn.Module):
-                    def __init__(self, d_state, n_out=3):
-                        super().__init__()
-                        self.d_state = d_state
-                        self.lin = nn.Linear(d_state, n_out)
-                    def forward(self, x):
-                        return self.lin(x[..., :self.d_state])
-                self.wdl = _ConceptWDL(field.d_state)
-            if args.w_fkind > 0:
-                # WHICH KIND OF FUTURE does this move open. Reads exactly what sf_av
-                # reads -- quantised state concepts plus the quantised move code --
-                # per the concepts-only ruling: no head sees the unquantised encoding.
-                # Its targets are frozen integers computed offline from a reference
-                # field and Stockfish's own continuations, so unlike a
-                # predict-your-own-future objective there is no collapse solution:
-                # the encoder cannot make its targets easier.
-                self.fkind_head = nn.Sequential(
-                    nn.Linear(field.d_state + _av_mv, 512), nn.GELU(),
-                    nn.Linear(512, args.fkind_K))
-            if args.ops:
-                if args.lift == "transformer":
-                    # EVERY width read from the field. Passing literals here made the
-                    # lift slice the state at the wrong offsets under --binary (board
-                    # read as 256 dims when it is 96), so its interaction tokens were
-                    # misaligned garbage -- and nothing crashed, because 2400 dims is
-                    # enough to slice from. Tenth literal-width bug in two days.
-                    self.lift = TransformerLift(
-                        field.d_state, g_heads=A["g_heads"],
-                        d_code=field.code_width,
-                        d_sq=getattr(field, "sq_width", 16 if args.gen5 else 32),
-                        d_phi=max(args.d_phi, 256),
-                        n_layers=args.lift_layers,
-                        n_piece=(32 if args.gen5 else 0),
-                        d_piece=getattr(field, "d_piece", 4),
-                        d_mv=getattr(field, "mv_code_dim", 32))
-                else:
-                    self.lift = InteractionLift(field.d_state, args.d_phi)
-                if args.gen5:
-                    self.ops = BasisOps(self.lift.d_aug, n_basis=args.op_bases,
-                                        rank=args.op_rank,
-                                        d_phi=(self.lift.d_aug - self.lift.d_state)
-                                        if args.state_mix else 0)
-                else:
-                    self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
-                                          rank=args.op_rank)
-                # H1's baseline arm: same targets, DETACHED inputs (see docstring)
-                self.dyn_z = nn.Sequential(
-                    nn.Linear(field.d_state + 64, 512), nn.GELU(),
-                    nn.Linear(512, field.d_state))
-            if args.iv:
-                self.iv = nn.Sequential(
-                    nn.Linear(field.d_state + getattr(field, "mv_code_dim", 32),
-                              256), nn.GELU(), nn.Linear(256, 3))
-            if args.ops and args.ema_decay > 0:
-                import copy as _copy
-                self.ema_field = _copy.deepcopy(field).eval()
-                for pr in self.ema_field.parameters():
-                    pr.requires_grad_(False)
-            if args.ops:
-                # PHI-ONLY value head (the saturation falsification: heads reading
-                # full z_aug route AROUND phi; value-at-rolled-horizons must be
-                # impossible WITHOUT interaction features carrying it)
-                v_out = 3 if args.gen5 else args.k_bins
-                self.sf_v = nn.Sequential(
-                    nn.Linear(self.lift.d_phi, 256), nn.GELU(),
-                    nn.Linear(256, v_out))
-                # FULL value head for SEARCH (2026-08-22 maia autopsy: phi-only sees
-                # ~quarter of a removed queen -- material lives in the state part;
-                # the phi-only head REMAINS the anti-collapse anchor, this one plays)
-                self.sf_v_full = nn.Sequential(
-                    nn.Linear(self.lift.d_aug, 256), nn.GELU(),
-                    nn.Linear(256, 3 if args.gen5 else args.k_bins))
-                # per-move future action-values from ROLLED states: [z_aug ; mv_emb]
-                self.av_roll = (nn.Linear(self.lift.d_aug + 64, args.k_bins)
-                                if args.linear_heads else
-                                nn.Sequential(nn.Linear(self.lift.d_aug + 64, 512),
-                                              nn.GELU(),
-                                              nn.Linear(512, args.k_bins)))
-
-            if args.linear_heads:
-                # bound LAST: sf_v_full/sf_v are constructed further down in the ops
-                # block, so binding earlier let them overwrite the shared head and the
-                # value path silently reverted to the MLP
-                self.sf_v_full = self.wdl
-                self.sf_v = self.wdl
-
-        def train(self, mode=True):
-            # model.train() recurses into ALL submodules -- without this override the
-            # EMA target encoder flips to train mode and its VQ codebooks self-update
-            # from every child-target batch (the drift EMA exists to prevent)
-            super(GKO, self).train(mode)
-            if hasattr(self, "ema_field"):
-                self.ema_field.eval()
-            return self
-    model = GKO().to(dev)
+    # The model is defined in gko_model.py, next to the HeadSpec table that says what
+    # each head may read. build_gko() takes exactly what the class closes over.
+    from catspace.research.components.encoder.approaches.reach_probability \
+        .experiments.gko_model import build_gko, check_head_widths, describe_heads
+    model = build_gko(field, args, A).to(dev)
     ema_restored = False
     _resume_opt = _resume_rng = None
     _resume_step = 0
@@ -515,12 +407,18 @@ def main():
 
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att",
             "kind", "band", "tgt")
-    print(f"[gko0] head inputs -- move_head: [concepts"
-          f"{'' if args.mv_concepts else ' | RAW h_mv'} | quantised move code]"
-          f" | sf_av: [concepts | {'quantised code' if args.av_concepts else 'RAW h_mv'}]"
-          + (" | WDL: Linear(concepts->3), shared by root and rolled states"
-             if args.linear_heads else
-             " | sf_v_full: [concepts | phi] | sf_v: [phi ONLY]"), flush=True)
+    print(describe_heads(model, field, args), flush=True)
+    _viol = check_head_widths(model, field, args)
+    for _v in _viol:
+        print(f"[gko0] HEAD CONTRACT VIOLATION: {_v}", flush=True)
+
+    if args.dump_arch:
+        tot = 0
+        for k, v in sorted(model.state_dict().items()):
+            n = v.numel(); tot += n
+            print(f"  {k:<58} {str(tuple(v.shape)):>22} {n:>10,}")
+        print(f"  {'TOTAL':<58} {'':>22} {tot:>10,}")
+        return
 
     if args.w_fkind > 0:
         # K must match the K the LABELS were built with. A trainer K larger than the
