@@ -1,0 +1,64 @@
+  [pv-cache] artifacts/experiments/fut_pv_cache.json: 120 positions
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/nn/modules/linear.py:124: UserWarning: Initializing zero-element tensors is a no-op
+  init.kaiming_uniform_(self.weight, a=math.sqrt(5))
+/Users/kav/code/remote/github/catspace/catspace/research/tools/training_infra/koopman_ops.py:508: UserWarning: enable_nested_tensor is True, but self.use_nested_tensor is False because encoder_layer.norm_first was True
+  self.enc = nn.TransformerEncoder(layer, num_layers=n_layers)
+/Users/kav/code/remote/github/catspace/catspace/research/components/encoder/approaches/reach_probability/experiments/graph_concept_field.py:434: UserWarning: index_reduce() is in beta and the API may change at any time. (Triggered internally at /Users/runner/work/pytorch/pytorch/aten/src/ATen/native/TensorAdvancedIndexing.cpp:1524.)
+  out.index_reduce_(0, sd[1], m, "amax", include_self=False)
+/Users/kav/code/remote/github/catspace/.venv/lib/python3.14/site-packages/torch/nn/modules/activation.py:1336: UserWarning: Support for mismatched key_padding_mask and attn_mask is deprecated. Use same type for both instead.
+  key_padding_mask = F._canonical_mask(
+
+  120 positions -> 1178 (move, future) samples, 2528 concept dims | queens come off in 28% of lines
+
+  A. POOLING -- separating queens-off futures, a label never trained on
+     best single concept dim : AUC 0.913   (permuted null 0.567 +/- 0.004)
+     probe, grouped split    : AUC 0.932   (permuted null 0.496 +/- 0.022)
+     same probe on phi(s_0)  : AUC 0.597   <- control: what the reached position already says
+
+  B. IS THE MEAN ENOUGH?
+     between-class 7.69 vs within-class spread 24.48  (ratio 0.31)
+     -> spread DWARFS the class difference: a mean blurs distinct endgames, the head must be DISTRIBUTIONAL
+
+  C. WHAT IS PREDICTABLE -- future occupancy from phi(s_0), grouped R^2
+     median R^2 -0.403 | 75th -0.224 | 90th +0.002 | max +0.989
+     10% of 2528 concept dims are predictable at all (R^2 > 0); 3% clear R^2 > 0.3
+     -> Kaveh's expectation is CONFIRMED: 90% of concepts are not predictable from the present. A loss that averages over all of them is dominated by an irreducible floor.
+
+     DOES PREDICTABILITY LAND ON WHAT THE VALUE HEAD READS?
+     top-10% most-read concepts : 19% predictable, median R^2 -0.390
+     bottom-50% least-read      : 6% predictable, median R^2 -0.417
+     corr(value-head weight, predictability) = +0.072
+     -> predictability and value-relevance are essentially INDEPENDENT. A fixed importance weight taken from the value head will NOT concentrate the auxiliary on learnable concepts -- the weighting has to be LEARNED, or made free by construction.
+
+  D. HOW MANY KINDS OF FUTURE? (k-means on M, grouped holdout)
+     k   predict-the-kind   majority   value spread across kinds
+     2        89.3%          65.5%          0.13 pawns
+     3        71.8%          56.1%          0.44 pawns
+     4        71.1%          60.4%          0.41 pawns
+     6        55.3%          30.5%          2.56 pawns
+     8        54.8%          35.8%          1.07 pawns
+     (value spread = std of mean Stockfish eval across the kinds; if the kinds
+      differ in value, choosing among them IS choosing a plan)
+
+  E. DOES THE KIND DISCRIMINATE MOVES, OR ONLY POSITIONS?  (k=4)
+     distinct kinds reachable from one position: mean 1.27 of 4 | 25% of positions offer a real CHOICE
+     within a position, the best kind beats the worst by 1.40 pawns on average (median 0.97)
+     -> the kind is mostly a property of the POSITION; it cannot discriminate moves and is useless for choosing
+
+  F. KINDS OF THE RESIDUAL -- what the MOVE changes about the future
+     k   predict-the-kind   majority   within-position value gap
+     2        53.0%          55.1%          1.55 pawns   (100% of positions offer a choice)
+     3        41.6%          53.3%          2.23 pawns   (100% of positions offer a choice)
+     4        37.8%          41.4%          2.40 pawns   (100% of positions offer a choice)
+     6        30.5%          30.5%          2.83 pawns   (100% of positions offer a choice)
+
+  G. CONTROL -- can phi(s_0) rank the move's OWN Stockfish value?
+     ACROSS positions: spearman +0.176   (the concepts do carry value)
+     WITHIN a position (siblings): spearman +0.066 +/- 0.030 over 120 positions
+     -> sibling value ranking from the concepts is WEAK but real
+
+  H. WITHIN A POSITION, on the same footing as G
+     rank the sibling's own VALUE          : spearman +0.066
+     rank which FUTURE the sibling opens   : spearman +0.082  (mean over 8 leading directions, 12% of residual variance)
+     best single future direction          : spearman +0.126
+     -> future structure is as accessible to the concepts as value is: a future-prediction head has something to learn from

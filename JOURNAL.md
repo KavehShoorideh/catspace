@@ -17838,3 +17838,49 @@ resume, compare) rather than a toy model. It needs to load the model, and gko8a 
 on a machine already paging, so it waits. NOTE that gko8a itself was launched before
 this fix, so ITS checkpoints carry no optimizer state -- resuming gko8a would hit the
 warning path and restart Adam. Everything launched from now on resumes cleanly.
+
+## 2026-08-25 10:45 PDT -- NEGATIVE: the future-kind auxiliary is inert on sibling discrimination
+
+gko8a completed all 8000 steps. The pre-registered falsification test, run on 120
+held-out positions with a shared PV cache so every checkpoint sees IDENTICAL positions
+and IDENTICAL Stockfish futures -- the only difference between rows is the encoder.
+
+  checkpoint            within-position VALUE      which-FUTURE
+  gko7a@4000 (no aux)   +0.089 +/- 0.033           +0.051
+  gko8a@4000 (aux)      +0.136 +/- 0.032           +0.051
+  gko8a@8000 (aux)      +0.066 +/- 0.030           +0.082
+
+VERDICT: the auxiliary did NOT move the quantity it was built to move. At the matched
+step-4000 comparison "which future does this sibling open" is +0.051 against +0.051 --
+identical to three decimals. The value-ranking gap (+0.047) is one standard error of the
+difference (sqrt(.033^2+.032^2) = .046, z ~ 1.0), and it does not hold: by step 8000 it
+is +0.066, BELOW the run without the auxiliary. Nothing here survives the standing rule
+that seed variance dwarfs gaps this size.
+
+That is consistent with the training-side gauge, which plateaued at 0.93 of ceiling
+within 1000 steps and never moved again. The head learned the small predictable part
+immediately and it did not transfer to sibling discrimination.
+
+A FLAW IN MY OWN PRE-REGISTRATION, recorded because it nearly produced a false positive.
+docs/FUTURE_KINDS.md fixed ABSOLUTE thresholds (+0.084 future, +0.172 value) taken from
+gko7a_step2000 on 70 positions. Those do not transfer across checkpoint or sample size:
+the same measurement on gko7a@4000 at 120 positions gives +0.089 and +0.051. Read
+naively against the old numbers, gko8a@8000's +0.082 future would have looked like it
+"nearly cleared the bar" and gko8a@4000's +0.136 value like a large gain, when the
+matched control moved just as much. Pre-register the CONTRAST, never an absolute
+threshold measured on a different model.
+
+WHAT SURVIVES, unchanged across all three checkpoints and therefore not about the
+auxiliary at all:
+  * future-kind structure is real: queens-off futures separate at grouped-holdout AUC
+    0.902-0.932 against a ~0.50 null, versus 0.60 from the reached position alone.
+  * the mean is not a summary: within-class spread 3.2x the between-class distance.
+  * 85-90% of concept dims remain unpredictable from the present, as Kaveh predicted.
+
+WHAT THIS COSTS AND WHAT IT BUYS. The pre-registered response is REMOVAL rather than
+reweighting, and on this evidence I would not carry --w-fkind into the next run at this
+coverage. But the finding is narrower than "the idea is wrong": the labels cover 10.5%
+of rows, the head plateaued immediately, and the kinds themselves ARE legible (kind 5 is
+the queen trade at 87% vs a 50% base rate). The cheap next lever is coverage, which is a
+labelling pass rather than a retrain -- and it is now testable without ambiguity because
+the PV cache makes any two checkpoints comparable on identical futures.
