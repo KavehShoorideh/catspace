@@ -46,6 +46,106 @@ def _auc(scores, labels):
     return float((r[y].sum() - n1 * (n1 + 1) / 2) / (n1 * n0))
 
 
+def collect_pvs(args):
+    """Stockfish PVs only -- no model, no encoding.
+
+    Split out so the SAME positions and the SAME lines can be re-encoded with any
+    checkpoint. Comparing gko7a against gko8a on separately-sampled positions and
+    separately-run PVs would confound the thing being tested (the encoder) with the
+    thing that should be held fixed (the futures). SF is deterministic at fixed depth,
+    but the position sample and engine state are not free of drift.
+    """
+    import glob, os, chess, chess.engine
+    d = np.load(sorted(glob.glob(os.path.join(args.holdout, "*.npz")))[0])
+    fens = [x.decode() if isinstance(x, bytes) else str(x) for x in d["fen"]]
+
+    def new_engine():
+        e = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
+        e.configure({"UCI_ShowWDL": True})
+        return e
+
+    eng = new_engine()
+    out, n = [], 0
+    for fen in fens:
+        if n >= args.n_pos:
+            break
+        try:
+            b = chess.Board(fen)
+        except Exception:
+            continue
+        if b.is_game_over() or not b.pieces(chess.QUEEN, chess.WHITE) \
+                or not b.pieces(chess.QUEEN, chess.BLACK):
+            continue
+        if len(list(b.legal_moves)) < 8:
+            continue
+        try:
+            info = eng.analyse(b, chess.engine.Limit(depth=args.depth),
+                               multipv=min(args.top_moves, b.legal_moves.count()))
+        except Exception:
+            try:
+                eng.quit()
+            except Exception:
+                pass
+            eng = new_engine()
+            continue
+        rows = []
+        for e in info:
+            pv = e.get("pv") or []
+            if len(pv) < 4:
+                continue
+            sc = e.get("score")
+            v = sc.pov(b.turn).score(mate_score=10000) / 100.0 if sc else 0.0
+            rows.append({"pv": [m.uci() for m in pv], "val": v})
+        if rows:
+            out.append({"fen": fen, "lines": rows})
+            n += 1
+    try:
+        eng.quit()
+    except Exception:
+        pass
+    return out
+
+
+def encode_pvs(args, pvs):
+    """Encode a cached PV set with ONE checkpoint -> the arrays the analysis needs."""
+    import chess, torch as _t
+    from catspace.research.components.planner.approaches.quasimetric_nav \
+        .koopman_search import KoopmanEngine
+    ke = KoopmanEngine(args.ckpt)
+
+    def phi(board):
+        with _t.no_grad():
+            return ke._encode(board)[0][0, :ke.field.d_state].cpu().numpy()
+
+    P0, MF, VAL, LAB, GRP = [], [], [], [], []
+    for gi, rec in enumerate(pvs):
+        b = chess.Board(rec["fen"])
+        for ln in rec["lines"]:
+            mv = [chess.Move.from_uci(u) for u in ln["pv"]]
+            bd = b.copy()
+            bd.push(mv[0])
+            if bd.is_game_over():
+                continue
+            p0 = phi(bd)
+            acc, w, qoff = None, 0.0, False
+            for t, m in enumerate(mv[1:]):
+                bd.push(m)
+                if bd.is_game_over():
+                    break
+                if not bd.pieces(chess.QUEEN, chess.WHITE) or \
+                        not bd.pieces(chess.QUEEN, chess.BLACK):
+                    qoff = True
+                g = args.gamma ** t
+                acc = phi(bd) * g if acc is None else acc + phi(bd) * g
+                w += g
+            if acc is None:
+                continue
+            P0.append(p0); MF.append(acc / max(w, 1e-9))
+            VAL.append(ln["val"]); LAB.append(qoff); GRP.append(gi)
+    return (np.array(P0, np.float32), np.array(MF, np.float32),
+            np.array(VAL, np.float32), np.array(LAB), np.array(GRP), len(pvs))
+
+
 def collect(args):
     import glob, os, chess, chess.engine
     from catspace.research.components.planner.approaches.quasimetric_nav \
@@ -155,12 +255,26 @@ def main():
     ap.add_argument("--top_moves", type=int, default=10)
     ap.add_argument("--gamma", type=float, default=0.9)
     ap.add_argument("--depth", type=int, default=10)
+    ap.add_argument("--pv-cache", default="",
+                    help="cache Stockfish PVs (model-independent) so two "
+                         "checkpoints are measured on IDENTICAL futures")
     ap.add_argument("--cache", default="", help="npz to save/reuse the encoded PVs; "
                     "Stockfish + encoding is the expensive part, the analysis is not")
     args = ap.parse_args()
 
-    import os
-    if args.cache and os.path.exists(args.cache):
+    import os, json
+    if args.pv_cache:
+        # SF work once, encoding per checkpoint -- so two checkpoints are compared on
+        # identical positions and identical futures
+        if os.path.exists(args.pv_cache):
+            pvs = json.load(open(args.pv_cache))
+            print(f"  [pv-cache] {args.pv_cache}: {len(pvs)} positions")
+        else:
+            pvs = collect_pvs(args)
+            json.dump(pvs, open(args.pv_cache, "w"))
+            print(f"  [pv-cache] wrote {len(pvs)} positions to {args.pv_cache}")
+        P0, MF, VAL, LAB, GRP, n = encode_pvs(args, pvs)
+    elif args.cache and os.path.exists(args.cache):
         z = np.load(args.cache)
         P0, MF, VAL, LAB, GRP, n = (z["P0"], z["MF"], z["VAL"], z["LAB"],
                                     z["GRP"], int(z["n"]))

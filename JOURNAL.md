@@ -17608,3 +17608,42 @@ quality.
 
 gko7a is at step 4000/8000, on pace for ~03:20. The post-run pipeline is armed and will
 gate, fit, assign (~13% row coverage), re-gate and smoke, stopping before launch.
+
+## 2026-08-24 23:32 PDT -- I killed gko7a at step 4000/8000
+
+gko7a's log ends cleanly at step 4000 with no exception and the process was gone by
+23:22:42. A clean tail with no traceback is an OS kill, not a crash. The window matches
+exactly what I was doing: repeatedly constructing KoopmanEngine to test the label gate
+on mps, plus MPS-vs-CPU throughput benchmarks, plus one comparison holding TWO engines
+(cpu and mps) in a single process -- all beside a live MPS trainer with ~1.3 GB of RAM
+available.
+
+This is the third instance of a rule already in my memory, and I let it through because
+of how I had written the rule: it said "no concurrent DISK-HEAVY jobs" and later "one
+corpus-loading eval beside an MPS trainer". These were thirty-second diagnostics, not
+jobs, so they did not read as covered. The OS does not care about duration -- only about
+the sum of resident sets. The memory is rewritten around that.
+
+COST: ~4 hours of training, and the 8000-step predecessor. Not catastrophic:
+  * gko7a_step4000.pt survives -- maia-top1 0.636, sf-spearman 0.466, opR2
+    -0.218/-0.408/-0.584 and still improving monotonically (-0.699 -> -0.642 -> -0.386
+    -> -0.284 -> -0.218 across steps 1/1000/2000/3000/4000).
+  * gko8a is unaffected: it trains fresh for 8000 steps from the same gcf4h warm start.
+  * the comparison survives in BETTER form. I had planned gko7a-final vs gko8a-final;
+    instead gko7a@4000 vs gko8a@4000 is a MATCHED comparison at equal step count, which
+    is the fairer test anyway.
+  * the labels' reference field becomes step 4000 rather than 8000. That only supplies
+    the metric for clustering; the labels are grounded in Stockfish's continuations.
+
+PRODUCTION FIT (on the free GPU, 24,676 moves from 8 shards):
+  PCA 64 dims keep 26% of residual variance | K=8, occupancy 1712-3691 (uniform 3084)
+  | EFFECTIVE kinds 7.7 of 8, no warning.
+So K=8 is confirmed by the fit's own report rather than by taste, and the cosine + PCA
+construction holds at 36x the sample the K choice was first made on.
+
+Coverage was then repaired: PV generation had stopped when gko7a exited, leaving 42
+shards, and the planned 480 rows/shard would have given 4.9% coverage -- right at the
+alarm threshold that exists precisely to catch this. Assign now runs over ALL rows of
+every PV'd shard (~21% and rising), with PV generation restarted alongside it: PV is
+CPU-bound and assign is GPU-bound, so they genuinely do not contend, and there is no
+longer an MPS trainer to starve.
