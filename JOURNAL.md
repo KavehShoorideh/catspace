@@ -17347,3 +17347,36 @@ opinion (2026-08-24).**
 STILL OPEN: the PV data is now CAPTURED but nothing CONSUMES it yet. Turning ~33
 trajectories per position into training signal is a loss design (roll along the PV,
 supervise against SF's backed-up value at each step) and is the next build.
+
+**WHAT MULTIPV ACTUALLY GIVES US (2026-08-24, Kaveh asked; measured, not recalled).**
+
+    33 legal moves -> 33 multipv entries, each with ONE score + ONE line (15-20 plies)
+    nodes SEARCHED for that call: 803,588
+    -> we see 33 of 803,588 positions = 0.004pct. The engine's tree is discarded.
+
+So no, we do NOT get evals of the positions visited during search. But the decisive
+follow-up is that we do not need them:
+
+**THE VALUE IS CONSTANT ALONG A PV.** Walked four lines, re-scoring every position on
+them at the same depth: median drift from the line's own root score is **6 cp**
+(mean 8). That is minimax holding empirically -- the backed-up value propagates along
+the principal variation unchanged, flipping POV each ply. So ONE score supervises
+EVERY ply of that line, for free.
+
+WHAT THAT IS WORTH:
+                       supervised states/position   distinct trajectories
+    today (played chain)          6                          1
+    with PVs                 ~33 x 6-20 = 200-660           33
+
+From a single 400 ms call the engine already makes. And the trajectories are the
+point: the diagnosed cause of ~1pct move-conditioning is that EVERY k-step target
+follows the PLAYED line, where the shared A-term alone predicts the next state, so
+nothing ever forces K(m) to depend on m. PVs give 33 different lines from one root,
+each with its own value -- exactly the missing signal.
+
+PV_PLIES raised 6 -> 12: the 6 was chosen when storage was the constraint, and the
+streaming ring removes that. Lines run 15-20 plies anyway.
+
+CONSEQUENCE FOR THE LOSS: supervising every state on a line toward that line's single
+backed-up value is NOT an approximation -- it is what minimax says, now measured. The
+alternative (depth-discounting) would be wrong.

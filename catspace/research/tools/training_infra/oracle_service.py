@@ -28,7 +28,12 @@ import re
 import sqlite3
 import time
 
-PV_PLIES = 6          # plies of each principal variation to keep (0 = off)
+# Plies of each principal variation to keep. Measured 2026-08-24: SF's lines run
+# 15-20 plies, and the backed-up value is CONSTANT along them (median drift 6 cp
+# from the line's own root score), so ONE score supervises every ply of the line --
+# no extra SF calls, no per-position evals. 6 was a storage-era number; with the
+# streaming ring there is no reason not to take the whole near horizon.
+PV_PLIES = 12
 DB = "data/derived/gko1_oracle.sqlite"
 WP_K = 0.00368208          # lichess/lc0 logistic constant: wp = 1/(1+exp(-k*cp))
 
