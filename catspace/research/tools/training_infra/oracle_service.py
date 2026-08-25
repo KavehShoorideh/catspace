@@ -28,12 +28,14 @@ import re
 import sqlite3
 import time
 
-# Plies of each principal variation to keep. Measured 2026-08-24: SF's lines run
-# 15-20 plies, and the backed-up value is CONSTANT along them (median drift 6 cp
-# from the line's own root score), so ONE score supervises every ply of the line --
-# no extra SF calls, no per-position evals. 6 was a storage-era number; with the
-# streaming ring there is no reason not to take the whole near horizon.
-PV_PLIES = 12
+# Plies of each principal variation to keep. 0 = the WHOLE line, which is what we
+# want: measured 2026-08-24, lines run median 12 plies (p25 10, max 27) and only 6.8pct
+# reach 20, so a cap buys nothing while a short line simply contributes what it has.
+# The value is near-CONSTANT along the line (median drift 6 cp through ply 12), so one
+# score supervises every ply of it -- no extra SF calls. Caveat: past ply ~12 the drift
+# sample is thin (n=2-3), so treat deep-ply supervision as less certain than shallow.
+# Storage is not the constraint any more; jit_labels.py rings shards and deletes them.
+PV_PLIES = 0
 DB = "data/derived/gko1_oracle.sqlite"
 WP_K = 0.00368208          # lichess/lc0 logistic constant: wp = 1/(1+exp(-k*cp))
 
@@ -171,7 +173,9 @@ def query_sf(eng, b, a):
         # plies down" trajectory data. Truncated to PV_PLIES because the value is in
         # the near horizon and storage is the binding constraint.
         if len(e["pv"]) > 1:
-            pv_out[m.uci()] = [x.uci() for x in e["pv"][1:1 + PV_PLIES]]
+            pv_out[m.uci()] = [x.uci() for x in
+                               (e["pv"][1:] if PV_PLIES <= 0
+                                else e["pv"][1:1 + PV_PLIES])]
         # TRUE W/D/L (Kaveh 2026-08-23: scalar wp destroys basin structure --
         # drawn-fortress vs coin-flip are different positions; SF computes wdl
         # internally, record it): per-mille from the mover's POV

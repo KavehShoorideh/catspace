@@ -17380,3 +17380,29 @@ streaming ring removes that. Lines run 15-20 plies anyway.
 CONSEQUENCE FOR THE LOSS: supervising every state on a line toward that line's single
 backed-up value is NOT an approximation -- it is what minimax says, now measured. The
 alternative (depth-discounting) would be wrong.
+
+**PV TRUNCATION REMOVED (2026-08-24, Kaveh: "why not go full 20 plies? why limit to
+33 lines?").** Two different things, and only one was mine.
+
+**33 was never a cap.** We request `multipv=len(legal_moves)`, so there is one line per
+LEGAL MOVE -- every line that exists. A PV must begin with a distinct move, so the
+legal-move count IS the ceiling. Nothing to raise. My phrasing ("33 lines") made a
+count sound like a limit.
+
+**12 plies was mine, and it was a guess.** Measured over 74 real lines:
+    median length 12  |  p25 10  |  max 27
+    reach  6 plies: 100pct       reach 16: 17.6pct
+    reach 12 plies:  50pct       reach 20:  6.8pct
+So 12 was not truncating much -- it is about the median. Going to 20 would reach the
+tail of 7pct of lines, because the lines simply END first. But by the same token a cap
+buys nothing: a short line contributes what it has. With the streaming ring removing
+the storage argument, PV_PLIES is now 0 = keep the whole line.
+
+VERIFIED on a real position: 33 lines, 4-15 plies each, **295 supervised (state,value)
+pairs from one 400 ms call** -- a 49x increase over the played chain's 6, at identical
+labelling cost.
+
+CAVEAT recorded: the constant-value evidence is solid through ply ~12 (median drift
+6 cp) but thin past that (n=2-3 lines reach there). Deep-ply PV supervision should be
+treated as less certain than shallow, and if it misbehaves, capping is the first thing
+to try.
