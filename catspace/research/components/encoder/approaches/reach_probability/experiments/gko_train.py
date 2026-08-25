@@ -144,10 +144,15 @@ def main():
     ap.add_argument("--fkind-dir", default="data/derived/gko1_fkind",
                     help="parallel labels, one file per shard, joined by basename")
     ap.add_argument("--fkind-K", type=int, default=12)
-    ap.add_argument("--nan-check", type=int, default=50,
-                    help="how often to sync and test the loss for NaN. Every step costs "
-                         "the CPU/GPU overlap; every 50 still catches a blow-up long "
-                         "before the next checkpoint, and the NaN pause still fires.")
+    ap.add_argument("--time-phases", action="store_true",
+                    help="print where a training step actually spends its time. Removing "
+                         "25 syncs/step changed nothing, so the bottleneck is elsewhere "
+                         "and guessing again is not a plan.")
+    ap.add_argument("--nan-check", type=int, default=1,
+                    help="how often to test the loss for NaN. Default 1 (every step): "
+                         "removing the per-step syncs was measured to buy NOTHING "
+                         "(3.119 vs 3.070 s/step), so there is no throughput reason to "
+                         "detect a blow-up later than immediately.")
     ap.add_argument("--dump-arch", action="store_true",
                     help="print every parameter name and shape, then exit. This is the "
                          "architecture as BUILT, and the equivalence test for any "
@@ -1112,6 +1117,11 @@ def main():
                                              l_iv, iv_stats, l_sib, fk_frac, fk_cov)
 
     _TERMS: dict = {}               # last step's loss terms, for --grad-audit
+    def _msync():
+        # a phase timer without a barrier measures queueing, not work
+        if str(dev).startswith("mps"):
+            torch.mps.synchronize()
+    _ph = {"fwd": 0.0, "ops": 0.0, "bwd": 0.0, "n": 0}
     fk_run = [0.0, 0.0, 0.0]        # frac-of-ceiling, coverage, n (per log line)
     # The scaffold reads this dict at save time, so mutating it inside step_fn is what
     # gets CURRENT optimizer state into the ladder checkpoint. save_torch_ckpt has
@@ -1132,9 +1142,15 @@ def main():
         # A sync per step costs the CPU/GPU overlap: wall time becomes CPU+GPU instead
         # of max(CPU, GPU). Everything that needs a value off the device is gathered on
         # STATS STEPS only.
-        stats_step = (step % args.eval_every == 0 or step == 1 or step == args.steps
-                      or step % args.nan_check == 0)
+        stats_step = (step % args.eval_every == 0 or step == 1 or step == args.steps)
+        if args.time_phases:
+            import time as _T
+            _msync()
+            _p0 = _T.perf_counter()
         loss, l_maia, l_sf, l_decor, aux = losses_on(idx)
+        if args.time_phases:
+            _msync()
+            _ph["fwd"] += _T.perf_counter() - _p0; _p0 = _T.perf_counter()
         if args.w_fkind > 0:
             fk_run[0] = fk_run[0] + aux[10]   # tensor; converted at log time
             fk_run[1] = fk_run[1] + aux[11]; fk_run[2] += 1
@@ -1147,7 +1163,7 @@ def main():
                 _ema_update()
             l_op, op_d = op_losses(step, want_stats=stats_step)
             loss = loss + l_op
-        if stats_step and _nan_guard(loss):
+        if step % args.nan_check == 0 and _nan_guard(loss):
             # PAUSE-ALARM: save state, exit 3; the watchdog surfaces it (pause, not kill)
             torch.save({"state_dict": model.state_dict(), "step": step,
                         "args": vars(args)}, args.out + "_nanpause.pt")
@@ -1156,8 +1172,14 @@ def main():
                   f" | culprits: {_culprits or 'none in op_losses -- check the main '
                   'losses or the vq/aux terms folded into vl'}", flush=True)
             raise SystemExit(3)
+        if args.time_phases:
+            _msync()
+            _ph["ops"] += _T.perf_counter() - _p0; _p0 = _T.perf_counter()
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        if args.time_phases:
+            _msync()
+            _ph["bwd"] += _T.perf_counter() - _p0; _ph["n"] += 1
         opt.step()
         if args.w_l1 > 0 and args.linear_heads and hasattr(model, "wdl"):
             # proximal soft-threshold: w <- sign(w) * max(|w| - lr*lambda, 0).
@@ -1276,6 +1298,15 @@ def main():
                      if args.w_fkind > 0 else "") + ex, flush=True)
             if args.w_fkind > 0:
                 out["fkind_heldout"] = fkh_s / max(1e-9, fkh_n)
+            if args.time_phases and _ph["n"]:
+                t = _ph["fwd"] + _ph["ops"] + _ph["bwd"]
+                print(f"[gko1] step phases over {_ph['n']} steps: "
+                      f"main-loss {_ph['fwd']/_ph['n']*1000:.0f}ms "
+                      f"({100*_ph['fwd']/t:.0f}%) | op-arm {_ph['ops']/_ph['n']*1000:.0f}ms "
+                      f"({100*_ph['ops']/t:.0f}%) | backward+step "
+                      f"{_ph['bwd']/_ph['n']*1000:.0f}ms ({100*_ph['bwd']/t:.0f}%)",
+                      flush=True)
+                _ph.update({"fwd": 0.0, "ops": 0.0, "bwd": 0.0, "n": 0})
             if args.linear_heads and hasattr(model, "wdl"):
                 W = model.wdl.lin.weight.detach()
                 thr = 1e-3 * W.abs().max()
@@ -1454,7 +1485,7 @@ def main():
         armed = model_has_v and hasattr(model, "av_roll") and CHV is not None
         vn20 = 0
         if armed:
-            _, d20 = op_losses(4)
+            _, d20 = op_losses(4, want_stats=True)
             vn20 = d20.get("vn", 0)
         gate("U20", armed and vn20 > 0,
              f"value anchors armed: heads {model_has_v}/{hasattr(model, 'av_roll')}, "
@@ -1595,15 +1626,16 @@ def main():
                   f"(fresh ops ~ identity persistence, not a gate)")
             # U-extra: run BOTH op_losses branches end to end and check the restored
             # stack pushes gradients into the field (the erosion lesson, gated)
-            tot4, d4 = op_losses(4)          # vamp branch
+            tot4, d4 = op_losses(4, want_stats=True)   # vamp branch
             _sn_bw = _snap()
             tot4.backward()
             gf = max((pr.grad.abs().max().item() for pr in model.field.parameters()
                       if pr.grad is not None), default=0.0)
             model.zero_grad()
-            tot1, d1 = op_losses(1)          # non-vamp branch
+            tot1, d1 = op_losses(1, want_stats=True)   # non-vamp branch
             ok_st = (d4["vamp"] != 0.0 and d1["vamp"] == 0.0 and gf > 0
-                     and all(np.isfinite(v) for v in d4.values()))
+                     and all(np.isfinite(v) for k, v in d4.items()
+                         if not k.startswith("_")))   # "_" keys are device tensors
             gate("U17", ok_st,
                  f"op_losses branches: vamp {d4['vamp']:.1f}/32 (step4) vs {d1['vamp']:.1f} "
                  f"(step1) | move {d4['move']:.2f} dyn {d4['dyn2']:.2f} | "
