@@ -334,6 +334,8 @@ def main():
             return self
     model = GKO().to(dev)
     ema_restored = False
+    _resume_opt = _resume_rng = None
+    _resume_step = 0
     if args.resume_self:
         ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
         sd2 = dict(ck2["state_dict"])
@@ -348,6 +350,18 @@ def main():
         # deepcopy)? if so its lag is real training state -- a hard copy on the
         # first update would throw it away and un-lag the child targets.
         ema_restored = any(k.startswith("ema_field.") for k in sd2)
+        # Everything below here is TRAINING STATE, not weights. Without it a "resume"
+        # silently restarts: Adam's moments and bias-correction step reset to zero, and
+        # -- worse -- the step counter restarts, which re-gates the operator losses
+        # (opg ramps over 1000 steps) and 6-ply chain supervision (w6r over 2000). Those
+        # terms would read ~0 and look converged while actually switched off.
+        _resume_opt = ck2.get("opt")
+        _resume_rng = ck2.get("rng")
+        _resume_step = int(ck2.get("step") or 0)
+        if _resume_opt is None:
+            print(f"[gko0] WARNING: {args.resume_self} predates optimizer-state "
+                  f"checkpointing. Adam restarts from zero; expect a transient. "
+                  f"Checkpoints written from now on carry it.", flush=True)
         print(f"[gko0] resumed self from {args.resume_self} (step {ck2.get('step')}; "
               f"{len(miss)} new keys init fresh, {len(drop)} shape-dropped, "
               f"{len(unex)} unexpected; ema target "
@@ -399,6 +413,14 @@ def main():
     else:
         opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     rng = np.random.default_rng(args.seed)
+    if _resume_opt is not None:
+        opt.load_state_dict(_resume_opt)
+        print(f"[gko0] optimizer state restored ({len(_resume_opt.get('state', {}))} "
+              f"param groups' moments)", flush=True)
+    if _resume_rng is not None:
+        # restore the sampling stream so a resumed run does not re-see the batches the
+        # original run already trained on
+        rng.bit_generator.state = _resume_rng
     t0 = time.time()
 
     def _nan_guard(loss):
@@ -1104,9 +1126,19 @@ def main():
                                              l_iv, iv_stats, l_sib, fk_frac, fk_cov)
 
     fk_run = [0.0, 0.0, 0.0]        # frac-of-ceiling, coverage, n (per log line)
+    # The scaffold reads this dict at save time, so mutating it inside step_fn is what
+    # gets CURRENT optimizer state into the ladder checkpoint. save_torch_ckpt has
+    # always documented `extra` as "e.g. optimizer state" -- it was simply never passed.
+    ckpt_extra: dict = {}
 
     def step_fn(m_, step):
         model.train()
+        if step % args.ckpt_every == 0 or step == args.steps:
+            # refreshed HERE, immediately before the scaffold writes the ladder file
+            ckpt_extra["opt"] = opt.state_dict()
+            ckpt_extra["rng"] = rng.bit_generator.state
+            ckpt_extra["ema_started"] = bool(ema_started[0])
+            ckpt_extra["id6_hi"] = id6_hi[0]
         if step % args.rescan_every == 0:
             refresh_store()
         idx = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
@@ -1643,8 +1675,13 @@ def main():
         sys.exit(1 if fails else 0)
 
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
-                      start_step=0, eval_every=args.eval_every, experiment="catspace",
+                      start_step=_resume_step, eval_every=args.eval_every,
+                      experiment="catspace", extra=ckpt_extra,
                       run_name=args.out.split("/")[-1], device=dev)
+    if _resume_step:
+        print(f"[gko0] resuming at step {_resume_step + 1}/{args.steps} -- step-gated "
+              f"terms keep their ramps (opg, w6r) instead of restarting from zero",
+              flush=True)
     standard_train(step_fn, model, cfg, args)
 
 
