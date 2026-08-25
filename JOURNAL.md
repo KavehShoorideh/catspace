@@ -17406,3 +17406,87 @@ CAVEAT recorded: the constant-value evidence is solid through ply ~12 (median dr
 6 cp) but thin past that (n=2-3 lines reach there). Deep-ply PV supervision should be
 treated as less certain than shallow, and if it misbehaves, capping is the first thing
 to try.
+
+## 2026-08-24 21:59 PDT -- do concepts pool by the KIND of future a move opens?
+
+Kaveh asked whether quasimetric is even the right tool: what he wants is "the kinds of
+futures available to me if I take a particular move -- if I trade the queens, what
+endgame do I have?", i.e. "concept states that kind of pool together", adding "I'm not
+sure that the way we've defined the concepts they will, but maybe they will." Then he
+constrained the answer: future concepts will NOT always be predictable, the loss should
+be expected to stay high, Stockfish evaluation stays primary, and the auxiliary is a
+nudge toward whatever IS predictable.
+
+All of that is measurable before anything is built.
+`catspace/research/tools/training_infra/future_concepts.py` (new) walks Stockfish's PV
+for each of the top-10 moves in 70 held-out queens-on positions (686 (move,future)
+samples), encodes every PV position with gko7a_step2000, and forms the discounted
+future concept occupancy M = (1-g) sum_t g^t phi(s_t) for t>=1, holding out phi(s_0)
+-- the position the move reaches -- as the predictor.
+
+Everything below uses a POSITION-GROUPED split (moves from one position share a root
+and overlapping futures; a sample-level split leaks) and permutation nulls, because
+2528 dims over 686 samples separates any labelling otherwise. The first pass reported
+probe AUC 1.000; that was the p>>n artefact and is not a result.
+
+RESULT -- concepts DO pool by kind of future, and the mean does NOT summarise them:
+  * queens-off futures (a label never trained on) separate at grouped-holdout
+    AUC 0.958 (permuted null 0.508 +/- 0.038); best single concept dim 0.915
+    (null 0.595 +/- 0.008). The reached position alone gives 0.678, so most of the
+    signal is in the FUTURE, not the present.
+  * within-class spread 25.5 vs between-class distance 9.4 (ratio 0.37). Kaveh
+    predicted this: a mean blurs distinct endgames together, so any head over futures
+    has to be distributional.
+
+RESULT -- Kaveh's unpredictability expectation is CONFIRMED, with a number:
+  * predicting future occupancy from phi(s_0), grouped R^2: median -0.110. Only 35%
+    of 2528 concept dims are predictable at all (R^2 > 0); 10% clear R^2 > 0.3.
+  * 65% are not. A per-dimension regression over future concepts is therefore
+    dominated by an irreducible floor -- exactly the loss he said would stay high.
+  * predictability is UNCORRELATED with what the value head reads (corr -0.001
+    between value-head input weight norm and per-dim R^2; top-10% most-read dims are
+    38% predictable vs 33% for the bottom half). So a fixed importance weight taken
+    from the value head will not concentrate the auxiliary on learnable concepts.
+
+RESULT -- futures form KINDS worth ~1.7 pawns, but the kinds are a property of the
+POSITION, not of the move:
+  * k-means on M, grouped holdout: k=4 predicts the kind at 76.0% vs 34.7% majority,
+    kinds differing by 0.92 pawns of mean SF eval (k=8: 62.2% vs 31.1%, 1.70 pawns).
+  * but only 17% of positions reach more than one kind (mean 1.17 distinct kinds of 4).
+    The 76% is largely "recognise the position". When a position DOES offer a choice
+    the gap is 2.53 pawns -- the structure is valuable where it exists.
+
+NEGATIVE -- the move's own contribution to the future is close to invisible:
+  * clustering the RESIDUAL (M minus the position's mean future, isolating what the
+    move changes) gives kinds worth 1.74 pawns within a position, available at 100% of
+    positions -- but predicting WHICH residual kind a move opens lands BELOW the
+    majority baseline at every k (k=4: 35.6% vs 45.8%).
+  * CONTROL, on the same footing: from phi(s_0), within-position sibling spearman is
+    +0.172 +/- 0.047 for the move's own VALUE and +0.084 for which future it opens
+    (best single future direction +0.163). Both weak; the future is roughly half as
+    accessible as value.
+
+DIAGNOSIS: this is not a fact about futures. It is the SAME within-position blindness
+that already stops the search ranking moves (value head on TRUE children +0.556, on
+rolled children -0.028), surfacing in a second, independent measurement. Stockfish is
+deterministic, so the future IS a function of s_0; the concepts simply do not resolve
+siblings finely enough to expose it.
+
+That makes the joint training Kaveh asked about well-aimed rather than speculative: a
+future-kind objective is direct pressure on the exact deficiency, using labels that are
+free from PV data we already generate JIT. It also fixes the FORM of the auxiliary --
+see docs/FUTURE_KINDS.md.
+
+CAVEATS: 70 positions / 686 samples, one checkpoint (gko7a step 2000 of 8000), one
+seed. Per the standing rule the weak numbers (+0.172 +/- 0.047, +0.084) are
+OBSERVATIONS, not verdicts; the structural findings (pooling exists at AUC 0.958,
+global kinds are position-level at 17%, the 1.7-pawn gap) are gross enough to judge.
+A larger collection was deferred: only 1.4 GB of memory was genuinely free beside the
+live trainer, and loading a second copy of the field is what froze gcf2 for 38 minutes.
+
+Two engine bugs found and fixed on the way (neither affects any published number --
+checked against artifacts): BasisOps was built with n_basis=64 while gko7a uses 128,
+and sf_av was built from a literal width and fed RAW move features although
+--av-concepts trains it on QUANTISED codes. Both now read the checkpoint's own tensors,
+and the move feed asserts its width matches what it was trained on. Every prior
+checkpoint has av_concepts off, so the raw feed was correct for all of them.

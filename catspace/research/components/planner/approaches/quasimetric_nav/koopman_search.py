@@ -75,8 +75,13 @@ class KoopmanEngine:
             # a state-conditioned checkpoint carries ops.state_proj.*; size d_phi from
             # the weight itself rather than a flag, so old and new both load
             _sp = sd.get("ops.state_proj.weight")
-            self.ops = BasisOps(self.lift.d_aug, n_basis=64,
-                                rank=int(RA.get("op_rank", 16)),
+            # size bases/rank from the checkpoint's own U tensor (n_basis, d, rank),
+            # never from a default -- op-bases is now a flag and 64 was already stale
+            _U = sd.get("ops.U")
+            self.ops = BasisOps(self.lift.d_aug,
+                                n_basis=(_U.shape[0] if _U is not None else 64),
+                                rank=(_U.shape[2] if _U is not None
+                                      else int(RA.get("op_rank", 16))),
                                 d_phi=(_sp.shape[1] if _sp is not None else 0)).eval()
         else:
             self.ops = KoopmanOps(self.lift.d_aug, n_codes=A["move_codes"],
@@ -85,7 +90,18 @@ class KoopmanEngine:
                                   if k.startswith("ops.")})
         import torch.nn as nn
         kb = sd["sf_av.2.bias"].shape[0]
-        self.sf_av = nn.Sequential(nn.Linear(self.field.d_state + A["d_model"], 512),
+        # width from the TENSOR, and the move input it was TRAINED on. --av-concepts
+        # feeds sf_av quantised move codes; feeding raw backbone features instead is
+        # silent -- the widths can even coincide -- so assert the layout matches.
+        self._av_concepts = bool(A.get("av_concepts"))
+        _avw = sd["sf_av.0.weight"].shape[1]
+        _mvw = _avw - self.field.d_state
+        assert _mvw == (getattr(self.field, "mv_code_dim", 32) if self._av_concepts
+                        else _mvw), (
+            f"sf_av move width {_mvw} != field.mv_code_dim "
+            f"{getattr(self.field, 'mv_code_dim', None)}")
+        self._av_mvw = _mvw
+        self.sf_av = nn.Sequential(nn.Linear(_avw, 512),
                                    nn.GELU(), nn.Linear(512, kb))
         self.sf_av.load_state_dict({k[6:]: v for k, v in sd.items()
                                     if k.startswith("sf_av.")})
@@ -123,7 +139,12 @@ class KoopmanEngine:
         """Per-move action-values at an ENCODED node -- the sharp head (SF-spearman
         ~0.5); rolled values are the cheap wide net, this is the aimed rifle."""
         with torch.no_grad():
-            x = torch.cat([zq[:, None, :].expand(-1, h_mv.shape[1], -1), h_mv], -1)
+            mv_in = h_mv
+            if self._av_concepts:
+                mv_in, _, _ = self.field.mv_vq(self.field.mv_vq_proj(h_mv))
+            assert mv_in.shape[-1] == self._av_mvw, \
+                f"sf_av fed {mv_in.shape[-1]}-d moves, trained on {self._av_mvw}"
+            x = torch.cat([zq[:, None, :].expand(-1, mv_in.shape[1], -1), mv_in], -1)
             wp = self.hl.decode(self.sf_av(x))[0, :n]
         return wp
 
