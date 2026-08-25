@@ -3,7 +3,6 @@
 # the binary concepts; WDL is one Linear(concepts->3)+softmax shared by root and rolled
 # states. Trunk 4 layers. Sparsity by proximal soft-thresholding, lambda 0.5.
 # The architecture contract this run must satisfy is docs/ARCHITECTURE.md.
-# gko8a = gko7a's exact configuration + the future-kind auxiliary.
 # Kaveh 2026-08-24: "after this front finishes, run the joint training ... that
 # includes the predictions."
 #

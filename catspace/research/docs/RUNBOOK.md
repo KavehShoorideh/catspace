@@ -103,3 +103,104 @@ MLflow-logged.
 - Training logs/checkpoints: `artifacts/experiments/` (gitignored patterns; DVC for datasets).
 - Session auto-memory (rules that persist across sessions):
   `~/.claude/projects/-Users-kav-code-remote-github-catspace/memory/`.
+
+---
+
+## 7. The concept-bottleneck line (gko, current)
+
+Kaveh 2026-08-25: *"record the new way to run the training and testing so that we get
+the same behaviour."* Everything below is one command; no flag lives only in a shell
+history.
+
+### Where the architecture is defined
+
+| | |
+|---|---|
+| the model, and the contract its heads obey | `.../reach_probability/experiments/gko_model.py` |
+| the contract in prose, with shapes | `docs/ARCHITECTURE.md` |
+| a specific run's flags | `experiments/configs/<run>.sh` — version-controlled, not a temp file |
+
+`gko_model.py` holds `HEADS`, a table where every head declares what it reads. The enum
+it draws from has **no member for pre-quantisation features**, and `check_head_widths()`
+fails at startup if a head's real input width disagrees with its declaration. Add a head
+by adding a row; do not wire one up ad hoc.
+
+### Running a training
+
+```bash
+experiments/configs/gko9a.sh gates    # unit gates, exits non-zero on failure
+experiments/configs/gko9a.sh smoke    # 60 steps end to end
+experiments/configs/gko9a.sh          # the full 8000-step run
+```
+
+The three modes share one flag list, so the smoke and the real run cannot drift apart.
+Copy the file to start a new run; edit the flags there, never at the prompt.
+
+**Never run two model-loading processes at once.** Not a gate suite beside a trainer,
+not a benchmark, not a thirty-second diagnostic. This has now killed one run outright
+(gko7a, step 4000 of 8000) and paged another down to 100 MB resident. Check first:
+
+```bash
+vm_stat | awk '/page size of/{ps=$8} /Pages free/{f=$3} /Pages inactive/{i=$3} \
+  /Pages purgeable/{p=$3} END{printf "%.1f GB free\n",(f+i+p)*ps/1073741824}'
+```
+
+Note `ps` — the page size is **16 KB** on this machine, not 4 KB. Hardcoding 4096
+under-reports free memory by 4x, which it did in every measurement I took before
+2026-08-25 12:00.
+
+### Verifying a run behaves as intended
+
+```bash
+# every parameter name and shape -- the equivalence test for any refactor.
+# The list must not change, or existing checkpoints stop loading.
+experiments/configs/gko9a.sh 2>/dev/null | grep -E "^  [a-z_]+\."   # with --dump-arch
+
+# what each head actually reads, generated from HEADS (printed by every run)
+grep -E "^\[gko0\] heads|CONTRACT VIOLATION" artifacts/experiments/<run>.log
+```
+
+### Test suites
+
+```bash
+.venv/bin/python catspace/research/tools/training_infra/losses.py         # every loss term
+.venv/bin/python -m catspace.research.tools.training_infra.train.test_resume
+.venv/bin/python -m catspace.research.tools.lint_patterns                 # silent-failure ratchet
+```
+
+`test_resume` covers the resume path *and* `frozen()`; each test carries a negative
+control, because a resume test passes just as happily on an implementation that never
+needed the state.
+
+`lint_patterns` is a ratchet against `lint_baseline.json`: known instances are
+tolerated, any NEW one fails. Fix a site, then `--baseline` to lower the count.
+
+### Measurement entry points
+
+```bash
+# how much accuracy an INTERPRETABLE readout costs vs the incumbent head
+.venv/bin/python -m catspace.research.tools.training_infra.interpretable_wdl --ckpt <ckpt>
+
+# how hard each loss term pushes the ENCODER (needs --resume-self for a trained model)
+experiments/configs/gko9a.sh   # with --grad-audit N --resume-self <ckpt>
+
+# within-position sibling discrimination; --pv-cache makes two checkpoints
+# comparable on IDENTICAL positions and identical Stockfish futures
+.venv/bin/python -m catspace.research.tools.training_infra.future_concepts \
+    --ckpt <ckpt> --pv-cache artifacts/experiments/fut_pv_cache.json --n_pos 120
+
+# what the discovered future-kinds actually ARE, in chess terms (no model, no GPU)
+.venv/bin/python -m catspace.research.tools.training_infra.name_the_kinds
+```
+
+### Future-kind labels (only when regenerating them)
+
+```bash
+future_kind_labels --stage pv      # Stockfish PVs; CPU-only, safe beside a trainer
+future_kind_labels --stage gate --ref-ckpt <ckpt> --device mps
+future_kind_labels --stage fit     --ref-ckpt <ckpt> --device mps --jobs 4
+future_kind_labels --stage assign  --ref-ckpt <ckpt> --device mps --jobs 4
+```
+
+`assign` skips shards that already carry labels — **do not pass `--force` to resume**,
+or it relabels from shard 0 and four restarts overlap on the same work.
