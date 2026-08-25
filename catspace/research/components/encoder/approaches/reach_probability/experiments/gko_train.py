@@ -144,6 +144,22 @@ def main():
     ap.add_argument("--fkind-dir", default="data/derived/gko1_fkind",
                     help="parallel labels, one file per shard, joined by basename")
     ap.add_argument("--fkind-K", type=int, default=12)
+    ap.add_argument("--trunk-layers", type=int, default=0,
+                    help="override the trunk depth carried by --resume-field. The warm "
+                         "start has 3; asking for more loads those 3 and initialises "
+                         "the rest fresh (strict=False), so the extra capacity trains "
+                         "from scratch beneath the bottleneck.")
+    ap.add_argument("--linear-heads", action="store_true",
+                    help="every readout becomes a LINEAR map of the concepts: WDL is "
+                         "Linear(concepts->3)+softmax, i.e. multinomial logistic "
+                         "regression. Because the concepts are BINARY this is the best "
+                         "possible ADDITIVE model -- a GAM or NAM fits the identical "
+                         "function -- so anything it cannot express is an interaction. "
+                         "Measured tax vs the MLP: -0.023 accuracy.")
+    ap.add_argument("--w-l1", type=float, default=0.0,
+                    help="L1 on the linear heads. Offline, C=0.05 left 483 of 2528 "
+                         "concepts at 0.729 acc; the achieved nonzero count is printed "
+                         "every eval rather than assumed.")
     ap.add_argument("--mv-concepts", action="store_true",
                     help="drop RAW h_mv from the Maia move head so it "
                          "reads only [concepts | quantised move code]. "
@@ -222,10 +238,13 @@ def main():
     if args.g_heads:
         A["g_heads"], A["g_codes"], A["d_code"] = args.g_heads, args.g_codes, args.d_code
         A["slow_heads"] = args.slow_heads or A["slow_heads"]
+        if args.trunk_layers:
+            A["layers"] = args.trunk_layers
         if args.sq_codes:
             A["sq_codes"] = args.sq_codes
         print(f"[gko2] field OVERRIDE: {A['g_heads']} heads x {A['g_codes']} codes "
-              f"x d{A['d_code']}, slow {A['slow_heads']}", flush=True)
+              f"x d{A['d_code']}, slow {A['slow_heads']}, trunk {A['layers']} layers",
+              flush=True)
     field = GraphConceptField(
         d=A["d_model"], layers=A["layers"], slow_heads=A["slow_heads"], n_res=3, n_eg=1,
         cls_reach=np.zeros(3, np.int64), cls_eg=np.zeros(3, np.int64),
@@ -262,9 +281,24 @@ def main():
             # same literal-32 trap as move_head had: read the field's real width
             _av_mv = (getattr(field, "mv_code_dim", 32) if args.av_concepts
                       else A["d_model"])
-            self.sf_av = nn.Sequential(
-                nn.Linear(field.d_state + _av_mv, 512), nn.GELU(),
-                nn.Linear(512, args.k_bins))
+            self.sf_av = (nn.Linear(field.d_state + _av_mv, args.k_bins)
+                          if args.linear_heads else
+                          nn.Sequential(nn.Linear(field.d_state + _av_mv, 512),
+                                        nn.GELU(), nn.Linear(512, args.k_bins)))
+            if args.linear_heads:
+                # ONE linear map, concepts -> WDL, shared by the root state and by
+                # operator-rolled states. Rolled concepts occupy the same first
+                # d_state columns of the lifted vector, so the SAME head reads both:
+                # "rolled-forward concepts must give the WDL Stockfish gives" becomes
+                # true by construction instead of by two heads happening to agree.
+                class _ConceptWDL(nn.Module):
+                    def __init__(self, d_state, n_out=3):
+                        super().__init__()
+                        self.d_state = d_state
+                        self.lin = nn.Linear(d_state, n_out)
+                    def forward(self, x):
+                        return self.lin(x[..., :self.d_state])
+                self.wdl = _ConceptWDL(field.d_state)
             if args.w_fkind > 0:
                 # WHICH KIND OF FUTURE does this move open. Reads exactly what sf_av
                 # reads -- quantised state concepts plus the quantised move code --
@@ -330,9 +364,18 @@ def main():
                     nn.Linear(self.lift.d_aug, 256), nn.GELU(),
                     nn.Linear(256, 3 if args.gen5 else args.k_bins))
                 # per-move future action-values from ROLLED states: [z_aug ; mv_emb]
-                self.av_roll = nn.Sequential(
-                    nn.Linear(self.lift.d_aug + 64, 512), nn.GELU(),
-                    nn.Linear(512, args.k_bins))
+                self.av_roll = (nn.Linear(self.lift.d_aug + 64, args.k_bins)
+                                if args.linear_heads else
+                                nn.Sequential(nn.Linear(self.lift.d_aug + 64, 512),
+                                              nn.GELU(),
+                                              nn.Linear(512, args.k_bins)))
+
+            if args.linear_heads:
+                # bound LAST: sf_v_full/sf_v are constructed further down in the ops
+                # block, so binding earlier let them overwrite the shared head and the
+                # value path silently reverted to the MLP
+                self.sf_v_full = self.wdl
+                self.sf_v = self.wdl
 
         def train(self, mode=True):
             # model.train() recurses into ALL submodules -- without this override the
@@ -475,7 +518,9 @@ def main():
     print(f"[gko0] head inputs -- move_head: [concepts"
           f"{'' if args.mv_concepts else ' | RAW h_mv'} | quantised move code]"
           f" | sf_av: [concepts | {'quantised code' if args.av_concepts else 'RAW h_mv'}]"
-          f" | sf_v_full: [concepts | phi] | sf_v: [phi ONLY]", flush=True)
+          + (" | WDL: Linear(concepts->3), shared by root and rolled states"
+             if args.linear_heads else
+             " | sf_v_full: [concepts | phi] | sf_v: [phi ONLY]"), flush=True)
 
     if args.w_fkind > 0:
         # K must match the K the LABELS were built with. A trainer K larger than the
@@ -665,6 +710,14 @@ def main():
         g = raw.gather(1, played[:, None, None].expand(-1, 1, raw.shape[-1]))[:, 0]
         return g[:, 1], g[:, 2], g[:, 5]
 
+    def _vpairs(x):
+        """(head, input) pairs for value supervision -- ONE definition, three call
+        sites. With --linear-heads there is a single head reading the concept block;
+        otherwise the full head reads [z | phi] and the phi head reads the tail."""
+        if args.linear_heads:
+            return ((model.wdl, x),)
+        return ((model.sf_v_full, x), (model.sf_v, x[..., model.lift.d_state:]))
+
     def _av_in(zq_, h_mv_, mask_):
         """The sharp head's move input: quantised concept code when --av-concepts,
         else the raw backbone move features (legacy)."""
@@ -787,13 +840,12 @@ def main():
                 if mw.any():
                     tgtw = w0[mw].clamp(min=1e-6)
                     tgtw = tgtw / tgtw.sum(-1, keepdim=True)
-                    for head, inp in ((model.sf_v, za0[mw][:, model.lift.d_state:]),
-                                      (model.sf_v_full, za0[mw])):
+                    for head, inp in _vpairs(za0[mw]):
                         lp = torch.log_softmax(head(inp), -1)
                         l_v = l_v + args.w_v0 * (-(tgtw * lp).sum(-1).mean())
                     v_n += int(mw.sum())
             elif m0.any():
-                l_v = l_v + args.w_v0 * hl.ce(model.sf_v(za0[m0][:, model.lift.d_state:]),
+                l_v = l_v + args.w_v0 * hl.ce(model.sf_v(za0[m0] if args.linear_heads else za0[m0][:, model.lift.d_state:]),
                                               vt0[m0])
                 l_v = l_v + args.w_v0 * hl.ce(model.sf_v_full(za0[m0]), vt0[m0])
                 v_n += int(m0.sum())
@@ -818,15 +870,14 @@ def main():
                     if mw.any():
                         tg = wk_t[mw].clamp(min=1e-6)
                         tg = tg / tg.sum(-1, keepdim=True)
-                        for head, inp in ((model.sf_v,
-                                           traj[:, k - 1][mw][:, model.lift.d_state:]),
-                                          (model.sf_v_full, traj[:, k - 1][mw])):
+                        for head, inp in _vpairs(traj[:, k - 1][mw]):
                             lp = torch.log_softmax(head(inp), -1)
                             l_v = l_v + args.w_vk * wk * (-(tg * lp).sum(-1).mean())
                         v_n += int(mw.sum())
                 elif mk.any():
                     l_v = l_v + args.w_vk * wk * hl.ce(
-                        model.sf_v(traj[:, k - 1][mk][:, model.lift.d_state:]), vtk[mk])
+                        model.sf_v(traj[:, k - 1][mk] if args.linear_heads
+                                    else traj[:, k - 1][mk][:, model.lift.d_state:]), vtk[mk])
                     l_v = l_v + args.w_vk * wk * hl.ce(
                         model.sf_v_full(traj[:, k - 1][mk]), vtk[mk])
                     v_n += int(mk.sum())
@@ -957,7 +1008,8 @@ def main():
                     vt = torch.from_numpy(CHV[ci[:, kk]]).to(zq_p.device)
                     mk = torch.isfinite(vt)
                     if mk.any():
-                        lg5 = model.sf_v(traj[:, kk - 1][mk][:, model.lift.d_state:])
+                        lg5 = model.sf_v(traj[:, kk - 1][mk] if args.linear_heads
+                                      else traj[:, kk - 1][mk][:, model.lift.d_state:])
                         if args.gen5:
                             pw = torch.softmax(lg5, -1)
                             pv = pw[:, 0] + 0.5 * pw[:, 1]
@@ -1048,14 +1100,12 @@ def main():
                     if mws.any():
                         tg = wsel[mws].clamp(min=1e-6)
                         tg = tg / tg.sum(-1, keepdim=True)
-                        for head, inp in ((model.sf_v_full, za_s[mws]),
-                                          (model.sf_v,
-                                           za_s[mws][:, model.lift.d_state:])):
+                        for head, inp in _vpairs(za_s[mws]):
                             lp = torch.log_softmax(head(inp), -1)
                             l_sv = l_sv + (-(tg * lp).sum(-1).mean())
                 else:
                     l_sv = (hl.ce(model.sf_v_full(za_s), sv_tt) +
-                            hl.ce(model.sf_v(za_s[:, model.lift.d_state:]), sv_tt))
+                            hl.ce(model.sf_v(za_s if args.linear_heads else za_s[:, model.lift.d_state:]), sv_tt))
         # ---- SIBLING VALUE ON ROLLED STATES ----
         # SF labels carry a value for EVERY legal move (100pct coverage, mean 32.3
         # moves/position). Every other k-step target follows the PLAYED line, where
@@ -1131,6 +1181,9 @@ def main():
                             float((hi - lo)[m2].mean()))
         l_depth = (model.field.depth_penalty().to(dev)
                    if args.depth_cost else torch.zeros((), device=dev))
+        l_l1 = (model.wdl.lin.weight.abs().sum()
+                if (args.w_l1 > 0 and hasattr(model, "wdl"))
+                else torch.zeros((), device=dev))     # reported; sparsity comes from prox
         terms = {"maia": (args.w_maia, l_maia), "sf": (args.w_sf, l_sf),
                  "decor": (args.w_decor, l_decor), "value(vl)": (1.0, vl),
                  "sib": (args.w_sib, l_sib), "depth": (args.w_depth, l_depth),
@@ -1188,6 +1241,16 @@ def main():
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
+        if args.w_l1 > 0 and args.linear_heads and hasattr(model, "wdl"):
+            # proximal soft-threshold: w <- sign(w) * max(|w| - lr*lambda, 0).
+            # Gives EXACT zeros; an L1 penalty under an adaptive optimiser does not,
+            # because Adam rescales the constant subgradient per parameter (the smoke
+            # showed 2528/2528 weights still nonzero). Applied to the interpretable
+            # readout ONLY -- not the move ranker, already the weakest part.
+            with torch.no_grad():
+                _W = model.wdl.lin.weight
+                _t = args.w_l1 * args.lr
+                _W.copy_(torch.sign(_W) * (_W.abs() - _t).clamp(min=0))
         if args.ops and op_d.get("rho", 0) > 1.03:
             # hard projection: the penalty lost the arms race twice (rho 1.046, 1.070);
             # shrink the low-rank move terms directly, no gradients involved
@@ -1292,6 +1355,14 @@ def main():
                      if args.w_fkind > 0 else "") + ex, flush=True)
             if args.w_fkind > 0:
                 out["fkind_heldout"] = fkh_s / max(1e-9, fkh_n)
+            if args.linear_heads and hasattr(model, "wdl"):
+                W = model.wdl.lin.weight.detach()
+                thr = 1e-3 * W.abs().max()
+                live = int((W.abs().max(0).values > thr).sum())
+                out["wdl_concepts_used"] = live
+                print(f"[gko1] WDL readout: {live}/{W.shape[1]} concepts carry weight "
+                      f"(|w| > 0.1% of max) | max|w| {float(W.abs().max()):.3f} "
+                      f"| L1 {float(W.abs().sum()):.1f}", flush=True)
             if args.w_fkind > 0:
                 cov = fk_run[1] / max(1, fk_run[2])
                 if cov < 0.05:
