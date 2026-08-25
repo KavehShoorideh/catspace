@@ -159,20 +159,23 @@ class KoopmanEngine:
         t0 = time.perf_counter()
         self._last = None
         g, _ = parent_graph(board)
-        b = {k: torch.from_numpy(np.asarray(g[k])[None]) for k in
+        # every tensor on self.dev: featurize is handed dev but not the inputs, so
+        # leaving these on CPU is the engine's long-standing mps device mismatch
+        b = {k: torch.from_numpy(np.asarray(g[k])[None]).to(self.dev) for k in
              ("sq", "mv", "mut", "att", "n_mv", "n_att")}
-        psl = (torch.from_numpy(np.asarray(g["pslot"])[None]).long()
+        psl = (torch.from_numpy(np.asarray(g["pslot"])[None]).long().to(self.dev)
                if self.gen5 else None)
-        b["gl"] = torch.from_numpy(glob_of_board(board)[None])
+        b["gl"] = torch.from_numpy(glob_of_board(board)[None]).to(self.dev)
         sqf, mvf, edges, mask = featurize(b, self.dev, n_nodes=self.field.n_nodes)
-        off = torch.zeros(1, 1, dtype=torch.long)
-        jj = torch.arange(MV_CAP)[None, :]
+        off = torch.zeros(1, 1, dtype=torch.long, device=self.dev)
+        jj = torch.arange(MV_CAP, device=self.dev)[None, :]
         for name in ("vac", "dsc"):
-            a2 = torch.from_numpy(np.asarray(g[name])[None]).long()
+            a2 = torch.from_numpy(np.asarray(g[name])[None]).long().to(self.dev)
             val = (a2 != 255) & mask[:, :, None]
             edges[name] = (((jj + 64 + off)[:, :, None].expand_as(a2))[val],
                            (a2 + off[:, :, None])[val])
-        el = torch.from_numpy(normalise_elo(np.full((1, 2), elo, np.float32)))
+        el = torch.from_numpy(
+            normalise_elo(np.full((1, 2), elo, np.float32))).to(self.dev)
         with torch.no_grad():
             zq, _, _, _, h_mv, _ = self.field.encode(sqf, mvf, edges, mask, elo=el,
                                                      pslot=psl)[:6]
