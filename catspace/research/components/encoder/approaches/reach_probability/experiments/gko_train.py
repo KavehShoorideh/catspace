@@ -1135,8 +1135,8 @@ def main():
         model.train()
         if step % args.ckpt_every == 0 or step == args.steps:
             # refreshed HERE, immediately before the scaffold writes the ladder file
-            ckpt_extra["opt"] = opt.state_dict()
-            ckpt_extra["rng"] = rng.bit_generator.state
+            # opt and rng are handled by standard_train now (every trainer gets them);
+            # these two are gko-specific run state the scaffold cannot know about
             ckpt_extra["ema_started"] = bool(ema_started[0])
             ckpt_extra["id6_hi"] = id6_hi[0]
         if step % args.rescan_every == 0:
@@ -1682,7 +1682,7 @@ def main():
         print(f"[gko0] resuming at step {_resume_step + 1}/{args.steps} -- step-gated "
               f"terms keep their ramps (opg, w6r) instead of restarting from zero",
               flush=True)
-    standard_train(step_fn, model, cfg, args)
+    standard_train(step_fn, model, cfg, args, opt=opt)
 
 
 if __name__ == "__main__":

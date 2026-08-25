@@ -119,7 +119,61 @@ def test_step_counter_gates_survive():
           f"~0.000, which is indistinguishable from converged")
 
 
+
+
+
+def test_scaffold_round_trip():
+    """The WRAPPER, not just the mechanism: standard_train must checkpoint optimizer
+    state automatically, and resume_from must restore it.
+
+    This is the part that generalises -- 19 trainers call standard_train, and before
+    this they all checkpointed weights only. Covers both wiring styles: an optimizer
+    passed explicitly, and one attached to the step function by a build_step() factory.
+    """
+    from catspace.research.tools.training_infra.train.scaffold import (
+        TrainConfig, standard_train, resume_from)
+
+    for style in ("explicit", "attached"):
+        data = _batches(20)
+        with tempfile.TemporaryDirectory() as td:
+            m = _model()
+            o = torch.optim.Adam(m.parameters(), lr=1e-3)
+
+            def step_fn(model, step, _o=o, _d=data):
+                x, y = _d[(step - 1) % len(_d)]
+                _o.zero_grad()
+                loss = nn.functional.mse_loss(model(x), y)
+                loss.backward(); _o.step()
+                return {"loss": float(loss)}
+
+            kw = {"opt": o}
+            if style == "attached":
+                step_fn.opt = o                 # the build_step() factory pattern
+                kw = {}
+            cfg = TrainConfig(out=str(Path(td) / "r"), steps=10, ckpt_every=10,
+                              eval_every=100, experiment="test")
+            standard_train(step_fn, m, cfg, args=None, **kw)
+
+            ck = torch.load(Path(td) / "r_step10.pt", map_location="cpu",
+                            weights_only=False)
+            assert "opt" in ck, f"[{style}] standard_train did not save optimizer state"
+            assert "rng" in ck, f"[{style}] standard_train did not save RNG state"
+
+            m2 = _model(seed=123)
+            o2 = torch.optim.Adam(m2.parameters(), lr=1e-3)
+            step = resume_from(str(Path(td) / "r_step10.pt"), m2, opt=o2)
+            assert step == 10, f"[{style}] resume_from returned step {step}, expected 10"
+            w1 = torch.cat([p.detach().flatten() for p in m.parameters()])
+            w2 = torch.cat([p.detach().flatten() for p in m2.parameters()])
+            assert torch.allclose(w1, w2), f"[{style}] weights not restored"
+            s1 = o.state_dict()["state"]; s2 = o2.state_dict()["state"]
+            assert len(s1) == len(s2) and len(s1) > 0, f"[{style}] optimizer state empty"
+            print(f"  scaffold [{style:8}]: ckpt carries opt+rng, resume_from -> step "
+                  f"{step}, weights and {len(s2)} optimizer slots restored")
+
+
 if __name__ == "__main__":
     test_resume_is_continuation()
     test_step_counter_gates_survive()
+    test_scaffold_round_trip()
     print("  RESUME TESTS PASS")

@@ -139,7 +139,7 @@ def main():
 
     cfg = TrainConfig(out=args.out.replace(".pt", ""), steps=args.steps, ckpt_every=args.steps,
                       eval_every=max(1, args.steps // 10), experiment="catspace_m2b_z", run_name="style_z")
-    standard_train(step, model, cfg, args=None)
+    standard_train(step, model, cfg, args=None, opt=opt)
 
     # sanity: mean NLL and base NLL on a held-in train sample (delta should help in-sample)
     model.eval()

@@ -360,6 +360,7 @@ def build_step(args, dev):
                 "slow_churn": slow_churn, "fast_churn": fast_churn,
                 "perp": perp, "sq_perp": sq_perp, **res_parts}
 
+    step_fn.opt = opt   # standard_train checkpoints optimizer state from here (resumability)
     return net, step_fn
 
 

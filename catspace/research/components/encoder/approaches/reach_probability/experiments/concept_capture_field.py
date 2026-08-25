@@ -346,6 +346,7 @@ def build_step(args, dev):
                 "eg_cond": eg_cond,
                 **res_parts}
 
+    step_fn.opt = opt   # standard_train checkpoints optimizer state from here (resumability)
     return net, step_fn
 
 

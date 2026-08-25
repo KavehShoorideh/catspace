@@ -179,7 +179,7 @@ def main():
                       extra={"cfg": {"in_ch": int(feats.shape[1]), "d": args.d,
                                      "adapter_ch": args.adapter_ch, "hidden": args.hidden,
                                      "trunk": "t1-256x10", "pairs": args.pairs}})
-    last = standard_train(step_fn, net, cfg, args=args, gates_fn=gates_fn)
+    last = standard_train(step_fn, net, cfg, args=args, gates_fn=gates_fn, opt=opt)
 
     print(f"\nVERDICT REACH-JEPA steps={args.steps} "
           f"val_nll={last.get('val_nll', float('nan')):.4f} "

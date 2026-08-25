@@ -736,7 +736,7 @@ def main():
                       experiment="catspace_m1_iqe_head", run_name=Path(out).name,
                       extra=_extra)
     try:
-        last = standard_train(step, net, cfg, args=args, gates_fn=gates)
+        last = standard_train(step, net, cfg, args=args, gates_fn=gates, opt=opt)
     finally:
         if step_log is not None:
             step_log.close()

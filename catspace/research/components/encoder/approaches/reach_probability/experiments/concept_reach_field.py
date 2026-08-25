@@ -183,6 +183,7 @@ def build_step(args, dev):
         return {"loss": float(loss.detach()), "hit": float(l_hit.detach()),
                 "time": float(l_time.detach()), **m}
 
+    step_fn.opt = opt   # standard_train checkpoints optimizer state from here (resumability)
     return net, step_fn
 
 

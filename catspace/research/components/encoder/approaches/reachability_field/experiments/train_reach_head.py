@@ -176,7 +176,7 @@ def main():
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
                       eval_every=args.eval_every, experiment="reach_v1",
                       run_name=Path(args.out).name, device=str(dev))
-    standard_train(step_fn, model, cfg, args=args, gates_fn=gates_fn)
+    standard_train(step_fn, model, cfg, args=args, gates_fn=gates_fn, opt=opt)
 
     # ---------------- pre-registered acceptance instrument ----------------
     model.eval()

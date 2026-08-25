@@ -2585,7 +2585,7 @@ def main():
                       eval_every=args.eval_every, experiment="reach_probability",
                       run_name=f"reach_vit_d{args.d_model}x{args.layers}_g{args.games}",
                       device=str(dev), extra={"cfg": cfg_dict})
-    last = standard_train(step_fn, net, cfg, args=args, gates_fn=gates_fn)
+    last = standard_train(step_fn, net, cfg, args=args, gates_fn=gates_fn, opt=opt)
     step_log.close()
     print(f"[curve] per-step losses -> {args.out}_steps.jsonl", flush=True)
 

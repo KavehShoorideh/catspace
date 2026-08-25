@@ -69,7 +69,7 @@ def run_variant(phi, ctx, y, games, dev, steps, batch, val_mask, seed, name):
 
     cfg = TrainConfig(out=paths.experiment(f"T_{name}"), steps=steps, ckpt_every=steps,
                       eval_every=steps, experiment="catspace_m2a_T", run_name=name)
-    standard_train(step, net, cfg, args=None)
+    standard_train(step, net, cfg, args=None, opt=opt)
     net.eval()
     with torch.no_grad():
         pv = net(P[va], C[va]).cpu().numpy()

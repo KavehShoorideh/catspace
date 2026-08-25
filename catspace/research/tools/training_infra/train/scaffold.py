@@ -59,6 +59,73 @@ def save_torch_ckpt(model, out_prefix, step: int, args=None, extra: dict | None 
     return step_path
 
 
+def _rng_state(rng):
+    """Snapshot a sampling RNG. numpy Generator, numpy RandomState and torch all differ;
+    the torch global stream is always captured because dropout/init read from it."""
+    st = {"torch": torch.get_rng_state()}
+    if rng is not None:
+        if hasattr(rng, "bit_generator"):
+            st["numpy"] = rng.bit_generator.state           # np.random.Generator
+        elif hasattr(rng, "get_state"):
+            st["numpy_legacy"] = rng.get_state()            # np.random.RandomState
+    return st
+
+
+def _rng_restore(rng, st):
+    if not isinstance(st, dict):
+        return
+    if st.get("torch") is not None:
+        try:
+            torch.set_rng_state(st["torch"])
+        except Exception:
+            pass
+    if rng is None:
+        return
+    if "numpy" in st and hasattr(rng, "bit_generator"):
+        rng.bit_generator.state = st["numpy"]
+    elif "numpy_legacy" in st and hasattr(rng, "set_state"):
+        rng.set_state(st["numpy_legacy"])
+
+
+def resume_from(path, model, opt=None, rng=None, strict: bool = False) -> int:
+    """Restore a run from a ladder checkpoint and return the step to continue FROM.
+
+    A resume that restores weights only is not a resume -- it is a new run starting from
+    borrowed weights. Three things are training state and all three are restored here:
+
+      * the optimizer's moments and bias-correction step. Without them Adam mis-sizes
+        its steps for hundreds of iterations (measured: 7e9x the weight error of an
+        uninterrupted run, see train/test_resume.py).
+      * the STEP COUNTER, returned so the caller can pass it as TrainConfig.start_step.
+        Trainers commonly ramp loss weights on the step number, so restarting at 0
+        silently re-gates objectives OFF while they read ~0.000 and look converged.
+      * the sampling RNG, so the resumed run does not re-train on batches it has seen.
+
+    Returns 0 when the file carries no step, so the caller starts from scratch safely.
+    """
+    ck = torch.load(path, map_location="cpu", weights_only=False)
+    sd = dict(ck.get("state_dict", {}))
+    own = model.state_dict()
+    dropped = [k for k, v in sd.items() if k in own and own[k].shape != v.shape]
+    for k in dropped:
+        del sd[k]                       # strict=False does NOT tolerate shape mismatch
+    missing, unexpected = model.load_state_dict(sd, strict=strict)
+    step = int(ck.get("step") or 0)
+    if opt is not None:
+        if ck.get("opt") is not None:
+            opt.load_state_dict(ck["opt"])
+        else:
+            print(f"[resume] WARNING: {path} carries NO optimizer state (written before "
+                  f"optimizer checkpointing). Adam restarts from zero -- expect a "
+                  f"transient. Checkpoints written from now on carry it.", flush=True)
+    if ck.get("rng") is not None:
+        _rng_restore(rng, ck["rng"])
+    print(f"[resume] {path}: step {step}, {len(missing)} new keys, {len(dropped)} "
+          f"shape-dropped, {len(unexpected)} unexpected, opt "
+          f"{'restored' if ck.get('opt') is not None else 'FRESH'}", flush=True)
+    return step
+
+
 @dataclass
 class TrainConfig:
     out: str                                   # checkpoint prefix (distinct per run -- no overwrite)
@@ -84,11 +151,25 @@ def resolve_device(spec: str = "auto") -> torch.device:
 
 
 def standard_train(step_fn: Callable, model, cfg: TrainConfig, args=None,
-                   gates_fn: Callable | None = None) -> dict:
+                   gates_fn: Callable | None = None, opt=None, rng=None) -> dict:
     """Run the STANDARD loop. step_fn(model, step) -> {metric: value} does ONE optimizer step
     (the only thing a trainer must supply). The scaffold handles MLflow logging, checkpoint ladders,
     health gates, and (inside a sweep) tune reporting. Returns the last metrics dict."""
     last: dict = {}
+    # Several trainers build their optimizer inside a build_step() factory, where it is
+    # a closure and unreachable from the call site. Those attach it to the returned
+    # step_fn rather than change nine signatures; find it here so they get resumable
+    # checkpoints for free.
+    if opt is None:
+        opt = getattr(step_fn, "opt", None)
+    if rng is None:
+        rng = getattr(step_fn, "rng", None)
+    if opt is None:
+        # Loud, because the failure is silent otherwise: the run trains fine and only
+        # the NEXT resume is quietly wrong. 18 of 19 trainers were in this state.
+        print("[scaffold] NOTE: standard_train(opt=...) not given -- checkpoints will "
+              "carry weights but no optimizer/RNG state, so this run is NOT cleanly "
+              "resumable. Pass opt= (and rng=) to make it so.", flush=True)
     with track_run(cfg.experiment, args=args, run_name=cfg.run_name) as log:
         for step in range(cfg.start_step + 1, cfg.steps + 1):
             metrics = step_fn(model, step) or {}
@@ -105,7 +186,14 @@ def standard_train(step_fn: Callable, model, cfg: TrainConfig, args=None,
                         pass
                 last = metrics
             if step % cfg.ckpt_every == 0 or step == cfg.steps:
-                save_torch_ckpt(model, cfg.out, step, args=args, extra=cfg.extra)
+                # built HERE so the optimizer state is current at write time; a dict
+                # captured when the config was constructed would ship step-0 moments
+                # forever, which looks fine and resumes wrong
+                extra = dict(cfg.extra or {})
+                if opt is not None:
+                    extra["opt"] = opt.state_dict()
+                    extra["rng"] = _rng_state(rng)
+                save_torch_ckpt(model, cfg.out, step, args=args, extra=extra)
         for k, v in last.items():
             log.tag(f"final_{k}", v)
     return last

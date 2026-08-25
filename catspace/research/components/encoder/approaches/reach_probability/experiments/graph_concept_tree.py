@@ -508,7 +508,7 @@ def main():
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
                       start_step=0, eval_every=args.eval_every, experiment="catspace",
                       run_name=args.out.split("/")[-1], device=dev)
-    standard_train(step_fn, both, cfg, args)
+    standard_train(step_fn, both, cfg, args, opt=opt)
 
 
 if __name__ == "__main__":

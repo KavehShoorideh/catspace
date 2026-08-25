@@ -198,7 +198,7 @@ def main():
                       eval_every=args.eval_every, experiment="catspace_field_fullgame",
                       run_name=Path(args.out).name,
                       extra={"cfg": {"d": args.d, "ch": args.ch, "blocks": args.blocks, "in_planes": 112}})
-    last = standard_train(step, net, cfg, args=args, gates_fn=gates)
+    last = standard_train(step, net, cfg, args=args, gates_fn=gates, opt=opt)
     print(f"VERDICT FIELD-FULLGAME d{args.d}: pair-order {last.get('pair_order', float('nan')):+.3f} | "
           f"eff_rank {last.get('eff_rank', float('nan')):.1f} | committor-MAE {last.get('committor_mae', float('nan')):.3f} "
           f"| loss {last.get('loss', float('nan')):.3f} | [{time.time()-t0:.0f}s]", flush=True)
