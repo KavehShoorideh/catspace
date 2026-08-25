@@ -17799,3 +17799,42 @@ This is the interpretability endpoint the project exists for, so it is worth say
 plainly what it does and does not show: the concepts support a partition of futures that
 a human can name, discovered rather than imposed. It does NOT yet show that partition
 helps the planner -- that is the pre-registered falsification test, still pending.
+
+## 2026-08-25 09:50 PDT -- resume was restoring WEIGHTS ONLY; fixed and proven
+
+Kaveh: "fix resuming issues so we can actually resume without problem." I had been
+avoiding resume because of the EMA-lag scar; tracing the actual code path found that bug
+was fixed but three larger ones were not, and the infrastructure to fix them had been
+sitting unused. TrainConfig has a start_step field; save_torch_ckpt documents `extra` as
+"e.g. optimizer state". gko_train passed neither. A checkpoint held exactly
+{arch, args, git_commit, state_dict, step}.
+
+Dropped on every resume:
+  1. Adam's moments + bias-correction step -- a fresh optimizer mis-sizes its steps for
+     hundreds of iterations.
+  2. THE STEP COUNTER (start_step=0 hardcoded). The dangerous one: gko_train ramps its
+     own objectives on the step number, opg = (step-ops_after)/1000 for the operator
+     losses and w6r = (step-op6_after)/2000 for 6-ply chain supervision. A resumed run
+     therefore re-gates its MAIN objectives OFF and ramps them back while they read
+     ~0.000 -- the exact signature that cost 1000 steps in the sf-diet incident.
+     Quantified in the test: 1,299 steps below full operator loss, 2,999 below full
+     chain supervision.
+  3. the sampling RNG, so a resumed run re-trains on batches it already saw.
+
+All three now ride in the ladder checkpoint. The optimizer state is refreshed inside
+step_fn immediately before the scaffold writes, so it is CURRENT rather than captured at
+config time -- a static extra dict would have silently shipped step-0 moments forever.
+Checkpoints predating this warn instead of pretending.
+
+PROVEN, with the negative control that makes the test meaningful (test_resume.py):
+    resume WITH    optimizer state: max|dw| vs uninterrupted  0.00e+00   bit-exact
+    resume WITHOUT optimizer state: max|dw|                   6.80e-03   on scale 0.119
+                                                              -> 7e9x worse
+Without the control the test would pass just as happily against an implementation that
+never needed the state.
+
+STILL TO DO: end-to-end verification through the real trainer (train N, checkpoint,
+resume, compare) rather than a toy model. It needs to load the model, and gko8a is live
+on a machine already paging, so it waits. NOTE that gko8a itself was launched before
+this fix, so ITS checkpoints carry no optimizer state -- resuming gko8a would hit the
+warning path and restart Adam. Everything launched from now on resumes cleanly.
