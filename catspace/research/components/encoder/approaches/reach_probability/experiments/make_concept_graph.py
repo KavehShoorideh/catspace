@@ -22,6 +22,7 @@ import json
 
 import numpy as np
 import torch
+from catspace.research.tools.npz_io import load_npz
 
 
 def main():
@@ -51,7 +52,7 @@ def main():
     lev = np.zeros((H, C), np.float32)
     lp = base + "_concept_leverage.npz"
     if os.path.exists(lp):
-        z = np.load(lp)
+        z = load_npz(lp)
         for sw, hh, cc in zip(z["swing"], z["head"], z["code"]):
             lev[int(hh), int(cc)] = float(sw)
 

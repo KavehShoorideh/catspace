@@ -24,6 +24,7 @@ from catspace.research.components.encoder.approaches.reach_probability.experimen
 from catspace.research.components.encoder.approaches.reach_probability.experiments.interpret_reach import (
     load_net)
 from catspace.research.components.encoder.approaches.reach_probability.src import trajectories as T
+from catspace.research.tools.npz_io import load_npz
 
 
 def fit_tau_ce(D, y):
@@ -117,7 +118,7 @@ def main():
     ddir = paths.derived("wdl_labels")
     sh = [os.path.join(ddir, f) for f in sorted(os.listdir(ddir)) if f.endswith(".npz")]
     if sh:
-        pk = np.load(sh[0])
+        pk = load_npz(sh[0])
         psel = rng.choice(len(pk["row"]), 800, replace=False)
         keep = {"dA": 0, "dB": 0, "rand": 0}
         kn = 0

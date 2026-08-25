@@ -17,6 +17,7 @@ import time
 
 import numpy as np
 import torch
+from catspace.research.tools.npz_io import load_npz
 
 
 def main():
@@ -46,7 +47,7 @@ def main():
     t0 = time.time()
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     A = ck["args"] if isinstance(ck.get("args"), dict) else vars(ck["args"])
-    z = np.load(args.graphs)
+    z = load_npz(args.graphs)
     keys = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att", "p_row")
     D = {k: torch.from_numpy(np.ascontiguousarray(z[k])) for k in keys}
     om = z["outcome_mover"].astype(np.float32)
@@ -55,7 +56,7 @@ def main():
     tr = T.build(n_human=A.get("n_human", 0), n_sf=A["games"], seed=A["seed"],
                  cache=True, max_plies=A["max_plies"], n_piecedown=A["n_piecedown"])
     if A.get("res_mode", "tb") == "tb":
-        lz = np.load(paths.derived(f"tb_entry_5-4-3men_{len(tr.tok)}.npz"),
+        lz = load_npz(paths.derived(f"tb_entry_5-4-3men_{len(tr.tok)}.npz"),
                      allow_pickle=True)
         vocab = [str(x) for x in lz["vocab"]]
         cr, ce, co, egs = factor_vocab(vocab)

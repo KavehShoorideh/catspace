@@ -36,6 +36,7 @@ from pathlib import Path
 import numpy as np
 
 from catspace.research.tools.training_infra.losses import WIN, DRAW, LOSS
+from catspace.research.tools.npz_io import load_npz
 
 ROW_BYTES = 256 * 8 * 8 * 2                                  # fp16 trunk features
 
@@ -53,7 +54,7 @@ def main():
     args = ap.parse_args()
     t0 = time.time()
 
-    z = np.load(args.combined, allow_pickle=True)
+    z = load_npz(args.combined, allow_pickle=True)
     meta = eval(str(z["_meta"][0]))
     N = len(z["y"])
     n = min(args.n, N)

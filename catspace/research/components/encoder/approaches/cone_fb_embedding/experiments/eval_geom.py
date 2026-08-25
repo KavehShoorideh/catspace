@@ -19,6 +19,7 @@ from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
 from scipy.stats import spearmanr
 from catspace.io import paths
+from catspace.research.tools.npz_io import load_npz
 
 ckpt = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(paths.sep("iqe_geom.pt"))
 fb, pay = load_ckpt(ckpt, "cpu"); fb.eval()
@@ -37,7 +38,7 @@ def eB(pk, mt):
     return fb.embed_B(bp(pk, mt))
 
 
-nz = np.load(paths.derived("lichess_nearmate.npz")); won = np.flatnonzero(nz["dtm"] > 0)
+nz = load_npz(paths.derived("lichess_nearmate.npz")); won = np.flatnonzero(nz["dtm"] > 0)
 nmp, nmm, nmd = nz["packed"][won], nz["meta"][won], nz["dtm"][won].astype(np.float32)
 mk = np.array(["".join(sorted(p.symbol() for p in board_from_packed(nmp[i], nmm[i]).piece_map().values()))
                for i in range(len(nmd))])

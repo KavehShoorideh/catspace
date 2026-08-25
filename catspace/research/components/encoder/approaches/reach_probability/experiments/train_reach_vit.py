@@ -71,6 +71,7 @@ from catspace.research.tools.training_infra.losses import (
     reach_region_nll, terminal_repulsion, typical_pair_scale, vicreg_covariance, vicreg_variance)
 from catspace.research.tools.training_infra.train.scaffold import (
     TrainConfig, resolve_device, standard_train)
+from catspace.research.tools.npz_io import load_npz
 
 
 def _sync(dev):
@@ -740,7 +741,7 @@ def main():
 
     _bw = None
     if args.balance_npz:
-        _bz = np.load(args.balance_npz)
+        _bz = load_npz(args.balance_npz)
         _bw = _bz["weight"]
         assert len(_bw) == tr.n_positions, \
             (f"balance weights are for a {len(_bw):,}-row corpus, "
@@ -805,7 +806,7 @@ def main():
     src_of_game = tr.source
     qd = None
     if args.w_qdistill > 0:
-        _qz = np.load(args.qdistill_npz)
+        _qz = load_npz(args.qdistill_npz)
         _gap = np.abs(_qz["e_static"] - _qz["e_resolved"])
         qd = {"row": _qz["row"], "probs": _qz["probs"],
               "w": (0.25 + _gap / max(1e-6, float(_gap.mean() * 4))).astype(np.float32)}
@@ -818,7 +819,7 @@ def main():
         from catspace.research.components.encoder.approaches.reach_probability.experiments.jqt import (
             ActivationIndex, JQTModule)
         _gtp = paths.derived(f"game_transitions_{len(tr.tok)}.npz")
-        _gz = np.load(_gtp)
+        _gz = load_npz(_gtp)
         # keep TRAIN-split transitions only (child = par+1 shares the parent's game)
         _tm = np.isin(game_of_row[_gz["par"]], np.flatnonzero(split == 0))
         jqt_gt = {"par": _gz["par"][_tm], "mid": _gz["mid"][_tm]}
@@ -968,7 +969,7 @@ def main():
 
     tp = None
     if args.w_turnpair > 0:
-        _tz = np.load(args.turnpair_npz)
+        _tz = load_npz(args.turnpair_npz)
         tp = {k: _tz[k] for k in ("row", "probs_a", "probs_b", "tok_b", "glob_b")}
         _tg = np.abs((tp["probs_a"][:, 0] + 0.5 * tp["probs_a"][:, 1])
                      - (tp["probs_b"][:, 0] + 0.5 * tp["probs_b"][:, 1]))
@@ -999,13 +1000,13 @@ def main():
         import os as _os
         _lp = paths.derived("bestmove_listwise.npz")
         if _os.path.exists(_lp):
-            _gl = np.load(_lp)
+            _gl = load_npz(_lp)
             grad_labels = {"mode": "list", "tok": _gl["tok"], "glob": _gl["glob"],
                            "off": _gl["off"], "best": _gl["best"]}
             print(f"[grad] LISTWISE labels: {len(_gl['best']):,} positions, "
                   f"{len(_gl['tok']):,} children", flush=True)
         else:
-            _gl = np.load(paths.derived("bestmove_labels.npz"))
+            _gl = load_npz(paths.derived("bestmove_labels.npz"))
             grad_labels = {"mode": "pair", **{k: _gl[k] for k in
                            ("best_tok", "best_glob", "alt_tok", "alt_glob")}}
             print(f"[grad] pairwise labels: {len(_gl['best_tok']):,}", flush=True)
@@ -1018,7 +1019,7 @@ def main():
     _ing = {"lines": 0, "games": 0}
     _bw_name_w = None
     if args.balance_npz and _bw is not None:
-        _bz2 = np.load(args.balance_npz)
+        _bz2 = load_npz(args.balance_npz)
         _bw_name_w = {}
         for _si, _nm in enumerate(_bz2["names"]):
             _m = _bz2["stratum"] == _si

@@ -25,6 +25,7 @@ from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb impor
 from catspace.research.components.planner.approaches.endgame_groundtruth.experiments.conversion_field_mcts import FieldMCTS
 from catspace.research.components.planner.approaches.committor_value.experiments.value_fixed_point import TB, tb_best_move
 from catspace.io import paths
+from catspace.research.tools.npz_io import load_npz
 
 
 def main():
@@ -41,7 +42,7 @@ def main():
     args = ap.parse_args()
     t0 = time.time(); dev = pick_device(args.device); rng = np.random.default_rng(args.seed)
     tb = TB(str(paths.syzygy_dir()))
-    dz = np.load(args.dtm_npz); idx = rng.permutation(len(dz["packed"]))[:args.bank]
+    dz = load_npz(args.dtm_npz); idx = rng.permutation(len(dz["packed"]))[:args.bank]
     fens = json.loads(Path(args.fixed_set).read_text())["fens"][:args.n]
 
     def pctile(scores, best_i):

@@ -49,6 +49,7 @@ from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device, save_ckpt
 from scipy.stats import spearmanr
 from catspace.io import paths
+from catspace.research.tools.npz_io import load_npz
 
 BOARD_ONLY_ZERO = (18, 19)   # halfmove clock, repetition -> excluded from the geometry
 
@@ -89,7 +90,7 @@ def main():
     rng = np.random.default_rng(args.seed)
 
     # near-mate (goal anchoring) -- won positions + material key + pawnless flag
-    nz = np.load(args.nearmate)
+    nz = load_npz(args.nearmate)
     won = nz["dtm"] > 0
     nmp, nmm, nmd = nz["packed"][won], nz["meta"][won], nz["dtm"][won].astype(np.float32)
     matkey = np.empty(len(nmd), dtype=object); haspawn = np.zeros(len(nmd), dtype=bool)
@@ -101,10 +102,10 @@ def main():
     uniq = {m: k for k, m in enumerate(sorted(set(matkey)))}
     mat = np.array([uniq[m] for m in matkey], dtype=np.int64)
     low = np.argsort(nmd)[:512]
-    ez = np.load(args.edges)                                          # successor edges
+    ez = load_npz(args.edges)                                          # successor edges
     irr_idx = np.flatnonzero(ez["irrev"])                            # irreversible edges (~5%): dedicated
     print(f"[stage] {len(ez['p_packed'])} edges, {len(irr_idx)} irreversible ({100*len(irr_idx)/len(ez['p_packed']):.1f}%)", flush=True)
-    pz = np.load(args.pawndeath)                                      # eval probe only
+    pz = load_npz(args.pawndeath)                                      # eval probe only
 
     def bplanes(pk, mt):
         pl = feature_planes(pk, mt)

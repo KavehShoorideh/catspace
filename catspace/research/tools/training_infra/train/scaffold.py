@@ -19,6 +19,7 @@ supports py3.14. Everything degrades gracefully: no ray -> single in-process run
 from __future__ import annotations
 
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -124,6 +125,54 @@ def resume_from(path, model, opt=None, rng=None, strict: bool = False) -> int:
           f"shape-dropped, {len(unexpected)} unexpected, opt "
           f"{'restored' if ck.get('opt') is not None else 'FRESH'}", flush=True)
     return step
+
+
+def snapshot_state(*stateful, cells=()):
+    """Deep-copy everything a diagnostic might disturb.
+
+    `stateful` is anything with state_dict()/load_state_dict() -- models, EMA targets,
+    optimizers. `cells` are mutable containers holding plain run state (the one-element
+    lists this codebase uses for flags), saved by value.
+    """
+    import copy
+    return ([copy.deepcopy(o.state_dict()) for o in stateful],
+            [list(c) for c in cells], stateful, cells)
+
+
+def restore_state(snap) -> None:
+    """Put back exactly what snapshot_state saved, and drop any grads accumulated."""
+    snaps, cellvals, stateful, cells = snap
+    with torch.no_grad():
+        for o, sd in zip(stateful, snaps):
+            o.load_state_dict(sd)
+    for c, v in zip(cells, cellvals):
+        c[:] = v
+    for o in stateful:
+        if hasattr(o, "zero_grad"):
+            o.zero_grad(set_to_none=True)
+
+
+@contextmanager
+def frozen(*stateful, cells=()):
+    """Run a diagnostic that MUTATES, and leave nothing changed.
+
+    A gate must measure the model, not train it. Both failures have happened here:
+    U19b took a real optimizer step inside the suite, so every gate after it measured a
+    model the suite itself had trained (3.5x error on one reading), and U22 called
+    .zero_() on the very weights it was probing, wiping what a resumed checkpoint had
+    learned. Neither announces itself -- the gates still print PASS.
+
+        with frozen(model, ema_field, opt, cells=[ema_started]):
+            ... probe, step, mutate freely ...
+        # everything is back exactly as it was
+
+    Twelve hand-rolled snapshot/restore pairs in one trainer is what this replaces.
+    """
+    snap = snapshot_state(*stateful, cells=cells)
+    try:
+        yield
+    finally:
+        restore_state(snap)
 
 
 @dataclass

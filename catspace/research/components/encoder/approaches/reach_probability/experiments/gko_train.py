@@ -1292,21 +1292,18 @@ def main():
         # the EMA lag, U22 must weight state_proj to prove conditioning is live --
         # and every gate that ran AFTER one of those was silently measuring a model
         # the suite itself had modified. These snapshot/restore around any such gate.
+        # delegate to the shared implementation (scaffold.snapshot_state/restore_state)
+        # so every trainer's gates get the same guarantee; new code should prefer the
+        # `with frozen(...)` form, which cannot forget the restore
+        from catspace.research.tools.training_infra.train.scaffold import (
+            snapshot_state, restore_state)
+
         def _snap():
-            return ({k: v.detach().clone() for k, v in model.state_dict().items()},
-                    {k: v.detach().clone() for k, v in ema_field.state_dict().items()}
-                    if ema_field is not None else None,
-                    copy.deepcopy(opt.state_dict()), bool(ema_started[0]))
+            objs = [model] + ([ema_field] if ema_field is not None else []) + [opt]
+            return snapshot_state(*objs, cells=[ema_started])
 
         def _restore(sn):
-            msd, esd, osd, es = sn
-            with torch.no_grad():
-                model.load_state_dict(msd)
-                if esd is not None and ema_field is not None:
-                    ema_field.load_state_dict(esd)
-            opt.load_state_dict(osd)
-            ema_started[0] = es
-            opt.zero_grad(set_to_none=True)
+            restore_state(sn)
 
         def gate(name, ok, detail):
             print(f"  {name:<5} {'PASS' if ok else 'FAIL':<5} {detail}", flush=True)
@@ -1314,7 +1311,10 @@ def main():
                 fails.append(name)
 
         # U12: elo passthrough -- same rows, band vs fixed conditioning
-        ii = torch.from_numpy(tr_i[:8])
+        # SAMPLE, never a prefix: tr_i is sorted and the maia shards sort first, so
+        # tr_i[:8] is eight maia rows and the gate never sees an sf row at all.
+        ii = torch.from_numpy(np.sort(np.random.default_rng(11).choice(
+            tr_i, min(8, len(tr_i)), replace=False)))
         sqf, mvf, edges, mask, elo, psl = batch_of(ii)
         with torch.no_grad():
             z_a = model.field.encode(sqf, mvf, edges, mask, elo=elo, pslot=psl)[0]
@@ -1407,7 +1407,8 @@ def main():
             # U19b: after one optimizer step + update, ema LAGS (differs, moves less)
             p0_on = model.field.g_proj.weight.detach().clone()
             p0_em = ema_field.g_proj.weight.detach().clone()
-            idxu = torch.from_numpy(tr_i[:4])
+            idxu = torch.from_numpy(np.sort(np.random.default_rng(12).choice(
+                tr_i, min(4, len(tr_i)), replace=False)))
             lu, *_ = losses_on(idxu)
             opt.zero_grad(); lu.backward(); opt.step()
             _ema_update()

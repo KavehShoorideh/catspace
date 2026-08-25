@@ -172,8 +172,43 @@ def test_scaffold_round_trip():
                   f"{step}, weights and {len(s2)} optimizer slots restored")
 
 
+
+
+
+def test_frozen_leaves_nothing_changed():
+    """A gate must MEASURE the model, not train it.
+
+    Reproduces both real failures: an optimizer step taken inside a diagnostic, and a
+    .zero_() applied to the thing being probed. Both left the model altered and the
+    gates still printed PASS.
+    """
+    from catspace.research.tools.training_infra.train.scaffold import frozen
+
+    m = _model()
+    o = torch.optim.Adam(m.parameters(), lr=1e-2)
+    flag = [True]
+    before = torch.cat([p.detach().flatten().clone() for p in m.parameters()])
+
+    with frozen(m, o, cells=[flag]):
+        x, y = _batches(1)[0]                       # U19b: a real optimizer step
+        o.zero_grad(); nn.functional.mse_loss(m(x), y).backward(); o.step()
+        with torch.no_grad():                       # U22: zeroing what it probes
+            next(m.parameters()).zero_()
+        flag[0] = False
+        during = torch.cat([p.detach().flatten() for p in m.parameters()])
+        assert not torch.allclose(before, during), "the probe did not actually mutate"
+
+    after = torch.cat([p.detach().flatten() for p in m.parameters()])
+    assert torch.allclose(before, after), "frozen() did NOT restore the weights"
+    assert flag == [True], "frozen() did not restore the run-state cell"
+    assert all(p.grad is None for p in m.parameters()), "grads left behind"
+    print(f"  frozen(): weights, optimizer and run-state cells restored after a probe "
+          f"that took a real optimizer step AND zeroed a parameter")
+
+
 if __name__ == "__main__":
     test_resume_is_continuation()
     test_step_counter_gates_survive()
     test_scaffold_round_trip()
+    test_frozen_leaves_nothing_changed()
     print("  RESUME TESTS PASS")

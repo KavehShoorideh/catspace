@@ -31,6 +31,7 @@ from catspace.research.tools.chess_specific.chessdata.encode import board_from_p
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device, save_ckpt
 from catspace.io import paths
+from catspace.research.tools.npz_io import load_npz
 
 
 def planes_of(boards):
@@ -126,7 +127,7 @@ def main():
     for p in fb_frozen.parameters():
         p.requires_grad_(False)
     om = omega_ids(np.array([1800]), np.array([1800]), np.array([300.0]))[0]
-    dz = np.load(args.dtm_npz)
+    dz = load_npz(args.dtm_npz)
     dtm_all, mat_all = dz["dtm"].astype(np.float32), dz["material"]
     rng = np.random.default_rng(args.seed)
 

@@ -14,14 +14,15 @@ import matplotlib.pyplot as plt
 from catspace.research.tools.chess_specific.chessdata.encode import board_from_packed, encode_meta, encode_packed
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt
+from catspace.research.tools.npz_io import load_npz
 
 dev = "cpu"
 _ckpt = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(paths.sep("iqe_infinite.pt"))
 _out = sys.argv[2] if len(sys.argv) > 2 else paths.experiment("batchnorm_proof.png")
 fb, _ = load_ckpt(_ckpt, dev)
 om = omega_ids(np.array([1800]), np.array([1800]), np.array([300.0]))[0]
-pz = np.load(paths.derived("pawncap_pairs.npz"))
-nz = np.load(paths.derived("lichess_nearmate.npz")); won = np.flatnonzero(nz["dtm"] > 0)
+pz = load_npz(paths.derived("pawncap_pairs.npz"))
+nz = load_npz(paths.derived("lichess_nearmate.npz")); won = np.flatnonzero(nz["dtm"] > 0)
 rng = np.random.default_rng(5)
 
 

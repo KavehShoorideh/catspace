@@ -22,6 +22,7 @@ import torch
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features import feature_planes, omega_ids
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 from catspace.io import paths
+from catspace.research.tools.npz_io import load_npz
 
 
 def main():
@@ -46,7 +47,7 @@ def main():
     P_, M_, WID, PLY, REG = [], [], [], [], []
     wid_next = 0
     for f in shard_files:
-        z = np.load(f)
+        z = load_npz(f)
         gid, reg, ply = z["game_id"], z["regime"], z["ply"]
         change = np.flatnonzero((np.diff(gid.astype(np.int64)) != 0) | (np.diff(ply) <= 0)) + 1
         starts = np.concatenate([[0], change]); ends = np.concatenate([change, [len(gid)]])

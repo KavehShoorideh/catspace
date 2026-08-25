@@ -38,6 +38,7 @@ import torch.nn.functional as F
 
 from catspace.research.components.encoder.approaches.reach_probability.experiments \
     .graph_move_policy import MV_CAP
+from catspace.research.tools.npz_io import load_npz
 
 
 class ConceptTree(nn.Module):
@@ -204,7 +205,7 @@ def main():
         TrainConfig, standard_train)
 
     t0 = time.time()
-    z = np.load(args.graphs)
+    z = load_npz(args.graphs)
     D = {k: torch.from_numpy(np.ascontiguousarray(z[k])) for k in z.files}
     N = len(D["p_row"])
     tr = T.build(n_human=args.n_human, n_sf=args.games, seed=args.seed, cache=True,
@@ -262,10 +263,10 @@ def main():
 
     CFD = None
     if args.w_alt > 0 and args.games > 0:
-        zc = np.load(args.cf_graphs)
+        zc = load_npz(args.cf_graphs)
         CFD = {k: torch.from_numpy(np.ascontiguousarray(zc[k])) for k in
                ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att", "p_row")}
-        cf = np.load(args.cf)
+        cf = load_npz(args.cf)
         rowmap = {int(r): i for i, r in enumerate(CFD["p_row"].numpy())}
         mvC, n_mvC = CFD["mv"].numpy(), CFD["n_mv"].numpy()
         cf_gi, cf_slot = [], []

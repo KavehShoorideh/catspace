@@ -24,6 +24,7 @@ import torch.nn.functional as F
 
 from catspace.research.components.encoder.approaches.reach_probability.experiments \
     .graph_move_policy import MV_CAP
+from catspace.research.tools.npz_io import load_npz
 
 
 def main():
@@ -74,10 +75,10 @@ def main():
         p2.requires_grad_(False)
     assert A["move_codes"] > 0, "concept-move codes required for the pure-concept probe"
 
-    C = np.load(args.cf_graphs)
+    C = load_npz(args.cf_graphs)
     CD = {k: torch.from_numpy(np.ascontiguousarray(C[k])) for k in
           ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att", "p_row")}
-    cf = np.load(args.cf)
+    cf = load_npz(args.cf)
     rowmap = {int(r): i for i, r in enumerate(CD["p_row"].numpy())}
     mvC, n_mvC = CD["mv"].numpy(), CD["n_mv"].numpy()
     played = C["played"]

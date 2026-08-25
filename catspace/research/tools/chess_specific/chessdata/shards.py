@@ -13,6 +13,7 @@ from typing import Iterator
 import numpy as np
 
 from catspace.research.tools.chess_specific.chessdata.sources import PairBatch, PairSource
+from catspace.research.tools.npz_io import load_npz
 
 
 def write_shards(source: PairSource, out_dir, shard_size: int = 1_000_000,
@@ -70,7 +71,7 @@ class ShardReader:
 
         def refill(buf_a, buf_g, path_idx):
             while len(buf_a) < self.shuffle_buffer and path_idx < len(order):
-                data = np.load(self.paths[order[path_idx]])
+                data = load_npz(self.paths[order[path_idx]])
                 buf_a = np.concatenate([buf_a, data["anchors"]])
                 buf_g = np.concatenate([buf_g, data["goals"]])
                 path_idx += 1
@@ -96,7 +97,7 @@ def sample_shard_rows(shard_dir, n: int, seed: int, holdout_only: bool = False,
     shard_dir = Path(shard_dir)
     per_shard = []
     for path in sorted(shard_dir.glob("shard_*.npz")):
-        npz = np.load(path)
+        npz = load_npz(path)
         gid = npz["game_id"]
         rows = np.flatnonzero(gid % holdout_mod == 0) if holdout_only else np.arange(len(gid))
         per_shard.append((path.name, rows))
@@ -197,7 +198,7 @@ class LichessPairSource:
     def batches(self, batch_size: int, seed: int) -> Iterator[PairBatch]:
         rng = np.random.default_rng(seed)
         for path in self.paths:
-            npz = np.load(path)
+            npz = load_npz(path)
             # bind every array ONCE: NpzFile re-reads (and re-allocates) the
             # whole array on every __getitem__, so per-batch npz["packed"][sl]
             # is quadratic io and churns 100MB allocations

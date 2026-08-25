@@ -28,6 +28,7 @@ from catspace.research.components.encoder.approaches.jepa_tokenizer.src.features
 from catspace.research.components.encoder.approaches.jepa_tokenizer.src.fb import load_ckpt, pick_device
 from catspace.research.tools.stats_eval.tracking import track_run
 from catspace.io import paths
+from catspace.research.tools.npz_io import load_npz
 
 
 class RhoHead(nn.Module):
@@ -74,7 +75,7 @@ def main():
     shard_files = sorted(glob.glob(str(Path(args.shards) / "shard_*.npz")))
     rng.shuffle(shard_files)      # sorted prefix = one daemon phase = regime-coverage hole
     for f in shard_files:
-        z = np.load(f)
+        z = load_npz(f)
         gid, reg, ply = z["game_id"], z["regime"], z["ply"]
         # split on game-token change OR ply reset (belt & braces: tokens are per-walk,
         # but a collision would silently corrupt the future-pair indexing)

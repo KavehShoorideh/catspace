@@ -22,6 +22,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from catspace.research.tools.npz_io import load_npz
 
 
 def build(ckpt_path, dev):
@@ -133,7 +134,7 @@ def sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo,
         sps, lvl_p, lvl_t = [], [], []
         sv_p, sv_t = [], []
         for f in hf:
-            H = np.load(f)
+            H = load_npz(f)
             for i0 in range(0, len(H["kind"]), 256):
                 rr = np.arange(i0, min(i0 + 256, len(H["kind"])))
                 b = {k: torch.from_numpy(np.ascontiguousarray(H[k][rr])).to(dev)
@@ -220,7 +221,7 @@ def ops_section(ckpt, sharp_dir, n_pos=48):
     ke = KoopmanEngine(ckpt, reencode_budget=12)
     fens = []
     for f in sorted(_g.glob(os.path.join(sharp_dir, "*.npz"))):
-        d = np.load(f)
+        d = load_npz(f)
         fens.extend([x.decode() if isinstance(x, bytes) else str(x)
                      for x in d["fen"][:n_pos]])
         if len(fens) >= n_pos:
@@ -288,9 +289,9 @@ def main():
         sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo,
                       lift, sf_v_full, vb)
         return
-    CH = np.load(args.cache, mmap_mode="r")
+    CH = load_npz(args.cache, mmap_mode="r")
     CH_prow = np.asarray(CH["p_row"])
-    cs = np.load(d["chain_starts"])
+    cs = load_npz(d["chain_starts"])
     starts, games = cs["start"], cs["game"]
     pos = np.searchsorted(CH_prow, starts[:, None] + np.arange(7)[None, :])
     ok = (pos < len(CH_prow))
@@ -343,7 +344,7 @@ def main():
     sharp_section(args, field, sf_av, kb, gen5, dev, normalise_elo,
                   lift, sf_v_full, vb)
 
-    SC = np.load(args.sidecar)
+    SC = load_npz(args.sidecar)
     wdl = SC["wdl"][tail].astype(np.float32)  # f16 on disk: 1e-9 underflows to 0 there
     valid = np.isfinite(wdl).all(1) & (wdl.sum(1) > 0.5)
     if valid.sum() < 100:

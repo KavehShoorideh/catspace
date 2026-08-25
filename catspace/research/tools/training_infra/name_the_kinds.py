@@ -19,6 +19,7 @@ import glob
 import os
 import numpy as np
 import chess
+from catspace.research.tools.npz_io import load_npz
 
 VAL = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3,
        chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
@@ -64,10 +65,10 @@ def main():
     vals = {k: [] for k in range(K)}
     used = 0
     for f in sorted(glob.glob(os.path.join(a.fkind, "shard_*.npz"))):
-        z = np.load(f)
+        z = load_npz(f)
         if "fkind" not in z.files:
             continue
-        d = np.load(os.path.join(a.shards, os.path.basename(f)))
+        d = load_npz(os.path.join(a.shards, os.path.basename(f)))
         fk, rmv, pv, pvn, val = z["fkind"], z["rmv"], z["pv"], z["pvn"], z["val"]
         for i in range(min(a.max_rows, len(fk))):
             if not (fk[i] >= 0).any():
