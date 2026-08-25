@@ -127,6 +127,18 @@ def main():
                          "16 dims), pieces 8x8, moves 32 heads x 4 codes (4^32, "
                          "collisions gone). Pair with --g-heads 32. Same d_state as "
                          "gcf5, vastly larger vocabulary.")
+    ap.add_argument("--w-fkind", type=float, default=0.0,
+                    help="weight on the FUTURE-KIND auxiliary (docs/FUTURE_KINDS.md). "
+                         "Predicts which of K discovered kinds of future a move "
+                         "opens. CE is bounded by log K, so an unpredictable position "
+                         "costs at most log K and its gradient vanishes -- the head "
+                         "can say 'I do not know' without dragging the encoder, which "
+                         "is why this is a kind classifier and not a regression on "
+                         "future concept vectors (65pct of those dims are "
+                         "unpredictable, measured).")
+    ap.add_argument("--fkind-dir", default="data/derived/gko1_fkind",
+                    help="parallel labels, one file per shard, joined by basename")
+    ap.add_argument("--fkind-K", type=int, default=12)
     ap.add_argument("--av-concepts", action="store_true",
                     help="sharp head reads the QUANTISED move code instead of raw "
                          "backbone features, so every head in the model reads "
@@ -188,7 +200,7 @@ def main():
         InteractionLift, KoopmanOps, BasisOps, TransformerLift, one_ply_loss,
         rollout, lift_consistency)
     from catspace.research.tools.training_infra.losses import (
-        cross_head_decorrelation, vamp2_score, vicreg_covariance)
+        cross_head_decorrelation, vamp2_score, vicreg_covariance, future_kind_ce)
     from catspace.research.components.encoder.approaches.reach_probability.src \
         .trajectories import normalise_elo
     from catspace.research.tools.training_infra.train.scaffold import (
@@ -242,6 +254,17 @@ def main():
             self.sf_av = nn.Sequential(
                 nn.Linear(field.d_state + _av_mv, 512), nn.GELU(),
                 nn.Linear(512, args.k_bins))
+            if args.w_fkind > 0:
+                # WHICH KIND OF FUTURE does this move open. Reads exactly what sf_av
+                # reads -- quantised state concepts plus the quantised move code --
+                # per the concepts-only ruling: no head sees the unquantised encoding.
+                # Its targets are frozen integers computed offline from a reference
+                # field and Stockfish's own continuations, so unlike a
+                # predict-your-own-future objective there is no collapse solution:
+                # the encoder cannot make its targets easier.
+                self.fkind_head = nn.Sequential(
+                    nn.Linear(field.d_state + _av_mv, 512), nn.GELU(),
+                    nn.Linear(512, args.fkind_K))
             if args.ops:
                 if args.lift == "transformer":
                     # EVERY width read from the field. Passing literals here made the
@@ -416,7 +439,10 @@ def main():
 
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att",
             "kind", "band", "tgt")
-    OPT_KEYS = ("pslot", "wdl")   # newer shards only; synthesized when absent
+    # fkind48/fspread live in a PARALLEL directory, joined by shard basename, so
+    # labelling can run (and be extended) without rewriting the shards. They ride
+    # in OPT_KEYS so the ring evicts them in lockstep -- the split-drift bug.
+    OPT_KEYS = ("pslot", "wdl", "fkind48", "fspread")
     store = {k: [] for k in KEYS}
     seen = set()
 
@@ -432,11 +458,29 @@ def main():
                 for k in KEYS:
                     store[k].append(np.ascontiguousarray(z[k]))
                 n_z = len(store["kind"][-1])
+                fz = None
+                if args.w_fkind > 0:
+                    fp = os.path.join(args.fkind_dir, os.path.basename(f))
+                    if os.path.exists(fp):
+                        try:
+                            _t = np.load(fp)
+                            if "fkind48" in _t.files:
+                                fz = _t
+                        except Exception:
+                            fz = None
                 for k in OPT_KEYS:
                     if k in z.files:
                         store.setdefault(k, []).append(np.ascontiguousarray(z[k]))
                     elif k == "pslot":
                         store.setdefault(k, []).append(np.full((n_z, 64), 255, np.uint8))
+                    elif k == "fkind48":
+                        store.setdefault(k, []).append(
+                            np.ascontiguousarray(fz[k]) if fz is not None
+                            else np.full((n_z, MV_CAP), -1, np.int8))
+                    elif k == "fspread":
+                        store.setdefault(k, []).append(
+                            np.ascontiguousarray(fz[k]) if fz is not None
+                            else np.zeros(n_z, np.float16))
                     else:
                         store.setdefault(k, []).append(
                             np.full((n_z, 48, 3), np.nan, np.float16))
@@ -908,6 +952,20 @@ def main():
             m2 = fin[ks]
             if m2.any():
                 l_sf = hl.ce(logits[m2], tgt[ks][m2])
+        l_fkind = torch.zeros((), device=dev)
+        fk_frac, fk_cov = 1.0, 0.0
+        if args.w_fkind > 0 and hasattr(model, "fkind_head"):
+            fk = D["fkind48"][idx].to(dev).long()        # (B, MV), -1 = unlabelled
+            fsp = D["fspread"][idx].to(dev).float()      # (B,) pawns of choice
+            okf = (fk >= 0) & mask
+            fk_cov = float(okf.any(-1).float().mean())
+            if okf.any():
+                # gather BEFORE the head: only ~12 of 48 slots carry labels, so
+                # running a 2592->512 layer over the full grid wastes ~4x the compute
+                bi, mi = okf.nonzero(as_tuple=True)
+                fkx = _av_in(zq, h_mv, mask)[bi, mi]
+                l_fkind, fk_frac = future_kind_ce(model.fkind_head(fkx),
+                                                  fk[bi, mi], fsp[bi])
         l_decor = cross_head_decorrelation(pre_g)
         # STATE-VALUE from every SF shard row (2026-08-22 queen-probe finding: value
         # heads trained only on mostly-balanced chains never learn material; a shard
@@ -1020,9 +1078,11 @@ def main():
                    if args.depth_cost else torch.zeros((), device=dev))
         loss = (args.w_maia * l_maia + args.w_sf * l_sf + args.w_decor * l_decor + vl
                 + args.w_sib * l_sib + args.w_depth * l_depth
-                + args.w_iv * l_iv + 0.5 * l_sv)
+                + args.w_iv * l_iv + 0.5 * l_sv + args.w_fkind * l_fkind)
         return loss, l_maia, l_sf, l_decor, (lg, zq, h_mv, fin, tgt, kind, mask,
-                                             l_iv, iv_stats, l_sib)
+                                             l_iv, iv_stats, l_sib, fk_frac, fk_cov)
+
+    fk_run = [0.0, 0.0, 0.0]        # frac-of-ceiling, coverage, n (per log line)
 
     def step_fn(m_, step):
         model.train()
@@ -1030,6 +1090,8 @@ def main():
             refresh_store()
         idx = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
         loss, l_maia, l_sf, l_decor, aux = losses_on(idx)
+        if args.w_fkind > 0:
+            fk_run[0] += aux[10]; fk_run[1] += aux[11]; fk_run[2] += 1
         op_d = {}
         if args.ops:
             if ema_field is not None and not ema_started[0]:
@@ -1143,7 +1205,18 @@ def main():
                   f"sf {float(l_sf):.3f} decor {float(l_decor):.3f} | "
                   f"HELD-OUT maiaKL {kl_s/max(1,kl_n):.3f} "
                   f"maia-top1 {ag_s/max(1,ag_n):.3f} "
-                  f"sf-spearman {sp_s/max(1,sp_n):.3f} | rows {N:,}" + ex, flush=True)
+                  f"sf-spearman {sp_s/max(1,sp_n):.3f} | rows {N:,}"
+                  + (f" | fkind {fk_run[0]/max(1,fk_run[2]):.3f} of ceiling, "
+                     f"cover {fk_run[1]/max(1,fk_run[2]):.0%}"
+                     if args.w_fkind > 0 else "") + ex, flush=True)
+            if args.w_fkind > 0:
+                cov = fk_run[1] / max(1, fk_run[2])
+                if cov < 0.05:
+                    print(f"[gko1] ALARM: only {cov:.1%} of rows carry future-kind "
+                          f"labels -- l_fkind is reading ~0 because the data is "
+                          f"ABSENT, not because it converged. Check --fkind-dir "
+                          f"({args.fkind_dir}) and that assign has run.", flush=True)
+                fk_run[0] = fk_run[1] = fk_run[2] = 0.0
             out.update({"maia_kl": kl_s / max(1, kl_n),
                         "sf_spearman": sp_s / max(1, sp_n), "rows": N})
             model.train()
@@ -1455,6 +1528,59 @@ def main():
                  f"(step1) | move {d4['move']:.2f} dyn {d4['dyn2']:.2f} | "
                  f"field-grad max {gf:.1e} > 0")
             _restore(_sn_bw)
+        # U25: the future-kind auxiliary. Three separate claims, because each has its
+        # own way of being silently false:
+        #   (a) LABELS EXIST. A CE term with no labelled rows reports 0.000, which is
+        #       indistinguishable from converged -- the sf-diet scar, 1000 steps.
+        #   (b) the gradient reaches the HEAD *and* the FIELD. Taken with autograd,
+        #       not inferred from reading the source, which has been wrong before.
+        #   (c) the loss respects its own ceiling, log K, which is the entire reason
+        #       this is a kind classifier rather than a regression on future concepts.
+        if args.w_fkind > 0:
+            _sn_fk = _snap()
+            ii = torch.from_numpy(tr_i[:min(64, len(tr_i))])
+            fk_all = D["fkind48"][ii]
+            cov = float((fk_all >= 0).any(-1).float().mean())
+            gate("U25a", cov > 0.05,
+                 f"future-kind labels present on {cov:.0%} of a real batch "
+                 f"(>5% required; 0% means --fkind-dir is empty or assign never ran, "
+                 f"and l_fkind would read 0.000 like a converged term)")
+            model.zero_grad(set_to_none=True)
+            _, _, _, _, ax = losses_on(ii)
+            frac, cv = ax[10], ax[11]
+            fkl = torch.zeros((), device=dev)
+            fkd = D["fkind48"][ii].to(dev).long()
+            fsd = D["fspread"][ii].to(dev).float()
+            sqf, mvf, edges, mask_, elo_, psl_ = batch_of(ii)
+            zq_, _, _, _, h_mv_, _ = model.field.encode(sqf, mvf, edges, mask_,
+                                                        elo=elo_, pslot=psl_)[:6]
+            okf = (fkd >= 0) & mask_
+            gh = gfld = 0.0
+            if okf.any():
+                bi, mi = okf.nonzero(as_tuple=True)
+                fkl, frac = future_kind_ce(
+                    model.fkind_head(_av_in(zq_, h_mv_, mask_)[bi, mi]),
+                    fkd[bi, mi], fsd[bi])
+                g = torch.autograd.grad(
+                    fkl, list(model.fkind_head.parameters())
+                    + [q for q in model.field.parameters() if q.requires_grad][:40],
+                    allow_unused=True, retain_graph=False)
+                nh = len(list(model.fkind_head.parameters()))
+                gh = max((x.abs().max().item() for x in g[:nh] if x is not None), default=0.0)
+                gfld = max((x.abs().max().item() for x in g[nh:] if x is not None), default=0.0)
+            gate("U25b", gh > 0 and gfld > 0,
+                 f"l_fkind gradient OBSERVED at the head ({gh:.1e}) and inside the "
+                 f"field ({gfld:.1e}) -- both must be > 0 or the auxiliary trains "
+                 f"nothing it is supposed to")
+            import math as _m
+            ceil = _m.log(args.fkind_K)
+            gate("U25c", 0.0 < float(fkl) <= ceil * 1.02 and 0.0 < frac <= 1.02,
+                 f"l_fkind {float(fkl):.3f} within its ceiling log K = {ceil:.3f} "
+                 f"({frac:.2f} of ceiling) -- an untrained head sits AT the ceiling, "
+                 f"which is the bounded behaviour the design relies on")
+            model.zero_grad(set_to_none=True)
+            _restore(_sn_fk)
+
         print(f"\n  {'ALL UNIT GATES PASS' if not fails else 'FAILED: ' + ', '.join(fails)}",
               flush=True)
         sys.exit(1 if fails else 0)

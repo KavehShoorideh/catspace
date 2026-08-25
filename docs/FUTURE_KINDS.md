@@ -108,3 +108,40 @@ planning improves.
 Design, measured but not built. gko7a is training (step 3000/8000); no run has been
 launched against this, and the choice of whether to add it to the next training is
 Kaveh's.
+
+---
+
+## Loss-interaction review (required before launch)
+
+`l_fkind` against every term already in the stack. Recorded because the first time this
+review was run it caught a bootstrap spiral, a wrong-space bug and a dead audit entry.
+
+| against | interaction | verdict |
+|---|---|---|
+| `l_sf` (sharp head) | identical input (`_av_in`: quantised state + move code), different question -- value bin vs future kind. Measured, predictability and value-relevance are uncorrelated (-0.001), so the kind carries what the value does not | complementary; both pressure sibling discrimination |
+| `l_sib` (sibling PL) | `l_sib` pressures the OPERATOR via rolled children, `l_fkind` pressures the ENCODER directly. Different parameters, same deficiency | complementary, and `l_fkind` should make `l_sib`'s job easier |
+| `l_decor` | decorrelation could fight a future-kind signal that wants redundant coding across heads | low risk, `w_decor` is small; watch effective rank |
+| LFQ entropy / commitment | `l_fkind` reads quantised concepts, so it pressures codes to distinguish futures -- should raise codebook usage, but its gradient passes the straight-through estimator | watch effective rank and code occupancy |
+| depth cost (`w_depth`) | **genuine tension.** Future kinds may need deeper, more global features; the depth penalty prefers shallower reads | intended trade-off; watch `depth_profile()` for a shift toward late layers |
+| operator losses | no shared parameters. Indirectly, sibling-discriminating concepts give the operator a better target space | expect neutral-to-positive on opR2 |
+| EMA child targets | `l_fkind` moves the online field, so EMA targets drift | ordinary; the EMA lag exists for this |
+
+**Scale.** CE is bounded by log 12 = 2.485 and the weight is normalised to mean 1, so
+`l_fkind` lands in [0, 2.5] regardless of label coverage. At `w_fkind 0.2` that is at
+most ~0.5 against `l_sf` ~3.5 and `l_maia` ~2.2 -- roughly a tenth of the objective,
+which is the nudge Kaveh asked for and not a competitor to the Stockfish term.
+
+## Correction to the guards above
+
+The EMA/stop-gradient guard is **superseded, and by something stronger**. Labels are
+precomputed integers, derived offline from a frozen reference field and Stockfish's own
+continuations, then frozen on disk. The encoder has no path to make its own targets
+easier, so the collapse solution that a predict-your-own-future objective invites does
+not exist here at all. The frozen-centroid guard still applies and is now automatic:
+the centroids live in `centroids.npz` and are never refit during a run.
+
+The cost of that choice, stated plainly: the kinds are defined in the reference field's
+geometry, so they are a distillation target rather than a self-consistent one. If the
+new field's geometry diverges far from the reference, the labels stay *correct* (they
+describe Stockfish's real continuations) but may stop being the most natural partition
+of the new space. Refit on an explicit field promotion.
