@@ -239,9 +239,16 @@ def main():
                 nn.Linear(512, args.k_bins))
             if args.ops:
                 if args.lift == "transformer":
+                    # EVERY width read from the field. Passing literals here made the
+                    # lift slice the state at the wrong offsets under --binary (board
+                    # read as 256 dims when it is 96), so its interaction tokens were
+                    # misaligned garbage -- and nothing crashed, because 2400 dims is
+                    # enough to slice from. Tenth literal-width bug in two days.
                     self.lift = TransformerLift(
-                        field.d_state, g_heads=A["g_heads"], d_code=A["d_code"],
-                        d_sq=(16 if args.gen5 else 32), d_phi=max(args.d_phi, 256),
+                        field.d_state, g_heads=A["g_heads"],
+                        d_code=field.code_width,
+                        d_sq=getattr(field, "sq_width", 16 if args.gen5 else 32),
+                        d_phi=max(args.d_phi, 256),
                         n_layers=args.lift_layers,
                         n_piece=(32 if args.gen5 else 0),
                         d_piece=getattr(field, "d_piece", 4),

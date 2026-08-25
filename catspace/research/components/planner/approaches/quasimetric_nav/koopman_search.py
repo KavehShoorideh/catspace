@@ -49,15 +49,26 @@ class KoopmanEngine:
             phase_head=bool(A["phase_head"]), threat_head=bool(A["threat_head"]),
             elo_cond=True, g_heads=A["g_heads"], g_codes=A["g_codes"],
             d_code=A["d_code"], sq_codes=A.get("sq_codes", 256),
-            mh_vq=bool(RA.get("g_heads")), gen5=self.gen5).eval()
+            mh_vq=bool(RA.get("g_heads")), gen5=self.gen5,
+            gen6=bool(RA.get("gen6")), binary=bool(RA.get("binary")),
+            depth_cost=bool(RA.get("depth_cost"))).eval()
         sd = ck["state_dict"]
         self.field.load_state_dict({k[6:]: v for k, v in sd.items()
                                     if k.startswith("field.")})
+        # size the lift from the CHECKPOINT's own tensors, not from flags: gen6 and
+        # binary change d_sq, d_piece and the move-code width, and every one of those
+        # has already been a silent literal somewhere (nine places and counting)
+        _pm = sd.get("lift.p_mv.weight")
+        _sq = sd.get("lift.p_sq.weight")
+        _pc = sd.get("lift.p_pc.weight")
         self.lift = TransformerLift(self.field.d_state, g_heads=A["g_heads"],
-                                    d_code=A["d_code"],
-                                    d_sq=(16 if self.gen5 else 32), d_phi=256,
+                                    d_code=self.field.code_width,
+                                    d_sq=(_sq.shape[1] if _sq is not None
+                                          else (16 if self.gen5 else 32)), d_phi=256,
                                     n_layers=int(RA.get("lift_layers", 3)),
-                                    n_piece=(32 if self.gen5 else 0)).eval()
+                                    n_piece=(32 if self.gen5 else 0),
+                                    d_piece=getattr(self.field, "d_piece", 4),
+                                    d_mv=(_pm.shape[1] if _pm is not None else 32)).eval()
         self.lift.load_state_dict({k[5:]: v for k, v in sd.items()
                                    if k.startswith("lift.")})
         if self.gen5:
@@ -220,7 +231,7 @@ class KoopmanEngine:
         return self.hl.decode(lg)
 
     def search_latent(self, board, depth=4, max_nodes=8000, elo=2000.0,
-                      root_blend=None):
+                      root_blend=None, beam=0, root_beam=0):
         """Alpha-beta carried entirely in the latent space. Returns [(move, value)]
         sorted best-first, same contract as search()."""
         if not self.gen5:
@@ -259,7 +270,15 @@ class KoopmanEngine:
             if d <= 1 or self.stats["nodes"] >= max_nodes:
                 return float(vals[order[0]])
             best = alpha
-            for oi in order.tolist():
+            # BEAM (Kaveh 2026-08-24: "a human has a prior on what moves are even
+            # worth considering, then searches three or four lines"). CAVEAT, stated
+            # because it decides whether this helps or hurts: at INTERNAL nodes the
+            # only ranking available is the rolled value, whose within-position
+            # ordering measured at 0.00. Beaming on a chance-level signal discards
+            # the best move with probability 1 - k/b. It is sound at the ROOT (the
+            # sharp head is a real prior, spearman 0.532) and a gamble below it.
+            cand = order.tolist() if beam <= 0 else order.tolist()[:beam]
+            for oi in cand:
                 bd.push(mv[oi])
                 v = 1.0 - ab(bd, zc[oi], d - 1, 1.0 - beta, 1.0 - best)
                 bd.pop()
@@ -274,8 +293,11 @@ class KoopmanEngine:
         rolled, zc0 = child_vals(board, za, moves)
         av = self._root_av(*self._last)
         rank = bl * av + (1.0 - bl) * rolled
+        root_order = torch.argsort(rank, descending=True).tolist()
+        if root_beam > 0:
+            root_order = root_order[:root_beam]     # sound: a real prior lives here
         scored = []
-        for oi in torch.argsort(rank, descending=True).tolist():
+        for oi in root_order:
             board.push(moves[oi])
             v = 1.0 - ab(board, zc0[oi], depth - 1, 0.0, 1.0)
             board.pop()
@@ -284,7 +306,7 @@ class KoopmanEngine:
         return scored
 
     def search_budget(self, board, max_nodes=50, max_depth=24, elo=2000.0,
-                      root_blend=None):
+                      root_blend=None, beam=0, root_beam=0):
         """Iterative deepening under a NODE BUDGET rather than a fixed depth.
 
         Kaveh 2026-08-24: compare on fair terms -- fix the search EFFORT, then report
@@ -304,7 +326,8 @@ class KoopmanEngine:
             if remaining <= 0:
                 break
             scored = self.search_latent(board, depth=d, max_nodes=remaining,
-                                        elo=elo, root_blend=root_blend)
+                                        elo=elo, root_blend=root_blend,
+                                        beam=beam, root_beam=root_beam)
             spent = self.stats.get("nodes", 0)
             used += spent
             if not scored:

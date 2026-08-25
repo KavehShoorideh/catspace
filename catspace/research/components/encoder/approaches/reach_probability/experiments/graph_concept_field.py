@@ -301,6 +301,7 @@ class GraphConceptField(nn.Module):
             else:
                 self.mv_vq = VectorQuantize(dim=_mvd, codebook_size=move_codes,
                                             **_mv_kw)
+        self.sq_width = d_fine       # consumers must READ this, never a literal
         self.d_state = d_state
 
         if elo_cond:
