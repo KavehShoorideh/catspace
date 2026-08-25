@@ -17686,3 +17686,33 @@ PRE-REGISTERED COMPARISON (unchanged by gko7a's death, and now matched):
   IDENTICAL positions and IDENTICAL Stockfish futures.
 
 ETA ~09:50 (8000 steps at ~3.5 s/step).
+
+## 2026-08-25 03:04 PDT -- gko8a @1000: the auxiliary is learning, and costs nothing measurable
+
+Matched against gko7a at the SAME step, same warm start, same data, one term different.
+
+                       gko8a (w_fkind 0.2)      gko7a (no auxiliary)
+  held-out maia-top1   0.625                    0.623
+  held-out sf-spearman 0.454                    0.448
+  maia / sf loss       2.103 / 3.530            2.098 / 3.507
+  opR2 (1/3/6)         -0.651/-1.014/-3.662     -0.642/-1.067/-3.688
+  identity-R2          -0.835/-0.891/-0.637     -0.824/-0.882/-0.660
+  fkind HELD-OUT       0.935 of ceiling         --
+
+NOT INERT. Held-out fkind: 0.993 (step 1) -> 0.977 (step 50) -> 0.935 (step 1000), a
+monotone descent away from "learned nothing". It has captured roughly 6.5% of the
+available information in log-loss terms -- weak, but real, and it clears the
+pre-registered falsification bar (still ~1.0 at step 1000 would have meant removal
+rather than reweighting).
+
+PRIMARY OBJECTIVE UNHARMED, which is the constraint Kaveh set. Every held-out metric is
+marginally better with the auxiliary; both training losses marginally worse. Per the
+standing rule that seed variance dwarfs these gaps, NONE of that is a verdict: the
+honest statement is that the Stockfish objective is INDISTINGUISHABLE between the two at
+one seed. That is what a nudge is supposed to look like -- the failure mode to fear was
+a measurable cost, and there isn't one.
+
+Watch items for the rest of the run: does fkind keep falling (if it flattens near 0.93
+the auxiliary has found its ceiling at this coverage), and does the step-4000 comparison
+show any movement in the thing this is all aimed at -- within-position sibling
+discrimination, currently +0.172 for value and +0.084 for which-future.
