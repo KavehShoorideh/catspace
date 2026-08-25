@@ -17300,3 +17300,50 @@ all. Training would have proceeded, the profile would have printed plausible num
 and every conclusion drawn from it would have been wrong.
 
 ALL GATES PASS with the corrections. gko6a stopped and relaunching on the fixed code.
+
+**gko7a LAUNCHED, and three of the four items settled by MEASUREMENT rather than
+opinion (2026-08-24).**
+
+1. **Sibling cap stays at 16 — Kaveh's reasoning was right and I verified it.** His
+   point: 16 only matters if the PRIOR is capped, because a beam only ever considers
+   5-6 moves and the prior is what selects them. Checked the source: `l_sf` (sharp
+   head) trains on `fin[ks]` and `l_maia` on `mask[km]` -- BOTH see every legal move
+   up to 48. Only the ROLLED sibling term is capped. So the prior surveys all 33 and
+   hands the beam its top few, exactly as he described. No change.
+
+2. **10-ply chains ABANDONED -- not for speed, for data.** Compute was fine: the
+   child-row encode goes 486 -> 590 ms on a ~2.5 s step, +4pct, well inside his
+   budget. But the chain cache was built for 6-ply windows, so longer runs need
+   neighbouring rows that mostly are not present:
+       6 plies: 60,000 chains (100pct)     10 plies:  6,956 (11.6pct)
+        8 plies:  9,883 (16.5pct)          12 plies:  4,058 (6.8pct)
+   Four extra plies would cost 8.6x the training data. Staying at 6; deep_roll already
+   shows the operator extrapolating to 14 plies unsupervised.
+
+3. **Operator capacity 4x.** 64 bases x rank 16 -> 128 x 32: move-dependent params
+   5.4M -> 21.8M for 2.34x slower rolls. Capacity is the one untested axis against a
+   measured error of 1.5x the sibling spread. `--op-bases` is now a flag.
+
+4. **PVs are no longer discarded.** `query_sf` kept `pv[0]` and threw away the line;
+   it now keeps PV_PLIES=6 plies of EVERY candidate's principal variation. Verified on
+   a real position: 33 moves scored, 33 lines kept, e.g.
+   `f3g5 -> d7d5 e4d5 c6d4 c2c3 b7b5 c3d4`. Cost measured: payload 1327 -> 3202 bytes,
+   +1.8 KB/position, which is +7.9 GB across the 4.2M sf labels -- confirming Kaveh's
+   storage objection.
+
+   So per his design, PVs are NEVER persisted in the oracle DB. New
+   `training_infra/jit_labels.py` holds a bounded RING: shards stream in, the trainer
+   reads them, the oldest are deleted once the ring is full, and storage stays flat at
+   keep x ~1.6 MB (200 shards = 330 MB) no matter how much SF we run. It has an AGE
+   FLOOR -- never delete a shard younger than 90 s -- because the trainer memory-maps
+   what it finds on its own rescan schedule, and deleting underneath it would trade a
+   storage problem for a correctness one. Gated: with keep=3 and a 60 s floor, 10
+   shards evict to 7, not 3.
+
+5. KittyChess concept panel fixed for composite square ids (`sq_ids` is now 64x8;
+   the panel did `int(sq_ids[q])`). Emits both a scalar `code` and the full `codes`
+   tuple.
+
+STILL OPEN: the PV data is now CAPTURED but nothing CONSUMES it yet. Turning ~33
+trajectories per position into training signal is a loss design (roll along the PV,
+supervise against SF's backed-up value at each step) and is the next build.

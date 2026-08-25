@@ -103,6 +103,11 @@ def main():
                          "move's own SF WDL. The only term that asks the operator's "
                          "move-dependent component to separate siblings (2026-08-23: "
                          "measured at ~1pct of the shared term). 0 = off.")
+    ap.add_argument("--op-bases", type=int, default=64,
+                    help="number of operator basis matrices. With rank, this is the "
+                         "operator's MOVE-DEPENDENT capacity -- the measured deficit "
+                         "is that its per-child error is 1.5x the true sibling "
+                         "spread, and capacity is the untested axis.")
     ap.add_argument("--depth-cost", action="store_true",
                     help="each concept family (and each board head) reads a LEARNED "
                          "mixture over trunk layers, penalised by expected depth. "
@@ -256,7 +261,7 @@ def main():
                 else:
                     self.lift = InteractionLift(field.d_state, args.d_phi)
                 if args.gen5:
-                    self.ops = BasisOps(self.lift.d_aug, n_basis=64,
+                    self.ops = BasisOps(self.lift.d_aug, n_basis=args.op_bases,
                                         rank=args.op_rank,
                                         d_phi=(self.lift.d_aug - self.lift.d_state)
                                         if args.state_mix else 0)

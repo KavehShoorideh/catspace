@@ -28,6 +28,7 @@ import re
 import sqlite3
 import time
 
+PV_PLIES = 6          # plies of each principal variation to keep (0 = off)
 DB = "data/derived/gko1_oracle.sqlite"
 WP_K = 0.00368208          # lichess/lc0 logistic constant: wp = 1/(1+exp(-k*cp))
 
@@ -153,10 +154,19 @@ def query_sf(eng, b, a):
                        multipv=len(mv))
     out = {}
     wdl_out = {}
+    pv_out = {}
     for e in info:
         if "pv" not in e or not e["pv"]:
             continue
         m = e["pv"][0]
+        # KEEP THE LINE, not just its first move (Kaveh 2026-08-24: "the most severe
+        # is the data we're throwing away"). SF already searched a full line for EVERY
+        # legal move -- ~33 lines x ~10 plies per position -- and we were recording
+        # pv[0] and discarding the rest. That IS the "Stockfish for all children six
+        # plies down" trajectory data. Truncated to PV_PLIES because the value is in
+        # the near horizon and storage is the binding constraint.
+        if len(e["pv"]) > 1:
+            pv_out[m.uci()] = [x.uci() for x in e["pv"][1:1 + PV_PLIES]]
         # TRUE W/D/L (Kaveh 2026-08-23: scalar wp destroys basin structure --
         # drawn-fortress vs coin-flip are different positions; SF computes wdl
         # internally, record it): per-mille from the mover's POV
@@ -169,7 +179,8 @@ def query_sf(eng, b, a):
         else:
             wp = 1.0 / (1.0 + math.exp(-WP_K * s.score()))
         out[m.uci()] = round(wp, 5)
-    return {"kind": "sf_av", "wp": out, "wdl": wdl_out, "n_legal": len(mv)}
+    return {"kind": "sf_av", "wp": out, "wdl": wdl_out, "n_legal": len(mv),
+            **({"pv": pv_out} if pv_out else {})}
 
 
 def query_maia(eng, b):

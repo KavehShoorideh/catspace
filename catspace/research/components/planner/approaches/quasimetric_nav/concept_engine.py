@@ -603,7 +603,14 @@ class ConceptAlphaBeta:
                     # capture-risk map, White-POV sign: green = a BLACK piece likely
                     # falls (helps White), red = a White piece in danger
                     imp = float(f["te"][q]) * (1.0 if not pc.color else -1.0)
-                sq_out.append({"sq": chess.SQUARE_NAMES[q], "code": int(f["sq_ids"][q]),
+                # gcf6+: a square is no longer ONE code but a composite -- 8 heads
+                # x 3 bits. Render the tuple, and keep a scalar for anything that
+                # still wants to colour by a single id.
+                _sid = f["sq_ids"][q]
+                _multi = hasattr(_sid, "__len__") and not isinstance(_sid, (str, bytes))
+                sq_out.append({"sq": chess.SQUARE_NAMES[q],
+                               "code": (int(_sid[0]) if _multi else int(_sid)),
+                               "codes": ([int(x) for x in _sid] if _multi else None),
                                "imp": round(imp, 3),
                                "pc": (pc.unicode_symbol() if pc else None)})
         edge_out = None
