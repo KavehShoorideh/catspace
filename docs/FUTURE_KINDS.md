@@ -150,3 +150,68 @@ geometry, so they are a distillation target rather than a self-consistent one. I
 new field's geometry diverges far from the reference, the labels stay *correct* (they
 describe Stockfish's real continuations) but may stop being the most natural partition
 of the new space. Refit on an explicit field promotion.
+
+---
+
+## Literature check (Kaveh: "check the literature so you don't chase your tail")
+
+### The design has a name and a precedent
+
+**Successor Options** (Ramesh, Tomar & Ravindran, IJCAI 2019) *is* this framework:
+learn successor representations, cluster them, and take the cluster centres as
+sub-goals — "the cluster centers translate to a set of sub-goals that have vastly
+different successor states, meaning different sub-goals provide access to a different
+region in state-space." Deep Successor Options extends it to function approximation by
+clustering a *sample* of SF vectors, which is exactly what the `fit` stage does.
+
+**CPC** (van den Oord et al., 2018) independently supports the central choice —
+predicting a *kind* rather than a concept vector. CPC casts future prediction as
+classification precisely because unimodal regression losses are a poor fit for
+high-dimensional futures and waste capacity on unpredictable local detail. That is the
+same argument the measurement made here (65% of concept dims have grouped R² < 0).
+
+### Three deliberate deviations, now explicit
+
+**1. State-action residual SR, not state SR.** They cluster ψ(s); we cluster the
+position-centred residual of ψ(s, a). Forced by measurement: clustering the absolute
+occupancy produced a position recogniser, with only 17% of positions reaching more than
+one kind.
+
+**2. The generating policy — the one the literature named for us.** Successor Options
+is explicit that "the policy used to learn the SR determines a prior over state space.
+As a result, the discovered sub-goals will lie in those states which are more likely to
+be visited under π_SR", and they deliberately use a **uniform random** policy to avoid
+that bias. We use Stockfish's principal variation, i.e. **optimal play by both sides**.
+
+So our kinds describe *the futures reachable when both sides play well*, not the futures
+a weak opponent might allow. For a planner choosing among its own options that is the
+right prior. But it is a real commitment and it interacts with the opponent-modelling
+line (z-conditioning): against an exploitable opponent the reachable set is different
+and larger. Revisit when z-conditioning lands; the labels are cheap to regenerate under
+a different generating policy.
+
+**3. Degenerate clusters, handled differently.** They filter candidate states by SR
+L1-norm (`SR_min < |ψ(s)|₁ < SR_max`) so that candidates are "neither fully developed
+nor extremely sparse". We instead unit-normalise (cosine) and enforce equipartition with
+Sinkhorn-Knopp, the SwAV / Self-Labelling remedy. Same failure, different lever.
+
+### Adopted from the precedent, and what it bought
+
+Successor Options selects sub-goals by **cosine similarity** to the cluster centre, not
+Euclidean distance. The reason transfers: *which kind* of future a move opens is a
+direction of concept change, *how far* it goes is a magnitude, and mixing the two is
+what parks a large cluster at the origin. Measured on 686 real residual vectors:
+
+| assignment | effective kinds | kinds/row | within-row value gap |
+|---|---|---|---|
+| euclidean, nearest-centroid | 4.8 / 6 | 4.21 | 2.38 pawns |
+| euclidean + Sinkhorn | 6.0 / 6 | 4.49 | 2.37 pawns |
+| cosine (Successor Options) | 5.8 / 6 | 4.56 | 2.44 pawns |
+| **cosine + Sinkhorn** | **5.9 / 6** | **4.63** | **2.47 pawns** |
+
+Cosine normalisation alone largely dissolves the imbalance, which confirms the central
+blob was a magnitude artefact rather than structure. With it, K=8 reaches 7.5 effective
+kinds where euclidean K=12 reached only 5.6 — so K=8 is defensible now and was not
+before. The differences between the last three rows are small on 686 samples and are
+not claimed as a result; cosine is adopted because it matches the precedent and is
+consistently no worse, and K is confirmed on the production fit's own report.
