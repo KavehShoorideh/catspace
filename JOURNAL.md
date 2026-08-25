@@ -17754,3 +17754,48 @@ these training gauges. It needs both checkpoints encoded on identical positions 
 identical Stockfish futures (future_concepts.py --pv-cache), and it will WAIT until
 gko8a finishes: free RAM is ~1 GB and loading a model beside this trainer is precisely
 what killed gko7a.
+
+## 2026-08-25 07:15 PDT -- what the discovered kinds ACTUALLY ARE
+
+Kaveh asked how the subgoals were mined. The mining is: Stockfish multipv gives each of
+the top 12 moves its own principal variation; encode every position along that line with
+a frozen reference field and form the discounted concept occupancy (gamma 0.9, t>=1, so
+the target cannot contain its own predictor); SUBTRACT THE POSITION'S MEAN over its own
+moves, which is what isolates the move's contribution from the position's character
+(clustering the absolute occupancy is a position recogniser -- only 17% of positions
+reached >1 kind); standardise, PCA to 64 dims, unit-normalise so the clustering is over
+DIRECTIONS; k-means++ once on 24,676 moves and freeze the centroids; pick K from the
+participation ratio (K=8 -> 7.7 effective); assign by cosine with Sinkhorn equipartition.
+
+Nothing in that pipeline names anything. So: name_the_kinds.py (new) asks what actually
+HAPPENS in each cluster's lines, using python-chess over the stored PVs only -- no model,
+no GPU, every statistic hand-verifiable. 18,607 lines over 6 shards; baseline queens-off
+0.50, captures/ply 0.31, checks/ply 0.10, pieces-left 19.7.
+
+  kind   n     q-off  cap/ply  chk/ply  pieces  SF val   most distinctive
+  5     2117   0.87    0.43     0.10     19.2   +0.12    queens_off  +0.73 sd
+  3     2375   0.61    0.28     0.23     16.7   +0.17    checks      +1.00 sd
+  7     2358   0.50    0.41     0.11     19.6   +0.15    captures    +0.46 sd
+  4     2396   0.32    0.23     0.05     22.2   +0.26    captures    -0.40 sd
+  1     2326   0.36    0.27     0.08     19.5   +0.06    queens_off  -0.28 sd
+  0     2556   0.56    0.37     0.09     17.1   +0.30    pieces_left -0.38 sd
+  2     2222   0.40    0.26     0.06     22.1   -0.02    plies       -0.41 sd
+  6     2257   0.40    0.27     0.06     21.8   -0.10    plies       -0.38 sd
+
+RESULT -- the clustering rediscovered the queen trade unprompted. Kind 5 ends with queens
+off in 87% of its lines against a 50% base rate, and kind 1 is its complement at 36%.
+That is precisely the example Kaveh used when he posed the question ("if I trade the
+queens, what kind of endgame do I have?"), and nothing in the pipeline knows queens
+exist. Kind 3 is the forcing line: checks at 2.3x baseline, ending with the fewest pieces
+on the board. Kind 4 is its opposite -- quiet, fewest captures, most material standing.
+
+CAVEATS, stated rather than buried: only kinds 3 and 5 clear 0.7 sd, so the effect sizes
+are modest. Kinds 2 and 6 are NOT characterised -- their distinguishing axis is line
+LENGTH, which is partly an artefact, since a short PV means Stockfish ended the line
+early and less material change gets measured. Six of eight kinds have a legible identity;
+two do not. 6 shards, one reference field, no seed replication.
+
+This is the interpretability endpoint the project exists for, so it is worth saying
+plainly what it does and does not show: the concepts support a partition of futures that
+a human can name, discovered rather than imposed. It does NOT yet show that partition
+helps the planner -- that is the pre-registered falsification test, still pending.
