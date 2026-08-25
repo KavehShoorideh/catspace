@@ -17539,3 +17539,72 @@ TIMING CORRECTION, recorded because it is the recurring failure: I judged gko7a 
 minutes overdue" from an inferred clock. Reading `date` showed 22:46 against step 3000
 logged at 21:49 -- 57 minutes, exactly on pace at 3.53 s/step. Nothing was wrong. Read
 the clock; never compute it.
+
+## 2026-08-24 23:25 PDT -- checking the code paths and the literature before gko8a
+
+Kaveh: "be sure to check the code paths, the implementations, and the literature on the
+methods you use, so you don't chase your tail." Both halves of that paid, and the
+tail-chasing warning was earned: I spent three tool calls blaming the DATA for a dead
+sibling loss that was entirely my own regression.
+
+CODE PATHS -- running the gates, not reading the source, found:
+  * a REGRESSION I introduced. U21/U21b reported l_sib=0.0000, "sibling loss dead".
+    Appending fk_frac/fk_cov to the aux tuple turned aux[-1] from l_sib into a float,
+    the isinstance(..., Tensor) check sent it to None, and the gate reported 0.0 for a
+    loss actually measuring 1.7098. Isolated by re-running with --w-fkind 0, which
+    failed identically -- that is what said "mine, not pre-existing". Before finding it
+    I checked WDL finiteness with .any() over the row while the loss requires .all(-1)
+    per move plus a positive sum; measured properly, 145,408 of 147,456 sf rows satisfy
+    the real condition. The data was never the problem.
+  * A CLAIM THAT WAS FALSE AS STATED. I had written repeatedly that "CE over K kinds is
+    bounded by log K". It is not -- -log p(true) is unbounded when the head is
+    confidently wrong, and U25c caught a random head at 1.86 against log 6 = 1.79. The
+    true statement, and all the design needs: predicting UNIFORM costs exactly log K and
+    is always available, so the model is never FORCED to pay more for an unpredictable
+    position. Corrected everywhere; U25c now tests that optimisation REACHES the ceiling.
+  * the engine's mps path, broken for weeks, actually fixed: _encode built every tensor
+    on CPU while handing featurize dev=mps. Found only because the label gate refused to
+    run on mps.
+  * a gate threshold that did not transfer: "batch-1 EXACTLY equals the single-board
+    path" is a CPU claim; mps misses it by 0.015625. Now device-aware -- exact on cpu,
+    direction-preserving on mps (measured CPU vs MPS: 0.030% of cells differ, per-state
+    cosine 1.000000, labels unaffected).
+  * U25a sampled a PREFIX of tr_i. Fixed to a fixed-seed sample, whereupon it correctly
+    failed at 0% coverage against a 270-row test label set.
+
+LITERATURE -- the design has a name, and the reading named an assumption I had not:
+  * Successor Options (Ramesh et al., IJCAI 2019) IS this framework: cluster successor
+    representations, take the centres as sub-goals. Deep Successor Options clusters a
+    sample of SF vectors exactly as our fit stage does. CPC (van den Oord et al. 2018)
+    independently supports predicting a KIND over a concept vector, casting future
+    prediction as classification because unimodal regression wastes capacity on
+    unpredictable detail -- the same argument our own measurement made.
+  * ADOPTED: they assign by COSINE similarity to the centre, not euclidean distance.
+    Which kind of future a move opens is a DIRECTION; how far it goes is a magnitude,
+    and mixing them parks a big cluster at the origin. Unit-normalising largely
+    dissolved the imbalance by itself -- K=8 now reaches 7.5 effective kinds where
+    euclidean K=12 reached 5.6.
+  * ADOPTED: Sinkhorn-Knopp equipartition (SwAV, Caron et al. 2020; Self-Labelling,
+    Asano et al. 2020) for the residual imbalance. On real residuals, effective kinds
+    4.8/6 -> 6.0/6, largest cluster 34% -> 18%, with kinds/row and the within-row value
+    gap unharmed (4.21 -> 4.49; 2.38 -> 2.37 pawns).
+  * THE ASSUMPTION IT NAMED: Successor Options is explicit that the policy generating
+    the SR determines which sub-goals you find, and uses a uniform random policy
+    deliberately to avoid the bias. We use Stockfish PVs -- OPTIMAL play by both sides.
+    So our kinds describe futures reachable when both sides play well, not futures a
+    weak opponent would allow. Right prior for a planner choosing among its own options,
+    but it interacts directly with the opponent-modelling line, and the labels are cheap
+    to regenerate under a different generating policy. Now stated in docs/FUTURE_KINDS.md
+    instead of being implicit.
+
+NEGATIVE, measured and recorded so it is not re-proposed: ply subsampling. A full label
+pass is 8.7M encodes (6.6 GPU-hours for 50 shards), so I proposed stratified ply
+sampling on the argument that the occupancy is a discounted average and a subsample
+estimates the same thing. It does not -- 3 plies gives occupancy cosine 0.758 and 54%
+label agreement, 5 plies 0.832 and 64%, while Sinkhorn tie-breaking accounts for only
+25% of the churn. For 1.9x it changes what the label MEANS. Rejected; cost comes from
+8 moves instead of 12 and from fewer rows, both of which keep every label at full
+quality.
+
+gko7a is at step 4000/8000, on pace for ~03:20. The post-run pipeline is armed and will
+gate, fit, assign (~13% row coverage), re-gate and smoke, stopping before launch.
