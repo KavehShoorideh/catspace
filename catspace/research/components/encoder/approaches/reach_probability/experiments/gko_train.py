@@ -144,6 +144,12 @@ def main():
     ap.add_argument("--fkind-dir", default="data/derived/gko1_fkind",
                     help="parallel labels, one file per shard, joined by basename")
     ap.add_argument("--fkind-K", type=int, default=12)
+    ap.add_argument("--mv-concepts", action="store_true",
+                    help="drop RAW h_mv from the Maia move head so it "
+                         "reads only [concepts | quantised move code]. "
+                         "Kaveh's concepts-only ruling names this head "
+                         "specifically; off by default because it changes "
+                         "the architecture.")
     ap.add_argument("--av-concepts", action="store_true",
                     help="sharp head reads the QUANTISED move code instead of raw "
                          "backbone features, so every head in the model reads "
@@ -232,7 +238,7 @@ def main():
         sq_codes=A.get("sq_codes", 256),
         mh_vq=bool(args.g_heads), gen5=args.gen5,
         gen6=args.gen6, binary=args.binary,
-        depth_cost=args.depth_cost).to(dev)
+        depth_cost=args.depth_cost, mv_concepts=bool(args.mv_concepts)).to(dev)
     if args.g_heads:
         own = field.state_dict()
         sdf = {k: v for k, v in ck["state_dict"].items()
@@ -466,6 +472,11 @@ def main():
 
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att",
             "kind", "band", "tgt")
+    print(f"[gko0] head inputs -- move_head: [concepts"
+          f"{'' if args.mv_concepts else ' | RAW h_mv'} | quantised move code]"
+          f" | sf_av: [concepts | {'quantised code' if args.av_concepts else 'RAW h_mv'}]"
+          f" | sf_v_full: [concepts | phi] | sf_v: [phi ONLY]", flush=True)
+
     if args.w_fkind > 0:
         # K must match the K the LABELS were built with. A trainer K larger than the
         # label K is silent -- the extra logits simply never win -- and a smaller one

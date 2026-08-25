@@ -17943,3 +17943,53 @@ TWO SIDE FINDINGS from the audit:
   * at init decor takes 32% of the push and sf only 5%; trained, that reverses to 1.7%
     and 50.6%. Gradient balance shifts enormously during training, so a single audit at
     either end is misleading on its own.
+
+## 2026-08-25 12:10 PDT -- the Maia move head was reading RAW pre-quantisation features
+
+Kaveh, on being told sf_v reads "the whole lifted state or the phi tail": "I thought the
+part of the network that estimates Stockfish has to only read from the concepts. Didn't
+we have this?" Checking properly found one real violation, on the head he had named
+explicitly, plus a nuance he was right to probe.
+
+WHAT IS ACTUALLY CONCEPTS. Measured on 48 real positions, distinct values per dim:
+    board    96 dims   1.9 -> discrete codes
+    squares 1536 dims  2.0 -> discrete codes
+    pieces   768 dims  2.8 -> discrete codes
+    hist     128 dims 17.2 -> continuous, but a normalised histogram OVER discrete edge
+                              codes, so still downstream of quantisation
+So zq is 95% literal concept codes. The lift consumes only (zq, quantised move codes)
+and phi is attention over those tokens, so phi carries no information the concepts lack.
+
+THE VIOLATION. field.move_logits builds its input as [zq | h_mv | q_mv]. The middle
+term is h_mv -- the backbone's move features BEFORE quantisation. That is precisely
+Kaveh's ruling of 2026-08-24: "if we have a head that predicts the Maia moves, it should
+have been trained on the concepts, not the encoding that hasn't been quantized yet." He
+named this head. When I added --av-concepts I recorded sf_av as "the ONE head reading
+raw unquantised features" -- I checked that head and never audited the others.
+
+Why it matters: h_mv is the FIELD'S OWN output, so reading it gives the move head a
+second gradient path into the encoder that goes AROUND the quantiser. The concept
+bottleneck stops being a bottleneck for move prediction, which both weakens the
+interpretability claim and removes the pressure on concepts to carry what drives moves.
+
+FIXED behind --mv-concepts (default OFF -- it changes the architecture of every run, so
+that is Kaveh's call, not a silent default flip). Measured at init:
+    with RAW h_mv     maia loss 3.2565, encoder gradient 1.398, 24.95% of the push
+    concepts only     maia loss 3.2751, encoder gradient 0.739, 10.42% of the push
+The loss barely moves; the gradient HALVES and now flows entirely through the discrete
+bottleneck. Sizing follows the flag (move_head's input width), bound before construction
+-- the first attempt set the attribute after the head was already built and died on a
+shape mismatch, the same literal-width trap as ever.
+
+AND THE RIGHT LAYER: every run now prints what each head reads, at startup:
+    head inputs -- move_head: [concepts | RAW h_mv | quantised move code]
+                 | sf_av: [concepts | quantised code]
+                 | sf_v_full: [concepts | phi] | sf_v: [phi ONLY]
+A ruling that lives only in a journal entry gets violated by the next head someone adds.
+Printed beside the diet line, it is visible in every log.
+
+REMAINING NUANCE, not a violation but worth deciding on: sf_v reads phi ONLY. phi is a
+deterministic function of concepts, so the head cannot know anything they do not encode
+-- but it never sees a discrete code, so its computation is not traceable to any
+particular concept. For an interpretability endpoint, "reads a continuous mixture of
+concepts" is weaker than "reads concepts". sf_v_full reads [concepts | phi] and is fine.

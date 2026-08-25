@@ -105,8 +105,10 @@ class GraphConceptField(nn.Module):
                  edge_codes=0, move_codes=0, gps_parallel=False, attn_bias=False,
                  agg_max=False, kin=False, file_nodes=False, phase_head=False,
                  threat_head=False, elo_cond=False, mh_vq=False, gen5=False,
-                 gen6=False, binary=False, depth_cost=False):
+                 gen6=False, binary=False, depth_cost=False, mv_concepts: bool = False):
         super().__init__()
+        # bound FIRST: move_head's input width depends on it
+        self.mv_concepts = mv_concepts
         from vector_quantize_pytorch import VectorQuantize, LFQ
         self.edge_codes, self.move_codes = edge_codes, move_codes
         self.gps_parallel, self.use_bias, self.agg_max = gps_parallel, attn_bias, agg_max
@@ -309,9 +311,13 @@ class GraphConceptField(nn.Module):
 
         # the move-code width is 32 (gcf5) or 64 (gcf6); reading a LITERAL here made
         # the policy head silently wrong-sized the moment the move vocabulary changed
+        # width follows mv_concepts: with the ruling enforced the raw backbone block
+        # `d` is not in the input at all, so sizing it in would leave 128 dead columns
+        # and a shape error the first time the head is called
         self.move_head = nn.Sequential(
-            nn.Linear(d_state + d + (getattr(self, "mv_code_dim", 32)
-                                     if move_codes else 0), hidden), nn.GELU(),
+            nn.Linear(d_state + (0 if self.mv_concepts else d)
+                      + (getattr(self, "mv_code_dim", 32) if move_codes else 0),
+                      hidden), nn.GELU(),
             nn.Linear(hidden, 1))
         self.mv_emb = nn.Sequential(nn.Linear(6 + 4 + 5 + 4, 64), nn.GELU())
         self.dyn = nn.Sequential(nn.Linear(d_state + 64, hidden), nn.GELU(),
@@ -575,7 +581,15 @@ class GraphConceptField(nn.Module):
         return zq, torch.stack(ids, 1), sq_ids, vl, h_mv, pre_g
 
     def move_logits(self, zq, h_mv, mv_mask):
-        parts = [zq[:, None, :].expand(-1, h_mv.shape[1], -1), h_mv]
+        # CONCEPTS-ONLY (Kaveh's ruling, 2026-08-24): "if we have a head that predicts
+        # the Maia moves, it should have been trained on the concepts, not the encoding
+        # that hasn't been quantized yet." With mv_concepts set, the raw backbone move
+        # features h_mv are dropped and the head sees only [concept state | quantised
+        # move code]. Left off by default because flipping it changes the architecture
+        # of every run; the startup audit prints which way it is set.
+        parts = [zq[:, None, :].expand(-1, h_mv.shape[1], -1)]
+        if not getattr(self, "mv_concepts", False):
+            parts.append(h_mv)
         if self.move_codes:
             if self.binary:
                 # LFQ's entropy term shapes CODEBOOK USAGE over the batch, so padded
