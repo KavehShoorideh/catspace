@@ -130,7 +130,8 @@ def main():
     ap.add_argument("--w-fkind", type=float, default=0.0,
                     help="weight on the FUTURE-KIND auxiliary (docs/FUTURE_KINDS.md). "
                          "Predicts which of K discovered kinds of future a move "
-                         "opens. CE is bounded by log K, so an unpredictable position "
+                         "opens. Predicting uniform costs exactly log K and is "
+                         "always available, so an unpredictable position "
                          "costs at most log K and its gradient vanishes -- the head "
                          "can say 'I do not know' without dragging the encoder, which "
                          "is why this is a kind classifier and not a regression on "
@@ -1096,6 +1097,9 @@ def main():
         loss = (args.w_maia * l_maia + args.w_sf * l_sf + args.w_decor * l_decor + vl
                 + args.w_sib * l_sib + args.w_depth * l_depth
                 + args.w_iv * l_iv + 0.5 * l_sv + args.w_fkind * l_fkind)
+        # aux layout (read by INDEX downstream -- append only, never reorder):
+        #   0 lg  1 zq  2 h_mv  3 fin  4 tgt  5 kind  6 mask
+        #   7 l_iv  8 iv_stats  9 l_sib  10 fk_frac  11 fk_cov
         return loss, l_maia, l_sf, l_decor, (lg, zq, h_mv, fin, tgt, kind, mask,
                                              l_iv, iv_stats, l_sib, fk_frac, fk_cov)
 
@@ -1421,7 +1425,12 @@ def main():
             try:
                 idx21 = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
                 _, _, _, _, aux21 = losses_on(idx21)
-                l_sib21 = aux21[-1] if isinstance(aux21[-1], torch.Tensor) else None
+                # index 9 EXPLICITLY, not [-1]: appending fk_frac/fk_cov to the aux
+                # tuple silently turned [-1] into a float, the isinstance check sent
+                # l_sib21 to None, and U21/U21b reported "sibling loss dead" for a
+                # loss that was perfectly healthy. Positional reads off the end of a
+                # growing tuple are a trap.
+                l_sib21 = aux21[9] if isinstance(aux21[9], torch.Tensor) else None
             finally:
                 args.w_sib = w_keep
             # POV: reversing a decisive parent-win triple must yield a child LOSS
@@ -1563,7 +1572,11 @@ def main():
         #       this is a kind classifier rather than a regression on future concepts.
         if args.w_fkind > 0:
             _sn_fk = _snap()
-            ii = torch.from_numpy(tr_i[:min(64, len(tr_i))])
+            # SAMPLE, never a prefix: tr_i is sorted, so a prefix is the oldest
+            # shards only and can miss a whole row-kind entirely -- that is exactly
+            # how sf-spearman came to read 0.000 on a healthy run.
+            ii = torch.from_numpy(np.sort(np.random.default_rng(4321).choice(
+                tr_i, min(256, len(tr_i)), replace=False)))
             fk_all = D["fkind48"][ii]
             cov = float((fk_all >= 0).any(-1).float().mean())
             gate("U25a", cov > 0.05,
@@ -1599,10 +1612,29 @@ def main():
                  f"nothing it is supposed to")
             import math as _m
             ceil = _m.log(args.fkind_K)
-            gate("U25c", 0.0 < float(fkl) <= ceil * 1.02 and 0.0 < frac <= 1.02,
-                 f"l_fkind {float(fkl):.3f} within its ceiling log K = {ceil:.3f} "
-                 f"({frac:.2f} of ceiling) -- an untrained head sits AT the ceiling, "
-                 f"which is the bounded behaviour the design relies on")
+            # CORRECTION: cross-entropy is NOT bounded by log K for an arbitrary
+            # model -- -log p(true) is unbounded when the head is confidently wrong,
+            # and a randomly-initialised head sits slightly ABOVE log K (measured
+            # 1.86 vs 1.79 at K=6). What is true, and what the design actually needs,
+            # is that predicting UNIFORM costs exactly log K and is always available:
+            # the model is never FORCED to pay more than log K for an unpredictable
+            # position, so it can decline to predict instead of distorting the
+            # encoder. The testable form of that claim is that optimisation reaches
+            # the ceiling -- so drive the head alone and check it gets there.
+            hopt = torch.optim.Adam(model.fkind_head.parameters(), lr=1e-3)
+            f_end = frac
+            for _ in range(60):
+                hopt.zero_grad()
+                lz, f_end = future_kind_ce(
+                    model.fkind_head(_av_in(zq_, h_mv_, mask_).detach()[bi, mi]),
+                    fkd[bi, mi], fsd[bi])
+                lz.backward()
+                hopt.step()
+            gate("U25c", np.isfinite(float(fkl)) and f_end <= 1.0,
+                 f"l_fkind starts at {frac:.2f} of the log K = {ceil:.3f} ceiling "
+                 f"(a random head may sit just above it) and optimisation reaches "
+                 f"{f_end:.2f} <= 1.0 -- the 'decline to predict' option is real and "
+                 f"attainable, which is what bounds this term's pull on the encoder")
             model.zero_grad(set_to_none=True)
             _restore(_sn_fk)
 

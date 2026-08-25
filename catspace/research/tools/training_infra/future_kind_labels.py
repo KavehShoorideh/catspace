@@ -237,6 +237,37 @@ def _engine(ckpt, dev):
     return ke
 
 
+def sinkhorn_assign(D2, eps=0.05, iters=30):
+    """Balanced assignment of moves to kinds (Sinkhorn-Knopp equipartition).
+
+    Plain nearest-centroid gave one kind 48% of all moves and left the effective
+    number of kinds at 4.8 of 6. That is the classic degenerate clustering assignment,
+    and the standard fix is an EQUIPARTITION constraint solved with Sinkhorn-Knopp --
+    Asano et al. (Self-Labelling, ICLR 2020) and SwAV (Caron et al., NeurIPS 2020),
+    where it is what prevents every sample collapsing onto one prototype.
+
+    It matters here beyond tidiness: this design leans on log K being the price of
+    declining to predict, and log K is only an honest ceiling if all K kinds carry
+    real mass. With one kind at 48% the true ceiling is much lower than advertised.
+
+    Balance is enforced GLOBALLY (over all moves in the shard), never within a
+    position -- forcing one position's moves to spread across kinds would invent
+    distinctions where a position genuinely offers only one kind of future.
+
+    D2: (N, K) squared distances to centroids. Returns (N,) int labels.
+    """
+    Q = np.exp(-D2 / max(eps, 1e-6) / (D2.std() + 1e-9))
+    Q = np.clip(Q, 1e-30, None)
+    Q /= Q.sum()
+    N, K = Q.shape
+    for _ in range(iters):
+        Q /= Q.sum(0, keepdims=True).clip(1e-30)      # each kind equally used
+        Q /= K
+        Q /= Q.sum(1, keepdims=True).clip(1e-30)      # each move assigned once
+        Q /= N
+    return Q.argmax(1).astype(np.int8)
+
+
 def _pool(a):
     if a.jobs <= 1:
         return None
@@ -336,7 +367,8 @@ def stage_assign(a):
         if W is not None:
             Zc = Zc @ W
         d2 = ((Zc[:, None, :] - cen[None]) ** 2).sum(-1)
-        kid = d2.argmin(1).astype(np.int8)
+        kid = (sinkhorn_assign(d2) if a.balance
+               else d2.argmin(1).astype(np.int8))
         n = len(p["pvn"])
         fkind = np.full((n, NMV), -1, np.int8)
         fkind[ri, mj] = kid
@@ -389,10 +421,18 @@ def stage_assign(a):
         np.savez_compressed(f + ".tmp.npz", **out)
         os.replace(f + ".tmp.npz", f)
         done += 1
+        # report over LABELLED rows only. Reporting over all 2048 conflates "no
+        # choice here" with "not labelled yet" and reads as a collapsed clustering
+        # when it is only --assign-rows doing its job.
+        lab = (fk48 >= 0).any(-1)
+        nk = np.array([len(np.unique(fk48[i][fk48[i] >= 0]))
+                       for i in np.nonzero(lab)[0]]) if lab.any() else np.zeros(1)
         print(f"[assign] {os.path.basename(s)}: {int((fk48>=0).sum())} moves "
-              f"mapped ({miss} unmapped), "
-              f"{100*np.mean(spread>0.25):.0f}% of rows have a choice worth "
-              f">0.25 pawns (mean spread {spread[spread>0].mean():.2f})", flush=True)
+              f"mapped ({miss} unmapped) over {int(lab.sum())} rows | "
+              f"{nk.mean():.1f} distinct kinds/row | "
+              f"{100*np.mean(spread[lab] > 0.25):.0f}% of LABELLED rows have a choice "
+              f"worth >0.25 pawns (mean {spread[lab][spread[lab]>0].mean():.2f})",
+              flush=True)
     print(f"[assign] {done} shards carry future-kind labels", flush=True)
 
 
@@ -444,6 +484,12 @@ def main():
                          "sample only 5.6 kinds carried mass. --refit "
                          "re-clusters from cache for free.")
     ap.add_argument("--n-pca", type=int, default=64)
+    ap.add_argument("--balance", action="store_true", default=True,
+                    help="Sinkhorn-Knopp equipartition (SwAV/SeLa). On "
+                         "by default: nearest-centroid put 48%% of moves "
+                         "in one kind.")
+    ap.add_argument("--no-balance", dest="balance",
+                    action="store_false")
     ap.add_argument("--refit", action="store_true",
                     help="re-cluster from the cached residuals; free")
     ap.add_argument("--gamma", type=float, default=0.9)

@@ -1630,11 +1630,17 @@ def future_kind_ce(logits, kind, value_spread, mask=None, w_floor=0.0):
     That constraint is satisfied by the SHAPE of this loss, not by tuning its weight,
     which is the reason to predict kinds rather than future concept vectors:
 
-      * CE over K classes is bounded by log K. A position whose future is genuinely
-        unpredictable costs at most log K, and the gradient VANISHES as the prediction
-        approaches the true conditional distribution -- the head is free to say "I
-        don't know" and stop pulling on the encoder. Its floor is the conditional
-        entropy H(kind | s), which is real signal about plan uncertainty, not an error.
+      * PREDICTING UNIFORM COSTS EXACTLY log K, AND IS ALWAYS AVAILABLE. So the model
+        is never FORCED to pay more than log K for a position whose future is genuinely
+        unpredictable -- it can decline to predict instead of distorting the encoder to
+        fake predictability, and the gradient VANISHES as the prediction approaches the
+        true conditional distribution. Its floor is the conditional entropy
+        H(kind | s), which is real signal about plan uncertainty, not an error.
+        (Stated carefully because the sloppy version -- "CE is bounded by log K" -- is
+        FALSE for an arbitrary model: -log p(true) is unbounded when the head is
+        confidently wrong, and a randomly-initialised head measures slightly ABOVE the
+        ceiling, 1.86 against log 6 = 1.79. The bound is on what the model must accept,
+        not on what a bad model can score.)
       * A per-dimension regression on future concepts has no such bound. Measured
         (JOURNAL 2026-08-24): 65% of 2528 concept dims have grouped R^2 < 0, so that
         loss is dominated by an irreducible floor and would drag the encoder toward

@@ -61,11 +61,16 @@ A **categorical head over K future kinds**, per move, plus a value per kind.
 Kaveh's constraint -- high loss is expected, Stockfish stays primary, nudge only what
 is predictable -- is satisfied **structurally**, not by tuning a weight:
 
-* **Cross-entropy over K kinds is bounded by log K.** A position whose future is
-  genuinely unpredictable costs at most log K, and the gradient *vanishes* as the
-  prediction approaches the true high-entropy posterior. The head is free to say "I
-  don't know" and stop pulling. A per-dimension regression on future concepts has no
-  such bound -- with 65% of dims unpredictable it would be dominated by the floor and
+* **Predicting uniform costs exactly log K, and is always available.** So the model is
+  never *forced* to pay more than log K for a position whose future is genuinely
+  unpredictable: it can decline to predict rather than distort the encoder to fake
+  predictability, and the gradient *vanishes* as the prediction approaches the true
+  high-entropy posterior. Stated carefully, because the sloppier version — "CE is
+  bounded by log K" — is **false** for an arbitrary model: `-log p(true)` is unbounded
+  when the head is confidently wrong, and a randomly-initialised head measures slightly
+  *above* the ceiling (1.86 against log 6 = 1.79). The bound is on what the model must
+  accept, not on what a bad model can score. A per-dimension regression on future
+  concepts offers no such option -- with 65% of dims unpredictable it would be dominated by the floor and
   would drag the encoder. **This is the whole reason to predict kinds rather than
   concept vectors.**
 * **It is distributional and multimodal by construction**, which finding (2) requires.
@@ -126,7 +131,7 @@ review was run it caught a bootstrap spiral, a wrong-space bug and a dead audit 
 | operator losses | no shared parameters. Indirectly, sibling-discriminating concepts give the operator a better target space | expect neutral-to-positive on opR2 |
 | EMA child targets | `l_fkind` moves the online field, so EMA targets drift | ordinary; the EMA lag exists for this |
 
-**Scale.** CE is bounded by log 12 = 2.485 and the weight is normalised to mean 1, so
+**Scale.** The attainable ceiling is log K and the weight is normalised to mean 1, so
 `l_fkind` lands in [0, 2.5] regardless of label coverage. At `w_fkind 0.2` that is at
 most ~0.5 against `l_sf` ~3.5 and `l_maia` ~2.2 -- roughly a tenth of the objective,
 which is the nudge Kaveh asked for and not a competitor to the Stockfish term.
