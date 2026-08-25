@@ -1676,7 +1676,9 @@ def future_kind_ce(logits, kind, value_spread, mask=None, w_floor=0.0):
     tot = w.sum().clamp(min=1e-6)
     loss = (ce * w).sum() / tot
     import math
-    return loss, float(loss.detach() / math.log(K))
+    # the fraction is returned as a TENSOR: converting it here would sync the GPU on
+    # every training step just to accumulate a number read once per eval
+    return loss, (loss.detach() / math.log(K))
 
 
 def _test_future_kind_ce():

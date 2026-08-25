@@ -144,6 +144,10 @@ def main():
     ap.add_argument("--fkind-dir", default="data/derived/gko1_fkind",
                     help="parallel labels, one file per shard, joined by basename")
     ap.add_argument("--fkind-K", type=int, default=12)
+    ap.add_argument("--nan-check", type=int, default=50,
+                    help="how often to sync and test the loss for NaN. Every step costs "
+                         "the CPU/GPU overlap; every 50 still catches a blow-up long "
+                         "before the next checkpoint, and the NaN pause still fires.")
     ap.add_argument("--dump-arch", action="store_true",
                     help="print every parameter name and shape, then exit. This is the "
                          "architecture as BUILT, and the equivalence test for any "
@@ -635,7 +639,7 @@ def main():
             q, _, _ = model.field.mv_vq(model.field.mv_vq_proj(h_mv.detach()))
         return q * mask[..., None]
 
-    def op_losses(step):
+    def op_losses(step, want_stats=False):
         """Chain sub-batch: L_op1/3/6 + spectral + the detached MLP baseline arm."""
         cb = args.chain_batch
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]        # (cb,7) graph rows
@@ -826,13 +830,23 @@ def main():
         # If any operator sub-term is non-finite, NAME it. A bare 'op_total=nan'
         # left me guessing twice (LFQ entropy, then VAMP) and wrong both times.
         _nf = {}
-        for _n, _t in (("l1", l1), ("l3", l3), ("l6", l6), ("mid", l_mid),
+        if want_stats:
+         for _n, _t in (("l1", l1), ("l3", l3), ("l6", l6), ("mid", l_mid),
                        ("spec", l_spec), ("mlp", l_mlp), ("v", l_v),
                        ("cons", l_cons), ("move", l_move), ("dyn2", l_dyn2),
                        ("slow", l_slow), ("dec", l_dec)):
-            if not bool(torch.isfinite(torch.as_tensor(_t)).all()):
-                _nf["NONFINITE_" + _n] = float("nan")
-        return total, {"op1": float(l1), "op3": float(l3), "op6": float(l6),
+             if not bool(torch.isfinite(torch.as_tensor(_t)).all()):
+                 _nf["NONFINITE_" + _n] = float("nan")
+        if not want_stats:
+            # HOT PATH. Every float() below is a GPU->CPU sync that drains the pipeline,
+            # the isfinite loop above adds ~10 more, and the phivar line runs an entire
+            # extra lift forward -- all for numbers only read at eval. Measured before
+            # this change: ~25 syncs/step, GPU busy in 19% of samples while one Python
+            # thread did everything. `_rho` stays a TENSOR so the spectral guard can
+            # act on it without syncing.
+            return total, {"_rho": rho.max().detach()}
+        return total, {"_rho": rho.max().detach(),
+                       "op1": float(l1), "op3": float(l3), "op6": float(l6),
                        "mlp": float(l_mlp), "rho": float(rho.max()), "cons6": cons6,
                        "move": float(l_move), "dyn2": float(l_dyn2), "vamp": vamp_v,
                        "lv": float(l_v), "vn": v_n, "cons_l": float(l_cons),
@@ -963,7 +977,7 @@ def main():
             fk = D["fkind48"][idx].to(dev).long()        # (B, MV), -1 = unlabelled
             fsp = D["fspread"][idx].to(dev).float()      # (B,) pawns of choice
             okf = (fk >= 0) & mask
-            fk_cov = float(okf.any(-1).float().mean())
+            fk_cov = okf.any(-1).float().mean().detach()   # tensor; no sync here
             if okf.any():
                 # gather BEFORE the head: only ~12 of 48 slots carry labels, so
                 # running a 2592->512 layer over the full grid wastes ~4x the compute
@@ -1115,9 +1129,15 @@ def main():
         if step % args.rescan_every == 0:
             refresh_store()
         idx = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
+        # A sync per step costs the CPU/GPU overlap: wall time becomes CPU+GPU instead
+        # of max(CPU, GPU). Everything that needs a value off the device is gathered on
+        # STATS STEPS only.
+        stats_step = (step % args.eval_every == 0 or step == 1 or step == args.steps
+                      or step % args.nan_check == 0)
         loss, l_maia, l_sf, l_decor, aux = losses_on(idx)
         if args.w_fkind > 0:
-            fk_run[0] += aux[10]; fk_run[1] += aux[11]; fk_run[2] += 1
+            fk_run[0] = fk_run[0] + aux[10]   # tensor; converted at log time
+            fk_run[1] = fk_run[1] + aux[11]; fk_run[2] += 1
         op_d = {}
         if args.ops:
             if ema_field is not None and not ema_started[0]:
@@ -1125,9 +1145,9 @@ def main():
                 # books initialized during losses_on above; the copy must be frozen
                 # AND initialized from step 1's very first target (U18's contract)
                 _ema_update()
-            l_op, op_d = op_losses(step)
+            l_op, op_d = op_losses(step, want_stats=stats_step)
             loss = loss + l_op
-        if _nan_guard(loss):
+        if stats_step and _nan_guard(loss):
             # PAUSE-ALARM: save state, exit 3; the watchdog surfaces it (pause, not kill)
             torch.save({"state_dict": model.state_dict(), "step": step,
                         "args": vars(args)}, args.out + "_nanpause.pt")
@@ -1149,15 +1169,18 @@ def main():
                 _W = model.wdl.lin.weight
                 _t = args.w_l1 * args.lr
                 _W.copy_(torch.sign(_W) * (_W.abs() - _t).clamp(min=0))
-        if args.ops and op_d.get("rho", 0) > 1.03:
+        if args.ops and op_d.get("_rho") is not None:
             # hard projection: the penalty lost the arms race twice (rho 1.046, 1.070);
             # shrink the low-rank move terms directly, no gradients involved
             with torch.no_grad():
-                model.ops.U.mul_(0.97)
+                # branchless: reading rho to decide would sync every step
+                model.ops.U.mul_(torch.where(op_d["_rho"] > 1.03,
+                                             torch.full_like(op_d["_rho"], 0.97),
+                                             torch.ones_like(op_d["_rho"])))
         if args.ops and ema_field is not None:
             _ema_update()
-        out = {"loss": float(loss.detach())}
-        out.update(op_d)
+        out = {"loss": float(loss.detach())} if stats_step else {}
+        out.update({k: v for k, v in op_d.items() if not k.startswith("_")})
         if step % args.eval_every == 0 or step == 1:
             model.eval()
             with torch.no_grad():
@@ -1178,9 +1201,9 @@ def main():
                     ii = torch.from_numpy(te_ev[a:a + 256])
                     _, lm, ls, _, aux2 = losses_on(ii, train=False)
                     (lg, zq, h_mv, fin, tgt, kind, mask) = aux2[:7]
-                    if args.w_fkind > 0 and aux2[11] > 0:
+                    if args.w_fkind > 0 and float(aux2[11]) > 0:
                         # losses_on already computed it on this batch -- no extra pass
-                        fkh_s += aux2[10]; fkh_n += 1
+                        fkh_s += float(aux2[10]); fkh_n += 1
                     km = kind == 1
                     if km.any():
                         kl_s += float(lm) * int(km.sum()); kl_n += int(km.sum())
@@ -1246,7 +1269,7 @@ def main():
                   f"HELD-OUT maiaKL {kl_s/max(1,kl_n):.3f} "
                   f"maia-top1 {ag_s/max(1,ag_n):.3f} "
                   f"sf-spearman {sp_s/max(1,sp_n):.3f} | rows {N:,}"
-                  + (f" | fkind train {fk_run[0]/max(1,fk_run[2]):.3f} "
+                  + (f" | fkind train {float(fk_run[0])/max(1,fk_run[2]):.3f} "
                      f"HELD-OUT {fkh_s/max(1e-9,fkh_n):.3f} of ceiling "
                      f"(1.0 = learned nothing), cover "
                      f"{fk_run[1]/max(1,fk_run[2]):.0%}"
@@ -1262,7 +1285,7 @@ def main():
                       f"(|w| > 0.1% of max) | max|w| {float(W.abs().max()):.3f} "
                       f"| L1 {float(W.abs().sum()):.1f}", flush=True)
             if args.w_fkind > 0:
-                cov = fk_run[1] / max(1, fk_run[2])
+                cov = float(fk_run[1]) / max(1, fk_run[2])
                 if cov < 0.05:
                     print(f"[gko1] ALARM: only {cov:.1%} of rows carry future-kind "
                           f"labels -- l_fkind is reading ~0 because the data is "
@@ -1654,10 +1677,10 @@ def main():
                     fkd[bi, mi], fsd[bi])
                 lz.backward()
                 hopt.step()
-            gate("U25c", np.isfinite(float(fkl)) and f_end <= 1.0,
-                 f"l_fkind starts at {frac:.2f} of the log K = {ceil:.3f} ceiling "
+            gate("U25c", np.isfinite(float(fkl)) and float(f_end) <= 1.0,
+                 f"l_fkind starts at {float(frac):.2f} of the log K = {ceil:.3f} ceiling "
                  f"(a random head may sit just above it) and optimisation reaches "
-                 f"{f_end:.2f} <= 1.0 -- the 'decline to predict' option is real and "
+                 f"{float(f_end):.2f} <= 1.0 -- the 'decline to predict' option is real and "
                  f"attainable, which is what bounds this term's pull on the encoder")
             model.zero_grad(set_to_none=True)
             _restore(_sn_fk)
