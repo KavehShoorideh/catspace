@@ -138,13 +138,19 @@ def encode_boards(ke, boards, bs=256, dev=None, jobs=1, pool=None):
     # graph construction is 0.95 ms/position and single-threaded it DOMINATES the pass
     # (2.3 core-hours for 50 shards, against ~10 min of GPU). It parallelises cleanly
     # because every board is known up front.
+    # Build graphs PER BATCH, not all at once. Materialising every graph up front is
+    # fine at 480 rows/shard (28k positions) and thrashes at full rows (121k positions,
+    # ~530 MB of graph arrays plus pickling), which showed up as the main process
+    # sitting at 3.6% CPU waiting on the pool while RSS climbed past 2 GB.
     fens = [b.fen() for b in boards]
-    if pool is not None:
-        graphs = pool.map(_graph_of, fens, chunksize=64)
-    else:
-        graphs = [_graph_of(f) for f in fens]
+    _tg = [0.0]
     for s0 in range(0, len(boards), bs):
-        gs = graphs[s0:s0 + bs]
+        import time as _tt
+        _g0 = _tt.time()
+        chunk = fens[s0:s0 + bs]
+        gs = (pool.map(_graph_of, chunk, chunksize=32) if pool is not None
+              else [_graph_of(f) for f in chunk])
+        _tg[0] += _tt.time() - _g0
         B = len(gs)
         bt = {k: torch.from_numpy(np.stack([g[k] for g in gs])).to(dev)
               for k in ("sq", "mv", "mut", "att", "n_mv", "n_att")}
@@ -166,6 +172,7 @@ def encode_boards(ke, boards, bs=256, dev=None, jobs=1, pool=None):
         with torch.no_grad():
             zq = ke.field.encode(sqf, mvf, edges, mask, elo=el, pslot=psl)[0]
         out.append(zq[:, :ke.field.d_state].float().cpu().numpy())
+    print(f"[enc] graph-build {_tg[0]:.0f}s of the pass", flush=True)
     return np.concatenate(out) if out else np.zeros((0, ke.field.d_state), np.float32)
 
 
@@ -222,7 +229,12 @@ def shard_occupancy(ke, shard, fkfile, gamma=0.9, bs=256, dev=None,
                 owner.append((i, j, gamma ** k))
     if not boards:
         return None
+    import time as _t
+    _t0 = _t.time()
     phi = encode_boards(ke, boards, bs=bs, dev=dev, pool=pool)
+    _dt = _t.time() - _t0
+    print(f"[occ] {os.path.basename(shard)}: {len(boards)} positions built+encoded in "
+          f"{_dt:.0f}s ({_dt/max(len(boards),1)*1000:.2f} ms/position)", flush=True)
     acc = {}
     for (i, j, w), v in zip(owner, phi):
         a = acc.get((i, j))
