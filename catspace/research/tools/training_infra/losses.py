@@ -1550,7 +1550,6 @@ def _tests():
     print(f"[vamp2] gradient finite and nonzero through the eigendecomposition  "
           f"{'OK' if torch.isfinite(g).all() and g.abs().sum() > 0 else 'FAIL'}")
 
-    _test_future_kind_ce()
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
 
@@ -1739,3 +1738,5 @@ def _test_future_kind_ce():
           f"{g_rand:.2f} on noise, learns to {frac:.2f} of ceiling -- 6/6 PASS")
 
 
+if __name__ == "__main__":
+    _test_future_kind_ce()
