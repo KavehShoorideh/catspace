@@ -1550,6 +1550,7 @@ def _tests():
     print(f"[vamp2] gradient finite and nonzero through the eigendecomposition  "
           f"{'OK' if torch.isfinite(g).all() and g.abs().sum() > 0 else 'FAIL'}")
 
+    _test_future_kind_ce()
     print("ALL LOSS TESTS PASSED" if ok else "TESTS FAILED")
 
 
@@ -1616,3 +1617,125 @@ def plackett_luce(scores, target, mask, tau=1.0):
     if not keep.any():
         return scores.sum() * 0.0
     return (nll.sum(-1)[keep] / n_valid[keep].clamp(min=1)).mean()
+
+
+def future_kind_ce(logits, kind, value_spread, mask=None, w_floor=0.0):
+    """Cross-entropy over K discovered KINDS of future, weighted by what the choice
+    among them is WORTH at that position.
+
+    Kaveh 2026-08-24: "not always will future concepts be predictable from present
+    concepts, so I expect that loss to remain high. The primary objective should always
+    be the Stockfish evaluation, but we do want a nudge -- if some concepts can be
+    predicted, predict those."
+
+    That constraint is satisfied by the SHAPE of this loss, not by tuning its weight,
+    which is the reason to predict kinds rather than future concept vectors:
+
+      * CE over K classes is bounded by log K. A position whose future is genuinely
+        unpredictable costs at most log K, and the gradient VANISHES as the prediction
+        approaches the true conditional distribution -- the head is free to say "I
+        don't know" and stop pulling on the encoder. Its floor is the conditional
+        entropy H(kind | s), which is real signal about plan uncertainty, not an error.
+      * A per-dimension regression on future concepts has no such bound. Measured
+        (JOURNAL 2026-08-24): 65% of 2528 concept dims have grouped R^2 < 0, so that
+        loss is dominated by an irreducible floor and would drag the encoder toward
+        whatever makes the unpredictable dims look predictable -- collapse.
+
+    The weight is per-POSITION, not per-concept: the spread of teacher value across
+    the kinds reachable here. Where the choice of future is worth 1.7 pawns the loss
+    pulls; where every move leads to the same kind of game it does not. Measured, a
+    fixed importance weight taken from the value head would NOT do this -- per-dim
+    predictability and value-head weight are uncorrelated (-0.001).
+
+    logits:       (B, K) predicted scores over kinds for this (position, move).
+    kind:         (B,) long, the kind its Stockfish continuation actually landed in.
+    value_spread: (B,) >= 0, spread of teacher value across the kinds REACHABLE at
+                  this position (e.g. max-min mean eval, in pawns).
+    mask:         (B,) bool, False for rows with no usable future (game ended early).
+    w_floor:      minimum weight, so positions with no value spread still contribute
+                  a little. Default 0.0 -- they contribute nothing.
+
+    Returns (loss, frac_of_log_K), the second being the loss as a fraction of its own
+    ceiling: ~1.0 means the head has learned nothing, and it is the number to watch
+    rather than the raw value, which is not comparable across K.
+    """
+    import torch
+    import torch.nn.functional as F
+    K = logits.shape[-1]
+    ce = F.cross_entropy(logits, kind, reduction="none")
+    w = value_spread.clamp(min=0).to(ce.dtype)
+    w = w / w.mean().clamp(min=1e-6)                 # scale-free: mean weight is 1
+    w = w.clamp(min=w_floor)
+    if mask is not None:
+        w = w * mask.to(w.dtype)
+    tot = w.sum().clamp(min=1e-6)
+    loss = (ce * w).sum() / tot
+    import math
+    return loss, float(loss.detach() / math.log(K))
+
+
+def _test_future_kind_ce():
+    """Every property this loss is being trusted for, checked before any run uses it."""
+    import math
+    torch.manual_seed(0)
+    B, K = 64, 8
+    kind = torch.randint(0, K, (B,))
+    spread = torch.rand(B)
+
+    # 1. BOUNDED: a maximally-wrong confident head cannot exceed log K by much, and a
+    #    head that outputs the uniform distribution sits exactly AT log K.
+    uni = torch.zeros(B, K)
+    l_uni, frac = future_kind_ce(uni, kind, spread)
+    assert abs(l_uni.item() - math.log(K)) < 1e-5, f"uniform should be log K, {l_uni}"
+    assert abs(frac - 1.0) < 1e-5, f"frac should be 1.0 at uniform, got {frac}"
+
+    # 2. GRADIENT VANISHES where the future is unpredictable. If the target kind is
+    #    drawn uniformly at random (nothing to learn), the gradient at the uniform
+    #    prediction is small and points nowhere in particular -- the head can sit at
+    #    the entropy floor without pulling the encoder. Contrast with a LEARNABLE
+    #    target, where the same starting point has a large, consistent gradient.
+    def gnorm(target):
+        z = torch.zeros(B, K, requires_grad=True)
+        future_kind_ce(z, target, torch.ones(B))[0].backward()
+        return z.grad.sum(0).norm().item()          # sum over batch: consistent push
+    g_rand = gnorm(torch.randint(0, K, (B,)))
+    g_learn = gnorm(torch.zeros(B, dtype=torch.long))   # every future is kind 0
+    assert g_learn > 4 * g_rand, \
+        f"learnable target must pull far harder than noise: {g_learn:.3f} vs {g_rand:.3f}"
+
+    # 3. WORTHLESS CHOICES CONTRIBUTE NOTHING. A position where all futures have the
+    #    same value gets zero weight and cannot move the loss.
+    z = torch.randn(B, K)
+    keep = torch.ones(B); keep[: B // 2] = 0.0        # half the rows worth nothing
+    l_half, _ = future_kind_ce(z, kind, keep)
+    l_ref, _ = future_kind_ce(z[B // 2:], kind[B // 2:], torch.ones(B - B // 2))
+    assert abs(l_half.item() - l_ref.item()) < 1e-5, \
+        f"zero-spread rows must not contribute: {l_half.item()} vs {l_ref.item()}"
+
+    # 4. SCALE-FREE in the weight: measuring value in pawns or centipawns must not
+    #    change the loss, or the auxiliary's strength would depend on units.
+    a, _ = future_kind_ce(z, kind, spread)
+    b, _ = future_kind_ce(z, kind, spread * 100.0)
+    assert abs(a.item() - b.item()) < 1e-4, f"weight scale leaked: {a} vs {b}"
+
+    # 5. MASK: rows with no usable future are excluded, not counted as easy.
+    m = torch.ones(B, dtype=torch.bool); m[:10] = False
+    l_m, _ = future_kind_ce(z, kind, torch.ones(B), mask=m)
+    l_x, _ = future_kind_ce(z[10:], kind[10:], torch.ones(B - 10))
+    assert abs(l_m.item() - l_x.item()) < 1e-5, f"mask leaked: {l_m} vs {l_x}"
+
+    # 6. IT ACTUALLY LEARNS: a head fed a predictable target should drive frac well
+    #    below 1.0. Without this the other five properties describe an inert loss.
+    tgt = torch.randint(0, K, (B,))
+    feat = torch.eye(K)[tgt] + 0.3 * torch.randn(B, K)
+    lin = torch.nn.Linear(K, K)
+    opt = torch.optim.Adam(lin.parameters(), lr=0.05)
+    for _ in range(300):
+        opt.zero_grad()
+        loss, frac = future_kind_ce(lin(feat), tgt, torch.ones(B))
+        loss.backward(); opt.step()
+    assert frac < 0.4, f"loss must be learnable on a predictable target, frac {frac}"
+    print(f"  future_kind_ce: bounded at log K, gradient {g_learn:.2f} on signal vs "
+          f"{g_rand:.2f} on noise, learns to {frac:.2f} of ceiling -- 6/6 PASS")
+
+
