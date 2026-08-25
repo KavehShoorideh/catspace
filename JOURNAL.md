@@ -17716,3 +17716,41 @@ Watch items for the rest of the run: does fkind keep falling (if it flattens nea
 the auxiliary has found its ceiling at this coverage), and does the step-4000 comparison
 show any movement in the thing this is all aimed at -- within-position sibling
 discrimination, currently +0.172 for value and +0.084 for which-future.
+
+## 2026-08-25 06:36 PDT -- gko8a @4000, the matched comparison: auxiliary PLATEAUS
+
+Same warm start, same data, same step count, one term different.
+
+  step    gko8a top1 / spear     gko7a top1 / spear    gko8a fkind (held-out)
+  1000    0.625 / 0.454          0.623 / 0.448         0.935
+  2000    0.630 / 0.450          0.630 / 0.457         0.932
+  3000    0.636 / 0.457          0.633 / 0.451         0.936
+  4000    0.629 / 0.463          0.636 / 0.466         0.932
+  opR2@4000  -0.257/-0.420/-0.616   -0.218/-0.408/-0.584
+
+RESULT -- the auxiliary PLATEAUS almost immediately. Held-out fkind falls 0.993 -> 0.935
+across the first 1000 steps and then does not move: 0.932, 0.936, 0.932. It extracted
+~6.5% of the available information (log-loss terms) and stopped. It is not inert, and it
+is not learning either; it found its ceiling at this coverage within one eval interval.
+
+That is consistent with the measurement that motivated the design -- the residual future
+is close to invisible to present concepts (within-position spearman +0.084 against +0.172
+for the sibling's own value) -- but the shape matters: a head that climbs slowly would
+suggest more data or steps would help. A head that flatlines after 1000 steps suggests
+the signal available at 10.5% coverage is already exhausted, and that either coverage or
+the representation, not training time, is the binding constraint.
+
+NO VERDICT on the primary objective, and that is the honest reading, not hedging. gko8a
+leads at 1000 and 3000, trails at 2000 and 4000, by 0.003-0.007. Within-run step-to-step
+variation is the same size (gko7a's own top1 moved 0.633 -> 0.636 while gko8a's moved
+0.636 -> 0.629). Per the standing rule that seed variance dwarfs pair CIs, these are
+OBSERVATIONS: the Stockfish objective is indistinguishable between the two at one seed.
+Kaveh's constraint was that the auxiliary must not cost the primary objective, and on
+this evidence it does not.
+
+STILL OUTSTANDING -- the actual falsification test. docs/FUTURE_KINDS.md pre-registers
+it on within-position sibling discrimination (+0.084 which-future, +0.172 value), not on
+these training gauges. It needs both checkpoints encoded on identical positions and
+identical Stockfish futures (future_concepts.py --pv-cache), and it will WAIT until
+gko8a finishes: free RAM is ~1 GB and loading a model beside this trainer is precisely
+what killed gko7a.
