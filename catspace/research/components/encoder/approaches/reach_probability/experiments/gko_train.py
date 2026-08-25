@@ -127,6 +127,10 @@ def main():
                          "16 dims), pieces 8x8, moves 32 heads x 4 codes (4^32, "
                          "collisions gone). Pair with --g-heads 32. Same d_state as "
                          "gcf5, vastly larger vocabulary.")
+    ap.add_argument("--grad-audit", type=int, default=0,
+                    help="measure how hard EACH loss term pushes the ENCODER, over N "
+                         "batches, then exit. Answers 'is this a weighting problem?' "
+                         "with gradient norms instead of argument.")
     ap.add_argument("--w-fkind", type=float, default=0.0,
                     help="weight on the FUTURE-KIND auxiliary (docs/FUTURE_KINDS.md). "
                          "Predicts which of K discovered kinds of future a move "
@@ -1116,6 +1120,12 @@ def main():
                             float((hi - lo)[m2].mean()))
         l_depth = (model.field.depth_penalty().to(dev)
                    if args.depth_cost else torch.zeros((), device=dev))
+        terms = {"maia": (args.w_maia, l_maia), "sf": (args.w_sf, l_sf),
+                 "decor": (args.w_decor, l_decor), "value(vl)": (1.0, vl),
+                 "sib": (args.w_sib, l_sib), "depth": (args.w_depth, l_depth),
+                 "iv": (args.w_iv, l_iv), "sv": (0.5, l_sv),
+                 "fkind": (args.w_fkind, l_fkind)}
+        _TERMS.clear(); _TERMS.update(terms)
         loss = (args.w_maia * l_maia + args.w_sf * l_sf + args.w_decor * l_decor + vl
                 + args.w_sib * l_sib + args.w_depth * l_depth
                 + args.w_iv * l_iv + 0.5 * l_sv + args.w_fkind * l_fkind)
@@ -1125,6 +1135,7 @@ def main():
         return loss, l_maia, l_sf, l_decor, (lg, zq, h_mv, fin, tgt, kind, mask,
                                              l_iv, iv_stats, l_sib, fk_frac, fk_cov)
 
+    _TERMS: dict = {}               # last step's loss terms, for --grad-audit
     fk_run = [0.0, 0.0, 0.0]        # frac-of-ceiling, coverage, n (per log line)
     # The scaffold reads this dict at save time, so mutating it inside step_fn is what
     # gets CURRENT optimizer state into the ladder checkpoint. save_torch_ckpt has
@@ -1674,6 +1685,41 @@ def main():
         print(f"\n  {'ALL UNIT GATES PASS' if not fails else 'FAILED: ' + ', '.join(fails)}",
               flush=True)
         sys.exit(1 if fails else 0)
+
+    if args.grad_audit:
+        # HOW HARD DOES EACH TERM PUSH THE ENCODER? Kaveh 2026-08-25: "check the
+        # weights and then check the pushes and see if it's a weighting problem."
+        # Gradient of each term w.r.t. the FIELD parameters -- raw, and multiplied by
+        # the weight it actually trains at. A term whose weighted push is orders below
+        # the others cannot move the representation no matter how sound it is.
+        fp = [q for q in model.field.parameters() if q.requires_grad]
+        acc: dict = {}
+        for b in range(args.grad_audit):
+            idx = torch.from_numpy(tr_i[rng.integers(0, len(tr_i), args.batch)])
+            model.zero_grad(set_to_none=True)
+            losses_on(idx)
+            for nm, (w, t) in list(_TERMS.items()):
+                if not torch.is_tensor(t) or not t.requires_grad:
+                    continue
+                g = torch.autograd.grad(t, fp, retain_graph=True, allow_unused=True)
+                # accumulate on CPU in float64: MPS has no float64, and summing
+                # 195 tensors' squared norms in float32 loses the small terms, which
+                # are exactly the ones this audit exists to measure
+                gn = float(sum(float((x.detach().float() ** 2).sum()) for x in g
+                               if x is not None)) ** 0.5
+                a = acc.setdefault(nm, [0.0, 0.0, w, 0])
+                a[0] += gn; a[1] += float(t); a[3] += 1
+        print(f"\n  ENCODER-GRADIENT AUDIT over {args.grad_audit} real batches")
+        print(f"  {'term':<12} {'weight':>8} {'loss':>9} {'|grad| raw':>12} "
+              f"{'WEIGHTED':>12} {'share':>8}")
+        rows = [(nm, w, l / max(n, 1), gsum / max(n, 1), w * gsum / max(n, 1))
+                for nm, (gsum, l, w, n) in acc.items()]
+        tot = sum(r[4] for r in rows) or 1.0
+        for nm, w, l, graw, gw in sorted(rows, key=lambda r: -r[4]):
+            print(f"  {nm:<12} {w:>8.3g} {l:>9.4f} {graw:>12.4g} {gw:>12.4g} "
+                  f"{100*gw/tot:>7.2f}%")
+        print(f"  -> 'share' is each term's fraction of the total push on the encoder")
+        return
 
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
                       start_step=_resume_step, eval_every=args.eval_every,

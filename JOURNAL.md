@@ -17884,3 +17884,62 @@ of rows, the head plateaued immediately, and the kinds themselves ARE legible (k
 the queen trade at 87% vs a 50% base rate). The cheap next lever is coverage, which is a
 labelling pass rather than a retrain -- and it is now testable without ambiguity because
 the PV cache makes any two checkpoints comparable on identical futures.
+
+## 2026-08-25 11:30 PDT -- Kaveh's two hypotheses: wiring OK, WEIGHTING confirmed. Verdict withdrawn.
+
+Kaveh, on the inert result: "when two numbers match exactly, I wonder if the with and
+without mean anything... could it be that something is not wired up properly. And two,
+if we gave too big a weight on the stockfish part, whatever's left gets so small a weight
+that it makes no difference." Both were worth checking; the second was right.
+
+(1) WIRING -- fine, but my first attempt to prove it was JUNK, and Kaveh caught it.
+The exact tie was rounding: at 4 decimals the which-future numbers are +0.0515 (gko7a)
+vs +0.0509 (gko8a), not identical.
+I then "proved" wiring with a 51% relative-L2 difference between the two runs' encoders.
+Kaveh noticed 51 appearing a third time and pushed. He was right: that metric was 99.5%
+dominated by TWO tensors, edge_vq._codebook.embed_avg (74%) and cluster_size (25%) --
+VQ codebook EMA STATISTICS, not learned weights. It was measuring codebook bookkeeping
+drift, which is why two unrelated comparisons agreed to 8 digits (0.29072934 vs
+0.29073196). Redone on learned weights only, per-tensor normalised so nothing dominates:
+    within gko7a, 2000->4000 steps      median 0.059
+    within gko8a, 2000->4000 steps      median 0.054
+    BETWEEN runs at step 2000           median 0.026
+    BETWEEN runs at step 4000           median 0.045
+The auxiliary moves the encoder by ~1500 steps' worth of ordinary training, and the
+effect GROWS with training. Wired. (A control against within-run drift is what makes
+that statement mean anything; the first version had none.)
+
+(2) WEIGHTING -- CONFIRMED, and it overturns the verdict. New --grad-audit measures how
+hard each loss term pushes the ENCODER: autograd.grad of each term w.r.t. the field
+parameters, raw and times the weight it trains at. At the TRAINED state (gko8a_step8000,
+6 real batches):
+    sf        w=1    |g| 9.708  weighted 9.708   50.6%
+    sv        w=0.5  |g| 11.60  weighted 5.799   30.2%
+    maia      w=1    |g| 1.282  weighted 1.282    6.7%
+    value(vl) w=1    |g| 1.076  weighted 1.076    5.6%
+    iv        w=1    |g| 0.392  weighted 0.392    2.0%
+    fkind     w=0.2  |g| 1.703  weighted 0.341    1.8%
+    decor     w=0.3  |g| 1.089  weighted 0.327    1.7%
+    sib       w=1    |g| 0.268  weighted 0.268    1.4%
+    depth     w=0.1  |g| 0.069  weighted 0.007    0.04%
+The Stockfish terms take 80.8% of the total push; the auxiliary gets 1.8% -- 46x less.
+Exactly what Kaveh described.
+
+DECISIVE DETAIL: fkind's RAW gradient (1.703) is LARGER than maia's (1.282) and decor's
+(1.089). The signal is not weak; the weight throttles it. w_fkind ~0.75 would put it at
+maia's share, ~1.2 at 10%.
+
+VERDICT WITHDRAWN. Yesterday's "the auxiliary is inert, remove it" was premature. The
+pre-registered rule said remove-rather-than-reweight, but I wrote that rule without
+knowing the term's gradient share, and a term at 1.8% of the push never had a fair
+chance to move the representation. "Inert" and "drowned out" are different diagnoses
+with different fixes.
+
+TWO SIDE FINDINGS from the audit:
+  * sib measures 1.5e-07 at INIT but 1.40% trained. That is the fresh-operator condition
+    (V=0 makes K the identity, so rolled siblings are identical and there is nothing to
+    rank), not a bug -- U21 documents exactly this. Auditing only at init would have
+    reported the sibling loss as dead.
+  * at init decor takes 32% of the push and sf only 5%; trained, that reverses to 1.7%
+    and 50.6%. Gradient balance shifts enormously during training, so a single audit at
+    either end is misleading on its own.

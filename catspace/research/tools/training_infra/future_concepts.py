@@ -502,12 +502,12 @@ def main():
     per_pc = np.array(per_pc)
     ev = (S[:8] ** 2 / (S ** 2).sum())
     print(f"\n  H. WITHIN A POSITION, on the same footing as G")
-    print(f"     rank the sibling's own VALUE          : spearman {np.mean(wi):+.3f}")
+    print(f"     rank the sibling's own VALUE          : spearman {np.mean(wi):+.4f}")
     print(f"     rank which FUTURE the sibling opens   : spearman "
-          f"{per_pc.mean():+.3f}  (mean over 8 leading directions, "
+          f"{per_pc.mean():+.4f}  (mean over 8 leading directions, "
           f"{100*ev.sum():.0f}% of residual variance)")
     print(f"     best single future direction          : spearman "
-          f"{per_pc.max():+.3f}")
+          f"{per_pc.max():+.4f}")
     print(f"     -> " + ("future structure is as accessible to the concepts as value "
                          "is: a future-prediction head has something to learn from"
                          if per_pc.mean() > 0.6 * np.mean(wi) else
