@@ -17647,3 +17647,42 @@ alarm threshold that exists precisely to catch this. Assign now runs over ALL ro
 every PV'd shard (~21% and rising), with PV generation restarted alongside it: PV is
 CPU-bound and assign is GPU-bound, so they genuinely do not contend, and there is no
 longer an MPS trainer to starve.
+
+## 2026-08-25 02:03 PDT -- gko8a LAUNCHED: the joint objective is training
+
+gko7a's exact configuration plus the future-kind auxiliary, fresh 8000 steps from the
+same gcf4h warm start (190/218 trunk tensors carried).
+    --w-fkind 0.2 --fkind-K 8 --fkind-dir data/derived/gko1_fkind
+    future-kind: K=8, gamma=0.9, reference field gko7a_latest.pt (step 4000)
+
+LABELS: 21 shards | 43,007 rows = 10.5% of the corpus | 327,623 labelled moves.
+Per shard, typically 4.9 distinct kinds of 8 reachable per position and ~90% of labelled
+rows carrying a choice worth >0.25 pawns (mean ~2.4). The production fit reported
+EFFECTIVE kinds 7.7 of 8 on 24,676 moves, so K came from the data rather than taste.
+
+ALL UNIT GATES PASS, including the three new ones:
+  U25a  labels present on 11% of a REAL (randomly sampled) batch, >5% required
+  U25b  l_fkind gradient OBSERVED by autograd at the head (8.3e-02) AND inside the
+        field (8.3e-03) -- both required, or the auxiliary trains nothing
+  U25c  starts at 1.01 of the log K = 2.079 ceiling and optimisation reaches 0.63,
+        so the "decline to predict" option is real and attainable
+and the batched-encode gate passes on mps (direction-preserving, 0.020% of cells).
+
+SMOKE (60 steps): fkind held-out 0.993 -> 0.977 of ceiling, cover 11-23%. Barely moving,
+which is correct for a fresh head at 50 steps under lr 1e-4 -- U25c showed the same head
+reaches 0.63 when driven alone at 1e-3. THIS IS THE NUMBER TO WATCH: if held-out fkind is
+still ~1.0 at step 1000+, the auxiliary is inert and should be removed rather than
+reweighted, per the falsification criterion in docs/FUTURE_KINDS.md.
+
+The identity-R2 alarm fires at step 1 (-1.055) exactly as it did for gko7a (-0.660); per
+the standing rule that gate's threshold belongs to the geometry it was calibrated on, so
+the TRAJECTORY is what matters, not the first point.
+
+PRE-REGISTERED COMPARISON (unchanged by gko7a's death, and now matched):
+  gko7a@4000 vs gko8a@4000 -- same step count, same warm start, one term different.
+  Falsification: if within-position spearman for "which future does this sibling open"
+  has not risen above +0.084, and sibling value ranking above +0.172, the auxiliary is
+  inert. Both measured with future_concepts.py --pv-cache so the two checkpoints see
+  IDENTICAL positions and IDENTICAL Stockfish futures.
+
+ETA ~09:50 (8000 steps at ~3.5 s/step).
