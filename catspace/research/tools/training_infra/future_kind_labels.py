@@ -250,6 +250,9 @@ def stage_fit(a):
     Frozen because a clustering that moves with the encoder is a moving target --
     the bootstrap spiral the loss-interaction review caught once already.
     """
+    rc = os.path.join(a.out, "_residuals.npy")
+    if a.refit and os.path.exists(rc):
+        return fit_from_residuals(np.load(rc), a)
     ke = _engine(a.ref_ckpt, a.device)
     pool = _pool(a)
     sh = sorted(glob.glob(os.path.join(a.shards, "*.npz")))
@@ -265,16 +268,44 @@ def stage_fit(a):
             Rs.append(r[0])
             print(f"[fit]   {os.path.basename(s)} -> {len(r[0])} moves", flush=True)
     R = np.concatenate(Rs)
+    np.save(os.path.join(a.out, "_residuals.npy"), R)   # refits become instant
+    fit_from_residuals(R, a)
+
+
+def fit_from_residuals(R, a):
+    """Standardise -> PCA -> K-means, and report whether the kinds are usable.
+
+    PCA first because K-means in 2528 dims on a few thousand samples suffers distance
+    concentration: the first attempt (no PCA) produced occupancy 3-1155 where uniform
+    is 432, so one 'kind' swallowed 22% of moves and another had 3 members. Rare
+    classes are not subgoals, they are noise the head can never learn, and they make
+    the effective K far smaller than the nominal one -- which matters because log K is
+    the loss ceiling the whole design leans on.
+    """
+    from sklearn.cluster import KMeans
     mu, sd = R.mean(0), R.std(0) + 1e-6
     Zc = (R - mu) / sd
-    from sklearn.cluster import KMeans
-    km = KMeans(a.K, n_init=10, random_state=0).fit(Zc)
+    Zc -= Zc.mean(0)
+    U, S, Vt = np.linalg.svd(Zc, full_matrices=False)
+    npc = min(a.n_pca, Vt.shape[0])
+    W = Vt[:npc].T.astype(np.float32)
+    ev = float((S[:npc] ** 2).sum() / (S ** 2).sum())
+    P = Zc @ W
+    km = KMeans(a.K, n_init=20, random_state=0).fit(P)
     cnt = np.bincount(km.labels_, minlength=a.K)
-    np.savez(os.path.join(a.out, "centroids.npz"), mu=mu, sd=sd,
+    # effective number of kinds actually used: 1 = one kind swallows everything,
+    # K = perfectly balanced. This is the number that decides if K is honest.
+    pr = float(cnt.sum() ** 2 / max((cnt.astype(float) ** 2).sum(), 1e-9))
+    np.savez(os.path.join(a.out, "centroids.npz"), mu=mu, sd=sd, W=W,
              C=km.cluster_centers_.astype(np.float32), K=a.K, gamma=a.gamma,
              ref=os.path.basename(a.ref_ckpt))
-    print(f"[fit] {len(R):,} moves -> {a.K} kinds | occupancy {cnt.min()}-{cnt.max()} "
-          f"(uniform would be {len(R)//a.K}) | saved centroids.npz", flush=True)
+    print(f"[fit] {len(R):,} moves | PCA {npc} dims keep {100*ev:.0f}% of residual "
+          f"variance | {a.K} kinds, occupancy {cnt.min()}-{cnt.max()} "
+          f"(uniform {len(R)//a.K}) | EFFECTIVE kinds {pr:.1f} of {a.K}", flush=True)
+    if pr < 0.6 * a.K:
+        print(f"[fit] WARNING: only {pr:.1f} kinds carry real mass. log K = "
+              f"{np.log(a.K):.2f} is then an overstated ceiling and rare kinds are "
+              f"unlearnable noise -- consider a smaller K.", flush=True)
 
 
 def stage_assign(a):
@@ -284,6 +315,7 @@ def stage_assign(a):
     pool = _pool(a)
     C = np.load(os.path.join(a.out, "centroids.npz"))
     mu, sd, cen, K = C["mu"], C["sd"], C["C"], int(C["K"])
+    W = C["W"] if "W" in C.files else None
     sh = sorted(glob.glob(os.path.join(a.shards, "*.npz")))
     done = 0
     for s in sh:
@@ -301,6 +333,8 @@ def stage_assign(a):
             continue
         R, ri, mj, p = r
         Zc = (R - mu) / sd
+        if W is not None:
+            Zc = Zc @ W
         d2 = ((Zc[:, None, :] - cen[None]) ** 2).sum(-1)
         kid = d2.argmin(1).astype(np.int8)
         n = len(p["pvn"])
@@ -322,6 +356,7 @@ def stage_assign(a):
         # by shard slot; doing this join at train time would put a silent alignment
         # bug on the hot path, which is how the lift came to slice the board at the
         # wrong offsets for a whole run.
+        d = np.load(s)          # the shard itself, for its own move ordering
         MV48 = d["mv"].shape[1]
         fk48 = np.full((n, MV48), -1, np.int8)
         miss = 0
@@ -403,7 +438,14 @@ def main():
     ap.add_argument("--sf", default="/opt/homebrew/bin/stockfish")
     ap.add_argument("--ref-ckpt", default="")
     ap.add_argument("--device", default="")
-    ap.add_argument("--K", type=int, default=12)
+    ap.add_argument("--K", type=int, default=8,
+                    help="pick this from the fit's EFFECTIVE-kinds "
+                         "report, not by taste: at K=12 on a 686-move "
+                         "sample only 5.6 kinds carried mass. --refit "
+                         "re-clusters from cache for free.")
+    ap.add_argument("--n-pca", type=int, default=64)
+    ap.add_argument("--refit", action="store_true",
+                    help="re-cluster from the cached residuals; free")
     ap.add_argument("--gamma", type=float, default=0.9)
     ap.add_argument("--batch", type=int, default=256)
     ap.add_argument("--fit-shards", type=int, default=6)

@@ -439,6 +439,23 @@ def main():
 
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att",
             "kind", "band", "tgt")
+    if args.w_fkind > 0:
+        # K must match the K the LABELS were built with. A trainer K larger than the
+        # label K is silent -- the extra logits simply never win -- and a smaller one
+        # is a CUDA-side assert far from the cause. Read it from the centroids.
+        _cp = os.path.join(args.fkind_dir, "centroids.npz")
+        if not os.path.exists(_cp):
+            raise SystemExit(f"[gko0] --w-fkind {args.w_fkind} but no centroids at "
+                             f"{_cp}; run future_kind_labels --stage fit/assign first")
+        _cz = np.load(_cp)
+        _lk = int(_cz["K"])
+        if _lk != args.fkind_K:
+            raise SystemExit(f"[gko0] --fkind-K {args.fkind_K} but the labels were "
+                             f"built with K={_lk}. Rerun assign or pass --fkind-K {_lk}.")
+        print(f"[gko0] future-kind: K={_lk}, gamma={float(_cz['gamma'])}, reference "
+              f"field {_cz['ref'] if 'ref' in _cz.files else '?'}, w={args.w_fkind}",
+              flush=True)
+
     # fkind48/fspread live in a PARALLEL directory, joined by shard basename, so
     # labelling can run (and be extended) without rewriting the shards. They ride
     # in OPT_KEYS so the ring evicts them in lockstep -- the split-drift bug.
@@ -1127,6 +1144,7 @@ def main():
             with torch.no_grad():
                 kl_s = sp_s = kl_n = sp_n = 0.0
                 ag_s = ag_n = 0
+                fkh_s = fkh_n = 0.0        # held-out fkind, as a fraction of log K
                 iv_cov = iv_wid = iv_n = 0.0
                 # te_i is sorted, so a PREFIX is the oldest shards only -- when the
                 # window is compositionally uneven (sf shards converted last land at
@@ -1141,6 +1159,9 @@ def main():
                     ii = torch.from_numpy(te_ev[a:a + 256])
                     _, lm, ls, _, aux2 = losses_on(ii, train=False)
                     (lg, zq, h_mv, fin, tgt, kind, mask) = aux2[:7]
+                    if args.w_fkind > 0 and aux2[11] > 0:
+                        # losses_on already computed it on this batch -- no extra pass
+                        fkh_s += aux2[10]; fkh_n += 1
                     km = kind == 1
                     if km.any():
                         kl_s += float(lm) * int(km.sum()); kl_n += int(km.sum())
@@ -1206,9 +1227,13 @@ def main():
                   f"HELD-OUT maiaKL {kl_s/max(1,kl_n):.3f} "
                   f"maia-top1 {ag_s/max(1,ag_n):.3f} "
                   f"sf-spearman {sp_s/max(1,sp_n):.3f} | rows {N:,}"
-                  + (f" | fkind {fk_run[0]/max(1,fk_run[2]):.3f} of ceiling, "
-                     f"cover {fk_run[1]/max(1,fk_run[2]):.0%}"
+                  + (f" | fkind train {fk_run[0]/max(1,fk_run[2]):.3f} "
+                     f"HELD-OUT {fkh_s/max(1e-9,fkh_n):.3f} of ceiling "
+                     f"(1.0 = learned nothing), cover "
+                     f"{fk_run[1]/max(1,fk_run[2]):.0%}"
                      if args.w_fkind > 0 else "") + ex, flush=True)
+            if args.w_fkind > 0:
+                out["fkind_heldout"] = fkh_s / max(1e-9, fkh_n)
             if args.w_fkind > 0:
                 cov = fk_run[1] / max(1, fk_run[2])
                 if cov < 0.05:

@@ -17490,3 +17490,52 @@ and sf_av was built from a literal width and fed RAW move features although
 --av-concepts trains it on QUANTISED codes. Both now read the checkpoint's own tensors,
 and the move feed asserts its width matches what it was trained on. Every prior
 checkpoint has av_concepts off, so the raw feed was correct for all of them.
+
+## 2026-08-24 22:50 PDT -- building the joint objective (gko8a), gko7a still running
+
+Kaveh: "after this front finishes, let's run what we talked about -- the joint training
+that includes the predictions." So gko8a = gko7a's exact configuration plus the
+future-kind auxiliary from docs/FUTURE_KINDS.md, launched fresh (not resumed) because
+the point of JOINT training is that concepts are shaped by the future objective from
+step 0 rather than bent by it afterwards. gko7a is then the directly comparable
+predecessor, same warm start from gcf4h.
+
+Sequenced so the label pass does not collide with the live trainer: Stockfish PV
+generation is CPU-only and its output is UCI text (0.37 MB/shard, 74 MB for the whole
+corpus), so it runs now at nice 10 on 2 workers; the encoding half needs the GPU and
+waits for gko7a.
+
+Measured while building, all with printed output:
+  * SF depth 10 multipv 12 costs 42 ms/position on easy positions, 88 ms on real shard
+    rows -- the earlier 400 ms figure included WDL and engine restarts.
+  * PV roots join the shard's own move ordering at 99.8% (the 0.2% miss is the known
+    48-move shard truncation). All 12 row-0 roots legal against the FEN.
+  * graph construction, NOT the GPU, is the pass's bottleneck: 0.95 ms/position, 2.3
+    core-hours for 50 shards. Now runs in a process pool.
+  * the batched encode gate: at batch 1 it is EXACTLY equal to the single-board path;
+    batched it differs in 0.020% of cells (6 of 25,280), all in the piece/hist tail at
+    magnitude 0.026 against a state whose mean is 0.828 -- padding kernels, not our
+    code. A silently different batched path would have poisoned every label.
+
+NEGATIVE caught by the fit's own diagnostic: K-means on 2528-dim residuals produced
+occupancy 3-1155 where uniform is 432 -- one "kind" swallowing 22% of moves and another
+holding 3. Distance concentration, not structure. Fixed with PCA before clustering, and
+the fit now reports EFFECTIVE kinds (participation ratio) rather than just K:
+    K=6  -> 4.8 effective of 6      healthy
+    K=12 -> 5.6 effective of 12     over-specified
+    K=20 -> 11.0 effective of 20
+So K is chosen from that report, not by taste; the residuals are cached so a refit is
+free. Default K dropped 12 -> 8, to be finalised on the production fit. PCA at 64 dims
+keeps 39% of residual variance, consistent with the earlier finding that the residual
+future is high-dimensional (top-8 PCs carried 11%).
+
+Two bugs caught before they ran. The loss used the name `lg`, which is already the move
+logits that losses_on RETURNS and the eval path unpacks -- it would have silently
+swapped the maia logits for the fkind logits whenever the auxiliary was on, corrupting
+every maia metric while looking fine. And stage_assign referenced the shard array `d`
+that only existed inside another function (NameError, loud, caught in the first run).
+
+TIMING CORRECTION, recorded because it is the recurring failure: I judged gko7a "81
+minutes overdue" from an inferred clock. Reading `date` showed 22:46 against step 3000
+logged at 21:49 -- 57 minutes, exactly on pace at 3.53 s/step. Nothing was wrong. Read
+the clock; never compute it.
