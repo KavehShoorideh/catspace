@@ -17993,3 +17993,62 @@ deterministic function of concepts, so the head cannot know anything they do not
 -- but it never sees a discrete code, so its computation is not traceable to any
 particular concept. For an interpretability endpoint, "reads a continuous mixture of
 concepts" is weaker than "reads concepts". sf_v_full reads [concepts | phi] and is fine.
+
+## 2026-08-25 12:40 PDT -- bottleneck audit, and what an INTERPRETABLE WDL readout costs
+
+Kaveh: "there should be nothing going around the concept bottleneck -- triple check.
+And maybe we ought to have something more explainable on top, a decision tree or a
+random forest or whatever the best practice is, predicting WDL. What do you think?"
+
+BOTTLENECK AUDIT -- every consumer of a pre-quantisation tensor, not just the heads I
+happened to look at last time:
+  move_logits            concepts + quantised code    clean WITH --mv-concepts
+  sf_av, fkind_head      concepts + quantised code    clean WITH --av-concepts
+  iv                     [zq | q_mv]                  clean
+  lift, ops              quantised state + codes      clean
+  _mv_codes, _mv_q       h_mv.detach() -> quantise    clean (detached)
+  sf_v_full              concepts + phi               clean
+  av_roll                lifted state + mv_emb of 19 DISCRETE move descriptors
+                                                      move identity, not board features
+  decor                  pre_g, PRE-quantisation      REGULARISER, no output path
+  sf_v                   phi ONLY                     concept-derived, never sees a code
+Two judgement calls remain, both Kaveh's: cross_head_decorrelation necessarily reads
+pre-quantisation activations (you cannot decorrelate discrete codes with a gradient) but
+feeds no prediction, so no INFORMATION reaches an output around the bottleneck; and
+sf_v reads phi only.
+
+WHAT AN INTERPRETABLE READOUT COSTS. One property settles most of the design space
+before any experiment: the concepts are BINARY, so every per-feature shape function
+collapses to f(x)=a+b*x, and a GAM, a Neural Additive Model and logistic regression are
+THE SAME MODEL here. The additive family IS linear on these inputs. Anything beating
+linear buys exactly one thing: interactions.
+
+Measured on 1,200 held-out SF rows (frozen gko8a_step8000 concepts, trainer's own
+holdout split reproduced):
+    transformer head (incumbent)   acc 0.752   logloss 0.603   not interpretable
+    gradient boosting              acc 0.752   logloss 0.970   interaction ceiling
+    logistic, L1 sparse            acc 0.729   logloss 0.653   483 of 2528 concepts
+    logistic, dense                acc 0.703   logloss 1.722   overfits at 2528 weights
+    decision tree (depth 5)        acc 0.699   logloss 1.215   32 leaves
+    majority class                 acc 0.637
+
+INTERPRETABILITY TAX: -0.023 accuracy, +0.050 log-loss. With n=1200 the SE on accuracy
+is ~0.013, so the sparse linear readout is within two standard errors of the transformer.
+Gradient boosting TIES the transformer on accuracy while being worse calibrated, which
+says the transformer is not extracting anything a generic interaction learner misses --
+it is not earning its opacity.
+
+RECOMMENDATION: L1-sparse logistic regression as the WDL head. It is the best possible
+additive model on binary concepts, it is DIFFERENTIABLE so it can train jointly (trees,
+forests and EBMs cannot), and each coefficient reads as "this concept is worth w logits
+toward winning". To recover the last 0.023 interpretably, add explicit PAIRWISE terms
+over the top concepts (GA2M), which stays readable as "A and B together". Keep a shallow
+tree as an explanation artefact, not the production head.
+
+METHOD ERROR CAUGHT BEFORE REPORTING, recorded because it reversed the conclusion: the
+first run fed the incumbent lift(zq, ZEROS) -- an empty move slot, which is
+off-distribution, since l_sv always builds its input with real quantised move codes.
+That scored the transformer at 0.652, BELOW every interpretable readout, and would have
+been reported as "linear beats the transformer". Scored on its true training-time input
+it is 0.752, the best of the field. The error flattered the conclusion I was already
+leaning toward, which is exactly when to check the harness.
