@@ -18052,3 +18052,57 @@ That scored the transformer at 0.652, BELOW every interpretable readout, and wou
 been reported as "linear beats the transformer". Scored on its true training-time input
 it is 0.752, the best of the field. The error flattered the conclusion I was already
 leaning toward, which is exactly when to check the harness.
+
+## 2026-08-25 14:30 PDT -- the model moves out of main(); heads now DECLARE what they read
+
+Kaveh asked where the architecture of the run is defined. The honest answer was: nowhere
+in the code. A nested class inside gko_train.main(), assembled from flags spread across
+three modules, with the interfaces described only in a markdown file I had written that
+morning. He asked for the refactor.
+
+WHY IT MATTERED, not just tidiness. The invariant "nothing crosses the concept
+bottleneck except concepts" broke twice and nothing objected either time: sf_av read raw
+h_mv until --av-concepts, move_logits read it until --mv-concepts. Those were found
+months apart, by hand, and the second only because Kaveh asked the right question. A
+document describing the interfaces cannot prevent that; it is not consulted at
+construction time.
+
+WHAT NOW EXISTS -- gko_model.py:
+  HeadInput            a CLOSED enum of what a head may read. Four members: concepts,
+                       concepts+move code, lifted, lifted+move-embedding. There is
+                       deliberately NO member for pre-quantisation features. That
+                       absence is the mechanism.
+  HEADS                one table; every head declares its source and purpose.
+  check_head_widths()  each built head's ACTUAL first-Linear in_features must equal
+                       what its declaration implies. Reading a raw feature changes the
+                       width, so it fails at startup.
+  describe_heads()     the audit line, GENERATED from the table, so the log cannot
+                       drift from the code the way a hand-maintained string does.
+  build_gko()          the model itself, transplanted verbatim.
+
+VERIFIED BOTH DIRECTIONS, because a check that never fires is worthless:
+  * EQUIVALENCE. New --dump-arch prints every parameter name and shape. Captured before
+    the refactor and after: IDENTICAL, 609 tensors, 60,951,058 parameters. The running
+    gko9a's checkpoints still load, which was the binding constraint.
+  * NEGATIVE CONTROL. With --mv-concepts removed the checker reports
+        move_head: declares concepts | quantised move code (2592 dims) but its first
+        Linear takes 2720 -- +128 unexplained dims
+    and 128 is exactly d_model, the width of raw h_mv. The historical bug now fails at
+    startup. With the flag on: zero violations.
+
+Aliasing needed handling: under --linear-heads, sf_v_full and sf_v are bound to the SAME
+object as wdl, and checking them against their historical source reported a violation
+for an architecture that is correct. Aliases are excluded and the code says why.
+
+RUNBOOK updated (catspace/research/docs/RUNBOOK.md section 7) with the three run modes
+sharing one flag list, the test suites, the measurement entry points, and the label
+pipeline -- including that `assign` must NOT be given --force when resuming, which cost
+four overlapping restarts.
+
+OPERATIONAL, recorded because it bit twice today: never run two model-loading processes
+at once. My background gate suite beside the live gko9a paged the trainer down to 0.10 GB
+resident and 6% CPU; killing it restored 2.30 GB and 62% within seconds. Kaveh had also
+opened VSCode, so the pressure was not mine alone, but the gate suite was, and the rule I
+wrote this morning after killing gko7a is the rule I then broke the same afternoon.
+Wired memory had reached 24.6 GB of 36 by this point, up from 18.75 GB at midday -- a
+45-day uptime compounding, which keeps moving the ceiling closer.
