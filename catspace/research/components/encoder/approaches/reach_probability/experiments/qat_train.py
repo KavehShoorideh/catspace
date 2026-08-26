@@ -446,8 +446,12 @@ def main():
                   f"top1 {top1_acc:.3f} (slot0 {slot0_acc:.3f}, "
                   f"chance {1/32.6:.3f}) | "
                   f"concepts {live}{fl}", flush=True)
+            mv_alive = int((model.readout.weight[:, model.d_pos:].abs().sum(0) > 0).sum())
             out = {"balanced": bal, "concepts": live, "wdl": float(l_wdl), "top1": top1_acc,
-                   "top1_slot0_baseline": slot0_acc}
+                   "top1_slot0_baseline": slot0_acc, "move_concepts_alive": mv_alive}
+            if mv_alive == 0:
+                print("  WARNING: pruning removed EVERY move concept; per-child ranking "
+                      "is now impossible and top-1 will fall to chance", flush=True)
             if args.arm == "qat":
                 h = model.attn.questions_asked()
                 out["q_max_share"] = float(h.max())
@@ -456,7 +460,9 @@ def main():
     if args.units:
         idx = torch.from_numpy(rng.choice(tr_idx, 8, replace=False))
         zq, hmv_u, _ = encode(idx)
-        assert set(torch.unique(zq).tolist()) <= {-1.0, 1.0} or True
+        u1 = set(torch.unique(zq).tolist())
+        assert u1 <= {-1.0, 1.0}, f"level-1 concepts are NOT binary: {sorted(u1)[:6]}"
+        print(f"  U0 PASS level-1 concepts are binary, {zq.shape[-1]} dims")
         logit, z, aux = model(zq, hmv_u)
         assert logit.shape == (8, MV_CAP, 3), f"expected per-child logits, got {logit.shape}"
         print(f"  U1 PASS a WDL logit for every child: {tuple(logit.shape)}")

@@ -18133,3 +18133,94 @@ weights from stored momentum (the resumed run showed concepts back at 2528/2528)
 are not sticky without a persistent mask, which is the standard pruning idiom I skipped.
 Since it needs reimplementing regardless, the informative next probe is the other two
 together: gko10b = linear heads + 4-layer trunk + --mv-concepts, no pruning.
+
+## 2026-08-26 12:31 — qat1 RESULT: multiPV wired (32.6x labels); and the concept space is MOVER-POV, which invalidates the 1-ply future metric
+
+**Kaveh: "we're training on a multi PV. We're basically asking stockfish about all the
+child moves, and we're training on all of them. Right?"** We were not. The readout took
+ONE label per position -- the best move's WDL -- and discarded the other ~32. Measured on
+the same shards: **3,742,834 child-move WDL labels against 114,688 rows, 32.6x more**, and
+the class mix INVERTS (best-move 62/12/26 W/D/L, all-children 29/12/60). Best moves win,
+most legal moves lose; training on the best move alone discards exactly the contrast that
+says which moves are BAD.
+
+Readout is now (position concepts, move concepts) -> WDL per child, still ONE nn.Linear,
+so it factorises exactly into a position baseline plus a per-move term that carries the
+whole ranking -- dV/dmove as a first-class quantity. Gate U3 checks the factorised form
+equals the concatenated one (max err 1.2e-07).
+
+**qat1, 3000 steps, 0.90 s/step (gko was 3.3), single seed:**
+
+    BALANCED accuracy   0.629   (chance 0.333)   recall W/D/L 0.75/0.42/0.73
+    top-1 move          0.155   (slot-0 baseline 0.065, chance 0.031)
+    concepts            400 of 3072 after gradual magnitude pruning
+    1-ply future lift  +0.631   2-ply +0.159   (copier = 0.000)
+
+**THREE BUGS THE CHANGE EXPOSED, each of which looked healthy from outside.**
+  1. NaN. Invalid move slots hold NaN and masking only the loss WEIGHT leaves nan*0=nan.
+     A 200-step run printed `wdl nan` while balanced accuracy sat at exactly 0.333 and the
+     pruner walked its schedule down on a dead model.
+  2. A FAKE top-1 of 0.432. Moves are stored in Stockfish's own preference order, so slot
+     0 is best 54% of the time; NaN logits made argmax return 0 and that read as skill.
+     Ranking now uses tgt (top unique in 91% of positions), ties broken randomly, and the
+     "always play slot 0" baseline is printed beside every number.
+  3. A FUTURE HEAD THAT NEVER FIRED. These shards are shuffled INDEPENDENT positions --
+     2048 distinct FENs per shard, non-monotone fullmove numbers, **0 of 8 consecutive row
+     pairs a real parent/child** -- so `fut 0.000` meant "gated off", not "converged".
+     Children are now CONSTRUCTED with the same parent_graph() the corpus came from.
+
+**THE FINDING THAT MATTERS, and it retires a metric (diag_concept_dynamics.py).**
+`chg` (the copy baseline's error rate) climbed 0.075 -> 0.587 during training. A single
+ply cannot alter 59% of concept bits, so I encoded parent and child with the SAME weights
+to separate real dynamics from EMA drift. It is not drift:
+
+    gcf4h trunk, before this training   1-ply  4.4%   2-ply  3.1%
+    qat1 trunk,  after  this training   1-ply 54.3%   2-ply 15.6%
+
+2-ply change SMALLER than 1-ply is impossible for genuine position change, so the null-move
+control adjudicated -- same board, only the turn flips:
+
+    NULL move (nothing moves, only the turn flips)   54.1%
+    a real 1-ply move                                54.3%
+    a real 2-ply move (turn back to original side)   15.6%
+
+**The 1-ply figure is 99.6% explained by whose turn it is.** The concept space is
+mover-POV, so the 1-ply future head is largely learning "the turn flipped" -- a structural
+constant, not chess. RETRACTED as a dynamics measurement: **fut1 lift +0.631 is not a
+dynamics number.** The honest one is the even-lag figure, **fut2 lift +0.159**, which is
+weak. This is the same parity trap recorded in health_gate_thresholds_dont_transfer;
+it caught us again because the metric was read without an odd/even control.
+
+**"EVERYTHING THE READOUT SEES IS A BIT" IS FALSE (diag_readout_survival.py).** The gate
+meant to check this read `assert set(...) <= {-1,1} or True` -- always passes, never
+checked anything. Dead-assert class, third occurrence. Measured: 848 of 2528 level-1 dims
+are non-binary. Piece slots are TERNARY (+1/-1 present, 0 absent; 9.4 empty + 22.6 present
+= 32.0 slots exactly) and the 128-dim edge block is a normalised histogram (rows sum to
+1.000). **1680 of 3072 readout dims are strictly binary.** Not a bug -- the trunk was
+designed that way (gcf2's bag-of-tactics) -- but the interpretability claim must be stated
+as "linear readout over binary + ternary + one histogram", not "over bits".
+
+**PRUNING PREFERS MOVE CONCEPTS, 4.4x.** Survival of the 400:
+
+    level-1 board+square+piece+edge   341 / 2528    13.5%
+    level-2 quantized attention        40 /  512     7.8%
+    MOVE concepts                      19 /   32    59.4%
+
+The risk I flagged pre-launch (pruning deletes all move dims and silently kills ranking)
+did not materialise; the opposite did. Level-2 attention is the LEAST retained family,
+which is a real question mark over what the quantized attention is contributing.
+
+**RANKING DEGRADES UNDER PRUNING WHILE CLASSIFICATION HOLDS.** Balanced accuracy rose
+0.539 -> 0.629 as concepts fell 3072 -> 400, but top-1 slid 0.251 -> 0.155. Position-level
+classification is robust to the interpretability tax; move-level ranking is not.
+
+**NOT TOUCHED, per Kaveh ("read the journal on past move concept work and don't touch
+it"):** graph_concept_field.py and gen_move_graphs.py are unmodified. The journal's pending
+8x16 multi-head move-VQ recommendation is still Kaveh's call. The 32-bit move quantiser in
+qat_train.py lives in that trainer only and does not alter the trunk's mv_vq.
+
+**SINGLE SEED.** Per seed_variance_dwarfs_pair_ci, no verdict is offered on close numbers.
+The judgeable items here are structural: the multiPV label count, the parity result, the
+non-binary composition, and the family-level pruning asymmetry.
+
+---
