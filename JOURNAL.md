@@ -18106,3 +18106,30 @@ opened VSCode, so the pressure was not mine alone, but the gate suite was, and t
 wrote this morning after killing gko7a is the rule I then broke the same afternoon.
 Wired memory had reached 24.6 GB of 36 by this point, up from 18.75 GB at midday -- a
 45-day uptime compounding, which keeps moving the ceiling closer.
+
+## 2026-08-26 06:41 PDT -- BISECTION: the linear concept readout is FREE; something else broke gko9a
+
+gko9a (linear heads + L1 pruning + 4-layer trunk + --mv-concepts, all at once) did not
+pay a tax, it DIVERGED: top1 0.617 -> 0.588 -> 0.593 -> 0.578 -> 0.548 and sf-spearman
+0.413 -> 0.340 -> 0.328 -> 0.275 -> 0.178 across steps 1000-5000, while gko8a over the
+same span held 0.625 -> 0.630 -> 0.636 -> 0.629 with spearman steady near 0.45.
+
+Four things changed at once, so per the standing rule the attribution is a binary search,
+not a guess -- especially having guessed wrong three times the previous day (the sync
+theory, the lambda calibration, and a 51% "divergence" metric that turned out to be VQ
+codebook bookkeeping).
+
+PROBE gko10a = gko8a's exact configuration plus ONE change, linear heads:
+    step 1000   top1 0.629  spearman 0.442      (gko8a: 0.625 / 0.454)
+    step 2000   top1 0.631  spearman 0.451      (gko8a: 0.630 / 0.450)
+RESULT: the linear readout is FREE. It tracks the MLP to within noise on both metrics --
+better than the -0.023 accuracy the offline frozen-concept fit predicted, which makes
+sense: offline the concepts were fixed, whereas in joint training the encoder can adapt
+to being read linearly. Kaveh's interpretable head costs nothing and is not the fault.
+
+Remaining suspects: L1 pruning, the fresh 4th trunk layer, --mv-concepts. Pruning is
+already known broken -- it prunes to target, stops, and then Adam RESURRECTS the zeroed
+weights from stored momentum (the resumed run showed concepts back at 2528/2528). Zeros
+are not sticky without a persistent mask, which is the standard pruning idiom I skipped.
+Since it needs reimplementing regardless, the informative next probe is the other two
+together: gko10b = linear heads + 4-layer trunk + --mv-concepts, no pruning.
