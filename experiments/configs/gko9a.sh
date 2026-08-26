@@ -28,7 +28,7 @@ ARGS=(
   --w-av 1.0 --w-cons 0.05 --w-dec 0.5 --w-decor 0.3 --w-dyn2 1.0 --w-iv 1.0
   --w-maia 1.0 --w-move 2.0 --w-op1 1.0 --w-op3 0.5 --w-op6 0.3 --w-phi 0.0
   --w-sf 1.0 --w-slow 1.0 --w-spec 2.0 --w-v0 0.5 --w-vk 1.0
-  --gen6 --binary --depth-cost --w-depth 0.1 --av-concepts --mv-concepts --linear-heads --w-l1 0.5
+  --gen6 --binary --depth-cost --w-depth 0.1 --av-concepts --mv-concepts --linear-heads --w-l1 0.5 --l1-target 320 --resume-self artifacts/experiments/gko9a_step2000.pt
   --op-bases 128 --op-rank 32 --w-sib 1.0 --u-pen 0.0 --all-ply --w-opk 0.0
   --state-mix --sib-pl --lr-ops 1e-4 --steps 8000
   # --- the joint objective ---

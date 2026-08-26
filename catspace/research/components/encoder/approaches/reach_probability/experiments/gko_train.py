@@ -170,6 +170,11 @@ def main():
                          "possible ADDITIVE model -- a GAM or NAM fits the identical "
                          "function -- so anything it cannot express is an interaction. "
                          "Measured tax vs the MLP: -0.023 accuracy.")
+    ap.add_argument("--l1-target", type=int, default=500,
+                    help="stop pruning once this many concepts still carry weight. A "
+                         "fixed threshold does NOT converge -- measured 2528 -> 596 -> "
+                         "328 over 2000 steps with held-out top1 falling 0.617 -> 0.588 "
+                         "alongside it.")
     ap.add_argument("--w-l1", type=float, default=0.0,
                     help="L1 on the linear heads. Offline, C=0.05 left 483 of 2528 "
                          "concepts at 0.729 acc; the achieved nonzero count is printed "
@@ -372,9 +377,12 @@ def main():
         print(f"[gko0] optimizer state restored ({len(_resume_opt.get('state', {}))} "
               f"param groups' moments)", flush=True)
     if _resume_rng is not None:
-        # restore the sampling stream so a resumed run does not re-see the batches the
-        # original run already trained on
-        rng.bit_generator.state = _resume_rng
+        # use the SHARED restorer: the scaffold saves {"torch": ..., "numpy": ...}, and
+        # a second bespoke implementation here assumed the raw bit-generator state and
+        # died with "state must be for a PCG64 RNG" on the first real resume. One
+        # format, one reader.
+        from catspace.research.tools.training_infra.train.scaffold import _rng_restore
+        _rng_restore(rng, _resume_rng)
     t0 = time.time()
 
     def _nan_guard(loss):
@@ -1121,6 +1129,7 @@ def main():
         # a phase timer without a barrier measures queueing, not work
         if str(dev).startswith("mps"):
             torch.mps.synchronize()
+    _live_concepts = [10 ** 9]        # updated by the proximal step
     _ph = {"fwd": 0.0, "ops": 0.0, "bwd": 0.0, "n": 0}
     fk_run = [0.0, 0.0, 0.0]        # frac-of-ceiling, coverage, n (per log line)
     # The scaffold reads this dict at save time, so mutating it inside step_fn is what
@@ -1181,7 +1190,8 @@ def main():
             _msync()
             _ph["bwd"] += _T.perf_counter() - _p0; _ph["n"] += 1
         opt.step()
-        if args.w_l1 > 0 and args.linear_heads and hasattr(model, "wdl"):
+        if (args.w_l1 > 0 and args.linear_heads and hasattr(model, "wdl")
+                and _live_concepts[0] > args.l1_target):
             # proximal soft-threshold: w <- sign(w) * max(|w| - lr*lambda, 0).
             # Gives EXACT zeros; an L1 penalty under an adaptive optimiser does not,
             # because Adam rescales the constant subgradient per parameter (the smoke
@@ -1191,6 +1201,12 @@ def main():
                 _W = model.wdl.lin.weight
                 _t = args.w_l1 * args.lr
                 _W.copy_(torch.sign(_W) * (_W.abs() - _t).clamp(min=0))
+                # PRUNE TO A TARGET, not to a threshold. A fixed threshold does not
+                # converge: measured 2528 -> 596 -> 328 concepts over 2000 steps with
+                # held-out top1 falling 0.617 -> 0.588 in lockstep, because most weights
+                # sit below the Adam update bound and keep dying. Stop once the target
+                # is reached and let the survivors train.
+                _live_concepts[0] = int((_W.abs().max(0).values > 0).sum())
         if args.ops and op_d.get("_rho") is not None:
             # hard projection: the penalty lost the arms race twice (rho 1.046, 1.070);
             # shrink the low-rank move terms directly, no gradients involved

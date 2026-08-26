@@ -206,9 +206,42 @@ def test_frozen_leaves_nothing_changed():
           f"that took a real optimizer step AND zeroed a parameter")
 
 
+def test_rng_state_is_one_format():
+    """save and restore must agree on the RNG payload SHAPE.
+
+    They did not: the scaffold saved {"torch":..., "numpy":...} while a trainer kept its
+    own restorer that assumed the raw bit-generator state, and the first real resume
+    died with "state must be for a PCG64 RNG". The round-trip test passed throughout,
+    because it only exercised the scaffold's own pair.
+    """
+    import numpy as np
+    from catspace.research.tools.training_infra.train.scaffold import (
+        _rng_state, _rng_restore)
+
+    rng = np.random.default_rng(7)
+    [rng.random() for _ in range(5)]
+    st = _rng_state(rng)
+    assert isinstance(st, dict) and "torch" in st, "payload shape changed"
+    nxt = rng.random()
+
+    rng2 = np.random.default_rng(7)
+    _rng_restore(rng2, st)                      # must accept the SAVED shape
+    assert rng2.random() == nxt, "numpy stream not restored"
+
+    # and the raw-state shape must NOT be silently accepted as if it were the dict
+    try:
+        _rng_restore(np.random.default_rng(1), rng.bit_generator.state)
+    except Exception as e:
+        raise AssertionError(f"_rng_restore must ignore a foreign shape, not raise: {e}")
+    print("  RNG payload: one shape, restored by the shared reader; foreign shapes "
+          "ignored rather than crashing a resume")
+
+
 if __name__ == "__main__":
     test_resume_is_continuation()
     test_step_counter_gates_survive()
     test_scaffold_round_trip()
     test_frozen_leaves_nothing_changed()
+    test_rng_state_is_one_format()
+    test_rng_state_is_one_format()
     print("  RESUME TESTS PASS")
