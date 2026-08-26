@@ -18274,3 +18274,47 @@ forward pass on the quantized attention". That is what was already wired; no cha
 improving at 3000: balanced 0.562 -> 0.608 -> 0.620 -> 0.629 across its fine-tune phase).
 
 ---
+
+## 2026-08-26 14:05 — qat2 (8000 steps): WDL learns, ranking plateaus, dynamics fails
+
+Same architecture and seed as qat1, all fixes in, 8000 steps instead of 3000, 0.36 s/step.
+
+                              qat1 (3k)    qat2 (8k)
+    BALANCED accuracy            0.629      **0.653**  (peak 0.660 @ step 7000)
+    recall W/D/L            0.75/0.42/0.73  0.83/0.40/0.73
+    top-1 move                   0.155        0.126     (slot-0 0.065, chance 0.031)
+    2-ply future lift           +0.159       -0.037     (copier = 0.000)
+    concepts kept                  400          400
+
+**WDL CLASSIFICATION LEARNS.** 0.629 -> 0.653 against 0.333 chance. The longer run paid.
+
+**MOVE RANKING HAS PLATEAUED.** Across all 16 evals top-1 oscillates 0.100-0.206 with no
+trend (mean ~0.146, final 0.126). It is above the slot-0 baseline 0.065 and chance 0.031,
+so something was learned, but 8000 steps bought nothing over 3000.
+
+**THE DYNAMICS HEADS FAIL.** 2-ply lift -- the honest even-lag number after the parity
+retraction -- is at or below zero through the whole second half: -0.007, -0.025, -0.189,
+-0.002, -0.030, -0.107, -0.525, -0.037. That is no better than copying the input. 1-ply
+stays +0.6..+0.8 but that is the turn flip (already retracted), and chg rising to 0.628
+corroborates. **VERDICT: predicting future concepts from present concepts + move does not
+work in this setup.** Not a close call, and it is the same conclusion at 3k and 8k.
+
+**CONCEPT ALLOCATION IS STABLE ACROSS RUN LENGTH** (tools/diag_readout_survival.py):
+
+                                   qat1        qat2
+    level-1 board+square+piece    341/2528    342/2528     13.5%
+    level-2 quantized attention    40/512      40/512        7.8%
+    MOVE concepts                  19/32       18/32       56-59%
+
+Same seed, so this is reproducibility rather than independent confirmation. But level-2 is
+the least-retained family in BOTH runs at 7.8% -- the readout does not value the quantized
+attention output much, which is exactly what arXiv 2407.19532 predicts for discretisation
+without enforced semantic alignment (see docs/LITERATURE.md, same day).
+
+**OPEN, in priority order:** (1) why ranking plateaus while classification improves --
+the move term is the whole ranking signal and 18 of 32 move concepts survive, so capacity
+is not obviously the limit; (2) whether level-2 earns its 512 dims at all, which an l1-arm
+run would answer directly; (3) the dynamics failure, which may simply be that these shards
+are shuffled independent positions and offer no trajectory structure to learn from.
+
+---

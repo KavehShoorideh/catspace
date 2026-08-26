@@ -10,7 +10,8 @@ import numpy as np, torch, chess
 from catspace.research.tools.npz_io import load_npz
 import glob, sys
 
-ck = torch.load("artifacts/experiments/qat1_latest.pt", map_location="cpu", weights_only=False)
+import sys
+ck = torch.load(sys.argv[1] if len(sys.argv)>1 else "artifacts/experiments/qat1_latest.pt", map_location="cpu", weights_only=False)
 print("  checkpoint keys:", [k for k in ck.keys()][:8])
 sd = ck.get("state_dict", ck.get("model", ck))
 w = None
