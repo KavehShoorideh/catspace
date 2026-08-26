@@ -175,6 +175,17 @@ def main():
                          "fixed threshold does NOT converge -- measured 2528 -> 596 -> "
                          "328 over 2000 steps with held-out top1 falling 0.617 -> 0.588 "
                          "alongside it.")
+    ap.add_argument("--wdl-balance", action="store_true", default=True,
+                    help="inverse-frequency class weights on the WDL loss. The target "
+                         "is 63/14/23, so an unweighted loss lets the head ignore the "
+                         "draw class -- measured draw recall 0.138 vs the MLP's 0.519, "
+                         "invisible in raw accuracy. On by default: training on a "
+                         "skewed target without correction is a mistake, not a choice.")
+    ap.add_argument("--no-wdl-balance", dest="wdl_balance", action="store_false")
+    ap.add_argument("--prune-every", type=int, default=100,
+                    help="steps between mask recomputations during the cubic ramp. The "
+                         "mask is RE-APPLIED every step regardless; this is only how "
+                         "often the ranking is revisited.")
     ap.add_argument("--w-l1", type=float, default=0.0,
                     help="L1 on the linear heads. Offline, C=0.05 left 483 of 2528 "
                          "concepts at 0.729 acc; the achieved nonzero count is printed "
@@ -293,7 +304,7 @@ def main():
         .experiments.gko_model import build_gko, check_head_widths, describe_heads
     model = build_gko(field, args, A).to(dev)
     ema_restored = False
-    _resume_opt = _resume_rng = None
+    _resume_opt = _resume_rng = _resume_pruner = None
     _resume_step = 0
     if args.resume_self:
         ck2 = torch.load(args.resume_self, map_location="cpu", weights_only=False)
@@ -314,6 +325,7 @@ def main():
         # -- worse -- the step counter restarts, which re-gates the operator losses
         # (opg ramps over 1000 steps) and 6-ply chain supervision (w6r over 2000). Those
         # terms would read ~0 and look converged while actually switched off.
+        _resume_pruner = ck2.get("pruner")
         _resume_opt = ck2.get("opt")
         _resume_rng = ck2.get("rng")
         _resume_step = int(ck2.get("step") or 0)
@@ -1027,7 +1039,20 @@ def main():
                         tg = tg / tg.sum(-1, keepdim=True)
                         for head, inp in _vpairs(za_s[mws]):
                             lp = torch.log_softmax(head(inp), -1)
-                            l_sv = l_sv + (-(tg * lp).sum(-1).mean())
+                            if args.wdl_balance:
+                                # The WDL target is skewed 63/14/23, so an unweighted
+                                # CE lets the head ignore draws for free -- measured on
+                                # a trained checkpoint, draw recall was 0.138 for the
+                                # linear readout against 0.519 for the MLP, while raw
+                                # accuracy hid it entirely (0.729 vs 0.752). Weight each
+                                # example by the inverse frequency of its dominant
+                                # class, normalised to mean 1 so the term's scale is
+                                # unchanged.
+                                cw = _WDL_W.to(lp.device)[tg.argmax(-1)]
+                                cw = cw / cw.mean().clamp(min=1e-6)
+                                l_sv = l_sv + (-(tg * lp).sum(-1) * cw).mean()
+                            else:
+                                l_sv = l_sv + (-(tg * lp).sum(-1).mean())
                 else:
                     l_sv = (hl.ce(model.sf_v_full(za_s), sv_tt) +
                             hl.ce(model.sf_v(za_s if args.linear_heads else za_s[:, model.lift.d_state:]), sv_tt))
@@ -1129,7 +1154,25 @@ def main():
         # a phase timer without a barrier measures queueing, not work
         if str(dev).startswith("mps"):
             torch.mps.synchronize()
-    _live_concepts = [10 ** 9]        # updated by the proximal step
+    # Gradual magnitude pruning (Zhu & Gupta), structured over CONCEPT columns. Replaces
+    # proximal soft-thresholding, which had no persistent mask (Adam resurrected pruned
+    # weights from momentum: 328 live concepts became 2528 again), no schedule (no
+    # equilibrium exists -- weights either died steadily or not at all), and pruned
+    # individual weights while every claim was about concepts.
+    from catspace.research.tools.training_infra.pruning import ConceptPruner
+    _pruner = None
+    if (args.linear_heads and args.l1_target and hasattr(model, "wdl")
+            and args.l1_target < model.wdl.lin.weight.shape[1]):
+        _pruner = ConceptPruner(model.wdl.lin.weight, args.l1_target, args.steps,
+                                interval=args.prune_every)
+        print(f"[gko0] concept pruning: {model.wdl.lin.weight.shape[1]} -> "
+              f"{args.l1_target} concepts, cubic; no pruning before step {_pruner.t0}, "
+              f"mask frozen from step {_pruner.t1}", flush=True)
+    if _pruner is not None and _resume_pruner is not None:
+        _pruner.load_state_dict(_resume_pruner)   # else a resume silently un-prunes
+    # inverse-frequency weights for W/D/L, from the corpus split measured 2026-08-26
+    _WDL_W = torch.tensor([1.0 / 0.63, 1.0 / 0.14, 1.0 / 0.23], dtype=torch.float32)
+    _live_concepts = [10 ** 9]
     _ph = {"fwd": 0.0, "ops": 0.0, "bwd": 0.0, "n": 0}
     fk_run = [0.0, 0.0, 0.0]        # frac-of-ceiling, coverage, n (per log line)
     # The scaffold reads this dict at save time, so mutating it inside step_fn is what
@@ -1144,6 +1187,8 @@ def main():
             # opt and rng are handled by standard_train now (every trainer gets them);
             # these two are gko-specific run state the scaffold cannot know about
             ckpt_extra["ema_started"] = bool(ema_started[0])
+            if _pruner is not None:
+                ckpt_extra["pruner"] = _pruner.state_dict()
             ckpt_extra["id6_hi"] = id6_hi[0]
         if step % args.rescan_every == 0:
             refresh_store()
@@ -1190,23 +1235,8 @@ def main():
             _msync()
             _ph["bwd"] += _T.perf_counter() - _p0; _ph["n"] += 1
         opt.step()
-        if (args.w_l1 > 0 and args.linear_heads and hasattr(model, "wdl")
-                and _live_concepts[0] > args.l1_target):
-            # proximal soft-threshold: w <- sign(w) * max(|w| - lr*lambda, 0).
-            # Gives EXACT zeros; an L1 penalty under an adaptive optimiser does not,
-            # because Adam rescales the constant subgradient per parameter (the smoke
-            # showed 2528/2528 weights still nonzero). Applied to the interpretable
-            # readout ONLY -- not the move ranker, already the weakest part.
-            with torch.no_grad():
-                _W = model.wdl.lin.weight
-                _t = args.w_l1 * args.lr
-                _W.copy_(torch.sign(_W) * (_W.abs() - _t).clamp(min=0))
-                # PRUNE TO A TARGET, not to a threshold. A fixed threshold does not
-                # converge: measured 2528 -> 596 -> 328 concepts over 2000 steps with
-                # held-out top1 falling 0.617 -> 0.588 in lockstep, because most weights
-                # sit below the Adam update bound and keep dying. Stop once the target
-                # is reached and let the survivors train.
-                _live_concepts[0] = int((_W.abs().max(0).values > 0).sum())
+        if _pruner is not None:
+            _live_concepts[0] = _pruner.step(step)
         if args.ops and op_d.get("_rho") is not None:
             # hard projection: the penalty lost the arms race twice (rho 1.046, 1.070);
             # shrink the low-rank move terms directly, no gradients involved

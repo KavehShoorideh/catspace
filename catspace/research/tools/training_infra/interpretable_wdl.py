@@ -113,14 +113,22 @@ def main():
     from sklearn.linear_model import LogisticRegression
     from sklearn.tree import DecisionTreeClassifier
     from sklearn.ensemble import HistGradientBoostingClassifier
-    from sklearn.metrics import accuracy_score, log_loss
+    from sklearn.metrics import accuracy_score, log_loss, recall_score
 
     rows = []
 
     def score(name, p, extra=""):
-        acc = accuracy_score(Yte, p.argmax(1))
+        pred = p.argmax(1)
+        acc = accuracy_score(Yte, pred)
+        # RAW ACCURACY IS NEARLY UNINFORMATIVE HERE. The WDL target is skewed
+        # 63/14/23, so answering "win" every time scores ~0.63 and looks competent.
+        # Balanced accuracy is the mean per-class recall, so the draw class -- 14% of
+        # the data and the one a planner most needs -- can no longer be ignored for
+        # free.
+        rec = recall_score(Yte, pred, average=None, labels=[0, 1, 2], zero_division=0)
+        bal = float(np.mean(rec))
         ll = log_loss(Yte, p, labels=[0, 1, 2])
-        rows.append((name, acc, ll, extra))
+        rows.append((name, acc, bal, ll, tuple(round(float(r), 3) for r in rec), extra))
 
     # the incumbent: the trained transformer head, on the same held-out rows
     with torch.no_grad():
@@ -148,15 +156,22 @@ def main():
     gb.fit(Xtr, Ytr)
     score("gradient boosting", gb.predict_proba(Xte), "interaction ceiling")
 
-    print(f"\n  {'readout':<32} {'accuracy':>9} {'log-loss':>9}   note")
-    for nm, acc, ll, ex in rows:
-        print(f"  {nm:<32} {acc:>8.3f} {ll:>9.3f}   {ex}")
-    base = max(np.bincount(Yte, minlength=3)) / len(Yte)
-    print(f"  {'majority class':<32} {base:>8.3f}       --   baseline")
+    print(f"\n  {'readout':<30} {'acc':>6} {'BALANCED':>9} {'logloss':>8}  "
+          f"{'recall W/D/L':>20}  note")
+    for nm, acc, bal, ll, rec, ex in rows:
+        print(f"  {nm:<30} {acc:>6.3f} {bal:>9.3f} {ll:>8.3f}  "
+              f"{str(rec):>20}  {ex}")
+    cnt = np.bincount(Yte, minlength=3)
+    base = cnt.max() / len(Yte)
+    print(f"  {'always-predict-majority':<30} {base:>6.3f} {1/3:>9.3f} "
+          f"{'--':>8}  {'(1,0,0)-like':>20}  baseline")
+    print(f"  class balance in the test set: W {cnt[0]} / D {cnt[1]} / L {cnt[2]} "
+          f"-- raw accuracy of {base:.3f} is free, balanced accuracy of 0.333 is free")
     lin = [r for r in rows if r[0] == "logistic, dense"][0]
     gbr = [r for r in rows if r[0] == "gradient boosting"][0]
-    print(f"\n  INTERACTIONS ARE WORTH {gbr[1] - lin[1]:+.3f} accuracy "
-          f"(boosting {gbr[1]:.3f} vs additive/linear {lin[1]:.3f}).")
+    print(f"\n  INTERACTIONS ARE WORTH {gbr[2] - lin[2]:+.3f} BALANCED accuracy "
+          f"(boosting {gbr[2]:.3f} vs additive/linear {lin[2]:.3f}); on raw accuracy "
+          f"the same gap reads {gbr[1] - lin[1]:+.3f}, which the class skew inflates.")
     print(f"  Because the concepts are BINARY, 'logistic, dense' IS the best possible "
           f"additive\n  model -- a GAM or a Neural Additive Model would fit exactly the "
           f"same function.")

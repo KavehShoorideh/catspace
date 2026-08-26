@@ -97,9 +97,18 @@ is predictable -- is satisfied **structurally**, not by tuning a weight:
 
 ### What would falsify it
 
-After joint training, if within-position spearman for "which future does this sibling
-open" has not risen above **+0.084**, and sibling value ranking has not risen above
-**+0.172**, the auxiliary is inert and should be removed rather than reweighted.
+The criterion is a **matched contrast**, never an absolute number. Two checkpoints of
+the same architecture, trained identically except for `--w-fkind`, measured on the SAME
+positions and the SAME Stockfish futures (`future_concepts.py --pv-cache`). The auxiliary
+earns its place only if within-position spearman for "which future does this sibling
+open" is higher **with** it than **without**, by more than the standard error of the
+difference.
+
+Absolute thresholds were the original form and they were wrong: +0.084 and +0.172 came
+from a different checkpoint at a different sample size, and re-measuring the control on
+120 positions moved them to +0.051 and +0.089. Read against the stale numbers, gko8a's
++0.082 would have looked like it nearly cleared the bar while the control had moved just
+as far. A threshold measured on one model is not a criterion for another.
 
 ### Where it pays off beyond training
 
