@@ -81,3 +81,39 @@ Once WDL works, the operator returns as its own question — and Kaveh's framing
 changed too: *"we don't need the composability of Koopman. We just want to predict what
 the eval is six plies down given these moves."* Direct per-ply heads, not a composable
 linear operator, are the cheaper hypothesis and should be tried first.
+
+## Future concepts, 1 and 2 ply
+
+Kaveh: *"we probably want a one and two ply future concept space predictor in there with
+EMA, which gives us the foundation for growing it later."*
+
+DIRECT per-ply heads, not one operator applied repeatedly — his own framing, since
+composability is not needed to answer "what is the eval N plies down this line". Adding
+a 3-ply head is a dict entry; nothing must stay linear, compose, or have a spectrum.
+
+```
+(concepts, move) ──► head[1] ──► logits over every bit of the concepts 1 ply later
+(concepts, move) ──► head[2] ──► ... 2 plies later
+                       ▲
+              targets: EMA copy of the encoder, stop-gradient
+```
+
+**The EMA is not optional.** "Make the future predictable from the present" has a trivial
+solution — make the concepts constant. A stop-gradient target from a slowly-updated
+encoder is the standard remedy, and this repo has already been bitten by getting that
+wrong (a resume once hard-copied the target and destroyed its lag silently).
+
+**Accuracy alone is meaningless here.** A move changes few bits, so a predictor that
+COPIES its input scores very high. Measured on a realistic synthetic target: a copier
+gets **0.918 raw accuracy and 0.000 lift**. Every number is therefore quoted as
+
+```
+lift = (accuracy - copy_accuracy) / (1 - copy_accuracy)
+```
+
+0.0 for a copier however high its raw score, 1.0 for a perfect predictor. The test suite
+includes the copier as a negative control so the metric is known to distinguish them.
+
+Also reported: `bits_changed`, the fraction of concept bits a move actually moves. If
+that is tiny the task is trivial; if it is near half the concepts are not stable enough
+to roll forward, and either reading is worth having before interpreting a lift.
