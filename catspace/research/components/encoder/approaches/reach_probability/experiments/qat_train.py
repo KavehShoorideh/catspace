@@ -460,9 +460,21 @@ def main():
     if args.units:
         idx = torch.from_numpy(rng.choice(tr_idx, 8, replace=False))
         zq, hmv_u, _ = encode(idx)
-        u1 = set(torch.unique(zq).tolist())
-        assert u1 <= {-1.0, 1.0}, f"level-1 concepts are NOT binary: {sorted(u1)[:6]}"
-        print(f"  U0 PASS level-1 concepts are binary, {zq.shape[-1]} dims")
+        # The level-1 state is NOT uniformly binary, and the gate that claimed to check
+        # this read `... or True` for three runs. Measured composition (see
+        # tools/diag_readout_survival.py): board+squares are strictly +-1, the 32 piece
+        # slots are TERNARY (+-1 present, 0 for an empty slot), and the last 128 dims are
+        # a normalised edge histogram. Assert what is actually true, per family.
+        BS, PC, EH = 96 + 64 * field.sq_width, 2400, D_STATE
+        ub = set(torch.unique(zq[:, :BS]).tolist())
+        assert ub <= {-1.0, 1.0}, f"board+square concepts are not binary: {sorted(ub)[:6]}"
+        up = set(torch.unique(zq[:, BS:PC]).tolist())
+        assert up <= {-1.0, 0.0, 1.0}, f"piece slots are not ternary: {sorted(up)[:6]}"
+        eh = zq[:, PC:EH].sum(-1)
+        assert torch.allclose(eh, torch.ones_like(eh), atol=1e-3), \
+            f"edge block is not a distribution: rows sum to {float(eh.mean()):.3f}"
+        print(f"  U0 PASS level-1 composition verified: {BS} binary, {PC-BS} ternary "
+              f"(empty piece slots are 0), {EH-PC} histogram summing to 1.0")
         logit, z, aux = model(zq, hmv_u)
         assert logit.shape == (8, MV_CAP, 3), f"expected per-child logits, got {logit.shape}"
         print(f"  U1 PASS a WDL logit for every child: {tuple(logit.shape)}")
