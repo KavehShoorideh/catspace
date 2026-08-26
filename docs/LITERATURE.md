@@ -390,3 +390,85 @@ which is what makes a NARROW beam safe. ADOPTED as the C-loss.
 ## comparison, which we read): Predictron is policy evaluation without control; VIN needs
 ## spatial full-state-space planning with convolutional dynamics -- neither matches a
 ## move-conditioned game tree.
+
+## Quantized attention: prior art, and the one negative result that matters (2026-08-26)
+
+Kaveh: "search some more the idea of quantized attention because I have a feeling this
+gotta be somewhere out there... If it isn't out there in the way we want, then I want you
+to search about WHY it's not out there. Have people tried it and has it failed?"
+
+Answer: **every ingredient exists, the combination does not, and the motivation is the
+real difference.** Three separate literatures, none of which is doing what we are doing.
+
+### Line 1 — quantizing Q and/or K. Exists, mature, and is entirely about SPEED.
+
+    Reformer (Kitaev+ 2020)          LSH-hash Q/K into buckets            O(n log n)
+    Routing Transformer (Roy+ 2021)  k-means cluster queries AND keys     O(n^1.5)
+    SMYRF (Daras+ 2020)              asymmetric clustering
+    Transformer-VQ (Lin+ ICLR 2024)  VQ the KEYS, learned codebook        linear time
+    VQ-TR, AVQ-Attention (2026)      VQ attention, adaptive code capacity
+
+The machinery we want is therefore KNOWN TO TRAIN at scale -- reassuring for feasibility.
+But every one of these papers reports perplexity and FLOPs. **None reports what the codes
+MEAN.** Transformer-VQ is explicitly asymmetric and leaves QUERIES continuous. Routing
+Transformer clusters queries but treats the cluster as a routing device, not a symbol.
+[confidence: high on "the motivation is efficiency", medium on "no paper inspects code
+semantics" -- established from surveys and abstracts, not by reading each full text.]
+
+### Line 2 — quantizing for INTERPRETABILITY. Exists, but at the OUTPUT, not the query.
+
+    Codebook Features (Tamkin+ 2023, arXiv 2310.17230)
+        VQ bottleneck on attention-head OUTPUTS, before the residual stream, one codebook
+        per head. Explicitly for interpretability and control. Codes fire on punctuation,
+        syntax, lexical semantics, topics; better predictors of simple textual features
+        than neurons. THIS IS ESSENTIALLY OUR LEVEL-2 OUTPUT QUANTISATION, already done.
+    Discrete Key-Value Bottleneck (Trauble+ ICML 2023, arXiv 2207.11240)
+        quantise to a key codebook, look up a value; for generalisation/continual learning.
+
+### Line 3 — the critique, and the failures. This is the "has it been tried" answer.
+
+  * **Hard attention DID fail, but for a reason that no longer applies.** Xu+ 2015 trained
+    discrete attention with REINFORCE; it is non-differentiable, combinatorial, unstable,
+    and soft attention beat it on image captioning. The field standardised on soft. But
+    that failure was about the ESTIMATOR, not the idea -- straight-through + VQ (2017 on)
+    is a different and far more stable tool, and is what we use. Reading the hard-attention
+    literature as "discrete attention is a dead end" would be a misreading.
+  * Jain & Wallace 2019, Wiegreffe & Pinter 2019: attention weights are not reliable
+    explanations. Meister+ 2021: sparsity does not confer faithfulness.
+
+### THE RESULT THAT SHOULD CHANGE OUR PRIORS
+
+**"The Interpretability of Codebooks in Model-Based RL is Limited" (arXiv 2407.19532).**
+Tested IRIS (VQ world model, 512 codes) on Crafter: **205,231 Grad-CAM heatmaps across 477
+codes**, scoring each code's consistency as mean cosine similarity of its ResNet50 crop
+embeddings. **The vast majority of codes sat only marginally above a random-crop baseline.**
+Only a handful clustered cleanly. Their conclusion: **vector quantisation ALONE does not
+produce interpretable codes; "latent semantic alignment is needed alongside
+discretization".**
+
+**Implication for us, stated before we see our own numbers:** we should EXPECT most of our
+16 questions to be semantically inconsistent. Discretising the query buys a finite,
+countable set of questions -- it does not buy meaning. Our `relation_alignment()` already
+MEASURES alignment against python-chess ground truth but does not ENFORCE it; the paper's
+prescription is precisely to add the enforcement.
+
+Corroborating signal already in hand: in qat1, level-2 was the LEAST retained family under
+magnitude pruning (**7.8%**, against 13.5% for level-1 and 59.4% for move concepts). If
+quantized attention were producing high-value concepts, the readout would have kept them.
+
+### WHAT IS ACTUALLY NEW HERE
+
+  1. The QUERY is a discrete symbol from a small codebook and the code ID is the unit of
+     interpretation -- "what is this token asking?" Efficiency papers quantise queries but
+     never ask this; interpretability papers quantise outputs, not queries.
+  2. Three constraints stacked at once: discrete question + top-k answer + quantized result.
+  3. **External validation, which is plausibly WHY nobody has done this.** In NLP and vision
+     there is no oracle for "what relation SHOULD head h encode", so the claim cannot be
+     falsified. Chess has python-chess: attacks, defends, pins and blocks are computable
+     ground truth. That is a structural advantage of the domain, not merely a different
+     dataset -- it is what makes "question 5 means attacks" a testable statement.
+
+Sources: arXiv 2001.04451 (Reformer), Routing Transformer, arXiv 2010.05315 (SMYRF),
+arXiv 2309.16354 (Transformer-VQ), arXiv 2607.12789 (AVQ-Attention), arXiv 2310.17230
+(Codebook Features), arXiv 2207.11240 (Discrete Key-Value Bottleneck), arXiv 2407.19532
+(codebook interpretability is limited), Jain & Wallace 2019, Meister+ 2021.
