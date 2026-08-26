@@ -18224,3 +18224,53 @@ The judgeable items here are structural: the multiPV label count, the parity res
 non-binary composition, and the family-level pruning asymmetry.
 
 ---
+
+## 2026-08-26 12:52 — NEGATIVE: the concept space is not color-structured, and the turn flip is not a permutation
+
+**Kaveh asked:** "is there a way for us to make sure that some of the concepts are for
+white and some of them are for black so that we don't flip every turn? ... I have no real
+reason to bound it, but I'm just wondering if there is a way to do it."
+
+Whether that is even buildable turns on a measurable fact, so it was measured before
+anything was proposed (`tools/diag_color_structure.py`, 256 positions, null move only).
+Two worlds produce the same 54% flip rate: a STRUCTURED space where each dim is either
+color-owned (flips ~always) or color-neutral (flips ~never), or a CHAOTIC one where every
+dim flips on about half of positions. Per-dim flip rate under a null move:
+
+    family        dims   mean flip   never(<0.05)  always(>0.95)  middling(0.2-0.8)
+    board           96       0.690        0%             0%             100%
+    squares       1536       0.676        4%             0%              71%
+    pieces         768       0.439        4%             0%              79%
+    edge-hist      128       0.252        0%             0%              62%
+    ALL level-1   2528       0.583        4%             0%              74%
+
+**NOT STRUCTURED.** Only 4% of dims are decisive; 74% are middling. Kaveh's intuition that
+"the piece ones automatically have this" is directionally right -- pieces are the most
+color-anchored big family at 0.439 against squares' 0.676 -- but nothing is clean enough
+to partition. Only **96 of 2528 dims** are color-neutral enough to act as a stable
+planning frame today.
+
+**AND NOT A PERMUTATION**, which kills the cheap fix. If the turn merely swapped a
+designated half, it could be undone by relabelling axes with no retraining. Over the 2434
+non-degenerate dims: median best |correlation| to some post-flip dim 0.665, only **1%**
+have a near-deterministic partner, and the mapping collapses to **192 distinct targets**
+out of 2434. The turn SMEARS across dims rather than swapping them.
+
+**The one design that would work, not built:** designate the partition by fiat (e.g. first
+half of each square's 24 bits = side-to-move's relation, second half = the opponent's) and
+add an equivariance penalty forcing z(colorswap(s)) = P.z(s) for the fixed swap permutation
+P. That is a loss term in the trainer, not trunk surgery, and costs one extra forward pass
+per step; diag_color_structure.py is already its acceptance test (the histogram must go
+bimodal). Honest risk: mover-POV is genuinely efficient for strength, so it may cost WDL.
+
+**RULING (Kaveh 2026-08-26): leave the parity alone, just train.** Even-lag (2-ply) is the
+honest dynamics number and costs nothing. The equivariance arm is NOT queued.
+
+**Also confirmed with Kaveh:** level 2 means the output of the quantized attention (512
+bits), and the future heads predict **level-1 only** (2528 dims) -- "we can afford the
+forward pass on the quantized attention". That is what was already wired; no change.
+
+**qat2 launched** 12:52: same architecture, all qat1 fixes in, 8000 steps (qat1 was still
+improving at 3000: balanced 0.562 -> 0.608 -> 0.620 -> 0.629 across its fine-tune phase).
+
+---
