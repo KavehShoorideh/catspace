@@ -20,6 +20,16 @@ which is 0.0 for a copier no matter how high its raw accuracy, and 1.0 for a per
 predictor. `evaluate()` returns both, and the test includes a copier as a negative
 control precisely so the metric is known to distinguish them.
 
+## Where the interpretability constraint lives
+
+On the READOUT, not on the dynamics. WDL must be a linear function of concepts; how the
+board evolves need not be. Kaveh 2026-08-26: "I'm happy to allow the future prediction
+of the concept to be nonlinear." An MLP transition does not make any single concept less
+readable -- it only predicts where the concepts go -- and since composability was
+dropped, a nonlinear per-ply head still costs one forward pass per ply, so search speed
+does not depend on it. `hidden=0` keeps the linear form as a comparison arm: if linear
+is as good, that is the stronger result.
+
 ## Why EMA targets
 
 The target concepts come from a slowly-updated copy of the encoder, with stop-gradient.
@@ -43,16 +53,25 @@ class FutureConceptHead(nn.Module):
     output is a logit per bit.
     """
 
-    def __init__(self, d_concept: int, d_move: int, ply: int, hidden: int = 0):
+    def __init__(self, d_concept: int, d_move: int, ply: int, hidden: int = 1024):
         super().__init__()
         self.ply, self.d_concept = ply, d_concept
+        # NONLINEAR BY DEFAULT (Kaveh 2026-08-26: "I'm happy to allow the future
+        # prediction of the concept to be nonlinear").
+        #
+        # The interpretability constraint lives on the READOUT -- WDL must be a linear
+        # function of concepts -- not on the DYNAMICS. How the board evolves is a
+        # transition function; making it an MLP does not make a single concept less
+        # readable, it only predicts where the concepts go. And since composability was
+        # dropped, a nonlinear per-ply head still costs one forward pass per ply, so
+        # nothing about search speed depends on it staying linear.
+        #
+        # hidden=0 keeps the linear form available as a comparison arm: if linear turns
+        # out to be as good, that is a stronger result and worth knowing.
         if hidden:
             self.net = nn.Sequential(nn.Linear(d_concept + d_move, hidden), nn.GELU(),
                                      nn.Linear(hidden, d_concept))
         else:
-            # linear by default: the same discipline as the readout -- if a linear map
-            # cannot predict the next concepts, that is worth knowing before adding
-            # capacity to hide it
             self.net = nn.Linear(d_concept + d_move, d_concept)
 
     def forward(self, z: torch.Tensor, mv: torch.Tensor) -> torch.Tensor:
@@ -63,7 +82,7 @@ class FuturePredictor(nn.Module):
     """A set of per-ply heads plus the EMA target encoder they are trained against."""
 
     def __init__(self, encoder: nn.Module, d_concept: int, d_move: int,
-                 plies=(1, 2), ema_decay: float = 0.999, hidden: int = 0):
+                 plies=(1, 2), ema_decay: float = 0.999, hidden: int = 1024):
         super().__init__()
         self.heads = nn.ModuleDict(
             {str(p): FutureConceptHead(d_concept, d_move, p, hidden) for p in plies})
@@ -130,7 +149,7 @@ def _test():
     torch.manual_seed(0)
     B, D, M = 64, 128, 16
     enc = nn.Linear(D, D)
-    fp = FuturePredictor(enc, D, M, plies=(1, 2), hidden=0)
+    fp = FuturePredictor(enc, D, M, plies=(1, 2))          # nonlinear by default
 
     z = torch.sign(torch.randn(B, D))
     mv = {"1": torch.randn(B, M), "2": torch.randn(B, M)}
@@ -153,7 +172,9 @@ def _test():
     total, st = fp.loss(z, mv, tgt)
     total.backward()
     for p in ("1", "2"):
-        g = fp.heads[p].net.weight.grad
+        net = fp.heads[p].net
+        w = net[0].weight if isinstance(net, nn.Sequential) else net.weight
+        g = w.grad
         assert g is not None and g.abs().sum() > 0, f"no gradient into the {p}-ply head"
     assert all(torch.isfinite(torch.tensor(v)) for v in st.values())
 
