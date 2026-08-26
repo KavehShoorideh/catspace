@@ -152,6 +152,47 @@ def main():
     score(f"decision tree (depth {a.max_depth})", dt.predict_proba(Xte),
           f"{dt.get_n_leaves()} leaves")
 
+    # ---- GA2M: additive + a SMALL number of pairwise interactions ------------------
+    # Kaveh: "we want some nonlinear effects... how do we limit them? maybe manually mix
+    # the concepts?" That is exactly GA2M (Lou et al., KDD 2013): univariate terms plus
+    # ~10-20 shaped pairwise interactions, which closes most of the gap to a random
+    # forest while staying readable.
+    #
+    # Binary concepts make it unusually clean. A pairwise term on +-1 codes is just the
+    # product, so its "shape function" has FOUR possible values -- a 2x2 table, not a
+    # plot. A pair weight reads as "when these two concepts agree, add w to the logit".
+    #
+    # Pair selection follows FAST in spirit: rank all candidate pairs cheaply by how
+    # much their product correlates with what the additive model got WRONG, then keep
+    # the top few. Screening every pair among 2528 concepts is 3.2M products, so
+    # candidates are restricted to the concepts the sparse additive model already uses.
+    def ga2m(n_pairs, pool=120):
+        base = LogisticRegression(max_iter=2000, C=1.0).fit(Xtr, Ytr)
+        resid = np.eye(3)[Ytr] - base.predict_proba(Xtr)          # what singles missed
+        strength = np.abs(base.coef_).max(0)
+        cand = np.argsort(-strength)[:pool]
+        Ptr, sc = Xtr[:, cand], []
+        r = resid[:, 0] - resid[:, 2]                             # win-minus-loss error
+        for a in range(len(cand)):
+            prod = Ptr[:, a:a+1] * Ptr[:, a+1:]
+            if prod.shape[1] == 0: continue
+            c = np.abs(prod.T @ r) / (len(r) + 1e-9)
+            for b, v in enumerate(c, start=a+1):
+                sc.append((float(v), a, b))
+        sc.sort(reverse=True)
+        pairs = [(cand[a], cand[b]) for _, a, b in sc[:n_pairs]]
+        def aug(X):
+            if not pairs: return X
+            extra = np.stack([X[:, i] * X[:, j] for i, j in pairs], 1)
+            return np.concatenate([X, extra], 1)
+        m = LogisticRegression(max_iter=2000, C=1.0).fit(aug(Xtr), Ytr)
+        return m.predict_proba(aug(Xte)), pairs
+
+    for npair in (10, 40):
+        p_ga, pairs = ga2m(npair)
+        score(f"GA2M: additive + {npair} pairs", p_ga,
+              f"{npair} concept-pair AND terms")
+
     gb = HistGradientBoostingClassifier(max_depth=6, max_iter=200, random_state=0)
     gb.fit(Xtr, Ytr)
     score("gradient boosting", gb.predict_proba(Xte), "interaction ceiling")
