@@ -20,7 +20,7 @@ Present:
             the interpretability constraint is on the READOUT, not the transition.
 
 Arms, selected with --arm, sharing trunk, data, schedule and seed:
-    l1     readout on level-1 concepts only            (does attention help at all?)
+    level1 readout on level-1 concepts only            (does attention help at all?)
     qat    readout on level-1 + quantized level-2      (the proposal)
     soft   the same with UNCONSTRAINED attention       (what quantization costs)
 
@@ -42,7 +42,10 @@ import torch.nn.functional as F
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--arm", choices=("l1", "qat", "soft"), default="qat")
+    ap.add_argument("--arm", choices=("level1", "l1", "qat", "soft"), default="qat",
+                    help="level1 = level-1 concepts only, NO attention (l1 is a legacy "
+                         "alias; it means level-ONE, not L1 regularisation). "
+                         "qat = + quantized attention. soft = + ordinary attention.")
     ap.add_argument("--shards", default="data/derived/gko1_shards")
     ap.add_argument("--resume-field", default="artifacts/experiments/gcf4h_latest.pt")
     ap.add_argument("--out", default="artifacts/experiments/qat1")
@@ -69,6 +72,8 @@ def main():
     ap.add_argument("--ema-decay", type=float, default=0.999)
     ap.add_argument("--units", action="store_true")
     args = ap.parse_args()
+    if args.arm == "l1":                    # legacy spelling of level1
+        args.arm = "level1"
 
     from catspace.research.tools.training_infra.train.scaffold import (
         TrainConfig, standard_train, resolve_device)
@@ -209,7 +214,7 @@ def main():
             self.d_read = d_read
         def level2(self, zq):
             """(B, D_STATE) -> (B, 64*out_bits) relational bits, or None for arm l1."""
-            if self.arm == "l1":
+            if self.arm == "level1":
                 return None, {}
             b0 = field.g_heads * field.code_width
             tok = zq[:, b0:b0 + N_TOK * D_TOK].reshape(-1, N_TOK, D_TOK)
@@ -248,7 +253,7 @@ def main():
     pruner = ConceptPruner(model.readout.weight, args.l1_target, args.steps,
                            interval=args.prune_every)
     print(f"[qat] arm={args.arm} | readout reads {model.d_read} dims -> pruned to "
-          f"{args.l1_target} | level-2 {'off' if args.arm=='l1' else f'{N_TOK}x{args.out_bits} bits'}",
+          f"{args.l1_target} | level-2 {'OFF (no attention)' if args.arm=='level1' else f'{N_TOK}x{args.out_bits} bits'}",
           flush=True)
 
     # class weights: the corpus is skewed, and an unweighted loss lets the head ignore
