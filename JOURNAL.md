@@ -18318,3 +18318,58 @@ run would answer directly; (3) the dynamics failure, which may simply be that th
 are shuffled independent positions and offer no trajectory structure to learn from.
 
 ---
+
+## 2026-08-26 17:15 — RETRACTION + Kaveh is right: WDL is a fine signal, top-1 was the wrong yardstick
+
+**RETRACTED: "moves are stored in Stockfish's preference order, so slot 0 is best 54% of
+the time."** That number came from rows with NO valid children, where argmax over an
+all -1e9 row returns 0. On the filtered rows the real figure is **11.3%**, consistent with
+the eval's own printed slot-0 baseline of 0.065. The fake top-1 of 0.432 was still real
+and its fix (random tie-break + printed baseline) still correct -- only my EXPLANATION of
+it was wrong. Appears in the 2026-08-26 12:31 entry and in commit 452d8b0.
+
+**Kaveh challenged the framing:** "I don't understand how a single scalar can be a higher
+resolution signal than WDL. I think WDL is the right signal here... if you can't rank moves
+based on sibling moves, then that means both moves are okay... if we're misranking two
+things that are very close to each other, I think it's okay."
+
+He is right, and the labels say so (`tools/diag_regret.py`, 73,728 positions / 2.4M child
+moves). REGRET = win probability given up against the best move, which is average
+centipawn loss in win-probability units:
+
+    policy                          mean regret   median     p90     p99
+    random legal move                  0.2661     0.1781   0.6761      --
+    always slot 0                      0.2647     0.1779   0.6729      --
+    best by W-L  (ties -> random)      0.0341     0.0000   0.1187   0.2205
+    best by W-L  (ties -> slot 0)      0.0333     0.0000   0.1176      --
+
+**A PERFECT WDL RANKER GIVES UP 0.034 WIN PROBABILITY PER MOVE, MEDIAN 0.000.** The moves
+it "gets wrong" are near-equivalent. So the "0.519 top-1 ceiling" I reported at 16:36 is a
+METRIC ARTEFACT, not a limitation of the WDL label: top-1 counts a near-tie as a total
+miss. **Top-1 is retired as the headline; regret replaces it.**
+
+Nor was the coarseness my choice of scalarisation -- every scalarisation of the triple is
+about equally coarse, because WDL is stored per-mille and saturates (23.2% of child moves
+already sit at W >= 0.999):
+
+    W - L            9.8 distinct values per position (of ~33 legal moves)
+    W + 0.5D         9.8
+    W only           5.7
+    tgt (win prob)  28.5
+
+**WHAT tgt IS** (Kaveh asked; traced to gko_data.py:80-93). Both labels come from the SAME
+Stockfish multiPV call: `tgt[j] = payload["wp"][move]` is Stockfish's WIN PROBABILITY after
+move j, and `wdl[j] = payload["wdl"][move]/1000` is its W/D/L per-mille triple. They agree
+-- pooled Spearman +0.934 over 533,806 child moves, +0.905 per-position where W-L
+discriminates. (For Maia rows tgt is a policy probability instead, but we filter to
+kind==0, so that path never enters this data.)
+
+**BUILT, per Kaveh's design:** expected-regret loss, `--w-rank` (default 0, off):
+
+    L = sum_m p_theta(m) * [ wp(best) - wp(m) ]
+
+Model mass on a move is penalised by the win probability that move gives up, so near-ties
+cost ~0 and blunders cost a lot. Fully differentiable, no ranking machinery. Regret is also
+now printed every eval beside the two reference points (perfect-WDL 0.034, random 0.266).
+
+---

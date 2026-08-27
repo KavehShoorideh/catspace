@@ -67,6 +67,13 @@ def main():
     ap.add_argument("--l1-target", type=int, default=400)
     ap.add_argument("--prune-every", type=int, default=50)
     # dynamics
+    ap.add_argument("--w-rank", type=float, default=0.0,
+                    help="expected-REGRET loss: penalise a move by the win "
+                         "probability it gives up against the best move, so near-ties "
+                         "cost almost nothing and blunders cost a lot. See "
+                         "tools/diag_regret.py.")
+    ap.add_argument("--rank-temp", type=float, default=0.1,
+                    help="temperature on tgt when forming the target ranking distribution")
     ap.add_argument("--w-future", type=float, default=0.3)
     ap.add_argument("--future-hidden", type=int, default=1024)
     ap.add_argument("--ema-decay", type=float, default=0.999)
@@ -380,6 +387,34 @@ def main():
         assert torch.isfinite(l_wdl), "WDL loss is not finite"
         loss = l_wdl + (aux.get("vq_loss", 0.0) if aux else 0.0)
 
+        # EXPECTED REGRET -- average centipawn loss, in win-probability units.
+        # Kaveh 2026-08-26: "penalize based on centipawn loss compared to the best move.
+        # So even if we pick number two and it is really close to number one, the penalty
+        # is small. But if number two is far from number one, then it is large."
+        #
+        #     L = sum_m p_theta(m) * [ wp(best) - wp(m) ]
+        #
+        # Top-1 accuracy cannot tell a near-tie from a blunder; this can, and it is the
+        # standard chess measure. Measured on labels alone: a PERFECT WDL ranker has mean
+        # regret 0.034 and MEDIAN 0.000, against 0.266 for a random legal move -- so the
+        # moves WDL "gets wrong" are near-equivalent and top-1 was the wrong yardstick.
+        # See tools/diag_regret.py. Off by default.
+        l_rank = torch.zeros((), device=dev)
+        if args.w_rank > 0:
+            wp_np = np.where(CV_[ii] & np.isfinite(TGT[ii]), TGT[ii], -np.inf)
+            good = torch.from_numpy(np.isfinite(wp_np).any(1)).to(dev)
+            if bool(good.any()):
+                wp = torch.from_numpy(wp_np).to(dev)[good]
+                bestwp = wp.max(1, keepdim=True).values
+                # regret is 0 for the best move and >=0 elsewhere; forced to 0 on invalid
+                # slots, where the softmax mass is already ~0, so 0*inf never appears
+                reg = torch.where(torch.isfinite(wp), bestwp - wp,
+                                  torch.zeros_like(wp)).clamp(min=0.0)
+                sc = (logit[..., 0] - logit[..., 2])[good].masked_fill(~vld[good], -1e9)
+                l_rank = (torch.softmax(sc, -1) * reg).sum(-1).mean()
+                assert torch.isfinite(l_rank), "regret loss is not finite"
+                loss = loss + args.w_rank * l_rank
+
         l_fut = torch.zeros((), device=dev)
         fp = future_batch(args.future_batch) if args.w_future > 0 else None
         if fp is not None:
@@ -407,6 +442,7 @@ def main():
             model.eval(); field.eval()
             with torch.no_grad():
                 preds, ys, top1, nrank, base0 = [], [], 0, 0, 0
+                reg_sum, nreg = 0.0, 0
                 ero = np.random.default_rng(0)      # fixed, so eval is reproducible
                 for a in range(0, len(te_idx), 64):
                     sl = te_idx[a:a + 64]
@@ -429,31 +465,44 @@ def main():
                     # chance rather than on slot 0 -- which Stockfish's own move ordering
                     # makes best 54% of the time
                     jit = ero.random(sc.shape) * 1e-9
-                    top1 += int((np.where(v, sc + jit, -np.inf).argmax(1)[ok]
-                                 == tv.argmax(1)[ok]).sum())
+                    pick = np.where(v, sc + jit, -np.inf).argmax(1)
+                    top1 += int((pick[ok] == tv.argmax(1)[ok]).sum())
                     base0 += int((tv.argmax(1)[ok] == 0).sum())
                     nrank += int(ok.sum())
+                    # REGRET is the honest yardstick: how much win probability the chosen
+                    # move gives up against the best one. Top-1 counts a near-tie as a
+                    # total miss; a perfect WDL ranker scores only 0.519 top-1 yet gives
+                    # up just 0.034 win probability (median 0.000). tools/diag_regret.py.
+                    any_v = v.any(1)
+                    bw = np.where(np.isfinite(TGT[sl]) & v, TGT[sl], -np.inf).max(1)
+                    gw = TGT[sl][np.arange(len(sl)), pick]
+                    fine = any_v & np.isfinite(bw) & np.isfinite(gw)
+                    reg_sum += float((bw[fine] - gw[fine]).clip(min=0).sum())
+                    nreg += int(fine.sum())
                 pr, yy = np.concatenate(preds), np.concatenate(ys)
                 rec = [float((pr[yy == c] == c).mean()) if (yy == c).any() else 0.0
                        for c in range(3)]
                 bal = float(np.mean(rec))
                 top1_acc = top1 / max(nrank, 1)
-                slot0_acc = base0 / max(nrank, 1)   # what "always play slot 0" scores
+                slot0_acc = base0 / max(nrank, 1)
+                mregret = reg_sum / max(nreg, 1)
             fl = ""
             if fp is not None:
                 ev = future_eval(fut, z0, mvc, {"1": t1, "2": t2})
                 fl = (f" | fut1 lift {ev['ply1']['lift']:+.3f} (chg "
                       f"{ev['ply1']['bits_changed']:.3f}) fut2 lift "
                       f"{ev['ply2']['lift']:+.3f}")
-            print(f"[qat] step {step:>5}/{args.steps} | wdl {float(l_wdl):.3f} "
+            rk = f" regret {float(l_rank):.4f}" if args.w_rank > 0 else ""
+            print(f"[qat] step {step:>5}/{args.steps} | wdl {float(l_wdl):.3f}{rk} "
                   f"fut {float(l_fut):.3f} | BALANCED {bal:.3f} "
                   f"recall W/D/L {rec[0]:.2f}/{rec[1]:.2f}/{rec[2]:.2f} | "
-                  f"top1 {top1_acc:.3f} (slot0 {slot0_acc:.3f}, "
-                  f"chance {1/32.6:.3f}) | "
+                  f"REGRET {mregret:.4f} (perfect-WDL 0.034, random 0.266) | "
+                  f"top1 {top1_acc:.3f} | "
                   f"concepts {live}{fl}", flush=True)
             mv_alive = int((model.readout.weight[:, model.d_pos:].abs().sum(0) > 0).sum())
             out = {"balanced": bal, "concepts": live, "wdl": float(l_wdl), "top1": top1_acc,
-                   "top1_slot0_baseline": slot0_acc, "move_concepts_alive": mv_alive}
+                   "top1_slot0_baseline": slot0_acc, "move_concepts_alive": mv_alive,
+                   "regret": mregret, "rank": float(l_rank)}
             if mv_alive == 0:
                 print("  WARNING: pruning removed EVERY move concept; per-child ranking "
                       "is now impossible and top-1 will fall to chance", flush=True)
