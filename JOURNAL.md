@@ -18654,3 +18654,74 @@ w=3.0 collapses. The bracket is open and needs a long-run probe, not a short swe
      enforced semantics.
 
 ---
+
+## 2026-08-27 (Fable) — the flagship faithfulness probe finally runs: NEGATIVE. White-POV + 2-ply fix launched (qat7). Trunk-removal design proposed.
+
+**Context: model switched to Fable; week reviewed.** Review verdicts worth keeping: (a)
+`relation_alignment` — the measurement quantized attention exists to enable — had never
+been run on a trained model in six training runs; (b) the 8/26 "Koopman recollection
+correction" quoted only gko1b/c's marginal +0.02 R2 and missed the 8/24 `deep_roll` table
+(operator rolls to 14 plies with smooth value-corr decay 0.85→0.59, plies 7–14 wholly
+unsupervised) — Kaveh's memory of 6–10-ply rolling was SUPPORTED on the across-position
+value axis while within-position ordering was zero; both facts stand, only one was
+reported. (c) The qat churn "discovery" (87/97 groups) re-derived 8/24's "66.8% of codes
+flip per move" without citing it. The journal was not being consulted before answering
+questions about the project's own record.
+
+**1. THE FLAGSHIP PROBE, FIRST RUN EVER (tools/probe_question_alignment.py, qat4, 160
+positions, its trained raw-slice path): the discrete questions are NOT typed relations.**
+
+    relation    density | per-head precision (shuffled ctrl) | best lift
+    attacks       0.023 | 0.020  0.019  0.020  0.022  (~0.025) |  0.94x
+    defends       0.006 | 0.005  0.005  0.004  0.006  (~0.007) |  1.03x
+    threatens     0.002 | four heads at 0.001              |  0.59x
+
+Every head at or below density AND at or below a per-board shuffled control. Best
+(head,question) pair: 1.25x at 2.8% usage — noise. Each head uses ~2 of its 16 questions.
+This corroborates arXiv 2407.19532 in-house, explains level-2's 7.8% pruning retention in
+every run, and retires the hope that the current placement of quantized attention produces
+meaning for free. GRADED: proven (printed, two nulls).
+
+**2. POV FACTS VERIFIED (pre-build, per follow_the_code_paths):** inputs are ABSOLUTE
+color (TOK_PIECES carries color; glob carries b.turn); labels are MOVER-POV (best-move mix
+67/12/21 white-to-move vs 57/12/30 black). So mover-POV lives in the LABELS only, and the
+White-POV conversion is trainer-side: flip W<->L on Black rows, keep ranking mover-relative
+via SGN (U9: exact, err 0.0e+00, 117,587 labels flipped), side-to-move as an explicit 2x3
+turn bias in the readout, outside the pruner.
+
+**3. qat7_white LAUNCHED — the best-shot bundle (recorded per no_one_lever_rule):**
+all-family level-2 attention (129 tokens) + regret w=1.0 + White-POV labels + 2-ply head
+conditioned on BOTH move codes (U10: in-features 2592; the 8/26 irreducible-noise defect
+removed) + NO slowness regularizer (rule: no more weights without a long-run bracket; and
+qat4 evidence that the regret objective alone reduced churn 28.2→21.9).
+Post-run battery pre-registered: holdout regret vs qat4 0.1212 (mover-relative, POV-
+comparable; balanced accuracy is NOT directly comparable across POV), fixed-set churn
+control, NULL-MOVE flip rate (the parity payoff: mover-POV baseline 54%; success = order-
+of-magnitude drop), fut2 lift at even lag. Dynamics flip_recall exists in evaluate() but
+is not in this run's heartbeat; applies to future runs.
+
+**4. TRUNK-REMOVAL DESIGN (Kaveh: "maybe best to get rid of the trunk transformer and
+just do quantized attention on the GNN base directly") — PROPOSAL, not built.**
+The probe negative is the argument FOR it: placed above the bottleneck, feeding a readout
+that prunes 92% of its output, the quantized attention has no pressure to be relational —
+its questions are decoration. Proposed QGT (new module beside GraphConceptField, incumbent
+untouched):
+
+    GNN base (relation message passing: att/src/dst/mut/vac/dsc)   KEPT — chess adjacency
+    dense nn.MultiheadAttention trunk layers                        DELETED
+    per-square LFQ immediately after the GNN base                   level-1 bits, EARLY
+    2–3 stacked QuantizedAttention layers over concept tokens       levels 2..k, all bits
+    linear readout over the UNION of levels (+ turn bias)           WDL + per-move term
+    rolling: predict level-1' from (level-1, move codes);           higher levels are
+             recompute levels 2+ (cheap: no trunk below them)       DERIVED, not rolled
+
+The load-bearing property: quantized attention becomes the ONLY route for information to
+flow between squares above the base, so if its questions do not carry real relations, WDL
+fails — faithfulness by architectural necessity, not by hope, with no concept dictionary
+(portability preserved; python-chess is the VALIDATOR only). Acceptance tests, pre-
+registered: probe_question_alignment must show (head,question) pairs >2x density at >10%
+usage and beat the shuffled control; null-move flip low (White-POV); churn control; regret/
+balanced vs the qat7 incumbent on the same holdout. Full retrain, no warm-start. AWAITING
+KAVEH'S CALL.
+
+---
