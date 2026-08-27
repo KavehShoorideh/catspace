@@ -429,8 +429,18 @@ def main():
                 #   squares / pieces  L2 over their bits   (pieces gated alive-at-both,
                 #                                           captures being exogenous)
                 #   edge histogram    TOTAL VARIATION      (a simplex cannot "flip")
+                # BOTH STATES FROM THE ONLINE ENCODER. t2 comes from the EMA encoder,
+                # which is right for the PREDICTION loss (a lagged target prevents the
+                # collapse-to-constant solution) and WRONG here: comparing the current
+                # encoder at s against a ~1000-step-stale one at s+2 measures encoder
+                # DRIFT, not concept change. Proven, not guessed -- optimising the penalty
+                # alone for 6 steps:
+                #     online vs online   penalty 2.71 -> 1.12   groups moved 50.1 -> 37.7
+                #     online vs EMA      penalty 2.71 -> 3.39   groups moved 50.1 -> 72.5
+                # The EMA form pushes churn UP, which is exactly what qat5 did (46.4 groups
+                # against qat4's 21.9 with no such term at all).
                 n = len(z0)
-                t2d = t2.detach()
+                t2d = encode_rows(R2)[0]
                 sq0 = z0[:, 96:BINARY_END].reshape(n, 64, field.sq_width)
                 sq1 = t2d[:, 96:BINARY_END].reshape(n, 64, field.sq_width)
                 d_sq = ((sq0 - sq1) ** 2).sum(-1).clamp(min=1e-8).sqrt()      # (n,64)
