@@ -92,6 +92,7 @@ def main():
     from catspace.research.tools.training_infra.future_concepts_head import (
         FuturePredictor, evaluate as future_eval)
     from catspace.research.tools.training_infra.pruning import ConceptPruner
+    from catspace.research.tools.training_infra.qat_model import QATReadout
     from catspace.research.tools.npz_io import load_npz
     from catspace.research.components.encoder.approaches.reach_probability.experiments \
         .graph_concept_field import GraphConceptField
@@ -191,71 +192,12 @@ def main():
     D_STATE = field.d_state
     N_TOK, D_TOK = 64, field.sq_width          # per-square concept tokens for attention
 
-    class QAT(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.field = field
-            self.arm = args.arm
-            d_read = D_STATE
-            if args.arm in ("qat", "soft"):
-                self.attn = QuantizedAttention(
-                    D_TOK, n_q=args.n_q, n_head=args.attn_heads, top_k=args.top_k,
-                    out_bits=args.out_bits)
-                if args.arm == "soft":
-                    # capacity ceiling: same shape, no discrete question, no top-k, no
-                    # output quantisation. The gap qat-vs-soft IS the cost of the
-                    # constraints, measured rather than assumed.
-                    self.soft = nn.MultiheadAttention(D_TOK, args.attn_heads,
-                                                      batch_first=True)
-                    self.soft_out = nn.Linear(D_TOK, args.out_bits)
-                d_read = D_STATE + N_TOK * args.out_bits
-            # MOVE CONCEPTS as bits. The trunk's mv_vq is 64 codes over 32-d, which is
-            # far too coarse to separate ~33 distinct children -- moves sharing a code
-            # would receive identical scores and cap ranking accuracy. So the move token
-            # gets its own binary concept space, which also keeps the standing rule that
-            # everything the readout sees is a bit.
-            from vector_quantize_pytorch import LFQ
-            self.mv_bits = LFQ(dim=args.mv_bits, codebook_size=2,
-                               num_codebooks=args.mv_bits)
-            self.mv_proj = nn.Linear(field.mv_vq_proj.in_features, args.mv_bits)
-            self.d_pos, self.d_mv = d_read, args.mv_bits
-            d_read = d_read + args.mv_bits
-            self.readout = nn.Linear(d_read, 3)
-            self.d_read = d_read
-        def level2(self, zq):
-            """(B, D_STATE) -> (B, 64*out_bits) relational bits, or None for arm l1."""
-            if self.arm == "level1":
-                return None, {}
-            b0 = field.g_heads * field.code_width
-            tok = zq[:, b0:b0 + N_TOK * D_TOK].reshape(-1, N_TOK, D_TOK)
-            if self.arm == "soft":
-                h, _ = self.soft(tok, tok, tok)
-                return torch.tanh(self.soft_out(h)).reshape(len(zq), -1), {}
-            bits, aux = self.attn(tok)
-            return bits.reshape(len(zq), -1), aux
-        def forward(self, zq, h_mv):
-            """-> (B, MV_CAP, 3) a WDL logit for EVERY child move.
-
-            The readout is linear, so the concatenated form factorises exactly:
-
-                logit[b,m] = W_pos . z_pos[b] + bias   +   W_mv . z_mv[b,m]
-                             '----- the position -----'     '-- THIS move's delta --'
-
-            which is dV/dmove as a first-class quantity -- the position contributes a
-            baseline shared by all siblings, and the ranking among children is carried
-            entirely by the move term. It also avoids materialising a (B, MV_CAP, 3072)
-            tensor just to contract it back down to 3.
-            """
-            l2, aux = self.level2(zq)
-            z = zq if l2 is None else torch.cat([zq, l2], -1)
-            mvb, _, vq2 = self.mv_bits(self.mv_proj(h_mv))       # (B, MV_CAP, mv_bits)
-            W = self.readout.weight
-            pos = F.linear(z, W[:, :self.d_pos], self.readout.bias)     # (B,3)
-            mov = F.linear(mvb, W[:, self.d_pos:])                      # (B,MV_CAP,3)
-            aux = dict(aux); aux["vq_loss"] = aux.get("vq_loss", 0.0) + vq2
-            return pos[:, None, :] + mov, z, aux
-
-    model = QAT().to(dev)
+    # architecture lives in tools/training_infra/qat_model.py so the planner, the
+    # arena and any probe can build the same thing; it used to be a closure in here and
+    # nothing downstream could construct it.
+    model = QATReadout(field, arm=args.arm, n_q=args.n_q, attn_heads=args.attn_heads,
+                       top_k=args.top_k, out_bits=args.out_bits, mv_bits=args.mv_bits,
+                       n_tok=N_TOK).to(dev)
     fut = FuturePredictor(field, D_STATE, args.mv_bits, plies=(1, 2),
                           ema_decay=args.ema_decay, hidden=args.future_hidden).to(dev)
     opt = torch.optim.Adam(list(model.parameters()) + list(fut.heads.parameters()),

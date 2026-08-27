@@ -18412,3 +18412,59 @@ Answer: obvious ones. qat2 captures only 36% of the available regret reduction, 
 Top-1 is retired; regret is the headline.
 
 ---
+
+## 2026-08-26 19:50 — What actually made the Koopman 6-ply rolling work (Kaveh asked; the record corrects the recollection)
+
+Kaveh: "previously with the Koopman operator we were able to get six ply and up to ten ply
+rolling of the future in encoder space. Check the journal and see what we did that made
+that work. My hypothesis is the proper loss on the rolled-forward prediction."
+
+**THE RECORD (gko1b/gko1c, 2026-08-21). The operator beat COPYING by about +0.02 R2.**
+
+    horizon      operator     identity (copy)
+    1 ply          0.927          0.914
+    3 ply          0.884          0.861
+    6 ply          0.785          0.764
+
+and later, once the stack re-cohered: op 0.952/0.932/0.886 vs identity ~0.95/0.93/0.89.
+
+At 6 plies +0.021 R2 over identity is roughly a 9% LIFT in the normalized terms we use
+now. Real, but small, and the journal said so at the time in its own words: "identity
+becomes so strong a baseline that all arms pack together -- the discriminating verdict
+metrics are delta-space accuracy and the direct-head gap", and "H1 is a live, close fight."
+
+**So we did NOT previously have strong multi-ply rolling.** A raw R2 of 0.886 at 6 plies
+looks excellent until you notice identity scores 0.89. That is the SAME result as today's
+fut2 lift of ~0.00, reported on a different scale. Concept states are slow; copying is
+strong; raw R2 hides it and lift does not. Recording this so the number is not re-quoted
+as a success.
+
+**WHAT WAS GENUINELY LOAD-BEARING, and Kaveh's loss hypothesis is right:**
+  1. SPECTRAL RADIUS CONTROL. gko1b blew up when rho crept 1.001 -> 1.041, "crossing the
+     6-product amplification threshold -- runaway, not activation shock". Composing an
+     operator six times amplifies any eigenvalue above 1 exponentially. Fix recorded as
+     load-bearing: **clip 1.0 + w_spec 0.2**; the linear ramp was "belt".
+  2. ROLLOUTS NEVER RE-LIFT -- compose in latent space, never re-encode mid-rollout.
+  3. Trained on REAL 6-ply CHAINS from games (2.096M transitions, 91.5% of rows carrying
+     full 6-chains), not on synthesised pairs.
+
+**AND A DESIGN FLAW IN THE CURRENT SETUP, mine.** qat_train's 2-ply target pushes a
+UNIFORMLY RANDOM opponent reply (`rep[rng.integers(len(rep))]`, line 305). The head is
+conditioned on ONE move but must predict a target that depends on TWO, so a large part of
+that target is irreducible noise by construction. This contradicts Kaveh's own framing --
+"predict what the eval is six plies down in this direction GIVEN THESE MOVES", plural --
+and plausibly explains the 2-ply failure entirely, independent of any architecture claim.
+
+**LITERATURE** (PlaNet/Hafner 2019 latent overshooting; Dreamer): "training the model only
+on one-step predictions until convergence does not generally coincide with the model that
+is best at multi-step predictions"; multi-step targets with STOPPED GRADIENTS on the target
+side are standard. We already stop-grad (EMA) and already train two horizons directly, so
+the conditioning is the gap, not the loss shape.
+
+**FIX ORDER, pre-registered before any run:**
+  1. Condition the k-ply head on the FULL MOVE SEQUENCE, making the target deterministic.
+  2. Only if composing to 6 ply: spectral clamp rho <= 1 plus the spectral penalty.
+  3. Keep never-re-lift.
+  4. Judge on LIFT over copy at even lags, never raw R2 -- that is what hid this before.
+
+---
