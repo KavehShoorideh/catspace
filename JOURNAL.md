@@ -18598,3 +18598,59 @@ then falls and planner persistence rises above 1.22x, the churn->persistence lin
 supported by a third point and by an intervention rather than a correlation.
 
 ---
+
+## 2026-08-27 00:30 — qat6: the slow penalty was buggy AND the weight collapses the concepts
+
+**The bug, confirmed by isolated test rather than inferred** ($CLAUDE_JOB_DIR/tmp/test_slow.py,
+optimising the penalty ALONE for 6 steps and watching the churn it controls):
+
+    online vs online   penalty 2.71 -> 1.12   groups moved 50.1 -> 37.7
+    online vs EMA      penalty 2.71 -> 3.39   groups moved 50.1 -> 72.5
+
+The form shipped in qat5 does the OPPOSITE of its purpose -- minimising it raises churn and
+raises its own value -- because it compared the ONLINE encoder at s against the ~1000-step
+stale EMA encoder at s+2, measuring encoder DRIFT rather than concept change. Fixed to use
+the online encoder on both sides.
+
+**BUT THE FIX ALONE IS NOT ENOUGH, AND THE WEIGHT SWEEP MISLED ME.** A 120-step sweep said
+w=3.0 was optimal on every metric (churn 56->24.6, regret 0.0876, balanced 0.464 -- all
+best). At 8000 steps it COLLAPSES the representation. Matched control, fixed 96 positions:
+
+    run                                  groups moved     bits changed
+    qat4 (no slow penalty)               21.9 / 87           17.2%
+    qat5 (penalty, sign bug, w=0.1)      46.4 / 87           14.3%
+    qat6 (penalty FIXED, w=3.0)           1.2 / 87            0.1%
+
+**0.1% of bits change over two plies. The concepts are FROZEN** -- the degenerate
+collapse-to-constant solution, not slow concepts.
+
+**RETRACTED, and it was in a code comment and asserted repeatedly: "the trivial solution --
+freeze every concept -- is priced out by the WDL and regret losses."** FALSE. At w=3.0 the
+penalty overwhelms them outright.
+
+**WHY THE TASK METRICS DID NOT CRATER TO CHANCE:** the MOVE concepts are not covered by the
+penalty. Those 32 bits are unregularised, so they carry the ranking alone. qat6 is a frozen
+POSITION representation bolted to a working MOVE representation -- which is exactly why
+regret (a move-level metric) degraded far less than balanced accuracy (a position-level
+one): holdout regret 0.1722 vs qat4's 0.1212, but balanced 0.531 vs 0.644 with draw recall
+0.03 dead across the last six evals.
+
+**METHOD ERROR WORTH MORE THAN THE PARAMETER ERROR:** a 120-step sweep cannot see a collapse
+that takes thousands of steps to develop. Any future regularisation-weight sweep has to run
+long enough to reach the fine-tune phase, or it will recommend the setting that destroys the
+model. This is the same class as wait_one_checkpoint, one level up: wait one PHASE.
+
+**WHERE THE USABLE WEIGHT IS: UNKNOWN.** w=0.1 too weak (and confounded by the sign bug),
+w=3.0 collapses. The bracket is open and needs a long-run probe, not a short sweep.
+
+**STATE OF "CONCEPTS THAT MAKE SENSE" (Kaveh's redirect), three defects ranked:**
+  1. PARITY, untouched and the largest. A NULL MOVE -- nothing moves, only the turn changes
+     -- flips 54% of concept bits. Nothing that inverts wholesale on a turn change describes
+     a stable property of the board.
+  2. CHURN. Best honest number is qat4's 21.9/87 with no regulariser at all; the regulariser
+     either backfires (buggy form) or freezes (w=3.0).
+  3. LEVEL-2 RETENTION. Pruning keeps 7.8% of the quantized-attention output in every run --
+     the readout barely uses it, as arXiv 2407.19532 predicts for discretisation without
+     enforced semantics.
+
+---
