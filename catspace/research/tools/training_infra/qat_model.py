@@ -120,7 +120,15 @@ class QATReadout(nn.Module):
             # observed in qat7: regret loss flat at ~0.25 for 1000 steps, top-1 at the
             # slot-0 baseline, while balanced accuracy learned normally off the pos term.
             pos = pos + self.turn[stm]
-            mov = mov * (stm.to(mov.dtype) * 2 - 1)[:, None, None]
+            # The color swap acts on (W,D,L) as the PERMUTATION W<->L with D fixed --
+            # NOT as negation. Negating all three columns (the previous fix) coincides on
+            # the W-L ranking axis, which is why ranking briefly learned, but it forces
+            # the D column to be ANTISYMMETRIC under side-to-move -- while a drawish move
+            # is drawish for BOTH sides. That unsatisfiable constraint destabilised the
+            # whole readout in qat7b/qat7c (draw recall 0.01 -> 0.57 -> 0.01, WDL loss
+            # rising, ranking collapsing with it).
+            mov = torch.where((stm == 0)[:, None, None],
+                              mov[:, :, [2, 1, 0]], mov)
         aux = dict(aux)
         aux["vq_loss"] = aux.get("vq_loss", 0.0) + vq2
         return pos[:, None, :] + mov, z, aux

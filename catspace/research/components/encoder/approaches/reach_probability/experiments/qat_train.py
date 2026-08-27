@@ -736,17 +736,20 @@ def main():
         print(f"  U10 PASS 2-ply head reads {w2} = state + BOTH move codes; "
               f"reply columns in range (max {int(c2_.max())})")
 
-        # U11: with the White-POV flip, logits at stm=1 and stm=0 must SUM to a
-        # move-independent quantity (2*pos + both turn biases): the move contribution is
-        # exactly antisymmetric. A wrong sign or a missed branch breaks this.
+        # U11: the White-POV move term must transform by the COLOR-SWAP PERMUTATION
+        # (W<->L, D fixed), not negation. Two exact consequences, both move-independent:
+        # the D column of (logits at stm=1) - (logits at stm=0), and the cross term
+        # m1[...,W] - m0[...,L].
         if args.pov == "white":
             with torch.no_grad():
                 m1 = model(zq, hmv_u, stm=torch.ones(len(zq), dtype=torch.long, device=dev))[0]
                 m0 = model(zq, hmv_u, stm=torch.zeros(len(zq), dtype=torch.long, device=dev))[0]
-                spread = float((m1 + m0).std(dim=1).max())
-            assert spread < 1e-5, f"move term not antisymmetric under stm: spread {spread}"
-            print(f"  U11 PASS move term antisymmetric under side-to-move "
-                  f"(max spread {spread:.1e}); mover-goodness is ONE direction again")
+                sD = float((m1[..., 1] - m0[..., 1]).std(dim=1).max())
+                sX = float((m1[..., 0] - m0[..., 2]).std(dim=1).max())
+            assert sD < 1e-5, f"D column not symmetric under side-to-move: {sD}"
+            assert sX < 1e-5, f"W/L columns not swapped under side-to-move: {sX}"
+            print(f"  U11 PASS move term transforms by the color-swap PERMUTATION "
+                  f"(D-symmetry {sD:.1e}, W<->L swap {sX:.1e})")
 
         # U12: the future loss must be ISOLATED from the value move codes -- reaching
         # them is the exact capacity war that killed qat7b. Proven by autograd, not
