@@ -103,9 +103,15 @@ class QATReadout(nn.Module):
         mvb, _, vq2 = self.mv_bits(self.mv_proj(h_mv))
         W = self.readout.weight
         pos = F.linear(z, W[:, :self.d_pos], self.readout.bias)
-        if stm is not None:
-            pos = pos + self.turn[stm]
         mov = F.linear(mvb, W[:, self.d_pos:])
+        if stm is not None:
+            # WHITE-POV: move bits mean "good for the MOVER" universally; this sign maps
+            # that into White's frame. Without it, white and black rows push W_mv in
+            # OPPOSITE directions for the same move geometry and the gradients cancel --
+            # observed in qat7: regret loss flat at ~0.25 for 1000 steps, top-1 at the
+            # slot-0 baseline, while balanced accuracy learned normally off the pos term.
+            pos = pos + self.turn[stm]
+            mov = mov * (stm.to(mov.dtype) * 2 - 1)[:, None, None]
         aux = dict(aux)
         aux["vq_loss"] = aux.get("vq_loss", 0.0) + vq2
         return pos[:, None, :] + mov, z, aux

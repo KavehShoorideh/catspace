@@ -358,7 +358,8 @@ def main():
         model.train(); field.train()
         idx = torch.from_numpy(rng.choice(tr_idx, args.batch, replace=False))
         zq, h_mv, _ = encode(idx)
-        stm_b = torch.from_numpy(STM[idx.numpy()].astype(np.int64)).to(dev)
+        stm_b = (torch.from_numpy(STM[idx.numpy()].astype(np.int64)).to(dev)
+                 if args.pov == "white" else None)
         logit, _, aux = model(zq, h_mv, stm=stm_b)           # (B, MV_CAP, 3)
         ii = idx.numpy()
         vld = torch.from_numpy(CV_[ii]).to(dev)              # only real, finite children
@@ -522,7 +523,8 @@ def main():
                     sl = te_idx[a:a + 64]
                     zz, hm, _ = encode(torch.from_numpy(sl))
                     lg = model(zz, hm,
-                               stm=torch.from_numpy(STM[sl].astype(np.int64)).to(dev))[0]
+                               stm=(torch.from_numpy(STM[sl].astype(np.int64)).to(dev)
+                                    if args.pov == "white" else None))[0]
                     v = CV_[sl]
                     preds.append(lg.argmax(-1).cpu().numpy()[v])
                     ys.append(CY_[sl][v])
@@ -731,6 +733,18 @@ def main():
         assert c2_.max() < MV_CAP, "reply column exceeds the move-token cap"
         print(f"  U10 PASS 2-ply head reads {w2} = state + BOTH move codes; "
               f"reply columns in range (max {int(c2_.max())})")
+
+        # U11: with the White-POV flip, logits at stm=1 and stm=0 must SUM to a
+        # move-independent quantity (2*pos + both turn biases): the move contribution is
+        # exactly antisymmetric. A wrong sign or a missed branch breaks this.
+        if args.pov == "white":
+            with torch.no_grad():
+                m1 = model(zq, hmv_u, stm=torch.ones(len(zq), dtype=torch.long, device=dev))[0]
+                m0 = model(zq, hmv_u, stm=torch.zeros(len(zq), dtype=torch.long, device=dev))[0]
+                spread = float((m1 + m0).std(dim=1).max())
+            assert spread < 1e-5, f"move term not antisymmetric under stm: spread {spread}"
+            print(f"  U11 PASS move term antisymmetric under side-to-move "
+                  f"(max spread {spread:.1e}); mover-goodness is ONE direction again")
 
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),
