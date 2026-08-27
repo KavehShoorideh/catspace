@@ -63,6 +63,11 @@ def main():
     ap.add_argument("--top-k", type=int, default=4, help="how many tokens may answer")
     ap.add_argument("--out-bits", type=int, default=8, help="level-2 bits per token")
     ap.add_argument("--mv-bits", type=int, default=32, help="binary concepts per MOVE")
+    ap.add_argument("--pov", choices=("mover", "white"), default="mover",
+                    help="'white': labels converted to White-POV so concepts describe the "
+                         "BOARD, not the mover's view (a null move flips 54%% of mover-POV "
+                         "bits -- tools/diag_color_structure.py). Ranking stays "
+                         "mover-relative via a sign; the readout gets a turn bias.")
     ap.add_argument("--l2-scope", choices=("all", "squares"), default="all",
                     help="which concept families level-2 attention spans. 'all' = board + "
                          "squares + pieces + edge histogram (129 tokens). 'squares' is the "
@@ -156,6 +161,17 @@ def main():
     CW_ = np.concatenate(store["_cw"]).astype(np.float32)     # (N, MV_CAP, 3) child WDL
     CV_ = np.concatenate(store["_cv"])                        # (N, MV_CAP) which are real
     CY_ = CW_.argmax(-1)                                      # child class
+    STM = np.array([str(f).split()[1] == "w" for f in np.concatenate(store["_fen"])])
+    SGN = np.ones(len(STM), np.float32)
+    if args.pov == "white":
+        # WHITE-POV: flip W<->L wherever Black is to move. Inputs are absolute-color and
+        # labels were the only mover-POV pressure (verified 2026-08-27), so this is the
+        # entire conversion. Ranking stays MOVER-relative: score = SGN * (W - L), and
+        # SGN*(W'-L') on the flipped triple equals the mover's (W-L) EXACTLY (gate U9).
+        CY_mover = CY_.copy()
+        CW_[~STM] = CW_[~STM][..., ::-1]
+        CY_ = CW_.argmax(-1)
+        SGN = np.where(STM, 1.0, -1.0).astype(np.float32)
     TGT = D["tgt"].numpy()                                    # (N, MV_CAP) SF move score
     ROW = np.concatenate(store["_row"])
     SHARD = np.concatenate(store["_shard"])
@@ -214,6 +230,12 @@ def main():
                        n_tok=N_TOK, scope=args.l2_scope).to(dev)
     fut = FuturePredictor(field, D_STATE, args.mv_bits, plies=(1, 2),
                           ema_decay=args.ema_decay, hidden=args.future_hidden).to(dev)
+    # The 2-ply target depends on TWO moves; conditioning it on one made part of the
+    # target irreducible noise (the 2026-08-26 finding). The 2-ply head now takes both
+    # move codes. Built BEFORE the optimizer so its parameters are optimised.
+    from catspace.research.tools.training_infra.future_concepts_head import FutureConceptHead
+    fut.heads["2"] = FutureConceptHead(D_STATE, 2 * args.mv_bits, 2,
+                                       hidden=args.future_hidden).to(dev)
     opt = torch.optim.Adam(list(model.parameters()) + list(fut.heads.parameters()),
                            lr=args.lr)
     pruner = ConceptPruner(model.readout.weight, args.l1_target, args.steps,
@@ -304,7 +326,7 @@ def main():
         baseline in the lift metric is what says whether it learned anything.
         """
         pick = rng.choice(tr_idx, n * 2, replace=False)
-        par, c1, c2, cols, bands = [], [], [], [], []
+        par, c1, c2, cols, cols2, bands = [], [], [], [], [], []
         for g in pick:
             try:
                 b0 = chess.Board(str(FENS[g]))
@@ -316,25 +338,28 @@ def main():
             tv = np.where(np.isfinite(TGT[g][:len(legal)]), TGT[g][:len(legal)], -np.inf)
             j = int(tv.argmax()) if np.isfinite(tv).any() else 0
             b1 = b0.copy(); b1.push(legal[j])
-            rep = list(b1.legal_moves)
+            rep = list(b1.legal_moves)[:MV_CAP]          # move tokens exist only to the cap
             if not rep:
                 continue
-            b2 = b1.copy(); b2.push(rep[int(rng.integers(len(rep)))])
+            j2 = int(rng.integers(len(rep)))
+            b2 = b1.copy(); b2.push(rep[j2])
             par.append(b0); c1.append(b1); c2.append(b2)
-            cols.append(j); bands.append(float(D["band"][g]))
+            cols.append(j); cols2.append(j2); bands.append(float(D["band"][g]))
             if len(par) >= n:
                 break
         if not par:
             return None
         bd = torch.tensor(bands)
         return (build_rows(par, bd), build_rows(c1, bd), build_rows(c2, bd),
-                torch.tensor(cols, dtype=torch.long))
+                torch.tensor(cols, dtype=torch.long),
+                torch.tensor(cols2, dtype=torch.long))
 
     def step_fn(_m, step):
         model.train(); field.train()
         idx = torch.from_numpy(rng.choice(tr_idx, args.batch, replace=False))
         zq, h_mv, _ = encode(idx)
-        logit, _, aux = model(zq, h_mv)                      # (B, MV_CAP, 3)
+        stm_b = torch.from_numpy(STM[idx.numpy()].astype(np.int64)).to(dev)
+        logit, _, aux = model(zq, h_mv, stm=stm_b)           # (B, MV_CAP, 3)
         ii = idx.numpy()
         vld = torch.from_numpy(CV_[ii]).to(dev)              # only real, finite children
         # Invalid move slots hold NaN. Masking only the WEIGHT is not enough, because
@@ -372,7 +397,10 @@ def main():
                 # slots, where the softmax mass is already ~0, so 0*inf never appears
                 reg = torch.where(torch.isfinite(wp), bestwp - wp,
                                   torch.zeros_like(wp)).clamp(min=0.0)
-                sc = (logit[..., 0] - logit[..., 2])[good].masked_fill(~vld[good], -1e9)
+                # mover-relative score under any POV: SGN flips the axis for Black
+                sg = torch.from_numpy(SGN[ii]).to(dev)[good, None]
+                sc = (sg * (logit[..., 0] - logit[..., 2])[good]).masked_fill(
+                    ~vld[good], -1e9)
                 l_rank = (torch.softmax(sc, -1) * reg).sum(-1).mean()
                 assert torch.isfinite(l_rank), "regret loss is not finite"
                 loss = loss + args.w_rank * l_rank
@@ -381,15 +409,18 @@ def main():
         l_slow = float("nan"); l_capt = float("nan")
         fp = future_batch(args.future_batch) if args.w_future > 0 else None
         if fp is not None:
-            R0, R1, R2, col = fp
+            R0, R1, R2, col, col2 = fp
             z0, h0, _ = encode_rows(R0)
             with torch.no_grad():
-                t1, _, _ = encode_rows(R1, enc=fut.ema)
+                t1, h1m, _ = encode_rows(R1, enc=fut.ema)
                 t2, _, _ = encode_rows(R2, enc=fut.ema)
-            col = col.to(dev)
+            col, col2 = col.to(dev), col2.to(dev)
+            ar = torch.arange(len(col), device=dev)
             mvb = model.mv_bits(model.mv_proj(h0))[0]
-            played = mvb[torch.arange(len(col), device=dev), col]
-            mvc = {"1": played, "2": played}   # both plies conditioned on the move MADE
+            played = mvb[ar, col]
+            with torch.no_grad():               # reply code: conditioning input only
+                mv2 = model.mv_bits(model.mv_proj(h1m))[0][ar, col2]
+            mvc = {"1": played, "2": torch.cat([played, mv2], -1)}
             l_fut, fstats = fut.loss(z0, mvc, {"1": t1.detach(), "2": t2.detach()})
             loss = loss + args.w_future * l_fut
 
@@ -490,7 +521,8 @@ def main():
                 for a in range(0, len(te_idx), 64):
                     sl = te_idx[a:a + 64]
                     zz, hm, _ = encode(torch.from_numpy(sl))
-                    lg = model(zz, hm)[0]
+                    lg = model(zz, hm,
+                               stm=torch.from_numpy(STM[sl].astype(np.int64)).to(dev))[0]
                     v = CV_[sl]
                     preds.append(lg.argmax(-1).cpu().numpy()[v])
                     ys.append(CY_[sl][v])
@@ -500,7 +532,7 @@ def main():
                     # ranking on it rewards a constant. tgt's top is unique in 91% of
                     # positions and those are the only ones scored.
                     p = torch.softmax(lg, -1).cpu().numpy()
-                    sc = np.where(v, p[..., 0] - p[..., 2], -np.inf)
+                    sc = np.where(v, SGN[sl][:, None] * (p[..., 0] - p[..., 2]), -np.inf)
                     tv = np.where(np.isfinite(TGT[sl]) & v, TGT[sl], -np.inf)
                     uniq = (tv == tv.max(1, keepdims=True)).sum(1) == 1
                     ok = v.any(1) & uniq
@@ -624,7 +656,7 @@ def main():
         if args.w_future > 0:
             fb = future_batch(4)
             assert fb is not None, "future batch is empty -- the head would train on nothing"
-            R0, R1, R2, cl = fb
+            R0, R1, R2, cl, _cl2 = fb
             zp, _, _ = encode_rows(R0)
             zc, _, _ = encode_rows(R1)
             assert not torch.equal(R0["sq"], R1["sq"]), "built child equals its parent"
@@ -671,6 +703,34 @@ def main():
                                         f"{to_dead:.3f} of {total:.1f} total mass")
                 print(f"  U8 PASS {dead} captured slots masked; attention mass on a dead "
                       f"piece = {to_dead:.2e} of {total:.0f}")
+
+        # U9: with pov=white the ranking algebra must be EXACT: SGN * (W'-L') on the
+        # flipped triple equals the mover's (W-L). If it does not, regret is ranking the
+        # wrong player's preferences on every Black-to-move row.
+        if args.pov == "white":
+            raw = np.concatenate(store["_cw"]).astype(np.float32)     # mover-POV triple
+            m9 = CV_ & np.isfinite(raw).all(-1)
+            lhs = (SGN[:, None] * (CW_[..., 0] - CW_[..., 2]))[m9]
+            rhs = (raw[..., 0] - raw[..., 2])[m9]
+            err9 = float(np.abs(lhs - rhs).max())
+            assert err9 < 1e-6, f"POV sign algebra broken: max err {err9}"
+            assert int((~STM).sum()) > 0, "no Black-to-move rows -- U9 is vacuous"
+            flipped = int((CY_[~STM] != CY_mover[~STM]).sum())
+            assert flipped > 0, "no Black-to-move label changed under White-POV"
+            print(f"  U9 PASS White-POV algebra exact (err {err9:.1e}); "
+                  f"{flipped:,} Black-row child labels flipped; turn bias in readout")
+
+        # U10: the 2-ply head must actually condition on BOTH moves.
+        w2 = fut.heads["2"].net[0].in_features if hasattr(fut.heads["2"].net, "__getitem__") \
+            else fut.heads["2"].net.in_features
+        assert w2 == D_STATE + 2 * args.mv_bits, \
+            f"2-ply head reads {w2}, expected {D_STATE + 2 * args.mv_bits}"
+        fb = future_batch(6)
+        assert fb is not None and len(fb) == 5, "future_batch must return the reply column"
+        _, _, _, c1_, c2_ = fb
+        assert c2_.max() < MV_CAP, "reply column exceeds the move-token cap"
+        print(f"  U10 PASS 2-ply head reads {w2} = state + BOTH move codes; "
+              f"reply columns in range (max {int(c2_.max())})")
 
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),

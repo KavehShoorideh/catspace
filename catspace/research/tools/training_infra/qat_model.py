@@ -65,6 +65,9 @@ class QATReadout(nn.Module):
         self.d_pos, self.d_mv = d_read, mv_bits
         self.readout = nn.Linear(d_read + mv_bits, 3)
         self.d_read = d_read + mv_bits
+        # WHITE-POV support: whose turn it is enters as an explicit BIAS, not a concept,
+        # so the concepts are free to describe the board alone. Outside the pruner.
+        self.turn = nn.Parameter(torch.zeros(2, 3))
 
     def tokens(self, zq):
         """(B, d_state) -> (B, n_tok, d_tok) concept tokens, and a validity mask.
@@ -93,13 +96,15 @@ class QATReadout(nn.Module):
         bits, aux = self.attn(tok, tok_mask=m)
         return bits.reshape(len(zq), -1), aux
 
-    def forward(self, zq, h_mv):
+    def forward(self, zq, h_mv, stm=None):
         """-> (B, MV_CAP, 3): a WDL logit for every child move."""
         l2, aux = self.level2(zq)
         z = zq if l2 is None else torch.cat([zq, l2], -1)
         mvb, _, vq2 = self.mv_bits(self.mv_proj(h_mv))
         W = self.readout.weight
         pos = F.linear(z, W[:, :self.d_pos], self.readout.bias)
+        if stm is not None:
+            pos = pos + self.turn[stm]
         mov = F.linear(mvb, W[:, self.d_pos:])
         aux = dict(aux)
         aux["vq_loss"] = aux.get("vq_loss", 0.0) + vq2
