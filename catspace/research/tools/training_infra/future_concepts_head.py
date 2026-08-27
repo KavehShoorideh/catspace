@@ -131,17 +131,48 @@ class FuturePredictor(nn.Module):
 
 @torch.no_grad()
 def evaluate(pred: FuturePredictor, z, mv: dict, target: dict) -> dict:
-    """Accuracy AND lift over copy-the-input, per ply. Never quote accuracy alone."""
+    """Accuracy, lift over copy, AND delta-space precision/recall.
+
+    Kaveh 2026-08-26: "it's mostly okay that most concepts are copied... for concepts to be
+    a useful long-term planning tool they MUST change slowly. The whole hypothesis was that
+    the operator should be identity plus some deviation."
+
+    Right -- so a high copy baseline is the DESIGN GOAL, not a failure, and whole-state
+    accuracy is the wrong lens: it mixes bits that should not change (copying is correct
+    there and deserves no credit) with the few that should (where the question lives).
+    Measuring the DEVIATION directly:
+
+        flip_recall     of the bits that genuinely changed, how many did we predict changed
+        false_flip      of the bits that did NOT change, how many did we wrongly flip
+        flip_precision  of the bits we predicted changed, how many really did
+
+    A copier scores flip_recall 0.0 and false_flip 0.0 -- it is not punished for the bits it
+    correctly leaves alone, and gets no credit either. This is the "delta-space accuracy"
+    the gko1 journal pre-registered as the discriminating metric.
+    """
     out = {}
     for p, head in pred.heads.items():
         if p not in mv or p not in target:
             continue
-        tgt = (target[p] > 0).float()
-        acc = ((head(z, mv[p]) > 0).float() == tgt).float().mean()
-        cp = (((z > 0).float()) == tgt).float().mean()
-        out[f"ply{p}"] = {"acc": float(acc), "copy": float(cp),
-                          "lift": float((acc - cp) / (1 - cp).clamp(min=1e-6)),
-                          "bits_changed": float(1 - cp)}
+        z0 = (z > 0)
+        tgt_b = (target[p] > 0)
+        pred_b = (head(z, mv[p]) > 0)
+        tgt = tgt_b.float()
+        acc = (pred_b.float() == tgt).float().mean()
+        cp = (z0.float() == tgt).float().mean()
+        did_flip = (tgt_b != z0)                    # the deviation from identity
+        said_flip = (pred_b != z0)
+        nf = did_flip.sum().clamp(min=1)
+        ns = said_flip.sum().clamp(min=1)
+        out[f"ply{p}"] = {
+            "acc": float(acc), "copy": float(cp),
+            "lift": float((acc - cp) / (1 - cp).clamp(min=1e-6)),
+            "bits_changed": float(1 - cp),
+            "flip_recall": float((said_flip & did_flip).sum() / nf),
+            "flip_precision": float((said_flip & did_flip).sum() / ns),
+            "false_flip": float((said_flip & ~did_flip).sum() /
+                                (~did_flip).sum().clamp(min=1)),
+        }
     return out
 
 
@@ -167,6 +198,8 @@ def _test():
     ev = evaluate(fp_copy, z, {"1": mv["1"]}, {"1": tgt["1"]})["ply1"]
     assert ev["acc"] > 0.85, f"copier should score high RAW accuracy, got {ev['acc']}"
     assert abs(ev["lift"]) < 1e-5, f"copier must score ZERO lift, got {ev['lift']}"
+    assert ev["flip_recall"] == 0.0, "a copier predicts no flips, so recall must be 0"
+    assert ev["false_flip"] == 0.0, "a copier invents no flips, so false-flip must be 0"
 
     # 2. gradients reach both heads, and the loss is finite
     total, st = fp.loss(z, mv, tgt)
@@ -189,8 +222,8 @@ def _test():
         f"EMA is not lagging: moved {moved:.4f} of the encoder's {jump:.4f}"
     assert not fp.ema.weight.requires_grad, "EMA target is receiving gradient"
 
-    print(f"  copier: raw accuracy {ev['acc']:.3f} but lift {ev['lift']:+.3f} -- the "
-          f"metric refuses to reward predicting stasis")
+    print(f"  copier: raw accuracy {ev['acc']:.3f}, lift {ev['lift']:+.3f}, flip-recall "
+          f"{ev['flip_recall']:.3f} -- the metric refuses to reward predicting stasis")
     print(f"  1-ply target flips {100*(1-evaluate(fp,z,mv,tgt)['ply1']['copy']):.0f}% of "
           f"bits, 2-ply {100*(1-evaluate(fp,z,mv,tgt)['ply2']['copy']):.0f}%")
     print(f"  gradient reaches both per-ply heads; adding a 3-ply head is one dict entry")
