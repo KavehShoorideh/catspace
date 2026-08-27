@@ -18373,3 +18373,42 @@ cost ~0 and blunders cost a lot. Fully differentiable, no ranking machinery. Reg
 now printed every eval beside the two reference points (perfect-WDL 0.034, random 0.266).
 
 ---
+
+## 2026-08-26 18:20 — level1 arm: what quantized attention actually buys, measured in regret
+
+Kaveh asked for the arm that removes attention entirely ("does it help at all?"). Same
+trunk, seed, data, schedule, 8000 steps; readout reads 2560 dims (2528 level-1 + 32 move)
+instead of 3072.
+
+    step    level1 (no attention)      qat2 (quantized attention)
+    5000    bal 0.588  top1 0.116      bal 0.602  top1 0.136
+    6000    bal 0.624  top1 0.184      bal 0.628  top1 0.136
+    7000    bal 0.649  top1 0.167      bal 0.660  top1 0.138
+    8000    bal 0.641  top1 0.187      bal 0.653  top1 0.126
+
+Attention is ahead on balanced accuracy at every checkpoint by +0.014/+0.004/+0.011/+0.012
+(mean +0.010) for 512 extra readout dims, i.e. 20% more width. SINGLE SEED, and +0.010 is
+a close number, so per seed_variance_dwarfs_pair_ci this is an OBSERVATION, not a verdict.
+
+**BUT THE REGRET NUMBERS DISSOCIATE, and that is judgeable** (`--eval-only`, same
+373,778-label holdout):
+
+    random legal move             0.266
+    qat2  (quantized attention)   0.183
+    level1 (no attention)         0.136
+    perfect WDL ranker            0.034
+
+**The NO-ATTENTION arm has markedly LOWER regret while having LOWER balanced accuracy.**
+Attention helps classify the position and hurts the choice of move. That is a gross gap
+(35% of the qat2-to-perfect distance), not a close call.
+
+Together with level-2 being the least-retained family under pruning in BOTH runs (7.8% vs
+13.5% level-1 and 56-59% move), three independent signals now say the quantized attention
+is not earning its 512 dims for move selection.
+
+**AND THE HEADLINE FINDING: WE GIVE UP REAL WIN PROBABILITY, NOT NEAR-TIES.** Kaveh asked
+whether we are "failing a very obvious ranking, or... one and two are 0.0000001 apart".
+Answer: obvious ones. qat2 captures only 36% of the available regret reduction, level1 56%.
+Top-1 is retired; regret is the headline.
+
+---
