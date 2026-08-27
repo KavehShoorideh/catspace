@@ -63,6 +63,10 @@ def main():
     ap.add_argument("--top-k", type=int, default=4, help="how many tokens may answer")
     ap.add_argument("--out-bits", type=int, default=8, help="level-2 bits per token")
     ap.add_argument("--mv-bits", type=int, default=32, help="binary concepts per MOVE")
+    ap.add_argument("--l2-scope", choices=("all", "squares"), default="all",
+                    help="which concept families level-2 attention spans. 'all' = board + "
+                         "squares + pieces + edge histogram (129 tokens). 'squares' is the "
+                         "original 64-token version, kept only to score old checkpoints.")
     # readout
     ap.add_argument("--l1-target", type=int, default=400)
     ap.add_argument("--prune-every", type=int, default=50)
@@ -207,15 +211,18 @@ def main():
     # nothing downstream could construct it.
     model = QATReadout(field, arm=args.arm, n_q=args.n_q, attn_heads=args.attn_heads,
                        top_k=args.top_k, out_bits=args.out_bits, mv_bits=args.mv_bits,
-                       n_tok=N_TOK).to(dev)
+                       n_tok=N_TOK, scope=args.l2_scope).to(dev)
     fut = FuturePredictor(field, D_STATE, args.mv_bits, plies=(1, 2),
                           ema_decay=args.ema_decay, hidden=args.future_hidden).to(dev)
     opt = torch.optim.Adam(list(model.parameters()) + list(fut.heads.parameters()),
                            lr=args.lr)
     pruner = ConceptPruner(model.readout.weight, args.l1_target, args.steps,
                            interval=args.prune_every)
+    if args.arm != "level1":
+        print(f"[qat] level-2 spans {[t[0] for t in model.spans]} = {model.n_tok} tokens "
+              f"x {args.out_bits} bits", flush=True)
     print(f"[qat] arm={args.arm} | readout reads {model.d_read} dims -> pruned to "
-          f"{args.l1_target} | level-2 {'OFF (no attention)' if args.arm=='level1' else f'{N_TOK}x{args.out_bits} bits'}",
+          f"{args.l1_target} | level-2 {'OFF (no attention)' if args.arm=='level1' else f'{model.n_tok}x{args.out_bits} bits'}",
           flush=True)
 
     # class weights: the corpus is skewed, and an unweighted loss lets the head ignore
@@ -634,6 +641,26 @@ def main():
               f"vs {sn_s:.2f} spread ({sn_s/sn_c:.1f}x penalty for smearing); "
               f"sum-of-SQUARES {sq_c:.2f} vs {sq_s:.2f} -- indifferent, which is why "
               f"plain L2 cannot buy group sparsity")
+
+        # U8: a captured piece is an all-zero block, and attending to a piece that is
+        # not on the board is meaningless. The mask is claimed in tokens(); check it.
+        if args.arm == "qat":
+            _, m8 = model.tokens(zq)
+            npiece = [t for t in model.spans if t[0] == "piece"]
+            if npiece:
+                off = sum(t[3] for t in model.spans[:[t[0] for t in model.spans].index("piece")])
+                pm = m8[:, off:off + 32]                    # (B,32) alive per SAMPLE
+                dead = int((~pm).sum())
+                assert dead > 0, "no dead piece slots in this batch -- test is vacuous"
+                a8 = model.attn.last["attn"]                 # (B,H,T,T) after the forward
+                # per-sample: sample 0's mask does not describe sample 5's captures
+                to_dead = float((a8[:, :, :, off:off + 32] *
+                                 (~pm)[:, None, None, :].to(a8.dtype)).sum())
+                total = float(a8.sum())
+                assert to_dead < 1e-6, (f"attention answers with captured pieces: "
+                                        f"{to_dead:.3f} of {total:.1f} total mass")
+                print(f"  U8 PASS {dead} captured slots masked; attention mass on a dead "
+                      f"piece = {to_dead:.2e} of {total:.0f}")
 
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),

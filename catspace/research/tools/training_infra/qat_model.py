@@ -19,14 +19,38 @@ import torch.nn.functional as F
 
 class QATReadout(nn.Module):
     def __init__(self, field, arm="qat", n_q=16, attn_heads=4, top_k=4, out_bits=8,
-                 mv_bits=32, n_tok=64):
+                 mv_bits=32, n_tok=64, scope="all"):
         super().__init__()
         from vector_quantize_pytorch import LFQ
         from catspace.research.tools.training_infra.quantized_attention import (
             QuantizedAttention)
-        self.field, self.arm = field, arm
-        self.n_tok, self.d_tok = n_tok, field.sq_width
+        self.field, self.arm, self.scope = field, arm, scope
+        self.d_tok = field.sq_width
         self.out_bits = out_bits
+
+        # CONCEPT TOKEN LAYOUT. Kaveh 2026-08-26: "why only limit to one set of concepts?
+        # This should be on all concepts." It was reading only the 64 square tokens, so a
+        # question whose ANSWER is a piece slot ("who is attacking me?" -> "that knight")
+        # was not even representable. All four families are tokens now.
+        #
+        # They have different widths -- board 3 bits per head, squares 24, pieces 24, the
+        # edge histogram 128 -- so each family gets its own projection into a shared token
+        # width, plus a learned TYPE embedding so attention can tell a square token from a
+        # piece token after projection.
+        B0 = field.g_heads * field.code_width                 # board block ends
+        S0 = B0 + 64 * field.sq_width                          # squares end
+        P0 = field.d_state - field.edge_codes                  # pieces end / hist begins
+        self.spans = [("board",  0,  B0, field.g_heads, field.code_width),
+                      ("square", B0, S0, 64,            field.sq_width),
+                      ("piece",  S0, P0, 32,            max(1, (P0 - S0) // 32)),
+                      ("hist",   P0, field.d_state, 1,  field.edge_codes)]
+        if scope == "squares":
+            self.spans = [t for t in self.spans if t[0] == "square"]
+        self.n_tok = sum(t[3] for t in self.spans)
+        self.fam_proj = nn.ModuleList([nn.Linear(t[4], self.d_tok) for t in self.spans])
+        self.fam_emb = nn.Parameter(torch.zeros(len(self.spans), self.d_tok))
+        nn.init.normal_(self.fam_emb, std=0.02)
+
         d_read = field.d_state
         if arm in ("qat", "soft"):
             self.attn = QuantizedAttention(self.d_tok, n_q=n_q, n_head=attn_heads,
@@ -35,22 +59,38 @@ class QATReadout(nn.Module):
                 self.soft = nn.MultiheadAttention(self.d_tok, attn_heads,
                                                   batch_first=True)
                 self.soft_out = nn.Linear(self.d_tok, out_bits)
-            d_read = field.d_state + n_tok * out_bits
+            d_read = field.d_state + self.n_tok * out_bits
         self.mv_bits = LFQ(dim=mv_bits, codebook_size=2, num_codebooks=mv_bits)
         self.mv_proj = nn.Linear(field.mv_vq_proj.in_features, mv_bits)
         self.d_pos, self.d_mv = d_read, mv_bits
         self.readout = nn.Linear(d_read + mv_bits, 3)
         self.d_read = d_read + mv_bits
 
+    def tokens(self, zq):
+        """(B, d_state) -> (B, n_tok, d_tok) concept tokens, and a validity mask.
+
+        Captured pieces are all-zero blocks, and attending to a piece that is not on the
+        board is meaningless, so those tokens are MASKED OUT rather than embedded.
+        """
+        B = len(zq)
+        toks, mask = [], []
+        for i, (nm, a, b, cnt, w) in enumerate(self.spans):
+            blk = zq[:, a:b].reshape(B, cnt, w)
+            toks.append(self.fam_proj[i](blk) + self.fam_emb[i])
+            if nm == "piece":
+                mask.append(blk.abs().sum(-1) > 0)          # dead slots do not answer
+            else:
+                mask.append(torch.ones(B, cnt, dtype=torch.bool, device=zq.device))
+        return torch.cat(toks, 1), torch.cat(mask, 1)
+
     def level2(self, zq):
         if self.arm == "level1":
             return None, {}
-        b0 = self.field.g_heads * self.field.code_width
-        tok = zq[:, b0:b0 + self.n_tok * self.d_tok].reshape(-1, self.n_tok, self.d_tok)
+        tok, m = self.tokens(zq)
         if self.arm == "soft":
-            h, _ = self.soft(tok, tok, tok)
+            h, _ = self.soft(tok, tok, tok, key_padding_mask=~m)
             return torch.tanh(self.soft_out(h)).reshape(len(zq), -1), {}
-        bits, aux = self.attn(tok)
+        bits, aux = self.attn(tok, tok_mask=m)
         return bits.reshape(len(zq), -1), aux
 
     def forward(self, zq, h_mv):
