@@ -131,4 +131,11 @@ class QATReadout(nn.Module):
                               mov[:, :, [2, 1, 0]], mov)
         aux = dict(aux)
         aux["vq_loss"] = aux.get("vq_loss", 0.0) + vq2
+        # logit_ce: the CE path sees the move term as a CONSTANT. The regret softmax
+        # cancels the position term (constant across siblings), so regret trains ONLY the
+        # move bits -- and letting the CE also write into those same 32 bits made the two
+        # objectives fight over them under White-POV: ranking oscillated between learned
+        # and chance in qat7b/c/d while the position head stayed healthy. Gradient
+        # routing: CE -> position concepts, regret -> move bits, future -> dyn bits.
+        aux["logit_ce"] = pos[:, None, :] + mov.detach()
         return pos[:, None, :] + mov, z, aux

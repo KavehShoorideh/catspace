@@ -370,7 +370,7 @@ def main():
         tgt = torch.nan_to_num(torch.from_numpy(CW_[ii]).to(dev)) * vld[..., None]
         tgt = tgt / tgt.sum(-1, keepdim=True).clamp(min=1e-6)
         w = CW[torch.from_numpy(np.where(CV_[ii], CY_[ii], 0)).to(dev)] * vld.float()
-        ce = -(tgt * F.log_softmax(logit, -1)).sum(-1)
+        ce = -(tgt * F.log_softmax(aux["logit_ce"], -1)).sum(-1)
         l_wdl = (ce * w).sum() / w.sum().clamp(min=1e-6)
         assert torch.isfinite(l_wdl), "WDL loss is not finite"
         loss = l_wdl + (aux.get("vq_loss", 0.0) if aux else 0.0)
@@ -779,6 +779,22 @@ def main():
                     "future loss does not train its own dyn move codes"
                 print(f"  U12 PASS future loss isolated: value-code grad "
                       f"{'None' if g_val is None else 0.0}, dyn-code grad flows")
+
+        # U13: objective/parameter separation, proven by autograd. CE must not touch the
+        # value move codes; regret must be their ONLY trainer.
+        tgt13 = torch.softmax(torch.randn_like(logit), -1)
+        l_ce13 = -(tgt13 * F.log_softmax(aux["logit_ce"], -1)).sum(-1).mean()
+        g13 = torch.autograd.grad(l_ce13, model.mv_proj.weight, retain_graph=True,
+                                  allow_unused=True)[0]
+        assert g13 is None or float(g13.abs().sum()) == 0.0, \
+            "CE still trains the value move codes"
+        l_rk13 = torch.softmax((logit[..., 0] - logit[..., 2]), -1).mean()
+        g13b = torch.autograd.grad(l_rk13, model.mv_proj.weight, retain_graph=True,
+                                   allow_unused=True)[0]
+        assert g13b is not None and float(g13b.abs().sum()) > 0, \
+            "regret no longer trains the move codes"
+        print(f"  U13 PASS gradient routing: CE->position only "
+              f"(mv grad {'None' if g13 is None else 0.0}), regret->move bits")
 
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),

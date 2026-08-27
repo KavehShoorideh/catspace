@@ -18725,3 +18725,34 @@ balanced vs the qat7 incumbent on the same holdout. Full retrain, no warm-start.
 KAVEH'S CALL.
 
 ---
+
+## 2026-08-27 (Fable) — the White-POV ranking arc: three failed runs, three diagnoses, one structural finding
+
+qat7 (flat ranking from birth) -> sign-flip fix -> qat7b (learned then collapsed by 1000)
+-> dyn-code isolation, U12-proven -> qat7c (same collapse; capacity-war hypothesis
+DISCONFIRMED) -> permutation replaces negation (the color swap is W<->L with D fixed;
+negation forced the move term's D column antisymmetric, unsatisfiable since a drawish move
+is drawish for both sides) -> qat7d: position head HEALTHY at last (balanced rising, draws
+stable 0.19, no WDL divergence) but ranking still flaps between learned and chance
+(0.263 / 0.198 / 0.263 at 500/1000/1500).
+
+**THE STRUCTURAL FINDING that reframes the arc: the regret softmax cancels the position
+term** (constant across siblings), so the regret loss trains ONLY the 32 move bits — under
+any POV or sign convention (negation and permutation are mathematically identical on the
+whole ranking path; only the CE path differs). Every "ranking collapse" was therefore a
+collapse of the move-bit space specifically, fought over by the CE (White-POV class info,
+side-symmetric draw-ness included) and regret (mover-goodness). Under mover-POV the two
+pressures were aligned, which is why qat4 was stable and five runs never showed it.
+
+**Fix in (Kaveh's ruling: when a fix is in hand, put it in): GRADIENT ROUTING.** The CE
+sees the move term as a constant (logit_ce = pos + mov.detach()); regret is the sole
+trainer of the value move bits; fut trains only the dyn bits. U13 proves the routing by
+autograd (CE->mv grad None; regret->mv grad flows). Also recorded: qat7c's pre-registered
+cure criterion (<0.15 @1000) was miscalibrated — qat4 itself read 0.193 there; criteria
+must be calibrated against the incumbent's trajectory.
+
+Smoke 120: regret 0.106-0.127, draws off the floor. **qat7e launched**: all-family
+attention + regret + White-POV(permutation) + routed gradients + dyn codes + both-move
+2-ply, no regulariser. Post-run battery unchanged.
+
+---
