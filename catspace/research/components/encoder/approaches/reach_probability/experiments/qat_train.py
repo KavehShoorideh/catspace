@@ -417,11 +417,13 @@ def main():
                 t2, _, _ = encode_rows(R2, enc=fut.ema)
             col, col2 = col.to(dev), col2.to(dev)
             ar = torch.arange(len(col), device=dev)
-            mvb = model.mv_bits(model.mv_proj(h0))[0]
-            played = mvb[ar, col]
+            # DYN codes, not the readout's value codes -- see qat_model for why
+            mvb_d, _, vq_d = model.dyn_mv_bits(model.dyn_mv_proj(h0))
+            played = mvb_d[ar, col]
             with torch.no_grad():               # reply code: conditioning input only
-                mv2 = model.mv_bits(model.mv_proj(h1m))[0][ar, col2]
+                mv2 = model.dyn_mv_bits(model.dyn_mv_proj(h1m))[0][ar, col2]
             mvc = {"1": played, "2": torch.cat([played, mv2], -1)}
+            loss = loss + vq_d
             l_fut, fstats = fut.loss(z0, mvc, {"1": t1.detach(), "2": t2.detach()})
             loss = loss + args.w_future * l_fut
 
@@ -745,6 +747,35 @@ def main():
             assert spread < 1e-5, f"move term not antisymmetric under stm: spread {spread}"
             print(f"  U11 PASS move term antisymmetric under side-to-move "
                   f"(max spread {spread:.1e}); mover-goodness is ONE direction again")
+
+        # U12: the future loss must be ISOLATED from the value move codes -- reaching
+        # them is the exact capacity war that killed qat7b. Proven by autograd, not
+        # assumed (follow_the_code_paths).
+        if args.w_future > 0:
+            fb12 = future_batch(4)
+            if fb12 is not None:
+                R0b, R1b, R2b, c1b, c2b = fb12
+                z0b, h0b, _ = encode_rows(R0b)
+                with torch.no_grad():
+                    t1b, h1b, _ = encode_rows(R1b, enc=fut.ema)
+                    t2b, _, _ = encode_rows(R2b, enc=fut.ema)
+                arb = torch.arange(len(c1b), device=dev)
+                mvbd, _, _ = model.dyn_mv_bits(model.dyn_mv_proj(h0b))
+                pl = mvbd[arb, c1b.to(dev)]
+                with torch.no_grad():
+                    m2b = model.dyn_mv_bits(model.dyn_mv_proj(h1b))[0][arb, c2b.to(dev)]
+                lf, _ = fut.loss(z0b, {"1": pl, "2": torch.cat([pl, m2b], -1)},
+                                 {"1": t1b.detach(), "2": t2b.detach()})
+                g_val = torch.autograd.grad(lf, model.mv_proj.weight,
+                                            retain_graph=True, allow_unused=True)[0]
+                g_dyn = torch.autograd.grad(lf, model.dyn_mv_proj.weight,
+                                            allow_unused=True)[0]
+                assert g_val is None or float(g_val.abs().sum()) == 0.0, \
+                    "future loss leaks into the VALUE move codes -- the qat7b war again"
+                assert g_dyn is not None and float(g_dyn.abs().sum()) > 0, \
+                    "future loss does not train its own dyn move codes"
+                print(f"  U12 PASS future loss isolated: value-code grad "
+                      f"{'None' if g_val is None else 0.0}, dyn-code grad flows")
 
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),

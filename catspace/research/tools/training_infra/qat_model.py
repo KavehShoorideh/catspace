@@ -62,6 +62,15 @@ class QATReadout(nn.Module):
             d_read = field.d_state + self.n_tok * out_bits
         self.mv_bits = LFQ(dim=mv_bits, codebook_size=2, num_codebooks=mv_bits)
         self.mv_proj = nn.Linear(field.mv_vq_proj.in_features, mv_bits)
+        # DYNAMICS MOVE CODES, separate capacity from the readout's value codes. The
+        # future heads backprop through their conditioning; sharing the readout's 32 move
+        # bits let "what this move changes" (near-deterministic under White-POV, strong
+        # gradient) evict "how good is this move" (hard) -- qat7b: fut 0.54 -> 0.11 while
+        # regret collapsed to chance and the WDL loss itself destabilised. Mechanics-bits
+        # for rolling, value-bits for ranking; both still bits, both saved with the model
+        # (the roller needs these codes at inference).
+        self.dyn_mv_bits = LFQ(dim=mv_bits, codebook_size=2, num_codebooks=mv_bits)
+        self.dyn_mv_proj = nn.Linear(field.mv_vq_proj.in_features, mv_bits)
         self.d_pos, self.d_mv = d_read, mv_bits
         self.readout = nn.Linear(d_read + mv_bits, 3)
         self.d_read = d_read + mv_bits
