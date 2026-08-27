@@ -78,6 +78,9 @@ def main():
     ap.add_argument("--future-hidden", type=int, default=1024)
     ap.add_argument("--ema-decay", type=float, default=0.999)
     ap.add_argument("--units", action="store_true")
+    ap.add_argument("--eval-only", default="", metavar="CKPT",
+                    help="load CKPT, run one evaluation, print, exit. For scoring "
+                         "finished runs on metrics added after they were trained.")
     args = ap.parse_args()
     if args.arm == "l1":                    # legacy spelling of level1
         args.arm = "level1"
@@ -439,6 +442,14 @@ def main():
 
         out = {}
         if step % args.eval_every == 0 or step == 1 or step == args.steps:
+            out = run_eval(step, float(l_wdl), float(l_fut), float(l_rank),
+                           fp, locals().get("z0"), locals().get("mvc"),
+                           locals().get("t1"), locals().get("t2"))
+        return out
+
+    def run_eval(step, lw, lf, lr, fp=None, z0=None, mvc=None, t1=None, t2=None):
+        live = int((model.readout.weight.abs().sum(0) > 0).sum())
+        if True:
             model.eval(); field.eval()
             with torch.no_grad():
                 preds, ys, top1, nrank, base0 = [], [], 0, 0, 0
@@ -487,22 +498,22 @@ def main():
                 slot0_acc = base0 / max(nrank, 1)
                 mregret = reg_sum / max(nreg, 1)
             fl = ""
-            if fp is not None:
+            if fp is not None and z0 is not None:
                 ev = future_eval(fut, z0, mvc, {"1": t1, "2": t2})
                 fl = (f" | fut1 lift {ev['ply1']['lift']:+.3f} (chg "
                       f"{ev['ply1']['bits_changed']:.3f}) fut2 lift "
                       f"{ev['ply2']['lift']:+.3f}")
-            rk = f" regret {float(l_rank):.4f}" if args.w_rank > 0 else ""
-            print(f"[qat] step {step:>5}/{args.steps} | wdl {float(l_wdl):.3f}{rk} "
-                  f"fut {float(l_fut):.3f} | BALANCED {bal:.3f} "
+            rk = f" rloss {lr:.4f}" if args.w_rank > 0 else ""
+            print(f"[qat] step {step:>5}/{args.steps} | wdl {lw:.3f}{rk} "
+                  f"fut {lf:.3f} | BALANCED {bal:.3f} "
                   f"recall W/D/L {rec[0]:.2f}/{rec[1]:.2f}/{rec[2]:.2f} | "
                   f"REGRET {mregret:.4f} (perfect-WDL 0.034, random 0.266) | "
                   f"top1 {top1_acc:.3f} | "
                   f"concepts {live}{fl}", flush=True)
             mv_alive = int((model.readout.weight[:, model.d_pos:].abs().sum(0) > 0).sum())
-            out = {"balanced": bal, "concepts": live, "wdl": float(l_wdl), "top1": top1_acc,
+            out = {"balanced": bal, "concepts": live, "wdl": lw, "top1": top1_acc,
                    "top1_slot0_baseline": slot0_acc, "move_concepts_alive": mv_alive,
-                   "regret": mregret, "rank": float(l_rank)}
+                   "regret": mregret, "rank": lr}
             if mv_alive == 0:
                 print("  WARNING: pruning removed EVERY move concept; per-child ranking "
                       "is now impossible and top-1 will fall to chance", flush=True)
@@ -510,6 +521,15 @@ def main():
                 h = model.attn.questions_asked()
                 out["q_max_share"] = float(h.max())
         return out
+
+    if args.eval_only:
+        sd = torch.load(args.eval_only, map_location="cpu", weights_only=False)
+        missing = model.load_state_dict(sd["state_dict"], strict=False)
+        print(f"[qat] eval-only: loaded {args.eval_only} "
+              f"(step {sd.get('step','?')}, {len(sd['state_dict'])} tensors, "
+              f"{len(missing.missing_keys)} missing)", flush=True)
+        run_eval(int(sd.get("step", 0)), float("nan"), float("nan"), float("nan"))
+        return
 
     if args.units:
         idx = torch.from_numpy(rng.choice(tr_idx, 8, replace=False))
