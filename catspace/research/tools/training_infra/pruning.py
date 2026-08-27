@@ -68,11 +68,22 @@ class ConceptPruner:
         return int(round(self.n - (self.n - self.target) * prog))
 
     @torch.no_grad()
-    def step(self, step: int) -> int:
-        """Recompute the mask when due, then ALWAYS re-apply it. Returns live count."""
-        if step >= self.t1:
+    def step(self, step: int, settled: bool | None = None) -> int:
+        """Recompute the mask when due, then ALWAYS re-apply it. Returns live count.
+
+        `settled` (optional): the trainer's own losses-are-not-rising signal. Cuts and
+        the final freeze are DEFERRED while unsettled -- pruning during a concept
+        reorganization commits the mask to a snapshot of a moving target (qat7e: mask
+        froze at 6400 mid-reorganization, orphaning the readout; balanced ended below
+        chance). Kaveh's criterion: reorganize as often as you like, as long as the
+        losses improve -- so the pruner acts only when they are. None = legacy schedule.
+        """
+        if step >= self.t1 and (settled is None or settled):
             self.frozen = True                    # final phase: sparse fine-tuning
-        due = (step > self.t0 and not self.frozen and step % self.interval == 0)
+        due = (step > self.t0 and not self.frozen and step % self.interval == 0
+               and (settled is None or settled))
+        if settled is False:
+            self.deferred = getattr(self, "deferred", 0) + 1
         if due:
             keep = self.keep_at(step)
             if keep < int(self.mask.sum()):
@@ -95,6 +106,27 @@ class ConceptPruner:
         if sd:
             self.mask = sd["mask"].to(self.mask.device)
             self.frozen = bool(sd.get("frozen", False))
+
+
+class LossSettled:
+    """Are the losses non-rising? Short-window mean vs long-window mean, with slack.
+
+    The signal for ConceptPruner's `settled` argument. Deliberately dumb and stateless
+    to resume (a deque refills within `long` steps).
+    """
+
+    def __init__(self, short: int = 50, long: int = 250, slack: float = 1.05):
+        from collections import deque
+        self.buf = deque(maxlen=long)
+        self.short, self.slack = short, slack
+
+    def update(self, x: float) -> bool:
+        self.buf.append(float(x))
+        if len(self.buf) < self.buf.maxlen:
+            return True                            # not enough history: do not block
+        import numpy as _np
+        recent = _np.mean(list(self.buf)[-self.short:])
+        return bool(recent <= self.slack * _np.mean(self.buf))
 
 
 def _test():

@@ -238,6 +238,8 @@ def main():
                                        hidden=args.future_hidden).to(dev)
     opt = torch.optim.Adam(list(model.parameters()) + list(fut.heads.parameters()),
                            lr=args.lr)
+    from catspace.research.tools.training_infra.pruning import LossSettled
+    settle = LossSettled()
     pruner = ConceptPruner(model.readout.weight, args.l1_target, args.steps,
                            interval=args.prune_every)
     if args.arm != "level1":
@@ -502,7 +504,7 @@ def main():
         torch.nn.utils.clip_grad_norm_(list(model.parameters()) +
                                        list(fut.heads.parameters()), 1.0)
         opt.step()
-        live = pruner.step(step)
+        live = pruner.step(step, settled=settle.update(float(loss)))
         fut.update_ema(field)
 
         out = {}

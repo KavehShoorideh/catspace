@@ -182,6 +182,13 @@ class TrainConfig:
     ckpt_every: int = 200                      # ladder interval
     start_step: int = 0                        # resume: first step is start_step+1
     eval_every: int = 100                      # gates + metric logging interval
+    lr_decay: str = "cosine"                   # "cosine" | "none". Closed-form from the
+                                               # step number -- a LAW, not scheduler state,
+                                               # so fresh and resumed runs agree exactly
+                                               # (the resume_semantics scar). Constant LR
+                                               # let reorganizations at step 6000 stay as
+                                               # violent as at 500 (qat7e's cascade).
+    lr_min_frac: float = 0.1                   # floor as a fraction of the base LR
     experiment: str = "catspace"               # MLflow experiment name
     run_name: str | None = None
     report_tune: bool = False                  # call ray.train/tune report (set True inside a sweep)
@@ -220,7 +227,14 @@ def standard_train(step_fn: Callable, model, cfg: TrainConfig, args=None,
               "carry weights but no optimizer/RNG state, so this run is NOT cleanly "
               "resumable. Pass opt= (and rng=) to make it so.", flush=True)
     with track_run(cfg.experiment, args=args, run_name=cfg.run_name) as log:
+        base_lrs = [g["lr"] for g in opt.param_groups] if opt is not None else []
         for step in range(cfg.start_step + 1, cfg.steps + 1):
+            if opt is not None and cfg.lr_decay == "cosine":
+                import math
+                f = cfg.lr_min_frac + (1 - cfg.lr_min_frac) * 0.5 * (
+                    1 + math.cos(math.pi * step / cfg.steps))
+                for g, b in zip(opt.param_groups, base_lrs):
+                    g["lr"] = b * f
             metrics = step_fn(model, step) or {}
             if step % cfg.eval_every == 0 or step == cfg.steps:
                 if gates_fn is not None:
