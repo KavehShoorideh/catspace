@@ -472,3 +472,78 @@ Sources: arXiv 2001.04451 (Reformer), Routing Transformer, arXiv 2010.05315 (SMY
 arXiv 2309.16354 (Transformer-VQ), arXiv 2607.12789 (AVQ-Attention), arXiv 2310.17230
 (Codebook Features), arXiv 2207.11240 (Discrete Key-Value Bottleneck), arXiv 2407.19532
 (codebook interpretability is limited), Jain & Wallace 2019, Meister+ 2021.
+
+## Aligning discrete codes to KNOWN chess concepts (2026-08-26) — Kaveh's proposal, and its lineage
+
+Kaveh: "we take the known chess concepts and we penalize the discrete QKV codes that don't
+align with these concepts... they should be expressible as an L1 combination of these
+concepts, but the fewer concepts the better. Has it been done in the literature?"
+
+**Yes -- every piece has, and one of them is in chess.** This is also precisely the
+prescription of the negative result recorded above (arXiv 2407.19532: "latent semantic
+alignment is needed alongside discretization").
+
+### The four ingredients, all established
+
+  **Network Dissection** (Bau+ CVPR 2017). Score each unit's alignment against a
+  dictionary of labelled concepts (IoU). POST-HOC measurement, single concepts only.
+
+  **Compositional Explanations of Neurons** (Mu & Andreas, NeurIPS 2020, arXiv 2006.14032).
+  Explain a neuron as a LOGICAL FORMULA over primitive concepts (AND/OR/NOT), found by beam
+  search, with the formula's complexity restricted. This IS Kaveh's "expressible as a
+  combination, the fewer the better" -- with logic where he proposed L1. Still POST-HOC.
+  A 2026 follow-up (arXiv 2511.20934) replaces the beam search with a guaranteed-optimal
+  one, which matters because the composition space is enormous.
+
+  **Concept Whitening** (Chen, Bei & Rudin, Nature MI 2020, arXiv 2002.01650). THE
+  TRAINING-TIME MECHANISM. A drop-in replacement for batch norm that whitens the latent
+  space and then ROTATES its axes to align with known concepts, so each concept's
+  information flows through one designated node. Reported not to hurt predictive
+  performance. This is exactly "penalise codes that don't align", built in rather than
+  measured afterwards.
+
+  **Concept Bottleneck Models** (Koh+ ICML 2020). Supervise intermediate units to BE known
+  concepts, then predict from those units only.
+
+### The chess precedent, which is close to what Kaveh described
+
+**McGrath+, "Acquisition of Chess Knowledge in AlphaZero" (PNAS 2022, arXiv 2111.09259).**
+They took **Stockfish's own evaluation-function components as the concept dictionary** and
+trained **SPARSE LINEAR PROBES** from AlphaZero's activations to those concepts -- Kaveh's
+proposal with the concept set drawn from Stockfish's eval terms rather than python-chess
+predicates. Findings: material emerges early and then declines in importance while king
+safety rises, "surprisingly human-like". But this is POST-HOC probing of a frozen network;
+nothing was penalised during training.
+
+### WHAT IS ACTUALLY OPEN
+
+Searching did not turn up: **aligning DISCRETE (VQ/LFQ) codes to a known concept dictionary
+AT TRAINING TIME with a sparsity penalty on how many concepts explain each code** -- still
+less doing it to the QUERY codes of attention, i.e. constraining what a token may ASK. The
+VQ-plus-concepts work that exists (arXiv 2602.02726, 2506.20040) is unsupervised concept
+DISCOVERY, not alignment to a given dictionary.
+
+So Kaveh's proposal is a new combination of proven parts, and our domain gives it an
+advantage the vision work lacks: **python-chess computes the concept dictionary EXACTLY.**
+Network Dissection's Broden labels are noisy and human-annotated; `is_pinned`,
+`attackers`, `gives_check`, `is_capture` are ground truth.
+
+### THE DESIGN TENSION, worth stating before building
+
+Forcing codes to be sparse combinations of KNOWN concepts means we can only ever recover
+KNOWN concepts -- the discovery upside is exactly what we would be regularising away, and
+discovery is the point of the project ("mostly concepts that give the best moves"). Concept
+Whitening handles this by aligning only SOME axes and leaving the rest free. Recommended
+shape for us: align a designated SUBSET of code dims to the python-chess dictionary, leave
+the remainder unconstrained, and report both -- the aligned part is auditable, the free part
+is where anything new would show up. Partial alignment also gives a natural control: if the
+free dims carry no extra predictive value, the known dictionary was sufficient, which is
+itself a publishable finding.
+
+We already have `relation_alignment()` in quantized_attention.py, which MEASURES
+attention-vs-python-chess agreement. This line turns that metric into a loss.
+
+Sources: arXiv 2002.01650 (Concept Whitening), arXiv 2006.14032 (Compositional Explanations
+of Neurons), arXiv 2511.20934 (guaranteed-optimal follow-up), arXiv 2111.09259 (AlphaZero
+chess concepts), Koh+ 2020 (Concept Bottleneck Models), Bau+ 2017 (Network Dissection),
+arXiv 2407.19532 (VQ alone is not enough).
