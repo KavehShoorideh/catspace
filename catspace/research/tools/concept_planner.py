@@ -34,7 +34,7 @@ import numpy as np
 import torch
 
 
-def build(ckpt_path, arm, dev):
+def build(ckpt_path, arm, dev, field_only=False):
     from catspace.research.components.encoder.approaches.reach_probability.experiments \
         .graph_concept_field import GraphConceptField
     from catspace.research.tools.training_infra.qat_model import QATReadout
@@ -52,6 +52,8 @@ def build(ckpt_path, arm, dev):
         d_code=8, sq_codes=A.get("sq_codes", 256), mh_vq=True, gen5=True, gen6=True,
         binary=True, mv_concepts=True).to(dev).eval()
     model = QATReadout(field, arm=arm).to(dev).eval()
+    if field_only:
+        return model, field, 0, 0
     ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
     miss = model.load_state_dict(ck["state_dict"], strict=False)
     return model, field, len(ck["state_dict"]), len(miss.missing_keys)

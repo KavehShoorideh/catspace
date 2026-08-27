@@ -18533,3 +18533,68 @@ not raise subgoal persistence above ~1.2x chance, clustering leaf configurations
 wrong way to find subgoals and the design should change, not the regulariser.
 
 ---
+
+## 2026-08-26 22:40 — qat5 NEGATIVE: the group fused lasso DOUBLED the churn it was built to cut
+
+qat5 bundled three changes per the no-one-lever rule: level-2 attention over ALL concept
+families (129 tokens vs 64), the regret loss at w=1.0, and the group fused lasso at w=0.1.
+8000 steps, same trunk/seed/data.
+
+**MATCHED CONTROL** (`tools/diag_group_change.py`, same 96 positions, 2-ply lag, trunk-only
+load so readout width differences cannot block the comparison):
+
+    run                          groups moved    bits changed   group change mag
+    qat2 (no regret, no slow)     28.2 / 87        18.9%            2.074
+    qat4 (regret only)            21.9 / 87        17.2%            1.891
+    qat5 (+ group fused lasso)    46.4 / 87        14.3%            2.382
+
+**THE REGULARISER DID THE OPPOSITE OF ITS PURPOSE.** qat5 touches 46.4 groups against
+qat4's 21.9 -- more than double -- while changing FEWER bits (14.3% vs 17.2%). Fewer bits
+smeared over more groups is exactly the regime group sparsity exists to eliminate.
+
+**LIKELY CAUSE, in my own code.** The penalty compares `z0` from the ONLINE encoder against
+`t2` from the EMA encoder (`encode_rows(R2, enc=fut.ema)`), so it minimises the distance
+between the current encoder at s and a ~1000-step-stale encoder at s+2. That conflates
+concept dynamics with ENCODER DRIFT -- the identical confound that made the 1-ply `chg`
+metric read 54%. The EMA is correct for the PREDICTION loss (it prevents collapse) and
+wrong here; both states must come from the online encoder. NOT yet fixed, NOT yet retested,
+so "the group lasso does not work" is NOT established -- what is established is that THIS
+implementation made churn worse.
+
+Also: the heartbeat `moved` statistic is computed on the 16-position future batch, not a
+fixed set, and swung 47-86 across the run. Every `moved` figure quoted from a heartbeat
+this session is unusable for comparison; only the fixed-set control above is.
+
+**PLANNER, and a mechanism.** Subgoal persistence, overlap vs CHANCE on 60 positions:
+
+    qat4 (churn 21.9)   1.22x chance   27% of positions beating 1.5x
+    qat5 (churn 46.4)   0.99x chance    5% of positions beating 1.5x
+
+**SUBGOAL PERSISTENCE TRACKS CONCEPT CHURN.** The run with less churn plans better; the run
+with more plans not at all. Two points, so a hypothesis rather than a law -- but it is the
+relationship the whole slow-concepts argument predicts, now with numbers.
+
+**TASK METRICS** (holdout, 373,778 labels). qat5's own trainer line at step 8000:
+
+    qat4   BALANCED 0.644   REGRET 0.1212   top1 0.228   draw recall 0.37
+    qat5   BALANCED 0.597   REGRET 0.0945   top1 0.281   draw recall 0.29
+
+qat5 is better on move quality and worse on position classification. Mid-run it looked far
+worse (balanced 0.489, draw recall 0.04 at step 7000) and recovered by 8000 -- I called it
+"collapsing" off that single point and was wrong, the same over-read as the `moved` trend.
+Eval-to-eval variance on this run does not support single-point verdicts.
+
+**CHECKPOINT COMPATIBILITY, a trap worth recording.** qat2/qat4 predate the all-concept
+change and have no `fam_proj`/`fam_emb`. `load_state_dict(strict=False)` ignores MISSING
+keys but still raises on SHAPE mismatch, so those checkpoints cannot load into the new
+3592-wide readout at all; and with --l2-scope squares they load with 3 tensors silently
+RANDOM. Aggregates matched (0.644 / 0.1212) because level-2 was pruned to 40 of 512 dims,
+but per-class recalls shifted 0.76/0.37/0.80 -> 0.73/0.40/0.80. **qat4's authoritative
+numbers are its own trainer's, not a re-score through the new class.**
+
+**NEXT, pre-registered:** (1) compute the slowness penalty with BOTH states from the online
+encoder and rerun -- until then the group-lasso idea is untested, not refuted; (2) if churn
+then falls and planner persistence rises above 1.22x, the churn->persistence link is
+supported by a third point and by an intervention rather than a correlation.
+
+---
