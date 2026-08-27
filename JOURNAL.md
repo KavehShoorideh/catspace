@@ -18468,3 +18468,68 @@ the conditioning is the gap, not the loss shape.
   4. Judge on LIFT over copy at even lags, never raw R2 -- that is what hid this before.
 
 ---
+
+## 2026-08-26 21:10 — qat4 RESULT: Kaveh's regret loss cuts regret 34%; the subgoal planner does NOT yet plan
+
+**qat4 = qat2 + the expected-regret loss Kaveh designed** ("I want us to learn to pick
+moves as good as stockfish even if we don't pick stockfish's move"). 8000 steps, same
+trunk/seed/data/schedule. All numbers from `--eval-only` on the same 373,778-label holdout.
+
+    run                            balanced   REGRET   top1    draw recall
+    random legal move                  --      0.266   0.031        --
+    qat2  (no regret loss)           0.653     0.1829  0.126       0.40
+    level1 (no attention)            0.641     0.1356  0.187        --
+    **qat4 (+ regret loss)**         0.644   **0.1212** 0.228       0.37
+    perfect WDL ranker                 --      0.034   0.519        --
+
+**REGRET DOWN 34%, TOP-1 NEARLY DOUBLED, FOR 0.009 BALANCED ACCURACY.** Draw recall held
+(0.40 -> 0.37). Its mid-run dip to 0.12-0.18 was a TRANSIENT and recovered by step 7500 --
+judging it at step 5000 would have produced a wrong verdict (wait_one_checkpoint, again).
+
+**RETRACTED: "attention helps classify positions and hurts move choice."** That came from
+qat2 (0.183) vs level1 (0.136). qat4 -- attention WITH an objective that optimises move
+choice -- reaches 0.121, better than level1. The comparison was confounded: attention was
+not hurting move selection, the objective simply was not optimising it. A clean test needs
+level1 + regret loss, which has not been run.
+
+**CLASS EXTRACTION VERIFIED.** QATReadout moved to tools/training_infra/qat_model.py so the
+planner and probes can construct it (it was a closure inside main()). `--eval-only` on
+qat2 through the extracted class reproduces the trainer EXACTLY: 0.653 / 0.1829 /
+0.83-0.40-0.73 / 400 concepts.
+
+**THE SUBGOAL PLANNER (tools/concept_planner.py): BUILT, RUNS, DOES NOT YET PLAN.**
+Search d plies, cluster the concept configurations the leaves land in, steer at the
+best-valued cluster. Needs no forward model -- subgoals are FOUND, not predicted.
+
+    depth 2:  plan != greedy 70%   overlap vs chance 1.22x   42.4 encodes/move
+    depth 4:  plan != greedy 83%   (pre-fix)                 106.1 encodes/move
+
+**VERDICT: subgoals persist at 1.22x chance, 27% of positions beating 1.5x.** The layer
+changes the move most of the time but abandons its target immediately. That is a one-ply
+target, not a plan.
+
+**TWO OF MY OWN BUGS, both caught by running rather than reading.**
+  1. ODD SEARCH DEPTH. At depth 3 the leaves sit an odd ply from the root, so ~54% of bits
+     differ from side-to-move parity and I was clustering parity noise -- "subgoals" that
+     flipped 838-2155 bits over 30-64 squares and always named a1/b1/c1. Even depth only.
+  2. A PERSISTENCE METRIC WITH NO CHANCE BASELINE. Raw square-set overlap grows with set
+     size, so diffuse subgoals scored HIGHER: persistence correlated **+0.595** with how
+     diffuse the subgoal was, the opposite of the hypothesis I was testing. It was scoring
+     size, not persistence. Now reported as overlap/chance. This is exactly the
+     dead_asserts_and_silent_gates rule -- print a degenerate baseline beside every metric
+     -- and I shipped without one.
+
+**BUILT THIS SESSION, awaiting a run:** group fused lasso on the 2-ply concept change
+(`--w-slow`), per Kaveh's "how do we make the minimum number of concepts participate in any
+change". SUM OF NORMS, not sum of squares -- gate U7 shows at identical change energy
+(24.00) sum-of-norms scores 4.91 concentrated vs 39.19 spread (8x penalty for smearing)
+while sum-of-squares is 24.00 either way, indifferent. Heterogeneity handled per block:
+squares/pieces L2 within group (pieces gated alive-at-both, captures exogenous and reported
+not penalised), edge histogram TOTAL VARIATION since a simplex cannot flip. Heartbeat reads
+`grpchg X moved Y/97` over 64 squares + 32 pieces + 1 histogram.
+
+**NEXT, pre-registered:** train with --w-slow and re-run the planner. If slower concepts do
+not raise subgoal persistence above ~1.2x chance, clustering leaf configurations is the
+wrong way to find subgoals and the design should change, not the regulariser.
+
+---

@@ -74,6 +74,13 @@ def main():
                          "tools/diag_regret.py.")
     ap.add_argument("--rank-temp", type=float, default=0.1,
                     help="temperature on tgt when forming the target ranking distribution")
+    ap.add_argument("--w-slow", type=float, default=0.0,
+                    help="SPARSE TEMPORAL PRIOR on the ENCODER: penalise HOW MANY concepts "
+                         "flip per ply. Kaveh 2026-08-26: 'we want the fewest number of "
+                         "concept changes per ply possible in order for us to be able to "
+                         "correctly predict the evaluation'. Applied at EVEN lag only -- "
+                         "at odd lags 54%% of bits flip from side-to-move parity, which is "
+                         "a representational artefact, not dynamics.")
     ap.add_argument("--w-future", type=float, default=0.3)
     ap.add_argument("--future-hidden", type=int, default=1024)
     ap.add_argument("--ema-decay", type=float, default=0.999)
@@ -190,6 +197,9 @@ def main():
     print(f"[qat] trunk warm-start: {len(sdf)}/{len(field.state_dict())} tensors", flush=True)
 
     D_STATE = field.d_state
+    BINARY_END = 96 + 64 * field.sq_width      # board + squares: the strictly +-1 dims
+    PIECE_END = D_STATE - field.edge_codes     # piece slots end where the histogram starts
+    PIECE_W = max(1, (PIECE_END - BINARY_END) // 32)          # bits per piece slot
     N_TOK, D_TOK = 64, field.sq_width          # per-square concept tokens for attention
 
     # architecture lives in tools/training_infra/qat_model.py so the planner, the
@@ -361,6 +371,7 @@ def main():
                 loss = loss + args.w_rank * l_rank
 
         l_fut = torch.zeros((), device=dev)
+        l_slow = float("nan"); l_capt = float("nan")
         fp = future_batch(args.future_batch) if args.w_future > 0 else None
         if fp is not None:
             R0, R1, R2, col = fp
@@ -375,6 +386,67 @@ def main():
             l_fut, fstats = fut.loss(z0, mvc, {"1": t1.detach(), "2": t2.detach()})
             loss = loss + args.w_future * l_fut
 
+            # SPARSE TEMPORAL PRIOR. For +-1 concepts, (1 - z.z')/2 is EXACTLY the fraction
+            # of concepts that flipped, and the gradient reaches the encoder through the
+            # quantiser's straight-through estimator -- so this penalises the COUNT of
+            # changes, not their magnitude. On binary variables L2 and L0 coincide anyway
+            # (||z'-z||^2 = 4 * #flips); the reason to write it this way is that it stays
+            # a fraction, so the weight means something and the number is readable.
+            #
+            # Only the strictly binary block (board + squares, dims 0..BINARY_END): piece
+            # slots are TERNARY (0 = empty) and the last 128 dims are a histogram, so
+            # z.z' is not +-1 there and the identity above would not hold.
+            #
+            # EVEN LAG ONLY. z0 and t2 are both the mover's view; z0 vs t1 differ by a
+            # side-to-move flip that moves 54% of bits for representational reasons, and
+            # penalising that would fight the encoding rather than slow the concepts.
+            #
+            # The trivial solution -- freeze every concept -- is priced out by the WDL and
+            # regret losses above, which still have to be predicted from these concepts.
+            if args.w_slow > 0:
+                # GROUP FUSED LASSO on the 2-ply concept change.
+                # Kaveh 2026-08-26: "how do we make the minimum number of concepts
+                # participate in any change from one ply to two plies ahead?"
+                #
+                #     penalty = SUM_g || z_g(s') - z_g(s) ||_2        norm, NOT squared
+                #
+                # The inner L2 is indifferent to how a change distributes inside a group;
+                # the OUTER SUM behaves like an L1 across groups and drives whole groups to
+                # exactly zero change -- "each difference is typically either full or
+                # identically zero" (group fused lasso). Squaring the norm would give plain
+                # L2, under which every group drifts a little and none is ever still: that
+                # is precisely the failure Kaveh objected to.
+                #
+                # Heterogeneity is free, because the outer sum only sees one SCALAR per
+                # group, so each block may use the distance its geometry demands:
+                #   squares / pieces  L2 over their bits   (pieces gated alive-at-both,
+                #                                           captures being exogenous)
+                #   edge histogram    TOTAL VARIATION      (a simplex cannot "flip")
+                n = len(z0)
+                t2d = t2.detach()
+                sq0 = z0[:, 96:BINARY_END].reshape(n, 64, field.sq_width)
+                sq1 = t2d[:, 96:BINARY_END].reshape(n, 64, field.sq_width)
+                d_sq = ((sq0 - sq1) ** 2).sum(-1).clamp(min=1e-8).sqrt()      # (n,64)
+
+                zp = z0[:, BINARY_END:PIECE_END].reshape(n, 32, PIECE_W)
+                tp = t2d[:, BINARY_END:PIECE_END].reshape(n, 32, PIECE_W)
+                alive = ((zp.abs().sum(-1) > 0) & (tp.abs().sum(-1) > 0)).float()
+                d_pc = ((zp - tp) ** 2).sum(-1).clamp(min=1e-8).sqrt() * alive  # (n,32)
+
+                h0, h1 = z0[:, PIECE_END:], t2d[:, PIECE_END:]
+                d_hi = 0.5 * (h0 - h1).abs().sum(-1)                            # (n,) TV
+
+                ngrp = 64 + alive.sum(-1) + 1
+                flip_frac = ((d_sq.sum(-1) + d_pc.sum(-1) + d_hi) / ngrp).mean()
+                loss = loss + args.w_slow * flip_frac
+                l_slow = float(flip_frac)
+                # how many groups moved AT ALL -- the readable number, never optimised
+                with torch.no_grad():
+                    moved = ((d_sq > 1e-3).float().sum(-1) +
+                             (d_pc > 1e-3).float().sum(-1) +
+                             (d_hi > 1e-3).float())
+                    l_capt = float(moved.mean())
+
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(list(model.parameters()) +
                                        list(fut.heads.parameters()), 1.0)
@@ -384,12 +456,13 @@ def main():
 
         out = {}
         if step % args.eval_every == 0 or step == 1 or step == args.steps:
-            out = run_eval(step, float(l_wdl), float(l_fut), float(l_rank),
+            out = run_eval(step, float(l_wdl), float(l_fut), float(l_rank), l_slow, l_capt,
                            fp, locals().get("z0"), locals().get("mvc"),
                            locals().get("t1"), locals().get("t2"))
         return out
 
-    def run_eval(step, lw, lf, lr, fp=None, z0=None, mvc=None, t1=None, t2=None):
+    def run_eval(step, lw, lf, lr, ls=float("nan"), lc=float("nan"), fp=None,
+                 z0=None, mvc=None, t1=None, t2=None):
         live = int((model.readout.weight.abs().sum(0) > 0).sum())
         if True:
             model.eval(); field.eval()
@@ -446,7 +519,9 @@ def main():
                       f"{ev['ply1']['bits_changed']:.3f}) fut2 lift "
                       f"{ev['ply2']['lift']:+.3f}")
             rk = f" rloss {lr:.4f}" if args.w_rank > 0 else ""
-            print(f"[qat] step {step:>5}/{args.steps} | wdl {lw:.3f}{rk} "
+            sl = (f" grpchg {ls:.3f} moved {lc:.1f}/97" if args.w_slow > 0
+                  else "")
+            print(f"[qat] step {step:>5}/{args.steps} | wdl {lw:.3f}{rk}{sl} "
                   f"fut {lf:.3f} | BALANCED {bal:.3f} "
                   f"recall W/D/L {rec[0]:.2f}/{rec[1]:.2f}/{rec[2]:.2f} | "
                   f"REGRET {mregret:.4f} (perfect-WDL 0.034, random 0.266) | "
@@ -455,7 +530,7 @@ def main():
             mv_alive = int((model.readout.weight[:, model.d_pos:].abs().sum(0) > 0).sum())
             out = {"balanced": bal, "concepts": live, "wdl": lw, "top1": top1_acc,
                    "top1_slot0_baseline": slot0_acc, "move_concepts_alive": mv_alive,
-                   "regret": mregret, "rank": lr}
+                   "regret": mregret, "rank": lr, "group_change": ls, "groups_moved": lc}
             if mv_alive == 0:
                 print("  WARNING: pruning removed EVERY move concept; per-child ranking "
                       "is now impossible and top-1 will fall to chance", flush=True)
@@ -540,6 +615,25 @@ def main():
             assert chg > 0.0, "1-ply child has identical concepts to the parent"
             print(f"  U6 PASS future children are real: one ply flips {100*chg:.1f}% of "
                   f"concept bits")
+
+        # U7: the whole claim for --w-slow is that SUM OF NORMS prefers change
+        # CONCENTRATED in few groups, while SUM OF SQUARED norms is indifferent. If that
+        # is false the penalty is plain L2 wearing a costume. Two deltas with IDENTICAL
+        # total squared magnitude: one group moved fully, vs every group moved a little.
+        G, W_ = 64, 24
+        conc = torch.zeros(G, W_); conc[0] = 1.0                     # one group, full
+        total = float((conc ** 2).sum())
+        spread = torch.full((G, W_), (total / (G * W_)) ** 0.5)      # all groups, a little
+        assert abs(float((spread ** 2).sum()) - total) < 1e-4, "test deltas differ in energy"
+        sn_c = float(((conc ** 2).sum(-1).clamp(min=1e-8).sqrt()).sum())
+        sn_s = float(((spread ** 2).sum(-1).clamp(min=1e-8).sqrt()).sum())
+        sq_c = float((conc ** 2).sum()); sq_s = float((spread ** 2).sum())
+        assert sn_c < sn_s, f"sum-of-norms does NOT prefer concentrated change: {sn_c} vs {sn_s}"
+        assert abs(sq_c - sq_s) < 1e-4, "sum-of-squares should be indifferent, but is not"
+        print(f"  U7 PASS group sparsity: same energy, sum-of-NORMS {sn_c:.2f} concentrated "
+              f"vs {sn_s:.2f} spread ({sn_s/sn_c:.1f}x penalty for smearing); "
+              f"sum-of-SQUARES {sq_c:.2f} vs {sq_s:.2f} -- indifferent, which is why "
+              f"plain L2 cannot buy group sparsity")
 
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),

@@ -185,6 +185,7 @@ def describe(centroid, z0):
     top_sq = sorted(sq.items(), key=lambda kv: -kv[1])[:6]
     return {"n_bits": int(len(flip)),
             "squares": [(chess.square_name(int(s)), int(n)) for s, n in top_sq],
+            "sq_set": set(int(s) for s in sq),          # ALL changed squares, for overlap
             "n_squares": len(sq), "n_pieces": len(pc), "other_bits": other}
 
 
@@ -215,6 +216,7 @@ def main():
 
     P = Planner(model, field, dev, args.depth, args.beam, args.subgoals)
     agree = same_goal = n = 0
+    lifts = []
     for fen in fens:
         try:
             b = chess.Board(fen)
@@ -238,9 +240,17 @@ def main():
             n2, _, z2 = P.subgoals(b2)
             if n2 is not None:
                 d2 = describe(n2["centroid"], z0)
-                shared = set(s for s, _ in d["squares"]) & set(s for s, _ in d2["squares"])
-                keep = f"{len(shared)}/{max(len(d['squares']),1)}"
-                same_goal += int(len(shared) >= max(1, len(d["squares"]) // 2))
+                # PERSISTENCE MUST BE SCORED AGAINST CHANCE. Raw overlap of two square
+                # sets rises with their size, so a subgoal that touches 60 of 64 squares
+                # "persists" trivially. Measured: raw overlap correlated +0.595 with how
+                # DIFFUSE the subgoal was -- i.e. it was scoring size, not persistence.
+                A, Bs = d["sq_set"], d2["sq_set"]
+                exp = len(A) * len(Bs) / 64.0                  # overlap expected by chance
+                obs = len(A & Bs)
+                lift = obs / exp if exp > 1e-9 else 0.0
+                keep = f"{lift:.2f}x"
+                same_goal += int(lift > 1.5)                   # beats chance by half again
+                lifts.append(lift)
         n += 1
         print(f"  {fen[:36]:38s} plan {planned.uci():6s} greedy {greedy.uci():6s} "
               f"| subgoal v={best['value']:+.3f} n={best['n']:2d} "
@@ -251,8 +261,11 @@ def main():
         print(f"\n  positions planned            : {n}")
         print(f"  plan move == greedy move     : {100*agree/n:.0f}%  "
               f"(if 100%, the subgoal layer changes nothing)")
-        print(f"  subgoal persists one ply     : {100*same_goal/n:.0f}%  "
-              f"(a plan that never persists is not a plan)")
+        import numpy as _np
+        L = _np.array(lifts) if lifts else _np.zeros(1)
+        print(f"  subgoal overlap vs CHANCE    : {L.mean():.2f}x  (1.00 = the next plan's "
+              f"squares are no more related than random)")
+        print(f"  positions beating chance 1.5x: {100*same_goal/n:.0f}%")
         print(f"  encodes per move             : {P.encodes/max(n,1):.1f}")
 
 
