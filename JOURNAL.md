@@ -19452,3 +19452,27 @@ current dynamics quality. Caveats: brreg's final-eval read is modest (0.16-0.18 
 that decision-relevant signal concentrates near the move -- the claim strengthens or
 falls with the next jump in dynamics quality. Artifacts: qgt7_step*.pt, probe commit
 follows.
+
+## 2026-08-28 (Fable) — THE ARENA: latent-dynamics search abstractions built + timed match vs Maia-1100 launched
+
+Kaveh: "put this to the test in the arena. search should be via the dynamics
+operators. build appropriate abstract classes to step dynamics in the latent space
+for a search that can take in any algorithm... we also want to time it in the arena."
+
+qgt_search.py (committed): LatentDynamics ABC -- encode(board) once, root_moves
+(legal moves + latent move codes + injection squares), step (one MOVE unit, reply
+marginalised -- the trained semantics), value (White-POV read from concepts). The
+board supplies the RULES; the latents supply the FUTURE; V(move) is derived as
+V(step(s,m)) per the doctrine, never attached to the move. SearchAlgorithm ABC takes
+any algorithm; v1 entrant Greedy1 = depth-1 latent search. Arena: Maia-1100 via lc0
+at nodes=1 (its calibrated rating, the standard protocol), alternating colors,
+mirrored random 2-ply openings per game pair, claim-draw on, 300-ply cap = draw,
+PER-MOVE WALL-CLOCK recorded (M7/M8: under time control speed is Elo), plus a
+random-policy floor arm. Gates S1: exact batch==singleton stepping, bits stay bits,
+~53ms per our move. 4-game smoke: plumbing verified (0-4, uninformative n). Match
+running: 100 games + 20-game floor, tmp/qgt7_arena.log, results ->
+qgt7_arena.json. EXPECTATION SETTING, recorded before results: depth-1 latent
+search over a first-generation dynamics model (vroll ~0.3, brreg modestly under
+chance) vs Maia-1100 is a HARD test; the record's own shallow-search baseline was
+0.125 at equal budget and M5's plateau sat at 0.085-0.095. The number to beat first
+is the random floor; the number to chase is 0.125.
