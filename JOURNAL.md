@@ -18756,3 +18756,26 @@ attention + regret + White-POV(permutation) + routed gradients + dyn codes + bot
 2-ply, no regulariser. Post-run battery unchanged.
 
 ---
+
+## 2026-08-28 — qat11b NEGATIVE: the loss-review bundle loses to plain qat9; leak was negligible; qat9 re-crowned on the honest split
+
+qat11b (expected-score head + value-equivalence + spoiler pairs + flip-weighted BCE, on
+the pawn-grouped leak-free split) vs qat9 re-scored on the SAME split:
+
+    (leak-free split)      balanced   regret   top1    draws   churn(groups/87)  fut
+    qat9 (incumbent)         0.496    0.0872   0.327   0.13        37.1          1.38
+    qat11b (the bundle)      0.479    0.1046   ~0.30   0.02        59.3          1.42
+
+Every axis null or worse; churn +60% (the ve term backprops through the roll into the
+trunk -- plausibly a new churn source). SINGLE SEED; the bundle is unresolved per
+component (binary-search would cost 4 runs). LEAK VERDICT: qat9 old-split 0.0845 vs
+leak-free 0.0872 -- the game-leakage flattered by only ~0.003; prior conclusions stand.
+
+RULING IMPLIED: marginal returns on tweaking this stack are exhausted; the QGT rebuild
+(RVQ levels + z-loss/balance routing + implementation-verified constants, all recorded in
+LITERATURE.md) is the next move, with qat9 as the incumbent to beat: regret 0.0872,
+balanced 0.496 on the pawn-grouped split. Rolling remains unsolved in every run (fut at
+untrained level end-of-run; the dual-split rolled-value eval remains the pre-registered
+instrument).
+
+---
