@@ -19074,3 +19074,15 @@ exact-equality bit instrument read it as ~25% phantom flips. `zb + (lg - lg.deta
 subtracts a tensor from itself (exact zero) and is bit-exact. Found because the lr=0
 control printed flip 0.000 while lr=3e-4 printed 0.259 with provably-identity weights.
 Regression-gated in qgt_field. Commits 615279a, c53446d; run: 8000 steps, tmp/qgt3d.log.
+
+## 2026-08-28 (Fable) — qgt3d killed at 1000 and relaunched: the 3.0 copy barrier never eroded
+
+Two evals with T EXACTLY the identity (tfacc == copy to three decimals, flip 0.000)
+while the identity rolls fed root-bits-vs-deep-child-value noise into the readout
+(regret 0.187 vs ~0.098 at the same step in qgt1/2). The barrier math: to flip a bit
+the head must out-shout w_id=3 from a zero init while grad-clip is shared across 3M
+params -- erosion measured in thousands of steps, not hundreds. ONE lever changed
+(--w-id-init 0.5, commit c53446d^..): copy init preserved, escapable in hundreds of
+steps. Also learned from the new lag-1 instrument: consecutive-ply bit agreement 0.34-
+0.44 vs ~0.80 at lag 2 -- the level-1 concepts carry a side-to-move PARITY component
+(turn is in the inputs), so T's first real lesson is the parity flip. Relaunched fresh.
