@@ -19394,3 +19394,10 @@ the same discriminative pressure the prior gets. (4) Roadmap tie-in: once the ro
 pathway is strong, the prior is DISTILLED from it (M8 amortization), not trained on
 labels directly. qgt7 continues -- the ruling changes semantics now, structure next
 run.
+
+CORRECTION (Kaveh, minutes later): the doctrine entry above is sloppy where it says
+value belongs to "(position, move)". Precisely: VALUE is a function of POSITION
+alone -- V(s), read from its concepts. VALUE CHANGE is a function of position and
+move -- dV = V(T(s,m)) - V(s), existing only through the transition. "A move by
+itself cannot have value"; every "value of a move" in this record is shorthand for
+the value of the position it produces.
