@@ -88,6 +88,15 @@ def main():
                          "-> next bits) pairs; no carrier, no spectral radius to "
                          "contract. Same value/branch grounding on free-run rolls, "
                          "same instruments -- a head-to-head at the architecture level.")
+    ap.add_argument("--dyn-lr-mult", type=float, default=10.0,
+                    help="discrete arm: LR multiplier for bit_trans's own optimizer "
+                         "group. qgt3d diagnosis: after 8000 steps at the shared LR the"
+                         " zero-init output layer reached only max|w| 0.0275 vs the "
+                         "0.46 flip barrier -- random-walk scale, gradient starvation.")
+    ap.add_argument("--flip-weight", type=float, default=1.0,
+                    help="teacher-forced BCE weight on bits that CHANGE between "
+                         "consecutive true positions (~24-30%% of bits). 1.0 = plain "
+                         "BCE. Held in reserve; LR was the binding constraint.")
     ap.add_argument("--w-id-init", type=float, default=0.5,
                     help="discrete arm: initial copy-prior barrier (see BitTransition)."
                          " 3.0 measured un-erodable; 0.5 keeps the copy init but lets "
@@ -249,7 +258,17 @@ def main():
                                         top_k=args.top_k, out_bits=args.out_bits,
                                         w_id_init=args.w_id_init).to(dev)
     n_par = sum(p.numel() for p in model.parameters())
-    opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if args.dynamics == "discrete" and args.dyn_lr_mult != 1.0:
+        _bt = {id(p) for p in model.bit_trans.parameters()}
+        opt = torch.optim.Adam(
+            [{"params": [p for p in model.parameters() if id(p) not in _bt],
+              "lr": args.lr},
+             {"params": list(model.bit_trans.parameters()),
+              "lr": args.lr * args.dyn_lr_mult}])
+        print(f"[qgt] bit_trans optimizer group at {args.dyn_lr_mult}x LR "
+              f"({args.lr * args.dyn_lr_mult:g})", flush=True)
+    else:
+        opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     settle = LossSettled()
     # DEVIATION, recorded: the pruner sees POSITION columns only. The move columns are
     # the entire per-child ranking capacity (32 bits); qat pruned them alongside and
@@ -412,7 +431,9 @@ def main():
         zin = q1_all[:, :6].reshape(cb * 6, 64, -1)
         zt = q1_all[:, 1:].reshape(cb * 6, 64, -1)
         lg, l_qa = model.bit_trans(zin, pl_codes[:, :6].reshape(cb * 6, -1))
-        l_tf = F.binary_cross_entropy_with_logits(lg, (zt + 1) / 2)
+        w_tf = torch.where(zin != zt, args.flip_weight, 1.0) \
+            if args.flip_weight != 1.0 else None
+        l_tf = F.binary_cross_entropy_with_logits(lg, (zt + 1) / 2, weight=w_tf)
         with torch.no_grad():
             tf_acc = float(((lg > 0) == (zt > 0)).float().mean())
             tf_copy = float((zin == zt).float().mean())
