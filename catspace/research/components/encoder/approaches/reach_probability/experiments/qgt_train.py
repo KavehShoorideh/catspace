@@ -623,11 +623,20 @@ def main():
         if DISC:
             mv_f = np.repeat(MVNP[ii][keep], fk, axis=0)     # (nk*fk, MV, 8)
             ff, tf_ = _ft(mv_f, cols[keep].ravel())
-            with torch.no_grad():                # world model fixed for the anchors
-                zb0 = model.rvq_bits(c_par[kt])[0]
-                zb0 = zb0.reshape(nk, 1, 64, -1).expand(-1, fk, -1, -1
-                                                        ).reshape(nk * fk, 64, -1)
-                zb_r = T_roll(zb0, [(mk_, ff, tf_)])[0]
+            # ENCODER GRADIENTS RESTORED (the qgt5/qgt6 collapse A/B, 8/28: both
+            # runs that severed the fan's encoder path collapsed mid-run; both that
+            # kept it did not -- and Dreamer's stop-grad protects the DYNAMICS, its
+            # value heads DO train the representation). The transition stays fixed
+            # to anchors by freezing ITS params for this roll; input gradients pass
+            # through the STE to the encoder.
+            zb0 = model.rvq_bits(c_par[kt])[0]
+            zb0 = zb0.reshape(nk, 1, 64, -1).expand(-1, fk, -1, -1
+                                                    ).reshape(nk * fk, 64, -1)
+            for p_ in model.bit_trans.parameters():
+                p_.requires_grad_(False)
+            zb_r = T_roll(zb0, [(mk_, ff, tf_)])[0]
+            for p_ in model.bit_trans.parameters():
+                p_.requires_grad_(True)
             z1 = model.levels_from_bits(zb_r)[0]
         else:
             ck = c_par[kt].reshape(nk, 1, -1).expand(-1, fk, -1).reshape(nk * fk, -1)
@@ -1165,16 +1174,21 @@ def main():
         l_fan, _ = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm8)
         assert torch.isfinite(l_fan) and float(l_fan) > 0, "fan anchor produced no loss"
         if DISC:
-            # qgt5 separation: anchors must NOT touch the world model (the qgt4
-            # corruption); they train the readout/QA on rolled states
+            # qgt5 separation + the qgt6 correction: anchors must NOT touch the
+            # TRANSITION (the qgt4 corruption) but MUST reach the ENCODER (the
+            # qgt5/qgt6 collapse A/B -- Dreamer's value heads train representation)
             g_T = torch.autograd.grad(l_fan, model.bit_trans.w_id,
                                       retain_graph=True, allow_unused=True)[0]
             g_R = torch.autograd.grad(l_fan, model.readout.weight,
+                                      retain_graph=True, allow_unused=True)[0]
+            g_E = torch.autograd.grad(l_fan, model.carrier_proj.weight,
                                       retain_graph=True, allow_unused=True)[0]
             assert g_T is None or float(g_T.abs().sum()) == 0.0, \
                 "fan loss leaks into the world model -- the qgt4 disease"
             assert g_R is not None and float(g_R.abs().sum()) > 0, \
                 "fan loss trains nothing"
+            assert g_E is not None and float(g_E.abs().sum()) > 0, \
+                "fan loss no longer reaches the encoder -- the qgt5/qgt6 collapse"
         else:
             g_B = torch.autograd.grad(l_fan, model.roller.B.weight,
                                       retain_graph=True, allow_unused=True)[0]
