@@ -187,27 +187,33 @@ class BitTransition(nn.Module):
 
 
 class GraphBitTransition(nn.Module):
-    """qgt6: the locality import (GNS / MeshGraphNets discipline; JOURNAL 8/28
-    review). One T2 step = relation message passing over the CURRENT position's
-    attack adjacency, with the move injected ONLY at its from/to squares -- locality
-    is architectural (L MP layers = an L-hop cone per move on the attack graph), not
-    hoped for. Free-running needs the graph AT THE ROLLED STATE, so an EDGE HEAD
-    predicts the next attack adjacency from the rolled bits (GNS: recompute
-    connectivity from the predicted state each step); it teacher-forces on the true
-    next-row edges -- free labels in the chain cache. Copy prior as BitTransition
-    (w_id scale + zero-init output)."""
+    """qgt6 (Kaveh: "is there a way to learn the edge types... not have to code them
+    in?"): the transition's neighborhood comes from QuantizedAttention's discrete
+    questions -- a QUESTION IS A LEARNED EDGE TYPE (NRI's insight, in-house form:
+    (square i) --[question q]--> top-k answering squares). Connectivity is recomputed
+    from the CURRENT bit-state every step, so the GNS recompute-connectivity loop is
+    built into attention and no hand-coded att/vac/dsc enters the dynamics. The move
+    injects only at its from/to squares. FRAME AXIOM: the no-injection baseline pass
+    is subtracted, so a square whose features the injection never reaches (through
+    the learned attention) copies exactly. WARM START (Kaveh): head 0's attention
+    logits are softly supervised toward the true attack adjacency (edge_warm_loss,
+    free labels) -- training wheels; heads/questions beyond it are unsupervised, and
+    python-chess remains the VALIDATOR (relation_alignment). Copy prior as
+    BitTransition (w_id + zero-init out)."""
 
-    def __init__(self, sq_bits=24, mv_bits=32, d=64, layers=2, w_id_init=0.5,
-                 d_e=16):
+    def __init__(self, sq_bits=24, mv_bits=32, d=64, layers=2, n_q=16, heads=4,
+                 top_k=4, out_bits=8, w_id_init=0.5):
         super().__init__()
-        from catspace.research.components.encoder.approaches.reach_probability \
-            .experiments.graph_move_policy import Relation
+        from catspace.research.tools.training_infra.quantized_attention import (
+            QuantizedAttention)
         self.sq_bits = sq_bits
         self.emb = nn.Linear(sq_bits, d)
         self.mv_from = nn.Linear(mv_bits, d)
         self.mv_to = nn.Linear(mv_bits, d)
-        self.rel = nn.ModuleList([Relation(d) for _ in range(layers)])
-        self.rel_r = nn.ModuleList([Relation(d) for _ in range(layers)])
+        self.qa = nn.ModuleList([QuantizedAttention(d, n_q=n_q, n_head=heads,
+                                                    top_k=top_k, out_bits=out_bits)
+                                 for _ in range(layers)])
+        self.proj = nn.ModuleList([nn.Linear(out_bits, d) for _ in range(layers)])
         self.ffn = nn.ModuleList([nn.Sequential(nn.Linear(d, 2 * d), nn.GELU(),
                                                 nn.Linear(2 * d, d))
                                   for _ in range(layers)])
@@ -216,65 +222,60 @@ class GraphBitTransition(nn.Module):
         nn.init.zeros_(self.out.weight)
         nn.init.zeros_(self.out.bias)
         self.w_id = nn.Parameter(torch.tensor(float(w_id_init)))
-        self.e_src = nn.Linear(sq_bits, d_e)
-        self.e_dst = nn.Linear(sq_bits, d_e)
-        self.e_bias = nn.Parameter(torch.tensor(-3.0))   # attacks are sparse (~5%)
 
-    def _encode(self, z, inj, att_sd):
+    def _encode(self, z, inj, need_attn=False):
         h = self.emb(z)
         if inj is not None:
             h = h + inj
-        for i in range(len(self.rel)):
-            if att_sd is not None and len(att_sd[0]):
-                B = z.shape[0]
-                hf = self.ln[i](h).reshape(B * 64, -1)
-                s, t = att_sd
-                h = h + (self.rel[i](hf, s, t, B * 64) +
-                         self.rel_r[i](hf, t, s, B * 64)).reshape(B, 64, -1)
+        attn0, l_route = None, torch.zeros((), device=z.device)
+        for i, qa in enumerate(self.qa):
+            b2, aux = qa(self.ln[i](h))
+            l_route = l_route + aux.get("vq_loss", 0.0)
+            if "qlog" in aux and "attn_logit" in aux:
+                l_route = l_route + router_losses(aux["qlog"], aux["attn_logit"])
+                if need_attn and i == 0:
+                    attn0 = aux["attn_logit"]            # (B,H,T,T) pre-softmax
+            h = h + self.proj[i](b2)
             h = h + self.ffn[i](h)
-        return h
+        return h, attn0, l_route
 
-    def forward(self, z, m, frm, to, att_sd):
-        """z (B,64,sq_bits) +-1; m (B,mv_bits) move code; frm/to (B,) long squares;
-        att_sd = (src, dst) FLAT indices into B*64 for the current attack edges.
-        -> next-bit logits (B,64,sq_bits). THE FRAME AXIOM IS EXACT: the no-input
-        baseline pass is subtracted, so a square with no injection and no incoming
-        messages gets a delta of identically zero -- it copies, always. Locality is
-        a theorem of the architecture, not a hope."""
+    def forward(self, z, m, frm, to, need_attn=False):
+        """z (B,64,sq_bits) +-1; m (B,mv_bits); frm/to (B,) long squares ->
+        (next-bit logits, head-0 attention logits or None, router aux loss)."""
         B = z.shape[0]
         ar = torch.arange(B, device=z.device)
         inj = torch.zeros(B, 64, self.emb.out_features, device=z.device,
                           dtype=self.emb.weight.dtype)
         inj[ar, frm] = self.mv_from(m)
         inj[ar, to] = inj[ar, to] + self.mv_to(m)        # frm==to safe
-        h = self._encode(z, inj, att_sd)
-        h0 = self._encode(z, None, None)                 # per-square self path only
-        return self.w_id * z + self.out(h) - self.out(h0)
-
-    def edge_logits(self, z):
-        """(B,64,64) logits for the NEXT position's attack adjacency, from bits."""
-        return torch.einsum("bie,bje->bij", self.e_src(z), self.e_dst(z)) + self.e_bias
+        h, attn0, l_route = self._encode(z, inj, need_attn)
+        h0, _, _ = self._encode(z, None)
+        # parentheses load-bearing (the STE scar's sibling): out(h) - out(h0) is an
+        # EXACT zero on untouched squares; (w_id*z + out(h)) - out(h0) is not
+        return self.w_id * z + (self.out(h) - self.out(h0)), attn0, l_route
 
     @staticmethod
-    def edges_from_logits(el):
-        """Thresholded adjacency -> flat (src, dst) indices, batch-strided by 64."""
-        B = el.shape[0]
-        idx = (el > 0).nonzero(as_tuple=False)           # (n, 3): batch, src, dst
-        off = idx[:, 0] * 64
-        return idx[:, 1] + off, idx[:, 2] + off
+    def edge_warm_loss(attn0, att_target):
+        """Soft supervision of head 0 toward the true attack adjacency.
+        attn0 (B,H,64,64) pre-softmax; att_target (B,64,64) float 0/1. BCE with a
+        positive-class reweight (attacks are ~4% of pairs)."""
+        lg = attn0[:, 0].clamp(min=-30, max=30)
+        pos = att_target.mean().clamp(min=1e-4)
+        w = torch.where(att_target > 0, (1 - pos) / pos, torch.ones_like(att_target))
+        return torch.nn.functional.binary_cross_entropy_with_logits(
+            lg, att_target, weight=w)
 
-    def roll_bits(self, z0, moves, e0_sd):
-        """Free-run: (m, frm, to) per step; edges for step 1 come from the TRUE root
-        position, every later step's from the edge head on the rolled bits -- the
-        GNS loop. Returns the +-1 bit state at each horizon (STE exact-zero form)."""
-        out, z, e_sd = [], z0, e0_sd
+    def roll_bits(self, z0, moves):
+        """Free-run: moves = [(m, frm, to), ...]. Connectivity recomputes from the
+        rolled bits inside attention each step -- no external edges needed. Returns
+        the +-1 bit state at each horizon (STE exact-zero form)."""
+        out, z = [], z0
         for m, frm, to in moves:
-            lg = self.forward(z, m, frm, to, e_sd)
+            lg, _, _ = self.forward(z, m, frm, to)
             zb = torch.sign(lg)
             zb = torch.where(zb == 0, torch.ones_like(zb), zb)
             z = zb + (lg - lg.detach())
             out.append(z)
-            e_sd = self.edges_from_logits(self.edge_logits(z))
         return out
 
 
@@ -338,37 +339,51 @@ def _test():
     print(f"  BitTransition: identity at init (agree {agree:.2f}); free-run exactly "
           f"+-1 after 3 steps, including under a perturbed (non-representable) head; "
           f"STE gradients reach the zero-init last layer + w_id through the roll")
-    # GraphBitTransition: identity at init; LOCALITY by construction (a bit outside
-    # the move's 2-hop attack cone cannot flip in one step); edge head + GNS loop
+    # GraphBitTransition (QA-learned edges): identity at init; frame axiom holds
+    # empirically (delta exactly 0 wherever the injection never reached the
+    # features); warm-start loss wired; GNS-in-attention roll exact +-1
     gt = GraphBitTransition(sq_bits=24, mv_bits=32, d=32, layers=2)
     zg = torch.sign(torch.randn(3, 64, 24)); zg[zg == 0] = 1.0
     mg = torch.sign(torch.randn(3, 32))
     frm = torch.tensor([0, 8, 16]); to = torch.tensor([1, 9, 17])
-    e_sd = (torch.tensor([0, 1, 65, 130]), torch.tensor([2, 3, 66, 131]))
-    lg0 = gt(zg, mg, frm, to, e_sd)
+    lg0, attn0, l_r0 = gt(zg, mg, frm, to, need_attn=True)
     ag = float(((lg0 > 0) == (zg > 0)).float().mean())
     assert ag == 1.0, f"graph transition not identity at init: {ag}"
-    with torch.no_grad():                        # break identity, test the cone
+    assert attn0 is not None and attn0.shape[-2:] == (64, 64), "attn logits missing"
+    assert torch.isfinite(torch.as_tensor(l_r0)), "router aux not finite"
+    with torch.no_grad():                        # break identity, test the frame axiom
         gt.out.weight.add_(3.0 * torch.randn_like(gt.out.weight))
-        lg1 = gt(zg, mg, frm, to, e_sd)
-        moved = ((lg1 > 0).float() != (zg > 0).float()).any(-1)   # (3,64) squares
-        cone = {0: {0, 1, 2, 3}, 1: {8, 9, 1, 2}, 2: {16, 17, 2, 3}}  # from/to+edges
-        for b in range(3):
-            outside = [s for s in moved[b].nonzero().ravel().tolist()
-                       if s not in cone[b]]
-            assert not outside, f"flip OUTSIDE the move+edge cone: {outside[:4]}"
-    outs_g = gt.roll_bits(zg, [(mg, frm, to)] * 3, e_sd)
+        ar3 = torch.arange(3)
+        inj = torch.zeros(3, 64, gt.emb.out_features)
+        inj[ar3, frm] = gt.mv_from(mg); inj[ar3, to] = inj[ar3, to] + gt.mv_to(mg)
+        h1, _, _ = gt._encode(zg, inj)
+        h0, _, _ = gt._encode(zg, None)
+        untouched = (h1 == h0).all(-1)                            # (3,64)
+        lg1, _, _ = gt(zg, mg, frm, to)
+        delta = lg1 - gt.w_id * zg
+        assert bool(untouched.any()), "frame-axiom test vacuous: no untouched square"
+        assert bool((~untouched).any()), "frame-axiom test vacuous: nothing touched"
+        du = float(delta[untouched].abs().max())
+        assert du == 0.0, f"untouched squares got nonzero delta: {du}"
+    att_t = torch.zeros(3, 64, 64); att_t[:, 0, 2] = 1.0; att_t[:, 5, 7] = 1.0
+    lw = GraphBitTransition.edge_warm_loss(attn0.detach().requires_grad_(True), att_t)
+    assert torch.isfinite(lw) and float(lw) > 0, "warm-start loss not finite"
+    lw2 = GraphBitTransition.edge_warm_loss(gt(zg, mg, frm, to, need_attn=True)[1],
+                                            att_t)
+    g_k = torch.autograd.grad(lw2, gt.qa[0].k_proj.weight, allow_unused=True)[0]
+    assert g_k is not None and float(g_k.abs().sum()) > 0, \
+        "warm-start supervision does not reach head-0 keys"
+    outs_g = gt.roll_bits(zg, [(mg, frm, to)] * 3)
     ug = set(torch.unique(outs_g[-1].detach()).tolist())
     assert ug <= {-1.0, 1.0}, "graph free-run bits not exactly +-1"
-    el = gt.edge_logits(zg)
-    assert el.shape == (3, 64, 64) and torch.isfinite(el).all()
-    (outs_g[-1].sum() + el.sum()).backward()
+    outs_g[-1].sum().backward()
     for nm, p_ in (("out", gt.out.weight), ("w_id", gt.w_id),
-                   ("edge src", gt.e_src.weight), ("relation", gt.rel[0].w.weight)):
+                   ("qa q_select", gt.qa[0].q_select.weight)):
         assert p_.grad is not None and float(p_.grad.abs().sum()) > 0, f"no grad: {nm}"
-    print(f"  GraphBitTransition: identity at init; flips CONFINED to the move+edge "
-          f"cone by construction; GNS loop rolls exactly +-1; grads reach out/w_id/"
-          f"edge-head/relations")
+    print(f"  GraphBitTransition (QA edges): identity at init; frame axiom EXACT on "
+          f"{int(untouched.sum())}/{3*64} untouched squares under a perturbed out; "
+          f"warm-start loss reaches head-0 keys; GNS-in-attention roll exactly +-1; "
+          f"grads reach out/w_id/question-selector")
     print("  QGT FIELD TESTS PASS")
 
 

@@ -80,7 +80,12 @@ def main():
     ap.add_argument("--ckpt-every", type=int, default=2000)
     ap.add_argument("--max-shards", type=int, default=60)
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--dynamics", choices=("koopman", "discrete"), default="koopman",
+    ap.add_argument("--w-edge-warm", type=float, default=0.3,
+                    help="graph arm: soft supervision of head-0 attention toward the "
+                         "true attack adjacency (the WARM START, Kaveh) -- free "
+                         "labels; heads/questions beyond it stay unsupervised.")
+    ap.add_argument("--dynamics", choices=("koopman", "discrete", "graph"),
+                    default="koopman",
                     help="'koopman': linear carrier roll c'=Kc+Bm, quantize-after-roll "
                          "(qgt1/qgt2 -- both contracted). 'discrete' (qgt3d, Kaveh): "
                          "the state that rolls IS the level-1 concepts, z'=sign(T(z,m)),"
@@ -137,6 +142,8 @@ def main():
     from catspace.research.components.encoder.approaches.reach_probability.experiments \
         .graph_move_policy import featurize, MV_CAP
 
+    DISC = args.dynamics in ("discrete", "graph")
+    GRAPH = args.dynamics == "graph"
     dev = resolve_device("auto")
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -250,7 +257,13 @@ def main():
                      rvq_levels=args.rvq_levels, mv_bits=args.mv_bits,
                      qa_levels=args.qa_levels, n_q=args.n_q, qa_heads=args.attn_heads,
                      top_k=args.top_k, out_bits=args.out_bits).to(dev)
-    if args.dynamics == "discrete":
+    if GRAPH:
+        from catspace.research.tools.training_infra.qgt_field import GraphBitTransition
+        model.bit_trans = GraphBitTransition(
+            sq_bits=args.sq_bits, mv_bits=args.mv_bits, n_q=args.n_q,
+            heads=args.attn_heads, top_k=args.top_k, out_bits=args.out_bits,
+            w_id_init=args.w_id_init).to(dev)
+    elif DISC:
         from catspace.research.tools.training_infra.qgt_field import BitTransition
         # registered as a submodule BEFORE the optimizer, so it checkpoints + trains
         model.bit_trans = BitTransition(sq_bits=args.sq_bits, mv_bits=args.mv_bits,
@@ -258,7 +271,7 @@ def main():
                                         top_k=args.top_k, out_bits=args.out_bits,
                                         w_id_init=args.w_id_init).to(dev)
     n_par = sum(p.numel() for p in model.parameters())
-    if args.dynamics == "discrete" and args.dyn_lr_mult != 1.0:
+    if DISC and args.dyn_lr_mult != 1.0:
         _bt = {id(p) for p in model.bit_trans.parameters()}
         opt = torch.optim.Adam(
             [{"params": [p for p in model.parameters() if id(p) not in _bt],
@@ -285,6 +298,7 @@ def main():
     CWt = torch.tensor(ccls.sum() / (3.0 * np.maximum(ccls, 1)),
                        dtype=torch.float32, device=dev)
     S3 = torch.tensor([1.0, 0.5, 0.0], device=dev)
+    MVNP = D["mv"].numpy()                    # raw move rows for from/to lookups
 
     def feat_of(R):
         """R: dict of CPU tensors -> (sqf, mvf, edges, mask) on dev."""
@@ -310,11 +324,44 @@ def main():
         sqf, mvf, edges, mask = feat_of(R)
         played = torch.from_numpy(np.ascontiguousarray(CHA["played"][rows])
                                   .astype(np.int64)).to(dev)
-        return sqf, mvf, edges, mask, played
+        return sqf, mvf, edges, mask, played, R["mv"].numpy()
 
     def dyn_codes(h_mv):
         q, _, l = model.dyn_mv_lfq(model.dyn_mv_proj(h_mv))
         return q, (l.sum() if torch.is_tensor(l) else torch.zeros((), device=dev))
+
+    def _ft(mv_raw, rows_j):
+        """from/to squares of moves rows_j (n,) picked in raw mv arrays (n,MV,8):
+        cols 1/2 per the graph format (verified in qgt_local_roll)."""
+        n = len(rows_j)
+        f_ = mv_raw[np.arange(n), rows_j, 1].astype(np.int64)
+        t_ = mv_raw[np.arange(n), rows_j, 2].astype(np.int64)
+        return torch.from_numpy(f_).to(dev), torch.from_numpy(t_).to(dev)
+
+    def T_forward(z, code, frm, to, need_attn=False):
+        """-> (logits, attn0 or None, aux loss). Plain discrete ignores frm/to."""
+        if GRAPH:
+            return model.bit_trans(z, code, frm, to, need_attn=need_attn)
+        lg, l_qa = model.bit_trans(z, code)
+        return lg, None, l_qa
+
+    def T_roll(z0, packs):
+        """packs: list of (code, frm, to). Plain discrete rolls on codes alone."""
+        if GRAPH:
+            return model.bit_trans.roll_bits(z0, packs)
+        return model.bit_trans.roll_bits(z0, [p[0] for p in packs])
+
+    def att_targets(rows):
+        """(n,64,64) float attack adjacency from the chain graph arrays -- the
+        WARM-START labels (free)."""
+        a = CHA["att"][rows]                                  # (n, ATT_CAP, 2)
+        na = CHA["n_att"][rows].astype(np.int64)
+        n, cap = a.shape[0], a.shape[1]
+        val = (np.arange(cap)[None, :] < na[:, None]) & (a[..., 0] != 255)
+        tgt = np.zeros((n, 64, 64), np.float32)
+        ri, ci_ = np.nonzero(val)
+        tgt[ri, a[ri, ci_, 0], a[ri, ci_, 1]] = 1.0
+        return torch.from_numpy(tgt).to(dev)
 
     def _ce_rows(pv, tg):
         """Plain CE of position-value logits vs a (n,3) triple, normalized."""
@@ -333,13 +380,13 @@ def main():
                    state: a contracted carrier cannot rank moves it can no longer see.
         """
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]           # (cb,7)
-        sq0, mv0, ed0, mk0, pl0 = feat_chain(ci[:, 0])
+        sq0, mv0, ed0, mk0, pl0, _ = feat_chain(ci[:, 0])
         c0, h_mv0, _ = model.carrier(sq0, mv0, ed0, mk0)
         dq0, l_dq = dyn_codes(h_mv0)                                  # (cb,MV,32) grad
         ar = torch.arange(cb, device=dev)
         with torch.no_grad():                  # deeper move codes: conditioning only
             rows_mid = ci[:, 1:6].ravel()
-            sqm, mvm, edm, mkm, plm = feat_chain(rows_mid)
+            sqm, mvm, edm, mkm, plm, _ = feat_chain(rows_mid)
             _, h_mvm, _ = model.carrier(sqm, mvm, edm, mkm)
             dqm_all = dyn_codes(h_mvm)[0]
             plc = dqm_all[torch.arange(len(rows_mid), device=dev), plm
@@ -425,10 +472,13 @@ def main():
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]           # (cb,7)
         with torch.no_grad():
             rows_all = ci.ravel()
-            sqa, mva, eda, mka, pla = feat_chain(rows_all)
+            sqa, mva, eda, mka, pla, mv_raw = feat_chain(rows_all)
             c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)
             q1_all = model.rvq_bits(c_all)[0].reshape(cb, 7, 64, model.sq_bits)
             dq_all = dyn_codes(h_all)[0].reshape(cb, 7, MV_CAP, -1)
+        pla_np = pla.cpu().numpy()
+        frm_a, to_a = _ft(mv_raw, pla_np)                # (cb*7,) played from/to
+        frm7, to7 = frm_a.reshape(cb, 7), to_a.reshape(cb, 7)
         # WORLD-MODEL phase (the Dreamer discipline, qgt5): the move-code encoder is
         # part of the world model, so the teacher BCE trains it -- codes recomputed
         # from DETACHED features (the board encoder stays pinned by external labels)
@@ -437,10 +487,19 @@ def main():
                     pla].reshape(cb, 7, -1)
         zin = q1_all[:, :5].reshape(cb * 5, 64, -1)      # rows 0..4
         zt = q1_all[:, 2:].reshape(cb * 5, 64, -1)       # rows 2..6: lag-2 targets
-        lg, l_qa = model.bit_trans(zin, pl_g[:, :5].reshape(cb * 5, -1))
+        need_w = GRAPH and args.w_edge_warm > 0
+        lg, attn0, l_qa = T_forward(zin, pl_g[:, :5].reshape(cb * 5, -1),
+                                    frm7[:, :5].reshape(-1), to7[:, :5].reshape(-1),
+                                    need_attn=need_w)
         w_tf = torch.where(zin != zt, args.flip_weight, 1.0) \
             if args.flip_weight != 1.0 else None
         l_tf = F.binary_cross_entropy_with_logits(lg, (zt + 1) / 2, weight=w_tf)
+        if need_w:
+            from catspace.research.tools.training_infra.qgt_field import (
+                GraphBitTransition as _GBT)
+            tgt_rows = ci[:, :5].ravel()
+            l_tf = l_tf + args.w_edge_warm * _GBT.edge_warm_loss(
+                attn0, att_targets(tgt_rows))
         with torch.no_grad():
             tf_acc = float(((lg > 0) == (zt > 0)).float().mean())
             tf_copy = float((zin == zt).float().mean())
@@ -450,9 +509,9 @@ def main():
         # corruption: tfacc 0.78 -> 0.51 under anchor gradients). The anchors train
         # the READOUT + QA levels on rolled states, never T.
         with torch.no_grad():
-            zs = model.bit_trans.roll_bits(
-                q1_all[:, 0], [pl_g[:, 0].detach(), pl_g[:, 2].detach(),
-                               pl_g[:, 4].detach()])     # horizons 2, 4, 6
+            zs = T_roll(q1_all[:, 0],
+                        [(pl_g[:, k].detach(), frm7[:, k], to7[:, k])
+                         for k in (0, 2, 4)])            # horizons 2, 4, 6
         HORIZ = (2, 4, 6)
         W = model.readout.weight
         l_val = torch.zeros((), device=dev)
@@ -498,8 +557,11 @@ def main():
             base = (q1_all[:, 0] if k == 0 else zs[i - 1])[okt]
             base = base.reshape(nv, 1, 64, -1).expand(-1, bk, -1, -1
                                                       ).reshape(nv * bk, 64, -1)
+            rr7 = (np.arange(cb) * 7 + k)[ok_r]              # chain row index of row k
+            mv_k = mv_raw[np.repeat(rr7, bk)]
+            fb, tb = _ft(mv_k, cols[ok_r].ravel())
             with torch.no_grad():                # world model fixed for the anchors
-                zbr = model.bit_trans.roll_bits(base, [codes])[0]
+                zbr = T_roll(base, [(codes, fb, tb)])[0]
             zb = model.levels_from_bits(zbr)[0]
             pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
             stm_c = torch.from_numpy(
@@ -525,7 +587,7 @@ def main():
         """Roll the parent 1 ply through fan_k children each; CE vs each child's triple.
         Anti-collapse: different children carry different values."""
         fk = args.fan_k
-        if args.dynamics == "discrete":       # teacher owns the move encoder (qgt5)
+        if DISC:       # teacher owns the move encoder (qgt5)
             with torch.no_grad():
                 dq = dyn_codes(h_mv_par)[0]
             l_dq = torch.zeros((), device=dev)
@@ -547,12 +609,14 @@ def main():
         nk = int(kt.sum())
         mk_ = dq[kt].gather(1, colst[..., None].expand(-1, -1, dq.shape[-1])
                             ).reshape(nk * fk, -1)
-        if args.dynamics == "discrete":
+        if DISC:
+            mv_f = np.repeat(MVNP[ii][keep], fk, axis=0)     # (nk*fk, MV, 8)
+            ff, tf_ = _ft(mv_f, cols[keep].ravel())
             with torch.no_grad():                # world model fixed for the anchors
                 zb0 = model.rvq_bits(c_par[kt])[0]
                 zb0 = zb0.reshape(nk, 1, 64, -1).expand(-1, fk, -1, -1
                                                         ).reshape(nk * fk, 64, -1)
-                zb_r = model.bit_trans.roll_bits(zb0, [mk_])[0]
+                zb_r = T_roll(zb0, [(mk_, ff, tf_)])[0]
             z1 = model.levels_from_bits(zb_r)[0]
         else:
             ck = c_par[kt].reshape(nk, 1, -1).expand(-1, fk, -1).reshape(nk * fk, -1)
@@ -611,7 +675,7 @@ def main():
         # dynamics supervision: teacher-forced BCE (discrete arm only) + rolled-value
         # anchors (chain value + branch ranking + fan) in BOTH arms
         tf_acc = tf_copy = float("nan")
-        if args.dynamics == "discrete":
+        if DISC:
             l_dyn, l_ch, l_br, n_lab, n_br, tf_acc, tf_copy = \
                 chain_anchor_discrete(args.chain_batch)
             l_dq_c = torch.zeros((), device=dev)
@@ -652,8 +716,8 @@ def main():
         ero = np.random.default_rng(2)
         # the discrete arm's unit is THE MOVE (2 plies): horizons and branch
         # landings sit on even plies; koopman keeps the original 1/3/6
-        VKS = (2, 4, 6) if args.dynamics == "discrete" else (1, 3, 6)
-        BPAIRS = (((0, 2), (2, 4), (4, 6)) if args.dynamics == "discrete"
+        VKS = (2, 4, 6) if DISC else (1, 3, 6)
+        BPAIRS = (((0, 2), (2, 4), (4, 6)) if DISC
                   else ((0, 1), (2, 3), (5, 6)))
         pred = {k: [] for k in VKS}
         true = {k: [] for k in VKS}
@@ -666,23 +730,29 @@ def main():
         for a in range(0, min(n_ch, len(ch_te)), 32):
             ci = CH_pos[ch_te[a:a + 32]]
             cb = len(ci)
-            sq0, mv0, ed0, mk0, pl0 = feat_chain(ci[:, 0])
+            sq0, mv0, ed0, mk0, pl0, mvr0 = feat_chain(ci[:, 0])
             c0, h_mv0, _ = model.carrier(sq0, mv0, ed0, mk0)
             dq0 = dyn_codes(h_mv0)[0]
             moves = [dq0[torch.arange(cb, device=dev), pl0]]
             rows_mid = ci[:, 1:6].ravel()
-            sqm, mvm, edm, mkm, plm = feat_chain(rows_mid)
+            sqm, mvm, edm, mkm, plm, mvrm = feat_chain(rows_mid)
             _, h_mvm, _ = model.carrier(sqm, mvm, edm, mkm)
             dqm_all = dyn_codes(h_mvm)[0]
             mm = dqm_all[torch.arange(len(rows_mid), device=dev), plm
                          ].reshape(cb, 5, -1)
             dqm = dqm_all.reshape(cb, 5, MV_CAP, -1)
             moves += [mm[:, k] for k in range(5)]
-            if args.dynamics == "discrete":
+            # played from/to per chain row 0..5 (graph arm packs)
+            mvr6 = np.concatenate([mvr0[:, None], mvrm.reshape(cb, 5, MV_CAP, -1)],
+                                  1).reshape(cb * 6, MV_CAP, -1)
+            pl6 = torch.cat([pl0[:, None], plm.reshape(cb, 5)], 1).cpu().numpy()
+            f6, t6 = _ft(mvr6, pl6.ravel())
+            f6, t6 = f6.reshape(cb, 6), t6.reshape(cb, 6)
+            if DISC:
                 q1_root = model.rvq_bits(c0)[0]
                 # T2 steps: the mover's codes at rows 0, 2, 4 -> horizons 2, 4, 6
-                zs_bits = model.bit_trans.roll_bits(
-                    q1_root, [moves[0], moves[2], moves[4]])
+                zs_bits = T_roll(
+                    q1_root, [(moves[k], f6[:, k], t6[:, k]) for k in (0, 2, 4)])
                 zs = {k: model.levels_from_bits(zs_bits[i])[0]
                       for i, k in enumerate((2, 4, 6))}
                 prev = q1_root
@@ -708,7 +778,7 @@ def main():
             if a < lag_sub:                          # even-lag deltas on a subsample
                 z0 = model.observe(c0)[0]
                 for k in (2, 4, 6):
-                    sqk, mvk, edk, mkk, _ = feat_chain(ci[:, k])
+                    sqk, mvk, edk, mkk, _, _ = feat_chain(ci[:, k])
                     ck_true, _, _ = model.carrier(sqk, mvk, edk, mkk)
                     zt = model.observe(ck_true)[0]
                     dl[k][0] += float((zs[k] != zt).float().mean()) * cb; dl[k][1] += cb
@@ -737,12 +807,16 @@ def main():
                     codes = src[okt].gather(
                         1, colst[..., None].expand(-1, -1, src.shape[-1])
                         ).reshape(nv * br_k, -1)
-                    if args.dynamics == "discrete":
+                    if DISC:
                         baseb = (q1_root if kf == 0 else zs_bits[kf // 2 - 1])[okt]
                         baseb = baseb.reshape(nv, 1, 64, -1).expand(
                             -1, br_k, -1, -1).reshape(nv * br_k, 64, -1)
+                        rrb = cols[ok_r].ravel()
+                        mv_kf = np.repeat((mvr6.reshape(cb, 6, MV_CAP, -1)[:, kf]
+                                           )[ok_r], br_k, axis=0)
+                        fbb, tbb = _ft(mv_kf, rrb)
                         zb = model.levels_from_bits(
-                            model.bit_trans.roll_bits(baseb, [codes])[0])[0]
+                            T_roll(baseb, [(codes, fbb, tbb)])[0])[0]
                         # T2 lands with the SAME side to move as the source row
                         stm_c = torch.from_numpy(
                             CH_STM[ci[:, kf]].astype(np.int64)[ok_r]).to(dev)
@@ -776,7 +850,7 @@ def main():
         copy = {k: cp[k][0] / max(cp[k][1], 1) for k in cp}
         breg = {k: br[k][0] / max(br[k][1], 1) for k in br}
         breg["rnd"] = brnd[0] / max(brnd[1], 1)
-        if args.dynamics == "discrete":
+        if DISC:
             breg["flip"] = flips[0] / max(flips[1], 1)
         return corr, VKS, delta, copy, breg
 
@@ -823,7 +897,9 @@ def main():
             return {}
         n = len(seqs)
         flat = [b for boards in seqs for b in boards]                 # n*7 boards
-        sqf, mvf, edges, mask = feat_of(build_rows(flat))
+        R_rows = build_rows(flat)
+        mv_rand = R_rows["mv"].numpy().reshape(n, 7, MV_CAP, -1)
+        sqf, mvf, edges, mask = feat_of(R_rows)
         c_all, h_mv_all, _ = model.carrier(sqf, mvf, edges, mask)
         c_all = c_all.reshape(n, 7, 64, model.sq_bits)
         dq = dyn_codes(h_mv_all)[0].reshape(n, 7, MV_CAP, -1)
@@ -833,9 +909,13 @@ def main():
             for k in range(6)]
         stm0 = torch.tensor([b0[0].turn for b0 in seqs], dtype=torch.long, device=dev)
         stm_seq = [(stm0 + k + 1) % 2 for k in range(6)]
-        if args.dynamics == "discrete":
-            outs_b = model.bit_trans.roll_bits(model.rvq_bits(c_all[:, 0])[0],
-                                               [moves[0], moves[2], moves[4]])
+        if DISC:
+            js = np.asarray(mv_js)                                    # (n,6)
+            packs = []
+            for k in (0, 2, 4):
+                fk_, tk_ = _ft(mv_rand[:, k], js[:, k])
+                packs.append((moves[k], fk_, tk_))
+            outs_b = T_roll(model.rvq_bits(c_all[:, 0])[0], packs)
             get = {k: model.levels_from_bits(outs_b[i])[0]
                    for i, k in enumerate((2, 4, 6))}
         else:
@@ -885,7 +965,7 @@ def main():
             mregret = reg_sum / max(nreg, 1)
             corr, vks, delta, copy, breg = roll_real()
             rnd = roll_random()
-            if args.dynamics == "discrete":
+            if DISC:
                 rho = float("nan")
                 tail = (f"dyn {ldyn:.3f} tfacc {tfa:.3f} (copy {tfc:.3f}) flip "
                         f"{breg.get('flip', float('nan')):.3f}")
@@ -1044,7 +1124,7 @@ def main():
         # Bits flipping at init is not required: the STE carries gradient either way.
         l_fan, _ = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm8)
         assert torch.isfinite(l_fan) and float(l_fan) > 0, "fan anchor produced no loss"
-        if args.dynamics == "discrete":
+        if DISC:
             # qgt5 separation: anchors must NOT touch the world model (the qgt4
             # corruption); they train the readout/QA on rolled states
             g_T = torch.autograd.grad(l_fan, model.bit_trans.w_id,
@@ -1075,7 +1155,7 @@ def main():
               f"{len(codes)}/{len(v15)} distinct dyn codes among one position's "
               f"children at init")
 
-        if args.dynamics == "discrete":
+        if DISC:
             # D1-D4: teacher pairs are real; the BCE is isolated from the encoder and
             # the value move codes; free-run value/branch gradients reach T by STE
             l_dyn, l_chd, l_brd, n_lab_d, n_br_d, tfa_, tfc_ = chain_anchor_discrete(8)
@@ -1086,7 +1166,9 @@ def main():
                                         retain_graph=True, allow_unused=True)[0]
             g_mv2 = torch.autograd.grad(l_dyn + l_chd + l_brd, model.mv_proj.weight,
                                         retain_graph=True, allow_unused=True)[0]
-            g_T = torch.autograd.grad(l_dyn, model.bit_trans.head[-1].weight,
+            _outp = (model.bit_trans.out.weight if GRAPH
+                     else model.bit_trans.head[-1].weight)
+            g_T = torch.autograd.grad(l_dyn, _outp,
                                       retain_graph=True, allow_unused=True)[0]
             g_dq = torch.autograd.grad(l_dyn, model.dyn_mv_proj.weight,
                                        retain_graph=True, allow_unused=True)[0]
