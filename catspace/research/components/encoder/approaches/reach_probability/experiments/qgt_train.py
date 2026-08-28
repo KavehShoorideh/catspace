@@ -428,22 +428,31 @@ def main():
             sqa, mva, eda, mka, pla = feat_chain(rows_all)
             c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)
             q1_all = model.rvq_bits(c_all)[0].reshape(cb, 7, 64, model.sq_bits)
-            dq_flat = dyn_codes(h_all)[0]
-            pl_codes = dq_flat[torch.arange(cb * 7, device=dev), pla
-                               ].reshape(cb, 7, -1)
-            dq_all = dq_flat.reshape(cb, 7, MV_CAP, -1)
+            dq_all = dyn_codes(h_all)[0].reshape(cb, 7, MV_CAP, -1)
+        # WORLD-MODEL phase (the Dreamer discipline, qgt5): the move-code encoder is
+        # part of the world model, so the teacher BCE trains it -- codes recomputed
+        # from DETACHED features (the board encoder stays pinned by external labels)
+        dq_g, l_dq = dyn_codes(h_all.detach())
+        pl_g = dq_g[torch.arange(cb * 7, device=dev),
+                    pla].reshape(cb, 7, -1)
         zin = q1_all[:, :5].reshape(cb * 5, 64, -1)      # rows 0..4
         zt = q1_all[:, 2:].reshape(cb * 5, 64, -1)       # rows 2..6: lag-2 targets
-        lg, l_qa = model.bit_trans(zin, pl_codes[:, :5].reshape(cb * 5, -1))
+        lg, l_qa = model.bit_trans(zin, pl_g[:, :5].reshape(cb * 5, -1))
         w_tf = torch.where(zin != zt, args.flip_weight, 1.0) \
             if args.flip_weight != 1.0 else None
         l_tf = F.binary_cross_entropy_with_logits(lg, (zt + 1) / 2, weight=w_tf)
         with torch.no_grad():
             tf_acc = float(((lg > 0) == (zt > 0)).float().mean())
             tf_copy = float((zin == zt).float().mean())
-        # free-run: 3 x T2 along the mover's played moves (rows 0, 2, 4)
-        moves = [pl_codes[:, 0], pl_codes[:, 2], pl_codes[:, 4]]
-        zs = model.bit_trans.roll_bits(q1_all[:, 0], moves)   # horizons 2, 4, 6
+        # BEHAVIOUR phase: free-run rolls with the WORLD MODEL FIXED (DreamerV3:
+        # "the world model is fixed during behavior learning, so the actor and value
+        # gradients do not affect its representations" -- qgt4 measured exactly that
+        # corruption: tfacc 0.78 -> 0.51 under anchor gradients). The anchors train
+        # the READOUT + QA levels on rolled states, never T.
+        with torch.no_grad():
+            zs = model.bit_trans.roll_bits(
+                q1_all[:, 0], [pl_g[:, 0].detach(), pl_g[:, 2].detach(),
+                               pl_g[:, 4].detach()])     # horizons 2, 4, 6
         HORIZ = (2, 4, 6)
         W = model.readout.weight
         l_val = torch.zeros((), device=dev)
@@ -489,7 +498,8 @@ def main():
             base = (q1_all[:, 0] if k == 0 else zs[i - 1])[okt]
             base = base.reshape(nv, 1, 64, -1).expand(-1, bk, -1, -1
                                                       ).reshape(nv * bk, 64, -1)
-            zbr = model.bit_trans.roll_bits(base, [codes])[0]
+            with torch.no_grad():                # world model fixed for the anchors
+                zbr = model.bit_trans.roll_bits(base, [codes])[0]
             zb = model.levels_from_bits(zbr)[0]
             pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
             stm_c = torch.from_numpy(
@@ -509,13 +519,18 @@ def main():
             l_br = l_br + (F.softplus(-(sc[:, 0] - sc[arv, j])) * reg[arv, j]).mean()
             n_br += nv
         l_br = l_br / 3.0
-        return l_tf + l_qa, l_val, l_br, n_lab, n_br, tf_acc, tf_copy
+        return l_tf + l_qa + l_dq, l_val, l_br, n_lab, n_br, tf_acc, tf_copy
 
     def fan_anchor(c_par, h_mv_par, ii, stm_b):
         """Roll the parent 1 ply through fan_k children each; CE vs each child's triple.
         Anti-collapse: different children carry different values."""
         fk = args.fan_k
-        dq, l_dq = dyn_codes(h_mv_par)                                # (B,MV_CAP,32)
+        if args.dynamics == "discrete":       # teacher owns the move encoder (qgt5)
+            with torch.no_grad():
+                dq = dyn_codes(h_mv_par)[0]
+            l_dq = torch.zeros((), device=dev)
+        else:
+            dq, l_dq = dyn_codes(h_mv_par)                            # (B,MV_CAP,32)
         ok = CV_[ii] & np.isfinite(CW_[ii]).all(-1)
         B = len(ii)
         cols = np.zeros((B, fk), np.int64)
@@ -533,11 +548,12 @@ def main():
         mk_ = dq[kt].gather(1, colst[..., None].expand(-1, -1, dq.shape[-1])
                             ).reshape(nk * fk, -1)
         if args.dynamics == "discrete":
-            zb0 = model.rvq_bits(c_par[kt])[0]
-            zb0 = zb0.reshape(nk, 1, 64, -1).expand(-1, fk, -1, -1
-                                                    ).reshape(nk * fk, 64, -1)
-            z1 = model.levels_from_bits(
-                model.bit_trans.roll_bits(zb0, [mk_])[0])[0]
+            with torch.no_grad():                # world model fixed for the anchors
+                zb0 = model.rvq_bits(c_par[kt])[0]
+                zb0 = zb0.reshape(nk, 1, 64, -1).expand(-1, fk, -1, -1
+                                                        ).reshape(nk * fk, 64, -1)
+                zb_r = model.bit_trans.roll_bits(zb0, [mk_])[0]
+            z1 = model.levels_from_bits(zb_r)[0]
         else:
             ck = c_par[kt].reshape(nk, 1, -1).expand(-1, fk, -1).reshape(nk * fk, -1)
             c1 = model.roller.step(ck, mk_)
@@ -1028,16 +1044,26 @@ def main():
         # Bits flipping at init is not required: the STE carries gradient either way.
         l_fan, _ = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm8)
         assert torch.isfinite(l_fan) and float(l_fan) > 0, "fan anchor produced no loss"
-        _dynp = (model.bit_trans.w_id if args.dynamics == "discrete"
-                 else model.roller.B.weight)
-        g_B = torch.autograd.grad(l_fan, _dynp, retain_graph=True,
-                                  allow_unused=True)[0]
-        g_cp = torch.autograd.grad(l_fan, model.carrier_proj.weight,
-                                   retain_graph=True, allow_unused=True)[0]
-        assert g_B is not None and float(g_B.abs().sum()) > 0, \
-            "fan loss does not train the dynamics' move path"
-        assert g_cp is not None and float(g_cp.abs().sum()) > 0, \
-            "fan loss does not reach the carrier"
+        if args.dynamics == "discrete":
+            # qgt5 separation: anchors must NOT touch the world model (the qgt4
+            # corruption); they train the readout/QA on rolled states
+            g_T = torch.autograd.grad(l_fan, model.bit_trans.w_id,
+                                      retain_graph=True, allow_unused=True)[0]
+            g_R = torch.autograd.grad(l_fan, model.readout.weight,
+                                      retain_graph=True, allow_unused=True)[0]
+            assert g_T is None or float(g_T.abs().sum()) == 0.0, \
+                "fan loss leaks into the world model -- the qgt4 disease"
+            assert g_R is not None and float(g_R.abs().sum()) > 0, \
+                "fan loss trains nothing"
+        else:
+            g_B = torch.autograd.grad(l_fan, model.roller.B.weight,
+                                      retain_graph=True, allow_unused=True)[0]
+            g_cp = torch.autograd.grad(l_fan, model.carrier_proj.weight,
+                                       retain_graph=True, allow_unused=True)[0]
+            assert g_B is not None and float(g_B.abs().sum()) > 0, \
+                "fan loss does not train the dynamics' move path"
+            assert g_cp is not None and float(g_cp.abs().sum()) > 0, \
+                "fan loss does not reach the carrier"
         # A position's children must not ALL alias to one dyn code (adjacent moves
         # colliding at init is fine -- the STE separates them under training pressure)
         dq15 = dyn_codes(aux["h_mv"])[0]
@@ -1062,7 +1088,11 @@ def main():
                                         retain_graph=True, allow_unused=True)[0]
             g_T = torch.autograd.grad(l_dyn, model.bit_trans.head[-1].weight,
                                       retain_graph=True, allow_unused=True)[0]
-            g_Tf = torch.autograd.grad(l_chd + l_brd, model.bit_trans.w_id,
+            g_dq = torch.autograd.grad(l_dyn, model.dyn_mv_proj.weight,
+                                       retain_graph=True, allow_unused=True)[0]
+            g_aT = torch.autograd.grad(l_chd + l_brd, model.bit_trans.w_id,
+                                       retain_graph=True, allow_unused=True)[0]
+            g_aR = torch.autograd.grad(l_chd + l_brd, model.readout.weight,
                                        allow_unused=True)[0]
             assert g_enc is None or float(g_enc.abs().sum()) == 0.0, \
                 "teacher-forced BCE trains the ENCODER -- the moving-target disease"
@@ -1070,12 +1100,17 @@ def main():
                 "discrete dynamics leak into the VALUE move codes"
             assert g_T is not None and float(g_T.abs().sum()) > 0, \
                 "teacher-forced BCE does not train the transition"
-            assert g_Tf is not None and float(g_Tf.abs().sum()) > 0, \
-                "free-run value/branch grads do not reach T through the STE"
-            print(f"  D1-D4 PASS discrete arm: teacher pairs real (copy agreement "
-                  f"{tfc_:.3f}, tf-acc {tfa_:.3f} at init); BCE isolated from encoder "
-                  f"+ value codes; BCE trains T; free-run grads reach T by STE "
-                  f"({n_lab_d} value rows, {n_br_d} branch rows on 8 chains)")
+            assert g_dq is not None and float(g_dq.abs().sum()) > 0, \
+                "the teacher no longer trains the move encoder (world-model split broken)"
+            assert g_aT is None or float(g_aT.abs().sum()) == 0.0, \
+                "anchors reach T -- the qgt4 corruption channel is open"
+            assert g_aR is not None and float(g_aR.abs().sum()) > 0, \
+                "anchors train nothing"
+            print(f"  D1-D5 PASS discrete arm (qgt5 separation): teacher pairs real "
+                  f"(copy {tfc_:.3f}, tf-acc {tfa_:.3f} at init); BCE trains T + move "
+                  f"encoder, never the board encoder or value codes; anchors train "
+                  f"the readout and CANNOT reach T ({n_lab_d} value rows, {n_br_d} "
+                  f"branch rows on 8 chains)")
 
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),
