@@ -210,7 +210,36 @@ def main():
     # leakage. Balanced accuracy over the children of held-out positions is already
     # skew-proof -- a majority-guesser scores 1/3 -- so the natural child mix is kept
     # rather than subsampled, which leaves far more draws in the test set.
-    te_idx = rng.choice(N, max(1, int(0.10 * N)), replace=False)
+    # GROUP HOLDOUT by PAWN STRUCTURE. The corpus samples several positions per game
+    # and stores no game id (upstream labels are FEN-keyed), so a plain position split
+    # can put same-game near-duplicates on both sides. Pawn placement changes slowly
+    # within a game and is near-unique across games past the opening, so grouping by it
+    # keeps same-game neighbours on one side. Deterministic under the seed. NOTE: this
+    # CHANGES the holdout -- numbers are not comparable to qat4-qat10; incumbents must
+    # be re-scored with --eval-only under this split.
+    _fenN = np.concatenate(store["_fen"])
+    def _pk(f):
+        bd = str(f).split()[0]; out = []
+        for r_i, row in enumerate(bd.split("/")):
+            c = 0
+            for ch in row:
+                if ch.isdigit(): c += int(ch)
+                else:
+                    if ch in "Pp": out.append(f"{ch}{r_i}{c}")
+                    c += 1
+        return "|".join(out)
+    _keys = np.array([_pk(f) for f in _fenN])
+    _uniq = np.unique(_keys)
+    _order = rng.permutation(len(_uniq))
+    _want = int(0.10 * N); _te_keys = set(); _got = 0
+    from collections import Counter
+    _cnt = Counter(_keys.tolist())
+    for _k in _uniq[_order]:
+        if _got >= _want: break
+        _te_keys.add(_k); _got += _cnt[_k]
+    te_idx = np.nonzero(np.array([k in _te_keys for k in _keys]))[0]
+    print(f"[qat] holdout grouped by pawn structure: {len(_uniq):,} groups, "
+          f"{len(te_idx):,} positions held out", flush=True)
     te_mask = np.zeros(N, bool); te_mask[te_idx] = True
     tr_idx = np.nonzero(~te_mask)[0]
     tec = np.bincount(CY_[te_idx][CV_[te_idx]], minlength=3)
