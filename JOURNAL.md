@@ -19175,3 +19175,22 @@ record, showed the LR fix alone already working at teacher level: tfacc 0.559 vs
 0.418 (+0.14 -- qgt3d never beat copy), brreg 0.126 at ply 1 vs 0.192 chance, but
 free-run HOT (flip 0.442/step) with rolled bits diverging (evenlag 0.46 vs copy 0.12).
 Watch whether flip-weighting tempers or inflames the free-run churn.
+
+## 2026-08-28 (Fable) — qgt3e STOPPED (parity capture), qgt4 LAUNCHED: the unit is THE MOVE
+
+qgt3e (10x dyn LR + flip-weight 3) at step 500: tfacc 0.732 vs copy 0.116 -- the
+lag-1 copy agreement had collapsed to 12% (91% agreement at lag 2), i.e. the encoder
+went parity-dominant and the flip-weighted lag-1 teacher was paying T almost entirely
+for PARITY BOOKKEEPING; vroll ~0, free-run flip 0.64. Kaveh stopped it and ruled: "So
+every ply should not be our unit. Should be every two plies, basically, every move...
+I'm trying to predict what concepts would flip properly two plies out... when it's my
+turn again." qgt4 implements the ruling: teacher-forcing at LAG 2 (5 pairs/chain);
+parity cancels by construction. Design interpretation, flagged for veto: T conditions
+on the MOVER'S code only, the reply MARGINALIZED -- BCE on the realized lag-2 target
+learns calibrated per-bit flip marginals under the data's reply distribution (this is
+also what makes branch pricing sound: wp for a move already assumes the reply; and it
+matches the opponent-model doctrine). Free-run = 3 T2 steps to ply 6; anchors and
+instruments move to even horizons (vroll@2/4/6, branch landings 2/4/6, landing turn
+bias = SOURCE row's stm). Gates: lag-2 teacher pairs agree 0.846 at init (vs 0.708 at
+lag 1) -- the differing ~15% are real changes. Launched: 8000 steps, flip-weight 3.0,
+10x dyn LR, tmp/qgt4.log.
