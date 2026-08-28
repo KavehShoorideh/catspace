@@ -391,7 +391,14 @@ def main():
         tgt = torch.nan_to_num(torch.from_numpy(CW_[ii]).to(dev)) * vld[..., None]
         tgt = tgt / tgt.sum(-1, keepdim=True).clamp(min=1e-6)
         w = CW[torch.from_numpy(np.where(CV_[ii], CY_[ii], 0)).to(dev)] * vld.float()
-        ce = -(tgt * F.log_softmax(aux["logit_ce"], -1)).sum(-1)
+        # EXPECTED SCORE (Kaveh): outcomes are ordinal (W=1, D=0.5, L=0), so the head is
+        # penalised by its expected-score error -- W<->L costs 2x W<->D. A small CE rides
+        # along for shape identifiability: mean-matching alone cannot distinguish a sure
+        # draw from a 50/50 W/L mix, and that difference is exactly conversion.
+        S3 = torch.tensor([1.0, 0.5, 0.0], device=dev)
+        lp = F.log_softmax(aux["logit_ce"], -1)
+        ce = ((lp.exp() * S3).sum(-1) - (tgt * S3).sum(-1)) ** 2 \
+            - 0.25 * (tgt * lp).sum(-1)
         l_wdl = (ce * w).sum() / w.sum().clamp(min=1e-6)
         assert torch.isfinite(l_wdl), "WDL loss is not finite"
         loss = l_wdl + (aux.get("vq_loss", 0.0) if aux else 0.0)
@@ -486,7 +493,10 @@ def main():
                 tgt_ve = torch.nan_to_num(
                     torch.from_numpy(CW_[gs_, col.cpu().numpy()]).to(dev))
                 tgt_ve = tgt_ve / tgt_ve.sum(-1, keepdim=True).clamp(min=1e-6)
-                l_ve = -(tgt_ve * F.log_softmax(pv, -1)).sum(-1).mean()
+                lpv = F.log_softmax(pv, -1)
+                S3v = torch.tensor([1.0, 0.5, 0.0], device=dev)
+                l_ve = (((lpv.exp() * S3v).sum(-1) - (tgt_ve * S3v).sum(-1)) ** 2
+                        - 0.25 * (tgt_ve * lpv).sum(-1)).mean()
                 assert torch.isfinite(l_ve), "value-equivalence loss not finite"
                 loss = loss + args.w_ve * l_ve
 
