@@ -19050,3 +19050,27 @@ teacher-forced BitTransition on the chain cache's 6 true (state, move -> next st
 pairs per chain, same data, same instruments, head-to-head vs qgt2.
 
 Artifacts: qgt2_step{2000,4000,6000,8000}.pt + latest; MLflow qgt2; commit 1c1776f.
+
+## 2026-08-28 (Fable) — qgt3d LAUNCHED: the discrete arm. Concepts ARE the state; teacher-forced; no K to contract.
+
+Kaveh: "is there anything that says concepts can't be rolled or is it just our own
+tests? I'm not ready to give up on it yet." Honest answer, literature-checked (IRIS,
+DreamerV2/V3, exposure-bias work -- links in the session): nothing fundamental. Chess
+IS a discrete dynamical system; discrete-token world models roll fine when
+TEACHER-FORCED; our record only ever indicted EMA bit-matching. qgt3d = qgt2's stack
+with --dynamics discrete: BitTransition z' = sign(T(z, m)) on the level-1 bits (copy
+prior: starts as the identity, learns only deltas -- fewest-changes-per-ply by
+construction; QuantizedAttention as the relational path, so the questions become "what
+does this move change"); trained teacher-forced on the chain cache's 6 true (bits,
+move -> next bits) pairs per chain, online-encoder targets detached both sides
+(D-gates prove the BCE cannot train the encoder -- the moving-target disease is
+structurally off); value CE + branch ranking still ground the FREE-RUN rolls (exposure
+bias trained against, not hidden). Heartbeat: tf-acc vs copy baseline replaces rho;
+flip = bits changed per free-run step. Head-to-head vs qgt2 on the same instruments.
+
+Also caught pre-launch, worth its own line: the STE `zb + lg - lg.detach()` associates
+as (zb + lg) - lg and leaves ~1e-6 float residue on the "+-1" bits; every
+exact-equality bit instrument read it as ~25% phantom flips. `zb + (lg - lg.detach())`
+subtracts a tensor from itself (exact zero) and is bit-exact. Found because the lr=0
+control printed flip 0.000 while lr=3e-4 printed 0.259 with provably-identity weights.
+Regression-gated in qgt_field. Commits 615279a, c53446d; run: 8000 steps, tmp/qgt3d.log.
