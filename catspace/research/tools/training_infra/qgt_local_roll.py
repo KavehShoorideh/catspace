@@ -93,16 +93,24 @@ def main():
     dev = resolve_device("auto")
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     A = ck["args"]
-    assert A.get("dynamics") == "discrete", \
-        f"{args.ckpt} is not a discrete-arm checkpoint (dynamics={A.get('dynamics')})"
+    GR = A.get("dynamics") == "graph"
+    assert A.get("dynamics") in ("discrete", "graph"), \
+        f"{args.ckpt} has no bit transition (dynamics={A.get('dynamics')})"
     model = QGTField(d=A["d"], layers=A["layers"], sq_bits=A["sq_bits"],
                      rvq_levels=A["rvq_levels"], mv_bits=A["mv_bits"],
                      qa_levels=A["qa_levels"], n_q=A["n_q"], qa_heads=A["attn_heads"],
                      top_k=A["top_k"], out_bits=A["out_bits"])
-    model.bit_trans = BitTransition(sq_bits=A["sq_bits"], mv_bits=A["mv_bits"],
-                                    n_q=A["n_q"], heads=A["attn_heads"],
-                                    top_k=A["top_k"], out_bits=A["out_bits"],
-                                    w_id_init=A.get("w_id_init", 0.5))
+    if GR:
+        from catspace.research.tools.training_infra.qgt_field import GraphBitTransition
+        model.bit_trans = GraphBitTransition(
+            sq_bits=A["sq_bits"], mv_bits=A["mv_bits"], n_q=A["n_q"],
+            heads=A["attn_heads"], top_k=A["top_k"], out_bits=A["out_bits"],
+            w_id_init=A.get("w_id_init", 0.5))
+    else:
+        model.bit_trans = BitTransition(sq_bits=A["sq_bits"], mv_bits=A["mv_bits"],
+                                        n_q=A["n_q"], heads=A["attn_heads"],
+                                        top_k=A["top_k"], out_bits=A["out_bits"],
+                                        w_id_init=A.get("w_id_init", 0.5))
     missing = model.load_state_dict(ck["state_dict"], strict=False)
     assert not missing.missing_keys, f"missing: {missing.missing_keys[:4]}"
     model = model.to(dev).eval()
@@ -161,26 +169,50 @@ def main():
         return sqf, mvf, edges, mask, played
 
     HOPS = [int(h) for h in args.hops.split(",")]
-    # accumulators -----------------------------------------------------------------
+    STEPS = ((0, 2), (2, 4), (4, 6))    # (source row, landing ply): the MOVE unit
+    LANDS = (2, 4, 6)
     hist = np.zeros(6)            # full-T flips by hop distance 0,1,2,3,>3,unreached
     n_flip = 0
-    agree = {(h, m): np.zeros(6) for h in HOPS for m in ("update", "attn")}
+    agree = {(h, m): np.zeros(3) for h in HOPS for m in ("update", "attn")}
     agree_n = 0
     act_frac = {h: [0.0, 0] for h in HOPS}
-    corner = {"local": np.zeros(6), "full": np.zeros(6), "n": 0}   # vs TRUE bits
+    corner = {"local": np.zeros(3), "full": np.zeros(3), "n": 0}   # vs TRUE bits
     DEC = ["full"] + [f"h{h}" for h in HOPS]
-    vc = {s: {k: ([], []) for k in (1, 3, 6)} for s in DEC}
-    brg = {s: {k: [0.0, 0] for k in (1, 3, 6)} for s in DEC}
+    vc = {s: {k: ([], []) for k in LANDS} for s in DEC}
+    brg = {s: {k: [0.0, 0] for k in LANDS} for s in DEC}
     br_rnd = [0.0, 0]
     ero = np.random.default_rng(3)
     BK = 8
 
     bt = model.bit_trans
+
+    def T_step(z, m, f_, t_, mask_=None):
+        if GR:
+            lg, _, _ = bt(z, m, f_, t_, tok_mask=mask_)
+        else:
+            lg, _ = bt(z, m, tok_mask=mask_)
+        zb = torch.sign(lg)
+        return torch.where(zb == 0, torch.ones_like(zb), zb)
+
+    def roll_full(z0, packs):
+        outs, z = [], z0
+        for m, f_, t_ in packs:
+            z = T_step(z, m, f_, t_)
+            outs.append(z)
+        return outs
+
+    def roll_local(z0, packs, act_seq, attn=False):
+        outs, z = [], z0
+        for (m, f_, t_), act in zip(packs, act_seq):
+            zb = T_step(z, m, f_, t_, mask_=act if attn else None)
+            z = torch.where(act[..., None], zb, z)
+            outs.append(z)
+        return outs
+
     with torch.no_grad():
         for a in range(0, min(args.n_chains, len(ch_te)), 32):
             ci = CH_pos[ch_te[a:a + 32]]
             cb = len(ci)
-            # encode all 7 true rows: bits + dyn codes + move meta
             rows_all = ci.ravel()
             sqa, mva, eda, mka, pla = feat_chain(rows_all)
             c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)
@@ -191,25 +223,28 @@ def main():
             pl_np = CHA["played"][rows_all].reshape(cb, 7).astype(np.int64)
             frm = mv_raw[np.arange(cb)[:, None], np.arange(7)[None, :], pl_np, 1]
             to_ = mv_raw[np.arange(cb)[:, None], np.arange(7)[None, :], pl_np, 2]
+            frm_t = torch.from_numpy(frm.astype(np.int64)).to(dev)
+            to_t = torch.from_numpy(to_.astype(np.int64)).to(dev)
             att_np = CHA["att"][rows_all].reshape(cb, 7, -1, 2)
             n_att = CHA["n_att"][rows_all].reshape(cb, 7).astype(np.int64)
-            moves = [mvc[:, k] for k in range(6)]
-            # full roll + flip locality --------------------------------------------
-            full = bt.roll_bits(q1[:, 0], moves)
+            packs = [(mvc[:, s], frm_t[:, s], to_t[:, s]) for s, _ in STEPS]
+            # full roll + flip locality (cone measured from MY move; reply effects
+            # are marginalised into the step, honest per the move unit) ------------
+            full = roll_full(q1[:, 0], packs)
             prev = q1[:, 0]
-            for k in range(6):
-                fl = (full[k] != prev).any(-1).cpu().numpy()      # (cb,64) sq flipped
-                prev = full[k]
+            for i, (s_, land) in enumerate(STEPS):
+                fl = (full[i] != prev).any(-1).cpu().numpy()
+                prev = full[i]
                 for r in range(cb):
-                    pairs = att_np[r, k][:n_att[r, k]]
+                    pairs = att_np[r, s_][:n_att[r, s_]]
                     pairs = pairs[(pairs != 255).all(-1)]
-                    seeds = [int(frm[r, k]), int(to_[r, k])]
-                    d = np.full(64, 5)                            # 5 = unreached
+                    seeds = [int(frm[r, s_]), int(to_[r, s_])]
+                    d = np.full(64, 5)
                     d[seeds] = 0
                     for hh in (1, 2, 3):
                         grown = halo(pairs, seeds, hh)
                         d[grown & (d == 5)] = hh
-                    d[(d == 5) & halo(pairs, seeds, 64)] = 4      # reachable, >3
+                    d[(d == 5) & halo(pairs, seeds, 64)] = 4
                     for sq_i in np.flatnonzero(fl[r]):
                         hist[d[sq_i]] += 1
                         n_flip += 1
@@ -217,28 +252,40 @@ def main():
             loc_states = {}
             for h in HOPS:
                 act = []
-                for k in range(6):
+                for s_, _ in STEPS:
                     m_ = np.zeros((cb, 64), bool)
                     for r in range(cb):
-                        pairs = att_np[r, k][:n_att[r, k]]
+                        pairs = att_np[r, s_][:n_att[r, s_]]
                         pairs = pairs[(pairs != 255).all(-1)]
-                        m_[r] = halo(pairs, [int(frm[r, k]), int(to_[r, k])], h)
+                        m_[r] = halo(pairs, [int(frm[r, s_]), int(to_[r, s_])], h)
                     act.append(torch.from_numpy(m_).to(dev))
                     act_frac[h][0] += float(m_.mean()); act_frac[h][1] += 1
                 for mode in ("update", "attn"):
-                    loc = local_roll(bt, q1[:, 0], moves, act, attn=(mode == "attn"))
+                    loc = roll_local(q1[:, 0], packs, act, attn=(mode == "attn"))
                     if mode == "update":
                         loc_states[h] = loc
-                    for k in range(6):
-                        agree[(h, mode)][k] += float(
-                            (loc[k] == full[k]).float().mean()) * cb
+                    for i in range(3):
+                        agree[(h, mode)][i] += float(
+                            (loc[i] == full[i]).float().mean()) * cb
             agree_n += cb
-            # DECISION fidelity: regret + value corr from each source's rolled line;
-            # the candidate branch step itself always runs the FULL transition
-            dq7 = dq.reshape(cb, 7, MV_CAP, -1)
+            # fixed corner (h=2 @root move), tracked to plies 2/4/6 ----------------
+            m0 = np.zeros((cb, 64), bool)
+            for r in range(cb):
+                pairs = att_np[r, 0][:n_att[r, 0]]
+                pairs = pairs[(pairs != 255).all(-1)]
+                m0[r] = halo(pairs, [int(frm[r, 0]), int(to_[r, 0])], 2)
+            m0t = torch.from_numpy(m0).to(dev)
+            locf = roll_local(q1[:, 0], packs, [m0t] * 3, attn=False)
+            for i, (_, land) in enumerate(STEPS):
+                true_b = q1[:, land]
+                cm = m0t[..., None].expand_as(true_b)
+                corner["local"][i] += float(locf[i][cm].eq(true_b[cm]).float().mean()) * cb
+                corner["full"][i] += float(full[i][cm].eq(true_b[cm]).float().mean()) * cb
+            corner["n"] += cb
+            # DECISION fidelity (regret currency; branch step always full-T) -------
             W = model.readout.weight
             samp = {}
-            for kf, land in ((0, 1), (2, 3), (5, 6)):
+            for kf, land in STEPS:
                 wpk = CHW[ci[:, kf]]
                 cols = np.zeros((cb, BK), np.int64); ok_r = np.zeros(cb, bool)
                 for r in range(cb):
@@ -252,67 +299,58 @@ def main():
                 samp[kf] = (cols, ok_r, wpk)
             jit = {kf: ero.random((int(samp[kf][1].sum()), BK)) * 1e-9 for kf in samp}
             states = {"full": full, **{f"h{h}": loc_states[h] for h in HOPS}}
-            for src, zs_roll in states.items():
-                for k in (1, 3, 6):
-                    fin = CH_OK[ci[:, k]]
-                    if not fin.any():
-                        continue
-                    zf = model.levels_from_bits(zs_roll[k - 1])[0]
-                    pv = torch.nn.functional.linear(
-                        zf, W[:, :model.d_pos], model.readout.bias) + model.turn[
-                        torch.from_numpy(CH_STM[ci[:, k]].astype(np.int64)).to(dev)]
-                    p = (torch.softmax(pv, -1).cpu().numpy() @ S3)[fin]
-                    tw = CH_WDL[ci[:, k]][fin]
-                    tw = tw / tw.sum(-1, keepdims=True).clip(min=1e-6)
-                    vc[src][k][0].append(p); vc[src][k][1].append(tw @ S3)
-                for kf, land in ((0, 1), (2, 3), (5, 6)):
+            for srcn, zs_roll in states.items():
+                for i, (kf, land) in enumerate(STEPS):
+                    fin = CH_OK[ci[:, land]]
+                    if fin.any():
+                        zf = model.levels_from_bits(zs_roll[i])[0]
+                        pv = torch.nn.functional.linear(
+                            zf, W[:, :model.d_pos], model.readout.bias) + model.turn[
+                            torch.from_numpy(
+                                CH_STM[ci[:, land]].astype(np.int64)).to(dev)]
+                        p = (torch.softmax(pv, -1).cpu().numpy() @ S3)[fin]
+                        tw = CH_WDL[ci[:, land]][fin]
+                        tw = tw / tw.sum(-1, keepdims=True).clip(min=1e-6)
+                        vc[srcn][land][0].append(p)
+                        vc[srcn][land][1].append(tw @ S3)
                     cols, ok_r, wpk = samp[kf]
                     if not ok_r.any():
                         continue
                     okt = torch.from_numpy(ok_r).to(dev); nv = int(ok_r.sum())
                     colst = torch.from_numpy(cols[ok_r]).to(dev)
-                    codes = dq7[:, kf][okt].gather(
-                        1, colst[..., None].expand(-1, -1, dq7.shape[-1])
+                    codes = dq.reshape(cb, 7, MV_CAP, -1)[:, kf][okt].gather(
+                        1, colst[..., None].expand(-1, -1, dq.shape[-1])
                         ).reshape(nv * BK, -1)
-                    base = (q1[:, 0] if kf == 0 else zs_roll[kf - 1])[okt]
+                    fb = mv_raw[:, kf][ok_r][np.arange(nv)[:, None], cols[ok_r], 1]
+                    tb = mv_raw[:, kf][ok_r][np.arange(nv)[:, None], cols[ok_r], 2]
+                    fbt = torch.from_numpy(fb.astype(np.int64)).to(dev).reshape(-1)
+                    tbt = torch.from_numpy(tb.astype(np.int64)).to(dev).reshape(-1)
+                    base = (q1[:, 0] if kf == 0 else zs_roll[i - 1])[okt]
                     base = base.reshape(nv, 1, 64, -1).expand(-1, BK, -1, -1
                                                               ).reshape(nv * BK, 64, -1)
-                    zbr = bt.roll_bits(base, [codes])[0]
+                    zbr = T_step(base, codes, fbt, tbt)
                     zf = model.levels_from_bits(zbr)[0]
                     pvb = torch.nn.functional.linear(
                         zf, W[:, :model.d_pos], model.readout.bias)
                     stm_c = torch.from_numpy(
-                        (1 - CH_STM[ci[:, kf]].astype(np.int64))[ok_r]).to(dev)
+                        CH_STM[ci[:, kf]].astype(np.int64)[ok_r]).to(dev)
                     pvb = pvb + model.turn[stm_c.repeat_interleave(BK)]
                     sg = CH_SGN[ci[:, kf]][ok_r][:, None]
                     sc = sg * (pvb[:, 0] - pvb[:, 2]).reshape(nv, BK).cpu().numpy()
                     wsel = wpk[np.arange(cb)[ok_r][:, None], cols[ok_r]]
                     pick = (sc + jit[kf]).argmax(1)
                     reg = (wsel[:, 0] - wsel[np.arange(nv), pick]).clip(min=0)
-                    brg[src][land][0] += float(reg.sum()); brg[src][land][1] += nv
-                    if src == "full":
+                    brg[srcn][land][0] += float(reg.sum()); brg[srcn][land][1] += nv
+                    if srcn == "full":
                         rr = (wsel[:, :1] - wsel).clip(min=0)
                         br_rnd[0] += float(rr[:, 1:].mean(1).sum()); br_rnd[1] += nv
-            # fixed-corner tracking (h=2 corner at ply 0, update mode) -------------
-            m0 = np.zeros((cb, 64), bool)
-            for r in range(cb):
-                pairs = att_np[r, 0][:n_att[r, 0]]
-                pairs = pairs[(pairs != 255).all(-1)]
-                m0[r] = halo(pairs, [int(frm[r, 0]), int(to_[r, 0])], 2)
-            m0t = torch.from_numpy(m0).to(dev)
-            loc = local_roll(bt, q1[:, 0], moves, [m0t] * 6, attn=False)
-            for k in range(6):
-                true_b = q1[:, k + 1]
-                cm = m0t[..., None].expand_as(true_b)
-                corner["local"][k] += float(loc[k][cm].eq(true_b[cm]).float().mean()) * cb
-                corner["full"][k] += float(full[k][cm].eq(true_b[cm]).float().mean()) * cb
-            corner["n"] += cb
 
-    print(f"\n[local] FULL-T FLIP LOCALITY ({n_flip:,} square-flips over 6 plies): "
+    print(f"\n[local] FULL-T FLIP LOCALITY ({n_flip:,} square-flips over 3 move-"
+          f"steps; cone from MY move, reply marginalised): "
           f"hop0 {hist[0]/max(n_flip,1):.1%}  hop1 {hist[1]/max(n_flip,1):.1%}  "
           f"hop2 {hist[2]/max(n_flip,1):.1%}  hop3 {hist[3]/max(n_flip,1):.1%}  "
           f">3 {hist[4]/max(n_flip,1):.1%}  unreached {hist[5]/max(n_flip,1):.1%}")
-    print(f"[local] LOCAL-vs-FULL bit agreement by horizon (1..6):")
+    print(f"[local] LOCAL-vs-FULL bit agreement at plies 2/4/6:")
     for h in HOPS:
         af = act_frac[h][0] / max(act_frac[h][1], 1)
         for mode in ("update", "attn"):
@@ -320,24 +358,23 @@ def main():
             print(f"  h={h} {mode:6s} (active {af:.1%} of board): " +
                   "/".join(f"{x:.3f}" for x in v))
     cl = corner["local"] / max(corner["n"], 1)
-    cf = corner["full"] / max(corner["n"], 1)
-    print(f"[local] FIXED CORNER (h=2 @ply0) vs TRUE bits, horizons 1..6:")
+    cfl = corner["full"] / max(corner["n"], 1)
+    print(f"[local] FIXED CORNER (h=2 @root move) vs TRUE bits, plies 2/4/6:")
     print(f"  local  " + "/".join(f"{x:.3f}" for x in cl))
-    print(f"  full   " + "/".join(f"{x:.3f}" for x in cf))
-    print(f"[local] DECISION FIDELITY (Kaveh: fidelity = centipawn loss, i.e. regret "
-          f"in win-prob units; the branch step always runs full-T, the LINE is "
-          f"rolled per source):")
-    for src in DEC:
+    print(f"  full   " + "/".join(f"{x:.3f}" for x in cfl))
+    print(f"[local] DECISION FIDELITY (Kaveh: fidelity = regret in win-prob; branch "
+          f"step always full-T, the LINE is rolled per source):")
+    for srcn in DEC:
         vs = []
-        for k in (1, 3, 6):
-            if vc[src][k][0]:
-                p = np.concatenate(vc[src][k][0]); t = np.concatenate(vc[src][k][1])
-                vs.append(float(np.corrcoef(p, t)[0, 1])
-                          if p.std() > 1e-9 and t.std() > 1e-9 else 0.0)
+        for k in LANDS:
+            if vc[srcn][k][0]:
+                pp = np.concatenate(vc[srcn][k][0]); tt = np.concatenate(vc[srcn][k][1])
+                vs.append(float(np.corrcoef(pp, tt)[0, 1])
+                          if pp.std() > 1e-9 and tt.std() > 1e-9 else 0.0)
             else:
                 vs.append(float("nan"))
-        bs = [brg[src][k][0] / max(brg[src][k][1], 1) for k in (1, 3, 6)]
-        print(f"  {src:5s} vroll " + "/".join(f"{v:+.3f}" for v in vs) +
+        bs = [brg[srcn][k][0] / max(brg[srcn][k][1], 1) for k in LANDS]
+        print(f"  {srcn:5s} vroll " + "/".join(f"{v:+.3f}" for v in vs) +
               "  brreg " + "/".join(f"{b:.3f}" for b in bs))
     print(f"  random-pick baseline {br_rnd[0] / max(br_rnd[1], 1):.3f}")
     print("[local] VERDICT inputs printed above -- interpretation belongs to the "

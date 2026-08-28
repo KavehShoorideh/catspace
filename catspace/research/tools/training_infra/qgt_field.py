@@ -223,13 +223,13 @@ class GraphBitTransition(nn.Module):
         nn.init.zeros_(self.out.bias)
         self.w_id = nn.Parameter(torch.tensor(float(w_id_init)))
 
-    def _encode(self, z, inj, need_attn=False):
+    def _encode(self, z, inj, need_attn=False, tok_mask=None):
         h = self.emb(z)
         if inj is not None:
             h = h + inj
         attn0, l_route = None, torch.zeros((), device=z.device)
         for i, qa in enumerate(self.qa):
-            b2, aux = qa(self.ln[i](h))
+            b2, aux = qa(self.ln[i](h), tok_mask=tok_mask)
             l_route = l_route + aux.get("vq_loss", 0.0)
             if "qlog" in aux and "attn_logit" in aux:
                 l_route = l_route + router_losses(aux["qlog"], aux["attn_logit"])
@@ -239,17 +239,19 @@ class GraphBitTransition(nn.Module):
             h = h + self.ffn[i](h)
         return h, attn0, l_route
 
-    def forward(self, z, m, frm, to, need_attn=False):
+    def forward(self, z, m, frm, to, need_attn=False, tok_mask=None):
         """z (B,64,sq_bits) +-1; m (B,mv_bits); frm/to (B,) long squares ->
-        (next-bit logits, head-0 attention logits or None, router aux loss)."""
+        (next-bit logits, head-0 attention logits or None, router aux loss).
+        tok_mask (B,64) bool: squares attention may LOOK AT (locality probe)."""
         B = z.shape[0]
         ar = torch.arange(B, device=z.device)
         inj = torch.zeros(B, 64, self.emb.out_features, device=z.device,
                           dtype=self.emb.weight.dtype)
         inj[ar, frm] = self.mv_from(m)
         inj[ar, to] = inj[ar, to] + self.mv_to(m)        # frm==to safe
-        h, attn0, l_route = self._encode(z, inj, need_attn)
-        h0, _, _ = self._encode(z, None)
+        h, attn0, l_route = self._encode(z, inj, need_attn, tok_mask=tok_mask)
+        h0, _, _ = self._encode(z, None, tok_mask=tok_mask)   # same mask both passes:
+        # the frame axiom stays exact RELATIVE to the restricted attention
         # parentheses load-bearing (the STE scar's sibling): out(h) - out(h0) is an
         # EXACT zero on untouched squares; (w_id*z + out(h)) - out(h0) is not
         return self.w_id * z + (self.out(h) - self.out(h0)), attn0, l_route

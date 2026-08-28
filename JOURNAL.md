@@ -19415,3 +19415,40 @@ near-identity averaging pressure (a freeze contributor) is gone, and encoder
 gradients arrive by plain supervised CE. Mean |dwp| between sampled children 0.209
 at init (D6). Relaunch: 8000 steps, tmp/qgt7.log. The freeze detector remains the
 copy baseline staying well under 1.0.
+
+## 2026-08-28 (Fable) — qgt7 RESULT + LOCALITY PROBE ON REAL DYNAMICS: the line's best run, no collapse of any species, and CORNER-ROLLING IS FREE in regret currency
+
+qgt7 (graph arm + spoiler-uniform constructed children + encoder-level fan) ran 8000
+steps clean -- the FIRST run of the line with no degenerate fixed point: no churn, no
+contraction, no parity capture, no temporal freeze, no anchor corruption, no encoder
+collapse. Final heartbeat: balanced 0.468 / regret 0.1072 (qat9 0.0872) / top1 0.324
+/ vroll@2/4/6 +0.19/+0.30/+0.26 / tfacc 0.849 vs copy 0.877 / cov 1.000 / flip 0.023.
+Mid-run peaks worth the record: draws 0.31 THROUGH the pruning ramp (the killer of
+five straight runs; the encoder-level fan's constructed draw-children are the likely
+cause; pinched to ~0 in the deepest cuts), brreg 0.102 at landing 6, vroll +0.42.
+Locked-spec floors still not met (regret, balanced, the 0.85 rolled-value curve) --
+single seed, no crowning -- but every instrument now moves in the right direction at
+once, and this is a TRUNK-FREE stack within 0.02 regret of the warm-started incumbent.
+
+LOCALITY PROBE on qgt7_step8000 (probe rewritten to the move unit + graph arm;
+tok_mask threaded through GraphBitTransition so the strict mode masks BOTH passes,
+keeping the frame axiom exact relative to restricted attention). The printed table:
+
+    full  vroll +0.191/+0.301/+0.262   brreg 0.183/0.176/0.157   (rnd 0.188)
+    h0    vroll +0.170/+0.316/+0.296   brreg 0.183/0.163/0.166   (3.1% of board)
+    attn-masked == update-masked to ~0.003 bits at every h
+
+VERDICT INPUTS: on a transition with REAL learned dynamics (not qgt3d's identity),
+rolling ONLY the move's two squares plus copy matches the full roll on both of
+Kaveh's decision metrics -- and the STRICT mode (attention confined to the corner:
+resources spent only there) costs ~nothing. The fixed-corner test: corner-only rolls
+track true corner bits exactly as well as full rolls (0.844/0.804/0.786). Flip
+locality relative to MY move stays diffuse (hop0 8%) -- partly semantic under the
+move unit, since the marginalised reply's effects land at the REPLY's squares.
+Kaveh's design question ("if I'm paying attention to one corner, I shouldn't have to
+pay attention to the whole world") now has an affirmative empirical answer at the
+current dynamics quality. Caveats: brreg's final-eval read is modest (0.16-0.18 vs
+0.188 random; mid-run reads were 0.10-0.13), and locality-is-free partly reflects
+that decision-relevant signal concentrates near the move -- the claim strengthens or
+falls with the next jump in dynamics quality. Artifacts: qgt7_step*.pt, probe commit
+follows.
