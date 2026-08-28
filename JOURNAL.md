@@ -19332,3 +19332,20 @@ learned-edge graph transition. q1 = level-1 concept bits (the rolling state); dy
 codes = learned move codes; w_id = copy prior; anchors = chain/fan/branch value
 losses; instruments = tfacc-vs-copy, vroll, brreg, evenlag, flip, and qgt6's
 flip_cov / att_auc_tf / att_auc_roll.
+
+## 2026-08-28 (Fable) — the COLLAPSE MYSTERY RESOLVED by the pre-registered A/B; qgt6 relaunched
+
+qgt6's readout collapsed at step ~2000 (balanced 0.461 -> 0.233, regret ~random) --
+the same event as qgt5 @~4700. The pre-registered watch fired exactly as written:
+2/2 collapses in the runs whose separation ALSO severed the fan's encoder gradients
+(qgt5, qgt6-first-launch); 0/2 in the runs that kept them (qgt3d, qgt4). Diagnosis:
+I over-applied the Dreamer discipline -- its stop-gradient protects the DYNAMICS,
+but its reward/value heads DO train the representation. Severing the fan turned off
+the encoder's strongest per-child discriminative pressure and left it free to
+reorganize destructively under pruning. FIX (committed): the fan's bits carry
+encoder gradients again; the transition's parameters are frozen during the fan's
+roll (STE passes input gradients through), so the anchors still provably cannot
+touch it -- U15 asserts all three properties by autograd (no grad to the transition,
+grad to the readout, grad to the encoder). qgt6 relaunched fresh; before the
+collapse its instruments read: cov 0.99 (2 layers cover the cone -- H2/H3 dead),
+aucT drifting up 0.51 -> 0.58 (warm start slow but alive), tfacc shadowing copy.
