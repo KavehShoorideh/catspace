@@ -19372,3 +19372,25 @@ as lag-2 teacher pairs through those moves (transition BCE). Both halves gated (
 8000 steps, tmp/qgt7.log, ~75 min. Success adds to the qgt6 criteria: tfacc ABOVE a
 NON-degenerate copy baseline (copy must stay well below 1.0 -- the freeze detector),
 brreg unfrozen, and rolled reads that visibly drop after known-bad branch moves.
+
+## 2026-08-28 — DOCTRINE (Kaveh): value belongs to (position, move) THROUGH the concepts; the move-bits head is a POLICY PRIOR
+
+Kaveh, correcting the readout's semantics: "A move cannot have a value... the value
+of the move depends on the position... it should come from the move changing the
+concepts through interactions with the rest of the board and then the concepts
+changing the value." And the refinement: "ranking could be like a policy prior...
+I'm not saying we should not produce a ranking, but the value is not attached to the
+move, but to the move and the position."
+
+Record-keeping consequences, effective immediately: (1) the CANONICAL value pathway
+is roll-then-read -- (position, move) -> transition -> concepts -> value; brreg is
+its instrument. (2) The mv-bits + readout-move-columns path is the POLICY PRIOR --
+an amortized (position, move) ranking (it IS position-conditioned via the move-node
+features; what it lacks is the pass through concept dynamics). top1/REGRET in the
+heartbeat measure the PRIOR, not the value pathway; every prior run summary
+conflated the two. (3) Queued next lever: upgrade the corpus fan from CE-to-triples
+to full regret/pairwise over rolled per-child reads, giving the canonical pathway
+the same discriminative pressure the prior gets. (4) Roadmap tie-in: once the rolled
+pathway is strong, the prior is DISTILLED from it (M8 amortization), not trained on
+labels directly. qgt7 continues -- the ruling changes semantics now, structure next
+run.
