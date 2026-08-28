@@ -90,6 +90,10 @@ def main():
                          "correctly predict the evaluation'. Applied at EVEN lag only -- "
                          "at odd lags 54%% of bits flip from side-to-move parity, which is "
                          "a representational artefact, not dynamics.")
+    ap.add_argument("--w-ve", type=float, default=0.3,
+                    help="value equivalence (MuZero/Grimm): roll 1 ply with the future "
+                         "head, read WDL from ROLLED concepts, CE vs the child's known "
+                         "multiPV triple. Trains the roll to keep decision-relevant bits.")
     ap.add_argument("--w-future", type=float, default=0.3)
     ap.add_argument("--future-hidden", type=int, default=1024)
     ap.add_argument("--ema-decay", type=float, default=0.999)
@@ -172,6 +176,21 @@ def main():
         CW_[~STM] = CW_[~STM][..., ::-1]
         CY_ = CW_.argmax(-1)
         SGN = np.where(STM, 1.0, -1.0).astype(np.float32)
+    # SPOILER PAIRS (Kaveh): hard negative = the best move that TRANSITIONS to a worse
+    # outcome than achievable -- the most tempting way to throw away the result.
+    # Mover-frame classes 0=W,1=D,2=L; worse = larger index. Precomputed once.
+    _raw = np.concatenate(store["_cw"]).astype(np.float32)
+    CY_MOV = np.where(np.isfinite(_raw).all(-1), _raw.argmax(-1), 3)
+    SPOIL = np.full(N, -1, np.int64)
+    _tvv = np.where(CV_ & np.isfinite(TGT), TGT, -np.inf)
+    _b = _tvv.argmax(1)
+    for _i in range(N):
+        if not np.isfinite(_tvv[_i, _b[_i]]):
+            continue
+        _w = CV_[_i] & (CY_MOV[_i] > CY_MOV[_i, _b[_i]]) & (CY_MOV[_i] < 3)
+        if _w.any():
+            SPOIL[_i] = np.where(_w, _tvv[_i], -np.inf).argmax()
+    print(f"[qat] spoiler pairs: {int((SPOIL >= 0).sum()):,} of {N:,} positions", flush=True)
     TGT = D["tgt"].numpy()                                    # (N, MV_CAP) SF move score
     ROW = np.concatenate(store["_row"])
     SHARD = np.concatenate(store["_shard"])
@@ -328,7 +347,7 @@ def main():
         baseline in the lift metric is what says whether it learned anything.
         """
         pick = rng.choice(tr_idx, n * 2, replace=False)
-        par, c1, c2, cols, cols2, bands = [], [], [], [], [], []
+        par, c1, c2, cols, cols2, bands, gs = [], [], [], [], [], [], []
         for g in pick:
             try:
                 b0 = chess.Board(str(FENS[g]))
@@ -345,7 +364,7 @@ def main():
                 continue
             j2 = int(rng.integers(len(rep)))
             b2 = b1.copy(); b2.push(rep[j2])
-            par.append(b0); c1.append(b1); c2.append(b2)
+            par.append(b0); c1.append(b1); c2.append(b2); gs.append(int(g))
             cols.append(j); cols2.append(j2); bands.append(float(D["band"][g]))
             if len(par) >= n:
                 break
@@ -354,7 +373,7 @@ def main():
         bd = torch.tensor(bands)
         return (build_rows(par, bd), build_rows(c1, bd), build_rows(c2, bd),
                 torch.tensor(cols, dtype=torch.long),
-                torch.tensor(cols2, dtype=torch.long))
+                torch.tensor(cols2, dtype=torch.long), np.array(gs, np.int64))
 
     def step_fn(_m, step):
         model.train(); field.train()
@@ -419,6 +438,14 @@ def main():
                     gap = (wp[a_, bi] - wp[a_, rnd]).clamp(min=0)[v_ok]
                     d_ = (sc[a_, bi] - sc[a_, rnd])[v_ok]
                     l_rank = l_rank + (torch.nn.functional.softplus(-d_) * gap).mean()
+                # SPOILER: best vs best-transitioning-to-worse-outcome, gap-weighted
+                sp = torch.from_numpy(SPOIL[ii]).to(dev)[good]
+                has = sp >= 0
+                if bool(has.any()):
+                    a2_, sp_, bi_ = a_[has], sp[has], bi[has]
+                    gap2 = (wp[a2_, bi_] - wp[a2_, sp_]).clamp(min=0)
+                    d2_ = sc[a2_, bi_] - sc[a2_, sp_]
+                    l_rank = l_rank + (torch.nn.functional.softplus(-d2_) * gap2).mean()
                 assert torch.isfinite(l_rank), "regret loss is not finite"
                 loss = loss + args.w_rank * l_rank
 
@@ -426,7 +453,7 @@ def main():
         l_slow = float("nan"); l_capt = float("nan")
         fp = future_batch(args.future_batch) if args.w_future > 0 else None
         if fp is not None:
-            R0, R1, R2, col, col2 = fp
+            R0, R1, R2, col, col2, gs_ = fp
             z0, h0, _ = encode_rows(R0)
             with torch.no_grad():
                 t1, h1m, _ = encode_rows(R1, enc=fut.ema)
@@ -442,6 +469,26 @@ def main():
             loss = loss + vq_d
             l_fut, fstats = fut.loss(z0, mvc, {"1": t1.detach(), "2": t2.detach()})
             loss = loss + args.w_future * l_fut
+
+            # VALUE EQUIVALENCE: the roll must preserve what VALUE needs, not what
+            # state-matching needs (MuZero; proper value equivalence). Free labels:
+            # the rolled child's multiPV triple is already in CW_.
+            if args.w_ve > 0:
+                z_roll = torch.tanh(fut.heads["1"](z0, mvc["1"]))
+                stm_c = ((1 - torch.from_numpy(STM[gs_].astype(np.int64)).to(dev))
+                         if args.pov == "white" else None)
+                l2r, _ = model.level2(z_roll)
+                zr = z_roll if l2r is None else torch.cat([z_roll, l2r], -1)
+                Wt = model.readout.weight
+                pv = F.linear(zr, Wt[:, :model.d_pos], model.readout.bias)
+                if stm_c is not None:
+                    pv = pv + model.turn[stm_c]
+                tgt_ve = torch.nan_to_num(
+                    torch.from_numpy(CW_[gs_, col.cpu().numpy()]).to(dev))
+                tgt_ve = tgt_ve / tgt_ve.sum(-1, keepdim=True).clamp(min=1e-6)
+                l_ve = -(tgt_ve * F.log_softmax(pv, -1)).sum(-1).mean()
+                assert torch.isfinite(l_ve), "value-equivalence loss not finite"
+                loss = loss + args.w_ve * l_ve
 
             # SPARSE TEMPORAL PRIOR. For +-1 concepts, (1 - z.z')/2 is EXACTLY the fraction
             # of concepts that flipped, and the gradient reaches the encoder through the
@@ -676,7 +723,7 @@ def main():
         if args.w_future > 0:
             fb = future_batch(4)
             assert fb is not None, "future batch is empty -- the head would train on nothing"
-            R0, R1, R2, cl, _cl2 = fb
+            R0, R1, R2, cl, _cl2, _gs = fb
             zp, _, _ = encode_rows(R0)
             zc, _, _ = encode_rows(R1)
             assert not torch.equal(R0["sq"], R1["sq"]), "built child equals its parent"
@@ -773,7 +820,7 @@ def main():
         if args.w_future > 0:
             fb12 = future_batch(4)
             if fb12 is not None:
-                R0b, R1b, R2b, c1b, c2b = fb12
+                R0b, R1b, R2b, c1b, c2b, _g12 = fb12
                 z0b, h0b, _ = encode_rows(R0b)
                 with torch.no_grad():
                     t1b, h1b, _ = encode_rows(R1b, enc=fut.ema)

@@ -82,7 +82,8 @@ class FuturePredictor(nn.Module):
     """A set of per-ply heads plus the EMA target encoder they are trained against."""
 
     def __init__(self, encoder: nn.Module, d_concept: int, d_move: int,
-                 plies=(1, 2), ema_decay: float = 0.999, hidden: int = 1024):
+                 plies=(1, 2), ema_decay: float = 0.999, hidden: int = 1024,
+                 flip_weight: float = 5.0):
         super().__init__()
         self.heads = nn.ModuleDict(
             {str(p): FutureConceptHead(d_concept, d_move, p, hidden) for p in plies})
@@ -90,6 +91,7 @@ class FuturePredictor(nn.Module):
         for p in self.ema.parameters():
             p.requires_grad_(False)
         self.decay = ema_decay
+        self.flip_weight = flip_weight
         self.d_concept = d_concept
 
     @torch.no_grad()
@@ -115,7 +117,13 @@ class FuturePredictor(nn.Module):
                 continue
             logit = head(z, mv[p])
             tgt = (target[p] > 0).float()                  # ±1 -> {0,1}
-            l = F.binary_cross_entropy_with_logits(logit, tgt)
+            # FLIP-WEIGHTED: ~90% of bits do not flip per ply (slow by design), so plain
+            # BCE is dominated by stays-same bits and barely pays for missed flips --
+            # the delta that matters. Sparse-transition prior in loss form; normalised.
+            flip = (tgt != (z > 0).float()).float()
+            wgt = 1.0 + self.flip_weight * flip
+            wgt = wgt / wgt.mean().clamp(min=1e-6)
+            l = F.binary_cross_entropy_with_logits(logit, tgt, weight=wgt)
             total = total + l
             with torch.no_grad():
                 pred = (logit > 0).float()
