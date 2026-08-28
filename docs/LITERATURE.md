@@ -569,3 +569,26 @@ domain-portable.
 
 QGT design amendments adopted: RVQ-structured levels; MoE load-balancing on question
 usage; optional square->region->board token hierarchy.
+
+### Implementation-verified hyperparameters for QGT (read from sources, 2026-08-27)
+
+ST-MoE (2202.08906, eq. 5-6 + Table 4, read from the PDF):
+  router z-loss  L_z = (1/B) SUM_i (log SUM_j exp(x_j^i))^2,  c_z = 0.001
+  total loss     L = L_CE + c_B*L_B + c_z*L_Z   (balance loss per Appendix A; Switch
+                 lineage default c_B = 0.01)
+  capacity factor train 1.25 / eval 2.0; router computed in float32.
+  Footnote 4: z-loss ON ATTENTION LOGITS also stabilises without quality loss --
+  directly applicable to QuantizedAttention's logits.
+  Table 2/3 rulings: input-jitter and dropout stabilise but COST quality (skip);
+  multiplicative parts (GEGLU/RMS scales) destabilise but buy quality (keep + z-loss).
+
+vector_quantize_pytorch (installed, read from source):
+  ResidualLFQ EXISTS with EnCodec structured quantizer dropout:
+    quantize_dropout=True, quantize_dropout_multiple_of=4 (EnCodec's value, per the
+    source comment), cutoff_index>=0 -- variable-bitrate concept hierarchy for free.
+  LFQ defaults we already inherit: entropy_loss_weight=0.1, commitment_loss_weight=0.0,
+  diversity_gamma=1.0; optional spherical=True (BSQ, 2406.07548).
+
+QGT adoptions: question selector gets z-loss (c_z=1e-3) on question AND attention
+logits + Switch balance loss (c_B=0.01, per-decision); levels = ResidualLFQ with
+EnCodec dropout multiple-of-4; no jitter/dropout.
