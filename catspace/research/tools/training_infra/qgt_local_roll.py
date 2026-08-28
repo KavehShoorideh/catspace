@@ -75,6 +75,8 @@ def main():
     ap.add_argument("--ckpt", default="artifacts/experiments/qgt3d_latest.pt")
     ap.add_argument("--chain-graphs", default="data/derived/gko3_chain_graphs_mm.npz")
     ap.add_argument("--chain-starts", default="data/derived/gko1_chain_rows.npz")
+    ap.add_argument("--chain-values", default="data/derived/gko1_chain_values.npz")
+    ap.add_argument("--chain-fens", default="data/derived/gko1_chain_fens.npz")
     ap.add_argument("--n-chains", type=int, default=192)
     ap.add_argument("--hops", default="0,1,2,3")
     ap.add_argument("--units", action="store_true")
@@ -125,6 +127,20 @@ def main():
     ch_te = np.flatnonzero(np.array([g in te_g for g in games]))
     print(f"[local] {len(ch_te):,} held-out chains; probing {args.n_chains}", flush=True)
 
+    # labels for DECISION fidelity (Kaveh 2026-08-28: "fidelity should be determined
+    # by centipawn loss in the end" -- regret in win-prob units, the house metric;
+    # mis-reconstructing pieces irrelevant to the action costs nothing here)
+    _zv = np.load(args.chain_values)
+    CHW = _zv["wp"].astype(np.float32)
+    _wdl_raw = _zv["wdl"].astype(np.float32)
+    cf = np.load(args.chain_fens)
+    CH_STM = np.array([str(f).split()[1] == "w" for f in cf["fen"]])
+    CH_SGN = np.where(CH_STM, 1.0, -1.0).astype(np.float32)
+    CH_WDL = _wdl_raw.copy()
+    CH_WDL[~CH_STM] = CH_WDL[~CH_STM][:, ::-1]
+    CH_OK = np.isfinite(CH_WDL).all(-1) & (np.nan_to_num(_wdl_raw).sum(-1) > 0)
+    S3 = np.array([1.0, 0.5, 0.0])
+
     N_NODES = 64 + MV_CAP
 
     def feat_chain(rows):
@@ -152,6 +168,12 @@ def main():
     agree_n = 0
     act_frac = {h: [0.0, 0] for h in HOPS}
     corner = {"local": np.zeros(6), "full": np.zeros(6), "n": 0}   # vs TRUE bits
+    DEC = ["full"] + [f"h{h}" for h in HOPS]
+    vc = {s: {k: ([], []) for k in (1, 3, 6)} for s in DEC}
+    brg = {s: {k: [0.0, 0] for k in (1, 3, 6)} for s in DEC}
+    br_rnd = [0.0, 0]
+    ero = np.random.default_rng(3)
+    BK = 8
 
     bt = model.bit_trans
     with torch.no_grad():
@@ -192,6 +214,7 @@ def main():
                         hist[d[sq_i]] += 1
                         n_flip += 1
             # local rolls ----------------------------------------------------------
+            loc_states = {}
             for h in HOPS:
                 act = []
                 for k in range(6):
@@ -204,10 +227,72 @@ def main():
                     act_frac[h][0] += float(m_.mean()); act_frac[h][1] += 1
                 for mode in ("update", "attn"):
                     loc = local_roll(bt, q1[:, 0], moves, act, attn=(mode == "attn"))
+                    if mode == "update":
+                        loc_states[h] = loc
                     for k in range(6):
                         agree[(h, mode)][k] += float(
                             (loc[k] == full[k]).float().mean()) * cb
             agree_n += cb
+            # DECISION fidelity: regret + value corr from each source's rolled line;
+            # the candidate branch step itself always runs the FULL transition
+            dq7 = dq.reshape(cb, 7, MV_CAP, -1)
+            W = model.readout.weight
+            samp = {}
+            for kf, land in ((0, 1), (2, 3), (5, 6)):
+                wpk = CHW[ci[:, kf]]
+                cols = np.zeros((cb, BK), np.int64); ok_r = np.zeros(cb, bool)
+                for r in range(cb):
+                    v = np.flatnonzero(np.isfinite(wpk[r]))
+                    if len(v) < 2:
+                        continue
+                    b_ = v[wpk[r][v].argmax()]; rest = v[v != b_]
+                    cols[r, 0] = b_
+                    cols[r, 1:] = ero.choice(rest, BK - 1, replace=len(rest) < BK - 1)
+                    ok_r[r] = True
+                samp[kf] = (cols, ok_r, wpk)
+            jit = {kf: ero.random((int(samp[kf][1].sum()), BK)) * 1e-9 for kf in samp}
+            states = {"full": full, **{f"h{h}": loc_states[h] for h in HOPS}}
+            for src, zs_roll in states.items():
+                for k in (1, 3, 6):
+                    fin = CH_OK[ci[:, k]]
+                    if not fin.any():
+                        continue
+                    zf = model.levels_from_bits(zs_roll[k - 1])[0]
+                    pv = torch.nn.functional.linear(
+                        zf, W[:, :model.d_pos], model.readout.bias) + model.turn[
+                        torch.from_numpy(CH_STM[ci[:, k]].astype(np.int64)).to(dev)]
+                    p = (torch.softmax(pv, -1).cpu().numpy() @ S3)[fin]
+                    tw = CH_WDL[ci[:, k]][fin]
+                    tw = tw / tw.sum(-1, keepdims=True).clip(min=1e-6)
+                    vc[src][k][0].append(p); vc[src][k][1].append(tw @ S3)
+                for kf, land in ((0, 1), (2, 3), (5, 6)):
+                    cols, ok_r, wpk = samp[kf]
+                    if not ok_r.any():
+                        continue
+                    okt = torch.from_numpy(ok_r).to(dev); nv = int(ok_r.sum())
+                    colst = torch.from_numpy(cols[ok_r]).to(dev)
+                    codes = dq7[:, kf][okt].gather(
+                        1, colst[..., None].expand(-1, -1, dq7.shape[-1])
+                        ).reshape(nv * BK, -1)
+                    base = (q1[:, 0] if kf == 0 else zs_roll[kf - 1])[okt]
+                    base = base.reshape(nv, 1, 64, -1).expand(-1, BK, -1, -1
+                                                              ).reshape(nv * BK, 64, -1)
+                    zbr = bt.roll_bits(base, [codes])[0]
+                    zf = model.levels_from_bits(zbr)[0]
+                    pvb = torch.nn.functional.linear(
+                        zf, W[:, :model.d_pos], model.readout.bias)
+                    stm_c = torch.from_numpy(
+                        (1 - CH_STM[ci[:, kf]].astype(np.int64))[ok_r]).to(dev)
+                    pvb = pvb + model.turn[stm_c.repeat_interleave(BK)]
+                    sg = CH_SGN[ci[:, kf]][ok_r][:, None]
+                    sc = sg * (pvb[:, 0] - pvb[:, 2]).reshape(nv, BK).cpu().numpy()
+                    wsel = wpk[np.arange(cb)[ok_r][:, None], cols[ok_r]]
+                    pick = (sc + jit[kf]).argmax(1)
+                    reg = (wsel[:, 0] - wsel[np.arange(nv), pick]).clip(min=0)
+                    brg[src][land][0] += float(reg.sum()); brg[src][land][1] += nv
+                    if src == "full":
+                        rr = (wsel[:, :1] - wsel).clip(min=0)
+                        br_rnd[0] += float(rr[:, 1:].mean(1).sum()); br_rnd[1] += nv
             # fixed-corner tracking (h=2 corner at ply 0, update mode) -------------
             m0 = np.zeros((cb, 64), bool)
             for r in range(cb):
@@ -239,6 +324,22 @@ def main():
     print(f"[local] FIXED CORNER (h=2 @ply0) vs TRUE bits, horizons 1..6:")
     print(f"  local  " + "/".join(f"{x:.3f}" for x in cl))
     print(f"  full   " + "/".join(f"{x:.3f}" for x in cf))
+    print(f"[local] DECISION FIDELITY (Kaveh: fidelity = centipawn loss, i.e. regret "
+          f"in win-prob units; the branch step always runs full-T, the LINE is "
+          f"rolled per source):")
+    for src in DEC:
+        vs = []
+        for k in (1, 3, 6):
+            if vc[src][k][0]:
+                p = np.concatenate(vc[src][k][0]); t = np.concatenate(vc[src][k][1])
+                vs.append(float(np.corrcoef(p, t)[0, 1])
+                          if p.std() > 1e-9 and t.std() > 1e-9 else 0.0)
+            else:
+                vs.append(float("nan"))
+        bs = [brg[src][k][0] / max(brg[src][k][1], 1) for k in (1, 3, 6)]
+        print(f"  {src:5s} vroll " + "/".join(f"{v:+.3f}" for v in vs) +
+              "  brreg " + "/".join(f"{b:.3f}" for b in bs))
+    print(f"  random-pick baseline {br_rnd[0] / max(br_rnd[1], 1):.3f}")
     print("[local] VERDICT inputs printed above -- interpretation belongs to the "
           "journal, not this script.")
 

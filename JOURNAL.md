@@ -19086,3 +19086,53 @@ params -- erosion measured in thousands of steps, not hundreds. ONE lever change
 steps. Also learned from the new lag-1 instrument: consecutive-ply bit agreement 0.34-
 0.44 vs ~0.80 at lag 2 -- the level-1 concepts carry a side-to-move PARITY component
 (turn is in the inputs), so T's first real lesson is the parity flip. Relaunched fresh.
+
+## 2026-08-28 (Fable) — qgt3d RESULT + LOCALITY PROBE: no collapse at last — but the transition is still mostly COPY, and that one fact explains every other number
+
+qgt3d (discrete arm, w_id_init 0.5) ran 8000 steps clean. Final heartbeat + the
+locality probe (qgt_local_roll, 192 held-out chains, printed):
+
+                    balanced  regret   top1   draws  vroll 1/3/6        end-state dynamics
+    qat9 incumbent    0.496   0.0872   0.327  0.13   --                 --
+    qgt1 koopman      0.472   0.0975   0.347  0.00   +0.10/+0.24/+0.18  rho 0.77 contracted
+    qgt2 +branch      0.464   0.1104   0.306  0.00   +0.17/+0.14/+0.31  rho 0.63 contracted
+    qgt3d discrete    0.464   0.1248   0.304  0.00   +0.49/+0.45/+0.41  tfacc 0.752 vs copy 0.761
+
+1. **The structural claim held: no collapse.** vroll sat in a stable 0.40-0.53 band at
+   every horizon from step 2000 to the end -- the first run in the record whose rolled
+   value signal SURVIVED training (both carrier runs peaked lower and then lost it).
+   Removing the spectral degree of freedom removed the failure mode. Balanced touched
+   0.515 (above the incumbent) pre-pruning; draws died in the pruning ramp for the
+   THIRD consecutive run -- the pruning/draw interaction is now the most reproduced
+   unexplained effect in the line (diagnostic queued: one run without pruning).
+
+2. **The honest control the heartbeat lacks: the vroll band is mostly COPY, not
+   dynamics.** tfacc never cleanly beat the copy baseline (0.752 vs 0.761 at close);
+   free-run flips 0.3% of bits/step; and the locality probe's h=0 roll -- updating
+   ONLY the two move squares, 3.1% of the board -- matches the full roll on BOTH of
+   Kaveh's decision metrics (vroll +0.47/+0.45/+0.41 vs full +0.49/+0.45/+0.41; branch
+   regret 0.137/0.147/0.125 vs full 0.137/0.157/0.133, random 0.178). Chess position
+   values drift slowly, so copied bits + turn bias already correlate ~0.45 with child
+   values across positions. The rolled-value corr is real but it is bought with the
+   copy prior; the LEARNED deltas contribute ~nothing to decisions yet. The branch
+   discrimination that does exist (brreg ~0.13-0.16 vs 0.178 random) rides on the
+   branch step's move CODE, not on rolled line dynamics.
+
+3. **LOCALITY (Kaveh's directive: fidelity = centipawn loss; probe built per his
+   graph-based call).** Full-T flips are NOT move-local (hop0 3.2%, hop1 12.9%, hop2
+   23.6%, >=3 60%) -- but those diffuse flips are decision-irrelevant: freezing 97% of
+   the board costs zero regret. Update-masked and attention-masked local rolls agree
+   to 3 decimals at every h -- the relational (QA) path barely participates in the
+   transition; mv_in broadcasts the move code to all 64 squares, so T has no locality
+   prior and no locality pressure. VERDICT: on THIS checkpoint, corner-rolling is
+   free -- but chiefly because T is still ~copy. The probe machinery (attack-graph
+   halos, two strictness modes, regret fidelity) is built, gated, and re-runnable the
+   day T learns real dynamics; that re-run is the actual locality experiment.
+
+RULING IMPLIED for the next increment, in order of information value: (a) make T
+actually learn -- the teacher-forced BCE is drowned by the don't-flip class (99%+ of
+bit-targets are "stay"); weight the flipping bits up, and/or free w_id per-bit; the
+copy prior should be an INIT, not an attractor; (b) the pruning/draw diagnostic;
+(c) once tfacc clearly beats copy, re-run qgt_local_roll -- if flips localize to the
+attack-graph cone AND local rolls stay regret-free, Kaveh's corner-rolling design is
+validated on real dynamics. Artifacts: qgt3d_step{2000..8000}.pt; probe committed.
