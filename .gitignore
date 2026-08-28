@@ -53,3 +53,4 @@ infra/.secrets.env
 # runtime state written by the play server / per-player memory (not artifacts of a run)
 artifacts/experiments/kitty_current_game.json
 artifacts/experiments/players/
+tmp/
