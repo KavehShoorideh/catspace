@@ -18828,3 +18828,59 @@ With the same operator class on the carrier, the 8/24 deep_roll table becomes a
 legitimate reference curve.
 
 ---
+
+## 2026-08-28 — HANDOFF: session reset imminent; next session picks up HERE
+
+**STATE.** GPU idle, nothing running. Working tree clean, all work committed on main.
+Incumbent: **qat9** (pairwise anti-degeneracy, no ve/spoiler/expected-score) at
+**regret 0.0872 / balanced 0.496 / top-1 0.327** on the pawn-grouped leak-free holdout
+(re-scored via --eval-only; old-split numbers are superseded, leakage was worth ~0.003).
+qat11b (loss-review bundle) was NEGATIVE on every axis -- do not resurrect its terms
+without decomposition. Rolling is unsolved in the whole qat line (MLP heads die chasing
+EMA bits); the answer is the QGT carrier/observable design.
+
+**QGT BUILD: increments 1-3 DONE, gated, committed** (locked spec + carrier/observable
+amendment, both in this journal, 2026-08-28):
+  1. tools/training_infra/qgt_roller.py -- KoopmanRoller, iterated spectral clamp
+     rho<=1, penalty w=0.2, never-relift roll(); tests pass.
+  2. tools/training_infra/qgt_base.py -- GraphBase with PLUGGABLE MIXERS (NoMixer /
+     DenseAttn / QuantizedAttn, one layer loop) + router_losses (ST-MoE z-loss c_z=1e-3
+     on question AND attention logits, Switch balance c_B=0.01); QuantizedAttention now
+     exposes qlog/attn_logit so the stabilisers cannot silently no-op; tests pass.
+  3. tools/training_infra/qgt_field.py -- QGTField: GraphBase(NoMixer) -> continuous
+     per-square carrier (64x24, rollable) -> EXPLICIT RVQ observables (2 LFQ levels on
+     residuals; observable = concatenated level codes, strictly +-1; ResidualLFQ's
+     summed output is NOT bits -- caught by gate) -> stacked QA levels -> slim readout
+     with qat9 semantics (factorised pos+move, turn bias, W<->L permutation, logit_ce
+     with mov detached). roll_and_read() = roll carrier, binarize-at-read, position
+     value at each horizon. Tests incl. bits-binary-after-3-rolls. V1 scope: squares +
+     moves only (board/piece/hist in v2).
+
+**NEXT (increment 4): the trainer.** Reuse qat_train.py's data pipeline (multiPV load,
+White-POV conversion + SGN, pawn-grouped holdout, future_batch chain construction --
+extend chains to ~6 plies for the roller). Losses per spec: CE (plain, NOT expected-
+score) on logit_ce -> position; expectation regret + best-vs-random pairwise on SGN-
+signed (W-L) -> move bits; ROLLED-VALUE anchor: roll_and_read over chain moves (dyn
+codes), CE of rolled position value vs each chain child's known White-POV triple (free
+multiPV labels; this replaces EMA bit-matching ENTIRELY -- no fut BCE, no EMA encoder);
++ aux["loss_aux"] + roller.spectral_penalty(); roller.clamp_() after each opt step.
+Scaffold gives LR law + settled pruning (prune over readout columns; move cols exempt
+question open). Port gates U1/U3/U4/U5/U9/U11-analogues + roller/observe gates; add
+heartbeat fields: regret/balanced as today + rolled-value corr at ply 1/3/6 + rho.
+Smoke 8 shards, then 8000 steps vs qat9 0.0872. ACCEPTANCE (locked spec): faithfulness
+probe >2x density beating shuffle at real usage (probe_question_alignment.py adapts --
+QA level-1 tokens are the 64 squares); null-move flip well below 54% (diag_color_
+structure.py, needs QGT loader); churn <= 37 groups (diag_group_change.py, squares-only
+variant for v1); dual-split rolled-value curve vs the 8/24 deep_roll table (0.85/0.81/
+0.78 at 1/3/6).
+
+**GOTCHAS for the fresh session:** read MILESTONES.md + this journal's 2026-08-27/28
+entries before acting; no model construction beside a live MPS trainer; heartbeat
+`moved` is batch-noise (use the fixed-set controls); Kaveh's standing rules of this arc:
+check code paths before running, right abstraction layer (no repeated code), fixes go
+in when in hand, sweeps must reach the final phase, single-seed close numbers get no
+verdicts. Kaveh's asitop (pid 50172) has been eating ~99% CPU for 2+ days -- his to
+kill, flag if still alive. Trainer logs live in $CLAUDE_JOB_DIR/tmp/qat*.log (job-
+scoped, gone after job deletion -- run summaries are in this journal and the commits).
+
+---
