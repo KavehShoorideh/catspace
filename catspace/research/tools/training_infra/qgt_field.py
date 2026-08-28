@@ -62,24 +62,34 @@ class QGTField(nn.Module):
         c = self.carrier_proj(h[:, :64])                   # (B,64,sq_bits) continuous
         return c, h[:, 64:], aux
 
-    def observe(self, c):
-        """carrier -> (all-level bits, aux losses). Quantize-after-roll lives here."""
-        B = c.shape[0]
+    def rvq_bits(self, c):
+        """carrier -> level-1 bits only (B,64,sq_bits) + the RVQ aux loss."""
         res, lvl_bits, l_rvq = c, [], torch.zeros((), device=c.device)
         for dn, up, q in zip(self.rvq_down, self.rvq_up, self.rvq_q):
             qb, _, lq = q(dn(res))
             res = res - up(qb)
             lvl_bits.append(qb)
             l_rvq = l_rvq + (lq.sum() if torch.is_tensor(lq) else 0.0)
-        q1 = torch.cat(lvl_bits, -1)                       # (B,64,sq_bits) strictly +-1
-        toks, bits, l_route = q1, [q1.reshape(B, -1)], torch.zeros((), device=c.device)
+        return torch.cat(lvl_bits, -1), l_rvq              # strictly +-1
+
+    def levels_from_bits(self, q1):
+        """level-1 bit tokens (B,64,sq_bits) -> (all-level bits, router aux). The QA
+        stack reads bit tokens directly, so a DISCRETE roll reuses levels 2+ as-is."""
+        B = q1.shape[0]
+        toks, bits, l_route = q1, [q1.reshape(B, -1)], torch.zeros((), device=q1.device)
         for qa in self.qa:
             b2, aux = qa(toks)
             l_route = l_route + aux["vq_loss"] + router_losses(aux["qlog"],
                                                                aux["attn_logit"])
             bits.append(b2.reshape(B, -1))
             toks = b2
-        return torch.cat(bits, -1), l_rvq + l_route
+        return torch.cat(bits, -1), l_route
+
+    def observe(self, c):
+        """carrier -> (all-level bits, aux losses). Quantize-after-roll lives here."""
+        q1, l_rvq = self.rvq_bits(c)
+        z, l_route = self.levels_from_bits(q1)
+        return z, l_rvq + l_route
 
     def forward(self, sqf, mvf, edges, mv_mask, stm=None):
         """-> (per-child logits, logit_ce, z_bits, aux)."""
@@ -109,6 +119,62 @@ class QGTField(nn.Module):
             pv = F.linear(z, self.readout.weight[:, :self.d_pos], self.readout.bias)
             pv = pv + self.turn[stm_seq[k]]
             out.append((z, pv))
+        return out
+
+
+class BitTransition(nn.Module):
+    """qgt3d (Kaveh 2026-08-28: "is there anything that says concepts can't be rolled
+    or is it just our own tests?" -- just our own tests, and they only ever indicted
+    EMA bit-matching): a DISCRETE transition on level-1 bits, z' = sign(T(z, m)). The
+    state that advances IS the concepts; there is no carrier and no spectral radius to
+    contract (the mechanism that killed qgt1/qgt2). Trained TEACHER-FORCED on real
+    chain pairs -- true bits in, true next-position bits as target -- the IRIS-class
+    scheme this project never tried.
+
+    Structure: a strong COPY PRIOR (w_id * z, head's last layer zero-init, so T starts
+    as the identity and learns only the deltas -- most bits do not flip per ply, and
+    "fewest concept changes per ply" is the standing goal) + one QuantizedAttention
+    layer for the relational path (the discrete questions become "what does this move
+    change") + a per-square MLP. Nonlinear on purpose: the interpretability constraint
+    is on the READOUT, not the transition (qat_train doctrine)."""
+
+    def __init__(self, sq_bits=24, mv_bits=32, n_q=16, heads=4, top_k=4, out_bits=8):
+        super().__init__()
+        from catspace.research.tools.training_infra.quantized_attention import (
+            QuantizedAttention)
+        self.mv_in = nn.Linear(mv_bits, sq_bits)
+        self.qa = QuantizedAttention(sq_bits, n_q=n_q, n_head=heads, top_k=top_k,
+                                     out_bits=out_bits)
+        self.head = nn.Sequential(nn.Linear(sq_bits + out_bits, 4 * sq_bits),
+                                  nn.GELU(), nn.Linear(4 * sq_bits, sq_bits))
+        nn.init.zeros_(self.head[-1].weight)
+        nn.init.zeros_(self.head[-1].bias)
+        self.w_id = nn.Parameter(torch.tensor(3.0))
+
+    def forward(self, z, m):
+        """z: (B,64,sq_bits) +-1 bits; m: (B,mv_bits) move code -> next-bit LOGITS."""
+        t = z + self.mv_in(m)[:, None, :]
+        b2, aux = self.qa(t)
+        loss = aux.get("vq_loss", torch.zeros((), device=z.device))
+        if "qlog" in aux and "attn_logit" in aux:
+            loss = loss + router_losses(aux["qlog"], aux["attn_logit"])
+        return self.w_id * z + self.head(torch.cat([t, b2], -1)), loss
+
+    def roll_bits(self, z0, moves):
+        """Free-run: apply T repeatedly, RE-BINARIZING each step. Forward values are
+        exactly +-1 (zb + lg - lg.detach() adds an exact zero); gradients pass to the
+        logits by straight-through. Returns the bit state at each horizon."""
+        out, z = [], z0
+        for m in moves:
+            lg, _ = self.forward(z, m)
+            zb = torch.sign(lg)
+            zb = torch.where(zb == 0, torch.ones_like(zb), zb)
+            # STE. The parentheses are load-bearing: (lg - lg.detach()) is an EXACT
+            # zero, so forward values stay exactly +-1. The associated form
+            # (zb + lg) - lg.detach() leaves ~1e-6 rounding residue that downstream
+            # exact-equality bit comparisons read as ~25% phantom flips (measured).
+            z = zb + (lg - lg.detach())
+            out.append(z)
         return out
 
 
@@ -145,6 +211,33 @@ def _test():
         assert p_.grad is not None and float(p_.grad.abs().sum()) > 0, f"no grad: {nm}"
     print(f"  observables binary at every horizon incl. after 3 rolls; permutation "
           f"invariants exact; gradients reach K, relations, readout; aux losses finite")
+    # BitTransition: copy prior at init, exact +-1 free-run, STE gradient flows
+    bt = BitTransition(sq_bits=24, mv_bits=32)
+    zb0 = torch.sign(torch.randn(B, 64, 24)); zb0[zb0 == 0] = 1.0
+    mvs = [torch.sign(torch.randn(B, 32)) for _ in range(3)]
+    lg0, _ = bt(zb0, mvs[0])
+    agree = float(((lg0 > 0) == (zb0 > 0)).float().mean())
+    assert agree == 1.0, f"copy prior broken at init: {agree}"
+    outs_b = bt.roll_bits(zb0, mvs)
+    ub = set(torch.unique(outs_b[-1].detach()).tolist())
+    assert ub <= {-1.0, 1.0}, f"free-run bits not exactly +-1: {sorted(ub)[:4]}"
+    zf, _ = f.levels_from_bits(outs_b[-1])
+    zf.sum().backward()
+    # the zero-init LAST layer receives gradient at init; earlier layers unblock
+    # after its first update (gradient to them is proportional to its weights)
+    for nm, p_ in (("head[-1]", bt.head[-1].weight), ("w_id", bt.w_id)):
+        assert p_.grad is not None and float(p_.grad.abs().sum()) > 0, \
+            f"no STE grad through 3 discrete rolls: {nm}"
+    # the regression that cost a debugging session: with NON-representable logits
+    # (perturbed head), the STE must still emit exactly +-1 -- the un-parenthesized
+    # form left ~1e-6 residue that read as ~25% phantom bit-flips downstream
+    with torch.no_grad():
+        bt.head[-1].weight.add_(1e-4 * torch.randn_like(bt.head[-1].weight))
+        ub2 = set(torch.unique(bt.roll_bits(zb0, mvs)[-1]).tolist())
+    assert ub2 <= {-1.0, 1.0}, f"STE leaks rounding residue: {sorted(ub2)[:4]}"
+    print(f"  BitTransition: identity at init (agree {agree:.2f}); free-run exactly "
+          f"+-1 after 3 steps, including under a perturbed (non-representable) head; "
+          f"STE gradients reach the zero-init last layer + w_id through the roll")
     print("  QGT FIELD TESTS PASS")
 
 

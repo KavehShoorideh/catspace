@@ -80,6 +80,14 @@ def main():
     ap.add_argument("--ckpt-every", type=int, default=2000)
     ap.add_argument("--max-shards", type=int, default=60)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--dynamics", choices=("koopman", "discrete"), default="koopman",
+                    help="'koopman': linear carrier roll c'=Kc+Bm, quantize-after-roll "
+                         "(qgt1/qgt2 -- both contracted). 'discrete' (qgt3d, Kaveh): "
+                         "the state that rolls IS the level-1 concepts, z'=sign(T(z,m)),"
+                         " trained TEACHER-FORCED on the chain cache's true (bits, move "
+                         "-> next bits) pairs; no carrier, no spectral radius to "
+                         "contract. Same value/branch grounding on free-run rolls, "
+                         "same instruments -- a head-to-head at the architecture level.")
     # architecture (locked spec constants as defaults)
     ap.add_argument("--d", type=int, default=128)
     ap.add_argument("--layers", type=int, default=3)
@@ -229,6 +237,13 @@ def main():
                      rvq_levels=args.rvq_levels, mv_bits=args.mv_bits,
                      qa_levels=args.qa_levels, n_q=args.n_q, qa_heads=args.attn_heads,
                      top_k=args.top_k, out_bits=args.out_bits).to(dev)
+    if args.dynamics == "discrete":
+        from catspace.research.tools.training_infra.qgt_field import BitTransition
+        # registered as a submodule BEFORE the optimizer, so it checkpoints + trains
+        model.bit_trans = BitTransition(sq_bits=args.sq_bits, mv_bits=args.mv_bits,
+                                        n_q=args.n_q, heads=args.attn_heads,
+                                        top_k=args.top_k,
+                                        out_bits=args.out_bits).to(dev)
     n_par = sum(p.numel() for p in model.parameters())
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     settle = LossSettled()
@@ -372,6 +387,98 @@ def main():
         l_br = l_br / 6.0
         return l_val, l_br, l_dq, n_lab, n_br
 
+    def chain_anchor_discrete(cb):
+        """qgt3d: TEACHER-FORCED discrete transition on the chain cache's 6 true
+        (bits, move -> next bits) pairs per chain -- the scheme the qat line never
+        tested (its heads matched moving EMA targets) -- plus the SAME value CE and
+        branch ranking on FREE-RUN rolled bits, so multi-step behaviour is grounded
+        and exposure bias is trained against, not hidden. The encoder is NOT trained
+        by the dynamics (inputs and targets both detached): its bits are pinned by
+        the external SF losses, dynamics chase them, never the reverse."""
+        ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]           # (cb,7)
+        with torch.no_grad():
+            rows_all = ci.ravel()
+            sqa, mva, eda, mka, pla = feat_chain(rows_all)
+            c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)
+            q1_all = model.rvq_bits(c_all)[0].reshape(cb, 7, 64, model.sq_bits)
+            dq_flat = dyn_codes(h_all)[0]
+            pl_codes = dq_flat[torch.arange(cb * 7, device=dev), pla
+                               ].reshape(cb, 7, -1)
+            dq_all = dq_flat.reshape(cb, 7, MV_CAP, -1)
+        zin = q1_all[:, :6].reshape(cb * 6, 64, -1)
+        zt = q1_all[:, 1:].reshape(cb * 6, 64, -1)
+        lg, l_qa = model.bit_trans(zin, pl_codes[:, :6].reshape(cb * 6, -1))
+        l_tf = F.binary_cross_entropy_with_logits(lg, (zt + 1) / 2)
+        with torch.no_grad():
+            tf_acc = float(((lg > 0) == (zt > 0)).float().mean())
+            tf_copy = float((zin == zt).float().mean())
+        # free-run rolls through the played line; value CE at every horizon
+        moves = [pl_codes[:, k] for k in range(6)]
+        zs = model.bit_trans.roll_bits(q1_all[:, 0], moves)
+        W = model.readout.weight
+        l_val = torch.zeros((), device=dev)
+        n_lab = 0
+        for k in range(1, 7):
+            fin = torch.from_numpy(CH_OK[ci[:, k]]).to(dev)
+            if not bool(fin.any()):
+                continue
+            z = model.levels_from_bits(zs[k - 1])[0]
+            pv = F.linear(z, W[:, :model.d_pos], model.readout.bias) + model.turn[
+                torch.from_numpy(CH_STM[ci[:, k]].astype(np.int64)).to(dev)]
+            l_val = l_val + _ce_rows(pv[fin],
+                                     torch.from_numpy(CH_WDL[ci[:, k]]).to(dev)[fin])
+            n_lab += int(fin.sum())
+        l_val = l_val / 6.0
+        # branch ranking from rows 0..5: one extra T step through sampled moves
+        bk = args.branch_k
+        l_br = torch.zeros((), device=dev)
+        n_br = 0
+        for k in range(6):
+            wpk = CHW[ci[:, k]]
+            cols = np.zeros((cb, bk), np.int64)
+            ok_r = np.zeros(cb, bool)
+            for r in range(cb):
+                v = np.flatnonzero(np.isfinite(wpk[r]))
+                if len(v) < 2:
+                    continue
+                b_ = v[wpk[r][v].argmax()]
+                rest = v[v != b_]
+                cols[r, 0] = b_
+                cols[r, 1:] = rng.choice(rest, bk - 1, replace=len(rest) < bk - 1)
+                ok_r[r] = True
+            if not ok_r.any():
+                continue
+            okt = torch.from_numpy(ok_r).to(dev)
+            nv = int(ok_r.sum())
+            colst = torch.from_numpy(cols[ok_r]).to(dev)
+            codes = dq_all[:, k][okt].gather(
+                1, colst[..., None].expand(-1, -1, dq_all.shape[-1])
+                ).reshape(nv * bk, -1)
+            base = (q1_all[:, 0] if k == 0 else zs[k - 1])[okt]
+            base = base.reshape(nv, 1, 64, -1).expand(-1, bk, -1, -1
+                                                      ).reshape(nv * bk, 64, -1)
+            zbr = model.bit_trans.roll_bits(base, [codes])[0]
+            zb = model.levels_from_bits(zbr)[0]
+            pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
+            stm_c = torch.from_numpy(
+                (1 - CH_STM[ci[:, k]].astype(np.int64))[ok_r]).to(dev)
+            pvb = pvb + model.turn[stm_c.repeat_interleave(bk)]
+            sg = torch.from_numpy(CH_SGN[ci[:, k]][ok_r]).to(dev)[:, None]
+            sc = sg * (pvb[:, 0] - pvb[:, 2]).reshape(nv, bk)
+            wsel = torch.from_numpy(
+                wpk[np.arange(cb)[ok_r][:, None], cols[ok_r]]).to(dev)
+            reg = (wsel[:, :1] - wsel).clamp(min=0)
+            if args.units:
+                assert float(reg[:, 0].abs().max()) == 0.0, \
+                    "branch slot 0 is not the best move -- regret is mis-anchored"
+            l_br = l_br + (torch.softmax(sc, -1) * reg).sum(-1).mean()
+            j = torch.randint(1, bk, (nv,), device=dev)
+            arv = torch.arange(nv, device=dev)
+            l_br = l_br + (F.softplus(-(sc[:, 0] - sc[arv, j])) * reg[arv, j]).mean()
+            n_br += nv
+        l_br = l_br / 6.0
+        return l_tf + l_qa, l_val, l_br, n_lab, n_br, tf_acc, tf_copy
+
     def fan_anchor(c_par, h_mv_par, ii, stm_b):
         """Roll the parent 1 ply through fan_k children each; CE vs each child's triple.
         Anti-collapse: different children carry different values."""
@@ -391,11 +498,18 @@ def main():
         kt = torch.from_numpy(keep).to(dev)
         colst = torch.from_numpy(cols[keep]).to(dev)                  # (nk,fk)
         nk = int(kt.sum())
-        ck = c_par[kt].reshape(nk, 1, -1).expand(-1, fk, -1).reshape(nk * fk, -1)
         mk_ = dq[kt].gather(1, colst[..., None].expand(-1, -1, dq.shape[-1])
                             ).reshape(nk * fk, -1)
-        c1 = model.roller.step(ck, mk_)
-        z1, _ = model.observe(c1.reshape(-1, 64, model.sq_bits))
+        if args.dynamics == "discrete":
+            zb0 = model.rvq_bits(c_par[kt])[0]
+            zb0 = zb0.reshape(nk, 1, 64, -1).expand(-1, fk, -1, -1
+                                                    ).reshape(nk * fk, 64, -1)
+            z1 = model.levels_from_bits(
+                model.bit_trans.roll_bits(zb0, [mk_])[0])[0]
+        else:
+            ck = c_par[kt].reshape(nk, 1, -1).expand(-1, fk, -1).reshape(nk * fk, -1)
+            c1 = model.roller.step(ck, mk_)
+            z1, _ = model.observe(c1.reshape(-1, 64, model.sq_bits))
         pv = F.linear(z1, model.readout.weight[:, :model.d_pos], model.readout.bias)
         stm_c = (1 - stm_b[kt]).repeat_interleave(fk)         # side flips after a ply
         pv = pv + model.turn[stm_c]
@@ -446,26 +560,36 @@ def main():
                 assert torch.isfinite(l_rank), "regret loss is not finite"
                 loss = loss + args.w_rank * l_rank
 
-        # ROLLED-VALUE anchor (chain value + branch ranking + fan) -- the sole
-        # dynamics supervision
-        l_ch, l_br, l_dq_c, n_lab, n_br = chain_anchor(args.chain_batch)
+        # dynamics supervision: teacher-forced BCE (discrete arm only) + rolled-value
+        # anchors (chain value + branch ranking + fan) in BOTH arms
+        tf_acc = tf_copy = float("nan")
+        if args.dynamics == "discrete":
+            l_dyn, l_ch, l_br, n_lab, n_br, tf_acc, tf_copy = \
+                chain_anchor_discrete(args.chain_batch)
+            l_dq_c = torch.zeros((), device=dev)
+        else:
+            l_ch, l_br, l_dq_c, n_lab, n_br = chain_anchor(args.chain_batch)
+            l_dyn = torch.zeros((), device=dev)
         l_fan, l_dq_f = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm_b)
         l_roll = l_ch + l_fan
-        assert torch.isfinite(l_roll) and torch.isfinite(l_br), \
-            "rolled-value loss is not finite"
-        loss = loss + args.w_roll * l_roll + args.w_branch * l_br + l_dq_c + l_dq_f \
-            + model.roller.spectral_penalty()
+        assert torch.isfinite(l_roll) and torch.isfinite(l_br) \
+            and torch.isfinite(l_dyn), "dynamics loss is not finite"
+        loss = loss + args.w_roll * l_roll + args.w_branch * l_br + l_dyn \
+            + l_dq_c + l_dq_f
+        if args.dynamics == "koopman":
+            loss = loss + model.roller.spectral_penalty()
 
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
-        model.roller.clamp_()
+        if args.dynamics == "koopman":
+            model.roller.clamp_()
         pruner.step(step, settled=settle.update(float(loss.detach())))
 
         out = {}
         if step % args.eval_every == 0 or step == 1 or step == args.steps:
             out = run_eval(step, float(l_wdl), float(l_rank), float(l_ch),
-                           float(l_fan), float(l_br))
+                           float(l_fan), float(l_br), tf_acc, tf_copy)
         return out
 
     # ---- the dual-split instrument --------------------------------------------------
@@ -483,6 +607,7 @@ def main():
         cp = {k: [0.0, 0.0] for k in (2, 4, 6)}     # copy baseline: root vs true bits
         br = {k: [0.0, 0.0] for k in (1, 3, 6)}     # branch regret at landing ply
         brnd = [0.0, 0.0]
+        flips = [0.0, 0.0]                          # discrete arm: bits flipped/step
         W = model.readout.weight
         for a in range(0, min(n_ch, len(ch_te)), 32):
             ci = CH_pos[ch_te[a:a + 32]]
@@ -499,9 +624,20 @@ def main():
                          ].reshape(cb, 5, -1)
             dqm = dqm_all.reshape(cb, 5, MV_CAP, -1)
             moves += [mm[:, k] for k in range(5)]
-            cs = model.roller.roll(c0.reshape(cb, -1), moves)
-            zs = {k: model.observe(cs[k - 1].reshape(cb, 64, model.sq_bits))[0]
-                  for k in range(1, 7)}
+            if args.dynamics == "discrete":
+                q1_root = model.rvq_bits(c0)[0]
+                zs_bits = model.bit_trans.roll_bits(q1_root, moves)
+                zs = {k: model.levels_from_bits(zs_bits[k - 1])[0]
+                      for k in range(1, 7)}
+                prev = q1_root
+                for zb_ in zs_bits:
+                    flips[0] += float((zb_ != prev).float().mean()) * cb
+                    flips[1] += cb
+                    prev = zb_
+            else:
+                cs = model.roller.roll(c0.reshape(cb, -1), moves)
+                zs = {k: model.observe(cs[k - 1].reshape(cb, 64, model.sq_bits))[0]
+                      for k in range(1, 7)}
             for k in (1, 3, 6):
                 fin = CH_OK[ci[:, k]]
                 if not fin.any():
@@ -545,11 +681,18 @@ def main():
                     codes = src[okt].gather(
                         1, colst[..., None].expand(-1, -1, src.shape[-1])
                         ).reshape(nv * br_k, -1)
-                    base = (c0.reshape(cb, -1) if kf == 0 else cs[kf - 1])[okt]
-                    base = base.reshape(nv, 1, -1).expand(-1, br_k, -1
-                                                          ).reshape(nv * br_k, -1)
-                    zb = model.observe(model.roller.step(base, codes)
-                                       .reshape(-1, 64, model.sq_bits))[0]
+                    if args.dynamics == "discrete":
+                        baseb = (q1_root if kf == 0 else zs_bits[kf - 1])[okt]
+                        baseb = baseb.reshape(nv, 1, 64, -1).expand(
+                            -1, br_k, -1, -1).reshape(nv * br_k, 64, -1)
+                        zb = model.levels_from_bits(
+                            model.bit_trans.roll_bits(baseb, [codes])[0])[0]
+                    else:
+                        base = (c0.reshape(cb, -1) if kf == 0 else cs[kf - 1])[okt]
+                        base = base.reshape(nv, 1, -1).expand(-1, br_k, -1
+                                                              ).reshape(nv * br_k, -1)
+                        zb = model.observe(model.roller.step(base, codes)
+                                           .reshape(-1, 64, model.sq_bits))[0]
                     pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
                     stm_c = torch.from_numpy(
                         (1 - CH_STM[ci[:, kf]].astype(np.int64))[ok_r]).to(dev)
@@ -574,6 +717,8 @@ def main():
         copy = {k: cp[k][0] / max(cp[k][1], 1) for k in cp}
         breg = {k: br[k][0] / max(br[k][1], 1) for k in br}
         breg["rnd"] = brnd[0] / max(brnd[1], 1)
+        if args.dynamics == "discrete":
+            breg["flip"] = flips[0] / max(flips[1], 1)
         return corr, delta, copy, breg
 
     @torch.no_grad()
@@ -629,12 +774,18 @@ def main():
             for k in range(6)]
         stm0 = torch.tensor([b0[0].turn for b0 in seqs], dtype=torch.long, device=dev)
         stm_seq = [(stm0 + k + 1) % 2 for k in range(6)]
-        outs = model.roll_and_read(c_all[:, 0], moves, stm_seq)
+        if args.dynamics == "discrete":
+            outs_b = model.bit_trans.roll_bits(model.rvq_bits(c_all[:, 0])[0], moves)
+            get = {k: model.levels_from_bits(outs_b[k - 1])[0] for k in (2, 4, 6)}
+        else:
+            outs = model.roll_and_read(c_all[:, 0], moves, stm_seq)
+            get = {k: outs[k - 1][0] for k in (2, 4, 6)}
         z_true = {k: model.observe(c_all[:, k])[0] for k in (2, 4, 6)}
-        return {k: float((outs[k - 1][0] != z_true[k]).float().mean()) for k in (2, 4, 6)}
+        return {k: float((get[k] != z_true[k]).float().mean()) for k in (2, 4, 6)}
 
     def run_eval(step, lw=float("nan"), lr_=float("nan"), lch=float("nan"),
-                 lfan=float("nan"), lbr=float("nan")):
+                 lfan=float("nan"), lbr=float("nan"), tfa=float("nan"),
+                 tfc=float("nan")):
         model.eval()
         live = int((model.readout.weight[:, :model.d_pos].abs().sum(0) > 0).sum())
         with torch.no_grad():
@@ -673,7 +824,13 @@ def main():
             mregret = reg_sum / max(nreg, 1)
             corr, delta, copy, breg = roll_real()
             rnd = roll_random()
-            rho = float(model.roller.rho(iters=20))
+            if args.dynamics == "discrete":
+                rho = float("nan")
+                tail = (f"tfacc {tfa:.3f} (copy {tfc:.3f}) flip "
+                        f"{breg.get('flip', float('nan')):.3f}")
+            else:
+                rho = float(model.roller.rho(iters=20))
+                tail = f"rho {rho:.4f}"
         print(f"[qgt] step {step:>5}/{args.steps} | wdl {lw:.3f} rloss {lr_:.4f} "
               f"roll {lch:.3f}+{lfan:.3f} br {lbr:.3f} | BALANCED {bal:.3f} recall "
               f"W/D/L {rec[0]:.2f}/{rec[1]:.2f}/{rec[2]:.2f} | REGRET {mregret:.4f} "
@@ -684,7 +841,7 @@ def main():
               f"evenlag real {delta[2]:.3f}/{delta[4]:.3f}/{delta[6]:.3f} (copy "
               f"{copy[2]:.3f}/{copy[4]:.3f}/{copy[6]:.3f}) rand "
               f"{rnd.get(2, float('nan')):.3f}/{rnd.get(4, float('nan')):.3f}/"
-              f"{rnd.get(6, float('nan')):.3f} | rho {rho:.4f}", flush=True)
+              f"{rnd.get(6, float('nan')):.3f} | {tail}", flush=True)
         mv_alive = int((model.readout.weight[:, model.d_pos:].abs().sum(0) > 0).sum())
         if mv_alive == 0:
             print("  WARNING: the MOVE half of the readout is dead -- ranking impossible",
@@ -697,6 +854,8 @@ def main():
                 "brreg_rnd": breg["rnd"],
                 "evenlag2_real": delta[2], "evenlag6_real": delta[6],
                 "evenlag6_rand": rnd.get(6, float("nan")), "rho": rho,
+                "tf_acc": tfa, "tf_copy": tfc,
+                "flip": breg.get("flip", float("nan")),
                 "move_concepts_alive": mv_alive}
 
     if args.eval_only:
@@ -822,12 +981,14 @@ def main():
         # Bits flipping at init is not required: the STE carries gradient either way.
         l_fan, _ = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm8)
         assert torch.isfinite(l_fan) and float(l_fan) > 0, "fan anchor produced no loss"
-        g_B = torch.autograd.grad(l_fan, model.roller.B.weight, retain_graph=True,
+        _dynp = (model.bit_trans.w_id if args.dynamics == "discrete"
+                 else model.roller.B.weight)
+        g_B = torch.autograd.grad(l_fan, _dynp, retain_graph=True,
                                   allow_unused=True)[0]
         g_cp = torch.autograd.grad(l_fan, model.carrier_proj.weight,
                                    retain_graph=True, allow_unused=True)[0]
         assert g_B is not None and float(g_B.abs().sum()) > 0, \
-            "fan loss does not train the roller's move injection B"
+            "fan loss does not train the dynamics' move path"
         assert g_cp is not None and float(g_cp.abs().sum()) > 0, \
             "fan loss does not reach the carrier"
         # A position's children must not ALL alias to one dyn code (adjacent moves
@@ -840,6 +1001,34 @@ def main():
         print(f"  U15 PASS fan anti-collapse: grads reach B + carrier; "
               f"{len(codes)}/{len(v15)} distinct dyn codes among one position's "
               f"children at init")
+
+        if args.dynamics == "discrete":
+            # D1-D4: teacher pairs are real; the BCE is isolated from the encoder and
+            # the value move codes; free-run value/branch gradients reach T by STE
+            l_dyn, l_chd, l_brd, n_lab_d, n_br_d, tfa_, tfc_ = chain_anchor_discrete(8)
+            assert n_lab_d > 0 and n_br_d > 0, "discrete anchor found nothing to train"
+            assert tfc_ < 0.999, \
+                f"teacher pairs identical (copy {tfc_:.4f}) -- no transition to learn"
+            g_enc = torch.autograd.grad(l_dyn, model.carrier_proj.weight,
+                                        retain_graph=True, allow_unused=True)[0]
+            g_mv2 = torch.autograd.grad(l_dyn + l_chd + l_brd, model.mv_proj.weight,
+                                        retain_graph=True, allow_unused=True)[0]
+            g_T = torch.autograd.grad(l_dyn, model.bit_trans.head[-1].weight,
+                                      retain_graph=True, allow_unused=True)[0]
+            g_Tf = torch.autograd.grad(l_chd + l_brd, model.bit_trans.w_id,
+                                       allow_unused=True)[0]
+            assert g_enc is None or float(g_enc.abs().sum()) == 0.0, \
+                "teacher-forced BCE trains the ENCODER -- the moving-target disease"
+            assert g_mv2 is None or float(g_mv2.abs().sum()) == 0.0, \
+                "discrete dynamics leak into the VALUE move codes"
+            assert g_T is not None and float(g_T.abs().sum()) > 0, \
+                "teacher-forced BCE does not train the transition"
+            assert g_Tf is not None and float(g_Tf.abs().sum()) > 0, \
+                "free-run value/branch grads do not reach T through the STE"
+            print(f"  D1-D4 PASS discrete arm: teacher pairs real (copy agreement "
+                  f"{tfc_:.3f}, tf-acc {tfa_:.3f} at init); BCE isolated from encoder "
+                  f"+ value codes; BCE trains T; free-run grads reach T by STE "
+                  f"({n_lab_d} value rows, {n_br_d} branch rows on 8 chains)")
 
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),
