@@ -19272,3 +19272,15 @@ tell us what honest dynamics buy, and qgt6 (GraphBitTransition: relation MP over
 att/vac/dsc, from/to move injection, edge head, GNS bits->edges->step loop -- the
 locality import) tests whether the graph prior makes it local and better. Launched:
 8000 steps, tmp/qgt5.log.
+
+## 2026-08-28 — GATE TAXONOMY RULING (Kaveh): kills are for implementation bugs only
+
+"No auto gate should kill a run unless there's an implementation bug." Two classes,
+now labeled in every gate's output: [implementation] -- wiring, exact algebra,
+measurement purity (a gate that modifies what it measures is itself a bug) -- these
+assert and kill; [science] -- can the model learn X, is coverage high, does an AUC
+rise -- these ALERT and report, never block: they are findings, and blocking them
+takes the decision away from Kaveh. Applied retroactively to the qgt6 G-gates: the
+warm-start learnability mini-fit (G1) and flip coverage (G3) are [science] alerts;
+the train-mode frame axiom (G2) remains a killing [implementation] gate. The H1-H5
+detectors were always instruments (heartbeat metrics), consistent with the ruling.
