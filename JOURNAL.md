@@ -19165,3 +19165,13 @@ law applies per group. Smoke (8 shards, 60 steps): tfacc ABOVE copy at both eval
 Launched: 8000 steps, tmp/qgt3e.log. Success = tfacc-copy gap widening, flip settling
 near the true change rate, vroll ABOVE the copy control, brreg unfrozen; then rerun
 qgt_local_roll on a T with real dynamics -- the actual locality experiment.
+
+AMENDED IN FLIGHT (Kaveh): "I want the flip weighting, feels right. generally feels
+right to predict changes rather than actual states in general." qgt3e killed at ~500
+and relaunched with --flip-weight 3.0 ON TOP of the 10x LR group (his call bundles the
+two; the LR fix is infrastructure, the flip weighting is the design principle --
+delta-prediction, the Delta-IRIS lesson). The killed run's last heartbeat, for the
+record, showed the LR fix alone already working at teacher level: tfacc 0.559 vs copy
+0.418 (+0.14 -- qgt3d never beat copy), brreg 0.126 at ply 1 vs 0.192 chance, but
+free-run HOT (flip 0.442/step) with rolled bits diverging (evenlag 0.46 vs copy 0.12).
+Watch whether flip-weighting tempers or inflames the free-run churn.
