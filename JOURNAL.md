@@ -19136,3 +19136,17 @@ copy prior should be an INIT, not an attractor; (b) the pruning/draw diagnostic;
 (c) once tfacc clearly beats copy, re-run qgt_local_roll -- if flips localize to the
 attack-graph cone AND local rolls stay regret-free, Kaveh's corner-rolling design is
 validated on real dynamics. Artifacts: qgt3d_step{2000..8000}.pt; probe committed.
+
+## 2026-08-28 — draw death EXPLAINED and ACCEPTED (Kaveh); wp fact-checked
+
+Kaveh: "regret will impact draws because it doesn't distinguish loss vs draws ...
+which is fine." Fact-check against oracle_service.py:189: wp = logistic(k*cp), so the
+LABELS do place a draw at 0.5 vs a loss at ~0.0 -- regret prices losing-a-draw at half
+a win. The true mechanism is one level up: the ranking axis W-L is order-identical to
+expected score, so regret is satisfiable with p_D == 0 -- it is draw-INVISIBLE, puts
+zero gradient into the D column, the class-weighted CE alone defends it, and the
+magnitude pruner cuts the D-serving columns first. Consistent with the death landing
+at pruning onset in all three qgt runs. RULING (Kaveh): accepted casualty of
+prioritizing regret -- the no-pruning draw diagnostic is DROPPED from the queue;
+regret + top1 are the primary readout metrics; balanced comparisons vs qat9 are
+apples-to-oranges on the D class and get flagged as such.
