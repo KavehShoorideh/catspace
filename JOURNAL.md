@@ -18922,3 +18922,67 @@ run qgt1 launched: 114,688 SF rows / 56 shards, 3.74M child labels, pawn-grouped
 carries BALANCED/REGRET/top1 as qat9 (incumbent 0.496/0.0872/0.327 on this split) +
 vroll 1/3/6 (8/24 ref +0.850/+0.808/+0.777) + even-lag real/rand + rho. Log:
 tmp/qgt1.log (repo-local; CLAUDE_JOB_DIR unset this session).
+
+## 2026-08-28 (Fable) — qgt1 RESULT: readout close WITHOUT a trunk, draws DEAD, rolling NEGATIVE with a NEW mechanism (carrier contraction); encoder slowness emerged FREE
+
+qgt1 ran 8000 steps (one harness kill at ~3500, resumed cleanly from the step-2000
+ladder via the new --resume; steps 2000-3500 retrained). Final heartbeat, pawn-grouped
+holdout (printed, tmp/qgt1.log):
+
+                          balanced   regret   top1    draws   concepts   vroll 1/3/6
+    qat9 (incumbent)        0.496    0.0872   0.327   0.13      ~400*    (not measured)
+    qgt1 (this run)         0.472    0.0975   0.347   0.00       400     +0.10/+0.24/+0.18
+    8/24 Koopman reference    --        --      --      --        --     +0.850/+0.808/+0.777
+
+    (* qat9's 400 include move cols; qgt1's 400 are position-only, move cols exempt.)
+
+ACCEPTANCE: FAILED on the locked-spec floors -- regret 0.0975 > 0.0872, balanced 0.472
+< 0.496, rolled-value curve nowhere near the 8/24 table. Faithfulness probe / null-move
+flip / churn batteries not yet adapted to the QGT loader (next increment); with three
+floors already missed they cannot rescue this run. Single seed; numbers, no crowning.
+
+THREE FINDINGS, one of them genuinely new:
+
+1. **The readout result is BETTER than it looks.** qgt1 trains FROM SCRATCH -- no
+   pretrained trunk, 2.9M params -- and lands within 0.010 regret of an incumbent that
+   warm-starts from the gcf4h field. Top-1 actually beats it (0.347 vs 0.327). The
+   trunk-removal premise (8/27 design: GNN base + quantized levels suffice for the
+   value part) survives contact. BUT:
+
+2. **The draw class DIED (recall 0.00 vs qat9's 0.13)** under the same class-weighted
+   plain CE. Balanced is capped at 0.472 by two-class behaviour alone. Not diagnosed
+   this run. Suspects, for the record: no trunk warm-start (qat9's field brought
+   draw-aware features in the door), and the harder quantization path (all information
+   through strictly +-1 bits from step 0). Draw recall hit 0.00 during the pruning ramp
+   (~step 4500) and never returned -- a settledness/pruning interaction is also not
+   excluded.
+
+3. **Rolling NEGATIVE, but the mechanism is NEW and diagnosable: CARRIER CONTRACTION.**
+   rho drifted 1.00 -> ~0.72-0.77 (the clamp only caps above 1; the LOSS shrank K) and
+   the rolled observables sit at CHANCE against the true position's bits (even-lag
+   disagreement ~0.42-0.50 on real AND random-uniform splits) while vroll plateaued at
+   ~+0.1-0.25. Meanwhile -- the free positive -- the ENCODER's observables became SLOW:
+   the copy baseline (root bits vs true bits 2-6 plies later) fell from ~0.25 at init
+   to ~0.10 by step 5000, with NO slowness regularizer, against the qat line's 66.8%
+   per-ply code churn. (Caveat: slowness from partial degeneracy not excluded -- the
+   dead draw class says some directions collapsed; the W/L information demonstrably
+   survives.) So the roll is now strictly WORSE than copying the root: a contracting K
+   washes the carrier toward a mean state whose value CE is still mostly satisfied --
+   the "satisfied by the mean" failure (8/24) reappearing one level down, at the
+   carrier. The value-only anchor at 6 horizons + a 1-ply fan does not pin the deep
+   carrier.
+
+**DIAGNOSIS against the record.** The 8/24 Koopman success did NOT train value-only:
+gko's op_losses matched the ROLLED CONTINUOUS STATE to the true future state (l1/l3/l6
+MSE, all-ply after 8/23) AND anchored values. What the qat line proved poisonous was
+bit-matching a MOVING DISCRETE EMA target -- not continuous-state matching, which is
+what actually held gko's operator open. The section-5 amendment dropped both; qgt1 is
+the experiment that shows value-anchoring alone is not enough. PROPOSAL for qgt2
+(amendment to the amendment -- AWAITING KAVEH): add a continuous carrier-matching term
+l_k = MSE(rolled carrier at k, ONLINE encoder's carrier at the true chain row k),
+plies 1..6, no EMA, no bits, alongside the existing rolled-value CE; keep everything
+else fixed. Separately: diagnose the draw death before any verdict on the balanced
+floor (first check: does a run without pruning keep draws alive?).
+
+Artifacts: qgt1_step{2000,4000,6000,8000}.pt + latest (34M each, full provenance).
+MLflow run qgt1. Trainer commit 3f24a95 + resume 68799cb.
