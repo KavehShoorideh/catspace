@@ -18884,3 +18884,41 @@ kill, flag if still alive. Trainer logs live in $CLAUDE_JOB_DIR/tmp/qat*.log (jo
 scoped, gone after job deletion -- run summaries are in this journal and the commits).
 
 ---
+
+## 2026-08-28 (Fable) — QGT increment 4 BUILT + GATED; qgt1 LAUNCHED (8000 steps vs qat9 0.0872)
+
+Session resumed from the handoff. The trainer (qgt_train.py, committed 3f24a95) follows
+the handoff spec with one recorded deviation and one design resolution:
+
+**Design resolution — where the 6-ply chains come from.** The handoff said "future_batch
+chain construction -- extend chains to ~6 plies", but constructed chains carry labels
+only at ply 1 (the parent's multiPV), and the load-bearing 8/24 ingredient was "real
+chains to 6 plies" with value supervision at EVERY horizon. So the rolled-value anchor
+has two parts: (a) REAL chains from the gko chain cache (gko3_chain_graphs_mm, 60k
+chains, 329k/384k rows carrying WDL triples, held out by GAME), rolled through played
+dyn codes, value CE at horizons 1..6 vs each row's White-POV triple; (b) the per-child
+1-ply FAN on corpus positions (fan_k=4 children, free multiPV triples) -- the
+anti-collapse duty (a constant carrier cannot predict per-child values). Constructed
+random-uniform sequences appear in the EVAL as the second split of the dual-split
+instrument (even-lag observable deltas need no labels), exactly where the pre-registered
+instrument wants them.
+
+**Recorded deviation.** The pruner sees POSITION columns only; the 32 move columns are
+exempt (the handoff left it open; qat pruned them alongside and needed a dead-move-half
+warning for the failure mode that allows).
+
+**Gates.** U1-U5, U9, U11-U15 pass on real data. New gates: U12-analogue proves by
+autograd that the rolled-value loss trains dyn codes + K and never the value move codes;
+U14 pushes K to 1.15x deliberately and proves clamp_ brings rho back under 1.005 with
+bits binary after 3 rolls; U15 proves the fan's gradients reach B and the carrier, and
+that a position's children do NOT alias to one dyn code (24/28 distinct at init --
+adjacent-move pairs DO collide at init, e.g. a2a3/a2a4, which is why the gate measures
+the fan, not one pair). U9 additionally proves the CHAIN triples' White-POV conversion
+and that chain side-to-move alternates.
+
+**Launch.** Smoke (8 shards, 20 steps): every heartbeat field live, rho clamped. Full
+run qgt1 launched: 114,688 SF rows / 56 shards, 3.74M child labels, pawn-grouped holdout
+11,468 positions; 60k chains. ~0.2 s/step measured => ETA roughly an hour. Heartbeat
+carries BALANCED/REGRET/top1 as qat9 (incumbent 0.496/0.0872/0.327 on this split) +
+vroll 1/3/6 (8/24 ref +0.850/+0.808/+0.777) + even-lag real/rand + rho. Log:
+tmp/qgt1.log (repo-local; CLAUDE_JOB_DIR unset this session).
