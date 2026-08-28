@@ -411,13 +411,17 @@ def main():
         return l_val, l_br, l_dq, n_lab, n_br
 
     def chain_anchor_discrete(cb):
-        """qgt3d: TEACHER-FORCED discrete transition on the chain cache's 6 true
-        (bits, move -> next bits) pairs per chain -- the scheme the qat line never
-        tested (its heads matched moving EMA targets) -- plus the SAME value CE and
-        branch ranking on FREE-RUN rolled bits, so multi-step behaviour is grounded
-        and exposure bias is trained against, not hidden. The encoder is NOT trained
-        by the dynamics (inputs and targets both detached): its bits are pinned by
-        the external SF losses, dynamics chase them, never the reverse."""
+        """qgt4 (Kaveh 2026-08-28: "every two plies, basically, every move ... predict
+        what concepts would flip properly two plies out, when it's my turn again"):
+        the transition's unit is THE MOVE -- lag 2, where side-to-move parity cancels
+        by construction and the ~9% of bits that change are real chess. T conditions
+        on the MOVER'S code only; the opponent's reply is MARGINALIZED -- the teacher
+        target is the realized position two plies out, and BCE on a stochastic target
+        learns calibrated per-bit flip marginals under the data's reply distribution
+        (which is also what makes branch pricing sound: SF's wp for a move already
+        assumes the reply). Teacher-forced on 5 lag-2 pairs per chain; value CE +
+        branch ranking on FREE-RUN rolls at horizons 2/4/6. The encoder is NOT
+        trained by the dynamics (inputs and targets both detached)."""
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]           # (cb,7)
         with torch.no_grad():
             rows_all = ci.ravel()
@@ -428,37 +432,40 @@ def main():
             pl_codes = dq_flat[torch.arange(cb * 7, device=dev), pla
                                ].reshape(cb, 7, -1)
             dq_all = dq_flat.reshape(cb, 7, MV_CAP, -1)
-        zin = q1_all[:, :6].reshape(cb * 6, 64, -1)
-        zt = q1_all[:, 1:].reshape(cb * 6, 64, -1)
-        lg, l_qa = model.bit_trans(zin, pl_codes[:, :6].reshape(cb * 6, -1))
+        zin = q1_all[:, :5].reshape(cb * 5, 64, -1)      # rows 0..4
+        zt = q1_all[:, 2:].reshape(cb * 5, 64, -1)       # rows 2..6: lag-2 targets
+        lg, l_qa = model.bit_trans(zin, pl_codes[:, :5].reshape(cb * 5, -1))
         w_tf = torch.where(zin != zt, args.flip_weight, 1.0) \
             if args.flip_weight != 1.0 else None
         l_tf = F.binary_cross_entropy_with_logits(lg, (zt + 1) / 2, weight=w_tf)
         with torch.no_grad():
             tf_acc = float(((lg > 0) == (zt > 0)).float().mean())
             tf_copy = float((zin == zt).float().mean())
-        # free-run rolls through the played line; value CE at every horizon
-        moves = [pl_codes[:, k] for k in range(6)]
-        zs = model.bit_trans.roll_bits(q1_all[:, 0], moves)
+        # free-run: 3 x T2 along the mover's played moves (rows 0, 2, 4)
+        moves = [pl_codes[:, 0], pl_codes[:, 2], pl_codes[:, 4]]
+        zs = model.bit_trans.roll_bits(q1_all[:, 0], moves)   # horizons 2, 4, 6
+        HORIZ = (2, 4, 6)
         W = model.readout.weight
         l_val = torch.zeros((), device=dev)
         n_lab = 0
-        for k in range(1, 7):
+        for i, k in enumerate(HORIZ):
             fin = torch.from_numpy(CH_OK[ci[:, k]]).to(dev)
             if not bool(fin.any()):
                 continue
-            z = model.levels_from_bits(zs[k - 1])[0]
+            z = model.levels_from_bits(zs[i])[0]
             pv = F.linear(z, W[:, :model.d_pos], model.readout.bias) + model.turn[
                 torch.from_numpy(CH_STM[ci[:, k]].astype(np.int64)).to(dev)]
             l_val = l_val + _ce_rows(pv[fin],
                                      torch.from_numpy(CH_WDL[ci[:, k]]).to(dev)[fin])
             n_lab += int(fin.sum())
-        l_val = l_val / 6.0
-        # branch ranking from rows 0..5: one extra T step through sampled moves
+        l_val = l_val / 3.0
+        # branch ranking from rows 0/2/4, landing 2/4/6: one T2 step per branch.
+        # After my-move + reply it is MY turn again: the landing turn bias is the
+        # SOURCE row's stm, not its flip.
         bk = args.branch_k
         l_br = torch.zeros((), device=dev)
         n_br = 0
-        for k in range(6):
+        for i, k in enumerate((0, 2, 4)):
             wpk = CHW[ci[:, k]]
             cols = np.zeros((cb, bk), np.int64)
             ok_r = np.zeros(cb, bool)
@@ -479,14 +486,14 @@ def main():
             codes = dq_all[:, k][okt].gather(
                 1, colst[..., None].expand(-1, -1, dq_all.shape[-1])
                 ).reshape(nv * bk, -1)
-            base = (q1_all[:, 0] if k == 0 else zs[k - 1])[okt]
+            base = (q1_all[:, 0] if k == 0 else zs[i - 1])[okt]
             base = base.reshape(nv, 1, 64, -1).expand(-1, bk, -1, -1
                                                       ).reshape(nv * bk, 64, -1)
             zbr = model.bit_trans.roll_bits(base, [codes])[0]
             zb = model.levels_from_bits(zbr)[0]
             pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
             stm_c = torch.from_numpy(
-                (1 - CH_STM[ci[:, k]].astype(np.int64))[ok_r]).to(dev)
+                CH_STM[ci[:, k]].astype(np.int64)[ok_r]).to(dev)
             pvb = pvb + model.turn[stm_c.repeat_interleave(bk)]
             sg = torch.from_numpy(CH_SGN[ci[:, k]][ok_r]).to(dev)[:, None]
             sc = sg * (pvb[:, 0] - pvb[:, 2]).reshape(nv, bk)
@@ -501,7 +508,7 @@ def main():
             arv = torch.arange(nv, device=dev)
             l_br = l_br + (F.softplus(-(sc[:, 0] - sc[arv, j])) * reg[arv, j]).mean()
             n_br += nv
-        l_br = l_br / 6.0
+        l_br = l_br / 3.0
         return l_tf + l_qa, l_val, l_br, n_lab, n_br, tf_acc, tf_copy
 
     def fan_anchor(c_par, h_mv_par, ii, stm_b):
@@ -627,11 +634,16 @@ def main():
         the random-pick baseline over the same samples)."""
         model.eval()
         ero = np.random.default_rng(2)
-        pred = {k: [] for k in (1, 3, 6)}
-        true = {k: [] for k in (1, 3, 6)}
+        # the discrete arm's unit is THE MOVE (2 plies): horizons and branch
+        # landings sit on even plies; koopman keeps the original 1/3/6
+        VKS = (2, 4, 6) if args.dynamics == "discrete" else (1, 3, 6)
+        BPAIRS = (((0, 2), (2, 4), (4, 6)) if args.dynamics == "discrete"
+                  else ((0, 1), (2, 3), (5, 6)))
+        pred = {k: [] for k in VKS}
+        true = {k: [] for k in VKS}
         dl = {k: [0.0, 0.0] for k in (2, 4, 6)}     # rolled-vs-true bits
         cp = {k: [0.0, 0.0] for k in (2, 4, 6)}     # copy baseline: root vs true bits
-        br = {k: [0.0, 0.0] for k in (1, 3, 6)}     # branch regret at landing ply
+        br = {land: [0.0, 0.0] for _, land in BPAIRS}
         brnd = [0.0, 0.0]
         flips = [0.0, 0.0]                          # discrete arm: bits flipped/step
         W = model.readout.weight
@@ -652,9 +664,11 @@ def main():
             moves += [mm[:, k] for k in range(5)]
             if args.dynamics == "discrete":
                 q1_root = model.rvq_bits(c0)[0]
-                zs_bits = model.bit_trans.roll_bits(q1_root, moves)
-                zs = {k: model.levels_from_bits(zs_bits[k - 1])[0]
-                      for k in range(1, 7)}
+                # T2 steps: the mover's codes at rows 0, 2, 4 -> horizons 2, 4, 6
+                zs_bits = model.bit_trans.roll_bits(
+                    q1_root, [moves[0], moves[2], moves[4]])
+                zs = {k: model.levels_from_bits(zs_bits[i])[0]
+                      for i, k in enumerate((2, 4, 6))}
                 prev = q1_root
                 for zb_ in zs_bits:
                     flips[0] += float((zb_ != prev).float().mean()) * cb
@@ -664,7 +678,7 @@ def main():
                 cs = model.roller.roll(c0.reshape(cb, -1), moves)
                 zs = {k: model.observe(cs[k - 1].reshape(cb, 64, model.sq_bits))[0]
                       for k in range(1, 7)}
-            for k in (1, 3, 6):
+            for k in VKS:
                 fin = CH_OK[ci[:, k]]
                 if not fin.any():
                     continue
@@ -684,7 +698,7 @@ def main():
                     dl[k][0] += float((zs[k] != zt).float().mean()) * cb; dl[k][1] += cb
                     cp[k][0] += float((z0 != zt).float().mean()) * cb; cp[k][1] += cb
             if a < 64:                               # branch regret on a subsample
-                for kf, land in ((0, 1), (2, 3), (5, 6)):
+                for kf, land in BPAIRS:
                     wpk = CHW[ci[:, kf]]
                     cols = np.zeros((cb, br_k), np.int64)
                     ok_r = np.zeros(cb, bool)
@@ -708,20 +722,23 @@ def main():
                         1, colst[..., None].expand(-1, -1, src.shape[-1])
                         ).reshape(nv * br_k, -1)
                     if args.dynamics == "discrete":
-                        baseb = (q1_root if kf == 0 else zs_bits[kf - 1])[okt]
+                        baseb = (q1_root if kf == 0 else zs_bits[kf // 2 - 1])[okt]
                         baseb = baseb.reshape(nv, 1, 64, -1).expand(
                             -1, br_k, -1, -1).reshape(nv * br_k, 64, -1)
                         zb = model.levels_from_bits(
                             model.bit_trans.roll_bits(baseb, [codes])[0])[0]
+                        # T2 lands with the SAME side to move as the source row
+                        stm_c = torch.from_numpy(
+                            CH_STM[ci[:, kf]].astype(np.int64)[ok_r]).to(dev)
                     else:
                         base = (c0.reshape(cb, -1) if kf == 0 else cs[kf - 1])[okt]
                         base = base.reshape(nv, 1, -1).expand(-1, br_k, -1
                                                               ).reshape(nv * br_k, -1)
                         zb = model.observe(model.roller.step(base, codes)
                                            .reshape(-1, 64, model.sq_bits))[0]
+                        stm_c = torch.from_numpy(
+                            (1 - CH_STM[ci[:, kf]].astype(np.int64))[ok_r]).to(dev)
                     pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
-                    stm_c = torch.from_numpy(
-                        (1 - CH_STM[ci[:, kf]].astype(np.int64))[ok_r]).to(dev)
                     pvb = pvb + model.turn[stm_c.repeat_interleave(br_k)]
                     sg = torch.from_numpy(CH_SGN[ci[:, kf]][ok_r]).to(dev)[:, None]
                     sc = (sg * (pvb[:, 0] - pvb[:, 2]).reshape(nv, br_k)).cpu().numpy()
@@ -732,7 +749,7 @@ def main():
                     rr = (wsel[:, :1] - wsel).clip(min=0)
                     brnd[0] += float(rr[:, 1:].mean(1).sum()); brnd[1] += nv
         corr = {}
-        for k in (1, 3, 6):
+        for k in VKS:
             if pred[k]:
                 p = np.concatenate(pred[k]); t = np.concatenate(true[k])
                 corr[k] = (float(np.corrcoef(p, t)[0, 1])
@@ -745,7 +762,7 @@ def main():
         breg["rnd"] = brnd[0] / max(brnd[1], 1)
         if args.dynamics == "discrete":
             breg["flip"] = flips[0] / max(flips[1], 1)
-        return corr, delta, copy, breg
+        return corr, VKS, delta, copy, breg
 
     @torch.no_grad()
     def roll_random(n_root=24):
@@ -801,8 +818,10 @@ def main():
         stm0 = torch.tensor([b0[0].turn for b0 in seqs], dtype=torch.long, device=dev)
         stm_seq = [(stm0 + k + 1) % 2 for k in range(6)]
         if args.dynamics == "discrete":
-            outs_b = model.bit_trans.roll_bits(model.rvq_bits(c_all[:, 0])[0], moves)
-            get = {k: model.levels_from_bits(outs_b[k - 1])[0] for k in (2, 4, 6)}
+            outs_b = model.bit_trans.roll_bits(model.rvq_bits(c_all[:, 0])[0],
+                                               [moves[0], moves[2], moves[4]])
+            get = {k: model.levels_from_bits(outs_b[i])[0]
+                   for i, k in enumerate((2, 4, 6))}
         else:
             outs = model.roll_and_read(c_all[:, 0], moves, stm_seq)
             get = {k: outs[k - 1][0] for k in (2, 4, 6)}
@@ -848,7 +867,7 @@ def main():
             bal = float(np.mean(rec))
             top1_acc = top1 / max(nrank, 1)
             mregret = reg_sum / max(nreg, 1)
-            corr, delta, copy, breg = roll_real()
+            corr, vks, delta, copy, breg = roll_real()
             rnd = roll_random()
             if args.dynamics == "discrete":
                 rho = float("nan")
@@ -857,13 +876,15 @@ def main():
             else:
                 rho = float(model.roller.rho(iters=20))
                 tail = f"rho {rho:.4f}"
+        vk_s = "/".join(str(k) for k in vks)
         print(f"[qgt] step {step:>5}/{args.steps} | wdl {lw:.3f} rloss {lr_:.4f} "
               f"roll {lch:.3f}+{lfan:.3f} br {lbr:.3f} | BALANCED {bal:.3f} recall "
               f"W/D/L {rec[0]:.2f}/{rec[1]:.2f}/{rec[2]:.2f} | REGRET {mregret:.4f} "
               f"(qat9 0.0872) | top1 {top1_acc:.3f} | concepts {live} | "
-              f"vroll {corr[1]:+.3f}/{corr[3]:+.3f}/{corr[6]:+.3f} "
-              f"(8/24 ref +0.850/+0.808/+0.777) | brreg "
-              f"{breg[1]:.3f}/{breg[3]:.3f}/{breg[6]:.3f} (rnd {breg['rnd']:.3f}) | "
+              f"vroll@{vk_s} " + "/".join(f"{corr[k]:+.3f}" for k in vks) +
+              f" (8/24 ref +0.850/+0.808/+0.777 @1/3/6) | brreg@{vk_s} " +
+              "/".join(f"{breg[k]:.3f}" for k in vks) +
+              f" (rnd {breg['rnd']:.3f}) | "
               f"evenlag real {delta[2]:.3f}/{delta[4]:.3f}/{delta[6]:.3f} (copy "
               f"{copy[2]:.3f}/{copy[4]:.3f}/{copy[6]:.3f}) rand "
               f"{rnd.get(2, float('nan')):.3f}/{rnd.get(4, float('nan')):.3f}/"
@@ -875,8 +896,8 @@ def main():
         return {"balanced": bal, "concepts": live, "wdl": lw, "top1": top1_acc,
                 "regret": mregret, "rank": lr_, "roll_chain": lch, "roll_fan": lfan,
                 "roll_branch": lbr,
-                "vroll1": corr[1], "vroll3": corr[3], "vroll6": corr[6],
-                "brreg1": breg[1], "brreg3": breg[3], "brreg6": breg[6],
+                **{f"vroll{k}": corr[k] for k in vks},
+                **{f"brreg{k}": breg[k] for k in vks},
                 "brreg_rnd": breg["rnd"],
                 "evenlag2_real": delta[2], "evenlag6_real": delta[6],
                 "evenlag6_rand": rnd.get(6, float("nan")), "rho": rho,
