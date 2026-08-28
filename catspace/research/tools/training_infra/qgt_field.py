@@ -157,10 +157,12 @@ class BitTransition(nn.Module):
         # sign(0.5 z) = z -- but lets learned deltas act within a few hundred steps.
         self.w_id = nn.Parameter(torch.tensor(float(w_id_init)))
 
-    def forward(self, z, m):
-        """z: (B,64,sq_bits) +-1 bits; m: (B,mv_bits) move code -> next-bit LOGITS."""
+    def forward(self, z, m, tok_mask=None):
+        """z: (B,64,sq_bits) +-1 bits; m: (B,mv_bits) move code -> next-bit LOGITS.
+        tok_mask (B,64) bool, optional: squares the relational path may LOOK AT --
+        the locality probe's attention-masked mode (qgt_local_roll). None = all."""
         t = z + self.mv_in(m)[:, None, :]
-        b2, aux = self.qa(t)
+        b2, aux = self.qa(t, tok_mask=tok_mask)
         loss = aux.get("vq_loss", torch.zeros((), device=z.device))
         if "qlog" in aux and "attn_logit" in aux:
             loss = loss + router_losses(aux["qlog"], aux["attn_logit"])
