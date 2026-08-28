@@ -19249,3 +19249,26 @@ with T's parameters frozen w.r.t. those losses; anchors keep training the readou
 rolled states). T is then trained by the teacher BCE alone -- nothing fights it, tfacc
 must climb or the architecture itself is the residual suspect. Everything else fixed
 (lag-2 unit, flip-weight 3, 10x dyn LR, all instruments). AWAITING KAVEH.
+
+## 2026-08-28 (Fable) — LITERATURE VERDICT on the qgt4 corruption + qgt5 LAUNCHED (Dreamer discipline)
+
+Kaveh: "see if the problem you're facing has been faced in the literature before."
+It has, exactly. DreamerV2/V3 train world model / actor / critic "concurrently WITHOUT
+SHARING GRADIENTS" -- "the world model is fixed during behavior learning, so the actor
+and value gradients do not affect its representations" (arXiv 2010.02193, 2301.04104);
+IRIS stages tokenizer -> world model -> policy the same way. The general tension has a
+name: OBJECTIVE MISMATCH (Lambert et al., arXiv 2002.04523 -- one-step likelihood and
+downstream objectives pull apart). The deliberate other fork -- value-aware model
+learning (VAML/VaGraM) through to MuZero's value-equivalence -- buys play strength
+with latents that do not track real states: precisely the unfaithfulness this project
+exists to avoid. So: Dreamer side of the fork, enforced by autograd gates.
+
+qgt5 = qgt4 with the separation: teacher BCE trains T + the dyn move encoder (codes
+from detached features; the board encoder stays pinned by external labels); ALL anchor
+rolls run under no_grad (world model fixed) and train the readout/QA on rolled states.
+D-gates prove anchors cannot reach T and the teacher trains the move encoder. Success
+= tfacc climbing toward/past copy with flip near the true ~3-6% rate; then vroll/brreg
+tell us what honest dynamics buy, and qgt6 (GraphBitTransition: relation MP over
+att/vac/dsc, from/to move injection, edge head, GNS bits->edges->step loop -- the
+locality import) tests whether the graph prior makes it local and better. Launched:
+8000 steps, tmp/qgt5.log.
