@@ -19305,3 +19305,17 @@ chasing rolled states that drift as T trains at 10x LR. PRE-REGISTERED WATCH for
 qgt6 (same code paths): if its readout collapses in fine-tune too, suspect (a) and
 restore the fan's encoder path; if it does not, qgt5's event was likely (b) or seed
 noise. Artifacts qgt5_step*.pt; log tmp/qgt5.log.
+
+## 2026-08-28 (Fable) — qgt6 LAUNCHED: concepts roll on learned typed edges
+
+--dynamics graph, flip-weight 3.0, 10x dyn LR, warm start w_edge_warm 0.3, 8000
+steps, tmp/qgt6.log. The state that rolls IS the level-1 concepts (Kaveh confirmed
+the reading); the board exists only at ply 0. Edge types are QA questions (learned,
+NRI-style), connectivity recomputed from rolled concepts every step, move injected at
+from/to only, frame axiom exact. Instruments live: vroll/brreg@2/4/6, evenlag dual
+split, tfacc/copy/flip, and the H-detectors flip_cov (under-reach; 0.82 at init),
+att_auc_tf (H1), att_auc_roll (H5). Layer-depth question (Kaveh): 2 attention hops
+cover dependency depth 2, recaptures land on the injected destination square, and
+flip_cov measures sufficiency empirically -- layers=3 is the dial if it stalls.
+PRE-REGISTERED WATCH: an encoder/readout collapse in fine-tune would implicate the
+separation's removal of the fan's encoder gradients (the qgt5 confound A/B).
