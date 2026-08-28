@@ -19150,3 +19150,18 @@ at pruning onset in all three qgt runs. RULING (Kaveh): accepted casualty of
 prioritizing regret -- the no-pruning draw diagnostic is DROPPED from the queue;
 regret + top1 are the primary readout metrics; balanced comparisons vs qat9 are
 apples-to-oranges on the D class and get flagged as such.
+
+## 2026-08-28 (Fable) — qgt3e LAUNCHED: the transition unstarved (10x LR group), flip-weighting shelved
+
+Kaveh: "go on qgt3e." Pre-build diagnosis changed the lever: qgt3d's final checkpoint
+shows bit_trans.head.2 at max|w| 0.0275 after 8000 steps against a 0.46 flip barrier
+-- random-walk scale (sqrt(8000) x per-step ~ 0.015), i.e. GRADIENT STARVATION at the
+shared LR, not label imbalance. (Correction on the record: teacher pairs flip 24-30%
+of bits, not "99% stay" -- that figure was the FREE-RUN flip rate of a near-identity
+T. The flip-weighted BCE is coded behind --flip-weight, default off, reserved as
+qgt3f.) qgt3e = one lever: bit_trans in its own Adam group at 10x LR (3e-3), cosine
+law applies per group. Smoke (8 shards, 60 steps): tfacc ABOVE copy at both evals
+(0.526 vs 0.517 @30, 0.499 vs 0.494 @60) -- qgt3d never beat copy in 8000 steps.
+Launched: 8000 steps, tmp/qgt3e.log. Success = tfacc-copy gap widening, flip settling
+near the true change rate, vroll ABOVE the copy control, brreg unfrozen; then rerun
+qgt_local_roll on a T with real dynamics -- the actual locality experiment.
