@@ -19349,3 +19349,26 @@ touch it -- U15 asserts all three properties by autograd (no grad to the transit
 grad to the readout, grad to the encoder). qgt6 relaunched fresh; before the
 collapse its instruments read: cov 0.99 (2 layers cover the cone -- H2/H3 dead),
 aucT drifting up 0.51 -> 0.58 (warm start slow but alive), tfacc shadowing copy.
+
+## 2026-08-28 (Fable) — qgt6 second launch KILLED (temporal-freeze collapse); qgt7 LAUNCHED with Kaveh's blunder-pair stream
+
+qgt6-relaunch found a NEW stable degenerate optimum by step 1000: the encoder froze
+TIME -- bits identical along a game (copy agreement 1.000 at every even lag, evenlag
+0.000), teacher trivially perfect (tfacc = copy = 1.000), transition = identity
+(flip 0.000), branch discrimination at the jitter fingerprint -- while balanced held
+0.464 (cross-position discrimination intact). The old "freezing is priced out by WDL
++ regret" claim covers only CROSS-position freezing; within-line freezing satisfied
+every loss we had. Deadlock analysis: per-move value contrast could not reach the
+transition (the separation) NOR the encoder (the corpus never contains parent and
+blunder-child as separate labeled positions). By the final buffered heartbeat the
+freeze was already wobbling (copy 0.93), but the cause stood. Kaveh killed it and
+ruled: "Some moves are objectively bad, they should change the concepts in a way
+that the wdl drops. We should have bad moves from the stockfish multi pv. Let's use
+them."
+
+qgt7 = qgt6 + the blunder-pair stream (commit above): constructed best/worst
+children as labeled positions (encoder CE; 0.497 mean wp gap per pair at init) and
+as lag-2 teacher pairs through those moves (transition BCE). Both halves gated (D6).
+8000 steps, tmp/qgt7.log, ~75 min. Success adds to the qgt6 criteria: tfacc ABOVE a
+NON-degenerate copy baseline (copy must stay well below 1.0 -- the freeze detector),
+brreg unfrozen, and rolled reads that visibly drop after known-bad branch moves.
