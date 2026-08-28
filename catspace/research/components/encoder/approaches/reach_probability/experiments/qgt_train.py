@@ -80,6 +80,15 @@ def main():
     ap.add_argument("--ckpt-every", type=int, default=2000)
     ap.add_argument("--max-shards", type=int, default=60)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--blunder-batch", type=int, default=12,
+                    help="positions per step for the BLUNDER-PAIR stream (Kaveh: "
+                         "'some moves are objectively bad... we should have bad moves "
+                         "from the stockfish multi pv. Let's use them'). Each yields "
+                         "its best and worst finite-wp child as constructed, labeled "
+                         "positions + lag-2 teacher pairs through those moves.")
+    ap.add_argument("--w-blunder", type=float, default=1.0,
+                    help="weight of the blunder-child position CE (encoder+readout). "
+                         "The teacher half rides in the dynamics BCE at weight 1.")
     ap.add_argument("--w-edge-warm", type=float, default=0.3,
                     help="graph arm: soft supervision of head-0 attention toward the "
                          "true attack adjacency (the WARM START, Kaveh) -- free "
@@ -361,6 +370,72 @@ def main():
             return float("nan")
         r = lg.argsort().argsort().float() + 1.0          # ranks, 1-based
         return float((r[tg].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
+
+    def build_rows(boards):
+        """python-chess boards -> the row dict feat_of consumes (shared by the
+        random-split eval and the blunder stream)."""
+        from catspace.research.tools.training_infra.gen_move_graphs import (
+            parent_graph, glob_of_board)
+        BK_ = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att")
+        acc = {k: [] for k in BK_}
+        for b in boards:
+            g_, _ = parent_graph(b)
+            for k in ("sq", "mv", "mut", "att", "vac", "dsc"):
+                acc[k].append(g_[k])
+            acc["n_mv"].append(np.uint8(g_["n_mv"]))
+            acc["n_att"].append(np.uint16(g_["n_att"]))
+            acc["gl"].append(glob_of_board(b))
+        return {k: torch.from_numpy(np.stack(acc[k])) for k in acc}
+
+    def blunder_batch(nb):
+        """Kaveh 2026-08-28 (after the temporal-freeze collapse): construct the child
+        after the BEST and the WORST finite-wp move of a training position. The child
+        board is a first-class labeled position (triple = the parent's multiPV row,
+        free) and a lag-2 teacher pair (root bits, move) -> child-after-reply bits.
+        Near-identical boards, very different labels: the frozen-time optimum cannot
+        fit them, and the transition gets direct 'this move drops the WDL' pairs."""
+        import chess
+        roots, c1_boards, c2_boards, js, gs = [], [], [], [], []
+        pick = rng.choice(tr_idx, nb * 3, replace=False)
+        for g in pick:
+            try:
+                b0 = chess.Board(str(FENS[g]))
+            except Exception:
+                continue
+            legal = list(b0.legal_moves)[:int(D["n_mv"][g])]
+            if not legal:
+                continue
+            wp = TGT[g][:len(legal)]
+            fin = np.isfinite(wp) & CV_[g][:len(legal)]
+            if int(fin.sum()) < 2:
+                continue
+            v = np.flatnonzero(fin)
+            j_best = int(v[wp[v].argmax()])
+            j_bad = int(v[wp[v].argmin()])
+            if wp[j_best] - wp[j_bad] < 0.05 or j_best == j_bad:
+                continue
+            okpair = True
+            pair = []
+            for j in (j_best, j_bad):
+                b1 = b0.copy(); b1.push(legal[j])
+                rep = list(b1.legal_moves)[:MV_CAP]
+                if not rep:
+                    okpair = False
+                    break
+                b2 = b1.copy(); b2.push(rep[int(rng.integers(len(rep)))])
+                pair.append((b1, b2, j))
+            if not okpair:
+                continue
+            for b1, b2, j in pair:
+                roots.append(int(g)); c1_boards.append(b1)
+                c2_boards.append(b2); js.append(j)
+            if len(js) >= nb * 2:
+                break
+        if not js:
+            return None
+        gs = np.array(roots, np.int64)
+        return (gs, np.array(js, np.int64), build_rows(c1_boards),
+                build_rows(c2_boards))
 
     def att_targets(rows):
         """(n,64,64) float attack adjacency from the chain graph arrays -- the
@@ -703,6 +778,42 @@ def main():
             l_ch, l_br, l_dq_c, n_lab, n_br = chain_anchor(args.chain_batch)
             l_dyn = torch.zeros((), device=dev)
         l_fan, l_dq_f = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm_b)
+        # BLUNDER-PAIR stream (Kaveh): constructed best/worst children as labeled
+        # positions (CE -> encoder+readout; breaks the frozen-time optimum) + lag-2
+        # teacher pairs through those moves (-> transition + dyn move encoder)
+        l_blun = torch.zeros((), device=dev)
+        if DISC and args.w_blunder > 0 and args.blunder_batch > 0:
+            bb = blunder_batch(args.blunder_batch)
+            if bb is not None:
+                gs_b, js_b, R1b, R2b = bb
+                nbp = len(gs_b)
+                sq1, mv1, ed1, mk1 = feat_of(R1b)
+                c1b, _, _ = model.carrier(sq1, mv1, ed1, mk1)      # encoder GRAD
+                z1b = model.levels_from_bits(model.rvq_bits(c1b)[0])[0]
+                stm_c1 = torch.from_numpy(
+                    (1 - STM[gs_b].astype(np.int64))).to(dev)
+                pv1 = F.linear(z1b, model.readout.weight[:, :model.d_pos],
+                               model.readout.bias) + model.turn[stm_c1]
+                tg1 = torch.from_numpy(CW_[gs_b, js_b]).to(dev)
+                l_blun = _ce_rows(pv1, tg1)
+                loss = loss + args.w_blunder * l_blun
+                # teacher half: (root bits, move) -> child-after-reply bits
+                with torch.no_grad():
+                    sq0b, mv0b, ed0b, mk0b = batch_of(torch.from_numpy(gs_b))
+                    c0b, h0b, _ = model.carrier(sq0b, mv0b, ed0b, mk0b)
+                    q0b = model.rvq_bits(c0b)[0]
+                    sq2, mv2b, ed2b, mk2b = feat_of(R2b)
+                    c2b, _, _ = model.carrier(sq2, mv2b, ed2b, mk2b)
+                    q2b = model.rvq_bits(c2b)[0]
+                dqb = dyn_codes(h0b.detach())[0]
+                code_b = dqb[torch.arange(nbp, device=dev),
+                             torch.from_numpy(js_b).to(dev)]
+                fb_, tb_ = _ft(MVNP[gs_b], js_b)
+                lg_b, _, _ = T_forward(q0b, code_b, fb_, tb_)
+                w_b = torch.where(q0b != q2b, args.flip_weight, 1.0) \
+                    if args.flip_weight != 1.0 else None
+                l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
+                    lg_b, (q2b + 1) / 2, weight=w_b)
         l_roll = l_ch + l_fan
         assert torch.isfinite(l_roll) and torch.isfinite(l_br) \
             and torch.isfinite(l_dyn), "dynamics loss is not finite"
@@ -900,23 +1011,9 @@ def main():
     def roll_random(n_root=24):
         """RANDOM-UNIFORM constructed sequences: even-lag bit deltas (no labels)."""
         import chess
-        from catspace.research.tools.training_infra.gen_move_graphs import (
-            parent_graph, glob_of_board)
         model.eval()
         ero = np.random.default_rng(1)
         roots = te_idx[ero.choice(len(te_idx), min(n_root, len(te_idx)), replace=False)]
-        BKEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att")
-
-        def build_rows(boards):
-            acc = {k: [] for k in BKEYS}
-            for b in boards:
-                g, _ = parent_graph(b)
-                for k in ("sq", "mv", "mut", "att", "vac", "dsc"):
-                    acc[k].append(g[k])
-                acc["n_mv"].append(np.uint8(g["n_mv"]))
-                acc["n_att"].append(np.uint16(g["n_att"]))
-                acc["gl"].append(glob_of_board(b))
-            return {k: torch.from_numpy(np.stack(acc[k])) for k in acc}
 
         seqs, mv_js = [], []
         for g in roots:
@@ -1247,6 +1344,28 @@ def main():
                   f"encoder, never the board encoder or value codes; anchors train "
                   f"the readout and CANNOT reach T ({n_lab_d} value rows, {n_br_d} "
                   f"branch rows on 8 chains)")
+
+            # D6: the blunder-pair stream (implementation wiring; label contrast is
+            # a [science] alert)
+            bb6 = blunder_batch(6)
+            assert bb6 is not None, "blunder stream produced nothing"
+            gs6, js6, R16, R26 = bb6
+            gap6 = float(np.mean(TGT[gs6[::2], js6[::2]] - TGT[gs6[1::2], js6[1::2]]))
+            sq16, mv16, ed16, mk16 = feat_of(R16)
+            c16, _, _ = model.carrier(sq16, mv16, ed16, mk16)
+            z16 = model.levels_from_bits(model.rvq_bits(c16)[0])[0]
+            pv16 = F.linear(z16, model.readout.weight[:, :model.d_pos],
+                            model.readout.bias)
+            l6 = _ce_rows(pv16, torch.from_numpy(CW_[gs6, js6]).to(dev))
+            g6e = torch.autograd.grad(l6, model.carrier_proj.weight,
+                                      allow_unused=True)[0]
+            assert g6e is not None and float(g6e.abs().sum()) > 0, \
+                "blunder CE does not reach the encoder -- its whole point"
+            if gap6 < 0.1:
+                print(f"  ALERT D6 [science]: mean best-worst wp gap only {gap6:.3f}",
+                      flush=True)
+            print(f"  D6 PASS blunder stream: {len(gs6)} constructed children, "
+                  f"best-worst wp gap {gap6:.3f}, CE reaches the encoder")
 
 
         logit.sum().backward()
