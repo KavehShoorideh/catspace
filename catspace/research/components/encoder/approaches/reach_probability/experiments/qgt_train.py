@@ -22,6 +22,12 @@ Losses (the handoff's list, nothing else):
                   dyn codes, CE vs each child's multiPV triple (free labels). The
                   anti-collapse duty: a constant carrier cannot predict per-child
                   values (amended section 5)
+      branch      (qgt2, Kaveh 2026-08-28) from every chain row k=0..5, roll ONE
+                  further step through sampled multiPV moves and RANK the branch
+                  reads against that row's per-move SF values (chain_values `wp`) --
+                  regret + pairwise at landing depths 1..6. qgt1 proved value-only
+                  anchoring lets K contract to rho~0.75 with chance-level rolled
+                  bits; ranking ~30 moves at depth is what charges K for losing state
     + aux (LFQ entropy + ST-MoE router losses) + roller spectral penalty
     roller.clamp_() after every optimizer step
 
@@ -58,6 +64,17 @@ def main():
     ap.add_argument("--chain-batch", type=int, default=16)
     ap.add_argument("--fan-k", type=int, default=4,
                     help="children per position for the 1-ply rolled-value fan")
+    ap.add_argument("--branch-k", type=int, default=4,
+                    help="multiPV branch moves sampled per chain row per horizon "
+                         "(always includes the row's best move)")
+    ap.add_argument("--w-branch", type=float, default=1.0,
+                    help="BRANCH RANKING at every rolled horizon (Kaveh 2026-08-28): "
+                         "from each chain row k=0..5, roll ONE further step through "
+                         "sampled multiPV moves and rank the branch reads against that "
+                         "row's per-move SF values (regret + pairwise, qat9's form). A "
+                         "contracted carrier can track one drifting scalar; it cannot "
+                         "rank ~30 moves four plies deep -- this is what charges K for "
+                         "losing state. 0 restores qgt1's value-only anchoring.")
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--eval-every", type=int, default=500)
     ap.add_argument("--ckpt-every", type=int, default=2000)
@@ -195,14 +212,17 @@ def main():
     ch_tr = np.flatnonzero(~te_m); ch_te = np.flatnonzero(te_m)
     _zv = np.load(args.chain_values)
     _wdl_raw = _zv["wdl"].astype(np.float32)                  # mover-POV best-move triple
-    cf = np.load(args.chain_fens)
+    CHW = _zv["wp"].astype(np.float32)                        # (rows, MV_CAP) mover-POV
+    cf = np.load(args.chain_fens)                             #   per-move win-probs
     CH_FEN = cf["fen"]
     CH_STM = np.array([str(f).split()[1] == "w" for f in CH_FEN])
+    CH_SGN = np.where(CH_STM, 1.0, -1.0).astype(np.float32)
     CH_WDL = _wdl_raw.copy()
     CH_WDL[~CH_STM] = CH_WDL[~CH_STM][:, ::-1]                # White-POV
     CH_OK = np.isfinite(CH_WDL).all(-1) & (np.nan_to_num(_wdl_raw).sum(-1) > 0)
     print(f"[qgt] chains {len(CH_pos):,} ({len(ch_te):,} held out by GAME) | "
-          f"{int(CH_OK.sum()):,}/{len(CH_OK):,} rows carry a WDL triple", flush=True)
+          f"{int(CH_OK.sum()):,}/{len(CH_OK):,} rows carry a WDL triple | "
+          f"{int(np.isfinite(CHW).sum()):,} per-move branch labels", flush=True)
 
     # ---- model (from scratch -- no trunk, per the 8/27 trunk-removal design) --------
     model = QGTField(d=args.d, layers=args.layers, sq_bits=args.sq_bits,
@@ -265,33 +285,92 @@ def main():
         return -(tg * F.log_softmax(pv, -1)).sum(-1).mean()
 
     def chain_anchor(cb):
-        """Roll REAL chains 6 plies; CE of read value vs each row's White-POV triple."""
+        """Roll REAL chains 6 plies. TWO grounds at every horizon (all-ply -- the 8/23
+        scar: supervising {1,3,6} only left plies 2/5 sign-inverted):
+          value    CE of the read position value vs each row's White-POV triple
+          branch   from each row k=0..5, roll ONE further step through sampled multiPV
+                   moves and RANK the branch reads against that row's per-move SF
+                   values (regret + pairwise -- per-move KL is satisfied by the mean,
+                   8/24). Landing depths 1..6. This is what charges K for losing
+                   state: a contracted carrier cannot rank moves it can no longer see.
+        """
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]           # (cb,7)
         sq0, mv0, ed0, mk0, pl0 = feat_chain(ci[:, 0])
         c0, h_mv0, _ = model.carrier(sq0, mv0, ed0, mk0)
-        dq0, l_dq = dyn_codes(h_mv0)
+        dq0, l_dq = dyn_codes(h_mv0)                                  # (cb,MV,32) grad
         ar = torch.arange(cb, device=dev)
-        moves = [dq0[ar, pl0]]
         with torch.no_grad():                  # deeper move codes: conditioning only
             rows_mid = ci[:, 1:6].ravel()
             sqm, mvm, edm, mkm, plm = feat_chain(rows_mid)
             _, h_mvm, _ = model.carrier(sqm, mvm, edm, mkm)
-            dqm = dyn_codes(h_mvm)[0]
-            mm = dqm[torch.arange(len(rows_mid), device=dev), plm].reshape(cb, 5, -1)
-        moves += [mm[:, k] for k in range(5)]
-        stm_seq = [torch.from_numpy(CH_STM[ci[:, k]].astype(np.int64)).to(dev)
-                   for k in range(1, 7)]
-        outs = model.roll_and_read(c0, moves, stm_seq)
-        l = torch.zeros((), device=dev)
+            dqm_all = dyn_codes(h_mvm)[0]
+            plc = dqm_all[torch.arange(len(rows_mid), device=dev), plm
+                          ].reshape(cb, 5, -1)
+            dqm = dqm_all.reshape(cb, 5, MV_CAP, -1)
+        moves = [dq0[ar, pl0]] + [plc[:, k] for k in range(5)]
+        cs = model.roller.roll(c0.reshape(cb, -1), moves)             # 6 carriers, grad
+        W = model.readout.weight
+        l_val = torch.zeros((), device=dev)
         n_lab = 0
         for k in range(1, 7):
             fin = torch.from_numpy(CH_OK[ci[:, k]]).to(dev)
             if not bool(fin.any()):
                 continue
-            l = l + _ce_rows(outs[k - 1][1][fin],
-                             torch.from_numpy(CH_WDL[ci[:, k]]).to(dev)[fin])
+            z = model.observe(cs[k - 1].reshape(cb, 64, model.sq_bits))[0]
+            pv = F.linear(z, W[:, :model.d_pos], model.readout.bias) + model.turn[
+                torch.from_numpy(CH_STM[ci[:, k]].astype(np.int64)).to(dev)]
+            l_val = l_val + _ce_rows(pv[fin],
+                                     torch.from_numpy(CH_WDL[ci[:, k]]).to(dev)[fin])
             n_lab += int(fin.sum())
-        return l / 6.0, l_dq, n_lab
+        l_val = l_val / 6.0
+
+        bk = args.branch_k
+        l_br = torch.zeros((), device=dev)
+        n_br = 0
+        for k in range(6):                       # branch FROM row k, landing at k+1
+            wpk = CHW[ci[:, k]]                                       # (cb,MV) mover-POV
+            cols = np.zeros((cb, bk), np.int64)
+            ok_r = np.zeros(cb, bool)
+            for r in range(cb):
+                v = np.flatnonzero(np.isfinite(wpk[r]))
+                if len(v) < 2:
+                    continue
+                b_ = v[wpk[r][v].argmax()]
+                rest = v[v != b_]
+                cols[r, 0] = b_                  # slot 0 is ALWAYS the row's best move
+                cols[r, 1:] = rng.choice(rest, bk - 1, replace=len(rest) < bk - 1)
+                ok_r[r] = True
+            if not ok_r.any():
+                continue
+            okt = torch.from_numpy(ok_r).to(dev)
+            nv = int(ok_r.sum())
+            colst = torch.from_numpy(cols[ok_r]).to(dev)              # (nv,bk)
+            src = dq0 if k == 0 else dqm[:, k - 1]                    # (cb,MV,32)
+            codes = src[okt].gather(1, colst[..., None].expand(-1, -1, src.shape[-1])
+                                    ).reshape(nv * bk, -1)
+            base = (c0.reshape(cb, -1) if k == 0 else cs[k - 1])[okt]
+            base = base.reshape(nv, 1, -1).expand(-1, bk, -1).reshape(nv * bk, -1)
+            zb = model.observe(model.roller.step(base, codes)
+                               .reshape(-1, 64, model.sq_bits))[0]
+            pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
+            stm_c = torch.from_numpy(
+                (1 - CH_STM[ci[:, k]].astype(np.int64))[ok_r]).to(dev)
+            pvb = pvb + model.turn[stm_c.repeat_interleave(bk)]
+            sg = torch.from_numpy(CH_SGN[ci[:, k]][ok_r]).to(dev)[:, None]
+            sc = sg * (pvb[:, 0] - pvb[:, 2]).reshape(nv, bk)
+            wsel = torch.from_numpy(
+                wpk[np.arange(cb)[ok_r][:, None], cols[ok_r]]).to(dev)
+            reg = (wsel[:, :1] - wsel).clamp(min=0)  # slot 0 best => its regret is 0
+            if args.units:
+                assert float(reg[:, 0].abs().max()) == 0.0, \
+                    "branch slot 0 is not the best move -- regret is mis-anchored"
+            l_br = l_br + (torch.softmax(sc, -1) * reg).sum(-1).mean()
+            j = torch.randint(1, bk, (nv,), device=dev)
+            arv = torch.arange(nv, device=dev)
+            l_br = l_br + (F.softplus(-(sc[:, 0] - sc[arv, j])) * reg[arv, j]).mean()
+            n_br += nv
+        l_br = l_br / 6.0
+        return l_val, l_br, l_dq, n_lab, n_br
 
     def fan_anchor(c_par, h_mv_par, ii, stm_b):
         """Roll the parent 1 ply through fan_k children each; CE vs each child's triple.
@@ -367,12 +446,14 @@ def main():
                 assert torch.isfinite(l_rank), "regret loss is not finite"
                 loss = loss + args.w_rank * l_rank
 
-        # ROLLED-VALUE anchor (chain + fan) -- the sole dynamics supervision
-        l_ch, l_dq_c, n_lab = chain_anchor(args.chain_batch)
+        # ROLLED-VALUE anchor (chain value + branch ranking + fan) -- the sole
+        # dynamics supervision
+        l_ch, l_br, l_dq_c, n_lab, n_br = chain_anchor(args.chain_batch)
         l_fan, l_dq_f = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm_b)
         l_roll = l_ch + l_fan
-        assert torch.isfinite(l_roll), "rolled-value loss is not finite"
-        loss = loss + args.w_roll * l_roll + l_dq_c + l_dq_f \
+        assert torch.isfinite(l_roll) and torch.isfinite(l_br), \
+            "rolled-value loss is not finite"
+        loss = loss + args.w_roll * l_roll + args.w_branch * l_br + l_dq_c + l_dq_f \
             + model.roller.spectral_penalty()
 
         opt.zero_grad(); loss.backward()
@@ -383,18 +464,26 @@ def main():
 
         out = {}
         if step % args.eval_every == 0 or step == 1 or step == args.steps:
-            out = run_eval(step, float(l_wdl), float(l_rank), float(l_ch), float(l_fan))
+            out = run_eval(step, float(l_wdl), float(l_rank), float(l_ch),
+                           float(l_fan), float(l_br))
         return out
 
     # ---- the dual-split instrument --------------------------------------------------
     @torch.no_grad()
-    def roll_real(n_ch=192, lag_sub=48):
-        """Held-out REAL chains: rolled-value corr at 1/3/6 + even-lag bit deltas."""
+    def roll_real(n_ch=192, lag_sub=48, br_k=8):
+        """Held-out REAL chains: rolled-value corr at 1/3/6 + even-lag bit deltas +
+        BRANCH REGRET at landing plies 1/3/6 (how much win-prob the model's pick among
+        br_k sampled multiPV moves gives up, read from the ROLLED branch state; brnd =
+        the random-pick baseline over the same samples)."""
         model.eval()
+        ero = np.random.default_rng(2)
         pred = {k: [] for k in (1, 3, 6)}
         true = {k: [] for k in (1, 3, 6)}
         dl = {k: [0.0, 0.0] for k in (2, 4, 6)}     # rolled-vs-true bits
         cp = {k: [0.0, 0.0] for k in (2, 4, 6)}     # copy baseline: root vs true bits
+        br = {k: [0.0, 0.0] for k in (1, 3, 6)}     # branch regret at landing ply
+        brnd = [0.0, 0.0]
+        W = model.readout.weight
         for a in range(0, min(n_ch, len(ch_te)), 32):
             ci = CH_pos[ch_te[a:a + 32]]
             cb = len(ci)
@@ -405,17 +494,22 @@ def main():
             rows_mid = ci[:, 1:6].ravel()
             sqm, mvm, edm, mkm, plm = feat_chain(rows_mid)
             _, h_mvm, _ = model.carrier(sqm, mvm, edm, mkm)
-            dqm = dyn_codes(h_mvm)[0]
-            mm = dqm[torch.arange(len(rows_mid), device=dev), plm].reshape(cb, 5, -1)
+            dqm_all = dyn_codes(h_mvm)[0]
+            mm = dqm_all[torch.arange(len(rows_mid), device=dev), plm
+                         ].reshape(cb, 5, -1)
+            dqm = dqm_all.reshape(cb, 5, MV_CAP, -1)
             moves += [mm[:, k] for k in range(5)]
-            stm_seq = [torch.from_numpy(CH_STM[ci[:, k]].astype(np.int64)).to(dev)
-                       for k in range(1, 7)]
-            outs = model.roll_and_read(c0, moves, stm_seq)
+            cs = model.roller.roll(c0.reshape(cb, -1), moves)
+            zs = {k: model.observe(cs[k - 1].reshape(cb, 64, model.sq_bits))[0]
+                  for k in range(1, 7)}
             for k in (1, 3, 6):
                 fin = CH_OK[ci[:, k]]
                 if not fin.any():
                     continue
-                p = (torch.softmax(outs[k - 1][1], -1) * S3).sum(-1).cpu().numpy()[fin]
+                pv = F.linear(zs[k], W[:, :model.d_pos], model.readout.bias) \
+                    + model.turn[torch.from_numpy(
+                        CH_STM[ci[:, k]].astype(np.int64)).to(dev)]
+                p = (torch.softmax(pv, -1) * S3).sum(-1).cpu().numpy()[fin]
                 tw = CH_WDL[ci[:, k]][fin]
                 tw = tw / tw.sum(-1, keepdims=True).clip(min=1e-6)
                 pred[k].append(p); true[k].append(tw @ np.array([1.0, 0.5, 0.0]))
@@ -425,9 +519,49 @@ def main():
                     sqk, mvk, edk, mkk, _ = feat_chain(ci[:, k])
                     ck_true, _, _ = model.carrier(sqk, mvk, edk, mkk)
                     zt = model.observe(ck_true)[0]
-                    zr = outs[k - 1][0]
-                    dl[k][0] += float((zr != zt).float().mean()) * cb; dl[k][1] += cb
+                    dl[k][0] += float((zs[k] != zt).float().mean()) * cb; dl[k][1] += cb
                     cp[k][0] += float((z0 != zt).float().mean()) * cb; cp[k][1] += cb
+            if a < 64:                               # branch regret on a subsample
+                for kf, land in ((0, 1), (2, 3), (5, 6)):
+                    wpk = CHW[ci[:, kf]]
+                    cols = np.zeros((cb, br_k), np.int64)
+                    ok_r = np.zeros(cb, bool)
+                    for r in range(cb):
+                        v = np.flatnonzero(np.isfinite(wpk[r]))
+                        if len(v) < 2:
+                            continue
+                        b_ = v[wpk[r][v].argmax()]
+                        rest = v[v != b_]
+                        cols[r, 0] = b_
+                        cols[r, 1:] = ero.choice(rest, br_k - 1,
+                                                 replace=len(rest) < br_k - 1)
+                        ok_r[r] = True
+                    if not ok_r.any():
+                        continue
+                    okt = torch.from_numpy(ok_r).to(dev)
+                    nv = int(ok_r.sum())
+                    colst = torch.from_numpy(cols[ok_r]).to(dev)
+                    src = dq0 if kf == 0 else dqm[:, kf - 1]
+                    codes = src[okt].gather(
+                        1, colst[..., None].expand(-1, -1, src.shape[-1])
+                        ).reshape(nv * br_k, -1)
+                    base = (c0.reshape(cb, -1) if kf == 0 else cs[kf - 1])[okt]
+                    base = base.reshape(nv, 1, -1).expand(-1, br_k, -1
+                                                          ).reshape(nv * br_k, -1)
+                    zb = model.observe(model.roller.step(base, codes)
+                                       .reshape(-1, 64, model.sq_bits))[0]
+                    pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
+                    stm_c = torch.from_numpy(
+                        (1 - CH_STM[ci[:, kf]].astype(np.int64))[ok_r]).to(dev)
+                    pvb = pvb + model.turn[stm_c.repeat_interleave(br_k)]
+                    sg = torch.from_numpy(CH_SGN[ci[:, kf]][ok_r]).to(dev)[:, None]
+                    sc = (sg * (pvb[:, 0] - pvb[:, 2]).reshape(nv, br_k)).cpu().numpy()
+                    wsel = wpk[np.arange(cb)[ok_r][:, None], cols[ok_r]]
+                    pick = (sc + ero.random(sc.shape) * 1e-9).argmax(1)
+                    reg = (wsel[:, 0] - wsel[np.arange(nv), pick]).clip(min=0)
+                    br[land][0] += float(reg.sum()); br[land][1] += nv
+                    rr = (wsel[:, :1] - wsel).clip(min=0)
+                    brnd[0] += float(rr[:, 1:].mean(1).sum()); brnd[1] += nv
         corr = {}
         for k in (1, 3, 6):
             if pred[k]:
@@ -438,7 +572,9 @@ def main():
                 corr[k] = float("nan")
         delta = {k: dl[k][0] / max(dl[k][1], 1) for k in dl}
         copy = {k: cp[k][0] / max(cp[k][1], 1) for k in cp}
-        return corr, delta, copy
+        breg = {k: br[k][0] / max(br[k][1], 1) for k in br}
+        breg["rnd"] = brnd[0] / max(brnd[1], 1)
+        return corr, delta, copy, breg
 
     @torch.no_grad()
     def roll_random(n_root=24):
@@ -498,7 +634,7 @@ def main():
         return {k: float((outs[k - 1][0] != z_true[k]).float().mean()) for k in (2, 4, 6)}
 
     def run_eval(step, lw=float("nan"), lr_=float("nan"), lch=float("nan"),
-                 lfan=float("nan")):
+                 lfan=float("nan"), lbr=float("nan")):
         model.eval()
         live = int((model.readout.weight[:, :model.d_pos].abs().sum(0) > 0).sum())
         with torch.no_grad():
@@ -535,16 +671,17 @@ def main():
             bal = float(np.mean(rec))
             top1_acc = top1 / max(nrank, 1)
             mregret = reg_sum / max(nreg, 1)
-            corr, delta, copy = roll_real()
+            corr, delta, copy, breg = roll_real()
             rnd = roll_random()
             rho = float(model.roller.rho(iters=20))
         print(f"[qgt] step {step:>5}/{args.steps} | wdl {lw:.3f} rloss {lr_:.4f} "
-              f"roll {lch:.3f}+{lfan:.3f} | BALANCED {bal:.3f} recall W/D/L "
-              f"{rec[0]:.2f}/{rec[1]:.2f}/{rec[2]:.2f} | REGRET {mregret:.4f} "
+              f"roll {lch:.3f}+{lfan:.3f} br {lbr:.3f} | BALANCED {bal:.3f} recall "
+              f"W/D/L {rec[0]:.2f}/{rec[1]:.2f}/{rec[2]:.2f} | REGRET {mregret:.4f} "
               f"(qat9 0.0872) | top1 {top1_acc:.3f} | concepts {live} | "
               f"vroll {corr[1]:+.3f}/{corr[3]:+.3f}/{corr[6]:+.3f} "
-              f"(8/24 ref +0.850/+0.808/+0.777) | evenlag real "
-              f"{delta[2]:.3f}/{delta[4]:.3f}/{delta[6]:.3f} (copy "
+              f"(8/24 ref +0.850/+0.808/+0.777) | brreg "
+              f"{breg[1]:.3f}/{breg[3]:.3f}/{breg[6]:.3f} (rnd {breg['rnd']:.3f}) | "
+              f"evenlag real {delta[2]:.3f}/{delta[4]:.3f}/{delta[6]:.3f} (copy "
               f"{copy[2]:.3f}/{copy[4]:.3f}/{copy[6]:.3f}) rand "
               f"{rnd.get(2, float('nan')):.3f}/{rnd.get(4, float('nan')):.3f}/"
               f"{rnd.get(6, float('nan')):.3f} | rho {rho:.4f}", flush=True)
@@ -554,7 +691,10 @@ def main():
                   flush=True)
         return {"balanced": bal, "concepts": live, "wdl": lw, "top1": top1_acc,
                 "regret": mregret, "rank": lr_, "roll_chain": lch, "roll_fan": lfan,
+                "roll_branch": lbr,
                 "vroll1": corr[1], "vroll3": corr[3], "vroll6": corr[6],
+                "brreg1": breg[1], "brreg3": breg[3], "brreg6": breg[6],
+                "brreg_rnd": breg["rnd"],
                 "evenlag2_real": delta[2], "evenlag6_real": delta[6],
                 "evenlag6_rand": rnd.get(6, float("nan")), "rho": rho,
                 "move_concepts_alive": mv_alive}
@@ -626,23 +766,30 @@ def main():
         assert sD < 1e-5 and sX < 1e-5, f"permutation broken: D {sD}, X {sX}"
         print(f"  U11 PASS color-swap permutation (D {sD:.1e}, W<->L {sX:.1e})")
 
-        # U12-analogue: the rolled-value anchor trains DYN codes, never value codes
-        l_ch, _, n_lab = chain_anchor(8)
+        # U12-analogue: the rolled anchors train DYN codes, never value codes
+        l_ch, l_br, _, n_lab, n_br = chain_anchor(8)
         assert n_lab > 0, "chain anchor found no labelled rows -- it would train on nothing"
-        g_val = torch.autograd.grad(l_ch, model.mv_proj.weight, retain_graph=True,
+        assert n_br > 0, "branch anchor found no rankable rows -- it would train on nothing"
+        l_tot = l_ch + l_br
+        g_val = torch.autograd.grad(l_tot, model.mv_proj.weight, retain_graph=True,
                                     allow_unused=True)[0]
-        g_dyn = torch.autograd.grad(l_ch, model.dyn_mv_proj.weight, retain_graph=True,
+        g_dyn = torch.autograd.grad(l_tot, model.dyn_mv_proj.weight, retain_graph=True,
                                     allow_unused=True)[0]
-        g_K = torch.autograd.grad(l_ch, model.roller.K, allow_unused=True)[0]
+        g_K = torch.autograd.grad(l_tot, model.roller.K, retain_graph=True,
+                                  allow_unused=True)[0]
+        g_Kb = torch.autograd.grad(l_br, model.roller.K, allow_unused=True)[0]
         assert g_val is None or float(g_val.abs().sum()) == 0.0, \
-            "rolled-value loss leaks into the VALUE move codes"
+            "rolled anchors leak into the VALUE move codes"
         assert g_dyn is not None and float(g_dyn.abs().sum()) > 0, \
-            "rolled-value loss does not train the dyn codes"
+            "rolled anchors do not train the dyn codes"
         assert g_K is not None and float(g_K.abs().sum()) > 0, \
-            "rolled-value loss does not reach K through the composition"
+            "rolled anchors do not reach K through the composition"
+        assert g_Kb is not None and float(g_Kb.abs().sum()) > 0, \
+            "the BRANCH loss alone does not reach K -- deep grounding is dead"
         print(f"  U12 PASS anchor isolation: value-code grad "
-              f"{'None' if g_val is None else 0.0}; dyn codes + K train "
-              f"({n_lab} labelled rows on 8 chains)")
+              f"{'None' if g_val is None else 0.0}; dyn codes + K train; branch loss "
+              f"alone reaches K ({n_lab} value rows, {n_br} branch rows on 8 chains; "
+              f"slot-0-is-best asserted in-loop under --units)")
 
         # U13: CE -> position only; regret is the sole trainer of the move bits
         tgt13 = torch.softmax(torch.randn_like(logit), -1)
