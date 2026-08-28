@@ -19319,3 +19319,16 @@ cover dependency depth 2, recaptures land on the injected destination square, an
 flip_cov measures sufficiency empirically -- layers=3 is the dial if it stalls.
 PRE-REGISTERED WATCH: an encoder/readout collapse in fine-tune would implicate the
 separation's removal of the fan's encoder gradients (the qgt5 confound A/B).
+
+## 2026-08-28 — QGT-line glossary (Kaveh asked; T was overloaded)
+
+NAMING FIX: this session's "T"/"T2" = the learned concept TRANSITION (bit_trans:
+BitTransition / GraphBitTransition), at the 2-ply move unit for "T2". NOT the
+roadmap's T(s, context) transition estimator (M2), NOT lc0's T1/T70 trunk
+generations. The record and code say "the transition"/bit_trans from here on.
+Session shorthand: qgt1 koopman value-only / qgt2 +branch / qgt3d discrete ply-unit
+/ qgt3e killed (parity capture) / qgt4 move-unit / qgt5 +Dreamer separation / qgt6
+learned-edge graph transition. q1 = level-1 concept bits (the rolling state); dyn
+codes = learned move codes; w_id = copy prior; anchors = chain/fan/branch value
+losses; instruments = tfacc-vs-copy, vroll, brreg, evenlag, flip, and qgt6's
+flip_cov / att_auc_tf / att_auc_roll.
