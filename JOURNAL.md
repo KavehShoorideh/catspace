@@ -19284,3 +19284,24 @@ takes the decision away from Kaveh. Applied retroactively to the qgt6 G-gates: t
 warm-start learnability mini-fit (G1) and flip coverage (G3) are [science] alerts;
 the train-mode frame axiom (G2) remains a killing [implementation] gate. The H1-H5
 detectors were always instruments (heartbeat metrics), consistent with the ruling.
+
+## 2026-08-28 (Fable) — qgt5 RESULT: the separation HELD; a NEW failure appeared — mid-run encoder/readout collapse
+
+Final (8000 steps): balanced 0.304 / regret 0.2591 (~random) / top1 0.064 -- the
+readout is DEAD, but not by the qgt4 mechanism. Timeline: steps 500-3000 the Dreamer
+discipline did its job exactly as designed -- tfacc tracked copy within 0.02-0.04
+(0.934 vs 0.937 at 500), rolled bits at near-copy fidelity (evenlag 0.08-0.14 vs copy
+0.06-0.09, the line's best), no corruption. Then ~step 4700 the ENCODER reorganized
+violently (wdl loss 1.15 -> 1.8, balanced 0.44 -> 0.23 in 500 steps) and never
+recovered; tfacc's late slide (0.70 vs copy 0.81) reads as teacher targets moving
+under T, not anchor corruption -- the gates prove anchors cannot reach T.
+
+SEPARATION VERDICT: works (its pre-registered test passed -- no monotone tfacc decay,
+no flip runaway while the encoder was stable). NEW CONFOUND, single seed, one event:
+the encoder collapse. Suspects, recorded for the cross-run A/B that qgt6 provides for
+free: (a) the separation ALSO removed the fan's encoder gradients (rvq_bits under
+no_grad) -- qgt3d/qgt4 kept that regularization and did not collapse; (b) the readout
+chasing rolled states that drift as T trains at 10x LR. PRE-REGISTERED WATCH for
+qgt6 (same code paths): if its readout collapses in fine-tune too, suspect (a) and
+restore the fan's encoder path; if it does not, qgt5's event was likely (b) or seed
+noise. Artifacts qgt5_step*.pt; log tmp/qgt5.log.
