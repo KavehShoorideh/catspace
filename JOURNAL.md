@@ -18779,3 +18779,33 @@ untrained level end-of-run; the dual-split rolled-value eval remains the pre-reg
 instrument).
 
 ---
+
+## 2026-08-28 — QGT LOCKED SPEC (Kaveh: build it; rolling = the KOOPMAN operator, which reached 10+ plies)
+
+Kaveh's reminder, verified against the 8/24 deep_roll record: the LINEAR Koopman operator
+rolled 14 plies with smooth value-corr decay (0.85/0.81/0.78 at 1/3/6, 0.64 at 10), plies
+7-14 wholly unsupervised -- while every MLP future head in the qat line ended at untrained
+level. The load-bearing ingredients (8/26 journal): spectral clamp rho<=1 + w_spec 0.2,
+never re-lift, real chains to 6 plies. QGT therefore uses the Koopman form for rolling,
+not an MLP.
+
+SPEC (all constants implementation-verified, LITERATURE.md 8/27):
+ 1. BASE: GraphConceptField relation/message-passing layers, NO dense MultiheadAttention.
+ 2. LEVEL-1: per-square ResidualLFQ (num_quantizers=2, EnCodec quantize_dropout) +
+    board/piece/hist blocks as today; White-POV labels; absolute-color inputs.
+ 3. LEVELS 2..k: 2 stacked QuantizedAttention layers over the 129 concept tokens,
+    out_bits=8, ST-MoE router z-loss c_z=1e-3 on question AND attention logits,
+    Switch balance loss c_B=0.01 on question usage (per-decision, anti-collapse).
+ 4. READOUT: qat9's proven stack verbatim -- linear over the union + turn bias,
+    permutation color-swap, routed gradients (CE->position, regret+pairwise->move bits),
+    expectation+pairwise ranking. Expected-score head OFF (qat11b negative).
+ 5. ROLLING: KOOPMAN linear operator z' = K z + B m over level-1 (never re-lift),
+    spectral clamp rho<=1 + spectral penalty 0.2, trained on constructed chains up to
+    6 plies; higher levels recomputed from rolled level-1. Judged by rolled-VALUE and
+    even-lag delta metrics on the dual split (real + random-uniform sequences).
+ 6. TRAINING: scaffold LR law, settledness pruning, pawn-grouped holdout.
+ 7. ACCEPTANCE: faithfulness probe >2x density beating the shuffled control at real
+    usage; null-move flip well below 54%; churn <= 37 groups; regret <= 0.0872
+    (qat9, leak-free split); rolled-value-vs-plies curve compared to the 8/24 table.
+
+---
