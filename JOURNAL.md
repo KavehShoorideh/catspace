@@ -19217,3 +19217,35 @@ qgt4 mid-run note (@1500): brreg@2/4/6 0.132/0.126/0.128 vs rnd 0.192 -- stronge
 stablest rolled discrimination of the line; but tfacc 0.739 vs copy 0.941 with flip
 0.112 -- T over-flips 2-4x the true rate; vroll still noise. The over-flip suspects:
 flip-weight 3 against a ~6% base rate plus STE anchors rewarding motion.
+
+## 2026-08-28 (Fable) — qgt4 RESULT: the MOVE unit fixed parity, and then the ANCHORS corrupted the transition. tfacc degraded monotonically 0.78 -> 0.51 while flip pinned at 4x the true rate.
+
+Final (8000 steps, printed, tmp/qgt4.log):
+
+    balanced 0.465 | regret 0.1245 | top1 0.300 | draws 0.00 | concepts 400
+    vroll@2/4/6  -0.097/-0.161/-0.097     (NEGATIVE -- worse than copy)
+    brreg@2/4/6   0.180/0.138/0.160       (rnd 0.192; mid-run best was 0.115-0.135)
+    tfacc 0.514 vs copy 0.919 | flip 0.139 vs true ~0.034 | evenlag real ~0.39 vs copy ~0.04
+
+WHAT WORKED: the lag-2 unit killed the parity capture exactly as Kaveh predicted --
+the copy baseline sat at 0.92-0.97 all run (vs 0.12 in qgt3e), and the encoder went
+extremely slow at even lag (3-4% of bits change per MOVE by the end). Branch
+discrimination hit the line's best mid-run (brreg 0.115-0.135, ~35% under chance at
+every landing).
+
+WHAT FAILED, with a clean mechanism: the teacher accuracy DEGRADED MONOTONICALLY
+(0.78 @500 -> 0.51 @8000, below coin-flip against its own baseline) while free-run
+flips pinned at ~0.14 = 4x the true change rate. The free-run value/branch anchors
+backprop into T through the STE at 10x LR, and they REWARD MOTION -- a churny T
+separates branch reads early -- so they dragged T off the truth; the flip-weighted
+BCE (itself pro-flip at 3x) could not hold it. Late-run everything the churn bought
+decayed too (brreg back to 0.14-0.18, vroll negative). The tug-of-war was visible in
+dyn (0.49 -> 0.92 -> 0.78): the teacher loss went UP for 4000 steps.
+
+DIAGNOSIS -> qgt5 PROPOSAL (the IRIS discipline, pressure separation): the teacher
+signal IS the definition of the dynamics; anchors must shape the READOUT, never the
+transition. One change: DETACH the anchor gradients from T (free-run rolls computed
+with T's parameters frozen w.r.t. those losses; anchors keep training the readout on
+rolled states). T is then trained by the teacher BCE alone -- nothing fights it, tfacc
+must climb or the architecture itself is the residual suspect. Everything else fixed
+(lag-2 unit, flip-weight 3, 10x dyn LR, all instruments). AWAITING KAVEH.
