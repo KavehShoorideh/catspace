@@ -405,6 +405,20 @@ def main():
                 sc = (sg * (logit[..., 0] - logit[..., 2])[good]).masked_fill(
                     ~vld[good], -1e9)
                 l_rank = (torch.softmax(sc, -1) * reg).sum(-1).mean()
+                # PAIRWISE ANTI-DEGENERACY. The expected-regret softmax has (near-)zero
+                # gradient when every child scores alike -- the exact absorbing state
+                # (fingerprint 0.2629/0.051) qat8 sat in from birth for 1500 steps. A
+                # best-vs-random logistic pair has gradient 0.5*w THERE, so the uniform
+                # state is provably non-stationary. Weighted by the win-prob gap, so
+                # near-ties cost ~nothing (Kaveh's regret principle, pairwise form).
+                bi = wp.argmax(1)
+                rnd = torch.randint(0, wp.shape[1], (len(wp),), device=dev)
+                v_ok = torch.isfinite(wp[torch.arange(len(wp), device=dev), rnd])
+                if bool(v_ok.any()):
+                    a_ = torch.arange(len(wp), device=dev)
+                    gap = (wp[a_, bi] - wp[a_, rnd]).clamp(min=0)[v_ok]
+                    d_ = (sc[a_, bi] - sc[a_, rnd])[v_ok]
+                    l_rank = l_rank + (torch.nn.functional.softplus(-d_) * gap).mean()
                 assert torch.isfinite(l_rank), "regret loss is not finite"
                 loss = loss + args.w_rank * l_rank
 
