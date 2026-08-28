@@ -176,22 +176,22 @@ def main():
         CW_[~STM] = CW_[~STM][..., ::-1]
         CY_ = CW_.argmax(-1)
         SGN = np.where(STM, 1.0, -1.0).astype(np.float32)
+    TGT = D["tgt"].numpy()                                    # (N, MV_CAP) SF move score
     # SPOILER PAIRS (Kaveh): hard negative = the best move that TRANSITIONS to a worse
     # outcome than achievable -- the most tempting way to throw away the result.
     # Mover-frame classes 0=W,1=D,2=L; worse = larger index. Precomputed once.
     _raw = np.concatenate(store["_cw"]).astype(np.float32)
     CY_MOV = np.where(np.isfinite(_raw).all(-1), _raw.argmax(-1), 3)
-    SPOIL = np.full(N, -1, np.int64)
+    SPOIL = np.full(len(STM), -1, np.int64)
     _tvv = np.where(CV_ & np.isfinite(TGT), TGT, -np.inf)
     _b = _tvv.argmax(1)
-    for _i in range(N):
+    for _i in range(len(STM)):
         if not np.isfinite(_tvv[_i, _b[_i]]):
             continue
         _w = CV_[_i] & (CY_MOV[_i] > CY_MOV[_i, _b[_i]]) & (CY_MOV[_i] < 3)
         if _w.any():
             SPOIL[_i] = np.where(_w, _tvv[_i], -np.inf).argmax()
-    print(f"[qat] spoiler pairs: {int((SPOIL >= 0).sum()):,} of {N:,} positions", flush=True)
-    TGT = D["tgt"].numpy()                                    # (N, MV_CAP) SF move score
+    print(f"[qat] spoiler pairs: {int((SPOIL >= 0).sum()):,} of {len(STM):,} positions", flush=True)
     ROW = np.concatenate(store["_row"])
     SHARD = np.concatenate(store["_shard"])
     Y = WDL.argmax(1)
