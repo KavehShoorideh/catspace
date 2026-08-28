@@ -18986,3 +18986,23 @@ floor (first check: does a run without pruning keep draws alive?).
 
 Artifacts: qgt1_step{2000,4000,6000,8000}.pt + latest (34M each, full provenance).
 MLflow run qgt1. Trainer commit 3f24a95 + resume 68799cb.
+
+## 2026-08-28 (Fable) — qgt2 LAUNCHED: branch ranking at every rolled horizon (Kaveh's fix for carrier contraction)
+
+Kaveh, on the qgt1 contraction result: "can't we roll using different moves in the pv
+against 123456 plies? that should be plenty of labels, and require the carrier to
+preserve info". Exactly -- chain_values `wp` holds per-move SF win-probs at every chain
+row (~10M labels, already on disk, unused by qgt1). qgt2 = qgt1 verbatim + ONE term
+(no-bundle rule): from each chain row k=0..5, roll one further step through branch_k=4
+sampled multiPV moves (best always included), rank the branch reads vs the row's wp by
+regret+pairwise (qat9's form; per-move KL is satisfied by the mean, 8/24), landing
+depths 1..6, all-ply per the 8/23 scar. A contracted carrier cannot rank ~30 moves at
+depth. The 8/24 cause-3 ceiling (fixed K(m) per move identity) does not apply: B(m)
+consumes the position-dependent dyn code. My carrier-MSE alternative is shelved as the
+fallback. New heartbeat instrument: brreg 1/3/6 = win-prob the model's pick among 8
+sampled branch moves gives up, read from ROLLED states, vs the same-sample random-pick
+baseline (0.192); at init the model reads 0.16-0.19 = chance, as it should. Gates
+extended (branch loss alone reaches K by autograd; slot-0-is-best). Commit 1c1776f;
+run: 8000 steps, tmp/qgt2.log, ~1h ETA. Success looks like: brreg well under rnd at
+depth, rho recovering toward 1, evenlag real dropping toward the copy baseline, vroll
+climbing toward the 8/24 curve.
