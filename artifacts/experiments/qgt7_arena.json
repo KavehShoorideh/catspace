@@ -1,0 +1,28 @@
+{
+ "random": {
+  "score": 0.05,
+  "wilson": [
+   0.008881219432873136,
+   0.23613589351256675
+  ],
+  "n": 20
+ },
+ "greedy1": {
+  "score": 0.03,
+  "wilson": [
+   0.010254338223414816,
+   0.08452078080402699
+  ],
+  "n": 100,
+  "w": 0,
+  "d": 6,
+  "l": 94,
+  "ms_mean": 19.308431922771263,
+  "ms_median": 18.41779200185556,
+  "ms_p90": 23.919617199862845,
+  "evals_per_move": 17.004794885455514,
+  "ckpt": "artifacts/experiments/qgt7_step8000.pt",
+  "maia": "/Users/kav/code/remote/github/catspace/assets/engines/maia/maia-1100.pb.gz",
+  "seed": 0
+ }
+}

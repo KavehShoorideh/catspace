@@ -19476,3 +19476,26 @@ search over a first-generation dynamics model (vroll ~0.3, brreg modestly under
 chance) vs Maia-1100 is a HARD test; the record's own shallow-search baseline was
 0.125 at equal budget and M5's plateau sat at 0.085-0.095. The number to beat first
 is the random floor; the number to chase is 0.125.
+
+## 2026-08-28 (Fable) — ARENA VERDICT: depth-1 latent search = the random floor. The instruments predicted it, which is the one thing that worked exactly as designed.
+
+    random floor   0.050 [0.009, 0.236]  (+0=2-18/20)
+    greedy1        0.030 [0.010, 0.085]  (+0=6-94/100)   19ms/move, 17 step-evals/move
+
+vs Maia-1100 at nodes=1, alternating colors, mirrored random openings, claim-draw.
+The CIs coincide: the canonical value pathway (V(step(s,m)) through the trained
+dynamics) carries NO playable per-move signal yet. This is exactly what brreg said
+it would be -- 0.16-0.18 vs 0.188 chance on the final checkpoint -- and per-move
+near-chance compounds to game-level chance over ~75 moves. Instruments and arena
+agree; the instrumentation is validated even as the entrant loses. TIMING (Kaveh's
+ask): 19ms mean / 18 median / 24 p90 per move at 17 step-evals -- the machinery is
+FAST (the record's old searcher: 87-142ms at its smallest budgets; Maia itself:
+~11ms); signal, not speed, is the deficit. Results: qgt7_arena.json.
+
+The two candidate next levers, in information order: (a) field the POLICY PRIOR in
+the same arena (one small SearchAlgorithm: the full readout at the root, no rolling)
+-- its instruments (top1 0.324, regret 0.107) suggest it would NOT be at the floor,
+and the gap prior-vs-canonical measured in SCORE is the cleanest statement of what
+rolling currently loses; (b) the queued fan-to-regret upgrade (the canonical pathway
+has only ever had CE-level pressure while the prior enjoyed full ranking losses),
+then re-arena. AWAITING KAVEH on both.
