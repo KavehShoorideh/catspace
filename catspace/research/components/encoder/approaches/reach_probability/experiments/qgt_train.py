@@ -82,10 +82,16 @@ def main():
                     help="weight on the rolled-value anchor (chain + fan)")
     ap.add_argument("--units", action="store_true")
     ap.add_argument("--eval-only", default="", metavar="CKPT")
+    ap.add_argument("--resume", default="", metavar="CKPT",
+                    help="resume a ladder checkpoint: weights + optimizer + RNG + step "
+                         "(scaffold.resume_from). The pruner mask is NOT checkpointed; "
+                         "it recomputes to the scheduled keep-count at the next prune "
+                         "interval, so a resume costs at most one interval of full-width "
+                         "readout (pruned columns are zeros in the weights anyway).")
     args = ap.parse_args()
 
     from catspace.research.tools.training_infra.train.scaffold import (
-        TrainConfig, standard_train, resolve_device)
+        TrainConfig, standard_train, resolve_device, resume_from)
     from catspace.research.tools.training_infra.pruning import (
         ConceptPruner, LossSettled)
     from catspace.research.tools.training_infra.qgt_field import QGTField
@@ -701,9 +707,11 @@ def main():
         print("  ALL QGT GATES PASS")
         return
 
+    start = resume_from(args.resume, model, opt=opt, rng=rng) if args.resume else 0
     cfg = TrainConfig(out=args.out, steps=args.steps, ckpt_every=args.ckpt_every,
-                      eval_every=args.eval_every, experiment="catspace",
-                      run_name=args.out.split("/")[-1], device=str(dev))
+                      eval_every=args.eval_every, start_step=start,
+                      experiment="catspace", run_name=args.out.split("/")[-1],
+                      device=str(dev))
     standard_train(step_fn, model, cfg, args, opt=opt, rng=rng)
 
 
