@@ -19194,3 +19194,26 @@ instruments move to even horizons (vroll@2/4/6, branch landings 2/4/6, landing t
 bias = SOURCE row's stm). Gates: lag-2 teacher pairs agree 0.846 at init (vs 0.708 at
 lag 1) -- the differing ~15% are real changes. Launched: 8000 steps, flip-weight 3.0,
 10x dyn LR, tmp/qgt4.log.
+
+## 2026-08-28 (Fable) — REVIEW: graph-based light-cone dynamics, and the chess import list (Kaveh's ask)
+
+Literature (links in session): MeshGraphNets-class simulators get light cones from L
+message-passing layers per step (L-hop reach; "under-reaching" if the true physics
+travels farther); GNS's decisive trick is RECOMPUTING EDGES FROM THE PREDICTED STATE
+每 rollout step; Oliehoek's influence-based abstraction gives corner-only simulation a
+formal home (local region + learned boundary "influence sources," with loss bounds).
+Chess adaptations: locality lives on the att/vac/dsc graph (not the board metric); the
+graph EVOLVES, so free-running needs an EDGE HEAD decoding next adjacency from rolled
+bits -- teacher-forced on the true next-row edges (free labels in the chain cache);
+the move must inject at its from/to squares only (the current mv_in BROADCASTS to all
+64 -- measured cause of T's spray-flips and absent locality prior); ~2 MP layers per
+T2 step should cover one move's true cone (verifiable with the existing flip-locality
+histogram). IMPORT PLAN (v2, day-scale, after qgt4 reads out): GraphBitTransition =
+relation MP over current edges (reuse Relation modules) + from/to move injection +
+edge head + GNS-style bits->edges->step loop; probe upgrade replaces the hard freeze
+with an influence boundary. Not imported: multiscale meshes, continuous-time TGN.
+
+qgt4 mid-run note (@1500): brreg@2/4/6 0.132/0.126/0.128 vs rnd 0.192 -- strongest,
+stablest rolled discrimination of the line; but tfacc 0.739 vs copy 0.941 with flip
+0.112 -- T over-flips 2-4x the true rate; vroll still noise. The over-flip suspects:
+flip-weight 3 against a ~6% base rate plus STE anchors rewarding motion.
