@@ -18809,3 +18809,22 @@ SPEC (all constants implementation-verified, LITERATURE.md 8/27):
     (qat9, leak-free split); rolled-value-vs-plies curve compared to the 8/24 table.
 
 ---
+
+## 2026-08-28 — QGT spec §5 AMENDED (Kaveh): carrier/observable split reconciles Koopman with the quantized core
+
+Kaveh: unfair to judge against the Koopman table across architectures; find what made
+Koopman work and keep our core. Diagnosis: the qat heads died because they matched the
+QUANTIZED BITS of an EMA copy -- a moving discrete target under reorganization; Koopman
+rolled a CONTINUOUS carrier linearly and read value from it.
+
+AMENDED §5 (the orthodox Koopman view): dynamics evolve a continuous carrier c' = K c +
+B m (linear, spectral clamp rho<=1 + 0.2 penalty, never re-lift, trained through
+composition on 6-ply chains); concepts are QUANTIZED OBSERVABLES z_k = RVQ/LFQ(c after k
+rolls) -- quantize-after-roll, never roll-the-quantized. Readout still sees only bits at
+every horizon; the sole nonlinearity in the rolling path is binarization at read time.
+EMA bit-matching DROPPED; anti-collapse duty moves to the rolled-VALUE anchor (gko
+av_roll pattern, which worked), since a constant carrier cannot predict per-child values.
+With the same operator class on the carrier, the 8/24 deep_roll table becomes a
+legitimate reference curve.
+
+---
