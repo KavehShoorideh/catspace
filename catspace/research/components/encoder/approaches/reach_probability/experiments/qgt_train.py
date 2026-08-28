@@ -86,6 +86,13 @@ def main():
                          "from the stockfish multi pv. Let's use them'). Each yields "
                          "its best and worst finite-wp child as constructed, labeled "
                          "positions + lag-2 teacher pairs through those moves.")
+    ap.add_argument("--child-sample", choices=("spoiler-uniform", "uniform",
+                    "extremes"), default="spoiler-uniform",
+                    help="which multiPV children the constructed stream samples per "
+                         "position. spoiler-uniform (Kaveh): the SPOILER -- the best-"
+                         "scoring move that drops the outcome class (qat10's 'most "
+                         "tempting way to throw away the result') -- plus one uniform "
+                         "draw; uniform: two uniform draws; extremes: best+worst.")
     ap.add_argument("--w-blunder", type=float, default=1.0,
                     help="weight of the blunder-child position CE (encoder+readout). "
                          "The teacher half rides in the dynamics BCE at weight 1.")
@@ -197,6 +204,7 @@ def main():
     CW_[~STM] = CW_[~STM][..., ::-1]
     CY_ = CW_.argmax(-1)
     SGN = np.where(STM, 1.0, -1.0).astype(np.float32)
+    CY_MOV = np.where(np.isfinite(_raw).all(-1), _raw.argmax(-1), 3)  # mover-POV cls
     TGT = D["tgt"].numpy()                                    # (N, MV_CAP) SF move score
     N = len(STM)
     ccls = np.bincount(CY_[CV_], minlength=3)
@@ -411,12 +419,21 @@ def main():
                 continue
             v = np.flatnonzero(fin)
             j_best = int(v[wp[v].argmax()])
-            j_bad = int(v[wp[v].argmin()])
-            if wp[j_best] - wp[j_bad] < 0.05 or j_best == j_bad:
-                continue
+            if args.child_sample == "extremes":
+                j_a, j_b = j_best, int(v[wp[v].argmin()])
+                if wp[j_a] - wp[j_b] < 0.05 or j_a == j_b:
+                    continue
+            elif args.child_sample == "uniform":
+                j_a, j_b = (int(x) for x in rng.choice(v, 2, replace=False))
+            else:                             # spoiler-uniform (Kaveh)
+                worse = v[(CY_MOV[g][v] > CY_MOV[g][j_best]) & (CY_MOV[g][v] < 3)]
+                j_a = (int(worse[wp[worse].argmax()]) if len(worse)
+                       else int(rng.choice(v)))
+                rest = v[v != j_a]
+                j_b = int(rng.choice(rest))
             okpair = True
             pair = []
-            for j in (j_best, j_bad):
+            for j in (j_a, j_b):
                 b1 = b0.copy(); b1.push(legal[j])
                 rep = list(b1.legal_moves)[:MV_CAP]
                 if not rep:
@@ -777,8 +794,16 @@ def main():
         else:
             l_ch, l_br, l_dq_c, n_lab, n_br = chain_anchor(args.chain_batch)
             l_dyn = torch.zeros((), device=dev)
-        l_fan, l_dq_f = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm_b)
-        # BLUNDER-PAIR stream (Kaveh): constructed best/worst children as labeled
+        # the rolled corpus fan is RETIRED for the discrete/graph arms (Kaveh:
+        # "why not do the fan at the encoder level?" -- the constructed-children CE
+        # below IS that fan, on true boards, without the near-identity averaging
+        # pressure that fed the freeze). Koopman keeps the original.
+        if DISC:
+            l_fan = torch.zeros((), device=dev)
+            l_dq_f = torch.zeros((), device=dev)
+        else:
+            l_fan, l_dq_f = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm_b)
+        # MULTIPV CONSTRUCTED-CHILD stream (Kaveh): children as labeled
         # positions (CE -> encoder+readout; breaks the frozen-time optimum) + lag-2
         # teacher pairs through those moves (-> transition + dyn move encoder)
         l_blun = torch.zeros((), device=dev)
@@ -1271,22 +1296,9 @@ def main():
         l_fan, _ = fan_anchor(aux["carrier"], aux["h_mv"], ii, stm8)
         assert torch.isfinite(l_fan) and float(l_fan) > 0, "fan anchor produced no loss"
         if DISC:
-            # qgt5 separation + the qgt6 correction: anchors must NOT touch the
-            # TRANSITION (the qgt4 corruption) but MUST reach the ENCODER (the
-            # qgt5/qgt6 collapse A/B -- Dreamer's value heads train representation)
-            g_T = torch.autograd.grad(l_fan, model.bit_trans.w_id,
-                                      retain_graph=True, allow_unused=True)[0]
-            g_R = torch.autograd.grad(l_fan, model.readout.weight,
-                                      retain_graph=True, allow_unused=True)[0]
-            g_E = torch.autograd.grad(l_fan, model.carrier_proj.weight,
-                                      retain_graph=True, allow_unused=True)[0]
-            assert g_T is None or float(g_T.abs().sum()) == 0.0, \
-                "fan loss leaks into the world model -- the qgt4 disease"
-            assert g_R is not None and float(g_R.abs().sum()) > 0, \
-                "fan loss trains nothing"
-            assert g_E is not None and float(g_E.abs().sum()) > 0, \
-                "fan loss no longer reaches the encoder -- the qgt5/qgt6 collapse"
-        else:
+            print("  U15 (discrete/graph): rolled fan retired -- the encoder-level "
+                  "fan is the constructed-children stream, gated as D6")
+        elif True:
             g_B = torch.autograd.grad(l_fan, model.roller.B.weight,
                                       retain_graph=True, allow_unused=True)[0]
             g_cp = torch.autograd.grad(l_fan, model.carrier_proj.weight,
@@ -1350,7 +1362,8 @@ def main():
             bb6 = blunder_batch(6)
             assert bb6 is not None, "blunder stream produced nothing"
             gs6, js6, R16, R26 = bb6
-            gap6 = float(np.mean(TGT[gs6[::2], js6[::2]] - TGT[gs6[1::2], js6[1::2]]))
+            gap6 = float(np.mean(np.abs(
+                TGT[gs6[::2], js6[::2]] - TGT[gs6[1::2], js6[1::2]])))
             sq16, mv16, ed16, mk16 = feat_of(R16)
             c16, _, _ = model.carrier(sq16, mv16, ed16, mk16)
             z16 = model.levels_from_bits(model.rvq_bits(c16)[0])[0]
@@ -1362,10 +1375,10 @@ def main():
             assert g6e is not None and float(g6e.abs().sum()) > 0, \
                 "blunder CE does not reach the encoder -- its whole point"
             if gap6 < 0.1:
-                print(f"  ALERT D6 [science]: mean best-worst wp gap only {gap6:.3f}",
+                print(f"  ALERT D6 [science]: sampled-children label variance only {gap6:.3f}",
                       flush=True)
             print(f"  D6 PASS blunder stream: {len(gs6)} constructed children, "
-                  f"best-worst wp gap {gap6:.3f}, CE reaches the encoder")
+                  f"mean |dwp| between sampled children {gap6:.3f}, CE reaches the encoder")
 
 
         logit.sum().backward()
