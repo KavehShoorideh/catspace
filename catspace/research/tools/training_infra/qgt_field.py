@@ -254,6 +254,21 @@ class GraphBitTransition(nn.Module):
         # EXACT zero on untouched squares; (w_id*z + out(h)) - out(h0) is not
         return self.w_id * z + (self.out(h) - self.out(h0)), attn0, l_route
 
+    def touched(self, z, m, frm, to):
+        """(B,64) bool: squares the injection reached through the learned attention
+        -- the move's influence cone, exactly measurable thanks to the frame axiom.
+        A true-flipped bit on an UNtouched square is architecturally unpredictable
+        (the under-reach instrument, pre-registered failure H2/H3)."""
+        B = z.shape[0]
+        ar = torch.arange(B, device=z.device)
+        inj = torch.zeros(B, 64, self.emb.out_features, device=z.device,
+                          dtype=self.emb.weight.dtype)
+        inj[ar, frm] = self.mv_from(m)
+        inj[ar, to] = inj[ar, to] + self.mv_to(m)
+        h, _, _ = self._encode(z, inj)
+        h0, _, _ = self._encode(z, None)
+        return (h != h0).any(-1)
+
     @staticmethod
     def edge_warm_loss(attn0, att_target):
         """Soft supervision of head 0 toward the true attack adjacency.

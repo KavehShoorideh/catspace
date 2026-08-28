@@ -351,6 +351,17 @@ def main():
             return model.bit_trans.roll_bits(z0, packs)
         return model.bit_trans.roll_bits(z0, [p[0] for p in packs])
 
+    def _auc(logits, targets):
+        """ROC-AUC of flat logits vs 0/1 targets (rank formula); 0.5 = chance."""
+        lg = logits.detach().reshape(-1).float()
+        tg = targets.detach().reshape(-1) > 0
+        n_pos = int(tg.sum())
+        n_neg = int((~tg).sum())
+        if n_pos == 0 or n_neg == 0:
+            return float("nan")
+        r = lg.argsort().argsort().float() + 1.0          # ranks, 1-based
+        return float((r[tg].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg))
+
     def att_targets(rows):
         """(n,64,64) float attack adjacency from the chain graph arrays -- the
         WARM-START labels (free)."""
@@ -726,6 +737,7 @@ def main():
         br = {land: [0.0, 0.0] for _, land in BPAIRS}
         brnd = [0.0, 0.0]
         flips = [0.0, 0.0]                          # discrete arm: bits flipped/step
+        gdiag = {}                                  # graph arm: pre-registered H-tests
         W = model.readout.weight
         for a in range(0, min(n_ch, len(ch_te)), 32):
             ci = CH_pos[ch_te[a:a + 32]]
@@ -760,6 +772,26 @@ def main():
                     flips[0] += float((zb_ != prev).float().mean()) * cb
                     flips[1] += cb
                     prev = zb_
+                if GRAPH and a == 0:
+                    # pre-registered failure tests (JOURNAL 8/28): H1 supervised-but-
+                    # unused edges (aucT), H5 hallucinated rollout connectivity
+                    # (aucR), H2/H3 under-reach (cov = true-flip coverage by the
+                    # move's influence cone, exact thanks to the frame axiom)
+                    _, at0, _ = T_forward(q1_root, moves[0], f6[:, 0], t6[:, 0],
+                                          need_attn=True)
+                    gdiag["aucT"] = _auc(at0[:, 0], att_targets(ci[:, 0]))
+                    _, at4, _ = T_forward(zs_bits[1], moves[4], f6[:, 4],
+                                          t6[:, 4], need_attn=True)
+                    gdiag["aucR"] = _auc(at4[:, 0], att_targets(ci[:, 4]))
+                    tch = model.bit_trans.touched(q1_root, moves[0], f6[:, 0],
+                                                  t6[:, 0])
+                    sq2, mv2_, ed2, mk2, _, _ = feat_chain(ci[:, 2])
+                    q1_2 = model.rvq_bits(
+                        model.carrier(sq2, mv2_, ed2, mk2)[0])[0]
+                    flp = (q1_root != q1_2).any(-1)
+                    n_f = int(flp.sum())
+                    gdiag["cov"] = (float((flp & tch).sum()) / n_f if n_f
+                                    else float("nan"))
             else:
                 cs = model.roller.roll(c0.reshape(cb, -1), moves)
                 zs = {k: model.observe(cs[k - 1].reshape(cb, 64, model.sq_bits))[0]
@@ -852,6 +884,7 @@ def main():
         breg["rnd"] = brnd[0] / max(brnd[1], 1)
         if DISC:
             breg["flip"] = flips[0] / max(flips[1], 1)
+        breg.update(gdiag)
         return corr, VKS, delta, copy, breg
 
     @torch.no_grad()
@@ -969,6 +1002,10 @@ def main():
                 rho = float("nan")
                 tail = (f"dyn {ldyn:.3f} tfacc {tfa:.3f} (copy {tfc:.3f}) flip "
                         f"{breg.get('flip', float('nan')):.3f}")
+                if GRAPH:
+                    tail += (f" | cov {breg.get('cov', float('nan')):.3f} auc "
+                             f"{breg.get('aucT', float('nan')):.3f}/"
+                             f"{breg.get('aucR', float('nan')):.3f}")
             else:
                 rho = float(model.roller.rho(iters=20))
                 tail = f"rho {rho:.4f}"
@@ -999,6 +1036,9 @@ def main():
                 "evenlag6_rand": rnd.get(6, float("nan")), "rho": rho,
                 "tf_acc": tfa, "tf_copy": tfc,
                 "flip": breg.get("flip", float("nan")),
+                "flip_cov": breg.get("cov", float("nan")),
+                "att_auc_tf": breg.get("aucT", float("nan")),
+                "att_auc_roll": breg.get("aucR", float("nan")),
                 "move_concepts_alive": mv_alive}
 
     if args.eval_only:
@@ -1194,6 +1234,7 @@ def main():
                   f"the readout and CANNOT reach T ({n_lab_d} value rows, {n_br_d} "
                   f"branch rows on 8 chains)")
 
+
         logit.sum().backward()
         for nm, prm in (("readout", model.readout.weight),
                         ("move projection", model.mv_proj.weight),
@@ -1204,6 +1245,57 @@ def main():
         assert float(gm) > 0, "no gradient into the MOVE half of the readout"
         print(f"  U5 PASS gradients reach readout (both halves), mv_proj, carrier, "
               f"relations")
+        if GRAPH:
+            # pre-registered failure tests, pre-launch halves (JOURNAL 8/28)
+            from catspace.research.tools.training_infra.train.scaffold import (
+                frozen)
+            from catspace.research.tools.training_infra.qgt_field import (
+                GraphBitTransition as _GBT2)
+            ci_g = CH_pos[ch_tr[:8]]
+            with torch.no_grad():
+                sqg, mvg, edg, mkg, plg, mvrg = feat_chain(ci_g[:, 0])
+                cg, hg, _ = model.carrier(sqg, mvg, edg, mkg)
+                q1g = model.rvq_bits(cg)[0]
+                codeg = dyn_codes(hg)[0][torch.arange(8, device=dev), plg]
+            fg, tg = _ft(mvrg, plg.cpu().numpy())
+            tgt_g = att_targets(ci_g[:, 0])
+            # G2 (H5 hygiene): frame axiom exact in TRAIN mode on real data
+            model.train()
+            lg_g, _, _ = model.bit_trans(q1g, codeg, fg, tg)
+            tchg = model.bit_trans.touched(q1g, codeg, fg, tg)
+            assert bool((~tchg).any()), "cone covers everything -- test vacuous"
+            du_g = float((lg_g - model.bit_trans.w_id * q1g)[~tchg].abs().max())
+            assert du_g == 0.0, f"frame axiom broken in train mode: {du_g}"
+            # G1 (H4): warm-start LEARNABILITY mini-fit -- can head 0 learn
+            # attacks from the encoder's bits at all? Fails in seconds here
+            # instead of after an 8000-step run.
+            with frozen(model):
+                o_g = torch.optim.Adam(model.bit_trans.qa[0].parameters(),
+                                       lr=3e-3)
+                auc0 = None
+                for it in range(60):
+                    _, a0, _ = model.bit_trans(q1g, codeg, fg, tg,
+                                               need_attn=True)
+                    if it == 0:
+                        auc0 = _auc(a0[:, 0], tgt_g)
+                    lw_g = _GBT2.edge_warm_loss(a0, tgt_g)
+                    o_g.zero_grad(); lw_g.backward(); o_g.step()
+                with torch.no_grad():
+                    _, a1, _ = model.bit_trans(q1g, codeg, fg, tg,
+                                               need_attn=True)
+                    auc1 = _auc(a1[:, 0], tgt_g)
+            assert auc1 > auc0 + 0.05, \
+                f"warm start UNLEARNABLE from bits (AUC {auc0:.3f} -> {auc1:.3f})"
+            # G3 (H2/H3): the coverage instrument runs; value informational here
+            with torch.no_grad():
+                sq2g, mv2g, ed2g, mk2g, _, _ = feat_chain(ci_g[:, 2])
+                q1g2 = model.rvq_bits(model.carrier(sq2g, mv2g, ed2g, mk2g)[0])[0]
+            flpg = (q1g != q1g2).any(-1)
+            covg = float((flpg & tchg).sum()) / max(int(flpg.sum()), 1)
+            print(f"  G1-G3 PASS graph arm: frame axiom exact in TRAIN mode "
+                  f"({int((~tchg).sum())}/512 untouched); warm-start mini-fit AUC "
+                  f"{auc0:.3f} -> {auc1:.3f} in 60 steps; flip coverage at init "
+                  f"{covg:.2f} (informational -- the run's H2/H3 gauge)")
         print("  ALL QGT GATES PASS")
         return
 
