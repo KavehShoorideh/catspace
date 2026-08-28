@@ -19006,3 +19006,47 @@ extended (branch loss alone reaches K by autograd; slot-0-is-best). Commit 1c177
 run: 8000 steps, tmp/qgt2.log, ~1h ETA. Success looks like: brreg well under rnd at
 depth, rho recovering toward 1, evenlag real dropping toward the copy baseline, vroll
 climbing toward the 8/24 curve.
+
+## 2026-08-28 (Fable) — qgt2 RESULT: branch grounding produced the record's FIRST within-position ordering at depth — then carrier contraction erased it. The Koopman-carrier route has now failed twice, by the same mechanism, under two different anchors.
+
+Final heartbeat (8000 steps, printed, tmp/qgt2.log):
+
+                       balanced   regret   top1    draws   vroll 1/3/6        brreg 1/3/6 (chance~0.168-0.192)
+    qgt1 (value-only)    0.472    0.0975   0.347   0.00    +0.10/+0.24/+0.18  (not instrumented)
+    qgt2 (+branch)       0.464    0.1104   0.306   0.00    +0.17/+0.14/+0.31  0.191/0.187/0.159
+    qat9 (incumbent)     0.496    0.0872   0.327   0.13    --                 --
+
+THE ARC OF THE RUN is the finding; the endpoint alone would mislead:
+  * steps 2000-4500: brreg fell to 0.111-0.136 vs the ~0.168 include-best chance level
+    -- the model's pick among 8 branch moves, read from ROLLED states 1-6 plies deep,
+    beat chance by 30-40%, deepest ply BEST. That is within-position ordering at depth:
+    the signal the 8/24 record called "blocked, as always" and gko never had (gko had
+    the mirror image: across-position value corr 0.85, zero ordering).
+  * steps 5500-8000: rho sank 0.74 -> 0.63 (deepest contraction yet; the branch loss
+    plateaued at its degenerate-state value ~0.23-0.30) and brreg FROZE at
+    0.191/0.178/0.169 across consecutive evals -- to three decimals. The eval uses a
+    fixed seed on fixed chains, so frozen numbers mean the branch-score spread hit
+    exactly zero: the jitter tie-break decides every pick. Diagnostic worth keeping:
+    a fixed-seed eval turns "spread collapsed" into an unmissable fingerprint.
+  * readout: regret 0.1104 vs qgt1's 0.0975 (single seed, no verdict on the gap; the
+    branch term competing for the shared observe/readout machinery is the suspect).
+    DRAW DEATH REPRODUCED: recall D hit 0.00 during the pruning ramp at the same
+    place as qgt1 -- now a 2-run pattern, prime suspect the pruner (diagnostic still
+    queued: one run without pruning).
+
+VERDICT (two runs, same mechanism, different anchors): value-only anchoring (qgt1) and
+value+branch-ranking (qgt2) both let the LINEAR CARRIER contract -- the loss shrinks K
+below the clamp's reach (it only caps rho>1) and the rolled state washes out. The
+branch gradient DID create depth-ordering mid-run, so the labels and instruments work;
+the linear-carrier parameterization is where the information dies. Two structural
+outs, both discussed with Kaveh today: (a) the DISCRETE ARM (his push: "is there
+anything that says concepts can't be rolled or is it just our own tests?" -- answer:
+just our own tests, and they only ever indicted EMA bit-matching, never teacher-forced
+discrete transition; IRIS/Dreamer-class precedent says discrete states roll fine when
+teacher-forced) -- a discrete transition has NO spectral radius to contract; (b) a
+norm-preserving K (orthogonal/unitary parameterization -- contraction impossible by
+construction) if the continuous route is to be retried. Building (a) next as qgt3d:
+teacher-forced BitTransition on the chain cache's 6 true (state, move -> next state)
+pairs per chain, same data, same instruments, head-to-head vs qgt2.
+
+Artifacts: qgt2_step{2000,4000,6000,8000}.pt + latest; MLflow qgt2; commit 1c1776f.
