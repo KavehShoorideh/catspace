@@ -19401,3 +19401,17 @@ alone -- V(s), read from its concepts. VALUE CHANGE is a function of position an
 move -- dV = V(T(s,m)) - V(s), existing only through the transition. "A move by
 itself cannot have value"; every "value of a move" in this record is shorthand for
 the value of the position it produces.
+
+## 2026-08-28 (Fable) — qgt7 restarted with Kaveh's two refinements
+
+(1) The constructed multiPV stream samples SPOILER + UNIFORM per position (Kaveh:
+"we can also switch it to the best losing move. Didn't we talk about this?" -- yes:
+qat10's spoiler, 8/26, returning as a SAMPLING policy for constructed children, not
+as the retired qat11b loss term; extremes demoted to an opt-in flag, uniform honors
+"multiPV in the mix in general"). (2) The rolled corpus fan is retired for the
+discrete/graph arms (Kaveh: "why not do the fan at the encoder level?") -- the
+constructed-children CE is the encoder-level fan on true boards; the rolled fan's
+near-identity averaging pressure (a freeze contributor) is gone, and encoder
+gradients arrive by plain supervised CE. Mean |dwp| between sampled children 0.209
+at init (D6). Relaunch: 8000 steps, tmp/qgt7.log. The freeze detector remains the
+copy baseline staying well under 1.0.
