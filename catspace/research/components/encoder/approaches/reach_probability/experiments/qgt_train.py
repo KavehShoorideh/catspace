@@ -88,6 +88,10 @@ def main():
                          "-> next bits) pairs; no carrier, no spectral radius to "
                          "contract. Same value/branch grounding on free-run rolls, "
                          "same instruments -- a head-to-head at the architecture level.")
+    ap.add_argument("--w-id-init", type=float, default=0.5,
+                    help="discrete arm: initial copy-prior barrier (see BitTransition)."
+                         " 3.0 measured un-erodable; 0.5 keeps the copy init but lets "
+                         "learned deltas flip bits within a few hundred steps.")
     # architecture (locked spec constants as defaults)
     ap.add_argument("--d", type=int, default=128)
     ap.add_argument("--layers", type=int, default=3)
@@ -242,8 +246,8 @@ def main():
         # registered as a submodule BEFORE the optimizer, so it checkpoints + trains
         model.bit_trans = BitTransition(sq_bits=args.sq_bits, mv_bits=args.mv_bits,
                                         n_q=args.n_q, heads=args.attn_heads,
-                                        top_k=args.top_k,
-                                        out_bits=args.out_bits).to(dev)
+                                        top_k=args.top_k, out_bits=args.out_bits,
+                                        w_id_init=args.w_id_init).to(dev)
     n_par = sum(p.numel() for p in model.parameters())
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     settle = LossSettled()
@@ -589,7 +593,8 @@ def main():
         out = {}
         if step % args.eval_every == 0 or step == 1 or step == args.steps:
             out = run_eval(step, float(l_wdl), float(l_rank), float(l_ch),
-                           float(l_fan), float(l_br), tf_acc, tf_copy)
+                           float(l_fan), float(l_br), tf_acc, tf_copy,
+                           float(l_dyn))
         return out
 
     # ---- the dual-split instrument --------------------------------------------------
@@ -785,7 +790,7 @@ def main():
 
     def run_eval(step, lw=float("nan"), lr_=float("nan"), lch=float("nan"),
                  lfan=float("nan"), lbr=float("nan"), tfa=float("nan"),
-                 tfc=float("nan")):
+                 tfc=float("nan"), ldyn=float("nan")):
         model.eval()
         live = int((model.readout.weight[:, :model.d_pos].abs().sum(0) > 0).sum())
         with torch.no_grad():
@@ -826,7 +831,7 @@ def main():
             rnd = roll_random()
             if args.dynamics == "discrete":
                 rho = float("nan")
-                tail = (f"tfacc {tfa:.3f} (copy {tfc:.3f}) flip "
+                tail = (f"dyn {ldyn:.3f} tfacc {tfa:.3f} (copy {tfc:.3f}) flip "
                         f"{breg.get('flip', float('nan')):.3f}")
             else:
                 rho = float(model.roller.rho(iters=20))

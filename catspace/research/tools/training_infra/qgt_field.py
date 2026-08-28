@@ -138,7 +138,8 @@ class BitTransition(nn.Module):
     change") + a per-square MLP. Nonlinear on purpose: the interpretability constraint
     is on the READOUT, not the transition (qat_train doctrine)."""
 
-    def __init__(self, sq_bits=24, mv_bits=32, n_q=16, heads=4, top_k=4, out_bits=8):
+    def __init__(self, sq_bits=24, mv_bits=32, n_q=16, heads=4, top_k=4, out_bits=8,
+                 w_id_init=0.5):
         super().__init__()
         from catspace.research.tools.training_infra.quantized_attention import (
             QuantizedAttention)
@@ -149,7 +150,12 @@ class BitTransition(nn.Module):
                                   nn.GELU(), nn.Linear(4 * sq_bits, sq_bits))
         nn.init.zeros_(self.head[-1].weight)
         nn.init.zeros_(self.head[-1].bias)
-        self.w_id = nn.Parameter(torch.tensor(3.0))
+        # w_id_init sets the BARRIER the head must overcome before a bit may flip.
+        # 3.0 proved un-erodable in a live run (qgt3d first launch: 1000 steps, T
+        # still exactly the identity, tfacc glued to the copy baseline while the
+        # identity rolls fed noise to the readout). 0.5 keeps the copy INIT --
+        # sign(0.5 z) = z -- but lets learned deltas act within a few hundred steps.
+        self.w_id = nn.Parameter(torch.tensor(float(w_id_init)))
 
     def forward(self, z, m):
         """z: (B,64,sq_bits) +-1 bits; m: (B,mv_bits) move code -> next-bit LOGITS."""
