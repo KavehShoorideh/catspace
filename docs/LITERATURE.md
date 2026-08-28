@@ -547,3 +547,25 @@ Sources: arXiv 2002.01650 (Concept Whitening), arXiv 2006.14032 (Compositional E
 of Neurons), arXiv 2511.20934 (guaranteed-optimal follow-up), arXiv 2111.09259 (AlphaZero
 chess concepts), Koh+ 2020 (Concept Bottleneck Models), Bau+ 2017 (Network Dissection),
 arXiv 2407.19532 (VQ alone is not enough).
+
+## Hierarchical quantization + quantized mixing for QGT (2026-08-27, Kaveh's ask)
+
+RVQ (SoundStream/EnCodec/DAC; RQ-VAE): each codebook quantizes the RESIDUAL of the
+previous -- coarse-to-fine hierarchy by construction. QGT amendment: levels are
+RVQ-structured, giving (a) importance-ordered concepts (concept-budget = drop fine
+levels), (b) per-position variable bitrate (adaptive search economics), (c) coarse-only
+rolling (roll level-1, recompute residuals).
+
+MoE discrete routing = quantized mixing generally: our question codebook is a router over
+question-experts (cf. Mixture of Sparse Attention 2505.00315, expert-choice; Mixture of
+Attention Heads 2210.05144). TRANSPLANT: MoE load-balancing auxiliaries are the proven
+anti-collapse mechanism -- per-routing-decision, unlike LFQ's batch-global entropy, which
+we measured failing per-position (the move-code degenerate state). Hierarchical routing
+(global->sub-experts, 2508.07838) = auditable two-level mixing tree.
+
+Learned graph coarsening (Graph-MoE lineage): quantized cluster assignment pooling 64
+square tokens -> ~8 learned region super-nodes between levels; spatial hierarchy emerges,
+domain-portable.
+
+QGT design amendments adopted: RVQ-structured levels; MoE load-balancing on question
+usage; optional square->region->board token hierarchy.
