@@ -103,7 +103,10 @@ class QuantizedAttention(nn.Module):
                      "attn": attn.detach(),                      # (B,H,T,T) sparse
                      "answer_ids": ids.detach()}
         return bits, {"vq_loss": vq_loss, "question": self.last["question"],
-                      "attn": self.last["attn"]}
+                      "attn": self.last["attn"],
+                      # raw logits exposed for ST-MoE router losses (z-loss + balance);
+                      # without these the stabilisers silently no-op
+                      "qlog": qlog, "attn_logit": logit}
 
     @torch.no_grad()
     def questions_asked(self) -> torch.Tensor:
