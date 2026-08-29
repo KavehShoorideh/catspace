@@ -19687,3 +19687,37 @@ is a design fork, not a run.
 Housekeeping: QGTDynamics now reads dyn_d/dyn_layers from checkpoint args (old
 ckpts default 64/2), so probes/arena load any capacity. qgt10 trainer reaped at
 exit (same sleep-at-teardown as qgt9).
+
+## 2026-08-29 (Fable) — T2-CONDITIONAL: Kaveh supplies the missing input. "I think you're missing the second input, which is the stockfish's move. We have that as a label. Let's use it." qgt11 LAUNCHED
+
+THE DESIGN (Kaveh's, refined in discussion). The transition keeps the 2-ply move
+unit (parity doctrine intact -- every state is my-turn, the thing the encoder/
+readout/W-L permutation are built on) but now takes the REPLY as an input:
+T2(state, my move, reply) -> next state. Nothing is marginalized; the target is
+deterministic board mechanics; the qgt7-10 failure mechanism (per-bit flip
+marginals + sign() MAP rounding away sub-50% tactical flips -- the transition
+forced to BE the opponent inside a dynamics model) has no room to exist. At play
+time the reply is supplied by SEARCH over enumerated legal replies (min/expectimax
+-- the refutation is played, its value backed up: exactly Kaveh's "roll forward,
+see the piece lost, propagate back up").
+
+KEY IMPLEMENTATION CALL: the reply carries NO dyn move code -- two learned d-vector
+markers injected at its from/to squares. Given the post-m1 state the piece identity
+is already in the bits, so squares suffice; and search then needs NO encoder pass
+per reply (legality from the real board, evaluation all latent: ~900 batched rolls
+per root decision). Known limit, accepted: reply underpromotions read as queening.
+
+Reply sources per stream: chains = the played move at row k+1 (free, real games);
+blunder stream = the SF reply already resolved (PV cache -> depth-8 inline);
+branch pricing + brreg = oracle-PV replies via uci lookup (4.2M labels now carry
+6-ply PVs; misses masked out of the loss, never rolled as garbage). Frame axiom
+remains EXACT with both injections (module regression added). Greedy1 and the hang
+probe become min-over-enumerated-replies on conditional checkpoints (a checkpoint
+is conditional iff bit_trans.rep_from is in its state_dict); legacy checkpoints
+load and behave exactly as before (search gates re-run on qgt10: pass).
+
+qgt11 = graph arm, T2-conditional, PV teacher, dyn 128/3, flip-weight 3.0, fanreg
+off. All field/trainer/search gates pass at this config. PRE-REGISTERED GAUGES,
+unchanged: hang detection rate (noise floor 0-1.8% across qgt7-10), tfacc vs copy
+(for the first time the teacher problem is DETERMINISTIC -- tfacc should now be
+able to actually beat copy, watch it), then re-arena if detection moves.
