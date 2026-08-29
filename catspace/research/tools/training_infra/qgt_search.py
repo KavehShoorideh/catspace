@@ -97,7 +97,7 @@ class QGTDynamics(LatentDynamics):
         self.ckpt = ckpt_path
 
     @torch.no_grad()
-    def encode(self, board: chess.Board):
+    def _feats(self, board: chess.Board):
         from catspace.research.tools.training_infra.gen_move_graphs import (
             parent_graph, glob_of_board)
         from catspace.research.components.encoder.approaches.reach_probability \
@@ -107,8 +107,7 @@ class QGTDynamics(LatentDynamics):
              ("sq", "mv", "mut", "att", "vac", "dsc")}
         R["gl"] = torch.from_numpy(np.stack([glob_of_board(board)]))
         R["n_mv"] = torch.tensor([np.uint8(g["n_mv"])])
-        R["n_att"] = torch.tensor([np.uint16(g["n_att"]).astype(np.int64)
-                                   if False else int(g["n_att"])])
+        R["n_att"] = torch.tensor([int(g["n_att"])])
         b = {k: R[k].to(self.dev) for k in ("sq", "gl", "mv", "mut", "att",
                                             "n_mv", "n_att")}
         n_nodes = 64 + MV_CAP
@@ -120,9 +119,24 @@ class QGTDynamics(LatentDynamics):
             val = (a2 != 255) & mask[:, :, None]
             edges[name] = (((jj + 64 + off)[:, :, None].expand_as(a2))[val],
                            (a2 + off[:, :, None])[val])
+        return sqf, mvf, edges, mask
+
+    @torch.no_grad()
+    def encode(self, board: chess.Board):
+        sqf, mvf, edges, mask = self._feats(board)
         c, h_mv, _ = self.model.carrier(sqf, mvf, edges, mask)
         bits = self.model.rvq_bits(c)[0]                   # (1,64,sq_bits)
         return bits, h_mv
+
+    @torch.no_grad()
+    def prior_logits(self, board: chess.Board):
+        """The AMORTIZED head: the model's own per-move logits (position read +
+        move bits), exactly the trainer's eval semantics. The arena's ceiling
+        control -- NOT the canonical value pathway."""
+        sqf, mvf, edges, mask = self._feats(board)
+        stm = torch.tensor([1 if board.turn else 0], device=self.dev)
+        logit = self.model(sqf, mvf, edges, mask, stm=stm)[0]
+        return logit[0]                                    # (MV_CAP, 3)
 
     @torch.no_grad()
     def root_moves(self, board: chess.Board, ctx):
@@ -177,6 +191,22 @@ class Greedy1(SearchAlgorithm):
         sc = sgn * (pv[:, 0] - pv[:, 2]) + rng.random(n) * 1e-9
         j = int(sc.argmax())
         return legal[j], {"evals": n, "score": float(sc[j])}
+
+
+class PriorPolicy(SearchAlgorithm):
+    """The amortized readout head at the root, no rolling -- the ceiling control.
+    Offline instruments: top1 0.324 / regret 0.107 on the qgt7 checkpoint."""
+
+    def choose(self, dyn, board: chess.Board, rng: np.random.Generator):
+        from catspace.research.components.encoder.approaches.reach_probability \
+            .experiments.graph_move_policy import MV_CAP
+        legal = list(board.legal_moves)[:MV_CAP]
+        lg = dyn.prior_logits(board).cpu().numpy()
+        sgn = 1.0 if board.turn else -1.0
+        sc = sgn * (lg[:len(legal), 0] - lg[:len(legal), 2]) \
+            + rng.random(len(legal)) * 1e-9
+        j = int(sc.argmax())
+        return legal[j], {"evals": 1, "score": float(sc[j])}
 
 
 class RandomPolicy(SearchAlgorithm):
@@ -322,6 +352,7 @@ def main():
     ap.add_argument("--cap", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="")
+    ap.add_argument("--algo", choices=("greedy1", "prior"), default="greedy1")
     ap.add_argument("--units", action="store_true")
     args = ap.parse_args()
     if args.units:
@@ -338,10 +369,11 @@ def main():
         c = latent_arena(RandomPolicy(), dyn, args.maia, args.control_games,
                          args.opening_plies, args.cap, args.seed + 1, tag="random")
         out["random"] = {"score": c.score(), "wilson": c.wilson(), "n": c.games}
-    s = latent_arena(Greedy1(), dyn, args.maia, args.games, args.opening_plies,
-                     args.cap, args.seed, tag="greedy1")
+    algo = Greedy1() if args.algo == "greedy1" else PriorPolicy()
+    s = latent_arena(algo, dyn, args.maia, args.games, args.opening_plies,
+                     args.cap, args.seed, tag=args.algo)
     ms = np.array(s.ms)
-    out["greedy1"] = {"score": s.score(), "wilson": s.wilson(), "n": s.games,
+    out[args.algo] = {"score": s.score(), "wilson": s.wilson(), "n": s.games,
                       "w": s.w, "d": s.d, "l": s.l,
                       "ms_mean": float(ms.mean()), "ms_median": float(np.median(ms)),
                       "ms_p90": float(np.percentile(ms, 90)),
