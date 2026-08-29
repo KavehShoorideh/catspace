@@ -50,8 +50,10 @@ class LatentDynamics(ABC):
         condition on, with their latent move codes and injection squares."""
 
     @abstractmethod
-    def step(self, state, codes, frm, to):
-        """Batched: one MOVE unit per row. state (n,...) -> next state (n,...)."""
+    def step(self, state, codes, frm, to, frm2=None, to2=None):
+        """Batched: one MOVE unit per row. state (n,...) -> next state (n,...).
+        frm2/to2 (n,) long: the REPLY's squares for T2-conditional checkpoints
+        (Kaveh 8/29) -- search supplies the reply, the transition never guesses."""
 
     @abstractmethod
     def value(self, state, stm):
@@ -93,8 +95,13 @@ class QGTDynamics(LatentDynamics):
         if self.graph:
             kw.update(d=A.get("dyn_d", 64), layers=A.get("dyn_layers", 2))
         m.bit_trans = cls(**kw)
+        # a T2-conditional checkpoint carries reply markers; legacy ones don't
+        # (their random-init markers are never injected: step() gets no frm2)
+        self.conditional = "bit_trans.rep_from" in ck["state_dict"]
         missing = m.load_state_dict(ck["state_dict"], strict=False)
-        assert not missing.missing_keys, f"missing: {missing.missing_keys[:4]}"
+        real_missing = [k for k in missing.missing_keys
+                        if not k.startswith("bit_trans.rep_")]
+        assert not real_missing, f"missing: {real_missing[:4]}"
         self.model = m.to(self.dev).eval()
         self.step_count = int(ck.get("step", 0))
         self.ckpt = ckpt_path
@@ -155,10 +162,10 @@ class QGTDynamics(LatentDynamics):
         return legal, codes, frm, to
 
     @torch.no_grad()
-    def step(self, state, codes, frm, to):
+    def step(self, state, codes, frm, to, frm2=None, to2=None):
         bt = self.model.bit_trans
         if self.graph:
-            lg, _, _ = bt(state, codes, frm, to)
+            lg, _, _ = bt(state, codes, frm, to, frm2=frm2, to2=to2)
         else:
             lg, _ = bt(state, codes)
         zb = torch.sign(lg)
@@ -177,7 +184,12 @@ class QGTDynamics(LatentDynamics):
 
 class Greedy1(SearchAlgorithm):
     """Depth-1 latent search: one MOVE-unit step per candidate, argmax of the
-    mover-relative read. The minimal honest test of the dynamics operators."""
+    mover-relative read. The minimal honest test of the dynamics operators.
+
+    T2-CONDITIONAL checkpoints (Kaveh 8/29): the move unit needs the reply as an
+    INPUT, so each candidate is scored as the MIN of the read over every legal
+    reply -- the refutation is enumerated and backed up, never marginalized. The
+    real board supplies reply LEGALITY only; every evaluation stays latent."""
 
     def choose(self, dyn: LatentDynamics, board: chess.Board,
                rng: np.random.Generator):
@@ -186,14 +198,41 @@ class Greedy1(SearchAlgorithm):
         if not legal:
             raise ValueError("no legal moves")
         n = len(legal)
-        base = state.expand(n, -1, -1)
-        nxt = dyn.step(base, codes, frm, to)
         stm = 1 if board.turn else 0                       # landing stm == source stm
-        pv = dyn.value(nxt, stm).cpu().numpy()
         sgn = 1.0 if board.turn else -1.0
-        sc = sgn * (pv[:, 0] - pv[:, 2]) + rng.random(n) * 1e-9
-        j = int(sc.argmax())
-        return legal[j], {"evals": n, "score": float(sc[j])}
+        if not getattr(dyn, "conditional", False):
+            base = state.expand(n, -1, -1)
+            nxt = dyn.step(base, codes, frm, to)
+            pv = dyn.value(nxt, stm).cpu().numpy()
+            sc = sgn * (pv[:, 0] - pv[:, 2]) + rng.random(n) * 1e-9
+            j = int(sc.argmax())
+            return legal[j], {"evals": n, "score": float(sc[j])}
+        rows_j, f2, t2, term = [], [], [], np.full(n, np.nan)
+        for j, mv in enumerate(legal):
+            b1 = board.copy(stack=False); b1.push(mv)
+            reps = list(b1.legal_moves)
+            if not reps:                       # mate delivered > any read; stalemate = 0
+                term[j] = 2.0 if b1.is_checkmate() else 0.0
+                continue
+            for r in reps:
+                rows_j.append(j); f2.append(r.from_square); t2.append(r.to_square)
+        sc = term.copy()
+        if rows_j:
+            ridx = torch.tensor(rows_j, device=frm.device)
+            nxt = dyn.step(state.expand(len(rows_j), -1, -1), codes[ridx],
+                           frm[ridx], to[ridx],
+                           frm2=torch.tensor(f2, device=frm.device),
+                           to2=torch.tensor(t2, device=frm.device))
+            pv = dyn.value(nxt, stm).cpu().numpy()
+            wp = sgn * (pv[:, 0] - pv[:, 2])
+            rj = np.asarray(rows_j)
+            for j in range(n):
+                mine = wp[rj == j]
+                if len(mine):
+                    sc[j] = float(mine.min())              # the opponent's best shot
+        sc = sc + rng.random(n) * 1e-9
+        j = int(np.nanargmax(sc))
+        return legal[j], {"evals": len(rows_j), "score": float(sc[j])}
 
 
 class PriorPolicy(SearchAlgorithm):
@@ -428,6 +467,16 @@ def _units(args):
     pv = dyn.value(nxt, 1)
     assert pv.shape == (20, 3) and torch.isfinite(pv).all()
     assert torch.allclose(pv.sum(-1), torch.ones(20, device=pv.device), atol=1e-5)
+    if dyn.conditional:
+        # T2-conditional: reply injection is live and batched == singleton with it
+        f2 = torch.tensor([52] * 20, device=frm.device)
+        t2 = torch.tensor([36] * 20, device=frm.device)
+        nxt2 = dyn.step(state.expand(20, -1, -1), codes, frm, to, frm2=f2, to2=t2)
+        one2 = dyn.step(state, codes[3:4], frm[3:4], to[3:4],
+                        frm2=f2[3:4], to2=t2[3:4])
+        assert bool((one2[0] == nxt2[3]).all()), "conditional batched != singleton"
+        print(f"[units] conditional ckpt: reply changes "
+              f"{float((nxt2 != nxt).float().mean()):.3f} of bits at this state")
     # a full game against the random floor completes with timing recorded
     g1 = Greedy1()
     rng = np.random.default_rng(0)

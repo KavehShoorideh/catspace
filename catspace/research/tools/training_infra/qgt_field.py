@@ -199,7 +199,18 @@ class GraphBitTransition(nn.Module):
     logits are softly supervised toward the true attack adjacency (edge_warm_loss,
     free labels) -- training wheels; heads/questions beyond it are unsupervised, and
     python-chess remains the VALIDATOR (relation_alignment). Copy prior as
-    BitTransition (w_id + zero-init out)."""
+    BitTransition (w_id + zero-init out).
+
+    T2-CONDITIONAL (Kaveh 2026-08-29: "I think you're missing the second input,
+    which is the stockfish's move ... we have that as a label"): the REPLY enters as
+    a second injection at its own from/to squares, so both plies of the move unit
+    are given and the target is deterministic board mechanics -- nothing left to
+    marginalize, nothing for sign() to round away (the qgt7-10 hang-blindness
+    mechanism). The reply carries NO move code: given the post-m1 state, a reply is
+    determined by its squares (the piece is already in the bits), so two learned
+    marker vectors suffice -- and search can then enumerate replies from legal
+    squares alone, no encoder pass per child. Known limit: reply underpromotions
+    are indistinguishable from queening (rare; recorded, accepted)."""
 
     def __init__(self, sq_bits=24, mv_bits=32, d=64, layers=2, n_q=16, heads=4,
                  top_k=4, out_bits=8, w_id_init=0.5):
@@ -222,6 +233,20 @@ class GraphBitTransition(nn.Module):
         nn.init.zeros_(self.out.weight)
         nn.init.zeros_(self.out.bias)
         self.w_id = nn.Parameter(torch.tensor(float(w_id_init)))
+        self.rep_from = nn.Parameter(torch.randn(d) * 0.02)
+        self.rep_to = nn.Parameter(torch.randn(d) * 0.02)
+
+    def _inj(self, z, m, frm, to, frm2, to2):
+        B = z.shape[0]
+        ar = torch.arange(B, device=z.device)
+        inj = torch.zeros(B, 64, self.emb.out_features, device=z.device,
+                          dtype=self.emb.weight.dtype)
+        inj[ar, frm] = self.mv_from(m)
+        inj[ar, to] = inj[ar, to] + self.mv_to(m)        # frm==to safe
+        if frm2 is not None:
+            inj[ar, frm2] = inj[ar, frm2] + self.rep_from
+            inj[ar, to2] = inj[ar, to2] + self.rep_to
+        return inj
 
     def _encode(self, z, inj, need_attn=False, tok_mask=None):
         h = self.emb(z)
@@ -239,16 +264,13 @@ class GraphBitTransition(nn.Module):
             h = h + self.ffn[i](h)
         return h, attn0, l_route
 
-    def forward(self, z, m, frm, to, need_attn=False, tok_mask=None):
-        """z (B,64,sq_bits) +-1; m (B,mv_bits); frm/to (B,) long squares ->
+    def forward(self, z, m, frm, to, frm2=None, to2=None, need_attn=False,
+                tok_mask=None):
+        """z (B,64,sq_bits) +-1; m (B,mv_bits); frm/to (B,) long squares; frm2/to2
+        (B,) long reply squares (None = legacy marginal mode) ->
         (next-bit logits, head-0 attention logits or None, router aux loss).
         tok_mask (B,64) bool: squares attention may LOOK AT (locality probe)."""
-        B = z.shape[0]
-        ar = torch.arange(B, device=z.device)
-        inj = torch.zeros(B, 64, self.emb.out_features, device=z.device,
-                          dtype=self.emb.weight.dtype)
-        inj[ar, frm] = self.mv_from(m)
-        inj[ar, to] = inj[ar, to] + self.mv_to(m)        # frm==to safe
+        inj = self._inj(z, m, frm, to, frm2, to2)
         h, attn0, l_route = self._encode(z, inj, need_attn, tok_mask=tok_mask)
         h0, _, _ = self._encode(z, None, tok_mask=tok_mask)   # same mask both passes:
         # the frame axiom stays exact RELATIVE to the restricted attention
@@ -256,17 +278,12 @@ class GraphBitTransition(nn.Module):
         # EXACT zero on untouched squares; (w_id*z + out(h)) - out(h0) is not
         return self.w_id * z + (self.out(h) - self.out(h0)), attn0, l_route
 
-    def touched(self, z, m, frm, to):
+    def touched(self, z, m, frm, to, frm2=None, to2=None):
         """(B,64) bool: squares the injection reached through the learned attention
         -- the move's influence cone, exactly measurable thanks to the frame axiom.
         A true-flipped bit on an UNtouched square is architecturally unpredictable
         (the under-reach instrument, pre-registered failure H2/H3)."""
-        B = z.shape[0]
-        ar = torch.arange(B, device=z.device)
-        inj = torch.zeros(B, 64, self.emb.out_features, device=z.device,
-                          dtype=self.emb.weight.dtype)
-        inj[ar, frm] = self.mv_from(m)
-        inj[ar, to] = inj[ar, to] + self.mv_to(m)
+        inj = self._inj(z, m, frm, to, frm2, to2)
         h, _, _ = self._encode(z, inj)
         h0, _, _ = self._encode(z, None)
         return (h != h0).any(-1)
@@ -283,12 +300,15 @@ class GraphBitTransition(nn.Module):
             lg, att_target, weight=w)
 
     def roll_bits(self, z0, moves):
-        """Free-run: moves = [(m, frm, to), ...]. Connectivity recomputes from the
-        rolled bits inside attention each step -- no external edges needed. Returns
-        the +-1 bit state at each horizon (STE exact-zero form)."""
+        """Free-run: moves = [(m, frm, to), ...] or T2-conditional
+        [(m, frm, to, frm2, to2), ...]. Connectivity recomputes from the rolled bits
+        inside attention each step -- no external edges needed. Returns the +-1 bit
+        state at each horizon (STE exact-zero form)."""
         out, z = [], z0
-        for m, frm, to in moves:
-            lg, _, _ = self.forward(z, m, frm, to)
+        for pk in moves:
+            m, frm, to = pk[0], pk[1], pk[2]
+            frm2, to2 = (pk[3], pk[4]) if len(pk) > 3 else (None, None)
+            lg, _, _ = self.forward(z, m, frm, to, frm2=frm2, to2=to2)
             zb = torch.sign(lg)
             zb = torch.where(zb == 0, torch.ones_like(zb), zb)
             z = zb + (lg - lg.detach())
@@ -397,6 +417,24 @@ def _test():
     for nm, p_ in (("out", gt.out.weight), ("w_id", gt.w_id),
                    ("qa q_select", gt.qa[0].q_select.weight)):
         assert p_.grad is not None and float(p_.grad.abs().sum()) > 0, f"no grad: {nm}"
+    # T2-conditional (the reply input): frame axiom stays exact with BOTH
+    # injections; the reply markers actually reach the output; grads flow to them
+    frm2 = torch.tensor([40, 48, 56]); to2 = torch.tensor([41, 49, 57])
+    with torch.no_grad():
+        inj2 = gt._inj(zg, mg, frm, to, frm2, to2)
+        h2, _, _ = gt._encode(zg, inj2)
+        h0b, _, _ = gt._encode(zg, None)
+        unt2 = (h2 == h0b).all(-1)
+        lg2, _, _ = gt(zg, mg, frm, to, frm2=frm2, to2=to2)
+        d2 = (lg2 - gt.w_id * zg)
+        assert bool(unt2.any()), "conditional frame-axiom test vacuous"
+        assert float(d2[unt2].abs().max()) == 0.0, "conditional frame axiom broken"
+        assert float((lg2 - lg1).abs().max()) > 0, "reply injection inert"
+    gt.rep_from.grad = None
+    zc = gt.roll_bits(zg, [(mg, frm, to, frm2, to2)])[0]
+    zc.sum().backward()
+    assert gt.rep_from.grad is not None and \
+        float(gt.rep_from.grad.abs().sum()) > 0, "no grad to reply marker"
     print(f"  GraphBitTransition (QA edges): identity at init; frame axiom EXACT on "
           f"{int(untouched.sum())}/{3*64} untouched squares under a perturbed out; "
           f"warm-start loss reaches head-0 keys; GNS-in-attention roll exactly +-1; "

@@ -77,10 +77,33 @@ def main():
                                             rng.choice(v, min(6, len(v)),
                                                        replace=False)]))
             sel = sel[sel < len(moves)]
-            st = state.expand(len(sel), -1, -1)
-            nxt = dyn.step(st, codes[sel], frm[sel], to[sel])
-            pv = dyn.value(nxt, 1 if b.turn else 0).cpu().numpy()
-            r_es = es(pv, b.turn)
+            if dyn.conditional:
+                # T2-conditional (Kaveh 8/29): the reply is an INPUT; a move's read
+                # is the MIN over its legal replies (the refutation, enumerated) --
+                # the exact quantity Greedy1 backs up in the arena
+                r_es = np.empty(len(sel))
+                for si, j in enumerate(sel):
+                    b1 = b.copy(stack=False); b1.push(moves[j])
+                    reps = list(b1.legal_moves)
+                    if not reps:
+                        r_es[si] = 1.0 if b1.is_checkmate() else 0.5
+                        continue
+                    f2 = torch.tensor([r.from_square for r in reps],
+                                      device=frm.device)
+                    t2_ = torch.tensor([r.to_square for r in reps],
+                                       device=frm.device)
+                    nr = len(reps)
+                    nxt = dyn.step(state.expand(nr, -1, -1),
+                                   codes[j].expand(nr, -1),
+                                   frm[j].expand(nr), to[j].expand(nr),
+                                   frm2=f2, to2=t2_)
+                    pv = dyn.value(nxt, 1 if b.turn else 0).cpu().numpy()
+                    r_es[si] = float(es(pv, b.turn).min())
+            else:
+                st = state.expand(len(sel), -1, -1)
+                nxt = dyn.step(st, codes[sel], frm[sel], to[sel])
+                pv = dyn.value(nxt, 1 if b.turn else 0).cpu().numpy()
+                r_es = es(pv, b.turn)
             lab = wp[sel]
             if len(sel) >= 4 and lab.std() > 1e-6 and r_es.std() > 1e-6:
                 corr_p.append(np.corrcoef(r_es, lab)[0, 1])
@@ -98,8 +121,12 @@ def main():
                 b2 = b1.copy(); b2.push(rep[int(rng.integers(len(rep)))])
                 s1, _ = dyn.encode(b1)
                 s2, _ = dyn.encode(b2)
+                rmv = b2.move_stack[-1]
+                kw2 = (dict(frm2=torch.tensor([rmv.from_square], device=frm.device),
+                            to2=torch.tensor([rmv.to_square], device=frm.device))
+                       if dyn.conditional else {})
                 t2 = dyn.step(state, codes[j_w:j_w + 1], frm[j_w:j_w + 1],
-                              to[j_w:j_w + 1])
+                              to[j_w:j_w + 1], **kw2)
                 a1 += float((t2 == s1).float().mean())
                 a2 += float((t2 == s2).float().mean())
                 a0_1 += float((state == s1).float().mean())

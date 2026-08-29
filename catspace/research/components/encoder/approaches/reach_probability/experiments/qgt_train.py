@@ -369,15 +369,19 @@ def main():
         t_ = mv_raw[np.arange(n), rows_j, 2].astype(np.int64)
         return torch.from_numpy(f_).to(dev), torch.from_numpy(t_).to(dev)
 
-    def T_forward(z, code, frm, to, need_attn=False):
-        """-> (logits, attn0 or None, aux loss). Plain discrete ignores frm/to."""
+    def T_forward(z, code, frm, to, frm2=None, to2=None, need_attn=False):
+        """-> (logits, attn0 or None, aux loss). frm2/to2 = the REPLY's squares
+        (T2-conditional, Kaveh 8/29: the second input we were missing). Plain
+        discrete ignores squares entirely (stays marginal, documented)."""
         if GRAPH:
-            return model.bit_trans(z, code, frm, to, need_attn=need_attn)
+            return model.bit_trans(z, code, frm, to, frm2=frm2, to2=to2,
+                                   need_attn=need_attn)
         lg, l_qa = model.bit_trans(z, code)
         return lg, None, l_qa
 
     def T_roll(z0, packs):
-        """packs: list of (code, frm, to). Plain discrete rolls on codes alone."""
+        """packs: list of (code, frm, to[, frm2, to2]). Plain discrete rolls on
+        codes alone."""
         if GRAPH:
             return model.bit_trans.roll_bits(z0, packs)
         return model.bit_trans.roll_bits(z0, [p[0] for p in packs])
@@ -432,6 +436,27 @@ def main():
         ORC[2] += 1
         return None
 
+    def _pv_reply_sq(fens, fb, tb):
+        """Batch oracle-PV reply squares for branch moves (uci rebuilt from from/to;
+        promo branches miss the 5-char key and come back ok=False -- the caller must
+        zero those branches out of the loss, never roll a garbage reply)."""
+        import chess as _c
+        fbn = fb.cpu().numpy() if torch.is_tensor(fb) else np.asarray(fb)
+        tbn = tb.cpu().numpy() if torch.is_tensor(tb) else np.asarray(tb)
+        n = len(fbn)
+        f2 = np.zeros(n, np.int64)
+        t2 = np.zeros(n, np.int64)
+        ok = np.zeros(n, bool)
+        for i in range(n):
+            uci = _c.square_name(int(fbn[i])) + _c.square_name(int(tbn[i]))
+            ru = _pv_reply(str(fens[i]), uci)
+            if ru:
+                f2[i] = _c.parse_square(ru[:2])
+                t2[i] = _c.parse_square(ru[2:4])
+                ok[i] = True
+        return (torch.from_numpy(f2).to(dev), torch.from_numpy(t2).to(dev),
+                torch.from_numpy(ok).to(dev))
+
     SF_ENG = [None]                        # lazy; restarted on failure
 
     def _sf_reply(b1):
@@ -461,7 +486,7 @@ def main():
         Near-identical boards, very different labels: the frozen-time optimum cannot
         fit them, and the transition gets direct 'this move drops the WDL' pairs."""
         import chess
-        roots, c1_boards, c2_boards, js, gs = [], [], [], [], []
+        roots, c1_boards, c2_boards, js, gs, r2 = [], [], [], [], [], []
         pick = rng.choice(tr_idx, nb * 3, replace=False)
         for g in pick:
             try:
@@ -515,13 +540,15 @@ def main():
             for b1, b2, j in pair:
                 roots.append(int(g)); c1_boards.append(b1)
                 c2_boards.append(b2); js.append(j)
+                r2.append((b2.move_stack[-1].from_square,
+                           b2.move_stack[-1].to_square))
             if len(js) >= nb * 2:
                 break
         if not js:
             return None
         gs = np.array(roots, np.int64)
         return (gs, np.array(js, np.int64), build_rows(c1_boards),
-                build_rows(c2_boards))
+                build_rows(c2_boards), np.array(r2, np.int64))
 
     def att_targets(rows):
         """(n,64,64) float attack adjacency from the chain graph arrays -- the
@@ -633,14 +660,16 @@ def main():
         """qgt4 (Kaveh 2026-08-28: "every two plies, basically, every move ... predict
         what concepts would flip properly two plies out, when it's my turn again"):
         the transition's unit is THE MOVE -- lag 2, where side-to-move parity cancels
-        by construction and the ~9% of bits that change are real chess. T conditions
-        on the MOVER'S code only; the opponent's reply is MARGINALIZED -- the teacher
-        target is the realized position two plies out, and BCE on a stochastic target
-        learns calibrated per-bit flip marginals under the data's reply distribution
-        (which is also what makes branch pricing sound: SF's wp for a move already
-        assumes the reply). Teacher-forced on 5 lag-2 pairs per chain; value CE +
-        branch ranking on FREE-RUN rolls at horizons 2/4/6. The encoder is NOT
-        trained by the dynamics (inputs and targets both detached)."""
+        by construction. T2-CONDITIONAL (Kaveh 8/29, after the qgt7-10 invariance
+        table): T conditions on the mover's code AND the reply's squares (row k+1's
+        played move) -- nothing marginalized, the target is deterministic mechanics,
+        and the qgt7-10 failure (per-bit marginals + sign() MAP rounding away every
+        sub-50% tactical flip) has no room to exist. At play time the reply is
+        supplied by SEARCH (min/expectimax over enumerated legal replies), never
+        predicted by T. Teacher-forced on 5 lag-2 pairs per chain; value CE + branch
+        ranking on FREE-RUN rolls at horizons 2/4/6 (replies: played line for the
+        value roll, oracle-PV for branches). The encoder is NOT trained by the
+        dynamics (inputs and targets both detached)."""
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]           # (cb,7)
         with torch.no_grad():
             rows_all = ci.ravel()
@@ -662,6 +691,8 @@ def main():
         need_w = GRAPH and args.w_edge_warm > 0
         lg, attn0, l_qa = T_forward(zin, pl_g[:, :5].reshape(cb * 5, -1),
                                     frm7[:, :5].reshape(-1), to7[:, :5].reshape(-1),
+                                    frm2=frm7[:, 1:6].reshape(-1),
+                                    to2=to7[:, 1:6].reshape(-1),
                                     need_attn=need_w)
         w_tf = torch.where(zin != zt, args.flip_weight, 1.0) \
             if args.flip_weight != 1.0 else None
@@ -682,7 +713,8 @@ def main():
         # the READOUT + QA levels on rolled states, never T.
         with torch.no_grad():
             zs = T_roll(q1_all[:, 0],
-                        [(pl_g[:, k].detach(), frm7[:, k], to7[:, k])
+                        [(pl_g[:, k].detach(), frm7[:, k], to7[:, k],
+                          frm7[:, k + 1], to7[:, k + 1])
                          for k in (0, 2, 4)])            # horizons 2, 4, 6
         HORIZ = (2, 4, 6)
         W = model.readout.weight
@@ -732,8 +764,13 @@ def main():
             rr7 = (np.arange(cb) * 7 + k)[ok_r]              # chain row index of row k
             mv_k = mv_raw[np.repeat(rr7, bk)]
             fb, tb = _ft(mv_k, cols[ok_r].ravel())
+            # T2-conditional branch pricing: the reply after a BRANCH move is not in
+            # the chain -- it comes from the oracle PV store (SF-best, cached)
+            f2b, t2b, okb = _pv_reply_sq(
+                CH_FEN[np.repeat(ci[ok_r, k], bk)], fb, tb)
+            okm = okb.reshape(nv, bk)
             with torch.no_grad():                # world model fixed for the anchors
-                zbr = T_roll(base, [(codes, fb, tb)])[0]
+                zbr = T_roll(base, [(codes, fb, tb, f2b, t2b)])[0]
             zb = model.levels_from_bits(zbr)[0]
             pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)
             stm_c = torch.from_numpy(
@@ -747,6 +784,10 @@ def main():
             if args.units:
                 assert float(reg[:, 0].abs().max()) == 0.0, \
                     "branch slot 0 is not the best move -- regret is mis-anchored"
+            # PV-miss branches: out of the softmax, out of the regret; a row whose
+            # BEST branch missed contributes nothing (reg zeroed row-wide)
+            sc = sc + torch.where(okm, 0.0, -30.0)
+            reg = reg * okm * okm[:, :1]
             l_br = l_br + (torch.softmax(sc, -1) * reg).sum(-1).mean()
             j = torch.randint(1, bk, (nv,), device=dev)
             arv = torch.arange(nv, device=dev)
@@ -879,7 +920,7 @@ def main():
         if DISC and args.w_blunder > 0 and args.blunder_batch > 0:
             bb = blunder_batch(args.blunder_batch)
             if bb is not None:
-                gs_b, js_b, R1b, R2b = bb
+                gs_b, js_b, R1b, R2b, rep2 = bb
                 nbp = len(gs_b)
                 sq1, mv1, ed1, mk1 = feat_of(R1b)
                 c1b, _, _ = model.carrier(sq1, mv1, ed1, mk1)      # encoder GRAD
@@ -903,7 +944,9 @@ def main():
                 code_b = dqb[torch.arange(nbp, device=dev),
                              torch.from_numpy(js_b).to(dev)]
                 fb_, tb_ = _ft(MVNP[gs_b], js_b)
-                lg_b, _, _ = T_forward(q0b, code_b, fb_, tb_)
+                lg_b, _, _ = T_forward(q0b, code_b, fb_, tb_,
+                                       frm2=torch.from_numpy(rep2[:, 0]).to(dev),
+                                       to2=torch.from_numpy(rep2[:, 1]).to(dev))
                 w_b = torch.where(q0b != q2b, args.flip_weight, 1.0) \
                     if args.flip_weight != 1.0 else None
                 l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
@@ -1032,9 +1075,11 @@ def main():
             f6, t6 = f6.reshape(cb, 6), t6.reshape(cb, 6)
             if DISC:
                 q1_root = model.rvq_bits(c0)[0]
-                # T2 steps: the mover's codes at rows 0, 2, 4 -> horizons 2, 4, 6
+                # T2 steps: mover's codes at rows 0, 2, 4 + played REPLY squares at
+                # rows 1, 3, 5 (T2-conditional) -> horizons 2, 4, 6
                 zs_bits = T_roll(
-                    q1_root, [(moves[k], f6[:, k], t6[:, k]) for k in (0, 2, 4)])
+                    q1_root, [(moves[k], f6[:, k], t6[:, k],
+                               f6[:, k + 1], t6[:, k + 1]) for k in (0, 2, 4)])
                 zs = {k: model.levels_from_bits(zs_bits[i])[0]
                       for i, k in enumerate((2, 4, 6))}
                 prev = q1_root
@@ -1048,13 +1093,15 @@ def main():
                     # (aucR), H2/H3 under-reach (cov = true-flip coverage by the
                     # move's influence cone, exact thanks to the frame axiom)
                     _, at0, _ = T_forward(q1_root, moves[0], f6[:, 0], t6[:, 0],
+                                          frm2=f6[:, 1], to2=t6[:, 1],
                                           need_attn=True)
                     gdiag["aucT"] = _auc(at0[:, 0], att_targets(ci[:, 0]))
                     _, at4, _ = T_forward(zs_bits[1], moves[4], f6[:, 4],
-                                          t6[:, 4], need_attn=True)
+                                          t6[:, 4], frm2=f6[:, 5], to2=t6[:, 5],
+                                          need_attn=True)
                     gdiag["aucR"] = _auc(at4[:, 0], att_targets(ci[:, 4]))
                     tch = model.bit_trans.touched(q1_root, moves[0], f6[:, 0],
-                                                  t6[:, 0])
+                                                  t6[:, 0], f6[:, 1], t6[:, 1])
                     sq2, mv2_, ed2, mk2, _, _ = feat_chain(ci[:, 2])
                     q1_2 = model.rvq_bits(
                         model.carrier(sq2, mv2_, ed2, mk2)[0])[0]
@@ -1117,8 +1164,10 @@ def main():
                         mv_kf = np.repeat((mvr6.reshape(cb, 6, MV_CAP, -1)[:, kf]
                                            )[ok_r], br_k, axis=0)
                         fbb, tbb = _ft(mv_kf, rrb)
+                        f2b, t2b, okpv = _pv_reply_sq(
+                            CH_FEN[np.repeat(ci[ok_r, kf], br_k)], fbb, tbb)
                         zb = model.levels_from_bits(
-                            T_roll(baseb, [(codes, fbb, tbb)])[0])[0]
+                            T_roll(baseb, [(codes, fbb, tbb, f2b, t2b)])[0])[0]
                         # T2 lands with the SAME side to move as the source row
                         stm_c = torch.from_numpy(
                             CH_STM[ci[:, kf]].astype(np.int64)[ok_r]).to(dev)
@@ -1134,6 +1183,9 @@ def main():
                     pvb = pvb + model.turn[stm_c.repeat_interleave(br_k)]
                     sg = torch.from_numpy(CH_SGN[ci[:, kf]][ok_r]).to(dev)[:, None]
                     sc = (sg * (pvb[:, 0] - pvb[:, 2]).reshape(nv, br_k)).cpu().numpy()
+                    if DISC:                 # PV-miss branches can't be picked
+                        sc = sc + np.where(okpv.cpu().numpy().reshape(nv, br_k),
+                                           0.0, -1e9)
                     wsel = wpk[np.arange(cb)[ok_r][:, None], cols[ok_r]]
                     pick = (sc + ero.random(sc.shape) * 1e-9).argmax(1)
                     reg = (wsel[:, 0] - wsel[np.arange(nv), pick]).clip(min=0)
@@ -1203,7 +1255,8 @@ def main():
             packs = []
             for k in (0, 2, 4):
                 fk_, tk_ = _ft(mv_rand[:, k], js[:, k])
-                packs.append((moves[k], fk_, tk_))
+                f2_, t2_ = _ft(mv_rand[:, k + 1], js[:, k + 1])
+                packs.append((moves[k], fk_, tk_, f2_, t2_))
             outs_b = T_roll(model.rvq_bits(c_all[:, 0])[0], packs)
             get = {k: model.levels_from_bits(outs_b[i])[0]
                    for i, k in enumerate((2, 4, 6))}
@@ -1486,7 +1539,9 @@ def main():
             # a [science] alert)
             bb6 = blunder_batch(6)
             assert bb6 is not None, "blunder stream produced nothing"
-            gs6, js6, R16, R26 = bb6
+            gs6, js6, R16, R26, rep6 = bb6
+            assert rep6.shape == (len(gs6), 2) and int(rep6.max()) < 64, \
+                "reply squares malformed"
             gap6 = float(np.mean(np.abs(
                 TGT[gs6[::2], js6[::2]] - TGT[gs6[1::2], js6[1::2]])))
             sq16, mv16, ed16, mk16 = feat_of(R16)
@@ -1528,7 +1583,9 @@ def main():
                 cg, hg, _ = model.carrier(sqg, mvg, edg, mkg)
                 q1g = model.rvq_bits(cg)[0]
                 codeg = dyn_codes(hg)[0][torch.arange(8, device=dev), plg]
+                _, _, _, _, plg1, mvrg1 = feat_chain(ci_g[:, 1])
             fg, tg = _ft(mvrg, plg.cpu().numpy())
+            fg2, tg2 = _ft(mvrg1, plg1.cpu().numpy())     # the played REPLY (row 1)
             tgt_g = att_targets(ci_g[:, 0])
             # GATE TAXONOMY (Kaveh 2026-08-28): asserts KILL only on IMPLEMENTATION
             # bugs (wiring, exact algebra, measurement purity). Scientific outcomes
@@ -1536,8 +1593,8 @@ def main():
             # they are findings, never blockers.
             # G2 (implementation -- may kill): frame axiom exact in TRAIN mode
             model.train()
-            lg_g, _, _ = model.bit_trans(q1g, codeg, fg, tg)
-            tchg = model.bit_trans.touched(q1g, codeg, fg, tg)
+            lg_g, _, _ = model.bit_trans(q1g, codeg, fg, tg, frm2=fg2, to2=tg2)
+            tchg = model.bit_trans.touched(q1g, codeg, fg, tg, fg2, tg2)
             if bool((~tchg).any()):
                 du_g = float((lg_g - model.bit_trans.w_id * q1g)[~tchg].abs().max())
                 assert du_g == 0.0, f"frame axiom broken in train mode: {du_g}"
@@ -1550,15 +1607,15 @@ def main():
                                        lr=3e-3)
                 auc0 = None
                 for it in range(60):
-                    _, a0, _ = model.bit_trans(q1g, codeg, fg, tg,
-                                               need_attn=True)
+                    _, a0, _ = model.bit_trans(q1g, codeg, fg, tg, frm2=fg2,
+                                               to2=tg2, need_attn=True)
                     if it == 0:
                         auc0 = _auc(a0[:, 0], tgt_g)
                     lw_g = _GBT2.edge_warm_loss(a0, tgt_g)
                     o_g.zero_grad(); lw_g.backward(); o_g.step()
                 with torch.no_grad():
-                    _, a1, _ = model.bit_trans(q1g, codeg, fg, tg,
-                                               need_attn=True)
+                    _, a1, _ = model.bit_trans(q1g, codeg, fg, tg, frm2=fg2,
+                                               to2=tg2, need_attn=True)
                     auc1 = _auc(a1[:, 0], tgt_g)
             if auc1 <= auc0 + 0.05:
                 print(f"  ALERT G1 (finding, not a blocker): warm start shows no "
