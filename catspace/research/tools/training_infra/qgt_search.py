@@ -322,10 +322,6 @@ def sf_regret(engine, board: chess.Board, our_move: chess.Move,
     b2 = board.copy(); b2.push(our_move)
     if b2.is_game_over(claim_draw=True):
         r = b2.result(claim_draw=True)
-        wp_ours = {"1-0": 1.0, "0-1": 0.0}.get(r, 0.5)
-        if not board.turn:
-            wp_ours = 1.0 - wp_ours if r in ("1-0", "0-1") else 0.5
-        wp_ours = wp_ours if board.turn else wp_ours
         if r == "1-0":
             wp_ours = 1.0 if board.turn else 0.0
         elif r == "0-1":
