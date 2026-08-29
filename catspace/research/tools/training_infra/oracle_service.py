@@ -224,6 +224,12 @@ def cmd_produce(a):
         # todo, four workers gone). Randomized top-K + retry makes losing a race
         # a delay, not a death.
         row = None
+        if done % 500 == 0:                        # reclaim claims of DEAD producers
+            with c:                                # (crash-orphaned rows leaked as
+                c.execute(                         # 'claimed' forever before this)
+                    "UPDATE queue SET status='todo' WHERE oracle=? AND "
+                    "status='claimed' AND claimed_at < ?",
+                    (oracle, time.time() - 600))
         for _ in range(6):
             with c:                                # atomic claim (U10b)
                 rs = c.execute("SELECT fen FROM queue WHERE oracle=? AND "
