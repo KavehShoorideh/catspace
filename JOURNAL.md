@@ -19721,3 +19721,27 @@ off. All field/trainer/search gates pass at this config. PRE-REGISTERED GAUGES,
 unchanged: hang detection rate (noise floor 0-1.8% across qgt7-10), tfacc vs copy
 (for the first time the teacher problem is DETERMINISTIC -- tfacc should now be
 able to actually beat copy, watch it), then re-arena if detection moves.
+
+## 2026-08-29 (Fable) — Two corrections before qgt11 flew: PV store coverage was OVERSTATED, and the sleep-at-exit had a real mechanism
+
+CORRECTION 1 (to this morning's "pipeline finished its whole job"): the oracle
+store holds PVs on 657,088 of 4.23M sf labels (~15%), and each covered position
+carries PVs for its TOP-3 multiPV moves only. The backfill drained its queue; the
+queue never contained most historical labels. Practical impact: _pv_reply hits are
+top-3-of-covered-position only, everything else falls through to inline SF depth-8.
+
+CORRECTION 2 (instrument): qgt11-v1's step-1 heartbeat read brreg 0.020/0.018/0.007
+AT INIT (random = 0.192) -- my PV-miss masking had shrunk the pickable branch pool
+to the store's top-3 (usually containing the best move), so brreg was measuring
+STORE COVERAGE, not ranking. Fixed: branch replies resolve pv -> dict-cached inline
+SF depth-8 -> masked only on true failure. Run killed at step 1; no contaminated
+numbers were journaled.
+
+SLEEP-AT-EXIT, mechanism found (it hit qgt9, qgt10, and two gates runs): the SF
+engine's non-daemon thread deadlocks Py_Finalize -- and CPython joins non-daemon
+threads BEFORE atexit handlers run, so the atexit fix could never work
+(stack-sampled twice: Py_Finalize -> wait_for_thread_shutdown -> ThreadHandle_join).
+Fix: _sf_teardown() in main()'s control flow at both exits. Gates now pass AND the
+process exits 0 on its own.
+
+qgt11 relaunched clean: T2-conditional, PV teacher, dyn 128/3, flip-weight 3.0.
