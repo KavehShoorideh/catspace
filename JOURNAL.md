@@ -19554,3 +19554,32 @@ needs its own pressure. Candidates, one at a time: superlinear regret weighting
 corpus (the spoiler philosophy applied to ourselves), or an explicit hanging-piece
 tail term. Games also END fast (only 8 of 450 our-moves beyond ply 60): the tail is
 concentrated in openings/early middlegame.
+
+## 2026-08-29 (Fable) — qgt8 RESULT: fanreg NEGATIVE (capacity war, prior wrecked, brreg unmoved). HANG PROBE: the roll is BLIND to blunders, and the cause is OUR OWN uniform-reply teacher.
+
+qgt8 final: balanced 0.381 / regret 0.2101 / top1 0.138 (qgt7: 0.468/0.107/0.324) --
+the fanreg loss fought the prior for the 400 frozen readout columns and won capacity
+without buying discrimination: brreg ended AT chance (0.175/0.189/0.193 vs rnd
+0.192). VERDICT: retire fanreg at this weight; the canonical pathway's problem was
+never ranking-pressure volume. One silver line: tfacc crossed the copy baseline for
+the first time in the line (0.795 vs 0.791 @7000; ~equal at final).
+
+HANG PROBE (new instrument, qgt_hang_probe; Kaveh pre-approved quick probes; run on
+BOTH checkpoints, printed):
+
+    qgt7: blunder detection 1.8% (n=109 real blunders, label gap 0.573);
+          model rolled-read gap -0.009, corr -0.205
+    qgt8: detection 0.0%; T2-vs-2ply-child agreement 0.739 vs root-copy 0.767
+    Both: after a blunder, T2's state matches the true future WORSE than copying.
+
+ROOT CAUSE, and it is a design flaw of ours, not a mystery: chain teacher pairs use
+real replies but real players rarely hang, so punished-blunder transitions barely
+occur there; the constructed blunder stream was built to supply them -- but its
+teacher replies are UNIFORM-RANDOM, which plays the punishing capture ~1/30 of the
+time. We taught the transition, at volume, that hangs go unpunished. Kaveh's "the
+average is wrong / pick the likely reply" indicts the TEACHER CONSTRUCTION, not just
+the search. FIX (qgt9 proposal, one lever): constructed teacher replies become
+PUNISHING -- if any legal reply captures on the moved piece's destination square,
+play the least-valuable-attacker capture; else fall back to uniform. Zero oracle
+cost, python-chess only, targets exactly the tactic class that loses our games.
+Success gauge: the hang probe's detection rate (currently 1.8%/0.0%).
