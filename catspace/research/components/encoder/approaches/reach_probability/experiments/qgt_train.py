@@ -436,10 +436,15 @@ def main():
         ORC[2] += 1
         return None
 
+    REP_CACHE = {}                         # (fen, uci) -> reply uci or None
+
     def _pv_reply_sq(fens, fb, tb):
-        """Batch oracle-PV reply squares for branch moves (uci rebuilt from from/to;
-        promo branches miss the 5-char key and come back ok=False -- the caller must
-        zero those branches out of the loss, never roll a garbage reply)."""
+        """Batch REPLY squares for branch moves. Resolution: oracle PV (top-3
+        multiPV moves only -- store coverage measured 8/29: 657k/4.2M positions,
+        3 pv moves each) -> inline SF depth-8 (~1.3ms, dict-cached) -> ok=False
+        ONLY on real failure (illegal reconstruction/engine death). The 8/29
+        instrument bug is the warning: masked misses must stay RARE or the branch
+        pool silently shrinks to the store's top-3."""
         import chess as _c
         fbn = fb.cpu().numpy() if torch.is_tensor(fb) else np.asarray(fb)
         tbn = tb.cpu().numpy() if torch.is_tensor(tb) else np.asarray(tb)
@@ -448,8 +453,23 @@ def main():
         t2 = np.zeros(n, np.int64)
         ok = np.zeros(n, bool)
         for i in range(n):
+            fen = str(fens[i])
             uci = _c.square_name(int(fbn[i])) + _c.square_name(int(tbn[i]))
-            ru = _pv_reply(str(fens[i]), uci)
+            key = (fen, uci)
+            if key in REP_CACHE:
+                ru = REP_CACHE[key]
+            else:
+                ru = _pv_reply(fen, uci)
+                if ru is None:
+                    try:
+                        b1 = _c.Board(fen)
+                        b1.push(_c.Move.from_uci(uci))
+                        rm = _sf_reply(b1)
+                        ru = rm.uci() if rm is not None else None
+                    except Exception:
+                        ru = None
+                if len(REP_CACHE) < 500_000:
+                    REP_CACHE[key] = ru
             if ru:
                 f2[i] = _c.parse_square(ru[:2])
                 t2[i] = _c.parse_square(ru[2:4])
@@ -458,6 +478,24 @@ def main():
                 torch.from_numpy(ok).to(dev))
 
     SF_ENG = [None]                        # lazy; restarted on failure
+
+    def _sf_teardown():
+        """The engine's non-daemon thread otherwise blocks Py_Finalize forever --
+        the qgt9/qgt10/gates sleep-at-exit, stack-confirmed 8/29."""
+        try:
+            if SF_ENG[0] is not None:
+                SF_ENG[0].quit()
+        except Exception:
+            pass
+        try:
+            if ORC[0] is not None:
+                ORC[0].close()
+        except Exception:
+            pass
+
+    # NOTE: atexit is NOT enough -- CPython joins non-daemon threads (the
+    # engine's) BEFORE atexit handlers run, so teardown must happen in normal
+    # control flow at every main() exit (stack-confirmed twice, 8/29)
 
     def _sf_reply(b1):
         """The PUNISHING reply (Kaveh: 'why not just play the best opponent reply,
@@ -1632,6 +1670,7 @@ def main():
                   f"warm-start mini-fit AUC {auc0:.3f} -> {auc1:.3f} [science]; "
                   f"flip coverage at init {covg:.2f} [science]")
         print("  ALL QGT GATES PASS")
+        _sf_teardown()
         return
 
     start = resume_from(args.resume, model, opt=opt, rng=rng) if args.resume else 0
@@ -1639,7 +1678,10 @@ def main():
                       eval_every=args.eval_every, start_step=start,
                       experiment="catspace", run_name=args.out.split("/")[-1],
                       device=str(dev))
-    standard_train(step_fn, model, cfg, args, opt=opt, rng=rng)
+    try:
+        standard_train(step_fn, model, cfg, args, opt=opt, rng=rng)
+    finally:
+        _sf_teardown()
 
 
 if __name__ == "__main__":
