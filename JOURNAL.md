@@ -19527,3 +19527,30 @@ launch-ready, but its premise (prior transfers, canonical starved) is now weaken
 by the prior's own floor result. AWAITING KAVEH: (i) in-play regret diagnostic,
 (ii) launch qgt8/fanreg anyway (brreg remains the canonical pathway's own gauge),
 (iii) both.
+
+## 2026-08-28 (Fable) — PROBE VERDICT: TAILS, not transfer. The games are lost in the first 20 plies; everything after is regret-free because nothing is left to lose.
+
+One SF instrument (wp(best) - wp(ours), movetime 80ms), printed:
+
+    corpus            n=300  mean 0.090  median 0.021  p90 0.309  p99 0.714
+                             blunder(>0.25) 11.7%   catastrophic(>0.5) 3.0%
+    in-play           n=450  mean 0.039  median 0.009  p90 0.108
+    in-play plies 0-20       mean 0.076  p90 0.207    (n=206)   <- the live phase
+    in-play plies 20-60      mean 0.008  p90 0.021    (n=236)   <- already lost
+    in-play plies 60+        mean 0.000               (n=8)     <- games are OVER
+
+READING: (1) NO transfer failure -- in the phase where the game is still live, the
+in-play regret profile matches the corpus profile; competence survives the shift.
+(2) The killer is the TAIL, and it was visible on-corpus all along: the MEDIAN move
+is near-perfect (0.021) but one move in nine gives up >0.25 win-prob. At ~40 moves a
+game, P(blunder-free game) ~ 0.883^40 ~ 0.7% -- which is arithmetically the 0-of-200
+arena. The raw in-play mean being LOW is a ceiling artifact: regret compresses to
+zero once the position is decided, and ours are decided by ply ~20.
+
+LEVER THIS SELECTS (proposed, awaiting Kaveh -- it touches his regret loss): the
+training objective optimises MEAN regret and has met it (median 0.021); the tail
+needs its own pressure. Candidates, one at a time: superlinear regret weighting
+(regret^2 / focal-style), hard-negative mining of our own arena blunders into the
+corpus (the spoiler philosophy applied to ourselves), or an explicit hanging-piece
+tail term. Games also END fast (only 8 of 450 our-moves beyond ply 60): the tail is
+concentrated in openings/early middlegame.
