@@ -157,8 +157,11 @@ _P_RE = re.compile(r"^([a-h][1-8][a-h][1-8]\S*).*?P: *([0-9.]+)%")
 def query_sf(eng, b, a):
     import chess.engine
     mv = list(b.legal_moves)
+    k = getattr(a, "sf_multipv", 0) or len(mv)     # sf20 reply labels: multipv=1 --
+    # depth 20 over ALL legal moves is minutes/position; the reply needs the best
+    # line only (Kaveh 8/29: "depth 20 is probably what we need")
     info = eng.analyse(b, chess.engine.Limit(depth=a.sf_depth, time=a.sf_time),
-                       multipv=len(mv))
+                       multipv=min(k, len(mv)))
     out = {}
     wdl_out = {}
     pv_out = {}
@@ -309,6 +312,8 @@ def main():
     p.add_argument("--budget", type=int, default=0)
     p.add_argument("--engine", default="/opt/homebrew/bin/stockfish")
     p.add_argument("--sf-depth", type=int, default=10)
+    p.add_argument("--sf-multipv", type=int, default=0,
+                   help="0 = all legal moves; 1 = best line only (sf20 replies)")
     p.add_argument("--sf-time", type=float, default=0.05)
     p = sub.add_parser("loop", help="produce FOREVER: when the queue drains, self-refill "
                        "with random pool batches (Kaveh: 'if you don't know what to "
@@ -317,6 +322,8 @@ def main():
     p.add_argument("--refill", type=int, default=5000)
     p.add_argument("--engine", default="/opt/homebrew/bin/stockfish")
     p.add_argument("--sf-depth", type=int, default=10)
+    p.add_argument("--sf-multipv", type=int, default=0,
+                   help="0 = all legal moves; 1 = best line only (sf20 replies)")
     p.add_argument("--sf-time", type=float, default=0.05)
     p = sub.add_parser("backfill", help="re-queue fens whose LABELS lack a pv "
                        "payload, so produce/loop relabels them WITH lines "

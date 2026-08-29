@@ -437,6 +437,59 @@ def main():
         return None
 
     REP_CACHE = {}                         # (fen, uci) -> reply uci or None
+    DEEPQ = [None, set()]                  # rw conn, pending child fens to enqueue
+
+    def _fen_key(b1):
+        """Canonical child key: counters zeroed so the same position reached from
+        different parents shares one label row."""
+        return " ".join(b1.fen().split()[:4]) + " 0 1"
+
+    def _deep_reply(b1):
+        """THE ASYNC DEEP PIPELINE (Kaveh 8/29: "depth 20 is probably what we
+        need", approved async over inline): the reply to a move is the BEST MOVE
+        of the child position. Look for a depth-20 child label (oracle 'sf20',
+        best-line-only); on miss, queue the child for the background producers and
+        let the caller fall back to live depth-8. Quality ramps to d20 across the
+        run with zero step-time cost."""
+        import sqlite3, json as _json
+        key = _fen_key(b1)
+        try:
+            if ORC[0] is None:
+                ORC[0] = sqlite3.connect(
+                    "file:data/derived/gko1_oracle.sqlite?mode=ro", uri=True,
+                    timeout=2)
+            r = ORC[0].execute(
+                "SELECT payload FROM labels WHERE fen=? AND oracle='sf20'",
+                (key,)).fetchone()
+        except Exception:
+            return None
+        if r:
+            wp = _json.loads(r[0]).get("wp") or {}
+            if wp:
+                return max(wp, key=wp.get)
+        DEEPQ[1].add(key)
+        if len(DEEPQ[1]) >= 200:
+            _deepq_flush()
+        return None
+
+    def _deepq_flush():
+        """Buffered INSERT OR IGNORE of pending child fens; never blocks training
+        (short busy timeout, drop on lock -- misses recur next epoch anyway)."""
+        import sqlite3
+        if not DEEPQ[1]:
+            return
+        try:
+            if DEEPQ[0] is None:
+                DEEPQ[0] = sqlite3.connect("data/derived/gko1_oracle.sqlite",
+                                           timeout=0.5)
+            with DEEPQ[0]:
+                DEEPQ[0].executemany(
+                    "INSERT OR IGNORE INTO queue(fen, oracle, score) "
+                    "VALUES (?, 'sf20', 2)", [(f,) for f in DEEPQ[1]])  # proven-sampled > seeded
+            DEEPQ[1].clear()
+        except Exception:
+            if len(DEEPQ[1]) > 5000:           # store unreachable; stop hoarding
+                DEEPQ[1].clear()
 
     def _pv_reply_sq(fens, fb, tb):
         """Batch REPLY squares for branch moves. Resolution: oracle PV (top-3
@@ -459,15 +512,17 @@ def main():
             if key in REP_CACHE:
                 ru = REP_CACHE[key]
             else:
-                ru = _pv_reply(fen, uci)
+                try:
+                    b1 = _c.Board(fen)
+                    b1.push(_c.Move.from_uci(uci))
+                except Exception:
+                    b1 = None                      # promo uci etc -- pv may still hit
+                ru = _deep_reply(b1) if b1 is not None else None
                 if ru is None:
-                    try:
-                        b1 = _c.Board(fen)
-                        b1.push(_c.Move.from_uci(uci))
-                        rm = _sf_reply(b1)
-                        ru = rm.uci() if rm is not None else None
-                    except Exception:
-                        ru = None
+                    ru = _pv_reply(fen, uci)       # d10 parent pv
+                if ru is None and b1 is not None:
+                    rm = _sf_reply(b1)             # live d8, last resort
+                    ru = rm.uci() if rm is not None else None
                 if len(REP_CACHE) < 500_000:
                     REP_CACHE[key] = ru
             if ru:
@@ -487,11 +542,13 @@ def main():
                 SF_ENG[0].quit()
         except Exception:
             pass
-        try:
-            if ORC[0] is not None:
-                ORC[0].close()
-        except Exception:
-            pass
+        _deepq_flush()
+        for h in (ORC, DEEPQ):
+            try:
+                if h[0] is not None:
+                    h[0].close()
+            except Exception:
+                pass
 
     # NOTE: atexit is NOT enough -- CPython joins non-daemon threads (the
     # engine's) BEFORE atexit handlers run, so teardown must happen in normal
@@ -561,7 +618,9 @@ def main():
                     okpair = False
                     break
                 rmv = None
-                ru = _pv_reply(str(FENS[g]), legal[j].uci())
+                ru = _deep_reply(b1)               # d20 child label (async pipeline)
+                if ru is None:
+                    ru = _pv_reply(str(FENS[g]), legal[j].uci())   # d10 parent pv
                 if ru is not None:
                     try:
                         rmv = chess.Move.from_uci(ru)
