@@ -127,6 +127,10 @@ def main():
                     help="teacher-forced BCE weight on bits that CHANGE between "
                          "consecutive true positions (~24-30%% of bits). 1.0 = plain "
                          "BCE. Held in reserve; LR was the binding constraint.")
+    ap.add_argument("--dyn-d", type=int, default=64,
+                    help="transition width (GraphBitTransition d)")
+    ap.add_argument("--dyn-layers", type=int, default=2,
+                    help="transition depth = attention hops per move-step (the cone)")
     ap.add_argument("--w-id-init", type=float, default=0.5,
                     help="discrete arm: initial copy-prior barrier (see BitTransition)."
                          " 3.0 measured un-erodable; 0.5 keeps the copy init but lets "
@@ -288,7 +292,8 @@ def main():
         model.bit_trans = GraphBitTransition(
             sq_bits=args.sq_bits, mv_bits=args.mv_bits, n_q=args.n_q,
             heads=args.attn_heads, top_k=args.top_k, out_bits=args.out_bits,
-            w_id_init=args.w_id_init).to(dev)
+            w_id_init=args.w_id_init, d=args.dyn_d,
+            layers=args.dyn_layers).to(dev)
     elif DISC:
         from catspace.research.tools.training_infra.qgt_field import BitTransition
         # registered as a submodule BEFORE the optimizer, so it checkpoints + trains
