@@ -19583,3 +19583,20 @@ PUNISHING -- if any legal reply captures on the moved piece's destination square
 play the least-valuable-attacker capture; else fall back to uniform. Zero oracle
 cost, python-chess only, targets exactly the tactic class that loses our games.
 Success gauge: the hang probe's detection rate (currently 1.8%/0.0%).
+
+## 2026-08-29 (Fable) — PV RETENTION completed through the whole pipe (Kaveh: "do the PV retention")
+
+Found half-done: oracle_service has stored per-move PVs since Kaveh's 8/24 ruling
+("the most severe is the data we're throwing away") -- but NO labels carried them
+(0/4000 oldest AND newest: the labeler never ran after the code landed), and the
+shard converter dropped the field anyway. Completed tonight: (1) PV_PLIES 0 -> 6
+(bounded lines, 3 move-units); (2) gko_data writes a `rep` column per shard row --
+SF's best reply per labeled child as [from,to,promo] uint8 (PV[1]); (3) new
+`oracle_service backfill` command re-queues labeled fens lacking pv for
+INSERT-OR-REPLACE relabeling. Smoke: 50/50 relabeled payloads carry lines, mean 5.3
+replies stored. Full backfill queued (500k fens) with a producer running in the
+background (tmp/oracle_pv_backfill.log). Downstream once it drains: flip converted=0
+on relabeled rows to re-emit rep-bearing shards (pawn-group split guards duplicate
+leakage), and the qgt9 teacher takes its punishing replies from `rep` -- SF-best at
+full labeling depth, cached, zero per-step cost. The PV lines are also perfect-play
+teacher chains to set beside the human chains -- a new data source.

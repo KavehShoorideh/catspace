@@ -404,6 +404,27 @@ def main():
             acc["gl"].append(glob_of_board(b))
         return {k: torch.from_numpy(np.stack(acc[k])) for k in acc}
 
+    SF_ENG = [None]                        # lazy; restarted on failure
+
+    def _sf_reply(b1):
+        """The PUNISHING reply (Kaveh: 'why not just play the best opponent reply,
+        the stockfish reply?'): SF-best at depth 8 (~1.3ms). The uniform reply
+        taught the transition that hangs go unpunished (hang probe, 8/29)."""
+        import chess.engine as _ce
+        for _try in range(2):
+            try:
+                if SF_ENG[0] is None:
+                    SF_ENG[0] = _ce.SimpleEngine.popen_uci("stockfish")
+                    SF_ENG[0].configure({"Threads": 1})
+                return SF_ENG[0].play(b1, _ce.Limit(depth=8)).move
+            except Exception:
+                try:
+                    SF_ENG[0].quit()
+                except Exception:
+                    pass
+                SF_ENG[0] = None
+        return None
+
     def blunder_batch(nb):
         """Kaveh 2026-08-28 (after the temporal-freeze collapse): construct the child
         after the BEST and the WORST finite-wp move of a training position. The child
@@ -448,7 +469,10 @@ def main():
                 if not rep:
                     okpair = False
                     break
-                b2 = b1.copy(); b2.push(rep[int(rng.integers(len(rep)))])
+                rmv = _sf_reply(b1)
+                if rmv is None or rmv not in rep:
+                    rmv = rep[int(rng.integers(len(rep)))]
+                b2 = b1.copy(); b2.push(rmv)
                 pair.append((b1, b2, j))
             if not okpair:
                 continue

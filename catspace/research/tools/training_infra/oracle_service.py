@@ -35,7 +35,7 @@ import time
 # score supervises every ply of it -- no extra SF calls. Caveat: past ply ~12 the drift
 # sample is thin (n=2-3), so treat deep-ply supervision as less certain than shallow.
 # Storage is not the constraint any more; jit_labels.py rings shards and deletes them.
-PV_PLIES = 0
+PV_PLIES = 6     # 3 move-units; full lines were unbounded storage (Kaveh 8/29: retain PVs)
 DB = "data/derived/gko1_oracle.sqlite"
 WP_K = 0.00368208          # lichess/lc0 logistic constant: wp = 1/(1+exp(-k*cp))
 
@@ -312,6 +312,11 @@ def main():
     p.add_argument("--engine", default="/opt/homebrew/bin/stockfish")
     p.add_argument("--sf-depth", type=int, default=10)
     p.add_argument("--sf-time", type=float, default=0.05)
+    p = sub.add_parser("backfill", help="re-queue fens whose LABELS lack a pv "
+                       "payload, so produce/loop relabels them WITH lines "
+                       "(INSERT OR REPLACE). Kaveh 2026-08-29: do the PV retention.")
+    p.add_argument("--oracle", default="sf")
+    p.add_argument("--n", type=int, default=20000)
     sub.add_parser("stats")
     a = ap.parse_args()
     def cmd_loop(a):
@@ -326,8 +331,21 @@ def main():
             a.budget = 0
             cmd_produce(a)
             time.sleep(2)
+    def cmd_backfill(a):
+        c = db()
+        rows = c.execute(
+            "SELECT fen FROM labels WHERE oracle=? AND payload NOT LIKE '%\"pv\"%' "
+            "LIMIT ?", (a.oracle, a.n)).fetchall()
+        c.executemany(
+            "INSERT OR REPLACE INTO queue(fen, oracle, score, status) "
+            "VALUES (?,?,0,'todo')", [(r[0], a.oracle) for r in rows])
+        c.commit(); c.close()
+        print(f"[oracle] backfill queued {len(rows)} {a.oracle} fens lacking pv",
+              flush=True)
+
     {"init": cmd_init, "seed": cmd_seed, "enqueue": cmd_enqueue,
-     "produce": cmd_produce, "stats": cmd_stats, "loop": cmd_loop}[a.cmd](a)
+     "produce": cmd_produce, "stats": cmd_stats, "loop": cmd_loop,
+     "backfill": cmd_backfill}[a.cmd](a)
 
 
 if __name__ == "__main__":

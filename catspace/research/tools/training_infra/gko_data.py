@@ -70,6 +70,7 @@ def convert_batch(out_dir, batch=SHARD_N, oracle_like=None, newest=False):
     KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "pslot")
     acc = {k: [] for k in KEYS}
     n_mv_l, n_att_l, kind_l, band_l, tgt_l, fen_l, wdl_l = [], [], [], [], [], [], []
+    rep_l = []
     done_ids = []
     for fen, oracle, payload, rid in rows:
         try:
@@ -79,12 +80,19 @@ def convert_batch(out_dir, batch=SHARD_N, oracle_like=None, newest=False):
             mvs = [m.uci() for m in list(b.legal_moves)[:int(g["n_mv"])]]
             tgt = np.full(MV_CAP, np.nan, np.float32)
             wdl = np.full((MV_CAP, 3), np.nan, np.float16)
-            if pl["kind"] == "sf_av":
+            rep = np.full((MV_CAP, 3), 255, np.uint8)   # SF best reply per child:
+            if pl["kind"] == "sf_av":                    # [from, to, promo] (PV[1])
                 src = pl["wp"]; kind = 0; band = 0
                 wsrc = pl.get("wdl", {})
+                psrc = pl.get("pv", {})
                 for j, u in enumerate(mvs):
                     if u in wsrc:
                         wdl[j] = np.asarray(wsrc[u], np.float16) / 1000.0
+                    line = psrc.get(u)
+                    if line:
+                        rm = chess.Move.from_uci(line[0])
+                        rep[j] = (rm.from_square, rm.to_square,
+                                  rm.promotion or 0)
             else:
                 src = pl["p"]; kind = 1
                 band = int(oracle.split(":")[1])
@@ -99,6 +107,7 @@ def convert_batch(out_dir, batch=SHARD_N, oracle_like=None, newest=False):
             n_mv_l.append(g["n_mv"]); n_att_l.append(g["n_att"])
             kind_l.append(kind); band_l.append(band); tgt_l.append(tgt)
             wdl_l.append(wdl)
+            rep_l.append(rep)
             fen_l.append(fen)
         except Exception:
             pass
@@ -111,7 +120,8 @@ def convert_batch(out_dir, batch=SHARD_N, oracle_like=None, newest=False):
             **{k: np.stack(acc[k]) for k in KEYS},
             n_mv=np.array(n_mv_l, np.uint8), n_att=np.array(n_att_l, np.uint16),
             kind=np.array(kind_l, np.int8), band=np.array(band_l, np.int16),
-            tgt=np.stack(tgt_l), wdl=np.stack(wdl_l), fen=np.array(fen_l))
+            tgt=np.stack(tgt_l), wdl=np.stack(wdl_l), rep=np.stack(rep_l),
+            fen=np.array(fen_l))
     with c:
         c.executemany("UPDATE labels SET converted=1 WHERE rowid=?",
                       [(i,) for i in done_ids])
