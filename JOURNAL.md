@@ -19600,3 +19600,19 @@ on relabeled rows to re-emit rep-bearing shards (pawn-group split guards duplica
 leakage), and the qgt9 teacher takes its punishing replies from `rep` -- SF-best at
 full labeling depth, cached, zero per-step cost. The PV lines are also perfect-play
 teacher chains to set beside the human chains -- a new data source.
+
+## 2026-08-29 (Fable) — THE PIPELINE CLOSED: 10 producers, corpus PV coverage 100% in ~20 min, qgt9 LAUNCHED with punishing teacher replies
+
+Kaveh: "can we pipeline it with training?" / "why not 10 of 11 cores?" / "go
+autonomous". Done: corpus fens priority-scored (score=1) so producers drain them
+first; 10 niced producers at 146 labels/s aggregate (sqlite's single writer caps the
+scale-up at ~7x -- 10 is the practical ceiling); the training corpus' 147,456 fens
+were FULLY pv-backfilled before the trainer even launched. qgt9's teacher reply
+resolution, wired and gated: (1) live oracle PV cache -- SF-best at full labeling
+depth, zero step cost; (2) inline SF depth-8 (1.3ms) for anything unbackfilled; (3)
+uniform only as an error path. The uniform-reply flaw that taught "hangs go
+unpunished" (hang probe, detection 1.8%) is structurally gone.
+
+qgt9 = qgt7 recipe (graph arm, flip-weight 3.0, fanreg OFF -- retired by qgt8) +
+punishing teacher. PRE-REGISTERED GAUGES: hang-probe detection rate (from 1.8%);
+tfacc vs copy; then re-arena if detection moves materially. 8000 steps, tmp/qgt9.log.
