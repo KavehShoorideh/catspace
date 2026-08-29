@@ -86,10 +86,13 @@ class QGTDynamics(LatentDynamics):
                      qa_heads=A["attn_heads"], top_k=A["top_k"],
                      out_bits=A["out_bits"])
         cls = GraphBitTransition if self.graph else BitTransition
-        m.bit_trans = cls(sq_bits=A["sq_bits"], mv_bits=A["mv_bits"], n_q=A["n_q"],
-                          heads=A["attn_heads"], top_k=A["top_k"],
-                          out_bits=A["out_bits"],
-                          w_id_init=A.get("w_id_init", 0.5))
+        kw = dict(sq_bits=A["sq_bits"], mv_bits=A["mv_bits"], n_q=A["n_q"],
+                  heads=A["attn_heads"], top_k=A["top_k"],
+                  out_bits=A["out_bits"],
+                  w_id_init=A.get("w_id_init", 0.5))
+        if self.graph:
+            kw.update(d=A.get("dyn_d", 64), layers=A.get("dyn_layers", 2))
+        m.bit_trans = cls(**kw)
         missing = m.load_state_dict(ck["state_dict"], strict=False)
         assert not missing.missing_keys, f"missing: {missing.missing_keys[:4]}"
         self.model = m.to(self.dev).eval()

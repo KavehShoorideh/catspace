@@ -19647,3 +19647,43 @@ detection rate, then re-arena if it moves.
 
 Housekeeping: qgt9 trainer slept at exit after saving step8000 (suspected unclosed
 SF_ENG/oracle handle at teardown) — reaped by hand; add atexit cleanup sometime.
+
+## 2026-08-29 (Fable) — qgt10 VERDICT: teacher+capacity ALSO null on the hang gauge. The 2x2 is now read: hang-blindness is invariant to BOTH levers. The bottleneck is the READ path, not the teacher and not transition size
+
+qgt10 (graph arm, PV-punished teacher, --dyn-d 128 --dyn-layers 3) completed 8000
+steps, no collapse. Final: BALANCED 0.432, REGRET 0.1901, top1 0.155, vroll
++0.130/+0.191/+0.228, auc 0.601/0.583 (best attention alignment of any run), flip
+0.015, cov hit 1.000 mid-run. The value tax DEEPENED with capacity (qgt9 0.450/
+0.140 -> qgt10 0.432/0.190) while transition-side health stayed the best yet.
+
+Hang probe on qgt10_step8000 (printed): "BLUNDERS (label gap>0.3, n=109): label
+0.573 vs model -0.008 | detection rate (model gap>0.1): 1.8%". Rolled-read
+best-vs-worst gap mean -0.006, corr -0.098; within-position corr -0.010. And the
+oneply block: T2 output agrees with 1-ply child 0.355 vs root-copy baseline 0.353 —
+indistinguishable from copying at 1-ply granularity.
+
+THE TABLE (all cells, detection rate on the fixed 150-position probe):
+  qgt7  (uniform teacher, T=64/2):    1.8%
+  qgt8  (fanreg,          T=64/2):    0.0%
+  qgt9  (PV teacher,      T=64/2):    0.0%
+  qgt10 (PV teacher,      T=128/3):   1.8%
+All within noise of each other (0-2 hits of 109). Detection is INVARIANT to teacher
+quality and transition capacity, including their interaction (Kaveh's 2x2 concern —
+tested, and the interaction cell is null too). Re-arena condition NOT met; not run.
+
+WHERE THIS POINTS. The invariance pattern plus the negative corr says the failure is
+not in what the transition can represent but in what the READ can recover: the
+2-ply move unit MARGINALIZES the reply, and sign() binarization takes per-bit MAP of
+those flip marginals — a refutation that exists conditionally (SF punishes THIS
+move) is averaged into a state the linear readout then reads as calm. The teacher
+sharpened the marginals (qgt9/10) and capacity let them be represented (qgt10, best
+auc) — and the READ still can't see the hang, because the hang lives in a
+conditional the marginal has already integrated out. This is exactly the queued T1
+line: a CONDITIONAL 1-ply transition + expectimax over explicit replies (prior
+record: expectimax 0.125 beat minimax 0.094), where refutations are enumerated in
+search instead of marginalized in the state. AWAITING KAVEH before building — this
+is a design fork, not a run.
+
+Housekeeping: QGTDynamics now reads dyn_d/dyn_layers from checkpoint args (old
+ckpts default 64/2), so probes/arena load any capacity. qgt10 trainer reaped at
+exit (same sleep-at-teardown as qgt9).
