@@ -404,6 +404,29 @@ def main():
             acc["gl"].append(glob_of_board(b))
         return {k: torch.from_numpy(np.stack(acc[k])) for k in acc}
 
+    ORC = [None, 0, 0]                     # ro connection, pv hits, pv misses
+
+    def _pv_reply(fen, uci):
+        """Punishing reply from the LIVE oracle store (PV retention + the
+        training/backfill PIPELINE, Kaveh 8/29): SF-best at full labeling depth,
+        cached, landing continuously as producers run. None while unbackfilled."""
+        import sqlite3, json as _json
+        if ORC[0] is None:
+            ORC[0] = sqlite3.connect(
+                "file:data/derived/gko1_oracle.sqlite?mode=ro", uri=True, timeout=2)
+        try:
+            r = ORC[0].execute(
+                "SELECT payload FROM labels WHERE fen=? AND oracle='sf'",
+                (fen,)).fetchone()
+        except Exception:
+            return None
+        line = _json.loads(r[0]).get("pv", {}).get(uci) if r else None
+        if line:
+            ORC[1] += 1
+            return line[0]
+        ORC[2] += 1
+        return None
+
     SF_ENG = [None]                        # lazy; restarted on failure
 
     def _sf_reply(b1):
@@ -469,7 +492,15 @@ def main():
                 if not rep:
                     okpair = False
                     break
-                rmv = _sf_reply(b1)
+                rmv = None
+                ru = _pv_reply(str(FENS[g]), legal[j].uci())
+                if ru is not None:
+                    try:
+                        rmv = chess.Move.from_uci(ru)
+                    except Exception:
+                        rmv = None
+                if rmv is None:
+                    rmv = _sf_reply(b1)            # depth-8 inline (1.3ms) fallback
                 if rmv is None or rmv not in rep:
                     rmv = rep[int(rng.integers(len(rep)))]
                 b2 = b1.copy(); b2.push(rmv)
