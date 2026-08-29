@@ -86,6 +86,15 @@ def main():
                          "from the stockfish multi pv. Let's use them'). Each yields "
                          "its best and worst finite-wp child as constructed, labeled "
                          "positions + lag-2 teacher pairs through those moves.")
+    ap.add_argument("--fanreg-k", type=int, default=8)
+    ap.add_argument("--w-fanreg", type=float, default=0.0,
+                    help="FAN-TO-REGRET (qgt8, Kaveh 'go on both'): expectation-"
+                         "regret + pairwise over ROLLED reads of fanreg-k multiPV "
+                         "children per corpus position -- the canonical pathway "
+                         "gets the same ranking pressure the prior enjoys (which "
+                         "was ~30x denser; the arena priced that gap at the random "
+                         "floor). Rolled bits fully detached: trains readout + QA "
+                         "levels only.")
     ap.add_argument("--child-sample", choices=("spoiler-uniform", "uniform",
                     "extremes"), default="spoiler-uniform",
                     help="which multiPV children the constructed stream samples per "
@@ -839,9 +848,65 @@ def main():
                     if args.flip_weight != 1.0 else None
                 l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
                     lg_b, (q2b + 1) / 2, weight=w_b)
-        l_roll = l_ch + l_fan
+        # FAN-TO-REGRET (qgt8): rank ROLLED reads of K children with the prior's
+        # own loss form; world model and encoder untouched (all rolling no_grad)
+        l_freg = torch.zeros((), device=dev)
+        if DISC and args.w_fanreg > 0:
+            fk2 = args.fanreg_k
+            wp2 = np.where(CV_[ii] & np.isfinite(TGT[ii]), TGT[ii], -np.inf)
+            nb2 = len(ii)
+            cols2 = np.zeros((nb2, fk2), np.int64)
+            okr2 = np.zeros(nb2, bool)
+            for r in range(nb2):
+                v = np.flatnonzero(np.isfinite(wp2[r]))
+                if len(v) < 2:
+                    continue
+                b_ = v[wp2[r][v].argmax()]
+                rest = v[v != b_]
+                cols2[r, 0] = b_
+                cols2[r, 1:] = rng.choice(rest, fk2 - 1, replace=len(rest) < fk2 - 1)
+                okr2[r] = True
+            if okr2.any():
+                okt2 = torch.from_numpy(okr2).to(dev)
+                nv2 = int(okr2.sum())
+                colst2 = torch.from_numpy(cols2[okr2]).to(dev)
+                with torch.no_grad():
+                    dqf = dyn_codes(aux["h_mv"])[0]
+                    codes2 = dqf[okt2].gather(
+                        1, colst2[..., None].expand(-1, -1, dqf.shape[-1])
+                        ).reshape(nv2 * fk2, -1)
+                    mvf2 = np.repeat(MVNP[ii][okr2], fk2, axis=0)
+                    ff2, tf2 = _ft(mvf2, cols2[okr2].ravel())
+                    zb0f = model.rvq_bits(aux["carrier"][okt2].detach())[0]
+                    zb0f = zb0f.reshape(nv2, 1, 64, -1).expand(-1, fk2, -1, -1
+                                                               ).reshape(nv2 * fk2, 64, -1)
+                    zrf = T_roll(zb0f, [(codes2, ff2, tf2)])[0]
+                zf2 = model.levels_from_bits(zrf)[0]
+                pvf = F.linear(zf2, model.readout.weight[:, :model.d_pos],
+                               model.readout.bias)
+                stm_f = torch.from_numpy(STM[ii].astype(np.int64)[okr2]).to(dev)
+                pvf = pvf + model.turn[stm_f.repeat_interleave(fk2)]
+                sgf = torch.from_numpy(SGN[ii][okr2]).to(dev)[:, None]
+                scf = sgf * (pvf[:, 0] - pvf[:, 2]).reshape(nv2, fk2)
+                wself = torch.from_numpy(
+                    wp2[okr2][np.arange(nv2)[:, None], cols2[okr2]]
+                    .astype(np.float32)).to(dev)
+                regf = (wself[:, :1] - wself).clamp(min=0)
+                if args.units:
+                    assert float(regf[:, 0].abs().max()) == 0.0, \
+                        "fanreg slot 0 is not the best move"
+                l_freg = (torch.softmax(scf, -1) * regf).sum(-1).mean()
+                jf = torch.randint(1, fk2, (nv2,), device=dev)
+                arf = torch.arange(nv2, device=dev)
+                l_freg = l_freg + (F.softplus(-(scf[:, 0] - scf[arf, jf]))
+                                   * regf[arf, jf]).mean()
+                loss = loss + args.w_fanreg * l_freg
+        if DISC:
+            l_fan = l_freg                    # heartbeat: 'roll X+Y' shows fanreg as Y
+        l_roll = l_ch + (l_fan if not DISC else torch.zeros((), device=dev))
         assert torch.isfinite(l_roll) and torch.isfinite(l_br) \
-            and torch.isfinite(l_dyn), "dynamics loss is not finite"
+            and torch.isfinite(l_dyn) and torch.isfinite(l_freg), \
+            "dynamics loss is not finite"
         loss = loss + args.w_roll * l_roll + args.w_branch * l_br + l_dyn \
             + l_dq_c + l_dq_f
         if args.dynamics == "koopman":

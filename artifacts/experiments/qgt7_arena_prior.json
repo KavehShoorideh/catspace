@@ -1,0 +1,20 @@
+{
+ "prior": {
+  "score": 0.035,
+  "wilson": [
+   0.012890646201194733,
+   0.09151452475148705
+  ],
+  "n": 100,
+  "w": 0,
+  "d": 7,
+  "l": 93,
+  "ms_mean": 10.095597541268885,
+  "ms_median": 9.467312498600222,
+  "ms_p90": 10.687971193692645,
+  "evals_per_move": 1.0,
+  "ckpt": "artifacts/experiments/qgt7_step8000.pt",
+  "maia": "/Users/kav/code/remote/github/catspace/assets/engines/maia/maia-1100.pb.gz",
+  "seed": 0
+ }
+}

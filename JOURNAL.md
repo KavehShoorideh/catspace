@@ -19499,3 +19499,31 @@ and the gap prior-vs-canonical measured in SCORE is the cleanest statement of wh
 rolling currently loses; (b) the queued fan-to-regret upgrade (the canonical pathway
 has only ever had CE-level pressure while the prior enjoyed full ranking losses),
 then re-arena. AWAITING KAVEH on both.
+
+## 2026-08-28 (Fable) — PRIOR ARM VERDICT: the amortized head ALSO plays at the floor. Offline competence does not survive play; wiring verified innocent.
+
+    random   0.050 [0.009, 0.236]  (20 games)
+    greedy1  0.030 [0.010, 0.085]  (100 games, 19ms/move)
+    prior    0.035 [0.013, 0.092]  (100 games, 10ms/move)
+
+All three coincide. The prior's offline instruments are real -- SANITY CHECK, printed:
+the arena's exact chooser scores top1 0.364 on corpus positions (trainer eval 0.324;
+quick sample included train rows). So no arena-side bug: a model that picks
+Stockfish's best move ~1/3 of the time on corpus boards loses 93-0-7 to Maia-1100.
+
+TWO MECHANISMS, not yet separated: (1) TAILS -- mean regret 0.107/move admits
+occasional catastrophic choices; an 1100 rarely hangs outright, we plausibly do; six
+draws and zero wins also says we never convert. (2) TRANSFER -- play compounds into
+positions off the corpus manifold where competence degrades. The decisive next
+diagnostic for both: measure OUR regret ON ARENA POSITIONS -- save positions from
+the played games, oracle them (the SF service exists), and compare in-play regret +
+its TAIL (p90/p99, hung-piece rate) against the on-corpus numbers. If in-play mean
+regret balloons -> transfer; if mean holds but the tail is fat -> tails; both fixable
+but by different levers (corpus/self-play coverage vs tail-aware losses).
+
+Meanwhile (b) fan-to-regret is implemented and gated (--w-fanreg, rolled reads get
+the prior's ranking loss, world model + encoder untouched; slot-0-best asserted) --
+launch-ready, but its premise (prior transfers, canonical starved) is now weakened
+by the prior's own floor result. AWAITING KAVEH: (i) in-play regret diagnostic,
+(ii) launch qgt8/fanreg anyway (brreg remains the canonical pathway's own gauge),
+(iii) both.
