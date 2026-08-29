@@ -19616,3 +19616,34 @@ unpunished" (hang probe, detection 1.8%) is structurally gone.
 qgt9 = qgt7 recipe (graph arm, flip-weight 3.0, fanreg OFF -- retired by qgt8) +
 punishing teacher. PRE-REGISTERED GAUGES: hang-probe detection rate (from 1.8%);
 tfacc vs copy; then re-arena if detection moves materially. 8000 steps, tmp/qgt9.log.
+
+## 2026-08-29 (Fable) — qgt9 VERDICT: punishing teacher alone does NOT cure hang-blindness at 64/2; a value-metric tax appeared instead. qgt10 (teacher+capacity) launched
+
+qgt9 completed 8000 steps, no collapse, no freeze (flip 0.010-0.042 all run, tfacc
+gap to copy 0.003-0.015 -- tighter than qgt7's). Final: BALANCED 0.450, REGRET
+0.1401, top1 0.249, vroll +0.141/+0.248/+0.239, concepts 400. (qgt7: 0.468/0.1072/
+0.324, vroll +0.19/+0.30/+0.26.)
+
+PRE-REGISTERED GAUGE — hang probe on qgt9_step8000 (printed output): "BLUNDERS
+(label gap>0.3, n=109): label 0.573 vs model 0.011 | detection rate (model gap>0.1):
+0.0%". qgt7 was 1.8%, qgt8 0.0%. The teacher fix ALONE, at transition 64/2, moved
+NOTHING on the gauge it was built for. Rolled-read best-vs-worst gap 0.007 vs label
+0.456; within-position corr 0.086.
+
+SECOND FINDING — the punishing-teacher configuration carried a value tax: from step
+2000 qgt9 ran consistently below qgt7 (balanced 0.443-0.464 vs qgt7's flat
+0.466-0.470; regret 0.12-0.18 vs 0.10-0.11) while its transition-side health was
+equal or better. Plausible mechanism: blunder-batch CE reaches the encoder, and
+sharper refuted-future targets pull capacity toward tactics the 64/2 transition
+cannot then cash in.
+
+ATTRIBUTION HEDGE (Kaveh's ruling, this morning): one-lever-at-a-time captures
+first-order effects only; fixes interact. qgt9 is the (teacher, small-T) cell. Its
+null result does NOT kill the teacher hypothesis — the natural interaction story is
+that punishment only becomes representable with more transition. That is qgt10:
+same recipe + --dyn-d 128 --dyn-layers 3 (4x QA/FFN width, 3 hops/move-unit; all
+gates pass at this size incl. exact frame axiom). Launched. Gauge unchanged: hang
+detection rate, then re-arena if it moves.
+
+Housekeeping: qgt9 trainer slept at exit after saving step8000 (suspected unclosed
+SF_ENG/oracle handle at teardown) — reaped by hand; add atexit cleanup sometime.
