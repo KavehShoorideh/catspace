@@ -19745,3 +19745,28 @@ Fix: _sf_teardown() in main()'s control flow at both exits. Gates now pass AND t
 process exits 0 on its own.
 
 qgt11 relaunched clean: T2-conditional, PV teacher, dyn 128/3, flip-weight 3.0.
+
+## 2026-08-29 (Fable) — DEPTH-20 REPLIES, ASYNC (Kaveh: "the depth 8 bothers me... depth 20 is probably what we need"; approved the async design over paying it inline)
+
+The reply to a move is the BEST MOVE OF THE CHILD POSITION -- so deep replies are
+just child labels, and the per-fen oracle pipeline covers them unchanged. Wired:
+
+- oracle tag 'sf20': depth 20, multipv 1 (all-legal multipv at d20 would be
+  minutes/position; the reply needs the best line only), time cap 2.0s (the old
+  --sf-time default of 0.05s would have silently truncated d20 to a 50ms search).
+- Trainer resolution order everywhere: d20 child label -> d10 parent pv -> live d8
+  inline; every d20 miss is queued (buffered inserts, non-blocking, score 2 =
+  proven-sampled) so coverage converges on the distribution training actually
+  touches. Child fens canonicalized (move counters zeroed) so one position reached
+  from different parents shares one label.
+- Pre-seeded the predictable half: j_best + spoiler j_a children of every corpus
+  training position (trainer selection replicated) = 240,700 unique children at
+  score 1. Random j_b children arrive organically.
+- 5 nice'd producers (x2 SF threads = the approved 10-core footprint) with restart
+  wrappers. Teacher reply quality now RAMPS d8 -> d20 across a run at zero step cost.
+
+TT-probe SF patch (one deep root search -> replies for all its children via the
+transposition table, Kaveh's idea from yesterday) stays queued as the multiplier.
+
+qgt11 unaffected mid-run (its process runs the old code; it never sees sf20 labels
+either -- qgt12 is the first consumer). Watch: qgt11 step pace under producer load.
