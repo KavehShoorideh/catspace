@@ -302,6 +302,114 @@ def latent_arena(algo: SearchAlgorithm, dyn, maia: str, games: int,
 
 
 # ---------------------------------------------------------------------------------
+WP_K = 0.00368208          # oracle_service's logistic: wp = 1/(1+exp(-k*cp))
+
+
+def _wp(score, turn_pov: bool):
+    """chess.engine score -> mover win-prob via the oracle's logistic."""
+    s = score.pov(chess.WHITE if turn_pov else chess.BLACK)
+    if s.is_mate():
+        return 1.0 if s.mate() > 0 else 0.0
+    return 1.0 / (1.0 + np.exp(-WP_K * s.score()))
+
+
+def sf_regret(engine, board: chess.Board, our_move: chess.Move,
+              movetime: float = 0.08):
+    """Regret of our_move in win-prob units, measured by Stockfish with the SAME
+    instrument on any position (corpus or in-play): wp(SF best) - wp(our move)."""
+    info = engine.analyse(board, chess.engine.Limit(time=movetime))
+    wp_best = _wp(info["score"], board.turn)
+    b2 = board.copy(); b2.push(our_move)
+    if b2.is_game_over(claim_draw=True):
+        r = b2.result(claim_draw=True)
+        wp_ours = {"1-0": 1.0, "0-1": 0.0}.get(r, 0.5)
+        if not board.turn:
+            wp_ours = 1.0 - wp_ours if r in ("1-0", "0-1") else 0.5
+        wp_ours = wp_ours if board.turn else wp_ours
+        if r == "1-0":
+            wp_ours = 1.0 if board.turn else 0.0
+        elif r == "0-1":
+            wp_ours = 0.0 if board.turn else 1.0
+        else:
+            wp_ours = 0.5
+    else:
+        info2 = engine.analyse(b2, chess.engine.Limit(time=movetime))
+        wp_ours = _wp(info2["score"], board.turn)
+    return max(0.0, wp_best - wp_ours)
+
+
+def _reg_stats(name, rs):
+    r = np.array(rs)
+    return (f"{name}: n={len(r)} mean {r.mean():.3f} median {np.median(r):.3f} "
+            f"p90 {np.percentile(r, 90):.3f} p99 {np.percentile(r, 99):.3f} | "
+            f"blunder(>0.25) {(r > 0.25).mean():.1%} catastrophic(>0.5) "
+            f"{(r > 0.5).mean():.1%}")
+
+
+def regret_probe(dyn, algo, maia: str, games: int = 24, corpus_n: int = 300,
+                 movetime: float = 0.08, seed: int = 0):
+    """Separate TAILS from TRANSFER: the same SF instrument measures our chooser's
+    regret (a) on corpus positions and (b) on the positions our own games produce.
+    Mean balloons in-play -> transfer; mean holds but tail fat -> tails."""
+    import glob as _glob
+    from catspace.research.tools.npz_io import load_npz
+    from catspace.research.tools.chess_specific.uci import UCIBoardPolicy
+    rng = np.random.default_rng(seed)
+    sf = chess.engine.SimpleEngine.popen_uci("stockfish")
+    sf.configure({"Threads": 2})
+    # (a) corpus arm, same instrument
+    corpus_r = []
+    for f in sorted(_glob.glob("data/derived/gko1_shards/shard_*.npz"))[:8]:
+        z = load_npz(f)
+        if "wdl" not in z.files:
+            continue
+        for i in np.flatnonzero(z["kind"] == 0)[:60]:
+            try:
+                b = chess.Board(str(z["fen"][i]))
+            except Exception:
+                continue
+            mv, _ = algo.choose(dyn, b, rng)
+            corpus_r.append(sf_regret(sf, b, mv, movetime))
+            if len(corpus_r) >= corpus_n:
+                break
+        if len(corpus_r) >= corpus_n:
+            break
+    print("[probe] " + _reg_stats("corpus ", corpus_r), flush=True)
+    # (b) in-play arm: real games vs maia, same instrument on OUR moves
+    play_r, ply_of = [], []
+    with UCIBoardPolicy(cmd=["lc0", f"--weights={maia}"], movetime=None,
+                        nodes=1) as opp:
+        for gi in range(games):
+            our_color = gi % 2 == 0
+            board = chess.Board()
+            orng = np.random.default_rng(20_000 + gi // 2)
+            for _ in range(2):
+                ms = list(board.legal_moves)
+                board.push(ms[int(orng.integers(len(ms)))])
+            while (not board.is_game_over(claim_draw=True) and board.ply() < 300):
+                if board.turn == our_color:
+                    mv, _ = algo.choose(dyn, board, rng)
+                    play_r.append(sf_regret(sf, board, mv, movetime))
+                    ply_of.append(board.ply())
+                else:
+                    mv = opp.move(board, rng)
+                board.push(mv)
+            if (gi + 1) % 6 == 0:
+                print("[probe] " + _reg_stats(f"in-play (g{gi+1})", play_r),
+                      flush=True)
+    sf.quit()
+    print("[probe] " + _reg_stats("corpus ", corpus_r), flush=True)
+    print("[probe] " + _reg_stats("in-play", play_r), flush=True)
+    pr = np.array(play_r); po = np.array(ply_of)
+    for lo, hi in ((0, 20), (20, 60), (60, 400)):
+        m = (po >= lo) & (po < hi)
+        if m.any():
+            print(f"[probe]   in-play plies {lo}-{hi}: mean "
+                  f"{pr[m].mean():.3f} p90 {np.percentile(pr[m], 90):.3f} "
+                  f"(n={int(m.sum())})", flush=True)
+    return corpus_r, play_r
+
+
 def _units(args):
     dyn = QGTDynamics(args.ckpt)
     b = chess.Board()
@@ -353,6 +461,9 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="")
     ap.add_argument("--algo", choices=("greedy1", "prior"), default="greedy1")
+    ap.add_argument("--regret-probe", action="store_true",
+                    help="measure our chooser's SF-regret on corpus vs in-play "
+                         "positions with one instrument (tails-vs-transfer)")
     ap.add_argument("--units", action="store_true")
     args = ap.parse_args()
     if args.units:
@@ -361,6 +472,10 @@ def main():
         from catspace.io import paths
         args.maia = paths.engine("maia/maia-1100.pb.gz")
     dyn = QGTDynamics(args.ckpt)
+    if args.regret_probe:
+        algo = Greedy1() if args.algo == "greedy1" else PriorPolicy()
+        regret_probe(dyn, algo, args.maia or "", games=24, seed=args.seed)
+        return
     print(f"[arena] dynamics: {args.ckpt} (step {dyn.step_count}, "
           f"{'graph' if dyn.graph else 'discrete'} arm) vs {args.maia} @ nodes=1",
           flush=True)
