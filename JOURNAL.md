@@ -20012,3 +20012,22 @@ compounding (scheduled sampling / longer teacher rollouts); (b) let search
 consume the sibling scorer at depth 1 (spec's split, half-implemented); (c) miner
 v2 with bit-direction events; (d) closure-vs-churn balance tuning; (e) the
 pair-typed edge codes (FSQ) upgrade; (f) MCTS-canon.
+
+## 2026-08-30 (Fable) — QUESTION AUDIT (Kaveh: "did we learn the edges -- attacks, vacations, discovery?"): a diffuse attack bias, nothing else nameable
+
+Probe (96 positions, all 171 active (layer,head,question) types on qgt14's
+transition, vs exact oracle relations; printed): 41/171 types select ATTACK pairs
+at lift 2-6x (best P=0.13, lift 5.7 -- attack-tinted, never attack-dedicated;
+a real "who attacks me" edge would be P>0.5). ZERO types crossed lift 2 for
+defends, discovery-lines, or king adjacency. The att/vac/dsc taxonomy never
+differentiated in the learned vocabulary (it still feeds the ENCODER as
+hard-coded input features -- used, not re-derived).
+
+Mechanism = SPARTAN's H1, now measured in-house: soft logit warm-start + hard
+top-k routing + no sparsity price + no supervision of SELECTED edges -> relational
+information smears across dozens of mediocre codes instead of crystallizing named
+types. Remedies queued (spec 4): pair-typed FSQ edge codes (K~128 -- room for
+vacate/discovery as distinct codes), sparsity price on routing, supervise selected
+edges. For the RULES LAYER this upgrade is load-bearing (mined rules want named
+edges to condition on) -- recommendation moved up accordingly. Audit script:
+scratchpad/audit_questions.py (promote to repo with miner v2).
