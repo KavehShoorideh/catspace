@@ -19984,3 +19984,31 @@ board mechanics exist in the rolled bits. The flip-location instrument is
 SATURATED; next miner iteration needs bit-VALUE direction and off-move squares.
 
 Arena (greedy1-canon depth-2 negamax, 60 games vs Maia-1100) running.
+
+## 2026-08-30 (Fable) — OVERNIGHT ARC COMPLETE: qgt14 battery done. Detection 18.3% (2.2x the prior best), arena 0.075 with the line's FIRST WINS vs Maia, and the material-blend control isolated a search bug from a model gain
+
+Arena (printed): with material blend 0.5: "FINAL greedy1: 0.042 [0.013,0.125]
+(+1=3-56/60)" -- the first WIN this line has ever scored against Maia-1100.
+Control with --mat-lambda 0: "FINAL greedy1: 0.075 [0.026,0.199] (+1=4-35/40)" --
+ANOTHER win, and the score doubles to the qgt11 incumbent's level. VERDICT: the
+material head is a TRAINING signal (grounding fixed free-run alignment) but at
+depth-2 free-run its read carries ~6 pawns of noise -- blending it into leaves
+poisons picks. Search reads value only until rolled-material tightens.
+
+State of the line after ~36 hours of continuous iteration:
+  tactical gauge:  1.8% -> 8.3% (reply conditioning) -> 18.3% (canon 1-ply +
+                   closure + anti-churn + material grounding)
+  arena:           0.030 floor -> 0.075 with 2 wins across 100 games
+  dynamics:        first arm above its copy baseline teacher-forced AND free-run
+                   (1 ply); 2-ply compounding (0.562 vs 0.804 copy) is the
+                   clearly-marked next dynamics frontier
+  value:           canon-best balanced 0.476, draw recall 0.28
+  layers shipped:  material head, rule miner (v2 needs directional events),
+                   sibling scorer (trained, not yet consumed by search),
+                   canon negamax search, MCTS (T2 arm)
+
+QUEUED FOR KAVEH (design choices, not autonomous calls): (a) attack the 2-ply
+compounding (scheduled sampling / longer teacher rollouts); (b) let search
+consume the sibling scorer at depth 1 (spec's split, half-implemented); (c) miner
+v2 with bit-direction events; (d) closure-vs-churn balance tuning; (e) the
+pair-typed edge codes (FSQ) upgrade; (f) MCTS-canon.
