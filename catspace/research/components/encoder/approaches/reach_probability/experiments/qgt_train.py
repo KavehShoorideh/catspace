@@ -114,6 +114,12 @@ def main():
                     help="sibling ranking on PRE-quantization carrier (canon arm)")
     ap.add_argument("--ema-tau", type=float, default=0.995,
                     help="EMA target encoder for the JEPA closure (canon arm)")
+    ap.add_argument("--closure-scale", type=float, default=0.25,
+                    help="gradient scale of the teacher BCE into the ENCODER "
+                         "(T always gets full gradient); the 8/30 collapse guard")
+    ap.add_argument("--w-var", type=float, default=1.0,
+                    help="anti-collapse bit-balance: mean(bit)^2 across the batch "
+                         "(VICReg's variance guard, scale-free for +-1 bits)")
     ap.add_argument("--dynamics", choices=("koopman", "discrete", "graph", "canon"),
                     default="koopman",
                     help="'koopman': linear carrier roll c'=Kc+Bm, quantize-after-roll "
@@ -1058,7 +1064,9 @@ def main():
         pla_np = pla.cpu().numpy()
         frm_a, to_a = _ft(mv_raw, pla_np)
         frm7, to7 = frm_a.reshape(cb, 7), to_a.reshape(cb, 7)
-        zin = q1_all[:, :6].reshape(cb * 6, 64, -1)
+        a_ = args.closure_scale                # scaled closure: same VALUES, the
+        q1_cl = q1_all * a_ + q1_all.detach() * (1 - a_)   # encoder pull damped
+        zin = q1_cl[:, :6].reshape(cb * 6, 64, -1)
         zt = qe[:, 1:].reshape(cb * 6, 64, -1)                   # sg by no_grad
         need_w = args.w_edge_warm > 0
         lg, attn0, l_qa = model.bit_trans(zin, pl_g[:, :6].reshape(cb * 6, -1),
@@ -1082,6 +1090,9 @@ def main():
             tf_copy = float((zin_p == zt).float().mean())
             MATSTAT["dead"] = float(
                 (q1_flat.mean((0, 1)).abs() > 0.95).float().mean())
+        # anti-collapse: every bit should split the batch (dead bits are the JEPA
+        # failure; measured 8/30: evenlag copy 0.167 -> 0.035 by step 500)
+        l_var = (q1_flat.mean(0) ** 2).mean() * args.w_var
         # value CE on ALL 7 rows of ONLINE bits (mover-POV; encoder counterweight)
         z7 = model.levels_from_bits(q1_flat)[0]
         W = model.readout.weight
@@ -1137,7 +1148,8 @@ def main():
             l_br = l_br + (F.softplus(-(sc[:, 0] - sc[arv, j])) * reg[arv, j]).mean()
             n_br += nv
         l_br = l_br / 3.0
-        return l_tf + l_qa + l_dq + 0.1 * l_rvq, l_val, l_br, n_lab, n_br,             tf_acc, tf_copy
+        return (l_tf + l_qa + l_dq + 0.1 * l_rvq + l_var, l_val, l_br, n_lab,
+                n_br, tf_acc, tf_copy)
 
     def fan_anchor(c_par, h_mv_par, ii, stm_b):
         """Roll the parent 1 ply through fan_k children each; CE vs each child's triple.
@@ -1782,7 +1794,8 @@ def main():
                 tail = (f"dyn {ldyn:.3f} tfacc {tfa:.3f} (copy {tfc:.3f}) flip "
                         f"{breg.get('flip', float('nan')):.3f} | matMAE "
                         f"{MATSTAT.get('s', float('nan')):.2f}/"
-                        f"{MATSTAT.get('r', float('nan')):.2f}")
+                        f"{MATSTAT.get('r', float('nan')):.2f} dead "
+                        f"{MATSTAT.get('dead', float('nan')):.2f}")
                 if GRAPH:
                     tail += (f" | cov {breg.get('cov', float('nan')):.3f} auc "
                              f"{breg.get('aucT', float('nan')):.3f}/"
