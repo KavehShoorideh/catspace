@@ -19794,3 +19794,22 @@ so detection is coming from value-relevant flips, not bit-perfect simulation.
 
 Re-arena condition MET -> greedy1 (min-over-replies) vs Maia-1100, 100 games,
 running. Priors for comparison: qgt7 greedy1 0.030 ~ prior 0.035 ~ random 0.050.
+
+## 2026-08-29 (Fable) — ARENA: qgt11 greedy1 (min-over-replies) 0.075 over 100 games vs Maia-1100 — first nonzero arena signal for the line
+
+Printed: "FINAL greedy1: 0.075 [0.038,0.144] (+0=15-85/100) | our move: mean 338ms
+median 350ms p90 576ms | 619.6 step-evals/move". Fifteen draws, no wins. Controls:
+random this seed 0.025 [0.003,0.200] (20g); historical qgt7-greedy1 0.030 (200g),
+prior 0.035. The CI lower bound (0.038) clears the qgt7 point estimate; the search
+enumerates ~620 latent rolls per decision at ~1/3 s. Consistent with the 8.3% hang
+detection: the refutation machinery works but detects only a slice of blunders.
+Under this configuration (T2-conditional + PV teacher + 128/3 -- levers moved
+together, per the attribution doctrine) the tail cracked open by a factor of ~2.5,
+from "indistinguishable from random" to "measurably not random."
+
+NEXT FORK (Kaveh, via another Fable instance): 1-PLY CANONICAL dynamics -- mirror
+board + swap colors so the mover is always the same side; parity removed by
+construction rather than by the 2-ply workaround; negamax with one operator; every
+consecutive ply a deterministic teacher pair; White-POV flip machinery and turn
+bias DELETED. Assessment given (agree; qgt11 validates the underlying principle --
+deterministic conditional targets). Awaiting Kaveh's go for the qgt12 build.
