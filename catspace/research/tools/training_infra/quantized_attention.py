@@ -103,7 +103,10 @@ class QuantizedAttention(nn.Module):
         # ---- the RESULT: quantised, so level 2 is concepts and not a hidden vector ---
         z = self.out_proj(out)
         if self.continuous_content:
-            bits, ids = z, None
+            # bounded like the LFQ it replaces (+-1), but GRADED: magnitudes
+            # survive, scale contract restored (8/30 blow-up: unbounded content
+            # + 10x dyn LR -> dyn loss 5e3, flip 0.80 by step 500)
+            bits, ids = torch.tanh(z), None
             vq_loss = torch.zeros((), device=z.device)
         else:
             bits, ids, vq_loss = self.out_vq(z, mask=tok_mask) \
