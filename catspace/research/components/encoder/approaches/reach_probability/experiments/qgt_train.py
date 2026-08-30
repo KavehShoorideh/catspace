@@ -1135,7 +1135,11 @@ def main():
         pv = F.linear(z7, W[:, :model.d_pos], model.readout.bias) + model.turn[1]
         l_val = _ce_rows(pv[fin], torch.from_numpy(CH_WDL[rows_all]).to(dev)[fin])
         if args.w_vhead > 0:
-            pvh = model.value_head(z7) + model.turn[1]
+            # DETACHED bits: the head learns to READ, it never pushes the encoder
+            # (8/30 blow-up: doubled value gradients + closure tipped the encoder
+            # into 96%-dead collapse by step 1000). The frozen-bits probe is the
+            # existence proof that reading alone recovers the value.
+            pvh = model.value_head(z7.detach()) + model.turn[1]
             l_val = l_val + args.w_vhead * _ce_rows(
                 pvh[fin], torch.from_numpy(CH_WDL[rows_all]).to(dev)[fin])
         n_lab = int(fin.sum())
@@ -1337,7 +1341,7 @@ def main():
                 pv1 = F.linear(z1b, model.readout.weight[:, :model.d_pos],
                                model.readout.bias) + model.turn[stm_c1]
                 if args.w_vhead > 0:
-                    pv1h = model.value_head(z1b) + model.turn[stm_c1]
+                    pv1h = model.value_head(z1b.detach()) + model.turn[stm_c1]
                 l_blun = _ce_rows(pv1, tg1)
                 if args.w_vhead > 0:
                     l_blun = l_blun + args.w_vhead * _ce_rows(pv1h, tg1)
@@ -1464,9 +1468,10 @@ def main():
             ema_update()
         if args.dynamics == "koopman":
             model.roller.clamp_()
-        pruner.step(step, settled=settle.update(float(loss.detach())))
+        is_settled = settle.update(float(loss.detach()))
+        pruner.step(step, settled=is_settled)
         if args.w_vhead > 0:
-            vpruner.step(step, settled=True)
+            vpruner.step(step, settled=is_settled)
 
         out = {}
         if step % args.eval_every == 0 or step == 1 or step == args.steps:
