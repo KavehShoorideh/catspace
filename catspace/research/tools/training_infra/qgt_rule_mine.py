@@ -98,20 +98,32 @@ def main():
                 reps = list(b1.legal_moves)
                 if not reps:
                     continue
-                rm = sf.play(b1, chess.engine.Limit(depth=8)).move
-                if rm is None or rm not in reps:
-                    continue
-                nxt = dyn.step(state, codes[j:j + 1], frm[j:j + 1], to[j:j + 1],
-                               frm2=torch.tensor([rm.from_square],
-                                                 device=frm.device),
-                               to2=torch.tensor([rm.to_square],
-                                                device=frm.device))
-                flips = (nxt[0] != state[0]).cpu().numpy()       # (64, B)
+                if getattr(dyn, "canon", False):
+                    # 1-ply arm: my move only; de-mirror the child state back to
+                    # the parent frame so square indexing lines up
+                    nxt = dyn.step(state, codes[j:j + 1], frm[j:j + 1],
+                                   to[j:j + 1])
+                    from catspace.research.tools.training_infra.qgt_canon \
+                        import MIRROR_PERM
+                    flips = (nxt[0][MIRROR_PERM] != state[0]).cpu().numpy()
+                else:
+                    rm = sf.play(b1, chess.engine.Limit(depth=8)).move
+                    if rm is None or rm not in reps:
+                        continue
+                    nxt = dyn.step(state, codes[j:j + 1], frm[j:j + 1],
+                                   to[j:j + 1],
+                                   frm2=torch.tensor([rm.from_square],
+                                                     device=frm.device),
+                                   to2=torch.tensor([rm.to_square],
+                                                    device=frm.device))
+                    flips = (nxt[0] != state[0]).cpu().numpy()   # (64, B)
                 where = {"to": mv.to_square, "frm": mv.from_square,
                          "hangsq": None}
-                if pr["leaves_hang"]:
+                if pr["leaves_hang"] and not getattr(dyn, "canon", False):
+                    rm2 = sf.play(b1, chess.engine.Limit(depth=8)).move
                     b2 = b1.copy(stack=False)
-                    b2.push(rm)
+                    b2.push(rm2 if rm2 in reps else reps[0])
+                    rm = rm2 if rm2 in reps else reps[0]
                     for s in chess.SquareSet(b2.occupied_co[b2.turn]):
                         if b1.piece_type_at(s) and not b2.piece_type_at(s):
                             where["hangsq"] = s                  # it got eaten

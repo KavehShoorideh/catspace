@@ -1,0 +1,857 @@
+[
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 2,
+  "conf": 0.722,
+  "base": 0.477,
+  "lift": 1.5,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 5,
+  "conf": 0.953,
+  "base": 0.952,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 11,
+  "conf": 0.953,
+  "base": 0.95,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 5,
+  "conf": 0.953,
+  "base": 0.952,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 11,
+  "conf": 0.951,
+  "base": 0.95,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 11,
+  "conf": 0.946,
+  "base": 0.95,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 5,
+  "conf": 0.942,
+  "base": 0.952,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 5,
+  "conf": 0.923,
+  "base": 0.952,
+  "lift": 1.0,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 11,
+  "conf": 0.923,
+  "base": 0.95,
+  "lift": 1.0,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 13,
+  "conf": 0.833,
+  "base": 0.738,
+  "lift": 1.1,
+  "n": 18
+ },
+ {
+  "loc": "to",
+  "pred": "quiet",
+  "bit": 7,
+  "conf": 0.907,
+  "base": 0.875,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "to_defended",
+  "bit": 8,
+  "conf": 0.897,
+  "base": 0.868,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "to",
+  "pred": "quiet",
+  "bit": 8,
+  "conf": 0.896,
+  "base": 0.868,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "to_defended",
+  "bit": 7,
+  "conf": 0.893,
+  "base": 0.875,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "to",
+  "pred": "leaves_hang",
+  "bit": 7,
+  "conf": 0.891,
+  "base": 0.875,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 8,
+  "conf": 0.889,
+  "base": 0.87,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 8,
+  "conf": 0.885,
+  "base": 0.87,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 8,
+  "conf": 0.88,
+  "base": 0.87,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 7,
+  "conf": 0.876,
+  "base": 0.857,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 7,
+  "conf": 0.876,
+  "base": 0.857,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "leaves_hang",
+  "bit": 8,
+  "conf": 0.863,
+  "base": 0.868,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 0,
+  "conf": 0.778,
+  "base": 0.732,
+  "lift": 1.1,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 16,
+  "conf": 0.778,
+  "base": 0.732,
+  "lift": 1.1,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 7,
+  "conf": 0.85,
+  "base": 0.857,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "to",
+  "pred": "to_defended",
+  "bit": 23,
+  "conf": 0.825,
+  "base": 0.787,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 17,
+  "conf": 0.813,
+  "base": 0.79,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "quiet",
+  "bit": 23,
+  "conf": 0.809,
+  "base": 0.787,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "leaves_hang",
+  "bit": 23,
+  "conf": 0.805,
+  "base": 0.787,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 17,
+  "conf": 0.803,
+  "base": 0.79,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 5,
+  "conf": 0.889,
+  "base": 0.952,
+  "lift": 0.9,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 11,
+  "conf": 0.889,
+  "base": 0.95,
+  "lift": 0.9,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 20,
+  "conf": 0.722,
+  "base": 0.662,
+  "lift": 1.1,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 17,
+  "conf": 0.789,
+  "base": 0.79,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "to",
+  "pred": "to_defended",
+  "bit": 5,
+  "conf": 0.709,
+  "base": 0.662,
+  "lift": 1.1,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 3,
+  "conf": 0.778,
+  "base": 0.762,
+  "lift": 1.0,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 10,
+  "conf": 0.778,
+  "base": 0.743,
+  "lift": 1.0,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 15,
+  "conf": 0.778,
+  "base": 0.755,
+  "lift": 1.0,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 22,
+  "conf": 0.778,
+  "base": 0.748,
+  "lift": 1.0,
+  "n": 18
+ },
+ {
+  "loc": "to",
+  "pred": "to_defended",
+  "bit": 11,
+  "conf": 0.701,
+  "base": 0.645,
+  "lift": 1.1,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 3,
+  "conf": 0.767,
+  "base": 0.762,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 19,
+  "conf": 0.692,
+  "base": 0.643,
+  "lift": 1.1,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 15,
+  "conf": 0.76,
+  "base": 0.755,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 22,
+  "conf": 0.753,
+  "base": 0.748,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 10,
+  "conf": 0.749,
+  "base": 0.743,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "to_defended",
+  "bit": 6,
+  "conf": 0.675,
+  "base": 0.632,
+  "lift": 1.1,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 13,
+  "conf": 0.74,
+  "base": 0.738,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 3,
+  "conf": 0.738,
+  "base": 0.762,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 15,
+  "conf": 0.738,
+  "base": 0.755,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 0,
+  "conf": 0.736,
+  "base": 0.732,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 16,
+  "conf": 0.736,
+  "base": 0.732,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "check",
+  "bit": 6,
+  "conf": 0.667,
+  "base": 0.632,
+  "lift": 1.1,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 22,
+  "conf": 0.728,
+  "base": 0.748,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 3,
+  "conf": 0.726,
+  "base": 0.762,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 10,
+  "conf": 0.725,
+  "base": 0.743,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 13,
+  "conf": 0.725,
+  "base": 0.738,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 15,
+  "conf": 0.722,
+  "base": 0.755,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 0,
+  "conf": 0.719,
+  "base": 0.732,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 16,
+  "conf": 0.716,
+  "base": 0.732,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 10,
+  "conf": 0.714,
+  "base": 0.743,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 22,
+  "conf": 0.714,
+  "base": 0.748,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 13,
+  "conf": 0.709,
+  "base": 0.738,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 0,
+  "conf": 0.705,
+  "base": 0.732,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 16,
+  "conf": 0.705,
+  "base": 0.732,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 8,
+  "conf": 0.778,
+  "base": 0.87,
+  "lift": 0.9,
+  "n": 18
+ },
+ {
+  "loc": "to",
+  "pred": "check",
+  "bit": 12,
+  "conf": 0.333,
+  "base": 0.162,
+  "lift": 2.1,
+  "n": 18
+ },
+ {
+  "loc": "to",
+  "pred": "to_defended",
+  "bit": 19,
+  "conf": 0.62,
+  "base": 0.572,
+  "lift": 1.1,
+  "n": 234
+ },
+ {
+  "loc": "to",
+  "pred": "check",
+  "bit": 19,
+  "conf": 0.611,
+  "base": 0.572,
+  "lift": 1.1,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 20,
+  "conf": 0.671,
+  "base": 0.662,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 20,
+  "conf": 0.668,
+  "base": 0.662,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "to",
+  "pred": "quiet",
+  "bit": 5,
+  "conf": 0.667,
+  "base": 0.662,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "leaves_hang",
+  "bit": 5,
+  "conf": 0.661,
+  "base": 0.662,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "to",
+  "pred": "leaves_hang",
+  "bit": 11,
+  "conf": 0.658,
+  "base": 0.645,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 20,
+  "conf": 0.658,
+  "base": 0.662,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "to",
+  "pred": "quiet",
+  "bit": 11,
+  "conf": 0.655,
+  "base": 0.645,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 9,
+  "conf": 0.645,
+  "base": 0.618,
+  "lift": 1.0,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 19,
+  "conf": 0.642,
+  "base": 0.643,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "quiet",
+  "bit": 6,
+  "conf": 0.64,
+  "base": 0.632,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 9,
+  "conf": 0.636,
+  "base": 0.618,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 9,
+  "conf": 0.635,
+  "base": 0.618,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "to",
+  "pred": "leaves_hang",
+  "bit": 6,
+  "conf": 0.629,
+  "base": 0.632,
+  "lift": 1.0,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "quiet",
+  "bit": 6,
+  "conf": 0.616,
+  "base": 0.612,
+  "lift": 1.0,
+  "n": 550
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 13,
+  "conf": 0.667,
+  "base": 0.738,
+  "lift": 0.9,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 7,
+  "conf": 0.722,
+  "base": 0.857,
+  "lift": 0.8,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 22,
+  "conf": 0.641,
+  "base": 0.748,
+  "lift": 0.9,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 8,
+  "conf": 0.692,
+  "base": 0.87,
+  "lift": 0.8,
+  "n": 39
+ },
+ {
+  "loc": "to",
+  "pred": "capture",
+  "bit": 5,
+  "conf": 0.615,
+  "base": 0.662,
+  "lift": 0.9,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "to_defended",
+  "bit": 19,
+  "conf": 0.603,
+  "base": 0.643,
+  "lift": 0.9,
+  "n": 234
+ },
+ {
+  "loc": "frm",
+  "pred": "leaves_hang",
+  "bit": 19,
+  "conf": 0.601,
+  "base": 0.643,
+  "lift": 0.9,
+  "n": 313
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 17,
+  "conf": 0.667,
+  "base": 0.79,
+  "lift": 0.8,
+  "n": 18
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 3,
+  "conf": 0.641,
+  "base": 0.762,
+  "lift": 0.8,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 15,
+  "conf": 0.641,
+  "base": 0.755,
+  "lift": 0.8,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 0,
+  "conf": 0.615,
+  "base": 0.732,
+  "lift": 0.8,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 10,
+  "conf": 0.615,
+  "base": 0.743,
+  "lift": 0.8,
+  "n": 39
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 16,
+  "conf": 0.615,
+  "base": 0.732,
+  "lift": 0.8,
+  "n": 39
+ },
+ {
+  "loc": "to",
+  "pred": "check",
+  "bit": 8,
+  "conf": 0.611,
+  "base": 0.868,
+  "lift": 0.7,
+  "n": 18
+ }
+]
