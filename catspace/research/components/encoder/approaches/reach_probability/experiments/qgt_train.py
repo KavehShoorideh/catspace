@@ -1002,7 +1002,7 @@ def main():
         loss = l_wdl + aux["loss_aux"]
         if args.w_mat > 0:
             mt = torch.from_numpy(MAT[ii] / 10.0).to(dev)
-            mp = model.mat_head(model.levels_from_bits(z)[0]).squeeze(-1)
+            mp = model.mat_head(z).squeeze(-1)     # z is already (B, d_pos) bits
             l_mat_s = F.huber_loss(mp, mt)
             loss = loss + args.w_mat * l_mat_s
             MATSTAT["s"] = float((mp - mt).abs().mean()) * 10.0
