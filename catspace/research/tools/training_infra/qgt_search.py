@@ -79,9 +79,9 @@ class QGTDynamics(LatentDynamics):
         self.dev = resolve_device(device)
         ck = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         A = ck["args"]
-        assert A.get("dynamics") in ("discrete", "graph"), \
+        assert A.get("dynamics") in ("discrete", "graph", "canon"), \
             f"{ckpt_path}: no bit transition (dynamics={A.get('dynamics')})"
-        self.graph = A["dynamics"] == "graph"
+        self.graph = A["dynamics"] in ("graph", "canon")
         m = QGTField(d=A["d"], layers=A["layers"], sq_bits=A["sq_bits"],
                      rvq_levels=A["rvq_levels"], mv_bits=A["mv_bits"],
                      qa_levels=A["qa_levels"], n_q=A["n_q"],
@@ -93,12 +93,14 @@ class QGTDynamics(LatentDynamics):
                   out_bits=A["out_bits"],
                   w_id_init=A.get("w_id_init", 0.5))
         if self.graph:
-            kw.update(d=A.get("dyn_d", 64), layers=A.get("dyn_layers", 2))
+            kw.update(d=A.get("dyn_d", 64), layers=A.get("dyn_layers", 2),
+                      qa_continuous=A.get("dynamics") == "canon")
         m.bit_trans = cls(**kw)
         # a T2-conditional checkpoint carries reply markers; legacy ones don't
         # (their random-init markers are never injected: step() gets no frm2)
-        self.conditional = "bit_trans.rep_from" in ck["state_dict"]
         self.canon = A.get("dynamics") == "canon"
+        self.conditional = ("bit_trans.rep_from" in ck["state_dict"]
+                            and not self.canon)   # canon never injects replies
         if self.canon:
             from catspace.research.tools.training_infra.qgt_canon import (
                 MIRROR_PERM)
