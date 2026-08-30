@@ -52,9 +52,14 @@ class QuantizedAttention(nn.Module):
     """
 
     def __init__(self, d_tok: int, n_q: int = 16, n_head: int = 4, top_k: int = 4,
-                 out_bits: int = 8, d_key: int = 32):
+                 out_bits: int = 8, d_key: int = 32, continuous_content: bool = False):
         super().__init__()
         self.n_q, self.n_head, self.top_k, self.out_bits = n_q, n_head, top_k, out_bits
+        # spec merge 8/29 ("discrete type, continuous content"): quantize the
+        # RELATION (questions/routing) but let the message VALUE stay continuous --
+        # quantizing what flows caps resolution (sibling collapse). Canon-arm
+        # transitions set this; the encoder's concept levels never do.
+        self.continuous_content = continuous_content
         self.d_key = d_key
         # WHICH question does this token ask? A hard choice among n_q, so the query is
         # discrete by construction rather than discretised afterwards.
@@ -97,11 +102,15 @@ class QuantizedAttention(nn.Module):
 
         # ---- the RESULT: quantised, so level 2 is concepts and not a hidden vector ---
         z = self.out_proj(out)
-        bits, ids, vq_loss = self.out_vq(z, mask=tok_mask) if tok_mask is not None \
-            else self.out_vq(z)
+        if self.continuous_content:
+            bits, ids = z, None
+            vq_loss = torch.zeros((), device=z.device)
+        else:
+            bits, ids, vq_loss = self.out_vq(z, mask=tok_mask) \
+                if tok_mask is not None else self.out_vq(z)
         self.last = {"question": qsoft.argmax(-1).detach(),      # (B,T,H) integer
                      "attn": attn.detach(),                      # (B,H,T,T) sparse
-                     "answer_ids": ids.detach()}
+                     "answer_ids": ids.detach() if ids is not None else None}
         return bits, {"vq_loss": vq_loss, "question": self.last["question"],
                       "attn": self.last["attn"],
                       # raw logits exposed for ST-MoE router losses (z-loss + balance);

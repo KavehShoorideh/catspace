@@ -109,7 +109,12 @@ def main():
                     help="graph arm: soft supervision of head-0 attention toward the "
                          "true attack adjacency (the WARM START, Kaveh) -- free "
                          "labels; heads/questions beyond it stay unsupervised.")
-    ap.add_argument("--dynamics", choices=("koopman", "discrete", "graph"),
+    ap.add_argument("--canon-dir", default="data/derived/gko1_canon")
+    ap.add_argument("--w-sib", type=float, default=0.5,
+                    help="sibling ranking on PRE-quantization carrier (canon arm)")
+    ap.add_argument("--ema-tau", type=float, default=0.995,
+                    help="EMA target encoder for the JEPA closure (canon arm)")
+    ap.add_argument("--dynamics", choices=("koopman", "discrete", "graph", "canon"),
                     default="koopman",
                     help="'koopman': linear carrier roll c'=Kc+Bm, quantize-after-roll "
                          "(qgt1/qgt2 -- both contracted). 'discrete' (qgt3d, Kaveh): "
@@ -175,8 +180,17 @@ def main():
     from catspace.research.components.encoder.approaches.reach_probability.experiments \
         .graph_move_policy import featurize, MV_CAP
 
-    DISC = args.dynamics in ("discrete", "graph")
-    GRAPH = args.dynamics == "graph"
+    DISC = args.dynamics in ("discrete", "graph", "canon")
+    GRAPH = args.dynamics in ("graph", "canon")
+    CANON = args.dynamics == "canon"
+    # THE CANON ARM (spec merge, Kaveh 8/29 "merge the doc like you said"): mover-
+    # canonical features (side to move always White -- parity removed at the ROOT,
+    # not worked around), ONE-PLY deterministic teacher pairs, JEPA closure (EMA
+    # target encoder trains the ENCODER toward predictable bits -- the severed
+    # direction, now with stop-grad + variance watch), sibling ranking on the
+    # continuous pre-quantization carrier, relation-only quantization in T
+    # (discrete edge TYPE, continuous message CONTENT), material grounding kept.
+    # Between plies the frame changes by the exact MIRROR_PERM.
     dev = resolve_device("auto")
     torch.manual_seed(args.seed)
     rng = np.random.default_rng(args.seed)
@@ -187,10 +201,13 @@ def main():
             "kind", "band", "tgt", "wdl", "pslot")
     store = {k: [] for k in KEYS}
     kept = 0
+    CANON_FLIP = []                       # per kept row: was the board mirrored?
     for f in sorted(glob.glob(os.path.join(args.shards, "shard_*.npz")))[:args.max_shards]:
         z = load_npz(f)
         if "wdl" not in z.files:
             continue
+        if CANON:
+            zc = load_npz(os.path.join(args.canon_dir, os.path.basename(f)))
         k = z["kind"]
         wd = z["wdl"].astype(np.float32)
         tg = z["tgt"]
@@ -202,10 +219,34 @@ def main():
         if not ok.any():
             continue
         idx = np.nonzero(ok)[0]
-        store.setdefault("_cw", []).append(wd[idx])
-        store.setdefault("_cv", []).append(fin_all[idx])
-        for key in KEYS:
-            store[key].append(np.ascontiguousarray(z[key][idx]))
+        if CANON:
+            # labels are stored in ORIGINAL move order; permute into the canonical
+            # legal order via canon_of, drop moves lost past MV_CAP (255)
+            cm = np.asarray(zc["canon_of"])[idx]                # (n, MV)
+            n_, MV_ = cm.shape
+            wd_c = np.full_like(wd[idx], np.nan)
+            tg_c = np.full_like(tg[idx], np.nan)
+            fin_c = np.zeros_like(fin_all[idx])
+            ri, ji = np.nonzero(cm != 255)
+            ci_ = cm[ri, ji].astype(np.int64)
+            wd_c[ri, ci_] = wd[idx][ri, ji]
+            tg_c[ri, ci_] = tg[idx][ri, ji]
+            fin_c[ri, ci_] = fin_all[idx][ri, ji]
+            store.setdefault("_cw", []).append(wd_c)
+            store.setdefault("_cv", []).append(fin_c)
+            store.setdefault("tgt", []).append(
+                np.where(np.isnan(tg_c), -np.inf, tg_c))
+            for key in KEYS:
+                if key == "tgt":
+                    continue                   # permuted above
+                zsrc = zc if key in zc.files else z   # labels/kind: original
+                store[key].append(np.ascontiguousarray(zsrc[key][idx]))
+            CANON_FLIP.append(np.asarray(zc["flipped"])[idx].astype(bool))
+        else:
+            store.setdefault("_cw", []).append(wd[idx])
+            store.setdefault("_cv", []).append(fin_all[idx])
+            for key in KEYS:
+                store[key].append(np.ascontiguousarray(z[key][idx]))
         store.setdefault("_fen", []).append(np.asarray(z["fen"])[idx])
         kept += 1
     D = {k: torch.from_numpy(np.concatenate(v)) for k, v in store.items() if k in KEYS}
@@ -228,7 +269,14 @@ def main():
     # MOVER-relative via SGN (gate U9).
     _raw = CW_.copy()                                         # mover-POV, kept for U9
     CY_mover = CW_.argmax(-1)
-    CW_[~STM] = CW_[~STM][..., ::-1]
+    if CANON:
+        # canonical frame: the mover IS White -- labels stay mover-POV, sign +1,
+        # and material flips with the mirror (mirror() swaps colors)
+        FLIP_C = np.concatenate(CANON_FLIP)
+        STM = np.ones_like(STM, dtype=bool)
+        MAT = MAT * np.where(FLIP_C, -1.0, 1.0).astype(np.float32)
+    else:
+        CW_[~STM] = CW_[~STM][..., ::-1]
     CY_ = CW_.argmax(-1)
     SGN = np.where(STM, 1.0, -1.0).astype(np.float32)
     CY_MOV = np.where(np.isfinite(_raw).all(-1), _raw.argmax(-1), 3)  # mover-POV cls
@@ -268,7 +316,13 @@ def main():
     # ---- chains: the REAL 6-ply chain cache (labels at every ply) -------------------
     _chg = np.load(args.chain_graphs, mmap_mode="r")
     CH_KEYS = ("sq", "gl", "mv", "mut", "vac", "dsc", "att", "n_mv", "n_att", "played")
-    CHA = {k: _chg[k] for k in CH_KEYS}       # hold once; NpzFile re-reads per access
+    if CANON:
+        _chc = np.load(os.path.join(args.canon_dir, "chains.npz"), mmap_mode="r")
+        CHA = {k: _chc[k] for k in CH_KEYS}   # canonical features + remapped played
+        CH_CANON_OF = np.asarray(_chc["canon_of"])
+        CH_FLIP = np.asarray(_chc["flipped"]).astype(bool)
+    else:
+        CHA = {k: _chg[k] for k in CH_KEYS}   # hold once; NpzFile re-reads per access
     CH_prow = np.asarray(_chg["p_row"])
     cs = np.load(args.chain_starts)
     starts, games = cs["start"], cs["game"]
@@ -289,9 +343,23 @@ def main():
     CH_FEN = cf["fen"]
     CH_STM = np.array([str(f).split()[1] == "w" for f in CH_FEN])
     CH_MAT = np.array([_material(f) for f in CH_FEN], np.float32)
+    if CANON:
+        # mover-canonical: labels stay mover-POV, every row is White-to-move,
+        # material follows the mirror; per-move branch labels permute into the
+        # canonical legal order (same construction as the corpus block)
+        CH_STM = np.ones_like(CH_STM, dtype=bool)
+        CH_MAT = CH_MAT * np.where(CH_FLIP, -1.0, 1.0).astype(np.float32)
+        cwn = np.full_like(CHW, np.nan)
+        ri, ji = np.nonzero(CH_CANON_OF != 255)
+        cix = CH_CANON_OF[ri, ji].astype(np.int64)
+        ok_ix = cix < CHW.shape[1]
+        cwn[ri[ok_ix], cix[ok_ix]] = CHW[ri[ok_ix], ji[ok_ix]]
+        CHW = cwn
+        CH_WDL = _wdl_raw.copy()
+    else:
+        CH_WDL = _wdl_raw.copy()
+        CH_WDL[~CH_STM] = CH_WDL[~CH_STM][:, ::-1]            # White-POV
     CH_SGN = np.where(CH_STM, 1.0, -1.0).astype(np.float32)
-    CH_WDL = _wdl_raw.copy()
-    CH_WDL[~CH_STM] = CH_WDL[~CH_STM][:, ::-1]                # White-POV
     CH_OK = np.isfinite(CH_WDL).all(-1) & (np.nan_to_num(_wdl_raw).sum(-1) > 0)
     print(f"[qgt] chains {len(CH_pos):,} ({len(ch_te):,} held out by GAME) | "
           f"{int(CH_OK.sum()):,}/{len(CH_OK):,} rows carry a WDL triple | "
@@ -308,7 +376,14 @@ def main():
             sq_bits=args.sq_bits, mv_bits=args.mv_bits, n_q=args.n_q,
             heads=args.attn_heads, top_k=args.top_k, out_bits=args.out_bits,
             w_id_init=args.w_id_init, d=args.dyn_d,
-            layers=args.dyn_layers).to(dev)
+            layers=args.dyn_layers, qa_continuous=CANON).to(dev)
+    if CANON:
+        # sibling ranking reads the PRE-quantization carrier (spec 2.4: the
+        # bottleneck is deliberately fuzzy; move-level discrimination must not
+        # depend on rounded bits)
+        model.sib_scorer = torch.nn.Linear(64 * args.sq_bits, 1).to(dev)
+        from catspace.research.tools.training_infra.qgt_canon import MIRROR_PERM
+        PERM_T = torch.from_numpy(MIRROR_PERM).to(dev)
     elif DISC:
         from catspace.research.tools.training_infra.qgt_field import BitTransition
         # registered as a submodule BEFORE the optimizer, so it checkpoints + trains
@@ -333,6 +408,18 @@ def main():
               f"({args.lr * args.dyn_lr_mult:g})", flush=True)
     else:
         opt = torch.optim.Adam(model.parameters(), lr=args.lr)
+    if CANON:
+        import copy as _copy
+        ema = _copy.deepcopy(model)
+        for p_ in ema.parameters():
+            p_.requires_grad_(False)
+        ema.eval()
+
+        def ema_update():
+            with torch.no_grad():
+                for pe, po in zip(ema.parameters(), model.parameters()):
+                    pe.mul_(args.ema_tau).add_(po.detach(), alpha=1 - args.ema_tau)
+
     settle = LossSettled()
     # DEVIATION, recorded: the pruner sees POSITION columns only. The move columns are
     # the entire per-child ranking capacity (32 bits); qat pruned them alongside and
@@ -611,11 +698,14 @@ def main():
         Near-identical boards, very different labels: the frozen-time optimum cannot
         fit them, and the transition gets direct 'this move drops the WDL' pairs."""
         import chess
+        from catspace.research.tools.training_infra.qgt_canon import canon as _canon
         roots, c1_boards, c2_boards, js, gs, r2 = [], [], [], [], [], []
         pick = rng.choice(tr_idx, nb * 3, replace=False)
         for g in pick:
             try:
                 b0 = chess.Board(str(FENS[g]))
+                if CANON:
+                    b0 = _canon(b0)[0]         # labels already in canonical order
             except Exception:
                 continue
             legal = list(b0.legal_moves)[:int(D["n_mv"][g])]
@@ -643,6 +733,9 @@ def main():
             pair = []
             for j in (j_a, j_b):
                 b1 = b0.copy(); b1.push(legal[j])
+                if CANON:                      # ONE ply; the reply is search's job
+                    pair.append((_canon(b1)[0], _canon(b1)[0], j))
+                    continue
                 rep = list(b1.legal_moves)[:MV_CAP]
                 if not rep:
                     okpair = False
@@ -667,7 +760,8 @@ def main():
             for b1, b2, j in pair:
                 roots.append(int(g)); c1_boards.append(b1)
                 c2_boards.append(b2); js.append(j)
-                r2.append((b2.move_stack[-1].from_square,
+                r2.append((0, 0) if CANON else
+                          (b2.move_stack[-1].from_square,
                            b2.move_stack[-1].to_square))
             if len(js) >= nb * 2:
                 break
@@ -928,6 +1022,123 @@ def main():
         l_br = l_br / 3.0
         return l_tf + l_qa + l_dq, l_val, l_br, n_lab, n_br, tf_acc, tf_copy
 
+    def T1_roll(z0, packs):
+        """Canon free-run: one PLY per step; the frame changes by MIRROR_PERM
+        after every step (parens: the STE scar)."""
+        out, z = [], z0
+        for m, frm, to in packs:
+            lg, _, _ = model.bit_trans(z, m, frm, to)
+            zb = torch.sign(lg)
+            zb = torch.where(zb == 0, torch.ones_like(zb), zb)
+            z = (zb + (lg - lg.detach()))[:, PERM_T]
+            out.append(z)
+        return out
+
+    def chain_anchor_canon(cb):
+        """THE CANON UNIT (spec merge 8/29): one PLY, mover-canonical frames.
+        Teacher: rows k -> k+1 (all six pairs), target = EMA encoder bits of the
+        child, stop-grad -- the JEPA closure: the ONLINE encoder gets gradients
+        through the transition INPUT, so bits are pressured toward predictability;
+        the value CE on all 7 rows is the anti-collapse counterweight. Copy
+        baseline in the child frame is perm(z): a stationary piece sits at the
+        mirrored token. Branch pricing is negamax: my score of a branch = MINUS
+        the child's mover-POV read."""
+        cb = min(cb, 8)                        # encoder grads on cb*7 boards
+        ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]           # (cb,7)
+        rows_all = ci.ravel()
+        sqa, mva, eda, mka, pla, mv_raw = feat_chain(rows_all)
+        c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)      # GRADS ON
+        q1_flat, l_rvq = model.rvq_bits(c_all)
+        q1_all = q1_flat.reshape(cb, 7, 64, model.sq_bits)
+        with torch.no_grad():                                    # EMA targets
+            qe = ema.rvq_bits(ema.carrier(sqa, mva, eda, mka)[0])[0]
+            qe = qe.reshape(cb, 7, 64, model.sq_bits)
+        dq_g, l_dq = dyn_codes(h_all.detach())
+        pl_g = dq_g[torch.arange(cb * 7, device=dev), pla].reshape(cb, 7, -1)
+        pla_np = pla.cpu().numpy()
+        frm_a, to_a = _ft(mv_raw, pla_np)
+        frm7, to7 = frm_a.reshape(cb, 7), to_a.reshape(cb, 7)
+        zin = q1_all[:, :6].reshape(cb * 6, 64, -1)
+        zt = qe[:, 1:].reshape(cb * 6, 64, -1)                   # sg by no_grad
+        need_w = args.w_edge_warm > 0
+        lg, attn0, l_qa = model.bit_trans(zin, pl_g[:, :6].reshape(cb * 6, -1),
+                                          frm7[:, :6].reshape(-1),
+                                          to7[:, :6].reshape(-1),
+                                          need_attn=need_w)
+        lgp = lg[:, PERM_T]                                      # child frame
+        zin_p = zin[:, PERM_T]
+        w_tf = torch.where(zin_p != zt, args.flip_weight, 1.0)             if args.flip_weight != 1.0 else None
+        l_tf = F.binary_cross_entropy_with_logits(lgp, (zt + 1) / 2, weight=w_tf)
+        if need_w:
+            from catspace.research.tools.training_infra.qgt_field import (
+                GraphBitTransition as _GBT)
+            l_tf = l_tf + args.w_edge_warm * _GBT.edge_warm_loss(
+                attn0, att_targets(ci[:, :6].ravel()))
+        if args.w_mat_roll > 0:
+            mtc = torch.from_numpy(CH_MAT[ci[:, 1:].ravel()] / 10.0).to(dev)
+            l_tf = l_tf + args.w_mat_roll * F.huber_loss(_mat_read(lgp), mtc)
+        with torch.no_grad():
+            tf_acc = float(((lgp > 0) == (zt > 0)).float().mean())
+            tf_copy = float((zin_p == zt).float().mean())
+            MATSTAT["dead"] = float(
+                (q1_flat.mean((0, 1)).abs() > 0.95).float().mean())
+        # value CE on ALL 7 rows of ONLINE bits (mover-POV; encoder counterweight)
+        z7 = model.levels_from_bits(q1_flat)[0]
+        W = model.readout.weight
+        fin = torch.from_numpy(CH_OK[rows_all]).to(dev)
+        pv = F.linear(z7, W[:, :model.d_pos], model.readout.bias) + model.turn[1]
+        l_val = _ce_rows(pv[fin], torch.from_numpy(CH_WDL[rows_all]).to(dev)[fin])
+        n_lab = int(fin.sum())
+        # 1-ply branch pricing (negamax read), rows 0/2/4; oracle replies unneeded
+        bk = args.branch_k
+        l_br = torch.zeros((), device=dev)
+        n_br = 0
+        dq_all = dq_g.detach().reshape(cb, 7, MV_CAP, -1)
+        for k in (0, 2, 4):
+            wpk = CHW[ci[:, k]]
+            cols = np.zeros((cb, bk), np.int64)
+            ok_r = np.zeros(cb, bool)
+            for r in range(cb):
+                v = np.flatnonzero(np.isfinite(wpk[r]))
+                if len(v) < 2:
+                    continue
+                b_ = v[wpk[r][v].argmax()]
+                rest = v[v != b_]
+                cols[r, 0] = b_
+                cols[r, 1:] = rng.choice(rest, bk - 1, replace=len(rest) < bk - 1)
+                ok_r[r] = True
+            if not ok_r.any():
+                continue
+            okt = torch.from_numpy(ok_r).to(dev)
+            nv = int(ok_r.sum())
+            colst = torch.from_numpy(cols[ok_r]).to(dev)
+            codes = dq_all[:, k][okt].gather(
+                1, colst[..., None].expand(-1, -1, dq_all.shape[-1])
+                ).reshape(nv * bk, -1)
+            base = q1_all.detach()[:, k][okt]
+            base = base.reshape(nv, 1, 64, -1).expand(-1, bk, -1, -1
+                                                      ).reshape(nv * bk, 64, -1)
+            rr7 = (np.arange(cb) * 7 + k)[ok_r]
+            fb, tb = _ft(mv_raw[np.repeat(rr7, bk)], cols[ok_r].ravel())
+            with torch.no_grad():
+                zbr = T1_roll(base, [(codes, fb, tb)])[0]
+            zb = model.levels_from_bits(zbr)[0]
+            pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)                 + model.turn[1]
+            sc = -(pvb[:, 0] - pvb[:, 2]).reshape(nv, bk)        # negamax
+            wsel = torch.from_numpy(
+                wpk[np.arange(cb)[ok_r][:, None], cols[ok_r]]
+                .astype(np.float32)).to(dev)
+            reg = (wsel[:, :1] - wsel).clamp(min=0)
+            if args.units:
+                assert float(reg[:, 0].abs().max()) == 0.0,                     "canon branch slot 0 is not the best move"
+            l_br = l_br + (torch.softmax(sc, -1) * reg).sum(-1).mean()
+            j = torch.randint(1, bk, (nv,), device=dev)
+            arv = torch.arange(nv, device=dev)
+            l_br = l_br + (F.softplus(-(sc[:, 0] - sc[arv, j])) * reg[arv, j]).mean()
+            n_br += nv
+        l_br = l_br / 3.0
+        return l_tf + l_qa + l_dq + 0.1 * l_rvq, l_val, l_br, n_lab, n_br,             tf_acc, tf_copy
+
     def fan_anchor(c_par, h_mv_par, ii, stm_b):
         """Roll the parent 1 ply through fan_k children each; CE vs each child's triple.
         Anti-collapse: different children carry different values."""
@@ -1037,7 +1248,8 @@ def main():
         tf_acc = tf_copy = float("nan")
         if DISC:
             l_dyn, l_ch, l_br, n_lab, n_br, tf_acc, tf_copy = \
-                chain_anchor_discrete(args.chain_batch)
+                (chain_anchor_canon if CANON else
+                 chain_anchor_discrete)(args.chain_batch)
             l_dq_c = torch.zeros((), device=dev)
         else:
             l_ch, l_br, l_dq_c, n_lab, n_br = chain_anchor(args.chain_batch)
@@ -1063,32 +1275,64 @@ def main():
                 sq1, mv1, ed1, mk1 = feat_of(R1b)
                 c1b, _, _ = model.carrier(sq1, mv1, ed1, mk1)      # encoder GRAD
                 z1b = model.levels_from_bits(model.rvq_bits(c1b)[0])[0]
-                stm_c1 = torch.from_numpy(
-                    (1 - STM[gs_b].astype(np.int64))).to(dev)
+                if CANON:                  # child read is child-mover POV:
+                    stm_c1 = torch.ones(nbp, dtype=torch.long, device=dev)
+                    tg1 = torch.from_numpy(
+                        np.ascontiguousarray(CW_[gs_b, js_b][..., ::-1])).to(dev)
+                else:
+                    stm_c1 = torch.from_numpy(
+                        (1 - STM[gs_b].astype(np.int64))).to(dev)
+                    tg1 = torch.from_numpy(CW_[gs_b, js_b]).to(dev)
                 pv1 = F.linear(z1b, model.readout.weight[:, :model.d_pos],
                                model.readout.bias) + model.turn[stm_c1]
-                tg1 = torch.from_numpy(CW_[gs_b, js_b]).to(dev)
                 l_blun = _ce_rows(pv1, tg1)
                 loss = loss + args.w_blunder * l_blun
-                # teacher half: (root bits, move) -> child-after-reply bits
+                # teacher half. Canon: (root bits, move) -> CHILD bits, one
+                # ply, EMA target, perm frame change; sibling ranking on the
+                # children's PRE-quantization carrier. T2: as before.
                 with torch.no_grad():
                     sq0b, mv0b, ed0b, mk0b = batch_of(torch.from_numpy(gs_b))
                     c0b, h0b, _ = model.carrier(sq0b, mv0b, ed0b, mk0b)
                     q0b = model.rvq_bits(c0b)[0]
-                    sq2, mv2b, ed2b, mk2b = feat_of(R2b)
-                    c2b, _, _ = model.carrier(sq2, mv2b, ed2b, mk2b)
-                    q2b = model.rvq_bits(c2b)[0]
                 dqb = dyn_codes(h0b.detach())[0]
                 code_b = dqb[torch.arange(nbp, device=dev),
                              torch.from_numpy(js_b).to(dev)]
                 fb_, tb_ = _ft(MVNP[gs_b], js_b)
-                lg_b, _, _ = T_forward(q0b, code_b, fb_, tb_,
-                                       frm2=torch.from_numpy(rep2[:, 0]).to(dev),
-                                       to2=torch.from_numpy(rep2[:, 1]).to(dev))
-                w_b = torch.where(q0b != q2b, args.flip_weight, 1.0) \
-                    if args.flip_weight != 1.0 else None
-                l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
-                    lg_b, (q2b + 1) / 2, weight=w_b)
+                if CANON:
+                    with torch.no_grad():
+                        q1c = ema.rvq_bits(ema.carrier(sq1, mv1, ed1, mk1)[0])[0]
+                    lg_b, _, _ = model.bit_trans(q0b, code_b, fb_, tb_)
+                    lg_b = lg_b[:, PERM_T]
+                    q0p = q0b[:, PERM_T]
+                    w_b = torch.where(q0p != q1c, args.flip_weight, 1.0) \
+                        if args.flip_weight != 1.0 else None
+                    l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
+                        lg_b, (q1c + 1) / 2, weight=w_b)
+                    if args.w_sib > 0:
+                        fsc = model.sib_scorer(
+                            c1b.reshape(nbp, -1)).squeeze(-1)
+                        wp_p = torch.from_numpy(
+                            TGT[gs_b, js_b].astype(np.float32)).to(dev)
+                        fa, fb2 = fsc[0::2], fsc[1::2]
+                        wa, wb2 = wp_p[0::2], wp_p[1::2]
+                        d_ = wa - wb2
+                        l_sib = (F.softplus(-torch.sign(d_) * (fa - fb2))
+                                 * d_.abs()).mean()
+                        loss = loss + args.w_sib * l_sib
+                else:
+                    with torch.no_grad():
+                        sq2, mv2b, ed2b, mk2b = feat_of(R2b)
+                        c2b, _, _ = model.carrier(sq2, mv2b, ed2b, mk2b)
+                        q2b = model.rvq_bits(c2b)[0]
+                    lg_b, _, _ = T_forward(q0b, code_b, fb_, tb_,
+                                           frm2=torch.from_numpy(
+                                               rep2[:, 0]).to(dev),
+                                           to2=torch.from_numpy(
+                                               rep2[:, 1]).to(dev))
+                    w_b = torch.where(q0b != q2b, args.flip_weight, 1.0) \
+                        if args.flip_weight != 1.0 else None
+                    l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
+                        lg_b, (q2b + 1) / 2, weight=w_b)
                 if args.w_mat_roll > 0:
                     mtb = torch.from_numpy(mat2b / 10.0).to(dev)
                     mrb = _mat_read(lg_b)
@@ -1161,6 +1405,8 @@ def main():
         opt.zero_grad(); loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         opt.step()
+        if CANON:
+            ema_update()
         if args.dynamics == "koopman":
             model.roller.clamp_()
         pruner.step(step, settled=settle.update(float(loss.detach())))
@@ -1174,7 +1420,86 @@ def main():
 
     # ---- the dual-split instrument --------------------------------------------------
     @torch.no_grad()
+    def roll_real_canon(n_ch=96):
+        """Canon instrument: 1-ply free-run over held-out chains. vroll = corr of
+        the mover-POV read vs each row's mover-POV label at plies 2/4/6; evenlag =
+        rolled-vs-true bit deltas with the PERM^k copy baseline; flip per ply."""
+        model.eval()
+        VKS = (2, 4, 6)
+        pred = {k: [] for k in VKS}
+        true = {k: [] for k in VKS}
+        dl = {k: [0.0, 0.0] for k in VKS}
+        cp = {k: [0.0, 0.0] for k in VKS}
+        flips = [0.0, 0.0]
+        gdiag = {}
+        W = model.readout.weight
+        for a in range(0, min(n_ch, len(ch_te)), 32):
+            ci = CH_pos[ch_te[a:a + 32]]
+            cb = len(ci)
+            rows_all = ci.ravel()
+            sqa, mva, eda, mka, pla, mv_raw = feat_chain(rows_all)
+            c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)
+            q1 = model.rvq_bits(c_all)[0].reshape(cb, 7, 64, model.sq_bits)
+            dq = dyn_codes(h_all)[0]
+            pl_c = dq[torch.arange(cb * 7, device=dev), pla].reshape(cb, 7, -1)
+            fa, ta = _ft(mv_raw, pla.cpu().numpy())
+            f7, t7 = fa.reshape(cb, 7), ta.reshape(cb, 7)
+            zs = T1_roll(q1[:, 0],
+                         [(pl_c[:, k], f7[:, k], t7[:, k]) for k in range(6)])
+            prev = q1[:, 0]
+            for zb_ in zs:
+                flips[0] += float((zb_ != prev[:, PERM_T]).float().mean()) * cb
+                flips[1] += cb
+                prev = zb_
+            if a == 0:
+                _, at0, _ = model.bit_trans(q1[:, 0], pl_c[:, 0], f7[:, 0],
+                                            t7[:, 0], need_attn=True)
+                gdiag["aucT"] = _auc(at0[:, 0], att_targets(ci[:, 0]))
+                tch = model.bit_trans.touched(q1[:, 0], pl_c[:, 0], f7[:, 0],
+                                              t7[:, 0])
+                flp = (q1[:, 0][:, PERM_T] != q1[:, 1]).any(-1)
+                n_f = int(flp.sum())
+                gdiag["cov"] = (float((flp & tch[:, PERM_T]).sum()) / n_f
+                                if n_f else float("nan"))
+                gdiag["aucR"] = float("nan")
+            zcopy = q1[:, 0]
+            for k in VKS:
+                zk = zs[k - 1]
+                fin = CH_OK[ci[:, k]]
+                zl = model.levels_from_bits(zk)[0]
+                pv = F.linear(zl, W[:, :model.d_pos], model.readout.bias) \
+                    + model.turn[1]
+                if fin.any():
+                    prob = (torch.softmax(pv, -1) * S3).sum(-1).cpu().numpy()[fin]
+                    tw = CH_WDL[ci[:, k]][fin]
+                    tw = tw / tw.sum(-1, keepdims=True).clip(min=1e-6)
+                    pred[k].append(prob)
+                    true[k].append(tw @ np.array([1.0, 0.5, 0.0]))
+                dl[k][0] += float((zk != q1[:, k]).float().mean()) * cb
+                dl[k][1] += cb
+                cp[k][0] += float(
+                    (zcopy != q1[:, k]).float().mean()) * cb   # PERM^even = id
+                cp[k][1] += cb
+        corr = {}
+        for k in VKS:
+            if pred[k]:
+                pz = np.concatenate(pred[k]); tz = np.concatenate(true[k])
+                corr[k] = (float(np.corrcoef(pz, tz)[0, 1])
+                           if pz.std() > 1e-9 and tz.std() > 1e-9 else 0.0)
+            else:
+                corr[k] = float("nan")
+        delta = {k: dl[k][0] / max(dl[k][1], 1) for k in dl}
+        copy = {k: cp[k][0] / max(cp[k][1], 1) for k in cp}
+        breg = {k: float("nan") for k in (2, 4, 6)}
+        breg["rnd"] = float("nan")
+        breg["flip"] = flips[0] / max(flips[1], 1)
+        breg.update(gdiag)
+        return corr, VKS, delta, copy, breg
+
+    @torch.no_grad()
     def roll_real(n_ch=192, lag_sub=48, br_k=8):
+        if CANON:
+            return roll_real_canon()
         """Held-out REAL chains: rolled-value corr at 1/3/6 + even-lag bit deltas +
         BRANCH REGRET at landing plies 1/3/6 (how much win-prob the model's pick among
         br_k sampled multiPV moves gives up, read from the ROLLED branch state; brnd =
@@ -1356,6 +1681,8 @@ def main():
     def roll_random(n_root=24):
         """RANDOM-UNIFORM constructed sequences: even-lag bit deltas (no labels)."""
         import chess
+        if CANON:
+            return {}
         model.eval()
         ero = np.random.default_rng(1)
         roots = te_idx[ero.choice(len(te_idx), min(n_root, len(te_idx)), replace=False)]
@@ -1504,6 +1831,80 @@ def main():
         return
 
     # ---- gates ----------------------------------------------------------------------
+    if args.units and CANON:
+        # C-GATES (the canon arm's battery; the U/D battery assumes White-POV
+        # flips and 2-ply semantics). Taxonomy unchanged: implementation kills,
+        # science alerts.
+        import chess as _ch
+        from catspace.research.tools.training_infra.qgt_canon import (
+            canon as _cn, from_canon as _fc)
+        # C1 [impl]: mover-canonical everywhere
+        assert bool(np.all(STM)) and bool(np.all(CH_STM)), "canon STM not all-White"
+        # C2 [impl]: chain ply integrity -- canon played move replays the chain
+        ci_t = CH_pos[ch_tr[:4]]
+        for r in range(4):
+            for k in range(6):
+                b_ = _ch.Board(str(CH_FEN[ci_t[r, k]]))
+                cb_, fl_ = _cn(b_)
+                pj = int(CHA["played"][ci_t[r, k]])
+                mvc = list(cb_.legal_moves)[pj]
+                b_.push(_fc(mvc, fl_))
+                want = str(CH_FEN[ci_t[r, k + 1]]).split()
+                got = b_.fen().split()
+                assert got[:2] == want[:2],                     f"C2 ply integrity broken at chain {r} ply {k}"
+        # C3 [impl]: frame axiom exact + PERM involution
+        with torch.no_grad():
+            sqg, mvg, edg, mkg, plg, mvrg = feat_chain(ci_t[:, 0])
+            cg, hg, _ = model.carrier(sqg, mvg, edg, mkg)
+            q1g = model.rvq_bits(cg)[0]
+            codeg = dyn_codes(hg)[0][torch.arange(4, device=dev), plg]
+            fg, tg = _ft(mvrg, plg.cpu().numpy())
+            model.train()
+            lg_g, _, _ = model.bit_trans(q1g, codeg, fg, tg)
+            tchg = model.bit_trans.touched(q1g, codeg, fg, tg)
+            if bool((~tchg).any()):
+                du = float((lg_g - model.bit_trans.w_id * q1g)[~tchg].abs().max())
+                assert du == 0.0, f"C3 frame axiom broken: {du}"
+            assert bool((lg_g[:, PERM_T][:, PERM_T] == lg_g).all()), "PERM not involution"
+        # C4 [impl]: material sign follows the mirror
+        fl_rows = np.flatnonzero(CH_FLIP)[:4]
+        for r_ in fl_rows:
+            assert abs(CH_MAT[r_] + _material(CH_FEN[r_])) < 1e-6,                 "C4 flipped-row material sign wrong"
+        # C5 [impl]: EMA moves toward online after a perturbation
+        with torch.no_grad():
+            before = ema.carrier_proj.weight.clone()
+            model.carrier_proj.weight.add_(1.0)
+        ema_update()
+        moved = float((ema.carrier_proj.weight - before).abs().max())
+        with torch.no_grad():
+            model.carrier_proj.weight.sub_(1.0)
+        assert 0 < moved < 1.0, f"C5 EMA update wrong: moved {moved}"
+        # C6 [impl]: the canon anchor runs end to end, losses finite, grads reach
+        # the ENCODER through the teacher (the closure direction) + sibling head
+        l_dyn_c, l_val_c, l_br_c, nl, nb_, tfa_c, tfc_c = chain_anchor_canon(4)
+        assert all(torch.isfinite(x) for x in (l_dyn_c, l_val_c, l_br_c))
+        g_enc = torch.autograd.grad(l_dyn_c, model.carrier_proj.weight,
+                                    retain_graph=True, allow_unused=True)[0]
+        assert g_enc is not None and float(g_enc.abs().sum()) > 0,             "C6 closure broken: teacher loss does not reach the encoder"
+        bb_c = blunder_batch(4)
+        assert bb_c is not None
+        _, js_c, R1c, _, _, mat_c = bb_c
+        sq1c, mv1c, ed1c, mk1c = feat_of(R1c)
+        c1c, _, _ = model.carrier(sq1c, mv1c, ed1c, mk1c)
+        f_c = model.sib_scorer(c1c.reshape(len(js_c), -1)).squeeze(-1)
+        g_sib = torch.autograd.grad(f_c.sum(), model.carrier_proj.weight,
+                                    allow_unused=True)[0]
+        assert g_sib is not None and float(g_sib.abs().sum()) > 0,             "C6 sibling scorer does not reach the carrier"
+        print(f"  C1-C6 PASS canon arm: all-White frames; ply integrity replayed; "
+              f"frame axiom exact ({int((~tchg).sum())}/256 untouched) + PERM "
+              f"involution; material sign mirrored; EMA live; closure gradient "
+              f"reaches the encoder; sibling head reaches the carrier "
+              f"(anchor tfacc {tfa_c:.3f} / copy {tfc_c:.3f}; dead-bit frac "
+              f"{MATSTAT.get('dead', float('nan')):.3f} [science])")
+        print("  ALL QGT GATES PASS")
+        _sf_teardown()
+        return
+
     if args.units:
         idx = torch.from_numpy(rng.choice(tr_idx, 8, replace=False))
         ii = idx.numpy()

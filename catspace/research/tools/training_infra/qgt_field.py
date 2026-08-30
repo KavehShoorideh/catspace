@@ -213,7 +213,7 @@ class GraphBitTransition(nn.Module):
     are indistinguishable from queening (rare; recorded, accepted)."""
 
     def __init__(self, sq_bits=24, mv_bits=32, d=64, layers=2, n_q=16, heads=4,
-                 top_k=4, out_bits=8, w_id_init=0.5):
+                 top_k=4, out_bits=8, w_id_init=0.5, qa_continuous=False):
         super().__init__()
         from catspace.research.tools.training_infra.quantized_attention import (
             QuantizedAttention)
@@ -221,9 +221,9 @@ class GraphBitTransition(nn.Module):
         self.emb = nn.Linear(sq_bits, d)
         self.mv_from = nn.Linear(mv_bits, d)
         self.mv_to = nn.Linear(mv_bits, d)
-        self.qa = nn.ModuleList([QuantizedAttention(d, n_q=n_q, n_head=heads,
-                                                    top_k=top_k, out_bits=out_bits)
-                                 for _ in range(layers)])
+        self.qa = nn.ModuleList([QuantizedAttention(
+            d, n_q=n_q, n_head=heads, top_k=top_k, out_bits=out_bits,
+            continuous_content=qa_continuous) for _ in range(layers)])
         self.proj = nn.ModuleList([nn.Linear(out_bits, d) for _ in range(layers)])
         self.ffn = nn.ModuleList([nn.Sequential(nn.Linear(d, 2 * d), nn.GELU(),
                                                 nn.Linear(2 * d, d))
