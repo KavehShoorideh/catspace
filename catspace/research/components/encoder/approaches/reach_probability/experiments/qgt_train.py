@@ -109,6 +109,12 @@ def main():
                     help="graph arm: soft supervision of head-0 attention toward the "
                          "true attack adjacency (the WARM START, Kaveh) -- free "
                          "labels; heads/questions beyond it stay unsupervised.")
+    ap.add_argument("--w-vhead", type=float, default=0.0,
+                    help="DEDICATED value head (roadmap step 3; frozen-bits probe "
+                         "8/29: refit on same bits recovered +0.11 balanced and "
+                         "0.37 draw recall the shared 5-objective readout loses). "
+                         "Own linear on position bits, own pruner to the same "
+                         "400 budget; when on, ALL position-value reads use it")
     ap.add_argument("--edge-mode", choices=("question", "pair"),
                     default="question",
                     help="transition edge typing: query-side questions (qgt6) or "
@@ -412,6 +418,8 @@ def main():
     # is a MATERIAL event; grounding rolled states in exact material is what makes
     # captures exist in the rolled bits for search to see.
     model.mat_head = torch.nn.Linear(model.d_pos, 1).to(dev)
+    if args.w_vhead > 0:
+        model.value_head = torch.nn.Linear(model.d_pos, 3).to(dev)
     n_par = sum(p.numel() for p in model.parameters())
     if DISC and args.dyn_lr_mult != 1.0:
         _bt = {id(p) for p in model.bit_trans.parameters()}
@@ -445,6 +453,20 @@ def main():
         _pos_cols = model.readout.weight[:, :model.d_pos]
     pruner = ConceptPruner(_pos_cols, args.l1_target,
                            args.steps, interval=args.prune_every)
+    if args.w_vhead > 0:
+        with torch.no_grad():
+            _v_cols = model.value_head.weight
+        vpruner = ConceptPruner(_v_cols, args.l1_target, args.steps,
+                                interval=args.prune_every)
+
+    def _pv_read(z, stm_idx):
+        """THE position-value read. With the dedicated head, value stops sharing
+        weights with ranking/branch/material/pruning objectives."""
+        if args.w_vhead > 0:
+            return model.value_head(z) + model.turn[stm_idx]
+        W = model.readout.weight
+        return F.linear(z, W[:, :model.d_pos], model.readout.bias) \
+            + model.turn[stm_idx]
     print(f"[qgt] {n_par:,} params | carrier 64x{args.sq_bits} | levels: RVQ "
           f"{args.rvq_levels} + QA {args.qa_levels} | readout {model.d_pos}+{args.mv_bits}"
           f" -> prune position cols to {args.l1_target} (move cols exempt)", flush=True)
@@ -1112,6 +1134,10 @@ def main():
         fin = torch.from_numpy(CH_OK[rows_all]).to(dev)
         pv = F.linear(z7, W[:, :model.d_pos], model.readout.bias) + model.turn[1]
         l_val = _ce_rows(pv[fin], torch.from_numpy(CH_WDL[rows_all]).to(dev)[fin])
+        if args.w_vhead > 0:
+            pvh = model.value_head(z7) + model.turn[1]
+            l_val = l_val + args.w_vhead * _ce_rows(
+                pvh[fin], torch.from_numpy(CH_WDL[rows_all]).to(dev)[fin])
         n_lab = int(fin.sum())
         # 1-ply branch pricing (negamax read), rows 0/2/4; oracle replies unneeded
         bk = args.branch_k
@@ -1310,7 +1336,11 @@ def main():
                     tg1 = torch.from_numpy(CW_[gs_b, js_b]).to(dev)
                 pv1 = F.linear(z1b, model.readout.weight[:, :model.d_pos],
                                model.readout.bias) + model.turn[stm_c1]
+                if args.w_vhead > 0:
+                    pv1h = model.value_head(z1b) + model.turn[stm_c1]
                 l_blun = _ce_rows(pv1, tg1)
+                if args.w_vhead > 0:
+                    l_blun = l_blun + args.w_vhead * _ce_rows(pv1h, tg1)
                 loss = loss + args.w_blunder * l_blun
                 # teacher half. Canon: (root bits, move) -> CHILD bits, one
                 # ply, EMA target, perm frame change; sibling ranking on the
@@ -1435,6 +1465,8 @@ def main():
         if args.dynamics == "koopman":
             model.roller.clamp_()
         pruner.step(step, settled=settle.update(float(loss.detach())))
+        if args.w_vhead > 0:
+            vpruner.step(step, settled=True)
 
         out = {}
         if step % args.eval_every == 0 or step == 1 or step == args.steps:
@@ -1492,8 +1524,7 @@ def main():
                 zk = zs[k - 1]
                 fin = CH_OK[ci[:, k]]
                 zl = model.levels_from_bits(zk)[0]
-                pv = F.linear(zl, W[:, :model.d_pos], model.readout.bias) \
-                    + model.turn[1]
+                pv = _pv_read(zl, 1)
                 if fin.any():
                     prob = (torch.softmax(pv, -1) * S3).sum(-1).cpu().numpy()[fin]
                     tw = CH_WDL[ci[:, k]][fin]

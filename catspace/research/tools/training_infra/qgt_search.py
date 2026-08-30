@@ -108,6 +108,8 @@ class QGTDynamics(LatentDynamics):
             self.PERM = torch.from_numpy(MIRROR_PERM).to(self.dev)
         if "mat_head.weight" in ck["state_dict"]:
             m.mat_head = torch.nn.Linear(m.d_pos, 1)
+        if "value_head.weight" in ck["state_dict"]:
+            m.value_head = torch.nn.Linear(m.d_pos, 3)
         if "sib_scorer.weight" in ck["state_dict"]:
             m.sib_scorer = torch.nn.Linear(
                 ck["state_dict"]["sib_scorer.weight"].shape[1], 1)
@@ -238,9 +240,12 @@ class QGTDynamics(LatentDynamics):
     @torch.no_grad()
     def value(self, state, stm: int):
         z = self.model.levels_from_bits(state)[0]
-        W = self.model.readout.weight
-        pv = torch.nn.functional.linear(z, W[:, :self.model.d_pos],
-                                        self.model.readout.bias)
+        if hasattr(self.model, "value_head"):     # the DEDICATED head (qgt16+)
+            pv = self.model.value_head(z)
+        else:
+            W = self.model.readout.weight
+            pv = torch.nn.functional.linear(z, W[:, :self.model.d_pos],
+                                            self.model.readout.bias)
         pv = pv + self.model.turn[torch.full((len(z),), int(stm), dtype=torch.long,
                                              device=self.dev)]
         return torch.softmax(pv, -1)
