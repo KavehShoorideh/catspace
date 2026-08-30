@@ -19896,3 +19896,33 @@ per move @64 tree nodes. Gates pass.
 WAITING ON qgt12 (~4-5h): then hang probe (WDL and material detection lines),
 MCTS-vs-greedy1 arena on the same checkpoint, and the rule miner rerun (does
 "capture -> to-square bits flip" appear once material grounding forces it?).
+
+## 2026-08-30 (Fable) — qgt13 (canon arm) survived two textbook failures in its first hour, and then did the thing no arm has ever done: tfacc CROSSED COPY
+
+Launch v1 (00:0x): BLOW-UP by step 500 -- dyn loss 4,964, flip 0.80. Mechanism:
+removing the LFQ from the QA content path removed its +-1 BOUND; unbounded
+messages + the 10x dynamics LR ran away. Fix: tanh on the continuous content --
+graded magnitudes kept, scale contract restored ("continuous" never meant
+"unbounded").
+
+Launch v2: REPRESENTATION COLLAPSE by step 500 -- evenlag copy baseline shrank
+0.167 -> 0.035 (positions plies apart encoding near-identically); the closure
+gradient out-muscled the value CE, exactly the spec's pitfalls-list JEPA warning.
+Fixes (their prescription, our form): closure gradient scaled to 0.25x into the
+encoder (T keeps full gradient); bit-balance variance term mean(bit)^2 across the
+batch; dead-bit fraction added to the heartbeat.
+
+Launch v3 (00:4x): STABLE, and at step 500 the strongest heartbeat this line has
+printed: tfacc 0.577 vs copy 0.460 -- the FIRST TIME IN THE PROJECT a learned
+transition beat its copy baseline (five T2-era runs never crossed once); dead
+0.00; evenlag baselines healthy and growing; auc 0.679 (record); rolled matMAE
+3.13 (record); vroll spiked +0.43/+0.56/+0.38 (partly batch noise -- 1000 read
++0.18/+0.25/+0.22, still strong). Step 1000: tfacc 0.539 vs copy 0.485, margin
+narrowed but held. WATCH: flip 0.90 -> 0.93 rising (true per-ply change ~0.5);
+prior arms' over-flip self-corrected by ~2000-3000 -- if this one doesn't, the
+flip-weight (3.0, tuned against copy-collapse that no longer exists) is the
+first suspect for qgt14.
+
+Battery on completion (~06:00): canon hang probe + MCTS arena need canon support
+in QGTDynamics (encode canonicalizes, step applies PERM, negamax sign) -- BUILD
+BEFORE the run lands.
