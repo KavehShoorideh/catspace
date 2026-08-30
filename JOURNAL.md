@@ -20054,3 +20054,27 @@ routing. The FUNCTIONAL gain is real regardless.
 
 Detection ladder: 1.8 -> 8.3 (conditioning) -> 18.3 (canon+anti-churn+material)
 -> 23.9 (pair edges). Arena (40g, no-mat) running.
+
+## 2026-08-30 (Fable) — qgt16 VERDICT (dedicated value head): detection 12.8% (down from 23.9), static balanced UNCHANGED at 0.52 but the class profile rebalanced (draw recall 0.12 -> 0.34 at the cost of W recall). One real collapse en route, fixed by DETACHING the head
+
+v1 collapsed by step 1000 (dyn 57k, 96% dead bits): the head's extra CE gradient
+into the encoder, stacked on closure+material+the vpruner's premature settled=True,
+tipped the encoder over. v2 = head on DETACHED bits (the frozen-probe recipe
+literally) + shared settle signal: stable to 8000, dead 0.00 throughout.
+
+Probe (printed): detection 12.8% (qgt15 23.9, qgt14 18.3); free-run 1-ply
+agreement 0.586 vs copy 0.616 (back below copy -- this run's dynamics churned
+worse: drift 0.43-0.53 all run, flip stuck ~0.65 despite w-sparse). Static value
+head-to-head on 1500 true positions (printed): shared 0.523 (W/D/L
+0.91/0.12/0.55) vs vhead 0.522 (0.76/0.34/0.47) -- SAME balanced, rebalanced
+toward draws. The interference hypothesis was half right: the shared readout
+sacrifices the draw class, and a dedicated head recovers it -- but no net gain,
+and it cannot rescue a churny transition. Arena skipped (pre-registered condition
+not met).
+
+EMERGING THEME, flagged honestly: run-to-run variance in the canon arm is now
+comparable to lever effects (qgt15 vs qgt16 differ in dynamics profile far more
+than their configs suggest). Single-run attributions are weakening; the next
+comparisons that matter should be seeded replicates, or levers with effects big
+enough to clear the variance band. Detection ladder stands: 1.8 -> 8.3 -> 18.3 ->
+23.9 (qgt15, the incumbent detector) -> 12.8.
