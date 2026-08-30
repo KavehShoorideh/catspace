@@ -127,6 +127,10 @@ def main():
                     help="teacher-forced BCE weight on bits that CHANGE between "
                          "consecutive true positions (~24-30%% of bits). 1.0 = plain "
                          "BCE. Held in reserve; LR was the binding constraint.")
+    ap.add_argument("--w-mat", type=float, default=0.3,
+                    help="static material-head loss (0 = off)")
+    ap.add_argument("--w-mat-roll", type=float, default=1.0,
+                    help="rolled-material consistency on teacher steps (0 = off)")
     ap.add_argument("--dyn-d", type=int, default=64,
                     help="transition width (GraphBitTransition d)")
     ap.add_argument("--dyn-layers", type=int, default=2,
@@ -209,6 +213,16 @@ def main():
     CV_ = np.concatenate(store["_cv"])                        # (N, MV_CAP) bool
     FENS = np.concatenate(store["_fen"])
     STM = np.array([str(f).split()[1] == "w" for f in FENS])
+
+    _PV_VAL = {"P": 1, "N": 3, "B": 3, "R": 5, "Q": 9}
+
+    def _material(fen):
+        """White-POV material balance from the fen's board field (exact, free)."""
+        bd = str(fen).split()[0]
+        return float(sum(v * (bd.count(k) - bd.count(k.lower()))
+                         for k, v in _PV_VAL.items()))
+
+    MAT = np.array([_material(f) for f in FENS], np.float32)
     # WHITE-POV: flip W<->L wherever Black is to move (inputs are absolute-color and
     # labels were the only mover-POV pressure -- verified 2026-08-27). Ranking stays
     # MOVER-relative via SGN (gate U9).
@@ -274,6 +288,7 @@ def main():
     cf = np.load(args.chain_fens)                             #   per-move win-probs
     CH_FEN = cf["fen"]
     CH_STM = np.array([str(f).split()[1] == "w" for f in CH_FEN])
+    CH_MAT = np.array([_material(f) for f in CH_FEN], np.float32)
     CH_SGN = np.where(CH_STM, 1.0, -1.0).astype(np.float32)
     CH_WDL = _wdl_raw.copy()
     CH_WDL[~CH_STM] = CH_WDL[~CH_STM][:, ::-1]                # White-POV
@@ -301,6 +316,11 @@ def main():
                                         n_q=args.n_q, heads=args.attn_heads,
                                         top_k=args.top_k, out_bits=args.out_bits,
                                         w_id_init=args.w_id_init).to(dev)
+    # MATERIAL HEAD (Kaveh 8/29: "a basic value function... so that I don't hang
+    # a queen"): linear on the position concepts -> White-POV material/10. A hang
+    # is a MATERIAL event; grounding rolled states in exact material is what makes
+    # captures exist in the rolled bits for search to see.
+    model.mat_head = torch.nn.Linear(model.d_pos, 1).to(dev)
     n_par = sum(p.numel() for p in model.parameters())
     if DISC and args.dyn_lr_mult != 1.0:
         _bt = {id(p) for p in model.bit_trans.parameters()}
@@ -385,6 +405,16 @@ def main():
         if GRAPH:
             return model.bit_trans.roll_bits(z0, packs)
         return model.bit_trans.roll_bits(z0, [p[0] for p in packs])
+
+    def _mat_read(lg):
+        """Material read of a TEACHER-STEP state via STE bits (parens load-bearing:
+        the sign() scar). Gradients reach T and mat_head, never the encoder."""
+        zb = torch.sign(lg)
+        zb = torch.where(zb == 0, torch.ones_like(zb), zb)
+        zs_ = zb + (lg - lg.detach())
+        return model.mat_head(model.levels_from_bits(zs_)[0]).squeeze(-1)
+
+    MATSTAT = {}
 
     def _auc(logits, targets):
         """ROC-AUC of flat logits vs 0/1 targets (rank formula); 0.5 = chance."""
@@ -644,8 +674,9 @@ def main():
         if not js:
             return None
         gs = np.array(roots, np.int64)
+        m2b = np.array([_material(b.fen()) for b in c2_boards], np.float32)
         return (gs, np.array(js, np.int64), build_rows(c1_boards),
-                build_rows(c2_boards), np.array(r2, np.int64))
+                build_rows(c2_boards), np.array(r2, np.int64), m2b)
 
     def att_targets(rows):
         """(n,64,64) float attack adjacency from the chain graph arrays -- the
@@ -800,6 +831,10 @@ def main():
             tgt_rows = ci[:, :5].ravel()
             l_tf = l_tf + args.w_edge_warm * _GBT.edge_warm_loss(
                 attn0, att_targets(tgt_rows))
+        if args.w_mat_roll > 0:
+            mtc = torch.from_numpy(
+                CH_MAT[ci[:, 2:].ravel()] / 10.0).to(dev)
+            l_tf = l_tf + args.w_mat_roll * F.huber_loss(_mat_read(lg), mtc)
         with torch.no_grad():
             tf_acc = float(((lg > 0) == (zt > 0)).float().mean())
             tf_copy = float((zin == zt).float().mean())
@@ -965,6 +1000,12 @@ def main():
         l_wdl = (ce * w).sum() / w.sum().clamp(min=1e-6)
         assert torch.isfinite(l_wdl), "WDL loss is not finite"
         loss = l_wdl + aux["loss_aux"]
+        if args.w_mat > 0:
+            mt = torch.from_numpy(MAT[ii] / 10.0).to(dev)
+            mp = model.mat_head(model.levels_from_bits(z)[0]).squeeze(-1)
+            l_mat_s = F.huber_loss(mp, mt)
+            loss = loss + args.w_mat * l_mat_s
+            MATSTAT["s"] = float((mp - mt).abs().mean()) * 10.0
 
         # EXPECTED REGRET + PAIRWISE ANTI-DEGENERACY (qat9's proven pair, verbatim)
         l_rank = torch.zeros((), device=dev)
@@ -1017,7 +1058,7 @@ def main():
         if DISC and args.w_blunder > 0 and args.blunder_batch > 0:
             bb = blunder_batch(args.blunder_batch)
             if bb is not None:
-                gs_b, js_b, R1b, R2b, rep2 = bb
+                gs_b, js_b, R1b, R2b, rep2, mat2b = bb
                 nbp = len(gs_b)
                 sq1, mv1, ed1, mk1 = feat_of(R1b)
                 c1b, _, _ = model.carrier(sq1, mv1, ed1, mk1)      # encoder GRAD
@@ -1048,6 +1089,11 @@ def main():
                     if args.flip_weight != 1.0 else None
                 l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
                     lg_b, (q2b + 1) / 2, weight=w_b)
+                if args.w_mat_roll > 0:
+                    mtb = torch.from_numpy(mat2b / 10.0).to(dev)
+                    mrb = _mat_read(lg_b)
+                    l_dyn = l_dyn + args.w_mat_roll * F.huber_loss(mrb, mtb)
+                    MATSTAT["r"] = float((mrb - mtb).abs().mean()) * 10.0
         # FAN-TO-REGRET (qgt8): rank ROLLED reads of K children with the prior's
         # own loss form; world model and encoder untouched (all rolling no_grad)
         l_freg = torch.zeros((), device=dev)
@@ -1407,7 +1453,9 @@ def main():
             if DISC:
                 rho = float("nan")
                 tail = (f"dyn {ldyn:.3f} tfacc {tfa:.3f} (copy {tfc:.3f}) flip "
-                        f"{breg.get('flip', float('nan')):.3f}")
+                        f"{breg.get('flip', float('nan')):.3f} | matMAE "
+                        f"{MATSTAT.get('s', float('nan')):.2f}/"
+                        f"{MATSTAT.get('r', float('nan')):.2f}")
                 if GRAPH:
                     tail += (f" | cov {breg.get('cov', float('nan')):.3f} auc "
                              f"{breg.get('aucT', float('nan')):.3f}/"
@@ -1636,9 +1684,11 @@ def main():
             # a [science] alert)
             bb6 = blunder_batch(6)
             assert bb6 is not None, "blunder stream produced nothing"
-            gs6, js6, R16, R26, rep6 = bb6
+            gs6, js6, R16, R26, rep6, mat6 = bb6
             assert rep6.shape == (len(gs6), 2) and int(rep6.max()) < 64, \
                 "reply squares malformed"
+            assert np.isfinite(mat6).all() and np.abs(mat6).max() <= 39, \
+                "material labels malformed"
             gap6 = float(np.mean(np.abs(
                 TGT[gs6[::2], js6[::2]] - TGT[gs6[1::2], js6[1::2]])))
             sq16, mv16, ed16, mk16 = feat_of(R16)
@@ -1656,6 +1706,35 @@ def main():
                       flush=True)
             print(f"  D6 PASS blunder stream: {len(gs6)} constructed children, "
                   f"mean |dwp| between sampled children {gap6:.3f}, CE reaches the encoder")
+
+            # D7: material grounding (implementation wiring). No 39-cap:
+            # promotions push balance past standard-start material (found 8/29)
+            assert np.isfinite(MAT).all() and np.isfinite(CH_MAT).all()
+            assert np.percentile(np.abs(MAT), 95) <= 39, "material labels implausible"
+            with torch.no_grad():
+                sq0d, mv0d, ed0d, mk0d = batch_of(torch.from_numpy(gs6))
+                c0d, h0d, _ = model.carrier(sq0d, mv0d, ed0d, mk0d)
+                q0d = model.rvq_bits(c0d)[0]
+            dqd = dyn_codes(h0d.detach())[0]
+            cded = dqd[torch.arange(len(gs6), device=dev),
+                       torch.from_numpy(js6).to(dev)]
+            fdd, tdd = _ft(MVNP[gs6], js6)
+            lg_d, _, _ = T_forward(q0d, cded, fdd, tdd,
+                                   frm2=torch.from_numpy(rep6[:, 0]).to(dev),
+                                   to2=torch.from_numpy(rep6[:, 1]).to(dev))
+            l_mr = F.huber_loss(_mat_read(lg_d),
+                                torch.from_numpy(mat6 / 10.0).to(dev))
+            gT = torch.autograd.grad(l_mr, model.bit_trans.out.weight,
+                                     retain_graph=True, allow_unused=True)[0]
+            gM = torch.autograd.grad(l_mr, model.mat_head.weight,
+                                     allow_unused=True)[0]
+            assert gT is not None and float(gT.abs().sum()) > 0, \
+                "rolled-material loss does not reach the transition"
+            assert gM is not None and float(gM.abs().sum()) > 0, \
+                "rolled-material loss does not reach mat_head"
+            print(f"  D7 PASS material grounding: labels exact "
+                  f"(corpus max |{np.abs(MAT).max():.0f}|), rolled-material loss "
+                  f"reaches T and mat_head")
 
 
         logit.sum().backward()

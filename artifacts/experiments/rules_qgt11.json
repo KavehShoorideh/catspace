@@ -1,0 +1,119 @@
+[
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 0,
+  "conf": 0.381,
+  "base": 0.043,
+  "lift": 8.8,
+  "n": 42
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 5,
+  "conf": 0.381,
+  "base": 0.045,
+  "lift": 8.5,
+  "n": 42
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 19,
+  "conf": 0.381,
+  "base": 0.045,
+  "lift": 8.5,
+  "n": 42
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 4,
+  "conf": 0.381,
+  "base": 0.055,
+  "lift": 6.9,
+  "n": 42
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 8,
+  "conf": 0.381,
+  "base": 0.057,
+  "lift": 6.7,
+  "n": 42
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 0,
+  "conf": 0.304,
+  "base": 0.043,
+  "lift": 7.0,
+  "n": 23
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 5,
+  "conf": 0.304,
+  "base": 0.045,
+  "lift": 6.8,
+  "n": 23
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 19,
+  "conf": 0.304,
+  "base": 0.045,
+  "lift": 6.8,
+  "n": 23
+ },
+ {
+  "loc": "frm",
+  "pred": "capture",
+  "bit": 12,
+  "conf": 0.429,
+  "base": 0.093,
+  "lift": 4.6,
+  "n": 42
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 8,
+  "conf": 0.304,
+  "base": 0.057,
+  "lift": 5.4,
+  "n": 23
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 4,
+  "conf": 0.261,
+  "base": 0.055,
+  "lift": 4.7,
+  "n": 23
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 12,
+  "conf": 0.304,
+  "base": 0.093,
+  "lift": 3.3,
+  "n": 23
+ },
+ {
+  "loc": "frm",
+  "pred": "check",
+  "bit": 2,
+  "conf": 0.261,
+  "base": 0.118,
+  "lift": 2.2,
+  "n": 23
+ }
+]

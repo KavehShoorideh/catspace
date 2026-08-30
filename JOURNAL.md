@@ -19843,3 +19843,34 @@ interference sacrifices. A dedicated value head (own columns or own weights over
 the same concepts) is cheaper than any doctrine change and testable in one run;
 (3) canonical 1-ply (foundation layer built, tests pass) simplifies the operator
 but by itself creates neither closure nor draw recall. All three await Kaveh.
+
+## 2026-08-29 (Fable) — THE ROADMAP RUN BEGINS (Kaveh: "Keep going until you get something or I step in"). Rule mining layer built; its FIRST finding localizes hang-blindness to the bit level
+
+Roadmap agreed with Kaveh (in order, each gauged): (1) material grounding --
+mat_head (linear on position concepts, free exact labels) + ROLLED-MATERIAL
+consistency on teacher steps, so captures must exist in rolled bits; (2) real MCTS
+(PUCT, prior-pruned, WDL+material leaf) replacing exhaustive depth-1; (3) dedicated
+value head (the probe showed draw info is in the bits); (4) closure pressure /
+canonical 1-ply rebuild; (5) rule mining over traces (the logical layer, no run
+needed); (6) Kaveh's quasimetric/JEPA trajectory layer after 4. Layers doctrine
+(Kaveh): "every piece of learning gives something back."
+
+qgt_rule_mine.py (step 5, first pass): association mining between oracle
+predicates (capture/check/to_defended/leaves_hang, python-chess exact) and model
+bit-flips at from/to/hung squares, on 600 (position, move, SF-reply) transitions
+through qgt11's transition. Printed findings:
+  - capture/check -> bits 0/4/5/8/12/19 flip at the FROM square, conf ~0.38,
+    lift 7-9x (the piece left -- real but weak coupling);
+  - NOTHING at the TO square crossed threshold: a capture flips the captured
+    square's bits <25% of the time (should be ~always -- the piece VANISHES);
+  - NOTHING at the HUNG square (n=293): when SF's reply eats the piece, the
+    rolled state reliably flips NO bit there. THE ROOK IS STILL THERE in the
+    rolled bits. That is the hang-blindness mechanism, localized to specific
+    squares by an independent instrument -- and it is exactly the event the
+    rolled-material loss (step 1) punishes.
+Miner artifact: artifacts/experiments/rules_qgt11.json.
+
+Step 1 implementation: mat_head + static Huber (w-mat 0.3) + rolled-material on
+BOTH teacher streams (chains via CH_MAT, blunder children exact; w-mat-roll 1.0);
+STE material read (parens load-bearing); heartbeat matMAE s/r; D7 gate (the 39-cap
+assert was wrong -- promotions exceed it; fixed to exactness checks).
