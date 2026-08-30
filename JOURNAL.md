@@ -20031,3 +20031,26 @@ vacate/discovery as distinct codes), sparsity price on routing, supervise select
 edges. For the RULES LAYER this upgrade is load-bearing (mined rules want named
 edges to condition on) -- recommendation moved up accordingly. Audit script:
 scratchpad/audit_questions.py (promote to repo with miner v2).
+
+## 2026-08-30 (Fable) — qgt15 (PAIR-TYPED FSQ EDGES) VERDICT: detection 23.9% (new record, 18.3 -> 23.9) -- but the vocabulary still refuses to name itself, and value finals slumped
+
+qgt15 = qgt14 recipe + edge_mode pair (240 FSQ codes on PAIRS; code alone routes
+top-4 and gates continuous tanh content; warm-start lands on selected routing).
+Finals: BALANCED 0.373 (early-run RECORD 0.507 at step 3000 faded through the
+squeeze -- worst canon finals), REGRET 0.172, flip 0.43, dead 0.00, cov 0.885.
+
+GAUGE (printed): "detection rate (model gap>0.1): 23.9%" -- best ever, 26 of 109
+blunders visible. Notable: free-run BIT agreement is WORSE than qgt14 (0.535 vs
+0.638 at 1 ply) while detection is HIGHER -- the read on rolled states sharpened
+even as bit fidelity dropped; discrimination and simulation are partially
+decoupling.
+
+PAIR AUDIT (printed): 75/240 codes active; 9 attack-biased (best P=0.11, lift
+4.7); ZERO vacate/discovery/defense codes. Same verdict as question mode: the
+parameterization does not crystallize named relations by itself -- warm weight
+0.3 on selected routing is not enough. A legible vocabulary needs a stronger
+supervised term (per-relation heads on the pair code) or a sparsity price on
+routing. The FUNCTIONAL gain is real regardless.
+
+Detection ladder: 1.8 -> 8.3 (conditioning) -> 18.3 (canon+anti-churn+material)
+-> 23.9 (pair edges). Arena (40g, no-mat) running.
