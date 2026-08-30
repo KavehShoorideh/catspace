@@ -19926,3 +19926,32 @@ first suspect for qgt14.
 Battery on completion (~06:00): canon hang probe + MCTS arena need canon support
 in QGTDynamics (encode canonicalizes, step applies PERM, negamax sign) -- BUILD
 BEFORE the run lands.
+
+## 2026-08-30 (Fable) — qgt13 VERDICT: record training metrics, ZERO on the gauge. The closure chose a churn code; "fewest concept changes per ply" reasserted as a LOSS for qgt14
+
+qgt13 finals: BALANCED 0.448, REGRET 0.128, vroll +0.486/+0.466/+0.398 (double
+qgt11's, half the continuous reference), tfacc 0.662 vs copy 0.346 (the first and
+only arm above copy -- by +0.32), dead bits 0.00 throughout, flip 0.981.
+
+Hang probe (canon depth-2 negamax, printed): detection 0.0%, corr -0.111,
+within-position corr -0.004. And the mechanism, from the oneply block: free-run
+agreement with the TRUE child encoding 0.529 vs 0.611 root-copy (1 ply), 0.450 vs
+0.814 (2 plies). READING: under closure pressure the encoder+transition
+co-selected a PREDICTABLE-BUT-ALIEN high-churn code -- T tracks the EMA's drifting
+representation beautifully on real lines (hence record vroll on played chains),
+but free-run states on ARBITRARY moves misalign with true encodings worse than
+copying, and the value read on them has no sibling discrimination. Exposure bias
+amplified by 0.98 flips. Predictability was achieved; SIMULATION was not. The
+project's standing goal ("fewest concept changes per ply") is precisely what the
+objective never asked for -- so it was abandoned.
+
+Also true and recorded: the sibling scorer trained fine but the probe/search read
+the WDL head -- the spec's "move discrimination belongs to the continuous layer"
+is only half-implemented until search consumes that layer (candidate for the
+depth-1 evaluator; kept OUT of the gauge to keep it comparable).
+
+qgt14 (launched 03:3x): + sparse-change prior (w-sparse 0.3: weak BCE pull toward
+perm-copy everywhere; the teacher's confident flips override it) + flip-weight
+3.0 -> 1.5 (the asymmetry was tuned against copy-collapse that no longer exists).
+Both levers aim at churn; attribution hedged per the 8/29 doctrine. Gauges
+unchanged. The qgt11 T2 arm REMAINS the tactical incumbent (8.3% / arena 0.075).
