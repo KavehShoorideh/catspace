@@ -19770,3 +19770,27 @@ transposition table, Kaveh's idea from yesterday) stays queued as the multiplier
 
 qgt11 unaffected mid-run (its process runs the old code; it never sees sf20 labels
 either -- qgt12 is the first consumer). Watch: qgt11 step pace under producer load.
+
+## 2026-08-29 (Fable) — qgt11 VERDICT: THE GAUGE MOVED. Hang detection 8.3% (floor was 0-1.8% across qgt7-10). T2-conditional is the first mechanism change that touched the tail
+
+qgt11 (T2-conditional, PV teacher, dyn 128/3) completed 8000 steps, no collapse.
+Finals: BALANCED 0.466, REGRET 0.1213, top1 0.280, vroll +0.204/+0.318/+0.313
+(vroll@4/6 the best of ANY run), cov 1.000 (pinned there from mid-run), auc
+0.619/0.598 (records), flip 0.038 healthy. The early over-flipping (0.084 at 2000,
+tfacc gap 0.065) self-corrected without intervention. Balanced ran ABOVE every
+predecessor through the pruning squeeze (0.478-0.481 mid-run vs qgt7's 0.470
+ceiling) -- the conditional teacher does not pay qgt9/qgt10's value tax; it
+REFUNDS it.
+
+PRE-REGISTERED GAUGE, printed: "BLUNDERS (label gap>0.3, n=109): label 0.573 vs
+model 0.010 | detection rate (model gap>0.1): 8.3%" -- probe now scores each move
+as MIN over enumerated legal replies (the search's own currency). 8.3% vs the
+0/1.8/0/1.8 table: first material movement, 4.6x the prior best. Honest caveats:
+mean rolled gap is still 0.010 vs label 0.573 (most blunders still invisible);
+within-position corr 0.056 remains weak; and the [oneply] block shows rolled bits
+agreeing with the true child's ENCODED bits at 0.759 vs root-copy 0.795 -- the
+transition's flips do not yet reproduce the encoder's representation of the child,
+so detection is coming from value-relevant flips, not bit-perfect simulation.
+
+Re-arena condition MET -> greedy1 (min-over-replies) vs Maia-1100, 100 games,
+running. Priors for comparison: qgt7 greedy1 0.030 ~ prior 0.035 ~ random 0.050.
