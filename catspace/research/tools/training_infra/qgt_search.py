@@ -98,8 +98,16 @@ class QGTDynamics(LatentDynamics):
         # a T2-conditional checkpoint carries reply markers; legacy ones don't
         # (their random-init markers are never injected: step() gets no frm2)
         self.conditional = "bit_trans.rep_from" in ck["state_dict"]
+        self.canon = A.get("dynamics") == "canon"
+        if self.canon:
+            from catspace.research.tools.training_infra.qgt_canon import (
+                MIRROR_PERM)
+            self.PERM = torch.from_numpy(MIRROR_PERM).to(self.dev)
         if "mat_head.weight" in ck["state_dict"]:
             m.mat_head = torch.nn.Linear(m.d_pos, 1)
+        if "sib_scorer.weight" in ck["state_dict"]:
+            m.sib_scorer = torch.nn.Linear(
+                ck["state_dict"]["sib_scorer.weight"].shape[1], 1)
         missing = m.load_state_dict(ck["state_dict"], strict=False)
         real_missing = [k for k in missing.missing_keys
                         if not k.startswith("bit_trans.rep_")]
@@ -135,6 +143,14 @@ class QGTDynamics(LatentDynamics):
 
     @torch.no_grad()
     def encode(self, board: chess.Board):
+        """Canon ckpts: encode the CANONICAL board (mover always White); ctx
+        carries (h_mv, flipped) so root_moves can map moves back."""
+        if self.canon:
+            from catspace.research.tools.training_infra.qgt_canon import canon
+            cb, fl = canon(board)
+            sqf, mvf, edges, mask = self._feats(cb)
+            c, h_mv, _ = self.model.carrier(sqf, mvf, edges, mask)
+            return self.model.rvq_bits(c)[0], (h_mv, fl)
         sqf, mvf, edges, mask = self._feats(board)
         c, h_mv, _ = self.model.carrier(sqf, mvf, edges, mask)
         bits = self.model.rvq_bits(c)[0]                   # (1,64,sq_bits)
@@ -173,6 +189,18 @@ class QGTDynamics(LatentDynamics):
     def root_moves(self, board: chess.Board, ctx):
         from catspace.research.components.encoder.approaches.reach_probability \
             .experiments.graph_move_policy import MV_CAP
+        if self.canon:
+            from catspace.research.tools.training_infra.qgt_canon import (
+                canon, from_canon)
+            h_mv, fl = ctx
+            cb, _ = canon(board)
+            legal_c = list(cb.legal_moves)[:MV_CAP]       # canonical order
+            dq = self.model.dyn_mv_lfq(self.model.dyn_mv_proj(h_mv))[0][0]
+            n = len(legal_c)
+            frm = torch.tensor([m.from_square for m in legal_c], device=self.dev)
+            to = torch.tensor([m.to_square for m in legal_c], device=self.dev)
+            legal = [from_canon(m, fl) for m in legal_c]  # REAL moves, same order
+            return legal, dq[:n], frm, to
         h_mv = ctx
         legal = list(board.legal_moves)[:MV_CAP]           # move-node order
         dq = self.model.dyn_mv_lfq(self.model.dyn_mv_proj(h_mv))[0][0]  # (MV,32)
@@ -190,7 +218,10 @@ class QGTDynamics(LatentDynamics):
         else:
             lg, _ = bt(state, codes)
         zb = torch.sign(lg)
-        return torch.where(zb == 0, torch.ones_like(zb), zb)
+        zb = torch.where(zb == 0, torch.ones_like(zb), zb)
+        if self.canon:                     # ONE ply; the frame mirrors after it
+            zb = zb[:, self.PERM]
+        return zb
 
     @torch.no_grad()
     def material(self, state):
@@ -230,6 +261,32 @@ class Greedy1(SearchAlgorithm):
         n = len(legal)
         stm = 1 if board.turn else 0                       # landing stm == source stm
         sgn = 1.0 if board.turn else -1.0
+        if getattr(dyn, "canon", False):
+            # depth-2 negamax: my ply, then every legal reply as ITS OWN 1-ply
+            # step in the child's canonical frame; after two plies the frame is
+            # mine again, the read is mover-POV directly. Board = legality only.
+            sc = np.full(n, np.nan)
+            evals = 0
+            for j, mv in enumerate(legal):
+                z1 = dyn.step(state, codes[j:j + 1], frm[j:j + 1], to[j:j + 1])
+                b1 = board.copy(stack=False)
+                b1.push(mv)
+                reps1, cd1, f1, t1 = dyn.root_moves(b1, dyn.encode(b1)[1])
+                if not reps1:
+                    sc[j] = 2.0 if b1.is_checkmate() else 0.0
+                    continue
+                nr = len(reps1)
+                z2 = dyn.step(z1.expand(nr, -1, -1), cd1, f1, t1)
+                evals += nr
+                pv = dyn.value(z2, 1).cpu().numpy()        # my POV again
+                es = pv[:, 0] - pv[:, 2]
+                mat = dyn.material(z2)
+                if mat is not None:
+                    es = es + 0.5 * np.tanh(mat.cpu().numpy() / 5.0)
+                sc[j] = float(es.min())                    # opponent's best shot
+            sc = sc + rng.random(n) * 1e-9
+            j = int(np.nanargmax(sc))
+            return legal[j], {"evals": evals, "score": float(sc[j])}
         if not getattr(dyn, "conditional", False):
             base = state.expand(n, -1, -1)
             nxt = dyn.step(base, codes, frm, to)

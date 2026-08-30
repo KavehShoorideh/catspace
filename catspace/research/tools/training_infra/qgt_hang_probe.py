@@ -77,7 +77,22 @@ def main():
                                             rng.choice(v, min(6, len(v)),
                                                        replace=False)]))
             sel = sel[sel < len(moves)]
-            if dyn.conditional:
+            if getattr(dyn, "canon", False):
+                # canon: two 1-ply steps; min over replies (negamax, my POV back)
+                r_es = np.empty(len(sel))
+                for si, j in enumerate(sel):
+                    z1 = dyn.step(state, codes[j:j + 1], frm[j:j + 1],
+                                  to[j:j + 1])
+                    b1 = b.copy(stack=False); b1.push(moves[j])
+                    reps1, cd1, f1, t1 = dyn.root_moves(b1, dyn.encode(b1)[1])
+                    if not reps1:
+                        r_es[si] = 1.0 if b1.is_checkmate() else 0.5
+                        continue
+                    nr = len(reps1)
+                    z2 = dyn.step(z1.expand(nr, -1, -1), cd1, f1, t1)
+                    pv = dyn.value(z2, 1).cpu().numpy()
+                    r_es[si] = float((0.5 * (1.0 + pv[:, 0] - pv[:, 2])).min())
+            elif dyn.conditional:
                 # T2-conditional (Kaveh 8/29): the reply is an INPUT; a move's read
                 # is the MIN over its legal replies (the refutation, enumerated) --
                 # the exact quantity Greedy1 backs up in the arena
