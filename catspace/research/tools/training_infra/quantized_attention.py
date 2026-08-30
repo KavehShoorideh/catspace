@@ -206,3 +206,53 @@ def _test():
 
 if __name__ == "__main__":
     _test()
+
+class PairTypedAttention(nn.Module):
+    """Spec 4, built after the 8/30 question audit ("did we learn the edges?" --
+    a diffuse attack bias, nothing else nameable): the discrete edge TYPE lives on
+    the PAIR, not on the asker's question. e_uv from both endpoint tokens ->
+    FSQ code (levels default (8,6,5) = 240 types, collapse-resistant); the code
+    alone decides ROUTING (a scalar head, top-k per receiver) and GATES the
+    sender's continuous message (tanh-bounded: the 8/30 blow-up scar). Discrete
+    type, continuous content -- and warm-start supervision lands on the routing
+    logit of the pair itself, i.e. on SELECTED edges (the SPARTAN H1 remedy the
+    query-side design could not express).
+
+    Drop-in for QuantizedAttention inside GraphBitTransition: returns
+    (msg (B,T,out_bits), aux with attn_logit (B,1,T,T) + ids for audits)."""
+
+    def __init__(self, d_tok: int, out_bits: int = 8, top_k: int = 4,
+                 levels=(8, 6, 5), d_pair: int = 64, **_ignored):
+        super().__init__()
+        from vector_quantize_pytorch import FSQ
+        self.top_k = top_k
+        self.a = nn.Linear(d_tok, d_pair)
+        self.b = nn.Linear(d_tok, d_pair)
+        self.e_mlp = nn.Sequential(nn.GELU(), nn.Linear(d_pair, len(levels)))
+        self.fsq = FSQ(levels=list(levels))
+        self.route = nn.Linear(len(levels), 1)
+        self.gate = nn.Sequential(nn.Linear(len(levels), d_pair), nn.GELU(),
+                                  nn.Linear(d_pair, out_bits))
+        self.msg = nn.Linear(d_tok, out_bits)
+
+    def forward(self, tok: torch.Tensor, tok_mask: torch.Tensor | None = None,
+                tau: float = 1.0):
+        B, T, _ = tok.shape
+        e = self.e_mlp(self.a(tok)[:, :, None, :] + self.b(tok)[:, None, :, :])
+        z, ids = self.fsq(e.reshape(B, T * T, -1))
+        z = z.reshape(B, T, T, -1)
+        logit = self.route(z).squeeze(-1)                # (B,T,T) receiver<-sender
+        if tok_mask is not None:
+            logit = logit.masked_fill(~tok_mask[:, None, :], float("-inf"))
+        kk = min(self.top_k, T)
+        topv, topi = logit.topk(kk, dim=-1)
+        attn = torch.zeros_like(logit).scatter_(-1, topi, F.softmax(topv, -1))
+        m = torch.tanh(self.gate(z)) * self.msg(tok)[:, None, :, :]
+        out = (attn[..., None] * m).sum(2)               # (B,T,out_bits)
+        self.last = {"question": ids.reshape(B, T, T).detach(),
+                     "attn": attn.detach()[:, None],
+                     "answer_ids": None}
+        return out, {"vq_loss": torch.zeros((), device=tok.device),
+                     "attn": attn.detach()[:, None],
+                     "attn_logit": logit[:, None],       # (B,1,T,T): head 0 = THE head
+                     "ids": ids.reshape(B, T, T)}

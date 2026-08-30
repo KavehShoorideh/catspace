@@ -109,6 +109,10 @@ def main():
                     help="graph arm: soft supervision of head-0 attention toward the "
                          "true attack adjacency (the WARM START, Kaveh) -- free "
                          "labels; heads/questions beyond it stay unsupervised.")
+    ap.add_argument("--edge-mode", choices=("question", "pair"),
+                    default="question",
+                    help="transition edge typing: query-side questions (qgt6) or "
+                         "pair-typed FSQ codes (spec 4, post-audit 8/30)")
     ap.add_argument("--canon-dir", default="data/derived/gko1_canon")
     ap.add_argument("--w-sib", type=float, default=0.5,
                     help="sibling ranking on PRE-quantization carrier (canon arm)")
@@ -387,7 +391,8 @@ def main():
             sq_bits=args.sq_bits, mv_bits=args.mv_bits, n_q=args.n_q,
             heads=args.attn_heads, top_k=args.top_k, out_bits=args.out_bits,
             w_id_init=args.w_id_init, d=args.dyn_d,
-            layers=args.dyn_layers, qa_continuous=CANON).to(dev)
+            layers=args.dyn_layers, qa_continuous=CANON,
+            edge_mode=args.edge_mode).to(dev)
     if CANON:
         # sibling ranking reads the PRE-quantization carrier (spec 2.4: the
         # bottleneck is deliberately fuzzy; move-level discrimination must not

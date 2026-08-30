@@ -213,7 +213,8 @@ class GraphBitTransition(nn.Module):
     are indistinguishable from queening (rare; recorded, accepted)."""
 
     def __init__(self, sq_bits=24, mv_bits=32, d=64, layers=2, n_q=16, heads=4,
-                 top_k=4, out_bits=8, w_id_init=0.5, qa_continuous=False):
+                 top_k=4, out_bits=8, w_id_init=0.5, qa_continuous=False,
+                 edge_mode="question"):
         super().__init__()
         from catspace.research.tools.training_infra.quantized_attention import (
             QuantizedAttention)
@@ -221,9 +222,15 @@ class GraphBitTransition(nn.Module):
         self.emb = nn.Linear(sq_bits, d)
         self.mv_from = nn.Linear(mv_bits, d)
         self.mv_to = nn.Linear(mv_bits, d)
-        self.qa = nn.ModuleList([QuantizedAttention(
-            d, n_q=n_q, n_head=heads, top_k=top_k, out_bits=out_bits,
-            continuous_content=qa_continuous) for _ in range(layers)])
+        if edge_mode == "pair":
+            from catspace.research.tools.training_infra.quantized_attention \
+                import PairTypedAttention
+            self.qa = nn.ModuleList([PairTypedAttention(
+                d, out_bits=out_bits, top_k=top_k) for _ in range(layers)])
+        else:
+            self.qa = nn.ModuleList([QuantizedAttention(
+                d, n_q=n_q, n_head=heads, top_k=top_k, out_bits=out_bits,
+                continuous_content=qa_continuous) for _ in range(layers)])
         self.proj = nn.ModuleList([nn.Linear(out_bits, d) for _ in range(layers)])
         self.ffn = nn.ModuleList([nn.Sequential(nn.Linear(d, 2 * d), nn.GELU(),
                                                 nn.Linear(2 * d, d))
@@ -258,8 +265,8 @@ class GraphBitTransition(nn.Module):
             l_route = l_route + aux.get("vq_loss", 0.0)
             if "qlog" in aux and "attn_logit" in aux:
                 l_route = l_route + router_losses(aux["qlog"], aux["attn_logit"])
-                if need_attn and i == 0:
-                    attn0 = aux["attn_logit"]            # (B,H,T,T) pre-softmax
+            if need_attn and i == 0 and "attn_logit" in aux:
+                attn0 = aux["attn_logit"]                # (B,H,T,T) pre-softmax
             h = h + self.proj[i](b2)
             h = h + self.ffn[i](h)
         return h, attn0, l_route
@@ -410,6 +417,28 @@ def _test():
     g_k = torch.autograd.grad(lw2, gt.qa[0].k_proj.weight, allow_unused=True)[0]
     assert g_k is not None and float(g_k.abs().sum()) > 0, \
         "warm-start supervision does not reach head-0 keys"
+    # PAIR-TYPED edge mode: same identity/frame-axiom/roll battery
+    gp = GraphBitTransition(sq_bits=24, mv_bits=32, d=32, layers=2,
+                            edge_mode="pair")
+    lp0, ap0, _ = gp(zg, mg, frm, to, need_attn=True)
+    agp = float(((lp0 > 0) == (zg > 0)).float().mean())
+    assert agp == 1.0, f"pair transition not identity at init: {agp}"
+    assert ap0 is not None and ap0.shape[-2:] == (64, 64), "pair attn logits missing"
+    with torch.no_grad():
+        gp.out.weight.add_(3.0 * torch.randn_like(gp.out.weight))
+        tchp = gp.touched(zg, mg, frm, to)
+        lp1, _, _ = gp(zg, mg, frm, to)
+        dp = lp1 - gp.w_id * zg
+        if bool((~tchp).any()):
+            assert float(dp[~tchp].abs().max()) == 0.0, "pair frame axiom broken"
+    zp = gp.roll_bits(zg, [(mg, frm, to)])[0]
+    assert set(torch.unique(zp.detach()).tolist()) <= {-1.0, 1.0}
+    zp.sum().backward()
+    assert gp.qa[0].route.weight.grad is not None and \
+        float(gp.qa[0].route.weight.grad.abs().sum()) > 0, "no grad to pair router"
+    u_ids = int(gp.qa[0].last["question"].unique().numel())
+    print(f"  PairTypedAttention: identity at init; frame axiom holds; roll +-1; "
+          f"grads reach the FSQ router; {u_ids} distinct pair codes at init")
     outs_g = gt.roll_bits(zg, [(mg, frm, to)] * 3)
     ug = set(torch.unique(outs_g[-1].detach()).tolist())
     assert ug <= {-1.0, 1.0}, "graph free-run bits not exactly +-1"
