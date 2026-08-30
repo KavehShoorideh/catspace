@@ -117,6 +117,11 @@ def main():
     ap.add_argument("--closure-scale", type=float, default=0.25,
                     help="gradient scale of the teacher BCE into the ENCODER "
                          "(T always gets full gradient); the 8/30 collapse guard")
+    ap.add_argument("--w-sparse", type=float, default=0.0,
+                    help="canon: weak pull of T's output toward perm-copy -- the "
+                         "'fewest concept changes per ply' prior; the teacher "
+                         "overrides it wherever it is confident (8/30: closure "
+                         "alone chose a 0.98-flip churn code, gauge zero)")
     ap.add_argument("--w-var", type=float, default=1.0,
                     help="anti-collapse bit-balance: mean(bit)^2 across the batch "
                          "(VICReg's variance guard, scale-free for +-1 bits)")
@@ -1085,6 +1090,9 @@ def main():
         if args.w_mat_roll > 0:
             mtc = torch.from_numpy(CH_MAT[ci[:, 1:].ravel()] / 10.0).to(dev)
             l_tf = l_tf + args.w_mat_roll * F.huber_loss(_mat_read(lgp), mtc)
+        if args.w_sparse > 0:
+            l_tf = l_tf + args.w_sparse * F.binary_cross_entropy_with_logits(
+                lgp, (zin_p.detach() + 1) / 2)
         with torch.no_grad():
             tf_acc = float(((lgp > 0) == (zt > 0)).float().mean())
             tf_copy = float((zin_p == zt).float().mean())
