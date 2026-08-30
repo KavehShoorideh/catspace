@@ -254,6 +254,9 @@ class Greedy1(SearchAlgorithm):
     reply -- the refutation is enumerated and backed up, never marginalized. The
     real board supplies reply LEGALITY only; every evaluation stays latent."""
 
+    def __init__(self, mat_lambda=0.5):
+        self.lam = mat_lambda
+
     def choose(self, dyn: LatentDynamics, board: chess.Board,
                rng: np.random.Generator):
         state, ctx = dyn.encode(board)
@@ -283,8 +286,8 @@ class Greedy1(SearchAlgorithm):
                 pv = dyn.value(z2, 1).cpu().numpy()        # my POV again
                 es = pv[:, 0] - pv[:, 2]
                 mat = dyn.material(z2)
-                if mat is not None:
-                    es = es + 0.5 * np.tanh(mat.cpu().numpy() / 5.0)
+                if mat is not None and self.lam > 0:
+                    es = es + self.lam * np.tanh(mat.cpu().numpy() / 5.0)
                 sc[j] = float(es.min())                    # opponent's best shot
             sc = sc + rng.random(n) * 1e-9
             j = int(np.nanargmax(sc))
@@ -722,7 +725,7 @@ def main():
         args.maia = paths.engine("maia/maia-1100.pb.gz")
     dyn = QGTDynamics(args.ckpt)
     if args.regret_probe:
-        algo = (Greedy1() if args.algo == "greedy1" else
+        algo = (Greedy1(args.mat_lambda) if args.algo == "greedy1" else
             MCTS(args.mcts_nodes, mat_lambda=args.mat_lambda)
             if args.algo == "mcts" else PriorPolicy())
         regret_probe(dyn, algo, args.maia or "", games=24, seed=args.seed)
@@ -735,7 +738,7 @@ def main():
         c = latent_arena(RandomPolicy(), dyn, args.maia, args.control_games,
                          args.opening_plies, args.cap, args.seed + 1, tag="random")
         out["random"] = {"score": c.score(), "wilson": c.wilson(), "n": c.games}
-    algo = (Greedy1() if args.algo == "greedy1" else
+    algo = (Greedy1(args.mat_lambda) if args.algo == "greedy1" else
             MCTS(args.mcts_nodes, mat_lambda=args.mat_lambda)
             if args.algo == "mcts" else PriorPolicy())
     s = latent_arena(algo, dyn, args.maia, args.games, args.opening_plies,

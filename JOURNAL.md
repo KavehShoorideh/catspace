@@ -19955,3 +19955,32 @@ perm-copy everywhere; the teacher's confident flips override it) + flip-weight
 3.0 -> 1.5 (the asymmetry was tuned against copy-collapse that no longer exists).
 Both levers aim at churn; attribution hedged per the 8/29 doctrine. Gauges
 unchanged. The qgt11 T2 arm REMAINS the tactical incumbent (8.3% / arena 0.075).
+
+## 2026-08-30 (Fable) — qgt14 VERDICT: DETECTION 18.3% — the gauge more than doubled. The anti-churn lever fixed free-run alignment exactly as diagnosed
+
+qgt14 finals: BALANCED 0.476 (canon-best; draw recall 0.28), flip settled 0.35,
+tfacc 0.526 vs copy 0.397, dead 0.00, matMAE 3.81/6.68.
+
+THE GAUGE (printed): "BLUNDERS (label gap>0.3, n=109): label 0.573 vs model 0.026
+| detection rate (model gap>0.1): 18.3%" -- 20 of 109 blunders now visible to the
+rolled read, vs 8.3% (qgt11), 0-1.8% (qgt7-10), 0.0% (qgt13). And the mechanism
+line: free-run agreement with the true 1-ply child 0.638 vs 0.613 root-copy --
+the FIRST arm whose free-run states align with true encodings better than
+copying. (2-ply still degrades: 0.562 vs 0.804 -- compounding remains the next
+dynamics frontier.) THE TABLE:
+  qgt7   uniform teacher, T2 marginal:        1.8%
+  qgt9   PV teacher, T2 marginal:             0.0%
+  qgt10  PV teacher, T2 marginal, big T:      1.8%
+  qgt11  PV teacher, T2 CONDITIONAL:          8.3%
+  qgt12  + material grounding (half-run):     4.6% (best within-pos corr 0.137)
+  qgt13  canon 1-ply + closure (churn code):  0.0%
+  qgt14  + sparse-change prior, fw 1.5:      18.3%
+Under-configuration caveat as always (levers moved together); but the qgt13->14
+delta isolates the anti-churn pair cleanly.
+
+MINER on qgt14 (600 transitions): move squares now flip near-deterministically
+for EVERY move (conf ~ base ~ 0.9 at from/to; qgt11 base there was 0.04-0.12) --
+board mechanics exist in the rolled bits. The flip-location instrument is
+SATURATED; next miner iteration needs bit-VALUE direction and off-move squares.
+
+Arena (greedy1-canon depth-2 negamax, 60 games vs Maia-1100) running.
