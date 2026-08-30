@@ -20078,3 +20078,5 @@ than their configs suggest). Single-run attributions are weakening; the next
 comparisons that matter should be seeded replicates, or levers with effects big
 enough to clear the variance band. Detection ladder stands: 1.8 -> 8.3 -> 18.3 ->
 23.9 (qgt15, the incumbent detector) -> 12.8.
+
+## 2026-08-30 (Fable) — qgt15b: exact seed-replicate of the detection incumbent (seed 1, config identical to qgt15). Purpose: measure the run-variance band the 8/30 theme flagged; no lever, no design authority claimed. Gauge: detection distance from 23.9%.
