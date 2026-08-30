@@ -19874,3 +19874,25 @@ Step 1 implementation: mat_head + static Huber (w-mat 0.3) + rolled-material on
 BOTH teacher streams (chains via CH_MAT, blunder children exact; w-mat-roll 1.0);
 STE material read (parens load-bearing); heartbeat matMAE s/r; D7 gate (the 39-cap
 assert was wrong -- promotions exceed it; fixed to exactness checks).
+
+## 2026-08-29 (Fable) — Roadmap steps 1+2 SHIPPED in one evening: qgt12 (material grounding) training; MCTS built, timed, gated
+
+qgt12 running: qgt11 recipe + mat_head (linear on position bits -> White-POV
+material/10) + static Huber (w-mat 0.3) + ROLLED-MATERIAL consistency on both
+teacher streams (w-mat-roll 1.0). Heartbeat gains matMAE s/r (init ~8.7/7.3
+pawns). One crash on launch (levels_from_bits fed the already-flat z; forward's z
+IS the all-level bits) -- fixed, smoke-tested, relaunched. D7 gate covers the
+rolled path; note the 39-cap lesson (promotions -> corpus max |51|).
+
+MCTS(SearchAlgorithm) in qgt_search: PUCT, alternating move/reply levels; an edge
+expands by rolling ALL (capped) replies through T2 and taking the read-minimizing
+one (greedy refuter inside the edge); every stored state is latent-rolled -- the
+board contributes legality, terminals, and move features only (Greedy1's existing
+contract, unchanged). Leaf score = (P(W)-P(L)) + mat_lambda*tanh(mat/5) when the
+ckpt has a mat_head. Perf work: node_info() = one featurize+carrier pass per node
+(was 2), batched reply scoring, replies capped loud+8-quiet -- 18.5s -> 1.3-5.6s
+per move @64 tree nodes. Gates pass.
+
+WAITING ON qgt12 (~4-5h): then hang probe (WDL and material detection lines),
+MCTS-vs-greedy1 arena on the same checkpoint, and the rule miner rerun (does
+"capture -> to-square bits flip" appear once material grounding forces it?).
