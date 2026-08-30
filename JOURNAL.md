@@ -19813,3 +19813,33 @@ construction rather than by the 2-ply workaround; negamax with one operator; eve
 consecutive ply a deterministic teacher pair; White-POV flip machinery and turn
 bias DELETED. Assessment given (agree; qgt11 validates the underlying principle --
 deterministic conditional targets). Awaiting Kaveh's go for the qgt12 build.
+
+## 2026-08-29 (Fable) — STEP-BACK DIAGNOSIS (Kaveh: "why is this arch so bad?... value prediction? or the dynamics?") + a probe that corrected the diagnosis
+
+Decomposition given (both stages deficient): value read on TRUE boards is weak
+(balanced 0.466, regret ~0.12 vs SF-median 0.021, draw recall ~0.00 all day) --
+loses to Maia even with perfect dynamics; dynamics separately weak (rolled bits
+match the true child's encoding at 0.759 vs 0.795 for copying, flips 3.8% vs ~9%
+true). Root-cause hypothesis: the two deliberate constraints -- tiny linear value
+read, and the Dreamer-severed encoder whose bits face NO pressure to be simulable
+(closure) -- each independently cap strength. The 8/24 continuous reference
+(+0.85 rolled corr) vs our +0.3 prices the quantize+sever bet.
+
+THEN THE PROBE (linear vs MLP refit on FROZEN qgt11 concepts, 4k labeled corpus
+positions, class-weighted CE; printed):
+  LINEAR: balanced 0.574 | recall W/D/L 0.67/0.37/0.68
+  MLP:    balanced 0.541 | recall W/D/L 0.67/0.22/0.73
+CAVEAT: random 80/20 split, NOT the trainer's pawn-structure holdout -- leakage
+inflates the absolute numbers. But the CLEAN claim survives: the SAME LINEAR FORM,
+refit on the same frozen bits, recovers draw recall 0.37 where the live readout
+reads 0.00. THE BITS CARRY DRAW INFORMATION; the live head fails to extract it.
+(MLP < linear at n=3.2k = small-sample overfit; says nothing about capacity yet.)
+
+REVISED RANKING: (1) dynamics closure pressure unchanged as the top lever;
+(2) the VALUE fix is first-order a TRAINING problem, not an alphabet problem --
+the one shared 400-column readout serves value CE + move ranking + branch regret
++ blunder CE + L1 pruning simultaneously, and the draw class is what multi-task
+interference sacrifices. A dedicated value head (own columns or own weights over
+the same concepts) is cheaper than any doctrine change and testable in one run;
+(3) canonical 1-ply (foundation layer built, tests pass) simplifies the operator
+but by itself creates neither closure nor draw recall. All three await Kaveh.
