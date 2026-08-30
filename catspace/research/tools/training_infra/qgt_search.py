@@ -98,6 +98,8 @@ class QGTDynamics(LatentDynamics):
         # a T2-conditional checkpoint carries reply markers; legacy ones don't
         # (their random-init markers are never injected: step() gets no frm2)
         self.conditional = "bit_trans.rep_from" in ck["state_dict"]
+        if "mat_head.weight" in ck["state_dict"]:
+            m.mat_head = torch.nn.Linear(m.d_pos, 1)
         missing = m.load_state_dict(ck["state_dict"], strict=False)
         real_missing = [k for k in missing.missing_keys
                         if not k.startswith("bit_trans.rep_")]
@@ -149,6 +151,25 @@ class QGTDynamics(LatentDynamics):
         return logit[0]                                    # (MV_CAP, 3)
 
     @torch.no_grad()
+    def node_info(self, board: chess.Board):
+        """ONE featurize+carrier pass -> (bits, legal, codes, frm, to, prior).
+        What _mknode needs; encode()+prior_logits() would pay the pass twice."""
+        from catspace.research.components.encoder.approaches.reach_probability \
+            .experiments.graph_move_policy import MV_CAP
+        sqf, mvf, edges, mask = self._feats(board)
+        stm = torch.tensor([1 if board.turn else 0], device=self.dev)
+        logit, _, _, aux = self.model(sqf, mvf, edges, mask, stm=stm)
+        bits = self.model.rvq_bits(aux["carrier"])[0]
+        legal = list(board.legal_moves)[:MV_CAP]
+        dq = self.model.dyn_mv_lfq(self.model.dyn_mv_proj(aux["h_mv"]))[0][0]
+        n = len(legal)
+        frm = torch.tensor([m.from_square for m in legal], device=self.dev)
+        to = torch.tensor([m.to_square for m in legal], device=self.dev)
+        sg = 1.0 if board.turn else -1.0
+        pri = torch.softmax(sg * (logit[0, :n, 0] - logit[0, :n, 2]), 0)
+        return bits, legal, dq[:n], frm, to, pri.cpu().numpy()
+
+    @torch.no_grad()
     def root_moves(self, board: chess.Board, ctx):
         from catspace.research.components.encoder.approaches.reach_probability \
             .experiments.graph_move_policy import MV_CAP
@@ -170,6 +191,15 @@ class QGTDynamics(LatentDynamics):
             lg, _ = bt(state, codes)
         zb = torch.sign(lg)
         return torch.where(zb == 0, torch.ones_like(zb), zb)
+
+    @torch.no_grad()
+    def material(self, state):
+        """White-POV material estimate (pawns) from mat_head; None if the
+        checkpoint predates material grounding (qgt12)."""
+        if not hasattr(self.model, "mat_head"):
+            return None
+        z = self.model.levels_from_bits(state)[0]
+        return self.model.mat_head(z).squeeze(-1) * 10.0
 
     @torch.no_grad()
     def value(self, state, stm: int):
@@ -233,6 +263,115 @@ class Greedy1(SearchAlgorithm):
         sc = sc + rng.random(n) * 1e-9
         j = int(np.nanargmax(sc))
         return legal[j], {"evals": len(rows_j), "score": float(sc[j])}
+
+
+class MCTS(SearchAlgorithm):
+    """PUCT over the learned dynamics (roadmap step 2, Kaveh 8/29: "I can just do
+    regular MCTS over this learned model to discover tactics").
+
+    Tree alternates my-move and reply levels; a T2-conditional step fires when
+    both are chosen, so every stored state is a my-turn state rolled purely in
+    LATENT space. The real board supplies legality, terminals, and move features
+    for codes (the contract Greedy1 already uses) -- never the state. Edge
+    expansion picks the reply minimizing the mover's read (greedy opponent inside
+    the edge). Leaf score = White-POV (P(W)-P(L)) + mat_lambda*tanh(material/5)
+    when the checkpoint carries a material head (qgt12+)."""
+
+    def __init__(self, nodes=128, c_puct=1.5, mat_lambda=0.5):
+        self.N, self.c, self.lam = nodes, c_puct, mat_lambda
+
+    def _score(self, dyn, state, stm):
+        return float(self._score_batch(dyn, state, stm)[0])
+
+    def _score_batch(self, dyn, states, stm):
+        """(n,...) states -> (n,) White-POV scalars, one batched read."""
+        pv = dyn.value(states, stm)
+        s = (pv[:, 0] - pv[:, 2])
+        mat = dyn.material(states)
+        if mat is not None and self.lam > 0:
+            s = s + self.lam * torch.tanh(mat / 5.0)
+        return s.cpu().numpy()
+
+    def _mknode(self, dyn, z, board):
+        if not any(True for _ in board.legal_moves):
+            v = (1.0 if board.is_checkmate() and not board.turn else
+                 -1.0 if board.is_checkmate() else 0.0)
+            return dict(term=v)
+        _, lg, cd, fb, tb, pri = dyn.node_info(board)         # one pass
+        return dict(z=z, board=board, legal=lg, codes=cd, frm=fb, to=tb,
+                    pri=pri, n=np.zeros(len(lg)), w=np.zeros(len(lg)),
+                    kids={}, term=None)
+
+    def choose(self, dyn: LatentDynamics, board: chess.Board,
+               rng: np.random.Generator):
+        import math
+        state, _ = dyn.encode(board)
+        root = self._mknode(dyn, state, board)
+        if root["term"] is not None:
+            raise ValueError("no legal moves")
+        evals = 0
+        for _ in range(self.N):
+            path, node, val = [], root, 0.0
+            while True:
+                if node["term"] is not None:
+                    val = node["term"]
+                    break
+                nsum = node["n"].sum() + 1.0
+                sg = 1.0 if node["board"].turn else -1.0
+                q = np.where(node["n"] > 0,
+                             node["w"] / np.maximum(node["n"], 1), 0.0) * sg
+                u = self.c * node["pri"] * math.sqrt(nsum) / (1.0 + node["n"])
+                a = int((q + u + rng.random(len(q)) * 1e-9).argmax())
+                path.append((node, a))
+                if a in node["kids"]:
+                    node = node["kids"][a]
+                    continue
+                mv = node["legal"][a]                         # EXPAND edge a
+                b1 = node["board"].copy(stack=False)
+                b1.push(mv)
+                reps = list(b1.legal_moves)
+                if not reps:
+                    val = (1.0 if b1.is_checkmate() and not b1.turn else
+                           -1.0 if b1.is_checkmate() else 0.0)
+                    node["kids"][a] = dict(term=val)
+                    break
+                if len(reps) > 20:              # loud replies + 8 quiet: the min
+                    loud = [r for r in reps     # is almost always a refutation
+                            if b1.is_capture(r) or b1.gives_check(r)]
+                    quiet = [r for r in reps if r not in loud]
+                    reps = (loud + quiet[:max(8, 20 - len(loud))])[:24]
+                nr = len(reps)
+                f2 = torch.tensor([r.from_square for r in reps],
+                                  device=node["frm"].device)
+                t2 = torch.tensor([r.to_square for r in reps],
+                                  device=node["frm"].device)
+                stm1 = 1 if node["board"].turn else 0
+                if getattr(dyn, "conditional", False):
+                    nx = dyn.step(node["z"].expand(nr, -1, -1),
+                                  node["codes"][a].expand(nr, -1),
+                                  node["frm"][a].expand(nr),
+                                  node["to"][a].expand(nr), frm2=f2, to2=t2)
+                    evals += nr
+                    sc = self._score_batch(dyn, nx, stm1)
+                    ri = int(sc.argmin() if node["board"].turn else sc.argmax())
+                    zc, val = nx[ri:ri + 1], float(sc[ri])
+                    b2 = b1.copy(stack=False)
+                    b2.push(reps[ri])
+                else:
+                    zc = dyn.step(node["z"], node["codes"][a:a + 1],
+                                  node["frm"][a:a + 1], node["to"][a:a + 1])
+                    evals += 1
+                    val = self._score(dyn, zc, stm1)
+                    b2 = b1
+                node["kids"][a] = self._mknode(dyn, zc, b2)
+                break
+            for pn, pa in path:                               # BACKUP White-POV
+                pn["n"][pa] += 1
+                pn["w"][pa] += val
+        j = int(root["n"].argmax())
+        return root["legal"][j], {"evals": evals,
+                                  "score": float(root["w"][j] /
+                                                 max(root["n"][j], 1))}
 
 
 class PriorPolicy(SearchAlgorithm):
@@ -508,7 +647,10 @@ def main():
     ap.add_argument("--cap", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default="")
-    ap.add_argument("--algo", choices=("greedy1", "prior"), default="greedy1")
+    ap.add_argument("--algo", choices=("greedy1", "prior", "mcts"),
+                    default="greedy1")
+    ap.add_argument("--mcts-nodes", type=int, default=128)
+    ap.add_argument("--mat-lambda", type=float, default=0.5)
     ap.add_argument("--regret-probe", action="store_true",
                     help="measure our chooser's SF-regret on corpus vs in-play "
                          "positions with one instrument (tails-vs-transfer)")
@@ -521,7 +663,9 @@ def main():
         args.maia = paths.engine("maia/maia-1100.pb.gz")
     dyn = QGTDynamics(args.ckpt)
     if args.regret_probe:
-        algo = Greedy1() if args.algo == "greedy1" else PriorPolicy()
+        algo = (Greedy1() if args.algo == "greedy1" else
+            MCTS(args.mcts_nodes, mat_lambda=args.mat_lambda)
+            if args.algo == "mcts" else PriorPolicy())
         regret_probe(dyn, algo, args.maia or "", games=24, seed=args.seed)
         return
     print(f"[arena] dynamics: {args.ckpt} (step {dyn.step_count}, "
@@ -532,7 +676,9 @@ def main():
         c = latent_arena(RandomPolicy(), dyn, args.maia, args.control_games,
                          args.opening_plies, args.cap, args.seed + 1, tag="random")
         out["random"] = {"score": c.score(), "wilson": c.wilson(), "n": c.games}
-    algo = Greedy1() if args.algo == "greedy1" else PriorPolicy()
+    algo = (Greedy1() if args.algo == "greedy1" else
+            MCTS(args.mcts_nodes, mat_lambda=args.mat_lambda)
+            if args.algo == "mcts" else PriorPolicy())
     s = latent_arena(algo, dyn, args.maia, args.games, args.opening_plies,
                      args.cap, args.seed, tag=args.algo)
     ms = np.array(s.ms)
