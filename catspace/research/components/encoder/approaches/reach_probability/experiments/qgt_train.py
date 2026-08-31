@@ -120,6 +120,16 @@ def main():
                          "margin is established before anything competes with it "
                          "-- the 8/31 mediator finding: detection tracks whether "
                          "that margin ever opens, and seeds differ on it")
+    ap.add_argument("--eq-warmup", type=int, default=0,
+                    help="hold SIGMA-GATING off for N steps while the equivariance "
+                         "loss installs the symmetry. The 8/31 bootstrap problem: "
+                         "the gate FORCES out-of-cone squares to sigma(parent), "
+                         "but that is only true once equivariance holds -- at "
+                         "step 2000 of qgt22 it held two-thirds of the time, and "
+                         "`loc` climbed 0.22 -> 0.41 because the locality target "
+                         "was being corrupted by the gate every ply. During "
+                         "warmup the gate is OFF (every square is predicted and "
+                         "trainable); it engages once sigma is in.")
     ap.add_argument("--equiv-batch", type=int, default=16,
                     help="how many of the batch's positions get a mirrored twin")
     ap.add_argument("--w-equiv", type=float, default=0.0,
@@ -850,7 +860,8 @@ def main():
                 b1 = b0.copy(); b1.push(legal[j])
                 if CANON:                      # ONE ply; the reply is search's job
                     pair.append((_canon(b1)[0], _canon(b1)[0], j))
-                    if args.hard_gate:
+                    if args.hard_gate:         # shape stays fixed all run;
+                        # gate_on() decides whether it is APPLIED
                         from catspace.research.tools.training_infra.qgt_canon \
                             import touch_set as _tsb
                         r2.append(("g", _tsb(b0, legal[j])))
@@ -1247,11 +1258,11 @@ def main():
         zin_p = zin[:, PERM_T]
         w_tf = torch.where(zin_p != zt, args.flip_weight, 1.0) \
             if args.flip_weight != 1.0 else None
-        if args.hard_gate or (args.w_loc > 0 and not args.loc_lag2):
+        if gate_on() or (args.w_loc > 0 and not args.loc_lag2):
             gate_p = torch.from_numpy(
                 _gate_rows(ci[:, :6])).to(dev)               # parent frame
             gp = gate_p[:, PERM_T][..., None].float()        # child frame
-        if args.hard_gate:
+        if gate_on():
             w_tf = gp if w_tf is None else w_tf * gp
             with torch.no_grad():
                 tf_ = (zin_p != zt)
@@ -1266,7 +1277,7 @@ def main():
                 attn0, att_targets(ci[:, :6].ravel()))
         if args.w_mat_roll > 0:
             mtc = torch.from_numpy(CH_MAT[ci[:, 1:].ravel()] / 10.0).to(dev)
-            if args.hard_gate:
+            if gate_on():
                 zbm = torch.sign(lgp)
                 zbm = torch.where(zbm == 0, torch.ones_like(zbm), zbm)
                 zsm = zbm + (lgp - lgp.detach())
@@ -1280,7 +1291,7 @@ def main():
             l_tf = l_tf + args.w_sparse * F.binary_cross_entropy_with_logits(
                 lgp, (zin_p.detach() + 1) / 2)
         with torch.no_grad():
-            if args.hard_gate:                 # IN-CONE only: the all-squares
+            if gate_on():                      # IN-CONE only: the all-squares
                 gm = gate_p[:, PERM_T]         # print dilutes the signal ~5x
                 sel = gm[..., None].expand_as(zt)
                 tf_acc = float(((lgp > 0) == (zt > 0))[sel].float().mean())
@@ -1384,9 +1395,9 @@ def main():
             fb, tb = _ft(mv_raw[np.repeat(rr7, bk)], cols[ok_r].ravel())
             gbr = (torch.from_numpy(_gate_branch(
                 np.repeat(ci[ok_r, k], bk), cols[ok_r].ravel())).to(dev)
-                if args.hard_gate else None)
+                if gate_on() else None)
             with torch.no_grad():
-                zbr = T1_roll(base, [(codes, fb, tb, gbr) if args.hard_gate
+                zbr = T1_roll(base, [(codes, fb, tb, gbr) if gate_on()
                                      else (codes, fb, tb)])[0]
             zb = model.levels_from_bits(zbr)[0]
             pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)                 + model.turn[1]
@@ -1468,6 +1479,10 @@ def main():
 
     LOSSPARTS = {}
     STEP = [0]
+
+    def gate_on():
+        """Is the hard gate live THIS step? (sigma-gating waits for the symmetry.)"""
+        return bool(args.hard_gate) and STEP[0] > args.eq_warmup
 
     def step_fn(_m, step):
         STEP[0] = step
@@ -1620,7 +1635,7 @@ def main():
                     q0p = q0b[:, PERM_T]
                     w_b = torch.where(q0p != q1c, args.flip_weight, 1.0) \
                         if args.flip_weight != 1.0 else None
-                    if args.hard_gate:
+                    if gate_on():
                         gb = torch.from_numpy(rep2).to(dev)[:, PERM_T][..., None]
                         w_b = gb.float() if w_b is None else w_b * gb.float()
                     l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
@@ -1764,7 +1779,7 @@ def main():
             pl_c = dq[torch.arange(cb * 7, device=dev), pla].reshape(cb, 7, -1)
             fa, ta = _ft(mv_raw, pla.cpu().numpy())
             f7, t7 = fa.reshape(cb, 7), ta.reshape(cb, 7)
-            if args.hard_gate:
+            if gate_on():
                 zs = T1_roll(q1[:, 0],
                              [(pl_c[:, k], f7[:, k], t7[:, k],
                                torch.from_numpy(_gate_rows(ci[:, k])).to(dev))
@@ -2119,7 +2134,7 @@ def main():
                 # detection tracks whether the in-cone margin ever opens; a run
                 # flat at 3000 is already decided (qgt17 0.9%, qgt19b 7.3% vs
                 # qgt19 24.8%). Restart rather than pay out the full 8000.
-                if args.hard_gate and step >= 3000 and (tfa - tfc) < 0.02:
+                if gate_on() and step >= 3000 and (tfa - tfc) < 0.02:
                     tail += "  [ALERT: in-cone margin flat at %d -- restart]" % step
                 if GRAPH:
                     tail += (f" | cov {breg.get('cov', float('nan')):.3f} auc "
