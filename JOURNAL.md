@@ -20215,3 +20215,5 @@ qgt20 lever) remains the big untapped headroom.
 Arena (greedy1-canon, 40g, no-mat) launched.
 
 ## 2026-08-31 (Fable) — qgt19 arena: 0.062 (5 draws / 40g). Detection records are not yet game strength: the plateau holds until detection clears the P(clean-game) threshold. gateFN 0.78 unmoved all run -> the ENCODER-LOCALITY LOSS (queued) is the marked headroom; a gated-arm replicate is the other morning option.
+
+## 2026-08-31 (Fable) — qgt19b: seed-1 replicate of the gated record config. The claim on trial: hard gating structurally shrinks the variance band. If detection lands near 24.8%, gated-arm results become believable at n=1; if it craters like qgt15b did (23.9->0.0), the variance lives in the encoder, not the equilibrium the gate removed.
