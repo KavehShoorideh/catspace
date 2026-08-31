@@ -109,6 +109,18 @@ def main():
                     help="graph arm: soft supervision of head-0 attention toward the "
                          "true attack adjacency (the WARM START, Kaveh) -- free "
                          "labels; heads/questions beyond it stay unsupervised.")
+    ap.add_argument("--t-warmup", type=int, default=0,
+                    help="canon: train the TRANSITION ALONE for N steps (closure "
+                         "gradient into the encoder held at 0) so the in-cone "
+                         "margin is established before anything competes with it "
+                         "-- the 8/31 mediator finding: detection tracks whether "
+                         "that margin ever opens, and seeds differ on it")
+    ap.add_argument("--w-loc", type=float, default=0.0,
+                    help="ENCODER-LOCALITY loss: bits(child) must equal "
+                         "perm(bits(parent)) OUTSIDE the move's touch set -- "
+                         "teaches the CODE that untouched squares encode "
+                         "identically (gateFN stuck 0.78-0.81 = the encoder, not "
+                         "the gate, is the delocalized party)")
     ap.add_argument("--direct-t", type=int, default=0,
                     help="canon: DIRECT next-state operator -- no identity+delta "
                          "(Kaveh 8/30: the hard gate owns out-of-cone copying; "
@@ -1163,7 +1175,9 @@ def main():
         pla_np = pla.cpu().numpy()
         frm_a, to_a = _ft(mv_raw, pla_np)
         frm7, to7 = frm_a.reshape(cb, 7), to_a.reshape(cb, 7)
-        a_ = args.closure_scale                # scaled closure: same VALUES, the
+        # WARMUP (8/31): closure gradient into the encoder is OFF until the
+        # transition has had t_warmup steps to open its in-cone margin alone
+        a_ = 0.0 if STEP[0] <= args.t_warmup else args.closure_scale
         q1_cl = q1_all * a_ + q1_all.detach() * (1 - a_)   # encoder pull damped
         zin = q1_cl[:, :6].reshape(cb * 6, 64, -1)
         zt = qe[:, 1:].reshape(cb * 6, 64, -1)                   # sg by no_grad
@@ -1176,10 +1190,11 @@ def main():
         zin_p = zin[:, PERM_T]
         w_tf = torch.where(zin_p != zt, args.flip_weight, 1.0) \
             if args.flip_weight != 1.0 else None
-        if args.hard_gate:
+        if args.hard_gate or args.w_loc > 0:
             gate_p = torch.from_numpy(
                 _gate_rows(ci[:, :6])).to(dev)               # parent frame
             gp = gate_p[:, PERM_T][..., None].float()        # child frame
+        if args.hard_gate:
             w_tf = gp if w_tf is None else w_tf * gp
             with torch.no_grad():
                 tf_ = (zin_p != zt)
@@ -1218,6 +1233,20 @@ def main():
                 tf_copy = float((zin_p == zt).float().mean())
             MATSTAT["dead"] = float(
                 (q1_flat.mean((0, 1)).abs() > 0.95).float().mean())
+        # ENCODER-LOCALITY (8/31, the complement of the gate): the GATE constrains
+        # T; this constrains the CODE. Outside the move's touch set the child's
+        # bits must equal the parent's mirrored bits -- both sides ONLINE, so the
+        # gradient reshapes the encoder toward locally-supported concepts. The
+        # bit-balance term + value CE are the anti-collapse counterweights.
+        l_loc = torch.zeros((), device=dev)
+        if args.w_loc > 0:
+            zpar = q1_all[:, :6].reshape(cb * 6, 64, -1)[:, PERM_T]
+            zchi = q1_all[:, 1:].reshape(cb * 6, 64, -1)
+            ung = ~gate_p[:, PERM_T]                          # (cb*6, 64)
+            agree = 0.5 * (1.0 - zpar * zchi)                 # 0 same, 1 opposite
+            l_loc = args.w_loc * agree[ung].mean()
+            with torch.no_grad():
+                MATSTAT["loc"] = float(agree[ung].mean())
         # anti-collapse: every bit should split the batch (dead bits are the JEPA
         # failure; measured 8/30: evenlag copy 0.167 -> 0.035 by step 500)
         l_var = (q1_flat.mean(0) ** 2).mean() * args.w_var
@@ -1288,8 +1317,8 @@ def main():
             l_br = l_br + (F.softplus(-(sc[:, 0] - sc[arv, j])) * reg[arv, j]).mean()
             n_br += nv
         l_br = l_br / 3.0
-        return (l_tf + l_qa + l_dq + 0.1 * l_rvq + l_var, l_val, l_br, n_lab,
-                n_br, tf_acc, tf_copy)
+        return (l_tf + l_qa + l_dq + 0.1 * l_rvq + l_var + l_loc, l_val, l_br,
+                n_lab, n_br, tf_acc, tf_copy)
 
     def fan_anchor(c_par, h_mv_par, ii, stm_b):
         """Roll the parent 1 ply through fan_k children each; CE vs each child's triple.
@@ -1346,7 +1375,10 @@ def main():
                               ).to(dev).reshape(nk * fk, 3)
         return _ce_rows(pv, tg), l_dq
 
+    STEP = [0]
+
     def step_fn(_m, step):
+        STEP[0] = step
         model.train()
         idx = torch.from_numpy(rng.choice(tr_idx, args.batch, replace=False))
         ii = idx.numpy()
@@ -1954,7 +1986,15 @@ def main():
                         f"{MATSTAT.get('dead', float('nan')):.2f}"
                         + (f" gate {MATSTAT.get('gsz', float('nan')):.2f}/"
                            f"FN {MATSTAT.get('gfn', float('nan')):.2f}"
-                           if args.hard_gate else ""))
+                           if args.hard_gate else "")
+                        + (f" loc {MATSTAT.get('loc', float('nan')):.2f}"
+                           if args.w_loc > 0 else ""))
+                # MARGIN CRITERION [science, alerts only -- Kaveh's gate doctrine]:
+                # detection tracks whether the in-cone margin ever opens; a run
+                # flat at 3000 is already decided (qgt17 0.9%, qgt19b 7.3% vs
+                # qgt19 24.8%). Restart rather than pay out the full 8000.
+                if args.hard_gate and step >= 3000 and (tfa - tfc) < 0.02:
+                    tail += "  [ALERT: in-cone margin flat at %d -- restart]" % step
                 if GRAPH:
                     tail += (f" | cov {breg.get('cov', float('nan')):.3f} auc "
                              f"{breg.get('aucT', float('nan')):.3f}/"
@@ -2088,6 +2128,17 @@ def main():
               f"reaches the encoder; sibling head reaches the carrier "
               f"(anchor tfacc {tfa_c:.3f} / copy {tfc_c:.3f}; dead-bit frac "
               f"{MATSTAT.get('dead', float('nan')):.3f} [science])")
+        if args.w_loc > 0:
+            # C8 [impl]: the locality loss must reach the ENCODER (it is the whole
+            # point -- it reshapes the CODE, not the transition)
+            l_dyn_l, _, _, _, _, _, _ = chain_anchor_canon(4)
+            g_loc = torch.autograd.grad(l_dyn_l, model.carrier_proj.weight,
+                                        allow_unused=True)[0]
+            assert g_loc is not None and float(g_loc.abs().sum()) > 0, \
+                "C8 locality loss does not reach the encoder"
+            print(f"  C8 PASS encoder-locality: gradient reaches the carrier; "
+                  f"out-of-cone disagreement at init "
+                  f"{MATSTAT.get('loc', float('nan')):.2f} [science]")
         print("  ALL QGT GATES PASS")
         _sf_teardown()
         return
