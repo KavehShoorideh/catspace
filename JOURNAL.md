@@ -20437,3 +20437,28 @@ THE TWO ROUTES, priced:
 RECOMMENDATION: (a) now since it is ready and free, (b) as the next lever because
 it is independently valuable and, if it works, makes the tighter lag-1 constraint
 available. Awaiting Kaveh.
+
+## 2026-08-31 (Fable) — Kaveh: "stop the faulty run, start the lag 2 after double checking its code. then fix lag 1 and run after lag 2." All three done
+
+STOPPED qgt20 (lag-1 locality = a false target).
+
+DOUBLE-CHECK, by ORACLE not inspection -- new C10 gate: for row-triples (k, k+1,
+k+2), every square outside the UNION of the two plies' touch sets must have
+IDENTICAL board features at rows k and k+2 (nothing touched it; two plies restore
+the colour roles). Printed: "1182 out-of-union squares across 30 row-triples,
+ZERO feature changes". Row indexing, both frame mappings and the union cone are
+therefore provably aligned with ground truth.
+
+qgt21 LAUNCHED = qgt20's config with exactly ONE lever changed (--loc-lag2 1),
+hard gate kept ON so the comparison against qgt19/qgt20 stays clean.
+
+LAG-1 FIX BUILT (--w-equiv, opt-in): train bits(colour-mirrored board) toward
+SIGMA(bits(board)) with SIGMA a fixed involution pairing bit 2i with 2i+1.
+Mirrored twins are FREE data -- no engine, no labels. New C11 gate: SIGMA and the
+mirror are involutions; the term reaches the encoder; and it is LEARNABLE --
+mini-fit drove it 1.172 -> 0.145 in 40 steps on the carrier projection alone.
+That last number matters: the symmetry the encoder does NOT have today (measured
+best per-bit correlation 0.31, non-bijective) is easy to install. Once it holds,
+lag-1 gating and locality become exactly true via SIGMA-then-mirror with the
+tighter single-ply cone, and bit PAIRS acquire a named meaning (mine vs theirs).
+Queued to run after qgt21 per Kaveh's ordering.

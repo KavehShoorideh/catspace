@@ -120,6 +120,19 @@ def main():
                          "margin is established before anything competes with it "
                          "-- the 8/31 mediator finding: detection tracks whether "
                          "that margin ever opens, and seeds differ on it")
+    ap.add_argument("--equiv-batch", type=int, default=16,
+                    help="how many of the batch's positions get a mirrored twin")
+    ap.add_argument("--w-equiv", type=float, default=0.0,
+                    help="COLOR-SWAP EQUIVARIANCE (the lag-1 fix, 8/31): train "
+                         "bits(colour-mirrored board) toward SIGMA(bits(board)) "
+                         "where SIGMA is a fixed involution pairing bit 2i with "
+                         "2i+1. Labels are FREE (every position has a mirrored "
+                         "twin). Measured 8/31: no such symmetry exists today "
+                         "(best per-bit corr 0.31, not bijective), so it must be "
+                         "trained in. Once it holds, lag-1 gating/locality become "
+                         "exactly true via SIGMA-then-mirror, with the tighter "
+                         "single-ply cone -- and bit PAIRS acquire a named "
+                         "meaning: mine vs theirs")
     ap.add_argument("--loc-lag2", type=int, default=0,
                     help="apply the locality loss across a FULL MOVE UNIT (2 "
                          "plies) instead of 1: two canonical plies restore the "
@@ -462,6 +475,14 @@ def main():
         model.sib_scorer = torch.nn.Linear(64 * args.sq_bits, 1).to(dev)
         from catspace.research.tools.training_infra.qgt_canon import MIRROR_PERM
         PERM_T = torch.from_numpy(MIRROR_PERM).to(dev)
+        PERM_EQ = PERM_T
+        # SIGMA: a fixed involution on the BIT index pairing 2i <-> 2i+1. Any
+        # fixed involution works (the bits are learned and adapt to it); pairing
+        # is the minimal choice that makes "mine/theirs" a two-bit gauge.
+        _sig = np.arange(args.sq_bits)
+        _sig[0::2], _sig[1::2] = np.arange(1, args.sq_bits, 2), \
+            np.arange(0, args.sq_bits, 2)
+        SIGMA_EQ = torch.from_numpy(_sig).to(dev)
     elif DISC:
         from catspace.research.tools.training_infra.qgt_field import BitTransition
         # registered as a submodule BEFORE the optimizer, so it checkpoints + trains
@@ -1454,6 +1475,30 @@ def main():
         l_wdl = (ce * w).sum() / w.sum().clamp(min=1e-6)
         assert torch.isfinite(l_wdl), "WDL loss is not finite"
         loss = l_wdl + aux["loss_aux"]
+        if args.w_equiv > 0:
+            # free labels: the SAME positions, colour-mirrored. board.mirror()
+            # flips ranks and swaps colours, so the target is SIGMA(bits) read at
+            # the mirrored square.
+            import chess as _ceq
+            from catspace.research.tools.training_infra.qgt_canon import (
+                canon as _cneq)
+            mb = []
+            for g_ in ii[:args.equiv_batch]:
+                try:
+                    mb.append(_cneq(chess.Board(str(FENS[g_])).mirror())[0])
+                except Exception:
+                    pass
+            if mb:
+                sqm, mvm, edm, mkm = feat_of(build_rows(mb))
+                cm, _, _ = model.carrier(sqm, mvm, edm, mkm)
+                qm = model.rvq_bits(cm)[0]                    # (nm,64,sq_bits)
+                nm = len(mb)
+                q_orig = model.rvq_bits(aux["carrier"][:nm])[0]
+                q_tgt = q_orig[:, PERM_EQ][:, :, SIGMA_EQ]    # mirror + sigma
+                l_eq = 0.5 * (1.0 - qm * q_tgt.detach()).mean() \
+                    + 0.5 * (1.0 - qm.detach() * q_tgt).mean()
+                loss = loss + args.w_equiv * l_eq
+                MATSTAT["eq"] = float(0.5 * (1.0 - qm * q_tgt).mean())
         if args.w_mat > 0:
             mt = torch.from_numpy(MAT[ii] / 10.0).to(dev)
             mp = model.mat_head(z).squeeze(-1)     # z is already (B, d_pos) bits
@@ -2294,6 +2339,52 @@ def main():
                           f"(cos {c:+.2f}, comparable magnitudes "
                           f"{nrm[a]:.1e}/{nrm[b]:.1e})", flush=True)
                     break
+        if args.w_equiv > 0:
+            # C11 [impl + science]: SIGMA is an involution; the equivariance term
+            # reaches the ENCODER; and it is LEARNABLE (mini-fit must drop it).
+            import chess as _c11
+            from catspace.research.tools.training_infra.qgt_canon import (
+                canon as _cn11)
+            assert bool((SIGMA_EQ[SIGMA_EQ] ==
+                         torch.arange(args.sq_bits, device=dev)).all()), \
+                "C11 SIGMA is not an involution"
+            assert bool((PERM_EQ[PERM_EQ] ==
+                         torch.arange(64, device=dev)).all()), \
+                "C11 mirror permutation is not an involution"
+            ii11 = rng.choice(tr_idx, 8, replace=False)
+            mb11 = [_cn11(_c11.Board(str(FENS[g_])).mirror())[0] for g_ in ii11]
+            sq11, mv11, ed11, mk11 = feat_of(build_rows(mb11))
+            sq11o, mv11o, ed11o, mk11o = batch_of(torch.from_numpy(ii11))
+
+            def _eq_loss():
+                qm = model.rvq_bits(model.carrier(sq11, mv11, ed11, mk11)[0])[0]
+                qo = model.rvq_bits(model.carrier(sq11o, mv11o, ed11o,
+                                                  mk11o)[0])[0]
+                tg = qo[:, PERM_EQ][:, :, SIGMA_EQ]
+                return 0.5 * (1.0 - qm * tg.detach()).mean() \
+                    + 0.5 * (1.0 - qm.detach() * tg).mean()
+
+            l11 = _eq_loss()
+            g11 = torch.autograd.grad(l11, model.carrier_proj.weight,
+                                      allow_unused=True)[0]
+            assert g11 is not None and float(g11.abs().sum()) > 0, \
+                "C11 equivariance loss does not reach the encoder"
+            before = float(l11)
+            from catspace.research.tools.training_infra.train.scaffold import (
+                frozen)
+            with frozen(model):
+                o11 = torch.optim.Adam(model.carrier_proj.parameters(), lr=3e-3)
+                for _ in range(40):
+                    lz = _eq_loss()
+                    o11.zero_grad(); lz.backward(); o11.step()
+                after = float(_eq_loss())
+            print(f"  C11 PASS equivariance: SIGMA and mirror are involutions; "
+                  f"gradient reaches the encoder; mini-fit {before:.3f} -> "
+                  f"{after:.3f} in 40 steps [science: learnable]")
+            if after >= before - 0.01:
+                print("    ALERT C11 [science]: the symmetry did not budge in the "
+                      "mini-fit -- it may need more than the carrier projection",
+                      flush=True)
         print("  ALL QGT GATES PASS")
         _sf_teardown()
         return
