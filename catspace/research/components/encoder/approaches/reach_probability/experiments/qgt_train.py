@@ -215,6 +215,9 @@ def main():
     DISC = args.dynamics in ("discrete", "graph", "canon")
     GRAPH = args.dynamics in ("graph", "canon")
     CANON = args.dynamics == "canon"
+    assert not (args.hard_gate and args.w_sparse > 0), \
+        "hard gate and the sparse-change prior are incompatible: the prior would " \
+        "pull IN-CONE squares toward copy against the teacher (audit 8/30)"
     # THE CANON ARM (spec merge, Kaveh 8/29 "merge the doc like you said"): mover-
     # canonical features (side to move always White -- parity removed at the ROOT,
     # not worked around), ONE-PLY deterministic teacher pairs, JEPA closure (EMA
@@ -1212,8 +1215,7 @@ def main():
                 tf_copy = float((zin_p == zt)[sel].float().mean())
             else:
                 tf_acc = float(((lgp > 0) == (zt > 0)).float().mean())
-                tf_copy = float((zin_p == zt)).float().mean() if False else \
-                    float((zin_p == zt).float().mean())
+                tf_copy = float((zin_p == zt).float().mean())
             MATSTAT["dead"] = float(
                 (q1_flat.mean((0, 1)).abs() > 0.95).float().mean())
         # anti-collapse: every bit should split the batch (dead bits are the JEPA

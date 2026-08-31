@@ -20166,3 +20166,29 @@ scoped to identity+delta arms; touched()/cov stay as instruments. Loader carries
 direct_t per checkpoint. Module tests + full battery pass. Combined per the 8/29
 interaction doctrine: gate + pressure + direct is the HEADLINE run; attribution
 hedged as always.
+
+## 2026-08-31 (Fable) — MATH AUDIT (Kaveh: "check the rest of the math... nothing contradictory or wrong") + the audit's numerical finding: the gate is sound; the ENCODER is the delocalized party
+
+Code audit of the canon/gate/direct paths. Verified consistent: every
+frame/permutation crossing (teacher child-frame masks, T1_roll gate-before-perm,
+branch negamax signs, material mover-POV via mirror sign, even-lag frame
+coincidence, blunder child reversed triples, closure grad-scale = value-preserving
+gradient damping). Fixed: a dead-code wart in tf_copy; ADDED an incompatibility
+assert (hard gate x sparse prior would double-penalize in-cone flips). One known
+instrument bias examined -- training gateFN mixes online-parent vs EMA-child
+bits -- and NUMERICALLY CLEARED:
+
+  Probe (qgt17 ckpt, 350 consecutive-ply pairs, SAME encoder both sides, printed):
+  "true per-ply bit-flip rate (same encoder): 0.614 | TRUE gateFN (flips outside
+  touch-set): 0.786"
+
+The 0.77-0.82 training print is REAL, not EMA artifact. Implication, and it is
+the arm's central fact: the trained encoder's code is DELOCALIZED -- 61% of bits
+change per canonical ply, and 79% of those changes fall outside the move's exact
+feature-level light cone. The gate correctly refuses to let T model that churn;
+nothing yet makes the ENCODER stop churning. The missing pressure is an
+ENCODER-SIDE LOCALITY LOSS: penalize bits(child) != perm(bits(parent)) OUTSIDE
+the touch set -- the code itself is taught that untouched squares encode
+identically. That is the complement of the gate (gate constrains T; locality loss
+constrains the CODE) and it is what makes "concepts with local support" literal.
+Queued as the qgt20 lever, for Kaveh's morning.
