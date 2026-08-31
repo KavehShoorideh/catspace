@@ -20245,3 +20245,34 @@ MENU FOR KAVEH (nothing launched; he is at the keyboard):
       closure/value objectives engage, so the margin is established first;
   (c) 3-seed protocol with early-kill on the margin criterion, to make any future
       lever claim honest at reasonable cost.
+
+## 2026-08-31 (Fable) — LOSS-COMPATIBILITY AUDIT (Kaveh: "make sure the loss term is compatible with the other loss terms... we don't have any conflicting training configurations"). Two real conflicts found and fixed; qgt20 relaunched
+
+Built C9: per-term gradient cosines AND norms on the parameters each pair shares
+(measurement, not argument). First run on the qgt20 config, printed:
+  "C9 encoder (4 terms) | most opposed: bitvar~locality -0.95, locality~rvq -0.77"
+
+FINDING 1 -- anti-collapse vs locality were NEAR-EXACTLY OPPOSED (cos -0.95).
+The always-on bit-balance penalty mean(bit)^2 and the new locality loss occupy
+the SAME axis (locality's global optimum is constant bits; balance forbids them),
+so the net was a small difference of two large gradients with the outcome set by
+an arbitrary weight ratio. FIX: the balance term is now a HINGE BARRIER --
+relu(|mean| - 0.9)^2 -- exactly zero while bits are informative, firing only near
+collapse (VICReg's variance-hinge logic). Post-fix norms: value 1.83, locality
+0.42, barrier 0.15 -> value dominates, locality keeps ~2/3 of its pull, the
+barrier is a guard rail rather than an opponent.
+
+FINDING 2 -- REDUNDANT rvq commitment in the chain anchor (cos -0.77 vs
+locality). observe() on the corpus batch already trains that quantizer at weight
+1.0; the 0.1x duplicate added no signal and pulled against locality. REMOVED.
+This is Kaveh's own example generalized: do not stack a second regularizer on an
+objective another term already owns.
+
+ALSO ADDED (startup config alerts, the same principle at the flag level):
+  - hard_gate + identity/delta operator = out-of-cone copying enforced TWICE
+    (the gate subsumes the copy prior) -- this WAS qgt17's inertness trap;
+  - w_id_init is inert under --direct-t;
+  - hard_gate x w_sparse remains a hard incompatibility assert (8/30).
+Residual tension, recorded not hidden: locality vs barrier stays anti-parallel on
+near-dead bits (cos -0.91) -- that IS the collapse trade-off, now correctly
+scoped to the regime where it belongs, with dead-frac as the live tripwire.

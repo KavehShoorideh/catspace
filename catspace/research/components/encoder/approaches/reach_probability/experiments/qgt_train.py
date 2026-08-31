@@ -155,6 +155,9 @@ def main():
                          "'fewest concept changes per ply' prior; the teacher "
                          "overrides it wherever it is confident (8/30: closure "
                          "alone chose a 0.98-flip churn code, gauge zero)")
+    ap.add_argument("--var-floor", type=float, default=0.9,
+                    help="bit-balance barrier activates only above this |mean| "
+                         "(hinge; below it the term is exactly zero)")
     ap.add_argument("--w-var", type=float, default=1.0,
                     help="anti-collapse bit-balance: mean(bit)^2 across the batch "
                          "(VICReg's variance guard, scale-free for +-1 bits)")
@@ -227,6 +230,14 @@ def main():
     DISC = args.dynamics in ("discrete", "graph", "canon")
     GRAPH = args.dynamics in ("graph", "canon")
     CANON = args.dynamics == "canon"
+    if args.hard_gate and not args.direct_t:
+        print("  ALERT [config]: hard gate + identity/delta operator enforce "
+              "out-of-cone copying TWICE (the gate subsumes the copy prior); "
+              "this is the qgt17 inertness trap -- prefer --direct-t 1",
+              flush=True)
+    if args.direct_t and args.w_id_init != 0.5:
+        print("  ALERT [config]: --w-id-init is inert in direct mode (no copy "
+              "prior in the operator)", flush=True)
     assert not (args.hard_gate and args.w_sparse > 0), \
         "hard gate and the sparse-change prior are incompatible: the prior would " \
         "pull IN-CONE squares toward copy against the teacher (audit 8/30)"
@@ -1239,6 +1250,7 @@ def main():
         # gradient reshapes the encoder toward locally-supported concepts. The
         # bit-balance term + value CE are the anti-collapse counterweights.
         l_loc = torch.zeros((), device=dev)
+        LOSSPARTS.clear()
         if args.w_loc > 0:
             zpar = q1_all[:, :6].reshape(cb * 6, 64, -1)[:, PERM_T]
             zchi = q1_all[:, 1:].reshape(cb * 6, 64, -1)
@@ -1247,9 +1259,14 @@ def main():
             l_loc = args.w_loc * agree[ung].mean()
             with torch.no_grad():
                 MATSTAT["loc"] = float(agree[ung].mean())
-        # anti-collapse: every bit should split the batch (dead bits are the JEPA
-        # failure; measured 8/30: evenlag copy 0.167 -> 0.035 by step 500)
-        l_var = (q1_flat.mean(0) ** 2).mean() * args.w_var
+        # anti-collapse BARRIER (8/31 loss audit): an always-on balance penalty
+        # was anti-parallel to the locality loss (cos -0.95 on the encoder) --
+        # two terms fighting over the same axis, net = small difference of large
+        # gradients. Hinged, it is EXACTLY ZERO while bits are informative and
+        # only fires as bits approach dead, so locality operates unopposed in the
+        # healthy regime (VICReg's variance-hinge logic).
+        l_var = (F.relu(q1_flat.mean(0).abs() - args.var_floor) ** 2).mean() \
+            * args.w_var
         # value CE on ALL 7 rows of ONLINE bits (mover-POV; encoder counterweight)
         z7 = model.levels_from_bits(q1_flat)[0]
         W = model.readout.weight
@@ -1317,7 +1334,12 @@ def main():
             l_br = l_br + (F.softplus(-(sc[:, 0] - sc[arv, j])) * reg[arv, j]).mean()
             n_br += nv
         l_br = l_br / 3.0
-        return (l_tf + l_qa + l_dq + 0.1 * l_rvq + l_var + l_loc, l_val, l_br,
+        # NO rvq term here: observe() on the corpus batch already trains this
+        # quantizer's commitment at weight 1.0; the duplicate pulled against
+        # locality (audit cos -0.77) for no additional signal.
+        LOSSPARTS.update(teacher=l_tf, locality=l_loc, bitvar=l_var,
+                         dyncode=l_dq, value=l_val, branch=l_br)
+        return (l_tf + l_qa + l_dq + l_var + l_loc, l_val, l_br,
                 n_lab, n_br, tf_acc, tf_copy)
 
     def fan_anchor(c_par, h_mv_par, ii, stm_b):
@@ -1375,6 +1397,7 @@ def main():
                               ).to(dev).reshape(nk * fk, 3)
         return _ce_rows(pv, tg), l_dq
 
+    LOSSPARTS = {}
     STEP = [0]
 
     def step_fn(_m, step):
@@ -2139,6 +2162,46 @@ def main():
             print(f"  C8 PASS encoder-locality: gradient reaches the carrier; "
                   f"out-of-cone disagreement at init "
                   f"{MATSTAT.get('loc', float('nan')):.2f} [science]")
+        # C9 [science]: LOSS-COMPATIBILITY AUDIT (Kaveh 8/31 -- "make sure the
+        # loss term is compatible with the other loss terms"). Pairwise cosine of
+        # per-term gradients on the SHARED parameters each pair actually touches;
+        # strongly negative = the two terms pull the same weights apart.
+        chain_anchor_canon(4)
+        parts = {k: v for k, v in LOSSPARTS.items()
+                 if torch.is_tensor(v) and v.requires_grad and float(v) != 0.0}
+        shared = [("encoder", model.carrier_proj.weight),
+                  ("transition", model.bit_trans.out.weight)]
+        for pname, prm in shared:
+            gs = {}
+            for k, v in parts.items():
+                g = torch.autograd.grad(v, prm, retain_graph=True,
+                                        allow_unused=True)[0]
+                if g is not None and float(g.abs().sum()) > 0:
+                    gs[k] = g.reshape(-1)
+            ks = sorted(gs)
+            if len(ks) < 2:
+                print(f"  C9 {pname}: only {ks} reach it")
+                continue
+            pairs = []
+            for i in range(len(ks)):
+                for j in range(i + 1, len(ks)):
+                    c = float(F.cosine_similarity(gs[ks[i]], gs[ks[j]], dim=0))
+                    pairs.append((c, ks[i], ks[j]))
+            pairs.sort()
+            nrm = {k: float(g.norm()) for k, g in gs.items()}
+            worst = ", ".join(f"{a}~{b} {c:+.2f}" for c, a, b in pairs[:3])
+            print(f"  C9 {pname} | grad norms: " +
+                  " ".join(f"{k} {nrm[k]:.2e}" for k in ks))
+            print(f"  C9 {pname} most opposed: {worst}")
+            # an opposition only MATTERS if both gradients are comparable in size;
+            # a near-anti-parallel pair where one side is 100x smaller is a barrier
+            # doing its job, not a tug-of-war
+            for c, a, b in pairs:
+                if c < -0.5 and min(nrm[a], nrm[b]) > 0.1 * max(nrm[a], nrm[b]):
+                    print(f"    ALERT [science]: {a} and {b} pull {pname} apart "
+                          f"(cos {c:+.2f}, comparable magnitudes "
+                          f"{nrm[a]:.1e}/{nrm[b]:.1e})", flush=True)
+                    break
         print("  ALL QGT GATES PASS")
         _sf_teardown()
         return
