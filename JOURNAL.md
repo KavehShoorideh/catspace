@@ -20276,3 +20276,51 @@ ALSO ADDED (startup config alerts, the same principle at the flag level):
 Residual tension, recorded not hidden: locality vs barrier stays anti-parallel on
 near-dead bits (cos -0.91) -- that IS the collapse trade-off, now correctly
 scoped to the regime where it belongs, with dead-frac as the live tripwire.
+
+## 2026-08-31 (Fable) — LOSS-TERM REVIEW (Kaveh's four questions). The headline: the "commitment loss" is not a commitment loss, and the anti-collapse term is JUSTIFIED but was measuring the wrong thing at the wrong threshold
+
+Q1 "Is the commitment loss the same as the gating?" NO -- and my 8/31 removal
+rationale was WRONG. Inspected vector_quantize_pytorch.LFQ: commitment_loss_weight
+DEFAULTS TO 0.0, so l_rvq contains NO commitment at all. It is
+0.1 * softplus(per_sample_entropy - diversity_gamma * codebook_entropy): a
+confidence + DIVERSITY regularizer. With codebook_size=2 per bit, maximizing
+codebook entropy == driving each bit to 50/50 across the batch -- i.e. the SAME
+objective as l_var. That is the true redundancy (and explains the -0.77 cosine).
+DECISION: keep the chain-anchor copy removed, but for the correct reason
+(duplicate diversity pressure, not duplicate commitment). Nothing loses a
+commitment term, because there never was one.
+
+Q2 "Why 0.9?" No good reason -- it was picked just under the dead-bit
+instrument's 0.95. Measured instead (180 corpus positions, per-(square,bit)
+|mean| across the batch):
+  qgt19  det 24.8%  median 0.344  max 0.578   frac>0.9 0.000
+  qgt17  det  0.9%  median 0.400  max 0.600   frac>0.9 0.000
+  qgt15  det 23.9%  median 0.378  max 0.578   frac>0.9 0.000
+  qgt19b det  7.3%  median 0.667  p90 0.878   frac>0.9 0.070   frac>0.95 0.044
+Healthy runs top out near 0.58-0.60; the failed replicate sits far above.
+DECISION: floor 0.7 -- provably silent in every healthy checkpoint we have, and
+fires across a large share of qgt19b's bits instead of catching only its worst
+7 percent after the fact.
+
+Q3 "Why have an anti-collapse term at all?" Because collapse is not hypothetical
+-- it is the measured difference between our best and worst runs of the SAME
+config. qgt19b (7.3%) is partially collapsed; qgt19 (24.8%) is not. BUT the
+honest corollary: qgt19b ran WITH the always-on l_var at weight 1.0 and collapsed
+anyway, so the term as written is not sufficient, and there is no positive
+evidence it ever helped. It is retained as a hinged BARRIER (Kaveh's own
+proposal: kick in only when collapse is happening), not as a standing force.
+
+Q4 "Does the gradient conflict persist across the run?" The init-time -0.95 was
+measured in the ONE regime that misrepresents training: init has ~8 percent
+saturated bits, so the barrier fires. In every healthy trained checkpoint the
+corpus-level statistic never reaches the floor, so a hinged barrier contributes
+EXACTLY ZERO and the conflict disappears -- while the always-on form conflicted at
+full strength for all 8000 steps. That is the argument for hinging, and it is why
+the init measurement alone should not have decided anything.
+  OPEN ITEM (flagged, not resolved): the same audit run on the TRAINED qgt19
+  checkpoint reported nonzero barrier gradient and degenerate +-1.00 cosines,
+  which contradicts the eval-mode statistics above -- almost certainly a
+  train-mode LFQ sampling difference. The C9 audit needs an eval-consistent path
+  before its trained-model numbers are trusted; --audit-ckpt is now wired for it.
+
+qgt20 relaunched under the reviewed configuration (floor 0.7).

@@ -109,6 +109,11 @@ def main():
                     help="graph arm: soft supervision of head-0 attention toward the "
                          "true attack adjacency (the WARM START, Kaveh) -- free "
                          "labels; heads/questions beyond it stay unsupervised.")
+    ap.add_argument("--audit-ckpt", default="",
+                    help="units mode: load these weights before the C9 loss "
+                         "audit, so gradient conflicts are measured on a TRAINED "
+                         "model rather than at init (init has ~8 percent "
+                         "saturated bits and misrepresents the healthy regime)")
     ap.add_argument("--t-warmup", type=int, default=0,
                     help="canon: train the TRANSITION ALONE for N steps (closure "
                          "gradient into the encoder held at 0) so the in-cone "
@@ -155,9 +160,15 @@ def main():
                          "'fewest concept changes per ply' prior; the teacher "
                          "overrides it wherever it is confident (8/30: closure "
                          "alone chose a 0.98-flip churn code, gauge zero)")
-    ap.add_argument("--var-floor", type=float, default=0.9,
+    ap.add_argument("--var-floor", type=float, default=0.7,
                     help="bit-balance barrier activates only above this |mean| "
-                         "(hinge; below it the term is exactly zero)")
+                         "(hinge; below it the term is exactly ZERO). 0.7 is "
+                         "DATA-DERIVED (8/31 measurement over 180 positions): "
+                         "healthy runs top out at max|mean| 0.578 (qgt19) / "
+                         "0.600 (qgt17) so the barrier stays silent, while the "
+                         "collapsed replicate qgt19b sits at median 0.667, p90 "
+                         "0.878 -- a 0.9 floor would only have caught its worst "
+                         "7 percent of bits, far too late")
     ap.add_argument("--w-var", type=float, default=1.0,
                     help="anti-collapse bit-balance: mean(bit)^2 across the batch "
                          "(VICReg's variance guard, scale-free for +-1 bits)")
@@ -2067,6 +2078,13 @@ def main():
 
     # ---- gates ----------------------------------------------------------------------
     if args.units and CANON:
+        if args.audit_ckpt:
+            _ck = torch.load(args.audit_ckpt, map_location="cpu",
+                             weights_only=False)
+            print(f"  [audit] loaded {args.audit_ckpt} "
+                  f"(step {_ck.get('step', '?')})", flush=True)
+            model.load_state_dict(_ck["state_dict"], strict=False)
+            ema.load_state_dict(_ck["state_dict"], strict=False)
         # C-GATES (the canon arm's battery; the U/D battery assumes White-POV
         # flips and 2-ply semantics). Taxonomy unchanged: implementation kills,
         # science alerts.
