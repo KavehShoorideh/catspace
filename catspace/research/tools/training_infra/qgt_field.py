@@ -287,7 +287,10 @@ class GraphBitTransition(nn.Module):
         inj = self._inj(z, m, frm, to, frm2, to2)
         h, attn0, l_route = self._encode(z, inj, need_attn, tok_mask=tok_mask)
         if self.direct_out:                    # one pass, no identity, no delta
-            return self.out(h), attn0, l_route
+            # soft logit bound: unbounded direct logits ran away under fw4 + the
+            # 10x dyn LR (dyn loss 8e4 by step 1000, 8/31); tanh-bounded at +-15
+            # keeps BCE finite and sign semantics untouched
+            return 15.0 * torch.tanh(self.out(h) / 15.0), attn0, l_route
         h0, _, _ = self._encode(z, None, tok_mask=tok_mask)   # same mask both passes:
         # the frame axiom stays exact RELATIVE to the restricted attention
         # parentheses load-bearing (the STE scar's sibling): out(h) - out(h0) is an
