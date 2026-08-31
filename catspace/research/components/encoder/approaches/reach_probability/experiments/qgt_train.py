@@ -1201,8 +1201,15 @@ def main():
             l_tf = l_tf + args.w_sparse * F.binary_cross_entropy_with_logits(
                 lgp, (zin_p.detach() + 1) / 2)
         with torch.no_grad():
-            tf_acc = float(((lgp > 0) == (zt > 0)).float().mean())
-            tf_copy = float((zin_p == zt).float().mean())
+            if args.hard_gate:                 # IN-CONE only: the all-squares
+                gm = gate_p[:, PERM_T]         # print dilutes the signal ~5x
+                sel = gm[..., None].expand_as(zt)
+                tf_acc = float(((lgp > 0) == (zt > 0))[sel].float().mean())
+                tf_copy = float((zin_p == zt)[sel].float().mean())
+            else:
+                tf_acc = float(((lgp > 0) == (zt > 0)).float().mean())
+                tf_copy = float((zin_p == zt)).float().mean() if False else \
+                    float((zin_p == zt).float().mean())
             MATSTAT["dead"] = float(
                 (q1_flat.mean((0, 1)).abs() > 0.95).float().mean())
         # anti-collapse: every bit should split the batch (dead bits are the JEPA
