@@ -20217,3 +20217,31 @@ Arena (greedy1-canon, 40g, no-mat) launched.
 ## 2026-08-31 (Fable) — qgt19 arena: 0.062 (5 draws / 40g). Detection records are not yet game strength: the plateau holds until detection clears the P(clean-game) threshold. gateFN 0.78 unmoved all run -> the ENCODER-LOCALITY LOSS (queued) is the marked headroom; a gated-arm replicate is the other morning option.
 
 ## 2026-08-31 (Fable) — qgt19b: seed-1 replicate of the gated record config. The claim on trial: hard gating structurally shrinks the variance band. If detection lands near 24.8%, gated-arm results become believable at n=1; if it craters like qgt15b did (23.9->0.0), the variance lives in the encoder, not the equilibrium the gate removed.
+
+## 2026-08-31 (Fable) — qgt19b (GATED REPLICATE) VERDICT: 7.3% vs qgt19's 24.8%. The gate did NOT abolish the variance — but the three gated runs expose its MEDIATOR
+
+Printed: "detection rate (model gap>0.1): 7.3%"; free-run 1-ply agreement 0.401 vs
+copy 0.740 (much worse than qgt19's 0.496/0.609). Finals: in-cone tfacc 0.528 vs
+copy 0.533 -- NO in-cone margin at close (qgt19 closed +0.18, peaked +0.44).
+
+THE MEDIATOR, across all three gated runs:
+  qgt17  identity+delta operator, fw1.5:  in-cone margin ~+0.01  -> detection 0.9%
+  qgt19b direct operator, fw4, seed 1:    in-cone margin ~0.00   -> detection 7.3%
+  qgt19  direct operator, fw4, seed 0:    in-cone margin +0.18   -> detection 24.8%
+Detection tracks WHETHER THE OPERATOR LEARNS ITS IN-CONE MARGIN, not the config.
+Same flags, same data: seed 0 found the margin, seed 1 did not. So the residual
+variance is an OPTIMIZATION/trainability failure with a named, mid-run-observable
+signature -- not an unexplained lottery. Band for the gated config: [7.3, 24.8]
+(vs ungated [0.0, 23.9]); the floor lifted, the width did not close.
+
+WHAT THIS BUYS: the in-cone margin is a LIVE mid-run predictor. A run that has not
+opened a margin by ~3000 steps is already decided; that is a cheap early-kill/
+restart criterion, and it makes the next comparisons affordable at 3 seeds.
+
+MENU FOR KAVEH (nothing launched; he is at the keyboard):
+  (a) encoder-locality loss (the queued qgt20 lever; gateFN stuck 0.78-0.81 in
+      every gated run -- the biggest untouched structural headroom);
+  (b) fix the trainability directly: warmup the transition alone before the
+      closure/value objectives engage, so the margin is established first;
+  (c) 3-seed protocol with early-kill on the margin criterion, to make any future
+      lever claim honest at reasonable cost.
