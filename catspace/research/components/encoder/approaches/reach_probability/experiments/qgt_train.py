@@ -1255,6 +1255,9 @@ def main():
                 tf_copy = float((zin_p == zt).float().mean())
             MATSTAT["dead"] = float(
                 (q1_flat.mean((0, 1)).abs() > 0.95).float().mean())
+            _bm = q1_flat.mean(0).abs()        # the statistic l_var actually sees
+            MATSTAT["bmax"] = float(_bm.max())
+            MATSTAT["bfire"] = float((_bm > args.var_floor).float().mean())
         # ENCODER-LOCALITY (8/31, the complement of the gate): the GATE constrains
         # T; this constrains the CODE. Outside the move's touch set the child's
         # bits must equal the parent's mirrored bits -- both sides ONLINE, so the
@@ -2184,6 +2187,12 @@ def main():
         # loss term is compatible with the other loss terms"). Pairwise cosine of
         # per-term gradients on the SHARED parameters each pair actually touches;
         # strongly negative = the two terms pull the same weights apart.
+        # NOTE (8/31, open item resolved): the audit CANNOT run in eval mode --
+        # LFQ drops the straight-through path there, so no term reaches the
+        # encoder at all ("only [] reach it"). Train mode is therefore the only
+        # regime in which gradient conflicts are measurable, AND it is the regime
+        # training actually experiences; the barrier's statistic is reported here
+        # so train-vs-eval divergence is visible rather than assumed.
         chain_anchor_canon(4)
         parts = {k: v for k, v in LOSSPARTS.items()
                  if torch.is_tensor(v) and v.requires_grad and float(v) != 0.0}
@@ -2208,6 +2217,11 @@ def main():
             pairs.sort()
             nrm = {k: float(g.norm()) for k, g in gs.items()}
             worst = ", ".join(f"{a}~{b} {c:+.2f}" for c, a, b in pairs[:3])
+            if pname == "encoder":
+                print(f"  C9 barrier statistic in TRAIN mode: max|mean| "
+                      f"{MATSTAT.get('bmax', float('nan')):.3f}, fraction above "
+                      f"floor {args.var_floor} = "
+                      f"{MATSTAT.get('bfire', float('nan')):.3f}")
             print(f"  C9 {pname} | grad norms: " +
                   " ".join(f"{k} {nrm[k]:.2e}" for k in ks))
             print(f"  C9 {pname} most opposed: {worst}")

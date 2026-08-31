@@ -20324,3 +20324,28 @@ the init measurement alone should not have decided anything.
   before its trained-model numbers are trusted; --audit-ckpt is now wired for it.
 
 qgt20 relaunched under the reviewed configuration (floor 0.7).
+
+## 2026-08-31 (Fable) — OPEN ITEM RESOLVED, and it CORRECTS the review: the barrier is not silent in healthy training, but it IS correctly calibrated
+
+The eval-consistent audit is impossible by construction: in eval mode LFQ drops
+the straight-through path, so NO loss term reaches the encoder at all ("only []
+reach it"). Train mode is therefore the only measurable regime -- and the one
+training actually experiences. Instrumented the statistic l_var sees, printed:
+
+  qgt19  (healthy, det 24.8%): TRAIN max|mean| 0.929, fraction above floor 0.7 = 0.096
+  qgt19b (collapsed, det 7.3%): TRAIN max|mean| 1.000, fraction above floor 0.7 = 0.442
+
+CORRECTION to this morning's review: I claimed a hinged barrier "contributes
+exactly zero" in healthy runs. That was inferred from EVAL-mode statistics (max
+0.578) and is WRONG for training, where LFQ's stochasticity pushes the healthy
+run's max to 0.929 and fires the barrier on ~10 percent of bits. The train/eval
+divergence is itself worth recording: the model the probe and arena see is
+cleaner than the model training sees.
+
+What survives, and it is the better result: the floor DISCRIMINATES. 9.6 percent
+of bits firing when healthy vs 44.2 percent when collapsed, and the gradient
+norms show the intended guard-rail behaviour precisely --
+  healthy   locality 2.1e+04 vs barrier 9.6e+02  -> barrier is a 4 percent tax
+  collapsed locality 1.4e+03 vs barrier 2.7e+03  -> barrier DOMINATES
+Quiet when healthy, dominant when collapsing, verified on one checkpoint of each
+kind. The term is retained with floor 0.7 on this evidence, not on argument.
