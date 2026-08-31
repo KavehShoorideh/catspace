@@ -20213,3 +20213,5 @@ model of the project. gateFN steady ~0.78: the encoder-locality loss (queued
 qgt20 lever) remains the big untapped headroom.
 
 Arena (greedy1-canon, 40g, no-mat) launched.
+
+## 2026-08-31 (Fable) — qgt19 arena: 0.062 (5 draws / 40g). Detection records are not yet game strength: the plateau holds until detection clears the P(clean-game) threshold. gateFN 0.78 unmoved all run -> the ENCODER-LOCALITY LOSS (queued) is the marked headroom; a gated-arm replicate is the other morning option.
