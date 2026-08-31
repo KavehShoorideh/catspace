@@ -20134,3 +20134,23 @@ supervise selected edges), triggered by qgt17+ proving out.
 
 qgt17 = canon + pair edges + hard gate + material grounding; flip-weight 1.5; no
 sparse prior, no vhead. Gauges: detection, gateFN, gate size; then arena.
+
+## 2026-08-30 (Fable) — qgt17 (HARD GATE) VERDICT: detection 0.9%. The gate fixed drift by making the dynamics nearly INERT — the opposite failure from the churn runs
+
+Finals: vroll +0.435/+0.430/+0.368 (sustained records), regret 0.107, drift
+pinned at the copy baseline ALL RUN (the structural win held), dead 0.00, and the
+fastest canon run yet (1.45s/step -- the masked loss pays for the gate twice over).
+
+Probe (printed): "detection rate (model gap>0.1): 0.9%"; rolled-read best-vs-worst
+gap -0.009; within-position corr -0.030. MECHANISM: flip rate sat at 0.022 all run
+and the in-cone teacher margin never opened (tfacc-copy ~ +0.01); the transition
+is ~pure copy inside a hard shell. The record vrolls were ROOT information
+preserved by the near-identity roll (root value correlates with line labels), not
+dynamics. The two failure modes now bracket the design space: UNGATED = churny,
+seed-bistable, drifting (qgt13-16); HARD-GATED at current pressure = stable,
+trustworthy, INERT. The gate is right; the in-cone learning pressure is too weak
+(copy prior + flip-weight 1.5 across a ~20%-of-squares trainable region).
+
+qgt18 next (standing grant): hard gate + IN-CONE pressure -- flip-weight back to
+4.0 (it only acts inside the gate now, where flips are dense and deterministic),
+plus an in-cone tfacc instrument (the all-squares print dilutes the signal 5x).
