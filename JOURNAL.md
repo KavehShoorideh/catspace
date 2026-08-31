@@ -20584,3 +20584,39 @@ mechanism looks like.
 qgt22 (sigma-aware LAG 1) auto-launched on qgt21's completion and is running: the
 head-to-head is now lag-2's coarse-but-free cone vs lag-1's tight cone bought with
 an installed symmetry.
+
+## 2026-08-31 (Fable) — qgt21 ARENA: 0.062 (5 draws / 40g), IDENTICAL to qgt19 despite detection 24.8 -> 27.5. Calibrated why, and it says the arena cannot move yet
+
+Printed: "FINAL greedy1: 0.062 [0.020,0.182] (+0=5-35/40) | our move: mean 2100ms
+| 567 step-evals/move". Same score as qgt19 to three decimals.
+
+THIS IS EXPECTED, and the arithmetic should have been done long ago. A game is
+lost to the FIRST uncaught blunder, so game score is a THRESHOLD function of
+detection, not a linear one. With the measured corpus blunder rate 0.117/move and
+~40 of our moves per game, P(clean game) = (1 - 0.117(1-d))^40:
+
+   detection   eff rate   P(clean game)   clean games per 40
+       0.000     0.1170           0.007                  0.3
+       0.083     0.1073           0.011                  0.4   <- qgt11
+       0.183     0.0956           0.018                  0.7   <- qgt14
+       0.248     0.0880           0.025                  1.0   <- qgt19
+       0.275     0.0848           0.029                  1.2   <- qgt21
+       0.400     0.0702           0.054                  2.2
+       0.550     0.0526           0.115                  4.6
+       0.700     0.0351           0.239                  9.6
+       0.850     0.0176           0.493                 19.7
+
+Going 24.8 -> 27.5 percent detection moves expected clean games from 1.0 to 1.2
+out of 40. That is invisible at any sample size we can afford. DETECTION MUST
+REACH ~71 PERCENT before a quarter of games come out clean -- roughly 2.6x where
+we are.
+
+CONSEQUENCES, recorded so we stop misreading flat arenas as no progress:
+  - the PROBE is the sensitive instrument in this regime and should drive lever
+    selection; the arena is a threshold check, worth running only when detection
+    makes a large jump (say +10 points or more), not on every record;
+  - a flat arena at 0.06 is CONSISTENT with real mechanism gains, and we now have
+    the table to say so quantitatively rather than hoping;
+  - the model assumes caught blunders are actually avoided, blunders are
+    independent across moves, and one blunder loses the game -- all rough, but the
+    order of magnitude is what matters here.
