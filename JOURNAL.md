@@ -20192,3 +20192,5 @@ the touch set -- the code itself is taught that untouched squares encode
 identically. That is the complement of the gate (gate constrains T; locality loss
 constrains the CODE) and it is what makes "concepts with local support" literal.
 Queued as the qgt20 lever, for Kaveh's morning.
+
+## 2026-08-31 (Fable) — qgt19-v1 logit runaway (dyn 8e4 by step 1000, sign metrics still sane): unbounded direct logits under fw4 + 10x dyn LR. Fixed: 15*tanh(x/15) soft bound + dyn-lr-mult 3 for the relaunch (combined per doctrine). v2 running; in-cone margin was already +0.065 at step 500 pre-blow-up — the direct operator learns where identity+delta stayed asleep.
