@@ -20400,3 +20400,5 @@ its teacher (which learns the swap as part of the dynamics, correctly). The
 alternative is a color-swap-equivariant bit code, which is a bigger change.
 
 NOTE: qgt20 is training right now under both flawed constraints.
+
+## 2026-08-31 (Fable) — lag-2 locality BUILT (opt-in --loc-lag2, default OFF, nothing launched; the reframe direction remains Kaveh's call). Validation at the gate: out-of-cone disagreement at INIT is 0.08 under lag 2 vs 0.30 under lag 1 -- with colors restored an untrained encoder is already 92 percent locally consistent, so the loss now measures real deviation instead of a frame artifact. (Lag-1 loc started at 0.30 and CLIMBED to 0.55 while chasing the falsehood.) Cone = union of both plies' touch sets mapped into the row-k frame; the 1-ply transition and its teacher are untouched.

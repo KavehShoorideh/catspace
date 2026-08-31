@@ -120,6 +120,14 @@ def main():
                          "margin is established before anything competes with it "
                          "-- the 8/31 mediator finding: detection tracks whether "
                          "that margin ever opens, and seeds differ on it")
+    ap.add_argument("--loc-lag2", type=int, default=0,
+                    help="apply the locality loss across a FULL MOVE UNIT (2 "
+                         "plies) instead of 1: two canonical plies restore the "
+                         "color roles (two mirrors and two color swaps are both "
+                         "the identity), so the constraint is TRUE. At lag 1 it "
+                         "is false by construction -- measured 8/31: in-cone "
+                         "0.634 vs out-of-cone 0.628 (no signal) at lag 1, "
+                         "0.281 vs 0.169 (real locality) at lag 2")
     ap.add_argument("--w-loc", type=float, default=0.0,
                     help="ENCODER-LOCALITY loss: bits(child) must equal "
                          "perm(bits(parent)) OUTSIDE the move's touch set -- "
@@ -1212,7 +1220,7 @@ def main():
         zin_p = zin[:, PERM_T]
         w_tf = torch.where(zin_p != zt, args.flip_weight, 1.0) \
             if args.flip_weight != 1.0 else None
-        if args.hard_gate or args.w_loc > 0:
+        if args.hard_gate or (args.w_loc > 0 and not args.loc_lag2):
             gate_p = torch.from_numpy(
                 _gate_rows(ci[:, :6])).to(dev)               # parent frame
             gp = gate_p[:, PERM_T][..., None].float()        # child frame
@@ -1265,7 +1273,21 @@ def main():
         # bit-balance term + value CE are the anti-collapse counterweights.
         l_loc = torch.zeros((), device=dev)
         LOSSPARTS.clear()
-        if args.w_loc > 0:
+        if args.w_loc > 0 and args.loc_lag2:
+            # LAG 2 = one full move unit: both the mirror and the color swap are
+            # involutions, so rows k and k+2 share a frame and the constraint is
+            # TRUE. Cone = union of the two plies' touch sets, both mapped into
+            # the row-k frame.
+            gk = torch.from_numpy(_gate_rows(ci[:, :5])).to(dev)
+            gk1 = torch.from_numpy(_gate_rows(ci[:, 1:6])).to(dev)[:, PERM_T]
+            ung = ~(gk | gk1)                                 # (cb*5, 64)
+            za = q1_all[:, :5].reshape(cb * 5, 64, -1)
+            zb = q1_all[:, 2:7].reshape(cb * 5, 64, -1)
+            agree = 0.5 * (1.0 - za * zb)
+            l_loc = args.w_loc * agree[ung].mean()
+            with torch.no_grad():
+                MATSTAT["loc"] = float(agree[ung].mean())
+        elif args.w_loc > 0:
             zpar = q1_all[:, :6].reshape(cb * 6, 64, -1)[:, PERM_T]
             zchi = q1_all[:, 1:].reshape(cb * 6, 64, -1)
             ung = ~gate_p[:, PERM_T]                          # (cb*6, 64)
