@@ -102,12 +102,20 @@ class QGTDynamics(LatentDynamics):
         # (their random-init markers are never injected: step() gets no frm2)
         self.canon = A.get("dynamics") == "canon"
         self.gated = bool(A.get("hard_gate", 0))
+        self.sigma = None
+        if A.get("w_equiv", 0) > 0:            # sigma-aware gating (8/31)
+            sb = A["sq_bits"]
+            s_ = np.arange(sb)
+            s_[0::2], s_[1::2] = np.arange(1, sb, 2), np.arange(0, sb, 2)
+            self.sigma = torch.from_numpy(s_)
         self.conditional = ("bit_trans.rep_from" in ck["state_dict"]
                             and not self.canon)   # canon never injects replies
         if self.canon:
             from catspace.research.tools.training_infra.qgt_canon import (
                 MIRROR_PERM)
             self.PERM = torch.from_numpy(MIRROR_PERM).to(self.dev)
+        if self.sigma is not None:
+            self.sigma = self.sigma.to(self.dev)
         if "mat_head.weight" in ck["state_dict"]:
             m.mat_head = torch.nn.Linear(m.d_pos, 1)
         if "value_head.weight" in ck["state_dict"]:
@@ -230,7 +238,8 @@ class QGTDynamics(LatentDynamics):
         zb = torch.sign(lg)
         zb = torch.where(zb == 0, torch.ones_like(zb), zb)
         if gate is not None:
-            zb = torch.where(gate[..., None], zb, state)
+            keep = state if self.sigma is None else state[:, :, self.sigma]
+            zb = torch.where(gate[..., None], zb, keep)
         if self.canon:                     # ONE ply; the frame mirrors after it
             zb = zb[:, self.PERM]
         return zb

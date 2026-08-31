@@ -1196,8 +1196,14 @@ def main():
             zb = torch.sign(lg)
             zb = torch.where(zb == 0, torch.ones_like(zb), zb)
             zs = zb + (lg - lg.detach())
-            if gate is not None:                   # HARD gate: outside T(a), copy
-                zs = torch.where(gate[..., None], zs, z)
+            if gate is not None:
+                # HARD gate, SIGMA-AWARE (Kaveh 8/31, approved): outside the cone
+                # the state is not COPIED -- it is relabelled mine<->theirs, which
+                # is the true inverse of the canonical frame change. Applying
+                # sigma on the bit axis BEFORE the mirror gives, after the mirror,
+                # next[mirror(s)] == sigma(parent[s]) exactly.
+                zs = torch.where(gate[..., None],
+                                 zs, z[:, :, SIGMA_EQ] if args.w_equiv > 0 else z)
             z = zs[:, PERM_T]
             out.append(z)
         return out
@@ -1309,7 +1315,13 @@ def main():
             with torch.no_grad():
                 MATSTAT["loc"] = float(agree[ung].mean())
         elif args.w_loc > 0:
+            # LAG 1, SIGMA-AWARE: the correct statement is
+            #   child[mirror(s)] == sigma(parent[s])  outside the cone
+            # (plain equality is false -- the mover changes, so every concept is
+            # relabelled mine<->theirs). Requires --w-equiv to install sigma.
             zpar = q1_all[:, :6].reshape(cb * 6, 64, -1)[:, PERM_T]
+            if args.w_equiv > 0:
+                zpar = zpar[:, :, SIGMA_EQ]
             zchi = q1_all[:, 1:].reshape(cb * 6, 64, -1)
             ung = ~gate_p[:, PERM_T]                          # (cb*6, 64)
             agree = 0.5 * (1.0 - zpar * zchi)                 # 0 same, 1 opposite
@@ -2234,13 +2246,16 @@ def main():
             zr7 = T1_roll(q1g, [(codeg, fg, tg, g7)])[0]
             zr7p = zr7[:, PERM_T]                  # back to parent frame
             ung = ~g7
-            assert bool((zr7p[ung] == q1g[ung]).all()), \
-                "C7 hard gate leaks: ungated squares changed"
+            want = q1g[:, :, SIGMA_EQ] if args.w_equiv > 0 else q1g
+            assert bool((zr7p[ung] == want[ung]).all()), \
+                ("C7 hard gate leaks: ungated squares do not equal "
+                 + ("sigma(parent)" if args.w_equiv > 0 else "parent"))
             fr_in = g7[torch.arange(4, device=dev), fg]
             to_in = g7[torch.arange(4, device=dev), tg]
             assert bool(fr_in.all()) and bool(to_in.all()), \
                 "C7 from/to not in own touch set"
-            print(f"  C7 PASS hard gate: ungated squares copy BIT-IDENTICALLY "
+            print(f"  C7 PASS hard gate: ungated squares equal "
+                  f"{'SIGMA(parent)' if args.w_equiv > 0 else 'parent'} exactly "
                   f"through the roll; from/to gated; mean |T| "
                   f"{float(g7.float().mean()) * 64:.1f}/64 squares")
         print(f"  C1-C6 PASS canon arm: all-White frames; ply integrity replayed; "

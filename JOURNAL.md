@@ -20532,3 +20532,27 @@ i.e. sigma. Once sigma holds, the lag-1 statements become exactly expressible:
     gate    : outside the cone, next_state := sigma(mirror(parent_state))
 Both are one permutation away from what we already compute. Bringing the wiring
 to Kaveh before running, per his instruction.
+
+## 2026-08-31 (Fable) — SIGMA-AWARE LAG 1 BUILT (Kaveh approved both: imposed involution, and apply it to the gate as well as the locality loss)
+
+The lag-1 statements are now expressed with the true inverse instead of a false
+identity:
+    locality : outside the cone, child[mirror(s)] == SIGMA(parent[s])
+    hard gate: outside the cone, next := SIGMA(mirror(parent))
+SIGMA is applied on the BIT axis before the mirror, so after the frame change the
+relation holds exactly at mirror(s). Installed by the (now correctly constructed)
+equivariance loss on free colour-swapped twins.
+
+Wired in three places, all gated:
+  - trainer roll: sigma-aware gate (C7 now asserts ungated squares equal
+    SIGMA(parent) exactly, not a copy -- it passes);
+  - trainer loss: sigma-aware lag-1 locality;
+  - search/probe/arena: QGTDynamics.step applies the same sigma, so what search
+    rolls matches what training taught (checkpoints carry w_equiv, so legacy
+    ckpts keep plain copying).
+C11 re-passes on the corrected twins (1.167 -> 0.181 in a 40-step mini-fit).
+
+qgt22 = qgt21's config + --w-equiv + sigma-aware lag-1 locality, queued to launch
+when qgt21 finishes, per Kaveh's ordering. The pair then answers a clean question:
+lag-2 (true but coarse cone, no new machinery) vs lag-1 (true via SIGMA, tighter
+single-ply cone, plus a named mine/theirs symmetry in the code).
