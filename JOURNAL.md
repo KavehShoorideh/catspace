@@ -20349,3 +20349,54 @@ norms show the intended guard-rail behaviour precisely --
   collapsed locality 1.4e+03 vs barrier 2.7e+03  -> barrier DOMINATES
 Quiet when healthy, dominant when collapsing, verified on one checkpoint of each
 kind. The term is retained with floor 0.7 on this evidence, not on argument.
+
+## 2026-08-31 (Fable) — CONE AUDIT (Kaveh: "is it properly defined as all first-ply interactions?"). The cone is right; THE FRAME IT IS APPLIED IN IS WRONG. This invalidates gateFN, the locality loss, and part of the gate's semantics
+
+DEFINITION, checked line by line: touch_set = {squares whose piece changed} U
+{squares whose white/black attacker MASK changed} U {from, to}. The encoder's
+square features are sq[0] piece token, sq[1..2] attacker counts, sq[3..4]
+pawn-attacker flags, sq[5..6] king-ring flags, sq[7] own-defender count -- ALL of
+them are functions of piece placement and attacker sets, so any square whose
+features change is in the set by construction. Captures, en passant (captured
+pawn's square), castling rook, discovered attacks, newly blocked rays, king-ring
+shifts are all covered. At the BOARD level the cone is complete.
+
+THE BUG IS THE FRAME. A canonical ply is mirror + COLOR SWAP (board.mirror()
+swaps colors); MIRROR_PERM undoes only the mirror. Demonstrated on a real ply:
+an UNTOUCHED rook on a1 has feature token 4 (white rook) in the parent frame and
+token 10 (black rook) at a8 in the child frame -- and only 5 of 56 untouched
+squares keep identical features (the 5 are empty, unattacked, hence
+color-symmetric). So "child bits == perm(parent bits) outside the cone" is FALSE
+BY CONSTRUCTION.
+
+MEASURED CONSEQUENCE (530 verified chain triples, qgt19):
+  LAG 1, mirror only (what we gate on today):
+      in-cone flip 0.634 | out-of-cone flip 0.628   <- NO SIGNAL. The comparison
+      cannot distinguish touched from untouched squares at all.
+  LAG 2, colors restored, cone = union of both plies' touch sets:
+      in-cone flip 0.281 | out-of-cone flip 0.169   <- locality is REAL, 1.7x.
+Out-of-cone "leakage" is 3.7x inflated by the color swap. The flat
+distance-profile finding earlier today (0.60 at d=1 through 0.68 at d=7,
+independent of castling/ep changes) is explained: the swap applies uniformly.
+
+WHAT THIS RETRACTS AND EXPLAINS:
+  - gateFN 0.77-0.81, constant across every gated run, is mostly the COLOR SWAP
+    -- a constant of the frame design. My 8/31 conclusion "the encoder is the
+    delocalized party, 79 percent leakage" is WITHDRAWN.
+  - the locality loss (w-loc) targets an identity that cannot hold; that is why
+    `loc` never falls. It is currently pushing the encoder toward a falsehood.
+  - the HARD GATE forces out-of-cone squares to retain parent bits with STALE
+    COLOR ROLES, i.e. ~80 percent of each rolled state is systematically wrong.
+    A candidate explanation for qgt17's inertness and the gated arms' arena
+    plateau at ~0.06.
+  - the ORIGINAL 2-ply move unit had the correct frame invariance by accident
+    (two swaps = identity). The canon arm fixed parity and broke color-consistency
+    for exactly these constraints.
+
+FIX DIRECTION (not implemented, Kaveh's call): apply the gate and the locality
+loss at LAG 2 -- a full move unit, where color roles are restored -- with the cone
+as the union of the two plies' touch sets, while KEEPING the 1-ply transition and
+its teacher (which learns the swap as part of the dynamics, correctly). The
+alternative is a color-swap-equivariant bit code, which is a bigger change.
+
+NOTE: qgt20 is training right now under both flawed constraints.
