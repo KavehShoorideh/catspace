@@ -20620,3 +20620,39 @@ CONSEQUENCES, recorded so we stop misreading flat arenas as no progress:
   - the model assumes caught blunders are actually avoided, blunders are
     independent across moves, and one blunder loses the game -- all rough, but the
     order of magnitude is what matters here.
+
+## 2026-08-31 (Fable) — SIGMA IS INSTALLING, and the encoder's solution vindicates the imposed pairing. But the gate is bootstrapping on a symmetry that is only two-thirds true
+
+Measured on qgt22 @2000 vs qgt21 @8000 (227 positions, each with its colour-swapped
+twin), printed:
+  qgt22 (equivariance ON) : bits(twin) vs sigma(mirror(bits(x))) 0.327 disagreement
+                            bit pairs anti-correlated            0.837
+  qgt21 (equivariance OFF): 0.500 disagreement, 0.500 anti-correlated
+qgt21's exact 0.500/0.500 is the null: with no equivariance term the symmetry is
+literally absent, as measured on 8/31. qgt22 has moved it to 0.327 by step 2000 --
+installing, but INCOMPLETE.
+
+WHY THE PAIRING WAS THE RIGHT CHOICE (Kaveh approved it; here is the evidence).
+84 percent of bit pairs came out ANTI-correlated, i.e. sigma is acting mostly as
+NEGATION -- most concepts are signed "mine minus theirs" quantities. Tempting
+conclusion: drop the pairing and just define sigma := -1. That would be WRONG: a
+colour-SYMMETRIC concept (say "this square is contested by both sides") satisfies
+b = -b, which is impossible for a +-1 bit, so pure negation cannot represent it at
+all. The pairing can: a pair with EQUAL bits maps to itself under sigma and encodes
+a symmetric fact, a pair with OPPOSITE bits encodes a signed one. The measured
+0.837 is the encoder using both -- ~84 percent signed features, ~16 percent
+colour-neutral ones. Pure negation would have banned the second kind.
+
+THE BOOTSTRAP PROBLEM, flagged: the hard gate FORCES out-of-cone squares to
+sigma(mirror(parent)), but that is only the truth once equivariance holds. At
+0.327 disagreement it holds about two-thirds of the time, so the gate is currently
+writing a partially wrong state on ~80 percent of squares every ply. That is the
+likely reason `loc` is CLIMBING (0.22 -> 0.25 -> 0.31) rather than falling: the
+locality loss is chasing a target the gate keeps corrupting. FIX for the next run
+(not applied mid-flight): warm up equivariance ALONE for N steps -- the same trick
+as --t-warmup -- and only enable sigma-gating once the symmetry is in, or raise
+w-equiv so it converges before the gate leans on it.
+
+Despite that, qgt22 is posting the best rolled-state numbers of the project so far
+(vroll +0.597 at step 1000, in-cone margin +0.505, drift within 0.02 of copy), so
+the run is worth finishing before judging.
