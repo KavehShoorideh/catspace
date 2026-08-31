@@ -95,7 +95,8 @@ class QGTDynamics(LatentDynamics):
         if self.graph:
             kw.update(d=A.get("dyn_d", 64), layers=A.get("dyn_layers", 2),
                       qa_continuous=A.get("dynamics") == "canon",
-                      edge_mode=A.get("edge_mode", "question"))
+                      edge_mode=A.get("edge_mode", "question"),
+                      direct_out=bool(A.get("direct_t", 0)))
         m.bit_trans = cls(**kw)
         # a T2-conditional checkpoint carries reply markers; legacy ones don't
         # (their random-init markers are never injected: step() gets no frm2)

@@ -20154,3 +20154,15 @@ trustworthy, INERT. The gate is right; the in-cone learning pressure is too weak
 qgt18 next (standing grant): hard gate + IN-CONE pressure -- flip-weight back to
 4.0 (it only acts inside the gate now, where flips are dense and deterministic),
 plus an in-cone tfacc instrument (the all-squares print dilutes the signal 5x).
+
+## 2026-08-30 (Fable, late) — IDENTITY+DELTA REMOVED (Kaveh: "make sure we get rid of the identity plus delta formulation in the dynamics operator"). qgt18 (old operator) killed at ~1k steps; qgt19 = hard gate + in-cone flip-weight 4 + DIRECT next-state operator
+
+Rationale: the hard gate now owns out-of-cone copying (C7 asserts it), so the
+operator-level copy prior + baseline-subtraction was redundant -- and it was
+qgt17's inertness attractor. DIRECT mode: one encode pass (no baseline), standard
+init (zero-init would emit sign(0)=+1 everywhere), lg = out(h) predicts the next
+state outright. Frame axiom moves from operator theorem to gate guarantee; C3
+scoped to identity+delta arms; touched()/cov stay as instruments. Loader carries
+direct_t per checkpoint. Module tests + full battery pass. Combined per the 8/29
+interaction doctrine: gate + pressure + direct is the HEADLINE run; attribution
+hedged as always.

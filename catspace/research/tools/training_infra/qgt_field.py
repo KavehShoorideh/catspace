@@ -214,7 +214,7 @@ class GraphBitTransition(nn.Module):
 
     def __init__(self, sq_bits=24, mv_bits=32, d=64, layers=2, n_q=16, heads=4,
                  top_k=4, out_bits=8, w_id_init=0.5, qa_continuous=False,
-                 edge_mode="question"):
+                 edge_mode="question", direct_out=False):
         super().__init__()
         from catspace.research.tools.training_infra.quantized_attention import (
             QuantizedAttention)
@@ -237,8 +237,15 @@ class GraphBitTransition(nn.Module):
                                   for _ in range(layers)])
         self.ln = nn.ModuleList([nn.LayerNorm(d) for _ in range(layers)])
         self.out = nn.Linear(d, sq_bits)
-        nn.init.zeros_(self.out.weight)
-        nn.init.zeros_(self.out.bias)
+        # DIRECT mode (Kaveh 8/30: "get rid of the identity plus delta formulation
+        # in the dynamics operator"): the hard gate owns out-of-cone copying, so
+        # the operator predicts the next state OUTRIGHT -- no copy prior to hide
+        # behind (qgt17's inertness), no baseline pass (one forward, not two).
+        # Standard init: zero-init would emit sign(0)=+1 everywhere at start.
+        self.direct_out = direct_out
+        if not direct_out:
+            nn.init.zeros_(self.out.weight)
+            nn.init.zeros_(self.out.bias)
         self.w_id = nn.Parameter(torch.tensor(float(w_id_init)))
         self.rep_from = nn.Parameter(torch.randn(d) * 0.02)
         self.rep_to = nn.Parameter(torch.randn(d) * 0.02)
@@ -279,6 +286,8 @@ class GraphBitTransition(nn.Module):
         tok_mask (B,64) bool: squares attention may LOOK AT (locality probe)."""
         inj = self._inj(z, m, frm, to, frm2, to2)
         h, attn0, l_route = self._encode(z, inj, need_attn, tok_mask=tok_mask)
+        if self.direct_out:                    # one pass, no identity, no delta
+            return self.out(h), attn0, l_route
         h0, _, _ = self._encode(z, None, tok_mask=tok_mask)   # same mask both passes:
         # the frame axiom stays exact RELATIVE to the restricted attention
         # parentheses load-bearing (the STE scar's sibling): out(h) - out(h0) is an
@@ -446,6 +455,17 @@ def _test():
     for nm, p_ in (("out", gt.out.weight), ("w_id", gt.w_id),
                    ("qa q_select", gt.qa[0].q_select.weight)):
         assert p_.grad is not None and float(p_.grad.abs().sum()) > 0, f"no grad: {nm}"
+    # DIRECT mode: no identity at init (by design), roll stays +-1, grads flow
+    gd = GraphBitTransition(sq_bits=24, mv_bits=32, d=32, layers=2,
+                            edge_mode="pair", direct_out=True)
+    ld, _, _ = gd(zg, mg, frm, to)
+    assert float(ld.abs().mean()) > 1e-4, "direct out degenerate at init"
+    zd = gd.roll_bits(zg, [(mg, frm, to)])[0]
+    assert set(torch.unique(zd.detach()).tolist()) <= {-1.0, 1.0}
+    zd.sum().backward()
+    assert gd.out.weight.grad is not None and \
+        float(gd.out.weight.grad.abs().sum()) > 0, "no grad in direct mode"
+    print("  DIRECT dynamics: single-pass next-state prediction; roll +-1; grads OK")
     # T2-conditional (the reply input): frame axiom stays exact with BOTH
     # injections; the reply markers actually reach the output; grads flow to them
     frm2 = torch.tensor([40, 48, 56]); to2 = torch.tensor([41, 49, 57])

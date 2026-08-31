@@ -109,6 +109,10 @@ def main():
                     help="graph arm: soft supervision of head-0 attention toward the "
                          "true attack adjacency (the WARM START, Kaveh) -- free "
                          "labels; heads/questions beyond it stay unsupervised.")
+    ap.add_argument("--direct-t", type=int, default=0,
+                    help="canon: DIRECT next-state operator -- no identity+delta "
+                         "(Kaveh 8/30: the hard gate owns out-of-cone copying; "
+                         "the copy prior was qgt17's inertness attractor)")
     ap.add_argument("--hard-gate", type=int, default=0,
                     help="canon: HARD light-cone gating (Kaveh 8/30: 'do the hard "
                          "gating. that will make it sparse'). Squares outside the "
@@ -405,7 +409,7 @@ def main():
             heads=args.attn_heads, top_k=args.top_k, out_bits=args.out_bits,
             w_id_init=args.w_id_init, d=args.dyn_d,
             layers=args.dyn_layers, qa_continuous=CANON,
-            edge_mode=args.edge_mode).to(dev)
+            edge_mode=args.edge_mode, direct_out=bool(args.direct_t)).to(dev)
     if CANON:
         # sibling ranking reads the PRE-quantization carrier (spec 2.4: the
         # bottleneck is deliberately fuzzy; move-level discrimination must not
@@ -2018,7 +2022,8 @@ def main():
                 want = str(CH_FEN[ci_t[r, k + 1]]).split()
                 got = b_.fen().split()
                 assert got[:2] == want[:2],                     f"C2 ply integrity broken at chain {r} ply {k}"
-        # C3 [impl]: frame axiom exact + PERM involution
+        # C3 [impl]: frame axiom exact + PERM involution (identity+delta mode
+        # only -- in DIRECT mode copying is the GATE's job, asserted by C7)
         with torch.no_grad():
             sqg, mvg, edg, mkg, plg, mvrg = feat_chain(ci_t[:, 0])
             cg, hg, _ = model.carrier(sqg, mvg, edg, mkg)
@@ -2028,7 +2033,7 @@ def main():
             model.train()
             lg_g, _, _ = model.bit_trans(q1g, codeg, fg, tg)
             tchg = model.bit_trans.touched(q1g, codeg, fg, tg)
-            if bool((~tchg).any()):
+            if not args.direct_t and bool((~tchg).any()):
                 du = float((lg_g - model.bit_trans.w_id * q1g)[~tchg].abs().max())
                 assert du == 0.0, f"C3 frame axiom broken: {du}"
             assert bool((lg_g[:, PERM_T][:, PERM_T] == lg_g).all()), "PERM not involution"
