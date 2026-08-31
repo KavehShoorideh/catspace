@@ -2194,6 +2194,44 @@ def main():
               f"reaches the encoder; sibling head reaches the carrier "
               f"(anchor tfacc {tfa_c:.3f} / copy {tfc_c:.3f}; dead-bit frac "
               f"{MATSTAT.get('dead', float('nan')):.3f} [science])")
+        if args.w_loc > 0 and args.loc_lag2:
+            # C10 [impl]: ORACLE test of the lag-2 constraint. Squares outside the
+            # UNION cone must have IDENTICAL board features at rows k and k+2 --
+            # neither move touched them and two plies restore the colour roles.
+            # Any row/frame misalignment breaks this immediately.
+            import chess as _c10
+            from catspace.research.tools.training_infra.qgt_canon import (
+                canon as _cn10, touch_set as _ts10)
+            from catspace.research.tools.training_infra.gen_move_graphs import (
+                parent_graph as _pg10)
+            ci10 = CH_pos[ch_tr[:6]]
+            n_ck, n_sq, bad = 0, 0, 0
+            for r in range(6):
+                for k in range(5):
+                    r0, r1, r2 = (int(ci10[r, k]), int(ci10[r, k + 1]),
+                                  int(ci10[r, k + 2]))
+                    c0 = _cn10(_c10.Board(str(CH_FEN[r0])))[0]
+                    c1 = _cn10(_c10.Board(str(CH_FEN[r1])))[0]
+                    c2 = _cn10(_c10.Board(str(CH_FEN[r2])))[0]
+                    m0 = list(c0.legal_moves)[int(CHA["played"][r0])]
+                    m1 = list(c1.legal_moves)[int(CHA["played"][r1])]
+                    g_union = _ts10(c0, m0) | _ts10(c1, m1)[MIRROR_PERM.numpy()
+                                                            if hasattr(MIRROR_PERM, "numpy")
+                                                            else MIRROR_PERM]
+                    f0 = _pg10(c0)[0]["sq"]
+                    f2 = _pg10(c2)[0]["sq"]
+                    for s in range(64):
+                        if g_union[s]:
+                            continue
+                        n_sq += 1
+                        if not (f0[s] == f2[s]).all():
+                            bad += 1
+                    n_ck += 1
+            assert bad == 0, (f"C10 lag-2 alignment BROKEN: {bad}/{n_sq} "
+                              f"out-of-union squares changed features")
+            print(f"  C10 PASS lag-2 constraint is TRUE on the oracle: {n_sq} "
+                  f"out-of-union squares across {n_ck} row-triples, ZERO feature "
+                  f"changes (rows k and k+2 share a frame)")
         if args.w_loc > 0:
             # C8 [impl]: the locality loss must reach the ENCODER (it is the whole
             # point -- it reshapes the CODE, not the transition)
