@@ -20462,3 +20462,42 @@ best per-bit correlation 0.31, non-bijective) is easy to install. Once it holds,
 lag-1 gating and locality become exactly true via SIGMA-then-mirror with the
 tighter single-ply cone, and bit PAIRS acquire a named meaning (mine vs theirs).
 Queued to run after qgt21 per Kaveh's ordering.
+
+## 2026-08-31 (Fable) — Kaveh's lag-1 fix ("mirror + colour swap the child back, then match") TESTED. It removes the colour confound but NOT the locality-killing one, and the residual is a bigger finding than the colour swap
+
+Measured on 348 verified consecutive plies (qgt19 encoder):
+  (A) child-canonical comparison [today]  : in-cone 0.614 | out 0.633  contrast -0.019
+  (B) parent-frame comparison  [Kaveh]    : in-cone 0.294 | out 0.338  contrast -0.043
+  (ref) lag 2, colours restored           : in-cone 0.281 | out 0.169  contrast +0.112
+Kaveh's mapping HALVES the absolute disagreement (0.63 -> 0.34) -- the colour swap
+really was half the noise. But the locality CONTRAST stays negative: untouched
+squares still change as much as touched ones, so the constraint remains unusable
+at lag 1.
+
+WHY, isolated with a null-move test -- same board, ONLY the side-to-move bit
+flipped, so every square is untouched by construction (60 positions, encoder
+determinism verified at 0.0000):
+  "SAME BOARD, only side-to-move flipped: 0.250 of bits differ"
+A QUARTER of every square's concepts change when nothing on the board moves. For
+scale, a real ply changes 0.294/0.338 in the same frame -- so the side-to-move
+flip alone accounts for most of the per-ply churn.
+
+THE REAL FINDING: square concepts are not functions of the square's board
+neighbourhood. They depend on the side to move and on the legal-move graph (move
+nodes message into square nodes, and that graph changes wholesale every ply). The
+colour swap was a confound on top of this; Kaveh's fix removes it and reveals the
+larger one underneath. This also explains why lag 2 works at all: two plies
+restore BOTH the colour roles AND the side to move, so both confounds cancel
+together -- it is the only frame in which our current encoder can express
+locality.
+
+CONSEQUENCES:
+  - the equivariance loss alone will NOT rescue lag 1 (it fixes colour, not stm);
+    keep it queued for its own value (a named mine/theirs symmetry) but drop the
+    claim that it unlocks lag-1 gating;
+  - lag 2 is not a compromise, it is the CORRECT frame for this architecture;
+  - the deeper option, if per-ply locality is wanted: make the square carrier a
+    function of board state only -- no move-node messages, stm carried outside the
+    square bits. That would make concepts genuinely square-local and per-ply
+    comparable, at the cost of dropping mobility information the move graph
+    currently injects. Architectural, not a loss tweak. Kaveh's call.
