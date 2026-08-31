@@ -20556,3 +20556,31 @@ qgt22 = qgt21's config + --w-equiv + sigma-aware lag-1 locality, queued to launc
 when qgt21 finishes, per Kaveh's ordering. The pair then answers a clean question:
 lag-2 (true but coarse cone, no new machinery) vs lag-1 (true via SIGMA, tighter
 single-ply cone, plus a named mine/theirs symmetry in the code).
+
+## 2026-08-31 (Fable) — qgt21 (LAG-2 LOCALITY) VERDICT: DETECTION 27.5% — new all-time record, and the first run whose FREE-RUN states beat copying at 1 ply
+
+Printed: "detection rate (model gap>0.1): 27.5%" (30/109 blunders); rolled-read
+best-vs-worst gap +0.039 (best ever, prev 0.026); within-position corr 0.113
+(best ever, prev 0.075). And the mechanism line finally goes the right way:
+   free-run agreement with the true 1-ply child 0.587 vs root-copy 0.568
+-- the rolled state is CLOSER to the truth than not rolling at all. Only qgt14
+had ever managed that (0.638 vs 0.613); every gated run since had been below it.
+
+Finals: in-cone tfacc 0.625 vs copy 0.305 (margin +0.320), loc 0.16 (the lag-1
+version sat at 0.55 and climbed), dead 0.00 throughout, cov 0.80-1.00, balanced
+0.457 with a mid-run peak of 0.529 and a record draw recall of 0.51 at step 2000.
+
+DETECTION LADDER (all gated runs use the same probe):
+   qgt17  identity+delta operator, no locality      0.9%
+   qgt19b direct operator, seed 1                   7.3%
+   qgt20  direct + LAG-1 locality (false target)   killed mid-run
+   qgt19  direct operator, seed 0                  24.8%
+   qgt21  direct + LAG-2 locality (TRUE target)    27.5%  <- record
+The frame fix is worth roughly +3 points over the same recipe without locality,
+and it is the first lever that improved the free-run/copy comparison rather than
+just the detection count. Both numbers moved together, which is what a real
+mechanism looks like.
+
+qgt22 (sigma-aware LAG 1) auto-launched on qgt21's completion and is running: the
+head-to-head is now lag-2's coarse-but-free cone vs lag-1's tight cone bought with
+an installed symmetry.
