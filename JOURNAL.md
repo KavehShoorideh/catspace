@@ -20108,3 +20108,29 @@ bistability itself (pin the flip regime -- e.g. target flip-rate matching the
 true change rate rather than a weak prior) so the estimator tightens.
 
 Kaveh pinged: this changes the plan and needs his call.
+
+## 2026-08-30 (Fable) — HARD GATING BUILT (Kaveh: "forget the sparse chance. remove it. instead, do the hard gating. that will make it sparse"). C7 exact; mean touch-set 10.5/64. qgt17 LAUNCHED
+
+touch_set(board, move): piece+attacker bitboard diff, exact, 228us, |T|=8 for a
+knight move. Wired everywhere the canon arm steps: teacher loss masked to gated
+squares; rolled states copy BIT-IDENTICALLY outside T(a) (C7 asserts it through a
+real roll); branch rolls, free-run rolls, blunder teacher, search (Greedy1/probe
+compute gates per expansion) all gated. The sparse-change PRIOR is removed from
+the recipe (w-sparse not passed) -- sparsity is now architecture, not a loss.
+gateFN [science] instrument: fraction of true child-bit flips landing OUTSIDE the
+gate = the leakage of multi-hop encoder features past the feature-level cone --
+the "map of where locality breaks" the spec promised. One build bug en route
+(gate array sized by len() of a 2-D index block -- raveled now).
+
+Rationale vs the variance crisis: the replicate showed the closure/churn
+equilibrium is seed-bistable; the hard gate REMOVES most of the equilibrium's
+freedom (53/64 squares are forced-copy per ply), which should shrink run variance
+structurally rather than statistically.
+
+ALSO QUEUED (Kaveh, saved to memory): "study the feasibility of learning the edge
+types using some quantized method if this line proves to work" -- the named-
+vocabulary study (per-relation heads on pair codes / routing sparsity prices /
+supervise selected edges), triggered by qgt17+ proving out.
+
+qgt17 = canon + pair edges + hard gate + material grounding; flip-weight 1.5; no
+sparse prior, no vhead. Gauges: detection, gateFN, gate size; then arena.

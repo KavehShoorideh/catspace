@@ -60,6 +60,30 @@ def canon_index(board: chess.Board, move: chess.Move, cap: int):
         return -1
 
 
+def touch_set(board: chess.Board, move: chess.Move) -> np.ndarray:
+    """(64,) bool, PARENT frame: squares whose piece OR attacker sets change under
+    `move` -- the move's exact light cone at the FEATURE level (Kaveh 8/30:
+    "do the hard gating. that will make it sparse"). Computed by bitboard diff,
+    no ray logic to get wrong. From/to always in. NOTE: concept bits are made by
+    multi-hop message passing, so TRUE bit flips outside this set are possible --
+    that leakage is the gate's false-negative rate, MEASURED per run (gateFN),
+    never assumed zero (spec 5's warning)."""
+    t = np.zeros(64, bool)
+    b2 = board.copy(stack=False)
+    b2.push(move)
+    for s in range(64):
+        if board.piece_at(s) != b2.piece_at(s):
+            t[s] = True
+            continue
+        if (board.attackers_mask(chess.WHITE, s) !=
+                b2.attackers_mask(chess.WHITE, s) or
+                board.attackers_mask(chess.BLACK, s) !=
+                b2.attackers_mask(chess.BLACK, s)):
+            t[s] = True
+    t[move.from_square] = t[move.to_square] = True
+    return t
+
+
 def _test():
     import random
     rng = random.Random(0)
@@ -93,6 +117,11 @@ def _test():
         # canon_index round-trips
         j = canon_index(b, mv, 128)
         assert j >= 0 and list(canon(b)[0].legal_moves)[j] == cm
+        # touch set: exact, contains from/to, and every changed sq feature
+        ts = touch_set(canon(b)[0], to_canon(mv, canon(b)[1]))
+        assert ts[to_canon(mv, canon(b)[1]).from_square] and \
+            ts[to_canon(mv, canon(b)[1]).to_square]
+        assert 2 <= int(ts.sum()) <= 64
         b.push(mv)
         checked += 1
     print(f"  canon: {checked} random plies -- canonical always White-to-move; "

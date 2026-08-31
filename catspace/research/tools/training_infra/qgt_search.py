@@ -100,6 +100,7 @@ class QGTDynamics(LatentDynamics):
         # a T2-conditional checkpoint carries reply markers; legacy ones don't
         # (their random-init markers are never injected: step() gets no frm2)
         self.canon = A.get("dynamics") == "canon"
+        self.gated = bool(A.get("hard_gate", 0))
         self.conditional = ("bit_trans.rep_from" in ck["state_dict"]
                             and not self.canon)   # canon never injects replies
         if self.canon:
@@ -216,7 +217,10 @@ class QGTDynamics(LatentDynamics):
         return legal, codes, frm, to
 
     @torch.no_grad()
-    def step(self, state, codes, frm, to, frm2=None, to2=None):
+    def step(self, state, codes, frm, to, frm2=None, to2=None, gate=None):
+        """gate (n,64) bool, PARENT frame: hard light-cone -- outside it the
+        state copies bit-identically (Kaveh 8/30). Canon checkpoints trained
+        with --hard-gate should always be stepped with their gate."""
         bt = self.model.bit_trans
         if self.graph:
             lg, _, _ = bt(state, codes, frm, to, frm2=frm2, to2=to2)
@@ -224,9 +228,23 @@ class QGTDynamics(LatentDynamics):
             lg, _ = bt(state, codes)
         zb = torch.sign(lg)
         zb = torch.where(zb == 0, torch.ones_like(zb), zb)
+        if gate is not None:
+            zb = torch.where(gate[..., None], zb, state)
         if self.canon:                     # ONE ply; the frame mirrors after it
             zb = zb[:, self.PERM]
         return zb
+
+    @torch.no_grad()
+    def gates_for(self, board, real_moves):
+        """(n,64) bool touch-set gates for real-board moves, parent canonical
+        frame; None for non-gated checkpoints."""
+        if not getattr(self, "gated", False):
+            return None
+        from catspace.research.tools.training_infra.qgt_canon import (
+            canon, to_canon, touch_set)
+        cb, fl = canon(board)
+        g = np.stack([touch_set(cb, to_canon(m, fl)) for m in real_moves])
+        return torch.from_numpy(g).to(self.dev)
 
     @torch.no_grad()
     def material(self, state):
@@ -278,8 +296,10 @@ class Greedy1(SearchAlgorithm):
             # mine again, the read is mover-POV directly. Board = legality only.
             sc = np.full(n, np.nan)
             evals = 0
+            g_root = dyn.gates_for(board, legal)
             for j, mv in enumerate(legal):
-                z1 = dyn.step(state, codes[j:j + 1], frm[j:j + 1], to[j:j + 1])
+                z1 = dyn.step(state, codes[j:j + 1], frm[j:j + 1], to[j:j + 1],
+                              gate=None if g_root is None else g_root[j:j + 1])
                 b1 = board.copy(stack=False)
                 b1.push(mv)
                 reps1, cd1, f1, t1 = dyn.root_moves(b1, dyn.encode(b1)[1])
@@ -287,7 +307,8 @@ class Greedy1(SearchAlgorithm):
                     sc[j] = 2.0 if b1.is_checkmate() else 0.0
                     continue
                 nr = len(reps1)
-                z2 = dyn.step(z1.expand(nr, -1, -1), cd1, f1, t1)
+                g_rep = dyn.gates_for(b1, reps1)
+                z2 = dyn.step(z1.expand(nr, -1, -1), cd1, f1, t1, gate=g_rep)
                 evals += nr
                 pv = dyn.value(z2, 1).cpu().numpy()        # my POV again
                 es = pv[:, 0] - pv[:, 2]

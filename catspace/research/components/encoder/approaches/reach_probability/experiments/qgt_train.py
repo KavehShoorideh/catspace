@@ -109,6 +109,13 @@ def main():
                     help="graph arm: soft supervision of head-0 attention toward the "
                          "true attack adjacency (the WARM START, Kaveh) -- free "
                          "labels; heads/questions beyond it stay unsupervised.")
+    ap.add_argument("--hard-gate", type=int, default=0,
+                    help="canon: HARD light-cone gating (Kaveh 8/30: 'do the hard "
+                         "gating. that will make it sparse'). Squares outside the "
+                         "move's exact touch-set (piece+attacker bitboard diff) "
+                         "copy BIT-IDENTICALLY by construction; the teacher loss "
+                         "sees gated squares only; true flips outside the gate "
+                         "are the measured gateFN [science].")
     ap.add_argument("--w-vhead", type=float, default=0.0,
                     help="DEDICATED value head (roadmap step 3; frozen-bits probe "
                          "8/29: refit on same bits recovered +0.11 balanced and "
@@ -773,6 +780,10 @@ def main():
                 b1 = b0.copy(); b1.push(legal[j])
                 if CANON:                      # ONE ply; the reply is search's job
                     pair.append((_canon(b1)[0], _canon(b1)[0], j))
+                    if args.hard_gate:
+                        from catspace.research.tools.training_infra.qgt_canon \
+                            import touch_set as _tsb
+                        r2.append(("g", _tsb(b0, legal[j])))
                     continue
                 rep = list(b1.legal_moves)[:MV_CAP]
                 if not rep:
@@ -798,17 +809,22 @@ def main():
             for b1, b2, j in pair:
                 roots.append(int(g)); c1_boards.append(b1)
                 c2_boards.append(b2); js.append(j)
-                r2.append((0, 0) if CANON else
-                          (b2.move_stack[-1].from_square,
-                           b2.move_stack[-1].to_square))
+                if not (CANON and args.hard_gate):
+                    r2.append((0, 0) if CANON else
+                              (b2.move_stack[-1].from_square,
+                               b2.move_stack[-1].to_square))
             if len(js) >= nb * 2:
                 break
         if not js:
             return None
         gs = np.array(roots, np.int64)
         m2b = np.array([_material(b.fen()) for b in c2_boards], np.float32)
+        if CANON and args.hard_gate:
+            rep_out = np.stack([g_ for tag, g_ in r2])       # (n,64) bool gates
+        else:
+            rep_out = np.array(r2, np.int64)
         return (gs, np.array(js, np.int64), build_rows(c1_boards),
-                build_rows(c2_boards), np.array(r2, np.int64), m2b)
+                build_rows(c2_boards), rep_out, m2b)
 
     def att_targets(rows):
         """(n,64,64) float attack adjacency from the chain graph arrays -- the
@@ -1060,15 +1076,59 @@ def main():
         l_br = l_br / 3.0
         return l_tf + l_qa + l_dq, l_val, l_br, n_lab, n_br, tf_acc, tf_copy
 
+    GATE_CACHE = {}
+
+    def _gate_rows(rows):
+        """(n,) global chain row ids -> (n,64) bool PARENT-frame touch sets of the
+        played move; cached (row -> gate) since chains resample across steps."""
+        import chess as _c
+        from catspace.research.tools.training_infra.qgt_canon import (
+            canon as _cn, touch_set as _ts)
+        rr = np.asarray(rows).ravel()
+        out = np.zeros((len(rr), 64), bool)
+        for i, r in enumerate(rr):
+            r = int(r)
+            g = GATE_CACHE.get(r)
+            if g is None:
+                b = _c.Board(str(CH_FEN[r]))
+                cb, _fl = _cn(b)
+                mv = list(cb.legal_moves)[int(CHA["played"][r])]
+                g = _ts(cb, mv)
+                GATE_CACHE[r] = g
+            out[i] = g
+        return out
+
+    def _gate_branch(rows, cols):
+        """touch sets for BRANCH moves (row-k canonical board + sampled col)."""
+        import chess as _c
+        from catspace.research.tools.training_infra.qgt_canon import (
+            canon as _cn, touch_set as _ts)
+        rr = np.asarray(rows).ravel()
+        out = np.zeros((len(rr), 64), bool)
+        for i, (r, c_) in enumerate(zip(rr, np.asarray(cols).ravel())):
+            b = _c.Board(str(CH_FEN[int(r)]))
+            cb, _fl = _cn(b)
+            legal = list(cb.legal_moves)
+            if int(c_) < len(legal):
+                out[i] = _ts(cb, legal[int(c_)])
+            else:
+                out[i] = True                      # malformed col: gate open
+        return out
+
     def T1_roll(z0, packs):
         """Canon free-run: one PLY per step; the frame changes by MIRROR_PERM
         after every step (parens: the STE scar)."""
         out, z = [], z0
-        for m, frm, to in packs:
+        for pk in packs:
+            m, frm, to = pk[0], pk[1], pk[2]
+            gate = pk[3] if len(pk) > 3 else None  # (B,64) bool, parent frame
             lg, _, _ = model.bit_trans(z, m, frm, to)
             zb = torch.sign(lg)
             zb = torch.where(zb == 0, torch.ones_like(zb), zb)
-            z = (zb + (lg - lg.detach()))[:, PERM_T]
+            zs = zb + (lg - lg.detach())
+            if gate is not None:                   # HARD gate: outside T(a), copy
+                zs = torch.where(gate[..., None], zs, z)
+            z = zs[:, PERM_T]
             out.append(z)
         return out
 
@@ -1107,7 +1167,18 @@ def main():
                                           need_attn=need_w)
         lgp = lg[:, PERM_T]                                      # child frame
         zin_p = zin[:, PERM_T]
-        w_tf = torch.where(zin_p != zt, args.flip_weight, 1.0)             if args.flip_weight != 1.0 else None
+        w_tf = torch.where(zin_p != zt, args.flip_weight, 1.0) \
+            if args.flip_weight != 1.0 else None
+        if args.hard_gate:
+            gate_p = torch.from_numpy(
+                _gate_rows(ci[:, :6])).to(dev)               # parent frame
+            gp = gate_p[:, PERM_T][..., None].float()        # child frame
+            w_tf = gp if w_tf is None else w_tf * gp
+            with torch.no_grad():
+                tf_ = (zin_p != zt)
+                MATSTAT["gfn"] = float((tf_ & ~gp.bool()).sum()) / \
+                    max(float(tf_.sum()), 1.0)
+                MATSTAT["gsz"] = float(gate_p.float().mean())
         l_tf = F.binary_cross_entropy_with_logits(lgp, (zt + 1) / 2, weight=w_tf)
         if need_w:
             from catspace.research.tools.training_infra.qgt_field import (
@@ -1116,7 +1187,16 @@ def main():
                 attn0, att_targets(ci[:, :6].ravel()))
         if args.w_mat_roll > 0:
             mtc = torch.from_numpy(CH_MAT[ci[:, 1:].ravel()] / 10.0).to(dev)
-            l_tf = l_tf + args.w_mat_roll * F.huber_loss(_mat_read(lgp), mtc)
+            if args.hard_gate:
+                zbm = torch.sign(lgp)
+                zbm = torch.where(zbm == 0, torch.ones_like(zbm), zbm)
+                zsm = zbm + (lgp - lgp.detach())
+                zsm = torch.where(gate_p[:, PERM_T][..., None], zsm, zin_p)
+                mr = model.mat_head(
+                    model.levels_from_bits(zsm)[0]).squeeze(-1)
+                l_tf = l_tf + args.w_mat_roll * F.huber_loss(mr, mtc)
+            else:
+                l_tf = l_tf + args.w_mat_roll * F.huber_loss(_mat_read(lgp), mtc)
         if args.w_sparse > 0:
             l_tf = l_tf + args.w_sparse * F.binary_cross_entropy_with_logits(
                 lgp, (zin_p.detach() + 1) / 2)
@@ -1174,8 +1254,12 @@ def main():
                                                       ).reshape(nv * bk, 64, -1)
             rr7 = (np.arange(cb) * 7 + k)[ok_r]
             fb, tb = _ft(mv_raw[np.repeat(rr7, bk)], cols[ok_r].ravel())
+            gbr = (torch.from_numpy(_gate_branch(
+                np.repeat(ci[ok_r, k], bk), cols[ok_r].ravel())).to(dev)
+                if args.hard_gate else None)
             with torch.no_grad():
-                zbr = T1_roll(base, [(codes, fb, tb)])[0]
+                zbr = T1_roll(base, [(codes, fb, tb, gbr) if args.hard_gate
+                                     else (codes, fb, tb)])[0]
             zb = model.levels_from_bits(zbr)[0]
             pvb = F.linear(zb, W[:, :model.d_pos], model.readout.bias)                 + model.turn[1]
             sc = -(pvb[:, 0] - pvb[:, 2]).reshape(nv, bk)        # negamax
@@ -1365,6 +1449,9 @@ def main():
                     q0p = q0b[:, PERM_T]
                     w_b = torch.where(q0p != q1c, args.flip_weight, 1.0) \
                         if args.flip_weight != 1.0 else None
+                    if args.hard_gate:
+                        gb = torch.from_numpy(rep2).to(dev)[:, PERM_T][..., None]
+                        w_b = gb.float() if w_b is None else w_b * gb.float()
                     l_dyn = l_dyn + F.binary_cross_entropy_with_logits(
                         lg_b, (q1c + 1) / 2, weight=w_b)
                     if args.w_sib > 0:
@@ -1506,8 +1593,15 @@ def main():
             pl_c = dq[torch.arange(cb * 7, device=dev), pla].reshape(cb, 7, -1)
             fa, ta = _ft(mv_raw, pla.cpu().numpy())
             f7, t7 = fa.reshape(cb, 7), ta.reshape(cb, 7)
-            zs = T1_roll(q1[:, 0],
-                         [(pl_c[:, k], f7[:, k], t7[:, k]) for k in range(6)])
+            if args.hard_gate:
+                zs = T1_roll(q1[:, 0],
+                             [(pl_c[:, k], f7[:, k], t7[:, k],
+                               torch.from_numpy(_gate_rows(ci[:, k])).to(dev))
+                              for k in range(6)])
+            else:
+                zs = T1_roll(q1[:, 0],
+                             [(pl_c[:, k], f7[:, k], t7[:, k])
+                              for k in range(6)])
             prev = q1[:, 0]
             for zb_ in zs:
                 flips[0] += float((zb_ != prev[:, PERM_T]).float().mean()) * cb
@@ -1844,7 +1938,10 @@ def main():
                         f"{breg.get('flip', float('nan')):.3f} | matMAE "
                         f"{MATSTAT.get('s', float('nan')):.2f}/"
                         f"{MATSTAT.get('r', float('nan')):.2f} dead "
-                        f"{MATSTAT.get('dead', float('nan')):.2f}")
+                        f"{MATSTAT.get('dead', float('nan')):.2f}"
+                        + (f" gate {MATSTAT.get('gsz', float('nan')):.2f}/"
+                           f"FN {MATSTAT.get('gfn', float('nan')):.2f}"
+                           if args.hard_gate else ""))
                 if GRAPH:
                     tail += (f" | cov {breg.get('cov', float('nan')):.3f} auc "
                              f"{breg.get('aucT', float('nan')):.3f}/"
@@ -1957,6 +2054,20 @@ def main():
         g_sib = torch.autograd.grad(f_c.sum(), model.carrier_proj.weight,
                                     allow_unused=True)[0]
         assert g_sib is not None and float(g_sib.abs().sum()) > 0,             "C6 sibling scorer does not reach the carrier"
+        if args.hard_gate:
+            g7 = torch.from_numpy(_gate_rows(ci_t[:, 0])).to(dev)
+            zr7 = T1_roll(q1g, [(codeg, fg, tg, g7)])[0]
+            zr7p = zr7[:, PERM_T]                  # back to parent frame
+            ung = ~g7
+            assert bool((zr7p[ung] == q1g[ung]).all()), \
+                "C7 hard gate leaks: ungated squares changed"
+            fr_in = g7[torch.arange(4, device=dev), fg]
+            to_in = g7[torch.arange(4, device=dev), tg]
+            assert bool(fr_in.all()) and bool(to_in.all()), \
+                "C7 from/to not in own touch set"
+            print(f"  C7 PASS hard gate: ungated squares copy BIT-IDENTICALLY "
+                  f"through the roll; from/to gated; mean |T| "
+                  f"{float(g7.float().mean()) * 64:.1f}/64 squares")
         print(f"  C1-C6 PASS canon arm: all-White frames; ply integrity replayed; "
               f"frame axiom exact ({int((~tchg).sum())}/256 untouched) + PERM "
               f"involution; material sign mirrored; EMA live; closure gradient "
