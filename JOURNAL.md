@@ -20194,3 +20194,22 @@ constrains the CODE) and it is what makes "concepts with local support" literal.
 Queued as the qgt20 lever, for Kaveh's morning.
 
 ## 2026-08-31 (Fable) — qgt19-v1 logit runaway (dyn 8e4 by step 1000, sign metrics still sane): unbounded direct logits under fw4 + 10x dyn LR. Fixed: 15*tanh(x/15) soft bound + dyn-lr-mult 3 for the relaunch (combined per doctrine). v2 running; in-cone margin was already +0.065 at step 500 pre-blow-up — the direct operator learns where identity+delta stayed asleep.
+
+## 2026-08-31 (Fable) — qgt19-v2 VERDICT: DETECTION 24.8% — new all-time record, and the first one earned in the STABLE arm
+
+Printed: "detection rate (model gap>0.1): 24.8%" (27/109 blunders); rolled-read
+gap +0.022 (best); within-pos corr 0.053. Finals: balanced 0.443, in-cone tfacc
+0.582 vs copy 0.404 (margin peaked +0.44 mid-run), flip ~0.20 steady, dead 0.00,
+drift gate-bounded throughout, dyn loss ~1.3 (bounded logits held).
+
+WHY THIS ONE COUNTS DIFFERENTLY: the ungated family's 23.9% record came with a
+0.0% replicate (seed lottery). The gated family's ladder -- qgt17 0.9% (identity+
+delta operator: inert) -> qgt19 24.8% (direct operator + fw4: awake) -- is a
+within-arm lever effect under hard-gate conditions that structurally remove most
+of the equilibrium freedom that caused the variance. (A gated replicate is still
+the honest confirmation; queued.) Kaveh's three calls of the night -- hard gate,
+remove identity+delta, concentrate pressure -- compose into the best tactical
+model of the project. gateFN steady ~0.78: the encoder-locality loss (queued
+qgt20 lever) remains the big untapped headroom.
+
+Arena (greedy1-canon, 40g, no-mat) launched.
