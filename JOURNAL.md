@@ -20080,3 +20080,31 @@ enough to clear the variance band. Detection ladder stands: 1.8 -> 8.3 -> 18.3 -
 23.9 (qgt15, the incumbent detector) -> 12.8.
 
 ## 2026-08-30 (Fable) — qgt15b: exact seed-replicate of the detection incumbent (seed 1, config identical to qgt15). Purpose: measure the run-variance band the 8/30 theme flagged; no lever, no design authority claimed. Gauge: detection distance from 23.9%.
+
+## 2026-08-30 (Fable) — THE REPLICATE VERDICT, and it reframes the week: qgt15b (identical config to qgt15, seed 1) scores DETECTION 0.0% where qgt15 scored 23.9%
+
+Printed: "detection rate (model gap>0.1): 0.0%" on the same 150-position probe.
+Same flags, same data, different seed. The run-to-run band for the canon arm
+spans [0.0%, 23.9%] -- WIDER than every lever effect celebrated in the last 24h.
+
+HONEST RE-READING OF THE LADDER:
+  - Robust across seeds/configs: the T2-marginal -> conditional/canon transition
+    (qgt7-10 sat at 0-1.8% across FIVE runs; qgt11/12/14/15 span 4.6-23.9%).
+    Conditioning-on-the-move is real.
+  - NOT resolved: every ranking WITHIN the canon family (14 vs 15 vs 16; pair vs
+    question edges; vhead vs shared). Those numbers are seed noise until
+    replicated. qgt15's 23.9% is a lottery draw from a distribution whose other
+    observed draw is 0.0%.
+  - Mechanism of the variance, visible in the trajectories: the canon arm's
+    closure/churn equilibrium is BISTABLE-ish -- runs settle into different flip
+    regimes (0.09 vs 0.4 vs 0.65) from seed alone, and the probe outcome rides
+    on which regime the encoder-transition pair fell into. The collapse guards
+    stopped the catastrophic basin but did not pin the equilibrium.
+
+IMPLICATIONS FOR PROCESS (extends Kaveh's 8/29 attribution doctrine): single-run
+lever comparisons in this regime are not evidence; either (a) 3+ seeds per
+config, (b) levers with effects >> 24 points of detection, or (c) fix the
+bistability itself (pin the flip regime -- e.g. target flip-rate matching the
+true change rate rather than a weak prior) so the estimator tightens.
+
+Kaveh pinged: this changes the plan and needs his call.
