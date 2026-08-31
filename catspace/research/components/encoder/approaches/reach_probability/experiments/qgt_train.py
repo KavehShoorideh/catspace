@@ -1482,18 +1482,28 @@ def main():
             import chess as _ceq
             from catspace.research.tools.training_infra.qgt_canon import (
                 canon as _cneq)
-            mb = []
-            for g_ in ii[:args.equiv_batch]:
+            # BUGFIX 8/31: canon(x.mirror()) MIRRORS BACK to x, so the previous
+            # construction compared bits(x) against sigma(mirror(bits(x))) -- a
+            # false self-symmetry that would have corrupted the encoder. The twin
+            # must be the SAME position with the OPPOSITE mover, still
+            # White-to-move so it stays in distribution (canon data is stm==1
+            # everywhere): mirror the colours, then force the canonical turn.
+            mb, keep = [], []
+            for pos_, g_ in enumerate(ii[:args.equiv_batch]):
                 try:
-                    mb.append(_cneq(chess.Board(str(FENS[g_])).mirror())[0])
+                    cb_ = _cneq(chess.Board(str(FENS[g_])))[0]
+                    tw = cb_.mirror()
+                    tw.turn = chess.WHITE
+                    if tw.is_valid():
+                        mb.append(tw); keep.append(pos_)
                 except Exception:
                     pass
             if mb:
                 sqm, mvm, edm, mkm = feat_of(build_rows(mb))
                 cm, _, _ = model.carrier(sqm, mvm, edm, mkm)
                 qm = model.rvq_bits(cm)[0]                    # (nm,64,sq_bits)
-                nm = len(mb)
-                q_orig = model.rvq_bits(aux["carrier"][:nm])[0]
+                kt = torch.tensor(keep, device=dev)
+                q_orig = model.rvq_bits(aux["carrier"][kt])[0]
                 q_tgt = q_orig[:, PERM_EQ][:, :, SIGMA_EQ]    # mirror + sigma
                 l_eq = 0.5 * (1.0 - qm * q_tgt.detach()).mean() \
                     + 0.5 * (1.0 - qm.detach() * q_tgt).mean()
@@ -2352,7 +2362,13 @@ def main():
                          torch.arange(64, device=dev)).all()), \
                 "C11 mirror permutation is not an involution"
             ii11 = rng.choice(tr_idx, 8, replace=False)
-            mb11 = [_cn11(_c11.Board(str(FENS[g_])).mirror())[0] for g_ in ii11]
+            mb11, keep11 = [], []
+            for _p, g_ in enumerate(ii11):
+                _t = _cn11(_c11.Board(str(FENS[g_])))[0].mirror()
+                _t.turn = _c11.WHITE
+                if _t.is_valid():
+                    mb11.append(_t); keep11.append(_p)
+            ii11 = ii11[keep11]
             sq11, mv11, ed11, mk11 = feat_of(build_rows(mb11))
             sq11o, mv11o, ed11o, mk11o = batch_of(torch.from_numpy(ii11))
 

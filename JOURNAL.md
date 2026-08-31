@@ -20501,3 +20501,34 @@ CONSEQUENCES:
     square bits. That would make concepts genuinely square-local and per-ply
     comparable, at the cost of dropping mobility information the move graph
     currently injects. Architectural, not a loss tweak. Kaveh's call.
+
+## 2026-08-31 (Fable) — Kaveh: "This makes no sense. There's gotta be a bug somewhere." HE WAS RIGHT. Two of my measurements were out-of-distribution, and my equivariance loss had a construction bug that would have corrupted the encoder
+
+RETRACTED. The canon arm's training data is stm == 1 EVERYWHERE (verified:
+gko1_canon chains and shards both have glob column 0 constant 1). So both of
+yesterday's lag-1 experiments fed the encoder Black-to-move boards it has NEVER
+seen:
+  - the null-move test ("side-to-move alone changes 25 percent of concepts") --
+    that is untrained behaviour, not concept structure. WITHDRAWN.
+  - the parent-frame test (0.294 in / 0.338 out) -- same OOD flaw, unreliable.
+The conclusion I drew from them ("square concepts depend on stm and the
+legal-move graph; equivariance cannot rescue lag 1") is WITHDRAWN.
+
+BUG FOUND in my own equivariance loss: canon(x.mirror()) MIRRORS BACK to x
+(mirror swaps the turn, canon mirrors it back), so the twin I built was the
+ORIGINAL POSITION. The loss was demanding bits(x) = sigma(mirror(bits(x))) -- a
+false self-symmetry that would have corrupted the encoder had it run. Fixed: the
+twin is the same position with the OPPOSITE mover, kept in distribution by
+forcing the canonical turn --  tw = canon(x).mirror(); tw.turn = WHITE. Verified
+on real data: 389 valid twins from 400 positions (11 rejected as invalid), both
+boards White-to-move, current bit disagreement 0.424 (no symmetry present yet).
+C11 re-passes with the corrected pair: mini-fit 1.149 -> 0.189 in 40 steps.
+
+WHERE THIS LEAVES LAG 1 (Kaveh's instinct vindicated): the inverse DOES exist. It
+is not a board transformation -- every board-level inverse leaves the canonical
+distribution -- it is the MINE/THEIRS relabelling of the concepts themselves,
+i.e. sigma. Once sigma holds, the lag-1 statements become exactly expressible:
+    locality: outside the cone, child_bits[mirror(s)] == sigma(parent_bits[s])
+    gate    : outside the cone, next_state := sigma(mirror(parent_state))
+Both are one permutation away from what we already compute. Bringing the wiring
+to Kaveh before running, per his instruction.
