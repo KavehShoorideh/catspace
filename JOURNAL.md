@@ -20402,3 +20402,38 @@ alternative is a color-swap-equivariant bit code, which is a bigger change.
 NOTE: qgt20 is training right now under both flawed constraints.
 
 ## 2026-08-31 (Fable) — lag-2 locality BUILT (opt-in --loc-lag2, default OFF, nothing launched; the reframe direction remains Kaveh's call). Validation at the gate: out-of-cone disagreement at INIT is 0.08 under lag 2 vs 0.30 under lag 1 -- with colors restored an untrained encoder is already 92 percent locally consistent, so the loss now measures real deviation instead of a frame artifact. (Lag-1 loc started at 0.30 and CLIMBED to 0.55 while chasing the falsehood.) Cone = union of both plies' touch sets mapped into the row-k frame; the 1-ply transition and its teacher are untouched.
+
+## 2026-08-31 (Fable) — "Can't we fix lag 1?" (Kaveh). Answer: only by CREATING the symmetry -- it does not exist in the encoder today. Measured
+
+Two corrections/measurements:
+
+(1) The data cost of lag 2 is NOT 2x. Chains are 7 plies: lag 1 gives 6 constraint
+pairs per chain, lag 2 gives 5. A 17 percent reduction, same chains, nothing to
+regenerate.
+
+(2) Lag 1 is fixable IF the bit code is equivariant to the color swap, i.e. there
+is a fixed permutation sigma on the bit index with bits(colorswapped) =
+sigma(bits(original)). Then the lag-1 constraint is exactly true with
+sigma-then-mirror in place of mirror. TESTED on qgt19 (240 positions x 64
+squares, each position vs its color-mirrored twin, geometry undone):
+   per-bit best |correlation| with any bit of the swapped encoding:
+       median 0.307, min 0.260, max 0.338
+   bits with a match above 0.9: 0/24     above 0.5: 0/24
+   best-match map is a bijection? NO
+So no sigma exists -- the swapped encoding is essentially unrelated bit-by-bit.
+The encoder has no color symmetry to exploit; it would have to be TRAINED IN.
+
+THE TWO ROUTES, priced:
+  (a) lag-2 locality (built, gated, correct, zero new compute): constraint holds
+      exactly, cone = union of two plies (~21/64 squares vs ~10.5/64), so it
+      constrains ~2/3 of the board instead of ~5/6. Coarser but free and true.
+  (b) lag-1 + an EQUIVARIANCE loss: impose sigma as a fixed involution on the bit
+      index (pair the bits), and train bits(mirror(x)) toward sigma(bits(x)) --
+      labels are FREE (every position has a mirrored twin). Costs one extra
+      encoder pass per step. Gains: exact per-ply locality with the tighter cone,
+      AND a named symmetry in the code (bit pairs become "mine/theirs"), which is
+      an interpretability win in its own right. Risk: a new constraint on the
+      encoder that may tax value accuracy.
+RECOMMENDATION: (a) now since it is ready and free, (b) as the next lever because
+it is independently valuable and, if it works, makes the tighter lag-1 constraint
+available. Awaiting Kaveh.
