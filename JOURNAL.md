@@ -20912,3 +20912,9 @@ IMMEDIATE CONSEQUENCES:
   3. The arena calibration says ~71 percent detection is needed for games to move;
      40.4 percent is the first number that makes that look reachable rather than
      fanciful.
+
+## 2026-09-01 (Fable) — Kaveh: "10x the concept budget." CEILING NOTED: the readout has 2560 position columns total (64x24 level-1 bits + 2 QA levels x 64x8), so 10x of 400 = 4000 exceeds the entire concept space. Set to 2560 = the pruner never prunes, which is the strongest form of the instruction and exactly where the 40.4 percent peak was measured. Going beyond 2560 would need a wider state (more bits per square or more QA levels), i.e. an architecture change -- flagged, not assumed.
+
+qgt27 = qgt25's config at l1-target 2560. AND THE PROCESS FIX: from now on every
+run is probed across ALL its checkpoints, not just the last. The 8/31-9/01 lesson
+is that a single final-checkpoint reading can be off by a factor of two.
