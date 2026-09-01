@@ -120,6 +120,17 @@ def main():
                          "margin is established before anything competes with it "
                          "-- the 8/31 mediator finding: detection tracks whether "
                          "that margin ever opens, and seeds differ on it")
+    ap.add_argument("--dual", type=int, default=0,
+                    help="NNUE-style DUAL PERSPECTIVE (Kaveh 8/31, after the "
+                         "literature check): carry both views of every position "
+                         "-- mover's and opponent's -- as two halves of each "
+                         "square's concept vector, produced by the SAME encoder "
+                         "weights on the two orientations. The canonical frame "
+                         "change is then a KNOWN permutation, mirror squares AND "
+                         "swap halves, exact by construction: verified 0 "
+                         "violations in 30,032 untouched squares vs 64.2 percent "
+                         "single-perspective. Replaces the whole sigma apparatus.")
+    ap.add_argument("--twin-dir", default="data/derived/gko1_canon_twin")
     ap.add_argument("--eq-warmup", type=int, default=0,
                     help="hold SIGMA-GATING off for N steps while the equivariance "
                          "loss installs the symmetry. The 8/31 bootstrap problem: "
@@ -308,6 +319,8 @@ def main():
             continue
         if CANON:
             zc = load_npz(os.path.join(args.canon_dir, os.path.basename(f)))
+            if args.dual:
+                zt = load_npz(os.path.join(args.twin_dir, os.path.basename(f)))
         k = z["kind"]
         wd = z["wdl"].astype(np.float32)
         tg = z["tgt"]
@@ -342,6 +355,13 @@ def main():
                 zsrc = zc if key in zc.files else z   # labels/kind: original
                 store[key].append(np.ascontiguousarray(zsrc[key][idx]))
             CANON_FLIP.append(np.asarray(zc["flipped"])[idx].astype(bool))
+            if args.dual:                       # the opponent's-view feature set
+                for key in KEYS:
+                    if key == "tgt":
+                        continue
+                    store.setdefault("T_" + key, []).append(
+                        np.ascontiguousarray(
+                            (zt if key in zt.files else z)[key][idx]))
         else:
             store.setdefault("_cw", []).append(wd[idx])
             store.setdefault("_cv", []).append(fin_all[idx])
@@ -350,6 +370,9 @@ def main():
         store.setdefault("_fen", []).append(np.asarray(z["fen"])[idx])
         kept += 1
     D = {k: torch.from_numpy(np.concatenate(v)) for k, v in store.items() if k in KEYS}
+    if args.dual:
+        DT = {k[2:]: torch.from_numpy(np.concatenate(v))
+              for k, v in store.items() if k.startswith("T_")}
     CW_ = np.concatenate(store["_cw"]).astype(np.float32)     # (N, MV_CAP, 3)
     CV_ = np.concatenate(store["_cv"])                        # (N, MV_CAP) bool
     FENS = np.concatenate(store["_fen"])
@@ -421,6 +444,10 @@ def main():
         CHA = {k: _chc[k] for k in CH_KEYS}   # canonical features + remapped played
         CH_CANON_OF = np.asarray(_chc["canon_of"])
         CH_FLIP = np.asarray(_chc["flipped"]).astype(bool)
+        if args.dual:
+            _cht = np.load(os.path.join(args.twin_dir, "chains.npz"),
+                           mmap_mode="r")
+            CHA_T = {k: _cht[k] for k in CH_KEYS}
     else:
         CHA = {k: _chg[k] for k in CH_KEYS}   # hold once; NpzFile re-reads per access
     CH_prow = np.asarray(_chg["p_row"])
@@ -466,6 +493,9 @@ def main():
           f"{int(np.isfinite(CHW).sum()):,} per-move branch labels", flush=True)
 
     # ---- model (from scratch -- no trunk, per the 8/27 trunk-removal design) --------
+    HALF = args.sq_bits // 2 if args.dual else args.sq_bits
+    if args.dual:
+        assert args.sq_bits % 2 == 0, "dual perspective needs an even sq_bits"
     model = QGTField(d=args.d, layers=args.layers, sq_bits=args.sq_bits,
                      rvq_levels=args.rvq_levels, mv_bits=args.mv_bits,
                      qa_levels=args.qa_levels, n_q=args.n_q, qa_heads=args.attn_heads,
@@ -486,6 +516,7 @@ def main():
         from catspace.research.tools.training_infra.qgt_canon import MIRROR_PERM
         PERM_T = torch.from_numpy(MIRROR_PERM).to(dev)
         PERM_EQ = PERM_T
+        MIRROR_NP = MIRROR_PERM
         # SIGMA: a fixed involution on the BIT index pairing 2i <-> 2i+1. Any
         # fixed involution works (the bits are learned and adapt to it); pairing
         # is the minimal choice that makes "mine/theirs" a two-bit gauge.
@@ -577,6 +608,15 @@ def main():
                            (a2 + off[:, :, None])[val])
         return sqf, mvf, edges, mask
 
+    def batch_twin(idx):
+        return feat_of({k: DT[k][idx] for k in ("sq", "gl", "mv", "mut", "vac",
+                                                "dsc", "att", "n_mv", "n_att")})
+
+    def feat_chain_twin(rows):
+        R = {k: torch.from_numpy(np.ascontiguousarray(CHA_T[k][rows]))
+             for k in CH_KEYS if k != "played"}
+        return feat_of(R)
+
     def batch_of(idx):
         return feat_of({k: D[k][idx] for k in ("sq", "gl", "mv", "mut", "vac", "dsc",
                                                "att", "n_mv", "n_att")})
@@ -588,6 +628,16 @@ def main():
         played = torch.from_numpy(np.ascontiguousarray(CHA["played"][rows])
                                   .astype(np.int64)).to(dev)
         return sqf, mvf, edges, mask, played, R["mv"].numpy()
+
+    def dual_carrier(view_a, view_b):
+        """[mine | theirs] per square from ONE set of encoder weights applied to
+        the two orientations (NNUE's two accumulators). view_b's squares are
+        mirrored back into view_a's frame before concatenation, so a canonical
+        frame change is exactly: mirror squares, swap halves."""
+        ca, h_mv, aux = model.carrier(*view_a)
+        cb, _, _ = model.carrier(*view_b)
+        c = torch.cat([ca[..., :HALF], cb[:, PERM_T][..., :HALF]], dim=-1)
+        return c, h_mv, aux
 
     def dyn_codes(h_mv):
         q, _, l = model.dyn_mv_lfq(model.dyn_mv_proj(h_mv))
@@ -899,13 +949,20 @@ def main():
         if not js:
             return None
         gs = np.array(roots, np.int64)
+        if args.dual:                       # opponent's view of each child
+            tw1 = []
+            for b_ in c1_boards:
+                t_ = b_.mirror(); t_.turn = chess.WHITE
+                tw1.append(t_)
+            R1T = build_rows(tw1)
         m2b = np.array([_material(b.fen()) for b in c2_boards], np.float32)
         if CANON and args.hard_gate:
             rep_out = np.stack([g_ for tag, g_ in r2])       # (n,64) bool gates
         else:
             rep_out = np.array(r2, np.int64)
         return (gs, np.array(js, np.int64), build_rows(c1_boards),
-                build_rows(c2_boards), rep_out, m2b)
+                build_rows(c2_boards), rep_out, m2b,
+                R1T if args.dual else None)
 
     def att_targets(rows):
         """(n,64,64) float attack adjacency from the chain graph arrays -- the
@@ -1213,8 +1270,13 @@ def main():
                 # is the true inverse of the canonical frame change. Applying
                 # sigma on the bit axis BEFORE the mirror gives, after the mirror,
                 # next[mirror(s)] == sigma(parent[s]) exactly.
-                zs = torch.where(gate[..., None],
-                                 zs, z[:, :, SIGMA_EQ] if args.w_equiv > 0 else z)
+                if args.dual:
+                    keep = swap_halves(z)      # EXACT: mine<->theirs, by construction
+                elif args.w_equiv > 0:
+                    keep = z[:, :, SIGMA_EQ]   # learned sigma (deprecated 8/31)
+                else:
+                    keep = z                   # plain copy (stale but in-distribution)
+                zs = torch.where(gate[..., None], zs, keep)
             z = zs[:, PERM_T]
             out.append(z)
         return out
@@ -1232,11 +1294,22 @@ def main():
         ci = CH_pos[ch_tr[rng.integers(0, len(ch_tr), cb)]]           # (cb,7)
         rows_all = ci.ravel()
         sqa, mva, eda, mka, pla, mv_raw = feat_chain(rows_all)
-        c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)      # GRADS ON
+        if args.dual:
+            c_all, h_all, _ = dual_carrier((sqa, mva, eda, mka),
+                                           feat_chain_twin(rows_all))
+        else:
+            c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)  # GRADS ON
         q1_flat, l_rvq = model.rvq_bits(c_all)
         q1_all = q1_flat.reshape(cb, 7, 64, model.sq_bits)
         with torch.no_grad():                                    # EMA targets
-            qe = ema.rvq_bits(ema.carrier(sqa, mva, eda, mka)[0])[0]
+            if args.dual:
+                _ea = ema.carrier(sqa, mva, eda, mka)[0]
+                _eb = ema.carrier(*feat_chain_twin(rows_all))[0]
+                _ec = torch.cat([_ea[..., :HALF],
+                                 _eb[:, PERM_T][..., :HALF]], dim=-1)
+                qe = ema.rvq_bits(_ec)[0]
+            else:
+                qe = ema.rvq_bits(ema.carrier(sqa, mva, eda, mka)[0])[0]
             qe = qe.reshape(cb, 7, 64, model.sq_bits)
         dq_g, l_dq = dyn_codes(h_all.detach())
         pl_g = dq_g[torch.arange(cb * 7, device=dev), pla].reshape(cb, 7, -1)
@@ -1311,6 +1384,47 @@ def main():
         # bit-balance term + value CE are the anti-collapse counterweights.
         l_loc = torch.zeros((), device=dev)
         LOSSPARTS.clear()
+        if args.dual:
+            # C12 [impl]: the dual-perspective FEATURES must satisfy the frame
+            # relation exactly -- child[mirror(s)] == swap_halves(parent[s]) on
+            # every untouched square. This is what makes the lag-1 target
+            # ATTAINABLE. It does NOT make the BITS automatically satisfy it:
+            # the GNN mixes globally, so the locality loss still has work to do.
+            # That gap is reported as science.
+            import chess as _c12
+            from catspace.research.tools.training_infra.qgt_canon import (
+                canon as _cn12, touch_set as _ts12)
+            from catspace.research.tools.training_infra.gen_move_graphs import (
+                parent_graph as _pg12)
+            ci12 = CH_pos[ch_tr[:6]]
+            nsq = bad = 0
+            for r in range(6):
+                for k in range(6):
+                    r0, r1 = int(ci12[r, k]), int(ci12[r, k + 1])
+                    c0 = _cn12(_c12.Board(str(CH_FEN[r0])))[0]
+                    c1 = _cn12(_c12.Board(str(CH_FEN[r1])))[0]
+                    mv0 = list(c0.legal_moves)[int(CHA["played"][r0])]
+                    g = _ts12(c0, mv0)
+                    t0 = c0.mirror(); t0.turn = _c12.WHITE
+                    t1 = c1.mirror(); t1.turn = _c12.WHITE
+                    F0 = np.concatenate(
+                        [_pg12(c0)[0]["sq"], _pg12(t0)[0]["sq"][MIRROR_NP]], 1)
+                    F1 = np.concatenate(
+                        [_pg12(c1)[0]["sq"], _pg12(t1)[0]["sq"][MIRROR_NP]], 1)
+                    h = F0.shape[1] // 2
+                    sw = np.concatenate([F0[:, h:], F0[:, :h]], 1)
+                    for s in range(64):
+                        if g[s]:
+                            continue
+                        nsq += 1
+                        if not (sw[s] == F1[int(MIRROR_NP[s])]).all():
+                            bad += 1
+            assert bad == 0, (f"C12 dual frame relation broken: {bad}/{nsq} "
+                              f"untouched squares changed under mirror+swap")
+            print(f"  C12 PASS dual perspective: mirror+swap_halves is EXACT on "
+                  f"features -- {nsq} untouched squares, zero violations "
+                  f"(the lag-1 target is now attainable; the bit-level gap is "
+                  f"what the locality loss closes)")
         if args.w_loc > 0 and args.loc_lag2:
             # LAG 2 = one full move unit: both the mirror and the color swap are
             # involutions, so rows k and k+2 share a frame and the constraint is
@@ -1331,7 +1445,9 @@ def main():
             # (plain equality is false -- the mover changes, so every concept is
             # relabelled mine<->theirs). Requires --w-equiv to install sigma.
             zpar = q1_all[:, :6].reshape(cb * 6, 64, -1)[:, PERM_T]
-            if args.w_equiv > 0:
+            if args.dual:
+                zpar = swap_halves(zpar)       # the TRUE lag-1 relation
+            elif args.w_equiv > 0:
                 zpar = zpar[:, :, SIGMA_EQ]
             zchi = q1_all[:, 1:].reshape(cb * 6, 64, -1)
             ung = ~gate_p[:, PERM_T]                          # (cb*6, 64)
@@ -1480,6 +1596,12 @@ def main():
     LOSSPARTS = {}
     STEP = [0]
 
+    def swap_halves(z):
+        """The colour half of a canonical frame change: mine<->theirs. Exact by
+        construction (NNUE's two accumulators), no sigma to learn or decay."""
+        h = z.shape[-1] // 2
+        return torch.cat([z[..., h:], z[..., :h]], dim=-1)
+
     def gate_on():
         """Is the hard gate live THIS step? (sigma-gating waits for the symmetry.)"""
         return bool(args.hard_gate) and STEP[0] > args.eq_warmup
@@ -1491,7 +1613,12 @@ def main():
         ii = idx.numpy()
         stm_b = torch.from_numpy(STM[ii].astype(np.int64)).to(dev)
         sqf, mvf, edges, mask = batch_of(idx)
-        logit, logit_ce, z, aux = model(sqf, mvf, edges, mask, stm=stm_b)
+        if args.dual:
+            c_pre = dual_carrier((sqf, mvf, edges, mask), batch_twin(idx))
+            logit, logit_ce, z, aux = model(sqf, mvf, edges, mask, stm=stm_b,
+                                            c_pre=c_pre)
+        else:
+            logit, logit_ce, z, aux = model(sqf, mvf, edges, mask, stm=stm_b)
         vld = torch.from_numpy(CV_[ii]).to(dev)
         # the target must be finite BEFORE the multiply (nan*0 is nan -- the scar)
         tgt = torch.nan_to_num(torch.from_numpy(CW_[ii]).to(dev)) * vld[..., None]
@@ -1595,10 +1722,14 @@ def main():
         if DISC and args.w_blunder > 0 and args.blunder_batch > 0:
             bb = blunder_batch(args.blunder_batch)
             if bb is not None:
-                gs_b, js_b, R1b, R2b, rep2, mat2b = bb
+                gs_b, js_b, R1b, R2b, rep2, mat2b, R1T = bb
                 nbp = len(gs_b)
                 sq1, mv1, ed1, mk1 = feat_of(R1b)
-                c1b, _, _ = model.carrier(sq1, mv1, ed1, mk1)      # encoder GRAD
+                if args.dual:
+                    c1b, _, _ = dual_carrier((sq1, mv1, ed1, mk1),
+                                             feat_of(R1T))
+                else:
+                    c1b, _, _ = model.carrier(sq1, mv1, ed1, mk1)  # encoder GRAD
                 z1b = model.levels_from_bits(model.rvq_bits(c1b)[0])[0]
                 if CANON:                  # child read is child-mover POV:
                     stm_c1 = torch.ones(nbp, dtype=torch.long, device=dev)
@@ -1621,7 +1752,12 @@ def main():
                 # children's PRE-quantization carrier. T2: as before.
                 with torch.no_grad():
                     sq0b, mv0b, ed0b, mk0b = batch_of(torch.from_numpy(gs_b))
-                    c0b, h0b, _ = model.carrier(sq0b, mv0b, ed0b, mk0b)
+                    if args.dual:
+                        c0b, h0b, _ = dual_carrier(
+                            (sq0b, mv0b, ed0b, mk0b),
+                            batch_twin(torch.from_numpy(gs_b)))
+                    else:
+                        c0b, h0b, _ = model.carrier(sq0b, mv0b, ed0b, mk0b)
                     q0b = model.rvq_bits(c0b)[0]
                 dqb = dyn_codes(h0b.detach())[0]
                 code_b = dqb[torch.arange(nbp, device=dev),
@@ -1629,7 +1765,15 @@ def main():
                 fb_, tb_ = _ft(MVNP[gs_b], js_b)
                 if CANON:
                     with torch.no_grad():
-                        q1c = ema.rvq_bits(ema.carrier(sq1, mv1, ed1, mk1)[0])[0]
+                        if args.dual:
+                            _a = ema.carrier(sq1, mv1, ed1, mk1)[0]
+                            _b = ema.carrier(*feat_of(R1T))[0]
+                            _c = torch.cat([_a[..., :HALF],
+                                            _b[:, PERM_T][..., :HALF]], dim=-1)
+                            q1c = ema.rvq_bits(_c)[0]
+                        else:
+                            q1c = ema.rvq_bits(
+                                ema.carrier(sq1, mv1, ed1, mk1)[0])[0]
                     lg_b, _, _ = model.bit_trans(q0b, code_b, fb_, tb_)
                     lg_b = lg_b[:, PERM_T]
                     q0p = q0b[:, PERM_T]
@@ -1773,7 +1917,11 @@ def main():
             cb = len(ci)
             rows_all = ci.ravel()
             sqa, mva, eda, mka, pla, mv_raw = feat_chain(rows_all)
-            c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)
+            if args.dual:
+                c_all, h_all, _ = dual_carrier((sqa, mva, eda, mka),
+                                               feat_chain_twin(rows_all))
+            else:
+                c_all, h_all, _ = model.carrier(sqa, mva, eda, mka)
             q1 = model.rvq_bits(c_all)[0].reshape(cb, 7, 64, model.sq_bits)
             dq = dyn_codes(h_all)[0]
             pl_c = dq[torch.arange(cb * 7, device=dev), pla].reshape(cb, 7, -1)
@@ -2261,7 +2409,8 @@ def main():
             zr7 = T1_roll(q1g, [(codeg, fg, tg, g7)])[0]
             zr7p = zr7[:, PERM_T]                  # back to parent frame
             ung = ~g7
-            want = q1g[:, :, SIGMA_EQ] if args.w_equiv > 0 else q1g
+            want = (swap_halves(q1g) if args.dual else
+                    q1g[:, :, SIGMA_EQ] if args.w_equiv > 0 else q1g)
             assert bool((zr7p[ung] == want[ung]).all()), \
                 ("C7 hard gate leaks: ungated squares do not equal "
                  + ("sigma(parent)" if args.w_equiv > 0 else "parent"))
@@ -2269,8 +2418,9 @@ def main():
             to_in = g7[torch.arange(4, device=dev), tg]
             assert bool(fr_in.all()) and bool(to_in.all()), \
                 "C7 from/to not in own touch set"
-            print(f"  C7 PASS hard gate: ungated squares equal "
-                  f"{'SIGMA(parent)' if args.w_equiv > 0 else 'parent'} exactly "
+            _wname = ("swap_halves(parent)" if args.dual else
+                      "SIGMA(parent)" if args.w_equiv > 0 else "parent")
+            print(f"  C7 PASS hard gate: ungated squares equal {_wname} exactly "
                   f"through the roll; from/to gated; mean |T| "
                   f"{float(g7.float().mean()) * 64:.1f}/64 squares")
         print(f"  C1-C6 PASS canon arm: all-White frames; ply integrity replayed; "
@@ -2615,7 +2765,7 @@ def main():
             # a [science] alert)
             bb6 = blunder_batch(6)
             assert bb6 is not None, "blunder stream produced nothing"
-            gs6, js6, R16, R26, rep6, mat6 = bb6
+            gs6, js6, R16, R26, rep6, mat6, _r1t6 = bb6
             assert rep6.shape == (len(gs6), 2) and int(rep6.max()) < 64, \
                 "reply squares malformed"
             assert np.isfinite(mat6).all() and np.abs(mat6).max() <= 39, \

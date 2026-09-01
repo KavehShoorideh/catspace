@@ -91,9 +91,12 @@ class QGTField(nn.Module):
         z, l_route = self.levels_from_bits(q1)
         return z, l_rvq + l_route
 
-    def forward(self, sqf, mvf, edges, mv_mask, stm=None):
-        """-> (per-child logits, logit_ce, z_bits, aux)."""
-        c, h_mv, aux_b = self.carrier(sqf, mvf, edges, mv_mask)
+    def forward(self, sqf, mvf, edges, mv_mask, stm=None, c_pre=None):
+        """-> (per-child logits, logit_ce, z_bits, aux). c_pre lets a caller supply
+        an already-built carrier (the dual-perspective path builds one from TWO
+        encoder passes, so forward must not rebuild it)."""
+        c, h_mv, aux_b = self.carrier(sqf, mvf, edges, mv_mask) if c_pre is None \
+            else c_pre
         z, l_obs = self.observe(c)
         mvb, _, l_mv = self.mv_lfq(self.mv_proj(h_mv))
         W = self.readout.weight

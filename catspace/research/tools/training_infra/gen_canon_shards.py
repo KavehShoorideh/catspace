@@ -26,7 +26,9 @@ from multiprocessing import Pool
 import chess
 import numpy as np
 
-OUT = "data/derived/gko1_canon"
+import sys as _sys
+TWIN = "--twin" in _sys.argv          # emit the OPPONENT'S-VIEW features
+OUT = "data/derived/gko1_canon_twin" if TWIN else "data/derived/gko1_canon"
 MV_CAP = None                                    # set in _init
 
 
@@ -50,10 +52,15 @@ def canon_row(fen_and_played):
     except Exception:
         return None
     cb, fl = canon(b)
+    if TWIN:
+        # NNUE's second accumulator: the SAME position read from the other side.
+        # Colours swapped, canonical turn forced so it stays in distribution.
+        cb = cb.mirror()
+        cb.turn = chess.WHITE
     g, _ = parent_graph(cb)
     gl = glob_of_board(cb)
     legal_o = list(b.legal_moves)[:MV_CAP]
-    legal_c = list(cb.legal_moves)[:MV_CAP]
+    legal_c = list(cb.legal_moves)[:MV_CAP]      # TWIN: opponent's moves, by design
     pos = {m: i for i, m in enumerate(legal_c)}
     cmap = np.full(MV_CAP, 255, np.uint8)
     for j, m in enumerate(legal_o):
@@ -124,6 +131,9 @@ def main():
         print(f"[canon] chains done ({(~packed['ok']).sum()} failed)", flush=True)
     pool.close()
     # ---- verification gate ----------------------------------------------------
+    if TWIN:
+        print("[canon] twin pass complete (verification is the mover-view gate)")
+        return
     rng = np.random.default_rng(0)
     z = load_npz(sorted(glob.glob(os.path.join(OUT, "shard_*.npz")))[0])
     src = load_npz(sorted(glob.glob("data/derived/gko1_shards/shard_*.npz"))[0])
