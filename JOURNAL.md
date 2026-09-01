@@ -20870,3 +20870,45 @@ run has been 8000 steps because that is what the first one was. qgt26 doubles it
 to 16000 on qgt25's exact config -- one knob, and it prices the fidelity ceiling
 before anyone spends more design effort on it. (Caveat recorded: the pruning
 schedule scales with --steps, so the concept curve stretches too.)
+
+## 2026-09-01 (Fable) — THE PLATEAU WAS A MEASUREMENT ARTIFACT. Detection peaks at 40.4 percent EARLY and is destroyed by concept pruning. Every number in this journal was read at the wrong time
+
+qgt26 (16000 steps) probed 22.9 percent at its final checkpoint -- worse than any
+8000-step run, which falsified "undertrained". But the intermediate checkpoints
+were still on disk, so I probed the whole run:
+
+    step   concepts   detection
+     2000      2560      40.4%   <- ALL-TIME RECORD, 11 points above the old best
+     4000      2121      36.7%
+     8000       679      38.5%
+    10000       460      24.8%
+    12000       401      22.9%
+    14000       400      20.2%
+    16000       400      22.9%
+
+Detection is roughly TWICE as high before the concept pruner reaches its target
+as after it. The collapse tracks the concept count precisely: 40.4 at 2560
+concepts, ~37-38 while above ~680, then 24.8 the moment the budget crosses ~460,
+and 20-23 at the 400 floor.
+
+WHAT THIS MEANS FOR EVERYTHING WE HAVE MEASURED. Every detection number in this
+journal -- 1.8, 8.3, 18.3, 24.8, 27.5, 29.4 -- was read at a FINAL checkpoint,
+i.e. always after the pruner had finished squeezing to 400 concepts. The apparent
+"plateau at 26-29 percent across five levers" is substantially an artifact of
+measuring every model at its most damaged point. The levers may have been doing
+more than we credited; we were reading them through a lossy filter.
+
+AND IT NAMES THE REAL CONSTRAINT: the 400-concept budget costs about HALF the
+tactical discrimination. That is the interpretability price, and until now it was
+unpriced -- we assumed it was cheap because the value metrics survived it (balanced
+accuracy holds up while detection halves; the pruner keeps what predicts average
+position value and discards what separates SIBLING MOVES).
+
+IMMEDIATE CONSEQUENCES:
+  1. Re-probe the standing best checkpoints at their intermediate steps -- the
+     ladder needs rebuilding on a like-for-like basis.
+  2. The 400 budget is now a first-class experimental variable, not a fixed
+     constraint. A run held at ~680 concepts may be worth ~15 detection points.
+  3. The arena calibration says ~71 percent detection is needed for games to move;
+     40.4 percent is the first number that makes that look reachable rather than
+     fanciful.
