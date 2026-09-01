@@ -20801,3 +20801,37 @@ qgt24 = canon + pair edges + hard gate + direct operator + DUAL, lag-1 locality
 against the true swap_halves target, no equivariance, no sigma. Gauges: detection
 (standing best 29.4 qgt22, 27.5 qgt21), and `loc`, which for the first time can
 legitimately fall to zero.
+
+## 2026-09-01 (Fable) — qgt24 (DUAL PERSPECTIVE) VERDICT: 26.6 percent. The construction is right and the gauge did not move -- which is now the story
+
+Printed: detection 26.6 percent, within-position corr 0.098, rolled gap 0.036.
+Finals: vroll +0.520/+0.535/+0.461 (among the best), in-cone margin +0.318, dead
+0.00, but the value head finished lopsided (balanced 0.373, draw recall 0.01) and
+loc ended at 0.45 rather than falling. Free-run 1-ply 0.562 vs copy 0.585 -- BELOW
+copy, worse than qgt21's 0.587/0.568, despite better vroll.
+
+THE BAND. Four different locality treatments now:
+    qgt19  no locality                          24.8%
+    qgt24  dual perspective (exact frame)       26.6%
+    qgt21  lag-2 locality                       27.5%
+    qgt22  sigma-locality, copy-gated           29.4%
+Everything since qgt19 sits in 26.6-29.4. Locality-in-a-true-frame bought about
++3 over none and NOTHING SINCE HAS SEPARATED. Eight runs of frame and locality
+work have produced one real step and then a plateau. The honest conclusion: the
+frame was a genuine bug worth fixing (and dual perspective is the right fix --
+exact, non-decaying, no bootstrap), but LOCALITY IS NOT THE BINDING LEVER.
+
+WHAT THE NUMBERS POINT AT INSTEAD. within-position correlation -- the probe's
+measure of whether the read can rank siblings -- sits at 0.098 even in the best
+runs. The readout is trained ONLY on ENCODED states; it has never seen a ROLLED
+state during training. The qgt22 inference experiment already showed how much the
+rolled state's distribution matters (0.0 vs 29.4 percent from an out-of-cone
+background change alone). And the T2-era anchors DID train value on free-run
+rolls at horizons 2/4/6; the canon anchor dropped that and only does value CE on
+encoded rows. So the canon arm has a train/test mismatch on exactly the quantity
+the gauge measures.
+
+NEXT: restore rolled-state value anchoring to the canon arm (--w-vroll), Dreamer
+discipline preserved (roll under no_grad, gradient to the readout only). This is
+a restoration, not an invention, and it targets the one number that has never
+moved.
