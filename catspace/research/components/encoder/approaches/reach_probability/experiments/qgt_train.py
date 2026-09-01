@@ -1511,9 +1511,12 @@ def main():
                 pvk = F.linear(zk, W[:, :model.d_pos], model.readout.bias) \
                     + model.turn[1]
                 # odd plies are the opponent's turn: negate by swapping W and L
+                # NO flip: T1_roll already mirrors into row k's frame, and the
+                # canon labels are mover-POV per row -- the eval instrument that
+                # produces sensible vroll compares exactly this way. Flipping odd
+                # plies fed the readout contradictory targets and collapsed it to
+                # a constant (recall 0.07/0.01/1.00 by step 500).
                 tgt_k = torch.from_numpy(CH_WDL[ci[:, k]]).to(dev)
-                if k % 2 == 1:
-                    tgt_k = tgt_k.flip(-1)
                 l_vr = l_vr + _ce_rows(pvk[fin_k], tgt_k[fin_k])
                 n_vr += 1
             if n_vr:
