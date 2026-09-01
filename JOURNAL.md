@@ -20656,3 +20656,41 @@ w-equiv so it converges before the gate leans on it.
 Despite that, qgt22 is posting the best rolled-state numbers of the project so far
 (vroll +0.597 at step 1000, in-cone margin +0.505, drift within 0.02 of copy), so
 the run is worth finishing before judging.
+
+## 2026-08-31 (Fable) — qgt22 VERDICT, and it is the best result of the project hiding behind an inference bug. SAME WEIGHTS: 0.0 percent with the sigma background, 29.4 percent with a copy background
+
+qgt22 (sigma-aware lag-1 locality + equivariance + sigma-gating) probed 0.0
+percent detection -- while posting the BEST free-run fidelity ever measured:
+1-ply agreement 0.627 vs root-copy 0.575 (qgt21: 0.587/0.568; qgt14: 0.638/0.613
+but with far worse rolled value). Simulation excellent, discrimination zero.
+That dissociation was too sharp to be a training failure, so I isolated it with
+three probes on the IDENTICAL checkpoint, changing only how out-of-cone squares
+are filled at inference:
+
+   gate with SIGMA(parent)   [as trained]      detection  0.0%   gap  0.002
+   gate OFF (raw T output)                     detection  0.0%   gap -0.000
+   gate with COPY(parent)                      detection 29.4%   gap  0.040
+                                                          ^ ALL-TIME RECORD
+
+The model qgt22 trained is the strongest detector we have -- 29.4 percent beats
+qgt21's 27.5 -- and the sigma substitution at inference was destroying it. Mean
+rolled-read gap 0.040 is also a record (qgt21 0.039).
+
+MECHANISM, now solid. The readout is only ever trained on ENCODED states (real
+boards). At inference the rolled state's out-of-cone background must therefore
+resemble a real encoding. COPY(parent) is stale but in-distribution. SIGMA(parent)
+would be the TRUE child encoding if equivariance were exact -- but it is only
+about two-thirds installed (0.327 disagreement at step 2000), so it lands
+out-of-distribution and swamps the ~11 in-cone squares that actually differ
+between siblings. Gate-off is equally bad because T's out-of-cone output is
+untrained (the teacher loss is masked to in-cone).
+
+WHAT THIS PREDICTS: as equivariance error goes to zero, SIGMA(parent) becomes the
+correct child encoding and sigma-gating should overtake copy-gating rather than
+destroy it. That is exactly what --eq-warmup (built this afternoon) is for: hold
+sigma-gating off until the symmetry is in. qgt23 launched to test it, and the
+prediction is falsifiable -- sigma-gate detection should land at or above 29.4.
+
+BOOKKEEPING: the detection ladder now reads qgt19 24.8, qgt21 27.5, qgt22 29.4
+(copy-gate inference). The equivariance TRAINING helped on every axis measured;
+only the sigma SUBSTITUTION at inference hurt.
