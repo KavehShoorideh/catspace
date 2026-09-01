@@ -120,6 +120,16 @@ def main():
                          "margin is established before anything competes with it "
                          "-- the 8/31 mediator finding: detection tracks whether "
                          "that margin ever opens, and seeds differ on it")
+    ap.add_argument("--w-vroll", type=float, default=0.0,
+                    help="value CE on FREE-RUN ROLLED states at horizons 1..6 "
+                         "(restores what chain_anchor_discrete did and the canon "
+                         "anchor dropped). The probe measures whether the READ "
+                         "can rank siblings on ROLLED states, but the readout has "
+                         "only ever been trained on ENCODED ones -- a train/test "
+                         "mismatch on exactly the gauged quantity (within-position "
+                         "corr has never exceeded 0.11). Dreamer discipline kept: "
+                         "the roll is no_grad, so this trains the READOUT only, "
+                         "never the transition or encoder.")
     ap.add_argument("--dual", type=int, default=0,
                     help="NNUE-style DUAL PERSPECTIVE (Kaveh 8/31, after the "
                          "literature check): carry both views of every position "
@@ -1478,6 +1488,36 @@ def main():
             l_val = l_val + args.w_vhead * _ce_rows(
                 pvh[fin], torch.from_numpy(CH_WDL[rows_all]).to(dev)[fin])
         n_lab = int(fin.sum())
+        # ROLLED-STATE VALUE ANCHOR (restored 9/1): read the free-run line and
+        # ground it in the same labels. World model FIXED (no_grad roll) -- the
+        # gradient reaches the readout only, exactly as the T2 arm did it.
+        if args.w_vroll > 0:
+            with torch.no_grad():
+                packs_v = []
+                for k in range(6):
+                    gk_ = (torch.from_numpy(_gate_rows(ci[:, k])).to(dev)
+                           if gate_on() else None)
+                    packs_v.append((pl_g[:, k].detach(), frm7[:, k], to7[:, k],
+                                    gk_) if gate_on() else
+                                   (pl_g[:, k].detach(), frm7[:, k], to7[:, k]))
+                zs_v = T1_roll(q1_all[:, 0].detach(), packs_v)
+            l_vr = torch.zeros((), device=dev)
+            n_vr = 0
+            for k in range(1, 7):
+                fin_k = torch.from_numpy(CH_OK[ci[:, k]]).to(dev)
+                if not bool(fin_k.any()):
+                    continue
+                zk = model.levels_from_bits(zs_v[k - 1])[0]
+                pvk = F.linear(zk, W[:, :model.d_pos], model.readout.bias) \
+                    + model.turn[1]
+                # odd plies are the opponent's turn: negate by swapping W and L
+                tgt_k = torch.from_numpy(CH_WDL[ci[:, k]]).to(dev)
+                if k % 2 == 1:
+                    tgt_k = tgt_k.flip(-1)
+                l_vr = l_vr + _ce_rows(pvk[fin_k], tgt_k[fin_k])
+                n_vr += 1
+            if n_vr:
+                l_val = l_val + args.w_vroll * (l_vr / n_vr)
         # 1-ply branch pricing (negamax read), rows 0/2/4; oracle replies unneeded
         bk = args.branch_k
         l_br = torch.zeros((), device=dev)
