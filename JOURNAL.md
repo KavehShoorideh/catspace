@@ -20694,3 +20694,44 @@ prediction is falsifiable -- sigma-gate detection should land at or above 29.4.
 BOOKKEEPING: the detection ladder now reads qgt19 24.8, qgt21 27.5, qgt22 29.4
 (copy-gate inference). The equivariance TRAINING helped on every axis measured;
 only the sigma SUBSTITUTION at inference hurt.
+
+## 2026-08-31 (Fable) — qgt23 VERDICT: my prediction was WRONG, and the measurement that killed it also closes the sigma branch
+
+qgt23 (equivariance + 2500-step warmup before sigma-gating), dual-probed on the
+same weights:
+    sigma gate (as trained)   detection  0.0%
+    copy gate  (control)      detection 27.5%
+The warmup did not rescue sigma-gating. I predicted sigma-gate detection would
+reach or beat 29.4 percent; it did not move off zero. Prediction FALSIFIED.
+
+THE MEASUREMENT THAT EXPLAINS IT -- equivariance error at step 8000:
+    qgt22 (equivariance, no warmup)      0.432
+    qgt23 (equivariance + 2500 warmup)   0.445      (0.500 = no symmetry at all)
+Both are back at the null. And qgt22 measured 0.327 at step 2000. So the symmetry
+INSTALLS EARLY AND THEN DECAYS: by the end of training it is essentially gone,
+whichever way the run starts. Warmup cannot help with a constraint that does not
+survive; the other objectives (value CE, teacher, locality, and the concept
+pruner reshaping the code) simply outvote w-equiv=1.0 over 8000 steps.
+
+So the mechanism story was self-consistent but its premise was false: we never
+had a usable sigma at inference time in ANY run, which is why sigma-gating reads
+0.0 percent every single time while copy-gating reads 27-29.
+
+WHERE THE SIGMA/LAG-1 LINE STANDS: closed at this weight. Making it work needs
+sigma enforced hard enough to persist -- a much larger w-equiv, or genuine
+architectural equivariance (weight-tied colour channels) rather than a loss.
+Neither is a small change, and neither is justified by the evidence: lag-1's
+promised prize was a tighter cone, and lag-2 already delivers 27.5 without any of
+this machinery.
+
+STANDING BEST (all copy-gate inference, which is now simply the correct rule):
+    qgt22  equivariance + sigma-locality, copy-gated    29.4%
+    qgt21  lag-2 locality                               27.5%
+    qgt23  + eq warmup, copy-gated                      27.5%
+    qgt19  no locality                                  24.8%
+The spread across the top three is ~2 points, i.e. inside the noise band we
+measured earlier, so the honest statement is: LOCALITY IN A TRUE FRAME is worth
+roughly +3 over none, and nothing within the locality variants separates yet.
+
+NOT LAUNCHING another run. Three consecutive runs have gone into this branch and
+the next move is a design decision, not a tuning one -- bringing it to Kaveh.
