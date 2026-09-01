@@ -20835,3 +20835,38 @@ NEXT: restore rolled-state value anchoring to the canon arm (--w-vroll), Dreamer
 discipline preserved (roll under no_grad, gradient to the readout only). This is
 a restoration, not an invention, and it targets the one number that has never
 moved.
+
+## 2026-09-01 (Fable) — qgt25 (ROLLED-STATE VALUE ANCHOR) VERDICT: every fidelity number is a record, detection is unchanged. The plateau is now five levers deep
+
+Printed: within-position corr 0.120 (best ever: qgt21 0.113, qgt24 0.098), rolled
+gap 0.044 (best ever: qgt22 0.040), free-run 1-ply 0.588 vs copy 0.544 -- a +0.044
+margin, the largest yet (qgt21 +0.019, qgt24 -0.023). DETECTION 26.6 percent.
+
+So the restoration did exactly what it was supposed to: the readout can now read
+rolled states better than it ever could, the rolled states themselves are closer
+to truth than ever, and the sibling-ranking correlation ticked to its best value.
+None of it moved the gauge.
+
+THE PLATEAU, five levers deep:
+    qgt19  no locality                      24.8%
+    qgt24  dual perspective                 26.6%
+    qgt25  + rolled-state value anchor      26.6%
+    qgt21  lag-2 locality                   27.5%
+    qgt22  sigma-locality, copy-gated       29.4%
+Nothing since qgt19 has separated. Frame correctness, locality, gating semantics,
+and now the train/test mismatch on the read -- four distinct hypotheses, one
++3-point step, then flat.
+
+WHERE THE ARITHMETIC POINTS NOW. In-cone teacher accuracy sits at 0.631 (vs copy
+0.330): the transition gets roughly TWO THIRDS of the bits right on the squares it
+is allowed to change. Free-run agreement with the true child is 0.588 -- FOUR IN
+TEN BITS OF EVERY ROLLED STATE ARE WRONG. No readout, however well trained on
+rolled states, can rank siblings reliably when the states it reads are 40 percent
+corrupted. That is a fidelity ceiling, and every lever we have tried was about
+WHAT to predict or HOW to constrain it, not about predicting it BETTER.
+
+NEXT QUESTION, never tested in this project: are we simply undertrained? Every
+run has been 8000 steps because that is what the first one was. qgt26 doubles it
+to 16000 on qgt25's exact config -- one knob, and it prices the fidelity ceiling
+before anyone spends more design effort on it. (Caveat recorded: the pruning
+schedule scales with --steps, so the concept curve stretches too.)
