@@ -20774,3 +20774,30 @@ readable structure for free -- every concept exists in a mine-view and a
 theirs-view slot, which is the mine/theirs gauge sigma was failing to learn.
 COST: two encoder passes per position (or half the width per perspective to hold
 parameters constant), and a rebuild of the feature path.
+
+## 2026-08-31 (Fable) — DUAL PERSPECTIVE SHIPPED AND RUNNING (qgt24). The NNUE construction replaces the sigma apparatus entirely
+
+Built to Kaveh's spec ("the cost is parallel encoders so it's fine -- halve it"):
+--dual runs ONE set of encoder weights over both orientations of every position
+and concatenates 12 bits per view into the usual 24-bit square state, so
+parameters, concept budget and the readout are all unchanged. Twin feature shards
+generated for the whole corpus and chains (404 MB, 0 failures).
+
+GATES: C12 asserts the frame relation on features -- 1820 untouched squares, ZERO
+violations. C7 now reads "ungated squares equal swap_halves(parent) exactly
+through the roll". Full battery passes. One real bug caught on the way: the C6
+gate still unpacked blunder_batch's old 6-tuple after it grew a 7th return for
+the twin view.
+
+PRECISION, so the claim is not overstated: mirror+swap_halves is EXACT AT THE
+FEATURE LEVEL. It is not automatic at the BIT level, because the GNN mixes
+globally -- an untouched square's bits can still move. What changed is that the
+target went from UNATTAINABLE (features genuinely differed by colour, so no
+encoder could satisfy it) to ATTAINABLE (the information is identical, so a local
+encoder can). Closing the residual gap is still the locality loss's job; it is
+now pushing toward something reachable.
+
+qgt24 = canon + pair edges + hard gate + direct operator + DUAL, lag-1 locality
+against the true swap_halves target, no equivariance, no sigma. Gauges: detection
+(standing best 29.4 qgt22, 27.5 qgt21), and `loc`, which for the first time can
+legitimately fall to zero.
