@@ -2397,7 +2397,7 @@ def main():
         assert g_enc is not None and float(g_enc.abs().sum()) > 0,             "C6 closure broken: teacher loss does not reach the encoder"
         bb_c = blunder_batch(4)
         assert bb_c is not None
-        _, js_c, R1c, _, _, mat_c = bb_c
+        _, js_c, R1c, _, _, mat_c, _r1tc = bb_c
         sq1c, mv1c, ed1c, mk1c = feat_of(R1c)
         c1c, _, _ = model.carrier(sq1c, mv1c, ed1c, mk1c)
         f_c = model.sib_scorer(c1c.reshape(len(js_c), -1)).squeeze(-1)
