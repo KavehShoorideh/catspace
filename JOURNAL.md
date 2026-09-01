@@ -20735,3 +20735,42 @@ roughly +3 over none, and nothing within the locality variants separates yet.
 
 NOT LAUNCHING another run. Three consecutive runs have gone into this branch and
 the next move is a design decision, not a tuning one -- bringing it to Kaveh.
+
+## 2026-08-31 (Fable) — Kaveh: "MuZero does the same kind of training... go check how they do it, and we wanna do it the same way." CHECKED. The answer is NNUE's, not MuZero's, and it makes our constraint EXACT BY CONSTRUCTION
+
+WHAT THE LITERATURE ACTUALLY DOES:
+  - AlphaZero (arXiv 1712.01815): "The board is oriented to the perspective of
+    the current player" -- Black-to-move positions are flipped before encoding --
+    and the twelve piece planes encode "the playing side and opposing side's"
+    pieces, i.e. MINE/THEIRS, not White/Black. We already match this: canon()
+    orients, and our piece token is mover-relative as a result. But AlphaZero
+    RE-ENCODES every node, so it never needs a cross-ply identity.
+  - MuZero: the hidden state "is not constrained to contain information necessary
+    to reproduce entire future observations" -- there is NO consistency constraint
+    between g(s,a) and h(child). MuZero does not solve our problem; it deletes it,
+    at the cost of the interpretable rolled state that is this project's point.
+  - NNUE (Stockfish docs): THIS is the one. The accumulator has a white-king half
+    and a black-king half, and the transform step builds the eval vector so that
+    "the first half is formed from the side to move and the second half from the
+    other". The side-to-move flip is a SWAP OF THE TWO HALVES. And NNUE updates
+    incrementally -- only features touched by the move change -- which is exactly
+    our hard gate, in an engine that has run this way for years.
+
+SO THE FIX IS TO CARRY BOTH PERSPECTIVES, not to learn sigma. Then the frame
+change is a KNOWN permutation: mirror the squares AND swap the halves. Nothing to
+train, nothing to decay (our sigma reached 0.327 mid-run and rotted back to 0.445).
+
+VERIFIED ON GROUND TRUTH, 30,032 untouched squares across 600 random plies:
+    single perspective, child[mirror(s)] == parent[s]      19,274 violations (64.2%)
+    dual perspective, child[mirror(s)] == swap(parent[s])       0 violations (0.0%)
+Zero. The constraint we have been trying to approximate for two days is an
+identity once the state carries both views.
+
+WHAT IT BUYS: lag-1 locality becomes exactly true (tight single-ply cone, no
+lag-2 compromise); the hard gate writes the CORRECT child bits out of cone
+instead of a stale or rotten approximation; the equivariance loss, w-equiv,
+--eq-warmup and the whole sigma apparatus can be deleted; and the code gains a
+readable structure for free -- every concept exists in a mine-view and a
+theirs-view slot, which is the mine/theirs gauge sigma was failing to learn.
+COST: two encoder passes per position (or half the width per perspective to hold
+parameters constant), and a rebuild of the feature path.
