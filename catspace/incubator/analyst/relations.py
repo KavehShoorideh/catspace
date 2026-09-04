@@ -185,7 +185,7 @@ def composed_pin_relations(board: chess.Board, pins: list[Relation] | None = Non
                 continue
             if q.color != c:
                 out.append(_rel(board, "disabled_attack", 4, (s, p1, p2, t), r.owner, r.tags))
-            elif board.attackers(not c, t):
+            elif board.attackers(not c, t) and not R.is_royal(board, t):   # kings are not "defended"
                 out.append(_rel(board, "disabled_defense", 4, (s, p1, p2, t), r.owner, r.tags))
         for a in board.attackers(not c, p1):
             if a != s:

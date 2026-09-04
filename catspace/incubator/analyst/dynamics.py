@@ -137,6 +137,8 @@ def threats(board: chess.Board, engine: Engine, *, multipv: int = 3, baseline: i
     probe = probe if probe is not None else engine.null_move_probe(board, multipv=multipv)
     if now is None or not probe:
         return []
+    if now.mate is not None and now.mate > 0:      # we are mating: the tempo arithmetic is meaningless
+        return []
     nb = board.copy(stack=False); nb.push(chess.Move.null())
     out = []
     for l in probe:
