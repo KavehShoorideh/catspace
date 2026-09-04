@@ -60,7 +60,19 @@ def trajectories(board: chess.Board, engine_path: str, moves: list[chess.Move], 
     return out
 
 
-def find_traps(trajs: list[Trajectory], depth: int, near: int = 40, bad: int = 150, min_peak: int = 4) -> list[Trap]:
+import math
+
+
+def winp(cp: int) -> float:
+    """Centipawns -> win probability in percent (lichess's logistic), the scale a player feels."""
+    return 50 + 50 * (2 / (1 + math.exp(-0.00368208 * max(-3000, min(3000, cp)))) - 1)
+
+
+def find_traps(trajs: list[Trajectory], depth: int, drop_pts: float = 10.0, near_pts: float = 5.0, min_peak: int = 2) -> list[Trap]:
+    """A trap = a move whose OWN win-probability falls by >= drop_pts from a shallow peak and that
+    ends near_pts or more below the best move; collapse depth = first depth from which it stays
+    that far below its peak. Thresholds are in win-% points, not centipawns, so they mean the same
+    thing at +0.3 and at +3.0."""
     if not trajs:
         return []
     final = {t.move: t.at(depth) for t in trajs}
@@ -69,23 +81,16 @@ def find_traps(trajs: list[Trajectory], depth: int, near: int = 40, bad: int = 1
     traps = []
     for t in trajs:
         f = final[t.move]
-        if f is None or t.move == best.move or bf - f < bad:
+        if f is None or t.move == best.move or winp(bf) - winp(f) < near_pts:
             continue
-        # was it near-best at some shallow depth (>= min_peak)? compare with the best move's score there
-        peak = None
-        for d in sorted(t.scores):
-            if d < min_peak:
-                continue
-            b_at = best.at(d)
-            if b_at is not None and t.scores[d] >= b_at - near:
-                peak = d
-        if peak is None:
+        peak = max((d for d in t.scores if d >= min_peak), key=lambda d: winp(t.scores[d]), default=None)
+        if peak is None or winp(t.scores[peak]) - winp(f) < drop_pts:
             continue
         collapse = None
         for d in sorted(t.scores):
             if d <= peak:
                 continue
-            if all(t.scores[dd] <= (best.at(dd) or 0) - bad for dd in t.scores if dd >= d):
+            if all(winp(t.scores[peak]) - winp(t.scores[dd]) >= drop_pts for dd in t.scores if dd >= d):
                 collapse = d
                 break
         if collapse is None:
