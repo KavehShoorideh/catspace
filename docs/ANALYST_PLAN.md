@@ -172,3 +172,21 @@ tests in `tests/test_analyst_*.py`; Opera Game fixture. Numbers and lessons: JOU
 "ANALYST S0 BUILT". Layer cut as in §9 with the objective quarantined to L5 and all L3 relations
 defined through L1 probes (removal test). Next: S1 explanations polish + plan-level concepts;
 S2 desktop shell (Tauri + sidecar Stockfish); S3 prep.
+
+## 11. Closest existing work (searched 2026-09-04, after S0) — one neighbour per organ, none for the organism
+
+| Neighbour | What it is | Overlap with us | What it lacks |
+|---|---|---|---|
+| Lichess puzzle tagger (`ornicar/lichess-puzzler/tagger/cook.py`) | the python-chess program that assigns the theme labels our gauge uses | same probes (attackers/attacks/pin/between); fork/hanging definitions close to ours | solution-conditioned (needs the puzzle's moves), standard-chess-hardcoded (king special-cased, fixed values, ray piece types), absolute pins only via `board.pin`, no position-level relations, no explanation |
+| CARA (`pguntermann/CARA`, GPL-3, PyQt6 desktop, active) | desktop review app: 44 rule-based tactical/positional patterns over Stockfish multi-PV, PV piece-trajectory visualisation, LLM chat via cloud API keys | closest PRODUCT shape to S0+S2 | hardcoded chess rules (no variants), no killed-ideas / contrastive layer, no null-move threat narration, prose = cloud LLM chat (no faithfulness contract) |
+| ChessGrammar (API) | 10 patterns from FEN/PGN, python-chess heuristics, no engine | L3-like | no dynamics, no engine grounding, API not desktop |
+| En Croissant (Tauri, open source) | desktop GUI: multi-engine, game reports (win-prob-loss move classes, best lines), lichess/chess.com import, repertoire + spaced repetition, tablebases | closest SHELL for S2; already covers game import and part of S3 prep | no explanations, no concepts |
+| DecodeChess (commercial) | rule-based explanations of threats/plans/piece functionality | closest explanation product | closed, templated, no prep, standard chess |
+| CCC-GPT (arXiv 2410.20811), Schut et al. (2310.16410), Ludii concepts | concept-guided commentary; engine concepts taught to humans; rules-generic game concepts | the research frame | none is a tool; Ludii concepts are for game design, not tactics |
+
+Ours alone: rules-generic relations via the removal test + royalty (variant = one-layer change);
+arity as locality/level; "what no longer works" from one move-pair ago with refutations;
+null-move threats above a tempo baseline, narrated; deterministic prose with a faithfulness
+contract; the theme gauge with degenerate baselines as a development instrument. Note the gauge
+measures agreement with the tagger's rule set, not human ground truth -- the second instrument
+is Kaveh reading his own games.
