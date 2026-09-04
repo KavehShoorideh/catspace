@@ -17,6 +17,7 @@ from .engine import Engine, Line
 NOTABLE = ("hanging", "loose", "attacked_by_lower_value", "pin", "skewer", "xray", "fork",
            "discovered_attack", "battery", "overloaded", "attacks_king_zone")
 TEMPO_BASELINE_CP = 100
+REAL_THREAT_MARGIN_CP = 50      # a threat must be worth this much beyond a bare tempo to be 'real'
 ZUGZWANG_MARGIN_CP = 30
 
 
@@ -32,8 +33,30 @@ class Effect:
     gives_check: bool = False
 
 
+_SYMVAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
+DESTROYED_NOTABLE = ("hanging", "pin", "fork", "skewer", "overloaded", "attacked_by_lower_value")
+
+
+def _val(sym: str) -> int:
+    return _SYMVAL.get(sym.lower(), 0) if sym != "-" else 0
+
+
+def significant(r: Relation) -> bool:
+    """A relation worth naming: line relations need a valuable far target, 'loose' needs a
+    piece, king-zone counts are a summary statistic (kept in L3 for gauges, not in effects)."""
+    if r.name in ("discovered_attack", "battery", "xray"):
+        return "check" in r.tags or _val(r.pieces[2]) >= 3
+    if r.name == "pin":      # a pinned pawn shielding a minor piece is not a fact a player names
+        return "absolute" in r.tags or _val(r.pieces[1]) >= 3 or _val(r.pieces[2]) >= 9
+    if r.name == "loose":
+        return _val(r.pieces[0]) >= 3
+    if r.name == "attacks_king_zone":
+        return False
+    return r.name in NOTABLE
+
+
 def _notable(rels: list[Relation]) -> dict[tuple, Relation]:
-    return {r.key: r for r in rels if r.name in NOTABLE}
+    return {r.key: r for r in rels if significant(r)}
 
 
 def move_effects(board: chess.Board, move: chess.Move, ply: int = 1) -> Effect:
@@ -47,7 +70,7 @@ def move_effects(board: chess.Board, move: chess.Move, ply: int = 1) -> Effect:
     after_b.push(move)
     after = _notable(relations(after_b))
     created = [after[k] for k in after.keys() - before.keys()]
-    destroyed = [before[k] for k in before.keys() - after.keys()]
+    destroyed = [before[k] for k in before.keys() - after.keys() if before[k].name in DESTROYED_NOTABLE]
     return Effect(ply, san, move.uci(), mover, captured, created, destroyed, check)
 
 
@@ -83,7 +106,7 @@ def threats(board: chess.Board, engine: Engine, *, multipv: int = 3, baseline: i
     for l in probe:
         gain = l.cp + now.cp - baseline      # opp POV after pass + our POV now = tempo value
         eff = move_effects(nb, chess.Move.from_uci(l.move)) if l.pv else None
-        out.append(Threat(l, gain, gain > 0, eff))
+        out.append(Threat(l, gain, gain >= REAL_THREAT_MARGIN_CP or l.mate is not None, eff))
     return out
 
 

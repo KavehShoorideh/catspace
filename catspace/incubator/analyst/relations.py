@@ -24,6 +24,7 @@ class Relation:
     squares: tuple[int, ...]      # pieces/squares in role order (actor first)
     owner: bool | None            # color whose piece performs the relation (None = symmetric)
     tags: tuple[str, ...] = ()
+    pieces: tuple[str, ...] = ()  # piece symbols at `squares` when the relation was observed
 
     @property
     def key(self) -> tuple:
@@ -31,6 +32,11 @@ class Relation:
 
     def names(self) -> tuple[str, ...]:
         return tuple(chess.square_name(s) for s in self.squares)
+
+
+def _rel(board: chess.Board, name: str, arity: int, squares: tuple, owner, tags: tuple = ()) -> Relation:
+    return Relation(name, arity, tuple(squares), owner, tuple(tags),
+                    tuple(board.piece_at(q).symbol() if board.piece_at(q) else "-" for q in squares))
 
 
 def _enemy(board: chess.Board, sq: int, color: chess.Color) -> bool:
@@ -48,9 +54,9 @@ def attacks_and_defends(board: chess.Board) -> tuple[list[Relation], list[Relati
     atk, dfd = [], []
     for sq, piece in board.piece_map().items():
         for a in board.attackers(not piece.color, sq):
-            atk.append(Relation("attacks", 2, (a, sq), not piece.color))
+            atk.append(_rel(board, "attacks", 2, (a, sq), not piece.color))
         for d in board.attackers(piece.color, sq):
-            dfd.append(Relation("defends", 2, (d, sq), piece.color))
+            dfd.append(_rel(board, "defends", 2, (d, sq), piece.color))
     return atk, dfd
 
 
@@ -63,12 +69,12 @@ def hanging_and_loose(board: chess.Board) -> list[Relation]:
         attackers = board.attackers(not piece.color, sq)
         defenders = board.attackers(piece.color, sq)
         if attackers and not defenders:
-            out.append(Relation("hanging", 1, (sq,), piece.color))
+            out.append(_rel(board, "hanging", 1, (sq,), piece.color))
         elif not attackers and not defenders and piece.piece_type != chess.PAWN:
-            out.append(Relation("loose", 1, (sq,), piece.color))
+            out.append(_rel(board, "loose", 1, (sq,), piece.color))
         for a in attackers:
             if value(board, a) < value(board, sq):
-                out.append(Relation("attacked_by_lower_value", 2, (a, sq), not piece.color))
+                out.append(_rel(board, "attacked_by_lower_value", 2, (a, sq), not piece.color))
     return out
 
 
@@ -92,19 +98,19 @@ def line_relations(board: chess.Board) -> list[Relation]:
                 if p1_enemy and p2_enemy:
                     v1, v2 = value(board, p1), value(board, p2)
                     if R.is_royal(board, p2):
-                        out.append(Relation("pin", 3, (s, p1, p2), c, ("absolute",)))
+                        out.append(_rel(board, "pin", 3, (s, p1, p2), c, ("absolute",)))
                     elif v2 > v1:
-                        out.append(Relation("pin", 3, (s, p1, p2), c, ("relative",)))
+                        out.append(_rel(board, "pin", 3, (s, p1, p2), c, ("relative",)))
                     elif v1 > v2:
-                        out.append(Relation("skewer", 3, (s, p1, p2), c, ("check",) if R.is_royal(board, p1) else ()))
+                        out.append(_rel(board, "skewer", 3, (s, p1, p2), c, ("check",) if R.is_royal(board, p1) else ()))
                     else:
-                        out.append(Relation("xray", 3, (s, p1, p2), c))
+                        out.append(_rel(board, "xray", 3, (s, p1, p2), c))
                 elif _friend(board, p1, c) and p2_enemy:
                     if p2 in board.attacks(p1):
-                        out.append(Relation("battery", 3, (s, p1, p2), c))
+                        out.append(_rel(board, "battery", 3, (s, p1, p2), c))
                     else:
-                        out.append(Relation("discovered_attack", 3, (s, p1, p2), c,
-                                            ("check",) if R.is_royal(board, p2) else ()))
+                        out.append(_rel(board, "discovered_attack", 3, (s, p1, p2), c,
+                                        ("check",) if R.is_royal(board, p2) else ()))
     return out
 
 
@@ -122,7 +128,7 @@ def forks(board: chess.Board) -> list[Relation]:
             if R.is_royal(board, t) or vt > va or undefended:
                 targets.append(t)
         if len(targets) >= 2:
-            out.append(Relation("fork", 1 + len(targets), (s, *sorted(targets)), c))
+            out.append(_rel(board, "fork", 1 + len(targets), (s, *sorted(targets)), c))
     return out
 
 
@@ -138,7 +144,7 @@ def overloaded(board: chess.Board) -> list[Relation]:
             if board.attackers(not c, t) and board.attackers(c, t) == chess.SquareSet([d]):
                 duties.append(t)
         if len(duties) >= 2:
-            out.append(Relation("overloaded", 1 + len(duties), (d, *sorted(duties)), c))
+            out.append(_rel(board, "overloaded", 1 + len(duties), (d, *sorted(duties)), c))
     return out
 
 
@@ -155,7 +161,7 @@ def king_zone_pressure(board: chess.Board) -> list[Relation]:
                 continue
             n = len(board.attacks(e) & zone)
             if n:
-                out.append(Relation("attacks_king_zone", 2, (e, k), not c, (str(n),)))
+                out.append(_rel(board, "attacks_king_zone", 2, (e, k), not c, (str(n),)))
     return out
 
 
