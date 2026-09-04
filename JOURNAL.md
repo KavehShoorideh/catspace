@@ -21057,3 +21057,28 @@ its only defender is pinned (the black knight on f6)"; "the white pawn on e4 is 
 white king on e1 by the black queen on e7 and attacked by the black knight on f6: it cannot flee".
 Noted for L4: a relation DESTROYED because its subject was captured should read "resolved by
 the capture", not "ending: ... cannot flee".
+
+## 2026-09-04 (Fable) — L4 CLEARED: the effect side. A move now USES, RESOLVES, ESCAPES, CASHES, CREATES or ENDS an L3 structure; engine calls -42%. Stopped for Kaveh's review
+
+Effect(ply) gained three typed lists beside created/ended:
+  uses      a discovered attack or battery EXECUTED by moving the front piece ("discovering an
+            attack by the rook on d1 on the king on d8"), or an attacker CASHING its own fork/
+            skewer/attack-by-lower-value by capturing a target ("cashing: the bishop on f3 forks
+            the queen on d1 and the pawn on e4");
+  resolved  a relation that ended because its SUBJECT was captured ("takes the rook, which could
+            not flee" / "which was hanging" / "whose defenders were pinned");
+  escaped   a relation that ended because its subject moved away.
+SUBJECT index per relation name decides which piece a fact is about. Created hanging/loose on the
+mover's own destination square is suppressed (the engine line shows the recapture). Pawn-subject
+filters: pinned_and_attacked and disabled_* need a real piece (pawns do not "flee").
+Value-aware ordering inside a priority tier (bigger subject first).
+Engine reuse: killed-idea and played-move evals take the cp from the multi-PV lines when the
+move is among them; one null-move probe feeds both threats and zugzwang.
+Tests 17 -> 20 (uses/discovered check, resolve-by-capture, escape, cashing a fork).
+Opera Game, FRESH cache, depth 16 / multipv 4 (one run, directional): 33 positions in 98.4s
+(3.0s/pos), engine calls 142 (S0: 246), cache hits 37.
+Gauge regression (one run, OBS): unchanged line for line except hangingPiece fire-rate on
+non-theme puzzles 0.38 -> 0.25 at recall 1.00 (the to-square suppression removed spurious fires).
+Open, for review: prose is faithful but still long in busy positions (ordering/dedup is L6
+work); "escaping:" reads oddly when the subject is a pawn that advanced; plan-level ideas
+remain the learned-concept layer's job.

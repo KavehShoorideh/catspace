@@ -92,16 +92,17 @@ def analyse_position(board: chess.Board, engine: Engine, *, prev: chess.Board | 
             m = chess.Move.from_uci(l.move)
             if m not in board.legal_moves:
                 continue
-            now = engine.eval_move(board, m)
+            now = next((x for x in lines if x.move == l.move), None) or engine.eval_move(board, m)
             if now is None or l.cp - now.cp < kill_drop:
                 continue
             c = Candidate.from_line(board, now, max_plies)
             c.refutation = _refute(board, l.move, engine, 2)
             rec.killed.append(KilledIdea(c, l.cp, now.cp, killed_by or "the last move"))
-    rec.threats = [t for t in threats(board, engine) if t.real]
-    rec.zugzwang = zugzwang(board, engine)
+    probe = engine.null_move_probe(board, multipv=3)
+    rec.threats = [t for t in threats(board, engine, now=lines[0], probe=probe) if t.real]
+    rec.zugzwang = zugzwang(board, engine, now=lines[0], probe=probe)
     if played is not None:
-        pline = engine.eval_move(board, played)
+        pline = next((x for x in lines if x.move == played.uci()), None) or engine.eval_move(board, played)
         if pline:
             rec.played = Candidate.from_line(board, pline, max_plies)
             drop = rec.eval_cp - pline.cp

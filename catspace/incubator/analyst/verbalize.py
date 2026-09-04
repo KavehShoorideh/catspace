@@ -59,20 +59,45 @@ def rel_phrase(r: Relation) -> str:
     return f"{n} {' '.join(p)}"
 
 
+_SYMVAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
+_SUBJ = {"hanging": 0, "loose": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1, "fork": 0,
+         "discovered_attack": 2, "battery": 2, "overloaded": 0, "disabled_attack": 3, "disabled_defense": 3,
+         "pinned_and_attacked": 1, "hanging_through_pin": 0}
+
+
 def _top(rels: list[Relation], k: int) -> list[Relation]:
-    return sorted(rels, key=lambda r: PRIORITY.index(r.name) if r.name in PRIORITY else 99)[:k]
+    def key(r):
+        sym = r.pieces[_SUBJ.get(r.name, 0)] if r.pieces else "-"
+        return (PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_SYMVAL.get(sym.lower(), 0))
+    return sorted(rels, key=key)[:k]
+
+
+RESOLVED_WORD = {"hanging": "which was hanging", "pinned_and_attacked": "which could not flee",
+                 "hanging_through_pin": "whose defenders were pinned", "fork": "the forking piece",
+                 "loose": "which was undefended"}
 
 
 def effect_phrase(e: Effect, k: int = 2) -> str:
     parts = []
     if e.captured:
-        parts.append(f"{COLOR[e.mover]} takes the {e.captured[0]} ({e.captured[1]})")
+        order = ("pinned_and_attacked", "hanging_through_pin", "hanging", "loose", "fork")
+        why = [RESOLVED_WORD[r.name] for r in sorted(e.resolved, key=lambda r: order.index(r.name) if r.name in order else 99)
+               if r.name in RESOLVED_WORD]
+        parts.append(f"{COLOR[e.mover]} takes the {e.captured[0]} ({e.captured[1]})" + (f", {why[0]}" if why else ""))
     if e.gives_check:
         parts.append("with check")
+    if e.uses:
+        def use_phrase(r):
+            if r.name in ("discovered_attack", "battery"):
+                return rel_phrase(r).replace("moving " + pc(r.pieces[1], r.squares[1]) + " discovers", "discovering")
+            return "cashing: " + rel_phrase(r)
+        parts.append("; ".join(use_phrase(r) for r in _top(e.uses, 1)))
     if e.created:
         parts.append("creating: " + "; ".join(rel_phrase(r) for r in _top(e.created, k)))
+    if e.escaped:
+        parts.append("escaping: " + "; ".join(rel_phrase(r) for r in _top(e.escaped, 1)))
     if e.destroyed:
-        parts.append("ending: " + "; ".join(rel_phrase(r) for r in _top(e.destroyed, k)))
+        parts.append("ending: " + "; ".join(rel_phrase(r) for r in _top(e.destroyed, 1)))
     return f"{e.san} -- " + ", ".join(parts) if parts else ""
 
 

@@ -22,16 +22,29 @@ REAL_THREAT_MARGIN_CP = 50      # a threat must be worth this much beyond a bare
 ZUGZWANG_MARGIN_CP = 30
 
 
+# which square a relation is ABOUT (its subject) -- used to tell how a relation ended
+SUBJECT = {"hanging": 0, "loose": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1,
+           "fork": 0, "discovered_attack": 1, "battery": 1, "overloaded": 0, "disabled_attack": 1,
+           "disabled_defense": 1, "pinned_and_attacked": 1, "hanging_through_pin": 0, "attacks_king_zone": 0}
+
+
 @dataclass
 class Effect:
+    """What ONE move does, in L3 vocabulary. The effect side of Kaveh's two representations:
+    L3 says a structure exists; here we say what a move did with it -- USED it (a discovered
+    attack executed), RESOLVED it by capture (took the piece that could not flee), ESCAPED it
+    (moved the subject out of it), CREATED or ENDED it."""
     ply: int
     san: str
     uci: str
     mover: bool                      # color that moved
     captured: tuple[str, int] | None # (piece name, exchange value)
     created: list[Relation] = field(default_factory=list)
-    destroyed: list[Relation] = field(default_factory=list)
+    destroyed: list[Relation] = field(default_factory=list)   # ended by other means
     gives_check: bool = False
+    uses: list[Relation] = field(default_factory=list)        # discovered attacks / batteries executed
+    resolved: list[Relation] = field(default_factory=list)    # ended because the subject was captured
+    escaped: list[Relation] = field(default_factory=list)     # ended because the subject moved away
 
 
 _SYMVAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
@@ -51,7 +64,9 @@ def significant(r: Relation) -> bool:
     if r.name == "pin":      # a pinned pawn shielding a minor piece is not a fact a player names
         return "absolute" in r.tags or _val(r.pieces[1]) >= 3 or _val(r.pieces[2]) >= 9
     if r.name in ("disabled_attack", "disabled_defense"):   # a pinned knight unable to take a pawn is minor
-        return _val(r.pieces[3]) >= 3
+        return _val(r.pieces[3]) >= 3 and _val(r.pieces[1]) >= 3
+    if r.name == "pinned_and_attacked":                      # pawns do not "flee"; a pinned pawn is a pin fact
+        return _val(r.pieces[1]) >= 3
     if r.name == "loose":
         return _val(r.pieces[0]) >= 3
     if r.name == "attacks_king_zone":
@@ -73,9 +88,24 @@ def move_effects(board: chess.Board, move: chess.Move, ply: int = 1) -> Effect:
     after_b = board.copy(stack=False)
     after_b.push(move)
     after = _notable(relations(after_b))
-    created = [after[k] for k in after.keys() - before.keys()]
-    destroyed = [before[k] for k in before.keys() - after.keys() if before[k].name in DESTROYED_NOTABLE]
-    return Effect(ply, san, move.uci(), mover, captured, created, destroyed, check)
+    created = [after[k] for k in after.keys() - before.keys()
+               if not (after[k].name in ("hanging", "loose") and after[k].squares[0] == move.to_square)]
+    gone = [before[k] for k in before.keys() - after.keys() if before[k].name in DESTROYED_NOTABLE]
+    uses = [r for r in before.values() if r.name in ("discovered_attack", "battery") and r.squares[1] == move.from_square]
+    resolved, escaped, ended = [], [], []
+    for r in gone:
+        subj = r.squares[SUBJECT.get(r.name, 0)]
+        actor_cashes = (r.name in ("fork", "attacked_by_lower_value", "skewer", "pin", "xray")
+                        and r.squares[0] == move.from_square and move.to_square in r.squares[1:])
+        if actor_cashes:                       # the attacker executed its own threat
+            uses.append(r)
+        elif cap is not None and subj == move.to_square:
+            resolved.append(r)
+        elif subj == move.from_square:
+            escaped.append(r)
+        else:
+            ended.append(r)
+    return Effect(ply, san, move.uci(), mover, captured, created, ended, check, uses, resolved, escaped)
 
 
 def line_effects(board: chess.Board, pv, max_plies: int = 6) -> list[Effect]:
@@ -99,10 +129,12 @@ class Threat:
         return self.line.san_line(nb, n)
 
 
-def threats(board: chess.Board, engine: Engine, *, multipv: int = 3, baseline: int = TEMPO_BASELINE_CP) -> list[Threat]:
-    """Standing threats: the opponent's best lines given a free move, scored above the tempo baseline."""
-    now = engine.best(board)
-    probe = engine.null_move_probe(board, multipv=multipv)
+def threats(board: chess.Board, engine: Engine, *, multipv: int = 3, baseline: int = TEMPO_BASELINE_CP,
+            now: Line | None = None, probe: list[Line] | None = None) -> list[Threat]:
+    """Standing threats: the opponent's best lines given a free move, scored above the tempo baseline.
+    `now` / `probe` may be passed in to reuse lines the caller already has (saves engine calls)."""
+    now = now or engine.best(board)
+    probe = probe if probe is not None else engine.null_move_probe(board, multipv=multipv)
     if now is None or not probe:
         return []
     nb = board.copy(stack=False); nb.push(chess.Move.null())
@@ -121,9 +153,10 @@ class Zugzwang:
     pass_cp: int      # our eval if we could pass
 
 
-def zugzwang(board: chess.Board, engine: Engine, margin: int = ZUGZWANG_MARGIN_CP) -> Zugzwang | None:
-    now = engine.best(board)
-    probe = engine.null_move_probe(board, multipv=1)
+def zugzwang(board: chess.Board, engine: Engine, margin: int = ZUGZWANG_MARGIN_CP,
+             now: Line | None = None, probe: list[Line] | None = None) -> Zugzwang | None:
+    now = now or engine.best(board)
+    probe = probe if probe is not None else engine.null_move_probe(board, multipv=1)
     if now is None or not probe:
         return None
     pass_cp = -probe[0].cp

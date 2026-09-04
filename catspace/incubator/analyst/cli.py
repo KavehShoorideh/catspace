@@ -32,10 +32,13 @@ def main(argv=None):
     a.add_argument("--pgn"); a.add_argument("--fen"); a.add_argument("--moves", default="")
     a.add_argument("--depth", type=int, default=16); a.add_argument("--multipv", type=int, default=5)
     a.add_argument("--json", action="store_true"); a.add_argument("--quiet", action="store_true")
+    a.add_argument("--fresh-cache", action="store_true", help="ignore the on-disk cache (timing runs)")
     t = sub.add_parser("threats"); t.add_argument("--fen", required=True); t.add_argument("--depth", type=int, default=16)
     args = ap.parse_args(argv)
     t0 = time.perf_counter()
-    with Engine(depth=args.depth) as eng:
+    import tempfile, os
+    cache = os.path.join(tempfile.mkdtemp(), "c.sqlite") if getattr(args, "fresh_cache", False) else None
+    with Engine(depth=args.depth, cache_path=cache) as eng:
         if args.cmd == "threats":
             b = chess.Board(args.fen)
             for th in threats(b, eng):
