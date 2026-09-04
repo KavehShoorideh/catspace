@@ -18,14 +18,14 @@ def main(path: str):
     bad = [r for r in rows if r["verdict"] in ("blunder", "mistake", "inaccuracy")]
     print(f"[miner] {len(games)} games, {len(rows)} opponent moves, {len(bad)} errors "
           f"({Counter(r['verdict'] for r in rows).most_common()})")
-    fams = ("pin", "fork", "discovered", "skewer", "hanging", "overload", "capture", "mate")
-    print(f"{'mechanism':11s} {'in refutations of errors':>26s}   {'present in all positions':>26s}   lift")
+    fams = ("pin", "fork", "discovered", "skewer", "hanging", "loose", "attacked_by_lower", "overload", "capture", "mate")
+    print(f"{'mechanism':16s} {'in refutations of errors':>26s}   {'present in all positions':>26s}   lift")
     for f in fams:
         m = sum(f in r["mechanisms"] for r in bad); p = sum(f in r["present"] for r in rows)
         rm, rp = m / max(len(bad), 1), p / max(len(rows), 1)
         base = f"{rp:.2f} (n={len(rows)})" if f not in ("capture", "mate") else "--"
         lift = f"x{rm/rp:.1f}" if f not in ("capture", "mate") and rp > 0 else ""
-        print(f"OBS {f:11s} {rm:.2f} ({m}/{len(bad)})".ljust(40) + f"{base:>26s}   {lift}")
+        print(f"OBS {f:16s} {rm:.2f} ({m}/{len(bad)})".ljust(45) + f"{base:>26s}   {lift}")
     ign = sum(r["ignored_threat"] for r in bad); had = sum(r["threat_existed"] for r in rows)
     print(f"OBS ignored a standing threat: {ign}/{len(bad)} errors ({ign/max(len(bad),1):.2f}); a real threat existed in {had}/{len(rows)} positions ({had/max(len(rows),1):.2f})")
     for name, sel in (("opening (ply<=20)", lambda r: r["ply"] <= 20), ("middlegame", lambda r: r["ply"] > 20 and r["phase_nonpawn"] > 12), ("endgame (nonpawn<=12)", lambda r: r["ply"] > 20 and r["phase_nonpawn"] <= 12)):

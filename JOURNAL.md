@@ -21082,3 +21082,47 @@ non-theme puzzles 0.38 -> 0.25 at recall 1.00 (the to-square suppression removed
 Open, for review: prose is faithful but still long in busy positions (ordering/dedup is L6
 work); "escaping:" reads oddly when the subject is a pawn that advanced; plan-level ideas
 remain the learned-concept layer's job.
+
+## 2026-09-04 (Fable) — TERSE PROSE, MAIA POLICY SAMPLER, WEAKNESS MINER (20 games), HORIZON TRAPS + RATING LADDER. All one-run OBS; committed
+
+L6 TERSE (default; the S0 full-facts form kept behind --long): one fact per ply, the refutation's
+single strongest first-ply fact, threats capped at one unless mate or >=300 above tempo,
+killed<=2, alternatives<=1, dedupe; mates say "checkmate"; a capture that also discovers an
+attack says both. Before/after on the Opera Game [10.] went from ~700 chars of true clutter
+to: "Nxb5: White takes the pawn (1); Qb4+: with check, the black queen on b4 skewers the white
+queen on b3 and the white pawn on b2; Qxb4: White takes the queen (9)".
+
+MAIA AS A HUMAN-MOVE MODEL (maia.py): lc0's Temperature is a no-op at nodes=1 (no child visits)
+-- the first 20-game series silently replayed the same two games ten times (caught by the
+"engine calls 0" line). Fixed by reading the policy from lc0's verbose move stats (P: xx%) and
+sampling from it, which is the Maia protocol. Ladder 1100..1900 on disk.
+
+WEAKNESS MINER (miner.py over play.py --records): analyst (Stockfish d14, plays its own idea) vs
+Maia-1100, 10 games as White + 10 as Black, sampled, seeded per game id (replays from cache in
+30s). Result 20-0. 397 Maia moves, 145 errors (61 inaccuracy / 58 mistake / 26 blunder). Rate of
+a mechanism inside the refutation of Maia's errors vs its (significance-filtered) presence in
+all of Maia's positions -- ONE player model, ONE sample, directional:
+    pin 0.18 vs 0.17 (x1.0) | fork 0.26 vs 0.09 (x2.9) | discovered 0.35 vs 0.28 (x1.3) |
+    skewer 0.14 vs 0.12 (x1.2) | hanging 0.44 vs 0.47 (x0.9) | attacked-by-lower 0.34 vs 0.20 (x1.7) |
+    overload 0.10 vs 0.01 (x9.6, n=14) | ignored a standing threat 30/145 = 0.21 vs threats
+    present in 0.26 of positions | error rate opening 0.36, middlegame 0.37.
+Reading: forks (and overloaded defenders, small n) are what punishes Maia-1100 out of proportion
+to their availability; pins are NOT -- the one-game "pin-blind" impression from earlier today was
+wrong, and the baseline column is what corrected it. Threat-blindness is at base rate.
+
+HORIZON TRAPS (horizon.py; `cli horizon --fen --maia 1100,1500,1900 --include <played>`):
+per-depth score trajectory of each candidate from a root-restricted search; a trap = a move whose
+own WIN-PROBABILITY falls >=10 points from its shallow peak and ends >=5 below the best; collapse
+depth = first depth from which it stays that far down; the PV there is the refutation. Two
+methodological catches: thresholds must be in win-% points, not centipawns (9...b5 in a +2
+position); and the hash must be CLEARED per candidate with one thread, or later candidates'
+shallow scores inherit refutations found while searching earlier ones and the trap vanishes.
+Opera Game after 9.Bg5: "TRAP b5: looks +0.93 at depth 3, collapses at depth 8 to +3.12.
+Refutation: b5 Nxb5" (Morphy's 10.Nxb5!). After 6.Bc4: f6 is bad at every depth yet Maia-1100
+plays it 18% (a blind spot: one-ply lesson); Nf6 is played by every level (27% -> 49% with
+rating) and only the engine prefers Qf6 by a pawn (a computer move: not a lesson for anyone on
+the ladder). Taxonomy for "what to explain to whom": blind spots (bad at all depths, played at
+the user's level) and horizon traps whose collapse depth is just beyond the user's level; skip
+computer moves. The rating ladder joined to the table says who falls for what.
+
+Kaveh's open thread (recorded in ANALYST_PLAN §12): a PLAN as a sequence of concepts.

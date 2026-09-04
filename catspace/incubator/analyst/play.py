@@ -36,9 +36,10 @@ def main(argv=None):
     maia = Maia(weights=a.maia)
     rng = random.Random(a.game_id or None)
     from .relations import relations
+    from .dynamics import significant
     FAMILY = {"pin": ("pin", "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin"),
               "fork": ("fork",), "discovered": ("discovered_attack", "battery"), "skewer": ("skewer",),
-              "hanging": ("hanging", "loose", "attacked_by_lower_value"), "overload": ("overloaded",)}
+              "hanging": ("hanging",), "loose": ("loose",), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",)}
     def families(names):
         return sorted(f for f, ns in FAMILY.items() if any(n in ns for n in names))
     recs_out = open(a.records, "a") if a.records else None
@@ -64,8 +65,8 @@ def main(argv=None):
                         mech = families([x.name for x in e0.created] + [x.name for x in e0.uses] + [x.name for x in e0.resolved])
                         if e0.captured: mech.append("capture")
                         if r.san.endswith("#") or (r.mate is not None): mech.append("mate")
-                    present = families([x.name for x in relations(board) if (x.owner == us) or (x.name in FAMILY["hanging"] and x.owner != us)])
-                    recs_out.write(json.dumps({"game": a.game_id, "ply": board.ply(), "maia": "black" if us else "white",
+                    present = families([x.name for x in relations(board) if significant(x) and ((x.owner == us) or (x.name in FAMILY["hanging"] and x.owner != us))])
+                    recs_out.write(json.dumps({"game": a.game_id, "ply": board.ply(), "maia": "black" if us else "white", "fen": board.fen(),
                         "san": board.san(move), "verdict": rec.verdict, "drop": (rec.eval_cp - rec.played.cp) if rec.played else 0,
                         "eval_before": rec.eval_cp, "phase_nonpawn": rec.facts.phase_nonpawn,
                         "mechanisms": sorted(set(mech)), "present": present,
