@@ -2,7 +2,8 @@
 Themes are free labels (millions of puzzles). Solver position = FEN after the opponent's first
 move; solution = Moves[1:]. A theme counts as NAMED when the corresponding relation, owned by the
 solver's colour (victim-side for hanging/overloaded), is present on the solver position or is
-CREATED within the first 3 plies of the solution's effects. Beside every recall we print the
+CREATED within the first 3 plies of the solution's effects. Output lines are OBS (observations from ONE
+run on ONE sample -- directional guides, not verdicts; Kaveh 2026-09-04). Beside every recall we print the
 DEGENERATE BASELINE: the same detector's fire rate on puzzles that do NOT carry the theme.
 Engine themes (mateInN, zugzwang) use Stockfish on smaller samples.
     python -m catspace.incubator.analyst.gauge_puzzles [--n 5000 --engine-n 80 --depth 12]"""
@@ -102,7 +103,7 @@ def main(argv=None):
         for t in THEME_TO_REL:
             h, f = stats[mode][t]
             rec = h[0] / max(h[1], 1); fr = f[0] / max(f[1], 1)
-            print(f"VERDICT [{mode:14s}] {t:17s} recall {rec:.2f} (n={h[1]})  | fire-rate on non-{t} {fr:.2f} (n={f[1]})  | lift x{rec/max(fr,1e-9):.1f}")
+            print(f"OBS [{mode:14s}] {t:17s} recall {rec:.2f} (n={h[1]})  | fire-rate on non-{t} {fr:.2f} (n={f[1]})  | lift x{rec/max(fr,1e-9):.1f}")
     # ---- engine themes ----
     eng = Engine(depth=a.depth, cache_path=str(paths.derived("analyst_gauge_cache.sqlite")))
     def mate_in(b, k): l = eng.best(b); return bool(l and l.mate == k)
@@ -127,7 +128,7 @@ def main(argv=None):
                     pass
             return k / max(n, 1), n
         rp, npos = rate(pos); rn, nneg = rate(neg)
-        print(f"VERDICT {t:17s} recall {rp:.2f} (n={npos})  | fire-rate on non-{t} {rn:.2f} (n={nneg})  | lift x{rp/max(rn,1e-9):.1f}")
+        print(f"OBS {t:17s} recall {rp:.2f} (n={npos})  | fire-rate on non-{t} {rn:.2f} (n={nneg})  | lift x{rp/max(rn,1e-9):.1f}")
     print(f"[gauge] engine themes in {time.perf_counter()-t2:.0f}s ({eng.calls} calls); total {time.perf_counter()-t0:.0f}s")
     eng.close()
 

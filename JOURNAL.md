@@ -20992,15 +20992,17 @@ layer under catspace/incubator/analyst/:
     refutations ("what no longer works and why") / failing alternatives / played-move verdicts |
     L6 deterministic verbalizer. engine.py = Stockfish adapter with a sqlite cache (DELETE mode).
 
-PRINTED RUNS. Fried Liver after 6.d4 Be6 (depth 16): idea O-O (+1.15); "Nxf7 no longer works
+PRINTED RUNS (single positions; illustrative, not evidence of generality). Fried Liver after 6.d4 Be6 (depth 16): idea O-O (+1.15); "Nxf7 no longer works
 after Be6 (was +0.94, now -4.14): refuted by Bxf7 -- Black takes the knight (3)"; standing threat
 Bb4+ (+104 above a tempo). Opera Game (Morphy 1858), depth 16 / multipv 4: 33 positions in 143s
 (4.3s/pos, 246 engine calls, 82 cache hits); at [6...] the record flags Nf6 as an inaccuracy,
 names Qxf7# as the standing threat, and reports "Nd7 / Nc6 no longer work after Bc4: refuted by
 Qxf7#".
 
-GAUGE (gauge_puzzles.py; 5,000 Lichess puzzles = every 200th row of the 2026-09-04 DB; engine
-themes n=80 at depth 14; total 33s). A theme is NAMED when the matching relation, credited to
+GAUGE -- ONE RUN, DIRECTIONAL, NOT A VERDICT (Kaveh 2026-09-04: with one or two isolated tests,
+which is what we can afford, a hard verdict is not appropriate; these numbers are guides, not
+facts to lean on later). gauge_puzzles.py; 5,000 Lichess puzzles = every 200th row of the
+2026-09-04 DB; engine themes n=80 at depth 14; total 33s. A theme is NAMED when the matching relation, credited to
 the solver, is present on the solver's position or CREATED in the solution's first 3 plies.
 The baseline column is the same detector's fire rate on puzzles WITHOUT the theme:
     static+created  fork 0.96 (n=651) vs 0.28 -> x3.5 | pin 0.98 (321) vs 0.43 -> x2.3 |
@@ -21010,7 +21012,7 @@ The baseline column is the same detector's fire rate on puzzles WITHOUT the them
                     discoveredAttack 0.33 vs 0.16 -> x2.0
     engine          mateIn1 1.00 (80) vs 0.00 | mateIn2 1.00 (80) vs 0.00 | zugzwang 0.68 (47) vs 0.00 (80)
 
-LESSONS (each one changed the code today):
+OBSERVATIONS (each one changed the code today; all from single runs):
   1. The work product beyond the code is the SIGNIFICANCE FILTER. Raw relation diffs are true
      but drown the reader (discovered attacks on pawns, x-rays onto pawns, king-zone square
      counts, pins of pawns shielding minors). Kept: captures, checks, forks, pins with a real

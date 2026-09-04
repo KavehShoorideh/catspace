@@ -48,8 +48,10 @@ approach and never reaches into a component directly.
 9. **Tests**: cross-component and integration in root `tests/`; one-approach unit tests in
    `approaches/<name>/tests/`.
 
-10. **No number is quoted in a doc unless a script printed it.** Every run emits `VERDICT`
-    lines. An `approaches.md` entry with no results says `—`.
+10. **No number is quoted in a doc unless a script printed it.** Runs print their numbers as
+    observations (`OBS` lines). With one or two isolated runs -- which is what we can afford --
+    do NOT write hard verdicts: journal the numbers as directional guides, never as facts to
+    lean on later (Kaveh 2026-09-04). An `approaches.md` entry with no results says `—`.
 
 ## Commands
 
