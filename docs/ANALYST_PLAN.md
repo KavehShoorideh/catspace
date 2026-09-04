@@ -190,3 +190,15 @@ null-move threats above a tempo baseline, narrated; deterministic prose with a f
 contract; the theme gauge with degenerate baselines as a development instrument. Note the gauge
 measures agreement with the tagger's rule set, not human ground truth -- the second instrument
 is Kaveh reading his own games.
+
+## 12. Open layer: a PLAN as a sequence of concepts (Kaveh, 2026-09-04 evening)
+
+"We need to be able to express a plan as a sequence of things -- a sequence of concepts -- and I
+don't know how to do that yet; I don't even know what a good plan sounds like." Recorded, not
+solved. What exists: L4's per-ply effects along a Stockfish line are already a sequence of
+concept EVENTS (pin created -> pinned piece attacked -> captured). What is missing is the
+abstraction that names such a sequence as one thing ("win the pinned piece", "open the e-file
+against the king") and that can be compared across games. Candidate homes: an L4.5 that
+compresses effect sequences into named motifs (grammar over relation events), or the learned
+concept-dynamics layer (moves predict concept changes; planning subgoal-first). Decide after
+Kaveh's own games are on screen.
