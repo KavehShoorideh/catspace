@@ -15,7 +15,8 @@ from .relations import Relation, relations
 from .engine import Engine, Line
 
 NOTABLE = ("hanging", "loose", "attacked_by_lower_value", "pin", "skewer", "xray", "fork",
-           "discovered_attack", "battery", "overloaded", "attacks_king_zone")
+           "discovered_attack", "battery", "overloaded", "attacks_king_zone",
+           "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin")
 TEMPO_BASELINE_CP = 100
 REAL_THREAT_MARGIN_CP = 50      # a threat must be worth this much beyond a bare tempo to be 'real'
 ZUGZWANG_MARGIN_CP = 30
@@ -34,7 +35,8 @@ class Effect:
 
 
 _SYMVAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
-DESTROYED_NOTABLE = ("hanging", "pin", "fork", "skewer", "overloaded", "attacked_by_lower_value")
+DESTROYED_NOTABLE = ("hanging", "pin", "fork", "skewer", "overloaded", "attacked_by_lower_value",
+                     "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin")
 
 
 def _val(sym: str) -> int:
@@ -48,6 +50,8 @@ def significant(r: Relation) -> bool:
         return "check" in r.tags or _val(r.pieces[2]) >= 3
     if r.name == "pin":      # a pinned pawn shielding a minor piece is not a fact a player names
         return "absolute" in r.tags or _val(r.pieces[1]) >= 3 or _val(r.pieces[2]) >= 9
+    if r.name in ("disabled_attack", "disabled_defense"):   # a pinned knight unable to take a pawn is minor
+        return _val(r.pieces[3]) >= 3
     if r.name == "loose":
         return _val(r.pieces[0]) >= 3
     if r.name == "attacks_king_zone":

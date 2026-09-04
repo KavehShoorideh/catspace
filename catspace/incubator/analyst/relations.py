@@ -165,9 +165,56 @@ def king_zone_pressure(board: chess.Board) -> list[Relation]:
     return out
 
 
+# ---- arity 4: COMPOSED relations -- a pin plus one more piece (Kaveh 2026-09-04) -------------
+# A functional pin is a FOUR-piece interaction: pinner S, pinned P1, shielded P2, and the fourth
+# piece T that P1 could act on and now cannot. The STRUCTURE lives here, static and rules-only;
+# the EFFECT of the disabling (illegal vs merely costly, good vs bad) lives in L4/L5 because it
+# differs by rules and objective. Composition = an arity-3 relation joined with one more L1 probe.
+def composed_pin_relations(board: chess.Board, pins: list[Relation] | None = None) -> list[Relation]:
+    out = []
+    pins = [r for r in (pins if pins is not None else line_relations(board)) if r.name == "pin"]
+    for r in pins:
+        s, p1, p2 = r.squares
+        c = board.piece_at(p1).color
+        line = chess.SquareSet.between(s, p2) | chess.SquareSet([s])   # moves along the line keep the shield
+        for t in board.attacks(p1):
+            if t in line:
+                continue
+            q = board.piece_at(t)
+            if q is None:
+                continue
+            if q.color != c:
+                out.append(_rel(board, "disabled_attack", 4, (s, p1, p2, t), r.owner, r.tags))
+            elif board.attackers(not c, t):
+                out.append(_rel(board, "disabled_defense", 4, (s, p1, p2, t), r.owner, r.tags))
+        for a in board.attackers(not c, p1):
+            if a != s:
+                out.append(_rel(board, "pinned_and_attacked", 4, (s, p1, p2, a), r.owner, r.tags))
+    return out
+
+
+def hanging_through_pin(board: chess.Board, composed: list[Relation]) -> list[Relation]:
+    """A piece whose EVERY defender is a pinned piece that cannot recapture off its line."""
+    out = []
+    dead = {}                                                   # (defender, defended) pairs
+    for r in composed:
+        if r.name == "disabled_defense":
+            dead.setdefault(r.squares[3], set()).add(r.squares[1])
+    for t, piece in board.piece_map().items():
+        if not board.attackers(not piece.color, t):
+            continue
+        defenders = set(board.attackers(piece.color, t))
+        if defenders and defenders <= dead.get(t, set()):
+            out.append(_rel(board, "hanging_through_pin", 1 + len(defenders), (t, *sorted(defenders)), piece.color))
+    return out
+
+
 def relations(board: chess.Board) -> list[Relation]:
     atk, dfd = attacks_and_defends(board)
-    return atk + dfd + hanging_and_loose(board) + line_relations(board) + forks(board) + overloaded(board) + king_zone_pressure(board)
+    lines = line_relations(board)
+    composed = composed_pin_relations(board, lines)
+    return (atk + dfd + hanging_and_loose(board) + lines + composed + hanging_through_pin(board, composed)
+            + forks(board) + overloaded(board) + king_zone_pressure(board))
 
 
 def relation_keys(board: chess.Board) -> set[tuple]:

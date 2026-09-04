@@ -11,7 +11,8 @@ from .relations import Relation
 
 COLOR = {True: "White", False: "Black"}
 PIECE = {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
-PRIORITY = ("fork", "pin", "skewer", "discovered_attack", "hanging", "attacked_by_lower_value",
+PRIORITY = ("fork", "pinned_and_attacked", "hanging_through_pin", "disabled_attack", "disabled_defense",
+            "pin", "skewer", "discovered_attack", "hanging", "attacked_by_lower_value",
             "battery", "overloaded", "xray", "attacks_king_zone", "loose")
 
 
@@ -44,6 +45,15 @@ def rel_phrase(r: Relation) -> str:
         return f"{p[0]} and {p[1]} form a battery against {p[2]}"
     if n == "overloaded":
         return f"{p[0]} is overloaded, defending " + " and ".join(p[1:])
+    if n == "disabled_attack":
+        how = "cannot take" if "absolute" in r.tags else "cannot take without giving up"
+        return f"{p[1]} {how} {p[3]}{'' if 'absolute' in r.tags else ' ' + p[2]}: it is pinned by {p[0]}" + (f" to {p[2]}" if "absolute" in r.tags else "")
+    if n == "disabled_defense":
+        return f"{p[1]} no longer really defends {p[3]}: it is pinned to {p[2]} by {p[0]}"
+    if n == "pinned_and_attacked":
+        return f"{p[1]} is pinned to {p[2]} by {p[0]} and attacked by {p[3]}: it cannot flee"
+    if n == "hanging_through_pin":
+        return f"{p[0]} is effectively hanging: its only defender{'s are' if len(p) > 2 else ' is'} pinned ({', '.join(p[1:])})"
     if n == "attacks_king_zone":
         return f"{p[0]} attacks {r.tags[0]} square(s) around {p[1]}"
     return f"{n} {' '.join(p)}"

@@ -76,3 +76,38 @@ def test_king_zone_pressure_and_antichess_has_none():
     assert any(r.squares == (chess.C3, chess.G8) for r in kz)
     anti = R.rules_for("antichess").board("6k1/5ppp/8/8/8/2Q5/5PPP/6K1 w - - 0 1")
     assert not L3.king_zone_pressure(anti)                      # no royal king -> no king zone
+
+
+def test_functional_pin_is_a_four_piece_relation():
+    # Bg5 pins Nf6 to Qd8 (relative). Nf6 attacks the e4 pawn, but taking it gives up the queen.
+    b = chess.Board("rnbqkb1r/pppp1ppp/4pn2/6B1/4P3/8/PPPP1PPP/RN1QKBNR w KQkq - 0 3")
+    rels = L3.relations(b)
+    da = [r for r in rels if r.name == "disabled_attack"]
+    assert any(r.names() == ("g5", "f6", "d8", "e4") and r.arity == 4 and "relative" in r.tags for r in da)
+
+
+def test_capture_along_the_pin_line_is_not_disabled():
+    # Re1 pins Re2 to Ke8 (absolute). The rook may take the pinner (on the line) but not the knight on a2.
+    b = chess.Board("4k3/8/8/8/8/8/N3r3/3BR1K1 b - - 0 1")
+    rels = L3.relations(b)
+    da = {r.names() for r in rels if r.name == "disabled_attack"}
+    assert ("e1", "e2", "e8", "a2") in da
+    assert not any(n[3] == "e1" for n in da)
+    # and the bishop on d1 attacks the pinned rook, which cannot flee
+    pa = {r.names() for r in rels if r.name == "pinned_and_attacked"}
+    assert ("e1", "e2", "e8", "d1") in pa
+
+
+def test_hanging_through_pin():
+    # d5 is attacked by e4 and defended ONLY by Nf6, which is pinned to Qe7 by Bg5
+    b = chess.Board("rnb1kb1r/ppp1qppp/5n2/3p2B1/4P3/8/PPPP1PPP/RN1QKBNR w KQkq - 0 4")
+    rels = L3.relations(b)
+    assert any(r.name == "disabled_defense" and r.names() == ("g5", "f6", "e7", "d5") for r in rels)
+    assert any(r.name == "hanging_through_pin" and r.names() == ("d5", "f6") for r in rels)
+
+
+def test_antichess_has_no_absolute_disabling():
+    # same geometry, antichess rules: no royal king, so the rook on e2 is NOT absolutely pinned to e8
+    b = R.rules_for("antichess").board("4k3/8/8/8/8/8/N3r3/3BR1K1 b - - 0 1")
+    rels = L3.relations(b)
+    assert not any(r.name == "pin" and "absolute" in r.tags for r in rels)

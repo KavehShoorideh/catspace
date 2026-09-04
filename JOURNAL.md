@@ -21033,3 +21033,27 @@ OBSERVATIONS (each one changed the code today; all from single runs):
 OPEN FOR S1: plan-level ideas beyond the basis (pawn breaks, piece routes, space) -- the learned
 concept layer's job; prose length/ordering; xRay needs a bigger sample; 4.3s/pos at depth 16 is
 fine for a desktop tool with the cache but the per-position engine call count (7-8) can be cut.
+
+## 2026-09-04 (Fable) — L3 CLEARED: composed arity-4 pin relations (Kaveh's "functional pin is a four-piece interaction"). Structure here, effect in L4
+
+Kaveh: a regular pin is a 3-piece interaction; a FUNCTIONAL pin is a 4-piece one -- the fourth
+piece is what the pinned piece would have captured (or defended) and now cannot. Two
+representations by design: the STRUCTURE is built at L3 (static, rules-only); the EFFECT of the
+disabling (illegal vs merely costly; good vs bad) lives at L4/L5 because it differs by rules
+and objective.
+
+Built (relations.py, composed by joining the pin relation with one more L1 probe):
+  disabled_attack (S, P1, P2, T): P1 attacks enemy T OFF the pin line (moves along the line keep
+      the shield, so capturing the pinner is not disabled -- tested);
+  disabled_defense (S, P1, P2, T): friendly T, attacked, whose defense by P1 runs off the line;
+  pinned_and_attacked (S, P1, P2, A): P1 attacked by A while it cannot leave the line;
+  hanging_through_pin (T, D...): every defender of an attacked piece is pinned off its line.
+Tags carry absolute/relative from the pin; L4's significance filter keeps disabled_* only when
+the fourth piece is worth >= 3. Antichess: no absolute pins exist (royalty), tested.
+Tests 13 -> 17 (all green). Gauge regression, one run, OBS unchanged line for line vs the S0 run
+(composed relations imply a pin; agreement with the tagger cannot move).
+Printed example (4.Bg5-pin position, depth 14): "the black pawn on d5 is effectively hanging:
+its only defender is pinned (the black knight on f6)"; "the white pawn on e4 is pinned to the
+white king on e1 by the black queen on e7 and attacked by the black knight on f6: it cannot flee".
+Noted for L4: a relation DESTROYED because its subject was captured should read "resolved by
+the capture", not "ending: ... cannot flee".
