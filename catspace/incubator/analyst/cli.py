@@ -33,6 +33,7 @@ def main(argv=None):
     a.add_argument("--depth", type=int, default=16); a.add_argument("--multipv", type=int, default=5)
     a.add_argument("--json", action="store_true"); a.add_argument("--quiet", action="store_true")
     a.add_argument("--fresh-cache", action="store_true", help="ignore the on-disk cache (timing runs)")
+    a.add_argument("--long", action="store_true", help="every notable fact per ply (the S0 form)")
     t = sub.add_parser("threats"); t.add_argument("--fen", required=True); t.add_argument("--depth", type=int, default=16)
     args = ap.parse_args(argv)
     t0 = time.perf_counter()
@@ -59,7 +60,7 @@ def main(argv=None):
             print(json.dumps([asdict(r) for r in recs], default=_json, indent=1))
         else:
             for r in recs:
-                print(render(r, verbose=not args.quiet))
+                print(render(r, long=args.long, alternatives=not args.quiet))
         n = len(recs); dt = time.perf_counter() - t0
         print(f"[analyst] {n} positions in {dt:.1f}s ({dt/max(n,1):.1f}s/pos) | engine calls {eng.calls}, cache hits {eng.hits}", file=sys.stderr)
 

@@ -110,40 +110,126 @@ def cp_str(cp: int, side_white: bool, mate: int | None = None) -> str:
 
 
 def candidate_phrases(c: Candidate, n: int = 3, k: int = 2) -> str:
+    """LONG form: every notable fact per ply (kept behind --long)."""
     return " ".join(p for p in (effect_phrase(e, k) for e in c.effects[:n]) if p)
 
 
-def render(rec: IdeaRecord, *, verbose: bool = True) -> str:
+# =============================== TERSE FORM (default) ===============================
+# One fact per ply; the fact a coach would say first. Preference: what the move did TO the
+# opponent's pieces, then what it exposed of our own. (Kaveh 2026-09-04: "the first clause
+# of each line was the one that mattered, and the rest was true clutter.")
+_REAL = ("fork", "pin", "skewer", "pinned_and_attacked", "hanging_through_pin", "discovered_attack",
+         "disabled_attack", "disabled_defense", "overloaded", "battery", "attacked_by_lower_value", "hanging")
+
+
+def _subject_sym(r: Relation) -> str:
+    return r.pieces[_SUBJ.get(r.name, 0)] if r.pieces else "-"
+
+
+def _rank(r: Relation, mover: bool) -> tuple:
+    sym = _subject_sym(r)
+    about_opp = sym != "-" and (sym.isupper() != mover)
+    liability = r.name in ("hanging", "loose") and not about_opp
+    return (1 if liability else 0, 0 if about_opp else 1,
+            PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_SYMVAL.get(sym.lower(), 0))
+
+
+def best_fact(e: Effect) -> str | None:
+    """The single strongest clause for this move, or None if the move is quiet."""
+    if e.san.endswith("#"):
+        return "checkmate"
+    if e.captured:
+        order = ("pinned_and_attacked", "hanging_through_pin", "hanging", "loose")
+        why = [RESOLVED_WORD[r.name] for r in sorted(e.resolved, key=lambda r: order.index(r.name) if r.name in order else 99)
+               if r.name in RESOLVED_WORD]
+        cash = [r for r in e.uses if r.name not in ("discovered_attack", "battery")]
+        s = f"{COLOR[e.mover]} takes the {e.captured[0]} ({e.captured[1]})"
+        if why:
+            s += f", {why[0]}"
+        elif cash:
+            s += ", cashing the threat by " + pc(cash[0].pieces[0], cash[0].squares[0])
+        if e.gives_check:
+            s += ", with check"
+        return s
+    disc = [r for r in e.uses if r.name in ("discovered_attack", "battery")]
+    if disc:
+        r = disc[0]
+        return ("with check, " if e.gives_check else "") + f"discovering an attack by {pc(r.pieces[0], r.squares[0])} on {pc(r.pieces[2], r.squares[2])}"
+    created = sorted(e.created, key=lambda r: _rank(r, e.mover))
+    if created:
+        ph = rel_phrase(created[0])
+        return ("with check, " if e.gives_check and "with check" not in ph else "") + ph
+    saved = [r for r in e.escaped if r.name in ("hanging", "pinned_and_attacked", "hanging_through_pin", "attacked_by_lower_value")
+             and _SYMVAL.get(_subject_sym(r).lower(), 0) >= 3]
+    if saved:
+        return "saving " + pc(saved[0].pieces[_SUBJ.get(saved[0].name, 0)], saved[0].squares[_SUBJ.get(saved[0].name, 0)])
+    if e.gives_check:
+        return "with check"
+    return None
+
+
+def terse_line(c: Candidate, n: int = 3) -> str:
+    parts = []
+    for e in c.effects[:n]:
+        f = best_fact(e)
+        if f:
+            parts.append(f"{e.san}: {f}")
+    return "; ".join(parts)
+
+
+def why_clause(r: Candidate | None) -> str:
+    """The refutation's single strongest first-ply fact."""
+    if not r or not r.effects:
+        return ""
+    f = best_fact(r.effects[0])
+    return f" -- {f}" if f else ""
+
+
+def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, verbose: bool | None = None) -> str:
+    if verbose is not None:                      # backwards compatibility with the S0 signature
+        alternatives = verbose
     w = rec.side == "white"
     who = COLOR[w]
     num = rec.ply // 2 + 1
-    out = [f"[{num}{'.' if w else '...'}] {who} to move, eval {cp_str(rec.eval_cp, w, rec.idea.mate if rec.idea else None)}"]
+    ev = cp_str(rec.eval_cp, w, rec.idea.mate if rec.idea else None)
+    out = [f"[{num}{'.' if w else '...'}] {who} to move, eval {ev}"]
+    seen = set()
+
+    def add(line):
+        if line not in seen:
+            seen.add(line); out.append(line)
+
     if rec.played and rec.verdict in ("blunder", "mistake", "inaccuracy"):
-        s = f"  {rec.played.san} was {'an' if rec.verdict[0] in 'aeiou' else 'a'} {rec.verdict}: eval {cp_str(rec.played.cp, w, rec.played.mate)} instead of {cp_str(rec.eval_cp, w)} with {rec.idea.san}."
-        if rec.played.refutation:
-            r = rec.played.refutation
-            s += f" Punished by {r.san}: {r.line_san}." + (f" {candidate_phrases(r, 1)}" if candidate_phrases(r, 1) else "")
-        out.append(s)
-    for t in rec.threats[:2]:
-        fe = effect_phrase(t.first_effects, 1) if t.first_effects else ""
-        out.append(f"  If {who} does nothing: {t.san_line(chess.Board(rec.fen))}" + (f" -- {fe}" if fe else "") + f" (worth {t.gain_cp:+d} cp above a tempo).")
-    if rec.zugzwang and rec.zugzwang.flagged:
-        out.append(f"  Zugzwang: every move worsens {who}'s position (passing would be {rec.zugzwang.pass_cp - rec.zugzwang.best_cp:+d} cp better).")
-    if rec.idea:
-        s = f"  Idea: {rec.idea.san} -- {rec.idea.line_san}."
-        ph = candidate_phrases(rec.idea)
-        out.append(s + (f" {ph}" if ph else ""))
-    for k in rec.killed[:3]:
-        r = k.candidate.refutation
-        s = f"  {k.candidate.san} no longer works after {k.killed_by} (was {cp_str(k.was_cp, w)}, now {cp_str(k.now_cp, w, k.candidate.mate)})"
+        art = "an" if rec.verdict[0] in "aeiou" else "a"
+        s = f"  {rec.played.san} was {art} {rec.verdict}: {rec.idea.san} was better ({cp_str(rec.played.cp, w, rec.played.mate)} vs {ev})."
+        r = rec.played.refutation
         if r:
-            s += f": refuted by {r.san}" + (f" -- {candidate_phrases(r, 1)}" if candidate_phrases(r, 1) else "")
-        out.append(s + ".")
-    if verbose:
-        for a in rec.alternatives[:2]:
+            s += f" Punished by {r.san}" + (f" ({r.line_san})" if long else "") + (candidate_phrases(r, 1) and f": {candidate_phrases(r, 1)}" if long else why_clause(r)) + "."
+        add(s)
+    shown = 0
+    for t in rec.threats:
+        if shown >= 1 and not (t.line.mate is not None or t.gain_cp >= 300):
+            break
+        fe = (effect_phrase(t.first_effects, 1) if long else best_fact(t.first_effects)) if t.first_effects else ""
+        b = chess.Board(rec.fen)
+        add(f"  If {who} does nothing: {t.san_line(b, 4)}" + (f" -- {fe}" if fe else "") + f" ({t.gain_cp:+d} cp above a tempo).")
+        shown += 1
+    if rec.zugzwang and rec.zugzwang.flagged:
+        add(f"  Zugzwang: every move worsens {who}'s position (passing would be {rec.zugzwang.pass_cp - rec.zugzwang.best_cp:+d} cp better).")
+    if rec.idea:
+        body = candidate_phrases(rec.idea) if long else terse_line(rec.idea)
+        add(f"  Idea: {rec.idea.san} -- {rec.idea.line_san}." + (f" {body}" if body else ""))
+    for k in rec.killed[:3 if long else 2]:
+        r = k.candidate.refutation
+        s = f"  {k.candidate.san} no longer works after {k.killed_by} ({cp_str(k.was_cp, w)} -> {cp_str(k.now_cp, w, k.candidate.mate)})"
+        if r:
+            s += f": {r.san}" + (f" -- {candidate_phrases(r, 1)}" if long and candidate_phrases(r, 1) else why_clause(r))
+        add(s + ".")
+    if alternatives:
+        for a in rec.alternatives[:2 if long else 1]:
             r = a.refutation
             s = f"  {a.san} ({cp_str(a.cp, w, a.mate)}) fails"
             if r:
-                s += f" to {r.san}" + (f" -- {candidate_phrases(r, 1)}" if candidate_phrases(r, 1) else "")
-            out.append(s + ".")
+                s += f" to {r.san}" + (f" -- {candidate_phrases(r, 1)}" if long and candidate_phrases(r, 1) else why_clause(r))
+            add(s + ".")
     return "\n".join(out)
