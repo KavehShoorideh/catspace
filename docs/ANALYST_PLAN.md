@@ -164,3 +164,11 @@ material are the signal. (2) **The local 8B LLM (llama3.1) corrupted the facts e
 not to** ("Black loses another knight with fxe6" — it was White's knight; "gaining movement for
 their queen" — invented). So L2 polish is unusable without the verifier, and L1 deterministic
 prose is the faithful default. Faithfulness is not a nice-to-have gauge; it is the product.
+
+## 10. S0 status — BUILT 2026-09-04
+
+`catspace/incubator/analyst/` (one module per layer + `engine.py`, `cli.py`, `gauge_puzzles.py`);
+tests in `tests/test_analyst_*.py`; Opera Game fixture. Numbers and lessons: JOURNAL 2026-09-04
+"ANALYST S0 BUILT". Layer cut as in §9 with the objective quarantined to L5 and all L3 relations
+defined through L1 probes (removal test). Next: S1 explanations polish + plan-level concepts;
+S2 desktop shell (Tauri + sidecar Stockfish); S3 prep.

@@ -20918,3 +20918,116 @@ IMMEDIATE CONSEQUENCES:
 qgt27 = qgt25's config at l1-target 2560. AND THE PROCESS FIX: from now on every
 run is probed across ALL its checkpoints, not just the last. The 8/31-9/01 lesson
 is that a single final-checkpoint reading can be off by a factor of two.
+
+## 2026-09-01 (Fable) — PROJECT PAUSED (Kaveh: "i want to stop the project for now"). State at pause, plus the day's two instruments
+
+STOPPED: qgt27 killed deliberately at ~14:25 PDT (step <500, NO checkpoint exists);
+depth-20 producer fleet down; monitors closed. Still running by choice: the
+kittychess server on :8420 (Thursday's, not compute). Uncommitted at pause:
+qgt_hang_probe.py (opt-in --oracle-dyn ceiling arm, default off -- rolled numbers
+unchanged), docs/THINKING_AGENT.md (parked design program), this entry.
+
+ORACLE-DYNAMICS CEILING PROBE (new arm; Kaveh pre-approved "whatever probe you wanna
+run"): same 150 positions / 109 blunders / same readout / same enumerated replies,
+but each (move, reply) is scored on the ENCODED TRUE CHILD board instead of the
+rolled state -- detection under perfect dynamics. Printed, CPU:
+  qgt25_latest    rolled 26.6% (within-pos corr 0.124, gap 0.045)
+                  CEILING 27.5% (corr 0.229, gap 0.077)
+  qgt21_step8000  rolled 27.5% (corr 0.115, gap 0.039)
+                  CEILING 37.6% (corr 0.218, gap 0.073)
+Rolled arms reproduce the journaled numbers exactly (harness check). READING: perfect
+dynamics buys +0.9 / +10.1 points on FINAL checkpoints -- the value pathway, not
+transition fidelity, was binding; the qgt25 "fidelity ceiling" story is withdrawn.
+COMPOSITION with f3e6486 (the pruner squeeze halves detection: 40.4% at step 2000
+with 2560 concepts): both measurements were taken on pruned-to-400 models, so the
+constraint is concept budget x readout. The decisive unrun measurement is the ceiling
+arm on a 2560-concept checkpoint (qgt26_step2000.pt exists; or any qgt27 ckpt):
+    .venv/bin/python -m catspace.research.tools.training_infra.qgt_hang_probe \
+        --ckpt artifacts/experiments/qgt26_step2000.pt --oracle-dyn 1 --device cpu
+
+qgt27 HISTORY: v1 launched 13:52 by a second session (rulechange-e8); died 14:13-14:14
+in a process sweep during session consolidation (no traceback; the producer fleet died
+in the same sweep; log kept as tmp/qgt27_v1_killed_1414.log). Relaunched 14:15:53
+under nohup (survives terminal closure), then killed on the pause. TO RESUME, exact
+committed config (92089be):
+    nohup .venv/bin/python -m catspace.research.components.encoder.approaches.reach_probability.experiments.qgt_train \
+      --steps 8000 --dynamics canon --dyn-d 128 --dyn-layers 3 --edge-mode pair --hard-gate 1 \
+      --direct-t 1 --dual 1 --flip-weight 4.0 --dyn-lr-mult 3 --t-warmup 600 --w-loc 0.3 \
+      --w-vroll 1.0 --w-mat 0.3 --w-mat-roll 1.0 --l1-target 2560 \
+      --out artifacts/experiments/qgt27 > tmp/qgt27.log 2>&1 &
+then probe EVERY checkpoint (f3e6486's process fix) with --oracle-dyn 1.
+
+LABEL STORE at pause (sqlite queue, oracle=sf20): demand-queued (score 2) 691,721 done /
+0 todo -- fully drained; speculative pre-seed (score 1) 118,880 done / 120,680 todo.
+Nothing depends on the producers (trainer falls back d10 PV -> inline d8). Kaveh's
+TT-probe multiplier remains the prerequisite for any larger labeling campaign.
+
+THREE-DAY REVIEW VERDICTS (8/29-9/1, delivered to Kaveh in session): the ladder's
+within-canon orderings are single-seed and sit inside the measured bands ([0,23.9]
+ungated, [7.3,24.8] gated) plus probe-count noise (1 SE ~ 4 points at n=109); the
+seed-robust result is marginal -> conditional (0-1.8% across five runs -> 4.6-29.4%);
+the 3-seed protocol was designed and never used; brreg has printed nan in every canon
+heartbeat by design (roll_real_canon never implemented it); qgt25's own trajectory
+(in-cone tfacc 0.63+-0.02 flat from step 4500) argued against "undertrained" before
+qgt26 was launched. Kaveh's ruling: 3 seeds is not affordable -- only big jumps count.
+
+PARKED PROGRAM: docs/THINKING_AGENT.md -- discrete machine-language thought agent
+(variant-knob concept transfer, latent CoT with threads + tools, validator with a
+reorganization operator, structure-not-method framework, continuous substrate under
+tokens, faithfulness as a printed gauge). Build nothing without Kaveh's explicit unlock.
+
+## 2026-09-04 (Fable) — ANALYST S0 BUILT (Kaveh: "Confirmed. I love where this is going. Go ahead and build it."). The layered analyst L0-L6 + Stockfish adapter + CLI + puzzle-theme gauge; 13 tests; commits 40ace52 / abc51d4 / 7791183 + this one
+
+PIVOT CONTEXT (same day): the project is now a DESKTOP chess analysis + opponent-prep tool
+that EXPLAINS ideas on top of Stockfish (conceded as the searcher; used in training too). No
+service, no cloud, no LLM in the loop: prose is deterministic from a structured record. Plan
+bones in docs/ANALYST_PLAN.md; Kaveh's layer cut confirmed and implemented as one module per
+layer under catspace/incubator/analyst/:
+    L0 geometry  | L1 rules (python-chess Board classes incl. antichess/atomic/KOTH/racing kings/
+    3-check/crazyhouse/horde; royalty flag; the OBJECTIVE is quarantined to L5) | L2 state facts
+    + exchange scale | L3 arity-tagged relations, all via L1 probes -- pins/skewers/discovered
+    attacks/batteries by the REMOVAL TEST, no chess-specific rays, so a variant is a one-layer
+    change | L4 dynamics: per-ply effects as relation diffs, null-move threats above a ~100cp
+    tempo baseline with a 50cp real-threat margin, zugzwang | L5 ideas: idea / KILLED ideas with
+    refutations ("what no longer works and why") / failing alternatives / played-move verdicts |
+    L6 deterministic verbalizer. engine.py = Stockfish adapter with a sqlite cache (DELETE mode).
+
+PRINTED RUNS. Fried Liver after 6.d4 Be6 (depth 16): idea O-O (+1.15); "Nxf7 no longer works
+after Be6 (was +0.94, now -4.14): refuted by Bxf7 -- Black takes the knight (3)"; standing threat
+Bb4+ (+104 above a tempo). Opera Game (Morphy 1858), depth 16 / multipv 4: 33 positions in 143s
+(4.3s/pos, 246 engine calls, 82 cache hits); at [6...] the record flags Nf6 as an inaccuracy,
+names Qxf7# as the standing threat, and reports "Nd7 / Nc6 no longer work after Bc4: refuted by
+Qxf7#".
+
+GAUGE (gauge_puzzles.py; 5,000 Lichess puzzles = every 200th row of the 2026-09-04 DB; engine
+themes n=80 at depth 14; total 33s). A theme is NAMED when the matching relation, credited to
+the solver, is present on the solver's position or CREATED in the solution's first 3 plies.
+The baseline column is the same detector's fire rate on puzzles WITHOUT the theme:
+    static+created  fork 0.96 (n=651) vs 0.28 -> x3.5 | pin 0.98 (321) vs 0.43 -> x2.3 |
+                    skewer 0.93 (121) vs 0.32 -> x2.9 | discoveredAttack 0.98 (260) vs 0.55 -> x1.8 |
+                    hangingPiece (exploited) 1.00 (174) vs 0.38 -> x2.6 | xRayAttack 0.40 (n=15, too small)
+    created-only    fork 0.96 vs 0.26 -> x3.7 | pin 0.69 vs 0.22 -> x3.2 | skewer 0.93 vs 0.23 -> x4.0 |
+                    discoveredAttack 0.33 vs 0.16 -> x2.0
+    engine          mateIn1 1.00 (80) vs 0.00 | mateIn2 1.00 (80) vs 0.00 | zugzwang 0.68 (47) vs 0.00 (80)
+
+LESSONS (each one changed the code today):
+  1. The work product beyond the code is the SIGNIFICANCE FILTER. Raw relation diffs are true
+     but drown the reader (discovered attacks on pawns, x-rays onto pawns, king-zone square
+     counts, pins of pawns shielding minors). Kept: captures, checks, forks, pins with a real
+     pinned piece, skewers, discovered attacks/batteries with a valuable far target, exploited
+     hanging pieces; king-zone pressure stays a statistic for gauges.
+  2. The baseline column earned its place immediately: "hanging" fired on 0.74 of ALL puzzles
+     (tactical positions always have something hanging). Redefined for the gauge as
+     EXPLOITED hanging (the solution captures a hanging piece): 0.38 fire rate at recall 1.00.
+  3. Zugzwang lives in the position AFTER the solver's move (the opponent is the one in
+     zugzwang): recall 0.00 -> 0.68 with zero false fires once tested there.
+  4. Created-only is the sharper criterion for forks/pins/skewers (lift 3.2-4.0x); discovered
+     attacks are mostly USED static geometry (created-only recall 0.33 vs 0.98 static), so the
+     verbalizer should say "uses the discovered attack", not "creates".
+  5. (From the morning prototype, re-confirmed by design) an 8B local LLM corrupted facts even
+     when told not to; L6 is deterministic by construction and the prose is faithful because
+     every sentence renders a record field.
+
+OPEN FOR S1: plan-level ideas beyond the basis (pawn breaks, piece routes, space) -- the learned
+concept layer's job; prose length/ordering; xRay needs a bigger sample; 4.3s/pos at depth 16 is
+fine for a desktop tool with the cache but the per-position engine call count (7-8) can be cut.
