@@ -35,8 +35,52 @@ def main(argv=None):
     a.add_argument("--fresh-cache", action="store_true", help="ignore the on-disk cache (timing runs)")
     a.add_argument("--long", action="store_true", help="every notable fact per ply (the S0 form)")
     t = sub.add_parser("threats"); t.add_argument("--fen", required=True); t.add_argument("--depth", type=int, default=16)
+    h = sub.add_parser("horizon"); h.add_argument("--fen", required=True); h.add_argument("--depth", type=int, default=16); h.add_argument("--k", type=int, default=6)
+    h.add_argument("--maia", default="1100,1500,1900", help="rating ladder whose top moves join the candidates ('' to skip)")
+    h.add_argument("--include", default="", help="SAN moves to force into the candidate set, e.g. the move played")
     args = ap.parse_args(argv)
     t0 = time.perf_counter()
+    if args.cmd == "horizon":
+        from .horizon import trajectories, find_traps
+        from .dynamics import line_effects
+        from .verbalize import best_fact, cp_str
+        b = chess.Board(args.fen); w = b.turn
+        with Engine(depth=8) as shallow:
+            cands = [chess.Move.from_uci(l.move) for l in shallow.analyse(b, multipv=args.k, depth=8)]
+            path = shallow.path
+        ladder = {}                                   # uci -> {rating: prob}
+        if args.maia:
+            from .maia import Maia
+            for r in [int(x) for x in args.maia.split(",") if x]:
+                mm = Maia(r)
+                for u, pr in mm.top(b, 2):
+                    ladder.setdefault(u, {})[r] = pr
+                    m = chess.Move.from_uci(u)
+                    if m not in cands:
+                        cands.append(m)
+                mm.quit()
+        for san in args.include.split():
+            m = b.parse_san(san)
+            if m not in cands:
+                cands.append(m)
+        trajs = trajectories(b, path, cands, depth=args.depth)
+        ratings = sorted({r for d in ladder.values() for r in d})
+        head = "        " + " ".join(f"{'d'+str(d):>6s}" for d in (2, 4, 6, 8, 10, 12, 14, 16, 18, 20) if d <= args.depth) + "   " + " ".join(f"M{r}" for r in ratings)
+        print(head)
+        for t in trajs:
+            row = " ".join(f"{cp_str(t.scores[d], w):>6s}" if d in t.scores else "      " for d in (2, 4, 6, 8, 10, 12, 14, 16, 18, 20) if d <= args.depth)
+            lad = " ".join(f"{ladder.get(t.move, {}).get(r, 0)*100:4.0f}%" for r in ratings)
+            print(f"{t.san:7s} {row}   {lad}")
+        for tr in find_traps(trajs, args.depth):
+            eff = line_effects(b.copy(), [tr.traj.move] + tr.refutation[1:], 4)
+            why = "; ".join(f"{e.san}: {best_fact(e)}" for e in eff[1:3] if best_fact(e))
+            tb = b.copy(); line = []
+            for u in ([tr.traj.move] + tr.refutation[1:])[:6]:
+                m = chess.Move.from_uci(u); line.append(tb.san(m)); tb.push(m)
+            print(f"TRAP {tr.traj.san}: looks {cp_str(tr.peak_cp, w)} at depth {tr.peak_depth}, collapses at depth {tr.collapse_depth} to "
+                  f"{cp_str(tr.final_cp, w)} (best {tr.best_san} {cp_str(tr.best_final_cp, w)}). Refutation: {' '.join(line)}" + (f" -- {why}" if why else ""))
+        print(f"[horizon] {len(trajs)} candidates in {time.perf_counter()-t0:.1f}s", file=sys.stderr)
+        return
     import tempfile, os
     cache = os.path.join(tempfile.mkdtemp(), "c.sqlite") if getattr(args, "fresh_cache", False) else None
     with Engine(depth=args.depth, cache_path=cache) as eng:

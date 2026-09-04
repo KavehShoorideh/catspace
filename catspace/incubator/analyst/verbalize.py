@@ -150,6 +150,10 @@ def best_fact(e: Effect) -> str | None:
             s += ", cashing the threat by " + pc(cash[0].pieces[0], cash[0].squares[0])
         if e.gives_check:
             s += ", with check"
+        disc = [r for r in e.uses if r.name in ("discovered_attack", "battery")]
+        if disc:                                   # a capture that also discovers an attack: say both
+            r = disc[0]
+            s += f", discovering an attack by {pc(r.pieces[0], r.squares[0])} on {pc(r.pieces[2], r.squares[2])}"
         return s
     disc = [r for r in e.uses if r.name in ("discovered_attack", "battery")]
     if disc:
