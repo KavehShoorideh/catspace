@@ -40,15 +40,18 @@ class Trap:
 
 
 def trajectories(board: chess.Board, engine_path: str, moves: list[chess.Move], depth: int = 16,
-                 threads: int = 2, hash_mb: int = 128) -> list[Trajectory]:
-    """One root-restricted search per candidate, keeping the score at every depth."""
+                 threads: int = 1, hash_mb: int = 64) -> list[Trajectory]:
+    """One root-restricted search per candidate, keeping the score at every depth. The hash is
+    CLEARED before each candidate (a fresh `game` => ucinewgame) and one thread is used: with a
+    shared transposition table, a later candidate's shallow scores already 'know' the refutation
+    found while searching an earlier one, and the trap disappears (seen on 9...b5, 2026-09-04)."""
     eng = chess.engine.SimpleEngine.popen_uci(engine_path)
     eng.configure({"Threads": threads, "Hash": hash_mb})
     out = []
     try:
         for m in moves:
             t = Trajectory(m.uci(), board.san(m))
-            with eng.analysis(board, chess.engine.Limit(depth=depth), root_moves=[m]) as an:
+            with eng.analysis(board, chess.engine.Limit(depth=depth), root_moves=[m], game=object()) as an:
                 for info in an:
                     if "depth" in info and "score" in info and info.get("multipv", 1) == 1:
                         t.scores[info["depth"]] = info["score"].pov(board.turn).score(mate_score=MATE_CP)
