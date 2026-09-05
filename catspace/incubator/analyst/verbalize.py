@@ -197,9 +197,9 @@ def why_clause(r: Candidate | None) -> str:
     if not r or not r.effects:
         return ""
     f = best_fact(r.effects[0], strict=True)
-    if not f and len(r.effects) > 1:                 # a quiet first move: say what the second does
-        f2 = best_fact(r.effects[1], strict=True)
-        f = f"then {r.effects[1].san}: {f2}" if f2 else None
+    if not f and len(r.effects) > 2:                 # a quiet first move: say what the refuter's NEXT move does
+        f2 = best_fact(r.effects[2], strict=True)
+        f = f"then {r.effects[2].san}: {f2}" if f2 else None
     return f" -- {f}" if f else ""
 
 
