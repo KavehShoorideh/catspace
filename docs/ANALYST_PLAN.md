@@ -248,3 +248,12 @@ Used by: even-trade headlines ("What changes: White gives up the bishop pair"), 
 -- opens a line for the black bishop on c8"), the per-move report as the fallback fact, the long render
 ("Structure after ..."), and a review table (structure changes in your errors vs in the best move at the same
 positions). Rule kept from §14: these are observations; causes belong to the plan layer.
+
+## 17. The drill (2026-09-05): your errors as a deck
+
+`drill.py` turns the review's rows into one HTML page (`tmp/drill.html`, published as an artifact). Two question
+types: PUNISH (the position after your mistake, from the opponent's side; answer = the refutation the review named;
+the ladder shows how often your level plays that mistake) and FIND (your position; answer = the better move; kept
+only when Maia 1500+ finds it at least one time in ten, so the question is fair). A right answer moves the position
+up a Leitner box (due in 1, 3, 7, 21 days), a wrong one back to now; progress lives in the browser. Grading is exact
+against the named move; in FIND positions other moves may hold, which the page says. Regenerate after every review.

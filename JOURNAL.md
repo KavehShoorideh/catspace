@@ -21327,3 +21327,14 @@ the same positions: own rook leaves a half-open file 9/3, own pawns doubled 9/3,
 re-reading: hanging_through_pin now needs bite too (15...Rfd8 "c5 effectively hanging" while only the queen
 could take it, at the price of Q for R+P); bad bishop redefined (the count-of-pawns version fired on the
 starting position). Tests 29 (new test_analyst_structure.py). Both reports byte-identical on re-run.
+
+## 2026-09-05 03:30 PDT — the drill (side job): 105 positions from the rapid errors
+
+drill.py: review rows -> one HTML page with a click-to-move board (unicode pieces, chess.js from cdnjs for legality),
+two modes (PUNISH 78: the position after Kaveh's error, opponent to move, answer = the refutation; FIND 27: his
+position, answer = the better move, only when Maia 1500+ finds it >= 10%), the review's headline and line as the
+explanation, the Maia ladder as bars, Leitner boxes in localStorage (1/3/7/21 days), due-first queue, a deck table.
+Published as an artifact (Huvaxshtra Drill). Rows now carry the refutation SAN/line and the best line. Limit: grading
+is exact against the named move; FIND positions may have other good moves (the page says so). Also L6: missed-better
+headlines say the two-move point ("then Nxe5: takes the pawn...") before the structure fallback; on the rapid set
+98 omissions -> 53 tactic, 23 two-move point, 8 structure, 14 unexplained.

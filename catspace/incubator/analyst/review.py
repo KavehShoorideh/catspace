@@ -228,6 +228,9 @@ def main(argv=None):
                         _t = time.perf_counter()
                         hl, computer = headline(rec, row.get("cause"), row.get("trap"), p_played, p_best, a.level)
                         row["headline"], row["computer_move"] = hl, computer
+                        _r = rec.played.refutation if rec.played else None
+                        row["refutation"] = {"san": _r.san, "uci": _r.uci, "line": _r.line_san} if _r else None
+                        row["best_line"] = rec.idea.line_san if rec.idea else None
                         text = render(rec, alternatives=False)
                         T["render"] += time.perf_counter() - _t
                         lad_line = "   ladder plays your move: " + " ".join(f"M{r}:{p_played[r]*100:.0f}%" for r in ratings) + \
