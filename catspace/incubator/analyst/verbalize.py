@@ -9,6 +9,7 @@ from .dynamics import Effect
 from .ideas import Candidate, IdeaRecord
 from .relations import Relation
 from .mates import mate_in_line
+from .horizon import winp
 
 COLOR = {True: "White", False: "Black"}
 PIECE = {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
@@ -135,8 +136,17 @@ def _rank(r: Relation, mover: bool) -> tuple:
             PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_SYMVAL.get(sym.lower(), 0))
 
 
-def best_fact(e: Effect) -> str | None:
-    """The single strongest clause for this move, or None if the move is quiet."""
+VICTIM_SIDE = ("hanging", "loose", "pinned_and_attacked", "hanging_through_pin", "disabled_attack", "disabled_defense", "overloaded")
+
+
+def favors_mover(r: Relation, mover: bool) -> bool:
+    """Does this relation work FOR the side that just moved? (victim-side facts are owned by the victim)"""
+    return (r.owner != mover) if r.name in VICTIM_SIDE else (r.owner == mover)
+
+
+def best_fact(e: Effect, strict: bool = False) -> str | None:
+    """The single strongest clause for this move, or None if the move is quiet.
+    strict: only facts that favour the mover (for 'why the refutation works')."""
     if e.san.endswith("#"):
         return "checkmate"
     if e.captured:
@@ -160,7 +170,7 @@ def best_fact(e: Effect) -> str | None:
     if disc:
         r = disc[0]
         return ("with check, " if e.gives_check else "") + f"discovering an attack by {pc(r.pieces[0], r.squares[0])} on {pc(r.pieces[2], r.squares[2])}"
-    created = sorted(e.created, key=lambda r: _rank(r, e.mover))
+    created = sorted((r for r in e.created if not strict or favors_mover(r, e.mover)), key=lambda r: _rank(r, e.mover))
     if created:
         ph = rel_phrase(created[0])
         return ("with check, " if e.gives_check and "with check" not in ph else "") + ph
@@ -186,7 +196,10 @@ def why_clause(r: Candidate | None) -> str:
     """The refutation's single strongest first-ply fact."""
     if not r or not r.effects:
         return ""
-    f = best_fact(r.effects[0])
+    f = best_fact(r.effects[0], strict=True)
+    if not f and len(r.effects) > 1:                 # a quiet first move: say what the second does
+        f2 = best_fact(r.effects[1], strict=True)
+        f = f"then {r.effects[1].san}: {f2}" if f2 else None
     return f" -- {f}" if f else ""
 
 
@@ -249,3 +262,57 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
                 s += f" to {r.san}" + (f" -- {candidate_phrases(r, 1)}" if long and candidate_phrases(r, 1) else why_clause(r))
             add(s + ".")
     return "\n".join(out)
+
+
+# =============================== HEADLINE (one sentence per error) ===============================
+# Kaveh 2026-09-04: explain what is immediately useful. Order of what to say first: a missed mate;
+# what the move walked into / ignored / allowed (with the refutation's one fact); a horizon trap
+# with its collapse depth; else the generic verdict. Then the ladder tag: shared with the
+# player's level, or a slip. Computer moves (every level prefers the played move and the loss is
+# small) are marked so the review can hide them.
+NOUN = {"pin": "a pin", "fork": "a fork", "discovered": "a discovered attack", "skewer": "a skewer",
+        "hanging": "a hanging piece", "attacked_by_lower": "an attack by a lesser piece", "overload": "an overloaded defender",
+        "mate": "a mating attack", "capture": "a capture"}
+
+
+def _noun(families: list[str]) -> str:
+    fams = [f for f in families if f in NOUN and f != "capture"] or families
+    return NOUN.get(fams[0], "a tactic") if fams else "a tactic"
+
+
+def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: dict, p_best: dict, level: int) -> tuple[str, bool]:
+    """(sentence, is_computer_move)"""
+    w = rec.side == "white"
+    pl = rec.played
+    r = pl.refutation if pl else None
+    why = why_clause(r).replace(" -- ", "")
+    b = chess.Board(rec.fen)
+    ev_pl, ev_best = cp_str(pl.cp, w, pl.mate), cp_str(rec.eval_cp, w, rec.idea.mate if rec.idea else None)
+    mate = mate_in_line(b, rec.idea.pv[:10]) if rec.idea and rec.idea.mate is not None else None
+    computer = False
+    if mate and mate[0] % 2 == 1:
+        s = f"You had mate in {(mate[0] + 1) // 2}: {rec.idea.line_san} -- {mate[1]}: {mate[2]}. You played {pl.san} ({ev_pl})."
+    elif cause and cause["cause"] == "walked_into":
+        s = f"{pl.san} walked into {_noun(cause['walked_into_hit'])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f". Better was {rec.idea.san} ({ev_best})."
+    elif cause and cause["cause"] == "ignored_threat":
+        already = next((t.structure for t in rec.threats if t.structure is not None and r and t.line.move == r.uci), None)
+        s = f"{pl.san} ignored a standing threat: {r.san if r else '?'}" + (f" -- {why}" if why else "") + (f" (already: {rel_phrase(already)})" if already else "") + f". Better was {rec.idea.san} ({ev_best})."
+    elif cause and cause["cause"] == "enabled_tactic":
+        s = f"{pl.san} allowed {_noun(cause['walked_into'] or [m for m in (r and cause.get('mechanisms', [])) or []])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f". Better was {rec.idea.san} ({ev_best})."
+    elif trap and trap.get("kind") == "horizon":
+        s = f"{pl.san} looks fine for {trap['peak_depth']} plies and collapses at depth {trap['collapse_depth']}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f". Better was {rec.idea.san} ({ev_best})."
+    else:
+        first = terse_line(rec.idea, 1) if rec.idea else ""
+        s = f"{pl.san} ({ev_pl}) was {'an' if rec.verdict[0] in 'aeiou' else 'a'} {rec.verdict}; {rec.idea.san} ({ev_best}) was better" + (f" -- {first.split(': ', 1)[1]}" if ': ' in first else "") + "."
+        drop = winp(rec.eval_cp) - winp(pl.cp)
+        if rec.verdict == "inaccuracy" and drop < 10 and p_played and all(p_played.get(k, 0) >= p_best.get(k, 0) for k in p_played):
+            computer = True
+    pp = p_played.get(level, 0.0)
+    if pp >= 0.30:
+        s += f" A {level} plays {pl.san} too ({pp*100:.0f}%)."
+    elif pp <= 0.02:
+        s += f" (A slip: a {level} almost never plays this.)"
+    pb = p_best.get(level, 0.0)
+    if rec.idea and pb >= 0.30:
+        s += f" A {level} finds {rec.idea.san} ({pb*100:.0f}%)."
+    return s, computer

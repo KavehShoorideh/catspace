@@ -21,7 +21,7 @@ import chess.pgn
 
 from .engine import Engine
 from .ideas import analyse_position
-from .verbalize import render, cp_str, best_fact
+from .verbalize import render, cp_str, best_fact, headline
 from .relations import relations
 from .dynamics import significant, line_effects
 from .horizon import trajectories, find_traps, winp
@@ -53,6 +53,8 @@ def main(argv=None):
     ap.add_argument("--no-filter", action="store_true", help="full analysis of every move (the S0 behaviour)")
     ap.add_argument("--cache", default="", help="sqlite cache path (engine lines + Maia policies); default = the shared analyst cache")
     ap.add_argument("--threads", type=int, default=2, help="Stockfish threads (use 1 under the parallel driver)")
+    ap.add_argument("--level", type=int, default=1700, help="the player's level for the ladder tag (shared vs slip)")
+    ap.add_argument("--why", action="store_true", help="print the full explanation under each headline")
     a = ap.parse_args(argv)
     t0 = time.perf_counter()
     T = Counter()                                                  # where the time goes
@@ -158,6 +160,8 @@ def main(argv=None):
                                 d2 = sc.get(2, sc[min(sc)])
                                 row["trap"] = {"kind": "blind_spot" if winp(d2) - winp(final) < 10 else "unclear"}
                         _t = time.perf_counter()
+                        hl, computer = headline(rec, row.get("cause"), row.get("trap"), p_played, p_best, a.level)
+                        row["headline"], row["computer_move"] = hl, computer
                         text = render(rec, alternatives=False)
                         T["render"] += time.perf_counter() - _t
                         lad_line = "   ladder plays your move: " + " ".join(f"M{r}:{p_played[r]*100:.0f}%" for r in ratings) + \
@@ -165,8 +169,11 @@ def main(argv=None):
                         tk = row["trap"]
                         tk_line = ("   horizon: " + (f"trap -- looks fine to depth {tk['peak_depth']}, collapses at depth {tk['collapse_depth']}" if tk and tk["kind"] == "horizon"
                                    else "blind spot -- bad at every depth" if tk and tk["kind"] == "blind_spot" else "")) if tk else ""
-                        texts.append(text); texts.append(lad_line)
-                        if tk_line.strip(): texts.append(tk_line)
+                        num = board.ply() // 2 + 1
+                        texts.append(f"[{num}{'.' if board.turn else '...'}] " + ("(computer move) " if computer else "") + hl)
+                        if a.why:
+                            texts.append(text); texts.append(lad_line)
+                            if tk_line.strip(): texts.append(tk_line)
                         texts.append("")
                     rows.append(row)
                 sans.append(board.san(mv)); board.push(mv); boards.append(board.copy())
@@ -220,12 +227,12 @@ def write_report(a, games, rows, texts, ratings, t0, final):
         d = winp(r["eval_cp"]) - winp(r["eval_cp"] - r["drop"]); tk = r["trap"] or {}
         shallow = tk.get("kind") == "blind_spot" or (tk.get("kind") == "horizon" and tk.get("collapse_depth", 99) <= 8)
         return d * (1.5 if shallow else 1.0)
-    top = sorted(errs, key=useful, reverse=True)[:8]
+    top = sorted((r for r in errs if not r.get("computer_move")), key=useful, reverse=True)[:8]
     out.append(""); out.append("MOST USEFUL TO FIX (biggest win-probability losses, shallow ones weighted up):")
     for r in top:
-        tk = r["trap"] or {}
-        out.append(f"  game {r['game']} ply {r['ply']}: {r['san']} ({r['verdict']}, -{winp(r['eval_cp']) - winp(r['eval_cp']-r['drop']):.0f} win%) best {r['best']} | mech {r['mechanisms']} | {tk.get('kind','')}"
-                   + (f" collapse d{tk['collapse_depth']}" if tk.get("kind") == "horizon" else "") + f" | your move at M{er}: {r['p_played'].get(er,0)*100:.0f}%")
+        out.append(f"  game {r['game']} ply {r['ply']} (-{winp(r['eval_cp']) - winp(r['eval_cp']-r['drop']):.0f} win%): {r.get('headline') or r['san']}")
+    cm = sum(1 for r in errs if r.get("computer_move"))
+    if cm: out.append(f"  ({cm} inaccuracies are computer moves -- every level prefers your move; hidden by default)")
     out.append(""); out.append("=" * 80); out.append("")
     # by month: effective rating and error rate (are you improving?)
     months = sorted({r["date"][:7] for r in rows if r.get("date")})
