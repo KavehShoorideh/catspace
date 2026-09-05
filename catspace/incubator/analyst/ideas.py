@@ -61,6 +61,7 @@ class IdeaRecord:
     zugzwang: Zugzwang | None = None
     played: Candidate | None = None
     verdict: str | None = None      # blunder / mistake / inaccuracy / ok / best
+    played_scores: dict = field(default_factory=dict)   # depth -> cp of the played move (clean-hash trajectory)
 
 
 def _refute(board: chess.Board, move_uci: str, engine: Engine, max_plies: int) -> Candidate | None:
@@ -98,11 +99,13 @@ def analyse_position(board: chess.Board, engine: Engine, *, prev: chess.Board | 
             c = Candidate.from_line(board, now, max_plies)
             c.refutation = _refute(board, l.move, engine, 2)
             rec.killed.append(KilledIdea(c, l.cp, now.cp, killed_by or "the last move"))
-    probe = engine.null_move_probe(board, multipv=3)
+    probe = engine.null_move_probe(board, multipv=3, depth=max(6, engine.depth - 4))   # threats need less depth than ideas
     rec.threats = [t for t in threats(board, engine, now=lines[0], probe=probe) if t.real]
     rec.zugzwang = zugzwang(board, engine, now=lines[0], probe=probe)
     if played is not None:
-        pline = next((x for x in lines if x.move == played.uci()), None) or engine.eval_move(board, played)
+        pline, rec.played_scores = engine.trajectory(board, played)          # one clean search: eval + horizon trajectory
+        if pline is None:
+            pline = next((x for x in lines if x.move == played.uci()), None)
         if pline:
             rec.played = Candidate.from_line(board, pline, max_plies)
             drop = rec.eval_cp - pline.cp

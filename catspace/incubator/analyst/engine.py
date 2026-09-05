@@ -82,6 +82,31 @@ class Engine:
         ls = self.analyse(board, root_moves=[move], depth=depth)
         return ls[0] if ls else None
 
+    def trajectory(self, board: chess.Board, move: chess.Move, depth: int | None = None) -> tuple[Line | None, dict[int, int]]:
+        """Root-restricted search for ONE move with a CLEAN hash (fresh game => ucinewgame), keeping the
+        score at every depth. Serves two purposes at the price of one search: the move's evaluation
+        and its horizon trajectory (looks good shallow, collapses deep). Cached."""
+        depth = depth or self.depth
+        k = json.dumps([self.variant, board.fen(), depth, "traj", move.uci()])
+        row = self._db.execute("SELECT v FROM lines WHERE k=?", (k,)).fetchone()
+        if row:
+            self.hits += 1
+            d = json.loads(row[0])
+            return (Line(**d["line"]) if d["line"] else None), {int(a): b for a, b in d["scores"].items()}
+        self.calls += 1
+        scores, last = {}, None
+        if not board.is_game_over():
+            with self._eng.analysis(board, chess.engine.Limit(depth=depth), root_moves=[move], game=object()) as an:
+                for info in an:
+                    if "depth" in info and "score" in info and info.get("multipv", 1) == 1:
+                        sc = info["score"].pov(board.turn)
+                        scores[info["depth"]] = sc.score(mate_score=MATE_CP)
+                        if info.get("pv"):
+                            last = Line(info["pv"][0].uci(), tuple(m.uci() for m in info["pv"]), sc.score(mate_score=MATE_CP), sc.mate())
+        self._db.execute("INSERT OR REPLACE INTO lines VALUES (?,?)", (k, json.dumps({"line": asdict(last) if last else None, "scores": scores})))
+        self._db.commit()
+        return last, scores
+
     def null_move_probe(self, board: chess.Board, *, multipv: int = 3, depth: int | None = None) -> list[Line] | None:
         """The opponent's best lines if the side to move PASSED. None when passing is illegal (in check)."""
         if board.is_check():
