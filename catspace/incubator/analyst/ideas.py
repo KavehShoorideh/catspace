@@ -31,11 +31,12 @@ class Candidate:
     line_san: str
     effects: list[Effect]
     refutation: "Candidate | None" = None
+    pv: tuple[str, ...] = ()
 
     @classmethod
     def from_line(cls, board: chess.Board, line: Line, max_plies: int = 6) -> "Candidate":
         return cls(board.san(chess.Move.from_uci(line.move)), line.move, line.cp, line.mate,
-                   line.san_line(board, max_plies), line_effects(board, line.pv, max_plies))
+                   line.san_line(board, max_plies), line_effects(board, line.pv, max_plies), None, tuple(line.pv))
 
 
 @dataclass

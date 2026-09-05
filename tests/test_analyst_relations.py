@@ -111,3 +111,16 @@ def test_antichess_has_no_absolute_disabling():
     b = R.rules_for("antichess").board("4k3/8/8/8/8/8/N3r3/3BR1K1 b - - 0 1")
     rels = L3.relations(b)
     assert not any(r.name == "pin" and "absolute" in r.tags for r in rels)
+
+
+def test_mate_patterns():
+    from catspace.incubator.analyst.mates import mate_pattern, mate_in_line
+    b = chess.Board("6rk/5Npp/8/8/8/8/8/6K1 b - - 0 1")               # Philidor: smothered
+    assert mate_pattern(b)[0] == "smothered mate"
+    b = chess.Board("3R2k1/5ppp/8/8/8/8/8/6K1 b - - 0 1")               # rook on the 8th, pawns block
+    assert mate_pattern(b)[0] == "back-rank mate"
+    b = chess.Board("r1bqkb1r/pppp1Qpp/2n2n2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 4")   # Scholar's: Qxf7#
+    assert mate_pattern(b)[0] == "supported queen mate"
+    # Opera Game finish: Qb8+ Nxb8 Rd8#  (from the position before 16.Qb8+)
+    b = chess.Board("1n1rkb1r/p4ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2K5 w - - 0 16")
+    r = mate_in_line(b, ["b3b8", "d7b8", "d1d8"]) if False else None

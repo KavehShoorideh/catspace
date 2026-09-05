@@ -8,6 +8,7 @@ import chess
 from .dynamics import Effect
 from .ideas import Candidate, IdeaRecord
 from .relations import Relation
+from .mates import mate_in_line
 
 COLOR = {True: "White", False: "Black"}
 PIECE = {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
@@ -208,7 +209,12 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
         s = f"  {rec.played.san} was {art} {rec.verdict}: {rec.idea.san} was better ({cp_str(rec.played.cp, w, rec.played.mate)} vs {ev})."
         r = rec.played.refutation
         if r:
-            s += f" Punished by {r.san}" + (f" ({r.line_san})" if long else "") + (candidate_phrases(r, 1) and f": {candidate_phrases(r, 1)}" if long else why_clause(r)) + "."
+            t = chess.Board(rec.fen); t.push(chess.Move.from_uci(rec.played.uci))
+            mate = mate_in_line(t, r.pv[:10]) if r.mate is not None else None
+            if mate:
+                s += f" Punished by {r.san} -- {mate[1]}: {mate[2]}."
+            else:
+                s += f" Punished by {r.san}" + (f" ({r.line_san})" if long else "") + (candidate_phrases(r, 1) and f": {candidate_phrases(r, 1)}" if long else why_clause(r)) + "."
         add(s)
     shown = 0
     for t in rec.threats:
@@ -222,8 +228,13 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
     if rec.zugzwang and rec.zugzwang.flagged:
         add(f"  Zugzwang: every move worsens {who}'s position (passing would be {rec.zugzwang.pass_cp - rec.zugzwang.best_cp:+d} cp better).")
     if rec.idea:
-        body = candidate_phrases(rec.idea) if long else terse_line(rec.idea)
-        add(f"  Idea: {rec.idea.san} -- {rec.idea.line_san}." + (f" {body}" if body else ""))
+        mate = mate_in_line(chess.Board(rec.fen), rec.idea.pv[:10]) if rec.idea.mate is not None else None
+        if mate and mate[0] % 2 == 1:                   # odd plies: the side to move delivers it
+            n, pat, why = mate
+            add(f"  Mate in {(n + 1) // 2} was available: {rec.idea.line_san} -- {pat}: {why}.")
+        else:
+            body = candidate_phrases(rec.idea) if long else terse_line(rec.idea)
+            add(f"  Idea: {rec.idea.san} -- {rec.idea.line_san}." + (f" {body}" if body else ""))
     for k in rec.killed[:3 if long else 2]:
         r = k.candidate.refutation
         s = f"  {k.candidate.san} no longer works after {k.killed_by} ({cp_str(k.was_cp, w)} -> {cp_str(k.now_cp, w, k.candidate.mate)})"
