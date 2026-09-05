@@ -18,8 +18,23 @@
   h1 form{display:flex;gap:6px;flex:1;min-width:280px;max-width:640px}
   h1 input{flex:1;background:#0d0f13;color:var(--tx);border:1px solid var(--bd);border-radius:5px;padding:5px 8px;font:12px ui-monospace,monospace}
   .wrap{display:flex;gap:14px;padding:14px;align-items:flex-start;flex-wrap:wrap}
-  .col{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:12px;resize:both;overflow:auto}
-  .left{width:470px} .right{flex:1;min-width:440px}
+  .col{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:12px;overflow:auto}
+  /* game view: board on top, controls, then the analysis, then the moves; the game/player info sits BESIDE the
+     board on a wide screen and folds into one strip above it on a phone (Kaveh 2026-09-05: board + text in one view) */
+  .gv{display:grid;grid-template-columns:1fr;gap:10px;padding:10px;max-width:1200px}
+  @media (min-width:900px){.gv{grid-template-columns:230px minmax(440px,640px) minmax(260px,1fr);padding:14px;gap:14px}
+    .gv .info{grid-column:1} .gv .mainc{grid-column:2} .gv .extra{grid-column:3}}
+  .gv .extra{font-size:12.5px}
+  .info{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:10px 12px}
+  .players{display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .players .name{font-weight:600;color:var(--tx)} .players .elo{color:var(--mut)}
+  .players .vs{color:var(--mut)}
+  @media (min-width:900px){.players{flex-direction:column;align-items:flex-start;gap:4px}}
+  .meta{color:var(--mut);font-size:12px;margin-top:4px;line-height:1.5}
+  #board{width:100%;aspect-ratio:1;max-width:100%}
+  .mainc{min-width:0}
+  .mainc .col{padding:10px}
+  .analysis{margin-top:8px}
   button{background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;
          padding:5px 9px;cursor:pointer;font-size:12px}
   button:hover{border-color:var(--blue)} button.on{background:var(--blue);color:#0b0d10;border-color:var(--blue)}
@@ -32,7 +47,7 @@
   tr.link{cursor:pointer} tr.link:hover td{background:#242832}
   .bar{height:8px;background:#2a2e36;border-radius:3px;overflow:hidden;min-width:40px;display:inline-block;vertical-align:middle}
   .bar>i{display:block;height:100%;background:var(--blue)} .bar.g>i{background:var(--grn)}
-  .moves{max-height:150px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);line-height:1.7}
+  .moves{max-height:200px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);line-height:1.8;margin-top:8px}
   .moves b{color:var(--tx)}
   .moves span{padding:0 3px;border-radius:3px;cursor:pointer}
   .moves span.inaccuracy b{color:var(--org)} .moves span.mistake b{color:var(--pink)} .moves span.blunder b{color:var(--pink);text-decoration:underline}
@@ -41,10 +56,11 @@
   .tag{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;background:#242832}
   .tag.best,.tag.ok{color:var(--grn)} .tag.inaccuracy{color:var(--org)} .tag.mistake,.tag.blunder{color:var(--pink)}
   .head{font-size:15px;line-height:1.35;margin:6px 0 8px;color:var(--tx)}
-  .box{background:#0d0f13;border:1px solid var(--bd);border-radius:6px;padding:10px 12px;font:12.5px/1.5 ui-monospace,monospace;white-space:pre-wrap;color:var(--tx);max-height:52vh;overflow:auto}
+  .box{background:#0d0f13;border:1px solid var(--bd);border-radius:6px;padding:10px 12px;font:12.5px/1.5 ui-monospace,monospace;white-space:pre-wrap;color:var(--tx);max-height:40vh;overflow:auto}
   .lrow{margin:3px 0} .ply{cursor:pointer;padding:0 2px;border-radius:3px} .ply:hover{background:#2a2e36}
-  .inspect{display:flex;gap:10px;align-items:flex-start;margin-top:10px}
-  .inspect .brd{width:168px;height:168px;flex:none;resize:both;overflow:hidden}
+  .inspect{display:flex;gap:10px;align-items:flex-start;margin-top:10px;flex-wrap:wrap}
+  .inspect .brd{width:168px;height:168px;flex:none;overflow:hidden}
+  .ladder td{padding:2px 4px;white-space:nowrap}
   #toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#3a1d24;
          border:1px solid var(--pink);color:#ffd7df;padding:8px 12px;border-radius:6px;display:none;z-index:9}
   #toast.ok{background:#1d3a2a;border-color:var(--grn);color:#d7ffe6}
@@ -128,30 +144,32 @@ async function home(){S.view="home";cg=null;
 
 /* ---------- game view ---------- */
 function gameLayout(){
-  $("#main").innerHTML=`<div class="wrap">
-  <div class="col left">
-    <div class="row"><span class="k" id="title">—</span><span style="flex:1"></span><button id="bFlip">Flip</button><a id="lichess" href="#" target="_blank" rel="noopener" class="pill">lichess ↗</a></div>
+  $("#main").innerHTML=`<div class="gv">
+  <div class="info">
+    <div class="players" id="players"><span class="name">—</span></div>
+    <div class="meta" id="meta"></div>
+    <div class="row" style="margin:8px 0 0"><button id="bFlip">Flip</button><a id="lichess" href="#" target="_blank" rel="noopener" class="pill">lichess ↗</a></div>
+  </div>
+  <div class="mainc">
     <div id="board"></div>
-    <div class="row" style="margin-top:6px">
+    <div class="row" style="margin:6px 0">
       <button id="navFirst" title="start">⏮</button><button id="navPrev" title="back">◀</button>
       <button id="navNext" title="forward">▶</button><button id="navLast" title="end">⏭</button>
-      <span style="flex:1"></span><span class="pill">try a move on the board to explore; nav returns to the game</span></div>
+      <span class="pill" id="status" style="flex:1">—</span>
+      <button class="flag" id="flagMove" title="log this move's analysis for review">⚑</button></div>
     <div class="prog" id="prog" style="display:none"><i style="width:0%"></i></div>
-    <div class="row"><span class="pill" id="status">—</span></div>
+    <div class="col analysis">
+      <div id="verdict"></div>
+      <div class="head" id="head">—</div>
+      <div id="lines"></div>
+      <div class="box" id="text">—</div>
+      <table class="ladder" id="ladder"><tbody></tbody></table>
+    </div>
     <div class="moves" id="moves"></div>
-    <div class="inspect"><div class="brd" id="miniBoard"></div>
-      <div><div class="pill">line preview</div><div class="k" id="miniLabel" style="margin:4px 0">click a move in a line</div>
-        <div class="pill" style="margin-top:6px">who plays it</div><table id="ladder"><tbody></tbody></table></div></div>
-  </div>
-  <div class="col right">
-    <div class="row"><span class="pill">analysis of the move</span><span style="flex:1"></span><button class="flag" id="flagMove">⚑ Something is not right</button></div>
-    <div id="verdict"></div>
-    <div class="head" id="head">—</div>
-    <div id="lines"></div>
-    <div class="box" id="text">—</div>
     <details style="margin-top:8px"><summary class="pill" style="cursor:pointer">every fact (long form)</summary><div class="box" id="textLong" style="margin-top:6px"></div></details>
-    <div id="summary" style="margin-top:12px"></div>
-  </div></div>`;
+    <div class="inspect"><div class="brd" id="miniBoard"></div><div><div class="pill">line preview</div><div class="k" id="miniLabel" style="margin:4px 0">click a move in a line</div><div class="pill">a move on the board explores; nav returns to the game</div></div></div>
+  </div>
+  <div class="extra info" id="summary"></div></div>`;
   $("#bFlip").onclick=()=>{S.flip=!S.flip;setBoard();};
   $("#navFirst").onclick=()=>goto(0);$("#navPrev").onclick=()=>goto(S.ptr-1);$("#navNext").onclick=()=>goto(S.ptr+1);$("#navLast").onclick=()=>goto(S.moves.length);
   $("#flagMove").onclick=()=>openFlag(flagContext());
@@ -238,8 +256,8 @@ function renderPanel(){
   L.querySelectorAll(".ply").forEach(s=>s.onclick=()=>{if(cgMini)cgMini.set({fen:s.dataset.fen.split(" ")[0]});$("#miniLabel").textContent=s.dataset.label;});
   T.textContent=p.text||"";TL.textContent=p.text_long||"";
   const keys=Object.keys(p.p_played||{}).sort();
-  lad.innerHTML=keys.map(k=>`<tr><td>${k}</td><td><span class="bar"><i style="width:${p.p_played[k]}%"></i></span> ${p.p_played[k]}% <span class="pill">${esc(p.san)}</span></td>`+
-    `<td><span class="bar g"><i style="width:${(p.p_best||{})[k]||0}%"></i></span> ${(p.p_best||{})[k]||0}% <span class="pill">${esc(p.best||"")}</span></td></tr>`).join("");
+  lad.innerHTML=(keys.length?`<tr><th class="pill">who plays it</th><th class="pill">${esc(p.san)}</th><th class="pill">${esc(p.best||"")}</th></tr>`:"")+keys.map(k=>`<tr><td>${k}</td><td><span class="bar"><i style="width:${p.p_played[k]}%"></i></span> ${p.p_played[k]}%</td>`+
+    `<td><span class="bar g"><i style="width:${(p.p_best||{})[k]||0}%"></i></span> ${(p.p_best||{})[k]||0}%</td></tr>`).join("");
   setStatus(S.partial?`analysing… ${S.plies.length}/${S.total} · showing move ${S.ptr+1}`:`${who} to move before ${num} ${p.san}`);
 }
 function renderSummary(){const s=S.summaryData;const el=$("#summary");if(!s||!el){if(el)el.innerHTML="";return;}
@@ -268,8 +286,10 @@ async function openGame(gid,ply){S.view="game";
 function applyResult(res,partial){
   const hadPly=S.plies[S.ptr]!=null;const hadMoves=S.moves.length;
   S.partial=partial;S.plies=res.plies;
-  if(res.headers&&res.headers.White){S.headers=res.headers;$("#title").textContent=`${res.headers.White} (${res.headers.WhiteElo}) vs ${res.headers.Black} (${res.headers.BlackElo}) · ${res.headers.Result} · ${res.headers.TimeControl} · ${res.headers.Date}`;
-    remember("game",res.id,`${res.headers.White} vs ${res.headers.Black} (${res.headers.Date})`);}
+  if(res.headers&&res.headers.White){const h=S.headers=res.headers;
+    $("#players").innerHTML=`<span><span class="name">${esc(h.White)}</span> <span class="elo">${esc(h.WhiteElo)}</span> <span class="pill">white</span></span><span class="vs">${esc(h.Result||"")}</span><span><span class="name">${esc(h.Black)}</span> <span class="elo">${esc(h.BlackElo)}</span> <span class="pill">black</span></span>`;
+    $("#meta").innerHTML=`${esc((h.Event||"").replace("rated ",""))} ${esc(h.TimeControl||"")} · ${esc(h.Date||"")}<br>${esc(h.Opening||"")}${h.ECO?" ("+esc(h.ECO)+")":""}`;
+    remember("game",res.id,`${h.White} vs ${h.Black} (${h.Date})`);}
   $("#lichess").href="https://lichess.org/"+res.id;
   loadMoves(res.plies,res.total,res.final_fen);
   if(!partial){S.summaryData=res.summary;renderSummary();}
