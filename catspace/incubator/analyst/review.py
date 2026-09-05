@@ -73,6 +73,106 @@ def exchange_net(board: chess.Board, mv: chess.Move, pv, require_recapture: bool
     return int(net)
 
 
+def annotate(board: chess.Board, mv: chess.Move, rec, eng: Engine, us: chess.Color, lad: dict, ratings: list[int],
+             level: int, depth: int, *, game_no: int = 1, headers=None, why: bool = False) -> tuple[dict, list[str]]:
+    """Everything the review says about ONE played move, from its IdeaRecord: the row (verdict, cost, mechanisms,
+    cause, horizon kind, ladder, structure tags, headline, refutation, best line) and the report lines. Shared by
+    the review script and the web server so both say the same thing about the same move.
+    `lad` = {rating: {uci: prob}} from the Maia ladder for this position."""
+    headers = headers or {}
+    p_played = {r: lad[r].get(mv.uci(), 0.0) for r in ratings}
+    p_best = {r: lad[r].get(rec.idea.uci, 0.0) for r in ratings} if rec.idea else {}
+    row = {"game": game_no, "ply": board.ply(), "fen": board.fen(), "san": board.san(mv), "verdict": rec.verdict,
+           "drop": (rec.eval_cp - rec.played.cp) if rec.played else 0, "eval_cp": rec.eval_cp,
+           "phase_nonpawn": rec.facts.phase_nonpawn, "best": rec.idea.san if rec.idea else None,
+           "p_played": p_played, "p_best": p_best, "mechanisms": [], "present": families(
+               [x.name for x in relations(board) if significant(x) and against(x, us)]),
+           "ignored_threat": False, "threat_existed": bool(rec.threats), "trap": None, "stage": "full",
+           "date": headers.get("Date", ""), "tc": headers.get("TimeControl", ""),
+           "structure_played": structure_tags(rec.played.effects[0].structure_created, rec.played.effects[0].structure_ended, us) if rec.played and rec.played.effects else [],
+           "structure_best": structure_tags(rec.idea.effects[0].structure_created, rec.idea.effects[0].structure_ended, us) if rec.idea and rec.idea.effects else []}
+    lines = []
+    if rec.verdict not in ERR:
+        return row, lines
+    r = rec.played.refutation
+    if r and r.effects:
+        e0 = r.effects[0]
+        row["mechanisms"] = families([x.name for x in e0.created + e0.uses + e0.resolved if against(x, us)])   # only what hurts the victim
+        if e0.captured: row["mechanisms"].append("capture")
+        if (r.mate is not None and r.mate > 0) or r.san.endswith("#"): row["mechanisms"].append("mate")
+        _b = board.copy(stack=False); _b.push(mv)
+        row["mechanisms"] += sorted({x.name for x in find_sequences(_b, r.pv, 3)})
+        row["ignored_threat"] = any(t.line.move == r.uci for t in rec.threats)
+    avail = None
+    teeth = None
+    if r:
+        _c = board.copy(stack=False); _c.push(mv)
+        l2 = eng.analyse(_c, multipv=2)
+        if len(l2) >= 2:
+            teeth = l2[0].cp - l2[1].cp
+    wins = None
+    if r:
+        _c2 = board.copy(stack=False); _c2.push(mv)
+        wins = exchange_net(_c2, chess.Move.from_uci(r.uci), r.pv[1:], require_recapture=False)   # the reply's own capture sequence, its POV
+    if wins is not None and wins > 0:
+        teeth = None                                       # a reply that wins material is the punishment whatever the alternatives score
+    row["teeth"] = teeth; row["reply_wins"] = wins
+    if r and not row["ignored_threat"] and not board.is_check():
+        nb = board.copy(stack=False); nb.push(chess.Move.null()); rm = chess.Move.from_uci(r.uci)
+        if rm in nb.legal_moves:
+            l0 = eng.eval_move(nb, rm, depth=max(6, depth - 4))
+            avail = bool(l0 and (l0.cp + rec.eval_cp - 100) >= 30)
+    row["available_before"] = avail
+    even = False; net = None
+    if r and board.is_capture(mv):                         # we captured first: the whole sequence on that square decides
+        net = exchange_net(board, mv, r.pv)                # (Bxd4 Nxd4 Rxd4 is +1 for us, not 'bishop for knight')
+        even = net == 0
+    elif r and len(r.effects) >= 2 and r.effects[0].captured and r.effects[1].captured:
+        even = (r.effects[0].captured[1] == r.effects[1].captured[1]                 # they take, we take back equal
+                and chess.Move.from_uci(r.uci).to_square == mv.to_square)
+    row["even_trade"] = even
+    mech = row["mechanisms"]
+    _after = board.copy(stack=False); _after.push(mv)
+    e0 = r.effects[0] if r and r.effects else None
+    names_loss = e0 is not None and any(x.name in TACTIC_RELATIONS and against(x, us) for x in e0.created + e0.uses)
+    if r and "mate" not in mech and not cashes(_after, r.pv) and not names_loss:
+        mech = []                                          # a reply that takes nothing, checks nothing and names no loss is not a tactic: we missed something
+    if net is not None and net > 0 and "mate" not in mech:
+        mech = []                                          # the exchange we started came out ahead: no tactic against us, only a better move missed
+    row["cause"] = classify(board, mv, mech, row["ignored_threat"], avail, teeth, even,
+                            refutation_effect=r.effects[0] if (r and r.effects and mech) else None)
+    row["cause"]["mechanisms"] = mech; row["cause"]["reply_wins"] = wins
+    if rec.played_scores and rec.idea:
+        sc = rec.played_scores; dmax = max(sc)
+        final = sc[dmax]; peak_d = max((d for d in sc if d >= 2), key=lambda d: winp(sc[d]), default=None)
+        if peak_d is not None and winp(sc[peak_d]) - winp(final) >= 10 and winp(rec.eval_cp) - winp(final) >= 5:
+            collapse = next((d for d in sorted(sc) if d > peak_d and all(winp(sc[peak_d]) - winp(sc[dd]) >= 10 for dd in sc if dd >= d)), dmax)
+            row["trap"] = {"kind": "horizon", "peak_depth": peak_d, "collapse_depth": collapse}
+        else:
+            d2 = sc.get(2, sc[min(sc)])
+            row["trap"] = {"kind": "blind_spot" if winp(d2) - winp(final) < 10 else "unclear"}
+    hl, computer = headline(rec, row.get("cause"), row.get("trap"), p_played, p_best, level)
+    row["headline"], row["computer_move"] = hl, computer
+    _r = rec.played.refutation if rec.played else None
+    row["refutation"] = {"san": _r.san, "uci": _r.uci, "line": _r.line_san} if _r else None
+    row["best_line"] = rec.idea.line_san if rec.idea else None
+    text = render(rec, alternatives=False)
+    row["text"] = text
+    lad_line = "   ladder plays your move: " + " ".join(f"M{r}:{p_played[r]*100:.0f}%" for r in ratings) + \
+               " | best move: " + " ".join(f"M{r}:{p_best.get(r,0)*100:.0f}%" for r in ratings)
+    tk = row["trap"]
+    tk_line = ("   horizon: " + (f"trap -- looks fine to depth {tk['peak_depth']}, collapses at depth {tk['collapse_depth']}" if tk and tk["kind"] == "horizon"
+               else "blind spot -- bad at every depth" if tk and tk["kind"] == "blind_spot" else "")) if tk else ""
+    row["horizon_text"] = tk_line.strip()[len("horizon: "):] if tk_line.strip() else ""
+    num = board.ply() // 2 + 1
+    lines.append(f"[{num}{'.' if board.turn else '...'}] " + ("(computer move) " if computer else "") + hl + ladder_tag(p_played, p_best, level, board.san(mv), rec.idea.san if rec.idea else None))
+    if why:
+        lines.append(text); lines.append(lad_line)
+        if tk_line.strip(): lines.append(tk_line)
+    lines.append("")
+    return row, lines
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("pgn"); ap.add_argument("--user", required=True); ap.add_argument("--max-games", type=int, default=20)
@@ -160,93 +260,10 @@ def main(argv=None):
                     _t = time.perf_counter()
                     rec = analyse_position(board, eng, prev=prev, killed_by=sans[-1] if sans else None, played=mv, multipv=a.multipv)
                     T["full"] += time.perf_counter() - _t
-                    p_best = {r: lad[r].get(rec.idea.uci, 0.0) for r in ratings} if rec.idea else {}
-                    row = {"game": gi + 1, "ply": board.ply(), "fen": board.fen(), "san": board.san(mv), "verdict": rec.verdict,
-                           "drop": (rec.eval_cp - rec.played.cp) if rec.played else 0, "eval_cp": rec.eval_cp,
-                           "phase_nonpawn": rec.facts.phase_nonpawn, "best": rec.idea.san if rec.idea else None,
-                           "p_played": p_played, "p_best": p_best, "mechanisms": [], "present": families(
-                               [x.name for x in relations(board) if significant(x) and against(x, us)]),
-                           "ignored_threat": False, "threat_existed": bool(rec.threats), "trap": None, "stage": "full",
-                           "date": g.headers.get("Date", ""), "tc": g.headers.get("TimeControl", ""),
-                           "structure_played": structure_tags(rec.played.effects[0].structure_created, rec.played.effects[0].structure_ended, us) if rec.played and rec.played.effects else [],
-                           "structure_best": structure_tags(rec.idea.effects[0].structure_created, rec.idea.effects[0].structure_ended, us) if rec.idea and rec.idea.effects else []}
-                    if rec.verdict in ERR:
-                        r = rec.played.refutation
-                        if r and r.effects:
-                            e0 = r.effects[0]
-                            row["mechanisms"] = families([x.name for x in e0.created + e0.uses + e0.resolved if against(x, us)])   # only what hurts the victim
-                            if e0.captured: row["mechanisms"].append("capture")
-                            if (r.mate is not None and r.mate > 0) or r.san.endswith("#"): row["mechanisms"].append("mate")
-                            _b = board.copy(stack=False); _b.push(mv)
-                            row["mechanisms"] += sorted({x.name for x in find_sequences(_b, r.pv, 3)})
-                            row["ignored_threat"] = any(t.line.move == r.uci for t in rec.threats)
-                        avail = None
-                        teeth = None
-                        if r:
-                            _c = board.copy(stack=False); _c.push(mv)
-                            l2 = eng.analyse(_c, multipv=2)
-                            if len(l2) >= 2:
-                                teeth = l2[0].cp - l2[1].cp
-                        wins = None
-                        if r:
-                            _c2 = board.copy(stack=False); _c2.push(mv)
-                            wins = exchange_net(_c2, chess.Move.from_uci(r.uci), r.pv[1:], require_recapture=False)   # the reply's own capture sequence, its POV
-                        if wins is not None and wins > 0:
-                            teeth = None                                       # a reply that wins material is the punishment whatever the alternatives score
-                        row["teeth"] = teeth; row["reply_wins"] = wins
-                        if r and not row["ignored_threat"] and not board.is_check():
-                            nb = board.copy(stack=False); nb.push(chess.Move.null()); rm = chess.Move.from_uci(r.uci)
-                            if rm in nb.legal_moves:
-                                l0 = eng.eval_move(nb, rm, depth=max(6, a.depth - 4))
-                                avail = bool(l0 and (l0.cp + rec.eval_cp - 100) >= 30)
-                        row["available_before"] = avail
-                        even = False; net = None
-                        if r and board.is_capture(mv):                         # we captured first: the whole sequence on that square decides
-                            net = exchange_net(board, mv, r.pv)                # (Bxd4 Nxd4 Rxd4 is +1 for us, not 'bishop for knight')
-                            even = net == 0
-                        elif r and len(r.effects) >= 2 and r.effects[0].captured and r.effects[1].captured:
-                            even = (r.effects[0].captured[1] == r.effects[1].captured[1]                 # they take, we take back equal
-                                    and chess.Move.from_uci(r.uci).to_square == mv.to_square)
-                        row["even_trade"] = even
-                        mech = row["mechanisms"]
-                        _after = board.copy(stack=False); _after.push(mv)
-                        e0 = r.effects[0] if r and r.effects else None
-                        names_loss = e0 is not None and any(x.name in TACTIC_RELATIONS and against(x, us) for x in e0.created + e0.uses)
-                        if r and "mate" not in mech and not cashes(_after, r.pv) and not names_loss:
-                            mech = []                                          # a reply that takes nothing, checks nothing and names no loss is not a tactic: we missed something
-                        if net is not None and net > 0 and "mate" not in mech:
-                            mech = []                                          # the exchange we started came out ahead: no tactic against us, only a better move missed
-                        row["cause"] = classify(board, mv, mech, row["ignored_threat"], avail, teeth, even,
-                                                refutation_effect=r.effects[0] if (r and r.effects and mech) else None)
-                        row["cause"]["mechanisms"] = mech; row["cause"]["reply_wins"] = wins
-                        if rec.played_scores and rec.idea:
-                            sc = rec.played_scores; dmax = max(sc)
-                            final = sc[dmax]; peak_d = max((d for d in sc if d >= 2), key=lambda d: winp(sc[d]), default=None)
-                            if peak_d is not None and winp(sc[peak_d]) - winp(final) >= 10 and winp(rec.eval_cp) - winp(final) >= 5:
-                                collapse = next((d for d in sorted(sc) if d > peak_d and all(winp(sc[peak_d]) - winp(sc[dd]) >= 10 for dd in sc if dd >= d)), dmax)
-                                row["trap"] = {"kind": "horizon", "peak_depth": peak_d, "collapse_depth": collapse}
-                            else:
-                                d2 = sc.get(2, sc[min(sc)])
-                                row["trap"] = {"kind": "blind_spot" if winp(d2) - winp(final) < 10 else "unclear"}
-                        _t = time.perf_counter()
-                        hl, computer = headline(rec, row.get("cause"), row.get("trap"), p_played, p_best, a.level)
-                        row["headline"], row["computer_move"] = hl, computer
-                        _r = rec.played.refutation if rec.played else None
-                        row["refutation"] = {"san": _r.san, "uci": _r.uci, "line": _r.line_san} if _r else None
-                        row["best_line"] = rec.idea.line_san if rec.idea else None
-                        text = render(rec, alternatives=False)
-                        T["render"] += time.perf_counter() - _t
-                        lad_line = "   ladder plays your move: " + " ".join(f"M{r}:{p_played[r]*100:.0f}%" for r in ratings) + \
-                                   " | best move: " + " ".join(f"M{r}:{p_best.get(r,0)*100:.0f}%" for r in ratings)
-                        tk = row["trap"]
-                        tk_line = ("   horizon: " + (f"trap -- looks fine to depth {tk['peak_depth']}, collapses at depth {tk['collapse_depth']}" if tk and tk["kind"] == "horizon"
-                                   else "blind spot -- bad at every depth" if tk and tk["kind"] == "blind_spot" else "")) if tk else ""
-                        num = board.ply() // 2 + 1
-                        texts.append(f"[{num}{'.' if board.turn else '...'}] " + ("(computer move) " if computer else "") + hl + ladder_tag(p_played, p_best, a.level, board.san(mv), rec.idea.san if rec.idea else None))
-                        if a.why:
-                            texts.append(text); texts.append(lad_line)
-                            if tk_line.strip(): texts.append(tk_line)
-                        texts.append("")
+                    row, lines = annotate(board, mv, rec, eng, us, lad, ratings, a.level, a.depth,
+                                          game_no=gi + 1, headers=g.headers, why=a.why)
+                    T["render"] += 0
+                    texts.extend(lines)
                     rows.append(row)
                 sans.append(board.san(mv)); board.push(mv); boards.append(board.copy())
             texts.append("")
@@ -293,7 +310,7 @@ def write_report(a, games, rows, texts, ratings, t0, final):
     # L3.5: structural habits -- what your errors do to the structure vs what the best move in the same positions does
     sp = Counter(t for r in errs for t in r.get("structure_played", [])); sb = Counter(t for r in errs for t in r.get("structure_best", []))
     if errs and (sp or sb):
-        keys = sorted(set(sp) | set(sb), key=lambda t: -(sp[t] - sb[t]))
+        keys = sorted(set(sp) | set(sb), key=lambda t: (-(sp[t] - sb[t]), t))   # ties by name: set order is per-process
         cells = [f"{t} {sp[t]}/{sb[t]}" for t in keys if sp[t] + sb[t] >= 3][:12]
         out.append("OBS structure in your errors (played/best, same positions): " + ", ".join(cells))
     kinds = Counter((r["trap"] or {}).get("kind") for r in errs if r["verdict"] in ("blunder", "mistake"))
