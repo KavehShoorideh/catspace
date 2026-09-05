@@ -21363,3 +21363,16 @@ engine-free (new tests/test_analyst_review.py; 32 analyst tests):
 Effects on the two reports: only the intended lines changed (10.Bxc6 even trade with "isolates c6, a7"; 13...c5
 "wins it: attacked twice, defended once"; #15 consistent). Gauge unchanged. Rapid causes: missed_better 40%,
 ignored 25%, enabled 20%, walked_into 10%, positional 6%. Drill regenerated: 107 positions (84 punish, 23 find).
+
+## 2026-09-05 09:30 PDT — the local app (web.py) and the flag queue (Kaveh's request)
+
+review.annotate() lifted out of main() (rows byte-identical on the rapid set) so one code path serves the report,
+the drill and the page. web.py: stdlib ThreadingHTTPServer + one worker thread owning Stockfish (depth 18, 6
+threads) and the Maia ladder; jobs: 'game' (fetch PGN from Lichess with a UA, analyse every ply of both sides in
+process, stream partial plies to the page, cache JSON under data/derived/web/games) and 'user' (fetch the recent
+games, run the parallel review driver, parse the .txt/.jsonl into profile + per-game errors, cache under
+data/derived/web/users). web_page.html: home / user / game views, hash routing (#game/<id>@<ply>), unicode
+board, move list coloured by verdict, one card per move, arrow keys, flip. The flag: POST /api/flag appends
+{id, time, note, context} to feedback/flags.jsonl (tracked; id = line number); feedback/README.md and
+feedback/RESOLVED.md (coder's answers by id). Smoke: AsXfL6OX 56 plies cached in seconds; AUjG3sl4 58 plies;
+huvaxshtra 6 games in 15s; one flag written and removed. Plan §18; memory note on the review loop.
