@@ -165,9 +165,10 @@ function initBoard(){
     try{cg.redrawAll();if(cgMini)cgMini.redrawAll();}catch(err){}});
   ro.observe($("#board"));ro.observe($("#miniBoard"));
 }
-function curFen(){return S.probe?S.probe.fen():(S.fens[S.ptr]||S.fens[0]);}
+const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+function curFen(){return S.probe?S.probe.fen():(S.fens[S.ptr]||S.fens[0]||START);}
 function turnOf(fen){return fen.split(" ")[1]==="w"?"white":"black";}
-function legalDests(fen){const g=new Chess(fen);const m=new Map();
+function legalDests(fen){let g;try{g=new Chess(fen);}catch(e){return new Map();}const m=new Map();
   for(const mv of g.moves({verbose:true})){if(!m.has(mv.from))m.set(mv.from,[]);m.get(mv.from).push(mv.to);}return m;}
 function cgConfig(extra){const fen=curFen();
   return Object.assign({fen:fen.split(" ")[0],orientation:S.flip?"black":"white",turnColor:turnOf(fen),coordinates:true,
@@ -177,7 +178,7 @@ function cgConfig(extra){const fen=curFen();
 function onCgMove(orig,dest){
   const base=S.probe||new Chess(curFen());const cand=base.moves({verbose:true}).find(m=>m.from===orig&&m.to===dest);
   if(!cand){cg.set(cgConfig());return;}
-  if(!S.probe)S.probe=base;S.probe.move({from:orig,to:dest,promotion:cand.promotion});
+  if(!S.probe)S.probe=base;if(!safeMove(S.probe,{from:orig,to:dest,promotion:cand.promotion})){cg.set(cgConfig());return;}
   cg.set(cgConfig({lastMove:[orig,dest]}));cg.setShapes([]);
   setStatus(`exploring: ${cand.san} · ◀ ▶ to return to the game`);
 }
@@ -200,7 +201,7 @@ window.addEventListener("keydown",e=>{if(/input|textarea/i.test(e.target.tagName
 /* the game's moves come from the PGN (via the first frame's fens); frames fill in as the server streams */
 function loadMoves(plies,total,finalFen){
   const g=new Chess();S.fens=[g.fen()];S.moves=[];
-  for(const p of plies){const m=g.move({from:p.uci.slice(0,2),to:p.uci.slice(2,4),promotion:p.uci.slice(4)||undefined});
+  for(const p of plies){const m=safeMove(g,{from:p.uci.slice(0,2),to:p.uci.slice(2,4),promotion:p.uci.slice(4)||undefined});
     if(!m)break;S.moves.push({san:m.san,white:m.color==="w"});S.fens.push(g.fen());}
   if(finalFen&&S.fens.length===plies.length+1)S.fens[S.fens.length-1]=finalFen;
   S.total=total||plies.length;
@@ -213,8 +214,9 @@ function renderMoves(){const m=$("#moves");if(!m)return;let html="",n=0;
   for(let i=S.moves.length;i<S.total;i++)html+=`<span class="pill">·</span>`;
   m.innerHTML=html;m.querySelectorAll("[data-i]").forEach(s=>s.onclick=()=>goto(+s.dataset.i));
   const c=m.querySelector(".cur");if(c)c.scrollIntoView({block:"nearest"});}
-function lineHtml(label,fen,san){if(!san)return"";const g=new Chess(fen);const plies=[];
-  for(const tok of san.split(/\s+/)){if(/^\d+\.+$/.test(tok))continue;const m=g.move(tok,{sloppy:true});if(!m)break;plies.push({san:tok,fen:g.fen(),white:m.color==="w"});}
+function safeMove(g,mv){try{return g.move(mv);}catch(e){return null;}}      // chess.js v2 throws on an illegal move
+function lineHtml(label,fen,san){if(!san)return"";let g;try{g=new Chess(fen);}catch(e){return"";}const plies=[];
+  for(const tok of san.split(/\s+/)){if(/^\d+\.+$/.test(tok))continue;const m=safeMove(g,tok);if(!m)break;plies.push({san:tok,fen:g.fen(),white:m.color==="w"});}
   return `<div class="lrow"><span class="pill">${label}</span> `+plies.map((p,j)=>`<span class="ply" data-fen="${esc(p.fen)}" data-label="${esc((p.white?"White":"Black")+" plays "+p.san)}">${esc(p.san)}</span>`).join(" ")+`</div>`;}
 function renderPanel(){
   const p=S.plies[S.ptr];const V=$("#verdict"),H=$("#head"),L=$("#lines"),T=$("#text"),TL=$("#textLong"),lad=$("#ladder tbody");
@@ -228,7 +230,7 @@ function renderPanel(){
   H.textContent=err?p.headline:(p.fact?`${p.san}: ${p.fact}`:`${p.san} — ${p.verdict}`);
   let lines="";
   if(p.best&&p.best!==p.san&&p.best_line)lines+=lineHtml("best",p.fen,p.best_line);
-  if(err&&p.refutation&&p.refutation.line){const g=new Chess(p.fen);g.move(p.san,{sloppy:true});lines+=lineHtml("punished by",g.fen(),p.refutation.line);}
+  if(err&&p.refutation&&p.refutation.line){const g=new Chess(p.fen);if(safeMove(g,p.san))lines+=lineHtml("punished by",g.fen(),p.refutation.line);}
   if(p.threats&&p.threats.length)lines+=`<div class="lrow"><span class="pill">if ${who} did nothing</span> ${p.threats.map(esc).join(" · ")}</div>`;
   if(p.structure&&p.structure.length)lines+=`<div class="lrow"><span class="pill">structure</span> ${p.structure.map(esc).join("; ")}</div>`;
   if(p.horizon)lines+=`<div class="lrow"><span class="pill">horizon</span> ${esc(p.horizon)}</div>`;
