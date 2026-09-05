@@ -34,13 +34,25 @@ def walked_into(board: chess.Board, played: chess.Move) -> list[str]:
     return families(names)
 
 
+TEETH_CP = 40      # a refutation with less than this over the opponent's next-best reply is not a tactic
+
+
 def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], ignored_threat: bool,
-             available_before: bool | None = None) -> dict:
+             available_before: bool | None = None, teeth: int | None = None, even_trade: bool = False) -> dict:
     """available_before: was the refutation already playable AND strong had we passed instead of moving
-    (engine-checked by the caller)? True -> we ignored it; False -> our move enabled it."""
+    (engine-checked by the caller)? True -> we ignored it; False -> our move enabled it.
+    teeth: how much better the refutation is than the opponent's second-best reply (cp). When the
+    reply has no teeth, the loss is the OPPORTUNITY we missed, not a tactic we suffered (Kaveh 2026-09-05:
+    Bd2 'ignored' a toothless pin while the real story was the free pawn on c7)."""
     w = walked_into(board, played)
     hit = sorted(set(w) & set(mechanisms))
-    if hit:
+    tactical = set(mechanisms) - {"capture"}
+    if even_trade and not tactical:
+        cause = "positional"                   # Kaveh 2026-09-05: a knight-for-bishop trade is materially equal at this layer;
+                                               # the eval change is about plans and belongs one layer up -- say so, don't invent a tactic
+    elif teeth is not None and teeth < TEETH_CP and not (set(mechanisms) & {"mate"}):
+        cause = "missed_better"
+    elif hit:
         cause = "walked_into"                  # the move created the static vulnerability that was exploited
     elif ignored_threat or available_before:
         cause = "ignored_threat"               # it was already there
@@ -51,5 +63,5 @@ def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], igno
     else:
         cause = "missed_better"
     kinds = set(mechanisms)
-    kind = "compound" if kinds & COMPOUND else "simple" if kinds & SIMPLE else "positional"
+    kind = "positional" if cause == "positional" else "compound" if kinds & COMPOUND else "simple" if kinds & SIMPLE else "positional"
     return {"cause": cause, "kind": kind, "walked_into": w, "walked_into_hit": hit}

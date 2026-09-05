@@ -19,7 +19,12 @@ from .facts import StateFacts, state_facts
 from .dynamics import Effect, Threat, Zugzwang, line_effects, threats, zugzwang
 from .engine import Engine, Line
 
-VERDICTS = ((300, "blunder"), (100, "mistake"), (50, "inaccuracy"))
+VERDICTS = ((20.0, "blunder"), (10.0, "mistake"), (5.0, "inaccuracy"))   # in WIN-PROBABILITY points (lichess-style)
+
+
+def _winp(cp: int) -> float:
+    import math
+    return 50 + 50 * (2 / (1 + math.exp(-0.00368208 * max(-3000, min(3000, cp)))) - 1)
 
 
 @dataclass
@@ -109,9 +114,11 @@ def analyse_position(board: chess.Board, engine: Engine, *, prev: chess.Board | 
             pline = next((x for x in lines if x.move == played.uci()), None)
         if pline:
             rec.played = Candidate.from_line(board, pline, max_plies)
-            drop = rec.eval_cp - pline.cp
-            rec.verdict = next((name for thr, name in VERDICTS if drop >= thr), "best" if drop <= 10 else "ok")
-            if drop >= 50:
+            if played.uci() == lines[0].move:                       # the best move by definition, whatever a second search says
+                rec.played.cp, rec.played.mate = lines[0].cp, lines[0].mate
+            drop = _winp(rec.eval_cp) - _winp(rec.played.cp)
+            rec.verdict = next((name for thr, name in VERDICTS if drop >= thr), "best" if drop <= 1.0 else "ok")
+            if drop >= 5.0:
                 rec.played.refutation = _refute(board, played.uci(), engine, 2)
     return rec
 

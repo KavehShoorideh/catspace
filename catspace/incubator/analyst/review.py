@@ -150,13 +150,24 @@ def main(argv=None):
                             row["mechanisms"] += sorted({x.name for x in find_sequences(_b, r.pv, 3)})
                             row["ignored_threat"] = any(t.line.move == r.uci for t in rec.threats)
                         avail = None
+                        teeth = None
+                        if r:
+                            _c = board.copy(stack=False); _c.push(mv)
+                            l2 = eng.analyse(_c, multipv=2)
+                            if len(l2) >= 2:
+                                teeth = l2[0].cp - l2[1].cp
+                        row["teeth"] = teeth
                         if r and not row["ignored_threat"] and not board.is_check():
                             nb = board.copy(stack=False); nb.push(chess.Move.null()); rm = chess.Move.from_uci(r.uci)
                             if rm in nb.legal_moves:
                                 l0 = eng.eval_move(nb, rm, depth=max(6, a.depth - 4))
                                 avail = bool(l0 and (l0.cp + rec.eval_cp - 100) >= 30)
                         row["available_before"] = avail
-                        row["cause"] = classify(board, mv, row["mechanisms"], row["ignored_threat"], avail)
+                        even = False
+                        if r and len(r.effects) >= 2 and r.effects[0].captured and r.effects[1].captured:
+                            even = r.effects[0].captured[1] == r.effects[1].captured[1] and chess.Move.from_uci(r.uci).to_square == mv.to_square
+                        row["even_trade"] = even
+                        row["cause"] = classify(board, mv, row["mechanisms"], row["ignored_threat"], avail, teeth, even)
                         if rec.played_scores and rec.idea:
                             sc = rec.played_scores; dmax = max(sc)
                             final = sc[dmax]; peak_d = max((d for d in sc if d >= 2), key=lambda d: winp(sc[d]), default=None)

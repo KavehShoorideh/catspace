@@ -213,3 +213,13 @@ unnamed mass = alignment through blockers + multi-duty pieces, i.e. precursors -
 motifs get data-derived definitions (discovered 0.76, skewer 0.52, sacrifice 0.41, attraction
 0.28, deflection recall 0.81). Next: three-ply conjunctions; then promote the frequent unnamed
 types and the best sequence definitions into named relations / sequence relations.
+
+## 14. Layer boundary for evaluation changes (Kaveh, 2026-09-05)
+
+At L3-L4.5 a bishop-for-knight trade is materially EQUAL. The engine's eval change after such a
+trade is about which plans became available or unavailable -- that belongs to the plan layer (§12).
+Rule for the explainer: never invent a tactical reason for a positional cost; say "an even trade;
+the cost is positional -- what the trade does to the plans -- which this layer does not explain".
+Likewise the refutation's TEETH (its margin over the opponent's second-best reply) decide whether an
+error was a tactic suffered or an opportunity missed; and the played move's own PURPOSE (the pin it
+broke, the piece it saved) is acknowledged before the cost is stated.

@@ -321,6 +321,44 @@ def _noun(families: list[str]) -> str:
     return NOUN.get(fams[0], "a tactic") if fams else "a tactic"
 
 
+def delta_str(rec: IdeaRecord) -> str:
+    """'-1.0 pawns, -12 win%' -- the cost of the played move against the best, the number a player wants first."""
+    if not rec.played:
+        return ""
+    d_cp = rec.played.cp - rec.eval_cp
+    d_wp = winp(rec.played.cp) - winp(rec.eval_cp)
+    return f"{d_cp/100:+.1f} pawns, {d_wp:+.0f} win%"
+
+
+PURPOSE_NAMES = ("pin", "pinned_and_attacked", "hanging", "attacked_by_lower_value", "disabled_attack", "disabled_defense", "skewer", "fork")
+
+
+def purpose(rec: IdeaRecord) -> str:
+    """What the played move DID for its own side (the pin it broke, the piece it saved) -- so the critique
+    acknowledges the point of the move before saying what it cost."""
+    pl = rec.played
+    if not pl or not pl.effects:
+        return ""
+    e = pl.effects[0]; us = rec.side == "white"
+    for r in list(e.escaped) + list(e.destroyed) + list(e.resolved):
+        if r.name not in PURPOSE_NAMES:
+            continue
+        victim_side = r.name in ("pinned_and_attacked", "hanging", "disabled_attack", "disabled_defense")
+        ours = (r.owner == us) if victim_side else (r.owner != us)          # a pin/skewer/fork BY them on us, or our piece in trouble
+        if not ours:
+            continue
+        if r.name == "pin":
+            if "absolute" not in r.tags and _SYMVAL.get(r.pieces[1].lower(), 0) < 3:
+                continue                                                      # a pawn's relative pin is not a purpose
+            return f"unpinning {pc(r.pieces[1], r.squares[1])}"
+        if r.name in ("hanging", "pinned_and_attacked", "attacked_by_lower_value"):
+            i = 1 if r.name == "attacked_by_lower_value" else 0
+            return f"saving {pc(r.pieces[i], r.squares[i])}"
+        if r.name in ("fork", "skewer"):
+            return f"escaping the {r.name}"
+    return ""
+
+
 def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: dict, p_best: dict, level: int) -> tuple[str, bool]:
     """(sentence, is_computer_move)"""
     w = rec.side == "white"
@@ -332,20 +370,42 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
     ev_pl, ev_best = cp_str(pl.cp, w, pl.mate), cp_str(rec.eval_cp, w, rec.idea.mate if rec.idea else None)
     mate = mate_in_line(b, rec.idea.pv[:10]) if rec.idea and rec.idea.mate is not None else None
     computer = False
+    purp = purpose(rec)
+    pl_name = f"{pl.san}" + (f" ({purp})" if purp else "")
     if mate and mate[0] % 2 == 1:
-        s = f"You had mate in {(mate[0] + 1) // 2}: {rec.idea.line_san} -- {mate[1]}: {mate[2]}. You played {pl.san} ({ev_pl})."
+        s = f"You had mate in {(mate[0] + 1) // 2}: {rec.idea.line_san} -- {mate[1]}: {mate[2]}. You played {pl.san} ({delta_str(rec)})."
+    elif cause and cause["cause"] == "positional":
+        e0 = r.effects[0] if r and r.effects else None
+        what = f"{e0.captured[0]} for {r.effects[1].captured[0]}" if e0 and len(r.effects) > 1 and r.effects[1].captured else "a trade"
+        s = (f"{pl_name} allowed {r.san}, an even trade ({what}" + (", with check" if e0 and e0.gives_check else "") + f"). "
+             f"The cost ({delta_str(rec)}) is positional -- what the trade does to the plans -- which this layer does not explain. Better was {rec.idea.san} ({ev_best}).")
+    elif cause and cause["cause"] == "missed_better" and rec.idea:
+        e0 = rec.idea.effects[0] if rec.idea.effects else None
+        gain = best_fact(e0, strict=True) if e0 else None
+        gain = gain if gain and any(k in gain for k in ("takes", "hanging", "forks", "pins", "skewers", "checkmate", "discovering", "attacks", "with check")) else ""
+        mp = motif_phrase(b, rec.idea.pv)
+        s = f"{pl_name} missed {rec.idea.san}" + (f" -- {mp}" if mp else f" -- {gain}" if gain else "") + f" ({delta_str(rec)})."
     elif cause and cause["cause"] == "walked_into":
-        s = f"{pl.san} walked into {_noun(cause['walked_into_hit'])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f". Better was {rec.idea.san} ({ev_best})."
+        e0 = r.effects[0] if r and r.effects else None
+        if e0 and e0.captured and chess.Move.from_uci(r.uci).to_square == chess.Move.from_uci(pl.uci).to_square:
+            _after = chess.Board(rec.fen); _after.push(chess.Move.from_uci(pl.uci))
+            defended = bool(_after.attackers(_after.turn == chess.WHITE and chess.BLACK or chess.WHITE, chess.Move.from_uci(pl.uci).to_square))
+            if defended:
+                s = f"{pl.san} put the {e0.captured[0]} where {r.san} trades it off" + (" with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+            else:
+                s = f"{pl.san} hung the {e0.captured[0]}: {r.san} takes it" + (", with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+        else:
+            s = f"{pl.san} walked into {_noun(cause['walked_into_hit'])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     elif cause and cause["cause"] == "ignored_threat":
         already = next((t.structure for t in rec.threats if t.structure is not None and r and t.line.move == r.uci), None)
-        s = f"{pl.san} ignored a standing threat: {r.san if r else '?'}" + (f" -- {why}" if why else "") + (f" (already: {rel_phrase(already)})" if already else "") + f". Better was {rec.idea.san} ({ev_best})."
+        s = f"{pl.san} ignored a standing threat: {r.san if r else '?'}" + (f" -- {why}" if why else "") + (f" (already: {rel_phrase(already)})" if already else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     elif cause and cause["cause"] == "enabled_tactic":
-        s = f"{pl.san} allowed {_noun(cause['walked_into'] or [m for m in (r and cause.get('mechanisms', [])) or []])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f". Better was {rec.idea.san} ({ev_best})."
+        s = f"{pl.san} allowed {_noun(cause['walked_into'] or [m for m in (r and cause.get('mechanisms', [])) or []])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     elif trap and trap.get("kind") == "horizon":
-        s = f"{pl.san} looks fine for {trap['peak_depth']} plies and collapses at depth {trap['collapse_depth']}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f". Better was {rec.idea.san} ({ev_best})."
+        s = f"{pl.san} looks fine for {trap['peak_depth']} plies and collapses at depth {trap['collapse_depth']}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     else:
         first = terse_line(rec.idea, 1) if rec.idea else ""
-        s = f"{pl.san} ({ev_pl}) was {'an' if rec.verdict[0] in 'aeiou' else 'a'} {rec.verdict}; {rec.idea.san} ({ev_best}) was better" + (f" -- {first.split(': ', 1)[1]}" if ': ' in first else "") + "."
+        s = f"{pl.san} was {'an' if rec.verdict[0] in 'aeiou' else 'a'} {rec.verdict} ({delta_str(rec)}); {rec.idea.san} ({ev_best}) was better" + (f" -- {first.split(': ', 1)[1]}" if ': ' in first else "") + "."
         drop = winp(rec.eval_cp) - winp(pl.cp)
         if rec.verdict == "inaccuracy" and drop < 10 and p_played and all(p_played.get(k, 0) >= p_best.get(k, 0) for k in p_played):
             computer = True
