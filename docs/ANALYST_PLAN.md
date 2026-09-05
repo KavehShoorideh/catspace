@@ -257,3 +257,17 @@ the ladder shows how often your level plays that mistake) and FIND (your positio
 only when Maia 1500+ finds it at least one time in ten, so the question is fair). A right answer moves the position
 up a Leitner box (due in 1, 3, 7, 21 days), a wrong one back to now; progress lives in the browser. Grading is exact
 against the named move; in FIND positions other moves may hold, which the page says. Regenerate after every review.
+
+## 18. The local app and the flag queue (Kaveh 2026-09-05)
+
+`web.py` + `web_page.html`: one server on the machine (`python -m catspace.incubator.analyst.web`, port 8765),
+one page. Paste a Lichess game link or id: the game is fetched, analysed move by move (both sides, depth 18, the
+Maia ladder) and shown as a board + move list + a card per move (verdict, cost, headline or the move's fact, best
+line, standing threats, structure changes, ladder bars, the full text under a disclosure), stepping with the
+arrow keys; partial results stream in while the job runs. Paste a user name: their recent games are fetched and
+reviewed with the parallel driver; the page shows the profile block, the errors biggest-first and the games,
+each opening the game view at that move. Results are cached as JSON under data/derived/web/.
+The "Something is not right" button (floating, on every move card and on the profile) appends what was on
+screen plus an optional note to `feedback/flags.jsonl` (tracked in git; a flag's id is its line number).
+The coder answers in `feedback/RESOLVED.md` by id. `review.annotate()` is the shared per-move code path, so
+the page, the report and the drill say the same thing about the same move.
