@@ -60,6 +60,8 @@ def rel_phrase(r: Relation) -> str:
         return f"{p[0]} is hanging"
     if n == "underdefended":
         na, nd = r.tags[0].split("v") if r.tags else ("?", "?")
+        if na.isdigit() and nd.isdigit() and int(na) <= int(nd):             # the count does not show it: the defenders are worth more
+            return f"{p[0]} can be won on the exchange (attacked {_times(na)}, defended {_times(nd)} by bigger pieces)"
         return f"{p[0]} is attacked {_times(na)} and defended {_times(nd)}"
     if n == "loose":
         return f"{p[0]} is undefended"
@@ -421,6 +423,11 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
         gain = best_fact(e0, strict=True) if e0 else None
         gain = gain if gain and any(k in gain for k in ("takes", "hanging", "forks", "pins", "skewers", "checkmate", "discovering", "attacks", "attacked", "with check")) else ""
         mp = motif_phrase(b, rec.idea.pv)
+        GAIN_KEYS = ("takes", "hanging", "forks", "pins", "skewers", "checkmate", "discovering", "attacks", "attacked", "with check")
+        if not mp and not gain and len(rec.idea.effects) >= 3:                  # the point comes one move later: "then X: ..."
+            e2 = rec.idea.effects[2]; g2 = best_fact(e2, strict=True)
+            if g2 and any(k in g2 for k in GAIN_KEYS):
+                gain = f"then {e2.san}: {g2}"
         if not mp and not gain and rec.idea.pv:                                 # a quiet move: say what it changes in the structure
             sc = top_changes(*structure_diff(b, rec.idea.pv[:1]), k=2)
             gain = "; ".join(sc) if sc else ""
