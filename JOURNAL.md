@@ -21276,3 +21276,21 @@ new rules (36 games, 1,029 moves, cached, 8s): errors 220 (0.21, win-prob verdic
 positional 33% / simple 23%; a real threat existed in 18% of positions (21% before the cash rule).
 AUjG3sl4 (Black, 0-1): 4 errors in 29 (3...Nf6 missed Qxg2 -16 win%; 12...Qd5, 13...c5, 18...Bxd4
 inaccuracies), effective rating 1900 this game; two reports byte-identical on re-run.
+
+## 2026-09-05 00:20 PDT — "16.c4 is an inaccuracy because the pawn is captured; this isn't mentioned. why?"
+
+Two reasons, both fixed. (1) L3 had 'hanging' (attacked, undefended) but no fact for a DEFENDED piece
+that still falls: c4 was attacked by Qd5 and Ba6, defended by Nd2 once. Added facts.see (static exchange
+evaluation, the swap list under the variant scale, no x-rays) and the L3 relation 'underdefended'
+(victim-owned, tag 2v1, only when no lesser piece already attacks it). c4 now reads "put the pawn where
+Bxc4 wins it: attacked twice, defended once (-1.1 pawns, -10 win%)". (2) The teeth gate (Kaveh's own rule
+from 9.Bd2) compared Bxc4 (+1.38) with Black's quiet Qh5 (+1.21): 17cp of teeth, so the reply was
+demoted to "missed Rc1". A reply that wins material on its capture square (exchange net > 0) is now the
+punishment whatever the alternatives score. Side fixes from re-reading both games under the new relation:
+a capturing reply exploits exactly the liability it captures (cxb6 had become "walked into" via the b6
+pawn while Qxe3+ took e3), and a plain capture of a liability beats a motif in the why-clause (fxg3:
+"Bxc5 takes the pawn, which was attacked more than defended", not "attraction"). Gauge unchanged
+(fork 0.96, pin 0.98, skewer 0.93, hanging 1.00 / 0.25 false fire). Rapid set (36 games, 1,029 moves):
+causes missed_better 43%, ignored_threat 22%, enabled_tactic 18%, walked_into 10%, positional 6%;
+walked-into now led by hanging 11 (was pin 12). Tests 25. Known limit: SEE ignores x-rays behind the
+capturing piece (a battery understates the attack).
