@@ -31,7 +31,7 @@
   .players .vs{color:var(--mut)}
   @media (min-width:900px){.players{flex-direction:column;align-items:flex-start;gap:4px}}
   .meta{color:var(--mut);font-size:12px;margin-top:4px;line-height:1.5}
-  #board{width:100%;aspect-ratio:1;max-width:100%}
+  #board{width:100%;aspect-ratio:1;max-width:100%;touch-action:none}
   .mainc{min-width:0}
   .mainc .col{padding:10px}
   .analysis{margin-top:8px}
@@ -47,7 +47,7 @@
   tr.link{cursor:pointer} tr.link:hover td{background:#242832}
   .bar{height:8px;background:#2a2e36;border-radius:3px;overflow:hidden;min-width:40px;display:inline-block;vertical-align:middle}
   .bar>i{display:block;height:100%;background:var(--blue)} .bar.g>i{background:var(--grn)}
-  .moves{max-height:200px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);line-height:1.8;margin-top:8px}
+  .moves{position:relative;max-height:200px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);line-height:1.8;margin-top:8px}
   .moves b{color:var(--tx)}
   .moves span{padding:0 3px;border-radius:3px;cursor:pointer}
   .moves span.inaccuracy b{color:var(--org)} .moves span.mistake b{color:var(--pink)} .moves span.blunder b{color:var(--pink);text-decoration:underline}
@@ -58,8 +58,6 @@
   .head{font-size:15px;line-height:1.35;margin:6px 0 8px;color:var(--tx)}
   .box{background:#0d0f13;border:1px solid var(--bd);border-radius:6px;padding:10px 12px;font:12.5px/1.5 ui-monospace,monospace;white-space:pre-wrap;color:var(--tx);max-height:40vh;overflow:auto}
   .lrow{margin:3px 0} .ply{cursor:pointer;padding:0 2px;border-radius:3px} .ply:hover{background:#2a2e36}
-  .inspect{display:flex;gap:10px;align-items:flex-start;margin-top:10px;flex-wrap:wrap}
-  .inspect .brd{width:168px;height:168px;flex:none;overflow:hidden}
   .ladder td{padding:2px 4px;white-space:nowrap}
   #toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#3a1d24;
          border:1px solid var(--pink);color:#ffd7df;padding:8px 12px;border-radius:6px;display:none;z-index:9}
@@ -103,7 +101,7 @@ const $=s=>document.querySelector(s);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const ERR=new Set(["inaccuracy","mistake","blunder"]);
 const BRUSH_PLAYED="yellow", BRUSH_BEST="green", BRUSH_REPLY="red";
-let cg=null, cgMini=null, poll=null;
+let cg=null, poll=null;
 /* S.plies = the server's analysis frames (one per ply, may be partial while streaming);
    S.fens[i] = the position BEFORE ply i (fens[n] = the final position); S.ptr = the ply being explained. */
 const S={view:"home",gameId:null,headers:{},plies:[],fens:[],moves:[],ptr:0,flip:false,total:0,partial:false,side:null,probe:null,userName:null};
@@ -167,7 +165,7 @@ function gameLayout(){
     </div>
     <div class="moves" id="moves"></div>
     <details style="margin-top:8px"><summary class="pill" style="cursor:pointer">every fact (long form)</summary><div class="box" id="textLong" style="margin-top:6px"></div></details>
-    <div class="inspect"><div class="brd" id="miniBoard"></div><div><div class="pill">line preview</div><div class="k" id="miniLabel" style="margin:4px 0">click a move in a line</div><div class="pill">a move on the board explores; nav returns to the game</div></div></div>
+    <div class="pill" style="margin-top:8px">click a move in a line to see it on the board; a move on the board explores; ◀ ▶ return to the game</div>
   </div>
   <div class="extra info" id="summary"></div></div>`;
   $("#bFlip").onclick=()=>{S.flip=!S.flip;setBoard();};
@@ -177,12 +175,14 @@ function gameLayout(){
 }
 function initBoard(){
   cg=Chessground($("#board"),cgConfig());
-  try{cgMini=Chessground($("#miniBoard"),{viewOnly:true,coordinates:false,fen:"8/8/8/8/8/8/8/8"});}catch(e){cgMini=null;}
   const ro=new ResizeObserver(entries=>{for(const e of entries){const w=Math.round(e.contentRect.width);
       if(w>0&&Math.abs(e.contentRect.height-w)>1)e.target.style.height=w+"px";}
-    try{cg.redrawAll();if(cgMini)cgMini.redrawAll();}catch(err){}});
-  ro.observe($("#board"));ro.observe($("#miniBoard"));
+    try{cg.redrawAll();}catch(err){}});
+  ro.observe($("#board"));
 }
+/* show a position from a line on the main board (an exploration view; navigation returns to the game) */
+function showLinePosition(fen,label){let g;try{g=new Chess(fen);}catch(e){return;}S.probe=g;
+  cg.set(cgConfig({lastMove:undefined}));cg.setShapes([]);setStatus(`${label} · ◀ ▶ to return to the game`);}
 const START="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 function curFen(){return S.probe?S.probe.fen():(S.fens[S.ptr]||S.fens[0]||START);}
 function turnOf(fen){return fen.split(" ")[1]==="w"?"white":"black";}
@@ -231,7 +231,9 @@ function renderMoves(){const m=$("#moves");if(!m)return;let html="",n=0;
     else html+=`<span data-i="${i}" class="${v}${cur}"><b>${esc(mv.san)}</b>${ev}</span> `;});
   for(let i=S.moves.length;i<S.total;i++)html+=`<span class="pill">·</span>`;
   m.innerHTML=html;m.querySelectorAll("[data-i]").forEach(s=>s.onclick=()=>goto(+s.dataset.i));
-  const c=m.querySelector(".cur");if(c)c.scrollIntoView({block:"nearest"});}
+  const c=m.querySelector(".cur");                                   // keep it visible inside the list without moving the page
+  if(c){const top=c.offsetTop-m.offsetTop, bottom=top+c.offsetHeight;
+    if(top<m.scrollTop)m.scrollTop=top; else if(bottom>m.scrollTop+m.clientHeight)m.scrollTop=bottom-m.clientHeight;}}
 function safeMove(g,mv){try{return g.move(mv);}catch(e){return null;}}      // chess.js v2 throws on an illegal move
 function lineHtml(label,fen,san){if(!san)return"";let g;try{g=new Chess(fen);}catch(e){return"";}const plies=[];
   for(const tok of san.split(/\s+/)){if(/^\d+\.+$/.test(tok))continue;const m=safeMove(g,tok);if(!m)break;plies.push({san:tok,fen:g.fen(),white:m.color==="w"});}
@@ -253,7 +255,7 @@ function renderPanel(){
   if(p.structure&&p.structure.length)lines+=`<div class="lrow"><span class="pill">structure</span> ${p.structure.map(esc).join("; ")}</div>`;
   if(p.horizon)lines+=`<div class="lrow"><span class="pill">horizon</span> ${esc(p.horizon)}</div>`;
   L.innerHTML=lines;
-  L.querySelectorAll(".ply").forEach(s=>s.onclick=()=>{if(cgMini)cgMini.set({fen:s.dataset.fen.split(" ")[0]});$("#miniLabel").textContent=s.dataset.label;});
+  L.querySelectorAll(".ply").forEach(s=>s.onclick=()=>showLinePosition(s.dataset.fen,s.dataset.label));
   T.textContent=p.text||"";TL.textContent=p.text_long||"";
   const keys=Object.keys(p.p_played||{}).sort();
   lad.innerHTML=(keys.length?`<tr><th class="pill">who plays it</th><th class="pill">${esc(p.san)}</th><th class="pill">${esc(p.best||"")}</th></tr>`:"")+keys.map(k=>`<tr><td>${k}</td><td><span class="bar"><i style="width:${p.p_played[k]}%"></i></span> ${p.p_played[k]}%</td>`+
