@@ -323,10 +323,10 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
 
-def serve(port: int, depth: int, threads: int, workers: int, max_games: int):
+def serve(port: int, depth: int, threads: int, workers: int, max_games: int, host: str = "127.0.0.1"):
     Handler.jobs = Jobs(depth, threads, workers, max_games)
-    srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"analyst web: http://127.0.0.1:{port}  (depth {depth}, {threads} engine threads; flags -> {FLAGS.relative_to(ROOT)})", flush=True)
+    srv = ThreadingHTTPServer((host, port), Handler)
+    print(f"analyst web: http://{host}:{port}  (depth {depth}, {threads} engine threads; flags -> {FLAGS.relative_to(ROOT)})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
@@ -336,12 +336,13 @@ def serve(port: int, depth: int, threads: int, workers: int, max_games: int):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--host", default="127.0.0.1", help="bind address; 0.0.0.0 to reach it from other devices (e.g. over Tailscale)")
     ap.add_argument("--depth", type=int, default=18, help="engine depth for single games")
     ap.add_argument("--threads", type=int, default=6)
     ap.add_argument("--workers", type=int, default=4, help="review workers for a user's games")
     ap.add_argument("--max-games", type=int, default=30, help="how many recent games to fetch for a user")
     a = ap.parse_args(argv)
-    serve(a.port, a.depth, a.threads, a.workers, a.max_games)
+    serve(a.port, a.depth, a.threads, a.workers, a.max_games, a.host)
 
 
 if __name__ == "__main__":
