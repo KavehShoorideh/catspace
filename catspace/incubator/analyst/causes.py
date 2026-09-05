@@ -9,11 +9,11 @@ from __future__ import annotations
 import chess
 
 from .dynamics import move_effects
+from .relations import against
 
 FAMILY = {"pin": ("pin", "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin"),
           "fork": ("fork",), "discovered": ("discovered_attack", "battery"), "skewer": ("skewer",),
           "hanging": ("hanging",), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",)}
-VICTIM_SIDE = ("hanging", "loose", "pinned_and_attacked", "hanging_through_pin", "disabled_attack", "disabled_defense")
 SIMPLE = {"hanging", "attacked_by_lower", "capture"}
 COMPOUND = {"pin", "fork", "discovered", "skewer", "overload", "mate", "deflection", "attraction", "interference", "clearance", "removal_of_guard", "double_attack", "xray_defense"}
 
@@ -22,30 +22,50 @@ def families(names) -> list[str]:
     return sorted(f for f, ns in FAMILY.items() if any(n in ns for n in names))
 
 
-def walked_into(board: chess.Board, played: chess.Move) -> list[str]:
-    """Families of vulnerabilities the played move CREATED against its own side."""
+def victims(r, victim: chess.Color) -> set:
+    """Squares of VICTIM's pieces inside the relation (piece symbols carry the colour)."""
+    return {sq for sq, sym in zip(r.squares, r.pieces or ()) if sym and sym.isupper() == (victim == chess.WHITE)}
+
+
+def walked_into(board: chess.Board, played: chess.Move) -> list:
+    """Relations the played move CREATED against its own side (liabilities it walked into)."""
     us = board.turn
     e = move_effects(board, played)
-    names = []
-    for r in e.created:
-        ours = (r.owner == us) if r.name in VICTIM_SIDE else (r.owner != us)   # victim-side relations are owned by the victim
-        if ours:
-            names.append(r.name)
-    return families(names)
+    return [r for r in e.created if against(r, us)]
+
+
+def exploited(walked: list, e0, victim: chess.Color) -> list[str]:
+    """Families of walked-into relations the refutation's first ply actually exploits: the refuting move
+    creates/uses/resolves a liability against the same victim piece, or captures it. Name coincidences do
+    not count (2026-09-05: Bf4 created a skewer AGAINST the opponent, Bc5+ created another 'skewer' -- the
+    real story was the free pawn Bxb6 missed)."""
+    if e0 is None:
+        return []
+    hits = []
+    ref = [r for r in (e0.created + e0.uses + e0.resolved) if against(r, victim)]
+    to_sq = chess.Move.from_uci(e0.uci).to_square if e0.uci else None
+    for r in walked:
+        v = victims(r, victim)
+        if (to_sq in v and e0.captured) or any(v & victims(r2, victim) for r2 in ref):
+            hits.append(r)
+    return hits
 
 
 TEETH_CP = 40      # a refutation with less than this over the opponent's next-best reply is not a tactic
 
 
 def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], ignored_threat: bool,
-             available_before: bool | None = None, teeth: int | None = None, even_trade: bool = False) -> dict:
+             available_before: bool | None = None, teeth: int | None = None, even_trade: bool = False,
+             refutation_effect=None) -> dict:
     """available_before: was the refutation already playable AND strong had we passed instead of moving
     (engine-checked by the caller)? True -> we ignored it; False -> our move enabled it.
     teeth: how much better the refutation is than the opponent's second-best reply (cp). When the
     reply has no teeth, the loss is the OPPORTUNITY we missed, not a tactic we suffered (Kaveh 2026-09-05:
     Bd2 'ignored' a toothless pin while the real story was the free pawn on c7)."""
-    w = walked_into(board, played)
-    hit = sorted(set(w) & set(mechanisms))
+    walked = walked_into(board, played)
+    w = families([r.name for r in walked])
+    hit_rels = exploited(walked, refutation_effect, board.turn) if refutation_effect is not None else []
+    hit = families([r.name for r in hit_rels]) if refutation_effect is not None else sorted(set(w) & set(mechanisms))
     if even_trade and "mate" not in mechanisms and (teeth is None or teeth < 150):   # the trade IS the story; incidental geometry is not
         cause = "positional"                   # Kaveh 2026-09-05: a knight-for-bishop trade is materially equal at this layer;
                                                # the eval change is about plans and belongs one layer up -- say so, don't invent a tactic
@@ -63,4 +83,6 @@ def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], igno
         cause = "missed_better"
     kinds = set(mechanisms)
     kind = "positional" if cause == "positional" else "compound" if kinds & COMPOUND else "simple" if kinds & SIMPLE else "positional"
-    return {"cause": cause, "kind": kind, "walked_into": w, "walked_into_hit": hit}
+    return {"cause": cause, "kind": kind, "walked_into": w, "walked_into_hit": hit,
+            "walked_into_rel": {"name": hit_rels[0].name, "squares": list(hit_rels[0].squares), "pieces": list(hit_rels[0].pieces or ()),
+                                "owner": hit_rels[0].owner, "tags": list(hit_rels[0].tags or ())} if hit_rels else None}

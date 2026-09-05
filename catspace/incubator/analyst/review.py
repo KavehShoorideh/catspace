@@ -26,7 +26,8 @@ from .relations import relations
 from .dynamics import significant, line_effects
 from .horizon import trajectories, find_traps, winp
 from .maia import Maia
-from .causes import classify
+from .facts import value
+from .causes import classify, against
 from .sequences import find_sequences
 STAGE1_DEPTH = 6
 STAGE1_FLAG_CP = 30          # a shallow drop this big (or a Lichess-eval drop) sends the move to the full analysis
@@ -136,14 +137,14 @@ def main(argv=None):
                            "drop": (rec.eval_cp - rec.played.cp) if rec.played else 0, "eval_cp": rec.eval_cp,
                            "phase_nonpawn": rec.facts.phase_nonpawn, "best": rec.idea.san if rec.idea else None,
                            "p_played": p_played, "p_best": p_best, "mechanisms": [], "present": families(
-                               [x.name for x in relations(board) if significant(x) and ((x.owner != us) or (x.name in ("hanging",) and x.owner == us))]),
+                               [x.name for x in relations(board) if significant(x) and against(x, us)]),
                            "ignored_threat": False, "threat_existed": bool(rec.threats), "trap": None, "stage": "full",
                            "date": g.headers.get("Date", ""), "tc": g.headers.get("TimeControl", "")}
                     if rec.verdict in ERR:
                         r = rec.played.refutation
                         if r and r.effects:
                             e0 = r.effects[0]
-                            row["mechanisms"] = families([x.name for x in e0.created] + [x.name for x in e0.uses] + [x.name for x in e0.resolved])
+                            row["mechanisms"] = families([x.name for x in e0.created + e0.uses + e0.resolved if against(x, us)])   # only what hurts the victim
                             if e0.captured: row["mechanisms"].append("capture")
                             if r.mate is not None or r.san.endswith("#"): row["mechanisms"].append("mate")
                             _b = board.copy(stack=False); _b.push(mv)
@@ -166,8 +167,12 @@ def main(argv=None):
                         even = False
                         if r and len(r.effects) >= 2 and r.effects[0].captured and r.effects[1].captured:
                             even = r.effects[0].captured[1] == r.effects[1].captured[1] and chess.Move.from_uci(r.uci).to_square == mv.to_square
+                        if r and not even and r.effects and r.effects[0].captured and board.is_capture(mv) and not board.is_en_passant(mv):
+                            # we captured first and they recaptured on the same square for the same value: an even trade we initiated
+                            even = value(board, mv.to_square) == r.effects[0].captured[1] and chess.Move.from_uci(r.uci).to_square == mv.to_square
                         row["even_trade"] = even
-                        row["cause"] = classify(board, mv, row["mechanisms"], row["ignored_threat"], avail, teeth, even)
+                        row["cause"] = classify(board, mv, row["mechanisms"], row["ignored_threat"], avail, teeth, even,
+                                                refutation_effect=r.effects[0] if r and r.effects else None)
                         if rec.played_scores and rec.idea:
                             sc = rec.played_scores; dmax = max(sc)
                             final = sc[dmax]; peak_d = max((d for d in sc if d >= 2), key=lambda d: winp(sc[d]), default=None)

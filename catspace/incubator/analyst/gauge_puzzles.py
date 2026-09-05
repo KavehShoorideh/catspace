@@ -18,7 +18,7 @@ import chess
 import zstandard
 
 from catspace.io import paths
-from .relations import relations
+from .relations import relations, against
 from .dynamics import line_effects, zugzwang
 from .engine import Engine
 from .sequences import find_sequences
@@ -28,7 +28,6 @@ SEQ_THEMES = {"deflection": ("deflection",), "attraction": ("attraction",), "int
 THEME_TO_REL = {"fork": ("fork",), "pin": ("pin",), "skewer": ("skewer",),
                 "discoveredAttack": ("discovered_attack", "battery"), "hangingPiece": ("hanging",),
                 "xRayAttack": ("xray",)}
-VICTIM_SIDE = ("hanging", "loose", "overloaded")
 
 
 def solver_position(row):
@@ -48,7 +47,7 @@ def detected(board: chess.Board, solution: list[chess.Move]) -> tuple[set[str], 
     for r in relations(board):
         if r.name == "hanging":
             continue
-        if (r.owner != solver) if r.name in VICTIM_SIDE else (r.owner == solver):
+        if not against(r, solver):
             static.add(r.name)
     t = board.copy(stack=False)
     for i, e in enumerate(line_effects(board, solution, 3)):
@@ -60,7 +59,7 @@ def detected(board: chess.Board, solution: list[chess.Move]) -> tuple[set[str], 
                 if r.owner != solver:
                     hanging_now.add(r.squares[0])
                 continue
-            if (r.owner != solver) if r.name in VICTIM_SIDE else (r.owner == solver):
+            if not against(r, solver):
                 created.add(r.name)
         t.push(mv)
     return static | created, created

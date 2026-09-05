@@ -242,6 +242,16 @@ def hanging_through_pin(board: chess.Board, composed: list[Relation]) -> list[Re
     return out
 
 
+# Owner convention (one place, imported everywhere): a relation is owned by the side it WORKS FOR, except the
+# victim-owned family below, which is owned by the side whose piece is in trouble (its colour is the natural key).
+VICTIM_OWNED = frozenset({"hanging", "loose", "overloaded", "double_duty", "hanging_through_pin"})
+
+
+def against(r: Relation, victim: chess.Color) -> bool:
+    """Is this relation a liability of VICTIM's side?"""
+    return (r.owner == victim) if r.name in VICTIM_OWNED else (r.owner != victim)
+
+
 def relations(board: chess.Board) -> list[Relation]:
     atk, dfd = attacks_and_defends(board)
     lines = line_relations(board)

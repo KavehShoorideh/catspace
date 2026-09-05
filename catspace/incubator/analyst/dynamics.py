@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 import chess
 
 from .facts import value
-from .relations import Relation, relations
+from .relations import Relation, relations, against
 from .engine import Engine, Line
 
 NOTABLE = ("hanging", "loose", "attacked_by_lower_value", "pin", "skewer", "xray", "fork",
@@ -99,9 +99,10 @@ def move_effects(board: chess.Board, move: chess.Move, ply: int = 1) -> Effect:
     after_b = board.copy(stack=False)
     after_b.push(move)
     after = _notable(relations(after_b))
-    created = [after[k] for k in after.keys() - before.keys()
-               if not (after[k].name in ("hanging", "loose") and after[k].squares[0] == move.to_square)]
-    gone = [before[k] for k in before.keys() - after.keys() if before[k].name in DESTROYED_NOTABLE]
+    created = sorted((after[k] for k in after.keys() - before.keys()
+                      if not (after[k].name in ("hanging", "loose") and after[k].squares[0] == move.to_square)), key=lambda r: r.key)
+    gone = sorted((before[k] for k in before.keys() - after.keys() if before[k].name in DESTROYED_NOTABLE), key=lambda r: r.key)
+    # sorted: set differences follow per-process string hashing; the prose must not change between runs
     uses = [r for r in before.values() if r.name in ("discovered_attack", "battery") and r.squares[1] == move.from_square]
     resolved, escaped, ended = [], [], []
     for r in gone:
@@ -154,9 +155,7 @@ def structural_threats(board: chess.Board) -> list[tuple[Relation, chess.Move | 
     for r in relations(board):
         if r.name not in STRUCTURAL or not significant(r):
             continue
-        victim_side = r.name in ("hanging", "pinned_and_attacked", "hanging_through_pin", "overloaded", "disabled_defense")
-        ours = (r.owner == us) if victim_side else (r.owner != us)
-        if not ours:
+        if not against(r, us):
             continue
         mv = None
         if r.name == "hanging":

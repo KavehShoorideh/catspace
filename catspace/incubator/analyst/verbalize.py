@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import chess
 
+from .engine import MATE_CP
+
 from .dynamics import Effect
 from .ideas import Candidate, IdeaRecord
-from .relations import Relation
+from .relations import Relation, against
 from .mates import mate_in_line
 from .sequences import find_sequences
 MOTIF = {"deflection": "deflection", "attraction": "attraction", "interference": "interference", "clearance": "clearance",
@@ -142,7 +144,14 @@ def cp_str(cp: int, side_white: bool, mate: int | None = None) -> str:
         m = mate if side_white else -mate
         return f"#{m}" if m > 0 else f"#-{-m}"
     v = cp if side_white else -cp
+    if abs(v) >= MATE_CP - 1000:                          # a folded mate score with the distance lost: say 'mate', not +99.85
+        return "#" if v > 0 else "#-"
     return f"{v/100:+.2f}"
+
+
+def gain_str(gain_cp: int) -> str:
+    """A threat's gain over the tempo baseline; a mating threat says so instead of printing thousands of cp."""
+    return "mates" if gain_cp >= MATE_CP - 2000 else f"{gain_cp:+d} cp above a tempo"
 
 
 def candidate_phrases(c: Candidate, n: int = 3, k: int = 2) -> str:
@@ -170,12 +179,9 @@ def _rank(r: Relation, mover: bool) -> tuple:
             PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_STD.of_symbol(sym))
 
 
-VICTIM_SIDE = ("hanging", "loose", "pinned_and_attacked", "hanging_through_pin", "disabled_attack", "disabled_defense", "overloaded")
-
-
 def favors_mover(r: Relation, mover: bool) -> bool:
-    """Does this relation work FOR the side that just moved? (victim-side facts are owned by the victim)"""
-    return (r.owner != mover) if r.name in VICTIM_SIDE else (r.owner == mover)
+    """Does this relation work FOR the side that just moved? (victim-owned facts are owned by the victim)"""
+    return not against(r, mover)
 
 
 def best_fact(e: Effect, strict: bool = False) -> str | None:
@@ -276,7 +282,7 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
         fe = (effect_phrase(t.first_effects, 1) if long else best_fact(t.first_effects)) if t.first_effects else ""
         b = chess.Board(rec.fen)
         already = f" Already: {rel_phrase(t.structure)}." if t.structure is not None else ""
-        add(f"  If {who} does nothing: {t.san_line(b, 4)}" + (f" -- {fe}" if fe else "") + f" ({t.gain_cp:+d} cp above a tempo).{already}")
+        add(f"  If {who} does nothing: {t.san_line(b, 4)}" + (f" -- {fe}" if fe else "") + f" ({gain_str(t.gain_cp)}).{already}")
         shown += 1
     if rec.zugzwang and rec.zugzwang.flagged:
         add(f"  Zugzwang: every move worsens {who}'s position (passing would be {rec.zugzwang.pass_cp - rec.zugzwang.best_cp:+d} cp better).")
@@ -327,6 +333,11 @@ def delta_str(rec: IdeaRecord) -> str:
         return ""
     d_cp = rec.played.cp - rec.eval_cp
     d_wp = winp(rec.played.cp) - winp(rec.eval_cp)
+    folded = MATE_CP - 1000
+    if abs(rec.played.cp) >= folded or abs(rec.eval_cp) >= folded:          # a mate score: pawns are meaningless
+        if rec.eval_cp >= folded and rec.played.cp < folded and rec.idea and rec.idea.mate:
+            return f"mate in {(rec.idea.mate + 1) // 2} was there, {d_wp:+.0f} win%"
+        return f"{d_wp:+.0f} win%"
     return f"{d_cp/100:+.1f} pawns, {d_wp:+.0f} win%"
 
 
@@ -335,28 +346,32 @@ PURPOSE_NAMES = ("pin", "pinned_and_attacked", "hanging", "attacked_by_lower_val
 
 def purpose(rec: IdeaRecord) -> str:
     """What the played move DID for its own side (the pin it broke, the piece it saved) -- so the critique
-    acknowledges the point of the move before saying what it cost."""
+    acknowledges the point of the move before saying what it cost. Priority: a piece saved from capture,
+    then a fork/skewer escaped, then a pin broken; ties go to the bigger piece."""
     pl = rec.played
     if not pl or not pl.effects:
         return ""
     e = pl.effects[0]; us = rec.side == "white"
+    mates = [t for t in rec.threats if t.real and t.line.mate is not None and t.line.mate > 0]
+    if mates and pl.mate is None:                                             # the move parried a mate threat: that IS its purpose
+        b = chess.Board(rec.fen); nb = b.copy(stack=False); nb.push(chess.Move.null())
+        return f"stopping {nb.san(chess.Move.from_uci(mates[0].line.move))}"
+    cands = []
     for r in list(e.escaped) + list(e.destroyed) + list(e.resolved):
         if r.name not in PURPOSE_NAMES:
             continue
-        victim_side = r.name in ("pinned_and_attacked", "hanging", "disabled_attack", "disabled_defense")
-        ours = (r.owner == us) if victim_side else (r.owner != us)          # a pin/skewer/fork BY them on us, or our piece in trouble
-        if not ours:
+        if not against(r, us):                                                # a pin/skewer/fork BY them on us, or our piece in trouble
             continue
         if r.name == "pin":
             if "absolute" not in r.tags and _STD.of_symbol(r.pieces[1]) < _STD.minor_value:
                 continue                                                      # a pawn's relative pin is not a purpose
-            return f"unpinning {pc(r.pieces[1], r.squares[1])}"
-        if r.name in ("hanging", "pinned_and_attacked", "attacked_by_lower_value"):
-            i = 1 if r.name == "attacked_by_lower_value" else 0
-            return f"saving {pc(r.pieces[i], r.squares[i])}"
-        if r.name in ("fork", "skewer"):
-            return f"escaping the {r.name}"
-    return ""
+            cands.append((2, -_STD.of_symbol(r.pieces[1]), f"unpinning {pc(r.pieces[1], r.squares[1])}"))
+        elif r.name in ("hanging", "pinned_and_attacked", "attacked_by_lower_value"):
+            i = 0 if r.name == "hanging" else 1                                # the piece in trouble: (pinner, PINNED, ...) / (attacker, TARGET)
+            cands.append((0, -_STD.of_symbol(r.pieces[i]), f"saving {pc(r.pieces[i], r.squares[i])}"))
+        elif r.name in ("fork", "skewer"):
+            cands.append((1, 0.0, f"escaping the {r.name}"))
+    return min(cands)[2] if cands else ""
 
 
 def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: dict, p_best: dict, level: int) -> tuple[str, bool]:
@@ -376,9 +391,15 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
         s = f"You had mate in {(mate[0] + 1) // 2}: {rec.idea.line_san} -- {mate[1]}: {mate[2]}. You played {pl.san} ({delta_str(rec)})."
     elif cause and cause["cause"] == "positional":
         e0 = r.effects[0] if r and r.effects else None
-        what = f"{e0.captured[0]} for {r.effects[1].captured[0]}" if e0 and len(r.effects) > 1 and r.effects[1].captured else "a trade"
-        s = (f"{pl_name} allowed {r.san}, an even trade ({what}" + (", with check" if e0 and e0.gives_check else "") + f"). "
-             f"The cost ({delta_str(rec)}) is positional -- what the trade does to the plans -- which this layer does not explain. Better was {rec.idea.san} ({ev_best}).")
+        we_took = b.is_capture(chess.Move.from_uci(pl.uci)) and not b.is_en_passant(chess.Move.from_uci(pl.uci))
+        if we_took and e0 and e0.captured:                      # we captured first, they recaptured
+            ours = chess.piece_name(b.piece_at(chess.Move.from_uci(pl.uci).to_square).piece_type)
+            head = f"{pl_name} traded {e0.captured[0]} for {ours}, an even trade" + (" (they recapture with check)" if e0.gives_check else "")
+        else:
+            what = f"{e0.captured[0]} for {r.effects[1].captured[0]}" if e0 and len(r.effects) > 1 and r.effects[1].captured else "a trade"
+            head = f"{pl_name} allowed {r.san}, an even trade ({what}" + (", with check" if e0 and e0.gives_check else "") + ")"
+        s = (f"{head}. The cost ({delta_str(rec)}) is positional -- what the trade does to the plans -- "
+             f"which this layer does not explain. Better was {rec.idea.san} ({ev_best}).")
     elif cause and cause["cause"] == "missed_better" and rec.idea:
         e0 = rec.idea.effects[0] if rec.idea.effects else None
         gain = best_fact(e0, strict=True) if e0 else None
@@ -395,7 +416,12 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
             else:
                 s = f"{pl.san} hung the {e0.captured[0]}: {r.san} takes it" + (", with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
         else:
-            s = f"{pl.san} walked into {_noun(cause['walked_into_hit'])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+            wr = cause.get("walked_into_rel")
+            if wr:                                                            # name the liability the move created, in its own words
+                rel = Relation(wr["name"], len(wr["squares"]), tuple(wr["squares"]), wr["owner"], tuple(wr["tags"]), tuple(wr["pieces"]))
+                s = f"{pl_name} walked into it -- {rel_phrase(rel)} -- and {r.san if r else '?'} cashes it" + (f" ({why})" if why and why != rel_phrase(rel) else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+            else:
+                s = f"{pl_name} walked into {_noun(cause['walked_into_hit'])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     elif cause and cause["cause"] == "ignored_threat":
         already = next((t.structure for t in rec.threats if t.structure is not None and r and t.line.move == r.uci), None)
         s = f"{pl.san} ignored a standing threat: {r.san if r else '?'}" + (f" -- {why}" if why else "") + (f" (already: {rel_phrase(already)})" if already else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
