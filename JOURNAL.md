@@ -21240,3 +21240,22 @@ Piece values are now variant data (rules.Scale: values, royal value, material si
 threshold), declared with the objective in L1 (Rules.scale, set_scale at runtime), consumed only
 through facts.value()/Scale.of_symbol(). No private value table remains in L3-L6. Test: knight worth
 6 turns the b2-d4-f6 pin into a skewer; antichess sign -1, royal value 0. Tests 23 -> 24. Plan §15.
+
+## 2026-09-04 22:40 PDT — full review of AsXfL6OX regenerated; four defects found by reading the whole game
+
+Regenerating Kaveh's game at depth 18 for BOTH sides surfaced: (1) "Bf4 walked into a skewer" was a
+name coincidence -- Bf4 created a skewer AGAINST Black (Bd6/c7) and Bc5+ created another relation named
+skewer; the classifier intersected family names. Now the refutation must hit the same victim piece
+(causes.exploited). Headline became "Bf4 (saving the bishop on e3) missed Bxb6 -- takes the pawn whose
+defender was pinned (-25 win%)". (2) Four files carried four different VICTIM_SIDE lists; the composed
+pins (pinned_and_attacked, disabled_*) are attacker-owned in relations.py, so purpose() named the
+pinner as the piece being saved ("Bxf3 saving the bishop on b7"). One convention now: relations.VICTIM_OWNED
++ against(). Gauge after: recall unchanged (fork 0.96, pin 0.98, skewer 0.93, discovered 0.98, hanging
+1.00); hanging false-fire on non-theme puzzles 0.38 -> 0.25 (lift x2.6 -> x4.0); zugzwang 0.68 -> 0.66
+(n=47, one puzzle). (3) The prose changed between two runs of the same game: move_effects built
+created/destroyed from set differences of dict keys (string-hash order). Sorted; two runs now diff clean.
+(4) Mate scores leaked as "+99.85" and "+8782 cp above a tempo"; now "mates" / "mate in 8 was there".
+Also: an even trade the player initiated (Bxf3 Nxf3) is now positional like one they allowed; the purpose
+of a move that parries a mate threat is "stopping Qxc7#". Kaveh's side: 10/28 errors, 7 omissions
+(free pawns 9.Bxc7, 18/19.cxb6, 22.Bxb6), 2 ignored Qxe3+ (moves 20-21), 1 even trade; effective rating
+1300 (blitz 1278). Report: tmp/game_AsXfL6OX_full.md. Tests 24.
