@@ -17,6 +17,7 @@ import chess.pgn
 from .engine import Engine
 from .ideas import analyse_game
 from .verbalize import cp_str, best_fact, delta_str, motif_phrase
+from .structure import top_changes
 
 FACT_KEYS = ("takes", "hanging", "forks", "pins", "skewers", "checkmate", "discovering", "attacks", "with check",
              "overloaded", "two jobs", "lured", "deflect", "guard", "cut")
@@ -97,6 +98,9 @@ def main(argv=None):
             fact = best_fact(e0, strict=True) if e0 else None
             fact = fact if fact and any(k in fact for k in FACT_KEYS) else None
             mp = motif_phrase(board, pl.pv) if pl and pl.pv else ""
+            if not (mp or fact) and e0 is not None:                       # quiet move: its structural change, if any
+                sc = top_changes(e0.structure_created, e0.structure_ended, k=1)
+                fact = sc[0] if sc else None
             if rec.verdict == "best":
                 line += " — best" + (f". {mp or fact}" if (mp or fact) else "")
             else:

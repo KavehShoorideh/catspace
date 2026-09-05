@@ -28,6 +28,7 @@ from .horizon import trajectories, find_traps, winp
 from .maia import Maia
 from .facts import value
 from .dynamics import cashes
+from .structure import structure_tags
 from .causes import classify, against
 from .sequences import find_sequences
 STAGE1_DEPTH = 6
@@ -164,7 +165,9 @@ def main(argv=None):
                            "p_played": p_played, "p_best": p_best, "mechanisms": [], "present": families(
                                [x.name for x in relations(board) if significant(x) and against(x, us)]),
                            "ignored_threat": False, "threat_existed": bool(rec.threats), "trap": None, "stage": "full",
-                           "date": g.headers.get("Date", ""), "tc": g.headers.get("TimeControl", "")}
+                           "date": g.headers.get("Date", ""), "tc": g.headers.get("TimeControl", ""),
+                           "structure_played": structure_tags(rec.played.effects[0].structure_created, rec.played.effects[0].structure_ended, us) if rec.played and rec.played.effects else [],
+                           "structure_best": structure_tags(rec.idea.effects[0].structure_created, rec.idea.effects[0].structure_ended, us) if rec.idea and rec.idea.effects else []}
                     if rec.verdict in ERR:
                         r = rec.played.refutation
                         if r and r.effects:
@@ -281,6 +284,12 @@ def write_report(a, games, rows, texts, ratings, t0, final):
         out.append("OBS kind of punishment: " + ", ".join(f"{k} {v} ({v/max(len(errs),1):.0%})" for k, v in kz.most_common()))
         wi = Counter(f for r in errs if r.get("cause") for f in r["cause"]["walked_into_hit"])
         out.append("OBS walked into: " + ", ".join(f"{k} {v}" for k, v in wi.most_common()))
+    # L3.5: structural habits -- what your errors do to the structure vs what the best move in the same positions does
+    sp = Counter(t for r in errs for t in r.get("structure_played", [])); sb = Counter(t for r in errs for t in r.get("structure_best", []))
+    if errs and (sp or sb):
+        keys = sorted(set(sp) | set(sb), key=lambda t: -(sp[t] - sb[t]))
+        cells = [f"{t} {sp[t]}/{sb[t]}" for t in keys if sp[t] + sb[t] >= 3][:12]
+        out.append("OBS structure in your errors (played/best, same positions): " + ", ".join(cells))
     kinds = Counter((r["trap"] or {}).get("kind") for r in errs if r["verdict"] in ("blunder", "mistake"))
     out.append(f"OBS blunders+mistakes by horizon kind: {dict(kinds)}")
     coll = [r["trap"]["collapse_depth"] for r in errs if r["trap"] and r["trap"]["kind"] == "horizon"]

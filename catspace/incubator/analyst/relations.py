@@ -241,16 +241,29 @@ def composed_pin_relations(board: chess.Board, pins: list[Relation] | None = Non
 def hanging_through_pin(board: chess.Board, composed: list[Relation]) -> list[Relation]:
     """A piece whose EVERY defender is a pinned piece that cannot recapture off its line."""
     out = []
-    dead = {}                                                   # (defender, defended) pairs
+    dead, shield = {}, {}                                       # (defended -> pinned defenders), (pinned -> (pinner, shielded))
     for r in composed:
         if r.name == "disabled_defense":
             dead.setdefault(r.squares[3], set()).add(r.squares[1])
+            shield[r.squares[1]] = (r.squares[0], r.squares[2])
     for t, piece in board.piece_map().items():
-        if not board.attackers(not piece.color, t):
+        attackers = list(board.attackers(not piece.color, t))
+        if not attackers:
             continue
         defenders = set(board.attackers(piece.color, t))
         if defenders and defenders <= dead.get(t, set()):
-            out.append(_rel(board, "hanging_through_pin", 1 + len(defenders), (t, *sorted(defenders)), piece.color))
+            # BITE (2026-09-05, 15...Rfd8 'c5 effectively hanging' while only the queen could take it): the pinned defender
+            # MAY recapture at the price of the shielded piece; the capture must win either way.
+            a = min(attackers, key=lambda q: value(board, q))
+            gain_if_left = value(board, t)
+            worst = gain_if_left
+            for d in defenders:
+                pinner, shielded = shield[d]
+                b2 = board.copy(stack=False); b2.remove_piece_at(d)
+                gain_if_recapture = value(board, t) - value(board, a) + see(b2, shielded, not piece.color)
+                worst = min(worst, gain_if_recapture)
+            if worst > 0:
+                out.append(_rel(board, "hanging_through_pin", 1 + len(defenders), (t, *sorted(defenders)), piece.color))
     return out
 
 

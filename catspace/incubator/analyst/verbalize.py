@@ -34,6 +34,7 @@ def motif_phrase(board: chess.Board, pv) -> str:
         return f"removal of the guard: {p[0]} was defending {p[1]}"
     return ""
 from .horizon import winp
+from .structure import structure_diff, top_changes
 
 COLOR = {True: "White", False: "Black"}
 PIECE = {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
@@ -270,6 +271,11 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
         if line not in seen:
             seen.add(line); out.append(line)
 
+    if long and rec.played and rec.played.effects:
+        e0 = rec.played.effects[0]
+        sc = top_changes(e0.structure_created, e0.structure_ended, k=3)
+        if sc:
+            out.append(f"  Structure after {rec.played.san}: " + "; ".join(sc) + ".")
     if rec.played and rec.verdict in ("blunder", "mistake", "inaccuracy"):
         art = "an" if rec.verdict[0] in "aeiou" else "a"
         s = f"  {rec.played.san} was {art} {rec.verdict}: {rec.idea.san} was better ({cp_str(rec.played.cp, w, rec.played.mate)} vs {ev})."
@@ -405,13 +411,19 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
         else:
             what = f"{e0.captured[0]} for {r.effects[1].captured[0]}" if e0 and len(r.effects) > 1 and r.effects[1].captured else "a trade"
             head = f"{pl_name} allowed {r.san}, an even trade ({what}" + (", with check" if e0 and e0.gives_check else "") + ")"
-        s = (f"{head}. The cost ({delta_str(rec)}) is positional -- what the trade does to the plans -- "
-             f"which this layer does not explain. Better was {rec.idea.san} ({ev_best}).")
+        plies = [pl.uci] + ([r.uci] if r else [])
+        changes = top_changes(*structure_diff(b, plies), k=2)
+        what = ("What changes: " + "; ".join(changes) + ". ") if changes else ""
+        s = (f"{head}. {what}The cost ({delta_str(rec)}) is positional -- why those changes matter is the plan layer's "
+             f"question. Better was {rec.idea.san} ({ev_best}).")
     elif cause and cause["cause"] == "missed_better" and rec.idea:
         e0 = rec.idea.effects[0] if rec.idea.effects else None
         gain = best_fact(e0, strict=True) if e0 else None
         gain = gain if gain and any(k in gain for k in ("takes", "hanging", "forks", "pins", "skewers", "checkmate", "discovering", "attacks", "attacked", "with check")) else ""
         mp = motif_phrase(b, rec.idea.pv)
+        if not mp and not gain and rec.idea.pv:                                 # a quiet move: say what it changes in the structure
+            sc = top_changes(*structure_diff(b, rec.idea.pv[:1]), k=2)
+            gain = "; ".join(sc) if sc else ""
         s = f"{pl_name} missed {rec.idea.san}" + (f" -- {mp}" if mp else f" -- {gain}" if gain else "") + f" ({delta_str(rec)})."
     elif cause and cause["cause"] == "walked_into":
         e0 = r.effects[0] if r and r.effects else None

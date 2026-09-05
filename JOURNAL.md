@@ -21310,3 +21310,20 @@ false-fire 0.32 -> 0.11 at recall 0.93 -> 0.89 (lift x2.9 -> x7.9; the 13 misses
 after ply 3, previously credited by a toothless shape in the first plies); pin 0.98 -> 0.97 recall,
 false-fire 0.43 -> 0.36. Rapid set: pin in refutations 0.12 (was 0.30 in this game's first review),
 skewer 0.05; walked-into pin 5 (was 12), skewer 2 (was 8). Tests 26. Both reports byte-identical on re-run.
+
+## 2026-09-05 02:40 PDT — L3.5 structure: the positional residue gets a vocabulary (Kaveh: "do it")
+
+structure.py, same shape as L3 (Relations; diffed per move into Effect.structure_created/_ended; phrased at L6):
+isolated / doubled / passed / backward pawns, islands, rooks on (half-)open files, outposts, bishop pair, bad
+bishop (blocked central pawns on its colour), open files by a castled king, and per-piece SCOPE (phrased only
+for a piece that did not move and gained or lost >= 3 squares). Identity rules keep the diff quiet: the pair is
+per side, doubled pawns per side+file, a passed pawn's advance is one push, a lone pawn moving stays isolated,
+a rook or king moving along its file changes nothing. Wired into: even-trade headlines ("Bf3 allowed Nxf3+, an
+even trade. What changes: White gives up the bishop pair."), quiet missed moves ("12...Qd5 missed e5 -- opens a
+line for the black bishop on c8 (+3 squares)"), the per-move report fallback ("5...e6: shuts in the black
+bishop on c8"), the long render, and a review table. Rapid set (36 games, 220 errors), played/best counts at
+the same positions: own rook leaves a half-open file 9/3, own pawns doubled 9/3, opponent's pawns undoubled
+4/0, opponent's isolated pawn removed 6/3, own bishop blocked 11/6 -- small counts, directional. Also from
+re-reading: hanging_through_pin now needs bite too (15...Rfd8 "c5 effectively hanging" while only the queen
+could take it, at the price of Q for R+P); bad bishop redefined (the count-of-pawns version fired on the
+starting position). Tests 29 (new test_analyst_structure.py). Both reports byte-identical on re-run.

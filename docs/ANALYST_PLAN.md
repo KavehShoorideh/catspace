@@ -233,3 +233,18 @@ because it is a derivative of the objective, not a rule. Consumed only through `
 a lesser piece), capture prices in L4 effects, significance thresholds, even-trade detection, and L5
 material deltas (sign). Standard chess 1/3/3/5/9; crazyhouse minors 3.5; antichess sign -1 and no royal
 value. Known limit: the prose-side thresholds in L4/L6 use the standard scale unless a board is in hand.
+
+## 16. L3.5 structure (2026-09-05): the positional residue gets a vocabulary
+
+A third of the errors in Kaveh's rapid games have no tactic in the reply, and even trades cost without any
+piece changing hands. `structure.py` gives those moves something true to say. Facts, all Relations so L4 diffs
+them per move and L6 phrases the diff: isolated_pawn, doubled_pawns (identity = side + file), passed_pawn (tag
+= ranks to go; an advance is one "push"), backward_pawn, pawn_islands (speaks only when the count changes),
+rook_on_open_file / rook_on_half_open_file, outpost (a minor piece in the enemy half, held by a pawn, that no
+enemy pawn can ever attack), bishop_pair (identity = side), bad_bishop (two or more own blocked central pawns
+on its colour), king_open_file (only once castling rights are gone), and scope (squares a piece reaches; phrased
+only for a piece that did NOT move and gained or lost three squares: "opens a line for the bishop on c8").
+Used by: even-trade headlines ("What changes: White gives up the bishop pair"), quiet missed moves ("missed e5
+-- opens a line for the black bishop on c8"), the per-move report as the fallback fact, the long render
+("Structure after ..."), and a review table (structure changes in your errors vs in the best move at the same
+positions). Rule kept from §14: these are observations; causes belong to the plan layer.

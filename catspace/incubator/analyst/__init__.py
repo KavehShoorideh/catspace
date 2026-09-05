@@ -10,6 +10,11 @@ Layer stack; each layer imports ONLY the ones below it:
                   consume from that side, and only through value()/Scale so the dependence is visible.
     L2 facts      global, square-free state facts + the conventional exchange scale
     L3 relations  static relations over pieces, indexed by ARITY, defined only via L1 probes
+    L3.5 structure  positional facts with the same shape as L3 (structure.py): isolated / doubled / passed /
+                  backward pawns, islands, rooks on open files, outposts, bishop pair, blocked (bad) bishops,
+                  open files by a castled king, and each piece's SCOPE. Diffed per move like L3 (Effect.structure_
+                  created / _ended); phrased as OBSERVATIONS ("gives up the bishop pair", "opens a line for the
+                  bishop on c8"), never as causes -- the plan layer says why a change matters.
     L4 dynamics   how relations change under moves: threats (null move), per-ply line effects,
                   tension, zugzwang
     L5 ideas      value enters here: Stockfish + the objective -> idea / killed ideas / alternatives

@@ -12,6 +12,7 @@ import chess
 
 from .facts import value
 from .relations import Relation, relations, against
+from .structure import structure
 from .engine import Engine, Line
 
 NOTABLE = ("hanging", "loose", "underdefended", "attacked_by_lower_value", "pin", "skewer", "xray", "fork",
@@ -47,6 +48,8 @@ class Effect:
     uses: list[Relation] = field(default_factory=list)        # discovered attacks / batteries executed
     resolved: list[Relation] = field(default_factory=list)    # ended because the subject was captured
     escaped: list[Relation] = field(default_factory=list)     # ended because the subject moved away
+    structure_created: list[Relation] = field(default_factory=list)   # L3.5: positional structure that appeared
+    structure_ended: list[Relation] = field(default_factory=list)     # ... and disappeared
 
 
 from .rules import STANDARD as _STD
@@ -117,7 +120,11 @@ def move_effects(board: chess.Board, move: chess.Move, ply: int = 1) -> Effect:
             escaped.append(r)
         else:
             ended.append(r)
-    return Effect(ply, san, move.uci(), mover, captured, created, ended, check, uses, resolved, escaped)
+    s_before = {r.key: r for r in structure(board)}
+    s_after = {r.key: r for r in structure(after_b)}
+    s_created = sorted((s_after[k] for k in s_after.keys() - s_before.keys()), key=lambda r: r.key)
+    s_ended = sorted((s_before[k] for k in s_before.keys() - s_after.keys()), key=lambda r: r.key)
+    return Effect(ply, san, move.uci(), mover, captured, created, ended, check, uses, resolved, escaped, s_created, s_ended)
 
 
 def line_effects(board: chess.Board, pv, max_plies: int = 6) -> list[Effect]:
