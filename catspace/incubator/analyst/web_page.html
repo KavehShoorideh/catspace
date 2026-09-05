@@ -182,9 +182,9 @@ function onCgMove(orig,dest){
   setStatus(`exploring: ${cand.san} · ◀ ▶ to return to the game`);
 }
 function setBoard(){if(!cg)return;
-  const p=S.plies[S.ptr];const last=p?[p.uci.slice(0,2),p.uci.slice(2,4)]:(S.ptr>0&&S.plies[S.ptr-1]?[S.plies[S.ptr-1].uci.slice(0,2),S.plies[S.ptr-1].uci.slice(2,4)]:undefined);
-  cg.set(cgConfig({lastMove:S.ptr>0&&S.plies[S.ptr-1]?[S.plies[S.ptr-1].uci.slice(0,2),S.plies[S.ptr-1].uci.slice(2,4)]:undefined}));
-  drawArrows(p);
+  const prev=S.ptr>0?S.plies[S.ptr-1]:null;                     // the move that led here is the lastMove highlight
+  cg.set(cgConfig({lastMove:prev?[prev.uci.slice(0,2),prev.uci.slice(2,4)]:undefined}));
+  drawArrows(S.plies[S.ptr]);                                    // the move about to be played (yellow) and the best (green)
 }
 function drawArrows(p){if(!cg)return;const sh=[];
   if(p){sh.push({orig:p.uci.slice(0,2),dest:p.uci.slice(2,4),brush:BRUSH_PLAYED});
@@ -229,8 +229,7 @@ function renderPanel(){
   let lines="";
   if(p.best&&p.best!==p.san&&p.best_line)lines+=lineHtml("best",p.fen,p.best_line);
   if(err&&p.refutation&&p.refutation.line){const g=new Chess(p.fen);g.move(p.san,{sloppy:true});lines+=lineHtml("punished by",g.fen(),p.refutation.line);}
-  if(p.threats&&p.threats.length){const g=new Chess(p.fen);const parts=p.fen.split(" ");parts[1]=parts[1]==="w"?"b":"w";parts[3]="-";
-    lines+=`<div class="lrow"><span class="pill">if ${who} did nothing</span> ${p.threats.map(esc).join(" · ")}</div>`;}
+  if(p.threats&&p.threats.length)lines+=`<div class="lrow"><span class="pill">if ${who} did nothing</span> ${p.threats.map(esc).join(" · ")}</div>`;
   if(p.structure&&p.structure.length)lines+=`<div class="lrow"><span class="pill">structure</span> ${p.structure.map(esc).join("; ")}</div>`;
   if(p.horizon)lines+=`<div class="lrow"><span class="pill">horizon</span> ${esc(p.horizon)}</div>`;
   L.innerHTML=lines;

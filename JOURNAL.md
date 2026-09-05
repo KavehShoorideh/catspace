@@ -21376,3 +21376,17 @@ board, move list coloured by verdict, one card per move, arrow keys, flip. The f
 {id, time, note, context} to feedback/flags.jsonl (tracked; id = line number); feedback/README.md and
 feedback/RESOLVED.md (coder's answers by id). Smoke: AsXfL6OX 56 plies cached in seconds; AUjG3sl4 58 plies;
 huvaxshtra 6 games in 15s; one flag written and removed. Plan §18; memory note on the review loop.
+
+## 2026-09-05 11:10 PDT — the app takes the play-atlas board (Kaveh: "your rendering is horrible; commandeer the previous one")
+
+web_page.html rebuilt on the play-atlas template (catspace/research/tools/viz): the vendored chessground with
+cburnett pieces (data-URI CSS, offline), chess.js for local rules, the resizable square board with the
+ResizeObserver lock, animations and ghost drag, legal-move dests, lastMove/check highlights, arrows via
+setShapes (played = yellow, best = green), the move list with click-to-goto and arrow keys, the mini board for
+previewing any move of a line, toast/status, the dark palette. Streaming kept the atlas discipline: frames
+never rebuild what is on screen (the board moves only when the viewed ply changes; the move list appends; the
+panel fills when its frame arrives). The analysis of the current move sits beside the board as a text box
+(verdict, cost, headline, best line and refutation as clickable plies, threats, structure, horizon, the ladder
+as bars, the long form under a disclosure). Exploring: a move on the board plays from the current position
+locally; navigation returns to the game. The server serves /assets/* from the viz tree. Tailscale:
+--host 0.0.0.0, http://100.91.237.81:8765.
