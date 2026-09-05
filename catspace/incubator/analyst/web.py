@@ -326,7 +326,7 @@ class Handler(BaseHTTPRequestHandler):
 def serve(port: int, depth: int, threads: int, workers: int, max_games: int):
     Handler.jobs = Jobs(depth, threads, workers, max_games)
     srv = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"analyst web: http://127.0.0.1:{port}  (depth {depth}, {threads} engine threads; flags -> {FLAGS.relative_to(ROOT)})")
+    print(f"analyst web: http://127.0.0.1:{port}  (depth {depth}, {threads} engine threads; flags -> {FLAGS.relative_to(ROOT)})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
