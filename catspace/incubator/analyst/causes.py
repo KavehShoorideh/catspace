@@ -46,8 +46,7 @@ def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], igno
     Bd2 'ignored' a toothless pin while the real story was the free pawn on c7)."""
     w = walked_into(board, played)
     hit = sorted(set(w) & set(mechanisms))
-    tactical = set(mechanisms) - {"capture"}
-    if even_trade and not tactical:
+    if even_trade and "mate" not in mechanisms and (teeth is None or teeth < 150):   # the trade IS the story; incidental geometry is not
         cause = "positional"                   # Kaveh 2026-09-05: a knight-for-bishop trade is materially equal at this layer;
                                                # the eval change is about plans and belongs one layer up -- say so, don't invent a tactic
     elif teeth is not None and teeth < TEETH_CP and not (set(mechanisms) & {"mate"}):
