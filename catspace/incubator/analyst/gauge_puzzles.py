@@ -21,6 +21,9 @@ from catspace.io import paths
 from .relations import relations
 from .dynamics import line_effects, zugzwang
 from .engine import Engine
+from .sequences import find_sequences
+SEQ_THEMES = {"deflection": ("deflection",), "attraction": ("attraction",), "interference": ("interference",),
+              "clearance": ("clearance",), "capturingDefender": ("removal_of_guard",)}
 
 THEME_TO_REL = {"fork": ("fork",), "pin": ("pin",), "skewer": ("skewer",),
                 "discoveredAttack": ("discovered_attack", "battery"), "hangingPiece": ("hanging",),
@@ -104,6 +107,19 @@ def main(argv=None):
             h, f = stats[mode][t]
             rec = h[0] / max(h[1], 1); fr = f[0] / max(f[1], 1)
             print(f"OBS [{mode:14s}] {t:17s} recall {rec:.2f} (n={h[1]})  | fire-rate on non-{t} {fr:.2f} (n={f[1]})  | lift x{rec/max(fr,1e-9):.1f}")
+    # ---- sequence motifs (engine-free): found in the first 3 plies of the solution ----
+    sq = {t: [[0, 0], [0, 0]] for t in SEQ_THEMES}
+    for row in rows:
+        try:
+            b, sol = solver_position(row); names = {x.name for x in find_sequences(b, sol, 3)}
+        except Exception:
+            continue
+        themes = set(row["Themes"].split())
+        for t, ns in SEQ_THEMES.items():
+            cell = sq[t][0 if t in themes else 1]; cell[0] += int(any(n in names for n in ns)); cell[1] += 1
+    for t in SEQ_THEMES:
+        h, f = sq[t]; rec = h[0] / max(h[1], 1); fr = f[0] / max(f[1], 1)
+        print(f"OBS [sequence      ] {t:17s} recall {rec:.2f} (n={h[1]})  | fire-rate on non-{t} {fr:.2f} (n={f[1]})  | lift x{rec/max(fr,1e-9):.1f}")
     # ---- engine themes ----
     eng = Engine(depth=a.depth, cache_path=str(paths.derived("analyst_gauge_cache.sqlite")))
     def mate_in(b, k): l = eng.best(b); return bool(l and l.mate == k)

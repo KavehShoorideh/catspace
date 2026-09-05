@@ -15,7 +15,7 @@ FAMILY = {"pin": ("pin", "disabled_attack", "disabled_defense", "pinned_and_atta
           "hanging": ("hanging",), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",)}
 VICTIM_SIDE = ("hanging", "loose", "pinned_and_attacked", "hanging_through_pin", "disabled_attack", "disabled_defense")
 SIMPLE = {"hanging", "attacked_by_lower", "capture"}
-COMPOUND = {"pin", "fork", "discovered", "skewer", "overload", "mate"}
+COMPOUND = {"pin", "fork", "discovered", "skewer", "overload", "mate", "deflection", "attraction", "interference", "clearance", "removal_of_guard", "double_attack", "xray_defense"}
 
 
 def families(names) -> list[str]:

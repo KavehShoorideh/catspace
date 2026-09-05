@@ -27,12 +27,16 @@ from .dynamics import significant, line_effects
 from .horizon import trajectories, find_traps, winp
 from .maia import Maia
 from .causes import classify
+from .sequences import find_sequences
 STAGE1_DEPTH = 6
 STAGE1_FLAG_CP = 30          # a shallow drop this big (or a Lichess-eval drop) sends the move to the full analysis
 
 FAMILY = {"pin": ("pin", "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin"),
           "fork": ("fork",), "discovered": ("discovered_attack", "battery"), "skewer": ("skewer",),
-          "hanging": ("hanging",), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",)}
+          "hanging": ("hanging",), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",),
+          "xray_defense": ("xray_defense",), "double_attack": ("double_attack",),
+          "deflection": ("deflection",), "attraction": ("attraction",), "interference": ("interference",),
+          "clearance": ("clearance",), "removal_of_guard": ("removal_of_guard",)}
 ERR = ("blunder", "mistake", "inaccuracy")
 
 
@@ -142,6 +146,8 @@ def main(argv=None):
                             row["mechanisms"] = families([x.name for x in e0.created] + [x.name for x in e0.uses] + [x.name for x in e0.resolved])
                             if e0.captured: row["mechanisms"].append("capture")
                             if r.mate is not None or r.san.endswith("#"): row["mechanisms"].append("mate")
+                            _b = board.copy(stack=False); _b.push(mv)
+                            row["mechanisms"] += sorted({x.name for x in find_sequences(_b, r.pv, 3)})
                             row["ignored_threat"] = any(t.line.move == r.uci for t in rec.threats)
                         avail = None
                         if r and not row["ignored_threat"] and not board.is_check():

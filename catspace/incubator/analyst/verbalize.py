@@ -9,13 +9,35 @@ from .dynamics import Effect
 from .ideas import Candidate, IdeaRecord
 from .relations import Relation
 from .mates import mate_in_line
+from .sequences import find_sequences
+MOTIF = {"deflection": "deflection", "attraction": "attraction", "interference": "interference", "clearance": "clearance",
+         "removal_of_guard": "removal of the guard"}
+
+
+def motif_phrase(board: chess.Board, pv) -> str:
+    """'deflection: the check pulls the black queen on d7 off the knight on d6' -- or ''."""
+    seqs = find_sequences(board, list(pv)[:3], 3)
+    if not seqs:
+        return ""
+    r = seqs[0]; n = r.names(); p = [pc(sym, sq) for sym, sq in zip(r.pieces, r.squares)]
+    if r.name == "deflection":
+        return f"deflection: {p[1]} is pulled off the defence of {p[2]}"
+    if r.name == "attraction":
+        return f"attraction: {p[2]} is lured to {n[1]} and hit there"
+    if r.name == "interference":
+        return f"interference: the move on {n[0]} cuts {p[1]} off from {p[2]}"
+    if r.name == "clearance":
+        return f"clearance: {n[0]} is vacated for the piece from {n[1]}"
+    if r.name == "removal_of_guard":
+        return f"removal of the guard: {p[0]} was defending {p[1]}"
+    return ""
 from .horizon import winp
 
 COLOR = {True: "White", False: "Black"}
 PIECE = {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
 PRIORITY = ("fork", "pinned_and_attacked", "hanging_through_pin", "disabled_attack", "disabled_defense",
             "pin", "skewer", "discovered_attack", "hanging", "attacked_by_lower_value",
-            "battery", "overloaded", "xray", "attacks_king_zone", "loose")
+            "battery", "overloaded", "xray", "double_duty", "xray_defense", "alignment_own", "attacks_king_zone", "loose")
 
 
 def pc(sym: str, sq: int) -> str:
@@ -56,6 +78,18 @@ def rel_phrase(r: Relation) -> str:
         return f"{p[1]} is pinned to {p[2]} by {p[0]} and attacked by {p[3]}: it cannot flee"
     if n == "hanging_through_pin":
         return f"{p[0]} is effectively hanging: its only defender{'s are' if len(p) > 2 else ' is'} pinned ({', '.join(p[1:])})"
+    if n == "xray_defense":
+        return f"{p[0]} defends {p[2]} through {p[1]} (an x-ray defence)"
+    if n == "alignment_own":
+        if "behind_pawn" in r.tags:
+            return f"{p[0]} stands behind {p[1]} on the file"
+        if "back_rank" in r.tags:
+            return f"{p[0]} and {p[2]} share a line with {p[1]} between (back-rank geometry)"
+        return f"{p[0]}, {p[1]} and {p[2]} are aligned"
+    if n == "double_duty":
+        return f"{p[0]} does two jobs: attacks {p[1]} and defends {p[2]}" if "attack+defence" in r.tags else f"{p[0]} defends both {p[1]} and {p[2]}"
+    if n == "double_attack":
+        return f"{p[0]} attacks both " + " and ".join(p[1:])
     if n == "attacks_king_zone":
         return f"{p[0]} attacks {r.tags[0]} square(s) around {p[1]}"
     return f"{n} {' '.join(p)}"
@@ -64,7 +98,7 @@ def rel_phrase(r: Relation) -> str:
 _SYMVAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
 _SUBJ = {"hanging": 0, "loose": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1, "fork": 0,
          "discovered_attack": 2, "battery": 2, "overloaded": 0, "disabled_attack": 3, "disabled_defense": 3,
-         "pinned_and_attacked": 1, "hanging_through_pin": 0}
+         "pinned_and_attacked": 1, "hanging_through_pin": 0, "xray_defense": 2, "alignment_own": 0, "double_duty": 0}
 
 
 def _top(rels: list[Relation], k: int) -> list[Relation]:
@@ -192,11 +226,17 @@ def terse_line(c: Candidate, n: int = 3) -> str:
     return "; ".join(parts)
 
 
-def why_clause(r: Candidate | None) -> str:
-    """The refutation's single strongest first-ply fact."""
+def why_clause(r: Candidate | None, board: chess.Board | None = None) -> str:
+    """The refutation's single strongest first-ply fact; a sequence motif over its first 3 plies wins if present."""
     if not r or not r.effects:
         return ""
-    f = best_fact(r.effects[0], strict=True)
+    e0 = r.effects[0]
+    big_capture = e0.captured and (e0.captured[1] >= 5 or any(x.name in ("hanging", "pinned_and_attacked") for x in e0.resolved))
+    if board is not None and r.pv and not big_capture:          # a plain win of a big/hanging piece says it best
+        m = motif_phrase(board, r.pv)
+        if m:
+            return f" -- {m}"
+    f = best_fact(e0, strict=True)
     if not f and len(r.effects) > 2:                 # a quiet first move: say what the refuter's NEXT move does
         f2 = best_fact(r.effects[2], strict=True)
         f = f"then {r.effects[2].san}: {f2}" if f2 else None
@@ -246,8 +286,9 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
             n, pat, why = mate
             add(f"  Mate in {(n + 1) // 2} was available: {rec.idea.line_san} -- {pat}: {why}.")
         else:
+            mp = motif_phrase(chess.Board(rec.fen), rec.idea.pv)
             body = candidate_phrases(rec.idea) if long else terse_line(rec.idea)
-            add(f"  Idea: {rec.idea.san} -- {rec.idea.line_san}." + (f" {body}" if body else ""))
+            add(f"  Idea: {rec.idea.san} -- {rec.idea.line_san}." + (f" {mp}." if mp else "") + (f" {body}" if body else ""))
     for k in rec.killed[:3 if long else 2]:
         r = k.candidate.refutation
         s = f"  {k.candidate.san} no longer works after {k.killed_by} ({cp_str(k.was_cp, w)} -> {cp_str(k.now_cp, w, k.candidate.mate)})"
@@ -285,7 +326,8 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
     w = rec.side == "white"
     pl = rec.played
     r = pl.refutation if pl else None
-    why = why_clause(r).replace(" -- ", "")
+    _t = chess.Board(rec.fen); _t.push(chess.Move.from_uci(pl.uci)) if pl else None
+    why = why_clause(r, _t).replace(" -- ", "")
     b = chess.Board(rec.fen)
     ev_pl, ev_best = cp_str(pl.cp, w, pl.mate), cp_str(rec.eval_cp, w, rec.idea.mate if rec.idea else None)
     mate = mate_in_line(b, rec.idea.pv[:10]) if rec.idea and rec.idea.mate is not None else None

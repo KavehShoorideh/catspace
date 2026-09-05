@@ -16,7 +16,8 @@ from .engine import Engine, Line
 
 NOTABLE = ("hanging", "loose", "attacked_by_lower_value", "pin", "skewer", "xray", "fork",
            "discovered_attack", "battery", "overloaded", "attacks_king_zone",
-           "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin")
+           "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin",
+           "xray_defense", "alignment_own", "double_duty", "double_attack")
 TEMPO_BASELINE_CP = 100
 REAL_THREAT_MARGIN_CP = 30      # a threat must be worth this much beyond a bare tempo to be 'real'
 ZUGZWANG_MARGIN_CP = 30
@@ -25,7 +26,8 @@ ZUGZWANG_MARGIN_CP = 30
 # which square a relation is ABOUT (its subject) -- used to tell how a relation ended
 SUBJECT = {"hanging": 0, "loose": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1,
            "fork": 0, "discovered_attack": 1, "battery": 1, "overloaded": 0, "disabled_attack": 1,
-           "disabled_defense": 1, "pinned_and_attacked": 1, "hanging_through_pin": 0, "attacks_king_zone": 0}
+           "disabled_defense": 1, "pinned_and_attacked": 1, "hanging_through_pin": 0, "attacks_king_zone": 0,
+           "xray_defense": 2, "alignment_own": 0, "double_duty": 0}
 
 
 @dataclass
@@ -49,7 +51,8 @@ class Effect:
 
 _SYMVAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
 DESTROYED_NOTABLE = ("hanging", "pin", "fork", "skewer", "overloaded", "attacked_by_lower_value",
-                     "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin")
+                     "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin",
+           "xray_defense", "alignment_own", "double_duty", "double_attack")
 
 
 def _val(sym: str) -> int:
@@ -61,6 +64,14 @@ def significant(r: Relation) -> bool:
     piece, king-zone counts are a summary statistic (kept in L3 for gauges, not in effects)."""
     if r.name in ("discovered_attack", "battery", "xray"):
         return "check" in r.tags or _val(r.pieces[2]) >= 3
+    if r.name == "xray_defense":                              # matters when the piece it would defend is worth something
+        return _val(r.pieces[2]) >= 3
+    if r.name == "alignment_own":                             # only its two meaningful forms
+        return bool(r.tags)
+    if r.name == "double_duty":                               # only when the defended piece is attacked (it is, by construction) and worth something
+        return _val(r.pieces[2]) >= 3
+    if r.name == "double_attack":                             # a statistic for gauges; prose only when both targets are pieces
+        return all(_val(x) >= 3 for x in r.pieces[1:])
     if r.name == "pin":      # a pinned pawn shielding a minor piece is not a fact a player names
         return "absolute" in r.tags or _val(r.pieces[1]) >= 3 or _val(r.pieces[2]) >= 9
     if r.name in ("disabled_attack", "disabled_defense"):   # a pinned knight unable to take a pawn is minor

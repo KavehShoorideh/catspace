@@ -25,7 +25,8 @@ from .dynamics import line_effects
 
 CLASS = {chess.PAWN: "P", chess.KNIGHT: "N", chess.BISHOP: "N", chess.ROOK: "R", chess.QUEEN: "Q", chess.KING: "K"}   # minors share a class
 NAMED_STATIC = ("pin", "skewer", "xray", "discovered_attack", "battery", "fork", "overloaded", "hanging_through_pin",
-                "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging", "attacked_by_lower_value", "attacks")
+                "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging", "attacked_by_lower_value", "attacks",
+                "xray_defense", "alignment_own", "double_duty", "double_attack")
 NAMED_SEQ_EVENTS = ("fork", "pin", "skewer", "discovered_attack", "battery", "overloaded", "hanging", "attacked_by_lower_value",
                     "pinned_and_attacked", "hanging_through_pin", "mate")
 THEMES_WE_NAME = {"fork", "pin", "skewer", "discoveredAttack", "hangingPiece", "xRayAttack", "zugzwang", "backRankMate",
@@ -122,6 +123,16 @@ def named_sets(board: chess.Board) -> dict[frozenset, str]:
 
 def tension(edges_sub) -> bool:
     return any(t == "atk" or t.startswith("thru") for _, _, t in edges_sub)
+
+
+def irreducible(edges_sub, sub) -> bool:
+    """A k>=3 pattern means something as a WHOLE if: a line runs through a blocker that is in the set;
+    one piece attacks two pieces of the set (fork shape); or two pieces attack the same one (battle).
+    Otherwise it is two pair-facts sharing a piece and carries no extra information."""
+    thru_in = any(t.startswith("thru") and int(t.split(":")[1]) in sub for _, _, t in edges_sub)
+    atk_from = Counter(a for a, b, t in edges_sub if t == "atk")
+    atk_to = Counter(b for a, b, t in edges_sub if t == "atk")
+    return thru_in or max(atk_from.values(), default=0) >= 2 or max(atk_to.values(), default=0) >= 2
 
 
 # ---------------- puzzles ----------------
@@ -225,11 +236,11 @@ def main(argv=None):
         for k in range(2, a.k + 1):
             for sub in connected_subsets(nodes, edges, k):
                 inner = [e for e in edges if e[0] in sub and e[1] in sub]
-                if not tension(inner):
+                if not tension(inner) or (k >= 3 and not irreducible(inner, sub)):
                     continue
                 key = canon({s: nodes[s] for s in sub}, inner, ref)
                 types[k][key] += 1
-                if sub in named:
+                if sub in named or any(sub <= ns for ns in named):      # inside a named relation counts as named
                     covered[k][key] += 1
                 example.setdefault(key, (b.fen(), sorted(chess.square_name(s) for s in sub)))
     print(f"[motifs] static enumeration over {min(a.n, len(rows))} positions in {time.perf_counter()-t1:.0f}s")

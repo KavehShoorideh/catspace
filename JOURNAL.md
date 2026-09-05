@@ -21200,3 +21200,26 @@ then check" (0.41), attraction = "the reply captures a rook, then check" (0.28),
 the third ply, taking what it defended, is the obvious sharpening). So: the tactical vocabulary
 is NOT exhausted; the gaps are (1) the alignment/precursor family, (2) multi-duty, (3) two-to-
 three-ply sequence motifs, and we now have the instrument that names candidates with numbers.
+
+## 2026-09-04 (Fable) — VOCABULARY GAPS CLOSED (Kaveh: "let's fix these gaps, looks like most of them are x-ray"). One run each, directional
+
+Static: the aim family completed -- xray_defense (S defends its own piece through an enemy piece),
+alignment_own (own pieces aligned; tags back_rank, behind_pawn), double_duty (attacks one thing while
+defending another under attack), double_attack (one attacker on two targets without a fork's teeth).
+motifs.py coverage accounting fixed (a pair inside a named triple counts as named) and the arity-3
+denominator restricted to IRREDUCIBLE patterns (a line through a blocker in the set, one attacker on
+two, or two attackers on one -- otherwise it is two pair-facts sharing a piece). Coverage, 6,000
+puzzle positions: arity 2  0.45 -> 1.00; arity 3 (irreducible: 1,509 types, 455 cover 90%)  0.06 -> 0.93,
+nothing >= 0.5% left unnamed.
+Sequences (sequences.py, L4.5, over edge events with squares, <= 3 plies): removal_of_guard,
+deflection, attraction, interference, clearance. Gauge vs Lichess themes, 5,000 puzzles:
+deflection recall 0.65 / fire-rate 0.02 (x29), removal of the guard 0.70 / 0.03 (x20), clearance
+0.83 / 0.09 (x8.8), attraction 0.75 / 0.12 (x6.2), interference 0.12 (n=16; Lichess's definition
+includes cutting ATTACK lines, ours only defence lines -- to extend). Wired into the refutation
+'why' (a motif wins unless the first ply simply takes a big or hanging piece), into the idea line,
+and into the mechanism families of reviews and prep sheets.
+Kaveh's rapid review after: unexplained 'positional' 25% -> 21%, compound 52% -> 59%; new rows
+attraction 0.06, clearance 0.06, xray_defense 0.05, deflection 0.04, removal_of_guard 0.03 of
+errors; headlines now say "Rb4+ -- deflection: the white king on b3 is pulled off the defence of
+the bishop on c2" and "Be4 -- interference: cuts the black queen on f3 off from the rook on a8".
+Tests 20 -> 23.

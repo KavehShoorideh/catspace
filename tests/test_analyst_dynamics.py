@@ -67,3 +67,24 @@ def test_effect_cashes_a_fork():
     assert e.captured == ("rook", 5) and any(r.name == "fork" for r in e.uses)
     from catspace.incubator.analyst.verbalize import effect_phrase
     assert "cashing" in effect_phrase(e)
+
+
+def test_sequence_motifs():
+    from catspace.incubator.analyst.sequences import find_sequences
+    # removal of the guard: Bxc6 removes the knight defending e5, then Nxe5
+    b = chess.Board("r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 3 3")
+    names = {s.name for s in find_sequences(b, ["b5c6", "d7c6", "f3e5"])}
+    assert "removal_of_guard" in names
+    # deflection: Rxe8+ forces the queen to recapture on e8, abandoning d7; then Nxd7
+    b = chess.Board("4r1k1/3q1ppp/3n4/8/8/8/5PPP/4R1K1 w - - 0 1")
+    b.set_piece_at(chess.B4, chess.Piece(chess.BISHOP, chess.WHITE))     # a white bishop that can take the knight on d6
+    seqs = find_sequences(b, ["e1e8", "d7e8", "b4d6"])
+    assert any(s.name == "deflection" and s.names()[1:] == ("d7", "d6") for s in seqs), seqs
+    # attraction: Qxh7+ Kxh7 Rh3+ -- the king is pulled onto h7 and checked there
+    b = chess.Board("6k1/5ppp/8/8/8/3Q4/5K2/4R3 w - - 0 1")
+    seqs = find_sequences(b, ["d3h7", "g8h7", "e1h1"])
+    assert any(s.name == "attraction" and s.names()[1] == "h7" for s in seqs), seqs
+    # clearance: e5-e6 vacates e5; then Nf3-e5 uses it
+    b = chess.Board("4k3/8/8/4P3/8/5N2/8/4K3 w - - 0 1")
+    seqs = find_sequences(b, ["e5e6", "e8e7", "f3e5"])
+    assert any(s.name == "clearance" for s in seqs), seqs

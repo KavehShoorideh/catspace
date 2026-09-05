@@ -111,6 +111,34 @@ def line_relations(board: chess.Board) -> list[Relation]:
                     else:
                         out.append(_rel(board, "discovered_attack", 3, (s, p1, p2), c,
                                         ("check",) if R.is_royal(board, p2) else ()))
+                elif p1_enemy and _friend(board, p2, c):
+                    # S defends its own piece P2 THROUGH an enemy piece: the defence materialises when P1 moves or is taken
+                    out.append(_rel(board, "xray_defense", 3, (s, p1, p2), c))
+                elif _friend(board, p1, c) and _friend(board, p2, c):
+                    # S aligned with two of its own pieces: rook behind its pawn on a file, or rook/queen behind
+                    # a piece toward its own king (back-rank geometry) -- the most frequent unnamed structure (motifs.py)
+                    tags = []
+                    if R.is_royal(board, p2):
+                        tags.append("back_rank")
+                    if board.piece_at(p1).piece_type == chess.PAWN and chess.square_file(s) == chess.square_file(p1):
+                        tags.append("behind_pawn")
+                    out.append(_rel(board, "alignment_own", 3, (s, p1, p2), c, tuple(tags)))
+    return out
+
+
+# ---- arity 3: double duty -- a piece attacking one thing while defending another (the overload precursor) ----
+def double_duty(board: chess.Board) -> list[Relation]:
+    out = []
+    for a, piece in board.piece_map().items():
+        c = piece.color
+        att = [t for t in board.attacks(a) if _enemy(board, t, c) and not R.is_royal(board, t)]
+        dfd = [t for t in board.attacks(a) if _friend(board, t, c) and board.attackers(not c, t)]   # defends something under attack
+        if att and dfd:
+            out.append(_rel(board, "double_duty", 3, (a, att[0], dfd[0]), c, ("attack+defence",)))
+        elif len(dfd) >= 2 and all(board.attackers(c, t) == chess.SquareSet([a]) for t in dfd[:2]):
+            pass                                                   # that is `overloaded`, already named
+        elif len(dfd) >= 2:
+            out.append(_rel(board, "double_duty", 3, (a, dfd[0], dfd[1]), c, ("two_defences",)))
     return out
 
 
@@ -129,6 +157,11 @@ def forks(board: chess.Board) -> list[Relation]:
                 targets.append(t)
         if len(targets) >= 2:
             out.append(_rel(board, "fork", 1 + len(targets), (s, *sorted(targets)), c))
+        else:
+            # pressure on two points without a fork's teeth (both targets defended / cheap): the overload precursor
+            hits = [t for t in board.attacks(s) if _enemy(board, t, c) and not R.is_royal(board, t)]
+            if len(hits) >= 2:
+                out.append(_rel(board, "double_attack", 1 + len(hits), (s, *sorted(hits)), c))
     return out
 
 
@@ -214,7 +247,7 @@ def relations(board: chess.Board) -> list[Relation]:
     lines = line_relations(board)
     composed = composed_pin_relations(board, lines)
     return (atk + dfd + hanging_and_loose(board) + lines + composed + hanging_through_pin(board, composed)
-            + forks(board) + overloaded(board) + king_zone_pressure(board))
+            + forks(board) + overloaded(board) + double_duty(board) + king_zone_pressure(board))
 
 
 def relation_keys(board: chess.Board) -> set[tuple]:

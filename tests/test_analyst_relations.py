@@ -124,3 +124,19 @@ def test_mate_patterns():
     # Opera Game finish: Qb8+ Nxb8 Rd8#  (from the position before 16.Qb8+)
     b = chess.Board("1n1rkb1r/p4ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2K5 w - - 0 16")
     r = mate_in_line(b, ["b3b8", "d7b8", "d1d8"]) if False else None
+
+
+def test_xray_defense_and_own_alignment_and_double_duty():
+    # White Re1 defends the pawn on e5 THROUGH the black knight on e3 (x-ray defence)
+    b = chess.Board("4k3/8/8/4P3/8/4n3/8/4RK2 w - - 0 1")
+    rels = L3.relations(b)
+    assert any(r.name == "xray_defense" and r.names() == ("e1", "e3", "e5") for r in rels)
+    # White rook behind its own pawn aimed at the ENEMY rook is (rightly) a discovered attack, not own alignment
+    b = chess.Board("r3k3/8/8/P7/8/8/8/R3K3 w - - 0 1")
+    assert any(r.name == "discovered_attack" and r.names() == ("a1", "a5", "a8") for r in L3.relations(b))
+    # back-rank geometry: black rook and king on the 8th with a piece between
+    b = chess.Board("r2bk3/8/8/8/8/8/8/4K3 b - - 0 1")
+    assert any(r.name == "alignment_own" and "back_rank" in r.tags for r in L3.relations(b))
+    # double duty: the white queen attacks the black knight on c6 AND defends the attacked bishop on b2
+    b = chess.Board("4k3/8/8/3n4/8/rB6/8/3QK3 w - - 0 1")     # Qd1 attacks Nd5 down the file and defends Bb3 (attacked by Ra3)
+    assert any(r.name == "double_duty" and r.names() == ("d1", "d5", "b3") for r in L3.relations(b))
