@@ -410,7 +410,7 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
     elif cause and cause["cause"] == "missed_better" and rec.idea:
         e0 = rec.idea.effects[0] if rec.idea.effects else None
         gain = best_fact(e0, strict=True) if e0 else None
-        gain = gain if gain and any(k in gain for k in ("takes", "hanging", "forks", "pins", "skewers", "checkmate", "discovering", "attacks", "with check")) else ""
+        gain = gain if gain and any(k in gain for k in ("takes", "hanging", "forks", "pins", "skewers", "checkmate", "discovering", "attacks", "attacked", "with check")) else ""
         mp = motif_phrase(b, rec.idea.pv)
         s = f"{pl_name} missed {rec.idea.san}" + (f" -- {mp}" if mp else f" -- {gain}" if gain else "") + f" ({delta_str(rec)})."
     elif cause and cause["cause"] == "walked_into":
