@@ -27,7 +27,9 @@ ERR = ("inaccuracy", "mistake", "blunder")
 def _review(pgn: str, user: str, depth: int, level: int, out: str, threads: int) -> None:
     cmd = [sys.executable, "-m", "catspace.incubator.analyst.review", pgn, "--user", user, "--max-games", "1",
            "--depth", str(depth), "--multipv", "3", "--level", str(level), "--why", "--no-filter", "--threads", str(threads), "--out", out]
-    subprocess.run(cmd, check=True, capture_output=True)
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise SystemExit(f"review of {user} failed:\n{res.stderr[-2000:]}")
 
 
 def _parse_review(path: str) -> tuple[dict, dict, dict, str]:
@@ -58,6 +60,8 @@ def main(argv=None):
     a = ap.parse_args(argv)
     pgn_text = open(a.pgn).read()
     game = chess.pgn.read_game(io.StringIO(pgn_text)); h = game.headers
+    if a.user not in (h.get("White"), h.get("Black")):
+        raise SystemExit(f"{a.user} is not a player in this game ({h.get('White')} vs {h.get('Black')})")
     me_white = h["White"] == a.user
     opp = h["Black"] if me_white else h["White"]
     gid = h.get("GameId", "game")
@@ -76,7 +80,8 @@ def main(argv=None):
     side = "White" if me_white else "Black"
     out.append(f"## Summary ({a.user}, {side})\n")
     out.append(f"- Your moves: {v.group(1).strip('{}').replace(chr(39), '')} — error rate {v.group(2)}.")
-    out.append(f"- Effective rating this game (the Maia level whose policy best predicts your moves): {eff.group(1)}.")
+    if eff:
+        out.append(f"- Effective rating this game (the Maia level whose policy best predicts your moves): {eff.group(1)}.")
     if causes: out.append(f"- Why the errors: {causes.group(1)}.")
     out.append(f"- Opponent {opp}: {ov.group(1).strip('{}').replace(chr(39), '')} — error rate {ov.group(2)}.\n")
     out.append("## Move by move\n")

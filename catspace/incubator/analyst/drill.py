@@ -21,9 +21,12 @@ def build_positions(jsonl_path: str) -> list[dict]:
     out = []
     for r in errs:
         b = chess.Board(r["fen"]); cost = abs(winp(r["eval_cp"]) - winp(r["eval_cp"] - r["drop"]))
+        tc = r["tc"]; tc_h = tc
+        if "+" in tc and tc.split("+")[0].isdigit():
+            tc_h = f"{int(tc.split('+')[0]) // 60}+{tc.split('+')[1]}"
         base = {"id": f"{r['date'].replace('.', '')}-{r['game']}-{r['ply']}", "move_no": r["ply"] // 2 + 1, "played": r["san"],
                 "best": r["best"], "cost_wp": round(cost), "cost_pawns": round(r["drop"] / 100, 1), "headline": r["headline"],
-                "cause": r["cause"]["cause"], "kind": r["cause"]["kind"], "date": r["date"].replace(".", "-"), "tc": r["tc"],
+                "cause": r["cause"]["cause"], "kind": r["cause"]["kind"], "date": r["date"].replace(".", "-"), "tc": tc_h,
                 "verdict": r["verdict"], "best_line": r.get("best_line")}
         ref = r.get("refutation")
         if ref and r["cause"]["cause"] in ("walked_into", "enabled_tactic", "ignored_threat") and (r["cause"].get("mechanisms") or []):
@@ -199,7 +202,7 @@ function load(p) {
   cur = p; sel = null; hints = []; answered = false;
   if (hasChess) { game = new Chess(p.fen); }
   document.getElementById("mode").textContent = p.mode; document.getElementById("mode").className = "mode " + p.mode;
-  document.getElementById("meta").textContent = `rapid ${p.tc.replace("+0", "")}s · ${p.date} · move ${p.move_no} · ${p.verdict}`;
+  document.getElementById("meta").textContent = `${p.tc} · ${p.date} · move ${p.move_no} · ${p.verdict}`;
   const side = p.side === "w" ? "White" : "Black";
   document.getElementById("prompt").textContent = p.mode === "punish" ? `${side} to move. Punish ${p.played}.` : `${side} to move. Find the better move.`;
   document.getElementById("context").textContent = p.mode === "punish"
@@ -243,12 +246,18 @@ function renderDeck() {
     tr.addEventListener("click", () => load(p)); tb.appendChild(tr);
   });
 }
-document.getElementById("go").addEventListener("click", () => { const v = document.getElementById("san").value.trim(); if (v) grade(v); });
-document.getElementById("san").addEventListener("keydown", e => { if (e.key === "Enter") { const v = e.target.value.trim(); if (v) grade(v); } });
+function typed() {
+  const box = document.getElementById("san"); const v = box.value.trim(); if (!v || answered) return;
+  if (hasChess) { const m = game.move(v, {sloppy: true}); if (!m) { box.setCustomValidity("Not a legal move here"); box.reportValidity(); return; } game.undo(); box.setCustomValidity(""); grade(m.san); }
+  else grade(v);
+}
+document.getElementById("go").addEventListener("click", typed);
+document.getElementById("san").addEventListener("input", e => e.target.setCustomValidity(""));
+document.getElementById("san").addEventListener("keydown", e => { if (e.key === "Enter") typed(); });
 document.getElementById("show").addEventListener("click", () => { if (!answered) { answered = true; const s = progress[cur.id] || {box: 0, seen: 0, correct: 0, due: 0}; s.seen++; s.box = 0; s.due = now(); s.last = now(); progress[cur.id] = s; save(); } showResult(null, ""); });
 document.getElementById("next").addEventListener("click", () => { const q = queue().filter(p => !cur || p.id !== cur.id); load(q[0] || POSITIONS[0]); });
 if (!hasChess) { document.getElementById("context").insertAdjacentHTML("afterend", '<div class="eyebrow">Move library did not load: type the move in the box.</div>'); }
-load(queue()[0]);
+if (POSITIONS.length) load(queue()[0]); else document.getElementById("prompt").textContent = "No positions yet: run a review first.";
 </script>
 """
 

@@ -21,26 +21,31 @@ def value(board: chess.Board, sq: int, scale: "R.Scale | None" = None) -> float:
 
 def see(board: chess.Board, sq: int, by: chess.Color, scale: "R.Scale | None" = None) -> float:
     """Static exchange evaluation: the material `by` wins by starting a capture sequence on sq, each side
-    recapturing with its least valuable attacker and free to stop (the standard swap list; no x-rays through
-    the capturing pieces, which understates batteries). Royal pieces never capture into a defended square."""
+    recapturing with its least valuable attacker and free to stop (the standard swap list). Pieces are moved on
+    a scratch board, so sliders revealed behind a capturer (batteries, x-rays) join the sequence. A royal piece
+    never captures onto a square that is still attacked once it has left its own square. Not modelled: pins
+    (an absolutely pinned defender is counted as a defender), en passant, promotion."""
     sc = scale or R.scale_of(board)
     b = board.copy(stack=False)
     target = value(b, sq, sc)
     if target == 0:
         return 0.0
     gains, side = [target], by
-    while True:
-        atts = [a for a in b.attackers(side, sq) if not (R.is_royal(b, a) and b.attackers(not side, sq))]
+    while len(gains) <= 32:
+        atts = []
+        for a in b.attackers(side, sq):
+            if R.is_royal(b, a):
+                b2 = b.copy(stack=False); b2.remove_piece_at(a)
+                if b2.attackers(not side, sq):          # the king would be capturing into check
+                    continue
+            atts.append(a)
         if not atts:
             break
         a = min(atts, key=lambda x: value(b, x, sc))
         piece = b.remove_piece_at(a)
-        captured_value = value(b, sq, sc)
         b.set_piece_at(sq, piece)
         gains.append(value(b, sq, sc))          # what the other side could now win back: the capturer's value
         side = not side
-        if len(gains) > 32:
-            break
     # gains[i] = value standing on sq before capture i; fold back: each side stops when continuing loses
     n = len(gains) - 1                           # number of captures possible
     if n == 0:

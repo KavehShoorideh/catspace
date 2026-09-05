@@ -52,16 +52,18 @@ TACTIC_RELATIONS = frozenset({"hanging", "underdefended", "attacked_by_lower_val
                               "fork", "double_attack", "skewer", "overloaded"})
 
 
-def exchange_net(board: chess.Board, mv: chess.Move, pv) -> int | None:
-    """When our move captures and the reply recaptures on the same square: the material balance (our POV) of
-    the exchange sequence on that square along the PV (up to 6 plies). None when our move was not a capture
-    or the reply lands elsewhere."""
-    if not board.is_capture(mv) or board.is_en_passant(mv) or not pv:
+def exchange_net(board: chess.Board, mv: chess.Move, pv, require_recapture: bool = True) -> int | None:
+    """The material balance (the mover's POV) of the capture sequence that `mv` starts on its square, followed along
+    the PV (up to 6 plies). None when `mv` is not a capture. With require_recapture (the default, for OUR capture
+    judged against the reply), None also when the reply lands elsewhere -- then the reply is not part of this
+    exchange. Without it (the REPLY's own capture), a capture nobody answers is simply the value it took."""
+    if not board.is_capture(mv) or board.is_en_passant(mv):
         return None
     sq = mv.to_square
-    if chess.Move.from_uci(pv[0]).to_square != sq:
+    if require_recapture and (not pv or chess.Move.from_uci(pv[0]).to_square != sq):
         return None
     us = board.turn; b = board.copy(stack=False); net = value(board, sq); b.push(mv)
+    pv = pv or ()
     for u in list(pv)[:6]:
         m = chess.Move.from_uci(u)
         if m.to_square != sq or not b.is_capture(m):
@@ -174,7 +176,7 @@ def main(argv=None):
                             e0 = r.effects[0]
                             row["mechanisms"] = families([x.name for x in e0.created + e0.uses + e0.resolved if against(x, us)])   # only what hurts the victim
                             if e0.captured: row["mechanisms"].append("capture")
-                            if r.mate is not None or r.san.endswith("#"): row["mechanisms"].append("mate")
+                            if (r.mate is not None and r.mate > 0) or r.san.endswith("#"): row["mechanisms"].append("mate")
                             _b = board.copy(stack=False); _b.push(mv)
                             row["mechanisms"] += sorted({x.name for x in find_sequences(_b, r.pv, 3)})
                             row["ignored_threat"] = any(t.line.move == r.uci for t in rec.threats)
@@ -188,7 +190,7 @@ def main(argv=None):
                         wins = None
                         if r:
                             _c2 = board.copy(stack=False); _c2.push(mv)
-                            wins = exchange_net(_c2, chess.Move.from_uci(r.uci), r.pv[1:])   # the reply's own capture sequence, its POV
+                            wins = exchange_net(_c2, chess.Move.from_uci(r.uci), r.pv[1:], require_recapture=False)   # the reply's own capture sequence, its POV
                         if wins is not None and wins > 0:
                             teeth = None                                       # a reply that wins material is the punishment whatever the alternatives score
                         row["teeth"] = teeth; row["reply_wins"] = wins
@@ -198,12 +200,13 @@ def main(argv=None):
                                 l0 = eng.eval_move(nb, rm, depth=max(6, a.depth - 4))
                                 avail = bool(l0 and (l0.cp + rec.eval_cp - 100) >= 30)
                         row["available_before"] = avail
-                        even = False
-                        if r and len(r.effects) >= 2 and r.effects[0].captured and r.effects[1].captured:
-                            even = r.effects[0].captured[1] == r.effects[1].captured[1] and chess.Move.from_uci(r.uci).to_square == mv.to_square
-                        net = exchange_net(board, mv, r.pv) if r else None      # material on the capture square, our POV, after the exchange
-                        if net is not None and net == 0:
-                            even = True                                        # we captured first, they recaptured: an even trade we initiated
+                        even = False; net = None
+                        if r and board.is_capture(mv):                         # we captured first: the whole sequence on that square decides
+                            net = exchange_net(board, mv, r.pv)                # (Bxd4 Nxd4 Rxd4 is +1 for us, not 'bishop for knight')
+                            even = net == 0
+                        elif r and len(r.effects) >= 2 and r.effects[0].captured and r.effects[1].captured:
+                            even = (r.effects[0].captured[1] == r.effects[1].captured[1]                 # they take, we take back equal
+                                    and chess.Move.from_uci(r.uci).to_square == mv.to_square)
                         row["even_trade"] = even
                         mech = row["mechanisms"]
                         _after = board.copy(stack=False); _after.push(mv)

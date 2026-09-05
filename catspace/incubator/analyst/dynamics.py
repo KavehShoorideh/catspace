@@ -13,6 +13,7 @@ import chess
 from .facts import value
 from .relations import Relation, relations, against
 from .structure import structure
+from . import rules as R
 from .engine import Engine, Line
 
 NOTABLE = ("hanging", "loose", "underdefended", "attacked_by_lower_value", "pin", "skewer", "xray", "fork",
@@ -92,19 +93,25 @@ def _notable(rels: list[Relation]) -> dict[tuple, Relation]:
     return {r.key: r for r in rels if significant(r)}
 
 
+def _order(r: Relation) -> tuple:
+    """A total order over relations (owner may be None), so diffs never depend on hash order."""
+    return (r.name, r.squares, -1 if r.owner is None else int(r.owner), r.tags)
+
+
 def move_effects(board: chess.Board, move: chess.Move, ply: int = 1) -> Effect:
     before = _notable(relations(board))
     cap = board.piece_at(move.to_square)
     if board.is_en_passant(move):
         cap = chess.Piece(chess.PAWN, not board.turn)
-    captured = (chess.piece_name(cap.piece_type), value(board, move.to_square) if not board.is_en_passant(move) else 1) if cap else None
+    captured = (chess.piece_name(cap.piece_type), value(board, move.to_square) if not board.is_en_passant(move)
+                else R.scale_of(board).of_type(chess.PAWN)) if cap else None
     san, mover, check = board.san(move), board.turn, board.gives_check(move)
     after_b = board.copy(stack=False)
     after_b.push(move)
     after = _notable(relations(after_b))
     created = sorted((after[k] for k in after.keys() - before.keys()
-                      if not (after[k].name in ("hanging", "loose") and after[k].squares[0] == move.to_square)), key=lambda r: r.key)
-    gone = sorted((before[k] for k in before.keys() - after.keys() if before[k].name in DESTROYED_NOTABLE), key=lambda r: r.key)
+                      if not (after[k].name in ("hanging", "loose") and after[k].squares[0] == move.to_square)), key=_order)
+    gone = sorted((before[k] for k in before.keys() - after.keys() if before[k].name in DESTROYED_NOTABLE), key=_order)
     # sorted: set differences follow per-process string hashing; the prose must not change between runs
     uses = [r for r in before.values() if r.name in ("discovered_attack", "battery") and r.squares[1] == move.from_square]
     resolved, escaped, ended = [], [], []
@@ -122,8 +129,8 @@ def move_effects(board: chess.Board, move: chess.Move, ply: int = 1) -> Effect:
             ended.append(r)
     s_before = {r.key: r for r in structure(board)}
     s_after = {r.key: r for r in structure(after_b)}
-    s_created = sorted((s_after[k] for k in s_after.keys() - s_before.keys()), key=lambda r: r.key)
-    s_ended = sorted((s_before[k] for k in s_before.keys() - s_after.keys()), key=lambda r: r.key)
+    s_created = sorted((s_after[k] for k in s_after.keys() - s_before.keys()), key=_order)
+    s_ended = sorted((s_before[k] for k in s_before.keys() - s_after.keys()), key=_order)
     return Effect(ply, san, move.uci(), mover, captured, created, ended, check, uses, resolved, escaped, s_created, s_ended)
 
 
@@ -223,7 +230,7 @@ def threats(board: chess.Board, engine: Engine, *, multipv: int = 5, baseline: i
         check, promotion or mate by the threatening side within its first two moves). 2026-09-05: castling
         and quiet developing moves scored +43..+128 above a tempo and were reported as 'standing threats ignored'."""
         if l.mate is not None:
-            return True
+            return l.mate > 0                    # their line mates us: real; their line gets mated: not a threat
         gain = l.cp + now.cp - baseline
         return gain >= REAL_THREAT_MARGIN_CP and cashes(nb, l.pv)
 

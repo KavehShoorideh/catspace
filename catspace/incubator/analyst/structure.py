@@ -63,14 +63,13 @@ def pawn_facts(board: chess.Board) -> list[Relation]:
             adj = {f - 1, f + 1} & set(range(8))
             if not (adj & own_files):
                 out.append(_rel(board, "isolated_pawn", 1, (sq,), c))
-            ahead = _ahead(sq, c)
-            blockers = [q for q in enemy if chess.square_file(q) in adj | {f} and q in
-                        {a + d for a in ahead for d in (-1, 0, 1)} and abs(chess.square_file(q) - f) <= 1]
+            ahead_ranks = {chess.square_rank(a) for a in _ahead(sq, c)}
+            blockers = [q for q in enemy if abs(chess.square_file(q) - f) <= 1 and chess.square_rank(q) in ahead_ranks]
             if not blockers:
                 to_go = (7 - r) if c == chess.WHITE else r
                 out.append(_rel(board, "passed_pawn", 1, (sq,), c, (f"{to_go}_to_go",)))
-            # backward: no own pawn on an adjacent file that is level or behind (could ever support it),
-            # and the stop square is attacked by an enemy pawn
+            # backward: every neighbouring own pawn is AHEAD of it (none level or behind, so it is the laggard of its
+            # group and no pawn can come up beside it), and its stop square is controlled by an enemy pawn
             behind_or_level = [q for q in own if chess.square_file(q) in adj and
                                ((chess.square_rank(q) <= r) if c == chess.WHITE else (chess.square_rank(q) >= r))]
             stop = sq + _forward(c)
@@ -174,8 +173,9 @@ def structure_diff(board: chess.Board, moves) -> tuple[list[Relation], list[Rela
     for m in moves:
         t.push(chess.Move.from_uci(m) if isinstance(m, str) else m)
     after = {r.key: r for r in structure(t)}
-    created = sorted((after[k] for k in after.keys() - before.keys()), key=lambda r: r.key)
-    ended = sorted((before[k] for k in before.keys() - after.keys()), key=lambda r: r.key)
+    order = lambda r: (r.name, r.squares, -1 if r.owner is None else int(r.owner), r.tags)
+    created = sorted((after[k] for k in after.keys() - before.keys()), key=order)
+    ended = sorted((before[k] for k in before.keys() - after.keys()), key=order)
     return created, ended
 
 

@@ -24,7 +24,7 @@ def families(names) -> list[str]:
 
 def victims(r, victim: chess.Color) -> set:
     """Squares of VICTIM's pieces inside the relation (piece symbols carry the colour)."""
-    return {sq for sq, sym in zip(r.squares, r.pieces or ()) if sym and sym.isupper() == (victim == chess.WHITE)}
+    return {sq for sq, sym in zip(r.squares, r.pieces or ()) if sym.isalpha() and sym.isupper() == (victim == chess.WHITE)}
 
 
 def walked_into(board: chess.Board, played: chess.Move) -> list:
@@ -69,9 +69,10 @@ def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], igno
     w = families([r.name for r in walked])
     hit_rels = exploited(walked, refutation_effect, board.turn) if refutation_effect is not None else []
     hit = families([r.name for r in hit_rels]) if refutation_effect is not None else sorted(set(w) & set(mechanisms))
-    if even_trade and "mate" not in mechanisms and (teeth is None or teeth < 150):   # the trade IS the story; incidental geometry is not
-        cause = "positional"                   # Kaveh 2026-09-05: a knight-for-bishop trade is materially equal at this layer;
-                                               # the eval change is about plans and belongs one layer up -- say so, don't invent a tactic
+    if even_trade and "mate" not in mechanisms:    # the trade IS the story; incidental geometry is not (teeth cannot judge this:
+        cause = "positional"                       # a recapture always dwarfs the alternative of not recapturing). Kaveh 2026-09-05:
+                                                   # a knight-for-bishop trade is materially equal at this layer; the eval change is
+                                                   # about plans and belongs one layer up -- say so, don't invent a tactic
     elif teeth is not None and teeth < TEETH_CP and not (set(mechanisms) & {"mate"}):
         cause = "missed_better"
     elif hit:

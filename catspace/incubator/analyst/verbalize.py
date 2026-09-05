@@ -339,6 +339,8 @@ NOUN = {"pin": "a pin", "fork": "a fork", "discovered": "a discovered attack", "
 
 def _noun(families: list[str]) -> str:
     fams = [f for f in families if f in NOUN and f != "capture"] or families
+    if "mate" in fams:
+        return "mate"
     return NOUN.get(fams[0], "a tactic") if fams else "a tactic"
 
 
@@ -351,7 +353,7 @@ def delta_str(rec: IdeaRecord) -> str:
     folded = MATE_CP - 1000
     if abs(rec.played.cp) >= folded or abs(rec.eval_cp) >= folded:          # a mate score: pawns are meaningless
         if rec.eval_cp >= folded and rec.played.cp < folded and rec.idea and rec.idea.mate:
-            return f"mate in {(rec.idea.mate + 1) // 2} was there, {d_wp:+.0f} win%"
+            return f"mate in {rec.idea.mate} was there, {d_wp:+.0f} win%"
         return f"{d_wp:+.0f} win%"
     return f"{d_cp/100:+.1f} pawns, {d_wp:+.0f} win%"
 
@@ -394,8 +396,13 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
     w = rec.side == "white"
     pl = rec.played
     r = pl.refutation if pl else None
-    _t = chess.Board(rec.fen); _t.push(chess.Move.from_uci(pl.uci)) if pl else None
+    _t = chess.Board(rec.fen)
+    if pl:
+        _t.push(chess.Move.from_uci(pl.uci))
     why = why_clause(r, _t).replace(" -- ", "")
+    if r and r.mate is not None and r.mate > 0:                                # the reply mates: say so, with the pattern when one is named
+        rm = mate_in_line(_t, r.pv[:10])
+        why = f"mate in {r.mate}" + (f", {rm[1]}: {rm[2]}" if rm else "") + (f" ({why})" if why and why not in ("with check", "checkmate") else "")
     b = chess.Board(rec.fen)
     ev_pl, ev_best = cp_str(pl.cp, w, pl.mate), cp_str(rec.eval_cp, w, rec.idea.mate if rec.idea else None)
     mate = mate_in_line(b, rec.idea.pv[:10]) if rec.idea and rec.idea.mate is not None else None
@@ -478,6 +485,8 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
 
 def ladder_tag(p_played: dict, p_best: dict, level: int, played_san: str, best_san: str | None) -> str:
     """The level-relative sentence, added once the player's level is measured."""
+    if level not in p_played:                       # the ladder was not run at this level: say nothing rather than 'a slip'
+        return ""
     pp = p_played.get(level, 0.0); pb = p_best.get(level, 0.0)
     finds = f"finds {best_san} ({pb*100:.0f}%)" if best_san and pb >= 0.30 else ""
     if pp >= 0.30:

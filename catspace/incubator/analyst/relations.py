@@ -260,6 +260,8 @@ def hanging_through_pin(board: chess.Board, composed: list[Relation]) -> list[Re
             for d in defenders:
                 pinner, shielded = shield[d]
                 b2 = board.copy(stack=False); b2.remove_piece_at(d)
+                if a == pinner:                                  # the pinner itself captured and was recaptured: nobody takes the shielded piece
+                    b2.remove_piece_at(pinner)
                 gain_if_recapture = value(board, t) - value(board, a) + see(b2, shielded, not piece.color)
                 worst = min(worst, gain_if_recapture)
             if worst > 0:

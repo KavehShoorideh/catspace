@@ -23,7 +23,7 @@ class Line:
     move: str                 # uci
     pv: tuple[str, ...]       # uci
     cp: int                   # side-to-move POV, mates folded to +-MATE_CP
-    mate: int | None          # plies to mate (signed, side-to-move POV) when known
+    mate: int | None          # MOVES to mate (python-chess Mate(n) = mate in n moves; signed, side-to-move POV) when known
 
     def san_line(self, board: chess.Board, n: int = 8) -> str:
         t, out = board.copy(stack=False), []
