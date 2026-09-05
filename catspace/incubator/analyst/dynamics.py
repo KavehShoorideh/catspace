@@ -18,7 +18,7 @@ NOTABLE = ("hanging", "loose", "attacked_by_lower_value", "pin", "skewer", "xray
            "discovered_attack", "battery", "overloaded", "attacks_king_zone",
            "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin")
 TEMPO_BASELINE_CP = 100
-REAL_THREAT_MARGIN_CP = 50      # a threat must be worth this much beyond a bare tempo to be 'real'
+REAL_THREAT_MARGIN_CP = 30      # a threat must be worth this much beyond a bare tempo to be 'real'
 ZUGZWANG_MARGIN_CP = 30
 
 
@@ -123,28 +123,90 @@ class Threat:
     gain_cp: int                     # what the free tempo is worth to them, above baseline
     real: bool                       # gain above baseline -> must be answered
     first_effects: Effect | None     # what their first move does
+    structure: Relation | None = None   # the L3 fact that names the threat (hanging piece, fork, ...), if any
 
     def san_line(self, board: chess.Board, n: int = 6) -> str:
         nb = board.copy(stack=False); nb.push(chess.Move.null())
         return self.line.san_line(nb, n)
 
 
-def threats(board: chess.Board, engine: Engine, *, multipv: int = 3, baseline: int = TEMPO_BASELINE_CP,
-            now: Line | None = None, probe: list[Line] | None = None) -> list[Threat]:
-    """Standing threats: the opponent's best lines given a free move, scored above the tempo baseline.
-    `now` / `probe` may be passed in to reuse lines the caller already has (saves engine calls)."""
+STRUCTURAL = ("hanging", "attacked_by_lower_value", "pinned_and_attacked", "hanging_through_pin", "overloaded",
+              "fork", "skewer", "discovered_attack", "battery", "disabled_defense")
+
+
+def structural_threats(board: chess.Board) -> list[tuple[Relation, chess.Move | None]]:
+    """L3 facts that are THREATS against the side to move, each with the opponent's natural executing
+    move on the null-moved board (attacker takes victim), or None when the fact has no single move."""
+    us = board.turn
+    nb = board.copy(stack=False); nb.push(chess.Move.null())
+    out = []
+    for r in relations(board):
+        if r.name not in STRUCTURAL or not significant(r):
+            continue
+        victim_side = r.name in ("hanging", "pinned_and_attacked", "hanging_through_pin", "overloaded", "disabled_defense")
+        ours = (r.owner == us) if victim_side else (r.owner != us)
+        if not ours:
+            continue
+        mv = None
+        if r.name == "hanging":
+            atk = list(board.attackers(not us, r.squares[0]))
+            if atk:
+                a = min(atk, key=lambda q: value(board, q)); mv = chess.Move(a, r.squares[0])
+        elif r.name == "attacked_by_lower_value":
+            mv = chess.Move(r.squares[0], r.squares[1])
+        elif r.name == "pinned_and_attacked":
+            mv = chess.Move(r.squares[3], r.squares[1])
+        elif r.name == "hanging_through_pin":
+            atk = list(board.attackers(not us, r.squares[0]))
+            if atk:
+                a = min(atk, key=lambda q: value(board, q)); mv = chess.Move(a, r.squares[0])
+        elif r.name in ("fork",):
+            t = max(r.squares[1:], key=lambda q: value(board, q)); mv = chess.Move(r.squares[0], t)
+        elif r.name in ("skewer", "battery"):
+            mv = chess.Move(r.squares[0], r.squares[1])
+        if mv is not None and mv not in nb.legal_moves:
+            promo = chess.Move(mv.from_square, mv.to_square, promotion=chess.QUEEN)
+            mv = promo if promo in nb.legal_moves else None
+        out.append((r, mv))
+    return out
+
+
+def threats(board: chess.Board, engine: Engine, *, multipv: int = 5, baseline: int = TEMPO_BASELINE_CP,
+            now: Line | None = None, probe: list[Line] | None = None, structural: bool = True) -> list[Threat]:
+    """Standing threats = the opponent's best lines given a free move (engine, above the tempo baseline)
+    MERGED with the L3 structural facts against us (a hanging piece, a fork, ...), each verified by a
+    restricted evaluation of its executing move on the null-moved board. Ranked by materialized gain.
+    `now` / `probe` may be passed in to reuse lines the caller already has."""
     now = now or engine.best(board)
     probe = probe if probe is not None else engine.null_move_probe(board, multipv=multipv)
-    if now is None or not probe:
+    if now is None or probe is None:
         return []
     if now.mate is not None and now.mate > 0:      # we are mating: the tempo arithmetic is meaningless
         return []
     nb = board.copy(stack=False); nb.push(chess.Move.null())
-    out = []
+    out, seen = [], set()
     for l in probe:
         gain = l.cp + now.cp - baseline      # opp POV after pass + our POV now = tempo value
         eff = move_effects(nb, chess.Move.from_uci(l.move)) if l.pv else None
         out.append(Threat(l, gain, gain >= REAL_THREAT_MARGIN_CP or l.mate is not None, eff))
+        seen.add(l.move)
+    if structural:
+        pdepth = max(6, engine.depth - 4)
+        for r, mv in structural_threats(board):
+            if mv is None:
+                continue
+            if mv.uci() in seen:                       # the engine already listed it: just name the structure
+                for t in out:
+                    if t.line.move == mv.uci() and t.structure is None:
+                        t.structure = r
+                continue
+            l = engine.eval_move(nb, mv, depth=pdepth)
+            if l is None:
+                continue
+            gain = l.cp + now.cp - baseline
+            out.append(Threat(l, gain, gain >= REAL_THREAT_MARGIN_CP or l.mate is not None, move_effects(nb, mv), r))
+            seen.add(mv.uci())
+    out.sort(key=lambda t: (t.line.mate is not None and t.line.mate > 0, t.gain_cp), reverse=True)
     return out
 
 

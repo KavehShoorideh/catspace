@@ -216,7 +216,8 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
             break
         fe = (effect_phrase(t.first_effects, 1) if long else best_fact(t.first_effects)) if t.first_effects else ""
         b = chess.Board(rec.fen)
-        add(f"  If {who} does nothing: {t.san_line(b, 4)}" + (f" -- {fe}" if fe else "") + f" ({t.gain_cp:+d} cp above a tempo).")
+        already = f" Already: {rel_phrase(t.structure)}." if t.structure is not None else ""
+        add(f"  If {who} does nothing: {t.san_line(b, 4)}" + (f" -- {fe}" if fe else "") + f" ({t.gain_cp:+d} cp above a tempo).{already}")
         shown += 1
     if rec.zugzwang and rec.zugzwang.flagged:
         add(f"  Zugzwang: every move worsens {who}'s position (passing would be {rec.zugzwang.pass_cp - rec.zugzwang.best_cp:+d} cp better).")

@@ -34,17 +34,20 @@ def walked_into(board: chess.Board, played: chess.Move) -> list[str]:
     return families(names)
 
 
-def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], ignored_threat: bool) -> dict:
+def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], ignored_threat: bool,
+             available_before: bool | None = None) -> dict:
+    """available_before: was the refutation already playable AND strong had we passed instead of moving
+    (engine-checked by the caller)? True -> we ignored it; False -> our move enabled it."""
     w = walked_into(board, played)
     hit = sorted(set(w) & set(mechanisms))
     if hit:
-        cause = "walked_into"
-    elif ignored_threat:
-        cause = "ignored_threat"
+        cause = "walked_into"                  # the move created the static vulnerability that was exploited
+    elif ignored_threat or available_before:
+        cause = "ignored_threat"               # it was already there
     elif "mate" in mechanisms and not (set(mechanisms) - {"mate", "capture"}):
         cause = "missed_better"
     elif mechanisms:
-        cause = "exploited_existing"           # the structure pre-existed and was not a listed standing threat
+        cause = "enabled_tactic"               # the opponent's tactic only became available because of the move
     else:
         cause = "missed_better"
     kinds = set(mechanisms)

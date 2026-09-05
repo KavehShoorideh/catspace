@@ -99,7 +99,7 @@ def analyse_position(board: chess.Board, engine: Engine, *, prev: chess.Board | 
             c = Candidate.from_line(board, now, max_plies)
             c.refutation = _refute(board, l.move, engine, 2)
             rec.killed.append(KilledIdea(c, l.cp, now.cp, killed_by or "the last move"))
-    probe = engine.null_move_probe(board, multipv=3, depth=max(6, engine.depth - 4))   # threats need less depth than ideas
+    probe = engine.null_move_probe(board, multipv=5, depth=max(6, engine.depth - 4))   # threats need less depth than ideas
     rec.threats = [t for t in threats(board, engine, now=lines[0], probe=probe) if t.real]
     rec.zugzwang = zugzwang(board, engine, now=lines[0], probe=probe)
     if played is not None:

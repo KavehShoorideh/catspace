@@ -140,7 +140,14 @@ def main(argv=None):
                             if e0.captured: row["mechanisms"].append("capture")
                             if r.mate is not None or r.san.endswith("#"): row["mechanisms"].append("mate")
                             row["ignored_threat"] = any(t.line.move == r.uci for t in rec.threats)
-                        row["cause"] = classify(board, mv, row["mechanisms"], row["ignored_threat"])
+                        avail = None
+                        if r and not row["ignored_threat"] and not board.is_check():
+                            nb = board.copy(stack=False); nb.push(chess.Move.null()); rm = chess.Move.from_uci(r.uci)
+                            if rm in nb.legal_moves:
+                                l0 = eng.eval_move(nb, rm, depth=max(6, a.depth - 4))
+                                avail = bool(l0 and (l0.cp + rec.eval_cp - 100) >= 30)
+                        row["available_before"] = avail
+                        row["cause"] = classify(board, mv, row["mechanisms"], row["ignored_threat"], avail)
                         if rec.played_scores and rec.idea:
                             sc = rec.played_scores; dmax = max(sc)
                             final = sc[dmax]; peak_d = max((d for d in sc if d >= 2), key=lambda d: winp(sc[d]), default=None)
