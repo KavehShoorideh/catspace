@@ -21126,3 +21126,43 @@ the user's level) and horizon traps whose collapse depth is just beyond the user
 computer moves. The rating ladder joined to the table says who falls for what.
 
 Kaveh's open thread (recorded in ANALYST_PLAN §12): a PLAN as a sequence of concepts.
+
+## 2026-09-04 (Fable) — EXPLANATION SIDE 1-4 + SPEED: causes named, mates named, headline-first, the first PREP SHEET; 9.5x faster review. Kaveh's own 3 months reviewed
+
+SPEED (rapid set, 36 games / 1,029 of Kaveh's moves, cold cache; one run each): S0 full analysis
+303s -> two-stage filter (Lichess evals where present, else a depth-6 check; full analysis only
+where flagged) 195s -> one clean streaming search per played move that is both its evaluation
+and its horizon trajectory + threat probe at depth-4: 104s -> 4 workers 42s -> 8 workers 32s.
+Profile that drove it: full analysis 62%, horizon 27%, ladder 7%. Two wrong guesses recorded:
+the Maia ladder was never the floor (lc0 BLAS is 2.6ms/read vs 14.3ms Metal but changed
+little), and the horizon step was a silent quarter until instrumented. Blunders/mistakes are
+preserved exactly under the filter; ~1/3 of inaccuracies are left unflagged at the 30cp threshold.
+
+KAVEH'S GAMES (lichess huvaxshtra; blitz 1278 / rapid 1547 / puzzles 2042): 1,485 rated games
+since 2026-06-04. Rapid (36 games, depth 12) and blitz (1,449 games, depth 10, 76 min single
+process): error rate 0.30 in both; opening 0.20-0.21, middlegame 0.36-0.37, endgame 0.26-0.27;
+effective rating (ladder level whose policy best predicts his moves) 1700 in the opening,
+1500 middlegame (blitz), 1300 blitz endgame; by month 1500 -> 1700 from August with the error
+rate flat. Enriched punishments: forks x2.4-2.8, attacked-by-lower x1.9-2.2; discovered
+attacks handled better than chance (x0.7-0.8). Blitz: 1,237 of 6,751 blunders+mistakes are
+SHARED blind spots (a 1700 plays the move >=30%), 512 are pure slips (<=2%); horizon traps are
+spread evenly over collapse depths 3-12.
+
+CAUSES (Kaveh: "we didn't have a category of walked into it, and what kind of threat"):
+causes.py from the played move's own effects x the refutation's mechanism, plus one engine check
+of whether the refutation was already playable and strong before the move. Rapid, after
+structural threats: ignored a standing threat 37%, enabled a tactic 34%, missed something
+better 15%, walked into it 14%; kind: compound 52%, simple 24%, positional 25%. He rarely hangs
+things outright; he leaves existing threats unaddressed and is punished by two-piece patterns.
+
+EXPLANATIONS: (1) structural standing threats (L3 facts against our own pieces, engine-verified
+on the null-moved board) merged into the threat ranking and named ("Already: the queen on h5 is
+hanging"); (2) mates.py names mate patterns (back-rank, smothered, double-check, discovered,
+supported-queen, edge) -- 17.Rd8# reads "back-rank mate: the rook checks along the back rank;
+the king's own pawn on f7 blocks its escape; the bishop on g5 covers the rest"; (3) headline-
+first: one sentence per error chosen by cause, ladder tag added after the level is measured
+("A 1700 plays Nf6+ too (48%)" / "a slip"), computer moves hidden; (4) prep.py: a one-page sheet.
+First real sheet, quique44 (Kaveh 0-3 vs him; blitz 1357): 60 games, plays like a 1500
+(opening 1700); as White 2.Bc4 in 14 of 15 open games scoring 0.36 (0.14 vs 2...Nc6); as Black
+the Latvian 2...f5 and the Dutch; attacked-by-lower x8.9 (134 cases), forks x6.5; 53 of 301
+blunders+mistakes are shared at his level. Advice lines each cite their number.

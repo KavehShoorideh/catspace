@@ -21,7 +21,7 @@ import chess.pgn
 
 from .engine import Engine
 from .ideas import analyse_position
-from .verbalize import render, cp_str, best_fact, headline
+from .verbalize import render, cp_str, best_fact, headline, ladder_tag
 from .relations import relations
 from .dynamics import significant, line_effects
 from .horizon import trajectories, find_traps, winp
@@ -170,7 +170,7 @@ def main(argv=None):
                         tk_line = ("   horizon: " + (f"trap -- looks fine to depth {tk['peak_depth']}, collapses at depth {tk['collapse_depth']}" if tk and tk["kind"] == "horizon"
                                    else "blind spot -- bad at every depth" if tk and tk["kind"] == "blind_spot" else "")) if tk else ""
                         num = board.ply() // 2 + 1
-                        texts.append(f"[{num}{'.' if board.turn else '...'}] " + ("(computer move) " if computer else "") + hl)
+                        texts.append(f"[{num}{'.' if board.turn else '...'}] " + ("(computer move) " if computer else "") + hl + ladder_tag(p_played, p_best, a.level, board.san(mv), rec.idea.san if rec.idea else None))
                         if a.why:
                             texts.append(text); texts.append(lad_line)
                             if tk_line.strip(): texts.append(tk_line)
@@ -230,7 +230,8 @@ def write_report(a, games, rows, texts, ratings, t0, final):
     top = sorted((r for r in errs if not r.get("computer_move")), key=useful, reverse=True)[:8]
     out.append(""); out.append("MOST USEFUL TO FIX (biggest win-probability losses, shallow ones weighted up):")
     for r in top:
-        out.append(f"  game {r['game']} ply {r['ply']} (-{winp(r['eval_cp']) - winp(r['eval_cp']-r['drop']):.0f} win%): {r.get('headline') or r['san']}")
+        tag = ladder_tag(r["p_played"], r.get("p_best", {}), er, r["san"], r.get("best")) if er else ""
+        out.append(f"  game {r['game']} ply {r['ply']} (-{winp(r['eval_cp']) - winp(r['eval_cp']-r['drop']):.0f} win%): {r.get('headline') or r['san']}{tag}")
     cm = sum(1 for r in errs if r.get("computer_move"))
     if cm: out.append(f"  ({cm} inaccuracies are computer moves -- every level prefers your move; hidden by default)")
     out.append(""); out.append("=" * 80); out.append("")

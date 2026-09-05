@@ -307,12 +307,17 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
         drop = winp(rec.eval_cp) - winp(pl.cp)
         if rec.verdict == "inaccuracy" and drop < 10 and p_played and all(p_played.get(k, 0) >= p_best.get(k, 0) for k in p_played):
             computer = True
-    pp = p_played.get(level, 0.0)
-    if pp >= 0.30:
-        s += f" A {level} plays {pl.san} too ({pp*100:.0f}%)."
-    elif pp <= 0.02:
-        s += f" (A slip: a {level} almost never plays this.)"
-    pb = p_best.get(level, 0.0)
-    if rec.idea and pb >= 0.30:
-        s += f" A {level} finds {rec.idea.san} ({pb*100:.0f}%)."
     return s, computer
+
+
+def ladder_tag(p_played: dict, p_best: dict, level: int, played_san: str, best_san: str | None) -> str:
+    """The level-relative sentence, added once the player's level is measured."""
+    pp = p_played.get(level, 0.0); out = ""
+    if pp >= 0.30:
+        out += f" A {level} plays {played_san} too ({pp*100:.0f}%)."
+    elif pp <= 0.02:
+        out += f" (A slip: a {level} almost never plays this.)"
+    pb = p_best.get(level, 0.0)
+    if best_san and pb >= 0.30:
+        out += f" A {level} finds {best_san} ({pb*100:.0f}%)."
+    return out
