@@ -21294,3 +21294,19 @@ pawn while Qxe3+ took e3), and a plain capture of a liability beats a motif in t
 causes missed_better 43%, ignored_threat 22%, enabled_tactic 18%, walked_into 10%, positional 6%;
 walked-into now led by hanging 11 (was pin 12). Tests 25. Known limit: SEE ignores x-rays behind the
 capturing piece (a battery understates the attack).
+
+## 2026-09-05 01:05 PDT — "on 18, the knight isn't pinned ... why didn't we catch this?"
+
+The removal test finds the GEOMETRY of a pin (S attacks P1; with P1 gone S sees P2) and classified it by
+values alone (back piece worth more than front = pin). Qc4 through Ne2 to Rf1 passed, but Qxf1 loses a
+queen for a protected rook, so the knight was free to move. Pins and skewers now need BITE, priced with
+the same static exchange evaluation as 'underdefended': a relative pin binds iff the capture on the back
+piece with the front piece gone wins material (SEE on the removal-test board); a skewer needs the front
+piece winnable AND the back piece winnable once it moves; absolute pins are exempt. Geometry without
+bite stays in the vocabulary as an x-ray tagged pin_shape / skewer_shape; the composed arity-4 pins
+inherit the rule. 18.a3 now reads "allowed Rb2 -- the white knight on e2 is attacked twice and defended
+once" (Rxe2 Qxe2 Qxe2: the knight falls because the recapture loses the queen -- SEE +3). Gauge: skewer
+false-fire 0.32 -> 0.11 at recall 0.93 -> 0.89 (lift x2.9 -> x7.9; the 13 misses are skewers executed
+after ply 3, previously credited by a toothless shape in the first plies); pin 0.98 -> 0.97 recall,
+false-fire 0.43 -> 0.36. Rapid set: pin in refutations 0.12 (was 0.30 in this game's first review),
+skewer 0.05; walked-into pin 5 (was 12), skewer 2 (was 8). Tests 26. Both reports byte-identical on re-run.
