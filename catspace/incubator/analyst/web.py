@@ -42,6 +42,8 @@ LICHESS_DIR = ROOT / "data" / "lichess"
 FEEDBACK = ROOT / "feedback"
 FLAGS = FEEDBACK / "flags.jsonl"
 PAGE = Path(__file__).with_name("web_page.html")
+ASSETS = ROOT / "catspace" / "research" / "tools" / "viz" / "viz" / "assets"      # the vendored chessground + chess.js of the play-atlas app
+MIME = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json", ".html": "text/html; charset=utf-8"}
 UA = "catspace-analyst/0.1 (local desktop tool)"
 RATINGS = (1100, 1300, 1500, 1700, 1900)
 GAME_ID = re.compile(r"^[A-Za-z0-9]{8}$")
@@ -141,7 +143,8 @@ class Analyst:
                 "verdict": rec.verdict, "cost": delta_str(rec) if pl else "",
                 "cost_wp": round(abs(winp(rec.eval_cp) - winp(pl.cp))) if pl else 0,
                 "headline": row.get("headline") if rec.verdict in ERR else None,
-                "fact": mp or fact, "best": rec.idea.san if rec.idea else None, "best_line": rec.idea.line_san if rec.idea else None,
+                "fact": mp or fact, "best": rec.idea.san if rec.idea else None, "best_uci": rec.idea.uci if rec.idea else None,
+                "best_line": rec.idea.line_san if rec.idea else None,
                 "text": render(rec, alternatives=False), "text_long": render(rec, long=True, alternatives=True),
                 "structure": top_changes(e0.structure_created, e0.structure_ended, k=3) if e0 else [],
                 "threats": [t.san_line(board, 4) for t in rec.threats if t.real][:3],
@@ -287,6 +290,13 @@ class Handler(BaseHTTPRequestHandler):
             data = PAGE.read_bytes()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(data)))
             self.end_headers(); self.wfile.write(data); return
+        if path.startswith("/assets/"):
+            fp = (ASSETS / path[len("/assets/"):]).resolve()
+            if not str(fp).startswith(str(ASSETS.resolve())) or not fp.is_file():
+                return self._json({"error": "not found"}, 404)
+            data = fp.read_bytes()
+            self.send_response(200); self.send_header("Content-Type", MIME.get(fp.suffix, "application/octet-stream"))
+            self.send_header("Content-Length", str(len(data))); self.send_header("Cache-Control", "max-age=3600"); self.end_headers(); self.wfile.write(data); return
         if path.startswith("/api/job/"):
             j = self.jobs.jobs.get(path[len("/api/job/"):])
             return self._json(j or {"error": "no such job"}, 200 if j else 404)

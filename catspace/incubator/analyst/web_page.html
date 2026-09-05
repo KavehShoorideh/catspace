@@ -1,338 +1,325 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Catspace Analyst</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+Symbols+2&display=swap">
+<title>catspace · analyst</title>
+<link rel="stylesheet" href="/assets/chessground/chessground.base.css">
+<link rel="stylesheet" href="/assets/chessground/chessground.brown.css">
+<link rel="stylesheet" href="/assets/chessground/chessground.cburnett.css">
 <style>
-:root {
-  --ground: #EDEEEA; --panel: #F7F7F4; --ink: #1B1F1D; --muted: #5E6661; --rule: #D3D6D0;
-  --sq-light: #E9E2C9; --sq-dark: #7A9A78; --sq-last: rgba(196,140,40,.45); --sq-best: rgba(31,95,139,.45);
-  --accent: #1F5F8B; --accent-ink: #FFFFFF; --good: #2E7D4F; --bad: #B5432C; --warn: #B8860B;
-  --bad-soft: #F3DBD4; --good-soft: #D9EBDF; --warn-soft: #F5E9C8; --piece-w: #FAFAF6; --piece-b: #1A1D1B;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --ground: #15181A; --panel: #1D2124; --ink: #E6E5DE; --muted: #9AA29C; --rule: #2E3437;
-    --sq-light: #C9C1A2; --sq-dark: #587A57; --sq-last: rgba(222,170,70,.45); --sq-best: rgba(127,178,216,.5);
-    --accent: #7FB2D8; --accent-ink: #10202B; --good: #6CC08B; --bad: #E0705A; --warn: #D9B14A;
-    --bad-soft: #3A2521; --good-soft: #1F3328; --warn-soft: #3A3320; --piece-w: #FAFAF6; --piece-b: #17191A;
-  }
-}
-:root[data-theme="dark"] {
-  --ground: #15181A; --panel: #1D2124; --ink: #E6E5DE; --muted: #9AA29C; --rule: #2E3437;
-  --sq-light: #C9C1A2; --sq-dark: #587A57; --sq-last: rgba(222,170,70,.45); --sq-best: rgba(127,178,216,.5);
-  --accent: #7FB2D8; --accent-ink: #10202B; --good: #6CC08B; --bad: #E0705A; --warn: #D9B14A;
-  --bad-soft: #3A2521; --good-soft: #1F3328; --warn-soft: #3A3320; --piece-w: #FAFAF6; --piece-b: #17191A;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; }
-body { background: var(--ground); color: var(--ink); font: 15px/1.5 "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; }
-.mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
-a { color: var(--accent); }
-header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
-header h1 { margin: 0; font: 700 20px/1.1 "Bricolage Grotesque", "IBM Plex Sans", sans-serif; letter-spacing: -.01em; cursor: pointer; }
-header form { display: flex; gap: 8px; flex: 1; min-width: 260px; max-width: 640px; }
-header input { flex: 1; font: 14px "IBM Plex Mono", monospace; padding: 8px 10px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); color: var(--ink); }
-button { font: 500 14px "IBM Plex Sans", system-ui, sans-serif; padding: 8px 14px; border-radius: 6px; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); cursor: pointer; }
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-button.flag { border-color: var(--bad); color: var(--bad); }
-button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.status { color: var(--muted); font-size: 13px; }
-main { padding: 16px 20px 60px; max-width: 1240px; }
-.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-h2 { font: 700 18px/1.2 "Bricolage Grotesque", sans-serif; margin: 18px 0 8px; text-wrap: balance; }
-/* home */
-.home { max-width: 70ch; }
-.home p { margin: 8px 0; }
-.recent { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { padding: 4px 10px; border: 1px solid var(--rule); border-radius: 999px; font-size: 13px; cursor: pointer; background: var(--panel); }
-/* game view */
-.game { display: grid; grid-template-columns: minmax(280px, 480px) minmax(300px, 1fr); gap: 20px; }
-@media (max-width: 820px) { .game { grid-template-columns: 1fr; } }
-.board { display: grid; grid-template-columns: repeat(8, 1fr); aspect-ratio: 1; width: 100%; border: 2px solid var(--sq-dark); border-radius: 3px; overflow: hidden; user-select: none; }
-.sq { position: relative; display: flex; align-items: center; justify-content: center; font-family: "Noto Sans Symbols 2", "Segoe UI Symbol", "Apple Symbols", "DejaVu Sans", sans-serif; font-size: clamp(22px, 6.6vw, 44px); line-height: 1; }
-.sq.l { background: var(--sq-light); } .sq.d { background: var(--sq-dark); }
-.sq.last::before, .sq.best::after { content: ""; position: absolute; inset: 0; pointer-events: none; }
-.sq.last::before { background: var(--sq-last); }
-.sq.best::after { inset: 6%; border-radius: 50%; border: 3px solid var(--sq-best); }
-.sq .p { position: relative; z-index: 1; }
-.sq .p.w { color: var(--piece-w); text-shadow: 0 0 1px #000, 0 1px 1px rgba(0,0,0,.6); } .sq .p.b { color: var(--piece-b); }
-.sq .c { position: absolute; left: 3px; top: 1px; font: 500 10px/1 "IBM Plex Mono", monospace; color: rgba(0,0,0,.45); }
-.controls { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
-.moves { display: grid; grid-template-columns: 3.5ch 1fr 1fr; gap: 2px 6px; margin-top: 12px; font-size: 14px; max-height: 42vh; overflow-y: auto; padding-right: 4px; }
-.moves .n { color: var(--muted); }
-.mv { padding: 1px 6px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
-.mv:hover { background: var(--panel); }
-.mv.cur { outline: 2px solid var(--accent); }
-.mv.inaccuracy { background: var(--warn-soft); } .mv.mistake { background: var(--bad-soft); } .mv.blunder { background: var(--bad-soft); font-weight: 600; }
-.mv .ev { color: var(--muted); font-size: 12px; margin-left: 4px; }
-.panel { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; }
-.card.blunder, .card.mistake { border-color: var(--bad); } .card.inaccuracy { border-color: var(--warn); } .card.best { border-color: var(--good); }
-.verdict { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
-.verdict.best, .verdict.ok { background: var(--good-soft); color: var(--good); } .verdict.inaccuracy { background: var(--warn-soft); color: var(--warn); } .verdict.mistake, .verdict.blunder { background: var(--bad-soft); color: var(--bad); }
-.head { font: 500 18px/1.3 "Bricolage Grotesque", "IBM Plex Sans", sans-serif; margin: 6px 0; text-wrap: balance; }
-.card p { margin: 6px 0; }
-.line { color: var(--muted); }
-pre { white-space: pre-wrap; font: 13px/1.45 "IBM Plex Mono", monospace; margin: 0; }
-details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
-.ladder { display: grid; grid-template-columns: 5ch 1fr 4ch 1fr 4ch; gap: 4px 8px; align-items: center; font-size: 12px; }
-.ladder .bar { height: 8px; background: var(--rule); border-radius: 4px; overflow: hidden; }
-.ladder .bar i { display: block; height: 100%; background: var(--accent); }
-.ladder .bar.b i { background: var(--good); }
-.sides { display: flex; gap: 16px; flex-wrap: wrap; }
-.side { flex: 1; min-width: 220px; }
-.side b { font-weight: 600; }
-/* user view */
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--rule); }
-td { padding: 6px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
-tr.row { cursor: pointer; } tr.row:hover td { background: var(--panel); }
-.cost { color: var(--bad); font-weight: 600; }
-.wrap { overflow-x: auto; }
-.summary pre { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; padding: 12px; max-height: 40vh; overflow: auto; }
-/* flag */
-#flagbtn { position: fixed; right: 18px; bottom: 18px; z-index: 5; box-shadow: 0 2px 10px rgba(0,0,0,.2); background: var(--panel); }
-dialog { border: 1px solid var(--rule); border-radius: 10px; background: var(--panel); color: var(--ink); padding: 18px; max-width: 560px; width: calc(100vw - 40px); }
-dialog::backdrop { background: rgba(0,0,0,.35); }
-dialog textarea { width: 100%; min-height: 90px; font: 14px "IBM Plex Sans", sans-serif; padding: 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--ground); color: var(--ink); }
-dialog .ctx { font: 12px/1.4 "IBM Plex Mono", monospace; color: var(--muted); max-height: 140px; overflow: auto; white-space: pre-wrap; margin: 8px 0; }
-.toast { position: fixed; left: 50%; bottom: 70px; transform: translateX(-50%); background: var(--ink); color: var(--ground); padding: 8px 14px; border-radius: 8px; font-size: 13px; z-index: 6; }
-.progress { height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; margin: 8px 0; } .progress i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
-@media (prefers-reduced-motion: reduce) { .progress i { transition: none; } }
+  /* the play-atlas skin (Kaveh 2026-09-05: reuse the board and the streaming UX that already worked) */
+  :root{--bg:#14161a;--panel:#1b1e24;--bd:#2a2e36;--tx:#cfd3da;--mut:#6a7080;
+        --blue:#7aa2ff;--grn:#66d9a6;--org:#ffb86b;--pink:#ff7a9c;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:13px/1.4 system-ui,sans-serif}
+  h1{font-size:15px;margin:0;padding:10px 14px;border-bottom:1px solid var(--bd);color:var(--blue);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  h1 small{color:var(--mut);font-weight:400}
+  h1 form{display:flex;gap:6px;flex:1;min-width:280px;max-width:640px}
+  h1 input{flex:1;background:#0d0f13;color:var(--tx);border:1px solid var(--bd);border-radius:5px;padding:5px 8px;font:12px ui-monospace,monospace}
+  .wrap{display:flex;gap:14px;padding:14px;align-items:flex-start;flex-wrap:wrap}
+  .col{background:var(--panel);border:1px solid var(--bd);border-radius:8px;padding:12px;resize:both;overflow:auto}
+  .left{width:470px} .right{flex:1;min-width:440px}
+  button{background:#242832;color:var(--tx);border:1px solid var(--bd);border-radius:5px;
+         padding:5px 9px;cursor:pointer;font-size:12px}
+  button:hover{border-color:var(--blue)} button.on{background:var(--blue);color:#0b0d10;border-color:var(--blue)}
+  button.flag{border-color:var(--pink);color:var(--pink)}
+  .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
+  #board{width:432px;height:432px;resize:both;overflow:hidden;max-width:100%}
+  table{border-collapse:collapse;width:100%;font-size:12px}
+  th,td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--bd)}
+  th{color:var(--mut);font-weight:600}
+  tr.link{cursor:pointer} tr.link:hover td{background:#242832}
+  .bar{height:8px;background:#2a2e36;border-radius:3px;overflow:hidden;min-width:40px;display:inline-block;vertical-align:middle}
+  .bar>i{display:block;height:100%;background:var(--blue)} .bar.g>i{background:var(--grn)}
+  .moves{max-height:150px;overflow:auto;font-family:ui-monospace,monospace;font-size:12px;color:var(--mut);line-height:1.7}
+  .moves b{color:var(--tx)}
+  .moves span{padding:0 3px;border-radius:3px;cursor:pointer}
+  .moves span.inaccuracy b{color:var(--org)} .moves span.mistake b{color:var(--pink)} .moves span.blunder b{color:var(--pink);text-decoration:underline}
+  .moves span.cur{background:#2a2e36;outline:1px solid var(--blue)}
+  .pill{font-size:11px;color:var(--mut)} .k{color:var(--tx)}
+  .tag{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;background:#242832}
+  .tag.best,.tag.ok{color:var(--grn)} .tag.inaccuracy{color:var(--org)} .tag.mistake,.tag.blunder{color:var(--pink)}
+  .head{font-size:15px;line-height:1.35;margin:6px 0 8px;color:var(--tx)}
+  .box{background:#0d0f13;border:1px solid var(--bd);border-radius:6px;padding:10px 12px;font:12.5px/1.5 ui-monospace,monospace;white-space:pre-wrap;color:var(--tx);max-height:52vh;overflow:auto}
+  .lrow{margin:3px 0} .ply{cursor:pointer;padding:0 2px;border-radius:3px} .ply:hover{background:#2a2e36}
+  .inspect{display:flex;gap:10px;align-items:flex-start;margin-top:10px}
+  .inspect .brd{width:168px;height:168px;flex:none;resize:both;overflow:hidden}
+  #toast{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#3a1d24;
+         border:1px solid var(--pink);color:#ffd7df;padding:8px 12px;border-radius:6px;display:none;z-index:9}
+  #toast.ok{background:#1d3a2a;border-color:var(--grn);color:#d7ffe6}
+  kbd{background:#242832;border:1px solid var(--bd);border-radius:3px;padding:0 4px;font-size:11px}
+  .prog{height:6px;background:#2a2e36;border-radius:3px;overflow:hidden;margin:6px 0} .prog>i{display:block;height:100%;background:var(--blue);transition:width .3s}
+  #flagbtn{position:fixed;right:14px;bottom:14px;z-index:8;box-shadow:0 2px 12px rgba(0,0,0,.5)}
+  dialog{background:var(--panel);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:14px;max-width:560px;width:calc(100vw - 40px)}
+  dialog::backdrop{background:rgba(0,0,0,.55)}
+  dialog textarea{width:100%;min-height:80px;background:#0d0f13;color:var(--tx);border:1px solid var(--bd);border-radius:5px;padding:6px;font:13px system-ui,sans-serif}
+  dialog .ctx{font:11px/1.4 ui-monospace,monospace;color:var(--mut);max-height:140px;overflow:auto;white-space:pre-wrap;margin:6px 0}
+  .home{max-width:70ch;padding:14px;line-height:1.55}
+  .chip{display:inline-block;padding:3px 9px;border:1px solid var(--bd);border-radius:12px;margin:3px 4px 0 0;cursor:pointer;background:#242832}
+  a{color:var(--blue)}
+  .summary{white-space:pre-wrap;font:12px/1.45 ui-monospace,monospace;background:#0d0f13;border:1px solid var(--bd);border-radius:6px;padding:10px;max-height:40vh;overflow:auto}
 </style>
 </head>
 <body>
-<header>
-  <h1 id="home">Catspace Analyst</h1>
-  <form id="form"><input id="q" placeholder="Lichess game link, game id, or user name" autocomplete="off" spellcheck="false"><button class="primary" type="submit">Analyse</button></form>
-  <span class="status" id="status"></span>
-</header>
-<main id="main"></main>
-<button id="flagbtn" class="flag" title="Log what you are looking at for review">Something is not right</button>
+<h1><span id="home" style="cursor:pointer">catspace · analyst</span>
+  <form id="form"><input id="q" placeholder="Lichess game link, game id, or user name" autocomplete="off" spellcheck="false"><button class="on" type="submit">Analyse</button></form>
+  <small id="hstatus"></small></h1>
+<div id="main"></div>
+<button id="flagbtn" class="flag" title="log what you are looking at for review">⚑ Something is not right</button>
 <dialog id="flagdlg">
   <form method="dialog" id="flagform">
-    <div class="eyebrow">Something is not right</div>
+    <div class="pill">Something is not right</div>
     <p style="margin:6px 0 4px">What is wrong here? (optional)</p>
     <textarea id="note" placeholder="e.g. the knight is not pinned, the rook is protected"></textarea>
-    <div class="eyebrow" style="margin-top:8px">What will be logged</div>
+    <div class="pill" style="margin-top:6px">what will be logged</div>
     <div class="ctx" id="ctx"></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button type="button" id="cancel">Cancel</button><button class="primary" type="submit">Log it</button></div>
+    <div class="row" style="justify-content:flex-end"><button type="button" id="cancel">Cancel</button><button class="on" type="submit">Log it</button></div>
   </form>
 </dialog>
-<script>
-const GLYPH = {K:"♔",Q:"♕",R:"♖",B:"♗",N:"♘",P:"♙",k:"♚",q:"♛",r:"♜",b:"♝",n:"♞",p:"♟"};
-const $ = s => document.querySelector(s);
-const main = $("#main"); const statusEl = $("#status");
-let view = {kind: "home"};          // what the flag button captures
-let poll = null;
+<div id="toast"></div>
 
-function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c])); }
-function recent() { try { return JSON.parse(localStorage.getItem("analyst-recent") || "[]"); } catch (e) { return []; } }
-function remember(kind, key, label) { try { const r = recent().filter(x => x.key !== key); r.unshift({kind, key, label}); localStorage.setItem("analyst-recent", JSON.stringify(r.slice(0, 12))); } catch (e) {} }
-async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
-function stopPoll() { if (poll) { clearInterval(poll); poll = null; } }
+<script type="module">
+import { Chessground } from '/assets/chessground/chessground.js';
+import { Chess } from '/assets/chessjs.js';
 
-// ---------------------------------------------------------------- routing
-function go(hash) { location.hash = hash; }
-window.addEventListener("hashchange", route);
-function route() {
-  stopPoll();
-  const h = location.hash.slice(1);
-  if (h.startsWith("game/")) { const [gid, ply] = h.slice(5).split("@"); openGame(gid, ply ? +ply : null); }
-  else if (h.startsWith("user/")) openUser(decodeURIComponent(h.slice(5)));
-  else home();
-}
-$("#home").addEventListener("click", () => go(""));
-$("#form").addEventListener("submit", async e => {
-  e.preventDefault(); const q = $("#q").value.trim(); if (!q) return;
-  const r = await api("/api/resolve", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({input: q})});
-  if (r.error) { statusEl.textContent = r.error; return; }
-  statusEl.textContent = ""; $("#q").value = "";
-  go(r.kind === "game" ? "game/" + r.key : "user/" + encodeURIComponent(r.key));
-});
+const $=s=>document.querySelector(s);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const ERR=new Set(["inaccuracy","mistake","blunder"]);
+const BRUSH_PLAYED="yellow", BRUSH_BEST="green", BRUSH_REPLY="red";
+let cg=null, cgMini=null, poll=null;
+/* S.plies = the server's analysis frames (one per ply, may be partial while streaming);
+   S.fens[i] = the position BEFORE ply i (fens[n] = the final position); S.ptr = the ply being explained. */
+const S={view:"home",gameId:null,headers:{},plies:[],fens:[],moves:[],ptr:0,flip:false,total:0,partial:false,side:null,probe:null,userName:null};
 
-// ---------------------------------------------------------------- home
-function home() {
-  view = {kind: "home"};
-  const r = recent();
-  main.innerHTML = `<div class="home">
-    <h2>Paste a game or a player</h2>
-    <p>A Lichess game link opens the game with the analysis of every move. A user name reviews their recent games, and each error opens the game at that move.</p>
-    <p>Everything runs on this machine: Stockfish, the Maia ladder and the cache. Lichess is only asked for the PGN.</p>
-    <div class="eyebrow" style="margin-top:18px">Recent</div>
-    <div class="recent">${r.map(x => `<span class="chip" data-kind="${x.kind}" data-key="${esc(x.key)}">${esc(x.label || x.key)}</span>`).join("") || '<span class="status">nothing yet</span>'}</div>
-    <div class="eyebrow" style="margin-top:18px">Flags</div>
-    <p class="status" id="flagcount">…</p>
-  </div>`;
-  main.querySelectorAll(".chip").forEach(c => c.addEventListener("click", () => go(c.dataset.kind === "game" ? "game/" + c.dataset.key : "user/" + encodeURIComponent(c.dataset.key))));
-  api("/api/flags").then(f => { $("#flagcount").textContent = f.length ? `${f.length} logged in feedback/flags.jsonl (last: #${f[f.length-1].id}, ${f[f.length-1].time})` : "none logged yet"; });
-}
+function toast(m,ok){const t=$("#toast");t.textContent=m;t.className=ok?"ok":"";t.style.display="block";
+  clearTimeout(t._h);t._h=setTimeout(()=>t.style.display="none",3200);}
+function setStatus(t){const s=$("#status");if(s)s.textContent=t;}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+async function api(path,body){const opt=body?{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}:{};
+  const r=await fetch(path,opt);const j=await r.json();if(!r.ok)throw new Error(j.error||r.status);return j;}
+function stopPoll(){if(poll){clearInterval(poll);poll=null;}}
+function recent(){try{return JSON.parse(localStorage.getItem("analyst-recent")||"[]");}catch(e){return[];}}
+function remember(kind,key,label){try{const r=recent().filter(x=>x.key!==key);r.unshift({kind,key,label});localStorage.setItem("analyst-recent",JSON.stringify(r.slice(0,12)));}catch(e){}}
 
-// ---------------------------------------------------------------- game view
-let G = null;   // {result, ply, orient}
-async function openGame(gid, ply) {
-  main.innerHTML = `<h2>Game ${esc(gid)}</h2><div class="progress"><i style="width:0%"></i></div><p class="status" id="gstatus">fetching…</p>`;
-  view = {kind: "game", game: gid};
-  const r = await api("/api/game/" + gid);
-  if (r.status === "done") { showGame(r.result, ply); return; }
-  const jid = r.job;
-  poll = setInterval(async () => {
-    const j = await api("/api/job/" + jid);
-    if (j.status === "error") { stopPoll(); main.innerHTML = `<h2>Game ${esc(gid)}</h2><pre>${esc(j.error)}</pre>`; return; }
-    if (j.status === "done") { stopPoll(); const r2 = await api("/api/game/" + gid); showGame(r2.result, ply); return; }
-    const p = j.progress || {}; const bar = main.querySelector(".progress i"); if (bar) bar.style.width = (p.total ? 100 * p.done / p.total : 0) + "%";
-    const st = $("#gstatus"); if (st) st.textContent = p.message || j.status;
-    if (j.partial && j.partial.length && !(G && G.result && G.result.plies.length >= j.partial.length && G.result.id === gid)) {
-      showGame({id: gid, headers: {}, plies: j.partial, summary: null, partial: true, total: p.total}, ply, true);
-    }
-  }, 1500);
-}
-function showGame(result, ply, partial) {
-  const first = !G || G.result.id !== result.id;
-  const keep = G && G.result.id === result.id ? G.ply : null;
-  G = {result, ply: ply != null ? ply : (keep != null ? keep : 0), orient: (G && G.result.id === result.id) ? G.orient : (view.side || "w")};
-  if (G.ply >= result.plies.length) G.ply = result.plies.length - 1;
-  const h = result.headers || {};
-  const title = h.White ? `${h.White} (${h.WhiteElo}) vs ${h.Black} (${h.BlackElo}) — ${h.Result}` : `Game ${result.id}`;
-  remember("game", result.id, h.White ? `${h.White} vs ${h.Black} (${h.Date})` : result.id);
-  if (first || partial) {
-    main.innerHTML = `<div class="eyebrow">${esc((h.Event || "").replace("rated ", ""))} ${esc(h.TimeControl || "")} · ${esc(h.Date || "")} · ${esc(h.Opening || "")}${partial ? ` · analysing… ${result.plies.length}/${result.total}` : ""}</div>
-      <h2>${esc(title)} <a class="status" href="https://lichess.org/${esc(result.id)}" target="_blank" rel="noopener">lichess ↗</a></h2>
-      <div class="game">
-        <div><div class="board" id="board"></div>
-          <div class="controls"><button id="first">⏮</button><button id="prev">◀</button><button id="next">▶</button><button id="last">⏭</button><button id="flip">flip</button><span class="status">← → keys step</span></div>
-          <div class="moves" id="moves"></div></div>
-        <div class="panel" id="panel"></div>
-      </div>
-      <div id="sides"></div>`;
-    $("#first").onclick = () => setPly(0); $("#prev").onclick = () => setPly(G.ply - 1); $("#next").onclick = () => setPly(G.ply + 1); $("#last").onclick = () => setPly(G.result.plies.length - 1);
-    $("#flip").onclick = () => { G.orient = G.orient === "w" ? "b" : "w"; renderBoard(); };
-  }
-  renderMoves(); setPly(G.ply); renderSides();
-}
-function setPly(i) {
-  if (!G) return; i = Math.max(0, Math.min(i, G.result.plies.length - 1)); G.ply = i;
-  view = {kind: "game", game: G.result.id, ply: i, side: view.side};
-  history.replaceState(null, "", "#game/" + G.result.id + "@" + i);
-  renderBoard(); renderPanel(); main.querySelectorAll(".mv").forEach(m => m.classList.toggle("cur", +m.dataset.i === i));
-  const cur = main.querySelector(".mv.cur"); if (cur) cur.scrollIntoView({block: "nearest"});
-}
-document.addEventListener("keydown", e => { if (!G || e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return; if (e.key === "ArrowLeft") setPly(G.ply - 1); if (e.key === "ArrowRight") setPly(G.ply + 1); });
-function parseFen(fen) { const rows = fen.split(" ")[0].split("/"); const m = {}; rows.forEach((row, ri) => { let f = 0; for (const ch of row) { if (/\d/.test(ch)) f += +ch; else { m["abcdefgh"[f] + (8 - ri)] = ch; f++; } } }); return m; }
-function fenAfter(p) {   // the position after the ply = the next ply's fen, or the final fen
-  const n = G.result.plies[p.ply + 1]; return n ? n.fen : (G.result.final_fen || p.fen);
-}
-function renderBoard() {
-  const p = G.result.plies[G.ply]; if (!p) return;
-  const pieces = parseFen(fenAfter(p)); const flip = G.orient === "b";
-  const last = [p.uci.slice(0, 2), p.uci.slice(2, 4)];
-  const board = $("#board"); board.innerHTML = "";
-  for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) {
-    const rank = flip ? r + 1 : 8 - r, file = flip ? 7 - f : f; const sq = "abcdefgh"[file] + rank;
-    const d = document.createElement("div"); d.className = "sq " + ((file + rank) % 2 ? "l" : "d");
-    if (last.includes(sq)) d.classList.add("last");
-    if (f === 0) { const c = document.createElement("span"); c.className = "c"; c.textContent = rank; d.appendChild(c); }
-    if (r === 7) { const c = document.createElement("span"); c.className = "c"; c.style.left = "auto"; c.style.right = "3px"; c.style.top = "auto"; c.style.bottom = "1px"; c.textContent = "abcdefgh"[file]; d.appendChild(c); }
-    const pc = pieces[sq]; if (pc) { const s = document.createElement("span"); s.className = "p " + (pc === pc.toUpperCase() ? "w" : "b"); s.textContent = GLYPH[pc]; d.appendChild(s); }
-    board.appendChild(d);
-  }
-}
-function renderMoves() {
-  const el = $("#moves"); el.innerHTML = "";
-  G.result.plies.forEach((p, i) => {
-    if (p.side === "w") { const n = document.createElement("span"); n.className = "n mono"; n.textContent = p.move_no + "."; el.appendChild(n); }
-    else if (i === 0) { const n = document.createElement("span"); n.className = "n mono"; n.textContent = p.move_no + "…"; el.appendChild(n); const gap = document.createElement("span"); el.appendChild(gap); }
-    const m = document.createElement("span"); m.className = "mv mono " + (p.verdict || ""); m.dataset.i = i;
-    m.innerHTML = `${esc(p.san)}<span class="ev">${esc(p.eval_after)}</span>`; m.addEventListener("click", () => setPly(i)); el.appendChild(m);
-  });
-}
-function ladderHtml(p) {
-  const keys = Object.keys(p.p_played || {}).sort();
-  if (!keys.length) return "";
-  return `<div class="eyebrow" style="margin-top:8px">who plays it · ${esc(p.san)} vs best ${esc(p.best || "")}</div><div class="ladder">` +
-    keys.map(k => `<span class="mono">${k}</span><span class="bar"><i style="width:${p.p_played[k]}%"></i></span><span class="mono">${p.p_played[k]}%</span><span class="bar b"><i style="width:${(p.p_best || {})[k] || 0}%"></i></span><span class="mono">${(p.p_best || {})[k] || 0}%</span>`).join("") + `</div>`;
-}
-function renderPanel() {
-  const p = G.result.plies[G.ply]; if (!p) return;
-  const who = p.side === "w" ? "White" : "Black"; const label = p.side === "w" ? `${p.move_no}. ${p.san}` : `${p.move_no}… ${p.san}`;
-  const err = ["inaccuracy", "mistake", "blunder"].includes(p.verdict);
-  const head = err ? esc(p.headline) : (p.fact ? `${esc(p.san)}: ${esc(p.fact)}` : `${esc(p.san)} — ${esc(p.verdict)}`);
-  $("#panel").innerHTML = `<div class="card ${esc(p.verdict || "")}">
-      <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><span><span class="verdict ${esc(p.verdict || "")}">${esc(p.verdict || "?")}</span> <span class="mono">${esc(label)}</span> <span class="status">eval ${esc(p.eval_before)} → ${esc(p.eval_after)}${p.cost ? " · " + esc(p.cost) : ""}</span></span><button class="flag" data-flag="ply">Something is not right</button></div>
-      <p class="head">${head}</p>
-      ${p.best && p.best !== p.san ? `<p>Best: <span class="mono">${esc(p.best)}</span> <span class="line mono">${esc(p.best_line || "")}</span></p>` : ""}
-      ${p.refutation && err ? `<p>Punished by <span class="mono">${esc(p.refutation.line || p.refutation.san)}</span></p>` : ""}
-      ${p.threats && p.threats.length ? `<p>If ${who} did nothing: <span class="mono">${p.threats.map(esc).join(" · ")}</span></p>` : ""}
-      ${p.structure && p.structure.length ? `<p class="line">Structure: ${p.structure.map(esc).join("; ")}</p>` : ""}
-      ${p.horizon ? `<p class="line">Horizon: ${esc(p.horizon)}</p>` : ""}
-      ${p.computer_move ? `<p class="line">Computer move: every level prefers what was played.</p>` : ""}
-      ${ladderHtml(p)}
-      <details style="margin-top:8px"><summary>full analysis</summary><pre>${esc(p.text_long)}</pre></details>
-    </div>`;
-  $("#panel [data-flag]").addEventListener("click", () => openFlag({kind: "game", game: G.result.id, ply: p.ply, san: p.san, fen: p.fen, verdict: p.verdict, headline: p.headline || p.fact, text: p.text}));
-}
-function renderSides() {
-  const s = G.result.summary; const el = $("#sides"); if (!s) { el.innerHTML = ""; return; }
-  const h = G.result.headers || {};
-  el.innerHTML = `<h2>Summary</h2><div class="sides">` + ["w", "b"].map(k => { const x = s[k]; const name = k === "w" ? h.White : h.Black; return `<div class="card side"><div class="eyebrow">${k === "w" ? "White" : "Black"} · ${esc(name || "")}</div>
-      <p><b>${x.moves}</b> moves · <b>${x.errors}</b> errors · ${Object.entries(x.verdicts).map(([a, b]) => `${a} ${b}`).join(", ")}</p>
-      <p>Effective rating: <b>${x.effective_rating || "?"}</b> (the Maia level whose policy best predicts the moves)</p>
-      <p>Causes: ${Object.entries(x.causes).map(([a, b]) => `${esc(a)} ${b}`).join(", ") || "—"}</p>
-      ${x.worst.map(w => `<p><a href="#game/${esc(G.result.id)}@${w.ply}">${w.side === "w" ? w.move_no + "." : w.move_no + "…"} ${esc(w.san)}</a> <span class="cost">−${w.cost_wp}</span> ${esc(w.headline || "")}</p>`).join("")}
-    </div>`; }).join("") + `</div>`;
+/* ---------- routing ---------- */
+function go(h){location.hash=h;}
+window.addEventListener("hashchange",route);
+$("#home").onclick=()=>go("");
+$("#form").addEventListener("submit",async e=>{e.preventDefault();const q=$("#q").value.trim();if(!q)return;
+  try{const r=await api("/api/resolve",{input:q});$("#q").value="";go(r.kind==="game"?"game/"+r.key:"user/"+encodeURIComponent(r.key));}
+  catch(err){toast(err.message);}});
+function route(){stopPoll();const h=location.hash.slice(1);
+  if(h.startsWith("game/")){const [gid,p]=h.slice(5).split("@");openGame(gid,p==null?null:+p);}
+  else if(h.startsWith("user/"))openUser(decodeURIComponent(h.slice(5)));
+  else home();}
+
+/* ---------- home ---------- */
+async function home(){S.view="home";cg=null;
+  const r=recent();
+  $("#main").innerHTML=`<div class="home">
+    <p>Paste a Lichess game link: the game is fetched and analysed move by move, both sides, and you step through it with the analysis beside the board. Paste a user name: their recent games are reviewed; every error opens the game at that move.</p>
+    <p class="pill">Everything runs on this machine (Stockfish, the Maia ladder, the cache). Lichess is only asked for the PGN. <kbd>←</kbd> <kbd>→</kbd> step moves.</p>
+    <div class="pill" style="margin-top:12px">recent</div><div id="recent">${r.map(x=>`<span class="chip" data-kind="${x.kind}" data-key="${esc(x.key)}">${esc(x.label||x.key)}</span>`).join("")||'<span class="pill">nothing yet</span>'}</div>
+    <div class="pill" style="margin-top:12px">flags</div><div id="flagcount" class="pill">…</div></div>`;
+  $("#main").querySelectorAll(".chip").forEach(c=>c.onclick=()=>go(c.dataset.kind==="game"?"game/"+c.dataset.key:"user/"+encodeURIComponent(c.dataset.key)));
+  try{const f=await api("/api/flags");$("#flagcount").textContent=f.length?`${f.length} logged in feedback/flags.jsonl (last #${f[f.length-1].id}, ${f[f.length-1].time})`:"none logged yet";}catch(e){}
 }
 
-// ---------------------------------------------------------------- user view
-async function openUser(name) {
-  view = {kind: "user", user: name};
-  main.innerHTML = `<h2>${esc(name)}</h2><div class="progress"><i style="width:0%"></i></div><p class="status" id="ustatus">fetching games…</p>`;
-  const r = await api("/api/user/" + encodeURIComponent(name));
-  if (r.status === "done") { showUser(r.result); return; }
-  poll = setInterval(async () => {
-    const j = await api("/api/job/" + r.job);
-    if (j.status === "error") { stopPoll(); main.innerHTML = `<h2>${esc(name)}</h2><pre>${esc(j.error)}</pre>`; return; }
-    if (j.status === "done") { stopPoll(); const r2 = await api("/api/user/" + encodeURIComponent(name)); showUser(r2.result); return; }
-    const p = j.progress || {}; const st = $("#ustatus"); if (st) st.textContent = p.message || j.status;
-  }, 2000);
+/* ---------- game view ---------- */
+function gameLayout(){
+  $("#main").innerHTML=`<div class="wrap">
+  <div class="col left">
+    <div class="row"><span class="k" id="title">—</span><span style="flex:1"></span><button id="bFlip">Flip</button><a id="lichess" href="#" target="_blank" rel="noopener" class="pill">lichess ↗</a></div>
+    <div id="board"></div>
+    <div class="row" style="margin-top:6px">
+      <button id="navFirst" title="start">⏮</button><button id="navPrev" title="back">◀</button>
+      <button id="navNext" title="forward">▶</button><button id="navLast" title="end">⏭</button>
+      <span style="flex:1"></span><span class="pill">try a move on the board to explore; nav returns to the game</span></div>
+    <div class="prog" id="prog" style="display:none"><i style="width:0%"></i></div>
+    <div class="row"><span class="pill" id="status">—</span></div>
+    <div class="moves" id="moves"></div>
+    <div class="inspect"><div class="brd" id="miniBoard"></div>
+      <div><div class="pill">line preview</div><div class="k" id="miniLabel" style="margin:4px 0">click a move in a line</div>
+        <div class="pill" style="margin-top:6px">who plays it</div><table id="ladder"><tbody></tbody></table></div></div>
+  </div>
+  <div class="col right">
+    <div class="row"><span class="pill">analysis of the move</span><span style="flex:1"></span><button class="flag" id="flagMove">⚑ Something is not right</button></div>
+    <div id="verdict"></div>
+    <div class="head" id="head">—</div>
+    <div id="lines"></div>
+    <div class="box" id="text">—</div>
+    <details style="margin-top:8px"><summary class="pill" style="cursor:pointer">every fact (long form)</summary><div class="box" id="textLong" style="margin-top:6px"></div></details>
+    <div id="summary" style="margin-top:12px"></div>
+  </div></div>`;
+  $("#bFlip").onclick=()=>{S.flip=!S.flip;setBoard();};
+  $("#navFirst").onclick=()=>goto(0);$("#navPrev").onclick=()=>goto(S.ptr-1);$("#navNext").onclick=()=>goto(S.ptr+1);$("#navLast").onclick=()=>goto(S.moves.length);
+  $("#flagMove").onclick=()=>openFlag(flagContext());
+  initBoard();
 }
-function showUser(u) {
-  remember("user", u.user, u.user);
-  const errs = u.games.flatMap(g => g.errors.filter(e => !e.computer_move).map(e => ({...e, game: g}))).sort((a, b) => b.cost_wp - a.cost_wp);
-  main.innerHTML = `<h2>${esc(u.user)} <span class="status">${u.games.length} games, ${u.n_moves} of their moves · analysed ${esc(u.analysed_at)} · <a href="#" id="refresh">refresh from Lichess</a></span></h2>
-    <div class="summary"><div style="display:flex;justify-content:space-between;align-items:center"><span class="eyebrow">Profile (one run, directional)</span><button class="flag" id="flagsum">Something is not right</button></div><pre>${esc(u.summary.join("\n"))}</pre></div>
-    <h2>Errors, biggest first</h2>
-    <div class="wrap"><table><thead><tr><th>Cost</th><th>Game</th><th>Move</th><th>What happened</th></tr></thead><tbody>
-      ${errs.slice(0, 60).map(e => `<tr class="row" data-g="${esc(e.game.id)}" data-p="${e.ply}" data-s="${e.game.you}"><td class="cost mono">−${e.cost_wp}</td><td class="mono">${esc(e.game.date)} · ${esc(e.game.you === "w" ? e.game.black : e.game.white)}</td><td class="mono">${Math.floor(e.ply / 2) + 1}${e.ply % 2 ? "…" : "."} ${esc(e.san)}</td><td>${esc(e.headline)}</td></tr>`).join("")}
-    </tbody></table></div>
-    <h2>Games</h2>
-    <div class="wrap"><table><thead><tr><th>Date</th><th>You</th><th>Opponent</th><th>Result</th><th>TC</th><th>Opening</th><th>Errors</th></tr></thead><tbody>
-      ${u.games.map(g => `<tr class="row" data-g="${esc(g.id)}" data-s="${g.you}"><td class="mono">${esc(g.date)}</td><td>${g.you === "w" ? "White" : "Black"}</td><td>${esc(g.you === "w" ? g.black : g.white)}</td><td class="mono">${esc(g.result)}</td><td class="mono">${esc(g.tc)}</td><td>${esc(g.opening)}</td><td class="mono">${g.errors.length} / ${g.moves}</td></tr>`).join("")}
-    </tbody></table></div>`;
-  main.querySelectorAll("tr.row").forEach(tr => tr.addEventListener("click", () => { view.side = tr.dataset.s; go("game/" + tr.dataset.g + (tr.dataset.p ? "@" + tr.dataset.p : "")); }));
-  $("#refresh").addEventListener("click", async e => { e.preventDefault(); main.innerHTML = `<h2>${esc(u.user)}</h2><p class="status" id="ustatus">refreshing…</p>`; const r = await api("/api/user/" + encodeURIComponent(u.user) + "?refresh=1"); if (r.job) { poll = setInterval(async () => { const j = await api("/api/job/" + r.job); if (j.status === "done") { stopPoll(); const r2 = await api("/api/user/" + encodeURIComponent(u.user)); showUser(r2.result); } else if (j.status === "error") { stopPoll(); main.innerHTML = `<pre>${esc(j.error)}</pre>`; } else { const st = $("#ustatus"); if (st) st.textContent = (j.progress || {}).message || j.status; } }, 2000); } });
-  $("#flagsum").addEventListener("click", () => openFlag({kind: "user", user: u.user, summary: u.summary.slice(0, 12)}));
+function initBoard(){
+  cg=Chessground($("#board"),cgConfig());
+  try{cgMini=Chessground($("#miniBoard"),{viewOnly:true,coordinates:false,fen:"8/8/8/8/8/8/8/8"});}catch(e){cgMini=null;}
+  const ro=new ResizeObserver(entries=>{for(const e of entries){const w=Math.round(e.contentRect.width);
+      if(w>0&&Math.abs(e.contentRect.height-w)>1)e.target.style.height=w+"px";}
+    try{cg.redrawAll();if(cgMini)cgMini.redrawAll();}catch(err){}});
+  ro.observe($("#board"));ro.observe($("#miniBoard"));
+}
+function curFen(){return S.probe?S.probe.fen():(S.fens[S.ptr]||S.fens[0]);}
+function turnOf(fen){return fen.split(" ")[1]==="w"?"white":"black";}
+function legalDests(fen){const g=new Chess(fen);const m=new Map();
+  for(const mv of g.moves({verbose:true})){if(!m.has(mv.from))m.set(mv.from,[]);m.get(mv.from).push(mv.to);}return m;}
+function cgConfig(extra){const fen=curFen();
+  return Object.assign({fen:fen.split(" ")[0],orientation:S.flip?"black":"white",turnColor:turnOf(fen),coordinates:true,
+    movable:{free:false,color:turnOf(fen),dests:legalDests(fen),showDests:true},draggable:{showGhost:true},
+    animation:{enabled:true,duration:120},events:{move:onCgMove},highlight:{lastMove:true,check:true}},extra||{});}
+/* a move on the board explores from the current position (chess.js, local); nav returns to the game */
+function onCgMove(orig,dest){
+  const base=S.probe||new Chess(curFen());const cand=base.moves({verbose:true}).find(m=>m.from===orig&&m.to===dest);
+  if(!cand){cg.set(cgConfig());return;}
+  if(!S.probe)S.probe=base;S.probe.move({from:orig,to:dest,promotion:cand.promotion});
+  cg.set(cgConfig({lastMove:[orig,dest]}));cg.setShapes([]);
+  setStatus(`exploring: ${cand.san} · ◀ ▶ to return to the game`);
+}
+function setBoard(){if(!cg)return;
+  const p=S.plies[S.ptr];const last=p?[p.uci.slice(0,2),p.uci.slice(2,4)]:(S.ptr>0&&S.plies[S.ptr-1]?[S.plies[S.ptr-1].uci.slice(0,2),S.plies[S.ptr-1].uci.slice(2,4)]:undefined);
+  cg.set(cgConfig({lastMove:S.ptr>0&&S.plies[S.ptr-1]?[S.plies[S.ptr-1].uci.slice(0,2),S.plies[S.ptr-1].uci.slice(2,4)]:undefined}));
+  drawArrows(p);
+}
+function drawArrows(p){if(!cg)return;const sh=[];
+  if(p){sh.push({orig:p.uci.slice(0,2),dest:p.uci.slice(2,4),brush:BRUSH_PLAYED});
+    if(p.best_uci&&p.best_uci!==p.uci)sh.push({orig:p.best_uci.slice(0,2),dest:p.best_uci.slice(2,4),brush:BRUSH_BEST});}
+  cg.setShapes(sh);}
+function goto(i){if(!S.moves.length)return;i=Math.max(0,Math.min(i,S.moves.length));S.ptr=i;S.probe=null;
+  history.replaceState(null,"","#game/"+S.gameId+"@"+i);
+  setBoard();renderMoves();renderPanel();}
+window.addEventListener("keydown",e=>{if(/input|textarea/i.test(e.target.tagName)||S.view!=="game")return;
+  if(e.key==="ArrowLeft"){e.preventDefault();goto(S.ptr-1);}else if(e.key==="ArrowRight"){e.preventDefault();goto(S.ptr+1);}
+  else if(e.key==="Home")goto(0);else if(e.key==="End")goto(S.moves.length);else if(e.key==="f")$("#bFlip").click();});
+
+/* the game's moves come from the PGN (via the first frame's fens); frames fill in as the server streams */
+function loadMoves(plies,total,finalFen){
+  const g=new Chess();S.fens=[g.fen()];S.moves=[];
+  for(const p of plies){const m=g.move({from:p.uci.slice(0,2),to:p.uci.slice(2,4),promotion:p.uci.slice(4)||undefined});
+    if(!m)break;S.moves.push({san:m.san,white:m.color==="w"});S.fens.push(g.fen());}
+  if(finalFen&&S.fens.length===plies.length+1)S.fens[S.fens.length-1]=finalFen;
+  S.total=total||plies.length;
+}
+function renderMoves(){const m=$("#moves");if(!m)return;let html="",n=0;
+  S.moves.forEach((mv,i)=>{const p=S.plies[i];const v=p?p.verdict:"";const cur=i===S.ptr?" cur":"";
+    const ev=p?`<span class="pill">${esc(p.eval_after)}</span>`:"";
+    if(mv.white){n++;html+=`<span data-i="${i}" class="${v}${cur}">${n}. <b>${esc(mv.san)}</b>${ev}</span> `;}
+    else html+=`<span data-i="${i}" class="${v}${cur}"><b>${esc(mv.san)}</b>${ev}</span> `;});
+  for(let i=S.moves.length;i<S.total;i++)html+=`<span class="pill">·</span>`;
+  m.innerHTML=html;m.querySelectorAll("[data-i]").forEach(s=>s.onclick=()=>goto(+s.dataset.i));
+  const c=m.querySelector(".cur");if(c)c.scrollIntoView({block:"nearest"});}
+function lineHtml(label,fen,san){if(!san)return"";const g=new Chess(fen);const plies=[];
+  for(const tok of san.split(/\s+/)){if(/^\d+\.+$/.test(tok))continue;const m=g.move(tok,{sloppy:true});if(!m)break;plies.push({san:tok,fen:g.fen(),white:m.color==="w"});}
+  return `<div class="lrow"><span class="pill">${label}</span> `+plies.map((p,j)=>`<span class="ply" data-fen="${esc(p.fen)}" data-label="${esc((p.white?"White":"Black")+" plays "+p.san)}">${esc(p.san)}</span>`).join(" ")+`</div>`;}
+function renderPanel(){
+  const p=S.plies[S.ptr];const V=$("#verdict"),H=$("#head"),L=$("#lines"),T=$("#text"),TL=$("#textLong"),lad=$("#ladder tbody");
+  if(!p){const done=S.ptr>=S.moves.length&&S.moves.length;
+    V.innerHTML="";H.textContent=done?`Final position · ${esc(S.headers.Result||"")}`:(S.partial?"analysing this move…":"—");L.innerHTML="";T.textContent=done?"Use ◀ to step back through the game.":"…";TL.textContent="";lad.innerHTML="";
+    setStatus(done?"end of the game":(S.partial?`analysing… ${S.plies.length}/${S.total}`:"—"));return;}
+  const who=p.side==="w"?"White":"Black", num=p.side==="w"?`${p.move_no}.`:`${p.move_no}…`;
+  const err=ERR.has(p.verdict);
+  V.innerHTML=`<span class="tag ${esc(p.verdict)}">${esc(p.verdict)}</span> <span class="k">${num} ${esc(p.san)}</span> <span class="pill">eval ${esc(p.eval_before)} → ${esc(p.eval_after)}${p.cost&&err?" · "+esc(p.cost):""}</span>`+
+    (p.computer_move?` <span class="pill">(computer move)</span>`:"");
+  H.textContent=err?p.headline:(p.fact?`${p.san}: ${p.fact}`:`${p.san} — ${p.verdict}`);
+  let lines="";
+  if(p.best&&p.best!==p.san&&p.best_line)lines+=lineHtml("best",p.fen,p.best_line);
+  if(err&&p.refutation&&p.refutation.line){const g=new Chess(p.fen);g.move(p.san,{sloppy:true});lines+=lineHtml("punished by",g.fen(),p.refutation.line);}
+  if(p.threats&&p.threats.length){const g=new Chess(p.fen);const parts=p.fen.split(" ");parts[1]=parts[1]==="w"?"b":"w";parts[3]="-";
+    lines+=`<div class="lrow"><span class="pill">if ${who} did nothing</span> ${p.threats.map(esc).join(" · ")}</div>`;}
+  if(p.structure&&p.structure.length)lines+=`<div class="lrow"><span class="pill">structure</span> ${p.structure.map(esc).join("; ")}</div>`;
+  if(p.horizon)lines+=`<div class="lrow"><span class="pill">horizon</span> ${esc(p.horizon)}</div>`;
+  L.innerHTML=lines;
+  L.querySelectorAll(".ply").forEach(s=>s.onclick=()=>{if(cgMini)cgMini.set({fen:s.dataset.fen.split(" ")[0]});$("#miniLabel").textContent=s.dataset.label;});
+  T.textContent=p.text||"";TL.textContent=p.text_long||"";
+  const keys=Object.keys(p.p_played||{}).sort();
+  lad.innerHTML=keys.map(k=>`<tr><td>${k}</td><td><span class="bar"><i style="width:${p.p_played[k]}%"></i></span> ${p.p_played[k]}% <span class="pill">${esc(p.san)}</span></td>`+
+    `<td><span class="bar g"><i style="width:${(p.p_best||{})[k]||0}%"></i></span> ${(p.p_best||{})[k]||0}% <span class="pill">${esc(p.best||"")}</span></td></tr>`).join("");
+  setStatus(S.partial?`analysing… ${S.plies.length}/${S.total} · showing move ${S.ptr+1}`:`${who} to move before ${num} ${p.san}`);
+}
+function renderSummary(){const s=S.summaryData;const el=$("#summary");if(!s||!el){if(el)el.innerHTML="";return;}
+  const h=S.headers;
+  el.innerHTML=`<div class="pill">summary</div>`+["w","b"].map(k=>{const x=s[k];const name=k==="w"?h.White:h.Black;
+    return `<div style="margin:6px 0"><b>${k==="w"?"White":"Black"} · ${esc(name||"")}</b> — ${x.moves} moves, ${x.errors} errors (${Object.entries(x.verdicts).map(([a,b])=>a+" "+b).join(", ")}) · effective rating <b>${x.effective_rating||"?"}</b> · causes: ${Object.entries(x.causes).map(([a,b])=>a+" "+b).join(", ")||"—"}`+
+      x.worst.map(w=>`<div class="lrow"><a href="#game/${esc(S.gameId)}@${w.ply}">${w.side==="w"?w.move_no+".":w.move_no+"…"} ${esc(w.san)}</a> <span style="color:var(--pink)">−${w.cost_wp}</span> ${esc(w.headline||"")}</div>`).join("")+`</div>`;}).join("");}
+
+async function openGame(gid,ply){S.view="game";
+  if(S.gameId!==gid){S.gameId=gid;S.plies=[];S.fens=[];S.moves=[];S.headers={};S.partial=true;S.summaryData=null;S.ptr=ply!=null?ply:0;S.probe=null;
+    if(S.side)S.flip=S.side==="b";gameLayout();}
+  else if(ply!=null)S.ptr=ply;
+  let r;try{r=await api("/api/game/"+gid);}catch(e){toast(e.message);return;}
+  if(r.status==="done"){applyResult(r.result,false);return;}
+  $("#prog").style.display="block";setStatus("fetching from Lichess…");
+  poll=setInterval(async()=>{let j;try{j=await api("/api/job/"+r.job);}catch(e){return;}
+    if(j.status==="error"){stopPoll();$("#prog").style.display="none";$("#text").textContent=j.error;setStatus("error");return;}
+    if(j.status==="done"){stopPoll();$("#prog").style.display="none";const r2=await api("/api/game/"+gid);applyResult(r2.result,false);return;}
+    const pr=j.progress||{};$("#prog").querySelector("i").style.width=(pr.total?100*pr.done/pr.total:0)+"%";
+    if(j.partial&&j.partial.length>S.plies.length)applyResult({id:gid,headers:S.headers,plies:j.partial,total:pr.total,final_fen:null},true);
+    else setStatus(pr.message||j.status);
+  },1200);
+}
+/* apply a full or partial result WITHOUT rebuilding what is already on screen: the board only moves when
+   the viewed ply changes; the move list appends; the panel fills in when its frame arrives */
+function applyResult(res,partial){
+  const hadPly=S.plies[S.ptr]!=null;const hadMoves=S.moves.length;
+  S.partial=partial;S.plies=res.plies;
+  if(res.headers&&res.headers.White){S.headers=res.headers;$("#title").textContent=`${res.headers.White} (${res.headers.WhiteElo}) vs ${res.headers.Black} (${res.headers.BlackElo}) · ${res.headers.Result} · ${res.headers.TimeControl} · ${res.headers.Date}`;
+    remember("game",res.id,`${res.headers.White} vs ${res.headers.Black} (${res.headers.Date})`);}
+  $("#lichess").href="https://lichess.org/"+res.id;
+  loadMoves(res.plies,res.total,res.final_fen);
+  if(!partial){S.summaryData=res.summary;renderSummary();}
+  if(S.ptr>S.moves.length)S.ptr=S.moves.length;
+  if(!hadMoves)setBoard();                                       // first frame: put the position up
+  if(!hadPly&&S.plies[S.ptr])setBoard();                         // our frame just arrived: draw its arrows
+  renderMoves();renderPanel();
+}
+function flagContext(){const p=S.plies[S.ptr];
+  return {kind:"game",game:S.gameId,ply:S.ptr,san:p?p.san:null,fen:S.fens[S.ptr]||null,verdict:p?p.verdict:null,headline:p?(p.headline||p.fact):null,text:p?p.text:null,url:location.href};}
+
+/* ---------- user view ---------- */
+async function openUser(name){S.view="user";S.userName=name;cg=null;
+  $("#main").innerHTML=`<div class="home"><b>${esc(name)}</b> <span class="pill" id="ustatus">fetching games…</span><div class="prog"><i style="width:0%"></i></div></div>`;
+  let r;try{r=await api("/api/user/"+encodeURIComponent(name));}catch(e){toast(e.message);return;}
+  if(r.status==="done"){showUser(r.result);return;}
+  poll=setInterval(async()=>{let j;try{j=await api("/api/job/"+r.job);}catch(e){return;}
+    if(j.status==="error"){stopPoll();$("#main").innerHTML=`<div class="home"><div class="box">${esc(j.error)}</div></div>`;return;}
+    if(j.status==="done"){stopPoll();const r2=await api("/api/user/"+encodeURIComponent(name));showUser(r2.result);return;}
+    const st=$("#ustatus");if(st)st.textContent=(j.progress||{}).message||j.status;},2000);
+}
+function showUser(u){remember("user",u.user,u.user);
+  const errs=u.games.flatMap(g=>g.errors.filter(e=>!e.computer_move).map(e=>({...e,g}))).sort((a,b)=>b.cost_wp-a.cost_wp);
+  $("#main").innerHTML=`<div class="wrap"><div class="col" style="flex:1;min-width:320px">
+    <div class="row"><b>${esc(u.user)}</b><span class="pill">${u.games.length} games · ${u.n_moves} of their moves · ${esc(u.analysed_at)}</span><span style="flex:1"></span><a href="#" id="refresh" class="pill">refresh from Lichess</a><button class="flag" id="flagsum">⚑</button></div>
+    <div class="summary">${esc(u.summary.join("\n"))}</div>
+    <div class="pill" style="margin-top:10px">errors, biggest first</div>
+    <table><thead><tr><th>cost</th><th>game</th><th>move</th><th>what happened</th></tr></thead><tbody>
+      ${errs.slice(0,80).map(e=>`<tr class="link" data-g="${esc(e.g.id)}" data-p="${e.ply}" data-s="${e.g.you}"><td style="color:var(--pink)">−${e.cost_wp}</td><td>${esc(e.g.date)} · ${esc(e.g.you==="w"?e.g.black:e.g.white)}</td><td>${Math.floor(e.ply/2)+1}${e.ply%2?"…":"."} ${esc(e.san)}</td><td>${esc(e.headline)}</td></tr>`).join("")}
+    </tbody></table>
+    <div class="pill" style="margin-top:10px">games</div>
+    <table><thead><tr><th>date</th><th>you</th><th>opponent</th><th>result</th><th>tc</th><th>opening</th><th>errors</th></tr></thead><tbody>
+      ${u.games.map(g=>`<tr class="link" data-g="${esc(g.id)}" data-s="${g.you}"><td>${esc(g.date)}</td><td>${g.you==="w"?"White":"Black"}</td><td>${esc(g.you==="w"?g.black:g.white)}</td><td>${esc(g.result)}</td><td>${esc(g.tc)}</td><td>${esc(g.opening)}</td><td>${g.errors.length} / ${g.moves}</td></tr>`).join("")}
+    </tbody></table></div></div>`;
+  $("#main").querySelectorAll("tr.link").forEach(tr=>tr.onclick=()=>{S.side=tr.dataset.s;go("game/"+tr.dataset.g+(tr.dataset.p?"@"+tr.dataset.p:""));});
+  $("#refresh").onclick=async e=>{e.preventDefault();$("#main").innerHTML=`<div class="home"><b>${esc(u.user)}</b> <span class="pill" id="ustatus">refreshing…</span></div>`;
+    const r=await api("/api/user/"+encodeURIComponent(u.user)+"?refresh=1");
+    if(r.job)poll=setInterval(async()=>{const j=await api("/api/job/"+r.job);if(j.status==="done"){stopPoll();const r2=await api("/api/user/"+encodeURIComponent(u.user));showUser(r2.result);}
+      else if(j.status==="error"){stopPoll();$("#main").innerHTML=`<div class="home"><div class="box">${esc(j.error)}</div></div>`;}
+      else{const st=$("#ustatus");if(st)st.textContent=(j.progress||{}).message||j.status;}},2000);};
+  $("#flagsum").onclick=()=>openFlag({kind:"user",user:u.user,summary:u.summary.slice(0,12),url:location.href});
 }
 
-// ---------------------------------------------------------------- flags
-let flagCtx = null;
-function openFlag(ctx) {
-  flagCtx = ctx || view; $("#ctx").textContent = JSON.stringify(flagCtx, null, 1).slice(0, 1500); $("#note").value = ""; $("#flagdlg").showModal(); $("#note").focus();
-}
-$("#flagbtn").addEventListener("click", () => {
-  if (view.kind === "game" && G) { const p = G.result.plies[G.ply]; openFlag({kind: "game", game: G.result.id, ply: p.ply, san: p.san, fen: p.fen, verdict: p.verdict, headline: p.headline || p.fact, text: p.text}); }
-  else openFlag(view);
-});
-$("#cancel").addEventListener("click", () => $("#flagdlg").close());
-$("#flagform").addEventListener("submit", async e => {
-  e.preventDefault();
-  const r = await api("/api/flag", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({note: $("#note").value, context: {...flagCtx, url: location.href}})});
-  $("#flagdlg").close();
-  toast(r.id ? `Logged as #${r.id} in ${r.file}` : "Could not log the flag");
-});
-function toast(msg) { const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 3500); }
+/* ---------- flags: the queue the coder reads ---------- */
+let flagCtx=null;
+function openFlag(ctx){flagCtx=ctx;$("#ctx").textContent=JSON.stringify(ctx,null,1).slice(0,1500);$("#note").value="";$("#flagdlg").showModal();$("#note").focus();}
+$("#flagbtn").onclick=()=>openFlag(S.view==="game"?flagContext():{kind:S.view,user:S.userName,url:location.href});
+$("#cancel").onclick=()=>$("#flagdlg").close();
+$("#flagform").addEventListener("submit",async e=>{e.preventDefault();
+  try{const r=await api("/api/flag",{note:$("#note").value,context:flagCtx});$("#flagdlg").close();toast(`logged as #${r.id} in ${r.file}`,true);}
+  catch(err){toast(err.message);}});
 
 route();
 </script>
