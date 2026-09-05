@@ -202,3 +202,14 @@ against the king") and that can be compared across games. Candidate homes: an L4
 compresses effect sequences into named motifs (grammar over relation events), or the learned
 concept-dynamics layer (moves predict concept changes; planning subgoal-first). Decide after
 Kaveh's own games are on screen.
+
+## 13. Vocabulary completeness is a measurement (2026-09-04)
+
+`motifs.py`: enumerate k-piece tension pattern types over the primitive graph, count them in puzzle
+positions, report named coverage and the top unnamed types with examples; enumerate ply-level edge
+events along solutions and score each Lichess theme by its best-predicting event or two-ply
+conjunction. Re-run after every vocabulary change. Current: arity-2 named 45%, arity-3 6% (the
+unnamed mass = alignment through blockers + multi-duty pieces, i.e. precursors -> L3.5); sequence
+motifs get data-derived definitions (discovered 0.76, skewer 0.52, sacrifice 0.41, attraction
+0.28, deflection recall 0.81). Next: three-ply conjunctions; then promote the frequent unnamed
+types and the best sequence definitions into named relations / sequence relations.

@@ -21166,3 +21166,37 @@ First real sheet, quique44 (Kaveh 0-3 vs him; blitz 1357): 60 games, plays like 
 (opening 1700); as White 2.Bc4 in 14 of 15 open games scoring 0.36 (0.14 vs 2...Nc6); as Black
 the Latvian 2...f5 and the Dutch; attacked-by-lower x8.9 (134 cases), forks x6.5; 53 of 301
 blunders+mistakes are shared at his level. Advice lines each cite their number.
+
+## 2026-09-04 (Fable) — LINE CARDS built; VOCABULARY COMPLETENESS made measurable (motifs.py). One run each, directional
+
+LINE CARDS (cards.py): walk a line from a player's games; per node the ladder's natural moves with
+loss + horizon kind, the ONLY-MOVE flag, trap yield per level propagated through the player's usual
+reply, the idea, the standing threat, the history. Kaveh's Jobava (489 games as White, 128 reaching
+3.Bf4): after 3...Nc6 4.Nb5 the only move ...e5 is found by M1100 27% / M1300 39% / M1500 46% /
+M1700 43% / M1900 30%; ...a6 (18% at 1100) and ...e6 (played 4x against him) are blind spots
+(-28 / -24 win%), ...Bf5 (16% at 1900) a horizon trap collapsing at depth 12; trap yield ~10 win%
+at every level. The trap dies at ~1500 at the SETUP (...Nc6 25% -> 22% -> 0%), not at the defence.
+Kaveh's question "what kind of mistake / what kind of trap / at what Elo": setup = enabled a tactic
+(compound: the c7 knight fork), failure = ignored a standing threat in a one-defence position; who
+plays what is the ladder; the answer to "what Elo" is the setup rate, not the defence rate.
+
+VOCABULARY COMPLETENESS (Kaveh: "have we exhausted two-piece / three-piece ideas and local
+sequences? how do we know?"): motifs.py enumerates connected k-piece TENSION patterns over the
+primitive graph (attack / defend / through), counts them in Lichess puzzle positions, and marks
+which a named relation covers; sequences are enumerated over an EDGE-EVENT alphabet per ply
+(captures, checks, enemy defences ending by removal / luring / interposition, attacks by unmoved
+pieces = discovered, lines aimed through a blocker at K/Q, offers) with two-ply conjunctions, and
+each Lichess theme is scored by its best-predicting event (precision x recall).
+Static (8,000 positions): arity 2 -- 105 tension types, 54 cover 90% of occurrences, NAMED 45%;
+the unnamed mass is ONE family: alignment through a blocker (R/Q x-raying a pawn, R-K on a line).
+Arity 3 -- 6,120 types, 1,784 cover 90%, NAMED 6%; the mass is alignment in all piece combinations
+plus MULTI-DUTY pieces (a queen attacking one pawn while defending another). Both are PRECURSORS
+of named tactics (potential pin/skewer/discovery; potential overload) -- positional vocabulary
+(L3.5), as expected. Sequences (8,000 solutions): data-derived definitions with measured fit --
+discoveredAttack = "a piece that did not move now attacks the king" (precision 0.76), skewer =
+"check, then the reply exposes the rook behind" (0.52), sacrifice = "the offered piece is taken,
+then check" (0.41), attraction = "the reply captures a rook, then check" (0.28), deflection =
+"check, then the reply's piece leaves a defence" (recall 0.81; precision 0.09 at two plies --
+the third ply, taking what it defended, is the obvious sharpening). So: the tactical vocabulary
+is NOT exhausted; the gaps are (1) the alignment/precursor family, (2) multi-duty, (3) two-to-
+three-ply sequence motifs, and we now have the instrument that names candidates with numbers.
