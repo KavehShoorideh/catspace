@@ -49,14 +49,14 @@ class Effect:
     escaped: list[Relation] = field(default_factory=list)     # ended because the subject moved away
 
 
-_SYMVAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
+from .rules import STANDARD as _STD
 DESTROYED_NOTABLE = ("hanging", "pin", "fork", "skewer", "overloaded", "attacked_by_lower_value",
                      "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin",
            "xray_defense", "alignment_own", "double_duty", "double_attack")
 
 
-def _val(sym: str) -> int:
-    return _SYMVAL.get(sym.lower(), 0) if sym != "-" else 0
+def _val(sym: str, scale=None) -> float:
+    return (scale or _STD).of_symbol(sym)
 
 
 def significant(r: Relation) -> bool:

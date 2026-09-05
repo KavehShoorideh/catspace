@@ -3,8 +3,11 @@
 Layer stack; each layer imports ONLY the ones below it:
     L0 geometry   the board as a graph (squares, direction families, rays); size is a parameter
     L1 rules      piece set, movement, special moves, legality, terminal conditions, OBJECTIVE
-                  (python-chess Board classes incl. variants). The objective is quarantined:
-                  nothing in L2-L4 may read it.
+                  (python-chess Board classes incl. variants), and the objective's EXCHANGE SCALE
+                  (Scale: what a piece is worth in a trade -- a derivative of the objective, declared
+                  with it, swappable per variant via rules.set_scale). The objective itself is
+                  quarantined: nothing in L2-L4 may read it; the scale is the one thing they may
+                  consume from that side, and only through value()/Scale so the dependence is visible.
     L2 facts      global, square-free state facts + the conventional exchange scale
     L3 relations  static relations over pieces, indexed by ARITY, defined only via L1 probes
     L4 dynamics   how relations change under moves: threats (null move), per-ply line effects,

@@ -140,3 +140,20 @@ def test_xray_defense_and_own_alignment_and_double_duty():
     # double duty: the white queen attacks the black knight on c6 AND defends the attacked bishop on b2
     b = chess.Board("4k3/8/8/3n4/8/rB6/8/3QK3 w - - 0 1")     # Qd1 attacks Nd5 down the file and defends Bb3 (attacked by Ra3)
     assert any(r.name == "double_duty" and r.names() == ("d1", "d5", "b3") for r in L3.relations(b))
+
+
+def test_scale_is_variant_data_and_drives_classification():
+    from catspace.incubator.analyst.rules import Scale, set_scale, VARIANTS, STANDARD, scale_of
+    # Bb2 attacks the knight on d4 with the rook on f6 behind it: standard scale (N 3 < R 5) -> relative PIN
+    b = chess.Board("4k3/8/5r2/8/3n4/8/1B6/4K3 w - - 0 1")
+    kinds = {r.name for r in L3.line_relations(b) if r.names() == ("b2", "d4", "f6")}
+    assert kinds == {"pin"}
+    try:
+        set_scale("chess", Scale(values={**STANDARD.values, chess.KNIGHT: 6.0}))   # knights outrank rooks
+        kinds = {r.name for r in L3.line_relations(b) if r.names() == ("b2", "d4", "f6")}
+        assert kinds == {"skewer"}, kinds
+    finally:
+        set_scale("chess", STANDARD)
+    anti = R.rules_for("antichess").board()
+    assert scale_of(anti).material_sign == -1 and scale_of(anti).royal_value == 0.0
+    assert scale_of(chess.Board()).of_symbol("k") == 100.0 and scale_of(chess.Board()).of_symbol("n") == 3.0

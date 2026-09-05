@@ -10,21 +10,18 @@ import chess
 
 from . import rules as R
 
-VALUE = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
-ROYAL_VALUE = 100  # sentinel: a royal piece outranks everything in exchange comparisons
-
-
-def value(board: chess.Board, sq: int) -> int:
+def value(board: chess.Board, sq: int, scale: "R.Scale | None" = None) -> float:
+    """Exchange value of the piece on sq under the board's variant scale (or an explicit one)."""
     p = board.piece_at(sq)
     if p is None:
-        return 0
-    if p.piece_type == chess.KING and R.is_royal(board, sq):
-        return ROYAL_VALUE
-    return VALUE[p.piece_type]
+        return 0.0
+    sc = scale or R.scale_of(board)
+    return sc.of_type(p.piece_type, royal=R.is_royal(board, sq))
 
 
-def material(board: chess.Board, color: chess.Color) -> int:
-    return sum(VALUE[p.piece_type] for p in board.piece_map().values() if p.color == color)
+def material(board: chess.Board, color: chess.Color, scale: "R.Scale | None" = None) -> float:
+    sc = scale or R.scale_of(board)
+    return sum(sc.of_type(p.piece_type) for p in board.piece_map().values() if p.color == color)
 
 
 @dataclass(frozen=True)
@@ -48,7 +45,8 @@ class StateFacts:
 
 def state_facts(board: chess.Board) -> StateFacts:
     mw, mb = material(board, chess.WHITE), material(board, chess.BLACK)
-    nonpawn = sum(VALUE[p.piece_type] for p in board.piece_map().values() if p.piece_type not in (chess.PAWN, chess.KING))
+    sc = R.scale_of(board)
+    nonpawn = sum(sc.of_type(p.piece_type) for p in board.piece_map().values() if p.piece_type not in (chess.PAWN, chess.KING))
     return StateFacts(
         variant=R.rules_of(board).name,
         turn="white" if board.turn else "black",

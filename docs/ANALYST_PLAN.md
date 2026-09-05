@@ -223,3 +223,13 @@ the cost is positional -- what the trade does to the plans -- which this layer d
 Likewise the refutation's TEETH (its margin over the opponent's second-best reply) decide whether an
 error was a tactic suffered or an opportunity missed; and the played move's own PURPOSE (the pin it
 broke, the piece it saved) is acknowledged before the cost is stated.
+
+## 15. The exchange scale (Kaveh, 2026-09-05: "piece values should depend on the variant")
+
+`rules.Scale`: values per piece type, royal value, material sign, and the "real piece" threshold.
+Declared with the objective in L1 (`Rules.scale`; `set_scale(variant, scale)` swaps it at runtime),
+because it is a derivative of the objective, not a rule. Consumed only through `facts.value()` /
+`Scale.of_symbol()` by: the valued L3 relations (pin vs skewer vs x-ray, a fork's teeth, attacked by
+a lesser piece), capture prices in L4 effects, significance thresholds, even-trade detection, and L5
+material deltas (sign). Standard chess 1/3/3/5/9; crazyhouse minors 3.5; antichess sign -1 and no royal
+value. Known limit: the prose-side thresholds in L4/L6 use the standard scale unless a board is in hand.

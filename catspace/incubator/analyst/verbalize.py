@@ -95,7 +95,7 @@ def rel_phrase(r: Relation) -> str:
     return f"{n} {' '.join(p)}"
 
 
-_SYMVAL = {"p": 1, "n": 3, "b": 3, "r": 5, "q": 9, "k": 100}
+from .rules import STANDARD as _STD
 _SUBJ = {"hanging": 0, "loose": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1, "fork": 0,
          "discovered_attack": 2, "battery": 2, "overloaded": 0, "disabled_attack": 3, "disabled_defense": 3,
          "pinned_and_attacked": 1, "hanging_through_pin": 0, "xray_defense": 2, "alignment_own": 0, "double_duty": 0}
@@ -104,7 +104,7 @@ _SUBJ = {"hanging": 0, "loose": 0, "attacked_by_lower_value": 1, "pin": 1, "skew
 def _top(rels: list[Relation], k: int) -> list[Relation]:
     def key(r):
         sym = r.pieces[_SUBJ.get(r.name, 0)] if r.pieces else "-"
-        return (PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_SYMVAL.get(sym.lower(), 0))
+        return (PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_STD.of_symbol(sym))
     return sorted(rels, key=key)[:k]
 
 
@@ -167,7 +167,7 @@ def _rank(r: Relation, mover: bool) -> tuple:
     about_opp = sym != "-" and (sym.isupper() != mover)
     liability = r.name in ("hanging", "loose") and not about_opp
     return (1 if liability else 0, 0 if about_opp else 1,
-            PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_SYMVAL.get(sym.lower(), 0))
+            PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_STD.of_symbol(sym))
 
 
 VICTIM_SIDE = ("hanging", "loose", "pinned_and_attacked", "hanging_through_pin", "disabled_attack", "disabled_defense", "overloaded")
@@ -209,7 +209,7 @@ def best_fact(e: Effect, strict: bool = False) -> str | None:
         ph = rel_phrase(created[0])
         return ("with check, " if e.gives_check and "with check" not in ph else "") + ph
     saved = [r for r in e.escaped if r.name in ("hanging", "pinned_and_attacked", "hanging_through_pin", "attacked_by_lower_value")
-             and _SYMVAL.get(_subject_sym(r).lower(), 0) >= 3]
+             and _STD.of_symbol(_subject_sym(r)) >= _STD.minor_value]
     if saved:
         return "saving " + pc(saved[0].pieces[_SUBJ.get(saved[0].name, 0)], saved[0].squares[_SUBJ.get(saved[0].name, 0)])
     if e.gives_check:
@@ -348,7 +348,7 @@ def purpose(rec: IdeaRecord) -> str:
         if not ours:
             continue
         if r.name == "pin":
-            if "absolute" not in r.tags and _SYMVAL.get(r.pieces[1].lower(), 0) < 3:
+            if "absolute" not in r.tags and _STD.of_symbol(r.pieces[1]) < _STD.minor_value:
                 continue                                                      # a pawn's relative pin is not a purpose
             return f"unpinning {pc(r.pieces[1], r.squares[1])}"
         if r.name in ("hanging", "pinned_and_attacked", "attacked_by_lower_value"):
