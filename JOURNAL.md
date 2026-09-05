@@ -21390,3 +21390,19 @@ panel fills when its frame arrives). The analysis of the current move sits besid
 as bars, the long form under a disclosure). Exploring: a move on the board plays from the current position
 locally; navigation returns to the game. The server serves /assets/* from the viz tree. Tailscale:
 --host 0.0.0.0, http://100.91.237.81:8765.
+
+## 2026-09-05 12:40 PDT — the effective-defender operator (composition from atoms; Kaveh's rule-shift argument)
+
+defense.py: a defender counts only if (1) the rules allow the recapture after the cheapest legal capture is
+simulated -- absolute pins, being in check, and whatever a variant adds, all by legality, none by name -- and
+(2) recapturing does not expose more than it wins, measured as the enemy's SEE gains after the recapture minus
+those right after the capture (a discovered attack the capture itself opened is not the recapturer's fault).
+Reasons are read off the geometry afterwards (pinned / overloaded / loses more / illegal). underdefended and
+hanging_through_pin re-derived from the trace; prose from the trace. Found and fixed on the way: while the owner
+is in check every recapture is illegal, so every piece looked 'effectively hanging' (22.Bf4 became "allowed a
+pin: Bc5+" until static exchange was suspended in check); the first test position had the ATTACKER pinned (e4
+by Qe7) -- the operator caught what the old code missed. Transfer test: the same placement under antichess turns
+a lost pawn into a defended one. Gauge unchanged (fork 0.96, pin 0.97, skewer 0.89, hanging 1.00/0.25). Rapid:
+causes 40/24/20/10/6, hanging in refutations 0.45. Reports: 19.Rc1 keeps its deflection; 21...Bd6 now says "its
+only defender, the black pawn on c7, cannot legally recapture"; 12...Qd5 "missed e5 -- d4 attacked twice and
+effectively defended twice: the c3 pawn does not count: it is overloaded (it also guards b4)". Tests 33. Plan §19.

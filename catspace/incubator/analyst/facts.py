@@ -19,21 +19,25 @@ def value(board: chess.Board, sq: int, scale: "R.Scale | None" = None) -> float:
     return sc.of_type(p.piece_type, royal=R.is_royal(board, sq))
 
 
-def see(board: chess.Board, sq: int, by: chess.Color, scale: "R.Scale | None" = None) -> float:
+def see(board: chess.Board, sq: int, by: chess.Color, scale: "R.Scale | None" = None, exclude=()) -> float:
     """Static exchange evaluation: the material `by` wins by starting a capture sequence on sq, each side
     recapturing with its least valuable attacker and free to stop (the standard swap list). Pieces are moved on
     a scratch board, so sliders revealed behind a capturer (batteries, x-rays) join the sequence. A royal piece
     never captures onto a square that is still attacked once it has left its own square. Not modelled: pins
-    (an absolutely pinned defender is counted as a defender), en passant, promotion."""
+    (an absolutely pinned defender is counted as a defender -- defense.py handles that), en passant, promotion.
+    `exclude`: squares whose pieces may not capture (the defense operator passes the defenders it disqualified)."""
     sc = scale or R.scale_of(board)
     b = board.copy(stack=False)
     target = value(b, sq, sc)
     if target == 0:
         return 0.0
     gains, side = [target], by
+    exclude = set(exclude)                       # pieces that may not take part (defenders the defense operator disqualified)
     while len(gains) <= 32:
         atts = []
         for a in b.attackers(side, sq):
+            if a in exclude:
+                continue
             if R.is_royal(b, a):
                 b2 = b.copy(stack=False); b2.remove_piece_at(a)
                 if b2.attackers(not side, sq):          # the king would be capturing into check

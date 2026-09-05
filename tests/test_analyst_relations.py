@@ -99,11 +99,13 @@ def test_capture_along_the_pin_line_is_not_disabled():
 
 
 def test_hanging_through_pin():
-    # d5 is attacked by e4 and defended ONLY by Nf6, which is pinned to Qe7 by Bg5
-    b = chess.Board("rnb1kb1r/ppp1qppp/5n2/3p2B1/4P3/8/PPPP1PPP/RN1QKBNR w KQkq - 0 4")
+    # d5 is attacked by e4 and defended ONLY by Nf6, which is pinned to Qe7 by Bg5 (the white king stands on f1:
+    # with it on e1 the e4 pawn itself is pinned by Qe7 and cannot capture -- the operator checks that too)
+    b = chess.Board("rnb1kb1r/ppp1qppp/5n2/3p2B1/4P3/8/PPPP1PPP/RN1Q1KNR w kq - 0 4")
     rels = L3.relations(b)
     assert any(r.name == "disabled_defense" and r.names() == ("g5", "f6", "e7", "d5") for r in rels)
-    assert any(r.name == "hanging_through_pin" and r.names() == ("d5", "f6") for r in rels)
+    htp = [r for r in rels if r.name == "hanging_through_pin" and r.names() == ("d5", "f6")]
+    assert htp and htp[0].tags == ("pinned@nf6>e7",)
 
 
 def test_antichess_has_no_absolute_disabling():
@@ -190,3 +192,23 @@ def test_pin_and_skewer_need_bite():
     b = chess.Board("rnb1kb1r/ppp2ppp/8/4n2q/8/5NP1/PPPPPP1P/RNBQKB1R w KQkq - 0 6")   # after 5...Nxe5? no: Qh5 vs Nf3/e2 shape
     kinds = {r.name for r in L3.line_relations(b) if r.names() == ("h5", "f3", "e2")}
     assert kinds <= {"xray"}, kinds
+
+
+def test_effective_defenders_follow_the_rules():
+    """The defense operator (defense.py): a defender counts only if the RULES let it recapture and recapturing does
+    not expose more than it saves. The same placement under antichess (no royal king) changes the answer."""
+    from catspace.incubator.analyst.defense import defense
+    # chess: the d2 knight cannot legally recapture on c4 (absolutely pinned to the king by the b4 bishop) -> c4 falls
+    b = chess.Board("4k3/8/4b3/8/1bP5/8/3N4/4K3 w - - 0 1")
+    d = defense(b, chess.C4)
+    assert d.effective == [] and d.disqualified[0].reason == "illegal" and d.falls
+    # antichess: no royal piece, the recapture is legal, the pawn is defended
+    ab = R.rules_for("antichess").board(); ab.set_fen("4k3/8/4b3/8/1bP5/8/3N4/4K3 w - - 0 1")
+    d = defense(ab, chess.C4)
+    assert d.effective == [chess.D2] and not d.falls
+    # overloaded: the d1 knight guards the c3 pawn AND the e3 bishop; recapturing on c3 (winning a knight, 3)
+    # lets the black bishop take e3 (3): the knight does not count for c3
+    b = chess.Board("4k3/8/8/1n6/8/2P1B3/8/3NK3 w - - 0 1")
+    b.set_piece_at(chess.G5, chess.Piece(chess.BISHOP, chess.BLACK))     # bishop g5 attacks e3
+    d = defense(b, chess.C3)
+    assert [x.reason for x in d.disqualified] == ["overloaded"] and d.disqualified[0].exposed == chess.E3 and d.falls

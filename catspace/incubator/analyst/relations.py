@@ -15,6 +15,7 @@ import chess
 
 from . import rules as R
 from .facts import value, see
+from .defense import defense
 
 # ---------------------------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -61,6 +62,11 @@ def attacks_and_defends(board: chess.Board) -> tuple[list[Relation], list[Relati
 
 
 # ---- arity 1/2: hanging, loose, attacked by a lower-valued piece -------------------------------
+def _reason_tag(board: chess.Board, x) -> str:
+    """'pinned@Nf6>e7': why a nominal defender does not count (reason @ piece+square [> the piece it would expose])."""
+    return f"{x.reason}@{board.piece_at(x.square).symbol()}{chess.square_name(x.square)}" + (f">{chess.square_name(x.exposed)}" if x.exposed is not None else "")
+
+
 def hanging_and_loose(board: chess.Board) -> list[Relation]:
     out = []
     for sq, piece in board.piece_map().items():
@@ -76,10 +82,13 @@ def hanging_and_loose(board: chess.Board) -> list[Relation]:
         for a in attackers:
             if value(board, a) < value(board, sq):
                 out.append(_rel(board, "attacked_by_lower_value", 2, (a, sq), not piece.color)); lower = True
-        if attackers and defenders and not lower and see(board, sq, not piece.color) > 0:
-            # defended, yet the capture sequence wins material: attacked more than defended (Kaveh 2026-09-05, 16.c4)
-            out.append(_rel(board, "underdefended", 1 + len(attackers), (sq, *sorted(attackers)), piece.color,
-                            (f"{len(attackers)}v{len(defenders)}",)))
+        if attackers and defenders and not lower:
+            df = defense(board, sq)                                  # the effective-defender operator (defense.py)
+            if df is not None and df.falls:
+                # defended on paper, yet the capture sequence wins material: attacked more than (effectively) defended
+                # (Kaveh 2026-09-05, 16.c4); the tags carry the count and why each disqualified defender does not count
+                tags = (f"{len(attackers)}v{len(df.effective)}",) + tuple(_reason_tag(board, x) for x in df.disqualified)
+                out.append(_rel(board, "underdefended", 1 + len(attackers), (sq, *sorted(attackers)), piece.color, tags))
     return out
 
 
@@ -238,34 +247,22 @@ def composed_pin_relations(board: chess.Board, pins: list[Relation] | None = Non
     return out
 
 
-def hanging_through_pin(board: chess.Board, composed: list[Relation]) -> list[Relation]:
-    """A piece whose EVERY defender is a pinned piece that cannot recapture off its line."""
+def hanging_through_pin(board: chess.Board, composed: list[Relation] | None = None) -> list[Relation]:
+    """A piece whose EVERY defender is disqualified by the defense operator (pinned off its line, unable to recapture
+    legally, overloaded, or recapturing would lose more): 'effectively hanging'. The name is historical (the first
+    case was the pinned defender); the tags say the real reason per defender, e.g. pinned@d4>a1, overloaded@d1>e3."""
     out = []
-    dead, shield = {}, {}                                       # (defended -> pinned defenders), (pinned -> (pinner, shielded))
-    for r in composed:
-        if r.name == "disabled_defense":
-            dead.setdefault(r.squares[3], set()).add(r.squares[1])
-            shield[r.squares[1]] = (r.squares[0], r.squares[2])
     for t, piece in board.piece_map().items():
-        attackers = list(board.attackers(not piece.color, t))
-        if not attackers:
+        if R.is_royal(board, t) or not board.attackers(not piece.color, t):
             continue
-        defenders = set(board.attackers(piece.color, t))
-        if defenders and defenders <= dead.get(t, set()):
-            # BITE (2026-09-05, 15...Rfd8 'c5 effectively hanging' while only the queen could take it): the pinned defender
-            # MAY recapture at the price of the shielded piece; the capture must win either way.
-            a = min(attackers, key=lambda q: value(board, q))
-            gain_if_left = value(board, t)
-            worst = gain_if_left
-            for d in defenders:
-                pinner, shielded = shield[d]
-                b2 = board.copy(stack=False); b2.remove_piece_at(d)
-                if a == pinner:                                  # the pinner itself captured and was recaptured: nobody takes the shielded piece
-                    b2.remove_piece_at(pinner)
-                gain_if_recapture = value(board, t) - value(board, a) + see(b2, shielded, not piece.color)
-                worst = min(worst, gain_if_recapture)
-            if worst > 0:
-                out.append(_rel(board, "hanging_through_pin", 1 + len(defenders), (t, *sorted(defenders)), piece.color))
+        defenders = sorted(board.attackers(piece.color, t))
+        if not defenders:
+            continue                                             # plain 'hanging'
+        df = defense(board, t)
+        if df is None or df.effective or not df.falls:
+            continue
+        tags = tuple(_reason_tag(board, x) for x in df.disqualified)
+        out.append(_rel(board, "hanging_through_pin", 1 + len(defenders), (t, *defenders), piece.color, tags))
     return out
 
 
@@ -283,7 +280,10 @@ def relations(board: chess.Board) -> list[Relation]:
     atk, dfd = attacks_and_defends(board)
     lines = line_relations(board)
     composed = composed_pin_relations(board, lines)
-    return (atk + dfd + hanging_and_loose(board) + lines + composed + hanging_through_pin(board, composed)
+    htp = hanging_through_pin(board)
+    dead = {r.squares[0] for r in htp}
+    hl = [r for r in hanging_and_loose(board) if not (r.name == "underdefended" and r.squares[0] in dead)]   # one fact per piece
+    return (atk + dfd + hl + lines + composed + htp
             + forks(board) + overloaded(board) + double_duty(board) + king_zone_pressure(board))
 
 

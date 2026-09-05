@@ -271,3 +271,20 @@ The "Something is not right" button (floating, on every move card and on the pro
 screen plus an optional note to `feedback/flags.jsonl` (tracked in git; a flag's id is its line number).
 The coder answers in `feedback/RESOLVED.md` by id. `review.annotate()` is the shared per-move code path, so
 the page, the report and the drill say the same thing about the same move.
+
+## 19. Composition (Kaveh 2026-09-05): atoms by probe, compounds by operator, nothing higher by hand
+
+"If we don't compose from the lower-level concepts, then under a rule shift how do we know the higher-level concept
+still means the same thing?" The rule: an atom is defined by an L1 probe; a compound is defined by operators over
+atoms; nothing above the atoms is named by hand. The operators so far: glue on shared pieces (the composed pins),
+the removal test (pins, skewers, discoveries), the exchange (SEE under the variant scale), the null move (threats),
+and now EFFECTIVE DEFENDERS (`defense.py`): simulate the cheapest legal capture, keep a defender only if the rules
+allow its recapture (absolute pins, checks, atomic adjacency, forced captures -- whatever the variant says) and if
+recapturing does not expose more than it wins (the removal test on the defender's origin, priced by SEE; exposures
+the capture itself uncovered are not charged to the recapturer). `underdefended` and `hanging_through_pin` are
+now READINGS of that trace, and the prose comes from the trace: "its only defender, the black pawn on c7, cannot
+legally recapture"; "the white pawn on c3 does not count: it is overloaded (it also guards b4)". No static
+exchange is claimed while the owner is in check. Test: the same placement under antichess (no royal king) turns an
+undefended pawn into a defended one. Limits: one level deep (no overload chains); the composed four-piece pins
+remain as structural readings beside the operator; the enumerator (motifs.py) stays the coverage gauge for what
+the operators have not yet named.

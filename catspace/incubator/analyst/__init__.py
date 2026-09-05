@@ -10,6 +10,12 @@ Layer stack; each layer imports ONLY the ones below it:
                   consume from that side, and only through value()/Scale so the dependence is visible.
     L2 facts      global, square-free state facts + the conventional exchange scale
     L3 relations  static relations over pieces, indexed by ARITY, defined only via L1 probes
+    L3 operators  (defense.py) the composition rule (Kaveh 2026-09-05): an ATOM is defined by an L1 probe
+                  (a legal move, an attack, a line through a piece), a COMPOUND by operators over atoms -- glue on
+                  shared pieces, the removal test, EFFECTIVE DEFENDERS (a defender counts only if the rules let it
+                  recapture and recapturing does not expose more than it saves, priced by SEE), the null move --
+                  and nothing above the atoms is named by hand. Under a rule shift the atoms are recomputed by the
+                  new rules and the compounds follow (test: the same placement under antichess changes who defends).
     L3.5 structure  positional facts with the same shape as L3 (structure.py): isolated / doubled / passed /
                   backward pawns, islands, rooks on open files, outposts, bishop pair, blocked (bad) bishops,
                   open files by a castled king, and each piece's SCOPE. Diffed per move like L3 (Effect.structure_

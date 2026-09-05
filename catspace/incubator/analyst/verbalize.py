@@ -49,6 +49,35 @@ def pc(sym: str, sq: int) -> str:
     return f"the {'white' if sym.isupper() else 'black'} {PIECE[sym.lower()]} on {chess.square_name(sq)}"
 
 
+REASON_WORD = {"illegal": "cannot legally recapture", "pinned": "is pinned", "overloaded": "is overloaded",
+               "loses_more": "would lose more than it saves"}
+
+
+def _defender_reasons(tags, effective: int | None = None) -> str:
+    """From defense tags (reason@<piece><sq>[>exposed]): 'its only defender, the white knight on d2, cannot legally
+    recapture' when nothing counts; 'the black pawn on c7 does not count: it is pinned (it shields c8)' when others do."""
+    parts = []
+    for t in tags:
+        if "@" not in t:
+            continue
+        reason, rest = t.split("@", 1)
+        who, _, exposed = rest.partition(">")
+        sym, sq = who[0], chess.parse_square(who[1:])
+        word = REASON_WORD.get(reason, reason)
+        if reason == "pinned" and exposed:
+            word += f" (it shields {exposed})"
+        elif reason == "overloaded" and exposed:
+            word += f" (it also guards {exposed})"
+        parts.append((pc(sym, sq), word))
+    if not parts:
+        return ""
+    if effective:
+        return "; ".join(f"{who} does not count: it {word}" for who, word in parts)
+    if len(parts) == 1:
+        return f"its only defender, {parts[0][0]}, {parts[0][1]}"
+    return "none of its defenders can help: " + "; ".join(f"{who} {word}" for who, word in parts)
+
+
 def _times(n) -> str:
     return {"1": "once", "2": "twice"}.get(str(n), f"{n} times")
 
@@ -60,8 +89,11 @@ def rel_phrase(r: Relation) -> str:
         return f"{p[0]} is hanging"
     if n == "underdefended":
         na, nd = r.tags[0].split("v") if r.tags else ("?", "?")
-        if na.isdigit() and nd.isdigit() and int(na) <= int(nd):             # the count does not show it: the defenders are worth more
-            return f"{p[0]} can be won on the exchange (attacked {_times(na)}, defended {_times(nd)} by bigger pieces)"
+        why = _defender_reasons(r.tags[1:], int(nd) if nd.isdigit() else None)
+        if why:                                                              # a defender that does not count is the story
+            return f"{p[0]} is attacked {_times(na)} and effectively defended {_times(nd)}: {why}"
+        if na.isdigit() and nd.isdigit() and int(na) <= int(nd):             # the count does not show it (bigger defenders, a battery behind)
+            return f"{p[0]} can be won on the exchange (attacked {_times(na)}, defended {_times(nd)})"
         return f"{p[0]} is attacked {_times(na)} and defended {_times(nd)}"
     if n == "loose":
         return f"{p[0]} is undefended"
@@ -89,7 +121,7 @@ def rel_phrase(r: Relation) -> str:
     if n == "pinned_and_attacked":
         return f"{p[1]} is pinned to {p[2]} by {p[0]} and attacked by {p[3]}: it cannot flee"
     if n == "hanging_through_pin":
-        return f"{p[0]} is effectively hanging: its only defender{'s are' if len(p) > 2 else ' is'} pinned ({', '.join(p[1:])})"
+        return f"{p[0]} is effectively hanging: {_defender_reasons(r.tags, 0)}"
     if n == "xray_defense":
         return f"{p[0]} defends {p[2]} through {p[1]} (an x-ray defence)"
     if n == "alignment_own":
