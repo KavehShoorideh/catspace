@@ -102,14 +102,21 @@ def line_relations(board: chess.Board) -> list[Relation]:
                 p1_enemy, p2_enemy = _enemy(board, p1, c), _enemy(board, p2, c)
                 if p1_enemy and p2_enemy:
                     v1, v2 = value(board, p1), value(board, p2)
+                    # BITE (Kaveh 2026-09-05, 18.a3): a pin binds only if moving the front piece loses the back one --
+                    # the capture on P2 with P1 gone must win material (Qc4 'pinning' Ne2 to a rook on f1 that the
+                    # king and queen protect binds nothing). A skewer needs the front piece winnable AND the back
+                    # piece winnable once it moves. Geometry without bite is an x-ray, tagged with its shape.
+                    back_falls = see(b2, p2, c) > 0
+                    front_forced = R.is_royal(board, p1) or see(board, p1, c) > 0
                     if R.is_royal(board, p2):
                         out.append(_rel(board, "pin", 3, (s, p1, p2), c, ("absolute",)))
-                    elif v2 > v1:
+                    elif v2 > v1 and back_falls:
                         out.append(_rel(board, "pin", 3, (s, p1, p2), c, ("relative",)))
-                    elif v1 > v2:
+                    elif v1 > v2 and front_forced and back_falls:
                         out.append(_rel(board, "skewer", 3, (s, p1, p2), c, ("check",) if R.is_royal(board, p1) else ()))
                     else:
-                        out.append(_rel(board, "xray", 3, (s, p1, p2), c))
+                        shape = ("pin_shape",) if v2 > v1 else ("skewer_shape",) if v1 > v2 else ()
+                        out.append(_rel(board, "xray", 3, (s, p1, p2), c, shape))
                 elif _friend(board, p1, c) and p2_enemy:
                     if p2 in board.attacks(p1):
                         out.append(_rel(board, "battery", 3, (s, p1, p2), c))

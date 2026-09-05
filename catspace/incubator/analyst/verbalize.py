@@ -443,7 +443,9 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
         if e0 and e0.captured and (cause.get("kind") == "simple" or "hanging" in (cause.get("mechanisms") or [])):   # a plain grab, not "a tactic"
             s = f"{pl_name} let {r.san} take the {e0.captured[0]}" + (" with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
         else:
-            s = f"{pl_name} allowed {_noun(cause['walked_into'] or cause.get('mechanisms') or [])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+            fams = [f for f in (cause.get("mechanisms") or []) if f in NOUN and f not in ("capture", "hanging")]
+            noun = _noun(fams) if fams else None                              # a plain attack on a piece needs no label
+            s = (f"{pl_name} allowed {noun}: {r.san if r else '?'}" if noun else f"{pl_name} allowed {r.san if r else '?'}") + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     elif trap and trap.get("kind") == "horizon":
         s = f"{pl.san} looks fine for {trap['peak_depth']} plies and collapses at depth {trap['collapse_depth']}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     else:

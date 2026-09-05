@@ -174,3 +174,19 @@ def test_static_exchange_and_underdefended():
     b = chess.Board("4k3/8/8/3n4/8/8/3R4/4K3 w - - 0 1")
     names = {r.name for r in L3.relations(b) if r.squares[0] == chess.D5}
     assert "hanging" in names and "underdefended" not in names
+
+
+def test_pin_and_skewer_need_bite():
+    # AUjG3sl4 after 18.a3 Rb2 (Kaveh 2026-09-05): Qc4 aims through Ne2 at Rf1, but f1 is protected by king and
+    # queen and a queen cannot take a rook there -- the knight is NOT pinned. The geometry is an x-ray, pin-shaped.
+    b = chess.Board("3r2k1/p1p2ppp/2p1pb2/2P5/2qP4/P7/1r2NPPP/R2Q1RK1 w - - 0 19")
+    names = {(r.name, r.tags) for r in L3.line_relations(b) if r.names() == ("c4", "e2", "f1")}
+    assert names == {("xray", ("pin_shape",))}
+    assert not [r for r in L3.relations(b) if r.name == "pinned_and_attacked" and r.squares[1] == chess.E2]
+    # the same file with a bishop as pinner: Bxf1 wins a rook for a bishop, so the pin binds (14...Ba6 in the game)
+    b = chess.Board("1r1r2k1/p1p2ppp/b1p1pb2/2Pq4/3P4/2P5/P2NNPPP/R2Q1RK1 w - - 1 15")
+    assert [r for r in L3.line_relations(b) if r.name == "pin" and r.names() == ("a6", "e2", "f1")]
+    # a skewer needs the front piece winnable: a queen 'skewering' a defended knight and a defended pawn is an x-ray
+    b = chess.Board("rnb1kb1r/ppp2ppp/8/4n2q/8/5NP1/PPPPPP1P/RNBQKB1R w KQkq - 0 6")   # after 5...Nxe5? no: Qh5 vs Nf3/e2 shape
+    kinds = {r.name for r in L3.line_relations(b) if r.names() == ("h5", "f3", "e2")}
+    assert kinds <= {"xray"}, kinds
