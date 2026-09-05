@@ -20,6 +20,7 @@ def main(argv=None):
     ap.add_argument("--since", default=""); ap.add_argument("--perf", default=""); ap.add_argument("--max-games", type=int, default=100000)
     ap.add_argument("--out", default="tmp/review_parallel.txt")
     ap.add_argument("--fresh-cache", action="store_true", help="timing runs: every worker gets an empty cache")
+    ap.add_argument("--opponent-of", action="store_true")
     a, rest = ap.parse_known_args(argv)
     t0 = time.perf_counter()
     games = []
@@ -43,6 +44,8 @@ def main(argv=None):
         cmd = [sys.executable, "-m", "catspace.incubator.analyst.review", path, "--user", a.user, "--max-games", str(len(gs)), "--out", out] + rest
         if a.fresh_cache:
             cmd += ["--cache", os.path.join(tmp, f"cache{w}.sqlite")]
+        if a.opponent_of:
+            cmd += ["--opponent-of"]
         if "--threads" not in rest:
             cmd += ["--threads", "1"]
         procs.append((w, out, subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)))

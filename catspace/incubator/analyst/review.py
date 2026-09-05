@@ -43,6 +43,7 @@ def families(names):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("pgn"); ap.add_argument("--user", required=True); ap.add_argument("--max-games", type=int, default=20)
+    ap.add_argument("--opponent-of", action="store_true", help="analyse the side that is NOT --user (all their opponents)")
     ap.add_argument("--depth", type=int, default=12); ap.add_argument("--multipv", type=int, default=3)
     ap.add_argument("--ladder", default="1100,1300,1500,1700,1900"); ap.add_argument("--out", default="tmp/review.txt")
     ap.add_argument("--horizon-depth", type=int, default=14)
@@ -76,7 +77,7 @@ def main(argv=None):
         for gi, g in enumerate(games):
             if gi and gi % a.flush_every == 0:
                 flush()
-            me_white = g.headers.get("White", "").lower() == a.user.lower()
+            me_white = (g.headers.get("White", "").lower() == a.user.lower()) != a.opponent_of
             us = chess.WHITE if me_white else chess.BLACK
             hdr = f"### game {gi+1}: {g.headers.get('White')} vs {g.headers.get('Black')} {g.headers.get('Result')} ({g.headers.get('Date')}, {g.headers.get('TimeControl')}) -- you are {'White' if me_white else 'Black'}"
             texts.append(hdr)
