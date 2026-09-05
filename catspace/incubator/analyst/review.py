@@ -27,6 +27,7 @@ from .dynamics import significant, line_effects
 from .horizon import trajectories, find_traps, winp
 from .maia import Maia
 from .facts import value
+from .dynamics import cashes
 from .causes import classify, against
 from .sequences import find_sequences
 STAGE1_DEPTH = 6
@@ -43,6 +44,30 @@ ERR = ("blunder", "mistake", "inaccuracy")
 
 def families(names):
     return sorted(f for f, ns in FAMILY.items() if any(n in ns for n in names))
+
+
+# relations that NAME a material loss (a structure like a pin, battery or discovered-attack potential is not yet a tactic)
+TACTIC_RELATIONS = frozenset({"hanging", "attacked_by_lower_value", "pinned_and_attacked", "hanging_through_pin",
+                              "fork", "double_attack", "skewer", "overloaded"})
+
+
+def exchange_net(board: chess.Board, mv: chess.Move, pv) -> int | None:
+    """When our move captures and the reply recaptures on the same square: the material balance (our POV) of
+    the exchange sequence on that square along the PV (up to 6 plies). None when our move was not a capture
+    or the reply lands elsewhere."""
+    if not board.is_capture(mv) or board.is_en_passant(mv) or not pv:
+        return None
+    sq = mv.to_square
+    if chess.Move.from_uci(pv[0]).to_square != sq:
+        return None
+    us = board.turn; b = board.copy(stack=False); net = value(board, sq); b.push(mv)
+    for u in list(pv)[:6]:
+        m = chess.Move.from_uci(u)
+        if m.to_square != sq or not b.is_capture(m):
+            break
+        net += value(b, sq) if b.turn == us else -value(b, sq)
+        b.push(m)
+    return int(net)
 
 
 def main(argv=None):
@@ -167,12 +192,21 @@ def main(argv=None):
                         even = False
                         if r and len(r.effects) >= 2 and r.effects[0].captured and r.effects[1].captured:
                             even = r.effects[0].captured[1] == r.effects[1].captured[1] and chess.Move.from_uci(r.uci).to_square == mv.to_square
-                        if r and not even and r.effects and r.effects[0].captured and board.is_capture(mv) and not board.is_en_passant(mv):
-                            # we captured first and they recaptured on the same square for the same value: an even trade we initiated
-                            even = value(board, mv.to_square) == r.effects[0].captured[1] and chess.Move.from_uci(r.uci).to_square == mv.to_square
+                        net = exchange_net(board, mv, r.pv) if r else None      # material on the capture square, our POV, after the exchange
+                        if net is not None and net == 0:
+                            even = True                                        # we captured first, they recaptured: an even trade we initiated
                         row["even_trade"] = even
-                        row["cause"] = classify(board, mv, row["mechanisms"], row["ignored_threat"], avail, teeth, even,
-                                                refutation_effect=r.effects[0] if r and r.effects else None)
+                        mech = row["mechanisms"]
+                        _after = board.copy(stack=False); _after.push(mv)
+                        e0 = r.effects[0] if r and r.effects else None
+                        names_loss = e0 is not None and any(x.name in TACTIC_RELATIONS and against(x, us) for x in e0.created + e0.uses)
+                        if r and "mate" not in mech and not cashes(_after, r.pv) and not names_loss:
+                            mech = []                                          # a reply that takes nothing, checks nothing and names no loss is not a tactic: we missed something
+                        if net is not None and net > 0 and "mate" not in mech:
+                            mech = []                                          # the exchange we started came out ahead: no tactic against us, only a better move missed
+                        row["cause"] = classify(board, mv, mech, row["ignored_threat"], avail, teeth, even,
+                                                refutation_effect=r.effects[0] if (r and r.effects and mech) else None)
+                        row["cause"]["mechanisms"] = mech
                         if rec.played_scores and rec.idea:
                             sc = rec.played_scores; dmax = max(sc)
                             final = sc[dmax]; peak_d = max((d for d in sc if d >= 2), key=lambda d: winp(sc[d]), default=None)

@@ -73,8 +73,8 @@ def classify(board: chess.Board, played: chess.Move, mechanisms: list[str], igno
         cause = "missed_better"
     elif hit:
         cause = "walked_into"                  # the move created the static vulnerability that was exploited
-    elif ignored_threat or available_before:
-        cause = "ignored_threat"               # it was already there
+    elif (ignored_threat or available_before) and mechanisms:
+        cause = "ignored_threat"               # it was already there, and the reply does something nameable
     elif "mate" in mechanisms and not (set(mechanisms) - {"mate", "capture"}):
         cause = "missed_better"
     elif mechanisms:

@@ -181,6 +181,21 @@ def structural_threats(board: chess.Board) -> list[tuple[Relation, chess.Move | 
     return out
 
 
+def cashes(board: chess.Board, pv, plies: int = 3) -> bool:
+    """Does the side to move on `board` capture, check, promote or mate within its first two moves of `pv`?
+    The null-move probe also scores DEFENSIVE value (their free move parries our threat: 'Nf3' saving g2 read
+    as +128 above a tempo); a threat is what they do TO us, so its line has to cash something."""
+    b = board.copy(stack=False); mover = b.turn
+    for i, u in enumerate(list(pv)[:plies]):
+        m = chess.Move.from_uci(u)
+        if b.turn == mover and (b.is_capture(m) or b.gives_check(m) or m.promotion):
+            return True
+        b.push(m)
+        if b.is_checkmate():
+            return True
+    return False
+
+
 def threats(board: chess.Board, engine: Engine, *, multipv: int = 5, baseline: int = TEMPO_BASELINE_CP,
             now: Line | None = None, probe: list[Line] | None = None, structural: bool = True) -> list[Threat]:
     """Standing threats = the opponent's best lines given a free move (engine, above the tempo baseline)
@@ -195,10 +210,20 @@ def threats(board: chess.Board, engine: Engine, *, multipv: int = 5, baseline: i
         return []
     nb = board.copy(stack=False); nb.push(chess.Move.null())
     out, seen = [], set()
+
+    def real(l: Line) -> bool:
+        """A threat is real when the free move is worth the margin AND its line cashes something (a capture,
+        check, promotion or mate by the threatening side within its first two moves). 2026-09-05: castling
+        and quiet developing moves scored +43..+128 above a tempo and were reported as 'standing threats ignored'."""
+        if l.mate is not None:
+            return True
+        gain = l.cp + now.cp - baseline
+        return gain >= REAL_THREAT_MARGIN_CP and cashes(nb, l.pv)
+
     for l in probe:
         gain = l.cp + now.cp - baseline      # opp POV after pass + our POV now = tempo value
         eff = move_effects(nb, chess.Move.from_uci(l.move)) if l.pv else None
-        out.append(Threat(l, gain, gain >= REAL_THREAT_MARGIN_CP or l.mate is not None, eff))
+        out.append(Threat(l, gain, real(l), eff))
         seen.add(l.move)
     if structural:
         pdepth = max(6, engine.depth - 4)
@@ -214,7 +239,7 @@ def threats(board: chess.Board, engine: Engine, *, multipv: int = 5, baseline: i
             if l is None:
                 continue
             gain = l.cp + now.cp - baseline
-            out.append(Threat(l, gain, gain >= REAL_THREAT_MARGIN_CP or l.mate is not None, move_effects(nb, mv), r))
+            out.append(Threat(l, gain, real(l), move_effects(nb, mv), r))
             seen.add(mv.uci())
     out.sort(key=lambda t: (t.line.mate is not None and t.line.mate > 0, t.gain_cp), reverse=True)
     return out

@@ -97,7 +97,7 @@ def find_sequences(board: chess.Board, moves, max_plies: int = 3) -> list[SeqRel
             if took or hangs:
                 out.append(SeqRelation("interference", (m0.to_square, d, y), (_sym(b1, m0.to_square), _sym(b0, d), _sym(b0, y)), 3 if took else 1))
     # ---- clearance: ply 0 vacates a square/line; ply 2 ANOTHER own piece uses that square or a ray through it ----
-    if m2 is not None and m2.from_square != m0.to_square:
+    if m2 is not None and m2.from_square != m0.to_square and not b2.is_castling(m2):   # castling is not a clearance
         vac = m0.from_square
         uses_square = m2.to_square == vac
         uses_line = vac in chess.SquareSet.between(m2.from_square, m2.to_square) if chess.SquareSet.between(m2.from_square, m2.to_square) else False

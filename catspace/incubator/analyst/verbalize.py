@@ -426,7 +426,11 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
         already = next((t.structure for t in rec.threats if t.structure is not None and r and t.line.move == r.uci), None)
         s = f"{pl.san} ignored a standing threat: {r.san if r else '?'}" + (f" -- {why}" if why else "") + (f" (already: {rel_phrase(already)})" if already else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     elif cause and cause["cause"] == "enabled_tactic":
-        s = f"{pl.san} allowed {_noun(cause['walked_into'] or [m for m in (r and cause.get('mechanisms', [])) or []])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+        e0 = r.effects[0] if r and r.effects else None
+        if e0 and e0.captured and (cause.get("kind") == "simple" or "hanging" in (cause.get("mechanisms") or [])):   # a plain grab, not "a tactic"
+            s = f"{pl_name} let {r.san} take the {e0.captured[0]}" + (" with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+        else:
+            s = f"{pl_name} allowed {_noun(cause['walked_into'] or cause.get('mechanisms') or [])}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     elif trap and trap.get("kind") == "horizon":
         s = f"{pl.san} looks fine for {trap['peak_depth']} plies and collapses at depth {trap['collapse_depth']}: {r.san if r else '?'}" + (f" -- {why}" if why else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
     else:
@@ -440,12 +444,10 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
 
 def ladder_tag(p_played: dict, p_best: dict, level: int, played_san: str, best_san: str | None) -> str:
     """The level-relative sentence, added once the player's level is measured."""
-    pp = p_played.get(level, 0.0); out = ""
+    pp = p_played.get(level, 0.0); pb = p_best.get(level, 0.0)
+    finds = f"finds {best_san} ({pb*100:.0f}%)" if best_san and pb >= 0.30 else ""
     if pp >= 0.30:
-        out += f" A {level} plays {played_san} too ({pp*100:.0f}%)."
-    elif pp <= 0.02:
-        out += f" (A slip: a {level} almost never plays this.)"
-    pb = p_best.get(level, 0.0)
-    if best_san and pb >= 0.30:
-        out += f" A {level} finds {best_san} ({pb*100:.0f}%)."
-    return out
+        return f" A {level} plays {played_san} too ({pp*100:.0f}%)" + (f" but {finds}" if finds else "") + "."
+    if pp <= 0.02:
+        return f" A slip: a {level} almost never plays this" + (f" and {finds}" if finds else "") + "."
+    return f" A {level} {finds}." if finds else ""
