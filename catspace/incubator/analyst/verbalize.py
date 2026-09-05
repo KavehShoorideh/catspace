@@ -38,7 +38,7 @@ from .horizon import winp
 COLOR = {True: "White", False: "Black"}
 PIECE = {"p": "pawn", "n": "knight", "b": "bishop", "r": "rook", "q": "queen", "k": "king"}
 PRIORITY = ("fork", "pinned_and_attacked", "hanging_through_pin", "disabled_attack", "disabled_defense",
-            "pin", "skewer", "discovered_attack", "hanging", "attacked_by_lower_value",
+            "pin", "skewer", "discovered_attack", "hanging", "underdefended", "attacked_by_lower_value",
             "battery", "overloaded", "xray", "double_duty", "xray_defense", "alignment_own", "attacks_king_zone", "loose")
 
 
@@ -48,11 +48,18 @@ def pc(sym: str, sq: int) -> str:
     return f"the {'white' if sym.isupper() else 'black'} {PIECE[sym.lower()]} on {chess.square_name(sq)}"
 
 
+def _times(n) -> str:
+    return {"1": "once", "2": "twice"}.get(str(n), f"{n} times")
+
+
 def rel_phrase(r: Relation) -> str:
     p = [pc(s, q) for s, q in zip(r.pieces, r.squares)]
     n = r.name
     if n == "hanging":
         return f"{p[0]} is hanging"
+    if n == "underdefended":
+        na, nd = r.tags[0].split("v") if r.tags else ("?", "?")
+        return f"{p[0]} is attacked {_times(na)} and defended {_times(nd)}"
     if n == "loose":
         return f"{p[0]} is undefended"
     if n == "attacked_by_lower_value":
@@ -98,7 +105,7 @@ def rel_phrase(r: Relation) -> str:
 
 
 from .rules import STANDARD as _STD
-_SUBJ = {"hanging": 0, "loose": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1, "fork": 0,
+_SUBJ = {"hanging": 0, "loose": 0, "underdefended": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1, "fork": 0,
          "discovered_attack": 2, "battery": 2, "overloaded": 0, "disabled_attack": 3, "disabled_defense": 3,
          "pinned_and_attacked": 1, "hanging_through_pin": 0, "xray_defense": 2, "alignment_own": 0, "double_duty": 0}
 
@@ -112,13 +119,13 @@ def _top(rels: list[Relation], k: int) -> list[Relation]:
 
 RESOLVED_WORD = {"hanging": "which was hanging", "pinned_and_attacked": "which could not flee",
                  "hanging_through_pin": "whose defenders were pinned", "fork": "the forking piece",
-                 "loose": "which was undefended"}
+                 "underdefended": "which was attacked more than defended", "loose": "which was undefended"}
 
 
 def effect_phrase(e: Effect, k: int = 2) -> str:
     parts = []
     if e.captured:
-        order = ("pinned_and_attacked", "hanging_through_pin", "hanging", "loose", "fork")
+        order = ("pinned_and_attacked", "hanging_through_pin", "hanging", "underdefended", "loose", "fork")
         why = [RESOLVED_WORD[r.name] for r in sorted(e.resolved, key=lambda r: order.index(r.name) if r.name in order else 99)
                if r.name in RESOLVED_WORD]
         parts.append(f"{COLOR[e.mover]} takes the {e.captured[0]} ({e.captured[1]})" + (f", {why[0]}" if why else ""))
@@ -164,7 +171,7 @@ def candidate_phrases(c: Candidate, n: int = 3, k: int = 2) -> str:
 # opponent's pieces, then what it exposed of our own. (Kaveh 2026-09-04: "the first clause
 # of each line was the one that mattered, and the rest was true clutter.")
 _REAL = ("fork", "pin", "skewer", "pinned_and_attacked", "hanging_through_pin", "discovered_attack",
-         "disabled_attack", "disabled_defense", "overloaded", "battery", "attacked_by_lower_value", "hanging")
+         "disabled_attack", "disabled_defense", "overloaded", "battery", "attacked_by_lower_value", "hanging", "underdefended")
 
 
 def _subject_sym(r: Relation) -> str:
@@ -174,7 +181,7 @@ def _subject_sym(r: Relation) -> str:
 def _rank(r: Relation, mover: bool) -> tuple:
     sym = _subject_sym(r)
     about_opp = sym != "-" and (sym.isupper() != mover)
-    liability = r.name in ("hanging", "loose") and not about_opp
+    liability = r.name in ("hanging", "underdefended", "loose") and not about_opp
     return (1 if liability else 0, 0 if about_opp else 1,
             PRIORITY.index(r.name) if r.name in PRIORITY else 99, -_STD.of_symbol(sym))
 
@@ -190,7 +197,7 @@ def best_fact(e: Effect, strict: bool = False) -> str | None:
     if e.san.endswith("#"):
         return "checkmate"
     if e.captured:
-        order = ("pinned_and_attacked", "hanging_through_pin", "hanging", "loose")
+        order = ("pinned_and_attacked", "hanging_through_pin", "hanging", "underdefended", "loose")
         why = [RESOLVED_WORD[r.name] for r in sorted(e.resolved, key=lambda r: order.index(r.name) if r.name in order else 99)
                if r.name in RESOLVED_WORD]
         cash = [r for r in e.uses if r.name not in ("discovered_attack", "battery")]
@@ -237,7 +244,7 @@ def why_clause(r: Candidate | None, board: chess.Board | None = None) -> str:
     if not r or not r.effects:
         return ""
     e0 = r.effects[0]
-    big_capture = e0.captured and (e0.captured[1] >= 5 or any(x.name in ("hanging", "pinned_and_attacked") for x in e0.resolved))
+    big_capture = e0.captured and (e0.captured[1] >= 5 or any(x.name in ("hanging", "underdefended", "hanging_through_pin", "pinned_and_attacked") for x in e0.resolved))
     if board is not None and r.pv and not big_capture:          # a plain win of a big/hanging piece says it best
         m = motif_phrase(board, r.pv)
         if m:
@@ -341,7 +348,7 @@ def delta_str(rec: IdeaRecord) -> str:
     return f"{d_cp/100:+.1f} pawns, {d_wp:+.0f} win%"
 
 
-PURPOSE_NAMES = ("pin", "pinned_and_attacked", "hanging", "attacked_by_lower_value", "disabled_attack", "disabled_defense", "skewer", "fork")
+PURPOSE_NAMES = ("pin", "pinned_and_attacked", "hanging", "underdefended", "attacked_by_lower_value", "disabled_attack", "disabled_defense", "skewer", "fork")
 
 
 def purpose(rec: IdeaRecord) -> str:
@@ -366,8 +373,8 @@ def purpose(rec: IdeaRecord) -> str:
             if "absolute" not in r.tags and _STD.of_symbol(r.pieces[1]) < _STD.minor_value:
                 continue                                                      # a pawn's relative pin is not a purpose
             cands.append((2, -_STD.of_symbol(r.pieces[1]), f"unpinning {pc(r.pieces[1], r.squares[1])}"))
-        elif r.name in ("hanging", "pinned_and_attacked", "attacked_by_lower_value"):
-            i = 0 if r.name == "hanging" else 1                                # the piece in trouble: (pinner, PINNED, ...) / (attacker, TARGET)
+        elif r.name in ("hanging", "underdefended", "pinned_and_attacked", "attacked_by_lower_value"):
+            i = 0 if r.name in ("hanging", "underdefended") else 1                                # the piece in trouble: (pinner, PINNED, ...) / (attacker, TARGET)
             cands.append((0, -_STD.of_symbol(r.pieces[i]), f"saving {pc(r.pieces[i], r.squares[i])}"))
         elif r.name in ("fork", "skewer"):
             cands.append((1, 0.0, f"escaping the {r.name}"))
@@ -410,11 +417,17 @@ def headline(rec: IdeaRecord, cause: dict | None, trap: dict | None, p_played: d
         e0 = r.effects[0] if r and r.effects else None
         if e0 and e0.captured and chess.Move.from_uci(r.uci).to_square == chess.Move.from_uci(pl.uci).to_square:
             _after = chess.Board(rec.fen); _after.push(chess.Move.from_uci(pl.uci))
-            defended = bool(_after.attackers(_after.turn == chess.WHITE and chess.BLACK or chess.WHITE, chess.Move.from_uci(pl.uci).to_square))
-            if defended:
-                s = f"{pl.san} put the {e0.captured[0]} where {r.san} trades it off" + (" with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+            sq = chess.Move.from_uci(pl.uci).to_square
+            defended = bool(_after.attackers(not _after.turn, sq))
+            wins = cause.get("reply_wins")
+            if not defended:
+                s = f"{pl_name} hung the {e0.captured[0]}: {r.san} takes it" + (", with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+            elif wins is not None and wins > 0:                              # defended, but attacked more than defended
+                na, nd = len(_after.attackers(_after.turn, sq)), len(_after.attackers(not _after.turn, sq))
+                s = (f"{pl_name} put the {e0.captured[0]} where {r.san} wins it: attacked {_times(na)}, defended {_times(nd)}"
+                     + (", with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best}).")
             else:
-                s = f"{pl.san} hung the {e0.captured[0]}: {r.san} takes it" + (", with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
+                s = f"{pl_name} put the {e0.captured[0]} where {r.san} trades it off" + (" with check" if e0.gives_check else "") + f" ({delta_str(rec)}). Better was {rec.idea.san} ({ev_best})."
         else:
             wr = cause.get("walked_into_rel")
             if wr:                                                            # name the liability the move created, in its own words

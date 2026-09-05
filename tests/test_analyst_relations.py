@@ -157,3 +157,20 @@ def test_scale_is_variant_data_and_drives_classification():
     anti = R.rules_for("antichess").board()
     assert scale_of(anti).material_sign == -1 and scale_of(anti).royal_value == 0.0
     assert scale_of(chess.Board()).of_symbol("k") == 100.0 and scale_of(chess.Board()).of_symbol("n") == 3.0
+
+
+def test_static_exchange_and_underdefended():
+    from catspace.incubator.analyst.facts import see
+    # Kaveh's game AUjG3sl4 after 16.c4: the c4 pawn is attacked by Qd5 and Ba6, defended by Nd2 only.
+    b = chess.Board("1r1r2k1/p1p2ppp/b3pb2/2Pq4/2PP4/8/P2NNPPP/R2Q1RK1 b - - 0 16")
+    assert see(b, chess.C4, chess.BLACK) == 1.0          # Bxc4 Nxc4 Qxc4: 1 - 3 + 3
+    u = [r for r in L3.relations(b) if r.name == "underdefended" and r.squares[0] == chess.C4]
+    assert len(u) == 1 and u[0].tags == ("2v1",) and u[0].owner == chess.WHITE and set(u[0].names()[1:]) == {"d5", "a6"}
+    # attacked twice, defended twice, equal pieces: the exchange wins nothing -> no relation
+    b = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/3PP3/5N2/PPP2PPP/RNBQKB1R b KQkq - 0 3")
+    assert see(b, chess.D4, chess.BLACK) == 0.0
+    assert not [r for r in L3.relations(b) if r.name == "underdefended" and r.squares[0] == chess.D4]
+    # an undefended attacked piece is 'hanging', not 'underdefended'
+    b = chess.Board("4k3/8/8/3n4/8/8/3R4/4K3 w - - 0 1")
+    names = {r.name for r in L3.relations(b) if r.squares[0] == chess.D5}
+    assert "hanging" in names and "underdefended" not in names

@@ -19,6 +19,38 @@ def value(board: chess.Board, sq: int, scale: "R.Scale | None" = None) -> float:
     return sc.of_type(p.piece_type, royal=R.is_royal(board, sq))
 
 
+def see(board: chess.Board, sq: int, by: chess.Color, scale: "R.Scale | None" = None) -> float:
+    """Static exchange evaluation: the material `by` wins by starting a capture sequence on sq, each side
+    recapturing with its least valuable attacker and free to stop (the standard swap list; no x-rays through
+    the capturing pieces, which understates batteries). Royal pieces never capture into a defended square."""
+    sc = scale or R.scale_of(board)
+    b = board.copy(stack=False)
+    target = value(b, sq, sc)
+    if target == 0:
+        return 0.0
+    gains, side = [target], by
+    while True:
+        atts = [a for a in b.attackers(side, sq) if not (R.is_royal(b, a) and b.attackers(not side, sq))]
+        if not atts:
+            break
+        a = min(atts, key=lambda x: value(b, x, sc))
+        piece = b.remove_piece_at(a)
+        captured_value = value(b, sq, sc)
+        b.set_piece_at(sq, piece)
+        gains.append(value(b, sq, sc))          # what the other side could now win back: the capturer's value
+        side = not side
+        if len(gains) > 32:
+            break
+    # gains[i] = value standing on sq before capture i; fold back: each side stops when continuing loses
+    n = len(gains) - 1                           # number of captures possible
+    if n == 0:
+        return 0.0
+    score = [0.0] * (n + 1)
+    for i in range(n - 1, -1, -1):
+        score[i] = gains[i] - max(0.0, score[i + 1]) if i + 1 <= n - 1 else gains[i]
+    return score[0]
+
+
 def material(board: chess.Board, color: chess.Color, scale: "R.Scale | None" = None) -> float:
     sc = scale or R.scale_of(board)
     return sum(sc.of_type(p.piece_type) for p in board.piece_map().values() if p.color == color)

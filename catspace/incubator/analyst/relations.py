@@ -14,7 +14,7 @@ from dataclasses import dataclass
 import chess
 
 from . import rules as R
-from .facts import value
+from .facts import value, see
 
 # ---------------------------------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -72,9 +72,14 @@ def hanging_and_loose(board: chess.Board) -> list[Relation]:
             out.append(_rel(board, "hanging", 1, (sq,), piece.color))
         elif not attackers and not defenders and piece.piece_type != chess.PAWN:
             out.append(_rel(board, "loose", 1, (sq,), piece.color))
+        lower = False
         for a in attackers:
             if value(board, a) < value(board, sq):
-                out.append(_rel(board, "attacked_by_lower_value", 2, (a, sq), not piece.color))
+                out.append(_rel(board, "attacked_by_lower_value", 2, (a, sq), not piece.color)); lower = True
+        if attackers and defenders and not lower and see(board, sq, not piece.color) > 0:
+            # defended, yet the capture sequence wins material: attacked more than defended (Kaveh 2026-09-05, 16.c4)
+            out.append(_rel(board, "underdefended", 1 + len(attackers), (sq, *sorted(attackers)), piece.color,
+                            (f"{len(attackers)}v{len(defenders)}",)))
     return out
 
 
@@ -244,7 +249,7 @@ def hanging_through_pin(board: chess.Board, composed: list[Relation]) -> list[Re
 
 # Owner convention (one place, imported everywhere): a relation is owned by the side it WORKS FOR, except the
 # victim-owned family below, which is owned by the side whose piece is in trouble (its colour is the natural key).
-VICTIM_OWNED = frozenset({"hanging", "loose", "overloaded", "double_duty", "hanging_through_pin"})
+VICTIM_OWNED = frozenset({"hanging", "loose", "underdefended", "overloaded", "double_duty", "hanging_through_pin"})
 
 
 def against(r: Relation, victim: chess.Color) -> bool:

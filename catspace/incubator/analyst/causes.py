@@ -13,7 +13,7 @@ from .relations import against
 
 FAMILY = {"pin": ("pin", "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin"),
           "fork": ("fork",), "discovered": ("discovered_attack", "battery"), "skewer": ("skewer",),
-          "hanging": ("hanging",), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",)}
+          "hanging": ("hanging", "underdefended"), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",)}
 SIMPLE = {"hanging", "attacked_by_lower", "capture"}
 COMPOUND = {"pin", "fork", "discovered", "skewer", "overload", "mate", "deflection", "attraction", "interference", "clearance", "removal_of_guard", "double_attack", "xray_defense"}
 
@@ -46,7 +46,10 @@ def exploited(walked: list, e0, victim: chess.Color) -> list[str]:
     to_sq = chess.Move.from_uci(e0.uci).to_square if e0.uci else None
     for r in walked:
         v = victims(r, victim)
-        if (to_sq in v and e0.captured) or any(v & victims(r2, victim) for r2 in ref):
+        if e0.captured:                        # a capturing reply exploits exactly the liability it captures
+            if to_sq in v:
+                hits.append(r)
+        elif any(v & victims(r2, victim) for r2 in ref):
             hits.append(r)
     return hits
 

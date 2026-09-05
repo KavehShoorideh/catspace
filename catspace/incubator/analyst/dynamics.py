@@ -14,7 +14,7 @@ from .facts import value
 from .relations import Relation, relations, against
 from .engine import Engine, Line
 
-NOTABLE = ("hanging", "loose", "attacked_by_lower_value", "pin", "skewer", "xray", "fork",
+NOTABLE = ("hanging", "loose", "underdefended", "attacked_by_lower_value", "pin", "skewer", "xray", "fork",
            "discovered_attack", "battery", "overloaded", "attacks_king_zone",
            "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin",
            "xray_defense", "alignment_own", "double_duty", "double_attack")
@@ -24,7 +24,7 @@ ZUGZWANG_MARGIN_CP = 30
 
 
 # which square a relation is ABOUT (its subject) -- used to tell how a relation ended
-SUBJECT = {"hanging": 0, "loose": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1,
+SUBJECT = {"hanging": 0, "loose": 0, "underdefended": 0, "attacked_by_lower_value": 1, "pin": 1, "skewer": 1, "xray": 1,
            "fork": 0, "discovered_attack": 1, "battery": 1, "overloaded": 0, "disabled_attack": 1,
            "disabled_defense": 1, "pinned_and_attacked": 1, "hanging_through_pin": 0, "attacks_king_zone": 0,
            "xray_defense": 2, "alignment_own": 0, "double_duty": 0}
@@ -50,7 +50,7 @@ class Effect:
 
 
 from .rules import STANDARD as _STD
-DESTROYED_NOTABLE = ("hanging", "pin", "fork", "skewer", "overloaded", "attacked_by_lower_value",
+DESTROYED_NOTABLE = ("hanging", "underdefended", "pin", "fork", "skewer", "overloaded", "attacked_by_lower_value",
                      "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin",
            "xray_defense", "alignment_own", "double_duty", "double_attack")
 
@@ -142,7 +142,7 @@ class Threat:
         return self.line.san_line(nb, n)
 
 
-STRUCTURAL = ("hanging", "attacked_by_lower_value", "pinned_and_attacked", "hanging_through_pin", "overloaded",
+STRUCTURAL = ("hanging", "underdefended", "attacked_by_lower_value", "pinned_and_attacked", "hanging_through_pin", "overloaded",
               "fork", "skewer", "discovered_attack", "battery", "disabled_defense")
 
 
@@ -158,7 +158,7 @@ def structural_threats(board: chess.Board) -> list[tuple[Relation, chess.Move | 
         if not against(r, us):
             continue
         mv = None
-        if r.name == "hanging":
+        if r.name in ("hanging", "underdefended"):
             atk = list(board.attackers(not us, r.squares[0]))
             if atk:
                 a = min(atk, key=lambda q: value(board, q)); mv = chess.Move(a, r.squares[0])

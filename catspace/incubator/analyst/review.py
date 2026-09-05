@@ -35,7 +35,7 @@ STAGE1_FLAG_CP = 30          # a shallow drop this big (or a Lichess-eval drop) 
 
 FAMILY = {"pin": ("pin", "disabled_attack", "disabled_defense", "pinned_and_attacked", "hanging_through_pin"),
           "fork": ("fork",), "discovered": ("discovered_attack", "battery"), "skewer": ("skewer",),
-          "hanging": ("hanging",), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",),
+          "hanging": ("hanging", "underdefended"), "attacked_by_lower": ("attacked_by_lower_value",), "overload": ("overloaded",),
           "xray_defense": ("xray_defense",), "double_attack": ("double_attack",),
           "deflection": ("deflection",), "attraction": ("attraction",), "interference": ("interference",),
           "clearance": ("clearance",), "removal_of_guard": ("removal_of_guard",)}
@@ -47,7 +47,7 @@ def families(names):
 
 
 # relations that NAME a material loss (a structure like a pin, battery or discovered-attack potential is not yet a tactic)
-TACTIC_RELATIONS = frozenset({"hanging", "attacked_by_lower_value", "pinned_and_attacked", "hanging_through_pin",
+TACTIC_RELATIONS = frozenset({"hanging", "underdefended", "attacked_by_lower_value", "pinned_and_attacked", "hanging_through_pin",
                               "fork", "double_attack", "skewer", "overloaded"})
 
 
@@ -182,7 +182,13 @@ def main(argv=None):
                             l2 = eng.analyse(_c, multipv=2)
                             if len(l2) >= 2:
                                 teeth = l2[0].cp - l2[1].cp
-                        row["teeth"] = teeth
+                        wins = None
+                        if r:
+                            _c2 = board.copy(stack=False); _c2.push(mv)
+                            wins = exchange_net(_c2, chess.Move.from_uci(r.uci), r.pv[1:])   # the reply's own capture sequence, its POV
+                        if wins is not None and wins > 0:
+                            teeth = None                                       # a reply that wins material is the punishment whatever the alternatives score
+                        row["teeth"] = teeth; row["reply_wins"] = wins
                         if r and not row["ignored_threat"] and not board.is_check():
                             nb = board.copy(stack=False); nb.push(chess.Move.null()); rm = chess.Move.from_uci(r.uci)
                             if rm in nb.legal_moves:
@@ -206,7 +212,7 @@ def main(argv=None):
                             mech = []                                          # the exchange we started came out ahead: no tactic against us, only a better move missed
                         row["cause"] = classify(board, mv, mech, row["ignored_threat"], avail, teeth, even,
                                                 refutation_effect=r.effects[0] if (r and r.effects and mech) else None)
-                        row["cause"]["mechanisms"] = mech
+                        row["cause"]["mechanisms"] = mech; row["cause"]["reply_wins"] = wins
                         if rec.played_scores and rec.idea:
                             sc = rec.played_scores; dmax = max(sc)
                             final = sc[dmax]; peak_d = max((d for d in sc if d >= 2), key=lambda d: winp(sc[d]), default=None)
