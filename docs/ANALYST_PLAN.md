@@ -302,3 +302,21 @@ its hops with null moves for the other and asks the ledger, then lets the engine
 outcome is 'wins', 'chased' (the target moved: a tempo, not the piece) or 'met'. Shown in the long render
 ("Progress for White: ...") and in the app's move panel. Transfer test: under antichess a king takes the pawn a
 pawn defends. Known limits: reach ignores replies (verify_plan is the check); one level deep; three hops.
+
+## 21. The concept store and the search pathway (Kaveh 2026-09-05)
+
+`memo.py`: a concept is keyed by its FOOTPRINT, not by the position. Each operator that runs through the store
+records the squares whose occupancy could change its answer -- the target and the rays and jumps into it, cut at
+the first piece that could not take part in an exchange there; a piece's own rays to the first blocker; the pin
+line from a piece to its king -- plus cheap predicates recomputed at lookup (who checks a king). An entry holds
+the value, the mask and a Zobrist hash of the pieces on the mask; a lookup from any position hits when those
+pieces are the same. Sound by declaration, checked by a property test (memo-served == fresh over ~110k
+defense/reach checks across four seeds, zero mismatches). Hit rates from a parent to its children: defense 53%,
+reach 23%; a second run on the same position 73%; a position two plies later 60% from the store. Persisted in
+sqlite (data/derived/analyst_memo.sqlite); the app's analyst loads it, uses it for the progress lines of every
+ply and saves after each game. `search.py`: a search that expands candidates (the engine's top-k when given;
+always the captures of falling pieces, the joiners' first hops, checks) and evaluates every node by its concepts
+(ledgers, both progress maps, material), with the DELTA of concepts on each edge ("cxb6: pawn on a7 now falls;
+pawn on c7 now falls; my pawn on b6 now falls; material +1") -- the plan layer's answer to what a move does.
+Limits: footprints are conservative (a move that lands on a ray into a target invalidates it even when it could
+not take part); entries per key capped at 8; the search has no value and no pruning yet: it is the pathway.

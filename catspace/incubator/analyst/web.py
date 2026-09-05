@@ -34,6 +34,7 @@ from .maia import Maia
 from .review import annotate, ERR
 from .structure import top_changes
 from .reach import progress_lines
+from .memo import Memo
 from .verbalize import cp_str, render, best_fact, motif_phrase, delta_str
 from .horizon import winp
 
@@ -42,6 +43,7 @@ DERIVED = ROOT / "data" / "derived" / "web"
 LICHESS_DIR = ROOT / "data" / "lichess"
 FEEDBACK = ROOT / "feedback"
 FLAGS = FEEDBACK / "flags.jsonl"
+MEMO_PATH = ROOT / "data" / "derived" / "analyst_memo.sqlite"
 PAGE = Path(__file__).with_name("web_page.html")
 ASSETS = ROOT / "catspace" / "research" / "tools" / "viz" / "viz" / "assets"      # the vendored chessground + chess.js of the play-atlas app
 MIME = {".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json", ".html": "text/html; charset=utf-8"}
@@ -112,6 +114,7 @@ class Analyst:
         self.depth = depth
         self.eng = Engine(depth=depth, threads=threads)
         self.maias = {r: Maia(r) for r in RATINGS}
+        self.memo = Memo.load(str(MEMO_PATH))                    # the concept store: shared across games and runs
 
     def close(self):
         self.eng.close()
@@ -149,7 +152,7 @@ class Analyst:
                 "text": render(rec, alternatives=False), "text_long": render(rec, long=True, alternatives=True),
                 "structure": top_changes(e0.structure_created, e0.structure_ended, k=3) if e0 else [],
                 "threats": [t.san_line(board, 4) for t in rec.threats if t.real][:3],
-                "progress": progress_lines(board, us),
+                "progress": progress_lines(board, us, memo=self.memo),
                 "p_played": {str(k): round(v * 100) for k, v in row["p_played"].items()},
                 "p_best": {str(k): round(v * 100) for k, v in row["p_best"].items()},
                 "cause": (row.get("cause") or {}).get("cause"), "horizon": row.get("horizon_text", ""),
@@ -158,7 +161,9 @@ class Analyst:
             plies.append(ply)
             sans.append(board.san(mv)); board.push(mv); boards.append(board.copy())
             progress(i + 1, len(moves), plies)
+        self.memo.save()
         return {"id": gid, "headers": {k: h.get(k, "") for k in ("White", "Black", "WhiteElo", "BlackElo", "Result", "Date", "TimeControl", "Opening", "ECO", "Event")},
+                "memo": self.memo.report(),
                 "depth": self.depth, "plies": plies, "summary": {s: side_summary(plies, s) for s in ("w", "b")},
                 "final_fen": board.fen(), "analysed_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
 

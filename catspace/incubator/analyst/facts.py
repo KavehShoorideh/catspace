@@ -19,7 +19,7 @@ def value(board: chess.Board, sq: int, scale: "R.Scale | None" = None) -> float:
     return sc.of_type(p.piece_type, royal=R.is_royal(board, sq))
 
 
-def see(board: chess.Board, sq: int, by: chess.Color, scale: "R.Scale | None" = None, exclude=()) -> float:
+def see(board: chess.Board, sq: int, by: chess.Color, scale: "R.Scale | None" = None, exclude=(), reads=None) -> float:
     """Static exchange evaluation: the material `by` wins by starting a capture sequence on sq, each side
     recapturing with its least valuable attacker and free to stop (the standard swap list). Pieces are moved on
     a scratch board, so sliders revealed behind a capturer (batteries, x-rays) join the sequence. A royal piece
@@ -27,6 +27,8 @@ def see(board: chess.Board, sq: int, by: chess.Color, scale: "R.Scale | None" = 
     (an absolutely pinned defender is counted as a defender -- defense.py handles that), en passant, promotion.
     `exclude`: squares whose pieces may not capture (the defense operator passes the defenders it disqualified)."""
     sc = scale or R.scale_of(board)
+    if reads is not None:
+        reads.attacks_of(board, sq)                     # everything that can ever capture on sq, through any blockers
     b = board.copy(stack=False)
     target = value(b, sq, sc)
     if target == 0:

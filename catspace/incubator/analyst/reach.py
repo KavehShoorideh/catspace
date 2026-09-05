@@ -115,10 +115,20 @@ def _attacks_from(board: chess.Board, sq: int, target: int) -> bool:
     return target in board.attacks(sq)
 
 
-def reach(board: chess.Board, piece_sq: int, target: int, max_hops: int = 4) -> Path | None:
+def reach(board: chess.Board, piece_sq: int, target: int, max_hops: int = 4, memo=None) -> Path | None:
     """Fewest quiet moves for the piece on piece_sq to a square from which it attacks `target` (or defends it, when
-    the target is its own piece), each landing square safe by the defense operator. None when it cannot."""
+    the target is its own piece), each landing square safe by the defense operator. None when it cannot.
+    With `memo`, served from the concept store while the pieces on its footprint (the piece, the target, every
+    square it could move through and every square that decides the safety of a landing) are unchanged."""
+    if memo is not None:
+        return memo.get("reach", (piece_sq, target, max_hops), board, lambda r: _reach(board, piece_sq, target, max_hops, r))
+    return _reach(board, piece_sq, target, max_hops, None)
+
+
+def _reach(board: chess.Board, piece_sq: int, target: int, max_hops: int, reads) -> Path | None:
     piece = board.piece_at(piece_sq)
+    if reads is not None:
+        reads.square(piece_sq); reads.square(target); reads.moves_of(board, piece_sq)
     if piece is None:
         return None
     c = piece.color
@@ -131,14 +141,16 @@ def reach(board: chess.Board, piece_sq: int, target: int, max_hops: int = 4) -> 
         b, sq, path = q.popleft()
         if len(path) >= max_hops:
             continue
+        if reads is not None:
+            reads.moves_of(b, sq)
         for m in _quiet_moves(b, sq):
             to = m.to_square
             if to in seen:
                 continue
             nb = b.copy(stack=False); nb.turn = c; nb.push(m)
-            if nb.is_game_over():
-                continue
-            d = defense(nb, to)                          # would it survive there?
+            if reads is not None:
+                reads.moves_of(nb, to)                   # what it would attack from there
+            d = defense(nb, to, reads=reads)             # would it survive there?
             if d is not None and d.falls:
                 continue
             seen.add(to)
@@ -163,14 +175,15 @@ class Target:
     cannot: list[str] = field(default_factory=list)    # why nothing reaches it (per own piece, when unreachable)
 
 
-def progress(board: chess.Board, by: chess.Color, max_hops: int = 3, top: int = 6) -> list[Target]:
-    """Every enemy piece as a target of `by`, most valuable first: what it takes to win it."""
+def progress(board: chess.Board, by: chess.Color, max_hops: int = 3, top: int = 6, memo=None) -> list[Target]:
+    """Every enemy piece as a target of `by`, most valuable first: what it takes to win it. `memo` serves the
+    defense ledgers and the reach paths from the concept store."""
     out = []
     own = [(sq, p) for sq, p in board.piece_map().items() if p.color == by and not R.is_royal(board, sq)]
     for sq, p in sorted(board.piece_map().items(), key=lambda kv: -value(board, kv[0])):
         if p.color == by or R.is_royal(board, sq):
             continue
-        d = defense(board, sq)
+        d = defense(board, sq, memo=memo)
         t = Target(sq, p.symbol(), "held", d)
         if d is not None and d.falls:
             t.status = "falls"; out.append(t); continue
@@ -182,7 +195,7 @@ def progress(board: chess.Board, by: chess.Color, max_hops: int = 3, top: int = 
             for psq, pp in own:
                 if psq in attacking_now or value(board, psq) > add.max_value:
                     continue
-                pth = reach(board, psq, sq, max_hops)
+                pth = reach(board, psq, sq, max_hops, memo=memo)
                 if pth is not None and pth.hops > 0:
                     paths.append(pth)
             paths.sort(key=lambda x: (x.hops, value(board, x.piece)))
@@ -190,7 +203,7 @@ def progress(board: chess.Board, by: chess.Color, max_hops: int = 3, top: int = 
                 t.status = "joinable"; t.joiner = paths[0]; t.joiners = paths[:3]; out.append(t); continue
         for f in t.flips:
             if f.kind == "remove_defender":
-                dd = defense(board, f.square)
+                dd = defense(board, f.square, memo=memo)
                 if dd is not None and dd.falls:
                     t.status = "undermine"; t.remove = f.square; break
         if t.status == "undermine":
@@ -227,10 +240,10 @@ def target_phrase(board: chess.Board, t: Target) -> str:
     return f"{who} is held ({ledger}){need}"
 
 
-def progress_lines(board: chess.Board, by: chess.Color, top: int = 3) -> list[str]:
+def progress_lines(board: chess.Board, by: chess.Color, top: int = 3, memo=None) -> list[str]:
     """The side's progress map as prose: what falls, who can join where, what can be undermined; then one line for
     what is out of reach (so 'nothing to do here' is said once, not per piece)."""
-    ts = progress(board, by, top=64)
+    ts = progress(board, by, top=64, memo=memo)
     order = {"falls": 0, "joinable": 1, "undermine": 2, "held": 3, "unreachable": 4}
     ts.sort(key=lambda t: (order[t.status], -value(board, t.square)))
     live = [t for t in ts if t.status in ("falls", "joinable", "undermine")][:top]

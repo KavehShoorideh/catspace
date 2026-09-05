@@ -21419,3 +21419,17 @@ Black: d4 and c4 fall now, c5 is undermined through d4. AsXfL6OX before 18: "the
 14: unopposed yes, White's best reply cxb6, outcome wins. Antichess test: the king takes the pawn a pawn defends.
 Cost ~40 ms per position. Wired into the long render and the app panel ("where White can make progress").
 Tests 37. Plan §20.
+
+## 2026-09-05 14:50 PDT — the concept store (footprint-keyed memo) and the concept search
+
+memo.py: operators declare what they read (Reads: an occupancy mask + predicates); see/defense/reach instrumented;
+Memo.get serves a value from any position whose pieces on the stored mask hash the same and whose predicates
+match. Footprints were first whole-board (defense of an attacked piece read every own piece for exposures; legality
+read the king's whole region): hit rates 38%/5%. Three cuts, each checked by the property test (memo-served ==
+fresh, 4 seeds, ~110k checks, 0 mismatches): exposure candidates = only pieces the defender guards or shields;
+legality = the pin line + a checkers predicate instead of the king region; rays cut at the first piece that
+could not take part in an exchange. Now defense 53% / reach 23% parent->children, 73% on a re-run, 60% on a
+position two plies later, all from a sqlite store. search.py: candidates (engine top-k / falling captures /
+joiner hops / checks), concept state per node, concept delta per edge; 11 nodes in 0.2s on AsXfL6OX@18 with
+"cxb6: pawn on a7 now falls; pawn on c7 now falls; my pawn on b6 now falls; material +1" and "g4: knight on f3
+now falls". The app's analyst holds the store, uses it for the progress lines and saves after each game. Tests 40.
