@@ -21223,3 +21223,20 @@ attraction 0.06, clearance 0.06, xray_defense 0.05, deflection 0.04, removal_of_
 errors; headlines now say "Rb4+ -- deflection: the white king on b3 is pulled off the defence of
 the bishop on c2" and "Be4 -- interference: cuts the black queen on f3 off from the rook on a8".
 Tests 20 -> 23.
+
+## 2026-09-04 21:46 PDT — game review fixes from Kaveh's AsXfL6OX critique; the exchange scale as variant data
+
+Kaveh's review of his own game (lichess AsXfL6OX, white) found four wrong explanations, each fixed
+by a rule, not a patch: "hung" only when the piece is undefended (else "put the piece where X trades
+it off"); a standing threat needs teeth (its refutation must beat the opponent's second-best reply by
+TEETH_CP=40 -- move 9's pin of a pawn-protected knight was toothless, the real point was a free pawn
+on c7); the played move's purpose is reported (Bd2 unpinned the c3 knight); an even trade (N for B)
+is materially equal up to L4 and the eval change is the plan layer's to explain (§14), so it is
+classed positional unless a ≥150cp tactic or a mate is on the board. Verdicts moved to win-probability
+points (blunder ≥20, mistake ≥10, inaccuracy ≥5; cp verdicts are meaningless at +8 vs +10). Delta
+first (pawns and win%), raw eval second. Depth 18 for single-game reviews; the eval difference with
+Lichess was the browser engine (measured 14/18/22: +1.11/+1.10/+1.06, stable).
+Piece values are now variant data (rules.Scale: values, royal value, material sign, "real piece"
+threshold), declared with the objective in L1 (Rules.scale, set_scale at runtime), consumed only
+through facts.value()/Scale.of_symbol(). No private value table remains in L3-L6. Test: knight worth
+6 turns the b2-d4-f6 pin into a skewer; antichess sign -1, royal value 0. Tests 23 -> 24. Plan §15.
