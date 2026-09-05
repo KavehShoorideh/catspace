@@ -21338,3 +21338,28 @@ Published as an artifact (Huvaxshtra Drill). Rows now carry the refutation SAN/l
 is exact against the named move; FIND positions may have other good moves (the page says so). Also L6: missed-better
 headlines say the two-move point ("then Nxe5: takes the pawn...") before the structure fallback; on the rapid set
 98 omissions -> 53 tactic, 23 two-move point, 8 structure, 14 unexplained.
+
+## 2026-09-05 05:10 PDT — self-review pass (Kaveh: "pretend codex will be reviewing your work")
+
+Read every file touched today as a hostile reviewer; eleven defects, all fixed with tests where the logic is
+engine-free (new tests/test_analyst_review.py; 32 analyst tests):
+1. python-chess Mate(n) is n MOVES; engine.py said plies and two prose sites halved it ("mate in 8" beside "#15").
+2. A reply's capture that nobody answers scored None as an exchange, so a free pawn with small teeth read as
+   "missed better"; the reply's own net now counts what it took (require_recapture=False).
+3. Even-trade detection ignored OUR capture: 18...Bxd4 Nxd4 Rxd4 (+1) read as "bishop for pawn, even". When we
+   captured first the whole sequence on the square decides.
+4. Even trades gated on teeth >= 150: a recapture always dwarfs not recapturing, so 10.Bxc6 bxc6 read as "hung the
+   bishop". Even trades are positional unless mate, as Kaveh asked.
+5. SEE: a king could capture into a line its own departure opened; the docstring claimed no x-rays while the scratch
+   board does reveal them; an unused variable.
+6. hanging_through_pin: when the pinner itself is the cheapest capturer, nobody takes the shielded piece after the
+   recapture.
+7. Relation ordering used r.key with owner None possible (TypeError under sort); one total order now.
+8. En passant captured value hard-coded 1 instead of the scale's pawn.
+9. A refutation line that ends with US mating THEM was a 'mate' mechanism and a real threat (sign ignored).
+10. ladder_tag said "a slip" when the level was simply not in the ladder.
+11. game_report swallowed subprocess errors and crashed on a user not in the game; drill graded illegal typed
+    input as wrong (now validated through chess.js), showed "600s", crashed on an empty deck.
+Effects on the two reports: only the intended lines changed (10.Bxc6 even trade with "isolates c6, a7"; 13...c5
+"wins it: attacked twice, defended once"; #15 consistent). Gauge unchanged. Rapid causes: missed_better 40%,
+ignored 25%, enabled 20%, walked_into 10%, positional 6%. Drill regenerated: 107 positions (84 punish, 23 find).
