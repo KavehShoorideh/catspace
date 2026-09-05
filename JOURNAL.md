@@ -21259,3 +21259,20 @@ Also: an even trade the player initiated (Bxf3 Nxf3) is now positional like one 
 of a move that parries a mate threat is "stopping Qxc7#". Kaveh's side: 10/28 errors, 7 omissions
 (free pawns 9.Bxc7, 18/19.cxb6, 22.Bxb6), 2 ignored Qxe3+ (moves 20-21), 1 even trade; effective rating
 1300 (blitz 1278). Report: tmp/game_AsXfL6OX_full.md. Tests 24.
+
+## 2026-09-04 23:30 PDT — second game (AUjG3sl4, Kaveh as Black); threats must cash; game_report.py
+
+game_report.py: the full review of one game in one markdown (both sides' per-player reviews merged with the
+per-position ideas; every move gets its eval and one line, errors get the headline, the standing threat
+before the move and the Maia ladder). Reading AUjG3sl4 surfaced: "3...Nf6 ignored a standing threat: Nf3"
+-- the null-move probe scores DEFENSIVE value (Nf3 saving g2 was +128 above a tempo), so a threat now
+needs its line to cash something (capture/check/promotion/mate by the threatening side within two moves).
+A refutation counts as a tactic only if it cashes or creates a loss-naming relation (pinned_and_attacked,
+fork, hanging, skewer...); otherwise the cause is the omission ("Nf6 missed Qxg2 -- takes the pawn").
+Castling was a "clearance" (g1 vacated for the king). Bxd4 Nxd4 Qxd4 read as "put the bishop where it is
+traded off": exchange_net on the capture square (+1) -> "missed Rb2". Kaveh's rapid set re-run under the
+new rules (36 games, 1,029 moves, cached, 8s): errors 220 (0.21, win-prob verdicts); causes missed_better
+45%, ignored_threat 19%, enabled_tactic 18%, walked_into 12%, positional 6%; kind compound 44% /
+positional 33% / simple 23%; a real threat existed in 18% of positions (21% before the cash rule).
+AUjG3sl4 (Black, 0-1): 4 errors in 29 (3...Nf6 missed Qxg2 -16 win%; 12...Qd5, 13...c5, 18...Bxd4
+inaccuracies), effective rating 1900 this game; two reports byte-identical on re-run.
