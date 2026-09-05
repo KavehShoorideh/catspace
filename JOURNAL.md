@@ -21406,3 +21406,16 @@ a lost pawn into a defended one. Gauge unchanged (fork 0.96, pin 0.97, skewer 0.
 causes 40/24/20/10/6, hanging in refutations 0.45. Reports: 19.Rc1 keeps its deflection; 21...Bd6 now says "its
 only defender, the black pawn on c7, cannot legally recapture"; 12...Qd5 "missed e5 -- d4 attacked twice and
 effectively defended twice: the c3 pawn does not count: it is overloaded (it also guards b4)". Tests 33. Plan §19.
+
+## 2026-09-05 13:40 PDT — reach and the progress map (Kaveh: "tactics that are not executable, how many hops to join")
+
+reach.py: flip conditions (swap list over a modified ledger), safe reach (BFS over the piece's legal quiet moves
+from the rules, each landing square checked by the defense operator), the progress map (falls / joinable with
+the cheapest joiner and its path / undermine via a defender that falls first / held / out of reach), prose, and
+verify_plan (our hops with null moves, then the engine's best reply to the first hop -> wins / chased / met).
+Probes: Nb1 reaches c7 via c3-d5; the light bishop never; the c1 bishop is boxed in. AUjG3sl4 after 16.c4 for
+Black: d4 and c4 fall now, c5 is undermined through d4. AsXfL6OX before 18: "the white knight on f3 is held
+(1 v 1); the black pawn on g5 joins from g4 in 1 move and it falls" -- the game's 18...g4; verify_plan at depth
+14: unopposed yes, White's best reply cxb6, outcome wins. Antichess test: the king takes the pawn a pawn defends.
+Cost ~40 ms per position. Wired into the long render and the app panel ("where White can make progress").
+Tests 37. Plan §20.

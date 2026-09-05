@@ -288,3 +288,17 @@ exchange is claimed while the owner is in check. Test: the same placement under 
 undefended pawn into a defended one. Limits: one level deep (no overload chains); the composed four-piece pins
 remain as structural readings beside the operator; the enumerator (motifs.py) stays the coverage gauge for what
 the operators have not yet named.
+
+## 20. Reach and the progress map (Kaveh 2026-09-05): the tactics that are not executable yet
+
+`reach.py`, two more operators over the atoms and the defense ledger. FLIP CONDITIONS: for a held target, the
+loosest single change that makes the exchange win it (one more attacker worth at most v; one defender gone).
+SAFE REACH: the fewest quiet moves for a piece to a square from which it attacks the target, walking the piece's
+move graph from the rules on a scratch board and landing only where the defense operator says it survives -- so a
+wrong-coloured bishop, a boxed-in piece or a king facing a defended pawn simply never arrive. Composed into the
+PROGRESS MAP of a side: each enemy piece is 'falls now', 'held; X joins from S in n moves and it falls',
+'held; its defender Y falls first, then it does', or held/out of reach (said once). `verify_plan` gives the side
+its hops with null moves for the other and asks the ledger, then lets the engine answer the first hop: the
+outcome is 'wins', 'chased' (the target moved: a tempo, not the piece) or 'met'. Shown in the long render
+("Progress for White: ...") and in the app's move panel. Transfer test: under antichess a king takes the pawn a
+pawn defends. Known limits: reach ignores replies (verify_plan is the check); one level deep; three hops.

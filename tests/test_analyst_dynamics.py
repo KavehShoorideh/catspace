@@ -88,3 +88,14 @@ def test_sequence_motifs():
     b = chess.Board("4k3/8/8/4P3/8/5N2/8/4K3 w - - 0 1")
     seqs = find_sequences(b, ["e5e6", "e8e7", "f3e5"])
     assert any(s.name == "clearance" for s in seqs), seqs
+
+
+def test_verify_plan_with_the_engine():
+    """AsXfL6OX before 18.fxg3, Black's plan g5-g4 against the f3 knight: unopposed it falls; White's best answer moves it."""
+    from catspace.incubator.analyst.reach import progress, verify_plan
+    from catspace.incubator.analyst.engine import Engine
+    b = chess.Board("2kr1bnr/p1pp4/1p3p2/2P2qp1/8/4BNp1/PP2PP1P/2RQ1RK1 w - - 0 18")
+    t = next(x for x in progress(b, chess.BLACK, top=64) if x.square == chess.F3)
+    with Engine(depth=10) as eng:
+        v = verify_plan(b, eng, t, depth=10)
+    assert v is not None and v.unopposed and v.reply and v.outcome in ("chased", "met", "wins")

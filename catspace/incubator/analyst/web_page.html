@@ -253,6 +253,7 @@ function renderPanel(){
   if(err&&p.refutation&&p.refutation.line){const g=new Chess(p.fen);if(safeMove(g,p.san))lines+=lineHtml("punished by",g.fen(),p.refutation.line);}
   if(p.threats&&p.threats.length)lines+=`<div class="lrow"><span class="pill">if ${who} did nothing</span> ${p.threats.map(esc).join(" · ")}</div>`;
   if(p.structure&&p.structure.length)lines+=`<div class="lrow"><span class="pill">structure</span> ${p.structure.map(esc).join("; ")}</div>`;
+  if(p.progress&&p.progress.length)lines+=`<div class="lrow"><span class="pill">where ${who} can make progress</span> ${p.progress.map(esc).join(" · ")}</div>`;
   if(p.horizon)lines+=`<div class="lrow"><span class="pill">horizon</span> ${esc(p.horizon)}</div>`;
   L.innerHTML=lines;
   L.querySelectorAll(".ply").forEach(s=>s.onclick=()=>showLinePosition(s.dataset.fen,s.dataset.label));
