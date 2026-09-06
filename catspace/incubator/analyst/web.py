@@ -36,6 +36,7 @@ from .structure import top_changes
 from .reach import progress_lines
 from .memo import Memo
 from .plans import plans_for, plan_text
+from .goal_search import pursue, result_text
 from .verbalize import cp_str, render, best_fact, motif_phrase, delta_str
 from .horizon import winp
 
@@ -242,6 +243,14 @@ class Jobs:
             j = self.jobs[jid]
             j["status"] = "running"
             try:
+                if j["kind"] == "goals":
+                    if analyst is None:
+                        analyst = Analyst(self.depth, self.threads)
+                    fen, side = j["fen"], j["side"]
+                    b = chess.Board(fen)
+                    rs = pursue(b, side == "w", memo=analyst.memo, engine=analyst.eng, budget=300, horizon=6, max_goals=4)
+                    j["result"] = [result_text(r) for r in rs]
+                    j["status"] = "done"; continue
                 if j["kind"] == "game":
                     if analyst is None:
                         analyst = Analyst(self.depth, self.threads)
@@ -294,7 +303,8 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(n) or b"{}")
 
     def do_GET(self):
-        path = self.path.split("?")[0]
+        from urllib.parse import unquote
+        path = unquote(self.path.split("?")[0])
         if path in ("/", "/index.html"):
             data = PAGE.read_bytes()
             self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.send_header("Content-Length", str(len(data)))
@@ -334,6 +344,18 @@ class Handler(BaseHTTPRequestHandler):
             body = self._body()
             kind = parse_input(body.get("input", ""))
             return self._json({"kind": kind[0], "key": kind[1]} if kind else {"error": "paste a Lichess game link, a game id or a user name"}, 200 if kind else 400)
+        if path == "/api/goals":
+            body = self._body()
+            fen, side = body.get("fen", ""), body.get("side", "w")
+            try:
+                chess.Board(fen)
+            except Exception:
+                return self._json({"error": "bad fen"}, 400)
+            import hashlib
+            key = hashlib.sha1(f"{fen}|{side}".encode()).hexdigest()[:12]
+            j = self.jobs.submit("goals", key)
+            j["fen"], j["side"] = fen, side
+            return self._json({"status": j["status"], "job": j["id"]})
         if path == "/api/flag":
             body = self._body()
             note = (body.get("note") or "")[:2000]

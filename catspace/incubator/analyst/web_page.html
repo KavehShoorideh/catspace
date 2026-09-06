@@ -162,6 +162,8 @@ function gameLayout(){
       <div id="lines"></div>
       <div class="box" id="text">—</div>
       <table class="ladder" id="ladder"><tbody></tbody></table>
+      <div class="row" style="margin:8px 0 0"><button id="bGoals" title="proof-number search toward material goals for the side to move, the planner as prior, the engine as judge">⌕ Search goals</button><span class="pill" id="goalsStatus"></span></div>
+      <div id="goals"></div>
     </div>
     <div class="moves" id="moves"></div>
     <details style="margin-top:8px"><summary class="pill" style="cursor:pointer">every fact (long form)</summary><div class="box" id="textLong" style="margin-top:6px"></div></details>
@@ -171,7 +173,17 @@ function gameLayout(){
   $("#bFlip").onclick=()=>{S.flip=!S.flip;setBoard();};
   $("#navFirst").onclick=()=>goto(0);$("#navPrev").onclick=()=>goto(S.ptr-1);$("#navNext").onclick=()=>goto(S.ptr+1);$("#navLast").onclick=()=>goto(S.moves.length);
   $("#flagMove").onclick=()=>openFlag(flagContext());
+  $("#bGoals").onclick=searchGoals;
   initBoard();
+}
+async function searchGoals(){
+  const p=S.plies[S.ptr]; const fen=S.fens[S.ptr]; if(!fen)return;
+  const side=fen.split(" ")[1]; $("#goalsStatus").textContent="searching…"; $("#goals").innerHTML="";
+  let r; try{r=await api("/api/goals",{fen,side});}catch(e){toast(e.message);return;}
+  const jid=r.job; const t=setInterval(async()=>{let j;try{j=await api("/api/job/"+jid);}catch(e){return;}
+    if(j.status==="error"){clearInterval(t);$("#goalsStatus").textContent="error";$("#goals").innerHTML=`<div class="box">${esc(j.error)}</div>`;return;}
+    if(j.status==="done"){clearInterval(t);$("#goalsStatus").textContent="";$("#goals").innerHTML=(j.result||[]).map(x=>`<div class="lrow">${esc(x)}</div>`).join("")||'<div class="pill">no material goal within reach</div>';}
+  },1000);
 }
 function initBoard(){
   cg=Chessground($("#board"),cgConfig());

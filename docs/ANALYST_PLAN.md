@@ -336,3 +336,26 @@ first plan is "hold the queen on d5: Bxc4 -- the attacker on c4 is removed", the
 ("Plan for ...") and the app's move panel ("plans for White, by reasoning"). ~10-30 ms per position with the store.
 Limits: goals are material only (no positional goals yet: open the file, occupy the outpost -- the quiet 70%);
 counter-goals one level; races by hop count ignore tempo gained by checks and captures.
+
+## 23. Goal search: proof-number search toward a material goal (Kaveh 2026-09-06)
+
+`goal_search.py`. "Win the f7 pawn" is a boolean over an AND/OR tree, so the search is proof-number search
+(Allis 1994), not Monte Carlo: OR nodes are our moves, AND nodes the opponent's; every legal move is generated on
+both sides, so a wrong prior costs time, never the answer, and a proof holds against every reply. The prior is the
+planner: our plan steps and the opponent's counter-goals are ordered first at shallow plies (a cheap target-centred
+order deeper) and start with lower proof / disproof numbers; the ledger initialises them ("falls now" = 1).
+The goal predicate at our turn: the target has been captured and the ENGINE says the position is not worse than
+the root by more than 40 cp -- the engine is the quiescence, so recaptures, counter-attacks and horizon tricks are
+its job; it is not asked to have risen, because a root evaluation already anticipates a pawn that is falling.
+Give-up is native: a refuted root (disproof number 0) or an exhausted expansion budget abandons the goal with the
+moves tried and the hardest defence found; `pursue` walks the progress map's targets most valuable first, gives
+up, moves on, stops at the first proof. On AUjG3sl4 after 16.c4 for Black: "win the pawn on d4: given up (tried
+Bxc4, Qd7, Qa8...); win the pawn on c4: proven in 74 nodes, 28 engine checks: Bxc4 Nxc4". On AsXfL6OX before 18
+for White: "win the pawn on b6: proven: cxb6 Qxf3" (the desperado judged by the engine); for Black, "win the
+knight on f3: given up (tried g4 first...)". Seconds per goal. In the app: the "Search goals" button on the move
+panel runs the loop for the side to move. Limits: material goals only; a hopeless-line floor (down a piece beyond
+the target) is a stated heuristic; the no-engine material rule exists but is slow and strict; horizon 6 plies.
+History: goal-directed search with hand-written knowledge as the move generator is NSS 1958, CAPS-II 1974,
+Pitrat 1977, PARADISE 1980 (plans as the generator: incomplete), Botvinnik's trajectories and Stilman's zones;
+completeness with knowledge as a prior is the modern PUCT lesson, and threat-space / proof-number search (Allis
+1994) is the exact tool for a boolean goal.

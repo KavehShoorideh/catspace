@@ -21511,3 +21511,16 @@ the pawn on g5 reaches g4 in 1. Their answer in 1: Nd4 (it steps to d4, where it
 works if unopposed; their best reply cxb6: wins." Cost 10-30 ms per position with the store. In the app panel and
 the long render. Tests 44. Plan §22. Next per the agreed order: the learned proposal only if the traces are worth
 distilling; first the positional goals so the planner covers the quiet moves.
+
+## 2026-09-06 13:30 PDT — goal_search.py: proof-number search toward a goal, the planner as prior, the engine as judge
+
+Built per Kaveh's call ("I don't want Monte Carlo; I don't want to miss tactics"). Three design turns found by
+running it: (1) plain PN with unit initialisation went breadth-first at the root (an AND node with 40 children
+has a large proof number, so unexpanded siblings always look cheaper): the ledger now initialises proof numbers
+and the planner orders moves; (2) judging leaves by the ledger's own-piece-falls rule was slow (all_defenses per
+leaf: 23 s per 400 expansions) and strict (the opponent can always attack something): the engine at depth 8-10 is
+the leaf judge, cached, 0.0-0.2 s per goal; (3) asking the engine for a RISE over the root failed because the root
+already anticipates a falling pawn: the test is "not worse than the root by 40 cp" once the target is in hand.
+Results: c4 proven (Bxc4 Nxc4, 74 nodes, 28 engine checks); b6 for White proven (cxb6 Qxf3); the f3 knight given
+up with g4 tried first; the goal loop gives d4 up and proves c4. App: "Search goals" button (POST /api/goals,
+worker job). Tests 48. Plan §23.
