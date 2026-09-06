@@ -21479,3 +21479,22 @@ total nodes to depth 20 by -0.9% (per-position ratio median 0.98, quartiles 0.72
 the 30.8% of nodes in redone root passes are recycled through the TT; the window is a wash here, not waste.
 Scripts: job tmp/budget.py; engine patch (rootorder log, cutoff histogram, waste accounting, AspirationDelta
 option) in job tmp/sf.
+
+## 2026-09-06 09:40 PDT — OBS: can the concepts predict which move cuts at interior nodes? (Kaveh: "predict the residual")
+
+Instrumented Stockfish logs every 1,500th interior cut node whose first move failed to cut: FEN, the move tried
+first, the cutting move, its index, remaining depth, and the nodes the failure cost. 3,708 samples over the 200
+positions to depth 20 (tmp/cutlog.json; scripts tmp/cutlog_collect.py, tmp/cutlog_eval.py; engine patch
+tmp/stockfish_instrumentation.patch). Cost per failed first move: median 3 nodes, mean 35, 90th pct 34 -- most
+misses are cheap; the expensive ones are at remaining depth 8+ (mean 199 nodes, n=536).
+Features from the ledgers (capture, SEE gain, target falls, check, promotion, escapes, creates a falling target,
+own piece falls after, attacks a bigger piece, in the concept set, quiet), pairwise "which of the two cuts":
+logistic regression 5-fold CV accuracy 0.750 (chance 0.5), cost-weighted 0.594, by remaining depth 0.77 / 0.76 /
+0.70 (1-3 / 4-7 / 8+). The rule "concept set first" ordered the cutting move AHEAD in 511 nodes and BEHIND in 752.
+Coefficients: promotion +1.8, check +0.8, quiet +0.55; capture -0.3, SEE gain -0.8, in-concept-set -0.25. Reading:
+Stockfish already orders winning captures first (TT move, MVV/SEE); when its first move fails, the cutting move is
+disproportionately a check, a promotion or a QUIET move. The tactical vocabulary is redundant with the engine's
+ordering; the residual lives in the quiet 70% -- the plan layer, not the ledgers. Root-level recall of the concept
+set (2 moves of 32): 30% vs 6% random; 13% of wrong-early-guess positions had the right move first.
+Decision (Kaveh approved the order): no concept-ordered search on the tactical vocabulary; build the planner
+with counter-goals next; re-test ordering with plan-derived quiet moves afterwards.
