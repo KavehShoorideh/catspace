@@ -21451,3 +21451,18 @@ it finally chose" = "the best move switched at that iteration".
 Elo: not measured. The rule of thumb (a doubling of nodes ~ 50-70 Elo at this depth) puts a 6.5% node saving at
 log2(1.065) = 0.09 doublings ~ 5-6 Elo as the upper bound of perfect ROOT ordering. Interior-node ordering is not
 observable over UCI; it needs an instrumented engine.
+
+## 2026-09-05 17:20 PDT — OBS: the same question with an instrumented Stockfish (Kaveh: "you don't know if the right move was second or third")
+
+Stockfish master (Sep 2026) built in the job dir with a 20-line patch: per iteration, the root moves in the
+order searched with the nodes spent on each (a repeated first move = an aspiration pass restarted), the move the
+iteration chose; and a histogram of interior beta cutoffs by the index of the move that produced them. Same 200
+positions, depth 20, one thread (scripts: job tmp/root_order2.py; data tmp/root_order2_d20.json).
+  root, iterations d>=8 (2,600): the chosen move was searched FIRST in 86.8%, second 4.9%, third 1.7%, 4th-8th 3.8%,
+  beyond 8th 2.7%. When not first, a median 65% of the iteration's nodes were spent before reaching it.
+  root-ordering waste (the wrong first move's full-window search beyond a null-window refutation): 6.0% of all
+  nodes (the indirect estimate yesterday was 6.5%). Aspiration passes redone after a root fail high/low: 30.8% of
+  all nodes -- an upper bound on waste (the TT recycles part of it), five times the ordering effect.
+  interior nodes (32.3M cutoffs): the first move searched produced the cutoff in 82.8%, the second 9.1%, the third
+  3.3%, 4th-8th 3.6%, 9th or later 1.1%.
+Elo: not measured; by the doubling rule the root effect is ~4-6 Elo at most. Not worth a match on its own.
