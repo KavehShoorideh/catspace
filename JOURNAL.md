@@ -21433,3 +21433,21 @@ position two plies later, all from a sqlite store. search.py: candidates (engine
 joiner hops / checks), concept state per node, concept delta per edge; 11 nodes in 0.2s on AsXfL6OX@18 with
 "cxb6: pawn on a7 now falls; pawn on c7 now falls; my pawn on b6 now falls; material +1" and "g4: knight on f3
 now falls". The app's analyst holds the store, uses it for the progress lines and saves after each game. Tests 40.
+
+## 2026-09-05 16:10 PDT — OBS: how often Stockfish's root starts with a move it abandons (Kaveh's question)
+
+Stockfish 18, one thread, 64 MB hash cleared per position, 200 middlegame positions (plies 12-70) sampled from
+Kaveh's games, iterative deepening to depth 20 (script: job tmp/root_order.py; data tmp/root_order_d20.json).
+Iterative deepening searches the previous iteration's best move first, so "the root did not start with the move
+it finally chose" = "the best move switched at that iteration".
+  iterations d>=2: 3,800; switched in 719 (18.9%); by depth 21-26% up to d14, 10% at d16, 8% at d18, 12% at d20.
+  positions with a switch at d>=6: 137/200 (68%); mean 3.6 switches per position.
+  the depth-4 choice is the final choice in 48% of positions; depth-8 54%; depth-12 68%; depth-16 80%.
+  score change at a switch: median 14 cp, 75th pct 30 cp, >=100 cp in 3% (most switches are near-ties).
+  cost: a switching iteration grows x2.10 (median) vs x1.65 for a non-switching one; the excess over the median
+  growth, summed, is 6.5% of all nodes (6.3% of the nodes spent at d>=15); at 1,051 ms per position that is ~70 ms.
+  aspiration fail-high/low lines were not observed: Stockfish prints bound PVs only after 3 s, so that part of the
+  re-search cost is unmeasured here (it is inside the 6.5% by nodes anyway).
+Elo: not measured. The rule of thumb (a doubling of nodes ~ 50-70 Elo at this depth) puts a 6.5% node saving at
+log2(1.065) = 0.09 doublings ~ 5-6 Elo as the upper bound of perfect ROOT ordering. Interior-node ordering is not
+observable over UCI; it needs an instrumented engine.
