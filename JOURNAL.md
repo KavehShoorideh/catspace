@@ -21498,3 +21498,16 @@ ordering; the residual lives in the quiet 70% -- the plan layer, not the ledgers
 set (2 moves of 32): 30% vs 6% random; 13% of wrong-early-guess positions had the right move first.
 Decision (Kaveh approved the order): no concept-ordered search on the tactical vocabulary; build the planner
 with counter-goals next; re-test ordering with plan-derived quiet moves afterwards.
+
+## 2026-09-06 11:30 PDT — plans.py: the logical planner with counter-goals
+
+Backward chaining over Goal objects (win / defend) with the operators as rewrite rules; the chain is the
+explanation; the opponent's counter-goals (defend the target, win the joiner) on the board after our first step
+decide the race by hop count; defensive plans for our own falling pieces come first. AUjG3sl4 after 16.c4 (Black):
+"First, hold the queen on d5 in 1: Bxc4 -- the attacker on c4 is removed" (the game move), then "Win the pawn on c5
+in 2: Bxd4 then xc5 -- its defender, the pawn on d4, falls first. Their answer in 1: cxd5 (win the queen). They are
+in time." AsXfL6OX before 18 (Black): "Win the knight on f3 in 1: g4 -- one more attacker worth 1 or less wins it;
+the pawn on g5 reaches g4 in 1. Their answer in 1: Nd4 (it steps to d4, where it holds). They are in time. Engine:
+works if unopposed; their best reply cxb6: wins." Cost 10-30 ms per position with the store. In the app panel and
+the long render. Tests 44. Plan §22. Next per the agreed order: the learned proposal only if the traces are worth
+distilling; first the positional goals so the planner covers the quiet moves.

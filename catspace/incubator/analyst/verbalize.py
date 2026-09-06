@@ -312,9 +312,13 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
             out.append(f"  Structure after {rec.played.san}: " + "; ".join(sc) + ".")
     if long:
         from .reach import progress_lines                                     # where the side to move can make progress
-        pl = progress_lines(chess.Board(rec.fen), w)
+        from .plans import plans_for, plan_text
+        _b = chess.Board(rec.fen)
+        pl = progress_lines(_b, w)
         if pl:
             out.append(f"  Progress for {who}: " + " | ".join(pl))
+        for p_ in plans_for(_b, w, top=3):
+            out.append(f"  Plan for {who}: {plan_text(_b, p_)}")
     if rec.played and rec.verdict in ("blunder", "mistake", "inaccuracy"):
         art = "an" if rec.verdict[0] in "aeiou" else "a"
         s = f"  {rec.played.san} was {art} {rec.verdict}: {rec.idea.san} was better ({cp_str(rec.played.cp, w, rec.played.mate)} vs {ev})."

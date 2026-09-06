@@ -320,3 +320,19 @@ always the captures of falling pieces, the joiners' first hops, checks) and eval
 pawn on c7 now falls; my pawn on b6 now falls; material +1") -- the plan layer's answer to what a move does.
 Limits: footprints are conservative (a move that lands on a ray into a target invalidates it even when it could
 not take part); entries per key capped at 8; the search has no value and no pruning yet: it is the pathway.
+
+## 22. The planner: suggestions by a chain of reasoning (Kaveh 2026-09-06)
+
+The interior-node experiment (journal 2026-09-06) settled what the ledgers are for: not for ordering the engine's
+search -- Stockfish already tries winning captures first, and when its first move fails the cutting move is a quiet
+move 71% of the time -- but for the plan layer. `plans.py` is backward chaining over typed goals with the operators
+as rewrite rules: win(t) reads the ledger; held targets rewrite through the flip conditions into "bring a piece"
+(reach) or "remove the defender" (win(d), recursively); defend(t) rewrites into escape, add a defender, or win the
+attacker. Every rewrite is one rule over one object, every leaf a move, the chain is the explanation, and branching
+is two or three per step. Each plan is answered by the opponent's COUNTER-GOALS on the board after our first step
+(defend the target, or win our joiner) and the race is called by hop counts; multi-step plans can be verified by
+the engine (reach.verify_plan). Defensive plans for our own falling pieces come first: on AUjG3sl4 after 16.c4 the
+first plan is "hold the queen on d5: Bxc4 -- the attacker on c4 is removed", the move played. In the long render
+("Plan for ...") and the app's move panel ("plans for White, by reasoning"). ~10-30 ms per position with the store.
+Limits: goals are material only (no positional goals yet: open the file, occupy the outpost -- the quiet 70%);
+counter-goals one level; races by hop count ignore tempo gained by checks and captures.
