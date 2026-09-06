@@ -21466,3 +21466,16 @@ positions, depth 20, one thread (scripts: job tmp/root_order2.py; data tmp/root_
   interior nodes (32.3M cutoffs): the first move searched produced the cutoff in 82.8%, the second 9.1%, the third
   3.3%, 4th-8th 3.6%, 9th or later 1.1%.
 Elo: not measured; by the doubling rule the root effect is ~4-6 Elo at most. Not worth a match on its own.
+
+## 2026-09-05 18:30 PDT — OBS: the search budget a perfect ordering would skip (instrumented Stockfish, same 200 positions, depth 20, 1 thread)
+
+Interior ordering waste, defined as the nodes in subtrees searched BEFORE the move that produced the cutoff at a cut
+node (each node booked once; all-nodes and PV nodes book nothing): 131.3M of 205.0M nodes = 64.1% (per-position
+median 59%, quartiles 56% / 65%). At 775 ms mean per position that is ~500 ms of every search. Upper bound on the
+saving of a perfect oracle: those subtrees also fill the transposition table, which later searches reuse. It matches
+the textbook: with 83% first-move cutoffs the tree is ~1/(1-0.64) = 2.8x the minimal tree.
+Root ordering waste: 6.0% (earlier today). Aspiration windows: disabling them (AspirationDelta 1000 pawns) changes
+total nodes to depth 20 by -0.9% (per-position ratio median 0.98, quartiles 0.72 / 1.35, extremes 0.28 / 10.3):
+the 30.8% of nodes in redone root passes are recycled through the TT; the window is a wash here, not waste.
+Scripts: job tmp/budget.py; engine patch (rootorder log, cutoff histogram, waste accounting, AspirationDelta
+option) in job tmp/sf.
