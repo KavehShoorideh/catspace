@@ -316,7 +316,8 @@ class GoalSearch:
             if leaf.pn == 0 or leaf.dn == 0:
                 self.update(leaf); continue
             self.expand(leaf)
-        self.tried = [root.board.san(c.move) for c in (root.children or []) if c.pn < INF][:6]
+        self.tried = [root.board.san(c.move) for c in (root.children or [])          # worked on: expanded, or refuted at the leaf
+                      if c.children is not None or c.dn == 0][:6]
         line = self.principal_line(root) if root.pn == 0 else []
         ref = self.hardest_defence(root) if root.pn != 0 else []
         work = self.work_line(root) if root.pn == 0 else []
