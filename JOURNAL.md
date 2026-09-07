@@ -21547,3 +21547,19 @@ White is now GIVEN UP (300 expansions, 11 s cold): Black's doomed g3 pawn cashes
 by the judge (...Qh7: +0 at depth 10, -184 at depth 14 vs root +262), after Kh1 the count is a pawn for a pawn.
 The earlier "proven: cxb6 Qxf3" (13:30 entry) was a false proof of the flat shallow judge; the test now asserts
 the give-up and the refutation of Nxh2. Tests 48 (analyst suite). Web: goal jobs judge at depth 8.
+
+## 2026-09-07 12:02 PDT — the attackers' side of the defense operator (a rook ending from Kaveh's screenshot)
+
+Position Kg3 Ra4 a3 b4 h5 v Kg6 Rc4 a5 b6 f6, Black to move in check (h5+). Before: Black's plan Kxh5 (proven,
+76 nodes) was right, but after Kxh5 the plan layer told White "win the pawn on a5 in 1: bxa5 (attacked 2,
+effectively defended 1). The race is ours" -- and the goal search refuted it at once: bxa5 Rxa4, the b4 pawn was
+shielding the a4 rook from the c4 rook. The ledger priced a5 by the exchange on a5 alone; the owner's option of
+declining the recapture and taking the exposed piece was never considered. Built: the operator's two tests
+(legality, departure exposure priced by SEE, one level deep) now apply to attackers as well; an attacker whose
+capture is illegal or whose departure hands the owner a piece worth at least the target, that the owner may
+legally take, is excluded from the exchange. Consumers (flip conditions, planner removal targets, search
+candidates, the phrases) use the attackers that count; the store key carries a ledger version. After: "held: the
+black pawn on a5 (1 v 1)", no plan for White, search unchanged (given up, Rxa5+ tried before bxa5).
+OBS: memo-served ledgers equal fresh ones on 10,413 lookups over the latest game + 4 test positions with random
+1-3 ply continuations (0 mismatches, 46% hits); tests 49 (analyst suite). Goal-search "tried" now lists moves
+refuted at the leaf (the bxa5 story was missing from the give-up line).

@@ -212,3 +212,30 @@ def test_effective_defenders_follow_the_rules():
     b.set_piece_at(chess.G5, chess.Piece(chess.BISHOP, chess.BLACK))     # bishop g5 attacks e3
     d = defense(b, chess.C3)
     assert [x.reason for x in d.disqualified] == ["overloaded"] and d.disqualified[0].exposed == chess.E3 and d.falls
+
+
+def test_attackers_that_cannot_take_do_not_count():
+    """The attackers' side of the defense operator (Kaveh 2026-09-07, the rook ending): bxa5?? is met by Rxa4 --
+    the b4 pawn shields the a4 rook from the c4 rook, so its departure hangs a rook and the owner declines to
+    recapture. The pawn does not count as an attacker; with the rook alone (Rxa5 bxa5) a5 is held."""
+    from catspace.incubator.analyst.defense import defense
+    from catspace.incubator.analyst.plans import plans_for, plan_text
+    from catspace.incubator.analyst.reach import progress
+    b = chess.Board("8/8/1p3p2/p6k/RPr5/P5K1/8/8 w - - 0 2")
+    d = defense(b, chess.A5)
+    assert d.attackers == [chess.B4, chess.A4] and d.effective_attackers == [chess.A4]
+    assert [(x.reason, x.exposed) for x in d.attackers_out] == [("exposes", chess.A4)] and d.attackers_out[0].cost == 5.0
+    assert not d.falls and d.see == -4.0
+    # the progress map and the planner no longer offer 'win a5 in 1: bxa5'
+    assert all(not (t.square == chess.A5 and t.status == "falls") for t in progress(b, chess.WHITE, top=64))
+    assert not any(pl.goal.square == chess.A5 and pl.steps and pl.steps[0].san == "bxa5" for pl in plans_for(b, chess.WHITE))
+    # an absolutely pinned attacker: the e4 rook may not take d4 (pinned to its king on e1 by the queen on e8)
+    b = chess.Board("4q1k1/8/8/8/3pR3/8/8/4K3 w - - 0 1")
+    d = defense(b, chess.D4)
+    assert d.attackers == [chess.E4] and d.effective_attackers == [] and d.attackers_out[0].reason == "illegal" and not d.falls
+    # the exposure counts only when the owner may legally take it: with the black king on b6, bxa5 is CHECK, Rxa4
+    # is not a legal reply, so the pawn counts again and a5 falls (the king cannot recapture: the a4 rook covers a5)
+    b = chess.Board("8/8/1k3p2/p7/RPr5/P5K1/8/8 w - - 0 1")
+    d = defense(b, chess.A5)
+    assert d.effective_attackers == [chess.B4, chess.A4] and d.attackers_out == [] and d.falls
+    assert [x.reason for x in d.disqualified] == ["illegal"]

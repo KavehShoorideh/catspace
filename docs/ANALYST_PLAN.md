@@ -289,6 +289,21 @@ undefended pawn into a defended one. Limits: one level deep (no overload chains)
 remain as structural readings beside the operator; the enumerator (motifs.py) stays the coverage gauge for what
 the operators have not yet named.
 
+## 19b. The attackers' side of the ledger (Kaveh 2026-09-07, a rook ending from a screenshot)
+
+Kg3 Ra4 a3 b4 h5 v Kg6 Rc4 a5 b6 f6, after ...Kxh5: the plan layer said "win the pawn on a5 in 1: bxa5 (attacked 2,
+effectively defended 1). The race is ours" while the goal search refuted it at once with bxa5 Rxa4 -- the b4 pawn
+shielded the a4 rook from the c4 rook, and Black declines to recapture. The ledger priced a5 by the exchange on
+a5 alone. Rule: the two tests the operator applies to defenders apply to attackers too. An attacker counts only
+if its capture is legal (an absolutely pinned attacker is out) and its departure does not hand the owner a piece
+worth at least the target that the owner may LEGALLY take (a capture with check leaves no time, so the exposure
+does not count then). Disqualified attackers are excluded from the exchange like disqualified defenders; the
+flip conditions, the planner's removal targets and the search candidates use the attackers that count; the
+prose says why ("the white pawn on b4 cannot take: its departure hangs the white rook on a4"). Stored ledgers
+carry a version in the store key so the change never reads a stale pickle. After: "held: the black pawn on a5
+(1 v 1)", no plan offered for White, the search still gives the goal up (now trying Rxa5+ before bxa5).
+One level deep, like the defenders' side: the exposed piece is priced by SEE with nominal pieces elsewhere.
+
 ## 20. Reach and the progress map (Kaveh 2026-09-05): the tactics that are not executable yet
 
 `reach.py`, two more operators over the atoms and the defense ledger. FLIP CONDITIONS: for a held target, the

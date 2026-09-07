@@ -113,7 +113,7 @@ def candidates(board: chess.Board, state: ConceptState, engine=None, k: int = 4)
     me = "w" if board.turn else "b"
     for t in state.progress[me]:
         if t.status == "falls" and t.ledger:
-            for a in t.ledger.attackers:
+            for a in t.ledger.effective_attackers:
                 mv = chess.Move(a, t.square)
                 if mv in board.legal_moves:
                     out.append(mv); break

@@ -7,6 +7,9 @@ does not cost more than it saves. Both halves are computed from the rules, not n
               removal test on the defender's origin, priced by SEE): a defender that unshields a bigger piece (a relative
               pin) or abandons another duty (an overload) does not count; what the capture itself uncovered is not
               charged to the recapturer
+The same two tests apply to the ATTACKERS (Kaveh 2026-09-07, the rook ending with bxa5?? Rxa4): an attacker whose
+capture is illegal, or whose DEPARTURE hands the owner a piece worth at least the target (it shielded its own rook
+from the owner's rook, or was the only guard of something), does not count; the owner simply declines to recapture.
 Every named four-piece fact -- pinned-and-attacked, hanging through a pin, overloaded -- is a READING of this trace,
 and the trace explains itself: "its only defender, the knight on d4, cannot recapture: it is pinned to the rook on a1".
 One level deep: exposures are priced with nominal defenders elsewhere (no overload chains)."""
@@ -23,30 +26,42 @@ from .memo import pin_line
 
 @dataclass(frozen=True)
 class Disqualified:
-    square: int                 # the defender that does not count
-    reason: str                 # "illegal" | "pinned" | "overloaded" | "loses_more"
-    exposed: int | None         # the own piece the enemy could win once the defender recaptures
+    square: int                 # the defender (or attacker) that does not count
+    reason: str                 # defenders: "illegal" | "pinned" | "overloaded" | "loses_more"; attackers: "illegal" | "exposes"
+    exposed: int | None         # the own piece the enemy could win once the defender recaptures / the attacker departs
     cost: float                 # what that exposure is worth to the enemy
 
 
 @dataclass
 class Defense:
     target: int
-    attackers: list[int]
+    attackers: list[int]                        # nominal: enemy pieces attacking the square
     defenders: list[int]                        # nominal: own pieces attacking the square
-    effective: list[int]                        # the ones that count
+    effective: list[int]                        # the defenders that count
     disqualified: list[Disqualified] = field(default_factory=list)
-    see: float = 0.0                            # SEE from the attacker's side with only the effective defenders: > 0 => the target falls
+    see: float = 0.0                            # SEE from the attacker's side with only the effective pieces on both sides: > 0 => the target falls
+    effective_attackers: list[int] = field(default_factory=list)      # the attackers that count
+    attackers_out: list[Disqualified] = field(default_factory=list)   # attackers that do not, and why
 
     @property
     def falls(self) -> bool:
         return self.see > 0
 
+    @property
+    def excluded(self) -> set[int]:
+        """Every piece the exchange on the target may not use: disqualified defenders and attackers alike."""
+        return {x.square for x in self.disqualified} | {x.square for x in self.attackers_out}
 
-def _cheapest_legal_capture(board: chess.Board, sq: int, by: chess.Color, reads=None) -> chess.Move | None:
+
+_VERSION = 2                    # bumps invalidate stored ledgers (the concept store pickles this class)
+
+
+def _cheapest_legal_capture(board: chess.Board, sq: int, by: chess.Color, reads=None, exclude=()) -> chess.Move | None:
     b = board.copy(stack=False); b.turn = by
     cands = sorted(b.attackers(by, sq), key=lambda a: value(board, a))
     for a in cands:
+        if a in exclude:
+            continue
         if reads is not None:
             reads.square(a); reads.legality(board, by, a)      # the capture's legality: the attacker's pin line, its king's checkers
         for mv in (chess.Move(a, sq), chess.Move(a, sq, promotion=chess.QUEEN)):
@@ -98,8 +113,58 @@ def defense(board: chess.Board, sq: int, memo=None, reads=None) -> Defense | Non
     With `memo`, served from the concept store when the pieces on its footprint are unchanged; `reads` lets a
     caller (reach) fold this computation's footprint into its own."""
     if memo is not None:
-        return memo.get("defense", (sq,), board, lambda r: _defense(board, sq, r))
+        return memo.get("defense", (sq, _VERSION), board, lambda r: _defense(board, sq, r))
     return _defense(board, sq, reads)
+
+
+def _owner_can_take(after: chess.Board, t: int, c: chess.Color, reads=None) -> bool:
+    """After the attacker's capture: may the owner (c) legally capture the exposed piece on t? (In check, only a
+    capture that meets the check; a pinned piece may not.) Footprint: the capturers' pin lines and the owner
+    king's attack lines on the after-board, both as squares."""
+    b = after.copy(stack=False); b.turn = c
+    k = b.king(c)
+    if reads is not None and k is not None:
+        reads.attacks_of(after, k)
+    for x in b.attackers(c, t):
+        if reads is not None:
+            reads.square(x); reads.add(pin_line(after, c, x))
+        if any(m in b.legal_moves for m in (chess.Move(x, t), chess.Move(x, t, promotion=chess.QUEEN))):
+            return True
+    return False
+
+
+def _attackers_that_count(board: chess.Board, sq: int, c: chess.Color, attackers, reads=None) -> tuple[list[int], list[Disqualified]]:
+    """The attackers' side of the operator: the capture must be legal, and the attacker's departure must not hand
+    the owner a piece worth at least the target (the owner declines to recapture and takes that instead)."""
+    tv = value(board, sq)
+    b = board.copy(stack=False); b.turn = not c
+    ok, out = [], []
+    for a in attackers:
+        if reads is not None:
+            reads.square(a); reads.legality(board, not c, a)
+        cap = next((m for m in (chess.Move(a, sq), chess.Move(a, sq, promotion=chess.QUEEN)) if m in b.legal_moves), None)
+        if cap is None:
+            out.append(Disqualified(a, "illegal", None, 0.0)); continue
+        cands = exposure_candidates(board, a, not c)             # what this attacker guards or shields, on the board as it stands
+        if reads is not None:
+            for x, xp in board.piece_map().items():               # which owner sliders align through a is itself a read
+                if xp.color == c and xp.piece_type in SLIDERS:
+                    reads.square(x)
+            reads.attacks_of(board, a)
+        after = b.copy(stack=False); after.push(cap)
+        base = _enemy_gains(board, not c, cands, reads)          # what the owner could already win there
+        gains = _enemy_gains(after, not c, cands, reads)         # ...and after the departure
+        best_sq, best = None, 0.0
+        for t, g in gains.items():
+            if t == sq:
+                continue
+            delta = g - base.get(t, 0.0)
+            if delta > best and _owner_can_take(after, t, c, reads):
+                best_sq, best = t, delta
+        if best_sq is not None and best >= tv:
+            out.append(Disqualified(a, "exposes", best_sq, best)); continue
+        ok.append(a)
+    return ok, out
 
 
 def _defense(board: chess.Board, sq: int, reads=None) -> Defense | None:
@@ -120,8 +185,9 @@ def _defense(board: chess.Board, sq: int, reads=None) -> Defense | None:
             return None
     defenders = sorted(board.attackers(c, sq))
     d = Defense(sq, attackers, defenders, [])
-    cap = _cheapest_legal_capture(board, sq, not c, reads)
-    if cap is None:                                            # no legal capture exists: nothing to defend against
+    d.effective_attackers, d.attackers_out = _attackers_that_count(board, sq, c, attackers, reads)
+    cap = _cheapest_legal_capture(board, sq, not c, reads, exclude={x.square for x in d.attackers_out})
+    if cap is None:                                            # no capture that counts exists: nothing to defend against
         d.effective = list(defenders); d.see = 0.0
         return d
     after = board.copy(stack=False); after.turn = not c; after.push(cap)
@@ -165,7 +231,7 @@ def _defense(board: chess.Board, sq: int, reads=None) -> Defense | None:
                 reason = "pinned"
             d.disqualified.append(Disqualified(dq, reason, best_sq, best)); continue
         d.effective.append(dq)
-    d.see = see(board, sq, not c, exclude={x.square for x in d.disqualified}, reads=reads)
+    d.see = see(board, sq, not c, exclude=d.excluded, reads=reads)
     return d
 
 

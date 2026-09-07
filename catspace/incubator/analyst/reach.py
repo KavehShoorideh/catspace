@@ -76,7 +76,7 @@ def flip_conditions(board: chess.Board, target: int, by: chess.Color) -> list[Fl
     if d.falls:
         return []
     tv = value(board, target)
-    atts = [value(board, q) for q in d.attackers]
+    atts = [value(board, q) for q in d.effective_attackers]          # an attacker that cannot take does not join
     defs = [value(board, q) for q in d.effective]
     out = []
     best_v = None
@@ -86,7 +86,7 @@ def flip_conditions(board: chess.Board, target: int, by: chess.Color) -> list[Fl
     if best_v is not None:
         out.append(Flip("add_attacker", best_v))
     for q in d.effective:
-        if see(board, target, by, exclude={q} | {x.square for x in d.disqualified}) > 0:
+        if see(board, target, by, exclude={q} | d.excluded) > 0:
             out.append(Flip("remove_defender", 0.0, q))
     return out
 
@@ -219,10 +219,33 @@ def _pc(sym: str, sq: int) -> str:
     return pc(sym, sq)
 
 
+def ledger_phrase(board: chess.Board, d) -> str:
+    """'attacked 2, effectively defended 1' plus, when an attacker does not count, why: 'the white pawn on b4 cannot
+    take: its departure hangs the white rook on a4'."""
+    if d is None:
+        return "unattacked"
+    s = f"attacked {len(d.attackers)}, effectively defended {len(d.effective)}"
+    for x in d.attackers_out:
+        p = board.piece_at(x.square)
+        if p is None:
+            continue
+        who = _pc(p.symbol(), x.square)
+        if x.reason == "exposes" and x.exposed is not None and board.piece_at(x.exposed):
+            s += f"; {who} cannot take: its departure hangs {_pc(board.piece_at(x.exposed).symbol(), x.exposed)}"
+        elif x.reason == "illegal":
+            s += f"; {who} cannot legally take"
+    return s
+
+
+def counts(d) -> str:
+    """The compact '2 v 1': attackers that count against defenders that count."""
+    return f"{len(d.effective_attackers)} v {len(d.effective)}"
+
+
 def target_phrase(board: chess.Board, t: Target) -> str:
     who = _pc(t.piece, t.square)
     d = t.ledger
-    ledger = f"attacked {len(d.attackers)}, effectively defended {len(d.effective)}" if d else "unattacked"
+    ledger = ledger_phrase(board, d)
     if t.status == "falls":
         return f"{who} falls now ({ledger})"
     if t.status == "joinable" and t.joiner:
@@ -253,7 +276,7 @@ def progress_lines(board: chess.Board, by: chess.Color, top: int = 3, memo=None)
         held = [t for t in rest if t.status == "held"][:3]; far = [t for t in rest if t.status == "unreachable"]
         bits = []
         if held:
-            bits.append("held: " + ", ".join(f"{_pc(t.piece, t.square)} ({len(t.ledger.attackers)} v {len(t.ledger.effective)})" for t in held))
+            bits.append("held: " + ", ".join(f"{_pc(t.piece, t.square)} ({counts(t.ledger)})" for t in held))
         if far:
             bits.append("out of reach within 3 moves: " + ", ".join(_pc(t.piece, t.square) for t in far[:4]) + (f" and {len(far)-4} more" if len(far) > 4 else ""))
         out.append("; ".join(bits))

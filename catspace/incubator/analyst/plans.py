@@ -23,7 +23,7 @@ import chess
 from . import rules as R
 from .defense import defense
 from .facts import value
-from .reach import reach, flip_conditions, Path, verify_plan, Target
+from .reach import reach, flip_conditions, Path, verify_plan, Target, ledger_phrase, counts
 
 
 @dataclass(frozen=True)
@@ -98,9 +98,9 @@ def derive(board: chess.Board, side: chess.Color, goal: Goal, memo=None, depth: 
             if cap:
                 b2 = board.copy(stack=False); b2.turn = side
                 plans.append(Plan(side, goal, [Step(cap, b2.san(cap), "it falls now")],
-                                  [f"{name}: it falls now (attacked {len(led.attackers)}, effectively defended {len(led.effective)})"]))
+                                  [f"{name}: it falls now ({ledger_phrase(board, led)})"]))
             return plans
-        ledger = f"attacked {len(led.attackers)}, effectively defended {len(led.effective)}" if led else "unattacked"
+        ledger = ledger_phrase(board, led)
         for f in flip_conditions(board, t, side):
             if f.kind == "add_attacker":
                 attacking_now = set(led.attackers) if led else set()
@@ -136,7 +136,7 @@ def derive(board: chess.Board, side: chess.Color, goal: Goal, memo=None, depth: 
             nb = b.copy(stack=False); nb.push(m)
             d2 = defense(nb, m.to_square, memo=memo)
             if d2 is None or not d2.falls:
-                plans.append(Plan(side, goal, [Step(m, b.san(m), "moves it to safety")], [f"{name}: it falls ({len(led.attackers)} v {len(led.effective)})", f"it steps to {chess.square_name(m.to_square)}, where it holds"]))
+                plans.append(Plan(side, goal, [Step(m, b.san(m), "moves it to safety")], [f"{name}: it falls ({counts(led)})", f"it steps to {chess.square_name(m.to_square)}, where it holds"]))
         # 2. add a defender by reach (a piece that comes to attack its own square = defends it)
         for psq, pp in board.piece_map().items():
             if pp.color != side or psq == t or R.is_royal(board, psq) or psq in led.defenders:
@@ -154,10 +154,10 @@ def derive(board: chess.Board, side: chess.Color, goal: Goal, memo=None, depth: 
             d2 = defense(nb, t, memo=memo)
             if d2 is not None and d2.falls:
                 continue
-            plans.append(Plan(side, goal, steps, [f"{name}: it falls ({len(led.attackers)} v {len(led.effective)})", f"the {chess.piece_name(pp.piece_type)} on {chess.square_name(psq)} comes to defend it in {path.hops} ({' '.join(s.san for s in steps)})"]))
+            plans.append(Plan(side, goal, steps, [f"{name}: it falls ({counts(led)})", f"the {chess.piece_name(pp.piece_type)} on {chess.square_name(psq)} comes to defend it in {path.hops} ({' '.join(s.san for s in steps)})"]))
         # 3. win the attacker
-        if depth > 0 and led.attackers:
-            for a in led.attackers:
+        if depth > 0 and led.effective_attackers:
+            for a in led.effective_attackers:                 # an attacker that cannot take is no threat to remove
                 for sub in derive(board, side, Goal("win", a), memo, depth - 1, max_hops):
                     plans.append(Plan(side, goal, sub.steps, [f"{name}: it falls", f"the attacker on {chess.square_name(a)} is removed"] + ["  " + c for c in sub.chain]))
     plans.sort(key=lambda p: (p.hops, sum(value(board, s.move.from_square) for s in p.steps if s.move != chess.Move.null())))
