@@ -61,6 +61,8 @@ class Engine:
         self.calls += 1
         if board.is_game_over():
             return []
+        if not board.is_valid():                               # the side not to move in check, a missing king...: Stockfish segfaults on these
+            raise ValueError(f"not a legal position for the engine: {board.fen()} (status {board.status()!r})")
         infos = self._eng.analyse(board, chess.engine.Limit(depth=depth), multipv=multipv,
                                   root_moves=list(root_moves) if root_moves else None)
         out = []

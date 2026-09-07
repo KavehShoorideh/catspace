@@ -419,5 +419,9 @@ rook on a4 (5)" is a line of the long render and the app panel. OBS: 2.5 pieces 
 the move played broke a holding in 15/192 positions (mean cost 1.3, never a mate) in these three games.
 Limits: lemmas are material and mate-in-one only (the positional vocabulary is still the missing regime for
 endings); holdings are one level deep by the removal test; the store's sketch key is a predictor, soundness is the
-re-verification; refinement runs one round.
+re-verification; refinement runs one round. MEASURED (`subgames deep`, OBS 2026-09-07): holdings by search
+(remove the piece, prove the lemma with and without it) against the static ledger on 91 piece-lemma pairs: 13
+agree, 3 search-only of which 2 are search artifacts and 1 a genuine two-link chain (the f3 queen holds f4
+through e3), 12 static-only where the judge fails in lopsided removal positions; 3.4-4.2 s per search against 45
+ms per position statically. Deeper holdings are a chain problem for the static ledger, not a search problem.
 

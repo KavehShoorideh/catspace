@@ -254,16 +254,93 @@ def report(rows, dt, memo) -> str:
     return "\n".join(out)
 
 
+# ---------------------------------------------------------------- the deep experiment: holdings by search vs by the ledger
+def deep_measure(pgn_paths: list[str], every: int = 2, budget: int = 120, engine_depth: int = 8, max_positions: int = 0,
+                 top_lemmas: int = 2, horizon: int = 6, log=print):
+    """On each sampled position, for the opponent's top lemmas against the side to move: the removal test evaluated by
+    the GOAL SEARCH (proven without the piece, not proven with it) against the static ledger's holdings. Counts
+    agreement, search-only holdings (what one static removal misses) and static-only ones (what the search's budget
+    or judge does not confirm). Every search is one engine-judged proof attempt: this is the cost of going deeper."""
+    from .engine import Engine
+    from .goal_search import search_goal
+    eng = Engine(depth=engine_depth)
+    memo = Memo()
+    t0 = time.perf_counter()
+    stats = Counter(); examples = []; searches = 0; search_time = 0.0; n_pos = 0
+    for path in pgn_paths:
+        with open(path) as f:
+            game = chess.pgn.read_game(f)
+        board = game.board(); moves = list(game.mainline_moves())
+        for ply, mv in enumerate(moves):
+            if ply % every == 0 and not board.is_game_over() and not board.is_check():   # in check, the opponent's goals are not on the table
+                S = board.turn; them = not S
+                lem = static_lemmas(board, memo)
+                held = holdings(board, memo, lem)
+                theirs = [l for l in lem if l.side == them]
+                theirs.sort(key=lambda l: -l.value)
+                for l in theirs[:top_lemmas]:
+                    t1 = time.perf_counter()
+                    r_with = search_goal(board, them, l.target, memo=memo, engine=eng, budget=budget, horizon=horizon, engine_depth=engine_depth, refinements=0)
+                    searches += 1; search_time += time.perf_counter() - t1
+                    cands = {sq for sq in l.participants if board.piece_at(sq) and board.piece_at(sq).color == S and not R.is_royal(board, sq) and sq != l.target}
+                    cands |= {sq for sq, hs in held.items() if board.piece_at(sq).color == S and any(h.lemma.target == l.target for h in hs)}
+                    for sq in sorted(cands):
+                        without = board.copy(stack=False); without.remove_piece_at(sq)
+                        without.castling_rights = without.clean_castling_rights()      # a removed rook must not leave a right behind (Stockfish segfaults on it)
+                        k = without.king(S)
+                        if k is not None and without.is_attacked_by(them, k):
+                            continue
+                        t1 = time.perf_counter()
+                        try:
+                            r_wo = search_goal(without, them, l.target, memo=memo, engine=eng, budget=budget, horizon=horizon, engine_depth=engine_depth, refinements=0)
+                        except Exception as ex:                                       # an engine death: restart it, skip the pair
+                            log(f"[deep] engine error on {without.fen()} without {chess.square_name(sq)}: {ex}", flush=True)
+                            try:
+                                eng.close()
+                            except Exception:
+                                pass
+                            eng = Engine(depth=engine_depth); stats["engine_restarts"] += 1
+                            continue
+                        searches += 1; search_time += time.perf_counter() - t1
+                        by_search = r_wo.proven and not r_with.proven
+                        by_static = any(h.lemma.target == l.target for h in held.get(sq, []))
+                        key = ("both" if by_search and by_static else "search_only" if by_search else "static_only" if by_static else "neither")
+                        stats[key] += 1; stats["pairs"] += 1
+                        if key == "search_only" and len(examples) < 12:
+                            examples.append((board.fen(), chess.square_name(sq), chess.square_name(l.target), " ".join(r_wo.line[:4])))
+                        if key == "static_only" and len([e for e in examples if e[3] == "static_only"]) < 6:
+                            examples.append((board.fen(), chess.square_name(sq), chess.square_name(l.target), "static_only"))
+                n_pos += 1
+                if n_pos % 10 == 0:
+                    log(f"[deep] {n_pos} positions, {searches} searches, {time.perf_counter()-t0:.0f}s, {dict(stats)}", flush=True)
+            board.push(mv)
+            if max_positions and n_pos >= max_positions:
+                break
+        log(f"[deep] after {path.split('/')[-1]}: {n_pos} positions, {dict(stats)}", flush=True)
+    eng.close()
+    dt = time.perf_counter() - t0
+    out = [f"[deep] {n_pos} positions, {searches} searches in {dt:.0f}s ({search_time/max(1,searches):.2f}s per search) | {memo.report()}",
+           f"pairs (piece, lemma) tested: {stats['pairs']}: both {stats['both']}, search-only {stats['search_only']}, static-only {stats['static_only']}, neither {stats['neither']}"]
+    for fen, sq, t, line in examples:
+        out.append(f"  {line if line == 'static_only' else 'search-only'}: piece {sq} holds {t} | {fen}" + (f" | without it: {line}" if line != "static_only" else ""))
+    return "\n".join(out)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     m = sub.add_parser("measure"); m.add_argument("pgns", nargs="+"); m.add_argument("--proofs", action="store_true")
     m.add_argument("--budget", type=int, default=150); m.add_argument("--every", type=int, default=1); m.add_argument("--depth", type=int, default=8)
     m.add_argument("--max-positions", type=int, default=0)
+    d = sub.add_parser("deep"); d.add_argument("pgns", nargs="+"); d.add_argument("--budget", type=int, default=120)
+    d.add_argument("--every", type=int, default=2); d.add_argument("--depth", type=int, default=8); d.add_argument("--max-positions", type=int, default=0)
+    d.add_argument("--top", type=int, default=2)
     a = ap.parse_args(argv)
     if a.cmd == "measure":
         rows, dt, memo = measure(a.pgns, a.proofs, a.budget, a.every, a.depth, a.max_positions)
         print(report(rows, dt, memo))
+    elif a.cmd == "deep":
+        print(deep_measure(a.pgns, a.every, a.budget, a.depth, a.max_positions, a.top))
 
 
 
@@ -338,6 +415,7 @@ def holdings(board: chess.Board, memo: Memo | None = None, lemmas: list[Lemma] |
         if R.is_royal(board, sq):
             continue
         without = board.copy(stack=False); without.remove_piece_at(sq)
+        without.castling_rights = without.clean_castling_rights()
         k = without.king(p.color)
         if k is not None and without.is_attacked_by(not p.color, k):
             continue                                           # it shields its own king: the board without it is not a position to reason about

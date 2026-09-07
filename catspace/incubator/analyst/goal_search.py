@@ -385,6 +385,8 @@ class GoalSearch:
         root = Node(self.root_board, 0, None, True, target=self.target0)
         self.root = root
         goal_txt = f"win the {chess.piece_name(self.target_piece.piece_type)} on {chess.square_name(self.target0)}"
+        if not self.root_board.is_valid():                     # e.g. the other side is in check: it is not this side's move to attack
+            return Result(goal_txt, False, False, 0, 0.0, [], [], [], 0, diagnosis="not this side's move (the other king is in check)")
         while root.pn != 0 and root.dn != 0 and self.expansions < self.budget:
             leaf = self.select(root)
             if leaf.children is not None:

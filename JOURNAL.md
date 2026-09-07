@@ -21613,3 +21613,24 @@ OBS (subgames measure, same 3 games, 192 positions, 16.3 s): 2.5 pieces per posi
 actually played broke a holding in 15/192 positions (mean cost 1.3 pawns; never a mate). Tests 54 (analyst
 suite). Plan §24, structure table, ANALYST_GOAL_SEARCH §9. Not built: positional lemmas (the ending regime),
 holdings deeper than one removal, a second refinement round.
+
+## 2026-09-07 14:05 PDT — the deep-holdings experiment: what a search finds that one static removal misses
+
+Kaveh: size the gap before choosing between a two-level static ledger and a search-based one. `subgames deep`:
+on every 3rd position of the same 3 games, for the opponent's top-2 lemmas against the side to move, each
+participant piece is removed and the goal search (budget 60, judge depth 6, horizon 6) proves the lemma with and
+without it; a holding by search = proven without, not proven with; compared with the static ledger's holdings.
+OBS: 60 positions, 91 (piece, lemma) pairs, 173 searches in 684 s (3.4-4.2 s per search, ~12 s per position
+against 45 ms for the static ledger). Agreement 13; search-only 3; static-only 12; neither 63. All three
+search-only pairs inspected: two are search artifacts (the ledger already says the target falls WITH the piece
+-- b6xc5 / bxc5 -- and the with-search merely gave up at budget 60); one is a genuine chain (the f3 queen holds
+the f4 pawn THROUGH e3: without the queen Bxe3+ then Bxf4), where the static ledger already charges the first
+link (f3 holds e3) and misses the second pawn. The static-only pair inspected (d4 holds e5 after 15...bxc5) is the
+judge failing in a lopsided removal position (an absolute 40 cp tolerance next to a +8 root), the ledger is right.
+Reading: one static removal finds what the search confirms in 13 of 14 real cases; the search's own
+incompleteness (budget, and the judge's absolute tolerance in lopsided positions) produces more disagreement
+than it resolves; deeper holdings are a chain problem, cheap to close statically (play the exposed exchange,
+re-run the ledger), not a search problem. Two engine crashes on the way, both fixed: a removed rook left its
+castling right behind, and searching the opponent's goal while the side to move is in check flips the turn into
+an illegal position -- the engine adapter now refuses invalid boards, the goal search says "not this side's move".
+Not built: the two-level static chain; the relative tolerance for the judge.
