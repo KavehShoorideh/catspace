@@ -183,10 +183,14 @@ def measure(pgn_paths: list[str], proofs: bool = False, budget: int = 150, every
                 n_pieces = chess.popcount(board.occupied) - 2
                 phase = sum(value(board, s) for s in chess.scan_forward(board.occupied) if not R.is_royal(board, s))
                 capt = board.is_capture(mv)
+                held = holdings(board, memo, lem)
+                broken = cost_of_move(board, mv, held, memo)
                 row = dict(game=path.split("/")[-1], ply=ply, pieces=n_pieces, material=phase, lemmas=len(lem),
                            components=len(comps), biggest=len(comps[0]) if comps else 0,
                            mover_mult=mult.get(mv.from_square, 0), capture=capt,
-                           shared=sum(1 for s, k in mult.items() if k >= 2), pieces_in=len(mult))
+                           shared=sum(1 for s, k in mult.items() if k >= 2), pieces_in=len(mult),
+                           holders=len(held), holds=sum(len(v) for v in held.values()),
+                           played_breaks=len(broken), played_cost=sum(h.loss for h in broken))
                 if proofs:
                     side = board.turn
                     tops = [t for t in progress(board, side, top=64, memo=memo) if t.status in ("falls", "joinable", "undermine")][:2]
@@ -232,6 +236,10 @@ def report(rows, dt, memo) -> str:
         out.append(f"  {name:<18} n={len(rs):<4} components {mean(r['components'] for r in rs):.2f}  biggest {mean(r['biggest'] for r in rs):.1f} of {mean(r['lemmas'] for r in rs):.1f} lemmas"
                    f"  pieces in >=2 lemmas {mean(r['shared'] for r in rs):.1f}/{mean(r['pieces_in'] for r in rs):.0f}"
                    f"  captures whose piece is in >=2 lemmas {(sum(1 for r in caps if r['mover_mult'] >= 2) / len(caps) if caps else 0):.0%} ({len(caps)})")
+    out.append(f"holdings: {mean(r['holders'] for r in rows):.1f} pieces per position hold {mean(r['holds'] for r in rows):.1f} lemmas; "
+               f"the move played broke a holding in {sum(1 for r in rows if r['played_breaks'])}/{len(rows)} positions "
+               f"(mean cost when it did {mean(r['played_cost'] for r in rows if r['played_breaks']):.1f}; "
+               f"a mate {sum(1 for r in rows if r['played_cost'] >= 100)} times)")
     caps = [r for r in rows if r["capture"] and "d_components" in r]
     if caps:
         out.append(f"components after a capture vs before (next sampled position): mean change {mean(r['d_components'] for r in caps):+.2f}; "
@@ -256,6 +264,166 @@ def main(argv=None):
     if a.cmd == "measure":
         rows, dt, memo = measure(a.pgns, a.proofs, a.budget, a.every, a.depth, a.max_positions)
         print(report(rows, dt, memo))
+
+
+
+# ---------------------------------------------------------------- the resource ledger: what each piece holds
+@dataclass
+class Holding:
+    """A lemma a piece keeps in its current state: without the piece the lemma flips (our target stops falling,
+    their target starts falling, a mate appears). `loss` is what the flip is worth to the piece's owner."""
+    piece: int
+    lemma: Lemma
+    effect: str                      # "lost" (our win lemma no longer falls) | "exposed" (their target falls) | "mated" (their mate appears)
+    loss: float
+
+
+MATE_VALUE = 100.0
+
+
+def mate_in_one(board: chess.Board, by: chess.Color) -> list[chess.Move]:
+    """The mating moves `by` has if it were to move now (the position's mate threats, one ply)."""
+    b = board.copy(stack=False); b.turn = by
+    if b.is_check() and b.turn != board.turn:
+        return []                                             # the other side is in check: it is not their move to threaten
+    out = []
+    for m in b.legal_moves:
+        b.push(m)
+        if b.is_checkmate():
+            out.append(m)
+        b.pop()
+    return out
+
+
+def mate_lemmas(board: chess.Board) -> list[Lemma]:
+    out = []
+    for side in (chess.WHITE, chess.BLACK):
+        ms = mate_in_one(board, side)
+        if ms:
+            k = board.king(not side)
+            out.append(Lemma(side, k, board.piece_at(k).symbol(), "mate", MATE_VALUE, {k} | {m.from_square for m in ms},
+                             0, [board.copy(stack=False).san(m) if False else m.uci() for m in ms[:3]], "mate in one"))
+    return out
+
+
+def _status_flips(board: chess.Board, without: chess.Board, lemma: Lemma, memo=None) -> str | None:
+    """Does removing a piece flip this lemma? Returns the effect from the removed piece's owner's view."""
+    from .defense import defense
+    if lemma.status == "mate":
+        return None
+    if without.piece_at(lemma.target) is None:
+        return None
+    d0 = lemma.status == "falls"
+    d1 = defense(without, lemma.target, memo=memo)
+    falls1 = d1 is not None and d1.falls
+    if d0 and not falls1:
+        return "lost"
+    if not d0 and falls1:
+        return "exposed"
+    return None
+
+
+def holdings(board: chess.Board, memo: Memo | None = None, lemmas: list[Lemma] | None = None) -> dict[int, list[Holding]]:
+    """For every piece: the lemmas that flip when it is removed (the removal test lifted from squares to lemmas),
+    plus the mates that appear. This is the opportunity cost ledger: what a piece is worth where it stands."""
+    lem = list(lemmas) if lemmas is not None else static_lemmas(board, memo)
+    covered = {(l.side, l.target) for l in lem}
+    for tsq, tp in board.piece_map().items():                  # every other piece is a QUIET lemma: nothing attacks it yet,
+        if R.is_royal(board, tsq):                             # but a blocker's departure may change that (the b4 pawn and the a4 rook)
+            continue
+        if (not tp.color, tsq) not in covered:
+            lem.append(Lemma(not tp.color, tsq, tp.symbol(), "quiet", value(board, tsq), {tsq}))
+    out: dict[int, list[Holding]] = {}
+    for sq, p in board.piece_map().items():
+        if R.is_royal(board, sq):
+            continue
+        without = board.copy(stack=False); without.remove_piece_at(sq)
+        k = without.king(p.color)
+        if k is not None and without.is_attacked_by(not p.color, k):
+            continue                                           # it shields its own king: the board without it is not a position to reason about
+        hs = []
+        for l in lem:
+            if sq == l.target:
+                continue
+            eff = _status_flips(board, without, l, memo)
+            if eff is None:
+                continue
+            if l.side == p.color and eff == "lost":            # our attack stops working without this piece
+                hs.append(Holding(sq, l, "lost", l.value))
+            elif l.side != p.color and eff == "exposed":       # their attack starts working without this piece
+                hs.append(Holding(sq, l, "exposed", l.value))
+        for m in mate_in_one(without, not p.color):            # a mate the enemy gets once this piece is gone
+            if not mate_in_one(board, not p.color):
+                k = board.king(p.color)
+                hs.append(Holding(sq, Lemma(not p.color, k, board.piece_at(k).symbol(), "mate", MATE_VALUE, {k, m.from_square}, 0, [without.san(m)], "mate in one"), "mated", MATE_VALUE))
+                break
+        if hs:
+            out[sq] = hs
+    return out
+
+
+def cost_of_move(board: chess.Board, move: chess.Move, held: dict[int, list[Holding]], memo=None) -> list[Holding]:
+    """The holdings the move actually breaks: replay each of the mover's holdings on the board after the move
+    (a move that keeps guarding, or that captures the very target of the lemma, breaks nothing)."""
+    from .defense import defense
+    hs = held.get(move.from_square, [])
+    if not hs:
+        return []
+    after = board.copy(stack=False); after.push(move)
+    broken = []
+    for h in hs:
+        l = h.lemma
+        if h.effect == "mated":
+            if mate_in_one(after, l.side) and not after.is_checkmate():
+                broken.append(h)
+            continue
+        if l.target == move.to_square:                        # we took the lemma's own target (or recaptured on it)
+            continue
+        if after.piece_at(l.target) is None:
+            continue
+        d = defense(after, l.target, memo=memo)
+        falls = d is not None and d.falls
+        if h.effect == "lost" and not falls:
+            broken.append(h)
+        elif h.effect == "exposed" and falls:
+            broken.append(h)
+    return broken
+
+
+def opportunity_cost(board: chess.Board, move: chess.Move, held: dict[int, list[Holding]], memo=None) -> float:
+    return sum(h.loss for h in cost_of_move(board, move, held, memo))
+
+
+# ---------------------------------------------------------------- prose
+def _pc(board: chess.Board, sq: int) -> str:
+    from .verbalize import pc
+    p = board.piece_at(sq)
+    return pc(p.symbol(), sq) if p else chess.square_name(sq)
+
+
+def holding_text(board: chess.Board, h: Holding) -> str:
+    l = h.lemma
+    if h.effect == "mated":
+        return f"keeps off {l.line[0] if l.line else 'mate'} (mate)"
+    if h.effect == "lost":
+        return f"is what wins {_pc(board, l.target)} ({l.value:g})"
+    return f"holds {_pc(board, l.target)} ({l.value:g})"
+
+
+def holdings_lines(board: chess.Board, side: chess.Color, memo: Memo | None = None, top: int = 4) -> list[str]:
+    """'The knight on f6 keeps off Qxh7# (mate); the pawn on b4 holds the rook on a4 (5)': what `side`'s pieces are
+    worth where they stand, most valuable first."""
+    held = holdings(board, memo)
+    rows = []
+    for sq, hs in held.items():
+        if board.piece_at(sq).color != side:
+            continue
+        rows.append((sum(h.loss for h in hs), sq, hs))
+    rows.sort(key=lambda r: -r[0])
+    out = []
+    for total, sq, hs in rows[:top]:
+        out.append(f"{_pc(board, sq)} " + ", ".join(holding_text(board, h) for h in hs))
+    return [o[0].upper() + o[1:] for o in out]
 
 
 if __name__ == "__main__":

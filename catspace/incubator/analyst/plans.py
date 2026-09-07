@@ -55,6 +55,8 @@ class Plan:
     answers: list["Plan"] = field(default_factory=list)   # the opponent's counter-plans after our first step
     race: str = "unverified"                   # "wins" | "met" | "unverified"
     verified: object = None                    # reach.Verified from the engine, when asked
+    cost: float = 0.0                          # opportunity cost of the first move: what the moving piece held elsewhere (subgames.holdings)
+    breaks: list[str] = field(default_factory=list)   # those holdings in words
 
     @property
     def hops(self) -> int:
@@ -211,7 +213,15 @@ def plans_for(board: chess.Board, side: chess.Color, memo=None, top: int = 5, en
         for pl in derive(board, side, Goal("win", sq), memo)[:2]:
             answer(board, pl, memo)
             out.append(pl)
-    out.sort(key=lambda p: (0 if p.race == "wins" else 1, p.hops, -value(board, p.goal.square)))
+    # the opportunity cost of each plan's first move: the lemmas the moving piece holds elsewhere (subgames)
+    from .subgames import holdings, cost_of_move, holding_text
+    held = holdings(board, memo)
+    for pl in urgent + out:
+        if pl.steps and pl.steps[0].move != chess.Move.null():
+            broken = cost_of_move(board, pl.steps[0].move, held, memo)
+            pl.cost = sum(h.loss for h in broken)
+            pl.breaks = [f"the {chess.piece_name(board.piece_at(h.piece).piece_type)} on {chess.square_name(h.piece)} {holding_text(board, h)}" for h in broken]
+    out.sort(key=lambda p: (p.cost >= 100, 0 if p.race == "wins" else 1, -(value(board, p.goal.square) - p.cost), p.hops))   # not playable last
     out = urgent[:2] + out[:top]
     if engine is not None:
         for pl in out:
@@ -235,6 +245,8 @@ def plan_text(board: chess.Board, plan: Plan) -> str:
         a = plan.answers[0]
         ans = f" Their answer in {a.hops}: {' '.join(s.san for s in a.steps)} ({a.chain[-1].strip()})."
     race = {"wins": " The race is ours.", "met": " They are in time.", "unverified": "", "urgent": ""}[plan.race]
+    if plan.breaks:
+        race = " But " + "; ".join(plan.breaks) + (": not playable." if plan.cost >= 100 else f": net {value(board, plan.goal.square) - plan.cost:+g}.")
     ver = ""
     if plan.verified is not None:
         v = plan.verified

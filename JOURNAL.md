@@ -21595,3 +21595,21 @@ king squares, the replies that needed work; replies the judge settled at once ar
 the prior and re-verified by a bounded search, never believed. b4 bishop proof: served on the transposition;
 after ...h6 h3 and ...g6 g3 the sketch re-verifies in 13 expansions; after ...h6 Nc3 (the a1 rook now defended)
 it misses and the full search gives the goal up, as it should. Tests 51.
+
+## 2026-09-07 12:42 PDT — sub-games (3): the resource ledger and the opportunity cost of a move
+
+`subgames.holdings`: for every piece, the lemmas that flip when it is removed (the removal test lifted from
+squares to lemmas): our attack that stops working ("is what wins the rook on e4"), their attack that starts
+working ("holds the rook on a4": the b4 pawn shields it -- QUIET targets are lemmas too, so blockers count), the
+mate in one that appears ("keeps off Qxh7"). A piece that shields its own king from check is skipped (the board
+without it is not a position). `cost_of_move` replays the mover's holdings on the board AFTER the move, so a move
+that keeps guarding, or that captures the lemma's own attacker (16...Qxe5 leaves c6 but removes the knight that
+hit it), breaks nothing. Plans carry the cost of their first move; the prose says it ("Win the rook on e4 in 1:
+Nxe4 ... But the knight on f6 keeps off Qxh7 (mate): not playable"); plans sort by net value with unplayable ones
+last; "What holds for <side>" is a line of the long render and of the app panel. The L3 attackers' rule of this
+morning is the one-square special case of this ledger; the ledger reaches what the exchange on one square cannot
+(a mate net, a blocker two files away).
+OBS (subgames measure, same 3 games, 192 positions, 16.3 s): 2.5 pieces per position hold 2.8 lemmas; the move
+actually played broke a holding in 15/192 positions (mean cost 1.3 pawns; never a mate). Tests 54 (analyst
+suite). Plan §24, structure table, ANALYST_GOAL_SEARCH §9. Not built: positional lemmas (the ending regime),
+holdings deeper than one removal, a second refinement round.

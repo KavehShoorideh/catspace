@@ -36,6 +36,7 @@ from .structure import top_changes
 from .reach import progress_lines
 from .memo import Memo
 from .plans import plans_for, plan_text
+from .subgames import holdings_lines
 from .goal_search import pursue, result_text
 from .verbalize import cp_str, render, best_fact, motif_phrase, delta_str
 from .horizon import winp
@@ -156,6 +157,7 @@ class Analyst:
                 "threats": [t.san_line(board, 4) for t in rec.threats if t.real][:3],
                 "progress": progress_lines(board, us, memo=self.memo),
                 "plans": [plan_text(board, pl) for pl in plans_for(board, us, memo=self.memo, top=3)],
+                "holds": holdings_lines(board, us, memo=self.memo),
                 "p_played": {str(k): round(v * 100) for k, v in row["p_played"].items()},
                 "p_best": {str(k): round(v * 100) for k, v in row["p_best"].items()},
                 "cause": (row.get("cause") or {}).get("cause"), "horizon": row.get("horizon_text", ""),

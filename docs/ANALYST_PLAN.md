@@ -385,3 +385,39 @@ History: goal-directed search with hand-written knowledge as the move generator 
 Pitrat 1977, PARADISE 1980 (plans as the generator: incomplete), Botvinnik's trajectories and Stilman's zones;
 completeness with knowledge as a prior is the modern PUCT lesson, and threat-space / proof-number search (Allis
 1994) is the exact tool for a boolean goal.
+
+## 24. Sub-games as lemmas: coupling, the refutation as the next sketch, stored proofs, opportunity cost (Kaveh 2026-09-07)
+
+Kaveh: define sub-games as an interplay of several pieces over a few moves; a piece has an opportunity cost across
+the sub-games it takes part in; the endgame is a different regime because the vocabulary changes. Literature: sums
+of games and temperature (Elkies 1996 for chess endgames; Berlekamp's hotstrat; Muller's decomposition search for Go),
+Stilman's zones, Campbell-Berliner chunks, Barthelemy's interaction-graph fragility; and the 2025-26 theorem-proving
+agents (DeepSeek-Prover-V2, Seed-Prover, Aristotle, AlphaProof Nexus): sketch, lemmas with holes, a prover per
+lemma, a lemma pool keyed on the exact context, the verifier's error as the next sketch. The disanalogy is the
+point: a lemma is reused for free, a piece is consumed -- linear logic, not classical.
+
+`subgames.py`. A LEMMA = a target for one side with status, value, PARTICIPANTS (the ledger's attackers and
+defenders, what a disqualified piece exposes, the joiner, the piece to remove; after a search the pieces that move
+inside the proof) and read footprint (the store records everything read inside a block: `memo.recording()`).
+Components = union-find over shared pieces. MEASURED (OBS, 3 games, 192 positions): 1.3-1.7 components per
+position, the biggest holding most lemmas; 63-87% of captures made by a piece in >=2 lemmas; endings have almost
+no material lemma. The disjunctive sum is the exception, so opportunity cost is accounted, not assumed away.
+Built in the order agreed: (1) REFINEMENT (`refutations`, `diagnose`, `secure_prior`, `refine`, `search_goal`):
+a refuted plan move's reply is read in ledger terms ("takes my queen on d1", "my knight on f6 now falls"), the
+counter-goal's moves (the planner's defend plans, win the attacker, step aside, add a defender) become the root
+prior, the horizon grows by the preparation's two plies, the search runs again; the chain is reported. (2) PROOF
+STORE: every proof is put in the concept store exactly (all squares + castling / en-passant predicates: a
+transposition is served as it stands) and as a SKETCH on the proof's footprint (the target's attack reads, our
+moves with pin lines and king squares, the replies that needed work), served as the prior and re-verified by a
+bounded search, never believed. (3) THE RESOURCE LEDGER (`holdings`): for every piece, the lemmas that flip when
+it is removed -- our attack that stops working, their attack that starts working, the mate in one that appears --
+each with its loss; `cost_of_move` replays the mover's holdings on the board after the move (a move that keeps
+guarding, or captures the lemma's own attacker, breaks nothing). Plans carry the cost of their first move and the
+prose says it ("But the knight on f6 keeps off Qxh7 (mate): not playable"); plans are ordered by net value with
+unplayable ones last; "What holds for Black: the knight on f6 keeps off Qxh7 (mate); the pawn on b4 holds the
+rook on a4 (5)" is a line of the long render and the app panel. OBS: 2.5 pieces per position hold 2.8 lemmas;
+the move played broke a holding in 15/192 positions (mean cost 1.3, never a mate) in these three games.
+Limits: lemmas are material and mate-in-one only (the positional vocabulary is still the missing regime for
+endings); holdings are one level deep by the removal test; the store's sketch key is a predictor, soundness is the
+re-verification; refinement runs one round.
+

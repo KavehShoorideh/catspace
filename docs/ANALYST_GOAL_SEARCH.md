@@ -196,3 +196,13 @@ proof (the test was corrected the same day).
   make the search miss a proof within the budget (a give-up is not a refutation; a refutation, dn 0, is).
 - Material goals only. Positional goals (open the file, occupy the outpost: the quiet 70% of Stockfish's moves
   that are neither captures nor checks) are the next layer, per docs/ANALYST_PLAN.md §22-23.
+
+## 9. Since then (2026-09-07)
+
+- `search_goal` wraps the search with one round of REFINEMENT: the reply that refuted the plan move is diagnosed
+  ("Nxe6 Rxd1# takes my queen on d1"), the counter-goal "first secure the queen on d1" supplies the root prior, the
+  horizon grows by two, the search runs again. The rook ending stays given up ("first secure the rook on a4 (Rxa5+):
+  given up again"): the only securing move is the capture itself.
+- Proofs are stored in the concept store: a transposition is served as it stands; the same pieces on the proof's
+  footprint serve the proof's SKETCH as a prior, re-verified by a bounded search ("[the stored sketch, re-verified]").
+- The plan layer charges a plan's first move with what the moving piece HOLDS elsewhere (docs/ANALYST_PLAN.md §24).

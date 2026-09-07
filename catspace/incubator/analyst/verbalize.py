@@ -319,6 +319,10 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
             out.append(f"  Progress for {who}: " + " | ".join(pl))
         for p_ in plans_for(_b, w, top=3):
             out.append(f"  Plan for {who}: {plan_text(_b, p_)}")
+        from .subgames import holdings_lines                                  # what each piece is worth where it stands
+        hl = holdings_lines(_b, w)
+        if hl:
+            out.append(f"  What holds for {who}: " + " | ".join(hl))
     if rec.played and rec.verdict in ("blunder", "mistake", "inaccuracy"):
         art = "an" if rec.verdict[0] in "aeiou" else "a"
         s = f"  {rec.played.san} was {art} {rec.verdict}: {rec.idea.san} was better ({cp_str(rec.played.cp, w, rec.played.mate)} vs {ev})."
