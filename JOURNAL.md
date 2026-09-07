@@ -21524,3 +21524,26 @@ already anticipates a falling pawn: the test is "not worse than the root by 40 c
 Results: c4 proven (Bxc4 Nxc4, 74 nodes, 28 engine checks); b6 for White proven (cxb6 Qxf3); the f3 knight given
 up with g4 tried first; the goal loop gives d4 up and proves c4. App: "Search goals" button (POST /api/goals,
 worker job). Tests 48. Plan §23.
+
+## 2026-09-06 18:50 PDT — goal search: the transcript on the latest game, and the judge fixed on the way
+
+Kaveh: "explain this proof number thing and do an example on my latest game; I want a transcript." Built the
+narration (one trace line per expansion: how many replies settled at once, which need work with their pn/dn,
+which reply refuted a line and why) and docs/ANALYST_GOAL_SEARCH.md (the algorithm, what is ours on top, three
+transcripts from tPVi7fZF, one honest give-up). Producing the transcript exposed three defects, all fixed:
+(1) a leaf in the middle of an exchange was judged on the raw count (Qxd5 Qxd5 "down 6" with cxd5 pending): leaves
+are now judged on the SETTLED count (raw + the best pending capture by the ledger) and may run 4 plies past the
+horizon to cash it; (2) the flat-depth judge let a line be "worse" at ply 4 and "fine" at ply 6 on search noise,
+and the old "consolidate" allowance chased that noise (145 of 300 expansions in one desperado line): the judge
+now looks to the same absolute horizon from every leaf (depth 8 at the horizon, 14 at the root) and its verdict
+is final once the material is in hand; (3) a recapture of what just captured had no prior standing. Also: the
+principal line is now the minimax of the judge's numbers over the proof (their BEST defence), and "their longest
+try" (the deepest sub-proof) is reported beside it.
+OBS (single runs, warm engine cache): tPVi7fZF after 12.a3 "win the bishop on b4" proven in 13 expansions / 295
+nodes / 109 engine checks (Nxb4; axb4 Rxa1 because the b1 knight blocks the queen's defence of a1); after 15.O-O
+"win the pawn on c5" in 18 / 626 / 247 (bxc5; the desperado dxc5 met by Qxe5, the knight the game missed with
+16...Nxc5); after 16.dxc5 the goal loop proves "win the knight on e5" first, 11 / 277 / 102. AsXfL6OX b6 for
+White is now GIVEN UP (300 expansions, 11 s cold): Black's doomed g3 pawn cashes h2, the greedy Nxh2 is refuted
+by the judge (...Qh7: +0 at depth 10, -184 at depth 14 vs root +262), after Kh1 the count is a pawn for a pawn.
+The earlier "proven: cxb6 Qxf3" (13:30 entry) was a false proof of the flat shallow judge; the test now asserts
+the give-up and the refutation of Nxh2. Tests 48 (analyst suite). Web: goal jobs judge at depth 8.

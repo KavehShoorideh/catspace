@@ -344,17 +344,28 @@ counter-goals one level; races by hop count ignore tempo gained by checks and ca
 both sides, so a wrong prior costs time, never the answer, and a proof holds against every reply. The prior is the
 planner: our plan steps and the opponent's counter-goals are ordered first at shallow plies (a cheap target-centred
 order deeper) and start with lower proof / disproof numbers; the ledger initialises them ("falls now" = 1).
-The goal predicate at our turn: the target has been captured and the ENGINE says the position is not worse than
-the root by more than 40 cp -- the engine is the quiescence, so recaptures, counter-attacks and horizon tricks are
-its job; it is not asked to have risen, because a root evaluation already anticipates a pawn that is falling.
-Give-up is native: a refuted root (disproof number 0) or an exhausted expansion budget abandons the goal with the
-moves tried and the hardest defence found; `pursue` walks the progress map's targets most valuable first, gives
-up, moves on, stops at the first proof. On AUjG3sl4 after 16.c4 for Black: "win the pawn on d4: given up (tried
-Bxc4, Qd7, Qa8...); win the pawn on c4: proven in 74 nodes, 28 engine checks: Bxc4 Nxc4". On AsXfL6OX before 18
-for White: "win the pawn on b6: proven: cxb6 Qxf3" (the desperado judged by the engine); for Black, "win the
-knight on f3: given up (tried g4 first...)". Seconds per goal. In the app: the "Search goals" button on the move
-panel runs the loop for the side to move. Limits: material goals only; a hopeless-line floor (down a piece beyond
-the target) is a stated heuristic; the no-engine material rule exists but is slow and strict; horizon 6 plies.
+The goal predicate at our turn: the target has been captured, our material is up by its value on the raw count
+(in hand: Nxc5 dxc5 is not a pawn won), and the ENGINE, looking to the same absolute horizon from every leaf
+(depth 8 at the search horizon, 14 at the root), says the position is not worse than the root by more than 40 cp
+-- the engine is the quiescence, so recaptures, counter-attacks and horizon tricks are its job; it is not asked
+to have risen, because a root evaluation already anticipates a pawn that is falling; its verdict is final. A leaf
+whose count is in hand only after a pending capture (the ledger's settled count) may run up to 4 plies past the
+horizon to cash it. Fresh leaves are priced by the work they will need (few open replies after a capture of the
+target, most after an unrelated quiet move) so the search goes down the plan move instead of breadth-first over
+the root's siblings. Give-up is native: a refuted root (disproof number 0) or an exhausted expansion budget
+abandons the goal with the moves tried and the hardest defence found; `pursue` walks the progress map's targets
+most valuable first, gives up, moves on, stops at the first proof. Worked transcripts on tPVi7fZF (Kaveh's latest
+game) are in docs/ANALYST_GOAL_SEARCH.md: "win the bishop on b4" after 12.a3 proven in 13 expansions (Nxb4; axb4
+Rxa1, the b1 knight blocks the queen's defence of a1); "win the pawn on c5" after 15.O-O in 18 (bxc5; the
+desperado dxc5 met by Qxe5, the knight the game missed); "win the knight on e5" after 16.dxc5 in 11 (the goal
+loop's first target). On AsXfL6OX before 18 for White, "win the pawn on b6" is GIVEN UP, rightly: Black's doomed
+g3 pawn cashes h2 (gxh2+), the greedy Nxh2 is refuted by the judge (...Qh7), and after Kh1 the count is a pawn for
+a pawn (an earlier flat-depth judge had "proven" it through Nxh2: a false proof, removed by the consistent-horizon
+judge). For Black there, "win the knight on f3: given up (tried g4 first...)". Seconds per goal warm, 10-20 s
+cold. In the app: the "Search goals" button on the move panel runs the loop for the side to move; the CLI's
+`--trace` prints the narration. Limits: material goals only; the hopeless-line floor (down a piece beyond the
+target on the settled count) is a stated heuristic; the no-engine material rule exists but is slow and strict;
+horizon 6 plies.
 History: goal-directed search with hand-written knowledge as the move generator is NSS 1958, CAPS-II 1974,
 Pitrat 1977, PARADISE 1980 (plans as the generator: incomplete), Botvinnik's trajectories and Stilman's zones;
 completeness with knowledge as a prior is the modern PUCT lesson, and threat-space / proof-number search (Allis

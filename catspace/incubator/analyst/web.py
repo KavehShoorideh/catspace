@@ -248,7 +248,7 @@ class Jobs:
                         analyst = Analyst(self.depth, self.threads)
                     fen, side = j["fen"], j["side"]
                     b = chess.Board(fen)
-                    rs = pursue(b, side == "w", memo=analyst.memo, engine=analyst.eng, budget=300, horizon=6, max_goals=4)
+                    rs = pursue(b, side == "w", memo=analyst.memo, engine=analyst.eng, budget=300, horizon=6, max_goals=4, engine_depth=8)
                     j["result"] = [result_text(r) for r in rs]
                     j["status"] = "done"; continue
                 if j["kind"] == "game":
