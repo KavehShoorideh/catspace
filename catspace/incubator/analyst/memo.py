@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import pickle
 import sqlite3
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -171,6 +172,10 @@ def eval_pred(board: chess.Board, kind: str, args: tuple):
     if kind == "checkers":
         k = board.king(args[0])
         return int(board.attackers(not args[0], k)) if k is not None else None
+    if kind == "castling":
+        return int(board.castling_rights)
+    if kind == "ep":
+        return board.ep_square
     return None
 
 
@@ -198,6 +203,23 @@ class Memo:
     path: str | None = None
     table: dict = field(default_factory=dict)      # (kind, args) -> list[Entry]  (several footprints can coexist)
     stats: dict = field(default_factory=lambda: {"hit": 0, "miss": 0, "kinds": {}})
+    _rec: list = field(default_factory=list)       # recording accumulators: the union of every footprint read (see recording)
+
+    @contextmanager
+    def recording(self):
+        """Record the union of the footprints of everything served or computed inside the block: the squares a
+        whole computation (a target's ledger and reach, a goal search) depended on. `with memo.recording() as acc:`
+        ... `acc[0]` is the mask. Nested recordings each see everything read inside them."""
+        acc = [0]
+        self._rec.append(acc)
+        try:
+            yield acc
+        finally:
+            self._rec.remove(acc)
+
+    def _record(self, mask: int):
+        for acc in self._rec:
+            acc[0] |= mask
 
     def get(self, kind: str, args: tuple, board: chess.Board, compute):
         """compute(reads) -> value; the operator fills `reads` with its footprint. Served from the store when a stored
@@ -209,9 +231,13 @@ class Memo:
                 if subhash(board, e.mask) == e.sub and all(eval_pred(board, pk, pa) == pv for pk, pa, pv in e.preds):
                     e.hits += 1; self.stats["hit"] += 1
                     k = self.stats["kinds"].setdefault(kind, {"hit": 0, "miss": 0}); k["hit"] += 1
+                    if self._rec:
+                        self._record(e.mask)
                     return e.value
         reads = Reads()
         value = compute(reads)
+        if self._rec:
+            self._record(reads.mask)
         preds = {}
         for pk, pa, pv in reads.preds:                          # one value per predicate (the last recorded is the current board's)
             preds[(pk, pa)] = pv
@@ -222,6 +248,27 @@ class Memo:
         self.stats["miss"] += 1
         k = self.stats["kinds"].setdefault(kind, {"hit": 0, "miss": 0}); k["miss"] += 1
         return value
+
+    def lookup(self, kind: str, args: tuple, board: chess.Board):
+        """Serve a stored value whose footprint carries the same pieces here, or None (no computation)."""
+        for e in self.table.get((kind, args), ()):
+            if subhash(board, e.mask) == e.sub and all(eval_pred(board, pk, pa) == pv for pk, pa, pv in e.preds):
+                e.hits += 1; self.stats["hit"] += 1
+                k = self.stats["kinds"].setdefault(kind, {"hit": 0, "miss": 0}); k["hit"] += 1
+                if self._rec:
+                    self._record(e.mask)
+                return e.value
+        self.stats["miss"] += 1
+        k = self.stats["kinds"].setdefault(kind, {"hit": 0, "miss": 0}); k["miss"] += 1
+        return None
+
+    def put(self, kind: str, args: tuple, board: chess.Board, mask: int, value, preds=()):
+        """Store a value computed by a caller that knows its own footprint (a proof, a sketch)."""
+        key = (kind, args)
+        e = Entry(mask, subhash(board, mask), value, 0, tuple((pk, pa, eval_pred(board, pk, pa)) for pk, pa in preds))
+        self.table.setdefault(key, []).append(e)
+        if len(self.table[key]) > 8:
+            self.table[key] = self.table[key][-8:]
 
     def hit_rate(self) -> float:
         n = self.stats["hit"] + self.stats["miss"]

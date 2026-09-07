@@ -58,3 +58,41 @@ def test_latest_game_goals(eng):
     b = chess.Board("r4rk1/2q1bppp/n1p1pn2/2PpN3/8/P1N1P3/5PPP/R2Q1RK1 b - - 0 16")
     rs = pursue(b, chess.BLACK, memo=Memo(), engine=eng, budget=300, horizon=6)
     assert rs[0].proven and rs[0].goal.endswith("e5") and rs[0].line[0] == "Qxe5"
+
+
+def test_refutation_revises_the_sketch(eng):
+    """The Lean-error-to-next-sketch loop (Kaveh 2026-09-07): a refuted plan move is diagnosed, the counter-goal
+    becomes the root prior, the horizon grows by the preparation's two plies, and the search runs again."""
+    from catspace.incubator.analyst.goal_search import search_goal
+    # Nxe6?? Rxd1#: the knight shields the queen from the d8 rook. With horizon 2 the plain search is refuted; the
+    # refinement says 'first secure the queen on d1', tries the queen moves first, and proves the pawn win
+    b = chess.Board("3r2k1/6pp/4p3/8/3N4/4P3/5PPP/3Q2K1 w - - 0 1")
+    r = search_goal(b, chess.WHITE, chess.E6, memo=Memo(), engine=eng, budget=300, horizon=2, engine_depth=8, refinements=1)
+    assert r.proven and r.refinements and r.refinements[0].reply == "Nxe6 Rxd1#"
+    assert r.refinements[0].diagnosis == "takes my queen on d1" and r.refinements[0].counter == "first secure the queen on d1"
+    assert r.line[0].startswith("Q") and "Nxe6" in r.line
+    # the rook ending after ...Kxh5: bxa5 Rxa4 is diagnosed, the only securing move (Rxa5+) is tried, the goal stays given up
+    b = chess.Board("8/8/1p3p2/p6k/RPr5/P5K1/8/8 w - - 0 2")
+    r = search_goal(b, chess.WHITE, chess.A5, memo=Memo(), engine=eng, budget=300, horizon=6, engine_depth=8, refinements=1)
+    assert not r.proven and r.refinements[0].reply == "bxa5 Rxa4" and r.refinements[0].diagnosis == "takes my rook on a4"
+    assert r.refinements[0].prior == ["Rxa5+"] and r.refinements[0].result is not None and not r.refinements[0].result.proven
+    assert "revised: first secure the rook on a4 (Rxa5+): given up again" in result_text(r)
+
+
+def test_proofs_are_stored_and_reused(eng):
+    """The concept store keeps every proof twice: exactly (a transposition is served as it stands) and as a sketch on
+    the proof's footprint (served as the prior and re-verified when the same pieces stand on it)."""
+    from catspace.incubator.analyst.goal_search import search_goal
+    memo = Memo()
+    b = chess.Board("r2q1rk1/4bppp/npp1pn2/2Pp4/1B1P4/P3PN2/5PPP/RN1QK2R b KQ - 0 12")
+    r0 = search_goal(b, chess.BLACK, chess.B4, memo=memo, engine=eng, budget=300)
+    assert r0.proven and r0.served == ""
+    r1 = search_goal(b, chess.BLACK, chess.B4, memo=memo, engine=eng, budget=300)
+    assert r1.proven and r1.served == "transposition" and r1.line == r0.line
+    c = b.copy(); c.push_san("h6"); c.push_san("h3")                       # quiet moves off the footprint
+    r2 = search_goal(c, chess.BLACK, chess.B4, memo=memo, engine=eng, budget=300)
+    assert r2.proven and r2.served == "sketch" and r2.line[0] == "Nxb4"
+    assert memo.stats["kinds"]["sketch"]["hit"] == 1 and memo.stats["kinds"]["proof"]["hit"] == 1
+    d = b.copy(); d.push_san("h6"); d.push_san("Nc3")                      # the b1 knight leaves: the a1 rook is defended, the sketch no longer applies
+    r3 = search_goal(d, chess.BLACK, chess.B4, memo=memo, engine=eng, budget=60, refinements=0)
+    assert r3.served == "" and not r3.proven

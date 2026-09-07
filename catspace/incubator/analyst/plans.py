@@ -101,7 +101,7 @@ def derive(board: chess.Board, side: chess.Color, goal: Goal, memo=None, depth: 
                                   [f"{name}: it falls now ({ledger_phrase(board, led)})"]))
             return plans
         ledger = ledger_phrase(board, led)
-        for f in flip_conditions(board, t, side):
+        for f in flip_conditions(board, t, side, memo=memo):
             if f.kind == "add_attacker":
                 attacking_now = set(led.attackers) if led else set()
                 for psq, pp in board.piece_map().items():

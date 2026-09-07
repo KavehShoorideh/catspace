@@ -21563,3 +21563,35 @@ black pawn on a5 (1 v 1)", no plan for White, search unchanged (given up, Rxa5+ 
 OBS: memo-served ledgers equal fresh ones on 10,413 lookups over the latest game + 4 test positions with random
 1-3 ply continuations (0 mismatches, 46% hits); tests 49 (analyst suite). Goal-search "tried" now lists moves
 refuted at the leaf (the bxa5 story was missing from the give-up line).
+
+## 2026-09-07 12:35 PDT — sub-games: the sum assumption measured, the refutation feeds the sketch, proofs stored
+
+Kaveh's direction (sub-games as an interplay of pieces over a few moves; a piece's opportunity cost across
+sub-games; the math agents' sketch-lemma-prover loop as the model): "do the tests of the machinery, then build in
+order". `subgames.py`: a LEMMA = a target with its status, value, participant pieces (the ledger's attackers,
+defenders, what a disqualified piece exposes, the joiner, the piece to remove) and read footprint (the concept
+store now RECORDS the union of everything read inside a block: `memo.recording()`). Components = union-find over
+lemmas sharing a piece.
+OBS (subgames measure, 3 games, 192 positions, 7.6 s): lemmas per position 3.2-4.7; components 1.31-1.66 with the
+biggest holding 2.7-4.0 of them; pieces in >=2 lemmas 2.0-3.3 of 8-12 that take part; captures made by a piece
+sitting in >=2 lemmas 63% / 87% / 71% per game (73% opening, 73% middlegame, 62% late). Captures change the
+component count by +0.07 on average (10 split, 8 merged, 37 unchanged). Endings (<20 material) have 0.25
+components: almost no material lemma at all. Reading: the disjunctive-sum assumption fails where the game is
+decided -- coupling is the common case -- so the opportunity-cost accounting is required, not optional; and the
+material vocabulary goes silent in endings, where a positional vocabulary would have to define the lemmas.
+Proof-based lemmas (11 searches on latest.pgn, budget 120): 9 given up, 2 proven; a given-up search's tree
+touches every piece (24 participants, 64-square footprints), so only PROVEN trees define usable sub-games.
+Built, in the agreed order: (1) the refutation drives the next sketch -- `refutations` lists the refuted root
+moves with the reply that refuted each, `diagnose` reads the reply in ledger terms ("takes my queen on d1", "my
+knight on f6 now falls"), `secure_prior` derives the counter-goal's moves (the planner's defend plans, win the
+attacker, step aside, add a defender), and `refine` re-runs the search with those moves first and the horizon
+widened by the preparation's two plies; `search_goal` wraps it. Constructed Nxe6?? Rxd1#: at horizon 2 the plain
+search is refuted; revised "first secure the queen on d1 (Qh5, Qg4, ...)" proves Qb3 Re8 Nxe6. The rook ending:
+"bxa5 Rxa4 takes my rook on a4; revised: first secure the rook on a4 (Rxa5+): given up again" -- the only securing
+move is the capture itself, and the goal stays honestly given up. (2) Proofs stored twice in the concept store:
+exactly (all 64 squares + castling and en-passant predicates: a transposition is served as it stands) and as a
+SKETCH keyed on the proof's footprint (the target's attack reads, our moves in the proof with their pin lines and
+king squares, the replies that needed work; replies the judge settled at once are not part of the key), served as
+the prior and re-verified by a bounded search, never believed. b4 bishop proof: served on the transposition;
+after ...h6 h3 and ...g6 g3 the sketch re-verifies in 13 expansions; after ...h6 Nc3 (the a1 rook now defended)
+it misses and the full search gives the goal up, as it should. Tests 51.

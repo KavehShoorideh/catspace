@@ -59,9 +59,9 @@ class Flip:
     square: int | None = None   # remove_defender: which defender
 
 
-def flip_conditions(board: chess.Board, target: int, by: chess.Color) -> list[Flip]:
+def flip_conditions(board: chess.Board, target: int, by: chess.Color, memo=None) -> list[Flip]:
     """What would make the piece on `target` fall to `by`: the cheapest single change of the ledger."""
-    d = defense(board, target)
+    d = defense(board, target, memo=memo)
     if d is None:
         # nothing attacks it yet: one attacker alone wins it iff the target is worth more than what stands to be lost
         piece = board.piece_at(target)
@@ -173,6 +173,7 @@ class Target:
     joiners: list[Path] = field(default_factory=list)
     remove: int | None = None       # status undermine: the defender to remove (it falls itself)
     cannot: list[str] = field(default_factory=list)    # why nothing reaches it (per own piece, when unreachable)
+    footprint: int = 0              # the squares this target's ledger and reach read (with a recording memo)
 
 
 def progress(board: chess.Board, by: chess.Color, max_hops: int = 3, top: int = 6, memo=None) -> list[Target]:
@@ -183,11 +184,23 @@ def progress(board: chess.Board, by: chess.Color, max_hops: int = 3, top: int = 
     for sq, p in sorted(board.piece_map().items(), key=lambda kv: -value(board, kv[0])):
         if p.color == by or R.is_royal(board, sq):
             continue
+        if memo is not None:
+            with memo.recording() as acc:
+                t = _target(board, by, sq, p, own, max_hops, memo)
+            t.footprint = acc[0]
+        else:
+            t = _target(board, by, sq, p, own, max_hops, memo)
+        out.append(t)
+    return out[:top]
+
+
+def _target(board: chess.Board, by: chess.Color, sq: int, p: chess.Piece, own, max_hops: int, memo) -> Target:
+    if True:
         d = defense(board, sq, memo=memo)
         t = Target(sq, p.symbol(), "held", d)
         if d is not None and d.falls:
-            t.status = "falls"; out.append(t); continue
-        t.flips = flip_conditions(board, sq, by)
+            t.status = "falls"; return t
+        t.flips = flip_conditions(board, sq, by, memo=memo)
         add = next((f for f in t.flips if f.kind == "add_attacker"), None)
         if add is not None:
             attacking_now = set(d.attackers) if d else set()
@@ -200,17 +213,16 @@ def progress(board: chess.Board, by: chess.Color, max_hops: int = 3, top: int = 
                     paths.append(pth)
             paths.sort(key=lambda x: (x.hops, value(board, x.piece)))
             if paths:
-                t.status = "joinable"; t.joiner = paths[0]; t.joiners = paths[:3]; out.append(t); continue
+                t.status = "joinable"; t.joiner = paths[0]; t.joiners = paths[:3]; return t
         for f in t.flips:
             if f.kind == "remove_defender":
                 dd = defense(board, f.square, memo=memo)
                 if dd is not None and dd.falls:
                     t.status = "undermine"; t.remove = f.square; break
         if t.status == "undermine":
-            out.append(t); continue
+            return t
         t.status = "unreachable" if not (d and d.attackers) else "held"
-        out.append(t)
-    return out[:top]
+        return t
 
 
 # ---------------------------------------------------------------- prose
