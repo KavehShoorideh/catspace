@@ -425,3 +425,36 @@ agree, 3 search-only of which 2 are search artifacts and 1 a genuine two-link ch
 through e3), 12 static-only where the judge fails in lopsided removal positions; 3.4-4.2 s per search against 45
 ms per position statically. Deeper holdings are a chain problem for the static ledger, not a search problem.
 
+## 25. The board as a sum of sub-games, when it earns it (Kaveh 2026-09-07, the rook ending)
+
+Kaveh: "the rook is out of commission -- leave that side as it is; on the other side I am a pawn up and I know I
+win; the king cannot leave because the pawn would queen; every piece has a job in its graph neighbourhood." The
+design questions he set before building: decomposition is never the first step and never an assumption -- the
+default is one game and a split is an inference that must be earned (a frozen region, a solved region, or a
+coupling graph with more than one component); the unit is the lemma, and coupling decides what is valued
+jointly (an overload is the coupling of two lemmas through a shared defender, not a sub-game); the boundary is a
+light-cone statement -- a piece's cone is the squares it can reach safely within the horizon, shrunk by what it
+holds and the races it must win, so the job binds the piece and the bound piece cannot reach the other region.
+`regime.py`: `cone` (safe reach as a set, kings by legality), `race` (the rule of the square by computation:
+passed pawn's steps, the double step counted, against the fastest catcher's cone, with the tempo of the side to
+move), `promotion_lemmas` (a runner is a lemma worth a queen less a pawn; participants = the pawn, the catchers
+in time, the pieces covering its path), trapped-piece lemmas (a piece with no safe square and no capture that
+counts is out of play), `bound_cone` (first steps that break a holding worth a pawn or more are pruned; a catcher
+may not leave the square), `coupling` (lemmas couple when they share a piece that must MOVE for one of them, when
+one's target is the other's participant, or when a mover's bound cone reaches the other's participants; holders
+shared between regions do not couple), `frozen` (the local fixpoint: no move by either side inside the region
+gains, one reply deep with the ledger's attackers' test, two null moves deep; the null moves are the tempo
+reservoir; regions with a runner or a king are never constants), `abstracted` + `tablebase_verdict` (the live
+remainder with its own participants, shared pieces kept, probed in the syzygy tables when five men or fewer; a
+single game of five men or fewer is probed as it stands), `narrate`. The rook ending after ...Kxh5: "The
+queenside: locked (the white rook on a4 is out of play). Waiting moves: White 0, Black 5. White: Rxa5+, bxa5, b5
+loses; Black: Rc8 ... b5 loses. Leave it as it is. The kingside: the live game (the black rook on c4 serves both
+sides) -- with the locked side set aside it is 4 men, tablebase: loss for White (the black pawn on f6, 5 steps to
+queen, is stopped only by the white king on g3: it cannot leave). Verdict: loss for White; engine -4.2 agrees."
+The middlegame position of tPVi7fZF: one game, nothing said. K+2P v K: "4 men, tablebase: win for White". In the
+long render and the app panel as "Sub-games". Checks: the split is stamped with its horizon; the engine judges the
+whole; the tablebase abstraction is claimed only when a region is frozen. Limits: the fixpoint is material (a
+plan that regroups inside a locked region is not seen); zugzwang between regions is counted only as the
+reservoir, not played out; "joinable" lemmas still ignore what the joiner's departure exposes (the b6 pawn
+'joining' against a4 by b5 frees the rook: the fixpoint prices it as losing, the lemma text does not).
+

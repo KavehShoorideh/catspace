@@ -21634,3 +21634,22 @@ re-run the ledger), not a search problem. Two engine crashes on the way, both fi
 castling right behind, and searching the opponent's goal while the side to move is in check flips the turn into
 an illegal position -- the engine adapter now refuses invalid boards, the goal search says "not this side's move".
 Not built: the two-level static chain; the relative tolerance for the judge.
+
+## 2026-09-07 16:26 PDT — regime.py: the board as a sum of sub-games, on Kaveh's rook ending
+
+Kaveh's design brief before building (see plan §25): a split is earned, never assumed; the unit is the lemma;
+the boundary is a light-cone statement with jobs binding pieces. Built `regime.py`: cones (safe reach as a set),
+races (the rule of the square computed, double step included), promotion and trapped-piece lemmas, bound cones
+(holdings and races prune what a piece cannot afford), the coupling graph (movers, shared targets, cones reach;
+shared holders do not couple), frozen regions (a local fixpoint one reply deep with the ledger's attackers' test,
+two null moves deep, the null moves counted as the tempo reservoir; a region with a runner or a king is never a
+constant), the live remainder abstracted with its own participants and probed in the syzygy 3-5 men tables when
+a region is frozen (a whole board of <=5 men is probed as it stands), prose, and the engine's number beside the
+verdict. The rook ending after ...Kxh5 reads exactly as Kaveh described it from the diagram: queenside locked,
+the a4 rook out of play, every queenside move by either side priced as losing, the kingside K+R+P v K with the
+c4 rook serving both sides, tablebase loss for White, engine -4.2 agrees. The middlegame position says nothing
+(one game); K+2P v K says "4 men, tablebase: win for White". Three fixes found by running it: the fixpoint let a
+side move twice after a null move (checks outside the region are a tempo, now only the other side replies); the
+frozen test priced captures by the cheapest attacker, not the mover (bxa5?? read as +7: the capture gain is now by
+THIS capturer with the attackers' test, one reply deep); non-passed pawns were runners (b6 in the middlegame).
+In the long render and the app as "Sub-games". Tests 57 (analyst suite, regime 3). Plan §25, structure table.
