@@ -248,7 +248,7 @@ class Planner:
                     if pp.color != self.side or pp.piece_type not in kinds or psq == sq:
                         continue
                     sub1 = self.plan(Need("reach", sq, piece=psq), b, depth + 1, ex)
-                    if sub1.best is None or sub1.after is None or not self.stuck(sub1.after, t):
+                    if sub1.best is None or sub1.after is None or sub1.after.piece_at(t) is None or not self.stuck(sub1.after, t):
                         continue
                     sub2 = self.plan(Need("win", t, piece=sq), sub1.after, depth + 1, ex)
                     w = Way([], "", f"pin it first ({chess.piece_name(pp.piece_type)} on {chess.square_name(sq)})", [sub1, sub2],
@@ -447,6 +447,8 @@ class Planner:
         """Can the piece on t not step away to safety? Pinned pieces and pieces with no safe square are stuck; a
         pawn is stuck when its advance is blocked or unsafe."""
         p = b.piece_at(t)
+        if p is None:
+            return False
         bb = b.copy(stack=False); bb.turn = p.color
         for m in bb.legal_moves:
             if m.from_square != t or bb.is_capture(m):

@@ -21674,3 +21674,26 @@ flip cap kept the smallest attacker value that flips (so only pawns ever 'joined
 square where it can be traded off as safe (d4 d5 'wins the knight': the d-pawn never arrives) -- both fixed in
 reach.py, arrival safety = no effective attacker can take at zero or better. Cost 0.0-1.5 s per position for three
 ideas. In the long render and the app as "Idea for <side>". Tests 61 (analyst suite; needs 4).
+
+## 2026-09-07 19:27 PDT — the agenda, the standing threat, and the first mining run
+
+Built (plan §27): `needs.agenda` (the preconditions given-up need trees died on, ranked by what they unlock;
+pin-first ways so a target that can step away is pinned before it is attacked: "Win the knight on c6: pin it
+first (bishop on b5) ... a6 in 1, with 2 free moves: they are in time"); `threats.py` (a threat with its required
+defences, from the goal search's AND node after our move or the mate-in-one enumeration; every other reply names
+the punishing move: "Qh5 threatens mate (Qxf7#): they must Nh6, Ke7, Qe7, Qf6, Qg5 ...; Nf6 does not: Qxf7#
+executes"; in the CLI long render and the app as the standing threat); `mine.py` (need-tree nodes as templates by
+roles and relations, credit from the engine line, the library by support and lift, and the quiet-move coverage).
+OBS (mine, 12 of Kaveh's games, every 2nd ply, k=6, judge depth 10, budget 30 needs per tree; 280 positions, 3404
+need trees, 504 s = 1.8 s per position; memo 82% hits): trees whose target is taken within 6 plies of the engine
+line 198/3404 (6%, the base rate); trees met at the root 138. THE NUMBER: the engine's quiet best moves served by
+an agenda sub-goal 11/197 (6%). Reading: the material need vocabulary reaches almost none of the quiet moves,
+which is what Kaveh said this morning (positional play is the trajectory system's, this layer's job is the
+tactics) and what the coupling measurement showed for endings; the agenda is honest, not useful, on quiet
+positions. The library (12 games: directional only): templates with lift over the 6% base -- win a rook in our
+own camp 60% (10 trees), win a bishop in the centre 60% (10), remove the queen by their king 31% (16), deflect a
+pawn by their king 30% (10), REACH a knight in our own camp 25% (20), reach a bishop in our own camp 23% (30), safe
+square for a knight in the centre 20% (20). The last three are 'develop the knight / bishop to a safe square' and
+'a knight on a safe central square', appearing as preconditions of trees that execute, from no rule: the seed of
+the learned sub-goal library, at a sample size that proves nothing yet. Two crashes on the way fixed (a target
+gone after the pin way; games in one file sharing a name). Tests 63.

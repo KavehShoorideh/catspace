@@ -121,7 +121,7 @@ def mine(pgn_paths: list[str], every: int = 2, k: int = 6, engine_depth: int = 1
                     pl = Planner(board, side, memo, budget=budget)
                     line = pl.plan(Need("win", t))
                     nodes = [(template(board, l.need, side), l.status) for l in walk(line)]
-                    rows.append(Row(path.split("/")[-1], ply, t, value(board, t), executed_in_line(board, side, t, pv, k), nodes))
+                    rows.append(Row(f"{path.split('/')[-1]}#{gi}", ply, t, value(board, t), executed_in_line(board, side, t, pv, k), nodes))
                 # the quiet-move coverage: does the engine's best quiet move serve an agenda sub-goal?
                 if best is not None:
                     bm = chess.Move.from_uci(best.move)
