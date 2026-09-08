@@ -21719,3 +21719,27 @@ experiment (the engine's residual is quiet moves): the tactical vocabulary is ab
 plays, and the quiet two thirds are the trajectory system's. Cost note: 12.7 s per position is dominated by the
 goal searches (three targets, budget 120, engine-judged). One-off harness scar: the first run's report sat in an
 unflushed stdout buffer while an unclosed Maia process kept the interpreter alive at exit; flush and close fixed.
+
+## 2026-09-07 21:27 PDT — 100 random Lichess puzzles by reasoning alone (gauge_rank.py)
+
+`gauge_rank.py`: the puzzle position after the setup move, every legal move scored by rank.score_moves (no engine
+in the ranking; the engine judges leaves inside proofs), the solution's first move as the reference. OBS (100
+puzzles rated <=1800, seed 3, judge depth 6, budget 100; 998 s = 10 s each):
+  solved (top-1) 47/100; in our top-3 54; solution named at all 53; silent (no move scored) 18.
+  by the solution move: capture 67% of 39; check 40% of 48; quiet 15% of 13.
+  by rating: 400-799 82% (17); 800-1199 44% (39); 1200-1599 44% (34); 1600-1999 10% (10).
+  by theme (n>=6): mateIn1 100% (24), hangingPiece 88% (8), opening 78% (9), backRankMate 67% (6), mate 68% (41),
+  middlegame 51% (43), kingsideAttack 50% (8), advantage 40%, endgame 38% (48), attraction 33% (6), mateIn2 31%
+  (13), crushing 26%, long 25% (24), pin 25% (8), fork 20% (15), advancedPawn 29% (7), sacrifice 0% (7),
+  pawnEndgame 0% (4, silent 100%), mateIn3 0% (4), skewer 0% (3), promotion 0% (3).
+  when wrong: silent 18, a competing idea ranked higher 11, a competing plan 8, a losing exchange priced as winning 3.
+Reading -- strengths: one-move material and mate-in-one, hanging pieces, captures. Weaknesses, each with its
+cause in the code: (1) mate in two or more -- the goal search has no mate goal (a delivered mate ends the game
+and reads as False); PN search is the classical mate solver and this is its first job; (2) forks and double
+attacks with check -- the fork is named (Nd5+ 'idea: win the bishop on b4') but ranked below a competing single
+idea, because two targets won with tempo are not one lemma yet (sequences.py knows forks; the ranking does not
+use it); (3) sacrifices, attraction, skewers -- the material floor in the search and the 'gives up' cost in the
+ranking veto them by construction; (4) pawn endgames and promotion -- the race (regime.race) is computed and not a
+scoring source; (5) defensive puzzles -- only 'saves X' plans and urgent defences score, a defensive capture that
+removes the attacker is not priced as a save. Rating falls with puzzle rating: the vocabulary is the low-rated
+tactics. Results in $CLAUDE_JOB_DIR/tmp/gauge_rank.json for the session; the script is the repo's.
