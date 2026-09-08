@@ -66,8 +66,8 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
                 lift(board.parse_san(r.line[0]), 1000.0 - len(r.line), f"forced win: {' '.join(r.line)}")
         except Exception:
             pass
-    for m in forcing_moves(board):
-        g, why = forcing_gain(board, m, memo, depth=2)
+    for m in forcing_moves(board, memo):
+        g, why = forcing_gain(board, m, memo, depth=3)
         if g > 0:
             lift(m, g, why)
     try:
@@ -178,39 +178,61 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
     return (worst if signed else max(0.0, worst)), why
 
 
-def forcing_moves(board: chess.Board, min_attack: float = 3.0) -> list[chess.Move]:
-    """Captures, checks, and moves that attack a piece worth min_attack or more: the moves a combination is made of.
-    Captures first, then checks (the ordering is what makes the pruning bite)."""
+def forcing_moves(board: chess.Board, memo=None, min_attack: float = 3.0) -> list[chess.Move]:
+    """The moves a combination is made of, ORDERED BY THE REASONING: mates first; captures by what the ledger says
+    the exchange wins (the attackers' test included); checks by how few replies they leave; then moves that
+    attack a piece worth min_attack or more, by the value attacked. The ordering is the guidance: alpha-beta
+    prunes in proportion to it, and nothing of ours outside these moves is searched (the opponent's replies stay
+    complete)."""
     side = board.turn; caps, checks, attacks = [], [], []
     for m in board.legal_moves:
         if board.is_capture(m):
-            caps.append(m)
+            caps.append((-capture_gain_of(board, m, side, memo), -value(board, m.to_square), m))
         elif board.gives_check(m):
-            checks.append(m)
+            nb = board.copy(stack=False); nb.push(m)
+            checks.append((nb.legal_moves.count(), m))
         else:
             nb = board.copy(stack=False); nb.push(m)
-            if any(nb.piece_at(t) and nb.piece_at(t).color != side and value(nb, t) >= min_attack for t in nb.attacks(m.to_square)):
-                attacks.append(m)
-    caps.sort(key=lambda m: -value(board, m.to_square))
-    return caps + checks + attacks
+            hit = max([value(nb, t) for t in nb.attacks(m.to_square) if nb.piece_at(t) and nb.piece_at(t).color != side] + [0.0])
+            if hit >= min_attack:
+                attacks.append((-hit, m))
+    caps.sort(key=lambda x: (x[0], x[1])); checks.sort(key=lambda x: x[0]); attacks.sort(key=lambda x: x[0])
+    return [m for _, _, m in caps] + [m for _, m in checks] + [m for _, m in attacks]
 
 
-def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 2, node_cap: int = 800) -> tuple[float, str]:
-    """A small alpha-beta over COMBINATIONS: our forcing moves, ALL their replies, the ledger's best capture at the
-    leaves (quiescence), material tracked along the way. Depth 2 = our move, their reply, our forcing move, their
-    reply, the ledger. Generic: no pattern, only the rules' moves and the ledger's prices. Returns the guaranteed
-    gain of m and the line that shows it."""
-    from .regime import _best_capture
+def reply_order(board: chess.Board) -> list[chess.Move]:
+    """Their replies, all of them, best-looking first: captures by value taken, then checks, then the rest."""
+    caps, checks, rest = [], [], []
+    for r in board.legal_moves:
+        if board.is_capture(r):
+            caps.append((-value(board, r.to_square), r))
+        elif board.gives_check(r):
+            checks.append(r)
+        else:
+            rest.append(r)
+    caps.sort(key=lambda x: x[0])
+    return [r for _, r in caps] + checks + rest
+
+
+def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 3, node_cap: int = 2500) -> tuple[float, str]:
+    """A small alpha-beta over COMBINATIONS, guided by the reasoning: our forcing moves in the ledger's order, ALL
+    their replies, the ledger's best capture at the leaves as the quiescence (no standing pat in check), material
+    tracked, a transposition table, and ITERATIVE DEEPENING one, two, three of our moves deep with the node cap as
+    the budget -- the deepest completed depth is the answer. Generic: the rules' moves and the ledger's prices,
+    no pattern. Returns the guaranteed gain of m and the line that shows it."""
     side = board.turn
     base = material(board, side) - material(board, not side)
-    nodes = [0]
-    def stand(b):                                               # the leaf: what we are up, plus what the ledger says we take next
+    nodes = [0]; tt: dict = {}
+    def stand(b):
         n = (material(b, side) - material(b, not side)) - base
         return leaf_value(b, side, n, memo)
     def ours(b, d, alpha, beta):
         nodes[0] += 1
         if b.is_game_over():
             oc = b.outcome(); return (1000.0 if oc and oc.winner == side else 0.0), []
+        key = (b._transposition_key(), d, True)
+        if key in tt:
+            return tt[key]
         if b.is_check():                                        # no standing pat in check: every evasion is a candidate
             if d == 0 or nodes[0] > node_cap:
                 return stand(b), []
@@ -222,25 +244,32 @@ def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 2, n
                     best, best_line = v, [b.san(f)] + line
                     if best >= beta:
                         break
-            return (best if best is not None else stand(b)), best_line
+            res = ((best if best is not None else stand(b)), best_line)
+            tt[key] = res
+            return res
         best, best_line = stand(b), []                          # we may stop here
         if d == 0 or nodes[0] > node_cap or best >= beta:
             return best, best_line
-        for f in forcing_moves(b):
+        for f in forcing_moves(b, memo):
             nb = b.copy(stack=False); nb.push(f)
             v, line = theirs(nb, d, max(alpha, best), beta)
             if v > best:
                 best, best_line = v, [b.san(f)] + line
                 if best >= beta:
                     break
+            if nodes[0] > node_cap:
+                break
+        tt[key] = (best, best_line)
         return best, best_line
     def theirs(b, d, alpha, beta):
         nodes[0] += 1
         if b.is_game_over():
             oc = b.outcome(); return (1000.0 if oc and oc.winner == side else 0.0), []
+        key = (b._transposition_key(), d, False)
+        if key in tt:
+            return tt[key]
         worst, worst_line = None, []
-        replies = sorted(b.legal_moves, key=lambda r: -(value(b, r.to_square) if b.is_capture(r) else 0))
-        for r in replies:
+        for r in reply_order(b):
             nb = b.copy(stack=False); nb.push(r)
             v, line = ours(nb, d - 1, alpha, worst if worst is not None else beta)
             if worst is None or v < worst:
@@ -249,10 +278,19 @@ def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 2, n
                     break
             if nodes[0] > node_cap:
                 break
-        return (worst if worst is not None else 0.0), worst_line
-    nb = board.copy(stack=False); nb.push(m)
-    v, line = theirs(nb, depth, -1e9, 1e9)
-    return max(0.0, v), (f"combination +{v:g}: {board.san(m)} {' '.join(line)}" if v > 0 else "")
+        res = ((worst if worst is not None else 0.0), worst_line)
+        tt[key] = res
+        return res
+    nb0 = board.copy(stack=False); nb0.push(m)
+    best_v, best_line, completed = 0.0, [], 0
+    for d in range(1, depth + 1):                               # iterative deepening: the node cap is the budget
+        nodes[0] = 0; tt.clear()
+        v, line = theirs(nb0, d, -1e9, 1e9)
+        if nodes[0] > node_cap and d > 1:
+            break                                               # this depth did not complete: keep the last one that did
+        best_v, best_line, completed = v, line, d
+    why = f"combination +{best_v:g} ({completed} deep): {board.san(m)} {' '.join(best_line)}" if best_v > 0 else ""
+    return max(0.0, best_v), why
 
 
 def promotion_scores(board: chess.Board, memo=None) -> list[tuple[chess.Move, float, str]]:
