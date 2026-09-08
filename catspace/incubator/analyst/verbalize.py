@@ -329,6 +329,9 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
         from .needs import idea_lines                                         # reasons to move, destinations, what each creates
         for il in idea_lines(_b, w, top=3):
             out.append(f"  Idea for {who}: {il}")
+        from .threats import ledger_lines                                     # both sides' threats, by the free move and the ledger
+        for tl in ledger_lines(_b):
+            out.append(f"  Threats: {tl}")
     if rec.played and rec.verdict in ("blunder", "mistake", "inaccuracy"):
         art = "an" if rec.verdict[0] in "aeiou" else "a"
         s = f"  {rec.played.san} was {art} {rec.verdict}: {rec.idea.san} was better ({cp_str(rec.played.cp, w, rec.played.mate)} vs {ev})."

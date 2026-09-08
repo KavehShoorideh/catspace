@@ -204,6 +204,59 @@ def threat_lines(board_before: chess.Board, our_move: chess.Move, memo=None, eng
     return out
 
 
+# ---------------------------------------------------------------- the two-sided threat ledger (Kaveh: a threat is a free move
+# that improves the position; big threats win a piece with no payback; the goal is a threat with no adequate defence)
+def free_move_threats(board: chess.Board, side: chess.Color, memo=None, top: int = 6) -> list[tuple[chess.Move, float, str]]:
+    """The moves `side` would make with a free tempo whose SURE GAIN one reply deep is positive (rank.sure_gain: the
+    minimum over the opponent's replies of what the ledger then gives), biggest first. With the turn flipped this is
+    the null-move scan, by the ledger instead of the engine. Empty when the other side is in check (no free move)."""
+    from .rank import sure_gain, attacking_moves
+    b = board.copy(stack=False); b.turn = side
+    if not b.is_valid():
+        return []
+    memo = memo if memo is not None else Memo()
+    out = []
+    mates = mate_in_one(b, side)
+    for m in mates[:1]:
+        out.append((m, 1000.0, "mate"))
+    for m in attacking_moves(b):
+        if m in mates:
+            continue
+        g, why = sure_gain(b, m, memo)
+        if g > 0:
+            out.append((m, g, why))
+    out.sort(key=lambda x: -x[1])
+    return out[:top]
+
+
+def threat_ledger(board: chess.Board, memo=None, top: int = 4) -> dict:
+    """Both sides' threats at this position in one currency: 'ours' = the side to move's, 'theirs' = what the other
+    side would do with a free move. Big = a piece or more."""
+    memo = memo if memo is not None else Memo()
+    us = board.turn
+    def rows(side):
+        b = board.copy(stack=False); b.turn = side
+        out = []
+        for m, g, why in free_move_threats(board, side, memo, top):
+            out.append({"san": b.san(m) if m in b.legal_moves else m.uci(), "gain": g, "why": why, "big": g >= 3.0})
+        return out
+    return {"ours": rows(us), "theirs": rows(not us)}
+
+
+def ledger_lines(board: chess.Board, memo=None, top: int = 4) -> list[str]:
+    try:
+        led = threat_ledger(board, memo, top)
+    except Exception:
+        return []
+    who = "White" if board.turn else "Black"; them = "Black" if board.turn else "White"
+    out = []
+    if led["ours"]:
+        out.append(f"{who} threatens: " + ", ".join(f"{r['san']} ({'mate' if r['gain'] >= 1000 else '+' + format(r['gain'], 'g')}{', big' if r['big'] and r['gain'] < 1000 else ''})" for r in led["ours"]))
+    if led["theirs"]:
+        out.append(f"{them} would, with a free move: " + ", ".join(f"{r['san']} ({'mate' if r['gain'] >= 1000 else '+' + format(r['gain'], 'g')}{', big' if r['big'] and r['gain'] < 1000 else ''})" for r in led["theirs"]))
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--fen", required=True, help="the position BEFORE our move"); ap.add_argument("--move", required=True, help="our move, SAN")

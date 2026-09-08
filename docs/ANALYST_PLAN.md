@@ -509,3 +509,17 @@ give the library, credited by the root's gain. The first number is the agenda's 
 of the engine's quiet best moves, how many serve an agenda sub-goal (a step of a way in its tree, or the sub-goal
 met after the move). See the JOURNAL for the run.
 
+## 28. The terminal goal, the sure gain, and the threat ledger (Kaveh 2026-09-07, evening)
+
+Three generic repairs after the first puzzle gauge (47/100), each stated in the rules' terms: the TERMINAL GOAL
+(`GoalSearch(target=None)`: win the game by `board.outcome()`, whatever ends the game in the variant; no judge; the
+proof-number pricing is the only ordering), the SURE GAIN one reply deep (`rank.sure_gain`: min over replies of
+what the ledger then gives less what the reply took -- forks, discovered attacks and checks with a threat, no
+pattern named), promotion races as scores, rescues and saves. Same 100 puzzles: 47 -> 71 solved, 18 -> 9 silent,
+mates 100%, sacrifice 0 -> 86%. Kaveh's definition of a threat -- a free move that improves the position; big when
+it wins a piece with no payback; the goal of the game is a threat with no adequate defence -- is the same number:
+`threats.free_move_threats` (the null-move scan by the ledger) and `threat_ledger` give both sides' threats at every
+position in one currency ("Black threatens: Nxh5 (+9, big); White would, with a free move: Qxf7# (mate)"); the
+standing threat (§27) is the proof-based special case with the defences listed. In the long render and the app.
+Not done: the created/parried/executed bookkeeping across the game for the ledger version (the proof-based one
+has it), and the two-move combinations at 1600+ that one reply deep does not reach.

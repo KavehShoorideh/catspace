@@ -39,7 +39,7 @@ from .plans import plans_for, plan_text
 from .subgames import holdings_lines
 from .regime import regime_lines
 from .needs import idea_lines
-from .threats import threats_after, judge_reply
+from .threats import threats_after, judge_reply, ledger_lines
 from .goal_search import pursue, result_text
 from .verbalize import cp_str, render, best_fact, motif_phrase, delta_str
 from .horizon import winp
@@ -164,6 +164,7 @@ class Analyst:
                 "holds": holdings_lines(board, us, memo=self.memo),
                 "regime": regime_lines(board, memo=self.memo),
                 "ideas": idea_lines(board, us, memo=self.memo, top=3),
+                "ledger": ledger_lines(board, memo=self.memo),
                 "threatens": [], "reply_judged": [],
                 "p_played": {str(k): round(v * 100) for k, v in row["p_played"].items()},
                 "p_best": {str(k): round(v * 100) for k, v in row["p_best"].items()},
