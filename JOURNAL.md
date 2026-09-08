@@ -21743,3 +21743,29 @@ ranking veto them by construction; (4) pawn endgames and promotion -- the race (
 scoring source; (5) defensive puzzles -- only 'saves X' plans and urgent defences score, a defensive capture that
 removes the attacker is not priced as a save. Rating falls with puzzle rating: the vocabulary is the low-rated
 tactics. Results in $CLAUDE_JOB_DIR/tmp/gauge_rank.json for the session; the script is the repo's.
+
+## 2026-09-07 21:51 PDT — the three puzzle fixes, kept generic; the same 100 puzzles again
+
+Kaveh: "go with these fixes, but keep the method as generic as possible". (1) THE TERMINAL GOAL: `GoalSearch(target=None)`
+proves "win the game" by the rules' outcome (`board.outcome().winner`), whatever ends the game in the variant;
+no ledger, no judge, no 'checks first' rule -- the proof-number pricing (an AND leaf costs its reply count) is the
+only ordering, and a check is merely a move with few replies. Legal's mate: Nf6+ gxf6 Bxf7# in 170 nodes, 0
+engine calls. A finished game now meets every goal when we are the winner (a mate found while chasing a pawn is a
+proof), and meets none when not. (2) THE SURE GAIN one reply deep (`rank.sure_gain`): after our move, for every
+reply, our best priced capture less what the reply took; the move is credited with the minimum. Forks,
+discovered attacks and checks carrying a threat fall out with no pattern named ("Nc6+: sure gain 6, their best
+reply Kc8"); Kaveh's later definition -- a threat is a free move that improves the position, and the goal is a
+threat with no adequate defence -- is this number, and threats.py's empty defence set. (3) PROMOTION as a score:
+the race (regime.race) for our runners and for catching theirs. Also: a piece of ours that falls, saved by taking
+its attacker; and SAVES as an additive term (a move that saves the rook and checks with a threat beats one that
+only saves it).
+OBS (gauge_rank, the same 100 puzzles, seed 3, budget 100; 775 s = 7.8 s each) -- before -> after:
+  solved 47 -> 71; in our top-3 54 -> 79; named 53 -> 80; silent 18 -> 9.
+  by the solution move: capture 67% -> 77%; check 40% -> 77%; quiet 15% -> 31%.
+  by rating: 400-799 82% -> 94%; 800-1199 44% -> 79%; 1200-1599 44% -> 65%; 1600-1999 10% -> 20%.
+  by theme: mate 68% -> 100% (41); mateIn2 31% -> 100%; mateIn3 0% -> 100%; sacrifice 0% -> 86% (the mate search
+  does not fear material); fork 20% -> 40% (named 33% -> 67%); pin 25% -> 62%; kingsideAttack 50% -> 100%;
+  backRankMate 67% -> 100%; rookEndgame 20% -> 80%; pawnEndgame 0% -> 25%; skewer 0% -> 33%.
+  when wrong: silent 9, a competing idea 7, a competing plan 4. The remaining misses are quiet preparatory moves
+  (Kf2, e3, Bg5, exf4: unnamed) and, at 1600+, two-move combinations the one-reply gain does not reach.
+Tests 64 (the refinement test now accepts a mate found on the way).

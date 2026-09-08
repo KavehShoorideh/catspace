@@ -70,7 +70,7 @@ def test_refutation_revises_the_sketch(eng):
     r = search_goal(b, chess.WHITE, chess.E6, memo=Memo(), engine=eng, budget=300, horizon=2, engine_depth=8, refinements=1)
     assert r.proven and r.refinements and r.refinements[0].reply == "Nxe6 Rxd1#"
     assert r.refinements[0].diagnosis == "takes my queen on d1" and r.refinements[0].counter == "first secure the queen on d1"
-    assert r.line[0].startswith("Q") and "Nxe6" in r.line
+    assert r.line[0].startswith("Q") and ("Nxe6" in r.line or r.line[-1].endswith("#"))   # the pawn, or a mate found on the way (a win meets every goal)
     # the rook ending after ...Kxh5: bxa5 Rxa4 is diagnosed, the only securing move (Rxa5+) is tried, the goal stays given up
     b = chess.Board("8/8/1p3p2/p6k/RPr5/P5K1/8/8 w - - 0 2")
     r = search_goal(b, chess.WHITE, chess.A5, memo=Memo(), engine=eng, budget=300, horizon=6, engine_depth=8, refinements=1)
@@ -96,3 +96,16 @@ def test_proofs_are_stored_and_reused(eng):
     d = b.copy(); d.push_san("h6"); d.push_san("Nc3")                      # the b1 knight leaves: the a1 rook is defended, the sketch no longer applies
     r3 = search_goal(d, chess.BLACK, chess.B4, memo=memo, engine=eng, budget=60, refinements=0)
     assert r3.served == "" and not r3.proven
+
+
+def test_the_terminal_goal_is_the_rules_outcome():
+    """target=None: win the game by the rules' terminal outcome, proven without an engine; the proof-number pricing
+    (few replies = cheap) finds mates with no 'checks first' rule."""
+    from catspace.incubator.analyst.goal_search import GoalSearch
+    b = chess.Board("r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 10")     # Legal's mate pattern
+    r = GoalSearch(b, chess.WHITE, None, memo=Memo(), horizon=6, budget=400).run()
+    assert r.proven and r.line == ["Nf6+", "gxf6", "Bxf7#"] and r.engine_calls == 0 and r.goal == "win the game"
+    b = chess.Board("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1")
+    assert GoalSearch(b, chess.WHITE, None, memo=Memo(), horizon=2, budget=50).run().line == ["Ra8#"]
+    b = chess.Board("r1bqkbnr/ppp2ppp/2np4/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 0 4")          # no mate: given up, honestly
+    assert not GoalSearch(b, chess.WHITE, None, memo=Memo(), horizon=4, budget=60).run().proven

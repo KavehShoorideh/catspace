@@ -77,16 +77,20 @@ class Refinement:
 class GoalSearch:
     """PN search for one goal: win the enemy piece standing on `target` for `side`, within `horizon` plies."""
 
-    def __init__(self, board: chess.Board, side: chess.Color, target: int, memo=None, engine=None, horizon: int = 6,
+    def __init__(self, board: chess.Board, side: chess.Color, target: int | None, memo=None, engine=None, horizon: int = 6,
                  budget: int = 3000, engine_depth: int = 8, tolerance_cp: int = 40, prior_moves=(), sketch=None):
+        """target: the square of the enemy piece to win; None = WIN THE GAME by the rules' terminal outcome (mate in
+        chess; whatever ends the game in our favour in a variant). The terminal goal needs no ledger and no judge:
+        the rules decide the leaves, and the proof-number pricing (few replies = cheap) is the only ordering."""
         self.root_board = board.copy(stack=False); self.root_board.turn = side
         self.side, self.target0, self.memo, self.engine = side, target, memo, engine
         self.prior_moves = list(prior_moves)       # moves a refinement (or a caller) wants tried first at the root
         self.sketch = sketch or {}                 # a stored proof's OR moves by path (uci tuple), tried first when the path recurs
         self.horizon, self.budget, self.engine_depth, self.tol = horizon, budget, engine_depth, tolerance_cp
-        p = board.piece_at(target)
+        self.terminal = target is None
+        p = board.piece_at(target) if target is not None else None
         self.target_piece = p
-        self.target_value = value(board, target)
+        self.target_value = value(board, target) if target is not None else 0.0
         self.mat0 = material(board, side) - material(board, not side)
         self.root_cp = None
         self.nodes = 0; self.vetoes = 0; self.expansions = 0; self.engine_calls = 0
@@ -105,7 +109,10 @@ class GoalSearch:
         few plies past the horizon to close it -- the horizon must not fall between Qxd5 and cxd5."""
         b = n.board
         if b.is_game_over():
-            return False
+            oc = b.outcome()
+            return bool(oc is not None and oc.winner == self.side)   # the rules' verdict: our win meets every goal, a draw or loss meets none
+        if self.terminal:
+            return False if (n.is_or and n.ply >= self.horizon) else None
         if not n.is_or:
             return None
         net = self.net(b)
@@ -186,7 +193,7 @@ class GoalSearch:
                 m = chess.Move.from_uci(u)
                 if m in b.legal_moves:
                     prior[m] = 0.0
-        if n.ply <= 3:
+        if n.ply <= 3 and not self.terminal:
             if n.target is not None:
                 if n.is_or:
                     for pl in derive(b, self.side, Goal("win", n.target), self.memo, depth=1)[:4]:
@@ -230,6 +237,8 @@ class GoalSearch:
         few; after an unrelated quiet move most of them. Without this a fresh sibling always looks cheaper than an
         expanded one and the search goes breadth-first over all our moves."""
         n_moves = child.board.legal_moves.count()
+        if self.terminal:
+            return (1.0, max(1.0, 0.5 * n_moves)) if child.is_or else (max(1.0, float(n_moves)), 1.0)
         if child.is_or:                                        # our move next: how close is the target to falling?
             if child.target is None:                           # taken, but not yet banked: the material deficit is the work left
                 deficit = max(0.0, self.target_value - 0.5 - self.net(child.board))
@@ -281,6 +290,8 @@ class GoalSearch:
         b = n.board
         if b.is_game_over():
             return "game over"
+        if self.terminal:
+            return "horizon"
         net = self.settled_net(n)
         if net <= -(self.target_value + 3):
             return f"down {-net:g}"
@@ -384,7 +395,8 @@ class GoalSearch:
         t0 = time.perf_counter()
         root = Node(self.root_board, 0, None, True, target=self.target0)
         self.root = root
-        goal_txt = f"win the {chess.piece_name(self.target_piece.piece_type)} on {chess.square_name(self.target0)}"
+        goal_txt = ("win the game" if self.terminal else
+                    f"win the {chess.piece_name(self.target_piece.piece_type)} on {chess.square_name(self.target0)}")
         if not self.root_board.is_valid():                     # e.g. the other side is in check: it is not this side's move to attack
             return Result(goal_txt, False, False, 0, 0.0, [], [], [], 0, diagnosis="not this side's move (the other king is in check)")
         while root.pn != 0 and root.dn != 0 and self.expansions < self.budget:
