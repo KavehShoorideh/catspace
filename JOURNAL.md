@@ -21794,3 +21794,27 @@ the same size (0.01). OBS (gauge_rank, the same 100 puzzles, seed 3, budget 100;
   that wins two moves later than the combination looks); 3 ideas outranking a sure gain of equal size (now edged
   by 0.01); one true tie between two +3 combinations (e3 v Bxe2); two defensive captures against 'saves 5'.
 Tests 64. A second set, 100 puzzles rated 1200-2200 (seed 5), is running for the two-move tactics.
+
+## 2026-09-08 01:36 PDT — one scale for the ranking; the night's last two runs
+
+Diffing the harder set run by run showed the remaining errors were scale errors, not missing tactics: a static
+'saves 9' (the piece held only because the enemy was in check) beating a combination; a raw exchange value
+ignoring the reply; a planner's promise ('win the queen on a8') outranking the one-reply net that refuted it; a
+proven +5 losing to an idea's face value. `rank.score_moves` now has ONE scale: the BASE of every legal move is its
+material net one reply deep by the ledger (`sure_gain`, signed: 'hangs 6 (Bxh2)'), lifted by deeper views of the
+same count (a two-move combination, a proof with its net, a forced win by the rules), and the planner's promises
+added on top at TRUST = 0.4 of face value, discounted by length; the saves term is gone (a move that leaves the
+queen hanging carries -9 in its base; one that saves it carries 0); the holdings cost is gone (the base sees the
+reply that takes the exposed piece, and a mate threat appears as a -1000 leaf); a plan whose first step is the
+capture itself adds nothing (the base priced that capture against the reply); in check there is no standing pat
+at a leaf (the best evasion against their best capture). OBS (gauge_rank, budget 100, judge depth 6):
+  100 puzzles rated <=1800 (seed 3): solved 47 -> 71 -> 88 -> 87; named 89; silent 6; checks 98%, captures 90%,
+  quiet 38%; 400-799 100%, 800-1199 92%, 1200-1599 85%.  (10.9 s each)
+  100 puzzles rated 1200-2200 (seed 5): solved 77 -> 74 -> 77 -> 80; in our top-3 86; named 85; silent 9; checks
+  91%, captures 84%, quiet 57%; 1200-1599 91%, 1600-1999 78%, 2000-2399 50%.  (12.0 s each)
+  when wrong: silent (endgame technique: Kd7, Kxb4, Rxc1; quiet preparation) and, at 2000+, combinations three
+  of our moves deep that the two-move alpha-beta and the horizon-6 proofs do not reach.
+The tactical layer is where Kaveh pointed it: mates, forks, pins, skewers, deflections, sacrifices and
+two-move combinations by generic definitions -- the rules' outcome, the ledger's prices, replies complete -- with
+nothing named. Not done: three-move combinations (deepen the alpha-beta with the node cap as the budget), the
+quiet endgame technique (the trajectory system's), a second seed per set (single runs: directional).
