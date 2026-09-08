@@ -40,6 +40,7 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
     out: dict[chess.Move, tuple[float, str]] = {}
     net_sources: set = set()                                    # moves whose score already accounts for the reply (no cost subtracted)
     def add(m, s, why, net=False):
+        s = s + (0.01 if net else 0.0)                          # a gain the reply cannot take away edges a plan of the same size
         if m in out:
             if s > out[m][0]:
                 out[m] = (s, why)

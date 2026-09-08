@@ -21769,3 +21769,28 @@ OBS (gauge_rank, the same 100 puzzles, seed 3, budget 100; 775 s = 7.8 s each) -
   when wrong: silent 9, a competing idea 7, a competing plan 4. The remaining misses are quiet preparatory moves
   (Kf2, e3, Bg5, exf4: unnamed) and, at 1600+, two-move combinations the one-reply gain does not reach.
 Tests 64 (the refinement test now accepts a mate found on the way).
+
+## 2026-09-07 23:29 PDT — two-move combinations, the material-ahead predicate: the same 100 puzzles a third time
+
+Kaveh: "go autonomous until morning; the two-move sacrifices and such; tactics, not quiet positions." Built:
+(1) `rank.forcing_gain`: a small alpha-beta over COMBINATIONS -- our forcing moves (captures, checks, attacks on
+a piece worth 3 or more), ALL their replies, the ledger's best capture at the leaves as the quiescence, material
+tracked, two of our moves deep, a node cap; generic (the rules' moves and the ledger's prices, no pattern); "Qd8+:
+combination +5: Qd8+ Kh7 Qd3+ Kh8" -- the skewer with nothing named. (2) The goal predicate is now "the target is
+taken and we are materially AHEAD" (net >= 0.5) instead of "up by the target's worth": a sacrifice that regains a
+rook for the queen it went for is a win (Nxd4 Rxc2 Nxc2: +5), a bare trade still is not; the proof reports its
+net, and a principal line that ends the game in our favour is flagged (Bb5 axb5 Qd8#: "forced win"). (3) pursue
+also tries the dearest enemy pieces whatever the ledger says today (two-move tactics against a queen the static
+map calls unreachable). (4) No double counting: a sure gain, a proof or an exchange already priced the reply, so
+the holdings cost is charged to the static sources only; ideas are discounted by their length; rescues price
+the capture only (the additive saves term carries the rest); a gain the reply cannot take away edges a plan of
+the same size (0.01). OBS (gauge_rank, the same 100 puzzles, seed 3, budget 100; 913 s = 9.1 s each):
+  solved 47 -> 71 -> 88; in our top-3 54 -> 79 -> 90; named 53 -> 80 -> 90; silent 18 -> 9 -> 6.
+  by the solution move: capture 67 -> 77 -> 92%; check 40 -> 77 -> 94%; quiet 15 -> 31 -> 54%.
+  by rating: 400-799 94%; 800-1199 92%; 1200-1599 91%; 1600-1999 20 -> 50%.
+  by theme: mate 100% (41); fork 20 -> 40 -> 73% (15); pin 88%; sacrifice 100% (7); skewer 100% (3); attraction
+  83%; advancedPawn 71%; pawnEndgame 50%; rookEndgame 60%.
+  the 12 misses: silent 6 (Kf2, b5, d7, exf4 -- endgame technique and quiet preparation; Qd4+ and Qg1+ -- a check
+  that wins two moves later than the combination looks); 3 ideas outranking a sure gain of equal size (now edged
+  by 0.01); one true tie between two +3 combinations (e3 v Bxe2); two defensive captures against 'saves 5'.
+Tests 64. A second set, 100 puzzles rated 1200-2200 (seed 5), is running for the two-move tactics.
