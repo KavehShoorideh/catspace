@@ -36,7 +36,8 @@ from .goal_search import pursue, GoalSearch
 TRUST = 0.4                      # an unverified promise (an idea, a plan, an agenda step) counts this fraction of its face value
 
 
-def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budget: int = 120, engine_depth: int = 6, mate_budget: int = 150) -> dict[chess.Move, tuple[float, str]]:
+def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budget: int = 120, engine_depth: int = 6, mate_budget: int = 150,
+                combo_top: int = 8, combo_cap: int = 1500) -> dict[chess.Move, tuple[float, str]]:
     """move -> (score in pawns, the reason). One scale for everything: the material net one reply deep (the BASE of
     every legal move: what the ledger says after their best reply, negative when the move hangs something), lifted
     by deeper views of the same quantity (a two-move combination, a proof, a forced win), plus the planner's
@@ -66,8 +67,14 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
                 lift(board.parse_san(r.line[0]), 1000.0 - len(r.line), f"forced win: {' '.join(r.line)}")
         except Exception:
             pass
-    for m in forcing_moves(board, memo):
-        g, why = forcing_gain(board, m, memo, depth=3)
+    if any(v >= 900 for v, _ in out.values()):
+        return out                                              # a forced win by the rules: nothing else to weigh
+    # combinations: the forcing moves, the most promising first by their one-reply base, the deep search for the top few
+    cands = [m for m in forcing_moves(board, memo) if base[m][0] >= -3.0 or board.gives_check(m)]   # a quiet sacrifice of more than a piece is not a combination we look for
+    cands = sorted(cands, key=lambda m: -base[m][0])[:combo_top]
+    tt: dict = {}
+    for m in cands:
+        g, why = forcing_gain(board, m, memo, depth=3, node_cap=combo_cap, tt=tt)
         if g > 0:
             lift(m, g, why)
     try:
@@ -214,7 +221,7 @@ def reply_order(board: chess.Board) -> list[chess.Move]:
     return [r for _, r in caps] + checks + rest
 
 
-def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 3, node_cap: int = 2500) -> tuple[float, str]:
+def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 3, node_cap: int = 2500, tt: dict | None = None) -> tuple[float, str]:
     """A small alpha-beta over COMBINATIONS, guided by the reasoning: our forcing moves in the ledger's order, ALL
     their replies, the ledger's best capture at the leaves as the quiescence (no standing pat in check), material
     tracked, a transposition table, and ITERATIVE DEEPENING one, two, three of our moves deep with the node cap as
@@ -222,7 +229,8 @@ def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 3, n
     no pattern. Returns the guaranteed gain of m and the line that shows it."""
     side = board.turn
     base = material(board, side) - material(board, not side)
-    nodes = [0]; tt: dict = {}
+    nodes = [0]
+    tt = tt if tt is not None else {}                           # shared across the candidates of one position: the lines transpose
     def stand(b):
         n = (material(b, side) - material(b, not side)) - base
         return leaf_value(b, side, n, memo)
@@ -284,7 +292,7 @@ def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 3, n
     nb0 = board.copy(stack=False); nb0.push(m)
     best_v, best_line, completed = 0.0, [], 0
     for d in range(1, depth + 1):                               # iterative deepening: the node cap is the budget
-        nodes[0] = 0; tt.clear()
+        nodes[0] = 0
         v, line = theirs(nb0, d, -1e9, 1e9)
         if nodes[0] > node_cap and d > 1:
             break                                               # this depth did not complete: keep the last one that did
