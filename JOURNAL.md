@@ -21653,3 +21653,24 @@ side move twice after a null move (checks outside the region are a tempo, now on
 frozen test priced captures by the cheapest attacker, not the mover (bxa5?? read as +7: the capture gain is now by
 THIS capturer with the attackers' test, one reply deep); non-passed pawns were runners (b6 in the middlegame).
 In the long render and the app as "Sub-games". Tests 57 (analyst suite, regime 3). Plan §25, structure table.
+
+## 2026-09-07 18:59 PDT — needs.py: means-ends planning over needs, the pinned knight as the test
+
+Kaveh's brief: the need behind a plan step becomes a goal with its own blockers, recursively, every line priced,
+alternatives compared, a directed search over needs rather than the tree. Built `needs.py` (plan §26): needs
+(win, defend, reach, safe, remove, deflect, block), ways with sub-needs, costs (a piece that falls where it lands,
+a losing capture, holdings broken, the king's shelter and pawn weaknesses by structure_diff, tempo), comparison
+at the node, give-up (no way / no way that pays / depth 4 / budget 80), the race judged where the threat is real
+(free moves = preparatory steps less forced replies), the goal search as verifier, and the idea loop (reasons to
+move: attacked or undeveloped; quiet destinations; the targets each newly attacks or makes fall; planned from the
+position after the move). The Ruy position (Bb5 pins Nc6, b7 the only defender) reads: "Win the knight on c6:
+Nxc6 -- add the knight on d4 as an attacker. Bring the knight to d4: Nxd4 -- d4 on the way is covered. Make d4
+safe: deflect the pawn on e5: d4 (then exd4), a lure on d4. Gain 1, cost 0.5. Their answer: a6 in 1, with 1 free
+move: they are in time." -- the bishop is kicked before the knight arrives; the goal search agrees (given up).
+With c5 and e5 both covering d4: "given up (no way that pays)", the knight-lure alternative shown and priced.
+The idea loop on the position before Bb5 proposes Bb5 with that line and verdict; on AUjG3sl4 after 16.c4 it
+proposes Qd7 then Bxd4 (the race is ours) among the queen's retreats. Two ledger bugs found by running it: the
+flip cap kept the smallest attacker value that flips (so only pawns ever 'joined'); a joiner's path counted a
+square where it can be traded off as safe (d4 d5 'wins the knight': the d-pawn never arrives) -- both fixed in
+reach.py, arrival safety = no effective attacker can take at zero or better. Cost 0.0-1.5 s per position for three
+ideas. In the long render and the app as "Idea for <side>". Tests 61 (analyst suite; needs 4).

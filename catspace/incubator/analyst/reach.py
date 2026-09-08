@@ -82,7 +82,7 @@ def flip_conditions(board: chess.Board, target: int, by: chess.Color, memo=None)
     best_v = None
     for v in (9.0, 5.0, 3.0, 1.0):                       # the LARGEST value that still flips is the loosest condition
         if _see_lists(tv, atts + [v], defs) > 0:
-            best_v = v
+            best_v = v; break                              # (a cheaper attacker flips whenever a dearer one does)
     if best_v is not None:
         out.append(Flip("add_attacker", best_v))
     for q in d.effective:
@@ -150,8 +150,8 @@ def _reach(board: chess.Board, piece_sq: int, target: int, max_hops: int, reads)
             nb = b.copy(stack=False); nb.turn = c; nb.push(m)
             if reads is not None:
                 reads.moves_of(nb, to)                   # what it would attack from there
-            d = defense(nb, to, reads=reads)             # would it survive there?
-            if d is not None and d.falls:
+            d = defense(nb, to, reads=reads)             # would it ARRIVE there? a square where it can be taken at no loss
+            if d is not None and d.effective_attackers and d.see >= 0:     # (an even trade included) is no path for a joiner
                 continue
             seen.add(to)
             npath = path + (to,)

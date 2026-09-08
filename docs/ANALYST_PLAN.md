@@ -458,3 +458,30 @@ plan that regroups inside a locked region is not seen); zugzwang between regions
 reservoir, not played out; "joinable" lemmas still ignore what the joiner's departure exposes (the b6 pawn
 'joining' against a4 by b5 frees the rook: the fixpoint prices it as losing, the lemma text does not).
 
+## 26. Means-ends planning over needs (Kaveh 2026-09-07, the pinned knight and the second attacker)
+
+Kaveh: "the need to get the knight to that square becomes its own goal with its own blockers; keep going down
+until I find an answer or not; each line gets a value; I compare; a directed search over the things I need."
+`needs.py`: an AND/OR tree over NEEDS (win, defend, reach a square, make a square safe, remove, deflect, block),
+each with WAYS (a move now, or sub-needs it requires), every line priced (a piece that falls where it lands, a
+capture that loses, holdings broken, the king's shelter or a pawn weakness created, tempo) and compared at the
+node where alternatives split; give-up = no way, no way that pays, the depth bound (4) or the budget (80 needs).
+Base cases: the planner's derive and reach; reach's failing precondition (the first unsafe square on the geometric
+path) becomes 'make it safe', whose coverers (pieces without which the square would be safe; a pinned piece is
+not one) are deflected (a lure on a square the coverer attacks, whose taking uncovers the square; poisoned lures
+are rejected, declinable ones cost half a pawn; the expected reply is played through), removed (a win need) or
+blocked (a reach onto the line). The RACE is judged at the moment the threat is real: the opponent's fastest
+defence against the free moves they get, one per preparatory step less the replies our lures forced. The
+VERIFIER is the goal search with the line's first move as prior. The IDEA LOOP (`ideas_for`): for a piece with a
+reason to move (attacked, undeveloped), each quiet destination, the targets it newly attacks or makes fall, each
+planned from the position after the move. Bb5 in the Ruy position: "Win the knight on c6: Nxc6 -- add the knight
+on d4 as an attacker. Bring the knight to d4: Nxd4 -- d4 on the way is covered. Make d4 safe: deflect the pawn on
+e5: d4 (then exd4), a lure on d4. Gain 1, cost 0.5. Their answer: a6 in 1, with 1 free move: they are in time";
+the goal search agrees (given up). With c5 and e5 both covering d4: "given up (no way that pays)". Two ledger
+bugs found by it and fixed: the flip cap kept the SMALLEST attacker value that flips (pawns only; now the
+largest), and a joiner's path counted a square where it can be traded off as safe (an even trade is no arrival;
+reach.py fixed too). Costs: 0.0-1.5 s per position for three ideas. In the long render and the app as "Idea for
+<side>". GPS (Newell and Simon 1959) with a prover underneath; PARADISE had the patterns and no prover. Not built:
+the motif memory (proofs abstracted over placement, roles, the cast prior), second-level deflection (attack what
+the coverer holds), the interference/decoy families, a shelter cost finer than one pawn.
+
