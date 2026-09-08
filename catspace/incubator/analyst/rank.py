@@ -70,19 +70,14 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
                     add(m, 10.0 + max(r.net, 0.5), f"proven: {r.goal}" + (f" ({r.net:+g})" if r.net else ""), net=True)
     except Exception:
         pass
-    # 3. captures priced by the ledger (the mover's own exchange, attackers' test included)
-    for m in board.legal_moves:
-        if board.is_capture(m):
-            g = capture_gain_of(board, m, side, memo)
-            if g > 0:
-                add(m, g, "wins the exchange", net=True)
-    # 3b. the SURE gain one reply deep: after our move, whatever they reply, what the ledger says we then win less
-    # what the reply took. Forks, discovered attacks and checks that carry a threat fall out of this with no pattern
-    # named: a check is only a move with few replies.
+    # 3. the SURE gain one reply deep: after our move, whatever they reply, what the ledger says we then win less
+    # what the reply took. Captures are priced here too (the reply accounted, not the exchange alone); forks,
+    # discovered attacks, checks that carry a threat and promotions fall out of this with no pattern named: a check
+    # is only a move with few replies, a promotion only a move that changes the count.
     for m in attacking_moves(board):
         g, why = sure_gain(board, m, memo)
         if g > 0:
-            add(m, g, why, net=True)
+            add(m, g, why if not board.is_capture(m) or "sure gain" in why else why, net=True)
     # 3b'. combinations: the same idea two of our forcing moves deep (alpha-beta, the ledger at the leaves)
     for m in forcing_moves(board):
         g, why = forcing_gain(board, m, memo, depth=2)
@@ -128,10 +123,15 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
     if falling:
         for m in list(board.legal_moves):
             nb = board.copy(stack=False); nb.push(m)
+            checking = nb.is_check()                            # with them in check the ledger's 'held' is a tempo, not a save
             saved = 0.0
             for sq, v in falling.items():
                 s2 = m.to_square if m.from_square == sq else sq
                 if nb.piece_at(s2) is None or nb.piece_at(s2).color != side:
+                    continue
+                if checking:
+                    if not nb.attackers(not side, s2):
+                        saved += v
                     continue
                 d2 = defense(nb, s2, memo=memo)
                 if d2 is None or not d2.falls:
@@ -163,7 +163,7 @@ def attacking_moves(board: chess.Board) -> list[chess.Move]:
     come from (a quiet move that attacks nothing is priced by the plans, not here)."""
     side = board.turn; out = []
     for m in board.legal_moves:
-        if board.is_capture(m) or board.gives_check(m):
+        if board.is_capture(m) or board.gives_check(m) or m.promotion:
             out.append(m); continue
         nb = board.copy(stack=False); nb.push(m)
         if any(nb.piece_at(t) and nb.piece_at(t).color != side for t in nb.attacks(m.to_square)):
@@ -281,7 +281,7 @@ def promotion_scores(board: chess.Board, memo=None) -> list[tuple[chess.Move, fl
         nb = board.copy(stack=False); nb.push(m)
         if p.piece_type == chess.PAWN and not board.is_capture(m):
             if m.promotion:
-                out.append((m, PROMOTION_VALUE, "promotes")); continue
+                continue                                       # priced by the sure gain: the new piece is in the count, the reply may take it
             r = race(nb, m.to_square, memo)
             if r is not None and r.promotes:
                 out.append((m, PROMOTION_VALUE / max(1, r.steps), f"the runner wins its race ({r.steps} steps)"))

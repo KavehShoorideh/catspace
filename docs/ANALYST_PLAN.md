@@ -523,3 +523,22 @@ position in one currency ("Black threatens: Nxh5 (+9, big); White would, with a 
 standing threat (§27) is the proof-based special case with the defences listed. In the long render and the app.
 Not done: the created/parried/executed bookkeeping across the game for the ledger version (the proof-based one
 has it), and the two-move combinations at 1600+ that one reply deep does not reach.
+
+## 29. Tactics by reasoning, measured on puzzles (Kaveh 2026-09-07/08, "go autonomous until morning")
+
+`rank.py` scores every legal move by what the reasoning says it does, with no engine and no Maia in the ranking
+(the engine judges leaves inside proofs only), and `gauge_rank.py` measures it on random Lichess puzzles: the
+position after the setup move, the solution's first move as the reference, solved / named / silent, by theme,
+by the kind of the solution move, by rating. Sources, each stated in the rules' and the ledger's terms: the
+terminal goal (win the game by `board.outcome()`; §28); the SURE GAIN one reply deep and the COMBINATION two
+forcing moves deep (an alpha-beta over captures, checks and attacks on a piece worth 3 or more, all replies, the
+ledger's best capture at the leaves as the quiescence, a node cap) -- forks, discovered attacks, skewers,
+deflections, promotions, captures with a reply all come out of these two with nothing named; proven material
+goals (the target taken and materially ahead; the dearest enemy pieces always tried); ideas and plans that win
+their race, discounted by length; the agenda's sub-goals at a quarter; rescues; SAVES as an additive term (not
+when our move gives check: a piece held only because the enemy is in check is not saved); minus the holdings cost
+for the static sources only. Same 100 puzzles rated <=1800: solved 47 -> 71 -> 88, silent 18 -> 9 -> 6; mates 100%,
+forks 73%, sacrifices 100%. 100 puzzles rated 1200-2200: 77 solved before the last pricing pass (1200-1599 91%,
+1600-1999 72%, 2000-2399 43%; mate and fork 100%, pin 91%, sacrifice 82%; advanced pawns 50%, promotion 33%,
+very long 44%). What remains is quiet technique (Kf2, b5, d7) and combinations three of our moves deep. Costs:
+7-10 s per position, dominated by the goal searches. The numbers are single runs on 100 puzzles: directional.
