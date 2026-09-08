@@ -60,6 +60,8 @@ class Result:
     refinements: list["Refinement"] = field(default_factory=list)   # the sketch revised after a refutation, and what came of it
     diagnosis: str = ""              # what the refuting reply did to us, when the goal was not proven
     served: str = ""                 # 'transposition' | 'sketch' when the concept store supplied the proof (a sketch is re-verified)
+    net: float = 0.0                 # the material net at the end of the principal line, when proven
+    mates: bool = False              # the principal line ends the game in our favour (the rules' outcome)
 
 
 @dataclass
@@ -121,18 +123,18 @@ class GoalSearch:
             return False                                               # (a heuristic floor, stated: a deeper combination could still exist)
         extend = settled > net and n.ply < self.horizon + 4            # a capture is pending: a few more plies to cash it
         if n.target is None:                                           # the target has been taken
-            ok = net >= self.target_value - 0.5                        # the material must actually be in hand...
-            if ok:
-                if self.engine is not None:
+            ok = net >= 0.5                                            # ...and we must be materially AHEAD (a sacrifice that regains less
+            if ok:                                                     # than the target's worth but nets a rook is still a win; a bare
+                if self.engine is not None:                            # trade -- Nxc5 dxc5, Bxc6 bxc6 -- is not)
                     ok = self.engine_ok(n)                             # ...and the engine must see no refutation
                 else:
                     own_falls = sum(value(b, sq) for sq, d in all_defenses(b, memo=self.memo).items()
                                     if d.falls and b.piece_at(sq).color == self.side)
-                    ok = net - own_falls >= self.target_value - 0.5
+                    ok = net - own_falls >= 0.5
                     n.cp = 100.0 * (net - own_falls)
             if ok:
                 return True
-            if net >= self.target_value - 0.5:
+            if net >= 0.5:
                 return False                                           # in hand, but the judge sees a refutation: final (it searched deeper than we will)
             if n.ply >= self.horizon and not extend:
                 return False
@@ -295,7 +297,7 @@ class GoalSearch:
         net = self.settled_net(n)
         if net <= -(self.target_value + 3):
             return f"down {-net:g}"
-        if n.target is None and self.net(b) >= self.target_value - 0.5:
+        if n.target is None and self.net(b) >= 0.5:
             return f"engine {n.cp:+.0f} vs root {self.root_cp:+.0f}" if n.cp is not None and self.root_cp is not None else "engine says no"
         return "horizon"
 
@@ -411,7 +413,18 @@ class GoalSearch:
         line = self.principal_line(root) if root.pn == 0 else []
         ref = self.hardest_defence(root) if root.pn != 0 else []
         work = self.work_line(root) if root.pn == 0 else []
-        return Result(goal_txt, root.pn == 0, root.dn == 0, self.nodes, time.perf_counter() - t0, line, ref, self.tried, self.engine_calls, work)
+        res = Result(goal_txt, root.pn == 0, root.dn == 0, self.nodes, time.perf_counter() - t0, line, ref, self.tried, self.engine_calls, work)
+        if res.proven and not self.terminal:
+            b = self.root_board.copy(stack=False)
+            for san in line:
+                try:
+                    b.push_san(san)
+                except Exception:
+                    break
+            res.net = self.net(b)
+            oc = b.outcome() if b.is_game_over() else None
+            res.mates = bool(oc is not None and oc.winner == self.side)
+        return res
 
     def principal_line(self, root: Node) -> list[str]:
         """The line inside the proof where the opponent does best: at their nodes the proven reply with the lowest
@@ -624,8 +637,13 @@ def pursue(board: chess.Board, side: chess.Color, memo=None, engine=None, budget
     order = {"falls": 0, "joinable": 1, "undermine": 2, "held": 3, "unreachable": 4}
     targets = [t for t in progress(board, side, top=64, memo=memo) if t.status in ("falls", "joinable", "undermine", "held")]
     targets.sort(key=lambda t: (order[t.status], -value(board, t.square)))
-    for t in targets[:max_goals]:
-        r = search_goal(board, side, t.square, memo=memo, engine=engine, budget=budget, horizon=horizon, engine_depth=engine_depth,
+    squares = [t.square for t in targets[:max_goals]]
+    b = board.copy(stack=False); b.turn = side
+    for sq, p in sorted(b.piece_map().items(), key=lambda kv: -value(b, kv[0])):      # the dearest enemy pieces, whatever the ledger says today
+        if p.color != side and not R.is_royal(b, sq) and sq not in squares and value(b, sq) >= 3 and len(squares) < max_goals + 2:
+            squares.append(sq)
+    for sq in squares:
+        r = search_goal(board, side, sq, memo=memo, engine=engine, budget=budget, horizon=horizon, engine_depth=engine_depth,
                         refinements=refinements)
         out.append(r)
         if r.proven:
@@ -635,7 +653,7 @@ def pursue(board: chess.Board, side: chess.Color, memo=None, engine=None, budget
 
 def result_text(r: Result) -> str:
     if r.proven:
-        head = (f"{r.goal}: proven in {r.nodes} nodes, {r.engine_calls} engine checks ({r.seconds:.1f}s): {' '.join(r.line)}"
+        head = (f"{r.goal}: proven" + (" (mates)" if r.mates else f" ({r.net:+g})" if r.net else "") + f" in {r.nodes} nodes, {r.engine_calls} engine checks ({r.seconds:.1f}s): {' '.join(r.line)}"
                 + (f"; their longest try: {' '.join(r.work)}" if len(r.work) > len(r.line) else "")
                 + (" [served from the store: a transposition]" if r.served == "transposition" else
                    " [the stored sketch, re-verified]" if r.served == "sketch" else ""))

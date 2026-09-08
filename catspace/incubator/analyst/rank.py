@@ -24,7 +24,7 @@ import chess.pgn
 
 from . import rules as R
 from .defense import defense, all_defenses
-from .facts import value
+from .facts import value, material
 from .memo import Memo
 from .subgames import holdings, cost_of_move, mate_in_one
 from .needs import ideas_for, agenda, Planner
@@ -38,21 +38,24 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
     memo = memo if memo is not None else Memo()
     side = board.turn
     out: dict[chess.Move, tuple[float, str]] = {}
-    def add(m, s, why):
+    net_sources: set = set()                                    # moves whose score already accounts for the reply (no cost subtracted)
+    def add(m, s, why, net=False):
         if m in out:
             if s > out[m][0]:
                 out[m] = (s, why)
         else:
             out[m] = (s, why)
+        if net:
+            net_sources.add(m)
     # 1. the terminal goal: win the game by the rules' outcome (mate, in chess), proven by the search without a judge
     for m in mate_in_one(board, side):
-        add(m, 1000.0, "mate")
+        add(m, 1000.0, "mate", net=True)
     if not any(s >= 1000 for s, _ in out.values()):
         try:
             gs = GoalSearch(board, side, None, memo=memo, horizon=6, budget=mate_budget)
             r = gs.run()
             if r.proven and r.line:
-                add(board.parse_san(r.line[0]), 1000.0 - len(r.line), f"forced win: {' '.join(r.line)}")
+                add(board.parse_san(r.line[0]), 1000.0 - len(r.line), f"forced win: {' '.join(r.line)}", net=True)
         except Exception:
             pass
     # 2. proven goals (the search, engine-judged inside)
@@ -60,7 +63,10 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
         for r in pursue(board, side, memo=memo, engine=engine, budget=budget, horizon=6, max_goals=3, engine_depth=engine_depth, refinements=0):
             if r.proven and r.line:
                 m = board.parse_san(r.line[0])
-                add(m, 10.0 + r_value(board, r), f"proven: {r.goal}")
+                if r.mates:
+                    add(m, 1000.0 - len(r.line), f"forced win: {' '.join(r.line)}", net=True)
+                else:
+                    add(m, 10.0 + max(r.net, 0.5), f"proven: {r.goal}" + (f" ({r.net:+g})" if r.net else ""), net=True)
     except Exception:
         pass
     # 3. captures priced by the ledger (the mover's own exchange, attackers' test included)
@@ -68,32 +74,38 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
         if board.is_capture(m):
             g = capture_gain_of(board, m, side, memo)
             if g > 0:
-                add(m, g, "wins the exchange")
+                add(m, g, "wins the exchange", net=True)
     # 3b. the SURE gain one reply deep: after our move, whatever they reply, what the ledger says we then win less
     # what the reply took. Forks, discovered attacks and checks that carry a threat fall out of this with no pattern
     # named: a check is only a move with few replies.
     for m in attacking_moves(board):
         g, why = sure_gain(board, m, memo)
         if g > 0:
-            add(m, g, why)
+            add(m, g, why, net=True)
+    # 3b'. combinations: the same idea two of our forcing moves deep (alpha-beta, the ledger at the leaves)
+    for m in forcing_moves(board):
+        g, why = forcing_gain(board, m, memo, depth=2)
+        if g > 0 and g > out.get(m, (0.0, ""))[0]:
+            add(m, g, why, net=True)
     # 3c. promotion: a runner that wins its race, or the move that catches theirs
     for m, g, why in promotion_scores(board, memo):
-        add(m, g, why)
+        add(m, g, why, net=True)
     # 3d. a piece of ours that falls, saved by taking its attacker
     for m, g, why in rescue_captures(board, memo):
-        add(m, g, why)
+        add(m, g, why, net=True)
     # 4. ideas and plans that win their race
     try:
         for m, reason, line in ideas_for(board, side, memo, None, top=6):
             if line.best is not None and line.race == "wins" and line.best.gain - line.cost > 0:
-                add(m, line.best.gain - line.cost, f"idea: {line.need.text(line.best.after or board)}")
+                hops = max(1, len(line.steps()) + 1)               # the idea's own move plus its line: a gain k moves away is worth less now
+                add(m, (line.best.gain - line.cost) / hops, f"idea: {line.need.text(line.best.after or board)} in {hops}")
     except Exception:
         pass
     try:
         for pl in plans_for(board, side, memo=memo, top=5):
             if pl.steps and pl.steps[0].move != chess.Move.null() and pl.steps[0].move in board.legal_moves:
                 if pl.race == "urgent":
-                    add(pl.steps[0].move, value(board, pl.goal.square), f"saves {pl.goal.text(board)}")
+                    continue                                          # saves are the additive term below
                 elif pl.race == "wins" and pl.cost < 100:
                     add(pl.steps[0].move, max(0.5, value(board, pl.goal.square) - pl.cost) / max(1, pl.hops), f"plan: {pl.goal.text(board)}")
     except Exception:
@@ -126,9 +138,12 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
             if saved > 0:
                 s0, why0 = out.get(m, (0.0, ""))
                 out[m] = (s0 + saved, (why0 + "; " if why0 else "") + f"saves {saved:g}")
-    # 7. costs: what the move gives up
+    # 7. costs: what the move gives up -- for the static sources only; a sure gain, a proof or an exchange already
+    # priced the opponent's best reply, charging the holdings again would count the same loss twice
     held = holdings(board, memo)
     for m in list(board.legal_moves):
+        if m in net_sources:
+            continue
         s, why = out.get(m, (0.0, ""))
         c = sum(h.loss for h in cost_of_move(board, m, held, memo))
         nb = board.copy(stack=False); nb.push(m)
@@ -187,6 +202,73 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None) -> tuple[float, str]
     return max(0.0, worst), why
 
 
+def forcing_moves(board: chess.Board, min_attack: float = 3.0) -> list[chess.Move]:
+    """Captures, checks, and moves that attack a piece worth min_attack or more: the moves a combination is made of.
+    Captures first, then checks (the ordering is what makes the pruning bite)."""
+    side = board.turn; caps, checks, attacks = [], [], []
+    for m in board.legal_moves:
+        if board.is_capture(m):
+            caps.append(m)
+        elif board.gives_check(m):
+            checks.append(m)
+        else:
+            nb = board.copy(stack=False); nb.push(m)
+            if any(nb.piece_at(t) and nb.piece_at(t).color != side and value(nb, t) >= min_attack for t in nb.attacks(m.to_square)):
+                attacks.append(m)
+    caps.sort(key=lambda m: -value(board, m.to_square))
+    return caps + checks + attacks
+
+
+def forcing_gain(board: chess.Board, m: chess.Move, memo=None, depth: int = 2, node_cap: int = 800) -> tuple[float, str]:
+    """A small alpha-beta over COMBINATIONS: our forcing moves, ALL their replies, the ledger's best capture at the
+    leaves (quiescence), material tracked along the way. Depth 2 = our move, their reply, our forcing move, their
+    reply, the ledger. Generic: no pattern, only the rules' moves and the ledger's prices. Returns the guaranteed
+    gain of m and the line that shows it."""
+    from .regime import _best_capture
+    side = board.turn
+    base = material(board, side) - material(board, not side)
+    nodes = [0]
+    def stand(b):                                               # the leaf: what we are up, plus what the ledger says we take next
+        n = (material(b, side) - material(b, not side)) - base
+        if b.turn == side and not b.is_check():
+            n += _best_capture(b, side, set(chess.scan_forward(b.occupied)), memo)
+        return n
+    def ours(b, d, alpha, beta):
+        nodes[0] += 1
+        if b.is_game_over():
+            oc = b.outcome(); return (1000.0 if oc and oc.winner == side else 0.0), []
+        best, best_line = stand(b), []                          # we may stop here
+        if d == 0 or nodes[0] > node_cap or best >= beta:
+            return best, best_line
+        for f in forcing_moves(b):
+            nb = b.copy(stack=False); nb.push(f)
+            v, line = theirs(nb, d, max(alpha, best), beta)
+            if v > best:
+                best, best_line = v, [b.san(f)] + line
+                if best >= beta:
+                    break
+        return best, best_line
+    def theirs(b, d, alpha, beta):
+        nodes[0] += 1
+        if b.is_game_over():
+            oc = b.outcome(); return (1000.0 if oc and oc.winner == side else 0.0), []
+        worst, worst_line = None, []
+        replies = sorted(b.legal_moves, key=lambda r: -(value(b, r.to_square) if b.is_capture(r) else 0))
+        for r in replies:
+            nb = b.copy(stack=False); nb.push(r)
+            v, line = ours(nb, d - 1, alpha, worst if worst is not None else beta)
+            if worst is None or v < worst:
+                worst, worst_line = v, [b.san(r)] + line
+                if worst <= alpha:
+                    break
+            if nodes[0] > node_cap:
+                break
+        return (worst if worst is not None else 0.0), worst_line
+    nb = board.copy(stack=False); nb.push(m)
+    v, line = theirs(nb, depth, -1e9, 1e9)
+    return max(0.0, v), (f"combination +{v:g}: {board.san(m)} {' '.join(line)}" if v > 0 else "")
+
+
 def promotion_scores(board: chess.Board, memo=None) -> list[tuple[chess.Move, float, str]]:
     """Runners: a pawn push after which the race is won; catchers: a move after which their winning race is lost."""
     from .regime import race, pawn_path, PROMOTION_VALUE
@@ -223,7 +305,7 @@ def rescue_captures(board: chess.Board, memo=None) -> list[tuple[chess.Move, flo
                     nb = board.copy(stack=False); nb.push(m); nb.turn = side
                     d2 = defense(nb, sq, memo=memo) if nb.piece_at(sq) else None
                     if d2 is None or not d2.falls:
-                        out.append((m, value(board, sq) + max(0.0, g), f"saves the {chess.piece_name(board.piece_at(sq).piece_type)} on {chess.square_name(sq)} by taking the attacker"))
+                        out.append((m, max(0.0, g), f"takes the attacker of the {chess.piece_name(board.piece_at(sq).piece_type)} on {chess.square_name(sq)}"))
     return out
 
 
