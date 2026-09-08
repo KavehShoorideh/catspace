@@ -485,3 +485,27 @@ reach.py fixed too). Costs: 0.0-1.5 s per position for three ideas. In the long 
 the motif memory (proofs abstracted over placement, roles, the cast prior), second-level deflection (attack what
 the coverer holds), the interference/decoy families, a shelter cost finer than one pawn.
 
+## 27. The agenda, the standing threat, and learning sub-goals (Kaveh 2026-09-07)
+
+Three requests in one evening. (1) "When there is no threat, how do I create one, and what are the sub-goals on the
+way? I do not want to program 'develop' or 'take the centre'." `needs.agenda`: the need tree for every enemy
+target; the trees that give up name the precondition they died on (`frontier`); those preconditions, ranked by the
+gains of the trees they block, are the sub-goals, with no rule behind them. Two planner additions made the agenda
+honest: a target that can step away is not winnable by adding attackers (it is PINNED first: `pin_squares`, a
+slider of ours on the line through the target to the enemy king or a dearer piece, then the win tree on the board
+after the pin: "Win the knight on c6: pin it first (bishop on b5) ... a6 in 1, with 2 free moves: they are in
+time"); a reach with no geometric path is 'unreachable', not a sub-goal. (2) "When I create a threat, what must
+they do? If they do something else, take the winning move at once." `threats.py`: a threat = a goal our move makes
+forced against all but a few replies; the goal search's AND node after our move already sorts the replies into the
+ones the judge settled (punished: the proof's next move is stored) and the ones that held (the DEFENCES, described
+in ledger terms: defends f7, blocks the line, the king steps away, takes the attacker, counters with check); mate
+in one by enumeration. "Qh5 threatens mate (Qxf7#): they must Nh6, Ke7, Qe7, Qf6, Qg5 ...; Nf6 does not: Qxf7#
+executes." The reply is judged against the standing threat in the CLI long render and the app. (3) "How do the
+sub-goals get learned?" `mine.py`: the atoms stay the rules'; what is learned is which recurring intermediate
+needs pay. Every node of every need tree over games becomes a TEMPLATE (kind, the mover's and target's piece
+types, the square's class: centre / their camp / by their king / own camp; never coordinates); the root's outcome
+is whether its target is taken within k plies of the engine's line; support and lift over executed-versus-not
+give the library, credited by the root's gain. The first number is the agenda's own reach before any learning:
+of the engine's quiet best moves, how many serve an agenda sub-goal (a step of a way in its tree, or the sub-goal
+met after the move). See the JOURNAL for the run.
+
