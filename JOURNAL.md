@@ -21697,3 +21697,25 @@ square for a knight in the centre 20% (20). The last three are 'develop the knig
 'a knight on a safe central square', appearing as preconditions of trees that execute, from no rule: the seed of
 the learned sub-goal library, at a sample size that proves nothing yet. Two crashes on the way fixed (a target
 gone after the pin way; games in one file sharing a name). Tests 63.
+
+## 2026-09-07 20:51 PDT — ranking the moves by reasoning alone, against Stockfish (Kaveh's question)
+
+`rank.py`: every legal move scored by what the reasoning says it does, in pawns -- mate in one; the first move of a
+goal the search proves (engine-judged inside, as designed); a capture priced by the ledger with the attackers'
+test; an idea or plan that wins its race (its net); a move that saves a piece of ours that falls; a move serving
+an agenda sub-goal (a quarter of its worth); minus the opportunity cost and the mover when it falls where it
+lands. No engine and no Maia in the ranking itself; a ranking whose top score is zero is 'silent' and gets no
+credit. OBS (100 positions sampled from huvaxshtra_all.pgn, every 7th ply after ply 10, seed 3, engine best at
+depth 12, judge depth 6, budget 120; 1267 s = 12.7 s per position):
+  engine move   n   top-1  top-3  reasoned  silent  Maia-1500 top-1
+  quiet        68    10%    22%     19%      31%      40%
+  capture      24    58%    67%     67%      12%      83%
+  check         8    12%    12%     12%      50%      38%
+  all         100    22%    32%     30%      28%      50%
+Reading: on captures the reasoning agrees with the engine 58% top-1 and names the move in 67% of cases; on quiet
+moves it names the move in 19% and is silent (nothing positive to say) in 31%; overall 22% top-1 against Maia's
+50%. Consistent with the mining number (6% of quiet best moves served by the agenda) and with the interior
+experiment (the engine's residual is quiet moves): the tactical vocabulary is about a third of what the engine
+plays, and the quiet two thirds are the trajectory system's. Cost note: 12.7 s per position is dominated by the
+goal searches (three targets, budget 120, engine-judged). One-off harness scar: the first run's report sat in an
+unflushed stdout buffer while an unclosed Maia process kept the interpreter alive at exit; flush and close fixed.
