@@ -21846,3 +21846,29 @@ complete, the reasoning as the ordering -- solves the tactics: every mate class 
 attacks, deflections, skewers, attractions, double checks and trapped pieces above 90%, sacrifices 85%. The
 misses are the ending technique and the quiet moves Kaveh assigned to the other system. Cost 20 s a position at
 these budgets; the slow cases are positions with many forcing moves (the depth-3 search per candidate).
+
+## 2026-09-08 15:36 PDT — the full solution line: 500 puzzles, every move of ours
+
+Kaveh: "why don't we try the rest of the solution line?" `gauge_rank` now plays the opponent's reply from the
+solution after a correct first move and ranks our next move in turn, to the end; a puzzle is FULLY solved only
+when every move of ours is found (each ranking is one try, no retries). Run in four shards with private engine
+caches (the same 500 puzzles as the morning run, seed 7, rated <=2200; 2600 s wall, ~40 s per puzzle of ours).
+OBS: first move solved 418/500 (84%, the morning run said 422: the judge's margins); FULLY solved 377/500 (75%);
+named 431; silent 46. Puzzles with more than one move of ours 410: first move found 330, fully solved 289 (70%).
+Failures after a correct first move 41: at our move 2: 27, move 3: 13, move 4: 1. By moves of ours in the
+solution: one move 88/90; two 217/270 (80%); three 68/118 (58%); four 4/15; five or more 0/7.
+  by rating (first / fully): 400-799 96/96%; 800-1199 95/92%; 1200-1599 85/76%; 1600-1999 70/56%; 2000-2399 57/38%.
+  by theme (first / fully): mate 98/95% (184); mateIn2 100/94% (79); mateIn3 100/93% (14); backRankMate 100/95%;
+  fork 93/84% (68); skewer 94/94% (17); pin 88/85%; discoveredAttack 92/85%; deflection 95/82%; attraction 88/81%;
+  sacrifice 82/79% (34); kingsideAttack 91/87%; opening 96/91%; middlegame 89/79% (231); endgame 77/71% (246);
+  weak: veryLong 55/18% (22), quietMove 39/17%, defensiveMove 56/17%, pawnEndgame 38/21%, advancedPawn 36/32%,
+  rookEndgame 57/52%, hangingPiece 100/69% (the first move is trivial, the follow-up is technique).
+  Of the 41 later failures, 11 are our move equalling the solution with a zero or negative score (counted as
+  failures by the rule: a correct move the reasoning cannot justify is not a solve) and 6 are a DIFFERENT mate in
+  one (correct in chess, wrong against the key); 13 of those 17 were the line's last move. Same on the first move:
+  8 unscored-correct and 2 alternative mates among the 82 misses.
+Reading: the tactical layer holds through the line where the line is tactics (mates 95% fully, forks 84%,
+skewers 94%, deflections 82%); the drop from first-move to fully-solved is concentrated in long lines whose
+later moves are technique (very long 18%, quiet 17%, defensive 17%) and in 2000+ puzzles (38%). The two
+scoring artefacts (unscored-correct, alternative mates) are 27 puzzles across first and later moves; a Lichess
+scorer accepts alternative mates, ours does not, by choice: the line must be justified, not merely matched.
