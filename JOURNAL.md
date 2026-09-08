@@ -21818,3 +21818,31 @@ The tactical layer is where Kaveh pointed it: mates, forks, pins, skewers, defle
 two-move combinations by generic definitions -- the rules' outcome, the ledger's prices, replies complete -- with
 nothing named. Not done: three-move combinations (deepen the alpha-beta with the node cap as the budget), the
 quiet endgame technique (the trajectory system's), a second seed per set (single runs: directional).
+
+## 2026-09-08 11:15 PDT — the combination search three deep, and 500 puzzles
+
+Kaveh: no second seed, more puzzles; but first deepen the search, guided by the systems we have. `rank.forcing_gain`
+now searches three of our moves deep with the reasoning as the guide: our candidates are the forcing moves in the
+LEDGER'S order (captures by the exchange with the attackers' test, checks by fewest replies, attacks by the value
+attacked), the opponent's replies stay complete, the leaf is the ledger's best capture with no standing pat in
+check, a transposition table inside the call, iterative deepening one-two-three deep with the node cap (2500) as
+the budget and the deepest completed depth as the answer. "Rxf1+ Kg2 Rf2+ Kh3 Rh2#" is found as a combination
+(2.0 s); "Qh1+ Bf1 Qxf1#" by the terminal goal. OBS (gauge_rank, 500 random puzzles rated <=2200, seed 7, budget
+100, judge depth 6; 9908 s = 19.8 s each, single run):
+  solved (top-1, positive score) 422/500 = 84%; in our top-3 440; named 436 (87%); silent 43 (9%).
+  the top move equals the solution regardless of score 430/500; 8 of those were counted unsolved for a zero or
+  negative score; in 3 more our move was a different mate in one.
+  by the solution move: check 92% (221), capture 90% (182), quiet 56% (97).
+  by rating: 400-799 96% (47), 800-1199 94% (165), 1200-1599 86% (133), 1600-1999 74% (114), 2000-2399 57% (40).
+  by theme (n>=13): mate 98% (184), mateIn1 97%, mateIn2 100% (79), mateIn3 100% (14), backRankMate 100%, fork 94%
+  (68), discoveredAttack 96% (26), deflection 95% (22), skewer 94% (17), attraction 94% (16), trappedPiece 100%
+  (9), doubleCheck 100% (8), pin 88% (26), sacrifice 85% (34), kingsideAttack 93%, middlegame 91% (231), endgame
+  77% (246); weak: pawnEndgame 38% (24, silent 58%), advancedPawn 36% (25), zugzwang 14% (7), quietMove 39% (18),
+  defensiveMove 56% (18), rookEndgame 57% (23), veryLong 59% (22), promotion 50% (8).
+  when wrong: silent 43 (king moves and pawn moves in endings: Kh3, Kb5, Kf5, h5, fxg6 -- technique, the trajectory
+  system's), a planner's promise 13, a shorter combination 5, a different mate 3.
+Reading: the tactical vocabulary by generic definitions -- the rules' outcome, the ledger's prices, replies
+complete, the reasoning as the ordering -- solves the tactics: every mate class at 97-100%, forks, discovered
+attacks, deflections, skewers, attractions, double checks and trapped pieces above 90%, sacrifices 85%. The
+misses are the ending technique and the quiet moves Kaveh assigned to the other system. Cost 20 s a position at
+these budgets; the slow cases are positions with many forcing moves (the depth-3 search per candidate).

@@ -542,3 +542,9 @@ forks 73%, sacrifices 100%. 100 puzzles rated 1200-2200: 77 solved before the la
 1600-1999 72%, 2000-2399 43%; mate and fork 100%, pin 91%, sacrifice 82%; advanced pawns 50%, promotion 33%,
 very long 44%). What remains is quiet technique (Kf2, b5, d7) and combinations three of our moves deep. Costs:
 7-10 s per position, dominated by the goal searches. The numbers are single runs on 100 puzzles: directional.
+Deepened 2026-09-08: the combination search runs three of our moves deep, guided by the reasoning (the ledger's
+order for our candidates, replies complete, a transposition table, iterative deepening with the node cap as the
+budget). 500 random puzzles rated <=2200: 84% solved outright, 87% named, 9% silent; every mate class 97-100%;
+forks, discovered attacks, deflections, skewers, attractions, double checks, trapped pieces above 90%; sacrifices
+85%; the misses are pawn endings, zugzwang and quiet technique (the trajectory system's), and 2000+ combinations
+beyond three of our moves. See the JOURNAL entry for the full table.
