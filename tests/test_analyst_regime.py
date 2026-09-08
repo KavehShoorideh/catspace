@@ -19,7 +19,8 @@ def test_the_rook_ending_splits_into_a_locked_queenside_and_a_won_kingside():
     assert {chess.F6, chess.G3, chess.H5, chess.C4} <= k.pieces and k.shared == {chess.C4} and k.men == 4 and k.solved == "loss"
     assert dec.verdict.startswith("loss for White")
     assert any("out of play" in l for l in dec.lines) and any("Leave it as it is" in l for l in dec.lines)
-    assert any("serves both sides" in l and "tablebase: loss for White" in l for l in dec.lines)
+    assert any("with the black rook on c4" in l and "tablebase: loss for White" in l for l in dec.lines)
+    assert not any(w in l for l in dec.lines for w in ("queenside", "kingside"))    # named by its pieces, never by a wing
     # the white king's cone stays inside the f-pawn's square: no square west of the d-file within 3 moves
     assert all(chess.square_file(s) >= 3 for s in dec.cones[chess.G3])
     # the a4 rook has no cone at all

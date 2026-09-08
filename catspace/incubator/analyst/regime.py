@@ -470,7 +470,7 @@ def decompose(board: chess.Board, memo: Memo | None = None, horizon: int = 3, en
     dec = Decomposition(subgames, lemmas, cones, races, horizon)
     live = [g for g in subgames if not g.frozen and g.lemmas]
     if len(live) == 1 and live[0].solved:
-        dec.verdict = (f"{live[0].solved} for {'White' if board.turn else 'Black'} (the live game by tablebase, the locked side set aside)" if dec.split
+        dec.verdict = (f"{live[0].solved} for {'White' if board.turn else 'Black'} (the live game by tablebase, the locked sub-game set aside)" if dec.split
                        else f"{live[0].solved} for {'White' if board.turn else 'Black'} (tablebase)")
     if engine is not None:
         try:
@@ -490,17 +490,16 @@ def _pc(board: chess.Board, sq: int) -> str:
     return pc(p.symbol(), sq) if p else chess.square_name(sq)
 
 
-def _files(board: chess.Board, pieces: set[int]) -> str:
-    fs = sorted(chess.square_file(s) for s in pieces if board.piece_at(s) and board.piece_at(s).piece_type != chess.KING) or \
-         sorted(chess.square_file(s) for s in pieces)
-    if not fs:
-        return "the board"
-    mid = fs[len(fs) // 2]
-    if fs[-1] <= 3:
-        return "the queenside"
-    if fs[0] >= 4:
-        return "the kingside"
-    return "the queenside" if mid <= 3 else "the kingside"
+def _name(board: chess.Board, g: SubGame) -> str:
+    """A sub-game is named by what is in it, nothing else: its white pieces against its black pieces, the pieces it
+    shares with another sub-game marked. No wing, no file range: the structure is the computed component."""
+    def side(color):
+        sqs = sorted((s for s in g.pieces if board.piece_at(s) and board.piece_at(s).color == color and s not in g.shared),
+                     key=lambda s: (-value(board, s) if not R.is_royal(board, s) else -99, s))
+        return " ".join(board.piece_at(s).symbol().upper().replace("P", "") + chess.square_name(s) for s in sqs)
+    w, b = side(chess.WHITE), side(chess.BLACK)
+    shared = ", ".join(_pc(board, s) for s in sorted(g.shared))
+    return f"{w or 'nothing'} v {b or 'nothing'}" + (f" (with {shared})" if shared else "")
 
 
 def narrate(board: chess.Board, dec: Decomposition) -> list[str]:
@@ -512,7 +511,7 @@ def narrate(board: chess.Board, dec: Decomposition) -> list[str]:
     for g in dec.subgames:
         if not g.lemmas:
             continue
-        region = _files(board, g.pieces)
+        region = _name(board, g)
         bits = []
         for l in g.lemmas:
             k = getattr(l, "kind", "")
@@ -528,13 +527,11 @@ def narrate(board: chess.Board, dec: Decomposition) -> list[str]:
         if g.frozen:
             res = ", ".join(f"{'White' if k == 'w' else 'Black'} {n}" for k, n in g.reservoir.items())
             lose = "; ".join(f"{'White' if k == 'w' else 'Black'}: {', '.join(v)} loses" for k, v in g.losing.items() if v)
-            out.append(f"{region[0].upper() + region[1:]}: locked" + (f" ({'; '.join(bits)})" if bits else "") + f". Waiting moves: {res}." + (f" {lose}." if lose else "") + " Leave it as it is.")
+            out.append(f"Sub-game {region}: locked" + (f" ({'; '.join(bits)})" if bits else "") + f". Waiting moves: {res}." + (f" {lose}." if lose else "") + " Leave it as it is.")
         else:
-            head = f"{region[0].upper() + region[1:]}: the live game"
-            if g.shared:
-                head += f" ({', '.join(_pc(board, s) for s in sorted(g.shared))} serves both sides)"
+            head = f"Sub-game {region}: the live game"
             if g.solved:
-                head += (f" -- with the locked side set aside it is {g.men} men, tablebase: {g.solved} for {who}" if dec.split
+                head += (f" -- with the locked sub-game set aside it is {g.men} men, tablebase: {g.solved} for {who}" if dec.split
                          else f" -- {g.men} men, tablebase: {g.solved} for {who}")
             out.append(head + (f" ({'; '.join(bits)})" if bits else "") + ".")
     if dec.split:
