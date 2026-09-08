@@ -270,6 +270,8 @@ function renderPanel(){
   if(p.holds&&p.holds.length)lines+=`<div class="lrow"><span class="pill">what holds for ${who}</span> ${p.holds.map(esc).join(" · ")}</div>`;
   if(p.regime&&p.regime.length)lines+=`<div class="lrow"><span class="pill">sub-games</span>${p.regime.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;
   if(p.ideas&&p.ideas.length)lines+=`<div class="lrow"><span class="pill">ideas for ${who}, by need</span>${p.ideas.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;
+  if(p.reply_judged&&p.reply_judged.length)lines+=`<div class="lrow"><span class="pill">against the standing threat</span>${p.reply_judged.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;
+  if(p.threatens&&p.threatens.length)lines+=`<div class="lrow"><span class="pill">${esc(p.san)} threatens</span>${p.threatens.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;
   if(p.horizon)lines+=`<div class="lrow"><span class="pill">horizon</span> ${esc(p.horizon)}</div>`;
   L.innerHTML=lines;
   L.querySelectorAll(".ply").forEach(s=>s.onclick=()=>showLinePosition(s.dataset.fen,s.dataset.label));

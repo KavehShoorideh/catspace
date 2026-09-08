@@ -39,6 +39,7 @@ from .plans import plans_for, plan_text
 from .subgames import holdings_lines
 from .regime import regime_lines
 from .needs import idea_lines
+from .threats import threats_after, judge_reply
 from .goal_search import pursue, result_text
 from .verbalize import cp_str, render, best_fact, motif_phrase, delta_str
 from .horizon import winp
@@ -131,6 +132,7 @@ class Analyst:
         moves = list(game.mainline_moves())
         board = game.board(); boards, sans = [board.copy()], []
         plies = []
+        standing = []
         for i, mv in enumerate(moves):
             us = board.turn
             lad = {r: self.maias[r].policy(board) for r in RATINGS}
@@ -162,11 +164,19 @@ class Analyst:
                 "holds": holdings_lines(board, us, memo=self.memo),
                 "regime": regime_lines(board, memo=self.memo),
                 "ideas": idea_lines(board, us, memo=self.memo, top=3),
+                "threatens": [], "reply_judged": [],
                 "p_played": {str(k): round(v * 100) for k, v in row["p_played"].items()},
                 "p_best": {str(k): round(v * 100) for k, v in row["p_best"].items()},
                 "cause": (row.get("cause") or {}).get("cause"), "horizon": row.get("horizon_text", ""),
                 "refutation": row.get("refutation"), "computer_move": row.get("computer_move", False),
             }
+            try:
+                if standing:
+                    ply["reply_judged"] = judge_reply(standing, board, mv)
+                standing = threats_after(board, mv, self.memo, self.eng, budget=120)
+                ply["threatens"] = [f"{t.text}: they must " + ", ".join(list(t.defences)[:5]) + (" ..." if len(t.defences) > 5 else "") for t in standing]
+            except Exception:
+                standing = []
             plies.append(ply)
             sans.append(board.san(mv)); board.push(mv); boards.append(board.copy())
             progress(i + 1, len(moves), plies)

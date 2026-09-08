@@ -144,6 +144,7 @@ class Planner:
         self.expanded = 0
         self.held = holdings(self.board, self.memo)
         self.trace: list[str] = []
+        self.unreachable: set = set()             # reach needs with no geometric path at all: impossible, not sub-goals
 
     # ---- costs
     def move_cost(self, board: chess.Board, m: chess.Move) -> tuple[float, list[str]]:
@@ -204,6 +205,8 @@ class Planner:
         if line.best is None:
             line.status = "given_up"
             line.reason = "no way" if not ways else ("no way that pays" if any(w.met for w in ways) else "every way needs something we cannot get")
+            if need in self.unreachable:
+                line.reason = "unreachable"
         self.trace.append("  " * depth + self.line_text(line, short=True))
         return line
 
@@ -237,6 +240,22 @@ class Planner:
                     c, why = self.move_cost(b, pl.steps[0].move)
                     out.append(Way([pl.steps[0].move], pl.steps[0].san, "it falls now", gain=max(d.see, 0.5), cost=c, hops=1, costs=why,
                                    after=self.played(b, [pl.steps[0].move]), boards=[b]))
+            return out
+        if not self.stuck(b, t):
+            # it would simply step away: first make it stuck -- pin it to something it must not expose -- then attack it
+            for sq, kinds in self.pin_squares(b, t):
+                for psq, pp in sorted(b.piece_map().items(), key=lambda kv: value(b, kv[0])):
+                    if pp.color != self.side or pp.piece_type not in kinds or psq == sq:
+                        continue
+                    sub1 = self.plan(Need("reach", sq, piece=psq), b, depth + 1, ex)
+                    if sub1.best is None or sub1.after is None or not self.stuck(sub1.after, t):
+                        continue
+                    sub2 = self.plan(Need("win", t, piece=sq), sub1.after, depth + 1, ex)
+                    w = Way([], "", f"pin it first ({chess.piece_name(pp.piece_type)} on {chess.square_name(sq)})", [sub1, sub2],
+                            gain=sub2.best.gain if sub2.best else 0.0, hops=len(sub1.steps()) + len(sub2.steps()), after=sub2.after)
+                    out.append(w)
+                    if w.met:
+                        return out
             return out
         for f in flip_conditions(b, t, self.side, memo=self.memo):
             if f.kind == "add_attacker":
@@ -290,6 +309,7 @@ class Planner:
                 return out
         geo = self.geometric_path(b, psq, sq, 3)
         if geo is None:
+            self.unreachable.add(need)
             return out
         unsafe = next((s for s in geo if self.unsafe(b, psq, s)), None)
         if unsafe is None:
@@ -400,9 +420,56 @@ class Planner:
                     return m
         return None
 
+    def pin_squares(self, b: chess.Board, t: int) -> list[tuple[int, tuple]]:
+        """Squares from which a slider of ours would pin the piece on t against something it must not expose: the
+        enemy king, or a piece worth more, on a line through t with nothing between. Returns (square, slider types)."""
+        out = []
+        tv = value(b, t)
+        for q, qp in b.piece_map().items():
+            if qp.color == b.piece_at(t).color and q != t and (R.is_royal(b, q) or value(b, q) > tv):
+                ray = chess.ray(q, t)
+                if not ray or any(b.piece_at(x) for x in chess.SquareSet.between(q, t)):
+                    continue
+                straight = chess.square_file(q) == chess.square_file(t) or chess.square_rank(q) == chess.square_rank(t)
+                kinds = (chess.ROOK, chess.QUEEN) if straight else (chess.BISHOP, chess.QUEEN)
+                df = (chess.square_file(t) > chess.square_file(q)) - (chess.square_file(t) < chess.square_file(q))
+                dr = (chess.square_rank(t) > chess.square_rank(q)) - (chess.square_rank(t) < chess.square_rank(q))
+                f, r = chess.square_file(t) + df, chess.square_rank(t) + dr
+                while 0 <= f < 8 and 0 <= r < 8:
+                    sq = chess.square(f, r)
+                    if b.piece_at(sq) is not None:
+                        break
+                    out.append((sq, kinds))
+                    f += df; r += dr
+        return out
+
+    def stuck(self, b: chess.Board, t: int) -> bool:
+        """Can the piece on t not step away to safety? Pinned pieces and pieces with no safe square are stuck; a
+        pawn is stuck when its advance is blocked or unsafe."""
+        p = b.piece_at(t)
+        bb = b.copy(stack=False); bb.turn = p.color
+        for m in bb.legal_moves:
+            if m.from_square != t or bb.is_capture(m):
+                continue
+            nb = bb.copy(stack=False); nb.push(m)
+            d = defense(nb, m.to_square, memo=self.memo)
+            if d is None or not d.falls:
+                return False
+        return True
+
     def attack_squares(self, b: chess.Board, psq: int, t: int) -> list[int]:
-        """Squares from which the piece on psq would attack t, nearest by geometry first."""
+        """Squares from which the piece on psq would attack t, nearest by geometry first. A pawn only from a square
+        it can actually advance to: on its own file, ahead of it, diagonally behind the target."""
         p = b.piece_at(psq); out = []
+        if p.piece_type == chess.PAWN:
+            f, r = chess.square_file(psq), chess.square_rank(psq)
+            tf, tr = chess.square_file(t), chess.square_rank(t)
+            ahead = tr - 1 if p.color == chess.WHITE else tr + 1
+            if abs(tf - f) == 1 and 0 <= ahead < 8 and ((ahead > r) if p.color == chess.WHITE else (ahead < r)):
+                sq = chess.square(f, ahead)
+                if b.piece_at(sq) is None:
+                    return [sq]
+            return []
         for sq in chess.SQUARES:
             if sq == t or (b.piece_at(sq) is not None and sq != psq):
                 continue
@@ -643,6 +710,72 @@ def ideas_for(board: chess.Board, side: chess.Color, memo=None, engine=None, top
     return out[:top]
 
 
+# ---------------------------------------------------------------- the agenda: when nothing is threatened, what to work toward
+@dataclass
+class SubGoal:
+    need: Need
+    text: str
+    unlocks: list[tuple[int, float]] = field(default_factory=list)    # (target, gain) of the trees this precondition blocks
+    reason: str = ""
+
+    @property
+    def worth(self) -> float:
+        return sum(g for _, g in self.unlocks)
+
+
+def frontier(line: Line) -> list[tuple[Need, str]]:
+    """The needs a given-up tree died on: the deepest given-up needs along its explored ways (the differences between
+    here and a threat, in means-ends terms)."""
+    if line.best is not None:
+        return []
+    out = []
+    for w in line.ways:
+        for s in w.subs:
+            out += frontier(s)
+    if not out and line.reason not in ("unreachable", "circular", "too deep", "budget"):
+        out.append((line.need, line.reason))
+    return out
+
+
+def agenda(board: chess.Board, side: chess.Color, memo=None, top: int = 5, budget: int = 30) -> list[SubGoal]:
+    """Run the need tree for every enemy target; the ones that give up name the precondition they died on. Rank
+    those preconditions by what they would unlock (the gains of the trees they block). No rule says 'develop' or
+    'take the centre': a back-rank piece that keeps failing to reach, or a central square that keeps failing to be
+    safe, rises by the count."""
+    b = board.copy(stack=False); b.turn = side
+    memo = memo if memo is not None else Memo()
+    items: dict[Need, SubGoal] = {}
+    for t, tp in sorted(b.piece_map().items(), key=lambda kv: -value(b, kv[0])):
+        if tp.color == side or R.is_royal(b, t):
+            continue
+        pl = Planner(b, side, memo, budget=budget)
+        line = pl.plan(Need("win", t))
+        if line.best is not None:
+            continue                                           # a live idea, not an agenda item
+        gain = value(b, t)
+        for need, reason in frontier(line):
+            if need.kind == "win" and need.square == t:
+                continue                                       # the root itself: nothing named
+            sg = items.get(need)
+            if sg is None:
+                sg = items[need] = SubGoal(need, need.text(b), reason=reason)
+            if not any(x == t for x, _ in sg.unlocks):
+                sg.unlocks.append((t, gain))
+    out = sorted(items.values(), key=lambda sg: (-sg.worth, -len(sg.unlocks)))
+    return out[:top]
+
+
+def agenda_lines(board: chess.Board, side: chess.Color, memo=None, top: int = 4) -> list[str]:
+    try:
+        out = []
+        for sg in agenda(board, side, memo, top):
+            un = ", ".join(f"{chess.piece_name(board.piece_at(t).piece_type)} on {chess.square_name(t)} ({g:g})" for t, g in sg.unlocks[:3])
+            out.append(f"{sg.text[0].upper() + sg.text[1:]} -- would unlock: {un}" + (f"; today: {sg.reason}" if sg.reason and sg.reason != "no way" else ""))
+        return out
+    except Exception:
+        return []
+
+
 def idea_lines(board: chess.Board, side: chess.Color, memo=None, top: int = 3) -> list[str]:
     """The idea loop as prose: 'Bb5 (it is undeveloped): win the knight on c6 -- ... they are in time.'"""
     try:
@@ -658,7 +791,7 @@ def idea_lines(board: chess.Board, side: chess.Color, memo=None, top: int = 3) -
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--fen", required=True); ap.add_argument("--target", default=""); ap.add_argument("--engine", action="store_true")
-    ap.add_argument("--ideas", action="store_true")
+    ap.add_argument("--ideas", action="store_true"); ap.add_argument("--agenda", action="store_true")
     a = ap.parse_args(argv)
     b = chess.Board(a.fen)
     eng = None
@@ -671,9 +804,12 @@ def main(argv=None):
         if line.verification:
             print("verify:", line.verification)
         print(f"[needs] {pl.expanded} needs expanded")
-    if a.ideas or not a.target:
+    if a.ideas or not (a.target or a.agenda):
         for m, reason, line in ideas_for(b, b.turn, Memo(), eng):
             bb = b.copy(); print(f"{bb.san(m)} ({reason}): {Planner(b, b.turn).line_text(line)}")
+    if a.agenda:
+        for l in agenda_lines(b, b.turn, Memo(), top=6):
+            print("agenda:", l)
     if eng:
         eng.close()
 

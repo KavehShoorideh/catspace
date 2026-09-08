@@ -103,8 +103,21 @@ def main(argv=None):
         if args.json:
             print(json.dumps([asdict(r) for r in recs], default=_json, indent=1))
         else:
+            standing = []
             for r in recs:
                 print(render(r, long=args.long, alternatives=not args.quiet))
+                if args.long and r.played:                                    # the standing threat: what the move threatens, and how it met the last one
+                    from .threats import threats_after, judge_reply
+                    b0 = chess.Board(r.fen); mv = chess.Move.from_uci(r.played.uci)
+                    try:
+                        if standing:
+                            for l in judge_reply(standing, b0, mv):
+                                print(f"  Against the standing threat: {l}")
+                        standing = threats_after(b0, mv, None, eng, budget=120)
+                        for t in standing:
+                            print(f"  {r.played.san} threatens {t.text}: they must " + ", ".join(list(t.defences)[:5]) + (" ..." if len(t.defences) > 5 else ""))
+                    except Exception:
+                        standing = []
         n = len(recs); dt = time.perf_counter() - t0
         print(f"[analyst] {n} positions in {dt:.1f}s ({dt/max(n,1):.1f}s/pos) | engine calls {eng.calls}, cache hits {eng.hits}", file=sys.stderr)
 
