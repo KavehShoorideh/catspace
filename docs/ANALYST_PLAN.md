@@ -563,3 +563,36 @@ nothing the ledger names differs, it says the difference is positional. Partners
 best when they differ; the best against Maia-1800's top move when that differs. In the CLI long render ("By
 contrast [played against best] ...") and the app ("by contrast"). Not done: the reply that refutes a move that
 creates a threat (Qh5 creates Qxf7#, and g6 refutes it with tempo) as its own sentence.
+
+
+## 31. The plan layer: the interaction graph, focus, and learning on the knowledge (Kaveh 2026-09-09)
+
+The morning's discussion fixed the programme and three design decisions:
+
+1. **The interaction graph is the one object.** Every module's facts are readings of one graph per position, computed
+   by the four generic operators (the exchange on a square, counterfactual removal, the free move, shortest paths on
+   the move graph). Values and judgment do NOT come from the graph: they are the planner's, learned from outcomes.
+   The hand-written residue is the vocabulary of names (pin, fork, skewer), the planner's need kinds (provably edge
+   edits of the graph), two geometric shortcuts (the rule of the square, the king zone) and the constants.
+   `graph.py`: 43 node answers, 17 pair relations, 39 position indicators; zones = lemma components with a
+   temperature (the combinatorial-game answer to 'which sub-game first': the hottest).
+2. **Approach B is a transformer whose inputs are the rules' answers and whose output is a sum of named senses.**
+   Precedent: KataGo's rule-computed ladder planes, Giraffe's attack maps, Graphormer's node and edge encodings,
+   Leela's learned pair bias (here computed from the rules), Backpack language models (output = weighted sum of
+   sense vectors, so a representation is decomposable by construction). Approach A is the same network with the
+   answers zeroed (identity and square only) -- one code path, a switch, and the required control for free.
+   The trajectory loss calibrates d(phi_t -> phi_{t+k}) to k plies against cross-game negatives and never names
+   pawns, so the asymmetry test (reverse distance after pawn moves vs piece moves) is honest.
+3. **Three experts and a gate blind to the board.** A, B and the rules ranking C score every legal move; the gate sees
+   only named context (the position indicators + whether C speaks) so its weights mean 'trust X here'. Before the
+   gate: each expert alone, the per-position oracle (the bound on any gate), a fixed blend. After: the scenario
+   table (mean weights by indicator).
+
+Measured on day one (OBS): focus -- with two zones or more the engine's best move touches the hottest zone 63%
+(largest 60%, random 45%, previous best move's zone 48%, any zone 80%); persistence 69-71%; 29% of quiet best
+moves touch no sub-game. Item 6 is sized by this: a zone-first ORDER with a budget (never a filter) in `pursue`,
+behind `score_moves(zone_first=True)`; the cross-ply memory helps the static facts only (the free-move ledger's
+reply loops are scratch boards), so the incremental gain went into the search itself: the goal search carries the
+parent's exchange ledger and recomputes only where the move's squares touch a footprint (3.4x on a quiet
+middlegame, same scores). `track.py` is the cross-ply ledger (executed / created / parried / left; the action
+stays or moves).
