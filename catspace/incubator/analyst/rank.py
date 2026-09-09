@@ -132,14 +132,16 @@ def attacking_moves(board: chess.Board) -> list[chess.Move]:
     return out
 
 
-def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None) -> float:
+def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None, base=None, changed: int = 0) -> float:
     """Our node at the bottom of a combination: the count so far plus the ledger's best capture, unless we are in
-    check -- then the best evasion against their best capture after it (no standing pat in check)."""
+    check -- then the best evasion against their best capture after it (no standing pat in check). `base` is a
+    ledger computed before the last move with the footprint of every entry; only the entries whose footprint the
+    move touched (`changed`) are recomputed -- exact by the store's own validity rule."""
     from .regime import _best_capture
     if b.is_game_over():
         oc = b.outcome(); return 1000.0 if oc and oc.winner == side else 0.0
     if not b.is_check():
-        return net + _best_capture(b, side, set(chess.scan_forward(b.occupied)), memo)
+        return net + _best_capture(b, side, set(chess.scan_forward(b.occupied)), memo, base=base, changed=changed)
     best = None
     for ev in b.legal_moves:
         nb = b.copy(stack=False); nb.push(ev)
@@ -151,6 +153,38 @@ def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None) -> floa
         if best is None or v > best:
             best = v
     return best if best is not None else net
+
+
+def base_ledger(board: chess.Board, side: chess.Color) -> dict | None:
+    """The defence of every enemy piece with `side` to move and the footprint each read, for incremental reuse
+    across the opponent's replies (None when no static ledger exists: the enemy is in check)."""
+    from .defense import _defense
+    from .memo import Reads
+    b = board.copy(stack=False); b.turn = side
+    if not b.is_valid() or b.is_check():
+        return None
+    out = {}
+    for s in chess.scan_forward(b.occupied):
+        p = b.piece_at(s)
+        if p.color == side or R.is_royal(b, s):
+            continue
+        reads = Reads(); d = _defense(b, s, reads)
+        out[s] = (d, reads.mask)
+    return out
+
+
+def changed_squares(board: chess.Board, move: chess.Move) -> int:
+    """The squares whose occupancy the move changes (origin, destination, the pawn taken en passant, the castling rook)."""
+    m = chess.BB_SQUARES[move.from_square] | chess.BB_SQUARES[move.to_square]
+    if board.is_en_passant(move):
+        m |= chess.BB_SQUARES[move.to_square + (-8 if board.turn == chess.WHITE else 8)]
+    if board.is_castling(move):
+        rank = chess.square_rank(move.from_square)
+        if chess.square_file(move.to_square) > chess.square_file(move.from_square):
+            m |= chess.BB_SQUARES[chess.square(7, rank)] | chess.BB_SQUARES[chess.square(5, rank)]
+        else:
+            m |= chess.BB_SQUARES[chess.square(0, rank)] | chess.BB_SQUARES[chess.square(3, rank)]
+    return m
 
 
 def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False) -> tuple[float, str]:
@@ -165,13 +199,13 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
         oc = nb.outcome()
         return (1000.0, "wins by the rules") if oc and oc.winner == side else (0.0, "")
     worst = None; worst_reply = None
-    pieces = set(chess.scan_forward(nb.occupied))
+    base = base_ledger(nb, side)
     for r in nb.legal_moves:
         took = capture_gain_of(nb, r, not side, memo) if nb.is_capture(r) else 0.0
         if took < 0:
             took = 0.0                                          # a losing capture: they would not
         after = nb.copy(stack=False); after.push(r)
-        net = leaf_value(after, side, first - took, memo)
+        net = leaf_value(after, side, first - took, memo, base=base, changed=changed_squares(nb, r))
         if worst is None or net < worst:
             worst, worst_reply = net, r
     if worst is None:

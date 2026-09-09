@@ -215,7 +215,7 @@ class Memo:
         try:
             yield acc
         finally:
-            self._rec.remove(acc)
+            self._rec = [a for a in self._rec if a is not acc]      # by identity: nested accumulators can hold equal masks
 
     def _record(self, mask: int):
         for acc in self._rec:

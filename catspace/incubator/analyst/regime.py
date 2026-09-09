@@ -264,9 +264,10 @@ def region_moves(board: chess.Board, pieces: set[int], side: chess.Color) -> lis
     return [m for m in b.legal_moves if m.from_square in pieces and (not b.is_capture(m) or m.to_square in pieces)]
 
 
-def _best_capture(board: chess.Board, side: chess.Color, pieces: set[int], memo=None) -> float:
+def _best_capture(board: chess.Board, side: chess.Color, pieces: set[int], memo=None, base=None, changed: int = 0) -> float:
     """The best profitable capture `side` has on the region's pieces right now, by the ledger (the attackers that
-    count only), or 0."""
+    count only), or 0. With `base` (rank.base_ledger before the last move) and `changed` (the squares that move
+    touched), an entry whose footprint the move did not touch is reused as it stands."""
     best = 0.0
     b = board.copy(stack=False); b.turn = side
     if b.is_check():
@@ -275,7 +276,10 @@ def _best_capture(board: chess.Board, side: chess.Color, pieces: set[int], memo=
         p = board.piece_at(s)
         if p is None or p.color == side or R.is_royal(board, s):
             continue
-        d = defense(b, s, memo=memo)
+        if base is not None and s in base and not (base[s][1] & changed):
+            d = base[s][0]
+        else:
+            d = defense(b, s, memo=memo)
         if d is not None and d.falls and d.see > best:
             best = d.see
     return best

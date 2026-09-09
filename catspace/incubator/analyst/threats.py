@@ -222,11 +222,30 @@ def free_move_threats(board: chess.Board, side: chess.Color, memo=None, top: int
     for m in attacking_moves(b):
         if m in mates:
             continue
+        if not pass_gain(b, m, memo):
+            continue
         g, why = sure_gain(b, m, memo)
         if g > 0:
             out.append((m, g, why))
     out.sort(key=lambda x: -x[1])
     return out[:top]
+
+
+def pass_gain(board: chess.Board, m: chess.Move, memo=None) -> bool:
+    """The cheap gate before the reply-minimum: after the move, with the opponent PASSING, does the ledger give the
+    mover anything (the capture's own exchange plus the best capture then available)? A move that wins nothing even
+    against a pass is not a threat; the minimum over real replies is only taken for the survivors. A move that
+    gives check (no pass exists) or ends the game passes the gate."""
+    from .regime import capture_gain, _best_capture
+    side = board.turn
+    first = capture_gain(board, m, side, memo) if board.is_capture(m) else 0.0
+    nb = board.copy(stack=False); nb.push(m)
+    if nb.is_game_over() or nb.is_check():
+        return True
+    nb.turn = side
+    if not nb.is_valid():
+        return True
+    return first + _best_capture(nb, side, set(chess.scan_forward(nb.occupied)), memo) > 0
 
 
 def threat_ledger(board: chess.Board, memo=None, top: int = 4) -> dict:
