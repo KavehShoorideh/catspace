@@ -21946,3 +21946,26 @@ regime indicators at +10 and +20 plies, eight shards, ~1.2 s a position (started
 written and unit-tested (decomposition exact by hand recomputation, padding inert, quasimetric zero on itself and
 directed with the triangle inequality, policy logits only on legal moves, all three variants run); smoke-trained
 two epochs on 125 positions end to end.
+
+## 2026-09-09 12:13 PDT — the incremental ledger inside the search, and the focus prior measured on puzzles
+
+Profiling the ranking on a quiet middlegame under load: 260 s, of which the goal search's material predicate
+(every piece's exchange ledger at every node) was 200 s. The goal search now carries the parent's ledger and
+recomputes only the entries whose footprint the move's squares touch (`changed_squares`, the same validity rule
+as the store): 78 s under the same load, same scores; 30 puzzles re-run with the old per-puzzle results in hand:
+28 identical, the two that differ come from the code changes since those runs (one is now solved). The
+cross-ply memory itself was measured too: warm and cold memos cost the same along a game (1.0-1.7 s a position)
+because 85% of the graph's cost is the free-move ledgers' reply loops on scratch boards, which no earlier ply
+can serve; the memo now keeps entries most-recently-used first (cap 16) so the real positions' facts survive the
+scratch flood, and that is where the static facts' reuse lives.
+The focus prior (`pursue(zones=...)`: the hottest zone's targets first, the rest at half budget; behind
+`--zone-first`) on 100 Lichess puzzles 1200-2200, seed 5, first move only, OBS: 80/100 solved with and without
+it, the same top move on every puzzle, 20.7 s against 21.2 s each. Reading: on puzzles there is one hot zone
+and the ledger's own order (falls, joinable, value) already puts its targets first, so the prior reorders
+nothing; the code path was verified to fire (a middlegame with one zone at temperature 0: the piece outside the
+zone got half the budget). Where focus would matter -- quiet middlegames with two zones or more, 34% of
+positions -- the proofs rarely succeed either way, so the prior is kept as an ordering and not counted as a gain.
+`track.py`: the ledger across plies (executed / created / parried / left; the action stays or moves, zones
+named by their pieces). On the latest game's first 24 plies: the move stayed in the previous fight 6/15;
+executed 4, parried 2, ignored 2 -- and the ledger read 12...Nxb4! (axb4 Rxa1 through the opened a-file) as a
+sure gain of 3, which it was.
