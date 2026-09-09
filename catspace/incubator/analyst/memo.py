@@ -23,6 +23,7 @@ import chess
 import chess.polyglot
 
 _KEYS = chess.polyglot.POLYGLOT_RANDOM_ARRAY
+CAP = 16                       # footprints kept per key, most recently used first
 
 
 # ---------------------------------------------------------------- footprints
@@ -179,6 +180,21 @@ def eval_pred(board: chess.Board, kind: str, args: tuple):
     return None
 
 
+def changed_squares(board: chess.Board, move: chess.Move) -> int:
+    """The squares whose occupancy the move changes: origin, destination, a captured pawn's square en passant, the
+    rook's squares in castling. A stored fact whose footprint misses all of them is still valid after the move."""
+    m = chess.BB_SQUARES[move.from_square] | chess.BB_SQUARES[move.to_square]
+    if board.is_en_passant(move):
+        m |= chess.BB_SQUARES[move.to_square + (-8 if board.turn == chess.WHITE else 8)]
+    if board.is_castling(move):
+        rank = chess.square_rank(move.from_square)
+        if chess.square_file(move.to_square) > chess.square_file(move.from_square):
+            m |= chess.BB_SQUARES[chess.square(7, rank)] | chess.BB_SQUARES[chess.square(5, rank)]
+        else:
+            m |= chess.BB_SQUARES[chess.square(0, rank)] | chess.BB_SQUARES[chess.square(3, rank)]
+    return m
+
+
 def subhash(board: chess.Board, mask: int) -> int:
     """Zobrist hash of the pieces standing on the masked squares (identity and colour), nothing else."""
     h = 0
@@ -227,12 +243,14 @@ class Memo:
         key = (kind, args)
         entries = self.table.get(key)
         if entries:
-            for e in entries:
+            for n, e in enumerate(entries):
                 if subhash(board, e.mask) == e.sub and all(eval_pred(board, pk, pa) == pv for pk, pa, pv in e.preds):
                     e.hits += 1; self.stats["hit"] += 1
                     k = self.stats["kinds"].setdefault(kind, {"hit": 0, "miss": 0}); k["hit"] += 1
                     if self._rec:
                         self._record(e.mask)
+                    if n:                                       # most recently used first: the facts of the real positions
+                        entries.insert(0, entries.pop(n))       # survive the flood of scratch-board facts from reply loops
                     return e.value
         reads = Reads()
         value = compute(reads)
@@ -242,21 +260,24 @@ class Memo:
         for pk, pa, pv in reads.preds:                          # one value per predicate (the last recorded is the current board's)
             preds[(pk, pa)] = pv
         e = Entry(reads.mask, subhash(board, reads.mask), value, 0, tuple((pk, pa, pv) for (pk, pa), pv in preds.items()))
-        self.table.setdefault(key, []).append(e)
-        if len(self.table[key]) > 8:                           # keep the most recent footprints for this key
-            self.table[key] = self.table[key][-8:]
+        self.table.setdefault(key, []).insert(0, e)
+        if len(self.table[key]) > CAP:                         # least recently used out
+            del self.table[key][CAP:]
         self.stats["miss"] += 1
         k = self.stats["kinds"].setdefault(kind, {"hit": 0, "miss": 0}); k["miss"] += 1
         return value
 
     def lookup(self, kind: str, args: tuple, board: chess.Board):
         """Serve a stored value whose footprint carries the same pieces here, or None (no computation)."""
-        for e in self.table.get((kind, args), ()):
+        entries = self.table.get((kind, args), [])
+        for n, e in enumerate(entries):
             if subhash(board, e.mask) == e.sub and all(eval_pred(board, pk, pa) == pv for pk, pa, pv in e.preds):
                 e.hits += 1; self.stats["hit"] += 1
                 k = self.stats["kinds"].setdefault(kind, {"hit": 0, "miss": 0}); k["hit"] += 1
                 if self._rec:
                     self._record(e.mask)
+                if n:
+                    entries.insert(0, entries.pop(n))
                 return e.value
         self.stats["miss"] += 1
         k = self.stats["kinds"].setdefault(kind, {"hit": 0, "miss": 0}); k["miss"] += 1
@@ -266,9 +287,9 @@ class Memo:
         """Store a value computed by a caller that knows its own footprint (a proof, a sketch)."""
         key = (kind, args)
         e = Entry(mask, subhash(board, mask), value, 0, tuple((pk, pa, eval_pred(board, pk, pa)) for pk, pa in preds))
-        self.table.setdefault(key, []).append(e)
-        if len(self.table[key]) > 8:
-            self.table[key] = self.table[key][-8:]
+        self.table.setdefault(key, []).insert(0, e)
+        if len(self.table[key]) > CAP:
+            del self.table[key][CAP:]
 
     def hit_rate(self) -> float:
         n = self.stats["hit"] + self.stats["miss"]

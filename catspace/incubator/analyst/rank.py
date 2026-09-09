@@ -25,6 +25,7 @@ import chess.pgn
 from . import rules as R
 from .defense import defense, all_defenses
 from .facts import value, material
+from .memo import changed_squares
 from .memo import Memo
 from .subgames import holdings, cost_of_move, mate_in_one
 from .needs import ideas_for, agenda, Planner
@@ -37,7 +38,7 @@ TRUST = 0.4                      # an unverified promise (an idea, a plan, an ag
 
 
 def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budget: int = 120, engine_depth: int = 6, mate_budget: int = 1500,
-                mate_horizon: int = 10, combo_top: int = 8, combo_cap: int = 1500) -> dict[chess.Move, tuple[float, str]]:
+                mate_horizon: int = 10, combo_top: int = 8, combo_cap: int = 1500, zone_first: bool = False) -> dict[chess.Move, tuple[float, str]]:
     """move -> (score in pawns, the reason). One scale for everything: the material net one reply deep (the BASE of
     every legal move: what the ledger says after their best reply, negative when the move hangs something), lifted
     by deeper views of the same quantity (a two-move combination, a proof, a forced win), plus the planner's
@@ -78,7 +79,8 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
         if g > 0:
             lift(m, g, why)
     try:
-        for r in pursue(board, side, memo=memo, engine=engine, budget=budget, horizon=6, max_goals=3, engine_depth=engine_depth, refinements=0):
+        zones = zones_of(board, memo, base) if zone_first else None
+        for r in pursue(board, side, memo=memo, engine=engine, budget=budget, horizon=6, max_goals=3, engine_depth=engine_depth, refinements=0, zones=zones):
             if r.proven and r.line:
                 m = board.parse_san(r.line[0])
                 if r.mates:
@@ -117,6 +119,27 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
     except Exception:
         pass
     return out
+
+
+def zones_of(board: chess.Board, memo, base: dict) -> list[tuple[set, float]]:
+    """The sub-games (components of the lemma graph) with a temperature: the best sure gain of ours touching the
+    zone (from the base already computed) or of theirs with a free move. Hottest first."""
+    from .subgames import static_lemmas, mate_lemmas, components
+    from .threats import free_move_threats
+    lemmas = static_lemmas(board, memo) + mate_lemmas(board)
+    zones = [set().union(*(l.participants for l in c)) for c in components(lemmas)]
+    temps = [0.0] * len(zones)
+    def touch(m, gain):
+        for zi, z in enumerate(zones):
+            if m.from_square in z or m.to_square in z:
+                temps[zi] = max(temps[zi], gain); break
+    for m, (v, _) in base.items():
+        if v > 0:
+            touch(m, v)
+    for m, g, _ in free_move_threats(board, not board.turn, memo, top=8):
+        touch(m, g)
+    order = sorted(range(len(zones)), key=lambda i: (-temps[i], -len(zones[i])))
+    return [(zones[i], temps[i]) for i in order]
 
 
 def attacking_moves(board: chess.Board) -> list[chess.Move]:
@@ -171,20 +194,6 @@ def base_ledger(board: chess.Board, side: chess.Color) -> dict | None:
         reads = Reads(); d = _defense(b, s, reads)
         out[s] = (d, reads.mask)
     return out
-
-
-def changed_squares(board: chess.Board, move: chess.Move) -> int:
-    """The squares whose occupancy the move changes (origin, destination, the pawn taken en passant, the castling rook)."""
-    m = chess.BB_SQUARES[move.from_square] | chess.BB_SQUARES[move.to_square]
-    if board.is_en_passant(move):
-        m |= chess.BB_SQUARES[move.to_square + (-8 if board.turn == chess.WHITE else 8)]
-    if board.is_castling(move):
-        rank = chess.square_rank(move.from_square)
-        if chess.square_file(move.to_square) > chess.square_file(move.from_square):
-            m |= chess.BB_SQUARES[chess.square(7, rank)] | chess.BB_SQUARES[chess.square(5, rank)]
-        else:
-            m |= chess.BB_SQUARES[chess.square(0, rank)] | chess.BB_SQUARES[chess.square(3, rank)]
-    return m
 
 
 def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False) -> tuple[float, str]:

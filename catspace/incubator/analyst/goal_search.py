@@ -22,7 +22,8 @@ from dataclasses import dataclass, field, replace
 import chess
 
 from . import rules as R
-from .defense import defense, all_defenses
+from .defense import defense, all_defenses, _defense
+from .memo import Reads, changed_squares
 from .facts import value, material
 from .plans import derive, Goal
 from .reach import progress
@@ -43,6 +44,8 @@ class Node:
     target: int | None = None        # where the target piece stands now (it may have moved)
     note: str = ""
     cp: float | None = None          # the judge's number at a proven leaf (engine cp, or the settled count in pawns x100)
+    ledger: dict | None = None       # square -> (Defense | None, footprint mask): the exchange ledger of every piece here,
+                                     # carried from the parent and recomputed only where the move's squares touch a footprint
 
 
 @dataclass
@@ -128,8 +131,7 @@ class GoalSearch:
                 if self.engine is not None:                            # trade -- Nxc5 dxc5, Bxc6 bxc6 -- is not)
                     ok = self.engine_ok(n)                             # ...and the engine must see no refutation
                 else:
-                    own_falls = sum(value(b, sq) for sq, d in all_defenses(b, memo=self.memo).items()
-                                    if d.falls and b.piece_at(sq).color == self.side)
+                    own_falls = sum(value(b, sq) for sq, d in self.falls(n) if b.piece_at(sq).color == self.side)
                     ok = net - own_falls >= 0.5
                     n.cp = 100.0 * (net - own_falls)
             if ok:
@@ -146,6 +148,30 @@ class GoalSearch:
     def net(self, b: chess.Board) -> float:
         return (material(b, self.side) - material(b, not self.side)) - self.mat0
 
+    def ledger(self, n: Node) -> dict:
+        """The exchange ledger of every non-royal piece at this node, INCREMENTAL: the parent's entries whose footprint
+        the move did not touch are carried over unchanged (exact by the store's validity rule); the rest recomputed."""
+        if n.ledger is not None:
+            return n.ledger
+        b = n.board
+        base = n.parent.ledger if (n.parent is not None and n.move is not None) else None
+        changed = changed_squares(n.parent.board, n.move) if base is not None else 0
+        led = {}
+        for sq in chess.scan_forward(b.occupied):
+            if R.is_royal(b, sq):
+                continue
+            e = base.get(sq) if base is not None else None
+            if e is not None and not (e[1] & changed):
+                led[sq] = e
+            else:
+                reads = Reads(); led[sq] = (_defense(b, sq, reads), reads.mask)
+        n.ledger = led
+        return led
+
+    def falls(self, n: Node):
+        """(square, Defense) of every piece that falls at this node, from the incremental ledger."""
+        return [(sq, d) for sq, (d, _) in self.ledger(n).items() if d is not None and d.falls]
+
     def settled_net(self, n: Node) -> float:
         """The material count at our turn after our best capture by the ledger (pins and overloads counted): the
         quiescence stand-in. A leaf in the middle of an exchange, or with a piece of theirs still hanging, is judged
@@ -153,8 +179,8 @@ class GoalSearch:
         b = n.board
         net = self.net(b)
         best = 0.0
-        for sq, d in all_defenses(b, memo=self.memo).items():
-            if d.falls and b.piece_at(sq).color != self.side:
+        for sq, d in self.falls(n):
+            if b.piece_at(sq).color != self.side:
                 best = max(best, d.see)
         return net + best
 
@@ -206,8 +232,8 @@ class GoalSearch:
                         if pl.steps and pl.steps[0].move in b.legal_moves:
                             prior[pl.steps[0].move] = min(prior.get(pl.steps[0].move, 9), float(pl.hops))
             elif n.is_or:                                      # the target is taken: now bank it -- save whatever of ours falls
-                for sq, d in all_defenses(b, memo=self.memo).items():
-                    if d.falls and b.piece_at(sq).color == self.side and value(b, sq) >= 1:
+                for sq, d in self.falls(n):
+                    if b.piece_at(sq).color == self.side and value(b, sq) >= 1:
                         for pl in derive(b, self.side, Goal("defend", sq), self.memo, depth=1)[:3]:
                             if pl.steps and pl.steps[0].move in b.legal_moves:
                                 prior[pl.steps[0].move] = min(prior.get(pl.steps[0].move, 9), float(pl.hops))
@@ -631,8 +657,12 @@ def _store_proof(memo, key, rb: chess.Board, gs: "GoalSearch", r: Result):
 
 # ---------------------------------------------------------------- the goal loop
 def pursue(board: chess.Board, side: chess.Color, memo=None, engine=None, budget: int = 3000, horizon: int = 6,
-           max_goals: int = 4, engine_depth: int = 8, refinements: int = 1) -> list[Result]:
-    """Try the progress map's targets most valuable first; each gets a budget; a proven goal ends the loop."""
+           max_goals: int = 4, engine_depth: int = 8, refinements: int = 1, zones=None, cold_share: float = 0.5) -> list[Result]:
+    """Try the progress map's targets most valuable first; each gets a budget; a proven goal ends the loop. With
+    `zones` (a list of (squares, temperature), hottest first: the sub-games where a free move is worth most), the
+    targets in the hottest zone go first with the full budget and the rest get `cold_share` of it -- the focus
+    prior (measured 2026-09-09: the engine's best move touches the hottest zone 63% of the time when there is a
+    choice, against 45% for a random zone), an ordering and a budget, never a filter."""
     out = []
     order = {"falls": 0, "joinable": 1, "undermine": 2, "held": 3, "unreachable": 4}
     targets = [t for t in progress(board, side, top=64, memo=memo) if t.status in ("falls", "joinable", "undermine", "held")]
@@ -642,8 +672,16 @@ def pursue(board: chess.Board, side: chess.Color, memo=None, engine=None, budget
     for sq, p in sorted(b.piece_map().items(), key=lambda kv: -value(b, kv[0])):      # the dearest enemy pieces, whatever the ledger says today
         if p.color != side and not R.is_royal(b, sq) and sq not in squares and value(b, sq) >= 3 and len(squares) < max_goals + 2:
             squares.append(sq)
+    heat = {}
+    if zones:
+        hottest = zones[0][1]
+        for zs, temp in zones:
+            for sq in zs:
+                heat.setdefault(sq, temp)
+        squares.sort(key=lambda sq: -heat.get(sq, -1.0))                       # stable: the ledger's order within a zone
     for sq in squares:
-        r = search_goal(board, side, sq, memo=memo, engine=engine, budget=budget, horizon=horizon, engine_depth=engine_depth,
+        share = 1.0 if not zones or heat.get(sq, -1.0) >= zones[0][1] else cold_share
+        r = search_goal(board, side, sq, memo=memo, engine=engine, budget=max(10, int(budget * share)), horizon=horizon, engine_depth=engine_depth,
                         refinements=refinements)
         out.append(r)
         if r.proven:

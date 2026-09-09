@@ -24,7 +24,7 @@ import chess.pgn
 
 from . import rules as R
 from .facts import value
-from .memo import Memo
+from .memo import Memo, changed_squares
 from .defense import defense, exposure_candidates, SLIDERS
 from .subgames import static_lemmas, mate_lemmas, holdings, components, cost_of_move, mate_in_one
 from .regime import cone, race, pawn_path
@@ -109,21 +109,6 @@ class Graph:
 
 
 # ---------------------------------------------------------------- the change list (what a move can invalidate)
-def changed_squares(board: chess.Board, move: chess.Move) -> int:
-    """The squares whose occupancy the move changes: origin, destination, a captured pawn's square en passant, the
-    rook's squares in castling. A stored fact whose footprint misses all of them is still valid after the move."""
-    m = chess.BB_SQUARES[move.from_square] | chess.BB_SQUARES[move.to_square]
-    if board.is_en_passant(move):
-        m |= chess.BB_SQUARES[move.to_square + (-8 if board.turn == chess.WHITE else 8)]
-    if board.is_castling(move):
-        rank = chess.square_rank(move.from_square)
-        if chess.square_file(move.to_square) > chess.square_file(move.from_square):
-            m |= chess.BB_SQUARES[chess.square(7, rank)] | chess.BB_SQUARES[chess.square(5, rank)]
-        else:
-            m |= chess.BB_SQUARES[chess.square(0, rank)] | chess.BB_SQUARES[chess.square(3, rank)]
-    return m
-
-
 def stale_entries(memo: Memo, mask: int) -> tuple[int, int]:
     """How many stored facts a change on `mask` invalidates, against how many are stored."""
     stale = total = 0
