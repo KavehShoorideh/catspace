@@ -200,58 +200,74 @@ class KnowledgeNet(nn.Module):
 
 # ---------------------------------------------------------------- data
 class Data:
-    """The dataset in memory with per-sample assembly (dense edges built on demand) and partner lookup by game/ply."""
-    def __init__(self, path: str, buckets: Buckets | None = None, n_buckets: int = 12, split_seed: int = 0):
-        d = load_dataset(path)
-        self.nodes, self.mask, self.position, self.edges, self.meta = d["nodes"], d["mask"], d["position"], d["edges"], d["meta"]
+    """The dataset in memory, every per-sample array precomputed once (dense int8 relations, legal masks), so a batch
+    is fancy indexing; partner lookup by (game, ply) for the trajectory pairs."""
+    def __init__(self, path: str, buckets: Buckets | None = None, n_buckets: int = 12, split_seed: int = 0, log=print, meta_only: bool = False):
+        t0 = time.perf_counter()
+        d = load_dataset(path, meta_only=meta_only)
+        self.meta = d["meta"]
+        N = len(self.meta)
         games = sorted({m["game"] for m in self.meta})
         rng = random.Random(split_seed); rng.shuffle(games)
         n = len(games); test_games = set(games[: n // 10]); val_games = set(games[n // 10: n // 5])
         self.split = np.array(["test" if m["game"] in test_games else "val" if m["game"] in val_games else "train" for m in self.meta])
         self.index = {(m["game"], m["ply"]): i for i, m in enumerate(self.meta)}
-        self.buckets = buckets or Buckets(n_buckets).fit(self.nodes[self.split == "train"], self.mask[self.split == "train"])
-        self.node_b = self.buckets.apply(self.nodes)                                    # (N, 32, Q)
-        pb = Buckets(n_buckets); pb.fit(self.position[self.split == "train"][:, None, :], np.ones((int((self.split == "train").sum()), 1), bool))
-        self.pos_buckets_fn = pb; self.pos_b = pb.apply(self.position)
-        reg = np.array([regime_of(chess.Board(m["fen"]), bool(m["side"])) for m in self.meta], dtype=np.float32)
-        self.regime_now = reg
-        self.ahead = {h: np.array([m["ahead"][str(h)] for m in self.meta], dtype=np.float32) for h in (10, 20)}
+        if meta_only:
+            return
+        self.nodes, self.mask, self.position, edges = d["nodes"], d["mask"], d["position"], d["edges"]
         tr = self.split == "train"
+        self.buckets = buckets or Buckets(n_buckets).fit(self.nodes[tr], self.mask[tr])
+        self.node_b = self.buckets.apply(self.nodes).astype(np.int8)                     # (N, 32, Q)
+        pb = Buckets(n_buckets); pb.fit(self.position[tr][:, None, :], np.ones((int(tr.sum()), 1), bool))
+        self.pos_buckets_fn = pb; self.pos_b = pb.apply(self.position).astype(np.int8)
+        # dense relations as int8 (values are small integers: flags, distances 0-7, a value beyond a line clipped)
+        self.edges = np.zeros((N, MAX_PIECES, MAX_PIECES, R), dtype=np.int8)
+        self.related = np.zeros((N, MAX_PIECES, MAX_PIECES), dtype=bool)
+        for i, e in enumerate(edges):
+            if len(e):
+                a, b_ = e[:, 0].astype(int), e[:, 1].astype(int)
+                self.edges[i, a, b_] = np.clip(e[:, 2:].astype(np.float32), -127, 127).astype(np.int8); self.related[i, a, b_] = True
+        self.squares = np.array([m["squares"] for m in self.meta], dtype=np.int64)
+        self.types = np.array([[t if t > 0 else (6 - t if t < 0 else 0) for t in m["types"]] for m in self.meta], dtype=np.int64)   # 0 pad, 1-6 ours, 7-12 theirs
+        self.legal = np.zeros((N, MAX_PIECES, 64), dtype=bool); self.best = np.full(N, -1, dtype=np.int64)
+        for i, m in enumerate(self.meta):
+            board = chess.Board(m["fen"]); sq_index = {s: j for j, s in enumerate(m["squares"]) if s < 64}
+            for mv in board.legal_moves:
+                self.legal[i, sq_index[mv.from_square], mv.to_square] = True
+            if m["best"]:
+                bm = chess.Move.from_uci(m["best"]); self.best[i] = sq_index[bm.from_square] * 64 + bm.to_square
+        reg = np.array([regime_of(chess.Board(m["fen"]), bool(m["side"])) for m in self.meta], dtype=np.float32)
         self.reg_mean = reg[tr].mean(0); self.reg_std = reg[tr].std(0) + 1e-6
+        self.regime_now = (reg - self.reg_mean) / self.reg_std
+        self.ahead = {h: (np.array([m["ahead"][str(h)] for m in self.meta], dtype=np.float32) - self.reg_mean) / self.reg_std for h in (10, 20)}
         cps = np.array([m["best_cp"] if m["best_cp"] is not None else 0 for m in self.meta], dtype=np.float32)
         self.cp = np.tanh(cps / 400.0)
         self.result = np.array([-1 if m["result"] is None else int(round(m["result"] * 2)) for m in self.meta])     # 0 loss, 1 draw, 2 win, -1 unknown
-        self.legal = None
+        self.game = np.array([m["game"] for m in self.meta]); self.ply = np.array([m["ply"] for m in self.meta])
+        self.ended = {h: np.array([m["ended_within"][str(h)] for m in self.meta]) for h in (10, 20)}
+        log(f"[kn] data ready in {time.perf_counter() - t0:.0f}s: {N} positions, relations {self.edges.nbytes / 1e9:.2f} GB", flush=True)
 
     def ids(self, split):
         return np.nonzero(self.split == split)[0]
 
-    def sample(self, i: int) -> dict:
-        m = self.meta[i]
-        e = self.edges[i].astype(np.float32)
-        dense = np.zeros((MAX_PIECES, MAX_PIECES, R), dtype=np.float32); related = np.zeros((MAX_PIECES, MAX_PIECES), dtype=bool)
-        if len(e):
-            a, b_ = e[:, 0].astype(int), e[:, 1].astype(int)
-            dense[a, b_] = e[:, 2:]; related[a, b_] = True
-        board = chess.Board(m["fen"])
-        sq_index = {s: j for j, s in enumerate(m["squares"]) if s < 64}
-        legal = np.zeros((MAX_PIECES, 64), dtype=bool)
-        for mv in board.legal_moves:
-            legal[sq_index[mv.from_square], mv.to_square] = True
-        best = chess.Move.from_uci(m["best"]) if m["best"] else None
-        best_idx = (sq_index[best.from_square] * 64 + best.to_square) if best else -1
-        return dict(buckets=self.node_b[i], mask=self.mask[i], edges=dense, related=related, squares=np.array(m["squares"]), types=np.array([t if t > 0 else (6 - t if t < 0 else 0) for t in m["types"]]),      # 0 pad, 1-6 ours, 7-12 theirs
-                    pos_buckets=self.pos_b[i], legal=legal, best=best_idx, cp=self.cp[i], result=self.result[i],
-                    regime_now=(self.regime_now[i] - self.reg_mean) / self.reg_std,
-                    ahead10=(self.ahead[10][i] - self.reg_mean) / self.reg_std, ahead20=(self.ahead[20][i] - self.reg_mean) / self.reg_std,
-                    ended10=m["ended_within"]["10"], ended20=m["ended_within"]["20"], game=m["game"], ply=m["ply"], i=i)
+    def batch(self, idx, device) -> dict:
+        idx = np.asarray(idx)
+        out = dict(buckets=torch.as_tensor(self.node_b[idx]).long(), mask=torch.as_tensor(self.mask[idx]),
+                   edges=torch.as_tensor(self.edges[idx]).float(), related=torch.as_tensor(self.related[idx]),
+                   squares=torch.as_tensor(self.squares[idx]).clamp(0, 64), types=torch.as_tensor(self.types[idx]),
+                   pos_buckets=torch.as_tensor(self.pos_b[idx]).long(), legal=torch.as_tensor(self.legal[idx]), best=torch.as_tensor(self.best[idx]),
+                   cp=torch.as_tensor(self.cp[idx]), result=torch.as_tensor(self.result[idx]), regime_now=torch.as_tensor(self.regime_now[idx]),
+                   ahead10=torch.as_tensor(self.ahead[10][idx]), ahead20=torch.as_tensor(self.ahead[20][idx]),
+                   ended10=torch.as_tensor(self.ended[10][idx]), ended20=torch.as_tensor(self.ended[20][idx]),
+                   game=torch.as_tensor(self.game[idx]), ply=torch.as_tensor(self.ply[idx]), i=torch.as_tensor(idx))
+        return {k: v.to(device) for k, v in out.items()}
 
     def partner(self, i: int, k_max: int, rng: random.Random):
         """A later position of the same game, k plies ahead (k in 1..k_max), when present."""
-        m = self.meta[i]
+        g, p = int(self.game[i]), int(self.ply[i])
         ks = list(range(1, k_max + 1)); rng.shuffle(ks)
         for k in ks:
-            j = self.index.get((m["game"], m["ply"] + k))
+            j = self.index.get((g, p + k))
             if j is not None:
                 return j, k
         return None, 0
@@ -312,24 +328,24 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
     reg_pred = {10: [], 20: []}; reg_true = {10: [], 20: []}; reg_now = []
     phis = []
     for s in range(0, n, 256):
-        samples = [data.sample(int(i)) for i in ids[s:s + 256]]
-        b = collate(samples, device)
+        chunk = ids[s:s + 256]
+        b = data.batch(chunk, device)
         o = model(b); logits, _ = model.basin_logits(o["phi"])
         known = b["result"] >= 0
         wdl_ok += (logits.argmax(-1)[known] == b["result"][known]).sum().item(); wdl_n += known.sum().item()
         wdl_maj += (b["result"][known] == maj).sum().item()
-        pl = model.policy_logits(o["h"], b).view(len(samples), -1)
+        pl = model.policy_logits(o["h"], b).view(len(chunk), -1)
         pred = pl.argmax(-1); has = b["best"] >= 0
         hit = (pred == b["best"]) & has
         pol_ok += hit.sum().item(); pol_n += has.sum().item()
-        for j, smp in enumerate(samples):
-            kind = data.meta[smp["i"]]["best_kind"]
+        for j, ii in enumerate(chunk):
+            kind = data.meta[int(ii)]["best_kind"]
             if kind == "quiet":
                 quiet_n += 1; quiet_ok += int(hit[j].item())
             elif kind == "capture":
                 cap_n += 1; cap_ok += int(hit[j].item())
         cp_pred.append(model.cp_head(o["phi"]).squeeze(-1).cpu().numpy()); cp_true.append(b["cp"].cpu().numpy())
-        reg = model.regime_head(o["phi"]).view(len(samples), 2, K_REG).cpu().numpy()
+        reg = model.regime_head(o["phi"]).view(len(chunk), 2, K_REG).cpu().numpy()
         reg_pred[10].append(reg[:, 0]); reg_pred[20].append(reg[:, 1])
         reg_true[10].append(b["ahead10"].cpu().numpy()); reg_true[20].append(b["ahead20"].cpu().numpy()); reg_now.append(b["regime_now"].cpu().numpy())
         phis.append(o["phi"].cpu().numpy())
@@ -382,7 +398,7 @@ def asymmetry(model: KnowledgeNet, data: Data, split: str, device, max_n: int = 
     rows = {"pawn": [], "capture": [], "piece": []}
     for s in range(0, len(pairs), 128):
         chunk = pairs[s:s + 128]
-        ba = collate([data.sample(i) for i, _ in chunk], device); bb = collate([data.sample(j) for _, j in chunk], device)
+        ba = data.batch([i for i, _ in chunk], device); bb = data.batch([j for _, j in chunk], device)
         pa, pb = model(ba)["phi"], model(bb)["phi"]
         fwd = model.iqe(pa, pb).cpu().numpy(); rev = model.iqe(pb, pa).cpu().numpy()
         for (i, j), f, r in zip(chunk, fwd, rev):
@@ -428,7 +444,7 @@ def train(args):
             pairs = [(i, j, k) for i, (j, k) in pairs if j is not None]
             n_anchor = len(pairs)
             order = [i for i, _, _ in pairs] + [j for _, j, _ in pairs] + [i for i in a_ids if i not in {p[0] for p in pairs}]
-            b = collate([data.sample(i) for i in order], device)
+            b = data.batch(order, device)
             k_t = torch.tensor([k for _, _, k in pairs], device=device)
             L = losses(model, b, cfg, k_t, n_anchor)
             opt.zero_grad(set_to_none=True); L["total"].backward()

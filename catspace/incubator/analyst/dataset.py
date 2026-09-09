@@ -158,15 +158,17 @@ def extract(pgn_path: str, out_dir: str, shard: str = "0/1", every: int = 1, dep
     return n, dt
 
 
-def load(out_dir: str, shards=None):
-    """All shards joined: arrays + the metadata rows."""
+def load(out_dir: str, shards=None, meta_only: bool = False):
+    """All shards joined: arrays + the metadata rows (`meta_only`: the rows alone, for scripts that need ids and FENs)."""
     out = Path(out_dir)
     files = sorted(out.glob("shard_*.npz")) if shards is None else [out / f"shard_{i}.npz" for i in shards]
-    parts = [np.load(f, allow_pickle=False) for f in files]
     metas = []
     for f in files:
         with open(f.with_suffix(".jsonl")) as fh:
             metas.extend(json.loads(l) for l in fh)
+    if meta_only:
+        return dict(meta=metas)
+    parts = [np.load(f, allow_pickle=False) for f in files]
     edges = []; offsets = [0]
     for p in parts:
         e, o = p["edges"], p["edge_offsets"]

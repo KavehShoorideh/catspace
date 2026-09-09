@@ -96,14 +96,19 @@ class NetScorer:
 
 # ---------------------------------------------------------------- collection
 def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = "0/1", split: str = "test", max_n: int = 2000,
-            distances: bool = False, budget: int = 120, judge: int = 6, log=print):
-    from .engine import Engine
+            distances: bool = False, budget: int = 120, judge: int = 6, experts: tuple = ("a", "b", "c"), log=print):
+    """Score the split's positions by the requested experts; rows of different passes (the slow C on the CPU while
+    the networks train, A and B afterwards) merge by position id in `fit`."""
     i, k = (int(x) for x in shard.split("/"))
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
-    data = K.Data(data_dir)
+    data = K.Data(data_dir, meta_only=True)
     ids = [int(x) for x in data.ids(split)][:max_n][i::k]
-    A, B = NetScorer(ckpt_a), NetScorer(ckpt_b)
-    eng = Engine(depth=12, cache_path=str(out / f"engine_{i}.sqlite")); memo = Memo()
+    A = NetScorer(ckpt_a) if "a" in experts else None; B = NetScorer(ckpt_b) if "b" in experts else None
+    eng = None
+    if "c" in experts:
+        from .engine import Engine
+        eng = Engine(depth=12, cache_path=str(out / f"engine_{i}.sqlite"))
+    memo = Memo()
     rows = []; t0 = time.perf_counter()
     for n, idx in enumerate(ids, 1):
         m = data.meta[idx]
@@ -112,22 +117,30 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
             continue
         try:
             g = build(board, memo)
-            sa, sb = A.policy(board, g), B.policy(board, g)
-            sc = score_moves(board, memo, eng, budget=budget, engine_depth=judge)
+            legal = list(board.legal_moves)
+            row = dict(i=idx, fen=m["fen"], best=m["best"], best_kind=m["best_kind"], legal=[mv.uci() for mv in legal],
+                       position={q: float(v) for q, v in g.position.items()})
+            if A is not None:
+                sa = A.policy(board, g); row["a"] = [sa[mv] for mv in legal]
+            if B is not None:
+                sb = B.policy(board, g); row["b"] = [sb[mv] for mv in legal]
+            if eng is not None:
+                sc = score_moves(board, memo, eng, budget=budget, engine_depth=judge)
+                row["c"] = [float(sc.get(mv, (0.0, ""))[0]) for mv in legal]; row["c_why"] = [sc.get(mv, (0.0, ""))[1] for mv in legal]
+            if distances:
+                if A is not None:
+                    da = A.distance_scores(board, memo); row["a_dist"] = [da[mv] for mv in legal]
+                if B is not None:
+                    db = B.distance_scores(board, memo); row["b_dist"] = [db[mv] for mv in legal]
         except Exception as ex:
             log(f"[experts] {idx} error {ex}", flush=True); continue
-        legal = list(board.legal_moves)
-        row = dict(i=idx, fen=m["fen"], best=m["best"], best_kind=m["best_kind"], legal=[mv.uci() for mv in legal],
-                   a=[sa[mv] for mv in legal], b=[sb[mv] for mv in legal], c=[float(sc.get(mv, (0.0, ""))[0]) for mv in legal],
-                   c_why=[sc.get(mv, (0.0, ""))[1] for mv in legal], position={q: float(v) for q, v in g.position.items()})
-        if distances:
-            da, db = A.distance_scores(board, memo), B.distance_scores(board, memo)
-            row["a_dist"] = [da[mv] for mv in legal]; row["b_dist"] = [db[mv] for mv in legal]
         rows.append(row)
         if n % 10 == 0:
             log(f"[experts {shard}] {n}/{len(ids)} positions, {time.perf_counter() - t0:.0f}s", flush=True)
-    eng.close()
-    with open(out / f"rows_{i}.jsonl", "w") as f:
+    if eng is not None:
+        eng.close()
+    tag = "".join(experts)
+    with open(out / f"rows_{tag}_{i}.jsonl", "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
     log(f"[experts {shard}] done {len(rows)} positions in {time.perf_counter() - t0:.0f}s", flush=True)
@@ -136,7 +149,7 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
 # ---------------------------------------------------------------- the gate
 def context_of(row: dict) -> np.ndarray:
     c = [row["position"].get(q, 0.0) for q in POSITION_QUESTIONS]
-    cs = np.array(row["c"]); named = int((cs > 0).sum())
+    cs = np.array(row.get("c", [0.0])); named = int((cs > 0).sum())
     c += [float(named == 0), float(named), float(cs.max()) if len(cs) else 0.0, float(len(row["legal"])), 0.0]
     return np.array(c, dtype=np.float32)
 
@@ -181,9 +194,11 @@ def _tensors(rows, experts=("a", "b", "c"), ctx_mean=None, ctx_std=None):
 
 
 def fit(dir_: str, experts=("a", "b", "c"), epochs: int = 300, seed: int = 0, log=print):
-    rows = []
+    by_id = {}
     for f in sorted(Path(dir_).glob("rows_*.jsonl")):
-        rows.extend(json.loads(l) for l in open(f))
+        for l in open(f):
+            r = json.loads(l); by_id.setdefault(r["i"], {}).update(r)
+    rows = [r for r in by_id.values() if all(e in r for e in experts)]
     rng = random.Random(seed); rng.shuffle(rows)
     n = len(rows); cut = int(n * 0.7)
     train, test = rows[:cut], rows[cut:]
@@ -245,7 +260,7 @@ def main(argv=None):
     ap.add_argument("--experts", default="a,b,c")
     a = ap.parse_args(argv)
     if a.cmd == "collect":
-        collect(a.data, a.a, a.b, a.out, a.shard, a.split, a.max_n, a.distances)
+        collect(a.data, a.a, a.b, a.out, a.shard, a.split, a.max_n, a.distances, experts=tuple(a.experts.split(",")))
     else:
         fit(a.dir, tuple(a.experts.split(",")))
 
