@@ -3,7 +3,8 @@ rules-based score on the side, and let a small learned combiner decide; then we 
 
 Per position, every legal move gets three scores: A, the board-only network's policy (identity and square tokens,
 no rule answers); B, the knowledge network's policy (the rules' answers as tokens); C, the reasoning's ranking
-(rank.score_moves, no learning). Optionally the DISTANCE score of a network: the child position's distance to the
+(rank.score_moves, no learning); and, as a fourth expert when asked, M, the human prior (Maia at the product's
+level), so the gate can also say when the human move is the one to trust. Optionally the DISTANCE score of a network: the child position's distance to the
 loss pole minus its distance to the win pole (from the mover's view), which needs one graph per legal move.
 
 The gate sees only NAMED CONTEXT -- the position indicators (phase, material, queens, passed pawns, races, king
@@ -104,6 +105,11 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
     data = K.Data(data_dir, meta_only=True)
     ids = [int(x) for x in data.ids(split)][:max_n][i::k]
     A = NetScorer(ckpt_a) if "a" in experts else None; B = NetScorer(ckpt_b) if "b" in experts else None
+    maia = None
+    if "m" in experts:                                                             # the human prior at the product's level
+        from .maia import Maia
+        from .contrast import HUMAN_LEVEL
+        maia = Maia(HUMAN_LEVEL)
     eng = None
     if "c" in experts:
         from .engine import Engine
@@ -124,6 +130,9 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
                 sa = A.policy(board, g); row["a"] = [sa[mv] for mv in legal]
             if B is not None:
                 sb = B.policy(board, g); row["b"] = [sb[mv] for mv in legal]
+            if maia is not None:
+                pol = maia.policy(board)
+                row["m"] = [math.log(max(pol.get(mv.uci(), 0.0), 1e-6)) for mv in legal]
             if eng is not None:
                 sc = score_moves(board, memo, eng, budget=budget, engine_depth=judge)
                 row["c"] = [float(sc.get(mv, (0.0, ""))[0]) for mv in legal]; row["c_why"] = [sc.get(mv, (0.0, ""))[1] for mv in legal]
@@ -139,6 +148,8 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
             log(f"[experts {shard}] {n}/{len(ids)} positions, {time.perf_counter() - t0:.0f}s", flush=True)
     if eng is not None:
         eng.close()
+    if maia is not None:
+        maia.close()
     tag = "".join(experts)
     with open(out / f"rows_{tag}_{i}.jsonl", "w") as f:
         for r in rows:
