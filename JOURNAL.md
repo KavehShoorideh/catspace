@@ -21872,3 +21872,25 @@ skewers 94%, deflections 82%); the drop from first-move to fully-solved is conce
 later moves are technique (very long 18%, quiet 17%, defensive 17%) and in 2000+ puzzles (38%). The two
 scoring artefacts (unscored-correct, alternative mates) are 27 puzzles across first and later moves; a Lichess
 scorer accepts alternative mates, ours does not, by choice: the line must be justified, not merely matched.
+
+## 2026-09-09 00:13 PDT — the classic suites: Win at Chess and Bratko-Kopec, against the rule-based systems' numbers
+
+Kaveh: "how do we compare with the rule-based systems on their benchmarks?" `gauge_epd.py` ranks the classic EPD
+suites by the reasoning alone (assets/suites/WAC.epd, BK.epd; solved = the top move is one of the suite's best
+moves with a positive score, one try). OBS, single runs:
+  Bratko-Kopec (24 positions, 1982; 12 tactical + 12 positional): solved 4/24 (17%); silent 12/24; 20 of the 24
+  keys are quiet moves by our classification (levers, manoeuvres): the suite measures what this layer does not do.
+  Win at Chess (300, Reinfeld 1958): first pass 138/300 (46%), the first 100: 66/100. Reading the misses: many WAC
+  keys are sacrificial mating attacks four to five moves deep, beyond the mate-in-three the ranking searched; the
+  terminal-goal search proves such lines cheaply (WAC.055 Qxg7+ Kxg7 Bf6+ Kg8 Rh4 Kf8 Rh8# in 14952 nodes, 0.5 s;
+  a failed search costs 0.7-1.6 s), so the ranking now looks for mate in five (horizon 10, budget 1500).
+  Second pass: 158/300 (53%); matched regardless of score 162; in our top-3 186; named 179; silent 47; by the key's
+  kind: check 54/74, capture 56/107, quiet 48/119. The first 100: 68/100 (PARADISE, 1980: 89/100 reported, with
+  hand-written patterns and a few hundred nodes; modern engines 295-300/300). Solved by a forced win 85, by a
+  combination 43, by a one-reply gain 19, by a proof 8. When wrong: silent 47; an idea or plan outranking the key
+  37; a small sure gain outranking it 29; a shorter combination 7.
+Reading: WAC is harder than Lichess <=2200 for us (53% against 84%) because its keys are deeper -- mates in five
+and six, quiet key moves that set up a mate, exchange sacrifices with a positional point; the layer solves what
+it can prove or price within its horizons and is silent or outranked beyond them. Against PARADISE's 89/100 on
+the same first hundred we are at 68 with no patterns written by hand; the difference is depth, not vocabulary
+(the forced wins found are the deepest lines we search). Costs: 20-33 s per position at these budgets.
