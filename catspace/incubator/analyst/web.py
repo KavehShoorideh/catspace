@@ -40,6 +40,7 @@ from .subgames import holdings_lines
 from .regime import regime_lines
 from .needs import idea_lines
 from .threats import threats_after, judge_reply, ledger_lines
+from .contrast import contrast_lines, HUMAN_LEVEL
 from .goal_search import pursue, result_text
 from .verbalize import cp_str, render, best_fact, motif_phrase, delta_str
 from .horizon import winp
@@ -120,6 +121,7 @@ class Analyst:
         self.depth = depth
         self.eng = Engine(depth=depth, threads=threads)
         self.maias = {r: Maia(r) for r in RATINGS}
+        self.human = self.maias.get(HUMAN_LEVEL) or Maia(HUMAN_LEVEL)
         self.memo = Memo.load(str(MEMO_PATH))                    # the concept store: shared across games and runs
 
     def close(self):
@@ -165,6 +167,7 @@ class Analyst:
                 "regime": regime_lines(board, memo=self.memo),
                 "ideas": idea_lines(board, us, memo=self.memo, top=3),
                 "ledger": ledger_lines(board, memo=self.memo),
+                "contrast": contrast_lines(board, mv, chess.Move.from_uci(rec.idea.uci) if rec.idea else None, memo=self.memo, engine=self.eng, maia=self.human),
                 "threatens": [], "reply_judged": [],
                 "p_played": {str(k): round(v * 100) for k, v in row["p_played"].items()},
                 "p_best": {str(k): round(v * 100) for k, v in row["p_best"].items()},

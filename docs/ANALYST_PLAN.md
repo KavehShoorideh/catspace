@@ -548,3 +548,18 @@ budget). 500 random puzzles rated <=2200: 84% solved outright, 87% named, 9% sil
 forks, discovered attacks, deflections, skewers, attractions, double checks, trapped pieces above 90%; sacrifices
 85%; the misses are pawn endings, zugzwang and quiet technique (the trajectory system's), and 2000+ combinations
 beyond three of our moves. See the JOURNAL entry for the full table.
+
+## 30. Explanation by contrast, with the human move at the player's level (Kaveh 2026-09-08)
+
+Kaveh: "a knight hop that is good in another position is bad here because it ALLOWS the opponent a tactic; that
+the tactic exists is not interesting, that this move allowed it is. Compare the move played with the best move,
+and the best move with the most common human move at my level (1800)." `contrast.py`: two moves from the same
+position, both resulting positions through the same analysis, and the difference as the explanation -- the
+opponent's threats after A that B does not allow ("Nf6 allows Qxf7#, mate; g6 does not"), the ones A prevents,
+our threats A gives up or creates (the partner's own move excluded: a threat the partner executed is not 'given
+up'), the material each nets one reply deep ("Nxc5 sure gain 1; Qxe5 sure gain 4"), the holdings each breaks,
+the structure each changes, the engine's number for each; only threats worth two pawns or a mate are named; when
+nothing the ledger names differs, it says the difference is positional. Partners: the move played against the
+best when they differ; the best against Maia-1800's top move when that differs. In the CLI long render ("By
+contrast [played against best] ...") and the app ("by contrast"). Not done: the reply that refutes a move that
+creates a threat (Qh5 creates Qxf7#, and g6 refutes it with tempo) as its own sentence.

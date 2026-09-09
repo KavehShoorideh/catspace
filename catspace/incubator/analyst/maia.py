@@ -66,6 +66,9 @@ class Maia:
         z = sum(w.values())
         return chess.Move.from_uci((rng or random).choices(list(w), weights=[v / z for v in w.values()])[0])
 
+    def close(self):
+        self.quit()
+
     def quit(self):
         try:
             self._eng.quit()

@@ -100,6 +100,7 @@ def main(argv=None):
             for s in args.moves.split():
                 sans.append(s); b.push_san(s)
             recs = [analyse_position(b, eng, prev=prev if len(sans) == 2 else None, killed_by=sans[-1] if sans else None, multipv=args.multipv)]
+        human = None
         if args.json:
             print(json.dumps([asdict(r) for r in recs], default=_json, indent=1))
         else:
@@ -108,7 +109,16 @@ def main(argv=None):
                 print(render(r, long=args.long, alternatives=not args.quiet))
                 if args.long and r.played:                                    # the standing threat: what the move threatens, and how it met the last one
                     from .threats import threats_after, judge_reply
+                    from .contrast import contrast_lines, HUMAN_LEVEL
                     b0 = chess.Board(r.fen); mv = chess.Move.from_uci(r.played.uci)
+                    try:
+                        if human is None:
+                            from .maia import Maia
+                            human = Maia(HUMAN_LEVEL)
+                        for l in contrast_lines(b0, mv, chess.Move.from_uci(r.idea.uci) if r.idea else None, None, eng, human):
+                            print(f"  By contrast {l}")
+                    except Exception:
+                        pass
                     try:
                         if standing:
                             for l in judge_reply(standing, b0, mv):
@@ -120,6 +130,11 @@ def main(argv=None):
                         standing = []
         n = len(recs); dt = time.perf_counter() - t0
         print(f"[analyst] {n} positions in {dt:.1f}s ({dt/max(n,1):.1f}s/pos) | engine calls {eng.calls}, cache hits {eng.hits}", file=sys.stderr)
+        if human is not None:
+            try:
+                human.close()
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
