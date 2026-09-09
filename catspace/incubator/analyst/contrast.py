@@ -40,6 +40,7 @@ class Side:
     structure: list                   # structure changes, in words
     mate_threat: str | None = None    # their mate in one after our move, if any
     cp: int | None = None             # the engine's number after the move (side to move = them; shown for us)
+    refuted: str = ""                 # when the move creates a threat: the reply that meets it, and what the reply does besides
 
 
 @dataclass
@@ -79,14 +80,60 @@ def side_of(board: chess.Board, m: chess.Move, memo, engine=None, depth: int = 1
         mates = mate_in_one(after, not us)
         if mates:
             mt = after.san(mates[0])
-    cp = None
+    cp = None; reply = None
     if engine is not None and not after.is_game_over():
         try:
             l = engine.best(after, depth=depth)
             cp = -l.cp if l else None                      # from our side
+            reply = chess.Move.from_uci(l.move) if l else None
         except Exception:
             cp = None
-    return Side(board.san(m), v, why, theirs, ours, broken, struct, mt, cp)
+    refuted = ""
+    big = [(san, g) for san, (g, w) in ours.items() if g >= 2.0]
+    if big and not after.is_game_over():
+        refuted = refutation_of(board, m, after, reply, memo, engine)
+    return Side(board.san(m), v, why, theirs, ours, broken, struct, mt, cp, refuted)
+
+
+def refutation_of(board: chess.Board, m: chess.Move, after: chess.Board, reply: chess.Move | None, memo, engine) -> str:
+    """The move creates a threat: which reply meets it, and what that reply does besides (a tempo: it attacks something
+    of ours, or wins something). The reply is the engine's when there is one, else the first adequate defence."""
+    from .threats import threats_after, judge_reply, describe_defence
+    from .rank import sure_gain
+    try:
+        ts = threats_after(board, m, memo, engine, budget=80)
+    except Exception:
+        ts = []
+    if not ts:
+        return ""
+    if reply is None:
+        for t in ts:
+            if t.defences:
+                san = next(iter(t.defences)); reply = after.parse_san(san); break
+    if reply is None:
+        return ""
+    san = after.san(reply)
+    met = []
+    for t in ts:
+        if san in t.defences:
+            d = t.defences[san]
+            if any(d.startswith(x) or x.startswith(d) for x in met):
+                met = [x if len(x) >= len(d) else d for x in met]   # 'blocks the line' and 'blocks the line to f7' are one fact
+                continue
+            met.append(d)
+    if not met:
+        return ""
+    g, why = sure_gain(after, reply, memo, signed=True)     # what the reply does for THEM one reply deep
+    extra = ""
+    if g > 0:
+        extra = f" and it wins {g:g}" if "sure gain" in why else f" and {why}"
+    else:
+        nb = after.copy(stack=False); nb.push(reply)
+        hits = [f"the {chess.piece_name(nb.piece_at(t).piece_type)} on {chess.square_name(t)}" for t in nb.attacks(reply.to_square)
+                if nb.piece_at(t) and nb.piece_at(t).color == board.turn and value(nb, t) >= 3]
+        if hits:
+            extra = f" and attacks {', '.join(hits)}"
+    return f"{san} meets it ({'; '.join(met)}){extra}"
 
 
 def _fmt(san: str, g: float) -> str:
@@ -134,7 +181,9 @@ def narrate(c: Contrast) -> list[str]:
     if c.gives_up:
         out.append(f"{A.san} gives up " + ", ".join(c.gives_up) + f", which {B.san} keeps.")
     if c.creates:
-        out.append(f"{A.san} creates " + ", ".join(c.creates) + f", which {B.san} does not.")
+        out.append(f"{A.san} creates " + ", ".join(c.creates) + f", which {B.san} does not" + (f"; but {A.refuted}." if A.refuted else "."))
+    elif A.refuted and (A.cp is not None and B.cp is not None and A.cp < B.cp - 30):
+        out.append(f"{A.san}'s threat is met: {A.refuted}.")
     if c.prevents:
         out.append(f"{A.san} prevents " + ", ".join(c.prevents) + f", which {B.san} allows.")
     if A.broken and not B.broken:

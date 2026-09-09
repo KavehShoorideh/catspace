@@ -27,3 +27,13 @@ def test_a_quiet_difference_says_so():
     b = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3")
     c = contrast(b, b.parse_san("Bc4"), b.parse_san("Bb5"), Memo())
     assert not c.allows and not c.prevents and not c.a.mate_threat
+
+
+def test_a_created_threat_names_the_reply_that_meets_it():
+    from catspace.incubator.analyst.engine import Engine
+    b = chess.Board("r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/8/PPPP1PPP/RNBQK1NR w KQkq - 2 3")
+    with Engine(depth=12) as eng:
+        c = contrast(b, b.parse_san("Qh5"), b.parse_san("Nc3"), Memo(), eng)
+    assert "Qxf7# (mate)" in " ".join(c.creates)
+    assert c.a.refuted.startswith("g6 meets it (blocks the line to f7)") and "attacks the queen on h5" in c.a.refuted
+    assert any("but g6 meets it" in l for l in c.lines)
