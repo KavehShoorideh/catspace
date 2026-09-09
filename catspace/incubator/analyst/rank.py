@@ -36,8 +36,8 @@ from .goal_search import pursue, GoalSearch
 TRUST = 0.4                      # an unverified promise (an idea, a plan, an agenda step) counts this fraction of its face value
 
 
-def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budget: int = 120, engine_depth: int = 6, mate_budget: int = 150,
-                combo_top: int = 8, combo_cap: int = 1500) -> dict[chess.Move, tuple[float, str]]:
+def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budget: int = 120, engine_depth: int = 6, mate_budget: int = 1500,
+                mate_horizon: int = 10, combo_top: int = 8, combo_cap: int = 1500) -> dict[chess.Move, tuple[float, str]]:
     """move -> (score in pawns, the reason). One scale for everything: the material net one reply deep (the BASE of
     every legal move: what the ledger says after their best reply, negative when the move hangs something), lifted
     by deeper views of the same quantity (a two-move combination, a proof, a forced win), plus the planner's
@@ -61,7 +61,7 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
         lift(m, 1000.0, "mate")
     if not any(v >= 1000 for v, _ in out.values()):
         try:
-            gs = GoalSearch(board, side, None, memo=memo, horizon=6, budget=mate_budget)
+            gs = GoalSearch(board, side, None, memo=memo, horizon=mate_horizon, budget=mate_budget)   # mate in five, ~1 s at most: cheap, no judge
             r = gs.run()
             if r.proven and r.line:
                 lift(board.parse_san(r.line[0]), 1000.0 - len(r.line), f"forced win: {' '.join(r.line)}")
