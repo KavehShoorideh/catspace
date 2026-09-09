@@ -21894,3 +21894,55 @@ and six, quiet key moves that set up a mate, exchange sacrifices with a position
 it can prove or price within its horizons and is silent or outranked beyond them. Against PARADISE's 89/100 on
 the same first hundred we are at 68 with no patterns written by hand; the difference is depth, not vocabulary
 (the forced wins found are the deepest lines we search). Costs: 20-33 s per position at these budgets.
+
+## 2026-09-09 11:19 PDT — the plan layer, day one: the interaction graph, and where the action is
+
+Kaveh set the programme this morning ("go ahead and do it all"): (1) the interaction graph as the one explicit
+object per position, computed by the four generic operators, with change lists; (2) focus measurements on the
+sub-games; (3) the knowledge dataset with the engine's verdict and the regime ahead; (4) a transformer whose tokens
+are the rules' answers and whose output is a sum of named senses (approach B), with the board-only control as
+approach A; (5) three experts and a gate blind to the board; (6) the incremental memory, the zone search and the
+cross-ply ledger, sized by (2). Design agreed in conversation: the gate sees only named context so its weights
+mean 'trust this expert here'; nothing in the trajectory loss names pawns, so the asymmetry test is honest.
+
+Built: `graph.py` -- piece nodes with 43 named answers (attackers and defenders that count, the exchange, pinned,
+guards, shields, holdings and their value, keeps off a mate, legal / safe / FREE moves and stuck, trapped, cones,
+king distances, king-zone hits, threat and threatened from the free-move ledgers, pawn rank / passed / to go /
+race margin / blockaded / isolated / doubled / supported, king attackers / defenders / shelter / open files, zone
+size and temperature), 17 pair relations (attacks, defends, attack counts, defend counts, line-through with the
+value and royalty of what lies beyond, blocks, holds, wins with, co-attack, co-defend, reach in 1 and 2, distance,
+aligned, same zone), 39 position indicators; zones = components of the lemma graph, temperature = what a free move
+there is worth to whichever side profits most. `changed_squares` is the change list. Two ledger speedups on the
+way: a pass gate before the reply-minimum (a move that wins nothing against a pass is no threat; 76 ledgers
+identical, 1.7x) and incremental reuse of the base ledger across the opponent's replies by footprint (192
+(position, move) pairs identical to the full recomputation). A memo bug found by the graph: nested recordings with
+equal masks removed the wrong accumulator (now by identity). Tests: 4 graph, 72 analyst in all.
+  Cost (one game, 40 positions): 1.03 s a position, opening 0.1 s, late middlegame up to 3.9 s; 85% of it is the
+  two free-move ledgers. Warm and cold memos cost the same: the footprint store's per-key cap of eight entries is
+  flooded by scratch-board facts from the reply loops and its lookups cost as much as computing -- the cross-ply
+  memory needs a position-level layer on top of the footprint store (item 6, now with a measured reason).
+
+Measured, `gauge_focus.py` (Kaveh: "I have a prior on sub-games, not moves; where is the action, and is it the
+same next move?"): 120 games of Kaveh's, a window of 12 consecutive plies each, engine best at depth 12, four
+shards, 1236 positions, 1.4 s each. OBS:
+  zones per position 1.42; a zone with positive temperature exists in 61%; the engine's best move touches some zone
+  in 81% (captures 100%, checks 81%, quiet moves 71%).
+  FOCUS when there are two zones or more (421 positions, the only case where focus is a choice): the best move
+  touches the hottest zone 63% | the largest zone 60% | a random zone 45% | the previous best move's zone 48% |
+  any zone 80%. So the hottest zone holds 63 of the 80 points available, against 45 by chance; temperature and
+  size pick nearly the same zone.
+  PERSISTENCE: the best move stays in the previous best move's zone 69% (909 pairs); in the zone of the move
+  actually played 71% (853).
+  Quiet best moves outside every zone: 232/799 (29%) -- the trajectory model's share by construction.
+  By phase (hottest / any): middlegame 77/83%, late 73/76%, opening 78/85%, ending 58/62%.
+Reading: focus is real but not sharp -- the hottest zone is the right place about two thirds of the time when
+there is a choice, and the action stays put seven times in ten. That sizes item 6: a zone-restricted search
+would have the right zone first ~63% of the time and would need the fallback to the rest; the cross-ply cache is
+worth ~70% of the work. The 29% of quiet best moves that touch no sub-game at all are exactly the moves the
+tactical layer cannot see and the trajectory model must.
+
+Running: the knowledge dataset (`dataset.py`) over all 1485 games, every ply from ply 6, engine best at depth 12,
+regime indicators at +10 and +20 plies, eight shards, ~1.2 s a position (started 11:18). `knowledge_net.py`
+written and unit-tested (decomposition exact by hand recomputation, padding inert, quasimetric zero on itself and
+directed with the triangle inequality, policy logits only on legal moves, all three variants run); smoke-trained
+two epochs on 125 positions end to end.

@@ -119,7 +119,9 @@ def report(rows, dt) -> str:
            f"the best move touches some zone {pct('hits_any')}",
            f"FOCUS: best move touches the hottest zone {pct('hits_hottest')} | largest zone {pct('hits_largest')} | random zone {pct('hits_random')} | previous best move's zone {pct('hits_prev_best', cond=lambda r: r['had_prev_best'])}",
            f"  when a positive temperature exists: hottest {pct('hits_hottest', cond=lambda r: r['hot_positive'])} | largest {pct('hits_largest', cond=lambda r: r['hot_positive'])} | random {pct('hits_random', cond=lambda r: r['hot_positive'])}",
-           f"PERSISTENCE: best move stays in the previous best move's zone {pct('hits_prev_best', cond=lambda r: r['had_prev_best'])}; in the zone of the move actually played {pct('hits_prev_played', cond=lambda r: r['had_prev_played'])}"]
+           f"  when there are two zones or more (focus is a choice): hottest {pct('hits_hottest', cond=lambda r: r['zones'] >= 2)} | largest {pct('hits_largest', cond=lambda r: r['zones'] >= 2)} | random {pct('hits_random', cond=lambda r: r['zones'] >= 2)} | previous best {pct('hits_prev_best', cond=lambda r: r['zones'] >= 2 and r['had_prev_best'])} | any {pct('hits_any', cond=lambda r: r['zones'] >= 2)}",
+           f"PERSISTENCE: best move stays in the previous best move's zone {pct('hits_prev_best', cond=lambda r: r['had_prev_best'])}; in the zone of the move actually played {pct('hits_prev_played', cond=lambda r: r['had_prev_played'])}",
+           f"  quiet best moves outside every zone (the trajectory model's share): {sum(1 for r in rows if r['kind'] == 'quiet' and not r['hits_any'])}/{sum(1 for r in rows if r['kind'] == 'quiet')}"]
     for title, key in (("by the best move's kind", "kind"), ("by phase", lambda r: "opening 60+" if r["phase"] >= 60 else "middlegame 40-59" if r["phase"] >= 40 else "late 20-39" if r["phase"] >= 20 else "ending <20")):
         groups = defaultdict(list)
         for r in rows:
