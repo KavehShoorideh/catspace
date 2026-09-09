@@ -478,6 +478,36 @@ def train(args):
     return model, data
 
 
+# ---------------------------------------------------------------- the readout: why is this position where it is
+def explain(model: KnowledgeNet, b: dict, meta_row: dict | None = None, top: int = 10, pole: int = 0) -> list[tuple[str, str, float, float]]:
+    """The Backpack readout for the first sample of the batch: phi is a sum of (piece, question) contributions
+    alpha * sense / norm, and the distance to a pole is piecewise linear in phi, so the gradient of the distance
+    dotted with each contribution is that contribution's exact local share. Returns (piece, question=answer,
+    weight alpha, share of the distance in plies), largest shares first (negative = pulls the position toward the
+    pole: toward the win for pole 0)."""
+    model.eval()
+    o = model(b)
+    phi = o["phi"][:1].detach().requires_grad_(True)
+    _, d = model.basin_logits(phi)
+    d[0, pole].backward()
+    grad = phi.grad[0].detach()                                                         # (d,)
+    a = o["alpha"][0].detach(); senses = model.sense(b["buckets"][:1] + model.q_offsets)[0].detach()     # (32, Q+2), (32, Q, d)
+    norm = o["norm"][0, 0].detach()
+    rows = []
+    n_pieces = int(b["mask"][0].sum())
+    for i in range(n_pieces):
+        sq = int(b["squares"][0, i]); t = int(b["types"][0, i])
+        name = f"{'our' if t <= 6 else 'their'} {chess.piece_name(t if t <= 6 else t - 6)} on {chess.square_name(sq)}"
+        for q in range(Q):
+            share = float((a[i, q] * senses[i, q] / norm) @ grad)
+            if a[i, q] > 0:
+                rows.append((name, f"{NODE_QUESTIONS[q]}={b['buckets'][0, i, q].item()}", float(a[i, q]), share))
+        rows.append((name, "identity", float(a[i, Q]), float((a[i, Q] * model.type_sense(b["types"][:1, i])[0].detach() / norm) @ grad)))
+        rows.append((name, "square", float(a[i, Q + 1]), float((a[i, Q + 1] * model.square_sense(b["squares"][:1, i])[0].detach() / norm) @ grad)))
+    rows.sort(key=lambda r: -abs(r[3]))
+    return rows[:top]
+
+
 def load_model(ckpt_path: str, device=None):
     ck = torch.load(ckpt_path, map_location="cpu")
     cfg = Config(**ck["config"]); model = KnowledgeNet(cfg); model.load_state_dict(ck["model"])
