@@ -98,9 +98,10 @@ def test_trajectory_terms_push_apart_only_the_unreachable():
     L = K.losses(model, b, cfg, k, 2)
     for key in ("traj_fwd", "traj_neg", "traj_bound"):
         assert torch.isfinite(L[key])
-    # the mask logic, recomputed here: pushed = not (same game and later), self excluded
-    games, plies = b["game"], b["ply"]; same = games[:2, None] == games[None, :]; later = same & (plies[None, :] > plies[:2, None])
-    pushed = ~later; pushed[:, :2] &= ~torch.eye(2, dtype=torch.bool)
+    # the mask logic, recomputed here over the whole batch: pushed = not (same game and target later), self excluded
+    games, plies = b["game"], b["ply"]; same = games[:, None] == games[None, :]; later = same & (plies[None, :] > plies[:, None])
+    pushed = ~later & ~torch.eye(6, dtype=torch.bool)
     assert not pushed[0, 2] and not pushed[1, 3]           # forward partners are reachable, not pushed
+    assert pushed[2, 0] and pushed[3, 1]                    # the REVERSE of time is pushed apart
     assert pushed[0, 4] and pushed[0, 5] and pushed[0, 1]   # the earlier position, the other game, the other anchor
-    assert not pushed[0, 0]
+    assert not pushed[4, 0] and not pushed[0, 0]            # from the earlier position the anchor is reachable

@@ -58,11 +58,12 @@ class Config:
     epochs: int = 20
     k_max: int = 20
     neg_margin: float = 30.0
+    geo_lr_mult: float = 30.0               # the quasimetric's scale/mix and the basin temperature learn 30x faster
     neg_mode: str = "qrl"                   # qrl: push apart every pair not known reachable (other games AND earlier positions of the same game); cross: other games only
     w_cp: float = 1.0
     w_regime: float = 1.0
     w_policy: float = 1.0
-    w_traj: float = 0.3
+    w_traj: float = 0.05
     w_vic: float = 2.0                      # variance-covariance regularizer on phi (VICReg's two terms): repulsion against linear collapse
     seed: int = 1
 
@@ -308,22 +309,20 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
     if k is not None and n_anchor > 0:
         a, p = phi[:n_anchor], phi[n_anchor:2 * n_anchor]
         d_fwd = model.iqe(a, p)
-        out["traj_fwd"] = F.smooth_l1_loss(d_fwd / cfg.k_max, k.float() / cfg.k_max)     # calibrated in plies, scaled to O(1)
-        dm = model.iqe.pairwise(a, phi)                                                  # (n, B)
-        games, plies = b["game"], b["ply"]
-        same = games[:n_anchor, None] == games[None, :]
-        later = same & (plies[None, :] > plies[:n_anchor, None])                        # reachable: d(a -> x) <= the ply gap
-        gap = (plies[None, :] - plies[:n_anchor, None]).float().clamp(min=1.0)
-        # the quasimetric objective (Wang & Isola): every pair NOT known to be reachable is pushed apart -- other
-        # games, and the SAME game's EARLIER positions (the reverse of time). A knight's hop back is pulled close
+        # the quasimetric objective (Wang & Isola) over the WHOLE batch, both directions: d(x -> y) for every ordered
+        # pair; pairs known reachable (same game, y later than x) are bounded by their ply gap; every other pair --
+        # other games AND the reverse of time within a game -- is pushed apart. A knight's hop back is pulled close
         # again wherever the same hop appears forward in another game; a pawn's never is. Nothing names pawns.
-        if cfg.neg_mode == "qrl":
-            pushed = ~later
-            pushed[:, :n_anchor] &= ~torch.eye(n_anchor, dtype=torch.bool, device=phi.device)
-        else:
-            pushed = ~same
-        out["traj_neg"] = F.relu(1.0 - dm / cfg.neg_margin)[pushed].mean() if pushed.any() else phi.sum() * 0   # a linear hinge: bounded gradient
-        out["traj_bound"] = F.relu((dm - gap) / cfg.k_max)[later].mean() if later.any() else phi.sum() * 0        # reachable in `gap` plies: no farther than that
+        D = model.iqe.pairwise(phi, phi)                                                 # (B, B): d(x -> y)
+        games, plies = b["game"], b["ply"]
+        same = games[:, None] == games[None, :]
+        later = same & (plies[None, :] > plies[:, None])
+        gap = (plies[None, :] - plies[:, None]).float().clamp(min=1.0)
+        eye = torch.eye(phi.shape[0], dtype=torch.bool, device=phi.device)
+        pushed = (~later) & ~eye if cfg.neg_mode == "qrl" else (~same)
+        out["traj_neg"] = F.relu(cfg.neg_margin - D)[pushed].mean() if pushed.any() else phi.sum() * 0        # a linear hinge in plies: bounded gradient
+        out["traj_bound"] = F.relu(D - gap)[later].mean() if later.any() else phi.sum() * 0                     # reachable in `gap` plies: no farther than that
+        out["traj_fwd"] = F.smooth_l1_loss(d_fwd, k.float())                                                     # calibrated in plies
     # VICReg's variance and covariance terms on phi: every dimension keeps a spread of one, dimensions decorrelate
     if phi.shape[0] >= 2:
         z = phi - phi.mean(0, keepdim=True)
@@ -451,11 +450,16 @@ def train(args):
     model = KnowledgeNet(cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"[kn] model {cfg.variant}: {n_params / 1e6:.2f}M params, d={cfg.d} layers={cfg.layers} heads={cfg.heads} buckets={cfg.buckets}; device {device}", flush=True)
-    opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+    # the geometry's scalars (the quasimetric's scale and mix, the basin temperature) move at their own pace: Adam
+    # steps a scalar by ~lr per step, and a log-scale that must travel by 3 would need ten thousand steps at 3e-4
+    geo = [model.iqe.log_scale, model.iqe.alpha_logit, model.log_T]
+    geo_ids = {id(p) for p in geo}
+    opt = torch.optim.AdamW([{"params": [p for p in model.parameters() if id(p) not in geo_ids]},
+                             {"params": geo, "lr": cfg.lr * cfg.geo_lr_mult, "weight_decay": 0.0}], lr=cfg.lr, weight_decay=cfg.weight_decay)
     train_ids = data.ids("train"); rng = random.Random(cfg.seed)
     steps_per_epoch = len(train_ids) // cfg.batch
     total_steps = steps_per_epoch * cfg.epochs
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=cfg.lr, total_steps=max(1, total_steps), pct_start=0.05)
+    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=[cfg.lr, cfg.lr * cfg.geo_lr_mult], total_steps=max(1, total_steps), pct_start=0.05)
     log = open(out / "steps.jsonl", "a")
     json.dump(dict(config=asdict(cfg), buckets=data.buckets.state(), pos_buckets=data.pos_buckets_fn.state(), reg_mean=data.reg_mean.tolist(), reg_std=data.reg_std.tolist(), n_params=n_params), open(out / "meta.json", "w"))
     step = 0; best_val = None
@@ -489,7 +493,7 @@ def train(args):
         log.write(json.dumps(line) + "\n"); log.flush()
         print(f"[kn] epoch {epoch} val: wdl {ev['wdl_acc']:.3f} (majority {ev['wdl_majority']:.3f}) policy {ev['policy_top1']:.3f} quiet {ev['policy_quiet']:.3f} capture {ev['policy_capture']:.3f} "
               f"cp_r2 {ev['cp_r2']:.3f} regime10 {ev['regime10_r2']:.3f} (persist {ev['regime10_persist_r2']:.3f}) regime20 {ev['regime20_r2']:.3f} (persist {ev['regime20_persist_r2']:.3f}) "
-              f"eff_rank {ev['effective_rank']:.1f} phi_std {ev['phi_std']:.3f} | {time.perf_counter() - t0:.0f}s", flush=True)
+              f"eff_rank {ev['effective_rank']:.1f} phi_std {ev['phi_std']:.3f} iqe_scale {math.exp(float(model.iqe.log_scale)):.2f} | {time.perf_counter() - t0:.0f}s", flush=True)
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / f"epoch_{epoch:03d}.pt")
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / "last.pt")
         if best_val is None or ev["policy_top1"] > best_val:
