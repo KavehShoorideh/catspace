@@ -22115,3 +22115,15 @@ child-distance scorer and four times below the policy head. Reading: the geometr
 the children of one position, however it is read; what it separates is positions ten and twenty plies apart.
 Overnight: the projected model for 10 epochs; A and B rescored on 3200 test positions; the rules expert C and
 Maia on 2400 more test positions (six processes, ~4.5 h) so the gate has 3200 rows instead of 800.
+
+## 2026-09-09 23:23 PDT — the projected model at ten epochs
+
+`checkpoints/kn_psi` (full variant, psi projection, 10 epochs, 20 min), the same 4000 test positions, OBS: regime
++10 R2 0.557 (the best of the day; persistence 0.472), +20 0.451 (0.091); evaluation R2 0.781; W/D/L 0.537;
+policy 29.7% (quiet 25.0%, captures 47.5% -- three points under the unprojected run's 33.0%, mostly captures);
+phi rank 20, psi rank 11. The arrow, at ten epochs: reverse > forward after pawn moves 60% (median ratio 1.16),
+captures 64% (1.16), piece moves 60% (1.14). Reading: the geometry now orders time for every kind of move; the
+separation between kinds that the four-epoch probes showed (pawns 60 / captures 57 / pieces 58, and before that
+captures 69 / pawns 56 / pieces 54) has narrowed to a few points, so what the geometry reads at ten epochs is
+mostly the clock, with the rules' irreversibility a small margin on top. The move-conditioned readout stays at
+6.6%. A and B rescored on 3200 test positions with this model; the C/M expansion is at 10% (until ~03:30).
