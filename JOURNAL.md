@@ -22032,3 +22032,29 @@ comparable). The old full run is kept at checkpoints/old_cross/.
 The rules expert C and the human prior M (Maia 1800) are scored on 800 test positions (100 per shard, 55 min);
 a preview fit on C and M alone, 240 held out: C 31.7% top-1 (quiet 20.8%, captures 60.7%), M 47.1% (quiet
 39.3%, captures 72.1%), oracle of the two 55.4% (quiet 45.7%), a context gate over the two 48.3%.
+
+## 2026-09-09 18:35 PDT — B against A on the same code path, and the arrow found by the geometry
+
+Retrained under one objective, 10 epochs each on MPS (16 min), the same 4000 held-out positions. OBS:
+  B (full: the rules' answers + identity + square): best move 33.0% top-1 (quiet 25.6% of 2783, captures
+  59.1%); evaluation R2 0.795; regime +10 R2 0.539 (persistence 0.472), +20 0.437 (0.091); W/D/L 0.552
+  (majority 0.478); effective rank 23.5.
+  A (board only: identity + square, the relation bias zeroed): 27.2% (quiet 21.4%, captures 47.1%); 0.644; 0.481;
+  0.398; 0.521; rank 50.
+  So on one architecture and one training recipe the rules' answers are worth +6 points of top-1 (+4 on quiet
+  moves, +12 on captures), +0.15 of evaluation R2 and +0.06 of regime R2 at ten plies. The rules-only variant
+  (answers without squares) is training now. Neither reaches the human prior: Maia 1800 is at 47% top-1 on the
+  expert set's positions (39% on quiet moves), so B is a knowledge reader, not yet a move picker.
+The ARROW. The first two objectives found none (reverse = forward for every kind of move) and both had the
+same flaw: the reverse of time was never pushed apart -- the first pushed other games only, the second computed
+distances with anchors as sources and the batch held only later partners. The objective now is the quasimetric
+one over the whole batch in both directions: every ordered pair not known reachable is pushed apart, reachable
+pairs are bounded by their ply gap, forward pairs are calibrated in plies. Even so no geometry formed until the
+optimizer was looked at: Adam moves the IQE's log-scale by ~lr a step, and a scale that must travel by three
+needs ten thousand steps at 3e-4; the geometry's scalars now learn at 30x. With that, four epochs at w_traj
+0.05 (`checkpoints/kn_geo`): the reverse distance exceeds the forward one after CAPTURES 69% of the time (median
+ratio 1.11), after PAWN MOVES 56% (1.03), after PIECE MOVES 54% (1.02); one-ply forward medians 6-9 (the
+calibration is loose). Nothing in the loss names captures or pawns; the ordering captures > pawns > pieces is the
+rules' irreversibility read from the data. Cost: the effective rank of phi fell from 23 to 6 and the heads
+lost 2-4 points -- the geometry and the heads pull phi in different directions, which is the open problem for
+tomorrow (a separate projection for the geometry, or the repulsion weighted up).
