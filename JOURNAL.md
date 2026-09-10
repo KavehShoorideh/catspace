@@ -22010,3 +22010,25 @@ trajectory at 0.3: rank 13.6, cp 0.74, regime10 0.39; plus senses per (piece typ
 attacked twice' is its own vector: rank 19.6, cp 0.73, regime10 0.42 (persistence 0.41), regime20 0.32, policy
 25% (quiet 22%). Launched the three variants at these settings, 16 epochs each (17:10). The rules expert C and
 the human prior M are being scored on 800 test positions on the CPU meanwhile.
+
+## 2026-09-09 17:40 PDT — the first trained knowledge network: heads good, no arrow; the objective corrected
+
+The full variant, 16 epochs (26 min on MPS), test split of 4000 held-out positions, OBS: W/D/L by the basin
+geometry 0.559 (majority 0.478); the engine's evaluation R2 0.781; the regime 10 plies ahead R2 0.537
+(persistence 0.472 on this split), 20 plies ahead 0.430 (persistence 0.091); the best move 32.1% top-1 (quiet
+24.9% of 2783, captures 56.2%); effective rank 26. By key at +10, network / persistence: pieces 0.92/0.84, phase
+0.81/0.75, bishop pair 0.38/0.24, rooks connected 0.15/-0.19, material 0.56/0.64 (below persistence), passed
+0.46/0.49. The validation curve plateaued at epoch 6.
+The pawn asymmetry test FAILED, honestly: over 3000 consecutive-ply test pairs, the reverse distance
+d(t+1 -> t) equals the forward one -- pawn moves: forward median 3.53, reverse 3.54, reverse larger 45%; captures
+3.42/3.44, 48%; piece moves 3.63/3.64, 49%. Cause, in the loss: only OTHER games' positions were pushed apart;
+the same game's earlier positions were never pushed, so nothing could tell a pawn's irreversibility from a
+knight's hop back. The correction is the quasimetric objective proper (Wang & Isola's QRL logic): every pair not
+known reachable is pushed apart -- other games AND the same game's earlier positions -- and reachable pairs are
+bounded by their ply gap; a knight's hop back is pulled close again wherever the same hop appears forward in
+another game, a pawn's never is; nothing names pawns. Retraining the three variants with it (10 epochs each,
+started 17:40; the board-only control had begun under the old objective and was restarted so the variants stay
+comparable). The old full run is kept at checkpoints/old_cross/.
+The rules expert C and the human prior M (Maia 1800) are scored on 800 test positions (100 per shard, 55 min);
+a preview fit on C and M alone, 240 held out: C 31.7% top-1 (quiet 20.8%, captures 60.7%), M 47.1% (quiet
+39.3%, captures 72.1%), oracle of the two 55.4% (quiet 45.7%), a context gate over the two 48.3%.
