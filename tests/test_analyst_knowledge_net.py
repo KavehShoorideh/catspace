@@ -60,11 +60,11 @@ def test_quasimetric_is_directed_and_zero_on_itself():
     torch.manual_seed(0)
     cfg = K.Config(d=32, layers=1, heads=4, dropout=0.0)
     model = K.KnowledgeNet(cfg).eval()
-    u = torch.randn(5, 32); v = torch.randn(5, 32)
+    u = torch.randn(5, cfg.d_geo); v = torch.randn(5, cfg.d_geo)
     assert torch.allclose(model.iqe(u, u), torch.zeros(5), atol=1e-6)
     assert not torch.allclose(model.iqe(u, v), model.iqe(v, u))
     # triangle inequality on random triples
-    w = torch.randn(5, 32)
+    w = torch.randn(5, cfg.d_geo)
     assert (model.iqe(u, w) <= model.iqe(u, v) + model.iqe(v, w) + 1e-5).all()
 
 
@@ -105,3 +105,24 @@ def test_trajectory_terms_push_apart_only_the_unreachable():
     assert pushed[2, 0] and pushed[3, 1]                    # the REVERSE of time is pushed apart
     assert pushed[0, 4] and pushed[0, 5] and pushed[0, 1]   # the earlier position, the other game, the other anchor
     assert not pushed[4, 0] and not pushed[0, 0]            # from the earlier position the anchor is reachable
+
+
+def test_move_values_only_on_legal_moves_and_delta_loss_uses_next_pairs():
+    torch.manual_seed(0)
+    cfg = K.Config(d=32, layers=1, heads=4, dropout=0.0)
+    model = K.KnowledgeNet(cfg)
+    fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"
+    b = _batch([fen, fen], cfg)
+    o = model(b)
+    mv = model.move_values(o["h"], o["phi"], b)
+    assert torch.isfinite(mv[b["legal"]]).all() and torch.isinf(mv[~b["legal"]]).all()
+    # a batch where sample 1 is the position after sample 0's played move: the delta loss is finite and nonzero
+    b["i"] = torch.tensor([0, 1]); b["next"] = torch.tensor([1, -1])
+    fr = int(b["legal"][0].nonzero()[0, 0]); to = int(b["legal"][0].nonzero()[0, 1])
+    b["played_from"] = torch.tensor([fr, 0]); b["played_to"] = torch.tensor([to, 0])
+    b["best"] = torch.full((2,), -1); b["game"] = torch.tensor([1, 1]); b["ply"] = torch.tensor([3, 4])
+    L = K.losses(model, b, cfg, None, 0)
+    assert torch.isfinite(L["delta"]) and L["delta"] > 0
+    # without any next pair the term is zero
+    b["next"] = torch.tensor([-1, -1])
+    assert float(K.losses(model, b, cfg, None, 0)["delta"]) == 0.0

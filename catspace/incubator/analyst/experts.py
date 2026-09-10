@@ -97,13 +97,13 @@ class NetScorer:
 
 # ---------------------------------------------------------------- collection
 def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = "0/1", split: str = "test", max_n: int = 2000,
-            distances: bool = False, budget: int = 120, judge: int = 6, experts: tuple = ("a", "b", "c"), only_quiet: bool = False, log=print):
+            distances: bool = False, budget: int = 120, judge: int = 6, experts: tuple = ("a", "b", "c"), only_quiet: bool = False, skip: int = 0, log=print):
     """Score the split's positions by the requested experts; rows of different passes (the slow C on the CPU while
     the networks train, A and B afterwards) merge by position id in `fit`."""
     i, k = (int(x) for x in shard.split("/"))
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     data = K.Data(data_dir, meta_only=True)
-    ids = [int(x) for x in data.ids(split)][:max_n]
+    ids = [int(x) for x in data.ids(split)][skip:skip + max_n]
     if only_quiet:
         ids = [x for x in ids if data.meta[x]["best_kind"] == "quiet"]
     ids = ids[i::k]
@@ -153,7 +153,7 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
         eng.close()
     if maia is not None:
         maia.close()
-    tag = "".join(experts) + ("_dist" if distances else "")
+    tag = "".join(experts) + ("_dist" if distances else "") + (f"_s{skip}" if skip else "")
     with open(out / f"rows_{tag}_{i}.jsonl", "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
@@ -273,10 +273,10 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["collect", "fit"]); ap.add_argument("--data", default="data/derived/knowledge"); ap.add_argument("--a", default=""); ap.add_argument("--b", default="")
     ap.add_argument("--out", default="data/derived/experts"); ap.add_argument("--dir", default="data/derived/experts"); ap.add_argument("--shard", default="0/1")
     ap.add_argument("--split", default="test"); ap.add_argument("--max-n", type=int, default=2000); ap.add_argument("--distances", action="store_true")
-    ap.add_argument("--experts", default="a,b,c"); ap.add_argument("--only-quiet", action="store_true")
+    ap.add_argument("--experts", default="a,b,c"); ap.add_argument("--only-quiet", action="store_true"); ap.add_argument("--skip", type=int, default=0)
     a = ap.parse_args(argv)
     if a.cmd == "collect":
-        collect(a.data, a.a, a.b, a.out, a.shard, a.split, a.max_n, a.distances, experts=tuple(a.experts.split(",")), only_quiet=a.only_quiet)
+        collect(a.data, a.a, a.b, a.out, a.shard, a.split, a.max_n, a.distances, experts=tuple(a.experts.split(",")), only_quiet=a.only_quiet, skip=a.skip)
     else:
         fit(a.dir, tuple(a.experts.split(",")))
 

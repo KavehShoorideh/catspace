@@ -47,6 +47,7 @@ DIST_COL = EDGE_RELATIONS.index("distance")
 @dataclass
 class Config:
     d: int = 128
+    d_geo: int = 64                         # the geometry's dimension (psi = W phi)
     layers: int = 6
     heads: int = 8
     buckets: int = 12
@@ -64,6 +65,7 @@ class Config:
     w_regime: float = 1.0
     w_policy: float = 1.0
     w_traj: float = 0.05
+    w_delta: float = 1.0                    # the move-conditioned readout
     w_vic: float = 2.0                      # variance-covariance regularizer on phi (VICReg's two terms): repulsion against linear collapse
     seed: int = 1
 
@@ -129,12 +131,18 @@ class KnowledgeNet(nn.Module):
         self.blocks = nn.ModuleList([Block(d, cfg.heads, cfg.dropout) for _ in range(cfg.layers)])
         self.ln = nn.LayerNorm(d)
         self.alpha = nn.Linear(d, Q + 2)                              # per piece: a weight per question sense, plus identity and square senses
-        self.iqe = IQE(d, components=16)
-        self.poles = nn.Parameter(torch.randn(3, d) * 0.05)           # win / draw / loss, side-to-move view
+        self.iqe = IQE(cfg.d_geo, components=16)
+        self.geo = nn.Linear(d, cfg.d_geo)                            # the geometry's own projection: the trajectory shapes psi, the heads keep phi
+        self.poles = nn.Parameter(torch.randn(3, cfg.d_geo) * 0.05)   # win / draw / loss, side-to-move view (in psi)
         self.log_T = nn.Parameter(torch.zeros(()))
         self.cp_head = nn.Linear(d, 1)
         self.regime_head = nn.Linear(d, 2 * K_REG)
         self.pol_from = nn.Linear(d, d); self.pol_to = nn.Embedding(64, d)
+        # the move-conditioned readout (Kaveh 2026-08-11, concept dynamics): from the mover's token, the destination
+        # and the board token, predict the CHANGE of the geometry after the move as the opponent will see it. Scoring
+        # a move then needs no child graph: value(move) = the predicted psi', read against the poles.
+        self.delta_to = nn.Embedding(64, d)
+        self.delta = nn.Sequential(nn.Linear(3 * d, 2 * d), nn.GELU(), nn.Linear(2 * d, cfg.d_geo))
         self.register_buffer("q_offsets", torch.arange(Q) * cfg.buckets)
         self.register_buffer("p_offsets", torch.arange(P) * cfg.buckets)
 
@@ -191,12 +199,45 @@ class KnowledgeNet(nn.Module):
         """(B, 32, Q): the sense of (piece type, question, answer bucket) -- 'a queen attacked twice' is its own vector."""
         return b["types"][..., None] * (Q * self.cfg.buckets) + b["buckets"] + self.q_offsets
 
+    def psi(self, phi):
+        """The geometry's coordinates: a linear map of phi, so the readout by senses still holds (psi is linear in them too)."""
+        return self.geo(phi)
+
     def basin_logits(self, phi):
         B = phi.shape[0]
-        u = phi[:, None, :].expand(B, 3, -1).reshape(B * 3, -1)
+        psi = self.psi(phi)
+        u = psi[:, None, :].expand(B, 3, -1).reshape(B * 3, -1)
         v = self.poles[None].expand(B, 3, -1).reshape(B * 3, -1)
         d = self.iqe(u, v).reshape(B, 3)
         return -d / torch.exp(self.log_T), d
+
+    def predicted_psi(self, h, phi, from_idx, to_sq):
+        """(B,) mover token index and destination square -> the predicted psi of the position after the move, from
+        the SIDE THEN TO MOVE (the opponent): psi_next = psi(phi) + delta(mover, destination, board)."""
+        B = h.shape[0]
+        mover = h[torch.arange(B, device=h.device), 1 + from_idx]                        # (B, d)
+        x = torch.cat([mover, self.delta_to(to_sq), h[:, 0]], dim=-1)
+        return self.psi(phi) + self.delta(x)
+
+    def move_values(self, h, phi, b):
+        """(B, 32, 64): for every legal move, the mover's predicted standing after it -- the opponent's distance to
+        THEIR win pole minus to their loss pole (far from their win, near their loss = good for us)."""
+        B = h.shape[0]
+        legal = b["legal"]
+        idx = legal.nonzero(as_tuple=False)                                              # (M, 3): batch, from, to
+        if len(idx) == 0:
+            return torch.full_like(legal, float("-inf"), dtype=h.dtype)
+        mover = h[idx[:, 0], 1 + idx[:, 1]]
+        x = torch.cat([mover, self.delta_to(idx[:, 2]), h[idx[:, 0], 0]], dim=-1)
+        psi_next = self.psi(phi)[idx[:, 0]] + self.delta(x)                              # (M, d_geo)
+        M = psi_next.shape[0]
+        u = psi_next[:, None, :].expand(M, 3, -1).reshape(M * 3, -1)
+        v = self.poles[None].expand(M, 3, -1).reshape(M * 3, -1)
+        d = self.iqe(u, v).reshape(M, 3)                                                 # to win / draw / loss of the side then to move
+        val = d[:, 0] - d[:, 2]
+        out = torch.full(legal.shape, float("-inf"), dtype=h.dtype, device=h.device)
+        out[idx[:, 0], idx[:, 1], idx[:, 2]] = val
+        return out
 
     def policy_logits(self, h, b):
         """(B, 32, 64): from-piece token x to-square, -inf where not legal."""
@@ -237,12 +278,15 @@ class Data:
         self.squares = np.array([m["squares"] for m in self.meta], dtype=np.int64)
         self.types = np.array([[t if t > 0 else (6 - t if t < 0 else 0) for t in m["types"]] for m in self.meta], dtype=np.int64)   # 0 pad, 1-6 ours, 7-12 theirs
         self.legal = np.zeros((N, MAX_PIECES, 64), dtype=bool); self.best = np.full(N, -1, dtype=np.int64)
+        self.played_from = np.zeros(N, dtype=np.int64); self.played_to = np.zeros(N, dtype=np.int64); self.next = np.full(N, -1, dtype=np.int64)
         for i, m in enumerate(self.meta):
             board = chess.Board(m["fen"]); sq_index = {s: j for j, s in enumerate(m["squares"]) if s < 64}
             for mv in board.legal_moves:
                 self.legal[i, sq_index[mv.from_square], mv.to_square] = True
             if m["best"]:
                 bm = chess.Move.from_uci(m["best"]); self.best[i] = sq_index[bm.from_square] * 64 + bm.to_square
+            pm = chess.Move.from_uci(m["played"]); self.played_from[i] = sq_index[pm.from_square]; self.played_to[i] = pm.to_square
+            self.next[i] = self.index.get((m["game"], m["ply"] + 1), -1)
         reg = np.array([regime_of(chess.Board(m["fen"]), bool(m["side"])) for m in self.meta], dtype=np.float32)
         self.reg_mean = reg[tr].mean(0); self.reg_std = reg[tr].std(0) + 1e-6
         self.regime_now = (reg - self.reg_mean) / self.reg_std
@@ -266,7 +310,8 @@ class Data:
                    cp=torch.as_tensor(self.cp[idx]), result=torch.as_tensor(self.result[idx]), regime_now=torch.as_tensor(self.regime_now[idx]),
                    ahead10=torch.as_tensor(self.ahead[10][idx]), ahead20=torch.as_tensor(self.ahead[20][idx]),
                    ended10=torch.as_tensor(self.ended[10][idx]), ended20=torch.as_tensor(self.ended[20][idx]),
-                   game=torch.as_tensor(self.game[idx]), ply=torch.as_tensor(self.ply[idx]), i=torch.as_tensor(idx))
+                   game=torch.as_tensor(self.game[idx]), ply=torch.as_tensor(self.ply[idx]), i=torch.as_tensor(idx),
+                   played_from=torch.as_tensor(self.played_from[idx]), played_to=torch.as_tensor(self.played_to[idx]), next=torch.as_tensor(self.next[idx]))
         return {k: v.to(device) for k, v in out.items()}
 
     def partner(self, i: int, k_max: int, rng: random.Random):
@@ -307,13 +352,14 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
     has = b["best"] >= 0
     out["policy"] = F.cross_entropy(pl[has], b["best"][has]) if has.any() else phi.sum() * 0
     if k is not None and n_anchor > 0:
-        a, p = phi[:n_anchor], phi[n_anchor:2 * n_anchor]
+        psi = model.psi(phi)
+        a, p = psi[:n_anchor], psi[n_anchor:2 * n_anchor]
         d_fwd = model.iqe(a, p)
         # the quasimetric objective (Wang & Isola) over the WHOLE batch, both directions: d(x -> y) for every ordered
         # pair; pairs known reachable (same game, y later than x) are bounded by their ply gap; every other pair --
         # other games AND the reverse of time within a game -- is pushed apart. A knight's hop back is pulled close
         # again wherever the same hop appears forward in another game; a pawn's never is. Nothing names pawns.
-        D = model.iqe.pairwise(phi, phi)                                                 # (B, B): d(x -> y)
+        D = model.iqe.pairwise(psi, psi)                                                 # (B, B): d(x -> y)
         games, plies = b["game"], b["ply"]
         same = games[:, None] == games[None, :]
         later = same & (plies[None, :] > plies[:, None])
@@ -323,6 +369,30 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         out["traj_neg"] = F.relu(cfg.neg_margin - D)[pushed].mean() if pushed.any() else phi.sum() * 0        # a linear hinge in plies: bounded gradient
         out["traj_bound"] = F.relu(D - gap)[later].mean() if later.any() else phi.sum() * 0                     # reachable in `gap` plies: no farther than that
         out["traj_fwd"] = F.smooth_l1_loss(d_fwd, k.float())                                                     # calibrated in plies
+        # the geometry's own spread: VICReg's variance and covariance on psi, so the repulsion cannot be met by a
+        # ply clock and a game id alone (the collapse of the first run, now in psi's coordinates)
+        if psi.shape[0] >= 2:
+            zp = psi - psi.mean(0, keepdim=True)
+            sp = torch.sqrt(zp.var(0, unbiased=False) + 1e-4)
+            covp = (zp.T @ zp) / max(1, psi.shape[0] - 1)
+            out["psi_vic"] = F.relu(1.0 - sp).mean() + (covp - torch.diag(torch.diag(covp))).pow(2).sum() / psi.shape[1]
+        else:
+            out["psi_vic"] = phi.sum() * 0
+    # the move-conditioned readout: for anchors whose NEXT position is in the batch (the k=1 partners), the predicted
+    # psi after the played move against the next position's psi (a fixed target: the geometry is shaped elsewhere)
+    if "next" in b and "played_from" in b:
+        pos = {int(i): n for n, i in enumerate(b["i"].tolist())}
+        src, dst = [], []
+        for n, j in enumerate(b["next"].tolist()):
+            if j in pos:
+                src.append(n); dst.append(pos[j])
+        if src:
+            src_t = torch.tensor(src, device=phi.device); dst_t = torch.tensor(dst, device=phi.device)
+            pred = model.predicted_psi(h[src_t], phi[src_t], b["played_from"][src_t], b["played_to"][src_t])
+            target = model.psi(phi[dst_t]).detach()
+            out["delta"] = F.smooth_l1_loss(pred, target)
+        else:
+            out["delta"] = phi.sum() * 0
     # VICReg's variance and covariance terms on phi: every dimension keeps a spread of one, dimensions decorrelate
     if phi.shape[0] >= 2:
         z = phi - phi.mean(0, keepdim=True)
@@ -332,9 +402,9 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         out["vic_cov"] = (cov - torch.diag(torch.diag(cov))).pow(2).sum() / phi.shape[1]
     else:
         out["vic_var"] = phi.sum() * 0; out["vic_cov"] = phi.sum() * 0
-    total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * out["policy"] + cfg.w_vic * (out["vic_var"] + out["vic_cov"])
+    total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * out["policy"] + cfg.w_vic * (out["vic_var"] + out["vic_cov"]) + cfg.w_delta * out.get("delta", 0.0)
     if "traj_fwd" in out:
-        total = total + cfg.w_traj * (out["traj_fwd"] + out["traj_neg"] + out["traj_bound"])
+        total = total + cfg.w_traj * (out["traj_fwd"] + out["traj_neg"] + out["traj_bound"]) + cfg.w_vic * out["psi_vic"]
     out["total"] = total
     out["_phi"] = phi; out["_logits"] = logits; out["_policy"] = pl; out["_regime"] = reg
     return out
@@ -348,7 +418,7 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
     n = len(ids); stats = dict(n=n)
     wdl_ok = wdl_n = 0; maj = np.bincount(data.result[data.ids("train")][data.result[data.ids("train")] >= 0], minlength=3).argmax()
     wdl_maj = 0
-    pol_ok = pol_n = 0; quiet_ok = quiet_n = 0; cap_ok = cap_n = 0
+    pol_ok = pol_n = 0; quiet_ok = quiet_n = 0; cap_ok = cap_n = 0; d_ok = dquiet_ok = 0
     cp_pred, cp_true = [], []
     reg_pred = {10: [], 20: []}; reg_true = {10: [], 20: []}; reg_now = []
     phis = []
@@ -363,12 +433,15 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
         pred = pl.argmax(-1); has = b["best"] >= 0
         hit = (pred == b["best"]) & has
         pol_ok += hit.sum().item(); pol_n += has.sum().item()
+        mv = model.move_values(o["h"], o["phi"], b).view(len(chunk), -1)
+        hit_d = (mv.argmax(-1) == b["best"]) & has
         for j, ii in enumerate(chunk):
             kind = data.meta[int(ii)]["best_kind"]
             if kind == "quiet":
-                quiet_n += 1; quiet_ok += int(hit[j].item())
+                quiet_n += 1; quiet_ok += int(hit[j].item()); dquiet_ok += int(hit_d[j].item())
             elif kind == "capture":
                 cap_n += 1; cap_ok += int(hit[j].item())
+        d_ok += hit_d.sum().item()
         cp_pred.append(model.cp_head(o["phi"]).squeeze(-1).cpu().numpy()); cp_true.append(b["cp"].cpu().numpy())
         reg = model.regime_head(o["phi"]).view(len(chunk), 2, K_REG).cpu().numpy()
         reg_pred[10].append(reg[:, 0]); reg_pred[20].append(reg[:, 1])
@@ -376,6 +449,7 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
         phis.append(o["phi"].cpu().numpy())
     stats["wdl_acc"] = wdl_ok / max(1, wdl_n); stats["wdl_majority"] = wdl_maj / max(1, wdl_n); stats["wdl_n"] = wdl_n
     stats["policy_top1"] = pol_ok / max(1, pol_n); stats["policy_quiet"] = quiet_ok / max(1, quiet_n); stats["policy_capture"] = cap_ok / max(1, cap_n); stats["quiet_n"] = quiet_n
+    stats["delta_top1"] = d_ok / max(1, pol_n); stats["delta_quiet"] = dquiet_ok / max(1, quiet_n)
     cp_pred, cp_true = np.concatenate(cp_pred), np.concatenate(cp_true)
     stats["cp_r2"] = float(1 - ((cp_pred - cp_true) ** 2).mean() / max(1e-9, cp_true.var()))
     now = np.concatenate(reg_now)
@@ -391,6 +465,10 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
     phi = np.concatenate(phis)
     stats["effective_rank"] = effective_rank(phi)
     stats["phi_std"] = float(phi.std())
+    with torch.no_grad():
+        psi = model.psi(torch.as_tensor(phi, device=device)).cpu().numpy()
+    stats["psi_rank"] = effective_rank(psi)
+    stats["psi_std"] = float(psi.std())
     model.train()
     return stats
 
@@ -424,7 +502,7 @@ def asymmetry(model: KnowledgeNet, data: Data, split: str, device, max_n: int = 
     for s in range(0, len(pairs), 128):
         chunk = pairs[s:s + 128]
         ba = data.batch([i for i, _ in chunk], device); bb = data.batch([j for _, j in chunk], device)
-        pa, pb = model(ba)["phi"], model(bb)["phi"]
+        pa, pb = model.psi(model(ba)["phi"]), model.psi(model(bb)["phi"])
         fwd = model.iqe(pa, pb).cpu().numpy(); rev = model.iqe(pb, pa).cpu().numpy()
         for (i, j), f, r in zip(chunk, fwd, rev):
             m = data.meta[i]; board = chess.Board(m["fen"]); mv = chess.Move.from_uci(m["played"])
@@ -491,9 +569,9 @@ def train(args):
         ev = evaluate(model, data, "val", cfg, device, max_n=2000)
         line = dict(step=step, epoch=epoch, split="val", **{k: v for k, v in ev.items() if not isinstance(v, dict)})
         log.write(json.dumps(line) + "\n"); log.flush()
-        print(f"[kn] epoch {epoch} val: wdl {ev['wdl_acc']:.3f} (majority {ev['wdl_majority']:.3f}) policy {ev['policy_top1']:.3f} quiet {ev['policy_quiet']:.3f} capture {ev['policy_capture']:.3f} "
+        print(f"[kn] epoch {epoch} val: wdl {ev['wdl_acc']:.3f} (majority {ev['wdl_majority']:.3f}) policy {ev['policy_top1']:.3f} quiet {ev['policy_quiet']:.3f} capture {ev['policy_capture']:.3f} delta-pick {ev['delta_top1']:.3f} (quiet {ev['delta_quiet']:.3f}) "
               f"cp_r2 {ev['cp_r2']:.3f} regime10 {ev['regime10_r2']:.3f} (persist {ev['regime10_persist_r2']:.3f}) regime20 {ev['regime20_r2']:.3f} (persist {ev['regime20_persist_r2']:.3f}) "
-              f"eff_rank {ev['effective_rank']:.1f} phi_std {ev['phi_std']:.3f} iqe_scale {math.exp(float(model.iqe.log_scale)):.2f} | {time.perf_counter() - t0:.0f}s", flush=True)
+              f"eff_rank {ev['effective_rank']:.1f} psi_rank {ev['psi_rank']:.1f} phi_std {ev['phi_std']:.3f} iqe_scale {math.exp(float(model.iqe.log_scale)):.2f} | {time.perf_counter() - t0:.0f}s", flush=True)
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / f"epoch_{epoch:03d}.pt")
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / "last.pt")
         if best_val is None or ev["policy_top1"] > best_val:
@@ -518,7 +596,7 @@ def explain(model: KnowledgeNet, b: dict, meta_row: dict | None = None, top: int
     model.eval()
     o = model(b)
     phi = o["phi"][:1].detach().requires_grad_(True)
-    _, d = model.basin_logits(phi)
+    _, d = model.basin_logits(phi)                                                       # through psi = W phi: still linear in the contributions
     d[0, pole].backward()
     grad = phi.grad[0].detach()                                                         # (d,)
     a = o["alpha"][0].detach(); senses = model.sense(model.sense_index({k: v[:1] for k, v in b.items()}))[0].detach()     # (32, Q+2), (32, Q, d)
