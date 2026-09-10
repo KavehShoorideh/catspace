@@ -22086,3 +22086,18 @@ B, C; +2 over M alone with M in). The scenarios Kaveh wanted to read off exist a
 at 560 fitting rows the gate does not beat the constant; the sample must grow (the C scoring is the cost: 40 s a
 position). Not run yet: the distance-based scoring (one child graph per legal move) -- running on the quiet
 subset, four processes, hours.
+
+## 2026-09-09 22:35 PDT — the distance-based move scoring: the geometry ranks positions, not moves
+
+The last of the day's runs (four processes, 3.5 h: one child graph per legal move): on 568 quiet-best test
+positions, 397 to fit and 171 held out, the move whose child is nearest our win pole and farthest from our loss
+pole. OBS: board-only geometry 4.1% top-1, knowledge geometry 7.0% (random over ~30 legal moves ~3%), the rules
+ranking C on the same positions 16.4%; oracle of the three 25.7%; the fixed blend gives the distance experts
+weights 0.03 and 0.03. The policy heads of the same two networks reach 21.9% and 27.8% on quiet moves.
+Reading: the quasimetric as trained is a regime-level object -- it predicts where the game is going (regime +20
+R2 0.44 against persistence 0.09) and orders time in the rules' irreversibility order when it forms -- but one
+ply does not move a position far enough in it to rank moves; the token-level policy head does that four times
+better. For quiet-move choice the day's honest order is Maia 1800 33%, the knowledge policy head 26-28%, the rules
+ranking 19%, the distance scorers under 10%. Open for tomorrow: the geometry against the heads (rank 6 when it
+forms), and whether a move-conditioned readout (the change in phi predicted from the move, the concept-dynamics
+idea) does what the child-distance cannot.
