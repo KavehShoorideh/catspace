@@ -97,13 +97,16 @@ class NetScorer:
 
 # ---------------------------------------------------------------- collection
 def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = "0/1", split: str = "test", max_n: int = 2000,
-            distances: bool = False, budget: int = 120, judge: int = 6, experts: tuple = ("a", "b", "c"), log=print):
+            distances: bool = False, budget: int = 120, judge: int = 6, experts: tuple = ("a", "b", "c"), only_quiet: bool = False, log=print):
     """Score the split's positions by the requested experts; rows of different passes (the slow C on the CPU while
     the networks train, A and B afterwards) merge by position id in `fit`."""
     i, k = (int(x) for x in shard.split("/"))
     out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
     data = K.Data(data_dir, meta_only=True)
-    ids = [int(x) for x in data.ids(split)][:max_n][i::k]
+    ids = [int(x) for x in data.ids(split)][:max_n]
+    if only_quiet:
+        ids = [x for x in ids if data.meta[x]["best_kind"] == "quiet"]
+    ids = ids[i::k]
     A = NetScorer(ckpt_a) if "a" in experts else None; B = NetScorer(ckpt_b) if "b" in experts else None
     maia = None
     if "m" in experts:                                                             # the human prior at the product's level
@@ -150,7 +153,7 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
         eng.close()
     if maia is not None:
         maia.close()
-    tag = "".join(experts)
+    tag = "".join(experts) + ("_dist" if distances else "")
     with open(out / f"rows_{tag}_{i}.jsonl", "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
@@ -210,6 +213,8 @@ def fit(dir_: str, experts=("a", "b", "c"), epochs: int = 300, seed: int = 0, lo
         for l in open(f):
             r = json.loads(l); by_id.setdefault(r["i"], {}).update(r)
     rows = [r for r in by_id.values() if all(e in r for e in experts)]
+    if not rows:
+        log(f"[experts] no rows carry all of {experts}"); return ""
     rng = random.Random(seed); rng.shuffle(rows)
     n = len(rows); cut = int(n * 0.7)
     train, test = rows[:cut], rows[cut:]
@@ -268,10 +273,10 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["collect", "fit"]); ap.add_argument("--data", default="data/derived/knowledge"); ap.add_argument("--a", default=""); ap.add_argument("--b", default="")
     ap.add_argument("--out", default="data/derived/experts"); ap.add_argument("--dir", default="data/derived/experts"); ap.add_argument("--shard", default="0/1")
     ap.add_argument("--split", default="test"); ap.add_argument("--max-n", type=int, default=2000); ap.add_argument("--distances", action="store_true")
-    ap.add_argument("--experts", default="a,b,c")
+    ap.add_argument("--experts", default="a,b,c"); ap.add_argument("--only-quiet", action="store_true")
     a = ap.parse_args(argv)
     if a.cmd == "collect":
-        collect(a.data, a.a, a.b, a.out, a.shard, a.split, a.max_n, a.distances, experts=tuple(a.experts.split(",")))
+        collect(a.data, a.a, a.b, a.out, a.shard, a.split, a.max_n, a.distances, experts=tuple(a.experts.split(",")), only_quiet=a.only_quiet)
     else:
         fit(a.dir, tuple(a.experts.split(",")))
 
