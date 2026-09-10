@@ -61,7 +61,8 @@ class Config:
     w_cp: float = 1.0
     w_regime: float = 1.0
     w_policy: float = 1.0
-    w_traj: float = 0.5
+    w_traj: float = 0.3
+    w_vic: float = 2.0                      # variance-covariance regularizer on phi (VICReg's two terms): repulsion against linear collapse
     seed: int = 1
 
 
@@ -117,7 +118,7 @@ class KnowledgeNet(nn.Module):
         super().__init__()
         self.cfg = cfg; d = cfg.d
         self.answer_emb = nn.Embedding(Q * cfg.buckets, d)            # input side: one embedding per (question, bucket)
-        self.sense = nn.Embedding(Q * cfg.buckets, d)                 # output side: one sense vector per (question, bucket)
+        self.sense = nn.Embedding(13 * Q * cfg.buckets, d)            # output side: one sense vector per (piece type, question, bucket)
         self.type_emb = nn.Embedding(13, d); self.square_emb = nn.Embedding(65, d)   # identity: signed piece type (0 = pad), square (64 = pad)
         self.type_sense = nn.Embedding(13, d); self.square_sense = nn.Embedding(65, d)
         self.pos_emb = nn.Embedding(P * cfg.buckets, d)               # the board token: one embedding per (indicator, bucket)
@@ -172,7 +173,7 @@ class KnowledgeNet(nn.Module):
         h = self.ln(x)                                                                  # (B, 33, d)
         pieces = h[:, 1:]
         a = F.softplus(self.alpha(pieces)) * b["mask"][..., None]                       # (B, 32, Q+2) >= 0, zero on padding
-        senses = self.sense(b["buckets"] + self.q_offsets)                              # (B, 32, Q, d)
+        senses = self.sense(self.sense_index(b))                                        # (B, 32, Q, d)
         ts, ss = self.type_sense(b["types"]), self.square_sense(b["squares"])           # (B, 32, d)
         if self.cfg.variant == "board":
             contrib = a[..., Q:Q + 1] * ts + a[..., Q + 1:Q + 2] * ss
@@ -183,6 +184,10 @@ class KnowledgeNet(nn.Module):
         norm = a.sum((1, 2))[:, None] + 1.0
         phi = contrib.sum(1) / norm                                                     # (B, d): linear in the senses
         return dict(h=h, phi=phi, alpha=a, norm=norm)
+
+    def sense_index(self, b):
+        """(B, 32, Q): the sense of (piece type, question, answer bucket) -- 'a queen attacked twice' is its own vector."""
+        return b["types"][..., None] * (Q * self.cfg.buckets) + b["buckets"] + self.q_offsets
 
     def basin_logits(self, phi):
         B = phi.shape[0]
@@ -302,12 +307,21 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
     if k is not None and n_anchor > 0:
         a, p = phi[:n_anchor], phi[n_anchor:2 * n_anchor]
         d_fwd = model.iqe(a, p)
-        out["traj_fwd"] = F.smooth_l1_loss(d_fwd, k.float())
+        out["traj_fwd"] = F.smooth_l1_loss(d_fwd / cfg.k_max, k.float() / cfg.k_max)     # calibrated in plies, scaled to O(1)
         dm = model.iqe.pairwise(a, phi)                                                  # (n, B)
         games = b["game"]
         other = games[:n_anchor, None] != games[None, :]
-        out["traj_neg"] = (F.relu(cfg.neg_margin - dm) ** 2)[other].mean() / cfg.neg_margin if other.any() else phi.sum() * 0
-    total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * out["policy"]
+        out["traj_neg"] = F.relu(1.0 - dm / cfg.neg_margin)[other].mean() if other.any() else phi.sum() * 0   # a linear hinge: bounded gradient
+    # VICReg's variance and covariance terms on phi: every dimension keeps a spread of one, dimensions decorrelate
+    if phi.shape[0] >= 2:
+        z = phi - phi.mean(0, keepdim=True)
+        std = torch.sqrt(z.var(0, unbiased=False) + 1e-4)
+        out["vic_var"] = F.relu(1.0 - std).mean()
+        cov = (z.T @ z) / max(1, phi.shape[0] - 1)
+        out["vic_cov"] = (cov - torch.diag(torch.diag(cov))).pow(2).sum() / phi.shape[1]
+    else:
+        out["vic_var"] = phi.sum() * 0; out["vic_cov"] = phi.sum() * 0
+    total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * out["policy"] + cfg.w_vic * (out["vic_var"] + out["vic_cov"])
     if "traj_fwd" in out:
         total = total + cfg.w_traj * (out["traj_fwd"] + out["traj_neg"])
     out["total"] = total
@@ -491,7 +505,7 @@ def explain(model: KnowledgeNet, b: dict, meta_row: dict | None = None, top: int
     _, d = model.basin_logits(phi)
     d[0, pole].backward()
     grad = phi.grad[0].detach()                                                         # (d,)
-    a = o["alpha"][0].detach(); senses = model.sense(b["buckets"][:1] + model.q_offsets)[0].detach()     # (32, Q+2), (32, Q, d)
+    a = o["alpha"][0].detach(); senses = model.sense(model.sense_index({k: v[:1] for k, v in b.items()}))[0].detach()     # (32, Q+2), (32, Q, d)
     norm = o["norm"][0, 0].detach()
     rows = []
     n_pieces = int(b["mask"][0].sum())

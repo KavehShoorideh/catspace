@@ -42,7 +42,7 @@ def test_output_is_linear_in_the_named_senses_and_padding_is_inert():
     b = _batch(["r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", "8/8/8/8/1k6/8/5P2/4K3 w - - 0 1"], cfg)
     o = model(b)
     # phi recomputed by hand from the weights and the sense tables: exact decomposition
-    a = o["alpha"]; senses = model.sense(b["buckets"] + model.q_offsets)
+    a = o["alpha"]; senses = model.sense(model.sense_index(b))
     contrib = (a[..., :K.Q, None] * senses).sum(2) + a[..., K.Q:K.Q + 1] * model.type_sense(b["types"]) + a[..., K.Q + 1:K.Q + 2] * model.square_sense(b["squares"])
     phi_hand = contrib.sum(1) / (a.sum((1, 2))[:, None] + 1.0)
     assert torch.allclose(phi_hand, o["phi"], atol=1e-5)
