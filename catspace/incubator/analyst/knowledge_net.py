@@ -617,8 +617,16 @@ def explain(model: KnowledgeNet, b: dict, meta_row: dict | None = None, top: int
 
 
 def load_model(ckpt_path: str, device=None):
+    """Older checkpoints (before the psi projection and the delta head) load with those modules at their init and
+    the poles in phi's space: their geometry read through psi is meaningless, their policy and phi heads are intact."""
     ck = torch.load(ckpt_path, map_location="cpu")
-    cfg = Config(**ck["config"]); model = KnowledgeNet(cfg); model.load_state_dict(ck["model"])
+    conf = dict(ck["config"])
+    if "d_geo" not in conf:                                    # a pre-projection checkpoint: its poles and IQE live on phi
+        conf["d_geo"] = conf["d"]
+    cfg = Config(**{k: v for k, v in conf.items() if k in Config.__dataclass_fields__}); model = KnowledgeNet(cfg)
+    missing, unexpected = model.load_state_dict(ck["model"], strict=False)
+    if missing:
+        print(f"[kn] {ckpt_path}: {len(missing)} modules at init (pre-projection checkpoint): {sorted({m.split('.')[0] for m in missing})}", flush=True)
     device = device or torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     return model.to(device).eval(), cfg, device
 
