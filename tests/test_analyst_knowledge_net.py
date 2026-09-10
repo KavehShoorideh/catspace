@@ -82,3 +82,25 @@ def test_policy_logits_only_on_legal_moves_and_losses_run():
     for variant in ("board", "rules"):
         m2 = K.KnowledgeNet(K.Config(d=32, layers=1, heads=4, dropout=0.0, variant=variant))
         assert torch.isfinite(K.losses(m2, b, m2.cfg)["total"])
+
+
+def test_trajectory_terms_push_apart_only_the_unreachable():
+    """Two anchors with partners k plies ahead, one earlier position of the same game, one from another game:
+    the forward pair is calibrated, the earlier one and the other game are pushed apart, the later one bounded."""
+    torch.manual_seed(0)
+    cfg = K.Config(d=32, layers=1, heads=4, dropout=0.0)
+    model = K.KnowledgeNet(cfg)
+    fen = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4"
+    b = _batch([fen] * 6, cfg)
+    b["game"] = torch.tensor([1, 2, 1, 2, 1, 3]); b["ply"] = torch.tensor([10, 20, 14, 23, 5, 9])   # anchors 0,1; partners 2,3 (k=4,3); 4 = earlier same game; 5 = other game
+    b["best"] = torch.full((6,), -1)
+    k = torch.tensor([4, 3])
+    L = K.losses(model, b, cfg, k, 2)
+    for key in ("traj_fwd", "traj_neg", "traj_bound"):
+        assert torch.isfinite(L[key])
+    # the mask logic, recomputed here: pushed = not (same game and later), self excluded
+    games, plies = b["game"], b["ply"]; same = games[:2, None] == games[None, :]; later = same & (plies[None, :] > plies[:2, None])
+    pushed = ~later; pushed[:, :2] &= ~torch.eye(2, dtype=torch.bool)
+    assert not pushed[0, 2] and not pushed[1, 3]           # forward partners are reachable, not pushed
+    assert pushed[0, 4] and pushed[0, 5] and pushed[0, 1]   # the earlier position, the other game, the other anchor
+    assert not pushed[0, 0]

@@ -58,6 +58,7 @@ class Config:
     epochs: int = 20
     k_max: int = 20
     neg_margin: float = 30.0
+    neg_mode: str = "qrl"                   # qrl: push apart every pair not known reachable (other games AND earlier positions of the same game); cross: other games only
     w_cp: float = 1.0
     w_regime: float = 1.0
     w_policy: float = 1.0
@@ -309,9 +310,20 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         d_fwd = model.iqe(a, p)
         out["traj_fwd"] = F.smooth_l1_loss(d_fwd / cfg.k_max, k.float() / cfg.k_max)     # calibrated in plies, scaled to O(1)
         dm = model.iqe.pairwise(a, phi)                                                  # (n, B)
-        games = b["game"]
-        other = games[:n_anchor, None] != games[None, :]
-        out["traj_neg"] = F.relu(1.0 - dm / cfg.neg_margin)[other].mean() if other.any() else phi.sum() * 0   # a linear hinge: bounded gradient
+        games, plies = b["game"], b["ply"]
+        same = games[:n_anchor, None] == games[None, :]
+        later = same & (plies[None, :] > plies[:n_anchor, None])                        # reachable: d(a -> x) <= the ply gap
+        gap = (plies[None, :] - plies[:n_anchor, None]).float().clamp(min=1.0)
+        # the quasimetric objective (Wang & Isola): every pair NOT known to be reachable is pushed apart -- other
+        # games, and the SAME game's EARLIER positions (the reverse of time). A knight's hop back is pulled close
+        # again wherever the same hop appears forward in another game; a pawn's never is. Nothing names pawns.
+        if cfg.neg_mode == "qrl":
+            pushed = ~later
+            pushed[:, :n_anchor] &= ~torch.eye(n_anchor, dtype=torch.bool, device=phi.device)
+        else:
+            pushed = ~same
+        out["traj_neg"] = F.relu(1.0 - dm / cfg.neg_margin)[pushed].mean() if pushed.any() else phi.sum() * 0   # a linear hinge: bounded gradient
+        out["traj_bound"] = F.relu((dm - gap) / cfg.k_max)[later].mean() if later.any() else phi.sum() * 0        # reachable in `gap` plies: no farther than that
     # VICReg's variance and covariance terms on phi: every dimension keeps a spread of one, dimensions decorrelate
     if phi.shape[0] >= 2:
         z = phi - phi.mean(0, keepdim=True)
@@ -323,7 +335,7 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         out["vic_var"] = phi.sum() * 0; out["vic_cov"] = phi.sum() * 0
     total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * out["policy"] + cfg.w_vic * (out["vic_var"] + out["vic_cov"])
     if "traj_fwd" in out:
-        total = total + cfg.w_traj * (out["traj_fwd"] + out["traj_neg"])
+        total = total + cfg.w_traj * (out["traj_fwd"] + out["traj_neg"] + out["traj_bound"])
     out["total"] = total
     out["_phi"] = phi; out["_logits"] = logits; out["_policy"] = pl; out["_regime"] = reg
     return out
