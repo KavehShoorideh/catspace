@@ -22101,3 +22101,17 @@ better. For quiet-move choice the day's honest order is Maia 1800 33%, the knowl
 ranking 19%, the distance scorers under 10%. Open for tomorrow: the geometry against the heads (rank 6 when it
 forms), and whether a move-conditioned readout (the change in phi predicted from the move, the concept-dynamics
 idea) does what the child-distance cannot.
+
+## 2026-09-09 22:52 PDT — the geometry's own coordinates, and the move-conditioned readout
+
+Two probes of four epochs each (OBS). (1) The quasimetric now lives on psi = W phi (64 dimensions, a linear map,
+so the readout by senses still holds) with VICReg's spread on psi as well: phi keeps effective rank 18 (6 when
+the geometry sat on phi), the heads hold (cp R2 0.75, regime +10 0.49, policy 25.5%), and the arrow is now
+strongest for PAWN MOVES: reverse > forward 60% (median ratio 1.12), captures 57% (1.07), piece moves 58% (1.08).
+Without the spread term psi collapsed to rank 2 (the ply clock again). (2) The move-conditioned readout -- from
+the mover's token, the destination and the board token, predict psi after the move, trained against the next
+position's psi on consecutive pairs -- picks the engine's move 6.7% of the time (quiet 7.8%), the same as the
+child-distance scorer and four times below the policy head. Reading: the geometry as trained does not separate
+the children of one position, however it is read; what it separates is positions ten and twenty plies apart.
+Overnight: the projected model for 10 epochs; A and B rescored on 3200 test positions; the rules expert C and
+Maia on 2400 more test positions (six processes, ~4.5 h) so the gate has 3200 rows instead of 800.
