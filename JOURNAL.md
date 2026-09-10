@@ -21994,8 +21994,11 @@ against PERSISTENCE (the value now) and the training mean. OBS:
 Reading: there is a trajectory in the knowledge. The regime twenty plies out is predictable from the present
 knowledge where persistence is useless (pieces 0.88 against 0.09), and the pawn events -- a passed pawn appearing
 -- are the most predictable of all, which is the promotion sub-goal Kaveh asked us to watch for, visible before
-any learned geometry. What the check does not say: whether the tactical answers add to the cheap regime
-indicators alone (a regime-only ridge is the missing baseline; next run).
+any learned geometry. The missing baseline, run next (17:15): a ridge on the 15 regime indicators ALONE gives 0.585 at +10 and
+0.422 at +20 against 0.612 and 0.448 for the full knowledge vector -- most of the predictability is the regime's
+own linear dynamics; the tactical answers add +0.03 on average, most on material (0.68 against 0.61: the
+ledger's falls and threats foretell the material swing) and on rooks connecting (0.19 against 0.15). So, linearly,
+the knowledge adds a little to the regime; whether a network extracts more is the transformer's question.
 
 The network (`knowledge_net.py`), first full run: COLLAPSED -- effective rank of phi 2.8 after seven epochs, the
 heads on phi at or below persistence (regime10 0.18 against 0.41), while the policy head on the tokens learned

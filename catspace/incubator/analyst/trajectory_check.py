@@ -57,20 +57,20 @@ def main(argv=None):
         keep_te = te & ~ended                                                     # score only where the future exists
         model = Ridge(alpha=10.0).fit(Xs[tr], Y[tr])
         pred = model.predict(Xs[keep_te])
-        # persistence + ridge on the residual: does the knowledge add to 'nothing changes'?
-        resid = Ridge(alpha=10.0).fit(Xs[tr], (Y - now)[tr]); pred_res = now[keep_te] + resid.predict(Xs[keep_te])
+        nows = (now - now[tr].mean(0)) / (now[tr].std(0) + 1e-6)                     # the regime indicators alone: the cheap baseline
+        pred_reg = Ridge(alpha=10.0).fit(nows[tr], Y[tr]).predict(nows[keep_te])
         var = Y[keep_te].var(0); live = var > 1e-6
         rows = []
         for j, k in enumerate(REGIME_KEYS):
             if not live[j]:
                 continue
             r2 = lambda p: 1 - ((p - Y[keep_te, j]) ** 2).mean() / var[j]
-            rows.append((k, r2(pred[:, j]), r2(now[keep_te, j]), r2(pred_res[:, j]), r2(np.full(keep_te.sum(), Y[tr, j].mean()))))
-        print(f"[traj] +{h} plies (test positions with a future {keep_te.sum()}): R2 of ridge from the knowledge | persistence | persistence+ridge residual | train mean")
-        print(f"  {'indicator':<24}{'ridge':>8}{'persist':>9}{'pers+res':>10}{'mean':>7}")
-        for k, r, p, pr, m_ in rows:
-            print(f"  {k:<24}{r:>8.3f}{p:>9.3f}{pr:>10.3f}{m_:>7.3f}")
-        print(f"  {'MEAN over indicators':<24}{np.mean([r for _, r, _, _, _ in rows]):>8.3f}{np.mean([p for _, _, p, _, _ in rows]):>9.3f}{np.mean([pr for _, _, _, pr, _ in rows]):>10.3f}{np.mean([m_ for _, _, _, _, m_ in rows]):>7.3f}", flush=True)
+            rows.append((k, r2(pred[:, j]), r2(pred_reg[:, j]), r2(now[keep_te, j]), r2(np.full(keep_te.sum(), Y[tr, j].mean()))))
+        print(f"[traj] +{h} plies (test positions with a future {keep_te.sum()}): R2 of ridge from the knowledge (211 features) | ridge from the 15 regime indicators alone | persistence | train mean")
+        print(f"  {'indicator':<24}{'knowledge':>10}{'regime':>8}{'persist':>9}{'mean':>7}")
+        for k, r, rg, p, m_ in rows:
+            print(f"  {k:<24}{r:>10.3f}{rg:>8.3f}{p:>9.3f}{m_:>7.3f}")
+        print(f"  {'MEAN over indicators':<24}{np.mean([r for _, r, _, _, _ in rows]):>10.3f}{np.mean([rg for _, _, rg, _, _ in rows]):>8.3f}{np.mean([p for _, _, _, p, _ in rows]):>9.3f}{np.mean([m_ for _, _, _, _, m_ in rows]):>7.3f}", flush=True)
         # discrete events: queens off / a passed pawn appears / material swings by 2+ within h plies -- logistic vs base rate
         qi = REGIME_KEYS.index("queens_on"); pi = REGIME_KEYS.index("passed_ours"); mi = REGIME_KEYS.index("material_diff")
         events = {"queens come off": (now[:, qi] > 0) & (Y[:, qi] == 0), "a passed pawn of ours appears": (now[:, pi] == 0) & (Y[:, pi] > 0),
