@@ -21969,3 +21969,41 @@ positions -- the proofs rarely succeed either way, so the prior is kept as an or
 named by their pieces). On the latest game's first 24 plies: the move stayed in the previous fight 6/15;
 executed 4, parried 2, ignored 2 -- and the ledger read 12...Nxb4! (axb4 Rxa1 through the opened a-file) as a
 sure gain of 3, which it was.
+
+## 2026-09-09 17:11 PDT — the knowledge dataset, and the first answer to "is there a trajectory in the knowledge"
+
+The dataset (`dataset.py`, eight shards, paused 14:01-15:40 for Kaveh's interview): 69108 positions from all 1485
+games (every ply from ply 6), each with the interaction graph (32 x 43 node answers, 23.2M pair relations, 39
+indicators), the engine's best move and evaluation at depth 12, the move played, the result, and the regime
+indicators 10 and 20 plies later; 2.2 s a position with eight processes sharing eleven cores. Split by game:
+train 55054, val 7084, test 6970.
+
+`trajectory_check.py`, before any network: ridge regression from the knowledge vector (the 39 indicators plus the
+node answers pooled mean and max per side, 211 features) to the 15 regime indicators ahead, on held-out games,
+against PERSISTENCE (the value now) and the training mean. OBS:
+  +10 plies (5525 test positions with a future): ridge R2 0.612 | persistence 0.421 | mean 0.00 (mean over the
+  indicators). By key, ridge / persistence: pieces 0.95/0.78, phase 0.88/0.74, pawns 0.87/0.75, open files
+  0.87/0.78, queens on 0.71/0.65, material 0.68/0.60, passed pawns 0.58/0.48, runner 0.42/0.27, bishop pair
+  0.48/0.07, rooks connected 0.19/-0.19.
+  +20 plies (4200): ridge 0.448 | persistence -0.129: pieces 0.88/0.09, phase 0.76/0.10, pawns 0.77/0.31,
+  material 0.53/0.45, queens 0.50/0.31, passed 0.37/0.14, runner 0.19/-0.13.
+  Events by logistic regression, AUC (0.5 = nothing): a passed pawn of ours appears within 10 plies 0.84 (base
+  rate 8%), within 20 plies 0.81; the queens come off 0.76 / 0.73; material swings by two or more 0.71 / 0.62.
+  The arrow without a model: along 67631 consecutive-ply steps the pawn counts never rise, the piece count never
+  rises, the phase rises 125 times (promotions) -- the monotone coordinates a quasimetric can read.
+Reading: there is a trajectory in the knowledge. The regime twenty plies out is predictable from the present
+knowledge where persistence is useless (pieces 0.88 against 0.09), and the pawn events -- a passed pawn appearing
+-- are the most predictable of all, which is the promotion sub-goal Kaveh asked us to watch for, visible before
+any learned geometry. What the check does not say: whether the tactical answers add to the cheap regime
+indicators alone (a regime-only ridge is the missing baseline; next run).
+
+The network (`knowledge_net.py`), first full run: COLLAPSED -- effective rank of phi 2.8 after seven epochs, the
+heads on phi at or below persistence (regime10 0.18 against 0.41), while the policy head on the tokens learned
+(30% top-1). Cause, read from the losses: the trajectory hinge (cross-game pairs pushed to distance >= 30,
+squared) dominated the total and is satisfiable by a ply clock plus a game identity -- two dimensions. Fixes,
+probed two to three epochs each (OBS): trajectory terms rescaled to O(1) with a linear hinge and weight 0.1:
+rank 2.8, cp R2 0.73, regime10 0.35; plus VICReg's variance and covariance terms on phi at weight 2 and the
+trajectory at 0.3: rank 13.6, cp 0.74, regime10 0.39; plus senses per (piece type, question, answer) so 'a queen
+attacked twice' is its own vector: rank 19.6, cp 0.73, regime10 0.42 (persistence 0.41), regime20 0.32, policy
+25% (quiet 22%). Launched the three variants at these settings, 16 epochs each (17:10). The rules expert C and
+the human prior M are being scored on 800 test positions on the CPU meanwhile.
