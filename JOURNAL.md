@@ -22058,3 +22058,31 @@ calibration is loose). Nothing in the loss names captures or pawns; the ordering
 rules' irreversibility read from the data. Cost: the effective rank of phi fell from 23 to 6 and the heads
 lost 2-4 points -- the geometry and the heads pull phi in different directions, which is the open problem for
 tomorrow (a separate projection for the geometry, or the repulsion weighted up).
+
+## 2026-09-09 18:55 PDT — three experts and the gate; the rules-only control
+
+The rules-only control (the answers as tokens, no square embedding, the relation bias kept), same recipe, 4000
+held-out positions, OBS: 30.0% top-1, quiet 26.3% (the BEST of the three on quiet moves; full 25.6%, board 21.4%),
+captures 44.0% (full 59.1%, board 47.1%); evaluation R2 0.766; regime +10 0.528; rank 49. Reading: the squares
+carry the geometry of captures, the answers carry the quiet moves.
+
+`experts.py` on 800 test positions (the reasoning C: 55 min on eight processes; Maia 1800 as M; A and B by
+their policy heads), 560 to fit the gate and 240 held out -- so every number below is +-3 points. OBS:
+  A 27.5% (quiet 21.9% of 169, captures 44.1% of 59) | B 31.2% (27.8%, 44.1%) | C 31.7% (18.9%, 64.4%) |
+  M 43.3% (33.1%, 69.5%).
+  The experts agree on the move only 9.2% of the time (A, B, C) and 6.2% (with M), and when they agree they are
+  right 77% and 93%.
+  ORACLE (any expert right): A, B, C 56.2% (quiet 47.3%, captures 81.4%); with M 66.7% (57.4%, 91.5%) -- the
+  complementarity is large; the bound on any gate is twenty-five points above the best expert.
+  FIXED BLEND (no context): A, B, C 40.4% (quiet 31.4%, captures 67.8%), weights A 0.15 B 0.18 C 0.67; with M
+  45.4% (32.5%, 79.7%), weights 0.14 / 0.14 / 0.37 / 0.35.
+  CONTEXT GATE: A, B, C 37.5% (29.6%, 61.0%) -- BELOW the fixed blend (560 rows cannot fit a gate that beats a
+  constant); with M 45.8% (quiet 36.1%, captures 67.8%) -- level overall, better on quiet moves, worse on
+  captures. Mean weights by indicator move little (C between 0.46 and 0.64): C drops and B rises when the
+  reasoning is silent (C 0.46, B 0.37) and when the best move is a capture (B 0.38); C rises with a passed pawn
+  (0.64) and in endings (0.62). With M, M takes 0.54 on average and 0.36 when the reasoning is silent.
+Reading: the experts are complementary and a constant blend captures most of it (+9 points over the best of A,
+B, C; +2 over M alone with M in). The scenarios Kaveh wanted to read off exist as tendencies in the weights but
+at 560 fitting rows the gate does not beat the constant; the sample must grow (the C scoring is the cost: 40 s a
+position). Not run yet: the distance-based scoring (one child graph per legal move) -- running on the quiet
+subset, four processes, hours.
