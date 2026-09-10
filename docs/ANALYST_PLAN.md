@@ -596,3 +596,12 @@ reply loops are scratch boards), so the incremental gain went into the search it
 parent's exchange ledger and recomputes only where the move's squares touch a footprint (3.4x on a quiet
 middlegame, same scores). `track.py` is the cross-ply ledger (executed / created / parried / left; the action
 stays or moves).
+
+Day-one results of items 3-5 (OBS, single runs; JOURNAL 2026-09-09 16:55-18:55): the trajectory is in the knowledge
+(ridge to the regime 20 plies ahead R2 0.45 against persistence -0.13, though the 15 regime indicators alone give
+0.42); B beats A on one code path (33.0% against 27.2% top-1, evaluation R2 0.80 against 0.64); the rules-only
+variant is the best on quiet moves (26.3%); the geometry finds the arrow in the rules' order (reverse > forward after
+captures 69%, pawn moves 56%, piece moves 54%) once the objective pushes the reverse of time apart and the IQE's
+scale can move; the three experts are complementary (oracle 56%, with Maia 67%), a fixed blend takes 40% (45%
+with Maia), the context gate does not beat it at 560 fitting rows. Open: the geometry against the heads (rank 6
+when the geometry forms), the distance-based move scoring, more expert rows.
