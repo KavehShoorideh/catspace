@@ -22127,3 +22127,28 @@ separation between kinds that the four-epoch probes showed (pawns 60 / captures 
 captures 69 / pawns 56 / pieces 54) has narrowed to a few points, so what the geometry reads at ten epochs is
 mostly the clock, with the rules' irreversibility a small margin on top. The move-conditioned readout stays at
 6.6%. A and B rescored on 3200 test positions with this model; the C/M expansion is at 10% (until ~03:30).
+
+## 2026-09-10 03:00 PDT — the gate on 3200 rows
+
+The overnight expansion: the rules expert C and Maia 1800 on 2400 more test positions (six processes, 3.5 h), A
+(the board-only model) and B (the projected knowledge model, `kn_psi`) rescored on all 3200; 2240 rows to fit
+the gate, 960 held out (+-1.6 points). OBS:
+  A 26.8% (quiet 19.1% of 660, captures 52.7% of 241) | B 28.7% (23.2%, 48.5%) | C 31.7% (19.5%, 59.3%) |
+  M 45.6% (35.0%, 74.3%). Agreement on the move: A, B, C 10.2% (right 76.5% when they agree); with M 7.5% (87.5%).
+  ORACLE: A, B, C 55.6% (quiet 44.1%, captures 86.7%); with M 66.7% (56.4%, 93.8%).
+  FIXED BLEND: A, B, C 38.2% (29.2%, 63.1%), weights 0.14 / 0.18 / 0.68; with M 47.3% (36.1%, 78.0%), weights
+  0.12 / 0.13 / 0.33 / 0.42.
+  CONTEXT GATE: A, B, C 37.6% (29.2%, 61.8%); with M 46.9% (quiet 36.8%, captures 75.9%) -- within a point of
+  the blend on four times the rows. The scenario table, with M: M takes 0.63 on average and C 0.19; C rises to
+  0.33 in endings (M 0.58), 0.27 in check, 0.25 when the reasoning is silent and 0.25 with the queens off; M
+  rises to 0.72 with a passed pawn, a piece falling or a hot zone; B never exceeds 0.13 (0.02 in check, 0.01 in
+  endings). Without M: C 0.64 on average, 0.75 in endings, 0.72 with the queens off, 0.48 in check (B 0.30, A
+  0.22); B 0.23 with a passed pawn.
+Reading (the numbers now stable to two points): the experts remain complementary -- any one right 56% / 67%
+against the best single 32% / 46% -- and a constant blend takes most of what is available (+6.5 over C, +1.7
+over M). The scenarios are real but small: the reasoning's weight rises where its ledger is exact (endings,
+queens off, in check) and the human prior's where the position is sharp (a piece falls, a hot zone, a passed
+pawn); the knowledge model B is the weakest expert as a move picker and the gate says so. What a gate cannot
+recover is the 20-point gap to the oracle: the experts are right on different positions in ways the named
+context does not predict, so the next lever is the experts themselves, not the combiner -- B on quiet moves
+(23% against Maia's 35%), and C's silence (382 of 960 positions).
