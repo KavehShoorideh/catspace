@@ -85,19 +85,21 @@ class Planner:
         self.sharp = self.codebook.sharp()
 
     @torch.no_grad()
-    def predict(self, board: chess.Board, g=None, memo=None):
+    def predict(self, board: chess.Board, g=None, memo=None, cp: int | None = None):
+        """`cp`: the engine's evaluation now (side to move, centipawns) when the caller has it."""
         g = g if g is not None else build(board, memo if memo is not None else Memo())
         s, _ = net_sample(g, board, self.buckets, self.pos_buckets)
         b = K.collate([s], self.device)
         o = self.model(b)
         fl = self.model.future_head(o["phi"]).view(2, self.cfg.n_codes)
         pr = F.softmax(fl, dim=-1).cpu().numpy()
-        va = torch.tanh(self.model.value_head(o["phi"]))[0].cpu().numpy() if False else self.model.value_head(o["phi"])[0].cpu().numpy()
+        cp_now = torch.tensor([math.tanh(cp / 400.0)], device=self.device) if cp is not None else None
+        va = self.model.value_ahead(o["phi"], cp_now)[0].cpu().numpy()
         code_now = int(self.codebook.assign(g.position_vector()[None])[0])
         return g, pr, va, code_now
 
-    def plan(self, board: chess.Board, memo=None, top: int = 3) -> Plan:
-        g, pr, va, code_now = self.predict(board, memo=memo)
+    def plan(self, board: chess.Board, memo=None, top: int = 3, cp: int | None = None) -> Plan:
+        g, pr, va, code_now = self.predict(board, memo=memo, cp=cp)
         cb = self.codebook
         def futures(p):
             merged: dict[str, Future] = {}                         # codes with the same words are one future to the reader

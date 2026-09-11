@@ -142,7 +142,7 @@ class KnowledgeNet(nn.Module):
         self.cp_head = nn.Linear(d, 1)
         self.regime_head = nn.Linear(d, 2 * K_REG)
         self.future_head = nn.Linear(d, 2 * cfg.n_codes)             # the distribution over regime codes at +10 and +20
-        self.value_head = nn.Linear(d, 2)                             # tanh(cp/400) at +10 and +20, the mover's view
+        self.value_head = nn.Sequential(nn.Linear(d + 1, d), nn.GELU(), nn.Linear(d, 2))   # tanh(cp/400) at +10 and +20 from phi AND the evaluation now
         self.pol_from = nn.Linear(d, d); self.pol_to = nn.Embedding(64, d)
         # the move-conditioned readout (Kaveh 2026-08-11, concept dynamics): from the mover's token, the destination
         # and the board token, predict the CHANGE of the geometry after the move as the opponent will see it. Scoring
@@ -244,6 +244,13 @@ class KnowledgeNet(nn.Module):
         out = torch.full(legal.shape, float("-inf"), dtype=h.dtype, device=h.device)
         out[idx[:, 0], idx[:, 1], idx[:, 2]] = val
         return out
+
+    def value_ahead(self, phi, cp_now=None):
+        """(B, 2): the evaluation at +10 and +20 given phi and the evaluation NOW (the engine's number when the
+        product has it; the network's own estimate otherwise), so 'no change' is the floor and the head learns the drift."""
+        if cp_now is None:
+            cp_now = self.cp_head(phi).squeeze(-1).detach()
+        return self.value_head(torch.cat([phi, cp_now[:, None]], dim=-1))
 
     def policy_logits(self, h, b):
         """(B, 32, 64): from-piece token x to-square, -inf where not legal."""
@@ -382,7 +389,7 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
     if "code10" in b:
         fl = model.future_head(phi).view(-1, 2, cfg.n_codes)
         out["future"] = 0.5 * (F.cross_entropy(fl[:, 0], b["code10"]) + F.cross_entropy(fl[:, 1], b["code20"]))
-        va = model.value_head(phi)
+        va = model.value_ahead(phi, b["cp"])
         out["value"] = 0.5 * (F.mse_loss(va[:, 0], b["cp10"]) + F.mse_loss(va[:, 1], b["cp20"]))
     if k is not None and n_anchor > 0:
         psi = model.psi(phi)
@@ -480,7 +487,7 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
         d_ok += hit_d.sum().item()
         cp_pred.append(model.cp_head(o["phi"]).squeeze(-1).cpu().numpy()); cp_true.append(b["cp"].cpu().numpy())
         reg = model.regime_head(o["phi"]).view(len(chunk), 2, K_REG).cpu().numpy()
-        fl = model.future_head(o["phi"]).view(len(chunk), 2, cfg.n_codes).cpu().numpy(); va = model.value_head(o["phi"]).cpu().numpy()
+        fl = model.future_head(o["phi"]).view(len(chunk), 2, cfg.n_codes).cpu().numpy(); va = model.value_ahead(o["phi"], b["cp"]).cpu().numpy()
         for j, hz in enumerate((10, 20)):
             fut_logits[hz].append(fl[:, j]); fut_true[hz].append(b[f"code{hz}"].cpu().numpy()); fut_has[hz].append(b[f"has{hz}"].cpu().numpy())
             val_pred[hz].append(va[:, j]); val_true[hz].append(b[f"cp{hz}"].cpu().numpy())
