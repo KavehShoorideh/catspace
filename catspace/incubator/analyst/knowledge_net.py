@@ -405,7 +405,10 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         fl = model.future_head(phi).view(-1, 2, cfg.n_codes)
         out["future"] = 0.5 * (F.cross_entropy(fl[:, 0], b["code10"]) + F.cross_entropy(fl[:, 1], b["code20"]))
         va = model.value_ahead(phi, b["cp"])
-        out["value"] = 0.5 * (F.mse_loss(va[:, 0], b["cp10"]) + F.mse_loss(va[:, 1], b["cp20"]))
+        h10, h20 = b["has10"], b["has20"]                                                # only positions with a real future: the game's last
+        v10 = F.mse_loss(va[h10, 0], b["cp10"][h10]) if h10.any() else phi.sum() * 0    # evaluation is often a mate score and would teach
+        v20 = F.mse_loss(va[h20, 1], b["cp20"][h20]) if h20.any() else phi.sum() * 0    # 'late = extreme' to positions that go on
+        out["value"] = 0.5 * (v10 + v20)
         hw = b["has_window"]
         if hw.any():
             sl = model.sharp_head(phi)[hw]
