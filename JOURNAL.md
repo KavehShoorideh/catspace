@@ -22192,3 +22192,32 @@ against persistence 0.41 (the engine's number now is a better guess of its numbe
 so far). Armed for the night: `gauge_budget.py` -- the ranking at full / normal / shallow budgets and GATED by the
 planner's sharpness on 300 held-out positions, six processes: does the gate keep full's agreement at a fraction
 of its cost?
+
+## 2026-09-11 02:31 PDT — the planning layer trained and measured; the budget gate
+
+The knowledge net with the planning heads (`kn_future4`, 10 epochs; three retrains fixed the value head: the
+evaluation now as an input, then a zero-initialised residual on it, then the loss masked to positions with a
+real future -- the terminal evaluation, often a mate score, had taught 'late = extreme' to positions that go
+on). Test split, 4000 positions, OBS, each beside its baseline:
+  the regime code at +10: top-1 21.3% (persistence 20.4%, marginal 4.4%), top-3 46.7%, NLL 2.68 (marginal 3.91);
+  at +20: top-1 13.8% (persistence 9.4%), NLL 3.05 (marginal 4.09).
+  SHARPNESS: a big threat within 10 plies AUC 0.799 (persistence 0.582; base rate 0.83); the engine's best moves
+  forcing over the window 0.704; the mass on sharp codes at +10 0.668 (persistence 0.535).
+  VALUE: the engine's evaluation at +10 R2 0.578 (persistence 0.562), at +20 0.446 (0.434); the codes' mean
+  results under the distribution correlate 0.48 with the evaluation at +10. Regime indicators at +10 R2 0.577.
+  The other heads held (evaluation now R2 0.77, policy 28.6%, rank 19).
+Reading: the future is predictable as a distribution over named regimes -- twice persistence at twenty plies --
+and its sharpness at 0.80; its value only just above 'the same as now', which is what one expects of a fair
+game between equals ten plies out: the drift is small and mostly the swing the tactics decide.
+
+`gauge_budget.py`, 300 held-out positions, the rules ranking four ways (full / normal / shallow constant budgets
+and GATED by the planner's sharpness), OBS: top-1 22.7% under ALL FOUR -- the identical top move on every
+position; silent 46%; seconds 17.8 / 12.2 / 7.9 / 14.7. By the planner's level: deep 151 positions (the engine's
+best forcing 36%, 20.7 s gated against 21.8 full), normal 95 (24%, 11.9 against 17.8), shallow 54 (13%, 3.0
+against 6.5). Reading: on game positions the ranking is not budget-limited -- the deeper search never changes
+the answer, so the gate saves time at no cost but a constant shallow budget saves more; the gate's SORTING is
+real (forcing best moves 36% in deep against 13% in shallow). Where budget matters is the puzzle and suite
+positions (mate-in-five needs the mate budget); on those the gate would have to say 'deep', and it can: the
+sharpness head is at 0.80. Not measured tonight. Product: the plan (the future in words, its value and
+sharpness, the steering target and its needs) is in the web 'plan' pill and the CLI long render, and `pursue`
+hands the needs to the tactics ("win the rook on a2: not forced today; hardest defence Rd6 Kh7").
