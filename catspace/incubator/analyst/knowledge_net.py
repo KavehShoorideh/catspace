@@ -144,7 +144,8 @@ class KnowledgeNet(nn.Module):
         self.regime_head = nn.Linear(d, 2 * K_REG)
         self.future_head = nn.Linear(d, 2 * cfg.n_codes)             # the distribution over regime codes at +10 and +20
         self.sharp_head = nn.Linear(d, 2)                             # logits: a big threat within 10 plies; the engine's best moves forcing over the window
-        self.value_head = nn.Sequential(nn.Linear(d + 1, d), nn.GELU(), nn.Linear(d, 2))   # tanh(cp/400) at +10 and +20 from phi AND the evaluation now
+        self.value_head = nn.Sequential(nn.Linear(d + 1, d), nn.GELU(), nn.Linear(d, 2))   # the DRIFT of tanh(cp/400) by +10 and +20 from phi and the evaluation now
+        nn.init.zeros_(self.value_head[2].weight); nn.init.zeros_(self.value_head[2].bias)   # starts at 'no change': persistence is the floor by construction
         self.pol_from = nn.Linear(d, d); self.pol_to = nn.Embedding(64, d)
         # the move-conditioned readout (Kaveh 2026-08-11, concept dynamics): from the mover's token, the destination
         # and the board token, predict the CHANGE of the geometry after the move as the opponent will see it. Scoring
@@ -252,7 +253,7 @@ class KnowledgeNet(nn.Module):
         product has it; the network's own estimate otherwise), so 'no change' is the floor and the head learns the drift."""
         if cp_now is None:
             cp_now = self.cp_head(phi).squeeze(-1).detach()
-        return self.value_head(torch.cat([phi, cp_now[:, None]], dim=-1))
+        return cp_now[:, None] + self.value_head(torch.cat([phi, cp_now[:, None]], dim=-1))
 
     def policy_logits(self, h, b):
         """(B, 32, 64): from-piece token x to-square, -inf where not legal."""
