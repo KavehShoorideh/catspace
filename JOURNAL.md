@@ -22260,3 +22260,28 @@ and the summary does not even keep the central-pawn count linearly. What the val
 is what wins 1300-rated blitz: pieces that do not fall, mobility (theirs against us), holdings, a queen near the
 enemy king, pawns near promotion, the hot zone. The sharpness head has one positional concept of its own:
 blocked pawns make a quiet game. Development is the best-kept geometric concept in the summary (R2 0.73).
+
+## 2026-09-11 15:56 PDT — the Strategic Test Suite: quiet positional play, every expert
+
+Kaveh: "what I care about is that the engine solves quiet positional puzzles; maybe train on puzzle data." The
+Lichess puzzles are tactical by construction (no positional theme; quietMove is 4% and is a quiet key with a
+tactical point), so the measurement is the Strategic Test Suite (Corbit & Swaminathan; 1500 positions, 15
+positional themes, every candidate move scored 0-10; `assets/suites/STS.epd`, `gauge_sts.py`). OBS, mean points
+of 10 per position (key found = the top move is the 10-point move); the suite's own scale is points of 15000:
+  the rules ranking C 2.26 (key 14.3%; 3392 points; SILENT on 510 of 1500) | the knowledge network's policy head
+  B 2.18 (14.6%; 3264) | the board-only network A 1.80 (11.3%; 2706) | Maia 1800 M 4.54 (31.7%; 6813) | the
+  fixed blend 4.44 (31.7%; 6665).
+  By theme, C / B / M: recapturing 7.1 / 4.9 / 6.7 (the one theme the rules lead: it is an exchange); knight
+  outposts 2.8 / 2.2 / 6.0; 7th rank 2.6 / 1.2 / 4.7; square vacancy 2.4 / 0.6 / 2.9; centre control 2.4 / 1.9 /
+  4.9; pawn play in the centre 1.2 / 4.3 / 5.6 (B's best theme after recapturing); simplification 1.9 / 2.9 / 6.8
+  (the blend 8.0, above every expert: A at 4.4 and M agree there); bishop vs knight 1.8 / 2.1 / 5.7 (A 5.2);
+  advancement of a/b/c pawns 1.3 / 2.6 / 4.4; king activity 1.4 / 1.1 / 3.6; offer of simplification 1.9 / 0.9 /
+  3.8; open files 1.9 / 1.6 / 3.2; avoid pointless exchanges 1.8 / 1.6 / 2.9; undermine 1.9 / 2.7 / 3.6;
+  f/g/h pawns 1.7 / 2.0 / 3.4.
+Reading: on quiet positional play the rules ranking and the learned policy head are level with each other at
+a third of Maia 1800, and Maia 1800 is itself a weak positional player (strong engines score above 13000 of
+15000). The rules ranking is silent on a third of the suite -- there is nothing to count -- and where it speaks
+it is mostly the exchange (recapturing 7.1). The policy head's labels (depth-12 best moves of 1300-rated blitz)
+did not teach positional play. The plan (Kaveh's call): quiet keys mined from games with deep multi-PV labels
+where the tactical layer is silent, plus the Lichess quiet-move / defensive / zugzwang themes, as the policy
+head's training set; the suite per theme as the gauge.
