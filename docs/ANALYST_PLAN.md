@@ -624,3 +624,8 @@ the race (`pursue`); the expected sharpness sets the search budget (`gauge_budge
 Measured first (OBS): a big threat within ten plies is predictable at AUC 0.79 from the present graph (0.72 from
 the regime alone, 0.58 from the present threat); the code at +20 at 13.8% top-1 against 9.4% persistence, NLL
 3.05 against 4.09 marginal; the details (which ply, which threat) are not predictable, as expected.
+Trained and measured (OBS, `kn_future4`, 4000 held-out positions): the code at +20 top-1 13.8% (persistence
+9.4%), NLL 3.05 (marginal 4.09); a big threat within ten plies AUC 0.80 (persistence 0.58); the evaluation at
++10 R2 0.58 (persistence 0.56). The budget gate: on 300 game positions all four budgets give the same top move
+(the ranking is not budget-limited there); the gate's sorting is real (forcing best moves 36% in 'deep', 13% in
+'shallow'); its value on puzzle-like positions is not measured yet.
