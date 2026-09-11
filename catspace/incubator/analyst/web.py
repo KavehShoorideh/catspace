@@ -173,7 +173,7 @@ class Analyst:
                 "plans": [plan_text(board, pl) for pl in plans_for(board, us, memo=self.memo, top=3)],
                 "holds": holdings_lines(board, us, memo=self.memo),
                 "regime": regime_lines(board, memo=self.memo),
-                "plan": self.planner.plan(board, memo=self.memo).lines if self.planner is not None else [],
+                "plan": self.planner.plan(board, memo=self.memo, cp=rec.eval_cp).lines if self.planner is not None else [],
                 "ideas": idea_lines(board, us, memo=self.memo, top=3),
                 "ledger": ledger_lines(board, memo=self.memo),
                 "contrast": contrast_lines(board, mv, chess.Move.from_uci(rec.idea.uci) if rec.idea else None, memo=self.memo, engine=self.eng, maia=self.human),
