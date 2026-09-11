@@ -69,6 +69,7 @@ class Config:
     w_delta: float = 1.0                    # the move-conditioned readout
     w_future: float = 1.0                   # the quantized future: cross-entropy over regime codes at +10 and +20
     w_value: float = 1.0                    # the engine's evaluation at +10 and +20
+    w_sharp: float = 1.0                    # the window sharpness labels
     n_codes: int = 48
     w_vic: float = 2.0                      # variance-covariance regularizer on phi (VICReg's two terms): repulsion against linear collapse
     seed: int = 1
@@ -142,6 +143,7 @@ class KnowledgeNet(nn.Module):
         self.cp_head = nn.Linear(d, 1)
         self.regime_head = nn.Linear(d, 2 * K_REG)
         self.future_head = nn.Linear(d, 2 * cfg.n_codes)             # the distribution over regime codes at +10 and +20
+        self.sharp_head = nn.Linear(d, 2)                             # logits: a big threat within 10 plies; the engine's best moves forcing over the window
         self.value_head = nn.Sequential(nn.Linear(d + 1, d), nn.GELU(), nn.Linear(d, 2))   # tanh(cp/400) at +10 and +20 from phi AND the evaluation now
         self.pol_from = nn.Linear(d, d); self.pol_to = nn.Embedding(64, d)
         # the move-conditioned readout (Kaveh 2026-08-11, concept dynamics): from the mover's token, the destination
@@ -325,6 +327,17 @@ class Data:
             self.fut[h] = np.where(f >= 0, f, np.array([last[m["game"]] for m in self.meta]))
         self.code_ahead = {h: self.code_now[self.fut[h]] for h in (10, 20)}
         self.cp_ahead = {h: self.cp[self.fut[h]] for h in (10, 20)}
+        # the window labels: a big threat in either ledger anywhere in the next 10 plies; the engine's best move
+        # forcing in at least half of them (the sharpness the planner budgets by)
+        PQ = {q: i for i, q in enumerate(POSITION_QUESTIONS)}
+        big = np.maximum(self.position[:, PQ["threat_ours"]], self.position[:, PQ["threat_theirs"]]) >= 3.0
+        forcing = np.array([m["best_kind"] != "quiet" for m in self.meta])
+        self.sharp_window = np.zeros(N, dtype=np.float32); self.forcing_window = np.zeros(N, dtype=np.float32); self.has_window = np.zeros(N, dtype=bool)
+        for i, m in enumerate(self.meta):
+            ids = [self.index.get((m["game"], m["ply"] + j), -1) for j in range(1, 11)]
+            ids = [j for j in ids if j >= 0]
+            if ids:
+                self.has_window[i] = True; self.sharp_window[i] = float(any(big[j] for j in ids)); self.forcing_window[i] = float(np.mean([forcing[j] for j in ids]) >= 0.5)
         self.result = np.array([-1 if m["result"] is None else int(round(m["result"] * 2)) for m in self.meta])     # 0 loss, 1 draw, 2 win, -1 unknown
         self.game = np.array([m["game"] for m in self.meta]); self.ply = np.array([m["ply"] for m in self.meta])
         self.ended = {h: np.array([m["ended_within"][str(h)] for m in self.meta]) for h in (10, 20)}
@@ -346,7 +359,8 @@ class Data:
                    played_from=torch.as_tensor(self.played_from[idx]), played_to=torch.as_tensor(self.played_to[idx]), next=torch.as_tensor(self.next[idx]),
                    code_now=torch.as_tensor(self.code_now[idx]), code10=torch.as_tensor(self.code_ahead[10][idx]), code20=torch.as_tensor(self.code_ahead[20][idx]),
                    cp10=torch.as_tensor(self.cp_ahead[10][idx]), cp20=torch.as_tensor(self.cp_ahead[20][idx]),
-                   has10=torch.as_tensor(self.has_fut[10][idx]), has20=torch.as_tensor(self.has_fut[20][idx]))
+                   has10=torch.as_tensor(self.has_fut[10][idx]), has20=torch.as_tensor(self.has_fut[20][idx]),
+                   sharp_window=torch.as_tensor(self.sharp_window[idx]), forcing_window=torch.as_tensor(self.forcing_window[idx]), has_window=torch.as_tensor(self.has_window[idx]))
         return {k: v.to(device) for k, v in out.items()}
 
     def partner(self, i: int, k_max: int, rng: random.Random):
@@ -391,6 +405,12 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         out["future"] = 0.5 * (F.cross_entropy(fl[:, 0], b["code10"]) + F.cross_entropy(fl[:, 1], b["code20"]))
         va = model.value_ahead(phi, b["cp"])
         out["value"] = 0.5 * (F.mse_loss(va[:, 0], b["cp10"]) + F.mse_loss(va[:, 1], b["cp20"]))
+        hw = b["has_window"]
+        if hw.any():
+            sl = model.sharp_head(phi)[hw]
+            out["sharp"] = 0.5 * (F.binary_cross_entropy_with_logits(sl[:, 0], b["sharp_window"][hw]) + F.binary_cross_entropy_with_logits(sl[:, 1], b["forcing_window"][hw]))
+        else:
+            out["sharp"] = phi.sum() * 0
     if k is not None and n_anchor > 0:
         psi = model.psi(phi)
         a, p = psi[:n_anchor], psi[n_anchor:2 * n_anchor]
@@ -443,7 +463,7 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
     else:
         out["vic_var"] = phi.sum() * 0; out["vic_cov"] = phi.sum() * 0
     total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * out["policy"] + cfg.w_vic * (out["vic_var"] + out["vic_cov"]) + cfg.w_delta * out.get("delta", 0.0) \
-        + cfg.w_future * out.get("future", 0.0) + cfg.w_value * out.get("value", 0.0)
+        + cfg.w_future * out.get("future", 0.0) + cfg.w_value * out.get("value", 0.0) + cfg.w_sharp * out.get("sharp", 0.0)
     if "traj_fwd" in out:
         total = total + cfg.w_traj * (out["traj_fwd"] + out["traj_neg"] + out["traj_bound"]) + cfg.w_vic * out["psi_vic"]
     out["total"] = total
@@ -465,6 +485,7 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
     phis = []
     fut_logits = {10: [], 20: []}; fut_true = {10: [], 20: []}; fut_now = []; fut_has = {10: [], 20: []}
     val_pred = {10: [], 20: []}; val_true = {10: [], 20: []}; val_now = []
+    sh_logit = []; sh_true = []; sh_has = []; sh_now = []
     for s in range(0, n, 256):
         chunk = ids[s:s + 256]
         b = data.batch(chunk, device)
@@ -492,6 +513,8 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
             fut_logits[hz].append(fl[:, j]); fut_true[hz].append(b[f"code{hz}"].cpu().numpy()); fut_has[hz].append(b[f"has{hz}"].cpu().numpy())
             val_pred[hz].append(va[:, j]); val_true[hz].append(b[f"cp{hz}"].cpu().numpy())
         fut_now.append(b["code_now"].cpu().numpy()); val_now.append(b["cp"].cpu().numpy())
+        sh_logit.append(model.sharp_head(o["phi"]).cpu().numpy()); sh_true.append(np.stack([b["sharp_window"].cpu().numpy(), b["forcing_window"].cpu().numpy()], 1)); sh_has.append(b["has_window"].cpu().numpy())
+        sh_now.append(np.maximum(data.position[chunk, POSITION_QUESTIONS.index("threat_ours")], data.position[chunk, POSITION_QUESTIONS.index("threat_theirs")]) >= 3.0)
         reg_pred[10].append(reg[:, 0]); reg_pred[20].append(reg[:, 1])
         reg_true[10].append(b["ahead10"].cpu().numpy()); reg_true[20].append(b["ahead20"].cpu().numpy()); reg_now.append(b["regime_now"].cpu().numpy())
         phis.append(o["phi"].cpu().numpy())
@@ -533,6 +556,16 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
         var = vt.var() + 1e-9
         stats[f"value{hz}_r2"] = float(1 - ((vp - vt) ** 2).mean() / var); stats[f"value{hz}_persist_r2"] = float(1 - ((vn - vt) ** 2).mean() / var)
         stats[f"value{hz}_from_codes_corr"] = float(np.corrcoef(ev, vt)[0, 1])
+    SL = np.concatenate(sh_logit); ST = np.concatenate(sh_true); SH = np.concatenate(sh_has).astype(bool); SN = np.concatenate(sh_now)
+    if SH.any():
+        from sklearn.metrics import roc_auc_score
+        for j, name in enumerate(("sharp_window", "forcing_window")):
+            y = ST[SH, j]
+            if 0 < y.sum() < len(y):
+                stats[f"{name}_auc"] = float(roc_auc_score(y, SL[SH, j])); stats[f"{name}_base"] = float(y.mean())
+        y = ST[SH, 0]
+        if 0 < y.sum() < len(y):
+            stats["sharp_window_persist_auc"] = float(roc_auc_score(y, SN[SH].astype(float)))
     phi = np.concatenate(phis)
     stats["effective_rank"] = effective_rank(phi)
     stats["phi_std"] = float(phi.std())
@@ -646,7 +679,8 @@ def train(args):
         print(f"[kn]   future: code10 top1 {ev['code10_top1']:.3f} (persist {ev['code10_persist_top1']:.3f}, marginal {ev['code10_marginal_top1']:.3f}) top3 {ev['code10_top3']:.3f} nll {ev['code10_nll']:.3f} (marginal {ev['code10_marginal_nll']:.3f}) "
               f"| code20 top1 {ev['code20_top1']:.3f} (persist {ev['code20_persist_top1']:.3f}) nll {ev['code20_nll']:.3f} (marginal {ev['code20_marginal_nll']:.3f}) "
               f"| sharp10 auc {ev.get('sharp10_auc', float('nan')):.3f} (persist {ev.get('sharp10_persist_auc', float('nan')):.3f}) sharp20 {ev.get('sharp20_auc', float('nan')):.3f} "
-              f"| value10 r2 {ev['value10_r2']:.3f} (persist {ev['value10_persist_r2']:.3f}) value20 {ev['value20_r2']:.3f} (persist {ev['value20_persist_r2']:.3f}) from-codes corr {ev['value10_from_codes_corr']:.3f}/{ev['value20_from_codes_corr']:.3f}", flush=True)
+              f"| value10 r2 {ev['value10_r2']:.3f} (persist {ev['value10_persist_r2']:.3f}) value20 {ev['value20_r2']:.3f} (persist {ev['value20_persist_r2']:.3f}) from-codes corr {ev['value10_from_codes_corr']:.3f}/{ev['value20_from_codes_corr']:.3f} "
+              f"| sharp-window auc {ev.get('sharp_window_auc', float('nan')):.3f} (persist {ev.get('sharp_window_persist_auc', float('nan')):.3f}, base {ev.get('sharp_window_base', float('nan')):.2f}) forcing-window auc {ev.get('forcing_window_auc', float('nan')):.3f}", flush=True)
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / f"epoch_{epoch:03d}.pt")
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / "last.pt")
         if best_val is None or ev["policy_top1"] > best_val:

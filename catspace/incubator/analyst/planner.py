@@ -71,6 +71,7 @@ class Plan:
     sharp10: float                       # mass on sharp codes
     sharp20: float
     entropy10: float
+    sharp_window: float = 0.0            # a big threat within 10 plies (the sharpness head), else the code mass
     steer: list[Steer] = field(default_factory=list)
     budget: dict = field(default_factory=dict)
     lines: list[str] = field(default_factory=list)
@@ -95,6 +96,7 @@ class Planner:
         pr = F.softmax(fl, dim=-1).cpu().numpy()
         cp_now = torch.tensor([math.tanh(cp / 400.0)], device=self.device) if cp is not None else None
         va = self.model.value_ahead(o["phi"], cp_now)[0].cpu().numpy()
+        self._sharp_window = float(torch.sigmoid(self.model.sharp_head(o["phi"])[0, 0])) if hasattr(self.model, "sharp_head") else None
         code_now = int(self.codebook.assign(g.position_vector()[None])[0])
         return g, pr, va, code_now
 
@@ -116,7 +118,8 @@ class Planner:
         ent = float(-(pr[0] * np.log(pr[0] + 1e-9)).sum())
         plan = Plan(code_now, cb.describe(code_now), f10, f20, float(cb.values[code_now]), float(va[0]), float(va[1]), exp10, exp20, sharp10, sharp20, ent)
         plan.steer = self.steering(board, g, pr[1], exp20, code_now)
-        plan.budget = budget_for(sharp10)
+        plan.sharp_window = self._sharp_window if self._sharp_window is not None else sharp10
+        plan.budget = budget_for(plan.sharp_window, window=self._sharp_window is not None)
         plan.lines = narrate(board, plan)
         return plan
 
@@ -196,12 +199,15 @@ def needs_for(board: chess.Board, g, now: dict, tgt: dict) -> list[tuple[str, in
     return out
 
 
-def budget_for(sharp: float) -> dict:
+def budget_for(sharp: float, window: bool = False) -> dict:
     """The search budget from the expected sharpness: the ranking's combination cap, proof budget and mate search
-    scale with how likely tactics are within ten plies. Piecewise so the decision reads as three regimes."""
-    if sharp >= 0.45:                     # the base rate of a sharp code at +10 is 0.29: above it, expect tactics
+    scale with how likely tactics are within ten plies. Piecewise so the decision reads as three regimes. The
+    thresholds sit around the label's base rate (0.29 for a sharp code at +10; 0.84 for a big threat anywhere in
+    the window, so that signal is read by how far it falls short)."""
+    hi, lo = (0.9, 0.7) if window else (0.45, 0.2)
+    if sharp >= hi:
         return dict(level="deep", combo_cap=1500, budget=120, mate_budget=1500)
-    if sharp >= 0.2:
+    if sharp >= lo:
         return dict(level="normal", combo_cap=600, budget=60, mate_budget=800)
     return dict(level="shallow", combo_cap=200, budget=30, mate_budget=300)
 
@@ -211,7 +217,7 @@ def narrate(board: chess.Board, plan: Plan) -> list[str]:
     out = [f"Now: {plan.now_text} (positions like this score {plan.value_now:.2f} for {who}).",
            f"In ten moves' time, most likely: " + "; ".join(f"{f.text} ({f.p:.0%}{', sharp' if f.sharp else ''})" for f in plan.futures10[:3]) + "."]
     out.append(f"Expected: value {plan.expected10:.2f} at +10 and {plan.expected20:.2f} at +20 (the engine's evaluation there, predicted: {plan.value10:+.2f} / {plan.value20:+.2f} in tanh units); "
-               f"tactics likely within ten plies: {plan.sharp10:.0%} (search budget: {plan.budget['level']}); the future is {'open' if plan.entropy10 > 2.5 else 'fairly set' if plan.entropy10 > 1.5 else 'set'} (entropy {plan.entropy10:.1f}).")
+               f"tactics likely within ten plies: {plan.sharp_window:.0%} (search budget: {plan.budget['level']}); the future is {'open' if plan.entropy10 > 2.5 else 'fairly set' if plan.entropy10 > 1.5 else 'set'} (entropy {plan.entropy10:.1f}).")
     for st in plan.steer:
         out.append(f"Worth steering to: {st.text} -- value {st.value:.2f} ({st.gain:+.2f} over the expectation), already {st.p:.0%} likely; the needs: " + "; ".join(t for _, _, t in st.needs) + ".")
     if not plan.steer:
