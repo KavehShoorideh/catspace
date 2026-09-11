@@ -100,13 +100,26 @@ def main(argv=None):
             for s in args.moves.split():
                 sans.append(s); b.push_san(s)
             recs = [analyse_position(b, eng, prev=prev if len(sans) == 2 else None, killed_by=sans[-1] if sans else None, multipv=args.multipv)]
-        human = None
+        human = None; planner = None
+        if args.long:
+            try:
+                from .planner import Planner, DEFAULT_CKPT
+                from pathlib import Path as _P
+                planner = Planner(DEFAULT_CKPT) if _P(DEFAULT_CKPT).exists() else None
+            except Exception:
+                planner = None
         if args.json:
             print(json.dumps([asdict(r) for r in recs], default=_json, indent=1))
         else:
             standing = []
             for r in recs:
                 print(render(r, long=args.long, alternatives=not args.quiet))
+                if args.long and planner is not None:
+                    try:
+                        for l in planner.plan(chess.Board(r.fen)).lines:
+                            print(f"  Plan: {l}")
+                    except Exception:
+                        pass
                 if args.long and r.played:                                    # the standing threat: what the move threatens, and how it met the last one
                     from .threats import threats_after, judge_reply
                     from .contrast import contrast_lines, HUMAN_LEVEL

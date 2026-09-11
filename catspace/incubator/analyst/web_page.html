@@ -268,6 +268,7 @@ function renderPanel(){
   if(p.progress&&p.progress.length)lines+=`<div class="lrow"><span class="pill">where ${who} can make progress</span> ${p.progress.map(esc).join(" · ")}</div>`;
   if(p.plans&&p.plans.length)lines+=`<div class="lrow"><span class="pill">plans for ${who}, by reasoning</span>${p.plans.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;
   if(p.holds&&p.holds.length)lines+=`<div class="lrow"><span class="pill">what holds for ${who}</span> ${p.holds.map(esc).join(" · ")}</div>`;
+  if(p.plan&&p.plan.length)lines+=`<div class="lrow"><span class="pill">plan</span>${p.plan.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;
   if(p.regime&&p.regime.length)lines+=`<div class="lrow"><span class="pill">sub-games</span>${p.regime.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;
   if(p.ideas&&p.ideas.length)lines+=`<div class="lrow"><span class="pill">ideas for ${who}, by need</span>${p.ideas.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;
   if(p.contrast&&p.contrast.length)lines+=`<div class="lrow"><span class="pill">by contrast</span>${p.contrast.map(x=>`<div style="margin:2px 0 2px 8px">${esc(x)}</div>`).join("")}</div>`;

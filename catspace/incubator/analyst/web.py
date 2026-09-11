@@ -123,6 +123,14 @@ class Analyst:
         self.maias = {r: Maia(r) for r in RATINGS}
         self.human = self.maias.get(HUMAN_LEVEL) or Maia(HUMAN_LEVEL)
         self.memo = Memo.load(str(MEMO_PATH))                    # the concept store: shared across games and runs
+        self.planner = None                                       # the planning layer, loaded on first use (needs a trained checkpoint)
+        try:
+            from .planner import Planner, DEFAULT_CKPT
+            from pathlib import Path as _P
+            if _P(DEFAULT_CKPT).exists():
+                self.planner = Planner(DEFAULT_CKPT)
+        except Exception:
+            self.planner = None
 
     def close(self):
         self.eng.close()
@@ -165,6 +173,7 @@ class Analyst:
                 "plans": [plan_text(board, pl) for pl in plans_for(board, us, memo=self.memo, top=3)],
                 "holds": holdings_lines(board, us, memo=self.memo),
                 "regime": regime_lines(board, memo=self.memo),
+                "plan": self.planner.plan(board, memo=self.memo).lines if self.planner is not None else [],
                 "ideas": idea_lines(board, us, memo=self.memo, top=3),
                 "ledger": ledger_lines(board, memo=self.memo),
                 "contrast": contrast_lines(board, mv, chess.Move.from_uci(rec.idea.uci) if rec.idea else None, memo=self.memo, engine=self.eng, maia=self.human),
