@@ -225,6 +225,38 @@ def narrate(board: chess.Board, plan: Plan) -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------- the signal back: the plan's needs handed to the tactics
+def pursue(board: chess.Board, plan: Plan, memo=None, engine=None, budget: int = 150, engine_depth: int = 8) -> list[str]:
+    """For the first steering target: each need the tactical layer knows how to test, tested -- a win or remove need
+    by the goal search on that piece, the mate need by the terminal goal search, the race by the rule of the square
+    -- so the product can say 'the plan asks for the queens off; Qxd5 does it' or 'nothing forces it today'."""
+    from .goal_search import search_goal, GoalSearch, result_text
+    from .regime import race as race_of
+    if not plan.steer:
+        return []
+    memo = memo if memo is not None else Memo()
+    st = plan.steer[0]; side = board.turn
+    out = [f"The plan asks for: {st.text}."]
+    for kind, sq, text in st.needs:
+        try:
+            if kind in ("win", "remove") and sq is not None:
+                r = search_goal(board, side, sq, memo=memo, engine=engine, budget=budget, horizon=6, engine_depth=engine_depth, refinements=0)
+                out.append(f"  {text}: " + ("proven -- " + " ".join(r.line) if r.proven else f"not forced today ({'refuted' if r.disproven else 'given up'}; hardest defence " + " ".join(r.refutation[:4]) + ")"))
+            elif kind == "mate":
+                gs = GoalSearch(board, side, None, memo=memo, engine=engine, horizon=10, budget=budget * 4, engine_depth=engine_depth)
+                r = gs.run()
+                out.append(f"  {text}: " + ("a forced mate -- " + " ".join(r.line) if r.proven else "no forced mate within five moves"))
+            elif kind == "race" and sq is not None:
+                rc = race_of(board, sq, memo=memo)
+                if rc is not None:
+                    out.append(f"  {text}: {rc.steps} moves to promote, the catcher needs {rc.catch_hops}: " + ("it promotes" if rc.promotes else "it is caught"))
+            else:
+                out.append(f"  {text}: for the planner's next step (no tactical test)")
+        except Exception as ex:
+            out.append(f"  {text}: (no test: {ex})")
+    return out
+
+
 def plan_lines(board: chess.Board, planner: "Planner | None" = None, memo=None) -> list[str]:
     try:
         pl = planner if planner is not None else Planner()
@@ -234,11 +266,15 @@ def plan_lines(board: chess.Board, planner: "Planner | None" = None, memo=None) 
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(); ap.add_argument("--fen", required=True); ap.add_argument("--ckpt", default=DEFAULT_CKPT)
+    ap = argparse.ArgumentParser(); ap.add_argument("--fen", required=True); ap.add_argument("--ckpt", default=DEFAULT_CKPT); ap.add_argument("--pursue", action="store_true")
     a = ap.parse_args(argv)
-    pl = Planner(a.ckpt)
-    for l in pl.plan(chess.Board(a.fen)).lines:
+    pl = Planner(a.ckpt); board = chess.Board(a.fen)
+    plan = pl.plan(board)
+    for l in plan.lines:
         print(l)
+    if a.pursue:
+        for l in pursue(board, plan):
+            print(l)
 
 
 if __name__ == "__main__":

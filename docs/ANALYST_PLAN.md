@@ -605,3 +605,22 @@ captures 69%, pawn moves 56%, piece moves 54%) once the objective pushes the rev
 scale can move; the three experts are complementary (oracle 56%, with Maia 67%), a fixed blend takes 40% (45%
 with Maia), the context gate does not beat it at 560 fitting rows. Open: the geometry against the heads (rank 6
 when the geometry forms), the distance-based move scoring, more expert rows.
+
+
+## 32. The planning layer: the quantized future, its value and sharpness (Kaveh 2026-09-11)
+
+"A future board embedding distribution predicted from the current state, quantized or interpretable; it has to
+predict the sharpness and the value, not the details; a signal from the tactics to the planner and back."
+
+The future is a DISTRIBUTION OVER NAMED REGIME CODES (`regimes.py`): cells of a quantizer on the graph's own
+indicators, described by their centroids, valued by the mover's result rate in them. The knowledge net predicts
+the distribution at +10 and +20 plies, the engine's evaluation there (given the evaluation now), and the window
+sharpness (a big threat within ten plies; the engine's best moves forcing). `planner.py` reads off the expected
+value and sharpness, the entropy, and the STEERING TARGETS: reachable futures whose value beats the expectation,
+turned into NEEDS by their named differences from the present -- the vocabulary is which indicator is which need
+kind; the values come from the codes. Tactics -> planner: the ledgers, zones and threats are the prediction's
+inputs and define the sharp codes. Planner -> tactics: the needs go to the goal search, the terminal search and
+the race (`pursue`); the expected sharpness sets the search budget (`gauge_budget.py` measures it).
+Measured first (OBS): a big threat within ten plies is predictable at AUC 0.79 from the present graph (0.72 from
+the regime alone, 0.58 from the present threat); the code at +20 at 13.8% top-1 against 9.4% persistence, NLL
+3.05 against 4.09 marginal; the details (which ply, which threat) are not predictable, as expected.

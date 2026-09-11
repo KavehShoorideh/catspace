@@ -116,8 +116,12 @@ def main(argv=None):
                 print(render(r, long=args.long, alternatives=not args.quiet))
                 if args.long and planner is not None:
                     try:
-                        for l in planner.plan(chess.Board(r.fen)).lines:
+                        from .planner import pursue
+                        pb = chess.Board(r.fen); plan = planner.plan(pb, cp=r.eval_cp)
+                        for l in plan.lines:
                             print(f"  Plan: {l}")
+                        for l in pursue(pb, plan, None, eng):
+                            print(f"  Plan check: {l}")
                     except Exception:
                         pass
                 if args.long and r.played:                                    # the standing threat: what the move threatens, and how it met the last one
