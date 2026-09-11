@@ -35,7 +35,7 @@ from .regimes import Codebook, CODE_KEYS, BIG
 from . import knowledge_net as K
 from .experts import net_sample
 
-DEFAULT_CKPT = "data/derived/checkpoints/kn_future/best.pt"
+DEFAULT_CKPT = "data/derived/checkpoints/kn_future4/best.pt"
 
 
 @dataclass
