@@ -22221,3 +22221,42 @@ positions (mate-in-five needs the mate budget); on those the gate would have to 
 sharpness head is at 0.80. Not measured tonight. Product: the plan (the future in words, its value and
 sharpness, the steering target and its needs) is in the web 'plan' pill and the CLI long render, and `pursue`
 hands the needs to the tactics ("win the rook on a2: not forced today; hardest defence Rd6 Kh7").
+
+## 2026-09-11 12:40 PDT — what the network learned, probed in the rules' vocabulary
+
+Kaveh: "did we get 'take the centre'? use the rules engine to probe the concepts it has learned."
+`probe_concepts.py` on `kn_future4`, four probes, OBS:
+  ATLAS (the value head dotted with every sense, read as the slope from the lowest answer a piece type gives to
+  the highest, answers with >= 300 occurrences): the questions it reads most are zone_size, shields, guards,
+  defenders that count, free moves, in the hottest zone, the exchange, king distances, cones, holdings,
+  attackers. Slopes in words: their rook with many legal moves -3.7 (their mobility hurts us); their rook holding
+  something -2.2; our pawn in a big zone -3.7 and our bishop attacked -2.8; our queen far from their king -2.3
+  and their queen far from ours +2.1; our pawn whose exchange does not fall +2.5; our bishop holding something
+  +2.3; their knight in the hottest zone +2.5. The sharpness head: our pawns BLOCKADED -4.9 (a blocked centre is a
+  quiet game: a real concept), their king stuck +4.3, pieces that shield others +4.7 to +7.5, our king with
+  defenders -3.6, their bishop attacked -4.7.
+  SQUARES (the mean contribution of a piece's tokens to the evaluation by square, ranks from our side): our pawn
+  on the centre four +3.60 against +3.54 elsewhere -- NO centre preference; what it prices is advancement (rank 2
+  +3, rank 5 +4, rank 7 +18: the promotion). Knights: back rank +5 to +7, d3/e3 +20, the centre four +9.7
+  against +8.1 elsewhere -- development, a little centralisation. Bishops centre +11.9 against +6.8 (n 97).
+  PROBES (ridge from phi to rules-defined concepts, 20000 train / 4000 test, against the same probe on the pooled
+  inputs): central pawns R2 0.24 from phi against 0.47 from the inputs; the big centre 0.36 / 0.62; centre
+  control 0.44 / 0.58; development 0.73 / 0.83; space 0.12 / 0.57; castled 0.46 / 0.81; pawn islands 0.43 /
+  0.75; rooks on open files 0.40 / 0.49; their king's open files 0.57 / 0.91; outposts ~0 / ~0. Every geometric
+  concept is LESS readable from the summary than from what went in: the bottleneck discards them.
+  MOVES (1500 positions, quiet moves by the rules' kind; the policy head): castles mean rank 6.0 (top-3 40%; the
+  engine picks it 1.7% of the time -- over-preferred), forcing 12.4, PAWN TO THE CENTRE 12.3 (top-3 24%; 1.8% of
+  legal quiet moves, 4.7% of the engine's best: 2.6x enriched), minor piece develops 12.4, minor to the big centre
+  14.7, pawn to the big centre 15.0, queen 17.9, king 21.4, minor elsewhere 19.5, rook elsewhere 22.8, PAWN
+  ELSEWHERE 23.4 (top-3 6%; 15.7% of legal, 8.1% of best: 0.5x). The value head on the child (120 positions with
+  both kinds available, 129 centre / 218 big-centre / 760 other pawn moves): the evaluation's change -0.32 /
+  -0.27 / -0.30 (tanh x100; a legal pawn move at random loses about a third; calibration checked: fresh graphs
+  match the dataset batches at corr 0.999, the played move's child at -0.12 predicted against -0.09 actual) --
+  no centre preference; predicted sharpness after it 0.89 / 0.87 / 0.87.
+Reading: "take the centre" is learned as a HABIT, not as a VALUE. The policy head prefers a centre pawn move
+over any other pawn move by eleven places of rank and 4x in top-3 share, because the engine's best moves are
+enriched for them 5x over pawn moves elsewhere; the value head prices a central pawn the same as any other,
+and the summary does not even keep the central-pawn count linearly. What the value head has learned to price
+is what wins 1300-rated blitz: pieces that do not fall, mobility (theirs against us), holdings, a queen near the
+enemy king, pawns near promotion, the hot zone. The sharpness head has one positional concept of its own:
+blocked pawns make a quiet game. Development is the best-kept geometric concept in the summary (R2 0.73).
