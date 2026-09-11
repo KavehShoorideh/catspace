@@ -22152,3 +22152,43 @@ pawn); the knowledge model B is the weakest expert as a move picker and the gate
 recover is the 20-point gap to the oracle: the experts are right on different positions in ways the named
 context does not predict, so the next lever is the experts themselves, not the combiner -- B on quiet moves
 (23% against Maia's 35%), and C's silence (382 of 960 positions).
+
+## 2026-09-11 00:58 PDT — the planning layer: the quantized future, its value and sharpness
+
+Kaveh, evening: "I need a planning layer: a future board embedding distribution predicted from the current
+state, quantized or interpretable, that predicts the sharpness (and, added later, the value) but not the details;
+and a signal from the tactics to the planner and back." Then "go autonomous until morning on this."
+
+The measurement first (`sharpness_check.py`, 69108 positions, held-out games, logistic regression from the
+present knowledge vector; AUC, 0.5 = nothing). OBS: a big threat in either ledger ANYWHERE in the next 10 plies
+0.788 (from the 15 regime indicators alone 0.715; from whether a big threat exists now 0.577); a mate threat at
++10 0.708; the engine's best moves forcing over half the window 0.713; evaluation volatility >= 100 cp over the
+window 0.670; a swing of 150 cp by +10 0.647; a big threat at exactly +10 0.630; a hot zone at +10 0.640; a piece
+falling at +10 0.643. Reading: sharpness is predictable ten plies out and the tactical knowledge adds to the
+regime (+0.03 to +0.07); the details (which ply, which threat) are not, as Kaveh expected.
+
+Built. `regimes.py`: the future quantized as 48 named codes -- k-means on the graph's own indicators (the 15
+regime keys + 6 sharpness keys: the biggest threat in either ledger, the hottest zone, pieces falling, a mate
+threat, king attackers, check), fit on the training games; each code described by its centroid ("material +2.3,
+ending, queens off, a passed pawn of ours (4 to go), no threats") and valued by the mover's result rate in it
+(0.20 for "down a rook, king under attack" to 0.72 for "up a rook with a passed pawn"); 16 of 48 codes are sharp.
+Baselines: the present code persists ten plies later 19%; the most common code holds 16%.
+`knowledge_net.py`: a future head (a distribution over the 48 codes at +10 and +20) and a value head (the engine's
+evaluation at +10 and +20); evaluated against persistence and the marginal, with the SHARPNESS read as the
+predicted mass on sharp codes and the VALUE as the codes' values under the distribution.
+`planner.py`: the plan = the distribution (futures merged by their words), the expected value and sharpness, the
+entropy ("the future is open / set"), STEERING TARGETS (reachable futures -- material within a minor piece, no
+queen appearing without a runner, the phase not going backwards -- whose value beats the expectation) turned
+into NEEDS by the named differences of the target from the present (queens off -> remove their queen; a passed
+pawn -> a lever; king attackers -> the mate goal; material -> win the dearest target; a runner closer -> the
+race; a calmer code -> defend first), and the search BUDGET from the sharpness (deep / normal / shallow). In the
+web payload (the 'plan' pill) and the CLI's long render. On a rook ending it says: "Worth steering to: material
++2.3, ending, queens off, a passed pawn of ours (4 to go) -- value 0.63 (+0.09 over the expectation), already 8%
+likely; the needs: create a passed pawn (a lever or an exchange that leaves one); win material (the rook on a2)."
+Training the network with the new heads (10 epochs, started 00:38); at epoch 3, OBS: the code at +10 top-1 20.9%
+(persistence 20.0%, marginal 4.0%), top-3 41%, NLL 2.83 (marginal 3.81); at +20 top-1 12.9% (persistence 6.6%),
+NLL 3.16 (3.98); sharpness from the distribution AUC 0.641 at +10 (persistence 0.536); the value at +10 R2 0.26
+against persistence 0.41 (the engine's number now is a better guess of its number in ten plies than the head is
+so far). Armed for the night: `gauge_budget.py` -- the ranking at full / normal / shallow budgets and GATED by the
+planner's sharpness on 300 held-out positions, six processes: does the gate keep full's agreement at a fraction
+of its cost?
