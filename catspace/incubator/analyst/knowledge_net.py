@@ -74,6 +74,7 @@ class Config:
     w_q: float = 1.0                        # the action-value head (soft labels)
     q_temp: float = 0.05                    # the policy's soft target: softmax(win probability / q_temp) over legal moves
     n_codes: int = 48
+    head_input: str = "phi"                 # phi: the heads read the Backpack sum (interpretable by construction); board: the board token (free)
     w_vic: float = 2.0                      # variance-covariance regularizer on phi (VICReg's two terms): repulsion against linear collapse
     seed: int = 1
 
@@ -209,6 +210,8 @@ class KnowledgeNet(nn.Module):
             contrib = (a[..., :Q, None] * senses).sum(2) + a[..., Q:Q + 1] * ts + a[..., Q + 1:Q + 2] * ss
         norm = a.sum((1, 2))[:, None] + 1.0
         phi = contrib.sum(1) / norm                                                     # (B, d): linear in the senses
+        if self.cfg.head_input == "board":
+            phi = h[:, 0]                                                               # the free path: the heads read the board token
         return dict(h=h, phi=phi, alpha=a, norm=norm)
 
     def sense_index(self, b):
