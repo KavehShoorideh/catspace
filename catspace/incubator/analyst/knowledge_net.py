@@ -42,6 +42,7 @@ from catspace.research.components.encoder.approaches.jepa_tokenizer.src.iqe impo
 
 Q = len(NODE_QUESTIONS); R = len(EDGE_RELATIONS); P = len(POSITION_QUESTIONS); K_REG = len(REGIME_KEYS)
 N_TOK = MAX_PIECES + 1                      # pieces + the board token (index 0)
+HIDE_LABELS: set = set()                    # acquire.py: positions whose move labels are withheld in the next train()
 DIST_COL = EDGE_RELATIONS.index("distance")
 
 
@@ -70,6 +71,8 @@ class Config:
     w_future: float = 1.0                   # the quantized future: cross-entropy over regime codes at +10 and +20
     w_value: float = 1.0                    # the engine's evaluation at +10 and +20
     w_sharp: float = 1.0                    # the window sharpness labels
+    w_q: float = 1.0                        # the action-value head (soft labels)
+    q_temp: float = 0.05                    # the policy's soft target: softmax(win probability / q_temp) over legal moves
     n_codes: int = 48
     w_vic: float = 2.0                      # variance-covariance regularizer on phi (VICReg's two terms): repulsion against linear collapse
     seed: int = 1
@@ -152,6 +155,10 @@ class KnowledgeNet(nn.Module):
         # a move then needs no child graph: value(move) = the predicted psi', read against the poles.
         self.delta_to = nn.Embedding(64, d)
         self.delta = nn.Sequential(nn.Linear(3 * d, 2 * d), nn.GELU(), nn.Linear(2 * d, cfg.d_geo))
+        # the ACTION-VALUE head: from the mover's token, the destination and the board token, the teacher's win
+        # probability of that move (ChessBench's target) -- a move score with no child graph
+        self.q_to = nn.Embedding(64, d)
+        self.q_head = nn.Sequential(nn.Linear(3 * d, 2 * d), nn.GELU(), nn.Linear(2 * d, 1))
         self.register_buffer("q_offsets", torch.arange(Q) * cfg.buckets)
         self.register_buffer("p_offsets", torch.arange(P) * cfg.buckets)
 
@@ -255,6 +262,18 @@ class KnowledgeNet(nn.Module):
             cp_now = self.cp_head(phi).squeeze(-1).detach()
         return cp_now[:, None] + self.value_head(torch.cat([phi, cp_now[:, None]], dim=-1))
 
+    def q_logits(self, h, b):
+        """(B, 32, 64): the action-value logit of every legal move (sigmoid = win probability), -inf elsewhere."""
+        legal = b["legal"]
+        idx = legal.nonzero(as_tuple=False)
+        out = torch.full(legal.shape, float("-inf"), dtype=h.dtype, device=h.device)
+        if len(idx) == 0:
+            return out
+        mover = h[idx[:, 0], 1 + idx[:, 1]]
+        x = torch.cat([mover, self.q_to(idx[:, 2]), h[idx[:, 0], 0]], dim=-1)
+        out[idx[:, 0], idx[:, 1], idx[:, 2]] = self.q_head(x).squeeze(-1)
+        return out
+
     def policy_logits(self, h, b):
         """(B, 32, 64): from-piece token x to-square, -inf where not legal."""
         f = self.pol_from(h[:, 1:])                                                     # (B, 32, d)
@@ -266,10 +285,16 @@ class KnowledgeNet(nn.Module):
 class Data:
     """The dataset in memory, every per-sample array precomputed once (dense int8 relations, legal masks), so a batch
     is fancy indexing; partner lookup by (game, ply) for the trajectory pairs."""
-    def __init__(self, path: str, buckets: Buckets | None = None, n_buckets: int = 12, split_seed: int = 0, log=print, meta_only: bool = False, n_codes: int = 48):
+    def __init__(self, path: str, buckets: Buckets | None = None, n_buckets: int = 12, split_seed: int = 0, log=print, meta_only: bool = False, n_codes: int = 48, hide_labels=None):
+        """`path`: one directory, or several joined by ','. `hide_labels`: a set of position indices (into the joined
+        order) whose move labels are withheld -- the unlabeled pool of an acquisition experiment."""
         t0 = time.perf_counter()
-        d = load_dataset(path, meta_only=meta_only)
+        parts = [load_dataset(p_, meta_only=meta_only) for p_ in path.split(",")]
+        d = parts[0] if len(parts) == 1 else dict(meta=[m for p_ in parts for m in p_["meta"]], **({} if meta_only else dict(
+            nodes=np.concatenate([p_["nodes"] for p_ in parts]), mask=np.concatenate([p_["mask"] for p_ in parts]),
+            position=np.concatenate([p_["position"] for p_ in parts]), edges=[e for p_ in parts for e in p_["edges"]])))
         self.meta = d["meta"]
+        self.hidden = set(hide_labels or ())
         N = len(self.meta)
         games = sorted({m["game"] for m in self.meta})
         rng = random.Random(split_seed); rng.shuffle(games)
@@ -295,12 +320,23 @@ class Data:
         self.types = np.array([[t if t > 0 else (6 - t if t < 0 else 0) for t in m["types"]] for m in self.meta], dtype=np.int64)   # 0 pad, 1-6 ours, 7-12 theirs
         self.legal = np.zeros((N, MAX_PIECES, 64), dtype=bool); self.best = np.full(N, -1, dtype=np.int64)
         self.played_from = np.zeros(N, dtype=np.int64); self.played_to = np.zeros(N, dtype=np.int64); self.next = np.full(N, -1, dtype=np.int64)
+        # soft labels: the teacher's win probability for every legal move where the corpus has them (ChessBench)
+        self.q = np.zeros((N, MAX_PIECES, 64), dtype=np.float16); self.has_q = np.zeros(N, dtype=bool)
         for i, m in enumerate(self.meta):
             board = chess.Board(m["fen"]); sq_index = {s: j for j, s in enumerate(m["squares"]) if s < 64}
             for mv in board.legal_moves:
                 self.legal[i, sq_index[mv.from_square], mv.to_square] = True
+            if i in self.hidden:
+                continue                                                               # the pool: legal moves known, labels withheld
             if m["best"]:
                 bm = chess.Move.from_uci(m["best"]); self.best[i] = sq_index[bm.from_square] * 64 + bm.to_square
+            labels = m.get("labels")
+            if labels:
+                self.has_q[i] = True
+                for u, wp in labels.items():
+                    mv = chess.Move.from_uci(u)
+                    if mv.from_square in sq_index:
+                        self.q[i, sq_index[mv.from_square], mv.to_square] = wp
             pm = chess.Move.from_uci(m["played"]); self.played_from[i] = sq_index[pm.from_square]; self.played_to[i] = pm.to_square
             self.next[i] = self.index.get((m["game"], m["ply"] + 1), -1)
         reg = np.array([regime_of(chess.Board(m["fen"]), bool(m["side"])) for m in self.meta], dtype=np.float32)
@@ -312,7 +348,7 @@ class Data:
         # the quantized future: the codebook (fit on the training games when absent), the code now and at +10 / +20
         # (the game's last position when it ended before), the engine's evaluation there (the same side to move)
         res_f = np.array([-1.0 if m["result"] is None else m["result"] for m in self.meta])
-        cb_path = Path(path) / "codebook.npz"
+        cb_path = Path(path.split(",")[0]) / "codebook.npz"                                  # the first corpus owns the codebook
         self.codebook = Codebook.load(str(cb_path)) if cb_path.exists() else fit_codebook(self.position, tr, res_f, n_codes)
         if not cb_path.exists():
             self.codebook.save(str(cb_path))
@@ -361,7 +397,8 @@ class Data:
                    code_now=torch.as_tensor(self.code_now[idx]), code10=torch.as_tensor(self.code_ahead[10][idx]), code20=torch.as_tensor(self.code_ahead[20][idx]),
                    cp10=torch.as_tensor(self.cp_ahead[10][idx]), cp20=torch.as_tensor(self.cp_ahead[20][idx]),
                    has10=torch.as_tensor(self.has_fut[10][idx]), has20=torch.as_tensor(self.has_fut[20][idx]),
-                   sharp_window=torch.as_tensor(self.sharp_window[idx]), forcing_window=torch.as_tensor(self.forcing_window[idx]), has_window=torch.as_tensor(self.has_window[idx]))
+                   sharp_window=torch.as_tensor(self.sharp_window[idx]), forcing_window=torch.as_tensor(self.forcing_window[idx]), has_window=torch.as_tensor(self.has_window[idx]),
+                   q=torch.as_tensor(self.q[idx]).float(), has_q=torch.as_tensor(self.has_q[idx]))
         return {k: v.to(device) for k, v in out.items()}
 
     def partner(self, i: int, k_max: int, rng: random.Random):
@@ -397,13 +434,36 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
     out["wdl"] = F.cross_entropy(logits[known], b["result"][known]) if known.any() else phi.sum() * 0
     out["cp"] = F.mse_loss(model.cp_head(phi).squeeze(-1), b["cp"])
     reg = model.regime_head(phi).view(-1, 2, K_REG)
-    out["regime"] = 0.5 * (F.mse_loss(reg[:, 0], b["ahead10"]) + F.mse_loss(reg[:, 1], b["ahead20"]))
+    if "has10" in b:
+        h10, h20 = b["has10"], b["has20"]
+        r10 = F.mse_loss(reg[h10, 0], b["ahead10"][h10]) if h10.any() else phi.sum() * 0
+        r20 = F.mse_loss(reg[h20, 1], b["ahead20"][h20]) if h20.any() else phi.sum() * 0
+        out["regime"] = 0.5 * (r10 + r20)
+    else:
+        out["regime"] = 0.5 * (F.mse_loss(reg[:, 0], b["ahead10"]) + F.mse_loss(reg[:, 1], b["ahead20"]))
     pl = model.policy_logits(h, b).view(phi.shape[0], -1)
     has = b["best"] >= 0
-    out["policy"] = F.cross_entropy(pl[has], b["best"][has]) if has.any() else phi.sum() * 0
+    hq = b["has_q"] if "has_q" in b else torch.zeros_like(has)
+    hard = has & ~hq
+    out["policy"] = F.cross_entropy(pl[hard], b["best"][hard]) if hard.any() else phi.sum() * 0
+    if hq.any():
+        # the soft target: the teacher's win probabilities over the legal moves, sharpened; the same head, so the
+        # two corpora train one policy
+        qt = b["q"].view(phi.shape[0], -1)[hq] / cfg.q_temp
+        qt = qt.masked_fill(~b["legal"].view(phi.shape[0], -1)[hq], float("-inf"))
+        target = F.softmax(qt, dim=-1)
+        out["policy_soft"] = -(target * F.log_softmax(pl[hq], dim=-1)).sum(-1).mean()
+        ql = model.q_logits(h, b).view(phi.shape[0], -1)[hq]
+        lg = b["legal"].view(phi.shape[0], -1)[hq]
+        out["q"] = F.binary_cross_entropy_with_logits(ql[lg], b["q"].view(phi.shape[0], -1)[hq][lg])
+    else:
+        out["policy_soft"] = phi.sum() * 0; out["q"] = phi.sum() * 0
     if "code10" in b:
         fl = model.future_head(phi).view(-1, 2, cfg.n_codes)
-        out["future"] = 0.5 * (F.cross_entropy(fl[:, 0], b["code10"]) + F.cross_entropy(fl[:, 1], b["code20"]))
+        h10, h20 = b["has10"], b["has20"]
+        f10 = F.cross_entropy(fl[h10, 0], b["code10"][h10]) if h10.any() else phi.sum() * 0
+        f20 = F.cross_entropy(fl[h20, 1], b["code20"][h20]) if h20.any() else phi.sum() * 0
+        out["future"] = 0.5 * (f10 + f20)
         va = model.value_ahead(phi, b["cp"])
         h10, h20 = b["has10"], b["has20"]                                                # only positions with a real future: the game's last
         v10 = F.mse_loss(va[h10, 0], b["cp10"][h10]) if h10.any() else phi.sum() * 0    # evaluation is often a mate score and would teach
@@ -466,7 +526,7 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         out["vic_cov"] = (cov - torch.diag(torch.diag(cov))).pow(2).sum() / phi.shape[1]
     else:
         out["vic_var"] = phi.sum() * 0; out["vic_cov"] = phi.sum() * 0
-    total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * out["policy"] + cfg.w_vic * (out["vic_var"] + out["vic_cov"]) + cfg.w_delta * out.get("delta", 0.0) \
+    total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * (out["policy"] + out["policy_soft"]) + cfg.w_q * out["q"] + cfg.w_vic * (out["vic_var"] + out["vic_cov"]) + cfg.w_delta * out.get("delta", 0.0) \
         + cfg.w_future * out.get("future", 0.0) + cfg.w_value * out.get("value", 0.0) + cfg.w_sharp * out.get("sharp", 0.0)
     if "traj_fwd" in out:
         total = total + cfg.w_traj * (out["traj_fwd"] + out["traj_neg"] + out["traj_bound"]) + cfg.w_vic * out["psi_vic"]
@@ -484,6 +544,8 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
     wdl_ok = wdl_n = 0; maj = np.bincount(data.result[data.ids("train")][data.result[data.ids("train")] >= 0], minlength=3).argmax()
     wdl_maj = 0
     pol_ok = pol_n = 0; quiet_ok = quiet_n = 0; cap_ok = cap_n = 0; d_ok = dquiet_ok = 0
+    from collections import defaultdict
+    q_stats = defaultdict(list)
     cp_pred, cp_true = [], []
     reg_pred = {10: [], 20: []}; reg_true = {10: [], 20: []}; reg_now = []
     phis = []
@@ -503,6 +565,14 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
         pol_ok += hit.sum().item(); pol_n += has.sum().item()
         mv = model.move_values(o["h"], o["phi"], b).view(len(chunk), -1)
         hit_d = (mv.argmax(-1) == b["best"]) & has
+        if b["has_q"].any():
+            hq = b["has_q"]; qv = b["q"].view(len(chunk), -1)
+            ql = model.q_logits(o["h"], b).view(len(chunk), -1)
+            best_wp = qv.max(-1).values
+            for name, pick in (("policy", pl.argmax(-1)), ("qhead", ql.argmax(-1))):
+                chosen = qv[torch.arange(len(chunk), device=qv.device), pick]
+                q_stats[name + "_regret"].extend((best_wp - chosen)[hq].tolist()); q_stats[name + "_top1"].extend((pick == b["best"])[hq].tolist())
+            q_stats["q_mae"].extend((torch.sigmoid(ql) - qv)[b["legal"].view(len(chunk), -1) & hq[:, None]].abs().tolist())
         for j, ii in enumerate(chunk):
             kind = data.meta[int(ii)]["best_kind"]
             if kind == "quiet":
@@ -525,6 +595,10 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
     stats["wdl_acc"] = wdl_ok / max(1, wdl_n); stats["wdl_majority"] = wdl_maj / max(1, wdl_n); stats["wdl_n"] = wdl_n
     stats["policy_top1"] = pol_ok / max(1, pol_n); stats["policy_quiet"] = quiet_ok / max(1, quiet_n); stats["policy_capture"] = cap_ok / max(1, cap_n); stats["quiet_n"] = quiet_n
     stats["delta_top1"] = d_ok / max(1, pol_n); stats["delta_quiet"] = dquiet_ok / max(1, quiet_n)
+    if q_stats:
+        stats["labeled_n"] = len(q_stats["policy_top1"])
+        for k_, v in q_stats.items():
+            stats["cb_" + k_] = float(np.mean(v)) if v else float("nan")
     cp_pred, cp_true = np.concatenate(cp_pred), np.concatenate(cp_true)
     stats["cp_r2"] = float(1 - ((cp_pred - cp_true) ** 2).mean() / max(1e-9, cp_true.var()))
     now = np.concatenate(reg_now)
@@ -631,7 +705,7 @@ def train(args):
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
-    data = Data(args.data, n_buckets=cfg.buckets, n_codes=cfg.n_codes)
+    data = Data(args.data, n_buckets=cfg.buckets, n_codes=cfg.n_codes, hide_labels=HIDE_LABELS)
     print(f"[kn] data: {len(data.meta)} positions; train {len(data.ids('train'))} val {len(data.ids('val'))} test {len(data.ids('test'))}; loaded in {time.perf_counter() - t0:.0f}s", flush=True)
     model = KnowledgeNet(cfg).to(device)
     n_params = sum(p.numel() for p in model.parameters())
@@ -677,7 +751,8 @@ def train(args):
         ev = evaluate(model, data, "val", cfg, device, max_n=2000)
         line = dict(step=step, epoch=epoch, split="val", **{k: v for k, v in ev.items() if not isinstance(v, dict)})
         log.write(json.dumps(line) + "\n"); log.flush()
-        print(f"[kn] epoch {epoch} val: wdl {ev['wdl_acc']:.3f} (majority {ev['wdl_majority']:.3f}) policy {ev['policy_top1']:.3f} quiet {ev['policy_quiet']:.3f} capture {ev['policy_capture']:.3f} delta-pick {ev['delta_top1']:.3f} (quiet {ev['delta_quiet']:.3f}) "
+        cb = f" | LABELED {ev['labeled_n']}: policy top1 {ev['cb_policy_top1']:.3f} regret {ev['cb_policy_regret']:.4f}; q-head top1 {ev['cb_qhead_top1']:.3f} regret {ev['cb_qhead_regret']:.4f} mae {ev['cb_q_mae']:.4f}" if "labeled_n" in ev else ""
+        print(f"[kn] epoch {epoch} val: wdl {ev['wdl_acc']:.3f} (majority {ev['wdl_majority']:.3f}) policy {ev['policy_top1']:.3f} quiet {ev['policy_quiet']:.3f} capture {ev['policy_capture']:.3f} delta-pick {ev['delta_top1']:.3f} (quiet {ev['delta_quiet']:.3f}){cb} "
               f"cp_r2 {ev['cp_r2']:.3f} regime10 {ev['regime10_r2']:.3f} (persist {ev['regime10_persist_r2']:.3f}) regime20 {ev['regime20_r2']:.3f} (persist {ev['regime20_persist_r2']:.3f}) "
               f"eff_rank {ev['effective_rank']:.1f} psi_rank {ev['psi_rank']:.1f} iqe_scale {math.exp(float(model.iqe.log_scale)):.2f} | {time.perf_counter() - t0:.0f}s", flush=True)
         print(f"[kn]   future: code10 top1 {ev['code10_top1']:.3f} (persist {ev['code10_persist_top1']:.3f}, marginal {ev['code10_marginal_top1']:.3f}) top3 {ev['code10_top3']:.3f} nll {ev['code10_nll']:.3f} (marginal {ev['code10_marginal_nll']:.3f}) "
