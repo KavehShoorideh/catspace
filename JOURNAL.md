@@ -22285,3 +22285,25 @@ it is mostly the exchange (recapturing 7.1). The policy head's labels (depth-12 
 did not teach positional play. The plan (Kaveh's call): quiet keys mined from games with deep multi-PV labels
 where the tactical layer is silent, plus the Lichess quiet-move / defensive / zugzwang themes, as the policy
 head's training set; the suite per theme as the gauge.
+
+## 2026-09-11 20:42 PDT — random data, error-driven acquisition: the design and the night's run
+
+Kaveh: "a good, robust, randomly sampled dataset, not curated or stratified by chess concepts (quiet / sharp are
+chess-only and hard to extend); tune the algorithm, not the data; if we need more data, let the error tell us
+what to generate." Then "you make the call."
+The call: the base sample is DeepMind's ChessBench action-value test split, already on disk (data/external/
+chessbench): 62561 positions drawn at random from Lichess games, every legal move labeled with Stockfish's win
+probability (1.84M move labels; the state-value bag agrees with the best action value at corr 0.997) -- a random
+sample with complete soft labels and a far stronger teacher than the depth-12 best moves the policy head was
+trained on. No selection by any concept; the suites' themes stay reporting strata only.
+Built: `dataset.extract_fens` (a labeled corpus of positions to the shard format; no future, no played move, a
+unique game id per position); `knowledge_net`: the policy trained on the SOFT target (the teacher's win
+probabilities over the legal moves, sharpened at 0.05) where labels exist and one-hot elsewhere, an ACTION-VALUE
+head (mover token + destination + board token -> the move's win probability, BCE), the future / regime / value
+losses masked where no future exists, several corpora joined, labels hidden for a pool; metrics on the labeled
+test rows: top-1 against the teacher's best and REGRET (the best move's win probability minus the chosen one's).
+`acquire.py`: ChessBench's training rows split in two, base (labels used) and pool (withheld); round0 on games +
+base; the pool scored by the policy's entropy; 6000 most uncertain revealed (active) against 6000 random
+(random); full = every label; each round measured on the ChessBench test, the games' test and the Strategic Test
+Suite. The claim tested: active beats random at equal labels -- a method-level result with no chess concept in
+the loop. Running: the extraction (eight shards, ~2.5 h), then the four rounds and the suite per round.
