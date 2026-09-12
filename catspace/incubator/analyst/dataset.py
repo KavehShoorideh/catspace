@@ -158,6 +158,59 @@ def extract(pgn_path: str, out_dir: str, shard: str = "0/1", every: int = 1, dep
     return n, dt
 
 
+def extract_fens(rows_path: str, out_dir: str, shard: str = "0/1", log=print):
+    """Positions given as rows (fen, labels: uci -> win probability for every legal move, wp, cp) -- a labeled corpus
+    such as ChessBench -- extracted to the same shard format. No game around them: no future, no played move
+    (the best-labeled move stands in), a unique game id per position so no trajectory pairs form."""
+    i, k = (int(x) for x in shard.split("/"))
+    out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
+    rows = [json.loads(l) for n, l in enumerate(open(rows_path)) if n % k == i]
+    memo = Memo()
+    nodes_l, mask_l, pos_l, edge_l, meta = [], [], [], [], []
+    t0 = time.perf_counter(); n = 0
+    col = {r: c for c, r in enumerate(EDGE_RELATIONS)}
+    for gi, row in enumerate(rows):
+        board = chess.Board(row["fen"])
+        if board.is_game_over() or not board.is_valid():
+            continue
+        try:
+            g = build(board, memo)
+        except Exception as ex:
+            log(f"[dataset] {gi} error {ex}", flush=True); continue
+        side = board.turn
+        nm = g.node_matrix(); n_p = nm.shape[0]
+        padded = np.zeros((MAX_PIECES, len(NODE_QUESTIONS)), dtype=np.float32); padded[:n_p] = nm
+        mask = np.zeros(MAX_PIECES, dtype=bool); mask[:n_p] = True
+        er = []
+        for (a, b_), rel in g.edges.items():
+            v = np.zeros(len(EDGE_RELATIONS), dtype=np.float16)
+            for r, x in rel.items():
+                v[col[r]] = x
+            er.append(np.concatenate([np.array([a, b_], dtype=np.float16), v]))
+        edges = np.stack(er) if er else np.zeros((0, 2 + len(EDGE_RELATIONS)), dtype=np.float16)
+        squares = np.array([nd.square for nd in g.nodes] + [64] * (MAX_PIECES - n_p), dtype=np.int8)
+        types = np.array([nd.piece.piece_type * (1 if nd.piece.color == side else -1) for nd in g.nodes] + [0] * (MAX_PIECES - n_p), dtype=np.int8)
+        zone_id = np.full(MAX_PIECES, -1, dtype=np.int8)
+        labels = row["labels"]; best = max(labels, key=labels.get)
+        reg = regime_of(board, side)
+        meta.append(dict(game=-1000000 - (gi * k + i), site="chessbench", ply=0, fen=row["fen"], side=int(side), n_pieces=n_p,
+                         best=best, best_cp=int(round(row["cp"])), best_mate=None, best_kind=move_kind(board, chess.Move.from_uci(best)),
+                         played=best, played_kind=move_kind(board, chess.Move.from_uci(best)), result=None, termination="", plies_left=0,
+                         ahead={str(h): reg for h in AHEAD}, ended_within={str(h): 1 for h in AHEAD}, labels=labels, wp=row["wp"],
+                         zones=len(g.zones), temperatures=g.temperatures[:4], seconds=g.seconds, squares=squares.tolist(), types=types.tolist(), zone_id=zone_id.tolist()))
+        nodes_l.append(padded); mask_l.append(mask); pos_l.append(g.position_vector()); edge_l.append(edges)
+        n += 1
+        if n % 100 == 0:
+            log(f"[dataset {shard}] {n} positions, {time.perf_counter() - t0:.0f}s ({(time.perf_counter() - t0) / n:.2f}s each)", flush=True)
+    edge_offsets = np.cumsum([0] + [e.shape[0] for e in edge_l])
+    np.savez_compressed(out / f"shard_{i}.npz", nodes=np.stack(nodes_l), mask=np.stack(mask_l), position=np.stack(pos_l), edges=np.concatenate(edge_l), edge_offsets=edge_offsets,
+                        node_questions=np.array(NODE_QUESTIONS), edge_relations=np.array(EDGE_RELATIONS), position_questions=np.array(POSITION_QUESTIONS), regime_keys=np.array(REGIME_KEYS))
+    with open(out / f"shard_{i}.jsonl", "w") as f:
+        for m in meta:
+            f.write(json.dumps(m) + "\n")
+    log(f"[dataset {shard}] done: {n} positions in {time.perf_counter() - t0:.0f}s; {memo.report()}", flush=True)
+
+
 def load(out_dir: str, shards=None, meta_only: bool = False):
     """All shards joined: arrays + the metadata rows (`meta_only`: the rows alone, for scripts that need ids and FENs)."""
     out = Path(out_dir)
@@ -181,12 +234,14 @@ def load(out_dir: str, shards=None, meta_only: bool = False):
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["extract", "merge"]); ap.add_argument("path"); ap.add_argument("--out", default="data/derived/knowledge")
+    ap.add_argument("cmd", choices=["extract", "extract_fens", "merge"]); ap.add_argument("path"); ap.add_argument("--out", default="data/derived/knowledge")
     ap.add_argument("--shard", default="0/1"); ap.add_argument("--every", type=int, default=1); ap.add_argument("--depth", type=int, default=12)
     ap.add_argument("--max-games", type=int, default=0)
     a = ap.parse_args(argv)
     if a.cmd == "extract":
         extract(a.path, a.out, a.shard, a.every, a.depth, max_games=a.max_games)
+    elif a.cmd == "extract_fens":
+        extract_fens(a.path, a.out, a.shard)
     else:
         d = load(a.path)
         print(f"{len(d['meta'])} positions; nodes {d['nodes'].shape}, position {d['position'].shape}, pairs {sum(len(e) for e in d['edges'])}")
