@@ -91,8 +91,8 @@ def main(argv=None):
             train_round(name, hide, a.epochs, log)
             results[name] = json.load(open(OUT / f"kn_{name}" / "final.json"))["test"]
     if "full" in rounds:
-        train_round("full", None, a.epochs, log)
-        results["full"] = json.load(open(OUT / "kn_full_cb" / "final.json"))["test"] if (OUT / "kn_full_cb").exists() else json.load(open(OUT / "kn_full" / "final.json"))["test"]
+        train_round("full_cb", None, a.epochs, log)
+        results["full"] = json.load(open(OUT / "kn_full_cb" / "final.json"))["test"]
     keys = ["cb_policy_top1", "cb_policy_regret", "cb_qhead_top1", "cb_qhead_regret", "cb_q_mae", "policy_top1", "policy_quiet", "cp_r2", "labeled_n"]
     log("[acquire] RESULTS (ChessBench test = the teacher's labels; games test = the engine's best at depth 12):")
     log("   " + f"{'round':<8}" + "".join(f"{k:>18}" for k in keys))

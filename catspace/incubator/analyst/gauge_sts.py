@@ -43,7 +43,7 @@ def load(path: str = "assets/suites/STS.epd"):
     return items
 
 
-def run(items, experts: tuple, shard: str = "0/1", ckpt_b: str = "data/derived/checkpoints/kn_future4/best.pt", ckpt_a: str = "data/derived/checkpoints/kn_board/best.pt", log=print):
+def run(items, experts: tuple, shard: str = "0/1", ckpt_b: str = "data/derived/checkpoints/kn_future4/best.pt", ckpt_a: str = "data/derived/checkpoints/kn_board/best.pt", tag: str = "", log=print):
     i, k = (int(x) for x in shard.split("/"))
     items = items[i::k]
     OUT.mkdir(parents=True, exist_ok=True)
@@ -87,16 +87,16 @@ def run(items, experts: tuple, shard: str = "0/1", ckpt_b: str = "data/derived/c
         eng.close()
     if maia is not None:
         maia.close()
-    with open(OUT / f"rows_{''.join(experts)}_{i}.jsonl", "w") as f:
+    with open(OUT / f"rows_{''.join(experts)}{tag}_{i}.jsonl", "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
     log(f"[sts {shard} {''.join(experts)}] done {len(rows)} in {time.perf_counter() - t0:.0f}s", flush=True)
 
 
-def report() -> str:
+def report(pattern: str = "rows_*.jsonl") -> str:
     import numpy as np
     by_id = {}
-    for f in sorted(OUT.glob("rows_*.jsonl")):
+    for f in sorted(OUT.glob(pattern)):
         for l in open(f):
             r = json.loads(l); by_id.setdefault(r["id"], {}).update(r)
     rows = list(by_id.values())
@@ -139,11 +139,12 @@ def report() -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(); ap.add_argument("--experts", default="b,m"); ap.add_argument("--shard", default="0/1"); ap.add_argument("--report", action="store_true")
+    ap.add_argument("--ckpt-b", default="data/derived/checkpoints/kn_future4/best.pt"); ap.add_argument("--tag", default="")
     a = ap.parse_args(argv)
     if a.report:
         print(report())
     else:
-        run(load(), tuple(a.experts.split(",")), a.shard)
+        run(load(), tuple(a.experts.split(",")), a.shard, ckpt_b=a.ckpt_b, tag=a.tag)
 
 
 if __name__ == "__main__":
