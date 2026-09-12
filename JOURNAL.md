@@ -22360,3 +22360,30 @@ between the training sample (random amateur positions, a 50 ms teacher) and the 
 positions), not a capacity or a label-count problem; under the no-curation rule the honest remedy is the
 SOURCE of the random sample, not a concept filter. Also found: the soft policy loss printed NaN in every
 soft-label run (0 x -inf on illegal moves); the gradient was finite (verified), so training was sound; fixed.
+
+## 2026-09-12 15:57 PDT — recall: memory indexed by the geometry
+
+Kaveh: "sample random positions from human games, store the state of the concepts indexed by the concept
+values; for an unknown position ask what I remember that is closest, what I remember that is in its future --
+reachable from here, by a quasimetric rather than rules so it generalises -- and which of those futures to
+steer to or avoid; keep every head at inference and see which gets used."
+`recall.py`: the memory is every position we hold a graph for -- 62555 random Lichess positions (ChessBench,
+the teacher's state value) and 69108 game positions (the engine's evaluation as the value; the game's result was
+too noisy for one position) -- each with its geometry coordinates psi from `kn_m256` (the quasimetric trained on
+the games' trajectories), its Backpack sum, its regime code, piece counts, castling bits, FEN. Nearest = the
+smallest d(q -> m) + d(m -> q); FUTURES = the smallest d(q -> m); the rules' necessary condition (no piece type's
+count rises except by promotion, castling rights never return) computed beside each as ground truth, not as the
+filter; the contrast: reachable futures a step above the median value = steer to, below = avoid. Built in 215 s.
+Gauge (1431 held-out game positions with a future in memory), OBS:
+  REACHABILITY: a game's own later positions within 20 plies against 200 random memories, ranked by -d(q -> m):
+  AUC 0.943 by the geometry, 0.796 by the rules' exclusions; the arrow on those pairs 82% (against 60-64% on
+  consecutive plies: over twenty plies the direction is clear).
+  VALUE by recall: the 16 nearest other-game memories' mean value R2 -0.05 against the value head's 0.75; the
+  average of the two 0.50; correlation with the truth 0.10.
+Reading: the memory knows where a game can go and not how good it is there -- psi was shaped by the trajectory
+loss, and positions near in it share a future, not a value. So the memory's move score reads the values of the
+child's REACHABLE FUTURES (nearest by the forward distance, rule-reachable), not its neighbours'; it is expert
+'r' in the gate, beside the 9.4M model's action-value head as expert 'q'; both queued on the 3200 expert rows
+(the recall expert costs a child graph per legal move: ~40 s a position, four processes) after the acquisition
+rerun at 9.4M finishes. On the rook ending the memory's futures were mostly vetoed by the rules (a queen or a
+piece appearing) -- the 18% of pairs where the arrow fails are exactly the trades the geometry cannot yet order.
