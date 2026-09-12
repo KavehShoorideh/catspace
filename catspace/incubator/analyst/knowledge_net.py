@@ -455,7 +455,8 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         qt = b["q"].view(phi.shape[0], -1)[hq] / cfg.q_temp
         qt = qt.masked_fill(~b["legal"].view(phi.shape[0], -1)[hq], float("-inf"))
         target = F.softmax(qt, dim=-1)
-        out["policy_soft"] = -(target * F.log_softmax(pl[hq], dim=-1)).sum(-1).mean()
+        lsm = F.log_softmax(pl[hq], dim=-1).masked_fill(target <= 0, 0.0)               # 0 x -inf would print NaN (the gradient was finite)
+        out["policy_soft"] = -(target * lsm).sum(-1).mean()
         ql = model.q_logits(h, b).view(phi.shape[0], -1)[hq]
         lg = b["legal"].view(phi.shape[0], -1)[hq]
         out["q"] = F.binary_cross_entropy_with_logits(ql[lg], b["q"].view(phi.shape[0], -1)[hq][lg])
