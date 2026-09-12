@@ -22307,3 +22307,27 @@ base; the pool scored by the policy's entropy; 6000 most uncertain revealed (act
 (random); full = every label; each round measured on the ChessBench test, the games' test and the Strategic Test
 Suite. The claim tested: active beats random at equal labels -- a method-level result with no chess concept in
 the loop. Running: the extraction (eight shards, ~2.5 h), then the four rounds and the suite per round.
+
+## 2026-09-12 08:41 PDT — the acquisition experiment: the data is not the bottleneck; the capacity ladder launched
+
+ChessBench extracted (62555 positions, 8 shards, 3.5 h; the 6 that failed are illegal or finished positions).
+`acquire.py` overnight: ChessBench's training rows split into base 25036 (labels used) and pool 25036 (withheld);
+round0 on games + base; the pool scored by the policy's entropy (mean 2.69 nats; the 6000 most uncertain 3.40;
+random 2.67); active = those 6000 revealed, random = 6000 random; full = every label. 8 epochs each (24 min).
+Re-evaluated on the WHOLE test split after a first pass had capped at 4000 rows and missed the labeled ones.
+OBS, 6235 held-out ChessBench positions (top-1 against the teacher's best; REGRET = the best move's win
+probability minus the chosen move's; the action-value head the same; games test = the engine's best at depth
+12, quiet moves) and the Strategic Test Suite per round:
+  round0  policy 26.2% / regret 0.091; q-head 18.6% / 0.093, MAE 0.102; games quiet 22.0%; STS 2.50 (key 16.7%)
+  active  26.4% / 0.090; 18.7% / 0.092; 22.2%; STS 2.55 (17.1%)
+  random  25.6% / 0.091; 18.2% / 0.094; 22.2%; STS 2.57 (17.3%)
+  full    26.4% / 0.089; 19.2% / 0.090, MAE 0.101; 22.7%; STS 2.57 (16.9%)
+Reading: uncertainty sampling edges random by 0.8 points of top-1 and one thousandth of regret -- inside the
+noise of 6235 positions -- and DOUBLING the labels moves regret by two thousandths. At this model size (1.4M
+parameters) the data is not the bottleneck at all; the model is. The ChessBench labels did raise the suite from
+2.18 (the games-only policy head) to 2.5-2.6 of 10, so the stronger teacher helps a little, but the learner
+cannot use more of it. A regret of 0.09 is nine points of win probability a move: the policy is far from the
+teacher. The method-level conclusion Kaveh asked for: before any data acquisition scheme, scale the learner.
+Launched (08:41): the capacity ladder on the joined corpora (130k positions), 10 epochs each, the same battery
+per rung: d=256 x 8 layers (9.4M parameters, ~95 min) with the heads on the Backpack sum; the same with the heads
+on the free board token (what the interpretable readout costs); d=384 x 10 layers (23M, ~3 h). The suite per rung.
