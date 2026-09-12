@@ -22331,3 +22331,32 @@ teacher. The method-level conclusion Kaveh asked for: before any data acquisitio
 Launched (08:41): the capacity ladder on the joined corpora (130k positions), 10 epochs each, the same battery
 per rung: d=256 x 8 layers (9.4M parameters, ~95 min) with the heads on the Backpack sum; the same with the heads
 on the free board token (what the interpretable readout costs); d=384 x 10 layers (23M, ~3 h). The suite per rung.
+
+## 2026-09-12 12:52 PDT — the capacity ladder: 1.4M -> 9.4M is the gain; 23M adds nothing; the suite's total does not move
+
+The same 130k positions (games + ChessBench, all labels), the same recipe, 10 epochs; the whole test split (6970
+game rows, 6235 ChessBench rows). OBS:
+  1.4M (d128 x 6)   regret 0.089, top-1 vs the teacher 26.4%, q-head 19.2% / 0.090; games quiet 22.7%; cp R2
+                    0.775; STS 2.57 of 10 (key 16.9%)
+  9.4M (d256 x 8)   regret 0.072, 28.4%, q-head 24.1% / 0.074; quiet 23.0%; cp R2 0.752; sharpness AUC 0.816;
+                    STS 2.58 (16.7%); validation peaks at epoch 4 and degrades after: at this size the run is
+                    data-limited
+  9.4M, heads on the free board token instead of the Backpack sum: regret 0.074, 29.7%, q-head 23.4%; cp R2
+                    0.832, regime +10 0.594 (against 0.752 / 0.515 with the interpretable readout); the W/D/L
+                    basin head fell to the majority rate (its poles on a token, not on the senses -- to be fixed
+                    if that path is kept)
+  23M (d384 x 10)   regret 0.074, 28.3%, q-head 23.4% / 0.075; peaks at epoch 2; 16 GB of wired GPU memory put
+                    the machine into swap (an epoch went from 10 to 90 minutes); stopped at 70% of its run, the
+                    best checkpoint kept.
+Reading: capacity was the bottleneck at 1.4M (regret down a fifth at 9.4M with the same labels) and stops being
+one at 9.4M, where the model overfits 130k positions -- so at that size the DATA is the bottleneck again, and
+the acquisition question is worth re-asking there (running: round0 / active / random at 9.4M). The
+interpretable readout costs the value heads about 0.08 of R2 and the policy nothing. The Strategic Test Suite's
+total did not move with capacity (2.57 -> 2.58): the bigger model gains on the exchange themes (simplification
+6.8 against 4.7, recapturing 6.1 against 5.2, bishop v knight 5.3 against 3.4) and loses on the pawn and centre
+themes (centre control 1.2 against 2.1, a/b/c pawns 1.6 against 2.1) -- it fits the teacher's tactical
+preferences on random Lichess positions better and the strategic pawn play worse. That is a distribution gap
+between the training sample (random amateur positions, a 50 ms teacher) and the suite (masters' strategic
+positions), not a capacity or a label-count problem; under the no-curation rule the honest remedy is the
+SOURCE of the random sample, not a concept filter. Also found: the soft policy loss printed NaN in every
+soft-label run (0 x -inf on illegal moves); the gradient was finite (verified), so training was sound; fixed.
