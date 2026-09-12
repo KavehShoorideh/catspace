@@ -75,6 +75,14 @@ class NetScorer:
         return {mv: float(lp[idx[mv.from_square], mv.to_square]) for mv in board.legal_moves}
 
     @torch.no_grad()
+    def qvalues(self, board: chess.Board, g) -> dict[chess.Move, float]:
+        """The action-value head: each legal move's predicted win probability (logit)."""
+        s, idx = net_sample(g, board, self.buckets, self.pos_buckets)
+        b = K.collate([s], self.device)
+        o = self.model(b); ql = self.model.q_logits(o["h"], b)[0]
+        return {mv: float(ql[idx[mv.from_square], mv.to_square]) for mv in board.legal_moves}
+
+    @torch.no_grad()
     def basin(self, board: chess.Board, g) -> tuple[float, float, float]:
         """Distances from phi to the win / draw / loss poles, side to move's view."""
         s, _ = net_sample(g, board, self.buckets, self.pos_buckets)
@@ -95,6 +103,31 @@ class NetScorer:
         return out
 
 
+def recall_score(recall, board: chess.Board, mv: chess.Move, memo, k: int = 16) -> float:
+    """The child position's value by memory: the mean value (mover's view = OUR view after their turn is
+    flipped) of its k nearest other-position memories; a decided game by the rules scores 1 / 0.5 / 0."""
+    nb = board.copy(stack=False); nb.push(mv)
+    if nb.is_game_over():
+        oc = nb.outcome(); return 1.0 if oc and oc.winner == board.turn else (0.5 if oc and oc.winner is None else 0.0)
+    try:
+        from .recall import counts_of, castle_bits, reachable_by_rules
+        phi, psi, code, g = recall.embed(nb, memo=memo)
+        fwd, back = recall.distances(psi)
+        now_c = counts_of(nb); nc = castle_bits(nb)
+        vals = []
+        for j in np.argsort(fwd)[: 8 * k]:                                          # the child's FUTURES: nearest by the forward distance, rule-reachable
+            if recall.mem.fen[j] == nb.fen() or not reachable_by_rules(now_c, recall.mem.counts[j], nc, int(recall.mem.castle[j]), bool(recall.mem.side[j]) == nb.turn):
+                continue
+            v = float(recall.mem.value[j]) if bool(recall.mem.side[j]) == nb.turn else 1.0 - float(recall.mem.value[j])
+            vals.append(v)
+            if len(vals) >= k:
+                break
+        v_them = float(np.mean(vals)) if vals else 0.5                              # the side to move in the child is the opponent
+        return 1.0 - v_them
+    except Exception:
+        return 0.5
+
+
 # ---------------------------------------------------------------- collection
 def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = "0/1", split: str = "test", max_n: int = 2000,
             distances: bool = False, budget: int = 120, judge: int = 6, experts: tuple = ("a", "b", "c"), only_quiet: bool = False, skip: int = 0, log=print):
@@ -107,7 +140,11 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
     if only_quiet:
         ids = [x for x in ids if data.meta[x]["best_kind"] == "quiet"]
     ids = ids[i::k]
-    A = NetScorer(ckpt_a) if "a" in experts else None; B = NetScorer(ckpt_b) if "b" in experts else None
+    A = NetScorer(ckpt_a) if "a" in experts else None; B = NetScorer(ckpt_b) if ("b" in experts or "q" in experts) else None
+    recall = None
+    if "r" in experts:                                                             # memory: each child scored by its nearest reachable memories' value
+        from .recall import Recall
+        recall = Recall()
     maia = None
     if "m" in experts:                                                             # the human prior at the product's level
         from .maia import Maia
@@ -131,8 +168,12 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
                        position={q: float(v) for q, v in g.position.items()})
             if A is not None:
                 sa = A.policy(board, g); row["a"] = [sa[mv] for mv in legal]
-            if B is not None:
+            if B is not None and "b" in experts:
                 sb = B.policy(board, g); row["b"] = [sb[mv] for mv in legal]
+            if B is not None and "q" in experts:
+                sq_ = B.qvalues(board, g); row["q"] = [sq_[mv] for mv in legal]
+            if recall is not None:
+                row["r"] = [recall_score(recall, board, mv, memo) for mv in legal]
             if maia is not None:
                 pol = maia.policy(board)
                 row["m"] = [math.log(max(pol.get(mv.uci(), 0.0), 1e-6)) for mv in legal]
