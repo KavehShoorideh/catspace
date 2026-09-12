@@ -764,7 +764,7 @@ def train(args):
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / "last.pt")
         if best_val is None or ev["policy_top1"] > best_val:
             best_val = ev["policy_top1"]; torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / "best.pt")
-    ev = evaluate(model, data, "test", cfg, device)
+    ev = evaluate(model, data, "test", cfg, device, max_n=200000)                      # the whole test split: several corpora may be joined
     asym = asymmetry(model, data, "test", device)
     json.dump(dict(test=ev, asymmetry=asym), open(out / "final.json", "w"), indent=1)
     print("[kn] TEST " + json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in ev.items() if not isinstance(v, dict)}), flush=True)
