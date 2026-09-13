@@ -55,3 +55,4 @@ artifacts/experiments/kitty_current_game.json
 artifacts/experiments/players/
 tmp/
 assets/lichess/
+data/external/lichess/
