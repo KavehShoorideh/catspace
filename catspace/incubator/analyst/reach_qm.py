@@ -300,8 +300,46 @@ def gauge_hard(n: int = 1500, seed: int = 2, log=print) -> str:
     text = "\n".join(out); log(text); return text
 
 
+@torch.no_grad()
+def gauge_elo(n: int = 1500, seed: int = 3, log=print) -> str:
+    """Does the level change the distances? The same held-out forward pairs (k <= 40) scored with the Elo token set
+    to each band's centre: the mean predicted plies per true gap, and the reverse-of-time AUC, at each level; plus
+    each query at its own Elo against the others."""
+    from sklearn.metrics import roc_auc_score
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    ck = torch.load(OUT / "model.pt", map_location="cpu"); model = ReachQM(d=ck["d"], layers=ck["layers"]); model.load_state_dict(ck["model"]); model = model.to(device).eval()
+    P = Positions(log=log)
+    rng = random.Random(seed)
+    test = [int(i) for i in P.ids("test")]; rng.shuffle(test)
+    levels = [1000, 1350, 1650, 1950, 2300]
+    pred = {e: [] for e in levels}; aucs = {e: [] for e in levels}; own = []; gaps = []
+    for i in test[:n]:
+        g, p = int(P.game[i]), int(P.ply[i]); ids = P.by_game[g]
+        later = [j for j in ids if 0 < int(P.ply[j]) - p <= 40]; earlier = [j for j in ids if 0 < p - int(P.ply[j]) <= 40]
+        if len(later) < 4 or len(earlier) < 4:
+            continue
+        ks = np.array([int(P.ply[j]) - p for j in later]); gaps.append(ks)
+        y = [1] * len(later) + [0] * len(earlier)
+        for e in levels:
+            b = P.batch([i] + later + earlier, device, elo=e); psi = model(b)
+            fwd = model.iqe.pairwise(psi[:1], psi[1:])[0].cpu().numpy()
+            pred[e].append(fwd[: len(later)]); aucs[e].append(roc_auc_score(y, -fwd))
+        b = P.batch([i] + later + earlier, device); psi = model(b); fwd = model.iqe.pairwise(psi[:1], psi[1:])[0].cpu().numpy()
+        own.append((float(P.elo[i]), roc_auc_score(y, -fwd), float(np.mean(fwd[: len(later)] - ks))))
+    gaps_all = np.concatenate(gaps)
+    out = [f"[reach_qm elo] {len(own)} held-out queries; the same forward pairs scored at every level (the Elo token set to the level):",
+           f"  {'level':>7}{'mean d for k<=10':>18}{'k 11-25':>10}{'k 26-40':>10}{'reverse-of-time AUC':>22}"]
+    for e in levels:
+        d = np.concatenate(pred[e])
+        out.append(f"  {e:>7}{d[gaps_all <= 10].mean():>18.1f}{d[(gaps_all > 10) & (gaps_all <= 25)].mean():>10.1f}{d[gaps_all > 25].mean():>10.1f}{np.mean(aucs[e]):>22.3f}")
+    o = np.array(own)
+    out.append("  at each query's OWN Elo, by band: " + "; ".join(f"{lo}-{hi}: AUC {o[(o[:, 0] >= lo) & (o[:, 0] < hi), 1].mean():.3f}, bias {o[(o[:, 0] >= lo) & (o[:, 0] < hi), 2].mean():+.1f} plies (n {int(((o[:, 0] >= lo) & (o[:, 0] < hi)).sum())})"
+                                                   for lo, hi in ELO_BANDS if ((o[:, 0] >= lo) & (o[:, 0] < hi)).sum() >= 5))
+    text = "\n".join(out); log(text); return text
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["prepare", "train", "gauge", "hard"]); ap.add_argument("--pgn", default="data/external/lichess/lichess_2015-06.pgn.zst")
+    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["prepare", "train", "gauge", "hard", "elo"]); ap.add_argument("--pgn", default="data/external/lichess/lichess_2015-06.pgn.zst")
     ap.add_argument("--games", type=int, default=60000); ap.add_argument("--epochs", type=int, default=6); ap.add_argument("--max-games", type=int, default=0); ap.add_argument("--d", type=int, default=64); ap.add_argument("--layers", type=int, default=3)
     a = ap.parse_args(argv)
     if a.cmd == "prepare":
@@ -310,6 +348,8 @@ def main(argv=None):
         train(a.epochs, d=a.d, layers=a.layers, max_games=a.max_games)
     elif a.cmd == "hard":
         gauge_hard()
+    elif a.cmd == "elo":
+        gauge_elo()
     else:
         gauge()
 
