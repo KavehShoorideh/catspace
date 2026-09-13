@@ -103,7 +103,7 @@ class NetScorer:
         return out
 
 
-def recall_score(recall, board: chess.Board, mv: chess.Move, memo, k: int = 16) -> float:
+def recall_score(recall, board: chess.Board, mv: chess.Move, memo, k: int = 16, exclude_game=None) -> float:
     """The child position's value by memory: the mean value (mover's view = OUR view after their turn is
     flipped) of its k nearest other-position memories; a decided game by the rules scores 1 / 0.5 / 0."""
     nb = board.copy(stack=False); nb.push(mv)
@@ -116,6 +116,8 @@ def recall_score(recall, board: chess.Board, mv: chess.Move, memo, k: int = 16) 
         now_c = counts_of(nb); nc = castle_bits(nb)
         vals = []
         for j in np.argsort(fwd)[: 8 * k]:                                          # the child's FUTURES: nearest by the forward distance, rule-reachable
+            if exclude_game is not None and int(recall.mem.game[j]) == exclude_game:
+                continue                                                            # never the query's own game (its future is the answer)
             if recall.mem.fen[j] == nb.fen() or not reachable_by_rules(now_c, recall.mem.counts[j], nc, int(recall.mem.castle[j]), bool(recall.mem.side[j]) == nb.turn):
                 continue
             v = float(recall.mem.value[j]) if bool(recall.mem.side[j]) == nb.turn else 1.0 - float(recall.mem.value[j])
@@ -173,7 +175,7 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
             if B is not None and "q" in experts:
                 sq_ = B.qvalues(board, g); row["q"] = [sq_[mv] for mv in legal]
             if recall is not None:
-                row["r"] = [recall_score(recall, board, mv, memo) for mv in legal]
+                row["r"] = [recall_score(recall, board, mv, memo, exclude_game=m.get("game")) for mv in legal]
             if maia is not None:
                 pol = maia.policy(board)
                 row["m"] = [math.log(max(pol.get(mv.uci(), 0.0), 1e-6)) for mv in legal]

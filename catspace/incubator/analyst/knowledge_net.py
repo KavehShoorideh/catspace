@@ -299,10 +299,17 @@ class Data:
         self.meta = d["meta"]
         self.hidden = set(hide_labels or ())
         N = len(self.meta)
-        games = sorted({m["game"] for m in self.meta})
-        rng = random.Random(split_seed); rng.shuffle(games)
-        n = len(games); test_games = set(games[: n // 10]); val_games = set(games[n // 10: n // 5])
-        self.split = np.array(["test" if m["game"] in test_games else "val" if m["game"] in val_games else "train" for m in self.meta])
+        # the split is PER CORPUS: each corpus's games are shuffled on their own, exactly as when that corpus is
+        # loaded alone, so joining corpora never moves a game between train and test (2026-09-13: joining ChessBench
+        # had reshuffled Kaveh's games and put 54 of the 67 expert-row games into training)
+        self.split = np.empty(N, dtype="<U5")
+        for part in parts:
+            ids = {m["game"] for m in part["meta"]}
+            games = sorted(ids); rng = random.Random(split_seed); rng.shuffle(games)
+            n = len(games); test_games = set(games[: n // 10]); val_games = set(games[n // 10: n // 5])
+            for i, m in enumerate(self.meta):
+                if m["game"] in ids:
+                    self.split[i] = "test" if m["game"] in test_games else "val" if m["game"] in val_games else "train"
         self.index = {(m["game"], m["ply"]): i for i, m in enumerate(self.meta)}
         if meta_only:
             return
