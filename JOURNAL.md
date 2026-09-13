@@ -22406,3 +22406,26 @@ scheme is worth running before the learner can use more labels, and this one can
 Queued: the recall expert on the first 800 expert rows (a child graph and a memory search per legal move: a
 minute a position, four processes) and the 9.4M model's policy and action-value head on all 3200, then the gate
 refit over every mechanism (A, B at 1.4M, B at 9.4M, the action-value head, recall, the rules, Maia).
+
+## 2026-09-13 11:58 PDT — a simple reachability quasimetric conditioned on Elo (first epoch)
+
+Kaveh: "a simple reachability quasimetric that gives simple position reachability distances, conditioned on
+Elo." `reach_qm.py`: 60000 games of June 2015 from the Lichess database (all ratings: 1670 under 1200, 17060 at
+1200-1500, 28430 at 1500-1800, 11674 at 1800-2100, 1166 above; 4.13M positions; train / val / test by game), a
+board-only encoder (piece identity + square tokens and an Elo token through a 3-layer transformer of width 64,
+0.16M parameters) to a 64-d interval quasimetric; the objective in plies (forward pairs calibrated to their gap
+up to 40, every pair not known reachable pushed apart, reachable pairs bounded, VICReg spread), batches drawn
+from ONE rating window so the Elo token cannot serve as a game identity. No graphs, no rules: it trains on
+millions of positions. First epoch (17223 steps, 1.6 h), held-out games, OBS:
+  calibration: predicted plies against the true gap R2 0.808 (corr 0.92), mean error 3.3 plies;
+  the arrow d(now -> later) < d(later -> now) 97%;
+  reachability, easy negatives (random positions of other games): AUC 1.000 -- too easy, the board alone tells
+  them apart; at the wrong Elo (800 points away) 0.870;
+  HARD negatives: a game's later positions against its OWN EARLIER positions (the reverse of time) AUC 0.872;
+  against other games' positions with the SAME piece counts 0.999; the ordering within a game's future,
+  Spearman(ply gap, distance) 0.935.
+Reading: a 0.16M-parameter board encoder with the quasimetric objective gives calibrated ply distances, reads
+the direction of time within a game at 0.87 and orders the future at 0.94 -- the reachability index Kaveh asked
+for, and better on its own task than the knowledge network's geometry (arrow 82% over 20 plies in the recall
+gauge, though that was measured on Kaveh's games with a different negative set). Whether the Elo conditioning
+changes the distances in a sensible way (a 1200's ten plies against a 2000's) is measured after the last epoch.
