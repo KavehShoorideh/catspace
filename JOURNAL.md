@@ -22387,3 +22387,22 @@ child's REACHABLE FUTURES (nearest by the forward distance, rule-reachable), not
 (the recall expert costs a child graph per legal move: ~40 s a position, four processes) after the acquisition
 rerun at 9.4M finishes. On the rook ending the memory's futures were mostly vetoed by the rules (a queen or a
 piece appearing) -- the 18% of pairs where the arrow fails are exactly the trades the geometry cannot yet order.
+
+## 2026-09-13 05:16 PDT — the acquisition experiment at 9.4M: still nothing; the machine slowed overnight
+
+`acquire.py` at d256 x 8 (the same base / pool / active / random design, 6 epochs each; the runs took eight hours
+instead of three -- the GPU was shared with the memory build and the recall gauge and the machine paged), OBS on
+the 6235 ChessBench test positions:
+  round0 (25036 labels)  policy top-1 29.9%, regret 0.0705; q-head 21.7% / 0.083
+  active (+6000 uncertain)   29.9%, 0.0706; 20.9% / 0.084
+  random (+6000 random)      30.2%, 0.0702; 21.8% / 0.083
+Reading: at 9.4M as at 1.4M, six thousand labels chosen by the model's own uncertainty are worth exactly what six
+thousand random ones are, and round0 on HALF the labels equals the 10-epoch run on all of them (regret 0.0716).
+The policy's regret plateaus near 0.07 against this teacher whatever the label count or choice; the
+overfitting the validation curve showed was of the value heads on the games' labels, not of the policy. What
+remains as a lever is the architecture (the bucketed answers, the relation bias, the pooled readout) or the
+teacher's own noise floor (50 ms of Stockfish a move), which we have not measured. Method-level: no acquisition
+scheme is worth running before the learner can use more labels, and this one cannot.
+Queued: the recall expert on the first 800 expert rows (a child graph and a memory search per legal move: a
+minute a position, four processes) and the 9.4M model's policy and action-value head on all 3200, then the gate
+refit over every mechanism (A, B at 1.4M, B at 9.4M, the action-value head, recall, the rules, Maia).
