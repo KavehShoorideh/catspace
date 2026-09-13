@@ -301,7 +301,7 @@ def gauge_hard(n: int = 1500, seed: int = 2, log=print) -> str:
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["prepare", "train", "gauge"]); ap.add_argument("--pgn", default="data/external/lichess/lichess_2015-06.pgn.zst")
+    ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["prepare", "train", "gauge", "hard"]); ap.add_argument("--pgn", default="data/external/lichess/lichess_2015-06.pgn.zst")
     ap.add_argument("--games", type=int, default=60000); ap.add_argument("--epochs", type=int, default=6); ap.add_argument("--max-games", type=int, default=0); ap.add_argument("--d", type=int, default=64); ap.add_argument("--layers", type=int, default=3)
     a = ap.parse_args(argv)
     if a.cmd == "prepare":
