@@ -22429,3 +22429,19 @@ the direction of time within a game at 0.87 and orders the future at 0.94 -- the
 for, and better on its own task than the knowledge network's geometry (arrow 82% over 20 plies in the recall
 gauge, though that was measured on Kaveh's games with a different negative set). Whether the Elo conditioning
 changes the distances in a sensible way (a 1200's ten plies against a 2000's) is measured after the last epoch.
+
+## 2026-09-13 13:28 PDT — a split leak found and fixed; the seven-expert table withdrawn until the clean run
+
+The first seven-expert gate table (800 rows) showed the 9.4M model's policy at 52.1% top-1, twice the 1.4M
+model and above Maia -- against 32% on its own held-out test. Cause, verified: the train / test split shuffled
+the LIST of game ids, and joining ChessBench's 62555 ids to Kaveh's 1485 reshuffled which of his games fell in
+the test set; 54 of the 67 games behind the expert rows were in the joined training split. Every number from a
+model trained on the joined corpora and scored on the expert rows is therefore contaminated (the 9.4M policy
+'b9', its action-value head 'q', and recall 'r' through same-game memories); the acquisition results, the
+capacity ladder's regrets and the suite numbers stand (measured within their own splits or externally).
+Fix: the split is per corpus (each corpus's games shuffled on their own, exactly as when loaded alone, so joining
+never moves a game); verified 0 of 67 expert games in the joined training split now. Recall excludes the query's
+own game. The clean chain launched (13:28): the 9.4M model retrained under the per-corpus split, the memory
+rebuilt on it, the experts re-collected (b9 and q on 3200 rows, r on 800), the gate refit, the suite.
+A method note for the memory file: a split must be a function of the example's identity, never of the list it
+happens to be in.
