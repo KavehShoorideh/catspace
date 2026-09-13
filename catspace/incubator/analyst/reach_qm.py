@@ -259,6 +259,47 @@ def gauge(model=None, P=None, device=None, n: int = 2000, seed: int = 1, log=pri
     text = "\n".join(out); log(text); return text
 
 
+@torch.no_grad()
+def gauge_hard(n: int = 1500, seed: int = 2, log=print) -> str:
+    """Harder negatives for reachability: (a) the same game's EARLIER positions (the reverse of time), (b) other
+    games' positions with the SAME piece counts as the query (material alone cannot tell them apart), (c) the same
+    game's later positions beyond 40 plies (reachable but far: is the distance ordered?)."""
+    from sklearn.metrics import roc_auc_score
+    device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
+    ck = torch.load(OUT / "model.pt", map_location="cpu"); model = ReachQM(d=ck["d"], layers=ck["layers"]); model.load_state_dict(ck["model"]); model = model.to(device).eval()
+    P = Positions(log=log)
+    rng = random.Random(seed)
+    test = [int(i) for i in P.ids("test")]; rng.shuffle(test)
+    counts = np.stack([np.bincount(t, minlength=13)[1:] for t in P.types])                 # (N, 12) piece counts by type
+    key = {}
+    for i in P.ids("train"):
+        key.setdefault(counts[i].tobytes(), []).append(int(i))
+    a_earlier, a_same_material, spearman = [], [], []
+    for i in test[:n]:
+        g, p = int(P.game[i]), int(P.ply[i]); ids = P.by_game[g]
+        later = [j for j in ids if 0 < int(P.ply[j]) - p <= 40]; earlier = [j for j in ids if 0 < p - int(P.ply[j]) <= 40]
+        same_mat = key.get(counts[i].tobytes(), [])
+        if len(later) < 4 or len(earlier) < 4:
+            continue
+        neg_m = rng.sample(same_mat, min(50, len(same_mat))) if len(same_mat) >= 5 else []
+        rows = later + earlier + neg_m
+        b = P.batch([i] + rows, device); psi = model(b)
+        fwd = model.iqe.pairwise(psi[:1], psi[1:])[0].cpu().numpy()
+        nl, ne = len(later), len(earlier)
+        a_earlier.append(roc_auc_score([1] * nl + [0] * ne, -np.concatenate([fwd[:nl], fwd[nl:nl + ne]])))
+        if neg_m:
+            a_same_material.append(roc_auc_score([1] * nl + [0] * len(neg_m), -np.concatenate([fwd[:nl], fwd[nl + ne:]])))
+        ks = np.array([int(P.ply[j]) - p for j in later])
+        if len(ks) >= 6:
+            from scipy.stats import spearmanr
+            spearman.append(spearmanr(ks, fwd[:nl]).correlation)
+    out = [f"[reach_qm hard] {len(a_earlier)} held-out queries",
+           f"  later vs the same game's EARLIER positions (the reverse of time), AUC {np.mean(a_earlier):.3f}",
+           f"  later vs other games' positions with the SAME piece counts, AUC {np.mean(a_same_material):.3f} ({len(a_same_material)} queries had such negatives)",
+           f"  ordering within the future: Spearman(k, d) over a game's later positions {np.nanmean(spearman):.3f}"]
+    text = "\n".join(out); log(text); return text
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(); ap.add_argument("cmd", choices=["prepare", "train", "gauge"]); ap.add_argument("--pgn", default="data/external/lichess/lichess_2015-06.pgn.zst")
     ap.add_argument("--games", type=int, default=60000); ap.add_argument("--epochs", type=int, default=6); ap.add_argument("--max-games", type=int, default=0); ap.add_argument("--d", type=int, default=64); ap.add_argument("--layers", type=int, default=3)
@@ -267,6 +308,8 @@ def main(argv=None):
         prepare(a.pgn, a.games)
     elif a.cmd == "train":
         train(a.epochs, d=a.d, layers=a.layers, max_games=a.max_games)
+    elif a.cmd == "hard":
+        gauge_hard()
     else:
         gauge()
 
