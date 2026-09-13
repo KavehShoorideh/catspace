@@ -22445,3 +22445,23 @@ own game. The clean chain launched (13:28): the 9.4M model retrained under the p
 rebuilt on it, the experts re-collected (b9 and q on 3200 rows, r on 800), the gate refit, the suite.
 A method note for the memory file: a split must be a function of the example's identity, never of the list it
 happens to be in.
+
+## 2026-09-13 13:59 PDT — the reachability quasimetric, final (three epochs, 4.1 h)
+
+`reach_qm` after epoch 3, held-out games, OBS: calibration R2 0.828 (corr 0.925), mean error 3.1 plies; the
+arrow on consecutive-window pairs 98%; hard gauges: a game's later positions against its own EARLIER positions
+AUC 0.875; against other games' positions with the same piece counts 1.000; the ordering within a game's future
+Spearman(ply gap, distance) 0.954.
+The level: the same forward pairs scored with the Elo token at every band's centre -- mean distance for gaps
+<= 10 plies 5.2 at 1000, 5.4 at 1350-1950, 5.9 at 2300; for gaps of 26-40 plies 26.3, 27.3-27.7, 29.5; the
+reverse-of-time AUC 0.87-0.89 at every level. At each query's own Elo, by band: under 1200 AUC 0.853, 1200-1500
+0.865, 1500-1800 0.871, 1800-2100 0.854, above 2100 0.898; the distances run 1.2-1.8 plies short of the true
+gap in every band.
+Reading: a 0.16M-parameter board encoder with the quasimetric objective is the reachability index Kaveh asked
+for: calibrated in plies, ordering a game's future at 0.95 and reading the direction of time at 0.87 from the
+board alone. The Elo conditioning is used (the easy AUC falls from 1.00 to 0.88 at the wrong Elo) and its effect
+is sensible and modest: the same displacement is about a tenth farther for a 2300 than for a 1000 -- the strong
+player wanders less, so fewer positions lie within k plies -- while the direction of time reads the same at
+every level. The 0.875 on the reverse of time is the number to improve (trades are where the arrow fails, as
+in the knowledge net's geometry); the next levers are harder in-batch negatives (the same game's earlier
+positions inside the batch) and more games.
