@@ -22465,3 +22465,26 @@ player wanders less, so fewer positions lie within k plies -- while the directio
 every level. The 0.875 on the reverse of time is the number to improve (trades are where the arrow fails, as
 in the knowledge net's geometry); the next levers are harder in-batch negatives (the same game's earlier
 positions inside the batch) and more games.
+
+## 2026-09-13 18:30 PDT — every mechanism in one gate, clean
+
+The clean chain: the 9.4M model retrained under the per-corpus split (its own test: regret 0.071, top-1 vs the
+teacher 30.8% -- the same as the leaked run, so the ladder's conclusions hold), the memory rebuilt on it, the
+experts re-collected (recall excluding the query's own game), the gate refit. OBS, held-out expert rows:
+  3200 rows (2240 fit, 960 held out), six experts: A (board-only 1.4M) 26.8% | B (knowledge 1.4M, games only)
+  28.7% | B9 (knowledge 9.4M, games + ChessBench soft labels) 34.2% (quiet 23.6%, captures 69.3%) | Q (B9's
+  action-value head) 25.1% | C (the rules ranking) 31.7% | M (Maia 1800) 45.6%. Agreement of all six 5.9% (right
+  91% then). ORACLE 71.0% (quiet 62.4%, captures 94.6%). Fixed blend 46.1% (quiet 35.2%, captures 77.6%; weights
+  A .08 B .07 B9 .15 Q .07 C .25 M .39); the context gate 45.5% -- again level with the constant blend.
+  800 rows with recall R (a child graph and a memory search per legal move): R alone 12.1% (quiet 7.1%) --
+  useless as a move picker; the seven-expert oracle 74.2%, blend 43.3%, gate 42.5%; without Maia (B9, Q, R, C):
+  oracle 62.9%, blend 36.7% (B9 .38, C .51), gate 37.1%.
+Reading, with the honest numbers: (1) the 9.4M knowledge policy is the best learned expert at 34%, +5.5 over the
+1.4M -- but on your games' quiet moves it is 23.6%, no better than the 1.4M's 23.2%: the soft labels on random
+positions improved captures (69% against 49%), not quiet play; (2) the action-value head is a worse picker than
+the policy it was trained beside (25% against 34%); (3) recall's reachable-futures value is not a move signal --
+the memory answers "where can this go", not "which move"; (4) Maia remains the best single expert by eleven
+points and the blend adds half a point over it; the oracle's 71% says the experts are right on different
+positions, and no named context predicts which -- the gate's weights sit at M .61, B9 .19, C .10 everywhere.
+The experiment Kaveh asked for is answered as stated: every mechanism kept at inference, the gate says which is
+used -- and it uses Maia, then the 9.4M knowledge policy, then the rules, and nothing else.
