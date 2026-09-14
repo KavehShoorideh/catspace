@@ -22488,3 +22488,9 @@ points and the blend adds half a point over it; the oracle's 71% says the expert
 positions, and no named context predicts which -- the gate's weights sit at M .61, B9 .19, C .10 everywhere.
 The experiment Kaveh asked for is answered as stated: every mechanism kept at inference, the gate says which is
 used -- and it uses Maia, then the 9.4M knowledge policy, then the rules, and nothing else.
+  The Strategic Test Suite on the clean 9.4M model: 2.85 of 10 (key found 19.3%) -- the best learned number so
+  far (the 1.4M games-only policy 2.18; the leaked 9.4M 2.58; Maia 4.54; the rules 2.26). By theme it keeps the
+  exchange gains (recapturing 6.2, simplification 6.6, bishop v knight 4.9) and recovers some pawn play (a/b/c
+  pawns 2.9, pawn play in the centre 4.0, undermine 3.2); still weak on square vacancy 0.8, king activity 1.3,
+  the 7th rank 1.4, offers of simplification 1.3. Six epochs under the per-corpus split beat ten under the leaked
+  one on the suite, which says the earlier run's later epochs were overfitting the games it should not have seen.
