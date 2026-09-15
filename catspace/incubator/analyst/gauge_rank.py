@@ -40,7 +40,7 @@ def sample(path: str, n: int, seed: int, max_rating: int, min_rating: int = 0, s
     return rows[:n]
 
 
-def run(rows: list[dict], engine, judge_depth: int = 6, budget: int = 120, full: bool = True, log=print, zone_first: bool = False):
+def run(rows: list[dict], engine, judge_depth: int = 6, budget: int = 120, full: bool = True, log=print, zone_first: bool = False, threat_gate: bool = False, entropy: bool = False):
     """Each puzzle once, no retries: the position after the setup move is ranked and the top move compared with the
     solution's first move; with `full`, the opponent's reply from the solution is played and the next move of ours
     is ranked in turn, to the end of the line -- a puzzle is FULLY solved only when every move of ours is found."""
@@ -53,7 +53,7 @@ def run(rows: list[dict], engine, judge_depth: int = 6, budget: int = 120, full:
         b.push_uci(moves[0])                                   # the setup move: the solver is now to move
         sol = chess.Move.from_uci(moves[1])
         try:
-            sc = score_moves(b, memo, engine, budget=budget, engine_depth=judge_depth, zone_first=zone_first)
+            sc = score_moves(b, memo, engine, budget=budget, engine_depth=judge_depth, zone_first=zone_first, threat_gate=threat_gate, entropy=entropy)
         except Exception as ex:
             log(f"[gauge] {row['PuzzleId']} error {ex}", flush=True)
             continue
@@ -74,7 +74,7 @@ def run(rows: list[dict], engine, judge_depth: int = 6, budget: int = 120, full:
                 bb.push_uci(moves[i])                          # their reply from the solution
                 nxt = chess.Move.from_uci(moves[i + 1])
                 try:
-                    sc2 = score_moves(bb, memo, engine, budget=budget, engine_depth=judge_depth, zone_first=zone_first)
+                    sc2 = score_moves(bb, memo, engine, budget=budget, engine_depth=judge_depth, zone_first=zone_first, threat_gate=threat_gate, entropy=entropy)
                 except Exception:
                     res["failed_at"] = res["moves_found"] + 1; break
                 order2 = sorted(bb.legal_moves, key=lambda m: -sc2.get(m, (0.0, ""))[0])
@@ -147,6 +147,7 @@ def main(argv=None):
     ap.add_argument("--shard", default="", help="i/n: this process takes every n-th puzzle starting at i (parallel runs)")
     ap.add_argument("--cache", default="", help="a private engine cache file for this process")
     ap.add_argument("--zone-first", action="store_true", help="the focus prior: targets in the hottest sub-game first, the rest at half budget")
+    ap.add_argument("--threat-gate", action="store_true"); ap.add_argument("--entropy", action="store_true")
     a = ap.parse_args(argv)
     from .engine import Engine
     rows = sample(a.db, a.n, a.seed, a.max_rating, a.min_rating)
@@ -154,7 +155,7 @@ def main(argv=None):
         i, n = (int(x) for x in a.shard.split("/"))
         rows = rows[i::n]
     with Engine(depth=12, cache_path=a.cache or None) as eng:
-        results, dt = run(rows, eng, a.judge, a.budget, full=not a.first_only, zone_first=a.zone_first)
+        results, dt = run(rows, eng, a.judge, a.budget, full=not a.first_only, zone_first=a.zone_first, threat_gate=a.threat_gate, entropy=a.entropy)
     print(report(results, dt), flush=True)
     if a.json:
         import json

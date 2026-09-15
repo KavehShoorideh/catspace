@@ -15,6 +15,7 @@ where the engine's move has ANY reason at all, split by the kind of move the eng
 from __future__ import annotations
 
 import argparse
+import math
 import random
 import time
 from collections import Counter, defaultdict
@@ -38,7 +39,8 @@ TRUST = 0.4                      # an unverified promise (an idea, a plan, an ag
 
 
 def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budget: int = 120, engine_depth: int = 6, mate_budget: int = 1500,
-                mate_horizon: int = 10, combo_top: int = 8, combo_cap: int = 1500, zone_first: bool = False) -> dict[chess.Move, tuple[float, str]]:
+                mate_horizon: int = 10, combo_top: int = 8, combo_cap: int = 1500, zone_first: bool = False,
+                threat_gate: bool = False, entropy: bool = False, big: float | None = None, w_width: float = 0.1, w_threat2: float = 0.5, top_k: int = 6) -> dict[chess.Move, tuple[float, str]]:
     """move -> (score in pawns, the reason). One scale for everything: the material net one reply deep (the BASE of
     every legal move: what the ledger says after their best reply, negative when the move hangs something), lifted
     by deeper views of the same quantity (a two-move combination, a proof, a forced win), plus the planner's
@@ -47,10 +49,30 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
     side = board.turn
     legal = list(board.legal_moves)
     base: dict[chess.Move, tuple[float, str]] = {}
+    widths: dict[chess.Move, int] = {}
     for m in legal:                                             # the base: every move against their best reply, by the ledger
         v, why = sure_gain(board, m, memo, signed=True)
-        base[m] = (v, why)
+        base[m] = (v, why); widths[m] = width(LAST_NETS.get(m.uci(), []))
     out: dict[chess.Move, tuple[float, str]] = dict(base)
+    # THE THREAT (Kaveh 2026-09-15): the loss the cheap observer sees if we do nothing -- their best free-move gain
+    # by the ledger; its LEVEL is that magnitude against the scale's smallest piece. Above it the search is
+    # constrained to the RESPONSE SET: the moves after which the loss is gone (the base sees it: a move that
+    # ignores a hanging piece scores its loss) or that counter with at least as much. Nothing chess-specific:
+    # a null move, a value, a scale.
+    level = 0.0; responders = set(legal); threat_text = ""
+    if threat_gate:
+        from .threats import free_move_threats
+        from . import rules as R
+        big = big if big is not None else min(v for v in (R.scale_of(board).of_type(pt) for pt in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN)) if v > 0)
+        theirs = free_move_threats(board, not side, memo, top=3)
+        if theirs:
+            level = theirs[0][1]; threat_text = theirs[0][2]
+        if level >= big:
+            # a responder keeps the loss below the threat less a pawn, one reply deep: the base already nets what
+            # they take against what we take back, so meeting the threat and countering it are one condition
+            responders = {m for m in legal if base[m][0] > -min(level, 1000.0) + 1.0}
+            if not responders:
+                responders = set(legal)
     def lift(m, v, why):
         if v > out[m][0]:
             out[m] = (v, why)
@@ -65,13 +87,13 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
             gs = GoalSearch(board, side, None, memo=memo, horizon=mate_horizon, budget=mate_budget)   # mate in five, ~1 s at most: cheap, no judge
             r = gs.run()
             if r.proven and r.line:
-                lift(board.parse_san(r.line[0]), 1000.0 - len(r.line), f"forced win: {' '.join(r.line)}")
+                lift(board.parse_san(r.line[0]), mate_score(r, entropy), f"forced win: {' '.join(r.line)}" + (f" (proof {r.proof} nodes)" if entropy else ""))
         except Exception:
             pass
     if any(v >= 900 for v, _ in out.values()):
         return out                                              # a forced win by the rules: nothing else to weigh
     # combinations: the forcing moves, the most promising first by their one-reply base, the deep search for the top few
-    cands = [m for m in forcing_moves(board, memo) if base[m][0] >= -3.0 or board.gives_check(m)]   # a quiet sacrifice of more than a piece is not a combination we look for
+    cands = [m for m in forcing_moves(board, memo) if (base[m][0] >= -3.0 or board.gives_check(m)) and m in responders]   # a quiet sacrifice of more than a piece is not a combination we look for
     cands = sorted(cands, key=lambda m: -base[m][0])[:combo_top]
     tt: dict = {}
     for m in cands:
@@ -84,13 +106,35 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
             if r.proven and r.line:
                 m = board.parse_san(r.line[0])
                 if r.mates:
-                    lift(m, 1000.0 - len(r.line), f"forced win: {' '.join(r.line)}")
+                    lift(m, mate_score(r, entropy), f"forced win: {' '.join(r.line)}")
                 else:
                     lift(m, max(r.net, 0.5) + 0.02, f"proven: {r.goal}" + (f" ({r.net:+g})" if r.net else ""))
     except Exception:
         pass
     for m, g, why in promotion_scores(board, memo):
         lift(m, g, why)
+    if threat_gate and level >= big:
+        for m in legal:
+            if m not in responders and out[m][0] < 900:
+                out[m] = (min(out[m][0], -level + 0.5), (out[m][1] + "; " if out[m][1] else "") + f"ignores the threat ({level:g})")
+    # the second-level threat and the opponent's freedom, on the top candidates only (a ledger per child)
+    if entropy or threat_gate:
+        from .regime import _best_capture
+        top = sorted(legal, key=lambda m: -out[m][0])[:top_k]
+        for m in top:
+            if out[m][0] >= 900:
+                continue
+            nb = board.copy(stack=False); nb.push(m)
+            if nb.is_game_over():
+                continue
+            if threat_gate and w_threat2 > 0:
+                nb2 = nb.copy(stack=False); nb2.turn = not side
+                if nb2.is_valid():
+                    resid = _best_capture(nb2, not side, set(chess.scan_forward(nb2.occupied)), memo)   # what they take if we pass again
+                    if resid > 0.5:
+                        bonus(m, -w_threat2 * min(resid, 9.0), f"walks into a threat ({resid:g})")
+            if entropy and w_width > 0 and widths.get(m, 0) > 1:
+                bonus(m, -w_width * math.log(widths[m]), f"width {widths[m]}")
     # the planner's promises, on top of the count
     try:
         for m, reason, line in ideas_for(board, side, memo, None, top=6):
@@ -162,7 +206,7 @@ def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None, base=No
     move touched (`changed`) are recomputed -- exact by the store's own validity rule."""
     from .regime import _best_capture
     if b.is_game_over():
-        oc = b.outcome(); return 1000.0 if oc and oc.winner == side else 0.0
+        oc = b.outcome(); return 1000.0 if oc and oc.winner == side else (-1000.0 if oc and oc.winner is not None else 0.0)
     if not b.is_check():
         return net + _best_capture(b, side, set(chess.scan_forward(b.occupied)), memo, base=base, changed=changed)
     best = None
@@ -170,12 +214,32 @@ def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None, base=No
         nb = b.copy(stack=False); nb.push(ev)
         v = net + (value(b, ev.to_square) if b.is_capture(ev) else 0.0)
         if nb.is_game_over():
-            oc = nb.outcome(); v = 1000.0 if oc and oc.winner == side else v
+            oc = nb.outcome(); v = 1000.0 if oc and oc.winner == side else (-1000.0 if oc and oc.winner is not None else v)
         else:
             v -= _best_capture(nb, not side, set(chess.scan_forward(nb.occupied)), memo)
         if best is None or v > best:
             best = v
     return best if best is not None else net
+
+
+LAST_NETS: dict = {}                     # move uci -> the nets over the opponent's replies from the last sure_gain of it (this process)
+
+
+def mate_score(r, entropy: bool) -> float:
+    """A forced win's score: by the LINE's length (the fastest mate), or, with the low-entropy preference, by the
+    PROOF's size -- the calculation it costs and the replies it must cover -- with the length as the tie-break."""
+    if entropy and r.proof:
+        return 1000.0 - 2.0 * math.log2(1 + r.proof) - 0.01 * len(r.line)
+    return 1000.0 - len(r.line)
+
+
+def width(nets: list, margin: float = 1.0) -> int:
+    """The opponent's FREEDOM after our move: how many of their replies hold us within `margin` of the minimum.
+    One is a forced reply; many is a position they can play as they like. The generic 'dependence on the reply'."""
+    if not nets:
+        return 0
+    lo = min(nets)
+    return sum(1 for x in nets if x <= lo + margin)
 
 
 def base_ledger(board: chess.Board, side: chess.Color) -> dict | None:
@@ -209,14 +273,17 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
         return (1000.0, "wins by the rules") if oc and oc.winner == side else (0.0, "")
     worst = None; worst_reply = None
     base = base_ledger(nb, side)
+    nets = []
     for r in nb.legal_moves:
         took = capture_gain_of(nb, r, not side, memo) if nb.is_capture(r) else 0.0
         if took < 0:
             took = 0.0                                          # a losing capture: they would not
         after = nb.copy(stack=False); after.push(r)
         net = leaf_value(after, side, first - took, memo, base=base, changed=changed_squares(nb, r))
+        nets.append(net)
         if worst is None or net < worst:
             worst, worst_reply = net, r
+    LAST_NETS[m.uci()] = nets                                    # the reply spread, read by width() right after the call
     if worst is None:
         return 0.0, ""
     if worst > 0:

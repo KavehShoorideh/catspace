@@ -180,8 +180,12 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
                 pol = maia.policy(board)
                 row["m"] = [math.log(max(pol.get(mv.uci(), 0.0), 1e-6)) for mv in legal]
             if eng is not None:
-                sc = score_moves(board, memo, eng, budget=budget, engine_depth=judge)
-                row["c"] = [float(sc.get(mv, (0.0, ""))[0]) for mv in legal]; row["c_why"] = [sc.get(mv, (0.0, ""))[1] for mv in legal]
+                if "c" in experts:
+                    sc = score_moves(board, memo, eng, budget=budget, engine_depth=judge)
+                    row["c"] = [float(sc.get(mv, (0.0, ""))[0]) for mv in legal]; row["c_why"] = [sc.get(mv, (0.0, ""))[1] for mv in legal]
+                if "c2" in experts:                                                  # the ranking with the threat gate and the low-entropy preference
+                    sc = score_moves(board, memo, eng, budget=budget, engine_depth=judge, threat_gate=True, entropy=True)
+                    row["c2"] = [float(sc.get(mv, (0.0, ""))[0]) for mv in legal]; row["c2_why"] = [sc.get(mv, (0.0, ""))[1] for mv in legal]
             if distances:
                 if A is not None:
                     da = A.distance_scores(board, memo); row["a_dist"] = [da[mv] for mv in legal]
@@ -239,7 +243,7 @@ def _tensors(rows, experts=("a", "b", "c"), ctx_mean=None, ctx_std=None):
     for n, r in enumerate(rows):
         for e, key in enumerate(experts):
             v = np.array(r[key], np.float32)
-            if key == "c":
+            if key in ("c", "c2"):
                 v = v / (np.abs(v).max() + 1.0)                                    # the reasoning's scale is pawns (mates 1000): squash per position
             S[n, e, :len(v)] = v
         mask[n, :len(r["legal"])] = True

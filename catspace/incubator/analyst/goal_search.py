@@ -65,6 +65,7 @@ class Result:
     served: str = ""                 # 'transposition' | 'sketch' when the concept store supplied the proof (a sketch is re-verified)
     net: float = 0.0                 # the material net at the end of the principal line, when proven
     mates: bool = False              # the principal line ends the game in our favour (the rules' outcome)
+    proof: int = 0                   # the proof's size in nodes (the calculation it costs), when proven
 
 
 @dataclass
@@ -439,7 +440,7 @@ class GoalSearch:
         line = self.principal_line(root) if root.pn == 0 else []
         ref = self.hardest_defence(root) if root.pn != 0 else []
         work = self.work_line(root) if root.pn == 0 else []
-        res = Result(goal_txt, root.pn == 0, root.dn == 0, self.nodes, time.perf_counter() - t0, line, ref, self.tried, self.engine_calls, work)
+        res = Result(goal_txt, root.pn == 0, root.dn == 0, self.nodes, time.perf_counter() - t0, line, ref, self.tried, self.engine_calls, work, proof=proof_size(root) if root.pn == 0 else 0)
         if res.proven and not self.terminal:
             b = self.root_board.copy(stack=False)
             for san in line:
@@ -687,6 +688,21 @@ def pursue(board: chess.Board, side: chess.Color, memo=None, engine=None, budget
         if r.proven:
             break
     return out
+
+
+def proof_size(node) -> int:
+    """The nodes of the PROOF under `node`: at an OR node the proven child only, at an AND node every child (each
+    reply must be answered). The calculation the proof costs; the opponent's branches it must cover."""
+    if node is None or node.pn != 0:
+        return 0
+    if not node.children:
+        return 1
+    if node.is_or:
+        for c in node.children:
+            if c.pn == 0:
+                return 1 + proof_size(c)
+        return 1
+    return 1 + sum(proof_size(c) for c in node.children)
 
 
 def result_text(r: Result) -> str:
