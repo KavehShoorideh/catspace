@@ -22664,3 +22664,18 @@ quiet key the plain ranking had missed) and loses nothing. With the 90-row game-
 35.6%, quiet 30.8 against 21.5) the two flags are now on by default in the product's ranking: the constraint
 Kaveh asked for costs nothing on tactics and helps on quiet play. One run each; the 3200-row c2 collection
 (running; ~2.5 h) is the number that settles the game-position gain.
+
+## 2026-09-15 14:47 PDT — design item 1 built: the planner's needs generate the quiet-move candidates
+
+Kaveh: "go for 1" -- constrain quiet-move search by the planner's needs the way the threat gate constrains
+tactical search. Built in `rank.score_moves(plan_needs=True)`: the planner (the small model on the CPU, one
+per process) gives the supported steering targets with their transition values; a quiet move SERVES a target
+when the child's cheap regime coordinates (the codebook's own: material, phase, queens, pawns, passed pawns,
+runners, rooks connected, bishop pairs, open files, plus the attackers on their king) close the distance to the
+target's centroid by at least 0.3 of the codebook's units, summed over the coordinates the target moves;
+serving moves alone receive the planner's promises (ideas, plans, agenda steps) and a bonus priced by the
+target's gain over the expectation plus its transition value; the other quiet moves keep the base. Nothing
+chess-specific: named coordinates, a distance, a direction. Smoke: a piece-up middlegame ranks Bd2 first,
+"toward: material even, opening, queens on, our rooks connected"; the rook ending finds five serving moves;
+cost +0.5 s a position (the planner) on top of the ranking. Launched: the c3 expert rows (300), the strategic
+suite on a fifth of the positions (20 per theme), 100 puzzles (a loss check).
