@@ -22612,3 +22612,18 @@ supports "trade pieces (towards the ending)" with "+0.04"; in the rook ending "f
 planner now avoids simplifying when ahead and welcomes it when behind -- the reverse of the textbook, because
 that is what Kaveh's outcomes say; at a 2000+ band the same table would say "trade when even, +0.04; avoid it
 when far behind, -0.11". No rule was written; the sign is the data's, per level and per cell.
+
+## 2026-09-15 13:35 PDT — the gate and the entropy preference on puzzles: a loss, and its likely cause
+
+`gauge_rank`, 100 Lichess puzzles 1200-2200 (seed 5, first move), OBS: the plain ranking 80/100 (silent 9,
+15.9 s each); with the threat gate AND the entropy preference 75/100 (silent 14, 16.2 s). Nine verdicts changed:
+two gained (Rxc4+ and Bd6 found where the plain ranking had chosen a different capture or a knight move), seven
+lost -- and six of the seven lost keys are CAPTURES the plain ranking had found (Bxf6, Qxf7, Qxh8, Rxh2, Rxc5,
+Qf4+), replaced by quiet or checking moves. The likely mechanism: puzzle keys are sacrifices whose one-reply
+base is negative, so under a standing threat they fall outside the response set and the gate withholds the
+deep searches (the combination, the proof) that would have justified them -- the "hidden loss" case Kaveh
+named: the cheap observer's threat is not the position's truth, and confining the search to the observer's
+response set costs exactly the moves the observer cannot see. Attribution runs launched (gate alone, entropy
+alone). The fix, if the attribution confirms it: the gate confines the PLANNER's promises and the budget, never
+the forcing moves -- a check or a capture is always a candidate, because it may be the counter the observer
+cannot price.
