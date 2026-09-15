@@ -22627,3 +22627,18 @@ response set costs exactly the moves the observer cannot see. Attribution runs l
 alone). The fix, if the attribution confirms it: the gate confines the PLANNER's promises and the budget, never
 the forcing moves -- a check or a capture is always a candidate, because it may be the counter the observer
 cannot price.
+
+## 2026-09-15 13:36 PDT — the gated ranking on game positions: the first move of the rules' quiet number
+
+The gated ranking (threat gate + entropy, before the forcing-move fix) as expert c2 on 300 expert rows (75 a
+shard, 20 s a position), 210 to fit and 90 held out (+-5 points: OBS, one run, small). Against the plain
+ranking c on the same rows: c 35.6% top-1 (quiet 21.5% of 65, captures 75.0% of 20); c2 42.2% (quiet 30.8%,
+captures 70.0%); the two agree 53%; their oracle 44.4%. With the 9.4M policy and Maia: b9 28.9%, m 40.0%; the
+oracle of the four 61.1%; the fixed blend 36.7%; the context gate 40.0% (weights m .51, b9 .34, c .13, c2 .01 --
+the gate has too few rows to learn the newcomer).
+Reading: on game positions the gate and the entropy terms lifted the rules ranking by 6.6 points, and by 9 on
+quiet moves (21.5 -> 30.8), where the plain ranking had been silent or arbitrary: the second-level threat
+penalty (what they take if we pass again) and the width term order the quiet moves the ledger could not. On
+puzzles the same flags cost 5 points through the sacrifices the gate withheld (fixed at 13:35, the run in
+progress). One run of 90 rows says "promising", not more; the 3200-row collection for c2 is the next cheap
+measurement (2.5 h on four processes).
