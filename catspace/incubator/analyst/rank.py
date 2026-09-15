@@ -40,7 +40,7 @@ TRUST = 0.4                      # an unverified promise (an idea, a plan, an ag
 
 def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budget: int = 120, engine_depth: int = 6, mate_budget: int = 1500,
                 mate_horizon: int = 10, combo_top: int = 8, combo_cap: int = 1500, zone_first: bool = False,
-                threat_gate: bool = False, entropy: bool = False, big: float | None = None, w_width: float = 0.1, w_threat2: float = 0.5, top_k: int = 6) -> dict[chess.Move, tuple[float, str]]:
+                threat_gate: bool = True, entropy: bool = True, big: float | None = None, w_width: float = 0.1, w_threat2: float = 0.5, top_k: int = 6) -> dict[chess.Move, tuple[float, str]]:
     """move -> (score in pawns, the reason). One scale for everything: the material net one reply deep (the BASE of
     every legal move: what the ledger says after their best reply, negative when the move hangs something), lifted
     by deeper views of the same quantity (a two-move combination, a proof, a forced win), plus the planner's
