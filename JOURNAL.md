@@ -22594,3 +22594,21 @@ solved rate and nodes.
    list, with the numbers in the prose. No rule; the data's sign, whatever it is.
 Measurements launched (13:03, two hours of machine time): the plain against the gated ranking on 100 puzzles,
 the gated ranking as expert c2 on 400 expert rows, the transition table's fit.
+
+## 2026-09-15 13:06 PDT — the transition table fitted; the planner reads it
+
+`transitions.py fit`: 60000 Lichess games (140k sampled positions, even trades, by rating band and material) and
+Kaveh's 41k positions (by the engine's evaluation and material), 1344 lines of table. The cells that matter,
+OBS (the mover's result when the piece material FELL by a step over 20 plies minus when it did not; n fell / kept):
+  Kaveh, winning, ahead 2-4: trading -0.070 (1017/373), our pawns going -0.063; Kaveh, better, ahead 2-4: the
+  queens coming off +0.235 (25/73, thin); Kaveh, worse, behind 2-4: trading -0.168 (232/40), the queens off
+  -0.137; Kaveh, losing, behind 2-4: trading +0.070 (1027/347), the queens off -0.080.
+  Lichess, every band, ahead 2-4 or 5+: trading within -0.018..+0.032; behind by 5+: trading -0.083 (<1400),
+  -0.028, +0.009, -0.108 (>=2000); the queens off when far behind -0.036 to -0.085 at every band.
+The planner (Kaveh's level, the engine's evaluation given), three positions: a piece up in a middlegame it now
+says "Not a target, though it scores well: material +2.1 ... -- the outcomes price its transitions -0.10 here
+(trading pieces -0.04, our pawns going -0.06)" and steers to connecting the rooks instead; a piece down it
+supports "trade pieces (towards the ending)" with "+0.04"; in the rook ending "files opening +0.07". So the
+planner now avoids simplifying when ahead and welcomes it when behind -- the reverse of the textbook, because
+that is what Kaveh's outcomes say; at a 2000+ band the same table would say "trade when even, +0.04; avoid it
+when far behind, -0.11". No rule was written; the sign is the data's, per level and per cell.
