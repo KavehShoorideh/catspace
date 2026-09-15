@@ -153,7 +153,7 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
         from .contrast import HUMAN_LEVEL
         maia = Maia(HUMAN_LEVEL)
     eng = None
-    if "c" in experts or "c2" in experts:
+    if "c" in experts or "c2" in experts or "c3" in experts:
         from .engine import Engine
         eng = Engine(depth=12, cache_path=str(out / f"engine_{i}.sqlite"))
     memo = Memo()
@@ -186,6 +186,9 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
                 if "c2" in experts:                                                  # the ranking with the threat gate and the low-entropy preference
                     sc = score_moves(board, memo, eng, budget=budget, engine_depth=judge, threat_gate=True, entropy=True)
                     row["c2"] = [float(sc.get(mv, (0.0, ""))[0]) for mv in legal]; row["c2_why"] = [sc.get(mv, (0.0, ""))[1] for mv in legal]
+                if "c3" in experts:                                                  # ... and the planner's needs as the quiet-move candidate generator
+                    sc = score_moves(board, memo, eng, budget=budget, engine_depth=judge, threat_gate=True, entropy=True, plan_needs=True, cp=m.get("best_cp"))
+                    row["c3"] = [float(sc.get(mv, (0.0, ""))[0]) for mv in legal]; row["c3_why"] = [sc.get(mv, (0.0, ""))[1] for mv in legal]
             if distances:
                 if A is not None:
                     da = A.distance_scores(board, memo); row["a_dist"] = [da[mv] for mv in legal]
@@ -243,7 +246,7 @@ def _tensors(rows, experts=("a", "b", "c"), ctx_mean=None, ctx_std=None):
     for n, r in enumerate(rows):
         for e, key in enumerate(experts):
             v = np.array(r[key], np.float32)
-            if key in ("c", "c2"):
+            if key in ("c", "c2", "c3"):
                 v = v / (np.abs(v).max() + 1.0)                                    # the reasoning's scale is pawns (mates 1000): squash per position
             S[n, e, :len(v)] = v
         mask[n, :len(r["legal"])] = True

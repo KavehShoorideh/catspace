@@ -56,7 +56,7 @@ def run(items, experts: tuple, shard: str = "0/1", ckpt_b: str = "data/derived/c
         from .maia import Maia
         from .contrast import HUMAN_LEVEL
         maia = Maia(HUMAN_LEVEL)
-    if "c" in experts:
+    if "c" in experts or "c3" in experts:
         from .engine import Engine
         from .rank import score_moves
         eng = Engine(depth=12, cache_path=str(OUT / f"engine_{i}.sqlite"))
@@ -76,8 +76,12 @@ def run(items, experts: tuple, shard: str = "0/1", ckpt_b: str = "data/derived/c
                 import math
                 pol = maia.policy(b); row["m"] = [math.log(max(pol.get(m.uci(), 0.0), 1e-6)) for m in legal]
             if eng is not None:
-                sc = score_moves(b, memo, eng, budget=120, engine_depth=6)
-                row["c"] = [float(sc.get(m, (0.0, ""))[0]) for m in legal]; row["c_why"] = [sc.get(m, (0.0, ""))[1] for m in legal]
+                if "c" in experts:
+                    sc = score_moves(b, memo, eng, budget=120, engine_depth=6, threat_gate=False, entropy=False)
+                    row["c"] = [float(sc.get(m, (0.0, ""))[0]) for m in legal]; row["c_why"] = [sc.get(m, (0.0, ""))[1] for m in legal]
+                if "c3" in experts:
+                    sc = score_moves(b, memo, eng, budget=120, engine_depth=6, plan_needs=True)
+                    row["c3"] = [float(sc.get(m, (0.0, ""))[0]) for m in legal]; row["c3_why"] = [sc.get(m, (0.0, ""))[1] for m in legal]
         except Exception as ex:
             log(f"[sts] {it['id']} error {ex}", flush=True); continue
         rows.append(row)
@@ -100,7 +104,7 @@ def report(pattern: str = "rows_*.jsonl") -> str:
         for l in open(f):
             r = json.loads(l); by_id.setdefault(r["id"], {}).update(r)
     rows = list(by_id.values())
-    experts = [e for e in ("c", "b", "a", "m") if all(e in r for r in rows)]
+    experts = [e for e in ("c", "c3", "b", "a", "m") if all(e in r for r in rows)]
     def pick(r, e):
         v = np.array(r[e]); return r["legal"][int(v.argmax())]
     def blend_pick(r):
@@ -109,7 +113,7 @@ def report(pattern: str = "rows_*.jsonl") -> str:
             if e not in r:
                 continue
             v = np.array(r[e], dtype=float)
-            if e == "c":
+            if e in ("c", "c3"):
                 v = v / (np.abs(v).max() + 1.0)
             tot += w * v
         return r["legal"][int(tot.argmax())]

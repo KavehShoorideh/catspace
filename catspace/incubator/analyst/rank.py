@@ -40,7 +40,8 @@ TRUST = 0.4                      # an unverified promise (an idea, a plan, an ag
 
 def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budget: int = 120, engine_depth: int = 6, mate_budget: int = 1500,
                 mate_horizon: int = 10, combo_top: int = 8, combo_cap: int = 1500, zone_first: bool = False,
-                threat_gate: bool = True, entropy: bool = True, big: float | None = None, w_width: float = 0.1, w_threat2: float = 0.5, top_k: int = 6) -> dict[chess.Move, tuple[float, str]]:
+                threat_gate: bool = True, entropy: bool = True, big: float | None = None, w_width: float = 0.1, w_threat2: float = 0.5, top_k: int = 6,
+                plan_needs: bool = False, w_serve: float = 1.0, cp: int | None = None) -> dict[chess.Move, tuple[float, str]]:
     """move -> (score in pawns, the reason). One scale for everything: the material net one reply deep (the BASE of
     every legal move: what the ledger says after their best reply, negative when the move hangs something), lifted
     by deeper views of the same quantity (a two-move combination, a proof, a forced win), plus the planner's
@@ -138,9 +139,26 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
                         bonus(m, -w_threat2 * min(resid, 9.0), f"walks into a threat ({resid:g})")
             if entropy and w_width > 0 and widths.get(m, 0) > 1:
                 bonus(m, -w_width * math.log(widths[m]), f"width {widths[m]}")
+    # THE PLANNER'S NEEDS AS THE CANDIDATE GENERATOR FOR QUIET MOVES: the moves that step toward a supported
+    # steering target get the promises' budget and a bonus priced by the target; the other quiet moves keep the base
+    serving = {}
+    if plan_needs:
+        try:
+            pl_ = planner_singleton()
+            if pl_ is not None:
+                plan = pl_.plan(board, memo=memo, cp=cp)
+                serving = serving_moves(board, plan, legal, memo, codebook=pl_.codebook)
+                for m, (ti, step, worth) in serving.items():
+                    st = plan.steer[ti]
+                    bonus(m, w_serve * TRUST * worth * min(1.0, step), f"toward: {st.text[:48]} (a step of {step:.1f})")
+        except Exception:
+            serving = {}
+    allowed = (lambda m: (not plan_needs) or (not serving) or m in serving or board.is_capture(m) or board.gives_check(m))
     # the planner's promises, on top of the count
     try:
         for m, reason, line in ideas_for(board, side, memo, None, top=6):
+            if not allowed(m):
+                continue
             if line.best is not None and line.race == "wins" and line.best.gain - line.cost > 0:
                 hops = max(1, len(line.steps()) + 1)
                 bonus(m, TRUST * (line.best.gain - line.cost) / hops, f"idea: {line.need.text(line.best.after or board)} in {hops}")
@@ -148,7 +166,7 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
         pass
     try:
         for pl in plans_for(board, side, memo=memo, top=5):
-            if pl.steps and pl.steps[0].move != chess.Move.null() and pl.steps[0].move in board.legal_moves:
+            if pl.steps and pl.steps[0].move != chess.Move.null() and pl.steps[0].move in board.legal_moves and allowed(pl.steps[0].move):
                 if pl.steps[0].move.to_square == pl.goal.square:
                     continue                                    # the capture itself: the base already priced it against the reply
                 if pl.race == "wins" and pl.cost < 100:
@@ -161,7 +179,7 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
             line = pl.plan(sg.need)
             for l in _walk(line):
                 for w in l.ways:
-                    if w.moves and w.moves[0] in board.legal_moves:
+                    if w.moves and w.moves[0] in board.legal_moves and allowed(w.moves[0]):
                         bonus(w.moves[0], TRUST * 0.25 * sg.worth, f"toward: {sg.text}")
     except Exception:
         pass
@@ -226,6 +244,76 @@ def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None, base=No
 
 
 LAST_NETS: dict = {}                     # move uci -> the nets over the opponent's replies from the last sure_gain of it (this process)
+_PLANNER = None                          # the planning layer, loaded once per process (a small model on the CPU)
+
+
+def planner_singleton():
+    global _PLANNER
+    if _PLANNER is None:
+        try:
+            from .planner import Planner, DEFAULT_CKPT
+            from pathlib import Path
+            import torch
+            if Path(DEFAULT_CKPT).exists():
+                _PLANNER = Planner(DEFAULT_CKPT)
+                _PLANNER.model = _PLANNER.model.to(torch.device("cpu")); _PLANNER.device = torch.device("cpu")
+            else:
+                _PLANNER = False
+        except Exception:
+            _PLANNER = False
+    return _PLANNER or None
+
+
+def serving_moves(board: chess.Board, plan, legal: list, memo=None, codebook=None) -> dict:
+    """THE PLANNER AS THE CANDIDATE GENERATOR FOR QUIET MOVES (Kaveh 2026-09-15, design item 1): a quiet move
+    SERVES a supported steering target when the child's cheap regime coordinates (material, phase, queens,
+    pawns, passed pawns, runners, rooks connected, open files, the attackers on their king) step toward the
+    target's centroid, standardized by the codebook. Returns move -> (target index, step, worth): the step is the
+    fraction of the present distance closed; the worth is the target's gain over the expectation plus its
+    transition value. Nothing chess-specific: coordinates the codebook already names, a distance, a direction."""
+    from .dataset import regime_of, REGIME_KEYS
+    from .regimes import CODE_KEYS
+    import numpy as np
+    if plan is None or not plan.steer or codebook is None:
+        return {}
+    cb = codebook
+    side = board.turn
+    keys = list(REGIME_KEYS) + ["king_attackers"]
+    idx = [CODE_KEYS.index(k) for k in keys]
+    std = cb.std[idx]; std = np.where(std > 1e-6, std, 1.0)
+    def coords(b):
+        v = list(regime_of(b, side))
+        zone = 0
+        ek = b.king(not side)
+        if ek is not None:
+            zone_sq = chess.SquareSet(chess.BB_KING_ATTACKS[ek] | chess.BB_SQUARES[ek])
+            v.append(sum(1 for sq, p in b.piece_map().items() if p.color == side and b.attacks(sq) & zone_sq))
+        else:
+            v.append(0)
+        return np.array(v, dtype=np.float32)
+    now = coords(board)
+    targets = []
+    for st in plan.steer:
+        c = cb.raw(st.code); tgt = np.array([c[k] for k in keys], dtype=np.float32)
+        gap = np.abs(now - tgt) / std                                                # the present distance per coordinate, in the codebook's units
+        targets.append((st, tgt, gap))
+    out = {}
+    for m in legal:
+        if board.is_capture(m) or board.gives_check(m) or m.promotion:
+            continue
+        nb = board.copy(stack=False); nb.push(m)
+        if nb.is_game_over():
+            continue
+        c1 = coords(nb)
+        best = None
+        for ti, (st, tgt, gap) in enumerate(targets):
+            gap1 = np.abs(c1 - tgt) / std
+            progress = float((gap - gap1).sum())                                      # the distance closed, summed over the coordinates the target moves
+            if progress >= 0.3 and (best is None or progress > best[1]):
+                best = (ti, progress, max(0.0, st.gain) + max(0.0, getattr(st, "transition", 0.0)))
+        if best is not None:
+            out[m] = best
+    return out
 
 
 def mate_score(r, entropy: bool) -> float:
