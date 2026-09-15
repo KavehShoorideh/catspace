@@ -153,7 +153,7 @@ def collect(data_dir: str, ckpt_a: str, ckpt_b: str, out_dir: str, shard: str = 
         from .contrast import HUMAN_LEVEL
         maia = Maia(HUMAN_LEVEL)
     eng = None
-    if "c" in experts:
+    if "c" in experts or "c2" in experts:
         from .engine import Engine
         eng = Engine(depth=12, cache_path=str(out / f"engine_{i}.sqlite"))
     memo = Memo()
