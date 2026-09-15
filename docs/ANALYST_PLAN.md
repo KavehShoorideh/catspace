@@ -629,3 +629,20 @@ Trained and measured (OBS, `kn_future4`, 4000 held-out positions): the code at +
 +10 R2 0.58 (persistence 0.56). The budget gate: on 300 game positions all four budgets give the same top move
 (the ranking is not budget-limited there); the gate's sorting is real (forcing best moves 36% in 'deep', 13% in
 'shallow'); its value on puzzle-like positions is not measured yet.
+
+
+## 33. Threats, entropy and transition values as the planner's own (Kaveh 2026-09-15)
+
+A THREAT is the loss a cheap observer sees under the null move; the level is the observer's cheapness times the
+magnitude; the loss classes are the rules' irreversibles and the terminal condition. Measured: under a threat of
+a piece or more the engine's best move lies in the response set 84-93% of the time and the set is a quarter to
+a third of the legal moves; under a pawn threat 52%, and counter-threats matter there (17%). Built: the gate in
+the ranking (the deep searches confined to the response set above the smallest piece; the second-level threat
+as a penalty), flag-gated.
+LOW ENTROPY: among lines within a margin of the best value, prefer the one the opponent can least deflect (the
+width: how many replies hold us within a pawn of the minimum, free from the ledger's reply nets) and the one
+that costs least to prove (the proof's size, not the line's length).
+TRANSITION VALUES: the planner does not know that trading when ahead is good, because the outcomes say it is
+not (Lichess, every band, within +-0.02; Kaveh's own games the reverse of the textbook, +-0.13); so the value
+of moving a regime coordinate is a table from outcomes, conditional on material and level or evaluation, and
+the steering supports or avoids targets by it. Nothing chess-specific is written down; the sign is the data's.
