@@ -81,6 +81,68 @@ def run(n: int, shard: str, seed: int = 0, budget: int = 150, log=print):
     log(f"[threat {shard}] done {len(rows)} in {time.perf_counter() - t0:.0f}s", flush=True)
 
 
+def run_ledger(n: int, shard: str, seed: int = 0, min_threat: float = 1.0, log=print):
+    """The null-move definition: the threat is the opponent's best free-move gain by the ledger (any position, not
+    only what the last move created); a move MEETS it when the residual gain in the child is at most half a pawn
+    or a pawn below the threat; a COUNTER is a move after which our own free-move gain is at least the threat."""
+    i, k = (int(x) for x in shard.split("/"))
+    OUT.mkdir(parents=True, exist_ok=True)
+    data = K.Data("data/derived/knowledge", meta_only=True)
+    from .graph import POSITION_QUESTIONS
+    import numpy as np
+    from .dataset import load
+    pos = load("data/derived/knowledge")["position"]
+    PQ = {q: j for j, q in enumerate(POSITION_QUESTIONS)}
+    ids = [int(x) for x in data.ids("test") if data.meta[int(x)]["best"] and pos[int(x), PQ["threat_theirs"]] >= min_threat]
+    rng = random.Random(seed); rng.shuffle(ids); ids = ids[:n][i::k]
+    memo = Memo(); rows = []; t0 = time.perf_counter()
+    for nn, x in enumerate(ids, 1):
+        m = data.meta[x]; board = chess.Board(m["fen"]); best = chess.Move.from_uci(m["best"])
+        threat = float(pos[x, PQ["threat_theirs"]]); mate_t = pos[x, PQ["mate_theirs"]] > 0
+        legal = list(board.legal_moves)
+        resid = {}; counter = {}
+        try:
+            for mv in legal:
+                nb = board.copy(stack=False); nb.push(mv)
+                if nb.is_game_over():
+                    oc = nb.outcome(); resid[mv] = 0.0 if (oc and oc.winner == board.turn) else (0.0 if oc and oc.winner is None else 1000.0); counter[mv] = 1000.0 if oc and oc.winner == board.turn else 0.0; continue
+                theirs = free_move_threats(nb, not board.turn, memo, top=3)              # their free-move gain now (it is their move: what they take)
+                resid[mv] = max((g for _, g, _ in theirs), default=0.0)
+                ours = free_move_threats(nb, board.turn, memo, top=3)
+                counter[mv] = max((g for _, g, _ in ours), default=0.0)
+        except Exception as ex:
+            log(f"[threat] {x} error {ex}", flush=True); continue
+        meets = {mv for mv in legal if resid[mv] <= max(0.5, threat - 1.0)}
+        counters = {mv for mv in legal if counter[mv] >= threat and mv not in meets}
+        rnd = rng.choice(legal)
+        rows.append(dict(i=x, fen=m["fen"], threat=threat, mate=bool(mate_t), n_legal=len(legal), n_meets=len(meets), n_counters=len(counters),
+                         best_meets=best in meets, best_counters=best in counters, random_meets=rnd in meets, best_kind=m["best_kind"],
+                         best_resid=resid.get(best, -1.0), min_resid=min(resid.values())))
+        if nn % 10 == 0:
+            log(f"[threat-ledger {shard}] {nn}/{len(ids)}, {time.perf_counter() - t0:.0f}s", flush=True)
+    with open(OUT / f"ledger_rows_{i}.jsonl", "w") as f:
+        for r in rows:
+            f.write(json.dumps(r) + "\n")
+    log(f"[threat-ledger {shard}] done {len(rows)} in {time.perf_counter() - t0:.0f}s", flush=True)
+
+
+def report_ledger() -> str:
+    rows = []
+    for f in sorted(OUT.glob("ledger_rows_*.jsonl")):
+        rows.extend(json.loads(l) for l in open(f))
+    out = [f"[threat-ledger] {len(rows)} held-out positions with a free-move threat >= 1 by the ledger (the null-move definition)"]
+    out.append(f"  {'threat':<10}{'n':>5}{'best meets it':>15}{'random does':>13}{'meets/legal':>13}{'best counters':>15}{'meets or counters':>19}{'best quiet':>12}")
+    bands = (("1-2.9", 1.0, 3.0), ("3-8.9", 3.0, 9.0), (">= 9", 9.0, 999.0), ("mate", 999.0, 1e9))
+    for name, lo, hi in bands:
+        rs = [r for r in rows if lo <= r["threat"] < hi]
+        if not rs:
+            continue
+        out.append(f"  {name:<10}{len(rs):>5}{sum(r['best_meets'] for r in rs) / len(rs):>15.0%}{sum(r['random_meets'] for r in rs) / len(rs):>13.0%}"
+                   f"{sum(r['n_meets'] / r['n_legal'] for r in rs) / len(rs):>13.2f}{sum(r['best_counters'] for r in rs) / len(rs):>15.0%}"
+                   f"{sum(r['best_meets'] or r['best_counters'] for r in rs) / len(rs):>19.0%}{sum(r['best_kind'] == 'quiet' for r in rs) / len(rs):>12.0%}")
+    return "\n".join(out)
+
+
 def report() -> str:
     rows = []
     for f in sorted(OUT.glob("rows_*.jsonl")):
@@ -103,8 +165,14 @@ def report() -> str:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(); ap.add_argument("--n", type=int, default=1200); ap.add_argument("--shard", default="0/1"); ap.add_argument("--report", action="store_true")
+    ap.add_argument("--mode", default="last-move", choices=["last-move", "ledger"])
     a = ap.parse_args(argv)
-    print(report()) if a.report else run(a.n, a.shard)
+    if a.report:
+        print(report() if a.mode == "last-move" else report_ledger())
+    elif a.mode == "ledger":
+        run_ledger(a.n, a.shard)
+    else:
+        run(a.n, a.shard)
 
 
 if __name__ == "__main__":
