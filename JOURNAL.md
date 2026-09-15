@@ -22539,3 +22539,35 @@ the deeper truths the cheap observer cannot see: the threat is not real at depth
 decided. So the design: level by magnitude; hard gate above a piece (candidates = meets ∪ counters, the rest
 only if the gate's set is empty), soft below (a penalty on the residual); the child's null-move loss as the
 'does this move put me under threat' term for every move.
+
+## 2026-09-15 10:08 PDT — does the planner trade when ahead? and does trading when ahead pay at all?
+
+Kaveh: "eventually the planner should realize that when down it should avoid trades and when ahead it should
+trade and simplify; and it should prefer low-entropy paths -- less calculation, less dependence on the reply,
+even at the cost of a slower mate."
+(1) Does it emerge from the codebook? No. On 240 held-out positions (80 per material band), the planner's
+steering target asks for a trade or a removal 42% of the time when behind by 3+, 86% when even, 38% when
+ahead by 3+, and its targets have a lower phase in every band (-7, -12, -6): the "trade" need fires from the
+mean drift of every game (pieces come off with time), not from a preference, and a lost position's futures are
+all bad, so their comparison carries no sign.
+(2) Does the rule hold in outcomes? In Kaveh's own games (41128 positions with 20 plies of future and a result;
+even trades only, the material kept within a pawn; the engine's evaluation held within +-100 cp of the band's
+median), OBS: ahead 2-4 pawns at cp ~ +400, few trades in the next 20 plies -> result 0.694 (n 247), many (>= 6
+points of piece material off) -> 0.558 (n 625): trading when ahead cost 14 points; behind 2-4 at cp ~ -300, few
+-> 0.347 (n 173), many -> 0.474 (n 627): trading when behind gained 13. The opposite of the textbook, at his level.
+In the 60000 Lichess games of June 2015 (140742 sampled positions, by rating band, even trades): ahead 2-4 or
+5+, the difference between few and many trades is within +-0.02 at EVERY band, under 1400 to over 2000; behind
+by 5+, many trades -> worse by 0.08 (under 1400) and 0.11 (over 2000).
+Reading: "trade when ahead" is not supported by outcomes over 20 plies at any amateur level -- it neither helps
+nor hurts the population, and it hurt Kaveh in particular (he wins by keeping pieces on; that is a product
+finding about his play); "avoid trades when far behind" holds everywhere. So the planner's transition values
+must come from outcomes conditional on material, evaluation and level -- a table or a head, not a rule -- and
+what it will then say is: don't simplify when far behind; otherwise the trade is not the point. The product can
+show a player his own pattern against the population's.
+(3) Low-entropy paths: the design proposed (measure, then build on Kaveh's go): for a line, opponent dependence
+= the number of adequate replies (within a margin of the best), calculation cost = the proof-tree size, certainty
+= the value spread over the opponent's plausible replies; among lines within epsilon of the best value, minimise
+dependence and cost -- in the proof search, the proven goal with the smallest proof set rather than the shortest
+line; in the ranking, a penalty on the child's width; in the planner, lower entropy and sharpness at equal value
+(both already computed). The measurement first: on the puzzle set, shortest line against smallest proof --
+solved rate and nodes.
