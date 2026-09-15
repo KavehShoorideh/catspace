@@ -124,8 +124,9 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
         from .regime import _best_capture
         top = sorted(legal, key=lambda m: -out[m][0])[:top_k]
         for m in top:
-            if out[m][0] >= 900:
-                continue
+            if out[m][0] >= 900 or out[m][0] != base[m][0] or board.gives_check(m):
+                continue                                                # a deeper view (a proof, a combination) already priced the replies:
+                                                                        # the opponent gets no free move inside a forced line (puzzles, 2026-09-15)
             nb = board.copy(stack=False); nb.push(m)
             if nb.is_game_over():
                 continue
