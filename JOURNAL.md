@@ -22654,3 +22654,13 @@ never gets the free move the penalty assumes: inside a forced line the replies a
 second-level threat and the width terms apply only to base-valued moves (no deeper view lifted them) and never
 to checks. Rerun launched (14:06). The lesson is the cheap observer's own: a penalty from a one-reply view must
 not be added on top of a deeper view of the same line.
+
+## 2026-09-15 14:33 PDT — the gate and the entropy preference, fixed: 81/100 against 80, at 15.4 s against 15.9
+
+The same 100 puzzles with the threat gate and the entropy preference after the fix (the second-level threat and
+the width charged only on base-valued moves, never on checks), OBS: 81/100 solved (the plain ranking 80; the
+first gated run 75), in our top-3 85, named 84, 15.4 s a puzzle against 15.9. The gate now gains one (Bd6, a
+quiet key the plain ranking had missed) and loses nothing. With the 90-row game-position result (42.2% against
+35.6%, quiet 30.8 against 21.5) the two flags are now on by default in the product's ranking: the constraint
+Kaveh asked for costs nothing on tactics and helps on quiet play. One run each; the 3200-row c2 collection
+(running; ~2.5 h) is the number that settles the game-position gain.
