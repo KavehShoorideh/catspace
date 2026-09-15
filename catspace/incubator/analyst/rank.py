@@ -93,7 +93,9 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
     if any(v >= 900 for v, _ in out.values()):
         return out                                              # a forced win by the rules: nothing else to weigh
     # combinations: the forcing moves, the most promising first by their one-reply base, the deep search for the top few
-    cands = [m for m in forcing_moves(board, memo) if (base[m][0] >= -3.0 or board.gives_check(m)) and m in responders]   # a quiet sacrifice of more than a piece is not a combination we look for
+    # the gate never withholds a FORCING move from the deep search: a check or a capture may be the counter the
+    # cheap observer cannot price (puzzles, 2026-09-15: six lost keys were sacrificial captures outside the set)
+    cands = [m for m in forcing_moves(board, memo) if (base[m][0] >= -3.0 or board.gives_check(m))]   # a quiet sacrifice of more than a piece is not a combination we look for
     cands = sorted(cands, key=lambda m: -base[m][0])[:combo_top]
     tt: dict = {}
     for m in cands:
@@ -115,7 +117,7 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
         lift(m, g, why)
     if threat_gate and level >= big:
         for m in legal:
-            if m not in responders and out[m][0] < 900:
+            if m not in responders and out[m][0] < 900 and not (board.is_capture(m) or board.gives_check(m)):
                 out[m] = (min(out[m][0], -level + 0.5), (out[m][1] + "; " if out[m][1] else "") + f"ignores the threat ({level:g})")
     # the second-level threat and the opponent's freedom, on the top candidates only (a ledger per child)
     if entropy or threat_gate:
