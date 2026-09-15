@@ -22571,3 +22571,26 @@ dependence and cost -- in the proof search, the proven goal with the smallest pr
 line; in the ranking, a penalty on the child's width; in the planner, lower entropy and sharpness at equal value
 (both already computed). The measurement first: on the puzzle set, shortest line against smallest proof --
 solved rate and nodes.
+
+## 2026-09-15 13:04 PDT — the three builds (Kaveh: "as long as we don't code chess-specific stuff, go on all three")
+
+1. THE THREAT GATE (`rank.score_moves(threat_gate=True)`): the level is their best free-move gain by the ledger;
+   above the scale's smallest piece the deep searches (combinations, proofs) are confined to the RESPONSE SET --
+   the moves after which the loss one reply deep stays below the threat less a pawn (the base already nets what
+   they take against what we take back, so meeting and countering are one condition) -- and the rest are capped
+   at the loss; on the top candidates the second-level threat (what they take if we pass again after our move)
+   is a penalty. Found on the way: the ledger's leaf counted being MATED as zero, not as a loss; fixed (a move
+   that allows mate in one now scores -1000 one reply deep; test).
+2. THE LOW-ENTROPY PREFERENCE (`entropy=True`): the opponent's WIDTH -- how many of their replies hold us within a
+   pawn of the minimum -- comes free from the nets sure_gain already computes; a penalty of 0.1 x log(width) on
+   the top candidates; a forced win is scored by the PROOF'S SIZE (the nodes of the proven subtree: at an OR node
+   the proven child, at an AND node every reply) with the length as the tie-break, so a longer mate that needs
+   fewer answers ranks above a shorter one that needs more.
+3. THE TRANSITION VALUES (`transitions.py`): for each regime coordinate (piece material, queens, pawns, open files,
+   passed pawns) the contrast in the mover's result between futures where it fell by a step over 20 plies and
+   futures where it did not, even trades only, in cells of the present material and the level (the Lichess
+   corpus by rating band) or the engine's evaluation (Kaveh's games); the planner reads the cells that apply,
+   supports a steering target whose transitions are priced positive and moves one priced negative to an AVOID
+   list, with the numbers in the prose. No rule; the data's sign, whatever it is.
+Measurements launched (13:03, two hours of machine time): the plain against the gated ranking on 100 puzzles,
+the gated ranking as expert c2 on 400 expert rows, the transition table's fit.

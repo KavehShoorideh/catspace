@@ -55,6 +55,8 @@ class Steer:
     gain: float                          # over the expected value
     p: float                             # how likely it is already
     needs: list                          # (kind, square/piece, text)
+    transition: float = 0.0              # what the outcomes say about the coordinates this target moves (the present cell)
+    notes: list = field(default_factory=list)
 
 
 @dataclass
@@ -73,17 +75,21 @@ class Plan:
     entropy10: float
     sharp_window: float = 0.0            # a big threat within 10 plies (the sharpness head), else the code mass
     steer: list[Steer] = field(default_factory=list)
+    avoid: list = field(default_factory=list)   # (text, transition value, notes): futures the outcomes say not to steer to
     budget: dict = field(default_factory=dict)
     lines: list[str] = field(default_factory=list)
 
 
 class Planner:
-    def __init__(self, ckpt: str = DEFAULT_CKPT, data_dir: str = "data/derived/knowledge"):
+    def __init__(self, ckpt: str = DEFAULT_CKPT, data_dir: str = "data/derived/knowledge", elo: float | None = None):
         self.model, self.cfg, self.device = K.load_model(ckpt)
         meta = json.load(open(Path(ckpt).parent / "meta.json"))
         self.buckets = K.Buckets.from_state(self.cfg.buckets, meta["buckets"]); self.pos_buckets = K.Buckets.from_state(self.cfg.buckets, meta["pos_buckets"])
         self.codebook = Codebook.load(str(Path(data_dir) / "codebook.npz"))
         self.sharp = self.codebook.sharp()
+        self.elo = elo                                                             # the player's level, for the transition table's band
+        from .transitions import OUT as T_OUT
+        self.transitions = json.load(open(T_OUT))["table"] if T_OUT.exists() else {}
 
     @torch.no_grad()
     def predict(self, board: chess.Board, g=None, memo=None, cp: int | None = None):
@@ -101,6 +107,7 @@ class Planner:
         return g, pr, va, code_now
 
     def plan(self, board: chess.Board, memo=None, top: int = 3, cp: int | None = None) -> Plan:
+        self._cp = cp
         g, pr, va, code_now = self.predict(board, memo=memo, cp=cp)
         cb = self.codebook
         def futures(p):
@@ -118,6 +125,7 @@ class Planner:
         ent = float(-(pr[0] * np.log(pr[0] + 1e-9)).sum())
         plan = Plan(code_now, cb.describe(code_now), f10, f20, float(cb.values[code_now]), float(va[0]), float(va[1]), exp10, exp20, sharp10, sharp20, ent)
         plan.steer = self.steering(board, g, pr[1], exp20, code_now)
+        plan.avoid = list(getattr(self, "_avoid", []))
         plan.sharp_window = self._sharp_window if self._sharp_window is not None else sharp10
         plan.budget = budget_for(plan.sharp_window, window=self._sharp_window is not None)
         plan.lines = narrate(board, plan)
@@ -142,6 +150,21 @@ class Planner:
         cands = [(int(c), float(p20[c])) for c in np.argsort(-p20)[:16] if p20[c] >= 0.02 and cb.values[c] > expected + 0.03 and reachable(cb.raw(int(c)))]
         cands.sort(key=lambda cp: -(cb.values[cp[0]] - expected) * (0.3 + cp[1]))
         out = []; seen = set()
+        # the TRANSITION VALUES: what the outcomes say about the coordinates this target moves, in the present cell
+        # (Kaveh's games by the evaluation, the Lichess corpus by the player's band); a target whose transitions the
+        # data prices negative is not a target, and is kept as an AVOID
+        from .transitions import cell_for, lookup, STEP
+        cells = cell_for(board, getattr(self, "_cp", None), self.elo) if self.transitions else []
+        def transition_value(tgt):
+            tot = 0.0; notes = []
+            for key, label in (("phase", "trading pieces"), ("queens_on", "the queens coming off"), ("pawns_ours", "our pawns going"), ("open_files", "files opening")):
+                if now.get(key, 0) - tgt.get(key, 0) >= STEP[key]:
+                    vals = [lookup(self.transitions, cell, key) for cell in cells]
+                    vals = [v["diff"] for v in vals if v]
+                    if vals:
+                        d = float(np.mean(vals)); tot += d; notes.append(f"{label} {d:+.2f}")
+            return tot, notes
+        self._avoid = []
         for c, p in cands:
             tgt = cb.raw(c)
             needs = needs_for(board, g, now, tgt)
@@ -149,7 +172,12 @@ class Planner:
             if not needs or key in seen:
                 continue
             seen.add(key)
-            out.append(Steer(c, cb.describe(c), float(cb.values[c]), float(cb.values[c] - expected), p, needs))
+            tv, notes = transition_value(tgt)
+            if tv < -0.03:
+                self._avoid.append((cb.describe(c), tv, notes)); continue
+            st = Steer(c, cb.describe(c), float(cb.values[c]), float(cb.values[c] - expected), p, needs)
+            st.transition = tv; st.notes = notes
+            out.append(st)
             if len(out) >= top:
                 break
         return out
@@ -219,7 +247,10 @@ def narrate(board: chess.Board, plan: Plan) -> list[str]:
     out.append(f"Expected: value {plan.expected10:.2f} at +10 and {plan.expected20:.2f} at +20 (the engine's evaluation there, predicted: {plan.value10:+.2f} / {plan.value20:+.2f} in tanh units); "
                f"tactics likely within ten plies: {plan.sharp_window:.0%} (search budget: {plan.budget['level']}); the future is {'open' if plan.entropy10 > 2.5 else 'fairly set' if plan.entropy10 > 1.5 else 'set'} (entropy {plan.entropy10:.1f}).")
     for st in plan.steer:
-        out.append(f"Worth steering to: {st.text} -- value {st.value:.2f} ({st.gain:+.2f} over the expectation), already {st.p:.0%} likely; the needs: " + "; ".join(t for _, _, t in st.needs) + ".")
+        out.append(f"Worth steering to: {st.text} -- value {st.value:.2f} ({st.gain:+.2f} over the expectation), already {st.p:.0%} likely; the needs: " + "; ".join(t for _, _, t in st.needs) + "." +
+                   (f" The outcomes at this level say: {', '.join(st.notes)}." if st.notes else ""))
+    for text, tv, notes in getattr(plan, "avoid", [])[:2]:
+        out.append(f"Not a target, though it scores well: {text} -- the outcomes price its transitions {tv:+.2f} here ({', '.join(notes)}).")
     if not plan.steer:
         out.append("No reachable future beats the expectation by much: play the position as it is.")
     return out
