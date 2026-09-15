@@ -22494,3 +22494,27 @@ used -- and it uses Maia, then the 9.4M knowledge policy, then the rules, and no
   pawns 2.9, pawn play in the centre 4.0, undermine 3.2); still weak on square vacancy 0.8, king activity 1.3,
   the 7th rank 1.4, offers of simplification 1.3. Six epochs under the per-corpus split beat ten under the leaked
   one on the suite, which says the earlier run's later epochs were overfitting the games it should not have seen.
+
+## 2026-09-15 01:18 PDT — the threat as a constraint on the action: the definition and the first measurements
+
+Kaveh: "a threat is the easily seen loss; the loss is already determined in a deterministic game, the threat
+is the part a cheap observer sees; classes in chess: material loss, mate, promotion; levels by magnitude; the
+level should constrain the action: respond, or continue the plan. Can it arise on its own? If not, code it." And:
+"we can also counter-threat."
+The generic definition, one line and no chess word: a threat is the value the opponent gains if I do NOTHING (the
+null move), as seen by a cheap observer; the magnitude is what the observer sees at stake, the level is how cheap
+the observer that sees it. The loss classes are the rules' irreversibles and the terminal condition (which the
+reachability quasimetric found on its own, captures > pawns > pieces); the observers are the ledger (one reply),
+the terminal search (mate in five), the race (promotion); the engine at depth is the deep truth. So the concept
+needs no hand-coding beyond the piece values and the horizons that already exist; what was missing is the loop
+from the level to the ACTION SET: level 0 -> the planner's steering and the quiet space; level 1 (material one
+reply deep) -> the moves after which the loss is gone, plus the counter-threats that outweigh it; level 2 (mate,
+promotion) -> only the moves that meet it.
+Measured first, `gauge_threat.py`, 1200 held-out positions after the opponent's move. (1) With the threat MODULE
+(what the last move newly created, the defences enumerated by the goal search's AND node), OBS: a threat fires on
+9% of positions (pawn 2%, piece 5%, mate 2%); where it does, the engine's best move is a required defence 84%
+(pawn) / 100% (piece) / 100% (mate) of the time against 68 / 78 / 63% for a random move -- but the defence sets are
+loose, 64-77% of the legal moves, so this detector constrains little. (2) With the null-move definition (their
+best free-move gain by the ledger on any position; a move meets the threat when the residual gain in the child is
+at most half a pawn or a pawn below it; a counter when our own free-move gain after it is at least the threat):
+running on 600 positions with a threat >= 1 (a minute a position: two ledgers per legal move).
