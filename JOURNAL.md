@@ -22642,3 +22642,15 @@ penalty (what they take if we pass again) and the width term order the quiet mov
 puzzles the same flags cost 5 points through the sacrifices the gate withheld (fixed at 13:35, the run in
 progress). One run of 90 rows says "promising", not more; the 3200-row collection for c2 is the next cheap
 measurement (2.5 h on four processes).
+
+## 2026-09-15 14:06 PDT — the attribution on puzzles: the entropy terms cost nothing, the gate's penalty did
+
+Attribution runs, the same 100 puzzles, OBS: the plain ranking 80; entropy alone 80 (the width term and the
+proof-size score change nothing on puzzles); the threat gate alone 75; the gate with forcing moves spared from
+the response set 75 -- so the sacrifices' exclusion was NOT the cause. The reasons on the seven lost keys say
+what was: "proven: win the rook on h8 (+4); walks into a threat (9)" -- the SECOND-LEVEL penalty (what they take
+if we pass again) was charged on moves whose score came from a proof or a combination, where the opponent
+never gets the free move the penalty assumes: inside a forced line the replies are already priced. Fixed: the
+second-level threat and the width terms apply only to base-valued moves (no deeper view lifted them) and never
+to checks. Rerun launched (14:06). The lesson is the cheap observer's own: a penalty from a one-reply view must
+not be added on top of a deeper view of the same line.
