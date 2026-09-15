@@ -22518,3 +22518,24 @@ loose, 64-77% of the legal moves, so this detector constrains little. (2) With t
 best free-move gain by the ledger on any position; a move meets the threat when the residual gain in the child is
 at most half a pawn or a pawn below it; a counter when our own free-move gain after it is at least the threat):
 running on 600 positions with a threat >= 1 (a minute a position: two ledgers per legal move).
+
+## 2026-09-15 03:35 PDT — the null-move threat, measured: the constraint is real and it is tight
+
+`gauge_threat --mode ledger`, 600 held-out positions where the ledger sees a free-move threat >= 1 (two
+ledgers per legal move, 80 s a position, six shards). OBS, by the threat's magnitude (their best free-move gain):
+  1-2.9 (a pawn or two; 321): the engine's best move MEETS it (residual <= max(0.5, threat - 1)) 52%, a random
+  move 15%; the meeting set is 15% of the legal moves; the best move is a COUNTER-threat (our free-move gain
+  after it >= the threat) 17%; meets or counters 69%; the best move is quiet 66%.
+  3-8.9 (a piece; 216): meets 80% against 24% random; the set 26% of legal; counters 4%; meets or counters 84%.
+  >= 9 (a queen or more; 49): meets 88% against 24%; the set 33%; meets or counters 88%.
+  mate (14): meets 93% against 21%; the set 23%; 93%.
+Reading: Kaveh's constraint holds and is tight where it matters. Under a threat of a piece or more, the
+engine's best move lies in the response set (meet or counter) 84-93% of the time, and that set is a quarter to
+a third of the legal moves: a three- to four-fold narrowing of the search with a 7-16% miss rate. Under a pawn
+threat the set is smaller (15%) but the engine ignores the threat a third of the time -- a pawn is often not
+worth a tempo -- so the gate there must be soft. Counter-threats matter only at the pawn level (17%); against a
+piece the answer is to meet it. The exceptions (the 12-16% where the best move neither meets nor counters) are
+the deeper truths the cheap observer cannot see: the threat is not real at depth, or the loss is already
+decided. So the design: level by magnitude; hard gate above a piece (candidates = meets ∪ counters, the rest
+only if the gate's set is empty), soft below (a penalty on the residual); the child's null-move loss as the
+'does this move put me under threat' term for every move.
