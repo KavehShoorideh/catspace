@@ -36,7 +36,7 @@ def heads(ckpt: str, data_dir: str = "data/derived/knowledge", log=print):
     from sklearn.metrics import roc_auc_score
     model, cfg, device = K.load_model(ckpt)
     meta = json.load(open(Path(ckpt).parent / "meta.json"))
-    data = K.Data(data_dir, buckets=K.Buckets.from_state(cfg.buckets, meta["buckets"]), n_buckets=cfg.buckets)
+    data = K.Data(data_dir, buckets=K.Buckets.from_state(cfg.buckets, meta["buckets"]), n_buckets=cfg.buckets, pos_buckets=K.Buckets.from_state(cfg.buckets, meta["pos_buckets"]))
     ids = data.ids("test")
     FMq, KZq = K.PIECE_FUTURE_QUESTIONS.index("free_moves"), K.PIECE_FUTURE_QUESTIONS.index("king_zone_hits")
     b_fm = int(np.searchsorted(data.buckets.edges[K.NODE_QUESTIONS.index("free_moves")], 0.0, side="right"))

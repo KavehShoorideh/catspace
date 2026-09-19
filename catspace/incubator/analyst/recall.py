@@ -188,7 +188,7 @@ class Recall:
 def build_memory(ckpt: str = DEFAULT_CKPT, data: str = DATA, out: Path = STORE, batch: int = 512, log=print):
     model, cfg, device = K.load_model(ckpt)
     meta = json.load(open(Path(ckpt).parent / "meta.json"))
-    ds = K.Data(data, buckets=K.Buckets.from_state(cfg.buckets, meta["buckets"]), n_buckets=cfg.buckets, n_codes=cfg.n_codes, log=lambda *a, **k: None)
+    ds = K.Data(data, buckets=K.Buckets.from_state(cfg.buckets, meta["buckets"]), pos_buckets=K.Buckets.from_state(cfg.buckets, meta["pos_buckets"]), n_buckets=cfg.buckets, n_codes=cfg.n_codes, log=lambda *a, **k: None)
     N = len(ds.meta); t0 = time.perf_counter()
     psis, phis = [], []
     for s in range(0, N, batch):
@@ -215,7 +215,7 @@ def build_memory(ckpt: str = DEFAULT_CKPT, data: str = DATA, out: Path = STORE, 
 def gauge(ckpt: str = DEFAULT_CKPT, n: int = 1500, k: int = 16, seed: int = 0, log=print):
     from sklearn.metrics import roc_auc_score
     rc = Recall(ckpt); mem = rc.mem
-    ds = K.Data(DATA, buckets=rc.buckets, n_buckets=rc.cfg.buckets, n_codes=rc.cfg.n_codes, log=lambda *a, **kw: None)
+    ds = K.Data(DATA, buckets=rc.buckets, pos_buckets=rc.pos_buckets, n_buckets=rc.cfg.buckets, n_codes=rc.cfg.n_codes, log=lambda *a, **kw: None)
     # the memory rows are the dataset rows in order; queries come from the test split of the games (they have futures)
     rng = random.Random(seed)
     test_games = [int(i) for i in ds.ids("test") if ds.meta[int(i)].get("site") != "chessbench" and ds.next[int(i)] >= 0]

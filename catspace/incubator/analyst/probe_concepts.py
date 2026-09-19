@@ -284,7 +284,7 @@ def main(argv=None):
     ap.add_argument("--data", default="data/derived/knowledge")
     a = ap.parse_args(argv)
     model, cfg, device, buckets, pos_buckets = load(a.ckpt)
-    data = K.Data(a.data, buckets=buckets, n_buckets=cfg.buckets, n_codes=cfg.n_codes, log=lambda *x, **k: None)
+    data = K.Data(a.data, buckets=buckets, pos_buckets=pos_buckets, n_buckets=cfg.buckets, n_codes=cfg.n_codes, log=lambda *x, **k: None)
     if a.what in ("atlas", "all"):
         print("\n".join(atlas(model, cfg, buckets, data)), flush=True)
     if a.what in ("squares", "probes", "moves", "all"):

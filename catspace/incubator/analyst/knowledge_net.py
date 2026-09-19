@@ -312,7 +312,7 @@ class KnowledgeNet(nn.Module):
 class Data:
     """The dataset in memory, every per-sample array precomputed once (dense int8 relations, legal masks), so a batch
     is fancy indexing; partner lookup by (game, ply) for the trajectory pairs."""
-    def __init__(self, path: str, buckets: Buckets | None = None, n_buckets: int = 12, split_seed: int = 0, log=print, meta_only: bool = False, n_codes: int = 48, hide_labels=None):
+    def __init__(self, path: str, buckets: Buckets | None = None, n_buckets: int = 12, split_seed: int = 0, log=print, meta_only: bool = False, n_codes: int = 48, hide_labels=None, pos_buckets: Buckets | None = None):
         """`path`: one directory, or several joined by ','. `hide_labels`: a set of position indices (into the joined
         order) whose move labels are withheld -- the unlabeled pool of an acquisition experiment."""
         t0 = time.perf_counter()
@@ -355,7 +355,9 @@ class Data:
                     fb.append(self.buckets.apply(pf[f"fut_nodes_{h}"])[..., PFQ].astype(np.int8)); fh.append(pf[f"fut_has_{h}"]); ft.append(pf[f"fate_{h}"])
             self.pf_b[h] = np.concatenate(fb); self.pf_has[h] = np.concatenate(fh) & self.mask; self.fate[h] = np.concatenate(ft)
         self.pf_q = np.array(PFQ)
-        pb = Buckets(n_buckets); pb.fit(self.position[tr][:, None, :], np.ones((int(tr.sum()), 1), bool))
+        # a checkpoint's own position buckets when evaluating it: refitting them changes the board token's inputs
+        # whenever the fitting rule changes (2026-09-19: the sparse-answer buckets silently broke old checkpoints here)
+        pb = pos_buckets if pos_buckets is not None else Buckets(n_buckets).fit(self.position[tr][:, None, :], np.ones((int(tr.sum()), 1), bool))
         self.pos_buckets_fn = pb; self.pos_b = pb.apply(self.position).astype(np.int8)
         # dense relations as int8 (values are small integers: flags, distances 0-7, a value beyond a line clipped)
         self.edges = np.zeros((N, MAX_PIECES, MAX_PIECES, R), dtype=np.int8)
@@ -930,7 +932,7 @@ def main(argv=None):
     else:
         model, cfg, device = load_model(a.ckpt)
         meta = json.load(open(Path(a.ckpt).parent / "meta.json"))
-        data = Data(a.data, buckets=Buckets.from_state(cfg.buckets, meta["buckets"]), n_buckets=cfg.buckets)
+        data = Data(a.data, buckets=Buckets.from_state(cfg.buckets, meta["buckets"]), n_buckets=cfg.buckets, pos_buckets=Buckets.from_state(cfg.buckets, meta["pos_buckets"]))
         ev = evaluate(model, data, "test", cfg, device); print(json.dumps({k: v for k, v in ev.items()}, indent=1))
         print(json.dumps(asymmetry(model, data, "test", device), indent=1))
 
