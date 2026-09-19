@@ -101,7 +101,7 @@ def region(board: chess.Board, sq: int, max_steps: int = 16) -> Region:
     # the contested frontier: squares reachable only via attacked squares, with their attackers; a walk of the
     # same kind that may enter attacked squares but records the deflection needed
     seen = dict(r.steps)
-    frontier = [(s, 0) for s in r.steps]
+    frontier = [(s, 0) for s in r.steps if not (board.occupied_co[not piece.color] & chess.BB_SQUARES[s])]   # a capture ends a walk here too
     for k in range(1, max_steps + 1):
         nxt = []
         for s, _ in frontier:
