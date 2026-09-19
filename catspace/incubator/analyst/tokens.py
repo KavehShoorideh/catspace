@@ -116,12 +116,12 @@ class Config:
     lr: float = 1e-3
     batch: int = 256
     epochs: int = 10
-    w_coh: float = 1.0               # coherence across a reply
-    w_sparse: float = 0.01           # mean activation
+    w_coh: float = 0.2               # coherence across a reply (at 1.0 it killed the codes: constancy is the cheapest coherence)
+    w_sparse: float = 0.0            # mean activation (the bounded code bias already makes the codes sparse)
     w_use: float = 2.0               # every code used (batch entropy)
     warmup: int = 2                  # epochs with SOFT tokens into the head and no coherence (the bottleneck collapsed to two codes when hard from step one)
     plain: bool = False              # no bottleneck: the result from the board token (the ceiling / control)
-    coh_margin: float = 1.0
+    coh_margin: float = 3.0
     temp: float = 2.0                # the logits' spread per code after normalization
     w_dtz: float = 1.0               # the value's magnitude (|dtz| buckets) from the tokens: WDL alone needs two bits and asks for no structure
     code_dropout: float = 0.25       # codes dropped at the head's input: the result must be spread over many codes
