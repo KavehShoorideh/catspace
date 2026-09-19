@@ -111,6 +111,7 @@ class Config:
     warmup: int = 2                  # epochs with SOFT tokens into the head and no coherence (the bottleneck collapsed to two codes when hard from step one)
     plain: bool = False              # no bottleneck: the result from the board token (the ceiling / control)
     coh_margin: float = 1.0
+    temp: float = 3.0                # the logits' spread across the codes after normalization
     seed: int = 1
 
 
@@ -152,8 +153,12 @@ class TokenNet(nn.Module):
         return self.ln(x[:, 0])
 
     def tokens(self, h):
-        """Soft probabilities and hard binary tokens (straight-through)."""
-        p = torch.sigmoid(self.to_tokens(h))
+        """Soft probabilities and hard binary tokens (straight-through). The logits are normalized ACROSS THE CODES per
+        position (unit spread, a fixed temperature): no position can push every code to the same saturated state, which
+        is how the first runs collapsed to one code (2026-09-19); sparsity is still free through the logits' mean."""
+        z = self.to_tokens(h)
+        z = (z - z.mean(-1, keepdim=True) * 0.0) / (z.std(-1, keepdim=True) + 1e-4) * self.cfg.temp
+        p = torch.sigmoid(z)
         hard = (p > 0.5).float()
         return p, hard + p - p.detach()
 
