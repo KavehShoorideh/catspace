@@ -46,6 +46,9 @@ HIDE_LABELS: set = set()                    # acquire.py: positions whose move l
 DIST_COL = EDGE_RELATIONS.index("distance")
 
 
+PIECE_FUTURE_QUESTIONS = ("free_moves", "safe_moves", "stuck", "trapped", "attacks_up", "king_zone_hits", "exchange", "falls", "pinned", "holds_value")
+
+
 @dataclass
 class Config:
     d: int = 128
@@ -88,7 +91,16 @@ class Buckets:
         """values (N, 32, Q) with mask (N, 32): per-question quantile edges over real pieces."""
         v = values[mask]                   # (M, Q)
         qs = np.linspace(0, 1, self.n + 1)[1:-1]
-        self.edges = [np.unique(np.quantile(v[:, q], qs)) for q in range(v.shape[1])]
+        self.edges = []
+        for q in range(v.shape[1]):
+            distinct = np.unique(v[:, q])
+            if len(distinct) <= self.n:
+                # a sparse or small-integer answer (pinned, falls, trapped, attacks_up, king_zone_hits ...): one bucket per
+                # distinct value. Quantile edges collapse anything nonzero in fewer than 1/n of the pieces into ONE bucket,
+                # which left the network blind to exactly the tactical answers (found 2026-09-18 by the persistence readout)
+                self.edges.append(distinct[1:] if len(distinct) > 1 else distinct)      # searchsorted right: a value equal to an edge goes up
+            else:
+                self.edges.append(np.unique(np.quantile(v[:, q], qs)))
         return self
 
     def apply(self, values: np.ndarray) -> np.ndarray:

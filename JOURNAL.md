@@ -22679,3 +22679,26 @@ chess-specific: named coordinates, a distance, a direction. Smoke: a piece-up mi
 "toward: material even, opening, queens on, our rooks connected"; the rook ending finds five serving moves;
 cost +0.5 s a position (the planner) on top of the ranking. Launched: the c3 expert rows (300), the strategic
 suite on a fifth of the positions (20 per theme), 100 puzzles (a loss check).
+
+## 2026-09-18 23:41 PDT — per-piece futures, step A + B; a blindness in the knowledge network's buckets found on the way
+
+Kaveh (2026-09-18): the planner should arrive at action concepts on PIECES -- "my bishop tends to be inactive in
+the line I am heading for (trade it); their kingside knight active (remove it)" -- by remembering or calculating.
+Plan (approved): piece identity across plies -> per-node future labels from the corpus -> a per-node future head
+beside persistence -> the value of a piece leaving, from outcomes -> planner piece ideas -> gauges.
+A. `pieces.py`: ids by origin square, followed through moves, castling, en passant, promotion; fates within a
+window: kept / exchanged (it captured and was captured) / lost / promoted, with the other piece's type; the
+attributes square colour and wing (board coordinates, for the readout). 3 tests.
+B. `dataset.py piece-futures`: for every row and node of the 69,108-position corpus (every ply of Kaveh's games,
+so the position at ply+h is a row), the same piece's node answers at +10/+20 and its fate. 1.6M piece-rows in
+88 s, no new graphs. OBS: fates +10: kept 89.3%, exchanged 3.9%, lost 6.8%; +20: kept 80.7%, exchanged 7.7%,
+lost 11.4%, promoted 0.2%. PERSISTENCE (future bucket = present) vs the marginal at +20: free_moves 44% / 36%;
+safe_moves 46% / 29%; stuck 67% / 64%; king_zone_hits 89% / 89%; falls 93% / 94%; pinned 98% / 99%;
+holds_value 84% / 86%. Those are the baselines the head must beat.
+THE BUG: the first readout printed trapped / attacks_up / king_zone_hits / falls / pinned at "persist 100% /
+marginal 100%": the quantile `Buckets` put every value of a question nonzero in fewer than 1/12 of the pieces
+into ONE bucket, so the knowledge network (all checkpoints to date) never saw whether a piece was pinned,
+hanging, trapped, attacking up or hitting the king zone. Fixed: a question with <= n distinct values gets one
+bucket per value (edges = the distinct values but the smallest; searchsorted-right). Old checkpoints carry
+their own bucket state and load unchanged; the next training (kn_pieces) is the first to see these answers --
+a confound to remember when its numbers move: the new head AND the unblinding land together.

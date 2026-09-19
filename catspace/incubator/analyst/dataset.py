@@ -232,9 +232,113 @@ def load(out_dir: str, shards=None, meta_only: bool = False):
     return data
 
 
+# ---------------------------------------------------------------- per-piece futures (Kaveh 2026-09-18), post hoc, no new graphs
+def piece_futures(out_dir: str, horizons=AHEAD, log=print):
+    """For every row and node: the SAME PIECE's node answers h plies later in the same game (the position at
+    ply+h is in the corpus when the game is extracted every ply), its FATE within h plies (kept / exchanged /
+    lost / promoted, pieces.fates) with the other piece's type, and the attributes square colour and wing.
+    Writes piece_future_{i}.npz per shard: fut_nodes_{h} (N, 32, Q), fut_has_{h} (N, 32), fate_{h} (N, 32),
+    fate_type_{h} (N, 32) signed by side (+ ours, - theirs), attr (N, 32, 2). Prints the fate rates and the
+    PERSISTENCE accuracy per question (the future bucket equals the present one) -- the baseline any head must beat."""
+    from .pieces import boards_from_fens, track, fates, square_colour, wing, KEPT, EXCHANGED, LOST, PROMOTED, FATE_NAMES
+    out = Path(out_dir)
+    files = sorted(out.glob("shard_*.npz"))
+    t0 = time.perf_counter()
+    for f in files:
+        i = int(f.stem.split("_")[1])
+        d = np.load(f); nodes = d["nodes"]; mask = d["mask"]
+        with open(out / f"shard_{i}.jsonl") as fh:
+            meta = [json.loads(l) for l in fh]
+        N = len(meta)
+        index = {(m["game"], m["ply"]): r for r, m in enumerate(meta)}
+        by_game = {}
+        for r, m in enumerate(meta):
+            by_game.setdefault(m["game"], []).append(r)
+        res = {h: dict(fut_nodes=np.zeros_like(nodes), fut_has=np.zeros((N, MAX_PIECES), bool), fate=np.full((N, MAX_PIECES), -1, np.int8),
+                       fate_type=np.zeros((N, MAX_PIECES), np.int8)) for h in horizons}
+        attr = np.zeros((N, MAX_PIECES, 2), np.int8)
+        for g, rows in by_game.items():
+            rows.sort(key=lambda r: meta[r]["ply"])
+            plies = [meta[r]["ply"] for r in rows]
+            if any(b - a != 1 for a, b in zip(plies, plies[1:])):
+                # gaps: the corpus was extracted with --every > 1 or a ply errored; futures need consecutive fens
+                pass
+            boards, moves = boards_from_fens([meta[r]["fen"] for r in rows])
+            # a None move (a gap) truncates the tracking; use the longest consecutive prefix
+            cut = next((k for k, m in enumerate(moves) if m is None), len(moves))
+            moves = moves[:cut]
+            start = boards[0]
+            ids = track(start, moves)
+            for k, r in enumerate(rows[:cut + 1]):
+                m = meta[r]
+                side = chess.WHITE if m["side"] else chess.BLACK
+                sqs = m["squares"]
+                for j in range(m["n_pieces"]):
+                    sq = sqs[j]
+                    if sq >= 64:
+                        continue
+                    attr[r, j] = (square_colour(sq), wing(sq))
+                for h in horizons:
+                    if k + h > cut:
+                        # the window runs past the tracked game: fates are known only if the game ended (then the pieces were kept)
+                        if k + h >= len(rows) and cut == len(moves) and len(rows) == len(moves) + 1:
+                            end = cut
+                        else:
+                            continue
+                    else:
+                        end = k + h
+                    fa = fates(start, moves, k, end - k)
+                    r2 = rows[end] if end < len(rows) else None
+                    m2 = meta[r2] if r2 is not None else None
+                    sq2idx = {s: jj for jj, s in enumerate(m2["squares"][:m2["n_pieces"]])} if m2 else {}
+                    for j in range(m["n_pieces"]):
+                        sq = sqs[j]
+                        pid = ids[k].get(sq)
+                        if pid is None or pid not in fa:
+                            continue
+                        ft = fa[pid]
+                        res[h]["fate"][r, j] = ft.kind
+                        p = boards[k].piece_at(sq)
+                        ours = (p is not None and p.color == side)
+                        if ft.other_type is not None:
+                            res[h]["fate_type"][r, j] = int(ft.other_type) * (-1 if ours else 1)        # the OTHER piece: theirs when ours
+                        if ft.kind == KEPT and ft.square is not None and m2 is not None and ft.square in sq2idx:
+                            res[h]["fut_nodes"][r, j] = nodes[r2, sq2idx[ft.square]]
+                            res[h]["fut_has"][r, j] = True
+        np.savez_compressed(out / f"piece_future_{i}.npz", attr=attr, **{f"{k}_{h}": v for h, dd in res.items() for k, v in dd.items()})
+        log(f"[piece-futures] shard {i}: {N} rows in {time.perf_counter() - t0:.0f}s", flush=True)
+    # the readout: fate rates and persistence accuracy on the whole corpus
+    from .knowledge_net import Buckets, PIECE_FUTURE_QUESTIONS
+    d = load(out_dir)
+    pf = load_piece_futures(out_dir)
+    Q = [NODE_QUESTIONS.index(q) for q in PIECE_FUTURE_QUESTIONS]
+    bk = Buckets(12).fit(d["nodes"], d["mask"])
+    now_b = bk.apply(d["nodes"])
+    for h in horizons:
+        fate = pf[f"fate_{h}"]; has = d["mask"] & (fate >= 0)
+        rates = [float((fate[has] == k).mean()) for k in range(4)]
+        log(f"[piece-futures] +{h}: {int(has.sum())} piece-rows with a fate; " + ", ".join(f"{FATE_NAMES[k]} {100 * rates[k]:.1f}%" for k in range(4)))
+        fut_b = bk.apply(pf[f"fut_nodes_{h}"]); fh = pf[f"fut_has_{h}"] & d["mask"]
+        parts = []
+        for name, q in zip(PIECE_FUTURE_QUESTIONS, Q):
+            a, b = now_b[..., q][fh], fut_b[..., q][fh]
+            marg = np.bincount(b, minlength=12).max() / max(1, len(b))
+            parts.append(f"{name} persist {100 * float((a == b).mean()):.0f}% / marginal {100 * marg:.0f}%")
+        log(f"[piece-futures] +{h} persistence accuracy (future bucket = present bucket) vs the marginal: " + "; ".join(parts))
+
+
+def load_piece_futures(out_dir: str, shards=None):
+    out = Path(out_dir)
+    files = sorted(out.glob("piece_future_*.npz")) if shards is None else [out / f"piece_future_{i}.npz" for i in shards]
+    parts = [np.load(f) for f in files]
+    if not parts:
+        return None
+    return {k: np.concatenate([p[k] for p in parts]) for k in parts[0].files}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["extract", "extract_fens", "merge"]); ap.add_argument("path"); ap.add_argument("--out", default="data/derived/knowledge")
+    ap.add_argument("cmd", choices=["extract", "extract_fens", "merge", "piece-futures"]); ap.add_argument("path"); ap.add_argument("--out", default="data/derived/knowledge")
     ap.add_argument("--shard", default="0/1"); ap.add_argument("--every", type=int, default=1); ap.add_argument("--depth", type=int, default=12)
     ap.add_argument("--max-games", type=int, default=0)
     a = ap.parse_args(argv)
@@ -242,6 +346,8 @@ def main(argv=None):
         extract(a.path, a.out, a.shard, a.every, a.depth, max_games=a.max_games)
     elif a.cmd == "extract_fens":
         extract_fens(a.path, a.out, a.shard)
+    elif a.cmd == "piece-futures":
+        piece_futures(a.path)
     else:
         d = load(a.path)
         print(f"{len(d['meta'])} positions; nodes {d['nodes'].shape}, position {d['position'].shape}, pairs {sum(len(e) for e in d['edges'])}")
