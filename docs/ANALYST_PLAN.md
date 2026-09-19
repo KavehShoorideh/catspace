@@ -646,3 +646,25 @@ TRANSITION VALUES: the planner does not know that trading when ahead is good, be
 not (Lichess, every band, within +-0.02; Kaveh's own games the reverse of the textbook, +-0.13); so the value
 of moving a regime coordinate is a table from outcomes, conditional on material and level or evaluation, and
 the steering supports or avoids targets by it. Nothing chess-specific is written down; the sign is the data's.
+
+## 34. Per-piece futures and action concepts on pieces (Kaveh 2026-09-18)
+
+"I could plan to trade my light-squared bishop for their kingside knight ... either remembering or calculating that
+the line I am heading for tends to have my bishop very inactive (so I want to trade it) and my opponent's
+kingside knight very active (so I want to get rid of it)." An action concept is an OPERATOR (trade, remove) on a
+PIECE named by identity, kind and attributes (square colour, wing: board coordinates, not rules), justified by
+the piece's predicted FUTURE and priced by OUTCOMES.
+- Identity: `pieces.py` follows each piece from its origin through the game (castling, en passant, promotion);
+  its fate within a window: kept, exchanged (it captured and was captured), lost, promoted.
+- Labels: `dataset.py piece-futures` reads, for every piece in the corpus, its own node answers 10 and 20 plies on
+  and its fate -- no new graphs, the corpus holds every ply.
+- Calculating: the knowledge network's per-piece head predicts each piece's activity answers at +10/+20 and its
+  fate, from the present graph; compared per kind with persistence (the piece stays as it is).
+- Remembering / pricing: `piece_values.py` -- the mover's result when a piece like it (side, kind, activity,
+  king zone, evaluation band) was traded off with the material even, minus when it stayed; game-clustered se.
+- The planner names an idea only when the future stands out against the kind in the phase AND the outcomes say
+  the trade paid beyond its se; the ranking then serves the moves that carry it out (trades it, offers the
+  trade, takes it, goes for it).
+Next, planned with Kaveh's go: PATTERNS THAT ALLOW ATTACKS -- pairs/triples of pieces with their graph relations
+(two knights side by side on a line a rook reaches, facing pawn chains), mined against the events they allow
+(a piece lost, a threat, a passed pawn) by lift; the armed tactics of the old plan (M7) in the graph's vocabulary.
