@@ -22795,3 +22795,35 @@ majority 0.771 (OBS). The bottleneck collapsed three times, each a known signatu
 (3) per-code batch normalization kept all 32 alive through the warm-up (159 distinct patterns, eff. rank 4-5),
 then the coherence loss at weight 1 killed them again -- constancy is the cheapest coherence. Now at 0.2 with a
 wider margin and no sparsity term (the bounded code bias supplies it); running.
+
+## 2026-09-19 15:16 PDT — invariant tokens: trained, rooted, and one token explains Kaveh's king moves
+
+`tokens` (32 codes, 12 epochs, coherence 0.2, code batch-norm, 5 min): OBS on the test split (8,999 positions,
+22 materials): the result from the TOKENS ALONE 0.896 -- the plain net 0.875, the per-material majority 0.771;
+the |dtz| bucket 0.81 (majority 0.60); 26 codes alive, 3.9 on per position, 264 distinct patterns, effective
+rank 5.8; across a reply, tokens of same-result children at L1 distance 1.19 against 3.89 when the result
+changes. Held-out materials (KRPvKP, KQvKRP, KBNvK): 0.653 (their own majority 0.830): the tokens do not
+transfer across materials on their own.
+ROOTING (`root_tokens root`, depth-3 trees over 3,140 slot-named region relations): 5 codes rooted (the tree
+beats the code's base rate by >= 0.15 on test), 6 partly, 15 unrooted (8 of them identical copies of one
+low-frequency code), 6 dead. The rooted expressions read, e.g. code 22: "the white king cannot safely attack
+its own pawn AND the rook can reach a square attacking the black pawn AND the black pawn has no contested
+squares"; code 0 leans on the white king's contested size and whether the black king can safely attack the
+black pawn. FAITHFULNESS: replacing every token by its tree's output, the result accuracy on test falls 0.896
+-> 0.735 (tokens reproduced 0.937) -- the trees keep the concepts' names but lose a fifth of the value; on the
+HELD materials it RISES 0.653 -> 0.709: the rules-rooted expressions transfer where the learned tokens overfit
+the material. That asymmetry is the finding of the day: the rooting is not only an explanation, it is the
+better generalizer.
+THE EXPLANATION (Kaveh's position, Black to move, 4k3/1R6/4K3/4P3/8/8/8/5r2): Kf8 draws, Kd8 loses -- the
+tablebase agrees with Kaveh. Exactly ONE token differs between the two children: code 2 fires after Kf8 and
+not after Kd8; its rooting is partial (a tree on the white rook's contested size and the black pawn's
+relations, none of which is the human story). The relations that differ, in the rules' words: after Kd8 the
+white rook reaches the black king's zone in 2 safe steps (after Kf8 never, "steps_to_enemy_king_safe 2->20");
+after Kf8 the two kings' safe regions meet and after Kd8 they do not; the rook's safe region holds the black
+king's square after Kd8 only. So the fewest-token explanation exists (one token), and the rules vocabulary
+says why in three relations, but the token's rooting does not yet name those three: the trees pick the
+relation that predicts the code across all materials, not the one that matters here. Next: root per material
+(the slots differ anyway), and root on the SIBLING pairs directly -- the relation that flips with the result
+is the concept, and that is a smaller, sharper target than "when does the code fire".
+Unbuilt: the advised-Maia test (a policy reweighted toward moves that keep an advised invariant, played against
+tablebase-perfect defence; the shortest sufficient set) -- the conditionable player does not exist yet.

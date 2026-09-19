@@ -668,3 +668,18 @@ the piece's predicted FUTURE and priced by OUTCOMES.
 Next, planned with Kaveh's go: PATTERNS THAT ALLOW ATTACKS -- pairs/triples of pieces with their graph relations
 (two knights side by side on a line a rook reaches, facing pawn chains), mined against the events they allow
 (a piece lost, a threat, a passed pawn) by lift; the armed tactics of the old plan (M7) in the graph's vocabulary.
+
+## 35. Invariant tokens from the tablebase, rooted in the rules (Kaveh 2026-09-19)
+
+"Learn invariant tokens that help predict position value, then root them in the graph operations" -- and hand-roll
+nothing beyond movement, attack, capture, promotion and check. The REGION (regions.py): a piece's safe closure
+through unattacked squares, the opponent passing, and the contested frontier beyond it with its attackers (a
+sacrifice is a contested square whose attacker's duties are worth more: a deeper search's question, never
+excluded). Relations between regions are ENUMERATED, never named. The tablebase (3-5 men) is the teacher
+(endgames.py). The token model (tokens.py): squares as tokens, the rules as the only relations, a binary
+bottleneck, the result and its distance from the tokens alone, coherence across a reply. Rooting (root_tokens.py):
+the smallest tree over the relations that predicts each token; faithfulness by re-predicting the result from the
+rooted tokens; the explanation of two king moves = the tokens that differ, rooted. First numbers: tokens 0.896 vs
+plain 0.875 vs majority 0.771; rooted tokens lose on test (0.735) and GAIN on held-out materials (0.709 vs
+0.653); Kaveh's Kf8/Kd8 separated by one token. Open: rooting per material and on sibling pairs; the advised
+player (Maia's policy reweighted toward moves keeping an advised invariant) as the test of sufficiency.
