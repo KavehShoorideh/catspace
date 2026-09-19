@@ -122,7 +122,7 @@ class Config:
     warmup: int = 2                  # epochs with SOFT tokens into the head and no coherence (the bottleneck collapsed to two codes when hard from step one)
     plain: bool = False              # no bottleneck: the result from the board token (the ceiling / control)
     coh_margin: float = 1.0
-    temp: float = 3.0                # the logits' spread across the codes after normalization
+    temp: float = 2.0                # the logits' spread per code after normalization
     w_dtz: float = 1.0               # the value's magnitude (|dtz| buckets) from the tokens: WDL alone needs two bits and asks for no structure
     code_dropout: float = 0.25       # codes dropped at the head's input: the result must be spread over many codes
     seed: int = 1
@@ -152,6 +152,8 @@ class TokenNet(nn.Module):
         self.blocks = nn.ModuleList([Block(d, cfg.heads) for _ in range(cfg.layers)])
         self.ln = nn.LayerNorm(d)
         self.to_tokens = nn.Linear(d, cfg.k)
+        self.code_norm = nn.BatchNorm1d(cfg.k, affine=False)                # each code normalized across positions (the per-position spread left the same codes dead)
+        self.code_bias = nn.Parameter(torch.zeros(cfg.k))
         self.wdl_from_tokens = nn.Sequential(nn.Dropout(cfg.code_dropout), nn.Linear(cfg.k, 2 * d), nn.GELU(), nn.Linear(2 * d, 3 + len(DTZ_EDGES) + 1))
         self.wdl_plain = nn.Linear(d, 3)
 
@@ -169,8 +171,7 @@ class TokenNet(nn.Module):
         """Soft probabilities and hard binary tokens (straight-through). The logits are normalized ACROSS THE CODES per
         position (unit spread, a fixed temperature): no position can push every code to the same saturated state, which
         is how the first runs collapsed to one code (2026-09-19); sparsity is still free through the logits' mean."""
-        z = self.to_tokens(h)
-        z = (z - z.mean(-1, keepdim=True) * 0.0) / (z.std(-1, keepdim=True) + 1e-4) * self.cfg.temp
+        z = self.code_norm(self.to_tokens(h)) * self.cfg.temp - 2.0 * torch.sigmoid(self.code_bias)      # per CODE across the batch: no code can die; the bias in [-2, 0] makes it sparse
         p = torch.sigmoid(z)
         hard = (p > 0.5).float()
         return p, hard + p - p.detach()
