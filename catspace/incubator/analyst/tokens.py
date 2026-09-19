@@ -59,25 +59,32 @@ def white_wdl(wdl_mover: int, white_to_move: bool) -> int:
 
 
 class Data:
-    def __init__(self, rows: list[dict], held_materials: set, log=print):
+    def __init__(self, rows: list[dict], held_materials: set, log=print, cache: Path = Path("data/derived/endgames/encoded.npz")):
         t0 = time.perf_counter()
         self.rows = rows
         N = len(rows)
+        self.split = np.array([split_of(r, held_materials) for r in rows], dtype="<U5"); self.material = np.array([r["material"] for r in rows])
+        if cache.exists():
+            z = np.load(cache)
+            if len(z["sq"]) == N:
+                for k in ("sq", "side", "rel", "wdl", "csq", "cside", "crel", "cwdl", "has_child"):
+                    setattr(self, k, z[k])
+                log(f"[tokens] {N} positions from the cache in {time.perf_counter() - t0:.0f}s; splits {dict(zip(*np.unique(self.split, return_counts=True)))}", flush=True)
+                return
         self.sq = np.zeros((N, 64), np.int64); self.side = np.zeros(N, np.int64); self.rel = np.zeros((N, 64, 64, N_REL), np.int8)
         self.wdl = np.zeros(N, np.int64)
         self.csq = np.zeros((N, 64), np.int64); self.cside = np.zeros(N, np.int64); self.crel = np.zeros((N, 64, 64, N_REL), np.int8); self.cwdl = np.zeros(N, np.int64); self.has_child = np.zeros(N, bool)
-        self.split = np.empty(N, dtype="<U5"); self.material = np.array([r["material"] for r in rows])
         for i, r in enumerate(rows):
             b = chess.Board(r["fen"])
             self.sq[i], self.side[i], self.rel[i] = encode(b)
             self.wdl[i] = white_wdl(r["wdl"], b.turn) + 1                                      # 0 loss, 1 draw, 2 win (White)
-            self.split[i] = split_of(r, held_materials)
             if r.get("child"):
                 cb = chess.Board(r["child"]["fen"])
                 self.csq[i], self.cside[i], self.crel[i] = encode(cb)
                 self.cwdl[i] = white_wdl(r["child"]["wdl"], b.turn) + 1                          # the child's wdl is stored in the PARENT mover's view
                 self.has_child[i] = True
-        log(f"[tokens] {N} positions encoded in {time.perf_counter() - t0:.0f}s; splits {dict(zip(*np.unique(self.split, return_counts=True)))}", flush=True)
+        np.savez_compressed(cache, sq=self.sq, side=self.side, rel=self.rel, wdl=self.wdl, csq=self.csq, cside=self.cside, crel=self.crel, cwdl=self.cwdl, has_child=self.has_child)
+        log(f"[tokens] {N} positions encoded in {time.perf_counter() - t0:.0f}s (cached); splits {dict(zip(*np.unique(self.split, return_counts=True)))}", flush=True)
 
     def ids(self, split):
         return np.nonzero(self.split == split)[0]
@@ -99,8 +106,9 @@ class Config:
     batch: int = 256
     epochs: int = 10
     w_coh: float = 1.0               # coherence across a reply
-    w_sparse: float = 0.05           # mean activation
-    w_use: float = 0.5               # every code used (batch entropy)
+    w_sparse: float = 0.01           # mean activation
+    w_use: float = 2.0               # every code used (batch entropy)
+    warmup: int = 2                  # epochs with SOFT tokens into the head and no coherence (the bottleneck collapsed to two codes when hard from step one)
     plain: bool = False              # no bottleneck: the result from the board token (the ceiling / control)
     coh_margin: float = 1.0
     seed: int = 1
@@ -149,16 +157,16 @@ class TokenNet(nn.Module):
         hard = (p > 0.5).float()
         return p, hard + p - p.detach()
 
-    def forward(self, sq, side, rel):
+    def forward(self, sq, side, rel, soft: bool = False):
         h = self.encode(sq, side, rel)
         if self.cfg.plain:
             return dict(h=h, logits=self.wdl_plain(h))
         p, t = self.tokens(h)
-        return dict(h=h, p=p, t=t, logits=self.wdl_from_tokens(t))
+        return dict(h=h, p=p, t=t, logits=self.wdl_from_tokens(p if soft else t))
 
 
-def losses(model: TokenNet, b: dict, cfg: Config) -> dict:
-    o = model(b["sq"], b["side"], b["rel"])
+def losses(model: TokenNet, b: dict, cfg: Config, warm: bool = False) -> dict:
+    o = model(b["sq"], b["side"], b["rel"], soft=warm)
     out = dict(wdl=F.cross_entropy(o["logits"], b["wdl"]))
     if cfg.plain:
         out["total"] = out["wdl"]; return out
@@ -175,7 +183,7 @@ def losses(model: TokenNet, b: dict, cfg: Config) -> dict:
         out["coh_same_d"] = (same * d).sum() / same.sum().clamp(min=1); out["coh_diff_d"] = ((1 - same) * d).sum() / (1 - same).sum().clamp(min=1)
     else:
         out["coh"] = p.sum() * 0
-    out["total"] = out["wdl"] + cfg.w_coh * out["coh"] + cfg.w_sparse * out["sparse"] + cfg.w_use * out["use"]
+    out["total"] = out["wdl"] + (0.0 if warm else cfg.w_coh) * out["coh"] + cfg.w_sparse * out["sparse"] + cfg.w_use * out["use"]
     return out
 
 
@@ -199,6 +207,7 @@ def evaluate(model: TokenNet, data: Data, split: str, cfg: Config, device) -> di
     for m in np.unique(data.material[tr]):
         maj[m] = int(np.bincount(data.wdl[tr][data.material[tr] == m], minlength=3).argmax())
     st["majority"] = float(np.mean([maj.get(m, 1) == t for m, t in zip(mats, true)]))
+    st["own_majority"] = float(np.mean([np.bincount(true[mats == m], minlength=3).max() / (mats == m).sum() for m in np.unique(mats)]))   # the material's own majority (an oracle for held materials)
     st["by_material"] = {m: dict(n=int((mats == m).sum()), acc=float((pred[mats == m] == true[mats == m]).mean()), majority=float(np.mean([maj.get(m, 1) == t for t in true[mats == m]]))) for m in np.unique(mats)}
     if P:
         P = np.concatenate(P); hard = P > 0.5
@@ -227,13 +236,13 @@ def train(a):
         rng = np.random.default_rng(cfg.seed + epoch); perm = rng.permutation(tr); acc = {}
         for s in range(steps):
             b = data.batch(perm[s * cfg.batch:(s + 1) * cfg.batch], device)
-            L = losses(model, b, cfg)
+            L = losses(model, b, cfg, warm=epoch < cfg.warmup)
             opt.zero_grad(); L["total"].backward(); torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0); opt.step()
             for k, v in L.items():
                 acc[k] = acc.get(k, 0.0) + float(v)
         line = {k: v / steps for k, v in acc.items()}
         ev = evaluate(model, data, "val", cfg, device)
-        print(f"[tokens] epoch {epoch} " + " ".join(f"{k} {v:.3f}" for k, v in line.items()) + f" | val acc {ev['acc']:.3f} (majority {ev['majority']:.3f})" +
+        print(f"[tokens] epoch {epoch} " + " ".join(f"{k} {v:.3f}" for k, v in line.items()) + f" | val acc {ev['acc']:.3f} (majority {ev['majority']:.3f}, own {ev['own_majority']:.3f})" +
               (f" tokens on {ev['tokens_on_mean']:.1f}/{cfg.k} alive {ev['codes_alive']} dead {ev['codes_dead']} always {ev['codes_always']} distinct {ev['distinct_codes']} eff_rank {ev['eff_rank']:.1f}" if not cfg.plain else "") + f" | {time.perf_counter() - t0:.0f}s", flush=True)
         log.write(json.dumps(dict(epoch=epoch, **line, **{k: v for k, v in ev.items() if not isinstance(v, dict)})) + "\n"); log.flush()
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), held=sorted(held)), out / "last.pt")
@@ -241,7 +250,7 @@ def train(a):
     json.dump(final, open(out / "final.json", "w"), indent=1)
     for s, ev in final.items():
         if ev:
-            print(f"[tokens] {s}: acc {ev['acc']:.3f} (majority {ev['majority']:.3f}) n {ev['n']}; by material: " + "; ".join(f"{m} {v['acc']:.2f}/{v['majority']:.2f}" for m, v in ev["by_material"].items()), flush=True)
+            print(f"[tokens] {s}: acc {ev['acc']:.3f} (majority {ev['majority']:.3f}, own majority {ev['own_majority']:.3f}) n {ev['n']}; by material: " + "; ".join(f"{m} {v['acc']:.2f}/{v['majority']:.2f}" for m, v in ev["by_material"].items()), flush=True)
 
 
 def load_model(path: str):
