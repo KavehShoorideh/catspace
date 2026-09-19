@@ -22717,3 +22717,27 @@ corpus (60,000 games), which needs a cheap activity measure: free_moves needs th
 the legal mobility of the piece is computable without the graph, a measurement worth making next.
 Also planned (not built; Kaveh's request mid-build): patterns that allow attacks -- pairs/triples of pieces
 with their graph relations, mined against the events they allow (a piece lost, a threat, a passed pawn), by lift.
+
+## 2026-09-19 00:15 PDT — per-piece futures, step C: the head trained; per kind it is weak where Kaveh's example lives
+
+`kn_pieces` (the planner's configuration: d 128, 6 layers, 10 epochs, the per-piece future and fate heads at weight
+0.5, and the first training with the sparse-answer buckets). On the whole test split (6,970 positions), OBS,
+against the planner's checkpoint `kn_future4` on the SAME rows: policy top-1 0.290 / 0.286; cp R2 0.745 / 0.753;
+future code +10 0.229 / 0.200 (persistence 0.193), +20 0.172 / 0.116 (persistence 0.080); value +10 R2 0.505 /
+0.501 (persistence 0.463); sharpness window AUC 0.781 / 0.774 (persistence 0.576); effective rank 16.3 / 19.1.
+Nothing lost, the +20 code gained; rank lower, far from collapse.
+The per-piece heads, pooled: no free moves 20 plies on AUC 0.709 (persistence 0.629, base 0.37); exchanged
+within 20 AUC 0.797 (base 0.073). PER KIND (`gauge_pieces heads`), which is what the planner reads -- AUC of the
+head (persistence) [base]: no free moves @20: bishops 0.595 (0.572) [0.31], knights 0.586 (0.551) [0.34], rooks
+0.593 (0.576), queens 0.582 (0.567), pawns 0.713 (0.645); hits the enemy king zone @20: bishops 0.686 (0.636),
+knights 0.674 (0.619), rooks 0.805 (0.640), pawns 0.869 (0.634); exchanged within 20: bishops 0.600 [0.198],
+knights 0.633 [0.167], rooks 0.719 [0.075]. The pooled AUC was mostly the head telling kinds apart. For the
+bishop's future inactivity -- Kaveh's example -- the head adds 0.02 over "it stays as it is"; for knights 0.035;
+for activity toward the king, 0.05 for both. Calculating a minor piece's future from the present graph is hard;
+the value table (step D) was thin too. The honest reading: the machinery works end to end, the signal for the
+bishop is weak, and the two ways to more signal are more games (the Lichess corpus, 60x) and conditioning on
+the LINE (the opening family), which is what the repertoire gauge tests.
+FOUND AND FIXED on the way: evaluating an old checkpoint through Data refitted the position buckets instead of
+loading the checkpoint's; harmless while the fitting rule was fixed, it broke old checkpoints once the sparse-
+answer buckets landed (kn_future4 read cp R2 0.21 instead of 0.75). Data now takes the checkpoint's position
+buckets on every evaluation path; the planner and the app always loaded them and were never affected.
