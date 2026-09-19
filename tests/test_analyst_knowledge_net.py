@@ -126,3 +126,22 @@ def test_move_values_only_on_legal_moves_and_delta_loss_uses_next_pairs():
     # without any next pair the term is zero
     b["next"] = torch.tensor([-1, -1])
     assert float(K.losses(model, b, cfg, None, 0)["delta"]) == 0.0
+
+
+def test_piece_future_head_shapes_and_masked_loss():
+    import torch
+    from catspace.incubator.analyst.knowledge_net import KnowledgeNet, Config, losses, PIECE_FUTURE_QUESTIONS
+    cfg = Config(d=32, d_geo=16, layers=1, heads=2, buckets=8, w_traj=0.0)
+    model = KnowledgeNet(cfg)
+    b = _batch(["r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4", "8/8/8/8/1k6/8/5P2/4K3 w - - 0 1"], cfg)
+    o = model(b)
+    pfl, fl = model.piece_future(o["h"])
+    assert pfl.shape == (2, 32, 2, len(PIECE_FUTURE_QUESTIONS), cfg.buckets) and fl.shape == (2, 32, 2, 4)
+    for hz in (10, 20):
+        b[f"pf{hz}"] = torch.zeros(2, 32, len(PIECE_FUTURE_QUESTIONS), dtype=torch.long); b[f"pf_has{hz}"] = torch.zeros(2, 32, dtype=torch.bool)
+        b[f"fate{hz}"] = torch.full((2, 32), -1, dtype=torch.long)
+    out = losses(model, b, cfg)
+    assert float(out["piece_future"]) == 0.0                      # everything masked: the term contributes nothing
+    b["pf_has20"][0, :3] = True; b["fate20"][0, :3] = 1
+    out = losses(model, b, cfg)
+    assert torch.isfinite(out["piece_future"]) and float(out["piece_future"]) > 0

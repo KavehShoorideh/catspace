@@ -75,6 +75,7 @@ class Config:
     w_value: float = 1.0                    # the engine's evaluation at +10 and +20
     w_sharp: float = 1.0                    # the window sharpness labels
     w_q: float = 1.0                        # the action-value head (soft labels)
+    w_piece_future: float = 0.5             # the per-node future: each piece's answer buckets at +10/+20 and its fate (kept/exchanged/lost/promoted)
     q_temp: float = 0.05                    # the policy's soft target: softmax(win probability / q_temp) over legal moves
     n_codes: int = 48
     head_input: str = "phi"                 # phi: the heads read the Backpack sum (interpretable by construction); board: the board token (free)
@@ -172,6 +173,11 @@ class KnowledgeNet(nn.Module):
         # probability of that move (ChessBench's target) -- a move score with no child graph
         self.q_to = nn.Embedding(64, d)
         self.q_head = nn.Sequential(nn.Linear(3 * d, 2 * d), nn.GELU(), nn.Linear(2 * d, 1))
+        # THE PER-PIECE FUTURE (Kaveh 2026-09-18): from each piece's token, its answer buckets at +10 and +20 for the
+        # activity questions, and its fate (kept / exchanged / lost / promoted) -- "this bishop tends to be inactive"
+        self.n_pfq = len(PIECE_FUTURE_QUESTIONS)
+        self.piece_future_head = nn.Linear(d, 2 * self.n_pfq * cfg.buckets)
+        self.fate_head = nn.Linear(d, 2 * 4)
         self.register_buffer("q_offsets", torch.arange(Q) * cfg.buckets)
         self.register_buffer("p_offsets", torch.arange(P) * cfg.buckets)
 
@@ -229,6 +235,12 @@ class KnowledgeNet(nn.Module):
     def sense_index(self, b):
         """(B, 32, Q): the sense of (piece type, question, answer bucket) -- 'a queen attacked twice' is its own vector."""
         return b["types"][..., None] * (Q * self.cfg.buckets) + b["buckets"] + self.q_offsets
+
+    def piece_future(self, h):
+        """(B, 32, 2, Qf, buckets) logits and (B, 32, 2, 4) fate logits from the piece tokens h[:, 1:]."""
+        pieces = h[:, 1:]
+        B, P, _ = pieces.shape
+        return self.piece_future_head(pieces).view(B, P, 2, self.n_pfq, self.cfg.buckets), self.fate_head(pieces).view(B, P, 2, 4)
 
     def psi(self, phi):
         """The geometry's coordinates: a linear map of phi, so the readout by senses still holds (psi is linear in them too)."""
@@ -329,6 +341,20 @@ class Data:
         tr = self.split == "train"
         self.buckets = buckets or Buckets(n_buckets).fit(self.nodes[tr], self.mask[tr])
         self.node_b = self.buckets.apply(self.nodes).astype(np.int8)                     # (N, 32, Q)
+        # the per-piece futures (dataset.piece_futures), per corpus; a corpus without them is masked out
+        from .dataset import load_piece_futures
+        PFQ = [NODE_QUESTIONS.index(q) for q in PIECE_FUTURE_QUESTIONS]
+        self.pf_b, self.pf_has, self.fate = {}, {}, {}
+        for h in (10, 20):
+            fb, fh, ft = [], [], []
+            for p_, part in zip(path.split(","), parts):
+                n_ = len(part["meta"]); pf = load_piece_futures(p_)
+                if pf is None or len(pf[f"fut_has_{h}"]) != n_:
+                    fb.append(np.zeros((n_, MAX_PIECES, len(PFQ)), np.int8)); fh.append(np.zeros((n_, MAX_PIECES), bool)); ft.append(np.full((n_, MAX_PIECES), -1, np.int8))
+                else:
+                    fb.append(self.buckets.apply(pf[f"fut_nodes_{h}"])[..., PFQ].astype(np.int8)); fh.append(pf[f"fut_has_{h}"]); ft.append(pf[f"fate_{h}"])
+            self.pf_b[h] = np.concatenate(fb); self.pf_has[h] = np.concatenate(fh) & self.mask; self.fate[h] = np.concatenate(ft)
+        self.pf_q = np.array(PFQ)
         pb = Buckets(n_buckets); pb.fit(self.position[tr][:, None, :], np.ones((int(tr.sum()), 1), bool))
         self.pos_buckets_fn = pb; self.pos_b = pb.apply(self.position).astype(np.int8)
         # dense relations as int8 (values are small integers: flags, distances 0-7, a value beyond a line clipped)
@@ -420,7 +446,10 @@ class Data:
                    cp10=torch.as_tensor(self.cp_ahead[10][idx]), cp20=torch.as_tensor(self.cp_ahead[20][idx]),
                    has10=torch.as_tensor(self.has_fut[10][idx]), has20=torch.as_tensor(self.has_fut[20][idx]),
                    sharp_window=torch.as_tensor(self.sharp_window[idx]), forcing_window=torch.as_tensor(self.forcing_window[idx]), has_window=torch.as_tensor(self.has_window[idx]),
-                   q=torch.as_tensor(self.q[idx]).float(), has_q=torch.as_tensor(self.has_q[idx]))
+                   q=torch.as_tensor(self.q[idx]).float(), has_q=torch.as_tensor(self.has_q[idx]),
+                   pf10=torch.as_tensor(self.pf_b[10][idx]).long(), pf20=torch.as_tensor(self.pf_b[20][idx]).long(),
+                   pf_has10=torch.as_tensor(self.pf_has[10][idx]), pf_has20=torch.as_tensor(self.pf_has[20][idx]),
+                   fate10=torch.as_tensor(self.fate[10][idx]).long(), fate20=torch.as_tensor(self.fate[20][idx]).long())
         return {k: v.to(device) for k, v in out.items()}
 
     def partner(self, i: int, k_max: int, rng: random.Random):
@@ -549,8 +578,19 @@ def losses(model: KnowledgeNet, b: dict, cfg: Config, k: torch.Tensor | None = N
         out["vic_cov"] = (cov - torch.diag(torch.diag(cov))).pow(2).sum() / phi.shape[1]
     else:
         out["vic_var"] = phi.sum() * 0; out["vic_cov"] = phi.sum() * 0
+    if cfg.w_piece_future > 0 and "pf_has10" in b:                                     # a batch built by hand (tests, the app) may carry no piece futures
+        pfl, fl_ = model.piece_future(o["h"])
+        terms = []
+        for j, hz in enumerate((10, 20)):
+            m_ = b[f"pf_has{hz}"]
+            if m_.any():
+                terms.append(F.cross_entropy(pfl[:, :, j][m_].reshape(-1, cfg.buckets), b[f"pf{hz}"][m_].reshape(-1)))
+            fm = b["mask"] & (b[f"fate{hz}"] >= 0)
+            if fm.any():
+                terms.append(F.cross_entropy(fl_[:, :, j][fm], b[f"fate{hz}"][fm]))
+        out["piece_future"] = sum(terms) / max(1, len(terms)) if terms else phi.sum() * 0
     total = out["wdl"] + cfg.w_cp * out["cp"] + cfg.w_regime * out["regime"] + cfg.w_policy * (out["policy"] + out["policy_soft"]) + cfg.w_q * out["q"] + cfg.w_vic * (out["vic_var"] + out["vic_cov"]) + cfg.w_delta * out.get("delta", 0.0) \
-        + cfg.w_future * out.get("future", 0.0) + cfg.w_value * out.get("value", 0.0) + cfg.w_sharp * out.get("sharp", 0.0)
+        + cfg.w_future * out.get("future", 0.0) + cfg.w_value * out.get("value", 0.0) + cfg.w_sharp * out.get("sharp", 0.0) + cfg.w_piece_future * out.get("piece_future", 0.0)
     if "traj_fwd" in out:
         total = total + cfg.w_traj * (out["traj_fwd"] + out["traj_neg"] + out["traj_bound"]) + cfg.w_vic * out["psi_vic"]
     out["total"] = total
@@ -575,6 +615,7 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
     fut_logits = {10: [], 20: []}; fut_true = {10: [], 20: []}; fut_now = []; fut_has = {10: [], 20: []}
     val_pred = {10: [], 20: []}; val_true = {10: [], 20: []}; val_now = []
     sh_logit = []; sh_true = []; sh_has = []; sh_now = []
+    pf_pred = {10: [], 20: []}; pf_prob0 = {10: [], 20: []}; pf_true = {10: [], 20: []}; pf_now = {10: [], 20: []}; fate_prob = {10: [], 20: []}; fate_true = {10: [], 20: []}
     for s in range(0, n, 256):
         chunk = ids[s:s + 256]
         b = data.batch(chunk, device)
@@ -612,9 +653,38 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
         fut_now.append(b["code_now"].cpu().numpy()); val_now.append(b["cp"].cpu().numpy())
         sh_logit.append(model.sharp_head(o["phi"]).cpu().numpy()); sh_true.append(np.stack([b["sharp_window"].cpu().numpy(), b["forcing_window"].cpu().numpy()], 1)); sh_has.append(b["has_window"].cpu().numpy())
         sh_now.append(np.maximum(data.position[chunk, POSITION_QUESTIONS.index("threat_ours")], data.position[chunk, POSITION_QUESTIONS.index("threat_theirs")]) >= 3.0)
+        pfl, fl_ = model.piece_future(o["h"])
+        for j, hz in enumerate((10, 20)):
+            if f"pf_has{hz}" not in b:
+                continue
+            m_ = b[f"pf_has{hz}"].cpu().numpy()
+            pf_pred[hz].append(pfl[:, :, j].argmax(-1).cpu().numpy()[m_]); pf_prob0[hz].append(torch.softmax(pfl[:, :, j], -1)[..., 0].cpu().numpy()[m_])
+            pf_true[hz].append(b[f"pf{hz}"].cpu().numpy()[m_]); pf_now[hz].append(b["buckets"].cpu().numpy()[..., data.pf_q][m_])
+            fm = (b["mask"] & (b[f"fate{hz}"] >= 0)).cpu().numpy()
+            fate_prob[hz].append(torch.softmax(fl_[:, :, j], -1).cpu().numpy()[fm]); fate_true[hz].append(b[f"fate{hz}"].cpu().numpy()[fm])
         reg_pred[10].append(reg[:, 0]); reg_pred[20].append(reg[:, 1])
         reg_true[10].append(b["ahead10"].cpu().numpy()); reg_true[20].append(b["ahead20"].cpu().numpy()); reg_now.append(b["regime_now"].cpu().numpy())
         phis.append(o["phi"].cpu().numpy())
+    for hz in (10, 20):
+        if not pf_true[hz] or sum(len(x) for x in pf_true[hz]) == 0:
+            continue
+        P_, T_, N_, P0 = (np.concatenate(pf_pred[hz]), np.concatenate(pf_true[hz]), np.concatenate(pf_now[hz]), np.concatenate(pf_prob0[hz]))
+        for qi, name in enumerate(PIECE_FUTURE_QUESTIONS):
+            stats[f"pf{hz}_{name}_acc"] = float((P_[:, qi] == T_[:, qi]).mean()); stats[f"pf{hz}_{name}_persist"] = float((N_[:, qi] == T_[:, qi]).mean())
+            stats[f"pf{hz}_{name}_marginal"] = float(np.bincount(T_[:, qi]).max() / len(T_))
+        # the headline: INACTIVE at +h = free_moves in the lowest bucket; AUC of the head's probability vs persistence (now inactive)
+        qi = PIECE_FUTURE_QUESTIONS.index("free_moves"); y = (T_[:, qi] == 0)
+        if 0 < y.sum() < len(y):
+            from sklearn.metrics import roc_auc_score
+            stats[f"pf{hz}_inactive_auc"] = float(roc_auc_score(y, P0[:, qi])); stats[f"pf{hz}_inactive_persist_auc"] = float(roc_auc_score(y, (N_[:, qi] == 0).astype(float)))
+            stats[f"pf{hz}_inactive_base"] = float(y.mean())
+        FP, FT = np.concatenate(fate_prob[hz]), np.concatenate(fate_true[hz])
+        y = (FT == 1)
+        if 0 < y.sum() < len(y):
+            from sklearn.metrics import roc_auc_score
+            stats[f"fate{hz}_exchanged_auc"] = float(roc_auc_score(y, FP[:, 1])); stats[f"fate{hz}_exchanged_base"] = float(y.mean())
+            stats[f"fate{hz}_gone_auc"] = float(roc_auc_score(FT >= 1, 1.0 - FP[:, 0])); stats[f"fate{hz}_gone_base"] = float((FT >= 1).mean())
+        stats[f"fate{hz}_acc"] = float((FP.argmax(1) == FT).mean()); stats[f"fate{hz}_majority"] = float(np.bincount(FT).max() / len(FT))
     stats["wdl_acc"] = wdl_ok / max(1, wdl_n); stats["wdl_majority"] = wdl_maj / max(1, wdl_n); stats["wdl_n"] = wdl_n
     stats["policy_top1"] = pol_ok / max(1, pol_n); stats["policy_quiet"] = quiet_ok / max(1, quiet_n); stats["policy_capture"] = cap_ok / max(1, cap_n); stats["quiet_n"] = quiet_n
     stats["delta_top1"] = d_ok / max(1, pol_n); stats["delta_quiet"] = dquiet_ok / max(1, quiet_n)
@@ -783,6 +853,10 @@ def train(args):
               f"| sharp10 auc {ev.get('sharp10_auc', float('nan')):.3f} (persist {ev.get('sharp10_persist_auc', float('nan')):.3f}) sharp20 {ev.get('sharp20_auc', float('nan')):.3f} "
               f"| value10 r2 {ev['value10_r2']:.3f} (persist {ev['value10_persist_r2']:.3f}) value20 {ev['value20_r2']:.3f} (persist {ev['value20_persist_r2']:.3f}) from-codes corr {ev['value10_from_codes_corr']:.3f}/{ev['value20_from_codes_corr']:.3f} "
               f"| sharp-window auc {ev.get('sharp_window_auc', float('nan')):.3f} (persist {ev.get('sharp_window_persist_auc', float('nan')):.3f}, base {ev.get('sharp_window_base', float('nan')):.2f}) forcing-window auc {ev.get('forcing_window_auc', float('nan')):.3f}", flush=True)
+        if "pf20_inactive_auc" in ev:
+            print(f"[kn]   pieces: inactive@20 auc {ev['pf20_inactive_auc']:.3f} (persist {ev['pf20_inactive_persist_auc']:.3f}, base {ev['pf20_inactive_base']:.2f}) inactive@10 auc {ev.get('pf10_inactive_auc', float('nan')):.3f} (persist {ev.get('pf10_inactive_persist_auc', float('nan')):.3f}) "
+                  f"| free_moves@20 acc {ev['pf20_free_moves_acc']:.3f} (persist {ev['pf20_free_moves_persist']:.3f}, marginal {ev['pf20_free_moves_marginal']:.3f}) king_zone_hits@20 acc {ev['pf20_king_zone_hits_acc']:.3f} (persist {ev['pf20_king_zone_hits_persist']:.3f}) "
+                  f"| exchanged@20 auc {ev.get('fate20_exchanged_auc', float('nan')):.3f} (base {ev.get('fate20_exchanged_base', float('nan')):.3f}) gone@20 auc {ev.get('fate20_gone_auc', float('nan')):.3f} (base {ev.get('fate20_gone_base', float('nan')):.2f}) fate acc {ev['fate20_acc']:.3f} (majority {ev['fate20_majority']:.3f})", flush=True)
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / f"epoch_{epoch:03d}.pt")
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), epoch=epoch, step=step), out / "last.pt")
         if best_val is None or ev["policy_top1"] > best_val:
