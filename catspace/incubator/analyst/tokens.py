@@ -53,6 +53,16 @@ def encode(board: chess.Board):
     return sq, int(board.turn), rel
 
 
+DTZ_EDGES = (0, 2, 5, 10, 20, 50)          # |dtz| buckets: 0 | 1-2 | 3-5 | 6-10 | 11-20 | 21-50 | 51+
+
+
+def dtz_bucket(dtz) -> int:
+    if dtz is None:
+        return -1
+    d = abs(int(dtz))
+    return int(np.searchsorted(np.array(DTZ_EDGES), d, side="right"))
+
+
 def white_wdl(wdl_mover: int, white_to_move: bool) -> int:
     v = 1 if wdl_mover > 0 else -1 if wdl_mover < 0 else 0
     return v if white_to_move else -v
@@ -64,6 +74,7 @@ class Data:
         self.rows = rows
         N = len(rows)
         self.split = np.array([split_of(r, held_materials) for r in rows], dtype="<U5"); self.material = np.array([r["material"] for r in rows])
+        self.dtz = np.array([dtz_bucket(r.get("dtz")) for r in rows], np.int64)                 # the value's MAGNITUDE: how far the conversion is
         if cache.exists():
             z = np.load(cache)
             if len(z["sq"]) == N:
@@ -91,7 +102,7 @@ class Data:
 
     def batch(self, idx, device):
         idx = np.asarray(idx)
-        out = dict(sq=torch.as_tensor(self.sq[idx]), side=torch.as_tensor(self.side[idx]), rel=torch.as_tensor(self.rel[idx]).float(), wdl=torch.as_tensor(self.wdl[idx]),
+        out = dict(sq=torch.as_tensor(self.sq[idx]), side=torch.as_tensor(self.side[idx]), rel=torch.as_tensor(self.rel[idx]).float(), wdl=torch.as_tensor(self.wdl[idx]), dtz=torch.as_tensor(self.dtz[idx]),
                    csq=torch.as_tensor(self.csq[idx]), cside=torch.as_tensor(self.cside[idx]), crel=torch.as_tensor(self.crel[idx]).float(), cwdl=torch.as_tensor(self.cwdl[idx]), has_child=torch.as_tensor(self.has_child[idx]))
         return {k: v.to(device) for k, v in out.items()}
 
@@ -112,6 +123,8 @@ class Config:
     plain: bool = False              # no bottleneck: the result from the board token (the ceiling / control)
     coh_margin: float = 1.0
     temp: float = 3.0                # the logits' spread across the codes after normalization
+    w_dtz: float = 1.0               # the value's magnitude (|dtz| buckets) from the tokens: WDL alone needs two bits and asks for no structure
+    code_dropout: float = 0.25       # codes dropped at the head's input: the result must be spread over many codes
     seed: int = 1
 
 
@@ -139,7 +152,7 @@ class TokenNet(nn.Module):
         self.blocks = nn.ModuleList([Block(d, cfg.heads) for _ in range(cfg.layers)])
         self.ln = nn.LayerNorm(d)
         self.to_tokens = nn.Linear(d, cfg.k)
-        self.wdl_from_tokens = nn.Sequential(nn.Linear(cfg.k, 2 * d), nn.GELU(), nn.Linear(2 * d, 3))
+        self.wdl_from_tokens = nn.Sequential(nn.Dropout(cfg.code_dropout), nn.Linear(cfg.k, 2 * d), nn.GELU(), nn.Linear(2 * d, 3 + len(DTZ_EDGES) + 1))
         self.wdl_plain = nn.Linear(d, 3)
 
     def encode(self, sq, side, rel):
@@ -167,7 +180,8 @@ class TokenNet(nn.Module):
         if self.cfg.plain:
             return dict(h=h, logits=self.wdl_plain(h))
         p, t = self.tokens(h)
-        return dict(h=h, p=p, t=t, logits=self.wdl_from_tokens(p if soft else t))
+        out = self.wdl_from_tokens(p if soft else t)
+        return dict(h=h, p=p, t=t, logits=out[:, :3], dtz_logits=out[:, 3:])
 
 
 def losses(model: TokenNet, b: dict, cfg: Config, warm: bool = False) -> dict:
@@ -175,6 +189,8 @@ def losses(model: TokenNet, b: dict, cfg: Config, warm: bool = False) -> dict:
     out = dict(wdl=F.cross_entropy(o["logits"], b["wdl"]))
     if cfg.plain:
         out["total"] = out["wdl"]; return out
+    hd = b["dtz"] >= 0
+    out["dtz"] = F.cross_entropy(o["dtz_logits"][hd], b["dtz"][hd]) if hd.any() else o["p"].sum() * 0
     p = o["p"]
     out["sparse"] = p.mean()
     u = p.mean(0).clamp(1e-4, 1 - 1e-4)                                                             # the batch usage per code
@@ -188,7 +204,7 @@ def losses(model: TokenNet, b: dict, cfg: Config, warm: bool = False) -> dict:
         out["coh_same_d"] = (same * d).sum() / same.sum().clamp(min=1); out["coh_diff_d"] = ((1 - same) * d).sum() / (1 - same).sum().clamp(min=1)
     else:
         out["coh"] = p.sum() * 0
-    out["total"] = out["wdl"] + (0.0 if warm else cfg.w_coh) * out["coh"] + cfg.w_sparse * out["sparse"] + cfg.w_use * out["use"]
+    out["total"] = out["wdl"] + cfg.w_dtz * out["dtz"] + (0.0 if warm else cfg.w_coh) * out["coh"] + cfg.w_sparse * out["sparse"] + cfg.w_use * out["use"]
     return out
 
 
@@ -198,12 +214,12 @@ def evaluate(model: TokenNet, data: Data, split: str, cfg: Config, device) -> di
     ids = data.ids(split)
     if len(ids) == 0:
         model.train(); return {}
-    pred, true, mats, P, H = [], [], [], [], []
+    pred, true, mats, P, H, dp, dt = [], [], [], [], [], [], []
     for s in range(0, len(ids), 512):
         b = data.batch(ids[s:s + 512], device); o = model(b["sq"], b["side"], b["rel"])
         pred.append(o["logits"].argmax(-1).cpu().numpy()); true.append(b["wdl"].cpu().numpy()); mats.append(data.material[ids[s:s + 512]])
         if not cfg.plain:
-            P.append(o["p"].cpu().numpy())
+            P.append(o["p"].cpu().numpy()); dp.append(o["dtz_logits"].argmax(-1).cpu().numpy()); dt.append(b["dtz"].cpu().numpy())
         H.append(o["h"].cpu().numpy())
     pred, true, mats = np.concatenate(pred), np.concatenate(true), np.concatenate(mats)
     st = dict(n=len(ids), acc=float((pred == true).mean()))
@@ -215,6 +231,8 @@ def evaluate(model: TokenNet, data: Data, split: str, cfg: Config, device) -> di
     st["own_majority"] = float(np.mean([np.bincount(true[mats == m], minlength=3).max() / (mats == m).sum() for m in np.unique(mats)]))   # the material's own majority (an oracle for held materials)
     st["by_material"] = {m: dict(n=int((mats == m).sum()), acc=float((pred[mats == m] == true[mats == m]).mean()), majority=float(np.mean([maj.get(m, 1) == t for t in true[mats == m]]))) for m in np.unique(mats)}
     if P:
+        dp, dt = np.concatenate(dp), np.concatenate(dt); ok = dt >= 0
+        st["dtz_acc"] = float((dp[ok] == dt[ok]).mean()); st["dtz_majority"] = float(np.bincount(dt[ok]).max() / ok.sum())
         P = np.concatenate(P); hard = P > 0.5
         st["tokens_on_mean"] = float(hard.sum(1).mean()); use = hard.mean(0)
         st["codes_alive"] = int(((use > 0.02) & (use < 0.98)).sum()); st["codes_dead"] = int((use <= 0.02).sum()); st["codes_always"] = int((use >= 0.98).sum())
@@ -248,7 +266,7 @@ def train(a):
         line = {k: v / steps for k, v in acc.items()}
         ev = evaluate(model, data, "val", cfg, device)
         print(f"[tokens] epoch {epoch} " + " ".join(f"{k} {v:.3f}" for k, v in line.items()) + f" | val acc {ev['acc']:.3f} (majority {ev['majority']:.3f}, own {ev['own_majority']:.3f})" +
-              (f" tokens on {ev['tokens_on_mean']:.1f}/{cfg.k} alive {ev['codes_alive']} dead {ev['codes_dead']} always {ev['codes_always']} distinct {ev['distinct_codes']} eff_rank {ev['eff_rank']:.1f}" if not cfg.plain else "") + f" | {time.perf_counter() - t0:.0f}s", flush=True)
+              (f" dtz {ev['dtz_acc']:.3f} (majority {ev['dtz_majority']:.3f}) tokens on {ev['tokens_on_mean']:.1f}/{cfg.k} alive {ev['codes_alive']} dead {ev['codes_dead']} always {ev['codes_always']} distinct {ev['distinct_codes']} eff_rank {ev['eff_rank']:.1f}" if not cfg.plain else "") + f" | {time.perf_counter() - t0:.0f}s", flush=True)
         log.write(json.dumps(dict(epoch=epoch, **line, **{k: v for k, v in ev.items() if not isinstance(v, dict)})) + "\n"); log.flush()
         torch.save(dict(model=model.state_dict(), config=asdict(cfg), held=sorted(held)), out / "last.pt")
     final = {s: evaluate(model, data, s, cfg, device) for s in ("test", "held")}
