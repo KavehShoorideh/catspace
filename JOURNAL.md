@@ -22771,3 +22771,27 @@ answers, carries the per-piece heads). Its piece lines name the future and the o
 "trade it / remove it" verdict needs the value to beat its se, which on this table it rarely does -- in the
 Bd3-and-Nf3 position it says White's d3 bishop hits Black's king zone in 80% of futures (bishops in the opening
 19%) and that trading such a bishop scored +0.043 (se 0.088, 47 games): not a recommendation.
+
+## 2026-09-19 15:08 PDT — invariant tokens from the tablebase: the region primitive, the dataset, and three collapses
+
+Kaveh (2026-09-19): "learn invariant tokens that help predict position value, then root them in the graph
+operations" -- nothing hand-rolled beyond movement, attack, capture, promotion and check; the tablebase as the
+teacher; explanations as the fewest tokens that separate two king moves; later the advised-Maia test. Approved.
+Built: `regions.py` -- per piece the SAFE closure (own moves through squares the enemy does not attack, the
+opponent passing) with steps, and the CONTESTED frontier beyond it, each square tagged with its attackers (a
+sacrifice is a contested square whose attacker's other duties are worth more: a question for a deeper search,
+never excluded); enumerated pair relations (safe/any region meets the other's, holds its square, reaches a square
+attacking it, meets its promotion squares) and unary ones. On Kaveh's KRPvKR position it says, unprompted: the
+black king's safe region is the seven back-rank squares and does not meet the pawn's region; the white king's
+and rook's do; every square beyond is attacked, by b7 or e6. That is "cut off" without the word.
+`endgames.py` -- 100,000 random legal positions over 25 materials (3-5 men) with Syzygy WDL and DTZ, the relations,
+one random reply child with its result (for the coherence loss) and 14,960 positions with king moves of
+different results (the explanation task); held-out materials KRPvKP, KQvKRP, KBNvK; 0.4 s per 200 positions.
+`tokens.py` -- 64 square tokens, the rules as the only relations (attacks, can move to, same line) as attention
+biases, a 32-code binary bottleneck, the result and the |dtz| bucket predicted from the tokens alone, coherence
+across a reply. The plain control (no bottleneck, 3 epochs): test accuracy 0.875 against the per-material
+majority 0.771 (OBS). The bottleneck collapsed three times, each a known signature: (1) hard codes from step one
+-> two distinct codes; (2) logits normalized per position -> the same codes always at the bottom, 18 dead;
+(3) per-code batch normalization kept all 32 alive through the warm-up (159 distinct patterns, eff. rank 4-5),
+then the coherence loss at weight 1 killed them again -- constancy is the cheapest coherence. Now at 0.2 with a
+wider margin and no sparsity term (the bounded code bias supplies it); running.
