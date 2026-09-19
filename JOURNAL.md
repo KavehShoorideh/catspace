@@ -22753,3 +22753,21 @@ value < -0.02 (n 215) -124 cp, 28% -- a faint monotone trend at the extremes, no
 exclusive: the table is too thin (step D: most cells within 2 se of zero), and the engine's verdict on one
 position is not the outcome's over twenty plies at 1300. Either way the planner must not recommend these trades
 on this evidence; its ideas only fire when the value beats its se, which the table rarely allows.
+
+## 2026-09-19 00:45 PDT — per-piece futures, step F: the repertoire view, and the planner switched to kn_pieces
+
+`gauge_pieces repertoire`: Kaveh's games grouped by opening family and colour (11 groups with >= 25 games,
+1,710 s), the planner at his move near ply 16, the per-piece futures averaged by label. Against the phase base
+rate every line flagged his queen and rooks as stuck (the same comparison for every line: uninformative); the
+report now compares each line with his OTHER lines at the same colour and ply. OBS (model predictions averaged,
+not realized rates; small n): Queen's Pawn Game as Black -- their light-squared bishop hits his king zone in 44%
+of futures 20 plies on against 31% in his other Black lines (n 90), their queenside knight 22% vs 16%; Indian
+Defence as Black -- his light-squared bishop has no free moves in 28% vs 20% (n 26: Kaveh's own example, thin);
+Englund Gambit as White -- his kingside knight stuck 31% vs 20% (n 54), queenside rook 27% vs 17%; QGD as Black
+-- their queen hits his king zone 39% vs 31% (n 28). Next for this view: the REALIZED rates in the same games
+beside the predictions (the "remembering" half; the labels exist).
+The planner now loads `kn_pieces` (equal or better than `kn_future4` on the same test rows, sees the sparse
+answers, carries the per-piece heads). Its piece lines name the future and the outcome value with its se; the
+"trade it / remove it" verdict needs the value to beat its se, which on this table it rarely does -- in the
+Bd3-and-Nf3 position it says White's d3 bishop hits Black's king zone in 80% of futures (bishops in the opening
+19%) and that trading such a bishop scored +0.043 (se 0.088, 47 games): not a recommendation.
