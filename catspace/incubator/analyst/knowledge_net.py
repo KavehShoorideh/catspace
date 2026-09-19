@@ -658,7 +658,8 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
             if f"pf_has{hz}" not in b:
                 continue
             m_ = b[f"pf_has{hz}"].cpu().numpy()
-            pf_pred[hz].append(pfl[:, :, j].argmax(-1).cpu().numpy()[m_]); pf_prob0[hz].append(torch.softmax(pfl[:, :, j], -1)[..., 0].cpu().numpy()[m_])
+            fm_q = PIECE_FUTURE_QUESTIONS.index("free_moves"); b0 = int(np.searchsorted(data.buckets.edges[data.pf_q[fm_q]], 0.0, side="right"))   # the bucket of 'no free moves'
+            pf_pred[hz].append(pfl[:, :, j].argmax(-1).cpu().numpy()[m_]); pf_prob0[hz].append(torch.softmax(pfl[:, :, j, fm_q], -1)[..., b0].cpu().numpy()[m_])
             pf_true[hz].append(b[f"pf{hz}"].cpu().numpy()[m_]); pf_now[hz].append(b["buckets"].cpu().numpy()[..., data.pf_q][m_])
             fm = (b["mask"] & (b[f"fate{hz}"] >= 0)).cpu().numpy()
             fate_prob[hz].append(torch.softmax(fl_[:, :, j], -1).cpu().numpy()[fm]); fate_true[hz].append(b[f"fate{hz}"].cpu().numpy()[fm])
@@ -673,10 +674,10 @@ def evaluate(model: KnowledgeNet, data: Data, split: str, cfg: Config, device, m
             stats[f"pf{hz}_{name}_acc"] = float((P_[:, qi] == T_[:, qi]).mean()); stats[f"pf{hz}_{name}_persist"] = float((N_[:, qi] == T_[:, qi]).mean())
             stats[f"pf{hz}_{name}_marginal"] = float(np.bincount(T_[:, qi]).max() / len(T_))
         # the headline: INACTIVE at +h = free_moves in the lowest bucket; AUC of the head's probability vs persistence (now inactive)
-        qi = PIECE_FUTURE_QUESTIONS.index("free_moves"); y = (T_[:, qi] == 0)
+        qi = PIECE_FUTURE_QUESTIONS.index("free_moves"); b0 = int(np.searchsorted(data.buckets.edges[data.pf_q[qi]], 0.0, side="right")); y = (T_[:, qi] == b0)
         if 0 < y.sum() < len(y):
             from sklearn.metrics import roc_auc_score
-            stats[f"pf{hz}_inactive_auc"] = float(roc_auc_score(y, P0[:, qi])); stats[f"pf{hz}_inactive_persist_auc"] = float(roc_auc_score(y, (N_[:, qi] == 0).astype(float)))
+            stats[f"pf{hz}_inactive_auc"] = float(roc_auc_score(y, P0)); stats[f"pf{hz}_inactive_persist_auc"] = float(roc_auc_score(y, (N_[:, qi] == b0).astype(float)))
             stats[f"pf{hz}_inactive_base"] = float(y.mean())
         FP, FT = np.concatenate(fate_prob[hz]), np.concatenate(fate_true[hz])
         y = (FT == 1)
