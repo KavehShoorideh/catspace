@@ -151,6 +151,9 @@ def score_moves(board: chess.Board, memo: Memo | None = None, engine=None, budge
                 for m, (ti, step, worth) in serving.items():
                     st = plan.steer[ti]
                     bonus(m, w_serve * TRUST * worth * min(1.0, step), f"toward: {st.text[:48]} (a step of {step:.1f})")
+                for m, (idea, how) in piece_serving_moves(board, plan, legal, memo).items():
+                    bonus(m, w_serve * TRUST * idea.value, f"{how}: {idea.op} {idea.text} ({idea.value:+.3f})")
+                    serving.setdefault(m, (None, 0.0, idea.value))
         except Exception:
             serving = {}
     allowed = (lambda m: (not plan_needs) or (not serving) or m in serving or board.is_capture(m) or board.gives_check(m))
@@ -262,6 +265,48 @@ def planner_singleton():
         except Exception:
             _PLANNER = False
     return _PLANNER or None
+
+
+def piece_serving_moves(board: chess.Board, plan, legal: list, memo=None) -> dict:
+    """The moves that carry out a piece idea (planner.PieceIdea with an operator): for TRADE (our piece), a capture by
+    it that the ledger prices even or better, or a move of it to a square an enemy piece of about its value attacks
+    while the square holds (the exchange is offered); for REMOVE (their piece), a capture of it priced even or
+    better, or a move after which a piece of ours worth no more than it attacks it without falling itself. Board
+    mechanics and the ledger's prices; the value of doing it is the idea's, from outcomes."""
+    from .defense import defense
+    out = {}
+    side = board.turn
+    for idea in [i for i in getattr(plan, "pieces", []) if i.op and i.value is not None]:
+        sq = idea.square
+        pv = value(board, sq)
+        for m in legal:
+            if m in out:
+                continue
+            if idea.op == "trade" and m.from_square == sq:
+                if board.is_capture(m):
+                    if capture_gain_of(board, m, side, memo) >= -0.5:
+                        out[m] = (idea, "trades it")
+                    continue
+                nb = board.copy(stack=False); nb.push(m)
+                eq = [a for a in nb.attackers(not side, m.to_square) if abs(value(nb, a) - pv) <= 0.5]
+                d = defense(nb, m.to_square, memo=memo) if eq else None
+                if eq and d is not None and not d.falls:
+                    out[m] = (idea, "offers the trade")
+            elif idea.op == "remove":
+                if board.is_capture(m) and m.to_square == sq:
+                    if capture_gain_of(board, m, side, memo) >= -0.5:
+                        out[m] = (idea, "takes it")
+                    continue
+                if board.is_capture(m):
+                    continue
+                nb = board.copy(stack=False); nb.push(m)
+                if nb.piece_at(sq) is None:
+                    continue
+                if m.to_square in [a for a in nb.attackers(side, sq)] and value(nb, m.to_square) <= pv + 0.5:
+                    d = defense(nb, m.to_square, memo=memo)
+                    if d is None or not d.falls:
+                        out[m] = (idea, "goes for it")
+    return out
 
 
 def serving_moves(board: chess.Board, plan, legal: list, memo=None, codebook=None) -> dict:

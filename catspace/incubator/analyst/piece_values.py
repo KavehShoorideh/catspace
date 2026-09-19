@@ -108,9 +108,44 @@ def fit(data_dir: str = DATA, out: Path = OUT, log=print) -> dict:
         v = _contrast(items)
         if v is not None:
             table[c] = v
-    json.dump(dict(table=table, note="the mover's result when the piece was gone within 20 plies with the material even minus when kept (even); train split of Kaveh's games"), open(out, "w"), indent=1)
+    base = base_rates(data_dir)
+    json.dump(dict(table=table, base=base, note="the mover's result when the piece was gone within 20 plies with the material even minus when kept (even); train split of Kaveh's games"), open(out, "w"), indent=1)
     log(f"[piece-values] {len(rows)} piece-rows (train, material even over 20 plies); {len(table)} cells -> {out}")
     return table
+
+
+def phase_name(ph: float) -> str:
+    """The codebook's own words for the phase scale (regimes.describe)."""
+    return "opening" if ph >= 55 else "middlegame" if ph >= 35 else "late middlegame" if ph >= 18 else "ending"
+
+
+def base_rates(data_dir: str = DATA) -> dict:
+    """Per side x type (the mover's view), among pieces still on the board 20 plies on: the share with no free moves
+    then, and the share hitting the enemy king zone then -- what 'inactive' and 'active' are compared against."""
+    from .knowledge_net import Data
+    from .dataset import load, load_piece_futures
+    from .graph import NODE_QUESTIONS
+    D = Data(data_dir, meta_only=True, log=lambda *a, **k: None)
+    d = load(data_dir); pf = load_piece_futures(data_dir)
+    from .graph import POSITION_QUESTIONS
+    FM, KZ = NODE_QUESTIONS.index("free_moves"), NODE_QUESTIONS.index("king_zone_hits")
+    tr = np.array([D.split[r] == "train" for r in range(len(d["meta"]))])
+    phases = np.array([phase_name(x) for x in d["position"][:, POSITION_QUESTIONS.index("phase")]])
+    types = np.array([m["types"] for m in d["meta"]], dtype=np.int64)
+    has = pf["fut_has_20"] & tr[:, None]
+    fut = pf["fut_nodes_20"]
+    out = {}
+    for t in range(1, 6):
+        for sign, side in ((1, "our"), (-1, "their")):
+            m_ = has & (types == sign * t)
+            if m_.sum() < 100:
+                continue
+            out[f"{side} {TYPE[t]}"] = dict(inactive20=float((fut[..., FM][m_] == 0).mean()), kz20=float((fut[..., KZ][m_] > 0).mean()), n=int(m_.sum()))
+            for ph in ("opening", "middlegame", "late middlegame", "ending"):
+                mp = m_ & (phases == ph)[:, None]
+                if mp.sum() >= 100:
+                    out[f"{side} {TYPE[t]} | {ph}"] = dict(inactive20=float((fut[..., FM][mp] == 0).mean()), kz20=float((fut[..., KZ][mp] > 0).mean()), n=int(mp.sum()))
+    return out
 
 
 def lookup(table: dict, cells: list[str], min_games: int = 30) -> tuple[str, dict] | None:
@@ -123,6 +158,10 @@ def lookup(table: dict, cells: list[str], min_games: int = 30) -> tuple[str, dic
 
 def load_table(path: Path = OUT) -> dict:
     return json.load(open(path))["table"] if path.exists() else {}
+
+
+def load_base(path: Path = OUT) -> dict:
+    return json.load(open(path)).get("base", {}) if path.exists() else {}
 
 
 def neighbourhood(rows_near: list[int], side: str, ptype: int, free_moves: float, data_dir: str = DATA, _cache={}) -> dict | None:

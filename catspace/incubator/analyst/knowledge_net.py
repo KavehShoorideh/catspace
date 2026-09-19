@@ -911,6 +911,7 @@ def load_model(ckpt_path: str, device=None):
         conf["d_geo"] = conf["d"]
     cfg = Config(**{k: v for k, v in conf.items() if k in Config.__dataclass_fields__}); model = KnowledgeNet(cfg)
     missing, unexpected = model.load_state_dict(ck["model"], strict=False)
+    model.loaded_modules = {k.split(".")[0] for k in ck["model"]}                # heads a checkpoint never trained stay at init: callers must not read them
     if missing:
         print(f"[kn] {ckpt_path}: {len(missing)} modules at init (pre-projection checkpoint): {sorted({m.split('.')[0] for m in missing})}", flush=True)
     device = device or torch.device("mps" if torch.backends.mps.is_available() else "cpu")

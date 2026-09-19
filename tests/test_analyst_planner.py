@@ -43,3 +43,22 @@ def test_needs_follow_the_named_differences():
 def test_budget_scales_with_sharpness():
     assert PL.budget_for(0.1)["level"] == "shallow" and PL.budget_for(0.3)["level"] == "normal" and PL.budget_for(0.7)["level"] == "deep"
     assert PL.budget_for(0.7)["combo_cap"] > PL.budget_for(0.1)["combo_cap"]
+
+
+def test_piece_serving_moves_trade_and_remove():
+    import chess
+    from catspace.incubator.analyst import rank
+    from catspace.incubator.analyst.planner import PieceIdea
+    from catspace.incubator.analyst.memo import Memo
+
+    class P:
+        pass
+    b = chess.Board("r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R w KQkq - 6 5")
+    plan = P()
+    plan.pieces = [PieceIdea(chess.C4, "our light-squared bishop on c4", True, .4, .2, .1, .2, .2, op="trade", value=0.03),
+                   PieceIdea(chess.C5, "their dark-squared bishop on c5", False, .2, .3, .4, .2, .2, op="remove", value=0.03),
+                   PieceIdea(chess.F6, "their kingside knight on f6", False, .2, .3, .4, .2, .2, op="", value=0.03)]      # no operator: no moves
+    got = {b.san(m): how for m, (idea, how) in rank.piece_serving_moves(b, plan, list(b.legal_moves), Memo()).items()}
+    assert got.get("Bd5") == "offers the trade"            # Nxd5 is the even exchange the move offers
+    assert got.get("Na4") == "goes for it"                 # the knight attacks the c5 bishop and does not fall
+    assert "Ng5" not in got and "Bxf7+" not in got         # the idea-less knight on f6 and a sacrifice are not served

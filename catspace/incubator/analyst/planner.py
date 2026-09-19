@@ -60,6 +60,24 @@ class Steer:
 
 
 @dataclass
+class PieceIdea:
+    square: int
+    text: str                            # "our light-squared bishop on c1"
+    ours: bool
+    p_inactive20: float                  # the head: no free moves 20 plies on
+    base_inactive20: float               # the corpus rate for this side and type
+    p_kz20: float                        # the head: hitting the enemy king zone 20 plies on
+    base_kz20: float
+    p_gone20: float                      # the fate head: off the board within 20 plies
+    op: str = ""                         # "trade" (ours, tends to be inactive) | "remove" (theirs, tends to be active) | ""
+    value: float | None = None           # the outcomes: the result when a piece like it was traded off minus kept
+    se: float | None = None
+    games: int = 0
+    cell: str = ""
+    line: str = ""
+
+
+@dataclass
 class Plan:
     code_now: int
     now_text: str
@@ -76,6 +94,7 @@ class Plan:
     sharp_window: float = 0.0            # a big threat within 10 plies (the sharpness head), else the code mass
     steer: list[Steer] = field(default_factory=list)
     avoid: list = field(default_factory=list)   # (text, transition value, notes): futures the outcomes say not to steer to
+    pieces: list = field(default_factory=list)  # PieceIdea: the per-piece futures and the action concepts they suggest
     budget: dict = field(default_factory=dict)
     lines: list[str] = field(default_factory=list)
 
@@ -90,6 +109,10 @@ class Planner:
         self.elo = elo                                                             # the player's level, for the transition table's band
         from .transitions import OUT as T_OUT
         self.transitions = json.load(open(T_OUT))["table"] if T_OUT.exists() else {}
+        from .piece_values import load_table as _pv_table, load_base as _pv_base
+        self.piece_table, self.piece_base = _pv_table(), _pv_base()
+        self.has_pieces = "piece_future_head" in getattr(self.model, "loaded_modules", set())
+        self._pf = None
 
     @torch.no_grad()
     def predict(self, board: chess.Board, g=None, memo=None, cp: int | None = None):
@@ -103,6 +126,9 @@ class Planner:
         cp_now = torch.tensor([math.tanh(cp / 400.0)], device=self.device) if cp is not None else None
         va = self.model.value_ahead(o["phi"], cp_now)[0].cpu().numpy()
         self._sharp_window = float(torch.sigmoid(self.model.sharp_head(o["phi"])[0, 0])) if hasattr(self.model, "sharp_head") else None
+        if self.has_pieces:
+            pfl, fl_ = self.model.piece_future(o["h"])
+            self._pf = (F.softmax(pfl[0], -1).cpu().numpy(), F.softmax(fl_[0], -1).cpu().numpy())      # (32, 2, Qf, buckets), (32, 2, 4)
         code_now = int(self.codebook.assign(g.position_vector()[None])[0])
         return g, pr, va, code_now
 
@@ -128,8 +154,51 @@ class Planner:
         plan.avoid = list(getattr(self, "_avoid", []))
         plan.sharp_window = self._sharp_window if self._sharp_window is not None else sharp10
         plan.budget = budget_for(plan.sharp_window, window=self._sharp_window is not None)
+        plan.pieces = self.piece_ideas(board, g, cp)
         plan.lines = narrate(board, plan)
         return plan
+
+    def piece_ideas(self, board: chess.Board, g, cp: int | None) -> list[PieceIdea]:
+        """Per piece (not pawns, not kings): how likely it is to be inactive / hitting the enemy king zone 20 plies
+        on (the per-piece head) against the corpus rate for its kind, and what trading it off has scored in positions
+        like this (piece_values, from outcomes). An idea is named only when the future stands out AND the outcomes
+        say the trade has paid by more than its standard error."""
+        if self._pf is None:
+            return []
+        from .pieces import describe
+        from .piece_values import cells_of, lookup, TYPE, phase_name
+        ph = phase_name(float(g.position.get("phase", 40.0)))
+        pf, fate = self._pf
+        FMq, KZq = K.PIECE_FUTURE_QUESTIONS.index("free_moves"), K.PIECE_FUTURE_QUESTIONS.index("king_zone_hits")
+        b_fm = int(np.searchsorted(self.buckets.edges[K.NODE_QUESTIONS.index("free_moves")], 0.0, side="right"))
+        b_kz = int(np.searchsorted(self.buckets.edges[K.NODE_QUESTIONS.index("king_zone_hits")], 0.0, side="right"))
+        out = []
+        for j, nd in enumerate(g.nodes[:K.MAX_PIECES]):
+            pc = nd.piece
+            if pc.piece_type in (chess.PAWN, chess.KING):
+                continue
+            ours = pc.color == board.turn; side = "our" if ours else "their"
+            base = self.piece_base.get(f"{side} {TYPE[pc.piece_type]} | {ph}") or self.piece_base.get(f"{side} {TYPE[pc.piece_type]}", {})      # its kind, in this phase
+            idea = PieceIdea(nd.square, describe(board, nd.square, board.turn), ours, float(pf[j, 1, FMq, b_fm]), float(base.get("inactive20", float("nan"))),
+                             float(1.0 - pf[j, 1, KZq, b_kz]), float(base.get("kz20", float("nan"))), float(1.0 - fate[j, 1, 0]))
+            lk = lookup(self.piece_table, cells_of(side, pc.piece_type * (1 if ours else -1), nd.answers.get("free_moves", 0.0), nd.answers.get("king_zone_hits", 0.0), cp))
+            if lk is not None:
+                idea.cell, v = lk; idea.value, idea.se, idea.games = v["diff"], v["se"], min(v["games_gone"], v["games_kept"])
+            stands_out = (ours and idea.p_inactive20 >= max(0.3, 1.25 * idea.base_inactive20)) or \
+                         (not ours and idea.p_kz20 >= max(0.25, 1.25 * idea.base_kz20))
+            pays = idea.value is not None and idea.value >= 0.02 and idea.value > idea.se
+            if stands_out:
+                idea.op = ("trade" if ours else "remove") if pays else ""
+                if ours:
+                    what = f"no free moves in {idea.p_inactive20:.0%} of futures 20 plies on ({side} {TYPE[pc.piece_type]}s in the {ph}: {idea.base_inactive20:.0%})"
+                else:
+                    what = f"hits our king zone in {idea.p_kz20:.0%} of futures 20 plies on ({side} {TYPE[pc.piece_type]}s in the {ph}: {idea.base_kz20:.0%})"
+                val = (f"trading off a piece like it has scored {idea.value:+.3f} (se {idea.se:.3f}, {idea.games} games; {idea.cell})" if idea.value is not None else "the outcomes have too few games to price trading it")
+                verdict = f" -- {idea.op} it." if idea.op else " -- the outcomes do not say trading it pays."
+                idea.line = f"{idea.text[0].upper()}{idea.text[1:]}: {what}; {val}{verdict}"
+            out.append(idea)
+        out.sort(key=lambda i: -(i.value or 0.0) if i.op else (0.0 if i.line else 1.0))
+        return out
 
     def steering(self, board: chess.Board, g, p20: np.ndarray, expected: float, code_now: int, top: int = 2) -> list[Steer]:
         """The futures worth steering to: reachable (some predicted mass), better than the expectation, and turned
@@ -253,6 +322,8 @@ def narrate(board: chess.Board, plan: Plan) -> list[str]:
         out.append(f"Not a target, though it scores well: {text} -- the outcomes price its transitions {tv:+.2f} here ({', '.join(notes)}).")
     if not plan.steer:
         out.append("No reachable future beats the expectation by much: play the position as it is.")
+    for idea in [i for i in getattr(plan, "pieces", []) if i.line][:3]:
+        out.append(idea.line)
     return out
 
 
