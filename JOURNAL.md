@@ -22702,3 +22702,18 @@ hanging, trapped, attacking up or hitting the king zone. Fixed: a question with 
 bucket per value (edges = the distinct values but the smallest; searchsorted-right). Old checkpoints carry
 their own bucket state and load unchanged; the next training (kn_pieces) is the first to see these answers --
 a confound to remember when its numbers move: the new head AND the unblinding land together.
+
+## 2026-09-18 23:49 PDT — per-piece futures, step D: the value of a piece traded off, from outcomes (thin)
+
+`piece_values.py fit` on the train split of Kaveh's games: 351,708 piece-rows whose window of 20 plies kept the
+material even; the contrast = the mover's result when the piece was gone within 20 plies minus when it stayed,
+cells by side x type x activity now (free moves) x king zone x evaluation band; se clustered by game. OBS, the
+cells closest to Kaveh's example: our bishop with no free moves +0.028 (se 0.023; 549 / 695 games); their knight
+with 3-5 free moves +0.030 (se 0.017), with 1-2 +0.035 (se 0.023), with none +0.003; our bishop with no free moves
+when WINNING +0.183 (se 0.059), when losing -0.068 (se 0.063). Most cells lie within two se of zero: about a
+thousand games cannot price single pieces finely. The signs lean the way Kaveh's intuition says (trade the
+inactive bishop, remove the active knight), which is a hint, not a finding. The fix for power is the Lichess
+corpus (60,000 games), which needs a cheap activity measure: free_moves needs the graph's cones and costs;
+the legal mobility of the piece is computable without the graph, a measurement worth making next.
+Also planned (not built; Kaveh's request mid-build): patterns that allow attacks -- pairs/triples of pieces
+with their graph relations, mined against the events they allow (a piece lost, a threat, a passed pawn), by lift.
