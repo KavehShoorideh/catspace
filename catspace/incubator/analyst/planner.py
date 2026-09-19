@@ -35,7 +35,7 @@ from .regimes import Codebook, CODE_KEYS, BIG
 from . import knowledge_net as K
 from .experts import net_sample
 
-DEFAULT_CKPT = "data/derived/checkpoints/kn_future4/best.pt"
+DEFAULT_CKPT = "data/derived/checkpoints/kn_pieces/best.pt"      # 2026-09-19: the planning heads + the per-piece heads; equal or better than kn_future4 on the same test rows
 
 
 @dataclass

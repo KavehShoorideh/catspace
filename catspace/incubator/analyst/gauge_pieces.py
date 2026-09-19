@@ -198,11 +198,42 @@ def repertoire(ckpt: str, pgn: str = "data/lichess/huvaxshtra_all.pgn", player: 
         out[f"{fam} | {colour}"] = rows
     json.dump(out, open(OUT / "repertoire.json", "w"), indent=1)
     log(f"[repertoire] {len(out)} opening groups in {time.perf_counter() - t0:.0f}s")
+    report_repertoire(out, log)
+
+
+def report_repertoire(out: dict, log=print, top: int = 2):
+    """THE LINE AGAINST THE PLAYER'S OTHER LINES: for each piece label and colour, the opening's rate minus the
+    weighted mean over all of the player's openings with that colour at the same ply -- 'does THIS line make my
+    bishop inactive?' (the phase base rate is the same comparison for every line and flags queens and rooks
+    everywhere, 2026-09-19)."""
+    pool = defaultdict(lambda: [0.0, 0.0, 0])                     # (label, colour) -> sum p_inactive*n, sum p_kz*n, n
+    for key, rows in out.items():
+        colour = key.split(" | ")[1]
+        for label, pi, bi, pk, bk, n_ in rows:
+            a = pool[(label, colour)]; a[0] += pi * n_; a[1] += pk * n_; a[2] += n_
+    log("[repertoire] each line against the player's other lines (same colour, same ply): the per-piece futures that stand out")
+    for key, rows in out.items():
+        colour = key.split(" | ")[1]
+        dev = []
+        for label, pi, bi, pk, bk, n_ in rows:
+            a = pool[(label, colour)]
+            if a[2] <= n_:
+                continue
+            others_in = (a[0] - pi * n_) / (a[2] - n_); others_kz = (a[1] - pk * n_) / (a[2] - n_)
+            if label.startswith("your"):
+                dev.append((pi - others_in, f"{label:<30} no free moves 20 plies on {pi:.0%} (your other lines {others_in:.0%}; n={n_})"))
+            else:
+                dev.append((pk - others_kz, f"{label:<30} hits your king zone 20 plies on {pk:.0%} (your other lines {others_kz:.0%}; n={n_})"))
+        dev.sort(key=lambda d: -d[0])
+        if dev:
+            log(f"  {key}:")
+            for d, text in dev[:top]:
+                log(f"      {text}")
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["heads", "engine", "repertoire", "report-engine"])
+    ap.add_argument("cmd", choices=["heads", "engine", "repertoire", "report-engine", "report-repertoire"])
     ap.add_argument("--ckpt", default="data/derived/checkpoints/kn_pieces/best.pt")
     ap.add_argument("--n", type=int, default=300); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--ply", type=int, default=16); ap.add_argument("--min-games", type=int, default=8)
@@ -213,6 +244,8 @@ def main(argv=None):
         engine_gauge(a.ckpt, n=a.n, seed=a.seed)
     elif a.cmd == "report-engine":
         report_engine(json.load(open(OUT / "engine.json")))
+    elif a.cmd == "report-repertoire":
+        report_repertoire(json.load(open(OUT / "repertoire.json")))
     else:
         repertoire(a.ckpt, ply=a.ply, min_games=a.min_games)
 
