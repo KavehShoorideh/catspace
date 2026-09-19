@@ -22741,3 +22741,15 @@ FOUND AND FIXED on the way: evaluating an old checkpoint through Data refitted t
 loading the checkpoint's; harmless while the fitting rule was fixed, it broke old checkpoints once the sparse-
 answer buckets landed (kn_future4 read cp R2 0.21 instead of 0.75). Data now takes the checkpoint's position
 buckets on every evaluation path; the planner and the app always loaded them and were never affected.
+
+## 2026-09-19 00:22 PDT — per-piece futures, step F: the outcome values do not agree with the engine
+
+`gauge_pieces engine`, 300 test positions of Kaveh's games (ply >= 12): for every non-pawn piece with a priced
+trade (the piece-value table), the moves that carry the trade out (trade ours / remove theirs, forced), and the
+engine's evaluation of the best such move minus its best move (depth 12). OBS, 667 priced trades: Spearman of the
+outcome value against that gap +0.046 (p 0.235; zero is the baseline); ours +0.016, theirs -0.004. By the value's
+sign: value > +0.02 (n 185) median gap -77 cp, within 30 cp of the best 34%; |value| <= 0.02 (n 267) -71 cp, 31%;
+value < -0.02 (n 215) -124 cp, 28% -- a faint monotone trend at the extremes, nothing to lean on. Two readings, not
+exclusive: the table is too thin (step D: most cells within 2 se of zero), and the engine's verdict on one
+position is not the outcome's over twenty plies at 1300. Either way the planner must not recommend these trades
+on this evidence; its ideas only fire when the value beats its se, which the table rarely allows.
