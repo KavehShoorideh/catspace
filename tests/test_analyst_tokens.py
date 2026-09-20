@@ -12,7 +12,7 @@ def test_child_result_is_in_the_parent_movers_view_and_white_view_is_consistent(
     # must equal the tablebase's own verdict on the child position converted to White's view
     import chess.syzygy, random
     tb = chess.syzygy.open_tablebase("assets/tablebases/syzygy")
-    b = chess.Board("7k/8/8/8/8/2q5/8/K7 b - - 0 1")               # Black to move, a queen up: Black wins
+    b = chess.Board("7k/8/8/8/2q5/8/8/K7 b - - 0 1")               # Black to move, a queen up: Black wins
     r = row_of(b, tb, random.Random(0), "KQvK")
     assert r is not None and r["wdl"] == 2 and T.white_wdl(r["wdl"], b.turn) == -1
     cb = chess.Board(r["child"]["fen"])

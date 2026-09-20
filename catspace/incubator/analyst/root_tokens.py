@@ -211,7 +211,7 @@ def siblings(ckpt: str, log=print, max_pairs: int = 6000):
             best_uci = max(sib, key=lambda u: sib[u]); worse = [u for u in sib if np.sign(sib[u]) < np.sign(sib[best_uci])]
             if not worse:
                 continue
-            w_uci = random.Random(i).choice(worse)
+            w_uci = random.Random(int(i)).choice(worse)
             outs = []
             for u in (best_uci, w_uci):
                 nb = b.copy(stack=False); nb.push(chess.Move.from_uci(u))
@@ -246,7 +246,7 @@ def siblings(ckpt: str, log=print, max_pairs: int = 6000):
                 if not worse:
                     continue
                 xs = []
-                for u in (best_uci, random.Random(i).choice(worse)):
+                for u in (best_uci, random.Random(int(i)).choice(worse)):
                     nb = b.copy(stack=False); nb.push(chess.Move.from_uci(u)); xs.append(features_of_board(nb, index))
                 Xd.append(xs[0] - xs[1]); yd.append(1); Xd.append(xs[1] - xs[0]); yd.append(0)
             if yd:
