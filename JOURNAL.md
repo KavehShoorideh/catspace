@@ -22827,3 +22827,30 @@ relation that predicts the code across all materials, not the one that matters h
 is the concept, and that is a smaller, sharper target than "when does the code fire".
 Unbuilt: the advised-Maia test (a policy reweighted toward moves that keep an advised invariant, played against
 tablebase-perfect defence; the shortest sufficient set) -- the conditionable player does not exist yet.
+
+## 2026-09-19 17:39 PDT — the lessons applied, and the one-point lesson bites: the tokens do not rank king moves
+
+Kaveh: "take learnings from the past and apply them here so that we don't chase our tails trying to prevent
+collapse -- but make sure those learnings actually apply." Checked against the memory:
+- collapse cure = repulsion, not width: the usage-entropy term was the VARIANCE half only; 8 of 32 codes were
+  identical copies = covariance collapse -> the covariance term on the soft tokens added (VICReg's second half).
+- test the losses, inspect the target distribution: unit tests for the coherence, usage and covariance terms and
+  for the sign conventions of the child's result; the diet printed at launch: train 70,215 rows, every row has a
+  reply child, the reply leaves the result unchanged in 77%, 11,048 rows with king-move siblings; result classes
+  (White's view) loss 4,889 / draw 23,187 / win 42,139 -- the materials put the stronger side as White, so
+  "White wins" is the prior the per-material majority baseline guards against; on the held materials 83% wins.
+- seed variance dwarfs pair CIs, sweeps must reach the final phase: two seeds at 30 epochs launched (the
+  regulariser weights were judged at 12).
+- wait one checkpoint / never one point: the Kf8-vs-Kd8 result was ONE position. `root_tokens siblings` over
+  ALL king-move pairs (best vs a worse move, the same parent), OBS: the tokens differ between the two children
+  in 62% of pairs, but the head's value from the tokens ranks the better move above the worse in only 57.7% on
+  test (1,408 pairs) and 45.1% on held materials (1,597) -- chance. The tokens carry the POSITION's result
+  (0.896) and not the one-move contrast; nothing in the objective asked for it. The single separating token
+  was a lucky point, as the lesson predicted.
+- the enumerated relations do better on the same task without any learning: a depth-3 tree on the DIFFERENCE
+  of relation features between the two children picks the better move 63.2% on test and 65.6% on held, and
+  its first split is readable: "the black king's safe region shrinks by more than 6 squares -> the worse move"
+  -- the king getting cut off, in the rules' words, found by enumeration alone (depth 1: 58%).
+Built: a sibling ranking loss (the head's value must rank the better child above the worse by a margin), off
+by default so the two running seeds are unaffected; the next run turns it on. The fix follows the lesson from
+2026-07-26: the loss must ask for the thing we measure.
