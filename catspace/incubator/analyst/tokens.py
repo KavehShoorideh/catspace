@@ -97,6 +97,32 @@ class Data:
         np.savez_compressed(cache, sq=self.sq, side=self.side, rel=self.rel, wdl=self.wdl, csq=self.csq, cside=self.cside, crel=self.crel, cwdl=self.cwdl, has_child=self.has_child)
         log(f"[tokens] {N} positions encoded in {time.perf_counter() - t0:.0f}s (cached); splits {dict(zip(*np.unique(self.split, return_counts=True)))}", flush=True)
 
+    def encode_siblings(self, log=print, cache: Path = Path("data/derived/endgames/encoded_siblings.npz")):
+        """For rows with king-move siblings of different results: the best child and one worse child, encoded."""
+        N = len(self.rows)
+        self.has_sib = np.zeros(N, bool)
+        if cache.exists():
+            z = np.load(cache)
+            if len(z["has_sib"]) == N:
+                for k in ("has_sib", "sib_idx", "ssq", "sside", "srel"):
+                    setattr(self, k, z[k])
+                log(f"[tokens] siblings from the cache: {int(self.has_sib.sum())} rows", flush=True); return
+        rows_with = [i for i, r in enumerate(self.rows) if r.get("siblings")]
+        M = len(rows_with)
+        self.sib_idx = np.full(N, -1, np.int64); self.ssq = np.zeros((M, 2, 64), np.int64); self.sside = np.zeros((M, 2), np.int64); self.srel = np.zeros((M, 2, 64, 64, N_REL), np.int8)
+        rng = random.Random(0); t0 = time.perf_counter()
+        for j, i in enumerate(rows_with):
+            r = self.rows[i]; b = chess.Board(r["fen"]); sib = r["siblings"]
+            best = max(sib, key=lambda u: sib[u]); worse = [u for u in sib if np.sign(sib[u]) < np.sign(sib[best])]
+            if not worse:
+                continue
+            for c, u in enumerate((best, rng.choice(worse))):
+                nb = b.copy(stack=False); nb.push(chess.Move.from_uci(u))
+                self.ssq[j, c], self.sside[j, c], self.srel[j, c] = encode(nb)
+            self.has_sib[i] = True; self.sib_idx[i] = j
+        np.savez_compressed(cache, has_sib=self.has_sib, sib_idx=self.sib_idx, ssq=self.ssq, sside=self.sside, srel=self.srel)
+        log(f"[tokens] siblings encoded: {int(self.has_sib.sum())} rows in {time.perf_counter() - t0:.0f}s (cached)", flush=True)
+
     def diet(self, log=print):
         for sp in ("train", "val", "test", "held"):
             i = self.ids(sp)
@@ -114,6 +140,10 @@ class Data:
         idx = np.asarray(idx)
         out = dict(sq=torch.as_tensor(self.sq[idx]), side=torch.as_tensor(self.side[idx]), rel=torch.as_tensor(self.rel[idx]).float(), wdl=torch.as_tensor(self.wdl[idx]), dtz=torch.as_tensor(self.dtz[idx]),
                    csq=torch.as_tensor(self.csq[idx]), cside=torch.as_tensor(self.cside[idx]), crel=torch.as_tensor(self.crel[idx]).float(), cwdl=torch.as_tensor(self.cwdl[idx]), has_child=torch.as_tensor(self.has_child[idx]))
+        if getattr(self, "has_sib", None) is not None and hasattr(self, "ssq"):
+            hs = self.has_sib[idx]; j = self.sib_idx[idx][hs]
+            out["has_sib"] = torch.as_tensor(hs); out["ssq"] = torch.as_tensor(self.ssq[j]); out["sside"] = torch.as_tensor(self.sside[j]); out["srel"] = torch.as_tensor(self.srel[j]).float()
+            out["sib_white"] = torch.as_tensor(self.side[idx][hs])                     # the parent mover: the children's values are read in that view
         return {k: v.to(device) for k, v in out.items()}
 
 
@@ -136,6 +166,8 @@ class Config:
     temp: float = 2.0                # the logits' spread per code after normalization
     w_dtz: float = 1.0               # the value's magnitude (|dtz| buckets) from the tokens: WDL alone needs two bits and asks for no structure
     code_dropout: float = 0.25       # codes dropped at the head's input: the result must be spread over many codes
+    w_sib: float = 0.0               # SIBLINGS: the head's value (from the tokens) must rank the better king move above a worse one (2026-09-19: without it, 58% on test, 45% on held -- chance)
+    sib_margin: float = 0.5
     seed: int = 1
 
 
@@ -218,7 +250,15 @@ def losses(model: TokenNet, b: dict, cfg: Config, warm: bool = False) -> dict:
         out["coh_same_d"] = (same * d).sum() / same.sum().clamp(min=1); out["coh_diff_d"] = ((1 - same) * d).sum() / (1 - same).sum().clamp(min=1)
     else:
         out["coh"] = p.sum() * 0
-    out["total"] = out["wdl"] + cfg.w_dtz * out["dtz"] + (0.0 if warm else cfg.w_coh) * out["coh"] + cfg.w_sparse * out["sparse"] + cfg.w_use * out["use"] + cfg.w_cov * out["cov"]
+    if cfg.w_sib > 0 and "has_sib" in b and b["has_sib"].any():
+        M = b["ssq"].shape[0]
+        os_ = model(b["ssq"].reshape(2 * M, 64), b["sside"].reshape(2 * M), b["srel"].reshape(2 * M, 64, 64, N_REL), soft=warm)
+        pr = os_["logits"].softmax(-1).view(M, 2, 3); val = (pr[..., 2] - pr[..., 0]) * (b["sib_white"].float() * 2 - 1)[:, None]      # White's view -> the parent mover's view
+        out["sib"] = F.relu(cfg.sib_margin - (val[:, 0] - val[:, 1])).mean()
+        out["sib_ranked"] = (val[:, 0] > val[:, 1]).float().mean()
+    else:
+        out["sib"] = p.sum() * 0
+    out["total"] = out["wdl"] + cfg.w_dtz * out["dtz"] + (0.0 if warm else cfg.w_coh) * out["coh"] + cfg.w_sparse * out["sparse"] + cfg.w_use * out["use"] + cfg.w_cov * out["cov"] + cfg.w_sib * out["sib"]
     return out
 
 
@@ -267,6 +307,8 @@ def train(a):
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=0.01)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     data.diet()
+    if cfg.w_sib > 0:
+        data.encode_siblings()
     tr = data.ids("train"); steps = len(tr) // cfg.batch
     print(f"[tokens] {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M params; train {len(tr)} val {len(data.ids('val'))} test {len(data.ids('test'))} held {len(data.ids('held'))}; {steps} steps/epoch", flush=True)
     t0 = time.perf_counter(); log = open(out / "steps.jsonl", "w")
