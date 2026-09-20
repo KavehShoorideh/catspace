@@ -22873,3 +22873,40 @@ or the value difference lives in the head, not the codes -- the rules' relations
 reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' regions meet after Kf8 only).
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
+
+## 2026-09-20 00:05 PDT — canonical concepts: the deterministic path over the fixed vocabulary, first numbers
+
+Kaveh: concepts must be CANONICAL -- the same from every run; rules-based at least when explaining. Measured
+first: the two seeds' rooted vocabularies shared 16 of 40 relations (Jaccard 0.40): rooting after the fact is
+readable, not canonical. Built `canon.py`: the vocabulary fixed by the rules (627 slot-named region relations
+that occur, plus 171 conjunctions of the leading 30 singles), the selection an L1 regularization path of a
+multinomial logistic model on the tablebase result -- convex, unique, so the entry order is the data's.
+The naive fit (features per row in Python, six full paths, three bootstraps) took 46 min; the incremental design
+(one new column per concept, warm-started refits) is what scales and is not yet built.
+OBS: test accuracy 0.832 (majority 0.771; the token network 0.899; the rooted-token trees 0.786) with 680
+relations at C 0.05; the path is the sparsity-accuracy curve: 229 relations 0.776, 340 0.808, 446 0.827, 524
+0.834, 680 0.836 (val). Held-out materials 0.579 (own majority 0.830; the network 0.829): the SLOT-NAMED
+vocabulary does not transfer -- KBNvK's bishop-and-knight slots are rare in training (gap to the network
++0.66 there, +0.16 on KQvKRP, -0.07 on KRPvKP). King-move pairs: 71.2% on test (the network with the ranking
+loss 74.5), 58.7% on held (64.9). CROSS-RUN IDENTITY: the same fit over shuffled rows selects the identical
+set; the entry order agrees at 680 of 779 positions (ties within one regularization step). BOOTSTRAP: the
+leading 20 concepts are all among the leading 20 in every resample. The leading concepts, in the data's order:
+the white rook's contested size; the white king's safe size; the white queen's safe size; the black pawn's safe
+promotion squares (win -0.15, loss +0.24 for White) and its conjunctions with the kings' distance to the enemy
+king's zone (loss +0.47); the black bishop's contested size; a white pawn's contested size with the white king's
+safe size (draw +0.21). Readable, canonical, and coarse: counts of squares rather than the relations a player
+names.
+Kaveh's position: the model values Kf8 -0.50 and Kd8 -0.49 -- it does not separate them; the differing
+relations in canonical order put "the white rook reaches the black king's square" (rank 287) and "the rook
+reaches the black king's zone in 2 safe steps -> never" (rank 343) as the movers, and the prefix rule reported a
+wrong half-shift because a large positive and a larger negative cancel: the explanation needs the differing
+relations ordered by canonical rank but the prefix chosen by the shift's magnitude, or the sign changes hide.
+What this says: canonicality is achieved (identity and stability both hold); the price is 7 points of accuracy
+on seen materials and the transfer failure, and both point at the vocabulary, which is what the proposal loop
+is for. The first residual clusters are named by the gap table: KBNvK, KQPvKQ, KRvKN, KRRvKR -- materials
+where the slot-named relations miss something typed by ROLE (any minor piece, any rook) rather than by slot.
+Design agreed with Kaveh tonight: a versioned, append-only CONCEPT BANK of programs over the rules' vocabulary;
+a language model proposes new checks against the training residual; admission by the deterministic selection on
+held-out data; the learner on top predicts the partition of moves into result-keeping and result-losing plus
+the human move at the level, gauged by predicting human game outcomes beside rating-only and engine-only
+baselines; training is iterative, each round a bank version cited by every explanation.
