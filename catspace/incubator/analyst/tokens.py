@@ -97,6 +97,16 @@ class Data:
         np.savez_compressed(cache, sq=self.sq, side=self.side, rel=self.rel, wdl=self.wdl, csq=self.csq, cside=self.cside, crel=self.crel, cwdl=self.cwdl, has_child=self.has_child)
         log(f"[tokens] {N} positions encoded in {time.perf_counter() - t0:.0f}s (cached); splits {dict(zip(*np.unique(self.split, return_counts=True)))}", flush=True)
 
+    def diet(self, log=print):
+        for sp in ("train", "val", "test", "held"):
+            i = self.ids(sp)
+            if len(i) == 0:
+                continue
+            hc = self.has_child[i]; same = (self.wdl[i][hc] == self.cwdl[i][hc]).mean() if hc.any() else float("nan")
+            sib = sum(1 for r in np.asarray(self.rows, dtype=object)[i] if r.get("siblings"))
+            log(f"[tokens] diet {sp}: {len(i)} rows; with a reply child {int(hc.sum())} (result unchanged by the reply {100 * same:.0f}%); with king-move siblings of different results {sib}; "
+                f"result classes {np.bincount(self.wdl[i], minlength=3).tolist()}", flush=True)
+
     def ids(self, split):
         return np.nonzero(self.split == split)[0]
 
@@ -118,7 +128,8 @@ class Config:
     epochs: int = 10
     w_coh: float = 0.2               # coherence across a reply (at 1.0 it killed the codes: constancy is the cheapest coherence)
     w_sparse: float = 0.0            # mean activation (the bounded code bias already makes the codes sparse)
-    w_use: float = 2.0               # every code used (batch entropy)
+    w_use: float = 2.0               # every code used (batch entropy) -- the VARIANCE half of the collapse cure
+    w_cov: float = 1.0               # codes decorrelated (VICReg's covariance term on the soft tokens) -- the other half: 8 of 32 codes were identical copies
     warmup: int = 2                  # epochs with SOFT tokens into the head and no coherence (the bottleneck collapsed to two codes when hard from step one)
     plain: bool = False              # no bottleneck: the result from the board token (the ceiling / control)
     coh_margin: float = 3.0
@@ -196,6 +207,8 @@ def losses(model: TokenNet, b: dict, cfg: Config, warm: bool = False) -> dict:
     out["sparse"] = p.mean()
     u = p.mean(0).clamp(1e-4, 1 - 1e-4)                                                             # the batch usage per code
     out["use"] = -(u * u.log() + (1 - u) * (1 - u).log()).mean()                                   # entropy: dead or always-on codes cost
+    pc = p - p.mean(0, keepdim=True); cov = (pc.T @ pc) / max(1, p.shape[0] - 1)
+    out["cov"] = (cov - torch.diag(torch.diag(cov))).pow(2).sum() / p.shape[1]                          # off-diagonal covariance -> 0 (duplicate codes cost)
     hc = b["has_child"]
     if hc.any():
         oc = model(b["csq"][hc], b["cside"][hc], b["crel"][hc])
@@ -205,7 +218,7 @@ def losses(model: TokenNet, b: dict, cfg: Config, warm: bool = False) -> dict:
         out["coh_same_d"] = (same * d).sum() / same.sum().clamp(min=1); out["coh_diff_d"] = ((1 - same) * d).sum() / (1 - same).sum().clamp(min=1)
     else:
         out["coh"] = p.sum() * 0
-    out["total"] = out["wdl"] + cfg.w_dtz * out["dtz"] + (0.0 if warm else cfg.w_coh) * out["coh"] + cfg.w_sparse * out["sparse"] + cfg.w_use * out["use"]
+    out["total"] = out["wdl"] + cfg.w_dtz * out["dtz"] + (0.0 if warm else cfg.w_coh) * out["coh"] + cfg.w_sparse * out["sparse"] + cfg.w_use * out["use"] + cfg.w_cov * out["cov"]
     return out
 
 
@@ -237,7 +250,7 @@ def evaluate(model: TokenNet, data: Data, split: str, cfg: Config, device) -> di
         P = np.concatenate(P); hard = P > 0.5
         st["tokens_on_mean"] = float(hard.sum(1).mean()); use = hard.mean(0)
         st["codes_alive"] = int(((use > 0.02) & (use < 0.98)).sum()); st["codes_dead"] = int((use <= 0.02).sum()); st["codes_always"] = int((use >= 0.98).sum())
-        st["distinct_codes"] = int(len({tuple(r) for r in hard.astype(int).tolist()}))
+        st["distinct_codes"] = int(len({tuple(r) for r in hard.astype(int).tolist()})); st["on_rate"] = float(hard.mean())
         c = P - P.mean(0); sv = np.linalg.svd(c[:4000], compute_uv=False); pr = sv ** 2 / (sv ** 2).sum(); st["eff_rank"] = float(np.exp(-(pr * np.log(pr + 1e-12)).sum()))
     model.train()
     return st
@@ -253,6 +266,7 @@ def train(a):
     model = TokenNet(cfg).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=0.01)
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
+    data.diet()
     tr = data.ids("train"); steps = len(tr) // cfg.batch
     print(f"[tokens] {sum(p.numel() for p in model.parameters()) / 1e6:.2f}M params; train {len(tr)} val {len(data.ids('val'))} test {len(data.ids('test'))} held {len(data.ids('held'))}; {steps} steps/epoch", flush=True)
     t0 = time.perf_counter(); log = open(out / "steps.jsonl", "w")
