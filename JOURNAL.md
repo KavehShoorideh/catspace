@@ -22854,3 +22854,22 @@ collapse -- but make sure those learnings actually apply." Checked against the m
 Built: a sibling ranking loss (the head's value must rank the better child above the worse by a margin), off
 by default so the two running seeds are unaffected; the next run turns it on. The fix follows the lesson from
 2026-07-26: the loss must ask for the thing we measure.
+
+## 2026-09-19 18:22 PDT — two seeds, then the loss that asks for the thing measured
+
+Two seeds of the token model at 30 epochs (OBS, the same test rows): position result from the tokens 0.912 /
+0.906 (plain 0.875, majority 0.771) -- stable; on the HELD materials 0.846 / 0.716 -- seed variance dwarfs the
+gap, as the 2026-08-06 ruling says; the ROOTED tokens on held 0.825 / 0.824 -- the same number from either
+seed. So the claim survives in this form: the rules-rooted expressions transfer RELIABLY where the learned
+tokens transfer sometimes. Rooting: 4 / 3 codes rooted, 7 / 6 partly, the rest unrooted or dead (6-7). King-move
+pairs: the head's value ranks the better move 67.9% / 63.0% on test, 51.5% / 54.7% on held (chance).
+With the SIBLING RANKING LOSS on (the value from the tokens must rank the better king move above a worse one by
+a margin; the loss now asks for what the gauge measures): test pairs 74.5%, held 64.9% -- from chance to two
+thirds on unseen materials; the position result unchanged (0.899; held 0.829, rooted 0.826); 26 codes alive,
+3.6 on, 326 patterns. The relation-difference tree (no learning, depth 3) stays at 63.2 / 65.6: the trained
+tokens now beat it on seen materials and match it on unseen ones. On Kaveh's Kf8/Kd8 position this model
+flips no token between the two children (the earlier one flipped one): the pair is inside the 25% it gets wrong
+or the value difference lives in the head, not the codes -- the rules' relations still separate them (the rook
+reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' regions meet after Kf8 only).
+Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
+sibling pairs themselves, per material, is the next step; then the advised player.
