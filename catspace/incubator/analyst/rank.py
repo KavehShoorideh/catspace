@@ -249,6 +249,7 @@ def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None, base=No
 
 LAST_NETS: dict = {}                     # move uci -> the nets over the opponent's replies from the last sure_gain of it (this process)
 LAST_LEMMAS: dict = {}                   # move uci -> the family lemmas found over the opponent's replies (lemmas.py)
+LAST_TERMS: dict = {}                    # move uci -> the proof term of the last sure_gain (proof.py), checkable by the kernel
 FAMILY_LEMMAS = True                     # families of replies one answer refutes are searched once
 _PLANNER = None                          # the planning layer, loaded once per process (a small model on the CPU)
 
@@ -421,10 +422,13 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
         for r in lem.covers:
             covered[r] = lem
     family_net = {}
+    from .proof import Term, Just
+    term = Term(board.fen(), m.uci())
     for r in nb.legal_moves:
         lem = covered.get(r)
         if lem is not None and id(lem) in family_net:
             net = family_net[id(lem)]; nets.append(net)
+            term.replies[r.uci()] = Just("lemma", net, lem.text, lem.answer.uci(), (lem.family.mover, lem.family.opener))
             if worst is None or net < worst:
                 worst, worst_reply = net, r
             continue
@@ -436,13 +440,16 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
             after.push(lem.answer)                              # the family's representative, after the answer: what the exchange leaves
             net = leaf_value(after, side, first - took + value(nb, lem.family.opener), memo)
             family_net[id(lem)] = net
+            term.replies[r.uci()] = Just("lemma", net, lem.text, lem.answer.uci(), (lem.family.mover, lem.family.opener))
         else:
             net = leaf_value(after, side, first - took, memo, base=base, changed=changed_squares(nb, r))
+            term.replies[r.uci()] = Just("mate" if after.is_checkmate() else "leaf", net)
         nets.append(net)
         if worst is None or net < worst:
             worst, worst_reply = net, r
     LAST_NETS[m.uci()] = nets                                    # the reply spread, read by width() right after the call
     LAST_LEMMAS[m.uci()] = [lem.text for lem in lems]
+    term.claim = worst if worst is not None else 0.0; LAST_TERMS[m.uci()] = term
     if worst is None:
         return 0.0, ""
     if worst > 0:
