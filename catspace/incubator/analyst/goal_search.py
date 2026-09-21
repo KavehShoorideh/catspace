@@ -26,6 +26,7 @@ import chess
 from . import rules as R
 from .defense import defense, all_defenses, _defense
 from .lemmas import lemmas_after
+from .nodes import tick
 from .memo import Reads, changed_squares
 from .facts import value, material
 from .plans import derive, Goal
@@ -317,7 +318,7 @@ class GoalSearch:
             lem = covered.get(m)
             if lem is not None:
                 if id(lem) in represented:
-                    n.covered += 1; continue                   # closed by the lemma: no child of its own
+                    n.covered += 1; tick("covered"); continue   # closed by the lemma: no child of its own
                 represented.add(id(lem))
             b = n.board.copy(stack=False); b.push(m)
             t = n.target
@@ -342,7 +343,7 @@ class GoalSearch:
                 child.pn, child.dn = INF, 0.0
                 child.note = self.why_failed(child)
             n.children.append(child)
-            self.nodes += 1
+            self.nodes += 1; tick("gs")
         if not n.children:                                     # no legal moves: the side to move is stuck
             n.pn, n.dn = (INF, 0.0)
         self.expansions += 1

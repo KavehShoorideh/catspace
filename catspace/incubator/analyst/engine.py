@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
+from .nodes import tick
 from dataclasses import dataclass, asdict
 
 import chess
@@ -58,7 +59,7 @@ class Engine:
         if row:
             self.hits += 1
             return [Line(**d) for d in json.loads(row[0])]
-        self.calls += 1
+        self.calls += 1; tick("engine")
         if board.is_game_over():
             return []
         if not board.is_valid():                               # the side not to move in check, a missing king...: Stockfish segfaults on these
@@ -95,7 +96,7 @@ class Engine:
             self.hits += 1
             d = json.loads(row[0])
             return (Line(**d["line"]) if d["line"] else None), {int(a): b for a, b in d["scores"].items()}
-        self.calls += 1
+        self.calls += 1; tick("engine")
         scores, last = {}, None
         if not board.is_game_over():
             with self._eng.analysis(board, chess.engine.Limit(depth=depth), root_moves=[move], game=object()) as an:

@@ -29,6 +29,7 @@ from . import rules as R
 from .defense import defense, all_defenses
 from .facts import value, material
 from .lemmas import lemmas_after
+from .nodes import tick
 from .memo import changed_squares
 from .memo import Memo
 from .subgames import holdings, cost_of_move, mate_in_one
@@ -231,6 +232,7 @@ def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None, base=No
     check -- then the best evasion against their best capture after it (no standing pat in check). `base` is a
     ledger computed before the last move with the footprint of every entry; only the entries whose footprint the
     move touched (`changed`) are recomputed -- exact by the store's own validity rule."""
+    tick("ledger")
     from .regime import _best_capture
     if b.is_game_over():
         oc = b.outcome(); return 1000.0 if oc and oc.winner == side else (-1000.0 if oc and oc.winner is not None else 0.0)
@@ -419,6 +421,8 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
     # FAMILY LEMMAS (lemmas.py): a family of replies one answer refutes is evaluated once, by its representative
     # after the answer; the lemma is recorded for the explanation
     lems = lemmas_after(nb) if FAMILY_LEMMAS else []
+    if FAMILY_LEMMAS:
+        tick("lemma")
     covered = {}
     for lem in lems:
         for r in lem.covers:
@@ -429,7 +433,7 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
     for r in nb.legal_moves:
         lem = covered.get(r)
         if lem is not None and id(lem) in family_net:
-            net = family_net[id(lem)]; nets.append(net)
+            net = family_net[id(lem)]; nets.append(net); tick("covered")
             term.replies[r.uci()] = Just("lemma", net, lem.text, lem.answer.uci(), (lem.family.mover, lem.family.opener))
             if worst is None or net < worst:
                 worst, worst_reply = net, r

@@ -24,6 +24,7 @@ import chess.pgn
 
 from . import rules as R
 from .facts import value
+from .nodes import tick
 from .memo import Memo, changed_squares
 from .defense import defense, exposure_candidates, SLIDERS
 from .subgames import static_lemmas, mate_lemmas, holdings, components, cost_of_move, mate_in_one
@@ -160,6 +161,7 @@ def _through(board: chess.Board, a: int) -> list[tuple[int, int]]:
 
 # ---------------------------------------------------------------- the graph
 def build(board: chess.Board, memo: Memo | None = None, hops: int = 2, top_threats: int = 8) -> Graph:
+    tick("graph")
     memo = memo if memo is not None else Memo()
     t0 = time.perf_counter()
     with memo.recording() as acc:
