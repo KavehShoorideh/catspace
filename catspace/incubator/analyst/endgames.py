@@ -77,25 +77,26 @@ def row_of(board: chess.Board, tb, rng: random.Random, material: str) -> dict | 
             cw = wdl_of(tb, nb)
             if cw is not None:
                 child = dict(move=m.uci(), fen=nb.fen(), wdl=-cw)
-    # king-move siblings: two king moves with different results (the explanation task)
+    # EVERY legal move's result in the mover's view (the partition into result-keeping and result-losing moves:
+    # the decision target), and the king-move siblings with different results (the explanation task)
     ksq = board.king(board.turn)
-    kmoves = [m for m in legal if m.from_square == ksq]
-    outcomes = {}
-    for m in kmoves:
+    moves = {}
+    for m in legal:
         nb = board.copy(stack=False); nb.push(m)
         if nb.is_game_over():
-            outcomes[m.uci()] = 0 if nb.is_stalemate() or nb.is_insufficient_material() else 2
+            moves[m.uci()] = 0 if nb.is_stalemate() or nb.is_insufficient_material() else 2
         else:
             cw = wdl_of(tb, nb)
             if cw is not None:
-                outcomes[m.uci()] = -cw
+                moves[m.uci()] = -cw
+    outcomes = {u: v for u, v in moves.items() if chess.Move.from_uci(u).from_square == ksq}
     siblings = None
     if len({sign(v) for v in outcomes.values()}) > 1:
         siblings = {u: v for u, v in outcomes.items()}
     return dict(fen=board.fen(), material=material, wdl=w, dtz=dtz, pieces=pieces,
                 pairs={f"{chess.square_name(a)}-{chess.square_name(b_)}": v for (a, b_), v in rel["pairs"].items()},
                 unary={chess.square_name(s): v for s, v in rel["unary"].items()},
-                child=child, siblings=siblings)
+                child=child, siblings=siblings, moves=moves)
 
 
 def generate(materials: list[str], per_material: int, seed: int = 0, out: Path = OUT, log=print):
@@ -140,11 +141,12 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["generate", "stats"])
     ap.add_argument("--materials", default=",".join(MATERIALS_DEFAULT)); ap.add_argument("--per-material", type=int, default=4000); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--out", default=str(OUT))
     a = ap.parse_args(argv)
     if a.cmd == "generate":
-        generate(a.materials.split(","), a.per_material, a.seed)
+        generate(a.materials.split(","), a.per_material, a.seed, Path(a.out))
     else:
-        rows = load()
+        rows = load(Path(a.out))
         print(len(rows), "rows;", sum(r["siblings"] is not None for r in rows), "with king-move siblings;",
               {m: sum(1 for r in rows if r["material"] == m) for m in sorted({r["material"] for r in rows})})
 
