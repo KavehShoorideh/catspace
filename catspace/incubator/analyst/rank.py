@@ -26,6 +26,7 @@ import chess.pgn
 from . import rules as R
 from .defense import defense, all_defenses
 from .facts import value, material
+from .lemmas import lemmas_after
 from .memo import changed_squares
 from .memo import Memo
 from .subgames import holdings, cost_of_move, mate_in_one
@@ -247,6 +248,8 @@ def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None, base=No
 
 
 LAST_NETS: dict = {}                     # move uci -> the nets over the opponent's replies from the last sure_gain of it (this process)
+LAST_LEMMAS: dict = {}                   # move uci -> the family lemmas found over the opponent's replies (lemmas.py)
+FAMILY_LEMMAS = True                     # families of replies one answer refutes are searched once
 _PLANNER = None                          # the planning layer, loaded once per process (a small model on the CPU)
 
 
@@ -410,16 +413,36 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
     worst = None; worst_reply = None
     base = base_ledger(nb, side)
     nets = []
+    # FAMILY LEMMAS (lemmas.py): a family of replies one answer refutes is evaluated once, by its representative
+    # after the answer; the lemma is recorded for the explanation
+    lems = lemmas_after(nb) if FAMILY_LEMMAS else []
+    covered = {}
+    for lem in lems:
+        for r in lem.covers:
+            covered[r] = lem
+    family_net = {}
     for r in nb.legal_moves:
+        lem = covered.get(r)
+        if lem is not None and id(lem) in family_net:
+            net = family_net[id(lem)]; nets.append(net)
+            if worst is None or net < worst:
+                worst, worst_reply = net, r
+            continue
         took = capture_gain_of(nb, r, not side, memo) if nb.is_capture(r) else 0.0
         if took < 0:
             took = 0.0                                          # a losing capture: they would not
         after = nb.copy(stack=False); after.push(r)
-        net = leaf_value(after, side, first - took, memo, base=base, changed=changed_squares(nb, r))
+        if lem is not None:
+            after.push(lem.answer)                              # the family's representative, after the answer: what the exchange leaves
+            net = leaf_value(after, side, first - took + value(nb, lem.family.opener), memo)
+            family_net[id(lem)] = net
+        else:
+            net = leaf_value(after, side, first - took, memo, base=base, changed=changed_squares(nb, r))
         nets.append(net)
         if worst is None or net < worst:
             worst, worst_reply = net, r
     LAST_NETS[m.uci()] = nets                                    # the reply spread, read by width() right after the call
+    LAST_LEMMAS[m.uci()] = [lem.text for lem in lems]
     if worst is None:
         return 0.0, ""
     if worst > 0:
@@ -428,6 +451,8 @@ def sure_gain(board: chess.Board, m: chess.Move, memo=None, signed: bool = False
         why = f"hangs {-worst:g} ({nb.san(worst_reply)})"
     else:
         why = ""
+    if lems:
+        why = (why + "; " if why else "") + "lemma: " + lems[0].text
     return (worst if signed else max(0.0, worst)), why
 
 
