@@ -23068,3 +23068,19 @@ north angle is contested at e5 ("the shield is attacked 1x, defended 2x") -- the
 whole position, named by the angle; Black's south-west diagonal is open with the c4 bishop and the d4 queen
 able to use it. 3 tests. Not yet wired: the summary line in the analyst's output and the family prune in the
 mate/king-safety searches (a measurement to make: the search cost on puzzles with the closed families skipped).
+
+## 2026-09-21 00:26 PDT — with sparsity measured instead of optimized, the concept-only decision matches round one
+
+`concept_net_c4` (the decision a sum over concept instances and consequences only; the board and pieces as context;
+intervention consistency on the contrast; NO sparsity loss), OBS: the chosen move keeps the result 0.959 on test
+and 0.960 on held -- the unconstrained round-one run 0.959 / 0.962, round zero 0.928 / 0.913, the ten linear
+consequences alone 0.916 / 0.926, random 0.774. Explanation 5.5 terms (7.9 on test excluding ties, 2.8 on held);
+dropping the top concept token changes the choice in 13.6% (test) / 9.8% (held) -- up from 0-4% in the two runs
+with the sparsity loss, still low: the consequence terms carry most contrasts (Rf4: enemy_safe_checks -0.10, the
+enemy king's safe size -0.07) and the concept tokens contribute at the 0.01 level. The residual is unchanged in
+kind: KPvKP 38, KQPvKQ 38, KPPvKP 31 of 172 wrong on test; all 49 on held are KBNvK. Kaveh's position: Rf4 again,
+Kf8 not in the top five.
+Standing: round one's gain holds with a fully concept-typed decision path and no regularizer beyond
+intervention consistency; the four exits were all the sparsity term's, and measuring sparsity instead of
+optimizing it was the fix. Round two = registry version one (discovery) plus a "discovered checks available to
+the enemy after the move" consequence, against the same residual.
