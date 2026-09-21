@@ -23137,3 +23137,29 @@ redundant and the honest product is the static reading; if it disagrees but is o
 and fixing it is worth more than any lemma.
 Also standing: the opening is the worst phase (top-1 0/20) and the least rules-derivable; the lemma loop should
 not be judged there first.
+
+## 2026-09-21 15:09 PDT — the miner's first experiment: the pin's guard, recovered from counterexamples
+
+Kaveh: can we DISCOVER a lemma that was not programmed? The mathematicians' fourth mechanism (counterexample-
+driven refinement, as in Graffiti / Conjecturing) on the pin, whose answer we know in advance, so the experiment
+tests the miner and not chess. `mine.py pin`: the frame = an enemy slider S, our piece A on the line with
+nothing between, our piece B behind it with value(B) >= value(A), and the naive claim "a move of A off the line
+loses the result", judged by the corpus's exact partition of every legal move.
+OBS, 100,000 tablebase positions: 597 positions carry a pin in the frame; 676 moves of the pinned piece leave
+the line; the naive claim is WRONG in 475/676 = 70.3%. The guards the miner ranks, each = the share of off-line
+moves satisfying it that keep the result (base rate 70.3%): wins at least what the pin loses 36/36 = 100%;
+takes the pinner 287/291 = 98.6%; the pin is absolute 251/255 = 98.4%; gives check 88/92 = 95.7%. WITHOUT any
+guard: 151/345 = 43.8%. So the miner recovered exactly the guards Kaveh named -- take the pinner, give check,
+win enough -- from counterexamples, without them being written, and the pin binds (44% against a 70% base) but
+weakly.
+THE LIMIT, and it is the one Kaveh predicted: 100,000 five-man positions hold only 597 pins in the frame,
+because the defender usually has no slider. The pin is a middlegame object; the tablebase is the proving ground,
+not the territory. Launched the same experiment on middlegame positions from Kaveh's games with SEARCH as the
+oracle (Stockfish depth 14, "keeps" = within 50 cp of its best move), which is also the answer to "we have to
+use search on top of our operations": the miner's oracle is a search, and the lemma's worth is the search it
+saves later.
+Design notes agreed in the same conversation, now standing: the tablebase is the TEACHER, never the player (no
+probe at decision time); every lemma states its FRAME (the pieces and squares it depends on, and what must not
+be there), so what is proved among five pieces holds among thirty; prefer CONSTRAINT lemmas (a family refuted, a
+piece immobile, a line closed) over VALUE lemmas, which are shaped by the material present and cannot transfer;
+and a framed lemma can be proved by enumerating the frame's geometry -- exhaustively, without any tablebase.
