@@ -277,7 +277,7 @@ def losses(model, b, cfg):
     logp = o["score"].log_softmax(-1)
     tgt = keep.float() / keep.float().sum(-1, keepdim=True).clamp(min=1)
     has = keep.any(-1)
-    out = dict(policy=-(tgt * logp.masked_fill(~b["lm"], 0.0)).sum(-1)[has].mean() if has.any() else o["score"].sum() * 0,
+    out = dict(policy=-(tgt * logp.masked_fill(~b["lm"], 0.0)).sum(-1)[has].mean() if has.any() else o["score"].new_zeros(()),
                value=F.cross_entropy(o["value"], b["wdl"]))
     if cfg.w_int > 0 and cfg.concepts:
         # ON THE CONTRAST: removing a concept token must change (score(chosen) - score(runner-up)) by the token's attributed
@@ -295,7 +295,7 @@ def losses(model, b, cfg):
         valid = b["im"].any(-1) & torch.isfinite(margin) & torch.isfinite(m2)
         out["int"] = ((margin - m2) - attributed).abs()[valid].mean() if valid.any() else o["score"].sum() * 0
     else:
-        out["int"] = o["score"].sum() * 0
+        out["int"] = o["score"].new_zeros(())
     if cfg.concepts and cfg.w_attr_sparse > 0:
         pick, second, pt, pf, margin = contrast(o, b)
         a = pt[:, 1 + MAX_PIECES:].abs().masked_fill(~b["im"], 0.0)
@@ -304,7 +304,7 @@ def losses(model, b, cfg):
         a = a / a.sum(-1, keepdim=True).clamp(min=1e-9)
         out["attr_sparse"] = -(a * (a + 1e-9).log()).sum(-1).mean()
     else:
-        out["attr_sparse"] = o["score"].sum() * 0
+        out["attr_sparse"] = o["score"].new_zeros(())
     out["total"] = out["policy"] + cfg.w_value * out["value"] + cfg.w_int * out["int"] + cfg.w_attr_sparse * out["attr_sparse"]
     return out, o
 
