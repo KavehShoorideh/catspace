@@ -23084,3 +23084,29 @@ Standing: round one's gain holds with a fully concept-typed decision path and no
 intervention consistency; the four exits were all the sparsity term's, and measuring sparsity instead of
 optimizing it was the fix. Round two = registry version one (discovery) plus a "discovered checks available to
 the enemy after the move" consequence, against the same residual.
+
+## 2026-09-21 13:31 PDT — phase one: the node counter and the nodes-to-value curve (the baseline every lemma must beat)
+
+Plan §37 phase one, with Kaveh's amendment (progress per node as the headline; the tablebase as the potential).
+Built: `nodes.py` -- one counter across every searcher (ledger leaves, goal-search nodes, engine calls, graph
+builds, lemma passes, and the replies a lemma saved), weighted into a single work total (engine 50, graph 200,
+the rest 1); instrumented rank.leaf_value, GoalSearch's node creation, Engine.analyse and graph.build.
+`gauge_nodes.py` -- the curve on tablebase positions: the chosen move keeps the result, its REGRET against the
+best legal move's potential (Syzygy's DTZ is the distance to the next zeroing, so raw potential differences are
+noisy ply to ply; regret against the best move is exact and is what distance-optimal play means), the share of
+distance-optimal moves, the work, and regret per 1000 units of work.
+BASELINE, OBS, 150 test positions over all 25 materials, both modes:
+  budget   0: keeps 0.960 (random legal 0.767), regret 0.053 (random 0.271), distance-optimal 83.3%, work 485
+  budget  40: keeps 0.967, regret 0.046, optimal 84.0%, work 4,629
+  budget 160: keeps 0.967, regret 0.046, optimal 84.0%, work 16,372
+  the lemmas: identical decisions, +15 work per position, 1 reply saved at budget 160 (no discovered-check
+  families in this corpus to speak of: the endgames are small and sliders rarely shield).
+THE FINDING, and it is the one the phase was built to expose: from budget 0 to 160 the work rises 34x and buys
+0.7 points of decision and 0.007 of regret. Our search is paying for almost nothing on five-man endgames -- the
+ledger's static reading already picks a result-keeping move 96% of the time and a distance-optimal one 83%.
+So the honest baseline for the lemma loop is not "search is expensive and lemmas will make it cheap" but
+"search is ALREADY not earning its cost here; a lemma has to beat a very cheap static reading". Two consequences:
+the corpus for the loop must include positions where search DOES earn its cost (deeper middlegames, mate
+puzzles, the KBNvK-style long conversions), and the first thing to mine is not speed but the 4% of positions
+where the static reading picks a losing move.
+The lemma overhead is now visible and cheap (15 units, ~3% of the budget-0 cost): the gate did its job.
