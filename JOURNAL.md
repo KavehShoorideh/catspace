@@ -23021,3 +23021,33 @@ a logistic policy over the ten consequence features alone.
   concept tokens contribute at the third decimal, two hundred of them, and their sum is worth three points --
   the diffusion exit at a scale the 2-decimal readout hides. Correction to the line above: not "the
   transformer contributing nothing"; contributing invisibly.
+
+## 2026-09-20 23:58 PDT — family lemmas and a proof kernel: the Be6 chain, stated by the search
+
+Kaveh's position (r3kb1r/ppp1qpp1/3pbn1p/4P3/2BQ1B2/2N5/PPP2PPP/R3K2R w, Black just played Be6, unpinning White's
+e5 pawn) and his reasoning: the knight is takeable; the worry is a discovered check by any bishop move; the
+pawn on f6 then attacks the queen, so fxe7 answers every one of them; the whole bishop family is pruned. The
+analyst before today: finds exf6 (the engine +4.31), says "the knight falls now", and never states any of the
+four steps -- it would have searched each bishop move. Mechanically checked: seven bishop moves discover check,
+all answered by fxe7, none a double check.
+Built, Kaveh's "do it" and "take inspiration from proof assistants":
+`lemmas.py` -- FAMILY LEMMAS: a family = the opponent's replies by one piece that open one line onto our king
+(discovered checks), a lemma = one answer of ours (a capture of the opener, not by the king, not a losing
+exchange) legal after every member; the ledger's reply minimum searches a refuted family once (its representative
+after the answer; members that also capture are searched on their own). OBS on exf6: the sure-gain evaluation
+101 ms against 237 ms, the same gain, and the reason now reads "lemma: any move of the bishop on e6 discovers
+check from the queen on e7; fxe7 answers every one of them (6 replies searched once; 1 that also captures
+searched on its own)".
+`proof.py` -- PROOF TERMS AND A KERNEL, the LCF split: the searcher produces a term (our move; for every legal
+reply a justification: a priced leaf = a HOLE, a mate by the rules = proven, a lemma application = proven by
+re-checking the family and the answer); the kernel knows only the rules and checks legality, completeness of the
+replies, each lemma's membership and answer, and that the claim does not exceed the minimum. On exf6: "29
+replies: 23 priced leaves, 0 mates, 6 closed by lemma; kernel OK; 6 replies proven by the rules, 23 rest on the
+ledger's prices". Forgeries are refused: a lemma claimed on Qxf6 ("not a member of the claimed family"), a reply
+left out ("replies not covered"), a claim above the minimum, a mate that is not. 13 + 5 tests pass, the older
+threat and goal-search tests among them.
+Not built yet: the DISCOVERY concept in the registry and the "enemy's discovered checks after the move"
+consequence (the move-consequence feature reads 0 safe checks after exf6 because it looks for a piece moving TO
+a checking square, not off a line) -- deferred until the running concept-net gauge finishes, since the registry's
+size is baked into the checkpoint it will load. Lean or Coq themselves: encoding chess would be a project of
+its own and would not buy search; the kernel-and-terms design is what was worth taking.
