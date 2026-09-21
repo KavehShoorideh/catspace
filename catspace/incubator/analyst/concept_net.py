@@ -252,6 +252,22 @@ class ConceptNet(nn.Module):
         return dict(score=score, per_tok=per_tok, per_feat=per_feat, alpha=alpha, value=self.value_head(h[:, 0]), mask=mask)
 
 
+def contrast(o, b):
+    """The decision's attribution: per-token and per-consequence contributions to score(chosen) - score(runner-up).
+    A constant offset cancels; a diffuse attribution still has to be consistent under intervention."""
+    sc = o["score"]
+    pick = sc.argmax(-1)
+    sc2 = sc.scatter(1, pick[:, None], float("-inf")); second = sc2.argmax(-1)
+    T = o["per_tok"].shape[-1]
+    pt = o["per_tok"].gather(1, pick[:, None, None].expand(-1, 1, T)).squeeze(1) - o["per_tok"].gather(1, second[:, None, None].expand(-1, 1, T)).squeeze(1)
+    pf = None
+    if o.get("per_feat") is not None:
+        Fn = o["per_feat"].shape[-1]
+        pf = o["per_feat"].gather(1, pick[:, None, None].expand(-1, 1, Fn)).squeeze(1) - o["per_feat"].gather(1, second[:, None, None].expand(-1, 1, Fn)).squeeze(1)
+    margin = sc.gather(1, pick[:, None]).squeeze(1) - sc.gather(1, second[:, None]).squeeze(1)
+    return pick, second, pt, pf, margin
+
+
 def losses(model, b, cfg):
     o = model(b)
     keep = b["keep"] & b["lm"]
@@ -261,9 +277,9 @@ def losses(model, b, cfg):
     out = dict(policy=-(tgt * logp.masked_fill(~b["lm"], 0.0)).sum(-1)[has].mean() if has.any() else o["score"].sum() * 0,
                value=F.cross_entropy(o["value"], b["wdl"]))
     if cfg.w_int > 0 and cfg.concepts:
-        # the chosen move's top concept token: predicted effect of removing it = its attributed contribution; actual effect = the score's change
-        pick = o["score"].argmax(-1)
-        pt = o["per_tok"].gather(1, pick[:, None, None].expand(-1, 1, o["per_tok"].shape[-1])).squeeze(1)
+        # ON THE CONTRAST: removing a concept token must change (score(chosen) - score(runner-up)) by the token's attributed
+        # contribution to that contrast; a token contributing equally to both moves is attributed nothing and must change nothing
+        pick, second, pt, pf, margin = contrast(o, b)
         pt_inst = pt[:, 1 + MAX_PIECES:].masked_fill(~b["im"], 0.0)
         if cfg.int_random:
             r = torch.rand_like(pt_inst).masked_fill(~b["im"], -1.0); top = r.argmax(-1)
@@ -272,15 +288,17 @@ def losses(model, b, cfg):
         attributed = pt_inst.gather(1, top[:, None]).squeeze(1)
         b2 = dict(b); b2["im"] = b["im"].clone(); b2["im"][torch.arange(len(top)), top] = False
         o2 = model(b2)
-        s1 = o["score"].gather(1, pick[:, None]).squeeze(1); s2 = o2["score"].gather(1, pick[:, None]).squeeze(1)
-        valid = b["im"].any(-1) & torch.isfinite(s1) & torch.isfinite(s2)
-        out["int"] = ((s1 - s2) - attributed).abs()[valid].mean() if valid.any() else o["score"].sum() * 0
+        m2 = o2["score"].gather(1, pick[:, None]).squeeze(1) - o2["score"].gather(1, second[:, None]).squeeze(1)
+        valid = b["im"].any(-1) & torch.isfinite(margin) & torch.isfinite(m2)
+        out["int"] = ((margin - m2) - attributed).abs()[valid].mean() if valid.any() else o["score"].sum() * 0
     else:
         out["int"] = o["score"].sum() * 0
     if cfg.concepts and cfg.w_attr_sparse > 0:
-        pick = o["score"].argmax(-1)
-        pt = o["per_tok"].gather(1, pick[:, None, None].expand(-1, 1, o["per_tok"].shape[-1])).squeeze(1)
-        a = pt[:, 1 + MAX_PIECES:].abs().masked_fill(~b["im"], 0.0); a = a / a.sum(-1, keepdim=True).clamp(min=1e-9)
+        pick, second, pt, pf, margin = contrast(o, b)
+        a = pt[:, 1 + MAX_PIECES:].abs().masked_fill(~b["im"], 0.0)
+        if pf is not None:
+            a = torch.cat([a, pf.abs()], -1)                                                                  # the consequences count as explanation terms too
+        a = a / a.sum(-1, keepdim=True).clamp(min=1e-9)
         out["attr_sparse"] = -(a * (a + 1e-9).log()).sum(-1).mean()
     else:
         out["attr_sparse"] = o["score"].sum() * 0
@@ -301,8 +319,11 @@ def evaluate(model, data, split, cfg, device, max_n=200000):
         hit = keep.gather(1, pick[:, None]).squeeze(1)
         ok += int(hit[has].sum()); n += int(has.sum()); rand += float((keep.float().sum(-1) / b["lm"].float().sum(-1).clamp(min=1))[has].sum())
         mats += list(data.material[ids[s:s + 512]][has.cpu().numpy()]); oks += hit[has].cpu().numpy().tolist()
-        pt = o["per_tok"].gather(1, pick[:, None, None].expand(-1, 1, o["per_tok"].shape[-1])).squeeze(1).abs()
-        srt = pt.sort(-1, descending=True).values; cum = srt.cumsum(-1) / srt.sum(-1, keepdim=True).clamp(min=1e-9)
+        _, _, ptc, pfc, _ = contrast(o, b)
+        a = ptc.abs()
+        if pfc is not None:
+            a = torch.cat([a, pfc.abs()], -1)
+        srt = a.sort(-1, descending=True).values; cum = srt.cumsum(-1) / srt.sum(-1, keepdim=True).clamp(min=1e-9)
         lens += (cum < 0.8).sum(-1).add(1).cpu().numpy().tolist()
     st = dict(n=n, keeps=ok / max(1, n), random_legal=rand / max(1, n), explanation_len=float(np.mean(lens)))
     by = defaultdict(list)
@@ -355,9 +376,9 @@ def gauge(ckpt: str, log=print, max_n: int = 4000):
         for s in range(0, len(ids), 256):
             b = data.batch(ids[s:s + 256], device); o = model(b)
             keep = b["keep"] & b["lm"]; has = keep.any(-1); pick = o["score"].argmax(-1)
-            pt = o["per_tok"].gather(1, pick[:, None, None].expand(-1, 1, o["per_tok"].shape[-1])).squeeze(1)
-            pt_inst = pt[:, 1 + MAX_PIECES:]
-            top = pt_inst.argmax(-1)                                                                          # the concept token contributing most to the chosen move
+            _, _, ptc, _, _ = contrast(o, b)
+            pt_inst = ptc[:, 1 + MAX_PIECES:].masked_fill(~b["im"], 0.0)
+            top = pt_inst.abs().argmax(-1)                                                                    # the concept token contributing most to the CHOICE (chosen over the runner-up)
             b2 = {k: (v.clone() if torch.is_tensor(v) else v) for k, v in b.items()}
             b2["im"][torch.arange(len(top)), top] = False
             o2 = model(b2); pick2 = o2["score"].argmax(-1)
@@ -398,6 +419,25 @@ def explain(model, cfg, device, reg, fen: str, log=print):
     order = np.argsort(-sc)
     log(f"[explain] {fen}: " + ", ".join(f"{b.san(legal[k])} {sc[k]:+.2f} ({'keeps' if np.sign(row['moves'][legal[k].uci()]) == max(np.sign(v) for v in row['moves'].values()) else 'loses'})" for k in order[:5] if k < len(legal)))
     inst = reg.instances(b); inst.sort(key=lambda i: (cid[i.concept], i.args, i.line)); inst = inst[:MAX_INST]
+    if len(order) >= 2 and order[1] < len(legal):
+        k1, k2 = int(order[0]), int(order[1])
+        d = (o["per_tok"][0, k1] - o["per_tok"][0, k2]).cpu().numpy()
+        parts = []
+        for t in np.argsort(-np.abs(d))[:6]:
+            if abs(d[t]) < 1e-3:
+                continue
+            if t == 0:
+                parts.append(f"board {d[t]:+.2f}")
+            elif t < 1 + MAX_PIECES:
+                sq = int(e["psq"][t - 1]); parts.append(f"{chess.piece_name(b.piece_at(sq).piece_type)} {chess.square_name(sq)} {d[t]:+.2f}" if sq < 64 else "")
+            else:
+                j = t - 1 - MAX_PIECES
+                if j < len(inst):
+                    parts.append(f"{inst[j].text(b)} {d[t]:+.2f}")
+        if o.get("per_feat") is not None:
+            df = (o["per_feat"][0, k1] - o["per_feat"][0, k2]).cpu().numpy()
+            parts += [f"{MOVE_FEATURES[j]} {df[j]:+.2f}" for j in np.argsort(-np.abs(df))[:3] if abs(df[j]) > 1e-3]
+        log(f"   why {b.san(legal[k1])} over {b.san(legal[k2])}: " + "; ".join(p for p in parts if p))
     for k in order[:2]:
         if k >= len(legal):
             continue
