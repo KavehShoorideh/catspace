@@ -23015,3 +23015,9 @@ for, with the transformer contributing nothing the constraints allow it to. The 
 sparsity as a LOSS drives the collapse; it should be MEASURED. Launched `concept_net_c4`: the same, without the
 sparsity term (only intervention consistency on the contrast). And a degenerate baseline to print beside it:
 a logistic policy over the ten consequence features alone.
+  The baseline, printed: a logistic policy over the ten consequence features alone keeps the result 0.916 on
+  test and 0.926 on held (weights: our pieces falling -2.28, a capture +1.49, the enemy pawn's safe promotion
+  -1.08, the enemy's safe checks -0.40). So the c3 network's 0.946 / 0.947 is NOT the ten weights alone: the
+  concept tokens contribute at the third decimal, two hundred of them, and their sum is worth three points --
+  the diffusion exit at a scale the 2-decimal readout hides. Correction to the line above: not "the
+  transformer contributing nothing"; contributing invisibly.
