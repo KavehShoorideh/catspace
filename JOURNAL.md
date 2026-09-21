@@ -22962,3 +22962,23 @@ after Kf4 the reverse. Cost 39 ms a position (from 30). Launched: prepare v2 (8 
 consequences and the intervention-consistency loss, after the intervention-only run now training.
 Also noted for the proposer's next round: the nullary position tokens dominate attributions as biases; either
 the consistency loss removes that, or they should be folded into the board token.
+
+## 2026-09-20 21:35 PDT — round one admitted on the decision; the attribution regularizers found a second loophole
+
+The consequences run (`concept_net_cons`: round zero + the move-consequence terms + the random-token intervention
+loss + attribution sparsity; 12 epochs, 50 min), OBS: the chosen move keeps the result 0.959 on test and 0.962
+on the held materials -- round zero 0.928 / 0.913, board only 0.929 / 0.895, random legal 0.774. By material on
+held: KBNvK 0.99 (from 0.94), KQvKRP 0.92 (0.84), KRPvKP 0.98. The residual halves: 178 wrong of 4,000 on test
+(was 272), 48 on held (was 247). ADMITTED: the move's cheap child facts are the first concept the loop added
+against the residual, and they carried the decision on every cluster the residual named.
+The attribution: explanation length 1.1 tokens; dropping the top concept token changes the move in 4.1% (test)
+/ 2.7% (held). Both numbers are degenerate, not good: on Kaveh's position every move's attribution is the same
+single token, king_zone_hits(king e8) = 3 at -1.03 -- a per-position CONSTANT that shifts every move equally,
+so its removal changes no choice and the sparsity term is satisfied by parking all mass on it; the decision lives
+in the consequence terms (Rf4: enemy_safe_checks -0.33, the enemy king's safe size -0.10), which the sparsity
+and intervention terms do not cover. Two loopholes in two runs: diffusion (the top-token intervention, 69
+tokens) and a constant (the random-token intervention with sparsity, 1 token). The definition was wrong, not
+the weights: an explanation of a DECISION is why this move over that one, so attribution, sparsity and the
+intervention must be defined on the CONTRAST between the chosen move and the runner-up, where a constant
+cancels and a diffuse attribution still has to be consistent. And the position on the board: the network now
+picks Rf4 (loses) and does not list Kf8 in its top five -- KRPvKR at 0.96 overall still fails this one.
