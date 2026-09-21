@@ -164,6 +164,7 @@ class Config:
     concepts: bool = True
     w_value: float = 0.5
     consequences: bool = False       # the move's child facts as their own attributed terms (proposal round one)
+    decision_from_concepts: bool = False   # the board and piece tokens are CONTEXT (attention) only: no contribution term of their own (the third loophole, 2026-09-20: the whole contrast sat on the board token)
     w_attr_sparse: float = 0.1       # the attribution should rest on few tokens: entropy of the normalized |contributions| over the concept tokens (the top-token intervention was satisfied by DIFFUSING the attribution over 69 tokens, 2026-09-20)
     int_random: bool = True          # intervene on a RANDOM concept token, not the top one: consistency must hold for any token, so diffusion does not help
     w_int: float = 0.0               # INTERVENTION CONSISTENCY: removing the top-attributed concept token must change the chosen move's score by what the attribution said (2026-09-20: without it, the top concept was causal in a third of decisions)
@@ -243,6 +244,8 @@ class ConceptNet(nn.Module):
         logits_g = logits_g.masked_fill(~mask[:, None, :], float("-inf"))
         alpha = logits_g.softmax(-1)                                                                          # (B, 64, T): which tokens the move listens to
         per_tok = alpha * torch.einsum("bmd,btd->bmt", q, c) / math.sqrt(self.cfg.d)                        # the exact per-token contribution
+        if self.cfg.decision_from_concepts and self.cfg.concepts:
+            per_tok = per_tok * torch.cat([torch.zeros(1 + MAX_PIECES, device=per_tok.device), torch.ones(MAX_INST, device=per_tok.device)])[None, None]
         score = per_tok.sum(-1)                                                                               # (B, 64)
         per_feat = None
         if self.cfg.consequences and "mvf" in b:
@@ -491,16 +494,16 @@ def residual(ckpt: str, materials: str, per: int = 4, log=print):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["prepare", "train", "gauge", "residual"]); ap.add_argument("--materials", default="KQPvKQ,KPvKP,KBNvK"); ap.add_argument("--per", type=int, default=4); ap.add_argument("--shard", default="0/1"); ap.add_argument("--out", default=str(OUT)); ap.add_argument("--ckpt", default=str(OUT / "last.pt"))
-    ap.add_argument("--no-concepts", action="store_true"); ap.add_argument("--consequences", action="store_true")
+    ap.add_argument("--no-concepts", action="store_true"); ap.add_argument("--consequences", action="store_true"); ap.add_argument("--decision-from-concepts", action="store_true")
     for k, f in Config.__dataclass_fields__.items():
-        if k in ("concepts", "consequences", "int_random"):
+        if k in ("concepts", "consequences", "int_random", "decision_from_concepts"):
             continue
         ap.add_argument(f"--{k}", type=type(f.default), default=f.default)
     a = ap.parse_args(argv)
     if a.cmd == "prepare":
         prepare(a.shard)
     elif a.cmd == "train":
-        a.concepts = not a.no_concepts; train(a)
+        a.concepts = not a.no_concepts; a.decision_from_concepts = a.decision_from_concepts; train(a)
     elif a.cmd == "residual":
         residual(a.ckpt, a.materials, a.per)
     else:
