@@ -22910,3 +22910,35 @@ a language model proposes new checks against the training residual; admission by
 held-out data; the learner on top predicts the partition of moves into result-keeping and result-losing plus
 the human move at the level, gauged by predicting human game outcomes beside rating-only and engine-only
 baselines; training is iterative, each round a bank version cited by every explanation.
+
+## 2026-09-20 19:34 PDT — the concept-token network: concepts as tokens, the decision a sum over them; the board alone decides as well
+
+Kaveh's framework (2026-09-20): a rules-based layer produces concepts; a shallow transformer over concept tokens
+AND the board decides; the decision is a sum over tokens (exact attribution); attention over the concepts is the
+learned weighting; a proposal loop adds concepts against the residual. Built: `concepts.py` (the registry:
+concepts as versioned programs; round zero = 43 node answers, 17 pair relations, 13 region relations, 39 position
+indicators, 6 line predicates -- "no other piece on this rook's file" is line_empty(rook b7)[file]; ~211
+instances per position, capped at 256 with the relational kinds first); `endgames.py` stores every legal move's
+result (the PARTITION: result-keeping vs result-losing, uniform over the keepers -- which losing move is more
+losing is not asked); `concept_net.py` (pieces + instances as tokens, the instance token composed from the
+concept, its arguments' pieces with roles, its value bucket and its line; relations arg-of / shares-piece /
+attacks / defends as attention biases; 2 layers, d 96; the move score = sum of per-token contributions).
+OBS, 100,000 tablebase positions, 12 epochs, ~2.5 min an epoch:
+  the chosen move keeps the result -- WITH concepts: test 0.928, held materials 0.913; BOARD ONLY (the same net,
+  piece tokens alone): test 0.929, held 0.895; a random legal move 0.774 / 0.772.
+  explanation length (tokens carrying 80% of the chosen move's score): 6.0 with concepts, 2.3 without.
+  FAITHFULNESS under intervention: dropping the top concept token changes the chosen move in 33.1% (test) and
+  36.7% (held) of positions -- two thirds of the time the attribution's top concept is not what decides.
+  the residual (272 wrong of 4,000 on test): KQPvKQ 77, KPvKP 38, KNvKP 32; the concepts over-represented in the
+  wrong decisions: the queens indicators x3.3, defend_counts x3.1, holds x2.2 -- queen endings and mutual pawn
+  races; on held (all 247 wrong are KBNvK): pos_falls_ours x9.2, threat x8.2 -- the bishop-and-knight mate is
+  where the vocabulary has nothing to say.
+  Kaveh's position: the network scores Kd8 +1.58 (loses) over Kf8 +1.57 (keeps) -- wrong by a hair; its
+  explanation for either move cites legal_moves(rook b7) = 14, defenders_count(pawn e5), the board token: node
+  answers, not the cut-off, which round zero states only as region relations the network did not weight.
+Reading, single runs: on five-man endgames the pieces alone decide as well as the pieces plus round zero; the
+concepts bought two points of transfer to unseen materials and an explanation, and the explanation is only
+partly causal. That is the framework working as designed -- the board is seen, the concepts must earn their
+place -- and round zero has not earned it on the decision. The residual names where to propose: queen endings,
+pawn races, the two-minor-piece mate; and the faithfulness number says the attribution must be trained as a
+constraint (intervention consistency), not only read.

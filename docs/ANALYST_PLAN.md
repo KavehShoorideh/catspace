@@ -683,3 +683,15 @@ rooted tokens; the explanation of two king moves = the tokens that differ, roote
 plain 0.875 vs majority 0.771; rooted tokens lose on test (0.735) and GAIN on held-out materials (0.709 vs
 0.653); Kaveh's Kf8/Kd8 separated by one token. Open: rooting per material and on sibling pairs; the advised
 player (Maia's policy reweighted toward moves keeping an advised invariant) as the test of sufficiency.
+
+## 36. Concepts as tokens; the concept bank loop (Kaveh 2026-09-20)
+
+The framework: a rules-based layer produces concepts (the registry, concepts.py: programs over the rules'
+vocabulary, versioned, append-only); a shallow transformer over the board's pieces AND the concept instances
+decides, with the move score a sum of per-token contributions (concept_net.py); attention over the concepts is
+the learned weighting; a generative proposer adds concepts against the residual, admitted only when they make
+the decision better on held-out data; every explanation cites the registry version. Canonicality lives in the
+concepts (code), not in the weights. First numbers on the tablebase: with concepts 0.928 / 0.913 (test / unseen
+materials), board only 0.929 / 0.895, random 0.774; explanations 6 tokens; the top concept is causal in a third
+of decisions. Round zero earns transfer and explanation, not decision quality. Next: intervention consistency as
+a training constraint; proposal round one against the residual (queen endings, pawn races, KBNvK).
