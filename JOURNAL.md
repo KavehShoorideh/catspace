@@ -22982,3 +22982,19 @@ the weights: an explanation of a DECISION is why this move over that one, so att
 intervention must be defined on the CONTRAST between the chosen move and the runner-up, where a constant
 cancels and a diffuse attribution still has to be consistent. And the position on the board: the network now
 picks Rf4 (loses) and does not list Kf8 in its top five -- KRPvKR at 0.96 overall still fails this one.
+
+## 2026-09-20 22:33 PDT — the contrast definition holds; the network takes the third exit, the board token
+
+The contrast-defined run (`concept_net_c2`: attribution, sparsity, the intervention and the explanation length all
+on chosen-vs-runner-up), OBS: the chosen move keeps the result 0.954 on test and 0.946 on held (the unconstrained
+round-one run 0.959 / 0.962; round zero 0.928 / 0.913) -- the constraints cost half a point on seen materials
+and 1.6 on unseen; explanation 3.5 terms; KPPvKP 0.89 and KPvKP 0.92 are the weakest seen materials, KQvKRP 0.88
+the weakest held. Dropping the top concept token changes the choice in 1.8% (test) / 4.0% (held). Kaveh's
+position: Kf8 +0.49 chosen (keeps) over Rf4 +0.44 -- right for the first time -- and the explanation is
+"why Kf8 over Rf4: board +0.05": the whole contrast sits on the BOARD token (the class token), whose own
+contribution term the constraints never covered. The concept tokens contribute 0.00, the consequences 0.01.
+Third loophole in three runs: diffusion, a constant, and now the one token that is not a concept. The general
+lesson is the one from the dead asserts (2026-08-26): a constraint covers the paths it names; the network takes
+the path it does not. The board stays as INPUT, as Kaveh wanted (context through attention), but the decision
+must be a sum over concept instances and consequences only -- the board and piece tokens get no contribution
+term of their own. Launched as `concept_net_c3`.
