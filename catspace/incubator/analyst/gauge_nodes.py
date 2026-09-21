@@ -122,17 +122,93 @@ def report(res: dict, budgets: list[int], log=print):
             log(f"    {bud:>7} | {m:>7} | {d['keeps']:>6.3f} {d['random']:>5.3f} | {d.get('regret', float('nan')):>7.3f} {d.get('random_regret', float('nan')):>5.3f} {d.get('optimal', float('nan')):>7.3f} | {d['work']:>7.0f} {d['covered']:>5.0f} | {per:>14.3f}")
 
 
+# ---------------------------------------------------------------- openings and middlegames: the engine as the oracle
+def run_games(n: int, budgets: list[int], seed: int, depth: int, lo: int, hi: int, tag: str, log=print):
+    """The same curve where no tablebase reaches: positions from the game corpus, the oracle a deeper Stockfish.
+    Regret is in centipawns against its best move; 'keeps' = within 50 cp of it. The oracle's own engine calls are
+    made OUTSIDE the counter, so the work reported is our search's alone."""
+    from .dataset import load as load_ds
+    from .engine import Engine
+    meta = load_ds("data/derived/knowledge", meta_only=True)["meta"]
+    rows = [m for m in meta if lo <= m["ply"] <= hi]
+    random.Random(seed).shuffle(rows); rows = rows[:n]
+    eng = Engine(depth=depth, cache_path=str(OUT / f"oracle_d{depth}.sqlite"))
+    out = defaultdict(lambda: defaultdict(list))
+    t0 = time.perf_counter()
+    for k, m in enumerate(rows):
+        b = chess.Board(m["fen"])
+        if b.is_game_over():
+            continue
+        line = eng.best(b, depth=depth)
+        if line is None:
+            continue
+        best_cp = float(line.cp)
+        rnd = [chess.Move.from_uci(u) for u in random.Random(k).sample([x.uci() for x in b.legal_moves], min(2, b.legal_moves.count()))]
+        r_regrets = []
+        for mv in rnd:
+            e = eng.eval_move(b, mv, depth=depth)
+            if e is not None:
+                r_regrets.append(min(300.0, max(0.0, best_cp - float(e.cp))))
+        for lem in (True, False):
+            R.FAMILY_LEMMAS = lem
+            for bud in budgets:
+                memo = Memo()
+                with count() as c:
+                    sc = R.score_moves(b, memo, None, budget=bud, mate_budget=max(1, bud * 10), plan_needs=False)
+                mv = max(sc, key=lambda x: sc[x][0])
+                e = eng.eval_move(b, mv, depth=depth)                      # outside the counter: the oracle is not our cost
+                if e is None:
+                    continue
+                reg = min(300.0, max(0.0, best_cp - float(e.cp)))
+                key = ("lemmas" if lem else "plain", bud)
+                out[key]["keeps"].append(float(reg <= 50)); out[key]["tight"].append(float(reg <= 20))
+                out[key]["top1"].append(float(mv.uci() == line.move))
+                out[key]["regret"].append(reg); out[key]["work"].append(total(c))
+                out[key]["covered"].append(c.get("covered", 0)); out[key]["lemma_pass"].append(c.get("lemma", 0))
+                if r_regrets:
+                    out[key]["random_regret"].append(float(np.mean(r_regrets)))
+                    out[key]["random_keeps"].append(float(np.mean([x <= 50 for x in r_regrets])))
+        if (k + 1) % 10 == 0:
+            log(f"[nodes/{tag}] {k + 1}/{len(rows)} positions, {time.perf_counter() - t0:.0f}s, engine calls {eng.calls} hits {eng.hits}", flush=True)
+    eng.close()
+    OUT.mkdir(parents=True, exist_ok=True)
+    res = {f"{mo}@{bu}": {kk: float(np.mean(vv)) for kk, vv in d.items()} | {"n": len(d["regret"])} for (mo, bu), d in out.items()}
+    json.dump(res, open(OUT / f"curve_{tag}.json", "w"), indent=1)
+    report_games(res, budgets, tag, log)
+    return res
+
+
+def report_games(res: dict, budgets: list[int], tag: str, log=print):
+    log(f"[nodes/{tag}] the curve against Stockfish: within 50 cp of its best move, the centipawns lost, and the work")
+    log(f"    {'budget':>7} | {'mode':>7} | {'<=50cp':>7} {'rand':>5} | {'<=20cp':>7} {'top-1':>6} | {'cp lost':>8} {'rand':>6} | {'work':>7} {'saved':>5} | {'cp/1k work':>10}")
+    for bud in budgets:
+        for mo in ("plain", "lemmas"):
+            d = res.get(f"{mo}@{bud}")
+            if not d:
+                continue
+            per = 1000.0 * d["regret"] / max(1.0, d["work"])
+            log(f"    {bud:>7} | {mo:>7} | {d['keeps']:>7.3f} {d.get('random_keeps', float('nan')):>5.3f} | {d['tight']:>7.3f} {d['top1']:>6.3f} | {d['regret']:>8.1f} {d.get('random_regret', float('nan')):>6.1f} | {d['work']:>7.0f} {d['covered']:>5.1f} | {per:>10.1f}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=200); ap.add_argument("--budgets", default="0,40,120,400")
     ap.add_argument("--materials", default=""); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--split", default="test")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--corpus", default="endgames", choices=["endgames", "opening", "middlegame"])
+    ap.add_argument("--depth", type=int, default=16)
     a = ap.parse_args(argv)
     buds = [int(x) for x in a.budgets.split(",")]
     if a.report:
-        report(json.load(open(OUT / f"curve_{a.split}.json")), buds)
-    else:
+        if a.corpus == "endgames":
+            report(json.load(open(OUT / f"curve_{a.split}.json")), buds)
+        else:
+            report_games(json.load(open(OUT / f"curve_{a.corpus}.json")), buds, a.corpus)
+    elif a.corpus == "endgames":
         run(a.n, buds, [m for m in a.materials.split(",") if m], a.seed, a.split)
+    else:
+        lo, hi = (6, 20) if a.corpus == "opening" else (21, 70)
+        run_games(a.n, buds, a.seed, a.depth, lo, hi, a.corpus)
 
 
 if __name__ == "__main__":
