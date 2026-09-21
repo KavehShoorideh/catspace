@@ -164,6 +164,8 @@ class Config:
     concepts: bool = True
     w_value: float = 0.5
     consequences: bool = False       # the move's child facts as their own attributed terms (proposal round one)
+    w_attr_sparse: float = 0.1       # the attribution should rest on few tokens: entropy of the normalized |contributions| over the concept tokens (the top-token intervention was satisfied by DIFFUSING the attribution over 69 tokens, 2026-09-20)
+    int_random: bool = True          # intervene on a RANDOM concept token, not the top one: consistency must hold for any token, so diffusion does not help
     w_int: float = 0.0               # INTERVENTION CONSISTENCY: removing the top-attributed concept token must change the chosen move's score by what the attribution said (2026-09-20: without it, the top concept was causal in a third of decisions)
     seed: int = 1
 
@@ -263,7 +265,11 @@ def losses(model, b, cfg):
         pick = o["score"].argmax(-1)
         pt = o["per_tok"].gather(1, pick[:, None, None].expand(-1, 1, o["per_tok"].shape[-1])).squeeze(1)
         pt_inst = pt[:, 1 + MAX_PIECES:].masked_fill(~b["im"], 0.0)
-        top = pt_inst.abs().argmax(-1); attributed = pt_inst.gather(1, top[:, None]).squeeze(1)
+        if cfg.int_random:
+            r = torch.rand_like(pt_inst).masked_fill(~b["im"], -1.0); top = r.argmax(-1)
+        else:
+            top = pt_inst.abs().argmax(-1)
+        attributed = pt_inst.gather(1, top[:, None]).squeeze(1)
         b2 = dict(b); b2["im"] = b["im"].clone(); b2["im"][torch.arange(len(top)), top] = False
         o2 = model(b2)
         s1 = o["score"].gather(1, pick[:, None]).squeeze(1); s2 = o2["score"].gather(1, pick[:, None]).squeeze(1)
@@ -271,7 +277,14 @@ def losses(model, b, cfg):
         out["int"] = ((s1 - s2) - attributed).abs()[valid].mean() if valid.any() else o["score"].sum() * 0
     else:
         out["int"] = o["score"].sum() * 0
-    out["total"] = out["policy"] + cfg.w_value * out["value"] + cfg.w_int * out["int"]
+    if cfg.concepts and cfg.w_attr_sparse > 0:
+        pick = o["score"].argmax(-1)
+        pt = o["per_tok"].gather(1, pick[:, None, None].expand(-1, 1, o["per_tok"].shape[-1])).squeeze(1)
+        a = pt[:, 1 + MAX_PIECES:].abs().masked_fill(~b["im"], 0.0); a = a / a.sum(-1, keepdim=True).clamp(min=1e-9)
+        out["attr_sparse"] = -(a * (a + 1e-9).log()).sum(-1).mean()
+    else:
+        out["attr_sparse"] = o["score"].sum() * 0
+    out["total"] = out["policy"] + cfg.w_value * out["value"] + cfg.w_int * out["int"] + cfg.w_attr_sparse * out["attr_sparse"]
     return out, o
 
 
@@ -440,7 +453,7 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["prepare", "train", "gauge", "residual"]); ap.add_argument("--materials", default="KQPvKQ,KPvKP,KBNvK"); ap.add_argument("--per", type=int, default=4); ap.add_argument("--shard", default="0/1"); ap.add_argument("--out", default=str(OUT)); ap.add_argument("--ckpt", default=str(OUT / "last.pt"))
     ap.add_argument("--no-concepts", action="store_true"); ap.add_argument("--consequences", action="store_true")
     for k, f in Config.__dataclass_fields__.items():
-        if k in ("concepts", "consequences"):
+        if k in ("concepts", "consequences", "int_random"):
             continue
         ap.add_argument(f"--{k}", type=type(f.default), default=f.default)
     a = ap.parse_args(argv)
