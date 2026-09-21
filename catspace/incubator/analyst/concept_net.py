@@ -24,6 +24,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 
 import chess
+import chess.syzygy
 import numpy as np
 import torch
 import torch.nn as nn
@@ -286,7 +287,7 @@ def gauge(ckpt: str, log=print, max_n: int = 4000):
     the residual by material and by the concepts present, and the explanation on Kaveh's position."""
     model, cfg, device = load_model(ckpt); data = Data(log=lambda *a, **k: None); reg = Registry(); names = [c.name for c in reg.concepts]
     for split in ("test", "held"):
-        ids = data.ids(split)[:max_n]; changed = same_dir = n = 0; wrong_by = Counter(); present_by = Counter(); n_wrong = 0
+        ids = data.ids(split)[:max_n]; changed = same_dir = n = 0; wrong_by = Counter(); present_by = Counter(); present_all = Counter(); n_wrong = 0; n_all = 0
         for s in range(0, len(ids), 256):
             b = data.batch(ids[s:s + 256], device); o = model(b)
             keep = b["keep"] & b["lm"]; has = keep.any(-1); pick = o["score"].argmax(-1)
@@ -299,12 +300,19 @@ def gauge(ckpt: str, log=print, max_n: int = 4000):
             valid = has & b["im"].any(-1)
             changed += int((pick2 != pick)[valid].sum()); n += int(valid.sum())
             hit = keep.gather(1, pick[:, None]).squeeze(1)
-            for i in torch.nonzero(has & ~hit).squeeze(-1).tolist():
-                n_wrong += 1; wrong_by[data.material[ids[s + i]]] += 1
-                for c in b["ic"][i][b["im"][i]].unique().tolist():
-                    present_by[names[c]] += 1
+            for i in torch.nonzero(has).squeeze(-1).tolist():
+                n_all += 1
+                cs = b["ic"][i][b["im"][i]].unique().tolist()
+                for c in cs:
+                    present_all[names[c]] += 1
+                if not hit[i]:
+                    n_wrong += 1; wrong_by[data.material[ids[s + i]]] += 1
+                    for c in cs:
+                        present_by[names[c]] += 1
         log(f"[concept_net gauge] {split}: dropping the top concept token changes the chosen move in {100 * changed / max(1, n):.1f}% of {n} positions (faithfulness under intervention)")
-        log(f"   residual: {n_wrong} wrong decisions; by material " + "; ".join(f"{m} {c}" for m, c in wrong_by.most_common(6)) + "; concepts most present in the wrong ones: " + "; ".join(f"{c} {k}" for c, k in present_by.most_common(8)))
+        lift = {c: (present_by[c] / max(1, n_wrong)) / (present_all[c] / max(1, n_all)) for c in present_by if present_all[c] >= 50}
+        log(f"   residual: {n_wrong} wrong decisions of {n_all}; by material " + "; ".join(f"{m} {c}" for m, c in wrong_by.most_common(6)) +
+            "; concepts OVER-represented in the wrong ones (presence in wrong / presence overall): " + "; ".join(f"{c} x{l:.1f}" for c, l in sorted(lift.items(), key=lambda kv: -kv[1])[:8]))
     explain(model, cfg, device, reg, "4k3/1R6/4K3/4P3/8/8/8/5r2 b - - 0 58", log)
 
 
@@ -313,7 +321,6 @@ def explain(model, cfg, device, reg, fen: str, log=print):
     cid = {c.name: k for k, c in enumerate(reg.concepts)}
     row = dict(fen=fen, moves={})
     b = chess.Board(fen)
-    import chess.syzygy
     tb = chess.syzygy.open_tablebase("assets/tablebases/syzygy")
     for m in b.legal_moves:
         nb = b.copy(stack=False); nb.push(m); row["moves"][m.uci()] = -tb.probe_wdl(nb) if not nb.is_game_over() else 0
