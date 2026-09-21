@@ -35,7 +35,7 @@ from .endgames import load as load_rows, split_of
 from .memo import Memo
 
 DATA = Path("data/derived/endgames_v2")
-PREP = Path("data/derived/concept_net")
+PREP = Path("data/derived/concept_net_v2")                 # v2: with the move consequences
 OUT = Path("data/derived/checkpoints/concept_net")
 HELD = {"KRPvKP", "KQvKRP", "KBNvK"}
 MAX_INST = 256                           # ~211 instances per position in round zero
@@ -46,10 +46,37 @@ VALUE_EDGES = np.array([0.5, 1.5, 2.5, 3.5, 5.5, 8.5, 20.5])
 PIECE_ID = {(chess.WHITE, chess.KING): 1, (chess.WHITE, chess.QUEEN): 2, (chess.WHITE, chess.ROOK): 3, (chess.WHITE, chess.BISHOP): 4, (chess.WHITE, chess.KNIGHT): 5, (chess.WHITE, chess.PAWN): 6,
             (chess.BLACK, chess.KING): 7, (chess.BLACK, chess.QUEEN): 8, (chess.BLACK, chess.ROOK): 9, (chess.BLACK, chess.BISHOP): 10, (chess.BLACK, chess.KNIGHT): 11, (chess.BLACK, chess.PAWN): 12}
 REL = ("arg_of", "shares_piece", "attacks", "defends")
+# MOVE CONSEQUENCES (proposal round one, 2026-09-20, from the residual: the network chose moves whose child it could not
+# see -- a king step into the enemy queen's safe checks, a hanging knight left hanging, a pawn's escort lost). Per legal
+# move, cheap facts about ITS CHILD from the rules: rules-only, canonical, and attributed as their own terms.
+MOVE_FEATURES = ("gives_check", "our_pieces_falling", "enemy_safe_checks", "our_king_meets_our_pawn_path", "enemy_king_meets_our_pawn_path",
+                 "our_pawn_promotion_safe", "enemy_pawn_promotion_safe", "captures", "enemy_king_safe_size", "our_king_safe_size")
 
 
 def value_bucket(v: float) -> int:
     return int(np.searchsorted(VALUE_EDGES, abs(v), side="right")) if v >= 0 else min(N_VALUE_BUCKETS - 1, int(np.searchsorted(VALUE_EDGES, abs(v), side="right")))
+
+
+def move_consequences(board: chess.Board, m: chess.Move) -> list[float]:
+    """The child's cheap facts, in the MOVER's view (the side that played m)."""
+    from .regions import region
+    from .defense import defense
+    us = board.turn
+    nb = board.copy(stack=False); nb.push(m)
+    if nb.is_game_over():
+        return [float(nb.is_check()), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, float(board.is_capture(m)), 0.0, 0.0]
+    regs = {sq: region(nb, sq) for sq in nb.piece_map()}
+    ok, ek = nb.king(us), nb.king(not us)
+    falling = sum(1 for sq, p in nb.piece_map().items() if p.color == us and p.piece_type != chess.KING and (d := defense(nb, sq)) is not None and d.falls)
+    safe_checks = sum(1 for sq, p in nb.piece_map().items() if p.color != us and p.piece_type != chess.KING and any(regs[sq].attacks_from[t] & chess.BB_SQUARES[ok] for t in regs[sq].steps))
+    our_pawns = [sq for sq, p in nb.piece_map().items() if p.color == us and p.piece_type == chess.PAWN]
+    their_pawns = [sq for sq, p in nb.piece_map().items() if p.color != us and p.piece_type == chess.PAWN]
+    ok_meets = float(any(regs[ok].safe & regs[pw].safe for pw in our_pawns)) if ok is not None else 0.0
+    ek_meets = float(any(regs[ek].safe & regs[pw].safe for pw in our_pawns)) if ek is not None else 0.0
+    our_prom = float(any(regs[pw].safe & regs[pw].promotion_squares() for pw in our_pawns))
+    their_prom = float(any(regs[pw].safe & regs[pw].promotion_squares() for pw in their_pawns))
+    return [float(nb.is_check()), float(falling), float(safe_checks), ok_meets, ek_meets, our_prom, their_prom, float(board.is_capture(m)),
+            float(chess.popcount(regs[ek].safe)) / 10.0 if ek is not None else 0.0, float(chess.popcount(regs[ok].safe)) / 10.0 if ok is not None else 0.0]
 
 
 def encode_row(row: dict, reg: Registry, cid: dict) -> dict:
@@ -80,12 +107,14 @@ def encode_row(row: dict, reg: Registry, cid: dict) -> dict:
     moves = row.get("moves", {})
     legal = list(b.legal_moves)
     best = max((np.sign(v) for v in moves.values()), default=0)
-    mf = np.full(64, -1, np.int64); mt = np.full(64, -1, np.int64); keep = np.zeros(64, bool); lm = np.zeros(64, bool)
+    mf = np.full(64, -1, np.int64); mt = np.full(64, -1, np.int64); keep = np.zeros(64, bool); lm = np.zeros(64, bool); mvf = np.zeros((64, len(MOVE_FEATURES)), np.float32)
     for k, m in enumerate(legal[:64]):
         if m.uci() not in moves:
             continue
         mf[k] = pidx.get(m.from_square, -1); mt[k] = m.to_square; lm[k] = mf[k] >= 0; keep[k] = np.sign(moves[m.uci()]) == best
-    return dict(psq=psq, pty=pty, side=int(b.turn), ic=ic, ia=ia, iv=iv, il=il, im=im, rel=rel, mf=mf, mt=mt, lm=lm, keep=keep, n_inst=len(inst))
+        if lm[k]:
+            mvf[k] = move_consequences(b, m)
+    return dict(psq=psq, pty=pty, side=int(b.turn), ic=ic, ia=ia, iv=iv, il=il, im=im, rel=rel, mf=mf, mt=mt, lm=lm, keep=keep, mvf=mvf, n_inst=len(inst))
 
 
 def prepare(shard: str, log=print):
@@ -118,6 +147,8 @@ class Data:
 
     def batch(self, idx, device):
         out = {k: torch.as_tensor(self.arr[k][idx]) for k in ("psq", "pty", "side", "ic", "ia", "iv", "il", "im", "mf", "mt", "lm", "keep")}
+        if "mvf" in self.arr:
+            out["mvf"] = torch.as_tensor(self.arr["mvf"][idx])
         out["rel"] = torch.as_tensor(self.arr["rel"][idx]).float(); out["wdl"] = torch.as_tensor(self.wdl[idx])
         return {k: v.to(device) for k, v in out.items()}
 
@@ -132,6 +163,7 @@ class Config:
     epochs: int = 12
     concepts: bool = True
     w_value: float = 0.5
+    consequences: bool = False       # the move's child facts as their own attributed terms (proposal round one)
     w_int: float = 0.0               # INTERVENTION CONSISTENCY: removing the top-attributed concept token must change the chosen move's score by what the attribution said (2026-09-20: without it, the top concept was causal in a third of decisions)
     seed: int = 1
 
@@ -164,6 +196,7 @@ class ConceptNet(nn.Module):
         self.contrib = nn.Linear(d, d)                                        # per token: a vector whose dot with the move query is its contribution
         self.gate = nn.Linear(d, d)                                           # per token: attention logits against the move query
         self.value_head = nn.Linear(d, 3)
+        self.move_feat = nn.Linear(len(MOVE_FEATURES), 1, bias=False)     # one weight per consequence: exact, readable terms
 
     def tokens(self, b):
         B = b["psq"].shape[0]; d = self.cfg.d
@@ -209,8 +242,12 @@ class ConceptNet(nn.Module):
         alpha = logits_g.softmax(-1)                                                                          # (B, 64, T): which tokens the move listens to
         per_tok = alpha * torch.einsum("bmd,btd->bmt", q, c) / math.sqrt(self.cfg.d)                        # the exact per-token contribution
         score = per_tok.sum(-1)                                                                               # (B, 64)
+        per_feat = None
+        if self.cfg.consequences and "mvf" in b:
+            per_feat = b["mvf"] * self.move_feat.weight[0][None, None]                                        # (B, 64, F): each consequence's own term
+            score = score + per_feat.sum(-1)
         score = score.masked_fill(~b["lm"], float("-inf"))
-        return dict(score=score, per_tok=per_tok, alpha=alpha, value=self.value_head(h[:, 0]), mask=mask)
+        return dict(score=score, per_tok=per_tok, per_feat=per_feat, alpha=alpha, value=self.value_head(h[:, 0]), mask=mask)
 
 
 def losses(model, b, cfg):
@@ -341,6 +378,8 @@ def explain(model, cfg, device, reg, fen: str, log=print):
     tb.close()
     e = encode_row(row, reg, cid)
     bt = {k: torch.as_tensor(np.asarray(v)[None]).to(device) for k, v in e.items() if k != "n_inst"}; bt["rel"] = bt["rel"].float(); bt["wdl"] = torch.zeros(1, dtype=torch.long, device=device)
+    if not cfg.consequences:
+        bt.pop("mvf", None)
     o = model(bt); legal = list(b.legal_moves)
     sc = o["score"][0].cpu().numpy()
     order = np.argsort(-sc)
@@ -349,6 +388,8 @@ def explain(model, cfg, device, reg, fen: str, log=print):
     for k in order[:2]:
         if k >= len(legal):
             continue
+        if o.get("per_feat") is not None:
+            pf = o["per_feat"][0, k].cpu().numpy(); log(f"   {b.san(legal[k])} consequences: " + "; ".join(f"{MOVE_FEATURES[j]} {pf[j]:+.2f}" for j in np.argsort(-np.abs(pf))[:4] if abs(pf[j]) > 1e-3))
         pt = o["per_tok"][0, k].cpu().numpy()
         top = np.argsort(-np.abs(pt))[:6]
         parts = []
@@ -364,12 +405,42 @@ def explain(model, cfg, device, reg, fen: str, log=print):
         log(f"   {b.san(legal[k])}: " + "; ".join(p for p in parts if p))
 
 
+@torch.no_grad()
+def residual(ckpt: str, materials: str, per: int = 4, log=print):
+    """The proposal prompt: wrong decisions in the named materials -- the position, what was chosen, what kept the
+    result, and the concept instances the chosen move listened to most."""
+    model, cfg, device = load_model(ckpt); data = Data(log=lambda *a, **k: None); reg = Registry()
+    cid = {c.name: k for k, c in enumerate(reg.concepts)}
+    for mat in materials.split(","):
+        ids = [i for i in np.nonzero(data.material == mat)[0] if data.split[i] in ("test", "held")]
+        shown = 0
+        for s in range(0, len(ids), 256):
+            if shown >= per:
+                break
+            b = data.batch(ids[s:s + 256], device); o = model(b)
+            keep = b["keep"] & b["lm"]; has = keep.any(-1); pick = o["score"].argmax(-1); hit = keep.gather(1, pick[:, None]).squeeze(1)
+            for i in torch.nonzero(has & ~hit).squeeze(-1).tolist():
+                if shown >= per:
+                    break
+                r = data.rows[ids[s + i]]; bd = chess.Board(r["fen"]); legal = list(bd.legal_moves)
+                best = max(np.sign(v) for v in r["moves"].values())
+                keepers = [chess.Move.from_uci(u) for u, v in r["moves"].items() if np.sign(v) == best]
+                chosen = legal[int(pick[i])]
+                inst = reg.instances(bd); kind = {c.name: {"position": 0, "line": 1, "region_pair": 2, "region_unary": 3, "pair": 4, "node": 5}[c.kind] for c in reg.concepts}
+                inst.sort(key=lambda x: (kind[x.concept], cid[x.concept], x.args, x.line)); inst = inst[:MAX_INST]
+                pt = o["per_tok"][i, int(pick[i]), 1 + MAX_PIECES:].cpu().numpy()
+                top = [j for j in np.argsort(-np.abs(pt))[:5] if j < len(inst)]
+                log(f"[residual {mat}] {r['fen']} | result {r['wdl']:+d} dtz {r['dtz']} | chose {bd.san(chosen)} ({'keeps' if np.sign(r['moves'][chosen.uci()]) == best else 'loses'}); keepers: {', '.join(bd.san(m) for m in keepers[:6])}")
+                log("    listened to: " + "; ".join(f"{inst[j].text(bd)} {pt[j]:+.2f}" for j in top))
+                shown += 1
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["prepare", "train", "gauge"]); ap.add_argument("--shard", default="0/1"); ap.add_argument("--out", default=str(OUT)); ap.add_argument("--ckpt", default=str(OUT / "last.pt"))
-    ap.add_argument("--no-concepts", action="store_true")
+    ap.add_argument("cmd", choices=["prepare", "train", "gauge", "residual"]); ap.add_argument("--materials", default="KQPvKQ,KPvKP,KBNvK"); ap.add_argument("--per", type=int, default=4); ap.add_argument("--shard", default="0/1"); ap.add_argument("--out", default=str(OUT)); ap.add_argument("--ckpt", default=str(OUT / "last.pt"))
+    ap.add_argument("--no-concepts", action="store_true"); ap.add_argument("--consequences", action="store_true")
     for k, f in Config.__dataclass_fields__.items():
-        if k == "concepts":
+        if k in ("concepts", "consequences"):
             continue
         ap.add_argument(f"--{k}", type=type(f.default), default=f.default)
     a = ap.parse_args(argv)
@@ -377,6 +448,8 @@ def main(argv=None):
         prepare(a.shard)
     elif a.cmd == "train":
         a.concepts = not a.no_concepts; train(a)
+    elif a.cmd == "residual":
+        residual(a.ckpt, a.materials, a.per)
     else:
         gauge(a.ckpt)
 
