@@ -326,8 +326,9 @@ def evaluate(model, data, split, cfg, device, max_n=200000):
         a = ptc.abs()
         if pfc is not None:
             a = torch.cat([a, pfc.abs()], -1)
-        srt = a.sort(-1, descending=True).values; cum = srt.cumsum(-1) / srt.sum(-1, keepdim=True).clamp(min=1e-9)
-        lens += (cum < 0.8).sum(-1).add(1).cpu().numpy().tolist()
+        srt = a.sort(-1, descending=True).values; tot = srt.sum(-1, keepdim=True); cum = srt.cumsum(-1) / tot.clamp(min=1e-9)
+        ok_ = (tot.squeeze(-1) > 1e-4)                                                                        # a tie (no contrast) has no explanation length
+        lens += (cum < 0.8).sum(-1).add(1)[ok_].cpu().numpy().tolist()
     st = dict(n=n, keeps=ok / max(1, n), random_legal=rand / max(1, n), explanation_len=float(np.mean(lens)))
     by = defaultdict(list)
     for m, h in zip(mats, oks):
@@ -397,7 +398,8 @@ def gauge(ckpt: str, log=print, max_n: int = 4000):
                     n_wrong += 1; wrong_by[data.material[ids[s + i]]] += 1
                     for c in cs:
                         present_by[names[c]] += 1
-        log(f"[concept_net gauge] {split}: dropping the top concept token changes the chosen move in {100 * changed / max(1, n):.1f}% of {n} positions (faithfulness under intervention)")
+        ev = evaluate(model, data, split, cfg, device, max_n=max_n)
+        log(f"[concept_net gauge] {split}: keeps {ev['keeps']:.3f}; explanation length (ties excluded) {ev['explanation_len']:.1f}; dropping the top concept token changes the chosen move in {100 * changed / max(1, n):.1f}% of {n} positions (faithfulness under intervention)")
         lift = {c: (present_by[c] / max(1, n_wrong)) / (present_all[c] / max(1, n_all)) for c in present_by if present_all[c] >= 50}
         log(f"   residual: {n_wrong} wrong decisions of {n_all}; by material " + "; ".join(f"{m} {c}" for m, c in wrong_by.most_common(6)) +
             "; concepts OVER-represented in the wrong ones (presence in wrong / presence overall): " + "; ".join(f"{c} x{l:.1f}" for c, l in sorted(lift.items(), key=lambda kv: -kv[1])[:8]))
