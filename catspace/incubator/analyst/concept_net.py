@@ -23,6 +23,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, asdict
 from pathlib import Path
 
+import os
+
 import chess
 import chess.syzygy
 import numpy as np
@@ -35,7 +37,7 @@ from .endgames import load as load_rows, split_of
 from .memo import Memo
 
 DATA = Path("data/derived/endgames_v2")
-PREP = Path("data/derived/concept_net_v2")                 # v2: with the move consequences
+PREP = Path("data/derived/concept_net" + PREP_SUFFIX)       # v2: with the move consequences; v3: registry v1 + the discovered-check consequence
 OUT = Path("data/derived/checkpoints/concept_net")
 HELD = {"KRPvKP", "KQvKRP", "KBNvK"}
 MAX_INST = 256                           # ~211 instances per position in round zero
@@ -49,8 +51,16 @@ REL = ("arg_of", "shares_piece", "attacks", "defends")
 # MOVE CONSEQUENCES (proposal round one, 2026-09-20, from the residual: the network chose moves whose child it could not
 # see -- a king step into the enemy queen's safe checks, a hanging knight left hanging, a pawn's escort lost). Per legal
 # move, cheap facts about ITS CHILD from the rules: rules-only, canonical, and attributed as their own terms.
-MOVE_FEATURES = ("gives_check", "our_pieces_falling", "enemy_safe_checks", "our_king_meets_our_pawn_path", "enemy_king_meets_our_pawn_path",
-                 "our_pawn_promotion_safe", "enemy_pawn_promotion_safe", "captures", "enemy_king_safe_size", "our_king_safe_size")
+MOVE_FEATURES_V1 = ("gives_check", "our_pieces_falling", "enemy_safe_checks", "our_king_meets_our_pawn_path", "enemy_king_meets_our_pawn_path",
+                    "our_pawn_promotion_safe", "enemy_pawn_promotion_safe", "captures", "enemy_king_safe_size", "our_king_safe_size")
+MOVE_FEATURES_V2 = MOVE_FEATURES_V1 + ("enemy_discovered_checks",)          # round two: the enemy's discovered checks available after the move (registry v1's discovery)
+MOVE_FEATURES = MOVE_FEATURES_V1
+REGISTRY_VERSION = os.environ.get("ANALYST_REGISTRY", "0")
+if REGISTRY_VERSION == "1":
+    MOVE_FEATURES = MOVE_FEATURES_V2
+    PREP_SUFFIX = "_v3"
+else:
+    PREP_SUFFIX = "_v2"
 
 
 def value_bucket(v: float) -> int:
@@ -64,7 +74,7 @@ def move_consequences(board: chess.Board, m: chess.Move) -> list[float]:
     us = board.turn
     nb = board.copy(stack=False); nb.push(m)
     if nb.is_game_over():
-        return [float(nb.is_check()), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, float(board.is_capture(m)), 0.0, 0.0]
+        return [float(nb.is_check()), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, float(board.is_capture(m)), 0.0, 0.0] + ([0.0] if REGISTRY_VERSION == "1" else [])
     regs = {sq: region(nb, sq) for sq in nb.piece_map()}
     ok, ek = nb.king(us), nb.king(not us)
     falling = sum(1 for sq, p in nb.piece_map().items() if p.color == us and p.piece_type != chess.KING and (d := defense(nb, sq)) is not None and d.falls)
@@ -75,8 +85,17 @@ def move_consequences(board: chess.Board, m: chess.Move) -> list[float]:
     ek_meets = float(any(regs[ek].safe & regs[pw].safe for pw in our_pawns)) if ek is not None else 0.0
     our_prom = float(any(regs[pw].safe & regs[pw].promotion_squares() for pw in our_pawns))
     their_prom = float(any(regs[pw].safe & regs[pw].promotion_squares() for pw in their_pawns))
-    return [float(nb.is_check()), float(falling), float(safe_checks), ok_meets, ek_meets, our_prom, their_prom, float(board.is_capture(m)),
-            float(chess.popcount(regs[ek].safe)) / 10.0 if ek is not None else 0.0, float(chess.popcount(regs[ok].safe)) / 10.0 if ok is not None else 0.0]
+    out = [float(nb.is_check()), float(falling), float(safe_checks), ok_meets, ek_meets, our_prom, their_prom, float(board.is_capture(m)),
+           float(chess.popcount(regs[ek].safe)) / 10.0 if ek is not None else 0.0, float(chess.popcount(regs[ok].safe)) / 10.0 if ok is not None else 0.0]
+    if REGISTRY_VERSION == "1":
+        from .concepts import _discovery_program, Context
+        from .graph import Graph
+        # the enemy's discovered checks available after the move: instances of discovery(A, B) for the side to move in the child
+        class _Ctx:  # a light context: the discovery program reads only the board
+            pass
+        ctx = _Ctx(); ctx.board = nb
+        out.append(float(sum(i.value for i in _discovery_program(ctx) if nb.piece_at(i.args[0]).color == nb.turn)))
+    return out
 
 
 def encode_row(row: dict, reg: Registry, cid: dict) -> dict:
@@ -119,7 +138,7 @@ def encode_row(row: dict, reg: Registry, cid: dict) -> dict:
 
 def prepare(shard: str, log=print):
     i, n = (int(x) for x in shard.split("/"))
-    rows = load_rows(DATA); reg = Registry(); cid = {c.name: k for k, c in enumerate(reg.concepts)}
+    rows = load_rows(DATA); reg = Registry(version=REGISTRY_VERSION); cid = {c.name: k for k, c in enumerate(reg.concepts)}
     PREP.mkdir(parents=True, exist_ok=True)
     idx = list(range(i, len(rows), n)); enc = []; t0 = time.perf_counter()
     for k, r in enumerate(idx):
@@ -340,7 +359,7 @@ def evaluate(model, data, split, cfg, device, max_n=200000):
 def train(a):
     cfg = Config(**{k: v for k, v in vars(a).items() if k in Config.__dataclass_fields__})
     torch.manual_seed(cfg.seed); np.random.seed(cfg.seed); random.seed(cfg.seed)
-    data = Data(); reg = Registry()
+    data = Data(); reg = Registry(version=REGISTRY_VERSION)
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     model = ConceptNet(cfg, len(reg.concepts)).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=0.01)
@@ -357,7 +376,7 @@ def train(a):
                 acc[k] = acc.get(k, 0.0) + float(v)
         ev = evaluate(model, data, "val", cfg, device)
         print(f"[concept_net] epoch {epoch} " + " ".join(f"{k} {v / steps:.3f}" for k, v in acc.items()) + f" | val: the chosen move keeps the result {ev['keeps']:.3f} (random legal {ev['random_legal']:.3f}); explanation {ev['explanation_len']:.1f} tokens | {time.perf_counter() - t0:.0f}s", flush=True)
-        torch.save(dict(model=model.state_dict(), config=asdict(cfg), n_concepts=len(reg.concepts), registry_version=reg.version), out / "last.pt")
+        torch.save(dict(model=model.state_dict(), config=asdict(cfg), n_concepts=len(reg.concepts), registry_version=reg.version, move_features=list(MOVE_FEATURES)), out / "last.pt")
     final = {s: evaluate(model, data, s, cfg, device) for s in ("test", "held")}
     json.dump(final, open(out / "final.json", "w"), indent=1)
     for s, ev in final.items():
@@ -374,7 +393,7 @@ def load_model(path: str):
 def gauge(ckpt: str, log=print, max_n: int = 4000):
     """Faithfulness under intervention (drop the top concept token of the chosen move: does the choice change?),
     the residual by material and by the concepts present, and the explanation on Kaveh's position."""
-    model, cfg, device = load_model(ckpt); data = Data(log=lambda *a, **k: None); reg = Registry(); names = [c.name for c in reg.concepts]
+    model, cfg, device = load_model(ckpt); data = Data(log=lambda *a, **k: None); reg = Registry(version=REGISTRY_VERSION); names = [c.name for c in reg.concepts]
     for split in ("test", "held"):
         ids = data.ids(split)[:max_n]; changed = same_dir = n = 0; wrong_by = Counter(); present_by = Counter(); present_all = Counter(); n_wrong = 0; n_all = 0
         for s in range(0, len(ids), 256):
@@ -467,7 +486,7 @@ def explain(model, cfg, device, reg, fen: str, log=print):
 def residual(ckpt: str, materials: str, per: int = 4, log=print):
     """The proposal prompt: wrong decisions in the named materials -- the position, what was chosen, what kept the
     result, and the concept instances the chosen move listened to most."""
-    model, cfg, device = load_model(ckpt); data = Data(log=lambda *a, **k: None); reg = Registry()
+    model, cfg, device = load_model(ckpt); data = Data(log=lambda *a, **k: None); reg = Registry(version=REGISTRY_VERSION)
     cid = {c.name: k for k, c in enumerate(reg.concepts)}
     for mat in materials.split(","):
         ids = [i for i in np.nonzero(data.material == mat)[0] if data.split[i] in ("test", "held")]
