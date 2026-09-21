@@ -190,6 +190,41 @@ ROUND_ZERO: list[Concept] = (
 )
 
 
+# ---------------------------------------------------------------- round one (2026-09-21, from the Be6 residual): DISCOVERY
+def _discovery_program(ctx: Context) -> list[Instance]:
+    """discovery(A, B): A stands on the line between B (own slider) and the enemy king, alone; A's moving off the line
+    gives check from B. The instance's value is the number of A's legal moves that leave the line (the family's size)."""
+    out = []
+    b = ctx.board
+    for colour in (chess.WHITE, chess.BLACK):
+        ek = b.king(not colour)
+        if ek is None:
+            continue
+        for bsq, bp in b.piece_map().items():
+            if bp.color != colour or bp.piece_type not in (chess.QUEEN, chess.ROOK, chess.BISHOP):
+                continue
+            between = chess.SquareSet.between(bsq, ek)
+            if not between and not (bsq in b.attacks(ek) and False):
+                continue
+            df, dr = chess.square_file(ek) - chess.square_file(bsq), chess.square_rank(ek) - chess.square_rank(bsq)
+            straight = df == 0 or dr == 0; diag = abs(df) == abs(dr)
+            if not ((straight and bp.piece_type in (chess.QUEEN, chess.ROOK)) or (diag and bp.piece_type in (chess.QUEEN, chess.BISHOP))):
+                continue
+            blockers = [s for s in between if b.piece_at(s) is not None]
+            if len(blockers) != 1 or b.piece_at(blockers[0]).color != colour:
+                continue
+            a = blockers[0]
+            bb = b.copy(stack=False); bb.turn = colour
+            n = sum(1 for m in bb.legal_moves if m.from_square == a and m.to_square not in between) if bb.is_valid() else 0
+            if n:
+                out.append(Instance("discovery", (a, bsq), float(n)))
+    return out
+
+
+ROUND_ONE: list[Concept] = ROUND_ZERO + [Concept("discovery", 2, "pair", version="1", doc="A shields the enemy king from own slider B: A's moves off the line discover check (value: how many)", program=_discovery_program)]
+VERSIONS = {"0": ROUND_ZERO, "1": ROUND_ONE}
+
+
 def _fix_position_names():
     # position programs read graph.position by the bare question name
     for c in ROUND_ZERO:
@@ -203,10 +238,10 @@ _fix_position_names()
 
 
 class Registry:
-    def __init__(self, concepts: list[Concept] | None = None):
-        self.concepts = list(concepts if concepts is not None else ROUND_ZERO)
+    def __init__(self, concepts: list[Concept] | None = None, version: str = REGISTRY_VERSION):
+        self.concepts = list(concepts if concepts is not None else VERSIONS[version])
         self.by_name = {c.name: c for c in self.concepts}
-        self.version = REGISTRY_VERSION
+        self.version = version
 
     def add(self, concept: Concept):
         assert concept.name not in self.by_name, "concepts are never edited or replaced"
