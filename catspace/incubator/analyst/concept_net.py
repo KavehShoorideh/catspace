@@ -37,13 +37,14 @@ DATA = Path("data/derived/endgames_v2")
 PREP = Path("data/derived/concept_net")
 OUT = Path("data/derived/checkpoints/concept_net")
 HELD = {"KRPvKP", "KQvKRP", "KBNvK"}
-MAX_INST = 96
+MAX_INST = 256                           # ~211 instances per position in round zero
+KIND_PRIORITY = {"position": 0, "line": 1, "region_pair": 2, "region_unary": 3, "pair": 4, "node": 5}   # what survives the cap: the relational kinds first, the node answers last (the pieces carry most of them)
 MAX_PIECES = 6
 N_VALUE_BUCKETS = 8
 VALUE_EDGES = np.array([0.5, 1.5, 2.5, 3.5, 5.5, 8.5, 20.5])
 PIECE_ID = {(chess.WHITE, chess.KING): 1, (chess.WHITE, chess.QUEEN): 2, (chess.WHITE, chess.ROOK): 3, (chess.WHITE, chess.BISHOP): 4, (chess.WHITE, chess.KNIGHT): 5, (chess.WHITE, chess.PAWN): 6,
             (chess.BLACK, chess.KING): 7, (chess.BLACK, chess.QUEEN): 8, (chess.BLACK, chess.ROOK): 9, (chess.BLACK, chess.BISHOP): 10, (chess.BLACK, chess.KNIGHT): 11, (chess.BLACK, chess.PAWN): 12}
-REL = ("arg_of", "shares_piece", "attacks", "defends", "same_piece")
+REL = ("arg_of", "shares_piece", "attacks", "defends")
 
 
 def value_bucket(v: float) -> int:
@@ -54,7 +55,8 @@ def encode_row(row: dict, reg: Registry, cid: dict) -> dict:
     """Pieces, instances, relations, legal moves and their labels for one position."""
     b = chess.Board(row["fen"]); memo = Memo()
     inst = reg.instances(b, memo)
-    inst.sort(key=lambda i: (cid[i.concept], i.args, i.line))
+    kind = {c.name: KIND_PRIORITY[c.kind] for c in reg.concepts}
+    inst.sort(key=lambda i: (kind[i.concept], cid[i.concept], i.args, i.line))
     inst = inst[:MAX_INST]
     pieces = sorted(b.piece_map().items())
     psq = np.full(MAX_PIECES, 64, np.int64); pty = np.zeros(MAX_PIECES, np.int64)
@@ -66,23 +68,13 @@ def encode_row(row: dict, reg: Registry, cid: dict) -> dict:
         ic[k] = cid[i.concept]; im[k] = True; iv[k] = value_bucket(i.value); il[k] = i.line
         for j, a in enumerate(i.args[:2]):
             ia[k, j] = pidx.get(a, -1)
-    # relations among tokens: pieces 0..P-1, instances P..P+I-1
-    T = MAX_PIECES + MAX_INST
-    rel = np.zeros((T, T, len(REL)), np.int8)
-    for k, i in enumerate(inst):
-        for a in ia[k]:
-            if a >= 0:
-                rel[MAX_PIECES + k, a, 0] = 1; rel[a, MAX_PIECES + k, 0] = 1
-    args_sets = [set(x for x in ia[k] if x >= 0) for k in range(len(inst))]
-    for k in range(len(inst)):
-        for l in range(k + 1, len(inst)):
-            if args_sets[k] & args_sets[l]:
-                rel[MAX_PIECES + k, MAX_PIECES + l, 1] = 1; rel[MAX_PIECES + l, MAX_PIECES + k, 1] = 1
+    # relations among PIECES (attacks / defends); the instance relations (arg_of, shares_piece) are derived from ia in the model
+    rel = np.zeros((MAX_PIECES, MAX_PIECES, 2), np.int8)
     for sq, p in pieces[:MAX_PIECES]:
         for t in b.attacks(sq):
             q = b.piece_at(t)
             if q is not None and t in pidx:
-                rel[pidx[sq], pidx[t], 2 if q.color != p.color else 3] = 1
+                rel[pidx[sq], pidx[t], 0 if q.color != p.color else 1] = 1
     # legal moves and the partition
     moves = row.get("moves", {})
     legal = list(b.legal_moves)
@@ -135,7 +127,7 @@ class Config:
     layers: int = 2
     heads: int = 4
     lr: float = 1e-3
-    batch: int = 256
+    batch: int = 128
     epochs: int = 12
     concepts: bool = True
     w_value: float = 0.5
@@ -176,18 +168,28 @@ class ConceptNet(nn.Module):
         piece_tok = self.piece(b["pty"]) + self.square(b["psq"])                                              # (B, P, d)
         pmask = b["pty"] > 0
         cls = self.cls.expand(B, 1, -1) + self.side(b["side"])[:, None]
+        P = MAX_PIECES
         if self.cfg.concepts:
             ia = b["ia"].clamp(min=0)
             arg_tok = torch.gather(piece_tok, 1, ia.reshape(B, -1, 1).expand(-1, -1, d)).view(B, MAX_INST, 2, d)
             arg_tok = (arg_tok + self.role.weight[None, None]) * (b["ia"] >= 0)[..., None]
             inst_tok = self.concept(b["ic"]) + arg_tok.sum(2) + self.value(b["iv"]) + self.line(b["il"] + 1)
             x = torch.cat([cls, piece_tok, inst_tok], 1); mask = torch.cat([torch.ones(B, 1, dtype=torch.bool, device=x.device), pmask, b["im"]], 1)
-            bias = torch.zeros(B, self.cfg.heads, 1 + MAX_PIECES + MAX_INST, 1 + MAX_PIECES + MAX_INST, device=x.device)
-            bias[:, :, 1:, 1:] = self.rel_bias(b["rel"]).permute(0, 3, 1, 2)
+            T = P + MAX_INST
+            A = torch.zeros(B, MAX_INST, P, device=x.device)                                                  # instance k has piece p as an argument
+            A.scatter_(2, ia, (b["ia"] >= 0).float())
+            rel = torch.zeros(B, T, T, len(REL), device=x.device)
+            rel[:, P:, :P, 0] = A; rel[:, :P, P:, 0] = A.transpose(1, 2)
+            S = (A @ A.transpose(1, 2) > 0).float(); S = S * (1 - torch.eye(MAX_INST, device=x.device))[None]
+            rel[:, P:, P:, 1] = S
+            rel[:, :P, :P, 2:] = b["rel"]
+            bias = torch.zeros(B, self.cfg.heads, 1 + T, 1 + T, device=x.device)
+            bias[:, :, 1:, 1:] = self.rel_bias(rel).permute(0, 3, 1, 2)
         else:
             x = torch.cat([cls, piece_tok], 1); mask = torch.cat([torch.ones(B, 1, dtype=torch.bool, device=x.device), pmask], 1)
-            bias = torch.zeros(B, self.cfg.heads, 1 + MAX_PIECES, 1 + MAX_PIECES, device=x.device)
-            bias[:, :, 1:, 1:] = self.rel_bias(b["rel"][:, :MAX_PIECES, :MAX_PIECES]).permute(0, 3, 1, 2)
+            rel = torch.zeros(B, P, P, len(REL), device=x.device); rel[..., 2:] = b["rel"]
+            bias = torch.zeros(B, self.cfg.heads, 1 + P, 1 + P, device=x.device)
+            bias[:, :, 1:, 1:] = self.rel_bias(rel).permute(0, 3, 1, 2)
         return x, mask, bias, piece_tok
 
     def forward(self, b):
