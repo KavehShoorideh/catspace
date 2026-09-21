@@ -23051,3 +23051,20 @@ consequence (the move-consequence feature reads 0 safe checks after exf6 because
 a checking square, not off a line) -- deferred until the running concept-net gauge finishes, since the registry's
 size is baked into the checkpoint it will load. Lean or Coq themselves: encoding chess would be a project of
 its own and would not buy search; the kernel-and-terms design is what was worth taking.
+
+## 2026-09-21 00:00 PDT — angles of attack on the king
+
+Kaveh: "keep track of angles of attack to our king, so we can refute whole lines of attack, e.g. if I'm sitting
+behind 3 pawns." Built `angles.py`: an angle = one of the eight rays from the king or the knight's hops; along a
+ray the SHIELD is the first piece outward; CLOSED while the shield is ours and stands (the ledger's defense: not
+falling), CONTESTED when it can be taken or is attacked with something able to use the line, OPEN when the ray
+runs to the edge or an enemy slider stands on it; each angle names the enemy pieces whose regions reach it. A
+closed angle is a lemma over those pieces: their attacks along it are refuted by the shield, as a family. Across
+plies, angles that open or close are events for the tracker. Rules only.
+On a castled king (Kg1, pawns f2 g2 h2): "4 angles closed, 0 contested, 1 open; behind 3 pawns; open: east
+(nothing to use it)"; the closed families name the black queen's and bishop's attacks along the g-file and both
+diagonals; after g4: "the north angle on White's king: closed -> contested". On the Be6 position: White's
+north angle is contested at e5 ("the shield is attacked 1x, defended 2x") -- the pin-and-opening motif of the
+whole position, named by the angle; Black's south-west diagonal is open with the c4 bishop and the d4 queen
+able to use it. 3 tests. Not yet wired: the summary line in the analyst's output and the family prune in the
+mate/king-safety searches (a measurement to make: the search cost on puzzles with the closed families skipped).
