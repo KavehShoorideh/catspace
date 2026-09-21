@@ -15,6 +15,8 @@ loop (pursue) moves to the next target of the progress map.
 The trace (one line per expansion) is the transcript of the search: see docs/ANALYST_GOAL_SEARCH.md."""
 from __future__ import annotations
 
+import os
+
 import math
 import time
 from dataclasses import dataclass, field, replace
@@ -23,6 +25,7 @@ import chess
 
 from . import rules as R
 from .defense import defense, all_defenses, _defense
+from .lemmas import lemmas_after
 from .memo import Reads, changed_squares
 from .facts import value, material
 from .plans import derive, Goal
@@ -46,6 +49,9 @@ class Node:
     cp: float | None = None          # the judge's number at a proven leaf (engine cp, or the settled count in pawns x100)
     ledger: dict | None = None       # square -> (Defense | None, footprint mask): the exchange ledger of every piece here,
                                      # carried from the parent and recomputed only where the move's squares touch a footprint
+    lemma_answer: chess.Move | None = None   # an OR node that represents a FAMILY of their replies: the lemma's answer (lemmas.py)
+    lemma_text: str = ""
+    covered: int = 0                 # at an AND node: their replies closed by lemmas without a child of their own
 
 
 @dataclass
@@ -80,11 +86,15 @@ class Refinement:
     result: "Result | None"          # the re-run
 
 
+FAMILY_LEMMAS = os.environ.get("ANALYST_LEMMAS", "1") != "0"   # families of their replies one answer refutes are searched once (lemmas.py); ANALYST_LEMMAS=0 turns it off for a measurement
+
+
 class GoalSearch:
     """PN search for one goal: win the enemy piece standing on `target` for `side`, within `horizon` plies."""
 
     def __init__(self, board: chess.Board, side: chess.Color, target: int | None, memo=None, engine=None, horizon: int = 6,
                  budget: int = 3000, engine_depth: int = 8, tolerance_cp: int = 40, prior_moves=(), sketch=None):
+        self._lemma_cache: dict = {}
         """target: the square of the enemy piece to win; None = WIN THE GAME by the rules' terminal outcome (mate in
         chess; whatever ends the game in our favour in a variant). The terminal goal needs no ledger and no judge:
         the rules decide the leaves, and the proof-number pricing (few replies = cheap) is the only ordering."""
@@ -216,6 +226,8 @@ class GoalSearch:
             for i, m in enumerate(self.prior_moves):
                 if m in b.legal_moves:
                     prior[m] = 0.0 + 0.01 * i
+        if n.is_or and n.lemma_answer is not None and n.lemma_answer in b.legal_moves:
+            prior[n.lemma_answer] = 0.0                              # the family's answer: the lemma says it works against every member
         if self.sketch and n.is_or:
             u = self.sketch.get(self.path_uci(n))
             if u is not None:
@@ -266,6 +278,8 @@ class GoalSearch:
         few; after an unrelated quiet move most of them. Without this a fresh sibling always looks cheaper than an
         expanded one and the search goes breadth-first over all our moves."""
         n_moves = child.board.legal_moves.count()
+        if not child.is_or and FAMILY_LEMMAS:
+            n_moves = max(1, n_moves - self.covered_by_lemmas(child.board))       # a family one answer refutes is one reply's work
         if self.terminal:
             return (1.0, max(1.0, 0.5 * n_moves)) if child.is_or else (max(1.0, float(n_moves)), 1.0)
         if child.is_or:                                        # our move next: how close is the target to falling?
@@ -283,9 +297,28 @@ class GoalSearch:
         factor = 1.0 if (prior < INF or moved_attacks) else 2.5           # expected work per reply, so a fresh sibling
         return max(1.0, factor * n_moves), 1.0                             # is priced like an expanded one
 
+    def lemmas_of(self, board: chess.Board):
+        key = board.fen()
+        if key not in self._lemma_cache:
+            self._lemma_cache[key] = lemmas_after(board) if FAMILY_LEMMAS else []
+        return self._lemma_cache[key]
+
+    def covered_by_lemmas(self, board: chess.Board) -> int:
+        return sum(len(l.covers) - 1 for l in self.lemmas_of(board))
+
     def expand(self, n: Node):
         n.children = []
+        covered: dict = {}; represented: set = set()
+        if not n.is_or:
+            for lem in self.lemmas_of(n.board):
+                for r in lem.covers:
+                    covered[r] = lem
         for m, p in self.ordered_moves(n):
+            lem = covered.get(m)
+            if lem is not None:
+                if id(lem) in represented:
+                    n.covered += 1; continue                   # closed by the lemma: no child of its own
+                represented.add(id(lem))
             b = n.board.copy(stack=False); b.push(m)
             t = n.target
             if t is not None:
@@ -296,6 +329,8 @@ class GoalSearch:
                 elif m.to_square == t and not n.is_or:
                     t = m.to_square                            # they recaptured on its square: win what stands there now
             child = Node(b, n.ply + 1, m, not n.is_or, parent=n, target=t)
+            if lem is not None:
+                child.lemma_answer = lem.answer; child.lemma_text = lem.text; n.lemma_text = lem.text
             moved_attacks = n.is_or and t is not None and t in b.attacks(m.to_square)
             if n.is_or and n.move is not None and m.to_square == n.move.to_square and n.board.is_capture(m):
                 p = min(p, 1.0)                                # the recapture of what just captured: as good a prior as any plan

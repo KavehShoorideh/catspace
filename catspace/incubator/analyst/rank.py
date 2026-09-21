@@ -14,6 +14,8 @@ where the engine's move has ANY reason at all, split by the kind of move the eng
 """
 from __future__ import annotations
 
+import os
+
 import argparse
 import math
 import random
@@ -250,7 +252,7 @@ def leaf_value(b: chess.Board, side: chess.Color, net: float, memo=None, base=No
 LAST_NETS: dict = {}                     # move uci -> the nets over the opponent's replies from the last sure_gain of it (this process)
 LAST_LEMMAS: dict = {}                   # move uci -> the family lemmas found over the opponent's replies (lemmas.py)
 LAST_TERMS: dict = {}                    # move uci -> the proof term of the last sure_gain (proof.py), checkable by the kernel
-FAMILY_LEMMAS = True                     # families of replies one answer refutes are searched once
+FAMILY_LEMMAS = os.environ.get("ANALYST_LEMMAS", "1") != "0"   # families of their replies one answer refutes are searched once (lemmas.py); ANALYST_LEMMAS=0 turns it off for a measurement
 _PLANNER = None                          # the planning layer, loaded once per process (a small model on the CPU)
 
 
