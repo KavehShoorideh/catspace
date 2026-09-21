@@ -33,9 +33,31 @@ class Lemma:
     text: str = ""
 
 
+def discovery_possible(board: chess.Board) -> bool:
+    """The cheap gate: the side to move has a slider aligned with the enemy king with exactly one own piece between.
+    Without it no reply can discover check, and the reply loop is skipped (on puzzles the ungated detection cost
+    more than the lemmas saved, 2026-09-21)."""
+    us = board.turn; ek = board.king(not us)
+    if ek is None:
+        return False
+    for sq, p in board.piece_map().items():
+        if p.color != us or p.piece_type not in (chess.QUEEN, chess.ROOK, chess.BISHOP):
+            continue
+        df, dr = chess.square_file(ek) - chess.square_file(sq), chess.square_rank(ek) - chess.square_rank(sq)
+        straight = df == 0 or dr == 0; diag = abs(df) == abs(dr) and df != 0
+        if not ((straight and p.piece_type != chess.BISHOP) or (diag and p.piece_type != chess.ROOK)):
+            continue
+        between = [t for t in chess.SquareSet.between(sq, ek) if board.piece_at(t) is not None]
+        if len(between) == 1 and board.piece_at(between[0]).color == us:
+            return True
+    return False
+
+
 def discovered_check_families(board: chess.Board) -> list[Family]:
     """The side to move's replies that give check by a piece OTHER than the one that moved (the moved piece opened
     its line), grouped by (mover, opener)."""
+    if not discovery_possible(board):
+        return []
     fams: dict[tuple[int, int], Family] = {}
     for r in board.legal_moves:
         nb = board.copy(stack=False); nb.push(r)
