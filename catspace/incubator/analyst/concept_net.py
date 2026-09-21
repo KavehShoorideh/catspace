@@ -132,6 +132,7 @@ class Config:
     epochs: int = 12
     concepts: bool = True
     w_value: float = 0.5
+    w_int: float = 0.0               # INTERVENTION CONSISTENCY: removing the top-attributed concept token must change the chosen move's score by what the attribution said (2026-09-20: without it, the top concept was causal in a third of decisions)
     seed: int = 1
 
 
@@ -220,7 +221,20 @@ def losses(model, b, cfg):
     has = keep.any(-1)
     out = dict(policy=-(tgt * logp.masked_fill(~b["lm"], 0.0)).sum(-1)[has].mean() if has.any() else o["score"].sum() * 0,
                value=F.cross_entropy(o["value"], b["wdl"]))
-    out["total"] = out["policy"] + cfg.w_value * out["value"]
+    if cfg.w_int > 0 and cfg.concepts:
+        # the chosen move's top concept token: predicted effect of removing it = its attributed contribution; actual effect = the score's change
+        pick = o["score"].argmax(-1)
+        pt = o["per_tok"].gather(1, pick[:, None, None].expand(-1, 1, o["per_tok"].shape[-1])).squeeze(1)
+        pt_inst = pt[:, 1 + MAX_PIECES:].masked_fill(~b["im"], 0.0)
+        top = pt_inst.abs().argmax(-1); attributed = pt_inst.gather(1, top[:, None]).squeeze(1)
+        b2 = dict(b); b2["im"] = b["im"].clone(); b2["im"][torch.arange(len(top)), top] = False
+        o2 = model(b2)
+        s1 = o["score"].gather(1, pick[:, None]).squeeze(1); s2 = o2["score"].gather(1, pick[:, None]).squeeze(1)
+        valid = b["im"].any(-1) & torch.isfinite(s1) & torch.isfinite(s2)
+        out["int"] = ((s1 - s2) - attributed).abs()[valid].mean() if valid.any() else o["score"].sum() * 0
+    else:
+        out["int"] = o["score"].sum() * 0
+    out["total"] = out["policy"] + cfg.w_value * out["value"] + cfg.w_int * out["int"]
     return out, o
 
 
