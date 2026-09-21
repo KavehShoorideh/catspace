@@ -775,6 +775,27 @@ THE GAP, AND THE PHASES.
   P6 THE PRODUCT (1 d). Lemmas in the analyst's prose: "no search needed here: <lemma>", and the budget the
     lemma saved, so the user sees why the machine did not look.
 
+PROGRESS, AND WHY IT IS THE SAME CURRENCY AS NODES (Kaveh, amendment 2026-09-21). The headline is PROGRESS PER
+NODE. Progress needs a POTENTIAL over positions; a move's progress is the potential's change. Potential-based
+shaping has the classical guarantee (Ng, Harada & Russell 1999) that it densifies a sparse reward WITHOUT
+changing which policy is optimal -- so a lemma can be credited for progress in a game we go on to draw, while
+the thing optimized is still the result. The potentials, in order of trust:
+  1. the tablebase's distance to conversion (exact for <= 5 men: the whole endgame corpus);
+  2. the reachability quasimetric already in the repo (reach_qm: R2 0.83 in plies, the direction of time 0.875)
+     -- it failed as a NAVIGATION target and that is precisely the point: as a MEASURE it need only be monotone
+     along real games, which it was;
+  3. the regime codebook's values, which already come from outcomes, where neither of the first two reaches.
+  The repo's scar (z_conditioned_field_two_evaluators) is that a learned field used as the search's TARGET is
+  trivially gamed. Using it as a measure is the different purpose; the guard is that admission never rests on the
+  potential -- a lemma is admitted on the result at a fixed node budget, and the potential only says where it helped.
+  NO-PROGRESS LEMMAS ARE FIRST-CLASS: if no move raises the potential, the position is drawn by our lights, and a
+  lemma that establishes "no progress is possible here" (a fortress, opposite-coloured bishops) saves more search
+  than any winning one, and the tablebase validates it exactly.
+  Consequences for the phases: P1's traces record the POTENTIAL at every node, not only the value; P3's clusters
+  are "subtrees where progress stalled" as well as "subtrees that were expensive"; and the search over lemma
+  applications ("which lemma raises the potential from here") is the same object as the planner's steering, so
+  the planner and the prover share one mechanism.
+
 THE NUMBERS, EVERY ROUND, EACH BESIDE ITS BASELINE.
   1. FIDELITY: the value with lemmas against the deep value (tablebase where exact, Stockfish at a fixed depth
      elsewhere); baseline = the same search without lemmas.
