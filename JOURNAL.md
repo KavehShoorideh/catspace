@@ -22998,3 +22998,20 @@ lesson is the one from the dead asserts (2026-08-26): a constraint covers the pa
 the path it does not. The board stays as INPUT, as Kaveh wanted (context through attention), but the decision
 must be a sum over concept instances and consequences only -- the board and piece tokens get no contribution
 term of their own. Launched as `concept_net_c3`.
+
+## 2026-09-20 23:30 PDT — the fourth exit: with the board closed, the decision moves onto the ten consequence weights
+
+`concept_net_c3` (decision from concept instances and consequences only; the contrast-defined intervention and
+sparsity), OBS: the chosen move keeps the result 0.946 on test and 0.947 on held (gauge subsets 0.938 / 0.983);
+KPvKP and KPPvKP 0.85 are the weakest. Every concept token's contribution is 0.00; every move's score sits at
++0.01 with the whole contrast on the consequence terms; ties everywhere (the explanation length of 74 "tokens" in
+the epoch line was the tie artifact, 1.1 with ties excluded); dropping the top concept token changes the choice
+in 0.0% of positions; on Kaveh's position all five best moves tie at +0.01 and argmax order picks Rf4 (loses).
+The sparsity term, defined over tokens AND consequences, is minimized by silencing the tokens and letting the
+ten consequence weights decide; the intervention term is then zero by construction. Fourth exit in four runs.
+What the run did establish, beside the loophole: ten rules-only child facts with ten linear weights decide
+0.946 / 0.947 of tablebase positions correctly -- a fully readable, canonical policy, close to what Kaveh asked
+for, with the transformer contributing nothing the constraints allow it to. The regularizer is the wrong tool:
+sparsity as a LOSS drives the collapse; it should be MEASURED. Launched `concept_net_c4`: the same, without the
+sparsity term (only intervention consistency on the contrast). And a degenerate baseline to print beside it:
+a logistic policy over the ten consequence features alone.
