@@ -332,6 +332,12 @@ def render(rec: IdeaRecord, *, long: bool = False, alternatives: bool = True, ve
         from .threats import ledger_lines                                     # both sides' threats, by the free move and the ledger
         for tl in ledger_lines(_b):
             out.append(f"  Threats: {tl}")
+        try:
+            from .angles import summary as angle_summary                       # the angles of attack on both kings: closed, contested, open
+            out.append(f"  Angles: {angle_summary(_b, w)}")
+            out.append(f"  Angles: {angle_summary(_b, not w)}")
+        except Exception:
+            pass
     if rec.played and rec.verdict in ("blunder", "mistake", "inaccuracy"):
         art = "an" if rec.verdict[0] in "aeiou" else "a"
         s = f"  {rec.played.san} was {art} {rec.verdict}: {rec.idea.san} was better ({cp_str(rec.played.cp, w, rec.played.mate)} vs {ev})."
