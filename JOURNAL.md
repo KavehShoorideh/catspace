@@ -22942,3 +22942,23 @@ partly causal. That is the framework working as designed -- the board is seen, t
 place -- and round zero has not earned it on the decision. The residual names where to propose: queen endings,
 pawn races, the two-minor-piece mate; and the faithfulness number says the attribution must be trained as a
 constraint (intervention consistency), not only read.
+
+## 2026-09-20 20:30 PDT — proposal round one, read off the residual: the network cannot see the move's child
+
+`concept_net residual` on the three clusters, OBS, four wrong decisions each. KQPvKQ: 4q3/8/8/6Q1/8/2P1K3/8/4k3 w --
+chose Kf4 (loses), Kd4 keeps; 7Q/5q2/3k4/8/4K3/6P1/8/8 w -- chose g4, Qe5+ keeps; the attribution "listened to"
+pos_open_files() = 7 (+0.80), a near-constant nullary token acting as a bias. KPvKP: 8/8/3p4/1k6/3PK3/8/8/8 w --
+chose Kf5 (loses), Kd5 keeps. KBNvK: 3N2B1/4k3/8/8/8/5K2/8/8 w -- chose Bd5 (loses) with the knight on d8
+attacked; the keepers all move or defend the knight; the attribution: pos_falls_ours -0.93, attackers_count
+(knight d8) -0.51 -- the network SAW the hanging knight and still played elsewhere.
+The common cause: every token describes the position before the move; nothing describes the position after.
+The king steps into the enemy queen's safe checks; the hanging knight stays hanging; the pawn's escort is lost.
+So round one's proposal is structural and still rules-only: per legal move, its CHILD's cheap facts --
+gives check, our pieces left falling, the enemy's safe checks available, our king's / their king's safe region
+meets our pawn's path, a pawn's safe promotion, a capture, the kings' safe sizes -- as the move's own attributed
+terms (one weight each: exact and readable, "after Kf4 the enemy king meets your pawn's path"). On the queen
+ending above the terms already separate the moves: after Kd4 our king meets our pawn's path and theirs does not;
+after Kf4 the reverse. Cost 39 ms a position (from 30). Launched: prepare v2 (8 shards), then the run with the
+consequences and the intervention-consistency loss, after the intervention-only run now training.
+Also noted for the proposer's next round: the nullary position tokens dominate attributions as biases; either
+the consistency loss removes that, or they should be folded into the board token.
