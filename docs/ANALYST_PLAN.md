@@ -695,3 +695,103 @@ concepts (code), not in the weights. First numbers on the tablebase: with concep
 materials), board only 0.929 / 0.895, random 0.774; explanations 6 tokens; the top concept is causal in a third
 of decisions. Round zero earns transfer and explanation, not decision quality. Next: intervention consistency as
 a training constraint; proposal round one against the residual (queen endings, pawn races, KBNvK).
+
+## 37. The lemma loop: search once, remember the result as a lemma, search less (Kaveh 2026-09-21)
+
+THE END STATE. A loop: the searchers (our ledger and goal search, Stockfish, the tablebase) explore the space;
+where our fast evaluation falls short of what search found, or where search was expensive, we PROPOSE a lemma;
+we TEST it against the corpus, PROVE it where it is provable, and ADMIT it to a versioned library only if it
+pays; the searchers then use it and spend fewer nodes. The prize is not a better chess number. It is machinery
+that transfers to domains where rolling the world model forward is expensive: a lemma is a cached, conditioned
+result of rollout, and nothing in the procedure mentions chess.
+
+WHAT A LEMMA IS HERE. A triple: a PATTERN over the rules' vocabulary (concepts.py instances), a CLAIM about what
+search would have found, and EVIDENCE. Two claim kinds so far:
+  - refutation: "this family of the opponent's replies is answered by this move" -> the family is searched once
+    (lemmas.py, the discovered-check schema; the closed angles of angles.py are a second schema, unwired).
+  - value: "when this pattern holds, the subtree's value is V (or bounded by V)" -> the subtree is not expanded.
+    The relative pin is the worked example: "a piece between an enemy slider and a dearer own piece does not
+    move" is the cheap over-general lemma; the exception ("unless a move of it gives check or takes the pinner")
+    is what the residual should teach us. Discovering that refinement without writing it is the test of the loop.
+Status is tracked like a proof library's: PROVED (a finite geometric claim, settled by exhaustion or Z3) or
+CONJECTURED (survived testing, carrying its measured precision). The kernel (proof.py) already separates proven
+replies from priced holes; a mined lemma enters as a hole with a number on it.
+
+WHAT WE TAKE FROM THE MATHEMATICS SOCIETY (2026-09-21 review; do not reinvent):
+  - THEORY EXPLORATION (QuickSpec, Hipster/HipSpec): the loop's skeleton -- enumerate candidate statements from a
+    typed grammar, filter by cheap testing, prove the survivors, add to the library; Hipster's "proof mode" (find
+    the lemma that unsticks THIS goal) is our residual-driven proposal.
+  - LEMMA MINING (Mizar/Flyspeck, Kaliszyk & Urban): only a tiny fraction of proved statements deserve a name;
+    rank candidates by how often they would serve later proofs. Our ranking: applicability x nodes saved.
+  - CUT INTRODUCTION: the field's metric for a lemma is PROOF-SIZE REDUCTION -- the same question as ours in
+    another vocabulary. It is the headline number, not an afterthought.
+  - PREMISE SELECTION (Sledgehammer, Magnushammer): "which of the library's lemmas apply to this goal" is our
+    attention over concept tokens; read before tuning it further.
+  - LCF KERNEL: taken already (proof.py).
+  - Packages, all installable here: z3-solver (promote geometric lemmas from conjectured to proved), python-sat
+    (minimal unsatisfiable subsets = the smallest pattern that explains an outcome), clingo (declarative rules and
+    subset-minimal models) if the pattern language outgrows hand-written matching. NOT Lean/Coq: encoding chess
+    would be its own project and buys no search.
+
+WHERE WE ARE (2026-09-21).
+  Rules layer: the interaction graph (43 node answers, 17 pair relations, 39 position indicators), the ledger and
+    threats, regions (safe closure + contested frontier with attackers), angles of attack on the king, piece
+    identity and per-piece futures.
+  Concepts: a versioned, append-only registry (concepts.py): v0 = 118 concepts enumerated from the rules'
+    vocabulary incl. the line predicates; v1 adds discovery(A, B). Instances are tokens.
+  Learner: concept_net.py -- a shallow transformer over the board's pieces AND the concept instances, the move
+    score an exact sum of per-token contributions, trained on the tablebase's partition of moves (keeps the
+    result / loses it). Rounds, OBS (test / held-out materials): round 0 concepts 0.928 / 0.913; board only
+    0.929 / 0.895; round 1 (+ move consequences) 0.959 / 0.960; round 2 (+ discovery) 0.962 / 0.963; ten linear
+    consequences alone 0.916 / 0.926; random legal 0.774 / 0.772. Explanations 3.2 terms; removing the top
+    concept changes the choice in 22% / 14%.
+  Search: the goal search (proof numbers, OR/AND), the ledger's one-reply minimum, family lemmas represented once,
+    proof terms and a rules-only kernel that refuses forgeries.
+  Canonical selection: canon.py -- a deterministic L1 path over the fixed vocabulary; cross-run identity and
+    bootstrap stability hold; 0.832 test / 0.579 held (the slot-named vocabulary does not transfer).
+  Data: 100,000 tablebase positions over 25 materials with every legal move's result; Kaveh's 69k game positions;
+    60k Lichess games; Lichess puzzles; STS.
+  Honest negatives: the one lemma schema cost time on puzzles (80 solved at 16.8 s vs 81 at 14.6 s, before the
+    geometric gate); the concept tokens contribute at the 0.01 level beside the consequence terms; Kaveh's
+    KRPvKR position is still played wrong.
+
+THE GAP, AND THE PHASES.
+  P1 INSTRUMENTATION (2 d). One node counter across the ledger, the goal search and the engine; traces that emit
+    per node: the concept instances present, the subtree's value, the nodes it cost. Baseline deliverable: the
+    NODES-TO-VALUE CURVE -- how many nodes our search needs to come within epsilon of the deep value, per
+    material and per position class. Nothing today measures this.
+  P2 LEMMA SCHEMA + LIBRARY (2 d). Generalize Family into Lemma(pattern, claim, evidence, status, provenance,
+    stats); a library file with versions; re-express the discovered-check schema and the closed-angle schema in
+    it; the kernel reports proved / conjectured per application. Re-run the puzzle comparison with the gate.
+  P3 THE MINER (3 d). From the traces: cluster subtrees that were expensive AND whose result is constant over a
+    class; extract the smallest pattern that predicts the result (PySAT minimal subsets, the rooting machinery);
+    emit candidates with support and precision. Validation target: rediscover the pin lemma and its relative-pin
+    exception without them being written.
+  P4 THE PROVER (2 d). Z3 (or exhaustion) for the finite geometric claims; promote conjecture -> proved; the
+    library records which is which and the kernel honours it.
+  P5 THE LOOP (2 d). Residual -> proposals (grammar enumeration + an LLM against the residual clusters) -> test ->
+    admit -> re-measure; one journal entry per round with the numbers below; the registry and library versioned
+    per round; explanations cite the version.
+  P6 THE PRODUCT (1 d). Lemmas in the analyst's prose: "no search needed here: <lemma>", and the budget the
+    lemma saved, so the user sees why the machine did not look.
+
+THE NUMBERS, EVERY ROUND, EACH BESIDE ITS BASELINE.
+  1. FIDELITY: the value with lemmas against the deep value (tablebase where exact, Stockfish at a fixed depth
+     elsewhere); baseline = the same search without lemmas.
+  2. SAVINGS: nodes to reach within epsilon of the deep value, with and without; baseline = without.
+  3. DECISION AT A FIXED BUDGET: the share of positions where the chosen move keeps the result at N nodes, for a
+     ladder of N; baselines = without lemmas, and a random legal move.
+  4. INTERPRETABILITY: the explanation's length and the share of decisions whose top term is causal under
+     intervention.
+  5. LIBRARY HEALTH: how many lemmas, proved vs conjectured, each one's applicability and measured precision, and
+     how many are ever used (the mining literature's warning: most named statements are never reused).
+  Kaveh's rule stands: single runs are OBS, never verdicts; two seeds before any claim that turns on a small gap.
+
+RISKS AND THEIR GUARDS.
+  - A lemma that memorizes a position rather than a pattern: the pattern must be small, hold across materials, and
+    survive the held-out-material split and the bootstrap.
+  - A lemma that is wrong: status and precision are recorded; the kernel never reports a conjecture as proven.
+  - A lemma that costs more than it saves: P1's node accounting makes that visible before admission (the puzzle
+    result above is the warning).
+  - The proposer drifting into chess knowledge: proposals are programs over the rules' vocabulary only, and the
+    admission test is the decision, not plausibility.
