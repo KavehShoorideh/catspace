@@ -37,7 +37,6 @@ from .endgames import load as load_rows, split_of
 from .memo import Memo
 
 DATA = Path("data/derived/endgames_v2")
-PREP = Path("data/derived/concept_net" + PREP_SUFFIX)       # v2: with the move consequences; v3: registry v1 + the discovered-check consequence
 OUT = Path("data/derived/checkpoints/concept_net")
 HELD = {"KRPvKP", "KQvKRP", "KBNvK"}
 MAX_INST = 256                           # ~211 instances per position in round zero
@@ -61,6 +60,7 @@ if REGISTRY_VERSION == "1":
     PREP_SUFFIX = "_v3"
 else:
     PREP_SUFFIX = "_v2"
+PREP = Path("data/derived/concept_net" + PREP_SUFFIX)       # v2: with the move consequences; v3: registry v1 + the discovered-check consequence
 
 
 def value_bucket(v: float) -> int:
