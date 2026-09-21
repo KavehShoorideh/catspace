@@ -23110,3 +23110,30 @@ the corpus for the loop must include positions where search DOES earn its cost (
 puzzles, the KBNvK-style long conversions), and the first thing to mine is not speed but the 4% of positions
 where the static reading picks a losing move.
 The lemma overhead is now visible and cheap (15 units, ~3% of the budget-0 cost): the gate did its job.
+
+## 2026-09-21 14:51 PDT — the curve in openings and middlegames: the budget changes NOTHING, anywhere
+
+`gauge_nodes --corpus middlegame|opening`, 20 positions each from Kaveh's games (plies 21-70 and 6-20), the
+oracle Stockfish at depth 16, regret in centipawns against its best move, the oracle's own calls outside the
+counter. OBS:
+  MIDDLEGAME: within 50 cp of the engine's best 45.0% (a random legal move 10.0%), top-1 40.0%, cp lost 91.4
+    (random 211.2); work 6,213 at budget 0, 19,879 at 40, 62,953 at 160.
+  OPENING: within 50 cp 25.0% (random 12.5%), within 20 cp 5.0%, top-1 0.0%, cp lost 100.4 (random 173.0);
+    work 6,619 / 22,612 / 72,213.
+  The lemmas: identical decisions, +43 work per position, 0.6 replies saved per position at budget 160.
+THE FINDING, and it is bigger than the phase: the decision is IDENTICAL at every budget, to three decimals, in
+BOTH phases -- 0.450 at 0, 40 and 160 in the middlegame; 0.250 in the opening -- while the work rises 10x. The
+endgame curve said the same thing more gently (0.960 -> 0.967 -> 0.967). This replicates the 2026-09-11 budget
+gauge's "identical top-1 at all budgets" on a second corpus and with a better ruler: OUR SEARCH DOES NOT CONVERT
+BUDGET INTO DECISIONS. The deep searches (combinations, the goal search's proofs, the planner's promises) add
+bonuses that never overturn the ledger's static ordering -- TRUST 0.4 on an unproven promise, and a proof worth a
+pawn against a ledger that already reads the position in pawns.
+CONSEQUENCE FOR THE LEMMA PROGRAMME. "Fewer nodes for the same decision" is trivially satisfiable today by
+searching zero nodes, so a lemma cannot be judged on savings until search pays for itself. Phase two is
+therefore NOT the lemma schema: it is the diagnosis -- how often does a completed deep search (a proven
+combination, a proven goal, a mate) disagree with the static top move, and what happens to the decision when it
+is allowed to override rather than to add a bonus? If the answer is "it rarely disagrees", the deep search is
+redundant and the honest product is the static reading; if it disagrees but is outvoted, the scoring is wrong
+and fixing it is worth more than any lemma.
+Also standing: the opening is the worst phase (top-1 0/20) and the least rules-derivable; the lemma loop should
+not be judged there first.
