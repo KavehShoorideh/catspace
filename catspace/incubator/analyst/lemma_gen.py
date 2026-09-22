@@ -85,12 +85,13 @@ class Lemma:
     examples: dict = field(default_factory=dict)
     inherited: list = field(default_factory=list)      # the parent's guard literals, applied first
     broke: int = 0                                     # exceptions the parent's guard did NOT cover: what this frame exists to explain
+    reversed: bool = False                             # the parent's claim inverted here: the majority now goes the other way
 
     def text(self):
         g = " & ".join(("" if pol else "not ") + f"{r}({','.join(str(s) for s in sl)})" for r, sl, pol in self.guard)
         return (f"{self.frame.text()} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
                 + (f"; unless {g} (covers {self.covered}/{self.covered + self.residual} exceptions, purity {self.purity:.2f})" if self.guard else f"; {self.residual} exceptions unexplained")
-                + (f"; the parent's lemma broke on {self.broke}" if self.inherited else "") + ("" if self.complete else " [sampled]"))
+                + (f"; the parent's lemma {'REVERSED' if self.reversed else 'broke'} on {self.broke}" if self.inherited else "") + ("" if self.complete else " [sampled]"))
 
 
 class Generator:
@@ -155,6 +156,15 @@ class Generator:
                     covered_by_parent[i] = covered_by_parent[i] or (v == pol and exc[i])
             broke = sum(e and not c for e, c in zip(exc, covered_by_parent))
             exc = [e and not c for e, c in zip(exc, covered_by_parent)]     # only what the parent could not explain is this frame's business
+        reversed_ = False
+        if inherit is not None and sum(exc) * 2 > len(rows):
+            # the parent's claim INVERTS in this frame: the majority now goes the other way. State the majority as the claim
+            # and explain the minority -- a guard that covered the old majority would be vacuous
+            reversed_ = True
+            claim = "acting keeps" if claim == "acting loses" else "acting loses"
+            exc = [not l if claim == "acting loses" else l for l in loses]
+            inherited = []
+        holds = len(rows) - sum(exc)
         # the label vector's signature: observational equivalence across frames
         sig = (tuple(frame.types), slot, len(rows), holds, hash(tuple(exc)))
         if sig in self.seen_signatures:
@@ -167,7 +177,7 @@ class Generator:
             key = "exception" if is_exc else "holds"
             if key not in examples:
                 examples[key] = (self.dom_text(state), str(a), round(d, 2))
-        return Lemma(frame, slot, claim, len(rows), holds, guard, covered, purity, residual, complete, examples, inherited, broke)
+        return Lemma(frame, slot, claim, len(rows), holds, guard, covered, purity, residual, complete, examples, inherited, broke, reversed_)
 
     def dom_text(self, state):
         return getattr(state, "fen", lambda: str(state))()
@@ -204,6 +214,8 @@ class Generator:
                     if gain == 0:
                         continue
                     matched = sum((x == pol) for x in v)
+                    if matched * 2 > len(rows):
+                        continue                                              # a condition true of most rows explains nothing
                     pur = sum((x == pol) and e for x, e in zip(v, exc)) / max(1, matched)
                     score = gain * pur
                     if best is None or score > best[0]:
