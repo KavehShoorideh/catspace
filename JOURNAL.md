@@ -23206,3 +23206,37 @@ token in the vocabulary. Those pairs are where our tokens cannot see the differe
 the opposition, a zugzwang), and they are the exact material for the next primitive -- the loop's residual, one
 level below the model's.
 A larger run (1,500 seeds, up to 400 pairs) is running for a firmer number.
+
+## 2026-09-22 14:20 PDT — the contrast method was unsound; the frame enumeration is the sound replacement
+
+Kaveh, on the worked example in the artifact: "your method is unsound, and luckily you showed me an example that
+demonstrated the unsoundness." He was right on both counts. The example (6k1/5p2/6B1/8/8/8/8/7K b, fxg6 "keeps",
+against 8/5p1k/6B1/8/8/8/8/7K b, fxg6 "throws it away") does not show a capture getting worse: on the left EVERY
+move draws, on the right Kxg6 WINS, so fxg6's own value is a draw in both and only its RANK changed. Three faults,
+in order of seriousness:
+ 1. THE LABEL. The verdict was "is this move the best available", so a pair flipped when a different move improved.
+    Fixed: the verdict is now the move's own outcome (win / draw / loss by the tablebase). Re-run, 400 pairs:
+    attackers-minus-defenders 33.8% (higher in the good one 135, lower 5), the exchange 33.5%, the capturer
+    falling 33.2%. The ranking survived, which is beside the point --
+ 2. THE OPERATOR. Moving one piece one square changes attack sets, escape squares, opposition and tempo at once,
+    so the token that differs is not identified; and the operator decides which tokens can ever appear. The proof
+    of this is a claim I published: "material is equal in all 400 pairs, so material is provably not the
+    difference". False. A one-square edit CANNOT change material. That zero was my operator, not chess.
+ 3. EQUIVALENT TOKENS. The exchange and "the capturer falls afterwards" have identical counts in every run because
+    they are the same fact; a correlational vote cannot prefer one or notice they are one.
+So the contrast miner is a CONJECTURE GENERATOR and nothing it prints is evidence. Built the sound half,
+`frames.py`: name the frame and its side conditions, enumerate EVERY placement (the slider's square fixed to the
+ten canonical squares by the board's eightfold symmetry, which the claim respects; kings everywhere legal), and
+decide the claim BY THE RULES, so it holds at any material and needs no tablebase. The first proven statement,
+the pin, over three frames (OBS, complete over each frame):
+  S=rook A=knight B=queen: 512,589 placements, 2,928,854 moves off the line; the claim "A leaves the line and we
+    lose material" holds 88.51%; exceptions: A's move gives check 11.40%, the slider cannot capture 0.09%.
+  S=bishop A=knight B=rook: 275,299 placements, 1,888,958 moves; holds 87.37%; check 8.77%, the slider cannot
+    capture 3.87% (it is pinned itself or the capture is illegal).
+  S=queen A=bishop B=rook: 674,901 placements, 4,980,331 moves; holds 74.63%; B is defended and the slider is
+    recaptured 16.00%, check 9.16%, cannot capture 0.21%.
+The three exception classes ARE the guard, and they are complete rather than sampled: the lemma reads "a piece on
+the line between an enemy slider and a dearer piece of ours loses material by leaving the line UNLESS the move
+gives check, or the slider is prevented from capturing, or the piece behind is defended so the slider is
+recaptured". Nobody wrote that guard; the enumeration produced it, and every case is accounted for.
+The artifact (claude.ai/artifact/6QNfejU4rvJ9aMsbt67hAr) states the unsound claims and will be rewritten on this.
