@@ -23183,3 +23183,26 @@ to_go / race_margin as node answers, but nothing that answers the question ABOUT
 lesson repeating: the network cannot see what the move does.
 Round three's proposal is therefore named by the machine, not by me: a move consequence "after this move, the
 enemy's fastest promoter is unstoppable / its margin in plies".
+
+## 2026-09-21 21:15 PDT — minimal pairs: the miner recovers "attackers against defenders" from the contrast alone
+
+Kaveh's formulation: "I take a protected pawn and the evaluation drops; in a similar position with another
+attacker it does not -- what is the difference, and what is the MINIMUM set of tokens that tells the two sets
+apart?" Built `mine contrast`: minimal pairs made mechanically -- take a capture whose verdict the tablebase
+knows, move ONE piece ONE square, keep the perturbation only when the SAME capture's verdict flips -- then rank
+the tokens by how often their difference points the same way across every pair, and cover the pairs greedily to
+get the smallest set.
+OBS, a first small run (120 seed positions, 38 minimal pairs): the tokens that separate, in order --
+  the capturing piece falls afterwards 47.4% (never higher in the good position, lower in 18 pairs)
+  the exchange (SEE) 47.4% (identical split: the same fact by another name)
+  attackers minus defenders 44.7% (higher in the good position in 17 pairs, lower in 3)
+  the target is defended / the count of its defenders 42.1%
+  the value of the target, the value of the mover, our king's distance: 0.0% -- constant across every pair.
+So the miner recovers exactly the answer Kaveh predicted -- more attackers than defenders, which is the
+exchange -- from the contrast alone, with no claim written. And the values it does NOT pick are as telling: a
+perturbation that flips the verdict never changes what is captured, so the material is not the difference.
+THE INTERESTING REMAINDER: the greedy minimal set explains 55.3% of the pairs; about half are EQUAL on every
+token in the vocabulary. Those pairs are where our tokens cannot see the difference (a king step that changes
+the opposition, a zugzwang), and they are the exact material for the next primitive -- the loop's residual, one
+level below the model's.
+A larger run (1,500 seeds, up to 400 pairs) is running for a firmer number.
