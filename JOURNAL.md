@@ -23163,3 +23163,23 @@ probe at decision time); every lemma states its FRAME (the pieces and squares it
 be there), so what is proved among five pieces holds among thirty; prefer CONSTRAINT lemmas (a family refuted, a
 piece immobile, a line closed) over VALUE lemmas, which are shaped by the material present and cannot transfer;
 and a framed lemma can be proved by enumerating the frame's geometry -- exhaustively, without any tablebase.
+
+## 2026-09-21 17:44 PDT — the loop closed for compounds: the residual miner names the next primitive itself
+
+`mine residual` (new): the concept network's own mistakes on the held-out split, features = the registry's
+concepts present in the position plus the chosen move's consequences, candidates ranked by LIFT against the base
+rate with support and example positions. OBS on `concept_net_c4`, test split: 8,999 positions, 365 wrong (4.1%).
+Single features by lift: keeps_off_mate x1.95, the move allows the enemy pawn's safe promotion x1.56, the move
+leaves our pieces falling x1.51, defend_counts x1.47, threat x1.44.
+The COMPOUND candidates, and they all say one thing: our move leaves something hanging or allows a promotion
+WHILE the opponent has a race -- "our pieces falling AND their race" 17.9% wrong of 39 (lift x4.43), "the enemy
+pawn's safe promotion AND our queen on" 17.8% of 45 (x4.38), "enemy promotion AND their threat" 16.6% of 145
+(x4.08), "enemy safe checks AND our threat" 12.7% of 442 (x3.12). Examples: 8/3k4/2pP3K/8/P7/8/8/8 w (a pawn
+race), 7q/1P6/8/5k2/8/5K2/8/3Q4 b (promotion against a queen).
+So the loop is closed for compounds: no claim was written, the model's residual chose the cluster, and the
+cluster names the missing PRIMITIVE without ambiguity -- whether the enemy's fastest promoter can still be
+stopped after our move (the rule of the square as a move consequence). The registry has race indicators and
+to_go / race_margin as node answers, but nothing that answers the question ABOUT THE CHILD, which is round one's
+lesson repeating: the network cannot see what the move does.
+Round three's proposal is therefore named by the machine, not by me: a move consequence "after this move, the
+enemy's fastest promoter is unstoppable / its margin in plies".
