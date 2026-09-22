@@ -23264,3 +23264,23 @@ stopped at size 1 -- but the size-1 lemma is only true in a world of kings; add 
 material without landing on an attacked square (the pin). Fixed: the residual that drives extension is what the
 PARENT's guard no longer explains once a slot is added, and a frame is extended exactly where the parent's lemma
 broke. Size two: 10 admitted size-1 lemmas -> 1,000 candidate frames, running as a smoke (cap 300).
+
+## 2026-09-22 16:20 PDT — size two: the first two-piece lemmas nobody wrote
+
+The size-two smoke (cap 200 placements a frame, sampled), OBS: 1,000 candidate frames from the ten size-one
+lemmas, 632 evaluated (the rest collapsed as observationally equivalent or unplaceable -- two kings a side, which
+had hung the sampler until the domain refused them), 260 admitted. Most admissions restate the size-one lemma
+inside a two-piece frame (a new slot inherited nothing; fixed after the run). The ones that are NEW, i.e. where
+the parent's lemma broke and a different guard explains it:
+  [wR wK] same side :: the king acting keeps material in 94.5% of 1,169 -- UNLESS the rook is attacked (64/64,
+    purity 0.96): with a piece hanging, moving the king loses it. The size-one king lemma (100%) broke here.
+  [wN wN] same side :: a knight acting keeps in 81.7% of 1,006 -- unless the OTHER knight is attacked (74/74,
+    0.83); [wN wB], [wB wR], [wR wB] the same shape: "do not move this piece while that one hangs".
+  [bQ wB] the bishop attacks the queen :: the queen acting LOSES in 53% of 228 -- unless it leaves the bishop's
+    line (not stays_aligned, 107/107, 0.90): an attacked piece must leave the attacker's line.
+  [wK bR] the king attacks the rook :: the rook acting keeps in 72% of 175 -- unless it stays aligned with the
+    king (49/49, 0.96); [wK bB] the same.
+Each is a claim over a slot's actions with a guard read off the complete partition of a two-piece frame; none
+was written; all are sampled (cap 200) and so conjectures until the exhaustive pass. The pin needs three slots
+(the slider, the shield, the piece behind) and is where size three should first break the size-two lemmas.
+Launched size three (cap 1,000), with new slots inheriting the single-type lemma.
