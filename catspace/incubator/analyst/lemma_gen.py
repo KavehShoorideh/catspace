@@ -290,15 +290,75 @@ class Generator:
 
     def save(self):
         OUT.mkdir(parents=True, exist_ok=True)
-        json.dump([dict(frame=l.frame.text(), slot=l.slot, claim=l.claim, support=l.support, holds=l.holds, guard=[list(map(str, g)) for g in l.guard],
+        json.dump([dict(frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim, support=l.support, holds=l.holds,
+                        guard=[[r, list(sl), pol] for r, sl, pol in l.guard], inherited=[[r, list(sl), pol] for r, sl, pol in l.inherited], reversed=l.reversed,
                         covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples) for l in self.library],
                   open(OUT / f"library_{self.dom.name}.json", "w"), indent=1)
         json.dump([dict(frame=f.text(), residual=r) for f, r in self.residual_frames], open(OUT / f"residual_{self.dom.name}.json", "w"), indent=1)
 
 
+def parse_frame(text: str) -> Frame:
+    """'[wQ wR bK] same_side(0,1) & attacks(2,1)' -> Frame (for libraries saved before the structure was stored)."""
+    head, _, rest = text.partition("] ")
+    types = tuple(head.strip("[").split())
+    lits = []
+    if rest.strip() and not rest.startswith("(no relation)"):
+        for part in rest.split(" & "):
+            pol = not part.startswith("not ")
+            part = part[4:] if not pol else part
+            name, _, args = part.partition("(")
+            lits.append((name, tuple(int(x) for x in args.rstrip(")").split(",") if x != ""), pol))
+    return Frame(types, tuple(lits))
+
+
+def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, limit: int = 0, log=print):
+    """THE EXHAUSTIVE PASS: re-run each admitted lemma with a far larger cap (exhaustive where the frame fits) and
+    check the STORED guard -- not a re-fit -- for coverage and purity. A lemma is PROVED (over the frame, at this
+    cap) when the guard still explains the exceptions; otherwise it stays a conjecture and its failure is reported."""
+    lib = json.load(open(library_path))
+    g = Generator(dom, cap=cap, log=lambda *a, **k: None)
+    out = []
+    for k, entry in enumerate(lib[: limit or len(lib)]):
+        fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"])) if "types" in entry else parse_frame(entry["frame"])
+        slot = entry["slot"]; claim = entry["claim"]
+        guard = [(gg[0], tuple(int(x) for x in (gg[1] if isinstance(gg[1], list) else gg[1].strip("()").split(",") if gg[1] else [])), bool(gg[2]) if not isinstance(gg[2], str) else gg[2] == "True") for gg in entry["guard"]] if entry["guard"] else []
+        rows = []; complete = True
+        for state, ids, comp in g.instances(fr):
+            complete = comp
+            e = ids[slot]
+            for a in dom.actions(state, e):
+                delta = dom.reply_scalar(dom.transition(state, a), e) - dom.scalar(state, e)
+                rows.append((state, ids, a, delta))
+        if not rows:
+            out.append(dict(frame=fr.text(), slot=slot, status="no placements")); continue
+        exc = [(d >= 0) if claim == "acting loses" else (d < 0) for _, _, _, d in rows]
+        n_exc = sum(exc)
+        matched = [False] * len(rows)
+        for rname, sl, pol in guard:
+            r = g.rel[rname]
+            for i, (state, ids, a, _) in enumerate(rows):
+                try:
+                    v = bool(r.fn(state, a, *[ids[x] for x in sl])) if r.on_action else bool(r.fn(state, *[ids[x] for x in sl]))
+                except Exception:
+                    v = False
+                matched[i] = matched[i] or (v == pol)
+        cov = sum(m and e for m, e in zip(matched, exc)) / max(1, n_exc) if n_exc else 1.0
+        pur = sum(m and e for m, e in zip(matched, exc)) / max(1, sum(matched)) if guard else 1.0
+        status = "PROVED" if (n_exc == 0 or (cov >= min_cov and pur >= min_pur)) else "conjecture"
+        gtxt = " & ".join(("" if pol else "not ") + f"{r}({','.join(map(str, sl))})" for r, sl, pol in guard) or "(none)"
+        log(f"  {status:<10} {fr.text()} :: slot {slot} {claim} {100 * (len(rows) - n_exc) / len(rows):.1f}% of {len(rows)}; guard {gtxt}: covers {100 * cov:.1f}% of {n_exc} exceptions, purity {pur:.2f}" + (" (complete)" if complete else f" (cap {cap})"))
+        out.append(dict(frame=fr.text(), slot=slot, claim=claim, support=len(rows), exceptions=n_exc, coverage=cov, purity=pur, complete=complete, status=status))
+    OUT.mkdir(parents=True, exist_ok=True)
+    json.dump(out, open(OUT / f"proved_{dom.name}.json", "w"), indent=1)
+    c = Counter(o["status"] for o in out)
+    log(f"[lemma_gen/prove] {dict(c)}")
+    return out
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["run"]); ap.add_argument("--domain", default="chess")
+    ap.add_argument("cmd", choices=["run", "prove"]); ap.add_argument("--domain", default="chess")
+    ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args(argv)
     if a.domain == "chess":
@@ -306,6 +366,8 @@ def main(argv=None):
         dom = domain()
     else:
         raise SystemExit(f"unknown domain {a.domain}")
+    if a.cmd == "prove":
+        prove(dom, Path(a.library), a.cap, limit=a.limit); return
     g = Generator(dom, cap=a.cap, seed=a.seed)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
