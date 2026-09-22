@@ -23240,3 +23240,27 @@ the line between an enemy slider and a dearer piece of ours loses material by le
 gives check, or the slider is prevented from capturing, or the piece behind is defended so the slider is
 recaptured". Nobody wrote that guard; the enumeration produced it, and every case is accounted for.
 The artifact (claude.ai/artifact/6QNfejU4rvJ9aMsbt67hAr) states the unsound claims and will be rewritten on this.
+
+## 2026-09-22 15:15 PDT — the domain-agnostic lemma generator: size one, and two traps on the way
+
+Kaveh: the generation must be completely not hand-written so it transfers to other domains; sizes 1, 2, 3 ... with
+no knowledge choosing k; and prioritize what we run into (play, analyze our own games, codify what keeps coming
+up, repeat). Built `lemma_gen.py` (generic: a Domain supplies entity types, relations as programs, actions and
+the transition, a scalar, and placements -- nothing else) and `chess_domain.py` (the adapter: the only file that
+knows what a piece is; no pawns yet, so the eightfold symmetry holds). A FRAME is a conjunction of relation
+literals over typed slots; a CLAIM is over one slot's actions ("acting keeps / loses the scalar", the scalar after
+the opponent's best immediate reply); the GUARD is the smallest separating conjunction found INSIDE the frame,
+which is sound because the placements are the complete partition and no operator chooses them; sizes grow by
+iterative deepening, a child inheriting its parent's claim and guard and existing only to explain what the
+parent's guard could not; frames with the same label vector collapse to one.
+SIZE ONE, OBS (cap 2500 placements per frame, sampled): the same lemma for every piece kind, produced by the
+generator with no chess in it -- "a queen/rook/bishop/knight that moves keeps material in 89.3-91.9% of cases;
+UNLESS it lands on an attacked square, which covers 100% of the exceptions at purity 0.92-0.96"; the kings
+100% with no exceptions (nothing else on the board can take them). That is "don't hang your piece", found.
+TWO TRAPS: (1) bishops and knights first came out at 100% with zero exceptions -- python-chess's is_game_over()
+treats K+B vs K as over by insufficient material BEFORE the king captures the bishop, so the reply search never
+ran (fixed: checkmate and stalemate only); (2) a lemma that is clean at size k seeded no extension, so the run
+stopped at size 1 -- but the size-1 lemma is only true in a world of kings; add a third piece and a move can lose
+material without landing on an attacked square (the pin). Fixed: the residual that drives extension is what the
+PARENT's guard no longer explains once a slot is added, and a frame is extended exactly where the parent's lemma
+broke. Size two: 10 admitted size-1 lemmas -> 1,000 candidate frames, running as a smoke (cap 300).
