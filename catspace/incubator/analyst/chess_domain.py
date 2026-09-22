@@ -117,6 +117,8 @@ def reply_scalar(after: State, e: int) -> float:
         return _material(b, side)
     worst = None
     for r in b.legal_moves:
+        if not (b.is_capture(r) or b.gives_check(r)):
+            continue                                                  # only a capture or a check can lower the actor's material within one reply
         nb = b.copy(stack=False); nb.push(r)
         v = _material(nb, side) + (-1000.0 if nb.is_checkmate() else 0.0)
         worst = v if worst is None else min(worst, v)

@@ -227,7 +227,9 @@ class Generator:
         for size in range(1, max_size + 1):
             self.log(f"[lemma_gen] size {size}: {len(frontier)} frames to evaluate ({time.perf_counter() - t0:.0f}s)")
             next_frontier = []; admitted = 0; evaluated = 0; broke_frames = 0
-            for fr, parent in frontier:
+            for fi, (fr, parent) in enumerate(frontier):
+                if fi and fi % 50 == 0:
+                    self.log(f"[lemma_gen] size {size}: {fi}/{len(frontier)} frames, admitted {admitted} so far ({time.perf_counter() - t0:.0f}s)")
                 for slot in range(fr.size):
                     inherit = lemma_of.get((parent.types, parent.literals, slot)) if parent is not None and slot < parent.size else None
                     lem = self.evaluate(fr, slot, inherit)
