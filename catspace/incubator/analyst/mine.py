@@ -310,22 +310,17 @@ def contrast_features(board: chess.Board, m: chess.Move) -> dict:
 
 
 def _verdict(tb, board: chess.Board, m: chess.Move) -> int | None:
-    """+1 the move keeps the best available result, -1 it throws it away (by the tablebase, exactly)."""
-    best = None; got = None
-    for x in board.legal_moves:
-        nb = board.copy(stack=False); nb.push(x)
-        if nb.is_game_over():
-            v = 2 if nb.is_checkmate() else 0
-        else:
-            try:
-                v = -tb.probe_wdl(nb)
-            except Exception:
-                return None
-        v = (v > 0) - (v < 0)
-        best = v if best is None else max(best, v)
-        if x == m:
-            got = v
-    return None if got is None else (1 if got == best else -1)
+    """THE MOVE'S OWN OUTCOME in the mover's view: +1 it wins, 0 it draws, -1 it loses (exactly, by the tablebase).
+    NOT 'is it the best move' (2026-09-22: that version flipped when a BETTER ALTERNATIVE appeared -- the same
+    capture's own value unchanged -- and the tokens then explained the alternative, not the capture)."""
+    nb = board.copy(stack=False); nb.push(m)
+    if nb.is_game_over():
+        return 1 if nb.is_checkmate() else 0
+    try:
+        v = -tb.probe_wdl(nb)
+    except Exception:
+        return None
+    return (v > 0) - (v < 0)
 
 
 def contrast(n_seeds: int, log=print, max_pairs: int = 400, seed: int = 0):
@@ -363,8 +358,9 @@ def contrast(n_seeds: int, log=print, max_pairs: int = 400, seed: int = 0):
                     v1 = _verdict(tb, nb, m)
                     if v1 is None or v1 == v0:
                         continue
-                    good, bad = (b, nb) if v0 > 0 else (nb, b)
-                    pairs.append((good.fen(), bad.fen(), m.uci()))
+                    good, bad = (b, nb) if v0 > v1 else (nb, b)
+                    edited = chess.square_name(sq) + chess.square_name(to)
+                    pairs.append((good.fen(), bad.fen(), m.uci(), edited, pc.symbol(), max(v0, v1), min(v0, v1)))
                     break
                 if len(pairs) >= max_pairs:
                     break
@@ -375,7 +371,7 @@ def contrast(n_seeds: int, log=print, max_pairs: int = 400, seed: int = 0):
     # the smallest set of tokens that separates the good member from the bad one
     diffs = {f: [0, 0, 0] for f in CONTRAST_FEATURES}      # feature -> [good>bad, good<bad, equal]
     rowsf = []
-    for gf, bf, u in pairs:
+    for gf, bf, u, *_ in pairs:
         gb, bb = chess.Board(gf), chess.Board(bf); mv = chess.Move.from_uci(u)
         fg, fb = contrast_features(gb, mv), contrast_features(bb, mv)
         rowsf.append((fg, fb))
@@ -409,7 +405,7 @@ def contrast(n_seeds: int, log=print, max_pairs: int = 400, seed: int = 0):
     OUT.mkdir(parents=True, exist_ok=True)
     json.dump(dict(pairs=len(pairs), ranked=[dict(feature=f, separates=a, up=u, down=d, equal=e) for a, f, u, d, e in ranked],
                    minimal=[list(x) for x in chosen], explained=float(covered.mean()),
-                   examples=[dict(good=g, bad=b_, move=u) for g, b_, u in pairs[:5]]), open(OUT / "contrast.json", "w"), indent=1)
+                   examples=[dict(good=g, bad=b_, move=u, edit=ed, piece=pcs, good_value=int(gv), bad_value=int(bv)) for g, b_, u, ed, pcs, gv, bv in pairs[:40]]), open(OUT / "contrast.json", "w"), indent=1)
 
 
 def main(argv=None):
