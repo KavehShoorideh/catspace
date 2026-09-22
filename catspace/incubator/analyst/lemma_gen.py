@@ -88,7 +88,7 @@ class Lemma:
     reversed: bool = False                             # the parent's claim inverted here: the majority now goes the other way
 
     def text(self):
-        g = " & ".join(("" if pol else "not ") + f"{r}({','.join(str(s) for s in sl)})" for r, sl, pol in self.guard)
+        g = " or ".join(("" if pol else "not ") + f"{r}({','.join(str(s) for s in sl)})" for r, sl, pol in self.guard)
         return (f"{self.frame.text()} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
                 + (f"; unless {g} (covers {self.covered}/{self.covered + self.residual} exceptions, purity {self.purity:.2f})" if self.guard else f"; {self.residual} exceptions unexplained")
                 + (f"; the parent's lemma {'REVERSED' if self.reversed else 'broke'} on {self.broke}" if self.inherited else "") + ("" if self.complete else " [sampled]"))
@@ -345,7 +345,7 @@ def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_
         cov = sum(m and e for m, e in zip(matched, exc)) / max(1, n_exc) if n_exc else 1.0
         pur = sum(m and e for m, e in zip(matched, exc)) / max(1, sum(matched)) if guard else 1.0
         status = "PROVED" if (n_exc == 0 or (cov >= min_cov and pur >= min_pur)) else "conjecture"
-        gtxt = " & ".join(("" if pol else "not ") + f"{r}({','.join(map(str, sl))})" for r, sl, pol in guard) or "(none)"
+        gtxt = " or ".join(("" if pol else "not ") + f"{r}({','.join(map(str, sl))})" for r, sl, pol in guard) or "(none)"
         log(f"  {status:<10} {fr.text()} :: slot {slot} {claim} {100 * (len(rows) - n_exc) / len(rows):.1f}% of {len(rows)}; guard {gtxt}: covers {100 * cov:.1f}% of {n_exc} exceptions, purity {pur:.2f}" + (" (complete)" if complete else f" (cap {cap})"))
         out.append(dict(frame=fr.text(), slot=slot, claim=claim, support=len(rows), exceptions=n_exc, coverage=cov, purity=pur, complete=complete, status=status))
     OUT.mkdir(parents=True, exist_ok=True)
