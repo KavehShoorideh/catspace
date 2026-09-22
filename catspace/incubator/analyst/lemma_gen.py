@@ -83,12 +83,14 @@ class Lemma:
     residual: int                  # exceptions the guard does not cover
     complete: bool                 # the placements were exhaustive
     examples: dict = field(default_factory=dict)
+    inherited: list = field(default_factory=list)      # the parent's guard literals, applied first
+    broke: int = 0                                     # exceptions the parent's guard did NOT cover: what this frame exists to explain
 
     def text(self):
         g = " & ".join(("" if pol else "not ") + f"{r}({','.join(str(s) for s in sl)})" for r, sl, pol in self.guard)
         return (f"{self.frame.text()} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
                 + (f"; unless {g} (covers {self.covered}/{self.covered + self.residual} exceptions, purity {self.purity:.2f})" if self.guard else f"; {self.residual} exceptions unexplained")
-                + ("" if self.complete else " [sampled]"))
+                + (f"; the parent's lemma broke on {self.broke}" if self.inherited else "") + ("" if self.complete else " [sampled]"))
 
 
 class Generator:
@@ -120,7 +122,7 @@ class Generator:
         return v == pol
 
     # ---------------------------------------------------------------- evaluate one frame, one slot
-    def evaluate(self, frame: Frame, slot: int) -> Lemma | None:
+    def evaluate(self, frame: Frame, slot: int, inherit: "Lemma | None" = None) -> Lemma | None:
         rows = []                                                    # (state, ids, action, delta)
         complete = True
         for state, ids, comp in self.instances(frame):
@@ -135,9 +137,24 @@ class Generator:
             return None
         loses = [d < 0 for _, _, _, d in rows]
         n_lose = sum(loses)
-        claim = "acting loses" if n_lose * 2 >= len(rows) else "acting keeps"
-        exc = [not l if claim == "acting loses" else l for l in loses]      # exceptions to the majority claim
+        claim = inherit.claim if inherit is not None else ("acting loses" if n_lose * 2 >= len(rows) else "acting keeps")
+        exc = [not l if claim == "acting loses" else l for l in loses]      # exceptions to the claim (the parent's, when inherited)
         holds = len(rows) - sum(exc)
+        inherited = list(inherit.guard) if inherit is not None else []
+        broke = 0
+        if inherited:
+            # apply the parent's guard first: the exceptions it covers are already explained
+            covered_by_parent = [False] * len(rows)
+            for rname, sl, pol in inherited:
+                r = self.rel[rname]
+                for i, (state, ids, a, _) in enumerate(rows):
+                    try:
+                        v = bool(r.fn(state, a, *[ids[x] for x in sl])) if r.on_action else bool(r.fn(state, *[ids[x] for x in sl]))
+                    except Exception:
+                        v = False
+                    covered_by_parent[i] = covered_by_parent[i] or (v == pol and exc[i])
+            broke = sum(e and not c for e, c in zip(exc, covered_by_parent))
+            exc = [e and not c for e, c in zip(exc, covered_by_parent)]     # only what the parent could not explain is this frame's business
         # the label vector's signature: observational equivalence across frames
         sig = (tuple(frame.types), slot, len(rows), holds, hash(tuple(exc)))
         if sig in self.seen_signatures:
@@ -150,7 +167,7 @@ class Generator:
             key = "exception" if is_exc else "holds"
             if key not in examples:
                 examples[key] = (self.dom_text(state), str(a), round(d, 2))
-        return Lemma(frame, slot, claim, len(rows), holds, guard, covered, purity, residual, complete, examples)
+        return Lemma(frame, slot, claim, len(rows), holds, guard, covered, purity, residual, complete, examples, inherited, broke)
 
     def dom_text(self, state):
         return getattr(state, "fen", lambda: str(state))()
@@ -205,31 +222,39 @@ class Generator:
     # ---------------------------------------------------------------- the schedule: sizes by iterative deepening, extension from residual
     def run(self, max_size: int = 3, min_support: int = 60, admit_cov: float = 0.9, admit_pur: float = 0.8):
         t0 = time.perf_counter()
-        frontier = [Frame((t,), ()) for t in self.dom.types]                # size one: every entity type alone
+        frontier = [(Frame((t,), ()), None) for t in self.dom.types]        # size one: every entity type alone, nothing inherited
+        lemma_of: dict = {}                                                  # (frame key, slot) -> Lemma, for children to inherit
         for size in range(1, max_size + 1):
             self.log(f"[lemma_gen] size {size}: {len(frontier)} frames to evaluate ({time.perf_counter() - t0:.0f}s)")
-            next_frontier = []; admitted = 0; evaluated = 0
-            for fr in frontier:
+            next_frontier = []; admitted = 0; evaluated = 0; broke_frames = 0
+            for fr, parent in frontier:
                 for slot in range(fr.size):
-                    lem = self.evaluate(fr, slot)
+                    inherit = lemma_of.get((parent.types, parent.literals, slot)) if parent is not None and slot < parent.size else None
+                    lem = self.evaluate(fr, slot, inherit)
                     if lem is None:
                         continue
                     evaluated += 1
                     if lem.support < min_support:
                         continue
+                    if inherit is not None and lem.broke == 0:
+                        continue                                             # the parent's lemma holds here unchanged: nothing new, and no reason to extend
                     n_exc = lem.covered + lem.residual
                     clean = n_exc == 0 or (lem.covered / n_exc >= admit_cov and lem.purity >= admit_pur)
-                    if clean and lem.holds / lem.support >= 0.5:
-                        self.library.append(lem); admitted += 1
+                    if clean and (lem.holds / lem.support >= 0.5 or inherit is not None):
+                        self.library.append(lem); admitted += 1; lemma_of[(fr.types, fr.literals, slot)] = lem
                         self.log(f"  ADMIT  {lem.text()}")
-                    if lem.residual > 0 and size < max_size:
-                        next_frontier.extend(self.extend(fr))
+                    else:
                         self.residual_frames.append((fr, lem.residual))
-            self.log(f"[lemma_gen] size {size}: evaluated {evaluated}, admitted {admitted}; {len(next_frontier)} extensions seeded from residual")
+                    # extend: at size one everything (the bootstrap); later, only where the parent's lemma broke
+                    if size < max_size and (inherit is None or lem.broke > 0):
+                        broke_frames += 1
+                        for child in self.extend(fr):
+                            next_frontier.append((child, fr))
+            self.log(f"[lemma_gen] size {size}: evaluated {evaluated}, admitted {admitted}; {broke_frames} frames extended -> {len(next_frontier)} candidates at size {size + 1}")
             # collapse duplicate extensions
             uniq = {}
-            for f in next_frontier:
-                uniq.setdefault((f.types, f.literals), f)
+            for f, par in next_frontier:
+                uniq.setdefault((f.types, f.literals), (f, par))
             frontier = list(uniq.values())
         self.save()
         return self.library
