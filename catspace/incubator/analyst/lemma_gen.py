@@ -321,7 +321,7 @@ def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_
     for k, entry in enumerate(lib[: limit or len(lib)]):
         fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"])) if "types" in entry else parse_frame(entry["frame"])
         slot = entry["slot"]; claim = entry["claim"]
-        guard = [(gg[0], tuple(int(x) for x in (gg[1] if isinstance(gg[1], list) else gg[1].strip("()").split(",") if gg[1] else [])), bool(gg[2]) if not isinstance(gg[2], str) else gg[2] == "True") for gg in entry["guard"]] if entry["guard"] else []
+        guard = [(gg[0], tuple(int(x) for x in (gg[1] if isinstance(gg[1], list) else gg[1].strip("()").split(",")) if str(x).strip() != ""), (gg[2] == "True") if isinstance(gg[2], str) else bool(gg[2])) for gg in entry["guard"]] if entry["guard"] else []
         rows = []; complete = True
         for state, ids, comp in g.instances(fr):
             complete = comp
