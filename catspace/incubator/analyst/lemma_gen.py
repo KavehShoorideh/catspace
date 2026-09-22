@@ -232,6 +232,8 @@ class Generator:
                     self.log(f"[lemma_gen] size {size}: {fi}/{len(frontier)} frames, admitted {admitted} so far ({time.perf_counter() - t0:.0f}s)")
                 for slot in range(fr.size):
                     inherit = lemma_of.get((parent.types, parent.literals, slot)) if parent is not None and slot < parent.size else None
+                    if inherit is None and size > 1:
+                        inherit = lemma_of.get(((fr.types[slot],), (), 0))       # a new slot inherits the library's lemma for its own type: only what that fails to explain is new
                     lem = self.evaluate(fr, slot, inherit)
                     if lem is None:
                         continue
