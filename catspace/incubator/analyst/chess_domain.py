@@ -36,6 +36,8 @@ def placements(types: tuple, cap: int, seed: int):
     first slot's square is fixed to the ten canonical squares (symmetry). Exhaustive when the raw count fits the
     cap, else a uniform sample with the flag False. White to move; actions flip the turn to the actor's side."""
     pieces = [_piece(t) for t in types]
+    if sum(1 for p in pieces if p.piece_type == chess.KING and p.color) > 1 or sum(1 for p in pieces if p.piece_type == chess.KING and not p.color) > 1:
+        return                                                        # a domain rule: one king a side; such a frame has no placements
     extra = []
     if not any(p.piece_type == chess.KING and p.color for p in pieces):
         extra.append(chess.Piece(chess.KING, True))
@@ -48,7 +50,7 @@ def placements(types: tuple, cap: int, seed: int):
         raw *= (64 - i)
     exhaustive = raw <= cap * 2
     rng = random.Random(seed)
-    yielded = 0
+    yielded = 0; attempts = 0
     if exhaustive:
         it = ((c,) + rest for c in CANON for rest in itertools.permutations([s for s in range(64)], n - 1) if c not in rest)
     else:
@@ -59,6 +61,9 @@ def placements(types: tuple, cap: int, seed: int):
                 yield (c,) + tuple(rest)
         it = sampler()
     for squares in it:
+        attempts += 1
+        if attempts > cap * 200 and yielded == 0:
+            return                                                    # nothing valid in many draws: the frame is not placeable (bounded, never a loop)
         if not exhaustive and yielded >= cap:
             return
         if exhaustive and yielded >= cap * 2:
