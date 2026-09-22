@@ -283,14 +283,147 @@ def residual(ckpt: str, split: str = "test", min_support: int = 25, top: int = 1
     return singles, pairs
 
 
+# ---------------------------------------------------------------- minimal pairs: the same move, one edit, the verdict flips
+CONTRAST_FEATURES = ("attackers_of_target", "defenders_of_target", "attackers_minus_defenders", "target_is_defended",
+                     "value_of_target", "value_of_mover", "mover_cheaper_than_target", "exchange_see",
+                     "mover_falls_after", "gives_check", "target_guarded_by_king", "our_king_near_target", "their_king_near_target")
+
+
+def contrast_features(board: chess.Board, m: chess.Move) -> dict:
+    """The candidate tokens for a capture, computed straight from the rules (the same quantities the graph's node
+    answers carry -- attackers_count, defenders_count, exchange -- without paying for a graph build)."""
+    from .defense import defense
+    us = board.turn; t = m.to_square
+    att = len(board.attackers(us, t)); dfd = len(board.attackers(not us, t))
+    vt = piece_value(board, t) if board.piece_at(t) else 0.0
+    vm = piece_value(board, m.from_square)
+    nb = board.copy(stack=False); nb.push(m)
+    d = defense(nb, t, memo=None)
+    ek, ok_ = board.king(not us), board.king(us)
+    return {"attackers_of_target": att, "defenders_of_target": dfd, "attackers_minus_defenders": att - dfd,
+            "target_is_defended": float(dfd > 0), "value_of_target": vt, "value_of_mover": vm,
+            "mover_cheaper_than_target": float(vm < vt), "exchange_see": (d.see if d is not None else 0.0),
+            "mover_falls_after": float(bool(d is not None and d.falls)), "gives_check": float(nb.is_check()),
+            "target_guarded_by_king": float(ek is not None and t in chess.SquareSet(chess.BB_KING_ATTACKS[ek])),
+            "our_king_near_target": float(ok_ is not None and chess.square_distance(ok_, t) <= 2),
+            "their_king_near_target": float(ek is not None and chess.square_distance(ek, t) <= 2)}
+
+
+def _verdict(tb, board: chess.Board, m: chess.Move) -> int | None:
+    """+1 the move keeps the best available result, -1 it throws it away (by the tablebase, exactly)."""
+    best = None; got = None
+    for x in board.legal_moves:
+        nb = board.copy(stack=False); nb.push(x)
+        if nb.is_game_over():
+            v = 2 if nb.is_checkmate() else 0
+        else:
+            try:
+                v = -tb.probe_wdl(nb)
+            except Exception:
+                return None
+        v = (v > 0) - (v < 0)
+        best = v if best is None else max(best, v)
+        if x == m:
+            got = v
+    return None if got is None else (1 if got == best else -1)
+
+
+def contrast(n_seeds: int, log=print, max_pairs: int = 400, seed: int = 0):
+    """Kaveh 2026-09-21: 'I take a protected pawn and the eval drops; in a similar position with another attacker
+    it does not. What is the difference?' Build MINIMAL PAIRS mechanically: take a capture whose verdict is known,
+    perturb the position by moving ONE piece one square, and keep the perturbation only when the SAME capture's
+    verdict flips. Then find the smallest set of tokens whose difference is consistent across every pair."""
+    import chess.syzygy
+    rows = load_rows(Path("data/derived/endgames_v2"))
+    _r = __import__("random").Random(seed); _r.shuffle(rows)
+    tb = chess.syzygy.open_tablebase("assets/tablebases/syzygy")
+    pairs = []
+    seeds = 0
+    for r in rows:
+        if len(pairs) >= max_pairs or seeds >= n_seeds:
+            break
+        b = chess.Board(r["fen"])
+        caps = [m for m in b.legal_moves if b.is_capture(m) and not b.is_en_passant(m)]
+        if not caps:
+            continue
+        seeds += 1
+        for m in caps[:3]:
+            v0 = _verdict(tb, b, m)
+            if v0 is None:
+                continue
+            for sq, pc in list(b.piece_map().items()):
+                if sq in (m.from_square, m.to_square):
+                    continue
+                for to in chess.SquareSet(chess.BB_KING_ATTACKS[sq]):
+                    if b.piece_at(to) is not None:
+                        continue
+                    nb = b.copy(stack=False); nb.remove_piece_at(sq); nb.set_piece_at(to, pc)
+                    if not nb.is_valid() or nb.is_game_over() or m not in nb.legal_moves:
+                        continue
+                    v1 = _verdict(tb, nb, m)
+                    if v1 is None or v1 == v0:
+                        continue
+                    good, bad = (b, nb) if v0 > 0 else (nb, b)
+                    pairs.append((good.fen(), bad.fen(), m.uci()))
+                    break
+                if len(pairs) >= max_pairs:
+                    break
+    tb.close()
+    log(f"[mine/contrast] {seeds} seed positions scanned; {len(pairs)} minimal pairs (one piece moved one square, the same capture flips verdict)")
+    if not pairs:
+        return
+    # the smallest set of tokens that separates the good member from the bad one
+    diffs = {f: [0, 0, 0] for f in CONTRAST_FEATURES}      # feature -> [good>bad, good<bad, equal]
+    rowsf = []
+    for gf, bf, u in pairs:
+        gb, bb = chess.Board(gf), chess.Board(bf); mv = chess.Move.from_uci(u)
+        fg, fb = contrast_features(gb, mv), contrast_features(bb, mv)
+        rowsf.append((fg, fb))
+        for f in CONTRAST_FEATURES:
+            d = fg[f] - fb[f]
+            diffs[f][0 if d > 0 else 1 if d < 0 else 2] += 1
+    log("[mine/contrast] single tokens, by how often their difference points the same way across the pairs:")
+    ranked = []
+    for f, (up, dn, eq) in diffs.items():
+        n = up + dn
+        acc = max(up, dn) / max(1, len(pairs))                     # a pair where the token is equal cannot be explained by it
+        ranked.append((acc, f, up, dn, eq))
+    ranked.sort(reverse=True)
+    for acc, f, up, dn, eq in ranked:
+        log(f"    {f:<28} separates {100 * acc:5.1f}% of pairs (higher in the good one {up}, lower {dn}, equal {eq})")
+    # greedy minimal set: cover the pairs one token at a time
+    covered = np.zeros(len(pairs), bool); chosen = []
+    for _ in range(4):
+        best = None
+        for acc, f, up, dn, eq in ranked:
+            sign = 1 if up >= dn else -1
+            ok = np.array([ (fg[f] - fb[f]) * sign > 0 for fg, fb in rowsf])
+            gain = int((ok & ~covered).sum())
+            if best is None or gain > best[0]:
+                best = (gain, f, sign, ok)
+        gain, f, sign, ok = best
+        if gain <= 0:
+            break
+        chosen.append((f, "higher" if sign > 0 else "lower")); covered |= ok
+        log(f"[mine/contrast] the minimal set so far: " + " ; ".join(f"{a} {b} in the good position" for a, b in chosen) + f"  -> explains {100 * covered.mean():.1f}% of the pairs")
+    OUT.mkdir(parents=True, exist_ok=True)
+    json.dump(dict(pairs=len(pairs), ranked=[dict(feature=f, separates=a, up=u, down=d, equal=e) for a, f, u, d, e in ranked],
+                   minimal=[list(x) for x in chosen], explained=float(covered.mean()),
+                   examples=[dict(good=g, bad=b_, move=u) for g, b_, u in pairs[:5]]), open(OUT / "contrast.json", "w"), indent=1)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["pin", "pin-games", "residual"]); ap.add_argument("--max-rows", type=int, default=100000)
+    ap.add_argument("cmd", choices=["pin", "pin-games", "residual", "contrast"])
+    ap.add_argument("--seeds", type=int, default=400)
+    ap.add_argument("--pairs", type=int, default=300)
     ap.add_argument("--ckpt", default="data/derived/checkpoints/concept_net_c4/last.pt"); ap.add_argument("--split", default="test")
     ap.add_argument("--n", type=int, default=150); ap.add_argument("--depth", type=int, default=14)
     ap.add_argument("--within", type=int, default=50); ap.add_argument("--plies", default="21,70")
     a = ap.parse_args(argv)
-    if a.cmd == "residual":
+    if a.cmd == "contrast":
+        contrast(a.seeds, max_pairs=a.pairs)
+    elif a.cmd == "residual":
         residual(a.ckpt, a.split)
     elif a.cmd == "pin":
         pin(a.max_rows)
