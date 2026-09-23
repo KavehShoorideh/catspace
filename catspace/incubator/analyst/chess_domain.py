@@ -202,15 +202,58 @@ def lands_attacked(state, action):
     return bool(nb.attackers(nb.turn, m.to_square))
 
 
-def domain() -> Domain:
+def null_reply_scalar(state: State, e: int) -> float:
+    """The actor's side's material after the opponent's best immediate reply if the actor PASSES (the null move): what
+    the standing threats already take. On a full board the opponent can nearly always capture something, so an
+    outcome must be read relative to this or almost every move "loses" (gauge_lemmas, 2026-09-23). Undefined (None)
+    when the actor is in check: there is no null move."""
+    b = state.board.copy(stack=False)
+    side = b.piece_at(e).color
+    b.turn = side
+    if b.is_check():
+        return None
+    b.turn = not side
+    if not b.is_valid():
+        return None
+    return reply_scalar(State(b, list(state.ids)), e)
+
+
+def game_placements(fens: list):
+    """A placements source drawn from REAL positions (games): for a frame's types, every assignment of distinct pieces
+    of those types on each position, in a seeded order, up to the cap; never exhaustive. The rest of the board stays,
+    so a lemma learned here is learned where it is applied."""
+    import random as _r
+
+    def placements(types: tuple, cap: int, seed: int):
+        rng = _r.Random(seed)
+        order = list(range(len(fens))); rng.shuffle(order)
+        need = [_piece(t) for t in types]
+        yielded = 0
+        for k in order:
+            b = chess.Board(fens[k])
+            pools = [list(b.pieces(p.piece_type, p.color)) for p in need]
+            if any(not pl for pl in pools):
+                continue
+            for ids in itertools.product(*pools):
+                if len(set(ids)) < len(ids):
+                    continue
+                yield State(b.copy(stack=False), list(ids)), False
+                yielded += 1
+                if yielded >= cap:
+                    return
+    return placements
+
+
+def domain(fens: list | None = None) -> Domain:
     rels = [Relation("same_side", 2, fn=same_side), Relation("attacks", 2, fn=attacks), Relation("defends", 2, fn=defends),
             Relation("aligned", 2, fn=aligned), Relation("between", 3, fn=between), Relation("worth_ge", 2, fn=worth_ge),
             Relation("attacked", 1, fn=attacked), Relation("defended", 1, fn=defended), Relation("slides", 1, fn=slides),
             Relation("gives_check", 0, True, gives_check), Relation("captures", 0, True, captures),
             Relation("captures_worth_ge", 1, True, captures_worth_ge), Relation("stays_aligned", 1, True, stays_aligned),
             Relation("lands_attacked", 0, True, lands_attacked)]
-    return Domain("chess", TYPES, rels, placements, slots_of, actions, transition, scalar, reply_scalar,
-                  entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn)
+    return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, reply_scalar,
+                  entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
+                  null_reply_scalar=null_reply_scalar)
 
 
 def entities(board: chess.Board) -> list:

@@ -66,6 +66,7 @@ class Domain:
     entities: Callable[[Any], list] = None                           # raw state -> [(entity id, type)] (the applier: real states, not placements)
     state_of: Callable[[Any, list], Any] = None                      # (raw state, slot ids) -> State, so relations can be evaluated on a real state
     actor_ok: Callable[[Any, Any], bool] = None                      # (raw state, entity id) -> may this entity act now (e.g. its side is to move)
+    null_reply_scalar: Callable[[Any, Any], float] = None            # (state, entity id) -> the scalar after the opponent's best reply if the entity's side PASSES (None: no null action); the RELATIVE outcome baseline
 
 
 # a literal is (relation name, slots, polarity); a TERM is a tuple of literals (conjunction); a GUARD is a list of terms (disjunction)
@@ -134,8 +135,10 @@ def _popcount(x: int) -> int:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0):
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
+        self.relative = relative                                             # outcome = reply scalar minus the NULL-action reply scalar (what the standing threats already take)
+        self.max_frames = max_frames                                         # per size, evaluate only the most frequent frames (by instance count in the placements source)
         self.rel = {r.name: r for r in dom.relations}
         self.state_rels = [r for r in dom.relations if not r.on_action]
         self.action_rels = [r for r in dom.relations if r.on_action]
@@ -164,10 +167,15 @@ class Generator:
         for state, ids, comp in self.instances(frame):
             complete = comp
             e = ids[slot]
+            base = None
+            if self.relative and self.dom.null_reply_scalar is not None:
+                base = self.dom.null_reply_scalar(state, e)
+                if base is None:
+                    continue                                                  # no null action here (in check): the relative outcome is undefined
             for a in self.dom.actions(state, e):
                 before = self.dom.scalar(state, e)
                 after = self.dom.transition(state, a)
-                delta = self.dom.reply_scalar(after, e) - before
+                delta = self.dom.reply_scalar(after, e) - (base if base is not None else before)
                 rows.append((state, ids, a, delta))
         return rows, complete
 
@@ -358,8 +366,31 @@ class Generator:
             for f in next_frontier:
                 uniq.setdefault((f.types, f.literals), f)
             frontier = list(uniq.values())
+            if self.max_frames and len(frontier) > self.max_frames:
+                # prioritize what we run into: count each frame's instances in the placements source and keep the most frequent
+                t1 = time.perf_counter()
+                counts = self._count_frontier(frontier)
+                frontier = [f for f, _ in sorted(zip(frontier, counts), key=lambda fc: -fc[1])[: self.max_frames]]
+                self.log(f"[lemma_gen] size {size + 1}: frontier bounded to the {self.max_frames} most frequent frames (counts {counts and max(counts)}..{sorted(counts)[-self.max_frames] if len(counts) >= self.max_frames else 0}; {time.perf_counter() - t1:.0f}s)")
         self.save()
         return self.library
+
+    def count_instances(self, frame: Frame) -> int:
+        """Instances up to ten times the cap, so frequency ranks frames beyond the evaluation cap."""
+        cap = self.cap; self.cap = cap * 10
+        try:
+            return sum(1 for _ in self.instances(frame))
+        finally:
+            self.cap = cap
+
+    def _count_frontier(self, frontier):
+        if self.workers <= 1 or len(frontier) < 4:
+            return [self.count_instances(f) for f in frontier]
+        import multiprocessing as mp
+        global _WORKER_GEN
+        _WORKER_GEN = self
+        with mp.get_context("fork").Pool(self.workers) as pool:
+            return list(pool.imap(_count_job, frontier, chunksize=8))
 
     def _evaluate_frontier(self, frontier, by_actor: dict):
         """Yield (frame, [(slot, inherits, lemma)]) in frontier order; frames are independent given the library of the
@@ -418,6 +449,10 @@ def guard_from_json(g) -> list:
 
 
 _WORKER_GEN = None
+
+
+def _count_job(frame):
+    return _WORKER_GEN.count_instances(frame)
 
 
 def _eval_job(job):
@@ -650,17 +685,29 @@ def main(argv=None):
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--workers", type=int, default=1); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
     ap.add_argument("--over-literals", action="store_true", help="generalize: the frame literals' relation names are variables too"); ap.add_argument("--max-unseen", type=int, default=0)
+    ap.add_argument("--source", choices=["sampled", "games"], default="sampled", help="placements: sampled frames (only the frame's pieces) or real game positions")
+    ap.add_argument("--positions", type=int, default=20000, help="games source: how many positions from the knowledge corpus"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=120)
+    ap.add_argument("--relative", action="store_true", help="outcome relative to the null action (what the standing threats already take)")
+    ap.add_argument("--max-frames", type=int, default=0, help="per size, evaluate only the most frequent frames")
     a = ap.parse_args(argv)
     if a.domain == "chess":
         from .chess_domain import domain
-        dom = domain()
+        fens = None
+        if a.source == "games":
+            import random as _r
+            from .dataset import load as load_ds
+            meta = load_ds("data/derived/knowledge", meta_only=True)["meta"]
+            rows = [m["fen"] for m in meta if a.lo <= m["ply"] <= a.hi]
+            _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
+            print(f"[lemma_gen] games source: {len(fens)} positions (plies {a.lo}-{a.hi})")
+        dom = domain(fens)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
     if a.cmd == "prove":
         prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 
