@@ -23661,7 +23661,7 @@ Reading: the trigger fires on 87% of decisions, so this is nearly "always depth 
 not adaptivity. The honest comparison is depth 5 at the same cap (queued) and a tighter margin (0.05, queued); the
 frontier to report is score vs nodes/move, and 16k nodes at 1.2 s a move is still small.
 
-## 2026-09-23 13:50 PDT — correction: "pin-shaped" counted 'not between' (Kaveh caught it on the page)
+## 2026-09-23 13:52 PDT — correction: "pin-shaped" counted 'not between' (Kaveh caught it on the page)
 
 The pin-shaped test (guard contains the relation `between`) ignored polarity. Recount on the v2 library, proved
 only: guard has `between` in any polarity 1,609 (the number journaled at 00:20); POSITIVE `between` 1,508; only
