@@ -23504,3 +23504,22 @@ as a relational task with SLOT VARIABLES -- facts actor(R,S), attacks(R,S1,S2), 
 lands_attacked(R) ... with negations -- so a learned rule is a schema over slots, not a guard tied to slot numbers;
 predicate invention on). First attempt on the pin frame ran past its timeout in Prolog; rerun with a hard timeout
 and smaller bounds (pin as the positive control, two rooks as the residual case).
+
+## 2026-09-23 12:05 PDT — Popper on the residual: the same guard, in slot variables, and no new predicate
+
+Two rooks (`[wR wR] same_side(0,1)`, slot 0; 100 exception + 100 keeping rows, balanced; max 4 vars / 3 body
+literals, predicate invention on, MDL cost, 300 s), OBS: at 74.5 s Popper's best and final program
+  exc(R) :- lands_attacked(R).
+  exc(R) :- attacked(R, S), not_stays_aligned(R', S).
+Precision 0.97, recall 1.00 on the balanced sample (TP 100, FN 0, TN 97, FP 3). The second rule says "some slot S is
+attacked" -- the row variable R' in the second literal is unbound, so that literal is vacuous (a bias defect on our
+side: row variables must be head-connected; to fix). Substantively this is OUR guard ("the other rook is attacked",
+plus the inherited "lands attacked") in slot variables; no invented predicate. On the balanced sample it looks 0.97
+pure; on the frame's true distribution the same condition is 0.76 pure, which is why we did not admit it. So Popper
+confirms the vocabulary ceiling rather than breaking it: with these relations there is no program that separates
+"moving A loses B" from "moving A keeps B" better than "B is attacked", and the missing word is an action-level
+"still defends B after the move". The pin control (26/26 rows) ran past the hard timeout without a solution --
+the search over 20-odd predicates with three-literal bodies is large; rerun with a smaller bias later.
+Reading: Popper's value here is the SLOT-VARIABLE form (a schema directly) and MDL optimality over a whole program;
+its cost is Prolog testing of thousands of candidates. Our greedy DNF search stays the generator's inner loop;
+Popper is the cross-check on residual frames, and the invention of primitives still needs the proposal loop.
