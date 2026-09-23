@@ -23824,3 +23824,15 @@ moves at +0.60 with the truth and puts the best move in the top third; averaging
 DILUTES it -- their in-world means are further from this board than the one-piece value. So composition by
 averaging is not the rule; the guide's better ordering cannot help while the rule dilutes. Two other rules queued
 on the same positions: the most specific frame's lemma decides; one term per distinct frame, summed.
+
+## 2026-09-23 16:46 PDT — the other two composition rules: no better
+
+Same 150 positions. Most specific frame decides: Spearman L1 +0.602, L2 +0.579, L3 +0.565, L4 +0.572, L5 +0.580;
+best-move rank share 0.31 -> 0.36. One term per distinct frame, summed: +0.602, +0.556, +0.545, +0.553, +0.565;
+0.31 -> 0.36. Reading: under every rule the larger frames' in-world values add nothing to the one-piece lemma's
+order on a real board. The sampled library's values are statements about a world of one to three pieces; the real
+board's outcome is not that world's. Composition cannot be fixed by a combining rule; it needs lemma values that
+are about this board -- the frame-local outcome with the rest held fixed, learned on real positions -- which is the
+design decision Kaveh named this afternoon ("a lemma should assert a per-frame outcome ... and then consider the
+interaction with the rest of the board, and that's how the frame grows"). The generator, the guide and the gauge
+are ready for it; the outcome definition is the next build. Nothing running.
