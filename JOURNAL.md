@@ -23680,7 +23680,7 @@ positions. The frontier so far, score vs SF-1700 by nodes/move: 3,100 -> 15%; 16
 Adaptive depth stays behind the flag. Next lever, per node: move ordering (the transposition table's best move
 first, killer moves), checks in the first ply of quiescence -- standard search engineering, no knowledge added.
 
-## 2026-09-23 14:20 PDT — move ordering, one seed: mixed
+## 2026-09-23 14:15 PDT — move ordering, one seed: mixed
 
 vs SF-1700, depth 5 / cap 16,000 with the table's best move first, killers, root order and first-ply checks in
 quiescence: 3 wins 5 losses 1 draw 1 loss at the cap = 35%, 15,768 nodes/move (without ordering: 45%, 16,520).
