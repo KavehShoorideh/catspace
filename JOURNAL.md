@@ -23557,3 +23557,23 @@ change the win/draw/loss class (a rook beside a winning queen is "worth" 0.0), a
 distribution of which ending the game will actually reach -- the trade question -- which we do not have. Decision:
 canonical values, material oracle; the tablebase run (55 admissions by frame 300 of size two) killed at 12:01; the
 paused over-literals generalization resumed.
+
+## 2026-09-23 12:16 PDT — the MVP player, first gauge (Kaveh: "an MVP that plays using these rules at a respectable level")
+
+`player.py`: move space = alpha-beta depth 3 under a 4,000-node cap with a capture/promotion quiescence (the resolved
+exchange) and material + 0.02/mobility as the leaf; graph space = the body search per root move (proved games-source
+library, 18 lemmas, up to 4 bodies) ordering the root and pruning moves every lemma calls losing when the resolved
+exchange agrees; verdicts cached by frame CONTENT (bodies' pieces, squares, side, move) across moves and games.
+Opponent Maia via lc0 at nodes=1, human-move sampling. OBS (one seed each; single runs, not verdicts):
+  vs Maia-1100, 20 games: 17 wins, 1 draw, 1 win and 1 loss at the 200-ply cap -> 92%; 2,557 nodes/move, 0.19 s/move.
+  vs Maia-1500, 20 games, lemmas ON:  15 wins, 2 losses, 3 draws -> 82%; 2,658 nodes/move; 1,886 of 28,938 root moves
+    pruned by the lemma layer.
+  vs Maia-1500, 20 games, lemmas OFF: 16 wins, 4 draws -> 90%; 2,391 nodes/move; nothing pruned.
+  vs a random mover, 10 games: 10 wins.
+  Graph cache: by the second game 2,476 of 3,145 frame lookups were hits.
+Reading: the level comes from the rules' search (three plies plus a resolved exchange beats Maia-1500's one-node
+human policy four games in five); the lemma layer with today's 18 real-board lemmas does not help and may cost
+(82 vs 90 at one seed: indistinguishable, but no sign of a gain) -- its prunes are queen/rook verdicts only. The
+player is the harness the architecture Kaveh laid out (scheduler over board hashes, MCTS with lemma priors, three
+watchers, the actor with analyse/choose, the guide) has to beat, per node. Next gauge: a Stockfish UCI-Elo ladder
+(1400 / 1700 / 2000, depth 8) to find where 4,000 nodes of rules run out.
