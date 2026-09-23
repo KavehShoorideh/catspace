@@ -23650,7 +23650,7 @@ every library and proof file on disk and printed in every log line and applier t
 and filters by them, so Kaveh can cite the problematic ones.
 Fixed search, depth 3 vs SF-1400 rerun: 5 wins 4 losses 1 draw at the cap = 55% (before the fix 60%; one seed).
 
-## 2026-09-23 13:25 PDT — after the search fix: adaptive depth helps at 1700, at five times the nodes
+## 2026-09-23 13:33 PDT — after the search fix: adaptive depth helps at 1700, at five times the nodes
 
 Stockfish UCI-Elo depth 8, ten games a rung, one seed (OBS):
   depth 3 (fixed search) vs 1400: 5 wins 4 losses 1 draw at the cap = 55%; 3,269 nodes/move.
