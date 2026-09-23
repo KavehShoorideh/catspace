@@ -129,6 +129,7 @@ class Lemma:
     parents: list = field(default_factory=list)        # texts of the sub-frame lemmas inherited from
     sig: tuple = ()
     closure: list = field(default_factory=list)        # literals true on every placement of the frame (implied facts)
+    value: dict = field(default_factory=dict)          # mean outcome where the claim held / of the exceptions, inside the frame's world
 
     def full_guard(self):
         return list(self.inherited) + list(self.guard)
@@ -147,6 +148,14 @@ class Lemma:
 
 def _popcount(x: int) -> int:
     return x.bit_count()
+
+
+def frame_values(rows, exc: int) -> dict:
+    """"Prefer this by this much" (Kaveh 2026-09-23): inside the lemma's world, the mean outcome of the actions where
+    the claim held and of the exceptions, so a verdict carries a size, not only a sign."""
+    h = [d for i, (_, _, _, d) in enumerate(rows) if not (exc >> i) & 1]
+    e = [d for i, (_, _, _, d) in enumerate(rows) if (exc >> i) & 1]
+    return dict(holds=round(sum(h) / len(h), 3) if h else 0.0, exception=round(sum(e) / len(e), 3) if e else 0.0)
 
 
 def pick_examples(g, rows, exc: int, rest: int, guard: list, cache: dict, all_mask: int) -> dict:
@@ -368,6 +377,7 @@ class Generator:
         closure = self.frame_closure(rows, frame, cache, all_mask)
         lem = Lemma(frame, slot, claim, n, holds, guard, covered, purity, residual, complete, examples, inherited, broke, reversed_, parents)
         lem.closure = closure
+        lem.value = frame_values(rows, exc)
         lem.sig = sig
         return lem
 
@@ -646,7 +656,7 @@ class Generator:
 
 
 def lemma_to_json(l: Lemma) -> dict:
-    return dict(id=l.id, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
+    return dict(id=l.id, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], value=l.value, frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
                 inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
@@ -922,7 +932,7 @@ def _examples_job(args):
     rest = exc & ~inh
     ex = pick_examples(g, rows, exc, rest, guard_from_json(entry.get("guard")), cache, all_mask)
     closure = g.frame_closure(rows, fr, cache, all_mask)
-    return dict(examples=ex, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in closure])
+    return dict(examples=ex, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in closure], value=frame_values(rows, exc))
 
 
 def refresh_examples(dom: Domain, library_path: Path, cap: int, workers: int, log=print):
@@ -938,6 +948,8 @@ def refresh_examples(dom: Domain, library_path: Path, cap: int, workers: int, lo
         e["examples"] = ex
         if isinstance(r, dict) and "closure" in r:
             e["closure"] = r["closure"]
+        if isinstance(r, dict) and "value" in r:
+            e["value"] = r["value"]
     json.dump(lib, open(library_path, "w"), indent=1)
     log(f"[lemma_gen/examples] {len(lib)} lemmas, examples recomputed ({changed} changed) -> {library_path}")
 

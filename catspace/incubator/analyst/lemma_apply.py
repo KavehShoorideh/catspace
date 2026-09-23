@@ -31,6 +31,7 @@ class Compiled:
     claim: str
     guard: list                    # full guard terms (inherited + own)
     text: str
+    value: dict = None             # {"holds": mean outcome where the claim held, "exception": mean outcome of the exceptions}, inside the frame's world
 
 
 def load_library(library_path: Path, proved_path: Path | None = None, proved_only: bool = True) -> list[Compiled]:
@@ -45,7 +46,7 @@ def load_library(library_path: Path, proved_path: Path | None = None, proved_onl
         fr = Frame(tuple(e["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in e["literals"]))
         guard = guard_from_json(e.get("inherited")) + guard_from_json(e.get("guard"))
         lid = e.get("id") or lemma_id(fr.types, fr.literals, e["slot"], e["claim"], guard)
-        out.append(Compiled(i, fr, e["slot"], e["claim"], guard, f"{lid} {fr.text()} :: slot {e['slot']} {e['claim']} unless {guard_text(guard) or '(nothing)'}"))
+        out.append(Compiled(i, fr, e["slot"], e["claim"], guard, f"{lid} {fr.text()} :: slot {e['slot']} {e['claim']} unless {guard_text(guard) or '(nothing)'}", e.get("value")))
     return out
 
 
@@ -130,6 +131,19 @@ def main(argv=None):
         for c, p, fired, ids in vs[:6]:
             print(f"   {p:5s} {c.text[:150]}" + (f"  <- {fired}" if fired else "") + f"  [{' '.join(chess.square_name(i) for i in ids)}]")
 
+
+
+def compose(verdicts: list) -> float | None:
+    """The COMPOSED preference of a move from the lemmas that speak about it (Kaveh 2026-09-23: "lemmas from one
+    frame usable in other frames ... prefer this by this much"): each lemma, a self-contained world, predicts the
+    outcome its verdict implies (the exception mean when its guard fired, the holds mean otherwise); the move's
+    predicted outcome is the mean of those predictions. None when no lemma carries a value."""
+    preds = []
+    for c, pred, fired, ids in verdicts:
+        if not c.value:
+            continue
+        preds.append(c.value["exception"] if fired is not None else c.value["holds"])
+    return sum(preds) / len(preds) if preds else None
 
 
 # ---------------------------------------------------------------- duties and opportunities (Kaveh 2026-09-23)
