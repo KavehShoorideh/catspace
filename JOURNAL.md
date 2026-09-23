@@ -23783,7 +23783,7 @@ only: 11,384); unseen instantiations proved 7,398, failed 28,755. The aligned/at
 the largest schemas run to five boxes and are hard to read; the page should show a schema as its member lemmas'
 ids with the merged literal sets, not as a formula. Files: schemas_lit_chess.json.
 
-## 2026-09-23 16:20 PDT — the graph-token guide (Kaveh: "a transformer to decide the next piece; the graph structure makes it easy")
+## 2026-09-23 16:25 PDT — the graph-token guide (Kaveh: "a transformer to decide the next piece; the graph structure makes it easy")
 
 `body_guide_tf.py`: tokens = the position's pieces (type, mover flag, in-frame flag, file, rank); attention bias =
 one learned weight per head per relation between two pieces: the domain's binary relations (attacks, defends,
