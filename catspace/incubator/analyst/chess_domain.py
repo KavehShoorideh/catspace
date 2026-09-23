@@ -224,13 +224,20 @@ def game_placements(fens: list):
     so a lemma learned here is learned where it is applied."""
     import random as _r
 
+    boards: dict = {}                                                   # parsed once per process (fork copies what the parent parsed)
+
     def placements(types: tuple, cap: int, seed: int):
         rng = _r.Random(seed)
         order = list(range(len(fens))); rng.shuffle(order)
+        scan = getattr(placements, "scan_limit", None)                   # the frequency count scans a bounded prefix of the positions
+        if scan:
+            order = order[:scan]
         need = [_piece(t) for t in types]
         yielded = 0
         for k in order:
-            b = chess.Board(fens[k])
+            b = boards.get(k)
+            if b is None:
+                b = boards[k] = chess.Board(fens[k])
             pools = [list(b.pieces(p.piece_type, p.color)) for p in need]
             if any(not pl for pl in pools):
                 continue

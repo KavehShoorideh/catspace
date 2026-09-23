@@ -375,13 +375,23 @@ class Generator:
         self.save()
         return self.library
 
-    def count_instances(self, frame: Frame) -> int:
-        """Instances up to ten times the cap, so frequency ranks frames beyond the evaluation cap."""
+    def count_instances(self, frame: Frame, scan_limit: int = 2000) -> int:
+        """Instances in a bounded scan of the placements source (a source that honours `scan_limit`: the games source
+        scans its first 2,000 positions), up to ten times the cap: frequency ranks frames beyond the evaluation cap."""
         cap = self.cap; self.cap = cap * 10
+        had = getattr(self.dom.placements, "scan_limit", None)
         try:
+            try:
+                self.dom.placements.scan_limit = scan_limit
+            except AttributeError:
+                pass
             return sum(1 for _ in self.instances(frame))
         finally:
             self.cap = cap
+            try:
+                self.dom.placements.scan_limit = had
+            except AttributeError:
+                pass
 
     def _count_frontier(self, frontier):
         if self.workers <= 1 or len(frontier) < 4:
