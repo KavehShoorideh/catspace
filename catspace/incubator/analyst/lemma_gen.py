@@ -139,7 +139,7 @@ class Lemma:
 
     def text(self):
         g = guard_text(self.guard)
-        cl = (" [also: " + ", ".join(lit_text(r, sl, pol) for r, sl, pol in self.closure[:6]) + "]") if self.closure else ""
+        cl = (" [" + "; ".join(f"{tag} {lit_text(r, sl, pol)}" for r, sl, pol, tag in self.closure[:6]) + "]") if self.closure else ""
         return (f"{self.id} {self.frame.text()}{cl} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
                 + (f"; unless {g} (covers {self.covered}/{self.covered + self.residual} exceptions, purity {self.purity:.2f})" if self.guard else f"; {self.residual} exceptions unexplained")
                 + (f"; inherited [{guard_text(self.inherited)}] {'REVERSED' if self.reversed else 'broke'} on {self.broke}" if self.parents else "") + ("" if self.complete else " [sampled]"))
@@ -355,14 +355,108 @@ class Generator:
         facts the frame implies (Kaveh 2026-09-23: "the black queen attacks the white bishop, which isn't stated" --
         a bishop attacking a queen along a diagonal is attacked back). Generic: any relation, either polarity."""
         stated = set(frame.literals)
-        out = []
+        facts = []
         for rname, sl in self.candidate_literals(frame.size):
             if self.rel[rname].on_action or rname in self.type_determined():
                 continue                                                      # a relation fixed by the slot types alone says nothing about the frame
             m = self.lit_mask(rows, rname, sl, cache)
             if m == all_mask and (rname, sl, True) not in stated:            # positive facts only: "never between" at a small cap is an absence, not a fact
-                out.append((rname, sl, True))
-        return out
+                facts.append((rname, sl, True))
+        # MINIMAL, GIVEN THE TYPES (Kaveh 2026-09-23: "all five are the same thing"): implications between literals are
+        # learned on the bare frame of these types (no literals) -- a bishop attacking a queen along a diagonal is
+        # attacked back, for THESE types. A fact equivalent to a stated literal is listed as a restatement ("i.e.");
+        # a fact merely implied by the stated literals or by a kept fact is dropped; the rest are genuinely new ("also").
+        imp = self.implications_given_types(frame.types)
+        def implies(a, b):
+            return (a[0], a[1], b[0], b[1]) in imp
+        stated_l = list(stated)
+        restated = [f for f in facts if any(implies(sl_, f) and implies(f, sl_) for sl_ in stated_l)]
+        rest = [f for f in facts if f not in restated]
+        # every fact here follows from the stated literals (it holds on all rows); show the ones that SUMMARIZE the
+        # others: maximal under implication among the consequences, and implying at least one other consequence
+        # ("the black queen attacks the bishop", which carries "aligned" and "attacked" with it); leaves implied
+        # straight from a stated literal ("the black queen is attacked") are the same thing said smaller
+        downstream = {f: sum(1 for g in rest if g != f and implies(f, g)) for f in rest}
+        kept = [f for f in rest if downstream[f] >= 1 and not any(g != f and implies(g, f) and not implies(f, g) for g in rest)]
+        # among mutually equivalent kept facts keep one
+        out = []
+        for f in sorted(kept, key=lambda f: -downstream[f]):
+            if not any(implies(f, g) and implies(g, f) for g in out):
+                out.append(f)
+        return [(r, sl, pol, "i.e.") for r, sl, pol in restated] + [(r, sl, pol, "also") for r, sl, pol in out]
+
+    def implications_given_types(self, types: tuple) -> set:
+        """(A_rel, A_slots, B_rel, B_slots): A implies B on every sampled placement of the BARE frame of these types
+        (A true on at least 15 rows, never with B false). Cached per type tuple."""
+        cache_ = getattr(self, "_imp_t", {})
+        if types in cache_:
+            return cache_[types]
+        k = len(types)
+        lits = [(r.name, sl) for r in self.state_rels if r.name not in self.type_determined() for sl in itertools.permutations(range(k), r.arity)]
+        cap = self.cap; self.cap = 300
+        try:
+            rows = [(state, self.dom.slots_of(state)) for state, _ in self.dom.placements(types, 300, 7)]
+        finally:
+            self.cap = cap
+        vals = {}
+        for rname, sl in lits:
+            r = self.rel[rname]
+            v = []
+            for state, ids in rows:
+                try:
+                    v.append(bool(r.fn(state, *[ids[s] for s in sl])))
+                except Exception:
+                    v.append(False)
+            vals[(rname, sl)] = v
+        imp = set()
+        for a, va in vals.items():
+            if sum(va) < 15:
+                continue
+            for b, vb in vals.items():
+                if a != b and not any(x and not y for x, y in zip(va, vb)):
+                    imp.add((a[0], a[1], b[0], b[1]))
+        cache_[types] = imp; self._imp_t = cache_
+        return imp
+
+    def implications(self, k: int) -> set:
+        """(A_rel, A_slots, B_rel, B_slots) such that A implies B on every sampled placement of k random typed slots
+        (A true on at least 25 rows, never with B false). Learned from the domain's placements, cached per size."""
+        cache_ = getattr(self, "_imp", {})
+        if k in cache_:
+            return cache_[k]
+        import random as _r
+        rng = _r.Random(k)
+        lits = [(r.name, sl) for r in self.state_rels if r.name not in self.type_determined() for sl in itertools.permutations(range(k), r.arity)]
+        rows = []
+        cap = self.cap; self.cap = 40
+        try:
+            for _ in range(24):
+                types = tuple(rng.choice(self.dom.types) for _ in range(k))
+                for state, _ in self.dom.placements(types, 40, rng.randrange(10 ** 6)):
+                    rows.append((state, self.dom.slots_of(state)))
+        finally:
+            self.cap = cap
+        vals = {}
+        for rname, sl in lits:
+            r = self.rel[rname]
+            v = []
+            for state, ids in rows:
+                try:
+                    v.append(bool(r.fn(state, *[ids[s] for s in sl])))
+                except Exception:
+                    v.append(False)
+            vals[(rname, sl)] = v
+        imp = set()
+        for a, va in vals.items():
+            if sum(va) < 25:
+                continue
+            for b, vb in vals.items():
+                if a == b:
+                    continue
+                if not any(x and not y for x, y in zip(va, vb)):
+                    imp.add((a[0], a[1], b[0], b[1]))
+        cache_[k] = imp; self._imp = cache_
+        return imp
 
     def type_determined(self) -> set:
         """Relations whose value depends on the slot types alone (in chess: same side, worth, slides), found generically:
@@ -527,7 +621,7 @@ class Generator:
 
 
 def lemma_to_json(l: Lemma) -> dict:
-    return dict(id=l.id, closure=[[r, list(sl), pol] for r, sl, pol in l.closure], frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
+    return dict(id=l.id, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
                 inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
@@ -803,7 +897,7 @@ def _examples_job(args):
     rest = exc & ~inh
     ex = pick_examples(g, rows, exc, rest, guard_from_json(entry.get("guard")), cache, all_mask)
     closure = g.frame_closure(rows, fr, cache, all_mask)
-    return dict(examples=ex, closure=[[r, list(sl), pol] for r, sl, pol in closure])
+    return dict(examples=ex, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in closure])
 
 
 def refresh_examples(dom: Domain, library_path: Path, cap: int, workers: int, log=print):
