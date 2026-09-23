@@ -82,6 +82,15 @@ def guard_text(guard):
     return " or ".join(term_text(t) if len(t) == 1 else "(" + term_text(t) + ")" for t in guard)
 
 
+def lemma_id(types, literals, slot, claim, full_guard) -> str:
+    """A stable id from the lemma's CONTENT (frame types and literals, the acting slot, the claim, the full guard):
+    the same lemma has the same id in every run, file and log, so it can be cited ("L-3f9a1c2d")."""
+    import hashlib
+    key = json.dumps([list(types), [[r, list(sl), pol] for r, sl, pol in sorted(literals)], slot, claim,
+                      sorted([[r, list(sl), pol] for r, sl, pol in t] for t in full_guard)], sort_keys=True)
+    return "L-" + hashlib.sha1(key.encode()).hexdigest()[:8]
+
+
 def remap_guard(guard, m):
     return [tuple((r, tuple(m[s] for s in sl), pol) for r, sl, pol in t) for t in guard]
 
@@ -123,9 +132,13 @@ class Lemma:
     def full_guard(self):
         return list(self.inherited) + list(self.guard)
 
+    @property
+    def id(self) -> str:
+        return lemma_id(self.frame.types, self.frame.literals, self.slot, self.claim, self.full_guard())
+
     def text(self):
         g = guard_text(self.guard)
-        return (f"{self.frame.text()} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
+        return (f"{self.id} {self.frame.text()} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
                 + (f"; unless {g} (covers {self.covered}/{self.covered + self.residual} exceptions, purity {self.purity:.2f})" if self.guard else f"; {self.residual} exceptions unexplained")
                 + (f"; inherited [{guard_text(self.inherited)}] {'REVERSED' if self.reversed else 'broke'} on {self.broke}" if self.parents else "") + ("" if self.complete else " [sampled]"))
 
@@ -438,7 +451,7 @@ class Generator:
 
 
 def lemma_to_json(l: Lemma) -> dict:
-    return dict(frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
+    return dict(id=l.id, frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
                 inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
@@ -512,7 +525,7 @@ def _check(dom: Domain, fr: Frame, slot: int, claim: str, guard: list, cap: int,
     # exceptions appear (2 of 5,000): it still holds as a near-total claim if the exception rate stays under 2%
     near_total = not guard and n_exc <= 0.02 * n
     status = "PROVED" if (n_exc == 0 or near_total or (cov >= min_cov and pur >= min_pur)) else "conjecture"
-    return dict(frame=fr.text(), slot=slot, claim=claim, support=n, exceptions=n_exc, coverage=cov, purity=pur, complete=complete, status=status, guard=guard_text(guard), near_total=near_total)
+    return dict(id=lemma_id(fr.types, fr.literals, slot, claim, guard), frame=fr.text(), slot=slot, claim=claim, support=n, exceptions=n_exc, coverage=cov, purity=pur, complete=complete, status=status, guard=guard_text(guard), near_total=near_total)
 
 
 _WORKER_DOM = None
@@ -552,7 +565,7 @@ def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_
     out = _pool_map(_prove_job, [(e, cap, min_cov, min_pur) for e in entries], workers, log, "prove")
     for o in out:
         if "support" in o:
-            log(f"  {o['status']:<10} {o['frame']} :: slot {o['slot']} {o['claim']} {100 * (o['support'] - o['exceptions']) / o['support']:.1f}% of {o['support']}; guard {o['guard']}: covers {100 * o['coverage']:.1f}% of {o['exceptions']} exceptions, purity {o['purity']:.2f}" + (" (complete)" if o["complete"] else f" (cap {cap})"))
+            log(f"  {o['status']:<10} {o.get('id', '')} {o['frame']} :: slot {o['slot']} {o['claim']} {100 * (o['support'] - o['exceptions']) / o['support']:.1f}% of {o['support']}; guard {o['guard']}: covers {100 * o['coverage']:.1f}% of {o['exceptions']} exceptions, purity {o['purity']:.2f}" + (" (complete)" if o["complete"] else f" (cap {cap})"))
     OUT.mkdir(parents=True, exist_ok=True)
     json.dump(out, open(OUT / f"proved_{dom.name}.json", "w"), indent=1)
     c = Counter(o["status"] for o in out)

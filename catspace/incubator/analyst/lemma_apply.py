@@ -18,7 +18,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-from .lemma_gen import Domain, Frame, guard_from_json, guard_text, lit_text
+from .lemma_gen import Domain, Frame, guard_from_json, guard_text, lemma_id, lit_text
 
 OUT = Path("data/derived/lemmas")
 
@@ -44,7 +44,8 @@ def load_library(library_path: Path, proved_path: Path | None = None, proved_onl
             continue
         fr = Frame(tuple(e["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in e["literals"]))
         guard = guard_from_json(e.get("inherited")) + guard_from_json(e.get("guard"))
-        out.append(Compiled(i, fr, e["slot"], e["claim"], guard, f"{fr.text()} :: slot {e['slot']} {e['claim']} unless {guard_text(guard) or '(nothing)'}"))
+        lid = e.get("id") or lemma_id(fr.types, fr.literals, e["slot"], e["claim"], guard)
+        out.append(Compiled(i, fr, e["slot"], e["claim"], guard, f"{lid} {fr.text()} :: slot {e['slot']} {e['claim']} unless {guard_text(guard) or '(nothing)'}"))
     return out
 
 
