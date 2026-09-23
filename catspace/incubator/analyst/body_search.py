@@ -66,7 +66,9 @@ def related(app: Applier, raw, bodies: list, candidates: list, after=None) -> li
     return scored
 
 
-def body_search(app: Applier, raw, actor, action, max_bodies: int = 5) -> dict:
+def body_search(app: Applier, raw, actor, action, max_bodies: int = 5, ranker=None) -> dict:
+    """ranker: optional object with rank(board, move, candidates) -> [(score, id)] (the neural guide); default = the
+    rarity-weighted relation heuristic."""
     ents = dict(app.dom.entities(raw))
     after = None
     try:
@@ -93,18 +95,21 @@ def body_search(app: Applier, raw, actor, action, max_bodies: int = 5) -> dict:
         cand = [e for e in ents if e not in bodies]
         # in the after-state the actor sits on the landing square: relate through that square
         after_bodies = [action.to_square if b == actor else b for b in bodies]
-        ranked = related(app, raw, bodies, cand)
-        if after is not None:
-            r2 = dict((c, w) for w, c in related(app, after, after_bodies, [c for c in cand if after.piece_at(c) is not None and c != action.to_square]))
-            ranked = sorted(((w + r2.get(c, 0.0), c) for w, c in ranked), key=lambda x: (-x[0], x[1]))
-        if not ranked or ranked[0][0] == 0:
+        if ranker is not None:
+            ranked = ranker.rank(raw, action, cand) if cand else []
+        else:
+            ranked = related(app, raw, bodies, cand)
+            if after is not None:
+                r2 = dict((c, w) for w, c in related(app, after, after_bodies, [c for c in cand if after.piece_at(c) is not None and c != action.to_square]))
+                ranked = sorted(((w + r2.get(c, 0.0), c) for w, c in ranked), key=lambda x: (-x[0], x[1]))
+        if not ranked or (ranker is None and ranked[0][0] == 0):
             break                                                             # nothing else touches the frame
         bodies.append(ranked[0][1])
     return dict(actor=actor, action=str(action), trace=trace, settled=max((i for i, l in enumerate(trace) if l["verdict"] is not None and (i == 0 or l["flip"])), default=0) + 1,
                 final=next((l["verdict"] for l in reversed(trace) if l["verdict"] is not None), None))
 
 
-def run_corpus(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies: int, seed: int = 0, log=print):
+def run_corpus(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies: int, seed: int = 0, log=print, ranker=None, tag: str = ""):
     import chess
     from .chess_domain import domain
     from .dataset import load as load_ds
@@ -131,7 +136,7 @@ def run_corpus(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies
         n_pos += 1
         legal = list(b.legal_moves)
         for kind, mv in (("best", best), ("random", rng.choice(legal))):
-            r = body_search(app, b, mv.from_square, mv, max_bodies=max_bodies)
+            r = body_search(app, b, mv.from_square, mv, max_bodies=max_bodies, ranker=ranker)
             st = stats[kind]; st["n"] += 1
             if r["final"] is None:
                 st["no_lemma"] += 1; continue
@@ -168,14 +173,14 @@ def run_corpus(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies
         log(f"    {k:5d}  {t[:150]}")
     OUT.mkdir(parents=True, exist_ok=True)
     json.dump(dict(stats={k: dict(n=v["n"], no_lemma=v["no_lemma"], settled=dict(v["settled"]), final=dict(v["final"]), flips=v["flips"], surprise_by_level=dict(v["surprise_by_level"]), spoken_by_level=dict(v["spoken_by_level"])) for k, v in stats.items()},
-                   usage=usage.most_common(60), usage_fired=usage_fired.most_common(60), flip_lemmas=flip_lemmas.most_common(60), traces=traces), open(OUT / "body_search.json", "w"), indent=1)
+                   usage=usage.most_common(60), usage_fired=usage_fired.most_common(60), flip_lemmas=flip_lemmas.most_common(60), traces=traces), open(OUT / f"body_search{tag}.json", "w"), indent=1)
     log(f"  -> {OUT / 'body_search.json'}")
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=80); ap.add_argument("--max-bodies", type=int, default=5)
-    ap.add_argument("--fen"); ap.add_argument("--move"); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--fen"); ap.add_argument("--move"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--guide", action="store_true"); ap.add_argument("--tag", default="")
     ap.add_argument("--library", default=str(OUT / "library_v2_size3.json")); ap.add_argument("--proved", default=str(OUT / "proved_v2_size3.json"))
     a = ap.parse_args(argv)
     if a.fen:
@@ -190,7 +195,12 @@ def main(argv=None):
             for idx, text, p, fired in l["used"][:5]:
                 print(f"      {p:5s} {text[:140]}" + (f"  <- {fired}" if fired else ""))
         return
-    run_corpus(a.n, a.lo, a.hi, Path(a.library), Path(a.proved), a.max_bodies, seed=a.seed)
+    ranker = None
+    if a.guide:
+        from .body_guide import GuideRanker
+        from .chess_domain import domain
+        ranker = GuideRanker(domain())
+    run_corpus(a.n, a.lo, a.hi, Path(a.library), Path(a.proved), a.max_bodies, seed=a.seed, ranker=ranker, tag=a.tag)
 
 
 if __name__ == "__main__":
