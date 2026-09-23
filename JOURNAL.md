@@ -23284,3 +23284,48 @@ Each is a claim over a slot's actions with a guard read off the complete partiti
 was written; all are sampled (cap 200) and so conjectures until the exhaustive pass. The pin needs three slots
 (the slider, the shield, the piece behind) and is where size three should first break the size-two lemmas.
 Launched size three (cap 1,000), with new slots inheriting the single-type lemma.
+
+## 2026-09-22 18:25 PDT — size three: the pin arrives as a three-slot frame; a naming defect; guards are disjunctions
+
+**Correction to the two entries above.** A guard is a DISJUNCTION of literals, not a conjunction: the guard search adds
+literals greedily, each covering exceptions the earlier ones missed, and a move is guarded when ANY literal holds.
+The logs and the entries above printed "&" between guard literals; read them as "or". (Frame literals are
+conjunctions.) Printing fixed at 16:49.
+
+**The [wK bR] "stays aligned" lemma is misnamed, not wrong** (Kaveh asked what it meant). Enumerating that frame
+completely, every placement with the king attacking the rook: 23,394 rook moves; the three conditions
+"stays aligned with the king", "lands attacked" and "steps next to the king" agree on EVERY move (6,071 lose with
+all three true, 373 keep with all three true, 16,950 keep with all three false). A rook attacked by a king without
+giving check sits diagonally beside it, and the only squares on a line with the king it can reach are the four
+beside the king. The generator named the guard by the first literal in candidate order among tied ones; the
+inherited size-one guard (lands attacked) was in the tie and should have won. Two fixes follow (not yet built,
+the run was live): store the whole tie as an equivalence class with the inherited guard preferred; a parent only
+"breaks" when its guard fails coverage, not when another name ties it.
+
+**Size three** (cap 1,000 placements a frame, ten workers after the pool was added; the pooled generator gave
+identical admissions to the sequential one on the size-two smoke, 54.9 s -> 9.2 s), OBS:
+  size 2: evaluated 632, admitted 36 (as before); 268 frames extended -> 53,600 candidates, 36,200 after
+  collapsing duplicate extensions; size 3: evaluated 30,221 (the rest observationally equivalent), admitted 1,561;
+  313 of them REVERSED (the parent's claim inverted in the frame); library 1,607 lemmas; 4,005 s to frame 29,550.
+Admissions by guard shape (script over the library; guard read as "or"):
+   631  keeps  unless attacked(other)            "do not move this while that one hangs" (size two's shape, again)
+   310  keeps  unless lands_attacked
+   138  loses  unless gives_check or captures    REVERSED frames: my other piece is attacked; moving THIS one loses
+    70  loses  unless captures or gives_check     it unless the move is forcing (check) or takes something
+    55  loses  unless gives_check
+   107  keeps  unless attacked or attacked        two hanging pieces
+    20  loses  unless stays_aligned               [wQ wR bK] king attacks the rook: the queen acting loses 65% of 542
+                                                  unless it stays aligned with the rook (182/187, 1.00): keep defending
+    ~50 keeps  unless ... or between(0,1,2)       THE PIN, e.g.
+       [wQ wR bB] queen attacks rook, bishop attacks rook :: the rook acting keeps 86.6% of 560 unless the bishop
+         attacks the queen, or the rook stands between the queen and the bishop (75/75, purity 0.81);
+       [wQ wN bB] same side, bishop attacks knight :: the knight keeps 92.4% of 649 unless ... between (49/49, 0.86);
+       [wR wB bR] rook attacks bishop, enemy rook attacks bishop :: the bishop keeps 50.7% of 223 unless between the
+         two rooks or lands attacked (110/110, 0.90).
+  Nobody wrote the pin; it is the frame where the size-two lemma "an attacked piece keeps unless it lands attacked"
+  broke, and the literal that explains the break is "this piece stands between that enemy slider and our dearer
+  piece". Whether "between" here is again a tie-name for something else is exactly what the tie-class fix will show;
+  I am not reading any single guard as a concept until it is stored with its equivalence class.
+All sampled, so conjectures. The exhaustive pass (`prove`, pooled, cap 10,000) launched 18:18 on the whole library.
+Lesson of the afternoon (memory updated): a nohup'd run without `python -u` block-buffers its log; I spent 30 min
+"debugging a hang" that was a buffer.
