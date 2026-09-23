@@ -13,8 +13,8 @@ import chess.syzygy
 from .lemma_gen import Domain, Relation
 
 VAL = {chess.PAWN: 1.0, chess.KNIGHT: 3.0, chess.BISHOP: 3.0, chess.ROOK: 5.0, chess.QUEEN: 9.0, chess.KING: 100.0}
-KIND = {"K": chess.KING, "Q": chess.QUEEN, "R": chess.ROOK, "B": chess.BISHOP, "N": chess.KNIGHT}
-TYPES = ["wK", "wQ", "wR", "wB", "wN", "bK", "bQ", "bR", "bB", "bN"]
+KIND = {"K": chess.KING, "Q": chess.QUEEN, "R": chess.ROOK, "B": chess.BISHOP, "N": chess.KNIGHT, "P": chess.PAWN}
+TYPES = ["wK", "wQ", "wR", "wB", "wN", "wP", "bK", "bQ", "bR", "bB", "bN", "bP"]   # pawns are entities too (2026-09-23: most real-board duties are about pawns)
 CANON = [chess.A1, chess.B1, chess.C1, chess.D1, chess.B2, chess.C2, chess.D2, chess.C3, chess.D3, chess.D4]
 
 

@@ -180,8 +180,29 @@ def pick_examples(g, rows, exc: int, rest: int, guard: list, cache: dict, all_ma
     return ex
 
 
+def lift_after(dom: Domain) -> list:
+    """PREDICATE INVENTION BY COMPOSITION, generic (Kaveh 2026-09-23: "new primitives"): every state relation R lifted to
+    its action-level form after_R(slots) = R evaluated on the state the action leads to, the acting entity followed
+    to where it lands. Nothing is named: "after the move, slot j is attacked" (the fork, the discovered attack),
+    "after the move, the mover still defends j" arise as literals the guard search may pick or ignore."""
+    out = []
+    for r in dom.relations:
+        if r.on_action:
+            continue
+        def make(rel):
+            def fn(state, action, *ids):
+                after = dom.transition(state, action)
+                moved = {a: b for a, b in zip(state.ids, after.ids)}
+                return rel.fn(after, *[moved.get(i, i) for i in ids])
+            return fn
+        out.append(Relation("after_" + r.name, r.arity, True, make(r)))
+    return out
+
+
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False):
+        if lift:
+            dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_after(dom)})
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
         self.relative = relative                                             # outcome = reply scalar minus the NULL-action reply scalar (what the standing threats already take)
         self.max_frames = max_frames                                         # per size, evaluate only the most frequent frames (by instance count in the placements source)
@@ -933,6 +954,7 @@ def main(argv=None):
     ap.add_argument("--relative", action="store_true", help="outcome relative to the null action (what the standing threats already take)")
     ap.add_argument("--max-frames", type=int, default=0, help="per size, evaluate only the most frequent frames")
     ap.add_argument("--oracle", choices=["material", "resolved", "tablebase"], default="material", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
+    ap.add_argument("--lift", action="store_true", help="add every state relation's after-the-move form as an action-level relation (predicate invention by composition)")
     ap.add_argument("--worth", choices=["canonical", "blend"], default="canonical", help="the worth relations: the value table, or the tables' removal value blended toward it by distance to the five-men edge"); ap.add_argument("--worth-tau", type=float, default=4.0)
     a = ap.parse_args(argv)
     if a.domain == "chess":
@@ -956,7 +978,7 @@ def main(argv=None):
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 
