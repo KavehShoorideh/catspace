@@ -23751,3 +23751,24 @@ SF-1400 at 4,000: 13 wins 4 losses, 2 losses and 1 draw at the cap = 68% (incumb
 Reading: the deeper iteration that runs out of budget is discarded, so the budget-only mode wastes the last
 iteration's nodes and overshoots the cap (4,887 for a 4,000 cap); at 1700 it is worse. Stays behind its flag. The
 pawn-ending losses need something the leaf cannot see at any affordable depth.
+
+## 2026-09-23 15:50 PDT — two generic primitives tried on real boards: after-the-move lifts, pawns as entities
+
+`--lift` adds, for every state relation R, the action relation after_R (R on the state the action leads to, the
+mover followed to its landing): 14 -> 23 relations, none named. Pawns join the entity types (12 types). Real boards,
+relative outcome, cap 400, OBS:
+  one-piece frames unchanged by the lift: [wQ] lands_attacked 1317/1324 (0.84); [wR] 220/231 (0.86); [wN] and
+  [wB] still no admissible guard (382 and 547 exceptions).
+  the knight's exceptions under the microscope: "lands attacked & not defended after" matches 392 rows of which
+  only 158 are exceptions (purity 0.40) -- under the RELATIVE outcome a knight stepping onto a hanging square costs
+  nothing extra when something bigger already hangs, so single-piece claims blur; the unexplained rows are the
+  knight leaving a DUTY (every knight move from c3 in one position: -2.0 -- it guarded a pawn), and the pawn was
+  not an entity.
+  with pawns: [wN wP] defends(0,1): keeps 80.9% of 278 unless (not attacked & lands attacked) 44/53, 0.80 (broke 53);
+  [wB wP] defends: 73.1% of 227 unless (lands attacked & not after_defended(1)) 9/61, 0.90 -- the first guard that
+  names "after my move the pawn I defended is undefended" -- coverage too low to admit.
+Reading: the two primitives are right in kind (the guard search picks after_defended on its own) and the coverage
+stays low because the OUTCOME on a full board is not a property of a two-piece frame: whatever else hangs decides
+the relative delta. The next question for the real-board library is the outcome definition, not the vocabulary:
+a per-frame outcome (what THIS frame's pieces gain or lose after the reply, the rest of the board held fixed) would
+make the claim local again. That is a design decision for Kaveh.
