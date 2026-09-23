@@ -8,6 +8,7 @@ import itertools
 import random
 
 import chess
+import chess.syzygy
 
 from .lemma_gen import Domain, Relation
 
@@ -251,13 +252,65 @@ def game_placements(fens: list):
     return placements
 
 
-def domain(fens: list | None = None) -> Domain:
+_TB = None
+
+
+def tablebase():
+    """The Syzygy tables (3-5 men, WDL + DTZ) under assets/tablebases/syzygy, opened once per process."""
+    global _TB
+    if _TB is None:
+        _TB = chess.syzygy.open_tablebase("assets/tablebases/syzygy")
+    return _TB
+
+
+def tb_scalar(state: State, e: int) -> float:
+    """The game-theoretic value of the position from the entity's side: WDL in {-2..2} (loss .. win), the tablebase's
+    truth for every position with at most five men -- exactly the sampled-frame semantics (only the frame's pieces
+    plus the kings are on the board). Kaveh 2026-09-23: "use the structure of the tablebase: per-piece-count truth"."""
+    b = state.board
+    side = b.piece_at(e).color
+    bb = b if b.turn == side else _flip_turn(b)
+    if bb is None:
+        return 0.0
+    try:
+        w = tablebase().probe_wdl(bb)
+    except (KeyError, chess.syzygy.MissingTableError):
+        return 0.0
+    return float(w)
+
+
+def _flip_turn(b: chess.Board):
+    nb = b.copy(stack=False); nb.turn = not nb.turn
+    return nb if nb.is_valid() else None
+
+
+def tb_reply_scalar(after: State, e: int) -> float:
+    """After our move the opponent is to move: the value from our side is minus the tablebase's value for them.
+    Checkmate and stalemate are in the tables' semantics already (probe_wdl handles terminal positions)."""
+    b = after.board
+    side = not b.turn
+    if b.is_checkmate():
+        return 2.0 if b.turn != side else -2.0
+    if b.is_stalemate():
+        return 0.0
+    try:
+        w = tablebase().probe_wdl(b)
+    except (KeyError, chess.syzygy.MissingTableError):
+        return 0.0
+    return float(-w)
+
+
+def domain(fens: list | None = None, oracle: str = "material") -> Domain:
     rels = [Relation("same_side", 2, fn=same_side), Relation("attacks", 2, fn=attacks), Relation("defends", 2, fn=defends),
             Relation("aligned", 2, fn=aligned), Relation("between", 3, fn=between), Relation("worth_ge", 2, fn=worth_ge),
             Relation("attacked", 1, fn=attacked), Relation("defended", 1, fn=defended), Relation("slides", 1, fn=slides),
             Relation("gives_check", 0, True, gives_check), Relation("captures", 0, True, captures),
             Relation("captures_worth_ge", 1, True, captures_worth_ge), Relation("stays_aligned", 1, True, stays_aligned),
             Relation("lands_attacked", 0, True, lands_attacked)]
+    if oracle == "tablebase":
+        assert fens is None, "the tablebase oracle is for sampled frames (at most five men)"
+        return Domain("chess_tb", TYPES, rels, placements, slots_of, actions, transition, tb_scalar, tb_reply_scalar,
+                      entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn)
     return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, reply_scalar,
                   entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
                   null_reply_scalar=null_reply_scalar)

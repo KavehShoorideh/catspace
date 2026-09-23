@@ -702,6 +702,7 @@ def main(argv=None):
     ap.add_argument("--positions", type=int, default=20000, help="games source: how many positions from the knowledge corpus"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=120)
     ap.add_argument("--relative", action="store_true", help="outcome relative to the null action (what the standing threats already take)")
     ap.add_argument("--max-frames", type=int, default=0, help="per size, evaluate only the most frequent frames")
+    ap.add_argument("--oracle", choices=["material", "tablebase"], default="material", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
     a = ap.parse_args(argv)
     if a.domain == "chess":
         from .chess_domain import domain
@@ -713,7 +714,7 @@ def main(argv=None):
             rows = [m["fen"] for m in meta if a.lo <= m["ply"] <= a.hi]
             _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
             print(f"[lemma_gen] games source: {len(fens)} positions (plies {a.lo}-{a.hi})")
-        dom = domain(fens)
+        dom = domain(fens, oracle=a.oracle)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
     global _RELATIVE
