@@ -23742,3 +23742,12 @@ With move ordering, lemmas on, one seed, OBS: depth 3 / cap 4,000 vs SF-1400: 11
 the cap = 60%, 2,801 nodes/move, 0.30 s/move.  depth 5 / cap 16,000 vs SF-1700: 5 wins 8 losses 2 draws, 2 draws
 and 3 losses at the cap = 35%, 15,977 nodes/move, 1.25 s/move.  These are the numbers every change is judged
 against from here (twenty games; still one seed).
+
+## 2026-09-23 15:38 PDT — budget-only depth: no
+
+Twenty games a rung, one seed, OBS: node cap the only limit (iterative deepening to depth 24 or the cap): vs SF-1700
+at 16,000: 4 wins 14 losses, 1 loss and 1 draw at the cap = 22% (incumbent depth 5: 35%), 17,083 nodes/move; vs
+SF-1400 at 4,000: 13 wins 4 losses, 2 losses and 1 draw at the cap = 68% (incumbent depth 3: 60%), 4,887 nodes/move.
+Reading: the deeper iteration that runs out of budget is discarded, so the budget-only mode wastes the last
+iteration's nodes and overshoots the cap (4,887 for a 4,000 cap); at 1700 it is worse. Stays behind its flag. The
+pawn-ending losses need something the leaf cannot see at any affordable depth.
