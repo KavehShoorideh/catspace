@@ -23679,3 +23679,12 @@ Reading: with a material-plus-mobility leaf the top two candidates tie or nearly
 positions. The frontier so far, score vs SF-1700 by nodes/move: 3,100 -> 15%; 16,500 -> 45% (plain depth 5).
 Adaptive depth stays behind the flag. Next lever, per node: move ordering (the transposition table's best move
 first, killer moves), checks in the first ply of quiescence -- standard search engineering, no knowledge added.
+
+## 2026-09-23 14:20 PDT — move ordering, one seed: mixed
+
+vs SF-1700, depth 5 / cap 16,000 with the table's best move first, killers, root order and first-ply checks in
+quiescence: 3 wins 5 losses 1 draw 1 loss at the cap = 35%, 15,768 nodes/move (without ordering: 45%, 16,520).
+vs SF-1400, depth 3 / cap 4,000: 8 wins 1 loss 1 loss at the cap = 80%, 2,816 nodes/move (without: 55%, 3,269).
+Reading: ten-game samples at one seed swing by 20 points either way; ordering costs no nodes and the depth-3 rung
+moved up while the depth-5 rung moved down. No verdict; the ordering stays (it is standard and cannot hurt per
+node); the next gauges use 20 games a rung.
