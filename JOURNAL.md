@@ -23668,3 +23668,14 @@ only: guard has `between` in any polarity 1,609 (the number journaled at 00:20);
 `not between` 101 (terms "not between & not lands_attacked" 97, "not between & not stays_aligned" 36 over the
 whole library -- the unpinning move, the piece stepping OUT from between, is a different concept and was being
 counted as its opposite). Pin-shaped proved = 1,508 of 1,578; the inspector page now tests positive polarity only.
+
+## 2026-09-23 13:57 PDT — depth five beats "deeper where unsure": the trigger is not discriminative
+
+vs SF-1700 (UCI Elo, depth 8), ten games, one seed, OBS:  plain depth 5, cap 16,000: 4 wins 4 losses 1 draw 1 loss at
+the cap = 45%, 16,520 nodes/move, 1.17 s/move.  depth 3+2 where unsure, margin 0.05 (fired 492/646): 1 win 5
+losses, 3 losses and 1 draw at the cap = 15%, 14,071 nodes/move.  (margin 0.15 earlier: 35% at 16,223.)
+Reading: with a material-plus-mobility leaf the top two candidates tie or nearly tie in most positions, so
+"unsure" fires on three quarters of decisions whatever the margin, and the extension budget lands on the wrong
+positions. The frontier so far, score vs SF-1700 by nodes/move: 3,100 -> 15%; 16,500 -> 45% (plain depth 5).
+Adaptive depth stays behind the flag. Next lever, per node: move ordering (the transposition table's best move
+first, killer moves), checks in the first ply of quiescence -- standard search engineering, no knowledge added.
