@@ -115,17 +115,82 @@ def main(argv=None):
     import chess
     from .chess_domain import domain
     ap = argparse.ArgumentParser()
-    ap.add_argument("--fen", required=True); ap.add_argument("--library", default=str(OUT / "library_v2_size3.json")); ap.add_argument("--proved", default=str(OUT / "proved_v2_size3.json"))
+    ap.add_argument("--fen", required=True); ap.add_argument("--duties", action="store_true"); ap.add_argument("--library", default=str(OUT / "library_v2_size3.json")); ap.add_argument("--proved", default=str(OUT / "proved_v2_size3.json"))
     a = ap.parse_args(argv)
     dom = domain(); app = Applier(dom, load_library(Path(a.library), Path(a.proved)))
     b = chess.Board(a.fen)
     res = app.apply(b)
     print(f"{len(app.lemmas)} proved lemmas; {len(res['embeddings'])} embeddings in this position; verdicts on {len(res['verdicts'])} moves")
+    if a.duties:
+        print_duties(b, duties(app, b, res)); return
     for (e, mv), vs in sorted(res["verdicts"].items(), key=lambda kv: (-len(kv[1]), kv[0][1])):
         keeps = sum(1 for _, p, _, _ in vs if p == "keeps"); loses = len(vs) - keeps
         print(f"\n{chess.square_name(e)} {mv}: {keeps} keeps / {loses} loses")
         for c, p, fired, ids in vs[:6]:
             print(f"   {p:5s} {c.text[:150]}" + (f"  <- {fired}" if fired else "") + f"  [{' '.join(chess.square_name(i) for i in ids)}]")
+
+
+
+# ---------------------------------------------------------------- duties and opportunities (Kaveh 2026-09-23)
+def duties(app: Applier, raw, res: dict | None = None) -> dict:
+    """Per piece: ALL its duties, ranked by stake, and its opportunities.
+    A DUTY of piece P = a guard term that fires on P's own moves in some lemma whose claim is 'keeps' (moving P away
+    loses): the term names what P is holding (the other slots in the term) and the stake is the lemma's example loss
+    magnitude on this board (the 1-ply outcome of the guarded move). An OPPORTUNITY of P = one of its moves called
+    losing ONLY through duty terms (every lemma that calls it losing does so by a term naming another piece), with
+    the outcome it would have if those terms were false: the tactic waiting on the duty. Hand-off: a move by another
+    piece that makes the fired term false lifts the duty; only the lemmas that fired on that term need re-evaluation.
+    Generic: terms, slots and the domain's outcome; nothing here knows what a queen or a mate is."""
+    dom = app.dom
+    res = res or app.apply(raw)
+    by_piece: dict = defaultdict(lambda: dict(duties=defaultdict(lambda: dict(stake=0.0, lemmas=set(), moves=set())), opportunities=[]))
+    def outcome(e, mv):
+        st = dom.state_of(raw, [e])
+        after = dom.transition(st, (st.board, mv))
+        return dom.reply_scalar(after, after.ids[0]) - dom.scalar(st, e)
+    import chess
+    for (e, key), vs in res["verdicts"].items():
+        mv = chess.Move.from_uci(key)
+        d = outcome(e, mv)
+        losing = [(c, fired, ids) for c, p, fired, ids in vs if p == "loses"]
+        if not losing:
+            continue
+        only_duty = True
+        for c, fired, ids in losing:
+            if c.claim != "acting keeps" or fired is None:
+                only_duty = False; continue
+            # the other pieces named by the fired term (slot indices -> entity ids)
+            named = set()
+            for term in c.guard:
+                if " & ".join(lit_text(r, sl, pol) for r, sl, pol in term) == fired:
+                    for r, sl, pol in term:
+                        for s_ in sl:
+                            if ids[s_] != e:
+                                named.add(ids[s_])
+            if not named:
+                only_duty = False; continue                                   # a term about the move itself (lands attacked): not a duty
+            key_ = tuple(sorted(named))
+            du = by_piece[e]["duties"][key_]
+            du["stake"] = max(du["stake"], -d); du["lemmas"].add(c.text); du["moves"].add(key)
+        if only_duty:
+            by_piece[e]["opportunities"].append(dict(move=key, outcome_now=d, held_by=[sorted(set(x for c, f, ids in losing for term in c.guard for r, sl, pol in term for x in (ids[s_] for s_ in sl) if x != e))]))
+    out = {}
+    for e, rec in by_piece.items():
+        ds = sorted(((v["stake"], k, sorted(v["lemmas"])[:3], sorted(v["moves"])) for k, v in rec["duties"].items()), key=lambda x: -x[0])
+        out[e] = dict(duties=[dict(stake=s, holds=[chess.square_name(x) for x in k], lemmas=l, moves=m) for s, k, l, m in ds],
+                      opportunities=[dict(move=o["move"], outcome_now=o["outcome_now"], held_by=[chess.square_name(x) for x in o["held_by"][0]]) for o in rec["opportunities"]])
+    return out
+
+
+def print_duties(raw, table: dict):
+    import chess
+    for e, rec in sorted(table.items(), key=lambda kv: -(kv[1]["duties"][0]["stake"] if kv[1]["duties"] else 0)):
+        p = raw.piece_at(e)
+        if not rec["duties"]:
+            continue
+        print(f"{p.symbol()}{chess.square_name(e)}: duties " + "; ".join(f"holds {','.join(d['holds'])} (stake {d['stake']:+.0f}, {len(d['moves'])} moves guarded)" for d in rec["duties"][:4]))
+        for o in rec["opportunities"][:3]:
+            print(f"     opportunity {o['move']}: now {o['outcome_now']:+.0f}, held by {','.join(o['held_by'])}")
 
 
 if __name__ == "__main__":
