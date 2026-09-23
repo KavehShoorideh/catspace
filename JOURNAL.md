@@ -23577,3 +23577,13 @@ human policy four games in five); the lemma layer with today's 18 real-board lem
 player is the harness the architecture Kaveh laid out (scheduler over board hashes, MCTS with lemma priors, three
 watchers, the actor with analyse/choose, the guide) has to beat, per node. Next gauge: a Stockfish UCI-Elo ladder
 (1400 / 1700 / 2000, depth 8) to find where 4,000 nodes of rules run out.
+
+## 2026-09-23 12:45 PDT — the Stockfish ladder: where 2,600 nodes of rules run out
+
+Ten games a rung, Stockfish at UCI_LimitStrength Elo, depth 8; the player at depth 3, 4,000-node cap, lemmas on
+(one seed; OBS):  Elo 1400: 6 wins 4 losses = 60%, 2,894 nodes/move.  Elo 1700: 7 losses, 1 draw, 1 loss and 1 win
+at the ply cap = 15%, 2,417 nodes/move.  Elo 2000: 9 losses 1 win = 10%.
+Reading: the rules player sits near Stockfish-1450 in this ladder's units, at 2,600 nodes and 0.2 s a move. Above
+that it loses on what three plies plus a resolved exchange cannot see: slow threats and king safety. That is the
+watchers' job (loss / win / draw questions with stakes) and the deeper-only-where-unsure budget; scheduler and MCTS
+(with lemma priors) are built; the MCTS gauge at 200 simulations is queued.
