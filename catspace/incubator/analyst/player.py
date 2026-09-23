@@ -23,6 +23,7 @@ from collections import Counter
 from pathlib import Path
 
 import chess
+import chess.engine
 
 from . import nodes
 from .chess_domain import VAL
@@ -291,7 +292,6 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
     sf = None
     if opponent == "stockfish":                                              # Stockfish at a UCI Elo (>= 1320), depth-limited: the ladder above Maia-1500
-        import chess.engine
         sf = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
         sf.configure({"UCI_LimitStrength": True, "UCI_Elo": max(1320, maia_rating), "Threads": 1, "Hash": 64})
     pl = Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
