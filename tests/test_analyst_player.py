@@ -58,10 +58,10 @@ def test_resolved_exchange_reads_a_defended_square_as_a_trade():
     b = chess.Board("4k3/pppp4/5n2/8/8/1BN5/PPPP4/4K3 w - - 0 1")  # Nd5 attacked by Nf6, defended by Bb3 (pawns: no insufficient-material draw)
     s = Search(node_cap=10 ** 9)
     b.push(chess.Move.from_uci("c3d5")); v = s.quiesce(b, chess.WHITE, -MATE * 2, MATE * 2, 6); b.pop()
-    assert v == pytest.approx(material(b, chess.WHITE), abs=1e-9)   # a trade: material unchanged after it settles
+    assert v == pytest.approx(material(b, chess.WHITE), abs=0.5)    # a trade: material unchanged after it settles (the leaf adds a mobility term under 0.5)
     b2 = chess.Board("4k3/pppp4/5n2/8/8/2N5/PPPP4/4K3 w - - 0 1")  # undefended: a loss of three
     b2.push(chess.Move.from_uci("c3d5")); v2 = s.quiesce(b2, chess.WHITE, -MATE * 2, MATE * 2, 6); b2.pop()
-    assert v2 == pytest.approx(material(b2, chess.WHITE) - 3.0, abs=1e-9)
+    assert v2 == pytest.approx(material(b2, chess.WHITE) - 3.0, abs=0.5)
 
 
 def test_deeper_keeps_a_won_exchange():
