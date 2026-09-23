@@ -23793,3 +23793,20 @@ shares (3,152 moves) CONDITIONED on a random prefix of the relevant set already 
 "which piece next". Split by position. OBS: test AUC for the next-body ranking 0.882 (random 0.508; 623 positions);
 the MLP guide scored 0.873 on the unconditional task and the relation heuristic 0.645. 46 s to train on CPU.
 Wired as `--guide tf` in body_search and the player; the body search now passes the frame so far to the ranker.
+
+## 2026-09-23 16:30 PDT — composition, first measurement: the in-world values do not compose (yet)
+
+150 real positions, every legal move, composed prediction (mean over the lemmas embedded in the frame of the
+outcome their verdict implies) vs the full-board truth (resolved exchange relative to the null move), OBS:
+|prediction - truth| L1 10.71, L2 11.05, L3 11.19, L4 11.26, L5 11.31 pawns (3,410 moves); the engine's best move's
+rank by composed value: mean 9.92 (about half the legal moves: chance). Cause found on inspection: the values
+carried mate outcomes (+-1000) into their means (L-2904d407: holds -5.6, exception +21.9), so the composed number is
+dominated by rare mates; and the units of a lemma's world (absolute material there) are not the board's (relative
+to the null move here). Fixed: values clipped to +-10; the gauge now reports rank correlation per position and
+the best move's rank share, which is what composition must deliver (order, not units). Rerun queued, heuristic
+and graph guide side by side.
+USED lemmas by stake (verdict differs between the best move and an alternative), the premise-selection label:
+L-4b53b755 [wR] keeps unless lands attacked (stake 3,134, used 45); L-5d3091a7 [bR] (1,164, 32); L-a66f9c24 [wQ]
+(516, 80); L-ebe77d39 [wQ wR] same side: keeps unless lands attacked or (rook attacked & queen leaves its line)
+(165, 25). The rook lemmas carry the most stake because a hanging rook decides more games than a hanging queen
+move does at these depths.
