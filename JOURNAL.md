@@ -23476,7 +23476,7 @@ proved) on 300 corpus positions, best move and a random move, OBS:
 Running: games-source size 3 (relaunched 10:47 with parsed-board cache), over-literals generalization (36k cells,
 ~4 h). Sources in the message to Kaveh.
 
-## 2026-09-23 11:40 PDT — imports from the literature (Kaveh: "use their frameworks as written"), the guide, duties
+## 2026-09-23 11:37 PDT — imports from the literature (Kaveh: "use their frameworks as written"), the guide, duties
 
 **shapiq** (pip; Muschalik et al. 2024), as written: the game's players are a position's pieces, v(S) = the move's
 outcome with only S (plus kings and the mover) present -- the sampled-frame semantics on a real position's own pieces;
