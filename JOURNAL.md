@@ -23428,7 +23428,7 @@ boards (absolute is degenerate there); this changes what the reversed family mea
 for L2; (3) the residual's first proposal for a new primitive is action-level "lands defended" -- rules-level, but
 it is the loop's proposal, not mine to slip in; Kaveh decides.
 
-## 2026-09-23 10:50 PDT — the search over bodies, the order residual, and the literature (Kaveh: "search over bodies; which lemmas keep repeating; also do a lit search")
+## 2026-09-23 10:48 PDT — the search over bodies, the order residual, and the literature (Kaveh: "search over bodies; which lemmas keep repeating; also do a lit search")
 
 **Order residual** (how much of a size-k frame's exceptions the lemmas of size < k explain; 300 random frames a size,
 sampled source, cap 500; script in the job scratch, numbers printed), OBS:
