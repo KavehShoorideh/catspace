@@ -55,6 +55,7 @@ class Applier:
         self.dom = dom; self.lemmas = lemmas
         self.rel = {r.name: r for r in dom.relations}
         self.by_types: dict = defaultdict(list)
+        self.lemmas_by_idx: dict = {c.idx: c for c in lemmas}
         for c in lemmas:
             self.by_types[c.frame.types].append(c)
 

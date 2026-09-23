@@ -66,9 +66,11 @@ def related(app: Applier, raw, bodies: list, candidates: list, after=None) -> li
     return scored
 
 
-def body_search(app: Applier, raw, actor, action, max_bodies: int = 5, ranker=None) -> dict:
+def body_search(app: Applier, raw, actor, action, max_bodies: int = 5, ranker=None, margin: float | None = None) -> dict:
     """ranker: optional object with rank(board, move, candidates) -> [(score, id)] (the neural guide); default = the
-    rarity-weighted relation heuristic."""
+    rarity-weighted relation heuristic. margin: when given, growth stops once the composed prediction moved by less
+    than the margin on the last level (Kaveh 2026-09-23: prune like alpha-beta, by what matters right now)."""
+    from .lemma_apply import compose
     ents = dict(app.dom.entities(raw))
     after = None
     try:
@@ -86,12 +88,15 @@ def body_search(app: Applier, raw, actor, action, max_bodies: int = 5, ranker=No
         keeps = sum(1 for _, p, _, _ in vs if p == "keeps"); loses = len(vs) - keeps
         verdict = None if not vs else ("keeps" if keeps > loses else "loses" if loses > keeps else "split")
         used = [(c.idx, c.text, p, fired) for c, p, fired, ids in vs]
-        level = dict(bodies=list(bodies), n_lemmas=len(vs), keeps=keeps, loses=loses, verdict=verdict, flip=(prev is not None and verdict is not None and verdict != prev), used=used)
+        composed = compose(vs)
+        level = dict(bodies=list(bodies), n_lemmas=len(vs), keeps=keeps, loses=loses, verdict=verdict, flip=(prev is not None and verdict is not None and verdict != prev), used=used, composed=composed)
         trace.append(level)
         if verdict is not None:
             prev = verdict
         if len(bodies) >= max_bodies:
             break
+        if margin is not None and len(trace) >= 2 and trace[-1]["composed"] is not None and trace[-2]["composed"] is not None and abs(trace[-1]["composed"] - trace[-2]["composed"]) < margin:
+            break                                                             # the last body changed the composed world by less than what matters now
         cand = [e for e in ents if e not in bodies]
         # in the after-state the actor sits on the landing square: relate through that square
         after_bodies = [action.to_square if b == actor else b for b in bodies]
