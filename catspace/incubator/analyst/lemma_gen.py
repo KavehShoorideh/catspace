@@ -86,6 +86,7 @@ class Lemma:
     inherited: list = field(default_factory=list)      # the parent's guard literals, applied first
     broke: int = 0                                     # exceptions the parent's guard did NOT cover: what this frame exists to explain
     reversed: bool = False                             # the parent's claim inverted here: the majority now goes the other way
+    sig: tuple = ()                                    # the label vector's signature (observational equivalence across frames)
 
     def text(self):
         g = " or ".join(("" if pol else "not ") + f"{r}({','.join(str(s) for s in sl)})" for r, sl, pol in self.guard)
@@ -95,13 +96,14 @@ class Lemma:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print):
-        self.dom = dom; self.cap = cap; self.seed = seed; self.log = log
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1):
+        self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers
         self.rel = {r.name: r for r in dom.relations}
         self.state_rels = [r for r in dom.relations if not r.on_action]
         self.action_rels = [r for r in dom.relations if r.on_action]
         self.library: list[Lemma] = []; self.residual_frames: list[tuple[Frame, int]] = []
         self.seen_signatures: dict = {}
+        self.collapse = True                                                 # evaluate() drops observationally equivalent frames itself; False in pool workers (the caller collapses, in frontier order)
 
     # ---------------------------------------------------------------- instances of a frame
     def instances(self, frame: Frame):
@@ -167,9 +169,10 @@ class Generator:
         holds = len(rows) - sum(exc)
         # the label vector's signature: observational equivalence across frames
         sig = (tuple(frame.types), slot, len(rows), holds, hash(tuple(exc)))
-        if sig in self.seen_signatures:
-            return None
-        self.seen_signatures[sig] = frame
+        if self.collapse:
+            if sig in self.seen_signatures:
+                return None
+            self.seen_signatures[sig] = frame
         guard, covered, purity, matched = self.find_guard(rows, exc, frame)
         residual = sum(exc) - covered
         examples = {}
@@ -177,7 +180,9 @@ class Generator:
             key = "exception" if is_exc else "holds"
             if key not in examples:
                 examples[key] = (self.dom_text(state), str(a), round(d, 2))
-        return Lemma(frame, slot, claim, len(rows), holds, guard, covered, purity, residual, complete, examples, inherited, broke, reversed_)
+        lem = Lemma(frame, slot, claim, len(rows), holds, guard, covered, purity, residual, complete, examples, inherited, broke, reversed_)
+        lem.sig = sig
+        return lem
 
     def dom_text(self, state):
         return getattr(state, "fen", lambda: str(state))()
@@ -239,16 +244,15 @@ class Generator:
         for size in range(1, max_size + 1):
             self.log(f"[lemma_gen] size {size}: {len(frontier)} frames to evaluate ({time.perf_counter() - t0:.0f}s)")
             next_frontier = []; admitted = 0; evaluated = 0; broke_frames = 0
-            for fi, (fr, parent) in enumerate(frontier):
+            for fi, (fr, parent, results) in enumerate(self._evaluate_frontier(frontier, lemma_of, size)):
                 if fi and fi % 50 == 0:
                     self.log(f"[lemma_gen] size {size}: {fi}/{len(frontier)} frames, admitted {admitted} so far ({time.perf_counter() - t0:.0f}s)")
-                for slot in range(fr.size):
-                    inherit = lemma_of.get((parent.types, parent.literals, slot)) if parent is not None and slot < parent.size else None
-                    if inherit is None and size > 1:
-                        inherit = lemma_of.get(((fr.types[slot],), (), 0))       # a new slot inherits the library's lemma for its own type: only what that fails to explain is new
-                    lem = self.evaluate(fr, slot, inherit)
+                for slot, inherit, lem in results:
                     if lem is None:
                         continue
+                    if lem.sig in self.seen_signatures:
+                        continue                                             # observationally equivalent to an earlier frame (same label vector): one representative
+                    self.seen_signatures[lem.sig] = fr
                     evaluated += 1
                     if lem.support < min_support:
                         continue
@@ -275,6 +279,30 @@ class Generator:
         self.save()
         return self.library
 
+    def _inherit_for(self, fr: Frame, parent, slot: int, lemma_of: dict, size: int):
+        inherit = lemma_of.get((parent.types, parent.literals, slot)) if parent is not None and slot < parent.size else None
+        if inherit is None and size > 1:
+            inherit = lemma_of.get(((fr.types[slot],), (), 0))              # a new slot inherits the library's lemma for its own type: only what that fails to explain is new
+        return inherit
+
+    def _evaluate_frontier(self, frontier, lemma_of: dict, size: int):
+        """Yield (frame, parent, [(slot, inherit, lemma)]) in frontier order. Frames are independent given the library
+        of the earlier sizes, so they are evaluated in a process pool (fork; the workers do not collapse -- the main
+        process does, in order, so the result is the same as the sequential run)."""
+        jobs = [(fr, parent, [(slot, self._inherit_for(fr, parent, slot, lemma_of, size)) for slot in range(fr.size)]) for fr, parent in frontier]
+        if self.workers <= 1 or len(jobs) < 4:
+            self.collapse = False                                            # the caller collapses (same as the pooled path)
+            for fr, parent, slots in jobs:
+                yield fr, parent, [(slot, inh, self.evaluate(fr, slot, inh)) for slot, inh in slots]
+            return
+        import multiprocessing as mp
+        global _WORKER_GEN
+        _WORKER_GEN = self
+        ctx = mp.get_context("fork")
+        with ctx.Pool(self.workers) as pool:
+            for (fr, parent, slots), res in zip(jobs, pool.imap(_eval_job, jobs, chunksize=1)):
+                yield fr, parent, [(slot, inh, lem) for (slot, inh), lem in zip(slots, res)]
+
     def extend(self, frame: Frame) -> list[Frame]:
         """One more slot, joined to an existing slot through one binary relation, either polarity of nothing else."""
         out = []
@@ -295,6 +323,16 @@ class Generator:
                         covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples) for l in self.library],
                   open(OUT / f"library_{self.dom.name}.json", "w"), indent=1)
         json.dump([dict(frame=f.text(), residual=r) for f, r in self.residual_frames], open(OUT / f"residual_{self.dom.name}.json", "w"), indent=1)
+
+
+_WORKER_GEN = None
+
+
+def _eval_job(job):
+    fr, parent, slots = job
+    g = _WORKER_GEN
+    g.collapse = False; g.log = lambda *a, **k: None
+    return [g.evaluate(fr, slot, inh) for slot, inh in slots]
 
 
 def parse_frame(text: str) -> Frame:
@@ -360,6 +398,7 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["run", "prove"]); ap.add_argument("--domain", default="chess")
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--workers", type=int, default=1)
     a = ap.parse_args(argv)
     if a.domain == "chess":
         from .chess_domain import domain
@@ -368,7 +407,7 @@ def main(argv=None):
         raise SystemExit(f"unknown domain {a.domain}")
     if a.cmd == "prove":
         prove(dom, Path(a.library), a.cap, limit=a.limit); return
-    g = Generator(dom, cap=a.cap, seed=a.seed)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 
