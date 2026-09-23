@@ -59,17 +59,26 @@ def pose(board: chess.Board, search: Search | None = None, app=None) -> list[Que
             base = material(board, side)
             if worst and base - worst[0] >= 1.0:
                 loss = base - worst[0]; r = worst[1]; target = r.to_square
-                q = Question("loss", f"save the {chess.piece_name(board.piece_at(target).piece_type)} on {chess.square_name(target)} from {chess.square_name(r.from_square)}", loss)
-                for m in legal:
-                    if m.from_square == target or m.to_square == r.from_square:
-                        q.answers.add(m.uci())
-                    elif defenders_after(board, m, target, side) > len(board.attackers(side, target)):
-                        q.answers.add(m.uci())
-                    elif chess.SquareSet.between(r.from_square, target) and m.to_square in chess.SquareSet.between(r.from_square, target):
-                        q.answers.add(m.uci())
-                    elif board.gives_check(m):
-                        q.answers.add(m.uci())
-                qs.append(q)
+                victim = board.piece_at(target)
+                if victim is None:                                            # the threat starts with a check, not a capture: the material falls later in the line
+                    q = Question("loss", f"meet the threat {chess.square_name(r.from_square)}-{chess.square_name(target)} (check) worth {loss:.0f}", loss)
+                    for m in legal:
+                        if m.to_square == r.from_square or m.to_square == target or board.gives_check(m) or m.from_square == board.king(side):
+                            q.answers.add(m.uci())
+                    qs.append(q); target = None
+                else:
+                    q = Question("loss", f"save the {chess.piece_name(victim.piece_type)} on {chess.square_name(target)} from {chess.square_name(r.from_square)}", loss)
+                if target is not None:
+                    for m in legal:
+                        if m.from_square == target or m.to_square == r.from_square:
+                            q.answers.add(m.uci())
+                        elif defenders_after(board, m, target, side) > len(board.attackers(side, target)):
+                            q.answers.add(m.uci())
+                        elif chess.SquareSet.between(r.from_square, target) and m.to_square in chess.SquareSet.between(r.from_square, target):
+                            q.answers.add(m.uci())
+                        elif board.gives_check(m):
+                            q.answers.add(m.uci())
+                    qs.append(q)
     else:
         q = Question("loss", "get out of check", 2.0, {m.uci() for m in legal}); qs.append(q)
     # ---- WIN: our resolved gains now
