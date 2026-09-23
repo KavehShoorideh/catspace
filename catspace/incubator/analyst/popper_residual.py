@@ -122,14 +122,19 @@ def build_task(frame_text: str, slot: int, cap: int, n_rows: int, relative: bool
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--frame", required=True); ap.add_argument("--slot", type=int, required=True); ap.add_argument("--cap", type=int, default=300)
-    ap.add_argument("--rows", type=int, default=400); ap.add_argument("--timeout", type=int, default=300); ap.add_argument("--relative", action="store_true"); ap.add_argument("--noisy", action="store_true")
+    ap.add_argument("--rows", type=int, default=400); ap.add_argument("--timeout", type=int, default=300); ap.add_argument("--relative", action="store_true"); ap.add_argument("--noisy", action="store_true"); ap.add_argument("--max-vars", type=int, default=4); ap.add_argument("--max-body", type=int, default=3)
     a = ap.parse_args(argv)
     task = build_task(a.frame, a.slot, a.cap, a.rows, a.relative)
     cmd = [sys.executable, str(POPPER / "popper.py"), str(task.resolve()), "--timeout", str(a.timeout)] + (["--noisy"] if a.noisy else [])
     t0 = time.perf_counter()
-    r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(POPPER))
-    print(f"[popper] {time.perf_counter() - t0:.0f}s exit {r.returncode}")
-    print(r.stdout[-3000:]); print(r.stderr[-1500:])
+    cmd += ["--max-vars", str(a.max_vars), "--max-body", str(a.max_body)]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, cwd=str(POPPER), timeout=a.timeout + 90)
+        out, err, code = r.stdout, r.stderr, r.returncode
+    except subprocess.TimeoutExpired as ex:
+        out, err, code = (ex.stdout or b"").decode() if isinstance(ex.stdout, bytes) else (ex.stdout or ""), "hard timeout", -1
+    print(f"[popper] {time.perf_counter() - t0:.0f}s exit {code}")
+    print("\n".join(l for l in out.splitlines() if not l.startswith("Warning") and l.strip())[-3000:]); print(err[-800:])
 
 
 if __name__ == "__main__":
