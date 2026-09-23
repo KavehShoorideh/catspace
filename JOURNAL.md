@@ -23386,3 +23386,15 @@ Reading:
     (or per-slot sets conditioned on the other slots), and generalize over frame LITERAL variants as well as types
     (aligned/attacks/same_side siblings carry the same lemma).
 Nothing running. Libraries: data/derived/lemmas/library_v2_size3.json, proved_v2_size3.json, schemas_chess.json.
+
+## 2026-09-23 09:58 PDT — schemas stated as unions of product boxes (Kaveh: "reasonable fix, go ahead")
+
+`box_cover` (generic, deterministic): the largest product sub-boxes inside the set of held type tuples, greedy by
+uncovered tuples then size, until every held tuple is in a box; a schema IS that union. Earlier checks are cached, so
+the pass re-used all 26,394 prover results (0 new checks). OBS: 2,979 schemas -> 5,062 boxes; 1,869 schemas are ONE
+box; 772 two boxes; held cells 11,384 against 33,559 in the product-of-unions boxes (the old statement over-read by
+3x). The king example: [{bK,wK} x {bB,bN,wB,wN}] u [{bK} x {bB,bN,bR,wB,wN}] u [{wK} x {bB,bN,wB,wN,wR}]: minor
+pieces of either colour, rooks only of the king's own colour (an enemy rook on an open line with the king is check):
+colour was discovered by the cover, not assumed. Largest one-box schema: [{bQ,bR} x {wB,wQ,wR} x {bB,bR}] with
+"attacks(0,1) & attacks(1,2) :: the middle piece acting loses unless it captures, or lands unattacked, or leaves
+both lines" -- a piece attacked by one and attacking another, 12 held of 12.

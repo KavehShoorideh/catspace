@@ -513,6 +513,34 @@ def schema_key(entry: dict):
     return (len(entry["types"]), tuple(sorted((r, tuple(sl), pol) for r, sl, pol in entry["literals"])), entry["slot"], entry["claim"], tuple(sorted(set(guard))))
 
 
+def box_cover(held: set, k: int) -> list:
+    """The largest product sub-boxes S_0 x ... x S_(k-1) inside a set of held type tuples, chosen greedily (most
+    uncovered tuples, then size; ties by order), until every held tuple lies in some box. Deterministic; no domain
+    knowledge -- if the boxes line up with an attribute (colour, value), that attribute is discovered, not assumed."""
+    boxes = []; uncovered = set(held)
+    per_slot = [sorted({h[i] for h in held}) for i in range(k)]
+    while uncovered:
+        best = None
+        for seed in sorted(uncovered):
+            box = [{seed[i]} for i in range(k)]
+            improved = True
+            while improved:
+                improved = False
+                for i in range(k):
+                    for t in per_slot[i]:
+                        if t in box[i]:
+                            continue
+                        cells = itertools.product(*[box[j] if j != i else {t} for j in range(k)])
+                        if all(c in held for c in cells):
+                            box[i].add(t); improved = True
+            cells = set(itertools.product(*box))
+            key = (len(cells & uncovered), len(cells))
+            if best is None or key > best[0]:
+                best = (key, box)
+        boxes.append([sorted(b) for b in best[1]]); uncovered -= set(itertools.product(*best[1]))
+    return boxes
+
+
 def _gen_job(args):
     types, literals, slot, claim, guard, cap, min_cov, min_pur = args
     fr = Frame(tuple(types), tuple((r, tuple(sl), pol) for r, sl, pol in literals))
@@ -534,6 +562,13 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
         if only_proved and status and status.get((e["frame"], e["slot"])) != "PROVED":
             continue
         groups[schema_key(e)].append(e)
+    cache = {}
+    prior = OUT / f"schemas_{dom.name}.json"
+    if prior.exists():                                                        # cells already checked by an earlier pass are not re-proved
+        for ps in json.load(open(prior)):
+            pk = (ps["size"], tuple(sorted((r, tuple(sl), pol) for r, sl, pol in ps["literals"])), ps["slot"], ps["claim"], ps["guard"])
+            for u in ps.get("unseen_proved", []) + ps.get("unseen_failed", []):
+                cache[(pk, tuple(u[0]))] = u
     schemas = []; jobs = []; job_owner = []
     for key, members in groups.items():
         size, literals, slot, claim, guard = key
@@ -545,25 +580,33 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
                  guard_terms=[[[r, list(sl), pol] for r, sl, pol in t] for t in guard], per_slot=per_slot, observed=[list(o) for o in observed],
                  unseen=[list(u) for u in unseen], unseen_proved=[], unseen_failed=[])
         schemas.append(s)
+        pk = (size, literals, slot, claim, guard_text(list(guard)))
         for u in unseen:
+            hit = cache.get((pk, tuple(u)))
+            if hit is not None:
+                (s["unseen_proved"] if hit[1] == "PROVED" else s["unseen_failed"]).append(hit); continue
             jobs.append((u, [(r, sl, pol) for r, sl, pol in literals], slot, claim, list(guard), cap, min_cov, min_pur)); job_owner.append(len(schemas) - 1)
-    log(f"[lemma_gen/generalize] {len(lib)} lemmas ({'proved only' if only_proved and status else 'all'}) -> {len(groups)} schemas; {len(jobs)} unseen instantiations to check")
+    log(f"[lemma_gen/generalize] {len(lib)} lemmas ({'proved only' if only_proved and status else 'all'}) -> {len(groups)} schemas; {len(jobs)} unseen instantiations to check ({len(cache)} cached)")
     results = _pool_map(_gen_job, jobs, workers, log, "generalize")
     for owner, job, o in zip(job_owner, jobs, results):
         (schemas[owner]["unseen_proved"] if o.get("status") == "PROVED" else schemas[owner]["unseen_failed"]).append([list(job[0]), o.get("status"), round(o.get("coverage", 0) or 0, 2), round(o.get("purity", 0) or 0, 2)])
-    schemas.sort(key=lambda s: -(len(s["observed"]) + len(s["unseen_proved"])))
     for s in schemas:
-        held = [tuple(o) for o in s["observed"]] + [tuple(u[0]) for u in s["unseen_proved"]]
+        held = {tuple(o) for o in s["observed"]} | {tuple(u[0]) for u in s["unseen_proved"]}
+        s["boxes"] = box_cover(held, s["size"])                                # the schema IS this union of product boxes: exactly what held
+        s["held"] = len(held); s["cells"] = sum(1 for _ in itertools.product(*[sorted({t[i] for t in held}) for i in range(s["size"])]))
         s["per_slot_held"] = [sorted({t[i] for t in held}) for i in range(s["size"])]
-        s["text"] = ("[" + " ".join("X%d∈{%s}" % (i, ",".join(ts)) for i, ts in enumerate(s["per_slot_held"])) + "] "
+        s["text"] = (" ∪ ".join("[" + " ".join("X%d∈{%s}" % (i, ",".join(ts)) for i, ts in enumerate(box)) + "]" for box in s["boxes"]) + " "
                      + (" & ".join(lit_text(r, sl, pol) for r, sl, pol in s["literals"]) or "(no relation)")
                      + f" :: slot {s['slot']} {s['claim']} unless {s['guard'] or '(nothing)'}"
-                     + f"  [{len(s['observed'])} observed, {len(s['unseen_proved'])} unseen proved, {len(s['unseen_failed'])} unseen failed]")
+                     + f"  [{len(s['observed'])} observed, {len(s['unseen_proved'])} unseen proved, {len(s['unseen_failed'])} unseen failed; {len(s['boxes'])} boxes over {s['held']} held of {s['cells']} in the union box]")
+    schemas.sort(key=lambda s: (-s["held"], len(s["boxes"])))
+    for s in schemas:
         log("  " + s["text"])
     OUT.mkdir(parents=True, exist_ok=True)
     json.dump(schemas, open(OUT / f"schemas_{dom.name}.json", "w"), indent=1)
     n_inst = sum(len(s["observed"]) for s in schemas)
-    log(f"[lemma_gen/generalize] {n_inst} lemmas -> {len(schemas)} schemas; unseen instantiations proved {sum(len(s['unseen_proved']) for s in schemas)}, failed {sum(len(s['unseen_failed']) for s in schemas)}")
+    nb = sum(len(s["boxes"]) for s in schemas)
+    log(f"[lemma_gen/generalize] {n_inst} lemmas -> {len(schemas)} schemas stated as {nb} boxes; unseen instantiations proved {sum(len(s['unseen_proved']) for s in schemas)}, failed {sum(len(s['unseen_failed']) for s in schemas)}; schemas that are ONE box: {sum(1 for s in schemas if len(s['boxes']) == 1)}")
     return schemas
 
 
