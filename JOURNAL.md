@@ -23475,3 +23475,32 @@ proved) on 300 corpus positions, best move and a random move, OBS:
     do not have (and the LLM labeler is not it).
 Running: games-source size 3 (relaunched 10:47 with parsed-board cache), over-literals generalization (36k cells,
 ~4 h). Sources in the message to Kaveh.
+
+## 2026-09-23 11:40 PDT — imports from the literature (Kaveh: "use their frameworks as written"), the guide, duties
+
+**shapiq** (pip; Muschalik et al. 2024), as written: the game's players are a position's pieces, v(S) = the move's
+outcome with only S (plus kings and the mover) present -- the sampled-frame semantics on a real position's own pieces;
+`ExactComputer.moebius_transform` gives the body-order decomposition (`shap_bodies.py`). 200 best moves, <= 10
+players, OBS:  absolute outcome: no other piece matters 26%; Möbius mass order 1 47.1%, order 2 30.3%, order >= 3
+21%; relevant set (90% of mass) <= 2 pieces 66%, >= 4 pieces 17%.  relative: 36% / 51.1% / 25.8% / 22% / 66% / 20%.
+Real boards have a heavier tail than the sampled world (91.5% at order <= 2) but two bodies still carry three
+quarters of the outcome.
+**The neural guide** (`body_guide.py`; AlphaGeometry's role: propose the step the symbolic side cannot enumerate,
+here the next body): labels = shapiq per-piece mass share on 3,000 positions x (best, random) with the relative
+outcome (3,152 moves with a dependent piece); features generic (types, the domain's binary relations between candidate
+and mover before and after the move, unary relations, the heuristic's own score). Split by position. OBS: test AUC
+for ranking the relevant pieces: guide 0.873, the rarity-weighted relation heuristic 0.645, random 0.496 (541 test
+positions). In the body search with the SAMPLED library the guide changes nothing (settled-at-one-body 86% vs 89%,
+flips 0.14 vs 0.16): the sampled lemmas rarely flip whatever order the bodies come in; the comparison that matters is
+on the games library (running).
+**Duties and opportunities** (`lemma_apply.duties`): a readout over the verdict table, per Kaveh's correction --
+"duties, hand-offs and other operations might fall out naturally from the search process", so nothing is wired
+into search as an operation; a duty = a guard term naming another piece that fires on the piece's own moves (all of
+them, ranked by stake), an opportunity = a move called losing only through such terms. On the sampled library the
+only duty-shaped terms are "the other piece is attacked"; the true duty terms (stays aligned / defends after the
+move) need the games library and the relative outcome.
+**Popper** (cloned beside the repo; SWI-Prolog + janus + clingo installed; `popper_residual.py` writes a frame's rows
+as a relational task with SLOT VARIABLES -- facts actor(R,S), attacks(R,S1,S2), between(R,S1,S2,S3), type_wq(R,S),
+lands_attacked(R) ... with negations -- so a learned rule is a schema over slots, not a guard tied to slot numbers;
+predicate invention on). First attempt on the pin frame ran past its timeout in Prolog; rerun with a hard timeout
+and smaller bounds (pin as the positive control, two rooks as the residual case).
