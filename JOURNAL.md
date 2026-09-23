@@ -23688,3 +23688,18 @@ vs SF-1400, depth 3 / cap 4,000: 8 wins 1 loss 1 loss at the cap = 80%, 2,816 no
 Reading: ten-game samples at one seed swing by 20 points either way; ordering costs no nodes and the depth-3 rung
 moved up while the depth-5 rung moved down. No verdict; the ordering stays (it is standard and cannot hurt per
 node); the next gauges use 20 games a rung.
+
+## 2026-09-23 14:35 PDT — the library page: minimal implied facts, own-guard examples, fired terms (Kaveh's three corrections)
+
+From Kaveh reading L-2904d407 ([wQ wB bQ] same side, the bishop attacks the black queen; the queen acting LOSES
+unless a safe check, a capture, or battery-plus-check): (1) the fact that makes it true -- the black queen attacks
+the bishop -- was implied, never stated; (2) the exception board showed a move covered by the first guard term while
+the reader was left to think the "between" term explained it; (3) the first closure listed five facts that are
+one fact. Built, generic: FRAME CLOSURE = the positive facts true on every placement, minus type-determined
+relations (found by sampling every ordered type pair: same_side, worth_ge, slides), minimal GIVEN THE TYPES
+(implications learned on the bare frame of the same types): restatements of stated literals as "i.e.", and of the
+consequences only those that summarize others as "also", one per equivalence class. On the library: 3,806 lemmas
+carry one implied fact, 3,064 two, 1,307 none, 691 three, 90 four. Examples: "holds" = the row with the largest
+gain, "exception" = a row the lemma's OWN guard covers with the largest loss, tagged with the term that fires
+(L-2904d407: "gives check & not lands attacked"). Pin-shaped = positive `between` only (1,508 proved, not 1,609).
+Page republished (version 6).
