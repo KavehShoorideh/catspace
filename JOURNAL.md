@@ -23649,3 +23649,14 @@ Lemma ids: every lemma carries L-xxxxxxxx derived from its content (frame, actor
 every library and proof file on disk and printed in every log line and applier text; the inspector page shows them
 and filters by them, so Kaveh can cite the problematic ones.
 Fixed search, depth 3 vs SF-1400 rerun: 5 wins 4 losses 1 draw at the cap = 55% (before the fix 60%; one seed).
+
+## 2026-09-23 13:25 PDT — after the search fix: adaptive depth helps at 1700, at five times the nodes
+
+Stockfish UCI-Elo depth 8, ten games a rung, one seed (OBS):
+  depth 3 (fixed search) vs 1400: 5 wins 4 losses 1 draw at the cap = 55%; 3,269 nodes/move.
+  depth 3+2 where unsure (margin 0.15; fired 360/415 decisions) vs 1400: 6 wins 4 losses = 60%; 16,950 nodes/move.
+  depth 3+2 where unsure (fired 531/609) vs 1700: 3 wins 4 losses, 2 losses and 1 draw at the cap = 35% (plain
+    depth 3: 15%); 16,223 nodes/move.
+Reading: the trigger fires on 87% of decisions, so this is nearly "always depth 5" -- the gain at 1700 is depth,
+not adaptivity. The honest comparison is depth 5 at the same cap (queued) and a tighter margin (0.05, queued); the
+frontier to report is score vs nodes/move, and 16k nodes at 1.2 s a move is still small.
