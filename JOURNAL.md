@@ -23427,3 +23427,51 @@ source (L2) is the fix, not more lemmas; (2) the outcome label must be defined r
 boards (absolute is degenerate there); this changes what the reversed family means and is stated as the assumption
 for L2; (3) the residual's first proposal for a new primitive is action-level "lands defended" -- rules-level, but
 it is the loop's proposal, not mine to slip in; Kaveh decides.
+
+## 2026-09-23 10:50 PDT — the search over bodies, the order residual, and the literature (Kaveh: "search over bodies; which lemmas keep repeating; also do a lit search")
+
+**Order residual** (how much of a size-k frame's exceptions the lemmas of size < k explain; 300 random frames a size,
+sampled source, cap 500; script in the job scratch, numbers printed), OBS:
+  size 2: 390 claims, 143,700 exceptions (14.6% of actions): explained by size-1 lemmas 80.8%, by a new size-2
+    guard 18.7%, unexplained 0.5%; claims fully explained by lower order 45.1%, needing a size-2 lemma 36.4%,
+    beyond the vocabulary 18.5%.
+  size 3: 557 claims, 151,408 exceptions (19.3%): by lower order 91.5%, new size-3 guard 8.0%, unexplained 0.5%;
+    claims fully explained 77.2%, needing a size-3 lemma 15.4%, beyond the vocabulary 7.4%; 54 polarity reversals.
+  Reading: lower-order lemmas carry more of the explanation as the order grows; the new-lemma share at size 3 is 8%
+  of exceptions (the pin lives there); "beyond the vocabulary" is a floor set by the relations, not the order. This
+  table should be printed at every size of every run and should set the stopping rule for frame growth.
+
+**The search over bodies** (`body_search.py`, generic): from the moving piece, add one related piece at a time (rarity-
+weighted binary relations before and after the move), apply every proved lemma embedded in the current bodies with
+this actor and move, record the verdict per level, the flips, the lemmas used. With the SAMPLED library (v2, 7,165
+proved) on 300 corpus positions, best move and a random move, OBS:
+  best: no lemma at any level 72/300; final loses 32.5%; settled at 1 body 89%, 2-5 bodies 11%; flips/move 0.16;
+    called losing by level L1 31% .. L5 34%.  random: final loses 44.8%; settled at 1 body 87%; flips 0.18; L1 39% ..
+    L5 46%.  Most-used lemmas: the ten size-one "keeps unless lands attacked" (fired 0-160 times each); flips carried
+    by "[K N] same side: the king keeps unless the knight is attacked" and its kin.
+  Reading: with sampled-frame lemmas the size-one guard decides almost everything and extra bodies rarely overturn
+  it, because every larger lemma INHERITS the same guard; the bodies can only matter when the library's larger
+  frames carry different claims, which is what the games-source library should produce. Rerun on it when it lands.
+
+**Literature** (what this approach is, in the field's words):
+  * ILP in chess is the direct ancestor: Morales 1992 (PAL, first-order induction of chess patterns incl. the fork,
+    PhD Strathclyde; Machine Learning 1997) and Bain & Muggleton 1994 (optimal KRK strategies induced as rules);
+    Quinlan's ID3 was born on KRK endgame classification. Our frames are their patterns; the difference is the
+    size-by-size schedule with subsumption and the proof pass, and no human-chosen target concept.
+  * Plotkin's least general generalization / anti-unification = our schemas; the box cover is a restricted LGG over
+    a product type lattice. Modern ILP (Popper: learning from failures; predicate invention) is the reference for
+    the residual-driven primitive loop we have not built.
+  * Schema Networks (Kansky et al., ICML 2017): entity-attribute schemas learned from Breakout as local relational
+    rules, zero-shot transfer across variants -- the closest RL cousin of "lemmas over typed slots".
+  * The order residual IS a body-order expansion: many-body expansion in chemistry (body-ordered contributions;
+    the 2025 "body-order paradox" paper on ML potentials), and Möbius / Shapley interaction indices in
+    interpretability (shapiq, NeurIPS 2024; "Learning to understand: identifying interactions via the Möbius
+    transform", 2024: sparse low-degree functions recovered in O(Kn) samples). Truncation at order 2-3 is the
+    usual finding; ours: 91.5% of exceptions at order <= 2.
+  * CHREST / Chase & Simon chunking (Gobet): expert perception as chunks and templates acquired from master games;
+    the search over bodies is a chunk being grown around the moving piece.
+  * AlphaGeometry (Trinh et al., Nature 2024): synthetic premises + deduction closure + traceback to minimal proofs;
+    our sampled frames + guard search + prove is the same shape in a game domain; their neural guide is the part we
+    do not have (and the LLM labeler is not it).
+Running: games-source size 3 (relaunched 10:47 with parsed-board cache), over-literals generalization (36k cells,
+~4 h). Sources in the message to Kaveh.
