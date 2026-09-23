@@ -23811,7 +23811,7 @@ L-4b53b755 [wR] keeps unless lands attacked (stake 3,134, used 45); L-5d3091a7 [
 (165, 25). The rook lemmas carry the most stake because a hanging rook decides more games than a hanging queen
 move does at these depths.
 
-## 2026-09-23 16:45 PDT — composition, measured on order: one body already carries it; more bodies do not add
+## 2026-09-23 16:42 PDT — composition, measured on order: one body already carries it; more bodies do not add
 
 150 real positions, 3,410 moves spoken about, values clipped, OBS (heuristic body order):
   Spearman(composed prediction, full-board truth) per position: L1 +0.602, L2 +0.582, L3 +0.573, L4 +0.583,
