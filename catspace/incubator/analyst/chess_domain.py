@@ -209,4 +209,15 @@ def domain() -> Domain:
             Relation("gives_check", 0, True, gives_check), Relation("captures", 0, True, captures),
             Relation("captures_worth_ge", 1, True, captures_worth_ge), Relation("stays_aligned", 1, True, stays_aligned),
             Relation("lands_attacked", 0, True, lands_attacked)]
-    return Domain("chess", TYPES, rels, placements, slots_of, actions, transition, scalar, reply_scalar)
+    return Domain("chess", TYPES, rels, placements, slots_of, actions, transition, scalar, reply_scalar,
+                  entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn)
+
+
+def entities(board: chess.Board) -> list:
+    """Every piece of a frame type on a real board: (square, type). Pawns are not frame entities (yet)."""
+    out = []
+    for sq, p in board.piece_map().items():
+        t = ("w" if p.color else "b") + {v: k for k, v in KIND.items()}.get(p.piece_type, "")
+        if t in TYPES:
+            out.append((sq, t))
+    return out

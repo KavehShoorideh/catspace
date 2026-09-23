@@ -1,0 +1,125 @@
+"""THE APPLIER: every embedding of every proved frame in a REAL state, and the verdict of each lemma on each action
+of its actor. Domain-agnostic: the domain supplies entities(raw) and state_of(raw, ids); the frames, literals and
+guards are the library's. This is the function that did not exist when Kaveh asked "how do we make sure in every
+position we see all the lemmas that apply?" (2026-09-23).
+
+A lemma's frame was sampled with ONLY its entities (plus what the domain requires) present; applying it to a full
+state is an extrapolation. The applier does not hide that: it reports the verdicts, and gauge_lemmas measures how
+often they hold and how often they contradict the oracle (the SURPRISE).
+
+    python -m catspace.incubator.analyst.lemma_apply --fen "..."
+"""
+from __future__ import annotations
+
+import argparse
+import itertools
+import json
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+
+from .lemma_gen import Domain, Frame, guard_from_json, guard_text, lit_text
+
+OUT = Path("data/derived/lemmas")
+
+
+@dataclass
+class Compiled:
+    idx: int
+    frame: Frame
+    slot: int
+    claim: str
+    guard: list                    # full guard terms (inherited + own)
+    text: str
+
+
+def load_library(library_path: Path, proved_path: Path | None = None, proved_only: bool = True) -> list[Compiled]:
+    lib = json.load(open(library_path))
+    status = None
+    if proved_path and Path(proved_path).exists():
+        status = [p.get("status") for p in json.load(open(proved_path))]
+    out = []
+    for i, e in enumerate(lib):
+        if proved_only and status is not None and status[i] != "PROVED":
+            continue
+        fr = Frame(tuple(e["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in e["literals"]))
+        guard = guard_from_json(e.get("inherited")) + guard_from_json(e.get("guard"))
+        out.append(Compiled(i, fr, e["slot"], e["claim"], guard, f"{fr.text()} :: slot {e['slot']} {e['claim']} unless {guard_text(guard) or '(nothing)'}"))
+    return out
+
+
+class Applier:
+    def __init__(self, dom: Domain, lemmas: list[Compiled]):
+        self.dom = dom; self.lemmas = lemmas
+        self.rel = {r.name: r for r in dom.relations}
+        self.by_types: dict = defaultdict(list)
+        for c in lemmas:
+            self.by_types[c.frame.types].append(c)
+
+    def _lit(self, state, ids, r, sl, pol, action=None, cache=None) -> bool:
+        key = (r, tuple(ids[s] for s in sl), None if action is None else action[1])
+        if cache is not None and key in cache:
+            return cache[key] == pol
+        rel = self.rel[r]
+        try:
+            v = bool(rel.fn(state, action, *[ids[s] for s in sl])) if rel.on_action else bool(rel.fn(state, *[ids[s] for s in sl]))
+        except Exception:
+            v = False
+        if cache is not None:
+            cache[key] = v
+        return v == pol
+
+    def apply(self, raw) -> dict:
+        """-> {(actor id, action key): [(lemma, predicted 'keeps'|'loses', fired term text or None, ids)]} plus the
+        list of embeddings; an action key is str(action[1]) (the move)."""
+        ents = self.dom.entities(raw)
+        by_type: dict = defaultdict(list)
+        for e, t in ents:
+            by_type[t].append(e)
+        verdicts: dict = defaultdict(list); embeddings = []
+        cache: dict = {}
+        for types, lemmas in self.by_types.items():
+            pools = [by_type.get(t, []) for t in types]
+            if any(not p for p in pools):
+                continue
+            for ids in itertools.product(*pools):
+                if len(set(ids)) < len(ids):
+                    continue
+                state = self.dom.state_of(raw, list(ids))
+                for c in lemmas:
+                    e = ids[c.slot]
+                    if self.dom.actor_ok is not None and not self.dom.actor_ok(raw, e):
+                        continue
+                    if not all(self._lit(state, ids, r, sl, pol, cache=cache) for r, sl, pol in c.frame.literals):
+                        continue
+                    embeddings.append((c, ids))
+                    for a in self.dom.actions(state, e):
+                        fired = None
+                        for term in c.guard:
+                            if all(self._lit(state, ids, r, sl, pol, action=a, cache=cache) for r, sl, pol in term):
+                                fired = term; break
+                        base = "keeps" if c.claim == "acting keeps" else "loses"
+                        pred = base if fired is None else ("loses" if base == "keeps" else "keeps")
+                        verdicts[(e, str(a[1]))].append((c, pred, None if fired is None else " & ".join(lit_text(r, sl, pol) for r, sl, pol in fired), ids))
+        return dict(verdicts=verdicts, embeddings=embeddings)
+
+
+def main(argv=None):
+    import chess
+    from .chess_domain import domain
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--fen", required=True); ap.add_argument("--library", default=str(OUT / "library_v2_size3.json")); ap.add_argument("--proved", default=str(OUT / "proved_v2_size3.json"))
+    a = ap.parse_args(argv)
+    dom = domain(); app = Applier(dom, load_library(Path(a.library), Path(a.proved)))
+    b = chess.Board(a.fen)
+    res = app.apply(b)
+    print(f"{len(app.lemmas)} proved lemmas; {len(res['embeddings'])} embeddings in this position; verdicts on {len(res['verdicts'])} moves")
+    for (e, mv), vs in sorted(res["verdicts"].items(), key=lambda kv: (-len(kv[1]), kv[0][1])):
+        keeps = sum(1 for _, p, _, _ in vs if p == "keeps"); loses = len(vs) - keeps
+        print(f"\n{chess.square_name(e)} {mv}: {keeps} keeps / {loses} loses")
+        for c, p, fired, ids in vs[:6]:
+            print(f"   {p:5s} {c.text[:150]}" + (f"  <- {fired}" if fired else "") + f"  [{' '.join(chess.square_name(i) for i in ids)}]")
+
+
+if __name__ == "__main__":
+    main()

@@ -23398,3 +23398,32 @@ pieces of either colour, rooks only of the king's own colour (an enemy rook on a
 colour was discovered by the cover, not assumed. Largest one-box schema: [{bQ,bR} x {wB,wQ,wR} x {bB,bR}] with
 "attacks(0,1) & attacks(1,2) :: the middle piece acting loses unless it captures, or lands unattacked, or leaves
 both lines" -- a piece attacked by one and attacking another, 12 held of 12.
+
+## 2026-09-23 10:30 PDT — the applier and the surprise gauge (Kaveh: "that surprise is instructive; that's where we improve our lemmas")
+
+`lemma_apply.py` (generic; the domain adds entities/state_of/actor_ok): every embedding of every proved frame into a
+real position, the verdict of each lemma on each move of its actor (claim, or the guard term that fired). 7,165 proved
+lemmas, 0.2 s a position, ~786 embeddings a position at plies 10-80. On the Rxc1 position: Rxc1 5 keeps / 0 loses,
+Rd1-Rg1 0 / 5, king moves 1 / 14 ("the rook hangs") -- the best move was not missed; the lemma partitions, it does
+not rank.
+`gauge_lemmas.py` on 300 positions of the knowledge corpus (Kaveh's games, Stockfish best already labelled), OBS:
+  COVERAGE  best move spoken about in 228/300 (76.0%); 76.8% of legal moves have a verdict.
+  SURPRISE  best move called LOSING by >= 1 proved lemma in 121/300 = 40.3%; a random legal move 164/300 = 54.7%.
+  OUR PICK  (>= 1 keeps, 0 loses) non-empty in 230/300; holds the best move in 107/230 = 46.5% while being 35.6% of
+            the legal moves (the random baseline).
+  SOUNDNESS on the full board, two truths, both printed: ABSOLUTE (the generator's own label: material after the
+            opponent's best capture/check reply minus material before) 42.0% of 1,003,319 verdicts, against a
+            majority baseline of 91.0% "loses" -- on a full board the opponent can nearly always take something, so
+            the generator's label calls almost every move losing; RELATIVE (minus what the reply takes if we pass)
+            75.0% against a majority of 76.2% "keeps"; confusion loses->keeps 197,625: the 5,809 reversed lemmas
+            ("our other piece is attacked; moving this one loses unless it captures / checks") are TRUE in the
+            absolute sense and VACUOUS in the relative one (the attacked piece was lost anyway).
+  The most contradicting lemmas are all one shape: "keeps unless it lands attacked" firing on the engine's best move
+  -- a move onto an attacked but DEFENDED square (a trade), which the vocabulary cannot see (no "defended after the
+  move" relation; frames with three pieces never had a defender). 121 surprises written to surprises.jsonl.
+Reading: (1) lemmas sampled with only their own pieces on the board do not extrapolate to full boards at better than
+the majority rate; the frame semantics "exactly these pieces" is the wrong sampling for play; games as the frame
+source (L2) is the fix, not more lemmas; (2) the outcome label must be defined relative to the null move on full
+boards (absolute is degenerate there); this changes what the reversed family means and is stated as the assumption
+for L2; (3) the residual's first proposal for a new primitive is action-level "lands defended" -- rules-level, but
+it is the loop's proposal, not mine to slip in; Kaveh decides.

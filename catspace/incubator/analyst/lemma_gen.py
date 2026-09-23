@@ -63,6 +63,9 @@ class Domain:
     transition: Callable[[Any, Any], Any]                            # (state, action) -> state
     scalar: Callable[[Any, Any], float]                              # (state, entity id) -> the scalar from that entity's side
     reply_scalar: Callable[[Any, Any], float]                        # (state after our action, entity id) -> the scalar after the opponent's best immediate reply, from our side
+    entities: Callable[[Any], list] = None                           # raw state -> [(entity id, type)] (the applier: real states, not placements)
+    state_of: Callable[[Any, list], Any] = None                      # (raw state, slot ids) -> State, so relations can be evaluated on a real state
+    actor_ok: Callable[[Any, Any], bool] = None                      # (raw state, entity id) -> may this entity act now (e.g. its side is to move)
 
 
 # a literal is (relation name, slots, polarity); a TERM is a tuple of literals (conjunction); a GUARD is a list of terms (disjunction)
