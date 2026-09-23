@@ -23524,7 +23524,7 @@ Reading: Popper's value here is the SLOT-VARIABLE form (a schema directly) and M
 its cost is Prolog testing of thousands of candidates. Our greedy DNF search stays the generator's inner loop;
 Popper is the cross-check on residual frames, and the invention of primitives still needs the proposal loop.
 
-## 2026-09-23 12:00 PDT — games as the frame source: the vocabulary ceiling on real boards, measured three ways
+## 2026-09-23 11:50 PDT — games as the frame source: the vocabulary ceiling on real boards, measured three ways
 
 Run (20,000 positions of the knowledge corpus, plies 10-120; cap 1,000 embeddings a frame; outcome RELATIVE to the
 null move; size-3 frontier bounded to the 3,000 most frequent frames of 57,000 candidates, counts 7,564..2,116 in a
@@ -23538,7 +23538,7 @@ null move; size-3 frontier bounded to the 3,000 most frequent frames of 57,000 c
   size 3: 2,091 evaluated, 0 admitted; 1,932 size-3 frames in the residual (median 40 unexplained exceptions).
   prove on held-out positions (seed 1, cap 5,000): 4 PROVED / 26 conjecture at first -- 20 of the 26 were guard-less
     100%-claims meeting 2-13 exceptions in 5,000 rows (coverage 0% by construction); with a near-total rule
-    (exception rate <= 2% with no guard) the pass is rerun (counts in the log).
+    (exception rate <= 2% with no guard) the rerun gives PROVED 18 / conjecture 12 (the queens hold, the rooks miss coverage 0.95 by a hair at 0.945 and 0.934, the rest are guard-less claims with 2-7% exception rates).
 Reading: with this relation vocabulary, real positions admit almost nothing at three pieces -- the same ceiling the
 surprise gauge (121 surprises, all trades onto defended squares) and Popper (the same guard, no invented predicate)
 found. Three independent methods point at one missing thing: what happens to the piece AFTER it lands, i.e. the
