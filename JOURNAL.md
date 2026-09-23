@@ -23723,7 +23723,7 @@ So: the lemma library will not add play strength until the vocabulary grows (the
 now comes from search. The resolved oracle stays behind its flag as the truer label for the generator when the
 vocabulary catches up.
 
-## 2026-09-23 15:05 PDT — where the games against SF-1700 go wrong (Stockfish depth-12 drop per move)
+## 2026-09-23 15:03 PDT — where the games against SF-1700 go wrong (Stockfish depth-12 drop per move)
 
 Ten games (the first 1700 rung, depth 3), 562 of our moves scored: mean drop -0.58 pawns; 98 moves lose >= 1 pawn,
 40 lose >= 2. The twelve worst: seven are KING moves in a king-and-pawn ending (game 1, moves 52-66: -7.9, -7.2,
