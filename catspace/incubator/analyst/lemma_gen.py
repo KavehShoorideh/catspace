@@ -247,7 +247,7 @@ class Generator:
 
     # ---------------------------------------------------------------- evaluate one frame, one slot, given the sub-frames' lemmas
     def evaluate(self, frame: Frame, slot: int, inherits: list | None = None) -> Lemma | None:
-        """inherits: [(claim, guard terms already remapped into this frame's slots, text)] from every embedded sub-frame
+        """inherits: [(claim, guard terms remapped into this frame's slots, text, literals to verify)] from every embedded sub-frame
         with the same actor. The frame's claim is its own majority; the inherited guards of the same polarity are
         applied first, and only what they leave is explained here."""
         inherits = inherits or []
@@ -265,7 +265,9 @@ class Generator:
         holds = n - _popcount(exc)
         cache: dict = {}
         inherited = []; parents = []; reversed_ = False
-        for pclaim, pguard, ptext in inherits:
+        for pclaim, pguard, ptext, missing in inherits:
+            if any(self.term_mask(rows, ((r, sl, pol),), cache, all_mask) != all_mask for r, sl, pol in missing):
+                continue                                                      # the sub-frame does not embed here: one of its literals fails on some placement
             if pclaim != claim:
                 reversed_ = True                                              # the sub-frame's claim for this actor is the opposite of what holds here
                 parents.append(ptext + " [opposite claim]")
@@ -301,9 +303,12 @@ class Generator:
             for m in itertools.permutations(range(frame.size), lf.size):
                 if m[lem.slot] != slot or any(frame.types[m[i]] != lf.types[i] for i in range(lf.size)):
                     continue
-                if all((r, tuple(m[s] for s in sl), pol) in frame.literals for r, sl, pol in lf.literals):
-                    out.append((lem.claim, remap_guard(lem.full_guard(), m), lem.frame.text() + f" slot {lem.slot}"))
-                    break
+                # a sub-frame literal absent from this frame's literal set may still be IMPLIED by it (e.g. by the slot
+                # types); such literals are checked on the frame's placements in evaluate(), and the embedding holds
+                # only if they are true of every row
+                missing = tuple((r, tuple(m[s] for s in sl), pol) for r, sl, pol in lf.literals if (r, tuple(m[s] for s in sl), pol) not in frame.literals)
+                out.append((lem.claim, remap_guard(lem.full_guard(), m), lem.frame.text() + f" slot {lem.slot}", missing))
+                break
         return out
 
     # ---------------------------------------------------------------- the schedule
