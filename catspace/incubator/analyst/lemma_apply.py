@@ -69,10 +69,13 @@ class Applier:
             cache[key] = v
         return v == pol
 
-    def apply(self, raw) -> dict:
+    def apply(self, raw, bodies=None, actor=None, only_action=None) -> dict:
         """-> {(actor id, action key): [(lemma, predicted 'keeps'|'loses', fired term text or None, ids)]} plus the
-        list of embeddings; an action key is str(action[1]) (the move)."""
+        list of embeddings; an action key is str(action[1]) (the move). bodies: restrict the frames' slots to these
+        entity ids (the body search); actor / only_action: only that actor's / that action's verdicts."""
         ents = self.dom.entities(raw)
+        if bodies is not None:
+            ents = [(e, t) for e, t in ents if e in bodies]
         by_type: dict = defaultdict(list)
         for e, t in ents:
             by_type[t].append(e)
@@ -88,12 +91,16 @@ class Applier:
                 state = self.dom.state_of(raw, list(ids))
                 for c in lemmas:
                     e = ids[c.slot]
+                    if actor is not None and e != actor:
+                        continue
                     if self.dom.actor_ok is not None and not self.dom.actor_ok(raw, e):
                         continue
                     if not all(self._lit(state, ids, r, sl, pol, cache=cache) for r, sl, pol in c.frame.literals):
                         continue
                     embeddings.append((c, ids))
                     for a in self.dom.actions(state, e):
+                        if only_action is not None and str(a[1]) != str(only_action):
+                            continue
                         fired = None
                         for term in c.guard:
                             if all(self._lit(state, ids, r, sl, pol, action=a, cache=cache) for r, sl, pol in term):
