@@ -128,6 +128,7 @@ class Lemma:
     reversed: bool = False                             # a sub-frame's claim for this actor is the opposite of the majority here
     parents: list = field(default_factory=list)        # texts of the sub-frame lemmas inherited from
     sig: tuple = ()
+    closure: list = field(default_factory=list)        # literals true on every placement of the frame (implied facts)
 
     def full_guard(self):
         return list(self.inherited) + list(self.guard)
@@ -138,7 +139,8 @@ class Lemma:
 
     def text(self):
         g = guard_text(self.guard)
-        return (f"{self.id} {self.frame.text()} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
+        cl = (" [also: " + ", ".join(lit_text(r, sl, pol) for r, sl, pol in self.closure[:6]) + "]") if self.closure else ""
+        return (f"{self.id} {self.frame.text()}{cl} :: slot {self.slot} {self.claim} in {100 * self.holds / max(1, self.support):.1f}% of {self.support}"
                 + (f"; unless {g} (covers {self.covered}/{self.covered + self.residual} exceptions, purity {self.purity:.2f})" if self.guard else f"; {self.residual} exceptions unexplained")
                 + (f"; inherited [{guard_text(self.inherited)}] {'REVERSED' if self.reversed else 'broke'} on {self.broke}" if self.parents else "") + ("" if self.complete else " [sampled]"))
 
@@ -155,6 +157,7 @@ def pick_examples(g, rows, exc: int, rest: int, guard: list, cache: dict, all_ma
     own = 0
     for term in guard:
         own |= g.term_mask(rows, term, cache, all_mask)
+    term_masks = [(term_text(t), g.term_mask(rows, t, cache, all_mask)) for t in guard]
     best = {}                                                                  # category -> (|outcome|, row): the most vivid row of each kind (Kaveh: "the one where the queen has the most advantage")
     for i, (state, ids, a, d) in enumerate(rows):
         bit = 1 << i
@@ -167,7 +170,8 @@ def pick_examples(g, rows, exc: int, rest: int, guard: list, cache: dict, all_ma
         else:
             cat = "unexplained"
         if cat not in best or abs(d) > best[cat][0]:
-            best[cat] = (abs(d), (g.dom_text(state), str(a), round(d, 2)))
+            fired = [t for t, m in term_masks if m & bit]
+            best[cat] = (abs(d), (g.dom_text(state), str(a), round(d, 2), " | ".join(fired)))
     ex = {k: v[1] for k, v in best.items() if k != "unexplained"}
     if "exception" not in ex:                                                 # no own-guard exception (guard-less or inherited-only): the most vivid exception of any kind
         for k in ("unexplained", "inherited_exception"):
@@ -340,9 +344,56 @@ class Generator:
         guard, covered, purity, matched = self.find_guard(rows, rest, frame, cache, exc_all=exc)
         residual = _popcount(rest) - covered
         examples = pick_examples(self, rows, exc, rest, guard, cache, all_mask)
+        closure = self.frame_closure(rows, frame, cache, all_mask)
         lem = Lemma(frame, slot, claim, n, holds, guard, covered, purity, residual, complete, examples, inherited, broke, reversed_, parents)
+        lem.closure = closure
         lem.sig = sig
         return lem
+
+    def frame_closure(self, rows, frame: Frame, cache: dict, all_mask: int) -> list:
+        """The state-level literals true on EVERY placement of the frame that are not among its stated literals: the
+        facts the frame implies (Kaveh 2026-09-23: "the black queen attacks the white bishop, which isn't stated" --
+        a bishop attacking a queen along a diagonal is attacked back). Generic: any relation, either polarity."""
+        stated = set(frame.literals)
+        out = []
+        for rname, sl in self.candidate_literals(frame.size):
+            if self.rel[rname].on_action or rname in self.type_determined():
+                continue                                                      # a relation fixed by the slot types alone says nothing about the frame
+            m = self.lit_mask(rows, rname, sl, cache)
+            if m == all_mask and (rname, sl, True) not in stated:            # positive facts only: "never between" at a small cap is an absence, not a fact
+                out.append((rname, sl, True))
+        return out
+
+    def type_determined(self) -> set:
+        """Relations whose value depends on the slot types alone (in chess: same side, worth, slides), found generically:
+        sampled placements of a few type pairs, a relation is type-determined if its value never varies within a type
+        pair. Computed once per generator."""
+        if getattr(self, "_type_det", None) is not None:
+            return self._type_det
+        det = set()
+        rels = [r for r in self.dom.relations if not r.on_action and r.arity <= 2]
+        cap = self.cap; self.cap = 60
+        try:
+            samples = {}
+            for t1 in self.dom.types[:5]:
+                for t2 in self.dom.types[-5:]:
+                    for state, _ in self.dom.placements((t1, t2), 60, 0):
+                        ids = self.dom.slots_of(state)
+                        for r in rels:
+                            args = [ids[0], ids[1]] if r.arity == 2 else [ids[0]]
+                            try:
+                                v = bool(r.fn(state, *args))
+                            except Exception:
+                                continue
+                            samples.setdefault((r.name, t1, t2), set()).add(v)
+            for r in rels:
+                vals = [v for (n, _, _), v in samples.items() if n == r.name]
+                if vals and all(len(v) == 1 for v in vals):
+                    det.add(r.name)
+        finally:
+            self.cap = cap
+        self._type_det = det
+        return det
 
     def dom_text(self, state):
         return getattr(state, "fen", lambda: str(state))()
@@ -476,7 +527,7 @@ class Generator:
 
 
 def lemma_to_json(l: Lemma) -> dict:
-    return dict(id=l.id, frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
+    return dict(id=l.id, closure=[[r, list(sl), pol] for r, sl, pol in l.closure], frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
                 inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
@@ -750,7 +801,9 @@ def _examples_job(args):
     for term in guard_from_json(entry.get("inherited")):
         inh |= g.term_mask(rows, term, cache, all_mask)
     rest = exc & ~inh
-    return pick_examples(g, rows, exc, rest, guard_from_json(entry.get("guard")), cache, all_mask)
+    ex = pick_examples(g, rows, exc, rest, guard_from_json(entry.get("guard")), cache, all_mask)
+    closure = g.frame_closure(rows, fr, cache, all_mask)
+    return dict(examples=ex, closure=[[r, list(sl), pol] for r, sl, pol in closure])
 
 
 def refresh_examples(dom: Domain, library_path: Path, cap: int, workers: int, log=print):
@@ -759,10 +812,13 @@ def refresh_examples(dom: Domain, library_path: Path, cap: int, workers: int, lo
     lib = json.load(open(library_path))
     out = _pool_map(_examples_job, [(e, cap) for e in lib], workers, log, "examples")
     changed = 0
-    for e, ex in zip(lib, out):
+    for e, r in zip(lib, out):
+        ex = r["examples"] if isinstance(r, dict) and "examples" in r else r
         if ex != e.get("examples"):
             changed += 1
         e["examples"] = ex
+        if isinstance(r, dict) and "closure" in r:
+            e["closure"] = r["closure"]
     json.dump(lib, open(library_path, "w"), indent=1)
     log(f"[lemma_gen/examples] {len(lib)} lemmas, examples recomputed ({changed} changed) -> {library_path}")
 
