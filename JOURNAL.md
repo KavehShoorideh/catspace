@@ -23782,3 +23782,14 @@ only: 11,384); unseen instantiations proved 7,398, failed 28,755. The aligned/at
 ("{aligned,attacks}(0,2)"), and same_side/attacks merge where the same-side attack is a defence. The box texts of
 the largest schemas run to five boxes and are hard to read; the page should show a schema as its member lemmas'
 ids with the merged literal sets, not as a formula. Files: schemas_lit_chess.json.
+
+## 2026-09-23 16:20 PDT — the graph-token guide (Kaveh: "a transformer to decide the next piece; the graph structure makes it easy")
+
+`body_guide_tf.py`: tokens = the position's pieces (type, mover flag, in-frame flag, file, rank); attention bias =
+one learned weight per head per relation between two pieces: the domain's binary relations (attacks, defends,
+aligned, worth_ge, same_side), the MOVE GRAPH from the rules (i reaches j's square in one move; in two through an
+empty square), adjacency, and "touches the landing square"; two blocks, d=64, four heads. Trained on the Möbius
+shares (3,152 moves) CONDITIONED on a random prefix of the relevant set already in the frame, so the head learns
+"which piece next". Split by position. OBS: test AUC for the next-body ranking 0.882 (random 0.508; 623 positions);
+the MLP guide scored 0.873 on the unconditional task and the relation heuristic 0.645. 46 s to train on CPU.
+Wired as `--guide tf` in body_search and the player; the body search now passes the frame so far to the ranker.
