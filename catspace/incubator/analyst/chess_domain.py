@@ -159,6 +159,40 @@ def worth_ge(state, i, j):
     return VAL[state.board.piece_at(i).piece_type] >= VAL[state.board.piece_at(j).piece_type]
 
 
+def tb_worth(board: chess.Board, sq: int) -> float:
+    """A piece's worth from the tables, no value table (Kaveh 2026-09-23: lemmas within five men use tablebase values,
+    not canonical piece values): the expected score its own side loses when the piece is removed, with that side to
+    move, in expected-score units (WDL -2..2 -> 0..1). Kings are worth 1."""
+    p = board.piece_at(sq)
+    if p is None:
+        return 0.0
+    if p.piece_type == chess.KING:
+        return 1.0
+    def score(b):
+        try:
+            return (tablebase().probe_wdl(b) + 2) / 4.0
+        except (KeyError, chess.syzygy.MissingTableError):
+            return 0.5
+    b0 = board.copy(stack=False); b0.turn = p.color; b0.castling_rights = 0; b0.ep_square = None
+    if not b0.is_valid():
+        return 0.0
+    b1 = b0.copy(stack=False); b1.remove_piece_at(sq)
+    if not b1.is_valid():
+        return 0.0
+    return score(b0) - score(b1)
+
+
+def tb_worth_ge(state, i, j):
+    return tb_worth(state.board, i) >= tb_worth(state.board, j)
+
+
+def tb_captures_worth_ge(state, action, j):
+    b, m = action
+    if not b.is_capture(m):
+        return False
+    return tb_worth(b, m.to_square) >= tb_worth(b, j)
+
+
 def attacked(state, i):
     p = state.board.piece_at(i)
     return bool(state.board.attackers(not p.color, i))
@@ -309,6 +343,7 @@ def domain(fens: list | None = None, oracle: str = "material") -> Domain:
             Relation("lands_attacked", 0, True, lands_attacked)]
     if oracle == "tablebase":
         assert fens is None, "the tablebase oracle is for sampled frames (at most five men)"
+        rels = [Relation("tb_worth_ge", 2, fn=tb_worth_ge) if r.name == "worth_ge" else Relation("captures_tb_worth_ge", 1, True, tb_captures_worth_ge) if r.name == "captures_worth_ge" else r for r in rels]
         return Domain("chess_tb", TYPES, rels, placements, slots_of, actions, transition, tb_scalar, tb_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn)
     return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, reply_scalar,
