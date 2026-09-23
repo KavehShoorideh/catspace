@@ -23588,7 +23588,7 @@ that it loses on what three plies plus a resolved exchange cannot see: slow thre
 watchers' job (loss / win / draw questions with stakes) and the deeper-only-where-unsure budget; scheduler and MCTS
 (with lemma priors) are built; the MCTS gauge at 200 simulations is queued.
 
-## 2026-09-23 12:35 PDT — the architecture, built: scheduler, MCTS with lemma priors, watchers, actor with analyse
+## 2026-09-23 12:26 PDT — the architecture, built: scheduler, MCTS with lemma priors, watchers, actor with analyse
 
 Kaveh's design (this afternoon): per-board-hash incremental analysis; a prior deciding what to compute next; three
 watchers (win / lose / draw) posing questions with stakes; a board-level search moving the board forward with the
