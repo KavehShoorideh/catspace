@@ -74,7 +74,7 @@ def decompose(dom, board: chess.Board, move: chess.Move, max_players: int, relat
     return dict(pieces=pieces, n=n, moebius=mob, game_calls=len(cache), full=cache.get(frozenset(pieces)))
 
 
-def run(n: int, lo: int, hi: int, max_players: int, relative: bool, seed: int = 0, log=print):
+def run(n: int, lo: int, hi: int, max_players: int, relative: bool, seed: int = 0, log=print, all_records: bool = False, with_random: bool = False, tag: str = ""):
     from .chess_domain import domain
     from .dataset import load as load_ds
     dom = domain()
@@ -96,38 +96,45 @@ def run(n: int, lo: int, hi: int, max_players: int, relative: bool, seed: int = 
             continue
         if mv not in b.legal_moves:
             continue
-        r = decompose(dom, b, mv, max_players, relative, rng)
-        if r is None:
-            continue
+        moves = [("best", mv)] + ([("random", rng.choice(list(b.legal_moves)))] if with_random else [])
         n_pos += 1
-        mob = r["moebius"]
-        # interactions by order (|coefficient| mass), excluding the empty set (the mover alone)
-        by_order = defaultdict(float); coeffs = []
-        for subset, v in zip(mob.interaction_lookup.keys(), mob.values):
-            k = len(subset)
-            if abs(v) < 1e-9:
-                continue
-            by_order[k] += abs(v); coeffs.append((subset, float(v)))
-        total = sum(by_order.values())
-        if total < 1e-9:
-            zero_moves += 1                                                   # the outcome does not depend on any other piece
-            relevant_sizes[0] += 1
+        for kind, mv in moves:
+          r = decompose(dom, b, mv, max_players, relative, rng)
+          if r is None:
             continue
-        for k, v in by_order.items():
-            mass_by_order[k] += v / total
-        coeffs.sort(key=lambda sv: -abs(sv[1]))
-        relevant = set()
-        acc = 0.0
-        for subset, v in coeffs:
-            relevant |= set(subset); acc += abs(v)
-            if acc >= 0.9 * total:
-                break
-        relevant_sizes[len(relevant)] += 1
-        top_orders[len(coeffs[0][0])] += 1
-        max_order_seen[max(len(s) for s, _ in coeffs)] += 1
-        if len(records) < 300:
-            records.append(dict(fen=b.fen(), move=mv.uci(), n=r["n"], full=r["full"], relevant=[chess.square_name(r["pieces"][i]) for i in sorted(relevant)],
-                                top=[([chess.square_name(r["pieces"][i]) for i in s], round(v, 2)) for s, v in coeffs[:6]]))
+          mob = r["moebius"]
+          # interactions by order (|coefficient| mass), excluding the empty set (the mover alone)
+          by_order = defaultdict(float); coeffs = []
+          for subset, v in zip(mob.interaction_lookup.keys(), mob.values):
+              k = len(subset)
+              if abs(v) < 1e-9:
+                  continue
+              by_order[k] += abs(v); coeffs.append((subset, float(v)))
+          total = sum(by_order.values())
+          if total < 1e-9:
+              zero_moves += 1                                                   # the outcome does not depend on any other piece
+              relevant_sizes[0] += 1
+              continue
+          for k, v in by_order.items():
+              mass_by_order[k] += v / total
+          coeffs.sort(key=lambda sv: -abs(sv[1]))
+          relevant = set()
+          acc = 0.0
+          for subset, v in coeffs:
+              relevant |= set(subset); acc += abs(v)
+              if acc >= 0.9 * total:
+                  break
+          relevant_sizes[len(relevant)] += 1
+          top_orders[len(coeffs[0][0])] += 1
+          max_order_seen[max(len(s) for s, _ in coeffs)] += 1
+          if all_records or len(records) < 300:
+              share = defaultdict(float)                                        # per piece: |mass| of the subsets it belongs to, over the total
+              for subset, v in coeffs:
+                  for i in subset:
+                      share[i] += abs(v) / total
+              records.append(dict(fen=b.fen(), move=mv.uci(), kind=kind, n=r["n"], full=r["full"], relevant=[chess.square_name(r["pieces"][i]) for i in sorted(relevant)],
+                                  share={chess.square_name(r["pieces"][i]): round(x, 3) for i, x in share.items()},
+                                  top=[([chess.square_name(r["pieces"][i]) for i in s], round(v, 2)) for s, v in coeffs[:6]]))
         if n_pos % 25 == 0:
             log(f"[shap_bodies] {n_pos}/{n} ({time.perf_counter() - t0:.0f}s)")
     N = max(1, n_pos)
@@ -140,15 +147,16 @@ def run(n: int, lo: int, hi: int, max_players: int, relative: bool, seed: int = 
     log("  pieces needed for 90% of the mass (the relevant set): " + ", ".join(f"{k}: {v} ({100 * v / N:.0f}%)" for k, v in sorted(relevant_sizes.items())))
     OUT.mkdir(parents=True, exist_ok=True)
     json.dump(dict(positions=n_pos, relative=relative, zero=zero_moves, mass_by_order={k: v / dep for k, v in mass_by_order.items()}, relevant_sizes=dict(relevant_sizes), records=records),
-              open(OUT / f"shap_bodies{'_relative' if relative else ''}.json", "w"), indent=1)
+              open(OUT / f"shap_bodies{'_relative' if relative else ''}{tag}.json", "w"), indent=1)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=100); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=80)
     ap.add_argument("--max-players", type=int, default=10); ap.add_argument("--relative", action="store_true"); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--all-records", action="store_true"); ap.add_argument("--with-random", action="store_true"); ap.add_argument("--tag", default="")
     a = ap.parse_args(argv)
-    run(a.n, a.lo, a.hi, a.max_players, a.relative, a.seed)
+    run(a.n, a.lo, a.hi, a.max_players, a.relative, a.seed, all_records=a.all_records, with_random=a.with_random, tag=a.tag)
 
 
 if __name__ == "__main__":
