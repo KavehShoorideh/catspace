@@ -34,7 +34,7 @@ def truth(dom, b: chess.Board, mv: chess.Move) -> float | None:
     return resolved_reply_scalar(after, after.ids[0]) - base
 
 
-def run(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies: int = 5, seed: int = 0, log=print):
+def run(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies: int = 5, seed: int = 0, log=print, ranker=None, tag: str = ""):
     from .body_search import body_search
     from .chess_domain import domain
     from .dataset import load as load_ds
@@ -44,6 +44,7 @@ def run(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies: int =
     rng = random.Random(seed); rng.shuffle(rows)
     t0 = time.perf_counter()
     err = defaultdict(list); spoken = Counter(); n_pos = 0; used = Counter(); used_stake = Counter(); best_pred_rank = []
+    rho = defaultdict(list); best_rank_lvl = defaultdict(list)
     for m_ in rows:
         if n_pos >= n:
             break
@@ -58,18 +59,30 @@ def run(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies: int =
         if best not in legal:
             continue
         n_pos += 1
-        preds_final = {}; verdicts_final = {}
+        preds_final = {}; verdicts_final = {}; truths = {}; preds_lvl = defaultdict(dict)
         for mv in legal:
             t = truth(dom, b, mv)
             if t is None:
                 continue
-            r = body_search(app, b, mv.from_square, mv, max_bodies=max_bodies)
+            truths[mv] = t
+            r = body_search(app, b, mv.from_square, mv, max_bodies=max_bodies, ranker=ranker)
             for lvl, level in enumerate(r["trace"]):
-                # recompose from the level's used list: (idx, text, pred, fired) -> we need the Compiled objects
                 vs = [(app.lemmas_by_idx[idx], p, fired, None) for idx, text, p, fired in level["used"]]
                 c = compose(vs)
                 if c is not None:
-                    err[lvl + 1].append(abs(c - t)); spoken[lvl + 1] += 1
+                    err[lvl + 1].append(abs(c - t)); spoken[lvl + 1] += 1; preds_lvl[lvl + 1][mv] = c
+        # per position, per level: rank correlation between composed prediction and truth over the moves spoken about,
+        # and the best move's rank (units differ between a lemma's world and the board; order is what composes)
+        from scipy.stats import spearmanr
+        for lvl, pm in preds_lvl.items():
+            common = [m for m in pm if m in truths]
+            if len(common) >= 4:
+                r_, _ = spearmanr([pm[m] for m in common], [truths[m] for m in common])
+                if r_ == r_:
+                    rho[lvl].append(float(r_))
+            if best in pm:
+                ranked = sorted(pm.values(), reverse=True)
+                best_rank_lvl[lvl].append((ranked.index(pm[best]) + 1) / len(pm))
             last = next((l for l in reversed(r["trace"]) if l["used"]), None)
             if last:
                 vs = [(app.lemmas_by_idx[idx], p, fired, None) for idx, text, p, fired in last["used"]]
@@ -92,21 +105,29 @@ def run(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies: int =
     base_err = None
     log(f"[compose] {n_pos} positions, {time.perf_counter() - t0:.0f}s; lemmas {len(app.lemmas)}")
     log("  |composed prediction - truth| by number of bodies (mean pawns; moves spoken about): " + ", ".join(f"L{k}: {sum(v) / len(v):.2f} ({spoken[k]})" for k, v in sorted(err.items())))
+    log("  Spearman(composed, truth) per position by bodies: " + ", ".join(f"L{k}: {sum(v) / len(v):+.3f} ({len(v)})" for k, v in sorted(rho.items())) + "   (0 = no order)")
+    log("  the best move's rank by composed value, as a share of the spoken moves (0.5 = random): " + ", ".join(f"L{k}: {sum(v) / len(v):.2f}" for k, v in sorted(best_rank_lvl.items())))
     if best_pred_rank:
         log(f"  the engine's best move's rank by composed prediction: mean {sum(best_pred_rank) / len(best_pred_rank):.2f} over {len(best_pred_rank)} positions (random baseline ~ half the legal moves)")
     log("  most USED lemmas (verdict differs between the best move and an alternative), by stake:")
     for t, k in used_stake.most_common(8):
         log(f"    stake {k:7.1f}  used {used[t]:4d}  {t[:150]}")
     OUT.mkdir(parents=True, exist_ok=True)
-    json.dump(dict(positions=n_pos, err_by_level={k: sum(v) / len(v) for k, v in err.items()}, spoken=dict(spoken), best_rank=best_pred_rank, used=used.most_common(200), used_stake=used_stake.most_common(200)), open(OUT / "gauge_compose.json", "w"), indent=1)
+    json.dump(dict(positions=n_pos, err_by_level={k: sum(v) / len(v) for k, v in err.items()}, spoken=dict(spoken), best_rank=best_pred_rank, used=used.most_common(200), used_stake=used_stake.most_common(200)), open(OUT / f"gauge_compose{tag}.json", "w"), indent=1)
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=200); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=80); ap.add_argument("--max-bodies", type=int, default=5)
     ap.add_argument("--library", default=str(OUT / "library_v2_size3.json")); ap.add_argument("--proved", default=str(OUT / "proved_v2_size3.json"))
+    ap.add_argument("--guide", default=""); ap.add_argument("--tag", default="")
     a = ap.parse_args(argv)
-    run(a.n, a.lo, a.hi, Path(a.library), Path(a.proved), a.max_bodies)
+    ranker = None
+    if a.guide == "tf":
+        from .body_guide_tf import GraphRanker
+        from .chess_domain import domain
+        ranker = GraphRanker(domain())
+    run(a.n, a.lo, a.hi, Path(a.library), Path(a.proved), a.max_bodies, ranker=ranker, tag=a.tag)
 
 
 if __name__ == "__main__":

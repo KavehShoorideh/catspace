@@ -153,8 +153,9 @@ def _popcount(x: int) -> int:
 def frame_values(rows, exc: int) -> dict:
     """"Prefer this by this much" (Kaveh 2026-09-23): inside the lemma's world, the mean outcome of the actions where
     the claim held and of the exceptions, so a verdict carries a size, not only a sign."""
-    h = [d for i, (_, _, _, d) in enumerate(rows) if not (exc >> i) & 1]
-    e = [d for i, (_, _, _, d) in enumerate(rows) if (exc >> i) & 1]
+    clip = lambda d: max(-10.0, min(10.0, d))                                 # material units; a mate (+-1000) would otherwise own the mean
+    h = [clip(d) for i, (_, _, _, d) in enumerate(rows) if not (exc >> i) & 1]
+    e = [clip(d) for i, (_, _, _, d) in enumerate(rows) if (exc >> i) & 1]
     return dict(holds=round(sum(h) / len(h), 3) if h else 0.0, exception=round(sum(e) / len(e), 3) if e else 0.0)
 
 
