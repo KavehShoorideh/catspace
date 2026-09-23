@@ -23505,7 +23505,7 @@ lands_attacked(R) ... with negations -- so a learned rule is a schema over slots
 predicate invention on). First attempt on the pin frame ran past its timeout in Prolog; rerun with a hard timeout
 and smaller bounds (pin as the positive control, two rooks as the residual case).
 
-## 2026-09-23 12:05 PDT — Popper on the residual: the same guard, in slot variables, and no new predicate
+## 2026-09-23 11:49 PDT — Popper on the residual: the same guard, in slot variables, and no new predicate
 
 Two rooks (`[wR wR] same_side(0,1)`, slot 0; 100 exception + 100 keeping rows, balanced; max 4 vars / 3 body
 literals, predicate invention on, MDL cost, 300 s), OBS: at 74.5 s Popper's best and final program
