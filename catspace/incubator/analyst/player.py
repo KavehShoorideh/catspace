@@ -60,9 +60,12 @@ def mvv_lva(b: chess.Board, m: chess.Move) -> float:
 
 
 class Search:
-    """Alpha-beta with a capture/promotion quiescence, a transposition table, a node cap, iterative deepening."""
+    """Alpha-beta with a capture/promotion quiescence (checks in its first ply), a transposition table whose best
+    move is searched first, killer moves per ply, a node cap, iterative deepening."""
     def __init__(self, node_cap: int = 4000, q_depth: int = 6):
         self.node_cap = node_cap; self.q_depth = q_depth; self.tt: dict = {}; self.n = 0
+        self.best_move: dict = {}                                            # position key -> the move that was best there (any depth)
+        self.killers: dict = {}                                              # ply -> [move, move]: quiet moves that caused a cutoff at this ply
 
     def quiesce(self, b: chess.Board, side: chess.Color, alpha: float, beta: float, d: int) -> float:
         self.n += 1; nodes.tick("ledger")
@@ -78,7 +81,7 @@ class Search:
             if stand <= alpha:
                 return stand
             beta = min(beta, stand)
-        moves = [m for m in b.legal_moves if b.is_capture(m) or m.promotion]
+        moves = [m for m in b.legal_moves if b.is_capture(m) or m.promotion or (d == self.q_depth and b.gives_check(m))]   # checks in the first quiescence ply
         if b.is_check():
             moves = list(b.legal_moves)                                       # no standing pat in check
         moves.sort(key=lambda m: -mvv_lva(b, m))
@@ -107,19 +110,34 @@ class Search:
             return hit[1]                                                     # exact for this window only: a value found under [a, b] is reused only inside a narrower window
         a0, b0 = alpha, beta
         to_move_us = b.turn == side
-        moves = list(b.legal_moves)
-        moves.sort(key=lambda m: -(mvv_lva(b, m) + (0.5 if b.gives_check(m) else 0.0)))
-        best = -MATE * 2 if to_move_us else MATE * 2
+        pkey = b._transposition_key()
+        ply = len(b.move_stack)
+        first = self.best_move.get(pkey); kill = self.killers.get(ply, [])
+        def order(m):
+            if m == first:
+                return 1000.0
+            sc = mvv_lva(b, m) + (0.5 if b.gives_check(m) else 0.0)
+            if m in kill:
+                sc += 4.0
+            return sc
+        moves = sorted(b.legal_moves, key=lambda m: -order(m))
+        best = -MATE * 2 if to_move_us else MATE * 2; best_m = None
         for m in moves:
             b.push(m); v = self.alphabeta(b, side, depth - 1, alpha, beta); b.pop()
             if to_move_us:
-                if v > best: best = v
+                if v > best: best, best_m = v, m
                 if best > alpha: alpha = best
             else:
-                if v < best: best = v
+                if v < best: best, best_m = v, m
                 if best < beta: beta = best
             if alpha >= beta:
+                if not b.is_capture(m) and not m.promotion:                   # a quiet cutoff move: remember it for this ply
+                    k = self.killers.setdefault(ply, [])
+                    if m not in k:
+                        k.insert(0, m); del k[2:]
                 break
+        if best_m is not None:
+            self.best_move[pkey] = best_m
         if a0 < best < b0:                                                    # store EXACT values only; a bound (fail-soft) value must not be reused as exact
             self.tt[key] = (depth, best, a0, b0)
         return best
@@ -134,6 +152,8 @@ class Search:
             cur = {}
             alpha, beta = -MATE * 2, MATE * 2
             complete = True
+            if vals:
+                cands = sorted(cands, key=lambda m: -vals.get(m, -MATE * 3))  # the previous iteration's order first: tighter windows sooner
             for m in cands:
                 b.push(m); v = self.alphabeta(b, side, d - 1, alpha, beta); b.pop()
                 cur[m] = v
