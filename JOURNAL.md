@@ -23612,7 +23612,7 @@ each committed, all rules-level and counted:
 Gauges queued (sequential, no contention): MCTS 200 sims vs Maia-1500 and SF-1400; watchers on vs SF-1700 and
 SF-1400; scheduler mode vs SF-1400. Numbers follow when they land.
 
-## 2026-09-23 12:52 PDT — the architecture's first gauges: nothing beats the plain rules search yet (one seed each)
+## 2026-09-23 12:51 PDT — the architecture's first gauges: nothing beats the plain rules search yet (one seed each)
 
 Stockfish UCI-Elo, depth 8; the player at depth 3 / 4,000 nodes unless noted. OBS:
   watchers + actor ON:  vs SF-1700 6 losses, 2 losses and 1 win at the cap, 1 draw = 15% (before: 15%);
