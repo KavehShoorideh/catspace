@@ -23587,3 +23587,27 @@ Reading: the rules player sits near Stockfish-1450 in this ladder's units, at 2,
 that it loses on what three plies plus a resolved exchange cannot see: slow threats and king safety. That is the
 watchers' job (loss / win / draw questions with stakes) and the deeper-only-where-unsure budget; scheduler and MCTS
 (with lemma priors) are built; the MCTS gauge at 200 simulations is queued.
+
+## 2026-09-23 12:35 PDT — the architecture, built: scheduler, MCTS with lemma priors, watchers, actor with analyse
+
+Kaveh's design (this afternoon): per-board-hash incremental analysis; a prior deciding what to compute next; three
+watchers (win / lose / draw) posing questions with stakes; a board-level search moving the board forward with the
+analysis shifting asynchronously; an actor over everything, with an ANALYSIS output like Stockfish's. Built today,
+each committed, all rules-level and counted:
+  scheduler.py   content-keyed answer store; footprint invalidation on every move (moved squares + every square whose
+                 attackers changed); importance queue with decay; producers: frame tasks. Gauge over 2 Maia games:
+                 15.4% of root frames already in the store on arrival, 1,596 tasks dropped by footprint, 384 carried,
+                 0.04 s/move at 12 tasks. Wired into the player (--frame-budget): the graph layer runs under a
+                 per-move budget with importance from the resolved exchange; 1-game smoke: 76/270 root moves
+                 answered at budget 10, 6 store hits, 181 dropped / 38 carried.
+  mcts.py        PUCT, priors = softmax(resolved exchange + lemma verdict + capture order), leaf = resolved exchange
+                 (tanh/3); Rxc1 299/300 visits; ~25k nodes / 4 s a move at 300 simulations (each expansion prices
+                 every legal move) -- the gauge must be per node.
+  watchers.py    LOSS: the null move's resolved exchange ("save the knight on c3 from b4", stake 3.8) and the moves
+                 that answer it (move it, take the attacker, add a defender, interpose, check); WIN: the best resolved
+                 gain and the duties readout's opportunities; DRAW/safety: king-ring exposure and the material balance
+                 (trade when ahead / keep pieces when behind). The actor ranks value + 0.15 x answered stakes and
+                 records the reasons; `player analyse` prints every candidate with value, resolved exchange, a light
+                 line, the lemma verdict, the duties left and the questions answered.
+Gauges queued (sequential, no contention): MCTS 200 sims vs Maia-1500 and SF-1400; watchers on vs SF-1700 and
+SF-1400; scheduler mode vs SF-1400. Numbers follow when they land.
