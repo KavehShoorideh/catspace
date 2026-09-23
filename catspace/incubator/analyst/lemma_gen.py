@@ -147,6 +147,35 @@ def _popcount(x: int) -> int:
     return x.bit_count()
 
 
+def pick_examples(g, rows, exc: int, rest: int, guard: list, cache: dict, all_mask: int) -> dict:
+    """The stored examples: 'holds' = a row where the claim held; 'exception' = a row the lemma's OWN guard explains
+    (an exception the inherited guards left, covered by this frame's guard -- what is NEW here; Kaveh 2026-09-23:
+    "show the new lemmas, not the inherited ones, under exception"); 'inherited_exception' = an exception a parent's
+    guard already covered, for contrast."""
+    own = 0
+    for term in guard:
+        own |= g.term_mask(rows, term, cache, all_mask)
+    best = {}                                                                  # category -> (|outcome|, row): the most vivid row of each kind (Kaveh: "the one where the queen has the most advantage")
+    for i, (state, ids, a, d) in enumerate(rows):
+        bit = 1 << i
+        if not (exc & bit):
+            cat = "holds"
+        elif (rest & bit) and (own & bit):
+            cat = "exception"
+        elif not (rest & bit):
+            cat = "inherited_exception"
+        else:
+            cat = "unexplained"
+        if cat not in best or abs(d) > best[cat][0]:
+            best[cat] = (abs(d), (g.dom_text(state), str(a), round(d, 2)))
+    ex = {k: v[1] for k, v in best.items() if k != "unexplained"}
+    if "exception" not in ex:                                                 # no own-guard exception (guard-less or inherited-only): the most vivid exception of any kind
+        for k in ("unexplained", "inherited_exception"):
+            if k in best:
+                ex["exception"] = best[k][1]; break
+    return ex
+
+
 class Generator:
     def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0):
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
@@ -310,11 +339,7 @@ class Generator:
         sig = (tuple(frame.types), slot, n, holds, hash(exc))
         guard, covered, purity, matched = self.find_guard(rows, rest, frame, cache, exc_all=exc)
         residual = _popcount(rest) - covered
-        examples = {}
-        for i, (state, ids, a, d) in enumerate(rows):
-            key = "exception" if (exc >> i) & 1 else "holds"
-            if key not in examples:
-                examples[key] = (self.dom_text(state), str(a), round(d, 2))
+        examples = pick_examples(self, rows, exc, rest, guard, cache, all_mask)
         lem = Lemma(frame, slot, claim, n, holds, guard, covered, purity, residual, complete, examples, inherited, broke, reversed_, parents)
         lem.sig = sig
         return lem
@@ -707,9 +732,44 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
     return schemas
 
 
+def _examples_job(args):
+    entry, cap = args
+    fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"]))
+    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE)
+    rows, _ = g.rows_of(fr, entry["slot"])
+    if not rows:
+        return entry.get("examples", {})
+    n = len(rows); all_mask = (1 << n) - 1
+    loses = 0
+    for i, (_, _, _, d) in enumerate(rows):
+        if d < 0:
+            loses |= 1 << i
+    exc = (all_mask & ~loses) if entry["claim"] == "acting loses" else loses
+    cache: dict = {}
+    inh = 0
+    for term in guard_from_json(entry.get("inherited")):
+        inh |= g.term_mask(rows, term, cache, all_mask)
+    rest = exc & ~inh
+    return pick_examples(g, rows, exc, rest, guard_from_json(entry.get("guard")), cache, all_mask)
+
+
+def refresh_examples(dom: Domain, library_path: Path, cap: int, workers: int, log=print):
+    global _WORKER_DOM
+    _WORKER_DOM = dom
+    lib = json.load(open(library_path))
+    out = _pool_map(_examples_job, [(e, cap) for e in lib], workers, log, "examples")
+    changed = 0
+    for e, ex in zip(lib, out):
+        if ex != e.get("examples"):
+            changed += 1
+        e["examples"] = ex
+    json.dump(lib, open(library_path, "w"), indent=1)
+    log(f"[lemma_gen/examples] {len(lib)} lemmas, examples recomputed ({changed} changed) -> {library_path}")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["run", "prove", "generalize"]); ap.add_argument("--domain", default="chess")
+    ap.add_argument("cmd", choices=["run", "prove", "generalize", "examples"]); ap.add_argument("--domain", default="chess")
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--workers", type=int, default=1); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
@@ -738,6 +798,8 @@ def main(argv=None):
     _RELATIVE = a.relative
     if a.cmd == "prove":
         prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers); return
+    if a.cmd == "examples":
+        refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
     g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames)
