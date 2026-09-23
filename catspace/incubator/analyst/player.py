@@ -233,6 +233,11 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
     from .maia import Maia
     rng = random.Random(seed)
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
+    sf = None
+    if opponent == "stockfish":                                              # Stockfish at a UCI Elo (>= 1320), depth-limited: the ladder above Maia-1500
+        import chess.engine
+        sf = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
+        sf.configure({"UCI_LimitStrength": True, "UCI_Elo": max(1320, maia_rating), "Threads": 1, "Hash": 64})
     pl = Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
     results = Counter(); node_hist = []; t_hist = []; games = []
     for g in range(n):
@@ -241,6 +246,8 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
         while not b.is_game_over() and len(moves) < plies:
             if b.turn == our:
                 t = time.perf_counter(); m, info = pl.choose(b); t_hist.append(time.perf_counter() - t); node_hist.append(info["nodes"])
+            elif sf is not None:
+                m = sf.play(b, chess.engine.Limit(depth=8)).move
             else:
                 m = opp.sample(b, temperature=1.0, rng=rng) if opp else rng.choice(list(b.legal_moves))
             moves.append(b.san(m)); b.push(m)
@@ -262,12 +269,14 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
     json.dump(dict(games=games, results=dict(results), score=score, nodes_per_move=sum(node_hist) / max(1, len(node_hist)), lemma_usage=pl.lemma_usage.most_common(40)), open(OUT / f"games{tag}.json", "w"), indent=1)
     if opp:
         opp.close()
+    if sf is not None:
+        sf.quit()
     return score
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["play", "move"]); ap.add_argument("--games", type=int, default=10); ap.add_argument("--maia", type=int, default=1100); ap.add_argument("--opponent", choices=["maia", "random"], default="maia")
+    ap.add_argument("cmd", choices=["play", "move"]); ap.add_argument("--games", type=int, default=10); ap.add_argument("--maia", type=int, default=1100); ap.add_argument("--opponent", choices=["maia", "random", "stockfish"], default="maia")
     ap.add_argument("--depth", type=int, default=3); ap.add_argument("--nodes", type=int, default=4000); ap.add_argument("--max-bodies", type=int, default=4); ap.add_argument("--plies", type=int, default=200)
     ap.add_argument("--library", default="data/derived/lemmas/library_games_size3.json"); ap.add_argument("--proved", default="data/derived/lemmas/proved_games_size3.json")
     ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
