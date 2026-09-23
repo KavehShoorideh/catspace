@@ -182,6 +182,65 @@ def tb_worth(board: chess.Board, sq: int) -> float:
     return score(b0) - score(b1)
 
 
+_BLEND = dict(tau=4.0, samples=6, cache={})
+
+
+def blend_worth(board: chess.Board, sq: int) -> float:
+    """A piece's worth anywhere on the board (Kaveh 2026-09-23: "we want both ... a tunable variable going from
+    canonical values to tablebase values depending on how many more pieces are left to reach the tablebase edge").
+    TABLES side: the mean, over sampled sub-frames of at most five men that contain the piece and both kings (the
+    position itself at the edge), of the expected score the piece's side loses when the piece is removed. CANONICAL
+    side: the value table, normalized to expected-score units (a queen = 1). Blend weight on the tables
+    lam = exp(-(men - 5) / tau); lam = 1 at the edge. Cached per (position, square)."""
+    import math, random as _r
+    p = board.piece_at(sq)
+    if p is None:
+        return 0.0
+    if p.piece_type == chess.KING:
+        return 1.0
+    canon = VAL[p.piece_type] / VAL[chess.QUEEN]
+    men = len(board.piece_map())
+    extra = men - 5
+    lam = math.exp(-max(0, extra) / _BLEND["tau"]) if extra > 0 else 1.0
+    if lam < 1e-3:
+        return canon
+    key = (board.board_fen(), board.turn, sq)
+    cache = _BLEND["cache"]
+    if key in cache:
+        tbv = cache[key]
+    else:
+        others = [s for s, q in board.piece_map().items() if q.piece_type != chess.KING and s != sq and q.piece_type != chess.PAWN]
+        kings = [s for s, q in board.piece_map().items() if q.piece_type == chess.KING]
+        rng = _r.Random(hash(key) & 0xFFFF)
+        vals = []
+        for _ in range(_BLEND["samples"] if extra > 0 else 1):
+            keep = set(kings) | {sq} | set(rng.sample(others, min(len(others), 5 - len(kings) - 1))) if extra > 0 else set(board.piece_map())
+            b = chess.Board(None)
+            for s_ in keep:
+                b.set_piece_at(s_, board.piece_at(s_))
+            b.turn = board.turn; b.castling_rights = 0; b.ep_square = None
+            if any(q.piece_type == chess.PAWN for q in b.piece_map().values()):
+                continue
+            v = tb_worth(b, sq)
+            vals.append(v)
+        tbv = sum(vals) / len(vals) if vals else canon
+        if len(cache) > 200000:
+            cache.clear()
+        cache[key] = tbv
+    return lam * tbv + (1 - lam) * canon
+
+
+def worth_ge_blend(state, i, j):
+    return blend_worth(state.board, i) >= blend_worth(state.board, j)
+
+
+def captures_worth_ge_blend(state, action, j):
+    b, m = action
+    if not b.is_capture(m):
+        return False
+    return blend_worth(b, m.to_square) >= blend_worth(b, j)
+
+
 def tb_worth_ge(state, i, j):
     return tb_worth(state.board, i) >= tb_worth(state.board, j)
 
@@ -334,7 +393,10 @@ def tb_reply_scalar(after: State, e: int) -> float:
     return float(-w)
 
 
-def domain(fens: list | None = None, oracle: str = "material") -> Domain:
+def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0) -> Domain:
+    """worth: 'canonical' (the value table), 'blend' (tables inside five men, blended toward canonical by distance to
+    the edge; tau tunable), used by the worth relations of the material and games domains."""
+    _BLEND["tau"] = worth_tau
     rels = [Relation("same_side", 2, fn=same_side), Relation("attacks", 2, fn=attacks), Relation("defends", 2, fn=defends),
             Relation("aligned", 2, fn=aligned), Relation("between", 3, fn=between), Relation("worth_ge", 2, fn=worth_ge),
             Relation("attacked", 1, fn=attacked), Relation("defended", 1, fn=defended), Relation("slides", 1, fn=slides),
@@ -346,6 +408,8 @@ def domain(fens: list | None = None, oracle: str = "material") -> Domain:
         rels = [Relation("tb_worth_ge", 2, fn=tb_worth_ge) if r.name == "worth_ge" else Relation("captures_tb_worth_ge", 1, True, tb_captures_worth_ge) if r.name == "captures_worth_ge" else r for r in rels]
         return Domain("chess_tb", TYPES, rels, placements, slots_of, actions, transition, tb_scalar, tb_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn)
+    if worth == "blend":
+        rels = [Relation("worth_ge", 2, fn=worth_ge_blend) if r.name == "worth_ge" else Relation("captures_worth_ge", 1, True, captures_worth_ge_blend) if r.name == "captures_worth_ge" else r for r in rels]
     return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, reply_scalar,
                   entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
                   null_reply_scalar=null_reply_scalar)
