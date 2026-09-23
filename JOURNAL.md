@@ -23722,3 +23722,16 @@ library; the limit is that a one-piece or three-piece frame with these relations
 So: the lemma library will not add play strength until the vocabulary grows (the residual loop), and play strength
 now comes from search. The resolved oracle stays behind its flag as the truer label for the generator when the
 vocabulary catches up.
+
+## 2026-09-23 15:05 PDT — where the games against SF-1700 go wrong (Stockfish depth-12 drop per move)
+
+Ten games (the first 1700 rung, depth 3), 562 of our moves scored: mean drop -0.58 pawns; 98 moves lose >= 1 pawn,
+40 lose >= 2. The twelve worst: seven are KING moves in a king-and-pawn ending (game 1, moves 52-66: -7.9, -7.2,
+-5.3, -5.3, -5.1 ... the king shuffles while the engine's king walks in; game 5 move 89 Kc4 -7.5 in K+R+P vs K+P);
+the rest are opening/middlegame tactics (6.g4 -6.0; Qxh3 -5.9; Qxc4 -4.9; Nxd5 -4.7). Big drops (<= -1.5) by
+phase: endgame 19, middlegame 25, opening 13.
+Reading: with material + mobility as the leaf and depth 3-5, a pawn ending is invisible: promotion is 5+ moves away
+and the leaf sees nothing. Two generic levers, no chess added: (1) let the node cap be the only budget -- iterative
+deepening runs as deep as the cap allows, so positions with few pieces (cheap nodes) get searched far deeper
+automatically; today a fixed max depth wastes the budget there; (2) the horizon term the rules already give:
+promotion. (1) first.
