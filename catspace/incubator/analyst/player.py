@@ -174,7 +174,7 @@ class Player:
         if guide:
             from .body_guide import GuideRanker
             self.ranker = GuideRanker(self.dom)
-        self.lemma_usage = Counter(); self.stats = Counter(); self.watchers = True
+        self.lemma_usage = Counter(); self.stats = Counter(); self.watchers = False      # off by default: no gain per node at one seed (journal 2026-09-23 12:52)
         self.sched = None; self.frame_budget = 0; self._last_board = None      # the scheduler, when attached: budgeted, carried, reused frame tasks
 
     def attach_scheduler(self, frame_budget: int, store_path=None):
@@ -341,7 +341,7 @@ Player.choose_mcts = _choose_mcts
 
 
 def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: int, library: Path | None, proved: Path | None, use_lemmas: bool, guide: bool,
-               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400, watchers: bool = True, frame_budget: int = 0):
+               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400, watchers: bool = False, frame_budget: int = 0):
     from .maia import Maia
     rng = random.Random(seed)
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
@@ -397,7 +397,7 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["play", "move", "analyse"]); ap.add_argument("--games", type=int, default=10); ap.add_argument("--maia", type=int, default=1100); ap.add_argument("--opponent", choices=["maia", "random", "stockfish"], default="maia")
     ap.add_argument("--depth", type=int, default=3); ap.add_argument("--nodes", type=int, default=4000); ap.add_argument("--max-bodies", type=int, default=4); ap.add_argument("--plies", type=int, default=200)
     ap.add_argument("--library", default="data/derived/lemmas/library_games_size3.json"); ap.add_argument("--proved", default="data/derived/lemmas/proved_games_size3.json")
-    ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--frame-budget", type=int, default=0, help="attach the scheduler: frame tasks run per move"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
+    ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--watchers", action="store_true"); ap.add_argument("--frame-budget", type=int, default=0, help="attach the scheduler: frame tasks run per move"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
     a = ap.parse_args(argv)
     if a.cmd == "analyse":
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
@@ -409,7 +409,7 @@ def main(argv=None):
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
         pl.search_kind = a.search; pl.sims = a.sims
         b = chess.Board(a.fen or chess.STARTING_FEN); m, info = pl.choose(b); print(b.san(m), json.dumps({k: v for k, v in info.items() if k != "counts"})); return
-    play_games(a.games, a.maia, a.depth, a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=not a.no_watchers, frame_budget=a.frame_budget)
+    play_games(a.games, a.maia, a.depth, a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=a.watchers and not a.no_watchers, frame_budget=a.frame_budget)
 
 
 if __name__ == "__main__":
