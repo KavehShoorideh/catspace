@@ -23523,3 +23523,27 @@ the search over 20-odd predicates with three-literal bodies is large; rerun with
 Reading: Popper's value here is the SLOT-VARIABLE form (a schema directly) and MDL optimality over a whole program;
 its cost is Prolog testing of thousands of candidates. Our greedy DNF search stays the generator's inner loop;
 Popper is the cross-check on residual frames, and the invention of primitives still needs the proposal loop.
+
+## 2026-09-23 12:00 PDT — games as the frame source: the vocabulary ceiling on real boards, measured three ways
+
+Run (20,000 positions of the knowledge corpus, plies 10-120; cap 1,000 embeddings a frame; outcome RELATIVE to the
+null move; size-3 frontier bounded to the 3,000 most frequent frames of 57,000 candidates, counts 7,564..2,116 in a
+2,000-position scan; ten workers), OBS:
+  size 1: 4 admitted of 10 (queens and rooks: "keeps unless it lands attacked", the rook "unless it was NOT attacked
+    and lands attacked" -- a trade is not a loss, a blunder is); kings, bishops, knights: no admissible guard.
+  size 2: 602 evaluated, 26 admitted (mostly 100%-claims: "[wK wQ] the king defends the queen: moving the king keeps
+    in 100% of 675"; "[wQ bN] queen attacks knight: the queen acting LOSES in 55% unless it lands unattacked or was
+    already attacked", 566/574, purity 0.98 -- the relative outcome's reading of "a queen move that ignores the
+    threat costs nothing extra").
+  size 3: 2,091 evaluated, 0 admitted; 1,932 size-3 frames in the residual (median 40 unexplained exceptions).
+  prove on held-out positions (seed 1, cap 5,000): 4 PROVED / 26 conjecture at first -- 20 of the 26 were guard-less
+    100%-claims meeting 2-13 exceptions in 5,000 rows (coverage 0% by construction); with a near-total rule
+    (exception rate <= 2% with no guard) the pass is rerun (counts in the log).
+Reading: with this relation vocabulary, real positions admit almost nothing at three pieces -- the same ceiling the
+surprise gauge (121 surprises, all trades onto defended squares) and Popper (the same guard, no invented predicate)
+found. Three independent methods point at one missing thing: what happens to the piece AFTER it lands, i.e. the
+resolved exchange, which the sampled world never needed because no defender was ever on the board. Two ways to
+supply it, both generic, for Kaveh to choose: (a) the outcome as the resolved capture sequence on the landing square
+(a small quiescence search inside the scalar -- "search on top of our operations"; the tablebase oracle is exactly
+this, made exact, for sampled frames); (b) new action-level relations proposed from the residual (lands defended;
+still defends X after the move). (a) keeps the vocabulary pure; (b) keeps the outcome one ply.
