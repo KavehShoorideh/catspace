@@ -349,47 +349,76 @@ def parse_frame(text: str) -> Frame:
     return Frame(types, tuple(lits))
 
 
-def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, limit: int = 0, log=print):
+def _prove_entry(args):
+    """One lemma of the exhaustive pass (a pool job): re-instantiate its frame at the pass's cap and apply the STORED guard."""
+    entry, cap, min_cov, min_pur = args
+    dom = _WORKER_DOM
+    g = Generator(dom, cap=cap, log=lambda *a, **k: None)
+    fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"])) if "types" in entry else parse_frame(entry["frame"])
+    slot = entry["slot"]; claim = entry["claim"]
+    guard = [(gg[0], tuple(int(x) for x in (gg[1] if isinstance(gg[1], list) else gg[1].strip("()").split(",")) if str(x).strip() != ""), (gg[2] == "True") if isinstance(gg[2], str) else bool(gg[2])) for gg in entry["guard"]] if entry["guard"] else []
+    rows = []; complete = True
+    for state, ids, comp in g.instances(fr):
+        complete = comp
+        e = ids[slot]
+        for a in dom.actions(state, e):
+            delta = dom.reply_scalar(dom.transition(state, a), e) - dom.scalar(state, e)
+            rows.append((state, ids, a, delta))
+    if not rows:
+        return dict(frame=fr.text(), slot=slot, status="no placements"), None
+    exc = [(d >= 0) if claim == "acting loses" else (d < 0) for _, _, _, d in rows]
+    n_exc = sum(exc)
+    matched = [False] * len(rows)
+    for rname, sl, pol in guard:
+        r = g.rel[rname]
+        for i, (state, ids, a, _) in enumerate(rows):
+            try:
+                v = bool(r.fn(state, a, *[ids[x] for x in sl])) if r.on_action else bool(r.fn(state, *[ids[x] for x in sl]))
+            except Exception:
+                v = False
+            matched[i] = matched[i] or (v == pol)
+    cov = sum(m and e for m, e in zip(matched, exc)) / max(1, n_exc) if n_exc else 1.0
+    pur = sum(m and e for m, e in zip(matched, exc)) / max(1, sum(matched)) if guard else 1.0
+    status = "PROVED" if (n_exc == 0 or (cov >= min_cov and pur >= min_pur)) else "conjecture"
+    gtxt = " or ".join(("" if pol else "not ") + f"{r}({','.join(map(str, sl))})" for r, sl, pol in guard) or "(none)"
+    line = f"  {status:<10} {fr.text()} :: slot {slot} {claim} {100 * (len(rows) - n_exc) / len(rows):.1f}% of {len(rows)}; guard {gtxt}: covers {100 * cov:.1f}% of {n_exc} exceptions, purity {pur:.2f}" + (" (complete)" if complete else f" (cap {cap})")
+    return dict(frame=fr.text(), slot=slot, claim=claim, support=len(rows), exceptions=n_exc, coverage=cov, purity=pur, complete=complete, status=status, guard=gtxt), line
+
+
+_WORKER_DOM = None
+
+
+def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, limit: int = 0, log=print, workers: int = 1):
     """THE EXHAUSTIVE PASS: re-run each admitted lemma with a far larger cap (exhaustive where the frame fits) and
     check the STORED guard -- not a re-fit -- for coverage and purity. A lemma is PROVED (over the frame, at this
-    cap) when the guard still explains the exceptions; otherwise it stays a conjecture and its failure is reported."""
+    cap) when the guard still explains the exceptions; otherwise it stays a conjecture and its failure is reported.
+    Lemmas are independent, so they run in a fork pool when workers > 1 (results in library order)."""
+    global _WORKER_DOM
     lib = json.load(open(library_path))
-    g = Generator(dom, cap=cap, log=lambda *a, **k: None)
+    entries = lib[: limit or len(lib)]
+    jobs = [(e, cap, min_cov, min_pur) for e in entries]
+    _WORKER_DOM = dom
     out = []
-    for k, entry in enumerate(lib[: limit or len(lib)]):
-        fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"])) if "types" in entry else parse_frame(entry["frame"])
-        slot = entry["slot"]; claim = entry["claim"]
-        guard = [(gg[0], tuple(int(x) for x in (gg[1] if isinstance(gg[1], list) else gg[1].strip("()").split(",")) if str(x).strip() != ""), (gg[2] == "True") if isinstance(gg[2], str) else bool(gg[2])) for gg in entry["guard"]] if entry["guard"] else []
-        rows = []; complete = True
-        for state, ids, comp in g.instances(fr):
-            complete = comp
-            e = ids[slot]
-            for a in dom.actions(state, e):
-                delta = dom.reply_scalar(dom.transition(state, a), e) - dom.scalar(state, e)
-                rows.append((state, ids, a, delta))
-        if not rows:
-            out.append(dict(frame=fr.text(), slot=slot, status="no placements")); continue
-        exc = [(d >= 0) if claim == "acting loses" else (d < 0) for _, _, _, d in rows]
-        n_exc = sum(exc)
-        matched = [False] * len(rows)
-        for rname, sl, pol in guard:
-            r = g.rel[rname]
-            for i, (state, ids, a, _) in enumerate(rows):
-                try:
-                    v = bool(r.fn(state, a, *[ids[x] for x in sl])) if r.on_action else bool(r.fn(state, *[ids[x] for x in sl]))
-                except Exception:
-                    v = False
-                matched[i] = matched[i] or (v == pol)
-        cov = sum(m and e for m, e in zip(matched, exc)) / max(1, n_exc) if n_exc else 1.0
-        pur = sum(m and e for m, e in zip(matched, exc)) / max(1, sum(matched)) if guard else 1.0
-        status = "PROVED" if (n_exc == 0 or (cov >= min_cov and pur >= min_pur)) else "conjecture"
-        gtxt = " or ".join(("" if pol else "not ") + f"{r}({','.join(map(str, sl))})" for r, sl, pol in guard) or "(none)"
-        log(f"  {status:<10} {fr.text()} :: slot {slot} {claim} {100 * (len(rows) - n_exc) / len(rows):.1f}% of {len(rows)}; guard {gtxt}: covers {100 * cov:.1f}% of {n_exc} exceptions, purity {pur:.2f}" + (" (complete)" if complete else f" (cap {cap})"))
-        out.append(dict(frame=fr.text(), slot=slot, claim=claim, support=len(rows), exceptions=n_exc, coverage=cov, purity=pur, complete=complete, status=status))
+    t0 = time.perf_counter()
+    if workers > 1 and len(jobs) >= 4:
+        import multiprocessing as mp
+        ctx = mp.get_context("fork")
+        with ctx.Pool(workers) as pool:
+            it = pool.imap(_prove_entry, jobs, chunksize=1)
+            for k, (o, line) in enumerate(it):
+                out.append(o)
+                if line: log(line)
+                if k and k % 100 == 0:
+                    log(f"[lemma_gen/prove] {k}/{len(jobs)} ({time.perf_counter() - t0:.0f}s)")
+    else:
+        for k, job in enumerate(jobs):
+            o, line = _prove_entry(job)
+            out.append(o)
+            if line: log(line)
     OUT.mkdir(parents=True, exist_ok=True)
     json.dump(out, open(OUT / f"proved_{dom.name}.json", "w"), indent=1)
     c = Counter(o["status"] for o in out)
-    log(f"[lemma_gen/prove] {dict(c)}")
+    log(f"[lemma_gen/prove] {dict(c)} ({time.perf_counter() - t0:.0f}s)")
     return out
 
 
@@ -406,7 +435,7 @@ def main(argv=None):
     else:
         raise SystemExit(f"unknown domain {a.domain}")
     if a.cmd == "prove":
-        prove(dom, Path(a.library), a.cap, limit=a.limit); return
+        prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers); return
     g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
