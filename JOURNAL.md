@@ -23752,7 +23752,7 @@ Reading: the deeper iteration that runs out of budget is discarded, so the budge
 iteration's nodes and overshoots the cap (4,887 for a 4,000 cap); at 1700 it is worse. Stays behind its flag. The
 pawn-ending losses need something the leaf cannot see at any affordable depth.
 
-## 2026-09-23 15:50 PDT — two generic primitives tried on real boards: after-the-move lifts, pawns as entities
+## 2026-09-23 15:40 PDT — two generic primitives tried on real boards: after-the-move lifts, pawns as entities
 
 `--lift` adds, for every state relation R, the action relation after_R (R on the state the action leads to, the
 mover followed to its landing): 14 -> 23 relations, none named. Pawns join the entity types (12 types). Real boards,
