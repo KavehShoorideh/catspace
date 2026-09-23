@@ -23611,3 +23611,20 @@ each committed, all rules-level and counted:
                  line, the lemma verdict, the duties left and the questions answered.
 Gauges queued (sequential, no contention): MCTS 200 sims vs Maia-1500 and SF-1400; watchers on vs SF-1700 and
 SF-1400; scheduler mode vs SF-1400. Numbers follow when they land.
+
+## 2026-09-23 12:52 PDT — the architecture's first gauges: nothing beats the plain rules search yet (one seed each)
+
+Stockfish UCI-Elo, depth 8; the player at depth 3 / 4,000 nodes unless noted. OBS:
+  watchers + actor ON:  vs SF-1700 6 losses, 2 losses and 1 win at the cap, 1 draw = 15% (before: 15%);
+                        vs SF-1400 4 wins, 3 losses, 1 draw and 2 losses at the cap = 45% (before: 60%).
+  scheduler mode (frame budget 10/move): vs SF-1400 35%; 6,415 of 13,634 root moves answered within the budget,
+                        1,919 store hits, 4,527 tasks run, 6,688 tasks dropped by footprint / 1,753 carried.
+  MCTS 150 sims, lemma priors, resolved-exchange leaf: vs SF-1400 1 win 1 draw 4 losses = 25% at 17,925 nodes and
+                        1.8 s a move (alpha-beta: 60% at 2,900 nodes); vs Maia-1500 5 wins 1 draw = 92% at 10,345.
+Reading (single runs, directional): every addition today cost or did nothing at one seed. The strength is the
+three-ply rules search with the resolved exchange. The watchers' bonus (0.15 x stake) moves the choice off the
+search's best in ways the search does not confirm; the scheduler answers half the root moves and the verdicts it
+returns are the same weak queen/rook lemmas; MCTS spends 6x the nodes pricing every legal move at every expansion.
+By Kaveh's rule (best shot first, attribute by binary search on failure): the pieces stay, the defaults go back to
+the plain search until a piece earns its place per node. Two things would earn it: lemmas that speak on real boards
+(the resolved-exchange outcome in the generator), and depth spent only where the search is unsure.
