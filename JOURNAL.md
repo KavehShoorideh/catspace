@@ -23387,7 +23387,7 @@ Reading:
     (aligned/attacks/same_side siblings carry the same lemma).
 Nothing running. Libraries: data/derived/lemmas/library_v2_size3.json, proved_v2_size3.json, schemas_chess.json.
 
-## 2026-09-23 09:58 PDT — schemas stated as unions of product boxes (Kaveh: "reasonable fix, go ahead")
+## 2026-09-23 09:57 PDT — schemas stated as unions of product boxes (Kaveh: "reasonable fix, go ahead")
 
 `box_cover` (generic, deterministic): the largest product sub-boxes inside the set of held type tuples, greedy by
 uncovered tuples then size, until every held tuple is in a box; a schema IS that union. Earlier checks are cached, so
