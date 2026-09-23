@@ -23810,3 +23810,17 @@ L-4b53b755 [wR] keeps unless lands attacked (stake 3,134, used 45); L-5d3091a7 [
 (516, 80); L-ebe77d39 [wQ wR] same side: keeps unless lands attacked or (rook attacked & queen leaves its line)
 (165, 25). The rook lemmas carry the most stake because a hanging rook decides more games than a hanging queen
 move does at these depths.
+
+## 2026-09-23 16:45 PDT — composition, measured on order: one body already carries it; more bodies do not add
+
+150 real positions, 3,410 moves spoken about, values clipped, OBS (heuristic body order):
+  Spearman(composed prediction, full-board truth) per position: L1 +0.602, L2 +0.582, L3 +0.573, L4 +0.583,
+  L5 +0.592 (133 positions);  the engine's best move's rank by composed value as a share of the spoken moves
+  (0.5 = chance): L1 0.31, L2 0.35, L3 0.37, L4 0.37, L5 0.37.
+  With the graph guide ordering the bodies: Spearman L1 +0.602, L2 +0.605, L3 +0.556, L4 +0.548, L5 +0.555;
+  best-move rank share L1 0.31, L2 0.31, L3 0.30, L4 0.36, L5 0.37.
+Reading: the one-piece lemma ("keeps unless it lands attacked", with its in-world value) already orders the
+moves at +0.60 with the truth and puts the best move in the top third; averaging in the larger frames' lemmas
+DILUTES it -- their in-world means are further from this board than the one-piece value. So composition by
+averaging is not the rule; the guide's better ordering cannot help while the rule dilutes. Two other rules queued
+on the same positions: the most specific frame's lemma decides; one term per distinct frame, summed.
