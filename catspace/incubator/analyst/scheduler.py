@@ -123,9 +123,10 @@ def changed_squares(before, move) -> set:
 
 
 def frame_task(app, board, move, max_bodies: int, ranker=None):
-    """A body-search task for one root move: content key = the bodies the search will grow (unknown until run) --
-    so the key is the move's own frame at level one and the answer records the bodies it used; the footprint is
-    every square the search read (returned with the answer and used by the scheduler on the next move)."""
+    """A body-search task for one root move. The content key is the pieces within two squares of the move's start and
+    landing squares (the bodies a search up to four deep draws from, almost always), so a hit is a position whose
+    local content is identical; the answer records the bodies it actually used and the scheduler's footprint is
+    those squares. (Exact-by-used-bodies reuse, as in the player's graph cache, is the stricter alternative.)"""
     import chess
     from .body_search import body_search
     key = json.dumps(["frame", board.turn, move.uci(), sorted((chess.square_name(s), p.symbol()) for s, p in board.piece_map().items() if chess.square_distance(s, move.from_square) <= 2 or chess.square_distance(s, move.to_square) <= 2)])

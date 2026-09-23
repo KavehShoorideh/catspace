@@ -80,3 +80,17 @@ def test_player_finds_the_hanging_piece_and_the_mate():
     m, info = pl.choose(b); assert m == chess.Move.from_uci("d1d8")
     b = chess.Board("4k3/7K/8/8/7b/8/8/2r4R w - - 0 1")
     m, info = pl.choose(b); assert m == chess.Move.from_uci("h1c1")
+
+
+def test_graph_cache_does_not_reuse_across_different_bodies():
+    """The same mover, square and move in two positions whose other pieces differ must not share a verdict
+    (2026-09-23 bug: keyed by the mover alone)."""
+    from pathlib import Path
+    pl = Player(Path("data/derived/lemmas/library_v2_size3.json"), Path("data/derived/lemmas/proved_v2_size3.json"), depth=1, node_cap=200, use_lemmas=True)
+    b1 = chess.Board("4k3/7K/8/8/7b/8/8/2r4R w - - 0 1")          # Rg1 loses the rook to Rxg1
+    b2 = chess.Board("4k3/7K/8/8/7b/8/8/7R w - - 0 1")            # no black rook: Rg1 is safe
+    m = chess.Move.from_uci("h1g1")
+    v1 = pl.graph_verdicts(b1, [m])[m]
+    v2 = pl.graph_verdicts(b2, [m])[m]
+    assert v1[1] > 0, f"Rg1 with the black rook present should be called losing: {v1}"
+    assert v2[1] == 0, f"Rg1 without the black rook should not be called losing: {v2} (cache reused across different bodies?)"

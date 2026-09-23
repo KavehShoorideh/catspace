@@ -221,22 +221,27 @@ class Player:
         from .body_search import body_search
         out = {}
         for m in moves:
-            r = None
+            # EXACT reuse (bug found 2026-09-23: a verdict keyed by the mover alone was reused whatever the other pieces
+            # were): the cache remembers WHICH bodies the search read; it hits only when those bodies -- their pieces
+            # and squares -- are the same on this board
             key0 = GraphCache.key(b, [m.from_square], m)
-            # the cache holds the deepest level's frame key -> verdict; probe the level keys the search would grow
-            r = body_search(self.app, b, m.from_square, m, max_bodies=self.max_bodies, ranker=self.ranker) if key0 not in self.cache.table else None
-            if r is None:
-                self.cache.hits += 1
-                out[m] = tuple(self.cache.table[key0])
-                continue
+            entry = self.cache.table.get(key0)
+            if entry is not None:
+                used = [chess.parse_square(x) for x in entry["bodies"]]
+                if all(b.piece_at(sq) is not None for sq in used) and GraphCache.key(b, used, m) == entry["full"]:
+                    self.cache.hits += 1
+                    out[m] = tuple(entry["verdict"])
+                    continue
+            r = body_search(self.app, b, m.from_square, m, max_bodies=self.max_bodies, ranker=self.ranker)
             self.cache.misses += 1
             last = next((l for l in reversed(r["trace"]) if l["verdict"] is not None), None)
+            used = sorted({sq for l in r["trace"] for sq in l["bodies"]})
             for l in r["trace"]:
                 for idx, text, p, fired in l["used"]:
                     self.lemma_usage[text] += 1
                 nodes.tick("lemma")
             verdict = (last["keeps"], last["loses"]) if last else (0, 0)
-            self.cache.table[key0] = list(verdict)
+            self.cache.table[key0] = dict(bodies=[chess.square_name(sq) for sq in used], full=GraphCache.key(b, used, m), verdict=list(verdict))
             out[m] = verdict
         return out
 
