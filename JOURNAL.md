@@ -23399,7 +23399,7 @@ colour was discovered by the cover, not assumed. Largest one-box schema: [{bQ,bR
 "attacks(0,1) & attacks(1,2) :: the middle piece acting loses unless it captures, or lands unattacked, or leaves
 both lines" -- a piece attacked by one and attacking another, 12 held of 12.
 
-## 2026-09-23 10:30 PDT — the applier and the surprise gauge (Kaveh: "that surprise is instructive; that's where we improve our lemmas")
+## 2026-09-23 10:14 PDT — the applier and the surprise gauge (Kaveh: "that surprise is instructive; that's where we improve our lemmas")
 
 `lemma_apply.py` (generic; the domain adds entities/state_of/actor_ok): every embedding of every proved frame into a
 real position, the verdict of each lemma on each move of its actor (claim, or the guard term that fired). 7,165 proved
