@@ -174,7 +174,7 @@ class Player:
         if guide:
             from .body_guide import GuideRanker
             self.ranker = GuideRanker(self.dom)
-        self.lemma_usage = Counter(); self.stats = Counter()
+        self.lemma_usage = Counter(); self.stats = Counter(); self.watchers = True
 
     def graph_verdicts(self, b: chess.Board, moves: list) -> dict:
         """move -> (keeps, loses) over the body search, cached by frame content."""
@@ -218,7 +218,18 @@ class Player:
                 k, l = gv.get(m, (0, 0))
                 lemma = (1.0 if k > l else -1.0 if l > k else 0.0)
                 return resolved[m] + 0.5 * lemma + 0.01 * mvv_lva(b, m)
-            ordered = sorted(legal, key=lambda m: -prior(m))
+            # 2b. the watchers: questions with stakes; the moves that answer them join the candidates
+            questions = []
+            if self.watchers:
+                from .watchers import pose, actor
+                questions = pose(b, Search(node_cap=10 ** 9), self.app)         # the watchers' own quiescence, uncapped (the root search's counter is not theirs)
+                stake_of = {}
+                for q in questions:
+                    for u in q.answers:
+                        stake_of[u] = stake_of.get(u, 0.0) + q.stake
+                ordered = sorted(legal, key=lambda m: -(prior(m) + 0.15 * stake_of.get(m.uci(), 0.0)))
+            else:
+                ordered = sorted(legal, key=lambda m: -prior(m))
             # prune: moves every lemma calls losing AND the resolved exchange says lose material, unless nothing else remains
             keep = [m for m in ordered if not (gv.get(m, (0, 0))[1] > 0 and gv.get(m, (0, 0))[0] == 0 and resolved[m] < resolved[ordered[0]] - 0.5)]
             cands = (keep or ordered)[: self.top_k]
@@ -226,8 +237,13 @@ class Player:
             # 3. move space: alpha-beta over the candidates
             s.n = 0
             vals = s.root(b, cands, self.depth)
-            best = max(cands, key=lambda m: (vals.get(m, -MATE * 3), prior(m)))
-        info = dict(move=best.uci(), value=vals.get(best), resolved=resolved[best], lemma=gv.get(best), cands=[c.uci() for c in cands], nodes=nodes.total(counts), counts=counts)
+            if self.watchers:
+                rows = actor(b, {m: dict(value=vals.get(m, -MATE * 3), resolved=resolved[m], lemma=gv.get(m, (0, 0))) for m in cands}, questions)
+                best = rows[0]["move"]; answers = rows[0]["answers"]
+            else:
+                best = max(cands, key=lambda m: (vals.get(m, -MATE * 3), prior(m))); answers = []
+        info = dict(move=best.uci(), value=vals.get(best), resolved=resolved[best], lemma=gv.get(best), cands=[c.uci() for c in cands], nodes=nodes.total(counts), counts=counts,
+                    questions=[f"{q.watcher}: {q.text} ({q.stake:+.1f})" for q in questions], answers=answers)
         return best, info
 
 
@@ -246,6 +262,8 @@ def _analyse(self, b: chess.Board, top: int = 6) -> list:
     s.n = 0
     vals = s.root(b, legal, self.depth)
     dut = duties(self.app, b) if self.app else {}
+    from .watchers import pose
+    questions = pose(b, Search(node_cap=10 ** 9), self.app)
     out = []
     for m in sorted(legal, key=lambda m: -(vals.get(m, -MATE * 3), resolved[m])[0]):
         # a light line: the reply the search would fear most, one ply, then our resolved answer
@@ -263,7 +281,8 @@ def _analyse(self, b: chess.Board, top: int = 6) -> list:
         k, l = gv.get(m, (0, 0))
         left = [d for d in dut.get(m.from_square, {}).get("duties", []) if d["stake"] > 0]
         out.append(dict(move=b.san(m), value=round(vals.get(m, float("nan")), 2), resolved=round(resolved[m], 2), line=f"{b.san(m)} {san_reply}".strip(),
-                        lemmas=f"{k} keep / {l} lose" if (k or l) else "no lemma speaks", duties_left=[f"holds {','.join(d['holds'])} (stake {d['stake']:+.0f})" for d in left[:2]]))
+                        lemmas=f"{k} keep / {l} lose" if (k or l) else "no lemma speaks", duties_left=[f"holds {','.join(d['holds'])} (stake {d['stake']:+.0f})" for d in left[:2]],
+                        answers=[f"{q.watcher}: {q.text} ({q.stake:+.1f})" for q in questions if m.uci() in q.answers]))
         if len(out) >= top:
             break
     return out
@@ -286,7 +305,7 @@ Player.choose_mcts = _choose_mcts
 
 
 def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: int, library: Path | None, proved: Path | None, use_lemmas: bool, guide: bool,
-               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400):
+               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400, watchers: bool = True):
     from .maia import Maia
     rng = random.Random(seed)
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
@@ -295,7 +314,7 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
         sf = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
         sf.configure({"UCI_LimitStrength": True, "UCI_Elo": max(1320, maia_rating), "Threads": 1, "Hash": 64})
     pl = Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
-    pl.search_kind = search_kind; pl.sims = sims
+    pl.search_kind = search_kind; pl.sims = sims; pl.watchers = watchers
     results = Counter(); node_hist = []; t_hist = []; games = []
     for g in range(n):
         b = chess.Board(); our = chess.WHITE if g % 2 == 0 else chess.BLACK
@@ -336,19 +355,19 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["play", "move", "analyse"]); ap.add_argument("--games", type=int, default=10); ap.add_argument("--maia", type=int, default=1100); ap.add_argument("--opponent", choices=["maia", "random", "stockfish"], default="maia")
     ap.add_argument("--depth", type=int, default=3); ap.add_argument("--nodes", type=int, default=4000); ap.add_argument("--max-bodies", type=int, default=4); ap.add_argument("--plies", type=int, default=200)
     ap.add_argument("--library", default="data/derived/lemmas/library_games_size3.json"); ap.add_argument("--proved", default="data/derived/lemmas/proved_games_size3.json")
-    ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
+    ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
     a = ap.parse_args(argv)
     if a.cmd == "analyse":
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
         b = chess.Board(a.fen or chess.STARTING_FEN)
         for row in pl.analyse(b):
-            print(f"{row['move']:7s} value {row['value']:+6.2f}  resolved {row['resolved']:+6.2f}  line: {row['line']:14s}  {row['lemmas']}" + (f"  leaves: {'; '.join(row['duties_left'])}" if row['duties_left'] else ""))
+            print(f"{row['move']:7s} value {row['value']:+6.2f}  resolved {row['resolved']:+6.2f}  line: {row['line']:14s}  {row['lemmas']}" + (f"  leaves: {'; '.join(row['duties_left'])}" if row['duties_left'] else "") + (f"  answers: {'; '.join(row['answers'])}" if row['answers'] else ""))
         return
     if a.cmd == "move":
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
         pl.search_kind = a.search; pl.sims = a.sims
         b = chess.Board(a.fen or chess.STARTING_FEN); m, info = pl.choose(b); print(b.san(m), json.dumps({k: v for k, v in info.items() if k != "counts"})); return
-    play_games(a.games, a.maia, a.depth, a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims)
+    play_games(a.games, a.maia, a.depth, a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=not a.no_watchers)
 
 
 if __name__ == "__main__":
