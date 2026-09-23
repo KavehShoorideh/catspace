@@ -23578,7 +23578,7 @@ player is the harness the architecture Kaveh laid out (scheduler over board hash
 watchers, the actor with analyse/choose, the guide) has to beat, per node. Next gauge: a Stockfish UCI-Elo ladder
 (1400 / 1700 / 2000, depth 8) to find where 4,000 nodes of rules run out.
 
-## 2026-09-23 12:45 PDT — the Stockfish ladder: where 2,600 nodes of rules run out
+## 2026-09-23 12:23 PDT — the Stockfish ladder: where 2,600 nodes of rules run out
 
 Ten games a rung, Stockfish at UCI_LimitStrength Elo, depth 8; the player at depth 3, 4,000-node cap, lemmas on
 (one seed; OBS):  Elo 1400: 6 wins 4 losses = 60%, 2,894 nodes/move.  Elo 1700: 7 losses, 1 draw, 1 loss and 1 win
