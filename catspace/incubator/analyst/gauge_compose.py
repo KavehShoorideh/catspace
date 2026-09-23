@@ -120,8 +120,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=200); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=80); ap.add_argument("--max-bodies", type=int, default=5)
     ap.add_argument("--library", default=str(OUT / "library_v2_size3.json")); ap.add_argument("--proved", default=str(OUT / "proved_v2_size3.json"))
-    ap.add_argument("--guide", default=""); ap.add_argument("--tag", default="")
+    ap.add_argument("--guide", default=""); ap.add_argument("--tag", default=""); ap.add_argument("--compose", default="mean", choices=["mean", "specific", "sum"])
     a = ap.parse_args(argv)
+    import catspace.incubator.analyst.lemma_apply as la
+    la.COMPOSE_RULE = a.compose
     ranker = None
     if a.guide == "tf":
         from .body_guide_tf import GraphRanker

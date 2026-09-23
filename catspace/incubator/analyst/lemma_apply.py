@@ -134,6 +134,9 @@ def main(argv=None):
 
 
 
+COMPOSE_RULE = "mean"                                                        # "mean" | "specific" (the largest frame's lemma decides) | "sum" (one term per distinct frame)
+
+
 def compose(verdicts: list) -> float | None:
     """The COMPOSED preference of a move from the lemmas that speak about it (Kaveh 2026-09-23: "lemmas from one
     frame usable in other frames ... prefer this by this much"): each lemma, a self-contained world, predicts the
@@ -143,8 +146,19 @@ def compose(verdicts: list) -> float | None:
     for c, pred, fired, ids in verdicts:
         if not c.value:
             continue
-        preds.append(c.value["exception"] if fired is not None else c.value["holds"])
-    return sum(preds) / len(preds) if preds else None
+        preds.append((c.frame.size, c.frame.text(), c.value["exception"] if fired is not None else c.value["holds"]))
+    if not preds:
+        return None
+    if COMPOSE_RULE == "specific":
+        top = max(p[0] for p in preds)
+        vals = [v for k, _, v in preds if k == top]
+        return sum(vals) / len(vals)
+    if COMPOSE_RULE == "sum":
+        by_frame = {}
+        for k, t, v in preds:
+            by_frame.setdefault(t, []).append(v)
+        return sum(sum(v) / len(v) for v in by_frame.values())
+    return sum(v for _, _, v in preds) / len(preds)
 
 
 # ---------------------------------------------------------------- duties and opportunities (Kaveh 2026-09-23)
