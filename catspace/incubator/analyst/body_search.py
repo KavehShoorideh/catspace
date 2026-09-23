@@ -101,7 +101,10 @@ def body_search(app: Applier, raw, actor, action, max_bodies: int = 5, ranker=No
         # in the after-state the actor sits on the landing square: relate through that square
         after_bodies = [action.to_square if b == actor else b for b in bodies]
         if ranker is not None:
-            ranked = ranker.rank(raw, action, cand) if cand else []
+            try:
+                ranked = ranker.rank(raw, action, cand, in_frame=set(bodies)) if cand else []     # the graph guide conditions on the frame so far
+            except TypeError:
+                ranked = ranker.rank(raw, action, cand) if cand else []
         else:
             ranked = related(app, raw, bodies, cand)
             if after is not None:
@@ -185,7 +188,7 @@ def run_corpus(n: int, lo: int, hi: int, library: Path, proved: Path, max_bodies
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=300); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=80); ap.add_argument("--max-bodies", type=int, default=5)
-    ap.add_argument("--fen"); ap.add_argument("--move"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--guide", action="store_true"); ap.add_argument("--tag", default="")
+    ap.add_argument("--fen"); ap.add_argument("--move"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--guide", default="", help="'' | 'mlp' | 'tf'"); ap.add_argument("--tag", default="")
     ap.add_argument("--library", default=str(OUT / "library_v2_size3.json")); ap.add_argument("--proved", default=str(OUT / "proved_v2_size3.json"))
     a = ap.parse_args(argv)
     if a.fen:
@@ -201,7 +204,11 @@ def main(argv=None):
                 print(f"      {p:5s} {text[:140]}" + (f"  <- {fired}" if fired else ""))
         return
     ranker = None
-    if a.guide:
+    if a.guide == "tf":
+        from .body_guide_tf import GraphRanker
+        from .chess_domain import domain
+        ranker = GraphRanker(domain())
+    elif a.guide:
         from .body_guide import GuideRanker
         from .chess_domain import domain
         ranker = GuideRanker(domain())
