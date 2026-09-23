@@ -23329,3 +23329,22 @@ Admissions by guard shape (script over the library; guard read as "or"):
 All sampled, so conjectures. The exhaustive pass (`prove`, pooled, cap 10,000) launched 18:18 on the whole library.
 Lesson of the afternoon (memory updated): a nohup'd run without `python -u` block-buffers its log; I spent 30 min
 "debugging a hang" that was a buffer.
+
+**The exhaustive pass on the size-three library** (`prove`, cap 10,000 placements a frame, ten workers, 139 s; the
+first pass judged children by their OWN literals and forgot the inherited guard, 147 proved -- fixed, rerun), OBS:
+  PROVED 878 / conjecture 729 of 1,607. Size one 10/10; size two 34/36; size three 834/1,561.
+  Pin-shaped lemmas (own guard contains "between"): 52 PROVED of 56, e.g.
+    [wQ wR bB] queen attacks rook, bishop attacks rook :: the rook keeps 75.0% of 5,014 unless it lands attacked
+      (inherited) or the bishop attacks the queen or the rook stands between queen and bishop: coverage 1.00,
+      purity 0.83;
+    [wB wR bQ] bishop attacks rook, queen attacks rook :: the rook keeps 38.7% of 5,192 unless ... between
+      (0.99, 0.92); the same shape over 52 frames of every slider-behind-piece combination, both colours.
+  By shape: keeps-unless-the-other-is-attacked 331/667 proved; keeps-unless-lands-attacked 249/318;
+  loses-unless-check-or-capture (reversed frames) 31/138 and 40/70; loses-unless-stays-aligned 0/20.
+  Why conjectures fail: 530 of 729 keep coverage >= 0.95 and fail on PURITY (the guard is broader than the
+  exceptions at scale, purity 0.76-0.79 against the 0.80 bar); only 5 fall under half coverage. The 20
+  "loses unless stays aligned" lemmas cover 85-88% of exceptions at purity 0.96-1.00: a real regularity (keep
+  defending the attacked piece) with a further, unfound literal for the last 12-15%.
+The proof pass now holds the generator to its word: a sampled guard is a conjecture until the frame at ten
+times the placements agrees, and 45% of size three did not. The next build is the tie class (above), then the
+games-as-frame-source ordering Kaveh asked for.
