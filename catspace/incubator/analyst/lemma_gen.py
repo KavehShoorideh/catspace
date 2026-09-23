@@ -375,9 +375,9 @@ class Generator:
         cap = self.cap; self.cap = 60
         try:
             samples = {}
-            for t1 in self.dom.types[:5]:
-                for t2 in self.dom.types[-5:]:
-                    for state, _ in self.dom.placements((t1, t2), 60, 0):
+            for t1 in self.dom.types:
+                for t2 in self.dom.types:                                     # every ordered type pair (same side and opposite): a relation constant within each pair is type-determined
+                    for state, _ in self.dom.placements((t1, t2), 30, 0):
                         ids = self.dom.slots_of(state)
                         for r in rels:
                             args = [ids[0], ids[1]] if r.arity == 2 else [ids[0]]
