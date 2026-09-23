@@ -47,7 +47,7 @@ def test_watchers_pose_the_loss_and_its_answers():
     assert "h1c1" in loss[0].answers and "h1h2" in loss[0].answers and "h7g7" not in loss[0].answers
     win = [q for q in qs if q.watcher == "win"]
     assert win and "h1c1" in win[0].answers
-    b2 = chess.Board("4k3/8/8/8/8/8/5r2/7K w - - 0 1")                  # in check: every legal move answers
+    b2 = chess.Board("4k3/8/8/8/8/8/8/5r1K w - - 0 1")                  # in check (rook f1): every legal move answers
     qs2 = pose(b2)
     assert any(q.text == "get out of check" and q.answers == {m.uci() for m in b2.legal_moves} for q in qs2)
 
