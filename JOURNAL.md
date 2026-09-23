@@ -23736,7 +23736,7 @@ deepening runs as deep as the cap allows, so positions with few pieces (cheap no
 automatically; today a fixed max depth wastes the budget there; (2) the horizon term the rules already give:
 promotion. (1) first.
 
-## 2026-09-23 15:04 PDT — the incumbent at twenty games a rung
+## 2026-09-23 15:03 PDT — the incumbent at twenty games a rung
 
 With move ordering, lemmas on, one seed, OBS: depth 3 / cap 4,000 vs SF-1400: 11 wins 6 losses 2 draws 1 loss at
 the cap = 60%, 2,801 nodes/move, 0.30 s/move.  depth 5 / cap 16,000 vs SF-1700: 5 wins 8 losses 2 draws, 2 draws
