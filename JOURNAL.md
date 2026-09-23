@@ -23628,3 +23628,24 @@ returns are the same weak queen/rook lemmas; MCTS spends 6x the nodes pricing ev
 By Kaveh's rule (best shot first, attribute by binary search on failure): the pieces stay, the defaults go back to
 the plain search until a piece earns its place per node. Two things would earn it: lemmas that speak on real boards
 (the resolved-exchange outcome in the generator), and depth spent only where the search is unsure.
+
+## 2026-09-23 13:15 PDT — the bug hunt (Kaveh: "there might be a number of bugs in the code"), and lemma ids
+
+Bugs found today, each by a gauge, a crash, or a test written afterwards: (1) prove ignored the inherited guard
+(147 -> 878 proved); (2) the transposition table stored bound values as exact and a budget-exhausted depth returned
+mixed values -- adaptive depth scored 5% vs SF-1400 where depth 3 scored 60%; fixed: exact-only storage reused inside
+its window, last completed depth kept; (3) the player's graph cache keyed a verdict by the mover and its move ALONE,
+so the same rook move in a different position reused the verdict -- fixed: the cache records the bodies the search
+read and hits only when they match on the new board; (4) a local `import chess.engine` shadowed `chess` in
+play_games; (5) the loss watcher dereferenced a victim square on a check threat; (6) the buffered nohup log.
+Tests now (`tests/test_analyst_player.py`, `tests/test_analyst_lemma_gen.py`, 18 passing): the transposition table
+changes no root value on six positions; a mate in one is found at every depth; the resolved exchange reads a
+defended landing square as a trade and an undefended one as a loss; the hanging piece and the mate are chosen;
+the graph cache does not reuse across different bodies; lemma ids are stable and content-derived; guards round-trip;
+the box cover is exact; subsumption inherits both embeddings of [wK wR] into [wK wR wR]; the applier reproduces the
+generator's own guard evaluation on 300 of a frame's rows with 0 mismatches; prove at the generation cap reproduces
+the stored support, exceptions and coverage.
+Lemma ids: every lemma carries L-xxxxxxxx derived from its content (frame, actor, claim, full guard), stamped into
+every library and proof file on disk and printed in every log line and applier text; the inspector page shows them
+and filters by them, so Kaveh can cite the problematic ones.
+Fixed search, depth 3 vs SF-1400 rerun: 5 wins 4 losses 1 draw at the cap = 55% (before the fix 60%; one seed).
