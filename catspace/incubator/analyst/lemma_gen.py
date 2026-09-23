@@ -131,8 +131,8 @@ def _popcount(x: int) -> int:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2):
-        self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8):
+        self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
         self.rel = {r.name: r for r in dom.relations}
         self.state_rels = [r for r in dom.relations if not r.on_action]
         self.action_rels = [r for r in dom.relations if r.on_action]
@@ -203,9 +203,12 @@ class Generator:
         return cands
 
     # ---------------------------------------------------------------- the guard: greedy disjunction of small conjunctions
-    def find_guard(self, rows, exc: int, frame: Frame, cache: dict, max_terms: int = 3):
-        """exc: bitmask of the exceptions to explain. Returns (guard terms, covered, purity, matched)."""
+    def find_guard(self, rows, exc: int, frame: Frame, cache: dict, max_terms: int = 3, exc_all: int | None = None):
+        """exc: bitmask of the exceptions to explain (what the inherited guards left); exc_all: every exception, for
+        purity -- a matched row that is an exception the parents already explained is not a false positive.
+        Returns (guard terms, covered, purity, matched)."""
         n = len(rows); all_mask = (1 << n) - 1
+        exc_all = exc if exc_all is None else exc_all
         n_exc = _popcount(exc)
         if n_exc == 0:
             return [], 0, 1.0, 0
@@ -231,18 +234,20 @@ class Generator:
                 gain = _popcount(m & exc & ~covered)
                 if gain == 0:
                     continue
-                pur = _popcount(m & exc) / _popcount(m)
-                score = gain * pur
-                if best is None or score > best[0] or (score == best[0] and len(term) < len(best[1])):     # Occam: a longer term must strictly beat a shorter one
-                    best = (score, term, m, pur)
-            if best is None or best[3] < 0.6:
+                pur = _popcount(m & exc_all) / _popcount(m)
+                if pur < self.term_purity:
+                    continue                                                  # a term is an explanation only if it is mostly exceptions
+                key = (gain, -len(term), pur)                                 # most new exceptions; Occam on ties; then purity
+                if best is None or key > best[0]:
+                    best = (key, term, m, pur)
+            if best is None:
                 break
             chosen.append(best[1]); covered |= best[2] & exc
         matched_any = 0
         for term in chosen:
             matched_any |= self.term_mask(rows, term, cache, all_mask)
         cov = _popcount(matched_any & exc)
-        purity = cov / max(1, _popcount(matched_any))
+        purity = _popcount(matched_any & exc_all) / max(1, _popcount(matched_any))
         return chosen, cov, purity, _popcount(matched_any)
 
     # ---------------------------------------------------------------- evaluate one frame, one slot, given the sub-frames' lemmas
@@ -279,7 +284,7 @@ class Generator:
         broke = _popcount(exc & ~covered_inh)
         rest = exc & ~covered_inh
         sig = (tuple(frame.types), slot, n, holds, hash(exc))
-        guard, covered, purity, matched = self.find_guard(rows, rest, frame, cache)
+        guard, covered, purity, matched = self.find_guard(rows, rest, frame, cache, exc_all=exc)
         residual = _popcount(rest) - covered
         examples = {}
         for i, (state, ids, a, d) in enumerate(rows):
@@ -307,8 +312,7 @@ class Generator:
                 # types); such literals are checked on the frame's placements in evaluate(), and the embedding holds
                 # only if they are true of every row
                 missing = tuple((r, tuple(m[s] for s in sl), pol) for r, sl, pol in lf.literals if (r, tuple(m[s] for s in sl), pol) not in frame.literals)
-                out.append((lem.claim, remap_guard(lem.full_guard(), m), lem.frame.text() + f" slot {lem.slot}", missing))
-                break
+                out.append((lem.claim, remap_guard(lem.full_guard(), m), lem.frame.text() + f" slot {lem.slot} as {m}", missing))
         return out
 
     # ---------------------------------------------------------------- the schedule
