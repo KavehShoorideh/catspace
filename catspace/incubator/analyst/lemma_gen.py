@@ -477,8 +477,11 @@ def parse_frame(text: str) -> Frame:
 
 
 # ---------------------------------------------------------------- the exhaustive pass, and generalization, share one check
+_RELATIVE = False                                                            # the outcome definition the prove/generalize passes use (set by main)
+
+
 def _check(dom: Domain, fr: Frame, slot: int, claim: str, guard: list, cap: int, min_cov: float, min_pur: float) -> dict:
-    g = Generator(dom, cap=cap, log=lambda *a, **k: None)
+    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE)
     rows, complete = g.rows_of(fr, slot)
     if not rows:
         return dict(frame=fr.text(), slot=slot, claim=claim, status="no placements")
@@ -703,6 +706,8 @@ def main(argv=None):
         dom = domain(fens)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
+    global _RELATIVE
+    _RELATIVE = a.relative
     if a.cmd == "prove":
         prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers); return
     if a.cmd == "generalize":
