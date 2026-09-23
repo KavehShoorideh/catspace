@@ -103,8 +103,9 @@ class Search:
             return self.quiesce(b, side, alpha, beta, self.q_depth)
         key = (b._transposition_key(), depth, side)
         hit = self.tt.get(key)
-        if hit is not None and hit[0] >= depth:
-            return hit[1]
+        if hit is not None and hit[0] >= depth and hit[2] <= alpha and hit[3] >= beta:
+            return hit[1]                                                     # exact for this window only: a value found under [a, b] is reused only inside a narrower window
+        a0, b0 = alpha, beta
         to_move_us = b.turn == side
         moves = list(b.legal_moves)
         moves.sort(key=lambda m: -(mvv_lva(b, m) + (0.5 if b.gives_check(m) else 0.0)))
@@ -119,7 +120,8 @@ class Search:
                 if best < beta: beta = best
             if alpha >= beta:
                 break
-        self.tt[key] = (depth, best)
+        if a0 < best < b0:                                                    # store EXACT values only; a bound (fail-soft) value must not be reused as exact
+            self.tt[key] = (depth, best, a0, b0)
         return best
 
     def root(self, b: chess.Board, cands: list, depth: int) -> dict:
@@ -131,11 +133,17 @@ class Search:
                 break
             cur = {}
             alpha, beta = -MATE * 2, MATE * 2
+            complete = True
             for m in cands:
                 b.push(m); v = self.alphabeta(b, side, d - 1, alpha, beta); b.pop()
                 cur[m] = v
                 alpha = max(alpha, v)
-            vals = cur
+                if self.n > self.node_cap:
+                    complete = False; break                                  # this depth ran out of budget: its values are partial, keep the last completed depth
+            if complete or not vals:
+                vals = cur
+            else:
+                break
         return vals
 
 
@@ -176,7 +184,7 @@ class Player:
             self.ranker = GuideRanker(self.dom)
         self.lemma_usage = Counter(); self.stats = Counter(); self.watchers = False      # off by default: no gain per node at one seed (journal 2026-09-23 12:52)
         self.sched = None; self.frame_budget = 0; self._last_board = None      # the scheduler, when attached: budgeted, carried, reused frame tasks
-        self.extend_depth = 0; self.extend_factor = 4; self.unsure_margin = 0.5  # adaptive depth: --extend N plies where the search is unsure
+        self.extend_depth = 0; self.extend_factor = 4; self.unsure_margin = 0.15  # adaptive depth: --extend N plies where the search is unsure
 
     def attach_scheduler(self, frame_budget: int, store_path=None):
         from .scheduler import Scheduler
