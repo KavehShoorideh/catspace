@@ -705,7 +705,7 @@ def main(argv=None):
     ap.add_argument("--positions", type=int, default=20000, help="games source: how many positions from the knowledge corpus"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=120)
     ap.add_argument("--relative", action="store_true", help="outcome relative to the null action (what the standing threats already take)")
     ap.add_argument("--max-frames", type=int, default=0, help="per size, evaluate only the most frequent frames")
-    ap.add_argument("--oracle", choices=["material", "tablebase"], default="material", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
+    ap.add_argument("--oracle", choices=["material", "resolved", "tablebase"], default="material", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
     ap.add_argument("--worth", choices=["canonical", "blend"], default="canonical", help="the worth relations: the value table, or the tables' removal value blended toward it by distance to the five-men edge"); ap.add_argument("--worth-tau", type=float, default=4.0)
     a = ap.parse_args(argv)
     if a.domain == "chess":

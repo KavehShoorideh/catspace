@@ -296,6 +296,68 @@ def lands_attacked(state, action):
     return bool(nb.attackers(nb.turn, m.to_square))
 
 
+def _quiesce(b: chess.Board, side: chess.Color, alpha: float, beta: float, depth: int) -> float:
+    """The RESOLVED EXCHANGE: material from `side` after captures (and promotions) settle, both sides choosing, standing
+    pat allowed except in check. The opponent's reply in the generator's outcome becomes this instead of one capture
+    (2026-09-23: the surprise gauge's 121 contradictions were trades onto defended squares; three methods pointed at
+    "what happens to the piece after it lands"). Rules only: captures, checks, material."""
+    stand = _material(b, side) + ((-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0)
+    if b.is_checkmate() or b.is_stalemate() or depth == 0:
+        return stand
+    us = b.turn == side
+    if us:
+        if stand >= beta:
+            return stand
+        alpha = max(alpha, stand)
+    else:
+        if stand <= alpha:
+            return stand
+        beta = min(beta, stand)
+    moves = [m for m in b.legal_moves if b.is_capture(m) or m.promotion] if not b.is_check() else list(b.legal_moves)
+    moves.sort(key=lambda m: -(VAL[b.piece_at(m.to_square).piece_type] if b.piece_at(m.to_square) else 0.0))
+    best = stand
+    for m in moves:
+        b.push(m); v = _quiesce(b, side, alpha, beta, depth - 1); b.pop()
+        if us:
+            best = max(best, v); alpha = max(alpha, best)
+        else:
+            best = min(best, v); beta = min(beta, best)
+        if alpha >= beta:
+            break
+    return best
+
+
+def resolved_reply_scalar(after: State, e: int) -> float:
+    """The actor's side's material after the opponent's best reply, the exchanges RESOLVED (captures both ways, up to
+    six plies). A capture onto a defended square reads as a trade, a hanging piece as a loss, a safe check as a check."""
+    b = after.board
+    side = not b.turn
+    if b.is_checkmate():
+        return _material(b, side) + (-1000.0 if b.turn == side else 1000.0)
+    if b.is_stalemate():
+        return _material(b, side)
+    worst = None
+    for r in b.legal_moves:
+        if not (b.is_capture(r) or b.gives_check(r)):
+            continue
+        nb = b.copy(stack=False); nb.push(r)
+        v = _quiesce(nb, side, -1e9, 1e9, 6)
+        worst = v if worst is None else min(worst, v)
+    return worst if worst is not None else _material(b, side)
+
+
+def resolved_null_reply_scalar(state: State, e: int) -> float:
+    b = state.board.copy(stack=False)
+    side = b.piece_at(e).color
+    b.turn = side
+    if b.is_check():
+        return None
+    b.turn = not side
+    if not b.is_valid():
+        return None
+    return resolved_reply_scalar(State(b, list(state.ids)), e)
+
+
 def null_reply_scalar(state: State, e: int) -> float:
     """The actor's side's material after the opponent's best immediate reply if the actor PASSES (the null move): what
     the standing threats already take. On a full board the opponent can nearly always capture something, so an
@@ -403,6 +465,10 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
             Relation("gives_check", 0, True, gives_check), Relation("captures", 0, True, captures),
             Relation("captures_worth_ge", 1, True, captures_worth_ge), Relation("stays_aligned", 1, True, stays_aligned),
             Relation("lands_attacked", 0, True, lands_attacked)]
+    if oracle == "resolved":
+        return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
+                      entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
+                      null_reply_scalar=resolved_null_reply_scalar)
     if oracle == "tablebase":
         assert fens is None, "the tablebase oracle is for sampled frames (at most five men)"
         rels = [Relation("tb_worth_ge", 2, fn=tb_worth_ge) if r.name == "worth_ge" else Relation("captures_tb_worth_ge", 1, True, tb_captures_worth_ge) if r.name == "captures_worth_ge" else r for r in rels]
