@@ -270,6 +270,12 @@ class Player:
             # prune: moves every lemma calls losing AND the resolved exchange says lose material, unless nothing else remains
             keep = [m for m in ordered if not (gv.get(m, (0, 0))[1] > 0 and gv.get(m, (0, 0))[0] == 0 and resolved[m] < resolved[ordered[0]] - 0.5)]
             cands = (keep or ordered)[: self.top_k]
+            if self.watchers and questions:
+                # the watchers' answers are CANDIDATES the search must verify, never a bonus on the verified value:
+                # the top answers of the highest-stake question join the candidate list
+                q = max(questions, key=lambda q: q.stake)
+                extra = [m for m in ordered if m.uci() in q.answers and m not in cands][:3]
+                cands = cands + extra
             self.stats["pruned"] += len(legal) - len(keep); self.stats["legal"] += len(legal)
             # 3. move space: alpha-beta over the candidates; DEEPER ONLY WHERE UNSURE (Kaveh, adaptive budget): when the
             #    top two are close or the best move's value disagrees with its resolved exchange, extend the depth
@@ -288,8 +294,12 @@ class Player:
                     self.stats["extended"] += 1
                 self.stats["decisions"] += 1
             if self.watchers:
-                rows = actor(b, {m: dict(value=vals.get(m, -MATE * 3), resolved=resolved[m], lemma=gv.get(m, (0, 0))) for m in cands}, questions)
-                best = rows[0]["move"]; answers = rows[0]["answers"]
+                # the actor: the search's value decides; the answered stakes only break ties within a tenth of a pawn
+                rows = actor(b, {m: dict(value=vals.get(m, -MATE * 3), resolved=resolved[m], lemma=gv.get(m, (0, 0))) for m in cands}, questions, weight=0.0)
+                top_v = rows[0]["value"]
+                tied = [r for r in rows if r["value"] >= top_v - 0.1]
+                tied.sort(key=lambda r: -sum(float(a.split("(")[-1].rstrip(")")) for a in r["answers"]) if r["answers"] else 0.0)
+                best = tied[0]["move"]; answers = tied[0]["answers"]
             else:
                 best = max(cands, key=lambda m: (vals.get(m, -MATE * 3), prior(m))); answers = []
         info = dict(move=best.uci(), value=vals.get(best), resolved=resolved[best], lemma=gv.get(best), cands=[c.uci() for c in cands], nodes=nodes.total(counts), counts=counts,
