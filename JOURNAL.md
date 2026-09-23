@@ -23772,3 +23772,13 @@ stays low because the OUTCOME on a full board is not a property of a two-piece f
 the relative delta. The next question for the real-board library is the outcome definition, not the vocabulary:
 a per-frame outcome (what THIS frame's pieces gain or lose after the reply, the rest of the board held fixed) would
 make the claim local again. That is a design decision for Kaveh.
+
+## 2026-09-23 15:49 PDT — generalization over the frame's literal variants
+
+`generalize --over-literals` (the frame literals' relation names are variables too; cells = types + relations; unseen
+cells bounded to 200 a schema; 36,153 checked at cap 10,000, 5.4 h across two pauses), OBS: 7,165 proved lemmas ->
+2,502 schemas (over types only: 2,979) stated as 5,096 boxes; 1,606 schemas are one box; held cells 14,563 (types
+only: 11,384); unseen instantiations proved 7,398, failed 28,755. The aligned/attacks siblings merge as expected
+("{aligned,attacks}(0,2)"), and same_side/attacks merge where the same-side attack is a defence. The box texts of
+the largest schemas run to five boxes and are hard to read; the page should show a schema as its member lemmas'
+ids with the merged literal sets, not as a formula. Files: schemas_lit_chess.json.
