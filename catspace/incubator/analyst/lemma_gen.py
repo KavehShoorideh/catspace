@@ -376,14 +376,18 @@ class Generator:
         # others: maximal under implication among the consequences, and implying at least one other consequence
         # ("the black queen attacks the bishop", which carries "aligned" and "attacked" with it); leaves implied
         # straight from a stated literal ("the black queen is attacked") are the same thing said smaller
-        downstream = {f: sum(1 for g in rest if g != f and implies(f, g)) for f in rest}
+        downstream = {f: sum(1 for g in rest if g != f and implies(f, g) and not implies(g, f)) for f in rest}   # strict consequences only (a mirror is not a consequence)
         kept = [f for f in rest if downstream[f] >= 1 and not any(g != f and implies(g, f) and not implies(f, g) for g in rest)]
         # among mutually equivalent kept facts keep one
         out = []
         for f in sorted(kept, key=lambda f: -downstream[f]):
             if not any(implies(f, g) and implies(g, f) for g in out):
                 out.append(f)
-        return [(r, sl, pol, "i.e.") for r, sl, pol in restated] + [(r, sl, pol, "also") for r, sl, pol in out]
+        uniq_restated = []
+        for f in restated:                                                    # one restatement per equivalence class (aligned(0,1) and aligned(1,0) are one)
+            if not any(implies(f, g) and implies(g, f) for g in uniq_restated):
+                uniq_restated.append(f)
+        return [(r, sl, pol, "i.e.") for r, sl, pol in uniq_restated] + [(r, sl, pol, "also") for r, sl, pol in out]
 
     def implications_given_types(self, types: tuple) -> set:
         """(A_rel, A_slots, B_rel, B_slots): A implies B on every sampled placement of the BARE frame of these types
