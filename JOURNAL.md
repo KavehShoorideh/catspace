@@ -23547,3 +23547,13 @@ supply it, both generic, for Kaveh to choose: (a) the outcome as the resolved ca
 (a small quiescence search inside the scalar -- "search on top of our operations"; the tablebase oracle is exactly
 this, made exact, for sampled frames); (b) new action-level relations proposed from the residual (lands defended;
 still defends X after the move). (a) keeps the vocabulary pure; (b) keeps the outcome one ply.
+
+## 2026-09-23 12:02 PDT — the tablebase detour, closed: canonical values (Kaveh)
+
+Built and kept behind flags, not used: `--oracle tablebase` (WDL as the claim scalar for frames of <= 5 men, no reply
+search) and `--worth blend` (a piece's worth as its removal value over sampled five-men sub-frames, blended toward the
+canonical value by exp(-(men-5)/tau)). What closed it: the tables' worth is zero whenever removing the piece does not
+change the win/draw/loss class (a rook beside a winning queen is "worth" 0.0), and a blend over sub-frames needs the
+distribution of which ending the game will actually reach -- the trade question -- which we do not have. Decision:
+canonical values, material oracle; the tablebase run (55 admissions by frame 300 of size two) killed at 12:01; the
+paused over-literals generalization resumed.
