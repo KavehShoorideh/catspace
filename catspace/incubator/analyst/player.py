@@ -175,6 +175,37 @@ class Player:
             from .body_guide import GuideRanker
             self.ranker = GuideRanker(self.dom)
         self.lemma_usage = Counter(); self.stats = Counter(); self.watchers = True
+        self.sched = None; self.frame_budget = 0; self._last_board = None      # the scheduler, when attached: budgeted, carried, reused frame tasks
+
+    def attach_scheduler(self, frame_budget: int, store_path=None):
+        from .scheduler import Scheduler
+        self.sched = Scheduler(store_path=store_path); self.frame_budget = frame_budget
+
+    def observe(self, board_before: chess.Board, move: chess.Move, ply: int):
+        """Called for EVERY move of the game (ours and theirs): the scheduler drops what the move invalidated."""
+        if self.sched is not None:
+            from .scheduler import changed_squares
+            self.sched.on_position(ply, changed_squares(board_before, move))
+
+    def scheduled_verdicts(self, b: chess.Board, moves: list, importance: dict) -> dict:
+        """The graph layer through the scheduler: ask for every root move's frame task with its importance, run the
+        budget, read what the store holds (this move's answers and any older ones whose content recurred)."""
+        from .scheduler import frame_task
+        keys = {}
+        for m in moves:
+            key, fp, fn = frame_task(self.app, b, m, self.max_bodies, self.ranker)
+            keys[m] = key
+            if self.sched.want("frame", key, fp, importance.get(m, 0.0), fn):
+                self.stats["sched_hit"] += 1
+        spent = self.sched.run(self.frame_budget)
+        self.stats["sched_run"] += spent
+        out = {}
+        for m in moves:
+            r = self.sched.get(keys[m])
+            if r is not None:
+                out[m] = (r["keeps"], r["loses"]); nodes.tick("lemma", r.get("levels", 1))
+        self.stats["sched_answered"] += len(out); self.stats["sched_asked"] += len(moves)
+        return out
 
     def graph_verdicts(self, b: chess.Board, moves: list) -> dict:
         """move -> (keeps, loses) over the body search, cached by frame content."""
@@ -212,8 +243,13 @@ class Player:
             resolved = {}
             for m in legal:
                 b.push(m); resolved[m] = s.quiesce(b, side, -MATE * 2, MATE * 2, s.q_depth); b.pop()
-            # 2. graph space: lemma verdicts, cached by frame content
-            gv = self.graph_verdicts(b, legal) if self.app else {}
+            # 2. graph space: lemma verdicts -- through the scheduler when attached (importance from the resolved
+            #    exchange: the moves that change material most are asked about first), else all at once
+            if self.app and self.sched is not None:
+                imp = {m: abs(resolved[m] - material(b, side)) + (1.0 if b.is_capture(m) else 0.0) for m in legal}
+                gv = self.scheduled_verdicts(b, legal, imp)
+            else:
+                gv = self.graph_verdicts(b, legal) if self.app else {}
             def prior(m):
                 k, l = gv.get(m, (0, 0))
                 lemma = (1.0 if k > l else -1.0 if l > k else 0.0)
@@ -305,7 +341,7 @@ Player.choose_mcts = _choose_mcts
 
 
 def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: int, library: Path | None, proved: Path | None, use_lemmas: bool, guide: bool,
-               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400, watchers: bool = True):
+               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400, watchers: bool = True, frame_budget: int = 0):
     from .maia import Maia
     rng = random.Random(seed)
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
@@ -315,6 +351,8 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
         sf.configure({"UCI_LimitStrength": True, "UCI_Elo": max(1320, maia_rating), "Threads": 1, "Hash": 64})
     pl = Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
     pl.search_kind = search_kind; pl.sims = sims; pl.watchers = watchers
+    if frame_budget:
+        pl.attach_scheduler(frame_budget, store_path=OUT / f"scheduler_store{tag}.json")
     results = Counter(); node_hist = []; t_hist = []; games = []
     for g in range(n):
         b = chess.Board(); our = chess.WHITE if g % 2 == 0 else chess.BLACK
@@ -326,7 +364,8 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
                 m = sf.play(b, chess.engine.Limit(depth=8)).move
             else:
                 m = opp.sample(b, temperature=1.0, rng=rng) if opp else rng.choice(list(b.legal_moves))
-            moves.append(b.san(m)); b.push(m)
+            moves.append(b.san(m)); before = b.copy(stack=False); b.push(m)
+            pl.observe(before, m, len(moves))
         oc = b.outcome()
         if oc is None:
             mat = material(b, our)
@@ -335,8 +374,11 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
             res = "draw" if oc.winner is None else ("win" if oc.winner == our else "loss")
         results[res] += 1
         games.append(dict(game=g, our="white" if our else "black", result=res, plies=len(moves), moves=" ".join(moves)))
-        log(f"[player] game {g + 1}/{n} as {'white' if our else 'black'} vs {opponent}-{maia_rating}: {res} in {len(moves)} plies; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}, s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; graph cache hits {pl.cache.hits} misses {pl.cache.misses}")
+        log(f"[player] game {g + 1}/{n} as {'white' if our else 'black'} vs {opponent}-{maia_rating}: {res} in {len(moves)} plies; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}, s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; graph cache hits {pl.cache.hits} misses {pl.cache.misses}"
+            + (f"; scheduler answered {pl.stats['sched_answered']}/{pl.stats['sched_asked']} root moves, store hits {pl.stats['sched_hit']}, tasks run {pl.stats['sched_run']}, {dict((k, v) for k, v in pl.sched.stats.items() if k in ('dropped', 'carried'))}" if pl.sched else ""))
         pl.cache.save()
+        if pl.sched:
+            pl.sched.save()
     score = (results["win"] + results["win(cap)"] + 0.5 * (results["draw"] + results["draw(cap)"])) / max(1, n)
     log(f"[player] {n} games vs {opponent}-{maia_rating}, {search_kind}{' sims ' + str(sims) if search_kind == 'mcts' else ''}, depth {depth}, node cap {node_cap}, lemmas {'on' if use_lemmas else 'off'}{' + guide' if guide else ''}: {dict(results)}; score {100 * score:.0f}%; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}; s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; pruned {pl.stats['pruned']}/{pl.stats['legal']} root moves")
     for t, k in pl.lemma_usage.most_common(6):
@@ -355,7 +397,7 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["play", "move", "analyse"]); ap.add_argument("--games", type=int, default=10); ap.add_argument("--maia", type=int, default=1100); ap.add_argument("--opponent", choices=["maia", "random", "stockfish"], default="maia")
     ap.add_argument("--depth", type=int, default=3); ap.add_argument("--nodes", type=int, default=4000); ap.add_argument("--max-bodies", type=int, default=4); ap.add_argument("--plies", type=int, default=200)
     ap.add_argument("--library", default="data/derived/lemmas/library_games_size3.json"); ap.add_argument("--proved", default="data/derived/lemmas/proved_games_size3.json")
-    ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
+    ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--no-watchers", action="store_true"); ap.add_argument("--frame-budget", type=int, default=0, help="attach the scheduler: frame tasks run per move"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
     a = ap.parse_args(argv)
     if a.cmd == "analyse":
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
@@ -367,7 +409,7 @@ def main(argv=None):
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
         pl.search_kind = a.search; pl.sims = a.sims
         b = chess.Board(a.fen or chess.STARTING_FEN); m, info = pl.choose(b); print(b.san(m), json.dumps({k: v for k, v in info.items() if k != "counts"})); return
-    play_games(a.games, a.maia, a.depth, a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=not a.no_watchers)
+    play_games(a.games, a.maia, a.depth, a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims, watchers=not a.no_watchers, frame_budget=a.frame_budget)
 
 
 if __name__ == "__main__":
