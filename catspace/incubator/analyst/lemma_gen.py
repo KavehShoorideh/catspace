@@ -510,10 +510,20 @@ def prove(dom: Domain, library_path: Path, cap: int, min_cov: float = 0.95, min_
 
 
 # ---------------------------------------------------------------- generalization: anti-unification over the slot types
-def schema_key(entry: dict):
-    """Everything about a lemma except its slot types: literals, actor, claim, the full guard (as a set of terms)."""
+def schema_key(entry: dict, over_literals: bool = False):
+    """Everything about a lemma except its slot types: literals, actor, claim, the full guard (as a set of terms).
+    over_literals: the frame literals' RELATION NAMES become variables too (their slots and polarity stay), so the
+    aligned / attacks / same_side siblings of a frame fall into one schema."""
     guard = guard_from_json(entry.get("inherited")) + guard_from_json(entry.get("guard"))
-    return (len(entry["types"]), tuple(sorted((r, tuple(sl), pol) for r, sl, pol in entry["literals"])), entry["slot"], entry["claim"], tuple(sorted(set(guard))))
+    lits = sorted((r, tuple(sl), pol) for r, sl, pol in entry["literals"])
+    shape = tuple((None if over_literals else r, sl, pol) for r, sl, pol in lits)
+    return (len(entry["types"]), shape, entry["slot"], entry["claim"], tuple(sorted(set(guard))))
+
+
+def schema_tuple(entry: dict, over_literals: bool) -> tuple:
+    """The cell a lemma occupies: its slot types, plus (over_literals) its literals' relation names in sorted-literal order."""
+    lits = sorted((r, tuple(sl), pol) for r, sl, pol in entry["literals"])
+    return tuple(entry["types"]) + (tuple(r for r, _, _ in lits) if over_literals else ())
 
 
 def box_cover(held: set, k: int) -> list:
@@ -550,7 +560,8 @@ def _gen_job(args):
     return _check(_WORKER_DOM, fr, slot, claim, guard, cap, min_cov, min_pur)
 
 
-def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, log=print, workers: int = 1, only_proved: bool = True):
+def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: int, min_cov: float = 0.95, min_pur: float = 0.8, log=print, workers: int = 1, only_proved: bool = True,
+               over_literals: bool = False, max_unseen: int = 0):
     """Group lemmas by schema_key; per slot the set of observed types; the unseen instantiations (product minus
     observed) are checked at the prover's cap. A SCHEMA states the lemma over exactly the type tuples that held."""
     global _WORKER_DOM
@@ -564,49 +575,68 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
     for e in lib:
         if only_proved and status and status.get((e["frame"], e["slot"])) != "PROVED":
             continue
-        groups[schema_key(e)].append(e)
+        groups[schema_key(e, over_literals)].append(e)
     cache = {}
-    prior = OUT / f"schemas_{dom.name}.json"
+    tag = "_lit" if over_literals else ""
+    prior = OUT / f"schemas{tag}_{dom.name}.json"
     if prior.exists():                                                        # cells already checked by an earlier pass are not re-proved
         for ps in json.load(open(prior)):
             pk = (ps["size"], tuple(sorted((r, tuple(sl), pol) for r, sl, pol in ps["literals"])), ps["slot"], ps["claim"], ps["guard"])
+            if ps.get("over_literals"):
+                pk = (ps["size"], tuple((None, tuple(sl), pol) for r, sl, pol in ps["shape"]), ps["slot"], ps["claim"], ps["guard"])
             for u in ps.get("unseen_proved", []) + ps.get("unseen_failed", []):
                 cache[(pk, tuple(u[0]))] = u
     schemas = []; jobs = []; job_owner = []
     for key, members in groups.items():
-        size, literals, slot, claim, guard = key
-        observed = sorted({tuple(m["types"]) for m in members})
-        per_slot = [sorted({t[i] for t in observed}) for i in range(size)]
+        size, shape, slot, claim, guard = key
+        observed = sorted({schema_tuple(m, over_literals) for m in members})
+        width = len(observed[0])
+        per_slot = [sorted({t[i] for t in observed}) for i in range(width)]
         seen = set(observed)
         unseen = [tuple(p) for p in itertools.product(*per_slot) if tuple(p) not in seen]
-        s = dict(size=size, literals=[[r, list(sl), pol] for r, sl, pol in literals], slot=slot, claim=claim, guard=guard_text(list(guard)),
+        if max_unseen and len(unseen) > max_unseen:
+            unseen = unseen[:max_unseen]                                       # bounded: the cells nearest in product order
+        s = dict(size=size, width=width, over_literals=over_literals, shape=[[r, list(sl), pol] for r, sl, pol in shape], slot=slot, claim=claim, guard=guard_text(list(guard)),
                  guard_terms=[[[r, list(sl), pol] for r, sl, pol in t] for t in guard], per_slot=per_slot, observed=[list(o) for o in observed],
                  unseen=[list(u) for u in unseen], unseen_proved=[], unseen_failed=[])
+        s["literals"] = s["shape"]
         schemas.append(s)
-        pk = (size, literals, slot, claim, guard_text(list(guard)))
+        pk = (size, shape, slot, claim, guard_text(list(guard)))
+        def lits_of(cell):
+            if not over_literals:
+                return [(r, sl, pol) for r, sl, pol in shape]
+            return [(cell[size + j], sl, pol) for j, (_, sl, pol) in enumerate(shape)]
         for u in unseen:
             hit = cache.get((pk, tuple(u)))
             if hit is not None:
                 (s["unseen_proved"] if hit[1] == "PROVED" else s["unseen_failed"]).append(hit); continue
-            jobs.append((u, [(r, sl, pol) for r, sl, pol in literals], slot, claim, list(guard), cap, min_cov, min_pur)); job_owner.append(len(schemas) - 1)
+            jobs.append((u[:size], lits_of(u), slot, claim, list(guard), cap, min_cov, min_pur)); job_owner.append(len(schemas) - 1)
     log(f"[lemma_gen/generalize] {len(lib)} lemmas ({'proved only' if only_proved and status else 'all'}) -> {len(groups)} schemas; {len(jobs)} unseen instantiations to check ({len(cache)} cached)")
     results = _pool_map(_gen_job, jobs, workers, log, "generalize")
     for owner, job, o in zip(job_owner, jobs, results):
-        (schemas[owner]["unseen_proved"] if o.get("status") == "PROVED" else schemas[owner]["unseen_failed"]).append([list(job[0]), o.get("status"), round(o.get("coverage", 0) or 0, 2), round(o.get("purity", 0) or 0, 2)])
+        cell = list(job[0]) + ([r for r, _, _ in job[1]] if over_literals else [])
+        (schemas[owner]["unseen_proved"] if o.get("status") == "PROVED" else schemas[owner]["unseen_failed"]).append([cell, o.get("status"), round(o.get("coverage", 0) or 0, 2), round(o.get("purity", 0) or 0, 2)])
     for s in schemas:
         held = {tuple(o) for o in s["observed"]} | {tuple(u[0]) for u in s["unseen_proved"]}
-        s["boxes"] = box_cover(held, s["size"])                                # the schema IS this union of product boxes: exactly what held
-        s["held"] = len(held); s["cells"] = sum(1 for _ in itertools.product(*[sorted({t[i] for t in held}) for i in range(s["size"])]))
-        s["per_slot_held"] = [sorted({t[i] for t in held}) for i in range(s["size"])]
-        s["text"] = (" ∪ ".join("[" + " ".join("X%d∈{%s}" % (i, ",".join(ts)) for i, ts in enumerate(box)) + "]" for box in s["boxes"]) + " "
-                     + (" & ".join(lit_text(r, sl, pol) for r, sl, pol in s["literals"]) or "(no relation)")
+        w = s["width"]
+        s["boxes"] = box_cover(held, w)                                        # the schema IS this union of product boxes: exactly what held
+        s["held"] = len(held); s["cells"] = sum(1 for _ in itertools.product(*[sorted({t[i] for t in held}) for i in range(w)]))
+        s["per_slot_held"] = [sorted({t[i] for t in held}) for i in range(w)]
+        def box_text(box):
+            head = " ".join("X%d∈{%s}" % (i, ",".join(box[i])) for i in range(s["size"]))
+            if over_literals:
+                lits = " & ".join(("" if pol else "not ") + "{%s}(%s)" % (",".join(box[s["size"] + j]), ",".join(map(str, sl))) for j, (_, sl, pol) in enumerate(s["shape"]))
+                return f"[{head}] {lits or '(no relation)'}"
+            return f"[{head}]"
+        s["text"] = (" ∪ ".join(box_text(box) for box in s["boxes"]) + " "
+                     + ("" if over_literals else (" & ".join(lit_text(r, sl, pol) for r, sl, pol in s["literals"]) or "(no relation)"))
                      + f" :: slot {s['slot']} {s['claim']} unless {s['guard'] or '(nothing)'}"
                      + f"  [{len(s['observed'])} observed, {len(s['unseen_proved'])} unseen proved, {len(s['unseen_failed'])} unseen failed; {len(s['boxes'])} boxes over {s['held']} held of {s['cells']} in the union box]")
     schemas.sort(key=lambda s: (-s["held"], len(s["boxes"])))
     for s in schemas:
         log("  " + s["text"])
     OUT.mkdir(parents=True, exist_ok=True)
-    json.dump(schemas, open(OUT / f"schemas_{dom.name}.json", "w"), indent=1)
+    json.dump(schemas, open(OUT / f"schemas{tag}_{dom.name}.json", "w"), indent=1)
     n_inst = sum(len(s["observed"]) for s in schemas)
     nb = sum(len(s["boxes"]) for s in schemas)
     log(f"[lemma_gen/generalize] {n_inst} lemmas -> {len(schemas)} schemas stated as {nb} boxes; unseen instantiations proved {sum(len(s['unseen_proved']) for s in schemas)}, failed {sum(len(s['unseen_failed']) for s in schemas)}; schemas that are ONE box: {sum(1 for s in schemas if len(s['boxes']) == 1)}")
@@ -619,6 +649,7 @@ def main(argv=None):
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--workers", type=int, default=1); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
+    ap.add_argument("--over-literals", action="store_true", help="generalize: the frame literals' relation names are variables too"); ap.add_argument("--max-unseen", type=int, default=0)
     a = ap.parse_args(argv)
     if a.domain == "chess":
         from .chess_domain import domain
@@ -628,7 +659,7 @@ def main(argv=None):
     if a.cmd == "prove":
         prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers); return
     if a.cmd == "generalize":
-        generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all); return
+        generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
     g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
