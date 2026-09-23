@@ -23689,7 +23689,7 @@ Reading: ten-game samples at one seed swing by 20 points either way; ordering co
 moved up while the depth-5 rung moved down. No verdict; the ordering stays (it is standard and cannot hurt per
 node); the next gauges use 20 games a rung.
 
-## 2026-09-23 14:35 PDT — the library page: minimal implied facts, own-guard examples, fired terms (Kaveh's three corrections)
+## 2026-09-23 14:30 PDT — the library page: minimal implied facts, own-guard examples, fired terms (Kaveh's three corrections)
 
 From Kaveh reading L-2904d407 ([wQ wB bQ] same side, the bishop attacks the black queen; the queen acting LOSES
 unless a safe check, a capture, or battery-plus-check): (1) the fact that makes it true -- the black queen attacks
