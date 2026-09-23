@@ -23794,7 +23794,7 @@ shares (3,152 moves) CONDITIONED on a random prefix of the relevant set already 
 the MLP guide scored 0.873 on the unconditional task and the relation heuristic 0.645. 46 s to train on CPU.
 Wired as `--guide tf` in body_search and the player; the body search now passes the frame so far to the ranker.
 
-## 2026-09-23 16:30 PDT — composition, first measurement: the in-world values do not compose (yet)
+## 2026-09-23 16:31 PDT — composition, first measurement: the in-world values do not compose (yet)
 
 150 real positions, every legal move, composed prediction (mean over the lemmas embedded in the frame of the
 outcome their verdict implies) vs the full-board truth (resolved exchange relative to the null move), OBS:
