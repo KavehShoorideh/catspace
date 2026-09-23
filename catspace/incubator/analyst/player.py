@@ -200,6 +200,8 @@ class Player:
         return out
 
     def choose(self, b: chess.Board) -> tuple[chess.Move, dict]:
+        if getattr(self, "search_kind", "ab") == "mcts":
+            return self.choose_mcts(b)
         side = b.turn
         legal = list(b.legal_moves)
         counts = {}
@@ -228,8 +230,62 @@ class Player:
         return best, info
 
 
+def _analyse(self, b: chess.Board, top: int = 6) -> list:
+    """THE ANALYSIS (Kaveh 2026-09-23: "the final actor evaluates each move and light lines and gives us its
+    analysis, like a Stockfish analysis"): every root candidate with its value, the resolved exchange, the short
+    line the search relied on, the lemma verdict on it, and the duties it leaves or lifts. choose() takes the top."""
+    from .lemma_apply import duties
+    side = b.turn
+    legal = list(b.legal_moves)
+    s = Search(node_cap=self.node_cap)
+    resolved = {}
+    for m in legal:
+        b.push(m); resolved[m] = s.quiesce(b, side, -MATE * 2, MATE * 2, s.q_depth); b.pop()
+    gv = self.graph_verdicts(b, legal) if self.app else {}
+    s.n = 0
+    vals = s.root(b, legal, self.depth)
+    dut = duties(self.app, b) if self.app else {}
+    out = []
+    for m in sorted(legal, key=lambda m: -(vals.get(m, -MATE * 3), resolved[m])[0]):
+        # a light line: the reply the search would fear most, one ply, then our resolved answer
+        b.push(m)
+        reply = None
+        if not b.is_game_over():
+            worst = None
+            for r in b.legal_moves:
+                b.push(r); v = s.quiesce(b, side, -MATE * 2, MATE * 2, 4); b.pop()
+                if worst is None or v < worst[0]:
+                    worst = (v, r)
+            reply = worst[1] if worst else None
+        san_reply = b.san(reply) if reply else ""
+        b.pop()
+        k, l = gv.get(m, (0, 0))
+        left = [d for d in dut.get(m.from_square, {}).get("duties", []) if d["stake"] > 0]
+        out.append(dict(move=b.san(m), value=round(vals.get(m, float("nan")), 2), resolved=round(resolved[m], 2), line=f"{b.san(m)} {san_reply}".strip(),
+                        lemmas=f"{k} keep / {l} lose" if (k or l) else "no lemma speaks", duties_left=[f"holds {','.join(d['holds'])} (stake {d['stake']:+.0f})" for d in left[:2]]))
+        if len(out) >= top:
+            break
+    return out
+
+
+Player.analyse = _analyse
+
+
+def _choose_mcts(self, b: chess.Board):
+    from .mcts import MCTS
+    counts = {}
+    with nodes.count(counts):
+        m = MCTS(self, sims=self.sims, q_depth=6)
+        r = m.run(b)
+    info = dict(move=r["move"].uci(), value=r["value"], visits=r["visits"], nodes=nodes.total(counts), counts=counts)
+    return r["move"], info
+
+
+Player.choose_mcts = _choose_mcts
+
+
 def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: int, library: Path | None, proved: Path | None, use_lemmas: bool, guide: bool,
-               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = ""):
+               plies: int = 200, seed: int = 0, opponent: str = "maia", log=print, tag: str = "", search_kind: str = "ab", sims: int = 400):
     from .maia import Maia
     rng = random.Random(seed)
     opp = Maia(rating=maia_rating) if opponent == "maia" else None
@@ -239,6 +295,7 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
         sf = chess.engine.SimpleEngine.popen_uci("/opt/homebrew/bin/stockfish")
         sf.configure({"UCI_LimitStrength": True, "UCI_Elo": max(1320, maia_rating), "Threads": 1, "Hash": 64})
     pl = Player(library, proved, depth=depth, node_cap=node_cap, max_bodies=max_bodies, cache_path=OUT / f"graph_cache{tag}.json", use_lemmas=use_lemmas, guide=guide, log=log)
+    pl.search_kind = search_kind; pl.sims = sims
     results = Counter(); node_hist = []; t_hist = []; games = []
     for g in range(n):
         b = chess.Board(); our = chess.WHITE if g % 2 == 0 else chess.BLACK
@@ -262,7 +319,7 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
         log(f"[player] game {g + 1}/{n} as {'white' if our else 'black'} vs {opponent}-{maia_rating}: {res} in {len(moves)} plies; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}, s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; graph cache hits {pl.cache.hits} misses {pl.cache.misses}")
         pl.cache.save()
     score = (results["win"] + results["win(cap)"] + 0.5 * (results["draw"] + results["draw(cap)"])) / max(1, n)
-    log(f"[player] {n} games vs {opponent}-{maia_rating}, depth {depth}, node cap {node_cap}, lemmas {'on' if use_lemmas else 'off'}{' + guide' if guide else ''}: {dict(results)}; score {100 * score:.0f}%; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}; s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; pruned {pl.stats['pruned']}/{pl.stats['legal']} root moves")
+    log(f"[player] {n} games vs {opponent}-{maia_rating}, {search_kind}{' sims ' + str(sims) if search_kind == 'mcts' else ''}, depth {depth}, node cap {node_cap}, lemmas {'on' if use_lemmas else 'off'}{' + guide' if guide else ''}: {dict(results)}; score {100 * score:.0f}%; nodes/move {sum(node_hist) / max(1, len(node_hist)):.0f}; s/move {sum(t_hist) / max(1, len(t_hist)):.2f}; pruned {pl.stats['pruned']}/{pl.stats['legal']} root moves")
     for t, k in pl.lemma_usage.most_common(6):
         log(f"    used {k:5d}  {t[:140]}")
     OUT.mkdir(parents=True, exist_ok=True)
@@ -276,15 +333,22 @@ def play_games(n: int, maia_rating: int, depth: int, node_cap: int, max_bodies: 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["play", "move"]); ap.add_argument("--games", type=int, default=10); ap.add_argument("--maia", type=int, default=1100); ap.add_argument("--opponent", choices=["maia", "random", "stockfish"], default="maia")
+    ap.add_argument("cmd", choices=["play", "move", "analyse"]); ap.add_argument("--games", type=int, default=10); ap.add_argument("--maia", type=int, default=1100); ap.add_argument("--opponent", choices=["maia", "random", "stockfish"], default="maia")
     ap.add_argument("--depth", type=int, default=3); ap.add_argument("--nodes", type=int, default=4000); ap.add_argument("--max-bodies", type=int, default=4); ap.add_argument("--plies", type=int, default=200)
     ap.add_argument("--library", default="data/derived/lemmas/library_games_size3.json"); ap.add_argument("--proved", default="data/derived/lemmas/proved_games_size3.json")
-    ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
+    ap.add_argument("--no-lemmas", action="store_true"); ap.add_argument("--search", choices=["ab", "mcts"], default="ab"); ap.add_argument("--sims", type=int, default=400); ap.add_argument("--guide", action="store_true"); ap.add_argument("--seed", type=int, default=0); ap.add_argument("--tag", default=""); ap.add_argument("--fen")
     a = ap.parse_args(argv)
+    if a.cmd == "analyse":
+        pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
+        b = chess.Board(a.fen or chess.STARTING_FEN)
+        for row in pl.analyse(b):
+            print(f"{row['move']:7s} value {row['value']:+6.2f}  resolved {row['resolved']:+6.2f}  line: {row['line']:14s}  {row['lemmas']}" + (f"  leaves: {'; '.join(row['duties_left'])}" if row['duties_left'] else ""))
+        return
     if a.cmd == "move":
         pl = Player(Path(a.library), Path(a.proved), depth=a.depth, node_cap=a.nodes, max_bodies=a.max_bodies, use_lemmas=not a.no_lemmas, guide=a.guide)
+        pl.search_kind = a.search; pl.sims = a.sims
         b = chess.Board(a.fen or chess.STARTING_FEN); m, info = pl.choose(b); print(b.san(m), json.dumps({k: v for k, v in info.items() if k != "counts"})); return
-    play_games(a.games, a.maia, a.depth, a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag)
+    play_games(a.games, a.maia, a.depth, a.nodes, a.max_bodies, Path(a.library), Path(a.proved), not a.no_lemmas, a.guide, plies=a.plies, seed=a.seed, opponent=a.opponent, tag=a.tag, search_kind=a.search, sims=a.sims)
 
 
 if __name__ == "__main__":
