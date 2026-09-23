@@ -23629,7 +23629,7 @@ By Kaveh's rule (best shot first, attribute by binary search on failure): the pi
 the plain search until a piece earns its place per node. Two things would earn it: lemmas that speak on real boards
 (the resolved-exchange outcome in the generator), and depth spent only where the search is unsure.
 
-## 2026-09-23 13:15 PDT — the bug hunt (Kaveh: "there might be a number of bugs in the code"), and lemma ids
+## 2026-09-23 13:12 PDT — the bug hunt (Kaveh: "there might be a number of bugs in the code"), and lemma ids
 
 Bugs found today, each by a gauge, a crash, or a test written afterwards: (1) prove ignored the inherited guard
 (147 -> 878 proved); (2) the transposition table stored bound values as exact and a budget-exhausted depth returned
