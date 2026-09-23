@@ -23285,7 +23285,7 @@ was written; all are sampled (cap 200) and so conjectures until the exhaustive p
 (the slider, the shield, the piece behind) and is where size three should first break the size-two lemmas.
 Launched size three (cap 1,000), with new slots inheriting the single-type lemma.
 
-## 2026-09-22 18:25 PDT — size three: the pin arrives as a three-slot frame; a naming defect; guards are disjunctions
+## 2026-09-22 18:19 PDT — size three: the pin arrives as a three-slot frame; a naming defect; guards are disjunctions
 
 **Correction to the two entries above.** A guard is a DISJUNCTION of literals, not a conjunction: the guard search adds
 literals greedily, each covering exceptions the earlier ones missed, and a move is guarded when ANY literal holds.
