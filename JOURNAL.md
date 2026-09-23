@@ -23660,3 +23660,11 @@ Stockfish UCI-Elo depth 8, ten games a rung, one seed (OBS):
 Reading: the trigger fires on 87% of decisions, so this is nearly "always depth 5" -- the gain at 1700 is depth,
 not adaptivity. The honest comparison is depth 5 at the same cap (queued) and a tighter margin (0.05, queued); the
 frontier to report is score vs nodes/move, and 16k nodes at 1.2 s a move is still small.
+
+## 2026-09-23 13:50 PDT — correction: "pin-shaped" counted 'not between' (Kaveh caught it on the page)
+
+The pin-shaped test (guard contains the relation `between`) ignored polarity. Recount on the v2 library, proved
+only: guard has `between` in any polarity 1,609 (the number journaled at 00:20); POSITIVE `between` 1,508; only
+`not between` 101 (terms "not between & not lands_attacked" 97, "not between & not stays_aligned" 36 over the
+whole library -- the unpinning move, the piece stepping OUT from between, is a different concept and was being
+counted as its opposite). Pin-shaped proved = 1,508 of 1,578; the inspector page now tests positive polarity only.
