@@ -23349,7 +23349,7 @@ The proof pass now holds the generator to its word: a sampled guard is a conject
 times the placements agrees, and 45% of size three did not. The next build is the tie class (above), then the
 games-as-frame-source ordering Kaveh asked for.
 
-## 2026-09-23 00:25 PDT — generator v2: subsumption, conjunctive guards, schemas (Kaveh: "how do we combine them logically? build it all")
+## 2026-09-23 00:20 PDT — generator v2: subsumption, conjunctive guards, schemas (Kaveh: "how do we combine them logically? build it all")
 
 Three generic mechanisms, no chess in any of them (commits 27820ef..20e3a9b):
   SUBSUMPTION  a frame inherits the lemmas of ALL its embedded sub-frames with the same actor (every mapping; a
