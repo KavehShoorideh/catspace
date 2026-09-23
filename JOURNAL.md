@@ -23703,3 +23703,22 @@ carry one implied fact, 3,064 two, 1,307 none, 691 three, 90 four. Examples: "ho
 gain, "exception" = a row the lemma's OWN guard covers with the largest loss, tagged with the term that fires
 (L-2904d407: "gives check & not lands attacked"). Pin-shaped = positive `between` only (1,508 proved, not 1,609).
 Page republished (version 6).
+
+## 2026-09-23 15:02 PDT — the resolved-exchange outcome on real boards: truer labels, fewer admissions
+
+Games source (20,000 positions), outcome = the exchange resolved (capture quiescence, six plies) relative to the null
+move; size-3 frontier bounded to the 600 most frequent frames; cap 600. OBS: size 1 admitted 0 of 10; size 2
+14 of 528; size 3 0 of 411; prove on held-out positions: 14 conjectures, 0 proved.
+Side by side at cap 400 (games, relative), one-piece frames:
+  [wQ] material: keeps 62.1% of 3,497, guard lands_attacked covers 1317/1324 purity 0.84 | resolved: keeps 56.2%,
+       guard lands_attacked or (not attacked & captures) covers 1329/1530 purity 0.82.
+  [wR] material: keeps 83.5% of 1,402, (not attacked & lands_attacked) 220/231, 0.86 | resolved: 78.5%, three
+       terms 212/302, 0.80.
+  [wN] material: keeps 79.2% of 1,834, 382 exceptions, no guard | resolved: 63.7%, 666 exceptions, no guard.
+Reading: resolving the exchange does not remove exceptions, it ADDS them -- it sees the losses the one-capture
+outcome missed (forks, discovered attacks, the loss two moves later), and none of those has a name in the relation
+vocabulary. The trades-read-as-blunders problem was real (the surprise gauge) but it was not what limited the
+library; the limit is that a one-piece or three-piece frame with these relations cannot express a two-move tactic.
+So: the lemma library will not add play strength until the vocabulary grows (the residual loop), and play strength
+now comes from search. The resolved oracle stays behind its flag as the truer label for the generator when the
+vocabulary catches up.
