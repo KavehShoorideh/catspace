@@ -356,7 +356,10 @@ def _prove_entry(args):
     g = Generator(dom, cap=cap, log=lambda *a, **k: None)
     fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"])) if "types" in entry else parse_frame(entry["frame"])
     slot = entry["slot"]; claim = entry["claim"]
-    guard = [(gg[0], tuple(int(x) for x in (gg[1] if isinstance(gg[1], list) else gg[1].strip("()").split(",")) if str(x).strip() != ""), (gg[2] == "True") if isinstance(gg[2], str) else bool(gg[2])) for gg in entry["guard"]] if entry["guard"] else []
+    def _lits(key):
+        return [(gg[0], tuple(int(x) for x in (gg[1] if isinstance(gg[1], list) else gg[1].strip("()").split(",")) if str(x).strip() != ""), (gg[2] == "True") if isinstance(gg[2], str) else bool(gg[2])) for gg in entry.get(key) or []]
+    own = _lits("guard")
+    guard = _lits("inherited") + own                                   # the lemma's full guard: what it inherited (applied first by the generator) plus what it added
     rows = []; complete = True
     for state, ids, comp in g.instances(fr):
         complete = comp
@@ -381,6 +384,8 @@ def _prove_entry(args):
     pur = sum(m and e for m, e in zip(matched, exc)) / max(1, sum(matched)) if guard else 1.0
     status = "PROVED" if (n_exc == 0 or (cov >= min_cov and pur >= min_pur)) else "conjecture"
     gtxt = " or ".join(("" if pol else "not ") + f"{r}({','.join(map(str, sl))})" for r, sl, pol in guard) or "(none)"
+    if entry.get("inherited"):
+        gtxt = f"[inherited {' or '.join(r for r, _, _ in _lits('inherited'))}] " + gtxt
     line = f"  {status:<10} {fr.text()} :: slot {slot} {claim} {100 * (len(rows) - n_exc) / len(rows):.1f}% of {len(rows)}; guard {gtxt}: covers {100 * cov:.1f}% of {n_exc} exceptions, purity {pur:.2f}" + (" (complete)" if complete else f" (cap {cap})")
     return dict(frame=fr.text(), slot=slot, claim=claim, support=len(rows), exceptions=n_exc, coverage=cov, purity=pur, complete=complete, status=status, guard=gtxt), line
 
