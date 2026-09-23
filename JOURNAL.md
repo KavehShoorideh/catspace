@@ -23348,3 +23348,41 @@ first pass judged children by their OWN literals and forgot the inherited guard,
 The proof pass now holds the generator to its word: a sampled guard is a conjecture until the frame at ten
 times the placements agrees, and 45% of size three did not. The next build is the tie class (above), then the
 games-as-frame-source ordering Kaveh asked for.
+
+## 2026-09-23 00:25 PDT — generator v2: subsumption, conjunctive guards, schemas (Kaveh: "how do we combine them logically? build it all")
+
+Three generic mechanisms, no chess in any of them (commits 27820ef..20e3a9b):
+  SUBSUMPTION  a frame inherits the lemmas of ALL its embedded sub-frames with the same actor (every mapping; a
+               sub-frame literal absent from the frame is verified as implied on the frame's placements); their guards
+               apply first; only exceptions none of them explains are new. Verified on [wK wR wR]: the king inherits
+               "rook 1 attacked OR rook 2 attacked" from both embeddings of [wK wR], has nothing left, is not admitted.
+  DNF GUARDS   a guard is a disjunction of TERMS, each a conjunction of up to two literals, searched over bitsets;
+               a term must itself be >= 80% exceptions; purity is measured against all exceptions.
+  GENERALIZE   anti-unification over slot types: lemmas identical up to types are one schema; unseen instantiations
+               (product of the per-slot type sets minus the observed) are checked by the prover.
+Run: size three at cap 1,000, ten workers (48,600 frames; 20:19 -> ~23:10); prove at cap 10,000 (3,770 s);
+generalize (26,394 unseen instantiations, 6,024 s). OBS:
+  size 1: 10 admitted; size 2: 632 evaluated, 187 admitted (v1: 36); size 3: 39,107 evaluated, 8,761 admitted
+    (v1: 1,561); library 8,958.
+  prove: PROVED 7,165 / conjecture 1,793 (size 1 10/10; size 2 168/187; size 3 6,987/8,761). Pin-shaped (own
+    guard contains "between"): 1,609 proved, 92 conjecture (v1: 52/56). REVERSED 5,809.
+  generalize (proved only): 7,165 lemmas -> 2,979 schemas; observed instantiations per schema: 1,658 schemas have
+    one, 608 two, ... max 24; unseen instantiations proved 4,219, failed 22,175.
+Reading:
+  * The library GREW, it did not shrink. Subsumption removes restatements only where the sub-frame lemma was
+    ADMITTED; where the two-piece lemma failed the purity bar (two rooks: "moving A loses B unless A's move still
+    defends B" needs an action-level relation the vocabulary lacks; the best DNF covers 503/508 at purity 0.78),
+    the three-piece frames each admit a sharper, frame-specific version ("unless THIS enemy piece attacks the other
+    rook"): 640 proved size-three lemmas of shape "keeps unless attacks(x,y)". The vocabulary ceiling at size two
+    becomes an explosion at size three. This is the residual pointing at a missing primitive, exactly the loop
+    Kaveh described; it is not to be patched by hand.
+  * DNF guards did what was asked: "(attacked & not stays_aligned)" = stops defending; "(gives_check & not
+    lands_attacked)" = a safe check is the exception to a lost position; "(attacks & between)" = the pin with the
+    slider named. 1,609 proved pin-shaped lemmas.
+  * The product generalization is too greedy: the per-slot sets combined as a product mostly fail (22,175 of
+    26,394), i.e. a lemma holds on specific type COMBINATIONS (value order, slider/knight geometry), not on a box.
+    The schema files record exactly which tuples held, so nothing false is stated, but the schema TEXT shows the
+    union of held types per slot, which over-reads. Next: state a schema as the largest product sub-box that held
+    (or per-slot sets conditioned on the other slots), and generalize over frame LITERAL variants as well as types
+    (aligned/attacks/same_side siblings carry the same lemma).
+Nothing running. Libraries: data/derived/lemmas/library_v2_size3.json, proved_v2_size3.json, schemas_chess.json.
