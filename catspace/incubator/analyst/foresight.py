@@ -73,7 +73,8 @@ def make_labels(library: Path, proved: Path, n_games: int, horizon: int, lo: int
             for p in range(m["ply"], m["ply"] + horizon):
                 if p in fired_at and fired_at[p][0] == side:
                     soon |= fired_at[p][1]
-            rows.append(dict(fen=m["fen"], fired=sorted(soon)))
+            now = sorted(fired_at[m["ply"]][1]) if m["ply"] in fired_at and fired_at[m["ply"]][0] == side else []
+            rows.append(dict(fen=m["fen"], game=g, fired=sorted(soon), now=now))                 # game: the split is by game identity; now: the persistence baseline
             for x in soon:
                 fired_total[x] += 1
         if gi % 50 == 0 and gi:
@@ -94,8 +95,9 @@ def train(labels_path: Path, epochs: int = 30, seed: int = 0, log=print):
         log("[foresight] no lemma ever fired: nothing to learn (yet)"); return
     col = {x: k for k, x in enumerate(ids)}
     rng = random.Random(seed); rng.shuffle(rows)
-    fens = sorted({r["fen"] for r in rows}); rng.shuffle(fens); test_f = set(fens[: len(fens) // 5])
-    tr = [r for r in rows if r["fen"] not in test_f]; te = [r for r in rows if r["fen"] in test_f]
+    keys = sorted({str(r.get("game", r["fen"])) for r in rows}); rng.shuffle(keys); test_k = set(keys[: len(keys) // 5])
+    tr = [r for r in rows if str(r.get("game", r["fen"])) not in test_k]; te = [r for r in rows if str(r.get("game", r["fen"])) in test_k]
+    # SPLIT BY GAME identity (2026-09-24; the first run split by position and put neighbouring plies of one game on both sides)
     def build(rs):
         X = []; R = []; M = []; Y = []
         for r in rs:
@@ -144,6 +146,14 @@ def train(labels_path: Path, epochs: int = 30, seed: int = 0, log=print):
                 y = Yte[:, k].numpy()
                 if 0 < y.sum() < len(y):
                     aucs.append(roc_auc_score(y, pe[:, k]))
+            if ep == 0:
+                Nte = np.zeros_like(Yte.numpy())
+                for i, r in enumerate(te):
+                    for x in r.get("now", []):
+                        if x in col:
+                            Nte[i, col[x]] = 1.0
+                paucs = [roc_auc_score(Yte[:, k].numpy(), Nte[:, k]) for k in range(len(ids)) if 0 < Yte[:, k].sum() < len(te)]
+                log(f"[foresight] persistence baseline (the lemma fires NOW as the score): mean per-lemma AUC {np.mean(paucs):.3f} over {len(paucs)} lemmas")
             log(f"[foresight] epoch {ep} train loss {tot / len(Xtr):.3f} | test: mean per-lemma AUC {np.mean(aucs):.3f} over {len(aucs)} lemmas (0.5 = the base rate alone)")
     torch.save(dict(state=model.state_dict(), ids=ids, d_feat=Xtr.shape[-1], n_rel=Rtr.shape[-1]), CKPT)
     log(f"[foresight] -> {CKPT}")
