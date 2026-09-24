@@ -60,6 +60,9 @@ class Applier:
         if any(n.startswith("after_") for n in names) and not any(r.name.startswith("after_") for r in dom.relations):
             from .lemma_gen import lift_after
             dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_after(dom)})   # the library was made with the lifted vocabulary
+        if any(n.startswith("then_") for n in names) and not any(r.name.startswith("then_") for r in dom.relations):
+            from .lemma_gen import lift_episode
+            dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_episode(dom)})
         self.dom = dom; self.lemmas = lemmas
         self.rel = {r.name: r for r in dom.relations}
         self.by_types: dict = defaultdict(list)

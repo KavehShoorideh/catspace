@@ -67,6 +67,7 @@ class Domain:
     state_of: Callable[[Any, list], Any] = None                      # (raw state, slot ids) -> State, so relations can be evaluated on a real state
     actor_ok: Callable[[Any, Any], bool] = None                      # (raw state, entity id) -> may this entity act now (e.g. its side is to move)
     placement_count: Callable[[tuple], int] = None                   # types -> how many placements an exhaustive pass would enumerate (None: unknown; no exhaustion)
+    episode: Callable[[Any], list] = None                            # state after our action -> the states along the outcome's line before its last ply (None: no episode lift)
     null_reply_scalar: Callable[[Any, Any], float] = None            # (state, entity id) -> the scalar after the opponent's best reply if the entity's side PASSES (None: no null action); the RELATIVE outcome baseline
 
 
@@ -212,11 +213,54 @@ def lift_after(dom: Domain) -> list:
     return out
 
 
+def lift_episode(dom: Domain) -> list:
+    """THE EPISODE LIFT (Kaveh 2026-09-24: "what's the vocabulary lacking? build it"): every state relation R lifted to
+    then_R(slots) = R on the state after the opponent's reply in the episode's line, the frame's pieces followed. A
+    three-ply outcome turns on that state ("after they recapture, is the recapturer attacked?"); the lift stops
+    before the last ply, so a literal can explain the outcome but never restate it. Cached per (state, action)."""
+    if dom.episode is None:
+        return []
+    cache: dict = {}
+    def states_of(state, action):
+        key = (id(state.board), str(action[1]))
+        if key not in cache:
+            if len(cache) > 20000:
+                cache.clear()
+            cache[key] = dom.episode(dom.transition(state, action))
+        return cache[key]
+    out = []
+    for r in dom.relations:
+        if r.on_action:
+            continue
+        def make(rel):
+            def fn(state, action, *ids):
+                sts = states_of(state, action)
+                if not sts:
+                    return False
+                then = sts[0]
+                moved = {a: b for a, b in zip(state.ids, then.ids)}
+                mapped = [moved.get(i, i) for i in ids]
+                if any(x is None for x in mapped):
+                    return False
+                return rel.fn(then, *mapped)
+            return fn
+        out.append(Relation("then_" + r.name, r.arity, True, make(r)))
+    return out
+
+
+def made_under(library_path) -> dict:
+    """The outcome definition a library was made under (oracle, depth, relative, lift, gain), from its first lemma."""
+    try:
+        return next((e.get("made_under") for e in json.load(open(library_path)) if e.get("made_under")), {}) or {}
+    except Exception:
+        return {}
+
+
 class Generator:
     def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0):
         self.max_joins = max_joins
         if lift:
-            dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_after(dom)})
+            dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_after(dom) + lift_episode(dom)})
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
         self.relative = relative                                             # outcome = reply scalar minus the NULL-action reply scalar (what the standing threats already take)
         self.gain_threshold = gain_threshold                                 # None: partition at 0 (loses / keeps); a number: partition at that gain (gains / does not gain)

@@ -28,6 +28,15 @@ from .lemma_apply import Applier, load_library
 OUT = Path("data/derived/lemmas")
 
 
+def domain_of(library_path):
+    """The domain a library's lemmas live in: its recorded outcome definition (oracle, depth), frame-local by default
+    -- the applier, the chains and the imagination must read the lemmas in the world they were made in."""
+    from .chess_domain import domain
+    from .lemma_gen import made_under
+    mu = made_under(library_path)
+    return domain(oracle=mu.get("oracle", "frame") if mu.get("oracle") in ("frame", "resolved", "material") else "frame", depth=int(mu.get("depth", 1) or 1))
+
+
 def implied_value(c, fired) -> float | None:
     if not c.value:
         return None
@@ -199,7 +208,7 @@ def gauge(n: int, library: Path, proved: Path, lo: int = 10, hi: int = 80, seed:
     should not (the expansion caught a wrong small-world claim). By stake band and by number of bodies."""
     from .chess_domain import domain
     from .dataset import load as load_ds
-    dom = domain(oracle="frame"); app = Applier(dom, load_library(library, proved))   # the chain libraries are frame-local: their world is the frame's pieces, the null baseline frame-local
+    dom = domain_of(library); app = Applier(dom, load_library(library, proved))
     meta = load_ds("data/derived/knowledge", meta_only=True)["meta"]
     rows = [m for m in meta if lo <= m["ply"] <= hi and m.get("best")]
     rng = random.Random(seed); rng.shuffle(rows)
@@ -308,13 +317,13 @@ def main(argv=None):
         ranker = GraphRanker(domain())
     if a.cmd == "gauge":
         gauge(a.n, Path(a.library), Path(a.proved), ranker=ranker, tag=a.tag, mode=a.mode); return
-    app = Applier(domain(oracle="frame"), load_library(Path(a.library), Path(a.proved)))
+    app = Applier(domain_of(Path(a.library)), load_library(Path(a.library), Path(a.proved)))
     b = chess.Board(a.fen or chess.STARTING_FEN)
     if a.cmd == "imagine":
         imagined_report(app, b); return
     if a.cmd == "narrate":
         gain_lib = OUT / "library_games_gain.json"; gain_prov = OUT / "proved_games_gain.json"
-        gain_app = Applier(domain(oracle="frame"), load_library(gain_lib, gain_prov)) if gain_lib.exists() else None
+        gain_app = Applier(domain_of(gain_lib), load_library(gain_lib, gain_prov)) if gain_lib.exists() else None
         narrate(b, app, gain_app, ranker=ranker, played=a.played, best=a.best); return
     for ch in chains(app, b, ranker=ranker, mode=a.mode):
         i = ch["idea"]

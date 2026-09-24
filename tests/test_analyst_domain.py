@@ -108,3 +108,25 @@ def test_frame_episode_sees_the_recapture_at_ply_three():
     cd._EPISODE["depth"] = 1
     assert one == -2.0, one                                                   # rook (5) for knight (3) after ...Rxa3
     assert three == 3.0, three                                                # ...Rxa3 Bxa3: the knight was won
+
+
+def test_episode_lift_sees_the_state_after_the_reply_and_never_the_last_ply():
+    """then_R = R on the state after the opponent's reply in the episode's line. [wR wB bN bR] Rxa3 Rxa3 Bxa3: after
+    ...Rxa3 the black rook stands attacked by the bishop (then_attacked(3)); the captured white rook maps to None
+    (False); with one reply only (depth < 3) the lift is undefined (False), so it can never restate the outcome."""
+    import chess
+    from catspace.incubator.analyst import chess_domain as cd
+    from catspace.incubator.analyst.lemma_gen import lift_episode
+    dom = cd.domain(oracle="frame", depth=0)
+    rels = {r.name: r for r in lift_episode(dom)}
+    # Rxa3 Rxa3 Bxa3 Bxa3 (the black bishop on e7 is outside the frame): the line reads 0 for the frame, standing pat
+    # after Rxa3 reads +3, so black recaptures; the episode's line therefore has a reply state
+    b = chess.Board("r3k3/4b3/8/8/8/n7/8/R1BK4 w - - 0 1")
+    st = cd.State(b, [chess.A1, chess.C1, chess.A3, chess.A8])
+    mv = chess.Move.from_uci("a1a3")
+    assert rels["then_attacked"].fn(st, (b, mv), chess.A8) is True
+    assert rels["then_attacked"].fn(st, (b, mv), chess.A1) is False
+    assert rels["then_defended"].fn(st, (b, mv), chess.C1) is False
+    cd._EPISODE["depth"] = 1
+    assert rels["then_attacked"].fn(st, (b, mv), chess.A8) is False
+    cd._EPISODE["depth"] = 1

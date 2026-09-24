@@ -476,6 +476,57 @@ def frame_episode_scalar(st: State, side: chess.Color, depth: int, alpha: float 
     return stand if best is None else best
 
 
+def frame_episode_pv(st: State, side: chess.Color, depth: int, alpha: float = -1e9, beta: float = 1e9) -> tuple:
+    """The frame episode with its PRINCIPAL VARIATION: (value, [states after each ply of the line]). Same moves and
+    same values as `frame_episode_scalar`; used by the episode lift (`then_R`: a relation on the state after the
+    opponent's reply), never for the outcome itself."""
+    b = st.board
+    stand = _frame_material(st, side) + ((-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0)
+    if depth == 0 or b.is_checkmate() or b.is_stalemate():
+        return stand, []
+    us = b.turn == side
+    frame_sq = {x for x in st.ids if x is not None}
+    if b.is_check():
+        moves = list(b.legal_moves)
+    else:
+        moves = [m for m in b.legal_moves if b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq)]
+        if us:
+            if stand >= beta:
+                return stand, []
+            alpha = max(alpha, stand)
+        else:
+            if stand <= alpha:
+                return stand, []
+            beta = min(beta, stand)
+    moves.sort(key=lambda m: -(VAL[b.piece_at(m.to_square).piece_type] if b.piece_at(m.to_square) else 0.0))
+    best = None if b.is_check() else stand; best_pv = []
+    for m in moves:
+        nb = b.copy(stack=False); nb.push(m)
+        child = State(nb, _ids_after(st.ids, b, m))
+        v, pv = frame_episode_pv(child, side, depth - 1, alpha, beta)
+        if best is None or (v > best if us else v < best):
+            best = v; best_pv = [child] + pv
+        if us:
+            alpha = max(alpha, best)
+        else:
+            beta = min(beta, best)
+        if alpha >= beta:
+            break
+    return (stand, []) if best is None else (best, best_pv)
+
+
+def frame_episode_states(after: State) -> list:
+    """The domain's EPISODE hook: from the state after our action, the states along the episode's line, one per ply
+    (the opponent's reply first). Empty when the episode has no ply beyond the last (depth < 3), so a lifted
+    relation can never restate the outcome."""
+    depth = _EPISODE["depth"] if _EPISODE["depth"] > 0 else len(after.ids)
+    if depth < 3:
+        return []
+    side = not after.board.turn
+    _, pv = frame_episode_pv(after, side, depth)
+    return pv[:-1]                                                            # every state before the last ply
+
+
 def frame_null_reply_scalar(state: State, e: int) -> float:
     b = state.board.copy(stack=False)
     side = b.piece_at(e).color
@@ -600,7 +651,7 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
     if oracle == "frame":
         return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, frame_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      placement_count=(placement_count if fens is None else None), null_reply_scalar=frame_null_reply_scalar)
+                      placement_count=(placement_count if fens is None else None), null_reply_scalar=frame_null_reply_scalar, episode=frame_episode_states)
     if oracle == "resolved":
         return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
