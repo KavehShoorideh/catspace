@@ -191,3 +191,19 @@ def test_joins_build_a_frame_from_two_known_frames(gen):
     by = defaultdict(list); by["wR"].append(la); by["bB"].append(lb)
     inh = gen.applicable(j, 1, by)
     assert any("as (0, 1)" in t for _, _, t, _ in inh)
+
+
+def test_quantifier_lift_names_the_escape_square():
+    """some_not_lands_attacked(king) = the king has a square to go to that is not attacked (Kaveh 2026-09-24: the
+    escape square as a composition, not a primitive). A cornered king has none; a free king has one."""
+    from catspace.incubator.analyst import chess_domain as cd
+    dom = domain()
+    rels = {r.name: r for r in lg.lift_some(dom)}
+    assert "some_not_lands_attacked" in rels and rels["some_not_lands_attacked"].arity == 1
+    b = chess.Board("k7/2Q5/1K6/8/8/8/8/8 b - - 0 1")                       # a8 king, queen c7, king b6: every king square attacked, not yet mate? (b8, a7 covered)
+    st = cd.State(b, [chess.A8])
+    assert rels["some_not_lands_attacked"].fn(st, chess.A8) is False
+    b2 = chess.Board("k7/8/1K6/8/8/8/8/8 b - - 0 1")                        # nothing but the kings: a8 king may go to b8? b8 is next to... b6 king covers a7, b7, c7; b8 is free
+    st2 = cd.State(b2, [chess.A8])
+    assert rels["some_not_lands_attacked"].fn(st2, chess.A8) is True
+    assert rels["some_captures"].arity == 1 and rels["some_captures_worth_ge"].arity == 2

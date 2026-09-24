@@ -248,6 +248,28 @@ def lift_episode(dom: Domain) -> list:
     return out
 
 
+def lift_some(dom: Domain) -> list:
+    """THE QUANTIFIER LIFT (Kaveh 2026-09-24: "an escape square is basically any square where the king can go and not
+    be attacked"): every base action relation R becomes two state relations over an entity i: some_R(i, ...) = some
+    action of i satisfies R, some_not_R(i, ...) = some action of i violates it. "Has a safe move", "can give check",
+    "can capture something worth at least j" are then literals, composed from the rules, never written."""
+    out = []
+    for r in dom.relations:
+        if not r.on_action or r.name.startswith(("after_", "then_", "some_")):
+            continue
+        for neg in (False, True):
+            def make(rel, negate):
+                def fn(state, i, *ids):
+                    for a in dom.actions(state, i):
+                        v = bool(rel.fn(state, a, *ids))
+                        if v != negate:
+                            return True
+                    return False
+                return fn
+            out.append(Relation(("some_not_" if neg else "some_") + r.name, r.arity + 1, False, make(r, neg)))
+    return out
+
+
 def made_under(library_path) -> dict:
     """The outcome definition a library was made under (oracle, depth, relative, lift, gain), from its first lemma."""
     try:
@@ -260,7 +282,9 @@ class Generator:
     def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0):
         self.max_joins = max_joins
         if lift:
-            dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_after(dom) + lift_episode(dom)})
+            some = lift_some(dom)
+            base = Domain(**{**dom.__dict__, "relations": list(dom.relations) + some})   # the quantified state relations are lifted after the move and after the reply like any other
+            dom = Domain(**{**base.__dict__, "relations": list(base.relations) + lift_after(base) + lift_episode(base)})
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
         self.relative = relative                                             # outcome = reply scalar minus the NULL-action reply scalar (what the standing threats already take)
         self.gain_threshold = gain_threshold                                 # None: partition at 0 (loses / keeps); a number: partition at that gain (gains / does not gain)
