@@ -22874,6 +22874,20 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 07:42 PDT — PAUSE (Kaveh: "need my cpu back")
+
+Killed: the overnight full-vocabulary library (`run_games_vocab.log`: size 2 done, size 3 at 450/3,000 frames after
+7.3 h -- the episode + quantifier vocabulary is about 10x the cost of the refined run; no library saved, the run
+does not checkpoint), the paused two-piece theorem sample, every watcher shell and caffeinate. Nothing of the
+analyst is running.
+
+To resume the library (same command, from scratch; add checkpointing per size first if it is to run again):
+`caffeinate -i .venv/bin/python -u -m catspace.incubator.analyst.lemma_gen run --source games --positions 60000
+--hi 200 --oracle frame --relative --lift --prefixes after,then,some --depth 0 --max-size 3 --cap 800 --workers 10
+--max-frames 3000`; then prove (seed 1, cap 3000) and examples with the same flags; then
+`prove --library data/derived/lemmas/library_v2_size3.json --exhaustive 3000000 --prove-max-size 2 --limit 40 --workers 6`
+for the theorem sample (streams now; ~20 min a lemma).
+
 ## 2026-09-24 00:09 PDT — the exhaustive re-test starved the machine; it streams now
 
 The two-piece theorem sample (10 workers, 2.4 M placements a frame) built every row in memory before checking the
