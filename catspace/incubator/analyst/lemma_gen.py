@@ -322,8 +322,8 @@ class Generator:
             best = None
             for term, m in terms:
                 gain = _popcount(m & exc & ~covered)
-                if gain == 0:
-                    continue
+                if gain == 0 or any(set(term) <= set(t) or set(t) <= set(term) for t in chosen):
+                    continue                                                  # a term inside or around a chosen one only re-covers what its refinement gave up
                 pur = _popcount(m & exc_all) / _popcount(m)
                 if pur < self.term_purity:
                     continue                                                  # a term is an explanation only if it is mostly exceptions
@@ -333,6 +333,8 @@ class Generator:
             if best is None:
                 break
             term, m = self.refine_term(rows, best[1], best[2], exc_all, cache, all_mask, frame.size)
+            if any(set(term) == set(t) for t in chosen):
+                break
             chosen.append(term); covered |= m & exc
         matched_any = 0
         for term in chosen:

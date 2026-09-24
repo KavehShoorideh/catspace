@@ -144,3 +144,17 @@ def test_refinement_adds_the_except_when_literal(gen):
     assert lem.claim == "acting keeps" and lem.refined == fp - lg._popcount(m2 & ~exc) and lem.refined > 0
     assert lem.inherited == [term2] and lem.parents and lem.reversed is False
     js = lg.lemma_to_json(lem); assert js["refined"] == lem.refined and lg.guard_from_json(js["inherited"]) == [term2]
+
+
+def test_guard_terms_are_not_nested_duplicates(gen):
+    """After a term is refined, the greedy loop must not pick the same term, or one inside it, again for the few
+    exceptions the refinement gave up (the smoke run of 2026-09-24 printed a term three times)."""
+    rows = _trade_rows(); n = len(rows); cache = {}
+    exc = sum(1 << i for i, r in enumerate(rows) if r[3] < 0)
+    fr = lg.Frame(("wQ", "bQ", "bP"), (("attacks", (0, 1), True), ("defends", (2, 1), True)))
+    guard, cov, pur, matched = gen.find_guard(rows, exc, fr, cache)
+    sets = [frozenset(t) for t in guard]
+    assert len(sets) == len(set(sets)), guard
+    for a in sets:
+        for b in sets:
+            assert a is b or not (a < b), f"nested terms {a} < {b}"
