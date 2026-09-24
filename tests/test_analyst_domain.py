@@ -126,7 +126,7 @@ def test_episode_lift_sees_the_state_after_the_reply_and_never_the_last_ply():
     mv = chess.Move.from_uci("a1a3")
     assert rels["then_attacked"].fn(st, (b, mv), chess.A8) is True
     assert rels["then_attacked"].fn(st, (b, mv), chess.A1) is False
-    assert rels["then_defended"].fn(st, (b, mv), chess.C1) is False
+    assert rels["then_attacked"].fn(st, (b, mv), chess.C1) is False           # nothing reaches the bishop after ...Rxa3
     cd._EPISODE["depth"] = 1
     assert rels["then_attacked"].fn(st, (b, mv), chess.A8) is False
     cd._EPISODE["depth"] = 1

@@ -439,73 +439,36 @@ def _ids_after(ids: list, b: chess.Board, m: chess.Move) -> list:
     return [moved.get(s, None if s in captured else s) for s in ids]
 
 
-def frame_episode_scalar(st: State, side: chess.Color, depth: int, alpha: float = -1e9, beta: float = 1e9) -> float:
+def _episode(st: State, side: chess.Color, depth: int, alpha: float, beta: float, want_pv: bool) -> tuple:
     """THE FRAME EPISODE (Kaveh 2026-09-24: "k pieces in a frame imply as many plies -- each piece makes its move in
-    its right time"): after the action, up to `depth` plies where the side to move may stand pat, capture or check
-    with any piece, or make a quiet move with a FRAME piece; the frame's material from `side` at the leaves, mate
-    +-1000. Depth 1 is the old single best reply (captures and checks only)."""
+    its right time"): after the action, up to `depth` plies; the side to move may PASS (the null move: the line goes
+    on, it does not end -- standing pat that ends the line let a side freeze a favourable count, 22:20), capture or
+    check with any piece, or make a quiet move with a FRAME piece; the frame's material from `side` at the leaves,
+    mate +-1000. Returns (value, line of states) -- the line only when want_pv."""
     b = st.board
-    stand = _frame_material(st, side) + ((-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0)
-    if depth == 0 or b.is_checkmate() or b.is_stalemate():
-        return stand
-    us = b.turn == side
-    frame_sq = {x for x in st.ids if x is not None}
-    if b.is_check():
-        moves = list(b.legal_moves)
-    else:
-        moves = [m for m in b.legal_moves if b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq)]
-        if us:
-            if stand >= beta:
-                return stand
-            alpha = max(alpha, stand)
-        else:
-            if stand <= alpha:
-                return stand
-            beta = min(beta, stand)
-    moves.sort(key=lambda m: -(VAL[b.piece_at(m.to_square).piece_type] if b.piece_at(m.to_square) else 0.0))
-    best = None if b.is_check() else stand
-    for m in moves:
-        nb = b.copy(stack=False); nb.push(m)
-        v = frame_episode_scalar(State(nb, _ids_after(st.ids, b, m)), side, depth - 1, alpha, beta)
-        if us:
-            best = v if best is None else max(best, v); alpha = max(alpha, best)
-        else:
-            best = v if best is None else min(best, v); beta = min(beta, best)
-        if alpha >= beta:
-            break
-    return stand if best is None else best
-
-
-def frame_episode_pv(st: State, side: chess.Color, depth: int, alpha: float = -1e9, beta: float = 1e9) -> tuple:
-    """The frame episode with its PRINCIPAL VARIATION: (value, [states after each ply of the line]). Same moves and
-    same values as `frame_episode_scalar`; used by the episode lift (`then_R`: a relation on the state after the
-    opponent's reply), never for the outcome itself."""
-    b = st.board
-    stand = _frame_material(st, side) + ((-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0)
+    mate = (-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0
+    stand = _frame_material(st, side) + mate
     if depth == 0 or b.is_checkmate() or b.is_stalemate():
         return stand, []
     us = b.turn == side
     frame_sq = {x for x in st.ids if x is not None}
+    children = []
     if b.is_check():
         moves = list(b.legal_moves)
     else:
         moves = [m for m in b.legal_moves if b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq)]
-        if us:
-            if stand >= beta:
-                return stand, []
-            alpha = max(alpha, stand)
-        else:
-            if stand <= alpha:
-                return stand, []
-            beta = min(beta, stand)
+        nb = b.copy(stack=False); nb.turn = not nb.turn
+        if nb.is_valid():
+            children.append(State(nb, list(st.ids)))                         # the pass
     moves.sort(key=lambda m: -(VAL[b.piece_at(m.to_square).piece_type] if b.piece_at(m.to_square) else 0.0))
-    best = None if b.is_check() else stand; best_pv = []
     for m in moves:
         nb = b.copy(stack=False); nb.push(m)
-        child = State(nb, _ids_after(st.ids, b, m))
-        v, pv = frame_episode_pv(child, side, depth - 1, alpha, beta)
+        children.append(State(nb, _ids_after(st.ids, b, m)))
+    best = None; best_pv = []
+    for child in children:
+        v, pv = _episode(child, side, depth - 1, alpha, beta, want_pv)
         if best is None or (v > best if us else v < best):
-            best = v; best_pv = [child] + pv
+            best = v; best_pv = ([child] + pv) if want_pv else []
         if us:
             alpha = max(alpha, best)
         else:
@@ -513,6 +476,15 @@ def frame_episode_pv(st: State, side: chess.Color, depth: int, alpha: float = -1
         if alpha >= beta:
             break
     return (stand, []) if best is None else (best, best_pv)
+
+
+def frame_episode_scalar(st: State, side: chess.Color, depth: int) -> float:
+    return _episode(st, side, depth, -1e9, 1e9, False)[0]
+
+
+def frame_episode_pv(st: State, side: chess.Color, depth: int) -> tuple:
+    """(value, [states after each ply of the episode's line]); same search as `frame_episode_scalar`."""
+    return _episode(st, side, depth, -1e9, 1e9, True)
 
 
 def frame_episode_states(after: State) -> list:
