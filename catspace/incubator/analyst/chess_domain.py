@@ -639,6 +639,9 @@ def tb_reply_scalar(after: State, e: int) -> float:
     return float(-w)
 
 
+COLOUR_FLIP = {t: ("b" if t[0] == "w" else "w") + t[1:] for t in TYPES}     # the one symmetry of the rules: colours swap (relations and outcomes are colour-blind)
+
+
 def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1) -> Domain:
     """depth: plies of the frame episode after the action (frame oracle only); 1 = the single best reply."""
     _EPISODE["depth"] = depth
@@ -655,11 +658,11 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
         from functools import partial
         return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth),
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      placement_count=(placement_count if fens is None else None), null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state)
+                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state)
     if oracle == "resolved":
         return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      placement_count=(placement_count if fens is None else None), null_reply_scalar=resolved_null_reply_scalar)
+                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], null_reply_scalar=resolved_null_reply_scalar)
     if oracle == "tablebase":
         assert fens is None, "the tablebase oracle is for sampled frames (at most five men)"
         rels = [Relation("tb_worth_ge", 2, fn=tb_worth_ge) if r.name == "worth_ge" else Relation("captures_tb_worth_ge", 1, True, tb_captures_worth_ge) if r.name == "captures_worth_ge" else r for r in rels]
@@ -669,7 +672,7 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
         rels = [Relation("worth_ge", 2, fn=worth_ge_blend) if r.name == "worth_ge" else Relation("captures_worth_ge", 1, True, captures_worth_ge_blend) if r.name == "captures_worth_ge" else r for r in rels]
     return Domain("chess" if fens is None else "chess_games", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, reply_scalar,
                   entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                  placement_count=(placement_count if fens is None else None), null_reply_scalar=null_reply_scalar)
+                  placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], null_reply_scalar=null_reply_scalar)
 
 
 def entities(board: chess.Board) -> list:

@@ -65,8 +65,13 @@ class Applier:
         self.rel = {r.name: r for r in dom.relations}
         self.by_types: dict = defaultdict(list)
         self.lemmas_by_idx: dict = {c.idx: c for c in lemmas}
+        import dataclasses
         for c in lemmas:
             self.by_types[c.frame.types].append(c)
+            for sigma in (dom.symmetries or []):                              # a canonical lemma applies through its symmetry images too (the colour flip)
+                t2 = tuple(sigma.get(t, t) for t in c.frame.types)
+                if t2 != c.frame.types and all(x.frame.types != t2 or x.text != c.text for x in self.by_types[t2]):
+                    self.by_types[t2].append(dataclasses.replace(c, frame=Frame(t2, c.frame.literals)))
 
     def _lit(self, state, ids, r, sl, pol, action=None, cache=None) -> bool:
         key = (r, tuple(ids[s] for s in sl), None if action is None else action[1])

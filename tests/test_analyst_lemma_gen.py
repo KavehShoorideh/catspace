@@ -239,3 +239,41 @@ def test_streamed_check_matches_the_mask_path(gen):
     assert o["support"] == n and o["exceptions"] == lg._popcount(exc)
     assert abs(o["coverage"] - lg._popcount(m & exc) / max(1, lg._popcount(exc))) < 1e-9
     assert abs(o["purity"] - lg._popcount(m & exc) / max(1, lg._popcount(m))) < 1e-9
+
+
+def test_canonical_frame_identifies_slot_orders_and_colours():
+    """Kaveh 2026-09-24: 'many of them should be equivalent'. [bN wQ] attacks(1,0) and [wQ bN] attacks(0,1) are one
+    frame; so is the colour flip [bQ wN] attacks(0,1)."""
+    from catspace.incubator.analyst.chess_domain import COLOUR_FLIP
+    a = lg.canonical_frame(("bN", "wQ"), (("attacks", (1, 0), True),), [COLOUR_FLIP])
+    b = lg.canonical_frame(("wQ", "bN"), (("attacks", (0, 1), True),), [COLOUR_FLIP])
+    c = lg.canonical_frame(("bQ", "wN"), (("attacks", (0, 1), True),), [COLOUR_FLIP])
+    assert a[:2] == b[:2] == c[:2]
+    d = lg.canonical_frame(("wQ", "bN"), (("attacks", (1, 0), True),), [COLOUR_FLIP])   # the knight attacks the queen: a different frame
+    assert d[:2] != a[:2]
+
+
+def test_applier_applies_a_lemma_through_its_colour_image():
+    """A canonical lemma about a white piece must fire for the black piece in the mirrored situation."""
+    from catspace.incubator.analyst.chess_domain import domain
+    dom = domain()
+    fr = lg.Frame(("wQ",), ())
+    c = Compiled(0, fr, 0, "acting keeps", [(("lands_attacked", (), True),)], "L-x [wQ] (no relation) :: slot 0 acting keeps unless lands_attacked()", {"holds": 0.5, "exception": -9.0})
+    app = Applier(dom, [c])
+    assert ("bQ",) in app.by_types
+    b = chess.Board("4k3/8/8/8/8/8/7q/3QK3 b - - 0 1")                       # black queen h2 to move
+    res = app.apply(b, actor=chess.H1)
+    assert res["verdicts"], "the black queen's moves get verdicts from the white-queen lemma"
+
+
+def test_checkpoint_round_trip(tmp_path, monkeypatch):
+    """A killed run resumes from its checkpoint with the same library and frontier."""
+    from catspace.incubator.analyst.chess_domain import domain
+    monkeypatch.setattr(lg, "OUT", tmp_path)
+    g = lg.Generator(domain(), cap=60, log=lambda *a, **k: None)
+    lib = g.run(max_size=2)
+    assert (tmp_path / "checkpoint_chess.json").exists()
+    g2 = lg.Generator(domain(), cap=60, log=lambda *a, **k: None)
+    st = g2.load_checkpoint()
+    assert st is not None and len(g2.library) == len(lib)
+    assert [l.id for l in g2.library] == [l.id for l in lib]

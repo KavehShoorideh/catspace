@@ -32,6 +32,7 @@ a state, the actions and the transition, a scalar, and a way to place entities. 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import itertools
 import json
 import time
@@ -69,6 +70,7 @@ class Domain:
     placement_count: Callable[[tuple], int] = None                   # types -> how many placements an exhaustive pass would enumerate (None: unknown; no exhaustion)
     episode: Callable[[Any], list] = None                            # state after our action -> the states along the outcome's line before its last ply (None: no episode lift)
     threat: Callable[[Any, Any], Any] = None                         # (state, entity id) -> the state after that entity's side PASSES and the opponent's best reply lands: the threat executed (None: no threat lift)
+    symmetries: list = None                                          # type maps {type: type} that leave the domain's rules and relations invariant (chess: the colour flip); frames are canonical under them and under slot permutation
     null_reply_scalar: Callable[[Any, Any], float] = None            # (state, entity id) -> the scalar after the opponent's best reply if the entity's side PASSES (None: no null action); the RELATIVE outcome baseline
 
 
@@ -94,6 +96,26 @@ def lemma_id(types, literals, slot, claim, full_guard) -> str:
     return "L-" + hashlib.sha1(key.encode()).hexdigest()[:8]
 
 
+def canonical_frame(types: tuple, literals: tuple, symmetries=None) -> tuple:
+    """The canonical form of a frame under slot permutation and the domain's symmetries (Kaveh 2026-09-24: "many of
+    them should be equivalent"): the lexicographically smallest (types, sorted literals) over every permutation of
+    the slots and every symmetry image. Returns (types, literals, slot map old -> new)."""
+    k = len(types)
+    maps = [dict()] + list(symmetries or [])
+    best = None
+    for sigma in maps:
+        ts = tuple(sigma.get(t, t) for t in types)
+        for perm in itertools.permutations(range(k)):                        # perm[new] = old
+            inv = {old: new for new, old in enumerate(perm)}
+            t2 = tuple(ts[old] for old in perm)
+            l2 = tuple(sorted((r, tuple(inv[x] for x in sl), pol) for r, sl, pol in literals))
+            key = (t2, l2)
+            if best is None or key < best[0]:
+                best = (key, inv)
+    (t2, l2), inv = best
+    return t2, l2, inv
+
+
 def remap_guard(guard, m):
     return [tuple((r, tuple(m[s] for s in sl), pol) for r, sl, pol in t) for t in guard]
 
@@ -108,6 +130,10 @@ class Frame:
     @property
     def size(self):
         return len(self.types)
+
+    def canon(self, symmetries=None) -> "Frame":
+        t, l, _ = canonical_frame(self.types, self.literals, symmetries)
+        return Frame(t, l, parent=self.parent, joined=self.joined)
 
     def text(self):
         lits = " & ".join(lit_text(r, sl, pol) for r, sl, pol in self.literals)
@@ -447,11 +473,12 @@ class Generator:
         if n_exc == 0:
             return [], 0, 1.0, 0
         half = n // 2
-        lits = []
+        lits = []; seen_masks: dict = {}
         for rname, sl in self.candidate_literals(frame.size):
             lm = self.lit_mask(rows, rname, sl, cache)
             for pol, m in ((True, lm), (False, all_mask & ~lm)):
-                if m and m != all_mask:
+                if m and m != all_mask and m not in seen_masks:
+                    seen_masks[m] = (rname, sl, pol)                          # LITERAL DEDUPLICATION (Kaveh 2026-09-24: "many should be equivalent"): one literal per truth column; candidate_literals lists base relations before lifted ones, so the plainest word represents the column
                     lits.append(((rname, sl, pol), m))
         terms = [((l,), m) for l, m in lits if _popcount(m) <= half]        # a term true of most rows explains nothing
         if self.max_conj >= 2:
@@ -562,7 +589,7 @@ class Generator:
         inherited = inherited_refined
         broke = _popcount(exc & ~covered_inh)
         rest = exc & ~covered_inh
-        sig = (tuple(frame.types), slot, n, holds, hash(exc))
+        sig = (tuple(frame.types), slot, n, holds, hashlib.sha1(exc.to_bytes((exc.bit_length() + 7) // 8 or 1, "little")).hexdigest()[:12])
         guard, covered, purity, matched = self.find_guard(rows, rest, frame, cache, exc_all=exc)
         residual = _popcount(rest) - covered
         examples = pick_examples(self, rows, exc, rest, guard, cache, all_mask)
@@ -723,12 +750,17 @@ class Generator:
     # ---------------------------------------------------------------- subsumption: every admitted lemma that embeds into the frame with the same actor
     def applicable(self, frame: Frame, slot: int, by_actor_type: dict):
         out = []
-        for lem in by_actor_type.get(frame.types[slot], []):
+        maps = [dict()] + list(self.dom.symmetries or [])
+        cands = []
+        for sigma in maps:                                                    # a library lemma embeds also through its symmetry images (the colour flip)
+            for lem in by_actor_type.get(next((k for k, v in sigma.items() if v == frame.types[slot]), frame.types[slot]) if sigma else frame.types[slot], []):
+                cands.append((lem, tuple(sigma.get(t, t) for t in lem.frame.types)))
+        for lem, ltypes in cands:
             lf = lem.frame
             if lf.size >= frame.size:
                 continue
             for m in itertools.permutations(range(frame.size), lf.size):
-                if m[lem.slot] != slot or any(frame.types[m[i]] != lf.types[i] for i in range(lf.size)):
+                if m[lem.slot] != slot or any(frame.types[m[i]] != ltypes[i] for i in range(lf.size)):
                     continue
                 # a sub-frame literal absent from this frame's literal set may still be IMPLIED by it (e.g. by the slot
                 # types); such literals are checked on the frame's placements in evaluate(), and the embedding holds
@@ -738,19 +770,61 @@ class Generator:
         return out
 
     # ---------------------------------------------------------------- the schedule
-    def run(self, max_size: int = 3, min_support: int = 60, admit_cov: float = 0.9, admit_pur: float = 0.8):
+    def checkpoint_path(self) -> Path:
+        return OUT / f"checkpoint_{self.dom.name}.json"
+
+    def save_checkpoint(self, size, frontier, done, next_frontier, deferred, admitted, evaluated, broke_frames):
+        """CHECKPOINT (Kaveh 2026-09-24: "if it's so long, let's always add checkpointing"): the whole state of the run,
+        written every `ckpt_every` frames and at every size boundary; `--resume` continues from it."""
+        OUT.mkdir(parents=True, exist_ok=True)
+        state = dict(size=size, frontier=[frame_to_json(f) for f in frontier], done=sorted(done),
+                     next_frontier=[frame_to_json(f) for f in next_frontier], deferred={str(k): [frame_to_json(f) for f in v] for k, v in deferred.items()},
+                     library=[dict(lemma_to_json(l), sig=list(l.sig)) for l in self.library], residual=[[frame_to_json(f), r] for f, r in self.residual_frames],
+                     seen=[list(k) for k in self.seen_signatures], counters=dict(admitted=admitted, evaluated=evaluated, broke_frames=broke_frames), made_under=dict(_PROVENANCE))
+        tmp = self.checkpoint_path().with_suffix(".tmp")
+        json.dump(state, open(tmp, "w")); tmp.replace(self.checkpoint_path())
+
+    def load_checkpoint(self) -> dict | None:
+        p = self.checkpoint_path()
+        if not p.exists():
+            return None
+        st = json.load(open(p))
+        if st.get("made_under") != dict(_PROVENANCE):
+            raise SystemExit(f"[lemma_gen] checkpoint was made under {st.get('made_under')}, this run is {dict(_PROVENANCE)}: not resuming")
+        self.library = [lemma_from_json(e) for e in st["library"]]
+        self.residual_frames = [(frame_from_json(f), r) for f, r in st["residual"]]
+        self.seen_signatures = {tuple(tuple(x) if isinstance(x, list) else x for x in k): None for k in st["seen"]}
+        return st
+
+    def run(self, max_size: int = 3, min_support: int = 60, admit_cov: float = 0.9, admit_pur: float = 0.8, resume: bool = False, ckpt_every: int = 100):
         t0 = time.perf_counter()
-        frontier = [Frame((t,), ()) for t in self.dom.types]
+        frontier = list({f.types: f for f in (Frame((t,), ()).canon(self.dom.symmetries) for t in self.dom.types)}.values())
         by_actor: dict = defaultdict(list)
         deferred: dict = defaultdict(list)                                    # joins land at larger sizes than size + 1
-        for size in range(1, max_size + 1):
-            if deferred.get(size):
+        start_size = 1; done: set = set(); carried = None
+        if resume:
+            st = self.load_checkpoint()
+            if st:
+                start_size = st["size"]; frontier = [frame_from_json(f) for f in st["frontier"]]; done = set(tuple(x) if isinstance(x, list) else x for x in st["done"])
+                deferred = defaultdict(list, {int(k): [frame_from_json(f) for f in v] for k, v in st["deferred"].items()})
+                carried = ([frame_from_json(f) for f in st["next_frontier"]], st["counters"])
+                for l in self.library:
+                    by_actor[l.frame.types[l.slot]].append(l)
+                self.log(f"[lemma_gen] RESUME at size {start_size}: {len(done)}/{len(frontier)} frames done, {len(self.library)} lemmas")
+        for size in range(start_size, max_size + 1):
+            if deferred.get(size) and not (carried and size == start_size):
                 frontier = frontier + deferred.pop(size)
             self.log(f"[lemma_gen] size {size}: {len(frontier)} frames to evaluate ({time.perf_counter() - t0:.0f}s)")
             next_frontier = []; admitted = 0; evaluated = 0; broke_frames = 0
-            for fi, (fr, results) in enumerate(self._evaluate_frontier(frontier, by_actor)):
+            if carried and size == start_size:
+                next_frontier, c = carried; admitted, evaluated, broke_frames = c["admitted"], c["evaluated"], c["broke_frames"]; carried = None
+            todo = [f for f in frontier if (f.types, f.literals) not in done]
+            for fi, (fr, results) in enumerate(self._evaluate_frontier(todo, by_actor)):
+                done.add((fr.types, fr.literals))
                 if fi and fi % 50 == 0:
-                    self.log(f"[lemma_gen] size {size}: {fi}/{len(frontier)} frames, admitted {admitted} so far ({time.perf_counter() - t0:.0f}s)")
+                    self.log(f"[lemma_gen] size {size}: {len(done)}/{len(frontier)} frames, admitted {admitted} so far ({time.perf_counter() - t0:.0f}s)")
+                if fi and fi % ckpt_every == 0:
+                    self.save_checkpoint(size, frontier, done, next_frontier, deferred, admitted, evaluated, broke_frames)
                 extend_this = False
                 for slot, inh, lem in results:
                     if lem is None:
@@ -778,8 +852,10 @@ class Generator:
                     for jf in self.joins(fr, max_size):
                         (next_frontier if jf.size == size + 1 else deferred[jf.size]).append(jf)
             self.log(f"[lemma_gen] size {size}: evaluated {evaluated}, admitted {admitted}; {broke_frames} frames extended -> {len(next_frontier)} candidates at size {size + 1}")
+            done = set()
             uniq = {}
             for f in next_frontier:
+                f = f.canon(self.dom.symmetries)                               # one frame per equivalence class (slot order, colour)
                 uniq.setdefault((f.types, f.literals), f)
             frontier = list(uniq.values())
             if self.max_frames and len(frontier) > self.max_frames:
@@ -788,6 +864,10 @@ class Generator:
                 counts = self._count_frontier(frontier)
                 frontier = [f for f, _ in sorted(zip(frontier, counts), key=lambda fc: -fc[1])[: self.max_frames]]
                 self.log(f"[lemma_gen] size {size + 1}: frontier bounded to the {self.max_frames} most frequent frames (counts {counts and max(counts)}..{sorted(counts)[-self.max_frames] if len(counts) >= self.max_frames else 0}; {time.perf_counter() - t1:.0f}s)")
+            if size < max_size:
+                self.save_checkpoint(size + 1, frontier, set(), [], deferred, 0, 0, 0)
+            self.save()                                                       # the library so far: a killed run still leaves its sizes on disk
+        self.save_checkpoint(max_size + 1, [], set(), [], deferred, 0, 0, 0)   # the finished state: a resume is a no-op that returns the library
         self.save()
         return self.library
 
@@ -889,6 +969,25 @@ def lemma_to_json(l: Lemma) -> dict:
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
                 inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke, refined=l.refined,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
+
+
+def lemma_from_json(e: dict) -> Lemma:
+    """The inverse of lemma_to_json, enough for a resumed run (subsumption, joins, values)."""
+    fr = Frame(tuple(e["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in e["literals"]), joined=bool(e.get("joined")))
+    l = Lemma(fr, e["slot"], e["claim"], e["support"], e["holds"], guard_from_json(e.get("guard")), e.get("covered", 0), e.get("purity", 1.0), e.get("residual", 0), e.get("complete", False),
+              e.get("examples") or {}, guard_from_json(e.get("inherited")), e.get("broke", 0), e.get("reversed", False), e.get("parents") or [])
+    l.value = e.get("value") or {}; l.refined = e.get("refined", 0)
+    l.closure = [(r, tuple(sl), pol, tag) for r, sl, pol, tag in (e.get("closure") or [])]
+    l.sig = tuple(e["sig"]) if e.get("sig") else ()
+    return l
+
+
+def frame_to_json(f: Frame) -> dict:
+    return dict(types=list(f.types), literals=[[r, list(sl), pol] for r, sl, pol in f.literals], joined=f.joined)
+
+
+def frame_from_json(d: dict) -> Frame:
+    return Frame(tuple(d["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in d["literals"]), joined=bool(d.get("joined")))
 
 
 def guard_from_json(g) -> list:
@@ -1200,6 +1299,7 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["run", "prove", "generalize", "examples"]); ap.add_argument("--domain", default="chess")
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--resume", action="store_true", help="continue a run from its checkpoint (same flags)")
     ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
     ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
     ap.add_argument("--exhaustive", type=int, default=0, help="prove: enumerate every placement of frames with at most this many placements (THEOREM status); 0 = sampled re-test")
@@ -1243,7 +1343,7 @@ def main(argv=None):
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
     g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES)
-    lib = g.run(max_size=a.max_size)
+    lib = g.run(max_size=a.max_size, resume=a.resume)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 
 
