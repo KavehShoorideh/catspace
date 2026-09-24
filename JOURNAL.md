@@ -23853,7 +23853,7 @@ captures is gone (a bug on the way: it had been re-pointed at its captor and cou
 Prove crashed on the lifted relations (the check pass built its generator without --lift; fixed) -- rerun with the
 values pass; then the composition gauge on this library.
 
-## 2026-09-23 18:06 PDT — the frame-local library proves and composes in the right direction, weakly
+## 2026-09-23 18:09 PDT — the frame-local library proves and composes in the right direction, weakly
 
 Proof on held-out positions (seed 1, cap 3,000): PROVED 58 / conjecture 11 of 69 (the material-outcome games
 library: 18/30; the resolved one: 0/14). Among the proved: L-635fbcc4 [wK wR] same side: the king acting keeps
