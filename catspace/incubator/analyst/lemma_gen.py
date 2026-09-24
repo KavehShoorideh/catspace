@@ -1024,6 +1024,7 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["run", "prove", "generalize", "examples"]); ap.add_argument("--domain", default="chess")
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; k = each frame piece gets its move)")
     ap.add_argument("--exhaustive", type=int, default=0, help="prove: enumerate every placement of frames with at most this many placements (THEOREM status); 0 = sampled re-test")
     ap.add_argument("--prove-max-size", type=int, default=0, help="prove: only frames of at most this size")
     ap.add_argument("--workers", type=int, default=1); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
@@ -1047,7 +1048,7 @@ def main(argv=None):
             rows = [m["fen"] for m in meta if a.lo <= m["ply"] <= a.hi]
             _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
             print(f"[lemma_gen] games source: {len(fens)} positions (plies {a.lo}-{a.hi})")
-        dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau)
+        dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
     global _RELATIVE, _LIFT, _GAIN

@@ -89,3 +89,22 @@ def test_frame_local_outcome_counts_only_the_frame():
     assert dom.reply_scalar(after, after.ids[0]) - base == 0.0              # the knight steps away: the frame keeps its material
     a = (b, chess.Move.from_uci("c3d5")); after = dom.transition(s, a)
     assert dom.reply_scalar(after, after.ids[0]) - base == -3.0             # Nd5 exd5: the knight is lost; the pawn that took it is not in the frame and not counted
+
+
+def test_frame_episode_sees_the_recapture_at_ply_three():
+    """Kaveh 2026-09-24: a frame of k pieces implies k plies. [wR wB bN bR]: Rxn, ...Rxr, Bxr. One reply says the rook
+    is lost (-2 for the frame); the three-ply episode says the knight was won (+3)."""
+    import chess
+    from catspace.incubator.analyst import chess_domain as cd
+    b = chess.Board("r3k3/8/8/8/8/n7/8/R1BK4 w - - 0 1")                 # Rxa3 Rxa3 Bxa3
+    ids = [chess.A1, chess.C1, chess.A3, chess.A8]                        # wR wB bN bR
+    st = cd.State(b, ids)
+    mv = chess.Move.from_uci("a1a3")
+    after = cd.transition(st, (b, mv))
+    cd._EPISODE["depth"] = 1
+    one = cd.frame_reply_scalar(after, after.ids[0]) - cd.frame_scalar(st, chess.A1)
+    cd._EPISODE["depth"] = 3
+    three = cd.frame_reply_scalar(after, after.ids[0]) - cd.frame_scalar(st, chess.A1)
+    cd._EPISODE["depth"] = 1
+    assert one == -2.0, one                                                   # rook (5) for knight (3) after ...Rxa3
+    assert three == 3.0, three                                                # ...Rxa3 Bxa3: the knight was won

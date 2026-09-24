@@ -403,9 +403,12 @@ def frame_scalar(state: State, e: int) -> float:
 
 def frame_reply_scalar(after: State, e: int) -> float:
     """The frame's material from the actor's side after the opponent's best immediate reply (the reply that minimizes
-    it): a capture of a frame piece counts, a capture elsewhere does not; a checkmate counts as +-1000."""
+    it): a capture of a frame piece counts, a capture elsewhere does not; a checkmate counts as +-1000. With the
+    episode depth above 1 (`_EPISODE`), the k-ply frame episode instead."""
     b = after.board
     side = not b.turn
+    if _EPISODE["depth"] > 1:
+        return frame_episode_scalar(after, side, _EPISODE["depth"])
     if b.is_checkmate():
         return _frame_material(after, side) + (-1000.0 if b.turn == side else 1000.0)
     if b.is_stalemate():
@@ -419,6 +422,57 @@ def frame_reply_scalar(after: State, e: int) -> float:
         v = _frame_material(State(nb, ids), side) + (-1000.0 if nb.is_checkmate() else 0.0)
         worst = v if worst is None else min(worst, v)
     return worst if worst is not None else _frame_material(after, side)
+
+
+_EPISODE = {"depth": 1}                                                         # plies after the action the frame outcome searches (1 = one reply)
+
+
+def _ids_after(ids: list, b: chess.Board, m: chess.Move) -> list:
+    moved = {m.from_square: m.to_square}
+    if b.is_castling(m):
+        rank = chess.square_rank(m.from_square)
+        moved[chess.square(7, rank) if chess.square_file(m.to_square) > chess.square_file(m.from_square) else chess.square(0, rank)] = chess.square(5, rank) if chess.square_file(m.to_square) > chess.square_file(m.from_square) else chess.square(3, rank)
+    captured = {m.to_square} if b.is_capture(m) else set()
+    if b.is_en_passant(m):
+        captured = {chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square))}
+    return [moved.get(s, None if s in captured else s) for s in ids]
+
+
+def frame_episode_scalar(st: State, side: chess.Color, depth: int, alpha: float = -1e9, beta: float = 1e9) -> float:
+    """THE FRAME EPISODE (Kaveh 2026-09-24: "k pieces in a frame imply as many plies -- each piece makes its move in
+    its right time"): after the action, up to `depth` plies where the side to move may stand pat, capture or check
+    with any piece, or make a quiet move with a FRAME piece; the frame's material from `side` at the leaves, mate
+    +-1000. Depth 1 is the old single best reply (captures and checks only)."""
+    b = st.board
+    stand = _frame_material(st, side) + ((-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0)
+    if depth == 0 or b.is_checkmate() or b.is_stalemate():
+        return stand
+    us = b.turn == side
+    frame_sq = {x for x in st.ids if x is not None}
+    if b.is_check():
+        moves = list(b.legal_moves)
+    else:
+        moves = [m for m in b.legal_moves if b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq)]
+        if us:
+            if stand >= beta:
+                return stand
+            alpha = max(alpha, stand)
+        else:
+            if stand <= alpha:
+                return stand
+            beta = min(beta, stand)
+    moves.sort(key=lambda m: -(VAL[b.piece_at(m.to_square).piece_type] if b.piece_at(m.to_square) else 0.0))
+    best = None if b.is_check() else stand
+    for m in moves:
+        nb = b.copy(stack=False); nb.push(m)
+        v = frame_episode_scalar(State(nb, _ids_after(st.ids, b, m)), side, depth - 1, alpha, beta)
+        if us:
+            best = v if best is None else max(best, v); alpha = max(alpha, best)
+        else:
+            best = v if best is None else min(best, v); beta = min(beta, best)
+        if alpha >= beta:
+            break
+    return stand if best is None else best
 
 
 def frame_null_reply_scalar(state: State, e: int) -> float:
@@ -530,7 +584,9 @@ def tb_reply_scalar(after: State, e: int) -> float:
     return float(-w)
 
 
-def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0) -> Domain:
+def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1) -> Domain:
+    """depth: plies of the frame episode after the action (frame oracle only); 1 = the single best reply."""
+    _EPISODE["depth"] = depth
     """worth: 'canonical' (the value table), 'blend' (tables inside five men, blended toward canonical by distance to
     the edge; tau tunable), used by the worth relations of the material and games domains."""
     _BLEND["tau"] = worth_tau
