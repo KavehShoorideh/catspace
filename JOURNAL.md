@@ -22874,6 +22874,29 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 23:45 PDT — the refined frame library: 1,141 lemmas, 905 re-tested; the queen trade reads as a keep
+
+`run_games_frame6k.log` (60k positions, sizes ≤4, cap 800, 6,000 frames per size, lifts after; refinement on):
+10 + 108 + 647 + 376 = 1,141 lemmas, 721 of them shaped by refinement; re-test at cap 3,000 on seed 1: 905 PROVED,
+236 conjecture. About 3 h of generation with 10 workers (the size-4 count scan of 533,160 candidates alone took
+most of an hour).
+
+Chain gauge, 150 positions, graph guide, one seed (`gauge_chains_f6k_*`), beside the 187-lemma library:
+
+| held, big stakes, right | 187 lemmas | 905 lemmas |
+|---|---|---|
+| interface mode | 115/145 = 79% | 309/376 = 82% |
+| chunk mode | 251/313 = 80% | 455/547 = 83% |
+| refuted chains whose seed was wrong | 4/10 · 9/11 | 39/75 · 36/79 |
+| engine's best move seeded a held chain | 4 · 8 | 7 · 7 |
+
+Game 669, ply 36 (`chains narrate`): Qxh5 no longer appears among the losing ideas; the one verdict on it is KEEPS
+by the one-queen lemma, whose refined guard `lands_attacked & not attacked(0)` does not fire because the queen on
+h4 is already attacked -- under the relative outcome, standing still loses her too, so the trade keeps. The reason
+is the relative baseline, not "captures a piece worth at least itself" (that term arrived on the hand-made rows and
+in the smoke; here the baseline term explained the same rows first). Game 262: the engine's best Qxe5 now seeds a
+gain idea (+1.7 by `[wR bQ] attacks(1,0)`); the losing rook ideas hold at 4-5 bodies. Directional.
+
 ## 2026-09-23 23:02 PDT — the quantifier words close most of the king gap (OBS)
 
 `run_some_smoke.log` (3,000 positions, sizes ≤3, cap 200, 80 frames per size; lifts after,then,some; one reply)
