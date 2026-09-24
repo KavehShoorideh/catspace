@@ -37,12 +37,15 @@ _SHAPES = {"on": True}
 
 def shape_key(squares: tuple) -> tuple:
     """A configuration up to translation and left-right mirror (the two spatial symmetries the rules allow: pawns fix
-    the vertical direction). Kaveh 2026-09-24: "an infinite chessboard, no row numbers or column names"."""
+    the vertical direction), TOGETHER with the edges it touches: a king on the back rank is not the same closed world
+    as a king in the middle (Kaveh 2026-09-24: back-rank mates exist because the edge takes the escape squares).
+    Kaveh's "infinite chessboard" holds away from the edges; at the edge the board itself is a piece of the frame."""
     fs = [chess.square_file(s) for s in squares]; rs = [chess.square_rank(s) for s in squares]
     f0, r0 = min(fs), min(rs); w = max(fs) - f0
+    edges = (min(fs) == 0 or max(fs) == 7, min(rs) == 0, max(rs) == 7)      # a side edge (mirror-invariant), the bottom rank, the top rank
     a = tuple((f - f0, r - r0) for f, r in zip(fs, rs))
     b = tuple((w - (f - f0), r - r0) for f, r in zip(fs, rs))
-    return min(a, b)
+    return (min(a, b), edges)
 
 
 def centred(squares: tuple) -> tuple:
@@ -113,7 +116,8 @@ def placements(types: tuple, cap: int, seed: int):
             if key in seen_shapes:
                 continue                                              # one placement per shape: translation and mirror images are the same closed world
             seen_shapes.add(key)
-            squares = centred(tuple(squares))
+            if not any(key[1]):
+                squares = centred(tuple(squares))                     # away from every edge the placement is free to sit centrally; touching an edge, it stays where it is
         b = chess.Board(None)
         for sq, p in zip(squares, allp):
             b.set_piece_at(sq, p)

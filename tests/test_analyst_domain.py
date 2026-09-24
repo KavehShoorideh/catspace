@@ -143,9 +143,10 @@ def test_captures_worth_ge_handles_en_passant():
 def test_shapes_identify_translations_and_mirrors_and_centre_them():
     import chess
     from catspace.incubator.analyst import chess_domain as cd
-    a = (chess.A1, chess.C2); b = (chess.E5, chess.G6); m = (chess.H1, chess.F2)       # translate; mirror
+    a = (chess.B2, chess.D3); b = (chess.E5, chess.G6); m = (chess.G2, chess.E3)       # translate; mirror (all away from the edges)
     assert cd.shape_key(a) == cd.shape_key(b) == cd.shape_key(m)
-    assert cd.shape_key(a) != cd.shape_key((chess.A1, chess.A3))
+    assert cd.shape_key(a) != cd.shape_key((chess.B2, chess.B4))
+    assert cd.shape_key((chess.A1, chess.C2)) != cd.shape_key(a)                            # the same shape touching the edge is another world (the back rank)
     c = cd.centred(a)
     fs = [chess.square_file(s) for s in c]; rs = [chess.square_rank(s) for s in c]
     assert min(fs) == 2 and min(rs) == 3                                                   # a 3x2 box sits centrally
