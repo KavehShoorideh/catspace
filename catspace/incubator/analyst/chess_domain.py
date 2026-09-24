@@ -32,6 +32,28 @@ def _piece(t: str) -> chess.Piece:
     return chess.Piece(KIND[t[1]], t[0] == "w")
 
 
+_SHAPES = {"on": True}
+
+
+def shape_key(squares: tuple) -> tuple:
+    """A configuration up to translation and left-right mirror (the two spatial symmetries the rules allow: pawns fix
+    the vertical direction). Kaveh 2026-09-24: "an infinite chessboard, no row numbers or column names"."""
+    fs = [chess.square_file(s) for s in squares]; rs = [chess.square_rank(s) for s in squares]
+    f0, r0 = min(fs), min(rs); w = max(fs) - f0
+    a = tuple((f - f0, r - r0) for f, r in zip(fs, rs))
+    b = tuple((w - (f - f0), r - r0) for f, r in zip(fs, rs))
+    return min(a, b)
+
+
+def centred(squares: tuple) -> tuple:
+    """The same configuration moved so its bounding box sits as centrally as the board allows: the edges become
+    'the rest of the board' as far as the shape permits."""
+    fs = [chess.square_file(s) for s in squares]; rs = [chess.square_rank(s) for s in squares]
+    f0, r0 = min(fs), min(rs); w = max(fs) - f0; h = max(rs) - r0
+    df = (7 - w) // 2 - f0; dr = (7 - h) // 2 - r0
+    return tuple(chess.square(f + df, r + dr) for f, r in zip(fs, rs))
+
+
 def placements(types: tuple, cap: int, seed: int):
     """Boards holding exactly the frame's entities plus both kings (added if the frame does not name them). The
     first slot's square is fixed to the ten canonical squares (symmetry). Exhaustive when the raw count fits the
@@ -61,14 +83,21 @@ def placements(types: tuple, cap: int, seed: int):
                 rest = rng.sample([s for s in range(64) if s != c], n - 1)
                 yield (c,) + tuple(rest)
         it = sampler()
+    seen_shapes = set()
     for squares in it:
         attempts += 1
-        if attempts > cap * 200 and yielded == 0:
-            return                                                    # nothing valid in many draws: the frame is not placeable (bounded, never a loop)
+        if attempts > cap * 200:
+            return                                                    # bounded, never a loop: nothing valid in many draws, or every shape already seen
         if not exhaustive and yielded >= cap:
             return
         if exhaustive and yielded >= cap * 2:
             return
+        if _SHAPES["on"]:
+            key = shape_key(tuple(squares))
+            if key in seen_shapes:
+                continue                                              # one placement per shape: translation and mirror images are the same closed world
+            seen_shapes.add(key)
+            squares = centred(tuple(squares))
         b = chess.Board(None)
         for sq, p in zip(squares, allp):
             b.set_piece_at(sq, p)
@@ -642,9 +671,10 @@ def tb_reply_scalar(after: State, e: int) -> float:
 COLOUR_FLIP = {t: ("b" if t[0] == "w" else "w") + t[1:] for t in TYPES}     # the one symmetry of the rules: colours swap (relations and outcomes are colour-blind)
 
 
-def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1) -> Domain:
-    """depth: plies of the frame episode after the action (frame oracle only); 1 = the single best reply."""
-    _EPISODE["depth"] = depth
+def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True) -> Domain:
+    """depth: plies of the frame episode after the action (frame oracle only); 1 = the single best reply. shapes: the
+    sampled placements are one centred placement per configuration up to translation and mirror."""
+    _EPISODE["depth"] = depth; _SHAPES["on"] = shapes
     """worth: 'canonical' (the value table), 'blend' (tables inside five men, blended toward canonical by distance to
     the edge; tau tunable), used by the worth relations of the material and games domains."""
     _BLEND["tau"] = worth_tau

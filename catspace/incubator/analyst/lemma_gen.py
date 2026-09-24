@@ -160,6 +160,7 @@ class Lemma:
     sig: tuple = ()
     closure: list = field(default_factory=list)        # literals true on every placement of the frame (implied facts)
     value: dict = field(default_factory=dict)          # mean outcome where the claim held / of the exceptions, inside the frame's world
+    sampled_small: bool = False                        # decided on the quarter sample (sequential sampling)
     refined: int = 0                                   # false positives of the inherited guards removed here by refining their terms ("unless ..., except when ...")
 
     def full_guard(self):
@@ -362,8 +363,9 @@ def made_under(library_path) -> dict:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True):
         self.max_joins = max_joins
+        self.sequential = sequential
         if lift:
             dom = lifted(dom, prefixes if prefixes is not None else ("after", "then", "some"))
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
@@ -377,10 +379,10 @@ class Generator:
         self.seen_signatures: dict = {}
 
     # ---------------------------------------------------------------- instances of a frame
-    def instances(self, frame: Frame):
+    def instances(self, frame: Frame, cap: int | None = None):
         """(state, slot ids, complete) for every placement matching the frame's literals."""
         complete = True
-        for state, exhaustive in self.dom.placements(frame.types, self.cap, self.seed):
+        for state, exhaustive in self.dom.placements(frame.types, cap or self.cap, self.seed):
             complete = complete and exhaustive
             ids = self.dom.slots_of(state)
             if not all(self._lit(state, ids, r, sl, pol) for r, sl, pol in frame.literals):
@@ -396,17 +398,17 @@ class Generator:
             v = False                                                         # as lit_mask: a relation that cannot be evaluated here is false (an en-passant capture crashed the overnight run, 2026-09-24)
         return v == pol
 
-    def rows_of(self, frame: Frame, slot: int):
+    def rows_of(self, frame: Frame, slot: int, cap: int | None = None):
         rows = []; complete = True
-        for row, comp in self.iter_rows(frame, slot):
+        for row, comp in self.iter_rows(frame, slot, cap):
             rows.append(row); complete = comp
         return rows, complete
 
-    def iter_rows(self, frame: Frame, slot: int):
+    def iter_rows(self, frame: Frame, slot: int, cap: int | None = None):
         """The rows one at a time: (row, complete so far). The exhaustive re-test streams them (a two-piece frame holds
         30 M rows; holding them took 6 GB a worker, 2026-09-24 00:05)."""
         complete = True
-        for state, ids, comp in self.instances(frame):
+        for state, ids, comp in self.instances(frame, cap):
             complete = comp
             e = ids[slot]
             base = None
@@ -554,9 +556,29 @@ class Generator:
         with the same actor. The frame's claim is its own majority; the inherited guards of the same polarity are
         applied first, and only what they leave is explained here."""
         inherits = inherits or []
+        # SEQUENTIAL SAMPLING (Kaveh 2026-09-24: "I understand it in a couple of seconds"): a quarter of the cap first;
+        # when the verdict is decisive either way the full sample is not drawn. The small sample is a prefix of the
+        # full one (same seed), so the two agree where they overlap.
+        if self.sequential and self.cap >= 120:
+            rows, complete = self.rows_of(frame, slot, self.cap // 4)
+            if len(rows) >= 30 and not complete:
+                lem = self._fit(frame, slot, inherits, rows, complete)
+                if lem is not None and self._decisive(lem):
+                    lem.sampled_small = True
+                    return lem
         rows, complete = self.rows_of(frame, slot)
         if len(rows) < 30:
             return None
+        return self._fit(frame, slot, inherits, rows, complete)
+
+    def _decisive(self, lem: "Lemma") -> bool:
+        n_exc = lem.covered + lem.residual
+        cov = lem.covered / n_exc if n_exc else 1.0
+        clear_pass = n_exc == 0 or (cov >= 0.97 and lem.purity >= 0.9 and lem.residual <= 2)
+        clear_fail = n_exc >= 20 and cov < 0.6
+        return clear_pass or clear_fail
+
+    def _fit(self, frame: Frame, slot: int, inherits: list, rows, complete: bool) -> Lemma | None:
         n = len(rows); all_mask = (1 << n) - 1
         loses = 0
         thr = self.gain_threshold
@@ -1300,6 +1322,8 @@ def main(argv=None):
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", action="store_true", help="continue a run from its checkpoint (same flags)")
+    ap.add_argument("--no-sequential", action="store_true", help="always draw the full cap (no quarter-sample early decision)")
+    ap.add_argument("--no-shapes", action="store_true", help="sampled placements: keep every board position of a configuration instead of one centred placement per shape")
     ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
     ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
     ap.add_argument("--exhaustive", type=int, default=0, help="prove: enumerate every placement of frames with at most this many placements (THEOREM status); 0 = sampled re-test")
@@ -1326,7 +1350,7 @@ def main(argv=None):
             rows = [m["fen"] for m in meta if a.lo <= m["ply"] <= a.hi]
             _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
             print(f"[lemma_gen] games source: {len(fens)} positions (plies {a.lo}-{a.hi})")
-        dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth)
+        dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth, shapes=not a.no_shapes)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
     global _RELATIVE, _LIFT, _GAIN, _PREFIXES
@@ -1342,7 +1366,7 @@ def main(argv=None):
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential)
     lib = g.run(max_size=a.max_size, resume=a.resume)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 

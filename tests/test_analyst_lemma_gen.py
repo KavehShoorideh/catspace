@@ -39,7 +39,16 @@ def test_box_cover_is_exact_and_covers():
 
 @pytest.fixture(scope="module")
 def gen():
-    return lg.Generator(domain(), cap=200, log=lambda *a, **k: None)
+    return lg.Generator(domain(), cap=200, log=lambda *a, **k: None, sequential=False)   # the full cap: these tests compare against the re-test at the same cap
+
+
+def test_sequential_sampling_decides_clear_cases_on_the_quarter():
+    """A one-piece frame is decided on a quarter of the cap (flagged); the re-test at the full cap agrees."""
+    g = lg.Generator(domain(), cap=400, log=lambda *a, **k: None, sequential=True)
+    l = g.evaluate(lg.Frame(("wK",), ()), 0, [])
+    assert l is not None and l.sampled_small and l.support < 400 * 10
+    o = lg._check(domain(), lg.Frame(("wK",), ()), 0, l.claim, l.full_guard(), cap=400, min_cov=0.95, min_pur=0.8)
+    assert o["status"] in ("PROVED", "THEOREM")
 
 
 def test_subsumption_inherits_every_embedding(gen):

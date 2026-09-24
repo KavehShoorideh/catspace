@@ -138,3 +138,18 @@ def test_captures_worth_ge_handles_en_passant():
     st = cd.State(b, [chess.E5, chess.D5])
     assert cd.captures_worth_ge(st, (b, m), chess.D5) is True                 # a pawn is worth at least a pawn
     assert cd.captures_worth_ge(st, (b, chess.Move.from_uci("e5e6")), chess.D5) is False
+
+
+def test_shapes_identify_translations_and_mirrors_and_centre_them():
+    import chess
+    from catspace.incubator.analyst import chess_domain as cd
+    a = (chess.A1, chess.C2); b = (chess.E5, chess.G6); m = (chess.H1, chess.F2)       # translate; mirror
+    assert cd.shape_key(a) == cd.shape_key(b) == cd.shape_key(m)
+    assert cd.shape_key(a) != cd.shape_key((chess.A1, chess.A3))
+    c = cd.centred(a)
+    fs = [chess.square_file(s) for s in c]; rs = [chess.square_rank(s) for s in c]
+    assert min(fs) == 2 and min(rs) == 3                                                   # a 3x2 box sits centrally
+    seen = set()
+    for st, ex in cd.placements(("wQ", "bN"), 400, 0):
+        k = cd.shape_key(tuple(st.ids) + tuple(s for s in range(64) if st.board.piece_at(s) and s not in st.ids))
+        assert k not in seen; seen.add(k)
