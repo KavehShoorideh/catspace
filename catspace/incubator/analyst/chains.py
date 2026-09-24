@@ -49,7 +49,46 @@ def ideas(app: Applier, board: chess.Board, min_stake: float = 1.0) -> list:
     return out
 
 
-def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 6, ranker=None) -> dict:
+def interface(app: Applier, board: chess.Board, bodies: list, mv: chess.Move, lemma, ids: list, cand: list) -> dict:
+    """THE INTERFACE (Kaveh 2026-09-23: "the guards should give you a hint: unless something interferes, unless
+    something attacks the attacker -- those are the directions to expand"): for every literal of the deciding lemma's
+    full guard, and its frame literals, the outside pieces whose removal flips the literal's truth on this board are
+    the pieces the literal is about. Returns candidate -> number of literals it flips (weighted by nothing else;
+    the policy breaks ties). Generic: literals are programs; removal is the rules."""
+    dom = app.dom
+    lits = list(lemma.frame.literals) + [l for t in lemma.guard for l in t]
+    st = dom.state_of(board, list(ids))
+    a = (st.board, mv)
+    base = {}
+    for r, sl, pol in lits:
+        rel = app.rel[r]
+        try:
+            base[(r, sl)] = bool(rel.fn(st, a, *[ids[x] for x in sl])) if rel.on_action else bool(rel.fn(st, *[ids[x] for x in sl]))
+        except Exception:
+            base[(r, sl)] = None
+    score = {}
+    for c in cand:
+        b2 = board.copy(stack=False); b2.remove_piece_at(c)
+        if not b2.is_valid():
+            continue
+        st2 = dom.state_of(b2, list(ids)); a2 = (st2.board, mv)
+        flips = 0
+        for r, sl, pol in lits:
+            if base[(r, sl)] is None:
+                continue
+            rel = app.rel[r]
+            try:
+                v = bool(rel.fn(st2, a2, *[ids[x] for x in sl])) if rel.on_action else bool(rel.fn(st2, *[ids[x] for x in sl]))
+            except Exception:
+                continue
+            if v != base[(r, sl)]:
+                flips += 1
+        if flips:
+            score[c] = flips
+    return score
+
+
+def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 6, ranker=None, mode: str = "interface") -> dict:
     """Follow one idea's chain. Returns the trace and the conclusion: held | refuted | silent."""
     from .body_search import related
     mv = idea["move"]; actor = mv.from_square
@@ -71,7 +110,17 @@ def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 6, ra
             ranked = related(app, board, bodies, cand)
         if not ranked:
             break
-        nxt = ranked[0][1]
+        if mode == "interface":
+            # deterministic first: the outside pieces the deciding lemma's literals are about; the policy orders the rest
+            ids_now = [b for b in bodies]
+            iface = interface(app, board, bodies, mv, deciding, idea["ids"] if len(idea["ids"]) == deciding.frame.size else ids_now[: deciding.frame.size], cand)
+            if iface:
+                pol_rank = {c: k for k, (_, c) in enumerate(ranked)}
+                nxt = max(iface, key=lambda c: (iface[c], -pol_rank.get(c, 10 ** 6)))
+            else:
+                nxt = ranked[0][1]
+        else:
+            nxt = ranked[0][1]
         bodies.append(nxt)
         res = app.apply(board, bodies=set(bodies), actor=actor, only_action=mv)
         vs = [v for vl in res["verdicts"].values() for v in vl]
@@ -95,7 +144,7 @@ def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 6, ra
     return dict(idea=idea, trace=trace, conclusion="held" if any(t["event"] == "held" for t in trace) else "unexpanded", final=claim_value, bodies=len(bodies))
 
 
-def chains(app: Applier, board: chess.Board, max_ideas: int = 12, max_bodies: int = 6, ranker=None) -> list:
+def chains(app: Applier, board: chess.Board, max_ideas: int = 12, max_bodies: int = 6, ranker=None, mode: str = "interface") -> list:
     out = []
     seen = set()
     for idea in ideas(app, board):
@@ -103,7 +152,7 @@ def chains(app: Applier, board: chess.Board, max_ideas: int = 12, max_bodies: in
         if key in seen:
             continue                                                          # one chain per (move, sign): the highest-stake idea seeds it
         seen.add(key)
-        out.append(expand(app, board, idea, max_bodies=max_bodies, ranker=ranker))
+        out.append(expand(app, board, idea, max_bodies=max_bodies, ranker=ranker, mode=mode))
         if len(out) >= max_ideas:
             break
     return out
@@ -119,7 +168,7 @@ def truth(dom, b: chess.Board, mv: chess.Move) -> float | None:
     return max(-10.0, min(10.0, resolved_reply_scalar(after, after.ids[0]) - base))
 
 
-def gauge(n: int, library: Path, proved: Path, lo: int = 10, hi: int = 80, seed: int = 0, ranker=None, log=print, tag: str = ""):
+def gauge(n: int, library: Path, proved: Path, lo: int = 10, hi: int = 80, seed: int = 0, ranker=None, log=print, tag: str = "", mode: str = "interface"):
     """For every chain: does its conclusion agree with the truth's sign? Held chains should; refuted chains' seeds
     should not (the expansion caught a wrong small-world claim). By stake band and by number of bodies."""
     from .chess_domain import domain
@@ -138,7 +187,7 @@ def gauge(n: int, library: Path, proved: Path, lo: int = 10, hi: int = 80, seed:
             continue
         n_pos += 1
         best = chess.Move.from_uci(m_["best"]) if m_["best"] in {x.uci() for x in b.legal_moves} else None
-        for ch in chains(app, b, ranker=ranker):
+        for ch in chains(app, b, ranker=ranker, mode=mode):
             mv = ch["idea"]["move"]; t = truth(dom, b, mv)
             if t is None:
                 continue
@@ -167,7 +216,7 @@ def gauge(n: int, library: Path, proved: Path, lo: int = 10, hi: int = 80, seed:
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", nargs="?", default="show", choices=["show", "gauge"]); ap.add_argument("--fen"); ap.add_argument("--n", type=int, default=150)
-    ap.add_argument("--library", default=str(OUT / "library_games_frame.json")); ap.add_argument("--proved", default=str(OUT / "proved_games_frame.json")); ap.add_argument("--guide", default=""); ap.add_argument("--tag", default="")
+    ap.add_argument("--library", default=str(OUT / "library_games_frame.json")); ap.add_argument("--proved", default=str(OUT / "proved_games_frame.json")); ap.add_argument("--guide", default=""); ap.add_argument("--tag", default=""); ap.add_argument("--mode", default="interface", choices=["interface", "policy"])
     a = ap.parse_args(argv)
     from .chess_domain import domain
     ranker = None
@@ -175,10 +224,10 @@ def main(argv=None):
         from .body_guide_tf import GraphRanker
         ranker = GraphRanker(domain())
     if a.cmd == "gauge":
-        gauge(a.n, Path(a.library), Path(a.proved), ranker=ranker, tag=a.tag); return
+        gauge(a.n, Path(a.library), Path(a.proved), ranker=ranker, tag=a.tag, mode=a.mode); return
     app = Applier(domain(), load_library(Path(a.library), Path(a.proved)))
     b = chess.Board(a.fen or chess.STARTING_FEN)
-    for ch in chains(app, b, ranker=ranker):
+    for ch in chains(app, b, ranker=ranker, mode=a.mode):
         i = ch["idea"]
         print(f"{b.san(i['move']):7s} stake {i['stake']:.1f} ({'gain' if i['value'] > 0 else 'loss'}) -> {ch['conclusion']} at {ch['bodies']} bodies, final {ch['final']:+.1f}")
         for t in ch["trace"]:
