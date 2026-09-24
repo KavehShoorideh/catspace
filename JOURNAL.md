@@ -22874,6 +22874,24 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 20:25 PDT — foresight from experience: first numbers, split by game
+
+`foresight.py`: labels = the gaining lemmas (gain library, 157) that fire for the side to move within 10 plies of
+each position of 400 played games (18,175 positions; 40 lemmas ever fire); the graph-token transformer with a
+multi-label head. The first run split train/test by POSITION and read mean per-lemma AUC 0.914 -- neighbouring plies
+of one game sat on both sides (the 2026-09-13 scar again). Split by GAME identity (`foresight_train.log`, one seed):
+
+| score | mean per-lemma AUC over 40 lemmas |
+|---|---|
+| base rate alone | 0.500 |
+| persistence: the lemma fires now | 0.633 |
+| foresight, epoch 10 | 0.890 |
+| foresight, epoch 29 | 0.880 |
+
+OBS: the net predicts which gains will fire soon far above persistence; it is one seed and 400 games, and the
+labels are the gain library's own firings, so this measures "the situations where these lemmas fire" (Kaveh's
+spidey sense) and nothing about whether the gains were realised. Wired next as the imagination's ranking prior.
+
 ## 2026-09-23 20:19 PDT — the gain library landed; imagined gains no longer escape their own threats
 
 OBS gain library (`run_games_gain.log`: 20k positions, sizes ≤3, cap 600, frontier 600, `--gain 1.0`): 157 lemmas
