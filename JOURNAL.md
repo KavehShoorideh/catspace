@@ -23349,6 +23349,17 @@ The proof pass now holds the generator to its word: a sampled guard is a conject
 times the placements agrees, and 45% of size three did not. The next build is the tie class (above), then the
 games-as-frame-source ordering Kaveh asked for.
 
+## 2026-09-23 19:25 PDT — analysis values were bounds, not values (fixed); the game-669 trace page
+
+While writing the trace page for game 669 (ply 36, `r4rk1/pb1n1p2/2p1p1p1/1p5q/3P3Q/3B4/PPP2P2/1K1R2NR w`), the
+analysis printed Bxb5 at +0.24 although Qxd1 is mate after it. Cause: `Search.root` searches the candidates with
+alpha-beta, so every move after the best one returns a BOUND (≤ alpha), and `analyse` printed the bound as a value.
+Choosing a move was never affected (the maximum is exact). Fix: `root(..., full_window=True)` for the analysis
+(every candidate in the full window); regression test `test_analysis_values_are_exact_not_bounds` (13 player
+tests pass). OBS, corrected depth-3 values, 13,408 nodes: Qxh5 +0.32; Re1 −0.84; Nf3 −0.84; Bxb5, Bxg6 and the
+played Qe7 all −1000 (mate in one against). Page: https://claude.ai/artifact/8CEYneSYTPdPzhFJet6Lou (boards with
+numbered arrows; what is rules, what is trained, what the search does, why the chain stopped).
+
 ## 2026-09-23 00:20 PDT — generator v2: subsumption, conjunctive guards, schemas (Kaveh: "how do we combine them logically? build it all")
 
 Three generic mechanisms, no chess in any of them (commits 27820ef..20e3a9b):
