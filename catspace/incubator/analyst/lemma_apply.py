@@ -52,6 +52,10 @@ def load_library(library_path: Path, proved_path: Path | None = None, proved_onl
 
 class Applier:
     def __init__(self, dom: Domain, lemmas: list[Compiled]):
+        names = {r for c in lemmas for t in c.guard for r, _, _ in t} | {r for c in lemmas for r, _, _ in c.frame.literals}
+        if any(n.startswith("after_") for n in names) and not any(r.name.startswith("after_") for r in dom.relations):
+            from .lemma_gen import lift_after
+            dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_after(dom)})   # the library was made with the lifted vocabulary
         self.dom = dom; self.lemmas = lemmas
         self.rel = {r.name: r for r in dom.relations}
         self.by_types: dict = defaultdict(list)
