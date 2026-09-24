@@ -222,7 +222,7 @@ def test_threat_lift_rolls_the_threat_forward_and_the_quantifier_finds_the_escap
     b = chess.Board("6k1/8/8/8/8/8/3R3q/K7 w - - 0 1")
     st = cd.State(b, [chess.A1, chess.D2, chess.H2])
     assert rels["threat_some_not_lands_attacked"].fn(st, chess.A1, chess.A1) is True
-    b2 = chess.Board("6k1/8/8/8/8/8/1R5q/K7 w - - 0 1")                    # rook b2: ...Qxb2 is check and covers a2, b1
+    b2 = chess.Board("1r4k1/8/8/8/8/8/1R5q/K7 w - - 0 1")                  # rook b2: ...Qxb2 is check, covers a2 and b1, and the rook on b8 defends the queen
     st2 = cd.State(b2, [chess.A1, chess.B2, chess.H2])
     assert rels["threat_some_not_lands_attacked"].fn(st2, chess.A1, chess.A1) is False
     assert rels["threat_attacked"].fn(st2, chess.A1, chess.A1) is True      # the king is in check once the threat lands
