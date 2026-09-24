@@ -99,7 +99,17 @@ def actions(state: State, e: int):
 def transition(state: State, action):
     b, m = action
     nb = b.copy(stack=False); nb.push(m)
-    ids = [m.to_square if s == m.from_square else (None if s == m.to_square else s) for s in state.ids]   # a captured frame piece is gone (None), not re-pointed at its captor
+    moved = {m.from_square: m.to_square}
+    if b.is_castling(m):                                                      # the rook moves too: its id follows it (a rule of the game, not a lemma)
+        rank = chess.square_rank(m.from_square)
+        if chess.square_file(m.to_square) > chess.square_file(m.from_square):
+            moved[chess.square(7, rank)] = chess.square(5, rank)
+        else:
+            moved[chess.square(0, rank)] = chess.square(3, rank)
+    captured = {m.to_square} if b.is_capture(m) else set()
+    if b.is_en_passant(m):
+        captured = {chess.square(chess.square_file(m.to_square), chess.square_rank(m.from_square))}
+    ids = [moved.get(s, None if s in captured else s) for s in state.ids]
     return State(nb, ids)
 
 
