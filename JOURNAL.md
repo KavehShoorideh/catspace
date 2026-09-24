@@ -22874,6 +22874,23 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 13:35 PDT — important squares from the guards (built, first cut); residual report; edge-aware shapes
+
+Kaveh: at inference, note each fired guard and the square it is about; the important squares are where many
+guards fire, distinct from the active squares of current tactics: "the future squares ... too many to calculate
+... attack it statistically"; then prefer moves that keep control of them. Built `squares.py`: for every embedded
+proved lemma and every action, a term that fires gives ACTIVE squares, a two-literal-plus term one literal short of
+firing gives NEAR squares; a square's heat is the lemma's stake (one embedding contributes at most its stake per
+square); a term about the actor alone (its own safety) is not a tactic and does not count; every square keeps the
+lemmas that made it hot; `control(move)` = the shift of the attack balance on the near squares. On the Bxh2+
+position with the 905-lemma library: 25,361 embeddings; near squares f8, d7, f3 (g4xf3: "lands attacked and not
+defended afterwards" -- the deflection square), d3, e8; active h2 among the top. Not yet gauged against the engine;
+the one-piece lemmas were the noise the two refinements removed.
+
+Also: `residual_report.py` (rejected frames re-fitted, worst unexplained rows drawn on boards -- Kaveh: "let's use
+the residuals to guide the building of things"); shapes keep the edges they touch so a king on the back rank is
+its own closed world; the full run resumed from its checkpoint after a resume bug (nested lists) was fixed.
+
 ## 2026-09-24 12:51 PDT — THE FULL RUN launched (Kaveh: "do the full run")
 
 Everything he asked for is in first: checkpoint + resume, canonical frames under slot order and the colour flip,
