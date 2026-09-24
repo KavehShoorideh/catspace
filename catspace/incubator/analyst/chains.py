@@ -175,7 +175,7 @@ def gauge(n: int, library: Path, proved: Path, lo: int = 10, hi: int = 80, seed:
     should not (the expansion caught a wrong small-world claim). By stake band and by number of bodies."""
     from .chess_domain import domain
     from .dataset import load as load_ds
-    dom = domain(); app = Applier(dom, load_library(library, proved))
+    dom = domain(oracle="frame"); app = Applier(dom, load_library(library, proved))   # the chain libraries are frame-local: their world is the frame's pieces, the null baseline frame-local
     meta = load_ds("data/derived/knowledge", meta_only=True)["meta"]
     rows = [m for m in meta if lo <= m["ply"] <= hi and m.get("best")]
     rng = random.Random(seed); rng.shuffle(rows)
@@ -284,13 +284,13 @@ def main(argv=None):
         ranker = GraphRanker(domain())
     if a.cmd == "gauge":
         gauge(a.n, Path(a.library), Path(a.proved), ranker=ranker, tag=a.tag, mode=a.mode); return
-    app = Applier(domain(), load_library(Path(a.library), Path(a.proved)))
+    app = Applier(domain(oracle="frame"), load_library(Path(a.library), Path(a.proved)))
     b = chess.Board(a.fen or chess.STARTING_FEN)
     if a.cmd == "imagine":
         imagined_report(app, b); return
     if a.cmd == "narrate":
         gain_lib = OUT / "library_games_gain.json"; gain_prov = OUT / "proved_games_gain.json"
-        gain_app = Applier(domain(), load_library(gain_lib, gain_prov)) if gain_lib.exists() else None
+        gain_app = Applier(domain(oracle="frame"), load_library(gain_lib, gain_prov)) if gain_lib.exists() else None
         narrate(b, app, gain_app, ranker=ranker, played=a.played, best=a.best); return
     for ch in chains(app, b, ranker=ranker, mode=a.mode):
         i = ch["idea"]
@@ -350,6 +350,8 @@ def imagined_ideas(app: Applier, board: chess.Board, min_stake: float = 1.0, max
                         except StopIteration:
                             continue
                         if any(all(app._lit(st2, ids, r, sl, pol, action=a2) for r, sl, pol in term) for term in c.guard):
+                            if _baseline_dropped(dom, st, st2, e):
+                                continue                                      # the removal itself threatens our frame: the "gain" would only be the escape (the first report imagined d4,d5 gone so the bishop, now attacked by the queen, could "gain" by moving away)
                             found = blockers; break
                     if found:
                         break
@@ -360,6 +362,20 @@ def imagined_ideas(app: Applier, board: chess.Board, min_stake: float = 1.0, max
             break
     out.sort(key=lambda i: (-i["feasible"], -i["stake"], len(i["blockers"])))
     return out
+
+
+def _baseline_dropped(dom, st, st2, e: int, eps: float = 0.5) -> bool:
+    """The lemma's gain is relative to the null move in its own world; an imagined world where standing still is
+    already worse for the actor (a threat the removal created) shifts that baseline, and the gain is not a gain over
+    the real position. Uses the domain's null-reply scalar when it has one."""
+    fn = getattr(dom, "null_reply_scalar", None)
+    if fn is None:
+        return False
+    try:
+        b0, b1 = fn(st, e), fn(st2, e)
+    except Exception:
+        return False
+    return b0 is not None and b1 is not None and b1 < b0 - eps
 
 
 def relocation_ideas(app: Applier, board: chess.Board, min_stake: float = 1.0, max_out: int = 40) -> list:

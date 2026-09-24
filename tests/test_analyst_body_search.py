@@ -109,3 +109,22 @@ def test_shap_decomposition_has_the_mover_alone_as_the_empty_set():
     empty = [v for s, v in zip(mob.interaction_lookup.keys(), mob.values) if len(s) == 0][0]
     assert empty == pytest.approx(outcome_on_subset(dom, b, mv, set(), False))          # the mover alone
     assert r["full"] == pytest.approx(-5.0)                                            # with everything: Rg1 loses the rook
+
+
+def test_imagined_gains_never_come_from_a_threat_the_removal_created():
+    """An imagined blocker removal must not lower the actor's own null-move baseline: otherwise the 'gain' is only the
+    escape from a threat the imagination itself created (2026-09-24, the d4/d5 report)."""
+    from pathlib import Path
+    from catspace.incubator.analyst.chains import imagined_ideas, _baseline_dropped, load_library, OUT
+    from catspace.incubator.analyst.lemma_apply import Applier
+    from catspace.incubator.analyst.chess_domain import domain
+    lib, prov = OUT / "library_games_gain.json", OUT / "proved_games_gain.json"
+    if not lib.exists():
+        import pytest; pytest.skip("no gain library")
+    app = Applier(domain(oracle="frame"), load_library(lib, prov))
+    b = chess.Board("r1bq1rk1/ppp2ppp/2n2n2/3pp3/1b1P4/2NBPN2/PPP2PPP/R2QK2R w KQ - 0 8")
+    for i in imagined_ideas(app, b, max_out=20):
+        st = app.dom.state_of(b, i["ids"]); b2 = b.copy(stack=False)
+        for x in i["blockers"]:
+            b2.remove_piece_at(x)
+        assert not _baseline_dropped(app.dom, st, app.dom.state_of(b2, i["ids"]), i["ids"][i["lemma"].slot]), i["move"]
