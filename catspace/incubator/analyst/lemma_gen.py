@@ -896,7 +896,7 @@ class Generator:
             raise SystemExit(f"[lemma_gen] checkpoint was made under {st.get('made_under')}, this run is {dict(_PROVENANCE)}: not resuming")
         self.library = [lemma_from_json(e) for e in st["library"]]
         self.residual_frames = [(frame_from_json(f), r) for f, r in st["residual"]]
-        self.seen_signatures = {tuple(tuple(x) if isinstance(x, list) else x for x in k): None for k in st["seen"]}
+        self.seen_signatures = {deep_tuple(k): None for k in st["seen"]}
         return st
 
     def run(self, max_size: int = 3, min_support: int = 60, admit_cov: float = 0.9, admit_pur: float = 0.8, resume: bool = False, ckpt_every: int = 100):
@@ -909,7 +909,7 @@ class Generator:
         if resume:
             st = self.load_checkpoint()
             if st:
-                start_size = st["size"]; frontier = [frame_from_json(f) for f in st["frontier"]]; done = set(tuple(x) if isinstance(x, list) else x for x in st["done"])
+                start_size = st["size"]; frontier = [frame_from_json(f) for f in st["frontier"]]; done = set(deep_tuple(x) for x in st["done"])
                 deferred = defaultdict(list, {int(k): [frame_from_json(f) for f in v] for k, v in st["deferred"].items()})
                 carried = ([frame_from_json(f) for f in st["next_frontier"]], st["counters"])
                 for l in self.library:
@@ -1125,6 +1125,10 @@ def frame_to_json(f: Frame) -> dict:
 
 def frame_from_json(d: dict) -> Frame:
     return Frame(tuple(d["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in d["literals"]), joined=bool(d.get("joined")))
+
+
+def deep_tuple(x):
+    return tuple(deep_tuple(y) for y in x) if isinstance(x, list) else x
 
 
 def guard_from_json(g) -> list:

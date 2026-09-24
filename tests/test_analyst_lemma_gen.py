@@ -307,3 +307,17 @@ def test_type_tree_splits_and_embeds_across_levels():
     assert inh, "the root lemma must embed in a concrete frame"
     st = next(iter(dom.placements(("Q", "*"), 5, 0)))[0]
     assert st.board.piece_at(st.ids[0]).piece_type == 5                                     # a queen of either colour
+
+
+def test_resume_mid_size_continues_from_the_checkpoint(tmp_path, monkeypatch):
+    """A checkpoint written in the middle of a size (with frames done) must load and let the run continue (the full
+    run's resume crashed on nested lists, 2026-09-24 13:09)."""
+    from catspace.incubator.analyst.chess_domain import domain
+    monkeypatch.setattr(lg, "OUT", tmp_path)
+    g = lg.Generator(domain(), cap=60, log=lambda *a, **k: None)
+    fr = lg.Frame(("wK", "wR"), (("same_side", (0, 1), True),))
+    g.library = [g.evaluate(lg.Frame(("wK",), ()), 0, [])]
+    g.save_checkpoint(2, [fr, lg.Frame(("wK", "wQ"), (("same_side", (0, 1), True),))], {(fr.types, fr.literals)}, [], {}, 1, 1, 1)
+    g2 = lg.Generator(domain(), cap=60, log=lambda *a, **k: None)
+    lib = g2.run(max_size=2, resume=True)
+    assert len(lib) >= 1 and g2.load_checkpoint()["size"] == 3
