@@ -378,10 +378,11 @@ def made_under(library_path) -> dict:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True, use_core: bool = True):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True, use_core: bool = True, max_rows: int = 20000):
         self.max_joins = max_joins
         self.sequential = sequential
         self.use_core = use_core
+        self.max_rows = max_rows
         if lift:
             dom = lifted(dom, prefixes if prefixes is not None else ("after", "then", "some"))
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
@@ -432,11 +433,16 @@ class Generator:
             rows.append(row); complete = comp
         return rows, complete
 
-    def iter_rows(self, frame: Frame, slot: int, cap: int | None = None):
+    def iter_rows(self, frame: Frame, slot: int, cap: int | None = None, max_rows: int | None = None):
         """The rows one at a time: (row, complete so far). The exhaustive re-test streams them (a two-piece frame holds
-        30 M rows; holding them took 6 GB a worker, 2026-09-24 00:05)."""
-        complete = True
+        30 M rows; holding them took 6 GB a worker, 2026-09-24 00:05). `max_rows` bounds a frame's evidence: past it
+        the sample is cut (and flagged incomplete) -- a placement cap alone lets a busy piece bring thirty rows each."""
+        complete = True; n = 0
+        max_rows = self.max_rows if max_rows is None else max_rows
         for state, ids, comp in self.instances(frame, cap):
+            if max_rows and n >= max_rows:
+                complete = False
+                break
             complete = comp
             e = ids[slot]
             base = None
@@ -446,12 +452,14 @@ class Generator:
                     continue                                                  # no null action here (in check): the relative outcome is undefined
             if self.dom.batch_outcomes is not None and self.use_core:
                 for a, delta in self.dom.batch_outcomes(state, e, self.relative):
+                    n += 1
                     yield (state, ids, a, delta), complete
                 continue
             for a in self.dom.actions(state, e):
                 before = self.dom.scalar(state, e)
                 after = self.dom.transition(state, a)
                 delta = self.dom.reply_scalar(after, e) - (base if base is not None else before)
+                n += 1
                 yield (state, ids, a, delta), complete
 
     # ---------------------------------------------------------------- literal masks (bitsets over the rows)
@@ -1043,9 +1051,10 @@ class Generator:
         """One more slot, joined to an existing slot through one binary relation."""
         out = []
         k = frame.size
+        det = self.type_determined() if self.dom.type_tree else set()       # worth, side, kind are type attributes: with top-down types they are SPLITS, not frame literals (the full run of 2026-09-24 stalled on 'any piece, any piece, a king worth at least each': true of every triple, 100k rows a frame)
         for t in ([self.dom.root] if self.dom.root else self.dom.types):     # the new slot starts at the root type and splits only if its guard fails
             for r in self.state_rels:
-                if r.arity != 2:
+                if r.arity != 2 or r.name in det:
                     continue
                 for s in range(k):
                     for sl in ((s, k), (k, s)):
@@ -1445,6 +1454,7 @@ def main(argv=None):
     ap.add_argument("--no-sequential", action="store_true", help="always draw the full cap (no quarter-sample early decision)")
     ap.add_argument("--no-core", action="store_true", help="do not use the compiled core (analyst_core) for outcomes and base literals")
     ap.add_argument("--tag", default="", help="suffix for the library/residual/checkpoint files of this run")
+    ap.add_argument("--max-rows", type=int, default=20000, help="a frame's evidence is cut past this many rows (flagged incomplete)")
     ap.add_argument("--no-shapes", action="store_true", help="sampled placements: keep every board position of a configuration instead of one centred placement per shape")
     ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
     ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
@@ -1504,7 +1514,7 @@ def main(argv=None):
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core, max_rows=a.max_rows)
     g.tag = a.tag
     lib = g.run(max_size=a.max_size, resume=a.resume)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")

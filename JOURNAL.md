@@ -22874,6 +22874,19 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 16:20 PDT — the full run stalled on vacuous frames; two generic fixes; relaunch
+
+Two hours into size 3 with no progress mark. Isolated timings said frames take 1-50 s (the most frequent
+same-side triple: 4,250 rows, 51 s), so the pool was not slow but stuck on the first frames. The checkpoint's
+frontier showed why: the most frequent size-3 candidates are `[* * K] worth_ge(2,0) & worth_ge(2,1)` and its kin
+-- a king is worth at least anything, so the frame is true of every triple, draws the abstract cap (3,200
+placements) times thirty actions, about a hundred thousand rows each, and hundreds of them tie at the top of the
+frequency order. Worth, side and kind are attributes of the TYPES; with top-down types they are splits, not frame
+literals. Fixes: (1) extension literals are geometry only (relations the generator itself finds type-determined
+are excluded from `extend`; they stay available to guards); (2) a frame's evidence is cut at `--max-rows` (20,000,
+flagged incomplete) so a placement cap can never be multiplied by a busy piece's thirty moves. The run is
+relaunched from scratch under `--tag full2` (sizes 1-2 took half an hour before).
+
 ## 2026-09-24 16:14 PDT — the prune audit: 20 of 20 after three fixes (OBS)
 
 `goals audit --n 20` on general-population positions: first run 18/20 (a promotion gains without capturing; a mate
