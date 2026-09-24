@@ -262,7 +262,7 @@ def test_applier_applies_a_lemma_through_its_colour_image():
     app = Applier(dom, [c])
     assert ("bQ",) in app.by_types
     b = chess.Board("4k3/8/8/8/8/8/7q/3QK3 b - - 0 1")                       # black queen h2 to move
-    res = app.apply(b, actor=chess.H1)
+    res = app.apply(b, actor=chess.H2)
     assert res["verdicts"], "the black queen's moves get verdicts from the white-queen lemma"
 
 
