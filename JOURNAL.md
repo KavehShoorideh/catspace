@@ -22874,6 +22874,17 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 21:45 PDT — the frame episode at a fixed depth 3: dearer and less explainable; depth = frame size is the coherent setting
+
+OBS (`run_depth1_smoke.log` vs `run_depth3_smoke.log`; 3,000 positions, sizes ≤3, cap 200, 80 frames, 2 workers, both
+under contention): depth 3 took 2.4x the time to the same point (396 s vs 168 s at size 3, frame 50) and admitted
+14 lemmas against 23 (size 1: 7 vs 11; the lone king and rook fell under the coverage bar), with no refinements
+(0 vs 4). The one-piece guards are the same words at both depths (`lands_attacked & not attacked`), but at three
+plies they cover 93–96% of the exceptions instead of 95–100%: a fixed depth gives a one-piece frame plies it has
+no piece to spend, and the extra exceptions are episode facts the one-ply vocabulary cannot name. My mistake: the
+fixed depth is incoherent with Kaveh's rule "k pieces imply k plies". Rerun launched with `--depth 0` (the frame's
+size). The lever after that is the vocabulary: after-the-episode relations, not only after-the-move.
+
 ## 2026-09-23 21:39 PDT — chunked chains: a piece joins with its known frame (gauge), the frame episode, joins
 
 Kaveh: "once we've identified frames, when extending out one piece at a time, we can also extend out one
