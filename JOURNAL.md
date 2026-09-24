@@ -22874,6 +22874,18 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 12:51 PDT — THE FULL RUN launched (Kaveh: "do the full run")
+
+Everything he asked for is in first: checkpoint + resume, canonical frames under slot order and the colour flip,
+one literal per truth column, sequential sampling, one centred placement per shape, top-down types with
+evidence-based splits, joins, the episode at depth = frame size, the full vocabulary (after, then, some), the
+compiled core, and the general-population source (ChessBench/Lichess positions, hash-split gen/test). Command:
+`run --source lichess --positions 50000 --oracle frame --relative --lift --prefixes after,then,some --depth 0
+--max-size 4 --cap 800 --workers 10 --max-frames 3000 --joins 2 --tag full` (`run_full.log`, checkpoint
+`checkpoint_chess_games_frame_full.json`), then `prove --split test` on the disjoint part (12,000 positions, seed 1,
+cap 3,000) and `examples`; FULL-END marks the end. Timing is not the measurement (Kaveh: "just measure
+correctness"); the judges are the re-test on unseen positions, the chain gauge and the narrations.
+
 ## 2026-09-24 11:45 PDT — top-down abstraction on real positions, with evidence-based splitting (OBS)
 
 Same smoke as before (3,000 positions, sizes ≤3, cap 200, 80 most frequent frames per size, 2 workers, one reply):
