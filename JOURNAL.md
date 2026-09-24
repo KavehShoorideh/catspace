@@ -22874,6 +22874,19 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 11:45 PDT — top-down abstraction on real positions, with evidence-based splitting (OBS)
+
+Same smoke as before (3,000 positions, sizes ≤3, cap 200, 80 most frequent frames per size, 2 workers, one reply):
+the abstract generator evaluates 8 + 362 + 1,417 frames (splits included) and admits 5 + 38 + 267 = 310 lemmas in
+293 s, against 24 lemmas in 45 s for the concrete generator at the same settings (and 23 in ~350 s before the
+fast-generator work). The frontier is now driven by evidence: a slot is split only where its leaf types' exception
+rates disagree, so the search goes where the types differ (kind level: `[N Q] worth_ge`, `[K Q] aligned`; colour
+only where needed: `[* bK]`). The root lemma and the kind-level one-piece lemmas come first: `[*] keeps unless it
+lands attacked and was not already attacked` (121/122), `[Q] loses unless it lands unattacked or was attacked`,
+`[R] keeps unless ... and does not capture something worth at least itself`. Not yet measured: whether the 310
+explain more real positions than the 24 (the surprise and chain gauges are the judges). Runs now take `--tag` so
+concurrent runs keep separate files.
+
 ## 2026-09-24 11:40 PDT — ideas as live frames; the listener; top-down abstraction; the Rust core (OBS)
 
 Kaveh's position (black to move, `2kr3r/ppp2ppp/2nb1n2/7q/3P2b1/2P2N2/PP1NBPPP/R1BQ1RK1`): Bxh2+ deflects the

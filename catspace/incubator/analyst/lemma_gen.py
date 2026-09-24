@@ -874,7 +874,7 @@ class Generator:
 
     # ---------------------------------------------------------------- the schedule
     def checkpoint_path(self) -> Path:
-        return OUT / f"checkpoint_{self.dom.name}.json"
+        return OUT / f"checkpoint_{self.dom.name}{('_' + self.tag) if getattr(self, 'tag', '') else ''}.json"
 
     def save_checkpoint(self, size, frontier, done, next_frontier, deferred, admitted, evaluated, broke_frames):
         """CHECKPOINT (Kaveh 2026-09-24: "if it's so long, let's always add checkpointing"): the whole state of the run,
@@ -1093,8 +1093,9 @@ class Generator:
 
     def save(self):
         OUT.mkdir(parents=True, exist_ok=True)
-        json.dump([lemma_to_json(l) for l in self.library], open(OUT / f"library_{self.dom.name}.json", "w"), indent=1)
-        json.dump([dict(frame=f.text(), residual=r) for f, r in self.residual_frames], open(OUT / f"residual_{self.dom.name}.json", "w"), indent=1)
+        name = self.dom.name + (f"_{self.tag}" if getattr(self, "tag", "") else "")   # a tag keeps concurrent runs from overwriting each other's files
+        json.dump([lemma_to_json(l) for l in self.library], open(OUT / f"library_{name}.json", "w"), indent=1)
+        json.dump([dict(frame=f.text(), residual=r) for f, r in self.residual_frames], open(OUT / f"residual_{name}.json", "w"), indent=1)
 
 
 _PROVENANCE: dict = {}                                                       # the outcome definition of the current run (oracle, depth, relative, lift, gain): written into every lemma
@@ -1439,6 +1440,7 @@ def main(argv=None):
     ap.add_argument("--resume", action="store_true", help="continue a run from its checkpoint (same flags)")
     ap.add_argument("--no-sequential", action="store_true", help="always draw the full cap (no quarter-sample early decision)")
     ap.add_argument("--no-core", action="store_true", help="do not use the compiled core (analyst_core) for outcomes and base literals")
+    ap.add_argument("--tag", default="", help="suffix for the library/residual/checkpoint files of this run")
     ap.add_argument("--no-shapes", action="store_true", help="sampled placements: keep every board position of a configuration instead of one centred placement per shape")
     ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
     ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
@@ -1484,6 +1486,7 @@ def main(argv=None):
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
     g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core)
+    g.tag = a.tag
     lib = g.run(max_size=a.max_size, resume=a.resume)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 
