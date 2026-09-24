@@ -707,10 +707,11 @@ def parse_frame(text: str) -> Frame:
 
 # ---------------------------------------------------------------- the exhaustive pass, and generalization, share one check
 _RELATIVE = False                                                            # the outcome definition the prove/generalize passes use (set by main)
+_LIFT = False                                                                # whether the after-the-move relations are in the vocabulary (set by main)
 
 
 def _check(dom: Domain, fr: Frame, slot: int, claim: str, guard: list, cap: int, min_cov: float, min_pur: float) -> dict:
-    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE)
+    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT)
     rows, complete = g.rows_of(fr, slot)
     if not rows:
         return dict(frame=fr.text(), slot=slot, claim=claim, status="no placements")
@@ -916,7 +917,7 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
 def _examples_job(args):
     entry, cap = args
     fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"]))
-    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE)
+    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT)
     rows, _ = g.rows_of(fr, entry["slot"])
     if not rows:
         return entry.get("examples", {})
@@ -983,8 +984,8 @@ def main(argv=None):
         dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
-    global _RELATIVE
-    _RELATIVE = a.relative
+    global _RELATIVE, _LIFT
+    _RELATIVE = a.relative; _LIFT = a.lift
     if a.cmd == "prove":
         prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers); return
     if a.cmd == "examples":
