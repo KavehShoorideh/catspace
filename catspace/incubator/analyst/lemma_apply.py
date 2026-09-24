@@ -33,6 +33,10 @@ class Compiled:
     text: str
     value: dict = None             # {"holds": mean outcome where the claim held, "exception": mean outcome of the exceptions}, inside the frame's world
 
+    @property
+    def id(self) -> str:
+        return self.text.split(" ", 1)[0]
+
 
 def load_library(library_path: Path, proved_path: Path | None = None, proved_only: bool = True) -> list[Compiled]:
     lib = json.load(open(library_path))
