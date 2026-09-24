@@ -177,7 +177,7 @@ def test_exhaustive_check_yields_a_theorem():
     raw = cd.placement_count(("wK",))
     assert raw == 10 * 63
     o = lg._check(dom, lg.Frame(("wK",), ()), 0, "acting keeps", [], cap=raw, min_cov=0.95, min_pur=0.8)
-    assert o["complete"] and o["status"] == "THEOREM" and o["exceptions"] == 0 and o["support"] > 1000
+    assert o["complete"] and o["status"] == "THEOREM" and o["exceptions"] == 0 and o["support"] > 100   # shapes: one placement per configuration
     o = lg._check(dom, lg.Frame(("wK",), ()), 0, "acting keeps", [], cap=100, min_cov=0.95, min_pur=0.8)
     assert not o["complete"] and o["status"] == "PROVED"                     # a sample never makes a theorem
 
