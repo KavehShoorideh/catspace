@@ -142,8 +142,11 @@ class Search:
             self.tt[key] = (depth, best, a0, b0)
         return best
 
-    def root(self, b: chess.Board, cands: list, depth: int) -> dict:
-        """Iterative deepening over the candidates; returns move -> value at the deepest completed depth."""
+    def root(self, b: chess.Board, cands: list, depth: int, full_window: bool = False) -> dict:
+        """Iterative deepening over the candidates; returns move -> value at the deepest completed depth.
+        full_window: every candidate searched in the full window, so every value is exact (the ANALYSIS needs that;
+        with alpha-beta at the root, moves after the best one return bounds -- Bxb5 read +0.24 where the true value was
+        a lost game, 2026-09-23). Choosing a move does not need it: the maximum is exact either way."""
         side = b.turn
         vals = {}
         for d in range(1, depth + 1):
@@ -155,7 +158,7 @@ class Search:
             if vals:
                 cands = sorted(cands, key=lambda m: -vals.get(m, -MATE * 3))  # the previous iteration's order first: tighter windows sooner
             for m in cands:
-                b.push(m); v = self.alphabeta(b, side, d - 1, alpha, beta); b.pop()
+                b.push(m); v = self.alphabeta(b, side, d - 1, -MATE * 2 if full_window else alpha, beta); b.pop()
                 cur[m] = v
                 alpha = max(alpha, v)
                 if self.n > self.node_cap:
@@ -356,7 +359,7 @@ def _analyse(self, b: chess.Board, top: int = 6) -> list:
         b.push(m); resolved[m] = s.quiesce(b, side, -MATE * 2, MATE * 2, s.q_depth); b.pop()
     gv = self.graph_verdicts(b, legal) if self.app else {}
     s.n = 0
-    vals = s.root(b, legal, self.depth)
+    vals = s.root(b, legal, self.depth, full_window=True)
     dut = duties(self.app, b) if self.app else {}
     from .watchers import pose
     questions = pose(b, Search(node_cap=10 ** 9), self.app)

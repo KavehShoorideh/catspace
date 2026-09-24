@@ -94,3 +94,13 @@ def test_graph_cache_does_not_reuse_across_different_bodies():
     v2 = pl.graph_verdicts(b2, [m])[m]
     assert v1[1] > 0, f"Rg1 with the black rook present should be called losing: {v1}"
     assert v2[1] == 0, f"Rg1 without the black rook should not be called losing: {v2} (cache reused across different bodies?)"
+
+
+def test_analysis_values_are_exact_not_bounds():
+    """With alpha-beta at the root, the second-best moves come back as bounds; the analysis must search a full window
+    so a move that allows mate in one reads as lost (2026-09-23: Bxb5 read +0.24 in game 669)."""
+    b = chess.Board("r4rk1/pb1n1p2/2p1p1p1/1p5q/3P3Q/3B4/PPP2P2/1K1R2NR w - - 0 19")
+    s = Search(node_cap=10 ** 9)
+    vals = s.root(b, list(b.legal_moves), 2, full_window=True)
+    assert vals[chess.Move.from_uci("d3b5")] <= -MATE + 1
+    assert max(vals, key=vals.get) == chess.Move.from_uci("h4h5")
