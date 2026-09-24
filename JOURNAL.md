@@ -22874,6 +22874,15 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 00:09 PDT — the exhaustive re-test starved the machine; it streams now
+
+The two-piece theorem sample (10 workers, 2.4 M placements a frame) built every row in memory before checking the
+guard: one worker reached 6.3 GB, the harness killed a waiting shell for low memory at 00:05, and I stopped the run
+(no numbers). `_check` now streams the rows through four counters and stores nothing; `Generator.iter_rows` is the
+generator, `rows_of` its list form; an equivalence test pins the streamed counts to the bitset path. The sample is
+re-queued with 6 workers behind the overnight vocabulary run. Lesson beside the swap scars: exhaustive passes must
+never materialize their universe.
+
 ## 2026-09-23 23:45 PDT — the refined frame library: 1,141 lemmas, 905 re-tested; the queen trade reads as a keep
 
 `run_games_frame6k.log` (60k positions, sizes ≤4, cap 800, 6,000 frames per size, lifts after; refinement on):
