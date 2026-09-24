@@ -301,6 +301,63 @@ def imagined_ideas(app: Applier, board: chess.Board, min_stake: float = 1.0, max
     return out
 
 
+def relocation_ideas(app: Applier, board: chess.Board, min_stake: float = 1.0, max_out: int = 40) -> list:
+    """THE SECOND KIND OF IMAGINED FRAME (Kaveh 2026-09-23: "if this piece went over there"): a gaining lemma whose
+    frame embeds except for ONE of our slots -- and one of our pieces of that type, moved to a square it reaches in
+    one move (the rules), would fill it so that every frame literal holds. The preparatory move is the plan; the
+    lemma's gain is the stake; whether the gaining term then fires for some action of the actor is the check.
+    Generic: reachability is the domain's actions; literals are programs."""
+    import itertools
+    dom = app.dom
+    ents = dom.entities(board)
+    ours = board.turn
+    by_type = defaultdict(list)
+    for e, t in ents:
+        by_type[t].append(e)
+    out = []
+    for c in app.lemmas:
+        if not c.value or c.claim != "acting does not gain" or c.value["exception"] < min_stake or not c.guard or c.frame.size < 2:
+            continue
+        for missing in range(c.frame.size):
+            t_missing = c.frame.types[missing]
+            movers = [e for e in by_type.get(t_missing, []) if board.piece_at(e).color == ours]
+            if not movers:
+                continue
+            pools = [by_type.get(t, []) if k != missing else [None] for k, t in enumerate(c.frame.types)]
+            if any(not p for p in pools):
+                continue
+            for ids in itertools.product(*pools):
+                fixed = [x for x in ids if x is not None]
+                if len(set(fixed)) < len(fixed):
+                    continue
+                for mover in movers:
+                    if mover in fixed:
+                        continue
+                    for prep in board.legal_moves:
+                        if prep.from_square != mover or prep.to_square in fixed:
+                            continue
+                        b2 = board.copy(stack=False); b2.push(prep)
+                        b2.turn = ours                                      # imagine it is still our move after the relocation (the frame, not the tempo)
+                        if not b2.is_valid():
+                            continue
+                        ids2 = list(ids); ids2[missing] = prep.to_square
+                        st2 = dom.state_of(b2, ids2)
+                        if not all(app._lit(st2, ids2, r, sl, pol) for r, sl, pol in c.frame.literals):
+                            continue
+                        e = ids2[c.slot]
+                        if not dom.actor_ok(b2, e):
+                            continue
+                        gaining = [a[1] for a in dom.actions(st2, e) if any(all(app._lit(st2, ids2, r, sl, pol, action=a) for r, sl, pol in term) for term in c.guard)]
+                        if gaining:
+                            out.append(dict(lemma=c, ids=ids2, prep=prep, then=gaining[0], stake=c.value["exception"], safe=not b2.is_attacked_by(not ours, prep.to_square) or b2.is_attacked_by(ours, prep.to_square)))
+                if len(out) >= max_out:
+                    break
+        if len(out) >= max_out:
+            break
+    out.sort(key=lambda i: (-i["safe"], -i["stake"]))
+    return out
+
+
 def clearing_moves(board: chess.Board, blocker: int, ids: list) -> list:
     """Our moves that address a blocker: capture it; attack it (force it to move); or, if it is OUR piece, move it
     away with tempo (a capture or a check) -- the discovered attack itself."""
@@ -326,7 +383,18 @@ def imagined_report(app: Applier, board: chess.Board, top: int = 8):
         print(f"imagine {','.join(chess.square_name(x) for x in i['blockers'])} gone: {board.san(i['move'])} would gain ~{i['stake']:+.1f} by {i['lemma'].text[:90]} [{','.join(chess.square_name(x) for x in i['ids'])}]" + ("" if i["feasible"] else "  (no clearing move: a starting point only)"))
         for m, why in i["clearing"][:4]:
             print(f"    clearing: {board.san(m):7s} {why}")
-    return ideas_
+    rel = relocation_ideas(app, board)
+    print(f"{len(rel)} relocation ideas ({sum(1 for i in rel if i['safe'])} landing on a square not lost outright)")
+    seen = set()
+    for i in rel:
+        key = (i["prep"].uci(), i["then"].uci())
+        if key in seen:
+            continue
+        seen.add(key)
+        print(f"if {board.san(i['prep'])} first: then {i['then'].uci()} would gain ~{i['stake']:+.1f} by {i['lemma'].text[:80]} [{','.join(chess.square_name(x) for x in i['ids'])}]" + ("" if i["safe"] else "  (the square is lost outright)"))
+        if len(seen) >= top:
+            break
+    return ideas_, rel
 
 
 if __name__ == "__main__":
