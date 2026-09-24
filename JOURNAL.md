@@ -23909,3 +23909,17 @@ chains right 37/46 = 80% (policy-only heuristic: 52%); with the graph guide brea
 guide: 86%); refuted chains 7 and 5, the seed wrong in 3 and 2; unexpanded big-stake 78% / 77%.
 Reading: the deterministic step -- bring in the piece the guard is about -- recovers nearly all of what the learned
 policy gave, and the two together are best. This is Kaveh's "a little of both", measured.
+
+## 2026-09-23 19:16 PDT — chains on the 219-lemma library; the dialogue expansion (Kaveh: alternate sides; silence is not a stop)
+
+Interface + graph guide, 150 positions, conclusion vs the truth's sign, OBS:
+  old stop (two silent pieces): held big-stake chains right 115/145 = 79%; refuted 10 (seed wrong in 4);
+    unexpanded big 730/926 = 79%; the best move seeded 4 held / 23 unexpanded.
+  policy-only with the guide: held big 122/150 = 81%; refuted 13 (seed wrong 7).
+  DIALOGUE (alternating sides, interface pieces first as threat analysis, stop only on refutation / nothing
+    relevant / budget 8): held big 148/189 = 78%; refuted 13 (seed wrong in 7); most chains now run to six bodies
+    (520/738 right at six); the best move seeded 5 held / 22 unexpanded.
+Reading: three times as many chains expand as with 58 lemmas, at the same ~80% accuracy at big stakes -- but the
+unexpanded seeds are also 79% right, so expansion today CONFIRMS rather than corrects; the correction signal is
+the refutations, 13 chains of which 7 caught a wrong seed. What moves this is library size (a chain can only be
+refuted by a lemma that exists) and a guide retrained on frame-local shares. Launching the larger generation.
