@@ -22874,6 +22874,24 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 20:19 PDT — the gain library landed; imagined gains no longer escape their own threats
+
+OBS gain library (`run_games_gain.log`: 20k positions, sizes ≤3, cap 600, frontier 600, `--gain 1.0`): 157 lemmas
+(8 + 92 + 57 by size); prove at cap 3,000 on seed 1: 62 PROVED, 95 conjecture. Trade-shaped guards appear from
+the gain side, e.g. `[wB bP] worth_ge(0,1): does not gain unless (attacked(0) & not lands_attacked) or (attacked(0)
+& not after_worth_ge(0,1)) or (not defended(1) & not after_worth_ge(0,1))`, 93.5% of 14,317, proved.
+
+Imagination artefact found on the first report: "if d4,d5 were gone, Bb5/Bc4/Be2/Bf1 would gain +3" -- removing
+the blockers put the bishop under the queen's attack, and the one-piece lemma's gain (escape a threat, relative
+outcome) fired. Generic fix (`chains._baseline_dropped`): an imagined removal is rejected when the actor's
+frame-local null baseline is lower in the imagined world than in the real one (the gain would only be the escape).
+The chains CLI/gauge now apply the libraries in the frame-local domain (their world). After the fix the same
+position reads "if c6 were gone, Nxe5 gains +2.9; clear it by Bb5 (attacks the blocker)"; the other two positions
+have no imagined gain and fall to relocation ideas. Test: no imagined idea lowers the actor's baseline.
+
+Narration on game 669 with the 187-lemma library is unchanged (the trade still reads as a 9-point loss); the
+refined frame-local library (queued, 60k positions, sizes ≤4) is the fix in flight.
+
 ## 2026-09-20 00:05 PDT — canonical concepts: the deterministic path over the fixed vocabulary, first numbers
 
 Kaveh: concepts must be CANONICAL -- the same from every run; rules-based at least when explaining. Measured
