@@ -88,15 +88,19 @@ def interface(app: Applier, board: chess.Board, bodies: list, mv: chess.Move, le
     return score
 
 
-def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 6, ranker=None, mode: str = "interface") -> dict:
-    """Follow one idea's chain. Returns the trace and the conclusion: held | refuted | silent."""
+def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 8, ranker=None, mode: str = "interface", floor: float = 0.15) -> dict:
+    """Follow one idea's chain as a DIALOGUE (Kaveh 2026-09-23): after a piece of one side joins, the other side
+    answers next -- unless an interface piece of the deciding lemma is waiting (threat analysis, two pieces of one
+    side allowed). Silence is not a stop: the chain continues while any candidate is still RELEVANT (an interface
+    piece for the current lemma, or a piece the policy scores above `floor` x its top score at the seed), and ends
+    on a refutation, when nothing relevant is left, or at the budget. Conclusion: held | refuted | unexpanded."""
     from .body_search import related
-    mv = idea["move"]; actor = mv.from_square
+    mv = idea["move"]; actor = mv.from_square; our = board.piece_at(actor).color
     bodies = list(dict.fromkeys([actor] + [i for i in idea["ids"] if i != actor]))
-    claim_value = idea["value"]; deciding = idea["lemma"]
-    trace = [dict(bodies=[chess.square_name(b) for b in bodies], value=claim_value, lemma=deciding.text[:110], event="seed")]
+    claim_value = idea["value"]; deciding = idea["lemma"]; deciding_ids = list(idea["ids"])
+    trace = [dict(bodies=[chess.square_name(b) for b in bodies], value=claim_value, lemma=deciding.text[:110], event="seed", side="ours")]
     ents = dict(app.dom.entities(board))
-    silent = 0
+    last_side = our; top_score = None
     while len(bodies) < max_bodies:
         cand = [e for e in ents if e not in bodies]
         if not cand:
@@ -110,34 +114,32 @@ def expand(app: Applier, board: chess.Board, idea: dict, max_bodies: int = 6, ra
             ranked = related(app, board, bodies, cand)
         if not ranked:
             break
-        if mode == "interface":
-            # deterministic first: the outside pieces the deciding lemma's literals are about; the policy orders the rest
-            ids_now = [b for b in bodies]
-            iface = interface(app, board, bodies, mv, deciding, idea["ids"] if len(idea["ids"]) == deciding.frame.size else ids_now[: deciding.frame.size], cand)
-            if iface:
-                pol_rank = {c: k for k, (_, c) in enumerate(ranked)}
-                nxt = max(iface, key=lambda c: (iface[c], -pol_rank.get(c, 10 ** 6)))
-            else:
-                nxt = ranked[0][1]
-        else:
-            nxt = ranked[0][1]
-        bodies.append(nxt)
+        if top_score is None:
+            top_score = max(abs(sc) for sc, _ in ranked) or 1.0
+        score = {c: sc for sc, c in ranked}
+        iface = interface(app, board, bodies, mv, deciding, deciding_ids, cand) if mode == "interface" else {}
+        # relevance: an interface piece, or a policy score above the floor
+        relevant = [c for c in cand if c in iface or abs(score.get(c, 0.0)) >= floor * top_score]
+        if not relevant:
+            trace.append(dict(bodies=[chess.square_name(b) for b in bodies], value=claim_value, lemma=None, event="exhausted", side=None))
+            break
+        other = [c for c in relevant if board.piece_at(c).color != last_side]
+        pool = [c for c in relevant if c in iface] or other or relevant       # threat analysis first, then the other side's answer, then whatever is left
+        nxt = max(pool, key=lambda c: (iface.get(c, 0), score.get(c, 0.0)))
+        role = "threat" if nxt in iface else "answer"
+        bodies.append(nxt); last_side = board.piece_at(nxt).color
         res = app.apply(board, bodies=set(bodies), actor=actor, only_action=mv)
         vs = [v for vl in res["verdicts"].values() for v in vl]
-        # the most specific lemma that speaks about the move over these bodies decides
-        spoke = [(c, fired) for c, pred, fired, ids in vs if implied_value(c, fired) is not None and c.frame.size > deciding.frame.size]
+        spoke = [(c, fired, ids) for c, pred, fired, ids in vs if implied_value(c, fired) is not None and c.frame.size > deciding.frame.size]
+        side = "ours" if last_side == our else "theirs"
         if not spoke:
-            silent += 1
-            trace.append(dict(bodies=[chess.square_name(b) for b in bodies], value=claim_value, lemma=None, event="silent"))
-            if silent >= 2:
-                break                                                         # two pieces in a row changed nothing: stop
+            trace.append(dict(bodies=[chess.square_name(b) for b in bodies], value=claim_value, lemma=None, event="silent", side=side, role=role, by=chess.square_name(nxt)))
             continue
-        silent = 0
-        c, fired = max(spoke, key=lambda cf: cf[0].frame.size)
+        c, fired, ids = max(spoke, key=lambda x: x[0].frame.size)
         v = implied_value(c, fired)
         event = "held" if (v > 0) == (claim_value > 0) and abs(v) >= 0.5 else "refuted"
-        trace.append(dict(bodies=[chess.square_name(b) for b in bodies], value=v, lemma=c.text[:110], event=event, by=chess.square_name(nxt)))
-        deciding = c
+        trace.append(dict(bodies=[chess.square_name(b) for b in bodies], value=v, lemma=c.text[:110], event=event, side=side, role=role, by=chess.square_name(nxt)))
+        deciding = c; deciding_ids = list(ids)
         if event == "refuted":
             return dict(idea=idea, trace=trace, conclusion="refuted", final=v, bodies=len(bodies))
         claim_value = v
@@ -231,7 +233,8 @@ def main(argv=None):
         i = ch["idea"]
         print(f"{b.san(i['move']):7s} stake {i['stake']:.1f} ({'gain' if i['value'] > 0 else 'loss'}) -> {ch['conclusion']} at {ch['bodies']} bodies, final {ch['final']:+.1f}")
         for t in ch["trace"]:
-            print(f"    {t['event']:9s} bodies {','.join(t['bodies'])}  value {t['value']:+.1f}  {t.get('lemma') or ''}" + (f"  by {t['by']}" if t.get('by') else ""))
+            who = f"{t.get('side') or '':6s} {t.get('role') or '':6s}"
+            print(f"    {t['event']:9s} {who} bodies {','.join(t['bodies'])}  value {t['value']:+.1f}  {t.get('lemma') or ''}" + (f"  by {t['by']}" if t.get('by') else ""))
 
 
 if __name__ == "__main__":
