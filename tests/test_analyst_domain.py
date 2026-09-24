@@ -119,9 +119,8 @@ def test_episode_lift_sees_the_state_after_the_reply_and_never_the_last_ply():
     from catspace.incubator.analyst.lemma_gen import lift_episode
     dom = cd.domain(oracle="frame", depth=0)
     rels = {r.name: r for r in lift_episode(dom)}
-    # Rxa3 Rxa3 Bxa3 Bxa3 (the black bishop on e7 is outside the frame): the line reads 0 for the frame, standing pat
-    # after Rxa3 reads +3, so black recaptures; the episode's line therefore has a reply state
-    b = chess.Board("r3k3/4b3/8/8/8/n7/8/R1BK4 w - - 0 1")
+    # Rxa3 Rxa3 Bxa3: black recaptures because a pass would let the rook take on a8 (a pass continues the line)
+    b = chess.Board("r3k3/8/8/8/8/n7/8/R1BK4 w - - 0 1")
     st = cd.State(b, [chess.A1, chess.C1, chess.A3, chess.A8])
     mv = chess.Move.from_uci("a1a3")
     assert rels["then_attacked"].fn(st, (b, mv), chess.A8) is True
