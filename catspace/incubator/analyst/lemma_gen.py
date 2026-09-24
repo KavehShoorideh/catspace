@@ -101,6 +101,7 @@ class Frame:
     types: tuple                   # entity type per slot
     literals: tuple                # (relation name, slots, polarity)
     parent: "Frame | None" = None
+    joined: bool = False           # built by JOINING two known frames (no literal between the parts): the lemma explains their interaction
 
     @property
     def size(self):
@@ -108,7 +109,7 @@ class Frame:
 
     def text(self):
         lits = " & ".join(lit_text(r, sl, pol) for r, sl, pol in self.literals)
-        return f"[{' '.join(self.types)}] " + (lits or "(no relation)")
+        return f"[{' '.join(self.types)}] " + (lits or "(no relation)") + (" (join)" if self.joined else "")
 
 
 @dataclass
@@ -212,7 +213,8 @@ def lift_after(dom: Domain) -> list:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0):
+        self.max_joins = max_joins
         if lift:
             dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_after(dom)})
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
@@ -599,7 +601,10 @@ class Generator:
         t0 = time.perf_counter()
         frontier = [Frame((t,), ()) for t in self.dom.types]
         by_actor: dict = defaultdict(list)
+        deferred: dict = defaultdict(list)                                    # joins land at larger sizes than size + 1
         for size in range(1, max_size + 1):
+            if deferred.get(size):
+                frontier = frontier + deferred.pop(size)
             self.log(f"[lemma_gen] size {size}: {len(frontier)} frames to evaluate ({time.perf_counter() - t0:.0f}s)")
             next_frontier = []; admitted = 0; evaluated = 0; broke_frames = 0
             for fi, (fr, results) in enumerate(self._evaluate_frontier(frontier, by_actor)):
@@ -629,6 +634,8 @@ class Generator:
                 if size < max_size and extend_this:
                     broke_frames += 1
                     next_frontier.extend(self.extend(fr))
+                    for jf in self.joins(fr, max_size):
+                        (next_frontier if jf.size == size + 1 else deferred[jf.size]).append(jf)
             self.log(f"[lemma_gen] size {size}: evaluated {evaluated}, admitted {admitted}; {broke_frames} frames extended -> {len(next_frontier)} candidates at size {size + 1}")
             uniq = {}
             for f in next_frontier:
@@ -699,6 +706,34 @@ class Generator:
                         out.append(Frame(frame.types + (t,), frame.literals + ((r.name, sl, True),), parent=frame))
         return out
 
+    def joins(self, frame: Frame, max_size: int) -> list[Frame]:
+        """EXTEND BY A KNOWN FRAME (Kaveh 2026-09-24: "we can also extend out one known-frame at a time"): the frame
+        joined with a library frame of size two or more, no literal between the parts. Both parents' lemmas embed, so
+        subsumption inherits both guards and the join's own guard is their INTERACTION -- where an intermezzo would
+        fall out. The `self.max_joins` highest-stake library frames per frame."""
+        if not self.max_joins:
+            return []
+        k = frame.size
+        cands = []
+        for lem in self.library:
+            g = lem.frame
+            if g.size < 2 or k + g.size > max_size or g.joined:
+                continue
+            stake = abs((lem.value or {}).get("exception", 0.0))
+            cands.append((stake, g))
+        cands.sort(key=lambda x: -x[0])
+        out = []; seen = set()
+        for _, g in cands:
+            key = (g.types, g.literals)
+            if key in seen:
+                continue
+            seen.add(key)
+            lits = frame.literals + tuple((r, tuple(x + k for x in sl), pol) for r, sl, pol in g.literals)
+            out.append(Frame(frame.types + g.types, lits, parent=frame, joined=True))
+            if len(out) >= self.max_joins:
+                break
+        return out
+
     def save(self):
         OUT.mkdir(parents=True, exist_ok=True)
         json.dump([lemma_to_json(l) for l in self.library], open(OUT / f"library_{self.dom.name}.json", "w"), indent=1)
@@ -706,7 +741,7 @@ class Generator:
 
 
 def lemma_to_json(l: Lemma) -> dict:
-    return dict(id=l.id, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], value=l.value, frame=l.frame.text(), types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
+    return dict(id=l.id, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], value=l.value, frame=l.frame.text(), joined=l.frame.joined, types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
                 inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke, refined=l.refined,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
@@ -1024,7 +1059,8 @@ def main(argv=None):
     ap.add_argument("cmd", choices=["run", "prove", "generalize", "examples"]); ap.add_argument("--domain", default="chess")
     ap.add_argument("--library", default=str(OUT / "library_chess.json")); ap.add_argument("--proved", default=str(OUT / "proved_chess.json")); ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; k = each frame piece gets its move)")
+    ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
+    ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
     ap.add_argument("--exhaustive", type=int, default=0, help="prove: enumerate every placement of frames with at most this many placements (THEOREM status); 0 = sampled re-test")
     ap.add_argument("--prove-max-size", type=int, default=0, help="prove: only frames of at most this size")
     ap.add_argument("--workers", type=int, default=1); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
@@ -1059,7 +1095,7 @@ def main(argv=None):
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 

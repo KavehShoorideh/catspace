@@ -407,8 +407,9 @@ def frame_reply_scalar(after: State, e: int) -> float:
     episode depth above 1 (`_EPISODE`), the k-ply frame episode instead."""
     b = after.board
     side = not b.turn
-    if _EPISODE["depth"] > 1:
-        return frame_episode_scalar(after, side, _EPISODE["depth"])
+    depth = _EPISODE["depth"] if _EPISODE["depth"] > 0 else len(after.ids)     # 0: each frame piece gets its move (Kaveh 2026-09-24)
+    if depth > 1:
+        return frame_episode_scalar(after, side, depth)
     if b.is_checkmate():
         return _frame_material(after, side) + (-1000.0 if b.turn == side else 1000.0)
     if b.is_stalemate():

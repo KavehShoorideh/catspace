@@ -171,3 +171,23 @@ def test_exhaustive_check_yields_a_theorem():
     assert o["complete"] and o["status"] == "THEOREM" and o["exceptions"] == 0 and o["support"] > 1000
     o = lg._check(dom, lg.Frame(("wK",), ()), 0, "acting keeps", [], cap=100, min_cov=0.95, min_pur=0.8)
     assert not o["complete"] and o["status"] == "PROVED"                     # a sample never makes a theorem
+
+
+def test_joins_build_a_frame_from_two_known_frames(gen):
+    """Kaveh 2026-09-24: extend by a known frame. The join carries both parts' literals, remapped, no literal across,
+    and is flagged; both parts embed so subsumption inherits both guards."""
+    from collections import defaultdict
+    gen.max_joins = 2
+    a = lg.Frame(("wK", "wR"), (("same_side", (0, 1), True),))
+    b = lg.Frame(("bK", "bB"), (("same_side", (0, 1), True),))
+    la = gen.evaluate(a, 1, []); lb = gen.evaluate(b, 1, [])
+    gen.library = [la, lb]
+    js = gen.joins(a, 4)
+    gen.max_joins = 0; gen.library = []
+    assert js and all(j.joined and j.size == 4 for j in js)
+    j = next(x for x in js if x.types == ("wK", "wR", "bK", "bB"))
+    assert j.literals == (("same_side", (0, 1), True), ("same_side", (2, 3), True))
+    assert "(join)" in j.text()
+    by = defaultdict(list); by["wR"].append(la); by["bB"].append(lb)
+    inh = gen.applicable(j, 1, by)
+    assert any("as (0, 1)" in t for _, _, t, _ in inh)
