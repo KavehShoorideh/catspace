@@ -236,7 +236,7 @@ def gauge(n: int, library: Path, proved: Path, lo: int = 10, hi: int = 80, seed:
     log(f"  refuted chains: the seed was wrong in {seed_wrong[True]}/{sum(seed_wrong.values())} (expansion catching a wrong small-world claim)")
     log(f"  the engine's best move seeded a chain that: {dict(best_seeded)}")
     OUT.mkdir(parents=True, exist_ok=True)
-    json.dump(dict(positions=n_pos, agree={f"{k[0]}|{k[1]}": dict(v) for k, v in agree.items()}, by_bodies={k: dict(v) for k, v in by_bodies.items()}, seed_wrong=dict(seed_wrong), best_seeded=dict(best_seeded)), open(OUT / f"gauge_chains{tag}.json", "w"), indent=1)
+    json.dump(dict(positions=n_pos, agree={f"{k[0]}|{k[1]}": dict(v) for k, v in agree.items()}, by_bodies={k: dict(v) for k, v in by_bodies.items()}, seed_wrong=dict(seed_wrong), best_seeded=dict(best_seeded)), open(OUT / f"gauge_chains{('_' + tag.lstrip('_')) if tag else ''}.json", "w"), indent=1)
 
 
 def narrate(board: chess.Board, app: Applier, gain_app: Applier | None = None, ranker=None, played: str | None = None, best: str | None = None, engine_cp=None, log=print, max_chains: int = 6):

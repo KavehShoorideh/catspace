@@ -740,8 +740,11 @@ class Generator:
         json.dump([dict(frame=f.text(), residual=r) for f, r in self.residual_frames], open(OUT / f"residual_{self.dom.name}.json", "w"), indent=1)
 
 
+_PROVENANCE: dict = {}                                                       # the outcome definition of the current run (oracle, depth, relative, lift, gain): written into every lemma
+
+
 def lemma_to_json(l: Lemma) -> dict:
-    return dict(id=l.id, closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], value=l.value, frame=l.frame.text(), joined=l.frame.joined, types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
+    return dict(id=l.id, made_under=dict(_PROVENANCE), closure=[[r, list(sl), pol, tag] for r, sl, pol, tag in l.closure], value=l.value, frame=l.frame.text(), joined=l.frame.joined, types=list(l.frame.types), literals=[[r, list(sl), pol] for r, sl, pol in l.frame.literals], slot=l.slot, claim=l.claim,
                 support=l.support, holds=l.holds, guard=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.guard],
                 inherited=[[[r, list(sl), pol] for r, sl, pol in t] for t in l.inherited], parents=l.parents, reversed=l.reversed, broke=l.broke, refined=l.refined,
                 covered=l.covered, purity=l.purity, residual=l.residual, complete=l.complete, examples=l.examples)
@@ -1089,6 +1092,11 @@ def main(argv=None):
         raise SystemExit(f"unknown domain {a.domain}")
     global _RELATIVE, _LIFT, _GAIN
     _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain
+    _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain)
+    if a.cmd in ("prove", "examples", "generalize") and a.library:
+        made = next((e.get("made_under") for e in json.load(open(a.library)) if e.get("made_under")), None)
+        if made and any(made.get(k) != _PROVENANCE.get(k) for k in made):
+            print(f"[lemma_gen] WARNING: the library was made under {made}; this pass runs under {_PROVENANCE} -- the outcome definitions differ")
     if a.cmd == "prove":
         prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers, max_raw=a.exhaustive, max_size=a.prove_max_size); return
     if a.cmd == "examples":
