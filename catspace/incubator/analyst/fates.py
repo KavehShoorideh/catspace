@@ -143,9 +143,9 @@ def outcome(dom, board: chess.Board, ids: list, move: chess.Move, depth: int = 0
     return o
 
 
-def _episode_forced_pass(st: State, side: chess.Color, depth: int, ply: int, at: int, alpha: float, beta: float, line: list) -> tuple:
-    """The frame episode with a PASS imposed at ply `at` (an intermezzo elsewhere for the side to move then): every
-    other ply is the ordinary episode. Returns (value, line)."""
+def _episode_forced_pass(st: State, side: chess.Color, depth: int, ply: int, at, alpha: float, beta: float, line: list) -> tuple:
+    """The frame episode with a PASS imposed at ply `at` -- an int, or a set of plies for an intermezzo of several
+    plies (a check elsewhere and its answer): every other ply is the ordinary episode. Returns (value, line)."""
     from .chess_domain import VAL
     b = st.board
     mate = (-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0
@@ -159,7 +159,8 @@ def _episode_forced_pass(st: State, side: chess.Color, depth: int, ply: int, at:
         nb = b.copy(stack=False); nb.turn = not nb.turn
         if nb.is_valid():
             children.append((0.0, State(nb, list(st.ids))))
-    if ply != at:                                                             # at the intermezzo ply only the pass is available
+    forced = (ply in at) if isinstance(at, (set, frozenset, tuple, list)) else (ply == at)
+    if not forced:                                                            # at an intermezzo ply only the pass is available
         for m in b.legal_moves:
             if b.is_check() or b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq):
                 nb = b.copy(stack=False); nb.push(m)
@@ -195,6 +196,29 @@ def intermezzi(board: chess.Board, ids: list, move: chess.Move, depth: int = 0, 
         who = side if (at % 2 == 1) else (not side)
         out.append((at, who, v - before, fates_of(st, ln)))
     return out
+
+
+def with_passes(board: chess.Board, ids: list, move: chess.Move, passes, depth: int = 0, max_depth: int = 5) -> tuple:
+    """The frame's outcome for `move` when the plies in `passes` (after the move; ply 2 is the first reply) are spent
+    outside the frame: (value over the material before, fates). The frame's side of an intermezzo composition."""
+    live = [i for i in ids if i is not None]
+    st = State(board.copy(stack=False), list(ids))
+    side = board.piece_at(move.from_square).color
+    before = frame_scalar(st, move.from_square)
+    nb = board.copy(stack=False); nb.push(move)
+    after = State(nb, _ids_after(list(ids), board, move))
+    d = min(max_depth, depth if depth > 0 else len(live))
+    v, ln = _episode_forced_pass(after, side, d, 2, frozenset(passes), -1e9, 1e9, [after])
+    return v - before, fates_of(st, ln)
+
+
+def compose(a_board: chess.Board, a_ids: list, a_move: chess.Move, k: int, b_value: float, b_plies: int, depth: int = 0) -> dict:
+    """INTERMEZZO BY COMPOSITION (Kaveh 2026-09-24: "taking a frame, adding a pass, and attaching it to another frame
+    -- it doesn't need to go into one big frame"): frame B's line of `b_plies` plies is inserted into frame A's line
+    at ply k. A is valued with passes at k .. k+b_plies-1; B contributes its own value; the pieces must be disjoint
+    (the listener says whether they are). Returns the composed value and A's fates under the insertion."""
+    a_val, a_fates = with_passes(a_board, a_ids, a_move, range(k, k + b_plies), depth)
+    return dict(value=a_val + b_value, a_value=a_val, b_value=b_value, a_fates=a_fates, at=k, plies=b_plies)
 
 
 def outcomes_table(dom, board: chess.Board, ids: list, actor: int, depth: int = 0, app=None) -> list:

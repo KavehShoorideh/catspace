@@ -44,3 +44,17 @@ def test_intermezzi_are_forced_passes_at_each_ply():
     dom = domain(oracle="frame")
     o = F.outcome(dom, b, IDS, chess.Move.from_uci("e4d6"), with_intermezzi=True)
     assert len(o.intermezzi) == 3
+
+
+def test_intermezzo_by_composition_needs_no_big_frame():
+    """Frame A (the pony takes the juicer) with a two-ply intermezzo inserted at black's reply: black spends ply 2
+    elsewhere (say a check), white answers it at ply 3, and A resumes -- the rook still takes back at ply 4, so A's
+    part is 0; the composed value is 0 plus whatever frame B earned. A one-ply intermezzo at ply 2 alone leaves the
+    pony alive (+3) because the depth runs out before the rook's reply."""
+    b = chess.Board(FEN)
+    v2, f2 = F.with_passes(b, IDS, chess.Move.from_uci("e4d6"), {2})
+    assert v2 == 3.0 and f2[0].alive
+    v23, f23 = F.with_passes(b, IDS, chess.Move.from_uci("e4d6"), {2, 3}, depth=4)
+    assert v23 == 0.0 and not f23[0].alive and f23[0].ply == 4
+    c = F.compose(b, IDS, chess.Move.from_uci("e4d6"), k=2, b_value=1.0, b_plies=2, depth=4)
+    assert c["value"] == 1.0 and c["a_value"] == 0.0 and c["at"] == 2

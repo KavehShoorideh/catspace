@@ -22874,6 +22874,16 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 16:09 PDT — intermezzo by composition: two frames joined through passes, no big frame
+
+Kaveh: "an intermezzo should always come from taking a frame, adding a pass, and attaching it to another frame ...
+it doesn't need to go into one big frame." Built: `with_passes` values a frame with passes imposed at a SET of
+plies (an intermezzo of several plies: a check elsewhere and its answer); `compose(A, k, B)` = A with passes at
+k..k+m-1 plus B's own value for its m plies, on disjoint pieces (the listener says whether they are). Pony and
+juicer: a one-ply intermezzo at black's reply leaves the pony alive (+3, the depth runs out before the rook); a
+two-ply intermezzo (black's check elsewhere, white's answer) delays but does not save the trade: A's part 0, the
+composed value is B's alone. Cost: one episode per (k, m); the big frame is never built.
+
 ## 2026-09-24 16:02 PDT — intermezzi as forced passes in the frame's fate record
 
 Kaveh: "each frame can also accept an intermezzo at any point ... a move being skipped because it happens somewhere
