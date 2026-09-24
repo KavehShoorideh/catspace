@@ -73,6 +73,8 @@ class Domain:
     symmetries: list = None                                          # type maps {type: type} that leave the domain's rules and relations invariant (chess: the colour flip); frames are canonical under them and under slot permutation
     type_tree: dict = None                                           # abstract type -> children (leaves are the concrete types); frames start at `root` and split a slot only where the guard fails (TOP-DOWN, Kaveh 2026-09-24)
     root: str = None                                                 # the most abstract type (None: no hierarchy, frames start concrete)
+    batch_outcomes: Callable = None                                  # (state, entity id, relative) -> [(action, delta)] for every action of the entity, in one call (a compiled core); None: the Python path
+    batch_literals: Callable = None                                  # (rows, [(relation name, slots)]) -> [bitmask int per literal] for the BASE relations it knows; None: the Python path
 
     def children(self, t: str) -> list:
         return list((self.type_tree or {}).get(t, []))
@@ -376,9 +378,10 @@ def made_under(library_path) -> dict:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None, max_joins: int = 0, prefixes=None, sequential: bool = True, use_core: bool = True):
         self.max_joins = max_joins
         self.sequential = sequential
+        self.use_core = use_core
         if lift:
             dom = lifted(dom, prefixes if prefixes is not None else ("after", "then", "some"))
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
@@ -441,6 +444,10 @@ class Generator:
                 base = self.dom.null_reply_scalar(state, e)
                 if base is None:
                     continue                                                  # no null action here (in check): the relative outcome is undefined
+            if self.dom.batch_outcomes is not None and self.use_core:
+                for a, delta in self.dom.batch_outcomes(state, e, self.relative):
+                    yield (state, ids, a, delta), complete
+                continue
             for a in self.dom.actions(state, e):
                 before = self.dom.scalar(state, e)
                 after = self.dom.transition(state, a)
@@ -460,6 +467,18 @@ class Generator:
         key = (rname, sl)
         if key in cache:
             return cache[key]
+        if self.dom.batch_literals is not None and self.use_core and "__core__" not in cache:
+            cache["__core__"] = True                                          # the compiled core fills every base literal of this frame in one call
+            k = len(rows[0][1]) if rows else 0
+            lits = [(r.name, sl2) for r in self.dom.relations if not r.name.startswith(("after_", "then_", "some_", "threat_")) for sl2 in itertools.permutations(range(k), r.arity)]
+            try:
+                masks = self.dom.batch_literals(rows, lits)
+                for (rn, sl2), m in zip(lits, masks):
+                    cache[(rn, sl2)] = m
+            except Exception:
+                pass
+            if key in cache:
+                return cache[key]
         r = self.rel[rname]
         m = 0
         for i, (state, ids, a, _) in enumerate(rows):
@@ -1152,12 +1171,13 @@ def parse_frame(text: str) -> Frame:
 # ---------------------------------------------------------------- the exhaustive pass, and generalization, share one check
 _RELATIVE = False                                                            # the outcome definition the prove/generalize passes use (set by main)
 _PREFIXES = None                                                             # the lifts in the vocabulary (None: the default set)
+_USE_CORE = [True]
 _LIFT = False                                                                # whether the after-the-move relations are in the vocabulary (set by main)
 _GAIN = None                                                                 # the gain threshold of the partition, when the library was made with one (set by main)
 
 
 def _check(dom: Domain, fr: Frame, slot: int, claim: str, guard: list, cap: int, min_cov: float, min_pur: float) -> dict:
-    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN, prefixes=_PREFIXES)
+    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN, prefixes=_PREFIXES, use_core=_USE_CORE[0])
     # STREAMED: one row at a time, four counters; nothing is stored (the exhaustive pass enumerates millions of rows)
     thr = _GAIN
     n = 0; n_exc = 0; n_matched = 0; n_matched_exc = 0; complete = True
@@ -1372,7 +1392,7 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
 def _examples_job(args):
     entry, cap = args
     fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"]))
-    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN, prefixes=_PREFIXES)
+    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN, prefixes=_PREFIXES, use_core=_USE_CORE[0])
     rows, _ = g.rows_of(fr, entry["slot"])
     if not rows:
         return entry.get("examples", {})
@@ -1418,6 +1438,7 @@ def main(argv=None):
     ap.add_argument("--max-size", type=int, default=3); ap.add_argument("--cap", type=int, default=3000); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--resume", action="store_true", help="continue a run from its checkpoint (same flags)")
     ap.add_argument("--no-sequential", action="store_true", help="always draw the full cap (no quarter-sample early decision)")
+    ap.add_argument("--no-core", action="store_true", help="do not use the compiled core (analyst_core) for outcomes and base literals")
     ap.add_argument("--no-shapes", action="store_true", help="sampled placements: keep every board position of a configuration instead of one centred placement per shape")
     ap.add_argument("--joins", type=int, default=0, help="extend each frame also by joining it with up to this many known library frames (size >= 2), highest stake first")
     ap.add_argument("--depth", type=int, default=1, help="frame oracle: plies of the frame episode after the action (1 = one best reply; 0 = the frame's size, each piece gets its move)")
@@ -1451,6 +1472,7 @@ def main(argv=None):
     global _RELATIVE, _LIFT, _GAIN, _PREFIXES
     _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain; _PREFIXES = tuple(x for x in a.prefixes.split(",") if x)
     _PROVENANCE.update(oracle=a.oracle, depth=a.depth, relative=a.relative, lift=a.lift, gain=a.gain, prefixes=a.prefixes if a.lift else "")
+    _USE_CORE[0] = not a.no_core
     if a.cmd in ("prove", "examples", "generalize") and a.library:
         made = next((e.get("made_under") for e in json.load(open(a.library)) if e.get("made_under")), None)
         if made and any(made.get(k) != _PROVENANCE.get(k) for k in made):
@@ -1461,7 +1483,7 @@ def main(argv=None):
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain, max_joins=a.joins, prefixes=_PREFIXES, sequential=not a.no_sequential, use_core=not a.no_core)
     lib = g.run(max_size=a.max_size, resume=a.resume)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 

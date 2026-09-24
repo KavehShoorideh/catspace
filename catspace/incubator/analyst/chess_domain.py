@@ -696,6 +696,45 @@ def leaves_of(t: str) -> list:
     return [x for c in TYPE_TREE[t] for x in leaves_of(c)]
 
 
+try:
+    import analyst_core as _core
+except Exception:                                                             # the compiled core is optional: `maturin develop -m rust/analyst_core/Cargo.toml`
+    _core = None
+
+
+def core_outcomes(depth: int):
+    """(state, e, relative) -> [((board, move), delta)] through the compiled core, for the frame oracle."""
+    def fn(state: State, e: int, relative: bool):
+        b = state.board
+        acts = {m.uci(): (bb, m) for bb, m in actions(state, e)}
+        if not acts:
+            return []
+        bb = next(iter(acts.values()))[0]
+        out = []
+        for uci, delta in _core.outcomes(bb.fen(), [(-1 if i is None else i) for i in state.ids], e, depth, relative):
+            if uci in acts:
+                out.append((acts[uci], delta))
+        return out
+    return fn
+
+
+def core_literals(rows, lits):
+    packed = []
+    for state, ids, a, _ in rows:
+        bb, m = a
+        packed.append((bb.fen(), [(-1 if i is None else i) for i in ids], m.uci()))
+    names = [(n, list(sl)) for n, sl in lits]
+    cols = _core.literal_masks(packed, names)
+    out = []
+    for col in cols:
+        m = 0
+        for i, v in enumerate(col):
+            if v:
+                m |= 1 << i
+        out.append(m)
+    return out
+
+
 def domain(fens: list | None = None, oracle: str = "material", worth: str = "canonical", worth_tau: float = 4.0, depth: int = 1, shapes: bool = True) -> Domain:
     """depth: plies of the frame episode after the action (frame oracle only); 1 = the single best reply. shapes: the
     sampled placements are one centred placement per configuration up to translation and mirror."""
@@ -713,7 +752,8 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
         from functools import partial
         return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, partial(frame_reply_scalar, depth=depth),
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
-                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state)
+                      placement_count=(placement_count if fens is None else None), symmetries=[COLOUR_FLIP], type_tree=TYPE_TREE, root="*", null_reply_scalar=partial(frame_null_reply_scalar, depth=depth), episode=partial(frame_episode_states, depth=depth), threat=frame_threat_state,
+                      batch_outcomes=(core_outcomes(depth) if _core is not None and worth == "canonical" else None), batch_literals=(core_literals if _core is not None else None))
     if oracle == "resolved":
         return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,

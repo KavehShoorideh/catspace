@@ -85,3 +85,21 @@ def test_base_relations_agree_with_python():
 def _fen_for(st, a):
     b = st.board.copy(stack=False); b.turn = b.piece_at(a[1].from_square).color
     return b.fen()
+
+
+def test_generator_rows_and_masks_agree_with_and_without_the_core():
+    """The generator's rows (deltas) and literal masks must be identical with the compiled core on and off."""
+    dom = cd.domain(oracle="frame", depth=0, shapes=False)
+    fr = lg.Frame(("wQ", "bN"), (("attacks", (0, 1), True),))
+    a = lg.Generator(dom, cap=40, log=lambda *a, **k: None, relative=True, sequential=False, use_core=True)
+    b = lg.Generator(dom, cap=40, log=lambda *a, **k: None, relative=True, sequential=False, use_core=False)
+    ra, _ = a.rows_of(fr, 0); rb, _ = b.rows_of(fr, 0)
+    assert len(ra) == len(rb) > 50
+    key = lambda r: (r[0].board.fen(), r[2][1].uci())
+    ra.sort(key=key); rb.sort(key=key)                                        # the two move generators order moves differently
+    assert [(key(r), round(r[3], 6)) for r in ra] == [(key(r), round(r[3], 6)) for r in rb]
+    ca, cb = {}, {}
+    for name, sl in [("attacked", (0,)), ("lands_attacked", ()), ("captures_worth_ge", (1,)), ("defends", (1, 0)), ("between", (0, 1, 1))]:
+        if name == "between":
+            continue
+        assert a.lit_mask(ra, name, sl, ca) == b.lit_mask(rb, name, sl, cb), name
