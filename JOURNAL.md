@@ -22900,8 +22900,10 @@ lands attacked") and the duty at the root pair ("unless the other is attacked").
 
 Rust core (`rust/analyst_core`, shakmaty + pyo3, `maturin develop`): relations, the episode outcome, batched
 literal masks; equivalence tests against Python pass (outcomes at depths 1/3/0, absolute and relative; every base
-relation on 1,000+ rows). Speed is NOT yet there: depth-5 episode 410-675 ms against Python's 143 ms (2,014
-nodes) -- a pruning/ordering difference to find before it replaces anything.
+relation on 1,000+ rows). First timing was misread: the Rust call values ALL nine bishop moves (53,980 nodes, 744 ms, 14 µs a node) where
+the Python figure was one move (2,014 nodes, 143 ms, 71 µs a node) -- the core is about 5x faster per node. Wired
+in through two domain hooks (`batch_outcomes`, `batch_literals`), `--no-core` for the Python path, on/off
+equivalence tested; the smoke timing at depth = frame size is running.
 
 ## 2026-09-24 11:26 PDT — the fast generator, part one: checkpoints, equivalences, sequential sampling, shapes (OBS)
 
