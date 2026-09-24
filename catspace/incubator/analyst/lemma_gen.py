@@ -210,11 +210,12 @@ def lift_after(dom: Domain) -> list:
 
 
 class Generator:
-    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False):
+    def __init__(self, dom: Domain, cap: int = 3000, seed: int = 0, log=print, workers: int = 1, max_conj: int = 2, term_purity: float = 0.8, relative: bool = False, max_frames: int = 0, lift: bool = False, gain_threshold: float | None = None):
         if lift:
             dom = Domain(**{**dom.__dict__, "relations": list(dom.relations) + lift_after(dom)})
         self.dom = dom; self.cap = cap; self.seed = seed; self.log = log; self.workers = workers; self.max_conj = max_conj; self.term_purity = term_purity
         self.relative = relative                                             # outcome = reply scalar minus the NULL-action reply scalar (what the standing threats already take)
+        self.gain_threshold = gain_threshold                                 # None: partition at 0 (loses / keeps); a number: partition at that gain (gains / does not gain)
         self.max_frames = max_frames                                         # per size, evaluate only the most frequent frames (by instance count in the placements source)
         self.rel = {r.name: r for r in dom.relations}
         self.state_rels = [r for r in dom.relations if not r.on_action]
@@ -349,12 +350,16 @@ class Generator:
             return None
         n = len(rows); all_mask = (1 << n) - 1
         loses = 0
+        thr = self.gain_threshold
         for i, (_, _, _, d) in enumerate(rows):
-            if d < 0:
+            if (d < 0) if thr is None else (d < thr):
                 loses |= 1 << i
         n_lose = _popcount(loses)
-        claim = "acting loses" if n_lose * 2 >= n else "acting keeps"
-        exc = (all_mask & ~loses) if claim == "acting loses" else loses
+        if thr is None:
+            claim = "acting loses" if n_lose * 2 >= n else "acting keeps"
+        else:                                                                 # the GAIN partition (Kaveh 2026-09-23: "find the frames where material is definitely gained"): rows at or above the threshold gain
+            claim = "acting does not gain" if n_lose * 2 >= n else "acting gains"
+        exc = (all_mask & ~loses) if claim in ("acting loses", "acting does not gain") else loses
         holds = n - _popcount(exc)
         cache: dict = {}
         inherited = []; parents = []; reversed_ = False
@@ -708,19 +713,21 @@ def parse_frame(text: str) -> Frame:
 # ---------------------------------------------------------------- the exhaustive pass, and generalization, share one check
 _RELATIVE = False                                                            # the outcome definition the prove/generalize passes use (set by main)
 _LIFT = False                                                                # whether the after-the-move relations are in the vocabulary (set by main)
+_GAIN = None                                                                 # the gain threshold of the partition, when the library was made with one (set by main)
 
 
 def _check(dom: Domain, fr: Frame, slot: int, claim: str, guard: list, cap: int, min_cov: float, min_pur: float) -> dict:
-    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT)
+    g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN)
     rows, complete = g.rows_of(fr, slot)
     if not rows:
         return dict(frame=fr.text(), slot=slot, claim=claim, status="no placements")
     n = len(rows); all_mask = (1 << n) - 1
     loses = 0
+    thr = _GAIN
     for i, (_, _, _, d) in enumerate(rows):
-        if d < 0:
+        if (d < 0) if thr is None else (d < thr):
             loses |= 1 << i
-    exc = (all_mask & ~loses) if claim == "acting loses" else loses
+    exc = (all_mask & ~loses) if claim in ("acting loses", "acting does not gain") else loses
     n_exc = _popcount(exc)
     cache: dict = {}
     matched = 0
@@ -917,16 +924,16 @@ def generalize(dom: Domain, library_path: Path, proved_path: Path | None, cap: i
 def _examples_job(args):
     entry, cap = args
     fr = Frame(tuple(entry["types"]), tuple((r, tuple(sl), pol) for r, sl, pol in entry["literals"]))
-    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT)
+    g = Generator(_WORKER_DOM, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN)
     rows, _ = g.rows_of(fr, entry["slot"])
     if not rows:
         return entry.get("examples", {})
     n = len(rows); all_mask = (1 << n) - 1
     loses = 0
     for i, (_, _, _, d) in enumerate(rows):
-        if d < 0:
+        if (d < 0) if _GAIN is None else (d < _GAIN):
             loses |= 1 << i
-    exc = (all_mask & ~loses) if entry["claim"] == "acting loses" else loses
+    exc = (all_mask & ~loses) if entry["claim"] in ("acting loses", "acting does not gain") else loses
     cache: dict = {}
     inh = 0
     for term in guard_from_json(entry.get("inherited")):
@@ -969,6 +976,7 @@ def main(argv=None):
     ap.add_argument("--max-frames", type=int, default=0, help="per size, evaluate only the most frequent frames")
     ap.add_argument("--oracle", choices=["material", "resolved", "frame", "tablebase"], default="material", help="the outcome: 1-ply material after the best capture/check reply, or the tablebase's WDL (sampled frames of <= 5 men)")
     ap.add_argument("--lift", action="store_true", help="add every state relation's after-the-move form as an action-level relation (predicate invention by composition)")
+    ap.add_argument("--gain", type=float, default=None, help="partition the outcome at this GAIN instead of at zero: claims become 'acting gains' / 'acting does not gain'")
     ap.add_argument("--worth", choices=["canonical", "blend"], default="canonical", help="the worth relations: the value table, or the tables' removal value blended toward it by distance to the five-men edge"); ap.add_argument("--worth-tau", type=float, default=4.0)
     a = ap.parse_args(argv)
     if a.domain == "chess":
@@ -984,15 +992,15 @@ def main(argv=None):
         dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
-    global _RELATIVE, _LIFT
-    _RELATIVE = a.relative; _LIFT = a.lift
+    global _RELATIVE, _LIFT, _GAIN
+    _RELATIVE = a.relative; _LIFT = a.lift; _GAIN = a.gain
     if a.cmd == "prove":
         prove(dom, Path(a.library), a.cap, limit=a.limit, workers=a.workers); return
     if a.cmd == "examples":
         refresh_examples(dom, Path(a.library), a.cap, a.workers); return
     if a.cmd == "generalize":
         generalize(dom, Path(a.library), Path(a.proved), a.cap, workers=a.workers, only_proved=not a.all, over_literals=a.over_literals, max_unseen=a.max_unseen); return
-    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift)
+    g = Generator(dom, cap=a.cap, seed=a.seed, workers=a.workers, max_conj=a.max_conj, relative=a.relative, max_frames=a.max_frames, lift=a.lift, gain_threshold=a.gain)
     lib = g.run(max_size=a.max_size)
     print(f"[lemma_gen] library: {len(lib)} lemmas -> {OUT}")
 
