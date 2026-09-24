@@ -23910,7 +23910,7 @@ guide: 86%); refuted chains 7 and 5, the seed wrong in 3 and 2; unexpanded big-s
 Reading: the deterministic step -- bring in the piece the guard is about -- recovers nearly all of what the learned
 policy gave, and the two together are best. This is Kaveh's "a little of both", measured.
 
-## 2026-09-23 19:16 PDT — chains on the 219-lemma library; the dialogue expansion (Kaveh: alternate sides; silence is not a stop)
+## 2026-09-23 19:05 PDT — chains on the 219-lemma library; the dialogue expansion (Kaveh: alternate sides; silence is not a stop)
 
 Interface + graph guide, 150 positions, conclusion vs the truth's sign, OBS:
   old stop (two silent pieces): held big-stake chains right 115/145 = 79%; refuted 10 (seed wrong in 4);
