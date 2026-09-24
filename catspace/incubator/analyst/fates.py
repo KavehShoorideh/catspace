@@ -98,15 +98,34 @@ class Outcome:
         return None if f.alive else f.captor
 
 
-def outcome(dom, board: chess.Board, ids: list, move: chess.Move, depth: int = 0, app=None, max_depth: int = 5) -> Outcome | None:
+def pass_value(board: chess.Board, ids: list, side: chess.Color, depth: int) -> float | None:
+    """The frame's episode value if `side` stands still (the null move): the baseline a move is measured against, so
+    a quiet move does not get credit for a tactic that was available anyway. None when standing still is illegal."""
+    b = board.copy(stack=False); b.turn = side
+    if b.is_check():
+        return None
+    b.turn = not side
+    if not b.is_valid():
+        return None
+    v, _ = frame_episode_pv(State(b, list(ids)), side, depth)
+    return v
+
+
+def outcome(dom, board: chess.Board, ids: list, move: chess.Move, depth: int = 0, app=None, max_depth: int = 5, relative: bool = True) -> Outcome | None:
     """The frame's structured outcome for one action: the episode's line, the fates, the terminal signature and move
-    counts, and the library's judgment of the end state when an applier is given."""
+    counts, and the library's judgment of the end state when an applier is given. Value: the frame's material after
+    the line minus the baseline -- the pass episode when `relative` (the generator's own convention), else the
+    material before the move."""
     live = [i for i in ids if i is not None]
     if move.from_square not in live or move not in board.legal_moves:
         return None
     st = State(board.copy(stack=False), list(ids))
     side = board.piece_at(move.from_square).color
     before = frame_scalar(st, move.from_square)
+    if relative:
+        pv0 = pass_value(board, ids, side, min(max_depth, depth if depth > 0 else len(live)))
+        if pv0 is not None:
+            before = pv0
     nb = board.copy(stack=False); nb.push(move)
     after = State(nb, _ids_after(list(ids), board, move))
     d = min(max_depth, depth if depth > 0 else len(live))

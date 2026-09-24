@@ -22874,6 +22874,24 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 16:00 PDT — the best goal with a sound prune (built), judged in the move's tactical neighbourhood
+
+Kaveh: "what is the best goal we can achieve ... prune all the frames that give you less ... but we still have to
+evaluate all those frames for our opponent"; then, "are we making a buggy decision?" The hole named before code:
+a frame's bound is over its own closed world, and the two-piece bishop-takes-pawn frame values −2 where the
+extended frame values +4, so pruning frames by their own bound is not alpha-beta. Built (`goals.py`): bound MOVES,
+not frames. Each move is judged in its NEIGHBOURHOOD -- mover and destination, then by hops over attack, defend and
+between: the destination's attackers and defenders, what those pieces block (both ends of the line join, first in
+the next hop), their attackers and defenders, capped at twelve. The move's bound is the worth of every enemy piece
+in that frame (exact: the episode counts only the frame's pieces); the value is the frame episode over standing
+still in the same frame (a quiet move earns nothing for a tactic that was there anyway). Best-first over our moves
+with the prune; the opponent's best goal after each candidate is searched UNPRUNED; the decision is ours minus
+theirs. Bxh2+ position: its neighbourhood is d6 h2 g1 f3 h5 f1 g4 f6 d2 e2 g2 d1 (the knight on f3 stands between
+the bishops g4 and e2, so e2 joins); 39 of 53 moves opened; Bxf3 +2 and Bxh2+ +1 on our side alone; with their
+best reply, Bxh2+ scores +1 and every other candidate ≤ −3 (Bxf3 −998: a mate for white follows). Tests: every
+bound above the value it bounds; prune on and off give the same best value; the decision is Bxh2+. The twenty-
+position audit is running.
+
 ## 2026-09-24 13:48 PDT — what a frame achieves: fates, the terminal signature, goals (built)
 
 Kaveh: "the frame has to not just calculate what is good or what is bad, it has to calculate what achieves what
