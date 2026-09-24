@@ -99,7 +99,7 @@ def actions(state: State, e: int):
 def transition(state: State, action):
     b, m = action
     nb = b.copy(stack=False); nb.push(m)
-    ids = [m.to_square if s == m.from_square else s for s in state.ids]
+    ids = [m.to_square if s == m.from_square else (None if s == m.to_square else s) for s in state.ids]   # a captured frame piece is gone (None), not re-pointed at its captor
     return State(nb, ids)
 
 
@@ -132,6 +132,10 @@ def reply_scalar(after: State, e: int) -> float:
 
 
 # ---------------------------------------------------------------- relations: programs over the board, nothing named
+def _alive(state, *ids):
+    return all(i is not None and state.board.piece_at(i) is not None for i in ids)
+
+
 def same_side(state, i, j):
     return state.board.piece_at(i).color == state.board.piece_at(j).color
 
@@ -363,7 +367,9 @@ def _frame_material(state: State, side: chess.Color) -> float:
     uncounted (Kaveh 2026-09-23: "a lemma should assert a per-frame outcome ... the interaction with the rest of the
     board is how the frame grows")."""
     b = state.board; tot = 0.0
-    for sq in set(state.ids):                                                # a capture inside the frame leaves two ids on one square: count the square once
+    for sq in set(state.ids):
+        if sq is None:
+            continue                                                          # a captured frame piece
         p = b.piece_at(sq)
         if p is None or p.piece_type == chess.KING:
             continue
@@ -389,7 +395,7 @@ def frame_reply_scalar(after: State, e: int) -> float:
         if not (b.is_capture(r) or b.gives_check(r)):
             continue
         nb = b.copy(stack=False); nb.push(r)
-        ids = [r.to_square if s == r.from_square else s for s in after.ids]     # a frame piece that was captured is simply gone from the count
+        ids = [r.to_square if s == r.from_square else (None if s == r.to_square else s) for s in after.ids]   # a frame piece the reply captures is gone
         v = _frame_material(State(nb, ids), side) + (-1000.0 if nb.is_checkmate() else 0.0)
         worst = v if worst is None else min(worst, v)
     return worst if worst is not None else _frame_material(after, side)
