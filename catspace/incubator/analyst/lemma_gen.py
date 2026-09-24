@@ -1448,7 +1448,8 @@ def main(argv=None):
     ap.add_argument("--prove-max-size", type=int, default=0, help="prove: only frames of at most this size")
     ap.add_argument("--workers", type=int, default=1); ap.add_argument("--max-conj", type=int, default=2); ap.add_argument("--all", action="store_true", help="generalize: over all lemmas, not only the proved")
     ap.add_argument("--over-literals", action="store_true", help="generalize: the frame literals' relation names are variables too"); ap.add_argument("--max-unseen", type=int, default=0)
-    ap.add_argument("--source", choices=["sampled", "games"], default="sampled", help="placements: sampled frames (only the frame's pieces) or real game positions")
+    ap.add_argument("--source", choices=["sampled", "games", "lichess"], default="sampled", help="placements: sampled frames (only the frame's pieces) or real game positions")
+    ap.add_argument("--split", default="gen", choices=["gen", "test"], help="lichess source: the generation part or the disjoint re-test part (by position hash)")
     ap.add_argument("--positions", type=int, default=20000, help="games source: how many positions from the knowledge corpus"); ap.add_argument("--lo", type=int, default=10); ap.add_argument("--hi", type=int, default=120)
     ap.add_argument("--relative", action="store_true", help="outcome relative to the null action (what the standing threats already take)")
     ap.add_argument("--max-frames", type=int, default=0, help="per size, evaluate only the most frequent frames")
@@ -1467,7 +1468,21 @@ def main(argv=None):
             meta = load_ds("data/derived/knowledge", meta_only=True)["meta"]
             rows = [m["fen"] for m in meta if a.lo <= m["ply"] <= a.hi]
             _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
-            print(f"[lemma_gen] games source: {len(fens)} positions (plies {a.lo}-{a.hi})")
+            print(f"[lemma_gen] games source: {len(fens)} positions (plies {a.lo}-{a.hi}) -- Kaveh's own games")
+        elif a.source == "lichess":
+            # THE GENERAL POPULATION (Kaveh 2026-09-24: "why my games? why not just lichess in general?"): the ChessBench
+            # positions on disk (Lichess games, many players and ratings). Split by a stable hash of the position:
+            # generation and examples use the 'gen' part, the re-test the disjoint 'test' part, so a lemma is never
+            # re-tested on a position it was fitted on.
+            import hashlib as _h, random as _r
+            rows = []
+            for line in open("data/derived/chessbench_positions.jsonl"):
+                fen = json.loads(line)["fen"]
+                part = "test" if int(_h.sha1(fen.encode()).hexdigest()[:8], 16) % 5 == 0 else "gen"
+                if part == a.split:
+                    rows.append(fen)
+            _r.Random(a.seed).shuffle(rows); fens = rows[: a.positions]
+            print(f"[lemma_gen] lichess source ({a.split} part): {len(fens)} positions of the general population")
         dom = domain(fens, oracle=a.oracle, worth=a.worth, worth_tau=a.worth_tau, depth=a.depth, shapes=not a.no_shapes)
     else:
         raise SystemExit(f"unknown domain {a.domain}")
