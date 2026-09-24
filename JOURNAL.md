@@ -23836,3 +23836,19 @@ are about this board -- the frame-local outcome with the rest held fixed, learne
 design decision Kaveh named this afternoon ("a lemma should assert a per-frame outcome ... and then consider the
 interaction with the rest of the board, and that's how the frame grows"). The generator, the guide and the gauge
 are ready for it; the outcome definition is the next build. Nothing running.
+
+## 2026-09-23 18:01 PDT — the frame-local outcome on real positions: the library that was missing (Kaveh: "do it")
+
+`--oracle frame`: the scalar counts the FRAME'S pieces only (the rest of the board present but uncounted); the reply
+is the opponent's best capture or check scored on the frame; the null move is the baseline; a frame piece the reply
+captures is gone (a bug on the way: it had been re-pointed at its captor and counted; fixed, tested). Games source,
+20,000 positions, relative, with the after-the-move lifts, cap 600, frontiers of 600. OBS:
+  size 1: 10 of 12 admitted (queen 1364/1368 purity 0.87, rook 266/268 0.84, knight 499/580 0.96 with "(not
+  attacked & lands attacked) or (undefended & gives check)", bishop 890/893 0.87 -- knights and bishops had NO
+  admissible guard under any earlier outcome on real boards); size 2: 52 of 528; size 3: 7 of 417; library 69.
+  The size-three admissions are what the vocabulary was built for, e.g. L-8d50fc17 [wN wP wQ] same side: the knight
+  acting keeps in 69.6% of 2,563 unless (the knight was attacked & after the move the QUEEN is attacked), 96/104,
+  purity 1.00 -- the knight was shielding the queen (a discovered attack on it); L-f32178b2 [wR wP bB]: the bishop
+  acting LOSES unless it lands unattacked or (attacked & the rook defended) ... 1204/1209, 0.96.
+Prove crashed on the lifted relations (the check pass built its generator without --lift; fixed) -- rerun with the
+values pass; then the composition gauge on this library.
