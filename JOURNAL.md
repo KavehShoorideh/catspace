@@ -22874,6 +22874,22 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 22:51 PDT — compositions instead of primitives: the quantifier and the threat lifts
+
+Kaveh: the king gap "should be explainable in terms of other primitives" (an escape square = a king square not
+attacked; a pin = clear lines on both sides), and "if we didn't have the concept of an escape square we could roll
+the game state forward, place the king in check, and the escape squares are the legal moves that remove the
+threat" -- an option, not an order. Built, all generic: `some_R(i, ...)` / `some_not_R(i, ...)` (some action of i
+satisfies / violates an action relation: "has a safe move", "can capture something worth at least j"); `threat_R(i,
+...)` (R on the state after i's side passes and the opponent's best reply lands, opt-in); `--prefixes` selects the
+lifts, recorded in every lemma's provenance; the applier lifts by the names a library uses. Tests: the cornered king
+has no safe move; after ...Qxd2 the king still has b1; after ...Qxb2+ with the queen defended it has nothing.
+
+Vocabulary size (relations / candidate literals at three slots): base 14 / 54; +after 23 / 99; +then 32 / 144;
++some 62 / 270; +threat 119 / 594. The guard search is quadratic in literals, so the threat prefix stays off by
+default. The quantifier smoke is running; its residual file is compared with the pre-quantifier one for the
+rejected king frames.
+
 ## 2026-09-23 22:42 PDT — the episode vocabulary restores the three-piece lemmas at depth = frame size
 
 Kaveh: "what's the vocabulary lacking now? build it." Built `then_R` (R on the state after the opponent's reply in
