@@ -23852,3 +23852,25 @@ captures is gone (a bug on the way: it had been re-pointed at its captor and cou
   acting LOSES unless it lands unattacked or (attacked & the rook defended) ... 1204/1209, 0.96.
 Prove crashed on the lifted relations (the check pass built its generator without --lift; fixed) -- rerun with the
 values pass; then the composition gauge on this library.
+
+## 2026-09-23 18:06 PDT — the frame-local library proves and composes in the right direction, weakly
+
+Proof on held-out positions (seed 1, cap 3,000): PROVED 58 / conjecture 11 of 69 (the material-outcome games
+library: 18/30; the resolved one: 0/14). Among the proved: L-635fbcc4 [wK wR] same side: the king acting keeps
+95.8% of 7,414 unless "not same side after the move" -- i.e. unless the rook is gone (captured) after it: 95.8% of
+308 exceptions, purity 0.99; L-0901c006 [wP wN] aligned: the pawn keeps 68.8% unless it lands attacked (when it was
+not) or the knight becomes attacked after the move (when it was not) -- the pawn was shielding the knight; 97.9% of
+333, 0.85.
+Composition gauge, 150 real positions, truth and values both clipped to material units (mates had owned the means;
+the earlier "10 pawns" were that), OBS:
+  sampled library (7,165 proved): |composed - truth| L1 1.76 -> L5 1.90 (rises with bodies); Spearman +0.604 ->
+    +0.594; best-move rank share 0.31 -> 0.37.
+  frame-local library (58 proved): |composed - truth| L1 1.75 -> L2 1.72 -> L3 1.70 -> L5 1.69 (FALLS with
+    bodies, the first library where it does); Spearman +0.492 -> +0.478 (flat, lower); best-move rank share 0.33
+    flat; 4,045 moves spoken about vs 3,410 (pawns are entities now).
+Reading: frame-local values are in the board's units and compose in the right direction -- each body brings the
+composed prediction nearer the truth -- but the gain is 0.06 pawns over four bodies and the ORDER is weaker than the
+sampled library's single "lands attacked" lemma. Sixty lemmas is a small library; the sampled one has seven
+thousand. The direction Kaveh set is confirmed at the sign level, not yet at a size that changes play. Next: grow
+the frame-local library (more positions, deeper frontier, sizes 4) and re-measure the same curve; then the guide,
+retrained on this library's shares.
