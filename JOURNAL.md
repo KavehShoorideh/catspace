@@ -23900,3 +23900,12 @@ size 2 80/836; size 3 120/1,425 (the 600-frame run had 7); size 4 9/1,256; libra
 curves): |composed - truth| L1 1.77 -> L5 1.66 (falls with bodies, as with the 58-lemma library); Spearman +0.52
 (the 58-lemma library +0.49; the sampled library +0.60); best-move rank share 0.33 -> 0.35; 4,457 moves spoken
 about. The chain gauge on this library is queued behind the interface-mode runs.
+
+## 2026-09-23 19:10 PDT — interface-driven expansion: the guard names the piece, and that is most of the gain
+
+Same 150 positions, 58-lemma library, expansion by INTERFACE (the outside pieces whose removal flips a literal of
+the deciding lemma's frame or guard come first), OBS: with the relation heuristic breaking ties, held big-stake
+chains right 37/46 = 80% (policy-only heuristic: 52%); with the graph guide breaking ties 46/53 = 87% (policy-only
+guide: 86%); refuted chains 7 and 5, the seed wrong in 3 and 2; unexpanded big-stake 78% / 77%.
+Reading: the deterministic step -- bring in the piece the guard is about -- recovers nearly all of what the learned
+policy gave, and the two together are best. This is Kaveh's "a little of both", measured.
