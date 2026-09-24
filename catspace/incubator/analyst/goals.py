@@ -15,6 +15,8 @@ from .chains import known_frames
 from .chess_domain import VAL
 from .fates import Outcome, outcome
 
+MATE = 500.0                                                                 # values beyond this are mates: their own class, above any material bound
+
 
 @dataclass
 class Choice:
@@ -104,6 +106,16 @@ def move_bound(app, board: chess.Board, move: chess.Move, frame: list) -> float:
     the frame's pieces, so nothing more can ever be won there), never below the largest gain the library claims."""
     us = board.turn
     bound = sum(VAL[board.piece_at(x).piece_type] for x in frame if board.piece_at(x) is not None and board.piece_at(x).color != us and board.piece_at(x).piece_type != chess.KING)
+    # a promotion gains without capturing (audit 2026-09-24: h8=Q read 8 against a bound of 5): every pawn of ours in
+    # the frame that can reach the last rank within the episode adds a queen's worth less its own
+    for x in frame:
+        p = board.piece_at(x)
+        if p is not None and p.color == us and p.piece_type == chess.PAWN:
+            rank = chess.square_rank(x) if us else 7 - chess.square_rank(x)
+            if rank >= 4:
+                bound += VAL[chess.QUEEN] - VAL[chess.PAWN]
+    if board.piece_at(move.from_square) is not None and board.piece_at(move.from_square).piece_type == chess.PAWN and move.promotion:
+        bound += VAL[chess.QUEEN] - VAL[chess.PAWN]
     claimed = 0.0
     try:
         res = app.apply(board, actor=move.from_square, only_action=move)
@@ -128,8 +140,10 @@ def best_goal(app, board: chess.Board, prune: bool = True, depth: int = 0, max_o
     choices.sort(key=lambda c: -c.bound)
     alpha = -1e9; opened = 0
     for c in choices:
-        if prune and c.bound <= alpha and alpha > -1e9:
-            c.pruned = True; continue
+        if prune and alpha >= MATE:
+            c.pruned = True; continue                                          # a mate is found: nothing material beats it
+        if prune and c.bound <= alpha and alpha > -1e9 and not (board.gives_check(c.move) or board.is_capture(c.move)):
+            c.pruned = True; continue                                          # a forcing move may still mate (a mate is worth more than any frame): only quiet moves are pruned by the material bound
         if opened >= max_open:
             c.pruned = True; continue
         o = outcome(dom, board, c.frame, c.move, depth, app=None, relative=True)    # over standing still in its own frame: a quiet move earns nothing for a tactic that was there anyway

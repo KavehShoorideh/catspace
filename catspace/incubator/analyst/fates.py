@@ -91,6 +91,7 @@ class Outcome:
     signature: dict = field(default_factory=dict)
     counts: dict = field(default_factory=dict)
     judgment: dict = field(default_factory=dict)
+    intermezzi: list = field(default_factory=list)   # [(ply, side, value, fates)]: the outcome if a pass is IMPOSED at that ply (Kaveh 2026-09-24: a move spent outside the frame)
 
     def achieved_by(self, slot: int):
         """Who captured this slot: the capturing slot, -1 for an outside piece, None if it lives."""
@@ -111,7 +112,7 @@ def pass_value(board: chess.Board, ids: list, side: chess.Color, depth: int) -> 
     return v
 
 
-def outcome(dom, board: chess.Board, ids: list, move: chess.Move, depth: int = 0, app=None, max_depth: int = 5, relative: bool = True) -> Outcome | None:
+def outcome(dom, board: chess.Board, ids: list, move: chess.Move, depth: int = 0, app=None, max_depth: int = 5, relative: bool = True, with_intermezzi: bool = False) -> Outcome | None:
     """The frame's structured outcome for one action: the episode's line, the fates, the terminal signature and move
     counts, and the library's judgment of the end state when an applier is given. Value: the frame's material after
     the line minus the baseline -- the pass episode when `relative` (the generator's own convention), else the
@@ -136,7 +137,64 @@ def outcome(dom, board: chess.Board, ids: list, move: chess.Move, depth: int = 0
     sig = signature(dom, end.board, end.ids)
     counts = move_counts(dom, end)
     jud = judge(app, end) if app is not None else {}
-    return Outcome(move, v - before, line, fates, sig, counts, jud)
+    o = Outcome(move, v - before, line, fates, sig, counts, jud)
+    if with_intermezzi:
+        o.intermezzi = intermezzi(board, ids, move, depth, max_depth)
+    return o
+
+
+def _episode_forced_pass(st: State, side: chess.Color, depth: int, ply: int, at: int, alpha: float, beta: float, line: list) -> tuple:
+    """The frame episode with a PASS imposed at ply `at` (an intermezzo elsewhere for the side to move then): every
+    other ply is the ordinary episode. Returns (value, line)."""
+    from .chess_domain import VAL
+    b = st.board
+    mate = (-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0
+    stand = _frame_material(st, side) + mate
+    if depth == 0 or b.is_checkmate() or b.is_stalemate():
+        return stand, list(line)
+    us = b.turn == side
+    frame_sq = {x for x in st.ids if x is not None}
+    children = []
+    if not b.is_check():
+        nb = b.copy(stack=False); nb.turn = not nb.turn
+        if nb.is_valid():
+            children.append((0.0, State(nb, list(st.ids))))
+    if ply != at:                                                             # at the intermezzo ply only the pass is available
+        for m in b.legal_moves:
+            if b.is_check() or b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq):
+                nb = b.copy(stack=False); nb.push(m)
+                children.append((VAL[b.piece_at(m.to_square).piece_type] if b.piece_at(m.to_square) else 0.0, State(nb, _ids_after(st.ids, b, m))))
+    elif not children:
+        return stand, list(line)                                              # the pass is illegal here (in check): the intermezzo cannot happen
+    children.sort(key=lambda c: -c[0])
+    best = None; best_line = list(line)
+    for _, child in children:
+        v, ln = _episode_forced_pass(child, side, depth - 1, ply + 1, at, alpha, beta, line + [child])
+        if best is None or (v > best if us else v < best):
+            best, best_line = v, ln
+        if us: alpha = max(alpha, best)
+        else: beta = min(beta, best)
+        if alpha >= beta:
+            break
+    return (stand, list(line)) if best is None else (best, best_line)
+
+
+def intermezzi(board: chess.Board, ids: list, move: chess.Move, depth: int = 0, max_depth: int = 5) -> list:
+    """For each ply after the move, the frame's outcome if that ply is spent outside the frame: [(ply, side to move
+    there, value over the material before, fates)]. Ply 2 is the opponent's first reply; ply 3 our next move."""
+    live = [i for i in ids if i is not None]
+    st = State(board.copy(stack=False), list(ids))
+    side = board.piece_at(move.from_square).color
+    before = frame_scalar(st, move.from_square)
+    nb = board.copy(stack=False); nb.push(move)
+    after = State(nb, _ids_after(list(ids), board, move))
+    d = min(max_depth, depth if depth > 0 else len(live))
+    out = []
+    for at in range(2, d + 2):
+        v, ln = _episode_forced_pass(after, side, d, 2, at, -1e9, 1e9, [after])
+        who = side if (at % 2 == 1) else (not side)
+        out.append((at, who, v - before, fates_of(st, ln)))
+    return out
 
 
 def outcomes_table(dom, board: chess.Board, ids: list, actor: int, depth: int = 0, app=None) -> list:

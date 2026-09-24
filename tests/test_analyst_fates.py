@@ -31,3 +31,16 @@ def test_goal_is_achievable_by_the_pony_but_not_without_losing_it():
     assert ans["yes"] and ans["move"] == chess.Move.from_uci("e4d6")
     ans2 = F.achievable(b, IDS, chess.E4, F.both(F.captured(1), F.survives(0)))
     assert not ans2["yes"]                                                                             # the rook always takes back
+
+
+def test_intermezzi_are_forced_passes_at_each_ply():
+    """Kaveh 2026-09-24: an intermezzo is a move spent outside the frame. If black's reply (ply 2) is spent elsewhere,
+    the pony takes the juicer and lives: +3; if white's next move (ply 3) is spent elsewhere, the trade stands."""
+    b = chess.Board(FEN)
+    im = F.intermezzi(b, IDS, chess.Move.from_uci("e4d6"))
+    by_ply = {ply: (who, v, f) for ply, who, v, f in im}
+    assert by_ply[2][0] is chess.BLACK and by_ply[2][1] == 3.0 and by_ply[2][2][0].alive           # black's tempo elsewhere: the pony survives with the bishop
+    assert by_ply[3][0] is chess.WHITE and by_ply[3][1] == 0.0 and not by_ply[3][2][0].alive       # white's tempo elsewhere after Nxd6: the rook takes back anyway
+    dom = domain(oracle="frame")
+    o = F.outcome(dom, b, IDS, chess.Move.from_uci("e4d6"), with_intermezzi=True)
+    assert len(o.intermezzi) == 3

@@ -22874,6 +22874,17 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 16:02 PDT — intermezzi as forced passes in the frame's fate record
+
+Kaveh: "each frame can also accept an intermezzo at any point ... a move being skipped because it happens somewhere
+else outside the frame". From the frame's side that is a pass imposed at ply k. Built (`fates.intermezzi`): for
+every ply after the move, the episode with the pass forced at that ply (the ordinary episode elsewhere; if the pass
+is illegal there, in check, the intermezzo cannot happen), returning (ply, side, value, fates); `outcome(...,
+with_intermezzi=True)` attaches them. Pony and juicer: black's reply spent elsewhere -> the pony takes the juicer
+and lives, +3; white's next move spent elsewhere -> the rook takes back anyway, 0. Cost: one episode per ply,
+depth at most five. This is what lets two frames be combined: a line in frame A that needs the tempo at ply k
+reads its cost from frame B's outcome with the pass at k.
+
 ## 2026-09-24 16:00 PDT — the best goal with a sound prune (built), judged in the move's tactical neighbourhood
 
 Kaveh: "what is the best goal we can achieve ... prune all the frames that give you less ... but we still have to
