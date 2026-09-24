@@ -22874,6 +22874,21 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 13:48 PDT — what a frame achieves: fates, the terminal signature, goals (built)
+
+Kaveh: "the frame has to not just calculate what is good or what is bad, it has to calculate what achieves what
+... in this frame, can we win the bishop? ... achieved by this piece, by some other piece, not achieved"; and, on
+scale and on representing the end state without chess knowledge: describe it in the frame's own language and value
+it with the library, never an embedding. Built `fates.py`: the episode's line gives a FATE per slot (alive /
+captured by slot j / by an outside piece, at ply k); the end state carries its SIGNATURE (the frame's relations)
+and each piece's move counts (legal, safe: "a knight on the rim" is a knight with few safe moves, unnamed); the
+library's JUDGMENT of the end state (worst loss / best gain the lemmas claim for each piece); `outcomes_table`
+ranks an actor's actions by value with their fates; goals are predicates on fates (`captured`, `captured_by`,
+`survives`, `both`); `achievable` searches the line with the goal first and material second. Test, the pony and
+the juicer (knight e4 attacks bishop d6, rook d8 defends): Nxd6 -> the juicer taken by the pony at ply 1, the pony
+taken by the rook at ply 2, value 0.0, "achieved by the pony"; the goal "juicer taken and the pony survives" is
+not achievable. Cost: one episode per action, one more per asked goal, nothing stored.
+
 ## 2026-09-24 13:35 PDT — important squares from the guards (built, first cut); residual report; edge-aware shapes
 
 Kaveh: at inference, note each fired guard and the square it is about; the important squares are where many

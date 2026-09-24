@@ -1,0 +1,212 @@
+"""WHAT A FRAME ACHIEVES (Kaveh 2026-09-24): the outcome of a frame's line is not a number but a FATE RECORD -- for
+each frame piece, alive or captured, by which slot, at which ply -- plus the TERMINAL SIGNATURE (the end state
+described in the frame's own language: the relations among its pieces and each piece's move counts) and the
+LIBRARY'S JUDGMENT of that end state (what the lemmas claim about each piece from there). A GOAL is a predicate on
+fates ("their bishop captured by my knight"); a frame answers "achieved by this piece / by another / not achieved",
+and, if asked, searches the line with the goal first and material second. No feature is invented: material is one
+function of the fates, the rim is few moves, the judgment is the lemmas'. Bounded: one episode per asked goal,
+signatures cached by content."""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+import chess
+
+from .chess_domain import State, _ids_after, frame_episode_pv, frame_scalar, _frame_material
+from .frames import signature
+
+
+@dataclass
+class Fate:
+    slot: int
+    alive: bool
+    captor: int | None = None       # the slot that captured it; -1 for an outside piece
+    ply: int | None = None
+    square: int | None = None       # where it stands at the end (None when captured)
+
+
+def fates_of(start: State, line: list) -> list:
+    """Fates from a line of states (each after one ply): a slot whose id becomes None at ply k was captured by the
+    slot whose id moved onto its square at that ply, or by an outside piece."""
+    out = [Fate(i, True, square=sq) for i, sq in enumerate(start.ids)]
+    prev = list(start.ids)
+    for k, st in enumerate(line, start=1):
+        cur = list(st.ids)
+        for i, (a, b) in enumerate(zip(prev, cur)):
+            if a is not None and b is None:
+                captor = next((j for j, (pa, pb) in enumerate(zip(prev, cur)) if j != i and pa != pb and pb == a), -1)
+                out[i] = Fate(i, False, captor, k, None)
+        prev = cur
+    for i, sq in enumerate(prev):
+        if sq is not None:
+            out[i].square = sq
+    return out
+
+
+def move_counts(dom, state: State) -> dict:
+    """Per frame piece: legal moves, safe moves (not landing attacked): the piece's freedom in rules-level terms."""
+    counts = {}
+    lands = next(r for r in dom.relations if r.name == "lands_attacked")
+    for i, e in enumerate(state.ids):
+        if e is None:
+            counts[i] = (0, 0); continue
+        acts = dom.actions(state, e)
+        safe = sum(1 for a in acts if not lands.fn(state, a))
+        counts[i] = (len(acts), safe)
+    return counts
+
+
+def judge(app, state: State) -> dict:
+    """The library's claims about each frame piece from the end state: the worst predicted loss and the best predicted
+    gain among its actions, with the lemma that says so (restricted to the frame's own pieces)."""
+    out = {}
+    bodies = {e for e in state.ids if e is None or True} - {None}
+    for turn in (True, False):
+        b = state.board.copy(stack=False); b.turn = turn
+        if not b.is_valid():
+            continue
+        try:
+            res = app.apply(b, bodies=bodies)
+        except Exception:
+            continue
+        for (actor, uci), vl in res["verdicts"].items():
+            for c, pred, fired, ids in vl:
+                v = (c.value or {}).get("exception" if fired else "holds")
+                if v is None:
+                    continue
+                cur = out.setdefault(actor, {"worst": None, "best": None})
+                if cur["worst"] is None or v < cur["worst"][0]:
+                    cur["worst"] = (v, c.id, uci)
+                if cur["best"] is None or v > cur["best"][0]:
+                    cur["best"] = (v, c.id, uci)
+    return out
+
+
+@dataclass
+class Outcome:
+    move: chess.Move
+    value: float
+    line: list
+    fates: list
+    signature: dict = field(default_factory=dict)
+    counts: dict = field(default_factory=dict)
+    judgment: dict = field(default_factory=dict)
+
+    def achieved_by(self, slot: int):
+        """Who captured this slot: the capturing slot, -1 for an outside piece, None if it lives."""
+        f = self.fates[slot]
+        return None if f.alive else f.captor
+
+
+def outcome(dom, board: chess.Board, ids: list, move: chess.Move, depth: int = 0, app=None, max_depth: int = 5) -> Outcome | None:
+    """The frame's structured outcome for one action: the episode's line, the fates, the terminal signature and move
+    counts, and the library's judgment of the end state when an applier is given."""
+    live = [i for i in ids if i is not None]
+    if move.from_square not in live or move not in board.legal_moves:
+        return None
+    st = State(board.copy(stack=False), list(ids))
+    side = board.piece_at(move.from_square).color
+    before = frame_scalar(st, move.from_square)
+    nb = board.copy(stack=False); nb.push(move)
+    after = State(nb, _ids_after(list(ids), board, move))
+    d = min(max_depth, depth if depth > 0 else len(live))
+    v, pv = frame_episode_pv(after, side, d)
+    line = [after] + pv
+    fates = fates_of(st, line)
+    end = line[-1]
+    sig = signature(dom, end.board, end.ids)
+    counts = move_counts(dom, end)
+    jud = judge(app, end) if app is not None else {}
+    return Outcome(move, v - before, line, fates, sig, counts, jud)
+
+
+def outcomes_table(dom, board: chess.Board, ids: list, actor: int, depth: int = 0, app=None) -> list:
+    """Every action of the actor with its structured outcome, best value first: the frame's possible endings, ranked."""
+    out = []
+    for m in board.legal_moves:
+        if m.from_square != actor:
+            continue
+        o = outcome(dom, board, ids, m, depth, app)
+        if o is not None:
+            out.append(o)
+    out.sort(key=lambda o: -o.value)
+    return out
+
+
+# ---------------------------------------------------------------- goals: predicates on fates
+def captured(slot: int):
+    return lambda f: not f[slot].alive
+def captured_by(slot: int, by: int):
+    return lambda f: (not f[slot].alive) and f[slot].captor == by
+def survives(slot: int):
+    return lambda f: f[slot].alive
+def both(g1, g2):
+    return lambda f: g1(f) and g2(f)
+
+
+def describe(o: Outcome, board: chess.Board, names: list) -> str:
+    parts = []
+    for f in o.fates:
+        if not f.alive:
+            who = "an outside piece" if f.captor == -1 else names[f.captor]
+            parts.append(f"{names[f.slot]} taken by {who} at ply {f.ply}")
+    free = ", ".join(f"{names[i]} {c[1]}/{c[0]} safe moves" for i, c in o.counts.items() if o.fates[i].alive)
+    return f"{board.san(o.move)}: value {o.value:+.1f}; " + ("; ".join(parts) or "nothing captured") + (f"; at the end: {free}" if free else "")
+
+
+def _episode_goal(st: State, side: chess.Color, depth: int, goal, start: State, line: list, alpha: float, beta: float) -> tuple:
+    """The episode with the GOAL first and material second (lexicographic), our side achieving, theirs preventing.
+    Returns (value, line). Same move set and pass rule as the frame episode."""
+    from .chess_domain import VAL
+    b = st.board
+    mate = (-1000.0 if b.turn == side else 1000.0) if b.is_checkmate() else 0.0
+    def leaf():
+        f = fates_of(start, line)
+        return (10000.0 if goal(f) else 0.0) + _frame_material(st, side) + mate
+    if depth == 0 or b.is_checkmate() or b.is_stalemate():
+        return leaf(), list(line)
+    us = b.turn == side
+    frame_sq = {x for x in st.ids if x is not None}
+    children = []
+    if not b.is_check():
+        nb = b.copy(stack=False); nb.turn = not nb.turn
+        if nb.is_valid():
+            children.append((0.0, State(nb, list(st.ids))))
+    for m in b.legal_moves:
+        if b.is_check() or b.is_capture(m) or m.promotion or b.gives_check(m) or (depth > 1 and m.from_square in frame_sq):
+            nb = b.copy(stack=False); nb.push(m)
+            children.append((VAL[b.piece_at(m.to_square).piece_type] if b.piece_at(m.to_square) else 0.0, State(nb, _ids_after(st.ids, b, m))))
+    children.sort(key=lambda c: -c[0])
+    best = None; best_line = list(line)
+    for _, child in children:
+        v, ln = _episode_goal(child, side, depth - 1, goal, start, line + [child], alpha, beta)
+        if best is None or (v > best if us else v < best):
+            best, best_line = v, ln
+        if us: alpha = max(alpha, best)
+        else: beta = min(beta, best)
+        if alpha >= beta:
+            break
+    return (leaf(), list(line)) if best is None else (best, best_line)
+
+
+def achievable(board: chess.Board, ids: list, actor: int, goal, depth: int = 0, max_depth: int = 5) -> dict:
+    """Can the actor's side achieve the goal in this frame against best resistance? -> {'yes': bool, 'move': first
+    move or None, 'fates': the fates of the found line, 'value': material at the end}."""
+    st = State(board.copy(stack=False), list(ids))
+    side = board.piece_at(actor).color
+    live = [i for i in ids if i is not None]
+    d = min(max_depth, depth if depth > 0 else len(live))
+    best = None
+    for m in board.legal_moves:
+        if m.from_square != actor:
+            continue
+        nb = board.copy(stack=False); nb.push(m)
+        after = State(nb, _ids_after(list(ids), board, m))
+        v, ln = _episode_goal(after, side, d - 1, goal, st, [after], -1e9, 1e9)
+        if best is None or v > best[0]:
+            best = (v, m, ln)
+    if best is None:
+        return dict(yes=False, move=None, fates=None, value=None)
+    v, m, ln = best
+    f = fates_of(st, ln)
+    return dict(yes=goal(f), move=m, fates=f, value=v - (10000.0 if goal(f) else 0.0))
