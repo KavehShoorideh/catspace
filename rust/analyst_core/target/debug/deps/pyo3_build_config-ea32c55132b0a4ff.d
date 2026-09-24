@@ -1,0 +1,14 @@
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/deps/pyo3_build_config-ea32c55132b0a4ff.d: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/errors.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/impl_.rs /Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out/pyo3-build-config-file.txt /Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out/pyo3-build-config.txt
+
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/deps/libpyo3_build_config-ea32c55132b0a4ff.rlib: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/errors.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/impl_.rs /Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out/pyo3-build-config-file.txt /Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out/pyo3-build-config.txt
+
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/deps/libpyo3_build_config-ea32c55132b0a4ff.rmeta: /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/lib.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/errors.rs /Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/impl_.rs /Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out/pyo3-build-config-file.txt /Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out/pyo3-build-config.txt
+
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/lib.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/errors.rs:
+/Users/kav/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/pyo3-build-config-0.25.1/src/impl_.rs:
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out/pyo3-build-config-file.txt:
+/Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out/pyo3-build-config.txt:
+
+# env-dep:CARGO_PKG_VERSION=0.25.1
+# env-dep:OUT_DIR=/Users/kav/code/remote/github/catspace/rust/analyst_core/target/debug/build/pyo3-build-config-46e57da6b9ec1568/out

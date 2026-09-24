@@ -904,6 +904,8 @@ class Generator:
                     if lem.support < min_support:
                         continue
                     if inh and lem.broke == 0 and lem.refined == 0:
+                        if lem.support - lem.holds > 0:
+                            extend_this = True                                # nothing new to SAY, but there are exceptions (explained by the parents' guards): the next size is where their interactions live
                         continue                                              # the sub-frames' lemmas hold here unchanged: nothing new
                     n_exc = lem.covered + lem.residual
                     clean = n_exc == 0 or (lem.covered / n_exc >= admit_cov and lem.purity >= admit_pur)
@@ -914,8 +916,8 @@ class Generator:
                         self.residual_frames.append((fr, lem.residual))
                         if self.dom.type_tree and any(self.dom.children(t) for t in fr.types):
                             pending_splits.extend(self.splits(fr))            # not explainable at this level of abstraction: refine one slot
-                    if not inh or lem.broke > 0 or lem.refined > 0:
-                        extend_this = True
+                    if not inh or lem.broke > 0 or lem.refined > 0 or lem.support - lem.holds > 0:
+                        extend_this = True                                    # extend where anything is EXCEPTIONAL, explained or not: the guard's "unless" names the piece the next size brings in (top-down, 2026-09-24: with abstract frames the root pair explains everything and nothing broke, so size 3 was never built)
                 if size < max_size and extend_this:
                     broke_frames += 1
                     next_frontier.extend(self.extend(fr))

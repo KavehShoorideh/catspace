@@ -1,144 +1,111 @@
-"""PROOF BY FRAME ENUMERATION (Kaveh 2026-09-22: "your method is unsound").
-
-The contrast miner PROPOSES; nothing it reports is evidence. A perturbation of one square changes many concepts
-at once, and the operator decides which concepts can ever appear (its "material never differs" was an artifact of
-moving one piece, not a fact about chess). What establishes a claim is quantification over a FRAME: name the
-pieces and the geometry, say what must not be present, and enumerate EVERY placement, checking the claim by the
-rules. Then the statement is universal with explicit hypotheses, and the exceptions are complete, not sampled --
-which is what a guard is.
-
-The first claim, the pin, decided by the rules alone (no tablebase, so it holds at any material):
-    FRAME   an enemy slider S; our piece A on a line from S with nothing between; our piece B further along the
-            same line with nothing between A and B; value(B) >= value(A); no pawns among S, A, B (so the frame is
-            symmetry-invariant and A's move set does not depend on which way it faces).
-    CLAIM   if A moves off the line, S captures B next move and we lose at least value(B) - (what A won).
-    Every placement of S, A, B and both kings is enumerated (S's square fixed to the ten canonical squares by the
-    board's eightfold symmetry, which the claim respects). Each failure is classified, and the classes ARE the guard.
-
-    python -m catspace.incubator.analyst.frames pin --slider r --a n --b q
-"""
+"""FRAMES AS LIVE OBJECTS (Kaveh 2026-09-24): an idea is a set of pieces and a line; its value is the frame's own
+episode along the line; its LOGIC is the relations among its pieces (the signature). A board change re-derives an
+idea logically: only the relations that changed are named, and only ideas whose pieces are touched are recomputed
+("the same tactic works, but it only wins a pawn now"). The LISTENER answers "which frames does this piece
+affect?" and, when one frame's line moves a piece, marks the other frames holding that piece for recalculation,
+with the reason. Nothing here knows what a fork or a check is: labels are the caller's."""
 from __future__ import annotations
 
-import argparse
 import itertools
-import json
-import time
-from collections import Counter
-from pathlib import Path
+from dataclasses import dataclass, field
 
 import chess
 
-OUT = Path("data/derived/frames")
-CANON = [chess.A1, chess.B1, chess.C1, chess.D1, chess.B2, chess.C2, chess.D2, chess.C3, chess.D3, chess.D4]
-VAL = {chess.PAWN: 1.0, chess.KNIGHT: 3.0, chess.BISHOP: 3.0, chess.ROOK: 5.0, chess.QUEEN: 9.0, chess.KING: 100.0}
-SYM = {"p": chess.PAWN, "n": chess.KNIGHT, "b": chess.BISHOP, "r": chess.ROOK, "q": chess.QUEEN, "k": chess.KING}
-RAYS = {chess.ROOK: [(0, 1), (0, -1), (1, 0), (-1, 0)],
-        chess.BISHOP: [(1, 1), (1, -1), (-1, 1), (-1, -1)],
-        chess.QUEEN: [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)]}
+from .chess_domain import State, _ids_after, frame_episode_scalar, frame_scalar
 
 
-def _walk(sq: int, d: tuple, n: int) -> int | None:
-    f, r = chess.square_file(sq) + d[0] * n, chess.square_rank(sq) + d[1] * n
-    return chess.square(f, r) if 0 <= f < 8 and 0 <= r < 8 else None
+@dataclass
+class Idea:
+    name: str                      # a label from outside the mechanism ("check response", "fork")
+    ids: list                      # the frame's pieces, by square now (None once captured)
+    move: chess.Move | None        # the idea's first move (None: a standing frame)
+    value: float | None = None     # the frame episode's delta for the move, from the current position
+    signature: dict = field(default_factory=dict)   # (relation, slots) -> bool: the logic the value rests on
+    depth: int = 0                 # episode depth (0: the frame's size, capped)
+    history: list = field(default_factory=list)     # (touched_by, changed relations, old value, new value)
 
 
-def frames(slider: int, a_type: int, b_type: int):
-    """Every placement of the frame: the slider on a canonical square, A and B along one of its rays with nothing
-    between, both kings anywhere legal. Yields (board, s, a, b) with BLACK (the pinned side) to move."""
-    for s in CANON:
-        for d in RAYS[slider]:
-            for i in range(1, 8):
-                a = _walk(s, d, i)
-                if a is None:
-                    break
-                for j in range(i + 1, 8):
-                    b = _walk(s, d, j)
-                    if b is None:
-                        break
-                    used = {s, a, b}
-                    for wk in range(64):
-                        if wk in used:
-                            continue
-                        for bk in range(64):
-                            if bk in used or bk == wk or chess.square_distance(wk, bk) <= 1:
-                                continue
-                            if b_type == chess.KING and bk != b:
-                                continue
-                            board = chess.Board(None)
-                            board.set_piece_at(s, chess.Piece(slider, chess.WHITE))
-                            board.set_piece_at(wk, chess.Piece(chess.KING, chess.WHITE))
-                            board.set_piece_at(a, chess.Piece(a_type, chess.BLACK))
-                            if b_type != chess.KING:
-                                board.set_piece_at(b, chess.Piece(b_type, chess.BLACK))
-                            board.set_piece_at(bk, chess.Piece(chess.KING, chess.BLACK))
-                            board.turn = chess.BLACK
-                            if not board.is_valid() or board.is_check():
-                                continue                                   # a frame where Black is already in check is a different claim
-                            yield board, s, a, b
-                            if b_type == chess.KING:
-                                break
-                        if b_type == chess.KING and bk == b:
-                            pass
-
-
-def pin(slider_sym: str, a_sym: str, b_sym: str, log=print, cap: int = 0):
-    slider, a_type, b_type = SYM[slider_sym], SYM[a_sym], SYM[b_sym]
-    assert slider in RAYS and a_type != chess.PAWN and b_type != chess.PAWN, "no pawns in the frame: the claim must be symmetry-invariant"
-    assert VAL[b_type] >= VAL[a_type], "the frame requires the piece behind to be worth at least as much"
-    n_frames = n_moves = holds = 0
-    fails = Counter(); examples = {}
-    t0 = time.perf_counter()
-    for board, s, a, b in frames(slider, a_type, b_type):
-        n_frames += 1
-        if cap and n_frames > cap:
-            break
-        line = set(chess.SquareSet.between(s, b)) | {s, b}
-        for m in board.legal_moves:
-            if m.from_square != a or m.to_square in line:
-                continue                                                   # only moves that LEAVE the line
-            n_moves += 1
-            nb = board.copy(stack=False); nb.push(m)
-            won = VAL.get(board.piece_type_at(m.to_square), 0.0) if board.is_capture(m) else 0.0
-            take = chess.Move(s, b)
-            if nb.is_check():
-                fails["A's move gives check"] += 1; examples.setdefault("A's move gives check", (board.fen(), board.san(m)))
+def signature(dom, board: chess.Board, ids: list) -> dict:
+    """Every base state relation over the frame's pieces, by slot: the logical state of the frame."""
+    st = State(board.copy(stack=False), list(ids))
+    out = {}
+    for r in dom.relations:
+        if r.on_action or r.name.startswith(("after_", "then_", "some_", "threat_")) or r.arity > 2:
+            continue
+        for sl in itertools.permutations(range(len(ids)), r.arity):
+            args = [ids[s] for s in sl]
+            if any(a is None for a in args):
+                out[(r.name, sl)] = None
                 continue
-            if take not in nb.legal_moves:
-                # the slider cannot take: it is pinned itself, or the king would be left in check, or B moved away
-                fails["the slider cannot capture B"] += 1; examples.setdefault("the slider cannot capture B", (board.fen(), board.san(m)))
-                continue
-            after = nb.copy(stack=False); after.push(take)
-            recapture = max((VAL[slider] for x in after.legal_moves if x.to_square == b), default=0.0)
-            net = won - VAL[b_type] + recapture                            # Black's material change, with the recapture if there is one
-            if net < 0:
-                holds += 1
-            else:
-                kind = ("A won at least as much" if won >= VAL[b_type] else
-                        "B is defended: the slider is recaptured" if recapture else "the exchange comes out even")
-                fails[kind] += 1; examples.setdefault(kind, (board.fen(), board.san(m)))
-    dt = time.perf_counter() - t0
-    log(f"[frames/pin] S={slider_sym.upper()} A={a_sym} B={b_sym}: {n_frames} placements of the frame, {n_moves} moves of A off the line, in {dt:.0f}s"
-        + (" (CAPPED: not a proof)" if cap and n_frames > cap else " (complete over the frame)"))
-    log(f"[frames/pin] THE CLAIM 'A leaves the line => we lose material' HOLDS in {holds}/{n_moves} = {100 * holds / max(1, n_moves):.2f}%")
-    log("[frames/pin] the exceptions, complete -- these ARE the guard:")
-    for k, c in fails.most_common():
-        ex = examples.get(k)
-        log(f"    {k:<44} {c:6d} = {100 * c / max(1, n_moves):5.2f}%" + (f"   e.g. {ex[1]} in {ex[0]}" if ex else ""))
-    OUT.mkdir(parents=True, exist_ok=True)
-    json.dump(dict(slider=slider_sym, a=a_sym, b=b_sym, frames=n_frames, moves=n_moves, holds=holds,
-                   complete=not (cap and n_frames > cap), fails={k: int(v) for k, v in fails.items()},
-                   examples={k: list(v) for k, v in examples.items()}), open(OUT / f"pin_{slider_sym}{a_sym}{b_sym}.json", "w"), indent=1)
-    return holds, n_moves, fails
+            try:
+                out[(r.name, sl)] = bool(r.fn(st, *args))
+            except Exception:
+                out[(r.name, sl)] = None
+    return out
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["pin"])
-    ap.add_argument("--slider", default="r"); ap.add_argument("--a", default="n"); ap.add_argument("--b", default="q")
-    ap.add_argument("--cap", type=int, default=0)
-    a = ap.parse_args(argv)
-    pin(a.slider, a.a, a.b, cap=a.cap)
+def value_of(board: chess.Board, ids: list, move: chess.Move, depth: int = 0, max_depth: int = 5) -> float | None:
+    """The frame episode's delta for `move`: material of the mover's side counted over the frame's pieces, after a
+    line of up to `depth` plies (0: the frame's size), minus the material before."""
+    live = [i for i in ids if i is not None]
+    if move.from_square not in live or move not in board.legal_moves:
+        return None
+    b = board.copy(stack=False)
+    st = State(b, list(ids))
+    before = frame_scalar(st, move.from_square)
+    nb = b.copy(stack=False); nb.push(move)
+    after = State(nb, _ids_after(list(ids), b, move))
+    d = min(max_depth, depth if depth > 0 else len(live))
+    return frame_episode_scalar(after, b.piece_at(move.from_square).color, d) - before
 
 
-if __name__ == "__main__":
-    main()
+class Listener:
+    """Frames indexed by the pieces they hold; a move re-derives every frame it touches and names why."""
+
+    def __init__(self, dom, board: chess.Board):
+        self.dom = dom; self.board = board.copy(stack=False); self.ideas: dict = {}
+
+    def register(self, name: str, ids: list, move: chess.Move | None, depth: int = 0) -> Idea:
+        idea = Idea(name, list(ids), move, depth=depth)
+        idea.signature = signature(self.dom, self.board, idea.ids)
+        idea.value = value_of(self.board, idea.ids, move, depth) if move else None
+        self.ideas[name] = idea
+        return idea
+
+    def affected(self, square: int) -> list:
+        """Which frames does this piece affect? The names of every idea holding it."""
+        return [n for n, i in self.ideas.items() if square in i.ids]
+
+    def apply(self, move: chess.Move, by: str | None = None) -> list:
+        """Play `move` on the listener's board; every idea holding a piece the move touches (moved, captured, or
+        whose relations changed) is re-derived: its signature diffed, its value recomputed only if something
+        changed. Returns [(name, touched, changed relations, old value, new value)]."""
+        b0 = self.board.copy(stack=False)
+        self.board.push(move)
+        report = []
+        for name, idea in self.ideas.items():
+            new_ids = _ids_after(idea.ids, b0, move)
+            moved = [(a, c) for a, c in zip(idea.ids, new_ids) if a != c]
+            idea.ids = new_ids
+            if idea.move is not None and idea.move.from_square in [a for a, _ in moved]:
+                idea.move = chess.Move(dict(moved)[idea.move.from_square], idea.move.to_square) if dict(moved)[idea.move.from_square] is not None else None
+            sig = signature(self.dom, self.board, idea.ids)
+            changed = [(k, idea.signature.get(k), v) for k, v in sig.items() if idea.signature.get(k) != v]
+            touched = bool(moved) or bool(changed)
+            old = idea.value
+            if touched and idea.move is not None:
+                idea.value = value_of(self.board, idea.ids, idea.move, idea.depth)
+            idea.signature = sig
+            if touched:
+                idea.history.append((by, changed, old, idea.value))
+            report.append((name, touched, changed, old, idea.value))
+        return report
+
+    def why(self, name: str) -> str:
+        """The last re-derivation of an idea, in words: who touched it, which relations flipped, the value before and after."""
+        idea = self.ideas[name]
+        if not idea.history:
+            return f"{name}: untouched, value {idea.value}"
+        by, changed, old, new = idea.history[-1]
+        rel = "; ".join(f"{r}({','.join(chess.square_name(idea.ids[s]) if idea.ids[s] is not None else '-' for s in sl)}) {a}->{b}" for (r, sl), a, b in sorted(changed, key=lambda c: (c[0][0] != "defends", c[0][0] != "attacks", c[0][0])))
+        return f"{name}: touched by {by or 'the move'}; {rel or 'no relation changed'}; value {old} -> {new}"
