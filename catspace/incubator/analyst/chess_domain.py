@@ -358,6 +358,55 @@ def resolved_null_reply_scalar(state: State, e: int) -> float:
     return resolved_reply_scalar(State(b, list(state.ids)), e)
 
 
+def _frame_material(state: State, side: chess.Color) -> float:
+    """Material counted over the FRAME'S pieces only (state.ids), from `side`: the rest of the board is present but
+    uncounted (Kaveh 2026-09-23: "a lemma should assert a per-frame outcome ... the interaction with the rest of the
+    board is how the frame grows")."""
+    b = state.board; tot = 0.0
+    for sq in set(state.ids):                                                # a capture inside the frame leaves two ids on one square: count the square once
+        p = b.piece_at(sq)
+        if p is None or p.piece_type == chess.KING:
+            continue
+        tot += VAL[p.piece_type] if p.color == side else -VAL[p.piece_type]
+    return tot
+
+
+def frame_scalar(state: State, e: int) -> float:
+    return _frame_material(state, state.board.piece_at(e).color)
+
+
+def frame_reply_scalar(after: State, e: int) -> float:
+    """The frame's material from the actor's side after the opponent's best immediate reply (the reply that minimizes
+    it): a capture of a frame piece counts, a capture elsewhere does not; a checkmate counts as +-1000."""
+    b = after.board
+    side = not b.turn
+    if b.is_checkmate():
+        return _frame_material(after, side) + (-1000.0 if b.turn == side else 1000.0)
+    if b.is_stalemate():
+        return _frame_material(after, side)
+    worst = None
+    for r in b.legal_moves:
+        if not (b.is_capture(r) or b.gives_check(r)):
+            continue
+        nb = b.copy(stack=False); nb.push(r)
+        ids = [r.to_square if s == r.from_square else s for s in after.ids]     # a frame piece that was captured is simply gone from the count
+        v = _frame_material(State(nb, ids), side) + (-1000.0 if nb.is_checkmate() else 0.0)
+        worst = v if worst is None else min(worst, v)
+    return worst if worst is not None else _frame_material(after, side)
+
+
+def frame_null_reply_scalar(state: State, e: int) -> float:
+    b = state.board.copy(stack=False)
+    side = b.piece_at(e).color
+    b.turn = side
+    if b.is_check():
+        return None
+    b.turn = not side
+    if not b.is_valid():
+        return None
+    return frame_reply_scalar(State(b, list(state.ids)), e)
+
+
 def null_reply_scalar(state: State, e: int) -> float:
     """The actor's side's material after the opponent's best immediate reply if the actor PASSES (the null move): what
     the standing threats already take. On a full board the opponent can nearly always capture something, so an
@@ -465,6 +514,10 @@ def domain(fens: list | None = None, oracle: str = "material", worth: str = "can
             Relation("gives_check", 0, True, gives_check), Relation("captures", 0, True, captures),
             Relation("captures_worth_ge", 1, True, captures_worth_ge), Relation("stays_aligned", 1, True, stays_aligned),
             Relation("lands_attacked", 0, True, lands_attacked)]
+    if oracle == "frame":
+        return Domain("chess_frame" if fens is None else "chess_games_frame", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, frame_scalar, frame_reply_scalar,
+                      entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,
+                      null_reply_scalar=frame_null_reply_scalar)
     if oracle == "resolved":
         return Domain("chess_resolved" if fens is None else "chess_games_resolved", TYPES, rels, placements if fens is None else game_placements(fens), slots_of, actions, transition, scalar, resolved_reply_scalar,
                       entities=entities, state_of=lambda board, ids: State(board.copy(stack=False), list(ids)), actor_ok=lambda board, e: board.piece_at(e).color == board.turn,

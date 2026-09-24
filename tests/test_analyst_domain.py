@@ -73,3 +73,19 @@ def test_entities_and_actor_ok():
     ents = dict(dom.entities(b))
     assert ents[chess.H1] == "wR" and ents[chess.H4] == "bB" and ents[chess.E8] == "bK"
     assert dom.actor_ok(b, chess.H1) and not dom.actor_ok(b, chess.C1)
+
+
+def test_frame_local_outcome_counts_only_the_frame():
+    """The frame-local oracle: only the frame's pieces count; a capture elsewhere on the board is invisible; a capture
+    inside the frame is counted once (no double count when two ids land on one square)."""
+    dom = cd.domain(oracle="frame")
+    b = chess.Board("r1bq1rk1/ppp2ppp/2n2n2/3pp3/1b1P4/2NBPN2/PPP2PPP/R2QK2R w KQ - 0 8")
+    s = cd.State(b, [chess.C3, chess.B4])                                   # frame: the white knight c3, the black bishop b4 that attacks it
+    base = dom.scalar(s, chess.C3)
+    assert base == 0.0                                                      # knight 3 minus bishop 3
+    null = dom.null_reply_scalar(s, chess.C3) - base
+    assert null == -3.0                                                     # passing: Bxc3 takes the knight; the bishop is counted once
+    a = (b, chess.Move.from_uci("c3e2")); after = dom.transition(s, a)
+    assert dom.reply_scalar(after, after.ids[0]) - base == 0.0              # the knight steps away: the frame keeps its material
+    a = (b, chess.Move.from_uci("c3d5")); after = dom.transition(s, a)
+    assert dom.reply_scalar(after, after.ids[0]) - base == -3.0             # Nd5 exd5: the knight is lost; the pawn that took it is not in the frame and not counted
