@@ -22874,6 +22874,28 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 21:10 PDT — THEOREM: proofs by exhaustion in the frame's closed world
+
+Kaveh: "can't we do actual proofs like in proof assistants? At least in the pure frame sense; the interactions
+will contaminate it." Built: `prove --exhaustive N` enumerates EVERY placement of a frame's closed world (its pieces
+plus the kings, first slot on the ten canonical squares) when the count fits N, every action of the actor, the
+opponent's best reply; the stored guard must cover every exception. Status THEOREM = complete enumeration and
+coverage 1.0 -- a fact of the closed world checked case by case, as a proof assistant's `decide` does. PROVED keeps
+its old meaning (a re-test on a fresh sample) and readers accept both.
+
+OBS, the ten one-piece lemmas of the sampled library (`theorems_v2_size1.json`, 45 s with 4 workers): all ten are
+THEOREMS. "A lone queen keeps its value unless it lands on an attacked square": 489,461 queen moves over every
+placement, 42,864 lose the queen, every one of them lands attacked (purity 0.95: the king can walk into some
+attacked squares' neighbours without loss). Same for rook (363,602), bishop (257,438), knight (164,996); the kings
+alone never lose (3,478 each). Two-piece frames have 2.4 M placements each, about 22 minutes a lemma in Python;
+a 20-lemma sample is queued behind the frame run (7 h for all 187 -- Rust territory).
+
+Scope, stated: a theorem is about the frame's closed world (canonical material, one action and one reply). On a
+real board the outside pieces are unmodelled hypotheses; those lemmas stay "re-tested". Kaveh's next point: a
+frame of k pieces implies about k plies (each piece moves in its turn), so the closed-world outcome should be a
+k-ply search inside the frame, not one action and one reply -- the depth of what is proved must grow with the
+frame. Not built; his design call.
+
 ## 2026-09-23 20:25 PDT — foresight from experience: first numbers, split by game
 
 `foresight.py`: labels = the gaining lemmas (gain library, 157) that fire for the side to move within 10 plies of
