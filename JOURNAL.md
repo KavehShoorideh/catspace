@@ -22874,6 +22874,15 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-24 16:14 PDT — the prune audit: 20 of 20 after three fixes (OBS)
+
+`goals audit --n 20` on general-population positions: first run 18/20 (a promotion gains without capturing; a mate
+is worth more than any frame's material), second 19/20 (two mates ranked by the material behind them), third
+20/20 with the bound counting promotion potential, forcing moves never pruned by the material bound, and mates as
+one class. Episodes opened 330 with the prune against 574 without (43% saved); time 162 s against 200 s (the
+bounds and neighbourhoods are the rest). A prune that changes the answer is a bug, and the audit is the test that
+says so; it stays as the gate for any change to bounds or neighbourhoods.
+
 ## 2026-09-24 16:09 PDT — intermezzo by composition: two frames joined through passes, no big frame
 
 Kaveh: "an intermezzo should always come from taking a frame, adding a pass, and attaching it to another frame ...
