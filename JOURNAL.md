@@ -22874,6 +22874,17 @@ reaches the king's zone in 2 safe steps after Kd8, never after Kf8; the kings' r
 Standing: the codes that flip most on king moves (29, 13, 17) are only partly rooted; rooting them on the
 sibling pairs themselves, per material, is the next step; then the advised player.
 
+## 2026-09-23 22:42 PDT — the episode vocabulary restores the three-piece lemmas at depth = frame size
+
+Kaveh: "what's the vocabulary lacking now? build it." Built `then_R` (R on the state after the opponent's reply in
+the episode's line; never the last ply), the pass as a continuing move, depth baked into the domain, the lift cache
+by content. OBS (`run_depth0_then_smoke.log`, same settings as the earlier smokes): 22 lemmas; size 3 admits 6
+(depth = size without the words: 1; one reply: 5). Every size-3 lemma admitted uses the new words and every one is
+a KING frame: `[wK wR wQ]: the king acting keeps in 95.4% of 457, unless (after the reply the king is attacked and
+rook and queen are still together) or (the king attacked the rook and the rook is attacked after the reply) ...`
+21/21 exceptions, purity 0.91; `[wK wR bN]` 6/6 at 1.00. Cost: size 3 took about 4x the one-reply time (988 s for
+50 frames with 2 workers under load) -- the episode search per row plus a vocabulary three times the size.
+
 ## 2026-09-23 21:53 PDT — joins and depth = frame size: first observations
 
 OBS joins (`run_joins_smoke.log`: 3,000 positions, sizes ≤4, cap 200, 80 frames per size, `--joins 3`): 89 lemmas,
