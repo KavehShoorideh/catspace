@@ -23891,3 +23891,12 @@ Gauge, 150 real positions, frame-local library (58 proved), policy-only expansio
 Reading: when a chain is expanded and HOLDS under the guide's ordering it is right six times in seven at big stakes;
 the heuristic brings in pieces whose lemmas mislead. Most chains stay unexpanded because a 58-lemma library rarely
 has a larger frame to speak -- the size-four library (running) is what chains need. Interface-mode gauges queued.
+
+## 2026-09-23 19:03 PDT — the size-four frame-local library: 219 lemmas, 187 proved
+
+40,000 positions to ply 200, frames to four pieces, frontiers of 2,000, cap 800, with the lifts. OBS: size 1 10/12;
+size 2 80/836; size 3 120/1,425 (the 600-frame run had 7); size 4 9/1,256; library 219; proof on held-out positions
+(seed 1, cap 3,000): PROVED 187 / conjecture 32. Composition gauge (averaging, for continuity with the earlier
+curves): |composed - truth| L1 1.77 -> L5 1.66 (falls with bodies, as with the 58-lemma library); Spearman +0.52
+(the 58-lemma library +0.49; the sampled library +0.60); best-move rank share 0.33 -> 0.35; 4,457 moves spoken
+about. The chain gauge on this library is queued behind the interface-mode runs.
