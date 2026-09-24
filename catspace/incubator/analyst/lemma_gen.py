@@ -369,6 +369,14 @@ class Generator:
 
     def rows_of(self, frame: Frame, slot: int):
         rows = []; complete = True
+        for row, comp in self.iter_rows(frame, slot):
+            rows.append(row); complete = comp
+        return rows, complete
+
+    def iter_rows(self, frame: Frame, slot: int):
+        """The rows one at a time: (row, complete so far). The exhaustive re-test streams them (a two-piece frame holds
+        30 M rows; holding them took 6 GB a worker, 2026-09-24 00:05)."""
+        complete = True
         for state, ids, comp in self.instances(frame):
             complete = comp
             e = ids[slot]
@@ -381,10 +389,17 @@ class Generator:
                 before = self.dom.scalar(state, e)
                 after = self.dom.transition(state, a)
                 delta = self.dom.reply_scalar(after, e) - (base if base is not None else before)
-                rows.append((state, ids, a, delta))
-        return rows, complete
+                yield (state, ids, a, delta), complete
 
     # ---------------------------------------------------------------- literal masks (bitsets over the rows)
+    def lit_value(self, state, ids, a, rname, sl) -> bool:
+        """One literal on one row; a relation that raises (a captured slot is None) is False, as in lit_mask."""
+        r = self.rel[rname]
+        try:
+            return bool(r.fn(state, a, *[ids[s] for s in sl])) if r.on_action else bool(r.fn(state, *[ids[s] for s in sl]))
+        except Exception:
+            return False
+
     def lit_mask(self, rows, rname, sl, cache: dict) -> int:
         key = (rname, sl)
         if key in cache:
@@ -924,23 +939,19 @@ _GAIN = None                                                                 # t
 
 def _check(dom: Domain, fr: Frame, slot: int, claim: str, guard: list, cap: int, min_cov: float, min_pur: float) -> dict:
     g = Generator(dom, cap=cap, log=lambda *a, **k: None, relative=_RELATIVE, lift=_LIFT, gain_threshold=_GAIN, prefixes=_PREFIXES)
-    rows, complete = g.rows_of(fr, slot)
-    if not rows:
-        return dict(frame=fr.text(), slot=slot, claim=claim, status="no placements")
-    n = len(rows); all_mask = (1 << n) - 1
-    loses = 0
+    # STREAMED: one row at a time, four counters; nothing is stored (the exhaustive pass enumerates millions of rows)
     thr = _GAIN
-    for i, (_, _, _, d) in enumerate(rows):
-        if (d < 0) if thr is None else (d < thr):
-            loses |= 1 << i
-    exc = (all_mask & ~loses) if claim in ("acting loses", "acting does not gain") else loses
-    n_exc = _popcount(exc)
-    cache: dict = {}
-    matched = 0
-    for term in guard:
-        matched |= g.term_mask(rows, term, cache, all_mask)
-    cov = _popcount(matched & exc) / n_exc if n_exc else 1.0
-    pur = _popcount(matched & exc) / max(1, _popcount(matched)) if guard else 1.0
+    n = 0; n_exc = 0; n_matched = 0; n_matched_exc = 0; complete = True
+    for (state, ids, a, d), complete in g.iter_rows(fr, slot):
+        n += 1
+        lose = (d < 0) if thr is None else (d < thr)
+        is_exc = (not lose) if claim in ("acting loses", "acting does not gain") else lose
+        fired = any(all(g.lit_value(state, ids, a, r, sl) == pol for r, sl, pol in term) for term in guard) if guard else False
+        n_exc += is_exc; n_matched += fired; n_matched_exc += fired and is_exc
+    if n == 0:
+        return dict(frame=fr.text(), slot=slot, claim=claim, status="no placements")
+    cov = n_matched_exc / n_exc if n_exc else 1.0
+    pur = n_matched_exc / max(1, n_matched) if guard else 1.0
     # a lemma admitted with NO guard claimed the outcome held on every sampled row; at the larger cap a handful of
     # exceptions appear (2 of 5,000): it still holds as a near-total claim if the exception rate stays under 2%
     near_total = not guard and n_exc <= 0.02 * n

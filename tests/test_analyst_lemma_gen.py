@@ -226,3 +226,16 @@ def test_threat_lift_rolls_the_threat_forward_and_the_quantifier_finds_the_escap
     st2 = cd.State(b2, [chess.A1, chess.B2, chess.H2])
     assert rels["threat_some_not_lands_attacked"].fn(st2, chess.A1, chess.A1) is False
     assert rels["threat_attacked"].fn(st2, chess.A1, chess.A1) is True      # the king is in check once the threat lands
+
+
+def test_streamed_check_matches_the_mask_path(gen):
+    """The re-test streams rows and counts; it must agree exactly with the bitset path the generator uses."""
+    fr = lg.Frame(("wQ",), ()); guard = [(("lands_attacked", (), True), ("attacked", (0,), False))]
+    o = lg._check(gen.dom, fr, 0, "acting keeps", guard, cap=200, min_cov=0.95, min_pur=0.8)
+    g = lg.Generator(gen.dom, cap=200, log=lambda *a, **k: None)
+    rows, complete = g.rows_of(fr, 0); n = len(rows); all_mask = (1 << n) - 1
+    exc = sum(1 << i for i, r in enumerate(rows) if r[3] < 0)
+    m = g.term_mask(rows, guard[0], {}, all_mask)
+    assert o["support"] == n and o["exceptions"] == lg._popcount(exc)
+    assert abs(o["coverage"] - lg._popcount(m & exc) / max(1, lg._popcount(exc))) < 1e-9
+    assert abs(o["purity"] - lg._popcount(m & exc) / max(1, lg._popcount(m))) < 1e-9
